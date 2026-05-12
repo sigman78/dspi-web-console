@@ -73,6 +73,7 @@
           selectable={selectable}
           active={selectable && settings.eqTarget === ch.id}
           pulsate={selectable && eqUi.copySource === ch.id}
+          clipped={status.clipLatched[ch.id]}
           pairSide={pairSide(ch.shortName)}
           onclick={() => pickEq(ch.id)}
         />
@@ -90,6 +91,7 @@
           selectable={selectable}
           active={selectable && settings.eqTarget === ch.id}
           pulsate={selectable && eqUi.copySource === ch.id}
+          clipped={status.clipLatched[ch.id]}
           pairSide={pairSide(ch.shortName)}
           onclick={() => pickEq(ch.id)}
         />

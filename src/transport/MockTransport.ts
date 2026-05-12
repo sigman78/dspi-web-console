@@ -92,6 +92,15 @@ export class MockTransport implements DspTransport {
   // not just the bulk-packet contents. null = empty slot.
   #presetSlots: (MockSnapshot | null)[] = Array.from({ length: 10 }, () => null);
 
+  // Latched clip bitmask. Seeded with a demo pattern so the CLEAR button +
+  // per-channel clip indicators have something visible to drive under mock:
+  //   bit 1 → In1R   (right of the input pair — shows in TabBar)
+  //   bit 4 → Out2L  (left of Out2 pair — shows in TabBar, Overview, System)
+  // Real firmware latches the clip on overflow; ClearClips (0x83) clears it.
+  // The mock mirrors that semantic: clip stays asserted across polls, and
+  // the CLEAR button zeroes it on the next status read.
+  #clipFlags = 0b0001_0010;
+
   constructor(opts: MockOptions) {
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
     this.#platform = opts.platform === 'rp2040' ? PlatformType.RP2040 : PlatformType.RP2350;
@@ -413,7 +422,8 @@ export class MockTransport implements DspTransport {
         return;
 
       case WireCmd.ClearClips.code:
-        return; // no-op for the mock; in real firmware this clears latched clip flags
+        this.#clipFlags = 0;
+        return;
 
       default:
         return;
@@ -481,7 +491,7 @@ export class MockTransport implements DspTransport {
         // Caller sizes the request: numCh = (length - 4) / 2.
         const numCh = Math.max(0, (length - 4) >> 1);
         const peaks = Array.from({ length: numCh }, (_, i) => (i + 1) / numCh);
-        return synthesizeSystemStatus({ numCh, peaks, cpu0: 25, cpu1: 12, clipFlags: 0 });
+        return synthesizeSystemStatus({ numCh, peaks, cpu0: 25, cpu1: 12, clipFlags: this.#clipFlags });
       }
       // Environment scalars
       case SystemStatusValue.ClockHz:        return synthesizeU32(125_000_000);

@@ -11,6 +11,7 @@
     selectable = false,
     active = false,
     pulsate = false,
+    clipped = false,
     pairSide = 'single',
     onclick,
   }: {
@@ -22,6 +23,7 @@
     selectable?: boolean;
     active?: boolean;
     pulsate?: boolean;
+    clipped?: boolean;
     pairSide?: 'left' | 'right' | 'single';
     onclick?: () => void;
   } = $props();
@@ -50,6 +52,7 @@
     <div class="track">
       <div class="fill" style:width="{pct * 100}%" style:background={meterColor}></div>
     </div>
+    <div class="clipline" class:on={clipped} aria-label={clipped ? 'clipped' : undefined} title={clipped ? `${id} · CLIPPED` : undefined}></div>
   </button>
 {:else}
   <div
@@ -65,6 +68,7 @@
     <div class="track">
       <div class="fill" style:width="{pct * 100}%" style:background={meterColor}></div>
     </div>
+    <div class="clipline" class:on={clipped} aria-label={clipped ? 'clipped' : undefined} title={clipped ? `${id} · CLIPPED` : undefined}></div>
   </div>
 {/if}
 
@@ -133,4 +137,15 @@
     overflow: hidden;
   }
   .fill { height: 100%; transition: width 80ms linear; }
+  /* Latched clip indicator: a 1px pure-red underline below the meter.
+     Always rendered (transparent off, red on) so toggling clip state
+     doesn't shift surrounding layout. */
+  .clipline {
+    height: 1px;
+    margin-top: 1px;
+    background: transparent;
+    border-radius: 1px;
+    pointer-events: none;
+  }
+  .clipline.on { background: #ff0000; }
 </style>

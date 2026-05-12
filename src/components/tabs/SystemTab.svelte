@@ -5,22 +5,12 @@
   import { session } from '../../state/session.svelte';
   import { status } from '../../state/telemetry.svelte';
   import ChannelNamesPanel from '../system/ChannelNamesPanel.svelte';
+  import { chKey } from '../../styles/palette';
+  import { clearClips } from '../../runtime/actions';
 
   const snap = $derived(dsp.live);
   const info = $derived(status.info);
-
-  // Sum the cumulative xrun counters into a single "all good?" indicator.
-  // Per-field nullables (PartialSystemInfo) coalesce to 0 here: a counter
-  // we couldn't read this poll is invisible to the "all clean" total. A
-  // non-zero value we *did* read is what should drive the indicator.
-  const totalErrors = $derived(
-    info
-      ? (info.pdmRingOverruns ?? 0) + (info.pdmRingUnderruns ?? 0)
-      + (info.pdmDmaOverruns ?? 0) + (info.pdmDmaUnderruns ?? 0)
-      + (info.spdifOverruns ?? 0) + (info.spdifUnderruns ?? 0)
-      + (info.spdifStarvationsTotal ?? 0)
-      : 0
-  );
+  const connected = $derived(session.status === 'connected');
 
   function fmtNum(v: number | null | undefined): string { return v == null ? '—' : String(v); }
   function isNonZero(v: number | null | undefined): boolean { return v != null && v > 0; }
@@ -71,9 +61,7 @@
 
     <Panel code="SY.04" title="ERROR COUNTERS">
       {#snippet right()}
-        <span class="badge" class:on={totalErrors === 0} class:err={totalErrors > 0}>
-          {totalErrors === 0 ? 'CLEAN' : `${totalErrors} ERR`}
-        </span>
+        <button class="clear-btn" onclick={clearClips} disabled={!connected} title="Clear latched clip flags">CLEAR</button>
       {/snippet}
       <div class="kvgrid">
         <KV label="PDM RING OVR" value={fmtNum(info?.pdmRingOverruns)}       tone={isNonZero(info?.pdmRingOverruns)       ? undefined : 'off'} />
@@ -83,6 +71,19 @@
         <KV label="SPDIF OVR"    value={fmtNum(info?.spdifOverruns)}         tone={isNonZero(info?.spdifOverruns)         ? undefined : 'off'} />
         <KV label="SPDIF UNR"    value={fmtNum(info?.spdifUnderruns)}        tone={isNonZero(info?.spdifUnderruns)        ? undefined : 'off'} />
         <KV label="SPDIF STARV"  value={fmtNum(info?.spdifStarvationsTotal)} tone={isNonZero(info?.spdifStarvationsTotal) ? undefined : 'off'} />
+      </div>
+      <!-- Per-channel latched clip flags. Latch is host-side OR over every
+           20 Hz status packet; CLEAR button above resets both firmware
+           (ClearClips 0x83) and host array. -->
+      <div class="subhdr">CLIP / CHANNEL</div>
+      <div class="clipgrid">
+        {#each snap?.channels ?? [] as ch (ch.id)}
+          <span
+            class="clipsq ch-{chKey(ch.id)}"
+            class:on={status.clipLatched[ch.id]}
+            title="{ch.shortName} · {ch.name}{status.clipLatched[ch.id] ? ' · CLIPPED' : ''}"
+          >{ch.shortName}</span>
+        {/each}
       </div>
       <!-- TODO(system-info-extra): per-slot SPDIF starvations (wValues 18-21)
            and USB state (10-12) -->
@@ -103,24 +104,60 @@
   }
   .row button:disabled { opacity: 0.45; cursor: default; }
 
-  .badge {
+  .clear-btn {
     font-family: var(--font-mono);
     font-size: 9px;
+    font-weight: 700;
     letter-spacing: 1px;
-    padding: 2px 6px;
+    padding: 2px 8px;
     border-radius: 3px;
     background: color-mix(in oklab, var(--text) 4%, transparent);
     border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .clear-btn:hover:not(:disabled) {
+    color: var(--text);
+    border-color: var(--border-hi);
+  }
+  .clear-btn:disabled { opacity: 0.45; cursor: default; }
+
+  /* Per-channel latched clip indicators. Sits below the kvgrid; spans the
+     panel's full width regardless of the kvgrid's 2-column layout (this is
+     a sibling element). */
+  .subhdr {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
     color: var(--text-faint);
+    padding: 8px 14px 0;
+    border-top: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
+    margin-top: 6px;
   }
-  .badge.on {
-    background: color-mix(in oklab, var(--ok) 10%, transparent);
-    border-color: color-mix(in oklab, var(--ok) 40%, transparent);
-    color: var(--ok);
+  .clipgrid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 14px 14px;
   }
-  .badge.err {
-    background: color-mix(in oklab, var(--err) 10%, transparent);
-    border-color: color-mix(in oklab, var(--err) 40%, transparent);
+  .clipsq {
+    min-width: 28px;
+    padding: 3px 6px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-align: center;
+    color: var(--text-faint);
+    background: color-mix(in oklab, var(--text) 4%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+  }
+  .clipsq.on {
     color: var(--err);
+    background: color-mix(in oklab, var(--err) 12%, transparent);
+    border-color: color-mix(in oklab, var(--err) 50%, transparent);
+    box-shadow: 0 0 6px color-mix(in oklab, var(--err) 40%, transparent);
   }
 </style>

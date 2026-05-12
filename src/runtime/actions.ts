@@ -9,7 +9,7 @@ import type { DspTransport } from '../transport/DspTransport';
 import { session, setStatus } from '../state/session.svelte';
 import { applyDspSnapshot, dsp, patchSnapshot, resetDsp } from '../state/dsp.svelte';
 import { settings } from '../state/settings.svelte';
-import { resetStatus } from '../state/telemetry.svelte';
+import { resetStatus, status } from '../state/telemetry.svelte';
 import { startPolling, stopPolling } from './poll';
 import { log, error } from '../utils/log';
 import { cancelResync } from './resync';
@@ -85,6 +85,19 @@ export function setBypass(enabled: boolean): void {
     apply: () => patchSnapshot({ bypass: enabled }),
     send: (d) => d.setBypass(enabled),
   });
+}
+
+// Telemetry-only action: clears firmware-side latched clip flags (0x83) and
+// resets the host-side OR-latch (`status.clipLatched`). Not routed through
+// `instantCommand` because clip state lives in telemetry, not the DSP
+// snapshot, so the post-send bulk resync would be pure overhead. If the
+// wire send fails, the host array stays cleared — the next poll cycle
+// will re-latch from `clipFlags` if firmware still sees the condition.
+export function clearClips(): void {
+  const d = session.device;
+  if (!d) return;
+  for (let i = 0; i < status.clipLatched.length; i++) status.clipLatched[i] = false;
+  void d.clearClips().catch((e) => error('clearClips', 'send failed', e));
 }
 
 // Empty / whitespace-only input clears the custom name on the device; the

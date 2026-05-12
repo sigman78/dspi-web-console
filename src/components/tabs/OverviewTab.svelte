@@ -5,6 +5,7 @@
   import BodePlot, { type BodeCurve } from '../bode/BodePlot.svelte';
   import { filterCurve } from '../bode/filterCurve';
   import { dsp } from '../../state/dsp.svelte';
+  import { status } from '../../state/telemetry.svelte';
   import { matrixRows } from '../../domain/mixerView';
   import { ChannelId, inputIndexOf } from '../../domain/channels';
   import { CrossfeedPreset } from '../../domain/processing';
@@ -178,6 +179,11 @@
             <span class="oname">{out.name}</span>
             <span class="ogain">{fmtDb(out.gainDb)} dB</span>
             <span class="odelay">{out.delayMs.toFixed(1)} ms</span>
+            <span
+              class="oclip"
+              class:on={status.clipLatched[out.id]}
+              title={status.clipLatched[out.id] ? `${out.shortName} · CLIPPED` : ''}
+            >{status.clipLatched[out.id] ? '●' : '·'}</span>
             <span class="ostatus" class:mute={out.muted} class:on={out.enabled && !out.muted}>
               {out.muted ? '✕' : out.enabled ? '●' : '○'}
             </span>
@@ -247,7 +253,7 @@
   .outlist { padding: 4px 0; }
   .outrow {
     display: grid;
-    grid-template-columns: 60px 1fr 70px 70px 24px;
+    grid-template-columns: 60px 1fr 70px 70px 24px 24px;
     align-items: center; gap: 8px;
     padding: 6px 14px;
     font-family: var(--font-mono);
@@ -258,6 +264,8 @@
   .oid { color: var(--ch-bright); font-weight: 600; }
   .oname { font-family: var(--font-sans); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ogain, .odelay { text-align: right; }
+  .oclip { text-align: center; color: var(--text-faint); }
+  .oclip.on { color: var(--err); text-shadow: 0 0 4px var(--err); }
   .ostatus { text-align: center; color: var(--text-faint); }
   .ostatus.on { color: var(--ok); }
   .ostatus.mute { color: var(--err); }
