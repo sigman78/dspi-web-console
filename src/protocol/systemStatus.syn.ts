@@ -1,0 +1,37 @@
+// Synthesizer side of the GetStatus packet: encodes a domain shape into
+// the canonical wire bytes. Used by tests and by `MockTransport` to serve
+// `GetStatus` without hardware. The parser lives in `./systemStatus.ts`;
+// both sides share the `WireSystemStatus(numCh)` schema in `./wireTypes.ts`.
+
+import { Codec, encode } from '../utils/binCodec';
+import * as Wire from './wireTypes';
+
+// Synth a single u32 scalar response (wValue from {3..8, 13..15, 17..21}).
+export function synthesizeU32(v: number): Uint8Array {
+  return encode(Codec.u32, v >>> 0);
+}
+
+// Synth a single i32 scalar response (wValue=16).
+export function synthesizeI32(v: number): Uint8Array {
+  return encode(Codec.i32, v | 0);
+}
+
+export interface SynthesizeStatusOptions {
+  numCh: number;            // platform-specific (7 on RP2040, 11 on RP2350)
+  peaks?: number[];         // 0..1, length numCh; missing entries -> 0
+  cpu0?: number;
+  cpu1?: number;
+  clipFlags?: number;
+}
+
+export function synthesizeSystemStatus(opts: SynthesizeStatusOptions): Uint8Array {
+  const peaks = Array.from({ length: opts.numCh }, (_, i) =>
+    Math.round((opts.peaks?.[i] ?? 0) * 32767),
+  );
+  return encode(Wire.SystemStatus(opts.numCh), {
+    peaks,
+    cpu0:      opts.cpu0      ?? 0,
+    cpu1:      opts.cpu1      ?? 0,
+    clipFlags: opts.clipFlags ?? 0,
+  });
+}

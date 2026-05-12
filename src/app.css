@@ -1,0 +1,50 @@
+@import './styles/fonts.css';
+
+:root {
+  color-scheme: dark;
+
+  --bg: oklch(10% 0.01 250);
+  --bg-glow:
+    radial-gradient(1200px 600px at 70% -10%, oklch(75% 0.13 265 / 0.07), transparent 70%),
+    radial-gradient(900px 500px at 10% 110%, oklch(70% 0.18 305 / 0.04), transparent 70%),
+    var(--bg);
+
+  --panel: oklch(20% 0.005 250 / 0.65);
+  --panel-hi: oklch(23% 0.01 250 / 0.85);
+  --panel-solid: oklch(16% 0.005 250);
+
+  --text: oklch(95% 0.005 240);
+  --text-dim: color-mix(in oklab, var(--text) 62%, transparent);
+  --text-faint: color-mix(in oklab, var(--text) 38%, transparent);
+  --border: color-mix(in oklab, var(--text) 7%, transparent);
+  --border-hi: color-mix(in oklab, var(--text) 14%, transparent);
+
+  --accent: oklch(72% 0.13 265);
+  --ok: oklch(78% 0.16 150);
+  --warn: oklch(82% 0.16 90);
+  --err: oklch(67% 0.18 25);
+
+  --pad: 16px;
+  --radius: 8px;
+
+  --font-sans: 'IBM Plex Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  font-family: var(--font-sans);
+  font-size: 12px;
+  background: var(--bg-glow);
+  color: var(--text);
+}
+
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+button { font: inherit; color: inherit; }
+
+input[type="number"], select, input[type="range"] {
+  background: var(--panel-solid);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.25rem 0.4rem;
+}
+input[type="number"]:disabled, select:disabled { opacity: 0.45; }

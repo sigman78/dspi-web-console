@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="13" fill="#0b1426"/>
+  <g stroke="#3dd6d8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- top pins -->
+    <path d="M22 16v-8M28 16v-8M36 16v-8M42 16v-8"/>
+    <!-- bottom pins -->
+    <path d="M22 48v8M28 48v8M36 48v8M42 48v8"/>
+    <!-- left traces -->
+    <path d="M16 26h-6M16 32h-9M16 38h-6"/>
+    <!-- right traces -->
+    <path d="M48 32h9M48 38h6"/>
+  </g>
+  <!-- chip body, filled -->
+  <rect x="16" y="16" width="32" height="32" rx="4" fill="#3dd6d8"/>
+  <!-- D cutout -->
+  <path d="M22 22v20h10a10 10 0 0 0 0-20z" fill="#0b1426"/>
+</svg>

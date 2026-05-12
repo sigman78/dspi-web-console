@@ -1,0 +1,746 @@
+// Facade-level tests for DspDevice. Mock-fidelity assertions (serial,
+// bulk shape, master-volume roundtrip, buffer-stats parsing) live in
+// MockTransport.test.ts; this file covers the things only DspDevice
+// adds on top: getDeviceInfo collapsing, getSystemInfo aggregation,
+// per-input preamp, and the numCh caching contract for getSystemStatus.
+
+import { describe, it, test, expect, beforeEach } from 'vitest';
+import { MockTransport } from '../transport/MockTransport';
+import { DspDevice } from './DspDevice';
+import { PresetResult } from '../protocol/results';
+import { PlatformType } from '../domain/platform';
+import type { DspTransport, TransportEvent } from '../transport/DspTransport';
+import { WireCmd } from '../protocol/wireCmd';
+import { SystemStatusValue } from '../protocol/wireTypes';
+import { CrossfeedPreset, LevellerSpeed, MasterVolumeMode } from '../domain/processing';
+import { FilterType } from '../domain/filter';
+import type { PresetSlot } from '../domain/presetLimits';
+
+describe('DspDevice facade', () => {
+  let d: DspDevice;
+  beforeEach(async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    d = new DspDevice(t);
+    await d.open();
+  });
+
+  it('reads device info (platform type + firmware string)', async () => {
+    const info = await d.getDeviceInfo();
+    expect(info.type).toBe(PlatformType.RP2350);
+    expect(info.firmwareVersion.length).toBeGreaterThan(0);
+  });
+
+  it('reads system info (env scalars + counters)', async () => {
+    const info = await d.getSystemInfo();
+    expect(info.clockHz).toBe(125_000_000);
+    expect(info.coreVoltageMv).toBe(3300);
+    expect(info.sampleRateHz).toBe(48_000);
+    expect(info.tempCDegC).toBe(4210);
+    expect(info.pdmRingOverruns).toBe(0);
+    expect(info.spdifStarvationsTotal).toBe(0);
+  });
+
+  it('returns null for fields whose ctrlIn rejected, populated for the rest', async () => {
+    // Transport that rejects only the SpdifStarvationsTotal wValue and
+    // delegates everything else to the inner MockTransport. Mirrors a
+    // firmware that doesn't implement one counter but answers the rest.
+    const inner = new MockTransport({ platform: 'rp2350' });
+    await inner.open();
+    const failing: DspTransport = {
+      open:    () => inner.open(),
+      close:   () => inner.close(),
+      isOpen:  () => inner.isOpen(),
+      on:      (e: TransportEvent, l: () => void) => inner.on(e, l),
+      ctrlIn:  (request, value, length) => {
+        if (request === WireCmd.GetStatus.code && value === SystemStatusValue.SpdifStarvationsTotal) {
+          return Promise.reject(new Error('STALL'));
+        }
+        return inner.ctrlIn(request, value, length);
+      },
+      ctrlOut: (request, value, data) => inner.ctrlOut(request, value, data),
+    };
+    const dd = new DspDevice(failing);
+    const info = await dd.getSystemInfo();
+    expect(info.spdifStarvationsTotal).toBeNull();
+    expect(info.clockHz).toBe(125_000_000);
+    expect(info.tempCDegC).toBe(4210);
+    expect(info.spdifOverruns).toBe(0);
+  });
+
+  it('roundtrips per-input preamp', async () => {
+    await d.setInputPreamp(0, -1.5);
+    await d.setInputPreamp(1, -2.5);
+    expect(await d.getInputPreamp(0)).toBeCloseTo(-1.5, 4);
+    expect(await d.getInputPreamp(1)).toBeCloseTo(-2.5, 4);
+  });
+});
+
+describe('DspDevice — getSystemStatus numCh contract', () => {
+  it('uses platform-correct numCh after getDeviceInfo primes the cache', async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    const d = new DspDevice(t);
+    await d.open();
+    await d.getDeviceInfo();
+    const s = await d.getSystemStatus();
+    expect(s.peaks.length).toBe(11);
+    expect(s.cpu0).toBe(25);
+  });
+
+  it('throws on getSystemStatus before getDeviceInfo', async () => {
+    const t = new MockTransport({ platform: 'rp2040' });
+    const d = new DspDevice(t);
+    await d.open();
+    await expect(d.getSystemStatus()).rejects.toThrow(/before getDeviceInfo/);
+  });
+});
+
+describe('DspDevice — bypass + master volume mode', () => {
+  function makeCapturingTransport() {
+    const captured: { request: number; value: number; data: Uint8Array }[] = [];
+    const t: DspTransport = {
+      open: async () => {},
+      close: async () => {},
+      isOpen: () => true,
+      on: () => () => {},
+      ctrlIn: async () => new Uint8Array(),
+      ctrlOut: async (request, value, data) => {
+        captured.push({ request, value, data: new Uint8Array(data) });
+      },
+    };
+    return { t, captured };
+  }
+
+  test('setBypass(true) writes bool8 [1] to 0x46 wValue=0', async () => {
+    const { t, captured } = makeCapturingTransport();
+    await new DspDevice(t).setBypass(true);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].request).toBe(0x46);
+    expect(captured[0].value).toBe(0);
+    expect(captured[0].data).toEqual(new Uint8Array([1]));
+  });
+
+  test('setBypass(false) writes bool8 [0]', async () => {
+    const { t, captured } = makeCapturingTransport();
+    await new DspDevice(t).setBypass(false);
+    expect(captured[0].data).toEqual(new Uint8Array([0]));
+  });
+
+  test('getBypass decodes 0x47 response', async () => {
+    let lastReq = 0;
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async (req) => { lastReq = req; return new Uint8Array([1]); },
+      ctrlOut: async () => {},
+    };
+    expect(await new DspDevice(t).getBypass()).toBe(true);
+    expect(lastReq).toBe(0x47);
+  });
+
+  test('setMasterVolumeMode(WithPreset) writes u8 [1] to 0xD4', async () => {
+    const { t, captured } = makeCapturingTransport();
+    await new DspDevice(t).setMasterVolumeMode(MasterVolumeMode.WithPreset);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].request).toBe(0xD4);
+    expect(captured[0].value).toBe(0);
+    expect(captured[0].data).toEqual(new Uint8Array([1]));
+  });
+
+  test('setMasterVolumeMode(Independent) writes u8 [0]', async () => {
+    const { t, captured } = makeCapturingTransport();
+    await new DspDevice(t).setMasterVolumeMode(MasterVolumeMode.Independent);
+    expect(captured[0].data).toEqual(new Uint8Array([0]));
+  });
+
+  test('getMasterVolumeMode decodes 0xD5 response', async () => {
+    let lastReq = 0;
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async (req) => { lastReq = req; return new Uint8Array([1]); },
+      ctrlOut: async () => {},
+    };
+    expect(await new DspDevice(t).getMasterVolumeMode()).toBe(MasterVolumeMode.WithPreset);
+    expect(lastReq).toBe(0xD5);
+  });
+});
+
+describe('DspDevice — saved master volume', () => {
+  test('getSavedMasterVolume reads f32 from 0xD7 wValue=0', async () => {
+    const seen: { req: number; val: number; len: number }[] = [];
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async (req, val, len) => {
+        seen.push({ req, val, len });
+        const out = new Uint8Array(4);
+        new DataView(out.buffer).setFloat32(0, -8.25, true);
+        return out;
+      },
+      ctrlOut: async () => {},
+    };
+    expect(await new DspDevice(t).getSavedMasterVolume()).toBeCloseTo(-8.25, 4);
+    expect(seen[0]).toEqual({ req: 0xD7, val: 0, len: 4 });
+  });
+});
+
+describe('DspDevice — processing module setters', () => {
+  // Fake transport that captures every ctrlOut call so tests can assert
+  // (code, value, data). Mirrors the on-device behavior closely enough
+  // for byte-level encoding checks; the actual round-trip with state
+  // mutation is exercised through MockTransport in mock-mode smoke tests.
+  function makeCapturingTransport() {
+    const captured: { request: number; value: number; data: Uint8Array }[] = [];
+    const t: DspTransport = {
+      open: async () => {},
+      close: async () => {},
+      isOpen: () => true,
+      on: () => () => {},
+      ctrlIn: async () => new Uint8Array(),
+      ctrlOut: async (request, value, data) => {
+        captured.push({ request, value, data: new Uint8Array(data) });
+      },
+    };
+    return { t, captured };
+  }
+
+  describe('loudness', () => {
+    test('setLoudnessEnabled writes bool8 to 0x58', async () => {
+      const { t, captured } = makeCapturingTransport();
+      const d = new DspDevice(t);
+      await d.setLoudnessEnabled(true);
+      expect(captured).toHaveLength(1);
+      expect(captured[0].request).toBe(0x58);
+      expect(captured[0].data).toEqual(new Uint8Array([1]));
+    });
+    test('setLoudnessRefSpl writes f32 to 0x5A', async () => {
+      const { t, captured } = makeCapturingTransport();
+      const d = new DspDevice(t);
+      await d.setLoudnessRefSpl(85);
+      expect(captured[0].request).toBe(0x5A);
+      const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
+      expect(view.getFloat32(0, true)).toBeCloseTo(85, 4);
+    });
+    test('setLoudnessIntensity writes f32 to 0x5C', async () => {
+      const { t, captured } = makeCapturingTransport();
+      const d = new DspDevice(t);
+      await d.setLoudnessIntensity(0.6);
+      expect(captured[0].request).toBe(0x5C);
+      const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
+      expect(view.getFloat32(0, true)).toBeCloseTo(0.6, 4);
+    });
+  });
+
+  describe('crossfeed', () => {
+    test('setCrossfeedEnabled writes bool8 to 0x5E', async () => {
+      const { t, captured } = makeCapturingTransport();
+      await new DspDevice(t).setCrossfeedEnabled(true);
+      expect(captured[0].request).toBe(0x5E);
+      expect(captured[0].data).toEqual(new Uint8Array([1]));
+    });
+    test('setCrossfeedPreset writes u8 to 0x60', async () => {
+      const { t, captured } = makeCapturingTransport();
+      await new DspDevice(t).setCrossfeedPreset(CrossfeedPreset.Preset3);
+      expect(captured[0].request).toBe(0x60);
+      expect(captured[0].data).toEqual(new Uint8Array([2]));
+    });
+    test('setCrossfeedFreq writes f32 to 0x62', async () => {
+      const { t, captured } = makeCapturingTransport();
+      await new DspDevice(t).setCrossfeedFreq(700);
+      expect(captured[0].request).toBe(0x62);
+      const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
+      expect(view.getFloat32(0, true)).toBeCloseTo(700, 4);
+    });
+    test('setCrossfeedFeedDb writes f32 to 0x64', async () => {
+      const { t, captured } = makeCapturingTransport();
+      await new DspDevice(t).setCrossfeedFeedDb(4.5);
+      expect(captured[0].request).toBe(0x64);
+      const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
+      expect(view.getFloat32(0, true)).toBeCloseTo(4.5, 4);
+    });
+    test('setCrossfeedItd writes bool8 to 0x66', async () => {
+      const { t, captured } = makeCapturingTransport();
+      await new DspDevice(t).setCrossfeedItd(false);
+      expect(captured[0].request).toBe(0x66);
+      expect(captured[0].data).toEqual(new Uint8Array([0]));
+    });
+  });
+
+  describe('leveller', () => {
+    test('setLevellerEnabled writes bool8 to 0xB4', async () => {
+      const { t, captured } = makeCapturingTransport();
+      await new DspDevice(t).setLevellerEnabled(true);
+      expect(captured[0].request).toBe(0xB4);
+      expect(captured[0].data).toEqual(new Uint8Array([1]));
+    });
+    test('setLevellerAmount writes f32 to 0xB6', async () => {
+      const { t, captured } = makeCapturingTransport();
+      await new DspDevice(t).setLevellerAmount(30);
+      expect(captured[0].request).toBe(0xB6);
+      const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
+      expect(view.getFloat32(0, true)).toBeCloseTo(30, 4);
+    });
+    test('setLevellerSpeed writes u8 to 0xB8', async () => {
+      const { t, captured } = makeCapturingTransport();
+      await new DspDevice(t).setLevellerSpeed(LevellerSpeed.Fast);
+      expect(captured[0].request).toBe(0xB8);
+      expect(captured[0].data).toEqual(new Uint8Array([2]));
+    });
+    test('setLevellerMaxGain writes f32 to 0xBA', async () => {
+      const { t, captured } = makeCapturingTransport();
+      await new DspDevice(t).setLevellerMaxGain(6);
+      expect(captured[0].request).toBe(0xBA);
+      const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
+      expect(view.getFloat32(0, true)).toBeCloseTo(6, 4);
+    });
+    test('setLevellerLookahead writes bool8 to 0xBC', async () => {
+      const { t, captured } = makeCapturingTransport();
+      await new DspDevice(t).setLevellerLookahead(true);
+      expect(captured[0].request).toBe(0xBC);
+      expect(captured[0].data).toEqual(new Uint8Array([1]));
+    });
+    test('setLevellerGate writes f32 to 0xBE', async () => {
+      const { t, captured } = makeCapturingTransport();
+      await new DspDevice(t).setLevellerGate(-40);
+      expect(captured[0].request).toBe(0xBE);
+      const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
+      expect(view.getFloat32(0, true)).toBeCloseTo(-40, 4);
+    });
+  });
+});
+
+describe('DspDevice — saveMasterVolume action-IN', () => {
+  test('returns true when status byte is 0', async () => {
+    const seen: { req: number; val: number; len: number }[] = [];
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async (req, val, len) => { seen.push({ req, val, len }); return new Uint8Array([0]); },
+      ctrlOut: async () => {},
+    };
+    expect(await new DspDevice(t).saveMasterVolume()).toBe(true);
+    expect(seen[0]).toEqual({ req: 0xD6, val: 0, len: 1 });
+  });
+
+  test('returns false when status byte is non-zero', async () => {
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async () => new Uint8Array([3]), // CrcFailure
+      ctrlOut: async () => {},
+    };
+    expect(await new DspDevice(t).saveMasterVolume()).toBe(false);
+  });
+
+  test('returns false when response is empty', async () => {
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async () => new Uint8Array(0),
+      ctrlOut: async () => {},
+    };
+    expect(await new DspDevice(t).saveMasterVolume()).toBe(false);
+  });
+});
+
+describe('DspDevice — persistence (legacy save/load/reset)', () => {
+  let d: DspDevice;
+  beforeEach(async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    d = new DspDevice(t);
+    await d.open();
+  });
+
+  it('saveParams returns ok on success', async () => {
+    const r = await d.saveParams();
+    expect(r.ok).toBe(true);
+  });
+
+  it('loadParams returns ok on success', async () => {
+    const r = await d.loadParams();
+    expect(r.ok).toBe(true);
+  });
+
+  it('factoryReset returns ok on success', async () => {
+    const r = await d.factoryReset();
+    expect(r.ok).toBe(true);
+  });
+});
+
+describe('DspDevice — telemetry actions', () => {
+  function makeCapturingTransport() {
+    const captured: { request: number; value: number; data: Uint8Array }[] = [];
+    const t: DspTransport = {
+      open: async () => {},
+      close: async () => {},
+      isOpen: () => true,
+      on: () => () => {},
+      ctrlIn: async () => new Uint8Array(),
+      ctrlOut: async (request, value, data) => {
+        captured.push({ request, value, data: new Uint8Array(data) });
+      },
+    };
+    return { t, captured };
+  }
+
+  let mockT: MockTransport;
+  let d: DspDevice;
+  beforeEach(async () => {
+    mockT = new MockTransport({ platform: 'rp2350' });
+    d = new DspDevice(mockT);
+    await d.open();
+  });
+
+  it('clearClips dispatches a 0x83 OUT with wValue=0 and empty payload', async () => {
+    const { t, captured } = makeCapturingTransport();
+    await new DspDevice(t).clearClips();
+    expect(captured).toHaveLength(1);
+    expect(captured[0].request).toBe(0x83);
+    expect(captured[0].value).toBe(0);
+    expect(captured[0].data.byteLength).toBe(0);
+  });
+
+  it('resetBufferStats returns true on success', async () => {
+    expect(await d.resetBufferStats()).toBe(true);
+  });
+});
+
+describe('DspDevice — channel names', () => {
+  let d: DspDevice;
+  beforeEach(async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    d = new DspDevice(t);
+    await d.open();
+  });
+
+  it('roundtrips a channel name (Subwoofer on channel 3)', async () => {
+    await d.setChannelName(3, 'Subwoofer');
+    expect(await d.getChannelName(3)).toBe('Subwoofer');
+  });
+
+  it('silently truncates names longer than 31 bytes to 31 bytes', async () => {
+    const longName = 'A'.repeat(40);
+    await d.setChannelName(3, longName);
+    expect(await d.getChannelName(3)).toBe('A'.repeat(31));
+  });
+
+  it('preserves names independently per channel (Left on 0, Right on 1)', async () => {
+    await d.setChannelName(0, 'Left');
+    await d.setChannelName(1, 'Right');
+    expect(await d.getChannelName(0)).toBe('Left');
+    expect(await d.getChannelName(1)).toBe('Right');
+  });
+});
+
+describe('DspDevice — preset directory and active slot', () => {
+  let d: DspDevice;
+  beforeEach(async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    d = new DspDevice(t);
+    await d.open();
+  });
+
+  it('returns the preset directory with default values', async () => {
+    const dir = await d.getPresetDirectory();
+    expect(dir.occupiedMask).toBe(0);
+    expect(dir.startupMode).toBe(0);
+    expect(dir.includePins).toBe(true);
+    expect(dir.masterVolumeMode).toBe(0);
+    expect(dir.lastActiveSlot).toBe(0); // mock default; real firmware returns 0xFF until first save
+  });
+
+  it('returns active slot 0 by default (always-active model)', async () => {
+    expect(await d.getActivePreset()).toBe(0);
+  });
+
+  it('reflects setMasterVolumeMode in the directory packet', async () => {
+    await d.setMasterVolumeMode(1);
+    const dir = await d.getPresetDirectory();
+    expect(dir.masterVolumeMode).toBe(1);
+  });
+
+  it('getActivePreset returns the slot number on a valid byte', async () => {
+    await d.savePreset(3);
+    expect(await d.getActivePreset()).toBe(3);
+  });
+
+  it('getActivePreset returns null when firmware reports 0xFF', async () => {
+    // Inline transport stub returning 0xFF for PresetGetActive — avoids
+    // poking at DspDevice's private `transport` field. Mirrors the
+    // pattern used by `getSystemInfo`'s failing-counter test above.
+    const stub: DspTransport = {
+      open:    async () => {},
+      close:   async () => {},
+      isOpen:  () => true,
+      on:      () => () => {},
+      ctrlIn:  async (request) =>
+        request === WireCmd.PresetGetActive.code
+          ? new Uint8Array([0xFF])
+          : new Uint8Array(0),
+      ctrlOut: async () => {},
+    };
+    const dd = new DspDevice(stub);
+    await dd.open();
+    expect(await dd.getActivePreset()).toBe(null);
+  });
+});
+
+describe('DspDevice — preset names', () => {
+  let d: DspDevice;
+  beforeEach(async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    d = new DspDevice(t);
+    await d.open();
+  });
+
+  it('roundtrips preset names independently per slot', async () => {
+    await d.setPresetName(0, 'Cinema');
+    await d.setPresetName(1, 'Music');
+    expect(await d.getPresetName(0)).toBe('Cinema');
+    expect(await d.getPresetName(1)).toBe('Music');
+  });
+
+  it('returns empty string for an unset slot', async () => {
+    expect(await d.getPresetName(7)).toBe('');
+  });
+});
+
+describe('DspDevice — preset save/load/delete', () => {
+  let d: DspDevice;
+  beforeEach(async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    d = new DspDevice(t);
+    await d.open();
+  });
+
+  it('savePreset returns ok and marks the slot occupied', async () => {
+    const r = await d.savePreset(3);
+    expect(r.ok).toBe(true);
+    const dir = await d.getPresetDirectory();
+    expect(dir.occupiedMask & (1 << 3)).not.toBe(0);
+  });
+
+  it('savePreset advances the active slot', async () => {
+    await d.savePreset(5);
+    expect(await d.getActivePreset()).toBe(5);
+  });
+
+  it('loadPreset returns ok on empty slot and applies factory defaults', async () => {
+    // Set live state to a non-default value so we can detect the reset.
+    await d.setMasterVolume(-15);
+
+    // Slot 7 has never been saved — current firmware applies factory
+    // defaults rather than returning the deprecated SlotEmpty (0x02).
+    const r = await d.loadPreset(7);
+    expect(r.ok).toBe(true);
+
+    // Live state reset to mock defaults.
+    expect(await d.getMasterVolume()).toBeCloseTo(0, 4);
+  });
+
+  it('loadPreset returns ok for an occupied slot', async () => {
+    await d.savePreset(2);
+    const r = await d.loadPreset(2);
+    expect(r.ok).toBe(true);
+  });
+
+  it('deletePreset clears the occupied bit', async () => {
+    await d.savePreset(4);
+    const before = await d.getPresetDirectory();
+    expect(before.occupiedMask & (1 << 4)).not.toBe(0);
+
+    const r = await d.deletePreset(4);
+    expect(r.ok).toBe(true);
+
+    const after = await d.getPresetDirectory();
+    expect(after.occupiedMask & (1 << 4)).toBe(0);
+  });
+
+  it('savePreset returns InvalidSlot for slot ≥ 10 (wire-level guard)', async () => {
+    const r = await d.savePreset(10 as PresetSlot);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe(PresetResult.InvalidSlot);
+  });
+
+  it('deletePreset preserves the slot name (matches firmware: directory-level)', async () => {
+    await d.setPresetName(4, 'Test');
+    await d.savePreset(4);
+    await d.deletePreset(4);
+    // Per user_presets_spec.md §REQ_PRESET_DELETE: slot name lives in the
+    // directory sector independently of the slot payload and persists.
+    expect(await d.getPresetName(4)).toBe('Test');
+  });
+
+  it('loadPreset does not restore preset names (names are directory-level)', async () => {
+    await d.setPresetName(2, 'Original');
+    await d.savePreset(2);
+    await d.setPresetName(2, 'Changed');
+    await d.loadPreset(2);
+    // Names live in the directory sector independently of slot payload.
+    // LoadPreset doesn't restore them — current name persists.
+    expect(await d.getPresetName(2)).toBe('Changed');
+  });
+});
+
+describe('DspDevice — preset startup + include-pins', () => {
+  let d: DspDevice;
+  beforeEach(async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    d = new DspDevice(t);
+    await d.open();
+  });
+
+  it('roundtrips startup config', async () => {
+    await d.setPresetStartup({ mode: 1, slot: 4 });
+    expect(await d.getPresetStartup()).toEqual({ mode: 1, slot: 4 });
+  });
+
+  it('reflects startup config in directory packet', async () => {
+    await d.setPresetStartup({ mode: 1, slot: 7 });
+    const dir = await d.getPresetDirectory();
+    expect(dir.startupMode).toBe(1);
+    expect(dir.defaultSlot).toBe(7);
+  });
+
+  it('roundtrips include-pins flag', async () => {
+    await d.setPresetIncludePins(false);
+    expect(await d.getPresetIncludePins()).toBe(false);
+    await d.setPresetIncludePins(true);
+    expect(await d.getPresetIncludePins()).toBe(true);
+  });
+
+  it('reflects include-pins in directory packet', async () => {
+    await d.setPresetIncludePins(false);
+    const dir = await d.getPresetDirectory();
+    expect(dir.includePins).toBe(false);
+  });
+});
+
+describe('DspDevice — clearAllPresets', () => {
+  let t: MockTransport;
+  let d: DspDevice;
+  beforeEach(async () => {
+    t = new MockTransport({ platform: 'rp2350' });
+    d = new DspDevice(t);
+    await d.open();
+  });
+
+  it('clears every occupied slot and returns ok', async () => {
+    await d.savePreset(0);
+    await d.savePreset(3);
+    await d.savePreset(9);
+    const before = await d.getPresetDirectory();
+    expect(before.occupiedMask).not.toBe(0);
+
+    const r = await d.clearAllPresets({ pacingMs: 0 });
+    expect(r.ok).toBe(true);
+
+    const after = await d.getPresetDirectory();
+    expect(after.occupiedMask).toBe(0);
+  });
+
+  it('paces between deletes when pacingMs > 0', async () => {
+    await d.savePreset(0);
+    await d.savePreset(1);
+    const start = Date.now();
+    const r = await d.clearAllPresets({ pacingMs: 20 });
+    const elapsed = Date.now() - start;
+    expect(r.ok).toBe(true);
+    // 10 slots → 9 inter-delete pauses. Nominal: 9 × 20ms = 180ms.
+    // We assert half-nominal (90ms) to stay flake-proof under Windows
+    // 15.6ms timer resolution + CI scheduling jitter while still catching
+    // the regression case (pacingMs ignored → elapsed < 10ms).
+    expect(elapsed).toBeGreaterThanOrEqual(90);
+  });
+
+  it('treats SlotEmpty as success (empty deletes are idempotent)', async () => {
+    // No slots saved — all deletes hit empty slots.
+    const r = await d.clearAllPresets({ pacingMs: 0 });
+    expect(r.ok).toBe(true);
+  });
+
+  it('returns the first non-recoverable failure code', async () => {
+    // Stub the transport to return FlashWriteError (0x04) on PresetDelete.
+    const orig = t.ctrlIn.bind(t);
+    t.ctrlIn = async (req, val, len) =>
+      req === WireCmd.PresetDelete.code
+        ? new Uint8Array([PresetResult.FlashWriteError])
+        : orig(req, val, len);
+
+    const r = await d.clearAllPresets({ pacingMs: 0 });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe(PresetResult.FlashWriteError);
+  });
+});
+
+describe('DspDevice — preset name truncation', () => {
+  let d: DspDevice;
+  beforeEach(async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    d = new DspDevice(t);
+    await d.open();
+  });
+
+  it('setPresetName silently truncates ASCII names over 31 bytes', async () => {
+    const tooLong = 'A'.repeat(40);
+    await d.setPresetName(0, tooLong);
+    expect(await d.getPresetName(0)).toBe('A'.repeat(31));
+  });
+
+  it('setPresetName truncates multi-byte UTF-8 at a codepoint boundary', async () => {
+    // 11 four-byte emoji = 44 bytes. Codepoint-aware crop yields 7 emoji = 28 bytes.
+    const tooLong = '🎵'.repeat(11);
+    await d.setPresetName(0, tooLong);
+    const got = await d.getPresetName(0);
+    expect(got).toBe('🎵'.repeat(7));
+  });
+
+  it('setPresetName accepts a 31-byte ASCII name unchanged', async () => {
+    const justFits = 'A'.repeat(31);
+    await d.setPresetName(0, justFits);
+    expect(await d.getPresetName(0)).toBe(justFits);
+  });
+
+  it('setChannelName silently truncates names over 31 bytes', async () => {
+    const tooLong = 'A'.repeat(40);
+    await d.setChannelName(0, tooLong);
+    expect(await d.getChannelName(0)).toBe('A'.repeat(31));
+  });
+});
+
+describe('DspDevice — getFilter multi-read', () => {
+  test('issues 4 ctrlIn calls with bit-packed wValue and reconstructs FilterParams', async () => {
+    const seen: { req: number; val: number; len: number }[] = [];
+    // Per-param synthesized response. param 0 = type as u32; 1..3 = f32.
+    const respond = (param: number): Uint8Array => {
+      const out = new Uint8Array(4);
+      const v = new DataView(out.buffer);
+      switch (param) {
+        case 0: v.setUint32(0, 1, true); break;        // FilterType.Peaking = 1
+        case 1: v.setFloat32(0, 1234, true); break;    // freq
+        case 2: v.setFloat32(0, 0.7, true); break;     // q
+        case 3: v.setFloat32(0, -3.5, true); break;    // gain
+      }
+      return out;
+    };
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async (req, val, len) => {
+        seen.push({ req, val, len });
+        // Strict protocol check: channel/band bits must match expected base.
+        // Done inline so a future test refactor can't accidentally lose this coverage.
+        const expectedBase = (2 << 8) | (5 << 4);
+        expect(val & ~0xF).toBe(expectedBase);
+        return respond(val & 0xF);
+      },
+      ctrlOut: async () => {},
+    };
+    const f = await new DspDevice(t).getFilter(2, 5);
+
+    expect(seen).toHaveLength(4);
+    expect(seen.map(s => s.req)).toEqual([0x43, 0x43, 0x43, 0x43]);
+    expect(seen.map(s => s.len)).toEqual([4, 4, 4, 4]);
+    // wValue = (channel << 8) | (band << 4) | param
+    const base = (2 << 8) | (5 << 4);
+    expect(seen.map(s => s.val)).toEqual([base | 0, base | 1, base | 2, base | 3]);
+
+    expect(f.type).toBe(FilterType.Peaking);
+    expect(f.frequency).toBeCloseTo(1234, 1);
+    expect(f.q).toBeCloseTo(0.7, 4);
+    expect(f.gain).toBeCloseTo(-3.5, 4);
+  });
+});
