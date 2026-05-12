@@ -4,6 +4,8 @@ A browser-based configurator for the [DSPi USB DSP board](https://dspi.dev) — 
 
 Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScript, bundled with Vite).
 
+[> Demo <](https://sigman78.github.io/dspi-web-console/)
+
 ## Features
 
 - **EQ** — per-channel parametric editing with 5 filter types and N bands, live Bode plot, copy bands between channels, output trim.
