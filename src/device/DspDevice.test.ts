@@ -436,11 +436,11 @@ describe('DspDevice — preset directory and active slot', () => {
 
   it('returns the preset directory with default values', async () => {
     const dir = await d.getPresetDirectory();
-    expect(dir.occupiedMask).toBe(0);
+    expect(dir.occupiedSlotsSet.size).toBe(0);
     expect(dir.startupMode).toBe(0);
     expect(dir.includePins).toBe(true);
     expect(dir.masterVolumeMode).toBe(0);
-    expect(dir.lastActiveSlot).toBe(0); // mock default; real firmware returns 0xFF until first save
+    expect(dir.lastActiveSlot).toBe(0); // mock default; real firmware returns 0xFF → null until first save
   });
 
   it('returns active slot 0 by default (always-active model)', async () => {
@@ -511,7 +511,7 @@ describe('DspDevice — preset save/load/delete', () => {
     const r = await d.savePreset(3);
     expect(r.ok).toBe(true);
     const dir = await d.getPresetDirectory();
-    expect(dir.occupiedMask & (1 << 3)).not.toBe(0);
+    expect(dir.occupiedSlotsSet.has(3)).toBe(true);
   });
 
   it('savePreset advances the active slot', async () => {
@@ -541,13 +541,13 @@ describe('DspDevice — preset save/load/delete', () => {
   it('deletePreset clears the occupied bit', async () => {
     await d.savePreset(4);
     const before = await d.getPresetDirectory();
-    expect(before.occupiedMask & (1 << 4)).not.toBe(0);
+    expect(before.occupiedSlotsSet.has(4)).toBe(true);
 
     const r = await d.deletePreset(4);
     expect(r.ok).toBe(true);
 
     const after = await d.getPresetDirectory();
-    expect(after.occupiedMask & (1 << 4)).toBe(0);
+    expect(after.occupiedSlotsSet.has(4)).toBe(false);
   });
 
   it('savePreset returns InvalidSlot for slot ≥ 10 (wire-level guard)', async () => {
@@ -624,13 +624,13 @@ describe('DspDevice — clearAllPresets', () => {
     await d.savePreset(3);
     await d.savePreset(9);
     const before = await d.getPresetDirectory();
-    expect(before.occupiedMask).not.toBe(0);
+    expect(before.occupiedSlotsSet.size).toBeGreaterThan(0);
 
     const r = await d.clearAllPresets({ pacingMs: 0 });
     expect(r.ok).toBe(true);
 
     const after = await d.getPresetDirectory();
-    expect(after.occupiedMask).toBe(0);
+    expect(after.occupiedSlotsSet.size).toBe(0);
   });
 
   it('paces between deletes when pacingMs > 0', async () => {

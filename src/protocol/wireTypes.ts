@@ -347,44 +347,31 @@ export const PresetStartupMode = {
 } as const;
 export type PresetStartupMode = (typeof PresetStartupMode)[keyof typeof PresetStartupMode];
 
-// Preset directory packet (response to GetPresetDir 0x95). Returns 6
-// bytes on legacy firmware and 7 bytes on V12+ — the trailing
-// masterVolumeMode byte is optional. Always request 7 bytes from the
-// device: WinUSB treats device-overrun as a babble error and fails the
-// transfer.
-export interface PresetDirectoryInfo {
-  occupiedMask:     number; // u16: bit N = slot N populated
-  startupMode:      number; // PresetStartupMode (0=Specified, 1=LastActive). Kept as `number` so callers can detect a future firmware divergence; narrow with PresetStartupMode constants at use sites.
-  defaultSlot:      number; // 0..9; used when startupMode === PresetStartupMode.Specified
-  lastActiveSlot:   number; // 0..9, or 0xFF if none. Per firmware spec PresetGetActive (0x9A) never returns 0xFF, but the directory's last-active byte may.
-  includePins:      boolean;
-  masterVolumeMode: number; // V12+: 0=independent, 1=with-preset. Defaults to 0 on legacy.
-}
+// Preset directory packet (response to GetPresetDir 0x95). Schema is the
+// V12+ 7-byte shape; legacy firmware truncates to 6 bytes (no trailing
+// masterVolumeMode byte) and `decodePadded` zero-extends — masterVolumeMode
+// reads as 0, the correct legacy semantic ("independent" mode), not a
+// sentinel. Always request 7 bytes from the device: WinUSB treats
+// device-overrun as a babble error and fails the transfer.
+//
+// The consumer-facing shape lives in `domain/presetDirectory.ts`; this
+// codec stays raw (u8/u16/bool8) and is only consumed by DspDevice.
+export const PresetDirectory = struct({
+  occupiedMask:     u16,
+  startupMode:      u8,
+  defaultSlot:      u8,
+  lastActiveSlot:   u8,
+  includePins:      bool8,
+  masterVolumeMode: u8,
+});
 
-export const PresetDirRequestSize = 7;
+export const PresetDirRequestSize = sizeOf(PresetDirectory); // 7
 
 // 2-byte payload of PresetSetStartup (0x96) / response of PresetGetStartup
-// (0x97). The same {mode, defaultSlot} pair surfaces inside
-// PresetDirectoryInfo via GetPresetDir; this codec exists so call sites
-// that only want the startup config can target it directly.
+// (0x97). The same {mode, defaultSlot} pair surfaces inside the directory
+// packet via GetPresetDir; this codec exists so call sites that only want
+// the startup config can target it directly.
 export const PresetStartupConfig = struct({
   mode: u8,
   slot: u8,
 });
-
-// Parse a 6-byte legacy or 7-byte V12+ directory packet. Throws if the
-// response is shorter than the legacy minimum.
-export function parsePresetDirectoryInfo(bytes: Uint8Array): PresetDirectoryInfo {
-  if (bytes.length < 6) {
-    throw new Error(`PresetDirectoryInfo response too short: ${bytes.length} < 6`);
-  }
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  return {
-    occupiedMask:     view.getUint16(0, true),
-    startupMode:      view.getUint8(2),
-    defaultSlot:      view.getUint8(3),
-    lastActiveSlot:   view.getUint8(4),
-    includePins:      view.getUint8(5) !== 0,
-    masterVolumeMode: bytes.length >= 7 ? view.getUint8(6) : 0,
-  };
-}

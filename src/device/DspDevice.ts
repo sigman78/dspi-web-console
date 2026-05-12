@@ -9,7 +9,8 @@ import { Codec, decode, decodePadded, sizeOf } from '../utils/binCodec';
 import { forPlatform, type ChannelId, type InputSlot, type OutputSlot } from '../domain/channels';
 import { PlatformType } from '../domain/platform';
 import { CrossfeedPreset, LevellerSpeed, MasterVolumeMode } from '../domain/processing';
-import { type PresetSlot, PRESET_NAME_MAX_LEN, CHANNEL_NAME_MAX_LEN } from '../domain/presetLimits';
+import { type PresetSlot, PRESET_NAME_MAX_LEN, CHANNEL_NAME_MAX_LEN, PRESET_SLOT_COUNT } from '../domain/presetLimits';
+import type { PresetDirectoryInfo } from '../domain/presetDirectory';
 import { utf8Truncate } from '../utils/utf8';
 import { FilterType, type FilterParams } from '../domain/filter';
 import type { BufferStats } from '../protocol/bufferStats';
@@ -25,10 +26,18 @@ import {
 } from '../protocol/results';
 import type { Result } from '../utils/result';
 import {
-  parsePresetDirectoryInfo,
+  PresetDirectory,
   PresetDirRequestSize,
-  type PresetDirectoryInfo,
 } from '../protocol/wireTypes';
+
+// Bit N of the firmware's u16 occupiedMask = slot N populated.
+function occupiedMaskToSet(mask: number): ReadonlySet<PresetSlot> {
+  const s = new Set<PresetSlot>();
+  for (let i = 0; i < PRESET_SLOT_COUNT; i++) {
+    if (mask & (1 << i)) s.add(i as PresetSlot);
+  }
+  return s;
+}
 
 export class DspDevice {
   // Cached after the first getDeviceInfo() so getSystemStatus can size its
@@ -326,7 +335,18 @@ export class DspDevice {
     const bytes = await this.transport.ctrlIn(
       WireCmd.PresetGetDir.code, 0, PresetDirRequestSize,
     );
-    return parsePresetDirectoryInfo(bytes);
+    // decodePadded zero-extends a legacy 6-byte response to the V12+
+    // 7-byte schema; masterVolumeMode then reads 0 (= Independent), which
+    // is the correct legacy semantic, not a sentinel.
+    const r = decodePadded(PresetDirectory, bytes);
+    return {
+      occupiedSlotsSet: occupiedMaskToSet(r.occupiedMask),
+      startupMode:      r.startupMode,
+      defaultSlot:      r.defaultSlot as PresetSlot,
+      lastActiveSlot:   r.lastActiveSlot === 0xFF ? null : (r.lastActiveSlot as PresetSlot),
+      includePins:      r.includePins,
+      masterVolumeMode: r.masterVolumeMode as MasterVolumeMode,
+    };
   }
 
   // 0x9A: returns the active slot (0..9) or `null` for "no active slot".
