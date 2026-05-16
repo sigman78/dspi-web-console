@@ -5,7 +5,7 @@ import {
   displayNameForChannel,
   forPlatform,
   outputModeForChannel,
-  outputWireIndex,
+  outputSlotForChannel,
   type InputSlot,
 } from './channels';
 import { FilterType, type FilterParams } from './filter';
@@ -56,7 +56,7 @@ export function fromBulkParams(platformType: PlatformType, bulk: BulkParams): Ds
   }));
 
   const outputs: OutputModel[] = layout.outputs.map((channel) => {
-    const wireIndex = outputWireIndex(channel.id);
+    const wireIndex = outputSlotForChannel(platformType, channel.id);
     if (wireIndex === null) {
       throw new Error(`Channel ${channel.id} is not an output channel`);
     }

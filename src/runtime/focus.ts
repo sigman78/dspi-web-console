@@ -47,10 +47,9 @@ export function focusRoute(input: InputSlot, output: OutputSlot): Focus<RouteMod
   };
 }
 
-// Locate an output by wire slot. Find-by-wireIndex (not array index) so
-// platforms with sparse output sets work -- RP2040's outputs[] has 5 entries
-// at array indices 0..4, but Pdm's wireIndex is 8. Lookup by wireIndex
-// keeps the action layer's slot semantics consistent across platforms.
+// Locate an output by matrix/output slot. The slot is the same value sent in
+// SetOutput*/SetMatrixRoute wValue/payload; on RP2040 PDM is slot 4, while
+// on RP2350 it is slot 8.
 export function focusOutput(slot: OutputSlot): Focus<OutputModel> {
   const find = (): { outputs: readonly OutputModel[]; index: number } => {
     const outputs = dsp.live?.outputs;
@@ -75,9 +74,9 @@ export function focusOutput(slot: OutputSlot): Focus<OutputModel> {
 }
 
 // Like focusOutput but returns null when the slot is absent from the current
-// platform's outputs[] (e.g. RP2040 lacks Out3/Out4 entries). Callers that
+// platform's outputs[] (e.g. RP2040 lacks RP2350 slots 5..8). Callers that
 // mirror denormalised state across channels[]/outputs[] use this to silently
-// skip sparse-platform slots without an extra `.some(...)` probe.
+// skip platform-absent slots without an extra `.some(...)` probe.
 export function tryFocusOutput(slot: OutputSlot): Focus<OutputModel> | null {
   if (!dsp.live?.outputs.some((o) => o.wireIndex === slot)) return null;
   return focusOutput(slot);

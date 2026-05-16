@@ -25,12 +25,16 @@ export interface RouteModel extends CrossPoint {
   inputIndex: InputSlot;
   inputName: string;
   outputId: ChannelId;
+  // Protocol matrix/output slot. Platform-compact: RP2040 PDM is 4,
+  // RP2350 PDM is 8.
   outputWireIndex: OutputSlot;
   outputName: string;
 }
 
 export interface OutputModel extends OutputState {
   id: ChannelId;
+  // Protocol matrix/output slot. Platform-compact: RP2040 PDM is 4,
+  // RP2350 PDM is 8.
   wireIndex: OutputSlot;
   name: string;
   shortName: string;

@@ -33,17 +33,17 @@ export type InputChannelId = (typeof InputChannelId)[keyof typeof InputChannelId
 export const InputSlot = { Left: 0, Right: 1 } as const;
 export type InputSlot = (typeof InputSlot)[keyof typeof InputSlot];
 
-// Output slot index in the matrix routes / outputs[] arrays (0..8).
-// Names mirror ChannelId so a reader can map slot <-> channel without lookup.
-// Note: this is NOT the wire-level ChannelId (which starts at 2 for outputs);
-// it is the 0-based slot used by SetOutput*/SetMatrixRoute commands and by
-// the bulk packet's crosspoint/output arrays.
+// Output slot index in matrix routes / outputs[] arrays.
+// Note: this is NOT the wire-level ChannelId (which starts at 2 for outputs).
+// It is the 0-based slot used by SetOutput*/SetMatrixRoute commands and by
+// the bulk packet's crosspoint/output arrays. RP2040 uses a compact 0..4
+// matrix, so PDM is slot 4 there; RP2350 uses 0..8, so PDM is slot 8.
 export const OutputSlot = {
   Out1L: 0, Out1R: 1,
   Out2L: 2, Out2R: 3,
   Out3L: 4, Out3R: 5,
   Out4L: 6, Out4R: 7,
-  Pdm: 8,
+  Pdm: 8, // RP2350/global slot; use outputSlotForChannel() for platform data.
 } as const;
 export type OutputSlot = (typeof OutputSlot)[keyof typeof OutputSlot];
 
@@ -124,9 +124,9 @@ export function forPlatform(platform: PlatformType): PlatformLayout {
   return { info, inputs, outputs, channels: [...inputs, ...outputs] };
 }
 
-export function outputWireIndex(id: ChannelId): OutputSlot | null {
-  if (id < ChannelId.Out1L || id > ChannelId.Pdm) return null;
-  return (id - ChannelId.Out1L) as OutputSlot;
+export function outputSlotForChannel(platform: PlatformType, id: ChannelId): OutputSlot | null {
+  const index = forPlatform(platform).outputs.findIndex((output) => output.id === id);
+  return index >= 0 ? (index as OutputSlot) : null;
 }
 
 export function slotForOutputChannel(id: ChannelId): number | null {

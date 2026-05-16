@@ -3,8 +3,8 @@ import type { BulkParams } from '../protocol/bulkParser';
 import type { FilterParams } from '../domain/filter';
 import type { PlatformType } from '../domain/platform';
 import type { ChannelId, InputSlot, OutputSlot } from '../domain/channels';
-import { outputWireIndex } from '../domain/channels';
-import { CrossfeedPreset, LevellerSpeed } from '../domain/processing';
+import { outputSlotForChannel } from '../domain/channels';
+import { CrossfeedPreset, LevellerSpeed, MasterVolumeMode } from '../domain/processing';
 import type { DspTransport } from '../transport/DspTransport';
 import { session, setStatus } from '../state/session.svelte';
 import { applyDspSnapshot, dsp, patchSnapshot, resetDsp } from '../state/dsp.svelte';
@@ -107,7 +107,7 @@ export function setChannelName(id: ChannelId, name: string): void {
   if (!dsp.live?.channels) return;
   const ch = focusChannel(id);
   const resolved = name.trim() || ch.read().defaultName;
-  const outSlot = outputWireIndex(id);
+  const outSlot = outputSlotForChannel(dsp.live.platform.type, id);
   const out = outSlot !== null ? tryFocusOutput(outSlot) : null;
   instantCommand({
     apply: () => {

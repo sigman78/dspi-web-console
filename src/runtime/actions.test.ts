@@ -384,6 +384,21 @@ describe('setChannelName', () => {
     expect(output?.name).toBe('Front Left');
   });
 
+  it('patches RP2040 PDM output name at compact output slot 4', async () => {
+    dsp.live = fromBulkParams(
+      PlatformType.RP2040,
+      parseBulkParams(synthesizeBulkParams({ platformId: 0, formatVersion: 6 })),
+    );
+
+    setChannelName(10 satisfies ChannelId, 'Sub');
+
+    const channel = dsp.live!.channels.find((c) => c.id === 10);
+    const output = dsp.live!.outputs.find((o) => o.wireIndex === 4);
+    expect(channel?.name).toBe('Sub');
+    expect(output?.name).toBe('Sub');
+    expect(dsp.live!.outputs.some((o) => o.wireIndex === 8)).toBe(false);
+  });
+
   it('does not touch outputs[] when renaming an input channel', async () => {
     const { device } = makeFakeChannelNameDevice();
     bindDevice(device);
