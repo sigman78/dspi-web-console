@@ -1,0 +1,194 @@
+<!-- src/components/presets/PresetTile.svelte -->
+<script lang="ts">
+  import { presets, presetsDirty } from '../../state/presets.svelte';
+  import { copySource } from '../../state/copySource.svelte';
+  import { loadPresetSlot, renamePresetSlot } from '../../runtime/presets';
+  import { PresetStartupMode } from '../../protocol/wireTypes';
+  import type { PresetSlot } from '../../domain/presetLimits';
+  import { PRESET_NAME_MAX_LEN } from '../../domain/presetLimits';
+
+  const { slot }: { slot: PresetSlot } = $props();
+
+  const occupied = $derived(presets.directory?.occupiedSlotsSet.has(slot) ?? false);
+  const isActive = $derived(presets.active === slot);
+  const isStartup = $derived.by(() => {
+    const d = presets.directory;
+    return d != null && d.startupMode === PresetStartupMode.Specified && d.defaultSlot === slot;
+  });
+  const isCopySource = $derived(copySource.slot === slot);
+  const isDirty = $derived(isActive && presetsDirty.current);
+  const name = $derived(presets.names[slot] ?? '');
+
+  let editing = $state(false);
+  let editValue = $state('');
+  let renameInput: HTMLTextAreaElement | null = $state(null);
+
+  export function enterRename(): void {
+    // Slot names live in the directory and persist independently of
+    // occupancy or active state, so any tile can be renamed.
+    editValue = name;
+    editing = true;
+    setTimeout(() => renameInput?.focus(), 0);
+  }
+
+  function onDoubleClick(e: MouseEvent) {
+    if (editing) return;
+    e.preventDefault();
+    enterRename();
+  }
+
+  async function commitRename() {
+    if (!editing) return;
+    editing = false;
+    const trimmed = editValue.trim();
+    if (trimmed.length > 0 && trimmed !== name) {
+      await renamePresetSlot(slot, trimmed);
+    }
+  }
+  function cancelRename() {
+    editing = false;
+    editValue = '';
+  }
+  function onInputKey(e: KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void commitRename();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelRename();
+    }
+  }
+
+  async function onClick() {
+    if (editing) return;
+    if (isActive) return;
+    await loadPresetSlot(slot);
+  }
+</script>
+
+<div
+  class="tile"
+  class:empty={!occupied}
+  class:active={isActive}
+  class:dirty={isDirty}
+  class:copy-source={isCopySource}
+  class:renaming={editing}
+  onclick={onClick}
+  ondblclick={onDoubleClick}
+  role="button"
+  tabindex="0"
+>
+  {#if isStartup}<span class="star-top" aria-label="startup slot">★</span>{/if}
+
+  {#if editing}
+    <textarea
+      class="rename-input"
+      bind:this={renameInput}
+      bind:value={editValue}
+      onkeydown={onInputKey}
+      onblur={commitRename}
+      maxlength={PRESET_NAME_MAX_LEN}
+      rows="3"
+    ></textarea>
+  {:else}
+    <span class="tname">{name.length ? name : (occupied ? '[unnamed]' : 'Empty')}</span>
+  {/if}
+
+  {#if isDirty}<span class="dirty-dot" aria-label="unsaved changes"></span>{/if}
+  <span class="wm" aria-hidden="true">{String(slot).padStart(2, '0')}</span>
+</div>
+
+<style>
+  .tile {
+    aspect-ratio: 1.15 / 1;
+    background: var(--panel-hi);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    position: relative;
+    cursor: pointer;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    overflow: hidden;
+    font-family: var(--font-mono);
+    transition: border-color 120ms, background 120ms;
+  }
+  .tile:hover:not(.active) { border-color: var(--border-hi); }
+  .tile.empty {
+    background: color-mix(in oklab, var(--panel-hi) 70%, transparent);
+  }
+  .tile.active {
+    border-color: var(--accent);
+    background: linear-gradient(180deg,
+      color-mix(in oklab, var(--accent) 12%, var(--panel-hi)),
+      color-mix(in oklab, var(--accent) 6%, var(--panel-hi)));
+    cursor: default;
+  }
+  .tile.copy-source {
+    border-style: dashed;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 40%, transparent) inset;
+  }
+
+  .star-top {
+    position: absolute; top: 8px; right: 10px;
+    font-size: 14px; color: var(--warn); line-height: 1;
+    pointer-events: none; z-index: 2;
+  }
+  .dirty-dot {
+    position: absolute; bottom: 8px; right: 8px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px color-mix(in oklab, var(--accent) 70%, transparent);
+    z-index: 2;
+  }
+  .wm {
+    position: absolute; bottom: -8px; right: -2px;
+    font-size: 52px;
+    color: color-mix(in oklab, var(--text) 4%, transparent);
+    font-weight: 800; line-height: 1; letter-spacing: -2px;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+  .tile.active .wm { color: color-mix(in oklab, var(--accent) 22%, transparent); }
+  .tile.copy-source .wm { color: color-mix(in oklab, var(--accent) 18%, transparent); }
+
+  .tname {
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0.3px;
+    position: relative;
+    z-index: 1;
+    word-break: break-word;
+  }
+  .tile.empty .tname {
+    color: var(--text-faint);
+    font-weight: 500;
+    font-style: italic;
+  }
+
+  /* Full-tile rename overlay */
+  .tile.renaming { padding: 0; cursor: text; }
+  .rename-input {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%; box-sizing: border-box;
+    background: var(--panel-solid);
+    color: var(--text);
+    border: 1px solid var(--accent);
+    border-radius: 5px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px;
+    resize: none;
+    outline: none;
+    line-height: 1.2;
+    z-index: 4;
+  }
+  .rename-input:focus {
+    box-shadow: 0 0 0 1px var(--accent) inset;
+  }
+</style>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { session, setStatus } from '../../state/session.svelte';
   import { connectRequested, webUsbUnsupportedReason } from '../../runtime/session';
+  import { presetsDirty } from '../../state/presets.svelte';
 
   let busy = $state(false);
   const unsupported = webUsbUnsupportedReason();
@@ -40,7 +41,7 @@
   class="pill {tone}"
   onclick={connect}
   disabled={busy || unsupported !== null || session.status === 'connected'}
-  title={unsupported ?? text}
+  title={unsupported ?? (presetsDirty.current && session.status === 'connected' ? `${text} · unsaved changes` : text)}
 >
   <span class="dot"></span>
   {text}

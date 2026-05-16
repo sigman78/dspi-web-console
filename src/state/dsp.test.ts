@@ -4,7 +4,7 @@ import { parseBulkParams } from '../protocol/bulkParser';
 import { synthesizeBulkParams } from '../protocol/bulkParser.syn';
 import { PlatformType } from '../domain/platform';
 import { fromBulkParams } from '../domain/bulkToSnapshot';
-import { dsp, applyDspSnapshot, patchSnapshot, resetDsp } from './dsp.svelte';
+import { dsp, applyDspSnapshot, patchSnapshot, resetDsp, refreshShadowFromLive } from './dsp.svelte';
 
 function makeSnapshot(masterVolumeDb = -6) {
   const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6, masterVolumeDb }));
@@ -72,5 +72,37 @@ describe('dsp store: pendingWrites + isInFlight', () => {
     dsp.pendingWrites.add(Symbol('x'));
     resetDsp();
     expect(dsp.pendingWrites.size).toBe(0);
+  });
+});
+
+describe('refreshShadowFromLive', () => {
+  beforeEach(() => {
+    dsp.live = null;
+    dsp.shadow = null;
+    dsp.pendingWrites = new SvelteSet();
+  });
+
+  test('copies live → shadow', () => {
+    applyDspSnapshot(makeSnapshot(-6));
+    // Mutate live directly (simulating an optimistic patch)
+    if (dsp.live) dsp.live.bypass = true;
+    expect(dsp.shadow?.bypass).toBe(false);
+    refreshShadowFromLive();
+    expect(dsp.shadow?.bypass).toBe(true);
+  });
+
+  test('clones (does not share refs)', () => {
+    applyDspSnapshot(makeSnapshot(-6));
+    refreshShadowFromLive();
+    // Mutating live after refresh must not propagate to shadow
+    if (dsp.live) dsp.live.bypass = true;
+    expect(dsp.shadow?.bypass).toBe(false);
+  });
+
+  test('no-op when live is null', () => {
+    dsp.live = null;
+    dsp.shadow = null; // ensure starting state
+    expect(() => refreshShadowFromLive()).not.toThrow();
+    expect(dsp.shadow).toBeNull();
   });
 });

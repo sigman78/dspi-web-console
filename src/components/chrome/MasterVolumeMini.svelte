@@ -3,6 +3,7 @@
   import { settings } from '../../state/settings.svelte';
   import { session } from '../../state/session.svelte';
   import { setMasterVolume, toggleMute } from '../../runtime/actions';
+  import SaveMasterVolumeButton from './SaveMasterVolumeButton.svelte';
 
   const masterVolumeDb = $derived(dsp.live?.masterVolumeDb ?? 0);
   const connected = $derived(session.status === 'connected');
@@ -54,6 +55,7 @@
       </svg>
     {/if}
   </button>
+  <SaveMasterVolumeButton />
 </div>
 
 <style>

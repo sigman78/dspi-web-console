@@ -1,7 +1,7 @@
 import { fromBulkParams } from '../domain/bulkToSnapshot';
 import type { PlatformType } from '../domain/platform';
 import { session } from '../state/session.svelte';
-import { applyDspSnapshot, dsp } from '../state/dsp.svelte';
+import { applyDspSnapshot, applyLiveSnapshot, dsp } from '../state/dsp.svelte';
 import { warn } from '../utils/log';
 import { makeResyncScheduler } from './schedulers';
 
@@ -17,7 +17,11 @@ async function fetchAndApply(force: boolean): Promise<void> {
     const bulk = await d.getAllParams();
     if (!force && dsp.pendingWrites.size > 0) return;
     const platformType = (dsp.live?.platform.type ?? bulk.platformId) as PlatformType;
-    applyDspSnapshot(fromBulkParams(platformType, bulk));
+    // Live-only: the preset-dirty diff measures against `dsp.shadow`,
+    // which must NOT auto-update on every resync. Callers that need to
+    // re-baseline shadow (Preset Load/Revert) call refreshShadowFromLive
+    // after awaiting forceResyncNow().
+    applyLiveSnapshot(fromBulkParams(platformType, bulk));
   } catch (err) {
     warn('resync', 'bulk re-fetch failed', err);
   }
@@ -39,4 +43,30 @@ export function cancelResync(): void {
 export async function forceResyncNow(): Promise<void> {
   scheduler.cancel();
   await fetchAndApply(true);
+}
+
+// Fetch the device state and apply it as a fresh baseline — both `dsp.live`
+// and `dsp.shadow` update in one synchronous statement via applyDspSnapshot.
+//
+// Use this for preset transitions (Load / Paste / Revert) where there is
+// no meaningful "dirty" state during the operation. The atomic apply
+// eliminates the microtask window where live and shadow would otherwise
+// disagree, so observers watching `presetsDirty.current` (e.g. the
+// copy-source auto-clear $effect in PresetsTab) don't see a spurious flip.
+//
+// Cancels any pending trailing resync so a delayed live-only fetch can't
+// fire later and partially overwrite shadow.
+//
+// See docs/ARCH-TRANSACT.md for the bug class this prevents.
+export async function fetchAndApplyAsBaseline(): Promise<void> {
+  scheduler.cancel();
+  const d = session.device;
+  if (!d) return;
+  try {
+    const bulk = await d.getAllParams();
+    const platformType = (dsp.live?.platform.type ?? bulk.platformId) as PlatformType;
+    applyDspSnapshot(fromBulkParams(platformType, bulk));
+  } catch (err) {
+    warn('resync', 'baseline re-fetch failed', err);
+  }
 }

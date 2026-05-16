@@ -12,7 +12,8 @@
     eq:         { label: 'EQUALIZER',  code: '02' },
     mixer:      { label: 'MIXER',      code: '03' },
     processing: { label: 'PROCESSING', code: '04' },
-    system:     { label: 'SYSTEM',     code: '05' },
+    presets:    { label: 'PRESETS',    code: '05' },
+    system:     { label: 'SYSTEM',     code: '06' },
   };
 
   const TABS = TAB_ORDER.map((id) => ({ id, ...TAB_META[id] }));

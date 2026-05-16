@@ -3,6 +3,7 @@
   import StatusPill from './StatusPill.svelte';
   import DirtyDot from './DirtyDot.svelte';
   import MasterVolumeMini from './MasterVolumeMini.svelte';
+  import PresetActiveChip from './PresetActiveChip.svelte';
   import { status } from '../../state/telemetry.svelte';
   import { session } from '../../state/session.svelte';
   import { dsp } from '../../state/dsp.svelte';
@@ -71,8 +72,7 @@
   <StatusPill />
   <DirtyDot />
 
-  <!-- TODO(persist): wire to actions.persist.commit() once protocol verb lands -->
-  <button class="commit" disabled title="Commit not yet implemented">COMMIT</button>
+  <PresetActiveChip />
 </div>
 
 <style>
@@ -101,19 +101,6 @@
   .version { font-size: 9px; color: var(--text-faint); }
   .spacer { flex: 1; }
   .div { width: 1px; height: 22px; background: var(--border); }
-  .commit {
-    padding: 4px 12px;
-    border-radius: 4px;
-    font-family: inherit;
-    font-size: 10px;
-    letter-spacing: 1px;
-    font-weight: 700;
-    background: color-mix(in oklab, var(--accent) 15%, transparent);
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    cursor: pointer;
-  }
-  .commit:disabled { opacity: 0.45; cursor: default; }
   .bypass {
     width: 26px;
     height: 22px;

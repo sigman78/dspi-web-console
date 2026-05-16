@@ -5,6 +5,7 @@
   import { session } from '../../state/session.svelte';
   import { status } from '../../state/telemetry.svelte';
   import ChannelNamesPanel from '../system/ChannelNamesPanel.svelte';
+  import ResetPanel from '../system/ResetPanel.svelte';
   import { chKey } from '../../styles/palette';
   import { clearClips } from '../../runtime/actions';
 
@@ -18,14 +19,7 @@
 
 <div class="grid">
   <div class="col">
-    <!-- TODO(persist): replace with real actions when protocol verbs land -->
-    <Panel code="SY.03" title="PERSISTENCE">
-      <div class="row">
-        <button disabled title="Not yet implemented">COMMIT</button>
-        <button disabled title="Not yet implemented">REVERT</button>
-        <button disabled title="Not yet implemented">FACTORY RESET</button>
-      </div>
-    </Panel>
+    <ResetPanel />
   </div>
 
   <div class="col">
@@ -95,14 +89,6 @@
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--pad); height: 100%; }
   .col { display: flex; flex-direction: column; gap: var(--pad); min-height: 0; }
   .kvgrid { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .row { padding: 14px; display: flex; gap: 8px; }
-  .row button {
-    padding: 4px 10px; border-radius: 4px;
-    font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px;
-    background: var(--panel-solid); color: var(--text-dim);
-    border: 1px solid var(--border); cursor: pointer;
-  }
-  .row button:disabled { opacity: 0.45; cursor: default; }
 
   .clear-btn {
     font-family: var(--font-mono);

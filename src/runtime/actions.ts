@@ -4,9 +4,12 @@ import type { FilterParams } from '../domain/filter';
 import type { PlatformType } from '../domain/platform';
 import type { ChannelId, InputSlot, OutputSlot } from '../domain/channels';
 import { outputWireIndex } from '../domain/channels';
-import { CrossfeedPreset, LevellerSpeed } from '../domain/processing';
+import { CrossfeedPreset, LevellerSpeed, MasterVolumeMode } from '../domain/processing';
 import type { DspTransport } from '../transport/DspTransport';
 import { session, setStatus } from '../state/session.svelte';
+import { presets } from '../state/presets.svelte';
+import { ok, fail } from '../utils/result';
+import type { Result } from '../utils/result';
 import { applyDspSnapshot, dsp, patchSnapshot, resetDsp } from '../state/dsp.svelte';
 import { settings } from '../state/settings.svelte';
 import { resetStatus, status } from '../state/telemetry.svelte';
@@ -16,6 +19,7 @@ import { cancelResync } from './resync';
 import { batchCommand, cancelAllCommands, cancelScrubLane, instantCommand, scrubCommand } from './commands';
 import { focusChannel, focusOutput, focusRoute, tryFocusOutput } from './focus';
 import { reconcileEqTarget } from '../state/settings.svelte';
+import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
 const MUTE_DB = -128; // per spec
 
@@ -383,6 +387,7 @@ export async function fullSync(): Promise<void> {
       settings.lastSerial = serial;
       await reconcileAfterSync();
       startPolling();
+      await fetchPresetInfo();
       log('sync', 'connected', {
         platform: dsp.live?.platform.name,
         formatVersion: dsp.live?.formatVersion,
@@ -404,7 +409,7 @@ export async function fullSync(): Promise<void> {
 // connected, so it sees the freshly-synced device state and can write
 // through it. reconcileEqTarget is a pure state-layer step that runs
 // before the device-touching mute restore -- it doesn't need the device.
-async function reconcileAfterSync(): Promise<void> {
+export async function reconcileAfterSync(): Promise<void> {
   reconcileEqTarget();
   const d = session.device;
   if (!d) return;
@@ -453,6 +458,7 @@ export function attachTransportListeners(transport: DspTransport): () => void {
     stopPolling();
     setStatus('disconnected');
     resetDsp();
+    invalidatePresetCache();
     resetStatus();
   });
   const offConn = transport.on('connect', () => {
@@ -465,4 +471,25 @@ export function attachTransportListeners(transport: DspTransport): () => void {
   const cleanup = () => { offDisc(); offConn(); };
   lastTransportCleanup = cleanup;
   return cleanup;
+}
+
+// Master-volume mode --------------------------------------------------------
+
+export async function setMasterVolumeMode(mode: MasterVolumeMode): Promise<void> {
+  const d = session.device; if (!d) return;
+  await d.setMasterVolumeMode(mode);
+  if (presets.directory) {
+    presets.directory = { ...presets.directory, masterVolumeMode: mode };
+  }
+}
+
+// 0xD6 SaveMasterVolume — writes the directory's boot-baseline volume.
+// In Mode 0 this is the post-boot starting volume; in Mode 1 firmware
+// accepts the call but it's dormant until the user flips back to Mode 0.
+// Returns a Result so callers can show a success indicator.
+export async function saveMasterVolumeBaseline(): Promise<Result<void, string>> {
+  const d = session.device;
+  if (!d) return fail('no device', 'no device');
+  const success = await d.saveMasterVolume();
+  return success ? ok(undefined) : fail('write error', 'flash write error');
 }

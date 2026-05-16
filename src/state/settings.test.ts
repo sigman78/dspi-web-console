@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, beforeEach, afterEach } from 'vitest';
 import { loadSettings } from './settings.svelte';
 
 const V1_KEY = 'dspi-console-web/settings/v1';
@@ -6,6 +6,14 @@ const LEGACY_UI_KEY = 'dspi-console-web/ui/v2';
 const LEGACY_CONN_KEY = 'dspi-console-web/connection/v1';
 
 describe('loadSettings', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
   test('returns defaults when no keys are present', () => {
     const s = loadSettings();
     expect(s.version).toBe(1);
@@ -105,5 +113,42 @@ describe('legacy migration', () => {
     const s = loadSettings();
     expect(s.tab).toBe('overview');
     expect(s.lastSerial).toBeNull();
+  });
+});
+
+describe('warnOnPresetSwitchDirty', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  test('defaults warnOnPresetSwitchDirty to true on first run', () => {
+    const s = loadSettings();
+    expect(s.warnOnPresetSwitchDirty).toBe(true);
+  });
+
+  test('round-trips warnOnPresetSwitchDirty=false through localStorage', () => {
+    const payload = {
+      version: 1,
+      theme: 'dark',
+      showDebugStats: false,
+      tab: 'overview',
+      eqTarget: null,
+      soft: { muted: false, mutedFromDb: null },
+      lastSerial: null,
+      warnOnPresetSwitchDirty: false,
+    };
+    localStorage.setItem(V1_KEY, JSON.stringify(payload));
+    const s = loadSettings();
+    expect(s.warnOnPresetSwitchDirty).toBe(false);
+  });
+
+  test('falls back to true when warnOnPresetSwitchDirty is missing or invalid', () => {
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, warnOnPresetSwitchDirty: 'not-a-bool' }));
+    const s = loadSettings();
+    expect(s.warnOnPresetSwitchDirty).toBe(true);
   });
 });

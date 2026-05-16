@@ -22,8 +22,13 @@ describe('handleTabShortcut', () => {
     expect(settings.tab).toBe('mixer');
   });
 
-  it('Alt+5 jumps to system', () => {
+  it('Alt+5 jumps to presets', () => {
     handleTabShortcut(ev({ code: 'Digit5' }));
+    expect(settings.tab).toBe('presets');
+  });
+
+  it('Alt+6 jumps to system', () => {
+    handleTabShortcut(ev({ code: 'Digit6' }));
     expect(settings.tab).toBe('system');
   });
 
@@ -65,9 +70,9 @@ describe('handleTabShortcut', () => {
     expect(settings.tab).toBe('overview');
   });
 
-  it('ignores Alt+0 and Alt+6 (out of range)', () => {
+  it('ignores Alt+0 and Alt+7 (out of range)', () => {
     expect(handleTabShortcut(ev({ code: 'Digit0' }))).toBe(false);
-    expect(handleTabShortcut(ev({ code: 'Digit6' }))).toBe(false);
+    expect(handleTabShortcut(ev({ code: 'Digit7' }))).toBe(false);
     expect(settings.tab).toBe('overview');
   });
 
