@@ -6,6 +6,7 @@ import { startSettingsPersistence, settings } from './state/settings.svelte';
 import { dsp } from './state/dsp.svelte';
 import { status as statusStore } from './state/telemetry.svelte';
 import { bootMock, bootReal, registerNavigatorReconnect } from './runtime/session';
+import { presetsDirty } from './state/presets.svelte';
 import { paletteCSS } from './styles/palette';
 
 const paletteStyle = document.createElement('style');
@@ -49,6 +50,16 @@ if (mock === 'rp2040' || mock === 'rp2350') {
 }
 
 registerNavigatorReconnect();
+
+window.addEventListener('beforeunload', (e) => {
+  if (presetsDirty.current) {
+    // Browsers ignore custom strings since ~2017, but the handler
+    // calling preventDefault + setting returnValue triggers the
+    // generic "leave site?" dialog.
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
 const app = mount(App, { target: document.getElementById('app')! });
 export default app;

@@ -5,8 +5,10 @@
   import EqualizerTab from './components/tabs/EqualizerTab.svelte';
   import MixerTab from './components/tabs/MixerTab.svelte';
   import ProcessingTab from './components/tabs/ProcessingTab.svelte';
+  import PresetsTab from './components/tabs/PresetsTab.svelte';
   import SystemTab from './components/tabs/SystemTab.svelte';
   import ConnectingHero from './components/chrome/ConnectingHero.svelte';
+  import PresetBoundaryModal from './components/chrome/PresetBoundaryModal.svelte';
   import { settings } from './state/settings.svelte';
   import { session } from './state/session.svelte';
   import { handleTabShortcut } from './input/tabShortcuts';
@@ -32,6 +34,7 @@
 <div class="shell">
   <TopBar />
   <TabBar />
+  <PresetBoundaryModal />
   <main>
     {#if mockHero || session.status !== 'connected'}
       <div class="hero-wrap">
@@ -45,6 +48,8 @@
       <MixerTab />
     {:else if settings.tab === 'processing'}
       <ProcessingTab />
+    {:else if settings.tab === 'presets'}
+      <PresetsTab />
     {:else if settings.tab === 'system'}
       <SystemTab />
     {/if}

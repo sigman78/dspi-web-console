@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName } from './actions';
+import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline } from './actions';
 import { session, bindDevice } from '../state/session.svelte';
+import { bootMock } from './session';
 import { settings } from '../state/settings.svelte';
 import { dsp } from '../state/dsp.svelte';
 import { status as statusStore } from '../state/telemetry.svelte';
@@ -13,6 +14,8 @@ import { PlatformType } from '../domain/platform';
 import { fromBulkParams } from '../domain/bulkToSnapshot';
 import { createHardwareProfile } from '../domain/hardware';
 import type { ChannelId } from '../domain/channels';
+import { MasterVolumeMode } from '../domain/processing';
+import { presets } from '../state/presets.svelte';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 
@@ -430,5 +433,45 @@ describe('setChannelName', () => {
 
     const outputsAfter = dsp.live!.outputs.map((o) => o.name);
     expect(outputsAfter).toEqual(outputsBefore);
+  });
+});
+
+describe('actions — preset info sync', () => {
+  beforeEach(async () => {
+    await bootMock('rp2350');
+  });
+
+  it('populates presets.directory after fullSync', async () => {
+    // bootMock calls fullSync; presets.directory should be set by now.
+    expect(presets.directory).not.toBe(null);
+    expect(presets.active).not.toBe(null);
+  });
+});
+
+describe('actions — master volume mode', () => {
+  beforeEach(async () => {
+    await bootMock('rp2350');
+  });
+
+  it('setMasterVolumeMode flips the directory cache value', async () => {
+    presets.directory = {
+      occupiedSlotsSet: new Set(),
+      startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
+      includePins: false,
+      masterVolumeMode: MasterVolumeMode.Independent,
+    };
+    await setMasterVolumeMode(MasterVolumeMode.WithPreset);
+    expect(presets.directory!.masterVolumeMode).toBe(MasterVolumeMode.WithPreset);
+  });
+
+  it('saveMasterVolumeBaseline returns ok in Mode 0', async () => {
+    presets.directory = {
+      occupiedSlotsSet: new Set(),
+      startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
+      includePins: false,
+      masterVolumeMode: MasterVolumeMode.Independent,
+    };
+    const r = await saveMasterVolumeBaseline();
+    expect(r.ok).toBe(true);
   });
 });

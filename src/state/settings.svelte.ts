@@ -1,9 +1,9 @@
 import type { ChannelId } from '../domain/channels';
 import { dsp } from './dsp.svelte';
 
-export type TabId = 'overview' | 'eq' | 'mixer' | 'processing' | 'system';
+export type TabId = 'overview' | 'eq' | 'mixer' | 'processing' | 'presets' | 'system';
 
-export const TAB_ORDER: readonly TabId[] = ['overview', 'eq', 'mixer', 'processing', 'system'];
+export const TAB_ORDER: readonly TabId[] = ['overview', 'eq', 'mixer', 'processing', 'presets', 'system'];
 
 const TAB_IDS: ReadonlySet<TabId> = new Set(TAB_ORDER);
 
@@ -18,6 +18,7 @@ export interface Settings {
     mutedFromDb: number | null;
   };
   lastSerial: string | null;
+  warnOnPresetSwitchDirty: boolean;
 }
 
 const STORAGE_KEY = 'dspi-console-web/settings/v1';
@@ -31,6 +32,7 @@ function defaults(): Settings {
     eqTarget: null,
     soft: { muted: false, mutedFromDb: null },
     lastSerial: null,
+    warnOnPresetSwitchDirty: true,
   };
 }
 
@@ -82,6 +84,7 @@ function parseV1(raw: string, fallback: Settings): Settings {
       mutedFromDb: numberOrNull(soft.mutedFromDb),
     },
     lastSerial: stringOrNull(obj.lastSerial),
+    warnOnPresetSwitchDirty: bool(obj.warnOnPresetSwitchDirty, true),
   };
 }
 
@@ -172,6 +175,7 @@ export function startSettingsPersistence(): void {
         eqTarget: settings.eqTarget,
         soft: { muted: settings.soft.muted, mutedFromDb: settings.soft.mutedFromDb },
         lastSerial: settings.lastSerial,
+        warnOnPresetSwitchDirty: settings.warnOnPresetSwitchDirty,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
     });
