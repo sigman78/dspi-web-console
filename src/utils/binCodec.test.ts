@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { BinReader, BinWriter } from './binStream';
-import {
-  Codec,
+import { Codec } from './binCodec';
+
+const {
+  u8, u16, u32, i8, i16, i32, f32, f64, bool8,
   arr, struct, reserved, nulStr, fixedStr,
   encode, decode, decodePadded, sizeOf,
-} from './binCodec';
-
-const { u8, u16, u32, i8, i16, i32, f32, f64, bool8 } = Codec;
+} = Codec;
 
 describe('codec primitives', () => {
   it('u32 codec carries fixed size', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import type { DspDevice } from '../device/DspDevice';
+import type { DspDevice } from '@/device/DspDevice';
 import { openSingleDevice } from '../../hil/setup';
 
 describe('bulkParser against real hardware', () => {

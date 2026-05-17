@@ -1,8 +1,6 @@
 <script lang="ts">
-  import { dsp } from '../../state/dsp.svelte';
-  import { settings } from '../../state/settings.svelte';
-  import { session } from '../../state/session.svelte';
-  import { setMasterVolume, toggleMute } from '../../runtime/actions';
+  import { dsp, settings, session } from '@/state';
+  import { setMasterVolume, toggleMute } from '@/runtime';
   import SaveMasterVolumeButton from './SaveMasterVolumeButton.svelte';
 
   const masterVolumeDb = $derived(dsp.live?.masterVolumeDb ?? 0);

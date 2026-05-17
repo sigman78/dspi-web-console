@@ -4,12 +4,9 @@
   import KV from '../chrome/KV.svelte';
   import BodePlot, { type BodeCurve } from '../bode/BodePlot.svelte';
   import { filterCurve } from '../bode/filterCurve';
-  import { dsp } from '../../state/dsp.svelte';
-  import { status } from '../../state/telemetry.svelte';
-  import { matrixRows } from '../../domain/mixerView';
-  import { ChannelId, inputIndexOf } from '../../domain/channels';
-  import { CrossfeedPreset } from '../../domain/processing';
-  import { chKey } from '../../styles/palette';
+  import { dsp, status } from '@/state';
+  import { matrixRows, ChannelId, inputIndexOf, CrossfeedPreset } from '@/domain';
+  import { chKey } from '@/styles/palette';
 
   const snap = $derived(dsp.live);
   const rows = $derived(matrixRows(snap));

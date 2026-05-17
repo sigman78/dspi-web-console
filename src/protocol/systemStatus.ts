@@ -10,9 +10,9 @@
 //
 // The synthesizer side is in `./systemStatus.syn.ts`.
 
-import { decode, sizeOf } from '../utils/binCodec';
+import { Codec } from '@/utils';
 import * as Wire from './wireTypes';
-import type { ChannelId } from '../domain/channels';
+import type { ChannelId } from '@/domain';
 
 export interface SystemStatus {
   peaks: Float32Array;     // length 11, normalized 0..1
@@ -26,7 +26,7 @@ export function parseSystemStatus(buffer: Uint8Array, numCh: number): SystemStat
   const safeNumCh = Math.min(numCh, Wire.Const.NUM_CHANNELS);
   const codec = Wire.SystemStatus(safeNumCh);
   const peaksRegion = safeNumCh * 2;
-  const w = decode(codec, alignedPad(buffer, sizeOf(codec), peaksRegion));
+  const w = Codec.decode(codec, alignedPad(buffer, Codec.sizeOf(codec), peaksRegion));
 
   const peaks = new Float32Array(Wire.Const.NUM_CHANNELS);
   for (let i = 0; i < safeNumCh; i++) peaks[i] = w.peaks[i] / 32767;

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { DspDevice } from '../device/DspDevice';
+import type { DspDevice } from '@/device/DspDevice';
 import { openSingleDevice } from '../../hil/setup';
 
 // Drives the *shape* of the production poll loop (status + buffer stats

@@ -1,4 +1,4 @@
-import { settings, setTab, TAB_ORDER } from '../state/settings.svelte';
+import { settings, setTab, TAB_ORDER } from '@/state';
 
 const DIGIT_RE = /^Digit([1-9])$/;
 

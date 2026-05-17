@@ -7,8 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { parseBulkParams } from './bulkParser';
 import { synthesizeBulkParams, type SynthesizeOptions } from './bulkParser.syn';
 import * as Wire from './wireTypes';
-import { FilterType, type FilterParams } from '../domain/filter';
-import { CrossfeedPreset, LevellerSpeed } from '../domain/processing';
+import { FilterType, type FilterParams, CrossfeedPreset, LevellerSpeed } from '@/domain';
 
 const { NUM_CHANNELS, NUM_OUTPUTS, BANDS_MAX } = Wire.Const;
 const { BulkLimits } = Wire;

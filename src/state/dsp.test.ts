@@ -1,10 +1,8 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { SvelteSet } from 'svelte/reactivity';
-import { parseBulkParams } from '../protocol/bulkParser';
-import { synthesizeBulkParams } from '../protocol/bulkParser.syn';
-import { PlatformType } from '../domain/platform';
-import { fromBulkParams } from '../domain/bulkToSnapshot';
-import { createHardwareProfile } from '../domain/hardware';
+import { parseBulkParams } from '@/protocol';
+import { synthesizeBulkParams } from '@/protocol/syn';
+import { PlatformType, fromBulkParams, createHardwareProfile } from '@/domain';
 import { dsp, applyDspSnapshot, patchSnapshot, resetDsp, refreshShadowFromLive } from './dsp.svelte';
 
 function makeSnapshot(masterVolumeDb = -6) {

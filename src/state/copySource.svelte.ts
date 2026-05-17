@@ -5,7 +5,7 @@
 //
 // Not persisted across reloads.
 
-import type { PresetSlot } from '../domain/presetLimits';
+import type { PresetSlot } from '@/domain';
 
 export const copySource = $state<{ slot: PresetSlot | null }>({ slot: null });
 

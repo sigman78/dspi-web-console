@@ -1,12 +1,14 @@
 import { mount } from 'svelte';
 import './app.css';
 import App from './App.svelte';
-import { session, setStatus } from './state/session.svelte';
-import { startSettingsPersistence, settings } from './state/settings.svelte';
-import { dsp } from './state/dsp.svelte';
-import { status as statusStore } from './state/telemetry.svelte';
-import { bootMock, bootReal, registerNavigatorReconnect } from './runtime/session';
-import { presetsDirty } from './state/presets.svelte';
+import {
+  session, setStatus,
+  startSettingsPersistence, settings,
+  dsp,
+  status as statusStore,
+  presetsDirty,
+} from './state';
+import { bootMock, bootReal, registerNavigatorReconnect } from './runtime';
 import { paletteCSS } from './styles/palette';
 
 const paletteStyle = document.createElement('style');

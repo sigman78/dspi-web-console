@@ -1,10 +1,9 @@
 <!-- src/components/system/ResetPanel.svelte -->
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
-  import { presets } from '../../state/presets.svelte';
-  import { session } from '../../state/session.svelte';
-  import { fullSync } from '../../runtime/actions';
-  import { PRESET_SLOT_COUNT } from '../../domain/presetLimits';
+  import { presets, session } from '@/state';
+  import { fullSync } from '@/runtime';
+  import { PRESET_SLOT_COUNT } from '@/domain';
 
   const connected = $derived(session.status === 'connected');
 

@@ -1,18 +1,17 @@
 // Action surface for preset operations. Wraps DspDevice calls
 
-import { session } from '../state/session.svelte';
-import { refreshShadowFromLive } from '../state/dsp.svelte';
-import { presets, presetsDirty, askBoundary } from '../state/presets.svelte';
-import { settings } from '../state/settings.svelte';
+import {
+  session,
+  refreshShadowFromLive,
+  presets, presetsDirty, askBoundary,
+  settings,
+} from '@/state';
 import { reconcileAfterSync } from './actions';
 import { fetchAndApplyAsBaseline } from './resync';
-import type { DspDevice } from '../device/DspDevice';
-import type { PresetSlot } from '../domain/presetLimits';
-import { PRESET_SLOT_COUNT } from '../domain/presetLimits';
-import type { PresetResult } from '../protocol/results';
-import { PresetStartupMode } from '../protocol/wireTypes';
-import type { Result } from '../utils/result';
-import { warn } from '../utils/log';
+import type { DspDevice } from '@/device/DspDevice';
+import { type PresetSlot, PRESET_SLOT_COUNT } from '@/domain';
+import { type PresetResult, PresetStartupMode } from '@/protocol';
+import { Log, type Result } from '@/utils';
 
 const PRESET_LOAD_SETTLE_MS = 100;
 
@@ -42,7 +41,7 @@ async function withBusy<T>(fn: () => Promise<T>): Promise<T> {
 function recordActionError(label: string, e: unknown): void {
   const msg = (e as Error)?.message ?? String(e);
   presets.lastActionError = `${label}: ${msg}`;
-  warn('presets', `${label} failed`, e);
+  Log.warn('presets', `${label} failed`, e);
 }
 
 function clearActionError(): void {
@@ -67,7 +66,7 @@ export async function fetchPresetInfo(): Promise<void> {
     } catch (e) {
       const msg = (e as Error)?.message ?? String(e);
       presets.lastFetchError = `Directory fetch failed: ${msg}`;
-      warn('presets', 'directory/active fetch failed', e);
+      Log.warn('presets', 'directory/active fetch failed', e);
       return;
     }
     presets.directory = dir;
@@ -82,7 +81,7 @@ export async function fetchPresetInfo(): Promise<void> {
       try {
         names[i] = await d.getPresetName(i as PresetSlot);
       } catch (e) {
-        warn('presets', `getPresetName(${i}) failed`, e);
+        Log.warn('presets', `getPresetName(${i}) failed`, e);
       }
     }
     presets.names = names;

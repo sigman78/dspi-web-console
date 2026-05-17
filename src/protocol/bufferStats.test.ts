@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseBufferStats } from './bufferStats';
 import { synthesizeBufferStats } from './bufferStats.syn';
-import { sizeOf } from '../utils/binCodec';
+import { Codec } from '@/utils';
 import * as Wire from './wireTypes';
 
 describe('parseBufferStats', () => {
@@ -20,7 +20,7 @@ describe('parseBufferStats', () => {
   });
 
   it('produces a packet of the documented size', () => {
-    expect(buf.byteLength).toBe(sizeOf(Wire.BufferStats));
+    expect(buf.byteLength).toBe(Codec.sizeOf(Wire.BufferStats));
   });
 
   it('parses header fields', () => {

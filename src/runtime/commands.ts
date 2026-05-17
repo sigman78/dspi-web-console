@@ -1,8 +1,7 @@
-import type { DspDevice } from '../device/DspDevice';
-import { dsp } from '../state/dsp.svelte';
-import { session, setStatus } from '../state/session.svelte';
+import type { DspDevice } from '@/device/DspDevice';
+import { dsp, session, setStatus } from '@/state';
 import { forceResyncNow, scheduleResync } from './resync';
-import { error } from '../utils/log';
+import { Log } from '@/utils';
 
 // commands.ts owns three command shapes plus a per-key scrub-lane registry.
 // All commands capture session.generation when their send is launched and
@@ -36,7 +35,7 @@ async function runGuarded(
     if (gen === session.generation) scheduleResync();
   } catch (err) {
     if (gen !== session.generation) return;
-    error('command', `${label} send failed; forcing resync`, err);
+    Log.error('command', `${label} send failed; forcing resync`, err);
     setStatus('error', errMessage(err));
     void forceResyncNow();
   } finally {

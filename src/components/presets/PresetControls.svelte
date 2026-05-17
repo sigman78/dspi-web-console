@@ -1,16 +1,17 @@
 <!-- src/components/presets/PresetControls.svelte -->
 <script lang="ts">
-  import { presets, presetsDirty } from '../../state/presets.svelte';
-  import { copySource, setCopySource, clearCopySource } from '../../state/copySource.svelte';
-  import { settings } from '../../state/settings.svelte';
-  import { session } from '../../state/session.svelte';
+  import {
+    presets, presetsDirty,
+    copySource, setCopySource, clearCopySource,
+    settings, session,
+  } from '@/state';
   import {
     saveActivePreset, revertActivePreset,
     setStartupDefault, setStartupMode, pastePresetTo, renamePresetSlot,
-  } from '../../runtime/presets';
-  import { setMasterVolumeMode } from '../../runtime/actions';
-  import { MasterVolumeMode } from '../../domain/processing';
-  import { PresetStartupMode } from '../../protocol/wireTypes';
+    setMasterVolumeMode,
+  } from '@/runtime';
+  import { MasterVolumeMode } from '@/domain';
+  import { PresetStartupMode } from '@/protocol';
 
   const { onRequestRename }: { onRequestRename: () => void } = $props();
 

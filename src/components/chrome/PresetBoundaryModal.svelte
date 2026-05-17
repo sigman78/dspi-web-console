@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { boundary, resolveBoundary } from '../../state/presets.svelte';
+  import { boundary, resolveBoundary } from '@/state';
 
   function onKey(e: KeyboardEvent) {
     if (boundary.pending == null) return;

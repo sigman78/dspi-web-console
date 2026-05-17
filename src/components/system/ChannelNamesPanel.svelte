@@ -1,12 +1,9 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
-  import { dsp } from '../../state/dsp.svelte';
-  import { session } from '../../state/session.svelte';
-  import { setChannelName } from '../../runtime/actions';
-  import { utf8ByteLength } from '../../utils/utf8';
-  import { CHANNEL_NAME_MAX_LEN } from '../../domain/presetLimits';
-  import { chKey } from '../../styles/palette';
-  import type { ChannelId } from '../../domain/channels';
+  import { dsp, session } from '@/state';
+  import { setChannelName } from '@/runtime';
+  import { CHANNEL_NAME_MAX_LEN, type ChannelId } from '@/domain';
+  import { chKey } from '@/styles/palette';
 
   const channels = $derived(dsp.live?.channels ?? []);
   const connected = $derived(session.status === 'connected');
@@ -45,12 +42,6 @@
       cancel();
     }
   }
-
-  function counterText(value: string): string | null {
-    const bytes = utf8ByteLength(value);
-    const remaining = CHANNEL_NAME_MAX_LEN - bytes;
-    return remaining > 5 ? null : `${bytes}/${CHANNEL_NAME_MAX_LEN}`;
-  }
 </script>
 
 <Panel code="SY.06" title="CHANNEL NAMES">
@@ -63,7 +54,6 @@
       <div class="row ch-{chKey(ch.id)}">
         <span class="lbl">{ch.shortName}</span>
         {#if editingId === ch.id}
-          {@const counter = counterText(pendingValue)}
           <input
             type="text"
             class="name-input"
@@ -71,13 +61,11 @@
             placeholder={ch.defaultName}
             spellcheck="false"
             autocomplete="off"
+            maxlength={CHANNEL_NAME_MAX_LEN}
             onkeydown={(e) => onKeydown(e, ch.id)}
             onblur={() => commit(ch.id)}
             aria-label={`Rename ${ch.shortName}`}
           />
-          {#if counter}
-            <span class="counter">{counter}</span>
-          {/if}
         {:else}
           <button
             type="button"
@@ -103,7 +91,7 @@
   }
   .row {
     display: grid;
-    grid-template-columns: 2.5rem 1fr 3rem;
+    grid-template-columns: 2.5rem 1fr;
     gap: 0.5rem;
     align-items: center;
     font-size: 0.8rem;
@@ -154,12 +142,6 @@
       inset 0 -1px 0 0 var(--accent),
       0 0 0 1px var(--accent);
     transition: background 80ms, box-shadow 80ms;
-  }
-  .counter {
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    color: var(--text-faint);
-    text-align: right;
   }
   .hint {
     font-family: var(--font-mono);

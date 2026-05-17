@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { FilterType, type FilterParams } from '../../domain/filter';
-  import * as Eq from '../../domain/eqLimits';
+  import { FilterType, type FilterParams, Eq } from '@/domain';
   import ValueField from '../chrome/ValueField.svelte';
   import BandTypeSelect from './BandTypeSelect.svelte';
 
@@ -24,9 +23,9 @@
   <ValueField
     kind="hz"
     value={band.frequency}
-    min={Eq.EQ_FREQ_MIN_HZ}
-    max={Eq.EQ_FREQ_MAX_HZ}
-    step={Eq.EQ_FREQ_STEP_HZ}
+    min={Eq.FREQ_MIN_HZ}
+    max={Eq.FREQ_MAX_HZ}
+    step={Eq.FREQ_STEP_HZ}
     align="right"
     disabled={off}
     onChange={(v) => onPatch({ frequency: v })}
@@ -34,9 +33,9 @@
   <ValueField
     kind="q"
     value={band.q}
-    min={Eq.EQ_Q_MIN}
-    max={Eq.EQ_Q_MAX}
-    step={Eq.EQ_Q_STEP}
+    min={Eq.Q_MIN}
+    max={Eq.Q_MAX}
+    step={Eq.Q_STEP}
     align="right"
     disabled={off}
     onChange={(v) => onPatch({ q: v })}
@@ -44,9 +43,9 @@
   <ValueField
     kind="dB-signed"
     value={band.gain}
-    min={Eq.EQ_BAND_GAIN_MIN_DB}
-    max={Eq.EQ_BAND_GAIN_MAX_DB}
-    step={Eq.EQ_BAND_GAIN_STEP_DB}
+    min={Eq.BAND_GAIN_MIN_DB}
+    max={Eq.BAND_GAIN_MAX_DB}
+    step={Eq.BAND_GAIN_STEP_DB}
     tone="signed"
     align="right"
     disabled={off}

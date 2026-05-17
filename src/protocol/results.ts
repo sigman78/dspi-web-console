@@ -1,7 +1,6 @@
 // src/protocol/results.ts
-import type { DspTransport } from '../transport/DspTransport';
-import type { Result } from '../utils/result';
-import { ok, fail } from '../utils/result';
+import type { DspTransport } from '@/transport/DspTransport';
+import { Result } from '@/utils';
 
 // FlashResult — returned by SaveParams (0x51), LoadParams (0x52), FactoryReset (0x53).
 // Mirrors `FlashResult` in DspDevice.cs.
@@ -55,17 +54,17 @@ const presetMessage: Record<PresetResult, string> = {
 };
 
 export function flashResultFromByte(byte: number): Result<void, FlashResult> {
-  if (byte === FlashResult.Ok) return ok(undefined);
+  if (byte === FlashResult.Ok) return Result.ok(undefined);
   const code: FlashResult = flashCodes.has(byte)
     ? (byte as FlashResult)
     : FlashResult.ErrWrite;
-  return fail(code, flashMessage[code]);
+  return Result.fail(code, flashMessage[code]);
 }
 
 export function presetResultFromByte(byte: number): Result<void, PresetResult> {
-  if (byte === PresetResult.Ok) return ok(undefined);
+  if (byte === PresetResult.Ok) return Result.ok(undefined);
   const code: PresetResult = presetCodes.has(byte)
     ? (byte as PresetResult)
     : PresetResult.FlashWriteError;
-  return fail(code, presetMessage[code]);
+  return Result.fail(code, presetMessage[code]);
 }

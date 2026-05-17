@@ -1,5 +1,5 @@
-import type { DspDevice, DspDeviceInfo } from '../device/DspDevice';
-import type { HardwareProfile } from '../domain/hardware';
+import type { DspDevice, DspDeviceInfo } from '@/device/DspDevice';
+import type { HardwareProfile } from '@/domain';
 
 export type SessionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 

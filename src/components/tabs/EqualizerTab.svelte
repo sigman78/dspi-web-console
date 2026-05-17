@@ -6,17 +6,15 @@
   import OutputTrim from '../eq/OutputTrim.svelte';
   import { mockEqCurve } from '../bode/bodeMock';
   import { filterCurve, filterCurveAt } from '../bode/filterCurve';
-  import { dsp } from '../../state/dsp.svelte';
-  import { settings, setEqTarget } from '../../state/settings.svelte';
+  import { dsp, settings, setEqTarget } from '@/state';
   import {
     eqUi,
-    setCopySource,
-    clearCopySource,
+    setEqCopySource,
+    clearEqCopySource,
     applyCopyFrom,
   } from '../eq/eqUi.svelte';
-  import { FilterType, defaultFilter, type FilterParams } from '../../domain/filter';
-  import { setEqFilter, setInputPreamp } from '../../runtime/actions';
-  import { inputIndexOf } from '../../domain/channels';
+  import { FilterType, defaultFilter, type FilterParams, inputIndexOf } from '@/domain';
+  import { setEqFilter, setInputPreamp } from '@/runtime';
 
   const snap = $derived(dsp.live);
 
@@ -84,7 +82,7 @@
 
   function copy() {
     if (!channel) return;
-    setCopySource(channel.id);
+    setEqCopySource(channel.id);
   }
 
   function paste() {
@@ -93,7 +91,7 @@
   }
 
   function exitCopy() {
-    clearCopySource();
+    clearEqCopySource();
   }
 
   // Defensive: if the source channel disappears from the snapshot while
@@ -102,13 +100,13 @@
     const src = eqUi.copySource;
     if (src == null) return;
     if (!snap?.channels.some((c) => c.id === src)) {
-      clearCopySource();
+      clearEqCopySource();
     }
   });
 
   // Ephemeral mode: clear when leaving the EQ tab (component unmount).
   $effect(() => {
-    return () => clearCopySource();
+    return () => clearEqCopySource();
   });
 
   function setPreamp(v: number) {

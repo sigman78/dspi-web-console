@@ -1,21 +1,17 @@
 import type { DspTransport, TransportEvent } from './DspTransport';
-import { WireCmd } from '../protocol/wireCmd';
-import { synthesizeBulkParams, type SynthesizeOptions } from '../protocol/bulkParser.syn';
+import { Wire, WireCmd, SystemStatusValue } from '@/protocol';
 import {
-  synthesizeSystemStatus,
-  synthesizeU32,
-  synthesizeI32,
-} from '../protocol/systemStatus.syn';
-import { synthesizeBufferStats } from '../protocol/bufferStats.syn';
-import { Const, SystemStatusValue, SetFilterPacket } from '../protocol/wireTypes';
-import { Codec, encode, decode } from '../utils/binCodec';
-import { PlatformType } from '../domain/platform';
-import { CrossfeedPreset, LevellerSpeed, MasterVolumeMode } from '../domain/processing';
-import { defaultFilter, type FilterParams } from '../domain/filter';
+  synthesizeBulkParams, type SynthesizeOptions,
+  synthesizeSystemStatus, synthesizeU32, synthesizeI32,
+  synthesizeBufferStats,
+} from '@/protocol/syn';
+import { Codec } from '@/utils';
 import {
-  type CrossPoint,
-  type OutputState,
-} from '../domain/mixer';
+  PlatformType,
+  CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
+  defaultFilter, type FilterParams,
+  type CrossPoint, type OutputState,
+} from '@/domain';
 
 export interface MockOptions {
   platform: 'rp2040' | 'rp2350';
@@ -35,12 +31,12 @@ const defaultOutput = (): OutputState => ({ enabled: false, muted: false, gainDb
 function defaultMockBulkState(): SynthesizeOptions {
   return {
     formatVersion: 6,
-    outputs: Array.from({ length: Const.NUM_OUTPUTS }, defaultOutput),
-    crosspoints: Array.from({ length: Const.NUM_INPUTS }, () =>
-      Array.from({ length: Const.NUM_OUTPUTS }, defaultCrosspoint),
+    outputs: Array.from({ length: Wire.Const.NUM_OUTPUTS }, defaultOutput),
+    crosspoints: Array.from({ length: Wire.Const.NUM_INPUTS }, () =>
+      Array.from({ length: Wire.Const.NUM_OUTPUTS }, defaultCrosspoint),
     ),
-    filters: Array.from({ length: Const.NUM_CHANNELS }, () =>
-      Array.from({ length: Const.BANDS_MAX }, defaultFilter),
+    filters: Array.from({ length: Wire.Const.NUM_CHANNELS }, () =>
+      Array.from({ length: Wire.Const.BANDS_MAX }, defaultFilter),
     ),
     loudness:  { enabled: false, refSpl: 85, intensityPct: 0 },
     crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5 },
@@ -73,7 +69,7 @@ export class MockTransport implements DspTransport {
   #masterVolumeMode: MasterVolumeMode = MasterVolumeMode.Independent;
   #savedMasterVolumeDb = 0;
   #mockState: SynthesizeOptions;
-  #channelNames: string[] = Array.from({ length: Const.NUM_CHANNELS }, () => '');
+  #channelNames: string[] = Array.from({ length: Wire.Const.NUM_CHANNELS }, () => '');
 
   // Preset directory + 10-slot snapshots. Kept here (rather than in
   // SynthesizeOptions) because the directory metadata is not part of
@@ -146,18 +142,18 @@ export class MockTransport implements DspTransport {
         return bulk.slice(0, Math.min(length, bulk.byteLength));
       }
       case WireCmd.GetMasterVolume.code:
-        return encode(Codec.f32, this.#masterVolumeDb);
+        return Codec.encode(Codec.f32, this.#masterVolumeDb);
       case WireCmd.GetPreamp.code:
-        return encode(Codec.f32, this.#masterPreampDb);
+        return Codec.encode(Codec.f32, this.#masterPreampDb);
       case WireCmd.GetInputPreamp.code: {
         const idx = (value & 0xFF) === 1 ? 1 : 0;
-        return encode(Codec.f32, this.#inputPreampDb[idx]);
+        return Codec.encode(Codec.f32, this.#inputPreampDb[idx]);
       }
       case WireCmd.GetMatrixRoute.code: {
         const input = (value >> 8) & 0xFF;
         const output = value & 0xFF;
         const cp = this.#mockState.crosspoints?.[input]?.[output] ?? defaultCrosspoint();
-        return encode(WireCmd.GetMatrixRoute.codec, {
+        return Codec.encode(WireCmd.GetMatrixRoute.codec, {
           input, output,
           enabled: cp.enabled,
           phaseInvert: cp.invert,
@@ -165,19 +161,19 @@ export class MockTransport implements DspTransport {
         });
       }
       case WireCmd.GetOutputEnable.code:
-        return encode(Codec.bool8, this.#output(value).enabled);
+        return Codec.encode(Codec.bool8, this.#output(value).enabled);
       case WireCmd.GetOutputGain.code:
-        return encode(Codec.f32, this.#output(value).gainDb);
+        return Codec.encode(Codec.f32, this.#output(value).gainDb);
       case WireCmd.GetOutputMute.code:
-        return encode(Codec.bool8, this.#output(value).muted);
+        return Codec.encode(Codec.bool8, this.#output(value).muted);
       case WireCmd.GetOutputDelay.code:
-        return encode(Codec.f32, this.#output(value).delayMs);
+        return Codec.encode(Codec.f32, this.#output(value).delayMs);
       case WireCmd.GetBypass.code:
-        return encode(Codec.bool8, this.#bypass);
+        return Codec.encode(Codec.bool8, this.#bypass);
       case WireCmd.GetMasterVolumeMode.code:
-        return encode(Codec.u8, this.#masterVolumeMode);
+        return Codec.encode(Codec.u8, this.#masterVolumeMode);
       case WireCmd.GetSavedMasterVolume.code:
-        return encode(Codec.f32, this.#savedMasterVolumeDb);
+        return Codec.encode(Codec.f32, this.#savedMasterVolumeDb);
       case WireCmd.SaveMasterVolume.code:
         this.#savedMasterVolumeDb = this.#masterVolumeDb;
         return new Uint8Array([0]); // PresetResult.Ok
@@ -197,17 +193,17 @@ export class MockTransport implements DspTransport {
         const f = this.#mockState.filters?.[channel]?.[band];
         if (!f) return new Uint8Array(length);
         switch (param) {
-          case 0: return encode(Codec.u32, f.type);       // Type widens to u32 on the wire
-          case 1: return encode(Codec.f32, f.frequency);
-          case 2: return encode(Codec.f32, f.q);
-          case 3: return encode(Codec.f32, f.gain);
+          case 0: return Codec.encode(Codec.u32, f.type);       // Type widens to u32 on the wire
+          case 1: return Codec.encode(Codec.f32, f.frequency);
+          case 2: return Codec.encode(Codec.f32, f.q);
+          case 3: return Codec.encode(Codec.f32, f.gain);
           default: return new Uint8Array(length);
         }
       }
       case WireCmd.GetChannelName.code: {
         const ch = value & 0xFF;
         const name = this.#channelNames[ch] ?? '';
-        return encode(WireCmd.GetChannelName.codec, name);
+        return Codec.encode(WireCmd.GetChannelName.codec, name);
       }
       case WireCmd.PresetGetDir.code: {
         const out = new Uint8Array(7);
@@ -223,18 +219,18 @@ export class MockTransport implements DspTransport {
         return out.slice(0, Math.min(length, out.byteLength));
       }
       case WireCmd.PresetGetStartup.code:
-        return encode(WireCmd.PresetGetStartup.codec, {
+        return Codec.encode(WireCmd.PresetGetStartup.codec, {
           mode: this.#presetStartupMode,
           slot: this.#presetDefaultSlot,
         });
       case WireCmd.PresetGetIncludePins.code:
-        return encode(Codec.bool8, this.#presetIncludePins);
+        return Codec.encode(Codec.bool8, this.#presetIncludePins);
       case WireCmd.PresetGetActive.code:
         return new Uint8Array([this.#presetActiveSlot]);
       case WireCmd.PresetGetName.code: {
         const slot = value & 0xFF;
         const name = (slot < this.#presetNames.length ? this.#presetNames[slot] : '') ?? '';
-        return encode(WireCmd.PresetGetName.codec, name);
+        return Codec.encode(WireCmd.PresetGetName.codec, name);
       }
       case WireCmd.PresetSave.code: {
         const slot = value & 0xFF;
@@ -299,18 +295,18 @@ export class MockTransport implements DspTransport {
     this.#requireOpen();
     switch (request) {
       case WireCmd.SetMasterVolume.code:
-        this.#masterVolumeDb = decode(Codec.f32, data);
+        this.#masterVolumeDb = Codec.decode(Codec.f32, data);
         return;
       case WireCmd.SetPreamp.code:
-        this.#masterPreampDb = decode(Codec.f32, data);
+        this.#masterPreampDb = Codec.decode(Codec.f32, data);
         return;
       case WireCmd.SetInputPreamp.code: {
         const idx = (value & 0xFF) === 1 ? 1 : 0;
-        this.#inputPreampDb[idx] = decode(Codec.f32, data);
+        this.#inputPreampDb[idx] = Codec.decode(Codec.f32, data);
         return;
       }
       case WireCmd.SetEqParam.code: {
-        const p = decode(SetFilterPacket, data);
+        const p = Codec.decode(Wire.SetFilterPacket, data);
         const row = this.#mockState.filters?.[p.channel];
         if (row && row[p.band]) {
           row[p.band] = {
@@ -323,82 +319,82 @@ export class MockTransport implements DspTransport {
         return;
       }
       case WireCmd.SetMatrixRoute.code: {
-        const p = decode(WireCmd.SetMatrixRoute.codec, data);
+        const p = Codec.decode(WireCmd.SetMatrixRoute.codec, data);
         const row = this.#mockState.crosspoints![p.input];
         if (row) row[p.output] = { enabled: p.enabled, invert: p.phaseInvert, gainDb: p.gainDb };
         return;
       }
       case WireCmd.SetOutputEnable.code:
-        this.#output(value).enabled = decode(Codec.bool8, data);
+        this.#output(value).enabled = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetOutputGain.code:
-        this.#output(value).gainDb = decode(Codec.f32, data);
+        this.#output(value).gainDb = Codec.decode(Codec.f32, data);
         return;
       case WireCmd.SetOutputMute.code:
-        this.#output(value).muted = decode(Codec.bool8, data);
+        this.#output(value).muted = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetOutputDelay.code:
-        this.#output(value).delayMs = decode(Codec.f32, data);
+        this.#output(value).delayMs = Codec.decode(Codec.f32, data);
         return;
       case WireCmd.SetBypass.code:
-        this.#bypass = decode(Codec.bool8, data);
+        this.#bypass = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetMasterVolumeMode.code:
-        this.#masterVolumeMode = decode(Codec.u8, data) as MasterVolumeMode;
+        this.#masterVolumeMode = Codec.decode(Codec.u8, data) as MasterVolumeMode;
         return;
 
       // Loudness
       case WireCmd.SetLoudnessEnabled.code:
-        this.#mockState.loudness!.enabled = decode(Codec.bool8, data);
+        this.#mockState.loudness!.enabled = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetLoudnessRefSpl.code:
-        this.#mockState.loudness!.refSpl = decode(Codec.f32, data);
+        this.#mockState.loudness!.refSpl = Codec.decode(Codec.f32, data);
         return;
       case WireCmd.SetLoudnessIntensity.code:
-        this.#mockState.loudness!.intensityPct = decode(Codec.f32, data);
+        this.#mockState.loudness!.intensityPct = Codec.decode(Codec.f32, data);
         return;
 
       // Crossfeed
       case WireCmd.SetCrossfeedEnabled.code:
-        this.#mockState.crossfeed!.enabled = decode(Codec.bool8, data);
+        this.#mockState.crossfeed!.enabled = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetCrossfeedPreset.code:
-        this.#mockState.crossfeed!.preset = decode(Codec.u8, data) as CrossfeedPreset;
+        this.#mockState.crossfeed!.preset = Codec.decode(Codec.u8, data) as CrossfeedPreset;
         return;
       case WireCmd.SetCrossfeedItd.code:
-        this.#mockState.crossfeed!.itd = decode(Codec.bool8, data);
+        this.#mockState.crossfeed!.itd = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetCrossfeedFreq.code:
-        this.#mockState.crossfeed!.freq = decode(Codec.f32, data);
+        this.#mockState.crossfeed!.freq = Codec.decode(Codec.f32, data);
         return;
       case WireCmd.SetCrossfeedFeedDb.code:
-        this.#mockState.crossfeed!.feedDb = decode(Codec.f32, data);
+        this.#mockState.crossfeed!.feedDb = Codec.decode(Codec.f32, data);
         return;
 
       // Leveller
       case WireCmd.SetLevellerEnabled.code:
-        this.#mockState.leveller!.enabled = decode(Codec.bool8, data);
+        this.#mockState.leveller!.enabled = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetLevellerSpeed.code:
-        this.#mockState.leveller!.speed = decode(Codec.u8, data) as LevellerSpeed;
+        this.#mockState.leveller!.speed = Codec.decode(Codec.u8, data) as LevellerSpeed;
         return;
       case WireCmd.SetLevellerLookahead.code:
-        this.#mockState.leveller!.lookahead = decode(Codec.bool8, data);
+        this.#mockState.leveller!.lookahead = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetLevellerAmount.code:
-        this.#mockState.leveller!.amount = decode(Codec.f32, data);
+        this.#mockState.leveller!.amount = Codec.decode(Codec.f32, data);
         return;
       case WireCmd.SetLevellerMaxGain.code:
-        this.#mockState.leveller!.maxGainDb = decode(Codec.f32, data);
+        this.#mockState.leveller!.maxGainDb = Codec.decode(Codec.f32, data);
         return;
       case WireCmd.SetLevellerGate.code:
-        this.#mockState.leveller!.gateDb = decode(Codec.f32, data);
+        this.#mockState.leveller!.gateDb = Codec.decode(Codec.f32, data);
         return;
 
       case WireCmd.SetChannelName.code: {
         const ch = value & 0xFF;
-        if (ch < Const.NUM_CHANNELS) {
-          this.#channelNames[ch] = decode(WireCmd.SetChannelName.codec, data);
+        if (ch < Wire.Const.NUM_CHANNELS) {
+          this.#channelNames[ch] = Codec.decode(WireCmd.SetChannelName.codec, data);
         }
         return;
       }
@@ -406,19 +402,19 @@ export class MockTransport implements DspTransport {
       case WireCmd.PresetSetName.code: {
         const slot = value & 0xFF;
         if (slot < this.#presetNames.length) {
-          this.#presetNames[slot] = decode(WireCmd.PresetSetName.codec, data);
+          this.#presetNames[slot] = Codec.decode(WireCmd.PresetSetName.codec, data);
         }
         return;
       }
 
       case WireCmd.PresetSetStartup.code: {
-        const cfg = decode(WireCmd.PresetSetStartup.codec, data);
+        const cfg = Codec.decode(WireCmd.PresetSetStartup.codec, data);
         this.#presetStartupMode = cfg.mode;
         this.#presetDefaultSlot = cfg.slot;
         return;
       }
       case WireCmd.PresetSetIncludePins.code:
-        this.#presetIncludePins = decode(Codec.bool8, data);
+        this.#presetIncludePins = Codec.decode(Codec.bool8, data);
         return;
 
       case WireCmd.ClearClips.code:
@@ -453,7 +449,7 @@ export class MockTransport implements DspTransport {
     this.#inputPreampDb = [0, 0];
     this.#bypass = false;
     this.#savedMasterVolumeDb = 0;
-    this.#channelNames = Array.from({ length: Const.NUM_CHANNELS }, () => '');
+    this.#channelNames = Array.from({ length: Wire.Const.NUM_CHANNELS }, () => '');
   }
 
   #restoreSnapshot(s: MockSnapshot): void {

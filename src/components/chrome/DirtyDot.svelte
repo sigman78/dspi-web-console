@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { isInFlight } from '../../state/dsp.svelte';
+  import { isInFlight } from '@/state';
 </script>
 
 <span class="dirty-dot" class:active={isInFlight.current} aria-hidden="true"></span>

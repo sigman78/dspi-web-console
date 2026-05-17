@@ -1,8 +1,7 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
   import BandRow from './BandRow.svelte';
-  import type { FilterParams } from '../../domain/filter';
-  import type { ChannelId } from '../../domain/channels';
+  import type { FilterParams, ChannelId } from '@/domain';
 
   const {
     bands,

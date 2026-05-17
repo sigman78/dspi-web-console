@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseBulkParams } from '../protocol/bulkParser';
-import { synthesizeBulkParams } from '../protocol/bulkParser.syn';
+import { parseBulkParams } from '@/protocol';
+import { synthesizeBulkParams } from '@/protocol/syn';
 import { PlatformType } from './platform';
 import { createHardwareProfile } from './hardware';
 import { fromBulkParams } from './bulkToSnapshot';

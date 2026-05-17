@@ -1,4 +1,4 @@
-import { FilterType, type FilterParams } from '../../domain/filter';
+import { FilterType, type FilterParams } from '@/domain';
 import { BODE_BINS, BODE_FREQS } from './bodeFreqs';
 
 // Sample rate the biquad coefficients are computed at.

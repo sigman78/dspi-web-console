@@ -9,8 +9,7 @@
   import SystemTab from './components/tabs/SystemTab.svelte';
   import ConnectingHero from './components/chrome/ConnectingHero.svelte';
   import PresetBoundaryModal from './components/chrome/PresetBoundaryModal.svelte';
-  import { settings } from './state/settings.svelte';
-  import { session } from './state/session.svelte';
+  import { settings, session } from './state';
   import { handleTabShortcut } from './input/tabShortcuts';
 
   // Visual-test override: ?mock=hero forces the connecting hero to render

@@ -7,7 +7,8 @@
 //
 // Name byte budgets account for the 32-byte NUL-terminated UTF-8 buffer
 // shared by SetPresetName (0x94) and SetChannelName (0x9B): 31 bytes of
-// payload + 1 NUL.
+// payload + 1 NUL. Wire layer (DspDevice) clips precisely with
+// `utf8Truncate`; UI uses these as soft caps via HTML `maxlength`.
 
 export const PRESET_SLOT_COUNT = 10;
 export const PRESET_NAME_MAX_LEN = 31;   // bytes, UTF-8

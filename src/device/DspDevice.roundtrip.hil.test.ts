@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from './DspDevice';
 import { hasFormatVersion, openSingleDevice, withSavedField } from '../../hil/setup';
-import { FilterType } from '../domain/filter';
+import { FilterType } from '@/domain';
 
 // Float roundtrip tolerance: f32 precision through encode -> wire -> decode.
 // 4 decimal places is comfortable; 5 starts catching float-rounding noise.

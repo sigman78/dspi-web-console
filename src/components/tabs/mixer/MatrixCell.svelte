@@ -1,14 +1,16 @@
 <script lang="ts">
-  import type { RouteModel } from '../../../domain/mixer';
+  import {
+    type RouteModel,
+    Mix,
+    type ChannelId, type InputSlot, type OutputSlot,
+  } from '@/domain';
   import {
     setCrosspointGain,
     toggleCrosspoint,
     toggleCrosspointInvert,
-  } from '../../../runtime/actions';
+  } from '@/runtime';
   import ValueField from '../../chrome/ValueField.svelte';
-  import { chKey } from '../../../styles/palette';
-  import * as Mix from '../../../domain/mixerLimits';
-  import type { ChannelId, InputSlot, OutputSlot } from '../../../domain/channels';
+  import { chKey } from '@/styles/palette';
 
   const {
     cell,
