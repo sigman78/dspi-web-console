@@ -6,7 +6,8 @@ import * as Wire from '../protocol/wireTypes';
 import { SystemStatusValue } from '../protocol/wireTypes';
 import { WireCmd, readCmd, writeCmd } from '../protocol/wireCmd';
 import { Codec, decode, decodePadded, sizeOf } from '../utils/binCodec';
-import { forPlatform, type ChannelId, type InputSlot, type OutputSlot } from '../domain/channels';
+import type { ChannelId, InputSlot, OutputSlot } from '../domain/channels';
+import { createHardwareProfile, wireChannelFor, type HardwareProfile } from '../domain/hardware';
 import { PlatformType } from '../domain/platform';
 import { CrossfeedPreset, LevellerSpeed, MasterVolumeMode } from '../domain/processing';
 import { type PresetSlot, PRESET_NAME_MAX_LEN, CHANNEL_NAME_MAX_LEN, PRESET_SLOT_COUNT } from '../domain/presetLimits';
@@ -39,27 +40,60 @@ function occupiedMaskToSet(mask: number): ReadonlySet<PresetSlot> {
   return s;
 }
 
+export interface DspDeviceInfo {
+  readonly serial: string;
+  readonly firmwareVersion: string;
+  readonly platformType: PlatformType;
+  readonly hardware: HardwareProfile;
+}
+
+function platformTypeFromId(platformId: number): PlatformType {
+  return platformId === 1 ? PlatformType.RP2350 : PlatformType.RP2040;
+}
+
+function firmwareVersion(info: { fwMajor: number; fwMinorPatch: number }): string {
+  const minor = (info.fwMinorPatch >> 4) & 0xF;
+  const patch = info.fwMinorPatch & 0xF;
+  return `${info.fwMajor}.${minor}.${patch}`;
+}
+
 export class DspDevice {
-  // Cached after the first getDeviceInfo() so getSystemStatus can size its
-  // request without callers needing to know wire-level channel counts.
-  #numCh: number | null = null;
+  private constructor(
+    private readonly transport: DspTransport,
+    private readonly _info: DspDeviceInfo,
+  ) {}
 
-  constructor(private readonly transport: DspTransport) {}
-
-  async open(): Promise<void> { await this.transport.open(); }
-  async close(): Promise<void> { await this.transport.close(); }
-
-  async getSerial(): Promise<string> {
-    return (await readCmd(this.transport, WireCmd.GetSerial)).trim();
+  static async create(
+    transport: DspTransport,
+    openTransport: () => Promise<void> = () => transport.open(),
+  ): Promise<DspDevice> {
+    await openTransport();
+    const [serial, platform] = await Promise.all([
+      readCmd(transport, WireCmd.GetSerial),
+      readCmd(transport, WireCmd.GetPlatform),
+    ]);
+    const platformType = platformTypeFromId(platform.platformId);
+    const hardware = createHardwareProfile(platformType);
+    return new DspDevice(transport, {
+      serial: serial.trim(),
+      firmwareVersion: firmwareVersion(platform),
+      platformType,
+      hardware,
+    });
   }
 
-  async getDeviceInfo(): Promise<{ type: PlatformType; firmwareVersion: string }> {
-    const info = await readCmd(this.transport, WireCmd.GetPlatform);
-    const type = info.platformId === 1 ? PlatformType.RP2350 : PlatformType.RP2040;
-    this.#numCh = forPlatform(type).info.totalChannelCount;
-    const minor = (info.fwMinorPatch >> 4) & 0xF;
-    const patch = info.fwMinorPatch & 0xF;
-    return { type, firmwareVersion: `${info.fwMajor}.${minor}.${patch}` };
+  async close(): Promise<void> { await this.transport.close(); }
+
+  get info(): DspDeviceInfo {
+    return this._info;
+  }
+
+  get hardware(): HardwareProfile {
+    return this._info.hardware;
+  }
+
+  #deviceChannel(channel: ChannelId): ChannelId {
+    return wireChannelFor(this.hardware, channel);
   }
 
   async getAllParams(): Promise<BulkParams> {
@@ -68,10 +102,7 @@ export class DspDevice {
   }
 
   async getSystemStatus(): Promise<SystemStatus> {
-    if (this.#numCh === null) {
-      throw new Error('DspDevice.getSystemStatus called before getDeviceInfo');
-    }
-    const numCh = this.#numCh;
+    const numCh = this.hardware.totalChannelCount;
     const bytes = await this.transport.ctrlIn(WireCmd.GetStatus.code, 9, numCh * 2 + 4);
     return parseSystemStatus(bytes, numCh);
   }
@@ -165,8 +196,9 @@ export class DspDevice {
   // EQ ---------------------------------------------------------------------
 
   async setFilter(channel: ChannelId, band: number, p: FilterParams): Promise<void> {
+    const wireChannel = this.#deviceChannel(channel);
     return writeCmd(this.transport, WireCmd.SetEqParam, {
-      channel, band,
+      channel: wireChannel, band,
       type: p.type, frequency: p.frequency, q: p.q, gain: p.gain,
     });
   }
@@ -178,9 +210,10 @@ export class DspDevice {
   // Uses `decode` (not `decodePadded`) on each fixed 4-byte payload so a
   // truncated USB read surfaces as a throw rather than silently zero-padding.
   async getFilter(channel: ChannelId, band: number): Promise<FilterParams> {
+    const wireChannel = this.#deviceChannel(channel);
     const code = WireCmd.GetEqParam.code;
     const wValue = (param: number) =>
-      ((channel & 0xFF) << 8) | ((band & 0xF) << 4) | (param & 0xF);
+      ((wireChannel & 0xFF) << 8) | ((band & 0xF) << 4) | (param & 0xF);
     const t = this.transport;
     const [typeBytes, freqBytes, qBytes, gainBytes] = await Promise.all([
       t.ctrlIn(code, wValue(0), 4),
@@ -320,11 +353,11 @@ export class DspDevice {
   // Names are silently cropped to fit the 31-byte UTF-8 wire budget.
   // Validation (and user-facing errors) belong at the state/UI layer above.
   async setChannelName(channel: ChannelId, name: string): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetChannelName, utf8Truncate(name, CHANNEL_NAME_MAX_LEN), channel);
+    return writeCmd(this.transport, WireCmd.SetChannelName, utf8Truncate(name, CHANNEL_NAME_MAX_LEN), this.#deviceChannel(channel));
   }
 
   async getChannelName(channel: ChannelId): Promise<string> {
-    return readCmd(this.transport, WireCmd.GetChannelName, channel);
+    return readCmd(this.transport, WireCmd.GetChannelName, this.#deviceChannel(channel));
   }
 
   // Presets ---------------------------------------------------------------

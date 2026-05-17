@@ -11,7 +11,23 @@ import { synthesizeBulkParams } from '../protocol/bulkParser.syn';
 import { FilterType } from '../domain/filter';
 import { PlatformType } from '../domain/platform';
 import { fromBulkParams } from '../domain/bulkToSnapshot';
+import { createHardwareProfile } from '../domain/hardware';
 import type { ChannelId } from '../domain/channels';
+
+const testHardware = createHardwareProfile(PlatformType.RP2350);
+
+function initializedDevice(methods: Partial<DspDevice>): DspDevice {
+  return {
+    info: {
+      serial: 'TEST-RP2350',
+      firmwareVersion: '1.0.0',
+      platformType: PlatformType.RP2350,
+      hardware: testHardware,
+    },
+    hardware: testHardware,
+    ...methods,
+  } as DspDevice;
+}
 
 class FakeTransport implements DspTransport {
   #listeners = new Map<TransportEvent, Set<() => void>>();
@@ -37,23 +53,31 @@ class FakeTransport implements DspTransport {
 function makeFakeDevice() {
   const calls: number[] = [];
   const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-  const device = {
+  const device = initializedDevice({
     setMasterVolume: vi.fn(async (db: number) => { calls.push(db); }),
     // Resync's getAllParams runs after every setMasterVolume; resolving
     // with a valid parsed bulk keeps the test's stderr clean.
     getAllParams: vi.fn(async () => validBulk),
-  } as unknown as DspDevice;
+  });
   return { device, calls };
 }
 
 function makeFakeChannelNameDevice() {
   const calls: { id: number; name: string }[] = [];
   const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-  const device = {
+  const device = initializedDevice({
     setChannelName: vi.fn(async (id: number, name: string) => { calls.push({ id, name }); }),
     getAllParams: vi.fn(async () => validBulk),
-  } as unknown as DspDevice;
+  });
   return { device, calls };
+}
+
+function makeSnapshot(platform: PlatformType = PlatformType.RP2350) {
+  const bulk = parseBulkParams(synthesizeBulkParams({
+    platformId: platform === PlatformType.RP2350 ? 1 : 0,
+    formatVersion: 6,
+  }));
+  return fromBulkParams(createHardwareProfile(platform), bulk);
 }
 
 describe('actions wiring', () => {
@@ -63,7 +87,7 @@ describe('actions wiring', () => {
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
     const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6, masterVolumeDb: 0 }));
-    dsp.live = fromBulkParams(PlatformType.RP2350, bulk);
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
   });
 
   afterEach(() => {
@@ -132,13 +156,13 @@ describe('actions wiring', () => {
     const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
     const filterCalls: Array<[ChannelId, number]> = [];
     let pendingDuringSend = -1;
-    const device = {
+    const device = initializedDevice({
       setFilter: vi.fn(async (ch: ChannelId, band: number) => {
         if (pendingDuringSend < 0) pendingDuringSend = dsp.pendingWrites.size;
         filterCalls.push([ch, band]);
       }),
       getAllParams: vi.fn(async () => validBulk),
-    } as unknown as DspDevice;
+    });
     bindDevice(device);
 
     const sourceId = dsp.live!.channels[0].id;
@@ -157,7 +181,7 @@ describe('setEqFilter', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    dsp.live = fromBulkParams(PlatformType.RP2350, bulk);
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -166,10 +190,10 @@ describe('setEqFilter', () => {
 
   it('schedules a wire write and patches the snapshot', async () => {
     const setFilter = vi.fn(async () => {});
-    const device = {
+    const device = initializedDevice({
       setFilter,
       getAllParams: vi.fn(async () => parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }))),
-    } as unknown as DspDevice;
+    });
     bindDevice(device);
 
     setEqFilter(0, 1, { type: FilterType.Peaking, frequency: 2000, q: 1, gain: 3 });
@@ -180,10 +204,10 @@ describe('setEqFilter', () => {
 
   it('coalesces rapid edits to the same band', async () => {
     const setFilter = vi.fn(async () => {});
-    const device = {
+    const device = initializedDevice({
       setFilter,
       getAllParams: vi.fn(async () => parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }))),
-    } as unknown as DspDevice;
+    });
     bindDevice(device);
 
     for (let f = 100; f <= 1000; f += 100) {
@@ -196,10 +220,10 @@ describe('setEqFilter', () => {
 
   it('does not collapse edits to different bands', async () => {
     const setFilter = vi.fn(async () => {});
-    const device = {
+    const device = initializedDevice({
       setFilter,
       getAllParams: vi.fn(async () => parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }))),
-    } as unknown as DspDevice;
+    });
     bindDevice(device);
 
     setEqFilter(0, 0, { type: FilterType.Peaking, frequency: 100, q: 1, gain: 0 });
@@ -215,10 +239,10 @@ describe('setEqFilter', () => {
     // the pre-edit `before` value, so convergence and rollback would look
     // identical; the assertion is on the convergence outcome, not the path.
     const setFilter = vi.fn(async () => { throw new Error('range'); });
-    const device = {
+    const device = initializedDevice({
       setFilter,
       getAllParams: vi.fn(async () => parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }))),
-    } as unknown as DspDevice;
+    });
     bindDevice(device);
 
     const before = { ...dsp.live!.channels[0].filters[1] };
@@ -233,7 +257,7 @@ describe('setMasterPreamp', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    dsp.live = fromBulkParams(PlatformType.RP2350, bulk);
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -242,10 +266,10 @@ describe('setMasterPreamp', () => {
 
   it('schedules a wire write and patches the snapshot', async () => {
     const setMasterPreampFn = vi.fn(async () => {});
-    const device = {
+    const device = initializedDevice({
       setMasterPreamp: setMasterPreampFn,
       getAllParams: vi.fn(async () => parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }))),
-    } as unknown as DspDevice;
+    });
     bindDevice(device);
 
     setMasterPreamp(-3);
@@ -259,7 +283,7 @@ describe('setInputPreamp', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    dsp.live = fromBulkParams(PlatformType.RP2350, bulk);
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -268,10 +292,10 @@ describe('setInputPreamp', () => {
 
   it('patches the correct channel slot and schedules the wire write', async () => {
     const setInputPreampFn = vi.fn(async () => {});
-    const device = {
+    const device = initializedDevice({
       setInputPreamp: setInputPreampFn,
       getAllParams: vi.fn(async () => parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }))),
-    } as unknown as DspDevice;
+    });
     bindDevice(device);
 
     setInputPreamp(0, -2);
@@ -284,10 +308,10 @@ describe('setInputPreamp', () => {
 
   it('coalesces rapid edits to the same channel only', async () => {
     const setInputPreampFn = vi.fn(async () => {});
-    const device = {
+    const device = initializedDevice({
       setInputPreamp: setInputPreampFn,
       getAllParams: vi.fn(async () => parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }))),
-    } as unknown as DspDevice;
+    });
     bindDevice(device);
 
     setInputPreamp(0, -1);
@@ -305,7 +329,7 @@ describe('setChannelName', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    dsp.live = fromBulkParams(PlatformType.RP2350, bulk);
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -385,10 +409,7 @@ describe('setChannelName', () => {
   });
 
   it('patches RP2040 PDM output name at compact output slot 4', async () => {
-    dsp.live = fromBulkParams(
-      PlatformType.RP2040,
-      parseBulkParams(synthesizeBulkParams({ platformId: 0, formatVersion: 6 })),
-    );
+    dsp.live = makeSnapshot(PlatformType.RP2040);
 
     setChannelName(10 satisfies ChannelId, 'Sub');
 

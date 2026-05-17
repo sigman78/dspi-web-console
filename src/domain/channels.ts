@@ -1,6 +1,3 @@
-import { PlatformType } from './platform';
-import type { PlatformInfo } from './platform';
-
 // Channel identity.
 // Numeric values are pinned by firmware (see `WIRE_*` macros and
 // `DspDevice.cs`). The enum itself is a domain identifier:
@@ -43,7 +40,7 @@ export const OutputSlot = {
   Out2L: 2, Out2R: 3,
   Out3L: 4, Out3R: 5,
   Out4L: 6, Out4R: 7,
-  Pdm: 8, // RP2350/global slot; use outputSlotForChannel() for platform data.
+  Pdm: 8, // RP2350/global slot; use HardwareProfile for platform data.
 } as const;
 export type OutputSlot = (typeof OutputSlot)[keyof typeof OutputSlot];
 
@@ -77,56 +74,6 @@ export function channelById(id: ChannelId): ChannelLayout {
   const channel = ALL_CHANNELS.find((x) => x.id === id);
   if (!channel) throw new Error(`Unknown ChannelId: ${id}`);
   return channel;
-}
-
-export interface PlatformLayout {
-  info: PlatformInfo;
-  inputs: readonly ChannelLayout[];
-  outputs: readonly ChannelLayout[];
-  channels: readonly ChannelLayout[];
-}
-
-export function forPlatform(platform: PlatformType): PlatformLayout {
-  const inputs = [channelById(ChannelId.In1L), channelById(ChannelId.In1R)];
-
-  let outputIds: ChannelId[];
-  let name: string;
-  switch (platform) {
-    case PlatformType.RP2040:
-      outputIds = [
-        ChannelId.Out1L, ChannelId.Out1R,
-        ChannelId.Out2L, ChannelId.Out2R,
-        ChannelId.Pdm,
-      ];
-      name = 'RP2040';
-      break;
-    case PlatformType.RP2350:
-      outputIds = [
-        ChannelId.Out1L, ChannelId.Out1R,
-        ChannelId.Out2L, ChannelId.Out2R,
-        ChannelId.Out3L, ChannelId.Out3R,
-        ChannelId.Out4L, ChannelId.Out4R,
-        ChannelId.Pdm,
-      ];
-      name = 'RP2350';
-      break;
-  }
-
-  const outputs = outputIds.map(channelById);
-  const info: PlatformInfo = {
-    type: platform,
-    name,
-    outputCount: outputs.length,
-    totalChannelCount: inputs.length + outputs.length,
-    pdmOutputIndex: outputs.findIndex((c) => c.id === ChannelId.Pdm),
-  };
-
-  return { info, inputs, outputs, channels: [...inputs, ...outputs] };
-}
-
-export function outputSlotForChannel(platform: PlatformType, id: ChannelId): OutputSlot | null {
-  const index = forPlatform(platform).outputs.findIndex((output) => output.id === id);
-  return index >= 0 ? (index as OutputSlot) : null;
 }
 
 export function slotForOutputChannel(id: ChannelId): number | null {

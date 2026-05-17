@@ -145,7 +145,7 @@ export function setEqTarget(id: ChannelId | null): void {
   settings.eqTarget = id;
 }
 
-// After fullSync hydrates dsp.live, validate the persisted eqTarget
+// After connection sync hydrates dsp.live, validate the persisted eqTarget
 // against the connected platform's channel set. If the stored ID isn't
 // in dsp.live.channels (e.g. user reconnected to a smaller-platform
 // device), fall back to the first output channel. eqTarget === null

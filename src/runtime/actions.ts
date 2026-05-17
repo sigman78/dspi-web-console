@@ -1,12 +1,12 @@
 import { fromBulkParams } from '../domain/bulkToSnapshot';
 import type { BulkParams } from '../protocol/bulkParser';
 import type { FilterParams } from '../domain/filter';
-import type { PlatformType } from '../domain/platform';
 import type { ChannelId, InputSlot, OutputSlot } from '../domain/channels';
-import { outputSlotForChannel } from '../domain/channels';
-import { CrossfeedPreset, LevellerSpeed, MasterVolumeMode } from '../domain/processing';
+import type { HardwareProfile } from '../domain/hardware';
+import { CrossfeedPreset, LevellerSpeed } from '../domain/processing';
 import type { DspTransport } from '../transport/DspTransport';
-import { session, setStatus } from '../state/session.svelte';
+import type { DspDevice } from '../device/DspDevice';
+import { bindDevice, session, setStatus } from '../state/session.svelte';
 import { applyDspSnapshot, dsp, patchSnapshot, resetDsp } from '../state/dsp.svelte';
 import { settings } from '../state/settings.svelte';
 import { resetStatus, status } from '../state/telemetry.svelte';
@@ -107,8 +107,8 @@ export function setChannelName(id: ChannelId, name: string): void {
   if (!dsp.live?.channels) return;
   const ch = focusChannel(id);
   const resolved = name.trim() || ch.read().defaultName;
-  const outSlot = outputSlotForChannel(dsp.live.platform.type, id);
-  const out = outSlot !== null ? tryFocusOutput(outSlot) : null;
+  const outSlot = dsp.live.outputs.find((output) => output.id === id)?.wireIndex;
+  const out = outSlot != null ? tryFocusOutput(outSlot) : null;
   instantCommand({
     apply: () => {
       ch.modify((c) => ({ ...c, name: resolved }));
@@ -363,33 +363,18 @@ export function toggleOutputMute(slot: OutputSlot): void {
   });
 }
 
-export async function fullSync(): Promise<void> {
+export async function syncDeviceSnapshot(): Promise<void> {
   if (inflightSync) return inflightSync;
   const d = session.device;
   if (!d) throw new Error('No device');
-  setStatus('connecting');
   inflightSync = (async () => {
     try {
-      const [serial, info, bulk] = await Promise.all([
-        d.getSerial(),
-        d.getDeviceInfo(),
-        d.getAllParams(),
-      ]);
-      session.identity.serial = serial;
-      session.identity.firmwareVersion = info.firmwareVersion;
-      session.identity.platformType = info.type;
-      hydrateFromBulk(info.type, bulk);
-      setStatus('connected');
-      settings.lastSerial = serial;
-      await reconcileAfterSync();
-      startPolling();
-      log('sync', 'connected', {
-        platform: dsp.live?.platform.name,
-        formatVersion: dsp.live?.formatVersion,
-        masterVolumeDb: dsp.live?.masterVolumeDb,
-      });
+      const bulk = await d.getAllParams();
+      const hardware = d.hardware;
+      session.hardware = hardware;
+      hydrateFromBulk(hardware, bulk);
     } catch (err) {
-      error('sync', 'fullSync failed', err);
+      error('sync', 'syncDeviceSnapshot failed', err);
       setStatus('error', (err as Error).message);
       throw err;
     } finally {
@@ -397,6 +382,37 @@ export async function fullSync(): Promise<void> {
     }
   })();
   return inflightSync;
+}
+
+export async function refreshDeviceSnapshotBaseline(): Promise<void> {
+  await syncDeviceSnapshot();
+}
+
+export async function finishConnection(device: DspDevice): Promise<void> {
+  if (session.device !== device) {
+    throw new Error('Cannot finish connection for inactive device');
+  }
+  setStatus('connecting');
+  try {
+    await refreshDeviceSnapshotBaseline();
+    setStatus('connected');
+    settings.lastSerial = device.info.serial;
+    await reconcileAfterSync();
+    startPolling();
+    log('sync', 'connected', {
+      platform: dsp.live?.platform.name,
+      formatVersion: dsp.live?.formatVersion,
+      masterVolumeDb: dsp.live?.masterVolumeDb,
+    });
+  } catch (err) {
+    error('sync', 'finishConnection failed', err);
+    setStatus('error', (err as Error).message);
+    throw err;
+  }
+}
+
+export async function fullSync(): Promise<void> {
+  await refreshDeviceSnapshotBaseline();
 }
 
 // Re-apply UI policy that should outlive a (re)connect (mute, eqTarget).
@@ -416,8 +432,8 @@ async function reconcileAfterSync(): Promise<void> {
   }
 }
 
-function hydrateFromBulk(platformType: PlatformType, bulk: BulkParams): void {
-  applyDspSnapshot(fromBulkParams(platformType, bulk));
+function hydrateFromBulk(hardware: HardwareProfile, bulk: BulkParams): void {
+  applyDspSnapshot(fromBulkParams(hardware, bulk));
 }
 
 export function setMasterVolume(db: number): void {
@@ -451,14 +467,16 @@ export function attachTransportListeners(transport: DspTransport): () => void {
     cancelResync();
     cancelAllCommands();
     stopPolling();
+    bindDevice(null);
     setStatus('disconnected');
     resetDsp();
     resetStatus();
   });
   const offConn = transport.on('connect', () => {
-    if (!session.device) return;
-    void fullSync().catch((e) => {
-      error('transport', 'auto-sync after connect failed', e);
+    const device = session.device;
+    if (!device) return;
+    void finishConnection(device).catch((e) => {
+      error('transport', 'auto-finish after connect failed', e);
       setStatus('error', (e as Error).message);
     });
   });

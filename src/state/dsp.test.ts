@@ -4,11 +4,12 @@ import { parseBulkParams } from '../protocol/bulkParser';
 import { synthesizeBulkParams } from '../protocol/bulkParser.syn';
 import { PlatformType } from '../domain/platform';
 import { fromBulkParams } from '../domain/bulkToSnapshot';
+import { createHardwareProfile } from '../domain/hardware';
 import { dsp, applyDspSnapshot, patchSnapshot, resetDsp } from './dsp.svelte';
 
 function makeSnapshot(masterVolumeDb = -6) {
   const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6, masterVolumeDb }));
-  return fromBulkParams(PlatformType.RP2350, bulk);
+  return fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
 }
 
 describe('dsp store: live / shadow lifecycle', () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseBulkParams } from '../protocol/bulkParser';
 import { synthesizeBulkParams } from '../protocol/bulkParser.syn';
 import { PlatformType } from './platform';
+import { createHardwareProfile } from './hardware';
 import { fromBulkParams } from './bulkToSnapshot';
 import { matrixColumns, matrixRows } from './mixerView';
 
@@ -19,7 +20,7 @@ describe('fromBulkParams', () => {
         mckMultiplierEncoded: 1,
       },
     }));
-    const snapshot = fromBulkParams(PlatformType.RP2350, bulk);
+    const snapshot = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
 
     expect(snapshot.platform.name).toBe('RP2350');
     expect(snapshot.outputs).toHaveLength(9);
@@ -50,7 +51,7 @@ describe('fromBulkParams', () => {
     crosspoints[0][8] = { enabled: false, invert: false, gainDb: -9 };
 
     const bulk = parseBulkParams(synthesizeBulkParams({ platformId: 0, outputs, crosspoints }));
-    const snapshot = fromBulkParams(PlatformType.RP2040, bulk);
+    const snapshot = fromBulkParams(createHardwareProfile(PlatformType.RP2040), bulk);
     const pdm = snapshot.outputs.find((output) => output.id === 10);
     const pdmRoute = snapshot.routes.find((route) => route.inputIndex === 0 && route.outputId === 10);
 
@@ -64,5 +65,32 @@ describe('fromBulkParams', () => {
     expect(pdmRoute?.outputWireIndex).toBe(4);
     expect(pdmRoute?.enabled).toBe(true);
     expect(pdmRoute?.invert).toBe(true);
+  });
+
+  it('maps RP2040 PDM EQ and name from firmware channel 6', () => {
+    const filters = Array.from({ length: 11 }, () =>
+      Array.from({ length: 12 }, () => ({ type: 0, frequency: 1000, q: 1, gain: 0 })),
+    );
+    filters[6][0] = { type: 1, frequency: 321, q: 0.8, gain: -2 };
+    filters[10][0] = { type: 1, frequency: 9999, q: 2, gain: 12 };
+
+    const names: string[] = [];
+    names[6] = 'RP2040 Sub';
+    names[10] = 'Wrong PDM';
+
+    const bulk = parseBulkParams(synthesizeBulkParams({
+      platformId: 0,
+      numCh: 7,
+      filters,
+      channelNames: names,
+    }));
+    const snapshot = fromBulkParams(createHardwareProfile(PlatformType.RP2040), bulk);
+    const pdmChannel = snapshot.channels.find((channel) => channel.id === 10);
+    const pdmOutput = snapshot.outputs.find((output) => output.id === 10);
+
+    expect(pdmChannel?.name).toBe('RP2040 Sub');
+    expect(pdmOutput?.name).toBe('RP2040 Sub');
+    expect(pdmChannel?.filters[0].frequency).toBe(321);
+    expect(pdmChannel?.filters[0].gain).toBe(-2);
   });
 });

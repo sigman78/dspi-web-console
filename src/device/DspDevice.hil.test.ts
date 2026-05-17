@@ -17,40 +17,34 @@ describe('DspDevice — read-side smoke (HIL)', () => {
     if (close) await close();
   });
 
-  it('getSerial returns a non-empty trimmed string', async () => {
-    const serial = await device.getSerial();
+  it('factory captures a non-empty trimmed serial', async () => {
+    const serial = device.info.serial;
     expect(typeof serial).toBe('string');
     expect(serial.length).toBeGreaterThan(0);
     expect(serial).toBe(serial.trim());
     expect(serial).not.toContain('\0');
   });
 
-  it('getDeviceInfo returns a known platform type and a non-empty firmware string', async () => {
-    const info = await device.getDeviceInfo();
-    expect([PlatformType.RP2040, PlatformType.RP2350]).toContain(info.type);
+  it('factory captures a known platform type and non-empty firmware string', async () => {
+    const info = device.info;
+    expect([PlatformType.RP2040, PlatformType.RP2350]).toContain(info.platformType);
     expect(info.firmwareVersion.length).toBeGreaterThan(0);
     expect(info.firmwareVersion).toBe(info.firmwareVersion.trim());
     expect(info.firmwareVersion).not.toContain('\0');
   });
 
-  it('getDeviceInfo is idempotent', async () => {
-    const a = await device.getDeviceInfo();
-    const b = await device.getDeviceInfo();
-    expect(b.type).toBe(a.type);
+  it('info getter is stable', async () => {
+    const a = device.info;
+    const b = device.info;
+    expect(b.platformType).toBe(a.platformType);
     expect(b.firmwareVersion).toBe(a.firmwareVersion);
   });
 
-  // Note: the "getSystemStatus throws before getDeviceInfo" precondition is
-  // covered by the unit suite (DspDevice.test.ts). Reproducing it here would
-  // require a second device handle that fights the first one's libusb claim.
-
   it('getSystemStatus returns plausible peaks/cpu/clip values', async () => {
-    await device.getDeviceInfo(); // ensure numCh is cached
-    const info = await device.getDeviceInfo();
-    const numCh = info.type === PlatformType.RP2040 ? 7 : 11;
+    const numCh = device.hardware.totalChannelCount;
 
     const s = await device.getSystemStatus();
-    expect(s.peaks.length).toBe(11); // wire array is always 11 even on RP2040
+    expect(s.peaks.length).toBe(11); // host status array is fixed-width; request size is platform-specific
 
     for (let i = 0; i < numCh; i++) {
       expect(s.peaks[i]).toBeGreaterThanOrEqual(0);

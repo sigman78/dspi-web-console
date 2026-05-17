@@ -16,7 +16,7 @@ startSettingsPersistence();
 
 // Expose state stores on window for direct inspection in DevTools.
 // Inspect after Connect:  __dspi.dsp.live?.platform, __dspi.dsp.live?.outputs,
-// __dspi.session.status, __dspi.session.identity.serial, __dspi.snapshot()
+// __dspi.session.status, __dspi.session.lastDeviceInfo?.serial, __dspi.snapshot()
 (globalThis as unknown as { __dspi: unknown }).__dspi = {
   dsp, status: statusStore, settings, session,
   snapshot() {

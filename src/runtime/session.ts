@@ -7,7 +7,7 @@ import {
   WebUsbTransport,
 } from '../transport/WebUsbTransport';
 import { withTimeout } from '../transport/withTimeout';
-import { attachTransportListeners, fullSync } from './actions';
+import { attachTransportListeners, finishConnection } from './actions';
 import { session, setStatus, bindDevice } from '../state/session.svelte';
 import { settings } from '../state/settings.svelte';
 import { error as logError, log } from '../utils/log';
@@ -25,25 +25,37 @@ export function webUsbUnsupportedReason(): string | null {
   return WebUsbTransport.unsupportedReason();
 }
 
-function wire(transport: DspTransport): DspDevice {
+async function createBoundDevice(
+  transport: DspTransport,
+  openTransport?: () => Promise<void>,
+): Promise<DspDevice> {
   // Wrap with the timeout decorator before handing to DspDevice so every
   // ctrlIn/ctrlOut inherits the deadline. attachTransportListeners stays
   // on the underlying transport -- connect/disconnect events come from the
   // real transport, not from the timeout wrapper.
   const wrapped = withTimeout(transport, { ctrlMs: CTRL_TIMEOUT_MS });
-  const device = new DspDevice(wrapped);
-  bindDevice(device);
-  attachTransportListeners(transport);
-  return device;
+  try {
+    const device = await DspDevice.create(wrapped, openTransport);
+    bindDevice(device);
+    attachTransportListeners(transport);
+    return device;
+  } catch (err) {
+    bindDevice(null);
+    try {
+      await transport.close();
+    } catch (closeErr) {
+      logError('connect', 'cleanup close after failed init failed', closeErr);
+    }
+    throw err;
+  }
 }
 
 export async function connectRequested(): Promise<void> {
   try {
     setStatus('connecting');
     const transport = new WebUsbTransport();
-    wire(transport);
-    await transport.requestAndOpen();
-    await fullSync();
+    const device = await createBoundDevice(transport, () => transport.requestAndOpen());
+    await finishConnection(device);
   } catch (err) {
     logError('connect', 'connect failed', err);
     setStatus('error', (err as Error).message);
@@ -53,9 +65,8 @@ export async function connectRequested(): Promise<void> {
 
 export async function bootMock(platform: 'rp2040' | 'rp2350'): Promise<void> {
   const transport = new MockTransport({ platform });
-  const device = wire(transport);
-  await device.open();
-  await fullSync();
+  const device = await createBoundDevice(transport);
+  await finishConnection(device);
 }
 
 export async function bootReal(): Promise<void> {
@@ -63,9 +74,10 @@ export async function bootReal(): Promise<void> {
   booting = true;
   try {
     const transport = new WebUsbTransport();
-    wire(transport);
     const ok = await transport.tryAutoConnect();
-    if (ok) await fullSync();
+    if (!ok) return;
+    const device = await createBoundDevice(transport, async () => {});
+    await finishConnection(device);
   } finally {
     booting = false;
   }

@@ -18,7 +18,6 @@ describe('DspDevice — mixer matrix wire commands (HIL)', () => {
     const opened = await openSingleDevice();
     device = opened.device;
     close = opened.close;
-    await device.getDeviceInfo();
   });
 
   afterAll(async () => {
