@@ -8,8 +8,7 @@ import {
 } from '../transport/WebUsbTransport';
 import { withTimeout } from '../transport/withTimeout';
 import { attachTransportListeners, finishConnection } from './actions';
-import { session, setStatus, bindDevice } from '../state/session.svelte';
-import { settings } from '../state/settings.svelte';
+import { session, setStatus, bindDevice, settings } from '../state';
 import { Log } from '../utils';
 
 // Per-call ceiling on USB control transfers. A frozen firmware would

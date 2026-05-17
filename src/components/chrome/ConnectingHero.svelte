@@ -1,6 +1,6 @@
 <script lang="ts">
   import EqSpectrum from './EqSpectrum.svelte';
-  import { session, setStatus } from '../../state/session.svelte';
+  import { session, setStatus } from '../../state';
   import { connectRequested, webUsbUnsupportedReason } from '../../runtime/session';
 
   let busy = $state(false);

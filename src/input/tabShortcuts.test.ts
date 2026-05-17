@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { handleTabShortcut } from './tabShortcuts';
-import { settings, setTab } from '../state/settings.svelte';
+import { settings, setTab } from '../state';
 
 function ev(init: Partial<KeyboardEventInit> & { code: string }): KeyboardEvent {
   return new KeyboardEvent('keydown', { altKey: true, ...init });

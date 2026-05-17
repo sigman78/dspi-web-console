@@ -1,10 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline } from './actions';
-import { session, bindDevice } from '../state/session.svelte';
+import { session, bindDevice, settings, dsp, status as statusStore, presets } from '../state';
 import { bootMock } from './session';
-import { settings } from '../state/settings.svelte';
-import { dsp } from '../state/dsp.svelte';
-import { status as statusStore } from '../state/telemetry.svelte';
 import type { DspTransport, TransportEvent } from '../transport/DspTransport';
 import type { DspDevice } from '../device/DspDevice';
 import { parseBulkParams } from '../protocol/bulkParser';
@@ -15,7 +12,6 @@ import { fromBulkParams } from '../domain/bulkToSnapshot';
 import { createHardwareProfile } from '../domain/hardware';
 import type { ChannelId } from '../domain/channels';
 import { MasterVolumeMode } from '../domain/processing';
-import { presets } from '../state/presets.svelte';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 

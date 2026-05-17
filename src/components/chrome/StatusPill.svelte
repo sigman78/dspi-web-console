@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { session, setStatus } from '../../state/session.svelte';
+  import { session, setStatus, presetsDirty } from '../../state';
   import { connectRequested, webUsbUnsupportedReason } from '../../runtime/session';
-  import { presetsDirty } from '../../state/presets.svelte';
 
   let busy = $state(false);
   const unsupported = webUsbUnsupportedReason();

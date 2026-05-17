@@ -2,11 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from '../device/DspDevice';
 import { openSingleDevice } from '../../hil/setup';
 import { finishConnection } from './actions';
-import { session, bindDevice } from '../state/session.svelte';
-import { settings } from '../state/settings.svelte';
-import { dsp, resetDsp } from '../state/dsp.svelte';
+import { session, bindDevice, settings, dsp, resetDsp, resetStatus } from '../state';
 import { stopPolling } from './poll';
-import { resetStatus } from '../state/telemetry.svelte';
 
 // End-to-end HIL test: drives the production state-layer connection finish flow
 // against real silicon. The most valuable thing this catches is the slice-3

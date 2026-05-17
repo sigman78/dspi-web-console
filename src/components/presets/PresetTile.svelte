@@ -1,7 +1,6 @@
 <!-- src/components/presets/PresetTile.svelte -->
 <script lang="ts">
-  import { presets, presetsDirty } from '../../state/presets.svelte';
-  import { copySource } from '../../state/copySource.svelte';
+  import { presets, presetsDirty, copySource } from '../../state';
   import { loadPresetSlot, renamePresetSlot } from '../../runtime/presets';
   import { PresetStartupMode } from '../../protocol/wireTypes';
   import type { PresetSlot } from '../../domain/presetLimits';

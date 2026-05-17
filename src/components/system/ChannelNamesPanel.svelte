@@ -1,7 +1,6 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
-  import { dsp } from '../../state/dsp.svelte';
-  import { session } from '../../state/session.svelte';
+  import { dsp, session } from '../../state';
   import { setChannelName } from '../../runtime/actions';
   import { CHANNEL_NAME_MAX_LEN } from '../../domain/presetLimits';
   import { chKey } from '../../styles/palette';

@@ -5,9 +5,7 @@
   import PresetTile from '../presets/PresetTile.svelte';
   import PresetControls from '../presets/PresetControls.svelte';
   import { fetchPresetInfo, retryFetchPresetInfo } from '../../runtime/presets';
-  import { presets, presetsDirty } from '../../state/presets.svelte';
-  import { copySource, clearCopySource } from '../../state/copySource.svelte';
-  import { session } from '../../state/session.svelte';
+  import { presets, presetsDirty, copySource, clearCopySource, session } from '../../state';
   import { PRESET_SLOT_COUNT, type PresetSlot } from '../../domain/presetLimits';
 
   const SLOTS: PresetSlot[] = Array.from({ length: PRESET_SLOT_COUNT }, (_, i) => i as PresetSlot);

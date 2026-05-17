@@ -4,9 +4,7 @@
   import DirtyDot from './DirtyDot.svelte';
   import MasterVolumeMini from './MasterVolumeMini.svelte';
   import PresetActiveChip from './PresetActiveChip.svelte';
-  import { status } from '../../state/telemetry.svelte';
-  import { session } from '../../state/session.svelte';
-  import { dsp } from '../../state/dsp.svelte';
+  import { status, session, dsp } from '../../state';
   import { setBypass } from '../../runtime/actions';
 
   const connected = $derived(session.status === 'connected');

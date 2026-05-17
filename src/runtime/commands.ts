@@ -1,6 +1,5 @@
 import type { DspDevice } from '../device/DspDevice';
-import { dsp } from '../state/dsp.svelte';
-import { session, setStatus } from '../state/session.svelte';
+import { dsp, session, setStatus } from '../state';
 import { forceResyncNow, scheduleResync } from './resync';
 import { Log } from '../utils';
 

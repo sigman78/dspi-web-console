@@ -1,9 +1,7 @@
 <script lang="ts">
   import MiniPin from './MiniPin.svelte';
-  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId } from '../../state/settings.svelte';
+  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId, dsp, status } from '../../state';
   import { eqUi } from '../eq/eqUi.svelte';
-  import { dsp } from '../../state/dsp.svelte';
-  import { status } from '../../state/telemetry.svelte';
   import type { ChannelModel } from '../../domain/snapshot';
   import type { ChannelId } from '../../domain/channels';
 

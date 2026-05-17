@@ -1,7 +1,5 @@
 <script lang="ts">
-  import { dsp } from '../../state/dsp.svelte';
-  import { settings } from '../../state/settings.svelte';
-  import { session } from '../../state/session.svelte';
+  import { dsp, settings, session } from '../../state';
   import { setMasterVolume, toggleMute } from '../../runtime/actions';
   import SaveMasterVolumeButton from './SaveMasterVolumeButton.svelte';
 

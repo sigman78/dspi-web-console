@@ -3,7 +3,7 @@
   import MatrixHeader from './mixer/MatrixHeader.svelte';
   import MatrixCell from './mixer/MatrixCell.svelte';
   import { matrixColumns, matrixRows } from '../../domain/mixerView';
-  import { dsp } from '../../state/dsp.svelte';
+  import { dsp } from '../../state';
   import { chKey } from '../../styles/palette';
 
   const columns = $derived(matrixColumns(dsp.live));

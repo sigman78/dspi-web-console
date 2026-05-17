@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { presets } from '../../state/presets.svelte';
-  import { session } from '../../state/session.svelte';
+  import { presets, session } from '../../state';
   import { saveMasterVolumeBaseline } from '../../runtime/actions';
   import { MasterVolumeMode } from '../../domain/processing';
 

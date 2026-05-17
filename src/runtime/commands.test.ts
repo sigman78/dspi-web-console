@@ -6,8 +6,7 @@ import { PlatformType } from '../domain/platform';
 import { fromBulkParams } from '../domain/bulkToSnapshot';
 import { createHardwareProfile } from '../domain/hardware';
 import type { DspDevice } from '../device/DspDevice';
-import { bindDevice, session, setStatus } from '../state/session.svelte';
-import { dsp, patchSnapshot } from '../state/dsp.svelte';
+import { bindDevice, session, setStatus, dsp, patchSnapshot } from '../state';
 import { instantCommand, scrubCommand, batchCommand, cancelAllCommands } from './commands';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);

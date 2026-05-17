@@ -1,9 +1,11 @@
 // Action surface for preset operations. Wraps DspDevice calls
 
-import { session } from '../state/session.svelte';
-import { refreshShadowFromLive } from '../state/dsp.svelte';
-import { presets, presetsDirty, askBoundary } from '../state/presets.svelte';
-import { settings } from '../state/settings.svelte';
+import {
+  session,
+  refreshShadowFromLive,
+  presets, presetsDirty, askBoundary,
+  settings,
+} from '../state';
 import { reconcileAfterSync } from './actions';
 import { fetchAndApplyAsBaseline } from './resync';
 import type { DspDevice } from '../device/DspDevice';

@@ -6,8 +6,7 @@
   import OutputTrim from '../eq/OutputTrim.svelte';
   import { mockEqCurve } from '../bode/bodeMock';
   import { filterCurve, filterCurveAt } from '../bode/filterCurve';
-  import { dsp } from '../../state/dsp.svelte';
-  import { settings, setEqTarget } from '../../state/settings.svelte';
+  import { dsp, settings, setEqTarget } from '../../state';
   import {
     eqUi,
     setCopySource,

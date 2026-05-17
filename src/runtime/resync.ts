@@ -1,6 +1,5 @@
 import { fromBulkParams } from '../domain/bulkToSnapshot';
-import { session } from '../state/session.svelte';
-import { applyDspSnapshot, applyLiveSnapshot, dsp } from '../state/dsp.svelte';
+import { session, applyDspSnapshot, applyLiveSnapshot, dsp } from '../state';
 import { Log } from '../utils';
 import { makeResyncScheduler } from './schedulers';
 

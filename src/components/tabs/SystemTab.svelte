@@ -1,9 +1,7 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
   import KV from '../chrome/KV.svelte';
-  import { dsp } from '../../state/dsp.svelte';
-  import { session } from '../../state/session.svelte';
-  import { status } from '../../state/telemetry.svelte';
+  import { dsp, session, status } from '../../state';
   import ChannelNamesPanel from '../system/ChannelNamesPanel.svelte';
   import ResetPanel from '../system/ResetPanel.svelte';
   import { chKey } from '../../styles/palette';

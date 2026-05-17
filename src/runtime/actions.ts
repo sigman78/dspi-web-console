@@ -6,19 +6,20 @@ import type { HardwareProfile } from '../domain/hardware';
 import { CrossfeedPreset, LevellerSpeed, MasterVolumeMode } from '../domain/processing';
 import type { DspTransport } from '../transport/DspTransport';
 import type { DspDevice } from '../device/DspDevice';
-import { bindDevice, session, setStatus } from '../state/session.svelte';
-import { presets } from '../state/presets.svelte';
+import {
+  bindDevice, session, setStatus,
+  presets,
+  applyDspSnapshot, dsp, patchSnapshot, resetDsp,
+  settings, reconcileEqTarget,
+  resetStatus, status,
+  clearCopySource,
+} from '../state';
 import { Result, Log } from '../utils';
-import { applyDspSnapshot, dsp, patchSnapshot, resetDsp } from '../state/dsp.svelte';
-import { settings } from '../state/settings.svelte';
-import { resetStatus, status } from '../state/telemetry.svelte';
 import { startPolling, stopPolling } from './poll';
 import { cancelResync } from './resync';
 import { batchCommand, cancelAllCommands, cancelScrubLane, instantCommand, scrubCommand } from './commands';
 import { focusChannel, focusOutput, focusRoute, tryFocusOutput } from './focus';
-import { reconcileEqTarget } from '../state/settings.svelte';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
-import { clearCopySource } from '../state/copySource.svelte';
 
 const MUTE_DB = -128; // per spec
 

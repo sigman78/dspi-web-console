@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import ConnectingHero from './ConnectingHero.svelte';
-import { setStatus } from '../../state/session.svelte';
+import { setStatus } from '../../state';
 
 vi.mock('../../runtime/session', () => ({
   connectRequested: vi.fn().mockResolvedValue(undefined),
