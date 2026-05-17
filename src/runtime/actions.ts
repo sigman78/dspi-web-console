@@ -20,6 +20,7 @@ import { batchCommand, cancelAllCommands, cancelScrubLane, instantCommand, scrub
 import { focusChannel, focusOutput, focusRoute, tryFocusOutput } from './focus';
 import { reconcileEqTarget } from '../state/settings.svelte';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
+import { clearCopySource } from '../state/copySource.svelte';
 
 const MUTE_DB = -128; // per spec
 
@@ -476,6 +477,7 @@ export function attachTransportListeners(transport: DspTransport): () => void {
     setStatus('disconnected');
     resetDsp();
     invalidatePresetCache();
+    clearCopySource();
     resetStatus();
   });
   const offConn = transport.on('connect', () => {

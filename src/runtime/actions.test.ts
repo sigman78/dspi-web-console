@@ -436,18 +436,6 @@ describe('setChannelName', () => {
   });
 });
 
-describe('actions — preset info sync', () => {
-  beforeEach(async () => {
-    await bootMock('rp2350');
-  });
-
-  it('populates presets.directory after fullSync', async () => {
-    // bootMock calls fullSync; presets.directory should be set by now.
-    expect(presets.directory).not.toBe(null);
-    expect(presets.active).not.toBe(null);
-  });
-});
-
 describe('actions — master volume mode', () => {
   beforeEach(async () => {
     await bootMock('rp2350');

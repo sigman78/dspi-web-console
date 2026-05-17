@@ -98,6 +98,43 @@ describe('runtime/presets', () => {
       expect(r.ok).toBe(true);
       expect(presets.active).toBe(0);
     });
+
+    it('issues loadPreset on the wire and re-baselines shadow from a fresh getAllParams', async () => {
+      settings.warnOnPresetSwitchDirty = false; // not under test here
+      await fetchPresetInfo();
+      await saveActivePreset();
+      const d = session.device!;
+      const origLoad = d.loadPreset.bind(d);
+      const origGetAll = d.getAllParams.bind(d);
+      let loadCalls = 0;
+      let getAllAfterLoad = 0;
+      let sawLoad = false;
+      (d as any).loadPreset = async (slot: number) => {
+        loadCalls++;
+        sawLoad = true;
+        return origLoad(slot as PresetSlot);
+      };
+      (d as any).getAllParams = async () => {
+        if (sawLoad) getAllAfterLoad++;
+        return origGetAll();
+      };
+      try {
+        // Make live diverge from shadow so the post-load re-baseline is
+        // observable: after success, shadow must match the freshly fetched
+        // device state (i.e. live === shadow per field).
+        if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
+        const r = await loadPresetSlot(0 as any);
+        expect(r.ok).toBe(true);
+        expect(loadCalls).toBe(1);
+        // fetchAndApplyAsBaseline runs exactly one getAllParams after loadPreset.
+        expect(getAllAfterLoad).toBe(1);
+        // Shadow re-baselined to device truth (live and shadow agree on bypass).
+        expect(dsp.shadow?.bypass).toBe(dsp.live?.bypass);
+      } finally {
+        (d as any).loadPreset = origLoad;
+        (d as any).getAllParams = origGetAll;
+      }
+    });
   });
 
   describe('deletePresetSlot', () => {
@@ -133,10 +170,22 @@ describe('runtime/presets', () => {
   });
 
   describe('renamePresetSlot', () => {
-    it('updates the cached name', async () => {
+    it('calls device.setPresetName with the slot/name and mirrors into the cache', async () => {
       await fetchPresetInfo();
-      await renamePresetSlot(2 as any, 'Cinema');
-      expect(presets.names[2]).toBe('Cinema');
+      const d = session.device!;
+      const orig = d.setPresetName.bind(d);
+      const calls: Array<{ slot: number; name: string }> = [];
+      (d as any).setPresetName = async (slot: number, name: string) => {
+        calls.push({ slot, name });
+        return orig(slot as PresetSlot, name);
+      };
+      try {
+        await renamePresetSlot(2 as any, 'Cinema');
+        expect(calls).toEqual([{ slot: 2, name: 'Cinema' }]);
+        expect(presets.names[2]).toBe('Cinema');
+      } finally {
+        (d as any).setPresetName = orig;
+      }
     });
   });
 

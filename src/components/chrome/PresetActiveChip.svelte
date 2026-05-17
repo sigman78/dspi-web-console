@@ -5,10 +5,7 @@
   import { session } from '../../state/session.svelte';
 
   const active = $derived(presets.active);
-  const name = $derived.by(() => {
-    if (active == null) return null;
-    return presets.names[active] ?? '';
-  });
+  const name = $derived(active == null ? '' : (presets.names[active] ?? ''));
   const connected = $derived(session.status === 'connected');
   const dirty = $derived(presetsDirty.current);
 
@@ -28,7 +25,7 @@
 >
   {#if active != null}
     <span class="num">{String(active).padStart(2, '0')}</span>
-    <span class="name">{name?.length ? name : '[unnamed]'}</span>
+    <span class="name">{name.length ? name : '[unnamed]'}</span>
   {:else}
     <span class="num">—</span>
   {/if}

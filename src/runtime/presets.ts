@@ -6,6 +6,7 @@ import { presets, presetsDirty, askBoundary } from '../state/presets.svelte';
 import { settings } from '../state/settings.svelte';
 import { reconcileAfterSync } from './actions';
 import { fetchAndApplyAsBaseline } from './resync';
+import type { DspDevice } from '../device/DspDevice';
 import type { PresetSlot } from '../domain/presetLimits';
 import { PRESET_SLOT_COUNT } from '../domain/presetLimits';
 import type { PresetResult } from '../protocol/results';
@@ -178,7 +179,7 @@ export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, Pre
 // Internal: wire-level load + post-load epilogue. No dirty gating.
 // Called by both loadPresetSlot (after gating) and revertActivePreset
 async function executeLoad(
-  d: NonNullable<typeof session.device>,
+  d: DspDevice,
   slot: PresetSlot,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
   clearActionError();

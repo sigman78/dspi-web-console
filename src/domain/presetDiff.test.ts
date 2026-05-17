@@ -117,6 +117,21 @@ describe('presetDiff', () => {
     expect(presetDiff(a, b, noIgnore)).toBe(false);
   });
 
+  it('treats exact-tolerance drift as not-dirty (strict-greater boundary)', () => {
+    // neq() uses Math.abs(diff) > tol, so a delta exactly equal to the
+    // tolerance must NOT mark dirty. Pins the boundary semantics.
+    const a = snap({ masterPreampDb: 0 });
+    const b = snap({ masterPreampDb: PRESET_DIFF_TOLERANCE.db });
+    expect(presetDiff(a, b, noIgnore)).toBe(false);
+  });
+
+  it('returns true when a band Q moves above its own tolerance', () => {
+    const a = snap();
+    const b = snap();
+    b.channels[0].filters[2] = { ...b.channels[0].filters[2], q: 1.0 + PRESET_DIFF_TOLERANCE.q * 2 };
+    expect(presetDiff(a, b, noIgnore)).toBe(true);
+  });
+
   it('returns true when masterVolumeDb differs and ignoreMasterVolume=false', () => {
     expect(presetDiff(snap({ masterVolumeDb: 0 }), snap({ masterVolumeDb: -6 }), noIgnore)).toBe(true);
   });

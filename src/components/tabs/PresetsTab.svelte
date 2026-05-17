@@ -21,14 +21,12 @@
     tileRefs[a]?.enterRename();
   }
 
-  // The COPY/PASTE invariant: source mark clears the moment RAM goes dirty *from a user edit*.
-  // The !presets.busy guard is defensive — preset Load/Paste now apply
-  // dsp.live and dsp.shadow atomically via fetchAndApplyAsBaseline() so
-  // there is no longer a transient dirty=true window during wire ops
-  // The guard remains as cheap insurance
-  // against future multi-step transitions that someone forgets to keep atomic
+  // COPY/PASTE invariant: source mark clears when RAM goes dirty from a
+  // user edit. Preset Load/Paste apply dsp.live and dsp.shadow atomically
+  // via fetchAndApplyAsBaseline(), so there is no transient dirty=true
+  // window to filter out during wire ops.
   $effect(() => {
-    if (!presets.busy && presetsDirty.current && copySource.slot != null) {
+    if (presetsDirty.current && copySource.slot != null) {
       clearCopySource();
     }
   });

@@ -15,6 +15,7 @@ export const PRESET_DIFF_TOLERANCE = {
   db:   0.05,
   freq: 0.5,
   gain: 0.005,
+  q:    0.005,
   ms:   0.00005,
 } as const;
 
@@ -30,10 +31,7 @@ function neq(a: number, b: number, tol: number): boolean {
 function bandDiffers(a: FilterParams, b: FilterParams): boolean {
   if (a.type !== b.type) return true;
   if (neq(a.frequency, b.frequency, PRESET_DIFF_TOLERANCE.freq)) return true;
-  // Q is dimensionless; the `gain` tolerance band (0.005) is the right
-  // magnitude for masking wire-round-trip jitter even though it's not a
-  // linear-gain value semantically.
-  if (neq(a.q,         b.q,         PRESET_DIFF_TOLERANCE.gain)) return true;
+  if (neq(a.q,         b.q,         PRESET_DIFF_TOLERANCE.q))    return true;
   if (neq(a.gain,      b.gain,      PRESET_DIFF_TOLERANCE.db))   return true;
   return false;
 }
