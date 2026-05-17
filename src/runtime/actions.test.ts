@@ -11,6 +11,7 @@ import { synthesizeBulkParams } from '../protocol/bulkParser.syn';
 import { FilterType } from '../domain/filter';
 import { PlatformType } from '../domain/platform';
 import { fromBulkParams } from '../domain/bulkToSnapshot';
+import { createHardwareProfile } from '../domain/hardware';
 import type { ChannelId } from '../domain/channels';
 
 class FakeTransport implements DspTransport {
@@ -56,6 +57,14 @@ function makeFakeChannelNameDevice() {
   return { device, calls };
 }
 
+function makeSnapshot(platform: PlatformType = PlatformType.RP2350) {
+  const bulk = parseBulkParams(synthesizeBulkParams({
+    platformId: platform === PlatformType.RP2350 ? 1 : 0,
+    formatVersion: 6,
+  }));
+  return fromBulkParams(createHardwareProfile(platform), bulk);
+}
+
 describe('actions wiring', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -63,7 +72,7 @@ describe('actions wiring', () => {
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
     const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6, masterVolumeDb: 0 }));
-    dsp.live = fromBulkParams(PlatformType.RP2350, bulk);
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
   });
 
   afterEach(() => {
@@ -157,7 +166,7 @@ describe('setEqFilter', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    dsp.live = fromBulkParams(PlatformType.RP2350, bulk);
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -233,7 +242,7 @@ describe('setMasterPreamp', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    dsp.live = fromBulkParams(PlatformType.RP2350, bulk);
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -259,7 +268,7 @@ describe('setInputPreamp', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    dsp.live = fromBulkParams(PlatformType.RP2350, bulk);
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -305,7 +314,7 @@ describe('setChannelName', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    dsp.live = fromBulkParams(PlatformType.RP2350, bulk);
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -385,10 +394,7 @@ describe('setChannelName', () => {
   });
 
   it('patches RP2040 PDM output name at compact output slot 4', async () => {
-    dsp.live = fromBulkParams(
-      PlatformType.RP2040,
-      parseBulkParams(synthesizeBulkParams({ platformId: 0, formatVersion: 6 })),
-    );
+    dsp.live = makeSnapshot(PlatformType.RP2040);
 
     setChannelName(10 satisfies ChannelId, 'Sub');
 

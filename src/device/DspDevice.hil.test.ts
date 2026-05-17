@@ -45,7 +45,7 @@ describe('DspDevice — read-side smoke (HIL)', () => {
   // require a second device handle that fights the first one's libusb claim.
 
   it('getSystemStatus returns plausible peaks/cpu/clip values', async () => {
-    await device.getDeviceInfo(); // ensure numCh is cached
+    await device.getDeviceInfo(); // ensure hardware profile is cached
     const info = await device.getDeviceInfo();
     const numCh = info.type === PlatformType.RP2040 ? 7 : 11;
 

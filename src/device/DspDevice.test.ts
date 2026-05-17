@@ -2,7 +2,7 @@
 // bulk shape, master-volume roundtrip, buffer-stats parsing) live in
 // MockTransport.test.ts; this file covers the things only DspDevice
 // adds on top: getDeviceInfo collapsing, getSystemInfo aggregation,
-// per-input preamp, and the numCh caching contract for getSystemStatus.
+// per-input preamp, and the hardware-profile contract for getSystemStatus.
 
 import { describe, it, test, expect, beforeEach } from 'vitest';
 import { MockTransport } from '../transport/MockTransport';
@@ -14,6 +14,7 @@ import { WireCmd } from '../protocol/wireCmd';
 import { SystemStatusValue } from '../protocol/wireTypes';
 import { CrossfeedPreset, LevellerSpeed, MasterVolumeMode } from '../domain/processing';
 import { FilterType } from '../domain/filter';
+import { ChannelId } from '../domain/channels';
 import type { PresetSlot } from '../domain/presetLimits';
 
 describe('DspDevice facade', () => {
@@ -75,8 +76,8 @@ describe('DspDevice facade', () => {
   });
 });
 
-describe('DspDevice — getSystemStatus numCh contract', () => {
-  it('uses platform-correct numCh after getDeviceInfo primes the cache', async () => {
+describe('DspDevice — getSystemStatus hardware profile contract', () => {
+  it('uses platform-correct channel count after getDeviceInfo primes hardware', async () => {
     const t = new MockTransport({ platform: 'rp2350' });
     const d = new DspDevice(t);
     await d.open();
@@ -405,6 +406,7 @@ describe('DspDevice — channel names', () => {
     const t = new MockTransport({ platform: 'rp2350' });
     d = new DspDevice(t);
     await d.open();
+    await d.getDeviceInfo();
   });
 
   it('roundtrips a channel name (Subwoofer on channel 3)', async () => {
@@ -673,6 +675,7 @@ describe('DspDevice — preset name truncation', () => {
     const t = new MockTransport({ platform: 'rp2350' });
     d = new DspDevice(t);
     await d.open();
+    await d.getDeviceInfo();
   });
 
   it('setPresetName silently truncates ASCII names over 31 bytes', async () => {
@@ -720,6 +723,9 @@ describe('DspDevice — getFilter multi-read', () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, val, len) => {
+        if (req === WireCmd.GetPlatform.code) {
+          return new Uint8Array([1, 1, 2, 0]);
+        }
         seen.push({ req, val, len });
         // Strict protocol check: channel/band bits must match expected base.
         // Done inline so a future test refactor can't accidentally lose this coverage.
@@ -729,7 +735,9 @@ describe('DspDevice — getFilter multi-read', () => {
       },
       ctrlOut: async () => {},
     };
-    const f = await new DspDevice(t).getFilter(2, 5);
+    const d = new DspDevice(t);
+    await d.getDeviceInfo();
+    const f = await d.getFilter(2, 5);
 
     expect(seen).toHaveLength(4);
     expect(seen.map(s => s.req)).toEqual([0x43, 0x43, 0x43, 0x43]);
@@ -742,5 +750,53 @@ describe('DspDevice — getFilter multi-read', () => {
     expect(f.frequency).toBeCloseTo(1234, 1);
     expect(f.q).toBeCloseTo(0.7, 4);
     expect(f.gain).toBeCloseTo(-3.5, 4);
+  });
+
+  test('throws on channel-scoped operations before getDeviceInfo', async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    const d = new DspDevice(t);
+    await d.open();
+
+    await expect(d.setFilter(2, 0, {
+      type: FilterType.Peaking,
+      frequency: 1000,
+      q: 1,
+      gain: 0,
+    })).rejects.toThrow(/before getDeviceInfo/);
+  });
+
+  test('maps RP2040 PDM channel-scoped commands to firmware channel 6', async () => {
+    const seenOut: Array<{ req: number; val: number; data: Uint8Array }> = [];
+    const seenIn: Array<{ req: number; val: number; len: number }> = [];
+    const t: DspTransport = {
+      open: async () => {},
+      close: async () => {},
+      isOpen: () => true,
+      on: () => () => {},
+      ctrlIn: async (req, val, len) => {
+        seenIn.push({ req, val, len });
+        if (req === WireCmd.GetPlatform.code) {
+          return new Uint8Array([0, 1, 2, 0]);
+        }
+        return new Uint8Array(len);
+      },
+      ctrlOut: async (req, val, data) => {
+        seenOut.push({ req, val, data });
+      },
+    };
+    const d = new DspDevice(t);
+
+    await d.getDeviceInfo();
+    await d.setFilter(ChannelId.Pdm, 0, { type: FilterType.Peaking, frequency: 80, q: 1, gain: -3 });
+    await d.getFilter(ChannelId.Pdm, 1);
+    await d.setChannelName(ChannelId.Pdm, 'Sub');
+    await d.getChannelName(ChannelId.Pdm);
+
+    const filterPacket = seenOut.find((call) => call.req === WireCmd.SetEqParam.code)?.data;
+    expect(filterPacket?.[0]).toBe(6);
+    expect(seenIn.filter((call) => call.req === WireCmd.GetEqParam.code).map((call) => call.val & ~0xF))
+      .toEqual(Array(4).fill((6 << 8) | (1 << 4)));
+    expect(seenOut.find((call) => call.req === WireCmd.SetChannelName.code)?.val).toBe(6);
+    expect(seenIn.find((call) => call.req === WireCmd.GetChannelName.code)?.val).toBe(6);
   });
 });

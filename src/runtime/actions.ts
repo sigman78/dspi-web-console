@@ -1,10 +1,9 @@
 import { fromBulkParams } from '../domain/bulkToSnapshot';
 import type { BulkParams } from '../protocol/bulkParser';
 import type { FilterParams } from '../domain/filter';
-import type { PlatformType } from '../domain/platform';
 import type { ChannelId, InputSlot, OutputSlot } from '../domain/channels';
-import { outputSlotForChannel } from '../domain/channels';
-import { CrossfeedPreset, LevellerSpeed, MasterVolumeMode } from '../domain/processing';
+import { createHardwareProfile, type HardwareProfile } from '../domain/hardware';
+import { CrossfeedPreset, LevellerSpeed } from '../domain/processing';
 import type { DspTransport } from '../transport/DspTransport';
 import { session, setStatus } from '../state/session.svelte';
 import { applyDspSnapshot, dsp, patchSnapshot, resetDsp } from '../state/dsp.svelte';
@@ -107,8 +106,8 @@ export function setChannelName(id: ChannelId, name: string): void {
   if (!dsp.live?.channels) return;
   const ch = focusChannel(id);
   const resolved = name.trim() || ch.read().defaultName;
-  const outSlot = outputSlotForChannel(dsp.live.platform.type, id);
-  const out = outSlot !== null ? tryFocusOutput(outSlot) : null;
+  const outSlot = dsp.live.outputs.find((output) => output.id === id)?.wireIndex;
+  const out = outSlot != null ? tryFocusOutput(outSlot) : null;
   instantCommand({
     apply: () => {
       ch.modify((c) => ({ ...c, name: resolved }));
@@ -375,10 +374,12 @@ export async function fullSync(): Promise<void> {
         d.getDeviceInfo(),
         d.getAllParams(),
       ]);
+      const hardware = createHardwareProfile(info.type);
       session.identity.serial = serial;
       session.identity.firmwareVersion = info.firmwareVersion;
       session.identity.platformType = info.type;
-      hydrateFromBulk(info.type, bulk);
+      session.hardware = hardware;
+      hydrateFromBulk(hardware, bulk);
       setStatus('connected');
       settings.lastSerial = serial;
       await reconcileAfterSync();
@@ -416,8 +417,8 @@ async function reconcileAfterSync(): Promise<void> {
   }
 }
 
-function hydrateFromBulk(platformType: PlatformType, bulk: BulkParams): void {
-  applyDspSnapshot(fromBulkParams(platformType, bulk));
+function hydrateFromBulk(hardware: HardwareProfile, bulk: BulkParams): void {
+  applyDspSnapshot(fromBulkParams(hardware, bulk));
 }
 
 export function setMasterVolume(db: number): void {
@@ -451,6 +452,7 @@ export function attachTransportListeners(transport: DspTransport): () => void {
     cancelResync();
     cancelAllCommands();
     stopPolling();
+    session.hardware = null;
     setStatus('disconnected');
     resetDsp();
     resetStatus();

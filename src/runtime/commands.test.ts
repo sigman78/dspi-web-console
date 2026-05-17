@@ -4,6 +4,7 @@ import { parseBulkParams } from '../protocol/bulkParser';
 import { synthesizeBulkParams } from '../protocol/bulkParser.syn';
 import { PlatformType } from '../domain/platform';
 import { fromBulkParams } from '../domain/bulkToSnapshot';
+import { createHardwareProfile } from '../domain/hardware';
 import type { DspDevice } from '../device/DspDevice';
 import { bindDevice, session, setStatus } from '../state/session.svelte';
 import { dsp, patchSnapshot } from '../state/dsp.svelte';
@@ -21,7 +22,7 @@ describe('instantCommand', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    dsp.live = fromBulkParams(PlatformType.RP2350, bulk);
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
     dsp.pendingWrites = new SvelteSet();
     // Reset session status so leaked 'error' from a prior test in the suite
     // does not pollute assertions in tests that don't explicitly set status.
@@ -103,7 +104,7 @@ describe('scrubCommand', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    dsp.live = fromBulkParams(PlatformType.RP2350, bulk);
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
     dsp.pendingWrites = new SvelteSet();
     // Reset session status so leaked 'error' from a prior test in the suite
     // does not pollute assertions in tests that don't explicitly set status.
@@ -197,7 +198,7 @@ describe('batchCommand', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    dsp.live = fromBulkParams(PlatformType.RP2350, bulk);
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
     dsp.pendingWrites = new SvelteSet();
     // Reset session status so leaked 'error' from a prior test in the suite
     // does not pollute assertions in tests that don't explicitly set status.
@@ -279,7 +280,7 @@ describe('cancelAllCommands', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    dsp.live = fromBulkParams(PlatformType.RP2350, bulk);
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
     dsp.pendingWrites = new SvelteSet();
   });
   afterEach(() => {

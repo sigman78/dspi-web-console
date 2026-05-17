@@ -1,13 +1,14 @@
 import * as Wire from '../protocol/wireTypes';
 import type { BulkParams } from '../protocol/bulkParser';
-import type { PlatformType } from './platform';
 import {
-  displayNameForChannel,
-  forPlatform,
   outputModeForChannel,
-  outputSlotForChannel,
   type InputSlot,
 } from './channels';
+import {
+  displayNameForHardwareChannel,
+  wireChannelFor,
+  type HardwareProfile,
+} from './hardware';
 import { FilterType, type FilterParams } from './filter';
 import type { DspSnapshot } from './snapshot';
 import type { OutputModel, RouteModel } from './mixer';
@@ -34,20 +35,19 @@ function narrowFilterType(t: number): FilterType {
   }
 }
 
-export function fromBulkParams(platformType: PlatformType, bulk: BulkParams): DspSnapshot {
-  const layout = forPlatform(platformType);
+export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): DspSnapshot {
   const channelNames = bulk.channelNames.slice(0, Wire.Const.NUM_CHANNELS);
   const outputSlotTypes = bulk.i2s?.outputSlotTypes;
 
-  const channels = layout.channels.map((channel) => ({
+  const channels = hardware.channels.map((channel) => ({
     id: channel.id,
-    name: displayNameForChannel(channel.id, channelNames),
+    name: displayNameForHardwareChannel(hardware, channel.id, channelNames),
     defaultName: channel.name,
     shortName: channel.shortName,
     bandCount: channel.bandCount,
     isOutput: channel.isOutput,
     outputMode: outputModeForChannel(channel.id, outputSlotTypes),
-    filters: (bulk.filters[channel.id]?.slice(0, channel.bandCount) ?? []).map<FilterParams>((filter) => ({
+    filters: (bulk.filters[wireChannelFor(hardware, channel.id)]?.slice(0, channel.bandCount) ?? []).map<FilterParams>((filter) => ({
       type: narrowFilterType(filter.type),
       frequency: filter.frequency,
       q: filter.q,
@@ -55,9 +55,9 @@ export function fromBulkParams(platformType: PlatformType, bulk: BulkParams): Ds
     })),
   }));
 
-  const outputs: OutputModel[] = layout.outputs.map((channel) => {
-    const wireIndex = outputSlotForChannel(platformType, channel.id);
-    if (wireIndex === null) {
+  const outputs: OutputModel[] = hardware.outputs.map((channel) => {
+    const wireIndex = hardware.outputSlotByChannel[channel.id];
+    if (wireIndex == null) {
       throw new Error(`Channel ${channel.id} is not an output channel`);
     }
     const outputMode = outputModeForChannel(channel.id, outputSlotTypes);
@@ -68,7 +68,7 @@ export function fromBulkParams(platformType: PlatformType, bulk: BulkParams): Ds
     return {
       id: channel.id,
       wireIndex,
-      name: displayNameForChannel(channel.id, channelNames),
+      name: displayNameForHardwareChannel(hardware, channel.id, channelNames),
       shortName: channel.shortName,
       outputMode,
       enabled: state.enabled,
@@ -79,13 +79,13 @@ export function fromBulkParams(platformType: PlatformType, bulk: BulkParams): Ds
   });
 
   const routes: RouteModel[] = [];
-  for (let inputIndex = 0; inputIndex < layout.inputs.length; inputIndex++) {
-    const input = layout.inputs[inputIndex];
+  for (let inputIndex = 0; inputIndex < hardware.inputs.length; inputIndex++) {
+    const input = hardware.inputs[inputIndex];
     for (const output of outputs) {
       const cp = bulk.crosspoints[inputIndex][output.wireIndex];
       routes.push({
         inputIndex: inputIndex as InputSlot,
-        inputName: displayNameForChannel(input.id, channelNames),
+        inputName: displayNameForHardwareChannel(hardware, input.id, channelNames),
         outputId: output.id,
         outputWireIndex: output.wireIndex,
         outputName: output.name,
@@ -100,7 +100,13 @@ export function fromBulkParams(platformType: PlatformType, bulk: BulkParams): Ds
   // Each fullSync replaces the snapshot wholesale, and the parsed bulk goes
   // out of scope, so there's no aliasing concern.
   return {
-    platform: layout.info,
+    platform: {
+      type: hardware.type,
+      name: hardware.name,
+      outputCount: hardware.outputCount,
+      totalChannelCount: hardware.totalChannelCount,
+      pdmOutputIndex: hardware.pdmOutputIndex,
+    },
     formatVersion: bulk.formatVersion,
     bypass: bulk.bypass,
     masterPreampDb: bulk.preampDb,
