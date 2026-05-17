@@ -64,6 +64,17 @@
     if (isActive) return;
     await loadPresetSlot(slot);
   }
+
+  function onKeyDown(e: KeyboardEvent) {
+    if (editing) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      void onClick();
+    } else if (e.key === 'F2') {
+      e.preventDefault();
+      enterRename();
+    }
+  }
 </script>
 
 <div
@@ -75,6 +86,7 @@
   class:renaming={editing}
   onclick={onClick}
   ondblclick={onDoubleClick}
+  onkeydown={onKeyDown}
   role="button"
   tabindex="0"
 >
