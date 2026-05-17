@@ -9,13 +9,12 @@ import {
 import { synthesizeBufferStats } from '../protocol/bufferStats.syn';
 import { Const, SystemStatusValue, SetFilterPacket } from '../protocol/wireTypes';
 import { Codec } from '../utils';
-import { PlatformType } from '../domain/platform';
-import { CrossfeedPreset, LevellerSpeed, MasterVolumeMode } from '../domain/processing';
-import { defaultFilter, type FilterParams } from '../domain/filter';
 import {
-  type CrossPoint,
-  type OutputState,
-} from '../domain/mixer';
+  PlatformType,
+  CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
+  defaultFilter, type FilterParams,
+  type CrossPoint, type OutputState,
+} from '../domain';
 
 export interface MockOptions {
   platform: 'rp2040' | 'rp2350';

@@ -1,4 +1,4 @@
-import type { ChannelId } from '../../domain/channels';
+import type { ChannelId } from '../../domain';
 import { copyEqBands } from '../../runtime/actions';
 
 export const eqUi = $state<{

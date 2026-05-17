@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { bootMock } from './session';
 import { presets, resetPresets, boundary, resolveBoundary, settings, session, dsp } from '../state';
 import { PresetStartupMode } from '../protocol/wireTypes';
-import type { PresetSlot } from '../domain/presetLimits';
+import type { PresetSlot } from '../domain';
 import {
   fetchPresetInfo,
   saveActivePreset,

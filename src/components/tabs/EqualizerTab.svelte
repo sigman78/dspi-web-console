@@ -13,9 +13,8 @@
     clearCopySource,
     applyCopyFrom,
   } from '../eq/eqUi.svelte';
-  import { FilterType, defaultFilter, type FilterParams } from '../../domain/filter';
+  import { FilterType, defaultFilter, type FilterParams, inputIndexOf } from '../../domain';
   import { setEqFilter, setInputPreamp } from '../../runtime/actions';
-  import { inputIndexOf } from '../../domain/channels';
 
   const snap = $derived(dsp.live);
 

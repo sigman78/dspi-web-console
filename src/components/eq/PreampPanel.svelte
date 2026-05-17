@@ -1,9 +1,8 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
   import ValueField from '../chrome/ValueField.svelte';
-  import * as Eq from '../../domain/eqLimits';
+  import { Eq, type ChannelId } from '../../domain';
   import { chKey } from '../../styles/palette';
-  import type { ChannelId } from '../../domain/channels';
 
   const {
     preampDb,
@@ -17,11 +16,11 @@
     onReset: () => void;
   } = $props();
 
-  const min = Eq.EQ_PREAMP_MIN_DB;
-  const max = Eq.EQ_PREAMP_MAX_DB;
+  const min = Eq.PREAMP_MIN_DB;
+  const max = Eq.PREAMP_MAX_DB;
   const range = max - min;
   // Tick positions in % across the slider track. Includes 0 (the unity line).
-  const ticks = Eq.EQ_PREAMP_TICKS_DB;
+  const ticks = Eq.PREAMP_TICKS_DB;
   const fillPct = $derived(((preampDb - min) / range) * 100);
 </script>
 
@@ -70,7 +69,7 @@
         value={preampDb}
         min={min}
         max={max}
-        step={Eq.EQ_PREAMP_STEP_DB}
+        step={Eq.PREAMP_STEP_DB}
         tone="signed"
         align="right"
         onChange={onChange}

@@ -6,8 +6,7 @@ import { parseBufferStats } from '../protocol/bufferStats';
 import { parseSystemStatus } from '../protocol/systemStatus';
 import { parseBulkParams } from '../protocol/bulkParser';
 import { Codec } from '../utils';
-import { FilterType } from '../domain/filter';
-import { MasterVolumeMode } from '../domain/processing';
+import { FilterType, MasterVolumeMode } from '../domain';
 
 async function createDevice(t: MockTransport): Promise<DspDevice> {
   const openTransport = t.isOpen() ? async () => {} : () => t.open();

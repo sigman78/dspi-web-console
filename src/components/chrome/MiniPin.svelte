@@ -1,6 +1,6 @@
 <script lang="ts">
   import { chKey } from '../../styles/palette';
-  import type { ChannelId } from '../../domain/channels';
+  import type { ChannelId } from '../../domain';
 
   const {
     id,

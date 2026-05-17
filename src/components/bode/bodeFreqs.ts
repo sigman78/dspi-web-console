@@ -3,11 +3,11 @@
 // (future) filter-response converter sample at these exact frequencies, so a
 // curve produced anywhere can be rendered anywhere without resampling.
 
-import { EQ_FREQ_MIN_HZ, EQ_FREQ_MAX_HZ } from '../../domain/eqLimits';
+import { Eq } from '../../domain';
 
 export const BODE_BINS = 201;
-export const BODE_FMIN = EQ_FREQ_MIN_HZ;
-export const BODE_FMAX = EQ_FREQ_MAX_HZ;
+export const BODE_FMIN = Eq.FREQ_MIN_HZ;
+export const BODE_FMAX = Eq.FREQ_MAX_HZ;
 
 export const BODE_FREQS: readonly number[] = (() => {
   const out = new Array<number>(BODE_BINS);

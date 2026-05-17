@@ -17,9 +17,7 @@
 import type { DspTransport } from '../transport/DspTransport';
 import { type BinCodec, Codec } from '../utils';
 import * as Wire from './wireTypes';
-import type { ChannelId, InputSlot, OutputSlot } from '../domain/channels';
-import type { FilterType } from '../domain/filter';
-import type { MasterVolumeMode } from '../domain/processing';
+import type { ChannelId, InputSlot, OutputSlot, FilterType, MasterVolumeMode } from '../domain';
 
 // Descriptor types
 

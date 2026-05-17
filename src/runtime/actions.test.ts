@@ -6,12 +6,14 @@ import type { DspTransport, TransportEvent } from '../transport/DspTransport';
 import type { DspDevice } from '../device/DspDevice';
 import { parseBulkParams } from '../protocol/bulkParser';
 import { synthesizeBulkParams } from '../protocol/bulkParser.syn';
-import { FilterType } from '../domain/filter';
-import { PlatformType } from '../domain/platform';
-import { fromBulkParams } from '../domain/bulkToSnapshot';
-import { createHardwareProfile } from '../domain/hardware';
-import type { ChannelId } from '../domain/channels';
-import { MasterVolumeMode } from '../domain/processing';
+import {
+  FilterType,
+  PlatformType,
+  fromBulkParams,
+  createHardwareProfile,
+  type ChannelId,
+  MasterVolumeMode,
+} from '../domain';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 

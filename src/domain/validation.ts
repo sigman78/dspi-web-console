@@ -32,16 +32,16 @@ function rangeCheck(name: string, v: number, min: number, max: number): Validati
 }
 
 export function validateBandFrequency(hz: number): ValidationResult {
-  return rangeCheck('frequency', hz, Eq.EQ_FREQ_MIN_HZ, Eq.EQ_FREQ_MAX_HZ);
+  return rangeCheck('frequency', hz, Eq.FREQ_MIN_HZ, Eq.FREQ_MAX_HZ);
 }
 export function validateBandQ(q: number): ValidationResult {
-  return rangeCheck('Q', q, Eq.EQ_Q_MIN, Eq.EQ_Q_MAX);
+  return rangeCheck('Q', q, Eq.Q_MIN, Eq.Q_MAX);
 }
 export function validateBandGain(db: number): ValidationResult {
-  return rangeCheck('band gain', db, Eq.EQ_BAND_GAIN_MIN_DB, Eq.EQ_BAND_GAIN_MAX_DB);
+  return rangeCheck('band gain', db, Eq.BAND_GAIN_MIN_DB, Eq.BAND_GAIN_MAX_DB);
 }
 export function validateInputPreampDb(db: number): ValidationResult {
-  return rangeCheck('input preamp', db, Eq.EQ_PREAMP_MIN_DB, Eq.EQ_PREAMP_MAX_DB);
+  return rangeCheck('input preamp', db, Eq.PREAMP_MIN_DB, Eq.PREAMP_MAX_DB);
 }
 export function validateOutputGainDb(db: number): ValidationResult {
   return rangeCheck('output gain', db, Mix.OUTPUT_GAIN_MIN_DB, Mix.OUTPUT_GAIN_MAX_DB);

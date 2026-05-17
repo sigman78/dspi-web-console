@@ -9,8 +9,7 @@ import {
 import { reconcileAfterSync } from './actions';
 import { fetchAndApplyAsBaseline } from './resync';
 import type { DspDevice } from '../device/DspDevice';
-import type { PresetSlot } from '../domain/presetLimits';
-import { PRESET_SLOT_COUNT } from '../domain/presetLimits';
+import { type PresetSlot, PRESET_SLOT_COUNT } from '../domain';
 import type { PresetResult } from '../protocol/results';
 import { PresetStartupMode } from '../protocol/wireTypes';
 import { Log, type Result } from '../utils';

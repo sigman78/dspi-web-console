@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { ChannelId } from '../../domain/channels';
+  import type { ChannelId } from '../../domain';
 
   // Curve-only API. Callers provide pre-sampled magnitude points on the
   // canonical 201-bin grid (see bodeFreqs.ts). The plot is dumb about EQ
@@ -35,13 +35,13 @@
 
 <script lang="ts">
   import { BODE_BINS, fForXNorm, nearestBinIndex } from './bodeFreqs';
-  import * as Eq from '../../domain/eqLimits';
+  import { Eq } from '../../domain';
   import { chShade } from '../../styles/palette';
 
   const {
     curves,
     markers = [],
-    yRange = [Eq.EQ_BODE_DB_RANGE[0], Eq.EQ_BODE_DB_RANGE[1]] as [number, number],
+    yRange = [Eq.BODE_DB_RANGE[0], Eq.BODE_DB_RANGE[1]] as [number, number],
     height = 220,
     crosshair = true,
   }: {
@@ -78,7 +78,7 @@
     return plotH - ((db - yMin) / (yMax - yMin)) * plotH;
   }
   function xNormForFLocal(f: number): number {
-    return Math.log(f / Eq.EQ_FREQ_MIN_HZ) / Math.log(Eq.EQ_FREQ_MAX_HZ / Eq.EQ_FREQ_MIN_HZ);
+    return Math.log(f / Eq.FREQ_MIN_HZ) / Math.log(Eq.FREQ_MAX_HZ / Eq.FREQ_MIN_HZ);
   }
   function xForF(f: number): number {
     return PAD_L + xNormForFLocal(f) * plotW;
@@ -141,7 +141,7 @@
     for (const dec of [10, 100, 1000, 10000]) {
       for (let m = 2; m <= 9; m++) {
         const f = dec * m;
-        if (f >= Eq.EQ_FREQ_MIN_HZ && f <= Eq.EQ_FREQ_MAX_HZ && !set.has(f)) out.push(f);
+        if (f >= Eq.FREQ_MIN_HZ && f <= Eq.FREQ_MAX_HZ && !set.has(f)) out.push(f);
       }
     }
     return out;
@@ -350,7 +350,7 @@
 
   <!-- Markers (e.g. EQ band positions) -->
   {#each markers as m, i (m.id ?? i)}
-    {@const mx = xForF(Math.max(Eq.EQ_FREQ_MIN_HZ, Math.min(Eq.EQ_FREQ_MAX_HZ, m.f)))}
+    {@const mx = xForF(Math.max(Eq.FREQ_MIN_HZ, Math.min(Eq.FREQ_MAX_HZ, m.f)))}
     {@const my = yForDb(Math.max(yMin, Math.min(yMax, m.db)))}
     {@const mc = m.channelId != null
       ? chShade(m.channelId, 'bright')

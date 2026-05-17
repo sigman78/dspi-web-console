@@ -7,7 +7,7 @@
     setCrossfeedEnabled, setCrossfeedPreset, setCrossfeedItd,
     setCrossfeedFreq, setCrossfeedFeedDb,
   } from '../../runtime/actions';
-  import { CrossfeedPreset } from '../../domain/processing';
+  import { CrossfeedPreset } from '../../domain';
 
   const cf = $derived(dsp.live?.crossfeed);
   const connected = $derived(session.status === 'connected');

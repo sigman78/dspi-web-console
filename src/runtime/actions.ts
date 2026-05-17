@@ -1,9 +1,11 @@
-import { fromBulkParams } from '../domain/bulkToSnapshot';
+import {
+  fromBulkParams,
+  type FilterParams,
+  type ChannelId, type InputSlot, type OutputSlot,
+  type HardwareProfile,
+  CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
+} from '../domain';
 import type { BulkParams } from '../protocol/bulkParser';
-import type { FilterParams } from '../domain/filter';
-import type { ChannelId, InputSlot, OutputSlot } from '../domain/channels';
-import type { HardwareProfile } from '../domain/hardware';
-import { CrossfeedPreset, LevellerSpeed, MasterVolumeMode } from '../domain/processing';
 import type { DspTransport } from '../transport/DspTransport';
 import type { DspDevice } from '../device/DspDevice';
 import {

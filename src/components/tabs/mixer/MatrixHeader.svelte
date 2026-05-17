@@ -1,6 +1,5 @@
 <script lang="ts">
-  import type { MatrixColumn } from '../../../domain/mixerView';
-  import type { OutputSlot } from '../../../domain/channels';
+  import { type MatrixColumn, type OutputSlot, Mix } from '../../../domain';
   import {
     setOutputDelay,
     setOutputGain,
@@ -9,7 +8,6 @@
   } from '../../../runtime/actions';
   import ValueField from '../../chrome/ValueField.svelte';
   import { chKey } from '../../../styles/palette';
-  import * as Mix from '../../../domain/mixerLimits';
 
   const {
     column,

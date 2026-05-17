@@ -5,10 +5,12 @@
 //
 // See docs/superpowers/specs/2026-05-10-presets-wire-protocol-plan.md §State runtime.
 
-import { type PresetSlot, PRESET_SLOT_COUNT } from '../domain/presetLimits';
-import type { PresetDirectoryInfo } from '../domain/presetDirectory';
-import { MasterVolumeMode } from '../domain/processing';
-import { presetDiff } from '../domain/presetDiff';
+import {
+  type PresetSlot, PRESET_SLOT_COUNT,
+  type PresetDirectoryInfo,
+  MasterVolumeMode,
+  presetDiff,
+} from '../domain';
 import { dsp } from './dsp.svelte';
 import { settings } from './settings.svelte';
 

@@ -1,5 +1,5 @@
 import { SvelteSet } from 'svelte/reactivity';
-import type { DspSnapshot } from '../domain/snapshot';
+import type { DspSnapshot } from '../domain';
 
 export interface DspState {
   // Our belief about device RAM. Mutates on every user write; reset to

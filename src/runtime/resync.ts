@@ -1,4 +1,4 @@
-import { fromBulkParams } from '../domain/bulkToSnapshot';
+import { fromBulkParams } from '../domain';
 import { session, applyDspSnapshot, applyLiveSnapshot, dsp } from '../state';
 import { Log } from '../utils';
 import { makeResyncScheduler } from './schedulers';

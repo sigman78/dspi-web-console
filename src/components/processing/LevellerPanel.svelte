@@ -7,7 +7,7 @@
     setLevellerEnabled, setLevellerSpeed, setLevellerLookahead,
     setLevellerAmount, setLevellerMaxGain, setLevellerGate,
   } from '../../runtime/actions';
-  import { LevellerSpeed } from '../../domain/processing';
+  import { LevellerSpeed } from '../../domain';
 
   const lv = $derived(dsp.live?.leveller);
   const connected = $derived(session.status === 'connected');

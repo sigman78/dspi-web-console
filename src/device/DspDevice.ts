@@ -6,13 +6,15 @@ import * as Wire from '../protocol/wireTypes';
 import { SystemStatusValue } from '../protocol/wireTypes';
 import { WireCmd, readCmd, writeCmd } from '../protocol/wireCmd';
 import { Codec, utf8Truncate, type Result } from '../utils';
-import type { ChannelId, InputSlot, OutputSlot } from '../domain/channels';
-import { createHardwareProfile, wireChannelFor, type HardwareProfile } from '../domain/hardware';
-import { PlatformType } from '../domain/platform';
-import { CrossfeedPreset, LevellerSpeed, MasterVolumeMode } from '../domain/processing';
-import { type PresetSlot, PRESET_NAME_MAX_LEN, CHANNEL_NAME_MAX_LEN, PRESET_SLOT_COUNT } from '../domain/presetLimits';
-import type { PresetDirectoryInfo } from '../domain/presetDirectory';
-import { FilterType, type FilterParams } from '../domain/filter';
+import {
+  type ChannelId, type InputSlot, type OutputSlot,
+  createHardwareProfile, wireChannelFor, type HardwareProfile,
+  PlatformType,
+  CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
+  type PresetSlot, PRESET_NAME_MAX_LEN, CHANNEL_NAME_MAX_LEN, PRESET_SLOT_COUNT,
+  type PresetDirectoryInfo,
+  FilterType, type FilterParams,
+} from '../domain';
 import type { BufferStats } from '../protocol/bufferStats';
 import type { SystemStatus } from '../protocol/systemStatus';
 import type { BulkParams } from '../protocol/bulkParser';

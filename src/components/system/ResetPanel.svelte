@@ -3,7 +3,7 @@
   import Panel from '../chrome/Panel.svelte';
   import { presets, session } from '../../state';
   import { fullSync } from '../../runtime/actions';
-  import { PRESET_SLOT_COUNT } from '../../domain/presetLimits';
+  import { PRESET_SLOT_COUNT } from '../../domain';
 
   const connected = $derived(session.status === 'connected');
 

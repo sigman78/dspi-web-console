@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import { FilterType } from '../../domain/filter';
+  import { FilterType } from '../../domain';
 
   // UI label per FilterType. "Off" is the user-facing name for Flat.
   export const TYPE_LABELS: Record<FilterType, string> = {
