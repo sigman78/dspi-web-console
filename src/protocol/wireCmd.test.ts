@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { DspTransport } from '../transport/DspTransport';
-import { Codec, encode } from '../utils/binCodec';
+import { Codec } from '../utils';
 import { WireCmd, readCmd, writeCmd } from './wireCmd';
 
 // Minimal in-memory transport for unit tests.
@@ -20,7 +20,7 @@ function fakeTransport(opts: {
 
 describe('readCmd', () => {
   it('decodes a fixed-size codec payload', async () => {
-    const t = fakeTransport({ in: () => encode(Codec.f32, -7.25) });
+    const t = fakeTransport({ in: () => Codec.encode(Codec.f32, -7.25) });
     expect(await readCmd(t, WireCmd.GetMasterVolume)).toBeCloseTo(-7.25, 5);
   });
 

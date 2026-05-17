@@ -5,8 +5,7 @@
 //
 // The synthesizer side is in `./bulkParser.syn.ts`.
 
-import { BinReader } from '../utils/binStream';
-import { sizeOf } from '../utils/binCodec';
+import { BinReader, Codec } from '../utils';
 import * as Wire from './wireTypes';
 import type { CrossfeedPreset, LevellerSpeed, Loudness, Crossfeed, Leveller } from '../domain/processing';
 import type { CrossPoint, OutputState } from '../domain/mixer';
@@ -61,8 +60,8 @@ export interface BulkParams {
 }
 
 // Static byte sizes of the V6 data portions (before reserved padding).
-const PREAMP_DATA_BYTES     = sizeOf(Wire.PreampConfig);   // 8
-const MASTER_VOL_DATA_BYTES = sizeOf(Wire.MasterVolume);   // 4
+const PREAMP_DATA_BYTES     = Codec.sizeOf(Wire.PreampConfig);   // 8
+const MASTER_VOL_DATA_BYTES = Codec.sizeOf(Wire.MasterVolume);   // 4
 
 export function parseBulkParams(buffer: Uint8Array): BulkParams {
   if (buffer.length < Wire.BulkLimits.MinPacketSize) {

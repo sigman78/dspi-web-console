@@ -8,13 +8,11 @@ import type { DspTransport } from '../transport/DspTransport';
 import type { DspDevice } from '../device/DspDevice';
 import { bindDevice, session, setStatus } from '../state/session.svelte';
 import { presets } from '../state/presets.svelte';
-import { ok, fail } from '../utils/result';
-import type { Result } from '../utils/result';
+import { Result, Log } from '../utils';
 import { applyDspSnapshot, dsp, patchSnapshot, resetDsp } from '../state/dsp.svelte';
 import { settings } from '../state/settings.svelte';
 import { resetStatus, status } from '../state/telemetry.svelte';
 import { startPolling, stopPolling } from './poll';
-import { log, error } from '../utils/log';
 import { cancelResync } from './resync';
 import { batchCommand, cancelAllCommands, cancelScrubLane, instantCommand, scrubCommand } from './commands';
 import { focusChannel, focusOutput, focusRoute, tryFocusOutput } from './focus';
@@ -102,7 +100,7 @@ export function clearClips(): void {
   const d = session.device;
   if (!d) return;
   for (let i = 0; i < status.clipLatched.length; i++) status.clipLatched[i] = false;
-  void d.clearClips().catch((e) => error('clearClips', 'send failed', e));
+  void d.clearClips().catch((e) => Log.error('clearClips', 'send failed', e));
 }
 
 // Empty / whitespace-only input clears the custom name on the device; the
@@ -379,7 +377,7 @@ export async function syncDeviceSnapshot(): Promise<void> {
       session.hardware = hardware;
       hydrateFromBulk(hardware, bulk);
     } catch (err) {
-      error('sync', 'syncDeviceSnapshot failed', err);
+      Log.error('sync', 'syncDeviceSnapshot failed', err);
       setStatus('error', (err as Error).message);
       throw err;
     } finally {
@@ -405,13 +403,13 @@ export async function finishConnection(device: DspDevice): Promise<void> {
     await reconcileAfterSync();
     startPolling();
     await fetchPresetInfo();
-    log('sync', 'connected', {
+    Log.info('sync', 'connected', {
       platform: dsp.live?.platform.name,
       formatVersion: dsp.live?.formatVersion,
       masterVolumeDb: dsp.live?.masterVolumeDb,
     });
   } catch (err) {
-    error('sync', 'finishConnection failed', err);
+    Log.error('sync', 'finishConnection failed', err);
     setStatus('error', (err as Error).message);
     throw err;
   }
@@ -484,7 +482,7 @@ export function attachTransportListeners(transport: DspTransport): () => void {
     const device = session.device;
     if (!device) return;
     void finishConnection(device).catch((e) => {
-      error('transport', 'auto-finish after connect failed', e);
+      Log.error('transport', 'auto-finish after connect failed', e);
       setStatus('error', (e as Error).message);
     });
   });
@@ -509,7 +507,7 @@ export async function setMasterVolumeMode(mode: MasterVolumeMode): Promise<void>
 // Returns a Result so callers can show a success indicator.
 export async function saveMasterVolumeBaseline(): Promise<Result<void, string>> {
   const d = session.device;
-  if (!d) return fail('no device', 'no device');
+  if (!d) return Result.fail('no device', 'no device');
   const success = await d.saveMasterVolume();
-  return success ? ok(undefined) : fail('write error', 'flash write error');
+  return success ? Result.ok(undefined) : Result.fail('write error', 'flash write error');
 }

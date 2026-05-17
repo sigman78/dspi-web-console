@@ -3,7 +3,7 @@
   import { dsp } from '../../state/dsp.svelte';
   import { session } from '../../state/session.svelte';
   import { setChannelName } from '../../runtime/actions';
-  import { utf8ByteLength } from '../../utils/utf8';
+  import { utf8ByteLength } from '../../utils';
   import { CHANNEL_NAME_MAX_LEN } from '../../domain/presetLimits';
   import { chKey } from '../../styles/palette';
   import type { ChannelId } from '../../domain/channels';

@@ -5,14 +5,13 @@ import { parseBufferStats } from '../protocol/bufferStats';
 import * as Wire from '../protocol/wireTypes';
 import { SystemStatusValue } from '../protocol/wireTypes';
 import { WireCmd, readCmd, writeCmd } from '../protocol/wireCmd';
-import { Codec, decode, decodePadded, sizeOf } from '../utils/binCodec';
+import { Codec, utf8Truncate, type Result } from '../utils';
 import type { ChannelId, InputSlot, OutputSlot } from '../domain/channels';
 import { createHardwareProfile, wireChannelFor, type HardwareProfile } from '../domain/hardware';
 import { PlatformType } from '../domain/platform';
 import { CrossfeedPreset, LevellerSpeed, MasterVolumeMode } from '../domain/processing';
 import { type PresetSlot, PRESET_NAME_MAX_LEN, CHANNEL_NAME_MAX_LEN, PRESET_SLOT_COUNT } from '../domain/presetLimits';
 import type { PresetDirectoryInfo } from '../domain/presetDirectory';
-import { utf8Truncate } from '../utils/utf8';
 import { FilterType, type FilterParams } from '../domain/filter';
 import type { BufferStats } from '../protocol/bufferStats';
 import type { SystemStatus } from '../protocol/systemStatus';
@@ -25,7 +24,6 @@ import {
   PresetResult,
   type FlashResult,
 } from '../protocol/results';
-import type { Result } from '../utils/result';
 import {
   PresetDirectory,
   PresetDirRequestSize,
@@ -117,10 +115,10 @@ export class DspDevice {
   async getSystemInfo(): Promise<PartialSystemInfo> {
     const u32 = (wValue: number) =>
       this.transport.ctrlIn(WireCmd.GetStatus.code, wValue, 4)
-        .then((b) => decodePadded(Codec.u32, b));
+        .then((b) => Codec.decodePadded(Codec.u32, b));
     const i32 = (wValue: number) =>
       this.transport.ctrlIn(WireCmd.GetStatus.code, wValue, 4)
-        .then((b) => decodePadded(Codec.i32, b));
+        .then((b) => Codec.decodePadded(Codec.i32, b));
 
     const settled = await Promise.allSettled([
       u32(SystemStatusValue.ClockHz),
@@ -159,7 +157,7 @@ export class DspDevice {
   async getBufferStats(): Promise<BufferStats | null> {
     // Stays manual: parseBufferStats returns null on short responses;
     // readCmd would throw, defeating that contract.
-    const bytes = await this.transport.ctrlIn(WireCmd.GetBufferStats.code, 0, sizeOf(Wire.BufferStats));
+    const bytes = await this.transport.ctrlIn(WireCmd.GetBufferStats.code, 0, Codec.sizeOf(Wire.BufferStats));
     return parseBufferStats(bytes);
   }
 
@@ -222,10 +220,10 @@ export class DspDevice {
       t.ctrlIn(code, wValue(3), 4),
     ]);
     return {
-      type:      decode(Codec.u32, typeBytes) as FilterType,
-      frequency: decode(Codec.f32, freqBytes),
-      q:         decode(Codec.f32, qBytes),
-      gain:      decode(Codec.f32, gainBytes),
+      type:      Codec.decode(Codec.u32, typeBytes) as FilterType,
+      frequency: Codec.decode(Codec.f32, freqBytes),
+      q:         Codec.decode(Codec.f32, qBytes),
+      gain:      Codec.decode(Codec.f32, gainBytes),
     };
   }
 
@@ -371,7 +369,7 @@ export class DspDevice {
     // decodePadded zero-extends a legacy 6-byte response to the V12+
     // 7-byte schema; masterVolumeMode then reads 0 (= Independent), which
     // is the correct legacy semantic, not a sentinel.
-    const r = decodePadded(PresetDirectory, bytes);
+    const r = Codec.decodePadded(PresetDirectory, bytes);
     return {
       occupiedSlotsSet: occupiedMaskToSet(r.occupiedMask),
       startupMode:      r.startupMode,

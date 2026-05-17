@@ -4,7 +4,7 @@
 //
 // The synthesizer side is in `./bufferStats.syn.ts`.
 
-import { decode, sizeOf } from '../utils/binCodec';
+import { Codec } from '../utils';
 import * as Wire from './wireTypes';
 
 export interface SpdifBufferStats {
@@ -36,8 +36,8 @@ export interface BufferStats {
 }
 
 export function parseBufferStats(buffer: Uint8Array): BufferStats | null {
-  if (buffer.length < sizeOf(Wire.BufferStats)) return null;
-  const w = decode(Wire.BufferStats, buffer);
+  if (buffer.length < Codec.sizeOf(Wire.BufferStats)) return null;
+  const w = Codec.decode(Wire.BufferStats, buffer);
   // The struct codec already strips reserved (`_*`) fields from the output,
   // so `w.spdif` and `w.pdm` are clean; spread them through and add the
   // computed boolean projections.

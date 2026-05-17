@@ -1,7 +1,7 @@
 import { fromBulkParams } from '../domain/bulkToSnapshot';
 import { session } from '../state/session.svelte';
 import { applyDspSnapshot, applyLiveSnapshot, dsp } from '../state/dsp.svelte';
-import { warn } from '../utils/log';
+import { Log } from '../utils';
 import { makeResyncScheduler } from './schedulers';
 
 const RESYNC_MS = 250;
@@ -23,7 +23,7 @@ async function fetchAndApply(force: boolean): Promise<void> {
     // after awaiting forceResyncNow().
     applyLiveSnapshot(fromBulkParams(hardware, bulk));
   } catch (err) {
-    warn('resync', 'bulk re-fetch failed', err);
+    Log.warn('resync', 'bulk re-fetch failed', err);
   }
 }
 
@@ -68,6 +68,6 @@ export async function fetchAndApplyAsBaseline(): Promise<void> {
     session.hardware = hardware;
     applyDspSnapshot(fromBulkParams(hardware, bulk));
   } catch (err) {
-    warn('resync', 'baseline re-fetch failed', err);
+    Log.warn('resync', 'baseline re-fetch failed', err);
   }
 }

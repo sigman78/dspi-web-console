@@ -13,17 +13,17 @@ function fmt(stage: string): string {
   return `[dspi:${stage}]`;
 }
 
-export function log(stage: string, ...args: unknown[]): void {
-  if (!enabled) return;
-  console.info(fmt(stage), ...args);
-}
-
-export function warn(stage: string, ...args: unknown[]): void {
-  if (!enabled) return;
-  console.warn(fmt(stage), ...args);
-}
-
-export function error(stage: string, ...args: unknown[]): void {
+export const Log = {
+  info(stage: string, ...args: unknown[]): void {
+    if (!enabled) return;
+    console.info(fmt(stage), ...args);
+  },
+  warn(stage: string, ...args: unknown[]): void {
+    if (!enabled) return;
+    console.warn(fmt(stage), ...args);
+  },
   // Errors are always logged regardless of the toggle; diagnostics matter.
-  console.error(fmt(stage), ...args);
-}
+  error(stage: string, ...args: unknown[]): void {
+    console.error(fmt(stage), ...args);
+  },
+};

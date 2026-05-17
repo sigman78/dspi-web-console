@@ -29,13 +29,9 @@
 //  2864      16   WirePreampConfig            V6+, optional
 //  2880      16   WireMasterVolume            V6+, optional
 
-import {
-  type BinCodec,
-  Codec,
-  arr, nulStr, reserved, sizeOf, struct,
-} from '../utils/binCodec';
+import { Codec, type BinCodec } from '../utils';
 
-const { u8, u16, f32, bool8 } = Codec;
+const { u8, u16, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
 
 // Wire-format dimensions (sized to the largest platform: RP2350).
 // Names mirror the WIRE_* macros in bulk_params.h. SERIAL_LEN comes

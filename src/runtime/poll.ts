@@ -1,6 +1,6 @@
 import { session } from '../state/session.svelte';
 import { applyClipFlags, applyPeaks, status } from '../state/telemetry.svelte';
-import { warn } from '../utils/log';
+import { Log } from '../utils';
 
 
 const STATUS_INTERVAL_MS = 50;   // ~20 Hz -- peaks + cpu (REQ_GET_STATUS wValue=9)
@@ -53,7 +53,7 @@ async function doPoll(): Promise<void> {
       status.errorCount = 0;
     } catch (e) {
       status.errorCount++;
-      if (status.errorCount <= 3) warn('poll', 'getSystemStatus failed', e);
+      if (status.errorCount <= 3) Log.warn('poll', 'getSystemStatus failed', e);
       // Don't push connection to 'error': a failing status poll on a
       // working device is itself diagnostic info, not a connection loss.
     } finally {
@@ -77,7 +77,7 @@ async function doPoll(): Promise<void> {
       status.lastBufferMs = performance.now();
     } catch (e) {
       // buffer stats are optional; do not flip connection to error here
-      warn('poll', 'getBufferStats failed', e);
+      Log.warn('poll', 'getBufferStats failed', e);
       status.lastBufferMs = performance.now();
     } finally {
       inFlightBuffer = false;
@@ -98,7 +98,7 @@ async function doPoll(): Promise<void> {
     } catch (e) {
       // System info is non-critical telemetry; mark the timestamp anyway so
       // we don't tight-loop retries against a misbehaving firmware.
-      warn('poll', 'getSystemInfo failed', e);
+      Log.warn('poll', 'getSystemInfo failed', e);
       status.lastInfoMs = performance.now();
     } finally {
       inFlightInfo = false;

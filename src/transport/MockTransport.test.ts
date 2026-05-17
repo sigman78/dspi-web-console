@@ -5,7 +5,7 @@ import { WireCmd, writeCmd } from '../protocol/wireCmd';
 import { parseBufferStats } from '../protocol/bufferStats';
 import { parseSystemStatus } from '../protocol/systemStatus';
 import { parseBulkParams } from '../protocol/bulkParser';
-import { Codec, encode, decode } from '../utils/binCodec';
+import { Codec } from '../utils';
 import { FilterType } from '../domain/filter';
 import { MasterVolumeMode } from '../domain/processing';
 
@@ -82,13 +82,13 @@ describe('MockTransport — mixer matrix round-trip', () => {
   });
 
   it('roundtrips matrix route writes via SetMatrixRoute / GetMatrixRoute', async () => {
-    const payload = encode(WireCmd.SetMatrixRoute.codec, {
+    const payload = Codec.encode(WireCmd.SetMatrixRoute.codec, {
       input: 1, output: 4,
       enabled: true, phaseInvert: true, gainDb: -3.5,
     });
     await t.ctrlOut(WireCmd.SetMatrixRoute.code, 0, payload);
     const wValue = (1 << 8) | 4;
-    const got = decode(WireCmd.GetMatrixRoute.codec,
+    const got = Codec.decode(WireCmd.GetMatrixRoute.codec,
       await t.ctrlIn(WireCmd.GetMatrixRoute.code, wValue, 8));
     expect(got.enabled).toBe(true);
     expect(got.phaseInvert).toBe(true);
@@ -98,7 +98,7 @@ describe('MockTransport — mixer matrix round-trip', () => {
   });
 
   it('matrix route writes show up in the next bulk read', async () => {
-    const payload = encode(WireCmd.SetMatrixRoute.codec, {
+    const payload = Codec.encode(WireCmd.SetMatrixRoute.codec, {
       input: 0, output: 2,
       enabled: true, phaseInvert: false, gainDb: 1.25,
     });
@@ -110,15 +110,15 @@ describe('MockTransport — mixer matrix round-trip', () => {
 
   it('roundtrips per-output enable / mute / gain / delay', async () => {
     const out = 7;
-    await t.ctrlOut(WireCmd.SetOutputEnable.code, out, encode(Codec.bool8, true));
-    await t.ctrlOut(WireCmd.SetOutputMute.code,   out, encode(Codec.bool8, true));
-    await t.ctrlOut(WireCmd.SetOutputGain.code,   out, encode(Codec.f32,  -2.5));
-    await t.ctrlOut(WireCmd.SetOutputDelay.code,  out, encode(Codec.f32,   4.2));
+    await t.ctrlOut(WireCmd.SetOutputEnable.code, out, Codec.encode(Codec.bool8, true));
+    await t.ctrlOut(WireCmd.SetOutputMute.code,   out, Codec.encode(Codec.bool8, true));
+    await t.ctrlOut(WireCmd.SetOutputGain.code,   out, Codec.encode(Codec.f32,  -2.5));
+    await t.ctrlOut(WireCmd.SetOutputDelay.code,  out, Codec.encode(Codec.f32,   4.2));
 
-    expect(decode(Codec.bool8, await t.ctrlIn(WireCmd.GetOutputEnable.code, out, 1))).toBe(true);
-    expect(decode(Codec.bool8, await t.ctrlIn(WireCmd.GetOutputMute.code,   out, 1))).toBe(true);
-    expect(decode(Codec.f32,   await t.ctrlIn(WireCmd.GetOutputGain.code,   out, 4))).toBeCloseTo(-2.5, 4);
-    expect(decode(Codec.f32,   await t.ctrlIn(WireCmd.GetOutputDelay.code,  out, 4))).toBeCloseTo(4.2, 4);
+    expect(Codec.decode(Codec.bool8, await t.ctrlIn(WireCmd.GetOutputEnable.code, out, 1))).toBe(true);
+    expect(Codec.decode(Codec.bool8, await t.ctrlIn(WireCmd.GetOutputMute.code,   out, 1))).toBe(true);
+    expect(Codec.decode(Codec.f32,   await t.ctrlIn(WireCmd.GetOutputGain.code,   out, 4))).toBeCloseTo(-2.5, 4);
+    expect(Codec.decode(Codec.f32,   await t.ctrlIn(WireCmd.GetOutputDelay.code,  out, 4))).toBeCloseTo(4.2, 4);
 
     // And the bulk view reflects it too.
     const bulk = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, 2896));

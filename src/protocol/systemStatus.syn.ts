@@ -3,17 +3,17 @@
 // `GetStatus` without hardware. The parser lives in `./systemStatus.ts`;
 // both sides share the `WireSystemStatus(numCh)` schema in `./wireTypes.ts`.
 
-import { Codec, encode } from '../utils/binCodec';
+import { Codec } from '../utils';
 import * as Wire from './wireTypes';
 
 // Synth a single u32 scalar response (wValue from {3..8, 13..15, 17..21}).
 export function synthesizeU32(v: number): Uint8Array {
-  return encode(Codec.u32, v >>> 0);
+  return Codec.encode(Codec.u32, v >>> 0);
 }
 
 // Synth a single i32 scalar response (wValue=16).
 export function synthesizeI32(v: number): Uint8Array {
-  return encode(Codec.i32, v | 0);
+  return Codec.encode(Codec.i32, v | 0);
 }
 
 export interface SynthesizeStatusOptions {
@@ -28,7 +28,7 @@ export function synthesizeSystemStatus(opts: SynthesizeStatusOptions): Uint8Arra
   const peaks = Array.from({ length: opts.numCh }, (_, i) =>
     Math.round((opts.peaks?.[i] ?? 0) * 32767),
   );
-  return encode(Wire.SystemStatus(opts.numCh), {
+  return Codec.encode(Wire.SystemStatus(opts.numCh), {
     peaks,
     cpu0:      opts.cpu0      ?? 0,
     cpu1:      opts.cpu1      ?? 0,

@@ -10,7 +10,7 @@ import { withTimeout } from '../transport/withTimeout';
 import { attachTransportListeners, finishConnection } from './actions';
 import { session, setStatus, bindDevice } from '../state/session.svelte';
 import { settings } from '../state/settings.svelte';
-import { error as logError, log } from '../utils/log';
+import { Log } from '../utils';
 
 // Per-call ceiling on USB control transfers. A frozen firmware would
 // otherwise leave the mutation coalescer waiting forever on a dead
@@ -44,7 +44,7 @@ async function createBoundDevice(
     try {
       await transport.close();
     } catch (closeErr) {
-      logError('connect', 'cleanup close after failed init failed', closeErr);
+      Log.error('connect', 'cleanup close after failed init failed', closeErr);
     }
     throw err;
   }
@@ -57,7 +57,7 @@ export async function connectRequested(): Promise<void> {
     const device = await createBoundDevice(transport, () => transport.requestAndOpen());
     await finishConnection(device);
   } catch (err) {
-    logError('connect', 'connect failed', err);
+    Log.error('connect', 'connect failed', err);
     setStatus('error', (err as Error).message);
     throw err;
   }
@@ -93,7 +93,7 @@ export function registerNavigatorReconnect(): void {
     if (event.device.serialNumber !== target) return;
     if (booting) return;
     if (session.status === 'connected' || session.status === 'connecting') return;
-    log('reconnect', 'last-known device re-enumerated, attempting bootReal()');
+    Log.info('reconnect', 'last-known device re-enumerated, attempting bootReal()');
     void bootReal().catch((err) => setStatus('error', (err as Error).message));
   });
 }

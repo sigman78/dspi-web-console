@@ -4,7 +4,7 @@
 // lives in `./bufferStats.ts`; both sides share the `WireBufferStats`
 // schema in `./wireTypes.ts`.
 
-import { encode } from '../utils/binCodec';
+import { Codec } from '../utils';
 import type { PdmBufferStats, SpdifBufferStats } from './bufferStats';
 import * as Wire from './wireTypes';
 
@@ -28,7 +28,7 @@ export function synthesizeBufferStats(opts: SynthesizeBufferStatsOptions = {}): 
     (_, i) => fillSpdif(opts.spdif?.[i]),
   );
 
-  return encode(Wire.BufferStats, {
+  return Codec.encode(Wire.BufferStats, {
     numSpdif: opts.numSpdif ?? 0,
     flags,
     sequence: opts.sequence ?? 0,

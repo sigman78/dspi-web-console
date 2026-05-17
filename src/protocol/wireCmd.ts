@@ -15,7 +15,7 @@
 // Both DspDevice and MockTransport access entries via `WireCmd.X.code`.
 
 import type { DspTransport } from '../transport/DspTransport';
-import { type BinCodec, Codec, decodePadded, encode, sizeOf } from '../utils/binCodec';
+import { type BinCodec, Codec } from '../utils';
 import * as Wire from './wireTypes';
 import type { ChannelId, InputSlot, OutputSlot } from '../domain/channels';
 import type { FilterType } from '../domain/filter';
@@ -169,12 +169,12 @@ export const WireCmd = {
 export async function readCmd<T>(
   t: DspTransport, c: ReadCmd<T>, wValue = 0,
 ): Promise<T> {
-  return decodePadded(c.codec, await t.ctrlIn(c.code, wValue, sizeOf(c.codec)));
+  return Codec.decodePadded(c.codec, await t.ctrlIn(c.code, wValue, Codec.sizeOf(c.codec)));
 }
 
 // Write a fixed-size payload via a `WriteCmd<T>` descriptor
 export async function writeCmd<T>(
   t: DspTransport, c: WriteCmd<T>, value: T, wValue = 0,
 ): Promise<void> {
-  await t.ctrlOut(c.code, wValue, encode(c.codec, value));
+  await t.ctrlOut(c.code, wValue, Codec.encode(c.codec, value));
 }
