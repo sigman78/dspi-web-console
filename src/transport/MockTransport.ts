@@ -1,13 +1,10 @@
 import type { DspTransport, TransportEvent } from './DspTransport';
-import { WireCmd } from '../protocol/wireCmd';
-import { synthesizeBulkParams, type SynthesizeOptions } from '../protocol/bulkParser.syn';
+import { Wire, WireCmd, SystemStatusValue } from '../protocol';
 import {
-  synthesizeSystemStatus,
-  synthesizeU32,
-  synthesizeI32,
-} from '../protocol/systemStatus.syn';
-import { synthesizeBufferStats } from '../protocol/bufferStats.syn';
-import { Const, SystemStatusValue, SetFilterPacket } from '../protocol/wireTypes';
+  synthesizeBulkParams, type SynthesizeOptions,
+  synthesizeSystemStatus, synthesizeU32, synthesizeI32,
+  synthesizeBufferStats,
+} from '../protocol/syn';
 import { Codec } from '../utils';
 import {
   PlatformType,
@@ -34,12 +31,12 @@ const defaultOutput = (): OutputState => ({ enabled: false, muted: false, gainDb
 function defaultMockBulkState(): SynthesizeOptions {
   return {
     formatVersion: 6,
-    outputs: Array.from({ length: Const.NUM_OUTPUTS }, defaultOutput),
-    crosspoints: Array.from({ length: Const.NUM_INPUTS }, () =>
-      Array.from({ length: Const.NUM_OUTPUTS }, defaultCrosspoint),
+    outputs: Array.from({ length: Wire.Const.NUM_OUTPUTS }, defaultOutput),
+    crosspoints: Array.from({ length: Wire.Const.NUM_INPUTS }, () =>
+      Array.from({ length: Wire.Const.NUM_OUTPUTS }, defaultCrosspoint),
     ),
-    filters: Array.from({ length: Const.NUM_CHANNELS }, () =>
-      Array.from({ length: Const.BANDS_MAX }, defaultFilter),
+    filters: Array.from({ length: Wire.Const.NUM_CHANNELS }, () =>
+      Array.from({ length: Wire.Const.BANDS_MAX }, defaultFilter),
     ),
     loudness:  { enabled: false, refSpl: 85, intensityPct: 0 },
     crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5 },
@@ -72,7 +69,7 @@ export class MockTransport implements DspTransport {
   #masterVolumeMode: MasterVolumeMode = MasterVolumeMode.Independent;
   #savedMasterVolumeDb = 0;
   #mockState: SynthesizeOptions;
-  #channelNames: string[] = Array.from({ length: Const.NUM_CHANNELS }, () => '');
+  #channelNames: string[] = Array.from({ length: Wire.Const.NUM_CHANNELS }, () => '');
 
   // Preset directory + 10-slot snapshots. Kept here (rather than in
   // SynthesizeOptions) because the directory metadata is not part of
@@ -309,7 +306,7 @@ export class MockTransport implements DspTransport {
         return;
       }
       case WireCmd.SetEqParam.code: {
-        const p = Codec.decode(SetFilterPacket, data);
+        const p = Codec.decode(Wire.SetFilterPacket, data);
         const row = this.#mockState.filters?.[p.channel];
         if (row && row[p.band]) {
           row[p.band] = {
@@ -396,7 +393,7 @@ export class MockTransport implements DspTransport {
 
       case WireCmd.SetChannelName.code: {
         const ch = value & 0xFF;
-        if (ch < Const.NUM_CHANNELS) {
+        if (ch < Wire.Const.NUM_CHANNELS) {
           this.#channelNames[ch] = Codec.decode(WireCmd.SetChannelName.codec, data);
         }
         return;
@@ -452,7 +449,7 @@ export class MockTransport implements DspTransport {
     this.#inputPreampDb = [0, 0];
     this.#bypass = false;
     this.#savedMasterVolumeDb = 0;
-    this.#channelNames = Array.from({ length: Const.NUM_CHANNELS }, () => '');
+    this.#channelNames = Array.from({ length: Wire.Const.NUM_CHANNELS }, () => '');
   }
 
   #restoreSnapshot(s: MockSnapshot): void {

@@ -1,10 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MockTransport } from './MockTransport';
 import { DspDevice } from '../device/DspDevice';
-import { WireCmd, writeCmd } from '../protocol/wireCmd';
-import { parseBufferStats } from '../protocol/bufferStats';
-import { parseSystemStatus } from '../protocol/systemStatus';
-import { parseBulkParams } from '../protocol/bulkParser';
+import { WireCmd, writeCmd, parseBufferStats, parseSystemStatus, parseBulkParams } from '../protocol';
 import { Codec } from '../utils';
 import { FilterType, MasterVolumeMode } from '../domain';
 

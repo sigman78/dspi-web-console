@@ -1,7 +1,7 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
   import ValueField from '../chrome/ValueField.svelte';
-  import { setOutputGain, setOutputDelay } from '../../runtime/actions';
+  import { setOutputGain, setOutputDelay } from '../../runtime';
   import { Mix, type OutputModel } from '../../domain';
 
   const {

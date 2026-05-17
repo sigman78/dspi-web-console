@@ -8,7 +8,7 @@ import {
   status as statusStore,
   presetsDirty,
 } from './state';
-import { bootMock, bootReal, registerNavigatorReconnect } from './runtime/session';
+import { bootMock, bootReal, registerNavigatorReconnect } from './runtime';
 import { paletteCSS } from './styles/palette';
 
 const paletteStyle = document.createElement('style');

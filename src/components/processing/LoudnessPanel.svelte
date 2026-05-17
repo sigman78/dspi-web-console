@@ -2,7 +2,7 @@
   import Panel from '../chrome/Panel.svelte';
   import ValueField from '../chrome/ValueField.svelte';
   import { dsp, session } from '../../state';
-  import { setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from '../../runtime/actions';
+  import { setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from '../../runtime';
 
   const loudness = $derived(dsp.live?.loudness);
   const connected = $derived(session.status === 'connected');

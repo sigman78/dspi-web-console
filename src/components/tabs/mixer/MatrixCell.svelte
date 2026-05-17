@@ -8,7 +8,7 @@
     setCrosspointGain,
     toggleCrosspoint,
     toggleCrosspointInvert,
-  } from '../../../runtime/actions';
+  } from '../../../runtime';
   import ValueField from '../../chrome/ValueField.svelte';
   import { chKey } from '../../../styles/palette';
 

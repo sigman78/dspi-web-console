@@ -10,8 +10,7 @@ import { reconcileAfterSync } from './actions';
 import { fetchAndApplyAsBaseline } from './resync';
 import type { DspDevice } from '../device/DspDevice';
 import { type PresetSlot, PRESET_SLOT_COUNT } from '../domain';
-import type { PresetResult } from '../protocol/results';
-import { PresetStartupMode } from '../protocol/wireTypes';
+import { type PresetResult, PresetStartupMode } from '../protocol';
 import { Log, type Result } from '../utils';
 
 const PRESET_LOAD_SETTLE_MS = 100;

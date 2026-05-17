@@ -5,7 +5,7 @@ import {
   type HardwareProfile,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
 } from '../domain';
-import type { BulkParams } from '../protocol/bulkParser';
+import type { BulkParams } from '../protocol';
 import type { DspTransport } from '../transport/DspTransport';
 import type { DspDevice } from '../device/DspDevice';
 import {

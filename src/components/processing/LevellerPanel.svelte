@@ -6,7 +6,7 @@
   import {
     setLevellerEnabled, setLevellerSpeed, setLevellerLookahead,
     setLevellerAmount, setLevellerMaxGain, setLevellerGate,
-  } from '../../runtime/actions';
+  } from '../../runtime';
   import { LevellerSpeed } from '../../domain';
 
   const lv = $derived(dsp.live?.leveller);

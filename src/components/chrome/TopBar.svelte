@@ -5,7 +5,7 @@
   import MasterVolumeMini from './MasterVolumeMini.svelte';
   import PresetActiveChip from './PresetActiveChip.svelte';
   import { status, session, dsp } from '../../state';
-  import { setBypass } from '../../runtime/actions';
+  import { setBypass } from '../../runtime';
 
   const connected = $derived(session.status === 'connected');
   const info = $derived(status.info);

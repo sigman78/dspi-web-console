@@ -7,7 +7,7 @@
 import { describe, it, test, expect, beforeEach } from 'vitest';
 import { MockTransport } from '../transport/MockTransport';
 import { DspDevice } from './DspDevice';
-import { PresetResult } from '../protocol/results';
+import { PresetResult, WireCmd, SystemStatusValue } from '../protocol';
 import {
   PlatformType,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
@@ -16,8 +16,6 @@ import {
   type PresetSlot,
 } from '../domain';
 import type { DspTransport, TransportEvent } from '../transport/DspTransport';
-import { WireCmd } from '../protocol/wireCmd';
-import { SystemStatusValue } from '../protocol/wireTypes';
 
 type TestPlatform = 'rp2040' | 'rp2350';
 

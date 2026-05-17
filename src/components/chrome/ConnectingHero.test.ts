@@ -8,7 +8,7 @@ vi.mock('../../runtime/session', () => ({
   webUsbUnsupportedReason: vi.fn(() => null),
 }));
 
-import { connectRequested, webUsbUnsupportedReason } from '../../runtime/session';
+import { connectRequested, webUsbUnsupportedReason } from '../../runtime';
 
 beforeEach(() => {
   setStatus('idle');

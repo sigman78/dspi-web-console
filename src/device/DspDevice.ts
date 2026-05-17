@@ -1,10 +1,14 @@
 import type { DspTransport } from '../transport/DspTransport';
-import { parseBulkParams } from '../protocol/bulkParser';
-import { parseSystemStatus } from '../protocol/systemStatus';
-import { parseBufferStats } from '../protocol/bufferStats';
-import * as Wire from '../protocol/wireTypes';
-import { SystemStatusValue } from '../protocol/wireTypes';
-import { WireCmd, readCmd, writeCmd } from '../protocol/wireCmd';
+import {
+  Wire,
+  parseBulkParams, parseSystemStatus, parseBufferStats,
+  SystemStatusValue,
+  WireCmd, readCmd, writeCmd,
+  type BufferStats, type SystemStatus, type BulkParams, type PartialSystemInfo,
+  actionCmd, flashResultFromByte, presetResultFromByte,
+  PresetResult, type FlashResult,
+  PresetDirectory, PresetDirRequestSize,
+} from '../protocol';
 import { Codec, utf8Truncate, type Result } from '../utils';
 import {
   type ChannelId, type InputSlot, type OutputSlot,
@@ -15,21 +19,6 @@ import {
   type PresetDirectoryInfo,
   FilterType, type FilterParams,
 } from '../domain';
-import type { BufferStats } from '../protocol/bufferStats';
-import type { SystemStatus } from '../protocol/systemStatus';
-import type { BulkParams } from '../protocol/bulkParser';
-import type { PartialSystemInfo } from '../protocol/systemInfo';
-import {
-  actionCmd,
-  flashResultFromByte,
-  presetResultFromByte,
-  PresetResult,
-  type FlashResult,
-} from '../protocol/results';
-import {
-  PresetDirectory,
-  PresetDirRequestSize,
-} from '../protocol/wireTypes';
 
 // Bit N of the firmware's u16 occupiedMask = slot N populated.
 function occupiedMaskToSet(mask: number): ReadonlySet<PresetSlot> {

@@ -3,7 +3,7 @@
 // See `protocol/wireTypes.ts:PresetDirectory` for the byte-level schema.
 
 import type { PresetSlot } from './presetLimits';
-import type { PresetStartupMode } from '../protocol/wireTypes';
+import type { PresetStartupMode } from '../protocol';
 import type { MasterVolumeMode } from './processing';
 
 export interface PresetDirectoryInfo {

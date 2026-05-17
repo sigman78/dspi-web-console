@@ -6,7 +6,7 @@
   import {
     setCrossfeedEnabled, setCrossfeedPreset, setCrossfeedItd,
     setCrossfeedFreq, setCrossfeedFeedDb,
-  } from '../../runtime/actions';
+  } from '../../runtime';
   import { CrossfeedPreset } from '../../domain';
 
   const cf = $derived(dsp.live?.crossfeed);

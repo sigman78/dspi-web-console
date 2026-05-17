@@ -1,5 +1,5 @@
 import type { ChannelId } from '../../domain';
-import { copyEqBands } from '../../runtime/actions';
+import { copyEqBands } from '../../runtime';
 
 export const eqUi = $state<{
   copySource: ChannelId | null;
@@ -7,11 +7,11 @@ export const eqUi = $state<{
   copySource: null,
 });
 
-export function setCopySource(id: ChannelId): void {
+export function setEqCopySource(id: ChannelId): void {
   eqUi.copySource = id;
 }
 
-export function clearCopySource(): void {
+export function clearEqCopySource(): void {
   eqUi.copySource = null;
 }
 

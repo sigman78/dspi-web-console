@@ -5,7 +5,7 @@
   import ChannelNamesPanel from '../system/ChannelNamesPanel.svelte';
   import ResetPanel from '../system/ResetPanel.svelte';
   import { chKey } from '../../styles/palette';
-  import { clearClips } from '../../runtime/actions';
+  import { clearClips } from '../../runtime';
 
   const snap = $derived(dsp.live);
   const info = $derived(status.info);

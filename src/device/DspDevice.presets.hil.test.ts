@@ -8,7 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from './DspDevice';
 import { openSingleDevice } from '../../hil/setup';
-import { PresetStartupMode } from '../protocol/wireTypes';
+import { PresetStartupMode } from '../protocol';
 
 const TEST_SLOT_A = 8;
 const TEST_SLOT_B = 9;

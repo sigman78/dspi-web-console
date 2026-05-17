@@ -4,8 +4,8 @@ import { session, bindDevice, settings, dsp, status as statusStore, presets } fr
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '../transport/DspTransport';
 import type { DspDevice } from '../device/DspDevice';
-import { parseBulkParams } from '../protocol/bulkParser';
-import { synthesizeBulkParams } from '../protocol/bulkParser.syn';
+import { parseBulkParams } from '../protocol';
+import { synthesizeBulkParams } from '../protocol/syn';
 import {
   FilterType,
   PlatformType,

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { dsp, settings, session } from '../../state';
-  import { setMasterVolume, toggleMute } from '../../runtime/actions';
+  import { setMasterVolume, toggleMute } from '../../runtime';
   import SaveMasterVolumeButton from './SaveMasterVolumeButton.svelte';
 
   const masterVolumeDb = $derived(dsp.live?.masterVolumeDb ?? 0);

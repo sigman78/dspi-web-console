@@ -8,10 +8,10 @@
   import {
     saveActivePreset, revertActivePreset,
     setStartupDefault, setStartupMode, pastePresetTo, renamePresetSlot,
-  } from '../../runtime/presets';
-  import { setMasterVolumeMode } from '../../runtime/actions';
+    setMasterVolumeMode,
+  } from '../../runtime';
   import { MasterVolumeMode } from '../../domain';
-  import { PresetStartupMode } from '../../protocol/wireTypes';
+  import { PresetStartupMode } from '../../protocol';
 
   const { onRequestRename }: { onRequestRename: () => void } = $props();
 

@@ -1,5 +1,4 @@
-import * as Wire from '../protocol/wireTypes';
-import type { BulkParams } from '../protocol/bulkParser';
+import { Wire, type BulkParams } from '../protocol';
 import {
   outputModeForChannel,
   type InputSlot,
