@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { presets, session } from '../../state';
-  import { saveMasterVolumeBaseline } from '../../runtime';
-  import { MasterVolumeMode } from '../../domain';
+  import { presets, session } from '@/state';
+  import { saveMasterVolumeBaseline } from '@/runtime';
+  import { MasterVolumeMode } from '@/domain';
 
   const connected = $derived(session.status === 'connected');
   const mode = $derived(presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent);

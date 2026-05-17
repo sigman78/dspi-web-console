@@ -4,7 +4,7 @@
 
 import { BODE_BINS, BODE_FREQS } from './bodeFreqs';
 import type { BodeCurve } from './BodePlot.svelte';
-import type { ChannelId } from '../../domain';
+import type { ChannelId } from '@/domain';
 
 // Gaussian bump in log-frequency space. Centered at fc, Q-ish width controls
 // how sharp the peak is. Returns a function ready to add into a sample loop.

@@ -14,10 +14,10 @@
 //
 // Both DspDevice and MockTransport access entries via `WireCmd.X.code`.
 
-import type { DspTransport } from '../transport/DspTransport';
-import { type BinCodec, Codec } from '../utils';
+import type { DspTransport } from '@/transport/DspTransport';
+import { type BinCodec, Codec } from '@/utils';
 import * as Wire from './wireTypes';
-import type { ChannelId, InputSlot, OutputSlot, FilterType, MasterVolumeMode } from '../domain';
+import type { ChannelId, InputSlot, OutputSlot, FilterType, MasterVolumeMode } from '@/domain';
 
 // Descriptor types
 

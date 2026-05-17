@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MockTransport } from './MockTransport';
-import { DspDevice } from '../device/DspDevice';
-import { WireCmd, writeCmd, parseBufferStats, parseSystemStatus, parseBulkParams } from '../protocol';
-import { Codec } from '../utils';
-import { FilterType, MasterVolumeMode } from '../domain';
+import { DspDevice } from '@/device/DspDevice';
+import { WireCmd, writeCmd, parseBufferStats, parseSystemStatus, parseBulkParams } from '@/protocol';
+import { Codec } from '@/utils';
+import { FilterType, MasterVolumeMode } from '@/domain';
 
 async function createDevice(t: MockTransport): Promise<DspDevice> {
   const openTransport = t.isOpen() ? async () => {} : () => t.open();

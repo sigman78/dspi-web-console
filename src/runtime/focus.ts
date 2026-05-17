@@ -2,8 +2,8 @@ import type {
   RouteModel, OutputModel,
   ChannelModel,
   ChannelId, InputSlot, OutputSlot,
-} from '../domain';
-import { dsp, patchSnapshot } from '../state';
+} from '@/domain';
+import { dsp, patchSnapshot } from '@/state';
 
 // Focused get/set into a part of dsp.live. Each focus binds an addressing
 // tuple (e.g. (input, output) for a route) and exposes:

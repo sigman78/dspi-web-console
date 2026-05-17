@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { type MatrixColumn, type OutputSlot, Mix } from '../../../domain';
+  import { type MatrixColumn, type OutputSlot, Mix } from '@/domain';
   import {
     setOutputDelay,
     setOutputGain,
     toggleOutputEnable,
     toggleOutputMute,
-  } from '../../../runtime';
+  } from '@/runtime';
   import ValueField from '../../chrome/ValueField.svelte';
-  import { chKey } from '../../../styles/palette';
+  import { chKey } from '@/styles/palette';
 
   const {
     column,

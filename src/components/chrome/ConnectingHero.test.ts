@@ -1,14 +1,14 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import ConnectingHero from './ConnectingHero.svelte';
-import { setStatus } from '../../state';
+import { setStatus } from '@/state';
 
 vi.mock('../../runtime/session', () => ({
   connectRequested: vi.fn().mockResolvedValue(undefined),
   webUsbUnsupportedReason: vi.fn(() => null),
 }));
 
-import { connectRequested, webUsbUnsupportedReason } from '../../runtime';
+import { connectRequested, webUsbUnsupportedReason } from '@/runtime';
 
 beforeEach(() => {
   setStatus('idle');

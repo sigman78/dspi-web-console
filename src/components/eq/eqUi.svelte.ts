@@ -1,5 +1,5 @@
-import type { ChannelId } from '../../domain';
-import { copyEqBands } from '../../runtime';
+import type { ChannelId } from '@/domain';
+import { copyEqBands } from '@/runtime';
 
 export const eqUi = $state<{
   copySource: ChannelId | null;

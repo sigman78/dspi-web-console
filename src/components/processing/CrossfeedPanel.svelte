@@ -2,12 +2,12 @@
   import Panel from '../chrome/Panel.svelte';
   import ValueField from '../chrome/ValueField.svelte';
   import SegmentedSelect from '../chrome/SegmentedSelect.svelte';
-  import { dsp, session } from '../../state';
+  import { dsp, session } from '@/state';
   import {
     setCrossfeedEnabled, setCrossfeedPreset, setCrossfeedItd,
     setCrossfeedFreq, setCrossfeedFeedDb,
-  } from '../../runtime';
-  import { CrossfeedPreset } from '../../domain';
+  } from '@/runtime';
+  import { CrossfeedPreset } from '@/domain';
 
   const cf = $derived(dsp.live?.crossfeed);
   const connected = $derived(session.status === 'connected');

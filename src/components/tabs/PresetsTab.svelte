@@ -4,9 +4,9 @@
   import Panel from '../chrome/Panel.svelte';
   import PresetTile from '../presets/PresetTile.svelte';
   import PresetControls from '../presets/PresetControls.svelte';
-  import { fetchPresetInfo, retryFetchPresetInfo } from '../../runtime';
-  import { presets, presetsDirty, copySource, clearCopySource, session } from '../../state';
-  import { PRESET_SLOT_COUNT, type PresetSlot } from '../../domain';
+  import { fetchPresetInfo, retryFetchPresetInfo } from '@/runtime';
+  import { presets, presetsDirty, copySource, clearCopySource, session } from '@/state';
+  import { PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';
 
   const SLOTS: PresetSlot[] = Array.from({ length: PRESET_SLOT_COUNT }, (_, i) => i as PresetSlot);
   const connected = $derived(session.status === 'connected');

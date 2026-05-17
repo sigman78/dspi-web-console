@@ -6,7 +6,7 @@ import * as Eq from './eqLimits';
 import * as Mix from './mixerLimits';
 import { CrossfeedPreset, LevellerSpeed } from './processing';
 import { PRESET_NAME_MAX_LEN, CHANNEL_NAME_MAX_LEN } from './presetLimits';
-import { utf8ByteLength } from '../utils';
+import { utf8ByteLength } from '@/utils';
 
 export type ValidationResult = { ok: true } | { ok: false; reason: string };
 

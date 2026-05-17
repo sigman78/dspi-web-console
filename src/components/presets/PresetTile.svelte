@@ -1,9 +1,9 @@
 <!-- src/components/presets/PresetTile.svelte -->
 <script lang="ts">
-  import { presets, presetsDirty, copySource } from '../../state';
-  import { loadPresetSlot, renamePresetSlot } from '../../runtime';
-  import { PresetStartupMode } from '../../protocol';
-  import { type PresetSlot, PRESET_NAME_MAX_LEN } from '../../domain';
+  import { presets, presetsDirty, copySource } from '@/state';
+  import { loadPresetSlot, renamePresetSlot } from '@/runtime';
+  import { PresetStartupMode } from '@/protocol';
+  import { type PresetSlot, PRESET_NAME_MAX_LEN } from '@/domain';
 
   const { slot }: { slot: PresetSlot } = $props();
 

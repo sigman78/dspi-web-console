@@ -4,14 +4,14 @@
     presets, presetsDirty,
     copySource, setCopySource, clearCopySource,
     settings, session,
-  } from '../../state';
+  } from '@/state';
   import {
     saveActivePreset, revertActivePreset,
     setStartupDefault, setStartupMode, pastePresetTo, renamePresetSlot,
     setMasterVolumeMode,
-  } from '../../runtime';
-  import { MasterVolumeMode } from '../../domain';
-  import { PresetStartupMode } from '../../protocol';
+  } from '@/runtime';
+  import { MasterVolumeMode } from '@/domain';
+  import { PresetStartupMode } from '@/protocol';
 
   const { onRequestRename }: { onRequestRename: () => void } = $props();
 

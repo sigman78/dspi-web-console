@@ -1,4 +1,4 @@
-import { Wire, type BulkParams } from '../protocol';
+import { Wire, type BulkParams } from '@/protocol';
 import {
   outputModeForChannel,
   type InputSlot,

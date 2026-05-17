@@ -2,12 +2,12 @@
   import Panel from '../chrome/Panel.svelte';
   import ValueField from '../chrome/ValueField.svelte';
   import SegmentedSelect from '../chrome/SegmentedSelect.svelte';
-  import { dsp, session } from '../../state';
+  import { dsp, session } from '@/state';
   import {
     setLevellerEnabled, setLevellerSpeed, setLevellerLookahead,
     setLevellerAmount, setLevellerMaxGain, setLevellerGate,
-  } from '../../runtime';
-  import { LevellerSpeed } from '../../domain';
+  } from '@/runtime';
+  import { LevellerSpeed } from '@/domain';
 
   const lv = $derived(dsp.live?.leveller);
   const connected = $derived(session.status === 'connected');

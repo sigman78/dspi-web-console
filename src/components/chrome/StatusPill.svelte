@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { session, setStatus, presetsDirty } from '../../state';
-  import { connectRequested, webUsbUnsupportedReason } from '../../runtime';
+  import { session, setStatus, presetsDirty } from '@/state';
+  import { connectRequested, webUsbUnsupportedReason } from '@/runtime';
 
   let busy = $state(false);
   const unsupported = webUsbUnsupportedReason();

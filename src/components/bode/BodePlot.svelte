@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { ChannelId } from '../../domain';
+  import type { ChannelId } from '@/domain';
 
   // Curve-only API. Callers provide pre-sampled magnitude points on the
   // canonical 201-bin grid (see bodeFreqs.ts). The plot is dumb about EQ
@@ -35,8 +35,8 @@
 
 <script lang="ts">
   import { BODE_BINS, fForXNorm, nearestBinIndex } from './bodeFreqs';
-  import { Eq } from '../../domain';
-  import { chShade } from '../../styles/palette';
+  import { Eq } from '@/domain';
+  import { chShade } from '@/styles/palette';
 
   const {
     curves,

@@ -29,7 +29,7 @@
 //  2864      16   WirePreampConfig            V6+, optional
 //  2880      16   WireMasterVolume            V6+, optional
 
-import { Codec, type BinCodec } from '../utils';
+import { Codec, type BinCodec } from '@/utils';
 
 const { u8, u16, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
 

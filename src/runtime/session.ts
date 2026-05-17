@@ -1,15 +1,15 @@
-import { DspDevice } from '../device/DspDevice';
-import type { DspTransport } from '../transport/DspTransport';
-import { MockTransport } from '../transport/MockTransport';
+import { DspDevice } from '@/device/DspDevice';
+import type { DspTransport } from '@/transport/DspTransport';
+import { MockTransport } from '@/transport/MockTransport';
 import {
   DSPI_PRODUCT_ID,
   DSPI_VENDOR_ID,
   WebUsbTransport,
-} from '../transport/WebUsbTransport';
-import { withTimeout } from '../transport/withTimeout';
+} from '@/transport/WebUsbTransport';
+import { withTimeout } from '@/transport/withTimeout';
 import { attachTransportListeners, finishConnection } from './actions';
-import { session, setStatus, bindDevice, settings } from '../state';
-import { Log } from '../utils';
+import { session, setStatus, bindDevice, settings } from '@/state';
+import { Log } from '@/utils';
 
 // Per-call ceiling on USB control transfers. A frozen firmware would
 // otherwise leave the mutation coalescer waiting forever on a dead

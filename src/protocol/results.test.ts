@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { actionCmd, FlashResult, PresetResult, flashResultFromByte, presetResultFromByte } from './results';
-import type { DspTransport } from '../transport/DspTransport';
+import type { DspTransport } from '@/transport/DspTransport';
 
 const mkTransport = (response: Uint8Array): DspTransport => ({
   open: vi.fn(), close: vi.fn(), isOpen: () => true,

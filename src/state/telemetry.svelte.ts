@@ -1,4 +1,4 @@
-import { type BufferStats, type PartialSystemInfo, Wire } from '../protocol';
+import { type BufferStats, type PartialSystemInfo, Wire } from '@/protocol';
 const { NUM_CHANNELS } = Wire.Const;
 
 // Canonical Svelte 5 reactive store: each $state class field gets its own

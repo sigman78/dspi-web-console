@@ -4,7 +4,7 @@
 //
 // The synthesizer side is in `./bufferStats.syn.ts`.
 
-import { Codec } from '../utils';
+import { Codec } from '@/utils';
 import * as Wire from './wireTypes';
 
 export interface SpdifBufferStats {

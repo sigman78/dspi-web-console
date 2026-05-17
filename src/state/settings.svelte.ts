@@ -1,4 +1,4 @@
-import type { ChannelId } from '../domain';
+import type { ChannelId } from '@/domain';
 import { dsp } from './dsp.svelte';
 
 export type TabId = 'overview' | 'eq' | 'mixer' | 'processing' | 'presets' | 'system';

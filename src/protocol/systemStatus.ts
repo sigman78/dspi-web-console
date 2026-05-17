@@ -10,9 +10,9 @@
 //
 // The synthesizer side is in `./systemStatus.syn.ts`.
 
-import { Codec } from '../utils';
+import { Codec } from '@/utils';
 import * as Wire from './wireTypes';
-import type { ChannelId } from '../domain';
+import type { ChannelId } from '@/domain';
 
 export interface SystemStatus {
   peaks: Float32Array;     // length 11, normalized 0..1

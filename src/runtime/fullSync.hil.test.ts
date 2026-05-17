@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { DspDevice } from '../device/DspDevice';
+import type { DspDevice } from '@/device/DspDevice';
 import { openSingleDevice } from '../../hil/setup';
 import { finishConnection } from './actions';
-import { session, bindDevice, settings, dsp, resetDsp, resetStatus } from '../state';
+import { session, bindDevice, settings, dsp, resetDsp, resetStatus } from '@/state';
 import { stopPolling } from './poll';
 
 // End-to-end HIL test: drives the production state-layer connection finish flow

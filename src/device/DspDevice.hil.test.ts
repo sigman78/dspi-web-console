@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from './DspDevice';
 import { openSingleDevice } from '../../hil/setup';
-import { PlatformType } from '../domain';
+import { PlatformType } from '@/domain';
 
 describe('DspDevice — read-side smoke (HIL)', () => {
   let device: DspDevice;

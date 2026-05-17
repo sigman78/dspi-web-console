@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { presets, presetsDirty, resetPresets, askBoundary, resolveBoundary } from './presets.svelte';
 import { applyDspSnapshot, dsp } from './dsp.svelte';
 import { settings } from './settings.svelte';
-import type { DspSnapshot } from '../domain';
+import type { DspSnapshot } from '@/domain';
 
 function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
   return {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseBufferStats } from './bufferStats';
 import { synthesizeBufferStats } from './bufferStats.syn';
-import { Codec } from '../utils';
+import { Codec } from '@/utils';
 import * as Wire from './wireTypes';
 
 describe('parseBufferStats', () => {

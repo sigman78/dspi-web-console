@@ -5,13 +5,13 @@ import {
   refreshShadowFromLive,
   presets, presetsDirty, askBoundary,
   settings,
-} from '../state';
+} from '@/state';
 import { reconcileAfterSync } from './actions';
 import { fetchAndApplyAsBaseline } from './resync';
-import type { DspDevice } from '../device/DspDevice';
-import { type PresetSlot, PRESET_SLOT_COUNT } from '../domain';
-import { type PresetResult, PresetStartupMode } from '../protocol';
-import { Log, type Result } from '../utils';
+import type { DspDevice } from '@/device/DspDevice';
+import { type PresetSlot, PRESET_SLOT_COUNT } from '@/domain';
+import { type PresetResult, PresetStartupMode } from '@/protocol';
+import { Log, type Result } from '@/utils';
 
 const PRESET_LOAD_SETTLE_MS = 100;
 

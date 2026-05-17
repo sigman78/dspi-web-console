@@ -1,4 +1,4 @@
-import { ChannelId } from '../domain';
+import { ChannelId } from '@/domain';
 
 export type ChannelKey =
   | 'In1L' | 'In1R'

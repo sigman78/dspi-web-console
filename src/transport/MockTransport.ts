@@ -1,17 +1,17 @@
 import type { DspTransport, TransportEvent } from './DspTransport';
-import { Wire, WireCmd, SystemStatusValue } from '../protocol';
+import { Wire, WireCmd, SystemStatusValue } from '@/protocol';
 import {
   synthesizeBulkParams, type SynthesizeOptions,
   synthesizeSystemStatus, synthesizeU32, synthesizeI32,
   synthesizeBufferStats,
-} from '../protocol/syn';
-import { Codec } from '../utils';
+} from '@/protocol/syn';
+import { Codec } from '@/utils';
 import {
   PlatformType,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   defaultFilter, type FilterParams,
   type CrossPoint, type OutputState,
-} from '../domain';
+} from '@/domain';
 
 export interface MockOptions {
   platform: 'rp2040' | 'rp2350';

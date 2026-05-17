@@ -1,6 +1,6 @@
 // src/protocol/results.ts
-import type { DspTransport } from '../transport/DspTransport';
-import { Result } from '../utils';
+import type { DspTransport } from '@/transport/DspTransport';
+import { Result } from '@/utils';
 
 // FlashResult — returned by SaveParams (0x51), LoadParams (0x52), FactoryReset (0x53).
 // Mirrors `FlashResult` in DspDevice.cs.

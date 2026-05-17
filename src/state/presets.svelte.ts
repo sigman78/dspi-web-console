@@ -10,7 +10,7 @@ import {
   type PresetDirectoryInfo,
   MasterVolumeMode,
   presetDiff,
-} from '../domain';
+} from '@/domain';
 import { dsp } from './dsp.svelte';
 import { settings } from './settings.svelte';
 

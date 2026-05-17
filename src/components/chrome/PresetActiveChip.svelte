@@ -1,6 +1,6 @@
 <!-- src/components/chrome/PresetActiveChip.svelte -->
 <script lang="ts">
-  import { presets, presetsDirty, setTab, session } from '../../state';
+  import { presets, presetsDirty, setTab, session } from '@/state';
 
   const active = $derived(presets.active);
   const name = $derived(active == null ? '' : (presets.names[active] ?? ''));

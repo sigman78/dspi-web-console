@@ -4,10 +4,10 @@ import {
   type ChannelId, type InputSlot, type OutputSlot,
   type HardwareProfile,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
-} from '../domain';
-import type { BulkParams } from '../protocol';
-import type { DspTransport } from '../transport/DspTransport';
-import type { DspDevice } from '../device/DspDevice';
+} from '@/domain';
+import type { BulkParams } from '@/protocol';
+import type { DspTransport } from '@/transport/DspTransport';
+import type { DspDevice } from '@/device/DspDevice';
 import {
   bindDevice, session, setStatus,
   presets,
@@ -15,8 +15,8 @@ import {
   settings, reconcileEqTarget,
   resetStatus, status,
   clearCopySource,
-} from '../state';
-import { Result, Log } from '../utils';
+} from '@/state';
+import { Result, Log } from '@/utils';
 import { startPolling, stopPolling } from './poll';
 import { cancelResync } from './resync';
 import { batchCommand, cancelAllCommands, cancelScrubLane, instantCommand, scrubCommand } from './commands';

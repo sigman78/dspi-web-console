@@ -3,7 +3,7 @@
 // `GetStatus` without hardware. The parser lives in `./systemStatus.ts`;
 // both sides share the `WireSystemStatus(numCh)` schema in `./wireTypes.ts`.
 
-import { Codec } from '../utils';
+import { Codec } from '@/utils';
 import * as Wire from './wireTypes';
 
 // Synth a single u32 scalar response (wValue from {3..8, 13..15, 17..21}).

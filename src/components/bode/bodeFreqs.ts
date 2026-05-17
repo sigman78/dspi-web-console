@@ -3,7 +3,7 @@
 // (future) filter-response converter sample at these exact frequencies, so a
 // curve produced anywhere can be rendered anywhere without resampling.
 
-import { Eq } from '../../domain';
+import { Eq } from '@/domain';
 
 export const BODE_BINS = 201;
 export const BODE_FMIN = Eq.FREQ_MIN_HZ;

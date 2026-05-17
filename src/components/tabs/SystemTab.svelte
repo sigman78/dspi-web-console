@@ -1,11 +1,11 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
   import KV from '../chrome/KV.svelte';
-  import { dsp, session, status } from '../../state';
+  import { dsp, session, status } from '@/state';
   import ChannelNamesPanel from '../system/ChannelNamesPanel.svelte';
   import ResetPanel from '../system/ResetPanel.svelte';
-  import { chKey } from '../../styles/palette';
-  import { clearClips } from '../../runtime';
+  import { chKey } from '@/styles/palette';
+  import { clearClips } from '@/runtime';
 
   const snap = $derived(dsp.live);
   const info = $derived(status.info);

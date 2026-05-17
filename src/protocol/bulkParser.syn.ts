@@ -5,7 +5,7 @@
 // in `./wireTypes.ts`.
 
 import type { BulkParams } from './bulkParser';
-import { BinWriter } from '../utils';
+import { BinWriter } from '@/utils';
 import * as Wire from './wireTypes';
 
 export interface SynthesizeOptions extends Partial<Omit<BulkParams, 'channelNames'>> {

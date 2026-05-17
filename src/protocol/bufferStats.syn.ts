@@ -4,7 +4,7 @@
 // lives in `./bufferStats.ts`; both sides share the `WireBufferStats`
 // schema in `./wireTypes.ts`.
 
-import { Codec } from '../utils';
+import { Codec } from '@/utils';
 import type { PdmBufferStats, SpdifBufferStats } from './bufferStats';
 import * as Wire from './wireTypes';
 

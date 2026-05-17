@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FilterType, type FilterParams, Eq } from '../../domain';
+  import { FilterType, type FilterParams, Eq } from '@/domain';
   import ValueField from '../chrome/ValueField.svelte';
   import BandTypeSelect from './BandTypeSelect.svelte';
 

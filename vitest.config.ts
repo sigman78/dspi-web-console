@@ -1,3 +1,4 @@
+import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
@@ -19,5 +20,8 @@ export default defineConfig({
   },
   resolve: {
     conditions: ['browser'],
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
   },
 });

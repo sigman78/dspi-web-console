@@ -1,7 +1,7 @@
-import type { DspDevice } from '../device/DspDevice';
-import { dsp, session, setStatus } from '../state';
+import type { DspDevice } from '@/device/DspDevice';
+import { dsp, session, setStatus } from '@/state';
 import { forceResyncNow, scheduleResync } from './resync';
-import { Log } from '../utils';
+import { Log } from '@/utils';
 
 // commands.ts owns three command shapes plus a per-key scrub-lane registry.
 // All commands capture session.generation when their send is launched and

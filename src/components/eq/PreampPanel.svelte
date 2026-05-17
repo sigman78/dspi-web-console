@@ -1,8 +1,8 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
   import ValueField from '../chrome/ValueField.svelte';
-  import { Eq, type ChannelId } from '../../domain';
-  import { chKey } from '../../styles/palette';
+  import { Eq, type ChannelId } from '@/domain';
+  import { chKey } from '@/styles/palette';
 
   const {
     preampDb,

@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline } from './actions';
-import { session, bindDevice, settings, dsp, status as statusStore, presets } from '../state';
+import { session, bindDevice, settings, dsp, status as statusStore, presets } from '@/state';
 import { bootMock } from './session';
-import type { DspTransport, TransportEvent } from '../transport/DspTransport';
-import type { DspDevice } from '../device/DspDevice';
-import { parseBulkParams } from '../protocol';
-import { synthesizeBulkParams } from '../protocol/syn';
+import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
+import type { DspDevice } from '@/device/DspDevice';
+import { parseBulkParams } from '@/protocol';
+import { synthesizeBulkParams } from '@/protocol/syn';
 import {
   FilterType,
   PlatformType,
@@ -13,7 +13,7 @@ import {
   createHardwareProfile,
   type ChannelId,
   MasterVolumeMode,
-} from '../domain';
+} from '@/domain';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 

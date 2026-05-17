@@ -1,9 +1,9 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
-  import { dsp, session } from '../../state';
-  import { setChannelName } from '../../runtime';
-  import { CHANNEL_NAME_MAX_LEN, type ChannelId } from '../../domain';
-  import { chKey } from '../../styles/palette';
+  import { dsp, session } from '@/state';
+  import { setChannelName } from '@/runtime';
+  import { CHANNEL_NAME_MAX_LEN, type ChannelId } from '@/domain';
+  import { chKey } from '@/styles/palette';
 
   const channels = $derived(dsp.live?.channels ?? []);
   const connected = $derived(session.status === 'connected');

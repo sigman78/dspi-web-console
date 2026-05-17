@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { DspTransport } from '../transport/DspTransport';
-import { Codec } from '../utils';
+import type { DspTransport } from '@/transport/DspTransport';
+import { Codec } from '@/utils';
 import { WireCmd, readCmd, writeCmd } from './wireCmd';
 
 // Minimal in-memory transport for unit tests.

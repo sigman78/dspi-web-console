@@ -5,17 +5,17 @@
 // per-input preamp, and the hardware-profile contract for getSystemStatus.
 
 import { describe, it, test, expect, beforeEach } from 'vitest';
-import { MockTransport } from '../transport/MockTransport';
+import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice } from './DspDevice';
-import { PresetResult, WireCmd, SystemStatusValue } from '../protocol';
+import { PresetResult, WireCmd, SystemStatusValue } from '@/protocol';
 import {
   PlatformType,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   FilterType,
   ChannelId,
   type PresetSlot,
-} from '../domain';
-import type { DspTransport, TransportEvent } from '../transport/DspTransport';
+} from '@/domain';
+import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 
 type TestPlatform = 'rp2040' | 'rp2350';
 

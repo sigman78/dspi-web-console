@@ -1,5 +1,5 @@
-import { session, applyClipFlags, applyPeaks, status } from '../state';
-import { Log } from '../utils';
+import { session, applyClipFlags, applyPeaks, status } from '@/state';
+import { Log } from '@/utils';
 
 
 const STATUS_INTERVAL_MS = 50;   // ~20 Hz -- peaks + cpu (REQ_GET_STATUS wValue=9)

@@ -6,15 +6,15 @@
   import OutputTrim from '../eq/OutputTrim.svelte';
   import { mockEqCurve } from '../bode/bodeMock';
   import { filterCurve, filterCurveAt } from '../bode/filterCurve';
-  import { dsp, settings, setEqTarget } from '../../state';
+  import { dsp, settings, setEqTarget } from '@/state';
   import {
     eqUi,
     setEqCopySource,
     clearEqCopySource,
     applyCopyFrom,
   } from '../eq/eqUi.svelte';
-  import { FilterType, defaultFilter, type FilterParams, inputIndexOf } from '../../domain';
-  import { setEqFilter, setInputPreamp } from '../../runtime';
+  import { FilterType, defaultFilter, type FilterParams, inputIndexOf } from '@/domain';
+  import { setEqFilter, setInputPreamp } from '@/runtime';
 
   const snap = $derived(dsp.live);
 

@@ -5,13 +5,13 @@
 //
 // The synthesizer side is in `./bulkParser.syn.ts`.
 
-import { BinReader, Codec } from '../utils';
+import { BinReader, Codec } from '@/utils';
 import * as Wire from './wireTypes';
 import type {
   CrossfeedPreset, LevellerSpeed, Loudness, Crossfeed, Leveller,
   CrossPoint, OutputState,
   I2sConfig, PlatformType,
-} from '../domain';
+} from '@/domain';
 
 // The parsed bulk packet as a plain DTO. Fields mirror bulk_params.h
 // section by section. Optional sections (i2s, leveller, preamp, master

@@ -1,4 +1,4 @@
-import type { DspTransport } from '../transport/DspTransport';
+import type { DspTransport } from '@/transport/DspTransport';
 import {
   Wire,
   parseBulkParams, parseSystemStatus, parseBufferStats,
@@ -8,8 +8,8 @@ import {
   actionCmd, flashResultFromByte, presetResultFromByte,
   PresetResult, type FlashResult,
   PresetDirectory, PresetDirRequestSize,
-} from '../protocol';
-import { Codec, utf8Truncate, type Result } from '../utils';
+} from '@/protocol';
+import { Codec, utf8Truncate, type Result } from '@/utils';
 import {
   type ChannelId, type InputSlot, type OutputSlot,
   createHardwareProfile, wireChannelFor, type HardwareProfile,
@@ -18,7 +18,7 @@ import {
   type PresetSlot, PRESET_NAME_MAX_LEN, CHANNEL_NAME_MAX_LEN, PRESET_SLOT_COUNT,
   type PresetDirectoryInfo,
   FilterType, type FilterParams,
-} from '../domain';
+} from '@/domain';
 
 // Bit N of the firmware's u16 occupiedMask = slot N populated.
 function occupiedMaskToSet(mask: number): ReadonlySet<PresetSlot> {

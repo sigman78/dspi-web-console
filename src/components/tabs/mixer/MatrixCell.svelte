@@ -3,14 +3,14 @@
     type RouteModel,
     Mix,
     type ChannelId, type InputSlot, type OutputSlot,
-  } from '../../../domain';
+  } from '@/domain';
   import {
     setCrosspointGain,
     toggleCrosspoint,
     toggleCrosspointInvert,
-  } from '../../../runtime';
+  } from '@/runtime';
   import ValueField from '../../chrome/ValueField.svelte';
-  import { chKey } from '../../../styles/palette';
+  import { chKey } from '@/styles/palette';
 
   const {
     cell,
