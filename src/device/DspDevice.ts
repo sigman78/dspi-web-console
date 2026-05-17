@@ -40,32 +40,60 @@ function occupiedMaskToSet(mask: number): ReadonlySet<PresetSlot> {
   return s;
 }
 
+export interface DspDeviceInfo {
+  readonly serial: string;
+  readonly firmwareVersion: string;
+  readonly platformType: PlatformType;
+  readonly hardware: HardwareProfile;
+}
+
+function platformTypeFromId(platformId: number): PlatformType {
+  return platformId === 1 ? PlatformType.RP2350 : PlatformType.RP2040;
+}
+
+function firmwareVersion(info: { fwMajor: number; fwMinorPatch: number }): string {
+  const minor = (info.fwMinorPatch >> 4) & 0xF;
+  const patch = info.fwMinorPatch & 0xF;
+  return `${info.fwMajor}.${minor}.${patch}`;
+}
+
 export class DspDevice {
-  #hardware: HardwareProfile | null = null;
+  private constructor(
+    private readonly transport: DspTransport,
+    private readonly _info: DspDeviceInfo,
+  ) {}
 
-  constructor(private readonly transport: DspTransport) {}
-
-  async open(): Promise<void> { await this.transport.open(); }
-  async close(): Promise<void> { await this.transport.close(); }
-
-  async getSerial(): Promise<string> {
-    return (await readCmd(this.transport, WireCmd.GetSerial)).trim();
+  static async create(
+    transport: DspTransport,
+    openTransport: () => Promise<void> = () => transport.open(),
+  ): Promise<DspDevice> {
+    await openTransport();
+    const [serial, platform] = await Promise.all([
+      readCmd(transport, WireCmd.GetSerial),
+      readCmd(transport, WireCmd.GetPlatform),
+    ]);
+    const platformType = platformTypeFromId(platform.platformId);
+    const hardware = createHardwareProfile(platformType);
+    return new DspDevice(transport, {
+      serial: serial.trim(),
+      firmwareVersion: firmwareVersion(platform),
+      platformType,
+      hardware,
+    });
   }
 
-  async getDeviceInfo(): Promise<{ type: PlatformType; firmwareVersion: string }> {
-    const info = await readCmd(this.transport, WireCmd.GetPlatform);
-    const type = info.platformId === 1 ? PlatformType.RP2350 : PlatformType.RP2040;
-    this.#hardware = createHardwareProfile(type);
-    const minor = (info.fwMinorPatch >> 4) & 0xF;
-    const patch = info.fwMinorPatch & 0xF;
-    return { type, firmwareVersion: `${info.fwMajor}.${minor}.${patch}` };
+  async close(): Promise<void> { await this.transport.close(); }
+
+  get info(): DspDeviceInfo {
+    return this._info;
+  }
+
+  get hardware(): HardwareProfile {
+    return this._info.hardware;
   }
 
   #deviceChannel(channel: ChannelId): ChannelId {
-    if (this.#hardware === null) {
-      throw new Error('DspDevice channel operation called before getDeviceInfo');
-    }
-    return wireChannelFor(this.#hardware, channel);
+    return wireChannelFor(this.hardware, channel);
   }
 
   async getAllParams(): Promise<BulkParams> {
@@ -74,10 +102,7 @@ export class DspDevice {
   }
 
   async getSystemStatus(): Promise<SystemStatus> {
-    if (this.#hardware === null) {
-      throw new Error('DspDevice.getSystemStatus called before getDeviceInfo');
-    }
-    const numCh = this.#hardware.totalChannelCount;
+    const numCh = this.hardware.totalChannelCount;
     const bytes = await this.transport.ctrlIn(WireCmd.GetStatus.code, 9, numCh * 2 + 4);
     return parseSystemStatus(bytes, numCh);
   }

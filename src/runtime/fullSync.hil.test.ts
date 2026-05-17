@@ -1,24 +1,24 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from '../device/DspDevice';
 import { openSingleDevice } from '../../hil/setup';
-import { fullSync } from './actions';
+import { finishConnection } from './actions';
 import { session, bindDevice } from '../state/session.svelte';
 import { settings } from '../state/settings.svelte';
 import { dsp, resetDsp } from '../state/dsp.svelte';
 import { stopPolling } from './poll';
 import { resetStatus } from '../state/telemetry.svelte';
 
-// End-to-end HIL test: drives the production state-layer fullSync flow
+// End-to-end HIL test: drives the production state-layer connection finish flow
 // against real silicon. The most valuable thing this catches is the slice-3
 // wiring (single device pointer, argumentless getSystemStatus, the new
-// getDeviceInfo collapsing two transfers) actually working when the bytes
+// factory-captured identity/hardware) actually working when the bytes
 // come from a real cable rather than the mock.
 //
 // We deliberately do NOT call attachTransportListeners. The 'connect' /
 // 'disconnect' transport events would fire after this test (during
-// teardown) and re-trigger fullSync against a closing transport.
+// teardown) and re-trigger connection finish against a closing transport.
 
-describe('state.fullSync — end-to-end against real hardware (HIL)', () => {
+describe('state.finishConnection — end-to-end against real hardware (HIL)', () => {
   let device: DspDevice;
   let close: () => Promise<void>;
 
@@ -38,12 +38,12 @@ describe('state.fullSync — end-to-end against real hardware (HIL)', () => {
   });
 
   it('hydrates connection + dsp.live from real device', async () => {
-    await fullSync();
+    await finishConnection(device);
 
     expect(session.status).toBe('connected');
-    expect(session.identity.serial.length).toBeGreaterThan(0);
-    expect(session.identity.firmwareVersion.length).toBeGreaterThan(0);
-    expect(settings.lastSerial).toBe(session.identity.serial);
+    expect(session.lastDeviceInfo?.serial.length ?? 0).toBeGreaterThan(0);
+    expect(session.lastDeviceInfo?.firmwareVersion.length ?? 0).toBeGreaterThan(0);
+    expect(settings.lastSerial).toBe(session.lastDeviceInfo?.serial);
 
     const snap = dsp.live;
     expect(snap).not.toBeNull();
@@ -57,17 +57,17 @@ describe('state.fullSync — end-to-end against real hardware (HIL)', () => {
     expect(snap.formatVersion).toBeGreaterThanOrEqual(2);
   });
 
-  it('is idempotent: a second fullSync settles to the same state', async () => {
+  it('is idempotent: a second finishConnection settles to the same state', async () => {
     const before = {
-      serial: session.identity.serial,
-      fw: session.identity.firmwareVersion,
+      serial: session.lastDeviceInfo?.serial,
+      fw: session.lastDeviceInfo?.firmwareVersion,
       platform: dsp.live?.platform.name,
       formatVersion: dsp.live?.formatVersion,
     };
-    await fullSync();
+    await finishConnection(device);
     expect(session.status).toBe('connected');
-    expect(session.identity.serial).toBe(before.serial);
-    expect(session.identity.firmwareVersion).toBe(before.fw);
+    expect(session.lastDeviceInfo?.serial).toBe(before.serial);
+    expect(session.lastDeviceInfo?.firmwareVersion).toBe(before.fw);
     expect(dsp.live?.platform.name).toBe(before.platform);
     expect(dsp.live?.formatVersion).toBe(before.formatVersion);
   });

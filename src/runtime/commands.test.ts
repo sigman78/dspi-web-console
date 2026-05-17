@@ -10,12 +10,27 @@ import { bindDevice, session, setStatus } from '../state/session.svelte';
 import { dsp, patchSnapshot } from '../state/dsp.svelte';
 import { instantCommand, scrubCommand, batchCommand, cancelAllCommands } from './commands';
 
+const testHardware = createHardwareProfile(PlatformType.RP2350);
+
+function initializedDevice(methods: Partial<DspDevice>): DspDevice {
+  return {
+    info: {
+      serial: 'TEST-RP2350',
+      firmwareVersion: '1.0.0',
+      platformType: PlatformType.RP2350,
+      hardware: testHardware,
+    },
+    hardware: testHardware,
+    ...methods,
+  } as DspDevice;
+}
+
 function makeDevice(send: () => Promise<void> = async () => {}) {
   const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-  return {
+  return initializedDevice({
     setLoudnessEnabled: vi.fn(send),
     getAllParams: vi.fn(async () => validBulk),
-  } as unknown as DspDevice;
+  });
 }
 
 describe('instantCommand', () => {
@@ -92,10 +107,10 @@ function makeGainDevice() {
   const calls: Array<[number, number]> = [];
   const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
   return {
-    device: {
+    device: initializedDevice({
       setOutputGain: vi.fn(async (output: number, db: number) => { calls.push([output, db]); }),
       getAllParams: vi.fn(async () => validBulk),
-    } as unknown as DspDevice,
+    }),
     calls,
   };
 }
@@ -179,10 +194,10 @@ describe('scrubCommand', () => {
 
   it('forces resync + sets error on send failure (current generation)', async () => {
     const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    const device = {
+    const device = initializedDevice({
       setOutputGain: vi.fn(async () => { throw new Error('range'); }),
       getAllParams: vi.fn(async () => validBulk),
-    } as unknown as DspDevice;
+    });
     bindDevice(device);
     scrubCommand({
       key: 'outputGain:0',
@@ -231,12 +246,12 @@ describe('batchCommand', () => {
 
   it('forces resync + sets error if any wire write inside the batch rejects', async () => {
     const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    const device = {
+    const device = initializedDevice({
       setOutputGain: vi.fn(async (output: number) => {
         if (output === 1) throw new Error('boom');
       }),
       getAllParams: vi.fn(async () => validBulk),
-    } as unknown as DspDevice;
+    });
     bindDevice(device);
     batchCommand({
       apply: () => {},
@@ -251,10 +266,10 @@ describe('batchCommand', () => {
 
   it('stale generation does not flip session status to error', async () => {
     const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    const device = {
+    const device = initializedDevice({
       setOutputGain: vi.fn(async () => { throw new Error('boom'); }),
       getAllParams: vi.fn(async () => validBulk),
-    } as unknown as DspDevice;
+    });
     bindDevice(device);
     batchCommand({
       apply: () => {},
@@ -308,10 +323,10 @@ describe('cancelAllCommands', () => {
   it('bumps session generation so in-flight instant sends settle as stale', async () => {
     let resolveSend: () => void = () => {};
     const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    const device = {
+    const device = initializedDevice({
       setLoudnessEnabled: vi.fn(() => new Promise<void>((res) => { resolveSend = res; })),
       getAllParams: vi.fn(async () => validBulk),
-    } as unknown as DspDevice;
+    });
     bindDevice(device);
 
     instantCommand({
@@ -334,10 +349,10 @@ describe('cancelAllCommands', () => {
   it('in-flight instant rejection after cancel does NOT flip status to error', async () => {
     let rejectSend: (err: Error) => void = () => {};
     const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
-    const device = {
+    const device = initializedDevice({
       setLoudnessEnabled: vi.fn(() => new Promise<void>((_, rej) => { rejectSend = rej; })),
       getAllParams: vi.fn(async () => validBulk),
-    } as unknown as DspDevice;
+    });
     bindDevice(device);
 
     instantCommand({

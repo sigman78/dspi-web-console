@@ -9,6 +9,11 @@ import { Codec, encode, decode } from '../utils/binCodec';
 import { FilterType } from '../domain/filter';
 import { MasterVolumeMode } from '../domain/processing';
 
+async function createDevice(t: MockTransport): Promise<DspDevice> {
+  const openTransport = t.isOpen() ? async () => {} : () => t.open();
+  return DspDevice.create(t, openTransport);
+}
+
 describe('MockTransport', () => {
   let t: MockTransport;
   beforeEach(async () => {
@@ -194,7 +199,7 @@ describe('MockTransport — bypass / master volume mode / saved volume', () => {
   });
 
   it('DspDevice.saveMasterVolume → getSavedMasterVolume round-trips', async () => {
-    const d = new DspDevice(t);
+    const d = await createDevice(t);
     await d.setMasterVolume(-12.5);
     expect(await d.saveMasterVolume()).toBe(true);
     expect(await d.getSavedMasterVolume()).toBeCloseTo(-12.5, 4);
@@ -204,8 +209,7 @@ describe('MockTransport — bypass / master volume mode / saved volume', () => {
 describe('MockTransport — preset round-trip', () => {
   it('restores master volume across save/load when mode=WithPreset', async () => {
     const t = new MockTransport({ platform: 'rp2350' });
-    const d = new DspDevice(t);
-    await d.open();
+    const d = await createDevice(t);
 
     // Switch to with-preset mode so master volume rides the preset payload.
     await d.setMasterVolumeMode(MasterVolumeMode.WithPreset);
@@ -222,8 +226,7 @@ describe('MockTransport — preset round-trip', () => {
 
   it('leaves master volume untouched on load in Mode 0 (Independent)', async () => {
     const t = new MockTransport({ platform: 'rp2350' });
-    const d = new DspDevice(t);
-    await d.open();
+    const d = await createDevice(t);
 
     // Mode 0 is default; master volume should not be touched by Load.
     await d.setMasterVolume(-12);
@@ -238,8 +241,7 @@ describe('MockTransport — preset round-trip', () => {
 describe('MockTransport — preset round-trip / global fields', () => {
   it('does not restore masterVolumeMode on LoadPreset (mode is directory-level)', async () => {
     const t = new MockTransport({ platform: 'rp2350' });
-    const d = new DspDevice(t);
-    await d.open();
+    const d = await createDevice(t);
 
     // Save a preset captured while mode = WithPreset.
     await d.setMasterVolumeMode(MasterVolumeMode.WithPreset);
@@ -259,8 +261,7 @@ describe('MockTransport — preset round-trip / global fields', () => {
 describe('MockTransport — GetEqParam multi-read', () => {
   it('setFilter → getFilter cross-validates the multi-read protocol', async () => {
     const t = new MockTransport({ platform: 'rp2350' });
-    await t.open();
-    const d = new DspDevice(t);
+    const d = await createDevice(t);
     await d.setFilter(2, 5, {
       type: FilterType.LowShelf,
       frequency: 320,

@@ -1,5 +1,4 @@
 import { fromBulkParams } from '../domain/bulkToSnapshot';
-import { createHardwareProfile } from '../domain/hardware';
 import { session } from '../state/session.svelte';
 import { applyDspSnapshot, dsp } from '../state/dsp.svelte';
 import { warn } from '../utils/log';
@@ -16,8 +15,7 @@ async function fetchAndApply(force: boolean): Promise<void> {
   try {
     const bulk = await d.getAllParams();
     if (!force && dsp.pendingWrites.size > 0) return;
-    const hardware = session.hardware
-      ?? createHardwareProfile(dsp.live?.platform.type ?? bulk.platformId);
+    const hardware = d.hardware;
     session.hardware = hardware;
     applyDspSnapshot(fromBulkParams(hardware, bulk));
   } catch (err) {

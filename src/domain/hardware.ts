@@ -1,14 +1,5 @@
-import { ChannelId, OutputSlot, channelById, type ChannelId as ChannelIdValue, type ChannelLayout, type OutputSlot as OutputSlotValue } from './channels';
+import { ChannelId, channelById, type ChannelId as ChannelIdValue, type ChannelLayout, type OutputSlot as OutputSlotValue } from './channels';
 import { PlatformType, type PlatformInfo } from './platform';
-
-export interface PinOutputDefinition {
-  id: number;
-  outputSlot: OutputSlotValue;
-  channelId: ChannelIdValue;
-  label: string;
-  shortLabel: string;
-  defaultPin: number;
-}
 
 export interface HardwareProfile extends PlatformInfo {
   inputChannels: readonly ChannelIdValue[];
@@ -17,10 +8,12 @@ export interface HardwareProfile extends PlatformInfo {
   outputs: readonly ChannelLayout[];
   channels: readonly ChannelLayout[];
   outputSlotByChannel: Partial<Record<ChannelIdValue, OutputSlotValue>>;
-  channelByOutputSlot: Partial<Record<OutputSlotValue, ChannelIdValue>>;
   wireChannelByUiChannel: Partial<Record<ChannelIdValue, ChannelIdValue>>;
   uiChannelByWireChannel: Partial<Record<ChannelIdValue, ChannelIdValue>>;
-  pinOutputs: readonly PinOutputDefinition[];
+  // Default GPIO pin per output channel. Keyed on the L-anchor for stereo
+  // I2S pairs (one pin drives both L and R); standalone for PDM. Awaiting
+  // a Pin Routing UI consumer.
+  defaultPinByChannel: Partial<Record<ChannelIdValue, number>>;
 }
 
 const INPUT_CHANNELS = [ChannelId.In1L, ChannelId.In1R] as const;
@@ -30,7 +23,7 @@ interface HardwareProfileConfig {
   name: string;
   outputChannels: readonly ChannelIdValue[];
   wireChannelOverrides?: Partial<Record<ChannelIdValue, ChannelIdValue>>;
-  pinOutputs: readonly PinOutputDefinition[];
+  defaultPins: Partial<Record<ChannelIdValue, number>>;
 }
 
 function buildHardwareProfile(config: HardwareProfileConfig): HardwareProfile {
@@ -41,12 +34,8 @@ function buildHardwareProfile(config: HardwareProfileConfig): HardwareProfile {
   const channels = [...inputs, ...outputs];
 
   const outputSlotByChannel: Partial<Record<ChannelIdValue, OutputSlotValue>> = {};
-  const channelByOutputSlot: Partial<Record<OutputSlotValue, ChannelIdValue>> = {};
   for (let i = 0; i < outputChannels.length; i++) {
-    const slot = i as OutputSlotValue;
-    const channel = outputChannels[i];
-    outputSlotByChannel[channel] = slot;
-    channelByOutputSlot[slot] = channel;
+    outputSlotByChannel[outputChannels[i]] = i as OutputSlotValue;
   }
 
   const wireChannelByUiChannel: Partial<Record<ChannelIdValue, ChannelIdValue>> = {};
@@ -69,10 +58,9 @@ function buildHardwareProfile(config: HardwareProfileConfig): HardwareProfile {
     outputs,
     channels,
     outputSlotByChannel,
-    channelByOutputSlot,
     wireChannelByUiChannel,
     uiChannelByWireChannel,
-    pinOutputs: config.pinOutputs,
+    defaultPinByChannel: config.defaultPins,
   };
 }
 
@@ -88,11 +76,11 @@ export const HARDWARE_PROFILES: Record<PlatformType, HardwareProfile> = {
     wireChannelOverrides: {
       [ChannelId.Pdm]: ChannelId.Out3L,
     },
-    pinOutputs: [
-      { id: 0, outputSlot: OutputSlot.Out1L, channelId: ChannelId.Out1L, label: 'Output 1', shortLabel: 'OUT 1/2', defaultPin: 6 },
-      { id: 1, outputSlot: OutputSlot.Out2L, channelId: ChannelId.Out2L, label: 'Output 2', shortLabel: 'OUT 3/4', defaultPin: 7 },
-      { id: 2, outputSlot: 4 as OutputSlotValue, channelId: ChannelId.Pdm, label: 'PDM', shortLabel: 'SUB OUT', defaultPin: 10 },
-    ],
+    defaultPins: {
+      [ChannelId.Out1L]: 6,
+      [ChannelId.Out2L]: 7,
+      [ChannelId.Pdm]: 10,
+    },
   }),
   [PlatformType.RP2350]: buildHardwareProfile({
     type: PlatformType.RP2350,
@@ -104,13 +92,13 @@ export const HARDWARE_PROFILES: Record<PlatformType, HardwareProfile> = {
       ChannelId.Out4L, ChannelId.Out4R,
       ChannelId.Pdm,
     ],
-    pinOutputs: [
-      { id: 0, outputSlot: OutputSlot.Out1L, channelId: ChannelId.Out1L, label: 'Output 1', shortLabel: 'OUT 1/2', defaultPin: 6 },
-      { id: 1, outputSlot: OutputSlot.Out2L, channelId: ChannelId.Out2L, label: 'Output 2', shortLabel: 'OUT 3/4', defaultPin: 7 },
-      { id: 2, outputSlot: OutputSlot.Out3L, channelId: ChannelId.Out3L, label: 'Output 3', shortLabel: 'OUT 5/6', defaultPin: 8 },
-      { id: 3, outputSlot: OutputSlot.Out4L, channelId: ChannelId.Out4L, label: 'Output 4', shortLabel: 'OUT 7/8', defaultPin: 9 },
-      { id: 4, outputSlot: OutputSlot.Pdm, channelId: ChannelId.Pdm, label: 'PDM', shortLabel: 'SUB OUT', defaultPin: 10 },
-    ],
+    defaultPins: {
+      [ChannelId.Out1L]: 6,
+      [ChannelId.Out2L]: 7,
+      [ChannelId.Out3L]: 8,
+      [ChannelId.Out4L]: 9,
+      [ChannelId.Pdm]: 10,
+    },
   }),
 };
 

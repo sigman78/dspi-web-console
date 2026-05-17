@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from '../device/DspDevice';
 import { openSingleDevice } from '../../hil/setup';
-import { PlatformType } from '../domain/platform';
 
 // Drives the *shape* of the production poll loop (status + buffer stats
 // intermixed) against real hardware without bringing in the actual
@@ -25,7 +24,6 @@ describe('poll loop — mixed status + buffer-stats reads (HIL)', () => {
     const opened = await openSingleDevice();
     device = opened.device;
     close = opened.close;
-    await device.getDeviceInfo();
   });
 
   afterAll(async () => {
@@ -33,8 +31,7 @@ describe('poll loop — mixed status + buffer-stats reads (HIL)', () => {
   });
 
   it('intermixed transfers stay bounded and the buffer sequence advances', async () => {
-    const info = await device.getDeviceInfo();
-    const numCh = info.type === PlatformType.RP2040 ? 7 : 11;
+    const numCh = device.hardware.totalChannelCount;
     const sequences: number[] = [];
 
     let lastStatus = 0;

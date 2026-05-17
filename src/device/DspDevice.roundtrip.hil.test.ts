@@ -15,7 +15,6 @@ describe('DspDevice — write→read roundtrips and bulk cross-validation (HIL)'
     const opened = await openSingleDevice();
     device = opened.device;
     close = opened.close;
-    await device.getDeviceInfo(); // primes hardware profile for any test that needs status
   });
 
   afterAll(async () => {

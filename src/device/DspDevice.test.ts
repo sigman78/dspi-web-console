@@ -1,7 +1,7 @@
 // Facade-level tests for DspDevice. Mock-fidelity assertions (serial,
 // bulk shape, master-volume roundtrip, buffer-stats parsing) live in
 // MockTransport.test.ts; this file covers the things only DspDevice
-// adds on top: getDeviceInfo collapsing, getSystemInfo aggregation,
+// adds on top: factory identity capture, getSystemInfo aggregation,
 // per-input preamp, and the hardware-profile contract for getSystemStatus.
 
 import { describe, it, test, expect, beforeEach } from 'vitest';
@@ -17,18 +17,53 @@ import { FilterType } from '../domain/filter';
 import { ChannelId } from '../domain/channels';
 import type { PresetSlot } from '../domain/presetLimits';
 
+type TestPlatform = 'rp2040' | 'rp2350';
+
+function identityBytes(request: number, length: number, platform: TestPlatform): Uint8Array | null {
+  if (request === WireCmd.GetSerial.code) {
+    const out = new Uint8Array(length);
+    out.set(new TextEncoder().encode(`TEST-${platform.toUpperCase()}`).slice(0, length));
+    return out;
+  }
+  if (request === WireCmd.GetPlatform.code) {
+    const out = new Uint8Array(length);
+    out[0] = platform === 'rp2350' ? PlatformType.RP2350 : PlatformType.RP2040;
+    if (length > 1) out[1] = 1;
+    if (length > 2) out[2] = 0;
+    return out;
+  }
+  return null;
+}
+
+function withIdentity(base: DspTransport, platform: TestPlatform = 'rp2350'): DspTransport {
+  return {
+    open: () => base.open(),
+    close: () => base.close(),
+    isOpen: () => base.isOpen(),
+    on: (event, listener) => base.on(event, listener),
+    ctrlIn: (request, value, length) => {
+      const identity = identityBytes(request, length, platform);
+      return identity ? Promise.resolve(identity) : base.ctrlIn(request, value, length);
+    },
+    ctrlOut: (request, value, data) => base.ctrlOut(request, value, data),
+  };
+}
+
+async function createDevice(base: DspTransport, platform: TestPlatform = 'rp2350'): Promise<DspDevice> {
+  const openTransport = base.isOpen() ? async () => {} : () => base.open();
+  return DspDevice.create(withIdentity(base, platform), openTransport);
+}
+
 describe('DspDevice facade', () => {
   let d: DspDevice;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
-    d = new DspDevice(t);
-    await d.open();
+    d = await createDevice(t);
   });
 
   it('reads device info (platform type + firmware string)', async () => {
-    const info = await d.getDeviceInfo();
-    expect(info.type).toBe(PlatformType.RP2350);
-    expect(info.firmwareVersion.length).toBeGreaterThan(0);
+    expect(d.info.platformType).toBe(PlatformType.RP2350);
+    expect(d.info.firmwareVersion.length).toBeGreaterThan(0);
   });
 
   it('reads system info (env scalars + counters)', async () => {
@@ -60,7 +95,7 @@ describe('DspDevice facade', () => {
       },
       ctrlOut: (request, value, data) => inner.ctrlOut(request, value, data),
     };
-    const dd = new DspDevice(failing);
+    const dd = await createDevice(failing);
     const info = await dd.getSystemInfo();
     expect(info.spdifStarvationsTotal).toBeNull();
     expect(info.clockHz).toBe(125_000_000);
@@ -77,21 +112,34 @@ describe('DspDevice facade', () => {
 });
 
 describe('DspDevice — getSystemStatus hardware profile contract', () => {
-  it('uses platform-correct channel count after getDeviceInfo primes hardware', async () => {
+  it('uses platform-correct channel count from factory hardware profile', async () => {
     const t = new MockTransport({ platform: 'rp2350' });
-    const d = new DspDevice(t);
-    await d.open();
-    await d.getDeviceInfo();
+    const d = await createDevice(t);
     const s = await d.getSystemStatus();
     expect(s.peaks.length).toBe(11);
     expect(s.cpu0).toBe(25);
   });
 
-  it('throws on getSystemStatus before getDeviceInfo', async () => {
-    const t = new MockTransport({ platform: 'rp2040' });
-    const d = new DspDevice(t);
-    await d.open();
-    await expect(d.getSystemStatus()).rejects.toThrow(/before getDeviceInfo/);
+  it('uses the RP2040 channel count when created for RP2040', async () => {
+    const inner = new MockTransport({ platform: 'rp2040' });
+    let statusLength = 0;
+    const t: DspTransport = {
+      open: () => inner.open(),
+      close: () => inner.close(),
+      isOpen: () => inner.isOpen(),
+      on: (event, listener) => inner.on(event, listener),
+      ctrlIn: (request, value, length) => {
+        if (request === WireCmd.GetStatus.code) statusLength = length;
+        return inner.ctrlIn(request, value, length);
+      },
+      ctrlOut: (request, value, data) => inner.ctrlOut(request, value, data),
+    };
+    const d = await createDevice(t, 'rp2040');
+    expect(d.info.platformType).toBe(PlatformType.RP2040);
+    expect(d.hardware.totalChannelCount).toBe(7);
+    const s = await d.getSystemStatus();
+    expect(statusLength).toBe(7 * 2 + 4);
+    expect(s.peaks.length).toBe(11);
   });
 });
 
@@ -113,7 +161,7 @@ describe('DspDevice — bypass + master volume mode', () => {
 
   test('setBypass(true) writes bool8 [1] to 0x46 wValue=0', async () => {
     const { t, captured } = makeCapturingTransport();
-    await new DspDevice(t).setBypass(true);
+    await (await createDevice(t)).setBypass(true);
     expect(captured).toHaveLength(1);
     expect(captured[0].request).toBe(0x46);
     expect(captured[0].value).toBe(0);
@@ -122,7 +170,7 @@ describe('DspDevice — bypass + master volume mode', () => {
 
   test('setBypass(false) writes bool8 [0]', async () => {
     const { t, captured } = makeCapturingTransport();
-    await new DspDevice(t).setBypass(false);
+    await (await createDevice(t)).setBypass(false);
     expect(captured[0].data).toEqual(new Uint8Array([0]));
   });
 
@@ -133,13 +181,13 @@ describe('DspDevice — bypass + master volume mode', () => {
       ctrlIn: async (req) => { lastReq = req; return new Uint8Array([1]); },
       ctrlOut: async () => {},
     };
-    expect(await new DspDevice(t).getBypass()).toBe(true);
+    expect(await (await createDevice(t)).getBypass()).toBe(true);
     expect(lastReq).toBe(0x47);
   });
 
   test('setMasterVolumeMode(WithPreset) writes u8 [1] to 0xD4', async () => {
     const { t, captured } = makeCapturingTransport();
-    await new DspDevice(t).setMasterVolumeMode(MasterVolumeMode.WithPreset);
+    await (await createDevice(t)).setMasterVolumeMode(MasterVolumeMode.WithPreset);
     expect(captured).toHaveLength(1);
     expect(captured[0].request).toBe(0xD4);
     expect(captured[0].value).toBe(0);
@@ -148,7 +196,7 @@ describe('DspDevice — bypass + master volume mode', () => {
 
   test('setMasterVolumeMode(Independent) writes u8 [0]', async () => {
     const { t, captured } = makeCapturingTransport();
-    await new DspDevice(t).setMasterVolumeMode(MasterVolumeMode.Independent);
+    await (await createDevice(t)).setMasterVolumeMode(MasterVolumeMode.Independent);
     expect(captured[0].data).toEqual(new Uint8Array([0]));
   });
 
@@ -159,7 +207,7 @@ describe('DspDevice — bypass + master volume mode', () => {
       ctrlIn: async (req) => { lastReq = req; return new Uint8Array([1]); },
       ctrlOut: async () => {},
     };
-    expect(await new DspDevice(t).getMasterVolumeMode()).toBe(MasterVolumeMode.WithPreset);
+    expect(await (await createDevice(t)).getMasterVolumeMode()).toBe(MasterVolumeMode.WithPreset);
     expect(lastReq).toBe(0xD5);
   });
 });
@@ -177,7 +225,7 @@ describe('DspDevice — saved master volume', () => {
       },
       ctrlOut: async () => {},
     };
-    expect(await new DspDevice(t).getSavedMasterVolume()).toBeCloseTo(-8.25, 4);
+    expect(await (await createDevice(t)).getSavedMasterVolume()).toBeCloseTo(-8.25, 4);
     expect(seen[0]).toEqual({ req: 0xD7, val: 0, len: 4 });
   });
 });
@@ -205,7 +253,7 @@ describe('DspDevice — processing module setters', () => {
   describe('loudness', () => {
     test('setLoudnessEnabled writes bool8 to 0x58', async () => {
       const { t, captured } = makeCapturingTransport();
-      const d = new DspDevice(t);
+      const d = await createDevice(t);
       await d.setLoudnessEnabled(true);
       expect(captured).toHaveLength(1);
       expect(captured[0].request).toBe(0x58);
@@ -213,7 +261,7 @@ describe('DspDevice — processing module setters', () => {
     });
     test('setLoudnessRefSpl writes f32 to 0x5A', async () => {
       const { t, captured } = makeCapturingTransport();
-      const d = new DspDevice(t);
+      const d = await createDevice(t);
       await d.setLoudnessRefSpl(85);
       expect(captured[0].request).toBe(0x5A);
       const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
@@ -221,7 +269,7 @@ describe('DspDevice — processing module setters', () => {
     });
     test('setLoudnessIntensity writes f32 to 0x5C', async () => {
       const { t, captured } = makeCapturingTransport();
-      const d = new DspDevice(t);
+      const d = await createDevice(t);
       await d.setLoudnessIntensity(0.6);
       expect(captured[0].request).toBe(0x5C);
       const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
@@ -232,33 +280,33 @@ describe('DspDevice — processing module setters', () => {
   describe('crossfeed', () => {
     test('setCrossfeedEnabled writes bool8 to 0x5E', async () => {
       const { t, captured } = makeCapturingTransport();
-      await new DspDevice(t).setCrossfeedEnabled(true);
+      await (await createDevice(t)).setCrossfeedEnabled(true);
       expect(captured[0].request).toBe(0x5E);
       expect(captured[0].data).toEqual(new Uint8Array([1]));
     });
     test('setCrossfeedPreset writes u8 to 0x60', async () => {
       const { t, captured } = makeCapturingTransport();
-      await new DspDevice(t).setCrossfeedPreset(CrossfeedPreset.Preset3);
+      await (await createDevice(t)).setCrossfeedPreset(CrossfeedPreset.Preset3);
       expect(captured[0].request).toBe(0x60);
       expect(captured[0].data).toEqual(new Uint8Array([2]));
     });
     test('setCrossfeedFreq writes f32 to 0x62', async () => {
       const { t, captured } = makeCapturingTransport();
-      await new DspDevice(t).setCrossfeedFreq(700);
+      await (await createDevice(t)).setCrossfeedFreq(700);
       expect(captured[0].request).toBe(0x62);
       const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
       expect(view.getFloat32(0, true)).toBeCloseTo(700, 4);
     });
     test('setCrossfeedFeedDb writes f32 to 0x64', async () => {
       const { t, captured } = makeCapturingTransport();
-      await new DspDevice(t).setCrossfeedFeedDb(4.5);
+      await (await createDevice(t)).setCrossfeedFeedDb(4.5);
       expect(captured[0].request).toBe(0x64);
       const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
       expect(view.getFloat32(0, true)).toBeCloseTo(4.5, 4);
     });
     test('setCrossfeedItd writes bool8 to 0x66', async () => {
       const { t, captured } = makeCapturingTransport();
-      await new DspDevice(t).setCrossfeedItd(false);
+      await (await createDevice(t)).setCrossfeedItd(false);
       expect(captured[0].request).toBe(0x66);
       expect(captured[0].data).toEqual(new Uint8Array([0]));
     });
@@ -267,39 +315,39 @@ describe('DspDevice — processing module setters', () => {
   describe('leveller', () => {
     test('setLevellerEnabled writes bool8 to 0xB4', async () => {
       const { t, captured } = makeCapturingTransport();
-      await new DspDevice(t).setLevellerEnabled(true);
+      await (await createDevice(t)).setLevellerEnabled(true);
       expect(captured[0].request).toBe(0xB4);
       expect(captured[0].data).toEqual(new Uint8Array([1]));
     });
     test('setLevellerAmount writes f32 to 0xB6', async () => {
       const { t, captured } = makeCapturingTransport();
-      await new DspDevice(t).setLevellerAmount(30);
+      await (await createDevice(t)).setLevellerAmount(30);
       expect(captured[0].request).toBe(0xB6);
       const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
       expect(view.getFloat32(0, true)).toBeCloseTo(30, 4);
     });
     test('setLevellerSpeed writes u8 to 0xB8', async () => {
       const { t, captured } = makeCapturingTransport();
-      await new DspDevice(t).setLevellerSpeed(LevellerSpeed.Fast);
+      await (await createDevice(t)).setLevellerSpeed(LevellerSpeed.Fast);
       expect(captured[0].request).toBe(0xB8);
       expect(captured[0].data).toEqual(new Uint8Array([2]));
     });
     test('setLevellerMaxGain writes f32 to 0xBA', async () => {
       const { t, captured } = makeCapturingTransport();
-      await new DspDevice(t).setLevellerMaxGain(6);
+      await (await createDevice(t)).setLevellerMaxGain(6);
       expect(captured[0].request).toBe(0xBA);
       const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
       expect(view.getFloat32(0, true)).toBeCloseTo(6, 4);
     });
     test('setLevellerLookahead writes bool8 to 0xBC', async () => {
       const { t, captured } = makeCapturingTransport();
-      await new DspDevice(t).setLevellerLookahead(true);
+      await (await createDevice(t)).setLevellerLookahead(true);
       expect(captured[0].request).toBe(0xBC);
       expect(captured[0].data).toEqual(new Uint8Array([1]));
     });
     test('setLevellerGate writes f32 to 0xBE', async () => {
       const { t, captured } = makeCapturingTransport();
-      await new DspDevice(t).setLevellerGate(-40);
+      await (await createDevice(t)).setLevellerGate(-40);
       expect(captured[0].request).toBe(0xBE);
       const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
       expect(view.getFloat32(0, true)).toBeCloseTo(-40, 4);
@@ -315,7 +363,7 @@ describe('DspDevice — saveMasterVolume action-IN', () => {
       ctrlIn: async (req, val, len) => { seen.push({ req, val, len }); return new Uint8Array([0]); },
       ctrlOut: async () => {},
     };
-    expect(await new DspDevice(t).saveMasterVolume()).toBe(true);
+    expect(await (await createDevice(t)).saveMasterVolume()).toBe(true);
     expect(seen[0]).toEqual({ req: 0xD6, val: 0, len: 1 });
   });
 
@@ -325,7 +373,7 @@ describe('DspDevice — saveMasterVolume action-IN', () => {
       ctrlIn: async () => new Uint8Array([3]), // CrcFailure
       ctrlOut: async () => {},
     };
-    expect(await new DspDevice(t).saveMasterVolume()).toBe(false);
+    expect(await (await createDevice(t)).saveMasterVolume()).toBe(false);
   });
 
   test('returns false when response is empty', async () => {
@@ -334,7 +382,7 @@ describe('DspDevice — saveMasterVolume action-IN', () => {
       ctrlIn: async () => new Uint8Array(0),
       ctrlOut: async () => {},
     };
-    expect(await new DspDevice(t).saveMasterVolume()).toBe(false);
+    expect(await (await createDevice(t)).saveMasterVolume()).toBe(false);
   });
 });
 
@@ -342,8 +390,7 @@ describe('DspDevice — persistence (legacy save/load/reset)', () => {
   let d: DspDevice;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
-    d = new DspDevice(t);
-    await d.open();
+    d = await createDevice(t);
   });
 
   it('saveParams returns ok on success', async () => {
@@ -382,13 +429,12 @@ describe('DspDevice — telemetry actions', () => {
   let d: DspDevice;
   beforeEach(async () => {
     mockT = new MockTransport({ platform: 'rp2350' });
-    d = new DspDevice(mockT);
-    await d.open();
+    d = await createDevice(mockT);
   });
 
   it('clearClips dispatches a 0x83 OUT with wValue=0 and empty payload', async () => {
     const { t, captured } = makeCapturingTransport();
-    await new DspDevice(t).clearClips();
+    await (await createDevice(t)).clearClips();
     expect(captured).toHaveLength(1);
     expect(captured[0].request).toBe(0x83);
     expect(captured[0].value).toBe(0);
@@ -404,9 +450,7 @@ describe('DspDevice — channel names', () => {
   let d: DspDevice;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
-    d = new DspDevice(t);
-    await d.open();
-    await d.getDeviceInfo();
+    d = await createDevice(t);
   });
 
   it('roundtrips a channel name (Subwoofer on channel 3)', async () => {
@@ -432,8 +476,7 @@ describe('DspDevice — preset directory and active slot', () => {
   let d: DspDevice;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
-    d = new DspDevice(t);
-    await d.open();
+    d = await createDevice(t);
   });
 
   it('returns the preset directory with default values', async () => {
@@ -475,8 +518,7 @@ describe('DspDevice — preset directory and active slot', () => {
           : new Uint8Array(0),
       ctrlOut: async () => {},
     };
-    const dd = new DspDevice(stub);
-    await dd.open();
+    const dd = await createDevice(stub);
     expect(await dd.getActivePreset()).toBe(null);
   });
 });
@@ -485,8 +527,7 @@ describe('DspDevice — preset names', () => {
   let d: DspDevice;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
-    d = new DspDevice(t);
-    await d.open();
+    d = await createDevice(t);
   });
 
   it('roundtrips preset names independently per slot', async () => {
@@ -505,8 +546,7 @@ describe('DspDevice — preset save/load/delete', () => {
   let d: DspDevice;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
-    d = new DspDevice(t);
-    await d.open();
+    d = await createDevice(t);
   });
 
   it('savePreset returns ok and marks the slot occupied', async () => {
@@ -582,8 +622,7 @@ describe('DspDevice — preset startup + include-pins', () => {
   let d: DspDevice;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
-    d = new DspDevice(t);
-    await d.open();
+    d = await createDevice(t);
   });
 
   it('roundtrips startup config', async () => {
@@ -617,8 +656,7 @@ describe('DspDevice — clearAllPresets', () => {
   let d: DspDevice;
   beforeEach(async () => {
     t = new MockTransport({ platform: 'rp2350' });
-    d = new DspDevice(t);
-    await d.open();
+    d = await createDevice(t);
   });
 
   it('clears every occupied slot and returns ok', async () => {
@@ -673,9 +711,7 @@ describe('DspDevice — preset name truncation', () => {
   let d: DspDevice;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
-    d = new DspDevice(t);
-    await d.open();
-    await d.getDeviceInfo();
+    d = await createDevice(t);
   });
 
   it('setPresetName silently truncates ASCII names over 31 bytes', async () => {
@@ -735,8 +771,7 @@ describe('DspDevice — getFilter multi-read', () => {
       },
       ctrlOut: async () => {},
     };
-    const d = new DspDevice(t);
-    await d.getDeviceInfo();
+    const d = await createDevice(t);
     const f = await d.getFilter(2, 5);
 
     expect(seen).toHaveLength(4);
@@ -752,17 +787,16 @@ describe('DspDevice — getFilter multi-read', () => {
     expect(f.gain).toBeCloseTo(-3.5, 4);
   });
 
-  test('throws on channel-scoped operations before getDeviceInfo', async () => {
+  test('channel-scoped operations can run immediately after factory creation', async () => {
     const t = new MockTransport({ platform: 'rp2350' });
-    const d = new DspDevice(t);
-    await d.open();
+    const d = await createDevice(t);
 
     await expect(d.setFilter(2, 0, {
       type: FilterType.Peaking,
       frequency: 1000,
       q: 1,
       gain: 0,
-    })).rejects.toThrow(/before getDeviceInfo/);
+    })).resolves.toBeUndefined();
   });
 
   test('maps RP2040 PDM channel-scoped commands to firmware channel 6', async () => {
@@ -784,9 +818,7 @@ describe('DspDevice — getFilter multi-read', () => {
         seenOut.push({ req, val, data });
       },
     };
-    const d = new DspDevice(t);
-
-    await d.getDeviceInfo();
+    const d = await createDevice(t, 'rp2040');
     await d.setFilter(ChannelId.Pdm, 0, { type: FilterType.Peaking, frequency: 80, q: 1, gain: -3 });
     await d.getFilter(ChannelId.Pdm, 1);
     await d.setChannelName(ChannelId.Pdm, 'Sub');

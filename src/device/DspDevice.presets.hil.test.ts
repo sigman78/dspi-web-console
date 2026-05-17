@@ -27,8 +27,6 @@ describe('DspDevice — presets (HIL)', () => {
     const opened = await openSingleDevice();
     device = opened.device;
     close = opened.close;
-    // Prime numCh + verify connection works.
-    await device.getDeviceInfo();
   });
 
   afterAll(async () => {

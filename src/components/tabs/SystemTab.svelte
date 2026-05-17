@@ -36,8 +36,8 @@
     <Panel code="SY.01" title="DEVICE">
       <div class="kvgrid">
         <KV label="STATUS"   value={session.status.toUpperCase()} tone={session.status === 'connected' ? 'ok' : 'off'} />
-        <KV label="SERIAL"   value={session.identity.serial || '—'} />
-        <KV label="FIRMWARE" value={session.identity.firmwareVersion || '—'} />
+        <KV label="SERIAL"   value={session.lastDeviceInfo?.serial ?? '—'} />
+        <KV label="FIRMWARE" value={session.lastDeviceInfo?.firmwareVersion ?? '—'} />
         <KV label="PLATFORM" value={snap?.platform.name ?? '—'} />
         <KV label="FORMAT"   value={`V${snap?.formatVersion ?? 0}`} />
         <KV label="OUTPUTS"  value={`${snap?.platform.outputCount ?? 0} / ${snap?.platform.totalChannelCount ?? 0}`} />

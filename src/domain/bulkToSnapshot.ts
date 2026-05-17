@@ -97,8 +97,8 @@ export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): Dsp
   }
 
   // Feature shapes are shared with the parser; we adopt them by reference.
-  // Each fullSync replaces the snapshot wholesale, and the parsed bulk goes
-  // out of scope, so there's no aliasing concern.
+  // Connection sync and bulk resync replace the snapshot wholesale, and the
+  // parsed bulk goes out of scope, so there's no aliasing concern.
   return {
     platform: {
       type: hardware.type,
