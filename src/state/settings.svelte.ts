@@ -135,8 +135,28 @@ export function loadSettings(): Settings {
   return migrateLegacyKeys() ?? defaults();
 }
 
-// Reactive store, hydrated once at module load.
-export const settings = $state<Settings>(loadSettings());
+// Reactive store. Initialized to defaults at module load; restore
+// persisted values explicitly via restoreSettings() during app startup,
+// so importing this module is a pure operation (no localStorage I/O,
+// no legacy migration writes).
+export const settings = $state<Settings>(defaults());
+
+// Mutates `settings` in place from persisted storage. Call once during
+// startup, before mounting the app and before startSettingsPersistence().
+// In-place mutation preserves the identity of the exported `settings`
+// reference so prior imports remain valid.
+export function restoreSettings(): void {
+  const loaded = loadSettings();
+  settings.version = loaded.version;
+  settings.theme = loaded.theme;
+  settings.showDebugStats = loaded.showDebugStats;
+  settings.tab = loaded.tab;
+  settings.eqTarget = loaded.eqTarget;
+  settings.soft.muted = loaded.soft.muted;
+  settings.soft.mutedFromDb = loaded.soft.mutedFromDb;
+  settings.lastSerial = loaded.lastSerial;
+  settings.warnOnPresetSwitchDirty = loaded.warnOnPresetSwitchDirty;
+}
 
 export function setShowDebugStats(value: boolean): void {
   settings.showDebugStats = value;

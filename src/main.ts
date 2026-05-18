@@ -3,7 +3,7 @@ import './app.css';
 import App from './App.svelte';
 import {
   session, setStatus,
-  startSettingsPersistence, settings,
+  restoreSettings, startSettingsPersistence, settings,
   dsp,
   status as statusStore,
   presetsDirty,
@@ -15,6 +15,7 @@ const paletteStyle = document.createElement('style');
 paletteStyle.textContent = paletteCSS();
 document.head.appendChild(paletteStyle);
 
+restoreSettings();
 startSettingsPersistence();
 
 // Expose state stores on window for direct inspection in DevTools.
