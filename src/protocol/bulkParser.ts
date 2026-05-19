@@ -8,9 +8,9 @@
 import { BinReader, Codec } from '@/utils';
 import * as Wire from './wireTypes';
 import type {
-  CrossfeedPreset, LevellerSpeed, Loudness, Crossfeed, Leveller,
+  Loudness,
   CrossPoint, OutputState,
-  I2sConfig, PlatformType,
+  I2sConfig,
 } from '@/domain';
 
 // The parsed bulk packet as a plain DTO. Fields mirror bulk_params.h
@@ -29,9 +29,28 @@ export interface WireFilter {
   gain: number;
 }
 
+// Wire-shaped feature types. Parser emits these as-is; domain narrowing
+// to CrossfeedPreset / LevellerSpeed enums happens in fromBulkParams.
+export interface WireCrossfeed {
+  enabled: boolean;
+  preset: number;
+  itd: boolean;
+  freq: number;
+  feedDb: number;
+}
+
+export interface WireLeveller {
+  enabled: boolean;
+  speed: number;
+  lookahead: boolean;
+  amount: number;
+  maxGainDb: number;
+  gateDb: number;
+}
+
 export interface BulkParams {
   formatVersion: number;
-  platformId: PlatformType;
+  platformId: number;
   numCh: number;
   numOut: number;
   numIn: number;
@@ -41,7 +60,7 @@ export interface BulkParams {
   preampDb: number;
 
   loudness: Loudness;
-  crossfeed: Crossfeed;
+  crossfeed: WireCrossfeed;
 
   delaysMs: number[];                 // length 11
   crosspoints: CrossPoint[][];        // [2][9]
@@ -54,7 +73,7 @@ export interface BulkParams {
   channelNames: string[];             // length 11
 
   i2s: I2sConfig | null;
-  leveller: Leveller | null;
+  leveller: WireLeveller | null;
 
   preampLDb: number | null;           // V6+
   preampRDb: number | null;
@@ -72,7 +91,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
 
   const h  = Wire.Header.read(r);
   const formatVersion = h.formatVersion;
-  const platformId    = (h.platformId === 1 ? 1 : 0) as PlatformType;
+  const platformId    = h.platformId;
 
   const g  = Wire.GlobalParams.read(r);
   const cf = Wire.CrossfeedParams.read(r);
@@ -120,9 +139,8 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
   const leveller = r.remaining >= 16
     ? (() => {
         const w = Wire.LevellerConfig.read(r);
-        const speed = (w.speed === 1 || w.speed === 2 ? w.speed : 0) as LevellerSpeed;
         return {
-          enabled: w.enabled, speed, lookahead: w.lookahead,
+          enabled: w.enabled, speed: w.speed, lookahead: w.lookahead,
           amount: w.amount, maxGainDb: w.maxGainDb, gateDb: w.gateDb,
         };
       })()
@@ -157,10 +175,8 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
       intensityPct: g.loudnessIntensityPct,
     },
     crossfeed: {
-      enabled: cf.enabled, preset: cf.preset as CrossfeedPreset, itd: cf.itd,
+      enabled: cf.enabled, preset: cf.preset, itd: cf.itd,
       freq:    cf.freq,    feedDb: cf.feedDb,
-      // TODO: narrow cf.preset with a validator helper (see narrowFilterType
-      // pattern in bulkToSnapshot.ts) instead of casting at the wire boundary.
     },
     delaysMs, crosspoints, outputs,
     numPinOutputs: pinCfg.numPinOutputs,

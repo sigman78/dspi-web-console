@@ -9,6 +9,8 @@ import {
   type HardwareProfile,
 } from './hardware';
 import { FilterType, type FilterParams } from './filter';
+import { PlatformType } from './platform';
+import { CrossfeedPreset, LevellerSpeed } from './processing';
 import type { DspSnapshot } from './snapshot';
 import type { OutputModel, RouteModel } from './mixer';
 
@@ -32,6 +34,26 @@ function narrowFilterType(t: number): FilterType {
     default:
       return FilterType.Flat;
   }
+}
+
+function narrowPlatform(p: number): PlatformType {
+  return p === 1 ? PlatformType.RP2350 : PlatformType.RP2040;
+}
+
+function narrowCrossfeedPreset(p: number): CrossfeedPreset {
+  switch (p) {
+    case CrossfeedPreset.Preset1:
+    case CrossfeedPreset.Preset2:
+    case CrossfeedPreset.Preset3:
+    case CrossfeedPreset.Custom:
+      return p;
+    default:
+      return CrossfeedPreset.Preset1;
+  }
+}
+
+function narrowLevellerSpeed(s: number): LevellerSpeed {
+  return s === LevellerSpeed.Medium || s === LevellerSpeed.Fast ? s : LevellerSpeed.Slow;
 }
 
 export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): DspSnapshot {
@@ -95,12 +117,9 @@ export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): Dsp
     }
   }
 
-  // Feature shapes are shared with the parser; we adopt them by reference.
-  // Connection sync and bulk resync replace the snapshot wholesale, and the
-  // parsed bulk goes out of scope, so there's no aliasing concern.
   return {
     platform: {
-      type: hardware.type,
+      type: narrowPlatform(bulk.platformId),
       name: hardware.name,
       outputCount: hardware.outputCount,
       totalChannelCount: hardware.totalChannelCount,
@@ -115,8 +134,21 @@ export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): Dsp
     outputs,
     routes,
     loudness: bulk.loudness,
-    crossfeed: bulk.crossfeed,
-    leveller: bulk.leveller,
+    crossfeed: {
+      enabled: bulk.crossfeed.enabled,
+      preset: narrowCrossfeedPreset(bulk.crossfeed.preset),
+      itd: bulk.crossfeed.itd,
+      freq: bulk.crossfeed.freq,
+      feedDb: bulk.crossfeed.feedDb,
+    },
+    leveller: bulk.leveller === null ? null : {
+      enabled: bulk.leveller.enabled,
+      speed: narrowLevellerSpeed(bulk.leveller.speed),
+      lookahead: bulk.leveller.lookahead,
+      amount: bulk.leveller.amount,
+      maxGainDb: bulk.leveller.maxGainDb,
+      gateDb: bulk.leveller.gateDb,
+    },
     i2s: bulk.i2s,
   };
 }
