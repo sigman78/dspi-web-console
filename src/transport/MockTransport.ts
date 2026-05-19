@@ -20,8 +20,8 @@ export interface MockOptions {
   serial?: string;
 }
 
-// Default crosspoint / output state (mirrors what synthesizeBulkParams
-// fills in when a slot is missing). Materialising them upfront lets Set*
+// Default crosspoint / output state (mirrors what defaultBulkParams
+// initializes for a slot). Materialising them upfront lets Set*
 // commands mutate one slice without rebuilding the whole shape every time.
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
 
