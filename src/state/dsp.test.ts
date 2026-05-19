@@ -1,12 +1,12 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { SvelteSet } from 'svelte/reactivity';
 import { parseBulkParams } from '@/protocol';
-import { synthesizeBulkParams } from '@/protocol/syn';
+import { makeBulk } from '@/protocol/__tests__/bulkFixtures';
 import { PlatformType, fromBulkParams, createHardwareProfile } from '@/domain';
 import { dsp, applyDspSnapshot, patchSnapshot, resetDsp, refreshShadowFromLive } from './dsp.svelte';
 
 function makeSnapshot(masterVolumeDb = -6) {
-  const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6, masterVolumeDb }));
+  const bulk = parseBulkParams(makeBulk({ masterVolumeDb }));
   return fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
 }
 

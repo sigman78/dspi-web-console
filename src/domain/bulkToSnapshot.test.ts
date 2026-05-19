@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseBulkParams } from '@/protocol';
-import { synthesizeBulkParams } from '@/protocol/syn';
+import { makeBulk } from '@/protocol/__tests__/bulkFixtures';
 import { PlatformType } from './platform';
 import { createHardwareProfile } from './hardware';
 import { fromBulkParams } from './bulkToSnapshot';
@@ -8,8 +8,7 @@ import { matrixColumns, matrixRows } from './mixerView';
 
 describe('fromBulkParams', () => {
   it('maps protocol bulk data into an RP2350 domain snapshot', () => {
-    const bulk = parseBulkParams(synthesizeBulkParams({
-      platformId: 1,
+    const bulk = parseBulkParams(makeBulk({
       channelNames: ['', '', 'Left Woofer'],
       masterVolumeDb: -12.5,
       i2s: {
@@ -50,7 +49,7 @@ describe('fromBulkParams', () => {
     crosspoints[0][4] = { enabled: true, invert: true, gainDb: -3 };
     crosspoints[0][8] = { enabled: false, invert: false, gainDb: -9 };
 
-    const bulk = parseBulkParams(synthesizeBulkParams({ platformId: 0, outputs, crosspoints }));
+    const bulk = parseBulkParams(makeBulk({ platformId: 0, outputs, crosspoints }));
     const snapshot = fromBulkParams(createHardwareProfile(PlatformType.RP2040), bulk);
     const pdm = snapshot.outputs.find((output) => output.id === 10);
     const pdmRoute = snapshot.routes.find((route) => route.inputIndex === 0 && route.outputId === 10);
@@ -78,7 +77,7 @@ describe('fromBulkParams', () => {
     names[6] = 'RP2040 Sub';
     names[10] = 'Wrong PDM';
 
-    const bulk = parseBulkParams(synthesizeBulkParams({
+    const bulk = parseBulkParams(makeBulk({
       platformId: 0,
       numCh: 7,
       filters,

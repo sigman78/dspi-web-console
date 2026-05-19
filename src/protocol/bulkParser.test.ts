@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { parseBulkParams, buildBulkParams, defaultBulkParams, type BulkParams } from './bulkParser';
+import { makeBulk } from './__tests__/bulkFixtures';
 import { synthesizeBulkParams, type SynthesizeOptions } from './bulkParser.syn';
 import * as Wire from './wireTypes';
 import { FilterType, type FilterParams, CrossfeedPreset, LevellerSpeed } from '@/domain';
@@ -16,8 +17,8 @@ const { BulkLimits } = Wire;
 
 describe('bulkParser — header + global', () => {
   it('parses header fields', () => {
-    const buf = synthesizeBulkParams({
-      formatVersion: 6, platformId: 1, numCh: 11, numOut: 9, numIn: 2, maxBands: 12,
+    const buf = makeBulk({
+      formatVersion: 6, numCh: 11, numOut: 9, numIn: 2, maxBands: 12,
     });
     const p = parseBulkParams(buf);
     expect(p.formatVersion).toBe(6);
@@ -29,8 +30,8 @@ describe('bulkParser — header + global', () => {
   });
 
   it('parses global flags + preamp', () => {
-    const buf = synthesizeBulkParams({
-      formatVersion: 6, bypass: true, preampDb: -3.5,
+    const buf = makeBulk({
+      bypass: true, preampDb: -3.5,
       loudness: { enabled: true, refSpl: 75, intensityPct: 0.5 },
     });
     const p = parseBulkParams(buf);
@@ -40,7 +41,7 @@ describe('bulkParser — header + global', () => {
   });
 
   it('parses crossfeed', () => {
-    const buf = synthesizeBulkParams({
+    const buf = makeBulk({
       crossfeed: { enabled: true, preset: 2, itd: true, freq: 700, feedDb: -8 },
     });
     const p = parseBulkParams(buf);
@@ -55,7 +56,7 @@ describe('bulkParser — header + global', () => {
 describe('bulkParser — per-channel + matrix', () => {
   it('parses 11 delays', () => {
     const delaysMs = Array.from({ length: NUM_CHANNELS }, (_, i) => i * 0.25);
-    const p = parseBulkParams(synthesizeBulkParams({ delaysMs }));
+    const p = parseBulkParams(makeBulk({ delaysMs }));
     delaysMs.forEach((v, i) => expect(p.delaysMs[i]).toBeCloseTo(v, 5));
   });
 
@@ -67,7 +68,7 @@ describe('bulkParser — per-channel + matrix', () => {
         gainDb: -1 * outp + 0.25 * inp,
       })),
     );
-    const p = parseBulkParams(synthesizeBulkParams({ crosspoints: cps }));
+    const p = parseBulkParams(makeBulk({ crosspoints: cps }));
     for (let inp = 0; inp < 2; inp++) {
       for (let outp = 0; outp < NUM_OUTPUTS; outp++) {
         expect(p.crosspoints[inp][outp].enabled).toBe(cps[inp][outp].enabled);
@@ -81,7 +82,7 @@ describe('bulkParser — per-channel + matrix', () => {
     const outs = Array.from({ length: NUM_OUTPUTS }, (_, o) => ({
       enabled: o !== 7, muted: o === 2, gainDb: -0.5 * o, delayMs: 0.1 * o,
     }));
-    const p = parseBulkParams(synthesizeBulkParams({ outputs: outs }));
+    const p = parseBulkParams(makeBulk({ outputs: outs }));
     for (let o = 0; o < NUM_OUTPUTS; o++) {
       expect(p.outputs[o].enabled).toBe(outs[o].enabled);
       expect(p.outputs[o].muted).toBe(outs[o].muted);
@@ -97,7 +98,7 @@ describe('bulkParser — per-channel + matrix', () => {
       } as FilterParams)),
     );
     filters[3][5] = { type: FilterType.Peaking, frequency: 2500, q: 0.7, gain: 4.5 };
-    const f = parseBulkParams(synthesizeBulkParams({ filters })).filters[3][5];
+    const f = parseBulkParams(makeBulk({ filters })).filters[3][5];
     expect(f.type).toBe(FilterType.Peaking);
     expect(f.frequency).toBeCloseTo(2500, 4);
     expect(f.q).toBeCloseTo(0.7, 4);
@@ -106,7 +107,7 @@ describe('bulkParser — per-channel + matrix', () => {
 
   it('parses NUL-terminated UTF-8 channel names', () => {
     const names = ['Input 1 L', 'Input 1 R', '', 'OUT3', '', '', '', '', '', '', 'PDM'];
-    const p = parseBulkParams(synthesizeBulkParams({ channelNames: names }));
+    const p = parseBulkParams(makeBulk({ channelNames: names }));
     expect(p.channelNames).toEqual(names);
   });
 });
@@ -115,8 +116,7 @@ describe('bulkParser — per-channel + matrix', () => {
 
 describe('bulkParser — V6 trailing sections', () => {
   it('parses per-channel preamp + master volume on V6', () => {
-    const p = parseBulkParams(synthesizeBulkParams({
-      formatVersion: 6,
+    const p = parseBulkParams(makeBulk({
       preampLDb: -1, preampRDb: -2,
       masterVolumeDb: -12.5,
     }));
@@ -139,7 +139,7 @@ describe('bulkParser — V6 trailing sections', () => {
   });
 
   it('parses optional I2S + leveller blocks when present', () => {
-    const p = parseBulkParams(synthesizeBulkParams({
+    const p = parseBulkParams(makeBulk({
       i2s: {
         outputSlotTypes: [0, 1, 0, 1],
         bckPin: 26, mckPin: 27, mckEnabled: true, mckMultiplierEncoded: 1,

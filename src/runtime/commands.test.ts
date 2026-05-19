@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SvelteSet } from 'svelte/reactivity';
 import { parseBulkParams } from '@/protocol';
-import { synthesizeBulkParams } from '@/protocol/syn';
+import { makeBulk } from '@/protocol/__tests__/bulkFixtures';
 import { PlatformType, fromBulkParams, createHardwareProfile } from '@/domain';
 import type { DspDevice } from '@/device/DspDevice';
 import { bindDevice, session, setStatus, dsp, patchSnapshot } from '@/state';
@@ -23,7 +23,7 @@ function initializedDevice(methods: Partial<DspDevice>): DspDevice {
 }
 
 function makeDevice(send: () => Promise<void> = async () => {}) {
-  const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
+  const validBulk = parseBulkParams(makeBulk());
   return initializedDevice({
     setLoudnessEnabled: vi.fn(send),
     getAllParams: vi.fn(async () => validBulk),
@@ -33,7 +33,7 @@ function makeDevice(send: () => Promise<void> = async () => {}) {
 describe('instantCommand', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
+    const bulk = parseBulkParams(makeBulk());
     dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
     dsp.pendingWrites = new SvelteSet();
     // Reset session status so leaked 'error' from a prior test in the suite
@@ -102,7 +102,7 @@ describe('instantCommand', () => {
 
 function makeGainDevice() {
   const calls: Array<[number, number]> = [];
-  const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
+  const validBulk = parseBulkParams(makeBulk());
   return {
     device: initializedDevice({
       setOutputGain: vi.fn(async (output: number, db: number) => { calls.push([output, db]); }),
@@ -115,7 +115,7 @@ function makeGainDevice() {
 describe('scrubCommand', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
+    const bulk = parseBulkParams(makeBulk());
     dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
     dsp.pendingWrites = new SvelteSet();
     // Reset session status so leaked 'error' from a prior test in the suite
@@ -190,7 +190,7 @@ describe('scrubCommand', () => {
   });
 
   it('forces resync + sets error on send failure (current generation)', async () => {
-    const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
+    const validBulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
       setOutputGain: vi.fn(async () => { throw new Error('range'); }),
       getAllParams: vi.fn(async () => validBulk),
@@ -209,7 +209,7 @@ describe('scrubCommand', () => {
 describe('batchCommand', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
+    const bulk = parseBulkParams(makeBulk());
     dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
     dsp.pendingWrites = new SvelteSet();
     // Reset session status so leaked 'error' from a prior test in the suite
@@ -242,7 +242,7 @@ describe('batchCommand', () => {
   });
 
   it('forces resync + sets error if any wire write inside the batch rejects', async () => {
-    const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
+    const validBulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
       setOutputGain: vi.fn(async (output: number) => {
         if (output === 1) throw new Error('boom');
@@ -262,7 +262,7 @@ describe('batchCommand', () => {
   });
 
   it('stale generation does not flip session status to error', async () => {
-    const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
+    const validBulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
       setOutputGain: vi.fn(async () => { throw new Error('boom'); }),
       getAllParams: vi.fn(async () => validBulk),
@@ -291,7 +291,7 @@ describe('batchCommand', () => {
 describe('cancelAllCommands', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    const bulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
+    const bulk = parseBulkParams(makeBulk());
     dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
     dsp.pendingWrites = new SvelteSet();
   });
@@ -319,7 +319,7 @@ describe('cancelAllCommands', () => {
 
   it('bumps session generation so in-flight instant sends settle as stale', async () => {
     let resolveSend: () => void = () => {};
-    const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
+    const validBulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
       setLoudnessEnabled: vi.fn(() => new Promise<void>((res) => { resolveSend = res; })),
       getAllParams: vi.fn(async () => validBulk),
@@ -345,7 +345,7 @@ describe('cancelAllCommands', () => {
 
   it('in-flight instant rejection after cancel does NOT flip status to error', async () => {
     let rejectSend: (err: Error) => void = () => {};
-    const validBulk = parseBulkParams(synthesizeBulkParams({ formatVersion: 6 }));
+    const validBulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
       setLoudnessEnabled: vi.fn(() => new Promise<void>((_, rej) => { rejectSend = rej; })),
       getAllParams: vi.fn(async () => validBulk),
