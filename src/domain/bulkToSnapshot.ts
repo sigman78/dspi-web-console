@@ -53,7 +53,14 @@ function narrowCrossfeedPreset(p: number): CrossfeedPreset {
 }
 
 function narrowLevellerSpeed(s: number): LevellerSpeed {
-  return s === LevellerSpeed.Medium || s === LevellerSpeed.Fast ? s : LevellerSpeed.Slow;
+  switch (s) {
+    case LevellerSpeed.Slow:
+    case LevellerSpeed.Medium:
+    case LevellerSpeed.Fast:
+      return s;
+    default:
+      return LevellerSpeed.Slow;
+  }
 }
 
 export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): DspSnapshot {
