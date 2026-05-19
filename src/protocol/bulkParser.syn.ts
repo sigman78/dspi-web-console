@@ -115,14 +115,14 @@ export function synthesizeBulkParams(opts: SynthesizeOptions = {}): Uint8Array {
     });
   }
 
-  if (formatVersion >= 6 && wantSize >= Wire.BulkOffsets.PerChPreamp + 8) {
+  if (formatVersion >= 6 && wantSize >= Wire.BulkOffsets.PerChPreamp + 16) {
     w.seek(Wire.BulkOffsets.PerChPreamp);
     Wire.PreampConfig.write(w, {
       preampDb: [opts.preampLDb ?? 0, opts.preampRDb ?? 0],
     });
   }
 
-  if (formatVersion >= 6 && wantSize >= Wire.BulkOffsets.MasterVolume + 4) {
+  if (formatVersion >= 6 && wantSize >= Wire.BulkOffsets.MasterVolume + 16) {
     w.seek(Wire.BulkOffsets.MasterVolume);
     Wire.MasterVolume.write(w, { masterVolumeDb: opts.masterVolumeDb ?? 0 });
   }

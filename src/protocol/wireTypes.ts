@@ -145,20 +145,19 @@ export const LevellerConfig = struct({
   gateDb:    f32,
 });
 
-// Section 13: per-channel preamp (V6+, optional).
-// The C `WirePreampConfig` is 16 B (8 B data + 8 B reserved padding).
-// The TS codec models only the 8-byte data portion: real packets in the
-// wild can terminate after the data without the trailing padding, and
-// the parser/writer gates on the data-portion length to mirror v1.
+// Section 13: per-channel preamp (V6+, optional). Full 16-byte on-wire
+// footprint: 8 B data + 8 B reserved. Models the full section size so
+// sequential reads/writes don't require absolute seeks.
 export const PreampConfig = struct({
-  preampDb: arr(f32, Const.NUM_INPUTS),
+  preampDb:  arr(f32, Const.NUM_INPUTS),
+  _reserved: reserved(8),
 });
 
-// Section 14: master volume (V6+, optional).
-// The C `WireMasterVolume` is 16 B (4 B data + 12 B reserved). As with
-// PreampConfig the TS codec models only the data portion.
+// Section 14: master volume (V6+, optional). Full 16-byte on-wire
+// footprint: 4 B data + 12 B reserved.
 export const MasterVolume = struct({
   masterVolumeDb: f32,
+  _reserved:      reserved(12),
 });
 
 // Other vendor-control packets.

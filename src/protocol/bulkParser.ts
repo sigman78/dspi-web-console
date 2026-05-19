@@ -61,9 +61,6 @@ export interface BulkParams {
   masterVolumeDb: number | null;      // V6+
 }
 
-// Static byte sizes of the V6 data portions (before reserved padding).
-const PREAMP_DATA_BYTES     = Codec.sizeOf(Wire.PreampConfig);   // 8
-const MASTER_VOL_DATA_BYTES = Codec.sizeOf(Wire.MasterVolume);   // 4
 
 export function parseBulkParams(buffer: Uint8Array): BulkParams {
   if (buffer.length < Wire.BulkLimits.MinPacketSize) {
@@ -133,9 +130,10 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
 
   // V6+ sections live at fixed absolute offsets with reserved padding
   // separating them; seek explicitly rather than relying on the cursor.
+  // Codecs now include reserved padding, so check for full padded size.
   let preampLDb: number | null = null;
   let preampRDb: number | null = null;
-  if (formatVersion >= 6 && buffer.length >= Wire.BulkOffsets.PerChPreamp + PREAMP_DATA_BYTES) {
+  if (formatVersion >= 6 && buffer.length >= Wire.BulkOffsets.PerChPreamp + Codec.sizeOf(Wire.PreampConfig)) {
     r.seek(Wire.BulkOffsets.PerChPreamp);
     const p = Wire.PreampConfig.read(r);
     preampLDb = p.preampDb[0];
@@ -143,7 +141,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
   }
 
   let masterVolumeDb: number | null = null;
-  if (formatVersion >= 6 && buffer.length >= Wire.BulkOffsets.MasterVolume + MASTER_VOL_DATA_BYTES) {
+  if (formatVersion >= 6 && buffer.length >= Wire.BulkOffsets.MasterVolume + Codec.sizeOf(Wire.MasterVolume)) {
     r.seek(Wire.BulkOffsets.MasterVolume);
     masterVolumeDb = Wire.MasterVolume.read(r).masterVolumeDb;
   }

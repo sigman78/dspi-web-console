@@ -175,10 +175,10 @@ describe('bulkParser — short buffers', () => {
       });
       const p = parseBulkParams(buf);
 
-      // preamp section starts at 2864; it requires 8 bytes of data.
-      const hasPreamp = sz >= 2872;
-      // master vol at 2880; requires 4 bytes.
-      const hasMaster = sz >= 2884;
+      // preamp section starts at 2864; it requires 16 bytes (8 data + 8 reserved).
+      const hasPreamp = sz >= 2880;
+      // master vol at 2880; requires 16 bytes (4 data + 12 reserved).
+      const hasMaster = sz >= 2896;
 
       if (hasPreamp) {
         expect(p.preampLDb).toBeCloseTo(-1.5, 5);
