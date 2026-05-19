@@ -149,12 +149,10 @@ describe('bulkParser — V6 trailing sections', () => {
         amount: 60, maxGainDb: 12, gateDb: -50,
       },
     }));
-    expect(p.i2s).not.toBeNull();
-    expect(p.i2s!.outputSlotTypes).toEqual([0, 1, 0, 1]);
-    expect(p.i2s!.mckEnabled).toBe(true);
-    expect(p.leveller).not.toBeNull();
-    expect(p.leveller!.amount).toBeCloseTo(60, 4);
-    expect(p.leveller!.gateDb).toBeCloseTo(-50, 4);
+    expect(p.i2s.outputSlotTypes).toEqual([0, 1, 0, 1]);
+    expect(p.i2s.mckEnabled).toBe(true);
+    expect(p.leveller.amount).toBeCloseTo(60, 4);
+    expect(p.leveller.gateDb).toBeCloseTo(-50, 4);
   });
 });
 
@@ -321,11 +319,11 @@ describe('bulkParser — fuzz round-trip', () => {
         pins:           p.pins,
         filters:        p.filters,
         channelNames:   p.channelNames,
-        i2s:            p.i2s ?? undefined,
-        leveller:       p.leveller ?? undefined,
-        preampLDb:      p.preampLDb      ?? undefined,
-        preampRDb:      p.preampRDb      ?? undefined,
-        masterVolumeDb: p.masterVolumeDb ?? undefined,
+        i2s:            p.i2s,
+        leveller:       p.leveller,
+        preampLDb:      p.preampLDb,
+        preampRDb:      p.preampRDb,
+        masterVolumeDb: p.masterVolumeDb,
         packetSize:     opts.packetSize,
       };
       const b = synthesizeBulkParams(reopts);

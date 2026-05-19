@@ -96,7 +96,7 @@ export function synthesizeBulkParams(opts: SynthesizeOptions = {}): Uint8Array {
   // Optional V6 tail sections — written sequentially when the requested
   // packet size covers the section.  BulkSizes thresholds match the
   // parser's bulkLayout() gating so parse(synth(opts)) is a fixed point.
-  if (wantSize >= Wire.BulkSizes.V3) {
+  if (formatVersion >= 3 && wantSize >= Wire.BulkSizes.V3) {
     Wire.I2SConfig.write(w, {
       outputSlotTypes: opts.i2s
         ? Array.from(opts.i2s.outputSlotTypes).slice(0, Wire.Const.NUM_SPDIF_INSTANCES)
@@ -108,7 +108,7 @@ export function synthesizeBulkParams(opts: SynthesizeOptions = {}): Uint8Array {
     });
   }
 
-  if (wantSize >= Wire.BulkSizes.V4) {
+  if (formatVersion >= 4 && wantSize >= Wire.BulkSizes.V4) {
     Wire.LevellerConfig.write(w, {
       enabled:   opts.leveller?.enabled   ?? false,
       speed:     opts.leveller?.speed     ?? 0,

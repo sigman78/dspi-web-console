@@ -14,9 +14,11 @@ import type {
 } from '@/domain';
 
 // The parsed bulk packet as a plain DTO. Fields mirror bulk_params.h
-// section by section. Optional sections (i2s, leveller, preamp, master
-// volume) are null when the firmware version or response length omits
-// them.
+// section by section. All sections are populated. When the wire packet omits
+// an optional V6 section (older firmware), the parser substitutes values from
+// defaultBulkParams(). The formatVersion field is preserved so downstream
+// consumers (e.g. fromBulkParams) can decide whether to surface those as null
+// in their own DTOs.
 //
 // Filters are typed as raw wire shape (WireFilter: {type: number, ...})
 // rather than FilterParams[][] so this file has zero domain imports for
