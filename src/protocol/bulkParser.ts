@@ -2,8 +2,6 @@
 // mirroring docs/bulk_params.h.  This file maps those wire structs onto
 // the `BulkParams` DTO and gates optional sections by version and buffer
 // length.
-//
-// The synthesizer side is in `./bulkParser.syn.ts`.
 
 import { BinReader, BinWriter } from '@/utils';
 import * as Wire from './wireTypes';
