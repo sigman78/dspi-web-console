@@ -30,7 +30,7 @@ describe('bulkParser against real hardware', () => {
 
   it('reads master volume via control transfer matching the bulk-packet field', async () => {
     const bulk = await device.getAllParams();
-    if (bulk.formatVersion < 6 || bulk.masterVolumeDb === null) return;
+    if (bulk.formatVersion < 6) return;
     const direct = await device.getMasterVolume();
     expect(direct).toBeCloseTo(bulk.masterVolumeDb, 2);
   });

@@ -65,7 +65,7 @@ function narrowLevellerSpeed(s: number): LevellerSpeed {
 
 export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): DspSnapshot {
   const channelNames = bulk.channelNames.slice(0, Wire.Const.NUM_CHANNELS);
-  const outputSlotTypes = bulk.i2s?.outputSlotTypes;
+  const outputSlotTypes = bulk.formatVersion >= 3 ? bulk.i2s.outputSlotTypes : undefined;
 
   const channels = hardware.channels.map((channel) => ({
     id: channel.id,
@@ -135,8 +135,8 @@ export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): Dsp
     formatVersion: bulk.formatVersion,
     bypass: bulk.bypass,
     masterPreampDb: bulk.preampDb,
-    inputPreampDb: [bulk.preampLDb ?? 0, bulk.preampRDb ?? 0],
-    masterVolumeDb: bulk.masterVolumeDb ?? 0,
+    inputPreampDb: [bulk.preampLDb, bulk.preampRDb],
+    masterVolumeDb: bulk.masterVolumeDb,
     channels,
     outputs,
     routes,
@@ -148,14 +148,14 @@ export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): Dsp
       freq: bulk.crossfeed.freq,
       feedDb: bulk.crossfeed.feedDb,
     },
-    leveller: bulk.leveller === null ? null : {
+    leveller: bulk.formatVersion >= 4 ? {
       enabled: bulk.leveller.enabled,
       speed: narrowLevellerSpeed(bulk.leveller.speed),
       lookahead: bulk.leveller.lookahead,
       amount: bulk.leveller.amount,
       maxGainDb: bulk.leveller.maxGainDb,
       gateDb: bulk.leveller.gateDb,
-    },
-    i2s: bulk.i2s,
+    } : null,
+    i2s: bulk.formatVersion >= 3 ? bulk.i2s : null,
   };
 }

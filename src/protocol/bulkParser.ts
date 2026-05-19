@@ -5,7 +5,7 @@
 //
 // The synthesizer side is in `./bulkParser.syn.ts`.
 
-import { BinReader, BinWriter, Codec } from '@/utils';
+import { BinReader, BinWriter } from '@/utils';
 import * as Wire from './wireTypes';
 import type {
   Loudness,
@@ -72,12 +72,12 @@ export interface BulkParams {
   filters: WireFilter[][];            // [11][12], raw wire shape
   channelNames: string[];             // length 11
 
-  i2s: I2sConfig | null;
-  leveller: WireLeveller | null;
+  i2s: I2sConfig;
+  leveller: WireLeveller;
 
-  preampLDb: number | null;           // V6+
-  preampRDb: number | null;
-  masterVolumeDb: number | null;      // V6+
+  preampLDb: number;                  // V6+
+  preampRDb: number;
+  masterVolumeDb: number;             // V6+
 }
 
 
@@ -89,18 +89,25 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
   }
   const r = new BinReader(buffer);
 
-  const h  = Wire.Header.read(r);
-  const formatVersion = h.formatVersion;
-  const platformId    = h.platformId;
+  const h = Wire.Header.read(r);
+  const layout = Wire.bulkLayout({ formatVersion: h.formatVersion, payloadLength: h.payloadLength });
+
+  // Defaults source: fills any section the wire omits.
+  const def = defaultBulkParams({
+    platformId: h.platformId,
+    numCh:      h.numCh,
+    numOut:     h.numOut,
+    numIn:      h.numIn,
+    maxBands:   h.maxBands,
+  });
 
   const g  = Wire.GlobalParams.read(r);
   const cf = Wire.CrossfeedParams.read(r);
 
-  Wire.LegacyChannels.read(r); // 16 B, ignored
+  Wire.LegacyChannels.read(r);  // 16 B reserved block, ignored
 
   const delaysMs = Wire.ChannelDelays.read(r);
 
-  // Crosspoints are stored input-major / output-minor on the wire.
   const crosspoints = Array.from({ length: Wire.Const.NUM_INPUTS }, () =>
     Array.from({ length: Wire.Const.NUM_OUTPUTS }, () => Wire.Crosspoint.read(r)),
   );
@@ -109,7 +116,6 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
 
   const pinCfg = Wire.PinConfig.read(r);
 
-  // EQ is channel-major / band-minor.
   const filters: WireFilter[][] = Array.from({ length: Wire.Const.NUM_CHANNELS }, () =>
     Array.from({ length: Wire.Const.BANDS_MAX }, () => {
       const b = Wire.BandParams.read(r);
@@ -119,8 +125,9 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
 
   const channelNames = Wire.ChannelNames.read(r);
 
-  // Optional tail
-  const i2s = r.remaining >= 16
+  // Optional V6 tail sections — read if present, else use factory defaults.
+  // Codecs are 16 B each (Task 1), so sequential reads line up with on-wire offsets.
+  const i2s = layout.i2s
     ? (() => {
         const w = Wire.I2SConfig.read(r);
         return {
@@ -134,9 +141,9 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
           mckMultiplierEncoded: w.mckMultiplierEncoded,
         };
       })()
-    : null;
+    : def.i2s;
 
-  const leveller = r.remaining >= 16
+  const leveller = layout.leveller
     ? (() => {
         const w = Wire.LevellerConfig.read(r);
         return {
@@ -144,31 +151,22 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
           amount: w.amount, maxGainDb: w.maxGainDb, gateDb: w.gateDb,
         };
       })()
-    : null;
+    : def.leveller;
 
-  // V6+ sections live at fixed absolute offsets with reserved padding
-  // separating them; seek explicitly rather than relying on the cursor.
-  // Codecs now include reserved padding, so check for full padded size.
-  let preampLDb: number | null = null;
-  let preampRDb: number | null = null;
-  if (formatVersion >= 6 && buffer.length >= Wire.BulkOffsets.PerChPreamp + Codec.sizeOf(Wire.PreampConfig)) {
-    r.seek(Wire.BulkOffsets.PerChPreamp);
-    const p = Wire.PreampConfig.read(r);
-    preampLDb = p.preampDb[0];
-    preampRDb = p.preampDb[1];
-  }
-
-  let masterVolumeDb: number | null = null;
-  if (formatVersion >= 6 && buffer.length >= Wire.BulkOffsets.MasterVolume + Codec.sizeOf(Wire.MasterVolume)) {
-    r.seek(Wire.BulkOffsets.MasterVolume);
-    masterVolumeDb = Wire.MasterVolume.read(r).masterVolumeDb;
-  }
+  const preamp = layout.preamp ? Wire.PreampConfig.read(r) : { preampDb: [def.preampLDb, def.preampRDb] };
+  const masterVol = layout.masterVolume ? Wire.MasterVolume.read(r) : { masterVolumeDb: def.masterVolumeDb };
 
   return {
-    formatVersion, platformId,
-    numCh: h.numCh, numOut: h.numOut, numIn: h.numIn, maxBands: h.maxBands,
-    bypass: g.bypass,
+    formatVersion: h.formatVersion,
+    platformId:    h.platformId,
+    numCh:         h.numCh,
+    numOut:        h.numOut,
+    numIn:         h.numIn,
+    maxBands:      h.maxBands,
+
+    bypass:   g.bypass,
     preampDb: g.preampDb,
+
     loudness: {
       enabled:      g.loudnessEnabled,
       refSpl:       g.loudnessRefSpl,
@@ -176,14 +174,24 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
     },
     crossfeed: {
       enabled: cf.enabled, preset: cf.preset, itd: cf.itd,
-      freq:    cf.freq,    feedDb: cf.feedDb,
+      freq: cf.freq, feedDb: cf.feedDb,
     },
-    delaysMs, crosspoints, outputs,
+
+    delaysMs,
+    crosspoints,
+    outputs,
+
     numPinOutputs: pinCfg.numPinOutputs,
     pins:          pinCfg.pins,
-    filters, channelNames,
-    i2s, leveller,
-    preampLDb, preampRDb, masterVolumeDb,
+
+    filters,
+    channelNames,
+
+    i2s,
+    leveller,
+    preampLDb: preamp.preampDb[0],
+    preampRDb: preamp.preampDb[1],
+    masterVolumeDb: masterVol.masterVolumeDb,
   };
 }
 
@@ -262,6 +270,7 @@ export function buildBulkParams(bulk: BulkParams): Uint8Array {
     numOut:        bulk.numOut,
     numIn:         bulk.numIn,
     maxBands:      bulk.maxBands,
+    payloadLength: Wire.BulkLimits.MaxRequestSize,  // V6 full = 2896
   });
 
   Wire.GlobalParams.write(w, {
@@ -307,25 +316,12 @@ export function buildBulkParams(bulk: BulkParams): Uint8Array {
 
   Wire.ChannelNames.write(w, bulk.channelNames);
 
-  // V6 trailing sections — use absolute seeks to match the parser's layout.
-  w.seek(Wire.BulkOffsets.I2S);
-  const i2s = bulk.i2s ?? {
-    outputSlotTypes: [0, 0, 0, 0] as [number, number, number, number],
-    bckPin: 0, mckPin: 0, mckEnabled: false, mckMultiplierEncoded: 0,
-  };
-  Wire.I2SConfig.write(w, i2s);
-
-  w.seek(Wire.BulkOffsets.Leveller);
-  const lev = bulk.leveller ?? {
-    enabled: false, speed: 0, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40,
-  };
-  Wire.LevellerConfig.write(w, lev);
-
-  w.seek(Wire.BulkOffsets.PerChPreamp);
-  Wire.PreampConfig.write(w, { preampDb: [bulk.preampLDb ?? 0, bulk.preampRDb ?? 0] });
-
-  w.seek(Wire.BulkOffsets.MasterVolume);
-  Wire.MasterVolume.write(w, { masterVolumeDb: bulk.masterVolumeDb ?? 0 });
+  // V6 trailing sections — sequential writes; no seeks needed because
+  // codecs are 16 B each (Task 1) and the required sections are all present.
+  Wire.I2SConfig.write(w, bulk.i2s);
+  Wire.LevellerConfig.write(w, bulk.leveller);
+  Wire.PreampConfig.write(w, { preampDb: [bulk.preampLDb, bulk.preampRDb] });
+  Wire.MasterVolume.write(w, { masterVolumeDb: bulk.masterVolumeDb });
 
   return w.toUint8Array();
 }

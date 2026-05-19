@@ -27,6 +27,7 @@ export function synthesizeBulkParams(opts: SynthesizeOptions = {}): Uint8Array {
 
   Wire.Header.write(w, {
     formatVersion, platformId, numCh, numOut, numIn, maxBands,
+    payloadLength: wantSize,
   });
 
   Wire.GlobalParams.write(w, {
@@ -92,38 +93,39 @@ export function synthesizeBulkParams(opts: SynthesizeOptions = {}): Uint8Array {
     Array.from({ length: Wire.Const.NUM_CHANNELS }, (_, ch) => opts.channelNames?.[ch] ?? ''),
   );
 
-  if (wantSize >= Wire.BulkOffsets.I2S + 16 && opts.i2s) {
-    w.seek(Wire.BulkOffsets.I2S);
+  // Optional V6 tail sections — written sequentially when the requested
+  // packet size covers the section.  BulkSizes thresholds match the
+  // parser's bulkLayout() gating so parse(synth(opts)) is a fixed point.
+  if (wantSize >= Wire.BulkSizes.V3) {
     Wire.I2SConfig.write(w, {
-      outputSlotTypes: Array.from(opts.i2s.outputSlotTypes).slice(0, Wire.Const.NUM_SPDIF_INSTANCES),
-      bckPin:               opts.i2s.bckPin,
-      mckPin:               opts.i2s.mckPin,
-      mckEnabled:           opts.i2s.mckEnabled,
-      mckMultiplierEncoded: opts.i2s.mckMultiplierEncoded,
+      outputSlotTypes: opts.i2s
+        ? Array.from(opts.i2s.outputSlotTypes).slice(0, Wire.Const.NUM_SPDIF_INSTANCES)
+        : [0, 0, 0, 0],
+      bckPin:               opts.i2s?.bckPin               ?? 0,
+      mckPin:               opts.i2s?.mckPin               ?? 0,
+      mckEnabled:           opts.i2s?.mckEnabled            ?? false,
+      mckMultiplierEncoded: opts.i2s?.mckMultiplierEncoded  ?? 0,
     });
   }
 
-  if (wantSize >= Wire.BulkOffsets.Leveller + 16 && opts.leveller) {
-    w.seek(Wire.BulkOffsets.Leveller);
+  if (wantSize >= Wire.BulkSizes.V4) {
     Wire.LevellerConfig.write(w, {
-      enabled:   opts.leveller.enabled,
-      speed:     opts.leveller.speed,
-      lookahead: opts.leveller.lookahead,
-      amount:    opts.leveller.amount,
-      maxGainDb: opts.leveller.maxGainDb,
-      gateDb:    opts.leveller.gateDb,
+      enabled:   opts.leveller?.enabled   ?? false,
+      speed:     opts.leveller?.speed     ?? 0,
+      lookahead: opts.leveller?.lookahead ?? false,
+      amount:    opts.leveller?.amount    ?? 0,
+      maxGainDb: opts.leveller?.maxGainDb ?? 0,
+      gateDb:    opts.leveller?.gateDb    ?? -40,
     });
   }
 
-  if (formatVersion >= 6 && wantSize >= Wire.BulkOffsets.PerChPreamp + 16) {
-    w.seek(Wire.BulkOffsets.PerChPreamp);
+  if (formatVersion >= 6 && wantSize >= Wire.BulkSizes.V6Preamp) {
     Wire.PreampConfig.write(w, {
       preampDb: [opts.preampLDb ?? 0, opts.preampRDb ?? 0],
     });
   }
 
-  if (formatVersion >= 6 && wantSize >= Wire.BulkOffsets.MasterVolume + 16) {
-    w.seek(Wire.BulkOffsets.MasterVolume);
+  if (formatVersion >= 6 && wantSize >= Wire.BulkSizes.V6Full) {
     Wire.MasterVolume.write(w, { masterVolumeDb: opts.masterVolumeDb ?? 0 });
   }
 

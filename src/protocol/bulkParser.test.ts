@@ -125,16 +125,17 @@ describe('bulkParser — V6 trailing sections', () => {
     expect(p.masterVolumeDb).toBeCloseTo(-12.5, 5);
   });
 
-  it('treats a V2-only packet as legacy (no V6 fields)', () => {
+  it('treats a V2-only packet as legacy (no V6 fields — defaults to 0)', () => {
     const p = parseBulkParams(synthesizeBulkParams({
       formatVersion: 2,
       packetSize: BulkLimits.MinPacketSize,
       preampLDb: 9, preampRDb: 9, masterVolumeDb: -50,
     }));
     expect(p.formatVersion).toBe(2);
-    expect(p.preampLDb).toBeNull();
-    expect(p.preampRDb).toBeNull();
-    expect(p.masterVolumeDb).toBeNull();
+    // V6 fields are non-nullable; absent sections fall back to factory defaults (0).
+    expect(p.preampLDb).toBe(0);
+    expect(p.preampRDb).toBe(0);
+    expect(p.masterVolumeDb).toBe(0);
   });
 
   it('parses optional I2S + leveller blocks when present', () => {
@@ -164,8 +165,8 @@ describe('bulkParser — short buffers', () => {
     expect(() => parseBulkParams(new Uint8Array(100))).toThrow();
   });
 
-  // Buffers sized inside the V6 reserved-byte tail (between preamp data
-  // and master volume) must NOT cause the cursor to mis-read master vol.
+  // Buffers sized inside the V6 tail must parse correctly.  V6 fields are
+  // non-nullable — absent sections fall back to factory defaults (0), not null.
   it('parses partial V6 tail consistently across the preamp/master gap', () => {
     for (const sz of [2864, 2868, 2872, 2876, 2880, 2884, 2888, 2892, 2896]) {
       const buf = synthesizeBulkParams({
@@ -184,13 +185,15 @@ describe('bulkParser — short buffers', () => {
         expect(p.preampLDb).toBeCloseTo(-1.5, 5);
         expect(p.preampRDb).toBeCloseTo(-2.5, 5);
       } else {
-        expect(p.preampLDb).toBeNull();
-        expect(p.preampRDb).toBeNull();
+        // Section absent — parser returns factory default (0).
+        expect(p.preampLDb).toBe(0);
+        expect(p.preampRDb).toBe(0);
       }
       if (hasMaster) {
         expect(p.masterVolumeDb).toBeCloseTo(-7.25, 5);
       } else {
-        expect(p.masterVolumeDb).toBeNull();
+        // Section absent — parser returns factory default (0).
+        expect(p.masterVolumeDb).toBe(0);
       }
     }
   });
