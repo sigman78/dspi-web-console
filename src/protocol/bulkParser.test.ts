@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseBulkParams } from './bulkParser';
+import { parseBulkParams, buildBulkParams, defaultBulkParams, type BulkParams } from './bulkParser';
 import { synthesizeBulkParams, type SynthesizeOptions } from './bulkParser.syn';
 import * as Wire from './wireTypes';
 import { FilterType, type FilterParams, CrossfeedPreset, LevellerSpeed } from '@/domain';
@@ -260,6 +260,38 @@ function randomOpts(r: () => number): SynthesizeOptions {
     packetSize: bytes,
   };
 }
+
+describe('buildBulkParams + defaultBulkParams', () => {
+  it('default bulk roundtrips through build+parse cleanly', () => {
+    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
+    const bytes = buildBulkParams(base);
+    expect(bytes.byteLength).toBe(Wire.BulkLimits.MaxRequestSize);  // 2896
+    const parsed = parseBulkParams(bytes);
+    expect(parsed).toEqual(base);
+  });
+
+  it('non-default fields survive roundtrip', () => {
+    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
+    const bulk: BulkParams = {
+      ...base,
+      bypass: true,
+      preampDb: -3.5,
+      masterVolumeDb: -12,
+      channelNames: base.channelNames.map((_, i) => `ch${i}`),
+    };
+    const parsed = parseBulkParams(buildBulkParams(bulk));
+    expect(parsed.bypass).toBe(true);
+    expect(parsed.preampDb).toBeCloseTo(-3.5);
+    expect(parsed.masterVolumeDb).toBeCloseTo(-12);
+    expect(parsed.channelNames).toEqual(bulk.channelNames);
+  });
+
+  it('builder throws on non-V6 input', () => {
+    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
+    expect(() => buildBulkParams({ ...base, formatVersion: 5 }))
+      .toThrow(/V6|formatVersion/);
+  });
+});
 
 describe('bulkParser — fuzz round-trip', () => {
   const r = rng(0xC0FFEE);

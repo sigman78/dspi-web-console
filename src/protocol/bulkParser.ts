@@ -5,7 +5,7 @@
 //
 // The synthesizer side is in `./bulkParser.syn.ts`.
 
-import { BinReader, Codec } from '@/utils';
+import { BinReader, BinWriter, Codec } from '@/utils';
 import * as Wire from './wireTypes';
 import type {
   Loudness,
@@ -185,4 +185,147 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
     i2s, leveller,
     preampLDb, preampRDb, masterVolumeDb,
   };
+}
+
+// Factory: returns a fully-populated BulkParams representing firmware
+// factory defaults. Single source of truth for "what's a sensible zero
+// state?" — used by tests, MockTransport, the parser's section fallback
+// (Task 4), and toBulkParams in the domain layer (later).
+export function defaultBulkParams(opts: {
+  platformId: number;
+  numCh: number;
+  numOut: number;
+  numIn?: number;
+  maxBands?: number;
+}): BulkParams {
+  const numIn = opts.numIn ?? Wire.Const.NUM_INPUTS;
+  const maxBands = opts.maxBands ?? Wire.Const.BANDS_MAX;
+  return {
+    formatVersion: 6,
+    platformId:    opts.platformId,
+    numCh:         opts.numCh,
+    numOut:        opts.numOut,
+    numIn,
+    maxBands,
+
+    bypass: false,
+    preampDb: 0,
+
+    loudness:  { enabled: false, refSpl: 85, intensityPct: 0 },
+    crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5 },
+
+    delaysMs: Array.from({ length: Wire.Const.NUM_CHANNELS }, () => 0),
+
+    crosspoints: Array.from({ length: Wire.Const.NUM_INPUTS }, () =>
+      Array.from({ length: Wire.Const.NUM_OUTPUTS }, () =>
+        ({ enabled: false, invert: false, gainDb: 0 }))),
+
+    outputs: Array.from({ length: Wire.Const.NUM_OUTPUTS }, () =>
+      ({ enabled: false, muted: false, gainDb: 0, delayMs: 0 })),
+
+    numPinOutputs: 0,
+    pins:          Array.from({ length: Wire.Const.NUM_PIN_OUTPUTS }, () => 0),
+
+    filters: Array.from({ length: Wire.Const.NUM_CHANNELS }, () =>
+      Array.from({ length: Wire.Const.BANDS_MAX }, () =>
+        ({ type: 0, frequency: 1000, q: 1, gain: 0 }))),
+
+    channelNames: Array.from({ length: Wire.Const.NUM_CHANNELS }, () => ''),
+
+    i2s: {
+      outputSlotTypes: [0, 0, 0, 0] as [number, number, number, number],
+      bckPin: 0,
+      mckPin: 0,
+      mckEnabled: false,
+      mckMultiplierEncoded: 0,
+    },
+    leveller: { enabled: false, speed: 0, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40 },
+    preampLDb: 0,
+    preampRDb: 0,
+    masterVolumeDb: 0,
+  };
+}
+
+// Strict total writer. Symmetric inverse of parseBulkParams. Emits V6
+// (2896 bytes). Throws on non-V6 input — the writer doesn't support
+// older versions. SET_ALL_PARAMS firmware-side requires exact V6 size.
+export function buildBulkParams(bulk: BulkParams): Uint8Array {
+  if (bulk.formatVersion !== 6) {
+    throw new Error(`buildBulkParams: only formatVersion=6 supported, got ${bulk.formatVersion}`);
+  }
+  const w = new BinWriter(Wire.BulkLimits.MaxRequestSize);
+
+  Wire.Header.write(w, {
+    formatVersion: 6,
+    platformId:    bulk.platformId,
+    numCh:         bulk.numCh,
+    numOut:        bulk.numOut,
+    numIn:         bulk.numIn,
+    maxBands:      bulk.maxBands,
+  });
+
+  Wire.GlobalParams.write(w, {
+    preampDb:             bulk.preampDb,
+    bypass:               bulk.bypass,
+    loudnessEnabled:      bulk.loudness.enabled,
+    loudnessRefSpl:       bulk.loudness.refSpl,
+    loudnessIntensityPct: bulk.loudness.intensityPct,
+  });
+
+  Wire.CrossfeedParams.write(w, {
+    enabled: bulk.crossfeed.enabled,
+    preset:  bulk.crossfeed.preset,
+    itd:     bulk.crossfeed.itd,
+    freq:    bulk.crossfeed.freq,
+    feedDb:  bulk.crossfeed.feedDb,
+  });
+
+  Wire.LegacyChannels.write(w, undefined);
+
+  Wire.ChannelDelays.write(w, bulk.delaysMs);
+
+  for (let inp = 0; inp < Wire.Const.NUM_INPUTS; inp++) {
+    for (let outp = 0; outp < Wire.Const.NUM_OUTPUTS; outp++) {
+      const cp = bulk.crosspoints[inp][outp];
+      Wire.Crosspoint.write(w, { enabled: cp.enabled, invert: cp.invert, gainDb: cp.gainDb });
+    }
+  }
+
+  for (let o = 0; o < Wire.Const.NUM_OUTPUTS; o++) {
+    const out = bulk.outputs[o];
+    Wire.OutputChannel.write(w, { enabled: out.enabled, muted: out.muted, gainDb: out.gainDb, delayMs: out.delayMs });
+  }
+
+  Wire.PinConfig.write(w, { numPinOutputs: bulk.numPinOutputs, pins: bulk.pins });
+
+  for (let ch = 0; ch < Wire.Const.NUM_CHANNELS; ch++) {
+    for (let b = 0; b < Wire.Const.BANDS_MAX; b++) {
+      const f = bulk.filters[ch][b];
+      Wire.BandParams.write(w, { type: f.type, frequency: f.frequency, q: f.q, gain: f.gain });
+    }
+  }
+
+  Wire.ChannelNames.write(w, bulk.channelNames);
+
+  // V6 trailing sections — use absolute seeks to match the parser's layout.
+  w.seek(Wire.BulkOffsets.I2S);
+  const i2s = bulk.i2s ?? {
+    outputSlotTypes: [0, 0, 0, 0] as [number, number, number, number],
+    bckPin: 0, mckPin: 0, mckEnabled: false, mckMultiplierEncoded: 0,
+  };
+  Wire.I2SConfig.write(w, i2s);
+
+  w.seek(Wire.BulkOffsets.Leveller);
+  const lev = bulk.leveller ?? {
+    enabled: false, speed: 0, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40,
+  };
+  Wire.LevellerConfig.write(w, lev);
+
+  w.seek(Wire.BulkOffsets.PerChPreamp);
+  Wire.PreampConfig.write(w, { preampDb: [bulk.preampLDb ?? 0, bulk.preampRDb ?? 0] });
+
+  w.seek(Wire.BulkOffsets.MasterVolume);
+  Wire.MasterVolume.write(w, { masterVolumeDb: bulk.masterVolumeDb ?? 0 });
+
+  return w.toUint8Array();
 }
