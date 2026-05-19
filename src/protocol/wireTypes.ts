@@ -291,9 +291,9 @@ export type SystemStatusValue = (typeof SystemStatusValue)[keyof typeof SystemSt
 // Bulk packet sizing.
 // Min size = the V2-mandatory prefix (everything up through channel names).
 // Max size = min + V6 trailing sections (I2S, leveller, preamp, master
-// volume) at their full 16-byte aligned width. The V6 codecs describe
-// only the data portion; firmware pads each section to 16 bytes, which
-// V6_TAIL_SIZE below accounts for so the parser stays magic-free.
+// volume) at their full 16-byte on-wire footprint. The V6 codecs include
+// trailing reserved padding, so their sizeOf() equals the full 16-byte
+// section size; V6_TAIL_SIZE is simply 4 × 16 = 64 bytes.
 
 const FIXED_PREFIX_SIZE =
   sizeOf(Header) +
@@ -317,11 +317,10 @@ export const BulkLimits = {
 } as const;
 
 // Absolute offsets of the V6 trailing sections.
-// Used by the parser (`r.seek(...)`) and synthesizer (`w.seek(...)`). They
-// derive from `BulkLimits` plus section codec sizes; `MasterVolume` is
-// the one place firmware reserved padding diverges from the codec's
-// data-only size, so we express it as `MaxRequestSize - 16` (the
-// master-vol section's full 16-B footprint).
+// Used by the parser (`r.seek(...)`) and synthesizer (`w.seek(...)`).
+// Each codec includes its reserved padding, so offsets derive from
+// accumulated sizeOf() calls. MasterVolume's offset can also be expressed
+// as MaxRequestSize - sizeOf(MasterVolume) for convenience.
 
 export const BulkOffsets = {
   I2S:          BulkLimits.MinPacketSize,                                          // 2832
