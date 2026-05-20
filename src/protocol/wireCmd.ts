@@ -115,6 +115,7 @@ export const WireCmd = {
 
   // Bulk
   GetAllParams:         { code: 0xA0 } satisfies RawCmd,
+  SetAllParams:         { code: 0xA1 } satisfies RawCmd,
   GetBufferStats:       { code: 0xB0 } satisfies RawCmd,
   ResetBufferStats:     { code: 0xB1 } satisfies RawCmd,
 

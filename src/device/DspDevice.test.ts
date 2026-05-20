@@ -4,7 +4,7 @@
 // adds on top: factory identity capture, getSystemInfo aggregation,
 // per-input preamp, and the hardware-profile contract for getSystemStatus.
 
-import { describe, it, test, expect, beforeEach } from 'vitest';
+import { describe, it, test, expect, beforeEach, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice } from './DspDevice';
 import { PresetResult, WireCmd, SystemStatusValue } from '@/protocol';
@@ -830,5 +830,22 @@ describe('DspDevice — getFilter multi-read', () => {
       .toEqual(Array(4).fill((6 << 8) | (1 << 4)));
     expect(seenOut.find((call) => call.req === WireCmd.SetChannelName.code)?.val).toBe(6);
     expect(seenIn.find((call) => call.req === WireCmd.GetChannelName.code)?.val).toBe(6);
+  });
+});
+
+describe('setAllParams', () => {
+  it('issues one ctrlOut with code=0xA1, wValue=0, byteLength=2896', async () => {
+    const transport = new MockTransport({ platform: 'rp2350' });
+    const ctrlOutSpy = vi.spyOn(transport, 'ctrlOut');
+    const dev = await DspDevice.create(transport);
+
+    const bulk = await dev.getAllParams();
+    await dev.setAllParams(bulk);
+
+    // Filter to just the SetAllParams calls (DspDevice.create / getAllParams may issue other ctrlOuts).
+    const calls = ctrlOutSpy.mock.calls.filter((c) => c[0] === 0xA1);
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1]).toBe(0);              // wValue
+    expect(calls[0][2].byteLength).toBe(2896); // exact V6 size
   });
 });
