@@ -3,7 +3,7 @@ import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@/protocol/__tests__/bulkFixtures';
 import { PlatformType } from './platform';
 import { createHardwareProfile } from './hardware';
-import { fromBulkParams } from './bulkToSnapshot';
+import { fromBulkParams, toBulkParams } from './bulkToSnapshot';
 import { matrixColumns, matrixRows } from './mixerView';
 
 describe('fromBulkParams', () => {
@@ -91,5 +91,42 @@ describe('fromBulkParams', () => {
     expect(pdmOutput?.name).toBe('RP2040 Sub');
     expect(pdmChannel?.filters[0].frequency).toBe(321);
     expect(pdmChannel?.filters[0].gain).toBe(-2);
+  });
+});
+
+describe('toBulkParams', () => {
+  it('roundtrips fromBulkParams output back to BulkParams (RP2350)', () => {
+    const hardware = createHardwareProfile(PlatformType.RP2350);
+    const originalBytes = makeBulk({
+      bypass: true,
+      preampDb: -3.5,
+      masterVolumeDb: -12,
+      channelNames: Array.from({ length: 11 }, (_, i) => `ch${i}`),
+    });
+    const original = parseBulkParams(originalBytes);
+    const snapshot = fromBulkParams(hardware, original);
+    const reconstructed = toBulkParams(hardware, snapshot, original);
+
+    expect(reconstructed.bypass).toBe(original.bypass);
+    expect(reconstructed.preampDb).toBeCloseTo(original.preampDb);
+    expect(reconstructed.masterVolumeDb).toBeCloseTo(original.masterVolumeDb);
+    expect(reconstructed.channelNames.slice(0, 11)).toEqual(original.channelNames.slice(0, 11));
+    expect(reconstructed.pins).toEqual(original.pins);  // sourced from baseline
+    expect(reconstructed.formatVersion).toBe(6);
+  });
+
+  it('roundtrips on RP2040 (smaller channel/output counts)', () => {
+    const hardware = createHardwareProfile(PlatformType.RP2040);
+    const originalBytes = makeBulk(
+      { bypass: true },
+      { platformId: 0, numCh: 7, numOut: 5 },
+    );
+    const original = parseBulkParams(originalBytes);
+    const snapshot = fromBulkParams(hardware, original);
+    const reconstructed = toBulkParams(hardware, snapshot, original);
+
+    expect(reconstructed.bypass).toBe(true);
+    expect(reconstructed.numCh).toBe(7);
+    expect(reconstructed.numOut).toBe(5);
   });
 });
