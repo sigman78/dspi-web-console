@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from './DspDevice';
-import { hasFormatVersion, openSingleDevice } from '../../hil/setup';
+import { hasFormatVersion, openSingleDevice } from '@test/hil/setup';
 import type { BulkParams } from '@/protocol';
 
 // HIL: round-trip SET_ALL_PARAMS against real firmware.

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from './DspDevice';
-import { openSingleDevice, withSavedField } from '../../hil/setup';
+import { openSingleDevice, withSavedField } from '@test/hil/setup';
 
 // Float roundtrip tolerance: f32 precision through encode -> wire -> decode.
 const F32_TOL = 4;

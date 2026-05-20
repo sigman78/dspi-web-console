@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { parseBulkParams, buildBulkParams, defaultBulkParams, type BulkParams } from './bulkParser';
-import { makeBulk } from './__tests__/bulkFixtures';
+import { makeBulk } from '@test/fixtures/bulkFixtures';
 import * as Wire from './wireTypes';
 import { FilterType, type FilterParams } from '@/domain';
 

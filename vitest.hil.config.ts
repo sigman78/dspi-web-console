@@ -28,6 +28,7 @@ export default defineConfig({
     // and their transitive imports under src/ can resolve consistently.
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@test': fileURLToPath(new URL('./test', import.meta.url)),
     },
   },
 });

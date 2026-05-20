@@ -2,7 +2,7 @@
 // synthesizeBulkParams pattern. Defaults seed via defaultBulkParams,
 // callers spread overrides for the field(s) they care about.
 
-import { buildBulkParams, defaultBulkParams, type BulkParams } from '../bulkParser';
+import { buildBulkParams, defaultBulkParams, type BulkParams } from '@/protocol/bulkParser';
 
 export interface MakeBulkOpts {
   platformId?: number;

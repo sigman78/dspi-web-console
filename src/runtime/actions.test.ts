@@ -5,7 +5,7 @@ import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
 import { parseBulkParams } from '@/protocol';
-import { makeBulk } from '@/protocol/__tests__/bulkFixtures';
+import { makeBulk } from '@test/fixtures/bulkFixtures';
 import {
   FilterType,
   PlatformType,

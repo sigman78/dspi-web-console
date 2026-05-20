@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { DspDevice } from '@/device/DspDevice';
-import { openSingleDevice } from '../../hil/setup';
+import { openSingleDevice } from '@test/hil/setup';
 
 describe('bulkParser against real hardware', () => {
   let device: DspDevice;

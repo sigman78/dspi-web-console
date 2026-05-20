@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from './DspDevice';
-import { hasFormatVersion, openSingleDevice, withSavedField } from '../../hil/setup';
+import { hasFormatVersion, openSingleDevice, withSavedField } from '@test/hil/setup';
 import { FilterType } from '@/domain';
 
 // Float roundtrip tolerance: f32 precision through encode -> wire -> decode.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseBulkParams } from '@/protocol';
-import { makeBulk } from '@/protocol/__tests__/bulkFixtures';
+import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType } from './platform';
 import { createHardwareProfile } from './hardware';
 import { fromBulkParams, toBulkParams } from './bulkToSnapshot';
