@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MockTransport } from './MockTransport';
 import { DspDevice } from '@/device/DspDevice';
-import { WireCmd, writeCmd, parseBufferStats, parseSystemStatus, parseBulkParams } from '@/protocol';
+import { WireCmd, Wire, writeCmd, parseBufferStats, parseSystemStatus, parseBulkParams, buildBulkParams, type BulkParams } from '@/protocol';
 import { Codec } from '@/utils';
 import { FilterType, MasterVolumeMode } from '@/domain';
 
@@ -269,5 +269,22 @@ describe('MockTransport — GetEqParam multi-read', () => {
     expect(got.frequency).toBeCloseTo(320, 1);
     expect(got.q).toBeCloseTo(0.9, 4);
     expect(got.gain).toBeCloseTo(4.5, 4);
+  });
+});
+
+describe('SetAllParams (0xA1)', () => {
+  it('ctrlOut 0xA1 updates state such that subsequent GET reflects the SET', async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    await t.open();
+
+    // Read initial state, mutate one field, send back.
+    const initial = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxRequestSize));
+    expect(initial.bypass).toBe(false);
+
+    const mutated: BulkParams = { ...initial, bypass: true };
+    await t.ctrlOut(WireCmd.SetAllParams.code, 0, buildBulkParams(mutated));
+
+    const after = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxRequestSize));
+    expect(after.bypass).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from '@/device/DspDevice';
-import { openSingleDevice } from '../../hil/setup';
+import { openSingleDevice } from '@test/hil/setup';
 import { finishConnection } from './actions';
 import { session, bindDevice, settings, dsp, resetDsp, resetStatus } from '@/state';
 import { stopPolling } from './poll';

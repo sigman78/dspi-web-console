@@ -55,7 +55,7 @@ export const Header = struct({
   numOut:           u8,
   numIn:            u8,
   maxBands:         u8,
-  _payloadLength:   reserved(2),
+  payloadLength:    u16,
   _fwVersionMajor:  reserved(2),
   _fwVersionMinor:  reserved(2),
   _reserved:        reserved(4),
@@ -145,20 +145,19 @@ export const LevellerConfig = struct({
   gateDb:    f32,
 });
 
-// Section 13: per-channel preamp (V6+, optional).
-// The C `WirePreampConfig` is 16 B (8 B data + 8 B reserved padding).
-// The TS codec models only the 8-byte data portion: real packets in the
-// wild can terminate after the data without the trailing padding, and
-// the parser/writer gates on the data-portion length to mirror v1.
+// Section 13: per-channel preamp (V6+, optional). Full 16-byte on-wire
+// footprint: 8 B data + 8 B reserved. Models the full section size so
+// sequential reads/writes don't require absolute seeks.
 export const PreampConfig = struct({
-  preampDb: arr(f32, Const.NUM_INPUTS),
+  preampDb:  arr(f32, Const.NUM_INPUTS),
+  _reserved: reserved(8),
 });
 
-// Section 14: master volume (V6+, optional).
-// The C `WireMasterVolume` is 16 B (4 B data + 12 B reserved). As with
-// PreampConfig the TS codec models only the data portion.
+// Section 14: master volume (V6+, optional). Full 16-byte on-wire
+// footprint: 4 B data + 12 B reserved.
 export const MasterVolume = struct({
   masterVolumeDb: f32,
+  _reserved:      reserved(12),
 });
 
 // Other vendor-control packets.
@@ -289,14 +288,8 @@ export const SystemStatusValue = {
 } as const;
 export type SystemStatusValue = (typeof SystemStatusValue)[keyof typeof SystemStatusValue];
 
-// Bulk packet sizing.
-// Min size = the V2-mandatory prefix (everything up through channel names).
-// Max size = min + V6 trailing sections (I2S, leveller, preamp, master
-// volume) at their full 16-byte aligned width. The V6 codecs describe
-// only the data portion; firmware pads each section to 16 bytes, which
-// V6_TAIL_SIZE below accounts for so the parser stays magic-free.
-
-const FIXED_PREFIX_SIZE =
+// Section sizes -- equal to on-wire sizes since Task 1 padded V6 codecs to 16B.
+const V2_PREFIX_SIZE =
   sizeOf(Header) +
   sizeOf(GlobalParams) +
   sizeOf(CrossfeedParams) +
@@ -306,30 +299,43 @@ const FIXED_PREFIX_SIZE =
   sizeOf(OutputChannel) * Const.NUM_OUTPUTS +
   sizeOf(PinConfig) +
   sizeOf(BandParams) * (Const.NUM_CHANNELS * Const.BANDS_MAX) +
-  sizeOf(ChannelNames);  // = 2832
+  sizeOf(ChannelNames);  // 2832
 
-// Each V6 section in the firmware struct is 16-byte aligned regardless
-// of how many bytes its data portion occupies. Four sections x 16 = 64.
-const V6_TAIL_SIZE = 4 * 16;
+// Cumulative payload sizes at each format-version boundary. Used by
+// bulkLayout() to gate optional sections on header.payload_length.
+export const BulkSizes = {
+  V2:        V2_PREFIX_SIZE,                                                                          // 2832
+  V3:        V2_PREFIX_SIZE + sizeOf(I2SConfig),                                                       // 2848
+  V4:        V2_PREFIX_SIZE + sizeOf(I2SConfig) + sizeOf(LevellerConfig),                              // 2864
+  V6Preamp:  V2_PREFIX_SIZE + sizeOf(I2SConfig) + sizeOf(LevellerConfig) + sizeOf(PreampConfig),       // 2880
+  V6Full:    V2_PREFIX_SIZE + sizeOf(I2SConfig) + sizeOf(LevellerConfig) + sizeOf(PreampConfig) + sizeOf(MasterVolume), // 2896
+} as const;
 
 export const BulkLimits = {
-  MinPacketSize:  FIXED_PREFIX_SIZE,                  // 2832
-  MaxRequestSize: FIXED_PREFIX_SIZE + V6_TAIL_SIZE,   // 2896
+  MinPacketSize:  BulkSizes.V2,
+  MaxRequestSize: BulkSizes.V6Full,
 } as const;
 
-// Absolute offsets of the V6 trailing sections.
-// Used by the parser (`r.seek(...)`) and synthesizer (`w.seek(...)`). They
-// derive from `BulkLimits` plus section codec sizes; `MasterVolume` is
-// the one place firmware reserved padding diverges from the codec's
-// data-only size, so we express it as `MaxRequestSize - 16` (the
-// master-vol section's full 16-B footprint).
+export interface BulkLayout {
+  i2s: boolean;
+  leveller: boolean;
+  preamp: boolean;
+  masterVolume: boolean;
+}
 
-export const BulkOffsets = {
-  I2S:          BulkLimits.MinPacketSize,                                          // 2832
-  Leveller:     BulkLimits.MinPacketSize + sizeOf(I2SConfig),                      // 2848
-  PerChPreamp:  BulkLimits.MinPacketSize + sizeOf(I2SConfig) + sizeOf(LevellerConfig), // 2864
-  MasterVolume: BulkLimits.MaxRequestSize - 16,                                    // 2880
-} as const;
+// Determine which optional sections are present based on the header.
+// Both formatVersion and payloadLength must satisfy the threshold --
+// matches firmware's bulk_params_apply gating in bulk_params.c.
+export function bulkLayout(h: { formatVersion: number; payloadLength: number }): BulkLayout {
+  const v = h.formatVersion;
+  const len = h.payloadLength;
+  return {
+    i2s:          v >= 3 && len >= BulkSizes.V3,
+    leveller:     v >= 4 && len >= BulkSizes.V4,
+    preamp:       v >= 6 && len >= BulkSizes.V6Preamp,
+    masterVolume: v >= 6 && len >= BulkSizes.V6Full,
+  };
+}
 
 // Preset startup mode (authoritative; mirrors firmware preset.h):
 //   #define PRESET_STARTUP_SPECIFIED   0   // Load a specific default slot

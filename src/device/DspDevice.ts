@@ -1,7 +1,7 @@
 import type { DspTransport } from '@/transport/DspTransport';
 import {
   Wire,
-  parseBulkParams, parseSystemStatus, parseBufferStats,
+  parseBulkParams, buildBulkParams, parseSystemStatus, parseBufferStats,
   SystemStatusValue,
   WireCmd, readCmd, writeCmd,
   type BufferStats, type SystemStatus, type BulkParams, type PartialSystemInfo,
@@ -88,6 +88,15 @@ export class DspDevice {
   async getAllParams(): Promise<BulkParams> {
     const bytes = await this.transport.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxRequestSize);
     return parseBulkParams(bytes);
+  }
+
+  // Push a complete DSP state to the device in one transfer (USB control-OUT 0xA1).
+  // Wire payload must be exactly 2896 B (V6); firmware STALLs otherwise -- the
+  // builder enforces this. Firmware applies the state in its main loop (~5 ms);
+  // callers expecting the change to be visible should re-fetch via getAllParams.
+  async setAllParams(bulk: BulkParams): Promise<void> {
+    const bytes = buildBulkParams(bulk);
+    await this.transport.ctrlOut(WireCmd.SetAllParams.code, 0, bytes);
   }
 
   async getSystemStatus(): Promise<SystemStatus> {

@@ -1,15 +1,17 @@
 import type { DspTransport, TransportEvent } from './DspTransport';
 import { Wire, WireCmd, SystemStatusValue } from '@/protocol';
 import {
-  synthesizeBulkParams, type SynthesizeOptions,
   synthesizeSystemStatus, synthesizeU32, synthesizeI32,
   synthesizeBufferStats,
 } from '@/protocol/syn';
+import {
+  buildBulkParams, defaultBulkParams, parseBulkParams, type BulkParams,
+} from '@/protocol/bulkParser';
 import { Codec } from '@/utils';
 import {
   PlatformType,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
-  defaultFilter, type FilterParams,
+  type FilterParams,
   type CrossPoint, type OutputState,
 } from '@/domain';
 
@@ -18,37 +20,26 @@ export interface MockOptions {
   serial?: string;
 }
 
-// Default crosspoint / output state (mirrors what synthesizeBulkParams
-// fills in when a slot is missing). Materialising them upfront lets Set*
+// Default crosspoint / output state (mirrors what defaultBulkParams
+// initializes for a slot). Materialising them upfront lets Set*
 // commands mutate one slice without rebuilding the whole shape every time.
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
-const defaultOutput = (): OutputState => ({ enabled: false, muted: false, gainDb: 0, delayMs: 0 });
 
-// Default SynthesizeOptions used to (a) seed #mockState at construction and
+// Default BulkParams used to (a) seed #mockState at construction and
 // (b) reset live state when LoadPreset hits an empty slot — per
 // user_presets_spec.md §REQ_PRESET_LOAD, current firmware applies factory
 // defaults instead of returning SlotEmpty.
-function defaultMockBulkState(): SynthesizeOptions {
-  return {
-    formatVersion: 6,
-    outputs: Array.from({ length: Wire.Const.NUM_OUTPUTS }, defaultOutput),
-    crosspoints: Array.from({ length: Wire.Const.NUM_INPUTS }, () =>
-      Array.from({ length: Wire.Const.NUM_OUTPUTS }, defaultCrosspoint),
-    ),
-    filters: Array.from({ length: Wire.Const.NUM_CHANNELS }, () =>
-      Array.from({ length: Wire.Const.BANDS_MAX }, defaultFilter),
-    ),
-    loudness:  { enabled: false, refSpl: 85, intensityPct: 0 },
-    crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5 },
-    leveller:  { enabled: false, speed: 1, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40 },
-  };
+function defaultMockBulkState(platform: PlatformType): BulkParams {
+  const numCh  = platform === PlatformType.RP2350 ? 11 : 7;
+  const numOut = platform === PlatformType.RP2350 ? 9  : 5;
+  return defaultBulkParams({ platformId: platform, numCh, numOut });
 }
 
 // Full snapshot of mutable mock state so PresetSave/Load round-trips every
 // field, not just the bulk-packet contents. Defined outside the class because
 // TypeScript doesn't allow interface declarations inside class bodies.
 interface MockSnapshot {
-  bulk: SynthesizeOptions;
+  bulk: BulkParams;
   masterVolumeDb: number;
   masterPreampDb: number;
   inputPreampDb: [number, number];
@@ -68,7 +59,7 @@ export class MockTransport implements DspTransport {
   #bypass = false;
   #masterVolumeMode: MasterVolumeMode = MasterVolumeMode.Independent;
   #savedMasterVolumeDb = 0;
-  #mockState: SynthesizeOptions;
+  #mockState: BulkParams;
   #channelNames: string[] = Array.from({ length: Wire.Const.NUM_CHANNELS }, () => '');
 
   // Preset directory + 10-slot snapshots. Kept here (rather than in
@@ -104,7 +95,7 @@ export class MockTransport implements DspTransport {
     // index into them without conditional shape building. GetAllParams
     // re-synthesises from this state, so mutations show up in the next
     // bulk read -- i.e. the post-mutation resync sees the change.
-    this.#mockState = defaultMockBulkState();
+    this.#mockState = defaultMockBulkState(this.#platform);
   }
 
   async open(): Promise<void> {
@@ -138,7 +129,7 @@ export class MockTransport implements DspTransport {
         return out;
       }
       case WireCmd.GetAllParams.code: {
-        const bulk = synthesizeBulkParams(this.#mockState);
+        const bulk = buildBulkParams(this.#mockState);
         return bulk.slice(0, Math.min(length, bulk.byteLength));
       }
       case WireCmd.GetMasterVolume.code:
@@ -421,6 +412,11 @@ export class MockTransport implements DspTransport {
         this.#clipFlags = 0;
         return;
 
+      case WireCmd.SetAllParams.code: {
+        this.#mockState = parseBulkParams(data);
+        return;
+      }
+
       default:
         return;
     }
@@ -428,7 +424,7 @@ export class MockTransport implements DspTransport {
 
   #captureSnapshot(): MockSnapshot {
     return {
-      bulk: JSON.parse(JSON.stringify(this.#mockState)) as SynthesizeOptions,
+      bulk: JSON.parse(JSON.stringify(this.#mockState)) as BulkParams,
       masterVolumeDb: this.#masterVolumeDb,
       masterPreampDb: this.#masterPreampDb,
       inputPreampDb: [this.#inputPreampDb[0], this.#inputPreampDb[1]],
@@ -443,7 +439,7 @@ export class MockTransport implements DspTransport {
   // defaults; PRESET_ERR_SLOT_EMPTY is reserved). Scalars revert to the
   // mock's constructor defaults; channel names clear.
   #resetLiveToDefaults(): void {
-    this.#mockState = defaultMockBulkState();
+    this.#mockState = defaultMockBulkState(this.#platform);
     this.#masterVolumeDb = 0;
     this.#masterPreampDb = 0;
     this.#inputPreampDb = [0, 0];
@@ -453,7 +449,7 @@ export class MockTransport implements DspTransport {
   }
 
   #restoreSnapshot(s: MockSnapshot): void {
-    this.#mockState = JSON.parse(JSON.stringify(s.bulk)) as SynthesizeOptions;
+    this.#mockState = JSON.parse(JSON.stringify(s.bulk)) as BulkParams;
     // Per HW-PROFILES §3: master volume *value* rides the preset payload
     // only in Mode 1 (with-preset). In Mode 0 (independent), LoadPreset
     // leaves master volume alone — it's owned by the directory sector,

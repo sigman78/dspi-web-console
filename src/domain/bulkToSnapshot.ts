@@ -1,4 +1,4 @@
-import { Wire, type BulkParams } from '@/protocol';
+import { Wire, type BulkParams, type WireFilter } from '@/protocol';
 import {
   outputModeForChannel,
   type InputSlot,
@@ -9,8 +9,10 @@ import {
   type HardwareProfile,
 } from './hardware';
 import { FilterType, type FilterParams } from './filter';
+import { PlatformType } from './platform';
+import { CrossfeedPreset, LevellerSpeed } from './processing';
 import type { DspSnapshot } from './snapshot';
-import type { OutputModel, RouteModel } from './mixer';
+import type { CrossPoint, OutputModel, OutputState, RouteModel } from './mixer';
 
 // Wire-side filter.type is u8 (0..255 possible). The known FilterType
 // values are 0..5 (Flat..HighPass). Clamp anything else to Flat so a
@@ -34,9 +36,36 @@ function narrowFilterType(t: number): FilterType {
   }
 }
 
+function narrowPlatform(p: number): PlatformType {
+  return p === 1 ? PlatformType.RP2350 : PlatformType.RP2040;
+}
+
+function narrowCrossfeedPreset(p: number): CrossfeedPreset {
+  switch (p) {
+    case CrossfeedPreset.Preset1:
+    case CrossfeedPreset.Preset2:
+    case CrossfeedPreset.Preset3:
+    case CrossfeedPreset.Custom:
+      return p;
+    default:
+      return CrossfeedPreset.Preset1;
+  }
+}
+
+function narrowLevellerSpeed(s: number): LevellerSpeed {
+  switch (s) {
+    case LevellerSpeed.Slow:
+    case LevellerSpeed.Medium:
+    case LevellerSpeed.Fast:
+      return s;
+    default:
+      return LevellerSpeed.Slow;
+  }
+}
+
 export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): DspSnapshot {
   const channelNames = bulk.channelNames.slice(0, Wire.Const.NUM_CHANNELS);
-  const outputSlotTypes = bulk.i2s?.outputSlotTypes;
+  const outputSlotTypes = bulk.formatVersion >= 3 ? bulk.i2s.outputSlotTypes : undefined;
 
   const channels = hardware.channels.map((channel) => ({
     id: channel.id,
@@ -95,12 +124,9 @@ export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): Dsp
     }
   }
 
-  // Feature shapes are shared with the parser; we adopt them by reference.
-  // Connection sync and bulk resync replace the snapshot wholesale, and the
-  // parsed bulk goes out of scope, so there's no aliasing concern.
   return {
     platform: {
-      type: hardware.type,
+      type: narrowPlatform(bulk.platformId),
       name: hardware.name,
       outputCount: hardware.outputCount,
       totalChannelCount: hardware.totalChannelCount,
@@ -109,14 +135,120 @@ export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): Dsp
     formatVersion: bulk.formatVersion,
     bypass: bulk.bypass,
     masterPreampDb: bulk.preampDb,
-    inputPreampDb: [bulk.preampLDb ?? 0, bulk.preampRDb ?? 0],
-    masterVolumeDb: bulk.masterVolumeDb ?? 0,
+    inputPreampDb: [bulk.preampLDb, bulk.preampRDb],
+    masterVolumeDb: bulk.masterVolumeDb,
     channels,
     outputs,
     routes,
     loudness: bulk.loudness,
-    crossfeed: bulk.crossfeed,
-    leveller: bulk.leveller,
-    i2s: bulk.i2s,
+    crossfeed: {
+      enabled: bulk.crossfeed.enabled,
+      preset: narrowCrossfeedPreset(bulk.crossfeed.preset),
+      itd: bulk.crossfeed.itd,
+      freq: bulk.crossfeed.freq,
+      feedDb: bulk.crossfeed.feedDb,
+    },
+    leveller: bulk.formatVersion >= 4 ? {
+      enabled: bulk.leveller.enabled,
+      speed: narrowLevellerSpeed(bulk.leveller.speed),
+      lookahead: bulk.leveller.lookahead,
+      amount: bulk.leveller.amount,
+      maxGainDb: bulk.leveller.maxGainDb,
+      gateDb: bulk.leveller.gateDb,
+    } : null,
+    i2s: bulk.formatVersion >= 3 ? bulk.i2s : null,
+  };
+}
+
+// Snapshot -> wire helper. Overlays snapshot-driven fields onto a
+// `baseline` BulkParams (typically a recent getAllParams). Fields the
+// snapshot doesn't carry (pins, raw wire indices, dimensions, channel
+// names beyond hardware.totalChannelCount) come from the baseline.
+// Snapshot nulls (leveller, i2s) fall back to baseline rather than
+// factory defaults -- preserves device state for features the UI doesn't
+// expose.
+export function toBulkParams(
+  hardware: HardwareProfile,
+  snapshot: DspSnapshot,
+  baseline: BulkParams,
+): BulkParams {
+  // Filters: invert wireChannelFor -- place each snapshot channel's
+  // filters at its wire-channel index. Slots beyond hardware.totalChannelCount
+  // keep baseline values.
+  const filters: WireFilter[][] = baseline.filters.map((row) => row.map((f) => ({ ...f })));
+  for (const ch of snapshot.channels) {
+    const wireCh = wireChannelFor(hardware, ch.id);
+    for (let b = 0; b < ch.filters.length; b++) {
+      filters[wireCh][b] = {
+        type: ch.filters[b].type,
+        frequency: ch.filters[b].frequency,
+        q: ch.filters[b].q,
+        gain: ch.filters[b].gain,
+      };
+    }
+  }
+
+  // Outputs: map snapshot outputs onto wire slots via hardware mapping.
+  const outputs: OutputState[] = baseline.outputs.map((o) => ({ ...o }));
+  for (const out of snapshot.outputs) {
+    outputs[out.wireIndex] = {
+      enabled: out.enabled,
+      muted:   out.muted,
+      gainDb:  out.gainDb,
+      delayMs: out.delayMs,
+    };
+  }
+
+  // Crosspoints: snapshot routes carry inputIndex + outputWireIndex.
+  const crosspoints: CrossPoint[][] = baseline.crosspoints.map((row) => row.map((cp) => ({ ...cp })));
+  for (const r of snapshot.routes) {
+    crosspoints[r.inputIndex][r.outputWireIndex] = {
+      enabled: r.enabled,
+      invert:  r.invert,
+      gainDb:  r.gainDb,
+    };
+  }
+
+  // Channel names: snapshot carries displayed names per channel id; map
+  // back to wire indices. Slots beyond hardware.totalChannelCount keep
+  // baseline values. Note: if the wire originally had an empty name,
+  // fromBulkParams already resolved it to the channel's default (e.g.
+  // "Out 1 L"), so the wire packet built here will carry that resolved
+  // name -- matching what the user sees in the UI.
+  const channelNames = baseline.channelNames.slice();
+  for (const ch of snapshot.channels) {
+    const wireCh = wireChannelFor(hardware, ch.id);
+    channelNames[wireCh] = ch.name;
+  }
+
+  return {
+    formatVersion: 6,
+    platformId:    snapshot.platform.type,
+    numCh:         hardware.totalChannelCount,
+    numOut:        hardware.outputCount,
+    numIn:         baseline.numIn,
+    maxBands:      baseline.maxBands,
+
+    bypass:   snapshot.bypass,
+    preampDb: snapshot.masterPreampDb,
+
+    loudness:  snapshot.loudness,
+    crossfeed: snapshot.crossfeed,
+
+    delaysMs: baseline.delaysMs.slice(),
+    crosspoints,
+    outputs,
+
+    numPinOutputs: baseline.numPinOutputs,
+    pins:          baseline.pins.slice(),
+
+    filters,
+    channelNames,
+
+    i2s:        snapshot.i2s      ?? baseline.i2s,
+    leveller:   snapshot.leveller ?? baseline.leveller,
+    preampLDb:  snapshot.inputPreampDb[0],
+    preampRDb:  snapshot.inputPreampDb[1],
+    masterVolumeDb: snapshot.masterVolumeDb,
   };
 }

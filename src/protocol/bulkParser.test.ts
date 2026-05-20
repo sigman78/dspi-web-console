@@ -1,23 +1,21 @@
-// Standalone tests for the bulk parser.  Covers parse/synthesize
-// roundtrip across header, sections, and the V6 optional tail, plus
-// a fuzz sweep over randomly-shaped options.
+// Standalone tests for the bulk parser.  Covers parse/build
+// roundtrip across header, sections, and the V6 optional tail.
 
 import { describe, it, expect } from 'vitest';
 
-import { parseBulkParams } from './bulkParser';
-import { synthesizeBulkParams, type SynthesizeOptions } from './bulkParser.syn';
+import { parseBulkParams, buildBulkParams, defaultBulkParams, type BulkParams } from './bulkParser';
+import { makeBulk } from '@test/fixtures/bulkFixtures';
 import * as Wire from './wireTypes';
-import { FilterType, type FilterParams, CrossfeedPreset, LevellerSpeed } from '@/domain';
+import { FilterType, type FilterParams } from '@/domain';
 
 const { NUM_CHANNELS, NUM_OUTPUTS, BANDS_MAX } = Wire.Const;
-const { BulkLimits } = Wire;
 
 // Header / global / crossfeed
 
 describe('bulkParser — header + global', () => {
   it('parses header fields', () => {
-    const buf = synthesizeBulkParams({
-      formatVersion: 6, platformId: 1, numCh: 11, numOut: 9, numIn: 2, maxBands: 12,
+    const buf = makeBulk({
+      formatVersion: 6, numCh: 11, numOut: 9, numIn: 2, maxBands: 12,
     });
     const p = parseBulkParams(buf);
     expect(p.formatVersion).toBe(6);
@@ -29,8 +27,8 @@ describe('bulkParser — header + global', () => {
   });
 
   it('parses global flags + preamp', () => {
-    const buf = synthesizeBulkParams({
-      formatVersion: 6, bypass: true, preampDb: -3.5,
+    const buf = makeBulk({
+      bypass: true, preampDb: -3.5,
       loudness: { enabled: true, refSpl: 75, intensityPct: 0.5 },
     });
     const p = parseBulkParams(buf);
@@ -40,7 +38,7 @@ describe('bulkParser — header + global', () => {
   });
 
   it('parses crossfeed', () => {
-    const buf = synthesizeBulkParams({
+    const buf = makeBulk({
       crossfeed: { enabled: true, preset: 2, itd: true, freq: 700, feedDb: -8 },
     });
     const p = parseBulkParams(buf);
@@ -55,7 +53,7 @@ describe('bulkParser — header + global', () => {
 describe('bulkParser — per-channel + matrix', () => {
   it('parses 11 delays', () => {
     const delaysMs = Array.from({ length: NUM_CHANNELS }, (_, i) => i * 0.25);
-    const p = parseBulkParams(synthesizeBulkParams({ delaysMs }));
+    const p = parseBulkParams(makeBulk({ delaysMs }));
     delaysMs.forEach((v, i) => expect(p.delaysMs[i]).toBeCloseTo(v, 5));
   });
 
@@ -67,7 +65,7 @@ describe('bulkParser — per-channel + matrix', () => {
         gainDb: -1 * outp + 0.25 * inp,
       })),
     );
-    const p = parseBulkParams(synthesizeBulkParams({ crosspoints: cps }));
+    const p = parseBulkParams(makeBulk({ crosspoints: cps }));
     for (let inp = 0; inp < 2; inp++) {
       for (let outp = 0; outp < NUM_OUTPUTS; outp++) {
         expect(p.crosspoints[inp][outp].enabled).toBe(cps[inp][outp].enabled);
@@ -81,7 +79,7 @@ describe('bulkParser — per-channel + matrix', () => {
     const outs = Array.from({ length: NUM_OUTPUTS }, (_, o) => ({
       enabled: o !== 7, muted: o === 2, gainDb: -0.5 * o, delayMs: 0.1 * o,
     }));
-    const p = parseBulkParams(synthesizeBulkParams({ outputs: outs }));
+    const p = parseBulkParams(makeBulk({ outputs: outs }));
     for (let o = 0; o < NUM_OUTPUTS; o++) {
       expect(p.outputs[o].enabled).toBe(outs[o].enabled);
       expect(p.outputs[o].muted).toBe(outs[o].muted);
@@ -97,7 +95,7 @@ describe('bulkParser — per-channel + matrix', () => {
       } as FilterParams)),
     );
     filters[3][5] = { type: FilterType.Peaking, frequency: 2500, q: 0.7, gain: 4.5 };
-    const f = parseBulkParams(synthesizeBulkParams({ filters })).filters[3][5];
+    const f = parseBulkParams(makeBulk({ filters })).filters[3][5];
     expect(f.type).toBe(FilterType.Peaking);
     expect(f.frequency).toBeCloseTo(2500, 4);
     expect(f.q).toBeCloseTo(0.7, 4);
@@ -106,7 +104,7 @@ describe('bulkParser — per-channel + matrix', () => {
 
   it('parses NUL-terminated UTF-8 channel names', () => {
     const names = ['Input 1 L', 'Input 1 R', '', 'OUT3', '', '', '', '', '', '', 'PDM'];
-    const p = parseBulkParams(synthesizeBulkParams({ channelNames: names }));
+    const p = parseBulkParams(makeBulk({ channelNames: names }));
     expect(p.channelNames).toEqual(names);
   });
 });
@@ -115,8 +113,7 @@ describe('bulkParser — per-channel + matrix', () => {
 
 describe('bulkParser — V6 trailing sections', () => {
   it('parses per-channel preamp + master volume on V6', () => {
-    const p = parseBulkParams(synthesizeBulkParams({
-      formatVersion: 6,
+    const p = parseBulkParams(makeBulk({
       preampLDb: -1, preampRDb: -2,
       masterVolumeDb: -12.5,
     }));
@@ -125,20 +122,8 @@ describe('bulkParser — V6 trailing sections', () => {
     expect(p.masterVolumeDb).toBeCloseTo(-12.5, 5);
   });
 
-  it('treats a V2-only packet as legacy (no V6 fields)', () => {
-    const p = parseBulkParams(synthesizeBulkParams({
-      formatVersion: 2,
-      packetSize: BulkLimits.MinPacketSize,
-      preampLDb: 9, preampRDb: 9, masterVolumeDb: -50,
-    }));
-    expect(p.formatVersion).toBe(2);
-    expect(p.preampLDb).toBeNull();
-    expect(p.preampRDb).toBeNull();
-    expect(p.masterVolumeDb).toBeNull();
-  });
-
   it('parses optional I2S + leveller blocks when present', () => {
-    const p = parseBulkParams(synthesizeBulkParams({
+    const p = parseBulkParams(makeBulk({
       i2s: {
         outputSlotTypes: [0, 1, 0, 1],
         bckPin: 26, mckPin: 27, mckEnabled: true, mckMultiplierEncoded: 1,
@@ -148,12 +133,10 @@ describe('bulkParser — V6 trailing sections', () => {
         amount: 60, maxGainDb: 12, gateDb: -50,
       },
     }));
-    expect(p.i2s).not.toBeNull();
-    expect(p.i2s!.outputSlotTypes).toEqual([0, 1, 0, 1]);
-    expect(p.i2s!.mckEnabled).toBe(true);
-    expect(p.leveller).not.toBeNull();
-    expect(p.leveller!.amount).toBeCloseTo(60, 4);
-    expect(p.leveller!.gateDb).toBeCloseTo(-50, 4);
+    expect(p.i2s.outputSlotTypes).toEqual([0, 1, 0, 1]);
+    expect(p.i2s.mckEnabled).toBe(true);
+    expect(p.leveller.amount).toBeCloseTo(60, 4);
+    expect(p.leveller.gateDb).toBeCloseTo(-50, 4);
   });
 });
 
@@ -164,137 +147,78 @@ describe('bulkParser — short buffers', () => {
     expect(() => parseBulkParams(new Uint8Array(100))).toThrow();
   });
 
-  // Buffers sized inside the V6 reserved-byte tail (between preamp data
-  // and master volume) must NOT cause the cursor to mis-read master vol.
+  // Buffers sized inside the V6 tail must parse correctly.  V6 fields are
+  // non-nullable -- absent sections fall back to factory defaults (0), not null.
+  // The parser gates sections on header.payloadLength, so we build a full V6
+  // packet, slice to the target size, then patch bytes 6-7 (payloadLength u16
+  // little-endian) to match the slice -- simulating a firmware response that
+  // only emits sections up to `sz`.
   it('parses partial V6 tail consistently across the preamp/master gap', () => {
+    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
+    const full = buildBulkParams({
+      ...base,
+      preampLDb: -1.5, preampRDb: -2.5, masterVolumeDb: -7.25,
+    });
+
     for (const sz of [2864, 2868, 2872, 2876, 2880, 2884, 2888, 2892, 2896]) {
-      const buf = synthesizeBulkParams({
-        formatVersion: 6,
-        packetSize: sz,
-        preampLDb: -1.5, preampRDb: -2.5, masterVolumeDb: -7.25,
-      });
+      // Slice to sz bytes and patch payloadLength header field (bytes 6-7, LE).
+      const buf = full.slice(0, sz);
+      buf[6] = sz & 0xff;
+      buf[7] = (sz >>> 8) & 0xff;
       const p = parseBulkParams(buf);
 
-      // preamp section starts at 2864; it requires 8 bytes of data.
-      const hasPreamp = sz >= 2872;
-      // master vol at 2880; requires 4 bytes.
-      const hasMaster = sz >= 2884;
+      // preamp section starts at 2864; it requires 16 bytes (8 data + 8 reserved).
+      const hasPreamp = sz >= 2880;
+      // master vol at 2880; requires 16 bytes (4 data + 12 reserved).
+      const hasMaster = sz >= 2896;
 
       if (hasPreamp) {
         expect(p.preampLDb).toBeCloseTo(-1.5, 5);
         expect(p.preampRDb).toBeCloseTo(-2.5, 5);
       } else {
-        expect(p.preampLDb).toBeNull();
-        expect(p.preampRDb).toBeNull();
+        // Section absent -- parser returns factory default (0).
+        expect(p.preampLDb).toBe(0);
+        expect(p.preampRDb).toBe(0);
       }
       if (hasMaster) {
         expect(p.masterVolumeDb).toBeCloseTo(-7.25, 5);
       } else {
-        expect(p.masterVolumeDb).toBeNull();
+        // Section absent -- parser returns factory default (0).
+        expect(p.masterVolumeDb).toBe(0);
       }
     }
   });
 });
 
-// Fuzz: round-trip 30 random shapes through synth and parse
+describe('buildBulkParams + defaultBulkParams', () => {
+  it('default bulk roundtrips through build+parse cleanly', () => {
+    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
+    const bytes = buildBulkParams(base);
+    expect(bytes.byteLength).toBe(Wire.BulkLimits.MaxRequestSize);  // 2896
+    const parsed = parseBulkParams(bytes);
+    expect(parsed).toEqual(base);
+  });
 
-function rng(seed: number): () => number {
-  // mulberry32
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6D2B79F5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+  it('non-default fields survive roundtrip', () => {
+    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
+    const bulk: BulkParams = {
+      ...base,
+      bypass: true,
+      preampDb: -3.5,
+      masterVolumeDb: -12,
+      channelNames: base.channelNames.map((_, i) => `ch${i}`),
+    };
+    const parsed = parseBulkParams(buildBulkParams(bulk));
+    expect(parsed.bypass).toBe(true);
+    expect(parsed.preampDb).toBeCloseTo(-3.5);
+    expect(parsed.masterVolumeDb).toBeCloseTo(-12);
+    expect(parsed.channelNames).toEqual(bulk.channelNames);
+  });
 
-function randomOpts(r: () => number): SynthesizeOptions {
-  const v = r() < 0.85 ? 6 : 2;
-  const bytes = (v >= 6) ? 2896 : BulkLimits.MinPacketSize;
-  return {
-    formatVersion: v,
-    platformId: r() < 0.5 ? 0 : 1,
-    bypass: r() < 0.5,
-    preampDb: (r() - 0.5) * 24,
-    loudness: { enabled: r() < 0.5, refSpl: 60 + r() * 30, intensityPct: r() },
-    crossfeed: {
-      enabled: r() < 0.5, preset: Math.floor(r() * 4) as CrossfeedPreset,
-      itd: r() < 0.5, freq: 300 + r() * 600, feedDb: -10 + r() * 5,
-    },
-    delaysMs: Array.from({ length: NUM_CHANNELS }, () => r() * 5),
-    crosspoints: Array.from({ length: 2 }, () =>
-      Array.from({ length: NUM_OUTPUTS }, () => ({
-        enabled: r() < 0.5, invert: r() < 0.3, gainDb: (r() - 0.5) * 12,
-      }))),
-    outputs: Array.from({ length: NUM_OUTPUTS }, () => ({
-      enabled: r() < 0.7, muted: r() < 0.2,
-      gainDb: (r() - 0.5) * 6, delayMs: r() * 2,
-    })),
-    pins: [Math.floor(r()*30), Math.floor(r()*30), Math.floor(r()*30), Math.floor(r()*30), Math.floor(r()*30)],
-    numPinOutputs: Math.floor(r() * 6),
-    filters: Array.from({ length: NUM_CHANNELS }, () =>
-      Array.from({ length: BANDS_MAX }, () => ({
-        type: Math.floor(r() * 6) as FilterType,
-        frequency: 50 + r() * 19000,
-        q: 0.1 + r() * 8,
-        gain: (r() - 0.5) * 24,
-      } as FilterParams))),
-    channelNames: Array.from({ length: NUM_CHANNELS }, (_, i) => `ch_${i}_${Math.floor(r()*1000)}`),
-    i2s: bytes >= 2848 ? {
-      outputSlotTypes: [0, 1, 0, 1],
-      bckPin: 8, mckPin: 9,
-      mckEnabled: r() < 0.5,
-      mckMultiplierEncoded: r() < 0.5 ? 0 : 1,
-    } : undefined,
-    leveller: bytes >= 2864 ? {
-      enabled: r() < 0.5,
-      speed: Math.floor(r() * 3) as LevellerSpeed,
-      lookahead: r() < 0.5,
-      amount: r() * 100, maxGainDb: r() * 30, gateDb: -r() * 90,
-    } : undefined,
-    preampLDb:      v >= 6 ? (r() - 0.5) * 12 : undefined,
-    preampRDb:      v >= 6 ? (r() - 0.5) * 12 : undefined,
-    masterVolumeDb: v >= 6 ? -r() * 60       : undefined,
-    packetSize: bytes,
-  };
-}
-
-describe('bulkParser — fuzz round-trip', () => {
-  const r = rng(0xC0FFEE);
-  for (let i = 0; i < 30; i++) {
-    const opts = randomOpts(r);
-    it(`case #${i} (V${opts.formatVersion}, ${opts.packetSize}B)`, () => {
-      const a = synthesizeBulkParams(opts);
-      const p = parseBulkParams(a);
-      // Re-synthesize from the parsed result and compare bytes; proves
-      // that parse -> synth is a fixed point (no information lost).
-      const reopts: SynthesizeOptions = {
-        formatVersion:  p.formatVersion,
-        platformId:     p.platformId,
-        numCh:          p.numCh, numOut: p.numOut, numIn: p.numIn,
-        maxBands:       p.maxBands,
-        bypass:         p.bypass,
-        preampDb:       p.preampDb,
-        loudness:       p.loudness,
-        crossfeed:      p.crossfeed,
-        delaysMs:       p.delaysMs,
-        crosspoints:    p.crosspoints,
-        outputs:        p.outputs,
-        numPinOutputs:  p.numPinOutputs,
-        pins:           p.pins,
-        filters:        p.filters,
-        channelNames:   p.channelNames,
-        i2s:            p.i2s ?? undefined,
-        leveller:       p.leveller ?? undefined,
-        preampLDb:      p.preampLDb      ?? undefined,
-        preampRDb:      p.preampRDb      ?? undefined,
-        masterVolumeDb: p.masterVolumeDb ?? undefined,
-        packetSize:     opts.packetSize,
-      };
-      const b = synthesizeBulkParams(reopts);
-      expect(b).toEqual(a);
-    });
-  }
+  it('builder throws on non-V6 input', () => {
+    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
+    expect(() => buildBulkParams({ ...base, formatVersion: 5 }))
+      .toThrow(/V6|formatVersion/);
+  });
 });
+

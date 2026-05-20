@@ -1,3 +1,4 @@
+import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
@@ -23,5 +24,11 @@ export default defineConfig({
   },
   resolve: {
     conditions: ['browser'],
+    // Same `@/*` alias as vite.config.ts / vitest.config.ts so HIL tests
+    // and their transitive imports under src/ can resolve consistently.
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@test': fileURLToPath(new URL('./test', import.meta.url)),
+    },
   },
 });

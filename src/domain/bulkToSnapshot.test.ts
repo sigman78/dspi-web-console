@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { parseBulkParams } from '@/protocol';
-import { synthesizeBulkParams } from '@/protocol/syn';
+import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType } from './platform';
 import { createHardwareProfile } from './hardware';
-import { fromBulkParams } from './bulkToSnapshot';
+import { fromBulkParams, toBulkParams } from './bulkToSnapshot';
 import { matrixColumns, matrixRows } from './mixerView';
 
 describe('fromBulkParams', () => {
   it('maps protocol bulk data into an RP2350 domain snapshot', () => {
-    const bulk = parseBulkParams(synthesizeBulkParams({
-      platformId: 1,
+    const bulk = parseBulkParams(makeBulk({
       channelNames: ['', '', 'Left Woofer'],
       masterVolumeDb: -12.5,
       i2s: {
@@ -50,7 +49,7 @@ describe('fromBulkParams', () => {
     crosspoints[0][4] = { enabled: true, invert: true, gainDb: -3 };
     crosspoints[0][8] = { enabled: false, invert: false, gainDb: -9 };
 
-    const bulk = parseBulkParams(synthesizeBulkParams({ platformId: 0, outputs, crosspoints }));
+    const bulk = parseBulkParams(makeBulk({ platformId: 0, outputs, crosspoints }));
     const snapshot = fromBulkParams(createHardwareProfile(PlatformType.RP2040), bulk);
     const pdm = snapshot.outputs.find((output) => output.id === 10);
     const pdmRoute = snapshot.routes.find((route) => route.inputIndex === 0 && route.outputId === 10);
@@ -78,7 +77,7 @@ describe('fromBulkParams', () => {
     names[6] = 'RP2040 Sub';
     names[10] = 'Wrong PDM';
 
-    const bulk = parseBulkParams(synthesizeBulkParams({
+    const bulk = parseBulkParams(makeBulk({
       platformId: 0,
       numCh: 7,
       filters,
@@ -92,5 +91,42 @@ describe('fromBulkParams', () => {
     expect(pdmOutput?.name).toBe('RP2040 Sub');
     expect(pdmChannel?.filters[0].frequency).toBe(321);
     expect(pdmChannel?.filters[0].gain).toBe(-2);
+  });
+});
+
+describe('toBulkParams', () => {
+  it('roundtrips fromBulkParams output back to BulkParams (RP2350)', () => {
+    const hardware = createHardwareProfile(PlatformType.RP2350);
+    const originalBytes = makeBulk({
+      bypass: true,
+      preampDb: -3.5,
+      masterVolumeDb: -12,
+      channelNames: Array.from({ length: 11 }, (_, i) => `ch${i}`),
+    });
+    const original = parseBulkParams(originalBytes);
+    const snapshot = fromBulkParams(hardware, original);
+    const reconstructed = toBulkParams(hardware, snapshot, original);
+
+    expect(reconstructed.bypass).toBe(original.bypass);
+    expect(reconstructed.preampDb).toBeCloseTo(original.preampDb);
+    expect(reconstructed.masterVolumeDb).toBeCloseTo(original.masterVolumeDb);
+    expect(reconstructed.channelNames.slice(0, 11)).toEqual(original.channelNames.slice(0, 11));
+    expect(reconstructed.pins).toEqual(original.pins);  // sourced from baseline
+    expect(reconstructed.formatVersion).toBe(6);
+  });
+
+  it('roundtrips on RP2040 (smaller channel/output counts)', () => {
+    const hardware = createHardwareProfile(PlatformType.RP2040);
+    const originalBytes = makeBulk(
+      { bypass: true },
+      { platformId: 0, numCh: 7, numOut: 5 },
+    );
+    const original = parseBulkParams(originalBytes);
+    const snapshot = fromBulkParams(hardware, original);
+    const reconstructed = toBulkParams(hardware, snapshot, original);
+
+    expect(reconstructed.bypass).toBe(true);
+    expect(reconstructed.numCh).toBe(7);
+    expect(reconstructed.numOut).toBe(5);
   });
 });

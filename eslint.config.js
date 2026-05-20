@@ -12,7 +12,7 @@ export default tseslint.config(
       'public/**',
       '_base/**',
       'docs/**',
-      'hil/**',
+      'test/hil/**',
       '.svelte-kit/**',
       'svelte.config.js',
       'vite.config.ts',

@@ -16,9 +16,10 @@
     "checkJs": true,
     "moduleDetection": "force",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@test/*": ["./test/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"],
-  "exclude": ["src/transport/NodeUsbTransport.ts", "**/*.hil.test.ts", "hil/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte", "test/**/*.ts"],
+  "exclude": ["src/transport/NodeUsbTransport.ts", "**/*.hil.test.ts", "test/hil/**/*.ts"]
 }
