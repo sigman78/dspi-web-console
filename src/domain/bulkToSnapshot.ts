@@ -211,7 +211,10 @@ export function toBulkParams(
 
   // Channel names: snapshot carries displayed names per channel id; map
   // back to wire indices. Slots beyond hardware.totalChannelCount keep
-  // baseline values.
+  // baseline values. Note: if the wire originally had an empty name,
+  // fromBulkParams already resolved it to the channel's default (e.g.
+  // "Out 1 L"), so the wire packet built here will carry that resolved
+  // name — matching what the user sees in the UI.
   const channelNames = baseline.channelNames.slice();
   for (const ch of snapshot.channels) {
     const wireCh = wireChannelFor(hardware, ch.id);
