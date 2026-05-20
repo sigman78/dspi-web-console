@@ -3,7 +3,7 @@
 // Centralises the USB device acquisition, DspDevice construction, and
 // state-restoration patterns used across every *.hil.test.ts file. The
 // helpers are intentionally simple: HIL tests need a real device, real
-// timing, and a way to leave the hardware in its original state — no
+// timing, and a way to leave the hardware in its original state -- no
 // elaborate fixture machinery.
 //
 // Excluded from `npm run check` and from the default vitest run; only
@@ -16,7 +16,7 @@ import { DSPI_VENDOR_ID, DSPI_PRODUCT_ID } from '@/transport/WebUsbTransport';
 import type { BulkParams } from '@/protocol';
 
 // Open the single DSPi attached to this host. Throws if zero or more
-// than one device is present — HIL is a single-device protocol; tests
+// than one device is present -- HIL is a single-device protocol; tests
 // should run on a clean bench, not against an indeterminate pool.
 //
 // Returns the constructed DspDevice plus a close() callback that
@@ -35,7 +35,7 @@ export async function openSingleDevice(): Promise<{
     );
   }
 
-  // Guard against multiple-device benches — pick the first match would
+  // Guard against multiple-device benches -- pick the first match would
   // be racy across reruns. Better to fail loudly.
   const all = usb.getDeviceList().filter(
     (d) => d.deviceDescriptor.idVendor === DSPI_VENDOR_ID
@@ -66,7 +66,7 @@ export function hasFormatVersion(bulk: BulkParams, minVersion: number): boolean 
 }
 
 // Read a scalar device field, run the test body, then restore the
-// original value — even if the body throws. Used by roundtrip tests
+// original value -- even if the body throws. Used by roundtrip tests
 // that mutate a single field via Set* commands and need the device
 // left in its pre-test state. The read/write pair is generic so the
 // helper works for any get/set field shape (numbers, booleans, enums).

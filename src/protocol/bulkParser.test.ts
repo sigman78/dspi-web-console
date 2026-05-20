@@ -148,10 +148,10 @@ describe('bulkParser — short buffers', () => {
   });
 
   // Buffers sized inside the V6 tail must parse correctly.  V6 fields are
-  // non-nullable — absent sections fall back to factory defaults (0), not null.
+  // non-nullable -- absent sections fall back to factory defaults (0), not null.
   // The parser gates sections on header.payloadLength, so we build a full V6
   // packet, slice to the target size, then patch bytes 6-7 (payloadLength u16
-  // little-endian) to match the slice — simulating a firmware response that
+  // little-endian) to match the slice -- simulating a firmware response that
   // only emits sections up to `sz`.
   it('parses partial V6 tail consistently across the preamp/master gap', () => {
     const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
@@ -176,14 +176,14 @@ describe('bulkParser — short buffers', () => {
         expect(p.preampLDb).toBeCloseTo(-1.5, 5);
         expect(p.preampRDb).toBeCloseTo(-2.5, 5);
       } else {
-        // Section absent — parser returns factory default (0).
+        // Section absent -- parser returns factory default (0).
         expect(p.preampLDb).toBe(0);
         expect(p.preampRDb).toBe(0);
       }
       if (hasMaster) {
         expect(p.masterVolumeDb).toBeCloseTo(-7.25, 5);
       } else {
-        // Section absent — parser returns factory default (0).
+        // Section absent -- parser returns factory default (0).
         expect(p.masterVolumeDb).toBe(0);
       }
     }

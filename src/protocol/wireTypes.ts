@@ -288,7 +288,7 @@ export const SystemStatusValue = {
 } as const;
 export type SystemStatusValue = (typeof SystemStatusValue)[keyof typeof SystemStatusValue];
 
-// Section sizes — equal to on-wire sizes since Task 1 padded V6 codecs to 16B.
+// Section sizes -- equal to on-wire sizes since Task 1 padded V6 codecs to 16B.
 const V2_PREFIX_SIZE =
   sizeOf(Header) +
   sizeOf(GlobalParams) +
@@ -324,7 +324,7 @@ export interface BulkLayout {
 }
 
 // Determine which optional sections are present based on the header.
-// Both formatVersion and payloadLength must satisfy the threshold —
+// Both formatVersion and payloadLength must satisfy the threshold --
 // matches firmware's bulk_params_apply gating in bulk_params.c.
 export function bulkLayout(h: { formatVersion: number; payloadLength: number }): BulkLayout {
   const v = h.formatVersion;

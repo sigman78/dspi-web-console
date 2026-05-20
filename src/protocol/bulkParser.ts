@@ -125,7 +125,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
 
   const channelNames = Wire.ChannelNames.read(r);
 
-  // Optional V6 tail sections — read if present, else use factory defaults.
+  // Optional V6 tail sections -- read if present, else use factory defaults.
   // Codecs are 16 B each (Task 1), so sequential reads line up with on-wire offsets.
   const i2s = layout.i2s
     ? (() => {
@@ -197,7 +197,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
 
 // Factory: returns a fully-populated BulkParams representing firmware
 // factory defaults. Single source of truth for "what's a sensible zero
-// state?" — used by tests, MockTransport, the parser's section fallback
+// state?" -- used by tests, MockTransport, the parser's section fallback
 // (Task 4), and toBulkParams in the domain layer (later).
 export function defaultBulkParams(opts: {
   platformId: number;
@@ -255,7 +255,7 @@ export function defaultBulkParams(opts: {
 }
 
 // Strict total writer. Symmetric inverse of parseBulkParams. Emits V6
-// (2896 bytes). Throws on non-V6 input — the writer doesn't support
+// (2896 bytes). Throws on non-V6 input -- the writer doesn't support
 // older versions. SET_ALL_PARAMS firmware-side requires exact V6 size.
 export function buildBulkParams(bulk: BulkParams): Uint8Array {
   if (bulk.formatVersion !== 6) {
@@ -316,7 +316,7 @@ export function buildBulkParams(bulk: BulkParams): Uint8Array {
 
   Wire.ChannelNames.write(w, bulk.channelNames);
 
-  // V6 trailing sections — sequential writes; no seeks needed because
+  // V6 trailing sections -- sequential writes; no seeks needed because
   // codecs are 16 B each (Task 1) and the required sections are all present.
   Wire.I2SConfig.write(w, bulk.i2s);
   Wire.LevellerConfig.write(w, bulk.leveller);

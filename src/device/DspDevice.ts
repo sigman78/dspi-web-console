@@ -91,7 +91,7 @@ export class DspDevice {
   }
 
   // Push a complete DSP state to the device in one transfer (USB control-OUT 0xA1).
-  // Wire payload must be exactly 2896 B (V6); firmware STALLs otherwise — the
+  // Wire payload must be exactly 2896 B (V6); firmware STALLs otherwise -- the
   // builder enforces this. Firmware applies the state in its main loop (~5 ms);
   // callers expecting the change to be visible should re-fetch via getAllParams.
   async setAllParams(bulk: BulkParams): Promise<void> {

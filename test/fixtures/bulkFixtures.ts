@@ -11,7 +11,7 @@ export interface MakeBulkOpts {
 }
 
 // Build a wire-format bulk packet from partial BulkParams overrides.
-// Default platform is RP2350 (11 ch, 9 out) — most existing tests
+// Default platform is RP2350 (11 ch, 9 out) -- most existing tests
 // were synthesized against this shape.
 export function makeBulk(overrides: Partial<BulkParams> = {}, opts: MakeBulkOpts = {}): Uint8Array {
   const base = defaultBulkParams({
@@ -23,7 +23,7 @@ export function makeBulk(overrides: Partial<BulkParams> = {}, opts: MakeBulkOpts
 }
 
 // Same shape as makeBulk but returns the BulkParams object before
-// serialisation — useful for tests that want to assert on the
+// serialisation -- useful for tests that want to assert on the
 // pre-wire shape or pass it to fromBulkParams directly.
 export function makeBulkObject(overrides: Partial<BulkParams> = {}, opts: MakeBulkOpts = {}): BulkParams {
   const base = defaultBulkParams({

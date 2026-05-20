@@ -160,19 +160,19 @@ export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): Dsp
   };
 }
 
-// Snapshot → wire helper. Overlays snapshot-driven fields onto a
+// Snapshot -> wire helper. Overlays snapshot-driven fields onto a
 // `baseline` BulkParams (typically a recent getAllParams). Fields the
 // snapshot doesn't carry (pins, raw wire indices, dimensions, channel
 // names beyond hardware.totalChannelCount) come from the baseline.
 // Snapshot nulls (leveller, i2s) fall back to baseline rather than
-// factory defaults — preserves device state for features the UI doesn't
+// factory defaults -- preserves device state for features the UI doesn't
 // expose.
 export function toBulkParams(
   hardware: HardwareProfile,
   snapshot: DspSnapshot,
   baseline: BulkParams,
 ): BulkParams {
-  // Filters: invert wireChannelFor — place each snapshot channel's
+  // Filters: invert wireChannelFor -- place each snapshot channel's
   // filters at its wire-channel index. Slots beyond hardware.totalChannelCount
   // keep baseline values.
   const filters: WireFilter[][] = baseline.filters.map((row) => row.map((f) => ({ ...f })));
@@ -214,7 +214,7 @@ export function toBulkParams(
   // baseline values. Note: if the wire originally had an empty name,
   // fromBulkParams already resolved it to the channel's default (e.g.
   // "Out 1 L"), so the wire packet built here will carry that resolved
-  // name — matching what the user sees in the UI.
+  // name -- matching what the user sees in the UI.
   const channelNames = baseline.channelNames.slice();
   for (const ch of snapshot.channels) {
     const wireCh = wireChannelFor(hardware, ch.id);
