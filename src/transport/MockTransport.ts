@@ -5,7 +5,7 @@ import {
   synthesizeBufferStats,
 } from '@/protocol/syn';
 import {
-  buildBulkParams, defaultBulkParams, type BulkParams,
+  buildBulkParams, defaultBulkParams, parseBulkParams, type BulkParams,
 } from '@/protocol/bulkParser';
 import { Codec } from '@/utils';
 import {
@@ -411,6 +411,11 @@ export class MockTransport implements DspTransport {
       case WireCmd.ClearClips.code:
         this.#clipFlags = 0;
         return;
+
+      case WireCmd.SetAllParams.code: {
+        this.#mockState = parseBulkParams(data);
+        return;
+      }
 
       default:
         return;
