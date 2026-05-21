@@ -65,7 +65,7 @@ export async function fetchAndApplyAsBaseline(): Promise<void> {
     const bulk = await d.getAllParams();
     const hardware = d.hardware;
     session.hardware = hardware;
-    applyDspSnapshot(fromBulkParams(hardware, bulk));
+    applyDspSnapshot(fromBulkParams(hardware, bulk), bulk);
   } catch (err) {
     Log.warn('resync', 'baseline re-fetch failed', err);
   }

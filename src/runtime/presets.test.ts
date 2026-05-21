@@ -253,6 +253,14 @@ describe('runtime/presets', () => {
     });
   });
 
+  describe('baselineBulk threading', () => {
+    it('fetchAndApplyAsBaseline populates dsp.baselineBulk', async () => {
+      const { fetchAndApplyAsBaseline } = await import('@/runtime/resync');
+      await fetchAndApplyAsBaseline();
+      expect(dsp.baselineBulk).not.toBeNull();
+    });
+  });
+
   describe('action error surfacing', () => {
     it('records an error message when setPresetName throws', async () => {
       await fetchPresetInfo();
