@@ -6,6 +6,7 @@ import { PlatformType, fromBulkParams, createHardwareProfile } from '@/domain';
 import type { DspDevice } from '@/device/DspDevice';
 import { bindDevice, session, setStatus, dsp, applyDspSnapshot } from '@/state';
 import { commitBulk } from './commit';
+import { cancelAllCommands } from './commands';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
 
@@ -90,5 +91,15 @@ describe('commitBulk', () => {
     resolveSend();
     await dsp.flush.inflight;
     expect(dsp.flush.lastSentRev).toBe(before);
+  });
+
+  it('cancelAllCommands resets flush counters and detaches inflight', async () => {
+    bindBulkDevice(() => new Promise<void>(() => { /* never resolves */ }));
+    commitBulk((s) => { s.masterVolumeDb = -4; });
+    expect(dsp.flush.currentRev).toBe(1);
+    cancelAllCommands();
+    expect(dsp.flush.inflight).toBeNull();
+    expect(dsp.flush.currentRev).toBe(0);
+    expect(dsp.flush.lastSentRev).toBe(0);
   });
 });
