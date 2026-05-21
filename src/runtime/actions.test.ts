@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, toggleOutputMute } from './actions';
+import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, toggleOutputMute, toggleCrosspoint } from './actions';
 import { session, bindDevice, settings, dsp, status as statusStore, presets } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -500,5 +500,14 @@ describe('Tier B → commitBulk: toggles', () => {
     await dsp.flush.inflight;
     const wireOut = captured!.outputs[dsp.live!.outputs[0].wireIndex];
     expect(wireOut.muted).toBe(!before);
+  });
+
+  it('toggleCrosspoint flips enabled and the bulk packet carries the new tuple', async () => {
+    const route = dsp.live!.routes[0];
+    const { inputIndex, outputWireIndex } = route;
+    const before = route.enabled;
+    toggleCrosspoint(inputIndex, outputWireIndex);
+    await dsp.flush.inflight;
+    expect(captured!.crosspoints[inputIndex][outputWireIndex].enabled).toBe(!before);
   });
 });

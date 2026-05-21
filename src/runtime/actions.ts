@@ -124,7 +124,7 @@ export function setChannelName(id: ChannelId, name: string): void {
 }
 
 export function setLoudnessEnabled(enabled: boolean): void {
-  commitBulk((s) => { if (s.loudness) s.loudness.enabled = enabled; });
+  commitBulk((s) => { s.loudness.enabled = enabled; });
 }
 
 export function setLoudnessRefSpl(db: number): void {
@@ -148,7 +148,7 @@ export function setLoudnessIntensityPct(pct: number): void {
 }
 
 export function setCrossfeedEnabled(enabled: boolean): void {
-  commitBulk((s) => { if (s.crossfeed) s.crossfeed.enabled = enabled; });
+  commitBulk((s) => { s.crossfeed.enabled = enabled; });
 }
 
 export function setCrossfeedPreset(preset: CrossfeedPreset): void {
@@ -161,7 +161,7 @@ export function setCrossfeedPreset(preset: CrossfeedPreset): void {
 }
 
 export function setCrossfeedItd(itd: boolean): void {
-  commitBulk((s) => { if (s.crossfeed) s.crossfeed.itd = itd; });
+  commitBulk((s) => { s.crossfeed.itd = itd; });
 }
 
 export function setCrossfeedFreq(hz: number): void {
