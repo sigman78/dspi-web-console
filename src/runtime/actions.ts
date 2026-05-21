@@ -15,6 +15,7 @@ import {
   settings, reconcileEqTarget,
   resetStatus, status,
   clearCopySource,
+  computeCapabilities,
 } from '@/state';
 import { Result, Log } from '@/utils';
 import { startPolling, stopPolling } from './poll';
@@ -402,6 +403,7 @@ export async function finishConnection(device: DspDevice): Promise<void> {
   try {
     await refreshDeviceSnapshotBaseline();
     setStatus('connected');
+    session.capabilities = computeCapabilities(dsp.live?.formatVersion ?? 0);
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync();
     startPolling();
@@ -440,7 +442,7 @@ export async function reconcileAfterSync(): Promise<void> {
 }
 
 function hydrateFromBulk(hardware: HardwareProfile, bulk: BulkParams): void {
-  applyDspSnapshot(fromBulkParams(hardware, bulk));
+  applyDspSnapshot(fromBulkParams(hardware, bulk), bulk);
 }
 
 export function setMasterVolume(db: number): void {

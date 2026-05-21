@@ -433,6 +433,17 @@ describe('setChannelName', () => {
   });
 });
 
+describe('finishConnection — capabilities', () => {
+  beforeEach(async () => {
+    await bootMock('rp2350');
+  });
+
+  it('finishConnection populates baselineBulk and V6 capabilities', async () => {
+    expect(dsp.baselineBulk).not.toBeNull();
+    expect(session.capabilities.setAllParams).toBe(true);
+  });
+});
+
 describe('actions — master volume mode', () => {
   beforeEach(async () => {
     await bootMock('rp2350');
