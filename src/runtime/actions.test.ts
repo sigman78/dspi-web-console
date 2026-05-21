@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, toggleOutputMute, toggleCrosspoint } from './actions';
+import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, toggleOutputMute, toggleCrosspoint, setCrossfeedPreset, setLevellerSpeed } from './actions';
 import { session, bindDevice, settings, dsp, status as statusStore, presets } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -13,6 +13,8 @@ import {
   createHardwareProfile,
   type ChannelId,
   MasterVolumeMode,
+  CrossfeedPreset,
+  LevellerSpeed,
 } from '@/domain';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
@@ -509,5 +511,37 @@ describe('Tier B → commitBulk: toggles', () => {
     toggleCrosspoint(inputIndex, outputWireIndex);
     await dsp.flush.inflight;
     expect(captured!.crosspoints[inputIndex][outputWireIndex].enabled).toBe(!before);
+  });
+});
+
+describe('Tier B → commitBulk: enums', () => {
+  let captured: import('@/protocol').BulkParams | null;
+  beforeEach(async () => {
+    captured = null;
+    await bootMock('rp2350');
+    const bulk = parseBulkParams(makeBulk());
+    bindDevice(initializedDevice({
+      setAllParams: vi.fn(async (b) => { captured = b; }),
+      getAllParams: vi.fn(async () => bulk),
+    }));
+    const { applyDspSnapshot } = await import('@/state');
+    applyDspSnapshot(fromBulkParams(testHardware, bulk), bulk);
+    session.status = 'connected';
+  });
+
+  it('setCrossfeedPreset writes the chosen preset into the bulk packet', async () => {
+    // Default from makeBulk() is CrossfeedPreset.Preset1 (0); pick Preset2 (1) to assert a change.
+    const target = CrossfeedPreset.Preset2;
+    setCrossfeedPreset(target);
+    await dsp.flush.inflight;
+    expect(captured?.crossfeed.preset).toBe(target);
+  });
+
+  it('setLevellerSpeed writes the chosen speed into the bulk packet', async () => {
+    // Default from makeBulk() is LevellerSpeed.Slow (0); pick Fast (2) to assert a change.
+    const target = LevellerSpeed.Fast;
+    setLevellerSpeed(target);
+    await dsp.flush.inflight;
+    expect(captured?.leveller.speed).toBe(target);
   });
 });

@@ -152,12 +152,7 @@ export function setCrossfeedEnabled(enabled: boolean): void {
 }
 
 export function setCrossfeedPreset(preset: CrossfeedPreset): void {
-  const cur = dsp.live?.crossfeed;
-  if (!cur) return;
-  instantCommand({
-    apply: () => patchSnapshot({ crossfeed: { ...cur, preset } }),
-    send: (d) => d.setCrossfeedPreset(preset),
-  });
+  commitBulk((s) => { s.crossfeed.preset = preset; });
 }
 
 export function setCrossfeedItd(itd: boolean): void {
@@ -189,12 +184,7 @@ export function setLevellerEnabled(enabled: boolean): void {
 }
 
 export function setLevellerSpeed(speed: LevellerSpeed): void {
-  const cur = dsp.live?.leveller;
-  if (!cur) return;
-  instantCommand({
-    apply: () => patchSnapshot({ leveller: { ...cur, speed } }),
-    send: (d) => d.setLevellerSpeed(speed),
-  });
+  commitBulk((s) => { if (s.leveller) s.leveller.speed = speed; });
 }
 
 export function setLevellerLookahead(lookahead: boolean): void {
