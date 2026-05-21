@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { bootMock } from './session';
 import { presets, resetPresets, boundary, resolveBoundary, settings, session, dsp } from '@/state';
-import { PresetStartupMode } from '@/protocol';
+import { PresetStartupMode, parseBulkParams } from '@/protocol';
 import type { PresetSlot } from '@/domain';
+import { makeBulk } from '@test/fixtures/bulkFixtures';
 import {
   fetchPresetInfo,
   saveActivePreset,
@@ -285,39 +286,52 @@ describe('runtime/presets', () => {
   });
 
   describe('pastePresetTo', () => {
-    it('runs loadPreset(src) → savePreset(active) → loadPreset(active) in order', async () => {
+    it('runs load(src)→getAll→load(active)→setAll→save(active) in order', async () => {
       await fetchPresetInfo();
       // Pick two distinct slots; force the active slot to a known index.
-      const src = 2 as PresetSlot;
-      const target = 5 as PresetSlot;
-      // Save into the target first so it has known content, and make it active.
-      await savePresetSlot(target);
-      expect(presets.active).toBe(target);
+      const src    = 3 as PresetSlot;
+      const active = 1 as PresetSlot;
+      // Make slot 1 active.
+      await savePresetSlot(active);
+      expect(presets.active).toBe(active);
 
+      const sourceBlob = parseBulkParams(makeBulk());
       const realDevice = session.device!;
-      const calls: Array<{ method: 'loadPreset' | 'savePreset'; slot: number }> = [];
-      const origLoad = realDevice.loadPreset.bind(realDevice);
-      const origSave = realDevice.savePreset.bind(realDevice);
-      (realDevice as any).loadPreset = async (slot: number) => {
-        calls.push({ method: 'loadPreset', slot });
-        return origLoad(slot as PresetSlot);
+      const calls: string[] = [];
+      const origLoad   = realDevice.loadPreset.bind(realDevice);
+      const origSave   = realDevice.savePreset.bind(realDevice);
+      const origGetAll = realDevice.getAllParams.bind(realDevice);
+      const origSetAll = realDevice.setAllParams.bind(realDevice);
+      // load/save stubs: record the call and return ok.
+      (realDevice as any).loadPreset  = async (slot: number) => { calls.push(`load:${slot}`); return { ok: true }; };
+      (realDevice as any).savePreset  = async (slot: number) => { calls.push(`save:${slot}`); return { ok: true }; };
+      // getAllParams stub: record first call only; restore original for subsequent
+      // calls (e.g. fetchAndApplyAsBaseline) so they use the real device data.
+      (realDevice as any).getAllParams = async () => {
+        calls.push('getAll');
+        (realDevice as any).getAllParams = origGetAll;
+        return sourceBlob;
       };
-      (realDevice as any).savePreset = async (slot: number) => {
-        calls.push({ method: 'savePreset', slot });
-        return origSave(slot as PresetSlot);
-      };
+      // setAllParams stub: record call + capture argument; no real wire call needed.
+      let setAllArg: any;
+      (realDevice as any).setAllParams = async (blob: any) => { calls.push('setAll'); setAllArg = blob; };
       try {
         const r = await pastePresetTo(src);
-        expect(r.ok).toBe(true);
         expect(calls).toEqual([
-          { method: 'loadPreset', slot: src },
-          { method: 'savePreset', slot: target },
-          { method: 'loadPreset', slot: target },
+          `load:${src}`,
+          'getAll',
+          `load:${active}`,
+          'setAll',
+          `save:${active}`,
         ]);
-        expect(presets.active).toBe(target);
+        expect(setAllArg).toBe(sourceBlob);
+        expect('ok' in r && r.ok).toBe(true);
+        expect(presets.active).toBe(active);
       } finally {
-        (realDevice as any).loadPreset = origLoad;
-        (realDevice as any).savePreset = origSave;
+        (realDevice as any).loadPreset  = origLoad;
+        (realDevice as any).savePreset  = origSave;
+        (realDevice as any).getAllParams = origGetAll;
+        (realDevice as any).setAllParams = origSetAll;
       }
     });
 
