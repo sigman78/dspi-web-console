@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, toggleOutputMute, toggleCrosspoint, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount } from './actions';
+import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, toggleOutputMute, toggleCrosspoint, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay } from './actions';
 import { session, bindDevice, settings, dsp, status as statusStore, presets } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -154,28 +154,27 @@ describe('actions wiring', () => {
     expect(session.generation).toBe(before + 2);
   });
 
-  it('copyEqBands sends one batched wire burst with one pending token', async () => {
+  it('copyEqBands copies all bands into the snapshot in one operation', () => {
+    // Under commitBulk, copyEqBands no longer calls setFilter per-band.
+    // It writes the full snapshot in one bulk operation.
     const validBulk = parseBulkParams(makeBulk());
-    const filterCalls: Array<[ChannelId, number]> = [];
-    let pendingDuringSend = -1;
     const device = initializedDevice({
-      setFilter: vi.fn(async (ch: ChannelId, band: number) => {
-        if (pendingDuringSend < 0) pendingDuringSend = dsp.pendingWrites.size;
-        filterCalls.push([ch, band]);
-      }),
+      setAllParams: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => validBulk),
     });
     bindDevice(device);
 
     const sourceId = dsp.live!.channels[0].id;
     const targetId = dsp.live!.channels[1].id;
+    // Snapshot optimistically updated immediately (no timers needed).
     copyEqBands(sourceId, targetId);
-    await vi.runAllTimersAsync();
 
-    expect(filterCalls.length).toBeGreaterThan(0);
-    expect(filterCalls.every(([ch]) => ch === targetId)).toBe(true);
-    expect(pendingDuringSend).toBe(1); // one token across all bands
-    expect(dsp.pendingWrites.size).toBe(0);
+    const tgt = dsp.live!.channels.find((c) => c.id === targetId)!;
+    const src = dsp.live!.channels.find((c) => c.id === sourceId)!;
+    // All bands should match source.
+    for (let i = 0; i < Math.min(src.filters.length, tgt.filters.length); i++) {
+      expect(tgt.filters[i]).toEqual(src.filters[i]);
+    }
   });
 });
 
@@ -190,67 +189,39 @@ describe('setEqFilter', () => {
     bindDevice(null);
   });
 
-  it('schedules a wire write and patches the snapshot', async () => {
-    const setFilter = vi.fn(async () => {});
-    const device = initializedDevice({
-      setFilter,
-      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    });
-    bindDevice(device);
-
+  it('patches the snapshot optimistically', () => {
+    // Under commitBulk, setEqFilter updates dsp.live immediately; no
+    // per-band setFilter calls are made — the whole state is written via
+    // setAllParams in one bulk packet.
     setEqFilter(0, 1, { type: FilterType.Peaking, frequency: 2000, q: 1, gain: 3 });
     expect(dsp.live?.channels[0].filters[1].frequency).toBe(2000);
-    await vi.runAllTimersAsync();
-    expect(setFilter).toHaveBeenCalledWith(0, 1, expect.objectContaining({ frequency: 2000 }));
+    expect(dsp.live?.channels[0].filters[1].type).toBe(FilterType.Peaking);
+    expect(dsp.live?.channels[0].filters[1].gain).toBe(3);
   });
 
-  it('coalesces rapid edits to the same band', async () => {
-    const setFilter = vi.fn(async () => {});
-    const device = initializedDevice({
-      setFilter,
-      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    });
-    bindDevice(device);
-
+  it('rapid edits to the same band converge to the last value in the snapshot', () => {
+    // commitBulk mutates dsp.live in-place each call; the snapshot always
+    // holds the latest value regardless of how many calls were made.
     for (let f = 100; f <= 1000; f += 100) {
       setEqFilter(0, 1, { type: FilterType.Peaking, frequency: f, q: 1, gain: 0 });
     }
-    await vi.runAllTimersAsync();
-    expect(setFilter).toHaveBeenCalledTimes(1);
-    expect(setFilter).toHaveBeenLastCalledWith(0, 1, expect.objectContaining({ frequency: 1000 }));
+    expect(dsp.live?.channels[0].filters[1].frequency).toBe(1000);
   });
 
-  it('does not collapse edits to different bands', async () => {
-    const setFilter = vi.fn(async () => {});
-    const device = initializedDevice({
-      setFilter,
-      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    });
-    bindDevice(device);
-
+  it('edits to different bands are all reflected in the snapshot', () => {
     setEqFilter(0, 0, { type: FilterType.Peaking, frequency: 100, q: 1, gain: 0 });
     setEqFilter(0, 1, { type: FilterType.Peaking, frequency: 200, q: 1, gain: 0 });
     setEqFilter(0, 2, { type: FilterType.Peaking, frequency: 300, q: 1, gain: 0 });
-    await vi.runAllTimersAsync();
-    expect(setFilter).toHaveBeenCalledTimes(3);
+    expect(dsp.live?.channels[0].filters[0].frequency).toBe(100);
+    expect(dsp.live?.channels[0].filters[1].frequency).toBe(200);
+    expect(dsp.live?.channels[0].filters[2].frequency).toBe(300);
   });
 
-  it('snapshot converges to truth on send failure', async () => {
-    // No rollback in the new pipeline -- forceResyncNow() refetches device
-    // truth and applies it. Here the synthesized validBulk's filter equals
-    // the pre-edit `before` value, so convergence and rollback would look
-    // identical; the assertion is on the convergence outcome, not the path.
-    const setFilter = vi.fn(async () => { throw new Error('range'); });
-    const device = initializedDevice({
-      setFilter,
-      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    });
-    bindDevice(device);
-
+  it('throws on out-of-range band and leaves snapshot unchanged', () => {
     const before = { ...dsp.live!.channels[0].filters[1] };
-    setEqFilter(0, 1, { type: FilterType.Peaking, frequency: 9999, q: 1, gain: 12 });
-    await vi.runAllTimersAsync();
-    await Promise.resolve();
+    const n = dsp.live!.channels[0].filters.length;
+    expect(() => setEqFilter(0, n, { type: FilterType.Peaking, frequency: 9999, q: 1, gain: 12 })).toThrow();
+    // Snapshot must not have changed for the valid band.
     expect(dsp.live?.channels[0].filters[1]).toEqual(before);
   });
 });
@@ -338,68 +309,39 @@ describe('setChannelName', () => {
     bindDevice(null);
   });
 
-  it('optimistically patches dsp.live.channels[i].name and dispatches the wire write', async () => {
-    const { device, calls } = makeFakeChannelNameDevice();
-    bindDevice(device);
-
+  it('optimistically patches dsp.live.channels[i].name', () => {
+    // Under commitBulk, setChannelName no longer calls d.setChannelName —
+    // the name is included in the next setAllParams bulk write instead.
     setChannelName(0 satisfies ChannelId, 'Studio Left');
-
     expect(dsp.live!.channels[0].name).toBe('Studio Left');
-
-    await vi.runAllTimersAsync();
-    expect(calls).toEqual([{ id: 0, name: 'Studio Left' }]);
   });
 
-  it('treats empty input as a clear: optimistic snapshot falls back to defaultName', async () => {
-    const { device } = makeFakeChannelNameDevice();
-    bindDevice(device);
-
+  it('treats empty input as a clear: optimistic snapshot falls back to defaultName', () => {
     setChannelName(0 satisfies ChannelId, '');
-
     const ch = dsp.live!.channels[0];
     expect(ch.name).toBe(ch.defaultName);
   });
 
-  it('trims whitespace-only input the same as empty', async () => {
-    const { device } = makeFakeChannelNameDevice();
-    bindDevice(device);
-
+  it('trims whitespace-only input the same as empty', () => {
     setChannelName(0 satisfies ChannelId, '   ');
-
     const ch = dsp.live!.channels[0];
     expect(ch.name).toBe(ch.defaultName);
   });
 
-  it('is a no-op when dsp.live is null', async () => {
-    const { device, calls } = makeFakeChannelNameDevice();
-    bindDevice(device);
+  it('is a no-op when dsp.live is null', () => {
     dsp.live = null;
-
-    setChannelName(0 satisfies ChannelId, 'X');
-
-    await vi.runAllTimersAsync();
-    expect(calls).toEqual([]);
+    // Should not throw.
+    expect(() => setChannelName(0 satisfies ChannelId, 'X')).not.toThrow();
   });
 
-  it('sends the raw input on the wire while the optimistic patch holds the resolved value', async () => {
-    // Verifies the trimming/resolution is a display concern only — the
-    // wire payload preserves the user's literal input so the firmware
-    // (and its UTF-8 truncation) sees exactly what was typed.
-    const { device, calls } = makeFakeChannelNameDevice();
-    bindDevice(device);
-
+  it('trims whitespace and stores the resolved value in the snapshot', () => {
+    // Under commitBulk the trimmed/resolved name goes into the snapshot;
+    // the raw input is NOT preserved separately (no per-item wire call).
     setChannelName(0 satisfies ChannelId, '  padded  ');
-
     expect(dsp.live!.channels[0].name).toBe('padded'); // resolved (trimmed)
-
-    await vi.runAllTimersAsync();
-    expect(calls).toEqual([{ id: 0, name: '  padded  ' }]); // raw
   });
 
-  it('also patches dsp.live.outputs[i].name when the channel is an output', async () => {
-    const { device } = makeFakeChannelNameDevice();
-    bindDevice(device);
-
+  it('also patches dsp.live.outputs[i].name when the channel is an output', () => {
     // ChannelId.Out1L = 2; corresponding outputs[] entry has wireIndex 0.
     setChannelName(2 satisfies ChannelId, 'Front Left');
 
@@ -410,7 +352,7 @@ describe('setChannelName', () => {
     expect(output?.name).toBe('Front Left');
   });
 
-  it('patches RP2040 PDM output name at compact output slot 4', async () => {
+  it('patches RP2040 PDM output name at compact output slot 4', () => {
     dsp.live = makeSnapshot(PlatformType.RP2040);
 
     setChannelName(10 satisfies ChannelId, 'Sub');
@@ -422,9 +364,7 @@ describe('setChannelName', () => {
     expect(dsp.live!.outputs.some((o) => o.wireIndex === 8)).toBe(false);
   });
 
-  it('does not touch outputs[] when renaming an input channel', async () => {
-    const { device } = makeFakeChannelNameDevice();
-    bindDevice(device);
+  it('does not touch outputs[] when renaming an input channel', () => {
     const outputsBefore = dsp.live!.outputs.map((o) => o.name).slice();
 
     // ChannelId.In1L = 0 — no entry in outputs[].
@@ -567,5 +507,63 @@ describe('Tier B → commitBulkDebounced: sliders', () => {
     expect(dsp.live?.leveller?.amount).toBe(33);
     await flushPending();
     expect(captured?.leveller.amount).toBe(33);
+  });
+});
+
+describe('Tier B → commitBulk: eq/delay/names', () => {
+  let captured: import('@/protocol').BulkParams | null;
+  beforeEach(async () => {
+    captured = null;
+    await bootMock('rp2350');
+    const bulk = parseBulkParams(makeBulk());
+    bindDevice(initializedDevice({
+      setAllParams: vi.fn(async (b) => { captured = b; }),
+      getAllParams: vi.fn(async () => bulk),
+    }));
+    const { applyDspSnapshot } = await import('@/state');
+    applyDspSnapshot(fromBulkParams(testHardware, bulk), bulk);
+    session.status = 'connected';
+  });
+
+  it('setEqFilter writes one band into the snapshot and bulk packet', async () => {
+    const ch = dsp.live!.channels[0].id;
+    setEqFilter(ch, 0, { type: FilterType.Peaking, frequency: 1000, q: 1.0, gain: 3 });
+    await dsp.flush.inflight;
+    expect(captured).not.toBeNull();
+    expect(dsp.live!.channels[0].filters[0].frequency).toBe(1000);
+  });
+
+  it('setEqFilter throws on out-of-range band', () => {
+    const ch = dsp.live!.channels[0].id;
+    const n = dsp.live!.channels[0].filters.length;
+    expect(() => setEqFilter(ch, n, { type: FilterType.Peaking, frequency: 1, q: 1, gain: 0 })).toThrow();
+  });
+
+  it('copyEqBands copies all bands target←source in one bulk write', async () => {
+    const src = dsp.live!.channels[0].id;
+    const tgt = dsp.live!.channels[1].id;
+    setEqFilter(src, 0, { type: FilterType.Peaking, frequency: 2500, q: 2, gain: -4 });
+    await dsp.flush.inflight;
+    copyEqBands(src, tgt);
+    await dsp.flush.inflight;
+    const t = dsp.live!.channels.find((c) => c.id === tgt)!;
+    expect(t.filters[0].frequency).toBe(2500);
+  });
+
+  it('setOutputDelay writes the slot delay into the snapshot', async () => {
+    const slot = dsp.live!.outputs[0].wireIndex;
+    setOutputDelay(slot, 5);
+    await dsp.flush.inflight;
+    const o = dsp.live!.outputs.find((o) => o.wireIndex === slot)!;
+    expect(o.delayMs).toBe(5);
+  });
+
+  it('setChannelName sets name and mirrors to the denormalized output entry', async () => {
+    const id = dsp.live!.channels[0].id;
+    setChannelName(id, 'Custom');
+    await dsp.flush.inflight;
+    expect(dsp.live!.channels.find((c) => c.id === id)!.name).toBe('Custom');
+    const o = dsp.live!.outputs.find((o) => o.id === id);
+    if (o) expect(o.name).toBe('Custom');
   });
 });

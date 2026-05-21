@@ -19,9 +19,9 @@ import {
 import { Result, Log } from '@/utils';
 import { startPolling, stopPolling } from './poll';
 import { cancelResync } from './resync';
-import { batchCommand, cancelAllCommands, cancelScrubLane, instantCommand, scrubCommand } from './commands';
+import { cancelAllCommands, scrubCommand } from './commands';
 import { commitBulk, commitBulkDebounced } from './commit';
-import { focusChannel, focusOutput, focusRoute, tryFocusOutput } from './focus';
+import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
 const MUTE_DB = -128; // per spec
@@ -39,50 +39,30 @@ let lastTransportCleanup: (() => void) | null = null;
 
 export function setEqFilter(channel: ChannelId, band: number, filter: FilterParams): void {
   if (!dsp.live?.channels) return;
-  const ch = focusChannel(channel);
-  if (band >= ch.read().filters.length) {
+  const ch = dsp.live.channels.find((c) => c.id === channel);
+  if (!ch) return;
+  if (band >= ch.filters.length) {
     throw new Error(`band ${band} out of range for channel ${channel}`);
   }
-  scrubCommand({
-    key: `eqFilter:${channel}:${band}`,
-    apply: () => ch.modify((c) => {
-      const filters = c.filters.slice();
-      filters[band] = { ...filter };
-      return { ...c, filters };
-    }),
-    send: (d) => d.setFilter(channel, band, filter),
+  commitBulk((s) => {
+    const c = s.channels.find((c) => c.id === channel)!;
+    c.filters[band] = { ...filter };
   });
 }
 
 // Copy all bands from source channel onto target channel as a single
-// batched action: one pending token, one optimistic snapshot patch, one
-// trailing resync. The wire burst writes each band sequentially; if any
-// write fails, the batch's catch path forces a resync to converge UI to
-// device truth.
+// bulk write. Under commitBulk, EQ edits no longer have per-band scrub
+// lanes, so no cancelScrubLane calls are needed.
 export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
-  if (sourceId === targetId) return;
-  if (!dsp.live?.channels) return;
-  const src = focusChannel(sourceId);
-  const tgt = focusChannel(targetId);
-  const len = Math.min(src.read().filters.length, tgt.read().filters.length);
-  const copied = src.read().filters.slice(0, len).map((f) => ({ ...f }));
-
-  // Drop any pending per-band scrubs on the target. Their closures captured
-  // the pre-copy filter and would clobber the just-copied bands when they
-  // fire ~16ms later. Cancelling drops the timer + pending token cleanly.
-  for (let i = 0; i < len; i++) cancelScrubLane(`eqFilter:${targetId}:${i}`);
-
-  batchCommand({
-    apply: () => tgt.modify((c) => {
-      const filters = c.filters.slice();
-      for (let i = 0; i < len; i++) filters[i] = { ...copied[i] };
-      return { ...c, filters };
-    }),
-    send: async (d) => {
-      for (let i = 0; i < len; i++) {
-        await d.setFilter(targetId, i, copied[i]);
-      }
-    },
+  if (sourceId === targetId || !dsp.live?.channels) return;
+  const src = dsp.live.channels.find((c) => c.id === sourceId);
+  const tgt = dsp.live.channels.find((c) => c.id === targetId);
+  if (!src || !tgt) return;
+  const len = Math.min(src.filters.length, tgt.filters.length);
+  const copied = src.filters.slice(0, len).map((f) => ({ ...f }));
+  commitBulk((s) => {
+    const t = s.channels.find((c) => c.id === targetId)!;
+    for (let i = 0; i < len; i++) t.filters[i] = { ...copied[i] };
   });
 }
 
@@ -105,21 +85,19 @@ export function clearClips(): void {
 
 // Empty / whitespace-only input clears the custom name on the device; the
 // optimistic snapshot mirrors that by falling back to defaultName, matching
-// what `displayNameForChannel` produces after a bulk resync.
+// what `displayNameForChannel` produces after a bulk resync. The outputs[]
+// name mirror keeps MatrixHeader and OverviewTab in sync without waiting
+// for the trailing bulk resync.
 export function setChannelName(id: ChannelId, name: string): void {
   if (!dsp.live?.channels) return;
-  const ch = focusChannel(id);
-  const resolved = name.trim() || ch.read().defaultName;
-  const outSlot = dsp.live.outputs.find((output) => output.id === id)?.wireIndex;
-  const out = outSlot != null ? tryFocusOutput(outSlot) : null;
-  instantCommand({
-    apply: () => {
-      ch.modify((c) => ({ ...c, name: resolved }));
-      // Mirror to the denormalised outputs[] entry so MatrixHeader and
-      // OverviewTab update without waiting for the trailing bulk resync.
-      out?.modify((o) => ({ ...o, name: resolved }));
-    },
-    send: (d) => d.setChannelName(id, name),
+  const ch = dsp.live.channels.find((c) => c.id === id);
+  if (!ch) return;
+  const resolved = name.trim() || ch.defaultName;
+  commitBulk((s) => {
+    const c = s.channels.find((c) => c.id === id)!;
+    c.name = resolved;
+    const o = s.outputs.find((o) => o.id === id);
+    if (o) o.name = resolved;
   });
 }
 
@@ -231,11 +209,9 @@ export function setOutputGain(slot: OutputSlot, gainDb: number): void {
 
 export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
   if (!dsp.live?.outputs) return;
-  const out = focusOutput(slot);
-  scrubCommand({
-    key: `outputDelay:${slot}`,
-    apply: () => out.modify((o) => ({ ...o, delayMs })),
-    send: (d) => d.setOutputDelay(slot, delayMs),
+  commitBulk((s) => {
+    const o = s.outputs.find((o) => o.wireIndex === slot);
+    if (o) o.delayMs = delayMs;
   });
 }
 
