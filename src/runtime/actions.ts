@@ -20,7 +20,7 @@ import { Result, Log } from '@/utils';
 import { startPolling, stopPolling } from './poll';
 import { cancelResync } from './resync';
 import { batchCommand, cancelAllCommands, cancelScrubLane, instantCommand, scrubCommand } from './commands';
-import { commitBulk } from './commit';
+import { commitBulk, commitBulkDebounced } from './commit';
 import { focusChannel, focusOutput, focusRoute, tryFocusOutput } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
@@ -128,23 +128,11 @@ export function setLoudnessEnabled(enabled: boolean): void {
 }
 
 export function setLoudnessRefSpl(db: number): void {
-  const cur = dsp.live?.loudness;
-  if (!cur) return;
-  scrubCommand({
-    key: 'loudnessRefSpl',
-    apply: () => patchSnapshot({ loudness: { ...cur, refSpl: db } }),
-    send: (d) => d.setLoudnessRefSpl(db),
-  });
+  commitBulkDebounced('loudnessRefSpl', (s) => { s.loudness.refSpl = db; });
 }
 
 export function setLoudnessIntensityPct(pct: number): void {
-  const cur = dsp.live?.loudness;
-  if (!cur) return;
-  scrubCommand({
-    key: 'loudnessIntensity',
-    apply: () => patchSnapshot({ loudness: { ...cur, intensityPct: pct } }),
-    send: (d) => d.setLoudnessIntensity(pct),
-  });
+  commitBulkDebounced('loudnessIntensity', (s) => { s.loudness.intensityPct = pct; });
 }
 
 export function setCrossfeedEnabled(enabled: boolean): void {
@@ -160,23 +148,11 @@ export function setCrossfeedItd(itd: boolean): void {
 }
 
 export function setCrossfeedFreq(hz: number): void {
-  const cur = dsp.live?.crossfeed;
-  if (!cur) return;
-  scrubCommand({
-    key: 'crossfeedFreq',
-    apply: () => patchSnapshot({ crossfeed: { ...cur, freq: hz } }),
-    send: (d) => d.setCrossfeedFreq(hz),
-  });
+  commitBulkDebounced('crossfeedFreq', (s) => { s.crossfeed.freq = hz; });
 }
 
 export function setCrossfeedFeedDb(db: number): void {
-  const cur = dsp.live?.crossfeed;
-  if (!cur) return;
-  scrubCommand({
-    key: 'crossfeedFeedDb',
-    apply: () => patchSnapshot({ crossfeed: { ...cur, feedDb: db } }),
-    send: (d) => d.setCrossfeedFeedDb(db),
-  });
+  commitBulkDebounced('crossfeedFeedDb', (s) => { s.crossfeed.feedDb = db; });
 }
 
 export function setLevellerEnabled(enabled: boolean): void {
@@ -192,33 +168,15 @@ export function setLevellerLookahead(lookahead: boolean): void {
 }
 
 export function setLevellerAmount(pct: number): void {
-  const cur = dsp.live?.leveller;
-  if (!cur) return;
-  scrubCommand({
-    key: 'levellerAmount',
-    apply: () => patchSnapshot({ leveller: { ...cur, amount: pct } }),
-    send: (d) => d.setLevellerAmount(pct),
-  });
+  commitBulkDebounced('levellerAmount', (s) => { if (s.leveller) s.leveller.amount = pct; });
 }
 
 export function setLevellerMaxGain(db: number): void {
-  const cur = dsp.live?.leveller;
-  if (!cur) return;
-  scrubCommand({
-    key: 'levellerMaxGain',
-    apply: () => patchSnapshot({ leveller: { ...cur, maxGainDb: db } }),
-    send: (d) => d.setLevellerMaxGain(db),
-  });
+  commitBulkDebounced('levellerMaxGain', (s) => { if (s.leveller) s.leveller.maxGainDb = db; });
 }
 
 export function setLevellerGate(db: number): void {
-  const cur = dsp.live?.leveller;
-  if (!cur) return;
-  scrubCommand({
-    key: 'levellerGate',
-    apply: () => patchSnapshot({ leveller: { ...cur, gateDb: db } }),
-    send: (d) => d.setLevellerGate(db),
-  });
+  commitBulkDebounced('levellerGate', (s) => { if (s.leveller) s.leveller.gateDb = db; });
 }
 
 export function setMasterPreamp(db: number): void {

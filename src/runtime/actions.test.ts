@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, toggleOutputMute, toggleCrosspoint, setCrossfeedPreset, setLevellerSpeed } from './actions';
+import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, toggleOutputMute, toggleCrosspoint, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount } from './actions';
 import { session, bindDevice, settings, dsp, status as statusStore, presets } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -543,5 +543,29 @@ describe('Tier B → commitBulk: enums', () => {
     setLevellerSpeed(target);
     await dsp.flush.inflight;
     expect(captured?.leveller.speed).toBe(target);
+  });
+});
+
+describe('Tier B → commitBulkDebounced: sliders', () => {
+  let captured: import('@/protocol').BulkParams | null;
+  beforeEach(async () => {
+    captured = null;
+    await bootMock('rp2350');
+    const bulk = parseBulkParams(makeBulk());
+    bindDevice(initializedDevice({
+      setAllParams: vi.fn(async (b) => { captured = b; }),
+      getAllParams: vi.fn(async () => bulk),
+    }));
+    const { applyDspSnapshot } = await import('@/state');
+    applyDspSnapshot(fromBulkParams(testHardware, bulk), bulk);
+    session.status = 'connected';
+  });
+
+  it('setLevellerAmount applies optimistically and flushes via flushPending', async () => {
+    const { flushPending } = await import('./commit');
+    setLevellerAmount(33);
+    expect(dsp.live?.leveller?.amount).toBe(33);
+    await flushPending();
+    expect(captured?.leveller.amount).toBe(33);
   });
 });
