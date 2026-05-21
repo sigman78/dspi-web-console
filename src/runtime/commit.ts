@@ -50,10 +50,30 @@ function flushBulkIfIdle(): void {
   })();
 }
 
+const TRAILING_MS = 16;
+const trailingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+// Tier B "rare numeric slider" path (docs/IDEAS.md §9.3). Applies the mutator
+// to `live` immediately, but defers the bulk send until the key has been idle
+// for TRAILING_MS -- one settled write per drag instead of one per frame.
+export function commitBulkDebounced(key: string, mutator: (snap: DspSnapshot) => void): void {
+  if (!dsp.live) return;
+  mutator(dsp.live);
+  dsp.flush.currentRev += 1;
+  const existing = trailingTimers.get(key);
+  if (existing) clearTimeout(existing);
+  trailingTimers.set(key, setTimeout(() => {
+    trailingTimers.delete(key);
+    flushBulkIfIdle();
+  }, TRAILING_MS));
+}
+
 // Reset the bulk-write coordination. Called by cancelAllCommands on
 // disconnect/cancel. The in-flight promise (if any) self-cancels via the
 // generation guard; we detach it here.
 export function cancelBulkFlush(): void {
+  for (const t of trailingTimers.values()) clearTimeout(t);
+  trailingTimers.clear();
   dsp.flush.inflight = null;
   dsp.flush.currentRev = 0;
   dsp.flush.lastSentRev = 0;

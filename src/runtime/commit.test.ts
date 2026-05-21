@@ -5,7 +5,7 @@ import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, fromBulkParams, createHardwareProfile } from '@/domain';
 import type { DspDevice } from '@/device/DspDevice';
 import { bindDevice, session, setStatus, dsp, applyDspSnapshot } from '@/state';
-import { commitBulk } from './commit';
+import { commitBulk, commitBulkDebounced } from './commit';
 import { cancelAllCommands } from './commands';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
@@ -90,5 +90,28 @@ describe('commitBulk', () => {
     expect(dsp.flush.inflight).toBeNull();
     expect(dsp.flush.currentRev).toBe(0);
     expect(dsp.flush.lastSentRev).toBe(0);
+  });
+});
+
+describe('commitBulkDebounced', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    dsp.flush.inflight = null;
+    dsp.flush.currentRev = 0;
+    dsp.flush.lastSentRev = 0;
+  });
+  afterEach(() => { vi.useRealTimers(); bindDevice(null); setStatus('idle'); });
+
+  it('coalesces rapid edits on one key into a single bulk send after 16ms idle', async () => {
+    let sends = 0;
+    bindBulkDevice(async () => { sends += 1; });
+    commitBulkDebounced('levellerAmount', (s) => { if (s.leveller) s.leveller.amount = 10; });
+    commitBulkDebounced('levellerAmount', (s) => { if (s.leveller) s.leveller.amount = 20; });
+    commitBulkDebounced('levellerAmount', (s) => { if (s.leveller) s.leveller.amount = 30; });
+    expect(sends).toBe(0);
+    expect(dsp.live?.leveller?.amount).toBe(30);
+    await vi.advanceTimersByTimeAsync(16);
+    await dsp.flush.inflight;
+    expect(sends).toBe(1);
   });
 });
