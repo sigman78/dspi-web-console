@@ -24,7 +24,15 @@ function bindBulkDevice(setAll: (b: unknown) => Promise<void>): void {
 }
 
 describe('commitBulk', () => {
-  beforeEach(() => { dsp.pendingWrites = new SvelteSet(); });
+  beforeEach(() => {
+    dsp.pendingWrites = new SvelteSet();
+    dsp.flush.inflight = null;
+    dsp.flush.currentRev = 0;
+    dsp.flush.lastSentRev = 0;
+    dsp.flush.tierAPending = 0;
+    dsp.flush.tierAMirrorRev = 0;
+    dsp.flush.failureCount = 0;
+  });
   afterEach(() => { bindDevice(null); setStatus('idle'); });
 
   it('applies the mutator optimistically and sends one bulk write', async () => {
@@ -45,10 +53,13 @@ describe('commitBulk', () => {
     commitBulk((s) => { s.masterVolumeDb = -2; });
     commitBulk((s) => { s.masterVolumeDb = -3; });
     expect(sends).toBe(1);
-    resolveSend();
-    await Promise.resolve(); await Promise.resolve();
-    await dsp.flush.inflight;
-    expect(sends).toBe(2);
+    resolveSend();                 // settle send #1
+    await Promise.resolve();       // run settle continuation + synchronous re-flush (starts send #2)
+    await Promise.resolve();
+    expect(sends).toBe(2);         // exactly one more send carries the latest state
+    resolveSend();                 // settle send #2 so no promise dangles
+    await Promise.resolve();
+    expect(dsp.flush.lastSentRev).toBe(dsp.flush.currentRev); // converged on latest
   });
 
   it('on send failure sets error status and clears inflight', async () => {
