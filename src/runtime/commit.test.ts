@@ -5,7 +5,7 @@ import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, fromBulkParams, createHardwareProfile } from '@/domain';
 import type { DspDevice } from '@/device/DspDevice';
 import { bindDevice, session, setStatus, dsp, applyDspSnapshot } from '@/state';
-import { commitBulk, commitBulkDebounced } from './commit';
+import { commitBulk, commitBulkDebounced, flushPending } from './commit';
 import { cancelAllCommands } from './commands';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
@@ -113,5 +113,20 @@ describe('commitBulkDebounced', () => {
     await vi.advanceTimersByTimeAsync(16);
     await dsp.flush.inflight;
     expect(sends).toBe(1);
+  });
+});
+
+describe('flushPending', () => {
+  beforeEach(() => { dsp.flush.inflight = null; dsp.flush.currentRev = 0; dsp.flush.lastSentRev = 0; });
+  afterEach(() => { bindDevice(null); setStatus('idle'); });
+
+  it('fires a pending debounced edit and resolves only after the bulk lands', async () => {
+    let sends = 0;
+    bindBulkDevice(async () => { sends += 1; });
+    commitBulkDebounced('levellerAmount', (s) => { if (s.leveller) s.leveller.amount = 42; });
+    expect(sends).toBe(0);
+    await flushPending();
+    expect(sends).toBe(1);
+    expect(dsp.flush.currentRev).toBe(dsp.flush.lastSentRev);
   });
 });

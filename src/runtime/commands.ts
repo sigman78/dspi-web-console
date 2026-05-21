@@ -70,6 +70,7 @@ const SCRUB_MS = 16;
 interface Lane {
   schedule(thunk: () => Promise<void>): void;
   cancel(): void;
+  flushNow(): Promise<void>;
 }
 
 const scrubLanes = new Map<string, Lane>();
@@ -107,6 +108,10 @@ function makeLane(key: string, ms: number): Lane {
         dsp.pendingWrites.delete(pendingToken);
         pendingToken = null;
       }
+    },
+    flushNow() {
+      if (timer !== null) { clearTimeout(timer); fire(); }
+      return inFlight;
     },
   };
 }
@@ -155,6 +160,10 @@ export function batchCommand(opts: BatchOpts): void {
     session.generation,
     () => opts.send(d),
   );
+}
+
+export async function drainScrubLanes(): Promise<void> {
+  await Promise.all([...scrubLanes.values()].map((l) => l.flushNow()));
 }
 
 // Cancelation ---
