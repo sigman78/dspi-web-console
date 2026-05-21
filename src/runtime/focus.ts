@@ -75,35 +75,3 @@ export function focusOutput(slot: OutputSlot): Focus<OutputModel> {
   };
 }
 
-// Like focusOutput but returns null when the slot is absent from the current
-// platform's outputs[] (e.g. RP2040 lacks RP2350 slots 5..8). Callers that
-// mirror denormalised state across channels[]/outputs[] use this to silently
-// skip platform-absent slots without an extra `.some(...)` probe.
-export function tryFocusOutput(slot: OutputSlot): Focus<OutputModel> | null {
-  if (!dsp.live?.outputs.some((o) => o.wireIndex === slot)) return null;
-  return focusOutput(slot);
-}
-
-// Locate a channel in dsp.live.channels by ChannelId.
-export function focusChannel(id: ChannelId): Focus<ChannelModel> {
-  const find = (): { channels: readonly ChannelModel[]; index: number } => {
-    const channels = dsp.live?.channels;
-    if (!channels) throw new Error('focusChannel: snapshot not loaded');
-    const index = channels.findIndex((c) => c.id === id);
-    if (index < 0) throw new Error(`channel not found: ${id}`);
-    return { channels, index };
-  };
-  return {
-    read() {
-      const { channels, index } = find();
-      return channels[index];
-    },
-    modify(f) {
-      const { channels, index } = find();
-      const next = f(channels[index]);
-      const newChannels = channels.slice();
-      newChannels[index] = next;
-      patchSnapshot({ channels: newChannels });
-    },
-  };
-}

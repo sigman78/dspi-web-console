@@ -11,7 +11,7 @@ function errMessage(e: unknown): string {
 // The single bulk write verb. Mutates `dsp.live` optimistically, bumps the
 // revision counter, and fires a bulk send if the lane is idle. Sends ride
 // each other's completion -- no timers, no per-key state. See docs/IDEAS.md
-// §5.4 / §8.3. NOT yet called by any action (Phase 3 reroutes Tier B here).
+// §5.4 / §8.3. All Tier B actions route here (or commitBulkDebounced).
 export function commitBulk(mutator: (snap: DspSnapshot) => void): void {
   if (!dsp.live) return;
   mutator(dsp.live);

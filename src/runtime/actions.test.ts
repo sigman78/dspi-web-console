@@ -529,8 +529,9 @@ describe('Tier B → commitBulk: eq/delay/names', () => {
     const ch = dsp.live!.channels[0].id;
     setEqFilter(ch, 0, { type: FilterType.Peaking, frequency: 1000, q: 1.0, gain: 3 });
     await dsp.flush.inflight;
-    expect(captured).not.toBeNull();
     expect(dsp.live!.channels[0].filters[0].frequency).toBe(1000);
+    // the bulk packet carries the edited band (at some wire-channel row)
+    expect(captured!.filters.some((row) => row[0]?.frequency === 1000)).toBe(true);
   });
 
   it('setEqFilter throws on out-of-range band', () => {
@@ -556,12 +557,13 @@ describe('Tier B → commitBulk: eq/delay/names', () => {
     expect(s.filters[1].frequency).toBe(5000);
   });
 
-  it('setOutputDelay writes the slot delay into the snapshot', async () => {
+  it('setOutputDelay writes the slot delay into the snapshot and bulk packet', async () => {
     const slot = dsp.live!.outputs[0].wireIndex;
     setOutputDelay(slot, 5);
     await dsp.flush.inflight;
     const o = dsp.live!.outputs.find((o) => o.wireIndex === slot)!;
     expect(o.delayMs).toBe(5);
+    expect(captured!.outputs[slot].delayMs).toBe(5);
   });
 
   it('setChannelName sets name and mirrors to the denormalized output entry', async () => {
