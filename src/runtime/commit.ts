@@ -73,7 +73,8 @@ export function commitBulkDebounced(key: string, mutator: (snap: DspSnapshot) =>
 // timers, drain Tier-A scrub lanes, await Tier-B in-flight, then one
 // converging flush if a new edit landed mid-drain. See docs/IDEAS.md §10.2.
 export async function flushPending(): Promise<void> {
-  for (const [key, t] of trailingTimers) { clearTimeout(t); trailingTimers.delete(key); }
+  trailingTimers.forEach(clearTimeout);
+  trailingTimers.clear();
   if (dsp.flush.currentRev > dsp.flush.lastSentRev) flushBulkIfIdle();
   const { drainScrubLanes } = await import('./commands');
   await drainScrubLanes();

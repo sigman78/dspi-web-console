@@ -10,6 +10,14 @@ import { cancelAllCommands } from './commands';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
 
+// Spin the microtask/macrotask queue (real timers) until `cond` holds, so tests
+// don't depend on a hard-coded number of `await Promise.resolve()` ticks.
+async function waitUntil(cond: () => boolean, tries = 100): Promise<void> {
+  for (let i = 0; i < tries && !cond(); i += 1) {
+    await new Promise((res) => setTimeout(res, 0));
+  }
+}
+
 function bindBulkDevice(setAll: (b: unknown) => Promise<void>): void {
   const bulk = parseBulkParams(makeBulk());
   const d = {
@@ -128,5 +136,60 @@ describe('flushPending', () => {
     await flushPending();
     expect(sends).toBe(1);
     expect(dsp.flush.currentRev).toBe(dsp.flush.lastSentRev);
+  });
+
+  it('is a no-op (no bulk send) when nothing is pending', async () => {
+    let sends = 0;
+    bindBulkDevice(async () => { sends += 1; });
+    // no edits
+    await flushPending();
+    expect(sends).toBe(0);
+  });
+
+  it('drains a pending Tier-A scrub lane before resolving', async () => {
+    bindBulkDevice(async () => {});
+    const { scrubCommand } = await import('./commands');
+    let scrubSent = false;
+    scrubCommand({ key: 'masterVolume', apply: () => {}, send: async () => { scrubSent = true; } });
+    await flushPending();
+    expect(scrubSent).toBe(true);
+  });
+
+  it('converges with one more flush if an edit lands during the drain', async () => {
+    // Deferred sends so we control exactly when each bulk write settles, and can
+    // land a fresh edit while the first bulk is parked in-flight.
+    const resolvers: Array<() => void> = [];
+    let sends = 0;
+    bindBulkDevice(() => { sends += 1; return new Promise<void>((res) => { resolvers.push(res); }); });
+
+    // First edit fires send #1, which parks on its unresolved promise.
+    commitBulk((s) => { s.masterVolumeDb = -1; });
+    expect(sends).toBe(1);
+    expect(dsp.flush.inflight).not.toBeNull();
+
+    const pending = flushPending();
+
+    // Land another edit mid-drain so currentRev > lastSentRev.
+    commitBulk((s) => { s.masterVolumeDb = -2; });
+    expect(dsp.flush.currentRev).toBeGreaterThan(dsp.flush.lastSentRev);
+
+    // Pause the lane (error status) so commitBulk's own finally-reflush is
+    // suppressed (commit.ts:46 gates on 'connected'). The ONLY path that can now
+    // carry the mid-drain edit is flushPending's converge branch (commit.ts:81-84).
+    setStatus('error');
+
+    // Settle send #1. Its finally sees status !== 'connected' and does NOT reflush,
+    // so the mid-drain edit can only be carried by flushPending's converge branch.
+    resolvers[0]();
+
+    // Wait for flushPending's converge branch to fire send #2 (real timers).
+    await waitUntil(() => sends === 2);
+    expect(sends).toBe(2);                 // converge branch fired the extra flush
+
+    // Settle send #2 so flushPending resolves; gen unchanged so it commits lastSentRev.
+    resolvers[1]();
+    await pending;
+
+    expect(dsp.flush.currentRev).toBe(dsp.flush.lastSentRev); // converged
   });
 });
