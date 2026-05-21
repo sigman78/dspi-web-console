@@ -539,15 +539,21 @@ describe('Tier B → commitBulk: eq/delay/names', () => {
     expect(() => setEqFilter(ch, n, { type: FilterType.Peaking, frequency: 1, q: 1, gain: 0 })).toThrow();
   });
 
-  it('copyEqBands copies all bands target←source in one bulk write', async () => {
+  it('copyEqBands copies all bands target←source in one bulk write, source unchanged', async () => {
     const src = dsp.live!.channels[0].id;
     const tgt = dsp.live!.channels[1].id;
     setEqFilter(src, 0, { type: FilterType.Peaking, frequency: 2500, q: 2, gain: -4 });
     await dsp.flush.inflight;
+    setEqFilter(src, 1, { type: FilterType.Peaking, frequency: 5000, q: 1.5, gain: 2 });
+    await dsp.flush.inflight;
     copyEqBands(src, tgt);
     await dsp.flush.inflight;
     const t = dsp.live!.channels.find((c) => c.id === tgt)!;
+    const s = dsp.live!.channels.find((c) => c.id === src)!;
     expect(t.filters[0].frequency).toBe(2500);
+    expect(t.filters[1].frequency).toBe(5000);
+    expect(s.filters[0].frequency).toBe(2500); // source intact
+    expect(s.filters[1].frequency).toBe(5000);
   });
 
   it('setOutputDelay writes the slot delay into the snapshot', async () => {
@@ -559,11 +565,10 @@ describe('Tier B → commitBulk: eq/delay/names', () => {
   });
 
   it('setChannelName sets name and mirrors to the denormalized output entry', async () => {
-    const id = dsp.live!.channels[0].id;
-    setChannelName(id, 'Custom');
+    const outId = dsp.live!.outputs[0].id; // a channel that DOES have an output entry
+    setChannelName(outId, 'Custom');
     await dsp.flush.inflight;
-    expect(dsp.live!.channels.find((c) => c.id === id)!.name).toBe('Custom');
-    const o = dsp.live!.outputs.find((o) => o.id === id);
-    if (o) expect(o.name).toBe('Custom');
+    expect(dsp.live!.channels.find((c) => c.id === outId)!.name).toBe('Custom');
+    expect(dsp.live!.outputs.find((o) => o.id === outId)!.name).toBe('Custom');
   });
 });
