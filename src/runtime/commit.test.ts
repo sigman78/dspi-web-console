@@ -20,7 +20,6 @@ function bindBulkDevice(setAll: (b: unknown) => Promise<void>): void {
   } as unknown as DspDevice;
   bindDevice(d);
   applyDspSnapshot(fromBulkParams(hw, bulk), bulk);
-  session.capabilities = { setAllParams: true, perItemMasterVolume: true, loudnessCrossfeedLeveller: true, i2sConfig: true };
   setStatus('connected');
 }
 
@@ -70,16 +69,6 @@ describe('commitBulk', () => {
     await Promise.resolve();
     expect(session.status).toBe('error');
     expect(dsp.flush.inflight).toBeNull();
-  });
-
-  it('is a no-op when capabilities.setAllParams is false', async () => {
-    let sends = 0;
-    bindBulkDevice(async () => { sends += 1; });
-    session.capabilities = { ...session.capabilities, setAllParams: false };
-    commitBulk((s) => { s.masterVolumeDb = -9; });
-    expect(dsp.live?.masterVolumeDb).toBe(-9);
-    await dsp.flush.inflight;
-    expect(sends).toBe(0);
   });
 
   it('settle is silent when generation changed mid-flight', async () => {

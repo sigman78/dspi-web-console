@@ -20,8 +20,6 @@ export function commitBulk(mutator: (snap: DspSnapshot) => void): void {
 }
 
 function flushBulkIfIdle(): void {
-  // Capability gate: pre-V6 firmware can't accept the V6 bulk layout.
-  if (!session.capabilities.setAllParams) return;
   if (dsp.flush.inflight || !dsp.live || !dsp.baselineBulk) return;
   const d = session.device;
   if (!d) return;
