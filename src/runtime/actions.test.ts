@@ -404,8 +404,8 @@ describe('finishConnection — baseline hydrate', () => {
     await bootMock('rp2350');
   });
 
-  it('finishConnection populates baselineBulk', async () => {
-    expect(dsp.baselineBulk).not.toBeNull();
+  it('finishConnection populates wireBase', async () => {
+    expect(dsp.wireBase).not.toBeNull();
   });
 });
 

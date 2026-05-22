@@ -279,10 +279,10 @@ describe('runtime/presets', () => {
     });
   });
 
-  describe('baselineBulk threading', () => {
-    it('fetchAndApplyAsBaseline populates dsp.baselineBulk', async () => {
+  describe('wireBase threading', () => {
+    it('fetchAndApplyAsBaseline populates dsp.wireBase', async () => {
       await fetchAndApplyAsBaseline();
-      expect(dsp.baselineBulk).not.toBeNull();
+      expect(dsp.wireBase).not.toBeNull();
     });
   });
 

@@ -3,19 +3,19 @@ import { fromBulkParams, type DspSnapshot, type HardwareProfile } from '@/domain
 import type { BulkParams } from '@/protocol';
 
 // Device-state truth lives in three cells: `live` (our belief of device RAM),
-// `shadow` (the dirty-diff baseline), and `baselineBulk` (the wire packet
+// `shadow` (the dirty-diff baseline), and `wireBase` (the wire packet
 // `toBulkParams` overlays onto). The public verbs each write a fixed subset -
 // keep this matrix in sync when adding one:
 //
-//   verb                  | live | shadow | baselineBulk | rev reset
-//   ----------------------|------|--------|--------------|----------
-//   applyBulkBaseline     |  x   |   x    |      x       |    x
-//   applyBulkLive         |  x   |   —    |      —       |    —
-//   refreshShadowFromLive |  —   | x(live)|      —       |    —
-//   patchSnapshot         | x(ip)|   —    |      —       |    —
-//   resetDsp              | null |  kept  |     null     |    x
+//   verb                  | live | shadow | wireBase | rev reset
+//   ----------------------|------|--------|----------|----------
+//   applyBulkBaseline     |  x   |   x    |    x     |    x
+//   applyBulkLive         |  x   |   —    |    —     |    —
+//   refreshShadowFromLive |  —   | x(live)|    —     |    —
+//   patchSnapshot         | x(ip)|   —    |    —     |    —
+//   resetDsp              | null |  kept  |   null   |    x
 //
-// There is no verb that sets a baseline without also refreshing baselineBulk:
+// There is no verb that sets a baseline without also refreshing wireBase:
 // that combination would leave the wire overlay base stale and is unsafe by
 // construction, so it is simply not expressible.
 export interface DspState {
@@ -39,7 +39,7 @@ export interface DspState {
   // accepted. toBulkParams overlays `live` onto this when building a bulk
   // write, so fields the snapshot doesn't carry (pins, raw indices, names
   // past totalChannelCount) survive. Null until first recv
-  baselineBulk: BulkParams | null;
+  wireBase: BulkParams | null;
 
   // Bulk-write coordination (consumed by src/runtime/commit.ts).
   flush: {
@@ -62,7 +62,7 @@ class DspStateImpl implements DspState {
   // $state.raw: BulkParams is a large wire-format DTO. Deep proxying is
   // wasteful and breaks reference identity (toBe / === checks). Shallow
   // reactivity (tracking the reference itself) is all that's needed here.
-  baselineBulk = $state.raw<BulkParams | null>(null);
+  wireBase = $state.raw<BulkParams | null>(null);
 
   flush = $state({
     inflight: null as Promise<void> | null,
@@ -87,18 +87,18 @@ export const isInFlight = {
 // of it (drops pins, raw indices, names past the channel count). These two
 // entry points are the ONLY way to push device state into the store, and both
 // derive the snapshot from `bulk` themselves — so `live`, `shadow`, and
-// `baselineBulk` can never be seeded from mismatched sources
+// `wireBase` can never be seeded from mismatched sources
 
 // Private full-baseline write: live + shadow + wire baseline, with the
 // bulk-flush revision counters reset to "no unsent edits". `bulk` is mandatory
-// — a baseline that left `baselineBulk` stale would corrupt the next overlay
+// — a baseline that left `wireBase` stale would corrupt the next overlay
 // write, so that mode is not offered. Reached only via applyBulkBaseline.
 function applyBaseline(snapshot: DspSnapshot, bulk: BulkParams): void {
   dsp.live = snapshot;
   // Deep copy: patchSnapshot mutates dsp.live in place. A shared
   // reference would let optimistic patches leak into shadow.
   dsp.shadow = structuredClone(snapshot);
-  dsp.baselineBulk = bulk;
+  dsp.wireBase = bulk;
   // Fresh baseline => no unsent edits. (Hydrate semantics, §5.6.)
   dsp.flush.currentRev = 0;
   dsp.flush.lastSentRev = 0;
@@ -111,7 +111,7 @@ export function applyBulkBaseline(hardware: HardwareProfile, bulk: BulkParams): 
 }
 
 // Apply a bulk packet as a live-only refresh, leaving `shadow` (the dirty-diff
-// baseline) and `baselineBulk` (the wire overlay base) pinned. Use on the
+// baseline) and `wireBase` (the wire overlay base) pinned. Use on the
 // trailing resync after a successful write, so the dirty diff keeps measuring
 // against the last save/load baseline rather than chasing device state.
 export function applyBulkLive(hardware: HardwareProfile, bulk: BulkParams): void {
@@ -123,7 +123,7 @@ export function resetDsp(): void {
   // dsp.shadow intentionally NOT reset -- last known good survives
   // until the next successful sync overwrites it.
   dsp.pendingWrites = new SvelteSet();
-  dsp.baselineBulk = null;
+  dsp.wireBase = null;
   dsp.flush.inflight = null;
   dsp.flush.currentRev = 0;
   dsp.flush.lastSentRev = 0;

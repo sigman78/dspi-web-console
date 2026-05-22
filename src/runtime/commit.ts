@@ -35,18 +35,18 @@ export function commitBulk(mutator: (snap: DspSnapshot) => void): void {
 }
 
 function flushBulkIfIdle(): void {
-  if (dsp.flush.inflight || !dsp.live || !dsp.baselineBulk) return;
+  if (dsp.flush.inflight || !dsp.live || !dsp.wireBase) return;
   const d = session.device;
   if (!d) return;
   const sendingRev = dsp.flush.currentRev;
   const gen = session.generation;
-  const bulk = toBulkParams(d.hardware, dsp.live, dsp.baselineBulk);
+  const bulk = toBulkParams(d.hardware, dsp.live, dsp.wireBase);
   // The in-flight promise is its own run identity. Only the send that still
   // owns dsp.flush.inflight tears down the lane: a send detached mid-flight by
   // cancelBulkFlush() — after which a fresh commitBulk() starts a new send —
   // must not, on its late settle, null the newer send's slot or fire a
   // spurious re-flush. The generation guard below protects the *data*
-  // (baselineBulk/lastSentRev); this identity check guards the *lane
+  // (wireBase/lastSentRev); this identity check guards the *lane
   // bookkeeping* in finally, which is not generation-gated. See the
   // "detached stale send" test in commit.test.ts.
   let run: Promise<void> | null = null;
@@ -54,7 +54,7 @@ function flushBulkIfIdle(): void {
     try {
       await d.setAllParams(bulk);
       if (gen !== session.generation) return;   // stale settle: silent no-op
-      dsp.baselineBulk = bulk;                   // device now holds this packet
+      dsp.wireBase = bulk;                        // device now holds this packet
       dsp.flush.lastSentRev = sendingRev;
       dsp.flush.failureCount = 0;
     } catch (err) {
