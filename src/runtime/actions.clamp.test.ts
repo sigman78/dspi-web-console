@@ -21,6 +21,11 @@ describe('action boundary clamps out-of-range values', () => {
     expect(dsp.live?.masterVolumeDb).toBe(0);
   });
 
+  it('clamps master volume below -60 dB to -60', () => {
+    setMasterVolume(-999);
+    expect(dsp.live?.masterVolumeDb).toBe(-60);
+  });
+
   it('clamps output delay above the UI cap to 170 ms', () => {
     setOutputDelay(0, 999);
     expect(dsp.live?.outputs.find((o) => o.wireIndex === 0)?.delayMs).toBe(170);

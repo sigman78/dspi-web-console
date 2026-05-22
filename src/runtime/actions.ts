@@ -71,7 +71,12 @@ export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
   const tgt = dsp.live.channels.find((c) => c.id === targetId);
   if (!src || !tgt) return;
   const len = Math.min(src.filters.length, tgt.filters.length);
-  const copied = src.filters.slice(0, len).map((f) => ({ ...f }));
+  const copied = src.filters.slice(0, len).map((f) => ({
+    ...f,
+    frequency: clampBandFrequencyHz(f.frequency),
+    q: clampBandQ(f.q),
+    gain: clampBandGainDb(f.gain),
+  }));
   commitBulk((s) => {
     const t = s.channels.find((c) => c.id === targetId)!;
     for (let i = 0; i < len; i++) t.filters[i] = { ...copied[i] };
@@ -187,9 +192,9 @@ export function setMasterPreamp(db: number): void {
 }
 
 export function setInputPreamp(channel: InputSlot, db: number): void {
+  db = clampPreampDb(db);
   const cur = dsp.live?.inputPreampDb;
   if (!cur) return;
-  db = clampPreampDb(db);
   const next: [number, number] = [cur[0], cur[1]];
   next[channel] = db;
   scrubCommand({
@@ -239,8 +244,8 @@ export function toggleCrosspointInvert(input: InputSlot, output: OutputSlot): vo
 }
 
 export function setOutputGain(slot: OutputSlot, gainDb: number): void {
-  if (!dsp.live?.outputs) return;
   gainDb = clampOutputGainDb(gainDb);
+  if (!dsp.live?.outputs) return;
   const out = focusOutput(slot);
   scrubCommand({
     key: `outputGain:${slot}`,
