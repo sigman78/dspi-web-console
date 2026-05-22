@@ -12,7 +12,8 @@ export interface PollClock { next(cb: () => void): void; cancel(): void; }
 export const timerClock = (ms = STATUS_INTERVAL_MS): PollClock => {
   let id: ReturnType<typeof setTimeout> | null = null;
   return {
-    next: (cb) => { id = setTimeout(cb, ms); },
+    // Arms exactly one pending tick (idempotent): cancel any prior tick first so a double-call can't leak a chain.
+    next: (cb) => { if (id != null) clearTimeout(id); id = setTimeout(cb, ms); },
     cancel: () => { if (id != null) clearTimeout(id); id = null; },
   };
 };
@@ -21,7 +22,8 @@ export const timerClock = (ms = STATUS_INTERVAL_MS): PollClock => {
 export const rafClock = (): PollClock => {
   let id: number | null = null;
   return {
-    next: (cb) => { id = requestAnimationFrame(cb); },
+    // Arms exactly one pending tick (idempotent): cancel any prior frame first so a double-call can't leak a chain.
+    next: (cb) => { if (id != null) cancelAnimationFrame(id); id = requestAnimationFrame(cb); },
     cancel: () => { if (id != null) cancelAnimationFrame(id); id = null; },
   };
 };
