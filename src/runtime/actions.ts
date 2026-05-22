@@ -285,6 +285,8 @@ export async function finishConnection(device: DspDevice): Promise<void> {
     setStatus('connected');
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync();
+    // Production opens the scope in createBoundDevice; tests may call
+    // finishConnection directly with no scope, so guard the registration.
     const s = connectionScope();
     if (s) {
       s.add(startPolling());

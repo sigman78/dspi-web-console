@@ -8,7 +8,7 @@ import {
 } from '@/transport/WebUsbTransport';
 import { withTimeout } from '@/transport/withTimeout';
 import { attachTransportListeners, finishConnection } from './actions';
-import { beginConnection, connectionScope, endConnection } from './connectionScope';
+import { beginConnection, endConnection } from './connectionScope';
 import { session, setStatus, bindDevice, settings } from '@/state';
 import { Log } from '@/utils';
 
@@ -34,11 +34,11 @@ async function createBoundDevice(
   // on the underlying transport -- connect/disconnect events come from the
   // real transport, not from the timeout wrapper.
   const wrapped = withTimeout(transport, { ctrlMs: CTRL_TIMEOUT_MS });
-  beginConnection();                                 // fresh scope (disposes any prior)
+  const scope = beginConnection();                   // fresh scope (disposes any prior)
   try {
     const device = await DspDevice.create(wrapped, openTransport);
     bindDevice(device);
-    connectionScope()!.add(attachTransportListeners(transport));
+    scope.add(attachTransportListeners(transport));
     return device;
   } catch (err) {
     endConnection();                                 // dispose the partial scope
