@@ -15,12 +15,6 @@ export interface DspState {
   // an eventual offline view can render the last-known-good state.
   shadow: DspSnapshot | null;
 
-  // Reserved for future SaveParams (0x51) / LoadParams (0x52) firmware
-  // workflow. Always null today; populated by saveParams() success and
-  // cleared on disconnect once the workflow ships. See docs/DATA-MODEL.md
-  // section 11 (Save UX) and section 16 Q3 (populate strategy).
-  flashShadow: DspSnapshot | null;
-
   // Pending optimistic writes scheduled by src/runtime/commands.ts.
   // Each in-flight command holds a Symbol token; isInFlight observes
   // the set's reactivity to drive the UI dirty indicator.
@@ -33,16 +27,13 @@ export interface DspState {
   // docs/IDEAS.md §5.3 / §10.1.
   baselineBulk: BulkParams | null;
 
-  // Bulk-write coordination (consumed by src/runtime/commit.ts in Phase 2).
-  // All scalar, all O(1). tierAPending/tierAMirrorRev/failureCount are
-  // reserved for Phase 3+ (§10.1 mirror invariant, §10.3 error backoff);
-  // declared now so the state shape is stable across later phases.
+  // Bulk-write coordination (consumed by src/runtime/commit.ts).
+  // All scalar, all O(1). failureCount is reserved for the §10.3 error-backoff
+  // circuit-breaker (not yet consumed).
   flush: {
     inflight: Promise<void> | null;
     currentRev: number;
     lastSentRev: number;
-    tierAPending: number;
-    tierAMirrorRev: number;
     failureCount: number;
   };
 }
@@ -54,7 +45,6 @@ export interface DspState {
 class DspStateImpl implements DspState {
   live = $state<DspSnapshot | null>(null);
   shadow = $state<DspSnapshot | null>(null);
-  flashShadow = $state<DspSnapshot | null>(null);
   pendingWrites = $state(new SvelteSet<symbol>());
 
   // $state.raw: BulkParams is a large wire-format DTO. Deep proxying is
@@ -66,8 +56,6 @@ class DspStateImpl implements DspState {
     inflight: null as Promise<void> | null,
     currentRev: 0,
     lastSentRev: 0,
-    tierAPending: 0,
-    tierAMirrorRev: 0,
     failureCount: 0,
   });
 }
@@ -117,8 +105,6 @@ export function resetDsp(): void {
   dsp.flush.inflight = null;
   dsp.flush.currentRev = 0;
   dsp.flush.lastSentRev = 0;
-  dsp.flush.tierAPending = 0;
-  dsp.flush.tierAMirrorRev = 0;
   dsp.flush.failureCount = 0;
 }
 
