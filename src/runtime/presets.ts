@@ -47,10 +47,12 @@ async function withBusy<T>(fn: () => Promise<T>): Promise<T> {
 // rethrow, since their callers await without a catch and a rethrow would only
 // leak an unhandled rejection.
 
-function recordActionError(label: string, e: unknown): void {
+function recordActionError(label: string, e: unknown): string {
   const msg = (e as Error)?.message ?? String(e);
-  presets.lastActionError = `${label}: ${msg}`;
+  const formatted = `${label}: ${msg}`;
+  presets.lastActionError = formatted;
   Log.warn('presets', `${label} failed`, e);
+  return formatted;
 }
 
 function clearActionError(): void {
@@ -58,9 +60,8 @@ function clearActionError(): void {
 }
 
 function recordToResult(label: string, e: unknown): PresetActionError {
-  recordActionError(label, e);
-  const msg = (e as Error)?.message ?? String(e);
-  return { ok: false, code: 'error', message: `${label}: ${msg}` };
+  const message = recordActionError(label, e);
+  return { ok: false, code: 'error', message };
 }
 
 // Public verb so the UI never writes preset store state directly

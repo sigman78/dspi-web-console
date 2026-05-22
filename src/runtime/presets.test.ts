@@ -193,7 +193,8 @@ describe('runtime/presets', () => {
   describe('setStartupDefault / setStartupMode', () => {
     it('writes startup config and updates the directory cache', async () => {
       await fetchPresetInfo();
-      await setStartupDefault(4 as any);
+      const r = await setStartupDefault(4 as any);
+      expect('ok' in r && r.ok).toBe(true);
       expect(presets.directory!.startupMode).toBe(PresetStartupMode.Specified);
       expect(presets.directory!.defaultSlot).toBe(4);
     });
@@ -201,7 +202,8 @@ describe('runtime/presets', () => {
     it('sets the startup mode without losing defaultSlot', async () => {
       await fetchPresetInfo();
       await setStartupDefault(4 as any);
-      await setStartupMode(PresetStartupMode.LastActive);
+      const r = await setStartupMode(PresetStartupMode.LastActive);
+      expect('ok' in r && r.ok).toBe(true);
       expect(presets.directory!.startupMode).toBe(PresetStartupMode.LastActive);
       expect(presets.directory!.defaultSlot).toBe(4);
     });
@@ -210,7 +212,8 @@ describe('runtime/presets', () => {
   describe('setPresetIncludePins', () => {
     it('writes the flag through to the device and mirrors it in the directory cache', async () => {
       await fetchPresetInfo();
-      await setPresetIncludePins(true);
+      const r = await setPresetIncludePins(true);
+      expect('ok' in r && r.ok).toBe(true);
       expect(presets.directory!.includePins).toBe(true);
       await setPresetIncludePins(false);
       expect(presets.directory!.includePins).toBe(false);
