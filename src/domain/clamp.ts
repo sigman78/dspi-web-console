@@ -8,9 +8,10 @@
 
 import * as Eq from './eqLimits';
 import * as Mix from './mixerLimits';
-import { utf8ByteLength } from '@/utils';
+import { utf8Truncate } from '@/utils';
 
 export function clampToRange(v: number, min: number, max: number): number {
+  // NaN and -Infinity -> min; +Infinity -> max
   if (!Number.isFinite(v)) return v > 0 ? max : min;
   if (v < min) return min;
   if (v > max) return max;
@@ -34,6 +35,7 @@ export const clampOutputGainDb = (db: number) => clampToRange(db, Mix.OUTPUT_GAI
 export const clampOutputDelayMs = (ms: number) => clampToRange(ms, Mix.OUTPUT_DELAY_MIN_MS, Mix.OUTPUT_DELAY_MAX_MS);
 export const clampCrosspointGainDb = (db: number) => clampToRange(db, Mix.CROSSPOINT_GAIN_MIN_DB, Mix.CROSSPOINT_GAIN_MAX_DB);
 
+// TODO(ADR-003): re-source these ranges from the device adapter's per-platform limits.
 // Processing module ranges (mirrored from validation.ts).
 export const clampLoudnessRefSpl = (db: number) => clampToRange(db, 40, 100);
 export const clampLoudnessIntensityPct = (p: number) => clampToRange(p, 0, 200);
@@ -43,14 +45,8 @@ export const clampLevellerAmountPct = (p: number) => clampToRange(p, 0, 100);
 export const clampLevellerMaxGainDb = (db: number) => clampToRange(db, 0, 35);
 export const clampLevellerGateDb = (db: number) => clampToRange(db, -96, 0);
 
-// Names are encoded into a fixed NUL-terminated wire buffer. Truncate on the
-// UTF-8 byte budget without splitting a codepoint.
+// Names are encoded into a fixed NUL-terminated wire buffer. Delegates to the
+// wire-layer truncator so host and wire agree on the byte budget.
 export function clampNameToByteBudget(name: string, maxBytes: number): string {
-  if (utf8ByteLength(name) <= maxBytes) return name;
-  let out = '';
-  for (const ch of name) {
-    if (utf8ByteLength(out + ch) > maxBytes) break;
-    out += ch;
-  }
-  return out;
+  return utf8Truncate(name, maxBytes);
 }

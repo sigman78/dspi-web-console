@@ -60,7 +60,8 @@ describe('clampNameToByteBudget truncates on UTF-8 byte budget', () => {
     expect(new TextEncoder().encode(out).length).toBeLessThanOrEqual(CHANNEL_NAME_MAX_LEN);
   });
   it('does not split a multi-byte codepoint', () => {
+    // é = 2 bytes; floor(31 / 2) = 15 full characters fit in the 31-byte budget
     const out = clampNameToByteBudget('é'.repeat(40), CHANNEL_NAME_MAX_LEN);
-    expect(out).toBe(new TextDecoder('utf-8', { fatal: false }).decode(new TextEncoder().encode(out)));
+    expect(out).toBe('é'.repeat(15));
   });
 });
