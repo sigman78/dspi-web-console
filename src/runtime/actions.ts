@@ -1,18 +1,15 @@
 import {
-  fromBulkParams,
   type FilterParams,
   type ChannelId, type InputSlot, type OutputSlot,
   type RouteModel,
-  type HardwareProfile,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
 } from '@/domain';
-import type { BulkParams } from '@/protocol';
 import type { DspTransport } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
 import {
   bindDevice, session, setStatus,
   presets,
-  applyDspSnapshot, dsp, patchSnapshot, resetDsp,
+  applyBulkBaseline, dsp, patchSnapshot, resetDsp,
   settings, reconcileEqTarget,
   resetStatus, status,
   clearCopySource,
@@ -257,9 +254,7 @@ export async function syncDeviceSnapshot(): Promise<void> {
   inflightSync = (async () => {
     try {
       const bulk = await d.getAllParams();
-      const hardware = d.hardware;
-      session.hardware = hardware;
-      hydrateFromBulk(hardware, bulk);
+      applyBulkBaseline(d.hardware, bulk);
     } catch (err) {
       Log.error('sync', 'syncDeviceSnapshot failed', err);
       setStatus('error', (err as Error).message);
@@ -271,17 +266,13 @@ export async function syncDeviceSnapshot(): Promise<void> {
   return inflightSync;
 }
 
-export async function refreshDeviceSnapshotBaseline(): Promise<void> {
-  await syncDeviceSnapshot();
-}
-
 export async function finishConnection(device: DspDevice): Promise<void> {
   if (session.device !== device) {
     throw new Error('Cannot finish connection for inactive device');
   }
   setStatus('connecting');
   try {
-    await refreshDeviceSnapshotBaseline();
+    await syncDeviceSnapshot();
     setStatus('connected');
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync();
@@ -306,10 +297,6 @@ export async function finishConnection(device: DspDevice): Promise<void> {
   }
 }
 
-export async function fullSync(): Promise<void> {
-  await refreshDeviceSnapshotBaseline();
-}
-
 // Re-apply UI policy that should outlive a (re)connect (mute, eqTarget).
 // Runs after the snapshot is hydrated and the connection is marked
 // connected, so it sees the freshly-synced device state and can write
@@ -325,10 +312,6 @@ export async function reconcileAfterSync(): Promise<void> {
     patchSnapshot({ masterVolumeDb: MUTE_DB });
     await d.setMasterVolume(MUTE_DB);
   }
-}
-
-function hydrateFromBulk(hardware: HardwareProfile, bulk: BulkParams): void {
-  applyDspSnapshot(fromBulkParams(hardware, bulk), bulk);
 }
 
 export function setMasterVolume(db: number): void {

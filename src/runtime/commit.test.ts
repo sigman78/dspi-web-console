@@ -2,11 +2,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SvelteSet } from 'svelte/reactivity';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
-import { PlatformType, fromBulkParams, createHardwareProfile } from '@/domain';
+import { PlatformType, createHardwareProfile } from '@/domain';
 import type { DspDevice } from '@/device/DspDevice';
-import { bindDevice, session, setStatus, dsp, applyDspSnapshot, isInFlight } from '@/state';
+import { bindDevice, session, setStatus, dsp, applyBulkBaseline, isInFlight } from '@/state';
 import { commitBulk, commitBulkDebounced } from './commit';
 import { flushPending, cancelAllCommands } from './outbox';
+import { scrubCommand } from './commands';
+import { scheduleResync } from './resync';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
 
@@ -27,7 +29,7 @@ function bindBulkDevice(setAll: (b: unknown) => Promise<void>): void {
     getAllParams: vi.fn(async () => bulk),
   } as unknown as DspDevice;
   bindDevice(d);
-  applyDspSnapshot(fromBulkParams(hw, bulk), bulk);
+  applyBulkBaseline(hw, bulk);
   setStatus('connected');
 }
 
@@ -146,7 +148,6 @@ describe('flushPending', () => {
 
   it('drains a pending Tier-A scrub lane before resolving', async () => {
     bindBulkDevice(async () => {});
-    const { scrubCommand } = await import('./commands');
     let scrubSent = false;
     scrubCommand({ key: 'masterVolume', apply: () => {}, send: async () => { scrubSent = true; } });
     await flushPending();
@@ -230,7 +231,6 @@ describe('resync guard sees the bulk lane (Finding 1)', () => {
     bindBulkDevice(() => new Promise<void>((res) => { resolveSend = res; }));
     commitBulk((s) => { s.masterVolumeDb = -12; });   // optimistic; send parked in flight
     expect(dsp.live?.masterVolumeDb).toBe(-12);
-    const { scheduleResync } = await import('./resync');
     scheduleResync();
     await vi.advanceTimersByTimeAsync(300);            // trailing fetch fires (~250ms)
     expect(dsp.live?.masterVolumeDb).toBe(-12);        // guard saw the token: not reverted

@@ -2,12 +2,13 @@ import { describe, test, expect, beforeEach } from 'vitest';
 import { SvelteSet } from 'svelte/reactivity';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
-import { PlatformType, fromBulkParams, createHardwareProfile } from '@/domain';
-import { dsp, applyDspSnapshot, patchSnapshot, resetDsp, refreshShadowFromLive } from './dsp.svelte';
+import { PlatformType, createHardwareProfile } from '@/domain';
+import { dsp, applyBulkBaseline, patchSnapshot, resetDsp, refreshShadowFromLive, isInFlight } from './dsp.svelte';
 
-function makeSnapshot(masterVolumeDb = -6) {
-  const bulk = parseBulkParams(makeBulk({ masterVolumeDb }));
-  return fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
+const hw = createHardwareProfile(PlatformType.RP2350);
+
+function seedBaseline(masterVolumeDb = -6): void {
+  applyBulkBaseline(hw, parseBulkParams(makeBulk({ masterVolumeDb })));
 }
 
 describe('dsp store: live / shadow lifecycle', () => {
@@ -17,9 +18,8 @@ describe('dsp store: live / shadow lifecycle', () => {
     dsp.pendingWrites = new SvelteSet();
   });
 
-  test('applyDspSnapshot populates shadow as a deep copy of live', () => {
-    const snap = makeSnapshot(-6);
-    applyDspSnapshot(snap);
+  test('applyBulkBaseline populates shadow as a deep copy of live', () => {
+    seedBaseline(-6);
     expect(dsp.live).not.toBeNull();
     expect(dsp.shadow).not.toBeNull();
     expect(dsp.shadow).toEqual(dsp.live);
@@ -27,7 +27,7 @@ describe('dsp store: live / shadow lifecycle', () => {
   });
 
   test('resetDsp clears live but preserves shadow', () => {
-    applyDspSnapshot(makeSnapshot(-6));
+    seedBaseline(-6);
     const shadowBefore = dsp.shadow;
     resetDsp();
     expect(dsp.live).toBeNull();
@@ -35,16 +35,16 @@ describe('dsp store: live / shadow lifecycle', () => {
   });
 
   test('patchSnapshot mutates live but does not affect shadow', () => {
-    applyDspSnapshot(makeSnapshot(-6));
+    seedBaseline(-6);
     const shadowVolBefore = dsp.shadow!.masterVolumeDb;
     patchSnapshot({ masterVolumeDb: -42 });
     expect(dsp.live!.masterVolumeDb).toBe(-42);
     expect(dsp.shadow!.masterVolumeDb).toBe(shadowVolBefore);
   });
 
-  test('a second applyDspSnapshot replaces both live and shadow', () => {
-    applyDspSnapshot(makeSnapshot(-6));
-    applyDspSnapshot(makeSnapshot(-12));
+  test('a second applyBulkBaseline replaces both live and shadow', () => {
+    seedBaseline(-6);
+    seedBaseline(-12);
     expect(dsp.live!.masterVolumeDb).toBe(-12);
     expect(dsp.shadow!.masterVolumeDb).toBe(-12);
   });
@@ -57,8 +57,7 @@ describe('dsp store: pendingWrites + isInFlight', () => {
     dsp.pendingWrites = new SvelteSet();
   });
 
-  test('isInFlight is true when only pendingWrites has entries', async () => {
-    const { isInFlight } = await import('./dsp.svelte');
+  test('isInFlight is true when only pendingWrites has entries', () => {
     const tok = Symbol('test');
     expect(isInFlight.current).toBe(false);
     dsp.pendingWrites.add(tok);
@@ -82,7 +81,7 @@ describe('refreshShadowFromLive', () => {
   });
 
   test('copies live → shadow', () => {
-    applyDspSnapshot(makeSnapshot(-6));
+    seedBaseline(-6);
     // Mutate live directly (simulating an optimistic patch)
     if (dsp.live) dsp.live.bypass = true;
     expect(dsp.shadow?.bypass).toBe(false);
@@ -91,7 +90,7 @@ describe('refreshShadowFromLive', () => {
   });
 
   test('clones (does not share refs)', () => {
-    applyDspSnapshot(makeSnapshot(-6));
+    seedBaseline(-6);
     refreshShadowFromLive();
     // Mutating live after refresh must not propagate to shadow
     if (dsp.live) dsp.live.bypass = true;
