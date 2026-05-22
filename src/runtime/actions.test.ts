@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, toggleOutputMute, toggleCrosspoint, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay } from './actions';
+import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, toggleOutputMute, toggleCrosspoint, setCrosspointGain, toggleCrosspointInvert, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay } from './actions';
 import { session, bindDevice, settings, dsp, status as statusStore, presets } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -443,15 +443,6 @@ describe('Tier B → commitBulk: toggles', () => {
     const wireOut = captured!.outputs[dsp.live!.outputs[0].wireIndex];
     expect(wireOut.muted).toBe(!before);
   });
-
-  it('toggleCrosspoint flips enabled and the bulk packet carries the new tuple', async () => {
-    const route = dsp.live!.routes[0];
-    const { inputIndex, outputWireIndex } = route;
-    const before = route.enabled;
-    toggleCrosspoint(inputIndex, outputWireIndex);
-    await dsp.flush.inflight;
-    expect(captured!.crosspoints[inputIndex][outputWireIndex].enabled).toBe(!before);
-  });
 });
 
 describe('Tier B → commitBulk: enums', () => {
@@ -572,5 +563,62 @@ describe('Tier B → commitBulk: eq/delay/names', () => {
     await dsp.flush.inflight;
     expect(dsp.live!.channels.find((c) => c.id === outId)!.name).toBe('Custom');
     expect(dsp.live!.outputs.find((o) => o.id === outId)!.name).toBe('Custom');
+  });
+});
+
+describe('crosspoint — Tier A unified lane (Finding 2)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    const bulk = parseBulkParams(makeBulk());
+    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
+  });
+  afterEach(() => { vi.useRealTimers(); bindDevice(null); });
+
+  it('toggleCrosspoint sends a full setMatrixRoute tuple via the per-item lane', async () => {
+    const calls: Array<{ enabled: boolean; invert: boolean; gainDb: number }> = [];
+    const device = initializedDevice({
+      setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    bindDevice(device);
+    const route = dsp.live!.routes[0];
+    const before = route.enabled;
+    toggleCrosspoint(route.inputIndex, route.outputWireIndex);
+    expect(dsp.live!.routes[0].enabled).toBe(!before);   // optimistic patch
+    await vi.runAllTimersAsync();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].enabled).toBe(!before);
+  });
+
+  it('a toggle and a gain edit on the same cell coalesce into one consistent setMatrixRoute', async () => {
+    const calls: Array<{ enabled: boolean; invert: boolean; gainDb: number }> = [];
+    const device = initializedDevice({
+      setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    bindDevice(device);
+    const route = dsp.live!.routes[0];
+    const beforeEnabled = route.enabled;
+    toggleCrosspoint(route.inputIndex, route.outputWireIndex);
+    setCrosspointGain(route.inputIndex, route.outputWireIndex, -6);
+    await vi.runAllTimersAsync();
+    expect(calls).toHaveLength(1);                 // one coalesced write
+    expect(calls[0].enabled).toBe(!beforeEnabled);
+    expect(calls[0].gainDb).toBe(-6);
+  });
+
+  it('toggleCrosspointInvert flips invert and the wire tuple reflects it', async () => {
+    const calls: Array<{ enabled: boolean; invert: boolean; gainDb: number }> = [];
+    const device = initializedDevice({
+      setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    bindDevice(device);
+    const route = dsp.live!.routes[0];
+    const before = route.invert;
+    toggleCrosspointInvert(route.inputIndex, route.outputWireIndex);
+    await vi.runAllTimersAsync();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].invert).toBe(!before);
   });
 });

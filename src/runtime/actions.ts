@@ -2,6 +2,7 @@ import {
   fromBulkParams,
   type FilterParams,
   type ChannelId, type InputSlot, type OutputSlot,
+  type RouteModel,
   type HardwareProfile,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
 } from '@/domain';
@@ -178,26 +179,45 @@ export function setInputPreamp(channel: InputSlot, db: number): void {
   });
 }
 
-export function setCrosspointGain(input: InputSlot, output: OutputSlot, gainDb: number): void {
+// All three crosspoint mutations share one per-item scrub lane keyed by the
+// cell. Each send reads the full {enabled, invert, gainDb} tuple from `live`
+// and writes it via setMatrixRoute, so a toggle and a gain drag on the same
+// cell coalesce into one consistent write. Per-item writes do not mute audio
+// (unlike the bulk path), which is why crosspoint gain stays Tier A. See
+// docs/IDEAS.md §6.1/§6.3 and §11.6 Finding 2.
+function scheduleCrosspointWrite(
+  input: InputSlot,
+  output: OutputSlot,
+  mutate: (r: RouteModel) => RouteModel,
+): void {
   if (!dsp.live?.routes) return;
   const route = focusRoute(input, output);
   scrubCommand({
-    key: `crosspointGain:${input}:${output}`,
-    apply: () => route.modify((c) => ({ ...c, gainDb })),
+    key: `crosspoint:${input}:${output}`,
+    apply: () => route.modify(mutate),
     send: async (d) => {
-      // Read at send time. Scrub fires 16ms after schedule; an intervening
-      // toggleCrosspoint(Invert) could have updated enabled or invert in
-      // that window, and setMatrixRoute writes the full tuple. Reading via
-      // focus keeps those edits intact.
-      const cur = route.read();
+      const c = route.read();
       await d.setMatrixRoute(input, output, {
-        enabled: cur.enabled,
-        invert: cur.invert,
-        gainDb: cur.gainDb,
+        enabled: c.enabled,
+        invert: c.invert,
+        gainDb: c.gainDb,
       });
     },
   });
 }
+
+export function setCrosspointGain(input: InputSlot, output: OutputSlot, gainDb: number): void {
+  scheduleCrosspointWrite(input, output, (r) => ({ ...r, gainDb }));
+}
+
+export function toggleCrosspoint(input: InputSlot, output: OutputSlot): void {
+  scheduleCrosspointWrite(input, output, (r) => ({ ...r, enabled: !r.enabled }));
+}
+
+export function toggleCrosspointInvert(input: InputSlot, output: OutputSlot): void {
+  scheduleCrosspointWrite(input, output, (r) => ({ ...r, invert: !r.invert }));
+}
+
 export function setOutputGain(slot: OutputSlot, gainDb: number): void {
   if (!dsp.live?.outputs) return;
   const out = focusOutput(slot);
@@ -213,20 +233,6 @@ export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
   commitBulk((s) => {
     const o = s.outputs.find((o) => o.wireIndex === slot);
     if (o) o.delayMs = delayMs;
-  });
-}
-
-export function toggleCrosspoint(input: InputSlot, output: OutputSlot): void {
-  commitBulk((s) => {
-    const r = s.routes.find((r) => r.inputIndex === input && r.outputWireIndex === output);
-    if (r) r.enabled = !r.enabled;
-  });
-}
-
-export function toggleCrosspointInvert(input: InputSlot, output: OutputSlot): void {
-  commitBulk((s) => {
-    const r = s.routes.find((r) => r.inputIndex === input && r.outputWireIndex === output);
-    if (r) r.invert = !r.invert;
   });
 }
 
