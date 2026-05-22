@@ -622,3 +622,32 @@ describe('crosspoint — Tier A unified lane (Finding 2)', () => {
     expect(calls[0].invert).toBe(!before);
   });
 });
+
+describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); bindDevice(null); session.status = 'idle'; });
+
+  it('a Tier A crosspoint scrub and a Tier B bulk edit both register in pendingWrites', async () => {
+    const bulk = parseBulkParams(makeBulk());
+    const device = initializedDevice({
+      // Both sends park forever so neither token is released during the test.
+      setMatrixRoute: vi.fn(() => new Promise<void>(() => {})),
+      setAllParams: vi.fn(() => new Promise<void>(() => {})),
+      getAllParams: vi.fn(async () => bulk),
+    });
+    bindDevice(device);
+    const { applyDspSnapshot } = await import('@/state');
+    applyDspSnapshot(fromBulkParams(testHardware, bulk), bulk);
+    session.status = 'connected';
+
+    expect(dsp.pendingWrites.size).toBe(0);
+    // Tier A: a crosspoint toggle claims a scrub-lane token synchronously on schedule.
+    const route = dsp.live!.routes[0];
+    toggleCrosspoint(route.inputIndex, route.outputWireIndex);
+    expect(dsp.pendingWrites.size).toBe(1);
+    // Tier B: a bulk edit claims the bulk token; both lanes now coexist, so the
+    // resync soft-skip guard (pendingWrites.size > 0) covers both simultaneously.
+    setBypass(true);
+    expect(dsp.pendingWrites.size).toBe(2);
+  });
+});
