@@ -8,6 +8,7 @@ import {
 } from '@/state';
 import { reconcileAfterSync } from './actions';
 import { fetchAndApplyAsBaseline } from './resync';
+import { flushPending } from './outbox';
 import type { DspDevice } from '@/device/DspDevice';
 import { type PresetSlot, PRESET_SLOT_COUNT } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
@@ -117,6 +118,7 @@ export async function saveActivePreset(): Promise<Result<void, PresetResult> | P
   clearActionError();
   try {
     return await withBusy(async () => {
+      await flushPending();
       const r = await d.savePreset(active);
       if (r.ok) {
         if (presets.directory) {
@@ -148,6 +150,7 @@ export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, Pre
   clearActionError();
   try {
     return await withBusy(async () => {
+      await flushPending();
       const r = await d.savePreset(slot);
       if (r.ok) {
         if (presets.directory) {
@@ -184,6 +187,7 @@ async function executeLoad(
   clearActionError();
   try {
     return await withBusy(async () => {
+      await flushPending();
       const r = await d.loadPreset(slot);
       if (r.ok) {
         // Reflect active slot in UI immediately. If the subsequent resync or
@@ -245,10 +249,14 @@ export async function revertActivePreset(): Promise<Result<void, PresetResult> |
   return executeLoad(d, active);
 }
 
-// PresetCopy doesn't exist on the wire; PASTE composes:
-//   LoadPreset(src) - RAM = src's flash content
-//   SavePreset(active) - flash[active] = RAM = src content
-//   LoadPreset(active) - RAM = active = src content
+// PresetCopy doesn't exist on the wire; PASTE composes a whole-state swap
+// using the setAllParams bulk op so the active-slot pointer never changes:
+//
+//   1. LoadPreset(src)     — RAM = src flash content; device pointer → src
+//   2. GetAllParams()      — capture src content as a BulkParams blob
+//   3. LoadPreset(active)  — restore RAM + device pointer to pre-paste slot
+//   4. SetAllParams(blob)  — push src content into active's RAM (no flash)
+//   5. SavePreset(active)  — flash[active] = RAM = src content
 //
 // End state: active slot holds source's content, RAM matches, active
 // unchanged. The COPY/PASTE invariant in the UI guarantees clean RAM
@@ -264,35 +272,40 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
   clearActionError();
   try {
     return await withBusy(async () => {
-      // 1. Load source into RAM
+      await flushPending();
+      // Step 1: Load source into RAM (device pointer → src).
       const r1 = await d.loadPreset(src);
       if (!r1.ok) {
         recordActionError('Paste', new Error(r1.message ?? `error ${r1.code}`));
         return r1;
       }
-      // 2. Save RAM into active
-      const r2 = await d.savePreset(active);
-      if (!r2.ok) {
-        recordActionError('Paste', new Error(r2.message ?? `error ${r2.code}`));
-        return r2;
+      // Step 2: Capture src content as a blob.
+      const sourceBlob = await d.getAllParams();
+      // Step 3: Restore active slot in RAM (device pointer → active).
+      const r3 = await d.loadPreset(active);
+      if (!r3.ok) {
+        recordActionError('Paste', new Error(r3.message ?? `error ${r3.code}`));
+        return r3;
+      }
+      // Step 4: Push src content into active's RAM (no flash; pointer unchanged).
+      await d.setAllParams(sourceBlob);
+      // Step 5: Flash active slot = RAM = src content.
+      const r5 = await d.savePreset(active);
+      if (!r5.ok) {
+        recordActionError('Paste', new Error(r5.message ?? `error ${r5.code}`));
+        return r5;
       }
       if (presets.directory) {
         const set = new Set(presets.directory.occupiedSlotsSet);
         set.add(active);
         presets.directory = { ...presets.directory, occupiedSlotsSet: set };
       }
-      // 3. Reload active to sync host caches and ensure RAM == active.
-      const r3 = await d.loadPreset(active);
-      if (!r3.ok) {
-        recordActionError('Paste', new Error(r3.message ?? `error ${r3.code}`));
-        return r3;
-      }
       presets.active = active;
       await new Promise<void>((resolve) => setTimeout(resolve, PRESET_LOAD_SETTLE_MS));
       // Atomic baseline apply
       await fetchAndApplyAsBaseline();
       await reconcileAfterSync();
-      return r3;
+      return r5;
     });
   } catch (e) {
     recordActionError('Paste', e);

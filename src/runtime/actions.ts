@@ -2,6 +2,7 @@ import {
   fromBulkParams,
   type FilterParams,
   type ChannelId, type InputSlot, type OutputSlot,
+  type RouteModel,
   type HardwareProfile,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
 } from '@/domain';
@@ -17,10 +18,13 @@ import {
   clearCopySource,
 } from '@/state';
 import { Result, Log } from '@/utils';
-import { startPolling, stopPolling } from './poll';
+import { startPolling } from './poll';
+import { connectionScope, endConnection } from './connectionScope';
 import { cancelResync } from './resync';
-import { batchCommand, cancelAllCommands, cancelScrubLane, instantCommand, scrubCommand } from './commands';
-import { focusChannel, focusOutput, focusRoute, tryFocusOutput } from './focus';
+import { scrubCommand } from './commands';
+import { cancelAllCommands } from './outbox';
+import { commitBulk, commitBulkDebounced } from './commit';
+import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
 const MUTE_DB = -128; // per spec
@@ -34,69 +38,44 @@ function _setMasterVolume(db: number): void {
 }
 
 let inflightSync: Promise<void> | null = null;
-let lastTransportCleanup: (() => void) | null = null;
 
 export function setEqFilter(channel: ChannelId, band: number, filter: FilterParams): void {
   if (!dsp.live?.channels) return;
-  const ch = focusChannel(channel);
-  if (band >= ch.read().filters.length) {
+  const ch = dsp.live.channels.find((c) => c.id === channel);
+  if (!ch) return;
+  if (band >= ch.filters.length) {
     throw new Error(`band ${band} out of range for channel ${channel}`);
   }
-  scrubCommand({
-    key: `eqFilter:${channel}:${band}`,
-    apply: () => ch.modify((c) => {
-      const filters = c.filters.slice();
-      filters[band] = { ...filter };
-      return { ...c, filters };
-    }),
-    send: (d) => d.setFilter(channel, band, filter),
+  commitBulk((s) => {
+    const c = s.channels.find((c) => c.id === channel)!;
+    c.filters[band] = { ...filter };
   });
 }
 
 // Copy all bands from source channel onto target channel as a single
-// batched action: one pending token, one optimistic snapshot patch, one
-// trailing resync. The wire burst writes each band sequentially; if any
-// write fails, the batch's catch path forces a resync to converge UI to
-// device truth.
+// bulk write. Under commitBulk, EQ edits no longer have per-band scrub
+// lanes, so no cancelScrubLane calls are needed.
 export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
-  if (sourceId === targetId) return;
-  if (!dsp.live?.channels) return;
-  const src = focusChannel(sourceId);
-  const tgt = focusChannel(targetId);
-  const len = Math.min(src.read().filters.length, tgt.read().filters.length);
-  const copied = src.read().filters.slice(0, len).map((f) => ({ ...f }));
-
-  // Drop any pending per-band scrubs on the target. Their closures captured
-  // the pre-copy filter and would clobber the just-copied bands when they
-  // fire ~16ms later. Cancelling drops the timer + pending token cleanly.
-  for (let i = 0; i < len; i++) cancelScrubLane(`eqFilter:${targetId}:${i}`);
-
-  batchCommand({
-    apply: () => tgt.modify((c) => {
-      const filters = c.filters.slice();
-      for (let i = 0; i < len; i++) filters[i] = { ...copied[i] };
-      return { ...c, filters };
-    }),
-    send: async (d) => {
-      for (let i = 0; i < len; i++) {
-        await d.setFilter(targetId, i, copied[i]);
-      }
-    },
+  if (sourceId === targetId || !dsp.live?.channels) return;
+  const src = dsp.live.channels.find((c) => c.id === sourceId);
+  const tgt = dsp.live.channels.find((c) => c.id === targetId);
+  if (!src || !tgt) return;
+  const len = Math.min(src.filters.length, tgt.filters.length);
+  const copied = src.filters.slice(0, len).map((f) => ({ ...f }));
+  commitBulk((s) => {
+    const t = s.channels.find((c) => c.id === targetId)!;
+    for (let i = 0; i < len; i++) t.filters[i] = { ...copied[i] };
   });
 }
 
 export function setBypass(enabled: boolean): void {
-  if (dsp.live == null) return;
-  instantCommand({
-    apply: () => patchSnapshot({ bypass: enabled }),
-    send: (d) => d.setBypass(enabled),
-  });
+  commitBulk((s) => { s.bypass = enabled; });
 }
 
 // Telemetry-only action: clears firmware-side latched clip flags (0x83) and
 // resets the host-side OR-latch (`status.clipLatched`). Not routed through
-// `instantCommand` because clip state lives in telemetry, not the DSP
-// snapshot, so the post-send bulk resync would be pure overhead. If the
+// the commit/scrub write path because clip state lives in telemetry, not the
+// DSP snapshot, so the post-send bulk resync would be pure overhead. If the
 // wire send fails, the host array stays cleared — the next poll cycle
 // will re-latch from `clipFlags` if firmware still sees the condition.
 export function clearClips(): void {
@@ -108,155 +87,76 @@ export function clearClips(): void {
 
 // Empty / whitespace-only input clears the custom name on the device; the
 // optimistic snapshot mirrors that by falling back to defaultName, matching
-// what `displayNameForChannel` produces after a bulk resync.
+// what `displayNameForChannel` produces after a bulk resync. The outputs[]
+// name mirror keeps MatrixHeader and OverviewTab in sync without waiting
+// for the trailing bulk resync.
 export function setChannelName(id: ChannelId, name: string): void {
   if (!dsp.live?.channels) return;
-  const ch = focusChannel(id);
-  const resolved = name.trim() || ch.read().defaultName;
-  const outSlot = dsp.live.outputs.find((output) => output.id === id)?.wireIndex;
-  const out = outSlot != null ? tryFocusOutput(outSlot) : null;
-  instantCommand({
-    apply: () => {
-      ch.modify((c) => ({ ...c, name: resolved }));
-      // Mirror to the denormalised outputs[] entry so MatrixHeader and
-      // OverviewTab update without waiting for the trailing bulk resync.
-      out?.modify((o) => ({ ...o, name: resolved }));
-    },
-    send: (d) => d.setChannelName(id, name),
+  const ch = dsp.live.channels.find((c) => c.id === id);
+  if (!ch) return;
+  const resolved = name.trim() || ch.defaultName;
+  commitBulk((s) => {
+    const c = s.channels.find((c) => c.id === id)!;
+    c.name = resolved;
+    const o = s.outputs.find((o) => o.id === id);
+    if (o) o.name = resolved;
   });
 }
 
 export function setLoudnessEnabled(enabled: boolean): void {
-  const cur = dsp.live?.loudness;
-  if (!cur) return;
-  instantCommand({
-    apply: () => patchSnapshot({ loudness: { ...cur, enabled } }),
-    send: (d) => d.setLoudnessEnabled(enabled),
-  });
+  commitBulk((s) => { s.loudness.enabled = enabled; });
 }
 
 export function setLoudnessRefSpl(db: number): void {
-  const cur = dsp.live?.loudness;
-  if (!cur) return;
-  scrubCommand({
-    key: 'loudnessRefSpl',
-    apply: () => patchSnapshot({ loudness: { ...cur, refSpl: db } }),
-    send: (d) => d.setLoudnessRefSpl(db),
-  });
+  commitBulkDebounced('loudnessRefSpl', (s) => { s.loudness.refSpl = db; });
 }
 
 export function setLoudnessIntensityPct(pct: number): void {
-  const cur = dsp.live?.loudness;
-  if (!cur) return;
-  scrubCommand({
-    key: 'loudnessIntensity',
-    apply: () => patchSnapshot({ loudness: { ...cur, intensityPct: pct } }),
-    send: (d) => d.setLoudnessIntensity(pct),
-  });
+  commitBulkDebounced('loudnessIntensity', (s) => { s.loudness.intensityPct = pct; });
 }
 
 export function setCrossfeedEnabled(enabled: boolean): void {
-  const cur = dsp.live?.crossfeed;
-  if (!cur) return;
-  instantCommand({
-    apply: () => patchSnapshot({ crossfeed: { ...cur, enabled } }),
-    send: (d) => d.setCrossfeedEnabled(enabled),
-  });
+  commitBulk((s) => { s.crossfeed.enabled = enabled; });
 }
 
 export function setCrossfeedPreset(preset: CrossfeedPreset): void {
-  const cur = dsp.live?.crossfeed;
-  if (!cur) return;
-  instantCommand({
-    apply: () => patchSnapshot({ crossfeed: { ...cur, preset } }),
-    send: (d) => d.setCrossfeedPreset(preset),
-  });
+  commitBulk((s) => { s.crossfeed.preset = preset; });
 }
 
 export function setCrossfeedItd(itd: boolean): void {
-  const cur = dsp.live?.crossfeed;
-  if (!cur) return;
-  instantCommand({
-    apply: () => patchSnapshot({ crossfeed: { ...cur, itd } }),
-    send: (d) => d.setCrossfeedItd(itd),
-  });
+  commitBulk((s) => { s.crossfeed.itd = itd; });
 }
 
 export function setCrossfeedFreq(hz: number): void {
-  const cur = dsp.live?.crossfeed;
-  if (!cur) return;
-  scrubCommand({
-    key: 'crossfeedFreq',
-    apply: () => patchSnapshot({ crossfeed: { ...cur, freq: hz } }),
-    send: (d) => d.setCrossfeedFreq(hz),
-  });
+  commitBulkDebounced('crossfeedFreq', (s) => { s.crossfeed.freq = hz; });
 }
 
 export function setCrossfeedFeedDb(db: number): void {
-  const cur = dsp.live?.crossfeed;
-  if (!cur) return;
-  scrubCommand({
-    key: 'crossfeedFeedDb',
-    apply: () => patchSnapshot({ crossfeed: { ...cur, feedDb: db } }),
-    send: (d) => d.setCrossfeedFeedDb(db),
-  });
+  commitBulkDebounced('crossfeedFeedDb', (s) => { s.crossfeed.feedDb = db; });
 }
 
 export function setLevellerEnabled(enabled: boolean): void {
-  const cur = dsp.live?.leveller;
-  if (!cur) return;
-  instantCommand({
-    apply: () => patchSnapshot({ leveller: { ...cur, enabled } }),
-    send: (d) => d.setLevellerEnabled(enabled),
-  });
+  commitBulk((s) => { if (s.leveller) s.leveller.enabled = enabled; });
 }
 
 export function setLevellerSpeed(speed: LevellerSpeed): void {
-  const cur = dsp.live?.leveller;
-  if (!cur) return;
-  instantCommand({
-    apply: () => patchSnapshot({ leveller: { ...cur, speed } }),
-    send: (d) => d.setLevellerSpeed(speed),
-  });
+  commitBulk((s) => { if (s.leveller) s.leveller.speed = speed; });
 }
 
 export function setLevellerLookahead(lookahead: boolean): void {
-  const cur = dsp.live?.leveller;
-  if (!cur) return;
-  instantCommand({
-    apply: () => patchSnapshot({ leveller: { ...cur, lookahead } }),
-    send: (d) => d.setLevellerLookahead(lookahead),
-  });
+  commitBulk((s) => { if (s.leveller) s.leveller.lookahead = lookahead; });
 }
 
 export function setLevellerAmount(pct: number): void {
-  const cur = dsp.live?.leveller;
-  if (!cur) return;
-  scrubCommand({
-    key: 'levellerAmount',
-    apply: () => patchSnapshot({ leveller: { ...cur, amount: pct } }),
-    send: (d) => d.setLevellerAmount(pct),
-  });
+  commitBulkDebounced('levellerAmount', (s) => { if (s.leveller) s.leveller.amount = pct; });
 }
 
 export function setLevellerMaxGain(db: number): void {
-  const cur = dsp.live?.leveller;
-  if (!cur) return;
-  scrubCommand({
-    key: 'levellerMaxGain',
-    apply: () => patchSnapshot({ leveller: { ...cur, maxGainDb: db } }),
-    send: (d) => d.setLevellerMaxGain(db),
-  });
+  commitBulkDebounced('levellerMaxGain', (s) => { if (s.leveller) s.leveller.maxGainDb = db; });
 }
 
 export function setLevellerGate(db: number): void {
-  const cur = dsp.live?.leveller;
-  if (!cur) return;
-  scrubCommand({
-    key: 'levellerGate',
-    apply: () => patchSnapshot({ leveller: { ...cur, gateDb: db } }),
-    send: (d) => d.setLevellerGate(db),
-  });
+  commitBulkDebounced('levellerGate', (s) => { if (s.leveller) s.leveller.gateDb = db; });
 }
 
 export function setMasterPreamp(db: number): void {
@@ -279,26 +179,45 @@ export function setInputPreamp(channel: InputSlot, db: number): void {
   });
 }
 
-export function setCrosspointGain(input: InputSlot, output: OutputSlot, gainDb: number): void {
+// All three crosspoint mutations share one per-item scrub lane keyed by the
+// cell. Each send reads the full {enabled, invert, gainDb} tuple from `live`
+// and writes it via setMatrixRoute, so a toggle and a gain drag on the same
+// cell coalesce into one consistent write. Per-item writes do not mute audio
+// (unlike the bulk path), which is why crosspoint gain stays Tier A. See
+// docs/IDEAS.md §6.1/§6.3 and §11.6 Finding 2.
+function scheduleCrosspointWrite(
+  input: InputSlot,
+  output: OutputSlot,
+  mutate: (r: RouteModel) => RouteModel,
+): void {
   if (!dsp.live?.routes) return;
   const route = focusRoute(input, output);
   scrubCommand({
-    key: `crosspointGain:${input}:${output}`,
-    apply: () => route.modify((c) => ({ ...c, gainDb })),
+    key: `crosspoint:${input}:${output}`,
+    apply: () => route.modify(mutate),
     send: async (d) => {
-      // Read at send time. Scrub fires 16ms after schedule; an intervening
-      // toggleCrosspoint(Invert) could have updated enabled or invert in
-      // that window, and setMatrixRoute writes the full tuple. Reading via
-      // focus keeps those edits intact.
-      const cur = route.read();
+      const c = route.read();
       await d.setMatrixRoute(input, output, {
-        enabled: cur.enabled,
-        invert: cur.invert,
-        gainDb: cur.gainDb,
+        enabled: c.enabled,
+        invert: c.invert,
+        gainDb: c.gainDb,
       });
     },
   });
 }
+
+export function setCrosspointGain(input: InputSlot, output: OutputSlot, gainDb: number): void {
+  scheduleCrosspointWrite(input, output, (r) => ({ ...r, gainDb }));
+}
+
+export function toggleCrosspoint(input: InputSlot, output: OutputSlot): void {
+  scheduleCrosspointWrite(input, output, (r) => ({ ...r, enabled: !r.enabled }));
+}
+
+export function toggleCrosspointInvert(input: InputSlot, output: OutputSlot): void {
+  scheduleCrosspointWrite(input, output, (r) => ({ ...r, invert: !r.invert }));
+}
+
 export function setOutputGain(slot: OutputSlot, gainDb: number): void {
   if (!dsp.live?.outputs) return;
   const out = focusOutput(slot);
@@ -311,61 +230,23 @@ export function setOutputGain(slot: OutputSlot, gainDb: number): void {
 
 export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
   if (!dsp.live?.outputs) return;
-  const out = focusOutput(slot);
-  scrubCommand({
-    key: `outputDelay:${slot}`,
-    apply: () => out.modify((o) => ({ ...o, delayMs })),
-    send: (d) => d.setOutputDelay(slot, delayMs),
-  });
-}
-
-export function toggleCrosspoint(input: InputSlot, output: OutputSlot): void {
-  if (!dsp.live?.routes) return;
-  const route = focusRoute(input, output);
-  instantCommand({
-    apply: () => route.modify((c) => ({ ...c, enabled: !c.enabled })),
-    send: (d) => {
-      const cur = route.read();
-      return d.setMatrixRoute(input, output, {
-        enabled: cur.enabled,
-        invert: cur.invert,
-        gainDb: cur.gainDb,
-      });
-    },
-  });
-}
-
-export function toggleCrosspointInvert(input: InputSlot, output: OutputSlot): void {
-  if (!dsp.live?.routes) return;
-  const route = focusRoute(input, output);
-  instantCommand({
-    apply: () => route.modify((c) => ({ ...c, invert: !c.invert })),
-    send: (d) => {
-      const cur = route.read();
-      return d.setMatrixRoute(input, output, {
-        enabled: cur.enabled,
-        invert: cur.invert,
-        gainDb: cur.gainDb,
-      });
-    },
+  commitBulk((s) => {
+    const o = s.outputs.find((o) => o.wireIndex === slot);
+    if (o) o.delayMs = delayMs;
   });
 }
 
 export function toggleOutputEnable(slot: OutputSlot): void {
-  if (!dsp.live?.outputs) return;
-  const out = focusOutput(slot);
-  instantCommand({
-    apply: () => out.modify((o) => ({ ...o, enabled: !o.enabled })),
-    send: (d) => d.setOutputEnable(slot, out.read().enabled),
+  commitBulk((s) => {
+    const o = s.outputs.find((o) => o.wireIndex === slot);
+    if (o) o.enabled = !o.enabled;
   });
 }
 
 export function toggleOutputMute(slot: OutputSlot): void {
-  if (!dsp.live?.outputs) return;
-  const out = focusOutput(slot);
-  instantCommand({
-    apply: () => out.modify((o) => ({ ...o, muted: !o.muted })),
-    send: (d) => d.setOutputMute(slot, out.read().muted),
+  commitBulk((s) => {
+    const o = s.outputs.find((o) => o.wireIndex === slot);
+    if (o) o.muted = !o.muted;
   });
 }
 
@@ -404,7 +285,14 @@ export async function finishConnection(device: DspDevice): Promise<void> {
     setStatus('connected');
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync();
-    startPolling();
+    // Production opens the scope in createBoundDevice; tests may call
+    // finishConnection directly with no scope, so guard the registration.
+    const s = connectionScope();
+    if (s) {
+      s.add(startPolling());
+      s.add(cancelResync);
+      s.add(() => cancelAllCommands());
+    }
     await fetchPresetInfo();
     Log.info('sync', 'connected', {
       platform: dsp.live?.platform.name,
@@ -440,7 +328,7 @@ export async function reconcileAfterSync(): Promise<void> {
 }
 
 function hydrateFromBulk(hardware: HardwareProfile, bulk: BulkParams): void {
-  applyDspSnapshot(fromBulkParams(hardware, bulk));
+  applyDspSnapshot(fromBulkParams(hardware, bulk), bulk);
 }
 
 export function setMasterVolume(db: number): void {
@@ -466,14 +354,12 @@ export function toggleMute(): void {
 }
 
 export function attachTransportListeners(transport: DspTransport): () => void {
-  if (lastTransportCleanup) {
-    lastTransportCleanup();
-    lastTransportCleanup = null;
-  }
   const offDisc = transport.on('disconnect', () => {
-    cancelResync();
-    cancelAllCommands();
-    stopPolling();
+    // endConnection() disposes the scope, which removes THIS very listener
+    // mid-emit (offDisc). Deleting the currently-firing entry from the
+    // transport's listener Set during its forEach is safe — it won't be
+    // revisited and won't throw.
+    endConnection();                 // disposes commands, resync, poll loop, listeners
     bindDevice(null);
     setStatus('disconnected');
     resetDsp();
@@ -489,9 +375,7 @@ export function attachTransportListeners(transport: DspTransport): () => void {
       setStatus('error', (e as Error).message);
     });
   });
-  const cleanup = () => { offDisc(); offConn(); };
-  lastTransportCleanup = cleanup;
-  return cleanup;
+  return () => { offDisc(); offConn(); };
 }
 
 // Master-volume mode --------------------------------------------------------

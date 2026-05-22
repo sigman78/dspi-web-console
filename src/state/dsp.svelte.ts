@@ -1,5 +1,6 @@
 import { SvelteSet } from 'svelte/reactivity';
 import type { DspSnapshot } from '@/domain';
+import type { BulkParams } from '@/protocol';
 
 export interface DspState {
   // Our belief about device RAM. Mutates on every user write; reset to
@@ -14,24 +15,52 @@ export interface DspState {
   // an eventual offline view can render the last-known-good state.
   shadow: DspSnapshot | null;
 
-  // Reserved for future SaveParams (0x51) / LoadParams (0x52) firmware
-  // workflow. Always null today; populated by saveParams() success and
-  // cleared on disconnect once the workflow ships. See docs/DATA-MODEL.md
-  // section 11 (Save UX) and section 16 Q3 (populate strategy).
-  flashShadow: DspSnapshot | null;
-
   // Pending optimistic writes scheduled by src/runtime/commands.ts.
   // Each in-flight command holds a Symbol token; isInFlight observes
   // the set's reactivity to drive the UI dirty indicator.
   pendingWrites: SvelteSet<symbol>;
+
+  // The wire baseline: the BulkParams packet the device most recently
+  // accepted. toBulkParams overlays `live` onto this when building a bulk
+  // write, so fields the snapshot doesn't carry (pins, raw indices, names
+  // past totalChannelCount) survive. Null until first hydrate. See
+  // docs/IDEAS.md §5.3 / §10.1.
+  baselineBulk: BulkParams | null;
+
+  // Bulk-write coordination (consumed by src/runtime/commit.ts).
+  // All scalar, all O(1). failureCount is reserved for the §10.3 error-backoff
+  // circuit-breaker (not yet consumed).
+  flush: {
+    inflight: Promise<void> | null;
+    currentRev: number;
+    lastSentRev: number;
+    failureCount: number;
+  };
 }
 
-export const dsp = $state<DspState>({
-  live: null,
-  shadow: null,
-  flashShadow: null,
-  pendingWrites: new SvelteSet(),
-});
+// Class-based state: allows mixing $state (deeply reactive, for objects we
+// mutate in-place like DspSnapshot) with $state.raw (shallow reactive, for
+// objects whose identity must be preserved across reads, like BulkParams).
+// The DspState interface is satisfied in full; callers are unchanged.
+class DspStateImpl implements DspState {
+  live = $state<DspSnapshot | null>(null);
+  shadow = $state<DspSnapshot | null>(null);
+  pendingWrites = $state(new SvelteSet<symbol>());
+
+  // $state.raw: BulkParams is a large wire-format DTO. Deep proxying is
+  // wasteful and breaks reference identity (toBe / === checks). Shallow
+  // reactivity (tracking the reference itself) is all that's needed here.
+  baselineBulk = $state.raw<BulkParams | null>(null);
+
+  flush = $state({
+    inflight: null as Promise<void> | null,
+    currentRev: 0,
+    lastSentRev: 0,
+    failureCount: 0,
+  });
+}
+
+export const dsp: DspState = new DspStateImpl();
 
 // Reactive: read `isInFlight.current` from a Svelte template, $derived,
 // or $effect. True while any mutation has an unconfirmed optimistic
@@ -46,11 +75,17 @@ export const isInFlight = {
 // Used at baseline-refresh moments (fullSync after connect, factory reset).
 // Preset Load/Save flows refresh `shadow` explicitly via
 // refreshShadowFromLive() after a quiet live-only resync.
-export function applyDspSnapshot(snapshot: DspSnapshot): void {
+export function applyDspSnapshot(snapshot: DspSnapshot, bulk?: BulkParams): void {
   dsp.live = snapshot;
   // Deep copy: patchSnapshot mutates dsp.live in place. A shared
   // reference would let optimistic patches leak into shadow.
   dsp.shadow = structuredClone(snapshot);
+  if (bulk !== undefined) {
+    dsp.baselineBulk = bulk;
+    // Fresh baseline => no unsent edits. (Hydrate semantics, §5.6.)
+    dsp.flush.currentRev = 0;
+    dsp.flush.lastSentRev = 0;
+  }
 }
 
 // Live-only refresh: replaces `dsp.live` but leaves `dsp.shadow` pinned.
@@ -66,6 +101,11 @@ export function resetDsp(): void {
   // dsp.shadow intentionally NOT reset -- last known good survives
   // until the next successful sync overwrites it.
   dsp.pendingWrites = new SvelteSet();
+  dsp.baselineBulk = null;
+  dsp.flush.inflight = null;
+  dsp.flush.currentRev = 0;
+  dsp.flush.lastSentRev = 0;
+  dsp.flush.failureCount = 0;
 }
 
 // Single mutation point for in-place snapshot edits. Both the mutation

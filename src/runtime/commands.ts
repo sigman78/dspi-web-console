@@ -3,11 +3,12 @@ import { dsp, session, setStatus } from '@/state';
 import { forceResyncNow, scheduleResync } from './resync';
 import { Log } from '@/utils';
 
-// commands.ts owns three command shapes plus a per-key scrub-lane registry.
-// All commands capture session.generation when their send is launched and
-// gate post-send side effects (status flip, resync schedule) on equality
-// with the current generation. cancelAllCommands() bumps the generation
-// to convert any in-flight settle into a no-op.
+// commands.ts owns the per-item scrub-lane registry (the Tier-A write path).
+// scrubCommand captures session.generation when its send is launched and gates
+// post-send side effects (status flip, resync schedule) on equality with the
+// current generation. cancelAllScrubLanes() lives here and cancels lanes only;
+// session-wide teardown (generation bump, pendingWrites clear, bulk-flush reset)
+// lives in outbox.cancelAllCommands().
 
 // Internals ---
 
@@ -43,25 +44,6 @@ async function runGuarded(
   }
 }
 
-// Instant ---
-
-export interface InstantOpts {
-  apply(): void;
-  send(d: DspDevice): Promise<void>;
-}
-
-export function instantCommand(opts: InstantOpts): void {
-  opts.apply();
-  const d = session.device;
-  if (!d) return;
-  void runGuarded(
-    'instant',
-    claimToken('instant'),
-    session.generation,
-    () => opts.send(d),
-  );
-}
-
 // Scrub lanes ---
 
 const SCRUB_MS = 16;
@@ -69,6 +51,7 @@ const SCRUB_MS = 16;
 interface Lane {
   schedule(thunk: () => Promise<void>): void;
   cancel(): void;
+  flushNow(): Promise<void>;
 }
 
 const scrubLanes = new Map<string, Lane>();
@@ -107,6 +90,10 @@ function makeLane(key: string, ms: number): Lane {
         pendingToken = null;
       }
     },
+    flushNow() {
+      if (timer !== null) { clearTimeout(timer); fire(); }
+      return inFlight;
+    },
   };
 }
 
@@ -137,32 +124,15 @@ export function cancelScrubLane(key: string): void {
   scrubLanes.delete(key);
 }
 
-// Batch ---
-
-export interface BatchOpts {
-  apply(): void;
-  send(d: DspDevice): Promise<void>;
-}
-
-export function batchCommand(opts: BatchOpts): void {
-  opts.apply();
-  const d = session.device;
-  if (!d) return;
-  void runGuarded(
-    'batch',
-    claimToken('batch'),
-    session.generation,
-    () => opts.send(d),
-  );
+export async function drainScrubLanes(): Promise<void> {
+  await Promise.all([...scrubLanes.values()].map((l) => l.flushNow()));
 }
 
 // Cancelation ---
 
-export function cancelAllCommands(): void {
+// Cancel every scrub lane. The session-wide teardown (generation bump,
+// pendingWrites clear, bulk-flush reset) lives in outbox.cancelAllCommands.
+export function cancelAllScrubLanes(): void {
   for (const lane of scrubLanes.values()) lane.cancel();
   scrubLanes.clear();
-  // Bump generation: in-flight instant/batch/scrub sends settle as stale
-  // via runGuarded's gen check and become no-ops on session state.
-  session.generation += 1;
-  dsp.pendingWrites.clear();
 }
