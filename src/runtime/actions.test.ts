@@ -17,6 +17,9 @@ import {
   LevellerSpeed,
 } from '@/domain';
 
+import { cancelAllCommands } from './outbox';
+import { stopPolling } from './poll';
+
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 
 function initializedDevice(methods: Partial<DspDevice>): DspDevice {
@@ -81,6 +84,16 @@ function makeSnapshot(platform: PlatformType = PlatformType.RP2350) {
   ));
   return fromBulkParams(createHardwareProfile(platform), bulk);
 }
+
+// Module-scoped state leaks across tests in this file and must be reset after
+// every test, or it poisons a later test under a shuffled run order:
+//   - the rAF polling loop started by bootMock → finishConnection → startPolling.
+//     poll's tick() re-arms requestAnimationFrame unconditionally; with fake
+//     timers faking rAF, a later vi.runAllTimersAsync() churns it forever and
+//     aborts with "10000 timers, assuming an infinite loop". stopPolling() ends it.
+//   - the scrub-lane registry (commands.ts) + dsp.flush / dsp.pendingWrites.
+//     cancelAllCommands() clears lanes, resets the bulk flush, and drops tokens.
+afterEach(() => { stopPolling(); cancelAllCommands(); });
 
 describe('actions wiring', () => {
   beforeEach(() => {
@@ -625,6 +638,9 @@ describe('crosspoint — Tier A unified lane (Finding 2)', () => {
 
 describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
   beforeEach(() => { vi.useFakeTimers(); });
+  // Sends are parked forever here so the tokens are still present at assertion
+  // time; the file-scope afterEach (stopPolling + cancelAllCommands) resets the
+  // leaked bulk-flush + scrub state.
   afterEach(() => { vi.useRealTimers(); bindDevice(null); session.status = 'idle'; });
 
   it('a Tier A crosspoint scrub and a Tier B bulk edit both register in pendingWrites', async () => {
