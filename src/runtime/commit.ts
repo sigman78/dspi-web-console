@@ -8,6 +8,19 @@ function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+// Single token mirroring "bulk edits unsent or in flight" into dsp.pendingWrites,
+// so the resync soft-skip guard (resync.ts) — which checks pendingWrites.size —
+// covers the bulk lane as well as the per-item scrub lane. Also lights the UI
+// dirty dot (isInFlight) for Tier B edits. The token tracks a computed predicate
+// rather than being added/removed at scattered call sites, so it can never get
+// out of balance. See docs/IDEAS.md §11.6 Finding 1.
+const BULK_TOKEN = Symbol('bulk');
+function syncBulkToken(): void {
+  const pending = dsp.flush.currentRev > dsp.flush.lastSentRev || dsp.flush.inflight !== null;
+  if (pending) dsp.pendingWrites.add(BULK_TOKEN);
+  else dsp.pendingWrites.delete(BULK_TOKEN);
+}
+
 // The single bulk write verb. Mutates `dsp.live` optimistically, bumps the
 // revision counter, and fires a bulk send if the lane is idle. Sends ride
 // each other's completion -- no timers, no per-key state. See docs/IDEAS.md
@@ -16,6 +29,7 @@ export function commitBulk(mutator: (snap: DspSnapshot) => void): void {
   if (!dsp.live) return;
   mutator(dsp.live);
   dsp.flush.currentRev += 1;
+  syncBulkToken();
   flushBulkIfIdle();
 }
 
@@ -46,8 +60,10 @@ function flushBulkIfIdle(): void {
       if (session.status === 'connected' && dsp.flush.currentRev > dsp.flush.lastSentRev) {
         flushBulkIfIdle();
       }
+      syncBulkToken();
     }
   })();
+  syncBulkToken();
 }
 
 const TRAILING_MS = 16;
@@ -60,6 +76,7 @@ export function commitBulkDebounced(key: string, mutator: (snap: DspSnapshot) =>
   if (!dsp.live) return;
   mutator(dsp.live);
   dsp.flush.currentRev += 1;
+  syncBulkToken();
   const existing = trailingTimers.get(key);
   if (existing) clearTimeout(existing);
   trailingTimers.set(key, setTimeout(() => {
@@ -98,4 +115,5 @@ export function cancelBulkFlush(): void {
   dsp.flush.currentRev = 0;
   dsp.flush.lastSentRev = 0;
   dsp.flush.failureCount = 0;
+  syncBulkToken();
 }

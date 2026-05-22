@@ -4,7 +4,7 @@ import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, fromBulkParams, createHardwareProfile } from '@/domain';
 import type { DspDevice } from '@/device/DspDevice';
-import { bindDevice, session, setStatus, dsp, applyDspSnapshot } from '@/state';
+import { bindDevice, session, setStatus, dsp, applyDspSnapshot, isInFlight } from '@/state';
 import { commitBulk, commitBulkDebounced } from './commit';
 import { flushPending, cancelAllCommands } from './outbox';
 
@@ -191,5 +191,52 @@ describe('flushPending', () => {
     await pending;
 
     expect(dsp.flush.currentRev).toBe(dsp.flush.lastSentRev); // converged
+  });
+});
+
+describe('commitBulk — pendingWrites token (Finding 1)', () => {
+  beforeEach(() => {
+    dsp.pendingWrites = new SvelteSet();
+    dsp.flush.inflight = null;
+    dsp.flush.currentRev = 0;
+    dsp.flush.lastSentRev = 0;
+  });
+  afterEach(() => { bindDevice(null); setStatus('idle'); });
+
+  it('holds a pendingWrites token while a bulk write is in flight and releases on settle', async () => {
+    let resolveSend!: () => void;
+    bindBulkDevice(() => new Promise<void>((res) => { resolveSend = res; }));
+    commitBulk((s) => { s.masterVolumeDb = -3; });
+    expect(dsp.pendingWrites.size).toBe(1);     // token present during flight
+    expect(isInFlight.current).toBe(true);
+    resolveSend();
+    await dsp.flush.inflight;
+    await Promise.resolve();
+    expect(dsp.pendingWrites.size).toBe(0);     // released on settle
+    expect(isInFlight.current).toBe(false);
+  });
+});
+
+describe('resync guard sees the bulk lane (Finding 1)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    dsp.pendingWrites = new SvelteSet();
+    dsp.flush.inflight = null;
+    dsp.flush.currentRev = 0;
+    dsp.flush.lastSentRev = 0;
+  });
+  afterEach(() => { vi.useRealTimers(); bindDevice(null); setStatus('idle'); });
+
+  it('a trailing resync does not clobber an in-flight bulk edit', async () => {
+    let resolveSend!: () => void;
+    bindBulkDevice(() => new Promise<void>((res) => { resolveSend = res; }));
+    commitBulk((s) => { s.masterVolumeDb = -12; });   // optimistic; send parked in flight
+    expect(dsp.live?.masterVolumeDb).toBe(-12);
+    const { scheduleResync } = await import('./resync');
+    scheduleResync();
+    await vi.advanceTimersByTimeAsync(300);            // trailing fetch fires (~250ms)
+    expect(dsp.live?.masterVolumeDb).toBe(-12);        // guard saw the token: not reverted
+    resolveSend();
+    await dsp.flush.inflight;
   });
 });
