@@ -6,8 +6,9 @@ import { Log } from '@/utils';
 // commands.ts owns three command shapes plus a per-key scrub-lane registry.
 // All commands capture session.generation when their send is launched and
 // gate post-send side effects (status flip, resync schedule) on equality
-// with the current generation. cancelAllCommands() bumps the generation
-// to convert any in-flight settle into a no-op.
+// with the current generation. cancelAllScrubLanes() lives here and cancels
+// lanes only; session-wide teardown (generation bump, pendingWrites clear,
+// bulk-flush reset) lives in outbox.cancelAllCommands().
 
 // Internals ---
 
