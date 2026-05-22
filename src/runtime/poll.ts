@@ -36,12 +36,7 @@ interface Cadence {
   run(d: DspDevice): Promise<void>; // owns its own timestamp update
 }
 
-// Legacy shim target — removed in the ConnectionScope wiring task once callers
-// hold the returned disposer instead of calling stopPolling().
-let currentStop: (() => void) | null = null;
-
 export function startPolling(clock: PollClock = timerClock(STATUS_INTERVAL_MS)): () => void {
-  currentStop?.();                  // stop any prior loop (legacy safety)
   let stopped = false;
   const isHidden = () => typeof document !== 'undefined' && document.hidden;
   // Only the in-flight guards are loop-local. The cadence CLOCK stays on the
@@ -129,12 +124,6 @@ export function startPolling(clock: PollClock = timerClock(STATUS_INTERVAL_MS)):
     stopped = true;
     clock.cancel();
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility);
-    if (currentStop === stop) currentStop = null;
   };
-  currentStop = stop;
   return stop;
 }
-
-// Legacy shim — delegates to the active loop's disposer. Removed in the
-// ConnectionScope wiring task. Kept now so existing callers stay green.
-export function stopPolling(): void { currentStop?.(); }

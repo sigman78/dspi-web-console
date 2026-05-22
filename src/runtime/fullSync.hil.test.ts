@@ -3,7 +3,7 @@ import type { DspDevice } from '@/device/DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
 import { finishConnection } from './actions';
 import { session, bindDevice, settings, dsp, resetDsp, resetStatus } from '@/state';
-import { stopPolling } from './poll';
+import { endConnection } from './connectionScope';
 
 // End-to-end HIL test: drives the production state-layer connection finish flow
 // against real silicon. The most valuable thing this catches is the slice-3
@@ -27,7 +27,7 @@ describe('state.finishConnection — end-to-end against real hardware (HIL)', ()
   });
 
   afterAll(async () => {
-    stopPolling();
+    endConnection();
     bindDevice(null);
     resetDsp();
     resetStatus();

@@ -18,7 +18,7 @@ import {
 } from '@/domain';
 
 import { cancelAllCommands } from './outbox';
-import { stopPolling } from './poll';
+import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 
@@ -90,10 +90,10 @@ function makeSnapshot(platform: PlatformType = PlatformType.RP2350) {
 //   - the rAF polling loop started by bootMock → finishConnection → startPolling.
 //     poll's tick() re-arms requestAnimationFrame unconditionally; with fake
 //     timers faking rAF, a later vi.runAllTimersAsync() churns it forever and
-//     aborts with "10000 timers, assuming an infinite loop". stopPolling() ends it.
+//     aborts with "10000 timers, assuming an infinite loop". endConnection() ends it.
 //   - the scrub-lane registry (commands.ts) + dsp.flush / dsp.pendingWrites.
 //     cancelAllCommands() clears lanes, resets the bulk flush, and drops tokens.
-afterEach(() => { stopPolling(); cancelAllCommands(); });
+afterEach(() => { endConnection(); cancelAllCommands(); });
 
 describe('actions wiring', () => {
   beforeEach(() => {
@@ -129,7 +129,13 @@ describe('actions wiring', () => {
     const { device, calls } = makeFakeDevice();
     const transport = new FakeTransport();
     bindDevice(device);
-    attachTransportListeners(transport);
+    // Mirror production wiring: the connection scope owns the transport
+    // listeners and the command-cancel disposer (registered in
+    // finishConnection). endConnection() — fired by the disconnect handler —
+    // disposes them, which is what drops the pending coalescer write.
+    beginConnection();
+    connectionScope()!.add(attachTransportListeners(transport));
+    connectionScope()!.add(() => cancelAllCommands());
 
     setMasterVolume(-9);                      // queues a write
     transport.emit('disconnect');             // should cancel before timer fires
@@ -142,15 +148,20 @@ describe('actions wiring', () => {
     expect(statusStore.streaming).toBe(false);
   });
 
-  it('attachTransportListeners is self-cleaning on re-register', () => {
+  it('beginConnection disposes the prior scope, removing its transport listeners', () => {
     const t1 = new FakeTransport();
     const t2 = new FakeTransport();
 
-    attachTransportListeners(t1);
+    // Self-cleaning now lives in the ConnectionScope: each connect opens a
+    // fresh scope (disposing the previous one), and the previous scope holds
+    // the disposer returned by attachTransportListeners.
+    beginConnection();
+    connectionScope()!.add(attachTransportListeners(t1));
     expect(t1.listenerCount('disconnect')).toBe(1);
     expect(t1.listenerCount('connect')).toBe(1);
 
-    attachTransportListeners(t2);
+    beginConnection();                        // disposes the t1 scope
+    connectionScope()!.add(attachTransportListeners(t2));
     // t1 listeners removed, t2 listeners attached
     expect(t1.listenerCount('disconnect')).toBe(0);
     expect(t1.listenerCount('connect')).toBe(0);
@@ -639,7 +650,7 @@ describe('crosspoint — Tier A unified lane (Finding 2)', () => {
 describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   // Sends are parked forever here so the tokens are still present at assertion
-  // time; the file-scope afterEach (stopPolling + cancelAllCommands) resets the
+  // time; the file-scope afterEach (endConnection + cancelAllCommands) resets the
   // leaked bulk-flush + scrub state.
   afterEach(() => { vi.useRealTimers(); bindDevice(null); session.status = 'idle'; });
 

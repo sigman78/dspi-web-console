@@ -18,7 +18,8 @@ import {
   clearCopySource,
 } from '@/state';
 import { Result, Log } from '@/utils';
-import { startPolling, stopPolling } from './poll';
+import { startPolling } from './poll';
+import { connectionScope, endConnection } from './connectionScope';
 import { cancelResync } from './resync';
 import { scrubCommand } from './commands';
 import { cancelAllCommands } from './outbox';
@@ -37,7 +38,6 @@ function _setMasterVolume(db: number): void {
 }
 
 let inflightSync: Promise<void> | null = null;
-let lastTransportCleanup: (() => void) | null = null;
 
 export function setEqFilter(channel: ChannelId, band: number, filter: FilterParams): void {
   if (!dsp.live?.channels) return;
@@ -285,7 +285,12 @@ export async function finishConnection(device: DspDevice): Promise<void> {
     setStatus('connected');
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync();
-    startPolling();
+    const s = connectionScope();
+    if (s) {
+      s.add(startPolling());
+      s.add(cancelResync);
+      s.add(() => cancelAllCommands());
+    }
     await fetchPresetInfo();
     Log.info('sync', 'connected', {
       platform: dsp.live?.platform.name,
@@ -347,14 +352,8 @@ export function toggleMute(): void {
 }
 
 export function attachTransportListeners(transport: DspTransport): () => void {
-  if (lastTransportCleanup) {
-    lastTransportCleanup();
-    lastTransportCleanup = null;
-  }
   const offDisc = transport.on('disconnect', () => {
-    cancelResync();
-    cancelAllCommands();
-    stopPolling();
+    endConnection();                 // disposes commands, resync, poll loop, listeners
     bindDevice(null);
     setStatus('disconnected');
     resetDsp();
@@ -370,9 +369,7 @@ export function attachTransportListeners(transport: DspTransport): () => void {
       setStatus('error', (e as Error).message);
     });
   });
-  const cleanup = () => { offDisc(); offConn(); };
-  lastTransportCleanup = cleanup;
-  return cleanup;
+  return () => { offDisc(); offConn(); };
 }
 
 // Master-volume mode --------------------------------------------------------
