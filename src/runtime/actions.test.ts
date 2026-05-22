@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, toggleOutputMute, toggleCrosspoint, setCrosspointGain, toggleCrosspointInvert, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay } from './actions';
+import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert } from './actions';
 import { session, bindDevice, settings, dsp, status as statusStore, presets, applyBulkBaseline } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -460,10 +460,10 @@ describe('Tier B → commitBulk: toggles', () => {
     expect(captured?.bypass).toBe(true);
   });
 
-  it('toggleOutputMute flips the slot and the bulk packet reflects it', async () => {
+  it('setOutputMuted flips the slot and the bulk packet reflects it', async () => {
     const slot = dsp.live!.outputs[0].wireIndex;
     const before = dsp.live!.outputs[0].muted;
-    toggleOutputMute(slot);
+    setOutputMuted(slot, !before);
     await awaitBulkSettled();
     const wireOut = captured!.outputs[dsp.live!.outputs[0].wireIndex];
     expect(wireOut.muted).toBe(!before);
@@ -595,7 +595,7 @@ describe('crosspoint — Tier A unified lane (Finding 2)', () => {
   });
   afterEach(() => { vi.useRealTimers(); bindDevice(null); });
 
-  it('toggleCrosspoint sends a full setMatrixRoute tuple via the per-item lane', async () => {
+  it('setCrosspointEnabled sends a full setMatrixRoute tuple via the per-item lane', async () => {
     const calls: Array<{ enabled: boolean; invert: boolean; gainDb: number }> = [];
     const device = initializedDevice({
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
@@ -604,14 +604,14 @@ describe('crosspoint — Tier A unified lane (Finding 2)', () => {
     bindDevice(device);
     const route = dsp.live!.routes[0];
     const before = route.enabled;
-    toggleCrosspoint(route.inputIndex, route.outputWireIndex);
+    setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !before);
     expect(dsp.live!.routes[0].enabled).toBe(!before);   // optimistic patch
     await vi.runAllTimersAsync();
     expect(calls).toHaveLength(1);
     expect(calls[0].enabled).toBe(!before);
   });
 
-  it('a toggle and a gain edit on the same cell coalesce into one consistent setMatrixRoute', async () => {
+  it('a setCrosspointEnabled and a gain edit on the same cell coalesce into one consistent setMatrixRoute', async () => {
     const calls: Array<{ enabled: boolean; invert: boolean; gainDb: number }> = [];
     const device = initializedDevice({
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
@@ -620,7 +620,7 @@ describe('crosspoint — Tier A unified lane (Finding 2)', () => {
     bindDevice(device);
     const route = dsp.live!.routes[0];
     const beforeEnabled = route.enabled;
-    toggleCrosspoint(route.inputIndex, route.outputWireIndex);
+    setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !beforeEnabled);
     setCrosspointGain(route.inputIndex, route.outputWireIndex, -6);
     await vi.runAllTimersAsync();
     expect(calls).toHaveLength(1);                 // one coalesced write
@@ -628,7 +628,7 @@ describe('crosspoint — Tier A unified lane (Finding 2)', () => {
     expect(calls[0].gainDb).toBe(-6);
   });
 
-  it('toggleCrosspointInvert flips invert and the wire tuple reflects it', async () => {
+  it('setCrosspointInvert flips invert and the wire tuple reflects it', async () => {
     const calls: Array<{ enabled: boolean; invert: boolean; gainDb: number }> = [];
     const device = initializedDevice({
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
@@ -637,7 +637,7 @@ describe('crosspoint — Tier A unified lane (Finding 2)', () => {
     bindDevice(device);
     const route = dsp.live!.routes[0];
     const before = route.invert;
-    toggleCrosspointInvert(route.inputIndex, route.outputWireIndex);
+    setCrosspointInvert(route.inputIndex, route.outputWireIndex, !before);
     await vi.runAllTimersAsync();
     expect(calls).toHaveLength(1);
     expect(calls[0].invert).toBe(!before);
@@ -664,13 +664,106 @@ describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
     session.status = 'connected';
 
     expect(dsp.pendingWrites.size).toBe(0);
-    // Tier A: a crosspoint toggle claims a scrub-lane token synchronously on schedule.
+    // Tier A: a crosspoint enable-set claims a scrub-lane token synchronously on schedule.
     const route = dsp.live!.routes[0];
-    toggleCrosspoint(route.inputIndex, route.outputWireIndex);
+    setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !route.enabled);
     expect(dsp.pendingWrites.size).toBe(1);
     // Tier B: a bulk edit claims the bulk token; both lanes now coexist, so the
     // resync soft-skip guard (pendingWrites.size > 0) covers both simultaneously.
     setBypass(true);
     expect(dsp.pendingWrites.size).toBe(2);
+  });
+});
+
+describe('boolean device flags are explicit setters', () => {
+  let captured: import('@/protocol').BulkParams | null;
+  beforeEach(async () => {
+    captured = null;
+    await bootMock('rp2350');
+    const bulk = parseBulkParams(makeBulk());
+    bindDevice(initializedDevice({
+      setAllParams: vi.fn(async (b) => { captured = b; }),
+      getAllParams: vi.fn(async () => bulk),
+    }));
+    applyBulkBaseline(testHardware, bulk);
+    session.status = 'connected';
+  });
+
+  it('setOutputEnabled(0, false) disables the output', async () => {
+    const slot = dsp.live!.outputs[0].wireIndex;
+    setOutputEnabled(slot, false);
+    expect(dsp.live?.outputs.find((o) => o.wireIndex === slot)?.enabled).toBe(false);
+    await awaitBulkSettled();
+    expect(captured!.outputs[slot].enabled).toBe(false);
+  });
+
+  it('setOutputEnabled(0, true) enables the output', async () => {
+    const slot = dsp.live!.outputs[0].wireIndex;
+    // First disable it
+    setOutputEnabled(slot, false);
+    await awaitBulkSettled();
+    // Then explicitly enable
+    setOutputEnabled(slot, true);
+    expect(dsp.live?.outputs.find((o) => o.wireIndex === slot)?.enabled).toBe(true);
+    await awaitBulkSettled();
+    expect(captured!.outputs[slot].enabled).toBe(true);
+  });
+
+  it('setOutputMuted(0, true) mutes the output', async () => {
+    const slot = dsp.live!.outputs[0].wireIndex;
+    setOutputMuted(slot, true);
+    expect(dsp.live?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(true);
+    await awaitBulkSettled();
+    expect(captured!.outputs[slot].muted).toBe(true);
+  });
+
+  it('setOutputMuted(0, false) unmutes the output', async () => {
+    const slot = dsp.live!.outputs[0].wireIndex;
+    // First mute it
+    setOutputMuted(slot, true);
+    await awaitBulkSettled();
+    // Then explicitly unmute
+    setOutputMuted(slot, false);
+    expect(dsp.live?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(false);
+    await awaitBulkSettled();
+    expect(captured!.outputs[slot].muted).toBe(false);
+  });
+
+  it('setCrosspointEnabled sets enabled to a specific value (not just toggle)', async () => {
+    vi.useFakeTimers();
+    const calls: Array<{ enabled: boolean; invert: boolean; gainDb: number }> = [];
+    bindDevice(initializedDevice({
+      setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    }));
+    const route = dsp.live!.routes[0];
+    const initial = route.enabled;
+    setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !initial);
+    expect(dsp.live!.routes[0].enabled).toBe(!initial);
+    // Calling with the same value again must not flip it back
+    setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !initial);
+    expect(dsp.live!.routes[0].enabled).toBe(!initial);
+    await vi.runAllTimersAsync();
+    expect(calls.at(-1)!.enabled).toBe(!initial);
+    vi.useRealTimers();
+  });
+
+  it('setCrosspointInvert sets invert to a specific value (not just toggle)', async () => {
+    vi.useFakeTimers();
+    const calls: Array<{ enabled: boolean; invert: boolean; gainDb: number }> = [];
+    bindDevice(initializedDevice({
+      setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    }));
+    const route = dsp.live!.routes[0];
+    const initial = route.invert;
+    setCrosspointInvert(route.inputIndex, route.outputWireIndex, !initial);
+    expect(dsp.live!.routes[0].invert).toBe(!initial);
+    // Calling with the same value again must not flip it back
+    setCrosspointInvert(route.inputIndex, route.outputWireIndex, !initial);
+    expect(dsp.live!.routes[0].invert).toBe(!initial);
+    await vi.runAllTimersAsync();
+    expect(calls.at(-1)!.invert).toBe(!initial);
+    vi.useRealTimers();
   });
 });

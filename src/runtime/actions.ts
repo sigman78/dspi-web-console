@@ -235,12 +235,12 @@ export function setCrosspointGain(input: InputSlot, output: OutputSlot, gainDb: 
   scheduleCrosspointWrite(input, output, (r) => ({ ...r, gainDb }));
 }
 
-export function toggleCrosspoint(input: InputSlot, output: OutputSlot): void {
-  scheduleCrosspointWrite(input, output, (r) => ({ ...r, enabled: !r.enabled }));
+export function setCrosspointEnabled(input: InputSlot, output: OutputSlot, enabled: boolean): void {
+  scheduleCrosspointWrite(input, output, (r) => ({ ...r, enabled }));
 }
 
-export function toggleCrosspointInvert(input: InputSlot, output: OutputSlot): void {
-  scheduleCrosspointWrite(input, output, (r) => ({ ...r, invert: !r.invert }));
+export function setCrosspointInvert(input: InputSlot, output: OutputSlot, invert: boolean): void {
+  scheduleCrosspointWrite(input, output, (r) => ({ ...r, invert }));
 }
 
 export function setOutputGain(slot: OutputSlot, gainDb: number): void {
@@ -263,17 +263,19 @@ export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
   });
 }
 
-export function toggleOutputEnable(slot: OutputSlot): void {
+export function setOutputEnabled(slot: OutputSlot, enabled: boolean): void {
+  if (!dsp.live?.outputs) return;
   commitBulk((s) => {
     const o = s.outputs.find((o) => o.wireIndex === slot);
-    if (o) o.enabled = !o.enabled;
+    if (o) o.enabled = enabled;
   });
 }
 
-export function toggleOutputMute(slot: OutputSlot): void {
+export function setOutputMuted(slot: OutputSlot, muted: boolean): void {
+  if (!dsp.live?.outputs) return;
   commitBulk((s) => {
     const o = s.outputs.find((o) => o.wireIndex === slot);
-    if (o) o.muted = !o.muted;
+    if (o) o.muted = muted;
   });
 }
 
