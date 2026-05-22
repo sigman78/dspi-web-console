@@ -72,7 +72,7 @@ export const isInFlight = {
 };
 
 // Full reset: both `live` and `shadow` reflect the incoming snapshot.
-// Used at baseline-refresh moments (fullSync after connect, factory reset).
+// Used at baseline-refresh moments (syncDeviceSnapshot on connect, factory reset).
 // Preset Load/Save flows refresh `shadow` explicitly via
 // refreshShadowFromLive() after a quiet live-only resync.
 export function applyDspSnapshot(snapshot: DspSnapshot, bulk?: BulkParams): void {

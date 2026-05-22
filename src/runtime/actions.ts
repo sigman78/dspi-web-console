@@ -257,9 +257,7 @@ export async function syncDeviceSnapshot(): Promise<void> {
   inflightSync = (async () => {
     try {
       const bulk = await d.getAllParams();
-      const hardware = d.hardware;
-      session.hardware = hardware;
-      hydrateFromBulk(hardware, bulk);
+      hydrateFromBulk(d.hardware, bulk);
     } catch (err) {
       Log.error('sync', 'syncDeviceSnapshot failed', err);
       setStatus('error', (err as Error).message);
@@ -271,17 +269,13 @@ export async function syncDeviceSnapshot(): Promise<void> {
   return inflightSync;
 }
 
-export async function refreshDeviceSnapshotBaseline(): Promise<void> {
-  await syncDeviceSnapshot();
-}
-
 export async function finishConnection(device: DspDevice): Promise<void> {
   if (session.device !== device) {
     throw new Error('Cannot finish connection for inactive device');
   }
   setStatus('connecting');
   try {
-    await refreshDeviceSnapshotBaseline();
+    await syncDeviceSnapshot();
     setStatus('connected');
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync();
@@ -304,10 +298,6 @@ export async function finishConnection(device: DspDevice): Promise<void> {
     setStatus('error', (err as Error).message);
     throw err;
   }
-}
-
-export async function fullSync(): Promise<void> {
-  await refreshDeviceSnapshotBaseline();
 }
 
 // Re-apply UI policy that should outlive a (re)connect (mute, eqTarget).

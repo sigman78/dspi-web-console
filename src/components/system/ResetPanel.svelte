@@ -2,7 +2,7 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
   import { presets, session } from '@/state';
-  import { fullSync } from '@/runtime';
+  import { syncDeviceSnapshot } from '@/runtime';
   import { PRESET_SLOT_COUNT } from '@/domain';
 
   const connected = $derived(session.status === 'connected');
@@ -14,7 +14,7 @@
     if (r.ok) {
       presets.directory = null;
       presets.names = Array.from({ length: PRESET_SLOT_COUNT }, () => null);
-      await fullSync();
+      await syncDeviceSnapshot();
     } else {
       alert(`Factory reset failed: ${r.message ?? 'unknown error'}`);
     }

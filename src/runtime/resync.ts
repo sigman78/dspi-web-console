@@ -14,13 +14,11 @@ async function fetchAndApply(force: boolean): Promise<void> {
   try {
     const bulk = await d.getAllParams();
     if (!force && dsp.pendingWrites.size > 0) return;
-    const hardware = d.hardware;
-    session.hardware = hardware;
     // Live-only: the preset-dirty diff measures against `dsp.shadow`,
     // which must NOT auto-update on every resync. Callers that need to
     // re-baseline shadow (Preset Load/Revert) call refreshShadowFromLive
     // after awaiting forceResyncNow().
-    applyLiveSnapshot(fromBulkParams(hardware, bulk));
+    applyLiveSnapshot(fromBulkParams(d.hardware, bulk));
   } catch (err) {
     Log.warn('resync', 'bulk re-fetch failed', err);
   }
@@ -63,9 +61,7 @@ export async function fetchAndApplyAsBaseline(): Promise<void> {
   if (!d) return;
   try {
     const bulk = await d.getAllParams();
-    const hardware = d.hardware;
-    session.hardware = hardware;
-    applyDspSnapshot(fromBulkParams(hardware, bulk), bulk);
+    applyDspSnapshot(fromBulkParams(d.hardware, bulk), bulk);
   } catch (err) {
     Log.warn('resync', 'baseline re-fetch failed', err);
   }
