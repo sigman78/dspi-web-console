@@ -1,7 +1,6 @@
 import type { DspDevice } from '@/device/DspDevice';
 import { dsp, session, setStatus } from '@/state';
 import { forceResyncNow, scheduleResync } from './resync';
-import { cancelBulkFlush } from './commit';
 import { Log } from '@/utils';
 
 // commands.ts owns three command shapes plus a per-key scrub-lane registry.
@@ -168,12 +167,9 @@ export async function drainScrubLanes(): Promise<void> {
 
 // Cancelation ---
 
-export function cancelAllCommands(): void {
+// Cancel every scrub lane. The session-wide teardown (generation bump,
+// pendingWrites clear, bulk-flush reset) lives in outbox.cancelAllCommands.
+export function cancelAllScrubLanes(): void {
   for (const lane of scrubLanes.values()) lane.cancel();
   scrubLanes.clear();
-  // Bump generation: in-flight instant/batch/scrub/bulk sends settle as
-  // stale via the gen check and become no-ops on session state.
-  session.generation += 1;
-  dsp.pendingWrites.clear();
-  cancelBulkFlush();
 }

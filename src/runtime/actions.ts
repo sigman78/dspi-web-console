@@ -19,7 +19,8 @@ import {
 import { Result, Log } from '@/utils';
 import { startPolling, stopPolling } from './poll';
 import { cancelResync } from './resync';
-import { cancelAllCommands, scrubCommand } from './commands';
+import { scrubCommand } from './commands';
+import { cancelAllCommands } from './outbox';
 import { commitBulk, commitBulkDebounced } from './commit';
 import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';

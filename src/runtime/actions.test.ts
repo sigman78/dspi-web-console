@@ -502,7 +502,7 @@ describe('Tier B → commitBulkDebounced: sliders', () => {
   });
 
   it('setLevellerAmount applies optimistically and flushes via flushPending', async () => {
-    const { flushPending } = await import('./commit');
+    const { flushPending } = await import('./outbox');
     setLevellerAmount(33);
     expect(dsp.live?.leveller?.amount).toBe(33);
     await flushPending();

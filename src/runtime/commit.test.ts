@@ -5,8 +5,8 @@ import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, fromBulkParams, createHardwareProfile } from '@/domain';
 import type { DspDevice } from '@/device/DspDevice';
 import { bindDevice, session, setStatus, dsp, applyDspSnapshot } from '@/state';
-import { commitBulk, commitBulkDebounced, flushPending } from './commit';
-import { cancelAllCommands } from './commands';
+import { commitBulk, commitBulkDebounced } from './commit';
+import { flushPending, cancelAllCommands } from './outbox';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
 

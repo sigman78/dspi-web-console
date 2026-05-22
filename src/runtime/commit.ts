@@ -68,21 +68,24 @@ export function commitBulkDebounced(key: string, mutator: (snap: DspSnapshot) =>
   }, TRAILING_MS));
 }
 
-// Drain every pending write category so a following flash op (preset
-// save/load/paste) sees settled device state. Order: fire debounced trailing
-// timers, drain Tier-A scrub lanes, await Tier-B in-flight, then one
-// converging flush if a new edit landed mid-drain. See docs/IDEAS.md §10.2.
-export async function flushPending(): Promise<void> {
-  trailingTimers.forEach(clearTimeout);
-  trailingTimers.clear();
+// Converge: fire one bulk send if edits landed since the last sent revision.
+// Used by the outbox coordinator (flushPending) and as the trailing-timer
+// drain's flush step.
+export function convergeBulk(): void {
   if (dsp.flush.currentRev > dsp.flush.lastSentRev) flushBulkIfIdle();
-  const { drainScrubLanes } = await import('./commands');
-  await drainScrubLanes();
+}
+
+// Clear every armed debounced trailing timer and converge any pending edit.
+// (docs/IDEAS.md §10.2 — the first of the three drain categories.)
+export function drainTrailingTimers(): void {
+  for (const t of trailingTimers.values()) clearTimeout(t);
+  trailingTimers.clear();
+  convergeBulk();
+}
+
+// Await the in-flight bulk send, if one is parked.
+export async function awaitBulkSettled(): Promise<void> {
   if (dsp.flush.inflight) await dsp.flush.inflight;
-  if (dsp.flush.currentRev > dsp.flush.lastSentRev) {
-    flushBulkIfIdle();
-    if (dsp.flush.inflight) await dsp.flush.inflight;
-  }
 }
 
 // Reset the bulk-write coordination. Called by cancelAllCommands on

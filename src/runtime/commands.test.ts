@@ -5,7 +5,8 @@ import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, fromBulkParams, createHardwareProfile } from '@/domain';
 import type { DspDevice } from '@/device/DspDevice';
 import { bindDevice, session, setStatus, dsp, patchSnapshot } from '@/state';
-import { instantCommand, scrubCommand, batchCommand, cancelAllCommands } from './commands';
+import { instantCommand, scrubCommand, batchCommand } from './commands';
+import { cancelAllCommands } from './outbox';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 
