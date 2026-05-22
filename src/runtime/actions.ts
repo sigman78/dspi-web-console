@@ -3,7 +3,15 @@ import {
   type ChannelId, type InputSlot, type OutputSlot,
   type RouteModel,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
+  CHANNEL_NAME_MAX_LEN,
 } from '@/domain';
+import {
+  clampMasterVolumeDb, clampPreampDb, clampBandGainDb, clampBandFrequencyHz,
+  clampBandQ, clampOutputGainDb, clampOutputDelayMs, clampCrosspointGainDb,
+  clampLoudnessRefSpl, clampLoudnessIntensityPct, clampCrossfeedFreqHz,
+  clampCrossfeedFeedDb, clampLevellerAmountPct, clampLevellerMaxGainDb,
+  clampLevellerGateDb, clampNameToByteBudget,
+} from '@/domain/clamp';
 import type { DspTransport } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
 import {
@@ -45,7 +53,12 @@ export function setEqFilter(channel: ChannelId, band: number, filter: FilterPara
   }
   commitBulk((s) => {
     const c = s.channels.find((c) => c.id === channel)!;
-    c.filters[band] = { ...filter };
+    c.filters[band] = {
+      ...filter,
+      frequency: clampBandFrequencyHz(filter.frequency),
+      q: clampBandQ(filter.q),
+      gain: clampBandGainDb(filter.gain),
+    };
   });
 }
 
@@ -92,11 +105,12 @@ export function setChannelName(id: ChannelId, name: string): void {
   const ch = dsp.live.channels.find((c) => c.id === id);
   if (!ch) return;
   const resolved = name.trim() || ch.defaultName;
+  const clamped = clampNameToByteBudget(resolved, CHANNEL_NAME_MAX_LEN);
   commitBulk((s) => {
     const c = s.channels.find((c) => c.id === id)!;
-    c.name = resolved;
+    c.name = clamped;
     const o = s.outputs.find((o) => o.id === id);
-    if (o) o.name = resolved;
+    if (o) o.name = clamped;
   });
 }
 
@@ -105,10 +119,12 @@ export function setLoudnessEnabled(enabled: boolean): void {
 }
 
 export function setLoudnessRefSpl(db: number): void {
+  db = clampLoudnessRefSpl(db);
   commitBulkDebounced('loudnessRefSpl', (s) => { s.loudness.refSpl = db; });
 }
 
 export function setLoudnessIntensityPct(pct: number): void {
+  pct = clampLoudnessIntensityPct(pct);
   commitBulkDebounced('loudnessIntensity', (s) => { s.loudness.intensityPct = pct; });
 }
 
@@ -125,10 +141,12 @@ export function setCrossfeedItd(itd: boolean): void {
 }
 
 export function setCrossfeedFreq(hz: number): void {
+  hz = clampCrossfeedFreqHz(hz);
   commitBulkDebounced('crossfeedFreq', (s) => { s.crossfeed.freq = hz; });
 }
 
 export function setCrossfeedFeedDb(db: number): void {
+  db = clampCrossfeedFeedDb(db);
   commitBulkDebounced('crossfeedFeedDb', (s) => { s.crossfeed.feedDb = db; });
 }
 
@@ -145,18 +163,22 @@ export function setLevellerLookahead(lookahead: boolean): void {
 }
 
 export function setLevellerAmount(pct: number): void {
+  pct = clampLevellerAmountPct(pct);
   commitBulkDebounced('levellerAmount', (s) => { if (s.leveller) s.leveller.amount = pct; });
 }
 
 export function setLevellerMaxGain(db: number): void {
+  db = clampLevellerMaxGainDb(db);
   commitBulkDebounced('levellerMaxGain', (s) => { if (s.leveller) s.leveller.maxGainDb = db; });
 }
 
 export function setLevellerGate(db: number): void {
+  db = clampLevellerGateDb(db);
   commitBulkDebounced('levellerGate', (s) => { if (s.leveller) s.leveller.gateDb = db; });
 }
 
 export function setMasterPreamp(db: number): void {
+  db = clampPreampDb(db);
   scrubCommand({
     key: 'masterPreamp',
     apply: () => patchSnapshot({ masterPreampDb: db }),
@@ -167,6 +189,7 @@ export function setMasterPreamp(db: number): void {
 export function setInputPreamp(channel: InputSlot, db: number): void {
   const cur = dsp.live?.inputPreampDb;
   if (!cur) return;
+  db = clampPreampDb(db);
   const next: [number, number] = [cur[0], cur[1]];
   next[channel] = db;
   scrubCommand({
@@ -203,6 +226,7 @@ function scheduleCrosspointWrite(
 }
 
 export function setCrosspointGain(input: InputSlot, output: OutputSlot, gainDb: number): void {
+  gainDb = clampCrosspointGainDb(gainDb);
   scheduleCrosspointWrite(input, output, (r) => ({ ...r, gainDb }));
 }
 
@@ -216,6 +240,7 @@ export function toggleCrosspointInvert(input: InputSlot, output: OutputSlot): vo
 
 export function setOutputGain(slot: OutputSlot, gainDb: number): void {
   if (!dsp.live?.outputs) return;
+  gainDb = clampOutputGainDb(gainDb);
   const out = focusOutput(slot);
   scrubCommand({
     key: `outputGain:${slot}`,
@@ -226,6 +251,7 @@ export function setOutputGain(slot: OutputSlot, gainDb: number): void {
 
 export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
   if (!dsp.live?.outputs) return;
+  delayMs = clampOutputDelayMs(delayMs);
   commitBulk((s) => {
     const o = s.outputs.find((o) => o.wireIndex === slot);
     if (o) o.delayMs = delayMs;
@@ -314,6 +340,7 @@ export async function reconcileAfterSync(): Promise<void> {
 }
 
 export function setMasterVolume(db: number): void {
+  db = clampMasterVolumeDb(db);
   if (settings.soft.muted) {
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
