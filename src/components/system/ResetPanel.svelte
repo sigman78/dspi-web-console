@@ -1,21 +1,15 @@
 <!-- src/components/system/ResetPanel.svelte -->
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
-  import { presets, session } from '@/state';
-  import { syncDeviceSnapshot } from '@/runtime';
-  import { PRESET_SLOT_COUNT } from '@/domain';
+  import { session } from '@/state';
+  import { factoryResetDevice } from '@/runtime';
 
   const connected = $derived(session.status === 'connected');
 
   async function onFactoryReset() {
     if (!confirm('Factory reset wipes ALL presets and resets live audio to defaults. Continue?')) return;
-    const d = session.device; if (!d) return;
-    const r = await d.factoryReset();
-    if (r.ok) {
-      presets.directory = null;
-      presets.names = Array.from({ length: PRESET_SLOT_COUNT }, () => null);
-      await syncDeviceSnapshot();
-    } else {
+    const r = await factoryResetDevice();
+    if (!r.ok) {
       alert(`Factory reset failed: ${r.message ?? 'unknown error'}`);
     }
   }

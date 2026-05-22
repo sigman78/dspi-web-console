@@ -18,6 +18,7 @@ import {
 } from '@/domain';
 
 import { cancelAllCommands, flushPending } from './outbox';
+import { awaitBulkSettled } from './commit';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
@@ -91,8 +92,9 @@ function makeSnapshot(platform: PlatformType = PlatformType.RP2350) {
 //     poll's tick() re-arms requestAnimationFrame unconditionally; with fake
 //     timers faking rAF, a later vi.runAllTimersAsync() churns it forever and
 //     aborts with "10000 timers, assuming an infinite loop". endConnection() ends it.
-//   - the scrub-lane registry (commands.ts) + dsp.flush / dsp.pendingWrites.
-//     cancelAllCommands() clears lanes, resets the bulk flush, and drops tokens.
+//   - the scrub-lane registry (commands.ts) + the bulk-flush coordination
+//     (commit.ts) / dsp.pendingWrites. cancelAllCommands() clears lanes,
+//     resets the bulk flush, and drops tokens.
 afterEach(() => { endConnection(); cancelAllCommands(); });
 
 describe('actions wiring', () => {
@@ -404,8 +406,8 @@ describe('finishConnection — baseline hydrate', () => {
     await bootMock('rp2350');
   });
 
-  it('finishConnection populates baselineBulk', async () => {
-    expect(dsp.baselineBulk).not.toBeNull();
+  it('finishConnection populates wireBase', async () => {
+    expect(dsp.wireBase).not.toBeNull();
   });
 });
 
@@ -454,7 +456,7 @@ describe('Tier B → commitBulk: toggles', () => {
   it('setBypass fires one bulk write carrying the new bypass flag', async () => {
     setBypass(true);
     expect(dsp.live?.bypass).toBe(true);
-    await dsp.flush.inflight;
+    await awaitBulkSettled();
     expect(captured?.bypass).toBe(true);
   });
 
@@ -462,7 +464,7 @@ describe('Tier B → commitBulk: toggles', () => {
     const slot = dsp.live!.outputs[0].wireIndex;
     const before = dsp.live!.outputs[0].muted;
     toggleOutputMute(slot);
-    await dsp.flush.inflight;
+    await awaitBulkSettled();
     const wireOut = captured!.outputs[dsp.live!.outputs[0].wireIndex];
     expect(wireOut.muted).toBe(!before);
   });
@@ -486,7 +488,7 @@ describe('Tier B → commitBulk: enums', () => {
     // Default from makeBulk() is CrossfeedPreset.Preset1 (0); pick Preset2 (1) to assert a change.
     const target = CrossfeedPreset.Preset2;
     setCrossfeedPreset(target);
-    await dsp.flush.inflight;
+    await awaitBulkSettled();
     expect(captured?.crossfeed.preset).toBe(target);
   });
 
@@ -494,7 +496,7 @@ describe('Tier B → commitBulk: enums', () => {
     // Default from makeBulk() is LevellerSpeed.Slow (0); pick Fast (2) to assert a change.
     const target = LevellerSpeed.Fast;
     setLevellerSpeed(target);
-    await dsp.flush.inflight;
+    await awaitBulkSettled();
     expect(captured?.leveller.speed).toBe(target);
   });
 });
@@ -538,7 +540,7 @@ describe('Tier B → commitBulk: eq/delay/names', () => {
   it('setEqFilter writes one band into the snapshot and bulk packet', async () => {
     const ch = dsp.live!.channels[0].id;
     setEqFilter(ch, 0, { type: FilterType.Peaking, frequency: 1000, q: 1.0, gain: 3 });
-    await dsp.flush.inflight;
+    await awaitBulkSettled();
     expect(dsp.live!.channels[0].filters[0].frequency).toBe(1000);
     // the bulk packet carries the edited band (at some wire-channel row)
     expect(captured!.filters.some((row) => row[0]?.frequency === 1000)).toBe(true);
@@ -554,11 +556,11 @@ describe('Tier B → commitBulk: eq/delay/names', () => {
     const src = dsp.live!.channels[0].id;
     const tgt = dsp.live!.channels[1].id;
     setEqFilter(src, 0, { type: FilterType.Peaking, frequency: 2500, q: 2, gain: -4 });
-    await dsp.flush.inflight;
+    await awaitBulkSettled();
     setEqFilter(src, 1, { type: FilterType.Peaking, frequency: 5000, q: 1.5, gain: 2 });
-    await dsp.flush.inflight;
+    await awaitBulkSettled();
     copyEqBands(src, tgt);
-    await dsp.flush.inflight;
+    await awaitBulkSettled();
     const t = dsp.live!.channels.find((c) => c.id === tgt)!;
     const s = dsp.live!.channels.find((c) => c.id === src)!;
     expect(t.filters[0].frequency).toBe(2500);
@@ -570,7 +572,7 @@ describe('Tier B → commitBulk: eq/delay/names', () => {
   it('setOutputDelay writes the slot delay into the snapshot and bulk packet', async () => {
     const slot = dsp.live!.outputs[0].wireIndex;
     setOutputDelay(slot, 5);
-    await dsp.flush.inflight;
+    await awaitBulkSettled();
     const o = dsp.live!.outputs.find((o) => o.wireIndex === slot)!;
     expect(o.delayMs).toBe(5);
     expect(captured!.outputs[slot].delayMs).toBe(5);
@@ -579,7 +581,7 @@ describe('Tier B → commitBulk: eq/delay/names', () => {
   it('setChannelName sets name and mirrors to the denormalized output entry', async () => {
     const outId = dsp.live!.outputs[0].id; // a channel that DOES have an output entry
     setChannelName(outId, 'Custom');
-    await dsp.flush.inflight;
+    await awaitBulkSettled();
     expect(dsp.live!.channels.find((c) => c.id === outId)!.name).toBe('Custom');
     expect(dsp.live!.outputs.find((o) => o.id === outId)!.name).toBe('Custom');
   });

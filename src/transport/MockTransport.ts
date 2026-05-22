@@ -133,12 +133,12 @@ export class MockTransport implements DspTransport {
         return bulk.slice(0, Math.min(length, bulk.byteLength));
       }
       case WireCmd.GetMasterVolume.code:
-        return Codec.encode(Codec.f32, this.#masterVolumeDb);
+        return Codec.encode(Codec.f32, this.#mockState.masterVolumeDb);
       case WireCmd.GetPreamp.code:
-        return Codec.encode(Codec.f32, this.#masterPreampDb);
+        return Codec.encode(Codec.f32, this.#mockState.preampDb);
       case WireCmd.GetInputPreamp.code: {
         const idx = (value & 0xFF) === 1 ? 1 : 0;
-        return Codec.encode(Codec.f32, this.#inputPreampDb[idx]);
+        return Codec.encode(Codec.f32, idx === 1 ? this.#mockState.preampRDb : this.#mockState.preampLDb);
       }
       case WireCmd.GetMatrixRoute.code: {
         const input = (value >> 8) & 0xFF;
@@ -160,7 +160,7 @@ export class MockTransport implements DspTransport {
       case WireCmd.GetOutputDelay.code:
         return Codec.encode(Codec.f32, this.#output(value).delayMs);
       case WireCmd.GetBypass.code:
-        return Codec.encode(Codec.bool8, this.#bypass);
+        return Codec.encode(Codec.bool8, this.#mockState.bypass);
       case WireCmd.GetMasterVolumeMode.code:
         return Codec.encode(Codec.u8, this.#masterVolumeMode);
       case WireCmd.GetSavedMasterVolume.code:
@@ -193,7 +193,7 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.GetChannelName.code: {
         const ch = value & 0xFF;
-        const name = this.#channelNames[ch] ?? '';
+        const name = this.#mockState.channelNames[ch] ?? '';
         return Codec.encode(WireCmd.GetChannelName.codec, name);
       }
       case WireCmd.PresetGetDir.code: {
@@ -287,13 +287,17 @@ export class MockTransport implements DspTransport {
     switch (request) {
       case WireCmd.SetMasterVolume.code:
         this.#masterVolumeDb = Codec.decode(Codec.f32, data);
+        this.#mockState.masterVolumeDb = this.#masterVolumeDb;
         return;
       case WireCmd.SetPreamp.code:
         this.#masterPreampDb = Codec.decode(Codec.f32, data);
+        this.#mockState.preampDb = this.#masterPreampDb;
         return;
       case WireCmd.SetInputPreamp.code: {
         const idx = (value & 0xFF) === 1 ? 1 : 0;
         this.#inputPreampDb[idx] = Codec.decode(Codec.f32, data);
+        if (idx === 1) this.#mockState.preampRDb = this.#inputPreampDb[idx];
+        else this.#mockState.preampLDb = this.#inputPreampDb[idx];
         return;
       }
       case WireCmd.SetEqParam.code: {
@@ -329,6 +333,7 @@ export class MockTransport implements DspTransport {
         return;
       case WireCmd.SetBypass.code:
         this.#bypass = Codec.decode(Codec.bool8, data);
+        this.#mockState.bypass = this.#bypass;
         return;
       case WireCmd.SetMasterVolumeMode.code:
         this.#masterVolumeMode = Codec.decode(Codec.u8, data) as MasterVolumeMode;
@@ -386,6 +391,7 @@ export class MockTransport implements DspTransport {
         const ch = value & 0xFF;
         if (ch < Wire.Const.NUM_CHANNELS) {
           this.#channelNames[ch] = Codec.decode(WireCmd.SetChannelName.codec, data);
+          this.#mockState.channelNames[ch] = this.#channelNames[ch];
         }
         return;
       }
@@ -413,7 +419,7 @@ export class MockTransport implements DspTransport {
         return;
 
       case WireCmd.SetAllParams.code: {
-        this.#mockState = parseBulkParams(data);
+        this.#applyBulkState(parseBulkParams(data));
         return;
       }
 
@@ -434,18 +440,22 @@ export class MockTransport implements DspTransport {
     };
   }
 
+  #applyBulkState(bulk: BulkParams): void {
+    this.#mockState = bulk;
+    this.#masterVolumeDb = bulk.masterVolumeDb;
+    this.#masterPreampDb = bulk.preampDb;
+    this.#inputPreampDb = [bulk.preampLDb, bulk.preampRDb];
+    this.#bypass = bulk.bypass;
+    this.#channelNames = bulk.channelNames.slice(0, Wire.Const.NUM_CHANNELS);
+  }
+
   // Reset live state to factory defaults. Used by empty-slot PresetLoad
   // (per spec §REQ_PRESET_LOAD: load on empty slot applies factory
   // defaults; PRESET_ERR_SLOT_EMPTY is reserved). Scalars revert to the
   // mock's constructor defaults; channel names clear.
   #resetLiveToDefaults(): void {
-    this.#mockState = defaultMockBulkState(this.#platform);
-    this.#masterVolumeDb = 0;
-    this.#masterPreampDb = 0;
-    this.#inputPreampDb = [0, 0];
-    this.#bypass = false;
+    this.#applyBulkState(defaultMockBulkState(this.#platform));
     this.#savedMasterVolumeDb = 0;
-    this.#channelNames = Array.from({ length: Wire.Const.NUM_CHANNELS }, () => '');
   }
 
   #restoreSnapshot(s: MockSnapshot): void {
@@ -459,12 +469,20 @@ export class MockTransport implements DspTransport {
     // it's intentionally absent from MockSnapshot.
     if (this.#masterVolumeMode === MasterVolumeMode.WithPreset) {
       this.#masterVolumeDb = s.masterVolumeDb;
+      this.#mockState.masterVolumeDb = s.masterVolumeDb;
+    } else {
+      this.#mockState.masterVolumeDb = this.#masterVolumeDb;
     }
     this.#masterPreampDb = s.masterPreampDb;
     this.#inputPreampDb = [s.inputPreampDb[0], s.inputPreampDb[1]];
     this.#bypass = s.bypass;
     this.#savedMasterVolumeDb = s.savedMasterVolumeDb;
     this.#channelNames = [...s.channelNames];
+    this.#mockState.preampDb = this.#masterPreampDb;
+    this.#mockState.preampLDb = this.#inputPreampDb[0];
+    this.#mockState.preampRDb = this.#inputPreampDb[1];
+    this.#mockState.bypass = this.#bypass;
+    this.#mockState.channelNames = [...this.#channelNames];
   }
 
   // Resolve the OutputState slot for a wValue-encoded output index. Returns

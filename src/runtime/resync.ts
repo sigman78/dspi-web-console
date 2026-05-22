@@ -1,6 +1,7 @@
-import { session, applyBulkBaseline, applyBulkLive, dsp } from '@/state';
+import { session, applyBulkLive, dsp } from '@/state';
 import { Log } from '@/utils';
 import { makeResyncScheduler } from './schedulers';
+import { applyBulkBaselineConverged } from './commit';
 
 const RESYNC_MS = 250;
 
@@ -53,14 +54,14 @@ export async function forceResyncNow(): Promise<void> {
 // Cancels any pending trailing resync so a delayed live-only fetch can't
 // fire later and partially overwrite shadow.
 //
-// See docs/ARCH-TRANSACT.md for the bug class this prevents.
+// See docs/ARCH.md for the baseline/live split this protects.
 export async function fetchAndApplyAsBaseline(): Promise<void> {
   scheduler.cancel();
   const d = session.device;
   if (!d) return;
   try {
     const bulk = await d.getAllParams();
-    applyBulkBaseline(d.hardware, bulk);
+    applyBulkBaselineConverged(d.hardware, bulk);
   } catch (err) {
     Log.warn('resync', 'baseline re-fetch failed', err);
   }

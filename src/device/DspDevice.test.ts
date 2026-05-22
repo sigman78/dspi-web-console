@@ -848,4 +848,26 @@ describe('setAllParams', () => {
     expect(calls[0][1]).toBe(0);              // wValue
     expect(calls[0][2].byteLength).toBe(2896); // exact V6 size
   });
+
+  it('mock direct getters reflect values written through setAllParams', async () => {
+    const transport = new MockTransport({ platform: 'rp2350' });
+    const dev = await DspDevice.create(transport);
+    const bulk = await dev.getAllParams();
+
+    bulk.masterVolumeDb = -18;
+    bulk.preampDb = 2.5;
+    bulk.preampLDb = -1.5;
+    bulk.preampRDb = -3;
+    bulk.bypass = true;
+    bulk.channelNames[0] = 'Bulk Name';
+
+    await dev.setAllParams(bulk);
+
+    expect(await dev.getMasterVolume()).toBeCloseTo(-18, 4);
+    expect(await dev.getMasterPreamp()).toBeCloseTo(2.5, 4);
+    expect(await dev.getInputPreamp(0)).toBeCloseTo(-1.5, 4);
+    expect(await dev.getInputPreamp(1)).toBeCloseTo(-3, 4);
+    expect(await dev.getBypass()).toBe(true);
+    expect(await dev.getChannelName(0)).toBe('Bulk Name');
+  });
 });

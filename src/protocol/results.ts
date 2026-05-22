@@ -54,7 +54,7 @@ const presetMessage: Record<PresetResult, string> = {
 };
 
 export function flashResultFromByte(byte: number): Result<void, FlashResult> {
-  if (byte === FlashResult.Ok) return Result.ok(undefined);
+  if (byte === FlashResult.Ok) return Result.ok();
   const code: FlashResult = flashCodes.has(byte)
     ? (byte as FlashResult)
     : FlashResult.ErrWrite;
@@ -62,7 +62,7 @@ export function flashResultFromByte(byte: number): Result<void, FlashResult> {
 }
 
 export function presetResultFromByte(byte: number): Result<void, PresetResult> {
-  if (byte === PresetResult.Ok) return Result.ok(undefined);
+  if (byte === PresetResult.Ok) return Result.ok();
   const code: PresetResult = presetCodes.has(byte)
     ? (byte as PresetResult)
     : PresetResult.FlashWriteError;

@@ -14,6 +14,7 @@ import {
   renamePresetSlot,
   setStartupDefault,
   setStartupMode,
+  setPresetIncludePins,
   pastePresetTo,
 } from './presets';
 import { forceResyncNow, fetchAndApplyAsBaseline } from './resync';
@@ -205,6 +206,30 @@ describe('runtime/presets', () => {
     });
   });
 
+  describe('setPresetIncludePins', () => {
+    it('writes the flag through to the device and mirrors it in the directory cache', async () => {
+      await fetchPresetInfo();
+      await setPresetIncludePins(true);
+      expect(presets.directory!.includePins).toBe(true);
+      await setPresetIncludePins(false);
+      expect(presets.directory!.includePins).toBe(false);
+    });
+
+    it('records an action error (record-only, no rethrow) when the device write fails', async () => {
+      await fetchPresetInfo();
+      const d = session.device as any;
+      const orig = d.setPresetIncludePins;
+      d.setPresetIncludePins = async () => { throw new Error('wire fail'); };
+      try {
+        await expect(setPresetIncludePins(true)).resolves.toBeUndefined();
+        expect(presets.lastActionError).toContain('Set include pins');
+        expect(presets.lastActionError).toContain('wire fail');
+      } finally {
+        d.setPresetIncludePins = orig;
+      }
+    });
+  });
+
   describe('savePresetSlot', () => {
     it('saves current RAM into a slot and makes it active (mirrors firmware)', async () => {
       await fetchPresetInfo();
@@ -254,21 +279,21 @@ describe('runtime/presets', () => {
     });
   });
 
-  describe('baselineBulk threading', () => {
-    it('fetchAndApplyAsBaseline populates dsp.baselineBulk', async () => {
+  describe('wireBase threading', () => {
+    it('fetchAndApplyAsBaseline populates dsp.wireBase', async () => {
       await fetchAndApplyAsBaseline();
-      expect(dsp.baselineBulk).not.toBeNull();
+      expect(dsp.wireBase).not.toBeNull();
     });
   });
 
   describe('action error surfacing', () => {
-    it('records an error message when setPresetName throws', async () => {
+    it('records an error message (record-only, no rethrow) when setPresetName throws', async () => {
       await fetchPresetInfo();
       const d = session.device!;
       const orig = d.setPresetName.bind(d);
       (d as any).setPresetName = async () => { throw new Error('boom'); };
       try {
-        await expect(renamePresetSlot(2 as any, 'X')).rejects.toThrow('boom');
+        await expect(renamePresetSlot(2 as any, 'X')).resolves.toBeUndefined();
         expect(presets.lastActionError).toContain('Rename');
         expect(presets.lastActionError).toContain('boom');
       } finally {

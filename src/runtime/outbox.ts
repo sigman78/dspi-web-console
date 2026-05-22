@@ -12,7 +12,7 @@ import {
 // Drain every pending write category so a following flash op (preset
 // save/load/paste) sees settled device state. Order: trailing timers + converge,
 // drain Tier-A scrub lanes, await Tier-B in-flight, then one converging flush if
-// a new edit landed mid-drain. See docs/IDEAS.md §10.2.
+// a new edit landed mid-drain.
 export async function flushPending(): Promise<void> {
   drainTrailingTimers();
   await drainScrubLanes();

@@ -8,7 +8,7 @@
   import {
     saveActivePreset, revertActivePreset,
     setStartupDefault, setStartupMode, pastePresetTo, renamePresetSlot,
-    setMasterVolumeMode,
+    setMasterVolumeMode, setPresetIncludePins,
   } from '@/runtime';
   import { MasterVolumeMode } from '@/domain';
   import { PresetStartupMode } from '@/protocol';
@@ -92,9 +92,7 @@
 
   async function onIncludePinsChange(e: Event) {
     const v = (e.target as HTMLInputElement).checked;
-    const d = session.device; if (!d) return;
-    await d.setPresetIncludePins(v);
-    if (presets.directory) presets.directory = { ...presets.directory, includePins: v };
+    await setPresetIncludePins(v);
   }
 
   function onWarnToggleChange(e: Event) {
