@@ -24,6 +24,5 @@ export * from './bulkToSnapshot';
 export * from './presetDiff';
 export * from './presetDirectory';
 
-// Note: `validation.ts` is intentionally NOT re-exported here. It exports
-// `ok` and `fail` helpers that would shadow the `Result.ok` / `Result.fail`
-// namespace from `../utils`. Import direct: `from '../domain/validation'`.
+// Note: `clamp.ts` is intentionally NOT re-exported here; import it directly
+// (`from '@/domain/clamp'`) at the action boundary that owns the clamp gate.
