@@ -1,6 +1,7 @@
-import { session, applyBulkBaseline, applyBulkLive, dsp } from '@/state';
+import { session, applyBulkLive, dsp } from '@/state';
 import { Log } from '@/utils';
 import { makeResyncScheduler } from './schedulers';
+import { applyBulkBaselineConverged } from './commit';
 
 const RESYNC_MS = 250;
 
@@ -60,7 +61,7 @@ export async function fetchAndApplyAsBaseline(): Promise<void> {
   if (!d) return;
   try {
     const bulk = await d.getAllParams();
-    applyBulkBaseline(d.hardware, bulk);
+    applyBulkBaselineConverged(d.hardware, bulk);
   } catch (err) {
     Log.warn('resync', 'baseline re-fetch failed', err);
   }

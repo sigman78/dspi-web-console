@@ -7,17 +7,21 @@ import type { BulkParams } from '@/protocol';
 // `toBulkParams` overlays onto). The public verbs each write a fixed subset -
 // keep this matrix in sync when adding one:
 //
-//   verb                  | live | shadow | wireBase | rev reset
-//   ----------------------|------|--------|----------|----------
-//   applyBulkBaseline     |  x   |   x    |    x     |    x
-//   applyBulkLive         |  x   |   —    |    x     |    —
-//   refreshShadowFromLive |  —   | x(live)|    —     |    —
-//   patchSnapshot         | x(ip)|   —    |    —     |    —
-//   resetDsp              | null |  kept  |   null   |    x
+//   verb                  | live | shadow | wireBase
+//   ----------------------|------|--------|----------
+//   applyBulkBaseline     |  x   |   x    |    x
+//   applyBulkLive         |  x   |   —    |    x
+//   refreshShadowFromLive |  —   | x(live)|    —
+//   patchSnapshot         | x(ip)|   —    |    —
+//   resetDsp              | null |  kept  |   null
 //
 // There is no verb that sets a baseline without also refreshing wireBase:
 // that combination would leave the wire overlay base stale and is unsafe by
 // construction, so it is simply not expressible.
+//
+// Bulk-flush coordination (the rev counters and in-flight send tracking) now
+// lives in src/runtime/commit.ts — the state layer no longer owns it, since
+// state must not import the runtime layer.
 export interface DspState {
   // Our belief about device RAM. Mutates on every user write; reset to null
   live: DspSnapshot | null;
@@ -40,13 +44,6 @@ export interface DspState {
   // write, so fields the snapshot doesn't carry (pins, raw indices, names
   // past totalChannelCount) survive. Null until first recv
   wireBase: BulkParams | null;
-
-  // Bulk-write coordination (consumed by src/runtime/commit.ts).
-  flush: {
-    inflight: Promise<void> | null;
-    currentRev: number;
-    lastSentRev: number;
-  };
 }
 
 // Class-based state: allows mixing $state (deeply reactive, for objects we
@@ -62,12 +59,6 @@ class DspStateImpl implements DspState {
   // wasteful and breaks reference identity (toBe / === checks). Shallow
   // reactivity (tracking the reference itself) is all that's needed here.
   wireBase = $state.raw<BulkParams | null>(null);
-
-  flush = $state({
-    inflight: null as Promise<void> | null,
-    currentRev: 0,
-    lastSentRev: 0,
-  });
 }
 
 export const dsp: DspState = new DspStateImpl();
@@ -87,19 +78,18 @@ export const isInFlight = {
 // derive the snapshot from `bulk` themselves — so `live`, `shadow`, and
 // `wireBase` can never be seeded from mismatched sources
 
-// Private full-baseline write: live + shadow + wire baseline, with the
-// bulk-flush revision counters reset to "no unsent edits". `bulk` is mandatory
-// — a baseline that left `wireBase` stale would corrupt the next overlay
-// write, so that mode is not offered. Reached only via applyBulkBaseline.
+// Private full-baseline write: live + shadow + wire baseline. `bulk` is
+// mandatory — a baseline that left `wireBase` stale would corrupt the next
+// overlay write, so that mode is not offered. Reached only via
+// applyBulkBaseline. The bulk-flush revision counters are converged separately
+// by the runtime helper `applyBulkBaselineConverged` (commit.ts), since that
+// coordination lives in the runtime layer this state module cannot import.
 function applyBaseline(snapshot: DspSnapshot, bulk: BulkParams): void {
   dsp.live = snapshot;
   // Deep copy: patchSnapshot mutates dsp.live in place. A shared
   // reference would let optimistic patches leak into shadow.
   dsp.shadow = structuredClone(snapshot);
   dsp.wireBase = bulk;
-  // Fresh baseline => no unsent edits. (Hydrate semantics, §5.6.)
-  dsp.flush.currentRev = 0;
-  dsp.flush.lastSentRev = 0;
 }
 
 // Apply a freshly-fetched bulk packet as a new baseline (live + shadow +
@@ -126,9 +116,6 @@ export function resetDsp(): void {
   // until the next successful sync overwrites it.
   dsp.pendingWrites = new SvelteSet();
   dsp.wireBase = null;
-  dsp.flush.inflight = null;
-  dsp.flush.currentRev = 0;
-  dsp.flush.lastSentRev = 0;
 }
 
 // Single mutation point for in-place snapshot edits. Both the mutation

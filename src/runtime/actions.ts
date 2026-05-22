@@ -9,7 +9,7 @@ import type { DspDevice } from '@/device/DspDevice';
 import {
   bindDevice, session, setStatus,
   presets,
-  applyBulkBaseline, dsp, patchSnapshot, resetDsp,
+  dsp, patchSnapshot, resetDsp,
   settings, reconcileEqTarget,
   resetStatus, status,
   clearCopySource,
@@ -20,7 +20,7 @@ import { connectionScope, endConnection } from './connectionScope';
 import { cancelResync } from './resync';
 import { scrubCommand } from './commands';
 import { cancelAllCommands, flushPending } from './outbox';
-import { commitBulk, commitBulkDebounced } from './commit';
+import { commitBulk, commitBulkDebounced, applyBulkBaselineConverged } from './commit';
 import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
@@ -253,7 +253,7 @@ export async function syncDeviceSnapshot(): Promise<void> {
   inflightSync = (async () => {
     try {
       const bulk = await d.getAllParams();
-      applyBulkBaseline(d.hardware, bulk);
+      applyBulkBaselineConverged(d.hardware, bulk);
     } catch (err) {
       Log.error('sync', 'syncDeviceSnapshot failed', err);
       setStatus('error', (err as Error).message);
