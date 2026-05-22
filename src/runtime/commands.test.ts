@@ -4,8 +4,8 @@ import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, fromBulkParams, createHardwareProfile } from '@/domain';
 import type { DspDevice } from '@/device/DspDevice';
-import { bindDevice, session, setStatus, dsp, patchSnapshot } from '@/state';
-import { instantCommand, scrubCommand, batchCommand } from './commands';
+import { bindDevice, session, setStatus, dsp } from '@/state';
+import { scrubCommand } from './commands';
 import { cancelAllCommands } from './outbox';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
@@ -22,84 +22,6 @@ function initializedDevice(methods: Partial<DspDevice>): DspDevice {
     ...methods,
   } as DspDevice;
 }
-
-function makeDevice(send: () => Promise<void> = async () => {}) {
-  const validBulk = parseBulkParams(makeBulk());
-  return initializedDevice({
-    setLoudnessEnabled: vi.fn(send),
-    getAllParams: vi.fn(async () => validBulk),
-  });
-}
-
-describe('instantCommand', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    const bulk = parseBulkParams(makeBulk());
-    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
-    dsp.pendingWrites = new SvelteSet();
-    // Reset session status so leaked 'error' from a prior test in the suite
-    // does not pollute assertions in tests that don't explicitly set status.
-    setStatus('idle');
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-    bindDevice(null);
-  });
-
-  it('applies optimistic patch synchronously', () => {
-    bindDevice(makeDevice());
-    let applied = false;
-    instantCommand({
-      apply: () => { applied = true; patchSnapshot({ masterVolumeDb: -7 }); },
-      send: async () => {},
-    });
-    expect(applied).toBe(true);
-    expect(dsp.live?.masterVolumeDb).toBe(-7);
-  });
-
-  it('marks pending while in flight, clears on success', async () => {
-    bindDevice(makeDevice());
-    instantCommand({
-      apply: () => {},
-      send: async (d) => { await d.setLoudnessEnabled(true); },
-    });
-    expect(dsp.pendingWrites.size).toBe(1);
-    await vi.runAllTimersAsync();
-    expect(dsp.pendingWrites.size).toBe(0);
-  });
-
-  it('forces resync + sets error status on failure', async () => {
-    bindDevice(makeDevice(async () => { throw new Error('range'); }));
-    instantCommand({
-      apply: () => {},
-      send: async (d) => { await d.setLoudnessEnabled(true); },
-    });
-    await vi.runAllTimersAsync();
-    expect(session.status).toBe('error');
-    expect(dsp.pendingWrites.size).toBe(0);
-  });
-
-  it('stale generation does not flip session status to error', async () => {
-    bindDevice(makeDevice(async () => { throw new Error('range'); }));
-    instantCommand({
-      apply: () => {},
-      send: async (d) => { await d.setLoudnessEnabled(true); },
-    });
-    // simulate a reconnect mid-flight: generation advances
-    session.generation += 1;
-    await vi.runAllTimersAsync();
-    expect(session.status).not.toBe('error');
-  });
-
-  it('no-op when no device is bound', () => {
-    bindDevice(null);
-    const apply = vi.fn();
-    instantCommand({ apply, send: async () => {} });
-    // apply still runs (optimistic) but pending stays empty (no send fired)
-    expect(apply).toHaveBeenCalled();
-    expect(dsp.pendingWrites.size).toBe(0);
-  });
-});
 
 function makeGainDevice() {
   const calls: Array<[number, number]> = [];
@@ -207,94 +129,15 @@ describe('scrubCommand', () => {
   });
 });
 
-describe('batchCommand', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    const bulk = parseBulkParams(makeBulk());
-    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
-    dsp.pendingWrites = new SvelteSet();
-    // Reset session status so leaked 'error' from a prior test in the suite
-    // does not pollute assertions in tests that don't explicitly set status.
-    setStatus('idle');
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-    bindDevice(null);
-  });
-
-  it('runs apply once and tracks one pending token across the whole send', async () => {
-    const { device, calls } = makeGainDevice();
-    bindDevice(device);
-    let pendingDuringSend = -1;
-    batchCommand({
-      apply: () => { patchSnapshot({ masterVolumeDb: -1 }); },
-      send: async (d) => {
-        pendingDuringSend = dsp.pendingWrites.size;
-        await d.setOutputGain(0, -1);
-        await d.setOutputGain(1, -1);
-      },
-    });
-    expect(dsp.live?.masterVolumeDb).toBe(-1);
-    expect(dsp.pendingWrites.size).toBe(1);
-    await vi.runAllTimersAsync();
-    expect(pendingDuringSend).toBe(1);
-    expect(calls).toEqual([[0, -1], [1, -1]]);
-    expect(dsp.pendingWrites.size).toBe(0);
-  });
-
-  it('forces resync + sets error if any wire write inside the batch rejects', async () => {
-    const validBulk = parseBulkParams(makeBulk());
-    const device = initializedDevice({
-      setOutputGain: vi.fn(async (output: number) => {
-        if (output === 1) throw new Error('boom');
-      }),
-      getAllParams: vi.fn(async () => validBulk),
-    });
-    bindDevice(device);
-    batchCommand({
-      apply: () => {},
-      send: async (d) => {
-        await d.setOutputGain(0, -1);
-        await d.setOutputGain(1, -1);
-      },
-    });
-    await vi.runAllTimersAsync();
-    expect(session.status).toBe('error');
-  });
-
-  it('stale generation does not flip session status to error', async () => {
-    const validBulk = parseBulkParams(makeBulk());
-    const device = initializedDevice({
-      setOutputGain: vi.fn(async () => { throw new Error('boom'); }),
-      getAllParams: vi.fn(async () => validBulk),
-    });
-    bindDevice(device);
-    batchCommand({
-      apply: () => {},
-      send: async (d) => { await d.setOutputGain(0, -1); },
-    });
-    // simulate a reconnect mid-flight: generation advances
-    session.generation += 1;
-    await vi.runAllTimersAsync();
-    expect(session.status).not.toBe('error');
-  });
-
-  it('no-op when no device is bound', () => {
-    bindDevice(null);
-    const apply = vi.fn();
-    batchCommand({ apply, send: async () => {} });
-    // apply still runs (optimistic) but pending stays empty (no send fired)
-    expect(apply).toHaveBeenCalled();
-    expect(dsp.pendingWrites.size).toBe(0);
-  });
-});
-
 describe('cancelAllCommands', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
     dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
     dsp.pendingWrites = new SvelteSet();
+    // Reset session status so a leaked 'error' from a prior test in the suite
+    // does not pollute these assertions.
+    setStatus('idle');
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -318,19 +161,21 @@ describe('cancelAllCommands', () => {
     expect(calls).toEqual([]);
   });
 
-  it('bumps session generation so in-flight instant sends settle as stale', async () => {
+  it('bumps session generation so an in-flight scrub send settles as stale', async () => {
     let resolveSend: () => void = () => {};
     const validBulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
-      setLoudnessEnabled: vi.fn(() => new Promise<void>((res) => { resolveSend = res; })),
+      setOutputGain: vi.fn(() => new Promise<void>((res) => { resolveSend = res; })),
       getAllParams: vi.fn(async () => validBulk),
     });
     bindDevice(device);
 
-    instantCommand({
+    scrubCommand({
+      key: 'outputGain:0',
       apply: () => {},
-      send: async (d) => { await d.setLoudnessEnabled(true); },
+      send: async (d) => { await d.setOutputGain(0, -3); },
     });
+    await vi.advanceTimersByTimeAsync(16);   // fire the lane: send is now in flight (parked)
     expect(dsp.pendingWrites.size).toBe(1);
 
     cancelAllCommands();
@@ -344,19 +189,21 @@ describe('cancelAllCommands', () => {
     expect(session.status).not.toBe('error');
   });
 
-  it('in-flight instant rejection after cancel does NOT flip status to error', async () => {
+  it('an in-flight scrub rejection after cancel does NOT flip status to error', async () => {
     let rejectSend: (err: Error) => void = () => {};
     const validBulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
-      setLoudnessEnabled: vi.fn(() => new Promise<void>((_, rej) => { rejectSend = rej; })),
+      setOutputGain: vi.fn(() => new Promise<void>((_, rej) => { rejectSend = rej; })),
       getAllParams: vi.fn(async () => validBulk),
     });
     bindDevice(device);
 
-    instantCommand({
+    scrubCommand({
+      key: 'outputGain:0',
       apply: () => {},
-      send: async (d) => { await d.setLoudnessEnabled(true); },
+      send: async (d) => { await d.setOutputGain(0, -3); },
     });
+    await vi.advanceTimersByTimeAsync(16);   // fire the lane: send is now in flight (parked)
     expect(dsp.pendingWrites.size).toBe(1);
 
     cancelAllCommands();
