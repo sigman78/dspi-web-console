@@ -46,7 +46,6 @@ export interface DspState {
     inflight: Promise<void> | null;
     currentRev: number;
     lastSentRev: number;
-    failureCount: number;
   };
 }
 
@@ -68,7 +67,6 @@ class DspStateImpl implements DspState {
     inflight: null as Promise<void> | null,
     currentRev: 0,
     lastSentRev: 0,
-    failureCount: 0,
   });
 }
 
@@ -127,7 +125,6 @@ export function resetDsp(): void {
   dsp.flush.inflight = null;
   dsp.flush.currentRev = 0;
   dsp.flush.lastSentRev = 0;
-  dsp.flush.failureCount = 0;
 }
 
 // Single mutation point for in-place snapshot edits. Both the mutation

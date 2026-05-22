@@ -56,12 +56,10 @@ function flushBulkIfIdle(): void {
       if (gen !== session.generation) return;   // stale settle: silent no-op
       dsp.wireBase = bulk;                        // device now holds this packet
       dsp.flush.lastSentRev = sendingRev;
-      dsp.flush.failureCount = 0;
     } catch (err) {
       if (gen !== session.generation) return;
       Log.error('commit', 'bulk write failed; forcing resync', err);
       setStatus('error', errMessage(err));
-      dsp.flush.failureCount += 1;
       void forceResyncNow();
     } finally {
       if (dsp.flush.inflight === run) {
@@ -127,6 +125,5 @@ export function cancelBulkFlush(): void {
   dsp.flush.inflight = null;
   dsp.flush.currentRev = 0;
   dsp.flush.lastSentRev = 0;
-  dsp.flush.failureCount = 0;
   syncBulkToken();
 }

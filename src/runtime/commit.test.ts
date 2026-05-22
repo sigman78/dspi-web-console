@@ -39,7 +39,6 @@ describe('commitBulk', () => {
     dsp.flush.inflight = null;
     dsp.flush.currentRev = 0;
     dsp.flush.lastSentRev = 0;
-    dsp.flush.failureCount = 0;
   });
   afterEach(() => { bindDevice(null); setStatus('idle'); });
 
