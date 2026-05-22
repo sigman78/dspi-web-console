@@ -10,7 +10,7 @@ import type { BulkParams } from '@/protocol';
 //   verb                  | live | shadow | wireBase | rev reset
 //   ----------------------|------|--------|----------|----------
 //   applyBulkBaseline     |  x   |   x    |    x     |    x
-//   applyBulkLive         |  x   |   —    |    —     |    —
+//   applyBulkLive         |  x   |   —    |    x     |    —
 //   refreshShadowFromLive |  —   | x(live)|    —     |    —
 //   patchSnapshot         | x(ip)|   —    |    —     |    —
 //   resetDsp              | null |  kept  |   null   |    x
@@ -108,12 +108,16 @@ export function applyBulkBaseline(hardware: HardwareProfile, bulk: BulkParams): 
   applyBaseline(fromBulkParams(hardware, bulk), bulk);
 }
 
-// Apply a bulk packet as a live-only refresh, leaving `shadow` (the dirty-diff
-// baseline) and `wireBase` (the wire overlay base) pinned. Use on the
-// trailing resync after a successful write, so the dirty diff keeps measuring
-// against the last save/load baseline rather than chasing device state.
+// Apply a bulk packet as a live-only refresh: advances `live` AND `wireBase`
+// to the freshly-fetched packet, leaving `shadow` (the dirty-diff baseline)
+// pinned. Use on the trailing resync after a successful write, so the dirty
+// diff keeps measuring against the last save/load baseline rather than chasing
+// device state. wireBase is refreshed here so that wire-only fields (pins,
+// channel names past totalChannelCount) from a device-side change are not
+// clobbered by the next bulk overlay built against a stale base.
 export function applyBulkLive(hardware: HardwareProfile, bulk: BulkParams): void {
   dsp.live = fromBulkParams(hardware, bulk);
+  dsp.wireBase = bulk;
 }
 
 export function resetDsp(): void {
