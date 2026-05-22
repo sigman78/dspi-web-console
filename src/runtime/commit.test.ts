@@ -211,7 +211,7 @@ describe('commitBulk — pendingWrites token (Finding 1)', () => {
     expect(isInFlight.current).toBe(true);
     resolveSend();
     await dsp.flush.inflight;
-    await Promise.resolve();
+    await waitUntil(() => dsp.pendingWrites.size === 0);
     expect(dsp.pendingWrites.size).toBe(0);     // released on settle
     expect(isInFlight.current).toBe(false);
   });
