@@ -355,6 +355,10 @@ export function toggleMute(): void {
 
 export function attachTransportListeners(transport: DspTransport): () => void {
   const offDisc = transport.on('disconnect', () => {
+    // endConnection() disposes the scope, which removes THIS very listener
+    // mid-emit (offDisc). Deleting the currently-firing entry from the
+    // transport's listener Set during its forEach is safe — it won't be
+    // revisited and won't throw.
     endConnection();                 // disposes commands, resync, poll loop, listeners
     bindDevice(null);
     setStatus('disconnected');

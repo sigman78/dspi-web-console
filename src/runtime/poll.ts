@@ -110,8 +110,9 @@ export function startPolling(clock: PollClock = timerClock(STATUS_INTERVAL_MS)):
     void doPoll();
   };
 
+  // Registered only while the loop is live and removed by stop(), so it never
+  // fires after dispose — no `stopped` guard needed here.
   const onVisibility = () => {
-    if (stopped) return;
     if (isHidden()) { if (!anyRunWhileHidden) clock.cancel(); }
     else clock.next(tick);                           // resume on show
   };
