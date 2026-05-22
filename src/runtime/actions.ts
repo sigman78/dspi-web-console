@@ -15,12 +15,12 @@ import {
   settings, reconcileEqTarget,
   resetStatus, status,
   clearCopySource,
-  computeCapabilities,
 } from '@/state';
 import { Result, Log } from '@/utils';
 import { startPolling, stopPolling } from './poll';
 import { cancelResync } from './resync';
 import { batchCommand, cancelAllCommands, cancelScrubLane, instantCommand, scrubCommand } from './commands';
+import { commitBulk } from './commit';
 import { focusChannel, focusOutput, focusRoute, tryFocusOutput } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
@@ -87,11 +87,7 @@ export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
 }
 
 export function setBypass(enabled: boolean): void {
-  if (dsp.live == null) return;
-  instantCommand({
-    apply: () => patchSnapshot({ bypass: enabled }),
-    send: (d) => d.setBypass(enabled),
-  });
+  commitBulk((s) => { s.bypass = enabled; });
 }
 
 // Telemetry-only action: clears firmware-side latched clip flags (0x83) and
@@ -128,12 +124,7 @@ export function setChannelName(id: ChannelId, name: string): void {
 }
 
 export function setLoudnessEnabled(enabled: boolean): void {
-  const cur = dsp.live?.loudness;
-  if (!cur) return;
-  instantCommand({
-    apply: () => patchSnapshot({ loudness: { ...cur, enabled } }),
-    send: (d) => d.setLoudnessEnabled(enabled),
-  });
+  commitBulk((s) => { if (s.loudness) s.loudness.enabled = enabled; });
 }
 
 export function setLoudnessRefSpl(db: number): void {
@@ -157,12 +148,7 @@ export function setLoudnessIntensityPct(pct: number): void {
 }
 
 export function setCrossfeedEnabled(enabled: boolean): void {
-  const cur = dsp.live?.crossfeed;
-  if (!cur) return;
-  instantCommand({
-    apply: () => patchSnapshot({ crossfeed: { ...cur, enabled } }),
-    send: (d) => d.setCrossfeedEnabled(enabled),
-  });
+  commitBulk((s) => { if (s.crossfeed) s.crossfeed.enabled = enabled; });
 }
 
 export function setCrossfeedPreset(preset: CrossfeedPreset): void {
@@ -175,12 +161,7 @@ export function setCrossfeedPreset(preset: CrossfeedPreset): void {
 }
 
 export function setCrossfeedItd(itd: boolean): void {
-  const cur = dsp.live?.crossfeed;
-  if (!cur) return;
-  instantCommand({
-    apply: () => patchSnapshot({ crossfeed: { ...cur, itd } }),
-    send: (d) => d.setCrossfeedItd(itd),
-  });
+  commitBulk((s) => { if (s.crossfeed) s.crossfeed.itd = itd; });
 }
 
 export function setCrossfeedFreq(hz: number): void {
@@ -204,12 +185,7 @@ export function setCrossfeedFeedDb(db: number): void {
 }
 
 export function setLevellerEnabled(enabled: boolean): void {
-  const cur = dsp.live?.leveller;
-  if (!cur) return;
-  instantCommand({
-    apply: () => patchSnapshot({ leveller: { ...cur, enabled } }),
-    send: (d) => d.setLevellerEnabled(enabled),
-  });
+  commitBulk((s) => { if (s.leveller) s.leveller.enabled = enabled; });
 }
 
 export function setLevellerSpeed(speed: LevellerSpeed): void {
@@ -222,12 +198,7 @@ export function setLevellerSpeed(speed: LevellerSpeed): void {
 }
 
 export function setLevellerLookahead(lookahead: boolean): void {
-  const cur = dsp.live?.leveller;
-  if (!cur) return;
-  instantCommand({
-    apply: () => patchSnapshot({ leveller: { ...cur, lookahead } }),
-    send: (d) => d.setLevellerLookahead(lookahead),
-  });
+  commitBulk((s) => { if (s.leveller) s.leveller.lookahead = lookahead; });
 }
 
 export function setLevellerAmount(pct: number): void {
@@ -321,52 +292,30 @@ export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
 }
 
 export function toggleCrosspoint(input: InputSlot, output: OutputSlot): void {
-  if (!dsp.live?.routes) return;
-  const route = focusRoute(input, output);
-  instantCommand({
-    apply: () => route.modify((c) => ({ ...c, enabled: !c.enabled })),
-    send: (d) => {
-      const cur = route.read();
-      return d.setMatrixRoute(input, output, {
-        enabled: cur.enabled,
-        invert: cur.invert,
-        gainDb: cur.gainDb,
-      });
-    },
+  commitBulk((s) => {
+    const r = s.routes.find((r) => r.inputIndex === input && r.outputWireIndex === output);
+    if (r) r.enabled = !r.enabled;
   });
 }
 
 export function toggleCrosspointInvert(input: InputSlot, output: OutputSlot): void {
-  if (!dsp.live?.routes) return;
-  const route = focusRoute(input, output);
-  instantCommand({
-    apply: () => route.modify((c) => ({ ...c, invert: !c.invert })),
-    send: (d) => {
-      const cur = route.read();
-      return d.setMatrixRoute(input, output, {
-        enabled: cur.enabled,
-        invert: cur.invert,
-        gainDb: cur.gainDb,
-      });
-    },
+  commitBulk((s) => {
+    const r = s.routes.find((r) => r.inputIndex === input && r.outputWireIndex === output);
+    if (r) r.invert = !r.invert;
   });
 }
 
 export function toggleOutputEnable(slot: OutputSlot): void {
-  if (!dsp.live?.outputs) return;
-  const out = focusOutput(slot);
-  instantCommand({
-    apply: () => out.modify((o) => ({ ...o, enabled: !o.enabled })),
-    send: (d) => d.setOutputEnable(slot, out.read().enabled),
+  commitBulk((s) => {
+    const o = s.outputs.find((o) => o.wireIndex === slot);
+    if (o) o.enabled = !o.enabled;
   });
 }
 
 export function toggleOutputMute(slot: OutputSlot): void {
-  if (!dsp.live?.outputs) return;
-  const out = focusOutput(slot);
-  instantCommand({
-    apply: () => out.modify((o) => ({ ...o, muted: !o.muted })),
-    send: (d) => d.setOutputMute(slot, out.read().muted),
+  commitBulk((s) => {
+    const o = s.outputs.find((o) => o.wireIndex === slot);
+    if (o) o.muted = !o.muted;
   });
 }
 
@@ -403,7 +352,6 @@ export async function finishConnection(device: DspDevice): Promise<void> {
   try {
     await refreshDeviceSnapshotBaseline();
     setStatus('connected');
-    session.capabilities = computeCapabilities(dsp.live?.formatVersion ?? 0);
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync();
     startPolling();

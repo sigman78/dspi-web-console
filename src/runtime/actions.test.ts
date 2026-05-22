@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline } from './actions';
+import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, toggleOutputMute } from './actions';
 import { session, bindDevice, settings, dsp, status as statusStore, presets } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -433,14 +433,13 @@ describe('setChannelName', () => {
   });
 });
 
-describe('finishConnection — capabilities', () => {
+describe('finishConnection — baseline hydrate', () => {
   beforeEach(async () => {
     await bootMock('rp2350');
   });
 
-  it('finishConnection populates baselineBulk and V6 capabilities', async () => {
+  it('finishConnection populates baselineBulk', async () => {
     expect(dsp.baselineBulk).not.toBeNull();
-    expect(session.capabilities.setAllParams).toBe(true);
   });
 });
 
@@ -469,5 +468,37 @@ describe('actions — master volume mode', () => {
     };
     const r = await saveMasterVolumeBaseline();
     expect(r.ok).toBe(true);
+  });
+});
+
+describe('Tier B → commitBulk: toggles', () => {
+  let captured: import('@/protocol').BulkParams | null;
+  beforeEach(async () => {
+    captured = null;
+    await bootMock('rp2350');
+    const bulk = parseBulkParams(makeBulk());
+    bindDevice(initializedDevice({
+      setAllParams: vi.fn(async (b) => { captured = b; }),
+      getAllParams: vi.fn(async () => bulk),
+    }));
+    const { applyDspSnapshot } = await import('@/state');
+    applyDspSnapshot(fromBulkParams(testHardware, bulk), bulk);
+    session.status = 'connected';
+  });
+
+  it('setBypass fires one bulk write carrying the new bypass flag', async () => {
+    setBypass(true);
+    expect(dsp.live?.bypass).toBe(true);
+    await dsp.flush.inflight;
+    expect(captured?.bypass).toBe(true);
+  });
+
+  it('toggleOutputMute flips the slot and the bulk packet reflects it', async () => {
+    const slot = dsp.live!.outputs[0].wireIndex;
+    const before = dsp.live!.outputs[0].muted;
+    toggleOutputMute(slot);
+    await dsp.flush.inflight;
+    const wireOut = captured!.outputs[dsp.live!.outputs[0].wireIndex];
+    expect(wireOut.muted).toBe(!before);
   });
 });
