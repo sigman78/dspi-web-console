@@ -16,6 +16,7 @@ import {
   setStartupMode,
   setPresetIncludePins,
   pastePresetTo,
+  dismissPresetActionError,
 } from './presets';
 import { forceResyncNow, fetchAndApplyAsBaseline } from './resync';
 
@@ -305,6 +306,12 @@ describe('runtime/presets', () => {
       await fetchPresetInfo();
       presets.lastActionError = 'stale';
       await renamePresetSlot(3 as any, 'Cinema');
+      expect(presets.lastActionError).toBe(null);
+    });
+
+    it('dismissPresetActionError clears the error banner state', () => {
+      presets.lastActionError = 'Save: boom';
+      dismissPresetActionError();
       expect(presets.lastActionError).toBe(null);
     });
   });

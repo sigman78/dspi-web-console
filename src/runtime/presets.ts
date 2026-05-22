@@ -56,6 +56,13 @@ function clearActionError(): void {
   presets.lastActionError = null;
 }
 
+// Public verb so the UI never writes preset store state directly
+// (board review A5 / MOM-2026-05-22). The error-banner dismiss button
+// calls this instead of assigning presets.lastActionError = null.
+export function dismissPresetActionError(): void {
+  clearActionError();
+}
+
 // Eager + lazy entry point. Idempotent when the cache is populated.
 // Never throws — errors are captured in presets.lastFetchError so the
 // UI can surface them with a retry button.
