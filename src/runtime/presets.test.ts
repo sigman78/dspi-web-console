@@ -222,7 +222,8 @@ describe('runtime/presets', () => {
       const orig = d.setPresetIncludePins;
       d.setPresetIncludePins = async () => { throw new Error('wire fail'); };
       try {
-        await expect(setPresetIncludePins(true)).resolves.toBeUndefined();
+        const r = await setPresetIncludePins(true);
+        expect('ok' in r && r.ok).toBe(false);
         expect(presets.lastActionError).toContain('Set include pins');
         expect(presets.lastActionError).toContain('wire fail');
       } finally {
@@ -294,12 +295,34 @@ describe('runtime/presets', () => {
       const orig = d.setPresetName.bind(d);
       (d as any).setPresetName = async () => { throw new Error('boom'); };
       try {
-        await expect(renamePresetSlot(2 as any, 'X')).resolves.toBeUndefined();
+        const r = await renamePresetSlot(2 as any, 'X');
+        expect('ok' in r && r.ok).toBe(false);
         expect(presets.lastActionError).toContain('Rename');
         expect(presets.lastActionError).toContain('boom');
       } finally {
         (d as any).setPresetName = orig;
       }
+    });
+
+    it('renamePresetSlot returns a typed failure on wire error', async () => {
+      await fetchPresetInfo();
+      const d = session.device!;
+      const orig = d.setPresetName.bind(d);
+      (d as any).setPresetName = async () => { throw new Error('wire fail'); };
+      try {
+        const r = await renamePresetSlot(1 as PresetSlot, 'X');
+        expect('ok' in r && r.ok).toBe(false);
+        // banner still recorded:
+        expect(presets.lastActionError).toContain('Rename');
+      } finally {
+        (d as any).setPresetName = orig;
+      }
+    });
+
+    it('renamePresetSlot returns ok on success', async () => {
+      await fetchPresetInfo();
+      const r = await renamePresetSlot(1 as PresetSlot, 'X');
+      expect('ok' in r && r.ok).toBe(true);
     });
 
     it('clears lastActionError at the start of a successful subsequent call', async () => {

@@ -12,14 +12,15 @@ import { flushPending } from './outbox';
 import type { DspDevice } from '@/device/DspDevice';
 import { type PresetSlot, PRESET_SLOT_COUNT } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
-import { Log, type Result } from '@/utils';
+import { Log, Result } from '@/utils';
 
 const PRESET_LOAD_SETTLE_MS = 100;
 
 export type PresetActionError =
   | { ok: false; code: PresetResult; message?: string }
   | { ok: false; code: 'no-device'; message?: string }
-  | { ok: false; code: 'active'; message?: string };
+  | { ok: false; code: 'active'; message?: string }
+  | { ok: false; code: 'error'; message?: string };
 
 function noDevice(): { ok: false; code: 'no-device'; message: string } {
   return { ok: false, code: 'no-device', message: 'no device' };
@@ -54,6 +55,12 @@ function recordActionError(label: string, e: unknown): void {
 
 function clearActionError(): void {
   presets.lastActionError = null;
+}
+
+function recordToResult(label: string, e: unknown): PresetActionError {
+  recordActionError(label, e);
+  const msg = (e as Error)?.message ?? String(e);
+  return { ok: false, code: 'error', message: `${label}: ${msg}` };
 }
 
 // Public verb so the UI never writes preset store state directly
@@ -357,28 +364,33 @@ export async function deletePresetSlot(slot: PresetSlot): Promise<Result<void, P
 // PresetDelete, so the rename is independent of slot occupancy. Channel
 // names (which DO live in the payload) flow through actions.ts; this
 // function is only for the slot-level name.
-export async function renamePresetSlot(slot: PresetSlot, name: string): Promise<void> {
+export async function renamePresetSlot(
+  slot: PresetSlot, name: string,
+): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = session.device;
-  if (!d) return;
+  if (!d) return noDevice();
   clearActionError();
   try {
-    await withBusy(async () => {
+    return await withBusy(async () => {
       await d.setPresetName(slot, name);
       const next = [...presets.names];
       next[slot] = name;
       presets.names = next;
+      return Result.ok();
     });
   } catch (e) {
-    recordActionError('Rename', e);
+    return recordToResult('Rename', e);
   }
 }
 
-export async function setStartupDefault(slot: PresetSlot): Promise<void> {
+export async function setStartupDefault(
+  slot: PresetSlot,
+): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = session.device;
-  if (!d) return;
+  if (!d) return noDevice();
   clearActionError();
   try {
-    await withBusy(async () => {
+    return await withBusy(async () => {
       await d.setPresetStartup({ mode: PresetStartupMode.Specified, slot });
       if (presets.directory) {
         presets.directory = {
@@ -387,42 +399,49 @@ export async function setStartupDefault(slot: PresetSlot): Promise<void> {
           defaultSlot: slot,
         };
       }
+      return Result.ok();
     });
   } catch (e) {
-    recordActionError('Set startup default', e);
+    return recordToResult('Set startup default', e);
   }
 }
 
-export async function setStartupMode(mode: PresetStartupMode): Promise<void> {
+export async function setStartupMode(
+  mode: PresetStartupMode,
+): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = session.device;
-  if (!d) return;
+  if (!d) return noDevice();
   const slot = presets.directory?.defaultSlot ?? (0 as PresetSlot);
   clearActionError();
   try {
-    await withBusy(async () => {
+    return await withBusy(async () => {
       await d.setPresetStartup({ mode, slot });
       if (presets.directory) {
         presets.directory = { ...presets.directory, startupMode: mode };
       }
+      return Result.ok();
     });
   } catch (e) {
-    recordActionError('Set startup mode', e);
+    return recordToResult('Set startup mode', e);
   }
 }
 
-export async function setPresetIncludePins(include: boolean): Promise<void> {
+export async function setPresetIncludePins(
+  include: boolean,
+): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = session.device;
-  if (!d) return;
+  if (!d) return noDevice();
   clearActionError();
   try {
-    await withBusy(async () => {
+    return await withBusy(async () => {
       await d.setPresetIncludePins(include);
       if (presets.directory) {
         presets.directory = { ...presets.directory, includePins: include };
       }
+      return Result.ok();
     });
   } catch (e) {
-    recordActionError('Set include pins', e);
+    return recordToResult('Set include pins', e);
   }
 }
 
