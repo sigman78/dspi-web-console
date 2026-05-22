@@ -14,12 +14,12 @@ import {
   resetStatus, status,
   clearCopySource,
 } from '@/state';
-import { Result, Log } from '@/utils';
+import { Result, Log, type VoidResult } from '@/utils';
 import { startPolling } from './poll';
 import { connectionScope, endConnection } from './connectionScope';
 import { cancelResync } from './resync';
 import { scrubCommand } from './commands';
-import { cancelAllCommands } from './outbox';
+import { cancelAllCommands, flushPending } from './outbox';
 import { commitBulk, commitBulkDebounced } from './commit';
 import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
@@ -180,8 +180,7 @@ export function setInputPreamp(channel: InputSlot, db: number): void {
 // cell. Each send reads the full {enabled, invert, gainDb} tuple from `live`
 // and writes it via setMatrixRoute, so a toggle and a gain drag on the same
 // cell coalesce into one consistent write. Per-item writes do not mute audio
-// (unlike the bulk path), which is why crosspoint gain stays Tier A. See
-// docs/IDEAS.md §6.1/§6.3 and §11.6 Finding 2.
+// (unlike the bulk path), which is why crosspoint gain stays Tier A.
 function scheduleCrosspointWrite(
   input: InputSlot,
   output: OutputSlot,
@@ -375,9 +374,25 @@ export async function setMasterVolumeMode(mode: MasterVolumeMode): Promise<void>
 // In Mode 0 this is the post-boot starting volume; in Mode 1 firmware
 // accepts the call but it's dormant until the user flips back to Mode 0.
 // Returns a Result so callers can show a success indicator.
-export async function saveMasterVolumeBaseline(): Promise<Result<void, string>> {
+export async function saveMasterVolumeBaseline(): Promise<VoidResult> {
   const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
   const success = await d.saveMasterVolume();
-  return success ? Result.ok(undefined) : Result.fail('write error', 'flash write error');
+  return success ? Result.ok() : Result.fail('write error', 'flash write error');
+}
+
+export async function factoryResetDevice(): Promise<VoidResult> {
+  const d = session.device;
+  if (!d) return Result.fail('no device', 'no device');
+  // Drain any parked optimistic write so a pre-reset bulk send can't settle
+  // mid-reset and re-push stale params (mirrors the preset load/paste flows).
+  await flushPending();
+  const r = await d.factoryReset();
+  // r.message is always present on the failure branch; map the typed flash
+  // code to the action wrapper's string channel.
+  if (!r.ok) return Result.fail('factory reset failed', r.message);
+  invalidatePresetCache();
+  clearCopySource();
+  await syncDeviceSnapshot();
+  return Result.ok();
 }

@@ -4,10 +4,22 @@ import type { BulkParams } from '@/protocol';
 
 // Device-state truth lives in three cells: `live` (our belief of device RAM),
 // `shadow` (the dirty-diff baseline), and `baselineBulk` (the wire packet
-// `toBulkParams` overlays onto). The public verbs each write a fixed subset —
+// `toBulkParams` overlays onto). The public verbs each write a fixed subset -
+// keep this matrix in sync when adding one:
+//
+//   verb                  | live | shadow | baselineBulk | rev reset
+//   ----------------------|------|--------|--------------|----------
+//   applyBulkBaseline     |  x   |   x    |      x       |    x
+//   applyBulkLive         |  x   |   —    |      —       |    —
+//   refreshShadowFromLive |  —   | x(live)|      —       |    —
+//   patchSnapshot         | x(ip)|   —    |      —       |    —
+//   resetDsp              | null |  kept  |     null     |    x
+//
+// There is no verb that sets a baseline without also refreshing baselineBulk:
+// that combination would leave the wire overlay base stale and is unsafe by
+// construction, so it is simply not expressible.
 export interface DspState {
-  // Our belief about device RAM. Mutates on every user write; reset to
-  // null on disconnect.
+  // Our belief about device RAM. Mutates on every user write; reset to null
   live: DspSnapshot | null;
 
   // The dirty-diff baseline: snapshot of what `live` looked like at the
@@ -26,13 +38,10 @@ export interface DspState {
   // The wire baseline: the BulkParams packet the device most recently
   // accepted. toBulkParams overlays `live` onto this when building a bulk
   // write, so fields the snapshot doesn't carry (pins, raw indices, names
-  // past totalChannelCount) survive. Null until first hydrate. See
-  // docs/IDEAS.md §5.3 / §10.1.
+  // past totalChannelCount) survive. Null until first recv
   baselineBulk: BulkParams | null;
 
   // Bulk-write coordination (consumed by src/runtime/commit.ts).
-  // All scalar, all O(1). failureCount is reserved for the §10.3 error-backoff
-  // circuit-breaker (not yet consumed).
   flush: {
     inflight: Promise<void> | null;
     currentRev: number;
@@ -78,7 +87,7 @@ export const isInFlight = {
 // of it (drops pins, raw indices, names past the channel count). These two
 // entry points are the ONLY way to push device state into the store, and both
 // derive the snapshot from `bulk` themselves — so `live`, `shadow`, and
-// `baselineBulk` can never be seeded from mismatched sources.
+// `baselineBulk` can never be seeded from mismatched sources
 
 // Private full-baseline write: live + shadow + wire baseline, with the
 // bulk-flush revision counters reset to "no unsent edits". `bulk` is mandatory
@@ -129,13 +138,13 @@ export function patchSnapshot(patch: Partial<DspSnapshot>): void {
   if (dsp.live) Object.assign(dsp.live, patch);
 }
 
-// Copy current live → shadow. Used after PresetSave(active): RAM didn't
+// Copy current live > shadow. Used after PresetSave(active): RAM didn't
 // change but the dirty-diff baseline must advance so the just-saved state
 // is no longer "dirty". No-op when live is null (disconnected).
 // $state.snapshot() is the correct primitive for cloning *out of* the
 // reactive system: it strips proxies and returns a plain-object deep copy
 // without a second traversal. Contrast with applyBaseline's structuredClone,
-// which clones *into* the reactive system from a plain input — the opposite
+// which clones *into* the reactive system from a plain input - the opposite
 // direction.
 export function refreshShadowFromLive(): void {
   if (!dsp.live) return;

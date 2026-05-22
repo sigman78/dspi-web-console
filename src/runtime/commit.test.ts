@@ -99,6 +99,29 @@ describe('commitBulk', () => {
     expect(dsp.flush.currentRev).toBe(0);
     expect(dsp.flush.lastSentRev).toBe(0);
   });
+
+  it('a detached stale send cannot clear a newer in-flight bulk send', async () => {
+    const resolvers: Array<() => void> = [];
+    bindBulkDevice(() => new Promise<void>((res) => { resolvers.push(res); }));
+
+    commitBulk((s) => { s.masterVolumeDb = -4; });
+    const stale = dsp.flush.inflight;
+    expect(stale).not.toBeNull();
+
+    cancelAllCommands();
+    commitBulk((s) => { s.masterVolumeDb = -8; });
+    const current = dsp.flush.inflight;
+    expect(current).not.toBeNull();
+    expect(current).not.toBe(stale);
+
+    resolvers[0]();
+    await stale;
+    expect(dsp.flush.inflight).toBe(current);
+
+    resolvers[1]();
+    await current;
+    expect(dsp.flush.inflight).toBeNull();
+  });
 });
 
 describe('commitBulkDebounced', () => {

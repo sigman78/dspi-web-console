@@ -53,7 +53,7 @@ export async function forceResyncNow(): Promise<void> {
 // Cancels any pending trailing resync so a delayed live-only fetch can't
 // fire later and partially overwrite shadow.
 //
-// See docs/ARCH-TRANSACT.md for the bug class this prevents.
+// See docs/ARCH.md for the baseline/live split this protects.
 export async function fetchAndApplyAsBaseline(): Promise<void> {
   scheduler.cancel();
   const d = session.device;

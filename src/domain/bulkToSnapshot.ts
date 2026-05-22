@@ -19,9 +19,8 @@ import type { CrossPoint, OutputModel, OutputState, RouteModel } from './mixer';
 // future firmware that adds a new type doesn't slip through as a typed
 // FilterType the rest of the code doesn't expect.
 //
-// TODO: revisit once we decide whether protocol/bulkParser.ts should
-// accept a `FilterParams` import (one more type-only domain dep, drops
-// WireFilter and this clamp). See docs/DOMAIN.md follow-up review M1.
+// TODO: revisit if protocol/bulkParser.ts grows a type-only FilterParams
+// dependency; that would drop WireFilter and this clamp.
 function narrowFilterType(t: number): FilterType {
   switch (t) {
     case FilterType.Flat:

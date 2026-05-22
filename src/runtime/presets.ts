@@ -37,7 +37,14 @@ async function withBusy<T>(fn: () => Promise<T>): Promise<T> {
 // Mutating-action error surfacing. Each mutating action calls
 // clearActionError() at the top so a successful retry erases the
 // previous error, and recordActionError() on a failure path or in
-// catch. The label is prepended so the user knows which operation failed
+// catch. The label is prepended so the user knows which operation failed.
+//
+// Contract split: Result-returning actions (load/save/paste/delete) report
+// failures through their typed Result. The void actions (rename, startup
+// default/mode, include-pins) are record-only — they surface failures solely
+// via presets.lastActionError (which the UI reads reactively) and do NOT
+// rethrow, since their callers await without a catch and a rethrow would only
+// leak an unhandled rejection.
 
 function recordActionError(label: string, e: unknown): void {
   const msg = (e as Error)?.message ?? String(e);
@@ -356,7 +363,6 @@ export async function renamePresetSlot(slot: PresetSlot, name: string): Promise<
     });
   } catch (e) {
     recordActionError('Rename', e);
-    throw e;
   }
 }
 
@@ -377,7 +383,6 @@ export async function setStartupDefault(slot: PresetSlot): Promise<void> {
     });
   } catch (e) {
     recordActionError('Set startup default', e);
-    throw e;
   }
 }
 
@@ -395,7 +400,22 @@ export async function setStartupMode(mode: PresetStartupMode): Promise<void> {
     });
   } catch (e) {
     recordActionError('Set startup mode', e);
-    throw e;
+  }
+}
+
+export async function setPresetIncludePins(include: boolean): Promise<void> {
+  const d = session.device;
+  if (!d) return;
+  clearActionError();
+  try {
+    await withBusy(async () => {
+      await d.setPresetIncludePins(include);
+      if (presets.directory) {
+        presets.directory = { ...presets.directory, includePins: include };
+      }
+    });
+  } catch (e) {
+    recordActionError('Set include pins', e);
   }
 }
 
