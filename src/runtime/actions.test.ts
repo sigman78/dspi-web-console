@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, toggleOutputMute, toggleCrosspoint, setCrosspointGain, toggleCrosspointInvert, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay } from './actions';
-import { session, bindDevice, settings, dsp, status as statusStore, presets } from '@/state';
+import { session, bindDevice, settings, dsp, status as statusStore, presets, applyBulkBaseline } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -17,7 +17,7 @@ import {
   LevellerSpeed,
 } from '@/domain';
 
-import { cancelAllCommands } from './outbox';
+import { cancelAllCommands, flushPending } from './outbox';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
@@ -447,8 +447,7 @@ describe('Tier B → commitBulk: toggles', () => {
       setAllParams: vi.fn(async (b) => { captured = b; }),
       getAllParams: vi.fn(async () => bulk),
     }));
-    const { applyDspSnapshot } = await import('@/state');
-    applyDspSnapshot(fromBulkParams(testHardware, bulk), bulk);
+    applyBulkBaseline(testHardware, bulk);
     session.status = 'connected';
   });
 
@@ -479,8 +478,7 @@ describe('Tier B → commitBulk: enums', () => {
       setAllParams: vi.fn(async (b) => { captured = b; }),
       getAllParams: vi.fn(async () => bulk),
     }));
-    const { applyDspSnapshot } = await import('@/state');
-    applyDspSnapshot(fromBulkParams(testHardware, bulk), bulk);
+    applyBulkBaseline(testHardware, bulk);
     session.status = 'connected';
   });
 
@@ -511,13 +509,11 @@ describe('Tier B → commitBulkDebounced: sliders', () => {
       setAllParams: vi.fn(async (b) => { captured = b; }),
       getAllParams: vi.fn(async () => bulk),
     }));
-    const { applyDspSnapshot } = await import('@/state');
-    applyDspSnapshot(fromBulkParams(testHardware, bulk), bulk);
+    applyBulkBaseline(testHardware, bulk);
     session.status = 'connected';
   });
 
   it('setLevellerAmount applies optimistically and flushes via flushPending', async () => {
-    const { flushPending } = await import('./outbox');
     setLevellerAmount(33);
     expect(dsp.live?.leveller?.amount).toBe(33);
     await flushPending();
@@ -535,8 +531,7 @@ describe('Tier B → commitBulk: eq/delay/names', () => {
       setAllParams: vi.fn(async (b) => { captured = b; }),
       getAllParams: vi.fn(async () => bulk),
     }));
-    const { applyDspSnapshot } = await import('@/state');
-    applyDspSnapshot(fromBulkParams(testHardware, bulk), bulk);
+    applyBulkBaseline(testHardware, bulk);
     session.status = 'connected';
   });
 
@@ -663,8 +658,7 @@ describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
       getAllParams: vi.fn(async () => bulk),
     });
     bindDevice(device);
-    const { applyDspSnapshot } = await import('@/state');
-    applyDspSnapshot(fromBulkParams(testHardware, bulk), bulk);
+    applyBulkBaseline(testHardware, bulk);
     session.status = 'connected';
 
     expect(dsp.pendingWrites.size).toBe(0);

@@ -16,6 +16,7 @@ import {
   setStartupMode,
   pastePresetTo,
 } from './presets';
+import { forceResyncNow, fetchAndApplyAsBaseline } from './resync';
 
 describe('runtime/presets', () => {
   beforeEach(async () => {
@@ -234,7 +235,6 @@ describe('runtime/presets', () => {
 
   describe('dirty baseline survives resync', () => {
     it('shadow is not overwritten when forceResyncNow refreshes live', async () => {
-      const { forceResyncNow } = await import('./resync');
       await fetchPresetInfo();
       // Sanity: bootMock+fullSync populated both live and shadow.
       expect(dsp.live).not.toBe(null);
@@ -256,7 +256,6 @@ describe('runtime/presets', () => {
 
   describe('baselineBulk threading', () => {
     it('fetchAndApplyAsBaseline populates dsp.baselineBulk', async () => {
-      const { fetchAndApplyAsBaseline } = await import('@/runtime/resync');
       await fetchAndApplyAsBaseline();
       expect(dsp.baselineBulk).not.toBeNull();
     });

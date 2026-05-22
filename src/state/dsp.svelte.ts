@@ -1,7 +1,10 @@
 import { SvelteSet } from 'svelte/reactivity';
-import type { DspSnapshot } from '@/domain';
+import { fromBulkParams, type DspSnapshot, type HardwareProfile } from '@/domain';
 import type { BulkParams } from '@/protocol';
 
+// Device-state truth lives in three cells: `live` (our belief of device RAM),
+// `shadow` (the dirty-diff baseline), and `baselineBulk` (the wire packet
+// `toBulkParams` overlays onto). The public verbs each write a fixed subset —
 export interface DspState {
   // Our belief about device RAM. Mutates on every user write; reset to
   // null on disconnect.
@@ -71,29 +74,39 @@ export const isInFlight = {
   },
 };
 
-// Full reset: both `live` and `shadow` reflect the incoming snapshot.
-// Used at baseline-refresh moments (syncDeviceSnapshot on connect, factory reset).
-// Preset Load/Save flows refresh `shadow` explicitly via
-// refreshShadowFromLive() after a quiet live-only resync.
-export function applyDspSnapshot(snapshot: DspSnapshot, bulk?: BulkParams): void {
+// The bulk packet is the canonical device state; the snapshot is a lossy view
+// of it (drops pins, raw indices, names past the channel count). These two
+// entry points are the ONLY way to push device state into the store, and both
+// derive the snapshot from `bulk` themselves — so `live`, `shadow`, and
+// `baselineBulk` can never be seeded from mismatched sources.
+
+// Private full-baseline write: live + shadow + wire baseline, with the
+// bulk-flush revision counters reset to "no unsent edits". `bulk` is mandatory
+// — a baseline that left `baselineBulk` stale would corrupt the next overlay
+// write, so that mode is not offered. Reached only via applyBulkBaseline.
+function applyBaseline(snapshot: DspSnapshot, bulk: BulkParams): void {
   dsp.live = snapshot;
   // Deep copy: patchSnapshot mutates dsp.live in place. A shared
   // reference would let optimistic patches leak into shadow.
   dsp.shadow = structuredClone(snapshot);
-  if (bulk !== undefined) {
-    dsp.baselineBulk = bulk;
-    // Fresh baseline => no unsent edits. (Hydrate semantics, §5.6.)
-    dsp.flush.currentRev = 0;
-    dsp.flush.lastSentRev = 0;
-  }
+  dsp.baselineBulk = bulk;
+  // Fresh baseline => no unsent edits. (Hydrate semantics, §5.6.)
+  dsp.flush.currentRev = 0;
+  dsp.flush.lastSentRev = 0;
 }
 
-// Live-only refresh: replaces `dsp.live` but leaves `dsp.shadow` pinned.
-// Used by the resync layer after a successful write so the dirty diff
-// keeps measuring against the last save/load baseline rather than
-// chasing the device's latest state.
-export function applyLiveSnapshot(snapshot: DspSnapshot): void {
-  dsp.live = snapshot;
+// Apply a freshly-fetched bulk packet as a new baseline (live + shadow +
+// wire baseline). Use on connect, factory reset, and preset transitions.
+export function applyBulkBaseline(hardware: HardwareProfile, bulk: BulkParams): void {
+  applyBaseline(fromBulkParams(hardware, bulk), bulk);
+}
+
+// Apply a bulk packet as a live-only refresh, leaving `shadow` (the dirty-diff
+// baseline) and `baselineBulk` (the wire overlay base) pinned. Use on the
+// trailing resync after a successful write, so the dirty diff keeps measuring
+// against the last save/load baseline rather than chasing device state.
+export function applyBulkLive(hardware: HardwareProfile, bulk: BulkParams): void {
+  dsp.live = fromBulkParams(hardware, bulk);
 }
 
 export function resetDsp(): void {
@@ -121,9 +134,9 @@ export function patchSnapshot(patch: Partial<DspSnapshot>): void {
 // is no longer "dirty". No-op when live is null (disconnected).
 // $state.snapshot() is the correct primitive for cloning *out of* the
 // reactive system: it strips proxies and returns a plain-object deep copy
-// without a second traversal. Contrast with applyDspSnapshot's
-// structuredClone, which clones *into* the reactive system from a plain
-// input — the opposite direction.
+// without a second traversal. Contrast with applyBaseline's structuredClone,
+// which clones *into* the reactive system from a plain input — the opposite
+// direction.
 export function refreshShadowFromLive(): void {
   if (!dsp.live) return;
   dsp.shadow = $state.snapshot(dsp.live) as unknown as DspSnapshot;

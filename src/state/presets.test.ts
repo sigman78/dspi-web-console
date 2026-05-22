@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { presets, presetsDirty, resetPresets, askBoundary, resolveBoundary } from './presets.svelte';
-import { applyDspSnapshot, dsp } from './dsp.svelte';
+import { dsp } from './dsp.svelte';
 import { settings } from './settings.svelte';
 import type { DspSnapshot } from '@/domain';
 
@@ -18,6 +18,14 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
     leveller: null, i2s: null,
     ...overrides,
   };
+}
+
+// Seed live + shadow directly from a hand-built snapshot. These tests exercise
+// presetsDirty (live vs shadow) with synthetic fixtures that have no backing
+// wire packet, so they bypass applyBulkBaseline and set the two cells directly.
+function seed(snap: DspSnapshot): void {
+  dsp.live = snap;
+  dsp.shadow = structuredClone(snap);
 }
 
 describe('presets store', () => {
@@ -41,26 +49,26 @@ describe('presets store', () => {
   });
 
   it('presetsDirty is false when live === shadow', () => {
-    applyDspSnapshot(mkSnap());
+    seed(mkSnap());
     expect(presetsDirty.current).toBe(false);
   });
 
   it('presetsDirty flips true when live deviates from shadow', () => {
-    applyDspSnapshot(mkSnap({ bypass: false }));
+    seed(mkSnap({ bypass: false }));
     expect(presetsDirty.current).toBe(false);
     if (dsp.live) dsp.live.bypass = true;
     expect(presetsDirty.current).toBe(true);
   });
 
   it('presetsDirty ignores masterVolumeDb in Mode 0 (no directory cached)', () => {
-    applyDspSnapshot(mkSnap({ masterVolumeDb: 0 }));
+    seed(mkSnap({ masterVolumeDb: 0 }));
     if (dsp.live) dsp.live.masterVolumeDb = -12;
     // directory is null → mode-0 default → volume excluded from diff
     expect(presetsDirty.current).toBe(false);
   });
 
   it('presetsDirty includes masterVolumeDb in Mode 1', () => {
-    applyDspSnapshot(mkSnap({ masterVolumeDb: 0 }));
+    seed(mkSnap({ masterVolumeDb: 0 }));
     presets.directory = {
       occupiedSlotsSet: new Set(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
@@ -72,7 +80,7 @@ describe('presets store', () => {
   });
 
   it('presetsDirty skips volume when softMuted', () => {
-    applyDspSnapshot(mkSnap({ masterVolumeDb: 0 }));
+    seed(mkSnap({ masterVolumeDb: 0 }));
     presets.directory = {
       occupiedSlotsSet: new Set(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
