@@ -272,12 +272,13 @@ export async function revertActivePreset(): Promise<Result<void, PresetResult> |
 }
 
 // PresetCopy doesn't exist on the wire; PASTE composes a whole-state swap
-// using the setAllParams bulk op so the active-slot pointer never changes:
+// using the device's bulk capture/restore so the active-slot pointer never
+// changes:
 //
 //   1. LoadPreset(src)     — RAM = src flash content; device pointer → src
-//   2. GetAllParams()      — capture src content as a BulkParams blob
+//   2. captureState()      — capture src content as an opaque device blob
 //   3. LoadPreset(active)  — restore RAM + device pointer to pre-paste slot
-//   4. SetAllParams(blob)  — push src content into active's RAM (no flash)
+//   4. restoreState(blob)  — push src content into active's RAM (no flash)
 //   5. SavePreset(active)  — flash[active] = RAM = src content
 //
 // End state: active slot holds source's content, RAM matches, active
@@ -302,7 +303,7 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
         return r1;
       }
       // Step 2: Capture src content as a blob.
-      const sourceBlob = await d.getAllParams();
+      const sourceBlob = await d.captureState();
       // Step 3: Restore active slot in RAM (device pointer → active).
       const r3 = await d.loadPreset(active);
       if (!r3.ok) {
@@ -310,7 +311,7 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
         return r3;
       }
       // Step 4: Push src content into active's RAM (no flash; pointer unchanged).
-      await d.setAllParams(sourceBlob);
+      await d.restoreState(sourceBlob);
       // Step 5: Flash active slot = RAM = src content.
       const r5 = await d.savePreset(active);
       if (!r5.ok) {

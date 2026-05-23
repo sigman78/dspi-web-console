@@ -28,7 +28,7 @@ import { connectionScope, endConnection } from './connectionScope';
 import { cancelResync } from './resync';
 import { scrubCommand } from './commands';
 import { cancelAllCommands, flushPending } from './outbox';
-import { commitBulk, commitBulkDebounced, applyBulkBaselineConverged } from './commit';
+import { commitBulk, commitBulkDebounced, applyBaselineConverged } from './commit';
 import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
@@ -285,8 +285,8 @@ export async function syncDeviceSnapshot(): Promise<void> {
   if (!d) throw new Error('No device');
   inflightSync = (async () => {
     try {
-      const bulk = await d.getAllParams();
-      applyBulkBaselineConverged(d.hardware, bulk);
+      const snap = await d.getSnapshot();
+      applyBaselineConverged(snap);
     } catch (err) {
       Log.error('sync', 'syncDeviceSnapshot failed', err);
       setStatus('error', (err as Error).message);

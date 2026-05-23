@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert } from './actions';
-import { session, bindDevice, settings, dsp, status as statusStore, presets, applyBulkBaseline } from '@/state';
+import { session, bindDevice, settings, dsp, status as statusStore, presets, applyBaselineSnapshot } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -15,7 +15,7 @@ import {
   CrossfeedPreset,
   LevellerSpeed,
 } from '@/domain';
-import { fromBulkParams } from '@/device/snapshotCodec';
+import { fromBulkParams, toBulkParams } from '@/device/snapshotCodec';
 
 import { cancelAllCommands, flushPending } from './outbox';
 import { awaitBulkSettled } from './commit';
@@ -23,8 +23,13 @@ import { beginConnection, connectionScope, endConnection } from './connectionSco
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 
+// Builds a DspDevice stub. The bulk lane now calls d.applyBulk(draft) and gates
+// on d.hasState, so the stub mirrors the real DspDevice: applyBulk overlays the
+// draft snapshot onto the last-fetched wire packet via toBulkParams and forwards
+// it to setAllParams (which tests spy on to capture the wire packet). hasState is
+// true once getAllParams has been seeded. Any of these can be overridden.
 function initializedDevice(methods: Partial<DspDevice>): DspDevice {
-  return {
+  const base: Partial<DspDevice> = {
     info: {
       serial: 'TEST-RP2350',
       firmwareVersion: '1.0.0',
@@ -32,8 +37,24 @@ function initializedDevice(methods: Partial<DspDevice>): DspDevice {
       hardware: testHardware,
     },
     hardware: testHardware,
-    ...methods,
-  } as DspDevice;
+    hasState: true,
+  };
+  const stub = { ...base, ...methods } as DspDevice & {
+    getAllParams?: () => Promise<import('@/protocol').BulkParams>;
+    setAllParams?: (b: import('@/protocol').BulkParams) => Promise<void>;
+  };
+  // Provide a faithful applyBulk only if the test didn't supply one. It overlays
+  // the draft onto the freshly-fetched wire base and forwards to setAllParams,
+  // exactly like DspDevice.applyBulk, so wire-packet assertions stay meaningful.
+  if (!('applyBulk' in methods)) {
+    (stub as { applyBulk?: (draft: import('@/domain').DspSnapshot) => Promise<void> }).applyBulk =
+      async (draft) => {
+        const baseBulk = await stub.getAllParams!();
+        const wire = toBulkParams(testHardware, draft, baseBulk);
+        await stub.setAllParams!(wire);
+      };
+  }
+  return stub;
 }
 
 class FakeTransport implements DspTransport {
@@ -406,8 +427,8 @@ describe('finishConnection — baseline hydrate', () => {
     await bootMock('rp2350');
   });
 
-  it('finishConnection populates wireBase', async () => {
-    expect(dsp.wireBase).not.toBeNull();
+  it('finishConnection retains a wire packet in the device (hasState)', async () => {
+    expect(session.device!.hasState).toBe(true);
   });
 });
 
@@ -449,7 +470,7 @@ describe('Tier B → commitBulk: toggles', () => {
       setAllParams: vi.fn(async (b) => { captured = b; }),
       getAllParams: vi.fn(async () => bulk),
     }));
-    applyBulkBaseline(testHardware, bulk);
+    applyBaselineSnapshot(fromBulkParams(testHardware, bulk));
     session.status = 'connected';
   });
 
@@ -480,7 +501,7 @@ describe('Tier B → commitBulk: enums', () => {
       setAllParams: vi.fn(async (b) => { captured = b; }),
       getAllParams: vi.fn(async () => bulk),
     }));
-    applyBulkBaseline(testHardware, bulk);
+    applyBaselineSnapshot(fromBulkParams(testHardware, bulk));
     session.status = 'connected';
   });
 
@@ -511,7 +532,7 @@ describe('Tier B → commitBulkDebounced: sliders', () => {
       setAllParams: vi.fn(async (b) => { captured = b; }),
       getAllParams: vi.fn(async () => bulk),
     }));
-    applyBulkBaseline(testHardware, bulk);
+    applyBaselineSnapshot(fromBulkParams(testHardware, bulk));
     session.status = 'connected';
   });
 
@@ -533,7 +554,7 @@ describe('Tier B → commitBulk: eq/delay/names', () => {
       setAllParams: vi.fn(async (b) => { captured = b; }),
       getAllParams: vi.fn(async () => bulk),
     }));
-    applyBulkBaseline(testHardware, bulk);
+    applyBaselineSnapshot(fromBulkParams(testHardware, bulk));
     session.status = 'connected';
   });
 
@@ -660,7 +681,7 @@ describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
       getAllParams: vi.fn(async () => bulk),
     });
     bindDevice(device);
-    applyBulkBaseline(testHardware, bulk);
+    applyBaselineSnapshot(fromBulkParams(testHardware, bulk));
     session.status = 'connected';
 
     expect(dsp.pendingWrites.size).toBe(0);
@@ -685,7 +706,7 @@ describe('boolean device flags are explicit setters', () => {
       setAllParams: vi.fn(async (b) => { captured = b; }),
       getAllParams: vi.fn(async () => bulk),
     }));
-    applyBulkBaseline(testHardware, bulk);
+    applyBaselineSnapshot(fromBulkParams(testHardware, bulk));
     session.status = 'connected';
   });
 

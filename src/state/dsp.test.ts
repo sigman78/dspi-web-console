@@ -1,14 +1,15 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { SvelteSet } from 'svelte/reactivity';
 import { parseBulkParams } from '@/protocol';
+import { fromBulkParams } from '@/device/snapshotCodec';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, createHardwareProfile } from '@/domain';
-import { dsp, applyBulkBaseline, patchSnapshot, resetDsp, refreshShadowFromLive, isInFlight } from './dsp.svelte';
+import { dsp, applyBaselineSnapshot, patchSnapshot, resetDsp, refreshShadowFromLive, isInFlight } from './dsp.svelte';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
 
 function seedBaseline(masterVolumeDb = -6): void {
-  applyBulkBaseline(hw, parseBulkParams(makeBulk({ masterVolumeDb })));
+  applyBaselineSnapshot(fromBulkParams(hw, parseBulkParams(makeBulk({ masterVolumeDb }))));
 }
 
 describe('dsp store: live / shadow lifecycle', () => {
@@ -18,7 +19,7 @@ describe('dsp store: live / shadow lifecycle', () => {
     dsp.pendingWrites = new SvelteSet();
   });
 
-  test('applyBulkBaseline populates shadow as a deep copy of live', () => {
+  test('applyBaselineSnapshot populates shadow as a deep copy of live', () => {
     seedBaseline(-6);
     expect(dsp.live).not.toBeNull();
     expect(dsp.shadow).not.toBeNull();
@@ -42,7 +43,7 @@ describe('dsp store: live / shadow lifecycle', () => {
     expect(dsp.shadow!.masterVolumeDb).toBe(shadowVolBefore);
   });
 
-  test('a second applyBulkBaseline replaces both live and shadow', () => {
+  test('a second applyBaselineSnapshot replaces both live and shadow', () => {
     seedBaseline(-6);
     seedBaseline(-12);
     expect(dsp.live!.masterVolumeDb).toBe(-12);

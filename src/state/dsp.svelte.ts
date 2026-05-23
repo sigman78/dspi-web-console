@@ -1,24 +1,19 @@
 import { SvelteSet } from 'svelte/reactivity';
-import { type DspSnapshot, type HardwareProfile } from '@/domain';
-import { fromBulkParams } from '@/device/snapshotCodec';
-import type { BulkParams } from '@/protocol';
+import { type DspSnapshot } from '@/domain';
 
-// Device-state truth lives in three cells: `live` (our belief of device RAM),
-// `shadow` (the dirty-diff baseline), and `wireBase` (the wire packet
-// `toBulkParams` overlays onto). The public verbs each write a fixed subset -
-// keep this matrix in sync when adding one:
+// Device-state truth lives in two cells: `live` (our belief of device RAM)
+// and `shadow` (the dirty-diff baseline). The wire packet now lives inside
+// the device (DspDevice retains it), so the store no longer mirrors it. The
+// public verbs each write a fixed subset - keep this matrix in sync when
+// adding one:
 //
-//   verb                  | live | shadow | wireBase
-//   ----------------------|------|--------|----------
-//   applyBulkBaseline     |  x   |   x    |    x
-//   applyBulkLive         |  x   |   —    |    x
-//   refreshShadowFromLive |  —   | x(live)|    —
-//   patchSnapshot         | x(ip)|   —    |    —
-//   resetDsp              | null |  kept  |   null
-//
-// There is no verb that sets a baseline without also refreshing wireBase:
-// that combination would leave the wire overlay base stale and is unsafe by
-// construction, so it is simply not expressible.
+//   verb                  | live | shadow
+//   ----------------------|------|--------
+//   applyBaselineSnapshot |  x   |   x
+//   applyLiveSnapshot     |  x   |   —
+//   refreshShadowFromLive |  —   | x(live)
+//   patchSnapshot         | x(ip)|   —
+//   resetDsp              | null |  kept
 //
 // Bulk-flush coordination (the rev counters and in-flight send tracking) now
 // lives in src/runtime/commit.ts — the state layer no longer owns it, since
@@ -39,27 +34,15 @@ export interface DspState {
   // Each in-flight command holds a Symbol token; isInFlight observes
   // the set's reactivity to drive the UI dirty indicator.
   pendingWrites: SvelteSet<symbol>;
-
-  // The wire baseline: the BulkParams packet the device most recently
-  // accepted. toBulkParams overlays `live` onto this when building a bulk
-  // write, so fields the snapshot doesn't carry (pins, raw indices, names
-  // past totalChannelCount) survive. Null until first recv
-  wireBase: BulkParams | null;
 }
 
-// Class-based state: allows mixing $state (deeply reactive, for objects we
-// mutate in-place like DspSnapshot) with $state.raw (shallow reactive, for
-// objects whose identity must be preserved across reads, like BulkParams).
-// The DspState interface is satisfied in full; callers are unchanged.
+// Class-based state: $state is deeply reactive, for objects we mutate
+// in-place like DspSnapshot. The DspState interface is satisfied in full;
+// callers are unchanged.
 class DspStateImpl implements DspState {
   live = $state<DspSnapshot | null>(null);
   shadow = $state<DspSnapshot | null>(null);
   pendingWrites = $state(new SvelteSet<symbol>());
-
-  // $state.raw: BulkParams is a large wire-format DTO. Deep proxying is
-  // wasteful and breaks reference identity (toBe / === checks). Shallow
-  // reactivity (tracking the reference itself) is all that's needed here.
-  wireBase = $state.raw<BulkParams | null>(null);
 }
 
 export const dsp: DspState = new DspStateImpl();
@@ -73,42 +56,24 @@ export const isInFlight = {
   },
 };
 
-// The bulk packet is the canonical device state; the snapshot is a lossy view
-// of it (drops pins, raw indices, names past the channel count). These two
-// entry points are the ONLY way to push device state into the store, and both
-// derive the snapshot from `bulk` themselves — so `live`, `shadow`, and
-// `wireBase` can never be seeded from mismatched sources
+// These two entry points are the ONLY way to push device state into the
+// store. The device owns the wire packet now (getSnapshot retains it), so the
+// store works purely in domain snapshots.
 
-// Private full-baseline write: live + shadow + wire baseline. `bulk` is
-// mandatory — a baseline that left `wireBase` stale would corrupt the next
-// overlay write, so that mode is not offered. Reached only via
-// applyBulkBaseline. The bulk-flush revision counters are converged separately
-// by the runtime helper `applyBulkBaselineConverged` (commit.ts), since that
-// coordination lives in the runtime layer this state module cannot import.
-function applyBaseline(snapshot: DspSnapshot, bulk: BulkParams): void {
+// Full baseline: live + shadow from one snapshot. Deep-copy into shadow so
+// patchSnapshot's in-place edits to live cannot leak into the dirty baseline.
+function applyBaseline(snapshot: DspSnapshot): void {
   dsp.live = snapshot;
-  // Deep copy: patchSnapshot mutates dsp.live in place. A shared
-  // reference would let optimistic patches leak into shadow.
   dsp.shadow = structuredClone(snapshot);
-  dsp.wireBase = bulk;
 }
-
-// Apply a freshly-fetched bulk packet as a new baseline (live + shadow +
-// wire baseline). Use on connect, factory reset, and preset transitions.
-export function applyBulkBaseline(hardware: HardwareProfile, bulk: BulkParams): void {
-  applyBaseline(fromBulkParams(hardware, bulk), bulk);
+// Apply a fresh snapshot as a new baseline (live + shadow). The device owns
+// the wire packet now (getSnapshot retains it), so no wire base is passed.
+export function applyBaselineSnapshot(snapshot: DspSnapshot): void {
+  applyBaseline(snapshot);
 }
-
-// Apply a bulk packet as a live-only refresh: advances `live` AND `wireBase`
-// to the freshly-fetched packet, leaving `shadow` (the dirty-diff baseline)
-// pinned. Use on the trailing resync after a successful write, so the dirty
-// diff keeps measuring against the last save/load baseline rather than chasing
-// device state. wireBase is refreshed here so that wire-only fields (pins,
-// channel names past totalChannelCount) from a device-side change are not
-// clobbered by the next bulk overlay built against a stale base.
-export function applyBulkLive(hardware: HardwareProfile, bulk: BulkParams): void {
-  dsp.live = fromBulkParams(hardware, bulk);
-  dsp.wireBase = bulk;
+// Live-only refresh: advance live, leave shadow (the dirty baseline) pinned.
+export function applyLiveSnapshot(snapshot: DspSnapshot): void {
+  dsp.live = snapshot;
 }
 
 export function resetDsp(): void {
@@ -116,7 +81,6 @@ export function resetDsp(): void {
   // dsp.shadow intentionally NOT reset -- last known good survives
   // until the next successful sync overwrites it.
   dsp.pendingWrites = new SvelteSet();
-  dsp.wireBase = null;
 }
 
 // Single mutation point for in-place snapshot edits. Both the mutation

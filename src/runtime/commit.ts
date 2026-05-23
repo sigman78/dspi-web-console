@@ -1,7 +1,5 @@
-import type { DspSnapshot, HardwareProfile } from '@/domain';
-import { toBulkParams } from '@/device/snapshotCodec';
-import type { BulkParams } from '@/protocol';
-import { dsp, session, setStatus, applyBulkBaseline } from '@/state';
+import type { DspSnapshot } from '@/domain';
+import { dsp, session, setStatus, applyBaselineSnapshot } from '@/state';
 import { forceResyncNow } from './resync';
 import { Log } from '@/utils';
 
@@ -21,8 +19,8 @@ const flush = {
 // state layer's applyBaseline, because the state layer cannot import the runtime
 // layer that owns these counters. Pairing both steps in one verb keeps call
 // sites from drifting. Use on connect, factory reset, and preset transitions.
-export function applyBulkBaselineConverged(hardware: HardwareProfile, bulk: BulkParams): void {
-  applyBulkBaseline(hardware, bulk);
+export function applyBaselineConverged(snapshot: DspSnapshot): void {
+  applyBaselineSnapshot(snapshot);
   flush.currentRev = 0;
   flush.lastSentRev = 0;
 }
@@ -54,26 +52,25 @@ export function commitBulk(mutator: (snap: DspSnapshot) => void): void {
 }
 
 function flushBulkIfIdle(): void {
-  if (flush.inflight || !dsp.live || !dsp.wireBase) return;
+  if (flush.inflight || !dsp.live) return;
   const d = session.device;
-  if (!d) return;
+  if (!d || !d.hasState) return;
   const sendingRev = flush.currentRev;
   const gen = session.generation;
-  const bulk = toBulkParams(d.hardware, dsp.live, dsp.wireBase);
+  const draft = dsp.live;
   // The in-flight promise is its own run identity. Only the send that still
   // owns flush.inflight tears down the lane: a send detached mid-flight by
   // cancelBulkFlush() — after which a fresh commitBulk() starts a new send —
   // must not, on its late settle, null the newer send's slot or fire a
   // spurious re-flush. The generation guard below protects the *data*
-  // (wireBase/lastSentRev); this identity check guards the *lane
+  // (lastSentRev); this identity check guards the *lane
   // bookkeeping* in finally, which is not generation-gated. See the
   // "detached stale send" test in commit.test.ts.
   let run: Promise<void> | null = null;
   run = (async () => {
     try {
-      await d.setAllParams(bulk);
+      await d.applyBulk(draft);
       if (gen !== session.generation) return;   // stale settle: silent no-op
-      dsp.wireBase = bulk;                        // device now holds this packet
       flush.lastSentRev = sendingRev;
     } catch (err) {
       if (gen !== session.generation) return;

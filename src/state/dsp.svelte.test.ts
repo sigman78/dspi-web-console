@@ -1,38 +1,41 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { parseBulkParams } from '@/protocol';
+import { fromBulkParams } from '@/device/snapshotCodec';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, createHardwareProfile } from '@/domain';
-import { dsp, applyBulkBaseline, applyBulkLive, resetDsp } from './dsp.svelte';
+import { dsp, applyBaselineSnapshot, applyLiveSnapshot, resetDsp } from './dsp.svelte';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
 
-describe('dsp state: wireBase', () => {
+function snap(opts?: Parameters<typeof makeBulk>[0]) {
+  return fromBulkParams(hw, parseBulkParams(makeBulk(opts)));
+}
+
+describe('dsp state: baseline', () => {
   beforeEach(() => {
     resetDsp();
     dsp.shadow = null;
-    dsp.wireBase = null;
   });
 
-  it('applyBulkBaseline populates live, shadow, and wireBase', () => {
-    const bulk = parseBulkParams(makeBulk());
-    applyBulkBaseline(hw, bulk);
+  it('applyBaselineSnapshot populates live and shadow', () => {
+    const s = snap();
+    applyBaselineSnapshot(s);
     expect(dsp.live).not.toBeNull();
     expect(dsp.shadow).not.toBeNull();
-    expect(dsp.wireBase).toBe(bulk);
+    // shadow is a deep copy, not the same reference
+    expect(dsp.shadow).toEqual(dsp.live);
+    expect(dsp.shadow).not.toBe(dsp.live);
   });
 });
 
-describe('applyBulkLive', () => {
-  it('refreshes live and wireBase but leaves shadow pinned', () => {
-    const base = parseBulkParams(makeBulk({ masterVolumeDb: -10 }));
-    applyBulkBaseline(hw, base);            // live = shadow = wireBase
+describe('applyLiveSnapshot', () => {
+  it('refreshes live but leaves shadow pinned', () => {
+    applyBaselineSnapshot(snap({ masterVolumeDb: -10 }));   // live = shadow
     const shadowBefore = dsp.shadow;
 
-    const next = parseBulkParams(makeBulk({ masterVolumeDb: -20 }));
-    applyBulkLive(hw, next);
+    applyLiveSnapshot(snap({ masterVolumeDb: -20 }));
 
     expect(dsp.live?.masterVolumeDb).toBe(-20);  // live advanced
-    expect(dsp.wireBase).toBe(next);             // wireBase advanced to the fetched packet
     expect(dsp.shadow).toBe(shadowBefore);       // shadow pinned (same reference)
     expect(dsp.shadow?.masterVolumeDb).toBe(-10);
   });

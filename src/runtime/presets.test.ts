@@ -284,10 +284,10 @@ describe('runtime/presets', () => {
     });
   });
 
-  describe('wireBase threading', () => {
-    it('fetchAndApplyAsBaseline populates dsp.wireBase', async () => {
+  describe('wire base threading', () => {
+    it('fetchAndApplyAsBaseline retains a wire packet in the device (hasState)', async () => {
       await fetchAndApplyAsBaseline();
-      expect(dsp.wireBase).not.toBeNull();
+      expect(session.device!.hasState).toBe(true);
     });
   });
 

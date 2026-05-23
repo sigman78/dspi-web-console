@@ -4,8 +4,9 @@ import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, createHardwareProfile } from '@/domain';
 import type { DspDevice } from '@/device/DspDevice';
-import { bindDevice, session, setStatus, dsp, applyBulkBaseline, isInFlight } from '@/state';
-import { commitBulk, commitBulkDebounced, cancelBulkFlush, awaitBulkSettled, applyBulkBaselineConverged } from './commit';
+import { fromBulkParams } from '@/device/snapshotCodec';
+import { bindDevice, session, setStatus, dsp, applyBaselineSnapshot, isInFlight } from '@/state';
+import { commitBulk, commitBulkDebounced, cancelBulkFlush, awaitBulkSettled, convergeBulk, applyBaselineConverged } from './commit';
 import { flushPending, cancelAllCommands } from './outbox';
 import { scrubCommand } from './commands';
 import { scheduleResync } from './resync';
@@ -20,16 +21,25 @@ async function waitUntil(cond: () => boolean, tries = 100): Promise<void> {
   }
 }
 
-function bindBulkDevice(setAll: (b: unknown) => Promise<void>): void {
+// `send` models the device-side bulk write: the lane now calls d.applyBulk(draft),
+// so the spy stands in for applyBulk. Tests pass a callback to count sends, defer
+// resolution, or throw. hasState is true (a snapshot has been fetched), which is
+// the connect-race guard the lane checks before sending. getSnapshot feeds the
+// trailing-resync path; it returns the seed snapshot.
+function bindBulkDevice(send: (b: unknown) => Promise<void>): void {
   const bulk = parseBulkParams(makeBulk());
+  const snap = fromBulkParams(hw, bulk);
   const d = {
     info: { serial: 'T', firmwareVersion: '6.0.0', platformType: PlatformType.RP2350, hardware: hw },
     hardware: hw,
-    setAllParams: vi.fn(setAll),
+    hasState: true,
+    applyBulk: vi.fn(send),
+    setAllParams: vi.fn(async () => {}),
     getAllParams: vi.fn(async () => bulk),
+    getSnapshot: vi.fn(async () => fromBulkParams(hw, bulk)),
   } as unknown as DspDevice;
   bindDevice(d);
-  applyBulkBaseline(hw, bulk);
+  applyBaselineSnapshot(snap);
   setStatus('connected');
 }
 
@@ -81,15 +91,22 @@ describe('commitBulk', () => {
     expect(sends).toBe(2);
   });
 
-  it('settle is silent when generation changed mid-flight', async () => {
+  it('settle is silent (does not advance lastSentRev) when generation changed mid-flight', async () => {
     let resolveSend!: () => void;
-    bindBulkDevice(() => new Promise<void>((res) => { resolveSend = res; }));
+    let sends = 0;
+    bindBulkDevice(() => { sends += 1; return new Promise<void>((res) => { resolveSend = res; }); });
     commitBulk((s) => { s.masterVolumeDb = -7; });
-    const wireBaseBefore = dsp.wireBase; // a successful settle would replace this with the sent packet
-    session.generation += 1;
+    expect(sends).toBe(1);
+    session.generation += 1;     // disconnect/cancel bumps the generation
     resolveSend();
     await awaitBulkSettled();
-    expect(dsp.wireBase).toBe(wireBaseBefore); // stale settle did not advance the wire baseline
+    // Stale settle is a silent no-op for the *data*: it must NOT advance
+    // lastSentRev. The edit therefore still reads as unsent — observable because
+    // a plain converge (which sends iff currentRev > lastSentRev) re-fires the
+    // send. A settle that wrongly advanced lastSentRev would suppress this.
+    convergeBulk();
+    await waitUntil(() => sends >= 2);
+    expect(sends).toBeGreaterThanOrEqual(2);
   });
 
   it('cancelAllCommands clears the bulk lane so it is idle and not wedged', () => {
@@ -264,7 +281,7 @@ describe('resync guard sees the bulk lane (Finding 1)', () => {
   });
 });
 
-describe('applyBulkBaselineConverged', () => {
+describe('applyBaselineConverged', () => {
   beforeEach(() => { dsp.pendingWrites = new SvelteSet(); cancelBulkFlush(); });
   afterEach(() => { bindDevice(null); setStatus('idle'); });
 
@@ -275,7 +292,7 @@ describe('applyBulkBaselineConverged', () => {
     commitBulkDebounced('levellerAmount', (s) => { if (s.leveller) s.leveller.amount = 7; });
     expect(sends).toBe(0);
     // Applying a fresh baseline must reset the lane to "no unsent edits".
-    applyBulkBaselineConverged(hw, parseBulkParams(makeBulk()));
+    applyBaselineConverged(fromBulkParams(hw, parseBulkParams(makeBulk())));
     // Drain: a correctly-converged lane fires NO send. A lane that kept the stale
     // pending revision would re-send the discarded pre-baseline edit here.
     await flushPending();

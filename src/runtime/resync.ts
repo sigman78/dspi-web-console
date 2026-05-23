@@ -1,7 +1,7 @@
-import { session, applyBulkLive, dsp } from '@/state';
+import { session, applyLiveSnapshot, dsp } from '@/state';
 import { Log } from '@/utils';
 import { makeResyncScheduler } from './schedulers';
-import { applyBulkBaselineConverged } from './commit';
+import { applyBaselineConverged } from './commit';
 
 const RESYNC_MS = 250;
 
@@ -12,13 +12,13 @@ async function fetchAndApply(force: boolean): Promise<void> {
   // bypasses for failure recovery.
   if (!force && dsp.pendingWrites.size > 0) return;
   try {
-    const bulk = await d.getAllParams();
+    const snap = await d.getSnapshot();
     if (!force && dsp.pendingWrites.size > 0) return;
     // Live-only: the preset-dirty diff measures against `dsp.shadow`,
     // which must NOT auto-update on every resync. Callers that need to
     // re-baseline shadow (Preset Load/Revert) call refreshShadowFromLive
     // after awaiting forceResyncNow().
-    applyBulkLive(d.hardware, bulk);
+    applyLiveSnapshot(snap);
   } catch (err) {
     Log.warn('resync', 'bulk re-fetch failed', err);
   }
@@ -43,7 +43,7 @@ export async function forceResyncNow(): Promise<void> {
 }
 
 // Fetch the device state and apply it as a fresh baseline — both `dsp.live`
-// and `dsp.shadow` update in one synchronous statement via applyBulkBaseline.
+// and `dsp.shadow` update in one synchronous statement via applyBaselineConverged.
 //
 // Use this for preset transitions (Load / Paste / Revert) where there is
 // no meaningful "dirty" state during the operation. The atomic apply
@@ -60,8 +60,8 @@ export async function fetchAndApplyAsBaseline(): Promise<void> {
   const d = session.device;
   if (!d) return;
   try {
-    const bulk = await d.getAllParams();
-    applyBulkBaselineConverged(d.hardware, bulk);
+    const snap = await d.getSnapshot();
+    applyBaselineConverged(snap);
   } catch (err) {
     Log.warn('resync', 'baseline re-fetch failed', err);
   }
