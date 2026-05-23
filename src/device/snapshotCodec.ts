@@ -1,18 +1,12 @@
 import { Wire, type BulkParams, type WireFilter } from '@/protocol';
 import {
-  outputModeForChannel,
-  type InputSlot,
-} from './channels';
-import {
-  displayNameForHardwareChannel,
-  wireChannelFor,
-  type HardwareProfile,
-} from './hardware';
-import { FilterType, type FilterParams } from './filter';
-import { PlatformType } from './platform';
-import { CrossfeedPreset, LevellerSpeed } from './processing';
-import type { DspSnapshot } from './snapshot';
-import type { CrossPoint, OutputModel, OutputState, RouteModel } from './mixer';
+  outputModeForChannel, type InputSlot,
+  displayNameForHardwareChannel, wireChannelFor, type HardwareProfile,
+  FilterType, type FilterParams,
+  PlatformType, CrossfeedPreset, LevellerSpeed,
+  type DspSnapshot,
+  type CrossPoint, type OutputModel, type OutputState, type RouteModel,
+} from '@/domain';
 
 // Wire-side filter.type is u8 (0..255 possible). The known FilterType
 // values are 0..5 (Flat..HighPass). Clamp anything else to Flat so a
