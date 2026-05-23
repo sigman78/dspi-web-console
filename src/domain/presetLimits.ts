@@ -15,12 +15,3 @@ export const PRESET_NAME_MAX_LEN = 31;   // bytes, UTF-8
 export const CHANNEL_NAME_MAX_LEN = 31;  // bytes, UTF-8
 
 export type PresetSlot = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
-
-// Runtime range guard for callers that hold a raw number (e.g., UI
-// passing a clicked slot index). Not used by the HW API — DspDevice
-// trusts the type contract. Call this one layer up before forwarding.
-export function assertPresetSlot(n: number): asserts n is PresetSlot {
-  if (!Number.isInteger(n) || n < 0 || n >= PRESET_SLOT_COUNT) {
-    throw new RangeError(`Invalid preset slot ${n}: must be integer 0..${PRESET_SLOT_COUNT - 1}`);
-  }
-}

@@ -1,31 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-  defaultPrecisionFor,
-  defaultUnitFor,
   formatValue,
   parseAndClamp,
   stepDecimals,
 } from './valueFieldFormat';
-
-describe('valueFieldFormat — kind defaults', () => {
-  it('exposes per-kind precision and unit defaults', () => {
-    expect(defaultPrecisionFor('dB')).toBe(2);
-    expect(defaultPrecisionFor('dB-signed')).toBe(2);
-    expect(defaultPrecisionFor('ms')).toBe(1);
-    expect(defaultPrecisionFor('hz')).toBe(0);
-    expect(defaultPrecisionFor('q')).toBe(2);
-    expect(defaultPrecisionFor('pct')).toBe(0);
-    expect(defaultPrecisionFor('int')).toBe(0);
-
-    expect(defaultUnitFor('dB')).toBe('dB');
-    expect(defaultUnitFor('dB-signed')).toBe('dB');
-    expect(defaultUnitFor('ms')).toBe('ms');
-    expect(defaultUnitFor('hz')).toBe('Hz');
-    expect(defaultUnitFor('q')).toBe('');
-    expect(defaultUnitFor('pct')).toBe('%');
-    expect(defaultUnitFor('int')).toBe('');
-  });
-});
 
 describe('valueFieldFormat — format', () => {
   it('formats plain dB at precision', () => {
