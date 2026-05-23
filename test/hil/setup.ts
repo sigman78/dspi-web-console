@@ -10,7 +10,7 @@
 // invoked via `npm run test:hil` against a connected DSPi.
 
 import { findByIds, usb } from 'usb';
-import { DspDevice } from '@/device/DspDevice';
+import { DspDeviceGranular } from '@/device/DspDeviceGranular';
 import { NodeUsbTransport } from '@/transport/NodeUsbTransport';
 import { DSPI_VENDOR_ID, DSPI_PRODUCT_ID } from '@/transport/WebUsbTransport';
 import type { BulkParams } from '@/protocol';
@@ -19,12 +19,12 @@ import type { BulkParams } from '@/protocol';
 // than one device is present -- HIL is a single-device protocol; tests
 // should run on a clean bench, not against an indeterminate pool.
 //
-// Returns the constructed DspDevice plus a close() callback that
+// Returns the constructed DspDeviceGranular plus a close() callback that
 // releases the USB interface and clears the libusb handle. Callers
 // invoke close() from afterAll so the next test file can reclaim
 // the device.
 export async function openSingleDevice(): Promise<{
-  device: DspDevice;
+  device: DspDeviceGranular;
   close: () => Promise<void>;
 }> {
   const usbDevice = findByIds(DSPI_VENDOR_ID, DSPI_PRODUCT_ID);
@@ -46,7 +46,7 @@ export async function openSingleDevice(): Promise<{
   }
 
   const transport = new NodeUsbTransport(usbDevice);
-  const device = await DspDevice.create(transport);
+  const device = await DspDeviceGranular.create(transport);
 
   return {
     device,

@@ -1,4 +1,5 @@
 import { DspDevice } from '@/device/DspDevice';
+import { DspDeviceGranular } from '@/device/DspDeviceGranular';
 import type { DspTransport } from '@/transport/DspTransport';
 import { MockTransport } from '@/transport/MockTransport';
 import {
@@ -36,7 +37,7 @@ async function createBoundDevice(
   const wrapped = withTimeout(transport, { ctrlMs: CTRL_TIMEOUT_MS });
   const scope = beginConnection();                   // fresh scope (disposes any prior)
   try {
-    const device = await DspDevice.create(wrapped, openTransport);
+    const device = await DspDeviceGranular.create(wrapped, openTransport);
     bindDevice(device);
     scope.add(attachTransportListeners(transport));
     return device;

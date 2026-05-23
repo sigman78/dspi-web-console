@@ -4,6 +4,7 @@ import { session, bindDevice, settings, dsp, status as statusStore, presets, app
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
+import type { DspDeviceGranular } from '@/device/DspDeviceGranular';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import {
@@ -27,7 +28,7 @@ const testHardware = createHardwareProfile(PlatformType.RP2350);
 // draft snapshot onto the last-fetched wire packet via toBulkParams and forwards
 // it to setAllParams (which tests spy on to capture the wire packet). hasState is
 // true once getAllParams has been seeded. Any of these can be overridden.
-function initializedDevice(methods: Partial<DspDevice>): DspDevice {
+function initializedDevice(methods: Partial<DspDevice> | Partial<DspDeviceGranular>): DspDevice {
   const base: Partial<DspDevice> = {
     info: {
       serial: 'TEST-RP2350',
@@ -95,7 +96,7 @@ function makeFakeChannelNameDevice() {
   const device = initializedDevice({
     setChannelName: vi.fn(async (id: number, name: string) => { calls.push({ id, name }); }),
     getAllParams: vi.fn(async () => validBulk),
-  });
+  } as Partial<DspDeviceGranular>);
   return { device, calls };
 }
 

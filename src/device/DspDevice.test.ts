@@ -6,7 +6,7 @@
 
 import { describe, it, test, expect, beforeEach, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
-import { DspDevice } from './DspDevice';
+import { DspDeviceGranular } from './DspDeviceGranular';
 import { PresetResult, WireCmd, SystemStatusValue } from '@/protocol';
 import {
   PlatformType,
@@ -49,13 +49,13 @@ function withIdentity(base: DspTransport, platform: TestPlatform = 'rp2350'): Ds
   };
 }
 
-async function createDevice(base: DspTransport, platform: TestPlatform = 'rp2350'): Promise<DspDevice> {
+async function createDevice(base: DspTransport, platform: TestPlatform = 'rp2350'): Promise<DspDeviceGranular> {
   const openTransport = base.isOpen() ? async () => {} : () => base.open();
-  return DspDevice.create(withIdentity(base, platform), openTransport);
+  return DspDeviceGranular.create(withIdentity(base, platform), openTransport);
 }
 
 describe('DspDevice facade', () => {
-  let d: DspDevice;
+  let d: DspDeviceGranular;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
     d = await createDevice(t);
@@ -387,7 +387,7 @@ describe('DspDevice — saveMasterVolume action-IN', () => {
 });
 
 describe('DspDevice — persistence (legacy save/load/reset)', () => {
-  let d: DspDevice;
+  let d: DspDeviceGranular;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
     d = await createDevice(t);
@@ -426,7 +426,7 @@ describe('DspDevice — telemetry actions', () => {
   }
 
   let mockT: MockTransport;
-  let d: DspDevice;
+  let d: DspDeviceGranular;
   beforeEach(async () => {
     mockT = new MockTransport({ platform: 'rp2350' });
     d = await createDevice(mockT);
@@ -447,7 +447,7 @@ describe('DspDevice — telemetry actions', () => {
 });
 
 describe('DspDevice — channel names', () => {
-  let d: DspDevice;
+  let d: DspDeviceGranular;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
     d = await createDevice(t);
@@ -473,7 +473,7 @@ describe('DspDevice — channel names', () => {
 });
 
 describe('DspDevice — preset directory and active slot', () => {
-  let d: DspDevice;
+  let d: DspDeviceGranular;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
     d = await createDevice(t);
@@ -524,7 +524,7 @@ describe('DspDevice — preset directory and active slot', () => {
 });
 
 describe('DspDevice — preset names', () => {
-  let d: DspDevice;
+  let d: DspDeviceGranular;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
     d = await createDevice(t);
@@ -543,7 +543,7 @@ describe('DspDevice — preset names', () => {
 });
 
 describe('DspDevice — preset save/load/delete', () => {
-  let d: DspDevice;
+  let d: DspDeviceGranular;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
     d = await createDevice(t);
@@ -619,7 +619,7 @@ describe('DspDevice — preset save/load/delete', () => {
 });
 
 describe('DspDevice — preset startup + include-pins', () => {
-  let d: DspDevice;
+  let d: DspDeviceGranular;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
     d = await createDevice(t);
@@ -653,7 +653,7 @@ describe('DspDevice — preset startup + include-pins', () => {
 
 describe('DspDevice — clearAllPresets', () => {
   let t: MockTransport;
-  let d: DspDevice;
+  let d: DspDeviceGranular;
   beforeEach(async () => {
     t = new MockTransport({ platform: 'rp2350' });
     d = await createDevice(t);
@@ -708,7 +708,7 @@ describe('DspDevice — clearAllPresets', () => {
 });
 
 describe('DspDevice — preset name truncation', () => {
-  let d: DspDevice;
+  let d: DspDeviceGranular;
   beforeEach(async () => {
     const t = new MockTransport({ platform: 'rp2350' });
     d = await createDevice(t);
@@ -837,7 +837,7 @@ describe('setAllParams', () => {
   it('issues one ctrlOut with code=0xA1, wValue=0, byteLength=2896', async () => {
     const transport = new MockTransport({ platform: 'rp2350' });
     const ctrlOutSpy = vi.spyOn(transport, 'ctrlOut');
-    const dev = await DspDevice.create(transport);
+    const dev = await DspDeviceGranular.create(transport);
 
     const bulk = await dev.getAllParams();
     await dev.setAllParams(bulk);
@@ -851,7 +851,7 @@ describe('setAllParams', () => {
 
   it('mock direct getters reflect values written through setAllParams', async () => {
     const transport = new MockTransport({ platform: 'rp2350' });
-    const dev = await DspDevice.create(transport);
+    const dev = await DspDeviceGranular.create(transport);
     const bulk = await dev.getAllParams();
 
     bulk.masterVolumeDb = -18;
