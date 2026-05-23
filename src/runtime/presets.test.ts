@@ -100,7 +100,7 @@ describe('runtime/presets', () => {
       expect(presets.active).toBe(0);
     });
 
-    it('issues loadPreset on the wire and re-baselines shadow from a fresh getAllParams', async () => {
+    it('issues loadPreset on the wire and re-baselines saved from a fresh getAllParams', async () => {
       settings.warnOnPresetSwitchDirty = false; // not under test here
       await fetchPresetInfo();
       await saveActivePreset();
@@ -120,16 +120,16 @@ describe('runtime/presets', () => {
         return origGetAll();
       };
       try {
-        // Make live diverge from shadow so the post-load re-baseline is
-        // observable: after success, shadow must match the freshly fetched
-        // device state (i.e. live === shadow per field).
+        // Make draft diverge from saved so the post-load re-baseline is
+        // observable: after success, saved must match the freshly fetched
+        // device state (i.e. draft === saved per field).
         if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
         const r = await loadPresetSlot(0 as any);
         expect(r.ok).toBe(true);
         expect(loadCalls).toBe(1);
         // fetchAndApplyAsBaseline runs exactly one getAllParams after loadPreset.
         expect(getAllAfterLoad).toBe(1);
-        // Shadow re-baselined to device truth (live and shadow agree on bypass).
+        // Saved re-baselined to device truth (draft and saved agree on bypass).
         expect(dsp.saved?.bypass).toBe(dsp.draft?.bypass);
       } finally {
         (d as any).loadPreset = origLoad;
@@ -264,23 +264,23 @@ describe('runtime/presets', () => {
   });
 
   describe('dirty baseline survives resync', () => {
-    it('shadow is not overwritten when forceResyncNow refreshes live', async () => {
+    it('saved is not overwritten when forceResyncNow refreshes draft', async () => {
       await fetchPresetInfo();
-      // Sanity: bootMock+fullSync populated both live and shadow.
+      // Sanity: bootMock+fullSync populated both draft and saved.
       expect(dsp.draft).not.toBe(null);
       expect(dsp.saved).not.toBe(null);
-      const shadowLoudnessBefore = dsp.saved!.loudness.enabled;
+      const savedLoudnessBefore = dsp.saved!.loudness.enabled;
       // Drive a wire write on a field that lives in the bulk payload.
       // SetLoudnessEnabled mutates #mockState which is what
       // synthesizeBulkParams reads from, so the next resync's bulk packet
       // will reflect the change.
       const d = session.device!;
-      await d.setLoudnessEnabled(!shadowLoudnessBefore);
+      await d.setLoudnessEnabled(!savedLoudnessBefore);
       // Resync refreshes dsp.draft ONLY; dsp.saved stays pinned at the
       // last baseline (the fullSync snapshot).
       await forceResyncNow();
-      expect(dsp.draft!.loudness.enabled).toBe(!shadowLoudnessBefore);
-      expect(dsp.saved!.loudness.enabled).toBe(shadowLoudnessBefore);
+      expect(dsp.draft!.loudness.enabled).toBe(!savedLoudnessBefore);
+      expect(dsp.saved!.loudness.enabled).toBe(savedLoudnessBefore);
     });
   });
 

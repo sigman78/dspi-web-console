@@ -47,14 +47,14 @@ export async function forceResyncNow(): Promise<void> {
 //
 // Use this for preset transitions (Load / Paste / Revert) where there is
 // no meaningful "dirty" state during the operation. The atomic apply
-// eliminates the microtask window where live and shadow would otherwise
+// eliminates the microtask window where draft and saved would otherwise
 // disagree, so observers watching `presetsDirty.current` (e.g. the
 // copy-source auto-clear $effect in PresetsTab) don't see a spurious flip.
 //
-// Cancels any pending trailing resync so a delayed live-only fetch can't
-// fire later and partially overwrite shadow.
+// Cancels any pending trailing resync so a delayed draft-only fetch can't
+// fire later and partially overwrite saved.
 //
-// See docs/ARCH.md for the baseline/live split this protects.
+// See docs/ARCH.md for the baseline/draft split this protects.
 export async function fetchAndApplyAsBaseline(): Promise<void> {
   scheduler.cancel();
   const d = session.device;

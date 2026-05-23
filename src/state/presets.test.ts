@@ -44,16 +44,16 @@ describe('presets store', () => {
     expect(presets.names).toEqual(Array(10).fill(null));
   });
 
-  it('presetsDirty is false when shadow is null', () => {
+  it('presetsDirty is false when saved is null', () => {
     expect(presetsDirty.current).toBe(false);
   });
 
-  it('presetsDirty is false when live === shadow', () => {
+  it('presetsDirty is false when draft === saved', () => {
     seed(mkSnap());
     expect(presetsDirty.current).toBe(false);
   });
 
-  it('presetsDirty flips true when live deviates from shadow', () => {
+  it('presetsDirty flips true when draft deviates from saved', () => {
     seed(mkSnap({ bypass: false }));
     expect(presetsDirty.current).toBe(false);
     if (dsp.draft) dsp.draft.bypass = true;

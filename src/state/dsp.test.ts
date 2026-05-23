@@ -27,18 +27,18 @@ describe('dsp store: draft / saved lifecycle', () => {
 
   test('resetDsp clears draft but preserves saved', () => {
     seedBaseline(-6);
-    const shadowBefore = dsp.saved;
+    const savedBefore = dsp.saved;
     resetDsp();
     expect(dsp.draft).toBeNull();
-    expect(dsp.saved).toBe(shadowBefore);
+    expect(dsp.saved).toBe(savedBefore);
   });
 
   test('patchSnapshot mutates draft but does not affect saved', () => {
     seedBaseline(-6);
-    const shadowVolBefore = dsp.saved!.masterVolumeDb;
+    const savedVolBefore = dsp.saved!.masterVolumeDb;
     patchSnapshot({ masterVolumeDb: -42 });
     expect(dsp.draft!.masterVolumeDb).toBe(-42);
-    expect(dsp.saved!.masterVolumeDb).toBe(shadowVolBefore);
+    expect(dsp.saved!.masterVolumeDb).toBe(savedVolBefore);
   });
 
   test('a second applyBaselineSnapshot replaces both draft and saved', () => {
