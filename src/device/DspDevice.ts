@@ -113,7 +113,9 @@ export class DspDevice {
     this.#wireBase = bulk;
   }
 
-  // Opaque capture/restore for the preset-paste device-to-device copy.
+  // Opaque capture for the device-to-device paste copy. Always performs a fresh
+  // wire fetch — the result may differ from the last getSnapshot/applyBulk if the
+  // device state changed concurrently. Deliberately does NOT update #wireBase.
   async captureState(): Promise<DeviceState> {
     return (await this.getAllParams()) as DeviceState;
   }

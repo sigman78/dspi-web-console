@@ -73,13 +73,25 @@ describe('DspDevice snapshot API', () => {
   });
 
   it('captureState + restoreState copy device state opaquely', async () => {
-    await d.getSnapshot();
+    const before = await d.getSnapshot();
+    const savedVolume = before.masterVolumeDb;
     const blob = await d.captureState();
     const snap = await d.getSnapshot();
-    snap.masterVolumeDb = -30;
+    snap.masterVolumeDb = savedVolume - 5;
     await d.applyBulk(snap);
     await d.restoreState(blob);
     const restored = await d.getSnapshot();
-    expect(restored.masterVolumeDb).toBe(blob.masterVolumeDb);
+    expect(restored.masterVolumeDb).toBe(savedVolume);
+  });
+
+  it('applyBulk works after restoreState (paste-then-edit interleave)', async () => {
+    await d.getSnapshot();
+    const blob = await d.captureState();
+    await d.restoreState(blob);
+    const snap = await d.getSnapshot();
+    snap.masterVolumeDb = -7;
+    await d.applyBulk(snap);
+    const after = await d.getSnapshot();
+    expect(after.masterVolumeDb).toBe(-7);
   });
 });

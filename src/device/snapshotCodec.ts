@@ -1,9 +1,4 @@
 import { Wire, type BulkParams, type WireFilter } from '@/protocol';
-
-// Opaque handle for the preset-paste device-to-device copy. Runtime holds it
-// between captureState/restoreState but must never inspect it. Internally a
-// BulkParams packet; the brand keeps wire shape out of runtime types.
-export type DeviceState = BulkParams & { readonly __brand: 'DeviceState' };
 import {
   outputModeForChannel, type InputSlot,
   displayNameForHardwareChannel, wireChannelFor, type HardwareProfile,
@@ -12,6 +7,11 @@ import {
   type DspSnapshot,
   type CrossPoint, type OutputModel, type OutputState, type RouteModel,
 } from '@/domain';
+
+// Opaque handle for the preset-paste device-to-device copy. Runtime holds it
+// between captureState/restoreState but must never inspect it. Internally a
+// BulkParams packet; the brand keeps wire shape out of runtime types.
+export type DeviceState = BulkParams & { readonly __brand: 'DeviceState' };
 
 // Wire-side filter.type is u8 (0..255 possible). The known FilterType
 // values are 0..5 (Flat..HighPass). Clamp anything else to Flat so a
@@ -220,7 +220,7 @@ export function toBulkParams(
   }
 
   return {
-    formatVersion: 6,
+    formatVersion: 6, // TODO(ADR-003): source from device firmware version, not hardcoded
     platformId:    snapshot.platform.type,
     numCh:         hardware.totalChannelCount,
     numOut:        hardware.outputCount,
