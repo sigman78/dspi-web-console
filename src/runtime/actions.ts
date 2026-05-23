@@ -1,7 +1,7 @@
 import {
   type FilterParams,
   type ChannelId, type InputSlot, type OutputSlot,
-  type RouteModel,
+  type RouteModel, type OutputModel, type DspSnapshot,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   CHANNEL_NAME_MAX_LEN,
 } from '@/domain';
@@ -22,7 +22,7 @@ import { connectionScope, endConnection } from './connectionScope';
 import { cancelResync } from './resync';
 import {
   enqueue, applyBaselineConverged,
-  flush as flushPending, cancel as cancelAllCommands,
+  flush as flushWrites, cancel as cancelWrites,
 } from './outbox';
 import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
@@ -59,7 +59,7 @@ export function setEqFilter(channel: ChannelId, band: number, filter: FilterPara
 }
 
 // Copy all bands from source channel onto target channel as a single
-// bulk write. Under the bulk strategy, EQ edits have no per-band scrub
+// bulk write. Under the bulk strategy, EQ edits have no per-band granular
 // lanes, so no per-lane cancellation is needed.
 export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
   if (sourceId === targetId || !dsp.draft?.channels) return;
@@ -85,7 +85,7 @@ export function setBypass(enabled: boolean): void {
 
 // Telemetry-only action: clears firmware-side latched clip flags (0x83) and
 // resets the host-side OR-latch (`status.clipLatched`). Not routed through
-// the commit/scrub write path because clip state lives in telemetry, not the
+// the outbox write path because clip state lives in telemetry, not the
 // DSP snapshot, so the post-send bulk resync would be pure overhead. If the
 // wire send fails, the host array stays cleared — the next poll cycle
 // will re-latch from `clipFlags` if firmware still sees the condition.
@@ -202,11 +202,11 @@ export function setInputPreamp(channel: InputSlot, db: number): void {
   });
 }
 
-// All three crosspoint mutations share one per-item scrub lane keyed by the
-// cell. Each send reads the full {enabled, invert, gainDb} tuple from `live`
+// All three crosspoint mutations share one per-item granular lane keyed by the
+// cell. Each send reads the full {enabled, invert, gainDb} tuple from `draft`
 // and writes it via setMatrixRoute, so a toggle and a gain drag on the same
 // cell coalesce into one consistent write. Per-item writes do not mute audio
-// (unlike the bulk path), which is why crosspoint gain stays Tier A.
+// (unlike the bulk path), which is why crosspoint gain stays granular.
 function scheduleCrosspointWrite(
   input: InputSlot,
   output: OutputSlot,
@@ -254,29 +254,30 @@ export function setOutputGain(slot: OutputSlot, gainDb: number): void {
   });
 }
 
+// Bulk-path output addressing: locate the output by wire slot in the draft
+// being mutated. A missing slot is a silent no-op, matching the other bulk
+// verbs (the granular setOutputGain path uses focusOutput, which throws).
+function mutateOutputSlot(slot: OutputSlot, f: (o: OutputModel) => void): (s: DspSnapshot) => void {
+  return (s) => {
+    const o = s.outputs.find((o) => o.wireIndex === slot);
+    if (o) f(o);
+  };
+}
+
 export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
   if (!dsp.draft?.outputs) return;
   delayMs = Clamp.outputDelayMs(delayMs);
-  enqueue({ control: 'outputDelay', mutate: (s) => {
-    const o = s.outputs.find((o) => o.wireIndex === slot);
-    if (o) o.delayMs = delayMs;
-  } });
+  enqueue({ control: 'outputDelay', mutate: mutateOutputSlot(slot, (o) => { o.delayMs = delayMs; }) });
 }
 
 export function setOutputEnabled(slot: OutputSlot, enabled: boolean): void {
   if (!dsp.draft?.outputs) return;
-  enqueue({ control: 'outputEnabled', mutate: (s) => {
-    const o = s.outputs.find((o) => o.wireIndex === slot);
-    if (o) o.enabled = enabled;
-  } });
+  enqueue({ control: 'outputEnabled', mutate: mutateOutputSlot(slot, (o) => { o.enabled = enabled; }) });
 }
 
 export function setOutputMuted(slot: OutputSlot, muted: boolean): void {
   if (!dsp.draft?.outputs) return;
-  enqueue({ control: 'outputMuted', mutate: (s) => {
-    const o = s.outputs.find((o) => o.wireIndex === slot);
-    if (o) o.muted = muted;
-  } });
+  enqueue({ control: 'outputMuted', mutate: mutateOutputSlot(slot, (o) => { o.muted = muted; }) });
 }
 
 export async function syncDeviceSnapshot(): Promise<void> {
@@ -314,7 +315,7 @@ export async function finishConnection(device: DspDevice): Promise<void> {
     if (s) {
       s.add(startPolling());
       s.add(cancelResync);
-      s.add(() => cancelAllCommands());
+      s.add(() => cancelWrites());
     }
     await fetchPresetInfo();
     Log.info('sync', 'connected', {
@@ -420,7 +421,7 @@ export async function factoryResetDevice(): Promise<VoidResult> {
   if (!d) return Result.fail('no device', 'no device');
   // Drain any parked optimistic write so a pre-reset bulk send can't settle
   // mid-reset and re-push stale params (mirrors the preset load/paste flows).
-  await flushPending();
+  await flushWrites();
   const r = await d.factoryReset();
   // r.message is always present on the failure branch; map the typed flash
   // code to the action wrapper's string channel.

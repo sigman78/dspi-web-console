@@ -8,6 +8,7 @@
 
 import * as Eq from './eqLimits';
 import * as Mix from './mixerLimits';
+import * as Proc from './processingLimits';
 import { utf8Truncate } from '@/utils';
 
 // Consumed as a namespace (`import * as Clamp from '@/domain/clamp'`), matching
@@ -38,13 +39,13 @@ export const outputDelayMs = (ms: number) => toRange(ms, Mix.OUTPUT_DELAY_MIN_MS
 export const crosspointGainDb = (db: number) => toRange(db, Mix.CROSSPOINT_GAIN_MIN_DB, Mix.CROSSPOINT_GAIN_MAX_DB);
 
 // Processing module ranges. See the header note on re-sourcing from the adapter.
-export const loudnessRefSpl = (db: number) => toRange(db, 40, 100);
-export const loudnessIntensityPct = (p: number) => toRange(p, 0, 200);
-export const crossfeedFreqHz = (hz: number) => toRange(hz, 500, 2000);
-export const crossfeedFeedDb = (db: number) => toRange(db, 0, 15);
-export const levellerAmountPct = (p: number) => toRange(p, 0, 100);
-export const levellerMaxGainDb = (db: number) => toRange(db, 0, 35);
-export const levellerGateDb = (db: number) => toRange(db, -96, 0);
+export const loudnessRefSpl = (db: number) => toRange(db, Proc.LOUDNESS_REF_SPL_MIN_DB, Proc.LOUDNESS_REF_SPL_MAX_DB);
+export const loudnessIntensityPct = (p: number) => toRange(p, Proc.LOUDNESS_INTENSITY_MIN_PCT, Proc.LOUDNESS_INTENSITY_MAX_PCT);
+export const crossfeedFreqHz = (hz: number) => toRange(hz, Proc.CROSSFEED_FREQ_MIN_HZ, Proc.CROSSFEED_FREQ_MAX_HZ);
+export const crossfeedFeedDb = (db: number) => toRange(db, Proc.CROSSFEED_FEED_MIN_DB, Proc.CROSSFEED_FEED_MAX_DB);
+export const levellerAmountPct = (p: number) => toRange(p, Proc.LEVELLER_AMOUNT_MIN_PCT, Proc.LEVELLER_AMOUNT_MAX_PCT);
+export const levellerMaxGainDb = (db: number) => toRange(db, Proc.LEVELLER_MAX_GAIN_MIN_DB, Proc.LEVELLER_MAX_GAIN_MAX_DB);
+export const levellerGateDb = (db: number) => toRange(db, Proc.LEVELLER_GATE_MIN_DB, Proc.LEVELLER_GATE_MAX_DB);
 
 // Names are encoded into a fixed NUL-terminated wire buffer. Delegates to the
 // wire-layer truncator so host and wire agree on the byte budget.

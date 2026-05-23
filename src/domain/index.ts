@@ -4,6 +4,7 @@
 // the local scope with a dozen bare constants).
 export * as Eq from './eqLimits';
 export * as Mix from './mixerLimits';
+export * as Proc from './processingLimits';
 
 // Flat re-exports — the const enums (`ChannelId.Left`, `FilterType.Peak`,
 // `PlatformType.RP2040`, `CrossfeedPreset.Wide`) already carry their own

@@ -1,13 +1,13 @@
-// Unified write outbox (ADR-001). Collapses the former two write lanes
-// (commands.ts granular scrub lane + commit.ts bulk lane) and their cross-lane
-// coordinator into a single module behind one `enqueue`. Routing is driven by
-// the declarative CONTROL_POLICY table: a control is either 'granular'
-// (per-item, latency-sensitive scrub; trailing resync) or 'bulk' (SetAllParams;
-// self-converging), optionally debounced.
+// Unified write outbox (ADR-001). Collapses the former granular and bulk write
+// lanes and their cross-lane coordinator into a single module behind one
+// `enqueue`. Routing is driven by the declarative CONTROL_POLICY table: a
+// control is either 'granular' (per-item, latency-sensitive; trailing resync)
+// or 'bulk' (SetAllParams; self-converging), optionally debounced.
 //
 // The granular machinery (lanes/runGuarded/claimToken) and the bulk machinery
-// (bulk state/BULK_TOKEN/flushBulkIfIdle) are module-private; only enqueue /
-// flush / cancel / applyBaselineConverged are the public store-facing API.
+// (bulk state/BULK_TOKEN/flushBulkIfIdle) are module-private; the store-facing
+// API is enqueue / flush / cancel / applyBaselineConverged. (convergeBulk,
+// awaitBulkSettled and cancelBulkFlush are also exported, but only as test seams.)
 import type { DspDevice } from '@/device/DspDevice';
 import type { DspSnapshot } from '@/domain';
 import { dsp, session, setStatus, applyBaselineSnapshot } from '@/state';
@@ -20,10 +20,10 @@ function errMessage(e: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
-// Granular machinery (was commands.ts) — per-item scrub-lane registry.
-// scrubCommand captures session.generation when its send is launched and gates
-// post-send side effects (status flip, resync schedule) on equality with the
-// current generation.
+// Granular machinery — per-item coalescing-lane registry for latency-sensitive
+// scrub gestures (slider/knob drags). enqueueGranular captures
+// session.generation when its send is launched and gates post-send side effects
+// (status flip, resync schedule) on equality with the current generation.
 // ---------------------------------------------------------------------------
 
 function claimToken(label: string): symbol {
@@ -48,7 +48,7 @@ async function runGuarded(
     if (gen === session.generation) scheduleResync();
   } catch (err) {
     if (gen !== session.generation) return;
-    Log.error('command', `${label} send failed; forcing resync`, err);
+    Log.error('outbox', `${label} send failed; forcing resync`, err);
     setStatus('error', errMessage(err));
     void forceResyncNow();
   } finally {
@@ -56,7 +56,7 @@ async function runGuarded(
   }
 }
 
-const SCRUB_MS = 16;
+const GRANULAR_COALESCE_MS = 16;
 
 interface Lane {
   schedule(thunk: () => Promise<void>): void;
@@ -64,7 +64,7 @@ interface Lane {
   flushNow(): Promise<void>;
 }
 
-const scrubLanes = new Map<string, Lane>();
+const granularLanes = new Map<string, Lane>();
 
 function makeLane(key: string, ms: number): Lane {
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -82,13 +82,13 @@ function makeLane(key: string, ms: number): Lane {
     pendingToken = null;
     inFlight = inFlight
       .catch(() => undefined)
-      .then(() => runGuarded(`scrub ${key}`, token, gen, thunk));
+      .then(() => runGuarded(`granular ${key}`, token, gen, thunk));
   }
 
   return {
     schedule(thunk) {
       pending = thunk;
-      if (pendingToken === null) pendingToken = claimToken(`scrub:${key}`);
+      if (pendingToken === null) pendingToken = claimToken(`granular:${key}`);
       if (timer === null) timer = setTimeout(fire, ms);
     },
     cancel() {
@@ -107,33 +107,33 @@ function makeLane(key: string, ms: number): Lane {
   };
 }
 
-// Granular enqueue path: the old scrubCommand body. Apply the optimistic patch,
-// then schedule the per-key coalescing lane (16ms latest-wins).
-function scrubCommand(key: string, apply: () => void, send: (d: DspDevice) => Promise<void>): void {
+// Granular enqueue path. Apply the optimistic patch, then schedule the per-key
+// coalescing lane (16ms latest-wins).
+function enqueueGranular(key: string, apply: () => void, send: (d: DspDevice) => Promise<void>): void {
   apply();
   const d = session.device;
   if (!d) return;
-  let lane = scrubLanes.get(key);
+  let lane = granularLanes.get(key);
   if (!lane) {
-    lane = makeLane(key, SCRUB_MS);
-    scrubLanes.set(key, lane);
+    lane = makeLane(key, GRANULAR_COALESCE_MS);
+    granularLanes.set(key, lane);
   }
   lane.schedule(() => send(d));
 }
 
-async function drainScrubLanes(): Promise<void> {
-  await Promise.all([...scrubLanes.values()].map((l) => l.flushNow()));
+async function drainGranularLanes(): Promise<void> {
+  await Promise.all([...granularLanes.values()].map((l) => l.flushNow()));
 }
 
-// Cancel every scrub lane. The session-wide teardown (generation bump,
+// Cancel every granular lane. The session-wide teardown (generation bump,
 // pendingWrites clear, bulk-flush reset) lives in cancel() below.
-function cancelAllScrubLanes(): void {
-  for (const lane of scrubLanes.values()) lane.cancel();
-  scrubLanes.clear();
+function cancelAllGranularLanes(): void {
+  for (const lane of granularLanes.values()) lane.cancel();
+  granularLanes.clear();
 }
 
 // ---------------------------------------------------------------------------
-// Bulk machinery (was commit.ts) — Tier-B bulk-write coordination.
+// Bulk machinery — bulk-write (SetAllParams) coordination.
 // Module-private: not part of the public store.
 // ---------------------------------------------------------------------------
 
@@ -156,8 +156,8 @@ export function applyBaselineConverged(snapshot: DspSnapshot): void {
 
 // Single token mirroring "bulk edits unsent or in flight" into dsp.pendingWrites,
 // so the resync soft-skip guard (resync.ts) — which checks pendingWrites.size —
-// covers the bulk lane as well as the per-item scrub lane. Also lights the UI
-// dirty dot (isInFlight) for Tier B edits. The token tracks a computed predicate
+// covers the bulk lane as well as the per-item granular lane. Also lights the UI
+// dirty dot (isInFlight) for bulk edits. The token tracks a computed predicate
 // rather than being added/removed at scattered call sites, so it can never get
 // out of balance.
 const BULK_TOKEN = Symbol('bulk');
@@ -191,7 +191,7 @@ function flushBulkIfIdle(): void {
       bulk.lastSentRev = sendingRev;
     } catch (err) {
       if (gen !== session.generation) return;
-      Log.error('commit', 'bulk write failed; forcing resync', err);
+      Log.error('outbox', 'bulk write failed; forcing resync', err);
       setStatus('error', errMessage(err));
       void forceResyncNow();
     } finally {
@@ -267,7 +267,7 @@ function isGranular(intent: WriteIntent): intent is GranularIntent {
 }
 
 // The single write verb. Reads CONTROL_POLICY[intent.control] and routes the
-// intent to the granular scrub lane or the bulk lane. A runtime assertion keeps
+// intent to the granular lane or the bulk lane. A runtime assertion keeps
 // a granular intent from ever hitting the bulk branch (and vice-versa) even if
 // the policy table and the intent shape disagree.
 export function enqueue(intent: WriteIntent): void {
@@ -276,7 +276,7 @@ export function enqueue(intent: WriteIntent): void {
     if (!isGranular(intent)) {
       throw new Error(`outbox: control '${intent.control}' is granular but intent has no send()`);
     }
-    scrubCommand(intent.coalesceKey, intent.apply, intent.send);
+    enqueueGranular(intent.coalesceKey, intent.apply, intent.send);
     return;
   }
   // strategy === 'bulk'
@@ -303,22 +303,21 @@ export function enqueue(intent: WriteIntent): void {
 
 // Drain every pending write category so a following flash op (preset
 // save/load/paste) sees settled device state. Order: trailing timers + converge,
-// drain Tier-A scrub lanes, await Tier-B in-flight, then one converging flush if
-// a new edit landed mid-drain. (Was outbox.flushPending — invariant X1.)
+// drain granular lanes, await bulk in-flight, then one converging flush if
+// a new edit landed mid-drain.
 export async function flush(): Promise<void> {
   drainTrailingTimers();
-  await drainScrubLanes();
+  await drainGranularLanes();
   await awaitBulkSettled();
   convergeBulk();
   await awaitBulkSettled();
 }
 
-// Teardown for disconnect/cancel. Cancels scrub lanes, bumps the generation so
+// Teardown for disconnect/cancel. Cancels granular lanes, bumps the generation so
 // any in-flight send settles as a stale no-op, clears the optimistic-write
-// token set, and resets the bulk-flush coordination. (Was outbox.cancelAllCommands
-// — invariant X2.)
+// token set, and resets the bulk-flush coordination.
 export function cancel(): void {
-  cancelAllScrubLanes();
+  cancelAllGranularLanes();
   session.generation += 1;
   dsp.pendingWrites.clear();
   cancelBulkFlush();

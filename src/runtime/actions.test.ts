@@ -18,7 +18,7 @@ import {
 } from '@/domain';
 import { fromBulkParams, toBulkParams } from '@/device/snapshotCodec';
 
-import { cancel as cancelAllCommands, flush as flushPending, awaitBulkSettled } from './outbox';
+import { cancel as cancelWrites, flush as flushWrites, awaitBulkSettled } from './outbox';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
@@ -113,10 +113,10 @@ function makeSnapshot(platform: PlatformType = PlatformType.RP2350) {
 //     poll's tick() re-arms requestAnimationFrame unconditionally; with fake
 //     timers faking rAF, a later vi.runAllTimersAsync() churns it forever and
 //     aborts with "10000 timers, assuming an infinite loop". endConnection() ends it.
-//   - the scrub-lane registry (commands.ts) + the bulk-flush coordination
-//     (commit.ts) / dsp.pendingWrites. cancelAllCommands() clears lanes,
-//     resets the bulk flush, and drops tokens.
-afterEach(() => { endConnection(); cancelAllCommands(); });
+//   - the outbox's granular-lane registry + bulk-flush coordination /
+//     dsp.pendingWrites. cancelWrites() clears lanes, resets the bulk
+//     flush, and drops tokens.
+afterEach(() => { endConnection(); cancelWrites(); });
 
 describe('actions wiring', () => {
   beforeEach(() => {
@@ -158,7 +158,7 @@ describe('actions wiring', () => {
     // disposes them, which is what drops the pending coalescer write.
     beginConnection();
     connectionScope()!.add(attachTransportListeners(transport));
-    connectionScope()!.add(() => cancelAllCommands());
+    connectionScope()!.add(() => cancelWrites());
 
     setMasterVolume(-9);                      // queues a write
     transport.emit('disconnect');             // should cancel before timer fires
@@ -202,7 +202,7 @@ describe('actions wiring', () => {
   });
 
   it('copyEqBands copies all bands into the snapshot in one operation', () => {
-    // Under commitBulk, copyEqBands no longer calls setFilter per-band.
+    // Under the bulk strategy, copyEqBands no longer calls setFilter per-band.
     // It writes the full snapshot in one bulk operation.
     const validBulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
@@ -237,7 +237,7 @@ describe('setEqFilter', () => {
   });
 
   it('patches the snapshot optimistically', () => {
-    // Under commitBulk, setEqFilter updates dsp.draft immediately; no
+    // Under the bulk strategy, setEqFilter updates dsp.draft immediately; no
     // per-band setFilter calls are made — the whole state is written via
     // setAllParams in one bulk packet.
     setEqFilter(0, 1, { type: FilterType.Peaking, frequency: 2000, q: 1, gain: 3 });
@@ -247,7 +247,7 @@ describe('setEqFilter', () => {
   });
 
   it('rapid edits to the same band converge to the last value in the snapshot', () => {
-    // commitBulk mutates dsp.draft in-place each call; the snapshot always
+    // The bulk strategy mutates dsp.draft in-place each call; the snapshot always
     // holds the latest value regardless of how many calls were made.
     for (let f = 100; f <= 1000; f += 100) {
       setEqFilter(0, 1, { type: FilterType.Peaking, frequency: f, q: 1, gain: 0 });
@@ -357,7 +357,7 @@ describe('setChannelName', () => {
   });
 
   it('optimistically patches dsp.draft.channels[i].name', () => {
-    // Under commitBulk, setChannelName no longer calls d.setChannelName —
+    // Under the bulk strategy, setChannelName no longer calls d.setChannelName —
     // the name is included in the next setAllParams bulk write instead.
     setChannelName(0 satisfies ChannelId, 'Studio Left');
     expect(dsp.draft!.channels[0].name).toBe('Studio Left');
@@ -382,7 +382,7 @@ describe('setChannelName', () => {
   });
 
   it('trims whitespace and stores the resolved value in the snapshot', () => {
-    // Under commitBulk the trimmed/resolved name goes into the snapshot;
+    // Under the bulk strategy the trimmed/resolved name goes into the snapshot;
     // the raw input is NOT preserved separately (no per-item wire call).
     setChannelName(0 satisfies ChannelId, '  padded  ');
     expect(dsp.draft!.channels[0].name).toBe('padded'); // resolved (trimmed)
@@ -460,7 +460,7 @@ describe('actions — master volume mode', () => {
   });
 });
 
-describe('Tier B → commitBulk: toggles', () => {
+describe('bulk writes: toggles', () => {
   let captured: import('@/protocol').BulkParams | null;
   beforeEach(async () => {
     captured = null;
@@ -491,7 +491,7 @@ describe('Tier B → commitBulk: toggles', () => {
   });
 });
 
-describe('Tier B → commitBulk: enums', () => {
+describe('bulk writes: enums', () => {
   let captured: import('@/protocol').BulkParams | null;
   beforeEach(async () => {
     captured = null;
@@ -522,7 +522,7 @@ describe('Tier B → commitBulk: enums', () => {
   });
 });
 
-describe('Tier B → commitBulkDebounced: sliders', () => {
+describe('bulk writes (debounced): sliders', () => {
   let captured: import('@/protocol').BulkParams | null;
   beforeEach(async () => {
     captured = null;
@@ -536,15 +536,15 @@ describe('Tier B → commitBulkDebounced: sliders', () => {
     session.status = 'connected';
   });
 
-  it('setLevellerAmount applies optimistically and flushes via flushPending', async () => {
+  it('setLevellerAmount applies optimistically and flushes via flushWrites', async () => {
     setLevellerAmount(33);
     expect(dsp.draft?.leveller?.amount).toBe(33);
-    await flushPending();
+    await flushWrites();
     expect(captured?.leveller.amount).toBe(33);
   });
 });
 
-describe('Tier B → commitBulk: eq/delay/names', () => {
+describe('bulk writes: eq/delay/names', () => {
   let captured: import('@/protocol').BulkParams | null;
   beforeEach(async () => {
     captured = null;
@@ -608,7 +608,7 @@ describe('Tier B → commitBulk: eq/delay/names', () => {
   });
 });
 
-describe('crosspoint — Tier A unified lane (Finding 2)', () => {
+describe('crosspoint — granular unified lane (Finding 2)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
@@ -668,11 +668,11 @@ describe('crosspoint — Tier A unified lane (Finding 2)', () => {
 describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   // Sends are parked forever here so the tokens are still present at assertion
-  // time; the file-scope afterEach (endConnection + cancelAllCommands) resets the
-  // leaked bulk-flush + scrub state.
+  // time; the file-scope afterEach (endConnection + cancelWrites) resets the
+  // leaked bulk-flush + granular state.
   afterEach(() => { vi.useRealTimers(); bindDevice(null); session.status = 'idle'; });
 
-  it('a Tier A crosspoint scrub and a Tier B bulk edit both register in pendingWrites', async () => {
+  it('a granular crosspoint write and a bulk edit both register in pendingWrites', async () => {
     const bulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
       // Both sends park forever so neither token is released during the test.
@@ -685,11 +685,11 @@ describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
     session.status = 'connected';
 
     expect(dsp.pendingWrites.size).toBe(0);
-    // Tier A: a crosspoint enable-set claims a scrub-lane token synchronously on schedule.
+    // Granular: a crosspoint enable-set claims a granular-lane token synchronously on schedule.
     const route = dsp.draft!.routes[0];
     setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !route.enabled);
     expect(dsp.pendingWrites.size).toBe(1);
-    // Tier B: a bulk edit claims the bulk token; both lanes now coexist, so the
+    // Bulk: a bulk edit claims the bulk token; both lanes now coexist, so the
     // resync soft-skip guard (pendingWrites.size > 0) covers both simultaneously.
     setBypass(true);
     expect(dsp.pendingWrites.size).toBe(2);

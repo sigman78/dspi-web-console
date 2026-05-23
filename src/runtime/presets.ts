@@ -8,7 +8,7 @@ import {
 } from '@/state';
 import { reconcileAfterSync } from './actions';
 import { fetchAndApplyAsBaseline } from './resync';
-import { flush as flushPending } from './outbox';
+import { flush as flushWrites } from './outbox';
 import type { DspDevice } from '@/device/DspDevice';
 import { type PresetSlot, PRESET_SLOT_COUNT } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
@@ -140,7 +140,7 @@ export async function saveActivePreset(): Promise<Result<void, PresetResult> | P
   clearActionError();
   try {
     return await withBusy(async () => {
-      await flushPending();
+      await flushWrites();
       const r = await d.savePreset(active);
       if (r.ok) {
         if (presets.directory) {
@@ -172,7 +172,7 @@ export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, Pre
   clearActionError();
   try {
     return await withBusy(async () => {
-      await flushPending();
+      await flushWrites();
       const r = await d.savePreset(slot);
       if (r.ok) {
         if (presets.directory) {
@@ -209,7 +209,7 @@ async function executeLoad(
   clearActionError();
   try {
     return await withBusy(async () => {
-      await flushPending();
+      await flushWrites();
       const r = await d.loadPreset(slot);
       if (r.ok) {
         // Reflect active slot in UI immediately. If the subsequent resync or
@@ -295,7 +295,7 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
   clearActionError();
   try {
     return await withBusy(async () => {
-      await flushPending();
+      await flushWrites();
       // Step 1: Load source into RAM (device pointer → src).
       const r1 = await d.loadPreset(src);
       if (!r1.ok) {

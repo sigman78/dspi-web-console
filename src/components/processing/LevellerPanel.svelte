@@ -7,7 +7,7 @@
     setLevellerEnabled, setLevellerSpeed, setLevellerLookahead,
     setLevellerAmount, setLevellerMaxGain, setLevellerGate,
   } from '@/runtime';
-  import { LevellerSpeed } from '@/domain';
+  import { LevellerSpeed, Proc } from '@/domain';
 
   const lv = $derived(dsp.draft?.leveller);
   const connected = $derived(session.status === 'connected');
@@ -70,7 +70,7 @@
     <span class="lbl">AMOUNT</span>
     <input
       type="range"
-      min="0" max="100" step="1"
+      min={Proc.LEVELLER_AMOUNT_MIN_PCT} max={Proc.LEVELLER_AMOUNT_MAX_PCT} step={Proc.LEVELLER_AMOUNT_STEP_PCT}
       value={lv?.amount ?? 0}
       oninput={onAmountInput}
       disabled={!editable}
@@ -78,7 +78,7 @@
     />
     <ValueField
       value={lv?.amount ?? 0}
-      min={0} max={100} step={1}
+      min={Proc.LEVELLER_AMOUNT_MIN_PCT} max={Proc.LEVELLER_AMOUNT_MAX_PCT} step={Proc.LEVELLER_AMOUNT_STEP_PCT}
       kind="pct"
       precision={0}
       disabled={!editable}
@@ -88,7 +88,7 @@
     <span class="lbl">MAX GAIN</span>
     <input
       type="range"
-      min="0" max="35" step="0.5"
+      min={Proc.LEVELLER_MAX_GAIN_MIN_DB} max={Proc.LEVELLER_MAX_GAIN_MAX_DB} step={Proc.LEVELLER_MAX_GAIN_STEP_DB}
       value={lv?.maxGainDb ?? 0}
       oninput={onMaxGainInput}
       disabled={!editable}
@@ -96,7 +96,7 @@
     />
     <ValueField
       value={lv?.maxGainDb ?? 0}
-      min={0} max={35} step={0.5}
+      min={Proc.LEVELLER_MAX_GAIN_MIN_DB} max={Proc.LEVELLER_MAX_GAIN_MAX_DB} step={Proc.LEVELLER_MAX_GAIN_STEP_DB}
       kind="dB"
       precision={1}
       disabled={!editable}
@@ -106,7 +106,7 @@
     <span class="lbl">GATE</span>
     <input
       type="range"
-      min="-96" max="0" step="1"
+      min={Proc.LEVELLER_GATE_MIN_DB} max={Proc.LEVELLER_GATE_MAX_DB} step={Proc.LEVELLER_GATE_STEP_DB}
       value={lv?.gateDb ?? -40}
       oninput={onGateInput}
       disabled={!editable}
@@ -114,7 +114,7 @@
     />
     <ValueField
       value={lv?.gateDb ?? -40}
-      min={-96} max={0} step={1}
+      min={Proc.LEVELLER_GATE_MIN_DB} max={Proc.LEVELLER_GATE_MAX_DB} step={Proc.LEVELLER_GATE_STEP_DB}
       kind="dB"
       precision={0}
       disabled={!editable}

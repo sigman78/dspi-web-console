@@ -9,15 +9,15 @@ import {
   applyBaselineSnapshot, isInFlight,
 } from '@/state';
 import {
-  enqueue, flush as flushPending, cancel as cancelAllCommands,
+  enqueue, flush as flushWrites, cancel as cancelWrites,
   applyBaselineConverged, awaitBulkSettled, convergeBulk, cancelBulkFlush,
 } from './outbox';
 import { scheduleResync } from './resync';
 
 // ---------------------------------------------------------------------------
-// Granular lane (migrated from commands.test.ts). Entry point is now
-// enqueue({ control, coalesceKey, apply, send }); 'outputGain' / 'masterVolume'
-// are granular controls in CONTROL_POLICY, so they exercise the scrub lane.
+// Granular lane. Entry point is enqueue({ control, coalesceKey, apply, send });
+// 'outputGain' / 'masterVolume' are granular controls in CONTROL_POLICY, so they
+// exercise the granular lane.
 // ---------------------------------------------------------------------------
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
@@ -59,10 +59,10 @@ describe('enqueue (granular)', () => {
     setStatus('idle');
     // Drop any module-scoped lanes left over from prior tests so each test
     // starts with a clean per-key registry.
-    cancelAllCommands();
+    cancelWrites();
   });
   afterEach(() => {
-    cancelAllCommands();
+    cancelWrites();
     vi.useRealTimers();
     bindDevice(null);
   });
@@ -164,7 +164,7 @@ describe('cancel (granular teardown)', () => {
     bindDevice(null);
   });
 
-  it('drops queued scrub timers and clears pending lane tokens', async () => {
+  it('drops queued granular timers and clears pending lane tokens', async () => {
     const { device, calls } = makeGainDevice();
     bindDevice(device);
     enqueue({
@@ -175,14 +175,14 @@ describe('cancel (granular teardown)', () => {
     });
     expect(dsp.pendingWrites.size).toBe(1);
 
-    cancelAllCommands();
+    cancelWrites();
     expect(dsp.pendingWrites.size).toBe(0);
 
     await vi.runAllTimersAsync();
     expect(calls).toEqual([]);
   });
 
-  it('bumps session generation so an in-flight scrub send settles as stale', async () => {
+  it('bumps session generation so an in-flight granular send settles as stale', async () => {
     let resolveSend: () => void = () => {};
     const validBulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
@@ -200,7 +200,7 @@ describe('cancel (granular teardown)', () => {
     await vi.advanceTimersByTimeAsync(16);   // fire the lane: send is now in flight (parked)
     expect(dsp.pendingWrites.size).toBe(1);
 
-    cancelAllCommands();
+    cancelWrites();
     expect(dsp.pendingWrites.size).toBe(0);
     expect(session.status).not.toBe('error');
 
@@ -211,7 +211,7 @@ describe('cancel (granular teardown)', () => {
     expect(session.status).not.toBe('error');
   });
 
-  it('an in-flight scrub rejection after cancel does NOT flip status to error', async () => {
+  it('an in-flight granular rejection after cancel does NOT flip status to error', async () => {
     let rejectSend: (err: Error) => void = () => {};
     const validBulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
@@ -229,7 +229,7 @@ describe('cancel (granular teardown)', () => {
     await vi.advanceTimersByTimeAsync(16);   // fire the lane: send is now in flight (parked)
     expect(dsp.pendingWrites.size).toBe(1);
 
-    cancelAllCommands();
+    cancelWrites();
     expect(session.status).not.toBe('error');
 
     // Reject the in-flight send AFTER cancel. The catch branch must observe
@@ -353,7 +353,7 @@ describe('enqueue (bulk immediate)', () => {
     enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -4; } });
     expect(sends).toBe(1);
     expect(isInFlight.current).toBe(true);   // lane busy
-    cancelAllCommands();
+    cancelWrites();
     expect(isInFlight.current).toBe(false);  // counters + token cleared: lane idle
     // inflight slot detached (not just the token): a fresh edit starts a new send
     // rather than being suppressed by the never-resolving stale promise.
@@ -370,7 +370,7 @@ describe('enqueue (bulk immediate)', () => {
     expect(sends).toBe(1);
     expect(isInFlight.current).toBe(true);
 
-    cancelAllCommands();                              // detaches A, bumps generation
+    cancelWrites();                              // detaches A, bumps generation
     enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -8; } });   // send B parks in flight
     expect(sends).toBe(2);
     expect(isInFlight.current).toBe(true);            // B holds the lane
@@ -408,7 +408,7 @@ describe('enqueue (bulk debounced)', () => {
   });
 });
 
-describe('flush (flushPending)', () => {
+describe('flush (flushWrites)', () => {
   beforeEach(() => { cancelBulkFlush(); });
   afterEach(() => { bindDevice(null); setStatus('idle'); });
 
@@ -417,7 +417,7 @@ describe('flush (flushPending)', () => {
     bindBulkDevice(async () => { sends += 1; });
     enqueue({ control: 'levellerAmount', debounceKey: 'levellerAmount', mutate: (s) => { if (s.leveller) s.leveller.amount = 42; } });
     expect(sends).toBe(0);
-    await flushPending();
+    await flushWrites();
     expect(sends).toBe(1);
     expect(isInFlight.current).toBe(false); // converged: lane idle after flush
   });
@@ -426,16 +426,16 @@ describe('flush (flushPending)', () => {
     let sends = 0;
     bindBulkDevice(async () => { sends += 1; });
     // no edits
-    await flushPending();
+    await flushWrites();
     expect(sends).toBe(0);
   });
 
-  it('drains a pending Tier-A scrub lane before resolving', async () => {
+  it('drains a pending granular lane before resolving', async () => {
     bindBulkDevice(async () => {});
-    let scrubSent = false;
-    enqueue({ control: 'masterVolume', coalesceKey: 'masterVolume', apply: () => {}, send: async () => { scrubSent = true; } });
-    await flushPending();
-    expect(scrubSent).toBe(true);
+    let granularSent = false;
+    enqueue({ control: 'masterVolume', coalesceKey: 'masterVolume', apply: () => {}, send: async () => { granularSent = true; } });
+    await flushWrites();
+    expect(granularSent).toBe(true);
   });
 
   it('converges with one more flush if an edit lands during the drain', async () => {
@@ -450,7 +450,7 @@ describe('flush (flushPending)', () => {
     expect(sends).toBe(1);
     expect(isInFlight.current).toBe(true);
 
-    const pending = flushPending();
+    const pending = flushWrites();
 
     // Land another edit mid-drain (unsent work on the lane while send #1 is parked).
     enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -2; } });
@@ -533,7 +533,7 @@ describe('applyBaselineConverged', () => {
     applyBaselineConverged(fromBulkParams(hw, parseBulkParams(makeBulk())));
     // Drain: a correctly-converged lane fires NO send. A lane that kept the stale
     // pending revision would re-send the discarded pre-baseline edit here.
-    await flushPending();
+    await flushWrites();
     expect(sends).toBe(0);
   });
 });

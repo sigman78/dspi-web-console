@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, setOutputDelay } from './actions';
 import { dsp, bindDevice } from '@/state';
 import { bootMock } from './session';
-import { cancel as cancelAllCommands } from './outbox';
+import { cancel as cancelWrites } from './outbox';
 import { endConnection } from './connectionScope';
 
-afterEach(() => { endConnection(); cancelAllCommands(); });
+afterEach(() => { endConnection(); cancelWrites(); });
 
 describe('action boundary clamps out-of-range values', () => {
   beforeEach(async () => {
