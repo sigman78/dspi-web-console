@@ -13,10 +13,8 @@ import {
   FilterType, type FilterParams,
 } from '@/domain';
 
-// DspDeviceGranular extends DspDevice with per-parameter read/write commands
-// that are used only in tests (HIL and unit) — never in production runtime
-// code. Production keeps the lean DspDevice surface; tests construct this
-// subclass to get the granular CRUD facade.
+// Per-parameter read/write commands used only in tests (HIL and unit), never
+// in production runtime. Production keeps the lean DspDevice surface.
 export class DspDeviceGranular extends DspDevice {
   static async create(
     transport: DspTransport,
@@ -36,12 +34,10 @@ export class DspDeviceGranular extends DspDevice {
     });
   }
 
-  // Multi-read: GetEqParam (0x43) reads each parameter via a separate
-  // ctrlIn with a bit-packed wValue. Note this is not atomic against
-  // concurrent writers; for an atomic snapshot use getAllParams().
-  // Type comes back as u32 (firmware widens it); the rest are f32.
-  // Uses `decode` (not `decodePadded`) on each fixed 4-byte payload so a
-  // truncated USB read surfaces as a throw rather than silently zero-padding.
+  // One ctrlIn per parameter with a bit-packed wValue. Not atomic against
+  // concurrent writers; for an atomic snapshot use getAllParams(). Type comes
+  // back as u32, the rest f32. `decode` (not `decodePadded`) makes a truncated
+  // read throw rather than silently zero-pad.
   async getFilter(channel: ChannelId, band: number): Promise<FilterParams> {
     const wireChannel = this.deviceChannel(channel);
     const code = WireCmd.GetEqParam.code;
@@ -136,12 +132,9 @@ export class DspDeviceGranular extends DspDevice {
   }
 
   // Channel names ---------------------------------------------------------
-  // 32-byte NUL-terminated UTF-8 buffer. wValue carries the channel index
-  // (0..NUM_CHANNELS-1). The bulk packet covers the same field; this
-  // round-trip exists for granular edits.
 
-  // Names are silently cropped to fit the 31-byte UTF-8 wire budget.
-  // Validation (and user-facing errors) belong at the state/UI layer above.
+  // Names are silently cropped to fit the 31-byte UTF-8 wire budget;
+  // validation and user-facing errors belong at the state/UI layer above.
   async setChannelName(channel: ChannelId, name: string): Promise<void> {
     const wireChannel = this.deviceChannel(channel);
     return writeCmd(this.transport, WireCmd.SetChannelName, utf8Truncate(name, CHANNEL_NAME_MAX_LEN), wireChannel);
@@ -173,23 +166,18 @@ export class DspDeviceGranular extends DspDevice {
 
   // Telemetry actions -----------------------------------------------------
 
-  // 0xB1 IN with wValue=1. Firmware echoes 0x01 on success. Returns the
-  // boolean so callers can show a success indicator without leaking the
-  // wire-level shape.
+  // Firmware echoes 0x01 on success; return a boolean so callers don't see
+  // the wire shape.
   async resetBufferStats(): Promise<boolean> {
     const r = await this.transport.ctrlIn(WireCmd.ResetBufferStats.code, 1, 1);
     return r.length >= 1 && r[0] === 0x01;
   }
 
-  // Convenience: clear every preset slot in order, pacing between deletes
-  // so the firmware's deferred main-loop flash erase (~45 ms per slot
-  // with interrupts disabled) doesn't drop the next control transfer
-  // into a USB blackout window. Mirrors `ClearAllPresets` in
-  // DSPiConsole.Usb/DspDevice.cs.
-  //
-  // Returns the FIRST non-recoverable failure: an empty-slot delete is
-  // treated as success because erase is idempotent. `pacingMs` defaults
-  // to 50 (matches .NET reference); pass `0` in tests.
+  // Clear every preset slot in order, pacing between deletes so the firmware's
+  // deferred flash erase (~45 ms per slot with interrupts disabled) doesn't
+  // drop the next control transfer into a USB blackout window. Returns the
+  // first non-recoverable failure; an empty-slot delete is success (erase is
+  // idempotent). pacingMs defaults to 50; pass 0 in tests.
   async clearAllPresets(opts: { pacingMs?: number } = {}): Promise<Result<void, PresetResult>> {
     const pacingMs = opts.pacingMs ?? 50;
     for (let slot = 0 as PresetSlot; slot < 10; slot = (slot + 1) as PresetSlot) {

@@ -6,17 +6,10 @@ import type {
 import { dsp, patchSnapshot } from '@/state';
 
 // Focused get/set into a part of dsp.draft. Each focus binds an addressing
-// tuple (e.g. (input, output) for a route) and exposes:
-//   - read(): current value, throws if missing
-//   - modify(f): apply an optimistic patch via patchSnapshot
-//
-// "Missing" means the addressed entity isn't in the snapshot -- a programmer
-// or platform-shape bug, not a transient state. read() and modify() both
-// throw rather than silently no-op.
-//
-// "Snapshot not loaded" (dsp.draft === null during pre-connect or post-
-// disconnect) is also a throw -- callers wrap in `if (!dsp.draft) return;`
-// guards before constructing a focus, matching the existing convention.
+// tuple (e.g. (input, output) for a route) and exposes read() and modify(f)
+// (an optimistic patch via patchSnapshot). Both throw rather than no-op when
+// the entity is missing or the snapshot isn't loaded; callers guard with
+// `if (!dsp.draft) return;` before constructing a focus.
 
 export interface Focus<T> {
   read(): T;

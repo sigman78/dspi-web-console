@@ -23,11 +23,9 @@ import { beginConnection, connectionScope, endConnection } from './connectionSco
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 
-// Builds a DspDevice stub. The bulk lane now calls d.applyBulk(draft) and gates
-// on d.hasState, so the stub mirrors the real DspDevice: applyBulk overlays the
-// draft snapshot onto the last-fetched wire packet via toBulkParams and forwards
-// it to setAllParams (which tests spy on to capture the wire packet). hasState is
-// true once getAllParams has been seeded. Any of these can be overridden.
+// Builds a DspDevice stub mirroring the real one: applyBulk overlays the draft
+// onto the last-fetched wire packet via toBulkParams and forwards to setAllParams
+// (which tests spy on). hasState defaults true. Any method can be overridden.
 function initializedDevice(methods: Partial<DspDeviceGranular>): DspDevice {
   const base: Partial<DspDevice> = {
     info: {
@@ -43,9 +41,7 @@ function initializedDevice(methods: Partial<DspDeviceGranular>): DspDevice {
     getAllParams?: () => Promise<import('@/protocol').BulkParams>;
     setAllParams?: (b: import('@/protocol').BulkParams) => Promise<void>;
   };
-  // Provide a faithful applyBulk only if the test didn't supply one. It overlays
-  // the draft onto the freshly-fetched wire base and forwards to setAllParams,
-  // exactly like DspDevice.applyBulk, so wire-packet assertions stay meaningful.
+  // Default applyBulk (overlay draft + forward to setAllParams) unless supplied.
   if (!('applyBulk' in methods)) {
     (stub as { applyBulk?: (draft: import('@/domain').DspSnapshot) => Promise<void> }).applyBulk =
       async (draft) => {
@@ -202,8 +198,7 @@ describe('actions wiring', () => {
   });
 
   it('copyEqBands copies all bands into the snapshot in one operation', () => {
-    // Under the bulk strategy, copyEqBands no longer calls setFilter per-band.
-    // It writes the full snapshot in one bulk operation.
+    // copyEqBands writes the full snapshot in one bulk operation.
     const validBulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
       setAllParams: vi.fn(async () => {}),
@@ -237,8 +232,7 @@ describe('setEqFilter', () => {
   });
 
   it('patches the snapshot optimistically', () => {
-    // Under the bulk strategy, setEqFilter updates dsp.draft immediately; no
-    // per-band setFilter calls are made — the whole state is written via
+    // setEqFilter updates dsp.draft immediately; the whole state is written via
     // setAllParams in one bulk packet.
     setEqFilter(0, 1, { type: FilterType.Peaking, frequency: 2000, q: 1, gain: 3 });
     expect(dsp.draft?.channels[0].filters[1].frequency).toBe(2000);
@@ -357,8 +351,7 @@ describe('setChannelName', () => {
   });
 
   it('optimistically patches dsp.draft.channels[i].name', () => {
-    // Under the bulk strategy, setChannelName no longer calls d.setChannelName —
-    // the name is included in the next setAllParams bulk write instead.
+    // setChannelName patches the snapshot; the name rides the next setAllParams.
     setChannelName(0 satisfies ChannelId, 'Studio Left');
     expect(dsp.draft!.channels[0].name).toBe('Studio Left');
   });
@@ -382,8 +375,6 @@ describe('setChannelName', () => {
   });
 
   it('trims whitespace and stores the resolved value in the snapshot', () => {
-    // Under the bulk strategy the trimmed/resolved name goes into the snapshot;
-    // the raw input is NOT preserved separately (no per-item wire call).
     setChannelName(0 satisfies ChannelId, '  padded  ');
     expect(dsp.draft!.channels[0].name).toBe('padded'); // resolved (trimmed)
   });

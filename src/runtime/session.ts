@@ -73,8 +73,7 @@ export async function connectRequested(): Promise<void> {
 
 export async function bootMock(platform: 'rp2040' | 'rp2350'): Promise<void> {
   const transport = new MockTransport({ platform });
-  // Mock/dev boot uses the granular facade so dev tooling and tests can drive
-  // the full set*/get* CRUD against the mock's in-memory state.
+  // Mock/dev boot uses the granular facade (see createBoundDevice).
   const device = await createBoundDevice(transport, undefined, DspDeviceGranular.create);
   await finishConnection(device);
 }

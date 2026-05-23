@@ -1,13 +1,6 @@
 // Processing-module parameter ranges (loudness / crossfeed / leveller) and
-// editor step sizes. Single source of truth for the clamp choke point
-// (`clamp.ts`) and the PR.01–PR.03 panels. Parallel to eqLimits.ts /
-// mixerLimits.ts.
-//
-// Re-exported as the `Proc` namespace from `../domain` — call sites use
-// `Proc.LOUDNESS_REF_SPL_MIN_DB`, etc.
-//
-// See the clamp.ts header on re-sourcing these from the device adapter's
-// per-platform limits (board review A2).
+// editor step sizes. Single source of truth for clamp.ts and the panels.
+// Re-exported as the `Proc` namespace from `../domain`.
 
 // Loudness (PR.02).
 export const LOUDNESS_REF_SPL_MIN_DB = 40;

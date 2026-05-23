@@ -143,23 +143,18 @@ const bulk = {
   lastSentRev: 0,
 };
 
-// Apply a freshly-fetched device packet as the new baseline AND mark the bulk
-// lane converged (no unsent edits). The convergence reset lives here, not in the
-// state layer's applyBaseline, because the state layer cannot import the runtime
-// layer that owns these counters. Pairing both steps in one verb keeps call
-// sites from drifting. Use on connect, factory reset, and preset transitions.
+// Apply a freshly-fetched packet as the new baseline AND mark the bulk lane
+// converged. Lives here (not in the state layer) because only the runtime owns
+// these counters. Use on connect, factory reset, and preset transitions.
 export function applyBaselineConverged(snapshot: DspSnapshot): void {
   applyBaselineSnapshot(snapshot);
   bulk.currentRev = 0;
   bulk.lastSentRev = 0;
 }
 
-// Single token mirroring "bulk edits unsent or in flight" into dsp.pendingWrites,
-// so the resync soft-skip guard (resync.ts) — which checks pendingWrites.size —
-// covers the bulk lane as well as the per-item granular lane. Also lights the UI
-// dirty dot (isInFlight) for bulk edits. The token tracks a computed predicate
-// rather than being added/removed at scattered call sites, so it can never get
-// out of balance.
+// Mirrors "bulk edits unsent or in flight" into dsp.pendingWrites so the resync
+// soft-skip guard and the UI dirty dot cover the bulk lane too. Derived from a
+// computed predicate (syncBulkToken) so it can't get out of balance.
 const BULK_TOKEN = Symbol('bulk');
 
 function syncBulkToken(): void {
@@ -175,14 +170,11 @@ function flushBulkIfIdle(): void {
   const sendingRev = bulk.currentRev;
   const gen = session.generation;
   const draft = dsp.draft;
-  // The in-flight promise is its own run identity. Only the send that still
-  // owns bulk.inflight tears down the lane: a send detached mid-flight by
-  // cancelBulkFlush() — after which a fresh bulk enqueue starts a new send —
-  // must not, on its late settle, null the newer send's slot or fire a
-  // spurious re-flush. The generation guard below protects the *data*
-  // (lastSentRev); this identity check guards the *lane
-  // bookkeeping* in finally, which is not generation-gated. See the
-  // "detached stale send" test in outbox.test.ts.
+  // Only the send that still owns bulk.inflight tears down the lane: a send
+  // detached mid-flight by cancelBulkFlush() must not, on its late settle, null
+  // the newer send's slot or fire a spurious re-flush. The generation guard
+  // protects the data (lastSentRev); this identity check guards the lane
+  // bookkeeping in finally, which is not generation-gated.
   let run: Promise<void> | null = null;
   run = (async () => {
     try {

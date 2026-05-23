@@ -42,19 +42,12 @@ export async function forceResyncNow(): Promise<void> {
   await fetchAndApply(true);
 }
 
-// Fetch the device state and apply it as a fresh baseline — both `dsp.draft`
-// and `dsp.saved` update in one synchronous statement via applyBaselineConverged.
-//
-// Use this for preset transitions (Load / Paste / Revert) where there is
-// no meaningful "dirty" state during the operation. The atomic apply
-// eliminates the microtask window where draft and saved would otherwise
-// disagree, so observers watching `presetsDirty.current` (e.g. the
-// copy-source auto-clear $effect in PresetsTab) don't see a spurious flip.
-//
+// Fetch device state and apply it as a fresh baseline (draft + saved together,
+// atomically). Use for preset transitions (Load / Paste / Revert) where there
+// is no meaningful "dirty" state: the atomic apply avoids the microtask window
+// where draft and saved disagree and observers see a spurious dirty flip.
 // Cancels any pending trailing resync so a delayed draft-only fetch can't
-// fire later and partially overwrite saved.
-//
-// See docs/ARCH.md for the baseline/draft split this protects.
+// later overwrite saved. See docs/ARCH.md for the baseline/draft split.
 export async function fetchAndApplyAsBaseline(): Promise<void> {
   scheduler.cancel();
   const d = session.device;

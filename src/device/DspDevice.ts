@@ -96,9 +96,9 @@ export class DspDevice {
 
   #wireBase: BulkParams | null = null;
 
-  // True once the device has fetched at least one packet; guards optimistic
-  // bulk writes during the connect race (a write before the first snapshot has
-  // no base packet to overlay).
+  // True once at least one packet has been fetched; guards optimistic bulk
+  // writes during the connect race (a write before the first snapshot has no
+  // base packet to overlay).
   get hasState(): boolean {
     return this.#wireBase !== null;
   }
@@ -120,9 +120,8 @@ export class DspDevice {
     this.#wireBase = bulk;
   }
 
-  // Opaque capture for the device-to-device paste copy. Always performs a fresh
-  // wire fetch; the result may differ from the last getSnapshot/applyBulk if the
-  // device state changed concurrently. Deliberately does NOT update #wireBase.
+  // Opaque capture for the device-to-device paste copy. Fresh wire fetch that
+  // deliberately does NOT update #wireBase.
   async captureState(): Promise<DeviceState> {
     return (await this.getAllParams()) as DeviceState;
   }
@@ -137,10 +136,8 @@ export class DspDevice {
     return parseBulkParams(bytes);
   }
 
-  // Push a complete DSP state to the device in one transfer (USB control-OUT 0xA1).
-  // Wire payload must be exactly 2896 B (V6); firmware STALLs otherwise -- the
-  // builder enforces this. Firmware applies the state in its main loop (~5 ms);
-  // callers expecting the change to be visible should re-fetch via getAllParams.
+  // Push a complete DSP state in one control-OUT. Firmware applies it in its
+  // main loop (~5 ms); callers needing the change visible should re-fetch.
   async setAllParams(bulk: BulkParams): Promise<void> {
     const bytes = buildBulkParams(bulk);
     await this.transport.ctrlOut(WireCmd.SetAllParams.code, 0, bytes);

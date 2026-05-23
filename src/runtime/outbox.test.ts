@@ -241,12 +241,10 @@ describe('cancel (granular teardown)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Bulk lane (migrated from commit.test.ts). Entry point is now
-// enqueue({ control, mutate }) for the immediate bulk path, and
-// enqueue({ control, debounceKey, mutate }) for the debounced path. 'bypass'
-// is a bulk-immediate control; 'levellerAmount' is a bulk-debounced control.
-// The bulk mutators touch s.masterVolumeDb purely as a snapshot field to bump
-// the lane revision — the lane is field-agnostic.
+// Bulk lane. enqueue({ control, mutate }) is the immediate path,
+// enqueue({ control, debounceKey, mutate }) the debounced one. 'bypass' is
+// bulk-immediate, 'levellerAmount' bulk-debounced. The mutators touch
+// s.masterVolumeDb only to bump the lane revision — the lane is field-agnostic.
 // ---------------------------------------------------------------------------
 
 const hw = createHardwareProfile(PlatformType.RP2350);

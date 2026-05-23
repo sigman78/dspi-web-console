@@ -64,9 +64,8 @@ function recordToResult(label: string, e: unknown): PresetActionError {
   return { ok: false, code: 'error', message };
 }
 
-// Public verb so the UI never writes preset store state directly
-// (board review A5 / MOM-2026-05-22). The error-banner dismiss button
-// calls this instead of assigning presets.lastActionError = null.
+// Public verb so the UI never writes preset store state directly: the
+// error-banner dismiss button calls this instead of assigning lastActionError.
 export function dismissPresetActionError(): void {
   clearActionError();
 }
@@ -160,12 +159,9 @@ export async function saveActivePreset(): Promise<Result<void, PresetResult> | P
   }
 }
 
-// PresetSave(N) for an arbitrary slot. Mirrors firmware behavior
-// PresetSave sets `lastActive = slot`, so the  just-saved slot becomes active
-// The host updates `presets.active` to match
-//
-// Baseline (`dsp.saved`) advances unconditionally: current RAM is what
-// we just captured into the slot, and the slot is now active.
+// PresetSave(N) for an arbitrary slot. Firmware sets lastActive = slot, so the
+// just-saved slot becomes active; the host mirrors that into presets.active and
+// advances the baseline (RAM is what we just captured into the now-active slot).
 export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = session.device;
   if (!d) return noDevice();
@@ -193,15 +189,11 @@ export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, Pre
   }
 }
 
-// PresetLoad(N). Awaits the firmware's deferred flash to RAM copy ~100 ms 
-// We then use fetchAndApplyAsBaseline() rather than fullSync()
-// to refresh dsp.draft + dsp.saved atomically without flipping
-// session.status to 'connecting' — that toggle would
-// cause App.svelte to unmount the entire main view and flash the
-// ConnectingHero splash mid-operation. reconcileAfterSync() is still
-// required to re-apply soft-mute over the freshly-loaded master volume.
-// Internal: wire-level load + post-load epilogue. No dirty gating.
-// Called by both loadPresetSlot (after gating) and revertActivePreset
+// Wire-level load + post-load epilogue, no dirty gating. Called by
+// loadPresetSlot (after gating) and revertActivePreset. Uses
+// fetchAndApplyAsBaseline (not fullSync) so session.status never flips to
+// 'connecting' — that would unmount the main view and flash the splash
+// mid-load. reconcileAfterSync re-applies soft-mute over the loaded volume.
 async function executeLoad(
   d: DspDevice,
   slot: PresetSlot,
@@ -217,9 +209,6 @@ async function executeLoad(
         // to match the slot the device just loaded.
         presets.active = slot;
         await new Promise<void>((resolve) => setTimeout(resolve, PRESET_LOAD_SETTLE_MS));
-        // Atomic: fetch device state and apply to both dsp.draft and
-        // dsp.saved in one synchronous statement. Eliminates the
-        // microtask window where draft and saved would otherwise disagree
         await fetchAndApplyAsBaseline();
         await reconcileAfterSync();
       } else {
@@ -281,11 +270,10 @@ export async function revertActivePreset(): Promise<Result<void, PresetResult> |
 //   4. restoreState(blob)  — push src content into active's RAM (no flash)
 //   5. SavePreset(active)  — flash[active] = RAM = src content
 //
-// End state: active slot holds source's content, RAM matches, active
-// unchanged. The COPY/PASTE invariant in the UI guarantees clean RAM
-// here (copy source clears on dirty), so we don't gate via boundary
-// modal - any caller violating the invariant gets stale-source
-// behaviour, not data loss.
+// End state: active slot holds source's content, RAM matches, active unchanged.
+// The UI's copy/paste invariant guarantees clean RAM here (copy source clears
+// on dirty), so there's no boundary-modal gate; a violating caller gets
+// stale-source behaviour, not data loss.
 export async function pastePresetTo(src: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = session.device;
   if (!d) return noDevice();
@@ -325,7 +313,6 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
       }
       presets.active = active;
       await new Promise<void>((resolve) => setTimeout(resolve, PRESET_LOAD_SETTLE_MS));
-      // Atomic baseline apply
       await fetchAndApplyAsBaseline();
       await reconcileAfterSync();
       return r5;
