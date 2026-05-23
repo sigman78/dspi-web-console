@@ -31,8 +31,8 @@ async function createBoundDevice(
   openTransport?: () => Promise<void>,
   // Real connects construct the lean runtime-facing `DspDevice`. Only the mock
   // dev/test boot overrides this with `DspDeviceGranular.create` so tests can
-  // drive the granular CRUD against the mock's state (ADR-005 keeps the
-  // granular facade out of the real-hardware path).
+  // drive the granular CRUD against the mock's state, keeping the granular
+  // facade out of the real-hardware path.
   create: (t: DspTransport, open?: () => Promise<void>) => Promise<DspDevice> = DspDevice.create,
 ): Promise<DspDevice> {
   // Wrap with the timeout decorator before handing to DspDevice so every

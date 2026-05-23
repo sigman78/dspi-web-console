@@ -1,4 +1,4 @@
-// Declarative write policy per control. The unified outbox (ADR-001) reads this
+// Declarative write policy per control. The unified outbox reads this
 // to route a write to the granular (per-item, glitch-free) or bulk (SetAllParams)
 // path, and to decide convergence: granular writes schedule a trailing resync;
 // bulk writes self-converge from the packet they sent.

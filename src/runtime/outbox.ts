@@ -1,4 +1,4 @@
-// Unified write outbox (ADR-001). Collapses the former granular and bulk write
+// Unified write outbox. Collapses the former granular and bulk write
 // lanes and their cross-lane coordinator into a single module behind one
 // `enqueue`. Routing is driven by the declarative CONTROL_POLICY table: a
 // control is either 'granular' (per-item, latency-sensitive; trailing resync)

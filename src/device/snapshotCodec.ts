@@ -212,7 +212,7 @@ export function toBulkParams(
   }
 
   return {
-    formatVersion: 6, // TODO(ADR-003): source from device firmware version, not hardcoded
+    formatVersion: 6, // TODO: source from device firmware version, not hardcoded
     platformId:    snapshot.platform.type,
     numCh:         hardware.totalChannelCount,
     numOut:        hardware.outputCount,
