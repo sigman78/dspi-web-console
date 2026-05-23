@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
-import { PlatformType } from './platform';
-import { createHardwareProfile } from './hardware';
-import { fromBulkParams, toBulkParams } from './bulkToSnapshot';
-import { matrixColumns, matrixRows } from './mixerView';
+import { PlatformType, createHardwareProfile, matrixColumns, matrixRows } from '@/domain';
+import { fromBulkParams, toBulkParams } from './snapshotCodec';
 
 describe('fromBulkParams', () => {
   it('maps protocol bulk data into an RP2350 domain snapshot', () => {

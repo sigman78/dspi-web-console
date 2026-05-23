@@ -9,7 +9,7 @@
 
   const connected = $derived(session.status === 'connected');
   const info = $derived(status.info);
-  const bypassed = $derived(dsp.live?.bypass ?? false);
+  const bypassed = $derived(dsp.draft?.bypass ?? false);
 
   const cpu0 = $derived(connected ? `${status.cpu0}%` : '—');
   const cpu1 = $derived(connected ? `${status.cpu1}%` : '—');

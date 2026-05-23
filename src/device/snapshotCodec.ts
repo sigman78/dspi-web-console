@@ -1,26 +1,20 @@
 import { Wire, type BulkParams, type WireFilter } from '@/protocol';
 import {
-  outputModeForChannel,
-  type InputSlot,
-} from './channels';
-import {
-  displayNameForHardwareChannel,
-  wireChannelFor,
-  type HardwareProfile,
-} from './hardware';
-import { FilterType, type FilterParams } from './filter';
-import { PlatformType } from './platform';
-import { CrossfeedPreset, LevellerSpeed } from './processing';
-import type { DspSnapshot } from './snapshot';
-import type { CrossPoint, OutputModel, OutputState, RouteModel } from './mixer';
+  outputModeForChannel, type InputSlot,
+  displayNameForHardwareChannel, wireChannelFor, type HardwareProfile,
+  FilterType, type FilterParams,
+  PlatformType, CrossfeedPreset, LevellerSpeed,
+  type DspSnapshot,
+  type CrossPoint, type OutputModel, type OutputState, type RouteModel,
+} from '@/domain';
 
-// Wire-side filter.type is u8 (0..255 possible). The known FilterType
-// values are 0..5 (Flat..HighPass). Clamp anything else to Flat so a
-// future firmware that adds a new type doesn't slip through as a typed
-// FilterType the rest of the code doesn't expect.
-//
-// TODO: revisit if protocol/bulkParser.ts grows a type-only FilterParams
-// dependency; that would drop WireFilter and this clamp.
+// Opaque handle for the preset-paste device-to-device copy. Runtime holds it
+// between captureState/restoreState but must never inspect it. Internally a
+// BulkParams packet; the brand keeps wire shape out of runtime types.
+export type DeviceState = BulkParams & { readonly __brand: 'DeviceState' };
+
+// Wire filter.type is a u8; clamp anything outside the known FilterType
+// values to Flat so a future firmware type can't slip through as a typed value.
 function narrowFilterType(t: number): FilterType {
   switch (t) {
     case FilterType.Flat:
@@ -208,12 +202,9 @@ export function toBulkParams(
     };
   }
 
-  // Channel names: snapshot carries displayed names per channel id; map
-  // back to wire indices. Slots beyond hardware.totalChannelCount keep
-  // baseline values. Note: if the wire originally had an empty name,
-  // fromBulkParams already resolved it to the channel's default (e.g.
-  // "Out 1 L"), so the wire packet built here will carry that resolved
-  // name -- matching what the user sees in the UI.
+  // Channel names: map displayed names back to wire indices. An originally
+  // empty wire name was already resolved to the channel default by
+  // fromBulkParams, so the rebuilt packet carries that resolved name.
   const channelNames = baseline.channelNames.slice();
   for (const ch of snapshot.channels) {
     const wireCh = wireChannelFor(hardware, ch.id);
@@ -221,7 +212,7 @@ export function toBulkParams(
   }
 
   return {
-    formatVersion: 6,
+    formatVersion: 6, // TODO: source from device firmware version, not hardcoded
     platformId:    snapshot.platform.type,
     numCh:         hardware.totalChannelCount,
     numOut:        hardware.outputCount,

@@ -15,8 +15,8 @@
 
   const TABS = TAB_ORDER.map((id) => ({ id, ...TAB_META[id] }));
 
-  const inputs = $derived(dsp.live?.channels.filter((c) => !c.isOutput) ?? []);
-  const outputs = $derived(dsp.live?.channels.filter((c) =>  c.isOutput) ?? []);
+  const inputs = $derived(dsp.draft?.channels.filter((c) => !c.isOutput) ?? []);
+  const outputs = $derived(dsp.draft?.channels.filter((c) =>  c.isOutput) ?? []);
   const selectable = $derived(settings.tab === 'eq');
 
   function levelDb(ch: ChannelModel): number {
@@ -25,9 +25,9 @@
   }
 
   function isDim(ch: ChannelModel): boolean {
-    if (!dsp.live) return true;
+    if (!dsp.draft) return true;
     if (!ch.isOutput) return false;
-    const out = dsp.live.outputs.find((o) => o.id === ch.id);
+    const out = dsp.draft.outputs.find((o) => o.id === ch.id);
     return !out || !out.enabled;
   }
 

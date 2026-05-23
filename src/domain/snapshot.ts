@@ -1,7 +1,7 @@
 // The root app-model: DspSnapshot is the assembled, UI-shaped picture of
 // the device's current parameters. ChannelModel is the per-EQ-channel
-// enrichment of the wire-shaped channel data. Built by bulkToSnapshot.ts
-// from a parsed BulkParams + the detected hardware profile.
+// enrichment of the wire-shaped channel data. Assembled by the device-layer
+// snapshot codec from a parsed wire packet + the detected hardware profile.
 
 import type { ChannelId, OutputMode } from './channels';
 import type { PlatformInfo, I2sConfig } from './platform';

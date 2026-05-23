@@ -2,9 +2,10 @@
   import Panel from '../chrome/Panel.svelte';
   import ValueField from '../chrome/ValueField.svelte';
   import { dsp, session } from '@/state';
+  import { Proc } from '@/domain';
   import { setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from '@/runtime';
 
-  const loudness = $derived(dsp.live?.loudness);
+  const loudness = $derived(dsp.draft?.loudness);
   const connected = $derived(session.status === 'connected');
   const enabled = $derived(loudness?.enabled ?? false);
   const editable = $derived(connected && enabled);
@@ -42,7 +43,7 @@
     <span class="lbl">REF SPL</span>
     <input
       type="range"
-      min="40" max="100" step="1"
+      min={Proc.LOUDNESS_REF_SPL_MIN_DB} max={Proc.LOUDNESS_REF_SPL_MAX_DB} step={Proc.LOUDNESS_REF_SPL_STEP_DB}
       value={loudness?.refSpl ?? 85}
       oninput={onRefSplInput}
       disabled={!editable}
@@ -50,7 +51,7 @@
     />
     <ValueField
       value={loudness?.refSpl ?? 85}
-      min={40} max={100} step={1}
+      min={Proc.LOUDNESS_REF_SPL_MIN_DB} max={Proc.LOUDNESS_REF_SPL_MAX_DB} step={Proc.LOUDNESS_REF_SPL_STEP_DB}
       kind="dB"
       precision={0}
       disabled={!editable}
@@ -60,7 +61,7 @@
     <span class="lbl">INTENSITY</span>
     <input
       type="range"
-      min="0" max="200" step="0.5"
+      min={Proc.LOUDNESS_INTENSITY_MIN_PCT} max={Proc.LOUDNESS_INTENSITY_MAX_PCT} step={Proc.LOUDNESS_INTENSITY_STEP_PCT}
       value={loudness?.intensityPct ?? 0}
       oninput={onIntensityInput}
       disabled={!editable}
@@ -68,7 +69,7 @@
     />
     <ValueField
       value={loudness?.intensityPct ?? 0}
-      min={0} max={200} step={0.5}
+      min={Proc.LOUDNESS_INTENSITY_MIN_PCT} max={Proc.LOUDNESS_INTENSITY_MAX_PCT} step={Proc.LOUDNESS_INTENSITY_STEP_PCT}
       kind="pct"
       precision={1}
       disabled={!editable}

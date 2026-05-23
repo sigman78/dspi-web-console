@@ -3,8 +3,8 @@
   import {
     setOutputDelay,
     setOutputGain,
-    toggleOutputEnable,
-    toggleOutputMute,
+    setOutputEnabled,
+    setOutputMuted,
   } from '@/runtime';
   import ValueField from '../../chrome/ValueField.svelte';
   import { chKey } from '@/styles/palette';
@@ -29,10 +29,10 @@
   const parts = $derived(splitLR(column.name));
 
   function onPower(): void {
-    toggleOutputEnable(outputIndex);
+    setOutputEnabled(outputIndex, !column.enabled);
   }
   function onMute(): void {
-    toggleOutputMute(outputIndex);
+    setOutputMuted(outputIndex, !column.muted);
   }
 </script>
 

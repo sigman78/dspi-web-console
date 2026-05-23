@@ -98,7 +98,7 @@ export function displayNameForChannel(id: ChannelId, channelNames: readonly stri
   return fromDevice || channelById(id).name;
 }
 
-// Index into a stereo input pair (`dsp.live.inputPreampDb[Left|Right]`).
+// Index into a stereo input pair (`dsp.draft.inputPreampDb[Left|Right]`).
 // Returns InputSlot.Left for In1L, InputSlot.Right for In1R, null for any non-input channel.
 // Centralises the "there is exactly one stereo input pair" assumption
 // so a future second pair changes one place.

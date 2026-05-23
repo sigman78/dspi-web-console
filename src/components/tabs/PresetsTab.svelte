@@ -4,7 +4,7 @@
   import Panel from '../chrome/Panel.svelte';
   import PresetTile from '../presets/PresetTile.svelte';
   import PresetControls from '../presets/PresetControls.svelte';
-  import { fetchPresetInfo, retryFetchPresetInfo } from '@/runtime';
+  import { fetchPresetInfo, retryFetchPresetInfo, dismissPresetActionError } from '@/runtime';
   import { presets, presetsDirty, copySource, clearCopySource, session } from '@/state';
   import { PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';
 
@@ -20,7 +20,7 @@
   }
 
   // COPY/PASTE invariant: source mark clears when RAM goes dirty from a
-  // user edit. Preset Load/Paste apply dsp.live and dsp.shadow atomically
+  // user edit. Preset Load/Paste apply dsp.draft and dsp.saved atomically
   // via fetchAndApplyAsBaseline(), so there is no transient dirty=true
   // window to filter out during wire ops.
   $effect(() => {
@@ -56,7 +56,7 @@
         {#if presets.lastActionError}
           <div class="action-error">
             <span>{presets.lastActionError}</span>
-            <button onclick={() => { presets.lastActionError = null; }} aria-label="Dismiss">×</button>
+            <button onclick={() => dismissPresetActionError()} aria-label="Dismiss">×</button>
           </div>
         {/if}
         <div class="legend">

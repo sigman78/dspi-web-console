@@ -5,7 +5,7 @@
   import { CHANNEL_NAME_MAX_LEN, type ChannelId } from '@/domain';
   import { chKey } from '@/styles/palette';
 
-  const channels = $derived(dsp.live?.channels ?? []);
+  const channels = $derived(dsp.draft?.channels ?? []);
   const connected = $derived(session.status === 'connected');
 
   let editingId: ChannelId | null = $state(null);

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { DspDevice } from './DspDevice';
+import type { DspDeviceGranular } from './DspDeviceGranular';
 import { openSingleDevice, withSavedField } from '@test/hil/setup';
 
 // Float roundtrip tolerance: f32 precision through encode -> wire -> decode.
@@ -11,7 +11,7 @@ const F32_TOL = 4;
 const SAFE_OUTPUT = 0;
 
 describe('DspDevice — mixer matrix wire commands (HIL)', () => {
-  let device: DspDevice;
+  let device: DspDeviceGranular;
   let close: () => Promise<void>;
 
   beforeAll(async () => {

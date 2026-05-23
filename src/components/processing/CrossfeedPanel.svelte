@@ -7,9 +7,9 @@
     setCrossfeedEnabled, setCrossfeedPreset, setCrossfeedItd,
     setCrossfeedFreq, setCrossfeedFeedDb,
   } from '@/runtime';
-  import { CrossfeedPreset } from '@/domain';
+  import { CrossfeedPreset, Proc } from '@/domain';
 
-  const cf = $derived(dsp.live?.crossfeed);
+  const cf = $derived(dsp.draft?.crossfeed);
   const connected = $derived(session.status === 'connected');
   const enabled = $derived(cf?.enabled ?? false);
   const isCustom = $derived((cf?.preset ?? CrossfeedPreset.Preset1) === CrossfeedPreset.Custom);
@@ -71,7 +71,7 @@
     <span class="lbl">CUTOFF</span>
     <input
       type="range"
-      min="500" max="2000" step="10"
+      min={Proc.CROSSFEED_FREQ_MIN_HZ} max={Proc.CROSSFEED_FREQ_MAX_HZ} step={Proc.CROSSFEED_FREQ_STEP_HZ}
       value={cf?.freq ?? 700}
       oninput={onFreqInput}
       disabled={!slidersEditable}
@@ -79,7 +79,7 @@
     />
     <ValueField
       value={cf?.freq ?? 700}
-      min={500} max={2000} step={10}
+      min={Proc.CROSSFEED_FREQ_MIN_HZ} max={Proc.CROSSFEED_FREQ_MAX_HZ} step={Proc.CROSSFEED_FREQ_STEP_HZ}
       kind="hz"
       precision={0}
       disabled={!slidersEditable}
@@ -89,7 +89,7 @@
     <span class="lbl">FEED</span>
     <input
       type="range"
-      min="0" max="15" step="0.5"
+      min={Proc.CROSSFEED_FEED_MIN_DB} max={Proc.CROSSFEED_FEED_MAX_DB} step={Proc.CROSSFEED_FEED_STEP_DB}
       value={cf?.feedDb ?? 4.5}
       oninput={onFeedInput}
       disabled={!slidersEditable}
@@ -97,7 +97,7 @@
     />
     <ValueField
       value={cf?.feedDb ?? 4.5}
-      min={0} max={15} step={0.5}
+      min={Proc.CROSSFEED_FEED_MIN_DB} max={Proc.CROSSFEED_FEED_MAX_DB} step={Proc.CROSSFEED_FEED_STEP_DB}
       kind="dB"
       precision={1}
       disabled={!slidersEditable}

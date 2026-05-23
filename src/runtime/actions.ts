@@ -1,9 +1,11 @@
 import {
   type FilterParams,
   type ChannelId, type InputSlot, type OutputSlot,
-  type RouteModel,
+  type RouteModel, type OutputModel, type DspSnapshot,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
+  CHANNEL_NAME_MAX_LEN,
 } from '@/domain';
+import * as Clamp from '@/domain/clamp';
 import type { DspTransport } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
 import {
@@ -18,17 +20,19 @@ import { Result, Log, type VoidResult } from '@/utils';
 import { startPolling } from './poll';
 import { connectionScope, endConnection } from './connectionScope';
 import { cancelResync } from './resync';
-import { scrubCommand } from './commands';
-import { cancelAllCommands, flushPending } from './outbox';
-import { commitBulk, commitBulkDebounced, applyBulkBaselineConverged } from './commit';
+import {
+  enqueue, applyBaselineConverged,
+  flush as flushWrites, cancel as cancelWrites,
+} from './outbox';
 import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
 const MUTE_DB = -128; // per spec
 
 function _setMasterVolume(db: number): void {
-  scrubCommand({
-    key: 'masterVolume',
+  enqueue({
+    control: 'masterVolume',
+    coalesceKey: 'masterVolume',
     apply: () => patchSnapshot({ masterVolumeDb: db }),
     send: (d) => d.setMasterVolume(db),
   });
@@ -37,41 +41,49 @@ function _setMasterVolume(db: number): void {
 let inflightSync: Promise<void> | null = null;
 
 export function setEqFilter(channel: ChannelId, band: number, filter: FilterParams): void {
-  if (!dsp.live?.channels) return;
-  const ch = dsp.live.channels.find((c) => c.id === channel);
+  if (!dsp.draft?.channels) return;
+  const ch = dsp.draft.channels.find((c) => c.id === channel);
   if (!ch) return;
   if (band >= ch.filters.length) {
     throw new Error(`band ${band} out of range for channel ${channel}`);
   }
-  commitBulk((s) => {
+  enqueue({ control: 'eqFilter', mutate: (s) => {
     const c = s.channels.find((c) => c.id === channel)!;
-    c.filters[band] = { ...filter };
-  });
+    c.filters[band] = {
+      ...filter,
+      frequency: Clamp.bandFrequencyHz(filter.frequency),
+      q: Clamp.bandQ(filter.q),
+      gain: Clamp.bandGainDb(filter.gain),
+    };
+  } });
 }
 
-// Copy all bands from source channel onto target channel as a single
-// bulk write. Under commitBulk, EQ edits no longer have per-band scrub
-// lanes, so no cancelScrubLane calls are needed.
+// Copy all bands from source channel onto target channel as a single bulk write.
 export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
-  if (sourceId === targetId || !dsp.live?.channels) return;
-  const src = dsp.live.channels.find((c) => c.id === sourceId);
-  const tgt = dsp.live.channels.find((c) => c.id === targetId);
+  if (sourceId === targetId || !dsp.draft?.channels) return;
+  const src = dsp.draft.channels.find((c) => c.id === sourceId);
+  const tgt = dsp.draft.channels.find((c) => c.id === targetId);
   if (!src || !tgt) return;
   const len = Math.min(src.filters.length, tgt.filters.length);
-  const copied = src.filters.slice(0, len).map((f) => ({ ...f }));
-  commitBulk((s) => {
+  const copied = src.filters.slice(0, len).map((f) => ({
+    ...f,
+    frequency: Clamp.bandFrequencyHz(f.frequency),
+    q: Clamp.bandQ(f.q),
+    gain: Clamp.bandGainDb(f.gain),
+  }));
+  enqueue({ control: 'eqFilter', mutate: (s) => {
     const t = s.channels.find((c) => c.id === targetId)!;
     for (let i = 0; i < len; i++) t.filters[i] = { ...copied[i] };
-  });
+  } });
 }
 
 export function setBypass(enabled: boolean): void {
-  commitBulk((s) => { s.bypass = enabled; });
+  enqueue({ control: 'bypass', mutate: (s) => { s.bypass = enabled; } });
 }
 
 // Telemetry-only action: clears firmware-side latched clip flags (0x83) and
 // resets the host-side OR-latch (`status.clipLatched`). Not routed through
-// the commit/scrub write path because clip state lives in telemetry, not the
+// the outbox write path because clip state lives in telemetry, not the
 // DSP snapshot, so the post-send bulk resync would be pure overhead. If the
 // wire send fails, the host array stays cleared — the next poll cycle
 // will re-latch from `clipFlags` if firmware still sees the condition.
@@ -88,108 +100,121 @@ export function clearClips(): void {
 // name mirror keeps MatrixHeader and OverviewTab in sync without waiting
 // for the trailing bulk resync.
 export function setChannelName(id: ChannelId, name: string): void {
-  if (!dsp.live?.channels) return;
-  const ch = dsp.live.channels.find((c) => c.id === id);
+  if (!dsp.draft?.channels) return;
+  const ch = dsp.draft.channels.find((c) => c.id === id);
   if (!ch) return;
   const resolved = name.trim() || ch.defaultName;
-  commitBulk((s) => {
+  const clamped = Clamp.nameToByteBudget(resolved, CHANNEL_NAME_MAX_LEN);
+  enqueue({ control: 'channelName', mutate: (s) => {
     const c = s.channels.find((c) => c.id === id)!;
-    c.name = resolved;
+    c.name = clamped;
     const o = s.outputs.find((o) => o.id === id);
-    if (o) o.name = resolved;
-  });
+    if (o) o.name = clamped;
+  } });
 }
 
 export function setLoudnessEnabled(enabled: boolean): void {
-  commitBulk((s) => { s.loudness.enabled = enabled; });
+  enqueue({ control: 'loudnessEnabled', mutate: (s) => { s.loudness.enabled = enabled; } });
 }
 
 export function setLoudnessRefSpl(db: number): void {
-  commitBulkDebounced('loudnessRefSpl', (s) => { s.loudness.refSpl = db; });
+  db = Clamp.loudnessRefSpl(db);
+  enqueue({ control: 'loudnessRefSpl', debounceKey: 'loudnessRefSpl', mutate: (s) => { s.loudness.refSpl = db; } });
 }
 
 export function setLoudnessIntensityPct(pct: number): void {
-  commitBulkDebounced('loudnessIntensity', (s) => { s.loudness.intensityPct = pct; });
+  pct = Clamp.loudnessIntensityPct(pct);
+  enqueue({ control: 'loudnessIntensity', debounceKey: 'loudnessIntensity', mutate: (s) => { s.loudness.intensityPct = pct; } });
 }
 
 export function setCrossfeedEnabled(enabled: boolean): void {
-  commitBulk((s) => { s.crossfeed.enabled = enabled; });
+  enqueue({ control: 'crossfeedEnabled', mutate: (s) => { s.crossfeed.enabled = enabled; } });
 }
 
 export function setCrossfeedPreset(preset: CrossfeedPreset): void {
-  commitBulk((s) => { s.crossfeed.preset = preset; });
+  enqueue({ control: 'crossfeedPreset', mutate: (s) => { s.crossfeed.preset = preset; } });
 }
 
 export function setCrossfeedItd(itd: boolean): void {
-  commitBulk((s) => { s.crossfeed.itd = itd; });
+  enqueue({ control: 'crossfeedItd', mutate: (s) => { s.crossfeed.itd = itd; } });
 }
 
 export function setCrossfeedFreq(hz: number): void {
-  commitBulkDebounced('crossfeedFreq', (s) => { s.crossfeed.freq = hz; });
+  hz = Clamp.crossfeedFreqHz(hz);
+  enqueue({ control: 'crossfeedFreq', debounceKey: 'crossfeedFreq', mutate: (s) => { s.crossfeed.freq = hz; } });
 }
 
 export function setCrossfeedFeedDb(db: number): void {
-  commitBulkDebounced('crossfeedFeedDb', (s) => { s.crossfeed.feedDb = db; });
+  db = Clamp.crossfeedFeedDb(db);
+  enqueue({ control: 'crossfeedFeedDb', debounceKey: 'crossfeedFeedDb', mutate: (s) => { s.crossfeed.feedDb = db; } });
 }
 
 export function setLevellerEnabled(enabled: boolean): void {
-  commitBulk((s) => { if (s.leveller) s.leveller.enabled = enabled; });
+  enqueue({ control: 'levellerEnabled', mutate: (s) => { if (s.leveller) s.leveller.enabled = enabled; } });
 }
 
 export function setLevellerSpeed(speed: LevellerSpeed): void {
-  commitBulk((s) => { if (s.leveller) s.leveller.speed = speed; });
+  enqueue({ control: 'levellerSpeed', mutate: (s) => { if (s.leveller) s.leveller.speed = speed; } });
 }
 
 export function setLevellerLookahead(lookahead: boolean): void {
-  commitBulk((s) => { if (s.leveller) s.leveller.lookahead = lookahead; });
+  enqueue({ control: 'levellerLookahead', mutate: (s) => { if (s.leveller) s.leveller.lookahead = lookahead; } });
 }
 
 export function setLevellerAmount(pct: number): void {
-  commitBulkDebounced('levellerAmount', (s) => { if (s.leveller) s.leveller.amount = pct; });
+  pct = Clamp.levellerAmountPct(pct);
+  enqueue({ control: 'levellerAmount', debounceKey: 'levellerAmount', mutate: (s) => { if (s.leveller) s.leveller.amount = pct; } });
 }
 
 export function setLevellerMaxGain(db: number): void {
-  commitBulkDebounced('levellerMaxGain', (s) => { if (s.leveller) s.leveller.maxGainDb = db; });
+  db = Clamp.levellerMaxGainDb(db);
+  enqueue({ control: 'levellerMaxGain', debounceKey: 'levellerMaxGain', mutate: (s) => { if (s.leveller) s.leveller.maxGainDb = db; } });
 }
 
 export function setLevellerGate(db: number): void {
-  commitBulkDebounced('levellerGate', (s) => { if (s.leveller) s.leveller.gateDb = db; });
+  db = Clamp.levellerGateDb(db);
+  enqueue({ control: 'levellerGate', debounceKey: 'levellerGate', mutate: (s) => { if (s.leveller) s.leveller.gateDb = db; } });
 }
 
 export function setMasterPreamp(db: number): void {
-  scrubCommand({
-    key: 'masterPreamp',
+  db = Clamp.preampDb(db);
+  enqueue({
+    control: 'masterPreamp',
+    coalesceKey: 'masterPreamp',
     apply: () => patchSnapshot({ masterPreampDb: db }),
     send: (d) => d.setMasterPreamp(db),
   });
 }
 
 export function setInputPreamp(channel: InputSlot, db: number): void {
-  const cur = dsp.live?.inputPreampDb;
+  db = Clamp.preampDb(db);
+  const cur = dsp.draft?.inputPreampDb;
   if (!cur) return;
   const next: [number, number] = [cur[0], cur[1]];
   next[channel] = db;
-  scrubCommand({
-    key: `inputPreamp:${channel}`,
+  enqueue({
+    control: 'inputPreamp',
+    coalesceKey: `inputPreamp:${channel}`,
     apply: () => patchSnapshot({ inputPreampDb: next }),
     send: (d) => d.setInputPreamp(channel, db),
   });
 }
 
-// All three crosspoint mutations share one per-item scrub lane keyed by the
-// cell. Each send reads the full {enabled, invert, gainDb} tuple from `live`
+// All three crosspoint mutations share one per-item granular lane keyed by the
+// cell. Each send reads the full {enabled, invert, gainDb} tuple from `draft`
 // and writes it via setMatrixRoute, so a toggle and a gain drag on the same
 // cell coalesce into one consistent write. Per-item writes do not mute audio
-// (unlike the bulk path), which is why crosspoint gain stays Tier A.
+// (unlike the bulk path), which is why crosspoint gain stays granular.
 function scheduleCrosspointWrite(
   input: InputSlot,
   output: OutputSlot,
   mutate: (r: RouteModel) => RouteModel,
 ): void {
-  if (!dsp.live?.routes) return;
+  if (!dsp.draft?.routes) return;
   const route = focusRoute(input, output);
-  scrubCommand({
-    key: `crosspoint:${input}:${output}`,
+  enqueue({
+    control: 'crosspoint',
+    coalesceKey: `crosspoint:${input}:${output}`,
     apply: () => route.modify(mutate),
     send: async (d) => {
       const c = route.read();
@@ -203,47 +228,54 @@ function scheduleCrosspointWrite(
 }
 
 export function setCrosspointGain(input: InputSlot, output: OutputSlot, gainDb: number): void {
+  gainDb = Clamp.crosspointGainDb(gainDb);
   scheduleCrosspointWrite(input, output, (r) => ({ ...r, gainDb }));
 }
 
-export function toggleCrosspoint(input: InputSlot, output: OutputSlot): void {
-  scheduleCrosspointWrite(input, output, (r) => ({ ...r, enabled: !r.enabled }));
+export function setCrosspointEnabled(input: InputSlot, output: OutputSlot, enabled: boolean): void {
+  scheduleCrosspointWrite(input, output, (r) => ({ ...r, enabled }));
 }
 
-export function toggleCrosspointInvert(input: InputSlot, output: OutputSlot): void {
-  scheduleCrosspointWrite(input, output, (r) => ({ ...r, invert: !r.invert }));
+export function setCrosspointInvert(input: InputSlot, output: OutputSlot, invert: boolean): void {
+  scheduleCrosspointWrite(input, output, (r) => ({ ...r, invert }));
 }
 
 export function setOutputGain(slot: OutputSlot, gainDb: number): void {
-  if (!dsp.live?.outputs) return;
+  gainDb = Clamp.outputGainDb(gainDb);
+  if (!dsp.draft?.outputs) return;
   const out = focusOutput(slot);
-  scrubCommand({
-    key: `outputGain:${slot}`,
+  enqueue({
+    control: 'outputGain',
+    coalesceKey: `outputGain:${slot}`,
     apply: () => out.modify((o) => ({ ...o, gainDb })),
     send: (d) => d.setOutputGain(slot, gainDb),
   });
 }
 
+// Bulk-path output addressing: locate the output by wire slot in the draft
+// being mutated. A missing slot is a silent no-op, matching the other bulk
+// verbs (the granular setOutputGain path uses focusOutput, which throws).
+function mutateOutputSlot(slot: OutputSlot, f: (o: OutputModel) => void): (s: DspSnapshot) => void {
+  return (s) => {
+    const o = s.outputs.find((o) => o.wireIndex === slot);
+    if (o) f(o);
+  };
+}
+
 export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
-  if (!dsp.live?.outputs) return;
-  commitBulk((s) => {
-    const o = s.outputs.find((o) => o.wireIndex === slot);
-    if (o) o.delayMs = delayMs;
-  });
+  if (!dsp.draft?.outputs) return;
+  delayMs = Clamp.outputDelayMs(delayMs);
+  enqueue({ control: 'outputDelay', mutate: mutateOutputSlot(slot, (o) => { o.delayMs = delayMs; }) });
 }
 
-export function toggleOutputEnable(slot: OutputSlot): void {
-  commitBulk((s) => {
-    const o = s.outputs.find((o) => o.wireIndex === slot);
-    if (o) o.enabled = !o.enabled;
-  });
+export function setOutputEnabled(slot: OutputSlot, enabled: boolean): void {
+  if (!dsp.draft?.outputs) return;
+  enqueue({ control: 'outputEnabled', mutate: mutateOutputSlot(slot, (o) => { o.enabled = enabled; }) });
 }
 
-export function toggleOutputMute(slot: OutputSlot): void {
-  commitBulk((s) => {
-    const o = s.outputs.find((o) => o.wireIndex === slot);
-    if (o) o.muted = !o.muted;
-  });
+export function setOutputMuted(slot: OutputSlot, muted: boolean): void {
+  if (!dsp.draft?.outputs) return;
+  enqueue({ control: 'outputMuted', mutate: mutateOutputSlot(slot, (o) => { o.muted = muted; }) });
 }
 
 export async function syncDeviceSnapshot(): Promise<void> {
@@ -252,8 +284,8 @@ export async function syncDeviceSnapshot(): Promise<void> {
   if (!d) throw new Error('No device');
   inflightSync = (async () => {
     try {
-      const bulk = await d.getAllParams();
-      applyBulkBaselineConverged(d.hardware, bulk);
+      const snap = await d.getSnapshot();
+      applyBaselineConverged(snap);
     } catch (err) {
       Log.error('sync', 'syncDeviceSnapshot failed', err);
       setStatus('error', (err as Error).message);
@@ -281,13 +313,13 @@ export async function finishConnection(device: DspDevice): Promise<void> {
     if (s) {
       s.add(startPolling());
       s.add(cancelResync);
-      s.add(() => cancelAllCommands());
+      s.add(() => cancelWrites());
     }
     await fetchPresetInfo();
     Log.info('sync', 'connected', {
-      platform: dsp.live?.platform.name,
-      formatVersion: dsp.live?.formatVersion,
-      masterVolumeDb: dsp.live?.masterVolumeDb,
+      platform: dsp.draft?.platform.name,
+      formatVersion: dsp.draft?.formatVersion,
+      masterVolumeDb: dsp.draft?.masterVolumeDb,
     });
   } catch (err) {
     Log.error('sync', 'finishConnection failed', err);
@@ -306,7 +338,7 @@ export async function reconcileAfterSync(): Promise<void> {
   const d = session.device;
   if (!d) return;
   if (settings.soft.muted) {
-    const restoreFrom = settings.soft.mutedFromDb ?? dsp.live?.masterVolumeDb ?? 0;
+    const restoreFrom = settings.soft.mutedFromDb ?? dsp.draft?.masterVolumeDb ?? 0;
     settings.soft.mutedFromDb = restoreFrom;
     patchSnapshot({ masterVolumeDb: MUTE_DB });
     await d.setMasterVolume(MUTE_DB);
@@ -314,6 +346,7 @@ export async function reconcileAfterSync(): Promise<void> {
 }
 
 export function setMasterVolume(db: number): void {
+  db = Clamp.masterVolumeDb(db);
   if (settings.soft.muted) {
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
@@ -329,7 +362,7 @@ export function toggleMute(): void {
     settings.soft.mutedFromDb = null;
     _setMasterVolume(restore);
   } else {
-    settings.soft.mutedFromDb = dsp.live?.masterVolumeDb ?? 0;
+    settings.soft.mutedFromDb = dsp.draft?.masterVolumeDb ?? 0;
     settings.soft.muted = true;
     _setMasterVolume(MUTE_DB);
   }
@@ -386,7 +419,7 @@ export async function factoryResetDevice(): Promise<VoidResult> {
   if (!d) return Result.fail('no device', 'no device');
   // Drain any parked optimistic write so a pre-reset bulk send can't settle
   // mid-reset and re-push stale params (mirrors the preset load/paste flows).
-  await flushPending();
+  await flushWrites();
   const r = await d.factoryReset();
   // r.message is always present on the failure branch; map the typed flash
   // code to the action wrapper's string channel.

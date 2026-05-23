@@ -1,7 +1,7 @@
-import { session, applyBulkLive, dsp } from '@/state';
+import { session, applyDraftSnapshot, dsp } from '@/state';
 import { Log } from '@/utils';
 import { makeResyncScheduler } from './schedulers';
-import { applyBulkBaselineConverged } from './commit';
+import { applyBaselineConverged } from './outbox';
 
 const RESYNC_MS = 250;
 
@@ -12,13 +12,13 @@ async function fetchAndApply(force: boolean): Promise<void> {
   // bypasses for failure recovery.
   if (!force && dsp.pendingWrites.size > 0) return;
   try {
-    const bulk = await d.getAllParams();
+    const snap = await d.getSnapshot();
     if (!force && dsp.pendingWrites.size > 0) return;
-    // Live-only: the preset-dirty diff measures against `dsp.shadow`,
+    // Draft-only: the preset-dirty diff measures against `dsp.saved`,
     // which must NOT auto-update on every resync. Callers that need to
-    // re-baseline shadow (Preset Load/Revert) call refreshShadowFromLive
+    // re-baseline saved (Preset Load/Revert) call refreshSavedFromDraft
     // after awaiting forceResyncNow().
-    applyBulkLive(d.hardware, bulk);
+    applyDraftSnapshot(snap);
   } catch (err) {
     Log.warn('resync', 'bulk re-fetch failed', err);
   }
@@ -42,26 +42,19 @@ export async function forceResyncNow(): Promise<void> {
   await fetchAndApply(true);
 }
 
-// Fetch the device state and apply it as a fresh baseline — both `dsp.live`
-// and `dsp.shadow` update in one synchronous statement via applyBulkBaseline.
-//
-// Use this for preset transitions (Load / Paste / Revert) where there is
-// no meaningful "dirty" state during the operation. The atomic apply
-// eliminates the microtask window where live and shadow would otherwise
-// disagree, so observers watching `presetsDirty.current` (e.g. the
-// copy-source auto-clear $effect in PresetsTab) don't see a spurious flip.
-//
-// Cancels any pending trailing resync so a delayed live-only fetch can't
-// fire later and partially overwrite shadow.
-//
-// See docs/ARCH.md for the baseline/live split this protects.
+// Fetch device state and apply it as a fresh baseline (draft + saved together,
+// atomically). Use for preset transitions (Load / Paste / Revert) where there
+// is no meaningful "dirty" state: the atomic apply avoids the microtask window
+// where draft and saved disagree and observers see a spurious dirty flip.
+// Cancels any pending trailing resync so a delayed draft-only fetch can't
+// later overwrite saved. See docs/ARCH.md for the baseline/draft split.
 export async function fetchAndApplyAsBaseline(): Promise<void> {
   scheduler.cancel();
   const d = session.device;
   if (!d) return;
   try {
-    const bulk = await d.getAllParams();
-    applyBulkBaselineConverged(d.hardware, bulk);
+    const snap = await d.getSnapshot();
+    applyBaselineConverged(snap);
   } catch (err) {
     Log.warn('resync', 'baseline re-fetch failed', err);
   }

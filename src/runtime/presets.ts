@@ -2,24 +2,31 @@
 
 import {
   session,
-  refreshShadowFromLive,
+  refreshSavedFromDraft,
   presets, presetsDirty, askBoundary,
   settings,
 } from '@/state';
 import { reconcileAfterSync } from './actions';
 import { fetchAndApplyAsBaseline } from './resync';
-import { flushPending } from './outbox';
+import { flush as flushWrites } from './outbox';
 import type { DspDevice } from '@/device/DspDevice';
 import { type PresetSlot, PRESET_SLOT_COUNT } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
-import { Log, type Result } from '@/utils';
+import { Log, Result } from '@/utils';
 
 const PRESET_LOAD_SETTLE_MS = 100;
+
+// loadPreset only acks the command; the firmware copies flash→RAM asynchronously
+// in its main loop (~100 ms). Wait this out before reading or overwriting RAM.
+function settleAfterLoad(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, PRESET_LOAD_SETTLE_MS));
+}
 
 export type PresetActionError =
   | { ok: false; code: PresetResult; message?: string }
   | { ok: false; code: 'no-device'; message?: string }
-  | { ok: false; code: 'active'; message?: string };
+  | { ok: false; code: 'active'; message?: string }
+  | { ok: false; code: 'error'; message?: string };
 
 function noDevice(): { ok: false; code: 'no-device'; message: string } {
   return { ok: false, code: 'no-device', message: 'no device' };
@@ -46,14 +53,27 @@ async function withBusy<T>(fn: () => Promise<T>): Promise<T> {
 // rethrow, since their callers await without a catch and a rethrow would only
 // leak an unhandled rejection.
 
-function recordActionError(label: string, e: unknown): void {
+function recordActionError(label: string, e: unknown): string {
   const msg = (e as Error)?.message ?? String(e);
-  presets.lastActionError = `${label}: ${msg}`;
+  const formatted = `${label}: ${msg}`;
+  presets.lastActionError = formatted;
   Log.warn('presets', `${label} failed`, e);
+  return formatted;
 }
 
 function clearActionError(): void {
   presets.lastActionError = null;
+}
+
+function recordToResult(label: string, e: unknown): PresetActionError {
+  const message = recordActionError(label, e);
+  return { ok: false, code: 'error', message };
+}
+
+// Public verb so the UI never writes preset store state directly: the
+// error-banner dismiss button calls this instead of assigning lastActionError.
+export function dismissPresetActionError(): void {
+  clearActionError();
 }
 
 // Eager + lazy entry point. Idempotent when the cache is populated.
@@ -125,7 +145,7 @@ export async function saveActivePreset(): Promise<Result<void, PresetResult> | P
   clearActionError();
   try {
     return await withBusy(async () => {
-      await flushPending();
+      await flushWrites();
       const r = await d.savePreset(active);
       if (r.ok) {
         if (presets.directory) {
@@ -133,7 +153,7 @@ export async function saveActivePreset(): Promise<Result<void, PresetResult> | P
           set.add(active);
           presets.directory = { ...presets.directory, occupiedSlotsSet: set };
         }
-        refreshShadowFromLive();
+        refreshSavedFromDraft();
       } else {
         recordActionError('Save', new Error(r.message ?? `error ${r.code}`));
       }
@@ -145,19 +165,16 @@ export async function saveActivePreset(): Promise<Result<void, PresetResult> | P
   }
 }
 
-// PresetSave(N) for an arbitrary slot. Mirrors firmware behavior
-// PresetSave sets `lastActive = slot`, so the  just-saved slot becomes active
-// The host updates `presets.active` to match
-//
-// Baseline (`dsp.shadow`) advances unconditionally: current RAM is what
-// we just captured into the slot, and the slot is now active.
+// PresetSave(N) for an arbitrary slot. Firmware sets lastActive = slot, so the
+// just-saved slot becomes active; the host mirrors that into presets.active and
+// advances the baseline (RAM is what we just captured into the now-active slot).
 export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = session.device;
   if (!d) return noDevice();
   clearActionError();
   try {
     return await withBusy(async () => {
-      await flushPending();
+      await flushWrites();
       const r = await d.savePreset(slot);
       if (r.ok) {
         if (presets.directory) {
@@ -166,7 +183,7 @@ export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, Pre
           presets.directory = { ...presets.directory, occupiedSlotsSet: set };
         }
         presets.active = slot;
-        refreshShadowFromLive();
+        refreshSavedFromDraft();
       } else {
         recordActionError('Save', new Error(r.message ?? `error ${r.code}`));
       }
@@ -178,15 +195,11 @@ export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, Pre
   }
 }
 
-// PresetLoad(N). Awaits the firmware's deferred flash to RAM copy ~100 ms 
-// We then use fetchAndApplyAsBaseline() rather than fullSync()
-// to refresh dsp.live + dsp.shadow atomically without flipping 
-// session.status to 'connecting' — that toggle would
-// cause App.svelte to unmount the entire main view and flash the
-// ConnectingHero splash mid-operation. reconcileAfterSync() is still
-// required to re-apply soft-mute over the freshly-loaded master volume.
-// Internal: wire-level load + post-load epilogue. No dirty gating.
-// Called by both loadPresetSlot (after gating) and revertActivePreset
+// Wire-level load + post-load epilogue, no dirty gating. Called by
+// loadPresetSlot (after gating) and revertActivePreset. Uses
+// fetchAndApplyAsBaseline (not fullSync) so session.status never flips to
+// 'connecting' — that would unmount the main view and flash the splash
+// mid-load. reconcileAfterSync re-applies soft-mute over the loaded volume.
 async function executeLoad(
   d: DspDevice,
   slot: PresetSlot,
@@ -194,17 +207,14 @@ async function executeLoad(
   clearActionError();
   try {
     return await withBusy(async () => {
-      await flushPending();
+      await flushWrites();
       const r = await d.loadPreset(slot);
       if (r.ok) {
         // Reflect active slot in UI immediately. If the subsequent resync or
         // soft-mute reconcile throws, we still want the header/active marker
         // to match the slot the device just loaded.
         presets.active = slot;
-        await new Promise<void>((resolve) => setTimeout(resolve, PRESET_LOAD_SETTLE_MS));
-        // Atomic: fetch device state and apply to both dsp.live and
-        // dsp.shadow in one synchronous statement. Eliminates the
-        // microtask window where live and shadow would otherwise disagree
+        await settleAfterLoad();
         await fetchAndApplyAsBaseline();
         await reconcileAfterSync();
       } else {
@@ -257,19 +267,19 @@ export async function revertActivePreset(): Promise<Result<void, PresetResult> |
 }
 
 // PresetCopy doesn't exist on the wire; PASTE composes a whole-state swap
-// using the setAllParams bulk op so the active-slot pointer never changes:
+// using the device's bulk capture/restore so the active-slot pointer never
+// changes:
 //
 //   1. LoadPreset(src)     — RAM = src flash content; device pointer → src
-//   2. GetAllParams()      — capture src content as a BulkParams blob
+//   2. captureState()      — capture src content as an opaque device blob
 //   3. LoadPreset(active)  — restore RAM + device pointer to pre-paste slot
-//   4. SetAllParams(blob)  — push src content into active's RAM (no flash)
+//   4. restoreState(blob)  — push src content into active's RAM (no flash)
 //   5. SavePreset(active)  — flash[active] = RAM = src content
 //
-// End state: active slot holds source's content, RAM matches, active
-// unchanged. The COPY/PASTE invariant in the UI guarantees clean RAM
-// here (copy source clears on dirty), so we don't gate via boundary
-// modal - any caller violating the invariant gets stale-source
-// behaviour, not data loss.
+// End state: active slot holds source's content, RAM matches, active unchanged.
+// The UI's copy/paste invariant guarantees clean RAM here (copy source clears
+// on dirty), so there's no boundary-modal gate; a violating caller gets
+// stale-source behaviour, not data loss.
 export async function pastePresetTo(src: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = session.device;
   if (!d) return noDevice();
@@ -279,15 +289,17 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
   clearActionError();
   try {
     return await withBusy(async () => {
-      await flushPending();
+      await flushWrites();
       // Step 1: Load source into RAM (device pointer → src).
       const r1 = await d.loadPreset(src);
       if (!r1.ok) {
         recordActionError('Paste', new Error(r1.message ?? `error ${r1.code}`));
         return r1;
       }
-      // Step 2: Capture src content as a blob.
-      const sourceBlob = await d.getAllParams();
+      // Step 2: Capture src content as a blob — only after the load has settled
+      // into RAM, else we'd capture the previous (active) slot's content.
+      await settleAfterLoad();
+      const sourceBlob = await d.captureState();
       // Step 3: Restore active slot in RAM (device pointer → active).
       const r3 = await d.loadPreset(active);
       if (!r3.ok) {
@@ -295,7 +307,10 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
         return r3;
       }
       // Step 4: Push src content into active's RAM (no flash; pointer unchanged).
-      await d.setAllParams(sourceBlob);
+      // Wait for the active-slot load to settle first, otherwise its deferred
+      // flash→RAM copy could land after restoreState and clobber the source.
+      await settleAfterLoad();
+      await d.restoreState(sourceBlob);
       // Step 5: Flash active slot = RAM = src content.
       const r5 = await d.savePreset(active);
       if (!r5.ok) {
@@ -308,8 +323,7 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
         presets.directory = { ...presets.directory, occupiedSlotsSet: set };
       }
       presets.active = active;
-      await new Promise<void>((resolve) => setTimeout(resolve, PRESET_LOAD_SETTLE_MS));
-      // Atomic baseline apply
+      await settleAfterLoad();
       await fetchAndApplyAsBaseline();
       await reconcileAfterSync();
       return r5;
@@ -350,28 +364,33 @@ export async function deletePresetSlot(slot: PresetSlot): Promise<Result<void, P
 // PresetDelete, so the rename is independent of slot occupancy. Channel
 // names (which DO live in the payload) flow through actions.ts; this
 // function is only for the slot-level name.
-export async function renamePresetSlot(slot: PresetSlot, name: string): Promise<void> {
+export async function renamePresetSlot(
+  slot: PresetSlot, name: string,
+): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = session.device;
-  if (!d) return;
+  if (!d) return noDevice();
   clearActionError();
   try {
-    await withBusy(async () => {
+    return await withBusy(async () => {
       await d.setPresetName(slot, name);
       const next = [...presets.names];
       next[slot] = name;
       presets.names = next;
+      return Result.ok();
     });
   } catch (e) {
-    recordActionError('Rename', e);
+    return recordToResult('Rename', e);
   }
 }
 
-export async function setStartupDefault(slot: PresetSlot): Promise<void> {
+export async function setStartupDefault(
+  slot: PresetSlot,
+): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = session.device;
-  if (!d) return;
+  if (!d) return noDevice();
   clearActionError();
   try {
-    await withBusy(async () => {
+    return await withBusy(async () => {
       await d.setPresetStartup({ mode: PresetStartupMode.Specified, slot });
       if (presets.directory) {
         presets.directory = {
@@ -380,42 +399,49 @@ export async function setStartupDefault(slot: PresetSlot): Promise<void> {
           defaultSlot: slot,
         };
       }
+      return Result.ok();
     });
   } catch (e) {
-    recordActionError('Set startup default', e);
+    return recordToResult('Set startup default', e);
   }
 }
 
-export async function setStartupMode(mode: PresetStartupMode): Promise<void> {
+export async function setStartupMode(
+  mode: PresetStartupMode,
+): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = session.device;
-  if (!d) return;
+  if (!d) return noDevice();
   const slot = presets.directory?.defaultSlot ?? (0 as PresetSlot);
   clearActionError();
   try {
-    await withBusy(async () => {
+    return await withBusy(async () => {
       await d.setPresetStartup({ mode, slot });
       if (presets.directory) {
         presets.directory = { ...presets.directory, startupMode: mode };
       }
+      return Result.ok();
     });
   } catch (e) {
-    recordActionError('Set startup mode', e);
+    return recordToResult('Set startup mode', e);
   }
 }
 
-export async function setPresetIncludePins(include: boolean): Promise<void> {
+export async function setPresetIncludePins(
+  include: boolean,
+): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = session.device;
-  if (!d) return;
+  if (!d) return noDevice();
   clearActionError();
   try {
-    await withBusy(async () => {
+    return await withBusy(async () => {
       await d.setPresetIncludePins(include);
       if (presets.directory) {
         presets.directory = { ...presets.directory, includePins: include };
       }
+      return Result.ok();
     });
   } catch (e) {
-    recordActionError('Set include pins', e);
+    return recordToResult('Set include pins', e);
   }
 }
 

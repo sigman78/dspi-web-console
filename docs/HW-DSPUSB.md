@@ -32,7 +32,7 @@ interface DspTransport {
 
 The transport surface only exposes `wValue` (no `wIndex`). Commands that need two indices (e.g., matrix route by `(input, output)`) pack both into `wValue` — see `WireCmd.GetMatrixRoute`.
 
-`'connect'` is emitted **synchronously** from inside `WebUsbTransport.open()` — registered listeners fire before `requestAndOpen()`'s caller sees the promise resolve. `actions.fullSync()` guards re-entrance with a single in-flight promise.
+`'connect'` is emitted **synchronously** from inside `WebUsbTransport.open()` — registered listeners fire before `requestAndOpen()`'s caller sees the promise resolve. Runtime connection code attaches listeners only after `DspDevice.create(...)` completes, then explicitly calls `finishConnection(...)` for the initial snapshot.
 
 ### MockTransport behavior
 
@@ -176,7 +176,7 @@ Optional trailing sections are gated on **packet length** AND (where noted) **fo
 
 `numCh × u16 peaks` followed by `u8 cpu0, u8 cpu1, u16 clipFlags`. Each peak normalized as `raw / 32767`. `parseSystemStatus` always returns an 11-slot `Float32Array`; unused slots stay zero. RP2040 polls 7 channels, RP2350 polls 11.
 
-`numCh` is platform-specific (cached in `DspDevice` after `getDeviceInfo`).
+`numCh` is platform-specific and comes from the hardware profile captured by `DspDevice.create(...)`.
 
 **Quirk:** `parseSystemStatus` zero-fills any unread slots rather than throwing. Useful for short responses but means a totally broken response looks like a quiet device. The first-poll diagnostic logs (when `?log=1`) help disambiguate.
 

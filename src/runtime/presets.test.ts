@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { bootMock } from './session';
+import type { DspDeviceGranular } from '@/device/DspDeviceGranular';
 import { presets, resetPresets, boundary, resolveBoundary, settings, session, dsp } from '@/state';
 import { PresetStartupMode, parseBulkParams } from '@/protocol';
 import type { PresetSlot } from '@/domain';
@@ -16,6 +17,7 @@ import {
   setStartupMode,
   setPresetIncludePins,
   pastePresetTo,
+  dismissPresetActionError,
 } from './presets';
 import { forceResyncNow, fetchAndApplyAsBaseline } from './resync';
 
@@ -80,13 +82,13 @@ describe('runtime/presets', () => {
   describe('saveActivePreset', () => {
     it('saves to the active slot and advances the baseline', async () => {
       await fetchPresetInfo();
-      if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
-      const before = dsp.shadow?.bypass;
-      const after  = dsp.live?.bypass;
+      if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
+      const before = dsp.saved?.bypass;
+      const after  = dsp.draft?.bypass;
       expect(before).not.toBe(after);
       const r = await saveActivePreset();
       expect(r.ok).toBe(true);
-      expect(dsp.shadow?.bypass).toBe(after);
+      expect(dsp.saved?.bypass).toBe(after);
     });
   });
 
@@ -99,7 +101,7 @@ describe('runtime/presets', () => {
       expect(presets.active).toBe(0);
     });
 
-    it('issues loadPreset on the wire and re-baselines shadow from a fresh getAllParams', async () => {
+    it('issues loadPreset on the wire and re-baselines saved from a fresh getAllParams', async () => {
       settings.warnOnPresetSwitchDirty = false; // not under test here
       await fetchPresetInfo();
       await saveActivePreset();
@@ -119,17 +121,17 @@ describe('runtime/presets', () => {
         return origGetAll();
       };
       try {
-        // Make live diverge from shadow so the post-load re-baseline is
-        // observable: after success, shadow must match the freshly fetched
-        // device state (i.e. live === shadow per field).
-        if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
+        // Make draft diverge from saved so the post-load re-baseline is
+        // observable: after success, saved must match the freshly fetched
+        // device state (i.e. draft === saved per field).
+        if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
         const r = await loadPresetSlot(0 as any);
         expect(r.ok).toBe(true);
         expect(loadCalls).toBe(1);
         // fetchAndApplyAsBaseline runs exactly one getAllParams after loadPreset.
         expect(getAllAfterLoad).toBe(1);
-        // Shadow re-baselined to device truth (live and shadow agree on bypass).
-        expect(dsp.shadow?.bypass).toBe(dsp.live?.bypass);
+        // Saved re-baselined to device truth (draft and saved agree on bypass).
+        expect(dsp.saved?.bypass).toBe(dsp.draft?.bypass);
       } finally {
         (d as any).loadPreset = origLoad;
         (d as any).getAllParams = origGetAll;
@@ -163,7 +165,7 @@ describe('runtime/presets', () => {
     it('reloads the active slot', async () => {
       await fetchPresetInfo();
       await saveActivePreset();
-      if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
+      if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
       const r = await revertActivePreset();
       expect(r.ok).toBe(true);
     });
@@ -192,7 +194,8 @@ describe('runtime/presets', () => {
   describe('setStartupDefault / setStartupMode', () => {
     it('writes startup config and updates the directory cache', async () => {
       await fetchPresetInfo();
-      await setStartupDefault(4 as any);
+      const r = await setStartupDefault(4 as any);
+      expect('ok' in r && r.ok).toBe(true);
       expect(presets.directory!.startupMode).toBe(PresetStartupMode.Specified);
       expect(presets.directory!.defaultSlot).toBe(4);
     });
@@ -200,7 +203,8 @@ describe('runtime/presets', () => {
     it('sets the startup mode without losing defaultSlot', async () => {
       await fetchPresetInfo();
       await setStartupDefault(4 as any);
-      await setStartupMode(PresetStartupMode.LastActive);
+      const r = await setStartupMode(PresetStartupMode.LastActive);
+      expect('ok' in r && r.ok).toBe(true);
       expect(presets.directory!.startupMode).toBe(PresetStartupMode.LastActive);
       expect(presets.directory!.defaultSlot).toBe(4);
     });
@@ -209,7 +213,8 @@ describe('runtime/presets', () => {
   describe('setPresetIncludePins', () => {
     it('writes the flag through to the device and mirrors it in the directory cache', async () => {
       await fetchPresetInfo();
-      await setPresetIncludePins(true);
+      const r = await setPresetIncludePins(true);
+      expect('ok' in r && r.ok).toBe(true);
       expect(presets.directory!.includePins).toBe(true);
       await setPresetIncludePins(false);
       expect(presets.directory!.includePins).toBe(false);
@@ -221,7 +226,8 @@ describe('runtime/presets', () => {
       const orig = d.setPresetIncludePins;
       d.setPresetIncludePins = async () => { throw new Error('wire fail'); };
       try {
-        await expect(setPresetIncludePins(true)).resolves.toBeUndefined();
+        const r = await setPresetIncludePins(true);
+        expect('ok' in r && r.ok).toBe(false);
         expect(presets.lastActionError).toContain('Set include pins');
         expect(presets.lastActionError).toContain('wire fail');
       } finally {
@@ -250,39 +256,39 @@ describe('runtime/presets', () => {
         await loadPresetSlot(0 as any);
       }
       const active = presets.active!;
-      if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
-      expect(dsp.shadow?.bypass).not.toBe(dsp.live?.bypass);
+      if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
+      expect(dsp.saved?.bypass).not.toBe(dsp.draft?.bypass);
       const r = await savePresetSlot(active);
       expect(r.ok).toBe(true);
-      expect(dsp.shadow?.bypass).toBe(dsp.live?.bypass);
+      expect(dsp.saved?.bypass).toBe(dsp.draft?.bypass);
     });
   });
 
   describe('dirty baseline survives resync', () => {
-    it('shadow is not overwritten when forceResyncNow refreshes live', async () => {
+    it('saved is not overwritten when forceResyncNow refreshes draft', async () => {
       await fetchPresetInfo();
-      // Sanity: bootMock+fullSync populated both live and shadow.
-      expect(dsp.live).not.toBe(null);
-      expect(dsp.shadow).not.toBe(null);
-      const shadowLoudnessBefore = dsp.shadow!.loudness.enabled;
+      // Sanity: bootMock+fullSync populated both draft and saved.
+      expect(dsp.draft).not.toBe(null);
+      expect(dsp.saved).not.toBe(null);
+      const savedLoudnessBefore = dsp.saved!.loudness.enabled;
       // Drive a wire write on a field that lives in the bulk payload.
       // SetLoudnessEnabled mutates #mockState which is what
       // synthesizeBulkParams reads from, so the next resync's bulk packet
       // will reflect the change.
-      const d = session.device!;
-      await d.setLoudnessEnabled(!shadowLoudnessBefore);
-      // Resync refreshes dsp.live ONLY; dsp.shadow stays pinned at the
+      const d = session.device as DspDeviceGranular;
+      await d.setLoudnessEnabled(!savedLoudnessBefore);
+      // Resync refreshes dsp.draft ONLY; dsp.saved stays pinned at the
       // last baseline (the fullSync snapshot).
       await forceResyncNow();
-      expect(dsp.live!.loudness.enabled).toBe(!shadowLoudnessBefore);
-      expect(dsp.shadow!.loudness.enabled).toBe(shadowLoudnessBefore);
+      expect(dsp.draft!.loudness.enabled).toBe(!savedLoudnessBefore);
+      expect(dsp.saved!.loudness.enabled).toBe(savedLoudnessBefore);
     });
   });
 
-  describe('wireBase threading', () => {
-    it('fetchAndApplyAsBaseline populates dsp.wireBase', async () => {
+  describe('wire base threading', () => {
+    it('fetchAndApplyAsBaseline retains a wire packet in the device (hasState)', async () => {
       await fetchAndApplyAsBaseline();
-      expect(dsp.wireBase).not.toBeNull();
+      expect(session.device!.hasState).toBe(true);
     });
   });
 
@@ -293,7 +299,8 @@ describe('runtime/presets', () => {
       const orig = d.setPresetName.bind(d);
       (d as any).setPresetName = async () => { throw new Error('boom'); };
       try {
-        await expect(renamePresetSlot(2 as any, 'X')).resolves.toBeUndefined();
+        const r = await renamePresetSlot(2 as any, 'X');
+        expect('ok' in r && r.ok).toBe(false);
         expect(presets.lastActionError).toContain('Rename');
         expect(presets.lastActionError).toContain('boom');
       } finally {
@@ -301,10 +308,37 @@ describe('runtime/presets', () => {
       }
     });
 
+    it('renamePresetSlot returns a typed failure on wire error', async () => {
+      await fetchPresetInfo();
+      const d = session.device!;
+      const orig = d.setPresetName.bind(d);
+      (d as any).setPresetName = async () => { throw new Error('wire fail'); };
+      try {
+        const r = await renamePresetSlot(1 as PresetSlot, 'X');
+        expect('ok' in r && r.ok).toBe(false);
+        // banner still recorded:
+        expect(presets.lastActionError).toContain('Rename');
+      } finally {
+        (d as any).setPresetName = orig;
+      }
+    });
+
+    it('renamePresetSlot returns ok on success', async () => {
+      await fetchPresetInfo();
+      const r = await renamePresetSlot(1 as PresetSlot, 'X');
+      expect('ok' in r && r.ok).toBe(true);
+    });
+
     it('clears lastActionError at the start of a successful subsequent call', async () => {
       await fetchPresetInfo();
       presets.lastActionError = 'stale';
       await renamePresetSlot(3 as any, 'Cinema');
+      expect(presets.lastActionError).toBe(null);
+    });
+
+    it('dismissPresetActionError clears the error banner state', () => {
+      presets.lastActionError = 'Save: boom';
+      dismissPresetActionError();
       expect(presets.lastActionError).toBe(null);
     });
   });
@@ -387,6 +421,52 @@ describe('runtime/presets', () => {
       expect(r.ok).toBe(false);
       if ('code' in r) expect(r.code).toBe('active');
     });
+
+    it('captures source RAM only after the source load has settled', async () => {
+      // loadPreset is async on the wire (deferred flash→RAM copy). Capturing
+      // before the settle would read the previous (active) slot's RAM, not src.
+      await fetchPresetInfo();
+      const src    = 3 as PresetSlot;
+      const active = 1 as PresetSlot;
+      await savePresetSlot(active);
+      expect(presets.active).toBe(active);
+
+      const realDevice = session.device!;
+      const origLoad   = realDevice.loadPreset.bind(realDevice);
+      const origSave   = realDevice.savePreset.bind(realDevice);
+      const origGetAll = realDevice.getAllParams.bind(realDevice);
+      const origSetAll = realDevice.setAllParams.bind(realDevice);
+      const events: string[] = [];
+      (realDevice as any).loadPreset = async (slot: number) => { events.push(`load:${slot}`); return { ok: true }; };
+      (realDevice as any).savePreset = async (slot: number) => { events.push(`save:${slot}`); return { ok: true }; };
+      (realDevice as any).setAllParams = async () => { events.push('setAll'); };
+      (realDevice as any).getAllParams = async () => { events.push('capture'); return parseBulkParams(makeBulk()); };
+
+      vi.useFakeTimers();
+      try {
+        const pending = pastePresetTo(src);
+        // Advance to just before the 100 ms settle: load(src) has resolved (it
+        // completes via microtasks) but the capture is still gated by the timer.
+        await vi.advanceTimersByTimeAsync(99);
+        expect(events).toEqual([`load:${src}`]);
+        // Cross the first settle: capture runs, then load(active). restoreState
+        // (setAll) stays gated behind the second settle.
+        await vi.advanceTimersByTimeAsync(2);
+        expect(events).toEqual([`load:${src}`, 'capture', `load:${active}`]);
+        // Cross the second settle: only now is the source pushed into active RAM.
+        await vi.advanceTimersByTimeAsync(100);
+        expect(events).toContain('setAll');
+        // Drain the rest of the flow so no promise/timer dangles.
+        await vi.advanceTimersByTimeAsync(500);
+        await pending;
+      } finally {
+        vi.useRealTimers();
+        (realDevice as any).loadPreset = origLoad;
+        (realDevice as any).savePreset = origSave;
+        (realDevice as any).getAllParams = origGetAll;
+        (realDevice as any).setAllParams = origSetAll;
+      }
+    });
   });
 
   describe('loadPresetSlot dirty gating', () => {
@@ -407,7 +487,7 @@ describe('runtime/presets', () => {
       await fetchPresetInfo();
       await saveActivePreset();
       // Make dirty.
-      if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
+      if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
 
       const pending = loadPresetSlot(0 as PresetSlot);
       // Yield so the runtime can call askBoundary.
@@ -423,7 +503,7 @@ describe('runtime/presets', () => {
       settings.warnOnPresetSwitchDirty = false;
       await fetchPresetInfo();
       await saveActivePreset();
-      if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
+      if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
       const r = await loadPresetSlot(0 as PresetSlot);
       expect(r.ok).toBe(true);
       expect(boundary.pending).toBe(null);
@@ -432,7 +512,7 @@ describe('runtime/presets', () => {
     it('aborts (no wire load op) when boundary resolves with cancel', async () => {
       await fetchPresetInfo();
       await saveActivePreset();
-      if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
+      if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
       const realDevice = session.device!;
       const origLoad = realDevice.loadPreset.bind(realDevice);
       let loadCalls = 0;
@@ -453,7 +533,7 @@ describe('runtime/presets', () => {
       await fetchPresetInfo();
       const activeBefore = presets.active!;
       await saveActivePreset();
-      if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
+      if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
       const realDevice = session.device!;
       const origLoad = realDevice.loadPreset.bind(realDevice);
       const origSave = realDevice.savePreset.bind(realDevice);

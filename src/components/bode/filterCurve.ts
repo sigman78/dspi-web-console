@@ -2,7 +2,7 @@ import { FilterType, type FilterParams } from '@/domain';
 import { BODE_BINS, BODE_FREQS } from './bodeFreqs';
 
 // Sample rate the biquad coefficients are computed at.
-// TODO(eq-state): once dsp.live exposes a stable Fs field, source from
+// TODO(eq-state): once dsp.draft exposes a stable Fs field, source from
 // there. 48 kHz vs 96 kHz only changes the response above ~15 kHz; for the
 // audio-band shapes we render this is invisible.
 export const EQ_SAMPLE_RATE = 48000;

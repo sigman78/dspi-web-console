@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { presets, presetsDirty, resetPresets, askBoundary, resolveBoundary } from './presets.svelte';
-import { dsp } from './dsp.svelte';
+import { dsp, applyBaselineSnapshot, resetDsp, resetSavedBaseline } from './dsp.svelte';
 import { settings } from './settings.svelte';
 import type { DspSnapshot } from '@/domain';
 
@@ -20,19 +20,19 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
   };
 }
 
-// Seed live + shadow directly from a hand-built snapshot. These tests exercise
-// presetsDirty (live vs shadow) with synthetic fixtures that have no backing
-// wire packet, so they bypass applyBulkBaseline and set the two cells directly.
+// Seed draft + saved from a hand-built snapshot. These tests exercise
+// presetsDirty (draft vs saved) with synthetic fixtures that have no backing
+// wire packet. applyBaselineSnapshot sets draft and deep-copies into saved,
+// which matches the intent here (both cells equal after seeding).
 function seed(snap: DspSnapshot): void {
-  dsp.live = snap;
-  dsp.shadow = structuredClone(snap);
+  applyBaselineSnapshot(snap);
 }
 
 describe('presets store', () => {
   beforeEach(() => {
     resetPresets();
-    dsp.live = null;
-    dsp.shadow = null;
+    resetDsp();
+    resetSavedBaseline();
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
   });
@@ -44,25 +44,25 @@ describe('presets store', () => {
     expect(presets.names).toEqual(Array(10).fill(null));
   });
 
-  it('presetsDirty is false when shadow is null', () => {
+  it('presetsDirty is false when saved is null', () => {
     expect(presetsDirty.current).toBe(false);
   });
 
-  it('presetsDirty is false when live === shadow', () => {
+  it('presetsDirty is false when draft === saved', () => {
     seed(mkSnap());
     expect(presetsDirty.current).toBe(false);
   });
 
-  it('presetsDirty flips true when live deviates from shadow', () => {
+  it('presetsDirty flips true when draft deviates from saved', () => {
     seed(mkSnap({ bypass: false }));
     expect(presetsDirty.current).toBe(false);
-    if (dsp.live) dsp.live.bypass = true;
+    if (dsp.draft) dsp.draft.bypass = true;
     expect(presetsDirty.current).toBe(true);
   });
 
   it('presetsDirty ignores masterVolumeDb in Mode 0 (no directory cached)', () => {
     seed(mkSnap({ masterVolumeDb: 0 }));
-    if (dsp.live) dsp.live.masterVolumeDb = -12;
+    if (dsp.draft) dsp.draft.masterVolumeDb = -12;
     // directory is null → mode-0 default → volume excluded from diff
     expect(presetsDirty.current).toBe(false);
   });
@@ -75,7 +75,7 @@ describe('presets store', () => {
       includePins: false,
       masterVolumeMode: 1 as any,
     };
-    if (dsp.live) dsp.live.masterVolumeDb = -12;
+    if (dsp.draft) dsp.draft.masterVolumeDb = -12;
     expect(presetsDirty.current).toBe(true);
   });
 
@@ -88,7 +88,7 @@ describe('presets store', () => {
       masterVolumeMode: 1 as any,
     };
     settings.soft.muted = true;
-    if (dsp.live) dsp.live.masterVolumeDb = -128;
+    if (dsp.draft) dsp.draft.masterVolumeDb = -128;
     expect(presetsDirty.current).toBe(false);
   });
 

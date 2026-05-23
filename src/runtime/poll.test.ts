@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { PlatformType, fromBulkParams, createHardwareProfile } from '@/domain';
+import { PlatformType, createHardwareProfile } from '@/domain';
+import { fromBulkParams } from '@/device/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
-import { bindDevice, dsp, resetStatus } from '@/state';
+import { bindDevice, resetStatus, applyDraftSnapshot } from '@/state';
 import { startPolling, type PollClock } from './poll';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
@@ -32,7 +33,7 @@ function pollDevice(status = { peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 }) 
 }
 
 describe('startPolling', () => {
-  beforeEach(() => { resetStatus(); dsp.live = fromBulkParams(hw, parseBulkParams(makeBulk())); });
+  beforeEach(() => { resetStatus(); applyDraftSnapshot(fromBulkParams(hw, parseBulkParams(makeBulk()))); });
   afterEach(() => { bindDevice(null); });
 
   it('polls the status cadence when the clock fires, and stops after dispose', async () => {

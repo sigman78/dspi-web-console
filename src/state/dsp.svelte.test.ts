@@ -1,39 +1,42 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { parseBulkParams } from '@/protocol';
+import { fromBulkParams } from '@/device/snapshotCodec';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, createHardwareProfile } from '@/domain';
-import { dsp, applyBulkBaseline, applyBulkLive, resetDsp } from './dsp.svelte';
+import { dsp, applyBaselineSnapshot, applyDraftSnapshot, resetDsp, resetSavedBaseline } from './dsp.svelte';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
 
-describe('dsp state: wireBase', () => {
+function snap(opts?: Parameters<typeof makeBulk>[0]) {
+  return fromBulkParams(hw, parseBulkParams(makeBulk(opts)));
+}
+
+describe('dsp state: baseline', () => {
   beforeEach(() => {
     resetDsp();
-    dsp.shadow = null;
-    dsp.wireBase = null;
+    resetSavedBaseline();
   });
 
-  it('applyBulkBaseline populates live, shadow, and wireBase', () => {
-    const bulk = parseBulkParams(makeBulk());
-    applyBulkBaseline(hw, bulk);
-    expect(dsp.live).not.toBeNull();
-    expect(dsp.shadow).not.toBeNull();
-    expect(dsp.wireBase).toBe(bulk);
+  it('applyBaselineSnapshot populates draft and saved', () => {
+    const s = snap();
+    applyBaselineSnapshot(s);
+    expect(dsp.draft).not.toBeNull();
+    expect(dsp.saved).not.toBeNull();
+    // saved is a deep copy, not the same reference
+    expect(dsp.saved).toEqual(dsp.draft);
+    expect(dsp.saved).not.toBe(dsp.draft);
   });
 });
 
-describe('applyBulkLive', () => {
-  it('refreshes live and wireBase but leaves shadow pinned', () => {
-    const base = parseBulkParams(makeBulk({ masterVolumeDb: -10 }));
-    applyBulkBaseline(hw, base);            // live = shadow = wireBase
-    const shadowBefore = dsp.shadow;
+describe('applyDraftSnapshot', () => {
+  it('refreshes draft but leaves saved pinned', () => {
+    applyBaselineSnapshot(snap({ masterVolumeDb: -10 }));   // draft = saved
+    const savedBefore = dsp.saved;
 
-    const next = parseBulkParams(makeBulk({ masterVolumeDb: -20 }));
-    applyBulkLive(hw, next);
+    applyDraftSnapshot(snap({ masterVolumeDb: -20 }));
 
-    expect(dsp.live?.masterVolumeDb).toBe(-20);  // live advanced
-    expect(dsp.wireBase).toBe(next);             // wireBase advanced to the fetched packet
-    expect(dsp.shadow).toBe(shadowBefore);       // shadow pinned (same reference)
-    expect(dsp.shadow?.masterVolumeDb).toBe(-10);
+    expect(dsp.draft?.masterVolumeDb).toBe(-20);  // draft advanced
+    expect(dsp.saved).toBe(savedBefore);          // saved pinned (same reference)
+    expect(dsp.saved?.masterVolumeDb).toBe(-10);
   });
 });

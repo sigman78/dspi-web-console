@@ -7,7 +7,7 @@
   import { chKey } from '@/styles/palette';
   import { clearClips } from '@/runtime';
 
-  const snap = $derived(dsp.live);
+  const snap = $derived(dsp.draft);
   const info = $derived(status.info);
   const connected = $derived(session.status === 'connected');
 

@@ -8,7 +8,7 @@
   import { matrixRows, ChannelId, inputIndexOf, CrossfeedPreset } from '@/domain';
   import { chKey } from '@/styles/palette';
 
-  const snap = $derived(dsp.live);
+  const snap = $derived(dsp.draft);
   const rows = $derived(matrixRows(snap));
 
   function preampOffsetFor(c: { id: ChannelId; isOutput: boolean }): number {

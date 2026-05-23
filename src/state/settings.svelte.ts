@@ -168,15 +168,15 @@ export function setEqTarget(id: ChannelId | null): void {
   settings.eqTarget = id;
 }
 
-// After connection sync hydrates dsp.live, validate the persisted eqTarget
+// After connection sync hydrates dsp.draft, validate the persisted eqTarget
 // against the connected platform's channel set. If the stored ID isn't
-// in dsp.live.channels (e.g. user reconnected to a smaller-platform
+// in dsp.draft.channels (e.g. user reconnected to a smaller-platform
 // device), fall back to the first output channel. eqTarget === null
 // stays null -- explicit "no selection" is a valid persisted state.
 export function reconcileEqTarget(): void {
   const target = settings.eqTarget;
   if (target === null) return;
-  const channels = dsp.live?.channels;
+  const channels = dsp.draft?.channels;
   if (!channels) return;
   if (channels.some((c) => c.id === target)) return;
   const firstOutput = channels.find((c) => c.isOutput);

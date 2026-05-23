@@ -6,8 +6,8 @@
   } from '@/domain';
   import {
     setCrosspointGain,
-    toggleCrosspoint,
-    toggleCrosspointInvert,
+    setCrosspointEnabled,
+    setCrosspointInvert,
   } from '@/runtime';
   import ValueField from '../../chrome/ValueField.svelte';
   import { chKey } from '@/styles/palette';
@@ -32,11 +32,11 @@
   const inv = $derived(cell.invert);
 
   function onToggle(): void {
-    toggleCrosspoint(inputIndex, outputIndex);
+    setCrosspointEnabled(inputIndex, outputIndex, !active);
   }
   function onInv(): void {
     if (!active) return;
-    toggleCrosspointInvert(inputIndex, outputIndex);
+    setCrosspointInvert(inputIndex, outputIndex, !inv);
   }
 </script>
 
