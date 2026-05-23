@@ -5,13 +5,7 @@ import {
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   CHANNEL_NAME_MAX_LEN,
 } from '@/domain';
-import {
-  clampMasterVolumeDb, clampPreampDb, clampBandGainDb, clampBandFrequencyHz,
-  clampBandQ, clampOutputGainDb, clampOutputDelayMs, clampCrosspointGainDb,
-  clampLoudnessRefSpl, clampLoudnessIntensityPct, clampCrossfeedFreqHz,
-  clampCrossfeedFeedDb, clampLevellerAmountPct, clampLevellerMaxGainDb,
-  clampLevellerGateDb, clampNameToByteBudget,
-} from '@/domain/clamp';
+import * as Clamp from '@/domain/clamp';
 import type { DspTransport } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
 import {
@@ -55,9 +49,9 @@ export function setEqFilter(channel: ChannelId, band: number, filter: FilterPara
     const c = s.channels.find((c) => c.id === channel)!;
     c.filters[band] = {
       ...filter,
-      frequency: clampBandFrequencyHz(filter.frequency),
-      q: clampBandQ(filter.q),
-      gain: clampBandGainDb(filter.gain),
+      frequency: Clamp.bandFrequencyHz(filter.frequency),
+      q: Clamp.bandQ(filter.q),
+      gain: Clamp.bandGainDb(filter.gain),
     };
   });
 }
@@ -73,9 +67,9 @@ export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
   const len = Math.min(src.filters.length, tgt.filters.length);
   const copied = src.filters.slice(0, len).map((f) => ({
     ...f,
-    frequency: clampBandFrequencyHz(f.frequency),
-    q: clampBandQ(f.q),
-    gain: clampBandGainDb(f.gain),
+    frequency: Clamp.bandFrequencyHz(f.frequency),
+    q: Clamp.bandQ(f.q),
+    gain: Clamp.bandGainDb(f.gain),
   }));
   commitBulk((s) => {
     const t = s.channels.find((c) => c.id === targetId)!;
@@ -110,7 +104,7 @@ export function setChannelName(id: ChannelId, name: string): void {
   const ch = dsp.live.channels.find((c) => c.id === id);
   if (!ch) return;
   const resolved = name.trim() || ch.defaultName;
-  const clamped = clampNameToByteBudget(resolved, CHANNEL_NAME_MAX_LEN);
+  const clamped = Clamp.nameToByteBudget(resolved, CHANNEL_NAME_MAX_LEN);
   commitBulk((s) => {
     const c = s.channels.find((c) => c.id === id)!;
     c.name = clamped;
@@ -124,12 +118,12 @@ export function setLoudnessEnabled(enabled: boolean): void {
 }
 
 export function setLoudnessRefSpl(db: number): void {
-  db = clampLoudnessRefSpl(db);
+  db = Clamp.loudnessRefSpl(db);
   commitBulkDebounced('loudnessRefSpl', (s) => { s.loudness.refSpl = db; });
 }
 
 export function setLoudnessIntensityPct(pct: number): void {
-  pct = clampLoudnessIntensityPct(pct);
+  pct = Clamp.loudnessIntensityPct(pct);
   commitBulkDebounced('loudnessIntensity', (s) => { s.loudness.intensityPct = pct; });
 }
 
@@ -146,12 +140,12 @@ export function setCrossfeedItd(itd: boolean): void {
 }
 
 export function setCrossfeedFreq(hz: number): void {
-  hz = clampCrossfeedFreqHz(hz);
+  hz = Clamp.crossfeedFreqHz(hz);
   commitBulkDebounced('crossfeedFreq', (s) => { s.crossfeed.freq = hz; });
 }
 
 export function setCrossfeedFeedDb(db: number): void {
-  db = clampCrossfeedFeedDb(db);
+  db = Clamp.crossfeedFeedDb(db);
   commitBulkDebounced('crossfeedFeedDb', (s) => { s.crossfeed.feedDb = db; });
 }
 
@@ -168,22 +162,22 @@ export function setLevellerLookahead(lookahead: boolean): void {
 }
 
 export function setLevellerAmount(pct: number): void {
-  pct = clampLevellerAmountPct(pct);
+  pct = Clamp.levellerAmountPct(pct);
   commitBulkDebounced('levellerAmount', (s) => { if (s.leveller) s.leveller.amount = pct; });
 }
 
 export function setLevellerMaxGain(db: number): void {
-  db = clampLevellerMaxGainDb(db);
+  db = Clamp.levellerMaxGainDb(db);
   commitBulkDebounced('levellerMaxGain', (s) => { if (s.leveller) s.leveller.maxGainDb = db; });
 }
 
 export function setLevellerGate(db: number): void {
-  db = clampLevellerGateDb(db);
+  db = Clamp.levellerGateDb(db);
   commitBulkDebounced('levellerGate', (s) => { if (s.leveller) s.leveller.gateDb = db; });
 }
 
 export function setMasterPreamp(db: number): void {
-  db = clampPreampDb(db);
+  db = Clamp.preampDb(db);
   scrubCommand({
     key: 'masterPreamp',
     apply: () => patchSnapshot({ masterPreampDb: db }),
@@ -192,7 +186,7 @@ export function setMasterPreamp(db: number): void {
 }
 
 export function setInputPreamp(channel: InputSlot, db: number): void {
-  db = clampPreampDb(db);
+  db = Clamp.preampDb(db);
   const cur = dsp.live?.inputPreampDb;
   if (!cur) return;
   const next: [number, number] = [cur[0], cur[1]];
@@ -231,7 +225,7 @@ function scheduleCrosspointWrite(
 }
 
 export function setCrosspointGain(input: InputSlot, output: OutputSlot, gainDb: number): void {
-  gainDb = clampCrosspointGainDb(gainDb);
+  gainDb = Clamp.crosspointGainDb(gainDb);
   scheduleCrosspointWrite(input, output, (r) => ({ ...r, gainDb }));
 }
 
@@ -244,7 +238,7 @@ export function setCrosspointInvert(input: InputSlot, output: OutputSlot, invert
 }
 
 export function setOutputGain(slot: OutputSlot, gainDb: number): void {
-  gainDb = clampOutputGainDb(gainDb);
+  gainDb = Clamp.outputGainDb(gainDb);
   if (!dsp.live?.outputs) return;
   const out = focusOutput(slot);
   scrubCommand({
@@ -256,7 +250,7 @@ export function setOutputGain(slot: OutputSlot, gainDb: number): void {
 
 export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
   if (!dsp.live?.outputs) return;
-  delayMs = clampOutputDelayMs(delayMs);
+  delayMs = Clamp.outputDelayMs(delayMs);
   commitBulk((s) => {
     const o = s.outputs.find((o) => o.wireIndex === slot);
     if (o) o.delayMs = delayMs;
@@ -347,7 +341,7 @@ export async function reconcileAfterSync(): Promise<void> {
 }
 
 export function setMasterVolume(db: number): void {
-  db = clampMasterVolumeDb(db);
+  db = Clamp.masterVolumeDb(db);
   if (settings.soft.muted) {
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
