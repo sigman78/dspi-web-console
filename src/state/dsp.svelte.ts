@@ -16,10 +16,11 @@ import { type DspSnapshot } from '@/domain';
 //   resetDsp               |  null |  kept
 //   resetSavedBaseline     |   -   |  null
 //
-// The cells are now PRIVATE behind the readonly `DspStore` view: external
-// modules can only READ draft/saved and CALL the verbs above - they cannot
-// reassign the cells (compile error). Mutation flows exclusively through the
-// verbs listed in this matrix.
+// `draft` and `saved` are fully encapsulated behind the readonly `DspStore`
+// view: external modules can only READ them and CALL the verbs above - they
+// cannot reassign the cells (compile error). `pendingWrites` is readonly only
+// as a reference: the runtime command lanes call .add()/.delete()/.clear() on
+// it directly (commands.ts, outbox.ts) rather than through a verb.
 //
 // Bulk-flush coordination (the rev counters and in-flight send tracking) now
 // lives in src/runtime/commit.ts; the state layer no longer owns it, since
@@ -95,9 +96,10 @@ export function resetDsp(): void {
   state.pendingWrites = new SvelteSet();
 }
 
-// Clears the dirty-diff baseline. Used at boot/test setup to drop the
-// last-known-good reference so the next sync establishes a fresh baseline.
-// Distinct from resetDsp, which intentionally preserves `saved`.
+// @internal — TEST-ONLY. Drops the dirty-diff baseline so a test starts from a
+// clean both-null slate. NOT FOR RUNTIME USE: production relies on `saved`
+// surviving disconnect (resetDsp preserves it); calling this in the app would
+// break the last-known-good guarantee.
 export function resetSavedBaseline(): void {
   state.saved = null;
 }
