@@ -22,7 +22,7 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
 
 // Seed live + shadow directly from a hand-built snapshot. These tests exercise
 // presetsDirty (live vs shadow) with synthetic fixtures that have no backing
-// wire packet, so they bypass applyBulkBaseline and set the two cells directly.
+// wire packet, so they bypass applyBaselineSnapshot and set the two cells directly.
 function seed(snap: DspSnapshot): void {
   dsp.live = snap;
   dsp.shadow = structuredClone(snap);
