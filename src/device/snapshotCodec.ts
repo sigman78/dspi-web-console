@@ -1,4 +1,9 @@
 import { Wire, type BulkParams, type WireFilter } from '@/protocol';
+
+// Opaque handle for the preset-paste device-to-device copy. Runtime holds it
+// between captureState/restoreState but must never inspect it. Internally a
+// BulkParams packet; the brand keeps wire shape out of runtime types.
+export type DeviceState = BulkParams & { readonly __brand: 'DeviceState' };
 import {
   outputModeForChannel, type InputSlot,
   displayNameForHardwareChannel, wireChannelFor, type HardwareProfile,
