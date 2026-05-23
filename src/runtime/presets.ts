@@ -2,7 +2,7 @@
 
 import {
   session,
-  refreshShadowFromLive,
+  refreshSavedFromDraft,
   presets, presetsDirty, askBoundary,
   settings,
 } from '@/state';
@@ -148,7 +148,7 @@ export async function saveActivePreset(): Promise<Result<void, PresetResult> | P
           set.add(active);
           presets.directory = { ...presets.directory, occupiedSlotsSet: set };
         }
-        refreshShadowFromLive();
+        refreshSavedFromDraft();
       } else {
         recordActionError('Save', new Error(r.message ?? `error ${r.code}`));
       }
@@ -164,7 +164,7 @@ export async function saveActivePreset(): Promise<Result<void, PresetResult> | P
 // PresetSave sets `lastActive = slot`, so the  just-saved slot becomes active
 // The host updates `presets.active` to match
 //
-// Baseline (`dsp.shadow`) advances unconditionally: current RAM is what
+// Baseline (`dsp.saved`) advances unconditionally: current RAM is what
 // we just captured into the slot, and the slot is now active.
 export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = session.device;
@@ -181,7 +181,7 @@ export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, Pre
           presets.directory = { ...presets.directory, occupiedSlotsSet: set };
         }
         presets.active = slot;
-        refreshShadowFromLive();
+        refreshSavedFromDraft();
       } else {
         recordActionError('Save', new Error(r.message ?? `error ${r.code}`));
       }
@@ -195,7 +195,7 @@ export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, Pre
 
 // PresetLoad(N). Awaits the firmware's deferred flash to RAM copy ~100 ms 
 // We then use fetchAndApplyAsBaseline() rather than fullSync()
-// to refresh dsp.live + dsp.shadow atomically without flipping 
+// to refresh dsp.draft + dsp.saved atomically without flipping
 // session.status to 'connecting' — that toggle would
 // cause App.svelte to unmount the entire main view and flash the
 // ConnectingHero splash mid-operation. reconcileAfterSync() is still
@@ -217,9 +217,9 @@ async function executeLoad(
         // to match the slot the device just loaded.
         presets.active = slot;
         await new Promise<void>((resolve) => setTimeout(resolve, PRESET_LOAD_SETTLE_MS));
-        // Atomic: fetch device state and apply to both dsp.live and
-        // dsp.shadow in one synchronous statement. Eliminates the
-        // microtask window where live and shadow would otherwise disagree
+        // Atomic: fetch device state and apply to both dsp.draft and
+        // dsp.saved in one synchronous statement. Eliminates the
+        // microtask window where draft and saved would otherwise disagree
         await fetchAndApplyAsBaseline();
         await reconcileAfterSync();
       } else {

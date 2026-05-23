@@ -40,7 +40,7 @@ describe('scrubCommand', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
+    dsp.draft = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
     dsp.pendingWrites = new SvelteSet();
     // Reset session status so leaked 'error' from a prior test in the suite
     // does not pollute assertions in tests that don't explicitly set status.
@@ -134,7 +134,7 @@ describe('cancelAllCommands', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dsp.live = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
+    dsp.draft = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
     dsp.pendingWrites = new SvelteSet();
     // Reset session status so a leaked 'error' from a prior test in the suite
     // does not pollute these assertions.

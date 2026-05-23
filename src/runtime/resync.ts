@@ -1,4 +1,4 @@
-import { session, applyLiveSnapshot, dsp } from '@/state';
+import { session, applyDraftSnapshot, dsp } from '@/state';
 import { Log } from '@/utils';
 import { makeResyncScheduler } from './schedulers';
 import { applyBaselineConverged } from './commit';
@@ -14,11 +14,11 @@ async function fetchAndApply(force: boolean): Promise<void> {
   try {
     const snap = await d.getSnapshot();
     if (!force && dsp.pendingWrites.size > 0) return;
-    // Live-only: the preset-dirty diff measures against `dsp.shadow`,
+    // Draft-only: the preset-dirty diff measures against `dsp.saved`,
     // which must NOT auto-update on every resync. Callers that need to
-    // re-baseline shadow (Preset Load/Revert) call refreshShadowFromLive
+    // re-baseline saved (Preset Load/Revert) call refreshSavedFromDraft
     // after awaiting forceResyncNow().
-    applyLiveSnapshot(snap);
+    applyDraftSnapshot(snap);
   } catch (err) {
     Log.warn('resync', 'bulk re-fetch failed', err);
   }
@@ -42,8 +42,8 @@ export async function forceResyncNow(): Promise<void> {
   await fetchAndApply(true);
 }
 
-// Fetch the device state and apply it as a fresh baseline — both `dsp.live`
-// and `dsp.shadow` update in one synchronous statement via applyBaselineConverged.
+// Fetch the device state and apply it as a fresh baseline — both `dsp.draft`
+// and `dsp.saved` update in one synchronous statement via applyBaselineConverged.
 //
 // Use this for preset transitions (Load / Paste / Revert) where there is
 // no meaningful "dirty" state during the operation. The atomic apply

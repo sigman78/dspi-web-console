@@ -34,7 +34,7 @@ describe('state.finishConnection — end-to-end against real hardware (HIL)', ()
     if (close) await close();
   });
 
-  it('hydrates connection + dsp.live from real device', async () => {
+  it('hydrates connection + dsp.draft from real device', async () => {
     await finishConnection(device);
 
     expect(session.status).toBe('connected');
@@ -42,7 +42,7 @@ describe('state.finishConnection — end-to-end against real hardware (HIL)', ()
     expect(session.lastDeviceInfo?.firmwareVersion.length ?? 0).toBeGreaterThan(0);
     expect(settings.lastSerial).toBe(session.lastDeviceInfo?.serial);
 
-    const snap = dsp.live;
+    const snap = dsp.draft;
     expect(snap).not.toBeNull();
     if (!snap) return;
 
@@ -58,14 +58,14 @@ describe('state.finishConnection — end-to-end against real hardware (HIL)', ()
     const before = {
       serial: session.lastDeviceInfo?.serial,
       fw: session.lastDeviceInfo?.firmwareVersion,
-      platform: dsp.live?.platform.name,
-      formatVersion: dsp.live?.formatVersion,
+      platform: dsp.draft?.platform.name,
+      formatVersion: dsp.draft?.formatVersion,
     };
     await finishConnection(device);
     expect(session.status).toBe('connected');
     expect(session.lastDeviceInfo?.serial).toBe(before.serial);
     expect(session.lastDeviceInfo?.firmwareVersion).toBe(before.fw);
-    expect(dsp.live?.platform.name).toBe(before.platform);
-    expect(dsp.live?.formatVersion).toBe(before.formatVersion);
+    expect(dsp.draft?.platform.name).toBe(before.platform);
+    expect(dsp.draft?.formatVersion).toBe(before.formatVersion);
   });
 });

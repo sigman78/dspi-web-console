@@ -81,13 +81,13 @@ describe('runtime/presets', () => {
   describe('saveActivePreset', () => {
     it('saves to the active slot and advances the baseline', async () => {
       await fetchPresetInfo();
-      if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
-      const before = dsp.shadow?.bypass;
-      const after  = dsp.live?.bypass;
+      if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
+      const before = dsp.saved?.bypass;
+      const after  = dsp.draft?.bypass;
       expect(before).not.toBe(after);
       const r = await saveActivePreset();
       expect(r.ok).toBe(true);
-      expect(dsp.shadow?.bypass).toBe(after);
+      expect(dsp.saved?.bypass).toBe(after);
     });
   });
 
@@ -123,14 +123,14 @@ describe('runtime/presets', () => {
         // Make live diverge from shadow so the post-load re-baseline is
         // observable: after success, shadow must match the freshly fetched
         // device state (i.e. live === shadow per field).
-        if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
+        if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
         const r = await loadPresetSlot(0 as any);
         expect(r.ok).toBe(true);
         expect(loadCalls).toBe(1);
         // fetchAndApplyAsBaseline runs exactly one getAllParams after loadPreset.
         expect(getAllAfterLoad).toBe(1);
         // Shadow re-baselined to device truth (live and shadow agree on bypass).
-        expect(dsp.shadow?.bypass).toBe(dsp.live?.bypass);
+        expect(dsp.saved?.bypass).toBe(dsp.draft?.bypass);
       } finally {
         (d as any).loadPreset = origLoad;
         (d as any).getAllParams = origGetAll;
@@ -164,7 +164,7 @@ describe('runtime/presets', () => {
     it('reloads the active slot', async () => {
       await fetchPresetInfo();
       await saveActivePreset();
-      if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
+      if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
       const r = await revertActivePreset();
       expect(r.ok).toBe(true);
     });
@@ -255,11 +255,11 @@ describe('runtime/presets', () => {
         await loadPresetSlot(0 as any);
       }
       const active = presets.active!;
-      if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
-      expect(dsp.shadow?.bypass).not.toBe(dsp.live?.bypass);
+      if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
+      expect(dsp.saved?.bypass).not.toBe(dsp.draft?.bypass);
       const r = await savePresetSlot(active);
       expect(r.ok).toBe(true);
-      expect(dsp.shadow?.bypass).toBe(dsp.live?.bypass);
+      expect(dsp.saved?.bypass).toBe(dsp.draft?.bypass);
     });
   });
 
@@ -267,20 +267,20 @@ describe('runtime/presets', () => {
     it('shadow is not overwritten when forceResyncNow refreshes live', async () => {
       await fetchPresetInfo();
       // Sanity: bootMock+fullSync populated both live and shadow.
-      expect(dsp.live).not.toBe(null);
-      expect(dsp.shadow).not.toBe(null);
-      const shadowLoudnessBefore = dsp.shadow!.loudness.enabled;
+      expect(dsp.draft).not.toBe(null);
+      expect(dsp.saved).not.toBe(null);
+      const shadowLoudnessBefore = dsp.saved!.loudness.enabled;
       // Drive a wire write on a field that lives in the bulk payload.
       // SetLoudnessEnabled mutates #mockState which is what
       // synthesizeBulkParams reads from, so the next resync's bulk packet
       // will reflect the change.
       const d = session.device!;
       await d.setLoudnessEnabled(!shadowLoudnessBefore);
-      // Resync refreshes dsp.live ONLY; dsp.shadow stays pinned at the
+      // Resync refreshes dsp.draft ONLY; dsp.saved stays pinned at the
       // last baseline (the fullSync snapshot).
       await forceResyncNow();
-      expect(dsp.live!.loudness.enabled).toBe(!shadowLoudnessBefore);
-      expect(dsp.shadow!.loudness.enabled).toBe(shadowLoudnessBefore);
+      expect(dsp.draft!.loudness.enabled).toBe(!shadowLoudnessBefore);
+      expect(dsp.saved!.loudness.enabled).toBe(shadowLoudnessBefore);
     });
   });
 
@@ -440,7 +440,7 @@ describe('runtime/presets', () => {
       await fetchPresetInfo();
       await saveActivePreset();
       // Make dirty.
-      if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
+      if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
 
       const pending = loadPresetSlot(0 as PresetSlot);
       // Yield so the runtime can call askBoundary.
@@ -456,7 +456,7 @@ describe('runtime/presets', () => {
       settings.warnOnPresetSwitchDirty = false;
       await fetchPresetInfo();
       await saveActivePreset();
-      if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
+      if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
       const r = await loadPresetSlot(0 as PresetSlot);
       expect(r.ok).toBe(true);
       expect(boundary.pending).toBe(null);
@@ -465,7 +465,7 @@ describe('runtime/presets', () => {
     it('aborts (no wire load op) when boundary resolves with cancel', async () => {
       await fetchPresetInfo();
       await saveActivePreset();
-      if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
+      if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
       const realDevice = session.device!;
       const origLoad = realDevice.loadPreset.bind(realDevice);
       let loadCalls = 0;
@@ -486,7 +486,7 @@ describe('runtime/presets', () => {
       await fetchPresetInfo();
       const activeBefore = presets.active!;
       await saveActivePreset();
-      if (dsp.live) dsp.live.bypass = !dsp.live.bypass;
+      if (dsp.draft) dsp.draft.bypass = !dsp.draft.bypass;
       const realDevice = session.device!;
       const origLoad = realDevice.loadPreset.bind(realDevice);
       const origSave = realDevice.savePreset.bind(realDevice);

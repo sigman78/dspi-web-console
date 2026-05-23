@@ -3,7 +3,7 @@ import { parseBulkParams } from '@/protocol';
 import { fromBulkParams } from '@/device/snapshotCodec';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, createHardwareProfile } from '@/domain';
-import { dsp, applyBaselineSnapshot, applyLiveSnapshot, resetDsp } from './dsp.svelte';
+import { dsp, applyBaselineSnapshot, applyDraftSnapshot, resetDsp } from './dsp.svelte';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
 
@@ -14,29 +14,29 @@ function snap(opts?: Parameters<typeof makeBulk>[0]) {
 describe('dsp state: baseline', () => {
   beforeEach(() => {
     resetDsp();
-    dsp.shadow = null;
+    dsp.saved = null;
   });
 
-  it('applyBaselineSnapshot populates live and shadow', () => {
+  it('applyBaselineSnapshot populates draft and saved', () => {
     const s = snap();
     applyBaselineSnapshot(s);
-    expect(dsp.live).not.toBeNull();
-    expect(dsp.shadow).not.toBeNull();
-    // shadow is a deep copy, not the same reference
-    expect(dsp.shadow).toEqual(dsp.live);
-    expect(dsp.shadow).not.toBe(dsp.live);
+    expect(dsp.draft).not.toBeNull();
+    expect(dsp.saved).not.toBeNull();
+    // saved is a deep copy, not the same reference
+    expect(dsp.saved).toEqual(dsp.draft);
+    expect(dsp.saved).not.toBe(dsp.draft);
   });
 });
 
-describe('applyLiveSnapshot', () => {
-  it('refreshes live but leaves shadow pinned', () => {
-    applyBaselineSnapshot(snap({ masterVolumeDb: -10 }));   // live = shadow
-    const shadowBefore = dsp.shadow;
+describe('applyDraftSnapshot', () => {
+  it('refreshes draft but leaves saved pinned', () => {
+    applyBaselineSnapshot(snap({ masterVolumeDb: -10 }));   // draft = saved
+    const savedBefore = dsp.saved;
 
-    applyLiveSnapshot(snap({ masterVolumeDb: -20 }));
+    applyDraftSnapshot(snap({ masterVolumeDb: -20 }));
 
-    expect(dsp.live?.masterVolumeDb).toBe(-20);  // live advanced
-    expect(dsp.shadow).toBe(shadowBefore);       // shadow pinned (same reference)
-    expect(dsp.shadow?.masterVolumeDb).toBe(-10);
+    expect(dsp.draft?.masterVolumeDb).toBe(-20);  // draft advanced
+    expect(dsp.saved).toBe(savedBefore);          // saved pinned (same reference)
+    expect(dsp.saved?.masterVolumeDb).toBe(-10);
   });
 });

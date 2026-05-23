@@ -20,7 +20,7 @@
   }
 
   // COPY/PASTE invariant: source mark clears when RAM goes dirty from a
-  // user edit. Preset Load/Paste apply dsp.live and dsp.shadow atomically
+  // user edit. Preset Load/Paste apply dsp.draft and dsp.saved atomically
   // via fetchAndApplyAsBaseline(), so there is no transient dirty=true
   // window to filter out during wire ops.
   $effect(() => {

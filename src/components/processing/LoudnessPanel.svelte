@@ -4,7 +4,7 @@
   import { dsp, session } from '@/state';
   import { setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from '@/runtime';
 
-  const loudness = $derived(dsp.live?.loudness);
+  const loudness = $derived(dsp.draft?.loudness);
   const connected = $derived(session.status === 'connected');
   const enabled = $derived(loudness?.enabled ?? false);
   const editable = $derived(connected && enabled);

@@ -24,15 +24,15 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
 // presetsDirty (live vs shadow) with synthetic fixtures that have no backing
 // wire packet, so they bypass applyBaselineSnapshot and set the two cells directly.
 function seed(snap: DspSnapshot): void {
-  dsp.live = snap;
-  dsp.shadow = structuredClone(snap);
+  dsp.draft = snap;
+  dsp.saved = structuredClone(snap);
 }
 
 describe('presets store', () => {
   beforeEach(() => {
     resetPresets();
-    dsp.live = null;
-    dsp.shadow = null;
+    dsp.draft = null;
+    dsp.saved = null;
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
   });
@@ -56,13 +56,13 @@ describe('presets store', () => {
   it('presetsDirty flips true when live deviates from shadow', () => {
     seed(mkSnap({ bypass: false }));
     expect(presetsDirty.current).toBe(false);
-    if (dsp.live) dsp.live.bypass = true;
+    if (dsp.draft) dsp.draft.bypass = true;
     expect(presetsDirty.current).toBe(true);
   });
 
   it('presetsDirty ignores masterVolumeDb in Mode 0 (no directory cached)', () => {
     seed(mkSnap({ masterVolumeDb: 0 }));
-    if (dsp.live) dsp.live.masterVolumeDb = -12;
+    if (dsp.draft) dsp.draft.masterVolumeDb = -12;
     // directory is null → mode-0 default → volume excluded from diff
     expect(presetsDirty.current).toBe(false);
   });
@@ -75,7 +75,7 @@ describe('presets store', () => {
       includePins: false,
       masterVolumeMode: 1 as any,
     };
-    if (dsp.live) dsp.live.masterVolumeDb = -12;
+    if (dsp.draft) dsp.draft.masterVolumeDb = -12;
     expect(presetsDirty.current).toBe(true);
   });
 
@@ -88,7 +88,7 @@ describe('presets store', () => {
       masterVolumeMode: 1 as any,
     };
     settings.soft.muted = true;
-    if (dsp.live) dsp.live.masterVolumeDb = -128;
+    if (dsp.draft) dsp.draft.masterVolumeDb = -128;
     expect(presetsDirty.current).toBe(false);
   });
 

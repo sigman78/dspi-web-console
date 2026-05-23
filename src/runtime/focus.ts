@@ -5,7 +5,7 @@ import type {
 } from '@/domain';
 import { dsp, patchSnapshot } from '@/state';
 
-// Focused get/set into a part of dsp.live. Each focus binds an addressing
+// Focused get/set into a part of dsp.draft. Each focus binds an addressing
 // tuple (e.g. (input, output) for a route) and exposes:
 //   - read(): current value, throws if missing
 //   - modify(f): apply an optimistic patch via patchSnapshot
@@ -14,8 +14,8 @@ import { dsp, patchSnapshot } from '@/state';
 // or platform-shape bug, not a transient state. read() and modify() both
 // throw rather than silently no-op.
 //
-// "Snapshot not loaded" (dsp.live === null during pre-connect or post-
-// disconnect) is also a throw -- callers wrap in `if (!dsp.live) return;`
+// "Snapshot not loaded" (dsp.draft === null during pre-connect or post-
+// disconnect) is also a throw -- callers wrap in `if (!dsp.draft) return;`
 // guards before constructing a focus, matching the existing convention.
 
 export interface Focus<T> {
@@ -23,10 +23,10 @@ export interface Focus<T> {
   modify(f: (cur: T) => T): void;
 }
 
-// Locate a route in dsp.live.routes by (input, output) slot pair.
+// Locate a route in dsp.draft.routes by (input, output) slot pair.
 export function focusRoute(input: InputSlot, output: OutputSlot): Focus<RouteModel> {
   const find = (): { routes: readonly RouteModel[]; index: number } => {
-    const routes = dsp.live?.routes;
+    const routes = dsp.draft?.routes;
     if (!routes) throw new Error('focusRoute: snapshot not loaded');
     const index = routes.findIndex(
       (r) => r.inputIndex === input && r.outputWireIndex === output,
@@ -54,7 +54,7 @@ export function focusRoute(input: InputSlot, output: OutputSlot): Focus<RouteMod
 // on RP2350 it is slot 8.
 export function focusOutput(slot: OutputSlot): Focus<OutputModel> {
   const find = (): { outputs: readonly OutputModel[]; index: number } => {
-    const outputs = dsp.live?.outputs;
+    const outputs = dsp.draft?.outputs;
     if (!outputs) throw new Error('focusOutput: snapshot not loaded');
     const index = outputs.findIndex((o) => o.wireIndex === slot);
     if (index < 0) throw new Error(`output not found: slot=${slot}`);

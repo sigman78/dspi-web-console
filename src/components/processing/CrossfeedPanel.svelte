@@ -9,7 +9,7 @@
   } from '@/runtime';
   import { CrossfeedPreset } from '@/domain';
 
-  const cf = $derived(dsp.live?.crossfeed);
+  const cf = $derived(dsp.draft?.crossfeed);
   const connected = $derived(session.status === 'connected');
   const enabled = $derived(cf?.enabled ?? false);
   const isCustom = $derived((cf?.preset ?? CrossfeedPreset.Preset1) === CrossfeedPreset.Custom);

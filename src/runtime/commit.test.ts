@@ -54,7 +54,7 @@ describe('commitBulk', () => {
     let sends = 0;
     bindBulkDevice(async () => { sends += 1; });
     commitBulk((s) => { s.masterVolumeDb = -12; });
-    expect(dsp.live?.masterVolumeDb).toBe(-12);
+    expect(dsp.draft?.masterVolumeDb).toBe(-12);
     await awaitBulkSettled();
     expect(sends).toBe(1);
     expect(isInFlight.current).toBe(false); // converged: lane idle after the send lands
@@ -163,7 +163,7 @@ describe('commitBulkDebounced', () => {
     commitBulkDebounced('levellerAmount', (s) => { if (s.leveller) s.leveller.amount = 20; });
     commitBulkDebounced('levellerAmount', (s) => { if (s.leveller) s.leveller.amount = 30; });
     expect(sends).toBe(0);
-    expect(dsp.live?.leveller?.amount).toBe(30);
+    expect(dsp.draft?.leveller?.amount).toBe(30);
     await vi.advanceTimersByTimeAsync(16);
     await awaitBulkSettled();
     expect(sends).toBe(1);
@@ -272,10 +272,10 @@ describe('resync guard sees the bulk lane (Finding 1)', () => {
     let resolveSend!: () => void;
     bindBulkDevice(() => new Promise<void>((res) => { resolveSend = res; }));
     commitBulk((s) => { s.masterVolumeDb = -12; });   // optimistic; send parked in flight
-    expect(dsp.live?.masterVolumeDb).toBe(-12);
+    expect(dsp.draft?.masterVolumeDb).toBe(-12);
     scheduleResync();
     await vi.advanceTimersByTimeAsync(300);            // trailing fetch fires (~250ms)
-    expect(dsp.live?.masterVolumeDb).toBe(-12);        // guard saw the token: not reverted
+    expect(dsp.draft?.masterVolumeDb).toBe(-12);        // guard saw the token: not reverted
     resolveSend();
     await awaitBulkSettled();
   });

@@ -9,7 +9,7 @@
   } from '@/runtime';
   import { LevellerSpeed } from '@/domain';
 
-  const lv = $derived(dsp.live?.leveller);
+  const lv = $derived(dsp.draft?.leveller);
   const connected = $derived(session.status === 'connected');
   const enabled = $derived(lv?.enabled ?? false);
   const editable = $derived(connected && enabled);

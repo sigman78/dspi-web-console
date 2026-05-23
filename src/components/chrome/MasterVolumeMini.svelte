@@ -3,7 +3,7 @@
   import { setMasterVolume, toggleMute } from '@/runtime';
   import SaveMasterVolumeButton from './SaveMasterVolumeButton.svelte';
 
-  const masterVolumeDb = $derived(dsp.live?.masterVolumeDb ?? 0);
+  const masterVolumeDb = $derived(dsp.draft?.masterVolumeDb ?? 0);
   const connected = $derived(session.status === 'connected');
   // While soft-muted, keep the slider at the *pre-mute* position rather
   // than jumping to MUTE_DB. The dB readout shows "OFF" instead. Unmute

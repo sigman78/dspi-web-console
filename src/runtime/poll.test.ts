@@ -33,7 +33,7 @@ function pollDevice(status = { peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 }) 
 }
 
 describe('startPolling', () => {
-  beforeEach(() => { resetStatus(); dsp.live = fromBulkParams(hw, parseBulkParams(makeBulk())); });
+  beforeEach(() => { resetStatus(); dsp.draft = fromBulkParams(hw, parseBulkParams(makeBulk())); });
   afterEach(() => { bindDevice(null); });
 
   it('polls the status cadence when the clock fires, and stops after dispose', async () => {

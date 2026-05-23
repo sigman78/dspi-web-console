@@ -39,8 +39,8 @@ function _setMasterVolume(db: number): void {
 let inflightSync: Promise<void> | null = null;
 
 export function setEqFilter(channel: ChannelId, band: number, filter: FilterParams): void {
-  if (!dsp.live?.channels) return;
-  const ch = dsp.live.channels.find((c) => c.id === channel);
+  if (!dsp.draft?.channels) return;
+  const ch = dsp.draft.channels.find((c) => c.id === channel);
   if (!ch) return;
   if (band >= ch.filters.length) {
     throw new Error(`band ${band} out of range for channel ${channel}`);
@@ -60,9 +60,9 @@ export function setEqFilter(channel: ChannelId, band: number, filter: FilterPara
 // bulk write. Under commitBulk, EQ edits no longer have per-band scrub
 // lanes, so no cancelScrubLane calls are needed.
 export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
-  if (sourceId === targetId || !dsp.live?.channels) return;
-  const src = dsp.live.channels.find((c) => c.id === sourceId);
-  const tgt = dsp.live.channels.find((c) => c.id === targetId);
+  if (sourceId === targetId || !dsp.draft?.channels) return;
+  const src = dsp.draft.channels.find((c) => c.id === sourceId);
+  const tgt = dsp.draft.channels.find((c) => c.id === targetId);
   if (!src || !tgt) return;
   const len = Math.min(src.filters.length, tgt.filters.length);
   const copied = src.filters.slice(0, len).map((f) => ({
@@ -100,8 +100,8 @@ export function clearClips(): void {
 // name mirror keeps MatrixHeader and OverviewTab in sync without waiting
 // for the trailing bulk resync.
 export function setChannelName(id: ChannelId, name: string): void {
-  if (!dsp.live?.channels) return;
-  const ch = dsp.live.channels.find((c) => c.id === id);
+  if (!dsp.draft?.channels) return;
+  const ch = dsp.draft.channels.find((c) => c.id === id);
   if (!ch) return;
   const resolved = name.trim() || ch.defaultName;
   const clamped = Clamp.nameToByteBudget(resolved, CHANNEL_NAME_MAX_LEN);
@@ -187,7 +187,7 @@ export function setMasterPreamp(db: number): void {
 
 export function setInputPreamp(channel: InputSlot, db: number): void {
   db = Clamp.preampDb(db);
-  const cur = dsp.live?.inputPreampDb;
+  const cur = dsp.draft?.inputPreampDb;
   if (!cur) return;
   const next: [number, number] = [cur[0], cur[1]];
   next[channel] = db;
@@ -208,7 +208,7 @@ function scheduleCrosspointWrite(
   output: OutputSlot,
   mutate: (r: RouteModel) => RouteModel,
 ): void {
-  if (!dsp.live?.routes) return;
+  if (!dsp.draft?.routes) return;
   const route = focusRoute(input, output);
   scrubCommand({
     key: `crosspoint:${input}:${output}`,
@@ -239,7 +239,7 @@ export function setCrosspointInvert(input: InputSlot, output: OutputSlot, invert
 
 export function setOutputGain(slot: OutputSlot, gainDb: number): void {
   gainDb = Clamp.outputGainDb(gainDb);
-  if (!dsp.live?.outputs) return;
+  if (!dsp.draft?.outputs) return;
   const out = focusOutput(slot);
   scrubCommand({
     key: `outputGain:${slot}`,
@@ -249,7 +249,7 @@ export function setOutputGain(slot: OutputSlot, gainDb: number): void {
 }
 
 export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
-  if (!dsp.live?.outputs) return;
+  if (!dsp.draft?.outputs) return;
   delayMs = Clamp.outputDelayMs(delayMs);
   commitBulk((s) => {
     const o = s.outputs.find((o) => o.wireIndex === slot);
@@ -258,7 +258,7 @@ export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
 }
 
 export function setOutputEnabled(slot: OutputSlot, enabled: boolean): void {
-  if (!dsp.live?.outputs) return;
+  if (!dsp.draft?.outputs) return;
   commitBulk((s) => {
     const o = s.outputs.find((o) => o.wireIndex === slot);
     if (o) o.enabled = enabled;
@@ -266,7 +266,7 @@ export function setOutputEnabled(slot: OutputSlot, enabled: boolean): void {
 }
 
 export function setOutputMuted(slot: OutputSlot, muted: boolean): void {
-  if (!dsp.live?.outputs) return;
+  if (!dsp.draft?.outputs) return;
   commitBulk((s) => {
     const o = s.outputs.find((o) => o.wireIndex === slot);
     if (o) o.muted = muted;
@@ -312,9 +312,9 @@ export async function finishConnection(device: DspDevice): Promise<void> {
     }
     await fetchPresetInfo();
     Log.info('sync', 'connected', {
-      platform: dsp.live?.platform.name,
-      formatVersion: dsp.live?.formatVersion,
-      masterVolumeDb: dsp.live?.masterVolumeDb,
+      platform: dsp.draft?.platform.name,
+      formatVersion: dsp.draft?.formatVersion,
+      masterVolumeDb: dsp.draft?.masterVolumeDb,
     });
   } catch (err) {
     Log.error('sync', 'finishConnection failed', err);
@@ -333,7 +333,7 @@ export async function reconcileAfterSync(): Promise<void> {
   const d = session.device;
   if (!d) return;
   if (settings.soft.muted) {
-    const restoreFrom = settings.soft.mutedFromDb ?? dsp.live?.masterVolumeDb ?? 0;
+    const restoreFrom = settings.soft.mutedFromDb ?? dsp.draft?.masterVolumeDb ?? 0;
     settings.soft.mutedFromDb = restoreFrom;
     patchSnapshot({ masterVolumeDb: MUTE_DB });
     await d.setMasterVolume(MUTE_DB);
@@ -357,7 +357,7 @@ export function toggleMute(): void {
     settings.soft.mutedFromDb = null;
     _setMasterVolume(restore);
   } else {
-    settings.soft.mutedFromDb = dsp.live?.masterVolumeDb ?? 0;
+    settings.soft.mutedFromDb = dsp.draft?.masterVolumeDb ?? 0;
     settings.soft.muted = true;
     _setMasterVolume(MUTE_DB);
   }

@@ -39,25 +39,25 @@ function syncBulkToken(): void {
   else dsp.pendingWrites.delete(BULK_TOKEN);
 }
 
-// The single bulk write verb. Mutates `dsp.live` optimistically, bumps the
+// The single bulk write verb. Mutates `dsp.draft` optimistically, bumps the
 // revision counter, and fires a bulk send if the lane is idle. Sends ride
 // each other's completion -- no timers, no per-key state. All Tier B actions
 // route here (or commitBulkDebounced).
 export function commitBulk(mutator: (snap: DspSnapshot) => void): void {
-  if (!dsp.live) return;
-  mutator(dsp.live);
+  if (!dsp.draft) return;
+  mutator(dsp.draft);
   flush.currentRev += 1;
   syncBulkToken();
   flushBulkIfIdle();
 }
 
 function flushBulkIfIdle(): void {
-  if (flush.inflight || !dsp.live) return;
+  if (flush.inflight || !dsp.draft) return;
   const d = session.device;
   if (!d || !d.hasState) return;
   const sendingRev = flush.currentRev;
   const gen = session.generation;
-  const draft = dsp.live;
+  const draft = dsp.draft;
   // The in-flight promise is its own run identity. Only the send that still
   // owns flush.inflight tears down the lane: a send detached mid-flight by
   // cancelBulkFlush() — after which a fresh commitBulk() starts a new send —
@@ -96,12 +96,12 @@ function flushBulkIfIdle(): void {
 const TRAILING_MS = 16;
 const trailingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-// Tier B "rare numeric slider" path. Applies the mutator to `live`
+// Tier B "rare numeric slider" path. Applies the mutator to `draft`
 // immediately, but defers the bulk send until the key has been idle for
 // TRAILING_MS -- one settled write per drag instead of one per frame.
 export function commitBulkDebounced(key: string, mutator: (snap: DspSnapshot) => void): void {
-  if (!dsp.live) return;
-  mutator(dsp.live);
+  if (!dsp.draft) return;
+  mutator(dsp.draft);
   flush.currentRev += 1;
   syncBulkToken();
   const existing = trailingTimers.get(key);

@@ -44,9 +44,9 @@ export const presets = $state<PresetsState>({
 // would just add a cache-invalidation problem.
 export const presetsDirty = {
   get current(): boolean {
-    if (!dsp.live || !dsp.shadow) return false;
+    if (!dsp.draft || !dsp.saved) return false;
     const mode = presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent;
-    return presetDiff(dsp.shadow, dsp.live, {
+    return presetDiff(dsp.saved, dsp.draft, {
       ignoreMasterVolume: mode === MasterVolumeMode.Independent,
       softMuted:          settings.soft.muted,
     });

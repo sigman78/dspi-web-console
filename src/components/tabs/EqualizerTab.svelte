@@ -16,7 +16,7 @@
   import { FilterType, defaultFilter, type FilterParams, inputIndexOf } from '@/domain';
   import { setEqFilter, setInputPreamp } from '@/runtime';
 
-  const snap = $derived(dsp.live);
+  const snap = $derived(dsp.draft);
 
   // Auto-pick a default channel when entering the tab unselected.
   $effect(() => {
