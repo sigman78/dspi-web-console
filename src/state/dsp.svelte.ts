@@ -1,5 +1,6 @@
 import { SvelteSet } from 'svelte/reactivity';
-import { fromBulkParams, type DspSnapshot, type HardwareProfile } from '@/domain';
+import { type DspSnapshot, type HardwareProfile } from '@/domain';
+import { fromBulkParams } from '@/device/snapshotCodec';
 import type { BulkParams } from '@/protocol';
 
 // Device-state truth lives in three cells: `live` (our belief of device RAM),

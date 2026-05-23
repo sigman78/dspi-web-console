@@ -1,5 +1,5 @@
 import type { DspSnapshot, HardwareProfile } from '@/domain';
-import { toBulkParams } from '@/domain';
+import { toBulkParams } from '@/device/snapshotCodec';
 import type { BulkParams } from '@/protocol';
 import { dsp, session, setStatus, applyBulkBaseline } from '@/state';
 import { forceResyncNow } from './resync';

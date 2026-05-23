@@ -9,13 +9,13 @@ import { makeBulk } from '@test/fixtures/bulkFixtures';
 import {
   FilterType,
   PlatformType,
-  fromBulkParams,
   createHardwareProfile,
   type ChannelId,
   MasterVolumeMode,
   CrossfeedPreset,
   LevellerSpeed,
 } from '@/domain';
+import { fromBulkParams } from '@/device/snapshotCodec';
 
 import { cancelAllCommands, flushPending } from './outbox';
 import { awaitBulkSettled } from './commit';

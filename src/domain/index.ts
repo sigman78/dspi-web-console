@@ -20,7 +20,6 @@ export * from './hardware';
 export * from './mixer';
 export * from './mixerView';
 export * from './snapshot';
-export * from './bulkToSnapshot';
 export * from './presetDiff';
 export * from './presetDirectory';
 
