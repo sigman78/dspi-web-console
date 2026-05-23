@@ -150,6 +150,7 @@ export function applyBaselineConverged(snapshot: DspSnapshot): void {
   applyBaselineSnapshot(snapshot);
   bulk.currentRev = 0;
   bulk.lastSentRev = 0;
+  syncBulkToken();
 }
 
 // Mirrors "bulk edits unsent or in flight" into dsp.pendingWrites so the resync

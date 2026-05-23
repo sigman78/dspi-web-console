@@ -527,8 +527,13 @@ describe('applyBaselineConverged', () => {
     // A debounced edit bumps the lane's pending revision WITHOUT sending yet.
     enqueue({ control: 'levellerAmount', debounceKey: 'levellerAmount', mutate: (s) => { if (s.leveller) s.leveller.amount = 7; } });
     expect(sends).toBe(0);
-    // Applying a fresh baseline must reset the lane to "no unsent edits".
+    // The debounced edit added BULK_TOKEN to pendingWrites.
+    expect(isInFlight.current).toBe(true);
+    // Applying a fresh baseline must reset the lane to "no unsent edits" AND
+    // re-derive the pending token, so nothing stays stuck dirty.
     applyBaselineConverged(fromBulkParams(hw, parseBulkParams(makeBulk())));
+    expect(dsp.pendingWrites.size).toBe(0);
+    expect(isInFlight.current).toBe(false);
     // Drain: a correctly-converged lane fires NO send. A lane that kept the stale
     // pending revision would re-send the discarded pre-baseline edit here.
     await flushWrites();

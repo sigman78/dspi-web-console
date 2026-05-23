@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { bootMock } from './session';
 import type { DspDeviceGranular } from '@/device/DspDeviceGranular';
 import { presets, resetPresets, boundary, resolveBoundary, settings, session, dsp } from '@/state';
@@ -420,6 +420,52 @@ describe('runtime/presets', () => {
       const r = await pastePresetTo(3 as PresetSlot);
       expect(r.ok).toBe(false);
       if ('code' in r) expect(r.code).toBe('active');
+    });
+
+    it('captures source RAM only after the source load has settled', async () => {
+      // loadPreset is async on the wire (deferred flash→RAM copy). Capturing
+      // before the settle would read the previous (active) slot's RAM, not src.
+      await fetchPresetInfo();
+      const src    = 3 as PresetSlot;
+      const active = 1 as PresetSlot;
+      await savePresetSlot(active);
+      expect(presets.active).toBe(active);
+
+      const realDevice = session.device!;
+      const origLoad   = realDevice.loadPreset.bind(realDevice);
+      const origSave   = realDevice.savePreset.bind(realDevice);
+      const origGetAll = realDevice.getAllParams.bind(realDevice);
+      const origSetAll = realDevice.setAllParams.bind(realDevice);
+      const events: string[] = [];
+      (realDevice as any).loadPreset = async (slot: number) => { events.push(`load:${slot}`); return { ok: true }; };
+      (realDevice as any).savePreset = async (slot: number) => { events.push(`save:${slot}`); return { ok: true }; };
+      (realDevice as any).setAllParams = async () => { events.push('setAll'); };
+      (realDevice as any).getAllParams = async () => { events.push('capture'); return parseBulkParams(makeBulk()); };
+
+      vi.useFakeTimers();
+      try {
+        const pending = pastePresetTo(src);
+        // Advance to just before the 100 ms settle: load(src) has resolved (it
+        // completes via microtasks) but the capture is still gated by the timer.
+        await vi.advanceTimersByTimeAsync(99);
+        expect(events).toEqual([`load:${src}`]);
+        // Cross the first settle: capture runs, then load(active). restoreState
+        // (setAll) stays gated behind the second settle.
+        await vi.advanceTimersByTimeAsync(2);
+        expect(events).toEqual([`load:${src}`, 'capture', `load:${active}`]);
+        // Cross the second settle: only now is the source pushed into active RAM.
+        await vi.advanceTimersByTimeAsync(100);
+        expect(events).toContain('setAll');
+        // Drain the rest of the flow so no promise/timer dangles.
+        await vi.advanceTimersByTimeAsync(500);
+        await pending;
+      } finally {
+        vi.useRealTimers();
+        (realDevice as any).loadPreset = origLoad;
+        (realDevice as any).savePreset = origSave;
+        (realDevice as any).getAllParams = origGetAll;
+        (realDevice as any).setAllParams = origSetAll;
+      }
     });
   });
 
