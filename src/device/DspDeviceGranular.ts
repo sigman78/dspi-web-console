@@ -143,7 +143,8 @@ export class DspDeviceGranular extends DspDevice {
   // Names are silently cropped to fit the 31-byte UTF-8 wire budget.
   // Validation (and user-facing errors) belong at the state/UI layer above.
   async setChannelName(channel: ChannelId, name: string): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetChannelName, utf8Truncate(name, CHANNEL_NAME_MAX_LEN), this.deviceChannel(channel));
+    const wireChannel = this.deviceChannel(channel);
+    return writeCmd(this.transport, WireCmd.SetChannelName, utf8Truncate(name, CHANNEL_NAME_MAX_LEN), wireChannel);
   }
 
   async getChannelName(channel: ChannelId): Promise<string> {
