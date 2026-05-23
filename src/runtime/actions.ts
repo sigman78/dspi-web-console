@@ -59,8 +59,8 @@ export function setEqFilter(channel: ChannelId, band: number, filter: FilterPara
 }
 
 // Copy all bands from source channel onto target channel as a single
-// bulk write. Under commitBulk, EQ edits no longer have per-band scrub
-// lanes, so no cancelScrubLane calls are needed.
+// bulk write. Under the bulk strategy, EQ edits have no per-band scrub
+// lanes, so no per-lane cancellation is needed.
 export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
   if (sourceId === targetId || !dsp.draft?.channels) return;
   const src = dsp.draft.channels.find((c) => c.id === sourceId);

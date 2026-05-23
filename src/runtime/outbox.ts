@@ -6,7 +6,7 @@
 // self-converging), optionally debounced.
 //
 // The granular machinery (lanes/runGuarded/claimToken) and the bulk machinery
-// (flush state/BULK_TOKEN/flushBulkIfIdle) are module-private; only enqueue /
+// (bulk state/BULK_TOKEN/flushBulkIfIdle) are module-private; only enqueue /
 // flush / cancel / applyBaselineConverged are the public store-facing API.
 import type { DspDevice } from '@/device/DspDevice';
 import type { DspSnapshot } from '@/domain';
@@ -177,7 +177,7 @@ function flushBulkIfIdle(): void {
   const draft = dsp.draft;
   // The in-flight promise is its own run identity. Only the send that still
   // owns bulk.inflight tears down the lane: a send detached mid-flight by
-  // cancelBulkFlush() — after which a fresh commitBulk() starts a new send —
+  // cancelBulkFlush() — after which a fresh bulk enqueue starts a new send —
   // must not, on its late settle, null the newer send's slot or fire a
   // spurious re-flush. The generation guard below protects the *data*
   // (lastSentRev); this identity check guards the *lane
