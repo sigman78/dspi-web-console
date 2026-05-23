@@ -10,13 +10,13 @@ import { type DspSnapshot } from '@/domain';
 //   verb                  | live | shadow
 //   ----------------------|------|--------
 //   applyBaselineSnapshot |  x   |   x
-//   applyLiveSnapshot     |  x   |   —
-//   refreshShadowFromLive |  —   | x(live)
-//   patchSnapshot         | x(ip)|   —
+//   applyLiveSnapshot     |  x   |   -
+//   refreshShadowFromLive |  -   | x(live)
+//   patchSnapshot         | x(ip)|   -
 //   resetDsp              | null |  kept
 //
 // Bulk-flush coordination (the rev counters and in-flight send tracking) now
-// lives in src/runtime/commit.ts — the state layer no longer owns it, since
+// lives in src/runtime/commit.ts; the state layer no longer owns it, since
 // state must not import the runtime layer.
 export interface DspState {
   // Our belief about device RAM. Mutates on every user write; reset to null
@@ -24,7 +24,7 @@ export interface DspState {
 
   // The dirty-diff baseline: snapshot of what `live` looked like at the
   // last preset save/load (or initial connect). Stays pinned until an
-  // explicit baseline-refresh moment — does NOT auto-update on resync.
+  // explicit baseline-refresh moment; does NOT auto-update on resync.
   // The preset-dirty getter compares `live` against `shadow` to decide
   // whether the active preset has unsaved edits. Survives disconnect so
   // an eventual offline view can render the last-known-good state.

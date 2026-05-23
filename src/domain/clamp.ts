@@ -2,9 +2,9 @@
 // matching the existing ValueField UX. This is the one authoritative
 // host-side source of write ranges; UI panels keep affordances only.
 //
-// Ranges mirror the (now-deleted) validation.ts. When ADR-003 lands and
-// the device adapter exposes authoritative per-platform limits, these
-// constants should be re-sourced from the adapter (board review A2).
+// These ranges are the authoritative host-side write bounds. A future change
+// should re-source them from the device adapter's per-platform limits so host
+// and firmware share one source of truth (board review A2).
 
 import * as Eq from './eqLimits';
 import * as Mix from './mixerLimits';
@@ -19,7 +19,7 @@ export function clampToRange(v: number, min: number, max: number): number {
 }
 
 // Master volume: UI exposes [-60, 0]. NOTE: the internal mute path writes
-// MUTE_DB (-128) and must NOT be clamped — only the public setMasterVolume(db)
+// MUTE_DB (-128) and must NOT be clamped; only the public setMasterVolume(db)
 // user-input path calls this.
 export const MASTER_VOLUME_MIN_DB = -60;
 export const MASTER_VOLUME_MAX_DB = 0;
@@ -35,8 +35,7 @@ export const clampOutputGainDb = (db: number) => clampToRange(db, Mix.OUTPUT_GAI
 export const clampOutputDelayMs = (ms: number) => clampToRange(ms, Mix.OUTPUT_DELAY_MIN_MS, Mix.OUTPUT_DELAY_MAX_MS);
 export const clampCrosspointGainDb = (db: number) => clampToRange(db, Mix.CROSSPOINT_GAIN_MIN_DB, Mix.CROSSPOINT_GAIN_MAX_DB);
 
-// TODO(ADR-003): re-source these ranges from the device adapter's per-platform limits.
-// Processing module ranges (mirrored from validation.ts).
+// Processing module ranges. See the header note on re-sourcing from the adapter.
 export const clampLoudnessRefSpl = (db: number) => clampToRange(db, 40, 100);
 export const clampLoudnessIntensityPct = (p: number) => clampToRange(p, 0, 200);
 export const clampCrossfeedFreqHz = (hz: number) => clampToRange(hz, 500, 2000);

@@ -89,7 +89,7 @@ export class DspDevice {
 
   #wireBase: BulkParams | null = null;
 
-  // True once the device has fetched at least one packet — guards optimistic
+  // True once the device has fetched at least one packet; guards optimistic
   // bulk writes during the connect race (a write before the first snapshot has
   // no base packet to overlay).
   get hasState(): boolean {
@@ -114,7 +114,7 @@ export class DspDevice {
   }
 
   // Opaque capture for the device-to-device paste copy. Always performs a fresh
-  // wire fetch — the result may differ from the last getSnapshot/applyBulk if the
+  // wire fetch; the result may differ from the last getSnapshot/applyBulk if the
   // device state changed concurrently. Deliberately does NOT update #wireBase.
   async captureState(): Promise<DeviceState> {
     return (await this.getAllParams()) as DeviceState;
