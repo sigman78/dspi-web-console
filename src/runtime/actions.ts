@@ -20,17 +20,19 @@ import { Result, Log, type VoidResult } from '@/utils';
 import { startPolling } from './poll';
 import { connectionScope, endConnection } from './connectionScope';
 import { cancelResync } from './resync';
-import { scrubCommand } from './commands';
-import { cancelAllCommands, flushPending } from './outbox';
-import { commitBulk, commitBulkDebounced, applyBaselineConverged } from './commit';
+import {
+  enqueue, applyBaselineConverged,
+  flush as flushPending, cancel as cancelAllCommands,
+} from './outbox';
 import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
 const MUTE_DB = -128; // per spec
 
 function _setMasterVolume(db: number): void {
-  scrubCommand({
-    key: 'masterVolume',
+  enqueue({
+    control: 'masterVolume',
+    coalesceKey: 'masterVolume',
     apply: () => patchSnapshot({ masterVolumeDb: db }),
     send: (d) => d.setMasterVolume(db),
   });
@@ -45,7 +47,7 @@ export function setEqFilter(channel: ChannelId, band: number, filter: FilterPara
   if (band >= ch.filters.length) {
     throw new Error(`band ${band} out of range for channel ${channel}`);
   }
-  commitBulk((s) => {
+  enqueue({ control: 'eqFilter', mutate: (s) => {
     const c = s.channels.find((c) => c.id === channel)!;
     c.filters[band] = {
       ...filter,
@@ -53,7 +55,7 @@ export function setEqFilter(channel: ChannelId, band: number, filter: FilterPara
       q: Clamp.bandQ(filter.q),
       gain: Clamp.bandGainDb(filter.gain),
     };
-  });
+  } });
 }
 
 // Copy all bands from source channel onto target channel as a single
@@ -71,14 +73,14 @@ export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
     q: Clamp.bandQ(f.q),
     gain: Clamp.bandGainDb(f.gain),
   }));
-  commitBulk((s) => {
+  enqueue({ control: 'eqFilter', mutate: (s) => {
     const t = s.channels.find((c) => c.id === targetId)!;
     for (let i = 0; i < len; i++) t.filters[i] = { ...copied[i] };
-  });
+  } });
 }
 
 export function setBypass(enabled: boolean): void {
-  commitBulk((s) => { s.bypass = enabled; });
+  enqueue({ control: 'bypass', mutate: (s) => { s.bypass = enabled; } });
 }
 
 // Telemetry-only action: clears firmware-side latched clip flags (0x83) and
@@ -105,81 +107,82 @@ export function setChannelName(id: ChannelId, name: string): void {
   if (!ch) return;
   const resolved = name.trim() || ch.defaultName;
   const clamped = Clamp.nameToByteBudget(resolved, CHANNEL_NAME_MAX_LEN);
-  commitBulk((s) => {
+  enqueue({ control: 'channelName', mutate: (s) => {
     const c = s.channels.find((c) => c.id === id)!;
     c.name = clamped;
     const o = s.outputs.find((o) => o.id === id);
     if (o) o.name = clamped;
-  });
+  } });
 }
 
 export function setLoudnessEnabled(enabled: boolean): void {
-  commitBulk((s) => { s.loudness.enabled = enabled; });
+  enqueue({ control: 'loudnessEnabled', mutate: (s) => { s.loudness.enabled = enabled; } });
 }
 
 export function setLoudnessRefSpl(db: number): void {
   db = Clamp.loudnessRefSpl(db);
-  commitBulkDebounced('loudnessRefSpl', (s) => { s.loudness.refSpl = db; });
+  enqueue({ control: 'loudnessRefSpl', debounceKey: 'loudnessRefSpl', mutate: (s) => { s.loudness.refSpl = db; } });
 }
 
 export function setLoudnessIntensityPct(pct: number): void {
   pct = Clamp.loudnessIntensityPct(pct);
-  commitBulkDebounced('loudnessIntensity', (s) => { s.loudness.intensityPct = pct; });
+  enqueue({ control: 'loudnessIntensity', debounceKey: 'loudnessIntensity', mutate: (s) => { s.loudness.intensityPct = pct; } });
 }
 
 export function setCrossfeedEnabled(enabled: boolean): void {
-  commitBulk((s) => { s.crossfeed.enabled = enabled; });
+  enqueue({ control: 'crossfeedEnabled', mutate: (s) => { s.crossfeed.enabled = enabled; } });
 }
 
 export function setCrossfeedPreset(preset: CrossfeedPreset): void {
-  commitBulk((s) => { s.crossfeed.preset = preset; });
+  enqueue({ control: 'crossfeedPreset', mutate: (s) => { s.crossfeed.preset = preset; } });
 }
 
 export function setCrossfeedItd(itd: boolean): void {
-  commitBulk((s) => { s.crossfeed.itd = itd; });
+  enqueue({ control: 'crossfeedItd', mutate: (s) => { s.crossfeed.itd = itd; } });
 }
 
 export function setCrossfeedFreq(hz: number): void {
   hz = Clamp.crossfeedFreqHz(hz);
-  commitBulkDebounced('crossfeedFreq', (s) => { s.crossfeed.freq = hz; });
+  enqueue({ control: 'crossfeedFreq', debounceKey: 'crossfeedFreq', mutate: (s) => { s.crossfeed.freq = hz; } });
 }
 
 export function setCrossfeedFeedDb(db: number): void {
   db = Clamp.crossfeedFeedDb(db);
-  commitBulkDebounced('crossfeedFeedDb', (s) => { s.crossfeed.feedDb = db; });
+  enqueue({ control: 'crossfeedFeedDb', debounceKey: 'crossfeedFeedDb', mutate: (s) => { s.crossfeed.feedDb = db; } });
 }
 
 export function setLevellerEnabled(enabled: boolean): void {
-  commitBulk((s) => { if (s.leveller) s.leveller.enabled = enabled; });
+  enqueue({ control: 'levellerEnabled', mutate: (s) => { if (s.leveller) s.leveller.enabled = enabled; } });
 }
 
 export function setLevellerSpeed(speed: LevellerSpeed): void {
-  commitBulk((s) => { if (s.leveller) s.leveller.speed = speed; });
+  enqueue({ control: 'levellerSpeed', mutate: (s) => { if (s.leveller) s.leveller.speed = speed; } });
 }
 
 export function setLevellerLookahead(lookahead: boolean): void {
-  commitBulk((s) => { if (s.leveller) s.leveller.lookahead = lookahead; });
+  enqueue({ control: 'levellerLookahead', mutate: (s) => { if (s.leveller) s.leveller.lookahead = lookahead; } });
 }
 
 export function setLevellerAmount(pct: number): void {
   pct = Clamp.levellerAmountPct(pct);
-  commitBulkDebounced('levellerAmount', (s) => { if (s.leveller) s.leveller.amount = pct; });
+  enqueue({ control: 'levellerAmount', debounceKey: 'levellerAmount', mutate: (s) => { if (s.leveller) s.leveller.amount = pct; } });
 }
 
 export function setLevellerMaxGain(db: number): void {
   db = Clamp.levellerMaxGainDb(db);
-  commitBulkDebounced('levellerMaxGain', (s) => { if (s.leveller) s.leveller.maxGainDb = db; });
+  enqueue({ control: 'levellerMaxGain', debounceKey: 'levellerMaxGain', mutate: (s) => { if (s.leveller) s.leveller.maxGainDb = db; } });
 }
 
 export function setLevellerGate(db: number): void {
   db = Clamp.levellerGateDb(db);
-  commitBulkDebounced('levellerGate', (s) => { if (s.leveller) s.leveller.gateDb = db; });
+  enqueue({ control: 'levellerGate', debounceKey: 'levellerGate', mutate: (s) => { if (s.leveller) s.leveller.gateDb = db; } });
 }
 
 export function setMasterPreamp(db: number): void {
   db = Clamp.preampDb(db);
-  scrubCommand({
-    key: 'masterPreamp',
+  enqueue({
+    control: 'masterPreamp',
+    coalesceKey: 'masterPreamp',
     apply: () => patchSnapshot({ masterPreampDb: db }),
     send: (d) => d.setMasterPreamp(db),
   });
@@ -191,8 +194,9 @@ export function setInputPreamp(channel: InputSlot, db: number): void {
   if (!cur) return;
   const next: [number, number] = [cur[0], cur[1]];
   next[channel] = db;
-  scrubCommand({
-    key: `inputPreamp:${channel}`,
+  enqueue({
+    control: 'inputPreamp',
+    coalesceKey: `inputPreamp:${channel}`,
     apply: () => patchSnapshot({ inputPreampDb: next }),
     send: (d) => d.setInputPreamp(channel, db),
   });
@@ -210,8 +214,9 @@ function scheduleCrosspointWrite(
 ): void {
   if (!dsp.draft?.routes) return;
   const route = focusRoute(input, output);
-  scrubCommand({
-    key: `crosspoint:${input}:${output}`,
+  enqueue({
+    control: 'crosspoint',
+    coalesceKey: `crosspoint:${input}:${output}`,
     apply: () => route.modify(mutate),
     send: async (d) => {
       const c = route.read();
@@ -241,8 +246,9 @@ export function setOutputGain(slot: OutputSlot, gainDb: number): void {
   gainDb = Clamp.outputGainDb(gainDb);
   if (!dsp.draft?.outputs) return;
   const out = focusOutput(slot);
-  scrubCommand({
-    key: `outputGain:${slot}`,
+  enqueue({
+    control: 'outputGain',
+    coalesceKey: `outputGain:${slot}`,
     apply: () => out.modify((o) => ({ ...o, gainDb })),
     send: (d) => d.setOutputGain(slot, gainDb),
   });
@@ -251,26 +257,26 @@ export function setOutputGain(slot: OutputSlot, gainDb: number): void {
 export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
   if (!dsp.draft?.outputs) return;
   delayMs = Clamp.outputDelayMs(delayMs);
-  commitBulk((s) => {
+  enqueue({ control: 'outputDelay', mutate: (s) => {
     const o = s.outputs.find((o) => o.wireIndex === slot);
     if (o) o.delayMs = delayMs;
-  });
+  } });
 }
 
 export function setOutputEnabled(slot: OutputSlot, enabled: boolean): void {
   if (!dsp.draft?.outputs) return;
-  commitBulk((s) => {
+  enqueue({ control: 'outputEnabled', mutate: (s) => {
     const o = s.outputs.find((o) => o.wireIndex === slot);
     if (o) o.enabled = enabled;
-  });
+  } });
 }
 
 export function setOutputMuted(slot: OutputSlot, muted: boolean): void {
   if (!dsp.draft?.outputs) return;
-  commitBulk((s) => {
+  enqueue({ control: 'outputMuted', mutate: (s) => {
     const o = s.outputs.find((o) => o.wireIndex === slot);
     if (o) o.muted = muted;
-  });
+  } });
 }
 
 export async function syncDeviceSnapshot(): Promise<void> {

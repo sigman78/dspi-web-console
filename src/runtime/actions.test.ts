@@ -17,8 +17,7 @@ import {
 } from '@/domain';
 import { fromBulkParams, toBulkParams } from '@/device/snapshotCodec';
 
-import { cancelAllCommands, flushPending } from './outbox';
-import { awaitBulkSettled } from './commit';
+import { cancel as cancelAllCommands, flush as flushPending, awaitBulkSettled } from './outbox';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);

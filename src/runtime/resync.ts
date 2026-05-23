@@ -1,7 +1,7 @@
 import { session, applyDraftSnapshot, dsp } from '@/state';
 import { Log } from '@/utils';
 import { makeResyncScheduler } from './schedulers';
-import { applyBaselineConverged } from './commit';
+import { applyBaselineConverged } from './outbox';
 
 const RESYNC_MS = 250;
 

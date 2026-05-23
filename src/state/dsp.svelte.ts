@@ -19,11 +19,11 @@ import { type DspSnapshot } from '@/domain';
 // `draft` and `saved` are fully encapsulated behind the readonly `DspStore`
 // view: external modules can only READ them and CALL the verbs above - they
 // cannot reassign the cells (compile error). `pendingWrites` is readonly only
-// as a reference: the runtime command lanes call .add()/.delete()/.clear() on
-// it directly (commands.ts, outbox.ts) rather than through a verb.
+// as a reference: the runtime write outbox calls .add()/.delete()/.clear() on
+// it directly (src/runtime/outbox.ts) rather than through a verb.
 //
 // Bulk-flush coordination (the rev counters and in-flight send tracking) now
-// lives in src/runtime/commit.ts; the state layer no longer owns it, since
+// lives in src/runtime/outbox.ts; the state layer no longer owns it, since
 // state must not import the runtime layer.
 
 // Module-private mutable instance - only the verbs in this file assign its
@@ -42,7 +42,7 @@ class DspStateImpl {
   // an eventual offline view can render the last-known-good state.
   saved = $state<DspSnapshot | null>(null);
 
-  // Pending optimistic writes scheduled by src/runtime/commands.ts.
+  // Pending optimistic writes scheduled by src/runtime/outbox.ts.
   // Each in-flight command holds a Symbol token; isInFlight observes
   // the set's reactivity to drive the UI dirty indicator.
   pendingWrites = $state(new SvelteSet<symbol>());

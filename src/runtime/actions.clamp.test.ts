@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, setOutputDelay } from './actions';
 import { dsp, bindDevice } from '@/state';
 import { bootMock } from './session';
-import { cancelAllCommands } from './outbox';
+import { cancel as cancelAllCommands } from './outbox';
 import { endConnection } from './connectionScope';
 
 afterEach(() => { endConnection(); cancelAllCommands(); });
