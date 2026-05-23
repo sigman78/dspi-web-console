@@ -1,31 +1,14 @@
 import type { DspTransport } from '@/transport/DspTransport';
-import {
-  Wire,
-  parseBulkParams, buildBulkParams, parseSystemStatus, parseBufferStats,
-  SystemStatusValue,
-  WireCmd, readCmd, writeCmd,
-  type BufferStats, type SystemStatus, type BulkParams, type PartialSystemInfo,
-  actionCmd, flashResultFromByte, presetResultFromByte,
-  PresetResult, type FlashResult,
-  PresetDirectory, PresetDirRequestSize,
-} from '@/protocol';
+import * as proto from '@/protocol';
 import { Codec, utf8Truncate, type Result } from '@/utils';
-import {
-  type ChannelId, type InputSlot, type OutputSlot,
-  createHardwareProfile, wireChannelFor, type HardwareProfile,
-  PlatformType,
-  MasterVolumeMode,
-  type PresetSlot, PRESET_NAME_MAX_LEN, PRESET_SLOT_COUNT,
-  type PresetDirectoryInfo,
-  type DspSnapshot,
-} from '@/domain';
+import * as domain from '@/domain';
 import { fromBulkParams, toBulkParams, type DeviceState } from './snapshotCodec';
 
 // Bit N of the firmware's u16 occupiedMask = slot N populated.
-function occupiedMaskToSet(mask: number): ReadonlySet<PresetSlot> {
-  const s = new Set<PresetSlot>();
-  for (let i = 0; i < PRESET_SLOT_COUNT; i++) {
-    if (mask & (1 << i)) s.add(i as PresetSlot);
+function occupiedMaskToSet(mask: number): ReadonlySet<domain.PresetSlot> {
+  const s = new Set<domain.PresetSlot>();
+  for (let i = 0; i < domain.PRESET_SLOT_COUNT; i++) {
+    if (mask & (1 << i)) s.add(i as domain.PresetSlot);
   }
   return s;
 }
@@ -33,12 +16,12 @@ function occupiedMaskToSet(mask: number): ReadonlySet<PresetSlot> {
 export interface DspDeviceInfo {
   readonly serial: string;
   readonly firmwareVersion: string;
-  readonly platformType: PlatformType;
-  readonly hardware: HardwareProfile;
+  readonly platformType: domain.PlatformType;
+  readonly hardware: domain.HardwareProfile;
 }
 
-function platformTypeFromId(platformId: number): PlatformType {
-  return platformId === 1 ? PlatformType.RP2350 : PlatformType.RP2040;
+function platformTypeFromId(platformId: number): domain.PlatformType {
+  return platformId === 1 ? domain.PlatformType.RP2350 : domain.PlatformType.RP2040;
 }
 
 function firmwareVersion(info: { fwMajor: number; fwMinorPatch: number }): string {
@@ -59,11 +42,11 @@ export class DspDevice {
   ): Promise<DspDeviceInfo> {
     await openTransport();
     const [serial, platform] = await Promise.all([
-      readCmd(transport, WireCmd.GetSerial),
-      readCmd(transport, WireCmd.GetPlatform),
+      proto.readCmd(transport, proto.WireCmd.GetSerial),
+      proto.readCmd(transport, proto.WireCmd.GetPlatform),
     ]);
     const platformType = platformTypeFromId(platform.platformId);
-    const hardware = createHardwareProfile(platformType);
+    const hardware = domain.createHardwareProfile(platformType);
     return {
       serial: serial.trim(),
       firmwareVersion: firmwareVersion(platform),
@@ -86,15 +69,15 @@ export class DspDevice {
     return this._info;
   }
 
-  get hardware(): HardwareProfile {
+  get hardware(): domain.HardwareProfile {
     return this._info.hardware;
   }
 
-  protected deviceChannel(channel: ChannelId): ChannelId {
-    return wireChannelFor(this.hardware, channel);
+  protected deviceChannel(channel: domain.ChannelId): domain.ChannelId {
+    return domain.wireChannelFor(this.hardware, channel);
   }
 
-  #wireBase: BulkParams | null = null;
+  #wireBase: proto.BulkParams | null = null;
 
   // True once at least one packet has been fetched; guards optimistic bulk
   // writes during the connect race (a write before the first snapshot has no
@@ -105,7 +88,7 @@ export class DspDevice {
 
   // Snapshot-out: fetch the wire packet, retain it as the overlay base, return
   // the domain view. The sole app-facing read path.
-  async getSnapshot(): Promise<DspSnapshot> {
+  async getSnapshot(): Promise<domain.DspSnapshot> {
     const bulk = await this.getAllParams();
     this.#wireBase = bulk;
     return fromBulkParams(this.hardware, bulk);
@@ -113,7 +96,7 @@ export class DspDevice {
 
   // Snapshot-in: overlay the draft onto the retained base packet and push it,
   // then retain the just-sent packet as the new base.
-  async applyBulk(draft: DspSnapshot): Promise<void> {
+  async applyBulk(draft: domain.DspSnapshot): Promise<void> {
     if (!this.#wireBase) throw new Error('applyBulk before getSnapshot: no wire base');
     const bulk = toBulkParams(this.hardware, draft, this.#wireBase);
     await this.setAllParams(bulk);
@@ -131,22 +114,22 @@ export class DspDevice {
     this.#wireBase = state;
   }
 
-  async getAllParams(): Promise<BulkParams> {
-    const bytes = await this.transport.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxRequestSize);
-    return parseBulkParams(bytes);
+  async getAllParams(): Promise<proto.BulkParams> {
+    const bytes = await this.transport.ctrlIn(proto.WireCmd.GetAllParams.code, 0, proto.Wire.BulkLimits.MaxRequestSize);
+    return proto.parseBulkParams(bytes);
   }
 
   // Push a complete DSP state in one control-OUT. Firmware applies it in its
   // main loop (~5 ms); callers needing the change visible should re-fetch.
-  async setAllParams(bulk: BulkParams): Promise<void> {
-    const bytes = buildBulkParams(bulk);
-    await this.transport.ctrlOut(WireCmd.SetAllParams.code, 0, bytes);
+  async setAllParams(bulk: proto.BulkParams): Promise<void> {
+    const bytes = proto.buildBulkParams(bulk);
+    await this.transport.ctrlOut(proto.WireCmd.SetAllParams.code, 0, bytes);
   }
 
-  async getSystemStatus(): Promise<SystemStatus> {
+  async getSystemStatus(): Promise<proto.SystemStatus> {
     const numCh = this.hardware.totalChannelCount;
-    const bytes = await this.transport.ctrlIn(WireCmd.GetStatus.code, 9, numCh * 2 + 4);
-    return parseSystemStatus(bytes, numCh);
+    const bytes = await this.transport.ctrlIn(proto.WireCmd.GetStatus.code, 9, numCh * 2 + 4);
+    return proto.parseSystemStatus(bytes, numCh);
   }
 
   // Slow-poll telemetry (env scalars + cumulative error counters). Each
@@ -156,26 +139,26 @@ export class DspDevice {
   // panel populated. The caller folds non-null fields into the store.
   // Run at ~1Hz from poll.ts. See docs/system-status-req.md for the wire
   // format per code.
-  async getSystemInfo(): Promise<PartialSystemInfo> {
+  async getSystemInfo(): Promise<proto.PartialSystemInfo> {
     const u32 = (wValue: number) =>
-      this.transport.ctrlIn(WireCmd.GetStatus.code, wValue, 4)
+      this.transport.ctrlIn(proto.WireCmd.GetStatus.code, wValue, 4)
         .then((b) => Codec.decodePadded(Codec.u32, b));
     const i32 = (wValue: number) =>
-      this.transport.ctrlIn(WireCmd.GetStatus.code, wValue, 4)
+      this.transport.ctrlIn(proto.WireCmd.GetStatus.code, wValue, 4)
         .then((b) => Codec.decodePadded(Codec.i32, b));
 
     const settled = await Promise.allSettled([
-      u32(SystemStatusValue.ClockHz),
-      u32(SystemStatusValue.CoreVoltageMv),
-      u32(SystemStatusValue.SampleRateHz),
-      i32(SystemStatusValue.TempCDegC),
-      u32(SystemStatusValue.PdmRingOverruns),
-      u32(SystemStatusValue.PdmRingUnderruns),
-      u32(SystemStatusValue.PdmDmaOverruns),
-      u32(SystemStatusValue.PdmDmaUnderruns),
-      u32(SystemStatusValue.SpdifOverruns),
-      u32(SystemStatusValue.SpdifUnderruns),
-      u32(SystemStatusValue.SpdifStarvationsTotal),
+      u32(proto.SystemStatusValue.ClockHz),
+      u32(proto.SystemStatusValue.CoreVoltageMv),
+      u32(proto.SystemStatusValue.SampleRateHz),
+      i32(proto.SystemStatusValue.TempCDegC),
+      u32(proto.SystemStatusValue.PdmRingOverruns),
+      u32(proto.SystemStatusValue.PdmRingUnderruns),
+      u32(proto.SystemStatusValue.PdmDmaOverruns),
+      u32(proto.SystemStatusValue.PdmDmaUnderruns),
+      u32(proto.SystemStatusValue.SpdifOverruns),
+      u32(proto.SystemStatusValue.SpdifUnderruns),
+      u32(proto.SystemStatusValue.SpdifStarvationsTotal),
     ]);
 
     const v = (i: number): number | null =>
@@ -198,50 +181,50 @@ export class DspDevice {
     };
   }
 
-  async getBufferStats(): Promise<BufferStats | null> {
+  async getBufferStats(): Promise<proto.BufferStats | null> {
     // Stays manual: parseBufferStats returns null on short responses;
     // readCmd would throw, defeating that contract.
-    const bytes = await this.transport.ctrlIn(WireCmd.GetBufferStats.code, 0, Codec.sizeOf(Wire.BufferStats));
-    return parseBufferStats(bytes);
+    const bytes = await this.transport.ctrlIn(proto.WireCmd.GetBufferStats.code, 0, Codec.sizeOf(proto.Wire.BufferStats));
+    return proto.parseBufferStats(bytes);
   }
 
   // Persistence ----------------------------------------------------------
   // 0x51 / 0x52 / 0x53 are action-style IN with a 1-byte FlashResult.
 
-  async factoryReset(): Promise<Result<void, FlashResult>> {
-    return flashResultFromByte(await actionCmd(this.transport, WireCmd.FactoryReset));
+  async factoryReset(): Promise<Result<void, proto.FlashResult>> {
+    return proto.flashResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.FactoryReset));
   }
 
   // Telemetry actions -----------------------------------------------------
 
   // 0x83 OUT, no payload. Clears latched clip flags so they can re-arm.
   async clearClips(): Promise<void> {
-    await this.transport.ctrlOut(WireCmd.ClearClips.code, 0, new Uint8Array(0));
+    await this.transport.ctrlOut(proto.WireCmd.ClearClips.code, 0, new Uint8Array(0));
   }
 
   // Preamps / master volume ------------------------------------------------
 
   async setMasterPreamp(db: number): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetPreamp, db);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetPreamp, db);
   }
 
-  async setInputPreamp(channel: InputSlot, db: number): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetInputPreamp, db, channel);
+  async setInputPreamp(channel: domain.InputSlot, db: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetInputPreamp, db, channel);
   }
 
   async setMasterVolume(db: number): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetMasterVolume, db);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetMasterVolume, db);
   }
 
-  async setMasterVolumeMode(mode: MasterVolumeMode): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetMasterVolumeMode, mode);
+  async setMasterVolumeMode(mode: domain.MasterVolumeMode): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetMasterVolumeMode, mode);
   }
 
   // Action-style IN: persists live master volume to flash, returns 1-byte
   // PresetResult status. 0 = ok. WebUSB transfer failures throw, so the
   // host-side surface is a simple boolean.
   async saveMasterVolume(): Promise<boolean> {
-    const r = await this.transport.ctrlIn(WireCmd.SaveMasterVolume.code, 0, 1);
+    const r = await this.transport.ctrlIn(proto.WireCmd.SaveMasterVolume.code, 0, 1);
     return r.length >= 1 && r[0] === 0;
   }
 
@@ -251,11 +234,11 @@ export class DspDevice {
   // before calling.
 
   async setMatrixRoute(
-    input: InputSlot,
-    output: OutputSlot,
+    input: domain.InputSlot,
+    output: domain.OutputSlot,
     p: { enabled: boolean; invert: boolean; gainDb: number },
   ): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetMatrixRoute, {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetMatrixRoute, {
       input, output,
       enabled: p.enabled,
       phaseInvert: p.invert,
@@ -263,29 +246,29 @@ export class DspDevice {
     });
   }
 
-  async setOutputGain(output: OutputSlot, db: number): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetOutputGain, db, output);
+  async setOutputGain(output: domain.OutputSlot, db: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetOutputGain, db, output);
   }
 
   // Presets ---------------------------------------------------------------
   // Wire surface for the 11-command preset system (0x90–0x9A). See
   // docs/HW-PROFILES.md for the persistence model.
 
-  async getPresetDirectory(): Promise<PresetDirectoryInfo> {
+  async getPresetDirectory(): Promise<domain.PresetDirectoryInfo> {
     const bytes = await this.transport.ctrlIn(
-      WireCmd.PresetGetDir.code, 0, PresetDirRequestSize,
+      proto.WireCmd.PresetGetDir.code, 0, proto.PresetDirRequestSize,
     );
     // decodePadded zero-extends a legacy 6-byte response to the V12+
     // 7-byte schema; masterVolumeMode then reads 0 (= Independent), which
     // is the correct legacy semantic, not a sentinel.
-    const r = Codec.decodePadded(PresetDirectory, bytes);
+    const r = Codec.decodePadded(proto.PresetDirectory, bytes);
     return {
       occupiedSlotsSet: occupiedMaskToSet(r.occupiedMask),
       startupMode:      r.startupMode,
-      defaultSlot:      r.defaultSlot as PresetSlot,
-      lastActiveSlot:   r.lastActiveSlot === 0xFF ? null : (r.lastActiveSlot as PresetSlot),
+      defaultSlot:      r.defaultSlot as domain.PresetSlot,
+      lastActiveSlot:   r.lastActiveSlot === 0xFF ? null : (r.lastActiveSlot as domain.PresetSlot),
       includePins:      r.includePins,
-      masterVolumeMode: r.masterVolumeMode as MasterVolumeMode,
+      masterVolumeMode: r.masterVolumeMode as domain.MasterVolumeMode,
     };
   }
 
@@ -302,43 +285,43 @@ export class DspDevice {
   // UI layer should coerce `null → 0` for display per the always-active
   // model in HW-PROFILES §0; persistence-aware code (dirty tracking,
   // autosave) should treat `null` as "no slot to write to" and skip.
-  async getActivePreset(): Promise<PresetSlot | null> {
-    const r = await this.transport.ctrlIn(WireCmd.PresetGetActive.code, 0, 1);
+  async getActivePreset(): Promise<domain.PresetSlot | null> {
+    const r = await this.transport.ctrlIn(proto.WireCmd.PresetGetActive.code, 0, 1);
     if (r.length < 1) return null;
     const b = r[0];
     if (b === 0xFF || b >= 10) return null;
-    return b as PresetSlot;
+    return b as domain.PresetSlot;
   }
 
   // 0x93 / 0x94: 32-byte NUL-terminated UTF-8 name per slot (0..9).
   // Same codec as channel names; wValue carries the slot index.
   // Names are silently cropped at a codepoint boundary to fit the 31-byte
   // wire budget. Slot is a compile-time `PresetSlot`; no runtime guard here.
-  async setPresetName(slot: PresetSlot, name: string): Promise<void> {
-    return writeCmd(this.transport, WireCmd.PresetSetName, utf8Truncate(name, PRESET_NAME_MAX_LEN), slot);
+  async setPresetName(slot: domain.PresetSlot, name: string): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.PresetSetName, utf8Truncate(name, domain.PRESET_NAME_MAX_LEN), slot);
   }
 
-  async getPresetName(slot: PresetSlot): Promise<string> {
-    return readCmd(this.transport, WireCmd.PresetGetName, slot);
+  async getPresetName(slot: domain.PresetSlot): Promise<string> {
+    return proto.readCmd(this.transport, proto.WireCmd.PresetGetName, slot);
   }
 
-  async savePreset(slot: PresetSlot): Promise<Result<void, PresetResult>> {
-    return presetResultFromByte(await actionCmd(this.transport, WireCmd.PresetSave, slot));
+  async savePreset(slot: domain.PresetSlot): Promise<Result<void, proto.PresetResult>> {
+    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.PresetSave, slot));
   }
 
-  async loadPreset(slot: PresetSlot): Promise<Result<void, PresetResult>> {
-    return presetResultFromByte(await actionCmd(this.transport, WireCmd.PresetLoad, slot));
+  async loadPreset(slot: domain.PresetSlot): Promise<Result<void, proto.PresetResult>> {
+    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.PresetLoad, slot));
   }
 
-  async deletePreset(slot: PresetSlot): Promise<Result<void, PresetResult>> {
-    return presetResultFromByte(await actionCmd(this.transport, WireCmd.PresetDelete, slot));
+  async deletePreset(slot: domain.PresetSlot): Promise<Result<void, proto.PresetResult>> {
+    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.PresetDelete, slot));
   }
 
   async setPresetStartup(config: { mode: number; slot: number }): Promise<void> {
-    return writeCmd(this.transport, WireCmd.PresetSetStartup, config);
+    return proto.writeCmd(this.transport, proto.WireCmd.PresetSetStartup, config);
   }
 
   async setPresetIncludePins(include: boolean): Promise<void> {
-    return writeCmd(this.transport, WireCmd.PresetSetIncludePins, include);
+    return proto.writeCmd(this.transport, proto.WireCmd.PresetSetIncludePins, include);
   }
 }

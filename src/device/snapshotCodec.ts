@@ -1,74 +1,67 @@
-import { Wire, type BulkParams, type WireFilter } from '@/protocol';
-import {
-  outputModeForChannel, type InputSlot,
-  displayNameForHardwareChannel, wireChannelFor, type HardwareProfile,
-  FilterType, type FilterParams,
-  PlatformType, CrossfeedPreset, LevellerSpeed,
-  type DspSnapshot,
-  type CrossPoint, type OutputModel, type OutputState, type RouteModel,
-} from '@/domain';
+import * as proto from '@/protocol';
+import * as domain from '@/domain';
 
 // Opaque handle for the preset-paste device-to-device copy. Runtime holds it
 // between captureState/restoreState but must never inspect it. Internally a
 // BulkParams packet; the brand keeps wire shape out of runtime types.
-export type DeviceState = BulkParams & { readonly __brand: 'DeviceState' };
+export type DeviceState = proto.BulkParams & { readonly __brand: 'DeviceState' };
 
 // Wire filter.type is a u8; clamp anything outside the known FilterType
 // values to Flat so a future firmware type can't slip through as a typed value.
-function narrowFilterType(t: number): FilterType {
+function narrowFilterType(t: number): domain.FilterType {
   switch (t) {
-    case FilterType.Flat:
-    case FilterType.Peaking:
-    case FilterType.LowShelf:
-    case FilterType.HighShelf:
-    case FilterType.LowPass:
-    case FilterType.HighPass:
+    case domain.FilterType.Flat:
+    case domain.FilterType.Peaking:
+    case domain.FilterType.LowShelf:
+    case domain.FilterType.HighShelf:
+    case domain.FilterType.LowPass:
+    case domain.FilterType.HighPass:
       return t;
     default:
-      return FilterType.Flat;
+      return domain.FilterType.Flat;
   }
 }
 
-function narrowPlatform(p: number): PlatformType {
-  return p === 1 ? PlatformType.RP2350 : PlatformType.RP2040;
+function narrowPlatform(p: number): domain.PlatformType {
+  return p === 1 ? domain.PlatformType.RP2350 : domain.PlatformType.RP2040;
 }
 
-function narrowCrossfeedPreset(p: number): CrossfeedPreset {
+function narrowCrossfeedPreset(p: number): domain.CrossfeedPreset {
   switch (p) {
-    case CrossfeedPreset.Preset1:
-    case CrossfeedPreset.Preset2:
-    case CrossfeedPreset.Preset3:
-    case CrossfeedPreset.Custom:
+    case domain.CrossfeedPreset.Preset1:
+    case domain.CrossfeedPreset.Preset2:
+    case domain.CrossfeedPreset.Preset3:
+    case domain.CrossfeedPreset.Custom:
       return p;
     default:
-      return CrossfeedPreset.Preset1;
+      return domain.CrossfeedPreset.Preset1;
   }
 }
 
-function narrowLevellerSpeed(s: number): LevellerSpeed {
+function narrowLevellerSpeed(s: number): domain.LevellerSpeed {
   switch (s) {
-    case LevellerSpeed.Slow:
-    case LevellerSpeed.Medium:
-    case LevellerSpeed.Fast:
+    case domain.LevellerSpeed.Slow:
+    case domain.LevellerSpeed.Medium:
+    case domain.LevellerSpeed.Fast:
       return s;
     default:
-      return LevellerSpeed.Slow;
+      return domain.LevellerSpeed.Slow;
   }
 }
 
-export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): DspSnapshot {
-  const channelNames = bulk.channelNames.slice(0, Wire.Const.NUM_CHANNELS);
+export function fromBulkParams(hardware: domain.HardwareProfile, bulk: proto.BulkParams): domain.DspSnapshot {
+  const channelNames = bulk.channelNames.slice(0, proto.Wire.Const.NUM_CHANNELS);
   const outputSlotTypes = bulk.formatVersion >= 3 ? bulk.i2s.outputSlotTypes : undefined;
 
   const channels = hardware.channels.map((channel) => ({
     id: channel.id,
-    name: displayNameForHardwareChannel(hardware, channel.id, channelNames),
+    name: domain.displayNameForHardwareChannel(hardware, channel.id, channelNames),
     defaultName: channel.name,
     shortName: channel.shortName,
     bandCount: channel.bandCount,
     isOutput: channel.isOutput,
-    outputMode: outputModeForChannel(channel.id, outputSlotTypes),
-    filters: (bulk.filters[wireChannelFor(hardware, channel.id)]?.slice(0, channel.bandCount) ?? []).map<FilterParams>((filter) => ({
+    outputMode: domain.outputModeForChannel(channel.id, outputSlotTypes),
+    filters: (bulk.filters[domain.wireChannelFor(hardware, channel.id)]?.slice(0, channel.bandCount) ?? []).map<domain.FilterParams>((filter) => ({
       type: narrowFilterType(filter.type),
       frequency: filter.frequency,
       q: filter.q,
@@ -76,12 +69,12 @@ export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): Dsp
     })),
   }));
 
-  const outputs: OutputModel[] = hardware.outputs.map((channel) => {
+  const outputs: domain.OutputModel[] = hardware.outputs.map((channel) => {
     const wireIndex = hardware.outputSlotByChannel[channel.id];
     if (wireIndex == null) {
       throw new Error(`Channel ${channel.id} is not an output channel`);
     }
-    const outputMode = outputModeForChannel(channel.id, outputSlotTypes);
+    const outputMode = domain.outputModeForChannel(channel.id, outputSlotTypes);
     if (outputMode === null) {
       throw new Error(`Channel ${channel.id} has no output mode`);
     }
@@ -89,7 +82,7 @@ export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): Dsp
     return {
       id: channel.id,
       wireIndex,
-      name: displayNameForHardwareChannel(hardware, channel.id, channelNames),
+      name: domain.displayNameForHardwareChannel(hardware, channel.id, channelNames),
       shortName: channel.shortName,
       outputMode,
       enabled: state.enabled,
@@ -99,14 +92,14 @@ export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): Dsp
     };
   });
 
-  const routes: RouteModel[] = [];
+  const routes: domain.RouteModel[] = [];
   for (let inputIndex = 0; inputIndex < hardware.inputs.length; inputIndex++) {
     const input = hardware.inputs[inputIndex];
     for (const output of outputs) {
       const cp = bulk.crosspoints[inputIndex][output.wireIndex];
       routes.push({
-        inputIndex: inputIndex as InputSlot,
-        inputName: displayNameForHardwareChannel(hardware, input.id, channelNames),
+        inputIndex: inputIndex as domain.InputSlot,
+        inputName: domain.displayNameForHardwareChannel(hardware, input.id, channelNames),
         outputId: output.id,
         outputWireIndex: output.wireIndex,
         outputName: output.name,
@@ -161,16 +154,16 @@ export function fromBulkParams(hardware: HardwareProfile, bulk: BulkParams): Dsp
 // factory defaults -- preserves device state for features the UI doesn't
 // expose.
 export function toBulkParams(
-  hardware: HardwareProfile,
-  snapshot: DspSnapshot,
-  baseline: BulkParams,
-): BulkParams {
+  hardware: domain.HardwareProfile,
+  snapshot: domain.DspSnapshot,
+  baseline: proto.BulkParams,
+): proto.BulkParams {
   // Filters: invert wireChannelFor -- place each snapshot channel's
   // filters at its wire-channel index. Slots beyond hardware.totalChannelCount
   // keep baseline values.
-  const filters: WireFilter[][] = baseline.filters.map((row) => row.map((f) => ({ ...f })));
+  const filters: proto.WireFilter[][] = baseline.filters.map((row) => row.map((f) => ({ ...f })));
   for (const ch of snapshot.channels) {
-    const wireCh = wireChannelFor(hardware, ch.id);
+    const wireCh = domain.wireChannelFor(hardware, ch.id);
     for (let b = 0; b < ch.filters.length; b++) {
       filters[wireCh][b] = {
         type: ch.filters[b].type,
@@ -182,7 +175,7 @@ export function toBulkParams(
   }
 
   // Outputs: map snapshot outputs onto wire slots via hardware mapping.
-  const outputs: OutputState[] = baseline.outputs.map((o) => ({ ...o }));
+  const outputs: domain.OutputState[] = baseline.outputs.map((o) => ({ ...o }));
   for (const out of snapshot.outputs) {
     outputs[out.wireIndex] = {
       enabled: out.enabled,
@@ -193,7 +186,7 @@ export function toBulkParams(
   }
 
   // Crosspoints: snapshot routes carry inputIndex + outputWireIndex.
-  const crosspoints: CrossPoint[][] = baseline.crosspoints.map((row) => row.map((cp) => ({ ...cp })));
+  const crosspoints: domain.CrossPoint[][] = baseline.crosspoints.map((row) => row.map((cp) => ({ ...cp })));
   for (const r of snapshot.routes) {
     crosspoints[r.inputIndex][r.outputWireIndex] = {
       enabled: r.enabled,
@@ -207,7 +200,7 @@ export function toBulkParams(
   // fromBulkParams, so the rebuilt packet carries that resolved name.
   const channelNames = baseline.channelNames.slice();
   for (const ch of snapshot.channels) {
-    const wireCh = wireChannelFor(hardware, ch.id);
+    const wireCh = domain.wireChannelFor(hardware, ch.id);
     channelNames[wireCh] = ch.name;
   }
 

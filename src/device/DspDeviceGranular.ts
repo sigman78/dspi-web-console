@@ -1,17 +1,8 @@
 import type { DspTransport } from '@/transport/DspTransport';
 import { DspDevice } from './DspDevice';
-import {
-  WireCmd, readCmd, writeCmd,
-  actionCmd, flashResultFromByte,
-  PresetResult, type FlashResult,
-} from '@/protocol';
+import * as proto from '@/protocol';
 import { Codec, utf8Truncate, type Result } from '@/utils';
-import {
-  type ChannelId, type InputSlot, type OutputSlot,
-  CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
-  type PresetSlot, CHANNEL_NAME_MAX_LEN,
-  FilterType, type FilterParams,
-} from '@/domain';
+import * as domain from '@/domain';
 
 // Per-parameter read/write commands used only in tests (HIL and unit), never
 // in production runtime. Production keeps the lean DspDevice surface.
@@ -26,9 +17,9 @@ export class DspDeviceGranular extends DspDevice {
 
   // EQ ---------------------------------------------------------------------
 
-  async setFilter(channel: ChannelId, band: number, p: FilterParams): Promise<void> {
+  async setFilter(channel: domain.ChannelId, band: number, p: domain.FilterParams): Promise<void> {
     const wireChannel = this.deviceChannel(channel);
-    return writeCmd(this.transport, WireCmd.SetEqParam, {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetEqParam, {
       channel: wireChannel, band,
       type: p.type, frequency: p.frequency, q: p.q, gain: p.gain,
     });
@@ -38,9 +29,9 @@ export class DspDeviceGranular extends DspDevice {
   // concurrent writers; for an atomic snapshot use getAllParams(). Type comes
   // back as u32, the rest f32. `decode` (not `decodePadded`) makes a truncated
   // read throw rather than silently zero-pad.
-  async getFilter(channel: ChannelId, band: number): Promise<FilterParams> {
+  async getFilter(channel: domain.ChannelId, band: number): Promise<domain.FilterParams> {
     const wireChannel = this.deviceChannel(channel);
-    const code = WireCmd.GetEqParam.code;
+    const code = proto.WireCmd.GetEqParam.code;
     const wValue = (param: number) =>
       ((wireChannel & 0xFF) << 8) | ((band & 0xF) << 4) | (param & 0xF);
     const t = this.transport;
@@ -51,7 +42,7 @@ export class DspDeviceGranular extends DspDevice {
       t.ctrlIn(code, wValue(3), 4),
     ]);
     return {
-      type:      Codec.decode(Codec.u32, typeBytes) as FilterType,
+      type:      Codec.decode(Codec.u32, typeBytes) as domain.FilterType,
       frequency: Codec.decode(Codec.f32, freqBytes),
       q:         Codec.decode(Codec.f32, qBytes),
       gain:      Codec.decode(Codec.f32, gainBytes),
@@ -61,33 +52,33 @@ export class DspDeviceGranular extends DspDevice {
   // Bypass -----------------------------------------------------------------
 
   async setBypass(enabled: boolean): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetBypass, enabled);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetBypass, enabled);
   }
 
   async getBypass(): Promise<boolean> {
-    return readCmd(this.transport, WireCmd.GetBypass);
+    return proto.readCmd(this.transport, proto.WireCmd.GetBypass);
   }
 
   // Preamps / master volume ------------------------------------------------
 
   async getMasterPreamp(): Promise<number> {
-    return readCmd(this.transport, WireCmd.GetPreamp);
+    return proto.readCmd(this.transport, proto.WireCmd.GetPreamp);
   }
 
-  async getInputPreamp(channel: InputSlot): Promise<number> {
-    return readCmd(this.transport, WireCmd.GetInputPreamp, channel);
+  async getInputPreamp(channel: domain.InputSlot): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetInputPreamp, channel);
   }
 
   async getMasterVolume(): Promise<number> {
-    return readCmd(this.transport, WireCmd.GetMasterVolume);
+    return proto.readCmd(this.transport, proto.WireCmd.GetMasterVolume);
   }
 
-  async getMasterVolumeMode(): Promise<MasterVolumeMode> {
-    return readCmd(this.transport, WireCmd.GetMasterVolumeMode);
+  async getMasterVolumeMode(): Promise<domain.MasterVolumeMode> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetMasterVolumeMode);
   }
 
   async getSavedMasterVolume(): Promise<number> {
-    return readCmd(this.transport, WireCmd.GetSavedMasterVolume);
+    return proto.readCmd(this.transport, proto.WireCmd.GetSavedMasterVolume);
   }
 
   // Matrix mixer ----------------------------------------------------------
@@ -95,73 +86,73 @@ export class DspDeviceGranular extends DspDevice {
   // only exposes wValue (no wIndex).
 
   async getMatrixRoute(
-    input: InputSlot,
-    output: OutputSlot,
+    input: domain.InputSlot,
+    output: domain.OutputSlot,
   ): Promise<{ enabled: boolean; invert: boolean; gainDb: number }> {
     const wValue = ((input & 0xFF) << 8) | (output & 0xFF);
-    const r = await readCmd(this.transport, WireCmd.GetMatrixRoute, wValue);
+    const r = await proto.readCmd(this.transport, proto.WireCmd.GetMatrixRoute, wValue);
     return { enabled: r.enabled, invert: r.phaseInvert, gainDb: r.gainDb };
   }
 
-  async setOutputEnable(output: OutputSlot, on: boolean): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetOutputEnable, on, output);
+  async setOutputEnable(output: domain.OutputSlot, on: boolean): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetOutputEnable, on, output);
   }
 
-  async getOutputEnable(output: OutputSlot): Promise<boolean> {
-    return readCmd(this.transport, WireCmd.GetOutputEnable, output);
+  async getOutputEnable(output: domain.OutputSlot): Promise<boolean> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetOutputEnable, output);
   }
 
-  async getOutputGain(output: OutputSlot): Promise<number> {
-    return readCmd(this.transport, WireCmd.GetOutputGain, output);
+  async getOutputGain(output: domain.OutputSlot): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetOutputGain, output);
   }
 
-  async setOutputMute(output: OutputSlot, mute: boolean): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetOutputMute, mute, output);
+  async setOutputMute(output: domain.OutputSlot, mute: boolean): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetOutputMute, mute, output);
   }
 
-  async getOutputMute(output: OutputSlot): Promise<boolean> {
-    return readCmd(this.transport, WireCmd.GetOutputMute, output);
+  async getOutputMute(output: domain.OutputSlot): Promise<boolean> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetOutputMute, output);
   }
 
-  async setOutputDelay(output: OutputSlot, ms: number): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetOutputDelay, ms, output);
+  async setOutputDelay(output: domain.OutputSlot, ms: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetOutputDelay, ms, output);
   }
 
-  async getOutputDelay(output: OutputSlot): Promise<number> {
-    return readCmd(this.transport, WireCmd.GetOutputDelay, output);
+  async getOutputDelay(output: domain.OutputSlot): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetOutputDelay, output);
   }
 
   // Channel names ---------------------------------------------------------
 
   // Names are silently cropped to fit the 31-byte UTF-8 wire budget;
   // validation and user-facing errors belong at the state/UI layer above.
-  async setChannelName(channel: ChannelId, name: string): Promise<void> {
+  async setChannelName(channel: domain.ChannelId, name: string): Promise<void> {
     const wireChannel = this.deviceChannel(channel);
-    return writeCmd(this.transport, WireCmd.SetChannelName, utf8Truncate(name, CHANNEL_NAME_MAX_LEN), wireChannel);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetChannelName, utf8Truncate(name, domain.CHANNEL_NAME_MAX_LEN), wireChannel);
   }
 
-  async getChannelName(channel: ChannelId): Promise<string> {
-    return readCmd(this.transport, WireCmd.GetChannelName, this.deviceChannel(channel));
+  async getChannelName(channel: domain.ChannelId): Promise<string> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetChannelName, this.deviceChannel(channel));
   }
 
   // Preset read-side granular ---------------------------------------------
 
   async getPresetStartup(): Promise<{ mode: number; slot: number }> {
-    return readCmd(this.transport, WireCmd.PresetGetStartup);
+    return proto.readCmd(this.transport, proto.WireCmd.PresetGetStartup);
   }
 
   async getPresetIncludePins(): Promise<boolean> {
-    return readCmd(this.transport, WireCmd.PresetGetIncludePins);
+    return proto.readCmd(this.transport, proto.WireCmd.PresetGetIncludePins);
   }
 
   // Persistence ----------------------------------------------------------
 
-  async saveParams(): Promise<Result<void, FlashResult>> {
-    return flashResultFromByte(await actionCmd(this.transport, WireCmd.SaveParams));
+  async saveParams(): Promise<Result<void, proto.FlashResult>> {
+    return proto.flashResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SaveParams));
   }
 
-  async loadParams(): Promise<Result<void, FlashResult>> {
-    return flashResultFromByte(await actionCmd(this.transport, WireCmd.LoadParams));
+  async loadParams(): Promise<Result<void, proto.FlashResult>> {
+    return proto.flashResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.LoadParams));
   }
 
   // Telemetry actions -----------------------------------------------------
@@ -169,7 +160,7 @@ export class DspDeviceGranular extends DspDevice {
   // Firmware echoes 0x01 on success; return a boolean so callers don't see
   // the wire shape.
   async resetBufferStats(): Promise<boolean> {
-    const r = await this.transport.ctrlIn(WireCmd.ResetBufferStats.code, 1, 1);
+    const r = await this.transport.ctrlIn(proto.WireCmd.ResetBufferStats.code, 1, 1);
     return r.length >= 1 && r[0] === 0x01;
   }
 
@@ -178,11 +169,11 @@ export class DspDeviceGranular extends DspDevice {
   // drop the next control transfer into a USB blackout window. Returns the
   // first non-recoverable failure; an empty-slot delete is success (erase is
   // idempotent). pacingMs defaults to 50; pass 0 in tests.
-  async clearAllPresets(opts: { pacingMs?: number } = {}): Promise<Result<void, PresetResult>> {
+  async clearAllPresets(opts: { pacingMs?: number } = {}): Promise<Result<void, proto.PresetResult>> {
     const pacingMs = opts.pacingMs ?? 50;
-    for (let slot = 0 as PresetSlot; slot < 10; slot = (slot + 1) as PresetSlot) {
+    for (let slot = 0 as domain.PresetSlot; slot < 10; slot = (slot + 1) as domain.PresetSlot) {
       const r = await this.deletePreset(slot);
-      if (!r.ok && r.code !== PresetResult.SlotEmpty) {
+      if (!r.ok && r.code !== proto.PresetResult.SlotEmpty) {
         return r;
       }
       if (slot < 9 && pacingMs > 0) {
@@ -195,62 +186,62 @@ export class DspDeviceGranular extends DspDevice {
   // Loudness ---------------------------------------------------------------
 
   async setLoudnessEnabled(enabled: boolean): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetLoudnessEnabled, enabled);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetLoudnessEnabled, enabled);
   }
 
   async setLoudnessRefSpl(db: number): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetLoudnessRefSpl, db);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetLoudnessRefSpl, db);
   }
 
   async setLoudnessIntensity(pct: number): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetLoudnessIntensity, pct);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetLoudnessIntensity, pct);
   }
 
   // Crossfeed --------------------------------------------------------------
 
   async setCrossfeedEnabled(enabled: boolean): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetCrossfeedEnabled, enabled);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedEnabled, enabled);
   }
 
-  async setCrossfeedPreset(preset: CrossfeedPreset): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetCrossfeedPreset, preset);
+  async setCrossfeedPreset(preset: domain.CrossfeedPreset): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedPreset, preset);
   }
 
   async setCrossfeedItd(enabled: boolean): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetCrossfeedItd, enabled);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedItd, enabled);
   }
 
   async setCrossfeedFreq(hz: number): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetCrossfeedFreq, hz);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedFreq, hz);
   }
 
   async setCrossfeedFeedDb(db: number): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetCrossfeedFeedDb, db);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedFeedDb, db);
   }
 
   // Volume Leveller --------------------------------------------------------
 
   async setLevellerEnabled(enabled: boolean): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetLevellerEnabled, enabled);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerEnabled, enabled);
   }
 
-  async setLevellerSpeed(speed: LevellerSpeed): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetLevellerSpeed, speed);
+  async setLevellerSpeed(speed: domain.LevellerSpeed): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerSpeed, speed);
   }
 
   async setLevellerLookahead(enabled: boolean): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetLevellerLookahead, enabled);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerLookahead, enabled);
   }
 
   async setLevellerAmount(pct: number): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetLevellerAmount, pct);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerAmount, pct);
   }
 
   async setLevellerMaxGain(db: number): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetLevellerMaxGain, db);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerMaxGain, db);
   }
 
   async setLevellerGate(db: number): Promise<void> {
-    return writeCmd(this.transport, WireCmd.SetLevellerGate, db);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerGate, db);
   }
 }
