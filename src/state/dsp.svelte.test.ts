@@ -3,7 +3,7 @@ import { parseBulkParams } from '@/protocol';
 import { fromBulkParams } from '@/device/snapshotCodec';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, createHardwareProfile } from '@/domain';
-import { dsp, applyBaselineSnapshot, applyDraftSnapshot, resetDsp } from './dsp.svelte';
+import { dsp, applyBaselineSnapshot, applyDraftSnapshot, resetDsp, resetSavedBaseline } from './dsp.svelte';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
 
@@ -14,7 +14,7 @@ function snap(opts?: Parameters<typeof makeBulk>[0]) {
 describe('dsp state: baseline', () => {
   beforeEach(() => {
     resetDsp();
-    dsp.saved = null;
+    resetSavedBaseline();
   });
 
   it('applyBaselineSnapshot populates draft and saved', () => {

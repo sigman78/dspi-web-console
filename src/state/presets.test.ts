@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { presets, presetsDirty, resetPresets, askBoundary, resolveBoundary } from './presets.svelte';
-import { dsp } from './dsp.svelte';
+import { dsp, applyBaselineSnapshot, resetDsp, resetSavedBaseline } from './dsp.svelte';
 import { settings } from './settings.svelte';
 import type { DspSnapshot } from '@/domain';
 
@@ -20,19 +20,19 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
   };
 }
 
-// Seed live + shadow directly from a hand-built snapshot. These tests exercise
-// presetsDirty (live vs shadow) with synthetic fixtures that have no backing
-// wire packet, so they bypass applyBaselineSnapshot and set the two cells directly.
+// Seed draft + saved from a hand-built snapshot. These tests exercise
+// presetsDirty (draft vs saved) with synthetic fixtures that have no backing
+// wire packet. applyBaselineSnapshot sets draft and deep-copies into saved,
+// which matches the intent here (both cells equal after seeding).
 function seed(snap: DspSnapshot): void {
-  dsp.draft = snap;
-  dsp.saved = structuredClone(snap);
+  applyBaselineSnapshot(snap);
 }
 
 describe('presets store', () => {
   beforeEach(() => {
     resetPresets();
-    dsp.draft = null;
-    dsp.saved = null;
+    resetDsp();
+    resetSavedBaseline();
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
   });

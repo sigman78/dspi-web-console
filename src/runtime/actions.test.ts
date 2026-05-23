@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert } from './actions';
-import { session, bindDevice, settings, dsp, status as statusStore, presets, applyBaselineSnapshot } from '@/state';
+import { session, bindDevice, settings, dsp, status as statusStore, presets, applyBaselineSnapshot, applyDraftSnapshot, resetDsp } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -125,7 +125,7 @@ describe('actions wiring', () => {
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
     const bulk = parseBulkParams(makeBulk({ masterVolumeDb: 0 }));
-    dsp.draft = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
+    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
 
   afterEach(() => {
@@ -229,7 +229,7 @@ describe('setEqFilter', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dsp.draft = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
+    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -277,7 +277,7 @@ describe('setMasterPreamp', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dsp.draft = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
+    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -303,7 +303,7 @@ describe('setInputPreamp', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dsp.draft = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
+    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -349,7 +349,7 @@ describe('setChannelName', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dsp.draft = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
+    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -376,7 +376,7 @@ describe('setChannelName', () => {
   });
 
   it('is a no-op when dsp.draft is null', () => {
-    dsp.draft = null;
+    resetDsp();
     // Should not throw.
     expect(() => setChannelName(0 satisfies ChannelId, 'X')).not.toThrow();
   });
@@ -400,7 +400,7 @@ describe('setChannelName', () => {
   });
 
   it('patches RP2040 PDM output name at compact output slot 4', () => {
-    dsp.draft = makeSnapshot(PlatformType.RP2040);
+    applyDraftSnapshot(makeSnapshot(PlatformType.RP2040));
 
     setChannelName(10 satisfies ChannelId, 'Sub');
 
@@ -612,7 +612,7 @@ describe('crosspoint — Tier A unified lane (Finding 2)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dsp.draft = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
+    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => { vi.useRealTimers(); bindDevice(null); });
 

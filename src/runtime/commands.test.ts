@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SvelteSet } from 'svelte/reactivity';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, createHardwareProfile } from '@/domain';
 import { fromBulkParams } from '@/device/snapshotCodec';
 import type { DspDevice } from '@/device/DspDevice';
-import { bindDevice, session, setStatus, dsp } from '@/state';
+import { bindDevice, session, setStatus, dsp, resetDsp, applyDraftSnapshot } from '@/state';
 import { scrubCommand } from './commands';
 import { cancelAllCommands } from './outbox';
 
@@ -40,8 +39,9 @@ describe('scrubCommand', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dsp.draft = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
-    dsp.pendingWrites = new SvelteSet();
+    // resetDsp clears draft + pendingWrites; applyDraftSnapshot then seeds draft.
+    resetDsp();
+    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
     // Reset session status so leaked 'error' from a prior test in the suite
     // does not pollute assertions in tests that don't explicitly set status.
     setStatus('idle');
@@ -134,8 +134,9 @@ describe('cancelAllCommands', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dsp.draft = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
-    dsp.pendingWrites = new SvelteSet();
+    // resetDsp clears draft + pendingWrites; applyDraftSnapshot then seeds draft.
+    resetDsp();
+    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
     // Reset session status so a leaked 'error' from a prior test in the suite
     // does not pollute these assertions.
     setStatus('idle');

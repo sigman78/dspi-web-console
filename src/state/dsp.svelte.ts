@@ -14,13 +14,24 @@ import { type DspSnapshot } from '@/domain';
 //   refreshSavedFromDraft  |   -   | x(draft)
 //   patchSnapshot          | x(ip) |   -
 //   resetDsp               |  null |  kept
+//   resetSavedBaseline     |   -   |  null
+//
+// The cells are now PRIVATE behind the readonly `DspStore` view: external
+// modules can only READ draft/saved and CALL the verbs above - they cannot
+// reassign the cells (compile error). Mutation flows exclusively through the
+// verbs listed in this matrix.
 //
 // Bulk-flush coordination (the rev counters and in-flight send tracking) now
 // lives in src/runtime/commit.ts; the state layer no longer owns it, since
 // state must not import the runtime layer.
-export interface DspState {
+
+// Module-private mutable instance - only the verbs in this file assign its
+// cells. $state is deeply reactive, for objects we mutate in-place like
+// DspSnapshot.
+class DspStateImpl {
   // Our belief about device RAM. Mutates on every user write; reset to null
-  draft: DspSnapshot | null;
+  // on disconnect.
+  draft = $state<DspSnapshot | null>(null);
 
   // The dirty-diff baseline: snapshot of what `draft` looked like at the
   // last preset save/load (or initial connect). Stays pinned until an
@@ -28,31 +39,32 @@ export interface DspState {
   // The preset-dirty getter compares `draft` against `saved` to decide
   // whether the active preset has unsaved edits. Survives disconnect so
   // an eventual offline view can render the last-known-good state.
-  saved: DspSnapshot | null;
+  saved = $state<DspSnapshot | null>(null);
 
   // Pending optimistic writes scheduled by src/runtime/commands.ts.
   // Each in-flight command holds a Symbol token; isInFlight observes
   // the set's reactivity to drive the UI dirty indicator.
-  pendingWrites: SvelteSet<symbol>;
-}
-
-// Class-based state: $state is deeply reactive, for objects we mutate
-// in-place like DspSnapshot. The DspState interface is satisfied in full;
-// callers are unchanged.
-class DspStateImpl implements DspState {
-  draft = $state<DspSnapshot | null>(null);
-  saved = $state<DspSnapshot | null>(null);
   pendingWrites = $state(new SvelteSet<symbol>());
 }
+const state = new DspStateImpl();
 
-export const dsp: DspState = new DspStateImpl();
+// Public read-only view. External modules read draft/saved and call the verbs;
+// they cannot reassign the cells (compile error). pendingWrites is readonly as
+// a reference, but its .add()/.delete() still work for the command lanes.
+export interface DspStore {
+  readonly draft: DspSnapshot | null;
+  readonly saved: DspSnapshot | null;
+  readonly pendingWrites: SvelteSet<symbol>;
+}
+
+export const dsp: DspStore = state;
 
 // Reactive: read `isInFlight.current` from a Svelte template, $derived,
 // or $effect. True while any mutation has an unconfirmed optimistic
 // patch in flight or queued in a coalescer. Drives the dirty-state UI dot.
 export const isInFlight = {
   get current(): boolean {
-    return dsp.pendingWrites.size > 0;
+    return state.pendingWrites.size > 0;
   },
 };
 
@@ -63,8 +75,8 @@ export const isInFlight = {
 // Full baseline: draft + saved from one snapshot. Deep-copy into saved so
 // patchSnapshot's in-place edits to draft cannot leak into the dirty baseline.
 function applyBaseline(snapshot: DspSnapshot): void {
-  dsp.draft = snapshot;
-  dsp.saved = structuredClone(snapshot);
+  state.draft = snapshot;
+  state.saved = structuredClone(snapshot);
 }
 // Apply a fresh snapshot as a new baseline (draft + saved). The device owns
 // the wire packet now (getSnapshot retains it), so no wire base is passed.
@@ -73,14 +85,21 @@ export function applyBaselineSnapshot(snapshot: DspSnapshot): void {
 }
 // Draft-only refresh: advance draft, leave saved (the dirty baseline) pinned.
 export function applyDraftSnapshot(snapshot: DspSnapshot): void {
-  dsp.draft = snapshot;
+  state.draft = snapshot;
 }
 
 export function resetDsp(): void {
-  dsp.draft = null;
-  // dsp.saved intentionally NOT reset -- last known good survives
+  state.draft = null;
+  // state.saved intentionally NOT reset -- last known good survives
   // until the next successful sync overwrites it.
-  dsp.pendingWrites = new SvelteSet();
+  state.pendingWrites = new SvelteSet();
+}
+
+// Clears the dirty-diff baseline. Used at boot/test setup to drop the
+// last-known-good reference so the next sync establishes a fresh baseline.
+// Distinct from resetDsp, which intentionally preserves `saved`.
+export function resetSavedBaseline(): void {
+  state.saved = null;
 }
 
 // Single mutation point for in-place snapshot edits. Both the mutation
@@ -88,7 +107,7 @@ export function resetDsp(): void {
 // future cross-cutting hooks (undo, change events) have one place to
 // attach. patchSnapshot touches `draft` only; saved stays at last sync.
 export function patchSnapshot(patch: Partial<DspSnapshot>): void {
-  if (dsp.draft) Object.assign(dsp.draft, patch);
+  if (state.draft) Object.assign(state.draft, patch);
 }
 
 // Copy current draft > saved. Used after PresetSave(active): RAM didn't
@@ -100,6 +119,6 @@ export function patchSnapshot(patch: Partial<DspSnapshot>): void {
 // which clones *into* the reactive system from a plain input - the opposite
 // direction.
 export function refreshSavedFromDraft(): void {
-  if (!dsp.draft) return;
-  dsp.saved = $state.snapshot(dsp.draft) as unknown as DspSnapshot;
+  if (!state.draft) return;
+  state.saved = $state.snapshot(state.draft) as unknown as DspSnapshot;
 }

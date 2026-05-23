@@ -1,11 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { SvelteSet } from 'svelte/reactivity';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, createHardwareProfile } from '@/domain';
 import type { DspDevice } from '@/device/DspDevice';
 import { fromBulkParams } from '@/device/snapshotCodec';
-import { bindDevice, session, setStatus, dsp, applyBaselineSnapshot, isInFlight } from '@/state';
+import { bindDevice, session, setStatus, dsp, applyBaselineSnapshot, resetDsp, isInFlight } from '@/state';
 import { commitBulk, commitBulkDebounced, cancelBulkFlush, awaitBulkSettled, convergeBulk, applyBaselineConverged } from './commit';
 import { flushPending, cancelAllCommands } from './outbox';
 import { scrubCommand } from './commands';
@@ -45,7 +44,7 @@ function bindBulkDevice(send: (b: unknown) => Promise<void>): void {
 
 describe('commitBulk', () => {
   beforeEach(() => {
-    dsp.pendingWrites = new SvelteSet();
+    resetDsp();
     cancelBulkFlush();
   });
   afterEach(() => { bindDevice(null); setStatus('idle'); });
@@ -241,7 +240,7 @@ describe('flushPending', () => {
 
 describe('commitBulk — pendingWrites token (Finding 1)', () => {
   beforeEach(() => {
-    dsp.pendingWrites = new SvelteSet();
+    resetDsp();
     cancelBulkFlush();
   });
   afterEach(() => { bindDevice(null); setStatus('idle'); });
@@ -263,7 +262,7 @@ describe('commitBulk — pendingWrites token (Finding 1)', () => {
 describe('resync guard sees the bulk lane (Finding 1)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    dsp.pendingWrites = new SvelteSet();
+    resetDsp();
     cancelBulkFlush();
   });
   afterEach(() => { vi.useRealTimers(); bindDevice(null); setStatus('idle'); });
@@ -282,7 +281,7 @@ describe('resync guard sees the bulk lane (Finding 1)', () => {
 });
 
 describe('applyBaselineConverged', () => {
-  beforeEach(() => { dsp.pendingWrites = new SvelteSet(); cancelBulkFlush(); });
+  beforeEach(() => { resetDsp(); cancelBulkFlush(); });
   afterEach(() => { bindDevice(null); setStatus('idle'); });
 
   it('marks the lane converged so pre-baseline edits are not re-sent', async () => {

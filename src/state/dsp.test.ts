@@ -1,10 +1,9 @@
 import { describe, test, expect, beforeEach } from 'vitest';
-import { SvelteSet } from 'svelte/reactivity';
 import { parseBulkParams } from '@/protocol';
 import { fromBulkParams } from '@/device/snapshotCodec';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, createHardwareProfile } from '@/domain';
-import { dsp, applyBaselineSnapshot, patchSnapshot, resetDsp, refreshSavedFromDraft, isInFlight } from './dsp.svelte';
+import { dsp, applyBaselineSnapshot, patchSnapshot, resetDsp, resetSavedBaseline, refreshSavedFromDraft, isInFlight } from './dsp.svelte';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
 
@@ -14,9 +13,8 @@ function seedBaseline(masterVolumeDb = -6): void {
 
 describe('dsp store: draft / saved lifecycle', () => {
   beforeEach(() => {
-    dsp.draft = null;
-    dsp.saved = null;
-    dsp.pendingWrites = new SvelteSet();
+    resetDsp();
+    resetSavedBaseline();
   });
 
   test('applyBaselineSnapshot populates saved as a deep copy of draft', () => {
@@ -53,9 +51,8 @@ describe('dsp store: draft / saved lifecycle', () => {
 
 describe('dsp store: pendingWrites + isInFlight', () => {
   beforeEach(() => {
-    dsp.draft = null;
-    dsp.saved = null;
-    dsp.pendingWrites = new SvelteSet();
+    resetDsp();
+    resetSavedBaseline();
   });
 
   test('isInFlight is true when only pendingWrites has entries', () => {
@@ -76,9 +73,8 @@ describe('dsp store: pendingWrites + isInFlight', () => {
 
 describe('refreshSavedFromDraft', () => {
   beforeEach(() => {
-    dsp.draft = null;
-    dsp.saved = null;
-    dsp.pendingWrites = new SvelteSet();
+    resetDsp();
+    resetSavedBaseline();
   });
 
   test('copies draft → saved', () => {
@@ -99,8 +95,8 @@ describe('refreshSavedFromDraft', () => {
   });
 
   test('no-op when draft is null', () => {
-    dsp.draft = null;
-    dsp.saved = null; // ensure starting state
+    resetDsp();
+    resetSavedBaseline(); // ensure starting state (draft + saved null)
     expect(() => refreshSavedFromDraft()).not.toThrow();
     expect(dsp.saved).toBeNull();
   });
