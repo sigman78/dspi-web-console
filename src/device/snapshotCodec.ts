@@ -143,7 +143,7 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: proto.Bul
       gateDb: bulk.leveller.gateDb,
     } : null,
     i2s: bulk.formatVersion >= 3 ? bulk.i2s : null,
-    outputPins: [],
+    outputPins: bulk.pins.slice(0, bulk.numPinOutputs),
   };
 }
 
@@ -224,7 +224,7 @@ export function toBulkParams(
     outputs,
 
     numPinOutputs: baseline.numPinOutputs,
-    pins:          baseline.pins.slice(),
+    pins:          baseline.pins.map((p, i) => snapshot.outputPins[i] ?? p),
 
     filters,
     channelNames,

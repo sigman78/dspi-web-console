@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseBulkParams } from '@/protocol';
+import { parseBulkParams, defaultBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, createHardwareProfile, matrixColumns, matrixRows } from '@/domain';
 import { fromBulkParams, toBulkParams } from './snapshotCodec';
@@ -126,5 +126,22 @@ describe('toBulkParams', () => {
     expect(reconstructed.bypass).toBe(true);
     expect(reconstructed.numCh).toBe(7);
     expect(reconstructed.numOut).toBe(5);
+  });
+});
+
+describe('outputPins round-trip', () => {
+  it('fromBulkParams exposes device pins; toBulkParams serializes edits back', () => {
+    const hw = createHardwareProfile(PlatformType.RP2350);
+    const bulk = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
+    bulk.numPinOutputs = 5;
+    bulk.pins = [6, 7, 8, 9, 10];
+
+    const snap = fromBulkParams(hw, bulk);
+    expect(snap.outputPins).toEqual([6, 7, 8, 9, 10]);
+
+    snap.outputPins[1] = 17; // reassign slot 2 data pin
+    const rebuilt = toBulkParams(hw, snap, bulk);
+    expect(rebuilt.pins.slice(0, 5)).toEqual([6, 17, 8, 9, 10]);
+    expect(rebuilt.numPinOutputs).toBe(5);
   });
 });
