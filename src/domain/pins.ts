@@ -4,6 +4,8 @@
 import { PlatformType } from './platform';
 import type { DspSnapshot } from './snapshot';
 
+const PIN_LABEL = { bck: 'BCK', lrclk: 'LRCLK', mck: 'MCK' } as const;
+
 function maxGpio(platform: PlatformType): number {
   return platform === PlatformType.RP2350 ? 29 : 28;
 }
@@ -30,10 +32,10 @@ export function pinsInUse(snapshot: DspSnapshot): Map<number, string> {
   const i2s = snapshot.i2s;
   if (i2s) {
     if (i2s.outputSlotTypes.some((t) => t === 1)) {
-      m.set(i2s.bckPin, 'BCK');
-      m.set(i2s.bckPin + 1, 'LRCLK');
+      m.set(i2s.bckPin, PIN_LABEL.bck);
+      m.set(i2s.bckPin + 1, PIN_LABEL.lrclk);
     }
-    if (i2s.mckEnabled) m.set(i2s.mckPin, 'MCK');
+    if (i2s.mckEnabled) m.set(i2s.mckPin, PIN_LABEL.mck);
   }
   return m;
 }
@@ -54,7 +56,7 @@ export function validBckPins(platform: PlatformType, snapshot: DspSnapshot): num
   const inUse = pinsInUse(snapshot);
   const free = (p: number) => {
     const u = inUse.get(p);
-    return u == null || u === 'BCK' || u === 'LRCLK';
+    return u == null || u === PIN_LABEL.bck || u === PIN_LABEL.lrclk;
   };
   return assignablePins(platform).filter(
     (p) => isAssignablePin(platform, p + 1) && free(p) && free(p + 1),

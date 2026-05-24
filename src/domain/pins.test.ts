@@ -47,4 +47,14 @@ describe('pins', () => {
     expect(valid).toContain(16);
     expect(valid).not.toContain(6);
   });
+
+  test('with no output pins registered, an active I2S slot yields only BCK/LRCLK', () => {
+    const m = pinsInUse(snap({
+      outputPins: [],
+      i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
+    }));
+    expect(m.size).toBe(2);
+    expect(m.get(14)).toBe('BCK');
+    expect(m.get(15)).toBe('LRCLK');
+  });
 });

@@ -34,5 +34,6 @@ export interface DspSnapshot {
   crossfeed: Crossfeed;
   leveller: Leveller | null;
   i2s: I2sConfig | null;
+  // GPIO pin per pin-output index, in hardware output order; the last entry is the PDM sub.
   outputPins: number[];
 }
