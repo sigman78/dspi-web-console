@@ -2,6 +2,7 @@
   import Panel from '../chrome/Panel.svelte';
   import ValueField from '../chrome/ValueField.svelte';
   import SegmentedSelect from '../chrome/SegmentedSelect.svelte';
+  import ToggleSwitch from '../chrome/ToggleSwitch.svelte';
   import { dsp, session } from '@/state';
   import {
     setLevellerEnabled, setLevellerSpeed, setLevellerLookahead,
@@ -44,15 +45,13 @@
 
 <Panel code="PR.03" title="LEVELLER">
   {#snippet right()}
-    <button
-      class="badge"
-      class:on={enabled}
-      onclick={toggleEnabled}
+    <ToggleSwitch
+      size="sm"
+      checked={enabled}
       disabled={!connected}
-      aria-label={enabled ? 'Disable leveller' : 'Enable leveller'}
-    >
-      {enabled ? 'ON' : 'OFF'}
-    </button>
+      ariaLabel={enabled ? 'Disable leveller' : 'Enable leveller'}
+      onChange={toggleEnabled}
+    />
   {/snippet}
 
   <div class="grid">
@@ -123,16 +122,13 @@
 
     <span class="lbl">LOOKAHEAD</span>
     <div class="span2">
-      <button
-        class="toggle"
-        class:on={lv?.lookahead}
-        onclick={toggleLookahead}
+      <ToggleSwitch
+        size="sm"
+        checked={lv?.lookahead ?? false}
         disabled={!editable}
-        aria-pressed={lv?.lookahead ?? false}
-        aria-label={lv?.lookahead ? 'Disable lookahead' : 'Enable lookahead'}
-      >
-        {lv?.lookahead ? 'ON' : 'OFF'}
-      </button>
+        ariaLabel={lv?.lookahead ? 'Disable lookahead' : 'Enable lookahead'}
+        onChange={toggleLookahead}
+      />
     </div>
   </div>
 </Panel>
@@ -154,40 +150,4 @@
   }
   input[type="range"] { accent-color: var(--accent); margin: 0; }
   input[type="range"]:disabled { opacity: 0.4; cursor: default; }
-  .badge {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    letter-spacing: 1px;
-    padding: 2px 6px;
-    border-radius: 3px;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
-    border: 1px solid var(--border);
-    color: var(--text-faint);
-    cursor: pointer;
-  }
-  .badge:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
-  .badge:disabled { cursor: default; opacity: 0.5; }
-  .badge.on {
-    background: color-mix(in oklab, var(--ok) 10%, transparent);
-    border-color: color-mix(in oklab, var(--ok) 40%, transparent);
-    color: var(--ok);
-  }
-  .toggle {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 1px;
-    padding: 3px 10px;
-    border-radius: 4px;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    cursor: pointer;
-  }
-  .toggle:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
-  .toggle:disabled { cursor: default; opacity: 0.4; }
-  .toggle.on {
-    background: color-mix(in oklab, var(--ok) 10%, transparent);
-    border-color: color-mix(in oklab, var(--ok) 40%, transparent);
-    color: var(--ok);
-  }
 </style>

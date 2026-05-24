@@ -2,6 +2,7 @@
   import Panel from '../chrome/Panel.svelte';
   import ValueField from '../chrome/ValueField.svelte';
   import SegmentedSelect from '../chrome/SegmentedSelect.svelte';
+  import ToggleSwitch from '../chrome/ToggleSwitch.svelte';
   import { dsp, session } from '@/state';
   import {
     setCrossfeedEnabled, setCrossfeedPreset, setCrossfeedItd,
@@ -45,15 +46,13 @@
 
 <Panel code="PR.01" title="CROSSFEED">
   {#snippet right()}
-    <button
-      class="badge"
-      class:on={enabled}
-      onclick={toggleEnabled}
+    <ToggleSwitch
+      size="sm"
+      checked={enabled}
       disabled={!connected}
-      aria-label={enabled ? 'Disable crossfeed' : 'Enable crossfeed'}
-    >
-      {enabled ? 'ON' : 'OFF'}
-    </button>
+      ariaLabel={enabled ? 'Disable crossfeed' : 'Enable crossfeed'}
+      onChange={toggleEnabled}
+    />
   {/snippet}
 
   <div class="grid">
@@ -106,16 +105,13 @@
 
     <span class="lbl">ITD</span>
     <div class="span2">
-      <button
-        class="toggle"
-        class:on={cf?.itd}
-        onclick={toggleItd}
+      <ToggleSwitch
+        size="sm"
+        checked={cf?.itd ?? false}
         disabled={!editable}
-        aria-pressed={cf?.itd ?? false}
-        aria-label={cf?.itd ? 'Disable ITD' : 'Enable ITD'}
-      >
-        {cf?.itd ? 'ON' : 'OFF'}
-      </button>
+        ariaLabel={cf?.itd ? 'Disable ITD' : 'Enable ITD'}
+        onChange={toggleItd}
+      />
     </div>
   </div>
 </Panel>
@@ -137,40 +133,4 @@
   }
   input[type="range"] { accent-color: var(--accent); margin: 0; }
   input[type="range"]:disabled { opacity: 0.4; cursor: default; }
-  .badge {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    letter-spacing: 1px;
-    padding: 2px 6px;
-    border-radius: 3px;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
-    border: 1px solid var(--border);
-    color: var(--text-faint);
-    cursor: pointer;
-  }
-  .badge:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
-  .badge:disabled { cursor: default; opacity: 0.5; }
-  .badge.on {
-    background: color-mix(in oklab, var(--ok) 10%, transparent);
-    border-color: color-mix(in oklab, var(--ok) 40%, transparent);
-    color: var(--ok);
-  }
-  .toggle {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 1px;
-    padding: 3px 10px;
-    border-radius: 4px;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    cursor: pointer;
-  }
-  .toggle:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
-  .toggle:disabled { cursor: default; opacity: 0.4; }
-  .toggle.on {
-    background: color-mix(in oklab, var(--ok) 10%, transparent);
-    border-color: color-mix(in oklab, var(--ok) 40%, transparent);
-    color: var(--ok);
-  }
 </style>

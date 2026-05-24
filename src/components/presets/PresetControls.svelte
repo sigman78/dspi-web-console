@@ -12,6 +12,7 @@
   } from '@/runtime';
   import { MasterVolumeMode } from '@/domain';
   import { PresetStartupMode } from '@/protocol';
+  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
 
   const { onRequestRename }: { onRequestRename: () => void } = $props();
 
@@ -83,21 +84,12 @@
     await setStartupDefault(active);
   }
 
-  async function onStartupModeChange(e: Event) {
-    const v = (e.target as HTMLInputElement).value === 'last'
-      ? PresetStartupMode.LastActive
-      : PresetStartupMode.Specified;
-    await setStartupMode(v);
+  const startupLastActive = $derived(startupMode === PresetStartupMode.LastActive);
+
+  function onStartupLastActiveChange(v: boolean) {
+    void setStartupMode(v ? PresetStartupMode.LastActive : PresetStartupMode.Specified);
   }
 
-  async function onIncludePinsChange(e: Event) {
-    const v = (e.target as HTMLInputElement).checked;
-    await setPresetIncludePins(v);
-  }
-
-  function onWarnToggleChange(e: Event) {
-    settings.warnOnPresetSwitchDirty = (e.target as HTMLInputElement).checked;
-  }
 </script>
 
 <div class="ctrl" class:disabled={!connected || dir == null}>
@@ -132,61 +124,49 @@
 
   <fieldset class="group" disabled={!connected || dir == null}>
     <h4>INCLUDES IN PRESET</h4>
-    <label class="toggle">
-      <input
-        type="checkbox"
-        checked={mvMode === MasterVolumeMode.WithPreset}
-        onchange={(e) => {
-          const target = e.target as HTMLInputElement;
-          void setMasterVolumeMode(target.checked ? MasterVolumeMode.WithPreset : MasterVolumeMode.Independent);
-        }}
-      />
-      <span>Master volume</span>
-    </label>
-    <label class="toggle">
-      <input type="checkbox" checked={includePins} onchange={onIncludePinsChange} />
-      <span>Pin assignments</span>
-    </label>
+    <ToggleSwitch
+      size="sm"
+      label="Master volume"
+      ariaLabel="Include master volume in preset"
+      checked={mvMode === MasterVolumeMode.WithPreset}
+      onChange={(v) => void setMasterVolumeMode(v ? MasterVolumeMode.WithPreset : MasterVolumeMode.Independent)}
+    />
+    <ToggleSwitch
+      size="sm"
+      label="Pin assignments"
+      ariaLabel="Include pin assignments in preset"
+      checked={includePins}
+      onChange={(v) => void setPresetIncludePins(v)}
+    />
   </fieldset>
 
   <div class="divider"></div>
 
   <fieldset class="group" disabled={!connected || dir == null}>
     <h4>STARTUP MODE</h4>
-    <label class="toggle">
-      <input
-        type="radio"
-        name="startup"
-        value="specified"
-        checked={startupMode === PresetStartupMode.Specified}
-        onchange={onStartupModeChange}
-      />
-      <span>Specified slot</span>
-    </label>
-    <label class="toggle">
-      <input
-        type="radio"
-        name="startup"
-        value="last"
-        checked={startupMode === PresetStartupMode.LastActive}
-        onchange={onStartupModeChange}
-      />
-      <span>Last active</span>
-    </label>
+    <ToggleSwitch
+      size="sm"
+      label="Boot into last active preset"
+      ariaLabel="Boot into last active preset"
+      checked={startupLastActive}
+      onChange={onStartupLastActiveChange}
+    />
+    <p class="hint">{startupLastActive
+      ? 'Resumes whichever preset was active at power-off.'
+      : 'Boots the preset marked as startup (use SET AS STARTUP).'}</p>
   </fieldset>
 
   <div class="divider"></div>
 
   <div class="group">
     <h4>OPTIONS</h4>
-    <label class="toggle">
-      <input
-        type="checkbox"
-        checked={settings.warnOnPresetSwitchDirty}
-        onchange={onWarnToggleChange}
-      />
-      <span>Warn on preset switch when changes are unsaved</span>
-    </label>
+    <ToggleSwitch
+      size="sm"
+      label="Warn on preset switch when changes are unsaved"
+      ariaLabel="Warn on preset switch when changes are unsaved"
+      checked={settings.warnOnPresetSwitchDirty}
+      onChange={(v) => { settings.warnOnPresetSwitchDirty = v; }}
+    />
   </div>
 </div>
 
@@ -232,19 +212,12 @@
     border-color: color-mix(in oklab, var(--accent) 50%, var(--border));
     background: color-mix(in oklab, var(--accent) 8%, transparent);
   }
-  .toggle {
-    display: flex; align-items: center; gap: 8px;
+  .hint {
+    margin: 2px 0 0;
     font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--text-dim);
-    padding: 3px 0;
-    cursor: pointer;
+    font-size: 9px;
     line-height: 1.4;
-  }
-  .toggle input[type="checkbox"], .toggle input[type="radio"] {
-    accent-color: var(--accent);
-    width: 11px; height: 11px;
-    flex: 0 0 auto;
+    color: var(--text-faint);
   }
   .divider {
     height: 1px;
