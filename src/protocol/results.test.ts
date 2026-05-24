@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { actionCmd, FlashResult, PresetResult, flashResultFromByte, presetResultFromByte } from './results';
+import { actionCmd, FlashResult, PresetResult, flashResultFromByte, presetResultFromByte, PinConfigResult, pinConfigResultFromByte } from './results';
 import type { DspTransport } from '@/transport/DspTransport';
 
 const mkTransport = (response: Uint8Array): DspTransport => ({
@@ -62,5 +62,26 @@ describe('presetResultFromByte', () => {
     const r = presetResultFromByte(0x99);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe(PresetResult.FlashWriteError);
+  });
+});
+
+describe('pinConfigResultFromByte', () => {
+  it('0x00 maps to ok', () => {
+    expect(pinConfigResultFromByte(0x00)).toEqual({ ok: true, value: undefined });
+  });
+
+  it('a known error byte maps to its typed code and message', () => {
+    const r = pinConfigResultFromByte(0x04);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe(PinConfigResult.OutputActive);
+      expect(r.message).toMatch(/active/i);
+    }
+  });
+
+  it('an unknown non-zero byte falls back to InvalidPin rather than throwing', () => {
+    const r = pinConfigResultFromByte(0x7f);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe(PinConfigResult.InvalidPin);
   });
 });
