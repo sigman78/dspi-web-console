@@ -16,6 +16,7 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
     loudness: { enabled: false, refSpl: 85, intensityPct: 0 },
     crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5 } as any,
     leveller: null, i2s: null,
+    outputPins: [],
     ...overrides,
   };
 }

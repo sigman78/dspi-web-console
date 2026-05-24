@@ -34,4 +34,5 @@ export interface DspSnapshot {
   crossfeed: Crossfeed;
   leveller: Leveller | null;
   i2s: I2sConfig | null;
+  outputPins: number[];
 }

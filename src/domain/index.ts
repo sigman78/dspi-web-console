@@ -15,6 +15,7 @@ export * from './mixerView';
 export * from './snapshot';
 export * from './presetDiff';
 export * from './presetDirectory';
+export * from './pins';
 
 // clamp.ts is intentionally NOT re-exported here; import it directly at the
 // action boundary that owns the clamp gate.

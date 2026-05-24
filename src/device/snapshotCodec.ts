@@ -143,6 +143,7 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: proto.Bul
       gateDb: bulk.leveller.gateDb,
     } : null,
     i2s: bulk.formatVersion >= 3 ? bulk.i2s : null,
+    outputPins: [],
   };
 }
 
