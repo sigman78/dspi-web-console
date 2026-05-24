@@ -62,7 +62,7 @@
         <div class="legend">
           <span><i class="sw active"></i>active</span>
           <span><i class="dot"></i>dirty</span>
-          <span class="boot">★ boot</span>
+          <span class="startup">★ startup</span>
         </div>
       {/if}
     </div>
@@ -145,5 +145,5 @@
     background: var(--accent);
     box-shadow: 0 0 4px color-mix(in oklab, var(--accent) 60%, transparent);
   }
-  .legend .boot { color: var(--warn); font-size: 11px; }
+  .legend .startup { color: var(--warn); font-size: 11px; }
 </style>

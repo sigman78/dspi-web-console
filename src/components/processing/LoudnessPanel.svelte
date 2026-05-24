@@ -1,6 +1,7 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
   import ValueField from '../chrome/ValueField.svelte';
+  import ToggleSwitch from '../chrome/ToggleSwitch.svelte';
   import { dsp, session } from '@/state';
   import { Proc } from '@/domain';
   import { setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from '@/runtime';
@@ -28,15 +29,13 @@
 
 <Panel code="PR.02" title="LOUDNESS">
   {#snippet right()}
-    <button
-      class="badge"
-      class:on={enabled}
-      onclick={toggleEnabled}
+    <ToggleSwitch
+      size="sm"
+      checked={enabled}
       disabled={!connected}
-      aria-label={enabled ? 'Disable loudness' : 'Enable loudness'}
-    >
-      {enabled ? 'ON' : 'OFF'}
-    </button>
+      ariaLabel={enabled ? 'Disable loudness' : 'Enable loudness'}
+      onChange={toggleEnabled}
+    />
   {/snippet}
 
   <div class="grid">
@@ -97,25 +96,4 @@
     margin: 0;
   }
   input[type="range"]:disabled { opacity: 0.4; cursor: default; }
-  .badge {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    letter-spacing: 1px;
-    padding: 2px 6px;
-    border-radius: 3px;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
-    border: 1px solid var(--border);
-    color: var(--text-faint);
-    cursor: pointer;
-  }
-  .badge:hover:not(:disabled) {
-    color: var(--text);
-    border-color: var(--border-hi);
-  }
-  .badge:disabled { cursor: default; opacity: 0.5; }
-  .badge.on {
-    background: color-mix(in oklab, var(--ok) 10%, transparent);
-    border-color: color-mix(in oklab, var(--ok) 40%, transparent);
-    color: var(--ok);
-  }
 </style>
