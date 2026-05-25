@@ -29,7 +29,7 @@
     font-family: var(--font-mono);
     font-size: 10px;
     padding: 3px 6px;
-    background: color-mix(in oklab, var(--text) 2%, transparent);
+    background: var(--panel-solid);
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: 4px;

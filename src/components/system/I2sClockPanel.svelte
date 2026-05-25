@@ -48,7 +48,7 @@
         <span class="derived">LRCLK GP{snap.i2s.bckPin + 1}</span>
       </div>
       {#if anyI2s}
-        <div class="hint">Set all slots to S/PDIF to change BCK.</div>
+        <div class="hint">Set all slots to SPDIF to change BCK.</div>
       {/if}
 
       <div class="row">
@@ -91,8 +91,9 @@
 </Panel>
 
 <style>
-  .rows { padding: 14px; display: grid; gap: 8px; }
-  .row { display: grid; grid-template-columns: 3rem auto auto; gap: 10px; align-items: center; }
+  .rows { padding: 14px; display: grid; grid-template-columns: 3rem max-content max-content; gap: 8px 10px; align-items: center; justify-content: space-between; }
+  .row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; }
+  .rows > .hint, .rows > .err { grid-column: 1 / -1; }
   .lbl { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--text-dim); }
   .derived { font-family: var(--font-mono); font-size: 9px; color: var(--text-faint); }
   .hint { font-family: var(--font-mono); font-size: 9px; color: var(--text-faint); }

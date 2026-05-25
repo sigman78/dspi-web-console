@@ -57,7 +57,9 @@
 
 <style>
   .seg {
-    display: inline-flex;
+    display: inline-grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
     border: 1px solid var(--border);
     border-radius: 4px;
     overflow: hidden;
@@ -68,6 +70,7 @@
     font-size: 10px;
     letter-spacing: 1px;
     padding: 4px 10px;
+    text-align: center;
     background: transparent;
     border: none;
     color: var(--text-dim);
