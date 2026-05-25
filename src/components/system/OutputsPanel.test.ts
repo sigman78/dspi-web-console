@@ -7,10 +7,9 @@ const verbs = vi.hoisted(() => ({
 }));
 vi.mock('@/runtime', () => verbs);
 
-vi.mock('@/state', async () => {
-  const { PlatformType } = await import('@/domain');
+vi.mock('@/state', () => {
   const draft = {
-    platform: { type: PlatformType.RP2350, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
+    platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
     outputs: [{ wireIndex: 8, enabled: false }],
     outputPins: [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
