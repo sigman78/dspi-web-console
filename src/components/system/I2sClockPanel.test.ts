@@ -29,6 +29,6 @@ describe('I2sClockPanel', () => {
 
   test('LRCLK is shown as BCK + 1', () => {
     render(I2sClockPanel);
-    expect(screen.getAllByText(/15/).length).toBeGreaterThan(0); // bckPin 14 -> LRCLK 15
+    expect(screen.getByText('LRCLK GP15')).toBeTruthy();
   });
 });
