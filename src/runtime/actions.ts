@@ -6,7 +6,6 @@ import {
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   CHANNEL_NAME_MAX_LEN,
 } from '@/domain';
-import type { DspDeviceGranular } from '@/device/DspDeviceGranular';
 import * as Clamp from '@/domain/clamp';
 import type { DspTransport } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -445,7 +444,7 @@ function patchI2s(update: (i: I2sConfig) => I2sConfig): void {
 }
 
 export async function setOutputDataPin(pinOutputIndex: number, pin: number): Promise<VoidResult> {
-  const d = session.device as DspDeviceGranular | null;
+  const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
   await flushWrites();
   const r = await d.setOutputPin(pinOutputIndex, pin);
@@ -460,7 +459,7 @@ export async function setOutputDataPin(pinOutputIndex: number, pin: number): Pro
 }
 
 export async function setOutputType(slot: OutputSlot, type: number): Promise<VoidResult> {
-  const d = session.device as DspDeviceGranular | null;
+  const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
   if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
   await flushWrites();
@@ -479,7 +478,7 @@ export async function setOutputType(slot: OutputSlot, type: number): Promise<Voi
 }
 
 export async function setI2sBckPin(pin: number): Promise<VoidResult> {
-  const d = session.device as DspDeviceGranular | null;
+  const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
   if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
   await flushWrites();
@@ -491,7 +490,7 @@ export async function setI2sBckPin(pin: number): Promise<VoidResult> {
 }
 
 export async function setMckEnabled(on: boolean): Promise<VoidResult> {
-  const d = session.device as DspDeviceGranular | null;
+  const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
   if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
   await flushWrites();
@@ -503,7 +502,7 @@ export async function setMckEnabled(on: boolean): Promise<VoidResult> {
 }
 
 export async function setMckPin(pin: number): Promise<VoidResult> {
-  const d = session.device as DspDeviceGranular | null;
+  const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
   if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
   await flushWrites();
@@ -515,7 +514,7 @@ export async function setMckPin(pin: number): Promise<VoidResult> {
 }
 
 export async function setMckMultiplier(encoded: number): Promise<VoidResult> {
-  const d = session.device as DspDeviceGranular | null;
+  const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
   if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
   await flushWrites();

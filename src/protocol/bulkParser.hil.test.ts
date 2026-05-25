@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import type { DspDeviceGranular } from '@/device/DspDeviceGranular';
+import type { DspDevice } from '@/device/DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
 
 describe('bulkParser against real hardware', () => {
-  let device: DspDeviceGranular;
+  let device: DspDevice;
   let close: () => Promise<void>;
 
   beforeAll(async () => {

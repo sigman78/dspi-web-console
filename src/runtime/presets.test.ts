@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { bootMock } from './session';
-import type { DspDeviceGranular } from '@/device/DspDeviceGranular';
+import type { DspDevice } from '@/device/DspDevice';
 import { presets, resetPresets, boundary, resolveBoundary, settings, session, dsp } from '@/state';
 import { PresetStartupMode, parseBulkParams } from '@/protocol';
 import type { PresetSlot } from '@/domain';
@@ -275,7 +275,7 @@ describe('runtime/presets', () => {
       // SetLoudnessEnabled mutates #mockState which is what
       // synthesizeBulkParams reads from, so the next resync's bulk packet
       // will reflect the change.
-      const d = session.device as DspDeviceGranular;
+      const d = session.device as DspDevice;
       await d.setLoudnessEnabled(!savedLoudnessBefore);
       // Resync refreshes dsp.draft ONLY; dsp.saved stays pinned at the
       // last baseline (the fullSync snapshot).

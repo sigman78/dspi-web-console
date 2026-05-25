@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { DspDeviceGranular } from './DspDeviceGranular';
+import type { DspDevice } from './DspDevice';
 import { hasFormatVersion, openSingleDevice, withSavedField } from '@test/hil/setup';
 import { FilterType } from '@/domain';
 
@@ -8,7 +8,7 @@ import { FilterType } from '@/domain';
 const F32_TOL = 4;
 
 describe('DspDevice — write→read roundtrips and bulk cross-validation (HIL)', () => {
-  let device: DspDeviceGranular;
+  let device: DspDevice;
   let close: () => Promise<void>;
 
   beforeAll(async () => {

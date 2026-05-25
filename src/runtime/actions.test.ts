@@ -4,7 +4,6 @@ import { session, bindDevice, settings, dsp, status as statusStore, presets, app
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
-import type { DspDeviceGranular } from '@/device/DspDeviceGranular';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import {
@@ -26,7 +25,7 @@ const testHardware = createHardwareProfile(PlatformType.RP2350);
 // Builds a DspDevice stub mirroring the real one: applyBulk overlays the draft
 // onto the last-fetched wire packet via toBulkParams and forwards to setAllParams
 // (which tests spy on). hasState defaults true. Any method can be overridden.
-function initializedDevice(methods: Partial<DspDeviceGranular>): DspDevice {
+function initializedDevice(methods: Partial<DspDevice>): DspDevice {
   const base: Partial<DspDevice> = {
     info: {
       serial: 'TEST-RP2350',

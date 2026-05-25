@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { DspDeviceGranular } from './DspDeviceGranular';
+import type { DspDevice } from './DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
 import { PlatformType } from '@/domain';
 
 describe('DspDevice — read-side smoke (HIL)', () => {
-  let device: DspDeviceGranular;
+  let device: DspDevice;
   let close: () => Promise<void>;
 
   beforeAll(async () => {
