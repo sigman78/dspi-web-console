@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType } from './actions';
+import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled } from './actions';
 import { session, bindDevice, settings, dsp, status as statusStore, presets, applyBaselineSnapshot, applyDraftSnapshot, resetDsp } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -805,5 +805,17 @@ describe('output config verbs', () => {
     const r = await setOutputType(0, 1);
     expect(r.ok).toBe(true);
     expect(dsp.draft!.i2s!.outputSlotTypes[0]).toBe(1);
+  });
+
+  test('setI2sBckPin success patches draft.i2s.bckPin', async () => {
+    const r = await setI2sBckPin(16);
+    expect(r.ok).toBe(true);
+    expect(dsp.draft!.i2s!.bckPin).toBe(16);
+  });
+
+  test('setMckEnabled success patches draft.i2s.mckEnabled', async () => {
+    const r = await setMckEnabled(true);
+    expect(r.ok).toBe(true);
+    expect(dsp.draft!.i2s!.mckEnabled).toBe(true);
   });
 });
