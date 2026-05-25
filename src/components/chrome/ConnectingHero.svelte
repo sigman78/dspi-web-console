@@ -6,6 +6,13 @@
   let busy = $state(false);
   const unsupported = webUsbUnsupportedReason();
 
+  // First line only, length-capped: enough to identify the failure. The full
+  // message (with stack) is in the browser console via Log.error.
+  function concise(msg: string | null): string {
+    const first = (msg ?? '').split('\n', 1)[0].trim();
+    return first.length > 80 ? `${first.slice(0, 79)}…` : first;
+  }
+
   // Mirrors StatusPill.svelte's text/disabled derivation. Kept duplicated
   // (six lines of switch) rather than extracted; the two presentations may
   // diverge and an early shared module would be the wrong abstraction.
@@ -15,7 +22,7 @@
       case 'connected':    return `ONLINE · ${session.lastDeviceInfo?.serial ?? ''}`;
       case 'connecting':   return 'CONNECTING…';
       case 'disconnected': return 'DISCONNECTED';
-      case 'error':        return `ERROR · ${session.error ?? ''}`;
+      case 'error':        return `ERROR · ${concise(session.error)}`;
       case 'idle':         return 'WAITING FOR DEVICE...';
     }
   });

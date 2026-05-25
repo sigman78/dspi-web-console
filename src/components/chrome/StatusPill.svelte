@@ -23,7 +23,9 @@
       case 'connected':    return 'ONLINE';
       case 'connecting':   return 'CONNECTING…';
       case 'disconnected': return 'DISCONNECTED';
-      case 'error':        return `ERROR · ${session.error ?? ''}`;
+      // Keep the pill text fixed-width: the (possibly long) message lives in
+      // the hover tooltip and the browser console, never in the bar itself.
+      case 'error':        return 'ERROR';
       case 'idle':         return 'CLICK TO CONNECT';
     }
   });
@@ -40,7 +42,12 @@
   class="pill {tone}"
   onclick={connect}
   disabled={busy || unsupported !== null || session.status === 'connected'}
-  title={unsupported ?? (presetsDirty.current && session.status === 'connected' ? `${text} · unsaved changes` : text)}
+  title={unsupported ??
+    (session.status === 'error'
+      ? `ERROR · ${session.error ?? ''}`
+      : presetsDirty.current && session.status === 'connected'
+        ? `${text} · unsaved changes`
+        : text)}
 >
   <span class="dot"></span>
   {text}
