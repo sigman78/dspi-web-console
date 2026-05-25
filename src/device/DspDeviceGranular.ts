@@ -141,6 +141,38 @@ export class DspDeviceGranular extends DspDevice {
     return proto.actionCmd(this.transport, proto.WireCmd.GetOutputPin, pinOutputIndex);
   }
 
+  async setI2sBckPin(pin: number): Promise<Result<void, proto.PinConfigResult>> {
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetI2sBckPin, pin & 0xFF));
+  }
+
+  async getI2sBckPin(): Promise<number> {
+    return proto.actionCmd(this.transport, proto.WireCmd.GetI2sBckPin, 0);
+  }
+
+  async setMckEnable(on: boolean): Promise<Result<void, proto.PinConfigResult>> {
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetMckEnable, on ? 1 : 0));
+  }
+
+  async getMckEnable(): Promise<number> {
+    return proto.actionCmd(this.transport, proto.WireCmd.GetMckEnable, 0);
+  }
+
+  async setMckPin(pin: number): Promise<Result<void, proto.PinConfigResult>> {
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetMckPin, pin & 0xFF));
+  }
+
+  async getMckPin(): Promise<number> {
+    return proto.actionCmd(this.transport, proto.WireCmd.GetMckPin, 0);
+  }
+
+  async setMckMultiplier(encoded: number): Promise<Result<void, proto.PinConfigResult>> {
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetMckMultiplier, encoded & 0x01));
+  }
+
+  async getMckMultiplier(): Promise<number> {
+    return proto.actionCmd(this.transport, proto.WireCmd.GetMckMultiplier, 0);
+  }
+
   // Channel names ---------------------------------------------------------
 
   // Names are silently cropped to fit the 31-byte UTF-8 wire budget;

@@ -297,6 +297,41 @@ export class MockTransport implements DspTransport {
         else this.#mockState.i2s.outputSlotTypes[slot] = type;
         return new Uint8Array([status]);
       }
+      case WireCmd.GetI2sBckPin.code:
+        return new Uint8Array([this.#mockState.i2s.bckPin]);
+      case WireCmd.SetI2sBckPin.code: {
+        const pin = value & 0xFF;
+        let status = 0x00;
+        if (!this.#isValidGpio(pin) || !this.#isValidGpio(pin + 1)) status = 0x01;
+        else if (this.#mockState.i2s.outputSlotTypes.some((type) => type === 1)) status = 0x04;
+        else if (this.#pinInUse(pin, 0xFF) || this.#pinInUse(pin + 1, 0xFF)) status = 0x02;
+        else this.#mockState.i2s.bckPin = pin;
+        return new Uint8Array([status]);
+      }
+      case WireCmd.GetMckEnable.code:
+        return new Uint8Array([this.#mockState.i2s.mckEnabled ? 1 : 0]);
+      case WireCmd.SetMckEnable.code:
+        this.#mockState.i2s.mckEnabled = (value & 0xFF) !== 0;
+        return new Uint8Array([0x00]);
+      case WireCmd.GetMckPin.code:
+        return new Uint8Array([this.#mockState.i2s.mckPin]);
+      case WireCmd.SetMckPin.code: {
+        const pin = value & 0xFF;
+        let status = 0x00;
+        if (!this.#isValidGpio(pin)) status = 0x01;
+        else if (this.#mockState.i2s.mckEnabled) status = 0x04;
+        else if (this.#pinInUse(pin, 0xFF)) status = 0x02;
+        else this.#mockState.i2s.mckPin = pin;
+        return new Uint8Array([status]);
+      }
+      case WireCmd.GetMckMultiplier.code:
+        return new Uint8Array([this.#mockState.i2s.mckMultiplierEncoded]);
+      case WireCmd.SetMckMultiplier.code: {
+        const raw = value & 0xFF;
+        if (raw > 1) return new Uint8Array([0x01]);
+        this.#mockState.i2s.mckMultiplierEncoded = raw;
+        return new Uint8Array([0x00]);
+      }
       case WireCmd.GetBufferStats.code:
         return synthesizeBufferStats({
           numSpdif: this.#numSpdif(),

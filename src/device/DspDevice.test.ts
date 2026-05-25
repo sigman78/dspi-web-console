@@ -870,6 +870,44 @@ describe('output type & pin commands', () => {
   });
 });
 
+describe('I2S clock commands', () => {
+  async function dev() {
+    const t = new MockTransport({ platform: 'rp2350' });
+    return await DspDeviceGranular.create(t);
+  }
+
+  test('BCK pin defaults to 14 and changes when no slot is I2S', async () => {
+    const d = await dev();
+    expect(await d.getI2sBckPin()).toBe(14);
+    expect((await d.setI2sBckPin(16)).ok).toBe(true);
+    expect(await d.getI2sBckPin()).toBe(16);
+  });
+
+  test('MCK enable round-trips; MCK pin cannot change while MCK enabled', async () => {
+    const d = await dev();
+    expect(await d.getMckEnable()).toBe(0);
+    expect((await d.setMckEnable(true)).ok).toBe(true);
+    expect(await d.getMckEnable()).toBe(1);
+    const r = await d.setMckPin(20);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe(PinConfigResult.OutputActive);
+  });
+
+  test('MCK multiplier round-trips as 0/1 enum', async () => {
+    const d = await dev();
+    expect((await d.setMckMultiplier(1)).ok).toBe(true);
+    expect(await d.getMckMultiplier()).toBe(1);
+  });
+
+  test('changing BCK while a slot is I2S is refused with OUTPUT_ACTIVE', async () => {
+    const d = await dev();
+    await d.setOutputType(0, 1);
+    const r = await d.setI2sBckPin(16);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe(PinConfigResult.OutputActive);
+  });
+});
+
 describe('setAllParams', () => {
   it('issues one ctrlOut with code=0xA1, wValue=0, byteLength=2896', async () => {
     const transport = new MockTransport({ platform: 'rp2350' });
