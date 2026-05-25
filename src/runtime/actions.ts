@@ -2,9 +2,11 @@ import {
   type FilterParams,
   type ChannelId, type InputSlot, type OutputSlot,
   type RouteModel, type OutputModel, type DspSnapshot,
+  type I2sConfig,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   CHANNEL_NAME_MAX_LEN,
 } from '@/domain';
+import type { DspDeviceGranular } from '@/device/DspDeviceGranular';
 import * as Clamp from '@/domain/clamp';
 import type { DspTransport } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -427,5 +429,96 @@ export async function factoryResetDevice(): Promise<VoidResult> {
   invalidatePresetCache();
   clearCopySource();
   await syncDeviceSnapshot();
+  return Result.ok();
+}
+
+// Output pin / I2S config verbs -------------------------------------------
+// Direct-call pattern: call granular device method, await typed Result,
+// do a targeted readback of only the affected field, and patchSnapshot
+// with just that field. Never calls syncDeviceSnapshot (would discard
+// unsaved EQ/mixer edits in dsp.draft).
+
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+function patchI2s(update: (i: I2sConfig) => I2sConfig): void {
+  if (dsp.draft?.i2s) patchSnapshot({ i2s: update(dsp.draft.i2s) });
+}
+
+export async function setOutputDataPin(pinOutputIndex: number, pin: number): Promise<VoidResult> {
+  const d = session.device as DspDeviceGranular | null;
+  if (!d) return Result.fail('no device', 'no device');
+  await flushWrites();
+  const r = await d.setOutputPin(pinOutputIndex, pin);
+  if (!r.ok) return Result.fail('pin set failed', r.message);
+  const actual = await d.getOutputPin(pinOutputIndex);
+  if (dsp.draft) {
+    const pins = dsp.draft.outputPins.slice();
+    pins[pinOutputIndex] = actual;
+    patchSnapshot({ outputPins: pins });
+  }
+  return Result.ok();
+}
+
+export async function setOutputType(slot: OutputSlot, type: number): Promise<VoidResult> {
+  const d = session.device as DspDeviceGranular | null;
+  if (!d) return Result.fail('no device', 'no device');
+  await flushWrites();
+  const r = await d.setOutputType(slot, type);
+  if (!r.ok) return Result.fail('type switch failed', r.message);
+  const idx = slot as 0 | 1 | 2 | 3;
+  patchI2s((i) => {
+    const t = [...i.outputSlotTypes] as [number, number, number, number];
+    t[idx] = type; return { ...i, outputSlotTypes: t };
+  });
+  await delay(50);
+  const actual = await d.getOutputType(slot);
+  patchI2s((i) => {
+    const t = [...i.outputSlotTypes] as [number, number, number, number];
+    t[idx] = actual; return { ...i, outputSlotTypes: t };
+  });
+  return actual === type ? Result.ok() : Result.fail('type not applied', 'device did not switch type');
+}
+
+export async function setI2sBckPin(pin: number): Promise<VoidResult> {
+  const d = session.device as DspDeviceGranular | null;
+  if (!d) return Result.fail('no device', 'no device');
+  await flushWrites();
+  const r = await d.setI2sBckPin(pin);
+  if (!r.ok) return Result.fail('bck set failed', r.message);
+  const actual = await d.getI2sBckPin();
+  patchI2s((i) => ({ ...i, bckPin: actual }));
+  return Result.ok();
+}
+
+export async function setMckEnabled(on: boolean): Promise<VoidResult> {
+  const d = session.device as DspDeviceGranular | null;
+  if (!d) return Result.fail('no device', 'no device');
+  await flushWrites();
+  const r = await d.setMckEnable(on);
+  if (!r.ok) return Result.fail('mck enable failed', r.message);
+  const actual = await d.getMckEnable();
+  patchI2s((i) => ({ ...i, mckEnabled: actual === 1 }));
+  return Result.ok();
+}
+
+export async function setMckPin(pin: number): Promise<VoidResult> {
+  const d = session.device as DspDeviceGranular | null;
+  if (!d) return Result.fail('no device', 'no device');
+  await flushWrites();
+  const r = await d.setMckPin(pin);
+  if (!r.ok) return Result.fail('mck pin failed', r.message);
+  const actual = await d.getMckPin();
+  patchI2s((i) => ({ ...i, mckPin: actual }));
+  return Result.ok();
+}
+
+export async function setMckMultiplier(encoded: number): Promise<VoidResult> {
+  const d = session.device as DspDeviceGranular | null;
+  if (!d) return Result.fail('no device', 'no device');
+  await flushWrites();
+  const r = await d.setMckMultiplier(encoded);
+  if (!r.ok) return Result.fail('mck multiplier failed', r.message);
+  const actual = await d.getMckMultiplier();
+  patchI2s((i) => ({ ...i, mckMultiplierEncoded: actual }));
   return Result.ok();
 }

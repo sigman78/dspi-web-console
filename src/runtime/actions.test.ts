@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert } from './actions';
+import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType } from './actions';
 import { session, bindDevice, settings, dsp, status as statusStore, presets, applyBaselineSnapshot, applyDraftSnapshot, resetDsp } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -777,5 +777,33 @@ describe('boolean device flags are explicit setters', () => {
     await vi.runAllTimersAsync();
     expect(calls.at(-1)!.invert).toBe(!initial);
     vi.useRealTimers();
+  });
+});
+
+describe('output config verbs', () => {
+  beforeEach(async () => {
+    await bootMock('rp2350');
+  });
+
+  it('setOutputDataPin success patches draft.outputPins without discarding other edits', async () => {
+    const before = dsp.draft!.masterVolumeDb;
+    const r = await setOutputDataPin(0, 16);
+    expect(r.ok).toBe(true);
+    expect(dsp.draft!.outputPins[0]).toBe(16);
+    expect(dsp.draft!.masterVolumeDb).toBe(before);
+  });
+
+  it('setOutputDataPin failure leaves outputPins unchanged', async () => {
+    // pin 7 is in use by pinOutputIndex 1 — mock returns PinInUse
+    const pinsBefore = dsp.draft!.outputPins.slice();
+    const r = await setOutputDataPin(0, 7);
+    expect(r.ok).toBe(false);
+    expect(dsp.draft!.outputPins).toEqual(pinsBefore);
+  });
+
+  it('setOutputType updates draft.i2s.outputSlotTypes', async () => {
+    const r = await setOutputType(0, 1);
+    expect(r.ok).toBe(true);
+    expect(dsp.draft!.i2s!.outputSlotTypes[0]).toBe(1);
   });
 });
