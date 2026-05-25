@@ -122,6 +122,25 @@ export class DspDeviceGranular extends DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetOutputDelay, output);
   }
 
+  async setOutputType(slot: domain.OutputSlot, type: number): Promise<Result<void, proto.PinConfigResult>> {
+    const wValue = ((type & 0xFF) << 8) | (slot & 0xFF);
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetOutputType, wValue));
+  }
+
+  async getOutputType(slot: domain.OutputSlot): Promise<number> {
+    return proto.actionCmd(this.transport, proto.WireCmd.GetOutputType, slot);
+  }
+
+  // pin-output index is 0..numPinOutputs-1 where the last entry is the PDM sub (distinct from the matrix OutputSlot).
+  async setOutputPin(pinOutputIndex: number, pin: number): Promise<Result<void, proto.PinConfigResult>> {
+    const wValue = ((pin & 0xFF) << 8) | (pinOutputIndex & 0xFF);
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetOutputPin, wValue));
+  }
+
+  async getOutputPin(pinOutputIndex: number): Promise<number> {
+    return proto.actionCmd(this.transport, proto.WireCmd.GetOutputPin, pinOutputIndex);
+  }
+
   // Channel names ---------------------------------------------------------
 
   // Names are silently cropped to fit the 31-byte UTF-8 wire budget;

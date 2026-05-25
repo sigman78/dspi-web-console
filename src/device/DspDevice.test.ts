@@ -7,7 +7,7 @@
 import { describe, it, test, expect, beforeEach, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDeviceGranular } from './DspDeviceGranular';
-import { PresetResult, WireCmd, SystemStatusValue } from '@/protocol';
+import { PresetResult, PinConfigResult, WireCmd, SystemStatusValue } from '@/protocol';
 import {
   PlatformType,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
@@ -830,6 +830,43 @@ describe('DspDevice — getFilter multi-read', () => {
       .toEqual(Array(4).fill((6 << 8) | (1 << 4)));
     expect(seenOut.find((call) => call.req === WireCmd.SetChannelName.code)?.val).toBe(6);
     expect(seenIn.find((call) => call.req === WireCmd.GetChannelName.code)?.val).toBe(6);
+  });
+});
+
+describe('output type & pin commands', () => {
+  async function dev() {
+    const t = new MockTransport({ platform: 'rp2350' });
+    return await DspDeviceGranular.create(t);
+  }
+
+  test('getOutputPin reports seeded default; setOutputPin to a free pin succeeds and reads back', async () => {
+    const d = await dev();
+    expect(await d.getOutputPin(0)).toBe(6);
+    const r = await d.setOutputPin(0, 16);
+    expect(r.ok).toBe(true);
+    expect(await d.getOutputPin(0)).toBe(16);
+  });
+
+  test('setOutputPin to a pin in use by another output is refused', async () => {
+    const d = await dev();
+    const r = await d.setOutputPin(0, 7); // 7 belongs to slot 2
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe(PinConfigResult.PinInUse);
+  });
+
+  test('setOutputType switches a slot and getOutputType confirms', async () => {
+    const d = await dev();
+    expect(await d.getOutputType(0)).toBe(0);
+    const r = await d.setOutputType(0, 1);
+    expect(r.ok).toBe(true);
+    expect(await d.getOutputType(0)).toBe(1);
+  });
+
+  test('setOutputPin with an out-of-range index is refused with InvalidOutput', async () => {
+    const d = await dev();
+    const r = await d.setOutputPin(99, 16);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe(PinConfigResult.InvalidOutput);
   });
 });
 
