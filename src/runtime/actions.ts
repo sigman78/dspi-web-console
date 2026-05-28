@@ -79,7 +79,12 @@ export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
 }
 
 export function setBypass(enabled: boolean): void {
-  enqueue({ control: 'bypass', mutate: (s) => { s.bypass = enabled; } });
+  enqueue({
+    control: 'bypass',
+    coalesceKey: 'bypass',
+    apply: () => patchSnapshot({ bypass: enabled }),
+    send: (d) => d.setBypass(enabled),
+  });
 }
 
 // Telemetry-only action: clears firmware-side latched clip flags (0x83) and

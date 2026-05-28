@@ -464,11 +464,19 @@ describe('bulk writes: toggles', () => {
     session.status = 'connected';
   });
 
-  it('setBypass fires one bulk write carrying the new bypass flag', async () => {
+  it('setBypass schedules a wire write and patches the snapshot', async () => {
+    vi.useFakeTimers();
+    const setBypassFn = vi.fn(async () => {});
+    bindDevice(initializedDevice({
+      setBypass: setBypassFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    }));
+
     setBypass(true);
     expect(dsp.draft?.bypass).toBe(true);
-    await awaitBulkSettled();
-    expect(captured?.bypass).toBe(true);
+    await vi.runAllTimersAsync();
+    expect(setBypassFn).toHaveBeenCalledWith(true);
+    vi.useRealTimers();
   });
 
   it('setOutputMuted flips the slot and the bulk packet reflects it', async () => {
@@ -662,12 +670,12 @@ describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
   // leaked bulk-flush + granular state.
   afterEach(() => { vi.useRealTimers(); bindDevice(null); session.status = 'idle'; });
 
-  it('a granular crosspoint write and a bulk edit both register in pendingWrites', async () => {
+  it('granular writes on different controls both register in pendingWrites', async () => {
     const bulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
       // Both sends park forever so neither token is released during the test.
       setMatrixRoute: vi.fn(() => new Promise<void>(() => {})),
-      setAllParams: vi.fn(() => new Promise<void>(() => {})),
+      setBypass: vi.fn(() => new Promise<void>(() => {})),
       getAllParams: vi.fn(async () => bulk),
     });
     bindDevice(device);
@@ -679,8 +687,8 @@ describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
     const route = dsp.draft!.routes[0];
     setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !route.enabled);
     expect(dsp.pendingWrites.size).toBe(1);
-    // Bulk: a bulk edit claims the bulk token; both lanes now coexist, so the
-    // resync soft-skip guard (pendingWrites.size > 0) covers both simultaneously.
+    // Granular: bypass is now also granular; another granular control claims its own token.
+    // Both lanes now coexist, so the resync soft-skip guard (pendingWrites.size > 0) covers both simultaneously.
     setBypass(true);
     expect(dsp.pendingWrites.size).toBe(2);
   });

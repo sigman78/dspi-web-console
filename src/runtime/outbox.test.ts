@@ -242,7 +242,7 @@ describe('cancel (granular teardown)', () => {
 
 // ---------------------------------------------------------------------------
 // Bulk lane. enqueue({ control, mutate }) is the immediate path,
-// enqueue({ control, debounceKey, mutate }) the debounced one. 'bypass' is
+// enqueue({ control, debounceKey, mutate }) the debounced one. 'channelName' is
 // bulk-immediate, 'levellerAmount' bulk-debounced. The mutators touch
 // s.masterVolumeDb only to bump the lane revision — the lane is field-agnostic.
 // ---------------------------------------------------------------------------
@@ -289,7 +289,7 @@ describe('enqueue (bulk immediate)', () => {
   it('applies the mutator optimistically and sends one bulk write', async () => {
     let sends = 0;
     bindBulkDevice(async () => { sends += 1; });
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -12; } });
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -12; } });
     expect(dsp.draft?.masterVolumeDb).toBe(-12);
     await awaitBulkSettled();
     expect(sends).toBe(1);
@@ -300,9 +300,9 @@ describe('enqueue (bulk immediate)', () => {
     let resolveSend!: () => void;
     let sends = 0;
     bindBulkDevice(() => { sends += 1; return new Promise<void>((res) => { resolveSend = res; }); });
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -1; } });
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -2; } });
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -3; } });
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -1; } });
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -2; } });
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -3; } });
     expect(sends).toBe(1);
     resolveSend();                 // settle send #1
     await Promise.resolve();       // run settle continuation + synchronous re-flush (starts send #2)
@@ -316,14 +316,14 @@ describe('enqueue (bulk immediate)', () => {
   it('on send failure sets error status and leaves the lane usable (not wedged)', async () => {
     let sends = 0;
     bindBulkDevice(async () => { sends += 1; throw new Error('wire fail'); });
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -5; } });
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -5; } });
     await awaitBulkSettled().catch(() => {});
     await waitUntil(() => session.status === 'error');
     expect(session.status).toBe('error');
     expect(sends).toBe(1);
     // The in-flight slot was cleared on settle: a fresh edit still fires a send.
     // A wedged lane (stale inflight not nulled) would suppress this second send.
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -6; } });
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -6; } });
     expect(sends).toBe(2);
   });
 
@@ -331,7 +331,7 @@ describe('enqueue (bulk immediate)', () => {
     let resolveSend!: () => void;
     let sends = 0;
     bindBulkDevice(() => { sends += 1; return new Promise<void>((res) => { resolveSend = res; }); });
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -7; } });
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -7; } });
     expect(sends).toBe(1);
     session.generation += 1;     // disconnect/cancel bumps the generation
     resolveSend();
@@ -348,14 +348,14 @@ describe('enqueue (bulk immediate)', () => {
   it('cancel clears the bulk lane so it is idle and not wedged', () => {
     let sends = 0;
     bindBulkDevice(() => { sends += 1; return new Promise<void>(() => { /* never resolves */ }); });
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -4; } });
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -4; } });
     expect(sends).toBe(1);
     expect(isInFlight.current).toBe(true);   // lane busy
     cancelWrites();
     expect(isInFlight.current).toBe(false);  // counters + token cleared: lane idle
     // inflight slot detached (not just the token): a fresh edit starts a new send
     // rather than being suppressed by the never-resolving stale promise.
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -8; } });
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -8; } });
     expect(sends).toBe(2);
   });
 
@@ -364,12 +364,12 @@ describe('enqueue (bulk immediate)', () => {
     let sends = 0;
     bindBulkDevice(() => { sends += 1; return new Promise<void>((res) => { resolvers.push(res); }); });
 
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -4; } });   // send A parks in flight
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -4; } });   // send A parks in flight
     expect(sends).toBe(1);
     expect(isInFlight.current).toBe(true);
 
     cancelWrites();                              // detaches A, bumps generation
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -8; } });   // send B parks in flight
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -8; } });   // send B parks in flight
     expect(sends).toBe(2);
     expect(isInFlight.current).toBe(true);            // B holds the lane
 
@@ -444,14 +444,14 @@ describe('flush (flushWrites)', () => {
     bindBulkDevice(() => { sends += 1; return new Promise<void>((res) => { resolvers.push(res); }); });
 
     // First edit fires send #1, which parks on its unresolved promise.
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -1; } });
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -1; } });
     expect(sends).toBe(1);
     expect(isInFlight.current).toBe(true);
 
     const pending = flushWrites();
 
     // Land another edit mid-drain (unsent work on the lane while send #1 is parked).
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -2; } });
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -2; } });
     expect(isInFlight.current).toBe(true);
 
     // Pause the lane (error status) so the bulk path's own finally-reflush is
@@ -485,7 +485,7 @@ describe('enqueue bulk — pendingWrites token (Finding 1)', () => {
   it('holds a pendingWrites token while a bulk write is in flight and releases on settle', async () => {
     let resolveSend!: () => void;
     bindBulkDevice(() => new Promise<void>((res) => { resolveSend = res; }));
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -3; } });
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -3; } });
     expect(dsp.pendingWrites.size).toBe(1);     // token present during flight
     expect(isInFlight.current).toBe(true);
     resolveSend();
@@ -507,7 +507,7 @@ describe('resync guard sees the bulk lane (Finding 1)', () => {
   it('a trailing resync does not clobber an in-flight bulk edit', async () => {
     let resolveSend!: () => void;
     bindBulkDevice(() => new Promise<void>((res) => { resolveSend = res; }));
-    enqueue({ control: 'bypass', mutate: (s) => { s.masterVolumeDb = -12; } });   // optimistic; send parked in flight
+    enqueue({ control: 'channelName', mutate: (s) => { s.masterVolumeDb = -12; } });   // optimistic; send parked in flight
     expect(dsp.draft?.masterVolumeDb).toBe(-12);
     scheduleResync();
     await vi.advanceTimersByTimeAsync(300);            // trailing fetch fires (~250ms)

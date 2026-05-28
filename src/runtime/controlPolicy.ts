@@ -21,7 +21,7 @@ export const CONTROL_POLICY = {
 
   // Bulk immediate (SetAllParams; self-converging).
   eqFilter:          { strategy: 'bulk', converge: 'self' },
-  bypass:            { strategy: 'bulk', converge: 'self' },
+  bypass:            { strategy: 'granular', converge: 'resync' },
   channelName:       { strategy: 'bulk', converge: 'self' },
   loudnessEnabled:   { strategy: 'bulk', converge: 'self' },
   crossfeedEnabled:  { strategy: 'bulk', converge: 'self' },
