@@ -11,7 +11,7 @@
 
 import { session, setStatus } from '@/state';
 import { bumpInflight, dropInflight } from './mirror.svelte';
-import { forceResyncNow } from '@/runtime/resync';
+import { forceResyncNow, scheduleResync } from '@/runtime/resync';
 import { Log } from '@/utils';
 
 function errMessage(e: unknown): string {
@@ -39,4 +39,105 @@ export async function write(
   } finally {
     dropInflight();
   }
+}
+
+// Per-key 16 ms latest-wins coalesce lane. Each scrub() call replaces the
+// pending send for its key; the timer fires once per drag-quiet window.
+// Generation-guarded: a send that completes after a disconnect+reconnect
+// is silently dropped — no mirror update, no recovery resync.
+
+const COALESCE_MS = 16;
+
+interface Lane {
+  schedule(send: () => Promise<void>): void;
+  cancel(): void;
+  flushNow(): Promise<void>;
+}
+
+function makeLane(key: string, ms: number): Lane {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let pending: (() => Promise<void>) | null = null;
+  let inFlight: Promise<void> = Promise.resolve();
+  let claimedInflight = false;
+
+  function fire(): void {
+    timer = null;
+    const thunk = pending!;
+    const gen = session.generation;
+    pending = null;
+    inFlight = inFlight
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          await thunk();
+          if (gen === session.generation) scheduleResync();
+        } catch (err) {
+          if (gen !== session.generation) return;
+          Log.error('writes', `scrub ${key} send failed; forcing resync`, err);
+          setStatus('error', errMessage(err));
+          void forceResyncNow();
+        } finally {
+          if (claimedInflight) {
+            dropInflight();
+            claimedInflight = false;
+          }
+        }
+      });
+  }
+
+  return {
+    schedule(send) {
+      pending = send;
+      if (!claimedInflight) {
+        bumpInflight();
+        claimedInflight = true;
+      }
+      if (timer === null) timer = setTimeout(fire, ms);
+    },
+    cancel() {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      pending = null;
+      if (claimedInflight) {
+        dropInflight();
+        claimedInflight = false;
+      }
+    },
+    flushNow() {
+      if (timer !== null) { clearTimeout(timer); fire(); }
+      return inFlight;
+    },
+  };
+}
+
+const lanes = new Map<string, Lane>();
+
+function laneFor(key: string): Lane {
+  let lane = lanes.get(key);
+  if (!lane) { lane = makeLane(key, COALESCE_MS); lanes.set(key, lane); }
+  return lane;
+}
+
+// Drag-paced write. Mutates the mirror immediately (optimistic — needed for
+// drag feel at 60 fps), schedules a coalesced wire send per key, and arms
+// a trailing resync on settle.
+export function scrub(
+  key: string,
+  mutate: () => void,
+  send: () => Promise<void>,
+): void {
+  mutate();
+  laneFor(key).schedule(send);
+}
+
+// Drain every armed lane and wait for its in-flight send to settle. Used
+// by preset transitions before issuing a flash command.
+export async function flushAllWrites(): Promise<void> {
+  await Promise.all([...lanes.values()].map((l) => l.flushNow()));
+}
+
+// Cancel every armed lane without firing. Used by the disconnect path.
+export function cancelAllWrites(): void {
+  for (const lane of lanes.values()) lane.cancel();
+  lanes.clear();
 }
