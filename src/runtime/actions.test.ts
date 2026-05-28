@@ -18,6 +18,8 @@ import {
 import { fromBulkParams, toBulkParams } from '@/device/snapshotCodec';
 
 import { cancel as cancelWrites, flush as flushWrites, awaitBulkSettled } from './outbox';
+import { cancelAllWrites } from '@/device/writes';
+import { inflight } from '@/device/mirror.svelte';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
@@ -154,6 +156,7 @@ describe('actions wiring', () => {
     beginConnection();
     connectionScope()!.add(attachTransportListeners(transport));
     connectionScope()!.add(() => cancelWrites());
+    connectionScope()!.add(() => cancelAllWrites());
 
     setMasterVolume(-9);                      // queues a write
     transport.emit('disconnect');             // should cancel before timer fires
@@ -738,14 +741,16 @@ describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
     session.status = 'connected';
 
     expect(dsp.pendingWrites.size).toBe(0);
-    // Granular: a crosspoint enable-set claims a granular-lane token synchronously on schedule.
+    expect(inflight.current).toBe(0);
+    // scrub-class: crosspoint uses scrub() → bumpInflight(), not dsp.pendingWrites.
     const route = dsp.draft!.routes[0];
     setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !route.enabled);
-    expect(dsp.pendingWrites.size).toBe(1);
-    // Granular: bypass is now also granular; another granular control claims its own token.
-    // Both lanes now coexist, so the resync soft-skip guard (pendingWrites.size > 0) covers both simultaneously.
+    expect(inflight.current).toBe(1);
+    // enqueue-class: bypass still uses enqueue() → dsp.pendingWrites.
     setBypass(true);
-    expect(dsp.pendingWrites.size).toBe(2);
+    expect(dsp.pendingWrites.size).toBe(1);
+    // Both inflight trackers non-zero simultaneously: the resync soft-skip guard covers both.
+    expect(inflight.current).toBeGreaterThan(0);
   });
 });
 

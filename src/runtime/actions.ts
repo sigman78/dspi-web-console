@@ -21,22 +21,21 @@ import { Result, Log, type VoidResult } from '@/utils';
 import { startPolling } from './poll';
 import { connectionScope, endConnection } from './connectionScope';
 import { cancelResync } from './resync';
-import {
-  enqueue, applyBaselineConverged,
-  flush as flushWrites, cancel as cancelWrites,
-} from './outbox';
+import { enqueue, applyBaselineConverged } from './outbox';
+import { scrub, flushAllWrites, cancelAllWrites } from '@/device/writes';
 import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
 const MUTE_DB = -128; // per spec
 
 function _setMasterVolume(db: number): void {
-  enqueue({
-    control: 'masterVolume',
-    coalesceKey: 'masterVolume',
-    apply: () => patchSnapshot({ masterVolumeDb: db }),
-    send: (d) => d.setMasterVolume(db),
-  });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    'masterVolume',
+    () => patchSnapshot({ masterVolumeDb: db }),
+    () => d.setMasterVolume(db),
+  );
 }
 
 let inflightSync: Promise<void> | null = null;
@@ -277,12 +276,13 @@ export function setLevellerGate(db: number): void {
 
 export function setMasterPreamp(db: number): void {
   db = Clamp.preampDb(db);
-  enqueue({
-    control: 'masterPreamp',
-    coalesceKey: 'masterPreamp',
-    apply: () => patchSnapshot({ masterPreampDb: db }),
-    send: (d) => d.setMasterPreamp(db),
-  });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    'masterPreamp',
+    () => patchSnapshot({ masterPreampDb: db }),
+    () => d.setMasterPreamp(db),
+  );
 }
 
 export function setInputPreamp(channel: InputSlot, db: number): void {
@@ -291,12 +291,13 @@ export function setInputPreamp(channel: InputSlot, db: number): void {
   if (!cur) return;
   const next: [number, number] = [cur[0], cur[1]];
   next[channel] = db;
-  enqueue({
-    control: 'inputPreamp',
-    coalesceKey: `inputPreamp:${channel}`,
-    apply: () => patchSnapshot({ inputPreampDb: next }),
-    send: (d) => d.setInputPreamp(channel, db),
-  });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    `inputPreamp:${channel}`,
+    () => patchSnapshot({ inputPreampDb: next }),
+    () => d.setInputPreamp(channel, db),
+  );
 }
 
 // All three crosspoint mutations share one per-item granular lane keyed by the
@@ -311,11 +312,12 @@ function scheduleCrosspointWrite(
 ): void {
   if (!dsp.draft?.routes) return;
   const route = focusRoute(input, output);
-  enqueue({
-    control: 'crosspoint',
-    coalesceKey: `crosspoint:${input}:${output}`,
-    apply: () => route.modify(mutate),
-    send: async (d) => {
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    `crosspoint:${input}:${output}`,
+    () => route.modify(mutate),
+    async () => {
       const c = route.read();
       await d.setMatrixRoute(input, output, {
         enabled: c.enabled,
@@ -323,7 +325,7 @@ function scheduleCrosspointWrite(
         gainDb: c.gainDb,
       });
     },
-  });
+  );
 }
 
 export function setCrosspointGain(input: InputSlot, output: OutputSlot, gainDb: number): void {
@@ -343,12 +345,13 @@ export function setOutputGain(slot: OutputSlot, gainDb: number): void {
   gainDb = Clamp.outputGainDb(gainDb);
   if (!dsp.draft?.outputs) return;
   const out = focusOutput(slot);
-  enqueue({
-    control: 'outputGain',
-    coalesceKey: `outputGain:${slot}`,
-    apply: () => out.modify((o) => ({ ...o, gainDb })),
-    send: (d) => d.setOutputGain(slot, gainDb),
-  });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    `outputGain:${slot}`,
+    () => out.modify((o) => ({ ...o, gainDb })),
+    () => d.setOutputGain(slot, gainDb),
+  );
 }
 
 // Bulk-path output addressing: locate the output by wire slot in the draft
@@ -432,7 +435,7 @@ export async function finishConnection(device: DspDevice): Promise<void> {
     if (s) {
       s.add(startPolling());
       s.add(cancelResync);
-      s.add(() => cancelWrites());
+      s.add(() => cancelAllWrites());
     }
     await fetchPresetInfo();
     Log.info('sync', 'connected', {
@@ -538,7 +541,7 @@ export async function factoryResetDevice(): Promise<VoidResult> {
   if (!d) return Result.fail('no device', 'no device');
   // Drain any parked optimistic write so a pre-reset bulk send can't settle
   // mid-reset and re-push stale params (mirrors the preset load/paste flows).
-  await flushWrites();
+  await flushAllWrites();
   const r = await d.factoryReset();
   // r.message is always present on the failure branch; map the typed flash
   // code to the action wrapper's string channel.
@@ -564,7 +567,7 @@ function patchI2s(update: (i: I2sConfig) => I2sConfig): void {
 export async function setOutputDataPin(pinOutputIndex: number, pin: number): Promise<VoidResult> {
   const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
-  await flushWrites();
+  await flushAllWrites();
   const r = await d.setOutputPin(pinOutputIndex, pin);
   if (!r.ok) return Result.fail('pin set failed', r.message);
   const actual = await d.getOutputPin(pinOutputIndex);
@@ -580,7 +583,7 @@ export async function setOutputType(slot: OutputSlot, type: number): Promise<Voi
   const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
   if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushWrites();
+  await flushAllWrites();
   const r = await d.setOutputType(slot, type);
   if (!r.ok) return Result.fail('type switch failed', r.message);
   const applyType = (v: number) =>
@@ -599,7 +602,7 @@ export async function setI2sBckPin(pin: number): Promise<VoidResult> {
   const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
   if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushWrites();
+  await flushAllWrites();
   const r = await d.setI2sBckPin(pin);
   if (!r.ok) return Result.fail('bck set failed', r.message);
   const actual = await d.getI2sBckPin();
@@ -611,7 +614,7 @@ export async function setMckEnabled(on: boolean): Promise<VoidResult> {
   const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
   if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushWrites();
+  await flushAllWrites();
   const r = await d.setMckEnable(on);
   if (!r.ok) return Result.fail('mck enable failed', r.message);
   const actual = await d.getMckEnable();
@@ -623,7 +626,7 @@ export async function setMckPin(pin: number): Promise<VoidResult> {
   const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
   if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushWrites();
+  await flushAllWrites();
   const r = await d.setMckPin(pin);
   if (!r.ok) return Result.fail('mck pin failed', r.message);
   const actual = await d.getMckPin();
@@ -635,7 +638,7 @@ export async function setMckMultiplier(encoded: number): Promise<VoidResult> {
   const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
   if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushWrites();
+  await flushAllWrites();
   const r = await d.setMckMultiplier(encoded);
   if (!r.ok) return Result.fail('mck multiplier failed', r.message);
   const actual = await d.getMckMultiplier();
