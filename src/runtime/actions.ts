@@ -48,18 +48,25 @@ export function setEqFilter(channel: ChannelId, band: number, filter: FilterPara
   if (band >= ch.filters.length) {
     throw new Error(`band ${band} out of range for channel ${channel}`);
   }
-  enqueue({ control: 'eqFilter', mutate: (s) => {
-    const c = s.channels.find((c) => c.id === channel)!;
-    c.filters[band] = {
-      ...filter,
-      frequency: Clamp.bandFrequencyHz(filter.frequency),
-      q: Clamp.bandQ(filter.q),
-      gain: Clamp.bandGainDb(filter.gain),
-    };
-  } });
+  const clamped: FilterParams = {
+    ...filter,
+    frequency: Clamp.bandFrequencyHz(filter.frequency),
+    q: Clamp.bandQ(filter.q),
+    gain: Clamp.bandGainDb(filter.gain),
+  };
+  enqueue({
+    control: 'eqFilter',
+    coalesceKey: `eqFilter:${channel}:${band}`,
+    apply: () => {
+      if (!dsp.draft) return;
+      const c = dsp.draft.channels.find((c) => c.id === channel);
+      if (c) c.filters[band] = { ...clamped };
+    },
+    send: (d) => d.setFilter(channel, band, clamped),
+  });
 }
 
-// Copy all bands from source channel onto target channel as a single bulk write.
+// Copy all bands from source channel onto target channel as N independent granular writes.
 export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
   if (sourceId === targetId || !dsp.draft?.channels) return;
   const src = dsp.draft.channels.find((c) => c.id === sourceId);
@@ -72,10 +79,20 @@ export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
     q: Clamp.bandQ(f.q),
     gain: Clamp.bandGainDb(f.gain),
   }));
-  enqueue({ control: 'eqFilter', mutate: (s) => {
-    const t = s.channels.find((c) => c.id === targetId)!;
-    for (let i = 0; i < len; i++) t.filters[i] = { ...copied[i] };
-  } });
+  for (let i = 0; i < len; i++) {
+    const band = i;
+    const filter = copied[i];
+    enqueue({
+      control: 'eqFilter',
+      coalesceKey: `eqFilter:${targetId}:${band}`,
+      apply: () => {
+        if (!dsp.draft) return;
+        const t = dsp.draft.channels.find((c) => c.id === targetId);
+        if (t) t.filters[band] = { ...filter };
+      },
+      send: (d) => d.setFilter(targetId, band, filter),
+    });
+  }
 }
 
 export function setBypass(enabled: boolean): void {

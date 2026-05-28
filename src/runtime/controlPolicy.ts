@@ -19,8 +19,8 @@ export const CONTROL_POLICY = {
   crosspoint:   { strategy: 'granular', converge: 'resync' },
   outputGain:   { strategy: 'granular', converge: 'resync' },
 
-  // Bulk immediate (SetAllParams; self-converging).
-  eqFilter:          { strategy: 'bulk', converge: 'self' },
+  // Granular (latency-sensitive, per-band scrub; glitch-free audio). Trailing resync.
+  eqFilter:          { strategy: 'granular', converge: 'resync' },
   bypass:            { strategy: 'granular', converge: 'resync' },
   channelName:       { strategy: 'granular', converge: 'resync' },
   loudnessEnabled:   { strategy: 'granular', converge: 'resync' },

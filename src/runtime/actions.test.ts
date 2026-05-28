@@ -196,8 +196,8 @@ describe('actions wiring', () => {
     expect(session.generation).toBe(before + 2);
   });
 
-  it('copyEqBands copies all bands into the snapshot in one operation', () => {
-    // copyEqBands writes the full snapshot in one bulk operation.
+  it('copyEqBands copies all bands into the snapshot in N granular operations', () => {
+    // copyEqBands enqueues N independent granular writes (one per band).
     const validBulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
       setAllParams: vi.fn(async () => {}),
@@ -562,37 +562,6 @@ describe('bulk writes: eq/delay/names', () => {
     session.status = 'connected';
   });
 
-  it('setEqFilter writes one band into the snapshot and bulk packet', async () => {
-    const ch = dsp.draft!.channels[0].id;
-    setEqFilter(ch, 0, { type: FilterType.Peaking, frequency: 1000, q: 1.0, gain: 3 });
-    await awaitBulkSettled();
-    expect(dsp.draft!.channels[0].filters[0].frequency).toBe(1000);
-    // the bulk packet carries the edited band (at some wire-channel row)
-    expect(captured!.filters.some((row) => row[0]?.frequency === 1000)).toBe(true);
-  });
-
-  it('setEqFilter throws on out-of-range band', () => {
-    const ch = dsp.draft!.channels[0].id;
-    const n = dsp.draft!.channels[0].filters.length;
-    expect(() => setEqFilter(ch, n, { type: FilterType.Peaking, frequency: 1, q: 1, gain: 0 })).toThrow();
-  });
-
-  it('copyEqBands copies all bands target←source in one bulk write, source unchanged', async () => {
-    const src = dsp.draft!.channels[0].id;
-    const tgt = dsp.draft!.channels[1].id;
-    setEqFilter(src, 0, { type: FilterType.Peaking, frequency: 2500, q: 2, gain: -4 });
-    await awaitBulkSettled();
-    setEqFilter(src, 1, { type: FilterType.Peaking, frequency: 5000, q: 1.5, gain: 2 });
-    await awaitBulkSettled();
-    copyEqBands(src, tgt);
-    await awaitBulkSettled();
-    const t = dsp.draft!.channels.find((c) => c.id === tgt)!;
-    const s = dsp.draft!.channels.find((c) => c.id === src)!;
-    expect(t.filters[0].frequency).toBe(2500);
-    expect(t.filters[1].frequency).toBe(5000);
-    expect(s.filters[0].frequency).toBe(2500); // source intact
-    expect(s.filters[1].frequency).toBe(5000);
-  });
 
   it('setOutputDelay writes the slot delay into the snapshot and bulk packet', async () => {
     const slot = dsp.draft!.outputs[0].wireIndex;
@@ -666,6 +635,72 @@ describe('crosspoint — granular unified lane (Finding 2)', () => {
     await vi.runAllTimersAsync();
     expect(calls).toHaveLength(1);
     expect(calls[0].invert).toBe(!before);
+  });
+});
+
+describe('granular writes: eqFilter (per-band)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    const bulk = parseBulkParams(makeBulk());
+    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+  });
+  afterEach(() => { vi.useRealTimers(); bindDevice(null); });
+
+  it('setEqFilter sends one band via setFilter granular lane', async () => {
+    const calls: Array<{ channel: number; band: number; filter: FilterParams }> = [];
+    const device = initializedDevice({
+      setFilter: vi.fn(async (ch: number, band: number, f: FilterParams) => {
+        calls.push({ channel: ch, band, filter: f });
+      }),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    bindDevice(device);
+    const ch = dsp.draft!.channels[0].id;
+    setEqFilter(ch, 0, { type: FilterType.Peaking, frequency: 1000, q: 1.0, gain: 3 });
+    expect(dsp.draft!.channels[0].filters[0].frequency).toBe(1000); // optimistic patch
+    await vi.runAllTimersAsync();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].band).toBe(0);
+    expect(calls[0].filter.frequency).toBe(1000);
+  });
+
+  it('setEqFilter throws on out-of-range band', () => {
+    const ch = dsp.draft!.channels[0].id;
+    const n = dsp.draft!.channels[0].filters.length;
+    expect(() => setEqFilter(ch, n, { type: FilterType.Peaking, frequency: 1, q: 1, gain: 0 })).toThrow();
+  });
+
+  it('copyEqBands sends N independent setFilter calls (one per band)', async () => {
+    const device = initializedDevice({
+      setFilter: vi.fn(async () => {}),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    bindDevice(device);
+    const src = dsp.draft!.channels[0].id;
+    const tgt = dsp.draft!.channels[1].id;
+    const len = Math.min(dsp.draft!.channels.find((c) => c.id === src)!.filters.length,
+                         dsp.draft!.channels.find((c) => c.id === tgt)!.filters.length);
+    // Edit source first
+    setEqFilter(src, 0, { type: FilterType.Peaking, frequency: 2500, q: 2, gain: -4 });
+    setEqFilter(src, 1, { type: FilterType.Peaking, frequency: 5000, q: 1.5, gain: 2 });
+    await vi.runAllTimersAsync();
+    // Reset mock call count for copyEqBands test
+    vi.mocked(device.setFilter).mockClear();
+    // Now copy to target
+    copyEqBands(src, tgt);
+    const t = dsp.draft!.channels.find((c) => c.id === tgt)!;
+    const s = dsp.draft!.channels.find((c) => c.id === src)!;
+    expect(t.filters[0].frequency).toBe(2500); // optimistic patch
+    expect(t.filters[1].frequency).toBe(5000);
+    expect(s.filters[0].frequency).toBe(2500); // source unchanged
+    expect(s.filters[1].frequency).toBe(5000);
+    await vi.runAllTimersAsync();
+    expect(device.setFilter).toHaveBeenCalledTimes(len); // N independent setFilter calls
+    const calls = vi.mocked(device.setFilter).mock.calls;
+    expect(calls[0][1]).toBe(0); // band
+    expect(calls[0][2].frequency).toBe(2500);
+    expect(calls[1][1]).toBe(1); // band
+    expect(calls[1][2].frequency).toBe(5000);
   });
 });
 
