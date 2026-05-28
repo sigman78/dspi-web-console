@@ -489,34 +489,40 @@ describe('bulk writes: toggles', () => {
   });
 });
 
-describe('bulk writes: enums', () => {
-  let captured: import('@/protocol').BulkParams | null;
-  beforeEach(async () => {
-    captured = null;
-    await bootMock('rp2350');
+describe('granular writes: enums', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    bindDevice(initializedDevice({
-      setAllParams: vi.fn(async (b) => { captured = b; }),
-      getAllParams: vi.fn(async () => bulk),
-    }));
-    applyBaselineSnapshot(fromBulkParams(testHardware, bulk));
-    session.status = 'connected';
+    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
+  afterEach(() => { vi.useRealTimers(); bindDevice(null); });
 
-  it('setCrossfeedPreset writes the chosen preset into the bulk packet', async () => {
-    // Default from makeBulk() is CrossfeedPreset.Preset1 (0); pick Preset2 (1) to assert a change.
+  it('setCrossfeedPreset schedules a granular write and patches the snapshot', async () => {
+    const setCrossfeedPresetFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setCrossfeedPreset: setCrossfeedPresetFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    bindDevice(device);
     const target = CrossfeedPreset.Preset2;
     setCrossfeedPreset(target);
-    await awaitBulkSettled();
-    expect(captured?.crossfeed.preset).toBe(target);
+    expect(dsp.draft?.crossfeed.preset).toBe(target);
+    await vi.runAllTimersAsync();
+    expect(setCrossfeedPresetFn).toHaveBeenCalledWith(target);
   });
 
-  it('setLevellerSpeed writes the chosen speed into the bulk packet', async () => {
-    // Default from makeBulk() is LevellerSpeed.Slow (0); pick Fast (2) to assert a change.
+  it('setLevellerSpeed schedules a granular write and patches the snapshot', async () => {
+    const setLevellerSpeedFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setLevellerSpeed: setLevellerSpeedFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    bindDevice(device);
     const target = LevellerSpeed.Fast;
     setLevellerSpeed(target);
-    await awaitBulkSettled();
-    expect(captured?.leveller.speed).toBe(target);
+    expect(dsp.draft?.leveller?.speed).toBe(target);
+    await vi.runAllTimersAsync();
+    expect(setLevellerSpeedFn).toHaveBeenCalledWith(target);
   });
 });
 

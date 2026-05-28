@@ -120,7 +120,12 @@ export function setChannelName(id: ChannelId, name: string): void {
 }
 
 export function setLoudnessEnabled(enabled: boolean): void {
-  enqueue({ control: 'loudnessEnabled', mutate: (s) => { s.loudness.enabled = enabled; } });
+  enqueue({
+    control: 'loudnessEnabled',
+    coalesceKey: 'loudnessEnabled',
+    apply: () => { if (dsp.draft) dsp.draft.loudness.enabled = enabled; },
+    send: (d) => d.setLoudnessEnabled(enabled),
+  });
 }
 
 export function setLoudnessRefSpl(db: number): void {
@@ -134,15 +139,30 @@ export function setLoudnessIntensityPct(pct: number): void {
 }
 
 export function setCrossfeedEnabled(enabled: boolean): void {
-  enqueue({ control: 'crossfeedEnabled', mutate: (s) => { s.crossfeed.enabled = enabled; } });
+  enqueue({
+    control: 'crossfeedEnabled',
+    coalesceKey: 'crossfeedEnabled',
+    apply: () => { if (dsp.draft) dsp.draft.crossfeed.enabled = enabled; },
+    send: (d) => d.setCrossfeedEnabled(enabled),
+  });
 }
 
 export function setCrossfeedPreset(preset: CrossfeedPreset): void {
-  enqueue({ control: 'crossfeedPreset', mutate: (s) => { s.crossfeed.preset = preset; } });
+  enqueue({
+    control: 'crossfeedPreset',
+    coalesceKey: 'crossfeedPreset',
+    apply: () => { if (dsp.draft) dsp.draft.crossfeed.preset = preset; },
+    send: (d) => d.setCrossfeedPreset(preset),
+  });
 }
 
 export function setCrossfeedItd(itd: boolean): void {
-  enqueue({ control: 'crossfeedItd', mutate: (s) => { s.crossfeed.itd = itd; } });
+  enqueue({
+    control: 'crossfeedItd',
+    coalesceKey: 'crossfeedItd',
+    apply: () => { if (dsp.draft) dsp.draft.crossfeed.itd = itd; },
+    send: (d) => d.setCrossfeedItd(itd),
+  });
 }
 
 export function setCrossfeedFreq(hz: number): void {
@@ -156,15 +176,30 @@ export function setCrossfeedFeedDb(db: number): void {
 }
 
 export function setLevellerEnabled(enabled: boolean): void {
-  enqueue({ control: 'levellerEnabled', mutate: (s) => { if (s.leveller) s.leveller.enabled = enabled; } });
+  enqueue({
+    control: 'levellerEnabled',
+    coalesceKey: 'levellerEnabled',
+    apply: () => { if (dsp.draft?.leveller) dsp.draft.leveller.enabled = enabled; },
+    send: (d) => d.setLevellerEnabled(enabled),
+  });
 }
 
 export function setLevellerSpeed(speed: LevellerSpeed): void {
-  enqueue({ control: 'levellerSpeed', mutate: (s) => { if (s.leveller) s.leveller.speed = speed; } });
+  enqueue({
+    control: 'levellerSpeed',
+    coalesceKey: 'levellerSpeed',
+    apply: () => { if (dsp.draft?.leveller) dsp.draft.leveller.speed = speed; },
+    send: (d) => d.setLevellerSpeed(speed),
+  });
 }
 
 export function setLevellerLookahead(lookahead: boolean): void {
-  enqueue({ control: 'levellerLookahead', mutate: (s) => { if (s.leveller) s.leveller.lookahead = lookahead; } });
+  enqueue({
+    control: 'levellerLookahead',
+    coalesceKey: 'levellerLookahead',
+    apply: () => { if (dsp.draft?.leveller) dsp.draft.leveller.lookahead = lookahead; },
+    send: (d) => d.setLevellerLookahead(lookahead),
+  });
 }
 
 export function setLevellerAmount(pct: number): void {
