@@ -111,12 +111,18 @@ export function setChannelName(id: ChannelId, name: string): void {
   if (!ch) return;
   const resolved = name.trim() || ch.defaultName;
   const clamped = Clamp.nameToByteBudget(resolved, CHANNEL_NAME_MAX_LEN);
-  enqueue({ control: 'channelName', mutate: (s) => {
-    const c = s.channels.find((c) => c.id === id)!;
-    c.name = clamped;
-    const o = s.outputs.find((o) => o.id === id);
-    if (o) o.name = clamped;
-  } });
+  enqueue({
+    control: 'channelName',
+    coalesceKey: `channelName:${id}`,
+    apply: () => {
+      if (!dsp.draft) return;
+      const c = dsp.draft.channels.find((c) => c.id === id);
+      if (c) c.name = clamped;
+      const o = dsp.draft.outputs.find((o) => o.id === id);
+      if (o) o.name = clamped;
+    },
+    send: (d) => d.setChannelName(id, clamped),
+  });
 }
 
 export function setLoudnessEnabled(enabled: boolean): void {
