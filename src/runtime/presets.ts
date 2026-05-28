@@ -8,7 +8,7 @@ import {
 } from '@/state';
 import { reconcileAfterSync } from './actions';
 import { fetchAndApplyAsBaseline } from './resync';
-import { flush as flushWrites } from './outbox';
+import { flushAllWrites as flushWrites } from '@/device/writes';
 import type { DspDevice } from '@/device/DspDevice';
 import { type PresetSlot, PRESET_SLOT_COUNT } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';

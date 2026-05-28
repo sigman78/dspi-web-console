@@ -17,8 +17,7 @@ import {
 } from '@/domain';
 import { fromBulkParams, toBulkParams } from '@/device/snapshotCodec';
 
-import { cancel as cancelWrites, flush as flushWrites, awaitBulkSettled } from './outbox';
-import { cancelAllWrites } from '@/device/writes';
+import { cancelAllWrites as cancelWrites, flushAllWrites as flushWrites } from '@/device/writes';
 import { inflight } from '@/device/mirror.svelte';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
