@@ -34,10 +34,21 @@ describe('ConnectingHero — status text', () => {
     expect(screen.getByText('DISCONNECTED')).toBeInTheDocument();
   });
 
-  test('error → ERROR · <message>', () => {
-    setStatus('error', 'usb pipe broken');
+  test('error → ERROR status with full diagnostics panel', () => {
+    const full = 'usb pipe broken\n  at transfer (chunk.js:42)\n  at connect (chunk.js:17)';
+    setStatus('error', full);
     render(ConnectingHero);
-    expect(screen.getByText('ERROR · usb pipe broken')).toBeInTheDocument();
+    expect(screen.getByText('ERROR')).toBeInTheDocument();
+    const panel = screen.getByRole('alert');
+    expect(panel).toHaveTextContent('usb pipe broken');
+    expect(panel).toHaveTextContent('at transfer (chunk.js:42)');
+    expect(panel).toHaveTextContent('at connect (chunk.js:17)');
+  });
+
+  test('non-error states do not render the diagnostics panel', () => {
+    setStatus('idle');
+    render(ConnectingHero);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   test('webusb unsupported → WEBUSB UNAVAILABLE', () => {
