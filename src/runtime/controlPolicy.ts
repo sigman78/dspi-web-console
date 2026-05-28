@@ -30,9 +30,9 @@ export const CONTROL_POLICY = {
   levellerEnabled:   { strategy: 'granular', converge: 'resync' },
   levellerSpeed:     { strategy: 'granular', converge: 'resync' },
   levellerLookahead: { strategy: 'granular', converge: 'resync' },
-  outputDelay:       { strategy: 'bulk', converge: 'self' },
-  outputEnabled:     { strategy: 'bulk', converge: 'self' },
-  outputMuted:       { strategy: 'bulk', converge: 'self' },
+  outputDelay:       { strategy: 'granular', converge: 'resync' },
+  outputEnabled:     { strategy: 'granular', converge: 'resync' },
+  outputMuted:       { strategy: 'granular', converge: 'resync' },
 
   // Bulk debounced (16 ms trailing — rare numeric sliders).
   loudnessRefSpl:    { strategy: 'bulk', converge: 'self', debounceMs: 16 },

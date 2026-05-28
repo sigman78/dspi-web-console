@@ -319,27 +319,47 @@ export function setOutputGain(slot: OutputSlot, gainDb: number): void {
 // Bulk-path output addressing: locate the output by wire slot in the draft
 // being mutated. A missing slot is a silent no-op, matching the other bulk
 // verbs (the granular setOutputGain path uses focusOutput, which throws).
-function mutateOutputSlot(slot: OutputSlot, f: (o: OutputModel) => void): (s: DspSnapshot) => void {
-  return (s) => {
-    const o = s.outputs.find((o) => o.wireIndex === slot);
-    if (o) f(o);
-  };
-}
-
 export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
   if (!dsp.draft?.outputs) return;
   delayMs = Clamp.outputDelayMs(delayMs);
-  enqueue({ control: 'outputDelay', mutate: mutateOutputSlot(slot, (o) => { o.delayMs = delayMs; }) });
+  enqueue({
+    control: 'outputDelay',
+    coalesceKey: `outputDelay:${slot}`,
+    apply: () => {
+      if (!dsp.draft) return;
+      const o = dsp.draft.outputs.find((o) => o.wireIndex === slot);
+      if (o) o.delayMs = delayMs;
+    },
+    send: (d) => d.setOutputDelay(slot, delayMs),
+  });
 }
 
 export function setOutputEnabled(slot: OutputSlot, enabled: boolean): void {
   if (!dsp.draft?.outputs) return;
-  enqueue({ control: 'outputEnabled', mutate: mutateOutputSlot(slot, (o) => { o.enabled = enabled; }) });
+  enqueue({
+    control: 'outputEnabled',
+    coalesceKey: `outputEnabled:${slot}`,
+    apply: () => {
+      if (!dsp.draft) return;
+      const o = dsp.draft.outputs.find((o) => o.wireIndex === slot);
+      if (o) o.enabled = enabled;
+    },
+    send: (d) => d.setOutputEnable(slot, enabled),
+  });
 }
 
 export function setOutputMuted(slot: OutputSlot, muted: boolean): void {
   if (!dsp.draft?.outputs) return;
-  enqueue({ control: 'outputMuted', mutate: mutateOutputSlot(slot, (o) => { o.muted = muted; }) });
+  enqueue({
+    control: 'outputMuted',
+    coalesceKey: `outputMuted:${slot}`,
+    apply: () => {
+      if (!dsp.draft) return;
+      const o = dsp.draft.outputs.find((o) => o.wireIndex === slot);
+      if (o) o.muted = muted;
+    },
+    send: (d) => d.setOutputMute(slot, muted),
+  });
 }
 
 export async function syncDeviceSnapshot(): Promise<void> {

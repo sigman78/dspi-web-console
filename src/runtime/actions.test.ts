@@ -479,13 +479,20 @@ describe('bulk writes: toggles', () => {
     vi.useRealTimers();
   });
 
-  it('setOutputMuted flips the slot and the bulk packet reflects it', async () => {
+  it('setOutputMuted flips the slot and schedules a granular write', async () => {
+    vi.useFakeTimers();
+    const setOutputMuteFn = vi.fn(async () => {});
+    bindDevice(initializedDevice({
+      setOutputMute: setOutputMuteFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    }));
     const slot = dsp.draft!.outputs[0].wireIndex;
     const before = dsp.draft!.outputs[0].muted;
     setOutputMuted(slot, !before);
-    await awaitBulkSettled();
-    const wireOut = captured!.outputs[dsp.draft!.outputs[0].wireIndex];
-    expect(wireOut.muted).toBe(!before);
+    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(!before);
+    await vi.runAllTimersAsync();
+    expect(setOutputMuteFn).toHaveBeenCalledWith(slot, !before);
+    vi.useRealTimers();
   });
 });
 
@@ -563,13 +570,20 @@ describe('bulk writes: eq/delay/names', () => {
   });
 
 
-  it('setOutputDelay writes the slot delay into the snapshot and bulk packet', async () => {
+  it('setOutputDelay writes the slot delay into the snapshot and schedules a granular write', async () => {
+    vi.useFakeTimers();
+    const setOutputDelayFn = vi.fn(async () => {});
+    bindDevice(initializedDevice({
+      setOutputDelay: setOutputDelayFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    }));
     const slot = dsp.draft!.outputs[0].wireIndex;
     setOutputDelay(slot, 5);
-    await awaitBulkSettled();
     const o = dsp.draft!.outputs.find((o) => o.wireIndex === slot)!;
     expect(o.delayMs).toBe(5);
-    expect(captured!.outputs[slot].delayMs).toBe(5);
+    await vi.runAllTimersAsync();
+    expect(setOutputDelayFn).toHaveBeenCalledWith(slot, 5);
+    vi.useRealTimers();
   });
 
   it('setChannelName sets name and mirrors to the denormalized output entry', async () => {
@@ -750,43 +764,71 @@ describe('boolean device flags are explicit setters', () => {
   });
 
   it('setOutputEnabled(0, false) disables the output', async () => {
+    vi.useFakeTimers();
+    const setOutputEnableFn = vi.fn(async () => {});
+    bindDevice(initializedDevice({
+      setOutputEnable: setOutputEnableFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    }));
     const slot = dsp.draft!.outputs[0].wireIndex;
     setOutputEnabled(slot, false);
     expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.enabled).toBe(false);
-    await awaitBulkSettled();
-    expect(captured!.outputs[slot].enabled).toBe(false);
+    await vi.runAllTimersAsync();
+    expect(setOutputEnableFn).toHaveBeenCalledWith(slot, false);
+    vi.useRealTimers();
   });
 
   it('setOutputEnabled(0, true) enables the output', async () => {
+    vi.useFakeTimers();
+    const setOutputEnableFn = vi.fn(async () => {});
+    bindDevice(initializedDevice({
+      setOutputEnable: setOutputEnableFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    }));
     const slot = dsp.draft!.outputs[0].wireIndex;
     // First disable it
     setOutputEnabled(slot, false);
-    await awaitBulkSettled();
+    await vi.runAllTimersAsync();
     // Then explicitly enable
     setOutputEnabled(slot, true);
     expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.enabled).toBe(true);
-    await awaitBulkSettled();
-    expect(captured!.outputs[slot].enabled).toBe(true);
+    await vi.runAllTimersAsync();
+    expect(setOutputEnableFn).toHaveBeenLastCalledWith(slot, true);
+    vi.useRealTimers();
   });
 
   it('setOutputMuted(0, true) mutes the output', async () => {
+    vi.useFakeTimers();
+    const setOutputMuteFn = vi.fn(async () => {});
+    bindDevice(initializedDevice({
+      setOutputMute: setOutputMuteFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    }));
     const slot = dsp.draft!.outputs[0].wireIndex;
     setOutputMuted(slot, true);
     expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(true);
-    await awaitBulkSettled();
-    expect(captured!.outputs[slot].muted).toBe(true);
+    await vi.runAllTimersAsync();
+    expect(setOutputMuteFn).toHaveBeenCalledWith(slot, true);
+    vi.useRealTimers();
   });
 
   it('setOutputMuted(0, false) unmutes the output', async () => {
+    vi.useFakeTimers();
+    const setOutputMuteFn = vi.fn(async () => {});
+    bindDevice(initializedDevice({
+      setOutputMute: setOutputMuteFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    }));
     const slot = dsp.draft!.outputs[0].wireIndex;
     // First mute it
     setOutputMuted(slot, true);
-    await awaitBulkSettled();
+    await vi.runAllTimersAsync();
     // Then explicitly unmute
     setOutputMuted(slot, false);
     expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(false);
-    await awaitBulkSettled();
-    expect(captured!.outputs[slot].muted).toBe(false);
+    await vi.runAllTimersAsync();
+    expect(setOutputMuteFn).toHaveBeenLastCalledWith(slot, false);
+    vi.useRealTimers();
   });
 
   it('setCrosspointEnabled sets enabled to a specific value (not just toggle)', async () => {
