@@ -105,8 +105,8 @@ export function setBypass(enabled: boolean): void {
 
 // Telemetry-only action: clears firmware-side latched clip flags (0x83) and
 // resets the host-side OR-latch (`status.clipLatched`). Not routed through
-// the outbox write path because clip state lives in telemetry, not the
-// DSP snapshot, so the post-send bulk resync would be pure overhead. If the
+// the write/scrub helpers because clip state lives in telemetry, not the
+// DSP snapshot, so the post-send resync would be pure overhead. If the
 // wire send fails, the host array stays cleared — the next poll cycle
 // will re-latch from `clipFlags` if firmware still sees the condition.
 export function clearClips(): void {

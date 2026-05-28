@@ -17,7 +17,10 @@ import { type DspSnapshot } from '@/domain';
 //
 // Both cells are encapsulated behind the readonly DspStore view (external
 // modules read them and call the verbs, but can't reassign). pendingWrites is
-// readonly as a reference; the outbox calls .add()/.delete() on it directly.
+// readonly as a reference; legacy callers may add/remove Symbol tokens.
+// Note: device/mirror.svelte.ts exposes an `inflight` counter that supersedes
+// `pendingWrites` for new code. pendingWrites is kept for backward compat
+// until Phase D collapses the state layer.
 
 // Module-private mutable instance — only the verbs in this file assign its
 // cells.
@@ -32,7 +35,9 @@ class DspStateImpl {
   // disconnect so an offline view can render last-known-good.
   saved = $state<DspSnapshot | null>(null);
 
-  // Pending optimistic writes scheduled by src/runtime/outbox.ts.
+  // Legacy in-flight token set. Active code paths now bump device/mirror's
+  // `inflight` counter instead; this set remains for any leftover Symbol
+  // consumers and is scheduled for removal in Phase D.
   // Each in-flight command holds a Symbol token; isInFlight observes
   // the set's reactivity to drive the UI dirty indicator.
   pendingWrites = $state(new SvelteSet<symbol>());

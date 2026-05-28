@@ -109,9 +109,8 @@ function makeSnapshot(platform: PlatformType = PlatformType.RP2350) {
 //     poll's tick() re-arms requestAnimationFrame unconditionally; with fake
 //     timers faking rAF, a later vi.runAllTimersAsync() churns it forever and
 //     aborts with "10000 timers, assuming an infinite loop". endConnection() ends it.
-//   - the outbox's granular-lane registry + bulk-flush coordination /
-//     dsp.pendingWrites. cancelWrites() clears lanes, resets the bulk
-//     flush, and drops tokens.
+//   - device/writes scrub-lane registry + inflight counter.
+//     cancelWrites() (alias for cancelAllWrites) clears lanes and drops tokens.
 afterEach(() => { endConnection(); cancelWrites(); });
 
 describe('actions wiring', () => {
