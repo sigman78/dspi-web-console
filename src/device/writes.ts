@@ -18,6 +18,9 @@ function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+// Registry of in-flight write() promises so flushAllWrites can await them.
+const inflightWrites = new Set<Promise<void>>();
+
 // Click-paced write. Awaits the wire ack, mutates the mirror on success.
 // On throw: flips status to 'error' and forces a resync to recover ground
 // truth. The mutate is *never* applied on failure — the mirror never holds
@@ -28,17 +31,22 @@ export async function write(
 ): Promise<void> {
   const gen = session.generation;
   bumpInflight();
-  try {
-    await send();
-    if (gen === session.generation) mutate();
-  } catch (err) {
-    if (gen !== session.generation) return;
-    Log.error('writes', 'write send failed; forcing resync', err);
-    setStatus('error', errMessage(err));
-    void forceResyncNow();
-  } finally {
-    dropInflight();
-  }
+  const settled = (async () => {
+    try {
+      await send();
+      if (gen === session.generation) mutate();
+    } catch (err) {
+      if (gen !== session.generation) return;
+      Log.error('writes', 'write send failed; forcing resync', err);
+      setStatus('error', errMessage(err));
+      void forceResyncNow();
+    } finally {
+      dropInflight();
+      inflightWrites.delete(settled);
+    }
+  })();
+  inflightWrites.add(settled);
+  return settled;
 }
 
 // Per-key 16 ms latest-wins coalesce lane. Each scrub() call replaces the
@@ -131,13 +139,22 @@ export function scrub(
 }
 
 // Drain every armed lane and wait for its in-flight send to settle. Used
-// by preset transitions before issuing a flash command.
+// by preset transitions before issuing a flash command. Also awaits any
+// in-flight write() operations (fire-and-forget click-paced writes).
 export async function flushAllWrites(): Promise<void> {
-  await Promise.all([...lanes.values()].map((l) => l.flushNow()));
+  await Promise.all([
+    ...[...lanes.values()].map((l) => l.flushNow()),
+    ...[...inflightWrites],
+  ]);
 }
 
 // Cancel every armed lane without firing. Used by the disconnect path.
+// Also clears the inflightWrites registry: the generation guard already
+// prevents stale settles from mutating or triggering recovery; clearing
+// the registry ensures flushAllWrites on the next connection doesn't
+// await ghosts from a prior session.
 export function cancelAllWrites(): void {
   for (const lane of lanes.values()) lane.cancel();
   lanes.clear();
+  inflightWrites.clear();
 }

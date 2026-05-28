@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { isInFlight } from '@/state';
+  import { isInFlight } from '@/device/mirror.svelte';
 </script>
 
 <span class="dirty-dot" class:active={isInFlight.current} aria-hidden="true"></span>

@@ -1,4 +1,4 @@
-import { session, applyDraftSnapshot, dsp } from '@/state';
+import { session, applyDraftSnapshot } from '@/state';
 import { Log } from '@/utils';
 import { makeResyncScheduler } from './schedulers';
 import * as mirror from '@/device/mirror.svelte';
@@ -10,10 +10,10 @@ async function fetchAndApply(force: boolean): Promise<void> {
   if (!d) return;
   // Soft-skip if any optimistic write is in flight; forceResyncNow()
   // bypasses for failure recovery.
-  if (!force && dsp.pendingWrites.size > 0) return;
+  if (!force && mirror.inflight.current > 0) return;
   try {
     const snap = await d.getSnapshot();
-    if (!force && dsp.pendingWrites.size > 0) return;
+    if (!force && mirror.inflight.current > 0) return;
     // Draft-only: the preset-dirty diff measures against `dsp.saved`,
     // which must NOT auto-update on every resync. Callers that need to
     // re-baseline saved (Preset Load/Revert) call refreshSavedFromDraft

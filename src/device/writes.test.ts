@@ -158,3 +158,40 @@ describe('scrub() helper', () => {
     expect(forceResyncNow).not.toHaveBeenCalled();
   });
 });
+
+describe('flushAllWrites covers write() calls', () => {
+  beforeEach(() => {
+    while (mirror.inflight.current > 0) mirror.dropInflight();
+    session.generation = 0;
+    cancelAllWrites();
+  });
+
+  it('flushAllWrites awaits in-flight write() before resolving', async () => {
+    let resolveSend!: () => void;
+    let mutated = false;
+    const send = vi.fn(() => new Promise<void>((r) => { resolveSend = r; }));
+    const mutate = vi.fn(() => { mutated = true; });
+    void write(send, mutate);
+    // The write is in flight. flushAllWrites must wait for it.
+    let flushed = false;
+    const flushP = flushAllWrites().then(() => { flushed = true; });
+    // Yield once: flush should NOT have resolved yet
+    await Promise.resolve();
+    expect(flushed).toBe(false);
+    // Settle the send
+    resolveSend!();
+    await flushP;
+    expect(flushed).toBe(true);
+    expect(mutated).toBe(true);
+  });
+
+  it('inflight counter is non-zero during a write() in flight', async () => {
+    let resolveSend!: () => void;
+    const send = vi.fn(() => new Promise<void>((r) => { resolveSend = r; }));
+    void write(send, () => {});
+    expect(mirror.inflight.current).toBe(1);
+    resolveSend!();
+    await flushAllWrites();
+    expect(mirror.inflight.current).toBe(0);
+  });
+});
