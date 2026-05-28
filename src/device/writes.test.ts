@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { write, scrub, flushAllWrites, cancelAllWrites } from './writes';
-import * as mirror from '@/state/mirror.svelte';
+import { inflight, dropInflight } from '@/state/mirror.svelte';
 import { session } from '@/state';
 
 // Mock the resync module so write() failures don't actually fire HTTP.
@@ -10,7 +10,7 @@ vi.mock('@/runtime/resync', () => ({
 
 describe('write() helper', () => {
   beforeEach(() => {
-    while (mirror.inflight.current > 0) mirror.dropInflight();
+    while (inflight.current > 0) dropInflight();
     session.generation = 0;
     vi.clearAllMocks();
   });
@@ -28,11 +28,11 @@ describe('write() helper', () => {
   it('bumps inflight during send and drops after settle', async () => {
     let inflightDuringSend = -1;
     const send = vi.fn(async () => {
-      inflightDuringSend = mirror.inflight.current;
+      inflightDuringSend = inflight.current;
     });
     await write(send, () => {});
     expect(inflightDuringSend).toBe(1);
-    expect(mirror.inflight.current).toBe(0);
+    expect(inflight.current).toBe(0);
   });
 
   it('does not mutate when send rejects', async () => {
@@ -40,7 +40,7 @@ describe('write() helper', () => {
     const send = vi.fn(async () => { throw new Error('boom'); });
     await write(send, mutate);
     expect(mutate).not.toHaveBeenCalled();
-    expect(mirror.inflight.current).toBe(0);
+    expect(inflight.current).toBe(0);
   });
 
   it('does not mutate when generation changes mid-flight', async () => {
@@ -52,7 +52,7 @@ describe('write() helper', () => {
     resolveSend!();
     await p;
     expect(mutate).not.toHaveBeenCalled();
-    expect(mirror.inflight.current).toBe(0);
+    expect(inflight.current).toBe(0);
   });
 
   it('does not call forceResyncNow on failure if generation changed', async () => {
@@ -76,7 +76,7 @@ describe('write() helper', () => {
 
 describe('scrub() helper', () => {
   beforeEach(() => {
-    while (mirror.inflight.current > 0) mirror.dropInflight();
+    while (inflight.current > 0) dropInflight();
     session.generation = 0;
     vi.clearAllMocks();
     cancelAllWrites();  // ensure no leftover lane state between tests
@@ -121,9 +121,9 @@ describe('scrub() helper', () => {
   it('cancelAllWrites resets inflight to 0', () => {
     scrub('k1', () => {}, async () => {});
     scrub('k2', () => {}, async () => {});
-    expect(mirror.inflight.current).toBeGreaterThan(0);
+    expect(inflight.current).toBeGreaterThan(0);
     cancelAllWrites();
-    expect(mirror.inflight.current).toBe(0);
+    expect(inflight.current).toBe(0);
   });
 
   it('on send failure: forceResyncNow called, lane recovers', async () => {
@@ -132,6 +132,14 @@ describe('scrub() helper', () => {
     scrub('k1', () => {}, send);
     await flushAllWrites();
     expect(forceResyncNow).toHaveBeenCalled();
+  });
+
+  it('on send success: forceResyncNow reconciles optimistic state', async () => {
+    const { forceResyncNow } = await import('@/runtime/resync');
+    const send = vi.fn(async () => {});
+    scrub('k1', () => {}, send);
+    await flushAllWrites();
+    expect(forceResyncNow).toHaveBeenCalledTimes(1);
   });
 
   it('stale-gen settle does not call forceResyncNow', async () => {
@@ -151,7 +159,7 @@ describe('scrub() helper', () => {
 
 describe('flushAllWrites covers write() calls', () => {
   beforeEach(() => {
-    while (mirror.inflight.current > 0) mirror.dropInflight();
+    while (inflight.current > 0) dropInflight();
     session.generation = 0;
     cancelAllWrites();
   });
@@ -179,9 +187,9 @@ describe('flushAllWrites covers write() calls', () => {
     let resolveSend!: () => void;
     const send = vi.fn(() => new Promise<void>((r) => { resolveSend = r; }));
     void write(send, () => {});
-    expect(mirror.inflight.current).toBe(1);
+    expect(inflight.current).toBe(1);
     resolveSend!();
     await flushAllWrites();
-    expect(mirror.inflight.current).toBe(0);
+    expect(inflight.current).toBe(0);
   });
 });

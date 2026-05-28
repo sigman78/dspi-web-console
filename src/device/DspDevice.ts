@@ -2,7 +2,7 @@ import type { DspTransport } from '@/transport/DspTransport';
 import * as proto from '@/protocol';
 import { Codec, utf8Truncate, type Result } from '@/utils';
 import * as domain from '@/domain';
-import { fromBulkParams, toBulkParams, type DeviceState } from './snapshotCodec';
+import { fromBulkParams, type DeviceState } from './snapshotCodec';
 
 // Bit N of the firmware's u16 occupiedMask = slot N populated.
 function occupiedMaskToSet(mask: number): ReadonlySet<domain.PresetSlot> {
@@ -77,41 +77,21 @@ export class DspDevice {
     return domain.wireChannelFor(this.hardware, channel);
   }
 
-  #wireBase: proto.BulkParams | null = null;
-
-  // True once at least one packet has been fetched; guards optimistic bulk
-  // writes during the connect race (a write before the first snapshot has no
-  // base packet to overlay).
-  get hasState(): boolean {
-    return this.#wireBase !== null;
-  }
-
-  // Snapshot-out: fetch the wire packet, retain it as the overlay base, return
-  // the domain view. The sole app-facing read path.
+  // Snapshot-out: fetch the wire packet and return the domain view. The sole
+  // app-facing read path.
   async getSnapshot(): Promise<domain.DspSnapshot> {
-    const bulk = await this.getAllParams();
-    this.#wireBase = bulk;
-    return fromBulkParams(this.hardware, bulk);
+    return fromBulkParams(this.hardware, await this.getAllParams());
   }
 
-  // Snapshot-in: overlay the draft onto the retained base packet and push it,
-  // then retain the just-sent packet as the new base.
-  async applyBulk(draft: domain.DspSnapshot): Promise<void> {
-    if (!this.#wireBase) throw new Error('applyBulk before getSnapshot: no wire base');
-    const bulk = toBulkParams(this.hardware, draft, this.#wireBase);
-    await this.setAllParams(bulk);
-    this.#wireBase = bulk;
-  }
-
-  // Opaque capture for the device-to-device paste copy. Fresh wire fetch that
-  // deliberately does NOT update #wireBase.
+  // Opaque capture for the device-to-device paste copy. The blob is a wire
+  // packet; runtime never inspects it (the brand keeps the wire shape out of
+  // runtime types).
   async captureState(): Promise<DeviceState> {
     return (await this.getAllParams()) as DeviceState;
   }
 
   async restoreState(state: DeviceState): Promise<void> {
     await this.setAllParams(state);
-    this.#wireBase = state;
   }
 
   async getAllParams(): Promise<proto.BulkParams> {
@@ -326,13 +306,10 @@ export class DspDevice {
   }
 
   // Per-parameter ("granular") lane -----------------------------------------
-  // The default app write path is getSnapshot/applyBulk, which coalesces a
-  // whole DSP state into one transfer and keeps the optimistic #wireBase
-  // overlay coherent. The verbs below write a single parameter each and
-  // bypass that overlay; reach for them only for config the bulk packet does
-  // not carry (pin/I2S routing) or in HIL/unit tests. Per-param writes that
-  // overlap bulk fields (e.g. setFilter) must not be interleaved with an
-  // in-flight applyBulk.
+  // Every write goes through a granular verb. The bulk read path
+  // (getSnapshot) and the paste-only bulk write path (restoreState) are the
+  // only consumers of the all-params packet; the edit path is entirely
+  // per-field.
 
   // EQ
   async setFilter(channel: domain.ChannelId, band: number, p: domain.FilterParams): Promise<void> {

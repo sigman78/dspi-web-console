@@ -1,17 +1,17 @@
-import { session, applyDraftSnapshot } from '@/state';
+import { session } from '@/state';
 import { Log } from '@/utils';
-import * as mirror from '@/state/mirror.svelte';
+import { mirror } from '@/state/mirror.svelte';
 
-// Forced bulk re-fetch + draft-only apply. Used by failure recovery after
-// a write throws. Draft-only because preset-dirty diff measures against
-// `dsp.saved`, which must NOT drift on every resync; callers that need to
-// re-baseline saved (Preset Load / Revert) use fetchAndApplyAsBaseline.
+// Forced bulk re-fetch + current-only apply. Used by failure recovery after
+// a write throws. Current-only because the preset-dirty diff measures against
+// `presetBaseline`, which must NOT drift on every resync; callers that need to
+// re-baseline (Preset Load / Revert) use fetchAndApplyAsBaseline.
 export async function forceResyncNow(): Promise<void> {
   const d = session.device;
   if (!d) return;
   try {
     const snap = await d.getSnapshot();
-    applyDraftSnapshot(snap);
+    mirror.replaceCurrent(snap);
   } catch (err) {
     Log.warn('resync', 'bulk re-fetch failed', err);
   }

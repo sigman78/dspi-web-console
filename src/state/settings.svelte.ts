@@ -1,5 +1,5 @@
 import type { ChannelId } from '@/domain';
-import { dsp } from './dsp.svelte';
+import { mirror } from './mirror.svelte';
 
 export type TabId = 'overview' | 'eq' | 'mixer' | 'processing' | 'presets' | 'system';
 
@@ -168,15 +168,15 @@ export function setEqTarget(id: ChannelId | null): void {
   settings.eqTarget = id;
 }
 
-// After connection sync hydrates dsp.draft, validate the persisted eqTarget
-// against the connected platform's channel set. If the stored ID isn't
-// in dsp.draft.channels (e.g. user reconnected to a smaller-platform
-// device), fall back to the first output channel. eqTarget === null
+// After connection sync hydrates mirror.current, validate the persisted
+// eqTarget against the connected platform's channel set. If the stored ID
+// isn't in mirror.current.channels (e.g. user reconnected to a smaller-
+// platform device), fall back to the first output channel. eqTarget === null
 // stays null -- explicit "no selection" is a valid persisted state.
 export function reconcileEqTarget(): void {
   const target = settings.eqTarget;
   if (target === null) return;
-  const channels = dsp.draft?.channels;
+  const channels = mirror.current?.channels;
   if (!channels) return;
   if (channels.some((c) => c.id === target)) return;
   const firstOutput = channels.find((c) => c.isOutput);

@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import * as mirror from './mirror.svelte';
-import { dsp, resetDsp } from './dsp.svelte';
+import {
+  mirror, presetBaseline,
+  inflight, isInFlight,
+  bumpInflight, dropInflight,
+} from './mirror.svelte';
 import type { DspSnapshot } from '@/domain';
 
-function fakeSnap(): DspSnapshot {
+function fakeSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
   return {
     bypass: false,
     masterVolumeDb: 0,
@@ -19,71 +22,109 @@ function fakeSnap(): DspSnapshot {
     outputPins: [],
     formatVersion: 6,
     platform: { type: 0, name: 'test', outputCount: 0, totalChannelCount: 0, pdmOutputIndex: -1 },
+    ...overrides,
   } as unknown as DspSnapshot;
 }
 
-describe('mirror façade', () => {
+describe('mirror store', () => {
   beforeEach(() => {
-    resetDsp();
-    while (mirror.inflight.current > 0) mirror.dropInflight();
-  });
-
-  it('init populates the mirror via applyBaselineSnapshot', () => {
-    const snap = fakeSnap();
-    mirror.init(snap);
-    expect(dsp.draft).toBeTruthy();
-    expect(dsp.draft?.bypass).toBe(false);
-  });
-
-  it('reset clears the mirror via resetDsp', () => {
-    mirror.init(fakeSnap());
     mirror.reset();
-    expect(dsp.draft).toBeNull();
+    while (inflight.current > 0) dropInflight();
   });
 
-  it('inflight counter starts at zero', () => {
-    expect(mirror.inflight.current).toBe(0);
+  describe('init (atomic baseline)', () => {
+    it('populates current and baseline together', () => {
+      mirror.init(fakeSnap());
+      expect(mirror.current).not.toBeNull();
+      expect(presetBaseline.current).not.toBeNull();
+    });
+
+    it('baseline is a deep clone, not a shared reference', () => {
+      mirror.init(fakeSnap());
+      expect(presetBaseline.current).toEqual(mirror.current);
+      expect(presetBaseline.current).not.toBe(mirror.current);
+    });
+
+    it('mutating current after init does not affect baseline', () => {
+      mirror.init(fakeSnap());
+      mirror.current!.bypass = true;
+      expect(presetBaseline.current!.bypass).toBe(false);
+    });
+
+    it('a second init replaces both cells', () => {
+      mirror.init(fakeSnap({ masterVolumeDb: -6 } as Partial<DspSnapshot>));
+      mirror.init(fakeSnap({ masterVolumeDb: -12 } as Partial<DspSnapshot>));
+      expect(mirror.current!.masterVolumeDb).toBe(-12);
+      expect(presetBaseline.current!.masterVolumeDb).toBe(-12);
+    });
   });
 
-  it('inflight counter is bumpable and droppable', () => {
-    mirror.bumpInflight();
-    expect(mirror.inflight.current).toBe(1);
-    mirror.bumpInflight();
-    expect(mirror.inflight.current).toBe(2);
-    mirror.dropInflight();
-    expect(mirror.inflight.current).toBe(1);
-    mirror.dropInflight();
-    expect(mirror.inflight.current).toBe(0);
+  describe('replaceCurrent (current-only refresh)', () => {
+    it('advances current but leaves baseline pinned', () => {
+      mirror.init(fakeSnap({ masterVolumeDb: -10 } as Partial<DspSnapshot>));
+      const baselineBefore = presetBaseline.current;
+
+      mirror.replaceCurrent(fakeSnap({ masterVolumeDb: -20 } as Partial<DspSnapshot>));
+
+      expect(mirror.current!.masterVolumeDb).toBe(-20);
+      expect(presetBaseline.current).toBe(baselineBefore);
+      expect(presetBaseline.current!.masterVolumeDb).toBe(-10);
+    });
   });
 
-  it('dropInflight at 0 stays at 0 (does not go negative)', () => {
-    mirror.dropInflight();
-    expect(mirror.inflight.current).toBe(0);
+  describe('captureBaseline', () => {
+    it('copies current to baseline', () => {
+      mirror.init(fakeSnap());
+      mirror.current!.bypass = true;
+      expect(presetBaseline.current!.bypass).toBe(false);
+      mirror.captureBaseline();
+      expect(presetBaseline.current!.bypass).toBe(true);
+    });
+
+    it('does not share refs (subsequent edits to current do not propagate)', () => {
+      mirror.init(fakeSnap());
+      mirror.captureBaseline();
+      mirror.current!.bypass = true;
+      expect(presetBaseline.current!.bypass).toBe(false);
+    });
+
+    it('no-op when current is null', () => {
+      mirror.reset();
+      expect(() => mirror.captureBaseline()).not.toThrow();
+    });
   });
 
-  it('isInFlight reflects counter state', () => {
-    expect(mirror.isInFlight.current).toBe(false);
-    mirror.bumpInflight();
-    expect(mirror.isInFlight.current).toBe(true);
-    mirror.dropInflight();
-    expect(mirror.isInFlight.current).toBe(false);
+  describe('reset', () => {
+    it('clears current but preserves baseline', () => {
+      mirror.init(fakeSnap());
+      const baselineBefore = presetBaseline.current;
+      mirror.reset();
+      expect(mirror.current).toBeNull();
+      expect(presetBaseline.current).toBe(baselineBefore);
+    });
   });
 
-  it('captureBaseline calls refreshSavedFromDraft when draft present', () => {
-    const snap = fakeSnap();
-    mirror.init(snap);
-    if (dsp.draft) dsp.draft.bypass = true;
-    mirror.captureBaseline();
-    expect(dsp.saved?.bypass).toBe(true);
-  });
+  describe('inflight counter', () => {
+    it('starts at zero', () => {
+      expect(inflight.current).toBe(0);
+      expect(isInFlight.current).toBe(false);
+    });
 
-  it('mirror.current returns dsp.draft', () => {
-    mirror.init(fakeSnap());
-    expect(mirror.mirror.current).toBe(dsp.draft);
-  });
+    it('bumps and drops symmetrically', () => {
+      bumpInflight();
+      bumpInflight();
+      expect(inflight.current).toBe(2);
+      expect(isInFlight.current).toBe(true);
+      dropInflight();
+      expect(inflight.current).toBe(1);
+      dropInflight();
+      expect(inflight.current).toBe(0);
+      expect(isInFlight.current).toBe(false);
+    });
 
-  it('presetBaseline.current returns dsp.saved', () => {
-    mirror.init(fakeSnap());
-    expect(mirror.presetBaseline.current).toBe(dsp.saved);
+    it('dropInflight at 0 stays at 0', () => {
+      dropInflight();
+      expect(inflight.current).toBe(0);
+    });
   });
 });

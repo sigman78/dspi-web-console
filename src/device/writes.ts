@@ -42,10 +42,10 @@ export async function write(
       void forceResyncNow();
     } finally {
       dropInflight();
-      inflightWrites.delete(settled);
     }
   })();
   inflightWrites.add(settled);
+  void settled.finally(() => inflightWrites.delete(settled));
   return settled;
 }
 
@@ -78,6 +78,7 @@ function makeLane(key: string, ms: number): Lane {
       .then(async () => {
         try {
           await thunk();
+          if (gen === session.generation) await forceResyncNow();
         } catch (err) {
           if (gen !== session.generation) return;
           Log.error('writes', `scrub ${key} send failed; forcing resync`, err);

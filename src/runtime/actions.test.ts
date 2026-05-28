@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled } from './actions';
-import { session, bindDevice, settings, dsp, status as statusStore, presets, applyBaselineSnapshot, applyDraftSnapshot, resetDsp } from '@/state';
+import { session, bindDevice, settings, mirror, presetBaseline, status as statusStore, presets } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -11,11 +11,12 @@ import {
   PlatformType,
   createHardwareProfile,
   type ChannelId,
+  type FilterParams,
   MasterVolumeMode,
   CrossfeedPreset,
   LevellerSpeed,
 } from '@/domain';
-import { fromBulkParams, toBulkParams } from '@/device/snapshotCodec';
+import { fromBulkParams } from '@/device/snapshotCodec';
 
 import { cancelAllWrites as cancelWrites, flushAllWrites as flushWrites } from '@/device/writes';
 import { inflight } from '@/state/mirror.svelte';
@@ -23,9 +24,7 @@ import { beginConnection, connectionScope, endConnection } from './connectionSco
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 
-// Builds a DspDevice stub mirroring the real one: applyBulk overlays the draft
-// onto the last-fetched wire packet via toBulkParams and forwards to setAllParams
-// (which tests spy on). hasState defaults true. Any method can be overridden.
+// Builds a DspDevice stub with identity defaults. Any method can be overridden.
 function initializedDevice(methods: Partial<DspDevice>): DspDevice {
   const base: Partial<DspDevice> = {
     info: {
@@ -35,22 +34,8 @@ function initializedDevice(methods: Partial<DspDevice>): DspDevice {
       hardware: testHardware,
     },
     hardware: testHardware,
-    hasState: true,
   };
-  const stub = { ...base, ...methods } as DspDevice & {
-    getAllParams?: () => Promise<import('@/protocol').BulkParams>;
-    setAllParams?: (b: import('@/protocol').BulkParams) => Promise<void>;
-  };
-  // Default applyBulk (overlay draft + forward to setAllParams) unless supplied.
-  if (!('applyBulk' in methods)) {
-    (stub as { applyBulk?: (draft: import('@/domain').DspSnapshot) => Promise<void> }).applyBulk =
-      async (draft) => {
-        const baseBulk = await stub.getAllParams!();
-        const wire = toBulkParams(testHardware, draft, baseBulk);
-        await stub.setAllParams!(wire);
-      };
-  }
-  return stub;
+  return { ...base, ...methods } as DspDevice;
 }
 
 class FakeTransport implements DspTransport {
@@ -120,7 +105,7 @@ describe('actions wiring', () => {
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
     const bulk = parseBulkParams(makeBulk({ masterVolumeDb: 0 }));
-    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
 
   afterEach(() => {
@@ -154,7 +139,6 @@ describe('actions wiring', () => {
     beginConnection();
     connectionScope()!.add(attachTransportListeners(transport));
     connectionScope()!.add(() => cancelWrites());
-    connectionScope()!.add(() => cancelAllWrites());
 
     setMasterVolume(-9);                      // queues a write
     transport.emit('disconnect');             // should cancel before timer fires
@@ -207,14 +191,14 @@ describe('actions wiring', () => {
     });
     bindDevice(device);
 
-    const sourceId = dsp.draft!.channels[0].id;
-    const targetId = dsp.draft!.channels[1].id;
+    const sourceId = mirror.current!.channels[0].id;
+    const targetId = mirror.current!.channels[1].id;
     copyEqBands(sourceId, targetId);
     // Flush microtasks so the async sends resolve and mutates apply.
     await vi.runAllTimersAsync();
 
-    const tgt = dsp.draft!.channels.find((c) => c.id === targetId)!;
-    const src = dsp.draft!.channels.find((c) => c.id === sourceId)!;
+    const tgt = mirror.current!.channels.find((c) => c.id === targetId)!;
+    const src = mirror.current!.channels.find((c) => c.id === sourceId)!;
     // All bands should match source.
     for (let i = 0; i < Math.min(src.filters.length, tgt.filters.length); i++) {
       expect(tgt.filters[i]).toEqual(src.filters[i]);
@@ -226,7 +210,7 @@ describe('setEqFilter', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
     bindDevice(initializedDevice({
       setFilter: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
@@ -241,9 +225,9 @@ describe('setEqFilter', () => {
     // setEqFilter awaits the wire send, then mutates draft (await-then-mutate).
     setEqFilter(0, 1, { type: FilterType.Peaking, frequency: 2000, q: 1, gain: 3 });
     await vi.runAllTimersAsync();
-    expect(dsp.draft?.channels[0].filters[1].frequency).toBe(2000);
-    expect(dsp.draft?.channels[0].filters[1].type).toBe(FilterType.Peaking);
-    expect(dsp.draft?.channels[0].filters[1].gain).toBe(3);
+    expect(mirror.current?.channels[0].filters[1].frequency).toBe(2000);
+    expect(mirror.current?.channels[0].filters[1].type).toBe(FilterType.Peaking);
+    expect(mirror.current?.channels[0].filters[1].gain).toBe(3);
   });
 
   it('rapid edits to the same band each apply independently (no coalescing)', async () => {
@@ -252,7 +236,44 @@ describe('setEqFilter', () => {
       setEqFilter(0, 1, { type: FilterType.Peaking, frequency: f, q: 1, gain: 0 });
     }
     await vi.runAllTimersAsync();
-    expect(dsp.draft?.channels[0].filters[1].frequency).toBe(1000);
+    expect(mirror.current?.channels[0].filters[1].frequency).toBe(1000);
+  });
+
+  it('composes rapid partial edits against the pending band before acks', async () => {
+    const calls: FilterParams[] = [];
+    const resolves: Array<() => void> = [];
+    bindDevice(initializedDevice({
+      setFilter: vi.fn((_ch: number, _band: number, f: FilterParams) => {
+        calls.push({ ...f });
+        return new Promise<void>((resolve) => { resolves.push(resolve); });
+      }),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    }));
+    const first = {
+      ...mirror.current!.channels[0].filters[1],
+      frequency: 2000,
+    };
+
+    setEqFilter(0, 1, first);
+    const second = {
+      ...mirror.current!.channels[0].filters[1],
+      gain: 4,
+    };
+    setEqFilter(0, 1, second);
+
+    expect(calls).toHaveLength(2);
+    expect(calls[1].frequency).toBe(2000);
+    expect(calls[1].gain).toBe(4);
+    expect(mirror.current?.channels[0].filters[1].frequency).toBe(2000);
+    expect(mirror.current?.channels[0].filters[1].gain).toBe(4);
+
+    resolves[1]();
+    await vi.runAllTimersAsync();
+    resolves[0]();
+    await vi.runAllTimersAsync();
+
+    expect(mirror.current?.channels[0].filters[1].frequency).toBe(2000);
+    expect(mirror.current?.channels[0].filters[1].gain).toBe(4);
   });
 
   it('edits to different bands are all reflected in the snapshot', async () => {
@@ -260,18 +281,18 @@ describe('setEqFilter', () => {
     setEqFilter(0, 1, { type: FilterType.Peaking, frequency: 200, q: 1, gain: 0 });
     setEqFilter(0, 2, { type: FilterType.Peaking, frequency: 300, q: 1, gain: 0 });
     await vi.runAllTimersAsync();
-    expect(dsp.draft?.channels[0].filters[0].frequency).toBe(100);
-    expect(dsp.draft?.channels[0].filters[1].frequency).toBe(200);
-    expect(dsp.draft?.channels[0].filters[2].frequency).toBe(300);
+    expect(mirror.current?.channels[0].filters[0].frequency).toBe(100);
+    expect(mirror.current?.channels[0].filters[1].frequency).toBe(200);
+    expect(mirror.current?.channels[0].filters[2].frequency).toBe(300);
   });
 
   it('throws on out-of-range band and leaves snapshot unchanged', async () => {
-    const before = { ...dsp.draft!.channels[0].filters[1] };
-    const n = dsp.draft!.channels[0].filters.length;
+    const before = { ...mirror.current!.channels[0].filters[1] };
+    const n = mirror.current!.channels[0].filters.length;
     expect(() => setEqFilter(0, n, { type: FilterType.Peaking, frequency: 9999, q: 1, gain: 12 })).toThrow();
     await vi.runAllTimersAsync();
     // Snapshot must not have changed for the valid band.
-    expect(dsp.draft?.channels[0].filters[1]).toEqual(before);
+    expect(mirror.current?.channels[0].filters[1]).toEqual(before);
   });
 });
 
@@ -279,7 +300,7 @@ describe('setMasterPreamp', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -295,7 +316,7 @@ describe('setMasterPreamp', () => {
     bindDevice(device);
 
     setMasterPreamp(-3);
-    expect(dsp.draft?.masterPreampDb).toBe(-3);
+    expect(mirror.current?.masterPreampDb).toBe(-3);
     await vi.runAllTimersAsync();
     expect(setMasterPreampFn).toHaveBeenCalledWith(-3);
   });
@@ -305,7 +326,7 @@ describe('setInputPreamp', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -322,7 +343,7 @@ describe('setInputPreamp', () => {
 
     setInputPreamp(0, -2);
     setInputPreamp(1, -4);
-    expect(dsp.draft?.inputPreampDb).toEqual([-2, -4]);
+    expect(mirror.current?.inputPreampDb).toEqual([-2, -4]);
     await vi.runAllTimersAsync();
     expect(setInputPreampFn).toHaveBeenCalledWith(0, -2);
     expect(setInputPreampFn).toHaveBeenCalledWith(1, -4);
@@ -351,7 +372,7 @@ describe('setChannelName', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
     bindDevice(initializedDevice({
       setChannelName: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
@@ -362,29 +383,29 @@ describe('setChannelName', () => {
     bindDevice(null);
   });
 
-  it('patches dsp.draft.channels[i].name after send acks', async () => {
+  it('patches mirror.current.channels[i].name after send acks', async () => {
     // setChannelName awaits the wire send, then mutates draft (await-then-mutate).
     setChannelName(0 satisfies ChannelId, 'Studio Left');
     await vi.runAllTimersAsync();
-    expect(dsp.draft!.channels[0].name).toBe('Studio Left');
+    expect(mirror.current!.channels[0].name).toBe('Studio Left');
   });
 
   it('treats empty input as a clear: snapshot falls back to defaultName', async () => {
-    const defaultName = dsp.draft!.channels[0].defaultName;
+    const defaultName = mirror.current!.channels[0].defaultName;
     setChannelName(0 satisfies ChannelId, '');
     await vi.runAllTimersAsync();
-    expect(dsp.draft!.channels[0].name).toBe(defaultName);
+    expect(mirror.current!.channels[0].name).toBe(defaultName);
   });
 
   it('trims whitespace-only input the same as empty', async () => {
-    const defaultName = dsp.draft!.channels[0].defaultName;
+    const defaultName = mirror.current!.channels[0].defaultName;
     setChannelName(0 satisfies ChannelId, '   ');
     await vi.runAllTimersAsync();
-    expect(dsp.draft!.channels[0].name).toBe(defaultName);
+    expect(mirror.current!.channels[0].name).toBe(defaultName);
   });
 
-  it('is a no-op when dsp.draft is null', () => {
-    resetDsp();
+  it('is a no-op when mirror.current is null', () => {
+    mirror.reset();
     // Should not throw.
     expect(() => setChannelName(0 satisfies ChannelId, 'X')).not.toThrow();
   });
@@ -392,22 +413,22 @@ describe('setChannelName', () => {
   it('trims whitespace and stores the resolved value in the snapshot', async () => {
     setChannelName(0 satisfies ChannelId, '  padded  ');
     await vi.runAllTimersAsync();
-    expect(dsp.draft!.channels[0].name).toBe('padded'); // resolved (trimmed)
+    expect(mirror.current!.channels[0].name).toBe('padded'); // resolved (trimmed)
   });
 
-  it('also patches dsp.draft.outputs[i].name when the channel is an output', async () => {
+  it('also patches mirror.current.outputs[i].name when the channel is an output', async () => {
     // ChannelId.Out1L = 2; corresponding outputs[] entry has wireIndex 0.
     setChannelName(2 satisfies ChannelId, 'Front Left');
     await vi.runAllTimersAsync();
 
-    const channel = dsp.draft!.channels.find((c) => c.id === 2);
-    const output = dsp.draft!.outputs.find((o) => o.wireIndex === 0);
+    const channel = mirror.current!.channels.find((c) => c.id === 2);
+    const output = mirror.current!.outputs.find((o) => o.wireIndex === 0);
     expect(channel?.name).toBe('Front Left');
     expect(output?.name).toBe('Front Left');
   });
 
   it('patches RP2040 PDM output name at compact output slot 4', async () => {
-    applyDraftSnapshot(makeSnapshot(PlatformType.RP2040));
+    mirror.replaceCurrent(makeSnapshot(PlatformType.RP2040));
     bindDevice(initializedDevice({
       setChannelName: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
@@ -416,32 +437,22 @@ describe('setChannelName', () => {
     setChannelName(10 satisfies ChannelId, 'Sub');
     await vi.runAllTimersAsync();
 
-    const channel = dsp.draft!.channels.find((c) => c.id === 10);
-    const output = dsp.draft!.outputs.find((o) => o.wireIndex === 4);
+    const channel = mirror.current!.channels.find((c) => c.id === 10);
+    const output = mirror.current!.outputs.find((o) => o.wireIndex === 4);
     expect(channel?.name).toBe('Sub');
     expect(output?.name).toBe('Sub');
-    expect(dsp.draft!.outputs.some((o) => o.wireIndex === 8)).toBe(false);
+    expect(mirror.current!.outputs.some((o) => o.wireIndex === 8)).toBe(false);
   });
 
   it('does not touch outputs[] when renaming an input channel', async () => {
-    const outputsBefore = dsp.draft!.outputs.map((o) => o.name).slice();
+    const outputsBefore = mirror.current!.outputs.map((o) => o.name).slice();
 
     // ChannelId.In1L = 0 — no entry in outputs[].
     setChannelName(0 satisfies ChannelId, 'Mic 1');
     await vi.runAllTimersAsync();
 
-    const outputsAfter = dsp.draft!.outputs.map((o) => o.name);
+    const outputsAfter = mirror.current!.outputs.map((o) => o.name);
     expect(outputsAfter).toEqual(outputsBefore);
-  });
-});
-
-describe('finishConnection — baseline hydrate', () => {
-  beforeEach(async () => {
-    await bootMock('rp2350');
-  });
-
-  it('finishConnection retains a wire packet in the device (hasState)', async () => {
-    expect(session.device!.hasState).toBe(true);
   });
 });
 
@@ -483,7 +494,7 @@ describe('bulk writes: toggles', () => {
       setAllParams: vi.fn(async (b) => { captured = b; }),
       getAllParams: vi.fn(async () => bulk),
     }));
-    applyBaselineSnapshot(fromBulkParams(testHardware, bulk));
+    mirror.init(fromBulkParams(testHardware, bulk));
     session.status = 'connected';
   });
 
@@ -498,7 +509,7 @@ describe('bulk writes: toggles', () => {
     setBypass(true);
     await vi.runAllTimersAsync();
     expect(setBypassFn).toHaveBeenCalledWith(true);
-    expect(dsp.draft?.bypass).toBe(true);
+    expect(mirror.current?.bypass).toBe(true);
     vi.useRealTimers();
   });
 
@@ -509,11 +520,11 @@ describe('bulk writes: toggles', () => {
       setOutputMute: setOutputMuteFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     }));
-    const slot = dsp.draft!.outputs[0].wireIndex;
-    const before = dsp.draft!.outputs[0].muted;
+    const slot = mirror.current!.outputs[0].wireIndex;
+    const before = mirror.current!.outputs[0].muted;
     setOutputMuted(slot, !before);
     await vi.runAllTimersAsync();
-    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(!before);
+    expect(mirror.current?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(!before);
     expect(setOutputMuteFn).toHaveBeenCalledWith(slot, !before);
     vi.useRealTimers();
   });
@@ -523,7 +534,7 @@ describe('granular writes: enums', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => { vi.useRealTimers(); bindDevice(null); });
 
@@ -538,7 +549,7 @@ describe('granular writes: enums', () => {
     setCrossfeedPreset(target);
     await vi.runAllTimersAsync();
     expect(setCrossfeedPresetFn).toHaveBeenCalledWith(target);
-    expect(dsp.draft?.crossfeed.preset).toBe(target);
+    expect(mirror.current?.crossfeed.preset).toBe(target);
   });
 
   it('setLevellerSpeed sends a write and patches the snapshot after ack', async () => {
@@ -552,7 +563,7 @@ describe('granular writes: enums', () => {
     setLevellerSpeed(target);
     await vi.runAllTimersAsync();
     expect(setLevellerSpeedFn).toHaveBeenCalledWith(target);
-    expect(dsp.draft?.leveller?.speed).toBe(target);
+    expect(mirror.current?.leveller?.speed).toBe(target);
   });
 });
 
@@ -560,7 +571,7 @@ describe('granular writes (numeric sliders): sliders', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => { vi.useRealTimers(); bindDevice(null); });
 
@@ -572,7 +583,7 @@ describe('granular writes (numeric sliders): sliders', () => {
     });
     bindDevice(device);
     setLevellerAmount(33);
-    expect(dsp.draft?.leveller?.amount).toBe(33);
+    expect(mirror.current?.leveller?.amount).toBe(33);
     await vi.runAllTimersAsync();
     expect(setLevellerAmountFn).toHaveBeenCalledWith(33);
   });
@@ -588,7 +599,7 @@ describe('bulk writes: eq/delay/names', () => {
       setAllParams: vi.fn(async (b) => { captured = b; }),
       getAllParams: vi.fn(async () => bulk),
     }));
-    applyBaselineSnapshot(fromBulkParams(testHardware, bulk));
+    mirror.init(fromBulkParams(testHardware, bulk));
     session.status = 'connected';
   });
 
@@ -600,10 +611,10 @@ describe('bulk writes: eq/delay/names', () => {
       setOutputDelay: setOutputDelayFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     }));
-    const slot = dsp.draft!.outputs[0].wireIndex;
+    const slot = mirror.current!.outputs[0].wireIndex;
     setOutputDelay(slot, 5);
     await vi.runAllTimersAsync();
-    const o = dsp.draft!.outputs.find((o) => o.wireIndex === slot)!;
+    const o = mirror.current!.outputs.find((o) => o.wireIndex === slot)!;
     expect(o.delayMs).toBe(5);
     expect(setOutputDelayFn).toHaveBeenCalledWith(slot, 5);
     vi.useRealTimers();
@@ -616,11 +627,11 @@ describe('bulk writes: eq/delay/names', () => {
       setChannelName: setChannelNameFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     }));
-    const outId = dsp.draft!.outputs[0].id; // a channel that DOES have an output entry
+    const outId = mirror.current!.outputs[0].id; // a channel that DOES have an output entry
     setChannelName(outId, 'Custom');
     await vi.runAllTimersAsync();
-    expect(dsp.draft!.channels.find((c) => c.id === outId)!.name).toBe('Custom');
-    expect(dsp.draft!.outputs.find((o) => o.id === outId)!.name).toBe('Custom');
+    expect(mirror.current!.channels.find((c) => c.id === outId)!.name).toBe('Custom');
+    expect(mirror.current!.outputs.find((o) => o.id === outId)!.name).toBe('Custom');
     vi.useRealTimers();
   });
 });
@@ -629,7 +640,7 @@ describe('crosspoint — granular unified lane (Finding 2)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => { vi.useRealTimers(); bindDevice(null); });
 
@@ -640,10 +651,10 @@ describe('crosspoint — granular unified lane (Finding 2)', () => {
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
     bindDevice(device);
-    const route = dsp.draft!.routes[0];
+    const route = mirror.current!.routes[0];
     const before = route.enabled;
     setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !before);
-    expect(dsp.draft!.routes[0].enabled).toBe(!before);   // optimistic patch
+    expect(mirror.current!.routes[0].enabled).toBe(!before);   // optimistic patch
     await vi.runAllTimersAsync();
     expect(calls).toHaveLength(1);
     expect(calls[0].enabled).toBe(!before);
@@ -656,7 +667,7 @@ describe('crosspoint — granular unified lane (Finding 2)', () => {
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
     bindDevice(device);
-    const route = dsp.draft!.routes[0];
+    const route = mirror.current!.routes[0];
     const beforeEnabled = route.enabled;
     setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !beforeEnabled);
     setCrosspointGain(route.inputIndex, route.outputWireIndex, -6);
@@ -673,7 +684,7 @@ describe('crosspoint — granular unified lane (Finding 2)', () => {
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
     bindDevice(device);
-    const route = dsp.draft!.routes[0];
+    const route = mirror.current!.routes[0];
     const before = route.invert;
     setCrosspointInvert(route.inputIndex, route.outputWireIndex, !before);
     await vi.runAllTimersAsync();
@@ -686,7 +697,7 @@ describe('granular writes: eqFilter (per-band)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => { vi.useRealTimers(); bindDevice(null); });
 
@@ -699,18 +710,18 @@ describe('granular writes: eqFilter (per-band)', () => {
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
     bindDevice(device);
-    const ch = dsp.draft!.channels[0].id;
+    const ch = mirror.current!.channels[0].id;
     setEqFilter(ch, 0, { type: FilterType.Peaking, frequency: 1000, q: 1.0, gain: 3 });
     await vi.runAllTimersAsync();
-    expect(dsp.draft!.channels[0].filters[0].frequency).toBe(1000); // patched after ack
+    expect(mirror.current!.channels[0].filters[0].frequency).toBe(1000); // patched after ack
     expect(calls).toHaveLength(1);
     expect(calls[0].band).toBe(0);
     expect(calls[0].filter.frequency).toBe(1000);
   });
 
   it('setEqFilter throws on out-of-range band', () => {
-    const ch = dsp.draft!.channels[0].id;
-    const n = dsp.draft!.channels[0].filters.length;
+    const ch = mirror.current!.channels[0].id;
+    const n = mirror.current!.channels[0].filters.length;
     expect(() => setEqFilter(ch, n, { type: FilterType.Peaking, frequency: 1, q: 1, gain: 0 })).toThrow();
   });
 
@@ -720,10 +731,10 @@ describe('granular writes: eqFilter (per-band)', () => {
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
     bindDevice(device);
-    const src = dsp.draft!.channels[0].id;
-    const tgt = dsp.draft!.channels[1].id;
-    const len = Math.min(dsp.draft!.channels.find((c) => c.id === src)!.filters.length,
-                         dsp.draft!.channels.find((c) => c.id === tgt)!.filters.length);
+    const src = mirror.current!.channels[0].id;
+    const tgt = mirror.current!.channels[1].id;
+    const len = Math.min(mirror.current!.channels.find((c) => c.id === src)!.filters.length,
+                         mirror.current!.channels.find((c) => c.id === tgt)!.filters.length);
     // Edit source first
     setEqFilter(src, 0, { type: FilterType.Peaking, frequency: 2500, q: 2, gain: -4 });
     setEqFilter(src, 1, { type: FilterType.Peaking, frequency: 5000, q: 1.5, gain: 2 });
@@ -733,8 +744,8 @@ describe('granular writes: eqFilter (per-band)', () => {
     // Now copy to target
     copyEqBands(src, tgt);
     await vi.runAllTimersAsync(); // flush so sends resolve and mutates apply
-    const t = dsp.draft!.channels.find((c) => c.id === tgt)!;
-    const s = dsp.draft!.channels.find((c) => c.id === src)!;
+    const t = mirror.current!.channels.find((c) => c.id === tgt)!;
+    const s = mirror.current!.channels.find((c) => c.id === src)!;
     expect(t.filters[0].frequency).toBe(2500); // patched after ack
     expect(t.filters[1].frequency).toBe(5000);
     expect(s.filters[0].frequency).toBe(2500); // source unchanged
@@ -748,9 +759,9 @@ describe('granular writes: eqFilter (per-band)', () => {
   });
 });
 
-describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
+describe('dual-lane inflight coexistence: scrub-class + write-class share the counter', () => {
   beforeEach(() => { vi.useFakeTimers(); });
-  // Sends are parked forever here so the tokens are still present at assertion
+  // Sends are parked forever here so the counter stays bumped at assertion
   // time; the file-scope afterEach (endConnection + cancelWrites) resets the
   // leaked bulk-flush + granular state.
   afterEach(() => { vi.useRealTimers(); bindDevice(null); session.status = 'idle'; });
@@ -764,12 +775,12 @@ describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
       getAllParams: vi.fn(async () => bulk),
     });
     bindDevice(device);
-    applyBaselineSnapshot(fromBulkParams(testHardware, bulk));
+    mirror.init(fromBulkParams(testHardware, bulk));
     session.status = 'connected';
 
     expect(inflight.current).toBe(0);
     // scrub-class: crosspoint uses scrub() → bumpInflight().
-    const route = dsp.draft!.routes[0];
+    const route = mirror.current!.routes[0];
     setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !route.enabled);
     expect(inflight.current).toBe(1);
     // write-class: bypass now uses write() → bumpInflight() as well.
@@ -790,7 +801,7 @@ describe('boolean device flags are explicit setters', () => {
       setAllParams: vi.fn(async (b) => { captured = b; }),
       getAllParams: vi.fn(async () => bulk),
     }));
-    applyBaselineSnapshot(fromBulkParams(testHardware, bulk));
+    mirror.init(fromBulkParams(testHardware, bulk));
     session.status = 'connected';
   });
 
@@ -801,10 +812,10 @@ describe('boolean device flags are explicit setters', () => {
       setOutputEnable: setOutputEnableFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     }));
-    const slot = dsp.draft!.outputs[0].wireIndex;
+    const slot = mirror.current!.outputs[0].wireIndex;
     setOutputEnabled(slot, false);
     await vi.runAllTimersAsync();
-    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.enabled).toBe(false);
+    expect(mirror.current?.outputs.find((o) => o.wireIndex === slot)?.enabled).toBe(false);
     expect(setOutputEnableFn).toHaveBeenCalledWith(slot, false);
     vi.useRealTimers();
   });
@@ -816,14 +827,14 @@ describe('boolean device flags are explicit setters', () => {
       setOutputEnable: setOutputEnableFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     }));
-    const slot = dsp.draft!.outputs[0].wireIndex;
+    const slot = mirror.current!.outputs[0].wireIndex;
     // First disable it
     setOutputEnabled(slot, false);
     await vi.runAllTimersAsync();
     // Then explicitly enable
     setOutputEnabled(slot, true);
     await vi.runAllTimersAsync();
-    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.enabled).toBe(true);
+    expect(mirror.current?.outputs.find((o) => o.wireIndex === slot)?.enabled).toBe(true);
     expect(setOutputEnableFn).toHaveBeenLastCalledWith(slot, true);
     vi.useRealTimers();
   });
@@ -835,10 +846,10 @@ describe('boolean device flags are explicit setters', () => {
       setOutputMute: setOutputMuteFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     }));
-    const slot = dsp.draft!.outputs[0].wireIndex;
+    const slot = mirror.current!.outputs[0].wireIndex;
     setOutputMuted(slot, true);
     await vi.runAllTimersAsync();
-    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(true);
+    expect(mirror.current?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(true);
     expect(setOutputMuteFn).toHaveBeenCalledWith(slot, true);
     vi.useRealTimers();
   });
@@ -850,14 +861,14 @@ describe('boolean device flags are explicit setters', () => {
       setOutputMute: setOutputMuteFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     }));
-    const slot = dsp.draft!.outputs[0].wireIndex;
+    const slot = mirror.current!.outputs[0].wireIndex;
     // First mute it
     setOutputMuted(slot, true);
     await vi.runAllTimersAsync();
     // Then explicitly unmute
     setOutputMuted(slot, false);
     await vi.runAllTimersAsync();
-    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(false);
+    expect(mirror.current?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(false);
     expect(setOutputMuteFn).toHaveBeenLastCalledWith(slot, false);
     vi.useRealTimers();
   });
@@ -869,13 +880,13 @@ describe('boolean device flags are explicit setters', () => {
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     }));
-    const route = dsp.draft!.routes[0];
+    const route = mirror.current!.routes[0];
     const initial = route.enabled;
     setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !initial);
-    expect(dsp.draft!.routes[0].enabled).toBe(!initial);
+    expect(mirror.current!.routes[0].enabled).toBe(!initial);
     // Calling with the same value again must not flip it back
     setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !initial);
-    expect(dsp.draft!.routes[0].enabled).toBe(!initial);
+    expect(mirror.current!.routes[0].enabled).toBe(!initial);
     await vi.runAllTimersAsync();
     expect(calls.at(-1)!.enabled).toBe(!initial);
     vi.useRealTimers();
@@ -888,13 +899,13 @@ describe('boolean device flags are explicit setters', () => {
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     }));
-    const route = dsp.draft!.routes[0];
+    const route = mirror.current!.routes[0];
     const initial = route.invert;
     setCrosspointInvert(route.inputIndex, route.outputWireIndex, !initial);
-    expect(dsp.draft!.routes[0].invert).toBe(!initial);
+    expect(mirror.current!.routes[0].invert).toBe(!initial);
     // Calling with the same value again must not flip it back
     setCrosspointInvert(route.inputIndex, route.outputWireIndex, !initial);
-    expect(dsp.draft!.routes[0].invert).toBe(!initial);
+    expect(mirror.current!.routes[0].invert).toBe(!initial);
     await vi.runAllTimersAsync();
     expect(calls.at(-1)!.invert).toBe(!initial);
     vi.useRealTimers();
@@ -907,36 +918,36 @@ describe('output config verbs', () => {
   });
 
   it('setOutputDataPin success patches draft.outputPins without discarding other edits', async () => {
-    const before = dsp.draft!.masterVolumeDb;
+    const before = mirror.current!.masterVolumeDb;
     const r = await setOutputDataPin(0, 16);
     expect(r.ok).toBe(true);
-    expect(dsp.draft!.outputPins[0]).toBe(16);
-    expect(dsp.draft!.masterVolumeDb).toBe(before);
+    expect(mirror.current!.outputPins[0]).toBe(16);
+    expect(mirror.current!.masterVolumeDb).toBe(before);
   });
 
   it('setOutputDataPin failure leaves outputPins unchanged', async () => {
     // pin 7 is in use by pinOutputIndex 1 — mock returns PinInUse
-    const pinsBefore = dsp.draft!.outputPins.slice();
+    const pinsBefore = mirror.current!.outputPins.slice();
     const r = await setOutputDataPin(0, 7);
     expect(r.ok).toBe(false);
-    expect(dsp.draft!.outputPins).toEqual(pinsBefore);
+    expect(mirror.current!.outputPins).toEqual(pinsBefore);
   });
 
   it('setOutputType updates draft.i2s.outputSlotTypes', async () => {
     const r = await setOutputType(0, 1);
     expect(r.ok).toBe(true);
-    expect(dsp.draft!.i2s!.outputSlotTypes[0]).toBe(1);
+    expect(mirror.current!.i2s!.outputSlotTypes[0]).toBe(1);
   });
 
   test('setI2sBckPin success patches draft.i2s.bckPin', async () => {
     const r = await setI2sBckPin(16);
     expect(r.ok).toBe(true);
-    expect(dsp.draft!.i2s!.bckPin).toBe(16);
+    expect(mirror.current!.i2s!.bckPin).toBe(16);
   });
 
   test('setMckEnabled success patches draft.i2s.mckEnabled', async () => {
     const r = await setMckEnabled(true);
     expect(r.ok).toBe(true);
-    expect(dsp.draft!.i2s!.mckEnabled).toBe(true);
+    expect(mirror.current!.i2s!.mckEnabled).toBe(true);
   });
 });

@@ -8,13 +8,13 @@ const verbs = vi.hoisted(() => ({
 vi.mock('@/runtime', () => verbs);
 
 vi.mock('@/state', () => {
-  const draft = {
+  const snap = {
     platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
     outputs: [{ wireIndex: 8, enabled: false }],
     outputPins: [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
   };
-  return { dsp: { get draft() { return draft; } }, session: { get status() { return 'connected'; } } };
+  return { mirror: { get current() { return snap; } }, session: { get status() { return 'connected'; } } };
 });
 
 import OutputsPanel from './OutputsPanel.svelte';

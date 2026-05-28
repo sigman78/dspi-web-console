@@ -4,7 +4,7 @@ import App from './App.svelte';
 import {
   session, setStatus,
   restoreSettings, startSettingsPersistence, settings,
-  dsp,
+  mirror, presetBaseline,
   status as statusStore,
   presetsDirty,
 } from './state';
@@ -19,12 +19,12 @@ restoreSettings();
 startSettingsPersistence();
 
 // Expose state stores on window for direct inspection in DevTools.
-// Inspect after Connect:  __dspi.dsp.draft?.platform, __dspi.dsp.draft?.outputs,
+// Inspect after Connect:  __dspi.mirror.current?.platform, __dspi.mirror.current?.outputs,
 // __dspi.session.status, __dspi.session.lastDeviceInfo?.serial, __dspi.snapshot()
 (globalThis as unknown as { __dspi: unknown }).__dspi = {
-  dsp, status: statusStore, settings, session,
+  mirror, presetBaseline, status: statusStore, settings, session,
   snapshot() {
-    const snapshot = dsp.draft;
+    const snapshot = mirror.current;
     return {
       session: { ...session },
       platform: snapshot?.platform ? { ...snapshot.platform } : null,

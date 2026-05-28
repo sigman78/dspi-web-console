@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { parseBulkParams, defaultBulkParams } from '@/protocol';
+import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PlatformType, createHardwareProfile, matrixColumns, matrixRows } from '@/domain';
-import { fromBulkParams, toBulkParams } from './snapshotCodec';
+import { fromBulkParams } from './snapshotCodec';
 
 describe('fromBulkParams', () => {
   it('maps protocol bulk data into an RP2350 domain snapshot', () => {
@@ -89,59 +89,5 @@ describe('fromBulkParams', () => {
     expect(pdmOutput?.name).toBe('RP2040 Sub');
     expect(pdmChannel?.filters[0].frequency).toBe(321);
     expect(pdmChannel?.filters[0].gain).toBe(-2);
-  });
-});
-
-describe('toBulkParams', () => {
-  it('roundtrips fromBulkParams output back to BulkParams (RP2350)', () => {
-    const hardware = createHardwareProfile(PlatformType.RP2350);
-    const originalBytes = makeBulk({
-      bypass: true,
-      preampDb: -3.5,
-      masterVolumeDb: -12,
-      channelNames: Array.from({ length: 11 }, (_, i) => `ch${i}`),
-    });
-    const original = parseBulkParams(originalBytes);
-    const snapshot = fromBulkParams(hardware, original);
-    const reconstructed = toBulkParams(hardware, snapshot, original);
-
-    expect(reconstructed.bypass).toBe(original.bypass);
-    expect(reconstructed.preampDb).toBeCloseTo(original.preampDb);
-    expect(reconstructed.masterVolumeDb).toBeCloseTo(original.masterVolumeDb);
-    expect(reconstructed.channelNames.slice(0, 11)).toEqual(original.channelNames.slice(0, 11));
-    expect(reconstructed.pins).toEqual(original.pins);  // sourced from baseline
-    expect(reconstructed.formatVersion).toBe(6);
-  });
-
-  it('roundtrips on RP2040 (smaller channel/output counts)', () => {
-    const hardware = createHardwareProfile(PlatformType.RP2040);
-    const originalBytes = makeBulk(
-      { bypass: true },
-      { platformId: 0, numCh: 7, numOut: 5 },
-    );
-    const original = parseBulkParams(originalBytes);
-    const snapshot = fromBulkParams(hardware, original);
-    const reconstructed = toBulkParams(hardware, snapshot, original);
-
-    expect(reconstructed.bypass).toBe(true);
-    expect(reconstructed.numCh).toBe(7);
-    expect(reconstructed.numOut).toBe(5);
-  });
-});
-
-describe('outputPins round-trip', () => {
-  it('fromBulkParams exposes device pins; toBulkParams serializes edits back', () => {
-    const hw = createHardwareProfile(PlatformType.RP2350);
-    const bulk = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    bulk.numPinOutputs = 5;
-    bulk.pins = [6, 7, 8, 9, 10];
-
-    const snap = fromBulkParams(hw, bulk);
-    expect(snap.outputPins).toEqual([6, 7, 8, 9, 10]);
-
-    snap.outputPins[1] = 17; // reassign slot 2 data pin
-    const rebuilt = toBulkParams(hw, snap, bulk);
-    expect(rebuilt.pins.slice(0, 5)).toEqual([6, 17, 8, 9, 10]);
-    expect(rebuilt.numPinOutputs).toBe(5);
   });
 });

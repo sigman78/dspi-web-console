@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, setOutputDelay } from './actions';
-import { dsp, bindDevice } from '@/state';
+import { mirror, bindDevice } from '@/state';
 import { bootMock } from './session';
 import { cancelAllWrites as cancelWrites } from '@/device/writes';
 import { endConnection } from './connectionScope';
@@ -18,12 +18,12 @@ describe('action boundary clamps out-of-range values', () => {
 
   it('clamps master volume above 0 dB to 0', () => {
     setMasterVolume(12);
-    expect(dsp.draft?.masterVolumeDb).toBe(0);
+    expect(mirror.current?.masterVolumeDb).toBe(0);
   });
 
   it('clamps master volume below -60 dB to -60', () => {
     setMasterVolume(-999);
-    expect(dsp.draft?.masterVolumeDb).toBe(-60);
+    expect(mirror.current?.masterVolumeDb).toBe(-60);
   });
 
   it('clamps output delay above the UI cap to 170 ms', async () => {
@@ -32,6 +32,6 @@ describe('action boundary clamps out-of-range values', () => {
     setOutputDelay(0, 999);
     await vi.runAllTimersAsync();
     vi.useRealTimers();
-    expect(dsp.draft?.outputs.find((o) => o.wireIndex === 0)?.delayMs).toBe(170);
+    expect(mirror.current?.outputs.find((o) => o.wireIndex === 0)?.delayMs).toBe(170);
   });
 });
