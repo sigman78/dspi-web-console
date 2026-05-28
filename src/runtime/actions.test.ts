@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert } from './actions';
+import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled } from './actions';
 import { session, bindDevice, settings, dsp, status as statusStore, presets, applyBaselineSnapshot, applyDraftSnapshot, resetDsp } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
-import type { DspDeviceGranular } from '@/device/DspDeviceGranular';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import {
@@ -26,7 +25,7 @@ const testHardware = createHardwareProfile(PlatformType.RP2350);
 // Builds a DspDevice stub mirroring the real one: applyBulk overlays the draft
 // onto the last-fetched wire packet via toBulkParams and forwards to setAllParams
 // (which tests spy on). hasState defaults true. Any method can be overridden.
-function initializedDevice(methods: Partial<DspDeviceGranular>): DspDevice {
+function initializedDevice(methods: Partial<DspDevice>): DspDevice {
   const base: Partial<DspDevice> = {
     info: {
       serial: 'TEST-RP2350',
@@ -777,5 +776,45 @@ describe('boolean device flags are explicit setters', () => {
     await vi.runAllTimersAsync();
     expect(calls.at(-1)!.invert).toBe(!initial);
     vi.useRealTimers();
+  });
+});
+
+describe('output config verbs', () => {
+  beforeEach(async () => {
+    await bootMock('rp2350');
+  });
+
+  it('setOutputDataPin success patches draft.outputPins without discarding other edits', async () => {
+    const before = dsp.draft!.masterVolumeDb;
+    const r = await setOutputDataPin(0, 16);
+    expect(r.ok).toBe(true);
+    expect(dsp.draft!.outputPins[0]).toBe(16);
+    expect(dsp.draft!.masterVolumeDb).toBe(before);
+  });
+
+  it('setOutputDataPin failure leaves outputPins unchanged', async () => {
+    // pin 7 is in use by pinOutputIndex 1 — mock returns PinInUse
+    const pinsBefore = dsp.draft!.outputPins.slice();
+    const r = await setOutputDataPin(0, 7);
+    expect(r.ok).toBe(false);
+    expect(dsp.draft!.outputPins).toEqual(pinsBefore);
+  });
+
+  it('setOutputType updates draft.i2s.outputSlotTypes', async () => {
+    const r = await setOutputType(0, 1);
+    expect(r.ok).toBe(true);
+    expect(dsp.draft!.i2s!.outputSlotTypes[0]).toBe(1);
+  });
+
+  test('setI2sBckPin success patches draft.i2s.bckPin', async () => {
+    const r = await setI2sBckPin(16);
+    expect(r.ok).toBe(true);
+    expect(dsp.draft!.i2s!.bckPin).toBe(16);
+  });
+
+  test('setMckEnabled success patches draft.i2s.mckEnabled', async () => {
+    const r = await setMckEnabled(true);
+    expect(r.ok).toBe(true);
+    expect(dsp.draft!.i2s!.mckEnabled).toBe(true);
   });
 });

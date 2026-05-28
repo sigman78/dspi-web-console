@@ -1,5 +1,4 @@
 import { DspDevice } from '@/device/DspDevice';
-import { DspDeviceGranular } from '@/device/DspDeviceGranular';
 import type { DspTransport } from '@/transport/DspTransport';
 import { MockTransport } from '@/transport/MockTransport';
 import {
@@ -29,11 +28,6 @@ export function webUsbUnsupportedReason(): string | null {
 async function createBoundDevice(
   transport: DspTransport,
   openTransport?: () => Promise<void>,
-  // Real connects construct the lean runtime-facing `DspDevice`. Only the mock
-  // dev/test boot overrides this with `DspDeviceGranular.create` so tests can
-  // drive the granular CRUD against the mock's state, keeping the granular
-  // facade out of the real-hardware path.
-  create: (t: DspTransport, open?: () => Promise<void>) => Promise<DspDevice> = DspDevice.create,
 ): Promise<DspDevice> {
   // Wrap with the timeout decorator before handing to DspDevice so every
   // ctrlIn/ctrlOut inherits the deadline. attachTransportListeners stays
@@ -42,7 +36,7 @@ async function createBoundDevice(
   const wrapped = withTimeout(transport, { ctrlMs: CTRL_TIMEOUT_MS });
   const scope = beginConnection();                   // fresh scope (disposes any prior)
   try {
-    const device = await create(wrapped, openTransport);
+    const device = await DspDevice.create(wrapped, openTransport);
     bindDevice(device);
     scope.add(attachTransportListeners(transport));
     return device;
@@ -73,8 +67,7 @@ export async function connectRequested(): Promise<void> {
 
 export async function bootMock(platform: 'rp2040' | 'rp2350'): Promise<void> {
   const transport = new MockTransport({ platform });
-  // Mock/dev boot uses the granular facade (see createBoundDevice).
-  const device = await createBoundDevice(transport, undefined, DspDeviceGranular.create);
+  const device = await createBoundDevice(transport, undefined);
   await finishConnection(device);
 }
 

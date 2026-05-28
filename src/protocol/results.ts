@@ -68,3 +68,32 @@ export function presetResultFromByte(byte: number): Result<void, PresetResult> {
     : PresetResult.FlashWriteError;
   return Result.fail(code, presetMessage[code]);
 }
+
+// PinConfigResult — returned by output-pin (0x7C), output-type (0xC0), and
+// I2S/MCK pin commands (0xC2/0xC6/0xC8). Mirrors PIN_CONFIG_* in firmware config.h.
+export const PinConfigResult = {
+  Success:       0x00,
+  InvalidPin:    0x01,
+  PinInUse:      0x02,
+  InvalidOutput: 0x03,
+  OutputActive:  0x04,
+} as const;
+export type PinConfigResult = (typeof PinConfigResult)[keyof typeof PinConfigResult];
+
+const pinConfigCodes = new Set<number>(Object.values(PinConfigResult));
+
+const pinConfigMessage: Record<PinConfigResult, string> = {
+  [PinConfigResult.Success]:       'ok',
+  [PinConfigResult.InvalidPin]:    'invalid or reserved GPIO pin',
+  [PinConfigResult.PinInUse]:      'GPIO pin already in use',
+  [PinConfigResult.InvalidOutput]: 'invalid output index',
+  [PinConfigResult.OutputActive]:  'output is active; disable it first',
+};
+
+export function pinConfigResultFromByte(byte: number): Result<void, PinConfigResult> {
+  if (byte === PinConfigResult.Success) return Result.ok();
+  const code: PinConfigResult = pinConfigCodes.has(byte)
+    ? (byte as PinConfigResult)
+    : PinConfigResult.InvalidPin;
+  return Result.fail(code, pinConfigMessage[code]);
+}

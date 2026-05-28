@@ -67,6 +67,7 @@ function snap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
     crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5 } as any,
     leveller: null,
     i2s: null,
+    outputPins: [],
   };
   return { ...base, ...overrides };
 }

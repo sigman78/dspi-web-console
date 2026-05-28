@@ -8,7 +8,7 @@
     onChange,
   }: {
     value: T;
-    options: ReadonlyArray<{ value: T; label: string }>;
+    options: ReadonlyArray<{ value: T; label: string; disabled?: boolean }>;
     disabled?: boolean;
     size?: 'sm' | 'md';
     ariaLabel: string;
@@ -22,8 +22,12 @@
     const idx = options.findIndex((o) => o.value === value);
     if (idx < 0) return;
     const delta = e.key === 'ArrowRight' ? 1 : -1;
-    const next = options[(idx + delta + options.length) % options.length];
-    onChange(next.value);
+    let next = idx;
+    for (let i = 1; i < options.length; i++) {
+      const candidate = (idx + delta * i + options.length * i) % options.length;
+      if (!options[candidate].disabled) { next = candidate; break; }
+    }
+    if (next !== idx) onChange(options[next].value);
   }
 </script>
 
@@ -43,8 +47,8 @@
       role="radio"
       aria-checked={opt.value === value}
       tabindex={opt.value === value ? 0 : -1}
-      disabled={disabled}
-      onclick={() => { if (!disabled) onChange(opt.value); }}
+      disabled={disabled || opt.disabled}
+      onclick={() => { if (!disabled && !opt.disabled) onChange(opt.value); }}
     >
       {opt.label}
     </button>
@@ -53,7 +57,9 @@
 
 <style>
   .seg {
-    display: inline-flex;
+    display: inline-grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
     border: 1px solid var(--border);
     border-radius: 4px;
     overflow: hidden;
@@ -64,6 +70,7 @@
     font-size: 10px;
     letter-spacing: 1px;
     padding: 4px 10px;
+    text-align: center;
     background: transparent;
     border: none;
     color: var(--text-dim);

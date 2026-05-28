@@ -116,6 +116,23 @@ export const WireCmd = {
   // Bulk
   GetAllParams:         { code: 0xA0 } satisfies RawCmd,
   SetAllParams:         { code: 0xA1 } satisfies RawCmd,
+
+  // Output pin assignment (0x7C/0x7D) and I2S output config (0xC0-0xC9).
+  // All are action-style IN: args in wValue, response is 1-byte status/value.
+  // See docs/PINS-CONFIG.md.
+  SetOutputPin:         { code: 0x7C } satisfies RawCmd,
+  GetOutputPin:         { code: 0x7D } satisfies RawCmd,
+  SetOutputType:        { code: 0xC0 } satisfies RawCmd,
+  GetOutputType:        { code: 0xC1 } satisfies RawCmd,
+  SetI2sBckPin:         { code: 0xC2 } satisfies RawCmd,
+  GetI2sBckPin:         { code: 0xC3 } satisfies RawCmd,
+  SetMckEnable:         { code: 0xC4 } satisfies RawCmd,
+  GetMckEnable:         { code: 0xC5 } satisfies RawCmd,
+  SetMckPin:            { code: 0xC6 } satisfies RawCmd,
+  GetMckPin:            { code: 0xC7 } satisfies RawCmd,
+  SetMckMultiplier:     { code: 0xC8 } satisfies RawCmd,
+  GetMckMultiplier:     { code: 0xC9 } satisfies RawCmd,
+
   GetBufferStats:       { code: 0xB0 } satisfies RawCmd,
   ResetBufferStats:     { code: 0xB1 } satisfies RawCmd,
 

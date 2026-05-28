@@ -4,6 +4,8 @@
   import { dsp, session, status } from '@/state';
   import ChannelNamesPanel from '../system/ChannelNamesPanel.svelte';
   import ResetPanel from '../system/ResetPanel.svelte';
+  import OutputsPanel from '../system/OutputsPanel.svelte';
+  import I2sClockPanel from '../system/I2sClockPanel.svelte';
   import { chKey } from '@/styles/palette';
   import { clearClips } from '@/runtime';
 
@@ -18,6 +20,8 @@
 <div class="grid">
   <div class="col">
     <ResetPanel />
+    <OutputsPanel />
+    <I2sClockPanel />
   </div>
 
   <div class="col">

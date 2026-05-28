@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { DspDeviceGranular } from './DspDeviceGranular';
+import type { DspDevice } from './DspDevice';
 import { hasFormatVersion, openSingleDevice } from '@test/hil/setup';
 import type { BulkParams } from '@/protocol';
 
@@ -10,7 +10,7 @@ import type { BulkParams } from '@/protocol';
 const SETTLE_MS = 30;
 
 describe('Paste round-trip via setAllParams (HIL)', () => {
-  let device: DspDeviceGranular;
+  let device: DspDevice;
   let close: () => Promise<void>;
   let initial: BulkParams;
 

@@ -6,7 +6,7 @@
 // under `npm test`.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { DspDeviceGranular } from './DspDeviceGranular';
+import type { DspDevice } from './DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
 import { PresetStartupMode } from '@/protocol';
 
@@ -20,7 +20,7 @@ const FLASH_SETTLE_MS = 100;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe('DspDevice — presets (HIL)', () => {
-  let device: DspDeviceGranular;
+  let device: DspDevice;
   let close: () => Promise<void>;
 
   beforeAll(async () => {
