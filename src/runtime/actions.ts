@@ -21,7 +21,7 @@ import { Result, Log, type VoidResult } from '@/utils';
 import { startPolling } from './poll';
 import { connectionScope, endConnection } from './connectionScope';
 import { cancelResync } from './resync';
-import { enqueue, applyBaselineConverged } from './outbox';
+import * as mirror from '@/device/mirror.svelte';
 import { write, scrub, flushAllWrites, cancelAllWrites } from '@/device/writes';
 import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
@@ -413,7 +413,7 @@ export async function syncDeviceSnapshot(): Promise<void> {
   inflightSync = (async () => {
     try {
       const snap = await d.getSnapshot();
-      applyBaselineConverged(snap);
+      mirror.init(snap);
     } catch (err) {
       Log.error('sync', 'syncDeviceSnapshot failed', err);
       setStatus('error', (err as Error).message);

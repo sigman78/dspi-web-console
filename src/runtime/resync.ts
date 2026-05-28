@@ -1,7 +1,7 @@
 import { session, applyDraftSnapshot, dsp } from '@/state';
 import { Log } from '@/utils';
 import { makeResyncScheduler } from './schedulers';
-import { applyBaselineConverged } from './outbox';
+import * as mirror from '@/device/mirror.svelte';
 
 const RESYNC_MS = 250;
 
@@ -54,7 +54,7 @@ export async function fetchAndApplyAsBaseline(): Promise<void> {
   if (!d) return;
   try {
     const snap = await d.getSnapshot();
-    applyBaselineConverged(snap);
+    mirror.init(snap);
   } catch (err) {
     Log.warn('resync', 'baseline re-fetch failed', err);
   }
