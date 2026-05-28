@@ -22,7 +22,7 @@ import { startPolling } from './poll';
 import { connectionScope, endConnection } from './connectionScope';
 import { cancelResync } from './resync';
 import { enqueue, applyBaselineConverged } from './outbox';
-import { scrub, flushAllWrites, cancelAllWrites } from '@/device/writes';
+import { write, scrub, flushAllWrites, cancelAllWrites } from '@/device/writes';
 import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
@@ -53,16 +53,16 @@ export function setEqFilter(channel: ChannelId, band: number, filter: FilterPara
     q: Clamp.bandQ(filter.q),
     gain: Clamp.bandGainDb(filter.gain),
   };
-  enqueue({
-    control: 'eqFilter',
-    coalesceKey: `eqFilter:${channel}:${band}`,
-    apply: () => {
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setFilter(channel, band, clamped),
+    () => {
       if (!dsp.draft) return;
       const c = dsp.draft.channels.find((c) => c.id === channel);
       if (c) c.filters[band] = { ...clamped };
     },
-    send: (d) => d.setFilter(channel, band, clamped),
-  });
+  );
 }
 
 // Copy all bands from source channel onto target channel as N independent granular writes.
@@ -78,29 +78,29 @@ export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
     q: Clamp.bandQ(f.q),
     gain: Clamp.bandGainDb(f.gain),
   }));
+  const d = session.device;
+  if (!d) return;
   for (let i = 0; i < len; i++) {
     const band = i;
     const filter = copied[i];
-    enqueue({
-      control: 'eqFilter',
-      coalesceKey: `eqFilter:${targetId}:${band}`,
-      apply: () => {
+    void write(
+      () => d.setFilter(targetId, band, filter),
+      () => {
         if (!dsp.draft) return;
         const t = dsp.draft.channels.find((c) => c.id === targetId);
         if (t) t.filters[band] = { ...filter };
       },
-      send: (d) => d.setFilter(targetId, band, filter),
-    });
+    );
   }
 }
 
 export function setBypass(enabled: boolean): void {
-  enqueue({
-    control: 'bypass',
-    coalesceKey: 'bypass',
-    apply: () => patchSnapshot({ bypass: enabled }),
-    send: (d) => d.setBypass(enabled),
-  });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setBypass(enabled),
+    () => patchSnapshot({ bypass: enabled }),
+  );
 }
 
 // Telemetry-only action: clears firmware-side latched clip flags (0x83) and
@@ -117,8 +117,8 @@ export function clearClips(): void {
 }
 
 // Empty / whitespace-only input clears the custom name on the device; the
-// optimistic snapshot mirrors that by falling back to defaultName, matching
-// what `displayNameForChannel` produces after a bulk resync. The outputs[]
+// snapshot mirrors that by falling back to defaultName, matching what
+// `displayNameForChannel` produces after a bulk resync. The outputs[]
 // name mirror keeps MatrixHeader and OverviewTab in sync without waiting
 // for the trailing bulk resync.
 export function setChannelName(id: ChannelId, name: string): void {
@@ -127,27 +127,27 @@ export function setChannelName(id: ChannelId, name: string): void {
   if (!ch) return;
   const resolved = name.trim() || ch.defaultName;
   const clamped = Clamp.nameToByteBudget(resolved, CHANNEL_NAME_MAX_LEN);
-  enqueue({
-    control: 'channelName',
-    coalesceKey: `channelName:${id}`,
-    apply: () => {
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setChannelName(id, clamped),
+    () => {
       if (!dsp.draft) return;
       const c = dsp.draft.channels.find((c) => c.id === id);
       if (c) c.name = clamped;
       const o = dsp.draft.outputs.find((o) => o.id === id);
       if (o) o.name = clamped;
     },
-    send: (d) => d.setChannelName(id, clamped),
-  });
+  );
 }
 
 export function setLoudnessEnabled(enabled: boolean): void {
-  enqueue({
-    control: 'loudnessEnabled',
-    coalesceKey: 'loudnessEnabled',
-    apply: () => { if (dsp.draft) dsp.draft.loudness.enabled = enabled; },
-    send: (d) => d.setLoudnessEnabled(enabled),
-  });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setLoudnessEnabled(enabled),
+    () => { if (dsp.draft) dsp.draft.loudness.enabled = enabled; },
+  );
 }
 
 export function setLoudnessRefSpl(db: number): void {
@@ -173,30 +173,30 @@ export function setLoudnessIntensityPct(pct: number): void {
 }
 
 export function setCrossfeedEnabled(enabled: boolean): void {
-  enqueue({
-    control: 'crossfeedEnabled',
-    coalesceKey: 'crossfeedEnabled',
-    apply: () => { if (dsp.draft) dsp.draft.crossfeed.enabled = enabled; },
-    send: (d) => d.setCrossfeedEnabled(enabled),
-  });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setCrossfeedEnabled(enabled),
+    () => { if (dsp.draft) dsp.draft.crossfeed.enabled = enabled; },
+  );
 }
 
 export function setCrossfeedPreset(preset: CrossfeedPreset): void {
-  enqueue({
-    control: 'crossfeedPreset',
-    coalesceKey: 'crossfeedPreset',
-    apply: () => { if (dsp.draft) dsp.draft.crossfeed.preset = preset; },
-    send: (d) => d.setCrossfeedPreset(preset),
-  });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setCrossfeedPreset(preset),
+    () => { if (dsp.draft) dsp.draft.crossfeed.preset = preset; },
+  );
 }
 
 export function setCrossfeedItd(itd: boolean): void {
-  enqueue({
-    control: 'crossfeedItd',
-    coalesceKey: 'crossfeedItd',
-    apply: () => { if (dsp.draft) dsp.draft.crossfeed.itd = itd; },
-    send: (d) => d.setCrossfeedItd(itd),
-  });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setCrossfeedItd(itd),
+    () => { if (dsp.draft) dsp.draft.crossfeed.itd = itd; },
+  );
 }
 
 export function setCrossfeedFreq(hz: number): void {
@@ -222,30 +222,30 @@ export function setCrossfeedFeedDb(db: number): void {
 }
 
 export function setLevellerEnabled(enabled: boolean): void {
-  enqueue({
-    control: 'levellerEnabled',
-    coalesceKey: 'levellerEnabled',
-    apply: () => { if (dsp.draft?.leveller) dsp.draft.leveller.enabled = enabled; },
-    send: (d) => d.setLevellerEnabled(enabled),
-  });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setLevellerEnabled(enabled),
+    () => { if (dsp.draft?.leveller) dsp.draft.leveller.enabled = enabled; },
+  );
 }
 
 export function setLevellerSpeed(speed: LevellerSpeed): void {
-  enqueue({
-    control: 'levellerSpeed',
-    coalesceKey: 'levellerSpeed',
-    apply: () => { if (dsp.draft?.leveller) dsp.draft.leveller.speed = speed; },
-    send: (d) => d.setLevellerSpeed(speed),
-  });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setLevellerSpeed(speed),
+    () => { if (dsp.draft?.leveller) dsp.draft.leveller.speed = speed; },
+  );
 }
 
 export function setLevellerLookahead(lookahead: boolean): void {
-  enqueue({
-    control: 'levellerLookahead',
-    coalesceKey: 'levellerLookahead',
-    apply: () => { if (dsp.draft?.leveller) dsp.draft.leveller.lookahead = lookahead; },
-    send: (d) => d.setLevellerLookahead(lookahead),
-  });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setLevellerLookahead(lookahead),
+    () => { if (dsp.draft?.leveller) dsp.draft.leveller.lookahead = lookahead; },
+  );
 }
 
 export function setLevellerAmount(pct: number): void {
@@ -361,50 +361,49 @@ export function setOutputGain(slot: OutputSlot, gainDb: number): void {
   );
 }
 
-// Bulk-path output addressing: locate the output by wire slot in the draft
-// being mutated. A missing slot is a silent no-op, matching the other bulk
-// verbs (the granular setOutputGain path uses focusOutput, which throws).
+// Write-path output addressing: locate the output by wire slot in the draft
+// being mutated. A missing slot is a silent no-op.
 export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
   if (!dsp.draft?.outputs) return;
   delayMs = Clamp.outputDelayMs(delayMs);
-  enqueue({
-    control: 'outputDelay',
-    coalesceKey: `outputDelay:${slot}`,
-    apply: () => {
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setOutputDelay(slot, delayMs),
+    () => {
       if (!dsp.draft) return;
       const o = dsp.draft.outputs.find((o) => o.wireIndex === slot);
       if (o) o.delayMs = delayMs;
     },
-    send: (d) => d.setOutputDelay(slot, delayMs),
-  });
+  );
 }
 
 export function setOutputEnabled(slot: OutputSlot, enabled: boolean): void {
   if (!dsp.draft?.outputs) return;
-  enqueue({
-    control: 'outputEnabled',
-    coalesceKey: `outputEnabled:${slot}`,
-    apply: () => {
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setOutputEnable(slot, enabled),
+    () => {
       if (!dsp.draft) return;
       const o = dsp.draft.outputs.find((o) => o.wireIndex === slot);
       if (o) o.enabled = enabled;
     },
-    send: (d) => d.setOutputEnable(slot, enabled),
-  });
+  );
 }
 
 export function setOutputMuted(slot: OutputSlot, muted: boolean): void {
   if (!dsp.draft?.outputs) return;
-  enqueue({
-    control: 'outputMuted',
-    coalesceKey: `outputMuted:${slot}`,
-    apply: () => {
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setOutputMute(slot, muted),
+    () => {
       if (!dsp.draft) return;
       const o = dsp.draft.outputs.find((o) => o.wireIndex === slot);
       if (o) o.muted = muted;
     },
-    send: (d) => d.setOutputMute(slot, muted),
-  });
+  );
 }
 
 export async function syncDeviceSnapshot(): Promise<void> {

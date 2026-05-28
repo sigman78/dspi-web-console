@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, setOutputDelay } from './actions';
 import { dsp, bindDevice } from '@/state';
 import { bootMock } from './session';
@@ -26,8 +26,12 @@ describe('action boundary clamps out-of-range values', () => {
     expect(dsp.draft?.masterVolumeDb).toBe(-60);
   });
 
-  it('clamps output delay above the UI cap to 170 ms', () => {
+  it('clamps output delay above the UI cap to 170 ms', async () => {
+    // setOutputDelay uses write() (await-then-mutate); flush microtasks to settle.
+    vi.useFakeTimers();
     setOutputDelay(0, 999);
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
     expect(dsp.draft?.outputs.find((o) => o.wireIndex === 0)?.delayMs).toBe(170);
   });
 });

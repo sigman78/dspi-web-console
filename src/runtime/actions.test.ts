@@ -199,19 +199,21 @@ describe('actions wiring', () => {
     expect(session.generation).toBe(before + 2);
   });
 
-  it('copyEqBands copies all bands into the snapshot in N granular operations', () => {
-    // copyEqBands enqueues N independent granular writes (one per band).
+  it('copyEqBands copies all bands into the snapshot in N granular operations', async () => {
+    // copyEqBands issues N independent write() calls (one per band); snapshot
+    // is updated after each send acks (await-then-mutate).
     const validBulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
-      setAllParams: vi.fn(async () => {}),
+      setFilter: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => validBulk),
     });
     bindDevice(device);
 
     const sourceId = dsp.draft!.channels[0].id;
     const targetId = dsp.draft!.channels[1].id;
-    // Snapshot optimistically updated immediately (no timers needed).
     copyEqBands(sourceId, targetId);
+    // Flush microtasks so the async sends resolve and mutates apply.
+    await vi.runAllTimersAsync();
 
     const tgt = dsp.draft!.channels.find((c) => c.id === targetId)!;
     const src = dsp.draft!.channels.find((c) => c.id === sourceId)!;
@@ -227,43 +229,49 @@ describe('setEqFilter', () => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
     applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    bindDevice(initializedDevice({
+      setFilter: vi.fn(async () => {}),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    }));
   });
   afterEach(() => {
     vi.useRealTimers();
     bindDevice(null);
   });
 
-  it('patches the snapshot optimistically', () => {
-    // setEqFilter updates dsp.draft immediately; the whole state is written via
-    // setAllParams in one bulk packet.
+  it('patches the snapshot after send acks', async () => {
+    // setEqFilter awaits the wire send, then mutates draft (await-then-mutate).
     setEqFilter(0, 1, { type: FilterType.Peaking, frequency: 2000, q: 1, gain: 3 });
+    await vi.runAllTimersAsync();
     expect(dsp.draft?.channels[0].filters[1].frequency).toBe(2000);
     expect(dsp.draft?.channels[0].filters[1].type).toBe(FilterType.Peaking);
     expect(dsp.draft?.channels[0].filters[1].gain).toBe(3);
   });
 
-  it('rapid edits to the same band converge to the last value in the snapshot', () => {
-    // The bulk strategy mutates dsp.draft in-place each call; the snapshot always
-    // holds the latest value regardless of how many calls were made.
+  it('rapid edits to the same band each apply independently (no coalescing)', async () => {
+    // Each write() call is independent; the snapshot holds the last applied value.
     for (let f = 100; f <= 1000; f += 100) {
       setEqFilter(0, 1, { type: FilterType.Peaking, frequency: f, q: 1, gain: 0 });
     }
+    await vi.runAllTimersAsync();
     expect(dsp.draft?.channels[0].filters[1].frequency).toBe(1000);
   });
 
-  it('edits to different bands are all reflected in the snapshot', () => {
+  it('edits to different bands are all reflected in the snapshot', async () => {
     setEqFilter(0, 0, { type: FilterType.Peaking, frequency: 100, q: 1, gain: 0 });
     setEqFilter(0, 1, { type: FilterType.Peaking, frequency: 200, q: 1, gain: 0 });
     setEqFilter(0, 2, { type: FilterType.Peaking, frequency: 300, q: 1, gain: 0 });
+    await vi.runAllTimersAsync();
     expect(dsp.draft?.channels[0].filters[0].frequency).toBe(100);
     expect(dsp.draft?.channels[0].filters[1].frequency).toBe(200);
     expect(dsp.draft?.channels[0].filters[2].frequency).toBe(300);
   });
 
-  it('throws on out-of-range band and leaves snapshot unchanged', () => {
+  it('throws on out-of-range band and leaves snapshot unchanged', async () => {
     const before = { ...dsp.draft!.channels[0].filters[1] };
     const n = dsp.draft!.channels[0].filters.length;
     expect(() => setEqFilter(0, n, { type: FilterType.Peaking, frequency: 9999, q: 1, gain: 12 })).toThrow();
+    await vi.runAllTimersAsync();
     // Snapshot must not have changed for the valid band.
     expect(dsp.draft?.channels[0].filters[1]).toEqual(before);
   });
@@ -346,28 +354,35 @@ describe('setChannelName', () => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
     applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    bindDevice(initializedDevice({
+      setChannelName: vi.fn(async () => {}),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    }));
   });
   afterEach(() => {
     vi.useRealTimers();
     bindDevice(null);
   });
 
-  it('optimistically patches dsp.draft.channels[i].name', () => {
-    // setChannelName patches the snapshot; the name rides the next setAllParams.
+  it('patches dsp.draft.channels[i].name after send acks', async () => {
+    // setChannelName awaits the wire send, then mutates draft (await-then-mutate).
     setChannelName(0 satisfies ChannelId, 'Studio Left');
+    await vi.runAllTimersAsync();
     expect(dsp.draft!.channels[0].name).toBe('Studio Left');
   });
 
-  it('treats empty input as a clear: optimistic snapshot falls back to defaultName', () => {
+  it('treats empty input as a clear: snapshot falls back to defaultName', async () => {
+    const defaultName = dsp.draft!.channels[0].defaultName;
     setChannelName(0 satisfies ChannelId, '');
-    const ch = dsp.draft!.channels[0];
-    expect(ch.name).toBe(ch.defaultName);
+    await vi.runAllTimersAsync();
+    expect(dsp.draft!.channels[0].name).toBe(defaultName);
   });
 
-  it('trims whitespace-only input the same as empty', () => {
+  it('trims whitespace-only input the same as empty', async () => {
+    const defaultName = dsp.draft!.channels[0].defaultName;
     setChannelName(0 satisfies ChannelId, '   ');
-    const ch = dsp.draft!.channels[0];
-    expect(ch.name).toBe(ch.defaultName);
+    await vi.runAllTimersAsync();
+    expect(dsp.draft!.channels[0].name).toBe(defaultName);
   });
 
   it('is a no-op when dsp.draft is null', () => {
@@ -376,26 +391,32 @@ describe('setChannelName', () => {
     expect(() => setChannelName(0 satisfies ChannelId, 'X')).not.toThrow();
   });
 
-  it('trims whitespace and stores the resolved value in the snapshot', () => {
+  it('trims whitespace and stores the resolved value in the snapshot', async () => {
     setChannelName(0 satisfies ChannelId, '  padded  ');
+    await vi.runAllTimersAsync();
     expect(dsp.draft!.channels[0].name).toBe('padded'); // resolved (trimmed)
   });
 
-  it('also patches dsp.draft.outputs[i].name when the channel is an output', () => {
+  it('also patches dsp.draft.outputs[i].name when the channel is an output', async () => {
     // ChannelId.Out1L = 2; corresponding outputs[] entry has wireIndex 0.
     setChannelName(2 satisfies ChannelId, 'Front Left');
+    await vi.runAllTimersAsync();
 
-    // Both arrays must be in sync immediately (no resync wait).
     const channel = dsp.draft!.channels.find((c) => c.id === 2);
     const output = dsp.draft!.outputs.find((o) => o.wireIndex === 0);
     expect(channel?.name).toBe('Front Left');
     expect(output?.name).toBe('Front Left');
   });
 
-  it('patches RP2040 PDM output name at compact output slot 4', () => {
+  it('patches RP2040 PDM output name at compact output slot 4', async () => {
     applyDraftSnapshot(makeSnapshot(PlatformType.RP2040));
+    bindDevice(initializedDevice({
+      setChannelName: vi.fn(async () => {}),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    }));
 
     setChannelName(10 satisfies ChannelId, 'Sub');
+    await vi.runAllTimersAsync();
 
     const channel = dsp.draft!.channels.find((c) => c.id === 10);
     const output = dsp.draft!.outputs.find((o) => o.wireIndex === 4);
@@ -404,11 +425,12 @@ describe('setChannelName', () => {
     expect(dsp.draft!.outputs.some((o) => o.wireIndex === 8)).toBe(false);
   });
 
-  it('does not touch outputs[] when renaming an input channel', () => {
+  it('does not touch outputs[] when renaming an input channel', async () => {
     const outputsBefore = dsp.draft!.outputs.map((o) => o.name).slice();
 
     // ChannelId.In1L = 0 — no entry in outputs[].
     setChannelName(0 satisfies ChannelId, 'Mic 1');
+    await vi.runAllTimersAsync();
 
     const outputsAfter = dsp.draft!.outputs.map((o) => o.name);
     expect(outputsAfter).toEqual(outputsBefore);
@@ -467,7 +489,7 @@ describe('bulk writes: toggles', () => {
     session.status = 'connected';
   });
 
-  it('setBypass schedules a wire write and patches the snapshot', async () => {
+  it('setBypass sends a wire write and patches the snapshot after ack', async () => {
     vi.useFakeTimers();
     const setBypassFn = vi.fn(async () => {});
     bindDevice(initializedDevice({
@@ -476,13 +498,13 @@ describe('bulk writes: toggles', () => {
     }));
 
     setBypass(true);
-    expect(dsp.draft?.bypass).toBe(true);
     await vi.runAllTimersAsync();
     expect(setBypassFn).toHaveBeenCalledWith(true);
+    expect(dsp.draft?.bypass).toBe(true);
     vi.useRealTimers();
   });
 
-  it('setOutputMuted flips the slot and schedules a granular write', async () => {
+  it('setOutputMuted sends a write and flips the slot after ack', async () => {
     vi.useFakeTimers();
     const setOutputMuteFn = vi.fn(async () => {});
     bindDevice(initializedDevice({
@@ -492,8 +514,8 @@ describe('bulk writes: toggles', () => {
     const slot = dsp.draft!.outputs[0].wireIndex;
     const before = dsp.draft!.outputs[0].muted;
     setOutputMuted(slot, !before);
-    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(!before);
     await vi.runAllTimersAsync();
+    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(!before);
     expect(setOutputMuteFn).toHaveBeenCalledWith(slot, !before);
     vi.useRealTimers();
   });
@@ -507,7 +529,7 @@ describe('granular writes: enums', () => {
   });
   afterEach(() => { vi.useRealTimers(); bindDevice(null); });
 
-  it('setCrossfeedPreset schedules a granular write and patches the snapshot', async () => {
+  it('setCrossfeedPreset sends a write and patches the snapshot after ack', async () => {
     const setCrossfeedPresetFn = vi.fn(async () => {});
     const device = initializedDevice({
       setCrossfeedPreset: setCrossfeedPresetFn,
@@ -516,12 +538,12 @@ describe('granular writes: enums', () => {
     bindDevice(device);
     const target = CrossfeedPreset.Preset2;
     setCrossfeedPreset(target);
-    expect(dsp.draft?.crossfeed.preset).toBe(target);
     await vi.runAllTimersAsync();
     expect(setCrossfeedPresetFn).toHaveBeenCalledWith(target);
+    expect(dsp.draft?.crossfeed.preset).toBe(target);
   });
 
-  it('setLevellerSpeed schedules a granular write and patches the snapshot', async () => {
+  it('setLevellerSpeed sends a write and patches the snapshot after ack', async () => {
     const setLevellerSpeedFn = vi.fn(async () => {});
     const device = initializedDevice({
       setLevellerSpeed: setLevellerSpeedFn,
@@ -530,9 +552,9 @@ describe('granular writes: enums', () => {
     bindDevice(device);
     const target = LevellerSpeed.Fast;
     setLevellerSpeed(target);
-    expect(dsp.draft?.leveller?.speed).toBe(target);
     await vi.runAllTimersAsync();
     expect(setLevellerSpeedFn).toHaveBeenCalledWith(target);
+    expect(dsp.draft?.leveller?.speed).toBe(target);
   });
 });
 
@@ -573,7 +595,7 @@ describe('bulk writes: eq/delay/names', () => {
   });
 
 
-  it('setOutputDelay writes the slot delay into the snapshot and schedules a granular write', async () => {
+  it('setOutputDelay sends a write and patches the slot delay after ack', async () => {
     vi.useFakeTimers();
     const setOutputDelayFn = vi.fn(async () => {});
     bindDevice(initializedDevice({
@@ -582,19 +604,26 @@ describe('bulk writes: eq/delay/names', () => {
     }));
     const slot = dsp.draft!.outputs[0].wireIndex;
     setOutputDelay(slot, 5);
+    await vi.runAllTimersAsync();
     const o = dsp.draft!.outputs.find((o) => o.wireIndex === slot)!;
     expect(o.delayMs).toBe(5);
-    await vi.runAllTimersAsync();
     expect(setOutputDelayFn).toHaveBeenCalledWith(slot, 5);
     vi.useRealTimers();
   });
 
   it('setChannelName sets name and mirrors to the denormalized output entry', async () => {
+    vi.useFakeTimers();
+    const setChannelNameFn = vi.fn(async () => {});
+    bindDevice(initializedDevice({
+      setChannelName: setChannelNameFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    }));
     const outId = dsp.draft!.outputs[0].id; // a channel that DOES have an output entry
     setChannelName(outId, 'Custom');
-    await awaitBulkSettled();
+    await vi.runAllTimersAsync();
     expect(dsp.draft!.channels.find((c) => c.id === outId)!.name).toBe('Custom');
     expect(dsp.draft!.outputs.find((o) => o.id === outId)!.name).toBe('Custom');
+    vi.useRealTimers();
   });
 });
 
@@ -663,7 +692,7 @@ describe('granular writes: eqFilter (per-band)', () => {
   });
   afterEach(() => { vi.useRealTimers(); bindDevice(null); });
 
-  it('setEqFilter sends one band via setFilter granular lane', async () => {
+  it('setEqFilter sends one band via setFilter and patches after ack', async () => {
     const calls: Array<{ channel: number; band: number; filter: FilterParams }> = [];
     const device = initializedDevice({
       setFilter: vi.fn(async (ch: number, band: number, f: FilterParams) => {
@@ -674,8 +703,8 @@ describe('granular writes: eqFilter (per-band)', () => {
     bindDevice(device);
     const ch = dsp.draft!.channels[0].id;
     setEqFilter(ch, 0, { type: FilterType.Peaking, frequency: 1000, q: 1.0, gain: 3 });
-    expect(dsp.draft!.channels[0].filters[0].frequency).toBe(1000); // optimistic patch
     await vi.runAllTimersAsync();
+    expect(dsp.draft!.channels[0].filters[0].frequency).toBe(1000); // patched after ack
     expect(calls).toHaveLength(1);
     expect(calls[0].band).toBe(0);
     expect(calls[0].filter.frequency).toBe(1000);
@@ -705,13 +734,13 @@ describe('granular writes: eqFilter (per-band)', () => {
     vi.mocked(device.setFilter).mockClear();
     // Now copy to target
     copyEqBands(src, tgt);
+    await vi.runAllTimersAsync(); // flush so sends resolve and mutates apply
     const t = dsp.draft!.channels.find((c) => c.id === tgt)!;
     const s = dsp.draft!.channels.find((c) => c.id === src)!;
-    expect(t.filters[0].frequency).toBe(2500); // optimistic patch
+    expect(t.filters[0].frequency).toBe(2500); // patched after ack
     expect(t.filters[1].frequency).toBe(5000);
     expect(s.filters[0].frequency).toBe(2500); // source unchanged
     expect(s.filters[1].frequency).toBe(5000);
-    await vi.runAllTimersAsync();
     expect(device.setFilter).toHaveBeenCalledTimes(len); // N independent setFilter calls
     const calls = vi.mocked(device.setFilter).mock.calls;
     expect(calls[0][1]).toBe(0); // band
@@ -728,7 +757,7 @@ describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
   // leaked bulk-flush + granular state.
   afterEach(() => { vi.useRealTimers(); bindDevice(null); session.status = 'idle'; });
 
-  it('granular writes on different controls both register in pendingWrites', async () => {
+  it('writes on different controls both register in inflight', async () => {
     const bulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
       // Both sends park forever so neither token is released during the test.
@@ -740,16 +769,15 @@ describe('dual-lane pendingWrites coexistence (Finding 1 + 2)', () => {
     applyBaselineSnapshot(fromBulkParams(testHardware, bulk));
     session.status = 'connected';
 
-    expect(dsp.pendingWrites.size).toBe(0);
     expect(inflight.current).toBe(0);
-    // scrub-class: crosspoint uses scrub() → bumpInflight(), not dsp.pendingWrites.
+    // scrub-class: crosspoint uses scrub() → bumpInflight().
     const route = dsp.draft!.routes[0];
     setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !route.enabled);
     expect(inflight.current).toBe(1);
-    // enqueue-class: bypass still uses enqueue() → dsp.pendingWrites.
+    // write-class: bypass now uses write() → bumpInflight() as well.
     setBypass(true);
-    expect(dsp.pendingWrites.size).toBe(1);
-    // Both inflight trackers non-zero simultaneously: the resync soft-skip guard covers both.
+    expect(inflight.current).toBe(2);
+    // Both writes in flight: the resync soft-skip guard covers both.
     expect(inflight.current).toBeGreaterThan(0);
   });
 });
@@ -777,8 +805,8 @@ describe('boolean device flags are explicit setters', () => {
     }));
     const slot = dsp.draft!.outputs[0].wireIndex;
     setOutputEnabled(slot, false);
-    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.enabled).toBe(false);
     await vi.runAllTimersAsync();
+    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.enabled).toBe(false);
     expect(setOutputEnableFn).toHaveBeenCalledWith(slot, false);
     vi.useRealTimers();
   });
@@ -796,8 +824,8 @@ describe('boolean device flags are explicit setters', () => {
     await vi.runAllTimersAsync();
     // Then explicitly enable
     setOutputEnabled(slot, true);
-    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.enabled).toBe(true);
     await vi.runAllTimersAsync();
+    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.enabled).toBe(true);
     expect(setOutputEnableFn).toHaveBeenLastCalledWith(slot, true);
     vi.useRealTimers();
   });
@@ -811,8 +839,8 @@ describe('boolean device flags are explicit setters', () => {
     }));
     const slot = dsp.draft!.outputs[0].wireIndex;
     setOutputMuted(slot, true);
-    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(true);
     await vi.runAllTimersAsync();
+    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(true);
     expect(setOutputMuteFn).toHaveBeenCalledWith(slot, true);
     vi.useRealTimers();
   });
@@ -830,8 +858,8 @@ describe('boolean device flags are explicit setters', () => {
     await vi.runAllTimersAsync();
     // Then explicitly unmute
     setOutputMuted(slot, false);
-    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(false);
     await vi.runAllTimersAsync();
+    expect(dsp.draft?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(false);
     expect(setOutputMuteFn).toHaveBeenLastCalledWith(slot, false);
     vi.useRealTimers();
   });
