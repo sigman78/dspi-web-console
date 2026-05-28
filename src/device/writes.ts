@@ -11,7 +11,7 @@
 
 import { session, setStatus } from '@/state';
 import { bumpInflight, dropInflight } from '@/state/mirror.svelte';
-import { forceResyncNow, scheduleResync } from '@/runtime/resync';
+import { forceResyncNow } from '@/runtime/resync';
 import { Log } from '@/utils';
 
 function errMessage(e: unknown): string {
@@ -78,7 +78,6 @@ function makeLane(key: string, ms: number): Lane {
       .then(async () => {
         try {
           await thunk();
-          if (gen === session.generation) scheduleResync();
         } catch (err) {
           if (gen !== session.generation) return;
           Log.error('writes', `scrub ${key} send failed; forcing resync`, err);

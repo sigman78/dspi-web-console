@@ -5,9 +5,7 @@ import { session } from '@/state';
 
 // Mock the resync module so write() failures don't actually fire HTTP.
 vi.mock('@/runtime/resync', () => ({
-  scheduleResync: vi.fn(),
   forceResyncNow: vi.fn(),
-  cancelResync: vi.fn(),
 }));
 
 describe('write() helper', () => {
@@ -111,13 +109,6 @@ describe('scrub() helper', () => {
     expect(sendB).toHaveBeenCalledTimes(1);
   });
 
-  it('schedules a trailing resync on settle', async () => {
-    const { scheduleResync } = await import('@/runtime/resync');
-    scrub('k1', () => {}, async () => {});
-    await flushAllWrites();
-    expect(scheduleResync).toHaveBeenCalled();
-  });
-
   it('cancelAllWrites cancels pending sends', async () => {
     const send = vi.fn(async () => {});
     scrub('k1', () => {}, send);
@@ -143,8 +134,8 @@ describe('scrub() helper', () => {
     expect(forceResyncNow).toHaveBeenCalled();
   });
 
-  it('stale-gen settle does not call scheduleResync or forceResyncNow', async () => {
-    const { scheduleResync, forceResyncNow } = await import('@/runtime/resync');
+  it('stale-gen settle does not call forceResyncNow', async () => {
+    const { forceResyncNow } = await import('@/runtime/resync');
     vi.clearAllMocks();
     let resolveSend!: () => void;
     const send = vi.fn(() => new Promise<void>((r) => { resolveSend = r; }));
@@ -154,7 +145,6 @@ describe('scrub() helper', () => {
     session.generation += 1;  // simulate disconnect mid-send
     resolveSend!();
     await flushAllWrites();
-    expect(scheduleResync).not.toHaveBeenCalled();
     expect(forceResyncNow).not.toHaveBeenCalled();
   });
 });
