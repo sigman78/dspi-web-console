@@ -1,7 +1,7 @@
 import { session, applyDraftSnapshot } from '@/state';
 import { Log } from '@/utils';
 import { makeResyncScheduler } from './schedulers';
-import * as mirror from '@/device/mirror.svelte';
+import * as mirror from '@/state/mirror.svelte';
 
 const RESYNC_MS = 250;
 

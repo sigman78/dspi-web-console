@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { write, scrub, flushAllWrites, cancelAllWrites } from './writes';
-import * as mirror from './mirror.svelte';
+import * as mirror from '@/state/mirror.svelte';
 import { session } from '@/state';
 
 // Mock the resync module so write() failures don't actually fire HTTP.

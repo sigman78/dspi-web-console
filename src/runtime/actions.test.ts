@@ -18,7 +18,7 @@ import {
 import { fromBulkParams, toBulkParams } from '@/device/snapshotCodec';
 
 import { cancelAllWrites as cancelWrites, flushAllWrites as flushWrites } from '@/device/writes';
-import { inflight } from '@/device/mirror.svelte';
+import { inflight } from '@/state/mirror.svelte';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);

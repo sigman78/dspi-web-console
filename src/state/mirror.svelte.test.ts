@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as mirror from './mirror.svelte';
-import { dsp, resetDsp } from '@/state';
+import { dsp, resetDsp } from './dsp.svelte';
 import type { DspSnapshot } from '@/domain';
 
 function fakeSnap(): DspSnapshot {

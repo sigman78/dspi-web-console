@@ -18,7 +18,7 @@ import { type DspSnapshot } from '@/domain';
 // Both cells are encapsulated behind the readonly DspStore view (external
 // modules read them and call the verbs, but can't reassign). pendingWrites is
 // readonly as a reference; legacy callers may add/remove Symbol tokens.
-// Note: device/mirror.svelte.ts exposes an `inflight` counter that supersedes
+// Note: mirror.svelte.ts exposes an `inflight` counter that supersedes
 // `pendingWrites` for new code. pendingWrites is kept for backward compat
 // until Phase D collapses the state layer.
 
@@ -35,7 +35,7 @@ class DspStateImpl {
   // disconnect so an offline view can render last-known-good.
   saved = $state<DspSnapshot | null>(null);
 
-  // Legacy in-flight token set. Active code paths now bump device/mirror's
+  // Legacy in-flight token set. Active code paths now bump mirror's
   // `inflight` counter instead; this set remains for any leftover Symbol
   // consumers and is scheduled for removal in Phase D.
   // Each in-flight command holds a Symbol token; isInFlight observes

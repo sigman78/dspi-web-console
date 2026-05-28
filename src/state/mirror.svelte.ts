@@ -1,15 +1,14 @@
-// Phase B façade over state/dsp.svelte.ts. Phase D will collapse the two
-// cells (draft + saved) into a single $state cell here and delete the
-// verb matrix in dsp.svelte.ts. During Phase B, consumers can migrate to
-// this API without rewriting every component binding — internal
-// delegation keeps behavior identical.
+// Reactive mirror façade. Lives in state/ because the device/ layer is a
+// pure transport+codec surface — no Svelte reactivity. Consumers read the
+// live snapshot via `mirror.current` and track in-flight writes via the
+// `inflight` counter (supersedes the legacy dsp.pendingWrites SvelteSet).
 
 import {
   dsp,
   applyBaselineSnapshot,
   refreshSavedFromDraft,
   resetDsp,
-} from '@/state';
+} from './dsp.svelte';
 import type { DspSnapshot } from '@/domain';
 
 // Inflight count: replaces dsp.pendingWrites (a SvelteSet of Symbols).

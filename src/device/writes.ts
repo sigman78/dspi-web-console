@@ -10,7 +10,7 @@
 // mutate, does not fire failure recovery).
 
 import { session, setStatus } from '@/state';
-import { bumpInflight, dropInflight } from './mirror.svelte';
+import { bumpInflight, dropInflight } from '@/state/mirror.svelte';
 import { forceResyncNow, scheduleResync } from '@/runtime/resync';
 import { Log } from '@/utils';
 
