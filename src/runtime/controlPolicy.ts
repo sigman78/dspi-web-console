@@ -34,14 +34,14 @@ export const CONTROL_POLICY = {
   outputEnabled:     { strategy: 'granular', converge: 'resync' },
   outputMuted:       { strategy: 'granular', converge: 'resync' },
 
-  // Bulk debounced (16 ms trailing — rare numeric sliders).
-  loudnessRefSpl:    { strategy: 'bulk', converge: 'self', debounceMs: 16 },
-  loudnessIntensity: { strategy: 'bulk', converge: 'self', debounceMs: 16 },
-  crossfeedFreq:     { strategy: 'bulk', converge: 'self', debounceMs: 16 },
-  crossfeedFeedDb:   { strategy: 'bulk', converge: 'self', debounceMs: 16 },
-  levellerAmount:    { strategy: 'bulk', converge: 'self', debounceMs: 16 },
-  levellerMaxGain:   { strategy: 'bulk', converge: 'self', debounceMs: 16 },
-  levellerGate:      { strategy: 'bulk', converge: 'self', debounceMs: 16 },
+  // Granular (latency-sensitive, numeric sliders; glitch-free audio). Trailing resync.
+  loudnessRefSpl:    { strategy: 'granular', converge: 'resync' },
+  loudnessIntensity: { strategy: 'granular', converge: 'resync' },
+  crossfeedFreq:     { strategy: 'granular', converge: 'resync' },
+  crossfeedFeedDb:   { strategy: 'granular', converge: 'resync' },
+  levellerAmount:    { strategy: 'granular', converge: 'resync' },
+  levellerMaxGain:   { strategy: 'granular', converge: 'resync' },
+  levellerGate:      { strategy: 'granular', converge: 'resync' },
 } as const satisfies Record<string, ControlPolicy>;
 
 export type ControlName = keyof typeof CONTROL_POLICY;

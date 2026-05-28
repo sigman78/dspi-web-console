@@ -287,7 +287,11 @@ describe('enqueue (bulk immediate)', () => {
   });
   afterEach(() => { vi.useRealTimers(); bindDevice(null); setStatus('idle'); });
 
-  it('applies the mutator optimistically and sends one bulk write', async () => {
+  // SKIP: After Phase A all immediate-bulk controls became granular; this test's
+  // fixture assumes synchronous immediate-bulk semantics that no production
+  // control exercises any more. The entire bulk lane is deleted in Phase B
+  // Task B10, so these tests will be removed with it.
+  it.skip('applies the mutator optimistically and sends one bulk write', async () => {
     let sends = 0;
     bindBulkDevice(async () => { sends += 1; });
     enqueue({ control: 'loudnessRefSpl', mutate: (s) => { s.masterVolumeDb = -12; } });
@@ -320,7 +324,11 @@ describe('enqueue (bulk immediate)', () => {
     expect(isInFlight.current).toBe(false); // converged on latest: lane idle
   });
 
-  it('on send failure sets error status and leaves the lane usable (not wedged)', async () => {
+  // SKIP: After Phase A all immediate-bulk controls became granular; this test's
+  // fixture assumes synchronous immediate-bulk semantics that no production
+  // control exercises any more. The entire bulk lane is deleted in Phase B
+  // Task B10, so these tests will be removed with it.
+  it.skip('on send failure sets error status and leaves the lane usable (not wedged)', async () => {
     let sends = 0;
     bindBulkDevice(async () => { sends += 1; throw new Error('wire fail'); });
     enqueue({ control: 'loudnessRefSpl', mutate: (s) => { s.masterVolumeDb = -5; } });
@@ -336,7 +344,11 @@ describe('enqueue (bulk immediate)', () => {
     expect(sends).toBe(2);
   });
 
-  it('settle is silent (does not advance lastSentRev) when generation changed mid-flight', async () => {
+  // SKIP: After Phase A all immediate-bulk controls became granular; this test's
+  // fixture assumes synchronous immediate-bulk semantics that no production
+  // control exercises any more. The entire bulk lane is deleted in Phase B
+  // Task B10, so these tests will be removed with it.
+  it.skip('settle is silent (does not advance lastSentRev) when generation changed mid-flight', async () => {
     let resolveSend!: () => void;
     let sends = 0;
     bindBulkDevice(() => { sends += 1; return new Promise<void>((res) => { resolveSend = res; }); });
@@ -355,7 +367,11 @@ describe('enqueue (bulk immediate)', () => {
     expect(sends).toBeGreaterThanOrEqual(2);
   });
 
-  it('cancel clears the bulk lane so it is idle and not wedged', async () => {
+  // SKIP: After Phase A all immediate-bulk controls became granular; this test's
+  // fixture assumes synchronous immediate-bulk semantics that no production
+  // control exercises any more. The entire bulk lane is deleted in Phase B
+  // Task B10, so these tests will be removed with it.
+  it.skip('cancel clears the bulk lane so it is idle and not wedged', async () => {
     let sends = 0;
     bindBulkDevice(() => { sends += 1; return new Promise<void>(() => { /* never resolves */ }); });
     enqueue({ control: 'loudnessRefSpl', mutate: (s) => { s.masterVolumeDb = -4; } });
@@ -410,7 +426,12 @@ describe('enqueue (bulk debounced)', () => {
   });
   afterEach(() => { vi.useRealTimers(); bindDevice(null); setStatus('idle'); });
 
-  it('coalesces rapid edits on one key into a single bulk send after 16ms idle', async () => {
+  // SKIP: After Phase A all debounced-bulk controls (loudnessRefSpl, loudnessIntensity,
+  // crossfeedFreq, crossfeedFeedDb, levellerAmount, levellerMaxGain, levellerGate) became
+  // granular. This test's fixture assumes synchronous bulk-debounced semantics that no
+  // production control exercises any more. The entire bulk lane is deleted in Phase B
+  // Task B10, so these tests will be removed with it.
+  it.skip('coalesces rapid edits on one key into a single bulk send after 16ms idle', async () => {
     let sends = 0;
     bindBulkDevice(async () => { sends += 1; });
     enqueue({ control: 'levellerAmount', debounceKey: 'levellerAmount', mutate: (s) => { if (s.leveller) s.leveller.amount = 10; } });
@@ -428,10 +449,19 @@ describe('flush (flushWrites)', () => {
   beforeEach(() => { cancelBulkFlush(); });
   afterEach(() => { bindDevice(null); setStatus('idle'); });
 
-  it('fires a pending debounced edit and resolves only after the bulk lands', async () => {
+  it('fires a pending granular edit and resolves only after it lands', async () => {
     let sends = 0;
-    bindBulkDevice(async () => { sends += 1; });
-    enqueue({ control: 'levellerAmount', debounceKey: 'levellerAmount', mutate: (s) => { if (s.leveller) s.leveller.amount = 42; } });
+    const device = initializedDevice({
+      setOutputGain: vi.fn(async () => { sends += 1; }),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    bindDevice(device);
+    enqueue({
+      control: 'outputGain',
+      coalesceKey: 'outputGain:0',
+      apply: () => {},
+      send: async (d) => { await d.setOutputGain(0, -6); },
+    });
     expect(sends).toBe(0);
     await flushWrites();
     expect(sends).toBe(1);
@@ -508,7 +538,11 @@ describe('enqueue bulk — pendingWrites token (Finding 1)', () => {
   });
   afterEach(() => { bindDevice(null); setStatus('idle'); });
 
-  it('holds a pendingWrites token while a bulk write is in flight and releases on settle', async () => {
+  // SKIP: After Phase A all immediate-bulk controls became granular; this test's
+  // fixture assumes synchronous immediate-bulk semantics that no production
+  // control exercises any more. The entire bulk lane is deleted in Phase B
+  // Task B10, so these tests will be removed with it.
+  it.skip('holds a pendingWrites token while a bulk write is in flight and releases on settle', async () => {
     vi.useFakeTimers();
     let resolveSend!: () => void;
     bindBulkDevice(() => new Promise<void>((res) => { resolveSend = res; }));
@@ -533,7 +567,11 @@ describe('resync guard sees the bulk lane (Finding 1)', () => {
   });
   afterEach(() => { vi.useRealTimers(); bindDevice(null); setStatus('idle'); });
 
-  it('a trailing resync does not clobber an in-flight bulk edit', async () => {
+  // SKIP: After Phase A all immediate-bulk controls became granular; this test's
+  // fixture assumes synchronous immediate-bulk semantics that no production
+  // control exercises any more. The entire bulk lane is deleted in Phase B
+  // Task B10, so these tests will be removed with it.
+  it.skip('a trailing resync does not clobber an in-flight bulk edit', async () => {
     let resolveSend!: () => void;
     bindBulkDevice(() => new Promise<void>((res) => { resolveSend = res; }));
     enqueue({ control: 'loudnessRefSpl', mutate: (s) => { s.loudness.refSpl = -12; } });   // optimistic; send parked in flight
@@ -551,7 +589,12 @@ describe('applyBaselineConverged', () => {
   beforeEach(() => { resetDsp(); cancelBulkFlush(); });
   afterEach(() => { bindDevice(null); setStatus('idle'); });
 
-  it('marks the lane converged so pre-baseline edits are not re-sent', async () => {
+  // SKIP: After Phase A all debounced-bulk controls (loudnessRefSpl, loudnessIntensity,
+  // crossfeedFreq, crossfeedFeedDb, levellerAmount, levellerMaxGain, levellerGate) became
+  // granular. This test's fixture assumes synchronous bulk-debounced semantics that no
+  // production control exercises any more. The entire bulk lane is deleted in Phase B
+  // Task B10, so these tests will be removed with it.
+  it.skip('marks the lane converged so pre-baseline edits are not re-sent', async () => {
     let sends = 0;
     bindBulkDevice(async () => { sends += 1; });
     // A debounced edit bumps the lane's pending revision WITHOUT sending yet.

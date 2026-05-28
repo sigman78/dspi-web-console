@@ -153,12 +153,22 @@ export function setLoudnessEnabled(enabled: boolean): void {
 
 export function setLoudnessRefSpl(db: number): void {
   db = Clamp.loudnessRefSpl(db);
-  enqueue({ control: 'loudnessRefSpl', debounceKey: 'loudnessRefSpl', mutate: (s) => { s.loudness.refSpl = db; } });
+  enqueue({
+    control: 'loudnessRefSpl',
+    coalesceKey: 'loudnessRefSpl',
+    apply: () => { if (dsp.draft) dsp.draft.loudness.refSpl = db; },
+    send: (d) => d.setLoudnessRefSpl(db),
+  });
 }
 
 export function setLoudnessIntensityPct(pct: number): void {
   pct = Clamp.loudnessIntensityPct(pct);
-  enqueue({ control: 'loudnessIntensity', debounceKey: 'loudnessIntensity', mutate: (s) => { s.loudness.intensityPct = pct; } });
+  enqueue({
+    control: 'loudnessIntensity',
+    coalesceKey: 'loudnessIntensity',
+    apply: () => { if (dsp.draft) dsp.draft.loudness.intensityPct = pct; },
+    send: (d) => d.setLoudnessIntensity(pct),
+  });
 }
 
 export function setCrossfeedEnabled(enabled: boolean): void {
@@ -190,12 +200,22 @@ export function setCrossfeedItd(itd: boolean): void {
 
 export function setCrossfeedFreq(hz: number): void {
   hz = Clamp.crossfeedFreqHz(hz);
-  enqueue({ control: 'crossfeedFreq', debounceKey: 'crossfeedFreq', mutate: (s) => { s.crossfeed.freq = hz; } });
+  enqueue({
+    control: 'crossfeedFreq',
+    coalesceKey: 'crossfeedFreq',
+    apply: () => { if (dsp.draft) dsp.draft.crossfeed.freq = hz; },
+    send: (d) => d.setCrossfeedFreq(hz),
+  });
 }
 
 export function setCrossfeedFeedDb(db: number): void {
   db = Clamp.crossfeedFeedDb(db);
-  enqueue({ control: 'crossfeedFeedDb', debounceKey: 'crossfeedFeedDb', mutate: (s) => { s.crossfeed.feedDb = db; } });
+  enqueue({
+    control: 'crossfeedFeedDb',
+    coalesceKey: 'crossfeedFeedDb',
+    apply: () => { if (dsp.draft) dsp.draft.crossfeed.feedDb = db; },
+    send: (d) => d.setCrossfeedFeedDb(db),
+  });
 }
 
 export function setLevellerEnabled(enabled: boolean): void {
@@ -227,17 +247,32 @@ export function setLevellerLookahead(lookahead: boolean): void {
 
 export function setLevellerAmount(pct: number): void {
   pct = Clamp.levellerAmountPct(pct);
-  enqueue({ control: 'levellerAmount', debounceKey: 'levellerAmount', mutate: (s) => { if (s.leveller) s.leveller.amount = pct; } });
+  enqueue({
+    control: 'levellerAmount',
+    coalesceKey: 'levellerAmount',
+    apply: () => { if (dsp.draft?.leveller) dsp.draft.leveller.amount = pct; },
+    send: (d) => d.setLevellerAmount(pct),
+  });
 }
 
 export function setLevellerMaxGain(db: number): void {
   db = Clamp.levellerMaxGainDb(db);
-  enqueue({ control: 'levellerMaxGain', debounceKey: 'levellerMaxGain', mutate: (s) => { if (s.leveller) s.leveller.maxGainDb = db; } });
+  enqueue({
+    control: 'levellerMaxGain',
+    coalesceKey: 'levellerMaxGain',
+    apply: () => { if (dsp.draft?.leveller) dsp.draft.leveller.maxGainDb = db; },
+    send: (d) => d.setLevellerMaxGain(db),
+  });
 }
 
 export function setLevellerGate(db: number): void {
   db = Clamp.levellerGateDb(db);
-  enqueue({ control: 'levellerGate', debounceKey: 'levellerGate', mutate: (s) => { if (s.leveller) s.leveller.gateDb = db; } });
+  enqueue({
+    control: 'levellerGate',
+    coalesceKey: 'levellerGate',
+    apply: () => { if (dsp.draft?.leveller) dsp.draft.leveller.gateDb = db; },
+    send: (d) => d.setLevellerGate(db),
+  });
 }
 
 export function setMasterPreamp(db: number): void {

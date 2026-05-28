@@ -533,25 +533,25 @@ describe('granular writes: enums', () => {
   });
 });
 
-describe('bulk writes (debounced): sliders', () => {
-  let captured: import('@/protocol').BulkParams | null;
-  beforeEach(async () => {
-    captured = null;
-    await bootMock('rp2350');
+describe('granular writes (numeric sliders): sliders', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    bindDevice(initializedDevice({
-      setAllParams: vi.fn(async (b) => { captured = b; }),
-      getAllParams: vi.fn(async () => bulk),
-    }));
-    applyBaselineSnapshot(fromBulkParams(testHardware, bulk));
-    session.status = 'connected';
+    applyDraftSnapshot(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
+  afterEach(() => { vi.useRealTimers(); bindDevice(null); });
 
-  it('setLevellerAmount applies optimistically and flushes via flushWrites', async () => {
+  it('setLevellerAmount applies optimistically and sends via granular lane', async () => {
+    const setLevellerAmountFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setLevellerAmount: setLevellerAmountFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    bindDevice(device);
     setLevellerAmount(33);
     expect(dsp.draft?.leveller?.amount).toBe(33);
-    await flushWrites();
-    expect(captured?.leveller.amount).toBe(33);
+    await vi.runAllTimersAsync();
+    expect(setLevellerAmountFn).toHaveBeenCalledWith(33);
   });
 });
 
