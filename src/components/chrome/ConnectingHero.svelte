@@ -1,7 +1,7 @@
 <script lang="ts">
   import EqSpectrum from './EqSpectrum.svelte';
   import { session, setStatus } from '@/state';
-  import { connectRequested, webUsbUnsupportedReason } from '@/runtime';
+  import { connectRequested, webUsbUnsupportedReason, isDeviceHeld } from '@/runtime';
 
   let busy = $state(false);
   const unsupported = webUsbUnsupportedReason();
@@ -26,6 +26,27 @@
     busy || unsupported !== null || session.status === 'connecting'
   );
 
+  let heldElsewhere = $state(false);
+
+  async function refreshHeld() {
+    heldElsewhere =
+      session.status !== 'connected' &&
+      session.status !== 'connecting' &&
+      await isDeviceHeld();
+  }
+
+  $effect(() => {
+    void session.status;        // re-check when our own status changes
+    void refreshHeld();
+    const onFocus = () => { if (document.visibilityState === 'visible') void refreshHeld(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  });
+
   async function connect() {
     if (disabled) return;
     // 'connected' is intentionally NOT in the disabled predicate (button stays
@@ -46,11 +67,17 @@
   <EqSpectrum />
   <div class="status" class:is-error={session.status === 'error'}>{text}</div>
   {#if unsupported}
-    <div class="unsupported-panel" role="alert" aria-label="WebUSB unavailable">
-      <div class="unsupported-panel__header">WEBUSB UNAVAILABLE</div>
-      <pre class="unsupported-panel__body">{unsupported}</pre>
+    <div class="unsupported-panel warn-panel" role="alert" aria-label="WebUSB unavailable">
+      <div class="warn-panel__header">WEBUSB UNAVAILABLE</div>
+      <pre class="warn-panel__body">{unsupported}</pre>
     </div>
   {:else}
+    {#if heldElsewhere && !showErrorPanel}
+      <div class="held-panel warn-panel" role="status" aria-label="Device in use">
+        <div class="warn-panel__header">DEVICE IN USE</div>
+        <pre class="warn-panel__body">This device looks like it's open in another browser tab. Close it there, or click CONNECT to try anyway.</pre>
+      </div>
+    {/if}
     <button
       class="connect"
       onclick={connect}
@@ -113,7 +140,7 @@
     white-space: pre-wrap;
     word-break: break-word;
   }
-  .unsupported-panel {
+  .warn-panel {
     margin-top: 4px;
     width: min(640px, 90vw);
     border: 1px solid color-mix(in oklab, var(--warn) 55%, var(--border));
@@ -122,7 +149,7 @@
     overflow: hidden;
     text-align: left;
   }
-  .unsupported-panel__header {
+  .warn-panel__header {
     padding: 6px 12px;
     font-size: 10px;
     letter-spacing: 2px;
@@ -130,7 +157,7 @@
     background: color-mix(in oklab, var(--warn) 10%, transparent);
     border-bottom: 1px solid color-mix(in oklab, var(--warn) 35%, var(--border));
   }
-  .unsupported-panel__body {
+  .warn-panel__body {
     margin: 0;
     padding: 10px 12px;
     max-height: 240px;
