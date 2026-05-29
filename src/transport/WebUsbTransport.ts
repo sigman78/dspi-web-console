@@ -31,8 +31,8 @@ export class WebUsbTransport implements DspTransport {
              `or whitelist this origin in chrome://flags/#unsafely-treat-insecure-origin-as-secure.`;
     }
     if (!('usb' in navigator)) {
-      return 'navigator.usb is missing — this browser does not implement WebUSB ' +
-             '(Firefox and Safari do not ship it; use Chrome / Edge / Opera).';
+      return "This browser can't talk to USB devices. Open the console in a " +
+             'Chromium-based browser such as Google Chrome, Microsoft Edge, or Opera.';
     }
     return null;
   }
