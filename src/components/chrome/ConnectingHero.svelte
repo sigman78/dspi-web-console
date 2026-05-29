@@ -45,19 +45,26 @@
 <div class="connecting-hero">
   <EqSpectrum />
   <div class="status" class:is-error={session.status === 'error'}>{text}</div>
-  <button
-    class="connect"
-    onclick={connect}
-    disabled={disabled}
-    title={unsupported ?? text}
-  >
-    CONNECT
-  </button>
-  {#if showErrorPanel}
-    <div class="error-panel" role="alert" aria-label="Connection error details">
-      <div class="error-panel__header">DIAGNOSTICS</div>
-      <pre class="error-panel__body">{session.error}</pre>
+  {#if unsupported}
+    <div class="unsupported-panel" role="alert" aria-label="WebUSB unavailable">
+      <div class="unsupported-panel__header">WEBUSB UNAVAILABLE</div>
+      <pre class="unsupported-panel__body">{unsupported}</pre>
     </div>
+  {:else}
+    <button
+      class="connect"
+      onclick={connect}
+      disabled={disabled}
+      title={text}
+    >
+      CONNECT
+    </button>
+    {#if showErrorPanel}
+      <div class="error-panel" role="alert" aria-label="Connection error details">
+        <div class="error-panel__header">DIAGNOSTICS</div>
+        <pre class="error-panel__body">{session.error}</pre>
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -95,6 +102,35 @@
     border-bottom: 1px solid color-mix(in oklab, var(--err) 35%, var(--border));
   }
   .error-panel__body {
+    margin: 0;
+    padding: 10px 12px;
+    max-height: 240px;
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .unsupported-panel {
+    margin-top: 4px;
+    width: min(640px, 90vw);
+    border: 1px solid color-mix(in oklab, var(--warn) 55%, var(--border));
+    background: color-mix(in oklab, var(--warn) 7%, var(--panel));
+    border-radius: var(--radius);
+    overflow: hidden;
+    text-align: left;
+  }
+  .unsupported-panel__header {
+    padding: 6px 12px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--warn);
+    background: color-mix(in oklab, var(--warn) 10%, transparent);
+    border-bottom: 1px solid color-mix(in oklab, var(--warn) 35%, var(--border));
+  }
+  .unsupported-panel__body {
     margin: 0;
     padding: 10px 12px;
     max-height: 240px;

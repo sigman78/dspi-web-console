@@ -55,7 +55,7 @@ describe('ConnectingHero — status text', () => {
     vi.mocked(webUsbUnsupportedReason).mockReturnValue('no navigator.usb');
     setStatus('idle');
     render(ConnectingHero);
-    expect(screen.getByText('WEBUSB UNAVAILABLE')).toBeInTheDocument();
+    expect(screen.getByText('WEBUSB UNAVAILABLE', { selector: '.status' })).toBeInTheDocument();
   });
 
   test('renders the EQ spectrum (16 bars)', () => {
@@ -89,11 +89,19 @@ describe('ConnectingHero — button behavior', () => {
     expect(screen.getByRole('button', { name: 'CONNECT' })).not.toBeDisabled();
   });
 
-  test('webusb unsupported → button disabled', () => {
+  test('webusb unsupported → CONNECT button is not rendered', () => {
     vi.mocked(webUsbUnsupportedReason).mockReturnValue('no navigator.usb');
     setStatus('idle');
     render(ConnectingHero);
-    expect(screen.getByRole('button', { name: 'CONNECT' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'CONNECT' })).not.toBeInTheDocument();
+  });
+
+  test('webusb unsupported → renders the reason in an alert panel', () => {
+    vi.mocked(webUsbUnsupportedReason).mockReturnValue('this browser cannot do USB');
+    setStatus('idle');
+    render(ConnectingHero);
+    const panel = screen.getByRole('alert');
+    expect(panel).toHaveTextContent('this browser cannot do USB');
   });
 
   test('clicking enabled button calls connectRequested once', async () => {
