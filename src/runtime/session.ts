@@ -9,6 +9,7 @@ import {
 import { withTimeout } from '@/transport/withTimeout';
 import { attachTransportListeners, finishConnection } from './actions';
 import { beginConnection, endConnection } from './connectionScope';
+import { isDeviceHeld } from './deviceLock';
 import { session, setStatus, bindDevice, settings } from '@/state';
 import { Log } from '@/utils';
 
@@ -75,6 +76,12 @@ export async function bootReal(): Promise<void> {
   if (booting) return;
   booting = true;
   try {
+    // Another tab in this browser already holds the device. Auto-claiming here
+    // would throw a raw "unable to claim interface" error and clobber the hero
+    // with a diagnostics panel; skip the attempt so the "DEVICE IN USE" advisory
+    // shows instead. (The desktop app / another browser can't be detected this
+    // way and still falls back to the claim-failure text.)
+    if (await isDeviceHeld()) return;
     const transport = new WebUsbTransport();
     const ok = await transport.tryAutoConnect();
     if (!ok) return;
