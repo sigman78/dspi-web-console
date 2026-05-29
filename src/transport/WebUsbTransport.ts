@@ -163,6 +163,6 @@ function claimErrorHint(err: unknown, d: USBDevice, ifNum: number): string {
     `${msg} — tried interface ${ifNum}. Device exposes: ${layout}. ` +
     `On Windows, the vendor (class=0xff) interface must be bound to WinUSB ` +
     `via Zadig (rebind the entry whose name ends "(Interface ${ifNum})" / "MI_0${ifNum}"). ` +
-    `Also confirm that DSPi Console App is closed.`
+    `Also confirm the device isn't already open in another browser tab, and that the DSPi Console app is closed.`
   );
 }
