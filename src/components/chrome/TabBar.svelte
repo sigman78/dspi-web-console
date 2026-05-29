@@ -1,6 +1,6 @@
 <script lang="ts">
   import MiniPin from './MiniPin.svelte';
-  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId, mirror, status } from '@/state';
+  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId, mirror, status, session } from '@/state';
   import { eqUi } from '../eq/eqUi.svelte';
   import type { ChannelModel, ChannelId } from '@/domain';
 
@@ -18,6 +18,7 @@
   const inputs = $derived(mirror.current?.channels.filter((c) => !c.isOutput) ?? []);
   const outputs = $derived(mirror.current?.channels.filter((c) =>  c.isOutput) ?? []);
   const selectable = $derived(settings.tab === 'eq');
+  const disabled = $derived(session.status !== 'connected');
 
   function levelDb(ch: ChannelModel): number {
     const p = status.peaks[ch.id] ?? 0;
@@ -45,12 +46,13 @@
   }
 </script>
 
-<div class="tabs">
+<div class="tabs" class:is-disabled={disabled}>
   <div class="row">
     {#each TABS as t (t.id)}
       <button
         class="tab"
         class:active={settings.tab === t.id}
+        disabled={disabled}
         onclick={() => setTab(t.id)}
       >
         <span class="tcode">{t.code}</span>
@@ -108,6 +110,10 @@
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border);
+  }
+  .tabs.is-disabled {
+    opacity: 0.45;
+    pointer-events: none;
   }
   .row {
     padding: 0 16px;
