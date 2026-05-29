@@ -23,7 +23,7 @@
 
   $effect(() => {
     function onKey(e: KeyboardEvent) {
-      if (handleTabShortcut(e)) e.preventDefault();
+      if (session.status === 'connected' && handleTabShortcut(e)) e.preventDefault();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
