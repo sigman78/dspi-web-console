@@ -12,7 +12,6 @@ import type { DspDevice } from '@/device/DspDevice';
 import {
   bindDevice, session, setStatus,
   presets,
-  dsp, patchSnapshot, resetDsp,
   settings, reconcileEqTarget,
   resetStatus, status,
   clearCopySource,
@@ -20,50 +19,52 @@ import {
 import { Result, Log, type VoidResult } from '@/utils';
 import { startPolling } from './poll';
 import { connectionScope, endConnection } from './connectionScope';
-import { cancelResync } from './resync';
-import {
-  enqueue, applyBaselineConverged,
-  flush as flushWrites, cancel as cancelWrites,
-} from './outbox';
+import { mirror } from '@/state/mirror.svelte';
+import { write, scrub, flushAllWrites, cancelAllWrites } from '@/device/writes';
 import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
 const MUTE_DB = -128; // per spec
 
 function _setMasterVolume(db: number): void {
-  enqueue({
-    control: 'masterVolume',
-    coalesceKey: 'masterVolume',
-    apply: () => patchSnapshot({ masterVolumeDb: db }),
-    send: (d) => d.setMasterVolume(db),
-  });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    'masterVolume',
+    () => { if (mirror.current) mirror.current.masterVolumeDb = db; },
+    () => d.setMasterVolume(db),
+  );
 }
 
 let inflightSync: Promise<void> | null = null;
 
 export function setEqFilter(channel: ChannelId, band: number, filter: FilterParams): void {
-  if (!dsp.draft?.channels) return;
-  const ch = dsp.draft.channels.find((c) => c.id === channel);
+  if (!mirror.current?.channels) return;
+  const ch = mirror.current.channels.find((c) => c.id === channel);
   if (!ch) return;
   if (band >= ch.filters.length) {
     throw new Error(`band ${band} out of range for channel ${channel}`);
   }
-  enqueue({ control: 'eqFilter', mutate: (s) => {
-    const c = s.channels.find((c) => c.id === channel)!;
-    c.filters[band] = {
-      ...filter,
-      frequency: Clamp.bandFrequencyHz(filter.frequency),
-      q: Clamp.bandQ(filter.q),
-      gain: Clamp.bandGainDb(filter.gain),
-    };
-  } });
+  const clamped: FilterParams = {
+    ...filter,
+    frequency: Clamp.bandFrequencyHz(filter.frequency),
+    q: Clamp.bandQ(filter.q),
+    gain: Clamp.bandGainDb(filter.gain),
+  };
+  const d = session.device;
+  if (!d) return;
+  ch.filters[band] = { ...clamped };
+  void write(
+    () => d.setFilter(channel, band, clamped),
+    () => {},
+  );
 }
 
-// Copy all bands from source channel onto target channel as a single bulk write.
+// Copy all bands from source channel onto target channel as N independent granular writes.
 export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
-  if (sourceId === targetId || !dsp.draft?.channels) return;
-  const src = dsp.draft.channels.find((c) => c.id === sourceId);
-  const tgt = dsp.draft.channels.find((c) => c.id === targetId);
+  if (sourceId === targetId || !mirror.current?.channels) return;
+  const src = mirror.current.channels.find((c) => c.id === sourceId);
+  const tgt = mirror.current.channels.find((c) => c.id === targetId);
   if (!src || !tgt) return;
   const len = Math.min(src.filters.length, tgt.filters.length);
   const copied = src.filters.slice(0, len).map((f) => ({
@@ -72,20 +73,35 @@ export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
     q: Clamp.bandQ(f.q),
     gain: Clamp.bandGainDb(f.gain),
   }));
-  enqueue({ control: 'eqFilter', mutate: (s) => {
-    const t = s.channels.find((c) => c.id === targetId)!;
-    for (let i = 0; i < len; i++) t.filters[i] = { ...copied[i] };
-  } });
+  const d = session.device;
+  if (!d) return;
+  for (let i = 0; i < len; i++) {
+    const band = i;
+    const filter = copied[i];
+    void write(
+      () => d.setFilter(targetId, band, filter),
+      () => {
+        if (!mirror.current) return;
+        const t = mirror.current.channels.find((c) => c.id === targetId);
+        if (t) t.filters[band] = { ...filter };
+      },
+    );
+  }
 }
 
 export function setBypass(enabled: boolean): void {
-  enqueue({ control: 'bypass', mutate: (s) => { s.bypass = enabled; } });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setBypass(enabled),
+    () => { if (mirror.current) mirror.current.bypass = enabled; },
+  );
 }
 
 // Telemetry-only action: clears firmware-side latched clip flags (0x83) and
 // resets the host-side OR-latch (`status.clipLatched`). Not routed through
-// the outbox write path because clip state lives in telemetry, not the
-// DSP snapshot, so the post-send bulk resync would be pure overhead. If the
+// the write/scrub helpers because clip state lives in telemetry, not the
+// DSP snapshot, so the post-send resync would be pure overhead. If the
 // wire send fails, the host array stays cleared — the next poll cycle
 // will re-latch from `clipFlags` if firmware still sees the condition.
 export function clearClips(): void {
@@ -96,109 +112,194 @@ export function clearClips(): void {
 }
 
 // Empty / whitespace-only input clears the custom name on the device; the
-// optimistic snapshot mirrors that by falling back to defaultName, matching
-// what `displayNameForChannel` produces after a bulk resync. The outputs[]
+// snapshot mirrors that by falling back to defaultName, matching what
+// `displayNameForChannel` produces after a bulk resync. The outputs[]
 // name mirror keeps MatrixHeader and OverviewTab in sync without waiting
 // for the trailing bulk resync.
 export function setChannelName(id: ChannelId, name: string): void {
-  if (!dsp.draft?.channels) return;
-  const ch = dsp.draft.channels.find((c) => c.id === id);
+  if (!mirror.current?.channels) return;
+  const ch = mirror.current.channels.find((c) => c.id === id);
   if (!ch) return;
   const resolved = name.trim() || ch.defaultName;
   const clamped = Clamp.nameToByteBudget(resolved, CHANNEL_NAME_MAX_LEN);
-  enqueue({ control: 'channelName', mutate: (s) => {
-    const c = s.channels.find((c) => c.id === id)!;
-    c.name = clamped;
-    const o = s.outputs.find((o) => o.id === id);
-    if (o) o.name = clamped;
-  } });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setChannelName(id, clamped),
+    () => {
+      if (!mirror.current) return;
+      const c = mirror.current.channels.find((c) => c.id === id);
+      if (c) c.name = clamped;
+      const o = mirror.current.outputs.find((o) => o.id === id);
+      if (o) o.name = clamped;
+    },
+  );
 }
 
 export function setLoudnessEnabled(enabled: boolean): void {
-  enqueue({ control: 'loudnessEnabled', mutate: (s) => { s.loudness.enabled = enabled; } });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setLoudnessEnabled(enabled),
+    () => { if (mirror.current) mirror.current.loudness.enabled = enabled; },
+  );
 }
 
 export function setLoudnessRefSpl(db: number): void {
   db = Clamp.loudnessRefSpl(db);
-  enqueue({ control: 'loudnessRefSpl', debounceKey: 'loudnessRefSpl', mutate: (s) => { s.loudness.refSpl = db; } });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    'loudnessRefSpl',
+    () => { if (mirror.current) mirror.current.loudness.refSpl = db; },
+    () => d.setLoudnessRefSpl(db),
+  );
 }
 
 export function setLoudnessIntensityPct(pct: number): void {
   pct = Clamp.loudnessIntensityPct(pct);
-  enqueue({ control: 'loudnessIntensity', debounceKey: 'loudnessIntensity', mutate: (s) => { s.loudness.intensityPct = pct; } });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    'loudnessIntensity',
+    () => { if (mirror.current) mirror.current.loudness.intensityPct = pct; },
+    () => d.setLoudnessIntensity(pct),
+  );
 }
 
 export function setCrossfeedEnabled(enabled: boolean): void {
-  enqueue({ control: 'crossfeedEnabled', mutate: (s) => { s.crossfeed.enabled = enabled; } });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setCrossfeedEnabled(enabled),
+    () => { if (mirror.current) mirror.current.crossfeed.enabled = enabled; },
+  );
 }
 
 export function setCrossfeedPreset(preset: CrossfeedPreset): void {
-  enqueue({ control: 'crossfeedPreset', mutate: (s) => { s.crossfeed.preset = preset; } });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setCrossfeedPreset(preset),
+    () => { if (mirror.current) mirror.current.crossfeed.preset = preset; },
+  );
 }
 
 export function setCrossfeedItd(itd: boolean): void {
-  enqueue({ control: 'crossfeedItd', mutate: (s) => { s.crossfeed.itd = itd; } });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setCrossfeedItd(itd),
+    () => { if (mirror.current) mirror.current.crossfeed.itd = itd; },
+  );
 }
 
 export function setCrossfeedFreq(hz: number): void {
   hz = Clamp.crossfeedFreqHz(hz);
-  enqueue({ control: 'crossfeedFreq', debounceKey: 'crossfeedFreq', mutate: (s) => { s.crossfeed.freq = hz; } });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    'crossfeedFreq',
+    () => { if (mirror.current) mirror.current.crossfeed.freq = hz; },
+    () => d.setCrossfeedFreq(hz),
+  );
 }
 
 export function setCrossfeedFeedDb(db: number): void {
   db = Clamp.crossfeedFeedDb(db);
-  enqueue({ control: 'crossfeedFeedDb', debounceKey: 'crossfeedFeedDb', mutate: (s) => { s.crossfeed.feedDb = db; } });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    'crossfeedFeedDb',
+    () => { if (mirror.current) mirror.current.crossfeed.feedDb = db; },
+    () => d.setCrossfeedFeedDb(db),
+  );
 }
 
 export function setLevellerEnabled(enabled: boolean): void {
-  enqueue({ control: 'levellerEnabled', mutate: (s) => { if (s.leveller) s.leveller.enabled = enabled; } });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setLevellerEnabled(enabled),
+    () => { if (mirror.current?.leveller) mirror.current.leveller.enabled = enabled; },
+  );
 }
 
 export function setLevellerSpeed(speed: LevellerSpeed): void {
-  enqueue({ control: 'levellerSpeed', mutate: (s) => { if (s.leveller) s.leveller.speed = speed; } });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setLevellerSpeed(speed),
+    () => { if (mirror.current?.leveller) mirror.current.leveller.speed = speed; },
+  );
 }
 
 export function setLevellerLookahead(lookahead: boolean): void {
-  enqueue({ control: 'levellerLookahead', mutate: (s) => { if (s.leveller) s.leveller.lookahead = lookahead; } });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setLevellerLookahead(lookahead),
+    () => { if (mirror.current?.leveller) mirror.current.leveller.lookahead = lookahead; },
+  );
 }
 
 export function setLevellerAmount(pct: number): void {
   pct = Clamp.levellerAmountPct(pct);
-  enqueue({ control: 'levellerAmount', debounceKey: 'levellerAmount', mutate: (s) => { if (s.leveller) s.leveller.amount = pct; } });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    'levellerAmount',
+    () => { if (mirror.current?.leveller) mirror.current.leveller.amount = pct; },
+    () => d.setLevellerAmount(pct),
+  );
 }
 
 export function setLevellerMaxGain(db: number): void {
   db = Clamp.levellerMaxGainDb(db);
-  enqueue({ control: 'levellerMaxGain', debounceKey: 'levellerMaxGain', mutate: (s) => { if (s.leveller) s.leveller.maxGainDb = db; } });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    'levellerMaxGain',
+    () => { if (mirror.current?.leveller) mirror.current.leveller.maxGainDb = db; },
+    () => d.setLevellerMaxGain(db),
+  );
 }
 
 export function setLevellerGate(db: number): void {
   db = Clamp.levellerGateDb(db);
-  enqueue({ control: 'levellerGate', debounceKey: 'levellerGate', mutate: (s) => { if (s.leveller) s.leveller.gateDb = db; } });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    'levellerGate',
+    () => { if (mirror.current?.leveller) mirror.current.leveller.gateDb = db; },
+    () => d.setLevellerGate(db),
+  );
 }
 
 export function setMasterPreamp(db: number): void {
   db = Clamp.preampDb(db);
-  enqueue({
-    control: 'masterPreamp',
-    coalesceKey: 'masterPreamp',
-    apply: () => patchSnapshot({ masterPreampDb: db }),
-    send: (d) => d.setMasterPreamp(db),
-  });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    'masterPreamp',
+    () => { if (mirror.current) mirror.current.masterPreampDb = db; },
+    () => d.setMasterPreamp(db),
+  );
 }
 
 export function setInputPreamp(channel: InputSlot, db: number): void {
   db = Clamp.preampDb(db);
-  const cur = dsp.draft?.inputPreampDb;
+  const cur = mirror.current?.inputPreampDb;
   if (!cur) return;
   const next: [number, number] = [cur[0], cur[1]];
   next[channel] = db;
-  enqueue({
-    control: 'inputPreamp',
-    coalesceKey: `inputPreamp:${channel}`,
-    apply: () => patchSnapshot({ inputPreampDb: next }),
-    send: (d) => d.setInputPreamp(channel, db),
-  });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    `inputPreamp:${channel}`,
+    () => { if (mirror.current) mirror.current.inputPreampDb = next; },
+    () => d.setInputPreamp(channel, db),
+  );
 }
 
 // All three crosspoint mutations share one per-item granular lane keyed by the
@@ -211,13 +312,14 @@ function scheduleCrosspointWrite(
   output: OutputSlot,
   mutate: (r: RouteModel) => RouteModel,
 ): void {
-  if (!dsp.draft?.routes) return;
+  if (!mirror.current?.routes) return;
   const route = focusRoute(input, output);
-  enqueue({
-    control: 'crosspoint',
-    coalesceKey: `crosspoint:${input}:${output}`,
-    apply: () => route.modify(mutate),
-    send: async (d) => {
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    `crosspoint:${input}:${output}`,
+    () => route.modify(mutate),
+    async () => {
       const c = route.read();
       await d.setMatrixRoute(input, output, {
         enabled: c.enabled,
@@ -225,7 +327,7 @@ function scheduleCrosspointWrite(
         gainDb: c.gainDb,
       });
     },
-  });
+  );
 }
 
 export function setCrosspointGain(input: InputSlot, output: OutputSlot, gainDb: number): void {
@@ -243,40 +345,60 @@ export function setCrosspointInvert(input: InputSlot, output: OutputSlot, invert
 
 export function setOutputGain(slot: OutputSlot, gainDb: number): void {
   gainDb = Clamp.outputGainDb(gainDb);
-  if (!dsp.draft?.outputs) return;
+  if (!mirror.current?.outputs) return;
   const out = focusOutput(slot);
-  enqueue({
-    control: 'outputGain',
-    coalesceKey: `outputGain:${slot}`,
-    apply: () => out.modify((o) => ({ ...o, gainDb })),
-    send: (d) => d.setOutputGain(slot, gainDb),
-  });
+  const d = session.device;
+  if (!d) return;
+  scrub(
+    `outputGain:${slot}`,
+    () => out.modify((o) => ({ ...o, gainDb })),
+    () => d.setOutputGain(slot, gainDb),
+  );
 }
 
-// Bulk-path output addressing: locate the output by wire slot in the draft
-// being mutated. A missing slot is a silent no-op, matching the other bulk
-// verbs (the granular setOutputGain path uses focusOutput, which throws).
-function mutateOutputSlot(slot: OutputSlot, f: (o: OutputModel) => void): (s: DspSnapshot) => void {
-  return (s) => {
-    const o = s.outputs.find((o) => o.wireIndex === slot);
-    if (o) f(o);
-  };
-}
-
+// Write-path output addressing: locate the output by wire slot in the draft
+// being mutated. A missing slot is a silent no-op.
 export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
-  if (!dsp.draft?.outputs) return;
+  if (!mirror.current?.outputs) return;
   delayMs = Clamp.outputDelayMs(delayMs);
-  enqueue({ control: 'outputDelay', mutate: mutateOutputSlot(slot, (o) => { o.delayMs = delayMs; }) });
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setOutputDelay(slot, delayMs),
+    () => {
+      if (!mirror.current) return;
+      const o = mirror.current.outputs.find((o) => o.wireIndex === slot);
+      if (o) o.delayMs = delayMs;
+    },
+  );
 }
 
 export function setOutputEnabled(slot: OutputSlot, enabled: boolean): void {
-  if (!dsp.draft?.outputs) return;
-  enqueue({ control: 'outputEnabled', mutate: mutateOutputSlot(slot, (o) => { o.enabled = enabled; }) });
+  if (!mirror.current?.outputs) return;
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setOutputEnable(slot, enabled),
+    () => {
+      if (!mirror.current) return;
+      const o = mirror.current.outputs.find((o) => o.wireIndex === slot);
+      if (o) o.enabled = enabled;
+    },
+  );
 }
 
 export function setOutputMuted(slot: OutputSlot, muted: boolean): void {
-  if (!dsp.draft?.outputs) return;
-  enqueue({ control: 'outputMuted', mutate: mutateOutputSlot(slot, (o) => { o.muted = muted; }) });
+  if (!mirror.current?.outputs) return;
+  const d = session.device;
+  if (!d) return;
+  void write(
+    () => d.setOutputMute(slot, muted),
+    () => {
+      if (!mirror.current) return;
+      const o = mirror.current.outputs.find((o) => o.wireIndex === slot);
+      if (o) o.muted = muted;
+    },
+  );
 }
 
 export async function syncDeviceSnapshot(): Promise<void> {
@@ -286,7 +408,7 @@ export async function syncDeviceSnapshot(): Promise<void> {
   inflightSync = (async () => {
     try {
       const snap = await d.getSnapshot();
-      applyBaselineConverged(snap);
+      mirror.init(snap);
     } catch (err) {
       Log.error('sync', 'syncDeviceSnapshot failed', err);
       setStatus('error', (err as Error).message);
@@ -313,14 +435,13 @@ export async function finishConnection(device: DspDevice): Promise<void> {
     const s = connectionScope();
     if (s) {
       s.add(startPolling());
-      s.add(cancelResync);
-      s.add(() => cancelWrites());
+      s.add(() => cancelAllWrites());
     }
     await fetchPresetInfo();
     Log.info('sync', 'connected', {
-      platform: dsp.draft?.platform.name,
-      formatVersion: dsp.draft?.formatVersion,
-      masterVolumeDb: dsp.draft?.masterVolumeDb,
+      platform: mirror.current?.platform.name,
+      formatVersion: mirror.current?.formatVersion,
+      masterVolumeDb: mirror.current?.masterVolumeDb,
     });
   } catch (err) {
     Log.error('sync', 'finishConnection failed', err);
@@ -339,9 +460,9 @@ export async function reconcileAfterSync(): Promise<void> {
   const d = session.device;
   if (!d) return;
   if (settings.soft.muted) {
-    const restoreFrom = settings.soft.mutedFromDb ?? dsp.draft?.masterVolumeDb ?? 0;
+    const restoreFrom = settings.soft.mutedFromDb ?? mirror.current?.masterVolumeDb ?? 0;
     settings.soft.mutedFromDb = restoreFrom;
-    patchSnapshot({ masterVolumeDb: MUTE_DB });
+    if (mirror.current) mirror.current.masterVolumeDb = MUTE_DB;
     await d.setMasterVolume(MUTE_DB);
   }
 }
@@ -363,7 +484,7 @@ export function toggleMute(): void {
     settings.soft.mutedFromDb = null;
     _setMasterVolume(restore);
   } else {
-    settings.soft.mutedFromDb = dsp.draft?.masterVolumeDb ?? 0;
+    settings.soft.mutedFromDb = mirror.current?.masterVolumeDb ?? 0;
     settings.soft.muted = true;
     _setMasterVolume(MUTE_DB);
   }
@@ -378,7 +499,7 @@ export function attachTransportListeners(transport: DspTransport): () => void {
     endConnection();                 // disposes commands, resync, poll loop, listeners
     bindDevice(null);
     setStatus('disconnected');
-    resetDsp();
+    mirror.reset();
     invalidatePresetCache();
     clearCopySource();
     resetStatus();
@@ -420,7 +541,7 @@ export async function factoryResetDevice(): Promise<VoidResult> {
   if (!d) return Result.fail('no device', 'no device');
   // Drain any parked optimistic write so a pre-reset bulk send can't settle
   // mid-reset and re-push stale params (mirrors the preset load/paste flows).
-  await flushWrites();
+  await flushAllWrites();
   const r = await d.factoryReset();
   // r.message is always present on the failure branch; map the typed flash
   // code to the action wrapper's string channel.
@@ -433,27 +554,27 @@ export async function factoryResetDevice(): Promise<VoidResult> {
 
 // Output pin / I2S config verbs -------------------------------------------
 // Direct-call pattern: call granular device method, await typed Result,
-// do a targeted readback of only the affected field, and patchSnapshot
+// do a targeted readback of only the affected field, and mutate the mirror
 // with just that field. Never calls syncDeviceSnapshot (would discard
-// unsaved EQ/mixer edits in dsp.draft).
+// unsaved EQ/mixer edits in mirror.current).
 
 const settle = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function patchI2s(update: (i: I2sConfig) => I2sConfig): void {
-  if (dsp.draft?.i2s) patchSnapshot({ i2s: update(dsp.draft.i2s) });
+  if (mirror.current?.i2s) mirror.current.i2s = update(mirror.current.i2s);
 }
 
 export async function setOutputDataPin(pinOutputIndex: number, pin: number): Promise<VoidResult> {
   const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
-  await flushWrites();
+  await flushAllWrites();
   const r = await d.setOutputPin(pinOutputIndex, pin);
   if (!r.ok) return Result.fail('pin set failed', r.message);
   const actual = await d.getOutputPin(pinOutputIndex);
-  if (dsp.draft) {
-    const pins = dsp.draft.outputPins.slice();
+  if (mirror.current) {
+    const pins = mirror.current.outputPins.slice();
     pins[pinOutputIndex] = actual;
-    patchSnapshot({ outputPins: pins });
+    mirror.current.outputPins = pins;
   }
   return Result.ok();
 }
@@ -461,8 +582,8 @@ export async function setOutputDataPin(pinOutputIndex: number, pin: number): Pro
 export async function setOutputType(slot: OutputSlot, type: number): Promise<VoidResult> {
   const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
-  if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushWrites();
+  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
+  await flushAllWrites();
   const r = await d.setOutputType(slot, type);
   if (!r.ok) return Result.fail('type switch failed', r.message);
   const applyType = (v: number) =>
@@ -480,8 +601,8 @@ export async function setOutputType(slot: OutputSlot, type: number): Promise<Voi
 export async function setI2sBckPin(pin: number): Promise<VoidResult> {
   const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
-  if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushWrites();
+  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
+  await flushAllWrites();
   const r = await d.setI2sBckPin(pin);
   if (!r.ok) return Result.fail('bck set failed', r.message);
   const actual = await d.getI2sBckPin();
@@ -492,8 +613,8 @@ export async function setI2sBckPin(pin: number): Promise<VoidResult> {
 export async function setMckEnabled(on: boolean): Promise<VoidResult> {
   const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
-  if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushWrites();
+  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
+  await flushAllWrites();
   const r = await d.setMckEnable(on);
   if (!r.ok) return Result.fail('mck enable failed', r.message);
   const actual = await d.getMckEnable();
@@ -504,8 +625,8 @@ export async function setMckEnabled(on: boolean): Promise<VoidResult> {
 export async function setMckPin(pin: number): Promise<VoidResult> {
   const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
-  if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushWrites();
+  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
+  await flushAllWrites();
   const r = await d.setMckPin(pin);
   if (!r.ok) return Result.fail('mck pin failed', r.message);
   const actual = await d.getMckPin();
@@ -516,8 +637,8 @@ export async function setMckPin(pin: number): Promise<VoidResult> {
 export async function setMckMultiplier(encoded: number): Promise<VoidResult> {
   const d = session.device;
   if (!d) return Result.fail('no device', 'no device');
-  if (!dsp.draft?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushWrites();
+  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
+  await flushAllWrites();
   const r = await d.setMckMultiplier(encoded);
   if (!r.ok) return Result.fail('mck multiplier failed', r.message);
   const actual = await d.getMckMultiplier();

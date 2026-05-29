@@ -6,13 +6,13 @@ vi.mock('@/runtime', () => ({
 }));
 
 vi.mock('@/state', () => {
-  const draft = {
+  const snap = {
     platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
     outputPins: [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
   };
   return {
-    dsp: { get draft() { return draft; } },
+    mirror: { get current() { return snap; } },
     session: { get status() { return 'connected'; } },
     status: { get info() { return { sampleRateHz: 96000 }; } },
   };

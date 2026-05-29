@@ -2,13 +2,13 @@
 
 import {
   session,
-  refreshSavedFromDraft,
   presets, presetsDirty, askBoundary,
   settings,
 } from '@/state';
 import { reconcileAfterSync } from './actions';
 import { fetchAndApplyAsBaseline } from './resync';
-import { flush as flushWrites } from './outbox';
+import { mirror } from '@/state/mirror.svelte';
+import { flushAllWrites as flushWrites } from '@/device/writes';
 import type { DspDevice } from '@/device/DspDevice';
 import { type PresetSlot, PRESET_SLOT_COUNT } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
@@ -153,7 +153,7 @@ export async function saveActivePreset(): Promise<Result<void, PresetResult> | P
           set.add(active);
           presets.directory = { ...presets.directory, occupiedSlotsSet: set };
         }
-        refreshSavedFromDraft();
+        mirror.captureBaseline();
       } else {
         recordActionError('Save', new Error(r.message ?? `error ${r.code}`));
       }
@@ -183,7 +183,7 @@ export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, Pre
           presets.directory = { ...presets.directory, occupiedSlotsSet: set };
         }
         presets.active = slot;
-        refreshSavedFromDraft();
+        mirror.captureBaseline();
       } else {
         recordActionError('Save', new Error(r.message ?? `error ${r.code}`));
       }
@@ -310,6 +310,20 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
       // Wait for the active-slot load to settle first, otherwise its deferred
       // flash→RAM copy could land after restoreState and clobber the source.
       await settleAfterLoad();
+      // Format-version gate (BETA-MIGRATION safety). Both blobs come from the
+      // same firmware in the same session today, so this only fires after a
+      // mid-session firmware update changes the wire format — which would
+      // make the captured source incompatible with current RAM. Skip when
+      // mirror.current is null: the device disconnected mid-paste, and
+      // restoreState below will fail on its own. See DEVICE-BASED-MODEL.md §E.
+      const expectedFmt = mirror.current?.formatVersion;
+      if (expectedFmt === undefined) {
+        Log.warn('presets', 'paste gate: mirror.current null, skipping version check');
+      } else if (sourceBlob.formatVersion !== expectedFmt) {
+        const msg = `Paste blocked: snapshot format v${sourceBlob.formatVersion} incompatible with device v${expectedFmt}`;
+        recordActionError('Paste', new Error(msg));
+        return { ok: false, code: 'error', message: msg };
+      }
       await d.restoreState(sourceBlob);
       // Step 5: Flash active slot = RAM = src content.
       const r5 = await d.savePreset(active);

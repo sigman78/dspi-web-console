@@ -1,7 +1,7 @@
 // Reactive store for the preset UI. Holds the cached directory packet,
 // per-slot names, the active slot, and an in-flight `busy` flag. The
 // dirty flag is *not* a stored field — `presetsDirty.current` computes
-// the diff on read (matches the `isInFlight` pattern in dsp.svelte.ts).
+// the diff on read (matches the `isInFlight` pattern in mirror.svelte.ts).
 //
 // See docs/superpowers/specs/2026-05-10-presets-wire-protocol-plan.md §State runtime.
 
@@ -11,7 +11,7 @@ import {
   MasterVolumeMode,
   presetDiff,
 } from '@/domain';
-import { dsp } from './dsp.svelte';
+import { mirror, presetBaseline } from './mirror.svelte';
 import { settings } from './settings.svelte';
 
 export interface PresetsState {
@@ -44,9 +44,9 @@ export const presets = $state<PresetsState>({
 // would just add a cache-invalidation problem.
 export const presetsDirty = {
   get current(): boolean {
-    if (!dsp.draft || !dsp.saved) return false;
+    if (!mirror.current || !presetBaseline.current) return false;
     const mode = presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent;
-    return presetDiff(dsp.saved, dsp.draft, {
+    return presetDiff(presetBaseline.current, mirror.current, {
       ignoreMasterVolume: mode === MasterVolumeMode.Independent,
       softMuted:          settings.soft.muted,
     });

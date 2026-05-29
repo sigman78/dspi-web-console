@@ -3,9 +3,9 @@
 // prefix (`setMasterVolume()` reads as the call site's intent; wrapping
 // in `Actions.setMasterVolume()` would add noise without scope value).
 //
-// Intentionally NOT re-exported: `commands`, `focus`, `resync`,
-// `schedulers`. They are internal coordination primitives used only by
-// `actions.ts` and friends inside this directory.
+// Intentionally NOT re-exported: `commands`, `focus`, `resync`. They are
+// internal coordination primitives used only by `actions.ts` and friends
+// inside this directory.
 export * from './actions';
 export * from './presets';
 export * from './session';

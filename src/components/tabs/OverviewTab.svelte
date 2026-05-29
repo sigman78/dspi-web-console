@@ -4,11 +4,11 @@
   import KV from '../chrome/KV.svelte';
   import BodePlot, { type BodeCurve } from '../bode/BodePlot.svelte';
   import { filterCurve } from '../bode/filterCurve';
-  import { dsp, status } from '@/state';
+  import { mirror, status } from '@/state';
   import { matrixRows, ChannelId, inputIndexOf, CrossfeedPreset } from '@/domain';
   import { chKey } from '@/styles/palette';
 
-  const snap = $derived(dsp.draft);
+  const snap = $derived(mirror.current);
   const rows = $derived(matrixRows(snap));
 
   function preampOffsetFor(c: { id: ChannelId; isOutput: boolean }): number {

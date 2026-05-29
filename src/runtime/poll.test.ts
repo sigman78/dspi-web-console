@@ -4,8 +4,13 @@ import { fromBulkParams } from '@/device/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
-import { bindDevice, resetStatus, applyDraftSnapshot } from '@/state';
-import { startPolling, type PollClock } from './poll';
+import { bindDevice, resetStatus, mirror, presetBaseline, settings } from '@/state';
+import {
+  requestReconcile, consumeReconcile, peekReconcile, noteWriteActivity,
+  inflight, bumpInflight, dropInflight,
+} from '@/state/mirror.svelte';
+import { write } from '@/device/writes';
+import { startPolling, type PollClock, RECONCILE_QUIET_MS } from './poll';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
 
@@ -32,8 +37,38 @@ function pollDevice(status = { peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 }) 
   return { device, calls };
 }
 
+// Fake device that also serves getSnapshot for the param reconcile cadence.
+function paramDevice() {
+  const calls = { status: 0, snapshot: 0 };
+  const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+  const device = {
+    info: { serial: 'T', firmwareVersion: '6.0.0', platformType: PlatformType.RP2350, hardware: hw },
+    hardware: hw,
+    getSystemStatus: vi.fn(async () => { calls.status++; return { peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 }; }),
+    getBufferStats: vi.fn(async () => null),
+    getSystemInfo: vi.fn(async () => ({})),
+    getSnapshot: vi.fn(async () => { calls.snapshot++; return snap; }),
+  } as unknown as DspDevice;
+  return { device, calls, snap };
+}
+
+// Settle the fire-and-forget doPoll chain (a few awaited device calls deep).
+const settle = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+
+// Fake device with a caller-supplied getSnapshot, for reconcile timing tests.
+function deviceWithSnapshot(getSnapshot: () => Promise<unknown>) {
+  return {
+    info: { serial: 'T', firmwareVersion: '6.0.0', platformType: PlatformType.RP2350, hardware: hw },
+    hardware: hw,
+    getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 })),
+    getBufferStats: vi.fn(async () => null),
+    getSystemInfo: vi.fn(async () => ({})),
+    getSnapshot: vi.fn(getSnapshot),
+  } as unknown as DspDevice;
+}
+
 describe('startPolling', () => {
-  beforeEach(() => { resetStatus(); applyDraftSnapshot(fromBulkParams(hw, parseBulkParams(makeBulk()))); });
+  beforeEach(() => { resetStatus(); mirror.replaceCurrent(fromBulkParams(hw, parseBulkParams(makeBulk()))); });
   afterEach(() => { bindDevice(null); });
 
   it('polls the status cadence when the clock fires, and stops after dispose', async () => {
@@ -61,5 +96,198 @@ describe('startPolling', () => {
     expect(calls.status).toBe(0);
     stop();
     hiddenSpy.mockRestore();
+  });
+});
+
+describe('param reconcile cadence', () => {
+  beforeEach(() => {
+    resetStatus();
+    consumeReconcile();                      // clear any pending request
+    while (inflight.current > 0) dropInflight();
+    mirror.reset();                          // zero lastWriteMs (and current)
+    mirror.replaceCurrent(fromBulkParams(hw, parseBulkParams(makeBulk())));
+  });
+  afterEach(() => { bindDevice(null); consumeReconcile(); while (inflight.current > 0) dropInflight(); });
+
+  it('reconciles via getSnapshot when a reconcile is pending and idle', async () => {
+    const { device, calls } = paramDevice();
+    bindDevice(device);
+    const clock = manualClock();
+    const stop = startPolling(clock);
+    requestReconcile(false);
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(1);
+    stop();
+  });
+
+  it('does not reconcile when nothing is pending', async () => {
+    const { device, calls } = paramDevice();
+    bindDevice(device);
+    const clock = manualClock();
+    const stop = startPolling(clock);
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(0);
+    stop();
+  });
+
+  it('does not reconcile while a write is in flight (no mid-drag clobber)', async () => {
+    const { device, calls } = paramDevice();
+    bindDevice(device);
+    const clock = manualClock();
+    const stop = startPolling(clock);
+    requestReconcile(false);
+    bumpInflight();                          // simulate an in-flight write
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(0);
+    dropInflight();
+    stop();
+  });
+
+  it('applies via replaceCurrent — baseline stays pinned', async () => {
+    // Device reconciles to a distinct master volume so we can tell current
+    // (advanced) from baseline (pinned). $state wraps cells in a proxy, so we
+    // assert on a field value, not object identity.
+    const reconciled = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    reconciled.masterVolumeDb = -33;
+    const device = {
+      info: { serial: 'T', firmwareVersion: '6.0.0', platformType: PlatformType.RP2350, hardware: hw },
+      hardware: hw,
+      getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 })),
+      getBufferStats: vi.fn(async () => null),
+      getSystemInfo: vi.fn(async () => ({})),
+      getSnapshot: vi.fn(async () => reconciled),
+    } as unknown as DspDevice;
+    bindDevice(device);
+    const initial = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    initial.masterVolumeDb = -5;
+    mirror.init(initial);                               // current + baseline = -5
+    const clock = manualClock();
+    const stop = startPolling(clock);
+    requestReconcile(false);
+    clock.fire();
+    await settle();
+    expect(mirror.current!.masterVolumeDb).toBe(-33);   // current advanced
+    expect(presetBaseline.current!.masterVolumeDb).toBe(-5); // baseline pinned
+    stop();
+  });
+
+  it('non-eager waits for the interval; eager bypasses it', async () => {
+    const { device, calls } = paramDevice();
+    bindDevice(device);
+    const clock = manualClock();
+    const stop = startPolling(clock);
+
+    requestReconcile(false);
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(1);          // first run, stamps lastParamMs
+
+    requestReconcile(false);                 // non-eager, interval not elapsed
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(1);          // skipped by interval gate
+
+    requestReconcile(true);                  // eager → bypass interval
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(2);          // ran despite interval
+    stop();
+  });
+
+  it('end-to-end: an eager write() drives a poll reconcile once writes go quiet', async () => {
+    vi.useFakeTimers({ toFake: ['performance'] });
+    try {
+      const { device, calls } = paramDevice();
+      bindDevice(device);
+      settings.eagerReconcile = true;
+      const clock = manualClock();
+      const stop = startPolling(clock);
+      vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);   // clear of t=0 floor
+      await write(async () => {}, () => {});             // stamps lastWriteMs = now
+      clock.fire();
+      await settle();
+      expect(calls.snapshot).toBe(0);                    // write too recent: blocked
+      vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);    // writes go quiet
+      clock.fire();
+      await settle();
+      expect(calls.snapshot).toBe(1);                    // eager + quiet → reconciles
+      settings.eagerReconcile = false;
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not reconcile while writes are recent; reconciles once quiet (#1)', async () => {
+    vi.useFakeTimers({ toFake: ['performance'] });
+    try {
+      const { device, calls } = paramDevice();
+      bindDevice(device);
+      const clock = manualClock();
+      const stop = startPolling(clock);
+      vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);
+      noteWriteActivity();                  // a write/scrub just happened
+      requestReconcile(false);
+      clock.fire();
+      await settle();
+      expect(calls.snapshot).toBe(0);       // blocked: within quiet window
+      vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);
+      clock.fire();
+      await settle();
+      expect(calls.snapshot).toBe(1);       // quiet elapsed → reconciles
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('discards the snapshot if a write lands during the fetch — no mid-drag clobber (#1)', async () => {
+    vi.useFakeTimers({ toFake: ['performance'] });
+    try {
+      let resolveSnap!: () => void;
+      const reconciled = fromBulkParams(hw, parseBulkParams(makeBulk()));
+      reconciled.masterVolumeDb = -99;
+      const device = deviceWithSnapshot(() => new Promise((r) => { resolveSnap = () => r(reconciled); }));
+      bindDevice(device);
+      const initial = fromBulkParams(hw, parseBulkParams(makeBulk()));
+      initial.masterVolumeDb = -5;
+      mirror.init(initial);
+      const clock = manualClock();
+      const stop = startPolling(clock);
+      vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);
+      requestReconcile(false);
+      clock.fire();
+      await settle();                       // pollParam parked on getSnapshot
+      vi.advanceTimersByTime(1);
+      noteWriteActivity();                  // a write lands mid-fetch
+      resolveSnap();
+      await settle();
+      expect(mirror.current!.masterVolumeDb).toBe(-5);   // discarded, not -99
+      expect(peekReconcile().wanted).toBe(true);          // request still pending
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the reconcile request pending when getSnapshot fails (#3)', async () => {
+    vi.useFakeTimers({ toFake: ['performance'] });
+    try {
+      const device = deviceWithSnapshot(async () => { throw new Error('boom'); });
+      bindDevice(device);
+      const clock = manualClock();
+      const stop = startPolling(clock);
+      vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);
+      requestReconcile(false);
+      clock.fire();
+      await settle();
+      expect(peekReconcile().wanted).toBe(true);   // not consumed on failure
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

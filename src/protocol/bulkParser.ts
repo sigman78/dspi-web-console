@@ -197,8 +197,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
 
 // Factory: returns a fully-populated BulkParams representing firmware
 // factory defaults. Single source of truth for "what's a sensible zero
-// state?" -- used by tests, MockTransport, the parser's section fallback
-// (Task 4), and toBulkParams in the domain layer (later).
+// state?" -- used by tests, MockTransport, and the parser's section fallback.
 export function defaultBulkParams(opts: {
   platformId: number;
   numCh: number;

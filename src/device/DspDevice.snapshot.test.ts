@@ -49,49 +49,26 @@ describe('DspDevice snapshot API', () => {
     d = await createDevice(t);
   });
 
-  it('hasState is false before any snapshot fetch', () => {
-    expect(d.hasState).toBe(false);
-  });
-
-  it('getSnapshot returns a domain snapshot and sets hasState', async () => {
+  it('getSnapshot returns a domain snapshot', async () => {
     const snap = await d.getSnapshot();
     expect(snap.formatVersion).toBeGreaterThanOrEqual(3);
     expect(Array.isArray(snap.channels)).toBe(true);
-    expect(d.hasState).toBe(true);
   });
 
-  it('applyBulk throws if called before any snapshot fetch', async () => {
-    await expect(d.applyBulk({} as never)).rejects.toThrow();
-  });
-
-  it('applyBulk round-trips an edited snapshot through the wire', async () => {
-    const snap = await d.getSnapshot();
-    snap.masterVolumeDb = -12;
-    await d.applyBulk(snap);
-    const after = await d.getSnapshot();
-    expect(after.masterVolumeDb).toBe(-12);
-  });
-
-  it('captureState + restoreState copy device state opaquely', async () => {
-    const before = await d.getSnapshot();
-    const savedVolume = before.masterVolumeDb;
+  it('captureState + restoreState round-trip device state opaquely', async () => {
+    // Mutate to a non-default value, capture that, mutate again to a
+    // different value, then restore the blob and confirm the captured value
+    // (not the default, not the post-capture value) comes back. Two distinct
+    // non-default values prove both that captureState saw the first mutation
+    // AND that restoreState pushed the blob back to the device.
+    await d.setMasterVolume(-7);
     const blob = await d.captureState();
-    const snap = await d.getSnapshot();
-    snap.masterVolumeDb = savedVolume - 5;
-    await d.applyBulk(snap);
-    await d.restoreState(blob);
-    const restored = await d.getSnapshot();
-    expect(restored.masterVolumeDb).toBe(savedVolume);
-  });
+    expect((await d.getSnapshot()).masterVolumeDb).toBe(-7);
 
-  it('applyBulk works after restoreState (paste-then-edit interleave)', async () => {
-    await d.getSnapshot();
-    const blob = await d.captureState();
+    await d.setMasterVolume(-3);
+    expect((await d.getSnapshot()).masterVolumeDb).toBe(-3);
+
     await d.restoreState(blob);
-    const snap = await d.getSnapshot();
-    snap.masterVolumeDb = -7;
-    await d.applyBulk(snap);
-    const after = await d.getSnapshot();
-    expect(after.masterVolumeDb).toBe(-7);
+    expect((await d.getSnapshot()).masterVolumeDb).toBe(-7);
   });
 });

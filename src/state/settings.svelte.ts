@@ -1,5 +1,5 @@
 import type { ChannelId } from '@/domain';
-import { dsp } from './dsp.svelte';
+import { mirror } from './mirror.svelte';
 
 export type TabId = 'overview' | 'eq' | 'mixer' | 'processing' | 'presets' | 'system';
 
@@ -19,6 +19,12 @@ export interface Settings {
   };
   lastSerial: string | null;
   warnOnPresetSwitchDirty: boolean;
+  // When true, a successful write/scrub asks the background param poll to
+  // reconcile at the next tick instead of waiting for its interval. Default
+  // off — the inflight-gated poll floor catches clamp/coupling drift on its
+  // own cadence. Temporary: remove once firmware cross-coupling is ruled out
+  // and clamp parity is audited. See DEVICE-BASED-MODEL.md.
+  eagerReconcile: boolean;
 }
 
 const STORAGE_KEY = 'dspi-console-web/settings/v1';
@@ -33,6 +39,7 @@ function defaults(): Settings {
     soft: { muted: false, mutedFromDb: null },
     lastSerial: null,
     warnOnPresetSwitchDirty: true,
+    eagerReconcile: false,
   };
 }
 
@@ -85,6 +92,7 @@ function parseV1(raw: string, fallback: Settings): Settings {
     },
     lastSerial: stringOrNull(obj.lastSerial),
     warnOnPresetSwitchDirty: bool(obj.warnOnPresetSwitchDirty, true),
+    eagerReconcile: bool(obj.eagerReconcile, false),
   };
 }
 
@@ -156,6 +164,7 @@ export function restoreSettings(): void {
   settings.soft.mutedFromDb = loaded.soft.mutedFromDb;
   settings.lastSerial = loaded.lastSerial;
   settings.warnOnPresetSwitchDirty = loaded.warnOnPresetSwitchDirty;
+  settings.eagerReconcile = loaded.eagerReconcile;
 }
 
 export function setShowDebugStats(value: boolean): void {
@@ -167,16 +176,19 @@ export function setTab(t: TabId): void {
 export function setEqTarget(id: ChannelId | null): void {
   settings.eqTarget = id;
 }
+export function setEagerReconcile(value: boolean): void {
+  settings.eagerReconcile = value;
+}
 
-// After connection sync hydrates dsp.draft, validate the persisted eqTarget
-// against the connected platform's channel set. If the stored ID isn't
-// in dsp.draft.channels (e.g. user reconnected to a smaller-platform
-// device), fall back to the first output channel. eqTarget === null
+// After connection sync hydrates mirror.current, validate the persisted
+// eqTarget against the connected platform's channel set. If the stored ID
+// isn't in mirror.current.channels (e.g. user reconnected to a smaller-
+// platform device), fall back to the first output channel. eqTarget === null
 // stays null -- explicit "no selection" is a valid persisted state.
 export function reconcileEqTarget(): void {
   const target = settings.eqTarget;
   if (target === null) return;
-  const channels = dsp.draft?.channels;
+  const channels = mirror.current?.channels;
   if (!channels) return;
   if (channels.some((c) => c.id === target)) return;
   const firstOutput = channels.find((c) => c.isOutput);
@@ -196,6 +208,7 @@ export function startSettingsPersistence(): void {
         soft: { muted: settings.soft.muted, mutedFromDb: settings.soft.mutedFromDb },
         lastSerial: settings.lastSerial,
         warnOnPresetSwitchDirty: settings.warnOnPresetSwitchDirty,
+        eagerReconcile: settings.eagerReconcile,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
     });

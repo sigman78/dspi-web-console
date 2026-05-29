@@ -3,14 +3,14 @@
   import ValueField from '../chrome/ValueField.svelte';
   import SegmentedSelect from '../chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '../chrome/ToggleSwitch.svelte';
-  import { dsp, session } from '@/state';
+  import { mirror, session } from '@/state';
   import {
     setLevellerEnabled, setLevellerSpeed, setLevellerLookahead,
     setLevellerAmount, setLevellerMaxGain, setLevellerGate,
   } from '@/runtime';
   import { LevellerSpeed, Proc } from '@/domain';
 
-  const lv = $derived(dsp.draft?.leveller);
+  const lv = $derived(mirror.current?.leveller);
   const connected = $derived(session.status === 'connected');
   const enabled = $derived(lv?.enabled ?? false);
   const editable = $derived(connected && enabled);

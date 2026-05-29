@@ -1,6 +1,6 @@
 <script lang="ts">
   import MiniPin from './MiniPin.svelte';
-  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId, dsp, status } from '@/state';
+  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId, mirror, status } from '@/state';
   import { eqUi } from '../eq/eqUi.svelte';
   import type { ChannelModel, ChannelId } from '@/domain';
 
@@ -15,8 +15,8 @@
 
   const TABS = TAB_ORDER.map((id) => ({ id, ...TAB_META[id] }));
 
-  const inputs = $derived(dsp.draft?.channels.filter((c) => !c.isOutput) ?? []);
-  const outputs = $derived(dsp.draft?.channels.filter((c) =>  c.isOutput) ?? []);
+  const inputs = $derived(mirror.current?.channels.filter((c) => !c.isOutput) ?? []);
+  const outputs = $derived(mirror.current?.channels.filter((c) =>  c.isOutput) ?? []);
   const selectable = $derived(settings.tab === 'eq');
 
   function levelDb(ch: ChannelModel): number {
@@ -25,9 +25,9 @@
   }
 
   function isDim(ch: ChannelModel): boolean {
-    if (!dsp.draft) return true;
+    if (!mirror.current) return true;
     if (!ch.isOutput) return false;
-    const out = dsp.draft.outputs.find((o) => o.id === ch.id);
+    const out = mirror.current.outputs.find((o) => o.id === ch.id);
     return !out || !out.enabled;
   }
 

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from '@/device/DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
 import { finishConnection } from './actions';
-import { session, bindDevice, settings, dsp, resetDsp, resetStatus } from '@/state';
+import { session, bindDevice, settings, mirror, resetStatus } from '@/state';
 import { endConnection } from './connectionScope';
 
 // End-to-end HIL test: drives the production state-layer connection finish flow
@@ -29,12 +29,12 @@ describe('state.finishConnection — end-to-end against real hardware (HIL)', ()
   afterAll(async () => {
     endConnection();
     bindDevice(null);
-    resetDsp();
+    mirror.reset();
     resetStatus();
     if (close) await close();
   });
 
-  it('hydrates connection + dsp.draft from real device', async () => {
+  it('hydrates connection + mirror.current from real device', async () => {
     await finishConnection(device);
 
     expect(session.status).toBe('connected');
@@ -42,7 +42,7 @@ describe('state.finishConnection — end-to-end against real hardware (HIL)', ()
     expect(session.lastDeviceInfo?.firmwareVersion.length ?? 0).toBeGreaterThan(0);
     expect(settings.lastSerial).toBe(session.lastDeviceInfo?.serial);
 
-    const snap = dsp.draft;
+    const snap = mirror.current;
     expect(snap).not.toBeNull();
     if (!snap) return;
 
@@ -58,14 +58,14 @@ describe('state.finishConnection — end-to-end against real hardware (HIL)', ()
     const before = {
       serial: session.lastDeviceInfo?.serial,
       fw: session.lastDeviceInfo?.firmwareVersion,
-      platform: dsp.draft?.platform.name,
-      formatVersion: dsp.draft?.formatVersion,
+      platform: mirror.current?.platform.name,
+      formatVersion: mirror.current?.formatVersion,
     };
     await finishConnection(device);
     expect(session.status).toBe('connected');
     expect(session.lastDeviceInfo?.serial).toBe(before.serial);
     expect(session.lastDeviceInfo?.firmwareVersion).toBe(before.fw);
-    expect(dsp.draft?.platform.name).toBe(before.platform);
-    expect(dsp.draft?.formatVersion).toBe(before.formatVersion);
+    expect(mirror.current?.platform.name).toBe(before.platform);
+    expect(mirror.current?.formatVersion).toBe(before.formatVersion);
   });
 });
