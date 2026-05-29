@@ -1,5 +1,5 @@
 import { session, applyClipFlags, applyPeaks, status } from '@/state';
-import { mirror, isInFlight, peekReconcile, consumeReconcile } from '@/state/mirror.svelte';
+import { mirror, isInFlight, peekReconcile, consumeReconcile, lastWriteMs } from '@/state/mirror.svelte';
 import { Log } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
 
@@ -7,6 +7,12 @@ const STATUS_INTERVAL_MS = 50;   // ~20 Hz -- peaks + cpu
 const BUFFER_INTERVAL_MS = 250;  // ~4 Hz  -- buffer stats
 const INFO_INTERVAL_MS = 1000;   // ~1 Hz  -- env scalars + counters
 const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile floor
+// A drag is "active" until writes have been quiet this long. The scrub lane
+// coalesces at 16 ms and inflight is 0 in the gaps between coalesced sends, so
+// the inflight counter alone can't tell mid-drag from drag-done. 100 ms is
+// comfortably above the 16 ms coalesce window and a 60 fps frame, while still
+// reconciling promptly after the user lets go.
+export const RECONCILE_QUIET_MS = 100;
 
 // Pluggable tick driver. Swap setTimeout↔rAF without touching the loop body.
 export interface PollClock { next(cb: () => void): void; cancel(): void; }
@@ -89,27 +95,39 @@ export function startPolling(clock: PollClock = timerClock(STATUS_INTERVAL_MS)):
     }
   }
 
-  // Background param-mirror reconcile. Gated (via shouldRun) on no in-flight
-  // write and a pending reconcile request; here we commit, so we consume the
-  // request and refetch. replaceCurrent (not init) keeps presetBaseline pinned
-  // so the dirty diff is unaffected. Eager-vs-floor timing is decided in
-  // shouldRun; by the time we run, the decision is made.
+  // Background param-mirror reconcile. shouldRunParam already decided this tick
+  // is eligible; here we fetch, then re-check before applying. Because
+  // getSnapshot is async, a write can land during the fetch — if it does, the
+  // snapshot is stale relative to the user's latest optimistic value, so we
+  // DISCARD it and leave the request pending (no mid-drag clobber). The request
+  // is consumed only on a successful, still-valid apply: a fetch failure or a
+  // mid-fetch write both keep it pending so the next eligible tick retries.
+  // replaceCurrent (not init) keeps presetBaseline pinned.
   async function pollParam(d: DspDevice): Promise<void> {
-    consumeReconcile();
+    const startedAt = performance.now();
     try {
-      mirror.replaceCurrent(await d.getSnapshot());
+      const snap = await d.getSnapshot();
+      // Re-check the gate across the await: a write during the fetch (inflight,
+      // or a fresh write timestamp after we started) means our snapshot is
+      // already stale. Drop it; the pending request drives a later retry.
+      if (isInFlight.current || lastWriteMs() >= startedAt) return;
+      mirror.replaceCurrent(snap);
+      consumeReconcile();
     } catch (e) {
-      Log.warn('poll', 'param reconcile failed', e);
+      Log.warn('poll', 'param reconcile failed', e);  // request stays pending
     } finally {
       status.lastParamMs = performance.now();
     }
   }
 
-  // Run when idle (no in-flight write — never clobber a drag), a reconcile is
-  // pending, and either it's eager or the floor interval has elapsed. Peek
-  // (not consume) so a skipped tick leaves the request pending for next time.
+  // Run when a reconcile is pending, no write is in flight, AND writes have been
+  // quiet for RECONCILE_QUIET_MS (the inflight counter is 0 in the gaps between
+  // coalesced scrub sends, so the quiet window is what actually distinguishes
+  // mid-drag from drag-done). Then either eager, or the floor interval elapsed.
+  // Peek (not consume) so a skipped tick leaves the request pending.
   function shouldRunParam(now: number): boolean {
     if (isInFlight.current) return false;
+    if (now - lastWriteMs() < RECONCILE_QUIET_MS) return false;
     const { wanted, eager } = peekReconcile();
     if (!wanted) return false;
     // lastParamMs === 0 means we've never reconciled this session: the first

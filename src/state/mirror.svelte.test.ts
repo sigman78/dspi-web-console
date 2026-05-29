@@ -4,6 +4,7 @@ import {
   inflight, isInFlight,
   bumpInflight, dropInflight,
   requestReconcile, consumeReconcile, peekReconcile,
+  noteWriteActivity, lastWriteMs,
 } from './mirror.svelte';
 import type { DspSnapshot } from '@/domain';
 
@@ -156,6 +157,24 @@ describe('mirror store', () => {
       const { wanted, eager } = consumeReconcile();
       expect(wanted).toBe(false);
       expect(eager).toBe(false);
+    });
+  });
+
+  describe('write-activity timestamp', () => {
+    it('starts at 0 (no activity)', () => {
+      mirror.reset();
+      expect(lastWriteMs()).toBe(0);
+    });
+
+    it('noteWriteActivity stamps a positive timestamp', () => {
+      noteWriteActivity();
+      expect(lastWriteMs()).toBeGreaterThan(0);
+    });
+
+    it('reset clears the write-activity timestamp', () => {
+      noteWriteActivity();
+      mirror.reset();
+      expect(lastWriteMs()).toBe(0);
     });
   });
 

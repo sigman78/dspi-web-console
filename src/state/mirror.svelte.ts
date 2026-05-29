@@ -20,6 +20,13 @@ let _inflight = $state(0);
 let _reconcileWanted = $state(false);
 let _reconcileEager = $state(false);
 
+// Wall-clock of the last write/scrub call. The background param poll treats a
+// drag as active until writes have been *quiet* for a window — the inflight
+// counter alone is 0 in the ~16 ms gaps between coalesced scrub sends, so it
+// can't tell "between sends of one drag" from "drag finished". Not reactive:
+// only the poll loop reads it.
+let _lastWriteMs = 0;
+
 export const mirror = {
   get current(): DspSnapshot | null { return _current; },
 
@@ -54,8 +61,20 @@ export const mirror = {
     _current = null;
     _reconcileWanted = false;
     _reconcileEager = false;
+    _lastWriteMs = 0;
   },
 };
+
+// Stamp write activity. Called by write() and scrub() on every invocation
+// (not just on settle) so the quiet-window gate covers the whole drag,
+// including the gaps between coalesced sends.
+export function noteWriteActivity(): void {
+  _lastWriteMs = performance.now();
+}
+
+export function lastWriteMs(): number {
+  return _lastWriteMs;
+}
 
 // Mark that device state should be reconciled by the next eligible param poll.
 // `eager` is OR-accumulated: once a pending window is eager, a later non-eager

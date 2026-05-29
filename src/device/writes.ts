@@ -10,7 +10,7 @@
 // mutate, does not fire failure recovery).
 
 import { session, setStatus, settings } from '@/state';
-import { bumpInflight, dropInflight, requestReconcile } from '@/state/mirror.svelte';
+import { bumpInflight, dropInflight, requestReconcile, noteWriteActivity } from '@/state/mirror.svelte';
 import { forceResyncNow } from '@/runtime/resync';
 import { Log } from '@/utils';
 
@@ -30,6 +30,7 @@ export async function write(
   mutate: () => void,
 ): Promise<void> {
   const gen = session.generation;
+  noteWriteActivity();
   bumpInflight();
   const settled = (async () => {
     try {
@@ -140,6 +141,7 @@ export function scrub(
   mutate: () => void,
   send: () => Promise<void>,
 ): void {
+  noteWriteActivity();
   mutate();
   laneFor(key).schedule(send);
 }

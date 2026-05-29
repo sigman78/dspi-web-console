@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { write, scrub, flushAllWrites, cancelAllWrites } from './writes';
-import { inflight, dropInflight, consumeReconcile } from '@/state/mirror.svelte';
+import { inflight, dropInflight, consumeReconcile, lastWriteMs } from '@/state/mirror.svelte';
 import { session, settings } from '@/state';
 
 // Mock the resync module so write() failures don't actually fire HTTP.
@@ -49,6 +49,13 @@ describe('write() helper', () => {
     await write(async () => { throw new Error('boom'); }, () => {});
     const { wanted } = consumeReconcile();
     expect(wanted).toBe(false);
+  });
+
+  it('stamps write activity when called', async () => {
+    const before = lastWriteMs();
+    await write(async () => {}, () => {});
+    expect(lastWriteMs()).toBeGreaterThanOrEqual(before);
+    expect(lastWriteMs()).toBeGreaterThan(0);
   });
 
   it('bumps inflight during send and drops after settle', async () => {
@@ -113,6 +120,14 @@ describe('scrub() helper', () => {
     const send = vi.fn(async () => {});
     scrub('k1', mutate, send);
     expect(mutate).toHaveBeenCalledTimes(1);   // BEFORE the timer fires
+    await flushAllWrites();
+  });
+
+  it('stamps write activity on the call (before any send settles)', async () => {
+    const before = lastWriteMs();
+    scrub('k1', () => {}, async () => {});
+    expect(lastWriteMs()).toBeGreaterThan(0);
+    expect(lastWriteMs()).toBeGreaterThanOrEqual(before);
     await flushAllWrites();
   });
 
