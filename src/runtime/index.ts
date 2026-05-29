@@ -10,3 +10,4 @@ export * from './actions';
 export * from './presets';
 export * from './session';
 export * from './poll';
+export * from './deviceLock';
