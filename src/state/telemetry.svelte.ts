@@ -20,6 +20,7 @@ class StatusStore {
   lastStatusMs = $state(0);
   lastBufferMs = $state(0);
   lastInfoMs = $state(0);
+  lastParamMs = $state(0);
   errorCount = $state(0);
 
   reset(): void {
@@ -38,6 +39,7 @@ class StatusStore {
     this.lastStatusMs = 0;
     this.lastBufferMs = 0;
     this.lastInfoMs = 0;
+    this.lastParamMs = 0;
     this.errorCount = 0;
   }
 

@@ -152,3 +152,30 @@ describe('warnOnPresetSwitchDirty', () => {
     expect(s.warnOnPresetSwitchDirty).toBe(true);
   });
 });
+
+describe('eagerReconcile', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  test('defaults eagerReconcile to false on first run', () => {
+    const s = loadSettings();
+    expect(s.eagerReconcile).toBe(false);
+  });
+
+  test('round-trips eagerReconcile=true through localStorage', () => {
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, eagerReconcile: true }));
+    const s = loadSettings();
+    expect(s.eagerReconcile).toBe(true);
+  });
+
+  test('falls back to false when eagerReconcile is missing or invalid', () => {
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, eagerReconcile: 'not-a-bool' }));
+    const s = loadSettings();
+    expect(s.eagerReconcile).toBe(false);
+  });
+});

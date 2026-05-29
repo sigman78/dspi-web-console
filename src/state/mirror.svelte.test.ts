@@ -3,6 +3,7 @@ import {
   mirror, presetBaseline,
   inflight, isInFlight,
   bumpInflight, dropInflight,
+  requestReconcile, consumeReconcile, peekReconcile,
 } from './mirror.svelte';
 import type { DspSnapshot } from '@/domain';
 
@@ -101,6 +102,60 @@ describe('mirror store', () => {
       mirror.reset();
       expect(mirror.current).toBeNull();
       expect(presetBaseline.current).toBe(baselineBefore);
+    });
+  });
+
+  describe('reconcile signal', () => {
+    it('starts with nothing pending', () => {
+      const { wanted, eager } = consumeReconcile();
+      expect(wanted).toBe(false);
+      expect(eager).toBe(false);
+    });
+
+    it('requestReconcile(false) sets wanted but not eager', () => {
+      requestReconcile(false);
+      const { wanted, eager } = consumeReconcile();
+      expect(wanted).toBe(true);
+      expect(eager).toBe(false);
+    });
+
+    it('requestReconcile(true) sets both wanted and eager', () => {
+      requestReconcile(true);
+      const { wanted, eager } = consumeReconcile();
+      expect(wanted).toBe(true);
+      expect(eager).toBe(true);
+    });
+
+    it('consumeReconcile clears the pending flags', () => {
+      requestReconcile(true);
+      consumeReconcile();
+      const after = consumeReconcile();
+      expect(after.wanted).toBe(false);
+      expect(after.eager).toBe(false);
+    });
+
+    it('an eager request does not get downgraded by a later non-eager one', () => {
+      requestReconcile(true);
+      requestReconcile(false);
+      const { wanted, eager } = consumeReconcile();
+      expect(wanted).toBe(true);
+      expect(eager).toBe(true);
+    });
+
+    it('peekReconcile reports flags without clearing them', () => {
+      requestReconcile(true);
+      const peeked = peekReconcile();
+      expect(peeked).toEqual({ wanted: true, eager: true });
+      // Still pending after a peek.
+      expect(consumeReconcile()).toEqual({ wanted: true, eager: true });
+    });
+
+    it('reset clears pending reconcile flags', () => {
+      requestReconcile(true);
+      mirror.reset();
+      const { wanted, eager } = consumeReconcile();
+      expect(wanted).toBe(false);
+      expect(eager).toBe(false);
     });
   });
 

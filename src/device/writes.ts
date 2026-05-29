@@ -9,8 +9,8 @@
 // settles after a disconnect+reconnect is silently dropped (does not
 // mutate, does not fire failure recovery).
 
-import { session, setStatus } from '@/state';
-import { bumpInflight, dropInflight } from '@/state/mirror.svelte';
+import { session, setStatus, settings } from '@/state';
+import { bumpInflight, dropInflight, requestReconcile } from '@/state/mirror.svelte';
 import { forceResyncNow } from '@/runtime/resync';
 import { Log } from '@/utils';
 
@@ -34,7 +34,10 @@ export async function write(
   const settled = (async () => {
     try {
       await send();
-      if (gen === session.generation) mutate();
+      if (gen === session.generation) {
+        mutate();
+        requestReconcile(settings.eagerReconcile);
+      }
     } catch (err) {
       if (gen !== session.generation) return;
       Log.error('writes', 'write send failed; forcing resync', err);
@@ -78,7 +81,10 @@ function makeLane(key: string, ms: number): Lane {
       .then(async () => {
         try {
           await thunk();
-          if (gen === session.generation) await forceResyncNow();
+          // Success: the optimistic mutate already left the mirror at the value
+          // we sent (case A — Q3). No per-settle resync; instead flag a
+          // reconcile for the inflight-gated background param poll to honor.
+          if (gen === session.generation) requestReconcile(settings.eagerReconcile);
         } catch (err) {
           if (gen !== session.generation) return;
           Log.error('writes', `scrub ${key} send failed; forcing resync`, err);

@@ -1,10 +1,12 @@
 import { session, applyClipFlags, applyPeaks, status } from '@/state';
+import { mirror, isInFlight, peekReconcile, consumeReconcile } from '@/state/mirror.svelte';
 import { Log } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
 
 const STATUS_INTERVAL_MS = 50;   // ~20 Hz -- peaks + cpu
 const BUFFER_INTERVAL_MS = 250;  // ~4 Hz  -- buffer stats
 const INFO_INTERVAL_MS = 1000;   // ~1 Hz  -- env scalars + counters
+const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile floor
 
 // Pluggable tick driver. Swap setTimeout↔rAF without touching the loop body.
 export interface PollClock { next(cb: () => void): void; cancel(): void; }
@@ -29,11 +31,15 @@ export const rafClock = (): PollClock => {
 };
 
 interface Cadence {
-  key: 'status' | 'buffer' | 'info';
+  key: 'status' | 'buffer' | 'info' | 'param';
   intervalMs: number;
   runWhileHidden: boolean;          // today all false (pause everything when hidden)
   lastMs(): number;                 // cadence clock — reads the STORE timestamp
   run(d: DspDevice): Promise<void>; // owns its own timestamp update
+  // Optional override of the default interval gate. Returns true when the
+  // cadence should run this tick. Used by the param reconcile cadence, which
+  // gates on in-flight writes and a pending reconcile request, not just time.
+  shouldRun?(now: number): boolean;
 }
 
 export function startPolling(clock: PollClock = timerClock(STATUS_INTERVAL_MS)): () => void {
@@ -42,7 +48,7 @@ export function startPolling(clock: PollClock = timerClock(STATUS_INTERVAL_MS)):
   // Only the in-flight guards are loop-local. The cadence CLOCK stays on the
   // status store (status.applyPeaks sets lastStatusMs and reads it for peak
   // decay), so the gate must read the store, not a private copy.
-  const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false };
+  const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false, param: false };
 
   async function pollStatus(d: DspDevice): Promise<void> {
     try {
@@ -83,10 +89,40 @@ export function startPolling(clock: PollClock = timerClock(STATUS_INTERVAL_MS)):
     }
   }
 
+  // Background param-mirror reconcile. Gated (via shouldRun) on no in-flight
+  // write and a pending reconcile request; here we commit, so we consume the
+  // request and refetch. replaceCurrent (not init) keeps presetBaseline pinned
+  // so the dirty diff is unaffected. Eager-vs-floor timing is decided in
+  // shouldRun; by the time we run, the decision is made.
+  async function pollParam(d: DspDevice): Promise<void> {
+    consumeReconcile();
+    try {
+      mirror.replaceCurrent(await d.getSnapshot());
+    } catch (e) {
+      Log.warn('poll', 'param reconcile failed', e);
+    } finally {
+      status.lastParamMs = performance.now();
+    }
+  }
+
+  // Run when idle (no in-flight write — never clobber a drag), a reconcile is
+  // pending, and either it's eager or the floor interval has elapsed. Peek
+  // (not consume) so a skipped tick leaves the request pending for next time.
+  function shouldRunParam(now: number): boolean {
+    if (isInFlight.current) return false;
+    const { wanted, eager } = peekReconcile();
+    if (!wanted) return false;
+    // lastParamMs === 0 means we've never reconciled this session: the first
+    // pending request is eligible immediately rather than waiting a full floor
+    // interval after connect.
+    return eager || status.lastParamMs === 0 || now - status.lastParamMs >= PARAM_INTERVAL_MS;
+  }
+
   const cadences: Cadence[] = [
     { key: 'status', intervalMs: STATUS_INTERVAL_MS, runWhileHidden: false, lastMs: () => status.lastStatusMs, run: pollStatus },
     { key: 'buffer', intervalMs: BUFFER_INTERVAL_MS, runWhileHidden: false, lastMs: () => status.lastBufferMs, run: pollBuffer },
     { key: 'info',   intervalMs: INFO_INTERVAL_MS,   runWhileHidden: false, lastMs: () => status.lastInfoMs,   run: pollInfo },
+    { key: 'param',  intervalMs: PARAM_INTERVAL_MS,  runWhileHidden: false, lastMs: () => status.lastParamMs,  run: pollParam, shouldRun: shouldRunParam },
   ];
   const anyRunWhileHidden = cadences.some((c) => c.runWhileHidden);
 
@@ -97,7 +133,8 @@ export function startPolling(clock: PollClock = timerClock(STATUS_INTERVAL_MS)):
     const now = performance.now();
     for (const c of cadences) {
       if (isHidden() && !c.runWhileHidden) continue;
-      if (inFlight[c.key] || now - c.lastMs() < c.intervalMs) continue;
+      const blocked = c.shouldRun ? !c.shouldRun(now) : (now - c.lastMs() < c.intervalMs);
+      if (inFlight[c.key] || blocked) continue;
       inFlight[c.key] = true;
       try { await c.run(d); } finally { inFlight[c.key] = false; }
     }

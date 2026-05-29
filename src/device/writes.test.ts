@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { write, scrub, flushAllWrites, cancelAllWrites } from './writes';
-import { inflight, dropInflight } from '@/state/mirror.svelte';
-import { session } from '@/state';
+import { inflight, dropInflight, consumeReconcile } from '@/state/mirror.svelte';
+import { session, settings } from '@/state';
 
 // Mock the resync module so write() failures don't actually fire HTTP.
 vi.mock('@/runtime/resync', () => ({
@@ -23,6 +23,32 @@ describe('write() helper', () => {
     expect(order).toEqual(['send', 'mutate']);
     expect(send).toHaveBeenCalledTimes(1);
     expect(mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it('requests a reconcile on success (non-eager when flag off)', async () => {
+    settings.eagerReconcile = false;
+    consumeReconcile();  // clear any prior pending
+    await write(async () => {}, () => {});
+    const { wanted, eager } = consumeReconcile();
+    expect(wanted).toBe(true);
+    expect(eager).toBe(false);
+  });
+
+  it('requests an eager reconcile on success when flag on', async () => {
+    settings.eagerReconcile = true;
+    consumeReconcile();
+    await write(async () => {}, () => {});
+    const { wanted, eager } = consumeReconcile();
+    expect(wanted).toBe(true);
+    expect(eager).toBe(true);
+    settings.eagerReconcile = false;
+  });
+
+  it('does not request a reconcile when send fails', async () => {
+    consumeReconcile();
+    await write(async () => { throw new Error('boom'); }, () => {});
+    const { wanted } = consumeReconcile();
+    expect(wanted).toBe(false);
   });
 
   it('bumps inflight during send and drops after settle', async () => {
@@ -134,12 +160,31 @@ describe('scrub() helper', () => {
     expect(forceResyncNow).toHaveBeenCalled();
   });
 
-  it('on send success: forceResyncNow reconciles optimistic state', async () => {
+  it('on send success: does NOT resync (case A — mirror already holds sent value)', async () => {
     const { forceResyncNow } = await import('@/runtime/resync');
     const send = vi.fn(async () => {});
     scrub('k1', () => {}, send);
     await flushAllWrites();
-    expect(forceResyncNow).toHaveBeenCalledTimes(1);
+    expect(forceResyncNow).not.toHaveBeenCalled();
+  });
+
+  it('on send success: requests a reconcile (eager per flag)', async () => {
+    settings.eagerReconcile = true;
+    consumeReconcile();
+    scrub('k1', () => {}, async () => {});
+    await flushAllWrites();
+    const { wanted, eager } = consumeReconcile();
+    expect(wanted).toBe(true);
+    expect(eager).toBe(true);
+    settings.eagerReconcile = false;
+  });
+
+  it('on send failure: does not request a reconcile', async () => {
+    consumeReconcile();
+    scrub('k1', () => {}, async () => { throw new Error('boom'); });
+    await flushAllWrites();
+    const { wanted } = consumeReconcile();
+    expect(wanted).toBe(false);
   });
 
   it('stale-gen settle does not call forceResyncNow', async () => {
