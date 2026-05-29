@@ -19,6 +19,7 @@ import {
 import { Result, Log, type VoidResult } from '@/utils';
 import { startPolling } from './poll';
 import { connectionScope, endConnection } from './connectionScope';
+import { acquireDeviceLock, releaseDeviceLock } from './deviceLock';
 import { mirror } from '@/state/mirror.svelte';
 import { write, scrub, flushAllWrites, cancelAllWrites } from '@/device/writes';
 import { focusOutput, focusRoute } from './focus';
@@ -436,6 +437,8 @@ export async function finishConnection(device: DspDevice): Promise<void> {
     if (s) {
       s.add(startPolling());
       s.add(() => cancelAllWrites());
+      acquireDeviceLock();
+      s.add(() => releaseDeviceLock());
     }
     await fetchPresetInfo();
     Log.info('sync', 'connected', {

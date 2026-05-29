@@ -31,8 +31,8 @@ export class WebUsbTransport implements DspTransport {
              `or whitelist this origin in chrome://flags/#unsafely-treat-insecure-origin-as-secure.`;
     }
     if (!('usb' in navigator)) {
-      return 'navigator.usb is missing — this browser does not implement WebUSB ' +
-             '(Firefox and Safari do not ship it; use Chrome / Edge / Opera).';
+      return "This browser can't talk to USB devices. Open the console in a " +
+             'Chromium-based browser such as Google Chrome, Microsoft Edge, or Opera.';
     }
     return null;
   }
@@ -163,6 +163,6 @@ function claimErrorHint(err: unknown, d: USBDevice, ifNum: number): string {
     `${msg} — tried interface ${ifNum}. Device exposes: ${layout}. ` +
     `On Windows, the vendor (class=0xff) interface must be bound to WinUSB ` +
     `via Zadig (rebind the entry whose name ends "(Interface ${ifNum})" / "MI_0${ifNum}"). ` +
-    `Also confirm that DSPi Console App is closed.`
+    `Also confirm the device isn't already open in another browser tab, and that the DSPi Console app is closed.`
   );
 }
