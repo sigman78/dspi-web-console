@@ -19,7 +19,7 @@ import {
   pastePresetTo,
   dismissPresetActionError,
 } from './presets';
-import { forceResyncNow, fetchAndApplyAsBaseline } from './resync';
+import { forceResyncNow } from './resync';
 
 describe('runtime/presets', () => {
   beforeEach(async () => {

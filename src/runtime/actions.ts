@@ -1,7 +1,7 @@
 import {
   type FilterParams,
   type ChannelId, type InputSlot, type OutputSlot,
-  type RouteModel, type OutputModel, type DspSnapshot,
+  type RouteModel,
   type I2sConfig,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   CHANNEL_NAME_MAX_LEN,

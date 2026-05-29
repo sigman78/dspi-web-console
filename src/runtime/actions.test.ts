@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled } from './actions';
-import { session, bindDevice, settings, mirror, presetBaseline, status as statusStore, presets } from '@/state';
+import { session, bindDevice, settings, mirror, status as statusStore, presets } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -18,7 +18,7 @@ import {
 } from '@/domain';
 import { fromBulkParams } from '@/device/snapshotCodec';
 
-import { cancelAllWrites as cancelWrites, flushAllWrites as flushWrites } from '@/device/writes';
+import { cancelAllWrites as cancelWrites } from '@/device/writes';
 import { inflight } from '@/state/mirror.svelte';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
@@ -66,16 +66,6 @@ function makeFakeDevice() {
     setMasterVolume: vi.fn(async (db: number) => { calls.push(db); }),
     // Resync's getAllParams runs after every setMasterVolume; resolving
     // with a valid parsed bulk keeps the test's stderr clean.
-    getAllParams: vi.fn(async () => validBulk),
-  });
-  return { device, calls };
-}
-
-function makeFakeChannelNameDevice() {
-  const calls: { id: number; name: string }[] = [];
-  const validBulk = parseBulkParams(makeBulk());
-  const device = initializedDevice({
-    setChannelName: vi.fn(async (id: number, name: string) => { calls.push({ id, name }); }),
     getAllParams: vi.fn(async () => validBulk),
   });
   return { device, calls };
@@ -485,13 +475,11 @@ describe('actions — master volume mode', () => {
 });
 
 describe('bulk writes: toggles', () => {
-  let captured: import('@/protocol').BulkParams | null;
   beforeEach(async () => {
-    captured = null;
     await bootMock('rp2350');
     const bulk = parseBulkParams(makeBulk());
     bindDevice(initializedDevice({
-      setAllParams: vi.fn(async (b) => { captured = b; }),
+      setAllParams: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => bulk),
     }));
     mirror.init(fromBulkParams(testHardware, bulk));
@@ -590,13 +578,11 @@ describe('granular writes (numeric sliders): sliders', () => {
 });
 
 describe('bulk writes: eq/delay/names', () => {
-  let captured: import('@/protocol').BulkParams | null;
   beforeEach(async () => {
-    captured = null;
     await bootMock('rp2350');
     const bulk = parseBulkParams(makeBulk());
     bindDevice(initializedDevice({
-      setAllParams: vi.fn(async (b) => { captured = b; }),
+      setAllParams: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => bulk),
     }));
     mirror.init(fromBulkParams(testHardware, bulk));
@@ -792,13 +778,11 @@ describe('dual-lane inflight coexistence: scrub-class + write-class share the co
 });
 
 describe('boolean device flags are explicit setters', () => {
-  let captured: import('@/protocol').BulkParams | null;
   beforeEach(async () => {
-    captured = null;
     await bootMock('rp2350');
     const bulk = parseBulkParams(makeBulk());
     bindDevice(initializedDevice({
-      setAllParams: vi.fn(async (b) => { captured = b; }),
+      setAllParams: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => bulk),
     }));
     mirror.init(fromBulkParams(testHardware, bulk));
