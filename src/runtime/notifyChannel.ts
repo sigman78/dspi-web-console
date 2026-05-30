@@ -1,6 +1,6 @@
 import type { DspDevice } from '@/device/DspDevice';
 import { parseNotifyPacket, isReconcileTrigger, type NotifyEvent } from '@/protocol';
-import { requestReconcile } from '@/state/mirror.svelte';
+import { requestReconcile, presetGuardActive } from '@/state/mirror.svelte';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 
 // Default poll cadence: loose enough that idle cost is a few 64-byte reads/sec,
@@ -32,14 +32,18 @@ export function startNotifyChannel(device: DspDevice, clock: LoopClock = timerCl
   }
 
   function handle(event: NotifyEvent): void {
+    // A console-initiated preset op re-fetches authoritatively and emits its own
+    // (source=preset) notifications; suppress those self-echoes. seq is still
+    // tracked under the guard so no false gap fires once it releases.
+    const suppressed = presetGuardActive();
     const seq = 'seq' in event ? event.seq : null;
     if (seq !== null) {
-      if (lastSeq !== null && ((lastSeq + 1) & 0xff) !== seq) {
+      if (lastSeq !== null && ((lastSeq + 1) & 0xff) !== seq && !suppressed) {
         requestReconcile(true);   // gap ⇒ we missed an event; re-read truth
       }
       lastSeq = seq;
     }
-    if (isReconcileTrigger(event)) requestReconcile(true);
+    if (isReconcileTrigger(event) && !suppressed) requestReconcile(true);
   }
 
   async function pump(): Promise<void> {

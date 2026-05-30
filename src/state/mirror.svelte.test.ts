@@ -5,6 +5,7 @@ import {
   bumpInflight, dropInflight,
   requestReconcile, consumeReconcile, peekReconcile,
   noteWriteActivity, lastWriteMs,
+  beginPresetGuard, endPresetGuard, presetGuardActive,
 } from './mirror.svelte';
 import type { DspSnapshot } from '@/domain';
 
@@ -198,6 +199,31 @@ describe('mirror store', () => {
     it('dropInflight at 0 stays at 0', () => {
       dropInflight();
       expect(inflight.current).toBe(0);
+    });
+  });
+
+  describe('preset-op notify guard', () => {
+    it('holds while a guard is open and for a trailing grace after it closes', () => {
+      expect(presetGuardActive(1000)).toBe(false);
+
+      beginPresetGuard();
+      expect(presetGuardActive(1000)).toBe(true);    // depth held, time irrelevant
+
+      beginPresetGuard();                            // nested
+      endPresetGuard(500, 1000);                     // depth back to 1 — still held
+      expect(presetGuardActive(1000)).toBe(true);
+
+      endPresetGuard(500, 1000);                     // depth 0 — trailing until 1500
+      expect(presetGuardActive(1400)).toBe(true);    // inside grace
+      expect(presetGuardActive(1500)).toBe(false);   // grace elapsed
+      expect(presetGuardActive(9999)).toBe(false);
+    });
+
+    it('reset() clears a held guard', () => {
+      beginPresetGuard();
+      beginPresetGuard();
+      mirror.reset();
+      expect(presetGuardActive(0)).toBe(false);
     });
   });
 });

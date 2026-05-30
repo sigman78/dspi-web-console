@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { startNotifyChannel } from './notifyChannel';
-import { consumeReconcile, peekReconcile } from '@/state/mirror.svelte';
+import { peekReconcile, beginPresetGuard, endPresetGuard, mirror } from '@/state/mirror.svelte';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice } from '@/device/DspDevice';
 
@@ -47,7 +47,7 @@ async function v10Setup() {
   return { mock, dev };
 }
 
-beforeEach(() => { consumeReconcile(); });
+beforeEach(() => { mirror.reset(); });
 
 describe('startNotifyChannel', () => {
   it('does nothing on a device without the notifications capability', async () => {
@@ -120,6 +120,45 @@ describe('startNotifyChannel', () => {
   it('requests a reconcile on a PRESET_LOADED event', async () => {
     const { mock, dev } = await v10Setup();
     mock.pushNotify(new Uint8Array([2, 4, 0, 1, 3]));  // PRESET_LOADED, slot 3
+    const m = manualClock();
+    const stop = startNotifyChannel(dev, m.clock);
+    await m.tick();
+    expect(peekReconcile().wanted).toBe(true);
+    stop();
+  });
+
+  it('suppresses bulk/preset reconcile triggers while a preset-op guard is held', async () => {
+    const { mock, dev } = await v10Setup();
+    mock.pushNotify(new Uint8Array([2, 3, 0, 1, 3, 0, 0, 0]));   // bulkInvalidated, src=preset
+    const m = manualClock();
+    beginPresetGuard();
+    const stop = startNotifyChannel(dev, m.clock);
+    await m.tick();
+    expect(peekReconcile().wanted).toBe(false);   // self-echo suppressed
+    endPresetGuard(0);
+    stop();
+  });
+
+  it('still tracks seq under the guard, so no false gap fires after it releases', async () => {
+    const { mock, dev } = await v10Setup();
+    const host = (seq: number) => new Uint8Array([2, 2, 0, seq, 0x80, 0x0b, 4, 0, 1, 0, 0, 0]);
+    mock.pushNotify(host(5));    // observed under guard (no reconcile, but seq tracked)
+    mock.pushNotify(host(6));    // contiguous after release ⇒ no gap
+    const m = manualClock();
+    beginPresetGuard();
+    const stop = startNotifyChannel(dev, m.clock);
+    await m.tick();              // seq 5, suppressed
+    endPresetGuard(0);
+    await m.tick();              // seq 6, contiguous ⇒ no gap reconcile
+    expect(peekReconcile().wanted).toBe(false);
+    stop();
+  });
+
+  it('resumes reconciling once the preset-op guard has released', async () => {
+    const { mock, dev } = await v10Setup();
+    beginPresetGuard();
+    endPresetGuard(0);   // released with no trailing grace
+    mock.pushNotify(new Uint8Array([2, 3, 0, 1, 3, 0, 0, 0]));
     const m = manualClock();
     const stop = startNotifyChannel(dev, m.clock);
     await m.tick();
