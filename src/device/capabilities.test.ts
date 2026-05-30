@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveCapabilities, MAX_KNOWN_WIRE } from './capabilities';
+import { deriveCapabilities, MAX_KNOWN_WIRE, NOTIFY_MIN_WIRE } from './capabilities';
 import { Wire } from '@/protocol';
 
 const fw = (major: number, minor: number, patch: number) => ({ major, minor, patch });
@@ -46,5 +46,16 @@ describe('deriveCapabilities — metadata + sections', () => {
     });
     expect(c.sections.preamp).toBe(true);
     expect(c.sections.masterVolume).toBe(false);
+  });
+});
+
+describe('deriveCapabilities — features', () => {
+  it('enables notifications only on wire >= NOTIFY_MIN_WIRE', () => {
+    const below = deriveCapabilities({ fw: fw(1, 1, 3), wireVersion: NOTIFY_MIN_WIRE - 1, payloadLength: 2896, platformId: 1 });
+    const at    = deriveCapabilities({ fw: fw(1, 1, 4), wireVersion: NOTIFY_MIN_WIRE,     payloadLength: 2912, platformId: 1 });
+    const above = deriveCapabilities({ fw: fw(1, 1, 4), wireVersion: NOTIFY_MIN_WIRE + 1, payloadLength: 2928, platformId: 1 });
+    expect(below.features.notifications).toBe(false);
+    expect(at.features.notifications).toBe(true);
+    expect(above.features.notifications).toBe(true);
   });
 });

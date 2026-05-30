@@ -16,6 +16,9 @@ import { Wire } from '@/protocol';
 export const MIN_SUPPORTED_WIRE = 6;
 export const MAX_KNOWN_WIRE = 10;
 
+// Notification Protocol v2 requires the V7 bulk bump; devices below this wire have no v2 notify channel.
+export const NOTIFY_MIN_WIRE = 7;
+
 export interface FirmwareVersion {
   major: number;
   minor: number;
@@ -38,6 +41,13 @@ export interface DeviceCapabilities {
   // Which bulk-packet sections this device's packet carries. Single source of
   // truth — wraps Wire.bulkLayout, never a parallel re-derivation.
   readonly sections: Wire.BulkLayout;
+
+  // Feature flags drive UI affordances and runtime behavior. Each lands with
+  // its feature; keyed on observed wire version unless the firmware gates a
+  // command without a wire bump.
+  readonly features: {
+    readonly notifications: boolean;   // v2 notify channel (wire >= 7)
+  };
 }
 
 export function deriveCapabilities(input: {
@@ -59,5 +69,8 @@ export function deriveCapabilities(input: {
     platformId,
     support,
     sections: Wire.bulkLayout({ formatVersion: wireVersion, payloadLength }),
+    features: {
+      notifications: wireVersion >= NOTIFY_MIN_WIRE,
+    },
   };
 }
