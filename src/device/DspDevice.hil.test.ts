@@ -28,16 +28,16 @@ describe('DspDevice — read-side smoke (HIL)', () => {
   it('factory captures a known platform type and non-empty firmware string', async () => {
     const info = device.info;
     expect([PlatformType.RP2040, PlatformType.RP2350]).toContain(info.platformType);
-    expect(info.firmwareVersion.length).toBeGreaterThan(0);
-    expect(info.firmwareVersion).toBe(info.firmwareVersion.trim());
-    expect(info.firmwareVersion).not.toContain('\0');
+    expect(info.capabilities.fwLabel.length).toBeGreaterThan(0);
+    expect(info.capabilities.fwLabel).toBe(info.capabilities.fwLabel.trim());
+    expect(info.capabilities.fwLabel).not.toContain('\0');
   });
 
   it('info getter is stable', async () => {
     const a = device.info;
     const b = device.info;
     expect(b.platformType).toBe(a.platformType);
-    expect(b.firmwareVersion).toBe(a.firmwareVersion);
+    expect(b.capabilities.fwLabel).toBe(a.capabilities.fwLabel);
   });
 
   it('getSystemStatus returns plausible peaks/cpu/clip values', async () => {

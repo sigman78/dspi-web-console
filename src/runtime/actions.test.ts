@@ -30,7 +30,6 @@ function initializedDevice(methods: Partial<DspDevice>): DspDevice {
   const base: Partial<DspDevice> = {
     info: {
       serial: 'TEST-RP2350',
-      firmwareVersion: '1.0.0',
       platformType: PlatformType.RP2350,
       hardware: testHardware,
       capabilities: deriveCapabilities({
