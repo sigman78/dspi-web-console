@@ -55,6 +55,8 @@ function firmwareVersion(info: { fwMajor: number; fwMinorPatch: number }): strin
 }
 
 export class DspDevice {
+  #lastRawBulk: Uint8Array | null = null;
+
   protected constructor(
     protected readonly transport: DspTransport,
     private readonly _info: DspDeviceInfo,
@@ -122,6 +124,13 @@ export class DspDevice {
     return this._info.capabilities;
   }
 
+  // Raw bytes of the last bulk packet read. Substrate for the deferred per-field
+  // notify patch path and passthrough writes (docs/HW-NOTIFICATIONS.md,
+  // FW-VERSIONS.md). Unused by Layer 1.
+  get lastRawBulk(): Uint8Array | null {
+    return this.#lastRawBulk;
+  }
+
   protected deviceChannel(channel: domain.ChannelId): domain.ChannelId {
     return domain.wireChannelFor(this.hardware, channel);
   }
@@ -145,6 +154,7 @@ export class DspDevice {
 
   async getAllParams(): Promise<proto.BulkParams> {
     const bytes = await this.transport.ctrlIn(proto.WireCmd.GetAllParams.code, 0, proto.Wire.BulkLimits.MaxReadSize);
+    this.#lastRawBulk = bytes;
     return proto.parseBulkParams(bytes);
   }
 

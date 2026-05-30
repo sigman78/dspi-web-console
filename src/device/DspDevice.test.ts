@@ -1030,3 +1030,21 @@ describe('readNotification', () => {
     expect(await dev.readNotification()).toBeNull();
   });
 });
+
+describe('lastRawBulk', () => {
+  // resolveInfo's connect-time bulk read uses a raw ctrlIn (static, no instance),
+  // so lastRawBulk is null until the first instance getAllParams() call.
+  it('is null before the first getAllParams, then holds the read bytes', async () => {
+    const dev = await DspDevice.create(new MockTransport({ platform: 'rp2350' }));
+    expect(dev.lastRawBulk).toBeNull();
+    await dev.getAllParams();
+    expect(dev.lastRawBulk!.byteLength).toBe(2896);   // V6 image
+  });
+
+  it('retains the full V10 image on a 1.1.4 device', async () => {
+    const dev = await DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 10 }));
+    await dev.getAllParams();
+    expect(dev.lastRawBulk!.byteLength).toBe(2960);   // full V10 image retained
+    expect(dev.lastRawBulk![0]).toBe(10);             // header formatVersion
+  });
+});
