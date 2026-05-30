@@ -55,7 +55,6 @@ function route(inputIndex: number, outputId: number): RouteModel {
 function snap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
   const base: DspSnapshot = {
     platform: { name: 'rp2350', type: 'rp2350', totalChannelCount: 11, outputCount: 4 } as any,
-    formatVersion: 6,
     bypass: false,
     masterPreampDb: 0,
     inputPreampDb: [0, 0],

@@ -18,6 +18,14 @@ import {
 export interface MockOptions {
   platform: 'rp2040' | 'rp2350';
   serial?: string;
+  // Wire version the mock reports/synthesizes (default 6). For V7+ the appended
+  // sections are modeled as opaque trailing bytes the console doesn't parse, so
+  // capability gating, read tolerance and the V6-write merge can be tested
+  // against a newer device.
+  wireVersion?: number;
+  // Firmware version reported by GetPlatform (default 1.0.0). Set alongside
+  // wireVersion for a coherent device (e.g. 1.1.4 + V10).
+  fwVersion?: { major: number; minor: number; patch: number };
 }
 
 // Default crosspoint / output state (mirrors what defaultBulkParams
@@ -51,8 +59,13 @@ interface MockSnapshot {
 export class MockTransport implements DspTransport {
   #open = false;
   #listeners = new Map<TransportEvent, Set<() => void>>();
+  #notifyQueue: Uint8Array[] = [];
   #serial: string;
   #platform: PlatformType;
+  #wireVersion: number;
+  #fwMajor: number;
+  #fwMinorPatch: number;
+  #bulkTail: Uint8Array;
   #masterVolumeDb = 0;
   #masterPreampDb = 0;
   #inputPreampDb: [number, number] = [0, 0];
@@ -91,6 +104,13 @@ export class MockTransport implements DspTransport {
   constructor(opts: MockOptions) {
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
     this.#platform = opts.platform === 'rp2040' ? PlatformType.RP2040 : PlatformType.RP2350;
+    this.#wireVersion = opts.wireVersion ?? 6;
+    const fw = opts.fwVersion ?? { major: 1, minor: 0, patch: 0 };
+    this.#fwMajor = fw.major;
+    this.#fwMinorPatch = ((fw.minor & 0xF) << 4) | (fw.patch & 0xF);
+    // Opaque V7+ tail (16 B per version past V6). Zero-filled; preserved across
+    // V6 writes to mirror the firmware's merge of a shorter SetAllParams.
+    this.#bulkTail = new Uint8Array(Math.max(0, this.#wireVersion - 6) * 16);
     // Pre-allocate output / crosspoint slots so per-command Set*'s can
     // index into them without conditional shape building. GetAllParams
     // re-synthesises from this state, so mutations show up in the next
@@ -121,6 +141,18 @@ export class MockTransport implements DspTransport {
 
   isOpen(): boolean { return this.#open; }
 
+  // Test helper: enqueue a raw notify packet for the next notifyIn().
+  pushNotify(bytes: Uint8Array): void {
+    this.#notifyQueue.push(bytes);
+  }
+
+  async notifyIn(length: number): Promise<Uint8Array> {
+    this.#requireOpen();
+    const next = this.#notifyQueue.shift();
+    if (next) return next.subarray(0, Math.min(length, next.byteLength));
+    return new Uint8Array([0x00]);   // idle keep-alive
+  }
+
   async ctrlIn(request: number, value: number, length: number): Promise<Uint8Array> {
     this.#requireOpen();
     switch (request) {
@@ -132,15 +164,14 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.GetPlatform.code: {
         // Wire shape: [platformId, fwMajor, (minor<<4)|patch, reserved].
-        // Mock reports v1.0.0.
         const out = new Uint8Array(length);
         out[0] = this.#platform;
-        if (length > 1) out[1] = 1;
-        if (length > 2) out[2] = 0x00;
+        if (length > 1) out[1] = this.#fwMajor;
+        if (length > 2) out[2] = this.#fwMinorPatch;
         return out;
       }
       case WireCmd.GetAllParams.code: {
-        const bulk = buildBulkParams(this.#mockState);
+        const bulk = this.#synthBulkPacket();
         return bulk.slice(0, Math.min(length, bulk.byteLength));
       }
       case WireCmd.GetMasterVolume.code:
@@ -507,6 +538,22 @@ export class MockTransport implements DspTransport {
       savedMasterVolumeDb: this.#savedMasterVolumeDb,
       channelNames: [...this.#channelNames],
     };
+  }
+
+  // Build the bulk packet at the configured wire version. The V2-V6 prefix
+  // comes from #mockState; for V7+ the appended sections are the opaque
+  // #bulkTail bytes (the console doesn't parse them). The header always reports
+  // this wire version + total length -- including sub-V6 versions, so the
+  // connect-reject path is testable too.
+  #synthBulkPacket(): Uint8Array {
+    const v6 = buildBulkParams(this.#mockState);
+    const out = new Uint8Array(v6.byteLength + this.#bulkTail.byteLength);
+    out.set(v6);
+    if (this.#bulkTail.byteLength > 0) out.set(this.#bulkTail, v6.byteLength);
+    const dv = new DataView(out.buffer);
+    dv.setUint8(0, this.#wireVersion);       // header.formatVersion
+    dv.setUint16(6, out.byteLength, true);   // header.payloadLength
+    return out;
   }
 
   #applyBulkState(bulk: BulkParams): void {

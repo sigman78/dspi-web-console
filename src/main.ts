@@ -28,7 +28,7 @@ startSettingsPersistence();
     return {
       session: { ...session },
       platform: snapshot?.platform ? { ...snapshot.platform } : null,
-      formatVersion: snapshot?.formatVersion ?? 0,
+      wire: session.lastDeviceInfo?.capabilities.wire ?? 0,
       bypass: snapshot?.bypass ?? false,
       masterVolumeDb: snapshot?.masterVolumeDb ?? 0,
       masterPreampDb: snapshot?.masterPreampDb ?? 0,

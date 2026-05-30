@@ -38,5 +38,10 @@ export function withTimeout(inner: DspTransport, opts: TimeoutOpts): DspTranspor
       race(`ctrlIn(0x${request.toString(16)}, w=${value})`, inner.ctrlIn(request, value, length)),
     ctrlOut: (request, value, data) =>
       race(`ctrlOut(0x${request.toString(16)}, w=${value})`, inner.ctrlOut(request, value, data)),
+    // Notify reads are open-ended (the device may withhold until an event);
+    // they are not control transfers, so they are not subject to ctrlMs.
+    ...(inner.notifyIn
+      ? { notifyIn: (length: number) => inner.notifyIn!(length) }
+      : {}),
   };
 }

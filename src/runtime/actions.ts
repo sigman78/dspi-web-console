@@ -18,6 +18,7 @@ import {
 } from '@/state';
 import { Result, Log, type VoidResult } from '@/utils';
 import { startPolling } from './poll';
+import { startNotifyChannel } from './notifyChannel';
 import { connectionScope, endConnection } from './connectionScope';
 import { acquireDeviceLock, releaseDeviceLock } from './deviceLock';
 import { mirror } from '@/state/mirror.svelte';
@@ -436,6 +437,7 @@ export async function finishConnection(device: DspDevice): Promise<void> {
     const s = connectionScope();
     if (s) {
       s.add(startPolling());
+      s.add(startNotifyChannel(device));
       s.add(() => cancelAllWrites());
       acquireDeviceLock();
       s.add(() => releaseDeviceLock());
@@ -443,7 +445,7 @@ export async function finishConnection(device: DspDevice): Promise<void> {
     await fetchPresetInfo();
     Log.info('sync', 'connected', {
       platform: mirror.current?.platform.name,
-      formatVersion: mirror.current?.formatVersion,
+      wire: device.capabilities.wire,
       masterVolumeDb: mirror.current?.masterVolumeDb,
     });
   } catch (err) {

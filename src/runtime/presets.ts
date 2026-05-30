@@ -10,6 +10,7 @@ import { fetchAndApplyAsBaseline } from './resync';
 import { mirror } from '@/state/mirror.svelte';
 import { flushAllWrites as flushWrites } from '@/device/writes';
 import type { DspDevice } from '@/device/DspDevice';
+import { acceptsWriteFormat } from '@/device/capabilities';
 import { type PresetSlot, PRESET_SLOT_COUNT } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
 import { Log, Result } from '@/utils';
@@ -310,17 +311,9 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
       // Wait for the active-slot load to settle first, otherwise its deferred
       // flash→RAM copy could land after restoreState and clobber the source.
       await settleAfterLoad();
-      // Format-version gate (BETA-MIGRATION safety). Both blobs come from the
-      // same firmware in the same session today, so this only fires after a
-      // mid-session firmware update changes the wire format — which would
-      // make the captured source incompatible with current RAM. Skip when
-      // mirror.current is null: the device disconnected mid-paste, and
-      // restoreState below will fail on its own. See DEVICE-BASED-MODEL.md §E.
-      const expectedFmt = mirror.current?.formatVersion;
-      if (expectedFmt === undefined) {
-        Log.warn('presets', 'paste gate: mirror.current null, skipping version check');
-      } else if (sourceBlob.formatVersion !== expectedFmt) {
-        const msg = `Paste blocked: snapshot format v${sourceBlob.formatVersion} incompatible with device v${expectedFmt}`;
+      // Write gate
+      if (!acceptsWriteFormat(d.capabilities, sourceBlob.formatVersion)) {
+        const msg = `Paste blocked: snapshot format v${sourceBlob.formatVersion} cannot be written to device wire v${d.capabilities.wire}`;
         recordActionError('Paste', new Error(msg));
         return { ok: false, code: 'error', message: msg };
       }

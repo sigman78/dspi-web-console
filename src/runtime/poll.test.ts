@@ -10,12 +10,13 @@ import {
   inflight, bumpInflight, dropInflight,
 } from '@/state/mirror.svelte';
 import { write } from '@/device/writes';
-import { startPolling, type PollClock, RECONCILE_QUIET_MS } from './poll';
+import { startPolling, RECONCILE_QUIET_MS } from './poll';
+import type { LoopClock } from '@/utils';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
 
 // A clock we drive by hand — no real timers, fully deterministic.
-function manualClock(): PollClock & { fire(): void; armed(): boolean } {
+function manualClock(): LoopClock & { fire(): void; armed(): boolean } {
   let cb: (() => void) | null = null;
   return {
     next(c) { cb = c; },
@@ -28,7 +29,7 @@ function manualClock(): PollClock & { fire(): void; armed(): boolean } {
 function pollDevice(status = { peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 }) {
   const calls = { status: 0, buffer: 0, info: 0 };
   const device = {
-    info: { serial: 'T', firmwareVersion: '6.0.0', platformType: PlatformType.RP2350, hardware: hw },
+    info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
     hardware: hw,
     getSystemStatus: vi.fn(async () => { calls.status++; return status; }),
     getBufferStats: vi.fn(async () => { calls.buffer++; return null; }),
@@ -42,7 +43,7 @@ function paramDevice() {
   const calls = { status: 0, snapshot: 0 };
   const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
   const device = {
-    info: { serial: 'T', firmwareVersion: '6.0.0', platformType: PlatformType.RP2350, hardware: hw },
+    info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
     hardware: hw,
     getSystemStatus: vi.fn(async () => { calls.status++; return { peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 }; }),
     getBufferStats: vi.fn(async () => null),
@@ -58,7 +59,7 @@ const settle = async () => { for (let i = 0; i < 8; i++) await Promise.resolve()
 // Fake device with a caller-supplied getSnapshot, for reconcile timing tests.
 function deviceWithSnapshot(getSnapshot: () => Promise<unknown>) {
   return {
-    info: { serial: 'T', firmwareVersion: '6.0.0', platformType: PlatformType.RP2350, hardware: hw },
+    info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
     hardware: hw,
     getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 })),
     getBufferStats: vi.fn(async () => null),
@@ -153,7 +154,7 @@ describe('param reconcile cadence', () => {
     const reconciled = fromBulkParams(hw, parseBulkParams(makeBulk()));
     reconciled.masterVolumeDb = -33;
     const device = {
-      info: { serial: 'T', firmwareVersion: '6.0.0', platformType: PlatformType.RP2350, hardware: hw },
+      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
       hardware: hw,
       getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 })),
       getBufferStats: vi.fn(async () => null),
@@ -289,5 +290,21 @@ describe('param reconcile cadence', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('startPolling — visibility resume', () => {
+  it('requests an eager reconcile when the tab becomes visible', () => {
+    consumeReconcile();
+    const clock: LoopClock = { next: () => {}, cancel: () => {} };
+    const stop = startPolling(clock);
+    // Simulate hide → show.
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(peekReconcile()).toMatchObject({ wanted: true, eager: true });
+    stop();
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
   });
 });

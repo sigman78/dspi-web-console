@@ -313,7 +313,15 @@ export const BulkSizes = {
 
 export const BulkLimits = {
   MinPacketSize:  BulkSizes.V2,
+  // Size we WRITE: the console builds V6 packets. The firmware merges shorter
+  // packets, so this stays V6 even when talking to a newer device.
   MaxRequestSize: BulkSizes.V6Full,
+  // Size we READ: the largest packet we tolerate receiving. The 1.1.4 (V10)
+  // branch appends four 16-byte sections (input source, LG sound sync, user
+  // volume, DAC hw mute) after the V6 tail. We request this much so a newer
+  // device can send its whole packet without a WinUSB babble/overrun;
+  // parseBulkParams reads only the V6 prefix and ignores the trailing bytes.
+  MaxReadSize:    BulkSizes.V6Full + 4 * 16,  // 2960 (V10)
 } as const;
 
 export interface BulkLayout {

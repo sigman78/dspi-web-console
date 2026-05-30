@@ -1,6 +1,6 @@
 import { session, applyClipFlags, applyPeaks, status } from '@/state';
-import { mirror, isInFlight, peekReconcile, consumeReconcile, lastWriteMs } from '@/state/mirror.svelte';
-import { Log } from '@/utils';
+import { mirror, isInFlight, peekReconcile, consumeReconcile, lastWriteMs, requestReconcile } from '@/state/mirror.svelte';
+import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
 
 const STATUS_INTERVAL_MS = 50;   // ~20 Hz -- peaks + cpu
@@ -14,28 +14,6 @@ const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile
 // reconciling promptly after the user lets go.
 export const RECONCILE_QUIET_MS = 100;
 
-// Pluggable tick driver. Swap setTimeout↔rAF without touching the loop body.
-export interface PollClock { next(cb: () => void): void; cancel(): void; }
-
-export const timerClock = (ms = STATUS_INTERVAL_MS): PollClock => {
-  let id: ReturnType<typeof setTimeout> | null = null;
-  return {
-    // Arms exactly one pending tick (idempotent): cancel any prior tick first so a double-call can't leak a chain.
-    next: (cb) => { if (id != null) clearTimeout(id); id = setTimeout(cb, ms); },
-    cancel: () => { if (id != null) clearTimeout(id); id = null; },
-  };
-};
-
-// Available for callers that prefer paint-aligned, hidden-auto-pausing polling.
-export const rafClock = (): PollClock => {
-  let id: number | null = null;
-  return {
-    // Arms exactly one pending tick (idempotent): cancel any prior frame first so a double-call can't leak a chain.
-    next: (cb) => { if (id != null) cancelAnimationFrame(id); id = requestAnimationFrame(cb); },
-    cancel: () => { if (id != null) cancelAnimationFrame(id); id = null; },
-  };
-};
-
 interface Cadence {
   key: 'status' | 'buffer' | 'info' | 'param';
   intervalMs: number;
@@ -48,7 +26,7 @@ interface Cadence {
   shouldRun?(now: number): boolean;
 }
 
-export function startPolling(clock: PollClock = timerClock(STATUS_INTERVAL_MS)): () => void {
+export function startPolling(clock: LoopClock = timerClock(STATUS_INTERVAL_MS)): Disposer {
   let stopped = false;
   const isHidden = () => typeof document !== 'undefined' && document.hidden;
   // Only the in-flight guards are loop-local. The cadence CLOCK stays on the
@@ -165,21 +143,22 @@ export function startPolling(clock: PollClock = timerClock(STATUS_INTERVAL_MS)):
     void doPoll();
   };
 
-  // Registered only while the loop is live and removed by stop(), so it never
-  // fires after dispose — no `stopped` guard needed here.
-  const onVisibility = () => {
-    if (isHidden()) { if (!anyRunWhileHidden) clock.cancel(); }
-    else clock.next(tick);                           // resume on show
-  };
+  // Removed by stop(), so it never fires after dispose — no `stopped` guard.
+  const offVisibility = subscribeVisibility(
+    () => {                        // tab shown
+      requestReconcile(true);      // repaint to truth after a blind period
+      clock.next(tick);            // resume
+    },
+    () => { if (!anyRunWhileHidden) clock.cancel(); },   // tab hidden
+  );
 
-  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
   status.errorCount = 0;
   if (!(isHidden() && !anyRunWhileHidden)) clock.next(tick);
 
   const stop = () => {
     stopped = true;
     clock.cancel();
-    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility);
+    offVisibility();
   };
   return stop;
 }

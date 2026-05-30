@@ -22,7 +22,6 @@ function fakeSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
     leveller: null,
     i2s: null,
     outputPins: [],
-    formatVersion: 6,
     platform: { type: 0, name: 'test', outputCount: 0, totalChannelCount: 0, pdmOutputIndex: -1 },
     ...overrides,
   } as unknown as DspSnapshot;

@@ -22,7 +22,6 @@ export interface ChannelModel {
 
 export interface DspSnapshot {
   platform: PlatformInfo;
-  formatVersion: number;
   bypass: boolean;
   masterPreampDb: number;
   inputPreampDb: [number, number];

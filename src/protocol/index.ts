@@ -26,3 +26,5 @@ export * from './wireCmd';
 
 // Result-code enums (FlashResult, PresetResult) + byte-decoder helpers
 export * from './results';
+
+export * from './notify';

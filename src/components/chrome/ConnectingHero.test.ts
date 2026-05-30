@@ -5,6 +5,7 @@ import { setStatus } from '@/state';
 
 vi.mock('../../runtime/session', () => ({
   connectRequested: vi.fn().mockResolvedValue(undefined),
+  reportConnectError: vi.fn(),
   webUsbUnsupportedReason: vi.fn(() => null),
 }));
 
@@ -61,6 +62,21 @@ describe('ConnectingHero — status text', () => {
   test('renders the EQ spectrum (16 bars)', () => {
     const { container } = render(ConnectingHero);
     expect(container.querySelectorAll('.bar')).toHaveLength(16);
+  });
+
+  test('unsupported-firmware error renders a dedicated upgrade panel, not the red diagnostics one', () => {
+    setStatus(
+      'error',
+      'DSPi firmware 1.1.2 is below the minimum supported 1.1.3. Update the device firmware to 1.1.3 or newer, then reconnect.',
+      'unsupported-firmware',
+    );
+    render(ConnectingHero);
+    const panel = screen.getByRole('alert', { name: /firmware/i });
+    expect(panel).toHaveTextContent('1.1.2');
+    expect(panel).toHaveTextContent('1.1.3');
+    expect(screen.queryByLabelText('Connection error details')).not.toBeInTheDocument();
+    // Retry stays available — the user can reconnect after updating.
+    expect(screen.getByRole('button', { name: 'CONNECT' })).not.toBeDisabled();
   });
 });
 

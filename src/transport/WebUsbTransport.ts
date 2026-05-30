@@ -1,12 +1,29 @@
 import { type DspTransport, type TransportEvent, VENDOR_INTERFACE_INDEX } from './DspTransport';
 
-export const DSPI_VENDOR_ID = 0x2E8A;
-export const DSPI_PRODUCT_ID = 0xFEAA;
+// The firmware changed its USB Vendor ID at 1.1.4 (RP-Pico block 0x2E8A ->
+// Weeb Labs block 0x2E8B); the PID is unchanged. Both pairs are listed so a
+// device on either firmware shows up in the picker. VID is a device-family
+// check only — the supported-version decision comes from GetPlatform, not VID.
+export const DSPI_USB_IDS = [
+  { vendorId: 0x2E8A, productId: 0xFEAA },  // <= 1.1.3
+  { vendorId: 0x2E8B, productId: 0xFEAA },  // >= 1.1.4
+] as const;
+
+// Legacy scalar identity (the 1.1.3 pair). Retained for the node-usb HIL
+// harness, which talks to real 1.1.3 hardware.
+export const DSPI_VENDOR_ID = DSPI_USB_IDS[0].vendorId;
+export const DSPI_PRODUCT_ID = DSPI_USB_IDS[0].productId;
+
+export function matchesDspi(d: { vendorId: number; productId: number }): boolean {
+  return DSPI_USB_IDS.some((id) => d.vendorId === id.vendorId && d.productId === id.productId);
+}
+
 const USB_CLASS_VENDOR = 0xFF;
 
 export class WebUsbTransport implements DspTransport {
   #device: USBDevice | null = null;
   #interfaceNumber = VENDOR_INTERFACE_INDEX;
+  #notifyEndpoint: number | null = null;
   #listeners = new Map<TransportEvent, Set<() => void>>();
   #onConnect = (e: USBConnectionEvent) => {
     if (this.#device && e.device === this.#device) this.#emit('connect');
@@ -40,9 +57,7 @@ export class WebUsbTransport implements DspTransport {
   async tryAutoConnect(): Promise<boolean> {
     if (!WebUsbTransport.isSupported()) return false;
     const devices = await navigator.usb.getDevices();
-    const match = devices.find(
-      (d) => d.vendorId === DSPI_VENDOR_ID && d.productId === DSPI_PRODUCT_ID,
-    );
+    const match = devices.find(matchesDspi);
     if (!match) return false;
     this.#device = match;
     await this.open();
@@ -54,7 +69,7 @@ export class WebUsbTransport implements DspTransport {
       throw new Error('WebUSB is not supported in this browser.');
     }
     const device = await navigator.usb.requestDevice({
-      filters: [{ vendorId: DSPI_VENDOR_ID, productId: DSPI_PRODUCT_ID }],
+      filters: [...DSPI_USB_IDS],
     });
     this.#device = device;
     await this.open();
@@ -117,6 +132,26 @@ export class WebUsbTransport implements DspTransport {
     }
   }
 
+  // Resolve the bulk-IN notify endpoint number lazily (low nibble of 0x83 = 3,
+  // but scan the claimed interface to be robust), then read one packet.
+  async notifyIn(length: number): Promise<Uint8Array> {
+    const d = this.#requireDevice();
+    if (this.#notifyEndpoint === null) {
+      this.#notifyEndpoint = findNotifyEndpoint(d, this.#interfaceNumber) ?? 3;
+    }
+    const r = await d.transferIn(this.#notifyEndpoint, length);
+    if (r.status === 'stall') {
+      // Recoverable: clear the halt so the next read can succeed. The notify
+      // channel backs off and retries; without this the endpoint stays wedged.
+      await d.clearHalt('in', this.#notifyEndpoint);
+      throw new Error('notifyIn: endpoint stalled (halt cleared)');
+    }
+    if (r.status !== 'ok' || !r.data) {
+      throw new Error(`notifyIn status=${r.status}`);
+    }
+    return new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength);
+  }
+
   on(event: TransportEvent, listener: () => void): () => void {
     let set = this.#listeners.get(event);
     if (!set) { set = new Set(); this.#listeners.set(event, set); }
@@ -132,6 +167,14 @@ export class WebUsbTransport implements DspTransport {
     if (!this.#device) throw new Error('WebUsbTransport: no device.');
     return this.#device;
   }
+}
+
+// Find the bulk-IN endpoint number on the claimed vendor interface (the notify
+// endpoint, EP 0x83). Returns the endpoint number (1..15), or null if absent.
+function findNotifyEndpoint(d: USBDevice, interfaceNumber: number): number | null {
+  const iface = d.configuration?.interfaces.find((i) => i.interfaceNumber === interfaceNumber);
+  const ep = iface?.alternate.endpoints.find((e) => e.direction === 'in' && e.type === 'bulk');
+  return ep ? ep.endpointNumber : null;
 }
 
 // Pick the vendor-class (0xFF) interface from the active configuration. Falls

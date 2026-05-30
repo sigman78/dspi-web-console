@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MockTransport } from './MockTransport';
 import { DspDevice } from '@/device/DspDevice';
-import { WireCmd, Wire, writeCmd, parseBufferStats, parseSystemStatus, parseBulkParams, buildBulkParams, type BulkParams } from '@/protocol';
+import { WireCmd, Wire, writeCmd, parseBufferStats, parseSystemStatus, parseBulkParams, buildBulkParams, NotifyEventId, type BulkParams } from '@/protocol';
 import { Codec } from '@/utils';
 import { FilterType, MasterVolumeMode } from '@/domain';
 
@@ -46,6 +46,52 @@ describe('MockTransport', () => {
     await t2.close();
     expect(connected).toBe(1);
     expect(disconnected).toBe(1);
+  });
+});
+
+describe('MockTransport — wire version knob', () => {
+  it('synthesizes a bulk packet at the configured wire version (V10 = 2960 B)', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
+    await t.open();
+    const bytes = await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize);
+    expect(bytes.byteLength).toBe(2960);
+    const p = parseBulkParams(bytes);
+    expect(p.formatVersion).toBe(10);
+    expect(p.payloadLength).toBe(2960);
+  });
+
+  it('connects as a supported V10 device with a coherent firmware version', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } });
+    const dev = await createDevice(t);
+    expect(dev.capabilities.support).toBe('supported');
+    expect(dev.capabilities.wire).toBe(10);
+    expect(dev.info.capabilities.fwLabel).toBe('1.1.4');
+  });
+
+  it('merges a V6 write into a V10 device: V6 fields update, the packet stays V10', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
+    const dev = await createDevice(t);
+    const snap = await dev.getAllParams();
+    snap.masterVolumeDb = -11;
+    await dev.setAllParams(snap);
+    const back = await dev.getAllParams();
+    expect(back.formatVersion).toBe(10);
+    expect(back.masterVolumeDb).toBeCloseTo(-11);
+  });
+
+  it('defaults to V6 when no wire version is given', async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    await t.open();
+    const bytes = await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize);
+    expect(bytes.byteLength).toBe(2896);
+    expect(parseBulkParams(bytes).formatVersion).toBe(6);
+  });
+
+  it('reports a sub-floor wire version so the connect-reject path is testable', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 5 });
+    await t.open();
+    const bytes = await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize);
+    expect(parseBulkParams(bytes).formatVersion).toBe(5);
   });
 });
 
@@ -286,5 +332,24 @@ describe('SetAllParams (0xA1)', () => {
 
     const after = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxRequestSize));
     expect(after.bypass).toBe(true);
+  });
+});
+
+describe('MockTransport — notify queue', () => {
+  it('returns a 1-byte idle when the notify queue is empty', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
+    await t.open();
+    const bytes = await t.notifyIn(64);
+    expect(Array.from(bytes)).toEqual([0]);
+  });
+
+  it('drains pushed packets FIFO, then returns to idle', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
+    await t.open();
+    t.pushNotify(new Uint8Array([2, 3, 0, 1, 3, 0, 0, 0]));  // BULK_INVALIDATED
+    const first = await t.notifyIn(64);
+    expect(first[1]).toBe(NotifyEventId.BulkInvalidated);
+    const second = await t.notifyIn(64);
+    expect(Array.from(second)).toEqual([0]);  // idle again
   });
 });

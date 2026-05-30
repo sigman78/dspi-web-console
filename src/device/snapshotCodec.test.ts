@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseBulkParams } from '@/protocol';
-import { makeBulk } from '@test/fixtures/bulkFixtures';
+import { parseBulkParams, Wire } from '@/protocol';
+import { makeBulk, makeBulkObject } from '@test/fixtures/bulkFixtures';
 import { PlatformType, createHardwareProfile, matrixColumns, matrixRows } from '@/domain';
 import { fromBulkParams } from './snapshotCodec';
 
@@ -89,5 +89,19 @@ describe('fromBulkParams', () => {
     expect(pdmOutput?.name).toBe('RP2040 Sub');
     expect(pdmChannel?.filters[0].frequency).toBe(321);
     expect(pdmChannel?.filters[0].gain).toBe(-2);
+  });
+
+  it('honors payloadLength (not raw formatVersion) for section presence', () => {
+    // A V6 header truncated to the V3 payload length: bulkLayout reports no
+    // leveller even though formatVersion (6) >= 4. The codec must follow
+    // bulkLayout — the old `formatVersion >= 4` branch wrongly exposed it.
+    const bulk = makeBulkObject({ payloadLength: Wire.BulkSizes.V3 });
+    const layout = Wire.bulkLayout(bulk);
+    expect(layout.i2s).toBe(true);       // precondition: V3 keeps i2s
+    expect(layout.leveller).toBe(false); // precondition: V3 drops leveller
+
+    const snap = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
+    expect(snap.i2s).not.toBeNull();
+    expect(snap.leveller).toBeNull();
   });
 });
