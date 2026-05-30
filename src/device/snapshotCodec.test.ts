@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseBulkParams, Wire } from '@/protocol';
 import { makeBulk, makeBulkObject } from '@test/fixtures/bulkFixtures';
-import { PlatformType, createHardwareProfile, matrixColumns, matrixRows, HARDWARE_PROFILES, AudioInputSource } from '@/domain';
+import { PlatformType, createHardwareProfile, matrixColumns, matrixRows, HARDWARE_PROFILES, AudioInputSource, FilterType } from '@/domain';
 import * as WireNS from '@/protocol/wireTypes';
 import { fromBulkParams } from './snapshotCodec';
 
@@ -140,5 +140,17 @@ describe('snapshotCodec — 1.1.4 sections', () => {
     filters[0][0] = { type: 1, bypass: true, frequency: 1000, q: 1, gain: 2 };
     const snap = fromBulkParams(hw, makeBulkObject({ formatVersion: 10, payloadLength: WireNS.BulkSizes.V10, filters }));
     expect(snap.channels[0].filters[0].bypass).toBe(true);
+  });
+
+  it('narrows Notch/Allpass wire types and clamps an unknown type to Flat', () => {
+    const filters = Array.from({ length: WireNS.Const.NUM_CHANNELS }, () =>
+      Array.from({ length: WireNS.Const.BANDS_MAX }, () => ({ type: 0, bypass: false, frequency: 1000, q: 1, gain: 0 })));
+    filters[0][0] = { type: FilterType.Notch, bypass: false, frequency: 1000, q: 1, gain: 0 };
+    filters[0][1] = { type: FilterType.Allpass, bypass: false, frequency: 1000, q: 1, gain: 0 };
+    filters[0][2] = { type: 99, bypass: false, frequency: 1000, q: 1, gain: 0 };
+    const snap = fromBulkParams(hw, makeBulkObject({ formatVersion: 10, payloadLength: WireNS.BulkSizes.V10, filters }));
+    expect(snap.channels[0].filters[0].type).toBe(FilterType.Notch);
+    expect(snap.channels[0].filters[1].type).toBe(FilterType.Allpass);
+    expect(snap.channels[0].filters[2].type).toBe(FilterType.Flat);
   });
 });
