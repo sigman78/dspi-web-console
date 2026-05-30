@@ -121,9 +121,9 @@ describe('snapshotCodec — 1.1.4 sections', () => {
     });
     const snap = fromBulkParams(hw, bulk);
     expect(snap.inputConfig).toEqual({ source: AudioInputSource.Spdif, spdifRxPin: 5 });
-    expect(snap.lgSoundSync?.volume).toBe(30);
-    expect(snap.userVolume?.volumeDb).toBeCloseTo(-4, 4);
-    expect(snap.dacHwMute?.pin).toBe(11);
+    expect(snap.lgSoundSync).toEqual({ enabled: true, present: false, volume: 30, muted: false });
+    expect(snap.userVolume).toEqual({ volumeDb: -4, mute: false });
+    expect(snap.dacHwMute).toEqual({ enabled: true, activeLow: true, pin: 11, holdMs: 10, releaseMs: 20 });
   });
 
   it('nulls the 1.1.4 sections on a V6 packet', () => {
