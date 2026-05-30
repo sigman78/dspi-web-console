@@ -51,7 +51,7 @@ describe('DspDevice snapshot API', () => {
 
   it('getSnapshot returns a domain snapshot', async () => {
     const snap = await d.getSnapshot();
-    expect(snap.formatVersion).toBeGreaterThanOrEqual(3);
+    expect(d.capabilities.wire).toBeGreaterThanOrEqual(3);
     expect(Array.isArray(snap.channels)).toBe(true);
   });
 

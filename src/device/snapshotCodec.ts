@@ -119,7 +119,6 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: proto.Bul
       totalChannelCount: hardware.totalChannelCount,
       pdmOutputIndex: hardware.pdmOutputIndex,
     },
-    formatVersion: bulk.formatVersion,
     bypass: bulk.bypass,
     masterPreampDb: bulk.preampDb,
     inputPreampDb: [bulk.preampLDb, bulk.preampRDb],

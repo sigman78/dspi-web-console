@@ -6,7 +6,7 @@ import { isAssignablePin, pinsInUse, availablePinsFor, validBckPins } from './pi
 function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
   return {
     platform: { type: PlatformType.RP2350, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
-    formatVersion: 6, bypass: false, masterPreampDb: 0, inputPreampDb: [0, 0], masterVolumeDb: 0,
+    bypass: false, masterPreampDb: 0, inputPreampDb: [0, 0], masterVolumeDb: 0,
     channels: [], outputs: [], routes: [],
     loudness: { enabled: false, refSpl: 85, intensityPct: 0 },
     crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5 },

@@ -7,7 +7,6 @@ import type { DspSnapshot } from '@/domain';
 function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
   return {
     platform: { name: 'rp2350', type: 'rp2350', totalChannelCount: 11, outputCount: 4 } as any,
-    formatVersion: 6,
     bypass: false,
     masterPreampDb: 0,
     inputPreampDb: [0, 0],

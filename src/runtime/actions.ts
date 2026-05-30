@@ -445,7 +445,7 @@ export async function finishConnection(device: DspDevice): Promise<void> {
     await fetchPresetInfo();
     Log.info('sync', 'connected', {
       platform: mirror.current?.platform.name,
-      formatVersion: mirror.current?.formatVersion,
+      wire: device.capabilities.wire,
       masterVolumeDb: mirror.current?.masterVolumeDb,
     });
   } catch (err) {

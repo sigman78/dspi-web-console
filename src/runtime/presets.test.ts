@@ -426,7 +426,7 @@ describe('runtime/presets', () => {
       const active = 1 as PresetSlot;
       await savePresetSlot(active);
       expect(presets.active).toBe(active);
-      const liveFmt = mirror.current!.formatVersion;
+      const liveFmt = session.device!.capabilities.wire;
       const wrongFmt = liveFmt + 1;
 
       const realDevice = session.device!;
