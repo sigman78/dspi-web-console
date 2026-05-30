@@ -1,5 +1,5 @@
 import { session, applyClipFlags, applyPeaks, status } from '@/state';
-import { mirror, isInFlight, peekReconcile, consumeReconcile, lastWriteMs } from '@/state/mirror.svelte';
+import { mirror, isInFlight, peekReconcile, consumeReconcile, lastWriteMs, requestReconcile } from '@/state/mirror.svelte';
 import { Log } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
 
@@ -169,7 +169,10 @@ export function startPolling(clock: PollClock = timerClock(STATUS_INTERVAL_MS)):
   // fires after dispose — no `stopped` guard needed here.
   const onVisibility = () => {
     if (isHidden()) { if (!anyRunWhileHidden) clock.cancel(); }
-    else clock.next(tick);                           // resume on show
+    else {
+      requestReconcile(true);   // repaint to truth after a blind period
+      clock.next(tick);         // resume on show
+    }
   };
 
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);

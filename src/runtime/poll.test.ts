@@ -291,3 +291,19 @@ describe('param reconcile cadence', () => {
     }
   });
 });
+
+describe('startPolling — visibility resume', () => {
+  it('requests an eager reconcile when the tab becomes visible', () => {
+    consumeReconcile();
+    const clock: PollClock = { next: () => {}, cancel: () => {} };
+    const stop = startPolling(clock);
+    // Simulate hide → show.
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(peekReconcile()).toMatchObject({ wanted: true, eager: true });
+    stop();
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+  });
+});
