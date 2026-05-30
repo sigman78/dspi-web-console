@@ -71,19 +71,18 @@ export function deriveCapabilities(input: {
     : wireVersion > MAX_KNOWN_WIRE   ? 'future'
     : 'supported';
 
-  const caps: DeviceCapabilities = {
-    fw: Object.freeze({ ...fw }),
+  return {
+    fw,
     fwLabel: formatFirmwareVersion(fw),
     wire: wireVersion,
     wireLabel: `V${wireVersion}`,
     platformId,
     support,
-    sections: Object.freeze(Wire.bulkLayout({ formatVersion: wireVersion, payloadLength })),
-    features: Object.freeze({
+    sections: Wire.bulkLayout({ formatVersion: wireVersion, payloadLength }),
+    features: {
       notifications: wireVersion >= NOTIFY_MIN_WIRE,
-    }),
+    },
   };
-  return Object.freeze(caps);
 }
 
 // A snapshot of wire version `sourceWire` is writable to a device with these
