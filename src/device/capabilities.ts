@@ -29,7 +29,9 @@ export interface DeviceCapabilities {
   // Metadata / escape hatch. Surfaced for display (e.g. the reject message) and
   // for future wire-invisible feature gating. UI must not branch on these.
   readonly fw: FirmwareVersion;
+  readonly fwLabel: string;       // "1.1.4" — formatted once, here
   readonly wire: number;
+  readonly wireLabel: string;     // "V10"   — formatted once, here
   readonly platformId: number;
 
   // Support classification, keyed on the observed wire version:
@@ -50,6 +52,12 @@ export interface DeviceCapabilities {
   };
 }
 
+// The single firmware-version string formatter. Display reads this projection
+// off the frozen authority — never re-derives the version itself.
+function formatFirmwareVersion(fw: FirmwareVersion): string {
+  return `${fw.major}.${fw.minor}.${fw.patch}`;
+}
+
 export function deriveCapabilities(input: {
   fw: FirmwareVersion;
   wireVersion: number;
@@ -63,16 +71,19 @@ export function deriveCapabilities(input: {
     : wireVersion > MAX_KNOWN_WIRE   ? 'future'
     : 'supported';
 
-  return {
+  const caps: DeviceCapabilities = {
     fw,
+    fwLabel: formatFirmwareVersion(fw),
     wire: wireVersion,
+    wireLabel: `V${wireVersion}`,
     platformId,
     support,
     sections: Wire.bulkLayout({ formatVersion: wireVersion, payloadLength }),
-    features: {
+    features: Object.freeze({
       notifications: wireVersion >= NOTIFY_MIN_WIRE,
-    },
+    }),
   };
+  return Object.freeze(caps);
 }
 
 // A snapshot of wire version `sourceWire` is writable to a device with these

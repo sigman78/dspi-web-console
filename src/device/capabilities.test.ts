@@ -27,11 +27,25 @@ describe('deriveCapabilities — support classification', () => {
 });
 
 describe('deriveCapabilities — metadata + sections', () => {
-  it('carries fw, wire and platformId through for display / escape-hatch use', () => {
+  it('carries fw, wire, platformId and display labels through for display / escape-hatch use', () => {
     const c = deriveCapabilities({ fw: fw(1, 1, 3), wireVersion: 6, payloadLength: 2896, platformId: 1 });
     expect(c.fw).toEqual(fw(1, 1, 3));
+    expect(c.fwLabel).toBe('1.1.3');
     expect(c.wire).toBe(6);
+    expect(c.wireLabel).toBe('V6');
     expect(c.platformId).toBe(1);
+  });
+
+  it('formats labels from the V10 branch correctly', () => {
+    const c = deriveCapabilities({ fw: fw(1, 1, 4), wireVersion: 10, payloadLength: 2960, platformId: 1 });
+    expect(c.fwLabel).toBe('1.1.4');
+    expect(c.wireLabel).toBe('V10');
+  });
+
+  it('returns a frozen authority — version identity cannot be mutated post-connect', () => {
+    const c = deriveCapabilities({ fw: fw(1, 1, 3), wireVersion: 6, payloadLength: 2896, platformId: 1 });
+    expect(Object.isFrozen(c)).toBe(true);
+    expect(() => { (c as unknown as { wire: number }).wire = 99; }).toThrow();
   });
 
   it('derives bulk sections from the observed header by delegating to bulkLayout', () => {
