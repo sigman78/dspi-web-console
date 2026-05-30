@@ -415,12 +415,13 @@ describe('runtime/presets', () => {
       if ('code' in r) expect(r.code).toBe('active');
     });
 
-    it('blocks paste when sourceBlob format version differs from mirror', async () => {
-      // BETA-MIGRATION safety gate. If captureState returns a blob whose
-      // formatVersion does not match mirror.current.formatVersion (a scenario
-      // that can arise mid-session after a firmware update changes the wire
-      // format), restoreState must not be called and the action must surface
-      // an error.
+    it('blocks paste when sourceBlob wire is higher than the device can accept', async () => {
+      // Firmware-merge write rule: a blob whose wire is HIGHER than the device's
+      // wire is rejected (the firmware would refuse it). Arises mid-session after
+      // a firmware update bumps the format. restoreState must not run and the
+      // action must surface an error. (Lower/equal blobs merge — see the
+      // acceptsWriteFormat unit matrix for that path; this runtime harness is
+      // V6-only so it can't host a higher device to exercise the accept side.)
       await fetchPresetInfo();
       const active = 1 as PresetSlot;
       await savePresetSlot(active);
