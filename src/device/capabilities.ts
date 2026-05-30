@@ -78,7 +78,7 @@ export function deriveCapabilities(input: {
     wireLabel: `V${wireVersion}`,
     platformId,
     support,
-    sections: Wire.bulkLayout({ formatVersion: wireVersion, payloadLength }),
+    sections: Object.freeze(Wire.bulkLayout({ formatVersion: wireVersion, payloadLength })),
     features: Object.freeze({
       notifications: wireVersion >= NOTIFY_MIN_WIRE,
     }),

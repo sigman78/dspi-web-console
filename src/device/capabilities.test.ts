@@ -48,6 +48,7 @@ describe('deriveCapabilities — metadata + sections', () => {
     expect(() => { (c as unknown as { wire: number }).wire = 99; }).toThrow();
     expect(Object.isFrozen(c.fw)).toBe(true);
     expect(Object.isFrozen(c.features)).toBe(true);
+    expect(Object.isFrozen(c.sections)).toBe(true);
     expect(() => { (c.fw as { major: number }).major = 99; }).toThrow();
   });
 
