@@ -958,28 +958,6 @@ describe('setAllParams', () => {
 });
 
 describe('connect-time capabilities + version gating', () => {
-  // A transport that reports identity + a bulk packet whose header wire version
-  // we control, so we can drive the support classification at connect.
-  function transportReporting(opts: { wire: number; fwMinorPatch: number }): DspTransport {
-    const pkt = makeBulk();
-    new DataView(pkt.buffer, pkt.byteOffset, pkt.byteLength).setUint8(0, opts.wire);
-    return {
-      open: async () => {}, close: async () => {}, isOpen: () => true,
-      on: () => () => {},
-      ctrlIn: async (request: number, _value: number, length: number) => {
-        if (request === WireCmd.GetSerial.code) return new Uint8Array(length);
-        if (request === WireCmd.GetPlatform.code) {
-          const o = new Uint8Array(length);
-          o[0] = 1; o[1] = 1; o[2] = opts.fwMinorPatch;  // platformId=1, fwMajor=1
-          return o;
-        }
-        if (request === WireCmd.GetAllParams.code) return pkt.slice(0, length);
-        return new Uint8Array(length);
-      },
-      ctrlOut: async () => {},
-    };
-  }
-
   it('attaches capabilities derived from the connected device', async () => {
     const dev = await createDevice(new MockTransport({ platform: 'rp2350' }), 'rp2350');
     expect(dev.capabilities.support).toBe('supported');
@@ -988,15 +966,13 @@ describe('connect-time capabilities + version gating', () => {
   });
 
   it('rejects a device older than the V6 floor with UnsupportedFirmware', async () => {
-    // wire=5, fw 1.1.2 (0x12 -> minor 1, patch 2)
-    const transport = transportReporting({ wire: 5, fwMinorPatch: 0x12 });
-    await expect(DspDevice.create(transport, async () => {}))
-      .rejects.toBeInstanceOf(UnsupportedFirmware);
+    const transport = new MockTransport({ platform: 'rp2350', wireVersion: 5, fwVersion: { major: 1, minor: 1, patch: 2 } });
+    await expect(DspDevice.create(transport)).rejects.toBeInstanceOf(UnsupportedFirmware);
   });
 
   it('UnsupportedFirmware reports the actual firmware version', async () => {
-    const transport = transportReporting({ wire: 5, fwMinorPatch: 0x12 });
-    const err = await DspDevice.create(transport, async () => {}).catch((e) => e);
+    const transport = new MockTransport({ platform: 'rp2350', wireVersion: 5, fwVersion: { major: 1, minor: 1, patch: 2 } });
+    const err = await DspDevice.create(transport).catch((e) => e);
     expect(err).toBeInstanceOf(UnsupportedFirmware);
     expect((err as UnsupportedFirmware).firmwareVersion).toBe('1.1.2');
   });
@@ -1005,8 +981,8 @@ describe('connect-time capabilities + version gating', () => {
   // (captureState -> restoreState -> setAllParams) must not throw — the writer
   // normalizes it to a V6 packet the firmware merges.
   it('captureState/restoreState round-trips on an accepted V10 device', async () => {
-    const transport = transportReporting({ wire: 10, fwMinorPatch: 0x14 });
-    const dev = await DspDevice.create(transport, async () => {});
+    const transport = new MockTransport({ platform: 'rp2350', wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } });
+    const dev = await DspDevice.create(transport);
     expect(dev.capabilities.support).toBe('supported');
     const state = await dev.captureState();
     await expect(dev.restoreState(state)).resolves.toBeUndefined();
