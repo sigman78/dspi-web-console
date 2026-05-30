@@ -10,12 +10,13 @@ import {
   inflight, bumpInflight, dropInflight,
 } from '@/state/mirror.svelte';
 import { write } from '@/device/writes';
-import { startPolling, type PollClock, RECONCILE_QUIET_MS } from './poll';
+import { startPolling, RECONCILE_QUIET_MS } from './poll';
+import type { LoopClock } from '@/utils';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
 
 // A clock we drive by hand — no real timers, fully deterministic.
-function manualClock(): PollClock & { fire(): void; armed(): boolean } {
+function manualClock(): LoopClock & { fire(): void; armed(): boolean } {
   let cb: (() => void) | null = null;
   return {
     next(c) { cb = c; },
@@ -295,7 +296,7 @@ describe('param reconcile cadence', () => {
 describe('startPolling — visibility resume', () => {
   it('requests an eager reconcile when the tab becomes visible', () => {
     consumeReconcile();
-    const clock: PollClock = { next: () => {}, cancel: () => {} };
+    const clock: LoopClock = { next: () => {}, cancel: () => {} };
     const stop = startPolling(clock);
     // Simulate hide → show.
     Object.defineProperty(document, 'hidden', { value: true, configurable: true });
