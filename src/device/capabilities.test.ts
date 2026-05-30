@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveCapabilities, MAX_KNOWN_WIRE, NOTIFY_MIN_WIRE } from './capabilities';
+import { deriveCapabilities, acceptsWriteFormat, MIN_SUPPORTED_WIRE, MAX_KNOWN_WIRE, NOTIFY_MIN_WIRE } from './capabilities';
 import { Wire } from '@/protocol';
 
 const fw = (major: number, minor: number, patch: number) => ({ major, minor, patch });
@@ -57,5 +57,32 @@ describe('deriveCapabilities — features', () => {
     expect(below.features.notifications).toBe(false);
     expect(at.features.notifications).toBe(true);
     expect(above.features.notifications).toBe(true);
+  });
+});
+
+describe('acceptsWriteFormat — firmware-merge write rule', () => {
+  const caps = (wire: number) =>
+    deriveCapabilities({ fw: fw(1, 1, 3), wireVersion: wire, payloadLength: 2896, platformId: 1 });
+
+  it('accepts an equal-version blob (the common same-session case)', () => {
+    expect(acceptsWriteFormat(caps(6), 6)).toBe(true);
+  });
+
+  it('accepts a lower-version blob onto a higher device (merges up)', () => {
+    expect(acceptsWriteFormat(caps(10), 6)).toBe(true);
+  });
+
+  it('rejects a higher-version blob the firmware would refuse', () => {
+    expect(acceptsWriteFormat(caps(6), 10)).toBe(false);
+  });
+
+  it('rejects a blob below the V6 floor regardless of device', () => {
+    expect(acceptsWriteFormat(caps(10), MIN_SUPPORTED_WIRE - 1)).toBe(false);
+  });
+
+  it('still accepts known-format blobs on a future (too-new) device — option C', () => {
+    const future = caps(MAX_KNOWN_WIRE + 1);
+    expect(acceptsWriteFormat(future, 6)).toBe(true);
+    expect(acceptsWriteFormat(future, MAX_KNOWN_WIRE)).toBe(true);
   });
 });

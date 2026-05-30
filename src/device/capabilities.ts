@@ -74,3 +74,12 @@ export function deriveCapabilities(input: {
     },
   };
 }
+
+// A snapshot of wire version `sourceWire` is writable to a device with these
+// capabilities iff the firmware would merge it: format_version <= device's wire.
+// Equal/lower merges (absent sections left untouched); higher is rejected by the
+// firmware (bulk_params.c). Holds for `future` devices too — option C keeps
+// too-new devices writable at the known wire rather than going read-only.
+export function acceptsWriteFormat(caps: DeviceCapabilities, sourceWire: number): boolean {
+  return sourceWire >= MIN_SUPPORTED_WIRE && sourceWire <= caps.wire;
+}
