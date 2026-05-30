@@ -1,5 +1,5 @@
 import { Log } from '@/utils';
-import { formatCtrlIn, formatCtrlOut, formatNotify } from '@/protocol/wireMonitor';
+import * as WireMon from '@/protocol/wireMonitor';
 import type { DspTransport, TransportEvent } from './DspTransport';
 
 // Decorator: wraps a DspTransport so every ctrlIn/ctrlOut/notifyIn is logged
@@ -9,12 +9,17 @@ import type { DspTransport, TransportEvent } from './DspTransport';
 // a formatter or Log failure can never break or delay a transfer. open/close/
 // isOpen/on pass through; notifyIn is forwarded only when the inner exposes it.
 export function withWireMonitor(inner: DspTransport): DspTransport {
+  // Logging must never break a transfer — swallow any console/Log failure.
+  const warn = (...args: unknown[]): void => {
+    try { Log.warn('wire', ...args); } catch { /* ignore */ }
+  };
+
   const emit = (build: () => string | null): void => {
     try {
       const line = build();
       if (line) Log.info('wire', line);
     } catch (err) {
-      Log.warn('wire', 'monitor formatter threw', err);
+      warn('monitor formatter threw', err);
     }
   };
 
@@ -27,10 +32,10 @@ export function withWireMonitor(inner: DspTransport): DspTransport {
     async ctrlIn(request, value, length) {
       try {
         const bytes = await inner.ctrlIn(request, value, length);
-        emit(() => formatCtrlIn(request, value, bytes));
+        emit(() => WireMon.formatCtrlIn(request, value, bytes));
         return bytes;
       } catch (err) {
-        Log.warn('wire', `✗ ctrlIn 0x${request.toString(16)}`, err);
+        warn(`✗ ctrlIn 0x${request.toString(16)}`, err);
         throw err;
       }
     },
@@ -38,9 +43,9 @@ export function withWireMonitor(inner: DspTransport): DspTransport {
     async ctrlOut(request, value, data) {
       try {
         await inner.ctrlOut(request, value, data);
-        emit(() => formatCtrlOut(request, value, data));
+        emit(() => WireMon.formatCtrlOut(request, value, data));
       } catch (err) {
-        Log.warn('wire', `✗ ctrlOut 0x${request.toString(16)}`, err);
+        warn(`✗ ctrlOut 0x${request.toString(16)}`, err);
         throw err;
       }
     },
@@ -49,7 +54,7 @@ export function withWireMonitor(inner: DspTransport): DspTransport {
       ? {
           async notifyIn(length: number) {
             const bytes = await inner.notifyIn!(length);
-            emit(() => formatNotify(bytes));
+            emit(() => WireMon.formatNotify(bytes));
             return bytes;
           },
         }

@@ -46,6 +46,16 @@ describe('withWireMonitor', () => {
     await expect(mon.ctrlIn(0xd3, 0, 4)).resolves.toEqual(new Uint8Array([1, 2, 3, 4]));
   });
 
+  it('never lets a warn-path logging failure break the transfer', async () => {
+    vi.spyOn(Log, 'info').mockImplementation(() => { throw new Error('info-boom'); });
+    vi.spyOn(Log, 'warn').mockImplementation(() => { throw new Error('warn-boom'); });
+    const inner = fakeTransport();
+    const mon = withWireMonitor(inner);
+    // Both Log.info (success-path) and Log.warn (guard fallback) throw; the
+    // transfer must still resolve with the inner bytes.
+    await expect(mon.ctrlIn(0xd3, 0, 4)).resolves.toEqual(new Uint8Array([1, 2, 3, 4]));
+  });
+
   it('logs and rethrows when the inner transfer fails', async () => {
     const warn = vi.spyOn(Log, 'warn').mockImplementation(() => {});
     const inner = fakeTransport();
