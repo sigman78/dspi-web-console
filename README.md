@@ -65,6 +65,17 @@ Bypass with `--no-verify` if you really need to.
 
 The mock transport (`?mock=*`, also used in tests) synthesises a wire-faithful bulk packet, echoes writes back to readers, and produces deterministic telemetry. Almost every contract that holds against real hardware also holds in mock, so you can iterate on UI without plugging in a device.
 
+## Debugging
+
+Append `?debug` to log every wire message to the browser console (markers: `->`
+host write, `<-` device response, `<~` notification, `<>` bulk). High-volume
+telemetry polls go to the **Verbose** level (hidden by default); `?log=0`
+silences everything.
+
+```
+http://localhost:5173/?mock=rp2350&debug
+```
+
 ## License
 
 MIT
