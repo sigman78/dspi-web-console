@@ -73,7 +73,7 @@ describe('DspDevice facade', () => {
 
   it('reads device info (platform type + firmware string)', async () => {
     expect(d.info.platformType).toBe(PlatformType.RP2350);
-    expect(d.info.firmwareVersion.length).toBeGreaterThan(0);
+    expect(d.info.capabilities.fwLabel.length).toBeGreaterThan(0);
   });
 
   it('reads system info (env scalars + counters)', async () => {

@@ -30,7 +30,6 @@ function occupiedMaskToSet(mask: number): ReadonlySet<domain.PresetSlot> {
 
 export interface DspDeviceInfo {
   readonly serial: string;
-  readonly firmwareVersion: string;
   readonly platformType: domain.PlatformType;
   readonly hardware: domain.HardwareProfile;
   readonly capabilities: DeviceCapabilities;
@@ -49,10 +48,6 @@ function fwVersionParts(info: { fwMajor: number; fwMinorPatch: number }): Firmwa
   };
 }
 
-function firmwareVersion(info: { fwMajor: number; fwMinorPatch: number }): string {
-  const { major, minor, patch } = fwVersionParts(info);
-  return `${major}.${minor}.${patch}`;
-}
 
 export class DspDevice {
   #lastRawBulk: Uint8Array | null = null;
@@ -88,14 +83,13 @@ export class DspDevice {
       platformId:    platform.platformId,
     });
     if (capabilities.support === 'unsupported') {
-      throw new UnsupportedFirmware(firmwareVersion(platform));
+      throw new UnsupportedFirmware(capabilities.fwLabel);
     }
 
     const platformType = platformTypeFromId(platform.platformId);
     const hardware = domain.createHardwareProfile(platformType);
     return {
       serial: serial.trim(),
-      firmwareVersion: firmwareVersion(platform),
       platformType,
       hardware,
       capabilities,

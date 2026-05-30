@@ -39,7 +39,7 @@ describe('state.finishConnection — end-to-end against real hardware (HIL)', ()
 
     expect(session.status).toBe('connected');
     expect(session.lastDeviceInfo?.serial.length ?? 0).toBeGreaterThan(0);
-    expect(session.lastDeviceInfo?.firmwareVersion.length ?? 0).toBeGreaterThan(0);
+    expect(session.lastDeviceInfo?.capabilities.fwLabel.length ?? 0).toBeGreaterThan(0);
     expect(settings.lastSerial).toBe(session.lastDeviceInfo?.serial);
 
     const snap = mirror.current;
@@ -57,14 +57,14 @@ describe('state.finishConnection — end-to-end against real hardware (HIL)', ()
   it('is idempotent: a second finishConnection settles to the same state', async () => {
     const before = {
       serial: session.lastDeviceInfo?.serial,
-      fw: session.lastDeviceInfo?.firmwareVersion,
+      fw: session.lastDeviceInfo?.capabilities.fwLabel,
       platform: mirror.current?.platform.name,
       formatVersion: mirror.current?.formatVersion,
     };
     await finishConnection(device);
     expect(session.status).toBe('connected');
     expect(session.lastDeviceInfo?.serial).toBe(before.serial);
-    expect(session.lastDeviceInfo?.firmwareVersion).toBe(before.fw);
+    expect(session.lastDeviceInfo?.capabilities.fwLabel).toBe(before.fw);
     expect(mirror.current?.platform.name).toBe(before.platform);
     expect(mirror.current?.formatVersion).toBe(before.formatVersion);
   });

@@ -65,7 +65,7 @@ describe('MockTransport — wire version knob', () => {
     const dev = await createDevice(t);
     expect(dev.capabilities.support).toBe('supported');
     expect(dev.capabilities.wire).toBe(10);
-    expect(dev.info.firmwareVersion).toBe('1.1.4');
+    expect(dev.info.capabilities.fwLabel).toBe('1.1.4');
   });
 
   it('merges a V6 write into a V10 device: V6 fields update, the packet stays V10', async () => {
