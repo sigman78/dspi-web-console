@@ -52,7 +52,7 @@ function fmtValue(v: unknown): string {
   return fmtScalar(v);
 }
 
-function wv(value: number): string {
+function fmtWValue(value: number): string {
   return value !== 0 ? ` w=0x${value.toString(16)}` : '';
 }
 
@@ -75,7 +75,7 @@ export function formatCtrlOut(request: number, value: number, data: Uint8Array):
   }
   const info = CMD_BY_CODE.get(request);
   const name = info ? info.name : `0x${request.toString(16)}`;
-  return `→ ${name}${wv(value)} ${decodeOrSize(info, data)}`;
+  return `→ ${name}${fmtWValue(value)} ${decodeOrSize(info, data)}`;
 }
 
 export function formatCtrlIn(request: number, value: number, bytes: Uint8Array): string {
@@ -84,7 +84,7 @@ export function formatCtrlIn(request: number, value: number, bytes: Uint8Array):
   }
   const info = CMD_BY_CODE.get(request);
   const name = info ? info.name : `0x${request.toString(16)}`;
-  return `← ${name}${wv(value)} ${decodeOrSize(info, bytes)}`;
+  return `← ${name}${fmtWValue(value)} ${decodeOrSize(info, bytes)}`;
 }
 
 function srcName(source: number): string {

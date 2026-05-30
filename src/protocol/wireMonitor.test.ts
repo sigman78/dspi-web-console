@@ -77,6 +77,32 @@ describe('wireMonitor formatters', () => {
     expect(formatNotify(pkt)).toBe('↑ notify paramChanged seq=5 src=gpio');
   });
 
+  it('renders a bulkInvalidated notification', () => {
+    const pkt = new Uint8Array(6);
+    pkt[0] = NOTIFY_V2_VERSION;
+    pkt[1] = NotifyEventId.BulkInvalidated;
+    pkt[3] = 7;                    // seq
+    pkt[4] = ParamSource.Preset;   // source
+    expect(formatNotify(pkt)).toBe('↑ notify bulkInvalidated seq=7 src=preset');
+  });
+
+  it('renders a presetLoaded notification', () => {
+    const pkt = new Uint8Array(6);
+    pkt[0] = NOTIFY_V2_VERSION;
+    pkt[1] = NotifyEventId.PresetLoaded;
+    pkt[3] = 3;   // seq
+    pkt[4] = 2;   // slot
+    expect(formatNotify(pkt)).toBe('↑ notify presetLoaded seq=3 slot=2');
+  });
+
+  it('decodes a short buffer as zero-padded', () => {
+    // decodePadded zero-pads a short buffer up to the codec size before
+    // decoding, so a 1-byte input for an f32 command decodes as 0 rather
+    // than throwing and falling back to a byte-count line.
+    expect(formatCtrlIn(WireCmd.GetMasterVolume.code, 0, new Uint8Array(1)))
+      .toBe('← GetMasterVolume 0');
+  });
+
   it('suppresses idle keep-alives', () => {
     expect(formatNotify(new Uint8Array([0x00]))).toBeNull();
   });
