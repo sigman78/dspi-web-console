@@ -9,10 +9,10 @@
 // Excluded from `npm run check` and from the default vitest run; only
 // invoked via `npm run test:hil` against a connected DSPi.
 
-import { findByIds, usb } from 'usb';
+import { usb } from 'usb';
 import { DspDevice } from '@/device/DspDevice';
 import { NodeUsbTransport } from '@/transport/NodeUsbTransport';
-import { DSPI_VENDOR_ID, DSPI_PRODUCT_ID } from '@/transport/WebUsbTransport';
+import { DSPI_USB_IDS, matchesDspi } from '@/transport/WebUsbTransport';
 import type { BulkParams } from '@/protocol';
 
 // Open the single DSPi attached to this host. Throws if zero or more
@@ -27,25 +27,26 @@ export async function openSingleDevice(): Promise<{
   device: DspDevice;
   close: () => Promise<void>;
 }> {
-  const usbDevice = findByIds(DSPI_VENDOR_ID, DSPI_PRODUCT_ID);
-  if (!usbDevice) {
-    throw new Error(
-      `No DSPi device found (VID=0x${DSPI_VENDOR_ID.toString(16)}, ` +
-      `PID=0x${DSPI_PRODUCT_ID.toString(16)}). Connect a device and rerun.`,
-    );
-  }
-
-  // Guard against multiple-device benches -- pick the first match would
-  // be racy across reruns. Better to fail loudly.
-  const all = usb.getDeviceList().filter(
-    (d) => d.deviceDescriptor.idVendor === DSPI_VENDOR_ID
-        && d.deviceDescriptor.idProduct === DSPI_PRODUCT_ID,
+  // Match any supported DSPi identity, not a single hardcoded pair: the
+  // firmware changed its USB Vendor ID at 1.1.4 (0x2E8A -> 0x2E8B), so a
+  // 1.1.4+ device on the bench enumerates under the newer VID. matchesDspi
+  // is the same family check the WebUSB picker uses.
+  const all = usb.getDeviceList().filter((d) =>
+    matchesDspi({ vendorId: d.deviceDescriptor.idVendor, productId: d.deviceDescriptor.idProduct }),
   );
+  if (all.length === 0) {
+    const wanted = DSPI_USB_IDS
+      .map((id) => `0x${id.vendorId.toString(16)}:0x${id.productId.toString(16)}`)
+      .join(', ');
+    throw new Error(`No DSPi device found (looked for ${wanted}). Connect a device and rerun.`);
+  }
+  // Guard against multiple-device benches -- picking the first match would
+  // be racy across reruns. Better to fail loudly.
   if (all.length > 1) {
     throw new Error(`Found ${all.length} DSPi devices; HIL requires exactly one.`);
   }
 
-  const transport = new NodeUsbTransport(usbDevice);
+  const transport = new NodeUsbTransport(all[0]);
   const device = await DspDevice.create(transport);
 
   return {
