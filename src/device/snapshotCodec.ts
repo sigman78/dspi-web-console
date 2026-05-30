@@ -51,7 +51,8 @@ function narrowLevellerSpeed(s: number): domain.LevellerSpeed {
 
 export function fromBulkParams(hardware: domain.HardwareProfile, bulk: proto.BulkParams): domain.DspSnapshot {
   const channelNames = bulk.channelNames.slice(0, proto.Wire.Const.NUM_CHANNELS);
-  const outputSlotTypes = bulk.formatVersion >= 3 ? bulk.i2s.outputSlotTypes : undefined;
+  const layout = proto.Wire.bulkLayout(bulk);
+  const outputSlotTypes = layout.i2s ? bulk.i2s.outputSlotTypes : undefined;
 
   const channels = hardware.channels.map((channel) => ({
     id: channel.id,
@@ -134,7 +135,7 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: proto.Bul
       freq: bulk.crossfeed.freq,
       feedDb: bulk.crossfeed.feedDb,
     },
-    leveller: bulk.formatVersion >= 4 ? {
+    leveller: layout.leveller ? {
       enabled: bulk.leveller.enabled,
       speed: narrowLevellerSpeed(bulk.leveller.speed),
       lookahead: bulk.leveller.lookahead,
@@ -142,7 +143,7 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: proto.Bul
       maxGainDb: bulk.leveller.maxGainDb,
       gateDb: bulk.leveller.gateDb,
     } : null,
-    i2s: bulk.formatVersion >= 3 ? bulk.i2s : null,
+    i2s: layout.i2s ? bulk.i2s : null,
     outputPins: bulk.pins.slice(0, bulk.numPinOutputs),
   };
 }
