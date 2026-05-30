@@ -127,7 +127,7 @@ describe('startNotifyChannel', () => {
     stop();
   });
 
-  it('suppresses bulk/preset reconcile triggers while a preset-op guard is held', async () => {
+  it('suppresses a self-sourced bulkInvalidated echo while a preset-op guard is held', async () => {
     const { mock, dev } = await v10Setup();
     mock.pushNotify(new Uint8Array([2, 3, 0, 1, 3, 0, 0, 0]));   // bulkInvalidated, src=preset
     const m = manualClock();
@@ -139,18 +139,56 @@ describe('startNotifyChannel', () => {
     stop();
   });
 
-  it('still tracks seq under the guard, so no false gap fires after it releases', async () => {
+  it('suppresses a presetLoaded echo while a preset-op guard is held', async () => {
     const { mock, dev } = await v10Setup();
-    const host = (seq: number) => new Uint8Array([2, 2, 0, seq, 0x80, 0x0b, 4, 0, 1, 0, 0, 0]);
-    mock.pushNotify(host(5));    // observed under guard (no reconcile, but seq tracked)
-    mock.pushNotify(host(6));    // contiguous after release ⇒ no gap
+    mock.pushNotify(new Uint8Array([2, 4, 0, 1, 1]));   // PRESET_LOADED, slot 1
     const m = manualClock();
     beginPresetGuard();
     const stop = startNotifyChannel(dev, m.clock);
-    await m.tick();              // seq 5, suppressed
-    endPresetGuard(0);
-    await m.tick();              // seq 6, contiguous ⇒ no gap reconcile
+    await m.tick();
     expect(peekReconcile().wanted).toBe(false);
+    endPresetGuard(0);
+    stop();
+  });
+
+  it('still reconciles a non-HOST PARAM_CHANGED (e.g. GPIO) under the guard', async () => {
+    const { mock, dev } = await v10Setup();
+    // PARAM_CHANGED, source=GPIO(5): a real external change, never a preset echo.
+    mock.pushNotify(new Uint8Array([2, 2, 0, 1, 0x80, 0x0b, 4, 0, 5, 0, 0, 0]));
+    const m = manualClock();
+    beginPresetGuard();
+    const stop = startNotifyChannel(dev, m.clock);
+    await m.tick();
+    expect(peekReconcile().wanted).toBe(true);
+    endPresetGuard(0);
+    stop();
+  });
+
+  it('still reconciles a non-self bulkInvalidated (gpio source) under the guard', async () => {
+    const { mock, dev } = await v10Setup();
+    mock.pushNotify(new Uint8Array([2, 3, 0, 1, 5, 0, 0, 0]));   // bulkInvalidated, src=GPIO(5)
+    const m = manualClock();
+    beginPresetGuard();
+    const stop = startNotifyChannel(dev, m.clock);
+    await m.tick();
+    expect(peekReconcile().wanted).toBe(true);
+    endPresetGuard(0);
+    stop();
+  });
+
+  it('still reconciles on a seq gap even under the guard', async () => {
+    const { mock, dev } = await v10Setup();
+    // Two self-sourced echoes whose triggers are suppressed, but seq 1→3 is a gap.
+    mock.pushNotify(new Uint8Array([2, 3, 0, 1, 3, 0, 0, 0]));   // bulkInvalidated src=preset seq=1
+    mock.pushNotify(new Uint8Array([2, 3, 0, 3, 3, 0, 0, 0]));   // ...src=preset seq=3 (missed 2)
+    const m = manualClock();
+    beginPresetGuard();
+    const stop = startNotifyChannel(dev, m.clock);
+    await m.tick();
+    expect(peekReconcile().wanted).toBe(false);   // seq 1: echo suppressed, no gap yet
+    await m.tick();
+    expect(peekReconcile().wanted).toBe(true);     // seq 3: gap ⇒ reconcile despite guard
+    endPresetGuard(0);
     stop();
   });
 

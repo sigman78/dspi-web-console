@@ -69,3 +69,25 @@ export function isReconcileTrigger(e: NotifyEvent): boolean {
       return false;
   }
 }
+
+// Whether this event is a plausible echo of a console-initiated bulk/preset op
+// (Load / Paste / Save / Factory). While the console runs such an op — which
+// does its own authoritative re-fetch — the NotifyChannel suppresses these to
+// avoid redundant reconciles. Deliberately narrow: a PARAM_CHANGED is never an
+// echo (a GPIO/internal field change must always be reflected), and a
+// bulkInvalidated from a non-host-class source is treated as a real external
+// invalidation, so only host-initiated invalidation classes are matched. Seq
+// gaps are handled separately and always reconcile.
+export function isPresetOpEcho(e: NotifyEvent): boolean {
+  switch (e.kind) {
+    case 'presetLoaded':
+      return true;
+    case 'bulkInvalidated':
+      return e.source === ParamSource.Host
+          || e.source === ParamSource.Bulk
+          || e.source === ParamSource.Preset
+          || e.source === ParamSource.Factory;
+    default:
+      return false;
+  }
+}

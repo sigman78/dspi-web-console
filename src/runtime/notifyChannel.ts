@@ -1,5 +1,5 @@
 import type { DspDevice } from '@/device/DspDevice';
-import { parseNotifyPacket, isReconcileTrigger, type NotifyEvent } from '@/protocol';
+import { parseNotifyPacket, isReconcileTrigger, isPresetOpEcho, type NotifyEvent } from '@/protocol';
 import { requestReconcile, presetGuardActive } from '@/state/mirror.svelte';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 
@@ -32,18 +32,20 @@ export function startNotifyChannel(device: DspDevice, clock: LoopClock = timerCl
   }
 
   function handle(event: NotifyEvent): void {
-    // A console-initiated preset op re-fetches authoritatively and emits its own
-    // (source=preset) notifications; suppress those self-echoes. seq is still
-    // tracked under the guard so no false gap fires once it releases.
-    const suppressed = presetGuardActive();
     const seq = 'seq' in event ? event.seq : null;
     if (seq !== null) {
-      if (lastSeq !== null && ((lastSeq + 1) & 0xff) !== seq && !suppressed) {
-        requestReconcile(true);   // gap ⇒ we missed an event; re-read truth
-      }
+      // A gap means a possibly-external event was missed — always re-read,
+      // even under a preset guard (the guard only knows about its own echoes).
+      if (lastSeq !== null && ((lastSeq + 1) & 0xff) !== seq) requestReconcile(true);
       lastSeq = seq;
     }
-    if (isReconcileTrigger(event) && !suppressed) requestReconcile(true);
+    // Suppress ONLY the full-reconcile backstop echoes (preset/bulk) of our own
+    // in-flight preset op — its fetchAndApplyAsBaseline is the authoritative
+    // resync. PARAM_CHANGED (precise, possibly external e.g. GPIO) is never an
+    // echo and always reconciles.
+    if (isReconcileTrigger(event) && !(presetGuardActive() && isPresetOpEcho(event))) {
+      requestReconcile(true);
+    }
   }
 
   async function pump(): Promise<void> {

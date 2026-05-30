@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseNotifyPacket, isReconcileTrigger, NotifyEventId, ParamSource } from './notify';
+import { parseNotifyPacket, isReconcileTrigger, isPresetOpEcho, NotifyEventId, ParamSource } from './notify';
 
 // Build a v2 header [version=2, event, flags=0, seq].
 function v2(event: number, seq: number, rest: number[] = []): Uint8Array {
@@ -50,5 +50,20 @@ describe('isReconcileTrigger', () => {
   it('never triggers on idle or ignored', () => {
     expect(isReconcileTrigger({ kind: 'idle' })).toBe(false);
     expect(isReconcileTrigger({ kind: 'ignored' })).toBe(false);
+  });
+});
+
+describe('isPresetOpEcho', () => {
+  it('classes presetLoaded and host-initiated bulkInvalidated as echoes', () => {
+    expect(isPresetOpEcho({ kind: 'presetLoaded', seq: 1, slot: 0 })).toBe(true);
+    expect(isPresetOpEcho({ kind: 'bulkInvalidated', seq: 1, source: ParamSource.Preset })).toBe(true);
+    expect(isPresetOpEcho({ kind: 'bulkInvalidated', seq: 1, source: ParamSource.Factory })).toBe(true);
+    expect(isPresetOpEcho({ kind: 'bulkInvalidated', seq: 1, source: ParamSource.Host })).toBe(true);
+  });
+
+  it('does NOT class a GPIO change or a non-host bulkInvalidated as an echo', () => {
+    expect(isPresetOpEcho({ kind: 'paramChanged', seq: 1, source: ParamSource.Gpio })).toBe(false);
+    expect(isPresetOpEcho({ kind: 'bulkInvalidated', seq: 1, source: ParamSource.Gpio })).toBe(false);
+    expect(isPresetOpEcho({ kind: 'idle' })).toBe(false);
   });
 });
