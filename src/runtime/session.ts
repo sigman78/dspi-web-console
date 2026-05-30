@@ -3,6 +3,8 @@ import type { DspTransport } from '@/transport/DspTransport';
 import { MockTransport } from '@/transport/MockTransport';
 import { matchesDspi, WebUsbTransport } from '@/transport/WebUsbTransport';
 import { withTimeout } from '@/transport/withTimeout';
+import { withWireMonitor } from '@/transport/withWireMonitor';
+import { wireMonitorEnabled } from '@/protocol/wireMonitor';
 import { attachTransportListeners, finishConnection } from './actions';
 import { beginConnection, endConnection } from './connectionScope';
 import { isDeviceHeld } from './deviceLock';
@@ -38,7 +40,11 @@ async function createBoundDevice(
   // ctrlIn/ctrlOut inherits the deadline. attachTransportListeners stays
   // on the underlying transport -- connect/disconnect events come from the
   // real transport, not from the timeout wrapper.
-  const wrapped = withTimeout(transport, { ctrlMs: CTRL_TIMEOUT_MS });
+  // The wire monitor (gated on ?debug) sits inside the timeout wrapper so it
+  // logs the real bytes/response and its formatting is off the timeout-race
+  // path. attachTransportListeners + close still target the raw transport.
+  const monitored = wireMonitorEnabled() ? withWireMonitor(transport) : transport;
+  const wrapped = withTimeout(monitored, { ctrlMs: CTRL_TIMEOUT_MS });
   const scope = beginConnection();                   // fresh scope (disposes any prior)
   try {
     const device = await DspDevice.create(wrapped, openTransport);
