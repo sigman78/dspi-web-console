@@ -1,11 +1,7 @@
-import { DspDevice } from '@/device/DspDevice';
+import { DspDevice, UnsupportedFirmware } from '@/device/DspDevice';
 import type { DspTransport } from '@/transport/DspTransport';
 import { MockTransport } from '@/transport/MockTransport';
-import {
-  DSPI_PRODUCT_ID,
-  DSPI_VENDOR_ID,
-  WebUsbTransport,
-} from '@/transport/WebUsbTransport';
+import { matchesDspi, WebUsbTransport } from '@/transport/WebUsbTransport';
 import { withTimeout } from '@/transport/withTimeout';
 import { attachTransportListeners, finishConnection } from './actions';
 import { beginConnection, endConnection } from './connectionScope';
@@ -24,6 +20,14 @@ let booting = false;
 
 export function webUsbUnsupportedReason(): string | null {
   return WebUsbTransport.unsupportedReason();
+}
+
+// Maps a connect failure onto session status. UnsupportedFirmware gets a
+// distinct kind so the hero shows an upgrade prompt instead of the generic
+// diagnostics panel.
+export function reportConnectError(err: unknown): void {
+  const message = (err as Error)?.message ?? String(err);
+  setStatus('error', message, err instanceof UnsupportedFirmware ? 'unsupported-firmware' : null);
 }
 
 async function createBoundDevice(
@@ -61,7 +65,7 @@ export async function connectRequested(): Promise<void> {
     await finishConnection(device);
   } catch (err) {
     Log.error('connect', 'connect failed', err);
-    setStatus('error', (err as Error).message);
+    reportConnectError(err);
     throw err;
   }
 }
@@ -97,12 +101,11 @@ export function registerNavigatorReconnect(): void {
   navigator.usb.addEventListener('connect', (event: USBConnectionEvent) => {
     const target = settings.lastSerial;
     if (!target) return;
-    if (event.device.vendorId !== DSPI_VENDOR_ID) return;
-    if (event.device.productId !== DSPI_PRODUCT_ID) return;
+    if (!matchesDspi(event.device)) return;
     if (event.device.serialNumber !== target) return;
     if (booting) return;
     if (session.status === 'connected' || session.status === 'connecting') return;
     Log.info('reconnect', 'last-known device re-enumerated, attempting bootReal()');
-    void bootReal().catch((err) => setStatus('error', (err as Error).message));
+    void bootReal().catch(reportConnectError);
   });
 }

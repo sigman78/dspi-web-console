@@ -3,6 +3,21 @@ import * as proto from '@/protocol';
 import { Codec, utf8Truncate, type Result } from '@/utils';
 import * as domain from '@/domain';
 import { fromBulkParams, type DeviceState } from './snapshotCodec';
+import { deriveCapabilities, type DeviceCapabilities, type FirmwareVersion } from './capabilities';
+
+// Human-readable minimum supported firmware, shown in the reject message. The
+// wire-version floor lives in capabilities.ts; this is its semver face.
+const MIN_SUPPORTED_FW = '1.1.3';
+
+// Thrown at connect when the device firmware predates the supported floor.
+// Carries the actual + minimum versions so the connect UI can render an
+// upgrade prompt.
+export class UnsupportedFirmware extends Error {
+  constructor(readonly firmwareVersion: string, readonly minimum: string = MIN_SUPPORTED_FW) {
+    super(`DSPi firmware ${firmwareVersion} is older than the minimum supported ${minimum}.`);
+    this.name = 'UnsupportedFirmware';
+  }
+}
 
 // Bit N of the firmware's u16 occupiedMask = slot N populated.
 function occupiedMaskToSet(mask: number): ReadonlySet<domain.PresetSlot> {
@@ -18,16 +33,25 @@ export interface DspDeviceInfo {
   readonly firmwareVersion: string;
   readonly platformType: domain.PlatformType;
   readonly hardware: domain.HardwareProfile;
+  readonly capabilities: DeviceCapabilities;
 }
 
 function platformTypeFromId(platformId: number): domain.PlatformType {
   return platformId === 1 ? domain.PlatformType.RP2350 : domain.PlatformType.RP2040;
 }
 
+// GetPlatform packs minor/patch into one byte: high nibble = minor, low = patch.
+function fwVersionParts(info: { fwMajor: number; fwMinorPatch: number }): FirmwareVersion {
+  return {
+    major: info.fwMajor,
+    minor: (info.fwMinorPatch >> 4) & 0xF,
+    patch: info.fwMinorPatch & 0xF,
+  };
+}
+
 function firmwareVersion(info: { fwMajor: number; fwMinorPatch: number }): string {
-  const minor = (info.fwMinorPatch >> 4) & 0xF;
-  const patch = info.fwMinorPatch & 0xF;
-  return `${info.fwMajor}.${minor}.${patch}`;
+  const { major, minor, patch } = fwVersionParts(info);
+  return `${major}.${minor}.${patch}`;
 }
 
 export class DspDevice {
@@ -45,6 +69,26 @@ export class DspDevice {
       proto.readCmd(transport, proto.WireCmd.GetSerial),
       proto.readCmd(transport, proto.WireCmd.GetPlatform),
     ]);
+
+    // Peek the bulk packet so capabilities reflect the device's observed wire
+    // structure, not just its (potentially misreported) semver. Read at
+    // MaxReadSize so a newer device can send its whole packet without overrun;
+    // parseBulkParams keeps only the V6 prefix.
+    const bulkBytes = await transport.ctrlIn(
+      proto.WireCmd.GetAllParams.code, 0, proto.Wire.BulkLimits.MaxReadSize,
+    );
+    const bulk = proto.parseBulkParams(bulkBytes);
+
+    const capabilities = deriveCapabilities({
+      fw:            fwVersionParts(platform),
+      wireVersion:   bulk.formatVersion,
+      payloadLength: bulk.payloadLength,
+      platformId:    platform.platformId,
+    });
+    if (capabilities.support === 'unsupported') {
+      throw new UnsupportedFirmware(firmwareVersion(platform));
+    }
+
     const platformType = platformTypeFromId(platform.platformId);
     const hardware = domain.createHardwareProfile(platformType);
     return {
@@ -52,6 +96,7 @@ export class DspDevice {
       firmwareVersion: firmwareVersion(platform),
       platformType,
       hardware,
+      capabilities,
     };
   }
 
@@ -71,6 +116,10 @@ export class DspDevice {
 
   get hardware(): domain.HardwareProfile {
     return this._info.hardware;
+  }
+
+  get capabilities(): DeviceCapabilities {
+    return this._info.capabilities;
   }
 
   protected deviceChannel(channel: domain.ChannelId): domain.ChannelId {
@@ -95,7 +144,7 @@ export class DspDevice {
   }
 
   async getAllParams(): Promise<proto.BulkParams> {
-    const bytes = await this.transport.ctrlIn(proto.WireCmd.GetAllParams.code, 0, proto.Wire.BulkLimits.MaxRequestSize);
+    const bytes = await this.transport.ctrlIn(proto.WireCmd.GetAllParams.code, 0, proto.Wire.BulkLimits.MaxReadSize);
     return proto.parseBulkParams(bytes);
   }
 

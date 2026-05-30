@@ -6,8 +6,9 @@
 
 import { describe, it, test, expect, beforeEach, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
-import { DspDevice } from './DspDevice';
-import { PresetResult, PinConfigResult, WireCmd, SystemStatusValue } from '@/protocol';
+import { DspDevice, UnsupportedFirmware } from './DspDevice';
+import { makeBulk } from '@test/fixtures/bulkFixtures';
+import { PresetResult, PinConfigResult, WireCmd, SystemStatusValue, Wire } from '@/protocol';
 import {
   PlatformType,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
@@ -43,7 +44,16 @@ function withIdentity(base: DspTransport, platform: TestPlatform = 'rp2350'): Ds
     on: (event, listener) => base.on(event, listener),
     ctrlIn: (request, value, length) => {
       const identity = identityBytes(request, length, platform);
-      return identity ? Promise.resolve(identity) : base.ctrlIn(request, value, length);
+      if (identity) return Promise.resolve(identity);
+      // resolveInfo reads the bulk packet at connect to derive capabilities.
+      // Own that read here with a synth V6 packet so command-mapping fakes
+      // connect as supported firmware and don't see a spurious GetAllParams
+      // call. Tests needing real bulk content use MockTransport via
+      // DspDevice.create directly, bypassing this helper.
+      if (request === WireCmd.GetAllParams.code) {
+        return Promise.resolve(makeBulk({}, { platformId: platform === 'rp2350' ? 1 : 0 }));
+      }
+      return base.ctrlIn(request, value, length);
     },
     ctrlOut: (request, value, data) => base.ctrlOut(request, value, data),
   };
@@ -944,5 +954,78 @@ describe('setAllParams', () => {
     expect(await dev.getInputPreamp(1)).toBeCloseTo(-3, 4);
     expect(await dev.getBypass()).toBe(true);
     expect(await dev.getChannelName(0)).toBe('Bulk Name');
+  });
+});
+
+describe('connect-time capabilities + version gating', () => {
+  // A transport that reports identity + a bulk packet whose header wire version
+  // we control, so we can drive the support classification at connect.
+  function transportReporting(opts: { wire: number; fwMinorPatch: number }): DspTransport {
+    const pkt = makeBulk();
+    new DataView(pkt.buffer, pkt.byteOffset, pkt.byteLength).setUint8(0, opts.wire);
+    return {
+      open: async () => {}, close: async () => {}, isOpen: () => true,
+      on: () => () => {},
+      ctrlIn: async (request: number, _value: number, length: number) => {
+        if (request === WireCmd.GetSerial.code) return new Uint8Array(length);
+        if (request === WireCmd.GetPlatform.code) {
+          const o = new Uint8Array(length);
+          o[0] = 1; o[1] = 1; o[2] = opts.fwMinorPatch;  // platformId=1, fwMajor=1
+          return o;
+        }
+        if (request === WireCmd.GetAllParams.code) return pkt.slice(0, length);
+        return new Uint8Array(length);
+      },
+      ctrlOut: async () => {},
+    };
+  }
+
+  it('attaches capabilities derived from the connected device', async () => {
+    const dev = await createDevice(new MockTransport({ platform: 'rp2350' }), 'rp2350');
+    expect(dev.capabilities.support).toBe('supported');
+    expect(dev.capabilities.wire).toBe(6);
+    expect(dev.info.capabilities).toBe(dev.capabilities);
+  });
+
+  it('rejects a device older than the V6 floor with UnsupportedFirmware', async () => {
+    // wire=5, fw 1.1.2 (0x12 -> minor 1, patch 2)
+    const transport = transportReporting({ wire: 5, fwMinorPatch: 0x12 });
+    await expect(DspDevice.create(transport, async () => {}))
+      .rejects.toBeInstanceOf(UnsupportedFirmware);
+  });
+
+  it('UnsupportedFirmware reports the actual firmware version', async () => {
+    const transport = transportReporting({ wire: 5, fwMinorPatch: 0x12 });
+    const err = await DspDevice.create(transport, async () => {}).catch((e) => e);
+    expect(err).toBeInstanceOf(UnsupportedFirmware);
+    expect((err as UnsupportedFirmware).firmwareVersion).toBe('1.1.2');
+  });
+
+  // The snapshot from a V10 device carries formatVersion 10; the paste path
+  // (captureState -> restoreState -> setAllParams) must not throw — the writer
+  // normalizes it to a V6 packet the firmware merges.
+  it('captureState/restoreState round-trips on an accepted V10 device', async () => {
+    const transport = transportReporting({ wire: 10, fwMinorPatch: 0x14 });
+    const dev = await DspDevice.create(transport, async () => {});
+    expect(dev.capabilities.support).toBe('supported');
+    const state = await dev.captureState();
+    await expect(dev.restoreState(state)).resolves.toBeUndefined();
+  });
+});
+
+describe('getAllParams', () => {
+  it('requests MaxReadSize so a newer (V10) device does not overrun the transfer', async () => {
+    const transport = new MockTransport({ platform: 'rp2350' });
+    const ctrlInSpy = vi.spyOn(transport, 'ctrlIn');
+    const dev = await DspDevice.create(transport);
+
+    await dev.getAllParams();
+
+    const reads = ctrlInSpy.mock.calls.filter((c) => c[0] === WireCmd.GetAllParams.code);
+    expect(reads.length).toBeGreaterThan(0);
+    for (const r of reads) {
+      expect(r[2]).toBe(Wire.BulkLimits.MaxReadSize);
+      expect(r[2]).toBeGreaterThanOrEqual(2960);
+    }
   });
 });

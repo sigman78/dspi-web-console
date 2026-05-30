@@ -215,10 +215,64 @@ describe('buildBulkParams + defaultBulkParams', () => {
     expect(parsed.channelNames).toEqual(bulk.channelNames);
   });
 
-  it('builder throws on non-V6 input', () => {
+  it('builder throws on sub-V6 (pre-floor) input', () => {
     const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
     expect(() => buildBulkParams({ ...base, formatVersion: 5 }))
       .toThrow(/V6|formatVersion/);
+  });
+
+  // A snapshot read from a 1.1.4 (V10) device carries formatVersion 10. The
+  // console writes V6 regardless; the firmware merges it. Without this the
+  // paste/restore path throws on every accepted 1.1.4 device.
+  it('normalizes a newer (V10) snapshot down to a V6 packet', () => {
+    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
+    const v10Snapshot: BulkParams = { ...base, formatVersion: 10, payloadLength: 2960, masterVolumeDb: -7 };
+    const bytes = buildBulkParams(v10Snapshot);
+    expect(bytes.byteLength).toBe(Wire.BulkLimits.MaxRequestSize);  // 2896, V6
+    const parsed = parseBulkParams(bytes);
+    expect(parsed.formatVersion).toBe(6);            // normalized down
+    expect(parsed.masterVolumeDb).toBeCloseTo(-7);   // V6 fields carried through
+  });
+});
+
+describe('bulkParser — forward-compat with newer wire versions', () => {
+  it('surfaces payloadLength from the header', () => {
+    const p = parseBulkParams(makeBulk());
+    expect(p.payloadLength).toBe(Wire.BulkSizes.V6Full);
+  });
+
+  // A 1.1.4 (V10) device sends a 2960-byte packet whose V2..V6 prefix is
+  // byte-identical to V6; the four 16-byte V7..V10 sections are appended.
+  // Synthesize one by patching a V6 packet's header version+length and
+  // padding the tail. The parser must read the V6 prefix and ignore the rest.
+  it('parses the V6 prefix of a newer (V10) packet and ignores trailing sections', () => {
+    const v6 = makeBulk({ bypass: true, masterVolumeDb: -9 });
+    const v10 = new Uint8Array(Wire.BulkSizes.V6Full + 4 * 16);
+    v10.set(v6);
+    const dv = new DataView(v10.buffer);
+    dv.setUint8(0, 10);                                  // header.formatVersion
+    dv.setUint16(6, v10.byteLength, true);               // header.payloadLength (LE)
+    // Trailing V7..V10 bytes stay zero — unknown to this console.
+
+    const p = parseBulkParams(v10);
+    expect(p.formatVersion).toBe(10);
+    expect(p.payloadLength).toBe(v10.byteLength);
+    expect(p.bypass).toBe(true);
+    expect(p.masterVolumeDb).toBeCloseTo(-9);
+  });
+
+  // 1.1.4 firmware rejects a SetAllParams whose platform_id (-2) or channel
+  // counts (-3) don't match the device. The writer must echo the values it
+  // parsed from the device, never hardcode them, or writes to 1.1.4 stall.
+  it('echoes the device platformId and channel counts into the written header', () => {
+    const bulk: BulkParams = {
+      ...defaultBulkParams({ platformId: 0, numCh: 7, numOut: 5 }),
+      numCh: 7, numOut: 5,
+    };
+    const header = parseBulkParams(buildBulkParams(bulk));
+    expect(header.platformId).toBe(0);
+    expect(header.numCh).toBe(7);
+    expect(header.numOut).toBe(5);
   });
 });
 

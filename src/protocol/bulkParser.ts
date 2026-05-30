@@ -50,6 +50,7 @@ export interface WireLeveller {
 
 export interface BulkParams {
   formatVersion: number;
+  payloadLength: number;
   platformId: number;
   numCh: number;
   numOut: number;
@@ -158,6 +159,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
 
   return {
     formatVersion: h.formatVersion,
+    payloadLength: h.payloadLength,
     platformId:    h.platformId,
     numCh:         h.numCh,
     numOut:        h.numOut,
@@ -209,6 +211,7 @@ export function defaultBulkParams(opts: {
   const maxBands = opts.maxBands ?? Wire.Const.BANDS_MAX;
   return {
     formatVersion: 6,
+    payloadLength: Wire.BulkSizes.V6Full,
     platformId:    opts.platformId,
     numCh:         opts.numCh,
     numOut:        opts.numOut,
@@ -253,12 +256,16 @@ export function defaultBulkParams(opts: {
   };
 }
 
-// Strict total writer. Symmetric inverse of parseBulkParams. Emits V6
-// (2896 bytes). Throws on non-V6 input -- the writer doesn't support
-// older versions. SET_ALL_PARAMS firmware-side requires exact V6 size.
+// Total writer. Always emits a V6 packet (2896 bytes). A snapshot read from a
+// newer (V7-V10) device carries its own formatVersion; we normalize down to V6
+// here. The firmware merges a shorter packet -- it updates the V2-V6 sections
+// and leaves newer sections untouched -- so this is safe, at the cost of not
+// round-tripping the V7-V10 fields (the known fidelity gap that raw-tail
+// passthrough will later close). Reject only genuinely pre-floor snapshots,
+// which a supported device never produces.
 export function buildBulkParams(bulk: BulkParams): Uint8Array {
-  if (bulk.formatVersion !== 6) {
-    throw new Error(`buildBulkParams: only formatVersion=6 supported, got ${bulk.formatVersion}`);
+  if (bulk.formatVersion < 6) {
+    throw new Error(`buildBulkParams: snapshot formatVersion ${bulk.formatVersion} is below the V6 floor`);
   }
   const w = new BinWriter(Wire.BulkLimits.MaxRequestSize);
 

@@ -1,7 +1,23 @@
 import { type DspTransport, type TransportEvent, VENDOR_INTERFACE_INDEX } from './DspTransport';
 
-export const DSPI_VENDOR_ID = 0x2E8A;
-export const DSPI_PRODUCT_ID = 0xFEAA;
+// The firmware changed its USB Vendor ID at 1.1.4 (RP-Pico block 0x2E8A ->
+// Weeb Labs block 0x2E8B); the PID is unchanged. Both pairs are listed so a
+// device on either firmware shows up in the picker. VID is a device-family
+// check only — the supported-version decision comes from GetPlatform, not VID.
+export const DSPI_USB_IDS = [
+  { vendorId: 0x2E8A, productId: 0xFEAA },  // <= 1.1.3
+  { vendorId: 0x2E8B, productId: 0xFEAA },  // >= 1.1.4
+] as const;
+
+// Legacy scalar identity (the 1.1.3 pair). Retained for the node-usb HIL
+// harness, which talks to real 1.1.3 hardware.
+export const DSPI_VENDOR_ID = DSPI_USB_IDS[0].vendorId;
+export const DSPI_PRODUCT_ID = DSPI_USB_IDS[0].productId;
+
+export function matchesDspi(d: { vendorId: number; productId: number }): boolean {
+  return DSPI_USB_IDS.some((id) => d.vendorId === id.vendorId && d.productId === id.productId);
+}
+
 const USB_CLASS_VENDOR = 0xFF;
 
 export class WebUsbTransport implements DspTransport {
@@ -40,9 +56,7 @@ export class WebUsbTransport implements DspTransport {
   async tryAutoConnect(): Promise<boolean> {
     if (!WebUsbTransport.isSupported()) return false;
     const devices = await navigator.usb.getDevices();
-    const match = devices.find(
-      (d) => d.vendorId === DSPI_VENDOR_ID && d.productId === DSPI_PRODUCT_ID,
-    );
+    const match = devices.find(matchesDspi);
     if (!match) return false;
     this.#device = match;
     await this.open();
@@ -54,7 +68,7 @@ export class WebUsbTransport implements DspTransport {
       throw new Error('WebUSB is not supported in this browser.');
     }
     const device = await navigator.usb.requestDevice({
-      filters: [{ vendorId: DSPI_VENDOR_ID, productId: DSPI_PRODUCT_ID }],
+      filters: [...DSPI_USB_IDS],
     });
     this.#device = device;
     await this.open();

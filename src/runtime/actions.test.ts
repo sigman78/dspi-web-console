@@ -17,6 +17,7 @@ import {
   LevellerSpeed,
 } from '@/domain';
 import { fromBulkParams } from '@/device/snapshotCodec';
+import { deriveCapabilities } from '@/device/capabilities';
 
 import { cancelAllWrites as cancelWrites } from '@/device/writes';
 import { inflight } from '@/state/mirror.svelte';
@@ -32,6 +33,9 @@ function initializedDevice(methods: Partial<DspDevice>): DspDevice {
       firmwareVersion: '1.0.0',
       platformType: PlatformType.RP2350,
       hardware: testHardware,
+      capabilities: deriveCapabilities({
+        fw: { major: 1, minor: 1, patch: 3 }, wireVersion: 6, payloadLength: 2896, platformId: 1,
+      }),
     },
     hardware: testHardware,
   };

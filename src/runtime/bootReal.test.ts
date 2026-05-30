@@ -5,8 +5,7 @@ const { tryAutoConnect } = vi.hoisted(() => ({ tryAutoConnect: vi.fn() }));
 const { isDeviceHeld } = vi.hoisted(() => ({ isDeviceHeld: vi.fn() }));
 
 vi.mock('@/transport/WebUsbTransport', () => ({
-  DSPI_VENDOR_ID: 0x2e8a,
-  DSPI_PRODUCT_ID: 0xfeaa,
+  matchesDspi: () => true,
   WebUsbTransport: class {
     tryAutoConnect = tryAutoConnect;
     requestAndOpen = vi.fn();

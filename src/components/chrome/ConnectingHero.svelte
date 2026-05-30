@@ -1,7 +1,7 @@
 <script lang="ts">
   import EqSpectrum from './EqSpectrum.svelte';
-  import { session, setStatus } from '@/state';
-  import { connectRequested, webUsbUnsupportedReason, isDeviceHeld } from '@/runtime';
+  import { session } from '@/state';
+  import { connectRequested, reportConnectError, webUsbUnsupportedReason, isDeviceHeld } from '@/runtime';
 
   let busy = $state(false);
   const unsupported = webUsbUnsupportedReason();
@@ -20,7 +20,12 @@
     }
   });
 
-  const showErrorPanel = $derived(session.status === 'error' && !!session.error);
+  const showUnsupportedFirmware = $derived(
+    session.status === 'error' && session.errorKind === 'unsupported-firmware'
+  );
+  const showErrorPanel = $derived(
+    session.status === 'error' && !!session.error && !showUnsupportedFirmware
+  );
 
   const disabled = $derived(
     busy || unsupported !== null || session.status === 'connecting'
@@ -56,7 +61,7 @@
     try {
       await connectRequested();
     } catch (e) {
-      setStatus('error', (e as Error).message);
+      reportConnectError(e);
     } finally {
       busy = false;
     }
@@ -72,7 +77,12 @@
       <pre class="warn-panel__body">{unsupported}</pre>
     </div>
   {:else}
-    {#if heldElsewhere && !showErrorPanel}
+    {#if showUnsupportedFirmware}
+      <div class="warn-panel" role="alert" aria-label="Firmware update required">
+        <div class="warn-panel__header">FIRMWARE UPDATE REQUIRED</div>
+        <pre class="warn-panel__body">{session.error}</pre>
+      </div>
+    {:else if heldElsewhere && !showErrorPanel}
       <div class="held-panel warn-panel" role="status" aria-label="Device in use">
         <div class="warn-panel__header">DEVICE IN USE</div>
         <pre class="warn-panel__body">This device looks like it's open in another browser tab. Close it there, or click CONNECT to try anyway.</pre>
