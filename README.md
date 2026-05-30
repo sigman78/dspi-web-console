@@ -4,7 +4,9 @@ A browser-based configurator for the [Weeb Labs DSPi](https://github.com/WeebLab
 
 Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScript, bundled with Vite).
 
-[> Demo <](https://sigman78.github.io/dspi-web-console/)
+[> Launch <](https://sigman78.github.io/dspi-web-console/) | [> Demo (w/o device) <](https://sigman78.github.io/dspi-web-console/?mock=rp2350)
+
+[![Deploy to GitHub Pages](https://github.com/sigman78/dspi-web-console/actions/workflows/deploy.yml/badge.svg)](https://github.com/sigman78/dspi-web-console/actions/workflows/deploy.yml)
 
 ## Features
 
@@ -19,6 +21,7 @@ Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScrip
 - A Chromium-based browser (Chrome, Edge, Brave, Opera). WebUSB is not available in Firefox or Safari.
 - HTTPS, or `localhost` for development. WebUSB requires a secure context.
 - **Windows users:** bind the DSPi's vendor interface (interface 2) to **WinUSB** via [Zadig](https://zadig.akeo.ie/) if your device was previously paired with libusb-win32. Close any other app holding the interface — only one process can claim it at a time.
+- **Linux users:** browser needs usb device access permissions [properly configured](https://www.reddit.com/r/Keychron/comments/12f3gat/useviaapp_in_linux_ie_via_support_useful_for/).
 
 ## Quick start
 
@@ -50,11 +53,11 @@ npm run check        # TypeScript + svelte-check
 npm run lint
 ```
 
-HIL tests talk to the device over libusb, so unplug any browser tab holding the interface before running them.
+HIL tests need exclusive usb access, so close all browser tab holding the interface before running them.
 
 ### Git hooks
 
-[husky](https://typicode.github.io/husky/) is wired up via the `prepare` script, so hooks install automatically on `npm install`. No extra setup.
+Use `npm run prepare` script to initialise hooks after `npm install`.
 
 - **pre-commit** — runs `eslint --fix` on staged `.ts`/`.svelte` files (via lint-staged).
 - **pre-push** — runs the full gate: `npm run check && npm run test && npm run build`.
@@ -71,4 +74,4 @@ Append `?debug` to log every wire message to the browser console. High-volume te
 
 ## License
 
-MIT
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
