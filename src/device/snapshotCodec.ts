@@ -16,10 +16,16 @@ function narrowFilterType(t: number): domain.FilterType {
     case domain.FilterType.HighShelf:
     case domain.FilterType.LowPass:
     case domain.FilterType.HighPass:
+    case domain.FilterType.Notch:
+    case domain.FilterType.Allpass:
       return t;
     default:
       return domain.FilterType.Flat;
   }
+}
+
+function narrowInputSource(s: number): domain.AudioInputSource {
+  return s === 1 ? domain.AudioInputSource.Spdif : domain.AudioInputSource.Usb;
 }
 
 function narrowPlatform(p: number): domain.PlatformType {
@@ -64,6 +70,7 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: proto.Bul
     outputMode: domain.outputModeForChannel(channel.id, outputSlotTypes),
     filters: (bulk.filters[domain.wireChannelFor(hardware, channel.id)]?.slice(0, channel.bandCount) ?? []).map<domain.FilterParams>((filter) => ({
       type: narrowFilterType(filter.type),
+      bypass: filter.bypass,
       frequency: filter.frequency,
       q: filter.q,
       gain: filter.gain,
@@ -144,6 +151,12 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: proto.Bul
     } : null,
     i2s: layout.i2s ? bulk.i2s : null,
     outputPins: bulk.pins.slice(0, bulk.numPinOutputs),
+    inputConfig: layout.inputSource
+      ? { source: narrowInputSource(bulk.inputConfig.source), spdifRxPin: bulk.inputConfig.spdifRxPin }
+      : null,
+    lgSoundSync: layout.lgSoundSync ? { enabled: bulk.lgSoundSync.enabled, present: bulk.lgSoundSync.present, volume: bulk.lgSoundSync.volume, muted: bulk.lgSoundSync.muted } : null,
+    userVolume:  layout.userVolume  ? { volumeDb: bulk.userVolume.volumeDb, mute: bulk.userVolume.mute } : null,
+    dacHwMute:   layout.dacHwMute   ? { enabled: bulk.dacHwMute.enabled, activeLow: bulk.dacHwMute.activeLow, pin: bulk.dacHwMute.pin, holdMs: bulk.dacHwMute.holdMs, releaseMs: bulk.dacHwMute.releaseMs } : null,
   };
 }
 
