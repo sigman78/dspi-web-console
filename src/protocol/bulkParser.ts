@@ -24,10 +24,16 @@ import type {
 // in device/snapshotCodec.ts when assembling DspSnapshot.
 export interface WireFilter {
   type: number;
+  bypass: boolean;
   frequency: number;
   q: number;
   gain: number;
 }
+
+export interface WireInputConfig { source: number; spdifRxPin: number; }
+export interface WireLgSoundSync { enabled: boolean; present: boolean; volume: number; muted: boolean; }
+export interface WireUserVolume  { volumeDb: number; mute: boolean; }
+export interface WireDacHwMute   { enabled: boolean; activeLow: boolean; pin: number; holdMs: number; releaseMs: number; }
 
 // Wire-shaped feature types. Parser emits these as-is; domain narrowing
 // to CrossfeedPreset / LevellerSpeed enums happens in fromBulkParams.
@@ -79,6 +85,11 @@ export interface BulkParams {
   preampLDb: number;                  // V6+
   preampRDb: number;
   masterVolumeDb: number;             // V6+
+
+  inputConfig: WireInputConfig;       // V7+
+  lgSoundSync: WireLgSoundSync;       // V8+
+  userVolume:  WireUserVolume;        // V9+
+  dacHwMute:   WireDacHwMute;         // V10+
 }
 
 
@@ -120,7 +131,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
   const filters: WireFilter[][] = Array.from({ length: Wire.Const.NUM_CHANNELS }, () =>
     Array.from({ length: Wire.Const.BANDS_MAX }, () => {
       const b = Wire.BandParams.read(r);
-      return { type: b.type, frequency: b.frequency, q: b.q, gain: b.gain };
+      return { type: b.type, bypass: b.bypass === 1, frequency: b.frequency, q: b.q, gain: b.gain };
     }),
   );
 
@@ -156,6 +167,19 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
 
   const preamp = layout.preamp ? Wire.PreampConfig.read(r) : { preampDb: [def.preampLDb, def.preampRDb] };
   const masterVol = layout.masterVolume ? Wire.MasterVolume.read(r) : { masterVolumeDb: def.masterVolumeDb };
+
+  const inputConfig = layout.inputSource
+    ? (() => { const w = Wire.InputConfig.read(r); return { source: w.inputSource, spdifRxPin: w.spdifRxPin }; })()
+    : def.inputConfig;
+  const lgSoundSync = layout.lgSoundSync
+    ? (() => { const w = Wire.LgSoundSync.read(r); return { enabled: w.enabled, present: w.present, volume: w.volume, muted: w.muted }; })()
+    : def.lgSoundSync;
+  const userVolume = layout.userVolume
+    ? (() => { const w = Wire.UserVolume.read(r); return { volumeDb: w.volumeDb, mute: w.mute }; })()
+    : def.userVolume;
+  const dacHwMute = layout.dacHwMute
+    ? (() => { const w = Wire.DacHwMute.read(r); return { enabled: w.enabled, activeLow: w.activeLow, pin: w.pin, holdMs: w.holdMs, releaseMs: w.releaseMs }; })()
+    : def.dacHwMute;
 
   return {
     formatVersion: h.formatVersion,
@@ -194,6 +218,10 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
     preampLDb: preamp.preampDb[0],
     preampRDb: preamp.preampDb[1],
     masterVolumeDb: masterVol.masterVolumeDb,
+    inputConfig,
+    lgSoundSync,
+    userVolume,
+    dacHwMute,
   };
 }
 
@@ -238,7 +266,7 @@ export function defaultBulkParams(opts: {
 
     filters: Array.from({ length: Wire.Const.NUM_CHANNELS }, () =>
       Array.from({ length: Wire.Const.BANDS_MAX }, () =>
-        ({ type: 0, frequency: 1000, q: 1, gain: 0 }))),
+        ({ type: 0, bypass: false, frequency: 1000, q: 1, gain: 0 }))),
 
     channelNames: Array.from({ length: Wire.Const.NUM_CHANNELS }, () => ''),
 
@@ -253,30 +281,33 @@ export function defaultBulkParams(opts: {
     preampLDb: 0,
     preampRDb: 0,
     masterVolumeDb: 0,
+    inputConfig: { source: 0, spdifRxPin: 5 },
+    lgSoundSync: { enabled: false, present: false, volume: 0, muted: false },
+    userVolume:  { volumeDb: 0, mute: false },
+    dacHwMute:   { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
   };
 }
 
-// Total writer. Always emits a V6 packet (2896 bytes). A snapshot read from a
-// newer (V7-V10) device carries its own formatVersion; we normalize down to V6
-// here. The firmware merges a shorter packet -- it updates the V2-V6 sections
-// and leaves newer sections untouched -- so this is safe, at the cost of not
-// round-tripping the V7-V10 fields (the known fidelity gap that raw-tail
-// passthrough will later close). Reject only genuinely pre-floor snapshots,
-// which a supported device never produces.
-export function buildBulkParams(bulk: BulkParams): Uint8Array {
+// Total writer. Emits at `version` (default: the snapshot's own wire version,
+// clamped to [6, MAX_WIRE_VERSION]). A V6 device thus receives a V6 packet; a
+// V10 device round-trips its full tail. The firmware merges shorter packets, so
+// passing an explicit lower version is a safe down-convert for older devices.
+export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array {
   if (bulk.formatVersion < 6) {
     throw new Error(`buildBulkParams: snapshot formatVersion ${bulk.formatVersion} is below the V6 floor`);
   }
-  const w = new BinWriter(Wire.BulkLimits.MaxRequestSize);
+  const writeVersion = Math.min(version ?? bulk.formatVersion, Wire.MAX_WIRE_VERSION);
+  const size = Wire.bulkSizeForVersion(writeVersion);
+  const w = new BinWriter(size);
 
   Wire.Header.write(w, {
-    formatVersion: 6,
+    formatVersion: writeVersion,
     platformId:    bulk.platformId,
     numCh:         bulk.numCh,
     numOut:        bulk.numOut,
     numIn:         bulk.numIn,
     maxBands:      bulk.maxBands,
-    payloadLength: Wire.BulkLimits.MaxRequestSize,  // V6 full = 2896
+    payloadLength: size,
   });
 
   Wire.GlobalParams.write(w, {
@@ -296,7 +327,6 @@ export function buildBulkParams(bulk: BulkParams): Uint8Array {
   });
 
   Wire.LegacyChannels.write(w, undefined);
-
   Wire.ChannelDelays.write(w, bulk.delaysMs);
 
   for (let inp = 0; inp < Wire.Const.NUM_INPUTS; inp++) {
@@ -316,18 +346,31 @@ export function buildBulkParams(bulk: BulkParams): Uint8Array {
   for (let ch = 0; ch < Wire.Const.NUM_CHANNELS; ch++) {
     for (let b = 0; b < Wire.Const.BANDS_MAX; b++) {
       const f = bulk.filters[ch][b];
-      Wire.BandParams.write(w, { type: f.type, frequency: f.frequency, q: f.q, gain: f.gain });
+      Wire.BandParams.write(w, { type: f.type, bypass: f.bypass ? 1 : 0, frequency: f.frequency, q: f.q, gain: f.gain });
     }
   }
 
   Wire.ChannelNames.write(w, bulk.channelNames);
 
-  // V6 trailing sections -- sequential writes; no seeks needed because
-  // codecs are 16 B each (Task 1) and the required sections are all present.
+  // V6 tail — always present (writeVersion >= 6).
   Wire.I2SConfig.write(w, bulk.i2s);
   Wire.LevellerConfig.write(w, bulk.leveller);
   Wire.PreampConfig.write(w, { preampDb: [bulk.preampLDb, bulk.preampRDb] });
   Wire.MasterVolume.write(w, { masterVolumeDb: bulk.masterVolumeDb });
+
+  // V7-V10 tail — written only when the target version includes the section.
+  if (writeVersion >= 7) {
+    Wire.InputConfig.write(w, { inputSource: bulk.inputConfig.source, spdifRxPin: bulk.inputConfig.spdifRxPin });
+  }
+  if (writeVersion >= 8) {
+    Wire.LgSoundSync.write(w, { enabled: bulk.lgSoundSync.enabled, present: bulk.lgSoundSync.present, volume: bulk.lgSoundSync.volume, muted: bulk.lgSoundSync.muted });
+  }
+  if (writeVersion >= 9) {
+    Wire.UserVolume.write(w, { volumeDb: bulk.userVolume.volumeDb, mute: bulk.userVolume.mute });
+  }
+  if (writeVersion >= 10) {
+    Wire.DacHwMute.write(w, { enabled: bulk.dacHwMute.enabled, activeLow: bulk.dacHwMute.activeLow, pin: bulk.dacHwMute.pin, holdMs: bulk.dacHwMute.holdMs, releaseMs: bulk.dacHwMute.releaseMs });
+  }
 
   return w.toUint8Array();
 }
