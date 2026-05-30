@@ -107,3 +107,14 @@ export function formatNotify(bytes: Uint8Array): string | null {
       return '↑ notify (ignored)';
   }
 }
+
+// Commands the runtime polls continuously for telemetry: GetStatus (peaks + env
+// scalars + error counters) and GetBufferStats (DMA/ring fill). These would bury
+// the interesting traffic, so the decorator logs them at debug (Verbose) level —
+// hidden by default in DevTools, one filter click away — while everything else
+// stays at info.
+const POLL_CODES = new Set<number>([WireCmd.GetStatus.code, WireCmd.GetBufferStats.code]);
+
+export function isPollCommand(request: number): boolean {
+  return POLL_CODES.has(request);
+}

@@ -18,6 +18,12 @@ export const Log = {
     if (!enabled) return;
     console.info(fmt(stage), ...args);
   },
+  // Verbose level — hidden by default in DevTools (filter to "Verbose" to see).
+  // Used for high-volume, low-signal output like telemetry-poll wire traffic.
+  debug(stage: string, ...args: unknown[]): void {
+    if (!enabled) return;
+    console.debug(fmt(stage), ...args);
+  },
   warn(stage: string, ...args: unknown[]): void {
     if (!enabled) return;
     console.warn(fmt(stage), ...args);

@@ -14,10 +14,13 @@ export function withWireMonitor(inner: DspTransport): DspTransport {
     try { Log.warn('wire', ...args); } catch { /* ignore */ }
   };
 
-  const emit = (build: () => string | null): void => {
+  // Telemetry polls go to debug (Verbose, hidden by default); everything else to
+  // info. The whole block is guarded so a formatter or Log failure can never
+  // propagate into the transfer.
+  const emit = (level: 'info' | 'debug', build: () => string | null): void => {
     try {
       const line = build();
-      if (line) Log.info('wire', line);
+      if (line) Log[level]('wire', line);
     } catch (err) {
       warn('monitor formatter threw', err);
     }
@@ -32,7 +35,8 @@ export function withWireMonitor(inner: DspTransport): DspTransport {
     async ctrlIn(request, value, length) {
       try {
         const bytes = await inner.ctrlIn(request, value, length);
-        emit(() => WireMon.formatCtrlIn(request, value, bytes));
+        const level = WireMon.isPollCommand(request) ? 'debug' : 'info';
+        emit(level, () => WireMon.formatCtrlIn(request, value, bytes));
         return bytes;
       } catch (err) {
         warn(`✗ ctrlIn 0x${request.toString(16)}`, err);
@@ -43,7 +47,7 @@ export function withWireMonitor(inner: DspTransport): DspTransport {
     async ctrlOut(request, value, data) {
       try {
         await inner.ctrlOut(request, value, data);
-        emit(() => WireMon.formatCtrlOut(request, value, data));
+        emit('info', () => WireMon.formatCtrlOut(request, value, data));
       } catch (err) {
         warn(`✗ ctrlOut 0x${request.toString(16)}`, err);
         throw err;
@@ -54,7 +58,7 @@ export function withWireMonitor(inner: DspTransport): DspTransport {
       ? {
           async notifyIn(length: number) {
             const bytes = await inner.notifyIn!(length);
-            emit(() => WireMon.formatNotify(bytes));
+            emit('info', () => WireMon.formatNotify(bytes));
             return bytes;
           },
         }

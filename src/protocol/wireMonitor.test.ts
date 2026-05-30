@@ -7,6 +7,7 @@ import {
   formatCtrlIn,
   formatCtrlOut,
   formatNotify,
+  isPollCommand,
   wireMonitorEnabled,
 } from './wireMonitor';
 
@@ -119,5 +120,14 @@ describe('wireMonitorEnabled', () => {
   it('is false when ?debug is absent', () => {
     window.history.replaceState({}, '', '/');
     expect(wireMonitorEnabled()).toBe(false);
+  });
+});
+
+describe('isPollCommand', () => {
+  it('flags only the high-volume telemetry polls', () => {
+    expect(isPollCommand(WireCmd.GetStatus.code)).toBe(true);
+    expect(isPollCommand(WireCmd.GetBufferStats.code)).toBe(true);
+    expect(isPollCommand(WireCmd.SetBypass.code)).toBe(false);
+    expect(isPollCommand(WireCmd.GetAllParams.code)).toBe(false);
   });
 });

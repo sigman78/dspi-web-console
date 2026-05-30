@@ -65,6 +65,19 @@ describe('withWireMonitor', () => {
     expect(warn).toHaveBeenCalled();
   });
 
+  it('logs telemetry polls at debug and other traffic at info', async () => {
+    const info = vi.spyOn(Log, 'info').mockImplementation(() => {});
+    const debug = vi.spyOn(Log, 'debug').mockImplementation(() => {});
+    const inner = fakeTransport();
+    const mon = withWireMonitor(inner);
+    await mon.ctrlIn(0x50, 0, 4);   // GetStatus — a telemetry poll
+    expect(debug).toHaveBeenCalledTimes(1);
+    expect(info).not.toHaveBeenCalled();
+    await mon.ctrlIn(0xd3, 0, 4);   // GetMasterVolume — normal traffic
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(debug).toHaveBeenCalledTimes(1);
+  });
+
   it('forwards notifyIn when the inner transport exposes it', async () => {
     const mon = withWireMonitor(fakeTransport({ notify: true }));
     expect(typeof mon.notifyIn).toBe('function');
