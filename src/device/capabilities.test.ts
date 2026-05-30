@@ -46,6 +46,9 @@ describe('deriveCapabilities — metadata + sections', () => {
     const c = deriveCapabilities({ fw: fw(1, 1, 3), wireVersion: 6, payloadLength: 2896, platformId: 1 });
     expect(Object.isFrozen(c)).toBe(true);
     expect(() => { (c as unknown as { wire: number }).wire = 99; }).toThrow();
+    expect(Object.isFrozen(c.fw)).toBe(true);
+    expect(Object.isFrozen(c.features)).toBe(true);
+    expect(() => { (c.fw as { major: number }).major = 99; }).toThrow();
   });
 
   it('derives bulk sections from the observed header by delegating to bulkLayout', () => {

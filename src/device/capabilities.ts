@@ -72,7 +72,7 @@ export function deriveCapabilities(input: {
     : 'supported';
 
   const caps: DeviceCapabilities = {
-    fw,
+    fw: Object.freeze({ ...fw }),
     fwLabel: formatFirmwareVersion(fw),
     wire: wireVersion,
     wireLabel: `V${wireVersion}`,
