@@ -39,7 +39,7 @@ export function withWireMonitor(inner: DspTransport): DspTransport {
         emit(level, () => WireMon.formatCtrlIn(request, value, bytes));
         return bytes;
       } catch (err) {
-        warn(`✗ ctrlIn 0x${request.toString(16)}`, err);
+        warn(`x ctrlIn 0x${request.toString(16)}`, err);
         throw err;
       }
     },
@@ -49,7 +49,7 @@ export function withWireMonitor(inner: DspTransport): DspTransport {
         await inner.ctrlOut(request, value, data);
         emit('info', () => WireMon.formatCtrlOut(request, value, data));
       } catch (err) {
-        warn(`✗ ctrlOut 0x${request.toString(16)}`, err);
+        warn(`x ctrlOut 0x${request.toString(16)}`, err);
         throw err;
       }
     },

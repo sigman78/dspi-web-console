@@ -1,12 +1,13 @@
 // Wire-protocol monitor (Level 1): pure formatters that turn one wire
 // message into a terse single-line string for the browser console. Enabled
 // via `?debug`; consumed by the withWireMonitor transport decorator. The
-// command table is the existing WireCmd; we derive a code → {name, codec}
+// command table is the existing WireCmd; we derive a code ->{name, codec}
 // reverse map so nothing is duplicated. All decoding is best-effort and
 // guarded — a decode failure degrades to a name + byte-count line.
 
 import { Codec, type BinCodec } from '@/utils';
 import { WireCmd } from './wireCmd';
+import type { BulkLayout } from './wireTypes';
 import { parseNotifyPacket, ParamSource } from './notify';
 
 // Turn on only when the page URL carries `?debug`. Read at call time so the
@@ -25,14 +26,14 @@ interface CmdInfo {
   codec?: BinCodec<unknown>;
 }
 
-// code → {name, codec?} derived from the single WireCmd source of truth.
+// code ->{name, codec?} derived from the single WireCmd source of truth.
 const CMD_BY_CODE = new Map<number, CmdInfo>();
 for (const [name, entry] of Object.entries(WireCmd)) {
   const codec = 'codec' in entry ? (entry.codec as BinCodec<unknown>) : undefined;
   CMD_BY_CODE.set(entry.code, { name, codec });
 }
 
-// ParamSource value → lowercase name (host, gpio, …) for notification lines.
+// ParamSource value -> lowercase name (host, gpio, ...) for notification lines.
 const SOURCE_NAME = new Map<number, string>(
   Object.entries(ParamSource).map(([k, v]) => [v, k.toLowerCase()] as [number, string]),
 );
@@ -40,7 +41,7 @@ const SOURCE_NAME = new Map<number, string>(
 function fmtScalar(v: unknown): string {
   if (typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(2);
   if (typeof v === 'boolean') return v ? 'on' : 'off';
-  if (typeof v === 'string') return JSON.stringify(v.length > 24 ? `${v.slice(0, 24)}…` : v);
+  if (typeof v === 'string') return JSON.stringify(v.length > 24 ? `${v.slice(0, 24)}...` : v);
   return String(v);
 }
 
@@ -71,20 +72,20 @@ function decodeOrSize(info: CmdInfo | undefined, bytes: Uint8Array): string {
 
 export function formatCtrlOut(request: number, value: number, data: Uint8Array): string {
   if (request === BULK_WRITE) {
-    return `⇅ SetAllParams (bulk) v${data[0] ?? 0} ${data.length} B`;
+    return `<> SetAllParams (bulk) v${data[0] ?? 0} ${data.length} B`;
   }
   const info = CMD_BY_CODE.get(request);
   const name = info ? info.name : `0x${request.toString(16)}`;
-  return `→ ${name}${fmtWValue(value)} ${decodeOrSize(info, data)}`;
+  return `-> ${name}${fmtWValue(value)} ${decodeOrSize(info, data)}`;
 }
 
 export function formatCtrlIn(request: number, value: number, bytes: Uint8Array): string {
   if (request === BULK_READ) {
-    return `⇅ GetAllParams (bulk) v${bytes[0] ?? 0} ${bytes.length} B`;
+    return `<> GetAllParams (bulk) v${bytes[0] ?? 0} ${bytes.length} B`;
   }
   const info = CMD_BY_CODE.get(request);
   const name = info ? info.name : `0x${request.toString(16)}`;
-  return `← ${name}${fmtWValue(value)} ${decodeOrSize(info, bytes)}`;
+  return `<- ${name}${fmtWValue(value)} ${decodeOrSize(info, bytes)}`;
 }
 
 function srcName(source: number): string {
@@ -98,14 +99,51 @@ export function formatNotify(bytes: Uint8Array): string | null {
     case 'idle':
       return null;
     case 'paramChanged':
-      return `↑ notify paramChanged seq=${e.seq} src=${srcName(e.source)}`;
+      return `<~ notify paramChanged seq=${e.seq} src=${srcName(e.source)}`;
     case 'bulkInvalidated':
-      return `↑ notify bulkInvalidated seq=${e.seq} src=${srcName(e.source)}`;
+      return `<~ notify bulkInvalidated seq=${e.seq} src=${srcName(e.source)}`;
     case 'presetLoaded':
-      return `↑ notify presetLoaded seq=${e.seq} slot=${e.slot}`;
+      return `<~ notify presetLoaded seq=${e.seq} slot=${e.slot}`;
     default:
-      return '↑ notify (ignored)';
+      return '<~ notify (ignored)';
   }
+}
+
+// Structural subset of the device's connection info needed for the banner.
+// Kept structural (not an import of DspDeviceInfo) so this protocol-layer module
+// doesn't depend on the device layer; `device.info` satisfies it as-is.
+interface DeviceInfoLike {
+  readonly serial: string;
+  readonly hardware: {
+    readonly name: string;
+    readonly outputCount: number;
+    readonly totalChannelCount: number;
+  };
+  readonly capabilities: {
+    readonly platformId: number;
+    readonly fwLabel: string;
+    readonly wireLabel: string;
+    readonly support: string;
+    readonly sections: BulkLayout;
+    readonly features: { readonly notifications: boolean };
+  };
+}
+
+// Multi-line connection banner, logged once at connect (info level) so a debug
+// session is self-documenting: which device, firmware/wire, and what its bulk
+// packet carries.
+export function formatDeviceInfo(info: DeviceInfoLike): string[] {
+  const c = info.capabilities;
+  const sections = Object.entries(c.sections)
+    .filter(([, present]) => present)
+    .map(([name]) => name)
+    .join(',') || 'none';
+  return [
+    `* device connected - ${info.hardware.name} (platformId ${c.platformId})`,
+    `  firmware ${c.fwLabel} | wire ${c.wireLabel} (${c.support})`,
+    `  serial "${info.serial}" | ${info.hardware.totalChannelCount} ch / ${info.hardware.outputCount} out`,
+    `  sections ${sections} | notify ${c.features.notifications ? 'on' : 'off'}`,
+  ];
 }
 
 // Commands the runtime polls continuously for telemetry: GetStatus (peaks + env

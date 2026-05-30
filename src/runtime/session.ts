@@ -4,7 +4,7 @@ import { MockTransport } from '@/transport/MockTransport';
 import { matchesDspi, WebUsbTransport } from '@/transport/WebUsbTransport';
 import { withTimeout } from '@/transport/withTimeout';
 import { withWireMonitor } from '@/transport/withWireMonitor';
-import { wireMonitorEnabled } from '@/protocol/wireMonitor';
+import { formatDeviceInfo, wireMonitorEnabled } from '@/protocol/wireMonitor';
 import { attachTransportListeners, finishConnection } from './actions';
 import { beginConnection, endConnection } from './connectionScope';
 import { isDeviceHeld } from './deviceLock';
@@ -50,6 +50,13 @@ async function createBoundDevice(
     const device = await DspDevice.create(wrapped, openTransport);
     bindDevice(device);
     scope.add(attachTransportListeners(transport));
+    if (wireMonitorEnabled()) {
+      // Connection banner (info level). A debug banner must never break a real
+      // connection, so swallow any logging failure.
+      try {
+        for (const line of formatDeviceInfo(device.info)) Log.info('wire', line);
+      } catch { /* ignore */ }
+    }
     return device;
   } catch (err) {
     endConnection();                                 // dispose the partial scope
