@@ -140,6 +140,12 @@ export class WebUsbTransport implements DspTransport {
       this.#notifyEndpoint = findNotifyEndpoint(d, this.#interfaceNumber) ?? 3;
     }
     const r = await d.transferIn(this.#notifyEndpoint, length);
+    if (r.status === 'stall') {
+      // Recoverable: clear the halt so the next read can succeed. The notify
+      // channel backs off and retries; without this the endpoint stays wedged.
+      await d.clearHalt('in', this.#notifyEndpoint);
+      throw new Error('notifyIn: endpoint stalled (halt cleared)');
+    }
     if (r.status !== 'ok' || !r.data) {
       throw new Error(`notifyIn status=${r.status}`);
     }

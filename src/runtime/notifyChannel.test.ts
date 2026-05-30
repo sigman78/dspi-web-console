@@ -19,6 +19,27 @@ function manualClock() {
   };
 }
 
+// Like manualClock but records the per-arm delay passed to next(cb, delayMs).
+function delayClock() {
+  let cb: (() => void) | null = null;
+  const delays: (number | undefined)[] = [];
+  return {
+    clock: { next: (fn: () => void, d?: number) => { cb = fn; delays.push(d); }, cancel: () => { cb = null; } },
+    tick: async () => {
+      const f = cb; cb = null; f?.();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    },
+    delays,
+    armed: () => cb !== null,
+  };
+}
+
+// Minimal device exposing only what the channel touches, so a test can inject
+// read failures / null reads without a transport.
+function fakeNotifyingDevice(read: () => Promise<Uint8Array | null>): DspDevice {
+  return { capabilities: { features: { notifications: true } }, readNotification: read } as unknown as DspDevice;
+}
+
 // Returns the MockTransport (caller pushes packets to it) and a v10 device.
 async function v10Setup() {
   const mock = new MockTransport({ platform: 'rp2350', wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } });
@@ -103,6 +124,37 @@ describe('startNotifyChannel', () => {
     const stop = startNotifyChannel(dev, m.clock);
     await m.tick();
     expect(peekReconcile().wanted).toBe(true);
+    stop();
+  });
+
+  it('backs off on repeated read errors, then resets the cadence on a healthy read', async () => {
+    let fail = true;
+    const dev = fakeNotifyingDevice(async () => {
+      if (fail) throw new Error('stall');
+      return new Uint8Array([0]);  // idle
+    });
+    const m = delayClock();
+    const stop = startNotifyChannel(dev, m.clock);
+    expect(m.delays[0]).toBeUndefined();   // initial arm = normal cadence
+    await m.tick();                        // error → first backoff
+    await m.tick();                        // error → larger backoff
+    const b1 = m.delays[1];
+    const b2 = m.delays[2];
+    expect(b1).toBeGreaterThan(0);
+    expect(b2).toBeGreaterThan(b1!);
+    fail = false;
+    await m.tick();                        // healthy read → cadence resets
+    expect(m.delays[3]).toBeUndefined();
+    stop();
+  });
+
+  it('stops the loop when the transport exposes no notify endpoint (readNotification null)', async () => {
+    const dev = fakeNotifyingDevice(async () => null);
+    const m = manualClock();
+    const stop = startNotifyChannel(dev, m.clock);
+    expect(m.armed()).toBe(true);   // armed initially
+    await m.tick();                 // reads null → stops, no re-arm
+    expect(m.armed()).toBe(false);
     stop();
   });
 });
