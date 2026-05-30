@@ -21,7 +21,14 @@ describe('wireTypes — V7–V10 tail codecs', () => {
   it('bulkLayout gates each tail section on version AND payloadLength', () => {
     const v6 = Wire.bulkLayout({ formatVersion: 6, payloadLength: 2896 });
     expect(v6.inputSource).toBe(false);
+    expect(v6.lgSoundSync).toBe(false);
+    expect(v6.userVolume).toBe(false);
     expect(v6.dacHwMute).toBe(false);
+
+    // Exactly V7: only the first new section is present.
+    const v7 = Wire.bulkLayout({ formatVersion: 7, payloadLength: 2912 });
+    expect(v7.inputSource).toBe(true);
+    expect(v7.lgSoundSync).toBe(false);
 
     const v10 = Wire.bulkLayout({ formatVersion: 10, payloadLength: 2960 });
     expect(v10.inputSource).toBe(true);
@@ -30,6 +37,7 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(v10.dacHwMute).toBe(true);
 
     const truncated = Wire.bulkLayout({ formatVersion: 10, payloadLength: 2928 });
+    expect(truncated.inputSource).toBe(true);
     expect(truncated.lgSoundSync).toBe(true);
     expect(truncated.userVolume).toBe(false);
     expect(truncated.dacHwMute).toBe(false);
