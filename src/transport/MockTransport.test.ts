@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MockTransport } from './MockTransport';
 import { DspDevice } from '@/device/DspDevice';
-import { WireCmd, Wire, writeCmd, parseBufferStats, parseSystemStatus, parseBulkParams, buildBulkParams, type BulkParams } from '@/protocol';
+import { WireCmd, Wire, writeCmd, parseBufferStats, parseSystemStatus, parseBulkParams, buildBulkParams, NotifyEventId, type BulkParams } from '@/protocol';
 import { Codec } from '@/utils';
 import { FilterType, MasterVolumeMode } from '@/domain';
 
@@ -332,5 +332,24 @@ describe('SetAllParams (0xA1)', () => {
 
     const after = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxRequestSize));
     expect(after.bypass).toBe(true);
+  });
+});
+
+describe('MockTransport — notify queue', () => {
+  it('returns a 1-byte idle when the notify queue is empty', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
+    await t.open();
+    const bytes = await t.notifyIn(64);
+    expect(Array.from(bytes)).toEqual([0]);
+  });
+
+  it('drains pushed packets FIFO, then returns to idle', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
+    await t.open();
+    t.pushNotify(new Uint8Array([2, 3, 0, 1, 3, 0, 0, 0]));  // BULK_INVALIDATED
+    const first = await t.notifyIn(64);
+    expect(first[1]).toBe(NotifyEventId.BulkInvalidated);
+    const second = await t.notifyIn(64);
+    expect(Array.from(second)).toEqual([0]);  // idle again
   });
 });

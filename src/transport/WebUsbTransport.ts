@@ -23,6 +23,7 @@ const USB_CLASS_VENDOR = 0xFF;
 export class WebUsbTransport implements DspTransport {
   #device: USBDevice | null = null;
   #interfaceNumber = VENDOR_INTERFACE_INDEX;
+  #notifyEndpoint: number | null = null;
   #listeners = new Map<TransportEvent, Set<() => void>>();
   #onConnect = (e: USBConnectionEvent) => {
     if (this.#device && e.device === this.#device) this.#emit('connect');
@@ -131,6 +132,20 @@ export class WebUsbTransport implements DspTransport {
     }
   }
 
+  // Resolve the bulk-IN notify endpoint number lazily (low nibble of 0x83 = 3,
+  // but scan the claimed interface to be robust), then read one packet.
+  async notifyIn(length: number): Promise<Uint8Array> {
+    const d = this.#requireDevice();
+    if (this.#notifyEndpoint === null) {
+      this.#notifyEndpoint = findNotifyEndpoint(d, this.#interfaceNumber) ?? 3;
+    }
+    const r = await d.transferIn(this.#notifyEndpoint, length);
+    if (r.status !== 'ok' || !r.data) {
+      throw new Error(`notifyIn status=${r.status}`);
+    }
+    return new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength);
+  }
+
   on(event: TransportEvent, listener: () => void): () => void {
     let set = this.#listeners.get(event);
     if (!set) { set = new Set(); this.#listeners.set(event, set); }
@@ -146,6 +161,14 @@ export class WebUsbTransport implements DspTransport {
     if (!this.#device) throw new Error('WebUsbTransport: no device.');
     return this.#device;
   }
+}
+
+// Find the bulk-IN endpoint number on the claimed vendor interface (the notify
+// endpoint, EP 0x83). Returns the endpoint number (1..15), or null if absent.
+function findNotifyEndpoint(d: USBDevice, interfaceNumber: number): number | null {
+  const iface = d.configuration?.interfaces.find((i) => i.interfaceNumber === interfaceNumber);
+  const ep = iface?.alternate.endpoints.find((e) => e.direction === 'in' && e.type === 'bulk');
+  return ep ? ep.endpointNumber : null;
 }
 
 // Pick the vendor-class (0xFF) interface from the active configuration. Falls

@@ -8,7 +8,7 @@ import { describe, it, test, expect, beforeEach, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice, UnsupportedFirmware } from './DspDevice';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
-import { PresetResult, PinConfigResult, WireCmd, SystemStatusValue, Wire } from '@/protocol';
+import { PresetResult, PinConfigResult, WireCmd, SystemStatusValue, Wire, NotifyEventId } from '@/protocol';
 import {
   PlatformType,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
@@ -1003,5 +1003,30 @@ describe('getAllParams', () => {
       expect(r[2]).toBe(Wire.BulkLimits.MaxReadSize);
       expect(r[2]).toBeGreaterThanOrEqual(2960);
     }
+  });
+});
+
+describe('readNotification', () => {
+  it('reads a notify packet through the device transport', async () => {
+    const transport = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
+    const dev = await DspDevice.create(transport);
+    transport.pushNotify(new Uint8Array([2, 3, 0, 5, 3, 0, 0, 0]));
+    const bytes = await dev.readNotification();
+    expect(bytes?.[1]).toBe(NotifyEventId.BulkInvalidated);  // event_id = BULK_INVALIDATED
+  });
+
+  it('returns null when the transport has no notify endpoint', async () => {
+    // Delegate every DspTransport method to a MockTransport EXCEPT notifyIn,
+    // so create() succeeds but the device reports no notifications available.
+    const mock = new MockTransport({ platform: 'rp2350' });
+    const noNotify: DspTransport = {
+      open: () => mock.open(), close: () => mock.close(), isOpen: () => mock.isOpen(),
+      on: (e, l) => mock.on(e, l),
+      ctrlIn: (r, v, l) => mock.ctrlIn(r, v, l),
+      ctrlOut: (r, v, d) => mock.ctrlOut(r, v, d),
+      // no notifyIn
+    };
+    const dev = await DspDevice.create(noNotify);
+    expect(await dev.readNotification()).toBeNull();
   });
 });

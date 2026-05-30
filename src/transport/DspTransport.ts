@@ -13,5 +13,10 @@ export interface DspTransport {
   ctrlIn(request: number, value: number, length: number): Promise<Uint8Array>;
   ctrlOut(request: number, value: number, data: Uint8Array): Promise<void>;
 
+  // Read one notification packet from the bulk-IN notify endpoint (EP 0x83).
+  // Optional: transports that don't expose the endpoint omit it; the notify
+  // channel treats its absence as "no notifications".
+  notifyIn?(length: number): Promise<Uint8Array>;
+
   on(event: TransportEvent, listener: () => void): () => void;
 }

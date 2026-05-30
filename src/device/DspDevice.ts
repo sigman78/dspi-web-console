@@ -148,6 +148,14 @@ export class DspDevice {
     return proto.parseBulkParams(bytes);
   }
 
+  // Read one notification packet, or null if the transport has no notify
+  // endpoint. The notify channel polls this; parsing lives in protocol/notify.
+  async readNotification(): Promise<Uint8Array | null> {
+    return this.transport.notifyIn
+      ? this.transport.notifyIn(proto.NOTIFY_PACKET_SIZE)
+      : null;
+  }
+
   // Push a complete DSP state in one control-OUT. Firmware applies it in its
   // main loop (~5 ms); callers needing the change visible should re-fetch.
   async setAllParams(bulk: proto.BulkParams): Promise<void> {
