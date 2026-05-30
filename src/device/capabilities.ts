@@ -48,7 +48,15 @@ export interface DeviceCapabilities {
   // its feature; keyed on observed wire version unless the firmware gates a
   // command without a wire bump.
   readonly features: {
-    readonly notifications: boolean;   // v2 notify channel (wire >= 7)
+    readonly notifications: boolean;     // v2 notify channel (wire >= 7)
+    readonly inputSourceSwitch: boolean; // USB/S-PDIF source select (wire >= 7)
+    readonly spdifRx: boolean;           // S/PDIF receiver (wire >= 7)
+    readonly lgSoundSync: boolean;       // LG Sound Sync (wire >= 8)
+    readonly userVolumeAxis: boolean;    // separate user volume/mute (wire >= 9)
+    readonly dacHwMute: boolean;         // DAC hardware mute config (wire >= 10)
+    readonly bandBypass: boolean;        // per-band EQ bypass byte honored (wire >= 10)
+    readonly notchFilter: boolean;       // FilterType.Notch (wire >= 10)
+    readonly allpassFilter: boolean;     // FilterType.Allpass (wire >= 10)
   };
 }
 
@@ -80,7 +88,15 @@ export function deriveCapabilities(input: {
     support,
     sections: Wire.bulkLayout({ formatVersion: wireVersion, payloadLength }),
     features: {
-      notifications: wireVersion >= NOTIFY_MIN_WIRE,
+      notifications:     wireVersion >= NOTIFY_MIN_WIRE,
+      inputSourceSwitch: wireVersion >= 7,
+      spdifRx:           wireVersion >= 7,
+      lgSoundSync:       wireVersion >= 8,
+      userVolumeAxis:    wireVersion >= 9,
+      dacHwMute:         wireVersion >= 10,
+      bandBypass:        wireVersion >= 10,
+      notchFilter:       wireVersion >= 10,
+      allpassFilter:     wireVersion >= 10,
     },
   };
 }
