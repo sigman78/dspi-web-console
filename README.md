@@ -65,37 +65,16 @@ Bypass with `--no-verify` if you really need to.
 
 The mock transport (`?mock=*`, also used in tests) synthesises a wire-faithful bulk packet, echoes writes back to readers, and produces deterministic telemetry. Almost every contract that holds against real hardware also holds in mock, so you can iterate on UI without plugging in a device.
 
-## Debugging: wire protocol monitor
+## Debugging
 
-Append `?debug` to log every DSPi wire message exchanged with the device to the
-browser console. It works against real hardware and the mock alike, so combine
-it with `?mock=`:
+Append `?debug` to log every wire message to the browser console (markers: `->`
+host write, `<-` device response, `<~` notification, `<>` bulk). High-volume
+telemetry polls go to the **Verbose** level (hidden by default); `?log=0`
+silences everything.
 
 ```
 http://localhost:5173/?mock=rp2350&debug
 ```
-
-On connect you get a short banner, then one line per control transfer,
-notification, and bulk read — best-effort decoded:
-
-```
-[dspi:wire] * device connected - RP2350 (platformId 1)
-[dspi:wire]   firmware 1.0.0 | wire V6 (supported)
-[dspi:wire]   serial "MOCK-RP2350-0001" | 11 ch / 9 out
-[dspi:wire]   sections i2s,leveller,preamp,masterVolume | notify off
-[dspi:wire] <- GetSerial "MOCK-RP2350-0001"
-[dspi:wire] <> GetAllParams (bulk) v6 2896 B
-[dspi:wire] -> SetOutputGain w=0x2 3.50
-[dspi:wire] <~ notify presetLoaded seq=3 slot=2
-```
-
-Markers: `->` host write, `<-` device response, `<~` device notification,
-`<>` bulk transfer.
-
-The continuous `GetStatus` / `GetBufferStats` telemetry polls are logged at
-**debug** (DevTools "Verbose") level, so they stay hidden by default and don't
-bury the interesting traffic — switch the console level filter to **Verbose** to
-see them. `?log=0` silences everything, including the monitor.
 
 ## License
 
