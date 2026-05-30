@@ -8,6 +8,7 @@ import type { PlatformInfo, I2sConfig } from './platform';
 import type { FilterParams } from './filter';
 import type { Loudness, Crossfeed, Leveller } from './processing';
 import type { OutputModel, RouteModel } from './mixer';
+import type { InputConfig, LgSoundSync, UserVolume, DacHwMute } from './deviceSections';
 
 export interface ChannelModel {
   id: ChannelId;
@@ -35,4 +36,9 @@ export interface DspSnapshot {
   i2s: I2sConfig | null;
   // GPIO pin per pin-output index, in hardware output order; the last entry is the PDM sub.
   outputPins: number[];
+  // 1.1.4 sections — null on firmware whose packet does not carry them.
+  inputConfig: InputConfig | null;
+  lgSoundSync: LgSoundSync | null;
+  userVolume: UserVolume | null;
+  dacHwMute: DacHwMute | null;
 }

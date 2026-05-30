@@ -5,6 +5,7 @@ export * as Proc from './processingLimits';
 
 export * from './channels';
 export * from './filter';
+export * from './deviceSections';
 export * from './platform';
 export * from './processing';
 export * from './presetLimits';
