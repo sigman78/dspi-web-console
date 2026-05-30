@@ -18,10 +18,10 @@ import {
 export interface MockOptions {
   platform: 'rp2040' | 'rp2350';
   serial?: string;
-  // Wire version the mock reports/synthesizes (default 6). For V7+ the appended
-  // sections are modeled as opaque trailing bytes the console doesn't parse, so
-  // capability gating, read tolerance and the V6-write merge can be tested
-  // against a newer device.
+  // Wire version the mock reports/synthesizes (default 6). For V7-V10 the
+  // tail sections are built faithfully via buildBulkParams, so capability
+  // gating, read tolerance and the V6-write merge are testable against a
+  // newer device with real tail data.
   wireVersion?: number;
   // Firmware version reported by GetPlatform (default 1.0.0). Set alongside
   // wireVersion for a coherent device (e.g. 1.1.4 + V10).
@@ -65,7 +65,6 @@ export class MockTransport implements DspTransport {
   #wireVersion: number;
   #fwMajor: number;
   #fwMinorPatch: number;
-  #bulkTail: Uint8Array;
   #masterVolumeDb = 0;
   #masterPreampDb = 0;
   #inputPreampDb: [number, number] = [0, 0];
@@ -108,9 +107,6 @@ export class MockTransport implements DspTransport {
     const fw = opts.fwVersion ?? { major: 1, minor: 0, patch: 0 };
     this.#fwMajor = fw.major;
     this.#fwMinorPatch = ((fw.minor & 0xF) << 4) | (fw.patch & 0xF);
-    // Opaque V7+ tail (16 B per version past V6). Zero-filled; preserved across
-    // V6 writes to mirror the firmware's merge of a shorter SetAllParams.
-    this.#bulkTail = new Uint8Array(Math.max(0, this.#wireVersion - 6) * 16);
     // Pre-allocate output / crosspoint slots so per-command Set*'s can
     // index into them without conditional shape building. GetAllParams
     // re-synthesises from this state, so mutations show up in the next
@@ -406,6 +402,7 @@ export class MockTransport implements DspTransport {
         if (row && row[p.band]) {
           row[p.band] = {
             type: p.type as FilterParams['type'],
+            bypass: row[p.band].bypass,
             frequency: p.frequency,
             q: p.q,
             gain: p.gain,
@@ -540,19 +537,16 @@ export class MockTransport implements DspTransport {
     };
   }
 
-  // Build the bulk packet at the configured wire version. The V2-V6 prefix
-  // comes from #mockState; for V7+ the appended sections are the opaque
-  // #bulkTail bytes (the console doesn't parse them). The header always reports
-  // this wire version + total length -- including sub-V6 versions, so the
-  // connect-reject path is testable too.
+  // Build the bulk packet at the configured wire version from #mockState.
+  // For V6-V10 the tail is real (buildBulkParams emits it). For a sub-V6
+  // reject-path mock we still build a V6 body but report the true (sub-V6)
+  // version in the header so the connect-reject path is exercised.
   #synthBulkPacket(): Uint8Array {
-    const v6 = buildBulkParams(this.#mockState);
-    const out = new Uint8Array(v6.byteLength + this.#bulkTail.byteLength);
-    out.set(v6);
-    if (this.#bulkTail.byteLength > 0) out.set(this.#bulkTail, v6.byteLength);
+    const buildVer = Math.min(Math.max(this.#wireVersion, 6), Wire.MAX_WIRE_VERSION);
+    const out = buildBulkParams(this.#mockState, buildVer);
     const dv = new DataView(out.buffer);
-    dv.setUint8(0, this.#wireVersion);       // header.formatVersion
-    dv.setUint16(6, out.byteLength, true);   // header.payloadLength
+    dv.setUint8(0, this.#wireVersion);        // report true version (may be < 6)
+    dv.setUint16(6, out.byteLength, true);    // payloadLength
     return out;
   }
 
