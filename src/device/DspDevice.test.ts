@@ -1125,4 +1125,32 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     await expect(d.setSpdifRxPin(15)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
     await expect(d.getSpdifRxPin()).rejects.toBeInstanceOf(UnsupportedOnFirmware);
   });
+
+  test('LG Sound Sync enable + status round-trip on V10', async () => {
+    const d = await v10();
+    await d.setLgSoundSyncEnabled(true);
+    expect(await d.getLgSoundSyncEnabled()).toBe(true);
+    expect((await d.getLgSoundSyncStatus()).enabled).toBe(true);
+  });
+
+  test('DAC HW mute config round-trips on V10', async () => {
+    const d = await v10();
+    const cfg = { enabled: true, activeLow: true, pin: 11, holdMs: 20, releaseMs: 50 };
+    await d.setDacHwMute(cfg);
+    expect(await d.getDacHwMute()).toEqual(cfg);
+    await expect(d.testDacHwMute()).resolves.toBeUndefined();
+  });
+
+  test('DAC HW mute is gated separately from LG Sound Sync (throws on V9)', async () => {
+    const d = await DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 9 }));
+    expect(await d.getLgSoundSyncEnabled()).toBe(false); // supported at V8+
+    await expect(d.getDacHwMute()).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+  });
+
+  test('LG + DAC set methods throw on V6', async () => {
+    const d = await v6();
+    await expect(d.setLgSoundSyncEnabled(true)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+    await expect(d.setDacHwMute({ enabled: true, activeLow: true, pin: 11, holdMs: 20, releaseMs: 50 }))
+      .rejects.toBeInstanceOf(UnsupportedOnFirmware);
+  });
 });

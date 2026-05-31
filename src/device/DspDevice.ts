@@ -755,4 +755,40 @@ export class DspDevice {
     this.#requireFeature(this.capabilities.features.spdifRx, 'getSpdifRxPin', 'fw >= 1.1.4 (wire V7)');
     return proto.readCmd(this.transport, proto.WireCmd.GetSpdifRxPin);
   }
+
+  // LG Sound Sync. Only `enabled` is host-configurable; status read returns the
+  // full domain shape (present/volume/muted are runtime state).
+  async setLgSoundSyncEnabled(enabled: boolean): Promise<void> {
+    this.#requireFeature(this.capabilities.features.lgSoundSync, 'setLgSoundSyncEnabled', 'fw >= 1.1.4 (wire V8)');
+    return proto.writeCmd(this.transport, proto.WireCmd.SetLgSoundSyncEnabled, enabled);
+  }
+
+  async getLgSoundSyncEnabled(): Promise<boolean> {
+    this.#requireFeature(this.capabilities.features.lgSoundSync, 'getLgSoundSyncEnabled', 'fw >= 1.1.4 (wire V8)');
+    return proto.readCmd(this.transport, proto.WireCmd.GetLgSoundSyncEnabled);
+  }
+
+  async getLgSoundSyncStatus(): Promise<domain.LgSoundSync> {
+    this.#requireFeature(this.capabilities.features.lgSoundSync, 'getLgSoundSyncStatus', 'fw >= 1.1.4 (wire V8)');
+    const w = await proto.readCmd(this.transport, proto.WireCmd.GetLgSoundSyncStatus);
+    return { enabled: w.enabled, present: w.present, volume: w.volume, muted: w.muted };
+  }
+
+  // DAC hardware-mute pin configuration.
+  async setDacHwMute(cfg: domain.DacHwMute): Promise<void> {
+    this.#requireFeature(this.capabilities.features.dacHwMute, 'setDacHwMute', 'fw >= 1.1.4 (wire V10)');
+    return proto.writeCmd(this.transport, proto.WireCmd.SetDacHwMute, cfg);
+  }
+
+  async getDacHwMute(): Promise<domain.DacHwMute> {
+    this.#requireFeature(this.capabilities.features.dacHwMute, 'getDacHwMute', 'fw >= 1.1.4 (wire V10)');
+    const w = await proto.readCmd(this.transport, proto.WireCmd.GetDacHwMute);
+    return { enabled: w.enabled, activeLow: w.activeLow, pin: w.pin, holdMs: w.holdMs, releaseMs: w.releaseMs };
+  }
+
+  // Pulse the DAC mute pin (~1s) for wiring verification. No payload.
+  async testDacHwMute(): Promise<void> {
+    this.#requireFeature(this.capabilities.features.dacHwMute, 'testDacHwMute', 'fw >= 1.1.4 (wire V10)');
+    await this.transport.ctrlOut(proto.WireCmd.TestDacHwMute.code, 0, new Uint8Array(0));
+  }
 }
