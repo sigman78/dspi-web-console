@@ -9,7 +9,7 @@ import {
   type PresetSlot, PRESET_SLOT_COUNT,
   type PresetDirectoryInfo,
   MasterVolumeMode,
-  presetDiff,
+  diffSnapshots, type SnapshotChange,
 } from '@/domain';
 import { mirror, presetBaseline } from './mirror.svelte';
 import { settings } from './settings.svelte';
@@ -39,17 +39,20 @@ export const presets = $state<PresetsState>({
   lastActionError: null,
 });
 
+// Device-reported kinds that change without a user edit; never count as dirty.
+const RUNTIME_CHANGE_KINDS = new Set<SnapshotChange['kind']>(['lgSoundSyncStatus']);
+
 // Re-evaluates on every read inside a tracking context. The diff is
-// O(channels × bands) ≈ 132 ops — cheap enough to run per read. Caches
-// would just add a cache-invalidation problem.
+// O(channels × bands) ≈ 132 ops — cheap enough to run per read. The change-set
+// is empty in the common (clean) case, so .some() short-circuits immediately.
 export const presetsDirty = {
   get current(): boolean {
     if (!mirror.current || !presetBaseline.current) return false;
-    const mode = presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent;
-    return presetDiff(presetBaseline.current, mirror.current, {
-      ignoreMasterVolume: mode === MasterVolumeMode.Independent,
-      softMuted:          settings.soft.muted,
-    });
+    const ignoreVol = (presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent) === MasterVolumeMode.Independent;
+    const soft = settings.soft.muted;
+    return diffSnapshots(presetBaseline.current, mirror.current).some((c) =>
+      !RUNTIME_CHANGE_KINDS.has(c.kind) &&
+      !(c.kind === 'masterVolume' && (ignoreVol || soft)));
   },
 };
 

@@ -16,6 +16,7 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
     crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5 } as any,
     leveller: null, i2s: null,
     outputPins: [],
+    inputConfig: null, lgSoundSync: null, userVolume: null, dacHwMute: null,
     ...overrides,
   };
 }
@@ -89,6 +90,44 @@ describe('presets store', () => {
     settings.soft.muted = true;
     if (mirror.current) mirror.current.masterVolumeDb = -128;
     expect(presetsDirty.current).toBe(false);
+  });
+
+  it('presetsDirty flips true on a per-band bypass change (SP1 gap closed)', () => {
+    const withBand = (bypass: boolean): DspSnapshot => mkSnap({
+      channels: [{
+        id: 0 as any, name: 'ch0', defaultName: 'ch0', shortName: 'c0',
+        bandCount: 1, isOutput: false, outputMode: null,
+        filters: [{ type: 0, bypass, frequency: 1000, q: 1, gain: 0 }],
+      }],
+    });
+    seed(withBand(false));
+    expect(presetsDirty.current).toBe(false);
+    if (mirror.current) mirror.current.channels[0].filters[0].bypass = true;
+    expect(presetsDirty.current).toBe(true);
+  });
+
+  it('presetsDirty ignores a device-reported lgSoundSync status change', () => {
+    seed(mkSnap({ lgSoundSync: { enabled: true, present: false, volume: 0, muted: false } as any }));
+    expect(presetsDirty.current).toBe(false);
+    if (mirror.current?.lgSoundSync) {
+      mirror.current.lgSoundSync.present = true;
+      mirror.current.lgSoundSync.volume = 42;
+    }
+    expect(presetsDirty.current).toBe(false);
+  });
+
+  it('presetsDirty flips true on an lgSoundSync.enabled change', () => {
+    seed(mkSnap({ lgSoundSync: { enabled: false, present: false, volume: 0, muted: false } as any }));
+    expect(presetsDirty.current).toBe(false);
+    if (mirror.current?.lgSoundSync) mirror.current.lgSoundSync.enabled = true;
+    expect(presetsDirty.current).toBe(true);
+  });
+
+  it('presetsDirty flips true on a userVolume change', () => {
+    seed(mkSnap({ userVolume: { volumeDb: 0, mute: false } as any }));
+    expect(presetsDirty.current).toBe(false);
+    if (mirror.current?.userVolume) mirror.current.userVolume.volumeDb = -6;
+    expect(presetsDirty.current).toBe(true);
   });
 
   it('resetPresets clears all fields', () => {

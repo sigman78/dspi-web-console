@@ -14,7 +14,7 @@ export * from './hardware';
 export * from './mixer';
 export * from './mixerView';
 export * from './snapshot';
-export * from './presetDiff';
+export * from './snapshotDiff';
 export * from './presetDirectory';
 export * from './pins';
 
