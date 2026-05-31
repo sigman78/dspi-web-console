@@ -8,13 +8,12 @@ Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScrip
 
 [![Deploy to GitHub Pages](https://github.com/sigman78/dspi-web-console/actions/workflows/deploy.yml/badge.svg)](https://github.com/sigman78/dspi-web-console/actions/workflows/deploy.yml)
 
-## Features
+## HW/FW Compatibility status
 
-- **EQ** — per-channel parametric editing with 5 filter types and N bands, live Bode plot, copy bands between channels, output trim.
-- **Mixer** — 2×N matrix routing with per-cell enable/invert/gain, plus per-output enable, mute, gain, and delay.
-- **Master** — volume, mute, master preamp, per-input preamp.
-- **Processing** — loudness, crossfeed, leveller.
-- **Telemetry** — clock, voltage, sample rate, temperature, error counters, buffer stats.
+- Moving from PoC to beta
+- 1.1.3 mostly wire/feature complete
+- 1.1.4 target partial (mostly wire)
+- RP2350 tested e2e, RP2040 only MCU hw w/o audio out
 
 ## Requirements
 
