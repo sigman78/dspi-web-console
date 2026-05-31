@@ -5,6 +5,7 @@ export * as Proc from './processingLimits';
 
 export * from './channels';
 export * from './filter';
+export * from './deviceSections';
 export * from './platform';
 export * from './processing';
 export * from './presetLimits';
@@ -13,7 +14,8 @@ export * from './hardware';
 export * from './mixer';
 export * from './mixerView';
 export * from './snapshot';
-export * from './presetDiff';
+export * from './snapshotDiff';
+export * from './applyChange';
 export * from './presetDirectory';
 export * from './pins';
 

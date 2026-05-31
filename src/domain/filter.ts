@@ -10,11 +10,14 @@ export const FilterType = {
   HighShelf: 3,
   LowPass: 4,
   HighPass: 5,
+  Notch: 6,
+  Allpass: 7,
 } as const;
 export type FilterType = (typeof FilterType)[keyof typeof FilterType];
 
 export interface FilterParams {
   type: FilterType;
+  bypass: boolean;
   frequency: number; // Hz
   q: number;
   gain: number;     // dB
@@ -22,6 +25,7 @@ export interface FilterParams {
 
 export const defaultFilter = (): FilterParams => ({
   type: FilterType.Flat,
+  bypass: false,
   frequency: 1000,
   q: 1,
   gain: 0,

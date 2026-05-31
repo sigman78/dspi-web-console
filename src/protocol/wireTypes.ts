@@ -12,7 +12,7 @@
 // firmware's `WireHeader` <-> `Wire.Header`, `WireBandParams` <->
 // `Wire.BandParams`, and so on.
 //
-// Layout summary (V6, total 2896 bytes):
+// Layout summary (V10, total 2960 bytes):
 //   off    bytes  C struct                    section
 //     0      16   WireHeader                  required
 //    16      16   WireGlobalParams            required
@@ -28,10 +28,14 @@
 //  2848      16   WireLevellerConfig          V4+, optional
 //  2864      16   WirePreampConfig            V6+, optional
 //  2880      16   WireMasterVolume            V6+, optional
+//  2896      16   WireInputConfig             V7+, optional
+//  2912      16   WireLgSoundSync             V8+, optional
+//  2928      16   WireUserVolume              V9+, optional
+//  2944      16   WireDacHwMute               V10+, optional
 
 import { Codec, type BinCodec } from '@/utils';
 
-const { u8, u16, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
+const { u8, u16, u32, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
 
 // Wire-format dimensions (sized to the largest platform: RP2350).
 // Names mirror the WIRE_* macros in bulk_params.h. SERIAL_LEN comes
@@ -112,10 +116,13 @@ export const PinConfig = struct({
   _pad:          reserved(2),
 });
 
-// Section 9: EQ band parameters (16 B)
+// Section 9: EQ band parameters (16 B). Byte 1 was `reserved` through V9;
+// V10 firmware reinterprets it as `bypass` (1 = band excluded from the
+// response). Decoding it on older firmware is harmless — it reads 0.
 export const BandParams = struct({
   type:      u8,
-  _pad:      reserved(3),
+  bypass:    u8,
+  _pad:      reserved(2),
   frequency: f32,
   q:         f32,
   gain:      f32,
@@ -158,6 +165,41 @@ export const PreampConfig = struct({
 export const MasterVolume = struct({
   masterVolumeDb: f32,
   _reserved:      reserved(12),
+});
+
+// Section 15: input config (16 B, V7+, optional). input_source: 0=USB, 1=S/PDIF.
+export const InputConfig = struct({
+  inputSource: u8,
+  spdifRxPin:  u8,
+  _reserved:   reserved(14),
+});
+
+// Section 16: LG Sound Sync (16 B, V8+, optional). Only `enabled` is host-
+// configurable through bulk apply; present/volume/muted are runtime state.
+export const LgSoundSync = struct({
+  enabled:   bool8,
+  present:   bool8,
+  volume:    u8,
+  muted:     bool8,
+  _reserved: reserved(12),
+});
+
+// Section 17: user volume (16 B, V9+, optional). Separate from master-volume.
+export const UserVolume = struct({
+  volumeDb:  f32,
+  mute:      bool8,
+  _reserved: reserved(11),
+});
+
+// Section 18: DAC hardware mute config (16 B, V10+, optional).
+export const DacHwMute = struct({
+  enabled:    bool8,
+  activeLow:  bool8,
+  pin:        u8,
+  _reserved0: reserved(1),
+  holdMs:     u16,
+  releaseMs:  u16,
+  _reserved:  reserved(8),
 });
 
 // Other vendor-control packets.
@@ -221,6 +263,24 @@ export const BufferStats = struct({
   spdif:    arr(SpdifBufferStats, Const.NUM_SPDIF_INSTANCES),
   pdm:      PdmBufferStats,
 });
+
+// 16-byte live S/PDIF-RX status (GetSpdifRxStatus 0xE2). `state` maps to the
+// domain SpdifInputState enum and `inputSource` to AudioInputSource; the
+// narrowing happens in DspDevice, this codec stays raw.
+export const SpdifRxStatus = struct({
+  state:        u8,
+  inputSource:  u8,
+  lockCount:    u8,
+  lossCount:    u8,
+  sampleRate:   u32,
+  parityErrors: u32,
+  fifoFillPct:  u16,
+  _reserved:    reserved(2),
+});
+
+// Length of the raw IEC-60958 channel-status block (GetSpdifRxChStatus 0xE3).
+// No semantic codec — surfaced verbatim as bytes.
+export const SPDIF_RX_CH_STATUS_LEN = 24;
 
 // 32-byte `GetSerial` response: NUL-terminated UTF-8 inside a fixed
 // 32-byte window.
@@ -301,27 +361,43 @@ const V2_PREFIX_SIZE =
   sizeOf(BandParams) * (Const.NUM_CHANNELS * Const.BANDS_MAX) +
   sizeOf(ChannelNames);  // 2832
 
+const V6_FULL_SIZE =
+  V2_PREFIX_SIZE + sizeOf(I2SConfig) + sizeOf(LevellerConfig) + sizeOf(PreampConfig) + sizeOf(MasterVolume);
+
 // Cumulative payload sizes at each format-version boundary. Used by
 // bulkLayout() to gate optional sections on header.payload_length.
 export const BulkSizes = {
-  V2:        V2_PREFIX_SIZE,                                                                          // 2832
-  V3:        V2_PREFIX_SIZE + sizeOf(I2SConfig),                                                       // 2848
-  V4:        V2_PREFIX_SIZE + sizeOf(I2SConfig) + sizeOf(LevellerConfig),                              // 2864
-  V6Preamp:  V2_PREFIX_SIZE + sizeOf(I2SConfig) + sizeOf(LevellerConfig) + sizeOf(PreampConfig),       // 2880
-  V6Full:    V2_PREFIX_SIZE + sizeOf(I2SConfig) + sizeOf(LevellerConfig) + sizeOf(PreampConfig) + sizeOf(MasterVolume), // 2896
+  V2:       V2_PREFIX_SIZE,                                              // 2832
+  V3:       V2_PREFIX_SIZE + sizeOf(I2SConfig),                          // 2848
+  V4:       V2_PREFIX_SIZE + sizeOf(I2SConfig) + sizeOf(LevellerConfig), // 2864
+  V6Preamp: V6_FULL_SIZE - sizeOf(MasterVolume),                         // 2880
+  V6Full:   V6_FULL_SIZE,                                                // 2896
+  V7:       V6_FULL_SIZE + sizeOf(InputConfig),                          // 2912
+  V8:       V6_FULL_SIZE + sizeOf(InputConfig) + sizeOf(LgSoundSync),    // 2928
+  V9:       V6_FULL_SIZE + sizeOf(InputConfig) + sizeOf(LgSoundSync) + sizeOf(UserVolume), // 2944
+  V10:      V6_FULL_SIZE + sizeOf(InputConfig) + sizeOf(LgSoundSync) + sizeOf(UserVolume) + sizeOf(DacHwMute), // 2960
 } as const;
+
+// Newest wire version the console knows how to decode and write.
+export const MAX_WIRE_VERSION = 10;
+
+// Packet size to allocate/write for a given target wire version (clamped to
+// the V6 floor and the V10 ceiling).
+export function bulkSizeForVersion(v: number): number {
+  if (v >= 10) return BulkSizes.V10;
+  if (v === 9) return BulkSizes.V9;
+  if (v === 8) return BulkSizes.V8;
+  if (v === 7) return BulkSizes.V7;
+  return BulkSizes.V6Full;
+}
 
 export const BulkLimits = {
   MinPacketSize:  BulkSizes.V2,
-  // Size we WRITE: the console builds V6 packets. The firmware merges shorter
-  // packets, so this stays V6 even when talking to a newer device.
-  MaxRequestSize: BulkSizes.V6Full,
-  // Size we READ: the largest packet we tolerate receiving. The 1.1.4 (V10)
-  // branch appends four 16-byte sections (input source, LG sound sync, user
-  // volume, DAC hw mute) after the V6 tail. We request this much so a newer
-  // device can send its whole packet without a WinUSB babble/overrun;
-  // parseBulkParams reads only the V6 prefix and ignores the trailing bytes.
-  MaxReadSize:    BulkSizes.V6Full + 4 * 16,  // 2960 (V10)
+  // Size we WRITE: version-aware buildBulkParams emits at the device's own wire
+  // version, up to V10. This is the largest buffer it may allocate.
+  MaxRequestSize: BulkSizes.V10,
+  // Size we READ: the largest packet we tolerate receiving (V10).
+  MaxReadSize:    BulkSizes.V10,  // 2960
 } as const;
 
 export interface BulkLayout {
@@ -329,6 +405,10 @@ export interface BulkLayout {
   leveller: boolean;
   preamp: boolean;
   masterVolume: boolean;
+  inputSource: boolean;
+  lgSoundSync: boolean;
+  userVolume: boolean;
+  dacHwMute: boolean;
 }
 
 // Determine which optional sections are present based on the header.
@@ -338,10 +418,14 @@ export function bulkLayout(h: { formatVersion: number; payloadLength: number }):
   const v = h.formatVersion;
   const len = h.payloadLength;
   return {
-    i2s:          v >= 3 && len >= BulkSizes.V3,
-    leveller:     v >= 4 && len >= BulkSizes.V4,
-    preamp:       v >= 6 && len >= BulkSizes.V6Preamp,
-    masterVolume: v >= 6 && len >= BulkSizes.V6Full,
+    i2s:          v >= 3  && len >= BulkSizes.V3,
+    leveller:     v >= 4  && len >= BulkSizes.V4,
+    preamp:       v >= 6  && len >= BulkSizes.V6Preamp,
+    masterVolume: v >= 6  && len >= BulkSizes.V6Full,
+    inputSource:  v >= 7  && len >= BulkSizes.V7,
+    lgSoundSync:  v >= 8  && len >= BulkSizes.V8,
+    userVolume:   v >= 9  && len >= BulkSizes.V9,
+    dacHwMute:    v >= 10 && len >= BulkSizes.V10,
   };
 }
 

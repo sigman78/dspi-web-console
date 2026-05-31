@@ -104,6 +104,7 @@ export function filterCurve(bands: ReadonlyArray<FilterParams>, preampDb: number
   const out = new Array<number>(BODE_BINS);
   for (let i = 0; i < BODE_BINS; i++) out[i] = preampDb;
   for (const band of bands) {
+    if (band.bypass) continue;
     const c = coeffsFor(band.type, band.frequency, band.q, band.gain, fs);
     if (!c) continue;
     for (let i = 0; i < BODE_BINS; i++) {
@@ -127,6 +128,7 @@ export function filterCurveAt(
   const w = TWO_PI * f / fs;
   let db = preampDb;
   for (const band of bands) {
+    if (band.bypass) continue;
     const c = coeffsFor(band.type, band.frequency, band.q, band.gain, fs);
     if (!c) continue;
     db += magDbAt(c, w);

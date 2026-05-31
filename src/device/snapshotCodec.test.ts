@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseBulkParams, Wire } from '@/protocol';
 import { makeBulk, makeBulkObject } from '@test/fixtures/bulkFixtures';
-import { PlatformType, createHardwareProfile, matrixColumns, matrixRows } from '@/domain';
+import { PlatformType, createHardwareProfile, matrixColumns, matrixRows, HARDWARE_PROFILES, AudioInputSource, FilterType } from '@/domain';
+import * as WireNS from '@/protocol/wireTypes';
 import { fromBulkParams } from './snapshotCodec';
 
 describe('fromBulkParams', () => {
@@ -66,10 +67,10 @@ describe('fromBulkParams', () => {
 
   it('maps RP2040 PDM EQ and name from firmware channel 6', () => {
     const filters = Array.from({ length: 11 }, () =>
-      Array.from({ length: 12 }, () => ({ type: 0, frequency: 1000, q: 1, gain: 0 })),
+      Array.from({ length: 12 }, () => ({ type: 0, bypass: false, frequency: 1000, q: 1, gain: 0 })),
     );
-    filters[6][0] = { type: 1, frequency: 321, q: 0.8, gain: -2 };
-    filters[10][0] = { type: 1, frequency: 9999, q: 2, gain: 12 };
+    filters[6][0] = { type: 1, bypass: false, frequency: 321, q: 0.8, gain: -2 };
+    filters[10][0] = { type: 1, bypass: false, frequency: 9999, q: 2, gain: 12 };
 
     const names: string[] = [];
     names[6] = 'RP2040 Sub';
@@ -103,5 +104,53 @@ describe('fromBulkParams', () => {
     const snap = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
     expect(snap.i2s).not.toBeNull();
     expect(snap.leveller).toBeNull();
+  });
+});
+
+// RP2350 profile (11ch/9out) matches the default fixture shape.
+const hw = HARDWARE_PROFILES[PlatformType.RP2350];
+
+describe('snapshotCodec — 1.1.4 sections', () => {
+  it('maps the V10 tail into nullable domain sections', () => {
+    const bulk = makeBulkObject({
+      formatVersion: 10, payloadLength: WireNS.BulkSizes.V10,
+      inputConfig: { source: 1, spdifRxPin: 5 },
+      lgSoundSync: { enabled: true, present: false, volume: 30, muted: false },
+      userVolume:  { volumeDb: -4, mute: false },
+      dacHwMute:   { enabled: true, activeLow: true, pin: 11, holdMs: 10, releaseMs: 20 },
+    });
+    const snap = fromBulkParams(hw, bulk);
+    expect(snap.inputConfig).toEqual({ source: AudioInputSource.Spdif, spdifRxPin: 5 });
+    expect(snap.lgSoundSync).toEqual({ enabled: true, present: false, volume: 30, muted: false });
+    expect(snap.userVolume).toEqual({ volumeDb: -4, mute: false });
+    expect(snap.dacHwMute).toEqual({ enabled: true, activeLow: true, pin: 11, holdMs: 10, releaseMs: 20 });
+  });
+
+  it('nulls the 1.1.4 sections on a V6 packet', () => {
+    const snap = fromBulkParams(hw, makeBulkObject()); // V6 default
+    expect(snap.inputConfig).toBeNull();
+    expect(snap.lgSoundSync).toBeNull();
+    expect(snap.userVolume).toBeNull();
+    expect(snap.dacHwMute).toBeNull();
+  });
+
+  it('carries per-band bypass into FilterParams', () => {
+    const filters = Array.from({ length: WireNS.Const.NUM_CHANNELS }, () =>
+      Array.from({ length: WireNS.Const.BANDS_MAX }, () => ({ type: 1, bypass: false, frequency: 1000, q: 1, gain: 0 })));
+    filters[0][0] = { type: 1, bypass: true, frequency: 1000, q: 1, gain: 2 };
+    const snap = fromBulkParams(hw, makeBulkObject({ formatVersion: 10, payloadLength: WireNS.BulkSizes.V10, filters }));
+    expect(snap.channels[0].filters[0].bypass).toBe(true);
+  });
+
+  it('narrows Notch/Allpass wire types and clamps an unknown type to Flat', () => {
+    const filters = Array.from({ length: WireNS.Const.NUM_CHANNELS }, () =>
+      Array.from({ length: WireNS.Const.BANDS_MAX }, () => ({ type: 0, bypass: false, frequency: 1000, q: 1, gain: 0 })));
+    filters[0][0] = { type: FilterType.Notch, bypass: false, frequency: 1000, q: 1, gain: 0 };
+    filters[0][1] = { type: FilterType.Allpass, bypass: false, frequency: 1000, q: 1, gain: 0 };
+    filters[0][2] = { type: 99, bypass: false, frequency: 1000, q: 1, gain: 0 };
+    const snap = fromBulkParams(hw, makeBulkObject({ formatVersion: 10, payloadLength: WireNS.BulkSizes.V10, filters }));
+    expect(snap.channels[0].filters[0].type).toBe(FilterType.Notch);
+    expect(snap.channels[0].filters[1].type).toBe(FilterType.Allpass);
+    expect(snap.channels[0].filters[2].type).toBe(FilterType.Flat);
   });
 });

@@ -68,6 +68,38 @@ describe('deriveCapabilities — features', () => {
   });
 });
 
+describe('deriveCapabilities — 1.1.4 features', () => {
+  const v6 = deriveCapabilities({ fw: { major: 1, minor: 1, patch: 3 }, wireVersion: 6, payloadLength: 2896, platformId: 1 });
+  const v10 = deriveCapabilities({ fw: { major: 1, minor: 1, patch: 4 }, wireVersion: 10, payloadLength: 2960, platformId: 1 });
+
+  it('a 1.1.3 (V6) device exposes none of the new features', () => {
+    expect(v6.features.inputSourceSwitch).toBe(false);
+    expect(v6.features.bandBypass).toBe(false);
+    expect(v6.features.notchFilter).toBe(false);
+    expect(v6.features.dacHwMute).toBe(false);
+    expect(v6.sections.inputSource).toBe(false);
+  });
+
+  it('a 1.1.4 (V10) device exposes the full new surface', () => {
+    expect(v10.features.inputSourceSwitch).toBe(true);
+    expect(v10.features.spdifRx).toBe(true);
+    expect(v10.features.lgSoundSync).toBe(true);
+    expect(v10.features.userVolumeAxis).toBe(true);
+    expect(v10.features.dacHwMute).toBe(true);
+    expect(v10.features.bandBypass).toBe(true);
+    expect(v10.features.notchFilter).toBe(true);
+    expect(v10.features.allpassFilter).toBe(true);
+    expect(v10.sections.dacHwMute).toBe(true);
+  });
+
+  it('section thresholds track wire version (V8 device: LG yes, user-volume no)', () => {
+    const v8 = deriveCapabilities({ fw: { major: 1, minor: 1, patch: 4 }, wireVersion: 8, payloadLength: 2928, platformId: 1 });
+    expect(v8.features.lgSoundSync).toBe(true);
+    expect(v8.features.userVolumeAxis).toBe(false);
+    expect(v8.features.dacHwMute).toBe(false);
+  });
+});
+
 describe('acceptsWriteFormat — firmware-merge write rule', () => {
   const caps = (wire: number) =>
     deriveCapabilities({ fw: fw(1, 1, 3), wireVersion: wire, payloadLength: 2896, platformId: 1 });

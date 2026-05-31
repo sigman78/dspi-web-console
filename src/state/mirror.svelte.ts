@@ -27,6 +27,17 @@ let _reconcileEager = $state(false);
 // only the poll loop reads it.
 let _lastWriteMs = 0;
 
+// Preset-op notify suppression. A console-initiated preset op (Load / Paste /
+// Revert) does its OWN authoritative re-fetch (fetchAndApplyAsBaseline), and the
+// firmware emits bulk/preset notifications for that SAME op tagged source=preset
+// — indistinguishable from an external preset change, so the NotifyChannel would
+// reconcile each one redundantly on top of the action's fetch. While the guard
+// is held the channel still tracks seq but skips its reconcile triggers. Depth
+// covers nesting; a trailing-deadline grace absorbs late echoes that arrive
+// after the action (and the guard's depth) has already returned.
+let _presetGuardDepth = 0;
+let _presetGuardUntilMs = 0;
+
 export const mirror = {
   get current(): DspSnapshot | null { return _current; },
 
@@ -62,6 +73,8 @@ export const mirror = {
     _reconcileWanted = false;
     _reconcileEager = false;
     _lastWriteMs = 0;
+    _presetGuardDepth = 0;
+    _presetGuardUntilMs = 0;
   },
 };
 
@@ -98,6 +111,26 @@ export function consumeReconcile(): { wanted: boolean; eager: boolean } {
   _reconcileWanted = false;
   _reconcileEager = false;
   return r;
+}
+
+// Open a preset-op suppression window (nestable). Held until a matching
+// endPresetGuard, then a trailing grace. See the field comment above.
+export function beginPresetGuard(): void {
+  _presetGuardDepth += 1;
+}
+
+// Close one nesting level. When the last level closes, keep suppressing until
+// `now + trailingMs` so firmware echoes trailing the op are absorbed too. `now`
+// is injectable for tests; production passes performance.now() by default.
+export function endPresetGuard(trailingMs: number, now: number = performance.now()): void {
+  if (_presetGuardDepth > 0) _presetGuardDepth -= 1;
+  if (_presetGuardDepth === 0) _presetGuardUntilMs = now + trailingMs;
+}
+
+// True while a preset op is open or within its trailing grace. The NotifyChannel
+// checks this to skip self-induced reconcile triggers.
+export function presetGuardActive(now: number = performance.now()): boolean {
+  return _presetGuardDepth > 0 || now < _presetGuardUntilMs;
 }
 
 export const presetBaseline = {
