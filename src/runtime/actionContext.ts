@@ -17,7 +17,7 @@ import { session } from '@/state';
 import { mirror } from '@/state/mirror.svelte';
 import type { DspDevice } from '@/device/DspDevice';
 import type { DspSnapshot, ChannelModel, I2sConfig, ChannelId } from '@/domain';
-import { Log, type VoidResult } from '@/utils';
+import { Log, Result, type VoidResult } from '@/utils';
 
 // Precondition breach: the action cannot meaningfully run right now.
 export class NotReady extends Error {
@@ -94,4 +94,28 @@ export function run(name: string, fn: () => void | Promise<void>): Promise<void>
       report(name, e);
     }
   })();
+}
+
+// Result-returning sibling of `run`, for actions whose caller surfaces the
+// outcome (e.g. a panel showing an error message). Same boundary semantics —
+// never rejects — but maps the throw kinds to a VoidResult: NotReady and
+// DeviceRejected become typed failures; anything else is logged and returned as
+// a generic failure. The device-layer numeric code collapses to the string
+// channel here since callers display `message`, not `code`.
+export async function capture(name: string, fn: () => void | Promise<void>): Promise<VoidResult> {
+  try {
+    await fn();
+    return Result.ok();
+  } catch (e) {
+    if (e instanceof NotReady) {
+      Log.debug('action', `${name} skipped`, e.what);
+      return Result.fail('not ready', `${e.what} not available`);
+    }
+    if (e instanceof DeviceRejected) {
+      Log.warn('action', `${name} rejected`, e.op, e.message);
+      return Result.fail('rejected', e.message);
+    }
+    Log.error('action', `${name} failed`, e);
+    return Result.fail('error', e instanceof Error ? e.message : String(e));
+  }
 }

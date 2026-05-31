@@ -20,7 +20,7 @@ import { fromBulkParams } from '@/device/snapshotCodec';
 import { deriveCapabilities } from '@/device/capabilities';
 
 import { cancelAllWrites as cancelWrites } from '@/device/writes';
-import { inflight } from '@/state/mirror.svelte';
+import { inflight, peekReconcile, consumeReconcile } from '@/state/mirror.svelte';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
@@ -936,5 +936,12 @@ describe('output config verbs', () => {
     const r = await setMckEnabled(true);
     expect(r.ok).toBe(true);
     expect(mirror.current!.i2s!.mckEnabled).toBe(true);
+  });
+
+  it('requests an eager reconcile on a successful config write', async () => {
+    consumeReconcile(); // clear anything pending from boot
+    const r = await setI2sBckPin(16);
+    expect(r.ok).toBe(true);
+    expect(peekReconcile()).toEqual({ wanted: true, eager: true });
   });
 });

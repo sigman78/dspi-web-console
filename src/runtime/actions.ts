@@ -21,10 +21,11 @@ import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
 import { connectionScope, endConnection } from './connectionScope';
 import { acquireDeviceLock, releaseDeviceLock } from './deviceLock';
-import { mirror } from '@/state/mirror.svelte';
+import { mirror, requestReconcile } from '@/state/mirror.svelte';
 import { write, scrub, flushAllWrites, cancelAllWrites } from '@/device/writes';
 import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
+import * as ctx from './actionContext';
 
 const MUTE_DB = -128; // per spec
 
@@ -558,95 +559,80 @@ export async function factoryResetDevice(): Promise<VoidResult> {
 }
 
 // Output pin / I2S config verbs -------------------------------------------
-// Direct-call pattern: call granular device method, await typed Result,
-// do a targeted readback of only the affected field, and mutate the mirror
-// with just that field. Never calls syncDeviceSnapshot (would discard
-// unsaved EQ/mixer edits in mirror.current).
-
-const settle = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+// Optimistic granular verbs: resolve prerequisites, send the typed command,
+// then patch the mirror with the requested value on ack (no readback) and ask
+// the background poll to reconcile to committed device truth. Patching on ack
+// (not before the send) keeps the mirror unchanged when the device rejects the
+// command. Never calls syncDeviceSnapshot (would discard unsaved EQ/mixer edits).
 
 function patchI2s(update: (i: I2sConfig) => I2sConfig): void {
   if (mirror.current?.i2s) mirror.current.i2s = update(mirror.current.i2s);
 }
 
-export async function setOutputDataPin(pinOutputIndex: number, pin: number): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  await flushAllWrites();
-  const r = await d.setOutputPin(pinOutputIndex, pin);
-  if (!r.ok) return Result.fail('pin set failed', r.message);
-  const actual = await d.getOutputPin(pinOutputIndex);
-  if (mirror.current) {
-    const pins = mirror.current.outputPins.slice();
-    pins[pinOutputIndex] = actual;
-    mirror.current.outputPins = pins;
-  }
-  return Result.ok();
+export function setOutputDataPin(pinOutputIndex: number, pin: number): Promise<VoidResult> {
+  return ctx.capture('set output pin', async () => {
+    const d = ctx.device();
+    await ctx.send('set output pin', () => d.setOutputPin(pinOutputIndex, pin));
+    const m = ctx.snapshot();
+    const pins = m.outputPins.slice();
+    pins[pinOutputIndex] = pin;
+    m.outputPins = pins;
+    requestReconcile(true);
+  });
 }
 
-export async function setOutputType(slot: OutputSlot, type: number): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushAllWrites();
-  const r = await d.setOutputType(slot, type);
-  if (!r.ok) return Result.fail('type switch failed', r.message);
-  const applyType = (v: number) =>
+export function setOutputType(slot: OutputSlot, type: number): Promise<VoidResult> {
+  return ctx.capture('switch output type', async () => {
+    const d = ctx.device();
+    ctx.i2s();
+    // SET is queued, not applied (the switch is deferred in firmware). The
+    // optimistic patch + eager reconcile converge to committed truth; a rare
+    // deferred-switch failure surfaces as the mirror reverting, not a Result.
+    await ctx.send('switch output type', () => d.setOutputType(slot, type));
     patchI2s((i) => ({
       ...i,
-      outputSlotTypes: i.outputSlotTypes.map((x, j) => (j === slot ? v : x)) as [number, number, number, number],
+      outputSlotTypes: i.outputSlotTypes.map((x, j) => (j === slot ? type : x)) as [number, number, number, number],
     }));
-  applyType(type);
-  await settle(50);
-  const actual = await d.getOutputType(slot);
-  applyType(actual);
-  return actual === type ? Result.ok() : Result.fail('type not applied', 'device did not switch type');
+    requestReconcile(true);
+  });
 }
 
-export async function setI2sBckPin(pin: number): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushAllWrites();
-  const r = await d.setI2sBckPin(pin);
-  if (!r.ok) return Result.fail('bck set failed', r.message);
-  const actual = await d.getI2sBckPin();
-  patchI2s((i) => ({ ...i, bckPin: actual }));
-  return Result.ok();
+export function setI2sBckPin(pin: number): Promise<VoidResult> {
+  return ctx.capture('set I2S BCK pin', async () => {
+    const d = ctx.device();
+    ctx.i2s();
+    await ctx.send('set I2S BCK pin', () => d.setI2sBckPin(pin));
+    patchI2s((i) => ({ ...i, bckPin: pin }));
+    requestReconcile(true);
+  });
 }
 
-export async function setMckEnabled(on: boolean): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushAllWrites();
-  const r = await d.setMckEnable(on);
-  if (!r.ok) return Result.fail('mck enable failed', r.message);
-  const actual = await d.getMckEnable();
-  patchI2s((i) => ({ ...i, mckEnabled: actual === 1 }));
-  return Result.ok();
+export function setMckEnabled(on: boolean): Promise<VoidResult> {
+  return ctx.capture('set MCK enable', async () => {
+    const d = ctx.device();
+    ctx.i2s();
+    await ctx.send('set MCK enable', () => d.setMckEnable(on));
+    patchI2s((i) => ({ ...i, mckEnabled: on }));
+    requestReconcile(true);
+  });
 }
 
-export async function setMckPin(pin: number): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushAllWrites();
-  const r = await d.setMckPin(pin);
-  if (!r.ok) return Result.fail('mck pin failed', r.message);
-  const actual = await d.getMckPin();
-  patchI2s((i) => ({ ...i, mckPin: actual }));
-  return Result.ok();
+export function setMckPin(pin: number): Promise<VoidResult> {
+  return ctx.capture('set MCK pin', async () => {
+    const d = ctx.device();
+    ctx.i2s();
+    await ctx.send('set MCK pin', () => d.setMckPin(pin));
+    patchI2s((i) => ({ ...i, mckPin: pin }));
+    requestReconcile(true);
+  });
 }
 
-export async function setMckMultiplier(encoded: number): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushAllWrites();
-  const r = await d.setMckMultiplier(encoded);
-  if (!r.ok) return Result.fail('mck multiplier failed', r.message);
-  const actual = await d.getMckMultiplier();
-  patchI2s((i) => ({ ...i, mckMultiplierEncoded: actual }));
-  return Result.ok();
+export function setMckMultiplier(encoded: number): Promise<VoidResult> {
+  return ctx.capture('set MCK multiplier', async () => {
+    const d = ctx.device();
+    ctx.i2s();
+    await ctx.send('set MCK multiplier', () => d.setMckMultiplier(encoded));
+    patchI2s((i) => ({ ...i, mckMultiplierEncoded: encoded }));
+    requestReconcile(true);
+  });
 }
