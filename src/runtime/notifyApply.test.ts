@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { applyParamChange } from './notifyApply';
 import { resetWireMirror } from './wireMirror';
-import { mirror, bumpInflight, dropInflight } from '@/state/mirror.svelte';
+import { mirror, bumpInflight, dropInflight, noteWriteActivity } from '@/state/mirror.svelte';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice } from '@/device/DspDevice';
 import type { ParamChangedEvent } from '@/protocol';
@@ -49,5 +49,24 @@ describe('applyParamChange', () => {
     const dev = await setup();
     mirror.reset();   // clears current
     expect(applyParamChange(dev, ev(BYPASS_OFFSET, [1]))).toBe(false);
+  });
+
+  it('returns false within the post-write quiet window (mid-drag gap, inflight=0)', async () => {
+    const dev = await setup();
+    noteWriteActivity();   // a coalesced scrub send just landed; inflight is 0 in the gap
+    expect(applyParamChange(dev, ev(BYPASS_OFFSET, [1]))).toBe(false);
+    expect(mirror.current?.bypass).toBe(false);
+  });
+
+  it('does not revert an unrelated in-flight user edit (drift-safe)', async () => {
+    const dev = await setup();
+    // A user edit drifts mirror.current from the raw wire buffer (granular writes
+    // never touch lastRawBulk). Done directly here, so it does not stamp write
+    // activity — the quiet-window guard stays open.
+    mirror.current!.crossfeed.freq = 1234;
+    // A PARAM_CHANGED for an UNRELATED field (bypass).
+    expect(applyParamChange(dev, ev(BYPASS_OFFSET, [1]))).toBe(true);
+    expect(mirror.current!.bypass).toBe(true);          // notified field applied
+    expect(mirror.current!.crossfeed.freq).toBe(1234);  // user's unrelated edit preserved
   });
 });
