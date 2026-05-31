@@ -60,6 +60,22 @@ export interface DeviceCapabilities {
   };
 }
 
+// Minimum observed wire version each capability flag requires. Single source
+// for both the feature-flag derivation in deriveCapabilities() and the
+// UnsupportedOnFirmware requirement label in DspDevice. Adding a feature to
+// DeviceCapabilities['features'] without an entry here is a compile error.
+export const FEATURE_MIN_WIRE: Record<keyof DeviceCapabilities['features'], number> = {
+  notifications:     NOTIFY_MIN_WIRE,
+  inputSourceSwitch: 7,
+  spdifRx:           7,
+  lgSoundSync:       8,
+  userVolumeAxis:    9,
+  dacHwMute:         10,
+  bandBypass:        10,
+  notchFilter:       10,
+  allpassFilter:     10,
+};
+
 // The single firmware-version string formatter. Display reads this projection
 // off the frozen authority — never re-derives the version itself.
 function formatFirmwareVersion(fw: FirmwareVersion): string {
@@ -87,17 +103,10 @@ export function deriveCapabilities(input: {
     platformId,
     support,
     sections: Wire.bulkLayout({ formatVersion: wireVersion, payloadLength }),
-    features: {
-      notifications:     wireVersion >= NOTIFY_MIN_WIRE,
-      inputSourceSwitch: wireVersion >= 7,
-      spdifRx:           wireVersion >= 7,
-      lgSoundSync:       wireVersion >= 8,
-      userVolumeAxis:    wireVersion >= 9,
-      dacHwMute:         wireVersion >= 10,
-      bandBypass:        wireVersion >= 10,
-      notchFilter:       wireVersion >= 10,
-      allpassFilter:     wireVersion >= 10,
-    },
+    features: Object.fromEntries(
+      (Object.keys(FEATURE_MIN_WIRE) as (keyof DeviceCapabilities['features'])[])
+        .map((key) => [key, wireVersion >= FEATURE_MIN_WIRE[key]]),
+    ) as DeviceCapabilities['features'],
   };
 }
 
