@@ -28,9 +28,11 @@ export const ParamSource = {
 export type NotifyEvent =
   | { kind: 'idle' }
   | { kind: 'ignored' }                                        // v1 / unknown / malformed
-  | { kind: 'paramChanged';    seq: number; source: number }
+  | { kind: 'paramChanged';    seq: number; source: number; offset: number; size: number; value: Uint8Array }
   | { kind: 'bulkInvalidated'; seq: number; source: number }
   | { kind: 'presetLoaded';    seq: number; slot: number };
+
+export type ParamChangedEvent = Extract<NotifyEvent, { kind: 'paramChanged' }>;
 
 export function parseNotifyPacket(bytes: Uint8Array): NotifyEvent {
   // The idle keep-alive is always a single 0x00 byte, never a full v2 frame.
@@ -43,9 +45,14 @@ export function parseNotifyPacket(bytes: Uint8Array): NotifyEvent {
   const event = bytes[1];
   const seq = bytes[3];
   switch (event) {
-    case NotifyEventId.ParamChanged:
+    case NotifyEventId.ParamChanged: {
       if (bytes.length < 12) return { kind: 'ignored' };
-      return { kind: 'paramChanged', seq, source: bytes[8] };
+      const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const offset = dv.getUint16(4, true);
+      const size = dv.getUint16(6, true);
+      if (bytes.length < 12 + size) return { kind: 'ignored' };   // declared value overruns the packet
+      return { kind: 'paramChanged', seq, source: bytes[8], offset, size, value: bytes.subarray(12, 12 + size) };
+    }
     case NotifyEventId.BulkInvalidated:
       return { kind: 'bulkInvalidated', seq, source: bytes.length > 4 ? bytes[4] : 0 };
     case NotifyEventId.PresetLoaded:

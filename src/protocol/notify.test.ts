@@ -16,9 +16,9 @@ describe('parseNotifyPacket', () => {
   });
 
   it('decodes PARAM_CHANGED with its source and seq', () => {
-    // [version, event, flags=0, seq] + offset(2) + size(2) + source(1) + reserved(3)
-    const pkt = v2(NotifyEventId.ParamChanged, 42, [0x80, 0x0b, 4, 0, ParamSource.Gpio, 0, 0, 0]);
-    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'paramChanged', seq: 42, source: ParamSource.Gpio });
+    // [version, event, flags=0, seq] + offset(2) + size(2) + source(1) + reserved(3) + value(4)
+    const pkt = v2(NotifyEventId.ParamChanged, 42, [0x80, 0x0b, 4, 0, ParamSource.Gpio, 0, 0, 0, 1, 2, 3, 4]);
+    expect(parseNotifyPacket(pkt)).toEqual(expect.objectContaining({ kind: 'paramChanged', seq: 42, source: ParamSource.Gpio }));
   });
 
   it('decodes BULK_INVALIDATED with its source and seq', () => {
@@ -65,5 +65,35 @@ describe('isPresetOpEcho', () => {
     expect(isPresetOpEcho({ kind: 'paramChanged', seq: 1, source: ParamSource.Gpio })).toBe(false);
     expect(isPresetOpEcho({ kind: 'bulkInvalidated', seq: 1, source: ParamSource.Gpio })).toBe(false);
     expect(isPresetOpEcho({ kind: 'idle' })).toBe(false);
+  });
+});
+
+describe('parseNotifyPacket — PARAM_CHANGED payload', () => {
+  // v2 header [2, event, flags, seq], then offset(u16 LE), size(u16 LE), source, 3 reserved, value bytes.
+  it('extracts offset, size, source, and value bytes', () => {
+    const pkt = new Uint8Array([2, 0x02, 0, 7, 20, 0, 1, 0, 5, 0, 0, 0, 0x99]);
+    const ev = parseNotifyPacket(pkt);
+    expect(ev).toEqual({ kind: 'paramChanged', seq: 7, source: 5, offset: 20, size: 1, value: expect.any(Uint8Array) });
+    if (ev.kind === 'paramChanged') {
+      expect(ev.offset).toBe(20);
+      expect(ev.size).toBe(1);
+      expect(Array.from(ev.value)).toEqual([0x99]);
+    }
+  });
+
+  it('reads a multi-byte little-endian offset and a 4-byte value', () => {
+    // offset 0x0123 = 291, size 4, value = 4 bytes
+    const pkt = new Uint8Array([2, 0x02, 0, 1, 0x23, 0x01, 4, 0, 5, 0, 0, 0, 1, 2, 3, 4]);
+    const ev = parseNotifyPacket(pkt);
+    if (ev.kind !== 'paramChanged') throw new Error('expected paramChanged');
+    expect(ev.offset).toBe(0x0123);
+    expect(ev.size).toBe(4);
+    expect(Array.from(ev.value)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('ignores a PARAM_CHANGED whose declared size overruns the packet', () => {
+    // size says 8 but only 1 value byte present
+    const pkt = new Uint8Array([2, 0x02, 0, 1, 20, 0, 8, 0, 5, 0, 0, 0, 0x99]);
+    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'ignored' });
   });
 });
