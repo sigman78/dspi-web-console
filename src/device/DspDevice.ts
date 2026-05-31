@@ -753,10 +753,11 @@ export class DspDevice {
     );
   }
 
-  // S/PDIF RX GPIO pin. Set carries the pin in wValue with an empty body.
-  async setSpdifRxPin(gpio: number): Promise<void> {
+  // S/PDIF RX GPIO pin. Action-style IN: pin in wValue, returns a
+  // PinConfigResult status byte (mirrors setOutputPin).
+  async setSpdifRxPin(gpio: number): Promise<Result<void, proto.PinConfigResult>> {
     requireFeature(this.capabilities.features, 'spdifRx');
-    await this.transport.ctrlOut(proto.WireCmd.SetSpdifRxPin.code, gpio, new Uint8Array(0));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetSpdifRxPin, gpio & 0xFF));
   }
 
   async getSpdifRxPin(): Promise<number> {
@@ -797,6 +798,6 @@ export class DspDevice {
   // Pulse the DAC mute pin (~1s) for wiring verification. No payload.
   async testDacHwMute(): Promise<void> {
     requireFeature(this.capabilities.features, 'dacHwMute');
-    await this.transport.ctrlOut(proto.WireCmd.TestDacHwMute.code, 0, new Uint8Array(0));
+    await proto.actionCmd(this.transport, proto.WireCmd.TestDacHwMute);
   }
 }

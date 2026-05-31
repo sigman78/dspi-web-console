@@ -249,6 +249,11 @@ export class MockTransport implements DspTransport {
         return new Uint8Array(Wire.SPDIF_RX_CH_STATUS_LEN);
       case WireCmd.GetSpdifRxPin.code:
         return Codec.encode(Codec.u8, this.#mockState.inputConfig.spdifRxPin);
+      case WireCmd.SetSpdifRxPin.code:
+        this.#mockState.inputConfig.spdifRxPin = value & 0xFF;
+        return new Uint8Array([0x00]); // PinConfigResult: ok
+      case WireCmd.TestDacHwMute.code:
+        return new Uint8Array([0x00]); // status: pulse scheduled
       case WireCmd.GetLgSoundSyncEnabled.code:
         return Codec.encode(Codec.bool8, this.#mockState.lgSoundSync.enabled);
       case WireCmd.GetLgSoundSyncStatus.code:
@@ -452,9 +457,6 @@ export class MockTransport implements DspTransport {
       case WireCmd.SetInputSource.code:
         this.#mockState.inputConfig.source = Codec.decode(Codec.u8, data);
         return;
-      case WireCmd.SetSpdifRxPin.code:
-        this.#mockState.inputConfig.spdifRxPin = value & 0xFF;
-        return;
       case WireCmd.SetLgSoundSyncEnabled.code:
         this.#mockState.lgSoundSync.enabled = Codec.decode(Codec.bool8, data);
         return;
@@ -465,8 +467,6 @@ export class MockTransport implements DspTransport {
         };
         return;
       }
-      case WireCmd.TestDacHwMute.code:
-        return; // no-op: firmware pulses the pin
       case WireCmd.SetMatrixRoute.code: {
         const p = Codec.decode(WireCmd.SetMatrixRoute.codec, data);
         const row = this.#mockState.crosspoints![p.input];
