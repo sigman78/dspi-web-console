@@ -24,7 +24,7 @@ function narrowFilterType(t: number): domain.FilterType {
   }
 }
 
-function narrowInputSource(s: number): domain.AudioInputSource {
+export function narrowInputSource(s: number): domain.AudioInputSource {
   return s === 1 ? domain.AudioInputSource.Spdif : domain.AudioInputSource.Usb;
 }
 

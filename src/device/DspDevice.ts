@@ -2,7 +2,7 @@ import type { DspTransport } from '@/transport/DspTransport';
 import * as proto from '@/protocol';
 import { Codec, utf8Truncate, type Result } from '@/utils';
 import * as domain from '@/domain';
-import { fromBulkParams, type DeviceState } from './snapshotCodec';
+import { fromBulkParams, narrowInputSource, type DeviceState } from './snapshotCodec';
 import { deriveCapabilities, type DeviceCapabilities, type FirmwareVersion } from './capabilities';
 
 // Human-readable minimum supported firmware, shown in the reject message. The
@@ -48,6 +48,20 @@ export interface DspDeviceInfo {
 
 function platformTypeFromId(platformId: number): domain.PlatformType {
   return platformId === 1 ? domain.PlatformType.RP2350 : domain.PlatformType.RP2040;
+}
+
+// Clamp an unknown S/PDIF state byte to the domain enum (forward-compat: an
+// unrecognised future state reads as Inactive rather than a bogus value).
+function narrowSpdifInputState(n: number): domain.SpdifInputState {
+  switch (n) {
+    case domain.SpdifInputState.Inactive:
+    case domain.SpdifInputState.Acquiring:
+    case domain.SpdifInputState.Locked:
+    case domain.SpdifInputState.Relocking:
+      return n;
+    default:
+      return domain.SpdifInputState.Inactive;
+  }
 }
 
 // GetPlatform packs minor/patch into one byte: high nibble = minor, low = patch.
@@ -706,5 +720,39 @@ export class DspDevice {
   async getInputSource(): Promise<domain.AudioInputSource> {
     this.#requireFeature(this.capabilities.features.inputSourceSwitch, 'getInputSource', 'fw >= 1.1.4 (wire V7)');
     return proto.readCmd(this.transport, proto.WireCmd.GetInputSource);
+  }
+
+  // Live S/PDIF-RX lock telemetry (no bulk equivalent).
+  async getSpdifRxStatus(): Promise<domain.SpdifRxStatus> {
+    this.#requireFeature(this.capabilities.features.spdifRx, 'getSpdifRxStatus', 'fw >= 1.1.4 (wire V7)');
+    const w = await proto.readCmd(this.transport, proto.WireCmd.GetSpdifRxStatus);
+    return {
+      state:        narrowSpdifInputState(w.state),
+      inputSource:  narrowInputSource(w.inputSource),
+      lockCount:    w.lockCount,
+      lossCount:    w.lossCount,
+      sampleRate:   w.sampleRate,
+      parityErrors: w.parityErrors,
+      fifoFillPct:  w.fifoFillPct,
+    };
+  }
+
+  // Raw 24-byte IEC-60958 channel-status block (no domain shape yet).
+  async getSpdifRxChStatus(): Promise<Uint8Array> {
+    this.#requireFeature(this.capabilities.features.spdifRx, 'getSpdifRxChStatus', 'fw >= 1.1.4 (wire V7)');
+    return this.transport.ctrlIn(
+      proto.WireCmd.GetSpdifRxChStatus.code, 0, proto.Wire.SPDIF_RX_CH_STATUS_LEN,
+    );
+  }
+
+  // S/PDIF RX GPIO pin. Set carries the pin in wValue with an empty body.
+  async setSpdifRxPin(gpio: number): Promise<void> {
+    this.#requireFeature(this.capabilities.features.spdifRx, 'setSpdifRxPin', 'fw >= 1.1.4 (wire V7)');
+    await this.transport.ctrlOut(proto.WireCmd.SetSpdifRxPin.code, gpio, new Uint8Array(0));
+  }
+
+  async getSpdifRxPin(): Promise<number> {
+    this.#requireFeature(this.capabilities.features.spdifRx, 'getSpdifRxPin', 'fw >= 1.1.4 (wire V7)');
+    return proto.readCmd(this.transport, proto.WireCmd.GetSpdifRxPin);
   }
 }

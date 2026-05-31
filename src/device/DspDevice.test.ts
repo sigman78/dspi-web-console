@@ -15,6 +15,7 @@ import {
   FilterType,
   ChannelId,
   AudioInputSource,
+  SpdifInputState,
   type PresetSlot,
 } from '@/domain';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -1095,5 +1096,33 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     const d = await v6();
     await expect(d.setUserVolume(-12)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
     await expect(d.setInputSource(AudioInputSource.Usb)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+  });
+
+  test('getSpdifRxStatus narrows state + inputSource on V10', async () => {
+    const d = await v10();
+    await d.setInputSource(AudioInputSource.Spdif);
+    const s = await d.getSpdifRxStatus();
+    expect(s.state).toBe(SpdifInputState.Locked);
+    expect(s.inputSource).toBe(AudioInputSource.Spdif);
+    expect(s.sampleRate).toBe(48000);
+  });
+
+  test('getSpdifRxChStatus returns the 24-byte block on V10', async () => {
+    const d = await v10();
+    expect((await d.getSpdifRxChStatus()).byteLength).toBe(24);
+  });
+
+  test('S/PDIF RX pin round-trips on V10', async () => {
+    const d = await v10();
+    await d.setSpdifRxPin(15);
+    expect(await d.getSpdifRxPin()).toBe(15);
+  });
+
+  test('S/PDIF RX methods throw on V6', async () => {
+    const d = await v6();
+    await expect(d.getSpdifRxStatus()).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+    await expect(d.getSpdifRxChStatus()).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+    await expect(d.setSpdifRxPin(15)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+    await expect(d.getSpdifRxPin()).rejects.toBeInstanceOf(UnsupportedOnFirmware);
   });
 });

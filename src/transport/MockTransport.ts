@@ -240,6 +240,15 @@ export class MockTransport implements DspTransport {
         return Codec.encode(Codec.bool8, this.#mockState.userVolume.mute);
       case WireCmd.GetInputSource.code:
         return Codec.encode(Codec.u8, this.#mockState.inputConfig.source);
+      case WireCmd.GetSpdifRxStatus.code:
+        return Codec.encode(Wire.SpdifRxStatus, {
+          state: 2, inputSource: this.#mockState.inputConfig.source,
+          lockCount: 1, lossCount: 0, sampleRate: 48000, parityErrors: 0, fifoFillPct: 50,
+        });
+      case WireCmd.GetSpdifRxChStatus.code:
+        return new Uint8Array(Wire.SPDIF_RX_CH_STATUS_LEN);
+      case WireCmd.GetSpdifRxPin.code:
+        return Codec.encode(Codec.u8, this.#mockState.inputConfig.spdifRxPin);
       case WireCmd.GetChannelName.code: {
         const ch = value & 0xFF;
         const name = this.#mockState.channelNames[ch] ?? '';
@@ -436,6 +445,9 @@ export class MockTransport implements DspTransport {
         return;
       case WireCmd.SetInputSource.code:
         this.#mockState.inputConfig.source = Codec.decode(Codec.u8, data);
+        return;
+      case WireCmd.SetSpdifRxPin.code:
+        this.#mockState.inputConfig.spdifRxPin = value & 0xFF;
         return;
       case WireCmd.SetMatrixRoute.code: {
         const p = Codec.decode(WireCmd.SetMatrixRoute.codec, data);
