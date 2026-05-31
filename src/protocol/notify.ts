@@ -1,7 +1,9 @@
 // Notification Protocol v2 packet decoder (read-only). See
-// docs/HW-NOTIFICATIONS.md. Layer 1 only needs to know whether an event
-// warrants a bulk reconcile and its seq (for gap detection); payloads are
-// not decoded here.
+// docs/HW-NOTIFICATIONS.md. Returns a discriminated NotifyEvent; PARAM_CHANGED
+// carries its decoded payload (offset/size/value), and malformed, short, or
+// non-v2 frames degrade to { kind: 'ignored' } rather than throw.
+
+import { Codec } from '@/utils';
 
 export const NOTIFY_PACKET_SIZE = 64;   // EP 0x83 wMaxPacketSize
 export const NOTIFY_V2_VERSION = 2;
@@ -34,31 +36,45 @@ export type NotifyEvent =
 
 export type ParamChangedEvent = Extract<NotifyEvent, { kind: 'paramChanged' }>;
 
+const { u8, u16, reserved, struct } = Codec;
+
+// v2 frame header (4 B). `flags` (byte 2) is unused by the console.
+const NotifyHeader = struct({ version: u8, event: u8, _flags: reserved(1), seq: u8 });
+
+// PARAM_CHANGED fixed prefix (8 B) after the header: little-endian offset and
+// size, the source byte, then 3 reserved. The variable `value` (size bytes)
+// follows at byte 12 and is sliced manually — its length is data-dependent, so
+// it can't be a static codec field.
+const ParamChangedPrefix = struct({ offset: u16, size: u16, source: u8, _reserved: reserved(3) });
+
+// Value-less events: the discriminant carries no data and NotifyEvents are only
+// ever read, so a shared singleton per kind is safe.
+const IDLE: NotifyEvent = { kind: 'idle' };
+const IGNORED: NotifyEvent = { kind: 'ignored' };
+
 export function parseNotifyPacket(bytes: Uint8Array): NotifyEvent {
   // The idle keep-alive is always a single 0x00 byte, never a full v2 frame.
   if (bytes.length <= 1) {
-    return bytes.length === 1 && bytes[0] === NotifyEventId.Idle ? { kind: 'idle' } : { kind: 'ignored' };
+    return bytes.length === 1 && bytes[0] === NotifyEventId.Idle ? IDLE : IGNORED;
   }
-  if (bytes[0] !== NOTIFY_V2_VERSION || bytes.length < 4) {
-    return { kind: 'ignored' };   // v1 master-volume packets and shorts: drop
-  }
-  const event = bytes[1];
-  const seq = bytes[3];
-  switch (event) {
+  if (bytes.length < 4) return IGNORED;   // too short for a v2 header
+
+  const h = Codec.decode(NotifyHeader, bytes);
+  if (h.version !== NOTIFY_V2_VERSION) return IGNORED;   // v1 master-volume packets and friends: drop
+
+  switch (h.event) {
     case NotifyEventId.ParamChanged: {
-      if (bytes.length < 12) return { kind: 'ignored' };
-      const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-      const offset = dv.getUint16(4, true);
-      const size = dv.getUint16(6, true);
-      if (bytes.length < 12 + size) return { kind: 'ignored' };   // declared value overruns the packet
-      return { kind: 'paramChanged', seq, source: bytes[8], offset, size, value: bytes.subarray(12, 12 + size) };
+      if (bytes.length < 12) return IGNORED;
+      const p = Codec.decode(ParamChangedPrefix, bytes.subarray(4));
+      if (bytes.length < 12 + p.size) return IGNORED;   // declared value overruns the packet
+      return { kind: 'paramChanged', seq: h.seq, source: p.source, offset: p.offset, size: p.size, value: bytes.subarray(12, 12 + p.size) };
     }
     case NotifyEventId.BulkInvalidated:
-      return { kind: 'bulkInvalidated', seq, source: bytes.length > 4 ? bytes[4] : 0 };
+      return { kind: 'bulkInvalidated', seq: h.seq, source: bytes.length > 4 ? bytes[4] : 0 };
     case NotifyEventId.PresetLoaded:
-      return { kind: 'presetLoaded', seq, slot: bytes.length > 4 ? bytes[4] : 0 };
+      return { kind: 'presetLoaded', seq: h.seq, slot: bytes.length > 4 ? bytes[4] : 0 };
     default:
-      return { kind: 'ignored' };
+      return IGNORED;
   }
 }
 
