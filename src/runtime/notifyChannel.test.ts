@@ -153,15 +153,21 @@ describe('startNotifyChannel', () => {
     stop();
   });
 
-  it('still reconciles a non-HOST PARAM_CHANGED (e.g. GPIO) under the guard', async () => {
+  it('applies a non-HOST PARAM_CHANGED locally even under a preset guard (guard never suppresses it)', async () => {
+    // The preset guard suppresses only bulk/preset self-echoes; a GPIO paramChanged
+    // is applied precisely regardless of the guard (Layer 2). Seeded mirror → apply
+    // succeeds in place, no full reconcile.
+    resetWireMirror();
     const { mock, dev } = await v10Setup();
-    // PARAM_CHANGED, source=GPIO(5), size=0: no seeded mirror → apply declines → reconcile.
-    mock.pushNotify(new Uint8Array([2, 2, 0, 1, 0x80, 0x0b, 0, 0, 5, 0, 0, 0]));
+    mirror.init(await dev.getSnapshot());
+    expect(mirror.current?.bypass).toBe(false);
+    mock.pushNotify(paramChangedFrame(20, [1], 5));   // GPIO(5), bypass byte at offset 20
     const m = manualClock();
     beginPresetGuard();
     const stop = startNotifyChannel(dev, m.clock);
     await m.tick();
-    expect(peekReconcile().wanted).toBe(true);
+    expect(mirror.current?.bypass).toBe(true);   // applied despite the guard
+    expect(peekReconcile().wanted).toBe(false);  // not a full reconcile
     endPresetGuard(0);
     stop();
   });
