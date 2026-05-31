@@ -1,0 +1,129 @@
+// Typed structural change-set between two DspSnapshot instances. Generalizes
+// the old boolean presetDiff: a single-pass walker emits one SnapshotChange per
+// changed area (aggregate granularity), carrying the NEW value (from `b`).
+// Two consumers: presetsDirty (kind-filtered .some()) and SP3's notification
+// apply (exhaustive switch). Tolerances mask wire float round-trip jitter.
+
+import type { DspSnapshot } from './snapshot';
+import type { OutputModel, RouteModel } from './mixer';
+import type { FilterParams } from './filter';
+import type { Loudness, Crossfeed, Leveller } from './processing';
+import type { InputConfig, LgSoundSync, UserVolume, DacHwMute } from './deviceSections';
+
+export const DIFF_TOLERANCE = {
+  db:   0.05,
+  freq: 0.5,
+  gain: 0.005,
+  q:    0.005,
+  ms:   0.00005,
+} as const;
+
+export type SnapshotChange =
+  | { kind: 'bypass';        value: boolean }
+  | { kind: 'masterPreamp';  value: number }
+  | { kind: 'inputPreamp';   channel: 0 | 1; value: number }
+  | { kind: 'masterVolume';  value: number }
+  | { kind: 'channelName';   channel: number; value: string }
+  | { kind: 'band';          channel: number; band: number; value: FilterParams }
+  | { kind: 'output';        index: number; value: OutputModel }
+  | { kind: 'route';         index: number; value: RouteModel }
+  | { kind: 'loudness';      value: Loudness }
+  | { kind: 'crossfeed';     value: Crossfeed }
+  | { kind: 'leveller';      value: Leveller | null }
+  | { kind: 'inputConfig';   value: InputConfig | null }
+  | { kind: 'userVolume';    value: UserVolume | null }
+  | { kind: 'dacHwMute';     value: DacHwMute | null }
+  | { kind: 'lgSoundSyncEnabled'; value: boolean }
+  | { kind: 'lgSoundSyncStatus';  value: { present: boolean; volume: number; muted: boolean } };
+
+function neq(a: number, b: number, tol: number): boolean {
+  return Math.abs(a - b) > tol;
+}
+
+// Changed iff exactly one side is absent (null/undefined), else by `differs`.
+// Tolerates undefined as equivalent to null so partial fixtures don't crash.
+function nullableChanged<T>(a: T | null | undefined, b: T | null | undefined, differs: (x: T, y: T) => boolean): boolean {
+  const an = a == null, bn = b == null;
+  if (an || bn) return an !== bn;
+  return differs(a as T, b as T);
+}
+
+function bandDiffers(a: FilterParams, b: FilterParams): boolean {
+  return a.type !== b.type
+      || a.bypass !== b.bypass
+      || neq(a.frequency, b.frequency, DIFF_TOLERANCE.freq)
+      || neq(a.q,         b.q,         DIFF_TOLERANCE.q)
+      || neq(a.gain,      b.gain,      DIFF_TOLERANCE.db);
+}
+
+function outputDiffers(a: OutputModel, b: OutputModel): boolean {
+  return a.enabled !== b.enabled
+      || a.muted   !== b.muted
+      || neq(a.gainDb,  b.gainDb,  DIFF_TOLERANCE.db)
+      || neq(a.delayMs, b.delayMs, DIFF_TOLERANCE.ms);
+}
+
+function routeDiffers(a: RouteModel, b: RouteModel): boolean {
+  return a.enabled !== b.enabled
+      || a.invert  !== b.invert
+      || neq(a.gainDb, b.gainDb, DIFF_TOLERANCE.gain);
+}
+
+function loudnessDiffers(a: Loudness, b: Loudness): boolean {
+  return a.enabled !== b.enabled
+      || neq(a.refSpl,       b.refSpl,       DIFF_TOLERANCE.db)
+      || neq(a.intensityPct, b.intensityPct, DIFF_TOLERANCE.gain);
+}
+
+function crossfeedDiffers(a: Crossfeed, b: Crossfeed): boolean {
+  return a.enabled !== b.enabled
+      || a.preset  !== b.preset
+      || a.itd     !== b.itd
+      || neq(a.freq,   b.freq,   DIFF_TOLERANCE.freq)
+      || neq(a.feedDb, b.feedDb, DIFF_TOLERANCE.db);
+}
+
+function levellerDiffers(a: Leveller, b: Leveller): boolean {
+  return a.enabled   !== b.enabled
+      || a.speed     !== b.speed
+      || a.lookahead !== b.lookahead
+      || neq(a.amount,    b.amount,    DIFF_TOLERANCE.gain)
+      || neq(a.maxGainDb, b.maxGainDb, DIFF_TOLERANCE.db)
+      || neq(a.gateDb,    b.gateDb,    DIFF_TOLERANCE.db);
+}
+
+export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] {
+  const out: SnapshotChange[] = [];
+
+  if (a.bypass !== b.bypass) out.push({ kind: 'bypass', value: b.bypass });
+  if (neq(a.masterPreampDb, b.masterPreampDb, DIFF_TOLERANCE.db)) out.push({ kind: 'masterPreamp', value: b.masterPreampDb });
+  if (neq(a.inputPreampDb[0], b.inputPreampDb[0], DIFF_TOLERANCE.db)) out.push({ kind: 'inputPreamp', channel: 0, value: b.inputPreampDb[0] });
+  if (neq(a.inputPreampDb[1], b.inputPreampDb[1], DIFF_TOLERANCE.db)) out.push({ kind: 'inputPreamp', channel: 1, value: b.inputPreampDb[1] });
+  if (neq(a.masterVolumeDb, b.masterVolumeDb, DIFF_TOLERANCE.db)) out.push({ kind: 'masterVolume', value: b.masterVolumeDb });
+
+  if (loudnessDiffers(a.loudness, b.loudness)) out.push({ kind: 'loudness', value: b.loudness });
+  if (crossfeedDiffers(a.crossfeed, b.crossfeed)) out.push({ kind: 'crossfeed', value: b.crossfeed });
+  if (nullableChanged(a.leveller, b.leveller, levellerDiffers)) out.push({ kind: 'leveller', value: b.leveller });
+
+  for (let i = 0; i < b.channels.length; i++) {
+    const ca = a.channels[i], cb = b.channels[i];
+    if (ca.name !== cb.name) out.push({ kind: 'channelName', channel: i, value: cb.name });
+    for (let j = 0; j < cb.filters.length; j++) {
+      if (bandDiffers(ca.filters[j], cb.filters[j])) out.push({ kind: 'band', channel: i, band: j, value: cb.filters[j] });
+    }
+  }
+
+  for (let i = 0; i < b.outputs.length; i++) {
+    if (outputDiffers(a.outputs[i], b.outputs[i])) out.push({ kind: 'output', index: i, value: b.outputs[i] });
+  }
+
+  // Routes are a fixed input×output grid per device; iterate the live side.
+  // A route present in `b` but absent in `a` (length grew — unreachable
+  // same-session) counts as a change. Shrinkage is unreachable and not emitted.
+  for (let i = 0; i < b.routes.length; i++) {
+    const ra = a.routes[i];
+    if (ra === undefined || routeDiffers(ra, b.routes[i])) out.push({ kind: 'route', index: i, value: b.routes[i] });
+  }
+
+  return out;
+}
