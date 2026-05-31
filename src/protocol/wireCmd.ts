@@ -17,7 +17,10 @@
 import type { DspTransport } from '@/transport/DspTransport';
 import { type BinCodec, Codec } from '@/utils';
 import * as Wire from './wireTypes';
-import type { ChannelId, InputSlot, OutputSlot, FilterType, MasterVolumeMode } from '@/domain';
+import type {
+  ChannelId, InputSlot, OutputSlot, FilterType, MasterVolumeMode,
+  AudioInputSource, LgSoundSync, DacHwMute,
+} from '@/domain';
 
 // Descriptor types
 
@@ -172,6 +175,29 @@ export const WireCmd = {
   SetLevellerMaxGain:    { code: 0xBA, codec: Codec.f32 }   satisfies WriteCmd<number>,
   SetLevellerLookahead:  { code: 0xBC, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
   SetLevellerGate:       { code: 0xBE, codec: Codec.f32 }   satisfies WriteCmd<number>,
+
+  // --- v1.1.4 / working_spdif_input granular surface (docs/HW-DSPUSB.md) ---
+  // Per-band EQ bypass: wValue = (channel<<8)|band, 1-byte body.
+  SetBandBypass:         { code: 0xD8, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
+  GetBandBypass:         { code: 0xD9, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
+  SetUserVolume:         { code: 0xDA, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  GetUserVolume:         { code: 0xDB, codec: Codec.f32 }   satisfies ReadCmd<number>,
+  SetUserMute:           { code: 0xDC, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
+  GetUserMute:           { code: 0xDD, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
+  SetInputSource:        { code: 0xE0, codec: tighten<AudioInputSource>(Codec.u8) } satisfies WriteCmd<AudioInputSource>,
+  GetInputSource:        { code: 0xE1, codec: tighten<AudioInputSource>(Codec.u8) } satisfies ReadCmd<AudioInputSource>,
+  // Live status reads (no bulk equivalent).
+  GetSpdifRxStatus:      { code: 0xE2, codec: Wire.SpdifRxStatus },
+  GetSpdifRxChStatus:    { code: 0xE3 } satisfies RawCmd,
+  // S/PDIF RX pin: wValue = GPIO on set; status byte on get.
+  SetSpdifRxPin:         { code: 0xE4 } satisfies RawCmd,
+  GetSpdifRxPin:         { code: 0xE5, codec: Codec.u8 } satisfies ReadCmd<number>,
+  SetLgSoundSyncEnabled: { code: 0xE6, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
+  GetLgSoundSyncEnabled: { code: 0xE7, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
+  GetLgSoundSyncStatus:  { code: 0xE8, codec: tighten<LgSoundSync>(Wire.LgSoundSync) } satisfies ReadCmd<LgSoundSync>,
+  SetDacHwMute:          { code: 0xEA, codec: tighten<DacHwMute>(Wire.DacHwMute) } satisfies WriteCmd<DacHwMute>,
+  GetDacHwMute:          { code: 0xEB, codec: tighten<DacHwMute>(Wire.DacHwMute) } satisfies ReadCmd<DacHwMute>,
+  TestDacHwMute:         { code: 0xEC } satisfies RawCmd,
 } as const;
 
 // Helpers
