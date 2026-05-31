@@ -234,6 +234,12 @@ export class MockTransport implements DspTransport {
         const band = value & 0xFF;
         return Codec.encode(Codec.bool8, this.#mockState.filters?.[ch]?.[band]?.bypass ?? false);
       }
+      case WireCmd.GetUserVolume.code:
+        return Codec.encode(Codec.f32, this.#mockState.userVolume.volumeDb);
+      case WireCmd.GetUserMute.code:
+        return Codec.encode(Codec.bool8, this.#mockState.userVolume.mute);
+      case WireCmd.GetInputSource.code:
+        return Codec.encode(Codec.u8, this.#mockState.inputConfig.source);
       case WireCmd.GetChannelName.code: {
         const ch = value & 0xFF;
         const name = this.#mockState.channelNames[ch] ?? '';
@@ -422,6 +428,15 @@ export class MockTransport implements DspTransport {
         if (row && row[band]) row[band] = { ...row[band], bypass: Codec.decode(Codec.bool8, data) };
         return;
       }
+      case WireCmd.SetUserVolume.code:
+        this.#mockState.userVolume.volumeDb = Codec.decode(Codec.f32, data);
+        return;
+      case WireCmd.SetUserMute.code:
+        this.#mockState.userVolume.mute = Codec.decode(Codec.bool8, data);
+        return;
+      case WireCmd.SetInputSource.code:
+        this.#mockState.inputConfig.source = Codec.decode(Codec.u8, data);
+        return;
       case WireCmd.SetMatrixRoute.code: {
         const p = Codec.decode(WireCmd.SetMatrixRoute.codec, data);
         const row = this.#mockState.crosspoints![p.input];

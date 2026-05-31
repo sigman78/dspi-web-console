@@ -675,4 +675,36 @@ export class DspDevice {
     const wValue = (this.deviceChannel(channel) << 8) | (band & 0xFF);
     return proto.readCmd(this.transport, proto.WireCmd.GetBandBypass, wValue);
   }
+
+  // User volume axis (separate from the master-volume limit).
+  async setUserVolume(db: number): Promise<void> {
+    this.#requireFeature(this.capabilities.features.userVolumeAxis, 'setUserVolume', 'fw >= 1.1.4 (wire V9)');
+    return proto.writeCmd(this.transport, proto.WireCmd.SetUserVolume, db);
+  }
+
+  async getUserVolume(): Promise<number> {
+    this.#requireFeature(this.capabilities.features.userVolumeAxis, 'getUserVolume', 'fw >= 1.1.4 (wire V9)');
+    return proto.readCmd(this.transport, proto.WireCmd.GetUserVolume);
+  }
+
+  async setUserMute(mute: boolean): Promise<void> {
+    this.#requireFeature(this.capabilities.features.userVolumeAxis, 'setUserMute', 'fw >= 1.1.4 (wire V9)');
+    return proto.writeCmd(this.transport, proto.WireCmd.SetUserMute, mute);
+  }
+
+  async getUserMute(): Promise<boolean> {
+    this.#requireFeature(this.capabilities.features.userVolumeAxis, 'getUserMute', 'fw >= 1.1.4 (wire V9)');
+    return proto.readCmd(this.transport, proto.WireCmd.GetUserMute);
+  }
+
+  // Input source select (USB / S/PDIF).
+  async setInputSource(source: domain.AudioInputSource): Promise<void> {
+    this.#requireFeature(this.capabilities.features.inputSourceSwitch, 'setInputSource', 'fw >= 1.1.4 (wire V7)');
+    return proto.writeCmd(this.transport, proto.WireCmd.SetInputSource, source);
+  }
+
+  async getInputSource(): Promise<domain.AudioInputSource> {
+    this.#requireFeature(this.capabilities.features.inputSourceSwitch, 'getInputSource', 'fw >= 1.1.4 (wire V7)');
+    return proto.readCmd(this.transport, proto.WireCmd.GetInputSource);
+  }
 }

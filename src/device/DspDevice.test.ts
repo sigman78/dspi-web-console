@@ -14,6 +14,7 @@ import {
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   FilterType,
   ChannelId,
+  AudioInputSource,
   type PresetSlot,
 } from '@/domain';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -1074,5 +1075,25 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     const d = await v6();
     await expect(d.setBandBypass(0, 2, true)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
     await expect(d.getBandBypass(0, 2)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+  });
+
+  test('user volume + mute round-trip on V10', async () => {
+    const d = await v10();
+    await d.setUserVolume(-12);
+    expect(await d.getUserVolume()).toBeCloseTo(-12, 4);
+    await d.setUserMute(true);
+    expect(await d.getUserMute()).toBe(true);
+  });
+
+  test('input source round-trips on V10', async () => {
+    const d = await v10();
+    await d.setInputSource(AudioInputSource.Spdif);
+    expect(await d.getInputSource()).toBe(AudioInputSource.Spdif);
+  });
+
+  test('user-volume + input-source methods throw on V6', async () => {
+    const d = await v6();
+    await expect(d.setUserVolume(-12)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+    await expect(d.setInputSource(AudioInputSource.Usb)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
   });
 });
