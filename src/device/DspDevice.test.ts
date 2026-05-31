@@ -803,6 +803,7 @@ describe('DspDevice — getFilter multi-read', () => {
 
     await expect(d.setFilter(2, 0, {
       type: FilterType.Peaking,
+      bypass: false,
       frequency: 1000,
       q: 1,
       gain: 0,
@@ -829,7 +830,7 @@ describe('DspDevice — getFilter multi-read', () => {
       },
     };
     const d = await createDevice(t, 'rp2040');
-    await d.setFilter(ChannelId.Pdm, 0, { type: FilterType.Peaking, frequency: 80, q: 1, gain: -3 });
+    await d.setFilter(ChannelId.Pdm, 0, { type: FilterType.Peaking, bypass: false, frequency: 80, q: 1, gain: -3 });
     await d.getFilter(ChannelId.Pdm, 1);
     await d.setChannelName(ChannelId.Pdm, 'Sub');
     await d.getChannelName(ChannelId.Pdm);

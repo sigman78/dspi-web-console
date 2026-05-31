@@ -43,8 +43,8 @@ describe('isReconcileTrigger', () => {
   });
 
   it('triggers on a non-HOST paramChanged but not a HOST echo', () => {
-    expect(isReconcileTrigger({ kind: 'paramChanged', seq: 1, source: ParamSource.Gpio })).toBe(true);
-    expect(isReconcileTrigger({ kind: 'paramChanged', seq: 1, source: ParamSource.Host })).toBe(false);
+    expect(isReconcileTrigger({ kind: 'paramChanged', seq: 1, source: ParamSource.Gpio, offset: 0, size: 0, value: new Uint8Array() })).toBe(true);
+    expect(isReconcileTrigger({ kind: 'paramChanged', seq: 1, source: ParamSource.Host, offset: 0, size: 0, value: new Uint8Array() })).toBe(false);
   });
 
   it('never triggers on idle or ignored', () => {
@@ -62,7 +62,7 @@ describe('isPresetOpEcho', () => {
   });
 
   it('does NOT class a GPIO change or a non-host bulkInvalidated as an echo', () => {
-    expect(isPresetOpEcho({ kind: 'paramChanged', seq: 1, source: ParamSource.Gpio })).toBe(false);
+    expect(isPresetOpEcho({ kind: 'paramChanged', seq: 1, source: ParamSource.Gpio, offset: 0, size: 0, value: new Uint8Array() })).toBe(false);
     expect(isPresetOpEcho({ kind: 'bulkInvalidated', seq: 1, source: ParamSource.Gpio })).toBe(false);
     expect(isPresetOpEcho({ kind: 'idle' })).toBe(false);
   });

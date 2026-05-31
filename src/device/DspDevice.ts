@@ -399,6 +399,7 @@ export class DspDevice {
     ]);
     return {
       type:      Codec.decode(Codec.u32, typeBytes) as domain.FilterType,
+      bypass:    false,  // not carried by the per-band GetEqParam protocol
       frequency: Codec.decode(Codec.f32, freqBytes),
       q:         Codec.decode(Codec.f32, qBytes),
       gain:      Codec.decode(Codec.f32, gainBytes),

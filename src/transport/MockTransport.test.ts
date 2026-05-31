@@ -306,6 +306,7 @@ describe('MockTransport — GetEqParam multi-read', () => {
     const d = await createDevice(t);
     await d.setFilter(2, 5, {
       type: FilterType.LowShelf,
+      bypass: false,
       frequency: 320,
       q: 0.9,
       gain: 4.5,

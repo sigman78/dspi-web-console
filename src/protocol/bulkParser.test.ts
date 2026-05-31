@@ -91,10 +91,10 @@ describe('bulkParser — per-channel + matrix', () => {
   it('parses non-trivial filter at ch=3 band=5', () => {
     const filters: FilterParams[][] = Array.from({ length: NUM_CHANNELS }, () =>
       Array.from({ length: BANDS_MAX }, () => ({
-        type: FilterType.Flat, frequency: 1000, q: 1, gain: 0,
+        type: FilterType.Flat, bypass: false, frequency: 1000, q: 1, gain: 0,
       } as FilterParams)),
     );
-    filters[3][5] = { type: FilterType.Peaking, frequency: 2500, q: 0.7, gain: 4.5 };
+    filters[3][5] = { type: FilterType.Peaking, bypass: false, frequency: 2500, q: 0.7, gain: 4.5 };
     const f = parseBulkParams(makeBulk({ filters })).filters[3][5];
     expect(f.type).toBe(FilterType.Peaking);
     expect(f.frequency).toBeCloseTo(2500, 4);
@@ -272,7 +272,7 @@ describe('bulkParser — V7-V10 tail decode', () => {
   });
 
   it('decodes per-band bypass', () => {
-    const filters = Array.from({ length: NUM_CHANNELS }, () =>
+    const filters: FilterParams[][] = Array.from({ length: NUM_CHANNELS }, () =>
       Array.from({ length: BANDS_MAX }, () => ({
         type: FilterType.Flat, bypass: false, frequency: 1000, q: 1, gain: 0,
       })),

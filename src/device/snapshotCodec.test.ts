@@ -67,10 +67,10 @@ describe('fromBulkParams', () => {
 
   it('maps RP2040 PDM EQ and name from firmware channel 6', () => {
     const filters = Array.from({ length: 11 }, () =>
-      Array.from({ length: 12 }, () => ({ type: 0, frequency: 1000, q: 1, gain: 0 })),
+      Array.from({ length: 12 }, () => ({ type: 0, bypass: false, frequency: 1000, q: 1, gain: 0 })),
     );
-    filters[6][0] = { type: 1, frequency: 321, q: 0.8, gain: -2 };
-    filters[10][0] = { type: 1, frequency: 9999, q: 2, gain: 12 };
+    filters[6][0] = { type: 1, bypass: false, frequency: 321, q: 0.8, gain: -2 };
+    filters[10][0] = { type: 1, bypass: false, frequency: 9999, q: 2, gain: 12 };
 
     const names: string[] = [];
     names[6] = 'RP2040 Sub';
