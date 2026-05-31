@@ -35,7 +35,7 @@
 
 import { Codec, type BinCodec } from '@/utils';
 
-const { u8, u16, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
+const { u8, u16, u32, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
 
 // Wire-format dimensions (sized to the largest platform: RP2350).
 // Names mirror the WIRE_* macros in bulk_params.h. SERIAL_LEN comes
@@ -263,6 +263,24 @@ export const BufferStats = struct({
   spdif:    arr(SpdifBufferStats, Const.NUM_SPDIF_INSTANCES),
   pdm:      PdmBufferStats,
 });
+
+// 16-byte live S/PDIF-RX status (GetSpdifRxStatus 0xE2). `state` maps to the
+// domain SpdifInputState enum and `inputSource` to AudioInputSource; the
+// narrowing happens in DspDevice, this codec stays raw.
+export const SpdifRxStatus = struct({
+  state:        u8,
+  inputSource:  u8,
+  lockCount:    u8,
+  lossCount:    u8,
+  sampleRate:   u32,
+  parityErrors: u32,
+  fifoFillPct:  u16,
+  _reserved:    reserved(2),
+});
+
+// Length of the raw IEC-60958 channel-status block (GetSpdifRxChStatus 0xE3).
+// No semantic codec — surfaced verbatim as bytes.
+export const SPDIF_RX_CH_STATUS_LEN = 24;
 
 // 32-byte `GetSerial` response: NUL-terminated UTF-8 inside a fixed
 // 32-byte window.

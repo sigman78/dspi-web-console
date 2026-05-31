@@ -61,4 +61,18 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(Wire.bulkSizeForVersion(99)).toBe(2960);
     expect(Wire.bulkSizeForVersion(5)).toBe(2896);
   });
+
+  it('SpdifRxStatus is 16 bytes and round-trips its fields', () => {
+    expect(Codec.sizeOf(Wire.SpdifRxStatus)).toBe(16);
+    const bytes = Codec.encode(Wire.SpdifRxStatus, {
+      state: 2, inputSource: 1, lockCount: 3, lossCount: 1,
+      sampleRate: 48000, parityErrors: 7, fifoFillPct: 50,
+    });
+    const back = Codec.decode(Wire.SpdifRxStatus, bytes);
+    expect(back).toMatchObject({
+      state: 2, inputSource: 1, lockCount: 3, lossCount: 1,
+      sampleRate: 48000, parityErrors: 7, fifoFillPct: 50,
+    });
+  });
+
 });
