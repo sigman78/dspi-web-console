@@ -37,3 +37,24 @@ export interface DacHwMute {
   holdMs: number;
   releaseMs: number;
 }
+
+// V7 — live S/PDIF receiver lock state, reported by GetSpdifRxStatus (0xE2).
+export const SpdifInputState = {
+  Inactive:  0,
+  Acquiring: 1,
+  Locked:    2,
+  Relocking: 3,
+} as const;
+export type SpdifInputState = (typeof SpdifInputState)[keyof typeof SpdifInputState];
+
+// Live S/PDIF-RX telemetry. Pure status (not host-configurable); the bulk
+// packet has no equivalent, so this is read-only via the granular opcode.
+export interface SpdifRxStatus {
+  state: SpdifInputState;
+  inputSource: AudioInputSource;
+  lockCount: number;
+  lossCount: number;
+  sampleRate: number;
+  parityErrors: number;
+  fifoFillPct: number;
+}
