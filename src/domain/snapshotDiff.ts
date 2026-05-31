@@ -92,6 +92,40 @@ function levellerDiffers(a: Leveller, b: Leveller): boolean {
       || neq(a.gateDb,    b.gateDb,    DIFF_TOLERANCE.db);
 }
 
+function inputConfigDiffers(a: InputConfig, b: InputConfig): boolean {
+  return a.source !== b.source || a.spdifRxPin !== b.spdifRxPin;
+}
+
+function userVolumeDiffers(a: UserVolume, b: UserVolume): boolean {
+  return a.mute !== b.mute || neq(a.volumeDb, b.volumeDb, DIFF_TOLERANCE.db);
+}
+
+function dacHwMuteDiffers(a: DacHwMute, b: DacHwMute): boolean {
+  return a.enabled   !== b.enabled
+      || a.activeLow !== b.activeLow
+      || a.pin       !== b.pin
+      || a.holdMs    !== b.holdMs
+      || a.releaseMs !== b.releaseMs;
+}
+
+// lgSoundSync splits into a host-settable `enabled` kind and a device-reported
+// status kind. Nullness mismatch (unreachable same-session) emits both.
+function diffLgSoundSync(a: LgSoundSync | null, b: LgSoundSync | null, out: SnapshotChange[]): void {
+  const an = a == null, bn = b == null;
+  if (an || bn) {
+    if (an === bn) return;           // both absent → no change
+    if (b != null) {
+      out.push({ kind: 'lgSoundSyncEnabled', value: b.enabled });
+      out.push({ kind: 'lgSoundSyncStatus', value: { present: b.present, volume: b.volume, muted: b.muted } });
+    }
+    return;
+  }
+  if (a.enabled !== b.enabled) out.push({ kind: 'lgSoundSyncEnabled', value: b.enabled });
+  if (a.present !== b.present || a.volume !== b.volume || a.muted !== b.muted) {
+    out.push({ kind: 'lgSoundSyncStatus', value: { present: b.present, volume: b.volume, muted: b.muted } });
+  }
+}
+
 export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] {
   const out: SnapshotChange[] = [];
 
@@ -107,6 +141,7 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
 
   for (let i = 0; i < b.channels.length; i++) {
     const ca = a.channels[i], cb = b.channels[i];
+    if (ca === undefined) continue;
     if (ca.name !== cb.name) out.push({ kind: 'channelName', channel: i, value: cb.name });
     for (let j = 0; j < cb.filters.length; j++) {
       if (bandDiffers(ca.filters[j], cb.filters[j])) out.push({ kind: 'band', channel: i, band: j, value: cb.filters[j] });
@@ -114,7 +149,9 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
   }
 
   for (let i = 0; i < b.outputs.length; i++) {
-    if (outputDiffers(a.outputs[i], b.outputs[i])) out.push({ kind: 'output', index: i, value: b.outputs[i] });
+    const oa = a.outputs[i];
+    if (oa === undefined) continue;
+    if (outputDiffers(oa, b.outputs[i])) out.push({ kind: 'output', index: i, value: b.outputs[i] });
   }
 
   // Routes are a fixed input×output grid per device; iterate the live side.
@@ -124,6 +161,11 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
     const ra = a.routes[i];
     if (ra === undefined || routeDiffers(ra, b.routes[i])) out.push({ kind: 'route', index: i, value: b.routes[i] });
   }
+
+  if (nullableChanged(a.inputConfig, b.inputConfig, inputConfigDiffers)) out.push({ kind: 'inputConfig', value: b.inputConfig });
+  if (nullableChanged(a.userVolume,  b.userVolume,  userVolumeDiffers))  out.push({ kind: 'userVolume',  value: b.userVolume });
+  if (nullableChanged(a.dacHwMute,   b.dacHwMute,   dacHwMuteDiffers))   out.push({ kind: 'dacHwMute',   value: b.dacHwMute });
+  diffLgSoundSync(a.lgSoundSync, b.lgSoundSync, out);
 
   return out;
 }

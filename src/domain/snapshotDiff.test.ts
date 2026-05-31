@@ -156,3 +156,49 @@ describe('diffSnapshots — existing coverage', () => {
     expect(changes).toHaveLength(2);
   });
 });
+
+describe('diffSnapshots — 1.1.4 sections', () => {
+  it('emits no section changes when both sides are null', () => {
+    expect(diffSnapshots(snap(), snap())).toEqual([]);
+  });
+
+  it('emits inputConfig on a source change', () => {
+    const ic = { source: 1, spdifRxPin: 5 } as any;
+    expect(diffSnapshots(snap({ inputConfig: { source: 0, spdifRxPin: 5 } as any }), snap({ inputConfig: ic })))
+      .toEqual([{ kind: 'inputConfig', value: ic }]);
+  });
+
+  it('emits userVolume on a volume/mute change (above tolerance)', () => {
+    const uv = { volumeDb: -6, mute: false } as any;
+    expect(diffSnapshots(snap({ userVolume: { volumeDb: 0, mute: false } as any }), snap({ userVolume: uv })))
+      .toEqual([{ kind: 'userVolume', value: uv }]);
+  });
+
+  it('emits dacHwMute on a config change', () => {
+    const dm = { enabled: true, activeLow: true, pin: 11, holdMs: 5, releaseMs: 7 } as any;
+    const base = { enabled: false, activeLow: true, pin: 11, holdMs: 5, releaseMs: 7 } as any;
+    expect(diffSnapshots(snap({ dacHwMute: base }), snap({ dacHwMute: dm })))
+      .toEqual([{ kind: 'dacHwMute', value: dm }]);
+  });
+
+  it('splits lgSoundSync: enabled vs runtime status', () => {
+    const on = { enabled: true,  present: false, volume: 0, muted: false } as any;
+    const off = { enabled: false, present: false, volume: 0, muted: false } as any;
+    expect(diffSnapshots(snap({ lgSoundSync: off }), snap({ lgSoundSync: on })))
+      .toEqual([{ kind: 'lgSoundSyncEnabled', value: true }]);
+
+    const statusA = { enabled: true, present: false, volume: 0, muted: false } as any;
+    const statusB = { enabled: true, present: true,  volume: 40, muted: false } as any;
+    expect(diffSnapshots(snap({ lgSoundSync: statusA }), snap({ lgSoundSync: statusB })))
+      .toEqual([{ kind: 'lgSoundSyncStatus', value: { present: true, volume: 40, muted: false } }]);
+  });
+
+  it('emits both lgSoundSync kinds when enabled AND status change', () => {
+    const a = { enabled: false, present: false, volume: 0,  muted: false } as any;
+    const b = { enabled: true,  present: true,  volume: 40, muted: false } as any;
+    const changes = diffSnapshots(snap({ lgSoundSync: a }), snap({ lgSoundSync: b }));
+    expect(changes).toContainEqual({ kind: 'lgSoundSyncEnabled', value: true });
+    expect(changes).toContainEqual({ kind: 'lgSoundSyncStatus', value: { present: true, volume: 40, muted: false } });
+    expect(changes).toHaveLength(2);
+  });
+});
