@@ -1,5 +1,6 @@
 import type { DspDevice } from '@/device/DspDevice';
-import { parseNotifyPacket, isReconcileTrigger, isPresetOpEcho, type NotifyEvent } from '@/protocol';
+import { parseNotifyPacket, isReconcileTrigger, isPresetOpEcho, ParamSource, type NotifyEvent } from '@/protocol';
+import { applyParamChange } from './notifyApply';
 import { requestReconcile, presetGuardActive } from '@/state/mirror.svelte';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 
@@ -39,10 +40,15 @@ export function startNotifyChannel(device: DspDevice, clock: LoopClock = timerCl
       if (lastSeq !== null && ((lastSeq + 1) & 0xff) !== seq) requestReconcile(true);
       lastSeq = seq;
     }
+    // A non-HOST PARAM_CHANGED is applied precisely and locally (Layer 2); only
+    // if the apply declines do we fall back to a full reconcile. HOST echoes fall
+    // through to isReconcileTrigger below, which drops them.
+    if (event.kind === 'paramChanged' && event.source !== ParamSource.Host) {
+      if (!applyParamChange(device, event)) requestReconcile(true);
+      return;
+    }
     // Suppress ONLY the full-reconcile backstop echoes (preset/bulk) of our own
-    // in-flight preset op — its fetchAndApplyAsBaseline is the authoritative
-    // resync. PARAM_CHANGED (precise, possibly external e.g. GPIO) is never an
-    // echo and always reconciles.
+    // in-flight preset op. Bulk/preset/seq-gap still reconcile.
     if (isReconcileTrigger(event) && !(presetGuardActive() && isPresetOpEcho(event))) {
       requestReconcile(true);
     }
