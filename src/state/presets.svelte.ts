@@ -50,9 +50,13 @@ export const presetsDirty = {
     if (!mirror.current || !presetBaseline.current) return false;
     const ignoreVol = (presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent) === MasterVolumeMode.Independent;
     const soft = settings.soft.muted;
+    // Pins ride the preset only when includePins is set; otherwise a pin change
+    // isn't preset content and must not mark dirty. Unknown directory ⇒ excluded.
+    const includePins = presets.directory?.includePins === true;
     return diffSnapshots(presetBaseline.current, mirror.current).some((c) =>
       !RUNTIME_CHANGE_KINDS.has(c.kind) &&
-      !(c.kind === 'masterVolume' && (ignoreVol || soft)));
+      !(c.kind === 'masterVolume' && (ignoreVol || soft)) &&
+      !(c.kind === 'outputPins' && !includePins));
   },
 };
 

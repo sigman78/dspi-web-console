@@ -5,6 +5,7 @@
 // apply (exhaustive switch). Tolerances mask wire float round-trip jitter.
 
 import type { DspSnapshot } from './snapshot';
+import type { I2sConfig } from './platform';
 import type { OutputModel, RouteModel } from './mixer';
 import type { FilterParams } from './filter';
 import type { Loudness, Crossfeed, Leveller } from './processing';
@@ -34,7 +35,9 @@ export type SnapshotChange =
   | { kind: 'userVolume';    value: UserVolume | null }
   | { kind: 'dacHwMute';     value: DacHwMute | null }
   | { kind: 'lgSoundSyncEnabled'; value: boolean }
-  | { kind: 'lgSoundSyncStatus';  value: { present: boolean; volume: number; muted: boolean } };
+  | { kind: 'lgSoundSyncStatus';  value: { present: boolean; volume: number; muted: boolean } }
+  | { kind: 'i2s';           value: I2sConfig | null }
+  | { kind: 'outputPins';    value: number[] };
 
 function neq(a: number, b: number, tol: number): boolean {
   return Math.abs(a - b) > tol;
@@ -108,6 +111,18 @@ function dacHwMuteDiffers(a: DacHwMute, b: DacHwMute): boolean {
       || a.releaseMs !== b.releaseMs;
 }
 
+function i2sDiffers(a: I2sConfig, b: I2sConfig): boolean {
+  return a.bckPin !== b.bckPin
+      || a.mckPin !== b.mckPin
+      || a.mckEnabled !== b.mckEnabled
+      || a.mckMultiplierEncoded !== b.mckMultiplierEncoded
+      || a.outputSlotTypes.some((v, i) => v !== b.outputSlotTypes[i]);
+}
+
+function pinsDiffer(a: number[], b: number[]): boolean {
+  return a.length !== b.length || a.some((v, i) => v !== b[i]);
+}
+
 // lgSoundSync splits into a host-settable `enabled` kind and a device-reported
 // status kind. Nullness mismatch (unreachable same-session) emits both.
 function diffLgSoundSync(a: LgSoundSync | null, b: LgSoundSync | null, out: SnapshotChange[]): void {
@@ -166,6 +181,9 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
   if (nullableChanged(a.userVolume,  b.userVolume,  userVolumeDiffers))  out.push({ kind: 'userVolume',  value: b.userVolume });
   if (nullableChanged(a.dacHwMute,   b.dacHwMute,   dacHwMuteDiffers))   out.push({ kind: 'dacHwMute',   value: b.dacHwMute });
   diffLgSoundSync(a.lgSoundSync, b.lgSoundSync, out);
+
+  if (nullableChanged(a.i2s, b.i2s, i2sDiffers)) out.push({ kind: 'i2s', value: b.i2s });
+  if (pinsDiffer(a.outputPins, b.outputPins)) out.push({ kind: 'outputPins', value: b.outputPins });
 
   return out;
 }

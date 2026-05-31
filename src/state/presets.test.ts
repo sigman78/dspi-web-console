@@ -130,6 +130,29 @@ describe('presets store', () => {
     expect(presetsDirty.current).toBe(true);
   });
 
+  it('presetsDirty flips true on an i2s config change', () => {
+    seed(mkSnap({ i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 } as any }));
+    expect(presetsDirty.current).toBe(false);
+    if (mirror.current?.i2s) mirror.current.i2s.bckPin = 20;
+    expect(presetsDirty.current).toBe(true);
+  });
+
+  it('presetsDirty counts an outputPins change only when includePins is true', () => {
+    const dir = (includePins: boolean) => ({
+      occupiedSlotsSet: new Set<number>(),
+      startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
+      includePins, masterVolumeMode: 0 as any,
+    });
+    seed(mkSnap({ outputPins: [6, 7] }));
+    if (mirror.current) mirror.current.outputPins[1] = 8;
+    // includePins=false → pins are not part of the preset → not dirty
+    presets.directory = dir(false) as any;
+    expect(presetsDirty.current).toBe(false);
+    // includePins=true → pins ride the preset → dirty
+    presets.directory = dir(true) as any;
+    expect(presetsDirty.current).toBe(true);
+  });
+
   it('resetPresets clears all fields', () => {
     presets.directory = {
       occupiedSlotsSet: new Set(),

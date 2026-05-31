@@ -202,3 +202,41 @@ describe('diffSnapshots — 1.1.4 sections', () => {
     expect(changes).toHaveLength(2);
   });
 });
+
+describe('diffSnapshots — i2s + output pins', () => {
+  const i2s = (o: Record<string, unknown> = {}) =>
+    ({ outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, ...o }) as any;
+
+  it('emits no i2s/pins change for identical snapshots', () => {
+    expect(diffSnapshots(snap({ i2s: i2s(), outputPins: [6, 7] }), snap({ i2s: i2s(), outputPins: [6, 7] }))).toEqual([]);
+  });
+
+  it('emits i2s when null transitions to present', () => {
+    const v = i2s();
+    expect(diffSnapshots(snap({ i2s: null }), snap({ i2s: v }))).toEqual([{ kind: 'i2s', value: v }]);
+  });
+
+  it('emits i2s on a pin change', () => {
+    const v = i2s({ bckPin: 20 });
+    expect(diffSnapshots(snap({ i2s: i2s() }), snap({ i2s: v }))).toEqual([{ kind: 'i2s', value: v }]);
+  });
+
+  it('emits i2s on an outputSlotTypes change', () => {
+    const v = i2s({ outputSlotTypes: [0, 1, 0, 0] });
+    expect(diffSnapshots(snap({ i2s: i2s() }), snap({ i2s: v }))).toEqual([{ kind: 'i2s', value: v }]);
+  });
+
+  it('emits outputPins on a pin value change', () => {
+    expect(diffSnapshots(snap({ outputPins: [6, 7] }), snap({ outputPins: [6, 8] })))
+      .toEqual([{ kind: 'outputPins', value: [6, 8] }]);
+  });
+
+  it('emits outputPins on a length change', () => {
+    expect(diffSnapshots(snap({ outputPins: [6, 7] }), snap({ outputPins: [6, 7, 8] })))
+      .toEqual([{ kind: 'outputPins', value: [6, 7, 8] }]);
+  });
+
+  it('emits no outputPins change for identical pins', () => {
+    expect(diffSnapshots(snap({ outputPins: [6, 7, 8] }), snap({ outputPins: [6, 7, 8] }))).toEqual([]);
+  });
+});
