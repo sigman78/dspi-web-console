@@ -15,6 +15,7 @@ export * from './mixer';
 export * from './mixerView';
 export * from './snapshot';
 export * from './snapshotDiff';
+export * from './applyChange';
 export * from './presetDirectory';
 export * from './pins';
 
