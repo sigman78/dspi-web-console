@@ -19,6 +19,17 @@ export class UnsupportedFirmware extends Error {
   }
 }
 
+// Thrown when a granular command is invoked on a device whose capabilities do
+// not advertise the feature. Distinct from UnsupportedFirmware, which rejects
+// the whole device at connect time. Carries the command name and a human
+// requirement string for surfacing in the UI / logs.
+export class UnsupportedOnFirmware extends Error {
+  constructor(readonly command: string, readonly requires: string) {
+    super(`${command} requires ${requires}; the connected device does not support it.`);
+    this.name = 'UnsupportedOnFirmware';
+  }
+}
+
 // Bit N of the firmware's u16 occupiedMask = slot N populated.
 function occupiedMaskToSet(mask: number): ReadonlySet<domain.PresetSlot> {
   const s = new Set<domain.PresetSlot>();
@@ -641,5 +652,27 @@ export class DspDevice {
 
   async setLevellerGate(db: number): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerGate, db);
+  }
+
+  // --- v1.1.4 granular surface (capability-gated) ---------------------------
+  // Each method throws UnsupportedOnFirmware when the device's capabilities
+  // don't advertise the feature; getters narrow wire shapes to domain types.
+
+  #requireFeature(flag: boolean, command: string, requires: string): void {
+    if (!flag) throw new UnsupportedOnFirmware(command, requires);
+  }
+
+  // Per-band EQ bypass. wValue = (wireChannel<<8)|band, mirroring getFilter's
+  // channel remap (e.g. RP2040 PDM -> wire channel 6).
+  async setBandBypass(channel: domain.ChannelId, band: number, bypassed: boolean): Promise<void> {
+    this.#requireFeature(this.capabilities.features.bandBypass, 'setBandBypass', 'fw >= 1.1.4 (wire V10)');
+    const wValue = (this.deviceChannel(channel) << 8) | (band & 0xFF);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetBandBypass, bypassed, wValue);
+  }
+
+  async getBandBypass(channel: domain.ChannelId, band: number): Promise<boolean> {
+    this.#requireFeature(this.capabilities.features.bandBypass, 'getBandBypass', 'fw >= 1.1.4 (wire V10)');
+    const wValue = (this.deviceChannel(channel) << 8) | (band & 0xFF);
+    return proto.readCmd(this.transport, proto.WireCmd.GetBandBypass, wValue);
   }
 }

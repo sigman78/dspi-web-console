@@ -6,7 +6,7 @@
 
 import { describe, it, test, expect, beforeEach, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
-import { DspDevice, UnsupportedFirmware } from './DspDevice';
+import { DspDevice, UnsupportedFirmware, UnsupportedOnFirmware } from './DspDevice';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PresetResult, PinConfigResult, WireCmd, SystemStatusValue, Wire, NotifyEventId } from '@/protocol';
 import {
@@ -1047,5 +1047,32 @@ describe('lastRawBulk', () => {
     await dev.getAllParams();
     expect(dev.lastRawBulk!.byteLength).toBe(2960);   // full V10 image retained
     expect(dev.lastRawBulk![0]).toBe(10);             // header formatVersion
+  });
+});
+
+describe('DspDevice — v1.1.4 granular surface', () => {
+  // withIdentity/createDevice always inject a V6 bulk packet, so these tests
+  // drive a real MockTransport directly to control the reported wire version.
+  const v10 = () => DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 10 }));
+  const v6  = () => DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 6 }));
+
+  test('setBandBypass/getBandBypass round-trip on a V10 device', async () => {
+    const d = await v10();
+    await d.setBandBypass(0, 2, true);
+    expect(await d.getBandBypass(0, 2)).toBe(true);
+    await d.setBandBypass(0, 2, false);
+    expect(await d.getBandBypass(0, 2)).toBe(false);
+  });
+
+  test('setBandBypass remaps the RP2040 PDM channel (set and get agree)', async () => {
+    const d = await DspDevice.create(new MockTransport({ platform: 'rp2040', wireVersion: 10 }));
+    await d.setBandBypass(ChannelId.Pdm, 0, true);
+    expect(await d.getBandBypass(ChannelId.Pdm, 0)).toBe(true);
+  });
+
+  test('band-bypass methods throw UnsupportedOnFirmware on a V6 device', async () => {
+    const d = await v6();
+    await expect(d.setBandBypass(0, 2, true)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+    await expect(d.getBandBypass(0, 2)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
   });
 });

@@ -229,6 +229,11 @@ export class MockTransport implements DspTransport {
           default: return new Uint8Array(length);
         }
       }
+      case WireCmd.GetBandBypass.code: {
+        const ch = (value >> 8) & 0xFF;
+        const band = value & 0xFF;
+        return Codec.encode(Codec.bool8, this.#mockState.filters?.[ch]?.[band]?.bypass ?? false);
+      }
       case WireCmd.GetChannelName.code: {
         const ch = value & 0xFF;
         const name = this.#mockState.channelNames[ch] ?? '';
@@ -408,6 +413,13 @@ export class MockTransport implements DspTransport {
             gain: p.gain,
           };
         }
+        return;
+      }
+      case WireCmd.SetBandBypass.code: {
+        const ch = (value >> 8) & 0xFF;
+        const band = value & 0xFF;
+        const row = this.#mockState.filters?.[ch];
+        if (row && row[band]) row[band] = { ...row[band], bypass: Codec.decode(Codec.bool8, data) };
         return;
       }
       case WireCmd.SetMatrixRoute.code: {
