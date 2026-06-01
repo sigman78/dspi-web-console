@@ -55,18 +55,17 @@ export async function write(
   return settled;
 }
 
-// Click-paced write for commands that return a typed device Result. Same
-// machinery as write() (generation guard, inflight registry so flushAllWrites
-// drains it), but the device *declines* via a non-ok Result rather than a
-// throw: that's a local rejection (pin in use, output active) surfaced as a
-// warn toast carrying the device's own message — never a connection error, so
-// it does not setStatus('error') or resync. The mirror is patched only on ok.
-// An actual throw is a transport/bug failure → error toast (still local, still
-// no resync: one command failing doesn't invalidate the whole snapshot).
-export function writeChecked<E>(
+// Fire-and-forget a device command under the generation stale-guard and the
+// inflight registry (so flushAllWrites drains it). `onSettled` runs with the
+// resolved value ONLY if the generation is still current — a settle after a
+// disconnect+reconnect is silently dropped (no mutation, no toast). A throw is
+// logged and surfaced as an error toast; it never flips connection status (one
+// command failing is local). Substrate for writeChecked() and the standalone
+// device commands (setMasterVolumeMode, saveMasterVolumeBaseline).
+export function command<T>(
   op: string,
-  send: () => Promise<Result<void, E>>,
-  patch: () => void,
+  send: () => Promise<T>,
+  onSettled: (result: T) => void,
 ): Promise<void> {
   const gen = session.generation;
   noteWriteActivity();
@@ -74,10 +73,7 @@ export function writeChecked<E>(
   const settled = (async () => {
     try {
       const r = await send();
-      if (gen !== session.generation) return;
-      if (!r.ok) { pushNotice('warn', r.message); return; }
-      patch();
-      requestReconcile(true);
+      if (gen === session.generation) onSettled(r);
     } catch (err) {
       if (gen !== session.generation) return;
       Log.error('writes', `${op} failed`, err);
@@ -89,6 +85,23 @@ export function writeChecked<E>(
   inflightWrites.add(settled);
   void settled.finally(() => inflightWrites.delete(settled));
   return settled;
+}
+
+// Commit-paced command returning a typed device Result. A non-ok is the device
+// *declining* a valid-looking command (pin in use, output active) — surfaced as
+// a warn toast carrying the device's own message, mirror untouched, no resync
+// or status flip. On ok, patch the mirror and request a reconcile (honoring
+// settings.eagerReconcile, exactly like write()/scrub()).
+export function writeChecked<E>(
+  op: string,
+  send: () => Promise<Result<void, E>>,
+  patch: () => void,
+): Promise<void> {
+  return command(op, send, (r) => {
+    if (!r.ok) { pushNotice('warn', r.message); return; }
+    patch();
+    requestReconcile(settings.eagerReconcile);
+  });
 }
 
 // Per-key 16 ms latest-wins coalesce lane. Each scrub() call replaces the

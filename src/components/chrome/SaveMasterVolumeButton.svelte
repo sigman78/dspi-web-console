@@ -1,18 +1,24 @@
 <script lang="ts">
-  import { presets, session } from '@/state';
+  import { mirror, presets, session } from '@/state';
   import { saveMasterVolumeBaseline } from '@/runtime';
-  import { MasterVolumeMode } from '@/domain';
+  import { MasterVolumeMode, DIFF_TOLERANCE } from '@/domain';
 
   const connected = $derived(session.status === 'connected');
   const mode = $derived(presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent);
   const visible = $derived(mode === MasterVolumeMode.Independent);
+
+  // Enabled unless the live volume provably equals the saved boot baseline.
+  // Unknown saved value (not yet fetched) or any other edge → stays enabled.
+  const saved = $derived(presets.savedMasterVolumeDb);
+  const live = $derived(mirror.current?.masterVolumeDb ?? null);
+  const clean = $derived(saved != null && live != null && Math.abs(live - saved) <= DIFF_TOLERANCE.db);
 
   let confirming = $state(false);
 
   function onClick() {
     if (!confirming) { confirming = true; return; }
     confirming = false;
-    // Success and failure both surface via the toast channel.
+    // Failure surfaces via the toast channel; success is silent.
     saveMasterVolumeBaseline();
   }
 
@@ -25,7 +31,7 @@
     class:confirming
     onclick={onClick}
     onblur={onBlur}
-    disabled={!connected}
+    disabled={!connected || clean}
     title="Save the current master volume as the boot-baseline volume"
   >
     {#if confirming}CONFIRM{:else}SAVE{/if}

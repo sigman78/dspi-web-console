@@ -5,7 +5,7 @@ import { matchesDspi, WebUsbTransport } from '@/transport/WebUsbTransport';
 import { withTimeout } from '@/transport/withTimeout';
 import { withWireMonitor } from '@/transport/withWireMonitor';
 import { formatDeviceInfo, wireMonitorEnabled } from '@/protocol/wireMonitor';
-import { attachTransportListeners, finishConnection } from './actions';
+import { attachTransportListeners, wireUpConnection } from './actionsDevice';
 import { beginConnection, endConnection } from './connectionScope';
 import { isDeviceHeld } from './deviceLock';
 import { session, setStatus, bindDevice, settings } from '@/state';
@@ -76,7 +76,7 @@ export async function connectRequested(): Promise<void> {
     setStatus('connecting');
     const transport = new WebUsbTransport();
     const device = await createBoundDevice(transport, () => transport.requestAndOpen());
-    await finishConnection(device);
+    await wireUpConnection(device);
   } catch (err) {
     Log.error('connect', 'connect failed', err);
     reportConnectError(err);
@@ -87,7 +87,7 @@ export async function connectRequested(): Promise<void> {
 export async function bootMock(platform: 'rp2040' | 'rp2350'): Promise<void> {
   const transport = new MockTransport({ platform });
   const device = await createBoundDevice(transport, undefined);
-  await finishConnection(device);
+  await wireUpConnection(device);
 }
 
 export async function bootReal(): Promise<void> {
@@ -104,7 +104,7 @@ export async function bootReal(): Promise<void> {
     const ok = await transport.tryAutoConnect();
     if (!ok) return;
     const device = await createBoundDevice(transport, async () => {});
-    await finishConnection(device);
+    await wireUpConnection(device);
   } finally {
     booting = false;
   }

@@ -28,11 +28,12 @@ describe('runtime/presets', () => {
   });
 
   describe('fetchPresetInfo', () => {
-    it('populates directory, names, and active', async () => {
+    it('populates directory, names, active, and saved master volume', async () => {
       await fetchPresetInfo();
       expect(presets.directory).not.toBe(null);
       expect(presets.names.every((n) => n !== null)).toBe(true);
       expect(presets.active === null || (presets.active! >= 0 && presets.active! < 10)).toBe(true);
+      expect(typeof presets.savedMasterVolumeDb).toBe('number');
     });
 
     it('is idempotent when cache is populated', async () => {

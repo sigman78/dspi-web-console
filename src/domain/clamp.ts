@@ -22,6 +22,10 @@ export const MASTER_VOLUME_MAX_DB = 0;
 export const masterVolumeDb = (db: number) =>
   toRange(db, MASTER_VOLUME_MIN_DB, MASTER_VOLUME_MAX_DB);
 
+// Mute sentinel (per spec): the dB written to silence the master volume. Not a
+// clamp bound — deliberately below MASTER_VOLUME_MIN_DB and never clamped.
+export const MUTE_DB = -128;
+
 export const bandFrequencyHz = (hz: number) => toRange(hz, Eq.FREQ_MIN_HZ, Eq.FREQ_MAX_HZ);
 export const bandQ = (q: number) => toRange(q, Eq.Q_MIN, Eq.Q_MAX);
 export const bandGainDb = (db: number) => toRange(db, Eq.BAND_GAIN_MIN_DB, Eq.BAND_GAIN_MAX_DB);

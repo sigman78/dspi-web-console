@@ -5,7 +5,7 @@ import {
   presets, presetsDirty, askBoundary,
   settings,
 } from '@/state';
-import { reconcileAfterSync } from './actions';
+import { reconcileAfterSync } from './actionsDevice';
 import { fetchAndApplyAsBaseline } from './resync';
 import { mirror, beginPresetGuard, endPresetGuard } from '@/state/mirror.svelte';
 import { flushAllWrites as flushWrites } from './writes';
@@ -110,6 +110,14 @@ export async function fetchPresetInfo(): Promise<void> {
     presets.active = active;
     presets.lastFetchError = null;
 
+    // Boot-baseline master volume (independent of the directory packet).
+    // Best-effort: a failure here must not hide the slot grid.
+    try {
+      presets.savedMasterVolumeDb = await d.getSavedMasterVolume();
+    } catch (e) {
+      Log.warn('presets', 'getSavedMasterVolume failed', e);
+    }
+
     // Step 2: names. Each one is independent — a single bad slot shouldn't
     // hide the whole grid. Failing names land as '' (renders as [unnamed]
     // in the UI).
@@ -129,19 +137,21 @@ export async function fetchPresetInfo(): Promise<void> {
 
 // Clears the cache + error and refetches from scratch.
 export async function retryFetchPresetInfo(): Promise<void> {
-  presets.directory      = null;
-  presets.names          = Array.from({ length: PRESET_SLOT_COUNT }, () => null);
-  presets.active         = null;
-  presets.lastFetchError = null;
+  presets.directory           = null;
+  presets.names               = Array.from({ length: PRESET_SLOT_COUNT }, () => null);
+  presets.active              = null;
+  presets.lastFetchError      = null;
+  presets.savedMasterVolumeDb = null;
   await fetchPresetInfo();
 }
 
 export function invalidatePresetCache(): void {
-  presets.directory       = null;
-  presets.names           = Array.from({ length: PRESET_SLOT_COUNT }, () => null);
-  presets.active          = null;
-  presets.lastFetchError  = null;
-  presets.lastActionError = null;
+  presets.directory           = null;
+  presets.names               = Array.from({ length: PRESET_SLOT_COUNT }, () => null);
+  presets.active              = null;
+  presets.lastFetchError      = null;
+  presets.lastActionError     = null;
+  presets.savedMasterVolumeDb = null;
 }
 
 // PresetSave(active). RAM didn't change → just advance the baseline so

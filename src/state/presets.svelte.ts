@@ -28,6 +28,10 @@ export interface PresetsState {
   // doesn't hide a directory-refetch error and vice-versa. Cleared at the
   // start of each mutating action and on resetPresets / cache invalidation.
   lastActionError: string | null;
+  // The device's saved boot-baseline master volume (0xD7), fetched alongside
+  // the directory. Null until fetched / when no device. Drives the Save button's
+  // dirty state: it's enabled unless the live volume provably equals this.
+  savedMasterVolumeDb: number | null;
 }
 
 export const presets = $state<PresetsState>({
@@ -37,6 +41,7 @@ export const presets = $state<PresetsState>({
   busy:            false,
   lastFetchError:  null,
   lastActionError: null,
+  savedMasterVolumeDb: null,
 });
 
 // Device-reported kinds that change without a user edit; never count as dirty.

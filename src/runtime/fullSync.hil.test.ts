@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from '@/device/DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
-import { finishConnection } from './actions';
+import { wireUpConnection } from './actionsDevice';
 import { session, bindDevice, settings, mirror, resetStatus } from '@/state';
 import { endConnection } from './connectionScope';
 
@@ -15,7 +15,7 @@ import { endConnection } from './connectionScope';
 // 'disconnect' transport events would fire after this test (during
 // teardown) and re-trigger connection finish against a closing transport.
 
-describe('state.finishConnection — end-to-end against real hardware (HIL)', () => {
+describe('state.wireUpConnection — end-to-end against real hardware (HIL)', () => {
   let device: DspDevice;
   let close: () => Promise<void>;
 
@@ -35,7 +35,7 @@ describe('state.finishConnection — end-to-end against real hardware (HIL)', ()
   });
 
   it('hydrates connection + mirror.current from real device', async () => {
-    await finishConnection(device);
+    await wireUpConnection(device);
 
     expect(session.status).toBe('connected');
     expect(session.lastDeviceInfo?.serial.length ?? 0).toBeGreaterThan(0);
@@ -54,14 +54,14 @@ describe('state.finishConnection — end-to-end against real hardware (HIL)', ()
     expect(device.capabilities.wire).toBeGreaterThanOrEqual(2);
   });
 
-  it('is idempotent: a second finishConnection settles to the same state', async () => {
+  it('is idempotent: a second wireUpConnection settles to the same state', async () => {
     const before = {
       serial: session.lastDeviceInfo?.serial,
       fw: session.lastDeviceInfo?.capabilities.fwLabel,
       platform: mirror.current?.platform.name,
       wire: session.lastDeviceInfo?.capabilities.wire,
     };
-    await finishConnection(device);
+    await wireUpConnection(device);
     expect(session.status).toBe('connected');
     expect(session.lastDeviceInfo?.serial).toBe(before.serial);
     expect(session.lastDeviceInfo?.capabilities.fwLabel).toBe(before.fw);

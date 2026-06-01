@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, factoryResetDevice } from './actions';
+import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled } from './actions';
+import { attachTransportListeners, factoryResetDevice } from './actionsDevice';
 import { session, bindDevice, settings, mirror, status as statusStore, presets, notices, clearNotices } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -84,7 +85,7 @@ function makeSnapshot(platform: PlatformType = PlatformType.RP2350) {
 
 // Module-scoped state leaks across tests in this file and must be reset after
 // every test, or it poisons a later test under a shuffled run order:
-//   - the rAF polling loop started by bootMock → finishConnection → startPolling.
+//   - the rAF polling loop started by bootMock → wireUpConnection → startPolling.
 //     poll's tick() re-arms requestAnimationFrame unconditionally; with fake
 //     timers faking rAF, a later vi.runAllTimersAsync() churns it forever and
 //     aborts with "10000 timers, assuming an infinite loop". endConnection() ends it.
@@ -128,7 +129,7 @@ describe('actions wiring', () => {
     bindDevice(device);
     // Mirror production wiring: the connection scope owns the transport
     // listeners and the command-cancel disposer (registered in
-    // finishConnection). endConnection() — fired by the disconnect handler —
+    // wireUpConnection). endConnection() — fired by the disconnect handler —
     // disposes them, which is what drops the pending coalescer write.
     beginConnection();
     connectionScope()!.add(attachTransportListeners(transport));
@@ -449,12 +450,19 @@ describe('actions — master volume mode', () => {
     await vi.waitFor(() => expect(presets.directory!.masterVolumeMode).toBe(MasterVolumeMode.WithPreset));
   });
 
-  it('saveMasterVolumeBaseline toasts success in Mode 0', async () => {
+  it('saveMasterVolumeBaseline warns on flash failure and stays silent on success', async () => {
     clearNotices();
+    bindDevice(initializedDevice({ saveMasterVolume: async () => false }));
     saveMasterVolumeBaseline();
-    await vi.waitFor(() =>
-      expect(notices.list.some((n) => n.kind === 'info' && /saved/i.test(n.message))).toBe(true),
-    );
+    await flushAllWrites();
+    expect(notices.list.some((n) => n.kind === 'warn' && /master volume/i.test(n.message))).toBe(true);
+
+    clearNotices();
+    bindDevice(initializedDevice({ saveMasterVolume: async () => true }));
+    saveMasterVolumeBaseline();
+    await flushAllWrites();
+    expect(notices.list).toHaveLength(0);
+    expect(presets.savedMasterVolumeDb).toBe(mirror.current!.masterVolumeDb);
   });
 });
 
@@ -957,11 +965,13 @@ describe('output config verbs', () => {
     expect(mirror.current!.i2s.mckEnabled).toBe(true);
   });
 
-  it('requests an eager reconcile on a successful config write', async () => {
+  it('requests a reconcile on a successful config write, honoring eagerReconcile', async () => {
+    settings.eagerReconcile = true;
     consumeReconcile(); // clear anything pending from boot
     setI2sBckPin(16);
     await flushAllWrites();
     expect(peekReconcile()).toEqual({ wanted: true, eager: true });
+    settings.eagerReconcile = false;
   });
 
   it('factoryResetDevice toasts completion on success', async () => {

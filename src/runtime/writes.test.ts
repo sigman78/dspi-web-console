@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { write, scrub, writeChecked, flushAllWrites, cancelAllWrites } from './writes';
+import { write, scrub, writeChecked, command, flushAllWrites, cancelAllWrites } from './writes';
 import { inflight, dropInflight, consumeReconcile, lastWriteMs } from '@/state/mirror.svelte';
 import { session, settings, notices, clearNotices } from '@/state';
 import { Result } from '@/utils';
@@ -113,15 +113,22 @@ describe('writeChecked() helper', () => {
     while (inflight.current > 0) dropInflight();
     session.generation = 0;
     session.status = 'connected';
+    settings.eagerReconcile = false;
     consumeReconcile();
     clearNotices();
     vi.clearAllMocks();
   });
 
-  it('patches and requests an eager reconcile on an ok Result', async () => {
+  it('patches and requests a non-eager reconcile on an ok Result (eagerReconcile off)', async () => {
     const patch = vi.fn();
     await writeChecked('op', async () => Result.ok(), patch);
     expect(patch).toHaveBeenCalledTimes(1);
+    expect(consumeReconcile()).toEqual({ wanted: true, eager: false });
+  });
+
+  it('honors settings.eagerReconcile=true on an ok Result', async () => {
+    settings.eagerReconcile = true;
+    await writeChecked('op', async () => Result.ok(), () => {});
     expect(consumeReconcile()).toEqual({ wanted: true, eager: true });
   });
 
@@ -170,6 +177,50 @@ describe('writeChecked() helper', () => {
     resolveSend!(Result.ok());
     await flushed;
     expect(patch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('command() helper', () => {
+  beforeEach(() => {
+    while (inflight.current > 0) dropInflight();
+    session.generation = 0;
+    session.status = 'connected';
+    clearNotices();
+    vi.clearAllMocks();
+  });
+
+  it('runs onSettled with the resolved value on success', async () => {
+    const onSettled = vi.fn();
+    await command('op', async () => 42, onSettled);
+    expect(onSettled).toHaveBeenCalledWith(42);
+  });
+
+  it('drops onSettled and emits no toast when generation changes mid-flight', async () => {
+    const onSettled = vi.fn();
+    let resolve!: (v: number) => void;
+    const p = command('op', () => new Promise<number>((r) => { resolve = r; }), onSettled);
+    session.generation += 1;  // simulate disconnect+reconnect mid-flight
+    resolve!(1);
+    await p;
+    expect(onSettled).not.toHaveBeenCalled();
+    expect(notices.list).toHaveLength(0);
+  });
+
+  it('error-toasts a throw without flipping connection status', async () => {
+    await command('save', async () => { throw new Error('boom'); }, () => {});
+    expect(notices.list).toHaveLength(1);
+    expect(notices.list[0].kind).toBe('error');
+    expect(session.status).toBe('connected');
+  });
+
+  it('is drained by flushAllWrites', async () => {
+    const onSettled = vi.fn();
+    let resolve!: (v: number) => void;
+    void command('op', () => new Promise<number>((r) => { resolve = r; }), onSettled);
+    const flushed = flushAllWrites();
+    resolve!(7);
+    await flushed;
+    expect(onSettled).toHaveBeenCalledWith(7);
   });
 });
 
