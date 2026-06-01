@@ -14,7 +14,7 @@ import {
   presets,
   settings, reconcileEqTarget,
   resetStatus, status,
-  clearCopySource,
+  clearCopySource, pushNotice,
 } from '@/state';
 import { Result, Log, type VoidResult } from '@/utils';
 import { startPolling } from './poll';
@@ -542,20 +542,19 @@ export async function saveMasterVolumeBaseline(): Promise<VoidResult> {
   return success ? Result.ok() : Result.fail('write error', 'flash write error');
 }
 
-export async function factoryResetDevice(): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  // Drain any parked optimistic write so a pre-reset bulk send can't settle
-  // mid-reset and re-push stale params (mirrors the preset load/paste flows).
-  await flushAllWrites();
-  const r = await d.factoryReset();
-  // r.message is always present on the failure branch; map the typed flash
-  // code to the action wrapper's string channel.
-  if (!r.ok) return Result.fail('factory reset failed', r.message);
-  invalidatePresetCache();
-  clearCopySource();
-  await syncDeviceSnapshot();
-  return Result.ok();
+export function factoryResetDevice(): Promise<void> {
+  return ctx.run('factory reset', async () => {
+    const d = ctx.device();
+    // Drain any parked optimistic write so a pre-reset bulk send can't settle
+    // mid-reset and re-push stale params (mirrors the preset load/paste flows).
+    await flushAllWrites();
+    // A non-ok flash status throws DeviceRejected -> the boundary toasts it.
+    await ctx.send('factory reset', () => d.factoryReset());
+    invalidatePresetCache();
+    clearCopySource();
+    await syncDeviceSnapshot();
+    pushNotice('info', 'Factory reset complete.');
+  });
 }
 
 // Output pin / I2S config verbs -------------------------------------------

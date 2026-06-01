@@ -6,12 +6,10 @@
 
   const connected = $derived(session.status === 'connected');
 
-  async function onFactoryReset() {
+  function onFactoryReset() {
     if (!confirm('Factory reset wipes ALL presets and resets live audio to defaults. Continue?')) return;
-    const r = await factoryResetDevice();
-    if (!r.ok) {
-      alert(`Factory reset failed: ${r.message ?? 'unknown error'}`);
-    }
+    // Result (success + failure) surfaces via the toast channel.
+    void factoryResetDevice();
   }
 </script>
 

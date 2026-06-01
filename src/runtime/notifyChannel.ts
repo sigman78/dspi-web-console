@@ -2,6 +2,7 @@ import type { DspDevice } from '@/device/DspDevice';
 import { parseNotifyPacket, isReconcileTrigger, isPresetOpEcho, ParamSource, type NotifyEvent } from '@/protocol';
 import { applyParamChange } from './notifyApply';
 import { requestReconcile, presetGuardActive } from '@/state/mirror.svelte';
+import { pushNotice, presets } from '@/state';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 
 // Default poll cadence: loose enough that idle cost is a few 64-byte reads/sec,
@@ -39,6 +40,12 @@ export function startNotifyChannel(device: DspDevice, clock: LoopClock = timerCl
       // even under a preset guard (the guard only knows about its own echoes).
       if (lastSeq !== null && ((lastSeq + 1) & 0xff) !== seq) requestReconcile(true);
       lastSeq = seq;
+    }
+    // Confirm a preset load (user- or externally-triggered) via a toast. The
+    // device notification is the authority that the slot actually loaded.
+    if (event.kind === 'presetLoaded') {
+      const name = presets.names[event.slot] ?? '';
+      pushNotice('info', name ? `Loaded preset "${name}"` : `Loaded preset ${String(event.slot).padStart(2, '0')}`);
     }
     // A non-HOST PARAM_CHANGED is applied precisely and locally (Layer 2); only
     // if the apply declines do we fall back to a full reconcile. HOST echoes fall

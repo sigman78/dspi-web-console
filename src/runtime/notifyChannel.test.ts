@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { startNotifyChannel } from './notifyChannel';
 import { peekReconcile, beginPresetGuard, endPresetGuard, mirror } from '@/state/mirror.svelte';
+import { notices, clearNotices } from '@/state';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice } from '@/device/DspDevice';
 import { resetWireMirror } from './wireMirror';
@@ -48,7 +49,7 @@ async function v10Setup() {
   return { mock, dev };
 }
 
-beforeEach(() => { mirror.reset(); });
+beforeEach(() => { mirror.reset(); clearNotices(); });
 
 describe('startNotifyChannel', () => {
   it('does nothing on a device without the notifications capability', async () => {
@@ -66,6 +67,16 @@ describe('startNotifyChannel', () => {
     const stop = startNotifyChannel(dev, m.clock);
     await m.tick();
     expect(peekReconcile().wanted).toBe(true);
+    stop();
+  });
+
+  it('toasts a confirmation on a PRESET_LOADED event', async () => {
+    const { mock, dev } = await v10Setup();
+    mock.pushNotify(new Uint8Array([2, 4, 0, 1, 3, 0, 0, 0])); // PRESET_LOADED, slot 3
+    const m = manualClock();
+    const stop = startNotifyChannel(dev, m.clock);
+    await m.tick();
+    expect(notices.list.some((n) => n.kind === 'info' && n.message.includes('03'))).toBe(true);
     stop();
   });
 
