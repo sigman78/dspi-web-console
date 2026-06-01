@@ -8,17 +8,12 @@
   const visible = $derived(mode === MasterVolumeMode.Independent);
 
   let confirming = $state(false);
-  let savedTick  = $state(false);
 
-  async function onClick() {
-    if (savedTick) return;
+  function onClick() {
     if (!confirming) { confirming = true; return; }
     confirming = false;
-    // Failure is surfaced via the toast channel; the boolean drives the tick.
-    if (await saveMasterVolumeBaseline()) {
-      savedTick = true;
-      setTimeout(() => { savedTick = false; }, 1200);
-    }
+    // Success and failure both surface via the toast channel.
+    saveMasterVolumeBaseline();
   }
 
   function onBlur() { confirming = false; }
@@ -28,13 +23,12 @@
   <button
     class="save"
     class:confirming
-    class:saved={savedTick}
     onclick={onClick}
     onblur={onBlur}
     disabled={!connected}
     title="Save the current master volume as the boot-baseline volume"
   >
-    {#if savedTick}OK{:else if confirming}CONFIRM{:else}SAVE{/if}
+    {#if confirming}CONFIRM{:else}SAVE{/if}
   </button>
 {/if}
 
@@ -55,10 +49,5 @@
     color: var(--warn);
     border-color: color-mix(in oklab, var(--warn) 50%, var(--border));
     background: color-mix(in oklab, var(--warn) 14%, transparent);
-  }
-  .save.saved {
-    color: var(--ok);
-    border-color: color-mix(in oklab, var(--ok) 50%, var(--border));
-    background: color-mix(in oklab, var(--ok) 14%, transparent);
   }
 </style>

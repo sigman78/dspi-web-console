@@ -445,18 +445,16 @@ describe('actions — master volume mode', () => {
       includePins: false,
       masterVolumeMode: MasterVolumeMode.Independent,
     };
-    await setMasterVolumeMode(MasterVolumeMode.WithPreset);
-    expect(presets.directory!.masterVolumeMode).toBe(MasterVolumeMode.WithPreset);
+    setMasterVolumeMode(MasterVolumeMode.WithPreset);
+    await vi.waitFor(() => expect(presets.directory!.masterVolumeMode).toBe(MasterVolumeMode.WithPreset));
   });
 
-  it('saveMasterVolumeBaseline returns true on success in Mode 0', async () => {
-    presets.directory = {
-      occupiedSlotsSet: new Set(),
-      startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      includePins: false,
-      masterVolumeMode: MasterVolumeMode.Independent,
-    };
-    expect(await saveMasterVolumeBaseline()).toBe(true);
+  it('saveMasterVolumeBaseline toasts success in Mode 0', async () => {
+    clearNotices();
+    saveMasterVolumeBaseline();
+    await vi.waitFor(() =>
+      expect(notices.list.some((n) => n.kind === 'info' && /saved/i.test(n.message))).toBe(true),
+    );
   });
 });
 

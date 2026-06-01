@@ -522,25 +522,37 @@ export function attachTransportListeners(transport: DspTransport): () => void {
 
 // Master-volume mode --------------------------------------------------------
 
-export async function setMasterVolumeMode(mode: MasterVolumeMode): Promise<void> {
-  const d = session.device; if (!d) return;
-  await d.setMasterVolumeMode(mode);
-  if (presets.directory) {
-    presets.directory = { ...presets.directory, masterVolumeMode: mode };
-  }
+export function setMasterVolumeMode(mode: MasterVolumeMode): void {
+  const d = session.device;
+  if (!d) return;
+  void d.setMasterVolumeMode(mode)
+    .then(() => {
+      if (presets.directory) presets.directory = { ...presets.directory, masterVolumeMode: mode };
+    })
+    .catch((e) => {
+      Log.error('action', 'set master volume mode failed', e);
+      pushNotice('error', 'Setting master volume mode failed');
+    });
 }
 
 // 0xD6 SaveMasterVolume — writes the directory's boot-baseline volume.
 // In Mode 0 this is the post-boot starting volume; in Mode 1 firmware
 // accepts the call but it's dormant until the user flips back to Mode 0.
-// Returns whether the save succeeded so the button can show its inline tick;
-// a failure is surfaced to the user via the toast channel.
-export async function saveMasterVolumeBaseline(): Promise<boolean> {
+// Fire-and-forget: success and failure both surface via the toast channel.
+export function saveMasterVolumeBaseline(): void {
   const d = session.device;
-  if (!d) return false;
-  const ok = await d.saveMasterVolume();
-  if (!ok) pushNotice('warn', 'Saving master volume failed (flash write error).');
-  return ok;
+  if (!d) return;
+  void d.saveMasterVolume()
+    .then((ok) => {
+      pushNotice(
+        ok ? 'info' : 'warn',
+        ok ? 'Master volume saved.' : 'Saving master volume failed (flash write error).',
+      );
+    })
+    .catch((e) => {
+      Log.error('action', 'save master volume failed', e);
+      pushNotice('error', 'Saving master volume failed');
+    });
 }
 
 export async function factoryResetDevice(): Promise<void> {
