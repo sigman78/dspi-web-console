@@ -569,8 +569,8 @@ function patchI2s(update: (i: I2sConfig) => I2sConfig): void {
   if (mirror.current?.i2s) mirror.current.i2s = update(mirror.current.i2s);
 }
 
-export function setOutputDataPin(pinOutputIndex: number, pin: number): Promise<VoidResult> {
-  return ctx.capture('set output pin', async () => {
+export function setOutputDataPin(pinOutputIndex: number, pin: number): Promise<void> {
+  return ctx.run('set output pin', async () => {
     const d = ctx.device();
     await ctx.send('set output pin', () => d.setOutputPin(pinOutputIndex, pin));
     const m = ctx.snapshot();
@@ -581,8 +581,8 @@ export function setOutputDataPin(pinOutputIndex: number, pin: number): Promise<V
   });
 }
 
-export function setOutputType(slot: OutputSlot, type: number): Promise<VoidResult> {
-  return ctx.capture('switch output type', async () => {
+export function setOutputType(slot: OutputSlot, type: number): Promise<void> {
+  return ctx.run('switch output type', async () => {
     const d = ctx.device();
     ctx.i2s();
     // SET is queued, not applied (the switch is deferred in firmware). The
@@ -597,8 +597,8 @@ export function setOutputType(slot: OutputSlot, type: number): Promise<VoidResul
   });
 }
 
-export function setI2sBckPin(pin: number): Promise<VoidResult> {
-  return ctx.capture('set I2S BCK pin', async () => {
+export function setI2sBckPin(pin: number): Promise<void> {
+  return ctx.run('set I2S BCK pin', async () => {
     const d = ctx.device();
     ctx.i2s();
     await ctx.send('set I2S BCK pin', () => d.setI2sBckPin(pin));
@@ -607,8 +607,8 @@ export function setI2sBckPin(pin: number): Promise<VoidResult> {
   });
 }
 
-export function setMckEnabled(on: boolean): Promise<VoidResult> {
-  return ctx.capture('set MCK enable', async () => {
+export function setMckEnabled(on: boolean): Promise<void> {
+  return ctx.run('set MCK enable', async () => {
     const d = ctx.device();
     ctx.i2s();
     await ctx.send('set MCK enable', () => d.setMckEnable(on));
@@ -617,8 +617,8 @@ export function setMckEnabled(on: boolean): Promise<VoidResult> {
   });
 }
 
-export function setMckPin(pin: number): Promise<VoidResult> {
-  return ctx.capture('set MCK pin', async () => {
+export function setMckPin(pin: number): Promise<void> {
+  return ctx.run('set MCK pin', async () => {
     const d = ctx.device();
     ctx.i2s();
     await ctx.send('set MCK pin', () => d.setMckPin(pin));
@@ -627,8 +627,8 @@ export function setMckPin(pin: number): Promise<VoidResult> {
   });
 }
 
-export function setMckMultiplier(encoded: number): Promise<VoidResult> {
-  return ctx.capture('set MCK multiplier', async () => {
+export function setMckMultiplier(encoded: number): Promise<void> {
+  return ctx.run('set MCK multiplier', async () => {
     const d = ctx.device();
     ctx.i2s();
     await ctx.send('set MCK multiplier', () => d.setMckMultiplier(encoded));

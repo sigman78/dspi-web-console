@@ -9,6 +9,7 @@
   import SystemTab from './components/tabs/SystemTab.svelte';
   import ConnectingHero from './components/chrome/ConnectingHero.svelte';
   import PresetBoundaryModal from './components/chrome/PresetBoundaryModal.svelte';
+  import Toaster from './components/chrome/Toaster.svelte';
   import { settings, session } from './state';
   import { handleTabShortcut } from './input/tabShortcuts';
 
@@ -53,6 +54,7 @@
       <SystemTab />
     {/if}
   </main>
+  <Toaster />
 </div>
 
 <style>

@@ -4,3 +4,4 @@ export * from './presets.svelte';
 export * from './settings.svelte';
 export * from './telemetry.svelte';
 export * from './copySource.svelte';
+export * from './notices.svelte';

@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { session } from '@/state';
+import { session, notices, clearNotices } from '@/state';
 import { mirror } from '@/state/mirror.svelte';
 import type { DspDevice } from '@/device/DspDevice';
 import type { DspSnapshot, ChannelId } from '@/domain';
 import { Result } from '@/utils';
-import { device, snapshot, i2s, channel, send, run, capture, NotReady, DeviceRejected } from './actionContext';
+import { device, snapshot, i2s, channel, send, run, NotReady, DeviceRejected } from './actionContext';
 
 // Minimal snapshot carrying only the fields the resolvers read. Cast because a
 // faithful full snapshot is irrelevant to precondition resolution.
@@ -21,6 +21,7 @@ const fakeDevice = {} as unknown as DspDevice;
 beforeEach(() => {
   session.device = null;
   mirror.reset();
+  clearNotices();
 });
 
 describe('resolvers', () => {
@@ -69,22 +70,28 @@ describe('send', () => {
 });
 
 describe('run boundary', () => {
-  it('swallows a NotReady precondition without rejecting and without disrupting status', async () => {
+  it('swallows a NotReady precondition silently — no toast, no status change', async () => {
     session.status = 'connected';
     const body = vi.fn(() => { device(); }); // no device bound -> throws NotReady
     await expect(run('setX', body)).resolves.toBeUndefined();
     expect(body).toHaveBeenCalledOnce();
     expect(session.status).toBe('connected'); // a missing prerequisite must not error the connection
+    expect(notices.list).toHaveLength(0);     // benign race — no user-facing noise
   });
 
-  it('swallows a DeviceRejected from an async body without rejecting', async () => {
+  it('surfaces a DeviceRejected as a warn toast carrying the device message', async () => {
     await expect(
-      run('setX', () => send('op', async () => Result.fail('x', 'nope'))),
+      run('setX', () => send('op', async () => Result.fail('x', 'GPIO pin already in use'))),
     ).resolves.toBeUndefined();
+    expect(notices.list).toHaveLength(1);
+    expect(notices.list[0].kind).toBe('warn');
+    expect(notices.list[0].message).toContain('GPIO pin already in use');
   });
 
-  it('swallows an unexpected throw without rejecting', async () => {
+  it('surfaces an unexpected throw as an error toast without rejecting', async () => {
     await expect(run('setX', () => { throw new Error('boom'); })).resolves.toBeUndefined();
+    expect(notices.list).toHaveLength(1);
+    expect(notices.list[0].kind).toBe('error');
   });
 
   it('runs the happy path to completion and resolves', async () => {
@@ -109,30 +116,5 @@ describe('run boundary', () => {
       return send('set bck', sent);
     });
     expect(sent).not.toHaveBeenCalled();
-  });
-});
-
-describe('capture boundary', () => {
-  it('returns Result.ok on a successful body', async () => {
-    const r = await capture('setX', () => {});
-    expect(r.ok).toBe(true);
-  });
-
-  it('maps a NotReady precondition to a failed Result without rejecting', async () => {
-    const r = await capture('setX', () => { device(); }); // no device -> NotReady
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.message).toContain('device not available');
-  });
-
-  it('maps a DeviceRejected to a failed Result carrying the device message', async () => {
-    const r = await capture('setX', () => send('op', async () => Result.fail(0x02, 'GPIO pin already in use')));
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.message).toContain('GPIO pin already in use');
-  });
-
-  it('maps an unexpected throw to a failed Result without rejecting', async () => {
-    const r = await capture('setX', () => { throw new Error('boom'); });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.message).toBe('boom');
   });
 });

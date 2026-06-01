@@ -13,11 +13,11 @@
 // DeviceRejected. `run` is the single boundary that catches both so a throw
 // never escapes as an unhandled rejection.
 
-import { session } from '@/state';
+import { session, pushNotice } from '@/state';
 import { mirror } from '@/state/mirror.svelte';
 import type { DspDevice } from '@/device/DspDevice';
 import type { DspSnapshot, ChannelModel, I2sConfig, ChannelId } from '@/domain';
-import { Log, Result, type VoidResult } from '@/utils';
+import { Log, type VoidResult } from '@/utils';
 
 // Precondition breach: the action cannot meaningfully run right now.
 export class NotReady extends Error {
@@ -70,16 +70,29 @@ export async function send<E>(op: string, call: () => Promise<VoidResult<E>>): P
   if (!r.ok) throw new DeviceRejected(op, r.message, r.code);
 }
 
-// --- Boundary: catch precondition/operational throws; never reject ----------
+// --- Boundary: catch precondition/operational throws; surface; never reject --
 //
+// Routing by failure kind:
+//   NotReady       — benign race (control fired during a disconnect/hydration
+//                    gap). Debug-logged only; no user-facing noise.
+//   DeviceRejected — the device declined a valid-looking command (pin in use,
+//                    output active, ...). Surfaced as a warn toast carrying the
+//                    device's own message.
+//   anything else  — an unexpected bug. Logged in full; a generic error toast
+//                    tells the user the action didn't take, without leaking the
+//                    raw throw.
 // Connection status is owned by the connection lifecycle, not by individual
-// actions, so the boundary deliberately does NOT flip session.status here — a
-// single failed action shouldn't mark the whole connection errored. User-facing
-// surfacing of DeviceRejected (a toast) is a follow-up; for now it is logged.
+// actions, so the boundary never flips session.status — one failed action must
+// not mark the whole connection errored.
 function report(name: string, e: unknown): void {
-  if (e instanceof NotReady)      { Log.debug('action', `${name} skipped`, e.what); return; }
-  if (e instanceof DeviceRejected) { Log.warn('action', `${name} rejected`, e.op, e.message); return; }
+  if (e instanceof NotReady) { Log.debug('action', `${name} skipped`, e.what); return; }
+  if (e instanceof DeviceRejected) {
+    Log.warn('action', `${name} rejected`, e.op, e.message);
+    pushNotice('warn', e.message);
+    return;
+  }
   Log.error('action', `${name} failed`, e);
+  pushNotice('error', `${name} failed`);
 }
 
 // Run an action body behind the boundary. Normalizes sync and async bodies to a
@@ -94,28 +107,4 @@ export function run(name: string, fn: () => void | Promise<void>): Promise<void>
       report(name, e);
     }
   })();
-}
-
-// Result-returning sibling of `run`, for actions whose caller surfaces the
-// outcome (e.g. a panel showing an error message). Same boundary semantics —
-// never rejects — but maps the throw kinds to a VoidResult: NotReady and
-// DeviceRejected become typed failures; anything else is logged and returned as
-// a generic failure. The device-layer numeric code collapses to the string
-// channel here since callers display `message`, not `code`.
-export async function capture(name: string, fn: () => void | Promise<void>): Promise<VoidResult> {
-  try {
-    await fn();
-    return Result.ok();
-  } catch (e) {
-    if (e instanceof NotReady) {
-      Log.debug('action', `${name} skipped`, e.what);
-      return Result.fail('not ready', `${e.what} not available`);
-    }
-    if (e instanceof DeviceRejected) {
-      Log.warn('action', `${name} rejected`, e.op, e.message);
-      return Result.fail('rejected', e.message);
-    }
-    Log.error('action', `${name} failed`, e);
-    return Result.fail('error', e instanceof Error ? e.message : String(e));
-  }
 }

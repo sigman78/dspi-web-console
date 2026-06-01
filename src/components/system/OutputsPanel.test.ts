@@ -2,8 +2,8 @@ import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 
 const verbs = vi.hoisted(() => ({
-  setOutputType: vi.fn(async () => ({ ok: true, value: undefined })),
-  setOutputDataPin: vi.fn(async () => ({ ok: true, value: undefined })),
+  setOutputType: vi.fn(async () => {}),
+  setOutputDataPin: vi.fn(async () => {}),
 }));
 vi.mock('@/runtime', () => verbs);
 

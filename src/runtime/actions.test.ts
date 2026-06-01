@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled } from './actions';
-import { session, bindDevice, settings, mirror, status as statusStore, presets } from '@/state';
+import { session, bindDevice, settings, mirror, status as statusStore, presets, notices, clearNotices } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -902,46 +902,43 @@ describe('boolean device flags are explicit setters', () => {
 describe('output config verbs', () => {
   beforeEach(async () => {
     await bootMock('rp2350');
+    clearNotices();
   });
 
   it('setOutputDataPin success patches draft.outputPins without discarding other edits', async () => {
     const before = mirror.current!.masterVolumeDb;
-    const r = await setOutputDataPin(0, 16);
-    expect(r.ok).toBe(true);
+    await setOutputDataPin(0, 16);
     expect(mirror.current!.outputPins[0]).toBe(16);
     expect(mirror.current!.masterVolumeDb).toBe(before);
   });
 
-  it('setOutputDataPin failure leaves outputPins unchanged', async () => {
+  it('setOutputDataPin failure leaves outputPins unchanged and toasts the device message', async () => {
     // pin 7 is in use by pinOutputIndex 1 — mock returns PinInUse
     const pinsBefore = mirror.current!.outputPins.slice();
-    const r = await setOutputDataPin(0, 7);
-    expect(r.ok).toBe(false);
+    await setOutputDataPin(0, 7);
     expect(mirror.current!.outputPins).toEqual(pinsBefore);
+    expect(notices.list).toHaveLength(1);
+    expect(notices.list[0].message).toContain('in use');
   });
 
   it('setOutputType updates draft.i2s.outputSlotTypes', async () => {
-    const r = await setOutputType(0, 1);
-    expect(r.ok).toBe(true);
-    expect(mirror.current!.i2s!.outputSlotTypes[0]).toBe(1);
+    await setOutputType(0, 1);
+    expect(mirror.current!.i2s.outputSlotTypes[0]).toBe(1);
   });
 
   test('setI2sBckPin success patches draft.i2s.bckPin', async () => {
-    const r = await setI2sBckPin(16);
-    expect(r.ok).toBe(true);
-    expect(mirror.current!.i2s!.bckPin).toBe(16);
+    await setI2sBckPin(16);
+    expect(mirror.current!.i2s.bckPin).toBe(16);
   });
 
   test('setMckEnabled success patches draft.i2s.mckEnabled', async () => {
-    const r = await setMckEnabled(true);
-    expect(r.ok).toBe(true);
-    expect(mirror.current!.i2s!.mckEnabled).toBe(true);
+    await setMckEnabled(true);
+    expect(mirror.current!.i2s.mckEnabled).toBe(true);
   });
 
   it('requests an eager reconcile on a successful config write', async () => {
     consumeReconcile(); // clear anything pending from boot
-    const r = await setI2sBckPin(16);
-    expect(r.ok).toBe(true);
+    await setI2sBckPin(16);
     expect(peekReconcile()).toEqual({ wanted: true, eager: true });
   });
 });

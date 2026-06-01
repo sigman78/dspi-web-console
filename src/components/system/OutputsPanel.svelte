@@ -26,18 +26,6 @@
     snap?.outputs.find((o) => o.wireIndex === snap.platform.pdmOutputIndex)?.enabled ?? false,
   );
 
-  let err = $state('');
-
-  async function changeType(slot: number, type: number) {
-    err = '';
-    const r = await setOutputType(slot as OutputSlot, type);
-    if (!r.ok) err = r.message;
-  }
-  async function changePin(pinIndex: number, pin: number) {
-    err = '';
-    const r = await setOutputDataPin(pinIndex, pin);
-    if (!r.ok) err = r.message;
-  }
 </script>
 
 <Panel code="SY.07" title="OUTPUTS">
@@ -55,14 +43,14 @@
             options={TYPE_OPTS}
             ariaLabel={`Out ${slot + 1} output type`}
             disabled={!connected}
-            onChange={(t) => changeType(slot, t)}
+            onChange={(t) => void setOutputType(slot as OutputSlot, t)}
           />
           <PinSelect
             value={snap.outputPins[slot]}
             candidates={availablePinsFor(snap.platform.type, snap, snap.outputPins[slot])}
             ariaLabel={`Out ${slot + 1} data pin`}
             disabled={!connected}
-            onChange={(p) => changePin(slot, p)}
+            onChange={(p) => void setOutputDataPin(slot, p)}
           />
         </div>
       {/each}
@@ -75,13 +63,12 @@
           candidates={availablePinsFor(snap.platform.type, snap, snap.outputPins[pdmIndex])}
           ariaLabel="PDM sub data pin"
           disabled={!connected || pdmEnabled}
-          onChange={(p) => changePin(pdmIndex, p)}
+          onChange={(p) => void setOutputDataPin(pdmIndex, p)}
         />
       </div>
       {#if pdmEnabled}
         <div class="hint">Disable the PDM output (Mixer) to reassign its pin.</div>
       {/if}
-      {#if err}<div class="err">{err}</div>{/if}
     </div>
   {/if}
 </Panel>
@@ -89,11 +76,10 @@
 <style>
   .rows { padding: 14px; display: grid; grid-template-columns: max-content max-content max-content; gap: 8px 10px; align-items: center; justify-content: space-between; }
   .row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; }
-  .rows > .hint, .rows > .err { grid-column: 1 / -1; }
+  .rows > .hint { grid-column: 1 / -1; }
   .lbl { display: flex; align-items: baseline; gap: 11px; }
   .out { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--text-dim); }
   .pair { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.5px; color: var(--text-faint); }
   .fixed { font-family: var(--font-mono); font-size: 10px; color: var(--text-faint); }
   .hint { font-family: var(--font-mono); font-size: 9px; color: var(--text-faint); }
-  .err { font-family: var(--font-mono); font-size: 9px; color: var(--err); }
 </style>
