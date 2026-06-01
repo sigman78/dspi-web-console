@@ -570,14 +570,23 @@ function patchI2s(update: (i: I2sConfig) => I2sConfig): void {
   if (mirror.current?.i2s) mirror.current.i2s = update(mirror.current.i2s);
 }
 
+// Guarded, non-throwing post-send patch (mirrors patchI2s): a mid-send
+// disconnect must not throw after the device already changed — the reconcile
+// request still converges the mirror.
+function patchOutputPin(index: number, pin: number): void {
+  const m = mirror.current;
+  if (!m) return;
+  const pins = m.outputPins.slice();
+  pins[index] = pin;
+  m.outputPins = pins;
+}
+
 export function setOutputDataPin(pinOutputIndex: number, pin: number): Promise<void> {
   return ctx.run('set output pin', async () => {
     const d = ctx.device();
+    ctx.snapshot();   // precondition up front: never touch the device unless the mirror is hydrated
     await ctx.send('set output pin', () => d.setOutputPin(pinOutputIndex, pin));
-    const m = ctx.snapshot();
-    const pins = m.outputPins.slice();
-    pins[pinOutputIndex] = pin;
-    m.outputPins = pins;
+    patchOutputPin(pinOutputIndex, pin);
     requestReconcile(true);
   });
 }

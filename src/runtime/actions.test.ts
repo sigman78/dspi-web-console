@@ -21,6 +21,7 @@ import { deriveCapabilities } from '@/device/capabilities';
 
 import { cancelAllWrites as cancelWrites } from '@/device/writes';
 import { inflight, peekReconcile, consumeReconcile } from '@/state/mirror.svelte';
+import { Result } from '@/utils';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
@@ -944,5 +945,19 @@ describe('output config verbs', () => {
   it('factoryResetDevice toasts completion on success', async () => {
     await factoryResetDevice();
     expect(notices.list.some((n) => n.kind === 'info' && n.message.includes('Factory reset complete'))).toBe(true);
+  });
+});
+
+describe('config verb preconditions', () => {
+  beforeEach(() => { bindDevice(null); mirror.reset(); clearNotices(); });
+
+  it('setOutputDataPin does not touch the device when the mirror is not hydrated', async () => {
+    // Device bound but no snapshot yet: the precondition must gate BEFORE the
+    // send, so the device is never mutated and the NotReady skip stays silent.
+    const setOutputPin = vi.fn(async () => Result.ok());
+    bindDevice(initializedDevice({ setOutputPin }));
+    await setOutputDataPin(0, 16);
+    expect(setOutputPin).not.toHaveBeenCalled();
+    expect(notices.list).toHaveLength(0);
   });
 });
