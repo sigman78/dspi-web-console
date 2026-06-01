@@ -30,13 +30,13 @@ export type SnapshotChange =
   | { kind: 'route';         index: number; value: RouteModel }
   | { kind: 'loudness';      value: Loudness }
   | { kind: 'crossfeed';     value: Crossfeed }
-  | { kind: 'leveller';      value: Leveller | null }
+  | { kind: 'leveller';      value: Leveller }
   | { kind: 'inputConfig';   value: InputConfig | null }
   | { kind: 'userVolume';    value: UserVolume | null }
   | { kind: 'dacHwMute';     value: DacHwMute | null }
   | { kind: 'lgSoundSyncEnabled'; value: boolean }
   | { kind: 'lgSoundSyncStatus';  value: { present: boolean; volume: number; muted: boolean } }
-  | { kind: 'i2s';           value: I2sConfig | null }
+  | { kind: 'i2s';           value: I2sConfig }
   | { kind: 'outputPins';    value: number[] };
 
 function neq(a: number, b: number, tol: number): boolean {
@@ -152,7 +152,7 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
 
   if (loudnessDiffers(a.loudness, b.loudness)) out.push({ kind: 'loudness', value: b.loudness });
   if (crossfeedDiffers(a.crossfeed, b.crossfeed)) out.push({ kind: 'crossfeed', value: b.crossfeed });
-  if (nullableChanged(a.leveller, b.leveller, levellerDiffers)) out.push({ kind: 'leveller', value: b.leveller });
+  if (levellerDiffers(a.leveller, b.leveller)) out.push({ kind: 'leveller', value: b.leveller });
 
   for (let i = 0; i < b.channels.length; i++) {
     const ca = a.channels[i], cb = b.channels[i];
@@ -182,7 +182,7 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
   if (nullableChanged(a.dacHwMute,   b.dacHwMute,   dacHwMuteDiffers))   out.push({ kind: 'dacHwMute',   value: b.dacHwMute });
   diffLgSoundSync(a.lgSoundSync, b.lgSoundSync, out);
 
-  if (nullableChanged(a.i2s, b.i2s, i2sDiffers)) out.push({ kind: 'i2s', value: b.i2s });
+  if (i2sDiffers(a.i2s, b.i2s)) out.push({ kind: 'i2s', value: b.i2s });
   if (pinsDiffer(a.outputPins, b.outputPins)) out.push({ kind: 'outputPins', value: b.outputPins });
 
   return out;

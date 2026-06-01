@@ -26,6 +26,10 @@ export interface MockOptions {
   // Firmware version reported by GetPlatform (default 1.0.0). Set alongside
   // wireVersion for a coherent device (e.g. 1.1.4 + V10).
   fwVersion?: { major: number; minor: number; patch: number };
+  // Override the header's payloadLength (default = the built packet size).
+  // Simulates a malformed device that reports a truncated payload for an
+  // otherwise-supported wire version — exercises the connect truncation guard.
+  payloadLength?: number;
 }
 
 // Default crosspoint / output state (mirrors what defaultBulkParams
@@ -63,6 +67,7 @@ export class MockTransport implements DspTransport {
   #serial: string;
   #platform: PlatformType;
   #wireVersion: number;
+  #payloadLength: number | undefined;
   #fwMajor: number;
   #fwMinorPatch: number;
   #masterVolumeDb = 0;
@@ -104,6 +109,7 @@ export class MockTransport implements DspTransport {
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
     this.#platform = opts.platform === 'rp2040' ? PlatformType.RP2040 : PlatformType.RP2350;
     this.#wireVersion = opts.wireVersion ?? 6;
+    this.#payloadLength = opts.payloadLength;
     const fw = opts.fwVersion ?? { major: 1, minor: 0, patch: 0 };
     this.#fwMajor = fw.major;
     this.#fwMinorPatch = ((fw.minor & 0xF) << 4) | (fw.patch & 0xF);
@@ -603,7 +609,7 @@ export class MockTransport implements DspTransport {
     const out = buildBulkParams(this.#mockState, buildVer);
     const dv = new DataView(out.buffer);
     dv.setUint8(0, this.#wireVersion);        // report true version (may be < 6)
-    dv.setUint16(6, out.byteLength, true);    // payloadLength
+    dv.setUint16(6, this.#payloadLength ?? out.byteLength, true);  // payloadLength (overridable)
     return out;
   }
 

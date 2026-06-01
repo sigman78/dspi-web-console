@@ -26,7 +26,9 @@ function snap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
     routes: [route(0, 7)],
     loudness: { enabled: false, refSpl: 85, intensityPct: 0 },
     crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5 } as any,
-    leveller: null, i2s: null, outputPins: [6, 7],
+    leveller: { enabled: false, speed: 1, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40 } as any,
+    i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 } as any,
+    outputPins: [6, 7],
     inputConfig: null, lgSoundSync: null, userVolume: null, dacHwMute: null,
   };
   return structuredClone({ ...base, ...overrides });

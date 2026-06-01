@@ -92,10 +92,12 @@ describe('fromBulkParams', () => {
     expect(pdmChannel?.filters[0].gain).toBe(-2);
   });
 
-  it('honors payloadLength (not raw formatVersion) for section presence', () => {
-    // A V6 header truncated to the V3 payload length: bulkLayout reports no
-    // leveller even though formatVersion (6) >= 4. The codec must follow
-    // bulkLayout — the old `formatVersion >= 4` branch wrongly exposed it.
+  it('carries floor sections (i2s/leveller) even when the wire payload omits them', () => {
+    // A V6 header truncated to the V3 payload length: bulkLayout drops leveller.
+    // i2s/leveller are floor sections the domain treats as guaranteed, so the
+    // codec defaults them rather than exposing null. (A real device sending such
+    // a truncated payload is rejected at connect — see DspDevice's truncation
+    // guard — so this only governs the codec's permissive behavior.)
     const bulk = makeBulkObject({ payloadLength: Wire.BulkSizes.V3 });
     const layout = Wire.bulkLayout(bulk);
     expect(layout.i2s).toBe(true);       // precondition: V3 keeps i2s
@@ -103,7 +105,7 @@ describe('fromBulkParams', () => {
 
     const snap = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
     expect(snap.i2s).not.toBeNull();
-    expect(snap.leveller).toBeNull();
+    expect(snap.leveller).not.toBeNull();
   });
 });
 

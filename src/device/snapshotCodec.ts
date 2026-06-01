@@ -141,15 +141,17 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: proto.Bul
       freq: bulk.crossfeed.freq,
       feedDb: bulk.crossfeed.feedDb,
     },
-    leveller: layout.leveller ? {
+    // Floor sections — bulkParser always populates these (defaults when the
+    // wire omits them), so the domain carries them unconditionally.
+    leveller: {
       enabled: bulk.leveller.enabled,
       speed: narrowLevellerSpeed(bulk.leveller.speed),
       lookahead: bulk.leveller.lookahead,
       amount: bulk.leveller.amount,
       maxGainDb: bulk.leveller.maxGainDb,
       gateDb: bulk.leveller.gateDb,
-    } : null,
-    i2s: layout.i2s ? bulk.i2s : null,
+    },
+    i2s: bulk.i2s,
     outputPins: bulk.pins.slice(0, bulk.numPinOutputs),
     inputConfig: layout.inputSource
       ? { source: narrowInputSource(bulk.inputConfig.source), spdifRxPin: bulk.inputConfig.spdifRxPin }

@@ -1,4 +1,4 @@
-import { DspDevice, UnsupportedFirmware } from '@/device/DspDevice';
+import { DspDevice, UnsupportedFirmware, UnsupportedDevicePacket } from '@/device/DspDevice';
 import type { DspTransport } from '@/transport/DspTransport';
 import { MockTransport } from '@/transport/MockTransport';
 import { matchesDspi, WebUsbTransport } from '@/transport/WebUsbTransport';
@@ -29,7 +29,8 @@ export function webUsbUnsupportedReason(): string | null {
 // diagnostics panel.
 export function reportConnectError(err: unknown): void {
   const message = (err as Error)?.message ?? String(err);
-  setStatus('error', message, err instanceof UnsupportedFirmware ? 'unsupported-firmware' : null);
+  const upgrade = err instanceof UnsupportedFirmware || err instanceof UnsupportedDevicePacket;
+  setStatus('error', message, upgrade ? 'unsupported-firmware' : null);
 }
 
 async function createBoundDevice(

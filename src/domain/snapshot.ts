@@ -32,8 +32,11 @@ export interface DspSnapshot {
   routes: RouteModel[];
   loudness: Loudness;
   crossfeed: Crossfeed;
-  leveller: Leveller | null;
-  i2s: I2sConfig | null;
+  // Floor sections (wire V4 / V3) — always present on a supported device (V6
+  // connect floor), so non-null. Absence is only reachable below the floor,
+  // which connect rejects.
+  leveller: Leveller;
+  i2s: I2sConfig;
   // GPIO pin per pin-output index, in hardware output order; the last entry is the PDM sub.
   outputPins: number[];
   // 1.1.4 sections — null on firmware whose packet does not carry them.

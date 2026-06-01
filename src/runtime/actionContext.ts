@@ -51,10 +51,10 @@ export function snapshot(): DspSnapshot {
   return m;
 }
 
+// I2S is a floor section (always present on a supported device), so this only
+// guards snapshot hydration; the config itself is guaranteed once hydrated.
 export function i2s(): I2sConfig {
-  const cfg = snapshot().i2s;
-  if (!cfg) throw new NotReady('I2S config');
-  return cfg;
+  return snapshot().i2s;
 }
 
 export function channel(id: ChannelId): ChannelModel {

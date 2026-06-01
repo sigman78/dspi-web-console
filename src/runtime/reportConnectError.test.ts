@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { reportConnectError } from './session';
-import { UnsupportedFirmware } from '@/device/DspDevice';
+import { UnsupportedFirmware, UnsupportedDevicePacket } from '@/device/DspDevice';
 import { session, setStatus } from '@/state';
 
 beforeEach(() => setStatus('idle'));
@@ -11,6 +11,13 @@ describe('reportConnectError', () => {
     expect(session.status).toBe('error');
     expect(session.errorKind).toBe('unsupported-firmware');
     expect(session.error).toContain('1.1.2');
+  });
+
+  it('flags an UnsupportedDevicePacket (truncated payload) for the same upgrade prompt', () => {
+    reportConnectError(new UnsupportedDevicePacket('1.1.4', 2848, 2896));
+    expect(session.status).toBe('error');
+    expect(session.errorKind).toBe('unsupported-firmware');
+    expect(session.error).toContain('incomplete parameter packet');
   });
 
   it('leaves an ordinary error unclassified', () => {

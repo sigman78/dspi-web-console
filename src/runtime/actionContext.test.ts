@@ -41,12 +41,7 @@ describe('resolvers', () => {
     expect(i2s().bckPin).toBe(2);
   });
 
-  it('i2s() throws NotReady when the snapshot has no I2S section', () => {
-    mirror.init(fakeSnapshot({ i2s: null }));
-    expect(() => i2s()).toThrow(NotReady);
-  });
-
-  it('i2s() throws NotReady when there is no snapshot at all', () => {
+  it('i2s() throws NotReady when there is no snapshot (presence == hydration)', () => {
     expect(() => i2s()).toThrow(NotReady);
   });
 

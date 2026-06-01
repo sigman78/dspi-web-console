@@ -19,6 +19,18 @@ export class UnsupportedFirmware extends Error {
   }
 }
 
+// Thrown at connect when a wire-supported device reports a parameter packet
+// shorter than the V6 floor (a malformed / truncated firmware). The console
+// treats the V6 sections as guaranteed once connected, so such a device is
+// rejected rather than silently defaulting them. Surfaced through the same
+// upgrade-prompt UI as UnsupportedFirmware.
+export class UnsupportedDevicePacket extends Error {
+  constructor(readonly fwLabel: string, readonly got: number, readonly need: number) {
+    super(`DSPi firmware ${fwLabel} sent an incomplete parameter packet (${got} bytes, need at least ${need}). Update the firmware.`);
+    this.name = 'UnsupportedDevicePacket';
+  }
+}
+
 // Thrown when a granular command is invoked on a device whose capabilities do
 // not advertise the feature. Distinct from UnsupportedFirmware, which rejects
 // the whole device at connect time. Carries the command name and a human
@@ -121,6 +133,12 @@ export class DspDevice {
     });
     if (capabilities.support === 'unsupported') {
       throw new UnsupportedFirmware(capabilities.fwLabel);
+    }
+    // A supported wire version must also carry at least the V6 floor payload.
+    // A shorter packet means the device omits floor sections the console treats
+    // as guaranteed (i2s/leveller) — reject instead of silently defaulting them.
+    if (bulk.payloadLength < proto.Wire.BulkSizes.V6Full) {
+      throw new UnsupportedDevicePacket(capabilities.fwLabel, bulk.payloadLength, proto.Wire.BulkSizes.V6Full);
     }
 
     const platformType = platformTypeFromId(platform.platformId);

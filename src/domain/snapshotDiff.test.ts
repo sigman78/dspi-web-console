@@ -45,8 +45,8 @@ export function snap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
     routes: [],
     loudness: { enabled: false, refSpl: 85, intensityPct: 0 },
     crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5 } as any,
-    leveller: null,
-    i2s: null,
+    leveller: { enabled: false, speed: 1, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40 } as any,
+    i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 } as any,
     outputPins: [],
     inputConfig: null,
     lgSoundSync: null,
@@ -142,8 +142,9 @@ describe('diffSnapshots — existing coverage', () => {
     const cf = { enabled: true, preset: 0, itd: false, freq: 700, feedDb: 4.5 } as any;
     expect(diffSnapshots(snap(), snap({ crossfeed: cf }))).toEqual([{ kind: 'crossfeed', value: cf }]);
 
-    const lev = { enabled: false, speed: 1, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40 } as any;
-    expect(diffSnapshots(snap({ leveller: null }), snap({ leveller: lev })))
+    // base fixture leveller is enabled:false; this differs → emits the change.
+    const lev = { enabled: true, speed: 1, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40 } as any;
+    expect(diffSnapshots(snap(), snap({ leveller: lev })))
       .toEqual([{ kind: 'leveller', value: lev }]);
     expect(diffSnapshots(snap({ leveller: lev }), snap({ leveller: { ...lev } }))).toEqual([]);
   });
@@ -209,11 +210,6 @@ describe('diffSnapshots — i2s + output pins', () => {
 
   it('emits no i2s/pins change for identical snapshots', () => {
     expect(diffSnapshots(snap({ i2s: i2s(), outputPins: [6, 7] }), snap({ i2s: i2s(), outputPins: [6, 7] }))).toEqual([]);
-  });
-
-  it('emits i2s when null transitions to present', () => {
-    const v = i2s();
-    expect(diffSnapshots(snap({ i2s: null }), snap({ i2s: v }))).toEqual([{ kind: 'i2s', value: v }]);
   });
 
   it('emits i2s on a pin change', () => {
