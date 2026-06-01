@@ -1,17 +1,19 @@
-// Two-class write architecture for the device-first refactor.
+// Write lanes for the device-first model: a runtime action routes its wire
+// send through one of these, which coordinates the mirror mutation, the
+// reconcile signal, and failure recovery.
 //
-// write()  — for click-paced controls. Await ack, then mutate the mirror.
-//            No optimism, no coalescing. Failure triggers forceResyncNow.
+// write()        — click-paced. Await ack, then mutate. Failure -> forceResyncNow.
+// scrub()        — drag-paced sliders. Optimistic mutate + 16 ms coalesce lane.
+// writeChecked() — commit-paced commands returning a typed Result. A non-ok is
+//                  a local device rejection (warn toast), not a connection
+//                  error — no resync, no status flip.
 //
-// scrub()  — for drag-paced range sliders (added in Task B3).
-//
-// Both helpers respect the session.generation stale guard: a send that
-// settles after a disconnect+reconnect is silently dropped (does not
-// mutate, does not fire failure recovery).
+// All respect the session.generation stale guard: a send that settles after a
+// disconnect+reconnect is silently dropped (no mutate, no recovery).
 
 import { session, setStatus, settings, pushNotice } from '@/state';
 import { bumpInflight, dropInflight, requestReconcile, noteWriteActivity } from '@/state/mirror.svelte';
-import { forceResyncNow } from '@/runtime/resync';
+import { forceResyncNow } from './resync';
 import { Log, type Result } from '@/utils';
 
 function errMessage(e: unknown): string {

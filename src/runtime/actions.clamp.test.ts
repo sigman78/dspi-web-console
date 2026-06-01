@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, setOutputDelay } from './actions';
 import { mirror, bindDevice } from '@/state';
 import { bootMock } from './session';
-import { cancelAllWrites as cancelWrites } from '@/device/writes';
+import { cancelAllWrites as cancelWrites } from './writes';
 import { endConnection } from './connectionScope';
 
 afterEach(() => { endConnection(); cancelWrites(); });

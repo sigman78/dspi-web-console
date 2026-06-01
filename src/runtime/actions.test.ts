@@ -19,7 +19,7 @@ import {
 import { fromBulkParams } from '@/device/snapshotCodec';
 import { deriveCapabilities } from '@/device/capabilities';
 
-import { cancelAllWrites as cancelWrites, flushAllWrites } from '@/device/writes';
+import { cancelAllWrites as cancelWrites, flushAllWrites } from './writes';
 import { inflight, peekReconcile, consumeReconcile } from '@/state/mirror.svelte';
 import { Result } from '@/utils';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';

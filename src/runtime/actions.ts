@@ -22,7 +22,7 @@ import { startNotifyChannel } from './notifyChannel';
 import { connectionScope, endConnection } from './connectionScope';
 import { acquireDeviceLock, releaseDeviceLock } from './deviceLock';
 import { mirror } from '@/state/mirror.svelte';
-import { write, scrub, writeChecked, flushAllWrites, cancelAllWrites } from '@/device/writes';
+import { write, scrub, writeChecked, flushAllWrites, cancelAllWrites } from './writes';
 import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 

@@ -9,7 +9,7 @@ import {
   requestReconcile, consumeReconcile, peekReconcile, noteWriteActivity,
   inflight, bumpInflight, dropInflight,
 } from '@/state/mirror.svelte';
-import { write } from '@/device/writes';
+import { write } from './writes';
 import { startPolling, RECONCILE_QUIET_MS } from './poll';
 import type { LoopClock } from '@/utils';
 

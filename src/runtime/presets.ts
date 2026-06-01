@@ -8,7 +8,7 @@ import {
 import { reconcileAfterSync } from './actions';
 import { fetchAndApplyAsBaseline } from './resync';
 import { mirror, beginPresetGuard, endPresetGuard } from '@/state/mirror.svelte';
-import { flushAllWrites as flushWrites } from '@/device/writes';
+import { flushAllWrites as flushWrites } from './writes';
 import type { DspDevice } from '@/device/DspDevice';
 import { acceptsWriteFormat } from '@/device/capabilities';
 import { type PresetSlot, PRESET_SLOT_COUNT } from '@/domain';
