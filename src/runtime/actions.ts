@@ -21,11 +21,10 @@ import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
 import { connectionScope, endConnection } from './connectionScope';
 import { acquireDeviceLock, releaseDeviceLock } from './deviceLock';
-import { mirror, requestReconcile } from '@/state/mirror.svelte';
-import { write, scrub, flushAllWrites, cancelAllWrites } from '@/device/writes';
+import { mirror } from '@/state/mirror.svelte';
+import { write, scrub, writeChecked, flushAllWrites, cancelAllWrites } from '@/device/writes';
 import { focusOutput, focusRoute } from './focus';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
-import * as ctx from './actionContext';
 
 const MUTE_DB = -128; // per spec
 
@@ -544,35 +543,39 @@ export async function saveMasterVolumeBaseline(): Promise<boolean> {
   return ok;
 }
 
-export function factoryResetDevice(): Promise<void> {
-  return ctx.run('factory reset', async () => {
-    const d = ctx.device();
+export async function factoryResetDevice(): Promise<void> {
+  const d = session.device;
+  if (!d) return;
+  try {
     // Drain any parked optimistic write so a pre-reset bulk send can't settle
     // mid-reset and re-push stale params (mirrors the preset load/paste flows).
     await flushAllWrites();
-    // A non-ok flash status throws DeviceRejected -> the boundary toasts it.
-    await ctx.send('factory reset', () => d.factoryReset());
+    const r = await d.factoryReset();
+    if (!r.ok) { pushNotice('warn', r.message); return; }  // non-ok flash status
     invalidatePresetCache();
     clearCopySource();
     await syncDeviceSnapshot();
     pushNotice('info', 'Factory reset complete.');
-  });
+  } catch (e) {
+    Log.error('action', 'factory reset failed', e);
+    pushNotice('error', 'Factory reset failed');
+  }
 }
 
 // Output pin / I2S config verbs -------------------------------------------
-// Optimistic granular verbs: resolve prerequisites, send the typed command,
-// then patch the mirror with the requested value on ack (no readback) and ask
-// the background poll to reconcile to committed device truth. Patching on ack
-// (not before the send) keeps the mirror unchanged when the device rejects the
-// command. Never calls syncDeviceSnapshot (would discard unsaved EQ/mixer edits).
+// Discrete (commit-paced) config commands on the writeChecked() lane: guard
+// prerequisites explicitly, send the typed command, and patch the mirror with
+// the requested value on ack (no readback). Patching on ack (not before the
+// send) keeps the mirror unchanged when the device rejects the command; the
+// rejection surfaces as a warn toast and the background poll reconciles to
+// committed truth. Never calls syncDeviceSnapshot (would discard unsaved
+// EQ/mixer edits). setOutputType's SET is queued, not applied (the switch is
+// deferred in firmware) — the optimistic patch + reconcile converge to truth.
 
 function patchI2s(update: (i: I2sConfig) => I2sConfig): void {
   if (mirror.current?.i2s) mirror.current.i2s = update(mirror.current.i2s);
 }
 
-// Guarded, non-throwing post-send patch (mirrors patchI2s): a mid-send
-// disconnect must not throw after the device already changed — the reconcile
-// request still converges the mirror.
 function patchOutputPin(index: number, pin: number): void {
   const m = mirror.current;
   if (!m) return;
@@ -581,68 +584,55 @@ function patchOutputPin(index: number, pin: number): void {
   m.outputPins = pins;
 }
 
-export function setOutputDataPin(pinOutputIndex: number, pin: number): Promise<void> {
-  return ctx.run('set output pin', async () => {
-    const d = ctx.device();
-    ctx.snapshot();   // precondition up front: never touch the device unless the mirror is hydrated
-    await ctx.send('set output pin', () => d.setOutputPin(pinOutputIndex, pin));
-    patchOutputPin(pinOutputIndex, pin);
-    requestReconcile(true);
-  });
+export function setOutputDataPin(pinOutputIndex: number, pin: number): void {
+  if (!mirror.current) return;
+  const d = session.device;
+  if (!d) return;
+  void writeChecked(
+    'set output pin',
+    () => d.setOutputPin(pinOutputIndex, pin),
+    () => patchOutputPin(pinOutputIndex, pin),
+  );
 }
 
-export function setOutputType(slot: OutputSlot, type: number): Promise<void> {
-  return ctx.run('switch output type', async () => {
-    const d = ctx.device();
-    ctx.i2s();
-    // SET is queued, not applied (the switch is deferred in firmware). The
-    // optimistic patch + eager reconcile converge to committed truth; a rare
-    // deferred-switch failure surfaces as the mirror reverting, not a Result.
-    await ctx.send('switch output type', () => d.setOutputType(slot, type));
-    patchI2s((i) => ({
+export function setOutputType(slot: OutputSlot, type: number): void {
+  if (!mirror.current?.i2s) return;
+  const d = session.device;
+  if (!d) return;
+  void writeChecked(
+    'switch output type',
+    () => d.setOutputType(slot, type),
+    () => patchI2s((i) => ({
       ...i,
       outputSlotTypes: i.outputSlotTypes.map((x, j) => (j === slot ? type : x)) as [number, number, number, number],
-    }));
-    requestReconcile(true);
-  });
+    })),
+  );
 }
 
-export function setI2sBckPin(pin: number): Promise<void> {
-  return ctx.run('set I2S BCK pin', async () => {
-    const d = ctx.device();
-    ctx.i2s();
-    await ctx.send('set I2S BCK pin', () => d.setI2sBckPin(pin));
-    patchI2s((i) => ({ ...i, bckPin: pin }));
-    requestReconcile(true);
-  });
+export function setI2sBckPin(pin: number): void {
+  if (!mirror.current?.i2s) return;
+  const d = session.device;
+  if (!d) return;
+  void writeChecked('set I2S BCK pin', () => d.setI2sBckPin(pin), () => patchI2s((i) => ({ ...i, bckPin: pin })));
 }
 
-export function setMckEnabled(on: boolean): Promise<void> {
-  return ctx.run('set MCK enable', async () => {
-    const d = ctx.device();
-    ctx.i2s();
-    await ctx.send('set MCK enable', () => d.setMckEnable(on));
-    patchI2s((i) => ({ ...i, mckEnabled: on }));
-    requestReconcile(true);
-  });
+export function setMckEnabled(on: boolean): void {
+  if (!mirror.current?.i2s) return;
+  const d = session.device;
+  if (!d) return;
+  void writeChecked('set MCK enable', () => d.setMckEnable(on), () => patchI2s((i) => ({ ...i, mckEnabled: on })));
 }
 
-export function setMckPin(pin: number): Promise<void> {
-  return ctx.run('set MCK pin', async () => {
-    const d = ctx.device();
-    ctx.i2s();
-    await ctx.send('set MCK pin', () => d.setMckPin(pin));
-    patchI2s((i) => ({ ...i, mckPin: pin }));
-    requestReconcile(true);
-  });
+export function setMckPin(pin: number): void {
+  if (!mirror.current?.i2s) return;
+  const d = session.device;
+  if (!d) return;
+  void writeChecked('set MCK pin', () => d.setMckPin(pin), () => patchI2s((i) => ({ ...i, mckPin: pin })));
 }
 
-export function setMckMultiplier(encoded: number): Promise<void> {
-  return ctx.run('set MCK multiplier', async () => {
-    const d = ctx.device();
-    ctx.i2s();
-    await ctx.send('set MCK multiplier', () => d.setMckMultiplier(encoded));
-    patchI2s((i) => ({ ...i, mckMultiplierEncoded: encoded }));
-    requestReconcile(true);
-  });
+export function setMckMultiplier(encoded: number): void {
+  if (!mirror.current?.i2s) return;
+  const d = session.device;
+  if (!d) return;
+  void writeChecked('set MCK multiplier', () => d.setMckMultiplier(encoded), () => patchI2s((i) => ({ ...i, mckMultiplierEncoded: encoded })));
 }

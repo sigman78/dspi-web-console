@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { write, scrub, flushAllWrites, cancelAllWrites } from './writes';
+import { write, scrub, writeChecked, flushAllWrites, cancelAllWrites } from './writes';
 import { inflight, dropInflight, consumeReconcile, lastWriteMs } from '@/state/mirror.svelte';
-import { session, settings } from '@/state';
+import { session, settings, notices, clearNotices } from '@/state';
+import { Result } from '@/utils';
 
 // Mock the resync module so write() failures don't actually fire HTTP.
 vi.mock('@/runtime/resync', () => ({
@@ -104,6 +105,71 @@ describe('write() helper', () => {
     const send = vi.fn(async () => { throw new Error('boom'); });
     await write(send, () => {});
     expect(forceResyncNow).toHaveBeenCalled();
+  });
+});
+
+describe('writeChecked() helper', () => {
+  beforeEach(() => {
+    while (inflight.current > 0) dropInflight();
+    session.generation = 0;
+    session.status = 'connected';
+    consumeReconcile();
+    clearNotices();
+    vi.clearAllMocks();
+  });
+
+  it('patches and requests an eager reconcile on an ok Result', async () => {
+    const patch = vi.fn();
+    await writeChecked('op', async () => Result.ok(), patch);
+    expect(patch).toHaveBeenCalledTimes(1);
+    expect(consumeReconcile()).toEqual({ wanted: true, eager: true });
+  });
+
+  it('warns with the device message and skips the patch on a non-ok Result', async () => {
+    const patch = vi.fn();
+    await writeChecked('set pin', async () => Result.fail('x', 'GPIO pin already in use'), patch);
+    expect(patch).not.toHaveBeenCalled();
+    expect(notices.list).toHaveLength(1);
+    expect(notices.list[0].kind).toBe('warn');
+    expect(notices.list[0].message).toContain('in use');
+  });
+
+  it('treats a rejection as local — no resync, no status change', async () => {
+    const { forceResyncNow } = await import('@/runtime/resync');
+    await writeChecked('set pin', async () => Result.fail('x', 'rejected'), () => {});
+    expect(forceResyncNow).not.toHaveBeenCalled();
+    expect(session.status).toBe('connected');
+  });
+
+  it('error-toasts a transport throw without resyncing', async () => {
+    const { forceResyncNow } = await import('@/runtime/resync');
+    await writeChecked('set pin', async () => { throw new Error('stall'); }, () => {});
+    expect(notices.list).toHaveLength(1);
+    expect(notices.list[0].kind).toBe('error');
+    expect(forceResyncNow).not.toHaveBeenCalled();
+    expect(session.status).toBe('connected');
+  });
+
+  it('does not patch when generation changes mid-flight', async () => {
+    const patch = vi.fn();
+    let resolveSend!: (r: Result<void, string>) => void;
+    const send = vi.fn(() => new Promise<Result<void, string>>((res) => { resolveSend = res; }));
+    const p = writeChecked('op', send, patch);
+    session.generation += 1;  // simulate disconnect mid-flight
+    resolveSend!(Result.ok());
+    await p;
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it('is drained by flushAllWrites', async () => {
+    const patch = vi.fn();
+    let resolveSend!: (r: Result<void, string>) => void;
+    const send = vi.fn(() => new Promise<Result<void, string>>((res) => { resolveSend = res; }));
+    void writeChecked('op', send, patch);
+    const flushed = flushAllWrites();
+    resolveSend!(Result.ok());
+    await flushed;
+    expect(patch).toHaveBeenCalledTimes(1);
   });
 });
 

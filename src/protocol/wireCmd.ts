@@ -220,3 +220,16 @@ export async function writeCmd<T>(
 ): Promise<void> {
   await t.ctrlOut(c.code, wValue, Codec.encode(c.codec, value));
 }
+
+// Action-style IN: control-IN that the firmware uses to *trigger* a side
+// effect and return a 1-byte status code. Returns 0xFF if the response
+// is empty (transport-level failure short of a throw). The raw byte is
+// decoded into a typed Result by the helpers in results.ts.
+export async function actionCmd(
+  t: DspTransport,
+  cmd: { code: number },
+  wValue = 0,
+): Promise<number> {
+  const r = await t.ctrlIn(cmd.code, wValue, 1);
+  return r.length >= 1 ? r[0] : 0xFF;
+}

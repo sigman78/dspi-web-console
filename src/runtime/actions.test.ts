@@ -19,7 +19,7 @@ import {
 import { fromBulkParams } from '@/device/snapshotCodec';
 import { deriveCapabilities } from '@/device/capabilities';
 
-import { cancelAllWrites as cancelWrites } from '@/device/writes';
+import { cancelAllWrites as cancelWrites, flushAllWrites } from '@/device/writes';
 import { inflight, peekReconcile, consumeReconcile } from '@/state/mirror.svelte';
 import { Result } from '@/utils';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
@@ -925,7 +925,8 @@ describe('output config verbs', () => {
 
   it('setOutputDataPin success patches draft.outputPins without discarding other edits', async () => {
     const before = mirror.current!.masterVolumeDb;
-    await setOutputDataPin(0, 16);
+    setOutputDataPin(0, 16);
+    await flushAllWrites();
     expect(mirror.current!.outputPins[0]).toBe(16);
     expect(mirror.current!.masterVolumeDb).toBe(before);
   });
@@ -933,30 +934,35 @@ describe('output config verbs', () => {
   it('setOutputDataPin failure leaves outputPins unchanged and toasts the device message', async () => {
     // pin 7 is in use by pinOutputIndex 1 — mock returns PinInUse
     const pinsBefore = mirror.current!.outputPins.slice();
-    await setOutputDataPin(0, 7);
+    setOutputDataPin(0, 7);
+    await flushAllWrites();
     expect(mirror.current!.outputPins).toEqual(pinsBefore);
     expect(notices.list).toHaveLength(1);
     expect(notices.list[0].message).toContain('in use');
   });
 
   it('setOutputType updates draft.i2s.outputSlotTypes', async () => {
-    await setOutputType(0, 1);
+    setOutputType(0, 1);
+    await flushAllWrites();
     expect(mirror.current!.i2s.outputSlotTypes[0]).toBe(1);
   });
 
   test('setI2sBckPin success patches draft.i2s.bckPin', async () => {
-    await setI2sBckPin(16);
+    setI2sBckPin(16);
+    await flushAllWrites();
     expect(mirror.current!.i2s.bckPin).toBe(16);
   });
 
   test('setMckEnabled success patches draft.i2s.mckEnabled', async () => {
-    await setMckEnabled(true);
+    setMckEnabled(true);
+    await flushAllWrites();
     expect(mirror.current!.i2s.mckEnabled).toBe(true);
   });
 
   it('requests an eager reconcile on a successful config write', async () => {
     consumeReconcile(); // clear anything pending from boot
-    await setI2sBckPin(16);
+    setI2sBckPin(16);
+    await flushAllWrites();
     expect(peekReconcile()).toEqual({ wanted: true, eager: true });
   });
 
@@ -971,7 +977,7 @@ describe('config verb preconditions', () => {
 
   it('setOutputDataPin does not touch the device when the mirror is not hydrated', async () => {
     // Device bound but no snapshot yet: the precondition must gate BEFORE the
-    // send, so the device is never mutated and the NotReady skip stays silent.
+    // send, so the device is never touched and the skip stays silent.
     const setOutputPin = vi.fn(async () => Result.ok());
     bindDevice(initializedDevice({ setOutputPin }));
     await setOutputDataPin(0, 16);

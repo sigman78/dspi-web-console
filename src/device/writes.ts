@@ -9,10 +9,10 @@
 // settles after a disconnect+reconnect is silently dropped (does not
 // mutate, does not fire failure recovery).
 
-import { session, setStatus, settings } from '@/state';
+import { session, setStatus, settings, pushNotice } from '@/state';
 import { bumpInflight, dropInflight, requestReconcile, noteWriteActivity } from '@/state/mirror.svelte';
 import { forceResyncNow } from '@/runtime/resync';
-import { Log } from '@/utils';
+import { Log, type Result } from '@/utils';
 
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -44,6 +44,42 @@ export async function write(
       Log.error('writes', 'write send failed; forcing resync', err);
       setStatus('error', errMessage(err));
       void forceResyncNow();
+    } finally {
+      dropInflight();
+    }
+  })();
+  inflightWrites.add(settled);
+  void settled.finally(() => inflightWrites.delete(settled));
+  return settled;
+}
+
+// Click-paced write for commands that return a typed device Result. Same
+// machinery as write() (generation guard, inflight registry so flushAllWrites
+// drains it), but the device *declines* via a non-ok Result rather than a
+// throw: that's a local rejection (pin in use, output active) surfaced as a
+// warn toast carrying the device's own message — never a connection error, so
+// it does not setStatus('error') or resync. The mirror is patched only on ok.
+// An actual throw is a transport/bug failure → error toast (still local, still
+// no resync: one command failing doesn't invalidate the whole snapshot).
+export function writeChecked<E>(
+  op: string,
+  send: () => Promise<Result<void, E>>,
+  patch: () => void,
+): Promise<void> {
+  const gen = session.generation;
+  noteWriteActivity();
+  bumpInflight();
+  const settled = (async () => {
+    try {
+      const r = await send();
+      if (gen !== session.generation) return;
+      if (!r.ok) { pushNotice('warn', r.message); return; }
+      patch();
+      requestReconcile(true);
+    } catch (err) {
+      if (gen !== session.generation) return;
+      Log.error('writes', `${op} failed`, err);
+      pushNotice('error', `${op} failed`);
     } finally {
       dropInflight();
     }

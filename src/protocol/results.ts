@@ -1,5 +1,4 @@
 // src/protocol/results.ts
-import type { DspTransport } from '@/transport/DspTransport';
 import { Result } from '@/utils';
 
 // FlashResult — returned by SaveParams (0x51), LoadParams (0x52), FactoryReset (0x53).
@@ -22,18 +21,6 @@ export const PresetResult = {
   FlashWriteError: 0x04,
 } as const;
 export type PresetResult = (typeof PresetResult)[keyof typeof PresetResult];
-
-// Action-style IN: control-IN that the firmware uses to *trigger* a side
-// effect and return a 1-byte status code. Returns 0xFF if the response
-// is empty (transport-level failure short of a throw).
-export async function actionCmd(
-  t: DspTransport,
-  cmd: { code: number },
-  wValue = 0,
-): Promise<number> {
-  const r = await t.ctrlIn(cmd.code, wValue, 1);
-  return r.length >= 1 ? r[0] : 0xFF;
-}
 
 const flashCodes = new Set<number>(Object.values(FlashResult));
 const presetCodes = new Set<number>(Object.values(PresetResult));
