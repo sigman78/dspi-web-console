@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, factoryResetDevice } from './actions';
+import { setMasterVolume, toggleMute, attachTransportListeners, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, factoryResetDevice } from './actions';
 import { session, bindDevice, settings, mirror, status as statusStore, presets, notices, clearNotices } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -233,39 +233,22 @@ describe('setEqFilter', () => {
     expect(mirror.current?.channels[0].filters[1].frequency).toBe(1000);
   });
 
-  it('composes rapid partial edits against the pending band before acks', async () => {
+  it('sequential partial edits to a band compose via the settled mirror', async () => {
     const calls: FilterParams[] = [];
-    const resolves: Array<() => void> = [];
     bindDevice(initializedDevice({
-      setFilter: vi.fn((_ch: number, _band: number, f: FilterParams) => {
-        calls.push({ ...f });
-        return new Promise<void>((resolve) => { resolves.push(resolve); });
-      }),
+      setFilter: vi.fn(async (_ch: number, _band: number, f: FilterParams) => { calls.push({ ...f }); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     }));
-    const first = {
-      ...mirror.current!.channels[0].filters[1],
-      frequency: 2000,
-    };
-
-    setEqFilter(0, 1, first);
-    const second = {
-      ...mirror.current!.channels[0].filters[1],
-      gain: 4,
-    };
-    setEqFilter(0, 1, second);
+    // Edit frequency, let it settle, then edit gain built from the updated band
+    // (the same {...current, ...patch} merge BandRow performs on commit).
+    setEqFilter(0, 1, { ...mirror.current!.channels[0].filters[1], frequency: 2000 });
+    await vi.runAllTimersAsync();
+    setEqFilter(0, 1, { ...mirror.current!.channels[0].filters[1], gain: 4 });
+    await vi.runAllTimersAsync();
 
     expect(calls).toHaveLength(2);
-    expect(calls[1].frequency).toBe(2000);
+    expect(calls[1].frequency).toBe(2000);   // gain edit carried the settled frequency
     expect(calls[1].gain).toBe(4);
-    expect(mirror.current?.channels[0].filters[1].frequency).toBe(2000);
-    expect(mirror.current?.channels[0].filters[1].gain).toBe(4);
-
-    resolves[1]();
-    await vi.runAllTimersAsync();
-    resolves[0]();
-    await vi.runAllTimersAsync();
-
     expect(mirror.current?.channels[0].filters[1].frequency).toBe(2000);
     expect(mirror.current?.channels[0].filters[1].gain).toBe(4);
   });
@@ -625,7 +608,7 @@ describe('bulk writes: eq/delay/names', () => {
   });
 });
 
-describe('crosspoint — granular unified lane (Finding 2)', () => {
+describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
@@ -643,13 +626,14 @@ describe('crosspoint — granular unified lane (Finding 2)', () => {
     const route = mirror.current!.routes[0];
     const before = route.enabled;
     setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !before);
-    expect(mirror.current!.routes[0].enabled).toBe(!before);   // optimistic patch
+    expect(mirror.current!.routes[0].enabled).toBe(before);    // not optimistic — unchanged until ack
     await vi.runAllTimersAsync();
+    expect(mirror.current!.routes[0].enabled).toBe(!before);   // patched after ack
     expect(calls).toHaveLength(1);
     expect(calls[0].enabled).toBe(!before);
   });
 
-  it('a setCrosspointEnabled and a gain edit on the same cell coalesce into one consistent setMatrixRoute', async () => {
+  it('sequential enable then gain edits on a cell each send the merged tuple', async () => {
     const calls: Array<{ enabled: boolean; invert: boolean; gainDb: number }> = [];
     const device = initializedDevice({
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
@@ -659,11 +643,14 @@ describe('crosspoint — granular unified lane (Finding 2)', () => {
     const route = mirror.current!.routes[0];
     const beforeEnabled = route.enabled;
     setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !beforeEnabled);
+    await vi.runAllTimersAsync();
     setCrosspointGain(route.inputIndex, route.outputWireIndex, -6);
     await vi.runAllTimersAsync();
-    expect(calls).toHaveLength(1);                 // one coalesced write
-    expect(calls[0].enabled).toBe(!beforeEnabled);
-    expect(calls[0].gainDb).toBe(-6);
+    expect(calls).toHaveLength(2);                 // one send per edit
+    // The gain send merges with the committed mirror: the enable edit (now
+    // settled) is carried in the gain send's whole-tuple, not clobbered.
+    expect(calls[1].enabled).toBe(!beforeEnabled);
+    expect(calls[1].gainDb).toBe(-6);
   });
 
   it('setCrosspointInvert flips invert and the wire tuple reflects it', async () => {
@@ -679,6 +666,33 @@ describe('crosspoint — granular unified lane (Finding 2)', () => {
     await vi.runAllTimersAsync();
     expect(calls).toHaveLength(1);
     expect(calls[0].invert).toBe(!before);
+  });
+});
+
+describe('output gain — optimistic scalar write', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    const bulk = parseBulkParams(makeBulk());
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+  });
+  afterEach(() => { vi.useRealTimers(); bindDevice(null); });
+
+  it('setOutputGain sends the scalar and patches the mirror after ack', async () => {
+    const calls: Array<[number, number]> = [];
+    const device = initializedDevice({
+      setOutputGain: vi.fn(async (slot: number, db: number) => { calls.push([slot, db]); }),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    bindDevice(device);
+    const slot = mirror.current!.outputs[0].wireIndex;
+    const before = mirror.current!.outputs.find((o) => o.wireIndex === slot)!.gainDb;
+    setOutputGain(slot, -6);
+    // Not optimistic: the mirror is unchanged until the ack lands.
+    expect(mirror.current!.outputs.find((o) => o.wireIndex === slot)!.gainDb).toBe(before);
+    await vi.runAllTimersAsync();
+    expect(mirror.current!.outputs.find((o) => o.wireIndex === slot)!.gainDb).toBe(-6);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual([slot, -6]);
   });
 });
 
@@ -700,9 +714,12 @@ describe('granular writes: eqFilter (per-band)', () => {
     });
     bindDevice(device);
     const ch = mirror.current!.channels[0].id;
+    const beforeGain = mirror.current!.channels[0].filters[0].gain;
     setEqFilter(ch, 0, { type: FilterType.Peaking, bypass: false, frequency: 1000, q: 1.0, gain: 3 });
+    expect(mirror.current!.channels[0].filters[0].gain).toBe(beforeGain); // not optimistic — unchanged until ack
     await vi.runAllTimersAsync();
     expect(mirror.current!.channels[0].filters[0].frequency).toBe(1000); // patched after ack
+    expect(mirror.current!.channels[0].filters[0].gain).toBe(3);
     expect(calls).toHaveLength(1);
     expect(calls[0].band).toBe(0);
     expect(calls[0].filter.frequency).toBe(1000);
@@ -759,7 +776,7 @@ describe('dual-lane inflight coexistence: scrub-class + write-class share the co
     const bulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
       // Both sends park forever so neither token is released during the test.
-      setMatrixRoute: vi.fn(() => new Promise<void>(() => {})),
+      setMasterVolume: vi.fn(() => new Promise<void>(() => {})),
       setBypass: vi.fn(() => new Promise<void>(() => {})),
       getAllParams: vi.fn(async () => bulk),
     });
@@ -768,11 +785,10 @@ describe('dual-lane inflight coexistence: scrub-class + write-class share the co
     session.status = 'connected';
 
     expect(inflight.current).toBe(0);
-    // scrub-class: crosspoint uses scrub() → bumpInflight().
-    const route = mirror.current!.routes[0];
-    setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !route.enabled);
+    // scrub-class: masterVolume uses scrub() → bumpInflight() at schedule time.
+    setMasterVolume(-6);
     expect(inflight.current).toBe(1);
-    // write-class: bypass now uses write() → bumpInflight() as well.
+    // write-class: bypass uses write() → bumpInflight() as well.
     setBypass(true);
     expect(inflight.current).toBe(2);
     // Both writes in flight: the resync soft-skip guard covers both.
@@ -870,11 +886,12 @@ describe('boolean device flags are explicit setters', () => {
     const route = mirror.current!.routes[0];
     const initial = route.enabled;
     setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !initial);
-    expect(mirror.current!.routes[0].enabled).toBe(!initial);
-    // Calling with the same value again must not flip it back
-    setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !initial);
-    expect(mirror.current!.routes[0].enabled).toBe(!initial);
     await vi.runAllTimersAsync();
+    expect(mirror.current!.routes[0].enabled).toBe(!initial);
+    // Calling with the same value again must not flip it back (set, not toggle).
+    setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !initial);
+    await vi.runAllTimersAsync();
+    expect(mirror.current!.routes[0].enabled).toBe(!initial);
     expect(calls.at(-1)!.enabled).toBe(!initial);
     vi.useRealTimers();
   });
@@ -889,11 +906,12 @@ describe('boolean device flags are explicit setters', () => {
     const route = mirror.current!.routes[0];
     const initial = route.invert;
     setCrosspointInvert(route.inputIndex, route.outputWireIndex, !initial);
-    expect(mirror.current!.routes[0].invert).toBe(!initial);
-    // Calling with the same value again must not flip it back
-    setCrosspointInvert(route.inputIndex, route.outputWireIndex, !initial);
-    expect(mirror.current!.routes[0].invert).toBe(!initial);
     await vi.runAllTimersAsync();
+    expect(mirror.current!.routes[0].invert).toBe(!initial);
+    // Calling with the same value again must not flip it back (set, not toggle).
+    setCrosspointInvert(route.inputIndex, route.outputWireIndex, !initial);
+    await vi.runAllTimersAsync();
+    expect(mirror.current!.routes[0].invert).toBe(!initial);
     expect(calls.at(-1)!.invert).toBe(!initial);
     vi.useRealTimers();
   });

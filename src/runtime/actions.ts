@@ -56,10 +56,12 @@ export function setEqFilter(channel: ChannelId, band: number, filter: FilterPara
   };
   const d = session.device;
   if (!d) return;
-  ch.filters[band] = { ...clamped };
   void write(
     () => d.setFilter(channel, band, clamped),
-    () => {},
+    () => {
+      const c = mirror.current?.channels.find((c) => c.id === channel);
+      if (c) c.filters[band] = { ...clamped };
+    },
   );
 }
 
@@ -305,11 +307,15 @@ export function setInputPreamp(channel: InputSlot, db: number): void {
   );
 }
 
-// All three crosspoint mutations share one per-item granular lane keyed by the
-// cell. Each send reads the full {enabled, invert, gainDb} tuple from `draft`
-// and writes it via setMatrixRoute, so a toggle and a gain drag on the same
-// cell coalesce into one consistent write. Per-item writes do not mute audio
-// (unlike the bulk path), which is why crosspoint gain stays granular.
+// All three crosspoint verbs are click/commit-paced (button + ValueField, no
+// drag), so they use the plain write() lane: send first, patch the mirror on
+// ack. SetMatrixRoute is a whole-tuple command, so the patch is merged in host
+// code — read the current cell, apply the field change, send the full tuple.
+// Sequential commits stay consistent because each read sees the prior edit's
+// settled mirror. (Two edits to the same cell within one USB round-trip could
+// clobber, but that's unreachable at click pace; add a coalesce key if a
+// programmatic same-cell burst is ever introduced.) Per-item writes also avoid
+// the bulk path's audio mute, which is why crosspoint stays granular.
 function scheduleCrosspointWrite(
   input: InputSlot,
   output: OutputSlot,
@@ -319,17 +325,10 @@ function scheduleCrosspointWrite(
   const route = focusRoute(input, output);
   const d = session.device;
   if (!d) return;
-  scrub(
-    `crosspoint:${input}:${output}`,
-    () => route.modify(mutate),
-    async () => {
-      const c = route.read();
-      await d.setMatrixRoute(input, output, {
-        enabled: c.enabled,
-        invert: c.invert,
-        gainDb: c.gainDb,
-      });
-    },
+  const next = mutate(route.read());
+  void write(
+    () => d.setMatrixRoute(input, output, { enabled: next.enabled, invert: next.invert, gainDb: next.gainDb }),
+    () => route.modify(() => next),
   );
 }
 
@@ -346,16 +345,17 @@ export function setCrosspointInvert(input: InputSlot, output: OutputSlot, invert
   scheduleCrosspointWrite(input, output, (r) => ({ ...r, invert }));
 }
 
+// Click/commit-paced ValueField (no drag): plain write(), patch the mirror on
+// ack. Scalar verb — no tuple to merge. Mirrors its sibling setOutputDelay.
 export function setOutputGain(slot: OutputSlot, gainDb: number): void {
   gainDb = Clamp.outputGainDb(gainDb);
   if (!mirror.current?.outputs) return;
   const out = focusOutput(slot);
   const d = session.device;
   if (!d) return;
-  scrub(
-    `outputGain:${slot}`,
-    () => out.modify((o) => ({ ...o, gainDb })),
+  void write(
     () => d.setOutputGain(slot, gainDb),
+    () => out.modify((o) => ({ ...o, gainDb })),
   );
 }
 
