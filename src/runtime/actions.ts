@@ -16,7 +16,7 @@ import {
   resetStatus, status,
   clearCopySource, pushNotice,
 } from '@/state';
-import { Result, Log, type VoidResult } from '@/utils';
+import { Log } from '@/utils';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
 import { connectionScope, endConnection } from './connectionScope';
@@ -534,12 +534,14 @@ export async function setMasterVolumeMode(mode: MasterVolumeMode): Promise<void>
 // 0xD6 SaveMasterVolume — writes the directory's boot-baseline volume.
 // In Mode 0 this is the post-boot starting volume; in Mode 1 firmware
 // accepts the call but it's dormant until the user flips back to Mode 0.
-// Returns a Result so callers can show a success indicator.
-export async function saveMasterVolumeBaseline(): Promise<VoidResult> {
+// Returns whether the save succeeded so the button can show its inline tick;
+// a failure is surfaced to the user via the toast channel.
+export async function saveMasterVolumeBaseline(): Promise<boolean> {
   const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  const success = await d.saveMasterVolume();
-  return success ? Result.ok() : Result.fail('write error', 'flash write error');
+  if (!d) return false;
+  const ok = await d.saveMasterVolume();
+  if (!ok) pushNotice('warn', 'Saving master volume failed (flash write error).');
+  return ok;
 }
 
 export function factoryResetDevice(): Promise<void> {

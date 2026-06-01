@@ -465,15 +465,14 @@ describe('actions — master volume mode', () => {
     expect(presets.directory!.masterVolumeMode).toBe(MasterVolumeMode.WithPreset);
   });
 
-  it('saveMasterVolumeBaseline returns ok in Mode 0', async () => {
+  it('saveMasterVolumeBaseline returns true on success in Mode 0', async () => {
     presets.directory = {
       occupiedSlotsSet: new Set(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
       includePins: false,
       masterVolumeMode: MasterVolumeMode.Independent,
     };
-    const r = await saveMasterVolumeBaseline();
-    expect(r.ok).toBe(true);
+    expect(await saveMasterVolumeBaseline()).toBe(true);
   });
 });
 

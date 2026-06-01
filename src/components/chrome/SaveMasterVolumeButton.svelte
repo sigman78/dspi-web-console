@@ -14,8 +14,8 @@
     if (savedTick) return;
     if (!confirming) { confirming = true; return; }
     confirming = false;
-    const r = await saveMasterVolumeBaseline();
-    if (r.ok) {
+    // Failure is surfaced via the toast channel; the boolean drives the tick.
+    if (await saveMasterVolumeBaseline()) {
       savedTick = true;
       setTimeout(() => { savedTick = false; }, 1200);
     }
