@@ -14,7 +14,7 @@ vi.mock('@/state', () => {
     outputPins: [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
   };
-  return { mirror: { get current() { return snap; } }, session: { get status() { return 'connected'; } } };
+  return { mirror: { get current() { return snap; } }, connection: { get connected() { return true; }, get phase() { return 'ready'; } } };
 });
 
 import OutputsPanel from './OutputsPanel.svelte';

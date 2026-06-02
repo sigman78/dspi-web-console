@@ -1,10 +1,10 @@
 <!-- src/components/system/ResetPanel.svelte -->
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
-  import { session } from '@/state';
+  import { connection } from '@/state';
   import { factoryResetDevice } from '@/runtime';
 
-  const connected = $derived(session.status === 'connected');
+  const connected = $derived(connection.connected);
 
   function onFactoryReset() {
     if (!confirm('Factory reset wipes ALL presets and resets live audio to defaults. Continue?')) return;

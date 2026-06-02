@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { mirror, presets, session } from '@/state';
+  import { mirror, presets, connection } from '@/state';
   import { saveMasterVolumeBaseline } from '@/runtime';
   import { MasterVolumeMode, DIFF_TOLERANCE } from '@/domain';
 
-  const connected = $derived(session.status === 'connected');
+  const connected = $derived(connection.connected);
   const mode = $derived(presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent);
   const visible = $derived(mode === MasterVolumeMode.Independent);
 

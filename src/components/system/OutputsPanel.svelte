@@ -2,12 +2,12 @@
   import Panel from '../chrome/Panel.svelte';
   import SegmentedSelect from '../chrome/SegmentedSelect.svelte';
   import PinSelect from './PinSelect.svelte';
-  import { mirror, session } from '@/state';
+  import { mirror, connection } from '@/state';
   import { setOutputType, setOutputDataPin } from '@/runtime';
   import { availablePinsFor, channelById, ChannelId, type OutputSlot } from '@/domain';
 
   const snap = $derived(mirror.current);
-  const connected = $derived(session.status === 'connected');
+  const connected = $derived(connection.connected);
 
   // Each SPDIF slot is a stereo output pair (OUT n -> nL / nR).
   function pairShort(slot: number): string {

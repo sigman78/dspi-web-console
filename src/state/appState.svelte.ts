@@ -58,6 +58,23 @@ export const app = {
   get current(): AppState { return _app; },
 };
 
+// Read-only connection state derived from the machine, for UI gating + display.
+// Replaces the legacy session.status/error/errorKind projection.
+export const connection = {
+  get phase(): AppState['kind'] { return _app.kind; },
+  get connected(): boolean { return _app.kind === 'ready'; },
+  get error(): string | null { return _app.kind === 'errored' ? _app.message : null; },
+  get errorKind(): SessionErrorKind { return _app.kind === 'errored' ? _app.errorKind : null; },
+  get label(): string {
+    switch (_app.kind) {
+      case 'ready':      return 'CONNECTED';
+      case 'connecting': return 'CONNECTING';
+      case 'errored':    return 'ERROR';
+      case 'noDevice':   return 'OFFLINE';
+    }
+  },
+};
+
 export function activeSession(): ReadySession | null {
   return _app.kind === 'ready' ? _app.session : null;
 }

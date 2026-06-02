@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { mirror, settings, session } from '@/state';
+  import { mirror, settings, connection } from '@/state';
   import { setMasterVolume, toggleMute } from '@/runtime';
   import SaveMasterVolumeButton from './SaveMasterVolumeButton.svelte';
 
   const masterVolumeDb = $derived(mirror.current?.masterVolumeDb ?? 0);
-  const connected = $derived(session.status === 'connected');
+  const connected = $derived(connection.connected);
   // While soft-muted, keep the slider at the *pre-mute* position rather
   // than jumping to MUTE_DB. The dB readout shows "OFF" instead. Unmute
   // restores the snapshot value via toggleMute().

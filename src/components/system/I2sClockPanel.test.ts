@@ -13,7 +13,7 @@ vi.mock('@/state', () => {
   };
   return {
     mirror: { get current() { return snap; } },
-    session: { get status() { return 'connected'; } },
+    connection: { get connected() { return true; }, get phase() { return 'ready'; } },
     status: { get info() { return { sampleRateHz: 96000 }; } },
   };
 });

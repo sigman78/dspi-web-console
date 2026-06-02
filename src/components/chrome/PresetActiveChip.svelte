@@ -1,10 +1,10 @@
 <!-- src/components/chrome/PresetActiveChip.svelte -->
 <script lang="ts">
-  import { presets, presetsDirty, setTab, session } from '@/state';
+  import { presets, presetsDirty, setTab, connection } from '@/state';
 
   const active = $derived(presets.active);
   const name = $derived(active == null ? '' : (presets.names[active] ?? ''));
-  const connected = $derived(session.status === 'connected');
+  const connected = $derived(connection.connected);
   const dirty = $derived(presetsDirty.current);
 
   function onclick() {

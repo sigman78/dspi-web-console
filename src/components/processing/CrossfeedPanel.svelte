@@ -3,7 +3,7 @@
   import ValueField from '../chrome/ValueField.svelte';
   import SegmentedSelect from '../chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '../chrome/ToggleSwitch.svelte';
-  import { mirror, session } from '@/state';
+  import { mirror, connection } from '@/state';
   import {
     setCrossfeedEnabled, setCrossfeedPreset, setCrossfeedItd,
     setCrossfeedFreq, setCrossfeedFeedDb,
@@ -11,7 +11,7 @@
   import { CrossfeedPreset, Proc } from '@/domain';
 
   const cf = $derived(mirror.current?.crossfeed);
-  const connected = $derived(session.status === 'connected');
+  const connected = $derived(connection.connected);
   const enabled = $derived(cf?.enabled ?? false);
   const isCustom = $derived((cf?.preset ?? CrossfeedPreset.Preset1) === CrossfeedPreset.Custom);
   const editable = $derived(connected && enabled);

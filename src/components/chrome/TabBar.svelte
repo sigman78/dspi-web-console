@@ -1,6 +1,6 @@
 <script lang="ts">
   import MiniPin from './MiniPin.svelte';
-  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId, mirror, status, session } from '@/state';
+  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId, mirror, status, connection } from '@/state';
   import { eqUi } from '../eq/eqUi.svelte';
   import type { ChannelModel, ChannelId } from '@/domain';
 
@@ -18,7 +18,7 @@
   const inputs = $derived(mirror.current?.channels.filter((c) => !c.isOutput) ?? []);
   const outputs = $derived(mirror.current?.channels.filter((c) =>  c.isOutput) ?? []);
   const selectable = $derived(settings.tab === 'eq');
-  const disabled = $derived(session.status !== 'connected');
+  const disabled = $derived(!connection.connected);
 
   function levelDb(ch: ChannelModel): number {
     const p = status.peaks[ch.id] ?? 0;

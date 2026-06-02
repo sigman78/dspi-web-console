@@ -2,12 +2,12 @@
   import Panel from '../chrome/Panel.svelte';
   import ValueField from '../chrome/ValueField.svelte';
   import ToggleSwitch from '../chrome/ToggleSwitch.svelte';
-  import { mirror, session } from '@/state';
+  import { mirror, connection } from '@/state';
   import { Proc } from '@/domain';
   import { setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from '@/runtime';
 
   const loudness = $derived(mirror.current?.loudness);
-  const connected = $derived(session.status === 'connected');
+  const connected = $derived(connection.connected);
   const enabled = $derived(loudness?.enabled ?? false);
   const editable = $derived(connected && enabled);
 

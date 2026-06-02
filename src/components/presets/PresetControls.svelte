@@ -3,7 +3,7 @@
   import {
     presets, presetsDirty,
     copySource, setCopySource, clearCopySource,
-    settings, session,
+    settings, connection,
   } from '@/state';
   import {
     saveActivePreset, revertActivePreset,
@@ -19,7 +19,7 @@
   const active = $derived(presets.active);
   const dir = $derived(presets.directory);
   const dirty = $derived(presetsDirty.current);
-  const connected = $derived(session.status === 'connected');
+  const connected = $derived(connection.connected);
   const activeOccupied = $derived.by(() => {
     if (active == null || !dir) return false;
     return dir.occupiedSlotsSet.has(active);

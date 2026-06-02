@@ -4,10 +4,10 @@
   import DirtyDot from './DirtyDot.svelte';
   import MasterVolumeMini from './MasterVolumeMini.svelte';
   import PresetActiveChip from './PresetActiveChip.svelte';
-  import { status, session, mirror } from '@/state';
+  import { status, connection, mirror } from '@/state';
   import { setBypass } from '@/runtime';
 
-  const connected = $derived(session.status === 'connected');
+  const connected = $derived(connection.connected);
   const info = $derived(status.info);
   const bypassed = $derived(mirror.current?.bypass ?? false);
 

@@ -5,11 +5,11 @@
   import PresetTile from '../presets/PresetTile.svelte';
   import PresetControls from '../presets/PresetControls.svelte';
   import { fetchPresetInfo, retryFetchPresetInfo, dismissPresetActionError } from '@/runtime';
-  import { presets, presetsDirty, copySource, clearCopySource, session } from '@/state';
+  import { presets, presetsDirty, copySource, clearCopySource, connection } from '@/state';
   import { PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';
 
   const SLOTS: PresetSlot[] = Array.from({ length: PRESET_SLOT_COUNT }, (_, i) => i as PresetSlot);
-  const connected = $derived(session.status === 'connected');
+  const connected = $derived(connection.connected);
 
   // Refs to tile components so the controls pane can trigger inline rename.
   const tileRefs = $state<Record<number, { enterRename: () => void } | null>>({});

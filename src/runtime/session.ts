@@ -8,7 +8,7 @@ import { formatDeviceInfo, wireMonitorEnabled } from '@/protocol/wireMonitor';
 import { attachTransportListeners, wireUpConnection } from './actionsDevice';
 import { beginConnection, endConnection } from './connectionScope';
 import { isDeviceHeld } from './deviceLock';
-import { session, bindDevice, settings, dispatch } from '@/state';
+import { bindDevice, settings, dispatch, connection } from '@/state';
 import { Log } from '@/utils';
 
 // Per-call ceiling on USB control transfers. A frozen firmware would
@@ -118,7 +118,7 @@ export function registerNavigatorReconnect(): void {
     if (!matchesDspi(event.device)) return;
     if (event.device.serialNumber !== target) return;
     if (booting) return;
-    if (session.status === 'connected' || session.status === 'connecting') return;
+    if (connection.connected || connection.phase === 'connecting') return;
     Log.info('reconnect', 'last-known device re-enumerated, attempting bootReal()');
     void bootReal().catch(reportConnectError);
   });
