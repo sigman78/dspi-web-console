@@ -13,7 +13,8 @@
   const { session }: { session: ReadySession } = $props();
   // The session is stable while this component is mounted (a disconnect unmounts
   // ConnectedApp; a reconnect mounts a fresh instance with the new session), so
-  // setting context once at init is correct.
+  // setting context once at init is correct — the non-reactive capture is intended.
+  // svelte-ignore state_referenced_locally
   setContext(SESSION_KEY, session);
 </script>
 
