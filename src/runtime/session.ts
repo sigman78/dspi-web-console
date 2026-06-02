@@ -8,7 +8,7 @@ import { formatDeviceInfo, wireMonitorEnabled } from '@/protocol/wireMonitor';
 import { attachTransportListeners, wireUpConnection } from './actionsDevice';
 import { beginConnection, endConnection } from './connectionScope';
 import { isDeviceHeld } from './deviceLock';
-import { session, setStatus, bindDevice, settings } from '@/state';
+import { session, bindDevice, settings, dispatch } from '@/state';
 import { Log } from '@/utils';
 
 // Per-call ceiling on USB control transfers. A frozen firmware would
@@ -30,7 +30,7 @@ export function webUsbUnsupportedReason(): string | null {
 export function reportConnectError(err: unknown): void {
   const message = (err as Error)?.message ?? String(err);
   const upgrade = err instanceof UnsupportedFirmware || err instanceof UnsupportedDevicePacket;
-  setStatus('error', message, upgrade ? 'unsupported-firmware' : null);
+  dispatch({ t: 'failed', message, errorKind: upgrade ? 'unsupported-firmware' : null });
 }
 
 async function createBoundDevice(
@@ -73,7 +73,7 @@ async function createBoundDevice(
 
 export async function connectRequested(): Promise<void> {
   try {
-    setStatus('connecting');
+    dispatch({ t: 'requested' });
     const transport = new WebUsbTransport();
     const device = await createBoundDevice(transport, () => transport.requestAndOpen());
     await wireUpConnection(device);
