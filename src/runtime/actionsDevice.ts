@@ -6,10 +6,11 @@
 import type { DspTransport } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
 import {
-  bindDevice, session, setStatus,
+  bindDevice, session,
   settings, reconcileEqTarget,
   resetStatus,
   clearCopySource, pushNotice,
+  dispatch, makeReadySession,
 } from '@/state';
 import { Log } from '@/utils';
 import { mirror } from '@/state/mirror.svelte';
@@ -33,7 +34,7 @@ export async function syncDeviceSnapshot(): Promise<void> {
       mirror.init(snap);
     } catch (err) {
       Log.error('sync', 'syncDeviceSnapshot failed', err);
-      setStatus('error', (err as Error).message);
+      dispatch({ t: 'failed', message: (err as Error).message });
       throw err;
     } finally {
       inflightSync = null;
@@ -46,10 +47,10 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
   if (session.device !== device) {
     throw new Error('Cannot finish connection for inactive device');
   }
-  setStatus('connecting');
+  dispatch({ t: 'requested' });
   try {
     await syncDeviceSnapshot();
-    setStatus('connected');
+    dispatch({ t: 'synced', session: makeReadySession(device) });
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync();
     // Production opens the scope in createBoundDevice; tests may call
@@ -70,7 +71,7 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
     });
   } catch (err) {
     Log.error('sync', 'wireUpConnection failed', err);
-    setStatus('error', (err as Error).message);
+    dispatch({ t: 'failed', message: (err as Error).message });
     throw err;
   }
 }
@@ -100,7 +101,7 @@ export function attachTransportListeners(transport: DspTransport): () => void {
     // revisited and won't throw.
     endConnection();                 // disposes commands, resync, poll loop, listeners
     bindDevice(null);
-    setStatus('disconnected');
+    dispatch({ t: 'disconnected' });
     mirror.reset();
     invalidatePresetCache();
     clearCopySource();
@@ -111,7 +112,7 @@ export function attachTransportListeners(transport: DspTransport): () => void {
     if (!device) return;
     void wireUpConnection(device).catch((e) => {
       Log.error('transport', 'auto-finish after connect failed', e);
-      setStatus('error', (e as Error).message);
+      dispatch({ t: 'failed', message: (e as Error).message });
     });
   });
   return () => { offDisc(); offConn(); };
