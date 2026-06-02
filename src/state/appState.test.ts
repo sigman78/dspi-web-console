@@ -49,7 +49,9 @@ import { app, dispatch } from './appState.svelte';
 import { session, setStatus } from './session.svelte';
 
 describe('dispatch()', () => {
-  beforeEach(() => setStatus('idle'));
+  // Reset both cells to a known start: dispatch clears _app to noDevice, then
+  // setStatus('idle') resets the legacy projection (matches mirror.reset() hygiene).
+  beforeEach(() => { dispatch({ t: 'disconnected' }); setStatus('idle'); });
 
   it('requested → app connecting + projects session.status', () => {
     dispatch({ t: 'requested' });
