@@ -32,7 +32,7 @@ describe('transition()', () => {
 });
 
 describe('makeReadySession()', () => {
-  it('wraps the device, info and hardware; starts with no copy source and fresh telemetry', () => {
+  it('wraps the device, info and hardware; starts with no copy source, fresh telemetry, empty presets', () => {
     const device = { info: { serial: 'X1' }, hardware: { name: 'rp2350' } } as never;
     const s = makeReadySession(device);
     expect(s.device).toBe(device);
@@ -40,7 +40,8 @@ describe('makeReadySession()', () => {
     expect(s.hardware).toEqual({ name: 'rp2350' });
     expect(s.copySource.slot).toBeNull();
     expect(s.telemetry.errorCount).toBe(0);
-    expect(s.telemetry.cpu0).toBe(0);
+    expect(s.presets.directory).toBeNull();
+    expect(s.presets.busy).toBe(false);
   });
 });
 

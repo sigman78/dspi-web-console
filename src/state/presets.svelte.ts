@@ -34,15 +34,20 @@ export interface PresetsState {
   savedMasterVolumeDb: number | null;
 }
 
-export const presets = $state<PresetsState>({
-  directory:       null,
-  names:           Array.from({ length: PRESET_SLOT_COUNT }, () => null),
-  active:          null,
-  busy:            false,
-  lastFetchError:  null,
-  lastActionError: null,
-  savedMasterVolumeDb: null,
-});
+export function createPresetsState(): PresetsState {
+  const s = $state<PresetsState>({
+    directory:       null,
+    names:           Array.from({ length: PRESET_SLOT_COUNT }, () => null),
+    active:          null,
+    busy:            false,
+    lastFetchError:  null,
+    lastActionError: null,
+    savedMasterVolumeDb: null,
+  });
+  return s;
+}
+
+export const presets = createPresetsState();
 
 // Device-reported kinds that change without a user edit; never count as dirty.
 const RUNTIME_CHANGE_KINDS = new Set<SnapshotChange['kind']>(['lgSoundSyncStatus']);
