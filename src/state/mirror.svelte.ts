@@ -7,6 +7,7 @@
 // Plus an inflight counter that gates the UI dirty dot and the resync soft-skip.
 
 import type { DspSnapshot } from '@/domain';
+import { activeSession } from './appState.svelte';
 
 export class MirrorState {
   current = $state<DspSnapshot | null>(null);
@@ -64,28 +65,33 @@ export class MirrorState {
   }
 }
 
-// Module singleton — exports delegate here for now; Task 3 swaps this for the
-// active session's mirror.
-const _mirror = new MirrorState();
+// Inert fallback so reads while disconnected get null/zero defaults. A stale
+// in-flight write/reconcile can land here after disconnect; harmless, since it is
+// never read while a session is active and the next connect gets a fresh mirror.
+const detached = new MirrorState();
+
+function mst(): MirrorState {
+  return activeSession()?.mirror ?? detached;
+}
 
 export const mirror = {
-  get current(): DspSnapshot | null { return _mirror.current; },
-  init(snap: DspSnapshot): void { _mirror.init(snap); },
-  replaceCurrent(snap: DspSnapshot): void { _mirror.replaceCurrent(snap); },
-  captureBaseline(): void { _mirror.captureBaseline(); },
-  reset(): void { _mirror.reset(); },
+  get current(): DspSnapshot | null { return mst().current; },
+  init(snap: DspSnapshot): void { mst().init(snap); },
+  replaceCurrent(snap: DspSnapshot): void { mst().replaceCurrent(snap); },
+  captureBaseline(): void { mst().captureBaseline(); },
+  reset(): void { mst().reset(); },
 };
-export const presetBaseline = { get current(): DspSnapshot | null { return _mirror.baseline; } };
-export const inflight = { get current(): number { return _mirror.inflight; } };
-export const isInFlight = { get current(): boolean { return _mirror.inflight > 0; } };
+export const presetBaseline = { get current(): DspSnapshot | null { return mst().baseline; } };
+export const inflight = { get current(): number { return mst().inflight; } };
+export const isInFlight = { get current(): boolean { return mst().inflight > 0; } };
 
-export function bumpInflight(): void { _mirror.bumpInflight(); }
-export function dropInflight(): void { _mirror.dropInflight(); }
-export function noteWriteActivity(): void { _mirror.noteWriteActivity(); }
-export function lastWriteMs(): number { return _mirror.lastWriteMs; }
-export function requestReconcile(eager: boolean): void { _mirror.requestReconcile(eager); }
-export function peekReconcile(): { wanted: boolean; eager: boolean } { return _mirror.peekReconcile(); }
-export function consumeReconcile(): { wanted: boolean; eager: boolean } { return _mirror.consumeReconcile(); }
-export function beginPresetGuard(): void { _mirror.beginPresetGuard(); }
-export function endPresetGuard(trailingMs: number, now?: number): void { _mirror.endPresetGuard(trailingMs, now); }
-export function presetGuardActive(now?: number): boolean { return _mirror.presetGuardActive(now); }
+export function bumpInflight(): void { mst().bumpInflight(); }
+export function dropInflight(): void { mst().dropInflight(); }
+export function noteWriteActivity(): void { mst().noteWriteActivity(); }
+export function lastWriteMs(): number { return mst().lastWriteMs; }
+export function requestReconcile(eager: boolean): void { mst().requestReconcile(eager); }
+export function peekReconcile(): { wanted: boolean; eager: boolean } { return mst().peekReconcile(); }
+export function consumeReconcile(): { wanted: boolean; eager: boolean } { return mst().consumeReconcile(); }
+export function beginPresetGuard(): void { mst().beginPresetGuard(); }
+export function endPresetGuard(trailingMs: number, now?: number): void { mst().endPresetGuard(trailingMs, now); }
+export function presetGuardActive(now?: number): boolean { return mst().presetGuardActive(now); }
