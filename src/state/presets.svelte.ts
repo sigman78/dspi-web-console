@@ -13,6 +13,7 @@ import {
 } from '@/domain';
 import { mirror, presetBaseline } from './mirror.svelte';
 import { settings } from './settings.svelte';
+import { activeSession } from './appState.svelte';
 
 export interface PresetsState {
   directory: PresetDirectoryInfo | null;
@@ -47,7 +48,27 @@ export function createPresetsState(): PresetsState {
   return s;
 }
 
-export const presets = createPresetsState();
+// Inert fallback so component reads while disconnected get null/default values.
+const detached = createPresetsState();
+
+function pst(): PresetsState {
+  return activeSession()?.presets ?? detached;
+}
+
+// Transparent forwarder over the active session's preset store. Transitional
+// scaffolding: runtime/presets.ts and the preset components keep using the
+// `presets` global unchanged; they migrate to session.presets in a later phase,
+// after which this bag (and the flat shape) gives way to the loading|ready|error
+// union. resetPresets/presetsDirty below read/write through this forwarder.
+export const presets = {
+  get directory() { return pst().directory; }, set directory(v: PresetsState['directory']) { pst().directory = v; },
+  get names() { return pst().names; }, set names(v: PresetsState['names']) { pst().names = v; },
+  get active() { return pst().active; }, set active(v: PresetsState['active']) { pst().active = v; },
+  get busy() { return pst().busy; }, set busy(v: boolean) { pst().busy = v; },
+  get lastFetchError() { return pst().lastFetchError; }, set lastFetchError(v: string | null) { pst().lastFetchError = v; },
+  get lastActionError() { return pst().lastActionError; }, set lastActionError(v: string | null) { pst().lastActionError = v; },
+  get savedMasterVolumeDb() { return pst().savedMasterVolumeDb; }, set savedMasterVolumeDb(v: number | null) { pst().savedMasterVolumeDb = v; },
+};
 
 // Device-reported kinds that change without a user edit; never count as dirty.
 const RUNTIME_CHANGE_KINDS = new Set<SnapshotChange['kind']>(['lgSoundSyncStatus']);
