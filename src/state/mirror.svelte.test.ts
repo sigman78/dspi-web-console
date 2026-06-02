@@ -6,6 +6,7 @@ import {
   requestReconcile, consumeReconcile, peekReconcile,
   noteWriteActivity, lastWriteMs,
   beginPresetGuard, endPresetGuard, presetGuardActive,
+  MirrorState,
 } from './mirror.svelte';
 import type { DspSnapshot } from '@/domain';
 
@@ -225,5 +226,19 @@ describe('mirror store', () => {
       mirror.reset();
       expect(presetGuardActive(0)).toBe(false);
     });
+  });
+});
+
+describe('MirrorState.snapshot', () => {
+  it('returns current when set', () => {
+    const m = new MirrorState();
+    const snap = { masterVolumeDb: -10 } as never;
+    m.init(snap);
+    expect(m.snapshot).toBe(m.current);
+    expect(m.snapshot).not.toBeNull();
+  });
+  it('throws when current is null', () => {
+    const m = new MirrorState();
+    expect(() => m.snapshot).toThrow();
   });
 });

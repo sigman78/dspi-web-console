@@ -20,6 +20,14 @@ export class MirrorState {
   presetGuardDepth = 0;
   presetGuardUntilMs = 0;
 
+  // Non-null live snapshot. A ready session's `current` is set at synced and only
+  // nulled on dispose (no action runs then), so actions read/mutate via `snapshot`
+  // to drop their per-call null guards. Throws if read before sync (a bug).
+  get snapshot(): DspSnapshot {
+    if (!this.current) throw new Error('MirrorState.snapshot read before a snapshot was set');
+    return this.current;
+  }
+
   init(snap: DspSnapshot): void {
     this.current = snap;
     this.baseline = structuredClone(snap);
