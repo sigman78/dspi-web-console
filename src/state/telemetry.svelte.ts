@@ -6,7 +6,7 @@ const { NUM_CHANNELS } = Wire.Const;
 // regardless of update frequency. The plain `$state(object)` pattern works
 // for data updated once at sync time but has been observed to miss
 // subscribers when properties are mutated 20x/sec from RAF callbacks.
-class StatusStore {
+export class StatusStore {
   peaks = $state<number[]>(Array(NUM_CHANNELS).fill(0));
   peakHoldDb = $state<number[]>(Array(NUM_CHANNELS).fill(-90));
   clipLatched = $state<boolean[]>(Array(NUM_CHANNELS).fill(false));
