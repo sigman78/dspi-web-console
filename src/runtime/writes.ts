@@ -20,9 +20,6 @@ function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-// Registry of in-flight write() promises so flushAllWrites can await them.
-const inflightWrites = new Set<Promise<void>>();
-
 // Click-paced write. Awaits the wire ack, mutates the mirror on success.
 // On throw: flips status to 'error' and forces a resync to recover ground
 // truth. The mutate is *never* applied on failure — the mirror never holds
@@ -50,8 +47,8 @@ export async function write(
       dropInflight();
     }
   })();
-  inflightWrites.add(settled);
-  void settled.finally(() => inflightWrites.delete(settled));
+  _coord.inflightWrites.add(settled);
+  void settled.finally(() => _coord.inflightWrites.delete(settled));
   return settled;
 }
 
@@ -82,8 +79,8 @@ export function command<T>(
       dropInflight();
     }
   })();
-  inflightWrites.add(settled);
-  void settled.finally(() => inflightWrites.delete(settled));
+  _coord.inflightWrites.add(settled);
+  void settled.finally(() => _coord.inflightWrites.delete(settled));
   return settled;
 }
 
@@ -176,13 +173,31 @@ function makeLane(key: string, ms: number): Lane {
   };
 }
 
-const lanes = new Map<string, Lane>();
+export class WriteCoordinator {
+  readonly inflightWrites = new Set<Promise<void>>();
+  readonly lanes = new Map<string, Lane>();
 
-function laneFor(key: string): Lane {
-  let lane = lanes.get(key);
-  if (!lane) { lane = makeLane(key, COALESCE_MS); lanes.set(key, lane); }
-  return lane;
+  laneFor(key: string): Lane {
+    let lane = this.lanes.get(key);
+    if (!lane) { lane = makeLane(key, COALESCE_MS); this.lanes.set(key, lane); }
+    return lane;
+  }
+  async flush(): Promise<void> {
+    await Promise.all([
+      ...[...this.lanes.values()].map((l) => l.flushNow()),
+      ...this.inflightWrites,
+    ]);
+  }
+  cancel(): void {
+    for (const lane of this.lanes.values()) lane.cancel();
+    this.lanes.clear();
+    this.inflightWrites.clear();
+  }
 }
+
+// Module singleton — exports delegate here for now; Task 2 routes them to the
+// active session's coordinator.
+const _coord = new WriteCoordinator();
 
 // Drag-paced write. Mutates the mirror immediately (optimistic — needed for
 // drag feel at 60 fps), schedules a coalesced wire send per key, and arms
@@ -194,17 +209,14 @@ export function scrub(
 ): void {
   noteWriteActivity();
   mutate();
-  laneFor(key).schedule(send);
+  _coord.laneFor(key).schedule(send);
 }
 
 // Drain every armed lane and wait for its in-flight send to settle. Used
 // by preset transitions before issuing a flash command. Also awaits any
 // in-flight write() operations (fire-and-forget click-paced writes).
 export async function flushAllWrites(): Promise<void> {
-  await Promise.all([
-    ...[...lanes.values()].map((l) => l.flushNow()),
-    ...[...inflightWrites],
-  ]);
+  await _coord.flush();
 }
 
 // Cancel every armed lane without firing. Used by the disconnect path.
@@ -213,7 +225,5 @@ export async function flushAllWrites(): Promise<void> {
 // the registry ensures flushAllWrites on the next connection doesn't
 // await ghosts from a prior session.
 export function cancelAllWrites(): void {
-  for (const lane of lanes.values()) lane.cancel();
-  lanes.clear();
-  inflightWrites.clear();
+  _coord.cancel();
 }

@@ -4,6 +4,7 @@ import { setStatus, type SessionErrorKind } from './session.svelte';
 import type { StatusStore } from './telemetry.svelte';
 import type { PresetsState } from './presets.svelte';
 import type { MirrorState } from './mirror.svelte';
+import type { WriteCoordinator } from '@/runtime/writes';
 
 // Wraps a bound device. Carries device identity only; per-device runtime state
 // (mirror, presets, telemetry, scope, lifecycle guard) attaches here as it lands.
@@ -18,6 +19,11 @@ export interface ReadySession {
   // Per-device preset directory / names / active slot / dirty-baseline inputs.
   readonly presets: PresetsState;
   readonly mirror: MirrorState;
+  // Per-device write coordination (coalesce lanes + in-flight registry).
+  readonly writes: WriteCoordinator;
+  // Lifecycle guard: a write that settles after dispose() is dropped.
+  alive: boolean;
+  dispose(): void;
 }
 
 export type AppState =
