@@ -49,8 +49,9 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
   }
   dispatch({ t: 'requested' });
   try {
-    await syncDeviceSnapshot();
+    const snap = await device.getSnapshot();
     dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.init(snap);
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync();
     // Production opens the scope in createBoundDevice; tests may call
