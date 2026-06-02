@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from '@/device/DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
 import { wireUpConnection } from './actionsDevice';
-import { session, bindDevice, settings, mirror, resetStatus } from '@/state';
+import { session, connection, bindDevice, settings, mirror, resetStatus } from '@/state';
 import { endConnection } from './connectionScope';
 
 // End-to-end HIL test: drives the production state-layer connection finish flow
@@ -37,7 +37,7 @@ describe('state.wireUpConnection — end-to-end against real hardware (HIL)', ()
   it('hydrates connection + mirror.current from real device', async () => {
     await wireUpConnection(device);
 
-    expect(session.status).toBe('connected');
+    expect(connection.connected).toBe(true);
     expect(session.device?.info.serial.length ?? 0).toBeGreaterThan(0);
     expect(session.device?.info.capabilities.fwLabel.length ?? 0).toBeGreaterThan(0);
     expect(settings.lastSerial).toBe(session.device?.info.serial);
@@ -62,7 +62,7 @@ describe('state.wireUpConnection — end-to-end against real hardware (HIL)', ()
       wire: session.device?.info.capabilities.wire,
     };
     await wireUpConnection(device);
-    expect(session.status).toBe('connected');
+    expect(connection.connected).toBe(true);
     expect(session.device?.info.serial).toBe(before.serial);
     expect(session.device?.info.capabilities.fwLabel).toBe(before.fw);
     expect(mirror.current?.platform.name).toBe(before.platform);
