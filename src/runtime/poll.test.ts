@@ -4,7 +4,7 @@ import { fromBulkParams } from '@/device/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
-import { bindDevice, resetStatus, mirror, presetBaseline, settings } from '@/state';
+import { bindDevice, mirror, presetBaseline, settings, dispatch, makeReadySession } from '@/state';
 import {
   requestReconcile, consumeReconcile, peekReconcile, noteWriteActivity,
   inflight, bumpInflight, dropInflight,
@@ -24,6 +24,17 @@ function manualClock(): LoopClock & { fire(): void; armed(): boolean } {
     fire() { const c = cb; cb = null; c?.(); },
     armed() { return cb !== null; },
   };
+}
+
+// Bind the device for poll's session.device read AND install a ready session so
+// the now session-scoped telemetry resolves to a fresh per-test StatusStore.
+function connect(device: DspDevice): void {
+  bindDevice(device);
+  dispatch({ t: 'synced', session: makeReadySession(device) });
+}
+function teardown(): void {
+  dispatch({ t: 'disconnected' });
+  bindDevice(null);
 }
 
 function pollDevice(status = { peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 }) {
@@ -69,12 +80,12 @@ function deviceWithSnapshot(getSnapshot: () => Promise<unknown>) {
 }
 
 describe('startPolling', () => {
-  beforeEach(() => { resetStatus(); mirror.replaceCurrent(fromBulkParams(hw, parseBulkParams(makeBulk()))); });
-  afterEach(() => { bindDevice(null); });
+  beforeEach(() => { mirror.replaceCurrent(fromBulkParams(hw, parseBulkParams(makeBulk()))); });
+  afterEach(() => { teardown(); });
 
   it('polls the status cadence when the clock fires, and stops after dispose', async () => {
     const { device, calls } = pollDevice();
-    bindDevice(device);
+    connect(device);
     const clock = manualClock();
     const stop = startPolling(clock);
     clock.fire();                       // tick → doPoll
@@ -87,7 +98,7 @@ describe('startPolling', () => {
 
   it('does not poll while the document is hidden', async () => {
     const { device, calls } = pollDevice();
-    bindDevice(device);
+    connect(device);
     const clock = manualClock();
     const hiddenSpy = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
     const stop = startPolling(clock);
@@ -102,17 +113,16 @@ describe('startPolling', () => {
 
 describe('param reconcile cadence', () => {
   beforeEach(() => {
-    resetStatus();
     consumeReconcile();                      // clear any pending request
     while (inflight.current > 0) dropInflight();
     mirror.reset();                          // zero lastWriteMs (and current)
     mirror.replaceCurrent(fromBulkParams(hw, parseBulkParams(makeBulk())));
   });
-  afterEach(() => { bindDevice(null); consumeReconcile(); while (inflight.current > 0) dropInflight(); });
+  afterEach(() => { teardown(); consumeReconcile(); while (inflight.current > 0) dropInflight(); });
 
   it('reconciles via getSnapshot when a reconcile is pending and idle', async () => {
     const { device, calls } = paramDevice();
-    bindDevice(device);
+    connect(device);
     const clock = manualClock();
     const stop = startPolling(clock);
     requestReconcile(false);
@@ -124,7 +134,7 @@ describe('param reconcile cadence', () => {
 
   it('does not reconcile when nothing is pending', async () => {
     const { device, calls } = paramDevice();
-    bindDevice(device);
+    connect(device);
     const clock = manualClock();
     const stop = startPolling(clock);
     clock.fire();
@@ -135,7 +145,7 @@ describe('param reconcile cadence', () => {
 
   it('does not reconcile while a write is in flight (no mid-drag clobber)', async () => {
     const { device, calls } = paramDevice();
-    bindDevice(device);
+    connect(device);
     const clock = manualClock();
     const stop = startPolling(clock);
     requestReconcile(false);
@@ -161,7 +171,7 @@ describe('param reconcile cadence', () => {
       getSystemInfo: vi.fn(async () => ({})),
       getSnapshot: vi.fn(async () => reconciled),
     } as unknown as DspDevice;
-    bindDevice(device);
+    connect(device);
     const initial = fromBulkParams(hw, parseBulkParams(makeBulk()));
     initial.masterVolumeDb = -5;
     mirror.init(initial);                               // current + baseline = -5
@@ -177,7 +187,7 @@ describe('param reconcile cadence', () => {
 
   it('non-eager waits for the interval; eager bypasses it', async () => {
     const { device, calls } = paramDevice();
-    bindDevice(device);
+    connect(device);
     const clock = manualClock();
     const stop = startPolling(clock);
 
@@ -202,7 +212,7 @@ describe('param reconcile cadence', () => {
     vi.useFakeTimers({ toFake: ['performance'] });
     try {
       const { device, calls } = paramDevice();
-      bindDevice(device);
+      connect(device);
       settings.eagerReconcile = true;
       const clock = manualClock();
       const stop = startPolling(clock);
@@ -226,7 +236,7 @@ describe('param reconcile cadence', () => {
     vi.useFakeTimers({ toFake: ['performance'] });
     try {
       const { device, calls } = paramDevice();
-      bindDevice(device);
+      connect(device);
       const clock = manualClock();
       const stop = startPolling(clock);
       vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);
@@ -252,7 +262,7 @@ describe('param reconcile cadence', () => {
       const reconciled = fromBulkParams(hw, parseBulkParams(makeBulk()));
       reconciled.masterVolumeDb = -99;
       const device = deviceWithSnapshot(() => new Promise((r) => { resolveSnap = () => r(reconciled); }));
-      bindDevice(device);
+      connect(device);
       const initial = fromBulkParams(hw, parseBulkParams(makeBulk()));
       initial.masterVolumeDb = -5;
       mirror.init(initial);
@@ -278,7 +288,7 @@ describe('param reconcile cadence', () => {
     vi.useFakeTimers({ toFake: ['performance'] });
     try {
       const device = deviceWithSnapshot(async () => { throw new Error('boom'); });
-      bindDevice(device);
+      connect(device);
       const clock = manualClock();
       const stop = startPolling(clock);
       vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);
