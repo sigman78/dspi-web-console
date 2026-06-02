@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled } from './actions';
+import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './actionsDevice';
-import { connection, bindDevice, settings, mirror, status as statusStore, presets, notices, clearNotices, dispatch, makeReadySession } from '@/state';
+import { connection, bindDevice, settings, mirror, status as statusStore, presets, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -563,6 +563,56 @@ describe('granular writes (numeric sliders): sliders', () => {
     expect(mirror.current?.leveller?.amount).toBe(33);
     await vi.runAllTimersAsync();
     expect(setLevellerAmountFn).toHaveBeenCalledWith(33);
+  });
+});
+
+describe('loudness verbs — capability-pass (CD3)', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); bindDevice(null); });
+
+  it('setLoudnessEnabled sends a write and patches the snapshot after ack', async () => {
+    const setLoudnessEnabledFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setLoudnessEnabled: setLoudnessEnabledFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    const bulk = parseBulkParams(makeBulk());
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    setLoudnessEnabled(activeSession()!, true);
+    await vi.runAllTimersAsync();
+    expect(setLoudnessEnabledFn).toHaveBeenCalledWith(true);
+    expect(mirror.current?.loudness.enabled).toBe(true);
+  });
+
+  it('setLoudnessRefSpl applies optimistically and sends via granular lane', async () => {
+    const setLoudnessRefSplFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setLoudnessRefSpl: setLoudnessRefSplFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    const bulk = parseBulkParams(makeBulk());
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    setLoudnessRefSpl(activeSession()!, 90);
+    expect(mirror.current?.loudness.refSpl).toBe(90);
+    await vi.runAllTimersAsync();
+    expect(setLoudnessRefSplFn).toHaveBeenCalledWith(90);
+  });
+
+  it('setLoudnessIntensityPct applies optimistically and sends via granular lane', async () => {
+    const setLoudnessIntensityFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setLoudnessIntensity: setLoudnessIntensityFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    const bulk = parseBulkParams(makeBulk());
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    setLoudnessIntensityPct(activeSession()!, 50);
+    expect(mirror.current?.loudness.intensityPct).toBe(50);
+    await vi.runAllTimersAsync();
+    expect(setLoudnessIntensityFn).toHaveBeenCalledWith(50);
   });
 });
 

@@ -8,6 +8,7 @@ import {
 } from '@/domain';
 import * as Clamp from '@/domain/clamp';
 import {
+  type ReadySession,
   session,
   presets,
   settings,
@@ -130,34 +131,28 @@ export function setChannelName(id: ChannelId, name: string): void {
   );
 }
 
-export function setLoudnessEnabled(enabled: boolean): void {
-  const d = session.device;
-  if (!d) return;
+export function setLoudnessEnabled(s: ReadySession, enabled: boolean): void {
   void write(
-    () => d.setLoudnessEnabled(enabled),
-    () => { if (mirror.current) mirror.current.loudness.enabled = enabled; },
+    () => s.device.setLoudnessEnabled(enabled),
+    () => { s.mirror.snapshot.loudness.enabled = enabled; },
   );
 }
 
-export function setLoudnessRefSpl(db: number): void {
+export function setLoudnessRefSpl(s: ReadySession, db: number): void {
   db = Clamp.loudnessRefSpl(db);
-  const d = session.device;
-  if (!d) return;
   scrub(
     'loudnessRefSpl',
-    () => { if (mirror.current) mirror.current.loudness.refSpl = db; },
-    () => d.setLoudnessRefSpl(db),
+    () => { s.mirror.snapshot.loudness.refSpl = db; },
+    () => s.device.setLoudnessRefSpl(db),
   );
 }
 
-export function setLoudnessIntensityPct(pct: number): void {
+export function setLoudnessIntensityPct(s: ReadySession, pct: number): void {
   pct = Clamp.loudnessIntensityPct(pct);
-  const d = session.device;
-  if (!d) return;
   scrub(
     'loudnessIntensity',
-    () => { if (mirror.current) mirror.current.loudness.intensityPct = pct; },
-    () => d.setLoudnessIntensity(pct),
+    () => { s.mirror.snapshot.loudness.intensityPct = pct; },
+    () => s.device.setLoudnessIntensity(pct),
   );
 }
 

@@ -5,6 +5,9 @@
   import { mirror, connection } from '@/state';
   import { Proc } from '@/domain';
   import { setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from '@/runtime';
+  import { getSession } from '../sessionContext';
+
+  const s = getSession();
 
   const loudness = $derived(mirror.current?.loudness);
   const connected = $derived(connection.connected);
@@ -13,17 +16,17 @@
 
   function toggleEnabled() {
     if (!loudness) return;
-    setLoudnessEnabled(!loudness.enabled);
+    setLoudnessEnabled(s, !loudness.enabled);
   }
 
   function onRefSplInput(e: Event) {
     const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setLoudnessRefSpl(v);
+    if (!Number.isNaN(v)) setLoudnessRefSpl(s, v);
   }
 
   function onIntensityInput(e: Event) {
     const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setLoudnessIntensityPct(v);
+    if (!Number.isNaN(v)) setLoudnessIntensityPct(s, v);
   }
 </script>
 
@@ -54,7 +57,7 @@
       kind="dB"
       precision={0}
       disabled={!editable}
-      onChange={(v) => setLoudnessRefSpl(v)}
+      onChange={(v) => setLoudnessRefSpl(s, v)}
     />
 
     <span class="lbl">INTENSITY</span>
@@ -72,7 +75,7 @@
       kind="pct"
       precision={1}
       disabled={!editable}
-      onChange={(v) => setLoudnessIntensityPct(v)}
+      onChange={(v) => setLoudnessIntensityPct(s, v)}
     />
   </div>
 </Panel>
