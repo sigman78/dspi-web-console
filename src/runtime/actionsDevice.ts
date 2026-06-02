@@ -10,11 +10,11 @@ import {
   settings, reconcileEqTarget,
   resetStatus,
   clearCopySource, pushNotice,
-  dispatch, makeReadySession,
+  dispatch, makeReadySession, activeSession,
 } from '@/state';
 import { Log } from '@/utils';
 import { mirror } from '@/state/mirror.svelte';
-import { flushAllWrites, cancelAllWrites } from './writes';
+import { flushAllWrites } from './writes';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
 import { connectionScope, endConnection } from './connectionScope';
@@ -60,7 +60,6 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
     if (s) {
       s.add(startPolling());
       s.add(startNotifyChannel(device));
-      s.add(() => cancelAllWrites());
       acquireDeviceLock();
       s.add(() => releaseDeviceLock());
     }
@@ -100,9 +99,11 @@ export function attachTransportListeners(transport: DspTransport): () => void {
     // mid-emit (offDisc). Deleting the currently-firing entry from the
     // transport's listener Set during its forEach is safe — it won't be
     // revisited and won't throw.
-    endConnection();                 // disposes commands, resync, poll loop, listeners
+    const outgoing = activeSession();
+    endConnection();                 // disposes resync, poll loop, listeners
     bindDevice(null);
     dispatch({ t: 'disconnected' });
+    outgoing?.dispose();             // alive=false + cancel this session's write lanes
     mirror.reset();
     invalidatePresetCache();
     clearCopySource();

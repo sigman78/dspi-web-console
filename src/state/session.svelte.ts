@@ -18,7 +18,6 @@ export const session = $state<{
   device: DspDevice | null;
   lastDeviceInfo: DspDeviceInfo | null;
   hardware: HardwareProfile | null;
-  generation: number;
 }>({
   status: 'idle',
   error: null,
@@ -26,7 +25,6 @@ export const session = $state<{
   device: null,
   lastDeviceInfo: null,
   hardware: null,
-  generation: 0,
 });
 
 export function setStatus(
@@ -47,5 +45,4 @@ export function bindDevice(d: DspDevice | null): void {
     session.lastDeviceInfo = d.info;
     session.hardware = d.hardware;
   }
-  session.generation += 1;
 }

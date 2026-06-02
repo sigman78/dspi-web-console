@@ -168,15 +168,6 @@ describe('actions wiring', () => {
     expect(t2.listenerCount('connect')).toBe(1);
   });
 
-  it('bindDevice bumps session.generation each call', () => {
-    const { device } = makeFakeDevice();
-    const before = session.generation;
-    bindDevice(device);
-    expect(session.generation).toBe(before + 1);
-    bindDevice(null);
-    expect(session.generation).toBe(before + 2);
-  });
-
   it('copyEqBands copies all bands into the snapshot in N granular operations', async () => {
     // copyEqBands issues N independent write() calls (one per band); snapshot
     // is updated after each send acks (await-then-mutate).
