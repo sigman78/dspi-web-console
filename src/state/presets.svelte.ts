@@ -48,7 +48,9 @@ export function createPresetsState(): PresetsState {
   return s;
 }
 
-// Inert fallback so component reads while disconnected get null/default values.
+// Inert fallback so component reads while disconnected get null/default values. A
+// stale in-flight fetchPresetInfo write can land here after disconnect; harmless,
+// since it is never read while a session is active and the next connect gets a fresh store.
 const detached = createPresetsState();
 
 function pst(): PresetsState {
