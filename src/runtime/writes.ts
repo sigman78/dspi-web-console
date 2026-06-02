@@ -11,7 +11,7 @@
 // All respect the session.generation stale guard: a send that settles after a
 // disconnect+reconnect is silently dropped (no mutate, no recovery).
 
-import { session, setStatus, settings, pushNotice } from '@/state';
+import { session, settings, pushNotice, dispatch } from '@/state';
 import { bumpInflight, dropInflight, requestReconcile, noteWriteActivity } from '@/state/mirror.svelte';
 import { forceResyncNow } from './resync';
 import { Log, type Result } from '@/utils';
@@ -44,7 +44,7 @@ export async function write(
     } catch (err) {
       if (gen !== session.generation) return;
       Log.error('writes', 'write send failed; forcing resync', err);
-      setStatus('error', errMessage(err));
+      dispatch({ t: 'failed', message: errMessage(err) });
       void forceResyncNow();
     } finally {
       dropInflight();
@@ -140,7 +140,7 @@ function makeLane(key: string, ms: number): Lane {
         } catch (err) {
           if (gen !== session.generation) return;
           Log.error('writes', `scrub ${key} send failed; forcing resync`, err);
-          setStatus('error', errMessage(err));
+          dispatch({ t: 'failed', message: errMessage(err) });
           void forceResyncNow();
         } finally {
           if (claimedInflight) {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { session, setStatus, presetsDirty } from '@/state';
+  import { session, dispatch, presetsDirty } from '@/state';
   import { connectRequested, webUsbUnsupportedReason } from '@/runtime';
 
   let busy = $state(false);
@@ -11,7 +11,7 @@
     try {
       await connectRequested();
     } catch (e) {
-      setStatus('error', (e as Error).message);
+      dispatch({ t: 'failed', message: (e as Error).message });
     } finally {
       busy = false;
     }

@@ -2,7 +2,7 @@ import { mount } from 'svelte';
 import './app.css';
 import App from './App.svelte';
 import {
-  setStatus,
+  dispatch,
   restoreSettings, startSettingsPersistence,
   presetsDirty,
 } from './state';
@@ -21,9 +21,9 @@ const mock = params.get('mock');
 
 // Mock interface mode
 if (mock === 'rp2040' || mock === 'rp2350') {
-  void bootMock(mock).catch((e) => setStatus('error', (e as Error).message));
+  void bootMock(mock).catch((e) => dispatch({ t: 'failed', message: (e as Error).message }));
 } else {
-  void bootReal().catch((e) => setStatus('error', (e as Error).message));
+  void bootReal().catch((e) => dispatch({ t: 'failed', message: (e as Error).message }));
 }
 
 registerNavigatorReconnect();
