@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mirror, presetBaseline, inflight, bumpInflight } from './mirror.svelte';
-import { makeReadySession, dispatch } from './appState.svelte';
+import { dispatch } from './appState.svelte';
+import { makeReadySession } from './makeSession.svelte';
 
 const SNAP = { masterVolumeDb: -10 } as never;
 

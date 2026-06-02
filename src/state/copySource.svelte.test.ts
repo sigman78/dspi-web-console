@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { PresetSlot } from '@/domain';
 import { copySource, setCopySource, clearCopySource } from './copySource.svelte';
-import { makeReadySession, dispatch } from './appState.svelte';
+import { dispatch } from './appState.svelte';
+import { makeReadySession } from './makeSession.svelte';
 
 const SLOT = 2 as PresetSlot;
 

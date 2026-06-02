@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { transition, makeReadySession, type AppState, type ReadySession } from './appState.svelte';
+import { transition, type AppState, type ReadySession } from './appState.svelte';
+import { makeReadySession } from './makeSession.svelte';
 
 const fakeSession: ReadySession = makeReadySession({ info: {}, hardware: {} } as never);
 

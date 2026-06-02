@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { PresetSlot } from '@/domain';
 import { presets, resetPresets } from './presets.svelte';
-import { makeReadySession, dispatch } from './appState.svelte';
+import { dispatch } from './appState.svelte';
+import { makeReadySession } from './makeSession.svelte';
 
 function installSession(): void {
   dispatch({ t: 'synced', session: makeReadySession({ info: {}, hardware: {} } as never) });

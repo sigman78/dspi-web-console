@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { status, resetStatus } from './telemetry.svelte';
-import { makeReadySession, dispatch } from './appState.svelte';
+import { dispatch } from './appState.svelte';
+import { makeReadySession } from './makeSession.svelte';
 
 function installSession(): void {
   dispatch({ t: 'synced', session: makeReadySession({ info: {}, hardware: {} } as never) });
