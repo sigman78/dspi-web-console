@@ -8,147 +8,84 @@
 
 import type { DspSnapshot } from '@/domain';
 
-let _current = $state<DspSnapshot | null>(null);
-let _baseline = $state<DspSnapshot | null>(null);
-let _inflight = $state(0);
+export class MirrorState {
+  current = $state<DspSnapshot | null>(null);
+  baseline = $state<DspSnapshot | null>(null);
+  inflight = $state(0);
+  reconcileWanted = $state(false);
+  reconcileEager = $state(false);
+  // Non-reactive: only the poll loop reads these.
+  lastWriteMs = 0;
+  presetGuardDepth = 0;
+  presetGuardUntilMs = 0;
 
-// Reconcile request flags. A write/scrub success sets _reconcileWanted; the
-// background param poll consumes it when inflight === 0. _reconcileEager asks
-// the poll to skip its interval gate and run at the next tick (still
-// inflight-gated, so it never clobbers an in-flight drag). Eager is sticky
-// against a later non-eager request within the same pending window.
-let _reconcileWanted = $state(false);
-let _reconcileEager = $state(false);
+  init(snap: DspSnapshot): void {
+    this.current = snap;
+    this.baseline = structuredClone(snap);
+  }
+  replaceCurrent(snap: DspSnapshot): void {
+    this.current = snap;
+  }
+  captureBaseline(): void {
+    if (!this.current) return;
+    this.baseline = $state.snapshot(this.current) as DspSnapshot;
+  }
+  reset(): void {
+    this.current = null;
+    this.reconcileWanted = false;
+    this.reconcileEager = false;
+    this.lastWriteMs = 0;
+    this.presetGuardDepth = 0;
+    this.presetGuardUntilMs = 0;
+  }
+  noteWriteActivity(): void { this.lastWriteMs = performance.now(); }
+  requestReconcile(eager: boolean): void {
+    this.reconcileWanted = true;
+    if (eager) this.reconcileEager = true;
+  }
+  peekReconcile(): { wanted: boolean; eager: boolean } {
+    return { wanted: this.reconcileWanted, eager: this.reconcileEager };
+  }
+  consumeReconcile(): { wanted: boolean; eager: boolean } {
+    const r = { wanted: this.reconcileWanted, eager: this.reconcileEager };
+    this.reconcileWanted = false;
+    this.reconcileEager = false;
+    return r;
+  }
+  bumpInflight(): void { this.inflight += 1; }
+  dropInflight(): void { if (this.inflight > 0) this.inflight -= 1; }
+  beginPresetGuard(): void { this.presetGuardDepth += 1; }
+  endPresetGuard(trailingMs: number, now: number = performance.now()): void {
+    if (this.presetGuardDepth > 0) this.presetGuardDepth -= 1;
+    if (this.presetGuardDepth === 0) this.presetGuardUntilMs = now + trailingMs;
+  }
+  presetGuardActive(now: number = performance.now()): boolean {
+    return this.presetGuardDepth > 0 || now < this.presetGuardUntilMs;
+  }
+}
 
-// Wall-clock of the last write/scrub call. The background param poll treats a
-// drag as active until writes have been *quiet* for a window — the inflight
-// counter alone is 0 in the ~16 ms gaps between coalesced scrub sends, so it
-// can't tell "between sends of one drag" from "drag finished". Not reactive:
-// only the poll loop reads it.
-let _lastWriteMs = 0;
-
-// Preset-op notify suppression. A console-initiated preset op (Load / Paste /
-// Revert) does its OWN authoritative re-fetch (fetchAndApplyAsBaseline), and the
-// firmware emits bulk/preset notifications for that SAME op tagged source=preset
-// — indistinguishable from an external preset change, so the NotifyChannel would
-// reconcile each one redundantly on top of the action's fetch. While the guard
-// is held the channel still tracks seq but skips its reconcile triggers. Depth
-// covers nesting; a trailing-deadline grace absorbs late echoes that arrive
-// after the action (and the guard's depth) has already returned.
-let _presetGuardDepth = 0;
-let _presetGuardUntilMs = 0;
+// Module singleton — exports delegate here for now; Task 3 swaps this for the
+// active session's mirror.
+const _mirror = new MirrorState();
 
 export const mirror = {
-  get current(): DspSnapshot | null { return _current; },
-
-  // Atomic baseline: set current AND baseline from one snapshot. Baseline is
-  // a deep clone so subsequent in-place edits to current can't leak into it.
-  // Used on connect and preset transitions (Load / Paste / Revert).
-  init(snap: DspSnapshot): void {
-    _current = snap;
-    _baseline = structuredClone(snap);
-  },
-
-  // Current-only refresh: advance current, leave baseline pinned. Used by
-  // forceResyncNow after a failed write — the user's pre-failure edits stay
-  // "dirty against the preset", which is the correct semantic.
-  replaceCurrent(snap: DspSnapshot): void {
-    _current = snap;
-  },
-
-  // Refresh baseline from current. Used after PresetSave(active): device RAM
-  // didn't change but the dirty-diff origin must advance. $state.snapshot()
-  // clones out of the reactive system; storing it back into _baseline (which
-  // is a $state cell) re-wraps it. No-op when current is null.
-  captureBaseline(): void {
-    if (!_current) return;
-    _baseline = $state.snapshot(_current) as DspSnapshot;
-  },
-
-  // Clear the live cell on disconnect. Baseline is intentionally preserved so
-  // a future feature can render last-known-good while offline; today the UI
-  // just shows the empty state, but the invariant is worth keeping.
-  reset(): void {
-    _current = null;
-    _reconcileWanted = false;
-    _reconcileEager = false;
-    _lastWriteMs = 0;
-    _presetGuardDepth = 0;
-    _presetGuardUntilMs = 0;
-  },
+  get current(): DspSnapshot | null { return _mirror.current; },
+  init(snap: DspSnapshot): void { _mirror.init(snap); },
+  replaceCurrent(snap: DspSnapshot): void { _mirror.replaceCurrent(snap); },
+  captureBaseline(): void { _mirror.captureBaseline(); },
+  reset(): void { _mirror.reset(); },
 };
+export const presetBaseline = { get current(): DspSnapshot | null { return _mirror.baseline; } };
+export const inflight = { get current(): number { return _mirror.inflight; } };
+export const isInFlight = { get current(): boolean { return _mirror.inflight > 0; } };
 
-// Stamp write activity. Called by write() and scrub() on every invocation
-// (not just on settle) so the quiet-window gate covers the whole drag,
-// including the gaps between coalesced sends.
-export function noteWriteActivity(): void {
-  _lastWriteMs = performance.now();
-}
-
-export function lastWriteMs(): number {
-  return _lastWriteMs;
-}
-
-// Mark that device state should be reconciled by the next eligible param poll.
-// `eager` is OR-accumulated: once a pending window is eager, a later non-eager
-// request can't downgrade it.
-export function requestReconcile(eager: boolean): void {
-  _reconcileWanted = true;
-  if (eager) _reconcileEager = true;
-}
-
-// Read the pending reconcile flags without clearing. The param poll peeks to
-// decide whether to run (so a skipped tick leaves the request pending), then
-// consumes only when it commits to a reconcile.
-export function peekReconcile(): { wanted: boolean; eager: boolean } {
-  return { wanted: _reconcileWanted, eager: _reconcileEager };
-}
-
-// Read and clear the pending reconcile flags. Called by the param poll cadence
-// once it commits to running a reconcile.
-export function consumeReconcile(): { wanted: boolean; eager: boolean } {
-  const r = { wanted: _reconcileWanted, eager: _reconcileEager };
-  _reconcileWanted = false;
-  _reconcileEager = false;
-  return r;
-}
-
-// Open a preset-op suppression window (nestable). Held until a matching
-// endPresetGuard, then a trailing grace. See the field comment above.
-export function beginPresetGuard(): void {
-  _presetGuardDepth += 1;
-}
-
-// Close one nesting level. When the last level closes, keep suppressing until
-// `now + trailingMs` so firmware echoes trailing the op are absorbed too. `now`
-// is injectable for tests; production passes performance.now() by default.
-export function endPresetGuard(trailingMs: number, now: number = performance.now()): void {
-  if (_presetGuardDepth > 0) _presetGuardDepth -= 1;
-  if (_presetGuardDepth === 0) _presetGuardUntilMs = now + trailingMs;
-}
-
-// True while a preset op is open or within its trailing grace. The NotifyChannel
-// checks this to skip self-induced reconcile triggers.
-export function presetGuardActive(now: number = performance.now()): boolean {
-  return _presetGuardDepth > 0 || now < _presetGuardUntilMs;
-}
-
-export const presetBaseline = {
-  get current(): DspSnapshot | null { return _baseline; },
-};
-
-export const inflight = {
-  get current(): number { return _inflight; },
-};
-
-export const isInFlight = {
-  get current(): boolean { return _inflight > 0; },
-};
-
-export function bumpInflight(): void {
-  _inflight += 1;
-}
-
-export function dropInflight(): void {
-  if (_inflight > 0) _inflight -= 1;
-}
+export function bumpInflight(): void { _mirror.bumpInflight(); }
+export function dropInflight(): void { _mirror.dropInflight(); }
+export function noteWriteActivity(): void { _mirror.noteWriteActivity(); }
+export function lastWriteMs(): number { return _mirror.lastWriteMs; }
+export function requestReconcile(eager: boolean): void { _mirror.requestReconcile(eager); }
+export function peekReconcile(): { wanted: boolean; eager: boolean } { return _mirror.peekReconcile(); }
+export function consumeReconcile(): { wanted: boolean; eager: boolean } { return _mirror.consumeReconcile(); }
+export function beginPresetGuard(): void { _mirror.beginPresetGuard(); }
+export function endPresetGuard(trailingMs: number, now?: number): void { _mirror.endPresetGuard(trailingMs, now); }
+export function presetGuardActive(now?: number): boolean { return _mirror.presetGuardActive(now); }

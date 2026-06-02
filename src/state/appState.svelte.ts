@@ -3,6 +3,7 @@ import type { HardwareProfile, PresetSlot } from '@/domain';
 import { setStatus, type SessionErrorKind } from './session.svelte';
 import { StatusStore } from './telemetry.svelte';
 import { createPresetsState, type PresetsState } from './presets.svelte';
+import { MirrorState } from './mirror.svelte';
 
 // Wraps a bound device. Carries device identity only; per-device runtime state
 // (mirror, presets, telemetry, scope, lifecycle guard) attaches here as it lands.
@@ -16,13 +17,15 @@ export interface ReadySession {
   readonly telemetry: StatusStore;
   // Per-device preset directory / names / active slot / dirty-baseline inputs.
   readonly presets: PresetsState;
+  readonly mirror: MirrorState;
 }
 
 export function makeReadySession(device: DspDevice): ReadySession {
   const copySource = $state<{ slot: PresetSlot | null }>({ slot: null });
   const telemetry = new StatusStore();
   const presets = createPresetsState();
-  return { device, info: device.info, hardware: device.hardware, copySource, telemetry, presets };
+  const mirror = new MirrorState();
+  return { device, info: device.info, hardware: device.hardware, copySource, telemetry, presets, mirror };
 }
 
 export type AppState =
