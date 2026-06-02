@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { write, scrub, writeChecked, command, flushAllWrites, cancelAllWrites } from './writes';
 import { inflight, dropInflight, consumeReconcile, lastWriteMs } from '@/state/mirror.svelte';
-import { session, settings, notices, clearNotices } from '@/state';
+import { session, settings, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { Result } from '@/utils';
 
 // Mock the resync module so write() failures don't actually fire HTTP.
@@ -9,10 +9,18 @@ vi.mock('@/runtime/resync', () => ({
   forceResyncNow: vi.fn(),
 }));
 
+// Install a ready session so writes resolve activeSession() and its
+// WriteCoordinator/alive guard. Disposing it (or dispatching disconnected)
+// simulates a disconnect mid-flight — the per-session `alive` guard replaces the
+// old session.generation bump.
+function installSession(): void {
+  dispatch({ t: 'synced', session: makeReadySession({ info: {}, hardware: {} } as never) });
+}
+
 describe('write() helper', () => {
   beforeEach(() => {
     while (inflight.current > 0) dropInflight();
-    session.generation = 0;
+    installSession();
     vi.clearAllMocks();
   });
 
@@ -82,7 +90,7 @@ describe('write() helper', () => {
     let resolveSend!: () => void;
     const send = vi.fn(() => new Promise<void>((resolve) => { resolveSend = resolve; }));
     const p = write(send, mutate);
-    session.generation += 1;  // simulate disconnect mid-flight
+    activeSession()?.dispose();  // simulate disconnect mid-flight
     resolveSend!();
     await p;
     expect(mutate).not.toHaveBeenCalled();
@@ -94,7 +102,7 @@ describe('write() helper', () => {
     let resolveSend!: (err: Error) => void;
     const send = vi.fn(() => new Promise<void>((_, reject) => { resolveSend = (e) => reject(e); }));
     const p = write(send, () => {});
-    session.generation += 1;
+    activeSession()?.dispose();
     resolveSend!(new Error('boom'));
     await p;
     expect(forceResyncNow).not.toHaveBeenCalled();
@@ -111,7 +119,7 @@ describe('write() helper', () => {
 describe('writeChecked() helper', () => {
   beforeEach(() => {
     while (inflight.current > 0) dropInflight();
-    session.generation = 0;
+    installSession();
     session.status = 'connected';
     settings.eagerReconcile = false;
     consumeReconcile();
@@ -162,7 +170,7 @@ describe('writeChecked() helper', () => {
     let resolveSend!: (r: Result<void, string>) => void;
     const send = vi.fn(() => new Promise<Result<void, string>>((res) => { resolveSend = res; }));
     const p = writeChecked('op', send, patch);
-    session.generation += 1;  // simulate disconnect mid-flight
+    activeSession()?.dispose();  // simulate disconnect mid-flight
     resolveSend!(Result.ok());
     await p;
     expect(patch).not.toHaveBeenCalled();
@@ -183,7 +191,7 @@ describe('writeChecked() helper', () => {
 describe('command() helper', () => {
   beforeEach(() => {
     while (inflight.current > 0) dropInflight();
-    session.generation = 0;
+    installSession();
     session.status = 'connected';
     clearNotices();
     vi.clearAllMocks();
@@ -199,7 +207,7 @@ describe('command() helper', () => {
     const onSettled = vi.fn();
     let resolve!: (v: number) => void;
     const p = command('op', () => new Promise<number>((r) => { resolve = r; }), onSettled);
-    session.generation += 1;  // simulate disconnect+reconnect mid-flight
+    activeSession()?.dispose();  // simulate disconnect+reconnect mid-flight
     resolve!(1);
     await p;
     expect(onSettled).not.toHaveBeenCalled();
@@ -227,7 +235,7 @@ describe('command() helper', () => {
 describe('scrub() helper', () => {
   beforeEach(() => {
     while (inflight.current > 0) dropInflight();
-    session.generation = 0;
+    installSession();
     vi.clearAllMocks();
     cancelAllWrites();  // ensure no leftover lane state between tests
   });
@@ -327,7 +335,7 @@ describe('scrub() helper', () => {
     scrub('k1', () => {}, send);
     // Wait for timer to fire (coalesce window) so send starts
     await new Promise((r) => setTimeout(r, 25));
-    session.generation += 1;  // simulate disconnect mid-send
+    activeSession()?.dispose();  // simulate disconnect mid-send
     resolveSend!();
     await flushAllWrites();
     expect(forceResyncNow).not.toHaveBeenCalled();
@@ -337,7 +345,7 @@ describe('scrub() helper', () => {
 describe('flushAllWrites covers write() calls', () => {
   beforeEach(() => {
     while (inflight.current > 0) dropInflight();
-    session.generation = 0;
+    installSession();
     cancelAllWrites();
   });
 

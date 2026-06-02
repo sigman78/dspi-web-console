@@ -8,10 +8,10 @@
 //                  a local device rejection (warn toast), not a connection
 //                  error — no resync, no status flip.
 //
-// All respect the session.generation stale guard: a send that settles after a
-// disconnect+reconnect is silently dropped (no mutate, no recovery).
+// All respect the per-session `alive` guard: a send that settles after its
+// session was disposed (disconnect) is silently dropped (no mutate, no recovery).
 
-import { session, settings, pushNotice, dispatch } from '@/state';
+import { settings, pushNotice, dispatch, activeSession, type ReadySession } from '@/state';
 import { bumpInflight, dropInflight, requestReconcile, noteWriteActivity } from '@/state/mirror.svelte';
 import { forceResyncNow } from './resync';
 import { Log, type Result } from '@/utils';
@@ -28,18 +28,19 @@ export async function write(
   send: () => Promise<unknown>,
   mutate: () => void,
 ): Promise<void> {
-  const gen = session.generation;
+  const s = activeSession();
+  if (!s) return;
   noteWriteActivity();
   bumpInflight();
   const settled = (async () => {
     try {
       await send();
-      if (gen === session.generation) {
+      if (s.alive) {
         mutate();
         requestReconcile(settings.eagerReconcile);
       }
     } catch (err) {
-      if (gen !== session.generation) return;
+      if (!s.alive) return;
       Log.error('writes', 'write send failed; forcing resync', err);
       dispatch({ t: 'failed', message: errMessage(err) });
       void forceResyncNow();
@@ -47,8 +48,8 @@ export async function write(
       dropInflight();
     }
   })();
-  _coord.inflightWrites.add(settled);
-  void settled.finally(() => _coord.inflightWrites.delete(settled));
+  s.writes.inflightWrites.add(settled);
+  void settled.finally(() => s.writes.inflightWrites.delete(settled));
   return settled;
 }
 
@@ -64,23 +65,24 @@ export function command<T>(
   send: () => Promise<T>,
   onSettled: (result: T) => void,
 ): Promise<void> {
-  const gen = session.generation;
+  const s = activeSession();
+  if (!s) return Promise.resolve();
   noteWriteActivity();
   bumpInflight();
   const settled = (async () => {
     try {
       const r = await send();
-      if (gen === session.generation) onSettled(r);
+      if (s.alive) onSettled(r);
     } catch (err) {
-      if (gen !== session.generation) return;
+      if (!s.alive) return;
       Log.error('writes', `${op} failed`, err);
       pushNotice('error', `${op} failed`);
     } finally {
       dropInflight();
     }
   })();
-  _coord.inflightWrites.add(settled);
-  void settled.finally(() => _coord.inflightWrites.delete(settled));
+  s.writes.inflightWrites.add(settled);
+  void settled.finally(() => s.writes.inflightWrites.delete(settled));
   return settled;
 }
 
@@ -109,7 +111,7 @@ export function writeChecked<E>(
 const COALESCE_MS = 16;
 
 interface Lane {
-  schedule(send: () => Promise<void>): void;
+  schedule(s: ReadySession, send: () => Promise<void>): void;
   cancel(): void;
   flushNow(): Promise<void>;
 }
@@ -117,14 +119,16 @@ interface Lane {
 function makeLane(key: string, ms: number): Lane {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pending: (() => Promise<void>) | null = null;
+  let pendingSession: ReadySession | null = null;
   let inFlight: Promise<void> = Promise.resolve();
   let claimedInflight = false;
 
   function fire(): void {
     timer = null;
     const thunk = pending!;
-    const gen = session.generation;
+    const s = pendingSession!;
     pending = null;
+    pendingSession = null;
     inFlight = inFlight
       .catch(() => undefined)
       .then(async () => {
@@ -133,9 +137,9 @@ function makeLane(key: string, ms: number): Lane {
           // Success: the optimistic mutate already left the mirror at the value
           // we sent (case A — Q3). No per-settle resync; instead flag a
           // reconcile for the inflight-gated background param poll to honor.
-          if (gen === session.generation) requestReconcile(settings.eagerReconcile);
+          if (s.alive) requestReconcile(settings.eagerReconcile);
         } catch (err) {
-          if (gen !== session.generation) return;
+          if (!s.alive) return;
           Log.error('writes', `scrub ${key} send failed; forcing resync`, err);
           dispatch({ t: 'failed', message: errMessage(err) });
           void forceResyncNow();
@@ -149,8 +153,9 @@ function makeLane(key: string, ms: number): Lane {
   }
 
   return {
-    schedule(send) {
+    schedule(s, send) {
       pending = send;
+      pendingSession = s;
       if (!claimedInflight) {
         bumpInflight();
         claimedInflight = true;
@@ -161,6 +166,7 @@ function makeLane(key: string, ms: number): Lane {
       if (timer !== null) clearTimeout(timer);
       timer = null;
       pending = null;
+      pendingSession = null;
       if (claimedInflight) {
         dropInflight();
         claimedInflight = false;
@@ -195,35 +201,32 @@ export class WriteCoordinator {
   }
 }
 
-// Module singleton — exports delegate here for now; Task 2 routes them to the
-// active session's coordinator.
-const _coord = new WriteCoordinator();
-
 // Drag-paced write. Mutates the mirror immediately (optimistic — needed for
-// drag feel at 60 fps), schedules a coalesced wire send per key, and arms
-// a trailing resync on settle.
+// drag feel at 60 fps), schedules a coalesced wire send per key on the active
+// session's coordinator, and gates the settle on that session's `alive` flag.
 export function scrub(
   key: string,
   mutate: () => void,
   send: () => Promise<void>,
 ): void {
+  const s = activeSession();
+  if (!s) return;
   noteWriteActivity();
   mutate();
-  _coord.laneFor(key).schedule(send);
+  s.writes.laneFor(key).schedule(s, send);
 }
 
-// Drain every armed lane and wait for its in-flight send to settle. Used
-// by preset transitions before issuing a flash command. Also awaits any
-// in-flight write() operations (fire-and-forget click-paced writes).
+// Drain the active session's armed lanes and await its in-flight write()
+// operations. Used by preset transitions before issuing a flash command.
 export async function flushAllWrites(): Promise<void> {
-  await _coord.flush();
+  const s = activeSession();
+  if (!s) return;
+  await s.writes.flush();
 }
 
-// Cancel every armed lane without firing. Used by the disconnect path.
-// Also clears the inflightWrites registry: the generation guard already
-// prevents stale settles from mutating or triggering recovery; clearing
-// the registry ensures flushAllWrites on the next connection doesn't
-// await ghosts from a prior session.
+// Cancel the active session's armed lanes without firing and clear its in-flight
+// registry. The session's own dispose() does this on disconnect; this export
+// remains for any direct mid-session caller.
 export function cancelAllWrites(): void {
-  _coord.cancel();
+  activeSession()?.writes.cancel();
 }
