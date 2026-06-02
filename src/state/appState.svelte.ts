@@ -1,6 +1,6 @@
 import type { DspDevice, DspDeviceInfo } from '@/device/DspDevice';
 import type { HardwareProfile, PresetSlot } from '@/domain';
-import { setStatus, type SessionErrorKind } from './session.svelte';
+import type { SessionErrorKind } from './session.svelte';
 import type { StatusStore } from './telemetry.svelte';
 import type { PresetsState } from './presets.svelte';
 import type { MirrorState } from './mirror.svelte';
@@ -79,20 +79,6 @@ export function activeSession(): ReadySession | null {
   return _app.kind === 'ready' ? _app.session : null;
 }
 
-// Legacy projection: keep session.status/error/errorKind in lockstep so existing
-// UI and tests are untouched. Driven by the event (not derived from _app) so the
-// legacy idle/disconnected distinction the UI still relies on is preserved — both
-// collapse to { kind:'noDevice' } in the union.
-function applyLegacy(event: AppEvent): void {
-  switch (event.t) {
-    case 'requested':    setStatus('connecting'); break;
-    case 'synced':       setStatus('connected'); break;
-    case 'failed':       setStatus('error', event.message, event.errorKind ?? null); break;
-    case 'disconnected': setStatus('disconnected'); break;
-  }
-}
-
 export function dispatch(event: AppEvent): void {
   _app = transition(_app, event);
-  applyLegacy(event);
 }

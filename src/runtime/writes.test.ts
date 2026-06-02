@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { write, scrub, writeChecked, command, flushAllWrites, cancelAllWrites } from './writes';
 import { inflight, dropInflight, consumeReconcile, lastWriteMs } from '@/state/mirror.svelte';
-import { session, settings, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
+import { connection, settings, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { Result } from '@/utils';
 
 // Mock the resync module so write() failures don't actually fire HTTP.
@@ -120,7 +120,6 @@ describe('writeChecked() helper', () => {
   beforeEach(() => {
     while (inflight.current > 0) dropInflight();
     installSession();
-    session.status = 'connected';
     settings.eagerReconcile = false;
     consumeReconcile();
     clearNotices();
@@ -153,7 +152,7 @@ describe('writeChecked() helper', () => {
     const { forceResyncNow } = await import('@/runtime/resync');
     await writeChecked('set pin', async () => Result.fail('x', 'rejected'), () => {});
     expect(forceResyncNow).not.toHaveBeenCalled();
-    expect(session.status).toBe('connected');
+    expect(connection.connected).toBe(true);
   });
 
   it('error-toasts a transport throw without resyncing', async () => {
@@ -162,7 +161,7 @@ describe('writeChecked() helper', () => {
     expect(notices.list).toHaveLength(1);
     expect(notices.list[0].kind).toBe('error');
     expect(forceResyncNow).not.toHaveBeenCalled();
-    expect(session.status).toBe('connected');
+    expect(connection.connected).toBe(true);
   });
 
   it('does not patch when generation changes mid-flight', async () => {
@@ -192,7 +191,6 @@ describe('command() helper', () => {
   beforeEach(() => {
     while (inflight.current > 0) dropInflight();
     installSession();
-    session.status = 'connected';
     clearNotices();
     vi.clearAllMocks();
   });
@@ -218,7 +216,7 @@ describe('command() helper', () => {
     await command('save', async () => { throw new Error('boom'); }, () => {});
     expect(notices.list).toHaveLength(1);
     expect(notices.list[0].kind).toBe('error');
-    expect(session.status).toBe('connected');
+    expect(connection.connected).toBe(true);
   });
 
   it('is drained by flushAllWrites', async () => {

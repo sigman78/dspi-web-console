@@ -21,11 +21,11 @@ vi.mock('./deviceLock', () => ({
 }));
 
 import { bootReal } from './session';
-import { setStatus } from '@/state';
+import { dispatch } from '@/state';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  setStatus('idle');
+  dispatch({ t: 'disconnected' });
 });
 
 describe('bootReal — auto-connect gating', () => {

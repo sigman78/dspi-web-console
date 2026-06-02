@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './actionsDevice';
-import { session, bindDevice, settings, mirror, status as statusStore, presets, notices, clearNotices, dispatch, makeReadySession } from '@/state';
+import { connection, bindDevice, settings, mirror, status as statusStore, presets, notices, clearNotices, dispatch, makeReadySession } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -143,7 +143,7 @@ describe('actions wiring', () => {
     await vi.runAllTimersAsync();
 
     expect(calls).toEqual([]);                // pending coalescer dropped
-    expect(session.status).toBe('disconnected');
+    expect(connection.phase).toBe('noDevice');
     expect(statusStore.streaming).toBe(false);
   });
 
@@ -471,7 +471,6 @@ describe('bulk writes: toggles', () => {
       getAllParams: vi.fn(async () => bulk),
     }));
     mirror.init(fromBulkParams(testHardware, bulk));
-    session.status = 'connected';
   });
 
   it('setBypass sends a wire write and patches the snapshot after ack', async () => {
@@ -576,7 +575,6 @@ describe('bulk writes: eq/delay/names', () => {
       getAllParams: vi.fn(async () => bulk),
     }));
     mirror.init(fromBulkParams(testHardware, bulk));
-    session.status = 'connected';
   });
 
 
@@ -777,7 +775,7 @@ describe('dual-lane inflight coexistence: scrub-class + write-class share the co
   // Sends are parked forever here so the counter stays bumped at assertion
   // time; the file-scope afterEach (endConnection + cancelWrites) resets the
   // leaked bulk-flush + granular state.
-  afterEach(() => { vi.useRealTimers(); bindDevice(null); session.status = 'idle'; });
+  afterEach(() => { vi.useRealTimers(); bindDevice(null); });
 
   it('writes on different controls both register in inflight', async () => {
     const bulk = parseBulkParams(makeBulk());
@@ -790,7 +788,6 @@ describe('dual-lane inflight coexistence: scrub-class + write-class share the co
     bindDevice(device);
     dispatch({ t: 'synced', session: makeReadySession(device) });
     mirror.init(fromBulkParams(testHardware, bulk));
-    session.status = 'connected';
 
     expect(inflight.current).toBe(0);
     // scrub-class: masterVolume uses scrub() → bumpInflight() at schedule time.
@@ -813,7 +810,6 @@ describe('boolean device flags are explicit setters', () => {
       getAllParams: vi.fn(async () => bulk),
     }));
     mirror.init(fromBulkParams(testHardware, bulk));
-    session.status = 'connected';
   });
 
   it('setOutputEnabled(0, false) disables the output', async () => {

@@ -48,40 +48,37 @@ describe('makeReadySession()', () => {
   });
 });
 
-import { app, dispatch, activeSession } from './appState.svelte';
-import { session, setStatus } from './session.svelte';
+import { app, connection, dispatch, activeSession } from './appState.svelte';
 
 describe('dispatch()', () => {
-  // Reset both cells to a known start: dispatch clears _app to noDevice, then
-  // setStatus('idle') resets the legacy projection (matches mirror.reset() hygiene).
-  beforeEach(() => { dispatch({ t: 'disconnected' }); setStatus('idle'); });
+  beforeEach(() => { dispatch({ t: 'disconnected' }); });
 
-  it('requested → app connecting + projects session.status', () => {
+  it('requested → app connecting', () => {
     dispatch({ t: 'requested' });
     expect(app.current.kind).toBe('connecting');
-    expect(session.status).toBe('connecting');
+    expect(connection.phase).toBe('connecting');
   });
 
-  it('synced → app ready + projects connected, clears error', () => {
+  it('synced → app ready, connection connected', () => {
     dispatch({ t: 'synced', session: fakeSession });
     expect(app.current).toEqual({ kind: 'ready', session: fakeSession });
-    expect(session.status).toBe('connected');
-    expect(session.error).toBeNull();
-    expect(session.errorKind).toBeNull();
+    expect(connection.connected).toBe(true);
+    expect(connection.error).toBeNull();
+    expect(connection.errorKind).toBeNull();
   });
 
-  it('failed → app errored + projects error fields', () => {
+  it('failed → app errored with error fields', () => {
     dispatch({ t: 'failed', message: 'old fw', errorKind: 'unsupported-firmware' });
     expect(app.current.kind).toBe('errored');
-    expect(session.status).toBe('error');
-    expect(session.error).toBe('old fw');
-    expect(session.errorKind).toBe('unsupported-firmware');
+    expect(connection.phase).toBe('errored');
+    expect(connection.error).toBe('old fw');
+    expect(connection.errorKind).toBe('unsupported-firmware');
   });
 
-  it('disconnected → app noDevice + projects disconnected', () => {
+  it('disconnected → app noDevice', () => {
     dispatch({ t: 'disconnected' });
     expect(app.current.kind).toBe('noDevice');
-    expect(session.status).toBe('disconnected');
+    expect(connection.phase).toBe('noDevice');
   });
 });
 
