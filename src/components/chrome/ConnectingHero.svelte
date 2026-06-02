@@ -12,7 +12,7 @@
   const text = $derived.by(() => {
     if (unsupported) return 'WEBUSB UNAVAILABLE';
     switch (session.status) {
-      case 'connected':    return `ONLINE · ${session.lastDeviceInfo?.serial ?? ''}`;
+      case 'connected':    return `ONLINE · ${session.device?.info.serial ?? ''}`;
       case 'connecting':   return 'CONNECTING…';
       case 'disconnected': return 'DISCONNECTED';
       case 'error':        return 'ERROR';

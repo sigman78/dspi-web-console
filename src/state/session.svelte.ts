@@ -1,4 +1,4 @@
-import type { DspDevice, DspDeviceInfo } from '@/device/DspDevice';
+import type { DspDevice } from '@/device/DspDevice';
 import type { HardwareProfile } from '@/domain';
 
 export type SessionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -8,22 +8,17 @@ export type SessionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected'
 // panel. null = an ordinary/unclassified error.
 export type SessionErrorKind = null | 'unsupported-firmware';
 
-// lastDeviceInfo is intentionally preserved across disconnect so the UI
-// can show the last-known device label until a new device is bound.
-// Reconnect-identity matching uses settings.lastSerial, not this field.
 export const session = $state<{
   status: SessionStatus;
   error: string | null;
   errorKind: SessionErrorKind;
   device: DspDevice | null;
-  lastDeviceInfo: DspDeviceInfo | null;
   hardware: HardwareProfile | null;
 }>({
   status: 'idle',
   error: null,
   errorKind: null,
   device: null,
-  lastDeviceInfo: null,
   hardware: null,
 });
 
@@ -42,7 +37,6 @@ export function bindDevice(d: DspDevice | null): void {
   if (d == null) {
     session.hardware = null;
   } else {
-    session.lastDeviceInfo = d.info;
     session.hardware = d.hardware;
   }
 }

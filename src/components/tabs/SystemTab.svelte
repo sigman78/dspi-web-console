@@ -32,10 +32,10 @@
     <Panel code="SY.01" title="DEVICE">
       <div class="kvgrid">
         <KV label="STATUS"   value={session.status.toUpperCase()} tone={session.status === 'connected' ? 'ok' : 'off'} />
-        <KV label="SERIAL"   value={session.lastDeviceInfo?.serial ?? '—'} />
-        <KV label="FIRMWARE" value={session.lastDeviceInfo?.capabilities.fwLabel ?? '—'} />
+        <KV label="SERIAL"   value={session.device?.info.serial ?? '—'} />
+        <KV label="FIRMWARE" value={session.device?.info.capabilities.fwLabel ?? '—'} />
         <KV label="PLATFORM" value={snap?.platform.name ?? '—'} />
-        <KV label="FORMAT"   value={session.lastDeviceInfo?.capabilities.wireLabel ?? '—'} />
+        <KV label="FORMAT"   value={session.device?.info.capabilities.wireLabel ?? '—'} />
         <KV label="OUTPUTS"  value={`${snap?.platform.outputCount ?? 0} / ${snap?.platform.totalChannelCount ?? 0}`} />
       </div>
     </Panel>
