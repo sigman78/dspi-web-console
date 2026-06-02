@@ -87,7 +87,9 @@ export class StatusStore {
 
 import { activeSession } from './appState.svelte';
 
-// Inert fallback so component reads while disconnected get zeroed defaults.
+// Inert fallback so component reads while disconnected get zeroed defaults. A
+// stale in-flight poll write can land here after disconnect; harmless, since it
+// is never read while a session is active and the next connect gets a fresh store.
 const detached = new StatusStore();
 
 function tele(): StatusStore {
