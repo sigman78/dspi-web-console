@@ -40,17 +40,17 @@ export function transition(_state: AppState, event: AppEvent): AppState {
   }
 }
 
-let _app = $state<AppState>({ kind: 'noDevice' });
-// Tracks the active session by plain reference so activeSession() bypasses the
-// $state proxy and returns the exact object that was passed to dispatch(synced).
-let _session: ReadySession | null = null;
+// $state.raw: the union is reactive on reassignment (phase change), but its
+// contents are NOT deep-proxied — so a stored ReadySession keeps its identity and
+// its own internal $state cells stay the single reactive source for per-field UI.
+let _app = $state.raw<AppState>({ kind: 'noDevice' });
 
 export const app = {
   get current(): AppState { return _app; },
 };
 
 export function activeSession(): ReadySession | null {
-  return _session;
+  return _app.kind === 'ready' ? _app.session : null;
 }
 
 // Legacy projection: keep session.status/error/errorKind in lockstep so existing
@@ -68,7 +68,5 @@ function applyLegacy(event: AppEvent): void {
 
 export function dispatch(event: AppEvent): void {
   _app = transition(_app, event);
-  if (event.t === 'synced')      _session = event.session;
-  else if (event.t !== 'requested') _session = null;
   applyLegacy(event);
 }
