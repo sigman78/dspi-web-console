@@ -1,5 +1,5 @@
 import type { DspDevice, DspDeviceInfo } from '@/device/DspDevice';
-import type { HardwareProfile } from '@/domain';
+import type { HardwareProfile, PresetSlot } from '@/domain';
 import { setStatus, type SessionErrorKind } from './session.svelte';
 
 // Wraps a bound device. Carries device identity only; per-device runtime state
@@ -8,10 +8,13 @@ export interface ReadySession {
   readonly device: DspDevice;
   readonly info: DspDeviceInfo;
   readonly hardware: HardwareProfile;
+  // UI-only preset copy-source slot, owned by this device session.
+  readonly copySource: { slot: PresetSlot | null };
 }
 
 export function makeReadySession(device: DspDevice): ReadySession {
-  return { device, info: device.info, hardware: device.hardware };
+  const copySource = $state<{ slot: PresetSlot | null }>({ slot: null });
+  return { device, info: device.info, hardware: device.hardware, copySource };
 }
 
 export type AppState =
@@ -38,10 +41,17 @@ export function transition(_state: AppState, event: AppEvent): AppState {
 }
 
 let _app = $state<AppState>({ kind: 'noDevice' });
+// Tracks the active session by plain reference so activeSession() bypasses the
+// $state proxy and returns the exact object that was passed to dispatch(synced).
+let _session: ReadySession | null = null;
 
 export const app = {
   get current(): AppState { return _app; },
 };
+
+export function activeSession(): ReadySession | null {
+  return _session;
+}
 
 // Legacy projection: keep session.status/error/errorKind in lockstep so existing
 // UI and tests are untouched. Driven by the event (not derived from _app) so the
@@ -58,5 +68,7 @@ function applyLegacy(event: AppEvent): void {
 
 export function dispatch(event: AppEvent): void {
   _app = transition(_app, event);
+  if (event.t === 'synced')      _session = event.session;
+  else if (event.t !== 'requested') _session = null;
   applyLegacy(event);
 }

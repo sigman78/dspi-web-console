@@ -1,11 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { transition, makeReadySession, type AppState, type ReadySession } from './appState.svelte';
 
-const fakeSession: ReadySession = {
-  device: {} as never,
-  info: {} as never,
-  hardware: {} as never,
-};
+const fakeSession: ReadySession = makeReadySession({ info: {}, hardware: {} } as never);
 
 describe('transition()', () => {
   const noDevice: AppState = { kind: 'noDevice' };
@@ -36,16 +32,17 @@ describe('transition()', () => {
 });
 
 describe('makeReadySession()', () => {
-  it('wraps the device, info and hardware', () => {
+  it('wraps the device, info and hardware; starts with no copy source', () => {
     const device = { info: { serial: 'X1' }, hardware: { name: 'rp2350' } } as never;
     const s = makeReadySession(device);
     expect(s.device).toBe(device);
     expect(s.info).toEqual({ serial: 'X1' });
     expect(s.hardware).toEqual({ name: 'rp2350' });
+    expect(s.copySource.slot).toBeNull();
   });
 });
 
-import { app, dispatch } from './appState.svelte';
+import { app, dispatch, activeSession } from './appState.svelte';
 import { session, setStatus } from './session.svelte';
 
 describe('dispatch()', () => {
@@ -79,5 +76,18 @@ describe('dispatch()', () => {
     dispatch({ t: 'disconnected' });
     expect(app.current.kind).toBe('noDevice');
     expect(session.status).toBe('disconnected');
+  });
+});
+
+describe('activeSession()', () => {
+  beforeEach(() => { dispatch({ t: 'disconnected' }); });
+
+  it('returns null when not ready', () => {
+    expect(activeSession()).toBeNull();
+  });
+
+  it('returns the session when ready', () => {
+    dispatch({ t: 'synced', session: fakeSession });
+    expect(activeSession()).toBe(fakeSession);
   });
 });
