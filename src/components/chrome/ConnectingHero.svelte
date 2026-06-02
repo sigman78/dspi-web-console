@@ -1,6 +1,6 @@
 <script lang="ts">
   import EqSpectrum from './EqSpectrum.svelte';
-  import { session } from '@/state';
+  import { session, connection } from '@/state';
   import { connectRequested, reportConnectError, webUsbUnsupportedReason, isDeviceHeld } from '@/runtime';
 
   let busy = $state(false);
@@ -11,37 +11,35 @@
   // diverge and an early shared module would be the wrong abstraction.
   const text = $derived.by(() => {
     if (unsupported) return 'WEBUSB UNAVAILABLE';
-    switch (session.status) {
-      case 'connected':    return `ONLINE · ${session.device?.info.serial ?? ''}`;
-      case 'connecting':   return 'CONNECTING…';
-      case 'disconnected': return 'DISCONNECTED';
-      case 'error':        return 'ERROR';
-      case 'idle':         return 'WAITING FOR DEVICE...';
+    switch (connection.phase) {
+      case 'ready':      return `ONLINE · ${session.device?.info.serial ?? ''}`;
+      case 'connecting': return 'CONNECTING…';
+      case 'errored':    return 'ERROR';
+      case 'noDevice':   return 'WAITING FOR DEVICE…';
     }
   });
 
   const showUnsupportedFirmware = $derived(
-    session.status === 'error' && session.errorKind === 'unsupported-firmware'
+    connection.errorKind === 'unsupported-firmware'
   );
   const showErrorPanel = $derived(
-    session.status === 'error' && !!session.error && !showUnsupportedFirmware
+    connection.error !== null && !showUnsupportedFirmware
   );
 
   const disabled = $derived(
-    busy || unsupported !== null || session.status === 'connecting'
+    busy || unsupported !== null || connection.phase === 'connecting'
   );
 
   let heldElsewhere = $state(false);
 
   async function refreshHeld() {
     heldElsewhere =
-      session.status !== 'connected' &&
-      session.status !== 'connecting' &&
+      (connection.phase === 'noDevice' || connection.phase === 'errored') &&
       await isDeviceHeld();
   }
 
   $effect(() => {
-    void session.status;        // re-check when our own status changes
+    void connection.phase;      // re-check when our own status changes
     void refreshHeld();
     const onFocus = () => { if (document.visibilityState === 'visible') void refreshHeld(); };
     window.addEventListener('focus', onFocus);
@@ -56,7 +54,7 @@
     if (disabled) return;
     // 'connected' is intentionally NOT in the disabled predicate (button stays
     // live); the handler still no-ops so a stray click doesn't re-enter connect.
-    if (session.status === 'connected') return;
+    if (connection.connected) return;
     busy = true;
     try {
       await connectRequested();
@@ -70,7 +68,7 @@
 
 <div class="connecting-hero">
   <EqSpectrum />
-  <div class="status" class:is-error={session.status === 'error'}>{text}</div>
+  <div class="status" class:is-error={connection.phase === 'errored'}>{text}</div>
   {#if unsupported}
     <div class="unsupported-panel warn-panel" role="alert" aria-label="WebUSB unavailable">
       <div class="warn-panel__header">WEBUSB UNAVAILABLE</div>
@@ -80,7 +78,7 @@
     {#if showUnsupportedFirmware}
       <div class="warn-panel" role="alert" aria-label="Firmware update required">
         <div class="warn-panel__header">FIRMWARE UPDATE REQUIRED</div>
-        <pre class="warn-panel__body">{session.error}</pre>
+        <pre class="warn-panel__body">{connection.error}</pre>
       </div>
     {:else if heldElsewhere && !showErrorPanel}
       <div class="held-panel warn-panel" role="status" aria-label="Device in use">
@@ -99,7 +97,7 @@
     {#if showErrorPanel}
       <div class="error-panel" role="alert" aria-label="Connection error details">
         <div class="error-panel__header">DIAGNOSTICS</div>
-        <pre class="error-panel__body">{session.error}</pre>
+        <pre class="error-panel__body">{connection.error}</pre>
       </div>
     {/if}
   {/if}

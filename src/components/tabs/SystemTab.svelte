@@ -1,7 +1,7 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
   import KV from '../chrome/KV.svelte';
-  import { mirror, session, status } from '@/state';
+  import { mirror, session, connection, status } from '@/state';
   import ChannelNamesPanel from '../system/ChannelNamesPanel.svelte';
   import ResetPanel from '../system/ResetPanel.svelte';
   import OutputsPanel from '../system/OutputsPanel.svelte';
@@ -11,7 +11,7 @@
 
   const snap = $derived(mirror.current);
   const info = $derived(status.info);
-  const connected = $derived(session.status === 'connected');
+  const connected = $derived(connection.connected);
 
   function fmtNum(v: number | null | undefined): string { return v == null ? '—' : String(v); }
   function isNonZero(v: number | null | undefined): boolean { return v != null && v > 0; }
@@ -31,7 +31,7 @@
   <div class="col">
     <Panel code="SY.01" title="DEVICE">
       <div class="kvgrid">
-        <KV label="STATUS"   value={session.status.toUpperCase()} tone={session.status === 'connected' ? 'ok' : 'off'} />
+        <KV label="STATUS"   value={connection.label} tone={connection.connected ? 'ok' : 'off'} />
         <KV label="SERIAL"   value={session.device?.info.serial ?? '—'} />
         <KV label="FIRMWARE" value={session.device?.info.capabilities.fwLabel ?? '—'} />
         <KV label="PLATFORM" value={snap?.platform.name ?? '—'} />

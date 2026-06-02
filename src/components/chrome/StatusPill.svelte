@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { session, dispatch, presetsDirty } from '@/state';
+  import { connection, dispatch, presetsDirty } from '@/state';
   import { connectRequested, webUsbUnsupportedReason } from '@/runtime';
 
   let busy = $state(false);
   const unsupported = webUsbUnsupportedReason();
 
   async function connect() {
-    if (session.status === 'connected') return;
+    if (connection.connected) return;
     busy = true;
     try {
       await connectRequested();
@@ -19,21 +19,20 @@
 
   const text = $derived.by(() => {
     if (unsupported) return 'WEBUSB UNAVAILABLE';
-    switch (session.status) {
-      case 'connected':    return 'ONLINE';
-      case 'connecting':   return 'CONNECTING…';
-      case 'disconnected': return 'DISCONNECTED';
+    switch (connection.phase) {
+      case 'ready':      return 'ONLINE';
+      case 'connecting': return 'CONNECTING…';
       // Keep the pill text fixed-width: the (possibly long) message lives in
       // the hover tooltip and the browser console, never in the bar itself.
-      case 'error':        return 'ERROR';
-      case 'idle':         return 'CLICK TO CONNECT';
+      case 'errored':    return 'ERROR';
+      case 'noDevice':   return 'CLICK TO CONNECT';
     }
   });
 
   const tone = $derived.by(() => {
-    if (unsupported || session.status === 'error') return 'err';
-    if (session.status === 'connected') return 'ok';
-    if (session.status === 'connecting') return 'warn';
+    if (unsupported || connection.phase === 'errored') return 'err';
+    if (connection.connected) return 'ok';
+    if (connection.phase === 'connecting') return 'warn';
     return 'idle';
   });
 </script>
@@ -41,11 +40,11 @@
 <button
   class="pill {tone}"
   onclick={connect}
-  disabled={busy || unsupported !== null || session.status === 'connected'}
+  disabled={busy || unsupported !== null || connection.connected}
   title={unsupported ??
-    (session.status === 'error'
-      ? `ERROR · ${session.error ?? ''}`
-      : presetsDirty.current && session.status === 'connected'
+    (connection.phase === 'errored'
+      ? `ERROR · ${connection.error ?? ''}`
+      : presetsDirty.current && connection.connected
         ? `${text} · unsaved changes`
         : text)}
 >
