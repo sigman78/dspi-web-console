@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { transition, makeReadySession, type AppState, type ReadySession } from './appState.svelte';
 
 const fakeSession: ReadySession = {
@@ -42,5 +42,40 @@ describe('makeReadySession()', () => {
     expect(s.device).toBe(device);
     expect(s.info).toEqual({ serial: 'X1' });
     expect(s.hardware).toEqual({ name: 'rp2350' });
+  });
+});
+
+import { app, dispatch } from './appState.svelte';
+import { session, setStatus } from './session.svelte';
+
+describe('dispatch()', () => {
+  beforeEach(() => setStatus('idle'));
+
+  it('requested → app connecting + projects session.status', () => {
+    dispatch({ t: 'requested' });
+    expect(app.current.kind).toBe('connecting');
+    expect(session.status).toBe('connecting');
+  });
+
+  it('synced → app ready + projects connected, clears error', () => {
+    dispatch({ t: 'synced', session: fakeSession });
+    expect(app.current).toEqual({ kind: 'ready', session: fakeSession });
+    expect(session.status).toBe('connected');
+    expect(session.error).toBeNull();
+    expect(session.errorKind).toBeNull();
+  });
+
+  it('failed → app errored + projects error fields', () => {
+    dispatch({ t: 'failed', message: 'old fw', errorKind: 'unsupported-firmware' });
+    expect(app.current.kind).toBe('errored');
+    expect(session.status).toBe('error');
+    expect(session.error).toBe('old fw');
+    expect(session.errorKind).toBe('unsupported-firmware');
+  });
+
+  it('disconnected → app noDevice + projects disconnected', () => {
+    dispatch({ t: 'disconnected' });
+    expect(app.current.kind).toBe('noDevice');
+    expect(session.status).toBe('disconnected');
   });
 });

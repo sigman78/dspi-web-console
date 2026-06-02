@@ -1,6 +1,6 @@
 import type { DspDevice, DspDeviceInfo } from '@/device/DspDevice';
 import type { HardwareProfile } from '@/domain';
-import type { SessionErrorKind } from './session.svelte';
+import { setStatus, type SessionErrorKind } from './session.svelte';
 
 // Wraps a bound device. Carries device identity only; per-device runtime state
 // (mirror, presets, telemetry, scope, lifecycle guard) attaches here as it lands.
@@ -35,4 +35,28 @@ export function transition(_state: AppState, event: AppEvent): AppState {
     case 'failed':       return { kind: 'errored', message: event.message, errorKind: event.errorKind ?? null };
     case 'disconnected': return { kind: 'noDevice' };
   }
+}
+
+let _app = $state<AppState>({ kind: 'noDevice' });
+
+export const app = {
+  get current(): AppState { return _app; },
+};
+
+// Legacy projection: keep session.status/error/errorKind in lockstep so existing
+// UI and tests are untouched. Driven by the event (not derived from _app) so the
+// legacy idle/disconnected distinction the UI still relies on is preserved — both
+// collapse to { kind:'noDevice' } in the union.
+function applyLegacy(event: AppEvent): void {
+  switch (event.t) {
+    case 'requested':    setStatus('connecting'); break;
+    case 'synced':       setStatus('connected'); break;
+    case 'failed':       setStatus('error', event.message, event.errorKind ?? null); break;
+    case 'disconnected': setStatus('disconnected'); break;
+  }
+}
+
+export function dispatch(event: AppEvent): void {
+  _app = transition(_app, event);
+  applyLegacy(event);
 }

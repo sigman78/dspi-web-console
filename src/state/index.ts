@@ -1,4 +1,5 @@
 export * from './session.svelte';
+export * from './appState.svelte';
 export * from './mirror.svelte';
 export * from './presets.svelte';
 export * from './settings.svelte';
