@@ -53,10 +53,10 @@ export async function write(
   return settled;
 }
 
-// Fire-and-forget a device command under the generation stale-guard and the
+// Fire-and-forget a device command under the per-session alive guard and the
 // inflight registry (so flushAllWrites drains it). `onSettled` runs with the
-// resolved value ONLY if the generation is still current — a settle after a
-// disconnect+reconnect is silently dropped (no mutation, no toast). A throw is
+// resolved value ONLY if the captured session is still alive — a settle after the
+// session was disposed (disconnect) is silently dropped (no mutation, no toast). A throw is
 // logged and surfaced as an error toast; it never flips connection status (one
 // command failing is local). Substrate for writeChecked() and the standalone
 // device commands (setMasterVolumeMode, saveMasterVolumeBaseline).
@@ -105,8 +105,9 @@ export function writeChecked<E>(
 
 // Per-key 16 ms latest-wins coalesce lane. Each scrub() call replaces the
 // pending send for its key; the timer fires once per drag-quiet window.
-// Generation-guarded: a send that completes after a disconnect+reconnect
-// is silently dropped — no mirror update, no recovery resync.
+// Alive-guarded against the session captured at schedule time: a send that
+// completes after that session was disposed (disconnect) is silently dropped —
+// no mirror update, no recovery resync.
 
 const COALESCE_MS = 16;
 
