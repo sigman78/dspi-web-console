@@ -9,7 +9,9 @@
     setCrossfeedFreq, setCrossfeedFeedDb,
   } from '@/runtime';
   import { CrossfeedPreset, Proc } from '@/domain';
+  import { getSession } from '../sessionContext';
 
+  const s = getSession();
   const cf = $derived(mirror.current?.crossfeed);
   const connected = $derived(connection.connected);
   const enabled = $derived(cf?.enabled ?? false);
@@ -28,19 +30,19 @@
 
   function toggleEnabled() {
     if (!cf) return;
-    setCrossfeedEnabled(!cf.enabled);
+    setCrossfeedEnabled(s, !cf.enabled);
   }
   function toggleItd() {
     if (!cf) return;
-    setCrossfeedItd(!cf.itd);
+    setCrossfeedItd(s, !cf.itd);
   }
   function onFreqInput(e: Event) {
     const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setCrossfeedFreq(v);
+    if (!Number.isNaN(v)) setCrossfeedFreq(s, v);
   }
   function onFeedInput(e: Event) {
     const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setCrossfeedFeedDb(v);
+    if (!Number.isNaN(v)) setCrossfeedFeedDb(s, v);
   }
 </script>
 
@@ -63,7 +65,7 @@
         options={PRESET_OPTIONS}
         disabled={!editable}
         ariaLabel="Crossfeed preset"
-        onChange={(v) => setCrossfeedPreset(v)}
+        onChange={(v) => setCrossfeedPreset(s, v)}
       />
     </div>
 
@@ -82,7 +84,7 @@
       kind="hz"
       precision={0}
       disabled={!slidersEditable}
-      onChange={(v) => setCrossfeedFreq(v)}
+      onChange={(v) => setCrossfeedFreq(s, v)}
     />
 
     <span class="lbl">FEED</span>
@@ -100,7 +102,7 @@
       kind="dB"
       precision={1}
       disabled={!slidersEditable}
-      onChange={(v) => setCrossfeedFeedDb(v)}
+      onChange={(v) => setCrossfeedFeedDb(s, v)}
     />
 
     <span class="lbl">ITD</span>

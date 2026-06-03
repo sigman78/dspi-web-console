@@ -152,112 +152,90 @@ export function setLoudnessIntensityPct(s: ReadySession, pct: number): void {
   );
 }
 
-export function setCrossfeedEnabled(enabled: boolean): void {
-  const d = session.device;
-  if (!d) return;
+export function setCrossfeedEnabled(s: ReadySession, enabled: boolean): void {
   void write(
-    () => d.setCrossfeedEnabled(enabled),
-    () => { if (mirror.current) mirror.current.crossfeed.enabled = enabled; },
+    () => s.device.setCrossfeedEnabled(enabled),
+    () => { s.mirror.snapshot.crossfeed.enabled = enabled; },
   );
 }
 
-export function setCrossfeedPreset(preset: CrossfeedPreset): void {
-  const d = session.device;
-  if (!d) return;
+export function setCrossfeedPreset(s: ReadySession, preset: CrossfeedPreset): void {
   void write(
-    () => d.setCrossfeedPreset(preset),
-    () => { if (mirror.current) mirror.current.crossfeed.preset = preset; },
+    () => s.device.setCrossfeedPreset(preset),
+    () => { s.mirror.snapshot.crossfeed.preset = preset; },
   );
 }
 
-export function setCrossfeedItd(itd: boolean): void {
-  const d = session.device;
-  if (!d) return;
+export function setCrossfeedItd(s: ReadySession, itd: boolean): void {
   void write(
-    () => d.setCrossfeedItd(itd),
-    () => { if (mirror.current) mirror.current.crossfeed.itd = itd; },
+    () => s.device.setCrossfeedItd(itd),
+    () => { s.mirror.snapshot.crossfeed.itd = itd; },
   );
 }
 
-export function setCrossfeedFreq(hz: number): void {
+export function setCrossfeedFreq(s: ReadySession, hz: number): void {
   hz = Clamp.crossfeedFreqHz(hz);
-  const d = session.device;
-  if (!d) return;
   scrub(
     'crossfeedFreq',
-    () => { if (mirror.current) mirror.current.crossfeed.freq = hz; },
-    () => d.setCrossfeedFreq(hz),
+    () => { s.mirror.snapshot.crossfeed.freq = hz; },
+    () => s.device.setCrossfeedFreq(hz),
   );
 }
 
-export function setCrossfeedFeedDb(db: number): void {
+export function setCrossfeedFeedDb(s: ReadySession, db: number): void {
   db = Clamp.crossfeedFeedDb(db);
-  const d = session.device;
-  if (!d) return;
   scrub(
     'crossfeedFeedDb',
-    () => { if (mirror.current) mirror.current.crossfeed.feedDb = db; },
-    () => d.setCrossfeedFeedDb(db),
+    () => { s.mirror.snapshot.crossfeed.feedDb = db; },
+    () => s.device.setCrossfeedFeedDb(db),
   );
 }
 
-export function setLevellerEnabled(enabled: boolean): void {
-  const d = session.device;
-  if (!d) return;
+export function setLevellerEnabled(s: ReadySession, enabled: boolean): void {
   void write(
-    () => d.setLevellerEnabled(enabled),
-    () => { if (mirror.current?.leveller) mirror.current.leveller.enabled = enabled; },
+    () => s.device.setLevellerEnabled(enabled),
+    () => { s.mirror.snapshot.leveller.enabled = enabled; },
   );
 }
 
-export function setLevellerSpeed(speed: LevellerSpeed): void {
-  const d = session.device;
-  if (!d) return;
+export function setLevellerSpeed(s: ReadySession, speed: LevellerSpeed): void {
   void write(
-    () => d.setLevellerSpeed(speed),
-    () => { if (mirror.current?.leveller) mirror.current.leveller.speed = speed; },
+    () => s.device.setLevellerSpeed(speed),
+    () => { s.mirror.snapshot.leveller.speed = speed; },
   );
 }
 
-export function setLevellerLookahead(lookahead: boolean): void {
-  const d = session.device;
-  if (!d) return;
+export function setLevellerLookahead(s: ReadySession, lookahead: boolean): void {
   void write(
-    () => d.setLevellerLookahead(lookahead),
-    () => { if (mirror.current?.leveller) mirror.current.leveller.lookahead = lookahead; },
+    () => s.device.setLevellerLookahead(lookahead),
+    () => { s.mirror.snapshot.leveller.lookahead = lookahead; },
   );
 }
 
-export function setLevellerAmount(pct: number): void {
+export function setLevellerAmount(s: ReadySession, pct: number): void {
   pct = Clamp.levellerAmountPct(pct);
-  const d = session.device;
-  if (!d) return;
   scrub(
     'levellerAmount',
-    () => { if (mirror.current?.leveller) mirror.current.leveller.amount = pct; },
-    () => d.setLevellerAmount(pct),
+    () => { s.mirror.snapshot.leveller.amount = pct; },
+    () => s.device.setLevellerAmount(pct),
   );
 }
 
-export function setLevellerMaxGain(db: number): void {
+export function setLevellerMaxGain(s: ReadySession, db: number): void {
   db = Clamp.levellerMaxGainDb(db);
-  const d = session.device;
-  if (!d) return;
   scrub(
     'levellerMaxGain',
-    () => { if (mirror.current?.leveller) mirror.current.leveller.maxGainDb = db; },
-    () => d.setLevellerMaxGain(db),
+    () => { s.mirror.snapshot.leveller.maxGainDb = db; },
+    () => s.device.setLevellerMaxGain(db),
   );
 }
 
-export function setLevellerGate(db: number): void {
+export function setLevellerGate(s: ReadySession, db: number): void {
   db = Clamp.levellerGateDb(db);
-  const d = session.device;
-  if (!d) return;
   scrub(
     'levellerGate',
-    () => { if (mirror.current?.leveller) mirror.current.leveller.gateDb = db; },
-    () => d.setLevellerGate(db),
+    () => { s.mirror.snapshot.leveller.gateDb = db; },
+    () => s.device.setLevellerGate(db),
   );
 }
 

@@ -532,9 +532,11 @@ describe('granular writes: enums', () => {
       setCrossfeedPreset: setCrossfeedPresetFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     bindDevice(device);
     const target = CrossfeedPreset.Preset2;
-    setCrossfeedPreset(target);
+    setCrossfeedPreset(activeSession()!, target);
     await vi.runAllTimersAsync();
     expect(setCrossfeedPresetFn).toHaveBeenCalledWith(target);
     expect(mirror.current?.crossfeed.preset).toBe(target);
@@ -546,9 +548,11 @@ describe('granular writes: enums', () => {
       setLevellerSpeed: setLevellerSpeedFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     bindDevice(device);
     const target = LevellerSpeed.Fast;
-    setLevellerSpeed(target);
+    setLevellerSpeed(activeSession()!, target);
     await vi.runAllTimersAsync();
     expect(setLevellerSpeedFn).toHaveBeenCalledWith(target);
     expect(mirror.current?.leveller?.speed).toBe(target);
@@ -570,8 +574,10 @@ describe('granular writes (numeric sliders): sliders', () => {
       setLevellerAmount: setLevellerAmountFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     bindDevice(device);
-    setLevellerAmount(33);
+    setLevellerAmount(activeSession()!, 33);
     expect(mirror.current?.leveller?.amount).toBe(33);
     await vi.runAllTimersAsync();
     expect(setLevellerAmountFn).toHaveBeenCalledWith(33);
