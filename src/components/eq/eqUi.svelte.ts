@@ -1,4 +1,5 @@
 import type { ChannelId } from '@/domain';
+import type { ReadySession } from '@/state';
 import { copyEqBands } from '@/runtime';
 
 export const eqUi = $state<{
@@ -19,6 +20,6 @@ export function clearEqCopySource(): void {
 // action. Per-channel EQ preamp is no longer a thing (it never existed in
 // firmware); preamp now lives on input channels only and is not part of
 // the EQ copy surface.
-export function applyCopyFrom(sourceId: ChannelId, targetId: ChannelId): void {
-  copyEqBands(sourceId, targetId);
+export function applyCopyFrom(s: ReadySession, sourceId: ChannelId, targetId: ChannelId): void {
+  copyEqBands(s, sourceId, targetId);
 }

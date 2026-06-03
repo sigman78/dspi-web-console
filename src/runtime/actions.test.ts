@@ -180,11 +180,13 @@ describe('actions wiring', () => {
       setFilter: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => validBulk),
     });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     bindDevice(device);
 
     const sourceId = mirror.current!.channels[0].id;
     const targetId = mirror.current!.channels[1].id;
-    copyEqBands(sourceId, targetId);
+    copyEqBands(activeSession()!, sourceId, targetId);
     // Flush microtasks so the async sends resolve and mutates apply.
     await vi.runAllTimersAsync();
 
@@ -201,12 +203,13 @@ describe('setEqFilter', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dispatch({ t: 'synced', session: makeReadySession({} as never) });
-    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
-    bindDevice(initializedDevice({
+    const device = initializedDevice({
       setFilter: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    }));
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    bindDevice(device);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -215,7 +218,7 @@ describe('setEqFilter', () => {
 
   it('patches the snapshot after send acks', async () => {
     // setEqFilter awaits the wire send, then mutates draft (await-then-mutate).
-    setEqFilter(0, 1, { type: FilterType.Peaking, bypass: false, frequency: 2000, q: 1, gain: 3 });
+    setEqFilter(activeSession()!, 0, 1, { type: FilterType.Peaking, bypass: false, frequency: 2000, q: 1, gain: 3 });
     await vi.runAllTimersAsync();
     expect(mirror.current?.channels[0].filters[1].frequency).toBe(2000);
     expect(mirror.current?.channels[0].filters[1].type).toBe(FilterType.Peaking);
@@ -225,7 +228,7 @@ describe('setEqFilter', () => {
   it('rapid edits to the same band each apply independently (no coalescing)', async () => {
     // Each write() call is independent; the snapshot holds the last applied value.
     for (let f = 100; f <= 1000; f += 100) {
-      setEqFilter(0, 1, { type: FilterType.Peaking, bypass: false, frequency: f, q: 1, gain: 0 });
+      setEqFilter(activeSession()!, 0, 1, { type: FilterType.Peaking, bypass: false, frequency: f, q: 1, gain: 0 });
     }
     await vi.runAllTimersAsync();
     expect(mirror.current?.channels[0].filters[1].frequency).toBe(1000);
@@ -233,15 +236,18 @@ describe('setEqFilter', () => {
 
   it('sequential partial edits to a band compose via the settled mirror', async () => {
     const calls: FilterParams[] = [];
-    bindDevice(initializedDevice({
+    const device = initializedDevice({
       setFilter: vi.fn(async (_ch: number, _band: number, f: FilterParams) => { calls.push({ ...f }); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    }));
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    bindDevice(device);
     // Edit frequency, let it settle, then edit gain built from the updated band
     // (the same {...current, ...patch} merge BandRow performs on commit).
-    setEqFilter(0, 1, { ...mirror.current!.channels[0].filters[1], frequency: 2000 });
+    setEqFilter(activeSession()!, 0, 1, { ...mirror.current!.channels[0].filters[1], frequency: 2000 });
     await vi.runAllTimersAsync();
-    setEqFilter(0, 1, { ...mirror.current!.channels[0].filters[1], gain: 4 });
+    setEqFilter(activeSession()!, 0, 1, { ...mirror.current!.channels[0].filters[1], gain: 4 });
     await vi.runAllTimersAsync();
 
     expect(calls).toHaveLength(2);
@@ -252,9 +258,9 @@ describe('setEqFilter', () => {
   });
 
   it('edits to different bands are all reflected in the snapshot', async () => {
-    setEqFilter(0, 0, { type: FilterType.Peaking, bypass: false, frequency: 100, q: 1, gain: 0 });
-    setEqFilter(0, 1, { type: FilterType.Peaking, bypass: false, frequency: 200, q: 1, gain: 0 });
-    setEqFilter(0, 2, { type: FilterType.Peaking, bypass: false, frequency: 300, q: 1, gain: 0 });
+    setEqFilter(activeSession()!, 0, 0, { type: FilterType.Peaking, bypass: false, frequency: 100, q: 1, gain: 0 });
+    setEqFilter(activeSession()!, 0, 1, { type: FilterType.Peaking, bypass: false, frequency: 200, q: 1, gain: 0 });
+    setEqFilter(activeSession()!, 0, 2, { type: FilterType.Peaking, bypass: false, frequency: 300, q: 1, gain: 0 });
     await vi.runAllTimersAsync();
     expect(mirror.current?.channels[0].filters[0].frequency).toBe(100);
     expect(mirror.current?.channels[0].filters[1].frequency).toBe(200);
@@ -264,7 +270,7 @@ describe('setEqFilter', () => {
   it('throws on out-of-range band and leaves snapshot unchanged', async () => {
     const before = { ...mirror.current!.channels[0].filters[1] };
     const n = mirror.current!.channels[0].filters.length;
-    expect(() => setEqFilter(0, n, { type: FilterType.Peaking, bypass: false, frequency: 9999, q: 1, gain: 12 })).toThrow();
+    expect(() => setEqFilter(activeSession()!, 0, n, { type: FilterType.Peaking, bypass: false, frequency: 9999, q: 1, gain: 12 })).toThrow();
     await vi.runAllTimersAsync();
     // Snapshot must not have changed for the valid band.
     expect(mirror.current?.channels[0].filters[1]).toEqual(before);
@@ -289,9 +295,11 @@ describe('setMasterPreamp', () => {
       setMasterPreamp: setMasterPreampFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     bindDevice(device);
 
-    setMasterPreamp(-3);
+    setMasterPreamp(activeSession()!, -3);
     expect(mirror.current?.masterPreampDb).toBe(-3);
     await vi.runAllTimersAsync();
     expect(setMasterPreampFn).toHaveBeenCalledWith(-3);
@@ -316,10 +324,12 @@ describe('setInputPreamp', () => {
       setInputPreamp: setInputPreampFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     bindDevice(device);
 
-    setInputPreamp(0, -2);
-    setInputPreamp(1, -4);
+    setInputPreamp(activeSession()!, 0, -2);
+    setInputPreamp(activeSession()!, 1, -4);
     expect(mirror.current?.inputPreampDb).toEqual([-2, -4]);
     await vi.runAllTimersAsync();
     expect(setInputPreampFn).toHaveBeenCalledWith(0, -2);
@@ -332,12 +342,14 @@ describe('setInputPreamp', () => {
       setInputPreamp: setInputPreampFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     bindDevice(device);
 
-    setInputPreamp(0, -1);
-    setInputPreamp(0, -2);
-    setInputPreamp(0, -3);
-    setInputPreamp(1, -10);
+    setInputPreamp(activeSession()!, 0, -1);
+    setInputPreamp(activeSession()!, 0, -2);
+    setInputPreamp(activeSession()!, 0, -3);
+    setInputPreamp(activeSession()!, 1, -10);
     await vi.runAllTimersAsync();
     expect(setInputPreampFn).toHaveBeenCalledTimes(2);
     expect(setInputPreampFn).toHaveBeenCalledWith(0, -3);
@@ -772,8 +784,13 @@ describe('granular writes: eqFilter (per-band)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dispatch({ t: 'synced', session: makeReadySession({} as never) });
+    const device = initializedDevice({
+      setFilter: vi.fn(async () => {}),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
     mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    bindDevice(device);
   });
   afterEach(() => { vi.useRealTimers(); bindDevice(null); });
 
@@ -785,10 +802,12 @@ describe('granular writes: eqFilter (per-band)', () => {
       }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     bindDevice(device);
     const ch = mirror.current!.channels[0].id;
     const beforeGain = mirror.current!.channels[0].filters[0].gain;
-    setEqFilter(ch, 0, { type: FilterType.Peaking, bypass: false, frequency: 1000, q: 1.0, gain: 3 });
+    setEqFilter(activeSession()!, ch, 0, { type: FilterType.Peaking, bypass: false, frequency: 1000, q: 1.0, gain: 3 });
     expect(mirror.current!.channels[0].filters[0].gain).toBe(beforeGain); // not optimistic — unchanged until ack
     await vi.runAllTimersAsync();
     expect(mirror.current!.channels[0].filters[0].frequency).toBe(1000); // patched after ack
@@ -801,7 +820,7 @@ describe('granular writes: eqFilter (per-band)', () => {
   it('setEqFilter throws on out-of-range band', () => {
     const ch = mirror.current!.channels[0].id;
     const n = mirror.current!.channels[0].filters.length;
-    expect(() => setEqFilter(ch, n, { type: FilterType.Peaking, bypass: false, frequency: 1, q: 1, gain: 0 })).toThrow();
+    expect(() => setEqFilter(activeSession()!, ch, n, { type: FilterType.Peaking, bypass: false, frequency: 1, q: 1, gain: 0 })).toThrow();
   });
 
   it('copyEqBands sends N independent setFilter calls (one per band)', async () => {
@@ -809,19 +828,21 @@ describe('granular writes: eqFilter (per-band)', () => {
       setFilter: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     bindDevice(device);
     const src = mirror.current!.channels[0].id;
     const tgt = mirror.current!.channels[1].id;
     const len = Math.min(mirror.current!.channels.find((c) => c.id === src)!.filters.length,
                          mirror.current!.channels.find((c) => c.id === tgt)!.filters.length);
     // Edit source first
-    setEqFilter(src, 0, { type: FilterType.Peaking, bypass: false, frequency: 2500, q: 2, gain: -4 });
-    setEqFilter(src, 1, { type: FilterType.Peaking, bypass: false, frequency: 5000, q: 1.5, gain: 2 });
+    setEqFilter(activeSession()!, src, 0, { type: FilterType.Peaking, bypass: false, frequency: 2500, q: 2, gain: -4 });
+    setEqFilter(activeSession()!, src, 1, { type: FilterType.Peaking, bypass: false, frequency: 5000, q: 1.5, gain: 2 });
     await vi.runAllTimersAsync();
     // Reset mock call count for copyEqBands test
     vi.mocked(device.setFilter).mockClear();
     // Now copy to target
-    copyEqBands(src, tgt);
+    copyEqBands(activeSession()!, src, tgt);
     await vi.runAllTimersAsync(); // flush so sends resolve and mutates apply
     const t = mirror.current!.channels.find((c) => c.id === tgt)!;
     const s = mirror.current!.channels.find((c) => c.id === src)!;

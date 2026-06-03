@@ -15,6 +15,9 @@
   } from '../eq/eqUi.svelte';
   import { FilterType, defaultFilter, type FilterParams, inputIndexOf } from '@/domain';
   import { setEqFilter, setInputPreamp } from '@/runtime';
+  import { getSession } from '../sessionContext';
+
+  const s = getSession();
 
   const snap = $derived(mirror.current);
 
@@ -69,13 +72,13 @@
   function patchBand(i: number, patch: Partial<FilterParams>) {
     if (!channel) return;
     const next = { ...channel.filters[i], ...patch };
-    setEqFilter(channel.id, i, next);
+    setEqFilter(s, channel.id, i, next);
   }
 
   function reset() {
     if (!channel) return;
     for (let i = 0; i < channel.filters.length; i++) {
-      setEqFilter(channel.id, i, defaultFilter());
+      setEqFilter(s, channel.id, i, defaultFilter());
     }
     // Preamp has its own reset action via PreampPanel's reset button.
   }
@@ -87,7 +90,7 @@
 
   function paste() {
     if (!channel || eqUi.copySource == null) return;
-    applyCopyFrom(eqUi.copySource, channel.id);
+    applyCopyFrom(s, eqUi.copySource, channel.id);
   }
 
   function exitCopy() {
@@ -111,11 +114,11 @@
 
   function setPreamp(v: number) {
     if (inputIndex === null) return;
-    setInputPreamp(inputIndex, v);
+    setInputPreamp(s, inputIndex, v);
   }
   function resetPreamp() {
     if (inputIndex === null) return;
-    setInputPreamp(inputIndex, 0);
+    setInputPreamp(s, inputIndex, 0);
   }
 </script>
 

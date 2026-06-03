@@ -29,9 +29,8 @@ function _setMasterVolume(s: ReadySession, db: number): void {
   );
 }
 
-export function setEqFilter(channel: ChannelId, band: number, filter: FilterParams): void {
-  if (!mirror.current?.channels) return;
-  const ch = mirror.current.channels.find((c) => c.id === channel);
+export function setEqFilter(s: ReadySession, channel: ChannelId, band: number, filter: FilterParams): void {
+  const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
   if (!ch) return;
   if (band >= ch.filters.length) {
     throw new Error(`band ${band} out of range for channel ${channel}`);
@@ -42,22 +41,20 @@ export function setEqFilter(channel: ChannelId, band: number, filter: FilterPara
     q: Clamp.bandQ(filter.q),
     gain: Clamp.bandGainDb(filter.gain),
   };
-  const d = session.device;
-  if (!d) return;
   void write(
-    () => d.setFilter(channel, band, clamped),
+    () => s.device.setFilter(channel, band, clamped),
     () => {
-      const c = mirror.current?.channels.find((c) => c.id === channel);
+      const c = s.mirror.snapshot.channels.find((c) => c.id === channel);
       if (c) c.filters[band] = { ...clamped };
     },
   );
 }
 
 // Copy all bands from source channel onto target channel as N independent granular writes.
-export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
-  if (sourceId === targetId || !mirror.current?.channels) return;
-  const src = mirror.current.channels.find((c) => c.id === sourceId);
-  const tgt = mirror.current.channels.find((c) => c.id === targetId);
+export function copyEqBands(s: ReadySession, sourceId: ChannelId, targetId: ChannelId): void {
+  if (sourceId === targetId) return;
+  const src = s.mirror.snapshot.channels.find((c) => c.id === sourceId);
+  const tgt = s.mirror.snapshot.channels.find((c) => c.id === targetId);
   if (!src || !tgt) return;
   const len = Math.min(src.filters.length, tgt.filters.length);
   const copied = src.filters.slice(0, len).map((f) => ({
@@ -66,16 +63,13 @@ export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
     q: Clamp.bandQ(f.q),
     gain: Clamp.bandGainDb(f.gain),
   }));
-  const d = session.device;
-  if (!d) return;
   for (let i = 0; i < len; i++) {
     const band = i;
     const filter = copied[i];
     void write(
-      () => d.setFilter(targetId, band, filter),
+      () => s.device.setFilter(targetId, band, filter),
       () => {
-        if (!mirror.current) return;
-        const t = mirror.current.channels.find((c) => c.id === targetId);
+        const t = s.mirror.snapshot.channels.find((c) => c.id === targetId);
         if (t) t.filters[band] = { ...filter };
       },
     );
@@ -239,29 +233,24 @@ export function setLevellerGate(s: ReadySession, db: number): void {
   );
 }
 
-export function setMasterPreamp(db: number): void {
+export function setMasterPreamp(s: ReadySession, db: number): void {
   db = Clamp.preampDb(db);
-  const d = session.device;
-  if (!d) return;
   scrub(
     'masterPreamp',
-    () => { if (mirror.current) mirror.current.masterPreampDb = db; },
-    () => d.setMasterPreamp(db),
+    () => { s.mirror.snapshot.masterPreampDb = db; },
+    () => s.device.setMasterPreamp(db),
   );
 }
 
-export function setInputPreamp(channel: InputSlot, db: number): void {
+export function setInputPreamp(s: ReadySession, channel: InputSlot, db: number): void {
   db = Clamp.preampDb(db);
-  const cur = mirror.current?.inputPreampDb;
-  if (!cur) return;
+  const cur = s.mirror.snapshot.inputPreampDb;
   const next: [number, number] = [cur[0], cur[1]];
   next[channel] = db;
-  const d = session.device;
-  if (!d) return;
   scrub(
     `inputPreamp:${channel}`,
-    () => { if (mirror.current) mirror.current.inputPreampDb = next; },
-    () => d.setInputPreamp(channel, db),
+    () => { s.mirror.snapshot.inputPreampDb = next; },
+    () => s.device.setInputPreamp(channel, db),
   );
 }
 
