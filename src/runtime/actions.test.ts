@@ -454,7 +454,7 @@ describe('actions — master volume mode', () => {
       includePins: false,
       masterVolumeMode: MasterVolumeMode.Independent,
     };
-    setMasterVolumeMode(MasterVolumeMode.WithPreset);
+    setMasterVolumeMode(activeSession()!, MasterVolumeMode.WithPreset);
     await vi.waitFor(() => expect(presets.directory!.masterVolumeMode).toBe(MasterVolumeMode.WithPreset));
   });
 

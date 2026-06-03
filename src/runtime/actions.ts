@@ -9,7 +9,6 @@ import {
 import * as Clamp from '@/domain/clamp';
 import {
   type ReadySession,
-  session,
   presets,
   settings,
   status,
@@ -351,10 +350,8 @@ export function toggleMute(s: ReadySession): void {
 
 // Master-volume mode --------------------------------------------------------
 
-export function setMasterVolumeMode(mode: MasterVolumeMode): void {
-  const d = session.device;
-  if (!d) return;
-  void command('set master volume mode', () => d.setMasterVolumeMode(mode), () => {
+export function setMasterVolumeMode(s: ReadySession, mode: MasterVolumeMode): void {
+  void command('set master volume mode', () => s.device.setMasterVolumeMode(mode), () => {
     if (presets.directory) presets.directory = { ...presets.directory, masterVolumeMode: mode };
   });
 }

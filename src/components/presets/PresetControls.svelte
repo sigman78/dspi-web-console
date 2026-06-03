@@ -13,8 +13,10 @@
   import { MasterVolumeMode } from '@/domain';
   import { PresetStartupMode } from '@/protocol';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import { getSession } from '../sessionContext';
 
   const { onRequestRename }: { onRequestRename: () => void } = $props();
+  const s = getSession();
 
   const active = $derived(presets.active);
   const dir = $derived(presets.directory);
@@ -129,7 +131,7 @@
       label="Master volume"
       ariaLabel="Include master volume in preset"
       checked={mvMode === MasterVolumeMode.WithPreset}
-      onChange={(v) => void setMasterVolumeMode(v ? MasterVolumeMode.WithPreset : MasterVolumeMode.Independent)}
+      onChange={(v) => void setMasterVolumeMode(s, v ? MasterVolumeMode.WithPreset : MasterVolumeMode.Independent)}
     />
     <ToggleSwitch
       size="sm"
