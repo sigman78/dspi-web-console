@@ -11,6 +11,7 @@
   } from '@/runtime';
   import ValueField from '../../chrome/ValueField.svelte';
   import { chKey } from '@/styles/palette';
+  import { getSession } from '../../sessionContext';
 
   const {
     cell,
@@ -28,15 +29,16 @@
     unavailable?: boolean;
   } = $props();
 
+  const s = getSession();
   const active = $derived(cell.enabled);
   const inv = $derived(cell.invert);
 
   function onToggle(): void {
-    setCrosspointEnabled(inputIndex, outputIndex, !active);
+    setCrosspointEnabled(s, inputIndex, outputIndex, !active);
   }
   function onInv(): void {
     if (!active) return;
-    setCrosspointInvert(inputIndex, outputIndex, !inv);
+    setCrosspointInvert(s, inputIndex, outputIndex, !inv);
   }
 </script>
 
@@ -65,7 +67,7 @@
     align="center"
     value={cell.gainDb}
     disabled={!active}
-    onChange={(v) => setCrosspointGain(inputIndex, outputIndex, v)}
+    onChange={(v) => setCrosspointGain(s, inputIndex, outputIndex, v)}
   />
 
   <button

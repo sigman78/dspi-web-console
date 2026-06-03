@@ -264,88 +264,71 @@ export function setInputPreamp(s: ReadySession, channel: InputSlot, db: number):
 // programmatic same-cell burst is ever introduced.) Per-item writes also avoid
 // the bulk path's audio mute, which is why crosspoint stays granular.
 function scheduleCrosspointWrite(
+  s: ReadySession,
   input: InputSlot,
   output: OutputSlot,
   mutate: (r: RouteModel) => RouteModel,
 ): void {
-  if (!mirror.current?.routes) return;
-  const route = focusRoute(input, output);
-  const d = session.device;
-  if (!d) return;
+  const route = focusRoute(s, input, output);
   const next = mutate(route.read());
   void write(
-    () => d.setMatrixRoute(input, output, { enabled: next.enabled, invert: next.invert, gainDb: next.gainDb }),
+    () => s.device.setMatrixRoute(input, output, { enabled: next.enabled, invert: next.invert, gainDb: next.gainDb }),
     () => route.modify(() => next),
   );
 }
 
-export function setCrosspointGain(input: InputSlot, output: OutputSlot, gainDb: number): void {
+export function setCrosspointGain(s: ReadySession, input: InputSlot, output: OutputSlot, gainDb: number): void {
   gainDb = Clamp.crosspointGainDb(gainDb);
-  scheduleCrosspointWrite(input, output, (r) => ({ ...r, gainDb }));
+  scheduleCrosspointWrite(s, input, output, (r) => ({ ...r, gainDb }));
 }
 
-export function setCrosspointEnabled(input: InputSlot, output: OutputSlot, enabled: boolean): void {
-  scheduleCrosspointWrite(input, output, (r) => ({ ...r, enabled }));
+export function setCrosspointEnabled(s: ReadySession, input: InputSlot, output: OutputSlot, enabled: boolean): void {
+  scheduleCrosspointWrite(s, input, output, (r) => ({ ...r, enabled }));
 }
 
-export function setCrosspointInvert(input: InputSlot, output: OutputSlot, invert: boolean): void {
-  scheduleCrosspointWrite(input, output, (r) => ({ ...r, invert }));
+export function setCrosspointInvert(s: ReadySession, input: InputSlot, output: OutputSlot, invert: boolean): void {
+  scheduleCrosspointWrite(s, input, output, (r) => ({ ...r, invert }));
 }
 
 // Click/commit-paced ValueField (no drag): plain write(), patch the mirror on
 // ack. Scalar verb — no tuple to merge. Mirrors its sibling setOutputDelay.
-export function setOutputGain(slot: OutputSlot, gainDb: number): void {
+export function setOutputGain(s: ReadySession, slot: OutputSlot, gainDb: number): void {
   gainDb = Clamp.outputGainDb(gainDb);
-  if (!mirror.current?.outputs) return;
-  const out = focusOutput(slot);
-  const d = session.device;
-  if (!d) return;
+  const out = focusOutput(s, slot);
   void write(
-    () => d.setOutputGain(slot, gainDb),
+    () => s.device.setOutputGain(slot, gainDb),
     () => out.modify((o) => ({ ...o, gainDb })),
   );
 }
 
 // Write-path output addressing: locate the output by wire slot in the draft
 // being mutated. A missing slot is a silent no-op.
-export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
-  if (!mirror.current?.outputs) return;
+export function setOutputDelay(s: ReadySession, slot: OutputSlot, delayMs: number): void {
   delayMs = Clamp.outputDelayMs(delayMs);
-  const d = session.device;
-  if (!d) return;
   void write(
-    () => d.setOutputDelay(slot, delayMs),
+    () => s.device.setOutputDelay(slot, delayMs),
     () => {
-      if (!mirror.current) return;
-      const o = mirror.current.outputs.find((o) => o.wireIndex === slot);
+      const o = s.mirror.snapshot.outputs.find((o) => o.wireIndex === slot);
       if (o) o.delayMs = delayMs;
     },
   );
 }
 
-export function setOutputEnabled(slot: OutputSlot, enabled: boolean): void {
-  if (!mirror.current?.outputs) return;
-  const d = session.device;
-  if (!d) return;
+export function setOutputEnabled(s: ReadySession, slot: OutputSlot, enabled: boolean): void {
   void write(
-    () => d.setOutputEnable(slot, enabled),
+    () => s.device.setOutputEnable(slot, enabled),
     () => {
-      if (!mirror.current) return;
-      const o = mirror.current.outputs.find((o) => o.wireIndex === slot);
+      const o = s.mirror.snapshot.outputs.find((o) => o.wireIndex === slot);
       if (o) o.enabled = enabled;
     },
   );
 }
 
-export function setOutputMuted(slot: OutputSlot, muted: boolean): void {
-  if (!mirror.current?.outputs) return;
-  const d = session.device;
-  if (!d) return;
+export function setOutputMuted(s: ReadySession, slot: OutputSlot, muted: boolean): void {
   void write(
-    () => d.setOutputMute(slot, muted),
+    () => s.device.setOutputMute(slot, muted),
     () => {
-      if (!mirror.current) return;
-      const o = mirror.current.outputs.find((o) => o.wireIndex === slot);
+      const o = s.mirror.snapshot.outputs.find((o) => o.wireIndex === slot);
       if (o) o.muted = muted;
     },
   );

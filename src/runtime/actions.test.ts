@@ -515,13 +515,16 @@ describe('bulk writes: toggles', () => {
   it('setOutputMuted sends a write and flips the slot after ack', async () => {
     vi.useFakeTimers();
     const setOutputMuteFn = vi.fn(async () => {});
-    bindDevice(initializedDevice({
+    const device = initializedDevice({
       setOutputMute: setOutputMuteFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    }));
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    bindDevice(device);
     const slot = mirror.current!.outputs[0].wireIndex;
     const before = mirror.current!.outputs[0].muted;
-    setOutputMuted(slot, !before);
+    setOutputMuted(activeSession()!, slot, !before);
     await vi.runAllTimersAsync();
     expect(mirror.current?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(!before);
     expect(setOutputMuteFn).toHaveBeenCalledWith(slot, !before);
@@ -661,12 +664,15 @@ describe('bulk writes: eq/delay/names', () => {
   it('setOutputDelay sends a write and patches the slot delay after ack', async () => {
     vi.useFakeTimers();
     const setOutputDelayFn = vi.fn(async () => {});
-    bindDevice(initializedDevice({
+    const device = initializedDevice({
       setOutputDelay: setOutputDelayFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    }));
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    bindDevice(device);
     const slot = mirror.current!.outputs[0].wireIndex;
-    setOutputDelay(slot, 5);
+    setOutputDelay(activeSession()!, slot, 5);
     await vi.runAllTimersAsync();
     const o = mirror.current!.outputs.find((o) => o.wireIndex === slot)!;
     expect(o.delayMs).toBe(5);
@@ -705,10 +711,12 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     bindDevice(device);
     const route = mirror.current!.routes[0];
     const before = route.enabled;
-    setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !before);
+    setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, !before);
     expect(mirror.current!.routes[0].enabled).toBe(before);    // not optimistic — unchanged until ack
     await vi.runAllTimersAsync();
     expect(mirror.current!.routes[0].enabled).toBe(!before);   // patched after ack
@@ -722,12 +730,14 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     bindDevice(device);
     const route = mirror.current!.routes[0];
     const beforeEnabled = route.enabled;
-    setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !beforeEnabled);
+    setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, !beforeEnabled);
     await vi.runAllTimersAsync();
-    setCrosspointGain(route.inputIndex, route.outputWireIndex, -6);
+    setCrosspointGain(activeSession()!, route.inputIndex, route.outputWireIndex, -6);
     await vi.runAllTimersAsync();
     expect(calls).toHaveLength(2);                 // one send per edit
     // The gain send merges with the committed mirror: the enable edit (now
@@ -742,10 +752,12 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     bindDevice(device);
     const route = mirror.current!.routes[0];
     const before = route.invert;
-    setCrosspointInvert(route.inputIndex, route.outputWireIndex, !before);
+    setCrosspointInvert(activeSession()!, route.inputIndex, route.outputWireIndex, !before);
     await vi.runAllTimersAsync();
     expect(calls).toHaveLength(1);
     expect(calls[0].invert).toBe(!before);
@@ -767,10 +779,12 @@ describe('output gain — optimistic scalar write', () => {
       setOutputGain: vi.fn(async (slot: number, db: number) => { calls.push([slot, db]); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     bindDevice(device);
     const slot = mirror.current!.outputs[0].wireIndex;
     const before = mirror.current!.outputs.find((o) => o.wireIndex === slot)!.gainDb;
-    setOutputGain(slot, -6);
+    setOutputGain(activeSession()!, slot, -6);
     // Not optimistic: the mirror is unchanged until the ack lands.
     expect(mirror.current!.outputs.find((o) => o.wireIndex === slot)!.gainDb).toBe(before);
     await vi.runAllTimersAsync();
@@ -904,12 +918,15 @@ describe('boolean device flags are explicit setters', () => {
   it('setOutputEnabled(0, false) disables the output', async () => {
     vi.useFakeTimers();
     const setOutputEnableFn = vi.fn(async () => {});
-    bindDevice(initializedDevice({
+    const device = initializedDevice({
       setOutputEnable: setOutputEnableFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    }));
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    bindDevice(device);
     const slot = mirror.current!.outputs[0].wireIndex;
-    setOutputEnabled(slot, false);
+    setOutputEnabled(activeSession()!, slot, false);
     await vi.runAllTimersAsync();
     expect(mirror.current?.outputs.find((o) => o.wireIndex === slot)?.enabled).toBe(false);
     expect(setOutputEnableFn).toHaveBeenCalledWith(slot, false);
@@ -919,16 +936,19 @@ describe('boolean device flags are explicit setters', () => {
   it('setOutputEnabled(0, true) enables the output', async () => {
     vi.useFakeTimers();
     const setOutputEnableFn = vi.fn(async () => {});
-    bindDevice(initializedDevice({
+    const device = initializedDevice({
       setOutputEnable: setOutputEnableFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    }));
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    bindDevice(device);
     const slot = mirror.current!.outputs[0].wireIndex;
     // First disable it
-    setOutputEnabled(slot, false);
+    setOutputEnabled(activeSession()!, slot, false);
     await vi.runAllTimersAsync();
     // Then explicitly enable
-    setOutputEnabled(slot, true);
+    setOutputEnabled(activeSession()!, slot, true);
     await vi.runAllTimersAsync();
     expect(mirror.current?.outputs.find((o) => o.wireIndex === slot)?.enabled).toBe(true);
     expect(setOutputEnableFn).toHaveBeenLastCalledWith(slot, true);
@@ -938,12 +958,15 @@ describe('boolean device flags are explicit setters', () => {
   it('setOutputMuted(0, true) mutes the output', async () => {
     vi.useFakeTimers();
     const setOutputMuteFn = vi.fn(async () => {});
-    bindDevice(initializedDevice({
+    const device = initializedDevice({
       setOutputMute: setOutputMuteFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    }));
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    bindDevice(device);
     const slot = mirror.current!.outputs[0].wireIndex;
-    setOutputMuted(slot, true);
+    setOutputMuted(activeSession()!, slot, true);
     await vi.runAllTimersAsync();
     expect(mirror.current?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(true);
     expect(setOutputMuteFn).toHaveBeenCalledWith(slot, true);
@@ -953,16 +976,19 @@ describe('boolean device flags are explicit setters', () => {
   it('setOutputMuted(0, false) unmutes the output', async () => {
     vi.useFakeTimers();
     const setOutputMuteFn = vi.fn(async () => {});
-    bindDevice(initializedDevice({
+    const device = initializedDevice({
       setOutputMute: setOutputMuteFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    }));
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    bindDevice(device);
     const slot = mirror.current!.outputs[0].wireIndex;
     // First mute it
-    setOutputMuted(slot, true);
+    setOutputMuted(activeSession()!, slot, true);
     await vi.runAllTimersAsync();
     // Then explicitly unmute
-    setOutputMuted(slot, false);
+    setOutputMuted(activeSession()!, slot, false);
     await vi.runAllTimersAsync();
     expect(mirror.current?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(false);
     expect(setOutputMuteFn).toHaveBeenLastCalledWith(slot, false);
@@ -972,17 +998,20 @@ describe('boolean device flags are explicit setters', () => {
   it('setCrosspointEnabled sets enabled to a specific value (not just toggle)', async () => {
     vi.useFakeTimers();
     const calls: Array<{ enabled: boolean; invert: boolean; gainDb: number }> = [];
-    bindDevice(initializedDevice({
+    const device = initializedDevice({
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    }));
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    bindDevice(device);
     const route = mirror.current!.routes[0];
     const initial = route.enabled;
-    setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !initial);
+    setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, !initial);
     await vi.runAllTimersAsync();
     expect(mirror.current!.routes[0].enabled).toBe(!initial);
     // Calling with the same value again must not flip it back (set, not toggle).
-    setCrosspointEnabled(route.inputIndex, route.outputWireIndex, !initial);
+    setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, !initial);
     await vi.runAllTimersAsync();
     expect(mirror.current!.routes[0].enabled).toBe(!initial);
     expect(calls.at(-1)!.enabled).toBe(!initial);
@@ -992,17 +1021,20 @@ describe('boolean device flags are explicit setters', () => {
   it('setCrosspointInvert sets invert to a specific value (not just toggle)', async () => {
     vi.useFakeTimers();
     const calls: Array<{ enabled: boolean; invert: boolean; gainDb: number }> = [];
-    bindDevice(initializedDevice({
+    const device = initializedDevice({
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    }));
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    bindDevice(device);
     const route = mirror.current!.routes[0];
     const initial = route.invert;
-    setCrosspointInvert(route.inputIndex, route.outputWireIndex, !initial);
+    setCrosspointInvert(activeSession()!, route.inputIndex, route.outputWireIndex, !initial);
     await vi.runAllTimersAsync();
     expect(mirror.current!.routes[0].invert).toBe(!initial);
     // Calling with the same value again must not flip it back (set, not toggle).
-    setCrosspointInvert(route.inputIndex, route.outputWireIndex, !initial);
+    setCrosspointInvert(activeSession()!, route.inputIndex, route.outputWireIndex, !initial);
     await vi.runAllTimersAsync();
     expect(mirror.current!.routes[0].invert).toBe(!initial);
     expect(calls.at(-1)!.invert).toBe(!initial);
