@@ -16,7 +16,6 @@ import {
   pushNotice,
 } from '@/state';
 import { Log } from '@/utils';
-import { mirror } from '@/state/mirror.svelte';
 import { write, scrub, writeChecked, command } from './writes';
 import { focusOutput, focusRoute } from './focus';
 
@@ -89,11 +88,9 @@ export function setBypass(s: ReadySession, enabled: boolean): void {
 // DSP snapshot, so the post-send resync would be pure overhead. If the
 // wire send fails, the host array stays cleared — the next poll cycle
 // will re-latch from `clipFlags` if firmware still sees the condition.
-export function clearClips(): void {
-  const d = session.device;
-  if (!d) return;
+export function clearClips(s: ReadySession): void {
   for (let i = 0; i < status.clipLatched.length; i++) status.clipLatched[i] = false;
-  void d.clearClips().catch((e) => Log.error('clearClips', 'send failed', e));
+  void s.device.clearClips().catch((e) => Log.error('clearClips', 'send failed', e));
 }
 
 // Empty / whitespace-only input clears the custom name on the device; the
@@ -101,21 +98,17 @@ export function clearClips(): void {
 // `displayNameForChannel` produces after a bulk resync. The outputs[]
 // name mirror keeps MatrixHeader and OverviewTab in sync without waiting
 // for the trailing bulk resync.
-export function setChannelName(id: ChannelId, name: string): void {
-  if (!mirror.current?.channels) return;
-  const ch = mirror.current.channels.find((c) => c.id === id);
+export function setChannelName(s: ReadySession, id: ChannelId, name: string): void {
+  const ch = s.mirror.snapshot.channels.find((c) => c.id === id);
   if (!ch) return;
   const resolved = name.trim() || ch.defaultName;
   const clamped = Clamp.nameToByteBudget(resolved, CHANNEL_NAME_MAX_LEN);
-  const d = session.device;
-  if (!d) return;
   void write(
-    () => d.setChannelName(id, clamped),
+    () => s.device.setChannelName(id, clamped),
     () => {
-      if (!mirror.current) return;
-      const c = mirror.current.channels.find((c) => c.id === id);
+      const c = s.mirror.snapshot.channels.find((c) => c.id === id);
       if (c) c.name = clamped;
-      const o = mirror.current.outputs.find((o) => o.id === id);
+      const o = s.mirror.snapshot.outputs.find((o) => o.id === id);
       if (o) o.name = clamped;
     },
   );
@@ -390,67 +383,47 @@ export function saveMasterVolumeBaseline(s: ReadySession): void {
 // EQ/mixer edits). setOutputType's SET is queued, not applied (the switch is
 // deferred in firmware) — the optimistic patch + reconcile converge to truth.
 
-function patchI2s(update: (i: I2sConfig) => I2sConfig): void {
-  if (mirror.current?.i2s) mirror.current.i2s = update(mirror.current.i2s);
+function patchI2s(s: ReadySession, update: (i: I2sConfig) => I2sConfig): void {
+  s.mirror.snapshot.i2s = update(s.mirror.snapshot.i2s);
 }
 
-function patchOutputPin(index: number, pin: number): void {
-  const m = mirror.current;
-  if (!m) return;
-  const pins = m.outputPins.slice();
+function patchOutputPin(s: ReadySession, index: number, pin: number): void {
+  const pins = s.mirror.snapshot.outputPins.slice();
   pins[index] = pin;
-  m.outputPins = pins;
+  s.mirror.snapshot.outputPins = pins;
 }
 
-export function setOutputDataPin(pinOutputIndex: number, pin: number): void {
-  if (!mirror.current) return;
-  const d = session.device;
-  if (!d) return;
+export function setOutputDataPin(s: ReadySession, pinOutputIndex: number, pin: number): void {
   void writeChecked(
     'set output pin',
-    () => d.setOutputPin(pinOutputIndex, pin),
-    () => patchOutputPin(pinOutputIndex, pin),
+    () => s.device.setOutputPin(pinOutputIndex, pin),
+    () => patchOutputPin(s, pinOutputIndex, pin),
   );
 }
 
-export function setOutputType(slot: OutputSlot, type: number): void {
-  if (!mirror.current?.i2s) return;
-  const d = session.device;
-  if (!d) return;
+export function setOutputType(s: ReadySession, slot: OutputSlot, type: number): void {
   void writeChecked(
     'switch output type',
-    () => d.setOutputType(slot, type),
-    () => patchI2s((i) => ({
+    () => s.device.setOutputType(slot, type),
+    () => patchI2s(s, (i) => ({
       ...i,
       outputSlotTypes: i.outputSlotTypes.map((x, j) => (j === slot ? type : x)) as [number, number, number, number],
     })),
   );
 }
 
-export function setI2sBckPin(pin: number): void {
-  if (!mirror.current?.i2s) return;
-  const d = session.device;
-  if (!d) return;
-  void writeChecked('set I2S BCK pin', () => d.setI2sBckPin(pin), () => patchI2s((i) => ({ ...i, bckPin: pin })));
+export function setI2sBckPin(s: ReadySession, pin: number): void {
+  void writeChecked('set I2S BCK pin', () => s.device.setI2sBckPin(pin), () => patchI2s(s, (i) => ({ ...i, bckPin: pin })));
 }
 
-export function setMckEnabled(on: boolean): void {
-  if (!mirror.current?.i2s) return;
-  const d = session.device;
-  if (!d) return;
-  void writeChecked('set MCK enable', () => d.setMckEnable(on), () => patchI2s((i) => ({ ...i, mckEnabled: on })));
+export function setMckEnabled(s: ReadySession, on: boolean): void {
+  void writeChecked('set MCK enable', () => s.device.setMckEnable(on), () => patchI2s(s, (i) => ({ ...i, mckEnabled: on })));
 }
 
-export function setMckPin(pin: number): void {
-  if (!mirror.current?.i2s) return;
-  const d = session.device;
-  if (!d) return;
-  void writeChecked('set MCK pin', () => d.setMckPin(pin), () => patchI2s((i) => ({ ...i, mckPin: pin })));
+export function setMckPin(s: ReadySession, pin: number): void {
+  void writeChecked('set MCK pin', () => s.device.setMckPin(pin), () => patchI2s(s, (i) => ({ ...i, mckPin: pin })));
 }
 
-export function setMckMultiplier(encoded: number): void {
-  if (!mirror.current?.i2s) return;
-  const d = session.device;
-  if (!d) return;
-  void writeChecked('set MCK multiplier', () => d.setMckMultiplier(encoded), () => patchI2s((i) => ({ ...i, mckMultiplierEncoded: encoded })));
+export function setMckMultiplier(s: ReadySession, encoded: number): void {
+  void writeChecked('set MCK multiplier', () => s.device.setMckMultiplier(encoded), () => patchI2s(s, (i) => ({ ...i, mckMultiplierEncoded: encoded })));
 }

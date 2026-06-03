@@ -4,6 +4,9 @@
   import { setChannelName } from '@/runtime';
   import { CHANNEL_NAME_MAX_LEN, type ChannelId } from '@/domain';
   import { chKey } from '@/styles/palette';
+  import { getSession } from '@/components/sessionContext';
+
+  const s = getSession();
 
   const channels = $derived(mirror.current?.channels ?? []);
   const connected = $derived(connection.connected);
@@ -23,7 +26,7 @@
     // Guard re-entry: Enter/Escape unmount the input, which then fires blur.
     if (editingId !== id) return;
     if (pendingValue !== originalValue) {
-      setChannelName(id, pendingValue);
+      setChannelName(s, id, pendingValue);
     }
     editingId = null;
   }

@@ -8,6 +8,9 @@
   import I2sClockPanel from '../system/I2sClockPanel.svelte';
   import { chKey } from '@/styles/palette';
   import { clearClips } from '@/runtime';
+  import { getSession } from '@/components/sessionContext';
+
+  const s = getSession();
 
   const snap = $derived(mirror.current);
   const info = $derived(status.info);
@@ -57,7 +60,7 @@
 
     <Panel code="SY.04" title="ERROR COUNTERS">
       {#snippet right()}
-        <button class="clear-btn" onclick={clearClips} disabled={!connected} title="Clear latched clip flags">CLEAR</button>
+        <button class="clear-btn" onclick={() => clearClips(s)} disabled={!connected} title="Clear latched clip flags">CLEAR</button>
       {/snippet}
       <div class="kvgrid">
         <KV label="PDM RING OVR" value={fmtNum(info?.pdmRingOverruns)}       tone={isNonZero(info?.pdmRingOverruns)       ? undefined : 'off'} />

@@ -22,7 +22,6 @@ import { deriveCapabilities } from '@/device/capabilities';
 
 import { cancelAllWrites as cancelWrites, flushAllWrites } from './writes';
 import { inflight, peekReconcile, consumeReconcile } from '@/state/mirror.svelte';
-import { Result } from '@/utils';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
@@ -361,12 +360,13 @@ describe('setChannelName', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dispatch({ t: 'synced', session: makeReadySession({} as never) });
-    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
-    bindDevice(initializedDevice({
+    const device = initializedDevice({
       setChannelName: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    }));
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    bindDevice(device);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -375,40 +375,34 @@ describe('setChannelName', () => {
 
   it('patches mirror.current.channels[i].name after send acks', async () => {
     // setChannelName awaits the wire send, then mutates draft (await-then-mutate).
-    setChannelName(0 satisfies ChannelId, 'Studio Left');
+    setChannelName(activeSession()!, 0 satisfies ChannelId, 'Studio Left');
     await vi.runAllTimersAsync();
     expect(mirror.current!.channels[0].name).toBe('Studio Left');
   });
 
   it('treats empty input as a clear: snapshot falls back to defaultName', async () => {
     const defaultName = mirror.current!.channels[0].defaultName;
-    setChannelName(0 satisfies ChannelId, '');
+    setChannelName(activeSession()!, 0 satisfies ChannelId, '');
     await vi.runAllTimersAsync();
     expect(mirror.current!.channels[0].name).toBe(defaultName);
   });
 
   it('trims whitespace-only input the same as empty', async () => {
     const defaultName = mirror.current!.channels[0].defaultName;
-    setChannelName(0 satisfies ChannelId, '   ');
+    setChannelName(activeSession()!, 0 satisfies ChannelId, '   ');
     await vi.runAllTimersAsync();
     expect(mirror.current!.channels[0].name).toBe(defaultName);
   });
 
-  it('is a no-op when mirror.current is null', () => {
-    mirror.reset();
-    // Should not throw.
-    expect(() => setChannelName(0 satisfies ChannelId, 'X')).not.toThrow();
-  });
-
   it('trims whitespace and stores the resolved value in the snapshot', async () => {
-    setChannelName(0 satisfies ChannelId, '  padded  ');
+    setChannelName(activeSession()!, 0 satisfies ChannelId, '  padded  ');
     await vi.runAllTimersAsync();
     expect(mirror.current!.channels[0].name).toBe('padded'); // resolved (trimmed)
   });
 
   it('also patches mirror.current.outputs[i].name when the channel is an output', async () => {
     // ChannelId.Out1L = 2; corresponding outputs[] entry has wireIndex 0.
-    setChannelName(2 satisfies ChannelId, 'Front Left');
+    setChannelName(activeSession()!, 2 satisfies ChannelId, 'Front Left');
     await vi.runAllTimersAsync();
 
     const channel = mirror.current!.channels.find((c) => c.id === 2);
@@ -418,13 +412,15 @@ describe('setChannelName', () => {
   });
 
   it('patches RP2040 PDM output name at compact output slot 4', async () => {
-    mirror.replaceCurrent(makeSnapshot(PlatformType.RP2040));
-    bindDevice(initializedDevice({
+    const rp2040Device = initializedDevice({
       setChannelName: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    }));
+    });
+    dispatch({ t: 'synced', session: makeReadySession(rp2040Device) });
+    mirror.replaceCurrent(makeSnapshot(PlatformType.RP2040));
+    bindDevice(rp2040Device);
 
-    setChannelName(10 satisfies ChannelId, 'Sub');
+    setChannelName(activeSession()!, 10 satisfies ChannelId, 'Sub');
     await vi.runAllTimersAsync();
 
     const channel = mirror.current!.channels.find((c) => c.id === 10);
@@ -438,7 +434,7 @@ describe('setChannelName', () => {
     const outputsBefore = mirror.current!.outputs.map((o) => o.name).slice();
 
     // ChannelId.In1L = 0 — no entry in outputs[].
-    setChannelName(0 satisfies ChannelId, 'Mic 1');
+    setChannelName(activeSession()!, 0 satisfies ChannelId, 'Mic 1');
     await vi.runAllTimersAsync();
 
     const outputsAfter = mirror.current!.outputs.map((o) => o.name);
@@ -683,12 +679,15 @@ describe('bulk writes: eq/delay/names', () => {
   it('setChannelName sets name and mirrors to the denormalized output entry', async () => {
     vi.useFakeTimers();
     const setChannelNameFn = vi.fn(async () => {});
-    bindDevice(initializedDevice({
+    const device = initializedDevice({
       setChannelName: setChannelNameFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    }));
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    bindDevice(device);
     const outId = mirror.current!.outputs[0].id; // a channel that DOES have an output entry
-    setChannelName(outId, 'Custom');
+    setChannelName(activeSession()!, outId, 'Custom');
     await vi.runAllTimersAsync();
     expect(mirror.current!.channels.find((c) => c.id === outId)!.name).toBe('Custom');
     expect(mirror.current!.outputs.find((o) => o.id === outId)!.name).toBe('Custom');
@@ -1050,7 +1049,7 @@ describe('output config verbs', () => {
 
   it('setOutputDataPin success patches draft.outputPins without discarding other edits', async () => {
     const before = mirror.current!.masterVolumeDb;
-    setOutputDataPin(0, 16);
+    setOutputDataPin(activeSession()!, 0, 16);
     await flushAllWrites();
     expect(mirror.current!.outputPins[0]).toBe(16);
     expect(mirror.current!.masterVolumeDb).toBe(before);
@@ -1059,7 +1058,7 @@ describe('output config verbs', () => {
   it('setOutputDataPin failure leaves outputPins unchanged and toasts the device message', async () => {
     // pin 7 is in use by pinOutputIndex 1 — mock returns PinInUse
     const pinsBefore = mirror.current!.outputPins.slice();
-    setOutputDataPin(0, 7);
+    setOutputDataPin(activeSession()!, 0, 7);
     await flushAllWrites();
     expect(mirror.current!.outputPins).toEqual(pinsBefore);
     expect(notices.list).toHaveLength(1);
@@ -1067,19 +1066,19 @@ describe('output config verbs', () => {
   });
 
   it('setOutputType updates draft.i2s.outputSlotTypes', async () => {
-    setOutputType(0, 1);
+    setOutputType(activeSession()!, 0, 1);
     await flushAllWrites();
     expect(mirror.current!.i2s.outputSlotTypes[0]).toBe(1);
   });
 
   test('setI2sBckPin success patches draft.i2s.bckPin', async () => {
-    setI2sBckPin(16);
+    setI2sBckPin(activeSession()!, 16);
     await flushAllWrites();
     expect(mirror.current!.i2s.bckPin).toBe(16);
   });
 
   test('setMckEnabled success patches draft.i2s.mckEnabled', async () => {
-    setMckEnabled(true);
+    setMckEnabled(activeSession()!, true);
     await flushAllWrites();
     expect(mirror.current!.i2s.mckEnabled).toBe(true);
   });
@@ -1087,7 +1086,7 @@ describe('output config verbs', () => {
   it('requests a reconcile on a successful config write, honoring eagerReconcile', async () => {
     settings.eagerReconcile = true;
     consumeReconcile(); // clear anything pending from boot
-    setI2sBckPin(16);
+    setI2sBckPin(activeSession()!, 16);
     await flushAllWrites();
     expect(peekReconcile()).toEqual({ wanted: true, eager: true });
     settings.eagerReconcile = false;
@@ -1099,16 +1098,3 @@ describe('output config verbs', () => {
   });
 });
 
-describe('config verb preconditions', () => {
-  beforeEach(() => { bindDevice(null); mirror.reset(); clearNotices(); });
-
-  it('setOutputDataPin does not touch the device when the mirror is not hydrated', async () => {
-    // Device bound but no snapshot yet: the precondition must gate BEFORE the
-    // send, so the device is never touched and the skip stays silent.
-    const setOutputPin = vi.fn(async () => Result.ok());
-    bindDevice(initializedDevice({ setOutputPin }));
-    await setOutputDataPin(0, 16);
-    expect(setOutputPin).not.toHaveBeenCalled();
-    expect(notices.list).toHaveLength(0);
-  });
-});

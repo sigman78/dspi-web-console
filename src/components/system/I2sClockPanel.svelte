@@ -5,6 +5,9 @@
   import { mirror, connection, status } from '@/state';
   import { setI2sBckPin, setMckEnabled, setMckPin, setMckMultiplier } from '@/runtime';
   import { validBckPins, availablePinsFor } from '@/domain';
+  import { getSession } from '@/components/sessionContext';
+
+  const s = getSession();
 
   const snap = $derived(mirror.current);
   const connected = $derived(connection.connected);
@@ -37,7 +40,7 @@
           candidates={bckCandidates}
           ariaLabel="I2S BCK pin"
           disabled={!connected || anyI2s}
-          onChange={(p) => void setI2sBckPin(p)}
+          onChange={(p) => void setI2sBckPin(s, p)}
         />
         <span class="derived">LRCLK GP{snap.i2s.bckPin + 1}</span>
       </div>
@@ -53,14 +56,14 @@
           options={ENABLE_OPTS}
           ariaLabel="MCK enable"
           disabled={!connected}
-          onChange={(v) => void setMckEnabled(v === 1)}
+          onChange={(v) => void setMckEnabled(s, v === 1)}
         />
         <PinSelect
           value={snap.i2s.mckPin}
           candidates={availablePinsFor(snap.platform.type, snap, snap.i2s.mckPin)}
           ariaLabel="MCK pin"
           disabled={!connected || snap.i2s.mckEnabled}
-          onChange={(p) => void setMckPin(p)}
+          onChange={(p) => void setMckPin(s, p)}
         />
       </div>
       {#if snap.i2s.mckEnabled}
@@ -75,7 +78,7 @@
           options={multOpts}
           ariaLabel="MCK multiplier"
           disabled={!connected}
-          onChange={(v) => void setMckMultiplier(v)}
+          onChange={(v) => void setMckMultiplier(s, v)}
         />
         {#if !allow256}<span class="hint">256× unavailable ≥96 kHz</span>{/if}
       </div>

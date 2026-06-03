@@ -1,5 +1,6 @@
 import { describe, test, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
+import { SESSION_KEY } from '@/components/sessionContext';
 
 vi.mock('@/runtime', () => ({
   setI2sBckPin: vi.fn(), setMckEnabled: vi.fn(), setMckPin: vi.fn(), setMckMultiplier: vi.fn(),
@@ -20,15 +21,17 @@ vi.mock('@/state', () => {
 
 import I2sClockPanel from './I2sClockPanel.svelte';
 
+const session = {} as any;
+
 describe('I2sClockPanel', () => {
   test('256x multiplier option is disabled at 96 kHz', () => {
-    render(I2sClockPanel);
+    render(I2sClockPanel, { context: new Map([[SESSION_KEY, session]]) });
     const opt256 = screen.getByRole('radio', { name: '256×' });
     expect(opt256.hasAttribute('disabled')).toBe(true);
   });
 
   test('LRCLK is shown as BCK + 1', () => {
-    render(I2sClockPanel);
+    render(I2sClockPanel, { context: new Map([[SESSION_KEY, session]]) });
     expect(screen.getByText('LRCLK GP15')).toBeTruthy();
   });
 });

@@ -5,6 +5,9 @@
   import { mirror, connection } from '@/state';
   import { setOutputType, setOutputDataPin } from '@/runtime';
   import { availablePinsFor, channelById, ChannelId, type OutputSlot } from '@/domain';
+  import { getSession } from '@/components/sessionContext';
+
+  const s = getSession();
 
   const snap = $derived(mirror.current);
   const connected = $derived(connection.connected);
@@ -43,14 +46,14 @@
             options={TYPE_OPTS}
             ariaLabel={`Out ${slot + 1} output type`}
             disabled={!connected}
-            onChange={(t) => void setOutputType(slot as OutputSlot, t)}
+            onChange={(t) => void setOutputType(s, slot as OutputSlot, t)}
           />
           <PinSelect
             value={snap.outputPins[slot]}
             candidates={availablePinsFor(snap.platform.type, snap, snap.outputPins[slot])}
             ariaLabel={`Out ${slot + 1} data pin`}
             disabled={!connected}
-            onChange={(p) => void setOutputDataPin(slot, p)}
+            onChange={(p) => void setOutputDataPin(s, slot, p)}
           />
         </div>
       {/each}
@@ -63,7 +66,7 @@
           candidates={availablePinsFor(snap.platform.type, snap, snap.outputPins[pdmIndex])}
           ariaLabel="PDM sub data pin"
           disabled={!connected || pdmEnabled}
-          onChange={(p) => void setOutputDataPin(pdmIndex, p)}
+          onChange={(p) => void setOutputDataPin(s, pdmIndex, p)}
         />
       </div>
       {#if pdmEnabled}
