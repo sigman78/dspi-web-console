@@ -21,13 +21,11 @@ import { write, scrub, writeChecked, command } from './writes';
 import { focusOutput, focusRoute } from './focus';
 
 
-function _setMasterVolume(db: number): void {
-  const d = session.device;
-  if (!d) return;
+function _setMasterVolume(s: ReadySession, db: number): void {
   scrub(
     'masterVolume',
-    () => { if (mirror.current) mirror.current.masterVolumeDb = db; },
-    () => d.setMasterVolume(db),
+    () => { s.mirror.snapshot.masterVolumeDb = db; },
+    () => s.device.setMasterVolume(db),
   );
 }
 
@@ -84,12 +82,10 @@ export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
   }
 }
 
-export function setBypass(enabled: boolean): void {
-  const d = session.device;
-  if (!d) return;
+export function setBypass(s: ReadySession, enabled: boolean): void {
   void write(
-    () => d.setBypass(enabled),
-    () => { if (mirror.current) mirror.current.bypass = enabled; },
+    () => s.device.setBypass(enabled),
+    () => { s.mirror.snapshot.bypass = enabled; },
   );
 }
 
@@ -388,26 +384,25 @@ export function setOutputMuted(slot: OutputSlot, muted: boolean): void {
   );
 }
 
-export function setMasterVolume(db: number): void {
+export function setMasterVolume(s: ReadySession, db: number): void {
   db = Clamp.masterVolumeDb(db);
   if (settings.soft.muted) {
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
   }
-  _setMasterVolume(db);
+  _setMasterVolume(s, db);
 }
 
-export function toggleMute(): void {
-  if (!session.device) return;
+export function toggleMute(s: ReadySession): void {
   if (settings.soft.muted) {
     const restore = settings.soft.mutedFromDb ?? 0;
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
-    _setMasterVolume(restore);
+    _setMasterVolume(s, restore);
   } else {
-    settings.soft.mutedFromDb = mirror.current?.masterVolumeDb ?? 0;
+    settings.soft.mutedFromDb = s.mirror.snapshot.masterVolumeDb;
     settings.soft.muted = true;
-    _setMasterVolume(Clamp.MUTE_DB);
+    _setMasterVolume(s, Clamp.MUTE_DB);
   }
 }
 
@@ -426,14 +421,12 @@ export function setMasterVolumeMode(mode: MasterVolumeMode): void {
 // accepts the call but it's dormant until the user flips back to Mode 0.
 // Fire-and-forget: only failure surfaces (warn here, or an error toast on a
 // throw via command). Success is silent — the Save button's state conveys it.
-export function saveMasterVolumeBaseline(): void {
-  const d = session.device;
-  if (!d) return;
-  void command('save master volume', () => d.saveMasterVolume(), (ok) => {
+export function saveMasterVolumeBaseline(s: ReadySession): void {
+  void command('save master volume', () => s.device.saveMasterVolume(), (ok) => {
     if (!ok) { pushNotice('warn', 'Saving master volume failed (flash write error).'); return; }
     // Device saved its current master volume as the boot baseline → mirror it
     // so the Save button settles to clean without a refetch.
-    if (mirror.current) presets.savedMasterVolumeDb = mirror.current.masterVolumeDb;
+    presets.savedMasterVolumeDb = s.mirror.snapshot.masterVolumeDb;
   });
 }
 

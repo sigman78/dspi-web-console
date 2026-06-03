@@ -4,9 +4,10 @@
   import DirtyDot from './DirtyDot.svelte';
   import MasterVolumeMini from './MasterVolumeMini.svelte';
   import PresetActiveChip from './PresetActiveChip.svelte';
-  import { status, connection, mirror } from '@/state';
+  import { status, connection, mirror, activeSession } from '@/state';
   import { setBypass } from '@/runtime';
 
+  const s = $derived(activeSession());
   const connected = $derived(connection.connected);
   const info = $derived(status.info);
   const bypassed = $derived(mirror.current?.bypass ?? false);
@@ -50,7 +51,7 @@
   <button
     class="bypass"
     class:on={bypassed}
-    onclick={() => setBypass(!bypassed)}
+    onclick={() => { if (s) setBypass(s, !bypassed); }}
     disabled={!connected}
     title={bypassed ? 'EQ bypass on (signal passes through)' : 'EQ active'}
     aria-label={bypassed ? 'Disable EQ bypass' : 'Enable EQ bypass'}

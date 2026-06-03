@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { mirror, settings, connection } from '@/state';
+  import { mirror, settings, connection, activeSession } from '@/state';
   import { setMasterVolume, toggleMute } from '@/runtime';
   import SaveMasterVolumeButton from './SaveMasterVolumeButton.svelte';
 
+  const s = $derived(activeSession());
   const masterVolumeDb = $derived(mirror.current?.masterVolumeDb ?? 0);
   const connected = $derived(connection.connected);
   // While soft-muted, keep the slider at the *pre-mute* position rather
@@ -14,7 +15,7 @@
 
   function onChange(e: Event) {
     const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setMasterVolume(v);
+    if (!Number.isNaN(v) && s) setMasterVolume(s, v);
   }
 </script>
 
@@ -35,7 +36,7 @@
   <button
     class="mute"
     class:on={settings.soft.muted}
-    onclick={() => toggleMute()}
+    onclick={() => { if (s) toggleMute(s); }}
     disabled={!connected}
     title={settings.soft.muted ? 'Unmute' : 'Mute'}
     aria-label={settings.soft.muted ? 'Unmute' : 'Mute'}

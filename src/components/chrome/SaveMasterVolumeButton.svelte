@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { mirror, presets, connection } from '@/state';
+  import { mirror, presets, connection, activeSession } from '@/state';
   import { saveMasterVolumeBaseline } from '@/runtime';
   import { MasterVolumeMode, DIFF_TOLERANCE } from '@/domain';
 
+  const s = $derived(activeSession());
   const connected = $derived(connection.connected);
   const mode = $derived(presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent);
   const visible = $derived(mode === MasterVolumeMode.Independent);
@@ -19,7 +20,7 @@
     if (!confirming) { confirming = true; return; }
     confirming = false;
     // Failure surfaces via the toast channel; success is silent.
-    saveMasterVolumeBaseline();
+    if (s) saveMasterVolumeBaseline(s);
   }
 
   function onBlur() { confirming = false; }

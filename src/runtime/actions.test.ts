@@ -111,10 +111,12 @@ describe('actions wiring', () => {
 
   it('mute lands as the final wire write even with a slider value pending', async () => {
     const { device, calls } = makeFakeDevice();
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: 0 }))));
     bindDevice(device);
 
-    setMasterVolume(-12);    // queues -12 in the coalescer
-    toggleMute();             // queues -128 (MUTE_DB), overwriting -12
+    setMasterVolume(activeSession()!, -12);    // queues -12 in the coalescer
+    toggleMute(activeSession()!);              // queues -128 (MUTE_DB), overwriting -12
 
     await vi.advanceTimersByTimeAsync(50);   // flush the trailing-edge timer
     await vi.runAllTimersAsync();
@@ -126,6 +128,8 @@ describe('actions wiring', () => {
 
   it('disconnect cancels pending coalescer + resync and resets state', async () => {
     const { device, calls } = makeFakeDevice();
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: 0 }))));
     const transport = new FakeTransport();
     bindDevice(device);
     // Mirror production wiring: the connection scope owns the transport
@@ -136,7 +140,7 @@ describe('actions wiring', () => {
     connectionScope()!.add(attachTransportListeners(transport));
     connectionScope()!.add(() => cancelWrites());
 
-    setMasterVolume(-9);                      // queues a write
+    setMasterVolume(activeSession()!, -9);    // queues a write
     transport.emit('disconnect');             // should cancel before timer fires
 
     await vi.advanceTimersByTimeAsync(100);
@@ -448,14 +452,20 @@ describe('actions — master volume mode', () => {
 
   it('saveMasterVolumeBaseline warns on flash failure and stays silent on success', async () => {
     clearNotices();
-    bindDevice(initializedDevice({ saveMasterVolume: async () => false }));
-    saveMasterVolumeBaseline();
+    const failDevice = initializedDevice({ saveMasterVolume: async () => false });
+    dispatch({ t: 'synced', session: makeReadySession(failDevice) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    bindDevice(failDevice);
+    saveMasterVolumeBaseline(activeSession()!);
     await flushAllWrites();
     expect(notices.list.some((n) => n.kind === 'warn' && /master volume/i.test(n.message))).toBe(true);
 
     clearNotices();
-    bindDevice(initializedDevice({ saveMasterVolume: async () => true }));
-    saveMasterVolumeBaseline();
+    const okDevice = initializedDevice({ saveMasterVolume: async () => true });
+    dispatch({ t: 'synced', session: makeReadySession(okDevice) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    bindDevice(okDevice);
+    saveMasterVolumeBaseline(activeSession()!);
     await flushAllWrites();
     expect(notices.list).toHaveLength(0);
     expect(presets.savedMasterVolumeDb).toBe(mirror.current!.masterVolumeDb);
@@ -475,15 +485,17 @@ describe('bulk writes: toggles', () => {
 
   it('setBypass sends a wire write and patches the snapshot after ack', async () => {
     vi.useFakeTimers();
-    const setBypassFn = vi.fn(async () => {});
-    bindDevice(initializedDevice({
-      setBypass: setBypassFn,
+    const setBypassDevice = initializedDevice({
+      setBypass: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    }));
+    });
+    dispatch({ t: 'synced', session: makeReadySession(setBypassDevice) });
+    mirror.replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    bindDevice(setBypassDevice);
 
-    setBypass(true);
+    setBypass(activeSession()!, true);
     await vi.runAllTimersAsync();
-    expect(setBypassFn).toHaveBeenCalledWith(true);
+    expect(setBypassDevice.setBypass).toHaveBeenCalledWith(true);
     expect(mirror.current?.bypass).toBe(true);
     vi.useRealTimers();
   });
@@ -841,10 +853,10 @@ describe('dual-lane inflight coexistence: scrub-class + write-class share the co
 
     expect(inflight.current).toBe(0);
     // scrub-class: masterVolume uses scrub() → bumpInflight() at schedule time.
-    setMasterVolume(-6);
+    setMasterVolume(activeSession()!, -6);
     expect(inflight.current).toBe(1);
     // write-class: bypass uses write() → bumpInflight() as well.
-    setBypass(true);
+    setBypass(activeSession()!, true);
     expect(inflight.current).toBe(2);
     // Both writes in flight: the resync soft-skip guard covers both.
     expect(inflight.current).toBeGreaterThan(0);
