@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { mirror, presets, connection, activeSession } from '@/state';
+  import { presets, connection, activeSession } from '@/state';
   import { saveMasterVolumeBaseline } from '@/runtime';
   import { MasterVolumeMode, DIFF_TOLERANCE } from '@/domain';
 
@@ -11,7 +11,7 @@
   // Enabled unless the live volume provably equals the saved boot baseline.
   // Unknown saved value (not yet fetched) or any other edge → stays enabled.
   const saved = $derived(presets.savedMasterVolumeDb);
-  const live = $derived(mirror.current?.masterVolumeDb ?? null);
+  const live = $derived(s?.mirror.current?.masterVolumeDb ?? null);
   const clean = $derived(saved != null && live != null && Math.abs(live - saved) <= DIFF_TOLERANCE.db);
 
   let confirming = $state(false);

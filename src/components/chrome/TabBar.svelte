@@ -1,6 +1,6 @@
 <script lang="ts">
   import MiniPin from './MiniPin.svelte';
-  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId, mirror, connection, activeSession } from '@/state';
+  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId, connection, activeSession } from '@/state';
   import { eqUi } from '../eq/eqUi.svelte';
   import type { ChannelModel, ChannelId } from '@/domain';
 
@@ -15,8 +15,9 @@
 
   const TABS = TAB_ORDER.map((id) => ({ id, ...TAB_META[id] }));
 
-  const inputs = $derived(mirror.current?.channels.filter((c) => !c.isOutput) ?? []);
-  const outputs = $derived(mirror.current?.channels.filter((c) =>  c.isOutput) ?? []);
+  const snap = $derived(activeSession()?.mirror.current ?? null);
+  const inputs = $derived(snap?.channels.filter((c) => !c.isOutput) ?? []);
+  const outputs = $derived(snap?.channels.filter((c) =>  c.isOutput) ?? []);
   const selectable = $derived(settings.tab === 'eq');
   const disabled = $derived(!connection.connected);
   const tele = $derived(activeSession()?.telemetry ?? null);
@@ -27,9 +28,9 @@
   }
 
   function isDim(ch: ChannelModel): boolean {
-    if (!mirror.current) return true;
+    if (!snap) return true;
     if (!ch.isOutput) return false;
-    const out = mirror.current.outputs.find((o) => o.id === ch.id);
+    const out = snap.outputs.find((o) => o.id === ch.id);
     return !out || !out.enabled;
   }
 

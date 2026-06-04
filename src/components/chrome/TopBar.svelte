@@ -4,13 +4,13 @@
   import DirtyDot from './DirtyDot.svelte';
   import MasterVolumeMini from './MasterVolumeMini.svelte';
   import PresetActiveChip from './PresetActiveChip.svelte';
-  import { connection, mirror, activeSession } from '@/state';
+  import { connection, activeSession } from '@/state';
   import { setBypass } from '@/runtime';
 
   const s = $derived(activeSession());
   const connected = $derived(connection.connected);
   const info = $derived(s?.telemetry.info ?? null);
-  const bypassed = $derived(mirror.current?.bypass ?? false);
+  const bypassed = $derived(s?.mirror.current?.bypass ?? false);
 
   const cpu0 = $derived(connected ? `${s?.telemetry.cpu0 ?? 0}%` : '—');
   const cpu1 = $derived(connected ? `${s?.telemetry.cpu1 ?? 0}%` : '—');
