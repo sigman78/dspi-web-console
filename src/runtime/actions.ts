@@ -11,7 +11,6 @@ import {
   type ReadySession,
   presets,
   settings,
-  status,
   pushNotice,
 } from '@/state';
 import { Log } from '@/utils';
@@ -82,13 +81,13 @@ export function setBypass(s: ReadySession, enabled: boolean): void {
 }
 
 // Telemetry-only action: clears firmware-side latched clip flags (0x83) and
-// resets the host-side OR-latch (`status.clipLatched`). Not routed through
+// resets the host-side OR-latch (`s.telemetry.clipLatched`). Not routed through
 // the write/scrub helpers because clip state lives in telemetry, not the
 // DSP snapshot, so the post-send resync would be pure overhead. If the
 // wire send fails, the host array stays cleared — the next poll cycle
 // will re-latch from `clipFlags` if firmware still sees the condition.
 export function clearClips(s: ReadySession): void {
-  for (let i = 0; i < status.clipLatched.length; i++) status.clipLatched[i] = false;
+  for (let i = 0; i < s.telemetry.clipLatched.length; i++) s.telemetry.clipLatched[i] = false;
   void s.device.clearClips().catch((e) => Log.error('clearClips', 'send failed', e));
 }
 

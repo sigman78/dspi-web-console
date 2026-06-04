@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './actionsDevice';
-import { connection, settings, mirror, status as statusStore, presets, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
+import { connection, settings, mirror, presets, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -144,7 +144,7 @@ describe('actions wiring', () => {
 
     expect(calls).toEqual([]);                // pending coalescer dropped
     expect(connection.phase).toBe('noDevice');
-    expect(statusStore.streaming).toBe(false);
+    expect(activeSession()).toBeNull();       // session (and its telemetry) dropped
   });
 
   it('beginConnection disposes the prior scope, removing its transport listeners', () => {
