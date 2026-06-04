@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { bootMock } from './session';
-import type { DspDevice } from '@/device/DspDevice';
-import { presets, resetPresets, boundary, resolveBoundary, settings, session, mirror, presetBaseline } from '@/state';
+import { presets, resetPresets, boundary, resolveBoundary, settings, activeSession, mirror, presetBaseline } from '@/state';
 import { PresetStartupMode, parseBulkParams } from '@/protocol';
 import type { PresetSlot } from '@/domain';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
@@ -45,7 +44,7 @@ describe('runtime/presets', () => {
 
     it('continues populating directory when an individual getPresetName fails', async () => {
       // Replace the device.getPresetName to fail for slot 7 only.
-      const realDevice = session.device!;
+      const realDevice = activeSession()!.device;
       const origGetName = realDevice.getPresetName.bind(realDevice);
       (realDevice as any).getPresetName = async (slot: number) => {
         if (slot === 7) throw new Error('simulated slot-7 failure');
@@ -62,7 +61,7 @@ describe('runtime/presets', () => {
     });
 
     it('sets lastFetchError when directory fetch fails', async () => {
-      const realDevice = session.device!;
+      const realDevice = activeSession()!.device;
       const origGetDir = realDevice.getPresetDirectory.bind(realDevice);
       (realDevice as any).getPresetDirectory = async () => {
         throw new Error('simulated directory failure');
@@ -106,7 +105,7 @@ describe('runtime/presets', () => {
       settings.warnOnPresetSwitchDirty = false; // not under test here
       await fetchPresetInfo();
       await saveActivePreset();
-      const d = session.device!;
+      const d = activeSession()!.device;
       const origLoad = d.loadPreset.bind(d);
       const origGetAll = d.getAllParams.bind(d);
       let loadCalls = 0;
@@ -175,7 +174,7 @@ describe('runtime/presets', () => {
   describe('renamePresetSlot', () => {
     it('calls device.setPresetName with the slot/name and mirrors into the cache', async () => {
       await fetchPresetInfo();
-      const d = session.device!;
+      const d = activeSession()!.device;
       const orig = d.setPresetName.bind(d);
       const calls: Array<{ slot: number; name: string }> = [];
       (d as any).setPresetName = async (slot: number, name: string) => {
@@ -223,7 +222,7 @@ describe('runtime/presets', () => {
 
     it('records an action error (record-only, no rethrow) when the device write fails', async () => {
       await fetchPresetInfo();
-      const d = session.device as any;
+      const d = activeSession()!.device as any;
       const orig = d.setPresetIncludePins;
       d.setPresetIncludePins = async () => { throw new Error('wire fail'); };
       try {
@@ -276,7 +275,7 @@ describe('runtime/presets', () => {
       // SetLoudnessEnabled mutates #mockState which is what
       // synthesizeBulkParams reads from, so the next resync's bulk packet
       // will reflect the change.
-      const d = session.device as DspDevice;
+      const d = activeSession()!.device;
       await d.setLoudnessEnabled(!savedLoudnessBefore);
       // Resync refreshes mirror.current ONLY; presetBaseline.current stays pinned at the
       // last baseline (the fullSync snapshot).
@@ -289,7 +288,7 @@ describe('runtime/presets', () => {
   describe('action error surfacing', () => {
     it('records an error message (record-only, no rethrow) when setPresetName throws', async () => {
       await fetchPresetInfo();
-      const d = session.device!;
+      const d = activeSession()!.device;
       const orig = d.setPresetName.bind(d);
       (d as any).setPresetName = async () => { throw new Error('boom'); };
       try {
@@ -304,7 +303,7 @@ describe('runtime/presets', () => {
 
     it('renamePresetSlot returns a typed failure on wire error', async () => {
       await fetchPresetInfo();
-      const d = session.device!;
+      const d = activeSession()!.device;
       const orig = d.setPresetName.bind(d);
       (d as any).setPresetName = async () => { throw new Error('wire fail'); };
       try {
@@ -348,7 +347,7 @@ describe('runtime/presets', () => {
       expect(presets.active).toBe(active);
 
       const sourceBlob = parseBulkParams(makeBulk());
-      const realDevice = session.device!;
+      const realDevice = activeSession()!.device;
       const calls: string[] = [];
       const origLoad   = realDevice.loadPreset.bind(realDevice);
       const origSave   = realDevice.savePreset.bind(realDevice);
@@ -390,7 +389,7 @@ describe('runtime/presets', () => {
     it('aborts and surfaces error if loadPreset(src) fails', async () => {
       await fetchPresetInfo();
       await savePresetSlot(5 as PresetSlot);
-      const realDevice = session.device!;
+      const realDevice = activeSession()!.device;
       const origLoad = realDevice.loadPreset.bind(realDevice);
       const origSave = realDevice.savePreset.bind(realDevice);
       let saveCalls = 0;
@@ -427,10 +426,10 @@ describe('runtime/presets', () => {
       const active = 1 as PresetSlot;
       await savePresetSlot(active);
       expect(presets.active).toBe(active);
-      const liveFmt = session.device!.capabilities.wire;
+      const liveFmt = activeSession()!.device.capabilities.wire;
       const wrongFmt = liveFmt + 1;
 
-      const realDevice = session.device!;
+      const realDevice = activeSession()!.device;
       const origLoad   = realDevice.loadPreset.bind(realDevice);
       const origSave   = realDevice.savePreset.bind(realDevice);
       const origGetAll = realDevice.getAllParams.bind(realDevice);
@@ -473,7 +472,7 @@ describe('runtime/presets', () => {
       await savePresetSlot(active);
       expect(presets.active).toBe(active);
 
-      const realDevice = session.device!;
+      const realDevice = activeSession()!.device;
       const origLoad   = realDevice.loadPreset.bind(realDevice);
       const origSave   = realDevice.savePreset.bind(realDevice);
       const origGetAll = realDevice.getAllParams.bind(realDevice);
@@ -555,7 +554,7 @@ describe('runtime/presets', () => {
       await fetchPresetInfo();
       await saveActivePreset();
       if (mirror.current) mirror.current.bypass = !mirror.current.bypass;
-      const realDevice = session.device!;
+      const realDevice = activeSession()!.device;
       const origLoad = realDevice.loadPreset.bind(realDevice);
       let loadCalls = 0;
       (realDevice as any).loadPreset = async (slot: number) => { loadCalls++; return origLoad(slot as PresetSlot); };
@@ -576,7 +575,7 @@ describe('runtime/presets', () => {
       const activeBefore = presets.active!;
       await saveActivePreset();
       if (mirror.current) mirror.current.bypass = !mirror.current.bypass;
-      const realDevice = session.device!;
+      const realDevice = activeSession()!.device;
       const origLoad = realDevice.loadPreset.bind(realDevice);
       const origSave = realDevice.savePreset.bind(realDevice);
       const calls: string[] = [];

@@ -1,7 +1,7 @@
 // Action surface for preset operations. Wraps DspDevice calls
 
 import {
-  session,
+  activeSession,
   presets, presetsDirty, askBoundary,
   settings,
 } from '@/state';
@@ -90,7 +90,7 @@ export function dismissPresetActionError(): void {
 // UI can surface them with a retry button.
 export async function fetchPresetInfo(): Promise<void> {
   if (presets.directory != null) return;
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return;
   presets.busy = true;
   try {
@@ -157,7 +157,7 @@ export function invalidatePresetCache(): void {
 // PresetSave(active). RAM didn't change → just advance the baseline so
 // the dirty diff origin moves.
 export async function saveActivePreset(): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return noDevice();
   const active = presets.active;
   if (active == null) return activeSlotError('no active slot');
@@ -188,7 +188,7 @@ export async function saveActivePreset(): Promise<Result<void, PresetResult> | P
 // just-saved slot becomes active; the host mirrors that into presets.active and
 // advances the baseline (RAM is what we just captured into the now-active slot).
 export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return noDevice();
   clearActionError();
   try {
@@ -253,7 +253,7 @@ async function executeLoad(
 }
 
 export async function loadPresetSlot(slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return noDevice();
 
   // Dirty-RAM gating. Modal fires only when:
@@ -283,7 +283,7 @@ export async function loadPresetSlot(slot: PresetSlot): Promise<Result<void, Pre
 // modal because the user explicitly chose to discard their changes by hitting
 // Revert; no further confirmation is needed.
 export async function revertActivePreset(): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return noDevice();
   const active = presets.active;
   if (active == null) return activeSlotError('no active slot');
@@ -305,7 +305,7 @@ export async function revertActivePreset(): Promise<Result<void, PresetResult> |
 // on dirty), so there's no boundary-modal gate; a violating caller gets
 // stale-source behaviour, not data loss.
 export async function pastePresetTo(src: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return noDevice();
   const active = presets.active;
   if (active == null) return activeSlotError('no active slot');
@@ -371,7 +371,7 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
 
 // PresetDelete(N). Host-side guard: refuses to delete the active slot.
 export async function deletePresetSlot(slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return noDevice();
   if (presets.active === slot) {
     return activeSlotError('cannot delete active slot');
@@ -402,7 +402,7 @@ export async function deletePresetSlot(slot: PresetSlot): Promise<Result<void, P
 export async function renamePresetSlot(
   slot: PresetSlot, name: string,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return noDevice();
   clearActionError();
   try {
@@ -421,7 +421,7 @@ export async function renamePresetSlot(
 export async function setStartupDefault(
   slot: PresetSlot,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return noDevice();
   clearActionError();
   try {
@@ -444,7 +444,7 @@ export async function setStartupDefault(
 export async function setStartupMode(
   mode: PresetStartupMode,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return noDevice();
   const slot = presets.directory?.defaultSlot ?? (0 as PresetSlot);
   clearActionError();
@@ -464,7 +464,7 @@ export async function setStartupMode(
 export async function setPresetIncludePins(
   include: boolean,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return noDevice();
   clearActionError();
   try {
