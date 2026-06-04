@@ -1,11 +1,6 @@
 import type { DspDevice } from '@/device/DspDevice';
 import type { HardwareProfile } from '@/domain';
 
-// Discriminates an 'error' status so the UI can give certain failures a tailored
-// treatment (e.g. a firmware-upgrade prompt) instead of the generic diagnostics
-// panel. null = an ordinary/unclassified error.
-export type SessionErrorKind = null | 'unsupported-firmware';
-
 export const session = $state<{
   device: DspDevice | null;
   hardware: HardwareProfile | null;

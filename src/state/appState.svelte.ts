@@ -1,6 +1,5 @@
 import type { DspDevice, DspDeviceInfo } from '@/device/DspDevice';
 import type { HardwareProfile, PresetSlot } from '@/domain';
-import type { SessionErrorKind } from './session.svelte';
 import type { StatusStore } from './telemetry.svelte';
 import type { PresetsState } from './presets.svelte';
 import type { MirrorState } from './mirror.svelte';
@@ -25,6 +24,11 @@ export interface ReadySession {
   alive: boolean;
   dispose(): void;
 }
+
+// Discriminates an 'error' status so the UI can give certain failures a tailored
+// treatment (e.g. a firmware-upgrade prompt) instead of the generic diagnostics
+// panel. null = an ordinary/unclassified error.
+export type SessionErrorKind = null | 'unsupported-firmware';
 
 export type AppState =
   | { kind: 'noDevice' }
