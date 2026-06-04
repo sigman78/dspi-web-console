@@ -1,7 +1,7 @@
 <!-- src/components/presets/PresetControls.svelte -->
 <script lang="ts">
   import {
-    presets, presetsDirty,
+    presetsDirty,
     settings, connection,
   } from '@/state';
   import {
@@ -17,8 +17,8 @@
   const { onRequestRename }: { onRequestRename: () => void } = $props();
   const s = getSession();
 
-  const active = $derived(presets.active);
-  const dir = $derived(presets.directory);
+  const active = $derived(s.presets.active);
+  const dir = $derived(s.presets.directory);
   const dirty = $derived(presetsDirty.current);
   const connected = $derived(connection.connected);
   const activeOccupied = $derived.by(() => {
@@ -44,10 +44,10 @@
   const includePins = $derived(dir?.includePins ?? false);
 
   async function onSave() {
-    if (presets.busy || active == null) return;
+    if (s.presets.busy || active == null) return;
     if (!activeOccupied) {
       const fallback = `Preset ${active + 1}`;
-      const currentName = presets.names[active] ?? '';
+      const currentName = s.presets.names[active] ?? '';
       if (currentName.length === 0) {
         await renamePresetSlot(s, active, fallback);
       }
@@ -56,21 +56,21 @@
   }
 
   async function onRevert() {
-    if (presets.busy) return;
+    if (s.presets.busy) return;
     await revertActivePreset(s);
   }
 
   function onCopy() {
-    if (presets.busy || active == null) return;
+    if (s.presets.busy || active == null) return;
     s.copySource.slot = active;
   }
   function onDrop() {
-    if (presets.busy) return;
+    if (s.presets.busy) return;
     s.copySource.slot = null;
   }
 
   async function onPaste() {
-    if (presets.busy) return;
+    if (s.presets.busy) return;
     const src = s.copySource.slot;
     if (src == null) return;
     const r = await pastePresetTo(s, src);
@@ -78,7 +78,7 @@
   }
 
   async function onSetStartup() {
-    if (presets.busy || active == null) return;
+    if (s.presets.busy || active == null) return;
     if (startupMode !== PresetStartupMode.Specified) {
       await setStartupMode(s, PresetStartupMode.Specified);
     }

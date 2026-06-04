@@ -1,6 +1,6 @@
 <!-- src/components/presets/PresetTile.svelte -->
 <script lang="ts">
-  import { presets, presetsDirty } from '@/state';
+  import { presetsDirty } from '@/state';
   import { getSession } from '../sessionContext';
   import { loadPresetSlot, renamePresetSlot } from '@/runtime';
   import { PresetStartupMode } from '@/protocol';
@@ -9,15 +9,15 @@
   const { slot }: { slot: PresetSlot } = $props();
   const s = getSession();
 
-  const occupied = $derived(presets.directory?.occupiedSlotsSet.has(slot) ?? false);
-  const isActive = $derived(presets.active === slot);
+  const occupied = $derived(s.presets.directory?.occupiedSlotsSet.has(slot) ?? false);
+  const isActive = $derived(s.presets.active === slot);
   const isStartup = $derived.by(() => {
-    const d = presets.directory;
+    const d = s.presets.directory;
     return d != null && d.startupMode === PresetStartupMode.Specified && d.defaultSlot === slot;
   });
   const isCopySource = $derived(s.copySource.slot === slot);
   const isDirty = $derived(isActive && presetsDirty.current);
-  const name = $derived(presets.names[slot] ?? '');
+  const name = $derived(s.presets.names[slot] ?? '');
 
   let editing = $state(false);
   let editValue = $state('');

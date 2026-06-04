@@ -1,9 +1,10 @@
 <!-- src/components/chrome/PresetActiveChip.svelte -->
 <script lang="ts">
-  import { presets, presetsDirty, setTab, connection } from '@/state';
+  import { presetsDirty, setTab, connection, activeSession } from '@/state';
 
-  const active = $derived(presets.active);
-  const name = $derived(active == null ? '' : (presets.names[active] ?? ''));
+  const s = $derived(activeSession());
+  const active = $derived(s?.presets.active);
+  const name = $derived(active == null ? '' : (s?.presets.names[active] ?? ''));
   const connected = $derived(connection.connected);
   const dirty = $derived(presetsDirty.current);
 

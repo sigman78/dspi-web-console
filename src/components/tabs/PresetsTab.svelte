@@ -5,7 +5,7 @@
   import PresetTile from '../presets/PresetTile.svelte';
   import PresetControls from '../presets/PresetControls.svelte';
   import { fetchPresetInfo, retryFetchPresetInfo, dismissPresetActionError } from '@/runtime';
-  import { presets, presetsDirty, connection } from '@/state';
+  import { presetsDirty, connection } from '@/state';
   import { getSession } from '../sessionContext';
   import { PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';
 
@@ -16,7 +16,7 @@
   // Refs to tile components so the controls pane can trigger inline rename.
   const tileRefs = $state<Record<number, { enterRename: () => void } | null>>({});
   function requestRename() {
-    const a = presets.active;
+    const a = s.presets.active;
     if (a == null) return;
     tileRefs[a]?.enterRename();
   }
@@ -42,12 +42,12 @@
     <div class="body-pad">
       {#if !connected}
         <div class="placeholder">Not connected.</div>
-      {:else if presets.directory == null && presets.lastFetchError}
+      {:else if s.presets.directory == null && s.presets.lastFetchError}
         <div class="error">
-          <div class="msg">{presets.lastFetchError}</div>
-          <button class="retry" onclick={() => retryFetchPresetInfo(s)} disabled={presets.busy}>RETRY</button>
+          <div class="msg">{s.presets.lastFetchError}</div>
+          <button class="retry" onclick={() => retryFetchPresetInfo(s)} disabled={s.presets.busy}>RETRY</button>
         </div>
-      {:else if presets.directory == null}
+      {:else if s.presets.directory == null}
         <div class="placeholder">Loading presets…</div>
       {:else}
         <div class="tile-grid">
@@ -55,9 +55,9 @@
             <PresetTile {slot} bind:this={tileRefs[slot]} />
           {/each}
         </div>
-        {#if presets.lastActionError}
+        {#if s.presets.lastActionError}
           <div class="action-error">
-            <span>{presets.lastActionError}</span>
+            <span>{s.presets.lastActionError}</span>
             <button onclick={() => dismissPresetActionError(s)} aria-label="Dismiss">×</button>
           </div>
         {/if}
