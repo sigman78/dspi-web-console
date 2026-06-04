@@ -7,7 +7,6 @@ import {
 } from '@/state';
 import { reconcileAfterSync } from './actionsDevice';
 import { fetchAndApplyAsBaseline } from './resync';
-import { mirror } from '@/state/mirror.svelte';
 import { flushAllWrites as flushWrites } from './writes';
 import type { DspDevice } from '@/device/DspDevice';
 import { acceptsWriteFormat } from '@/device/capabilities';
@@ -172,7 +171,7 @@ export async function saveActivePreset(): Promise<Result<void, PresetResult> | P
           set.add(active);
           presets.directory = { ...presets.directory, occupiedSlotsSet: set };
         }
-        mirror.captureBaseline();
+        activeSession()?.mirror.captureBaseline();
       } else {
         recordActionError('Save', new Error(r.message ?? `error ${r.code}`));
       }
@@ -202,7 +201,7 @@ export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, Pre
           presets.directory = { ...presets.directory, occupiedSlotsSet: set };
         }
         presets.active = slot;
-        mirror.captureBaseline();
+        activeSession()?.mirror.captureBaseline();
       } else {
         recordActionError('Save', new Error(r.message ?? `error ${r.code}`));
       }

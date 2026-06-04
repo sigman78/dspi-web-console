@@ -11,7 +11,6 @@ import {
   dispatch, makeReadySession, activeSession,
 } from '@/state';
 import { Log } from '@/utils';
-import { mirror } from '@/state/mirror.svelte';
 import { flushAllWrites } from './writes';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
@@ -24,12 +23,13 @@ let inflightSync: Promise<void> | null = null;
 
 export async function syncDeviceSnapshot(): Promise<void> {
   if (inflightSync) return inflightSync;
-  const d = activeSession()?.device;
-  if (!d) throw new Error('No device');
+  const s = activeSession();
+  if (!s) throw new Error('No device');
+  const d = s.device;
   inflightSync = (async () => {
     try {
       const snap = await d.getSnapshot();
-      mirror.init(snap);
+      s.mirror.init(snap);
     } catch (err) {
       Log.error('sync', 'syncDeviceSnapshot failed', err);
       dispatch({ t: 'failed', message: (err as Error).message });
@@ -47,7 +47,7 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
     const snap = await device.getSnapshot();
     const session = makeReadySession(device);
     dispatch({ t: 'synced', session });
-    mirror.init(snap);
+    session.mirror.init(snap);
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync();
     // Production opens the scope in createBoundDevice; tests may call
@@ -61,9 +61,9 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
     }
     await fetchPresetInfo();
     Log.info('sync', 'connected', {
-      platform: mirror.current?.platform.name,
+      platform: session.mirror.current?.platform.name,
       wire: device.capabilities.wire,
-      masterVolumeDb: mirror.current?.masterVolumeDb,
+      masterVolumeDb: session.mirror.current?.masterVolumeDb,
     });
   } catch (err) {
     Log.error('sync', 'wireUpConnection failed', err);
@@ -79,12 +79,13 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
 // before the device-touching mute restore -- it doesn't need the device.
 export async function reconcileAfterSync(): Promise<void> {
   reconcileEqTarget();
-  const d = activeSession()?.device;
-  if (!d) return;
+  const s = activeSession();
+  if (!s) return;
+  const d = s.device;
   if (settings.soft.muted) {
-    const restoreFrom = settings.soft.mutedFromDb ?? mirror.current?.masterVolumeDb ?? 0;
+    const restoreFrom = settings.soft.mutedFromDb ?? s.mirror.current?.masterVolumeDb ?? 0;
     settings.soft.mutedFromDb = restoreFrom;
-    if (mirror.current) mirror.current.masterVolumeDb = MUTE_DB;
+    if (s.mirror.current) s.mirror.current.masterVolumeDb = MUTE_DB;
     await d.setMasterVolume(MUTE_DB);
   }
 }

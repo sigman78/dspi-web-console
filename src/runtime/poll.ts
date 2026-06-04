@@ -1,5 +1,4 @@
 import { activeSession, type ReadySession } from '@/state';
-import { mirror } from '@/state/mirror.svelte';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
 
@@ -91,7 +90,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       // or a fresh write timestamp after we started) means our snapshot is
       // already stale. Drop it; the pending request drives a later retry.
       if (mir.inflight > 0 || mir.lastWriteMs >= startedAt) return;
-      mirror.replaceCurrent(snap);
+      mir.replaceCurrent(snap);
       mir.consumeReconcile();
     } catch (e) {
       Log.warn('poll', 'param reconcile failed', e);  // request stays pending

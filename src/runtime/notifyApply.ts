@@ -7,13 +7,12 @@
 import type { DspDevice } from '@/device/DspDevice';
 import type { ParamChangedEvent } from '@/protocol';
 import { diffSnapshots, applyChange } from '@/domain';
-import { mirror } from '@/state/mirror.svelte';
 import type { MirrorState } from '@/state/mirror.svelte';
 import { spliceWireParam } from './wireMirror';
 import { RECONCILE_QUIET_MS } from './poll';
 
 export function applyParamChange(device: DspDevice, mir: MirrorState, ev: ParamChangedEvent): boolean {
-  const target = mirror.current;
+  const target = mir.current;
   if (!target) return false;            // nothing to apply onto
   // Drop during a drag → backstop reconcile (global guard; per-field merge deferred).
   // Match the poll's gate: inflight is 0 in the ~16 ms gaps between coalesced scrub

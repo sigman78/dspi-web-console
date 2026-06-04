@@ -1,17 +1,16 @@
 import { activeSession } from '@/state';
 import { Log } from '@/utils';
-import { mirror } from '@/state/mirror.svelte';
 
 // Forced bulk re-fetch + current-only apply. Used by failure recovery after
 // a write throws. Current-only because the preset-dirty diff measures against
 // `presetBaseline`, which must NOT drift on every resync; callers that need to
 // re-baseline (Preset Load / Revert) use fetchAndApplyAsBaseline.
 export async function forceResyncNow(): Promise<void> {
-  const d = activeSession()?.device;
-  if (!d) return;
+  const s = activeSession();
+  if (!s) return;
   try {
-    const snap = await d.getSnapshot();
-    mirror.replaceCurrent(snap);
+    const snap = await s.device.getSnapshot();
+    s.mirror.replaceCurrent(snap);
   } catch (err) {
     Log.warn('resync', 'bulk re-fetch failed', err);
   }
@@ -23,11 +22,11 @@ export async function forceResyncNow(): Promise<void> {
 // where draft and saved disagree and observers see a spurious dirty flip.
 // See docs/ARCH.md for the baseline/draft split.
 export async function fetchAndApplyAsBaseline(): Promise<void> {
-  const d = activeSession()?.device;
-  if (!d) return;
+  const s = activeSession();
+  if (!s) return;
   try {
-    const snap = await d.getSnapshot();
-    mirror.init(snap);
+    const snap = await s.device.getSnapshot();
+    s.mirror.init(snap);
   } catch (err) {
     Log.warn('resync', 'baseline re-fetch failed', err);
   }
