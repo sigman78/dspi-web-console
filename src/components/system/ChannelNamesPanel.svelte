@@ -1,6 +1,6 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
-  import { mirror, connection } from '@/state';
+  import { connection } from '@/state';
   import { setChannelName } from '@/runtime';
   import { CHANNEL_NAME_MAX_LEN, type ChannelId } from '@/domain';
   import { chKey } from '@/styles/palette';
@@ -8,7 +8,7 @@
 
   const s = getSession();
 
-  const channels = $derived(mirror.current?.channels ?? []);
+  const channels = $derived(s.mirror.current?.channels ?? []);
   const connected = $derived(connection.connected);
 
   let editingId: ChannelId | null = $state(null);

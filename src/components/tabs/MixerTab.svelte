@@ -3,18 +3,20 @@
   import MatrixHeader from './mixer/MatrixHeader.svelte';
   import MatrixCell from './mixer/MatrixCell.svelte';
   import { matrixColumns, matrixRows } from '@/domain';
-  import { mirror } from '@/state';
+  import { getSession } from '../sessionContext';
   import { chKey } from '@/styles/palette';
 
-  const columns = $derived(matrixColumns(mirror.current));
-  const rows = $derived(matrixRows(mirror.current));
+  const s = getSession();
+
+  const columns = $derived(matrixColumns(s.mirror.current));
+  const rows = $derived(matrixRows(s.mirror.current));
 
   // PDM-exclusivity hint. Per docs/mixer.md: when PDM (the last output)
   // is enabled, only outputs 0,1 (S/PDIF 1) and the PDM index itself are
   // available. We don't enforce this client-side -- firmware is the source
   // of truth -- we just dim the unavailable columns so the user understands
   // why a write may not stick.
-  const pdmIndex = $derived(mirror.current?.platform.pdmOutputIndex ?? -1);
+  const pdmIndex = $derived(s.mirror.current?.platform.pdmOutputIndex ?? -1);
   const pdmActive = $derived(pdmIndex >= 0 && (columns[pdmIndex]?.enabled ?? false));
   function isUnavailable(outputIndex: number): boolean {
     if (!pdmActive) return false;
@@ -34,7 +36,7 @@
     <span class="meta">click cell to enable · click ⌽ for phase invert · click power/mute per output</span>
   {/snippet}
 
-  {#if !mirror.current}
+  {#if !s.mirror.current}
     <p class="empty">No platform info loaded yet.</p>
   {:else}
     <div class="wrap">

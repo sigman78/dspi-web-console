@@ -6,7 +6,7 @@
   import OutputTrim from '../eq/OutputTrim.svelte';
   import { mockEqCurve } from '../bode/bodeMock';
   import { filterCurve, filterCurveAt } from '../bode/filterCurve';
-  import { mirror, settings, setEqTarget } from '@/state';
+  import { settings, setEqTarget } from '@/state';
   import {
     eqUi,
     setEqCopySource,
@@ -19,7 +19,7 @@
 
   const s = getSession();
 
-  const snap = $derived(mirror.current);
+  const snap = $derived(s.mirror.current);
 
   // Auto-pick a default channel when entering the tab unselected.
   $effect(() => {

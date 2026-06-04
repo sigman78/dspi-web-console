@@ -1,7 +1,7 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
   import KV from '../chrome/KV.svelte';
-  import { mirror, connection } from '@/state';
+  import { connection } from '@/state';
   import ChannelNamesPanel from '../system/ChannelNamesPanel.svelte';
   import ResetPanel from '../system/ResetPanel.svelte';
   import OutputsPanel from '../system/OutputsPanel.svelte';
@@ -12,7 +12,7 @@
 
   const s = getSession();
 
-  const snap = $derived(mirror.current);
+  const snap = $derived(s.mirror.current);
   const info = $derived(s.telemetry.info);
   const connected = $derived(connection.connected);
 

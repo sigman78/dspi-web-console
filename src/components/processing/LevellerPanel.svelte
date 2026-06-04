@@ -3,7 +3,7 @@
   import ValueField from '../chrome/ValueField.svelte';
   import SegmentedSelect from '../chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '../chrome/ToggleSwitch.svelte';
-  import { mirror, connection } from '@/state';
+  import { connection } from '@/state';
   import {
     setLevellerEnabled, setLevellerSpeed, setLevellerLookahead,
     setLevellerAmount, setLevellerMaxGain, setLevellerGate,
@@ -12,7 +12,7 @@
   import { getSession } from '../sessionContext';
 
   const s = getSession();
-  const lv = $derived(mirror.current?.leveller);
+  const lv = $derived(s.mirror.current?.leveller);
   const connected = $derived(connection.connected);
   const enabled = $derived(lv?.enabled ?? false);
   const editable = $derived(connected && enabled);

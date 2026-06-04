@@ -8,19 +8,20 @@ const verbs = vi.hoisted(() => ({
 }));
 vi.mock('@/runtime', () => verbs);
 
-vi.mock('@/state', () => {
-  const snap = {
-    platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
-    outputs: [{ wireIndex: 8, enabled: false }],
-    outputPins: [6, 7, 8, 9, 10],
-    i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
-  };
-  return { mirror: { get current() { return snap; } }, connection: { get connected() { return true; }, get phase() { return 'ready'; } } };
-});
+vi.mock('@/state', () => ({
+  connection: { get connected() { return true; }, get phase() { return 'ready'; } },
+}));
 
 import OutputsPanel from './OutputsPanel.svelte';
 
-const session = {} as any;
+const snap = {
+  platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
+  outputs: [{ wireIndex: 8, enabled: false }],
+  outputPins: [6, 7, 8, 9, 10],
+  i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
+};
+
+const session = { mirror: { current: snap } } as any;
 
 beforeEach(() => { verbs.setOutputType.mockClear(); verbs.setOutputDataPin.mockClear(); });
 
