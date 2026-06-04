@@ -1,13 +1,13 @@
-// Primary device-state store. Two reactive cells:
-//   - mirror.current     — our belief of device RAM. Mutates on every user
-//                          write; cleared on disconnect.
-//   - presetBaseline     — what `current` looked like at the last preset
-//                          save/load (or connect). Pinned until a baseline
-//                          refresh; presetsDirty compares current against it.
+// Per-session device-state store. Two reactive cells:
+//   - current   — our belief of device RAM. Mutates on every user write;
+//                 cleared on disconnect.
+//   - baseline  — what `current` looked like at the last preset save/load (or
+//                 connect). Pinned until a baseline refresh; presetsDirty
+//                 compares current against it.
 // Plus an inflight counter that gates the UI dirty dot and the resync soft-skip.
+// Reached only through a session (`session.mirror`); not a global singleton.
 
 import type { DspSnapshot } from '@/domain';
-import { activeSession } from './appState.svelte';
 
 export class MirrorState {
   current = $state<DspSnapshot | null>(null);
@@ -72,21 +72,3 @@ export class MirrorState {
     return this.presetGuardDepth > 0 || now < this.presetGuardUntilMs;
   }
 }
-
-// Inert fallback so reads while disconnected get null/zero defaults. A stale
-// in-flight write/reconcile can land here after disconnect; harmless, since it is
-// never read while a session is active and the next connect gets a fresh mirror.
-const detached = new MirrorState();
-
-function mst(): MirrorState {
-  return activeSession()?.mirror ?? detached;
-}
-
-export const mirror = {
-  get current(): DspSnapshot | null { return mst().current; },
-  init(snap: DspSnapshot): void { mst().init(snap); },
-  replaceCurrent(snap: DspSnapshot): void { mst().replaceCurrent(snap); },
-  captureBaseline(): void { mst().captureBaseline(); },
-  reset(): void { mst().reset(); },
-};
-export const presetBaseline = { get current(): DspSnapshot | null { return mst().baseline; } };

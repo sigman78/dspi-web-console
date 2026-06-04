@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { bootMock } from './session';
-import { presets, resetPresets, boundary, resolveBoundary, settings, activeSession, mirror, presetBaseline } from '@/state';
+import { presets, resetPresets, boundary, resolveBoundary, settings, activeSession } from '@/state';
 import { PresetStartupMode, parseBulkParams } from '@/protocol';
 import type { PresetSlot } from '@/domain';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
@@ -19,6 +19,8 @@ import {
   dismissPresetActionError,
 } from './presets';
 import { forceResyncNow } from './resync';
+
+const liveMirror = () => activeSession()!.mirror;
 
 describe('runtime/presets', () => {
   beforeEach(async () => {
@@ -82,13 +84,13 @@ describe('runtime/presets', () => {
   describe('saveActivePreset', () => {
     it('saves to the active slot and advances the baseline', async () => {
       await fetchPresetInfo();
-      if (mirror.current) mirror.current.bypass = !mirror.current.bypass;
-      const before = presetBaseline.current?.bypass;
-      const after  = mirror.current?.bypass;
+      liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
+      const before = liveMirror().baseline?.bypass;
+      const after  = liveMirror().current?.bypass;
       expect(before).not.toBe(after);
       const r = await saveActivePreset();
       expect(r.ok).toBe(true);
-      expect(presetBaseline.current?.bypass).toBe(after);
+      expect(liveMirror().baseline?.bypass).toBe(after);
     });
   });
 
@@ -124,14 +126,14 @@ describe('runtime/presets', () => {
         // Make draft diverge from saved so the post-load re-baseline is
         // observable: after success, saved must match the freshly fetched
         // device state (i.e. draft === saved per field).
-        if (mirror.current) mirror.current.bypass = !mirror.current.bypass;
+        liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
         const r = await loadPresetSlot(0 as any);
         expect(r.ok).toBe(true);
         expect(loadCalls).toBe(1);
         // fetchAndApplyAsBaseline runs exactly one getAllParams after loadPreset.
         expect(getAllAfterLoad).toBe(1);
         // Saved re-baselined to device truth (draft and saved agree on bypass).
-        expect(presetBaseline.current?.bypass).toBe(mirror.current?.bypass);
+        expect(liveMirror().baseline?.bypass).toBe(liveMirror().current?.bypass);
       } finally {
         (d as any).loadPreset = origLoad;
         (d as any).getAllParams = origGetAll;
@@ -165,7 +167,7 @@ describe('runtime/presets', () => {
     it('reloads the active slot', async () => {
       await fetchPresetInfo();
       await saveActivePreset();
-      if (mirror.current) mirror.current.bypass = !mirror.current.bypass;
+      liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
       const r = await revertActivePreset();
       expect(r.ok).toBe(true);
     });
@@ -256,11 +258,11 @@ describe('runtime/presets', () => {
         await loadPresetSlot(0 as any);
       }
       const active = presets.active!;
-      if (mirror.current) mirror.current.bypass = !mirror.current.bypass;
-      expect(presetBaseline.current?.bypass).not.toBe(mirror.current?.bypass);
+      liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
+      expect(liveMirror().baseline?.bypass).not.toBe(liveMirror().current?.bypass);
       const r = await savePresetSlot(active);
       expect(r.ok).toBe(true);
-      expect(presetBaseline.current?.bypass).toBe(mirror.current?.bypass);
+      expect(liveMirror().baseline?.bypass).toBe(liveMirror().current?.bypass);
     });
   });
 
@@ -268,20 +270,20 @@ describe('runtime/presets', () => {
     it('saved is not overwritten when forceResyncNow refreshes draft', async () => {
       await fetchPresetInfo();
       // Sanity: bootMock+fullSync populated both draft and saved.
-      expect(mirror.current).not.toBe(null);
-      expect(presetBaseline.current).not.toBe(null);
-      const savedLoudnessBefore = presetBaseline.current!.loudness.enabled;
+      expect(liveMirror().current).not.toBe(null);
+      expect(liveMirror().baseline).not.toBe(null);
+      const savedLoudnessBefore = liveMirror().baseline!.loudness.enabled;
       // Drive a wire write on a field that lives in the bulk payload.
       // SetLoudnessEnabled mutates #mockState which is what
       // synthesizeBulkParams reads from, so the next resync's bulk packet
       // will reflect the change.
       const d = activeSession()!.device;
       await d.setLoudnessEnabled(!savedLoudnessBefore);
-      // Resync refreshes mirror.current ONLY; presetBaseline.current stays pinned at the
+      // Resync refreshes liveMirror().current ONLY; liveMirror().baseline stays pinned at the
       // last baseline (the fullSync snapshot).
       await forceResyncNow();
-      expect(mirror.current!.loudness.enabled).toBe(!savedLoudnessBefore);
-      expect(presetBaseline.current!.loudness.enabled).toBe(savedLoudnessBefore);
+      expect(liveMirror().current!.loudness.enabled).toBe(!savedLoudnessBefore);
+      expect(liveMirror().baseline!.loudness.enabled).toBe(savedLoudnessBefore);
     });
   });
 
@@ -528,7 +530,7 @@ describe('runtime/presets', () => {
       await fetchPresetInfo();
       await saveActivePreset();
       // Make dirty.
-      if (mirror.current) mirror.current.bypass = !mirror.current.bypass;
+      liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
 
       const pending = loadPresetSlot(0 as PresetSlot);
       // Yield so the runtime can call askBoundary.
@@ -544,7 +546,7 @@ describe('runtime/presets', () => {
       settings.warnOnPresetSwitchDirty = false;
       await fetchPresetInfo();
       await saveActivePreset();
-      if (mirror.current) mirror.current.bypass = !mirror.current.bypass;
+      liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
       const r = await loadPresetSlot(0 as PresetSlot);
       expect(r.ok).toBe(true);
       expect(boundary.pending).toBe(null);
@@ -553,7 +555,7 @@ describe('runtime/presets', () => {
     it('aborts (no wire load op) when boundary resolves with cancel', async () => {
       await fetchPresetInfo();
       await saveActivePreset();
-      if (mirror.current) mirror.current.bypass = !mirror.current.bypass;
+      liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
       const realDevice = activeSession()!.device;
       const origLoad = realDevice.loadPreset.bind(realDevice);
       let loadCalls = 0;
@@ -574,7 +576,7 @@ describe('runtime/presets', () => {
       await fetchPresetInfo();
       const activeBefore = presets.active!;
       await saveActivePreset();
-      if (mirror.current) mirror.current.bypass = !mirror.current.bypass;
+      liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
       const realDevice = activeSession()!.device;
       const origLoad = realDevice.loadPreset.bind(realDevice);
       const origSave = realDevice.savePreset.bind(realDevice);

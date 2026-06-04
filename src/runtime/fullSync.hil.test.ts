@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from '@/device/DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
 import { wireUpConnection } from './actionsDevice';
-import { activeSession, connection, settings, mirror } from '@/state';
+import { activeSession, connection, settings } from '@/state';
 import { endConnection } from './connectionScope';
 
 // End-to-end HIL test: drives the production state-layer connection finish flow
@@ -27,7 +27,6 @@ describe('state.wireUpConnection — end-to-end against real hardware (HIL)', ()
 
   afterAll(async () => {
     endConnection();
-    mirror.reset();
     if (close) await close();
   });
 
@@ -39,7 +38,7 @@ describe('state.wireUpConnection — end-to-end against real hardware (HIL)', ()
     expect(activeSession()?.device?.info.capabilities.fwLabel.length ?? 0).toBeGreaterThan(0);
     expect(settings.lastSerial).toBe(activeSession()?.device?.info.serial);
 
-    const snap = mirror.current;
+    const snap = activeSession()?.mirror.current ?? null;
     expect(snap).not.toBeNull();
     if (!snap) return;
 
@@ -55,14 +54,14 @@ describe('state.wireUpConnection — end-to-end against real hardware (HIL)', ()
     const before = {
       serial: activeSession()?.device?.info.serial,
       fw: activeSession()?.device?.info.capabilities.fwLabel,
-      platform: mirror.current?.platform.name,
+      platform: activeSession()?.mirror.current?.platform.name,
       wire: activeSession()?.device?.info.capabilities.wire,
     };
     await wireUpConnection(device);
     expect(connection.connected).toBe(true);
     expect(activeSession()?.device?.info.serial).toBe(before.serial);
     expect(activeSession()?.device?.info.capabilities.fwLabel).toBe(before.fw);
-    expect(mirror.current?.platform.name).toBe(before.platform);
+    expect(activeSession()?.mirror.current?.platform.name).toBe(before.platform);
     expect(activeSession()?.device?.info.capabilities.wire).toBe(before.wire);
   });
 });

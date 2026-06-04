@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { PlatformType, createHardwareProfile } from '@/domain';
 import { fromBulkParams } from '@/device/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
-import { mirror, presetBaseline, settings, dispatch, makeReadySession, type ReadySession } from '@/state';
+import { settings, dispatch, makeReadySession, type ReadySession } from '@/state';
 import { write } from './writes';
 import { startPolling, RECONCILE_QUIET_MS } from './poll';
 import type { LoopClock } from '@/utils';
@@ -76,7 +76,6 @@ function deviceWithSnapshot(getSnapshot: () => Promise<unknown>) {
 }
 
 describe('startPolling', () => {
-  beforeEach(() => { mirror.replaceCurrent(fromBulkParams(hw, parseBulkParams(makeBulk()))); });
   afterEach(() => { teardown(); });
 
   it('polls the status cadence when the clock fires, and stops after dispose', async () => {
@@ -108,10 +107,6 @@ describe('startPolling', () => {
 });
 
 describe('param reconcile cadence', () => {
-  beforeEach(() => {
-    mirror.reset();                          // zero lastWriteMs (and current)
-    mirror.replaceCurrent(fromBulkParams(hw, parseBulkParams(makeBulk())));
-  });
   afterEach(() => { teardown(); });
 
   it('reconciles via getSnapshot when a reconcile is pending and idle', async () => {
@@ -171,14 +166,14 @@ describe('param reconcile cadence', () => {
     const mir = session.mirror;
     const initial = fromBulkParams(hw, parseBulkParams(makeBulk()));
     initial.masterVolumeDb = -5;
-    mirror.init(initial);                               // current + baseline = -5
+    mir.init(initial);                                  // current + baseline = -5
     const clock = manualClock();
     const stop = startPolling(session, clock);
     mir.requestReconcile(false);
     clock.fire();
     await settle();
-    expect(mirror.current!.masterVolumeDb).toBe(-33);   // current advanced
-    expect(presetBaseline.current!.masterVolumeDb).toBe(-5); // baseline pinned
+    expect(mir.current!.masterVolumeDb).toBe(-33);      // current advanced
+    expect(mir.baseline!.masterVolumeDb).toBe(-5);      // baseline pinned
     stop();
   });
 
@@ -265,7 +260,7 @@ describe('param reconcile cadence', () => {
       const mir = session.mirror;
       const initial = fromBulkParams(hw, parseBulkParams(makeBulk()));
       initial.masterVolumeDb = -5;
-      mirror.init(initial);
+      mir.init(initial);
       const clock = manualClock();
       const stop = startPolling(session, clock);
       vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);
@@ -276,7 +271,7 @@ describe('param reconcile cadence', () => {
       mir.noteWriteActivity();              // a write lands mid-fetch
       resolveSnap();
       await settle();
-      expect(mirror.current!.masterVolumeDb).toBe(-5);   // discarded, not -99
+      expect(mir.current!.masterVolumeDb).toBe(-5);   // discarded, not -99
       expect(mir.peekReconcile().wanted).toBe(true);      // request still pending
       stop();
     } finally {

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { startNotifyChannel } from './notifyChannel';
-import { mirror } from '@/state/mirror.svelte';
 import { notices, clearNotices, dispatch, makeReadySession, type ReadySession } from '@/state';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice } from '@/device/DspDevice';
@@ -43,7 +42,7 @@ function fakeNotifyingDevice(read: () => Promise<Uint8Array | null>): DspDevice 
 }
 
 // Install a ready session for `dev` and return it (so the channel reads
-// session.device/session.mirror, and the `mirror` forwarder resolves to it).
+// session.device/session.mirror).
 function connect(dev: DspDevice): ReadySession {
   const session = makeReadySession(dev);
   dispatch({ t: 'synced', session });
@@ -182,14 +181,14 @@ describe('startNotifyChannel', () => {
     // succeeds in place, no full reconcile.
     resetWireMirror();
     const { mock, session, mir } = await v10Setup();
-    mirror.init(await session.device.getSnapshot());
-    expect(mirror.current?.bypass).toBe(false);
+    mir.init(await session.device.getSnapshot());
+    expect(mir.current?.bypass).toBe(false);
     mock.pushNotify(paramChangedFrame(20, [1], 5));   // GPIO(5), bypass byte at offset 20
     const m = manualClock();
     mir.beginPresetGuard();
     const stop = startNotifyChannel(session, m.clock);
     await m.tick();
-    expect(mirror.current?.bypass).toBe(true);   // applied despite the guard
+    expect(mir.current?.bypass).toBe(true);   // applied despite the guard
     expect(mir.peekReconcile().wanted).toBe(false);  // not a full reconcile
     mir.endPresetGuard(0);
     stop();
@@ -278,13 +277,13 @@ describe('startNotifyChannel — Layer 2 PARAM_CHANGED apply', () => {
   it('applies a non-HOST paramChanged locally without requesting a reconcile', async () => {
     resetWireMirror();
     const { mock, session, mir } = await v10Setup();
-    mirror.init(await session.device.getSnapshot());   // mirror.current + dev.lastRawBulk
-    expect(mirror.current?.bypass).toBe(false);
+    mir.init(await session.device.getSnapshot());   // current + dev.lastRawBulk
+    expect(mir.current?.bypass).toBe(false);
     mock.pushNotify(paramChangedFrame(20, [1], 5));  // bypass byte (offset 20), source=GPIO(5)
     const m = manualClock();
     const stop = startNotifyChannel(session, m.clock);
     await m.tick();
-    expect(mirror.current?.bypass).toBe(true);     // applied locally
+    expect(mir.current?.bypass).toBe(true);     // applied locally
     expect(mir.peekReconcile().wanted).toBe(false);    // no full reconcile
     stop();
   });
@@ -292,7 +291,7 @@ describe('startNotifyChannel — Layer 2 PARAM_CHANGED apply', () => {
   it('falls back to a reconcile when the apply declines (out-of-range offset)', async () => {
     resetWireMirror();
     const { mock, session, mir } = await v10Setup();
-    mirror.init(await session.device.getSnapshot());
+    mir.init(await session.device.getSnapshot());
     mock.pushNotify(paramChangedFrame(60000, [1], 5));  // offset out of range → apply returns false
     const m = manualClock();
     const stop = startNotifyChannel(session, m.clock);
@@ -304,12 +303,12 @@ describe('startNotifyChannel — Layer 2 PARAM_CHANGED apply', () => {
   it('drops a HOST-sourced paramChanged (our own echo) without applying or reconciling', async () => {
     resetWireMirror();
     const { mock, session, mir } = await v10Setup();
-    mirror.init(await session.device.getSnapshot());
+    mir.init(await session.device.getSnapshot());
     mock.pushNotify(paramChangedFrame(20, [1], 1));  // source=HOST(1)
     const m = manualClock();
     const stop = startNotifyChannel(session, m.clock);
     await m.tick();
-    expect(mirror.current?.bypass).toBe(false);    // not applied
+    expect(mir.current?.bypass).toBe(false);    // not applied
     expect(mir.peekReconcile().wanted).toBe(false);    // not reconciled
     stop();
   });
