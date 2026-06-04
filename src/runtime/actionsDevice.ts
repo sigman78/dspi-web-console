@@ -55,7 +55,7 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
     const scope = connectionScope();
     if (scope) {
       scope.add(startPolling(session));
-      scope.add(startNotifyChannel(device));
+      scope.add(startNotifyChannel(session));
       acquireDeviceLock();
       scope.add(() => releaseDeviceLock());
     }

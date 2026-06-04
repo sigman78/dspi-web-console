@@ -1,8 +1,6 @@
-import type { DspDevice } from '@/device/DspDevice';
 import { parseNotifyPacket, isReconcileTrigger, isPresetOpEcho, ParamSource, type NotifyEvent } from '@/protocol';
 import { applyParamChange } from './notifyApply';
-import { requestReconcile, presetGuardActive } from '@/state/mirror.svelte';
-import { pushNotice, presets } from '@/state';
+import { pushNotice, presets, type ReadySession } from '@/state';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 
 // Default poll cadence: loose enough that idle cost is a few 64-byte reads/sec,
@@ -16,7 +14,9 @@ const NOTIFY_MAX_BACKOFF_MS = 5000;
 
 // Start the notify read loop for a device. Returns a stop disposer. No-op (and
 // the loop never arms) on devices without the notifications capability.
-export function startNotifyChannel(device: DspDevice, clock: LoopClock = timerClock(NOTIFY_INTERVAL_MS)): Disposer {
+export function startNotifyChannel(session: ReadySession, clock: LoopClock = timerClock(NOTIFY_INTERVAL_MS)): Disposer {
+  const device = session.device;
+  const mir = session.mirror;
   if (!device.capabilities.features.notifications) {
     return () => {};
   }
@@ -38,7 +38,7 @@ export function startNotifyChannel(device: DspDevice, clock: LoopClock = timerCl
     if (seq !== null) {
       // A gap means a possibly-external event was missed — always re-read,
       // even under a preset guard (the guard only knows about its own echoes).
-      if (lastSeq !== null && ((lastSeq + 1) & 0xff) !== seq) requestReconcile(true);
+      if (lastSeq !== null && ((lastSeq + 1) & 0xff) !== seq) mir.requestReconcile(true);
       lastSeq = seq;
     }
     // Confirm a preset load (user- or externally-triggered) via a toast. The
@@ -51,13 +51,13 @@ export function startNotifyChannel(device: DspDevice, clock: LoopClock = timerCl
     // if the apply declines do we fall back to a full reconcile. HOST echoes fall
     // through to isReconcileTrigger below, which drops them.
     if (event.kind === 'paramChanged' && event.source !== ParamSource.Host) {
-      if (!applyParamChange(device, event)) requestReconcile(true);
+      if (!applyParamChange(device, mir, event)) mir.requestReconcile(true);
       return;
     }
     // Suppress ONLY the full-reconcile backstop echoes (preset/bulk) of our own
     // in-flight preset op. Bulk/preset/seq-gap still reconcile.
-    if (isReconcileTrigger(event) && !(presetGuardActive() && isPresetOpEcho(event))) {
-      requestReconcile(true);
+    if (isReconcileTrigger(event) && !(mir.presetGuardActive() && isPresetOpEcho(event))) {
+      mir.requestReconcile(true);
     }
   }
 
