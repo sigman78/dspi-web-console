@@ -1,5 +1,5 @@
 import { activeSession, type ReadySession } from '@/state';
-import { mirror, isInFlight, peekReconcile, consumeReconcile, lastWriteMs, requestReconcile } from '@/state/mirror.svelte';
+import { mirror } from '@/state/mirror.svelte';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
 
@@ -28,6 +28,7 @@ interface Cadence {
 
 export function startPolling(session: ReadySession, clock: LoopClock = timerClock(STATUS_INTERVAL_MS)): Disposer {
   const tele = session.telemetry;
+  const mir = session.mirror;
   let stopped = false;
   const isHidden = () => typeof document !== 'undefined' && document.hidden;
   // Only the in-flight guards are loop-local. The cadence CLOCK stays on the
@@ -89,9 +90,9 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       // Re-check the gate across the await: a write during the fetch (inflight,
       // or a fresh write timestamp after we started) means our snapshot is
       // already stale. Drop it; the pending request drives a later retry.
-      if (isInFlight.current || lastWriteMs() >= startedAt) return;
+      if (mir.inflight > 0 || mir.lastWriteMs >= startedAt) return;
       mirror.replaceCurrent(snap);
-      consumeReconcile();
+      mir.consumeReconcile();
     } catch (e) {
       Log.warn('poll', 'param reconcile failed', e);  // request stays pending
     } finally {
@@ -105,9 +106,9 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   // mid-drag from drag-done). Then either eager, or the floor interval elapsed.
   // Peek (not consume) so a skipped tick leaves the request pending.
   function shouldRunParam(now: number): boolean {
-    if (isInFlight.current) return false;
-    if (now - lastWriteMs() < RECONCILE_QUIET_MS) return false;
-    const { wanted, eager } = peekReconcile();
+    if (mir.inflight > 0) return false;
+    if (now - mir.lastWriteMs < RECONCILE_QUIET_MS) return false;
+    const { wanted, eager } = mir.peekReconcile();
     if (!wanted) return false;
     // lastParamMs === 0 means we've never reconciled this session: the first
     // pending request is eligible immediately rather than waiting a full floor
@@ -147,7 +148,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   // Removed by stop(), so it never fires after dispose — no `stopped` guard.
   const offVisibility = subscribeVisibility(
     () => {                        // tab shown
-      requestReconcile(true);      // repaint to truth after a blind period
+      mir.requestReconcile(true);  // repaint to truth after a blind period
       clock.next(tick);            // resume
     },
     () => { if (!anyRunWhileHidden) clock.cancel(); },   // tab hidden

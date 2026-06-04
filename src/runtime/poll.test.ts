@@ -5,10 +5,6 @@ import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
 import { mirror, presetBaseline, settings, dispatch, makeReadySession, type ReadySession } from '@/state';
-import {
-  requestReconcile, consumeReconcile, peekReconcile, noteWriteActivity,
-  inflight, bumpInflight, dropInflight,
-} from '@/state/mirror.svelte';
 import { write } from './writes';
 import { startPolling, RECONCILE_QUIET_MS } from './poll';
 import type { LoopClock } from '@/utils';
@@ -113,19 +109,18 @@ describe('startPolling', () => {
 
 describe('param reconcile cadence', () => {
   beforeEach(() => {
-    consumeReconcile();                      // clear any pending request
-    while (inflight.current > 0) dropInflight();
     mirror.reset();                          // zero lastWriteMs (and current)
     mirror.replaceCurrent(fromBulkParams(hw, parseBulkParams(makeBulk())));
   });
-  afterEach(() => { teardown(); consumeReconcile(); while (inflight.current > 0) dropInflight(); });
+  afterEach(() => { teardown(); });
 
   it('reconciles via getSnapshot when a reconcile is pending and idle', async () => {
     const { device, calls } = paramDevice();
     const session = connect(device);
+    const mir = session.mirror;
     const clock = manualClock();
     const stop = startPolling(session, clock);
-    requestReconcile(false);
+    mir.requestReconcile(false);
     clock.fire();
     await settle();
     expect(calls.snapshot).toBe(1);
@@ -146,14 +141,15 @@ describe('param reconcile cadence', () => {
   it('does not reconcile while a write is in flight (no mid-drag clobber)', async () => {
     const { device, calls } = paramDevice();
     const session = connect(device);
+    const mir = session.mirror;
     const clock = manualClock();
     const stop = startPolling(session, clock);
-    requestReconcile(false);
-    bumpInflight();                          // simulate an in-flight write
+    mir.requestReconcile(false);
+    mir.bumpInflight();                      // simulate an in-flight write
     clock.fire();
     await settle();
     expect(calls.snapshot).toBe(0);
-    dropInflight();
+    mir.dropInflight();
     stop();
   });
 
@@ -172,12 +168,13 @@ describe('param reconcile cadence', () => {
       getSnapshot: vi.fn(async () => reconciled),
     } as unknown as DspDevice;
     const session = connect(device);
+    const mir = session.mirror;
     const initial = fromBulkParams(hw, parseBulkParams(makeBulk()));
     initial.masterVolumeDb = -5;
     mirror.init(initial);                               // current + baseline = -5
     const clock = manualClock();
     const stop = startPolling(session, clock);
-    requestReconcile(false);
+    mir.requestReconcile(false);
     clock.fire();
     await settle();
     expect(mirror.current!.masterVolumeDb).toBe(-33);   // current advanced
@@ -188,20 +185,21 @@ describe('param reconcile cadence', () => {
   it('non-eager waits for the interval; eager bypasses it', async () => {
     const { device, calls } = paramDevice();
     const session = connect(device);
+    const mir = session.mirror;
     const clock = manualClock();
     const stop = startPolling(session, clock);
 
-    requestReconcile(false);
+    mir.requestReconcile(false);
     clock.fire();
     await settle();
     expect(calls.snapshot).toBe(1);          // first run, stamps lastParamMs
 
-    requestReconcile(false);                 // non-eager, interval not elapsed
+    mir.requestReconcile(false);             // non-eager, interval not elapsed
     clock.fire();
     await settle();
     expect(calls.snapshot).toBe(1);          // skipped by interval gate
 
-    requestReconcile(true);                  // eager → bypass interval
+    mir.requestReconcile(true);              // eager → bypass interval
     clock.fire();
     await settle();
     expect(calls.snapshot).toBe(2);          // ran despite interval
@@ -237,11 +235,12 @@ describe('param reconcile cadence', () => {
     try {
       const { device, calls } = paramDevice();
       const session = connect(device);
+      const mir = session.mirror;
       const clock = manualClock();
       const stop = startPolling(session, clock);
       vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);
-      noteWriteActivity();                  // a write/scrub just happened
-      requestReconcile(false);
+      mir.noteWriteActivity();              // a write/scrub just happened
+      mir.requestReconcile(false);
       clock.fire();
       await settle();
       expect(calls.snapshot).toBe(0);       // blocked: within quiet window
@@ -263,21 +262,22 @@ describe('param reconcile cadence', () => {
       reconciled.masterVolumeDb = -99;
       const device = deviceWithSnapshot(() => new Promise((r) => { resolveSnap = () => r(reconciled); }));
       const session = connect(device);
+      const mir = session.mirror;
       const initial = fromBulkParams(hw, parseBulkParams(makeBulk()));
       initial.masterVolumeDb = -5;
       mirror.init(initial);
       const clock = manualClock();
       const stop = startPolling(session, clock);
       vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);
-      requestReconcile(false);
+      mir.requestReconcile(false);
       clock.fire();
       await settle();                       // pollParam parked on getSnapshot
       vi.advanceTimersByTime(1);
-      noteWriteActivity();                  // a write lands mid-fetch
+      mir.noteWriteActivity();              // a write lands mid-fetch
       resolveSnap();
       await settle();
       expect(mirror.current!.masterVolumeDb).toBe(-5);   // discarded, not -99
-      expect(peekReconcile().wanted).toBe(true);          // request still pending
+      expect(mir.peekReconcile().wanted).toBe(true);      // request still pending
       stop();
     } finally {
       vi.useRealTimers();
@@ -289,13 +289,14 @@ describe('param reconcile cadence', () => {
     try {
       const device = deviceWithSnapshot(async () => { throw new Error('boom'); });
       const session = connect(device);
+      const mir = session.mirror;
       const clock = manualClock();
       const stop = startPolling(session, clock);
       vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);
-      requestReconcile(false);
+      mir.requestReconcile(false);
       clock.fire();
       await settle();
-      expect(peekReconcile().wanted).toBe(true);   // not consumed on failure
+      expect(mir.peekReconcile().wanted).toBe(true);   // not consumed on failure
       stop();
     } finally {
       vi.useRealTimers();
@@ -305,15 +306,16 @@ describe('param reconcile cadence', () => {
 
 describe('startPolling — visibility resume', () => {
   it('requests an eager reconcile when the tab becomes visible', () => {
-    consumeReconcile();
+    const stub = makeReadySession({ info: {}, hardware: {} } as never);
+    const mir = stub.mirror;
     const clock: LoopClock = { next: () => {}, cancel: () => {} };
-    const stop = startPolling(makeReadySession({ info: {}, hardware: {} } as never), clock);
+    const stop = startPolling(stub, clock);
     // Simulate hide → show.
     Object.defineProperty(document, 'hidden', { value: true, configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
     Object.defineProperty(document, 'hidden', { value: false, configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
-    expect(peekReconcile()).toMatchObject({ wanted: true, eager: true });
+    expect(mir.peekReconcile()).toMatchObject({ wanted: true, eager: true });
     stop();
     Object.defineProperty(document, 'hidden', { value: false, configurable: true });
   });
