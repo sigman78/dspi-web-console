@@ -2,7 +2,6 @@
 <script lang="ts">
   import {
     presets, presetsDirty,
-    copySource, setCopySource, clearCopySource,
     settings, connection,
   } from '@/state';
   import {
@@ -34,9 +33,9 @@
   const canSave = $derived(active != null && (dirty || !activeOccupied));
   const canRevert = $derived(active != null && activeOccupied && dirty);
   const canRename = $derived(active != null);
-  const canCopy = $derived(active != null && activeOccupied && !dirty && copySource.slot == null);
-  const isCopyHeld = $derived(copySource.slot != null);
-  const canPaste = $derived(copySource.slot != null && active != null && copySource.slot !== active);
+  const canCopy = $derived(active != null && activeOccupied && !dirty && s.copySource.slot == null);
+  const isCopyHeld = $derived(s.copySource.slot != null);
+  const canPaste = $derived(s.copySource.slot != null && active != null && s.copySource.slot !== active);
   const canSetStartup = $derived(active != null);
 
   // Settings group state
@@ -63,19 +62,19 @@
 
   function onCopy() {
     if (presets.busy || active == null) return;
-    setCopySource(active);
+    s.copySource.slot = active;
   }
   function onDrop() {
     if (presets.busy) return;
-    clearCopySource();
+    s.copySource.slot = null;
   }
 
   async function onPaste() {
     if (presets.busy) return;
-    const src = copySource.slot;
+    const src = s.copySource.slot;
     if (src == null) return;
     const r = await pastePresetTo(src);
-    if ('ok' in r && r.ok) clearCopySource();
+    if ('ok' in r && r.ok) s.copySource.slot = null;
   }
 
   async function onSetStartup() {

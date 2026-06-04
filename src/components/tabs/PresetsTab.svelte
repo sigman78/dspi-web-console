@@ -5,11 +5,13 @@
   import PresetTile from '../presets/PresetTile.svelte';
   import PresetControls from '../presets/PresetControls.svelte';
   import { fetchPresetInfo, retryFetchPresetInfo, dismissPresetActionError } from '@/runtime';
-  import { presets, presetsDirty, copySource, clearCopySource, connection } from '@/state';
+  import { presets, presetsDirty, connection } from '@/state';
+  import { getSession } from '../sessionContext';
   import { PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';
 
   const SLOTS: PresetSlot[] = Array.from({ length: PRESET_SLOT_COUNT }, (_, i) => i as PresetSlot);
   const connected = $derived(connection.connected);
+  const s = getSession();
 
   // Refs to tile components so the controls pane can trigger inline rename.
   const tileRefs = $state<Record<number, { enterRename: () => void } | null>>({});
@@ -24,14 +26,14 @@
   // atomically via fetchAndApplyAsBaseline(), so there is no transient
   // dirty=true window to filter out during wire ops.
   $effect(() => {
-    if (presetsDirty.current && copySource.slot != null) {
-      clearCopySource();
+    if (presetsDirty.current && s.copySource.slot != null) {
+      s.copySource.slot = null;
     }
   });
 
   onMount(() => {
     void fetchPresetInfo();
-    return () => { clearCopySource(); };
+    return () => { s.copySource.slot = null; };
   });
 </script>
 

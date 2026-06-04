@@ -8,7 +8,7 @@ import type { DspDevice } from '@/device/DspDevice';
 import {
   bindDevice, session,
   settings, reconcileEqTarget,
-  clearCopySource, pushNotice,
+  pushNotice,
   dispatch, makeReadySession, activeSession,
 } from '@/state';
 import { Log } from '@/utils';
@@ -127,7 +127,8 @@ export async function factoryResetDevice(): Promise<void> {
     const r = await d.factoryReset();
     if (!r.ok) { pushNotice('warn', r.message); return; }  // non-ok flash status
     invalidatePresetCache();
-    clearCopySource();
+    const sess = activeSession();
+    if (sess) sess.copySource.slot = null;
     await syncDeviceSnapshot();
     pushNotice('info', 'Factory reset complete.');
   } catch (e) {

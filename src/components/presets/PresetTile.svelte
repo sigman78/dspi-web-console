@@ -1,11 +1,13 @@
 <!-- src/components/presets/PresetTile.svelte -->
 <script lang="ts">
-  import { presets, presetsDirty, copySource } from '@/state';
+  import { presets, presetsDirty } from '@/state';
+  import { getSession } from '../sessionContext';
   import { loadPresetSlot, renamePresetSlot } from '@/runtime';
   import { PresetStartupMode } from '@/protocol';
   import { type PresetSlot, PRESET_NAME_MAX_LEN } from '@/domain';
 
   const { slot }: { slot: PresetSlot } = $props();
+  const s = getSession();
 
   const occupied = $derived(presets.directory?.occupiedSlotsSet.has(slot) ?? false);
   const isActive = $derived(presets.active === slot);
@@ -13,7 +15,7 @@
     const d = presets.directory;
     return d != null && d.startupMode === PresetStartupMode.Specified && d.defaultSlot === slot;
   });
-  const isCopySource = $derived(copySource.slot === slot);
+  const isCopySource = $derived(s.copySource.slot === slot);
   const isDirty = $derived(isActive && presetsDirty.current);
   const name = $derived(presets.names[slot] ?? '');
 
