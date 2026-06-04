@@ -9,7 +9,6 @@ import {
   MasterVolumeMode,
   diffSnapshots, type SnapshotChange,
 } from '@/domain';
-import { mirror, presetBaseline } from './mirror.svelte';
 import { settings } from './settings.svelte';
 import { activeSession } from './appState.svelte';
 
@@ -78,13 +77,14 @@ const RUNTIME_CHANGE_KINDS = new Set<SnapshotChange['kind']>(['lgSoundSyncStatus
 // is empty in the common (clean) case, so .some() short-circuits immediately.
 export const presetsDirty = {
   get current(): boolean {
-    if (!mirror.current || !presetBaseline.current) return false;
+    const m = activeSession()?.mirror;
+    if (!m?.current || !m.baseline) return false;
     const ignoreVol = (presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent) === MasterVolumeMode.Independent;
     const soft = settings.soft.muted;
     // Pins ride the preset only when includePins is set; otherwise a pin change
     // isn't preset content and must not mark dirty. Unknown directory ⇒ excluded.
     const includePins = presets.directory?.includePins === true;
-    return diffSnapshots(presetBaseline.current, mirror.current).some((c) =>
+    return diffSnapshots(m.baseline, m.current).some((c) =>
       !RUNTIME_CHANGE_KINDS.has(c.kind) &&
       !(c.kind === 'masterVolume' && (ignoreVol || soft)) &&
       !(c.kind === 'outputPins' && !includePins));

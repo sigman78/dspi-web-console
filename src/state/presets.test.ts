@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { presets, presetsDirty, resetPresets, askBoundary, resolveBoundary } from './presets.svelte';
-import { mirror } from './mirror.svelte';
+import { activeSession, dispatch } from './appState.svelte';
+import { makeReadySession } from './makeSession.svelte';
 import { settings } from './settings.svelte';
 import type { DspSnapshot } from '@/domain';
+
+const liveMirror = () => activeSession()!.mirror;
 
 function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
   return {
@@ -24,16 +27,17 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
 
 // Seed current + baseline from a hand-built snapshot. These tests exercise
 // presetsDirty (current vs baseline) with synthetic fixtures that have no
-// backing wire packet. mirror.init sets current and deep-copies into baseline,
+// backing wire packet. init sets current and deep-copies into baseline,
 // which matches the intent here (both cells equal after seeding).
 function seed(snap: DspSnapshot): void {
-  mirror.init(snap);
+  liveMirror().init(snap);
 }
 
 describe('presets store', () => {
   beforeEach(() => {
+    dispatch({ t: 'disconnected' });
+    dispatch({ t: 'synced', session: makeReadySession({ info: {}, hardware: {} } as never) });
     resetPresets();
-    mirror.reset();
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
   });
@@ -57,13 +61,13 @@ describe('presets store', () => {
   it('presetsDirty flips true when current deviates from baseline', () => {
     seed(mkSnap({ bypass: false }));
     expect(presetsDirty.current).toBe(false);
-    if (mirror.current) mirror.current.bypass = true;
+    liveMirror().snapshot.bypass = true;
     expect(presetsDirty.current).toBe(true);
   });
 
   it('presetsDirty ignores masterVolumeDb in Mode 0 (no directory cached)', () => {
     seed(mkSnap({ masterVolumeDb: 0 }));
-    if (mirror.current) mirror.current.masterVolumeDb = -12;
+    liveMirror().snapshot.masterVolumeDb = -12;
     // directory is null → mode-0 default → volume excluded from diff
     expect(presetsDirty.current).toBe(false);
   });
@@ -76,7 +80,7 @@ describe('presets store', () => {
       includePins: false,
       masterVolumeMode: 1 as any,
     };
-    if (mirror.current) mirror.current.masterVolumeDb = -12;
+    liveMirror().snapshot.masterVolumeDb = -12;
     expect(presetsDirty.current).toBe(true);
   });
 
@@ -89,7 +93,7 @@ describe('presets store', () => {
       masterVolumeMode: 1 as any,
     };
     settings.soft.muted = true;
-    if (mirror.current) mirror.current.masterVolumeDb = -128;
+    liveMirror().snapshot.masterVolumeDb = -128;
     expect(presetsDirty.current).toBe(false);
   });
 
@@ -103,16 +107,17 @@ describe('presets store', () => {
     });
     seed(withBand(false));
     expect(presetsDirty.current).toBe(false);
-    if (mirror.current) mirror.current.channels[0].filters[0].bypass = true;
+    liveMirror().snapshot.channels[0].filters[0].bypass = true;
     expect(presetsDirty.current).toBe(true);
   });
 
   it('presetsDirty ignores a device-reported lgSoundSync status change', () => {
     seed(mkSnap({ lgSoundSync: { enabled: true, present: false, volume: 0, muted: false } as any }));
     expect(presetsDirty.current).toBe(false);
-    if (mirror.current?.lgSoundSync) {
-      mirror.current.lgSoundSync.present = true;
-      mirror.current.lgSoundSync.volume = 42;
+    const lg = liveMirror().snapshot.lgSoundSync;
+    if (lg) {
+      lg.present = true;
+      lg.volume = 42;
     }
     expect(presetsDirty.current).toBe(false);
   });
@@ -120,21 +125,24 @@ describe('presets store', () => {
   it('presetsDirty flips true on an lgSoundSync.enabled change', () => {
     seed(mkSnap({ lgSoundSync: { enabled: false, present: false, volume: 0, muted: false } as any }));
     expect(presetsDirty.current).toBe(false);
-    if (mirror.current?.lgSoundSync) mirror.current.lgSoundSync.enabled = true;
+    const lg = liveMirror().snapshot.lgSoundSync;
+    if (lg) lg.enabled = true;
     expect(presetsDirty.current).toBe(true);
   });
 
   it('presetsDirty flips true on a userVolume change', () => {
     seed(mkSnap({ userVolume: { volumeDb: 0, mute: false } as any }));
     expect(presetsDirty.current).toBe(false);
-    if (mirror.current?.userVolume) mirror.current.userVolume.volumeDb = -6;
+    const uv = liveMirror().snapshot.userVolume;
+    if (uv) uv.volumeDb = -6;
     expect(presetsDirty.current).toBe(true);
   });
 
   it('presetsDirty flips true on an i2s config change', () => {
     seed(mkSnap({ i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 } as any }));
     expect(presetsDirty.current).toBe(false);
-    if (mirror.current?.i2s) mirror.current.i2s.bckPin = 20;
+    const i2s = liveMirror().snapshot.i2s;
+    if (i2s) i2s.bckPin = 20;
     expect(presetsDirty.current).toBe(true);
   });
 
@@ -145,7 +153,7 @@ describe('presets store', () => {
       includePins, masterVolumeMode: 0 as any,
     });
     seed(mkSnap({ outputPins: [6, 7] }));
-    if (mirror.current) mirror.current.outputPins[1] = 8;
+    liveMirror().snapshot.outputPins[1] = 8;
     // includePins=false → pins are not part of the preset → not dirty
     presets.directory = dir(false) as any;
     expect(presetsDirty.current).toBe(false);

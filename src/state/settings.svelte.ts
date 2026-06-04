@@ -1,5 +1,5 @@
 import type { ChannelId } from '@/domain';
-import { mirror } from './mirror.svelte';
+import { activeSession } from './appState.svelte';
 
 export type TabId = 'overview' | 'eq' | 'mixer' | 'processing' | 'presets' | 'system';
 
@@ -188,7 +188,7 @@ export function setEagerReconcile(value: boolean): void {
 export function reconcileEqTarget(): void {
   const target = settings.eqTarget;
   if (target === null) return;
-  const channels = mirror.current?.channels;
+  const channels = activeSession()?.mirror.current?.channels;
   if (!channels) return;
   if (channels.some((c) => c.id === target)) return;
   const firstOutput = channels.find((c) => c.isOutput);
