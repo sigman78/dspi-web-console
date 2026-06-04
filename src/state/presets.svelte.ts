@@ -1,6 +1,6 @@
 // Reactive store for the preset UI. Holds the cached directory packet,
 // per-slot names, the active slot, and an in-flight `busy` flag. The
-// dirty flag is *not* a stored field — `presetsDirty.current` computes
+// dirty flag is *not* a stored field — `presetsDirty(s)` computes
 // the diff on read.
 
 import {
@@ -10,7 +10,7 @@ import {
   diffSnapshots, type SnapshotChange,
 } from '@/domain';
 import { settings } from './settings.svelte';
-import { activeSession } from './appState.svelte';
+import type { ReadySession } from './appState.svelte';
 
 export interface PresetsState {
   directory: PresetDirectoryInfo | null;
@@ -24,7 +24,7 @@ export interface PresetsState {
   // Surfaces the last mutating-action failure (save/load/rename/delete/
   // startup). Distinct from lastFetchError so a stale rename failure
   // doesn't hide a directory-refetch error and vice-versa. Cleared at the
-  // start of each mutating action and on resetPresets / cache invalidation.
+  // start of each mutating action and on cache invalidation.
   lastActionError: string | null;
   // The device's saved boot-baseline master volume (0xD7), fetched alongside
   // the directory. Null until fetched / when no device. Drives the Save button's
@@ -45,60 +45,30 @@ export function createPresetsState(): PresetsState {
   return s;
 }
 
-// Inert fallback so component reads while disconnected get null/default values. A
-// stale in-flight fetchPresetInfo write can land here after disconnect; harmless,
-// since it is never read while a session is active and the next connect gets a fresh store.
-const detached = createPresetsState();
-
-function pst(): PresetsState {
-  return activeSession()?.presets ?? detached;
-}
-
-// Transparent forwarder over the active session's preset store. Transitional
-// scaffolding: runtime/presets.ts and the preset components keep using the
-// `presets` global unchanged; they migrate to session.presets in a later phase,
-// after which this bag (and the flat shape) gives way to the loading|ready|error
-// union. resetPresets/presetsDirty below read/write through this forwarder.
-export const presets = {
-  get directory() { return pst().directory; }, set directory(v: PresetsState['directory']) { pst().directory = v; },
-  get names() { return pst().names; }, set names(v: PresetsState['names']) { pst().names = v; },
-  get active() { return pst().active; }, set active(v: PresetsState['active']) { pst().active = v; },
-  get busy() { return pst().busy; }, set busy(v: boolean) { pst().busy = v; },
-  get lastFetchError() { return pst().lastFetchError; }, set lastFetchError(v: string | null) { pst().lastFetchError = v; },
-  get lastActionError() { return pst().lastActionError; }, set lastActionError(v: string | null) { pst().lastActionError = v; },
-  get savedMasterVolumeDb() { return pst().savedMasterVolumeDb; }, set savedMasterVolumeDb(v: number | null) { pst().savedMasterVolumeDb = v; },
-};
-
 // Device-reported kinds that change without a user edit; never count as dirty.
 const RUNTIME_CHANGE_KINDS = new Set<SnapshotChange['kind']>(['lgSoundSyncStatus']);
 
 // Re-evaluates on every read inside a tracking context. The diff is
 // O(channels × bands) ≈ 132 ops — cheap enough to run per read. The change-set
 // is empty in the common (clean) case, so .some() short-circuits immediately.
-export const presetsDirty = {
-  get current(): boolean {
-    const m = activeSession()?.mirror;
-    if (!m?.current || !m.baseline) return false;
-    const ignoreVol = (presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent) === MasterVolumeMode.Independent;
-    const soft = settings.soft.muted;
-    // Pins ride the preset only when includePins is set; otherwise a pin change
-    // isn't preset content and must not mark dirty. Unknown directory ⇒ excluded.
-    const includePins = presets.directory?.includePins === true;
-    return diffSnapshots(m.baseline, m.current).some((c) =>
-      !RUNTIME_CHANGE_KINDS.has(c.kind) &&
-      !(c.kind === 'masterVolume' && (ignoreVol || soft)) &&
-      !(c.kind === 'outputPins' && !includePins));
-  },
-};
+export function presetsDirty(s: ReadySession): boolean {
+  const m = s.mirror;
+  if (!m.current || !m.baseline) return false;
+  const ignoreVol = (s.presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent) === MasterVolumeMode.Independent;
+  const soft = settings.soft.muted;
+  // Pins ride the preset only when includePins is set; otherwise a pin change
+  // isn't preset content and must not mark dirty. Unknown directory ⇒ excluded.
+  const includePins = s.presets.directory?.includePins === true;
+  return diffSnapshots(m.baseline, m.current).some((c) =>
+    !RUNTIME_CHANGE_KINDS.has(c.kind) &&
+    !(c.kind === 'masterVolume' && (ignoreVol || soft)) &&
+    !(c.kind === 'outputPins' && !includePins));
+}
 
-export function resetPresets(): void {
-  presets.directory       = null;
-  presets.names           = Array.from({ length: PRESET_SLOT_COUNT }, () => null);
-  presets.active          = null;
-  presets.busy            = false;
-  presets.lastFetchError  = null;
-  presets.lastActionError = null;
-  // Clear any pending boundary modal so test runs don't carry state.
+// Clears any pending boundary modal so test runs don't carry state. Each
+// installed session gets a fresh PresetsState, so there are no forwarder
+// fields to reset here.
+export function resetBoundary(): void {
   boundary.pending = null;
   pendingResolve = null;
 }

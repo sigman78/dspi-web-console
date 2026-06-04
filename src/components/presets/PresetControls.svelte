@@ -19,7 +19,7 @@
 
   const active = $derived(s.presets.active);
   const dir = $derived(s.presets.directory);
-  const dirty = $derived(presetsDirty.current);
+  const dirty = $derived(presetsDirty(s));
   const connected = $derived(connection.connected);
   const activeOccupied = $derived.by(() => {
     if (active == null || !dir) return false;

@@ -16,7 +16,7 @@
     return d != null && d.startupMode === PresetStartupMode.Specified && d.defaultSlot === slot;
   });
   const isCopySource = $derived(s.copySource.slot === slot);
-  const isDirty = $derived(isActive && presetsDirty.current);
+  const isDirty = $derived(isActive && presetsDirty(s));
   const name = $derived(s.presets.names[slot] ?? '');
 
   let editing = $state(false);

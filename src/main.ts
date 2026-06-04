@@ -2,7 +2,7 @@ import { mount } from 'svelte';
 import './app.css';
 import App from './App.svelte';
 import {
-  dispatch,
+  dispatch, activeSession,
   restoreSettings, startSettingsPersistence,
   presetsDirty,
 } from './state';
@@ -30,7 +30,8 @@ registerNavigatorReconnect();
 
 // Show warning with unsaved changes
 window.addEventListener('beforeunload', (e) => {
-  if (presetsDirty.current) {
+  const s = activeSession();
+  if (s && presetsDirty(s)) {
     e.preventDefault();
     e.returnValue = '';
   }

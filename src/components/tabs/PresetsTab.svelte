@@ -26,7 +26,7 @@
   // atomically via fetchAndApplyAsBaseline(), so there is no transient
   // dirty=true window to filter out during wire ops.
   $effect(() => {
-    if (presetsDirty.current && s.copySource.slot != null) {
+    if (presetsDirty(s) && s.copySource.slot != null) {
       s.copySource.slot = null;
     }
   });

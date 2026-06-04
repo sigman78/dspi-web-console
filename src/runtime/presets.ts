@@ -250,7 +250,7 @@ export async function loadPresetSlot(s: ReadySession, slot: PresetSlot): Promise
   //   - RAM is dirty AND
   //   - warnOnPresetSwitchDirty is on AND
   //   - the active slot exists (no slot to save into otherwise).
-  if (settings.warnOnPresetSwitchDirty && presetsDirty.current && s.presets.active != null) {
+  if (settings.warnOnPresetSwitchDirty && presetsDirty(s) && s.presets.active != null) {
     const choice = await askBoundary({
       title: 'Unsaved changes',
       message: 'You have unsaved changes in the active preset. Switching to another preset will discard them.',

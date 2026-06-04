@@ -6,7 +6,7 @@
   const active = $derived(s?.presets.active);
   const name = $derived(active == null ? '' : (s?.presets.names[active] ?? ''));
   const connected = $derived(connection.connected);
-  const dirty = $derived(presetsDirty.current);
+  const dirty = $derived(s ? presetsDirty(s) : false);
 
   function onclick() {
     if (!connected) return;

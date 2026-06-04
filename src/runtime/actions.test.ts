@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './actionsDevice';
-import { connection, settings, presets, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
+import { connection, settings, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { bootMock } from './session';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -437,14 +437,14 @@ describe('actions — master volume mode', () => {
   });
 
   it('setMasterVolumeMode flips the directory cache value', async () => {
-    presets.directory = {
+    activeSession()!.presets.directory = {
       occupiedSlotsSet: new Set(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
       includePins: false,
       masterVolumeMode: MasterVolumeMode.Independent,
     };
     setMasterVolumeMode(activeSession()!, MasterVolumeMode.WithPreset);
-    await vi.waitFor(() => expect(presets.directory!.masterVolumeMode).toBe(MasterVolumeMode.WithPreset));
+    await vi.waitFor(() => expect(activeSession()!.presets.directory!.masterVolumeMode).toBe(MasterVolumeMode.WithPreset));
   });
 
   it('saveMasterVolumeBaseline warns on flash failure and stays silent on success', async () => {
@@ -463,7 +463,7 @@ describe('actions — master volume mode', () => {
     saveMasterVolumeBaseline(activeSession()!);
     await flushAllWrites();
     expect(notices.list).toHaveLength(0);
-    expect(presets.savedMasterVolumeDb).toBe(liveMirror().current!.masterVolumeDb);
+    expect(activeSession()!.presets.savedMasterVolumeDb).toBe(liveMirror().current!.masterVolumeDb);
   });
 });
 

@@ -9,7 +9,6 @@ import {
 import * as Clamp from '@/domain/clamp';
 import {
   type ReadySession,
-  presets,
   settings,
   pushNotice,
 } from '@/state';
@@ -351,7 +350,7 @@ export function toggleMute(s: ReadySession): void {
 
 export function setMasterVolumeMode(s: ReadySession, mode: MasterVolumeMode): void {
   void command('set master volume mode', () => s.device.setMasterVolumeMode(mode), () => {
-    if (presets.directory) presets.directory = { ...presets.directory, masterVolumeMode: mode };
+    if (s.presets.directory) s.presets.directory = { ...s.presets.directory, masterVolumeMode: mode };
   });
 }
 
@@ -365,7 +364,7 @@ export function saveMasterVolumeBaseline(s: ReadySession): void {
     if (!ok) { pushNotice('warn', 'Saving master volume failed (flash write error).'); return; }
     // Device saved its current master volume as the boot baseline → mirror it
     // so the Save button settles to clean without a refetch.
-    presets.savedMasterVolumeDb = s.mirror.snapshot.masterVolumeDb;
+    s.presets.savedMasterVolumeDb = s.mirror.snapshot.masterVolumeDb;
   });
 }
 

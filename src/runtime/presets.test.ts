@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { bootMock } from './session';
-import { presets, resetPresets, boundary, resolveBoundary, settings, activeSession } from '@/state';
+import { resetBoundary, boundary, resolveBoundary, settings, activeSession } from '@/state';
 import { PresetStartupMode, parseBulkParams } from '@/protocol';
 import type { PresetSlot } from '@/domain';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
@@ -22,27 +22,28 @@ import { forceResyncNow } from './resync';
 
 const liveMirror = () => activeSession()!.mirror;
 const sess = () => activeSession()!;
+const ps = () => activeSession()!.presets;
 
 describe('runtime/presets', () => {
   beforeEach(async () => {
-    resetPresets();
+    resetBoundary();
     await bootMock('rp2350');
   });
 
   describe('fetchPresetInfo', () => {
     it('populates directory, names, active, and saved master volume', async () => {
       await fetchPresetInfo(sess());
-      expect(presets.directory).not.toBe(null);
-      expect(presets.names.every((n) => n !== null)).toBe(true);
-      expect(presets.active === null || (presets.active! >= 0 && presets.active! < 10)).toBe(true);
-      expect(typeof presets.savedMasterVolumeDb).toBe('number');
+      expect(ps().directory).not.toBe(null);
+      expect(ps().names.every((n) => n !== null)).toBe(true);
+      expect(ps().active === null || (ps().active! >= 0 && ps().active! < 10)).toBe(true);
+      expect(typeof ps().savedMasterVolumeDb).toBe('number');
     });
 
     it('is idempotent when cache is populated', async () => {
       await fetchPresetInfo(sess());
-      const before = presets.directory;
+      const before = ps().directory;
       await fetchPresetInfo(sess());
-      expect(presets.directory).toBe(before);
+      expect(ps().directory).toBe(before);
     });
 
     it('continues populating directory when an individual getPresetName fails', async () => {
@@ -55,9 +56,9 @@ describe('runtime/presets', () => {
       };
       try {
         await fetchPresetInfo(sess());
-        expect(presets.directory).not.toBe(null);
-        expect(presets.names[7]).toBe(''); // failed slot becomes empty
-        expect(presets.lastFetchError).toBe(null); // names failures don't set the directory-level error
+        expect(ps().directory).not.toBe(null);
+        expect(ps().names[7]).toBe(''); // failed slot becomes empty
+        expect(ps().lastFetchError).toBe(null); // names failures don't set the directory-level error
       } finally {
         (realDevice as any).getPresetName = origGetName;
       }
@@ -71,11 +72,11 @@ describe('runtime/presets', () => {
       };
       try {
         // need to clear cache first since previous tests populated it
-        presets.directory = null;
-        presets.lastFetchError = null;
+        ps().directory = null;
+        ps().lastFetchError = null;
         await fetchPresetInfo(sess());
-        expect(presets.directory).toBe(null);
-        expect(presets.lastFetchError).toContain('Directory fetch failed');
+        expect(ps().directory).toBe(null);
+        expect(ps().lastFetchError).toContain('Directory fetch failed');
       } finally {
         (realDevice as any).getPresetDirectory = origGetDir;
       }
@@ -101,7 +102,7 @@ describe('runtime/presets', () => {
       await saveActivePreset(sess());
       const r = await loadPresetSlot(sess(), 0 as any);
       expect(r.ok).toBe(true);
-      expect(presets.active).toBe(0);
+      expect(ps().active).toBe(0);
     });
 
     it('issues loadPreset on the wire and re-baselines saved from a fresh getAllParams', async () => {
@@ -145,19 +146,19 @@ describe('runtime/presets', () => {
   describe('deletePresetSlot', () => {
     it('clears the occupied bit', async () => {
       await fetchPresetInfo(sess());
-      const prevActive = presets.active;
+      const prevActive = ps().active;
       if (prevActive == null) {
         await loadPresetSlot(sess(), 0 as any);
       }
       await renamePresetSlot(sess(), 5 as any, 'Test');
       const r = await deletePresetSlot(sess(), 5 as any);
       expect(r.ok).toBe(true);
-      expect(presets.directory!.occupiedSlotsSet.has(5 as any)).toBe(false);
+      expect(ps().directory!.occupiedSlotsSet.has(5 as any)).toBe(false);
     });
 
     it('rejects deleting the active slot', async () => {
       await fetchPresetInfo(sess());
-      const active = presets.active ?? 0 as any;
+      const active = ps().active ?? 0 as any;
       const r = await deletePresetSlot(sess(), active);
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.code).toBe('active');
@@ -187,7 +188,7 @@ describe('runtime/presets', () => {
       try {
         await renamePresetSlot(sess(), 2 as any, 'Cinema');
         expect(calls).toEqual([{ slot: 2, name: 'Cinema' }]);
-        expect(presets.names[2]).toBe('Cinema');
+        expect(ps().names[2]).toBe('Cinema');
       } finally {
         (d as any).setPresetName = orig;
       }
@@ -199,8 +200,8 @@ describe('runtime/presets', () => {
       await fetchPresetInfo(sess());
       const r = await setStartupDefault(sess(), 4 as any);
       expect('ok' in r && r.ok).toBe(true);
-      expect(presets.directory!.startupMode).toBe(PresetStartupMode.Specified);
-      expect(presets.directory!.defaultSlot).toBe(4);
+      expect(ps().directory!.startupMode).toBe(PresetStartupMode.Specified);
+      expect(ps().directory!.defaultSlot).toBe(4);
     });
 
     it('sets the startup mode without losing defaultSlot', async () => {
@@ -208,8 +209,8 @@ describe('runtime/presets', () => {
       await setStartupDefault(sess(), 4 as any);
       const r = await setStartupMode(sess(), PresetStartupMode.LastActive);
       expect('ok' in r && r.ok).toBe(true);
-      expect(presets.directory!.startupMode).toBe(PresetStartupMode.LastActive);
-      expect(presets.directory!.defaultSlot).toBe(4);
+      expect(ps().directory!.startupMode).toBe(PresetStartupMode.LastActive);
+      expect(ps().directory!.defaultSlot).toBe(4);
     });
   });
 
@@ -218,9 +219,9 @@ describe('runtime/presets', () => {
       await fetchPresetInfo(sess());
       const r = await setPresetIncludePins(sess(), true);
       expect('ok' in r && r.ok).toBe(true);
-      expect(presets.directory!.includePins).toBe(true);
+      expect(ps().directory!.includePins).toBe(true);
       await setPresetIncludePins(sess(), false);
-      expect(presets.directory!.includePins).toBe(false);
+      expect(ps().directory!.includePins).toBe(false);
     });
 
     it('records an action error (record-only, no rethrow) when the device write fails', async () => {
@@ -231,8 +232,8 @@ describe('runtime/presets', () => {
       try {
         const r = await setPresetIncludePins(sess(), true);
         expect('ok' in r && r.ok).toBe(false);
-        expect(presets.lastActionError).toContain('Set include pins');
-        expect(presets.lastActionError).toContain('wire fail');
+        expect(ps().lastActionError).toContain('Set include pins');
+        expect(ps().lastActionError).toContain('wire fail');
       } finally {
         d.setPresetIncludePins = orig;
       }
@@ -242,23 +243,23 @@ describe('runtime/presets', () => {
   describe('savePresetSlot', () => {
     it('saves current RAM into a slot and makes it active (mirrors firmware)', async () => {
       await fetchPresetInfo(sess());
-      const initialActive = presets.active;
+      const initialActive = ps().active;
       // Pick a slot that is not the active one
       const target = (initialActive === 5 ? 6 : 5) as PresetSlot;
       const r = await savePresetSlot(sess(), target);
       expect(r.ok).toBe(true);
-      expect(presets.directory!.occupiedSlotsSet.has(target)).toBe(true);
+      expect(ps().directory!.occupiedSlotsSet.has(target)).toBe(true);
       // Per HW-PROFILES §1b, PresetSave sets lastActive=slot. Host mirrors.
-      expect(presets.active).toBe(target);
+      expect(ps().active).toBe(target);
     });
 
     it('saving into the active slot advances the baseline', async () => {
       await fetchPresetInfo(sess());
       // Ensure there is an active slot for the baseline check.
-      if (presets.active == null) {
+      if (ps().active == null) {
         await loadPresetSlot(sess(), 0 as any);
       }
-      const active = presets.active!;
+      const active = ps().active!;
       liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
       expect(liveMirror().baseline?.bypass).not.toBe(liveMirror().current?.bypass);
       const r = await savePresetSlot(sess(), active);
@@ -297,8 +298,8 @@ describe('runtime/presets', () => {
       try {
         const r = await renamePresetSlot(sess(), 2 as any, 'X');
         expect('ok' in r && r.ok).toBe(false);
-        expect(presets.lastActionError).toContain('Rename');
-        expect(presets.lastActionError).toContain('boom');
+        expect(ps().lastActionError).toContain('Rename');
+        expect(ps().lastActionError).toContain('boom');
       } finally {
         (d as any).setPresetName = orig;
       }
@@ -313,7 +314,7 @@ describe('runtime/presets', () => {
         const r = await renamePresetSlot(sess(), 1 as PresetSlot, 'X');
         expect('ok' in r && r.ok).toBe(false);
         // banner still recorded:
-        expect(presets.lastActionError).toContain('Rename');
+        expect(ps().lastActionError).toContain('Rename');
       } finally {
         (d as any).setPresetName = orig;
       }
@@ -327,15 +328,15 @@ describe('runtime/presets', () => {
 
     it('clears lastActionError at the start of a successful subsequent call', async () => {
       await fetchPresetInfo(sess());
-      presets.lastActionError = 'stale';
+      ps().lastActionError = 'stale';
       await renamePresetSlot(sess(), 3 as any, 'Cinema');
-      expect(presets.lastActionError).toBe(null);
+      expect(ps().lastActionError).toBe(null);
     });
 
     it('dismissPresetActionError clears the error banner state', () => {
-      presets.lastActionError = 'Save: boom';
+      ps().lastActionError = 'Save: boom';
       dismissPresetActionError(sess());
-      expect(presets.lastActionError).toBe(null);
+      expect(ps().lastActionError).toBe(null);
     });
   });
 
@@ -347,7 +348,7 @@ describe('runtime/presets', () => {
       const active = 1 as PresetSlot;
       // Make slot 1 active.
       await savePresetSlot(sess(), active);
-      expect(presets.active).toBe(active);
+      expect(ps().active).toBe(active);
 
       const sourceBlob = parseBulkParams(makeBulk());
       const realDevice = activeSession()!.device;
@@ -380,7 +381,7 @@ describe('runtime/presets', () => {
         ]);
         expect(setAllArg).toBe(sourceBlob);
         expect('ok' in r && r.ok).toBe(true);
-        expect(presets.active).toBe(active);
+        expect(ps().active).toBe(active);
       } finally {
         (realDevice as any).loadPreset  = origLoad;
         (realDevice as any).savePreset  = origSave;
@@ -402,7 +403,7 @@ describe('runtime/presets', () => {
         const r = await pastePresetTo(sess(), 2 as PresetSlot);
         expect(r.ok).toBe(false);
         expect(saveCalls).toBe(0);
-        expect(presets.lastActionError).toMatch(/^Paste:/);
+        expect(ps().lastActionError).toMatch(/^Paste:/);
       } finally {
         (realDevice as any).loadPreset = origLoad;
         (realDevice as any).savePreset = origSave;
@@ -412,7 +413,7 @@ describe('runtime/presets', () => {
     it('rejects when src === active', async () => {
       await fetchPresetInfo(sess());
       await savePresetSlot(sess(), 3 as PresetSlot);
-      expect(presets.active).toBe(3);
+      expect(ps().active).toBe(3);
       const r = await pastePresetTo(sess(), 3 as PresetSlot);
       expect(r.ok).toBe(false);
       if ('code' in r) expect(r.code).toBe('active');
@@ -428,7 +429,7 @@ describe('runtime/presets', () => {
       await fetchPresetInfo(sess());
       const active = 1 as PresetSlot;
       await savePresetSlot(sess(), active);
-      expect(presets.active).toBe(active);
+      expect(ps().active).toBe(active);
       const liveFmt = activeSession()!.device.capabilities.wire;
       const wrongFmt = liveFmt + 1;
 
@@ -455,7 +456,7 @@ describe('runtime/presets', () => {
         if (!r.ok && 'message' in r) {
           expect(r.message).toMatch(/Paste blocked: snapshot format/);
         }
-        expect(presets.lastActionError).toMatch(/^Paste:.*Paste blocked: snapshot format/);
+        expect(ps().lastActionError).toMatch(/^Paste:.*Paste blocked: snapshot format/);
         expect(setAllParamsSpy).not.toHaveBeenCalled();
         expect(savePresetSpy).not.toHaveBeenCalled();
       } finally {
@@ -473,7 +474,7 @@ describe('runtime/presets', () => {
       const src    = 3 as PresetSlot;
       const active = 1 as PresetSlot;
       await savePresetSlot(sess(), active);
-      expect(presets.active).toBe(active);
+      expect(ps().active).toBe(active);
 
       const realDevice = activeSession()!.device;
       const origLoad   = realDevice.loadPreset.bind(realDevice);
@@ -575,7 +576,7 @@ describe('runtime/presets', () => {
 
     it('saves first when boundary resolves with save', async () => {
       await fetchPresetInfo(sess());
-      const activeBefore = presets.active!;
+      const activeBefore = ps().active!;
       await saveActivePreset(sess());
       liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
       const realDevice = activeSession()!.device;

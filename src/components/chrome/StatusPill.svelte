@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { connection, dispatch, presetsDirty } from '@/state';
+  import { connection, dispatch, presetsDirty, activeSession } from '@/state';
   import { connectRequested, webUsbUnsupportedReason } from '@/runtime';
 
+  const s = $derived(activeSession());
   let busy = $state(false);
   const unsupported = webUsbUnsupportedReason();
 
@@ -44,7 +45,7 @@
   title={unsupported ??
     (connection.phase === 'errored'
       ? `ERROR · ${connection.error ?? ''}`
-      : presetsDirty.current && connection.connected
+      : (s ? presetsDirty(s) : false) && connection.connected
         ? `${text} · unsaved changes`
         : text)}
 >
