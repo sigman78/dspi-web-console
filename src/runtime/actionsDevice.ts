@@ -25,7 +25,7 @@ let inflightSync: Promise<void> | null = null;
 
 export async function syncDeviceSnapshot(): Promise<void> {
   if (inflightSync) return inflightSync;
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) throw new Error('No device');
   inflightSync = (async () => {
     try {
@@ -82,7 +82,7 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
 // before the device-touching mute restore -- it doesn't need the device.
 export async function reconcileAfterSync(): Promise<void> {
   reconcileEqTarget();
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return;
   if (settings.soft.muted) {
     const restoreFrom = settings.soft.mutedFromDb ?? mirror.current?.masterVolumeDb ?? 0;
@@ -118,7 +118,7 @@ export function attachTransportListeners(transport: DspTransport): () => void {
 }
 
 export async function factoryResetDevice(): Promise<void> {
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return;
   try {
     // Drain any parked optimistic write so a pre-reset bulk send can't settle

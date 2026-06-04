@@ -1,4 +1,4 @@
-import { session, applyClipFlags, applyPeaks, status } from '@/state';
+import { activeSession, applyClipFlags, applyPeaks, status } from '@/state';
 import { mirror, isInFlight, peekReconcile, consumeReconcile, lastWriteMs, requestReconcile } from '@/state/mirror.svelte';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
@@ -124,7 +124,7 @@ export function startPolling(clock: LoopClock = timerClock(STATUS_INTERVAL_MS)):
 
   async function doPoll(): Promise<void> {
     if (stopped) return;
-    const d = session.device;
+    const d = activeSession()?.device;
     if (!d) return;
     const now = performance.now();
     for (const c of cadences) {

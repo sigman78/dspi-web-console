@@ -1,4 +1,4 @@
-import { session } from '@/state';
+import { activeSession } from '@/state';
 import { Log } from '@/utils';
 import { mirror } from '@/state/mirror.svelte';
 
@@ -7,7 +7,7 @@ import { mirror } from '@/state/mirror.svelte';
 // `presetBaseline`, which must NOT drift on every resync; callers that need to
 // re-baseline (Preset Load / Revert) use fetchAndApplyAsBaseline.
 export async function forceResyncNow(): Promise<void> {
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return;
   try {
     const snap = await d.getSnapshot();
@@ -23,7 +23,7 @@ export async function forceResyncNow(): Promise<void> {
 // where draft and saved disagree and observers see a spurious dirty flip.
 // See docs/ARCH.md for the baseline/draft split.
 export async function fetchAndApplyAsBaseline(): Promise<void> {
-  const d = session.device;
+  const d = activeSession()?.device;
   if (!d) return;
   try {
     const snap = await d.getSnapshot();
