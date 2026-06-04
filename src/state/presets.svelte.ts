@@ -1,9 +1,7 @@
 // Reactive store for the preset UI. Holds the cached directory packet,
 // per-slot names, the active slot, and an in-flight `busy` flag. The
 // dirty flag is *not* a stored field — `presetsDirty.current` computes
-// the diff on read (matches the `isInFlight` pattern in mirror.svelte.ts).
-//
-// See docs/superpowers/specs/2026-05-10-presets-wire-protocol-plan.md §State runtime.
+// the diff on read.
 
 import {
   type PresetSlot, PRESET_SLOT_COUNT,

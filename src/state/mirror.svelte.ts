@@ -90,16 +90,3 @@ export const mirror = {
   reset(): void { mst().reset(); },
 };
 export const presetBaseline = { get current(): DspSnapshot | null { return mst().baseline; } };
-export const inflight = { get current(): number { return mst().inflight; } };
-export const isInFlight = { get current(): boolean { return mst().inflight > 0; } };
-
-export function bumpInflight(): void { mst().bumpInflight(); }
-export function dropInflight(): void { mst().dropInflight(); }
-export function noteWriteActivity(): void { mst().noteWriteActivity(); }
-export function lastWriteMs(): number { return mst().lastWriteMs; }
-export function requestReconcile(eager: boolean): void { mst().requestReconcile(eager); }
-export function peekReconcile(): { wanted: boolean; eager: boolean } { return mst().peekReconcile(); }
-export function consumeReconcile(): { wanted: boolean; eager: boolean } { return mst().consumeReconcile(); }
-export function beginPresetGuard(): void { mst().beginPresetGuard(); }
-export function endPresetGuard(trailingMs: number, now?: number): void { mst().endPresetGuard(trailingMs, now); }
-export function presetGuardActive(now?: number): boolean { return mst().presetGuardActive(now); }
