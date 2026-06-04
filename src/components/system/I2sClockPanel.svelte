@@ -2,7 +2,7 @@
   import Panel from '../chrome/Panel.svelte';
   import SegmentedSelect from '../chrome/SegmentedSelect.svelte';
   import PinSelect from './PinSelect.svelte';
-  import { mirror, connection, status } from '@/state';
+  import { mirror, connection } from '@/state';
   import { setI2sBckPin, setMckEnabled, setMckPin, setMckMultiplier } from '@/runtime';
   import { validBckPins, availablePinsFor } from '@/domain';
   import { getSession } from '@/components/sessionContext';
@@ -12,7 +12,7 @@
   const snap = $derived(mirror.current);
   const connected = $derived(connection.connected);
   const anyI2s = $derived(snap?.i2s?.outputSlotTypes.some((t) => t === 1) ?? false);
-  const rate = $derived(status.info?.sampleRateHz ?? 0);
+  const rate = $derived(s.telemetry.info?.sampleRateHz ?? 0);
   const allow256 = $derived(rate < 96000);
 
   const ENABLE_OPTS = [

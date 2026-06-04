@@ -15,13 +15,12 @@ vi.mock('@/state', () => {
   return {
     mirror: { get current() { return snap; } },
     connection: { get connected() { return true; }, get phase() { return 'ready'; } },
-    status: { get info() { return { sampleRateHz: 96000 }; } },
   };
 });
 
 import I2sClockPanel from './I2sClockPanel.svelte';
 
-const session = {} as any;
+const session = { telemetry: { info: { sampleRateHz: 96000 } } } as any;
 
 describe('I2sClockPanel', () => {
   test('256x multiplier option is disabled at 96 kHz', () => {

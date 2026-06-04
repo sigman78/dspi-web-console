@@ -1,7 +1,7 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
   import KV from '../chrome/KV.svelte';
-  import { mirror, connection, status } from '@/state';
+  import { mirror, connection } from '@/state';
   import ChannelNamesPanel from '../system/ChannelNamesPanel.svelte';
   import ResetPanel from '../system/ResetPanel.svelte';
   import OutputsPanel from '../system/OutputsPanel.svelte';
@@ -13,7 +13,7 @@
   const s = getSession();
 
   const snap = $derived(mirror.current);
-  const info = $derived(status.info);
+  const info = $derived(s.telemetry.info);
   const connected = $derived(connection.connected);
 
   function fmtNum(v: number | null | undefined): string { return v == null ? '—' : String(v); }
@@ -49,12 +49,12 @@
         <KV label="SAMPLE"    value={info?.sampleRateHz  != null ? `${(info.sampleRateHz / 1000).toFixed(1)} kHz` : '—'} />
         <KV label="VOLTAGE"   value={info?.coreVoltageMv != null ? `${(info.coreVoltageMv / 1000).toFixed(3)} V` : '—'} />
         <KV label="TEMP"      value={info?.tempCDegC     != null ? `${(info.tempCDegC / 100).toFixed(1)} °C` : '—'} />
-        <KV label="CPU0"      value={`${status.cpu0}%`} />
-        <KV label="CPU1"      value={`${status.cpu1}%`} />
-        <KV label="STREAMING" value={status.streaming ? 'YES' : 'NO'} tone={status.streaming ? 'ok' : 'off'} />
-        <KV label="PDM"       value={status.pdmActive ? 'ACTIVE' : 'IDLE'} tone={status.pdmActive ? 'ok' : 'off'} />
-        <KV label="SEQ"       value={String(status.sequence)} />
-        <KV label="POLL ERR"  value={String(status.errorCount)} tone={status.errorCount > 0 ? undefined : 'off'} />
+        <KV label="CPU0"      value={`${s.telemetry.cpu0}%`} />
+        <KV label="CPU1"      value={`${s.telemetry.cpu1}%`} />
+        <KV label="STREAMING" value={s.telemetry.streaming ? 'YES' : 'NO'} tone={s.telemetry.streaming ? 'ok' : 'off'} />
+        <KV label="PDM"       value={s.telemetry.pdmActive ? 'ACTIVE' : 'IDLE'} tone={s.telemetry.pdmActive ? 'ok' : 'off'} />
+        <KV label="SEQ"       value={String(s.telemetry.sequence)} />
+        <KV label="POLL ERR"  value={String(s.telemetry.errorCount)} tone={s.telemetry.errorCount > 0 ? undefined : 'off'} />
       </div>
     </Panel>
 
@@ -79,8 +79,8 @@
         {#each snap?.channels ?? [] as ch (ch.id)}
           <span
             class="clipsq ch-{chKey(ch.id)}"
-            class:on={status.clipLatched[ch.id]}
-            title="{ch.shortName} · {ch.name}{status.clipLatched[ch.id] ? ' · CLIPPED' : ''}"
+            class:on={s.telemetry.clipLatched[ch.id]}
+            title="{ch.shortName} · {ch.name}{s.telemetry.clipLatched[ch.id] ? ' · CLIPPED' : ''}"
           >{ch.shortName}</span>
         {/each}
       </div>

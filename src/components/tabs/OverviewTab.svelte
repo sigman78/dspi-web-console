@@ -4,10 +4,12 @@
   import KV from '../chrome/KV.svelte';
   import BodePlot, { type BodeCurve } from '../bode/BodePlot.svelte';
   import { filterCurve } from '../bode/filterCurve';
-  import { mirror, status } from '@/state';
+  import { mirror } from '@/state';
+  import { getSession } from '../sessionContext';
   import { matrixRows, ChannelId, inputIndexOf, CrossfeedPreset } from '@/domain';
   import { chKey } from '@/styles/palette';
 
+  const s = getSession();
   const snap = $derived(mirror.current);
   const rows = $derived(matrixRows(snap));
 
@@ -178,9 +180,9 @@
             <span class="odelay">{out.delayMs.toFixed(1)} ms</span>
             <span
               class="oclip"
-              class:on={status.clipLatched[out.id]}
-              title={status.clipLatched[out.id] ? `${out.shortName} · CLIPPED` : ''}
-            >{status.clipLatched[out.id] ? '●' : '·'}</span>
+              class:on={s.telemetry.clipLatched[out.id]}
+              title={s.telemetry.clipLatched[out.id] ? `${out.shortName} · CLIPPED` : ''}
+            >{s.telemetry.clipLatched[out.id] ? '●' : '·'}</span>
             <span class="ostatus" class:mute={out.muted} class:on={out.enabled && !out.muted}>
               {out.muted ? '✕' : out.enabled ? '●' : '○'}
             </span>
