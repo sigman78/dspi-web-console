@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { isInFlight } from '@/state/mirror.svelte';
+  import { activeSession } from '@/state';
+  const active = $derived((activeSession()?.mirror.inflight ?? 0) > 0);
 </script>
 
-<span class="dirty-dot" class:active={isInFlight.current} aria-hidden="true"></span>
+<span class="dirty-dot" class:active aria-hidden="true"></span>
 
 <style>
   .dirty-dot {

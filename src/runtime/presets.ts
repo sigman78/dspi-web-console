@@ -7,7 +7,7 @@ import {
 } from '@/state';
 import { reconcileAfterSync } from './actionsDevice';
 import { fetchAndApplyAsBaseline } from './resync';
-import { mirror, beginPresetGuard, endPresetGuard } from '@/state/mirror.svelte';
+import { mirror } from '@/state/mirror.svelte';
 import { flushAllWrites as flushWrites } from './writes';
 import type { DspDevice } from '@/device/DspDevice';
 import { acceptsWriteFormat } from '@/device/capabilities';
@@ -226,7 +226,8 @@ async function executeLoad(
   clearActionError();
   // Suppress the NotifyChannel's redundant reconciles for this self-induced op;
   // our own fetchAndApplyAsBaseline below is the authoritative resync.
-  beginPresetGuard();
+  const mir = activeSession()?.mirror;
+  mir?.beginPresetGuard();
   try {
     return await withBusy(async () => {
       await flushWrites();
@@ -248,7 +249,7 @@ async function executeLoad(
     recordActionError('Load', e);
     throw e;
   } finally {
-    endPresetGuard(PRESET_ECHO_GRACE_MS);
+    mir?.endPresetGuard(PRESET_ECHO_GRACE_MS);
   }
 }
 
@@ -313,7 +314,8 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
   clearActionError();
   // Paste runs three loads + a save, each emitting source=preset notifications;
   // suppress those self-echoes — step-8's fetchAndApplyAsBaseline is the resync.
-  beginPresetGuard();
+  const mir = activeSession()?.mirror;
+  mir?.beginPresetGuard();
   try {
     return await withBusy(async () => {
       await flushWrites();
@@ -365,7 +367,7 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
     recordActionError('Paste', e);
     throw e;
   } finally {
-    endPresetGuard(PRESET_ECHO_GRACE_MS);
+    mir?.endPresetGuard(PRESET_ECHO_GRACE_MS);
   }
 }
 

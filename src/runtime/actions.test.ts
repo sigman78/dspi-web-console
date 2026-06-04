@@ -21,7 +21,6 @@ import { fromBulkParams } from '@/device/snapshotCodec';
 import { deriveCapabilities } from '@/device/capabilities';
 
 import { cancelAllWrites as cancelWrites, flushAllWrites } from './writes';
-import { inflight, peekReconcile, consumeReconcile } from '@/state/mirror.svelte';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
@@ -851,15 +850,15 @@ describe('dual-lane inflight coexistence: scrub-class + write-class share the co
     dispatch({ t: 'synced', session: makeReadySession(device) });
     mirror.init(fromBulkParams(testHardware, bulk));
 
-    expect(inflight.current).toBe(0);
+    expect(activeSession()!.mirror.inflight).toBe(0);
     // scrub-class: masterVolume uses scrub() → bumpInflight() at schedule time.
     setMasterVolume(activeSession()!, -6);
-    expect(inflight.current).toBe(1);
+    expect(activeSession()!.mirror.inflight).toBe(1);
     // write-class: bypass uses write() → bumpInflight() as well.
     setBypass(activeSession()!, true);
-    expect(inflight.current).toBe(2);
+    expect(activeSession()!.mirror.inflight).toBe(2);
     // Both writes in flight: the resync soft-skip guard covers both.
-    expect(inflight.current).toBeGreaterThan(0);
+    expect(activeSession()!.mirror.inflight).toBeGreaterThan(0);
   });
 });
 
@@ -1035,10 +1034,10 @@ describe('output config verbs', () => {
 
   it('requests a reconcile on a successful config write, honoring eagerReconcile', async () => {
     settings.eagerReconcile = true;
-    consumeReconcile(); // clear anything pending from boot
+    activeSession()!.mirror.consumeReconcile(); // clear anything pending from boot
     setI2sBckPin(activeSession()!, 16);
     await flushAllWrites();
-    expect(peekReconcile()).toEqual({ wanted: true, eager: true });
+    expect(activeSession()!.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
     settings.eagerReconcile = false;
   });
 
