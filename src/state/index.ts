@@ -1,4 +1,3 @@
-export * from './session.svelte';
 export * from './appState.svelte';
 export * from './makeSession.svelte';
 export * from './mirror.svelte';

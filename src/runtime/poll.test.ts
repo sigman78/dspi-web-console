@@ -4,7 +4,7 @@ import { fromBulkParams } from '@/device/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
-import { bindDevice, mirror, presetBaseline, settings, dispatch, makeReadySession } from '@/state';
+import { mirror, presetBaseline, settings, dispatch, makeReadySession } from '@/state';
 import {
   requestReconcile, consumeReconcile, peekReconcile, noteWriteActivity,
   inflight, bumpInflight, dropInflight,
@@ -26,15 +26,13 @@ function manualClock(): LoopClock & { fire(): void; armed(): boolean } {
   };
 }
 
-// Bind the device for poll's session.device read AND install a ready session so
+// Install a ready session so poll's activeSession()?.device read resolves AND
 // the now session-scoped telemetry resolves to a fresh per-test StatusStore.
 function connect(device: DspDevice): void {
-  bindDevice(device);
   dispatch({ t: 'synced', session: makeReadySession(device) });
 }
 function teardown(): void {
   dispatch({ t: 'disconnected' });
-  bindDevice(null);
 }
 
 function pollDevice(status = { peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 }) {

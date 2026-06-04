@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, setOutputDelay } from './actions';
-import { mirror, bindDevice, activeSession } from '@/state';
+import { mirror, activeSession } from '@/state';
 import { bootMock } from './session';
 import { cancelAllWrites as cancelWrites } from './writes';
 import { endConnection } from './connectionScope';
@@ -10,10 +10,6 @@ afterEach(() => { endConnection(); cancelWrites(); });
 describe('action boundary clamps out-of-range values', () => {
   beforeEach(async () => {
     await bootMock('rp2350');
-  });
-
-  afterEach(() => {
-    bindDevice(null);
   });
 
   it('clamps master volume above 0 dB to 0', () => {
