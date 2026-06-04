@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { write, scrub, writeChecked, command, flushAllWrites, cancelAllWrites } from './writes';
-import { inflight, dropInflight, consumeReconcile, lastWriteMs } from '@/state/mirror.svelte';
 import { connection, settings, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { Result } from '@/utils';
 
@@ -19,7 +18,6 @@ function installSession(): void {
 
 describe('write() helper', () => {
   beforeEach(() => {
-    while (inflight.current > 0) dropInflight();
     installSession();
     vi.clearAllMocks();
   });
@@ -36,65 +34,68 @@ describe('write() helper', () => {
 
   it('requests a reconcile on success (non-eager when flag off)', async () => {
     settings.eagerReconcile = false;
-    consumeReconcile();  // clear any prior pending
+    activeSession()!.mirror.consumeReconcile();  // clear any prior pending
     await write(async () => {}, () => {});
-    const { wanted, eager } = consumeReconcile();
+    const { wanted, eager } = activeSession()!.mirror.consumeReconcile();
     expect(wanted).toBe(true);
     expect(eager).toBe(false);
   });
 
   it('requests an eager reconcile on success when flag on', async () => {
     settings.eagerReconcile = true;
-    consumeReconcile();
+    activeSession()!.mirror.consumeReconcile();
     await write(async () => {}, () => {});
-    const { wanted, eager } = consumeReconcile();
+    const { wanted, eager } = activeSession()!.mirror.consumeReconcile();
     expect(wanted).toBe(true);
     expect(eager).toBe(true);
     settings.eagerReconcile = false;
   });
 
   it('does not request a reconcile when send fails', async () => {
-    consumeReconcile();
+    const s = activeSession()!;
+    s.mirror.consumeReconcile();
     await write(async () => { throw new Error('boom'); }, () => {});
-    const { wanted } = consumeReconcile();
+    const { wanted } = s.mirror.consumeReconcile();
     expect(wanted).toBe(false);
   });
 
   it('stamps write activity when called', async () => {
-    const before = lastWriteMs();
+    const before = activeSession()!.mirror.lastWriteMs;
     await write(async () => {}, () => {});
-    expect(lastWriteMs()).toBeGreaterThanOrEqual(before);
-    expect(lastWriteMs()).toBeGreaterThan(0);
+    expect(activeSession()!.mirror.lastWriteMs).toBeGreaterThanOrEqual(before);
+    expect(activeSession()!.mirror.lastWriteMs).toBeGreaterThan(0);
   });
 
   it('bumps inflight during send and drops after settle', async () => {
     let inflightDuringSend = -1;
     const send = vi.fn(async () => {
-      inflightDuringSend = inflight.current;
+      inflightDuringSend = activeSession()!.mirror.inflight;
     });
     await write(send, () => {});
     expect(inflightDuringSend).toBe(1);
-    expect(inflight.current).toBe(0);
+    expect(activeSession()!.mirror.inflight).toBe(0);
   });
 
   it('does not mutate when send rejects', async () => {
+    const s = activeSession()!;
     const mutate = vi.fn();
     const send = vi.fn(async () => { throw new Error('boom'); });
     await write(send, mutate);
     expect(mutate).not.toHaveBeenCalled();
-    expect(inflight.current).toBe(0);
+    expect(s.mirror.inflight).toBe(0);
   });
 
   it('does not mutate when generation changes mid-flight', async () => {
     const mutate = vi.fn();
     let resolveSend!: () => void;
     const send = vi.fn(() => new Promise<void>((resolve) => { resolveSend = resolve; }));
+    const s = activeSession()!;
     const p = write(send, mutate);
-    activeSession()?.dispose();  // simulate disconnect mid-flight
+    s.dispose();  // simulate disconnect mid-flight
     resolveSend!();
     await p;
     expect(mutate).not.toHaveBeenCalled();
-    expect(inflight.current).toBe(0);
+    expect(s.mirror.inflight).toBe(0);
   });
 
   it('does not call forceResyncNow on failure if generation changed', async () => {
@@ -118,10 +119,9 @@ describe('write() helper', () => {
 
 describe('writeChecked() helper', () => {
   beforeEach(() => {
-    while (inflight.current > 0) dropInflight();
     installSession();
     settings.eagerReconcile = false;
-    consumeReconcile();
+    activeSession()!.mirror.consumeReconcile();
     clearNotices();
     vi.clearAllMocks();
   });
@@ -130,13 +130,13 @@ describe('writeChecked() helper', () => {
     const patch = vi.fn();
     await writeChecked('op', async () => Result.ok(), patch);
     expect(patch).toHaveBeenCalledTimes(1);
-    expect(consumeReconcile()).toEqual({ wanted: true, eager: false });
+    expect(activeSession()!.mirror.consumeReconcile()).toEqual({ wanted: true, eager: false });
   });
 
   it('honors settings.eagerReconcile=true on an ok Result', async () => {
     settings.eagerReconcile = true;
     await writeChecked('op', async () => Result.ok(), () => {});
-    expect(consumeReconcile()).toEqual({ wanted: true, eager: true });
+    expect(activeSession()!.mirror.consumeReconcile()).toEqual({ wanted: true, eager: true });
   });
 
   it('warns with the device message and skips the patch on a non-ok Result', async () => {
@@ -189,7 +189,6 @@ describe('writeChecked() helper', () => {
 
 describe('command() helper', () => {
   beforeEach(() => {
-    while (inflight.current > 0) dropInflight();
     installSession();
     clearNotices();
     vi.clearAllMocks();
@@ -198,7 +197,7 @@ describe('command() helper', () => {
   it('runs onSettled with the resolved value on success', async () => {
     const onSettled = vi.fn();
     await command('op', async () => 42, onSettled);
-    expect(onSettled).toHaveBeenCalledWith(42);
+    expect(onSettled).toHaveBeenCalledWith(42, activeSession()!);
   });
 
   it('drops onSettled and emits no toast when generation changes mid-flight', async () => {
@@ -226,13 +225,12 @@ describe('command() helper', () => {
     const flushed = flushAllWrites();
     resolve!(7);
     await flushed;
-    expect(onSettled).toHaveBeenCalledWith(7);
+    expect(onSettled).toHaveBeenCalledWith(7, activeSession()!);
   });
 });
 
 describe('scrub() helper', () => {
   beforeEach(() => {
-    while (inflight.current > 0) dropInflight();
     installSession();
     vi.clearAllMocks();
     cancelAllWrites();  // ensure no leftover lane state between tests
@@ -247,10 +245,10 @@ describe('scrub() helper', () => {
   });
 
   it('stamps write activity on the call (before any send settles)', async () => {
-    const before = lastWriteMs();
+    const before = activeSession()!.mirror.lastWriteMs;
     scrub('k1', () => {}, async () => {});
-    expect(lastWriteMs()).toBeGreaterThan(0);
-    expect(lastWriteMs()).toBeGreaterThanOrEqual(before);
+    expect(activeSession()!.mirror.lastWriteMs).toBeGreaterThan(0);
+    expect(activeSession()!.mirror.lastWriteMs).toBeGreaterThanOrEqual(before);
     await flushAllWrites();
   });
 
@@ -285,9 +283,9 @@ describe('scrub() helper', () => {
   it('cancelAllWrites resets inflight to 0', () => {
     scrub('k1', () => {}, async () => {});
     scrub('k2', () => {}, async () => {});
-    expect(inflight.current).toBeGreaterThan(0);
+    expect(activeSession()!.mirror.inflight).toBeGreaterThan(0);
     cancelAllWrites();
-    expect(inflight.current).toBe(0);
+    expect(activeSession()!.mirror.inflight).toBe(0);
   });
 
   it('on send failure: forceResyncNow called, lane recovers', async () => {
@@ -308,20 +306,21 @@ describe('scrub() helper', () => {
 
   it('on send success: requests a reconcile (eager per flag)', async () => {
     settings.eagerReconcile = true;
-    consumeReconcile();
+    activeSession()!.mirror.consumeReconcile();
     scrub('k1', () => {}, async () => {});
     await flushAllWrites();
-    const { wanted, eager } = consumeReconcile();
+    const { wanted, eager } = activeSession()!.mirror.consumeReconcile();
     expect(wanted).toBe(true);
     expect(eager).toBe(true);
     settings.eagerReconcile = false;
   });
 
   it('on send failure: does not request a reconcile', async () => {
-    consumeReconcile();
+    const s = activeSession()!;
+    s.mirror.consumeReconcile();
     scrub('k1', () => {}, async () => { throw new Error('boom'); });
     await flushAllWrites();
-    const { wanted } = consumeReconcile();
+    const { wanted } = s.mirror.consumeReconcile();
     expect(wanted).toBe(false);
   });
 
@@ -342,7 +341,6 @@ describe('scrub() helper', () => {
 
 describe('flushAllWrites covers write() calls', () => {
   beforeEach(() => {
-    while (inflight.current > 0) dropInflight();
     installSession();
     cancelAllWrites();
   });
@@ -370,9 +368,9 @@ describe('flushAllWrites covers write() calls', () => {
     let resolveSend!: () => void;
     const send = vi.fn(() => new Promise<void>((r) => { resolveSend = r; }));
     void write(send, () => {});
-    expect(inflight.current).toBe(1);
+    expect(activeSession()!.mirror.inflight).toBe(1);
     resolveSend!();
     await flushAllWrites();
-    expect(inflight.current).toBe(0);
+    expect(activeSession()!.mirror.inflight).toBe(0);
   });
 });

@@ -14,7 +14,7 @@ export function makeReadySession(device: DspDevice): ReadySession {
   const telemetry = new StatusStore();
   const presets = createPresetsState();
   const mirror = new MirrorState();
-  const writes = new WriteCoordinator();
+  const writes = new WriteCoordinator(mirror);
   const session: ReadySession = {
     device, info: device.info, hardware: device.hardware,
     copySource, telemetry, presets, mirror, writes,

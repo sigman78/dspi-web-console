@@ -12,7 +12,7 @@
 // session was disposed (disconnect) is silently dropped (no mutate, no recovery).
 
 import { settings, pushNotice, dispatch, activeSession, type ReadySession } from '@/state';
-import { bumpInflight, dropInflight, requestReconcile, noteWriteActivity } from '@/state/mirror.svelte';
+import type { MirrorState } from '@/state/mirror.svelte';
 import { forceResyncNow } from './resync';
 import { Log, type Result } from '@/utils';
 
@@ -30,14 +30,14 @@ export async function write(
 ): Promise<void> {
   const s = activeSession();
   if (!s) return;
-  noteWriteActivity();
-  bumpInflight();
+  s.mirror.noteWriteActivity();
+  s.mirror.bumpInflight();
   const settled = (async () => {
     try {
       await send();
       if (s.alive) {
         mutate();
-        requestReconcile(settings.eagerReconcile);
+        s.mirror.requestReconcile(settings.eagerReconcile);
       }
     } catch (err) {
       if (!s.alive) return;
@@ -45,7 +45,7 @@ export async function write(
       dispatch({ t: 'failed', message: errMessage(err) });
       void forceResyncNow();
     } finally {
-      dropInflight();
+      s.mirror.dropInflight();
     }
   })();
   s.writes.inflightWrites.add(settled);
@@ -63,22 +63,22 @@ export async function write(
 export function command<T>(
   op: string,
   send: () => Promise<T>,
-  onSettled: (result: T) => void,
+  onSettled: (result: T, s: ReadySession) => void,
 ): Promise<void> {
   const s = activeSession();
   if (!s) return Promise.resolve();
-  noteWriteActivity();
-  bumpInflight();
+  s.mirror.noteWriteActivity();
+  s.mirror.bumpInflight();
   const settled = (async () => {
     try {
       const r = await send();
-      if (s.alive) onSettled(r);
+      if (s.alive) onSettled(r, s);
     } catch (err) {
       if (!s.alive) return;
       Log.error('writes', `${op} failed`, err);
       pushNotice('error', `${op} failed`);
     } finally {
-      dropInflight();
+      s.mirror.dropInflight();
     }
   })();
   s.writes.inflightWrites.add(settled);
@@ -96,10 +96,10 @@ export function writeChecked<E>(
   send: () => Promise<Result<void, E>>,
   patch: () => void,
 ): Promise<void> {
-  return command(op, send, (r) => {
+  return command(op, send, (r, s) => {
     if (!r.ok) { pushNotice('warn', r.message); return; }
     patch();
-    requestReconcile(settings.eagerReconcile);
+    s.mirror.requestReconcile(settings.eagerReconcile);
   });
 }
 
@@ -117,7 +117,7 @@ interface Lane {
   flushNow(): Promise<void>;
 }
 
-function makeLane(key: string, ms: number): Lane {
+function makeLane(key: string, ms: number, mirror: MirrorState): Lane {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pending: (() => Promise<void>) | null = null;
   let pendingSession: ReadySession | null = null;
@@ -138,7 +138,7 @@ function makeLane(key: string, ms: number): Lane {
           // Success: the optimistic mutate already left the mirror at the value
           // we sent (case A — Q3). No per-settle resync; instead flag a
           // reconcile for the inflight-gated background param poll to honor.
-          if (s.alive) requestReconcile(settings.eagerReconcile);
+          if (s.alive) mirror.requestReconcile(settings.eagerReconcile);
         } catch (err) {
           if (!s.alive) return;
           Log.error('writes', `scrub ${key} send failed; forcing resync`, err);
@@ -146,7 +146,7 @@ function makeLane(key: string, ms: number): Lane {
           void forceResyncNow();
         } finally {
           if (claimedInflight) {
-            dropInflight();
+            mirror.dropInflight();
             claimedInflight = false;
           }
         }
@@ -158,7 +158,7 @@ function makeLane(key: string, ms: number): Lane {
       pending = send;
       pendingSession = s;
       if (!claimedInflight) {
-        bumpInflight();
+        mirror.bumpInflight();
         claimedInflight = true;
       }
       if (timer === null) timer = setTimeout(fire, ms);
@@ -169,7 +169,7 @@ function makeLane(key: string, ms: number): Lane {
       pending = null;
       pendingSession = null;
       if (claimedInflight) {
-        dropInflight();
+        mirror.dropInflight();
         claimedInflight = false;
       }
     },
@@ -184,9 +184,11 @@ export class WriteCoordinator {
   readonly inflightWrites = new Set<Promise<void>>();
   readonly lanes = new Map<string, Lane>();
 
+  constructor(readonly mirror: MirrorState) {}
+
   laneFor(key: string): Lane {
     let lane = this.lanes.get(key);
-    if (!lane) { lane = makeLane(key, COALESCE_MS); this.lanes.set(key, lane); }
+    if (!lane) { lane = makeLane(key, COALESCE_MS, this.mirror); this.lanes.set(key, lane); }
     return lane;
   }
   async flush(): Promise<void> {
@@ -212,7 +214,7 @@ export function scrub(
 ): void {
   const s = activeSession();
   if (!s) return;
-  noteWriteActivity();
+  s.mirror.noteWriteActivity();
   mutate();
   s.writes.laneFor(key).schedule(s, send);
 }
