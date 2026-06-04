@@ -8,7 +8,7 @@ import { formatDeviceInfo, wireMonitorEnabled } from '@/protocol/wireMonitor';
 import { attachTransportListeners, wireUpConnection } from './actionsDevice';
 import { beginConnection, endConnection } from './connectionScope';
 import { isDeviceHeld } from './deviceLock';
-import { bindDevice, settings, dispatch, connection } from '@/state';
+import { settings, dispatch, connection } from '@/state';
 import { Log } from '@/utils';
 
 // Per-call ceiling on USB control transfers. A frozen firmware would
@@ -49,8 +49,7 @@ async function createBoundDevice(
   const scope = beginConnection();                   // fresh scope (disposes any prior)
   try {
     const device = await DspDevice.create(wrapped, openTransport);
-    bindDevice(device);
-    scope.add(attachTransportListeners(transport));
+    scope.add(attachTransportListeners(transport, device));
     if (wireMonitorEnabled()) {
       // Connection banner (info level). A debug banner must never break a real
       // connection, so swallow any logging failure.
@@ -61,7 +60,6 @@ async function createBoundDevice(
     return device;
   } catch (err) {
     endConnection();                                 // dispose the partial scope
-    bindDevice(null);
     try {
       await transport.close();
     } catch (closeErr) {

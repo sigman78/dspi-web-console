@@ -136,7 +136,7 @@ describe('actions wiring', () => {
     // wireUpConnection). endConnection() — fired by the disconnect handler —
     // disposes them, which is what drops the pending coalescer write.
     beginConnection();
-    connectionScope()!.add(attachTransportListeners(transport));
+    connectionScope()!.add(attachTransportListeners(transport, device));
     connectionScope()!.add(() => cancelWrites());
 
     setMasterVolume(activeSession()!, -9);    // queues a write
@@ -158,12 +158,12 @@ describe('actions wiring', () => {
     // fresh scope (disposing the previous one), and the previous scope holds
     // the disposer returned by attachTransportListeners.
     beginConnection();
-    connectionScope()!.add(attachTransportListeners(t1));
+    connectionScope()!.add(attachTransportListeners(t1, {} as DspDevice));
     expect(t1.listenerCount('disconnect')).toBe(1);
     expect(t1.listenerCount('connect')).toBe(1);
 
     beginConnection();                        // disposes the t1 scope
-    connectionScope()!.add(attachTransportListeners(t2));
+    connectionScope()!.add(attachTransportListeners(t2, {} as DspDevice));
     // t1 listeners removed, t2 listeners attached
     expect(t1.listenerCount('disconnect')).toBe(0);
     expect(t1.listenerCount('connect')).toBe(0);

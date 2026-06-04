@@ -6,7 +6,6 @@
 import type { DspTransport } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
 import {
-  bindDevice, session,
   settings, reconcileEqTarget,
   pushNotice,
   dispatch, makeReadySession, activeSession,
@@ -43,9 +42,6 @@ export async function syncDeviceSnapshot(): Promise<void> {
 }
 
 export async function wireUpConnection(device: DspDevice): Promise<void> {
-  if (session.device !== device) {
-    throw new Error('Cannot finish connection for inactive device');
-  }
   dispatch({ t: 'requested' });
   try {
     const snap = await device.getSnapshot();
@@ -92,7 +88,7 @@ export async function reconcileAfterSync(): Promise<void> {
   }
 }
 
-export function attachTransportListeners(transport: DspTransport): () => void {
+export function attachTransportListeners(transport: DspTransport, device: DspDevice): () => void {
   const offDisc = transport.on('disconnect', () => {
     // endConnection() disposes the scope, which removes THIS very listener
     // mid-emit (offDisc). Deleting the currently-firing entry from the
@@ -100,15 +96,12 @@ export function attachTransportListeners(transport: DspTransport): () => void {
     // revisited and won't throw.
     const outgoing = activeSession();
     endConnection();                 // disposes resync, poll loop, listeners
-    bindDevice(null);
     dispatch({ t: 'disconnected' });
     outgoing?.dispose();             // alive=false + cancel this session's write lanes
     // Per-session stores die with the disposed session; the next connect builds
     // fresh ones via makeReadySession, so there is nothing to reset here.
   });
   const offConn = transport.on('connect', () => {
-    const device = session.device;
-    if (!device) return;
     void wireUpConnection(device).catch((e) => {
       Log.error('transport', 'auto-finish after connect failed', e);
       dispatch({ t: 'failed', message: (e as Error).message });
