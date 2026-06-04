@@ -59,7 +59,7 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
       acquireDeviceLock();
       scope.add(() => releaseDeviceLock());
     }
-    await fetchPresetInfo();
+    await fetchPresetInfo(session);
     Log.info('sync', 'connected', {
       platform: session.mirror.current?.platform.name,
       wire: device.capabilities.wire,
@@ -121,9 +121,11 @@ export async function factoryResetDevice(): Promise<void> {
     await flushAllWrites();
     const r = await d.factoryReset();
     if (!r.ok) { pushNotice('warn', r.message); return; }  // non-ok flash status
-    invalidatePresetCache();
     const sess = activeSession();
-    if (sess) sess.copySource.slot = null;
+    if (sess) {
+      invalidatePresetCache(sess);
+      sess.copySource.slot = null;
+    }
     await syncDeviceSnapshot();
     pushNotice('info', 'Factory reset complete.');
   } catch (e) {

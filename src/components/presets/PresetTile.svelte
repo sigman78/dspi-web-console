@@ -42,7 +42,7 @@
     editing = false;
     const trimmed = editValue.trim();
     if (trimmed.length > 0 && trimmed !== name) {
-      await renamePresetSlot(slot, trimmed);
+      await renamePresetSlot(s, slot, trimmed);
     }
   }
   function cancelRename() {
@@ -62,7 +62,7 @@
   async function onClick() {
     if (editing) return;
     if (isActive) return;
-    await loadPresetSlot(slot);
+    await loadPresetSlot(s, slot);
   }
 
   function onKeyDown(e: KeyboardEvent) {

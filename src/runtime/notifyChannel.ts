@@ -1,6 +1,6 @@
 import { parseNotifyPacket, isReconcileTrigger, isPresetOpEcho, ParamSource, type NotifyEvent } from '@/protocol';
 import { applyParamChange } from './notifyApply';
-import { pushNotice, presets, type ReadySession } from '@/state';
+import { pushNotice, type ReadySession } from '@/state';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 
 // Default poll cadence: loose enough that idle cost is a few 64-byte reads/sec,
@@ -44,7 +44,7 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
     // Confirm a preset load (user- or externally-triggered) via a toast. The
     // device notification is the authority that the slot actually loaded.
     if (event.kind === 'presetLoaded') {
-      const name = presets.names[event.slot] ?? '';
+      const name = session.presets.names[event.slot] ?? '';
       pushNotice('info', name ? `Loaded preset "${name}"` : `Loaded preset ${String(event.slot).padStart(2, '0')}`);
     }
     // A non-HOST PARAM_CHANGED is applied precisely and locally (Layer 2); only

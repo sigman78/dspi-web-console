@@ -1,14 +1,13 @@
 // Action surface for preset operations. Wraps DspDevice calls
 
 import {
-  activeSession,
-  presets, presetsDirty, askBoundary,
+  presetsDirty, askBoundary,
   settings,
+  type ReadySession, type PresetsState,
 } from '@/state';
 import { reconcileAfterSync } from './actionsDevice';
 import { fetchAndApplyAsBaseline } from './resync';
 import { flushAllWrites as flushWrites } from './writes';
-import type { DspDevice } from '@/device/DspDevice';
 import { acceptsWriteFormat } from '@/device/capabilities';
 import { type PresetSlot, PRESET_SLOT_COUNT } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
@@ -36,17 +35,13 @@ export type PresetActionError =
   | { ok: false; code: 'active'; message?: string }
   | { ok: false; code: 'error'; message?: string };
 
-function noDevice(): { ok: false; code: 'no-device'; message: string } {
-  return { ok: false, code: 'no-device', message: 'no device' };
-}
-
 function activeSlotError(message: string): { ok: false; code: 'active'; message: string } {
   return { ok: false, code: 'active', message };
 }
 
-async function withBusy<T>(fn: () => Promise<T>): Promise<T> {
-  presets.busy = true;
-  try { return await fn(); } finally { presets.busy = false; }
+async function withBusy<T>(ps: PresetsState, fn: () => Promise<T>): Promise<T> {
+  ps.busy = true;
+  try { return await fn(); } finally { ps.busy = false; }
 }
 
 // Mutating-action error surfacing. Each mutating action calls
@@ -61,37 +56,36 @@ async function withBusy<T>(fn: () => Promise<T>): Promise<T> {
 // rethrow, since their callers await without a catch and a rethrow would only
 // leak an unhandled rejection.
 
-function recordActionError(label: string, e: unknown): string {
+function recordActionError(ps: PresetsState, label: string, e: unknown): string {
   const msg = (e as Error)?.message ?? String(e);
   const formatted = `${label}: ${msg}`;
-  presets.lastActionError = formatted;
+  ps.lastActionError = formatted;
   Log.warn('presets', `${label} failed`, e);
   return formatted;
 }
 
-function clearActionError(): void {
-  presets.lastActionError = null;
+function clearActionError(ps: PresetsState): void {
+  ps.lastActionError = null;
 }
 
-function recordToResult(label: string, e: unknown): PresetActionError {
-  const message = recordActionError(label, e);
+function recordToResult(ps: PresetsState, label: string, e: unknown): PresetActionError {
+  const message = recordActionError(ps, label, e);
   return { ok: false, code: 'error', message };
 }
 
 // Public verb so the UI never writes preset store state directly: the
 // error-banner dismiss button calls this instead of assigning lastActionError.
-export function dismissPresetActionError(): void {
-  clearActionError();
+export function dismissPresetActionError(s: ReadySession): void {
+  clearActionError(s.presets);
 }
 
 // Eager + lazy entry point. Idempotent when the cache is populated.
 // Never throws — errors are captured in presets.lastFetchError so the
 // UI can surface them with a retry button.
-export async function fetchPresetInfo(): Promise<void> {
-  if (presets.directory != null) return;
-  const d = activeSession()?.device;
-  if (!d) return;
-  presets.busy = true;
+export async function fetchPresetInfo(s: ReadySession): Promise<void> {
+  if (s.presets.directory != null) return;
+  const d = s.device;
+  s.presets.busy = true;
   try {
     // Step 1: directory + active. If either throws we can't show the grid
     // meaningfully, so capture the error and stop.
@@ -101,18 +95,18 @@ export async function fetchPresetInfo(): Promise<void> {
       [dir, active] = await Promise.all([d.getPresetDirectory(), d.getActivePreset()]);
     } catch (e) {
       const msg = (e as Error)?.message ?? String(e);
-      presets.lastFetchError = `Directory fetch failed: ${msg}`;
+      s.presets.lastFetchError = `Directory fetch failed: ${msg}`;
       Log.warn('presets', 'directory/active fetch failed', e);
       return;
     }
-    presets.directory = dir;
-    presets.active = active;
-    presets.lastFetchError = null;
+    s.presets.directory = dir;
+    s.presets.active = active;
+    s.presets.lastFetchError = null;
 
     // Boot-baseline master volume (independent of the directory packet).
     // Best-effort: a failure here must not hide the slot grid.
     try {
-      presets.savedMasterVolumeDb = await d.getSavedMasterVolume();
+      s.presets.savedMasterVolumeDb = await d.getSavedMasterVolume();
     } catch (e) {
       Log.warn('presets', 'getSavedMasterVolume failed', e);
     }
@@ -128,57 +122,56 @@ export async function fetchPresetInfo(): Promise<void> {
         Log.warn('presets', `getPresetName(${i}) failed`, e);
       }
     }
-    presets.names = names;
+    s.presets.names = names;
   } finally {
-    presets.busy = false;
+    s.presets.busy = false;
   }
 }
 
 // Clears the cache + error and refetches from scratch.
-export async function retryFetchPresetInfo(): Promise<void> {
-  presets.directory           = null;
-  presets.names               = Array.from({ length: PRESET_SLOT_COUNT }, () => null);
-  presets.active              = null;
-  presets.lastFetchError      = null;
-  presets.savedMasterVolumeDb = null;
-  await fetchPresetInfo();
+export async function retryFetchPresetInfo(s: ReadySession): Promise<void> {
+  s.presets.directory           = null;
+  s.presets.names               = Array.from({ length: PRESET_SLOT_COUNT }, () => null);
+  s.presets.active              = null;
+  s.presets.lastFetchError      = null;
+  s.presets.savedMasterVolumeDb = null;
+  await fetchPresetInfo(s);
 }
 
-export function invalidatePresetCache(): void {
-  presets.directory           = null;
-  presets.names               = Array.from({ length: PRESET_SLOT_COUNT }, () => null);
-  presets.active              = null;
-  presets.lastFetchError      = null;
-  presets.lastActionError     = null;
-  presets.savedMasterVolumeDb = null;
+export function invalidatePresetCache(s: ReadySession): void {
+  s.presets.directory           = null;
+  s.presets.names               = Array.from({ length: PRESET_SLOT_COUNT }, () => null);
+  s.presets.active              = null;
+  s.presets.lastFetchError      = null;
+  s.presets.lastActionError     = null;
+  s.presets.savedMasterVolumeDb = null;
 }
 
 // PresetSave(active). RAM didn't change → just advance the baseline so
 // the dirty diff origin moves.
-export async function saveActivePreset(): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = activeSession()?.device;
-  if (!d) return noDevice();
-  const active = presets.active;
+export async function saveActivePreset(s: ReadySession): Promise<Result<void, PresetResult> | PresetActionError> {
+  const d = s.device;
+  const active = s.presets.active;
   if (active == null) return activeSlotError('no active slot');
-  clearActionError();
+  clearActionError(s.presets);
   try {
-    return await withBusy(async () => {
+    return await withBusy(s.presets, async () => {
       await flushWrites();
       const r = await d.savePreset(active);
       if (r.ok) {
-        if (presets.directory) {
-          const set = new Set(presets.directory.occupiedSlotsSet);
+        if (s.presets.directory) {
+          const set = new Set(s.presets.directory.occupiedSlotsSet);
           set.add(active);
-          presets.directory = { ...presets.directory, occupiedSlotsSet: set };
+          s.presets.directory = { ...s.presets.directory, occupiedSlotsSet: set };
         }
-        activeSession()?.mirror.captureBaseline();
+        s.mirror.captureBaseline();
       } else {
-        recordActionError('Save', new Error(r.message ?? `error ${r.code}`));
+        recordActionError(s.presets, 'Save', new Error(r.message ?? `error ${r.code}`));
       }
       return r;
     });
   } catch (e) {
-    recordActionError('Save', e);
+    recordActionError(s.presets, 'Save', e);
     throw e;
   }
 }
@@ -186,29 +179,28 @@ export async function saveActivePreset(): Promise<Result<void, PresetResult> | P
 // PresetSave(N) for an arbitrary slot. Firmware sets lastActive = slot, so the
 // just-saved slot becomes active; the host mirrors that into presets.active and
 // advances the baseline (RAM is what we just captured into the now-active slot).
-export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = activeSession()?.device;
-  if (!d) return noDevice();
-  clearActionError();
+export async function savePresetSlot(s: ReadySession, slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
+  const d = s.device;
+  clearActionError(s.presets);
   try {
-    return await withBusy(async () => {
+    return await withBusy(s.presets, async () => {
       await flushWrites();
       const r = await d.savePreset(slot);
       if (r.ok) {
-        if (presets.directory) {
-          const set = new Set(presets.directory.occupiedSlotsSet);
+        if (s.presets.directory) {
+          const set = new Set(s.presets.directory.occupiedSlotsSet);
           set.add(slot);
-          presets.directory = { ...presets.directory, occupiedSlotsSet: set };
+          s.presets.directory = { ...s.presets.directory, occupiedSlotsSet: set };
         }
-        presets.active = slot;
-        activeSession()?.mirror.captureBaseline();
+        s.presets.active = slot;
+        s.mirror.captureBaseline();
       } else {
-        recordActionError('Save', new Error(r.message ?? `error ${r.code}`));
+        recordActionError(s.presets, 'Save', new Error(r.message ?? `error ${r.code}`));
       }
       return r;
     });
   } catch (e) {
-    recordActionError('Save', e);
+    recordActionError(s.presets, 'Save', e);
     throw e;
   }
 }
@@ -219,48 +211,46 @@ export async function savePresetSlot(slot: PresetSlot): Promise<Result<void, Pre
 // 'connecting' — that would unmount the main view and flash the splash
 // mid-load. reconcileAfterSync re-applies soft-mute over the loaded volume.
 async function executeLoad(
-  d: DspDevice,
+  s: ReadySession,
   slot: PresetSlot,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  clearActionError();
+  const d = s.device;
+  clearActionError(s.presets);
   // Suppress the NotifyChannel's redundant reconciles for this self-induced op;
   // our own fetchAndApplyAsBaseline below is the authoritative resync.
-  const mir = activeSession()?.mirror;
-  mir?.beginPresetGuard();
+  const mir = s.mirror;
+  mir.beginPresetGuard();
   try {
-    return await withBusy(async () => {
+    return await withBusy(s.presets, async () => {
       await flushWrites();
       const r = await d.loadPreset(slot);
       if (r.ok) {
         // Reflect active slot in UI immediately. If the subsequent resync or
         // soft-mute reconcile throws, we still want the header/active marker
         // to match the slot the device just loaded.
-        presets.active = slot;
+        s.presets.active = slot;
         await settleAfterLoad();
         await fetchAndApplyAsBaseline();
         await reconcileAfterSync();
       } else {
-        recordActionError('Load', new Error(r.message ?? `error ${r.code}`));
+        recordActionError(s.presets, 'Load', new Error(r.message ?? `error ${r.code}`));
       }
       return r;
     });
   } catch (e) {
-    recordActionError('Load', e);
+    recordActionError(s.presets, 'Load', e);
     throw e;
   } finally {
-    mir?.endPresetGuard(PRESET_ECHO_GRACE_MS);
+    mir.endPresetGuard(PRESET_ECHO_GRACE_MS);
   }
 }
 
-export async function loadPresetSlot(slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = activeSession()?.device;
-  if (!d) return noDevice();
-
+export async function loadPresetSlot(s: ReadySession, slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
   // Dirty-RAM gating. Modal fires only when:
   //   - RAM is dirty AND
   //   - warnOnPresetSwitchDirty is on AND
   //   - the active slot exists (no slot to save into otherwise).
-  if (settings.warnOnPresetSwitchDirty && presetsDirty.current && presets.active != null) {
+  if (settings.warnOnPresetSwitchDirty && presetsDirty.current && s.presets.active != null) {
     const choice = await askBoundary({
       title: 'Unsaved changes',
       message: 'You have unsaved changes in the active preset. Switching to another preset will discard them.',
@@ -270,24 +260,22 @@ export async function loadPresetSlot(slot: PresetSlot): Promise<Result<void, Pre
       return { ok: false, code: 'active', message: 'cancelled' };
     }
     if (choice === 'save') {
-      const r = await saveActivePreset();
+      const r = await saveActivePreset(s);
       if (!('ok' in r) || !r.ok) return r as Result<void, PresetResult> | PresetActionError;
     }
     // 'discard' falls through — proceed to load.
   }
 
-  return executeLoad(d, slot);
+  return executeLoad(s, slot);
 }
 
 // PresetLoad(active) > used by the Revert button. Bypasses the dirty-gating
 // modal because the user explicitly chose to discard their changes by hitting
 // Revert; no further confirmation is needed.
-export async function revertActivePreset(): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = activeSession()?.device;
-  if (!d) return noDevice();
-  const active = presets.active;
+export async function revertActivePreset(s: ReadySession): Promise<Result<void, PresetResult> | PresetActionError> {
+  const active = s.presets.active;
   if (active == null) return activeSlotError('no active slot');
-  return executeLoad(d, active);
+  return executeLoad(s, active);
 }
 
 // PresetCopy doesn't exist on the wire; PASTE composes a whole-state swap
@@ -304,24 +292,23 @@ export async function revertActivePreset(): Promise<Result<void, PresetResult> |
 // The UI's copy/paste invariant guarantees clean RAM here (copy source clears
 // on dirty), so there's no boundary-modal gate; a violating caller gets
 // stale-source behaviour, not data loss.
-export async function pastePresetTo(src: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = activeSession()?.device;
-  if (!d) return noDevice();
-  const active = presets.active;
+export async function pastePresetTo(s: ReadySession, src: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
+  const d = s.device;
+  const active = s.presets.active;
   if (active == null) return activeSlotError('no active slot');
   if (active === src) return activeSlotError('source and target are the same');
-  clearActionError();
+  clearActionError(s.presets);
   // Paste runs three loads + a save, each emitting source=preset notifications;
   // suppress those self-echoes — step-8's fetchAndApplyAsBaseline is the resync.
-  const mir = activeSession()?.mirror;
-  mir?.beginPresetGuard();
+  const mir = s.mirror;
+  mir.beginPresetGuard();
   try {
-    return await withBusy(async () => {
+    return await withBusy(s.presets, async () => {
       await flushWrites();
       // Step 1: Load source into RAM (device pointer → src).
       const r1 = await d.loadPreset(src);
       if (!r1.ok) {
-        recordActionError('Paste', new Error(r1.message ?? `error ${r1.code}`));
+        recordActionError(s.presets, 'Paste', new Error(r1.message ?? `error ${r1.code}`));
         return r1;
       }
       // Step 2: Capture src content as a blob — only after the load has settled
@@ -331,7 +318,7 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
       // Step 3: Restore active slot in RAM (device pointer → active).
       const r3 = await d.loadPreset(active);
       if (!r3.ok) {
-        recordActionError('Paste', new Error(r3.message ?? `error ${r3.code}`));
+        recordActionError(s.presets, 'Paste', new Error(r3.message ?? `error ${r3.code}`));
         return r3;
       }
       // Step 4: Push src content into active's RAM (no flash; pointer unchanged).
@@ -341,57 +328,56 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
       // Write gate
       if (!acceptsWriteFormat(d.capabilities, sourceBlob.formatVersion)) {
         const msg = `Paste blocked: snapshot format v${sourceBlob.formatVersion} cannot be written to device wire v${d.capabilities.wire}`;
-        recordActionError('Paste', new Error(msg));
+        recordActionError(s.presets, 'Paste', new Error(msg));
         return { ok: false, code: 'error', message: msg };
       }
       await d.restoreState(sourceBlob);
       // Step 5: Flash active slot = RAM = src content.
       const r5 = await d.savePreset(active);
       if (!r5.ok) {
-        recordActionError('Paste', new Error(r5.message ?? `error ${r5.code}`));
+        recordActionError(s.presets, 'Paste', new Error(r5.message ?? `error ${r5.code}`));
         return r5;
       }
-      if (presets.directory) {
-        const set = new Set(presets.directory.occupiedSlotsSet);
+      if (s.presets.directory) {
+        const set = new Set(s.presets.directory.occupiedSlotsSet);
         set.add(active);
-        presets.directory = { ...presets.directory, occupiedSlotsSet: set };
+        s.presets.directory = { ...s.presets.directory, occupiedSlotsSet: set };
       }
-      presets.active = active;
+      s.presets.active = active;
       await settleAfterLoad();
       await fetchAndApplyAsBaseline();
       await reconcileAfterSync();
       return r5;
     });
   } catch (e) {
-    recordActionError('Paste', e);
+    recordActionError(s.presets, 'Paste', e);
     throw e;
   } finally {
-    mir?.endPresetGuard(PRESET_ECHO_GRACE_MS);
+    mir.endPresetGuard(PRESET_ECHO_GRACE_MS);
   }
 }
 
 // PresetDelete(N). Host-side guard: refuses to delete the active slot.
-export async function deletePresetSlot(slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = activeSession()?.device;
-  if (!d) return noDevice();
-  if (presets.active === slot) {
+export async function deletePresetSlot(s: ReadySession, slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
+  const d = s.device;
+  if (s.presets.active === slot) {
     return activeSlotError('cannot delete active slot');
   }
-  clearActionError();
+  clearActionError(s.presets);
   try {
-    return await withBusy(async () => {
+    return await withBusy(s.presets, async () => {
       const r = await d.deletePreset(slot);
-      if (r.ok && presets.directory) {
-        const set = new Set(presets.directory.occupiedSlotsSet);
+      if (r.ok && s.presets.directory) {
+        const set = new Set(s.presets.directory.occupiedSlotsSet);
         set.delete(slot);
-        presets.directory = { ...presets.directory, occupiedSlotsSet: set };
+        s.presets.directory = { ...s.presets.directory, occupiedSlotsSet: set };
       } else if (!r.ok) {
-        recordActionError('Delete', new Error(r.message ?? `error ${r.code}`));
+        recordActionError(s.presets, 'Delete', new Error(r.message ?? `error ${r.code}`));
       }
       return r;
     });
   } catch (e) {
-    recordActionError('Delete', e);
+    recordActionError(s.presets, 'Delete', e);
     throw e;
   }
 }
@@ -401,36 +387,34 @@ export async function deletePresetSlot(slot: PresetSlot): Promise<Result<void, P
 // names (which DO live in the payload) flow through actions.ts; this
 // function is only for the slot-level name.
 export async function renamePresetSlot(
-  slot: PresetSlot, name: string,
+  s: ReadySession, slot: PresetSlot, name: string,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = activeSession()?.device;
-  if (!d) return noDevice();
-  clearActionError();
+  const d = s.device;
+  clearActionError(s.presets);
   try {
-    return await withBusy(async () => {
+    return await withBusy(s.presets, async () => {
       await d.setPresetName(slot, name);
-      const next = [...presets.names];
+      const next = [...s.presets.names];
       next[slot] = name;
-      presets.names = next;
+      s.presets.names = next;
       return Result.ok();
     });
   } catch (e) {
-    return recordToResult('Rename', e);
+    return recordToResult(s.presets, 'Rename', e);
   }
 }
 
 export async function setStartupDefault(
-  slot: PresetSlot,
+  s: ReadySession, slot: PresetSlot,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = activeSession()?.device;
-  if (!d) return noDevice();
-  clearActionError();
+  const d = s.device;
+  clearActionError(s.presets);
   try {
-    return await withBusy(async () => {
+    return await withBusy(s.presets, async () => {
       await d.setPresetStartup({ mode: PresetStartupMode.Specified, slot });
-      if (presets.directory) {
-        presets.directory = {
-          ...presets.directory,
+      if (s.presets.directory) {
+        s.presets.directory = {
+          ...s.presets.directory,
           startupMode: PresetStartupMode.Specified,
           defaultSlot: slot,
         };
@@ -438,46 +422,43 @@ export async function setStartupDefault(
       return Result.ok();
     });
   } catch (e) {
-    return recordToResult('Set startup default', e);
+    return recordToResult(s.presets, 'Set startup default', e);
   }
 }
 
 export async function setStartupMode(
-  mode: PresetStartupMode,
+  s: ReadySession, mode: PresetStartupMode,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = activeSession()?.device;
-  if (!d) return noDevice();
-  const slot = presets.directory?.defaultSlot ?? (0 as PresetSlot);
-  clearActionError();
+  const d = s.device;
+  const slot = s.presets.directory?.defaultSlot ?? (0 as PresetSlot);
+  clearActionError(s.presets);
   try {
-    return await withBusy(async () => {
+    return await withBusy(s.presets, async () => {
       await d.setPresetStartup({ mode, slot });
-      if (presets.directory) {
-        presets.directory = { ...presets.directory, startupMode: mode };
+      if (s.presets.directory) {
+        s.presets.directory = { ...s.presets.directory, startupMode: mode };
       }
       return Result.ok();
     });
   } catch (e) {
-    return recordToResult('Set startup mode', e);
+    return recordToResult(s.presets, 'Set startup mode', e);
   }
 }
 
 export async function setPresetIncludePins(
-  include: boolean,
+  s: ReadySession, include: boolean,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = activeSession()?.device;
-  if (!d) return noDevice();
-  clearActionError();
+  const d = s.device;
+  clearActionError(s.presets);
   try {
-    return await withBusy(async () => {
+    return await withBusy(s.presets, async () => {
       await d.setPresetIncludePins(include);
-      if (presets.directory) {
-        presets.directory = { ...presets.directory, includePins: include };
+      if (s.presets.directory) {
+        s.presets.directory = { ...s.presets.directory, includePins: include };
       }
       return Result.ok();
     });
   } catch (e) {
-    return recordToResult('Set include pins', e);
+    return recordToResult(s.presets, 'Set include pins', e);
   }
 }
-

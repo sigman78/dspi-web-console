@@ -32,7 +32,7 @@
   });
 
   onMount(() => {
-    void fetchPresetInfo();
+    void fetchPresetInfo(s);
     return () => { s.copySource.slot = null; };
   });
 </script>
@@ -45,7 +45,7 @@
       {:else if presets.directory == null && presets.lastFetchError}
         <div class="error">
           <div class="msg">{presets.lastFetchError}</div>
-          <button class="retry" onclick={retryFetchPresetInfo} disabled={presets.busy}>RETRY</button>
+          <button class="retry" onclick={() => retryFetchPresetInfo(s)} disabled={presets.busy}>RETRY</button>
         </div>
       {:else if presets.directory == null}
         <div class="placeholder">Loading presets…</div>
@@ -58,7 +58,7 @@
         {#if presets.lastActionError}
           <div class="action-error">
             <span>{presets.lastActionError}</span>
-            <button onclick={() => dismissPresetActionError()} aria-label="Dismiss">×</button>
+            <button onclick={() => dismissPresetActionError(s)} aria-label="Dismiss">×</button>
           </div>
         {/if}
         <div class="legend">

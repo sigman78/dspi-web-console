@@ -49,15 +49,15 @@
       const fallback = `Preset ${active + 1}`;
       const currentName = presets.names[active] ?? '';
       if (currentName.length === 0) {
-        await renamePresetSlot(active, fallback);
+        await renamePresetSlot(s, active, fallback);
       }
     }
-    await saveActivePreset();
+    await saveActivePreset(s);
   }
 
   async function onRevert() {
     if (presets.busy) return;
-    await revertActivePreset();
+    await revertActivePreset(s);
   }
 
   function onCopy() {
@@ -73,22 +73,22 @@
     if (presets.busy) return;
     const src = s.copySource.slot;
     if (src == null) return;
-    const r = await pastePresetTo(src);
+    const r = await pastePresetTo(s, src);
     if ('ok' in r && r.ok) s.copySource.slot = null;
   }
 
   async function onSetStartup() {
     if (presets.busy || active == null) return;
     if (startupMode !== PresetStartupMode.Specified) {
-      await setStartupMode(PresetStartupMode.Specified);
+      await setStartupMode(s, PresetStartupMode.Specified);
     }
-    await setStartupDefault(active);
+    await setStartupDefault(s, active);
   }
 
   const startupLastActive = $derived(startupMode === PresetStartupMode.LastActive);
 
   function onStartupLastActiveChange(v: boolean) {
-    void setStartupMode(v ? PresetStartupMode.LastActive : PresetStartupMode.Specified);
+    void setStartupMode(s, v ? PresetStartupMode.LastActive : PresetStartupMode.Specified);
   }
 
 </script>
@@ -137,7 +137,7 @@
       label="Pin assignments"
       ariaLabel="Include pin assignments in preset"
       checked={includePins}
-      onChange={(v) => void setPresetIncludePins(v)}
+      onChange={(v) => void setPresetIncludePins(s, v)}
     />
   </fieldset>
 
