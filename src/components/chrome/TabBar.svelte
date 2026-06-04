@@ -1,6 +1,6 @@
 <script lang="ts">
   import MiniPin from './MiniPin.svelte';
-  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId, mirror, status, connection } from '@/state';
+  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId, mirror, connection, activeSession } from '@/state';
   import { eqUi } from '../eq/eqUi.svelte';
   import type { ChannelModel, ChannelId } from '@/domain';
 
@@ -19,9 +19,10 @@
   const outputs = $derived(mirror.current?.channels.filter((c) =>  c.isOutput) ?? []);
   const selectable = $derived(settings.tab === 'eq');
   const disabled = $derived(!connection.connected);
+  const tele = $derived(activeSession()?.telemetry ?? null);
 
   function levelDb(ch: ChannelModel): number {
-    const p = status.peaks[ch.id] ?? 0;
+    const p = tele?.peaks[ch.id] ?? 0;
     return p > 0 ? 20 * Math.log10(p) : -60;
   }
 
@@ -73,7 +74,7 @@
           selectable={selectable}
           active={selectable && settings.eqTarget === ch.id}
           pulsate={selectable && eqUi.copySource === ch.id}
-          clipped={status.clipLatched[ch.id]}
+          clipped={tele?.clipLatched[ch.id] ?? false}
           pairSide={pairSide(ch.shortName)}
           onclick={() => pickEq(ch.id)}
         />
@@ -91,7 +92,7 @@
           selectable={selectable}
           active={selectable && settings.eqTarget === ch.id}
           pulsate={selectable && eqUi.copySource === ch.id}
-          clipped={status.clipLatched[ch.id]}
+          clipped={tele?.clipLatched[ch.id] ?? false}
           pairSide={pairSide(ch.shortName)}
           onclick={() => pickEq(ch.id)}
         />

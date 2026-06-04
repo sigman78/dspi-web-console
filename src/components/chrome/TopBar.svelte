@@ -4,16 +4,16 @@
   import DirtyDot from './DirtyDot.svelte';
   import MasterVolumeMini from './MasterVolumeMini.svelte';
   import PresetActiveChip from './PresetActiveChip.svelte';
-  import { status, connection, mirror, activeSession } from '@/state';
+  import { connection, mirror, activeSession } from '@/state';
   import { setBypass } from '@/runtime';
 
   const s = $derived(activeSession());
   const connected = $derived(connection.connected);
-  const info = $derived(status.info);
+  const info = $derived(s?.telemetry.info ?? null);
   const bypassed = $derived(mirror.current?.bypass ?? false);
 
-  const cpu0 = $derived(connected ? `${status.cpu0}%` : '—');
-  const cpu1 = $derived(connected ? `${status.cpu1}%` : '—');
+  const cpu0 = $derived(connected ? `${s?.telemetry.cpu0 ?? 0}%` : '—');
+  const cpu1 = $derived(connected ? `${s?.telemetry.cpu1 ?? 0}%` : '—');
   const fsKHz = $derived(
     connected && info?.sampleRateHz != null ? `${(info.sampleRateHz / 1000).toFixed(0)}k` : '—'
   );
@@ -37,8 +37,8 @@
 
   <div class="spacer"></div>
 
-  <Telem label="CPU0" value={cpu0} bar={connected ? status.cpu0 / 100 : undefined} />
-  <Telem label="CPU1" value={cpu1} bar={connected ? status.cpu1 / 100 : undefined} />
+  <Telem label="CPU0" value={cpu0} bar={connected ? (s?.telemetry.cpu0 ?? 0) / 100 : undefined} />
+  <Telem label="CPU1" value={cpu1} bar={connected ? (s?.telemetry.cpu1 ?? 0) / 100 : undefined} />
   <Telem label="FS"   value={fsKHz} />
   <Telem label="CLK"  value={clkMHz} />
   <Telem label="V"    value={voltage} />
