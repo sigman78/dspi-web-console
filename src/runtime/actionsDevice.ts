@@ -8,7 +8,6 @@ import type { DspDevice } from '@/device/DspDevice';
 import {
   bindDevice, session,
   settings, reconcileEqTarget,
-  resetStatus,
   clearCopySource, pushNotice,
   dispatch, makeReadySession, activeSession,
 } from '@/state';
@@ -104,10 +103,8 @@ export function attachTransportListeners(transport: DspTransport): () => void {
     bindDevice(null);
     dispatch({ t: 'disconnected' });
     outgoing?.dispose();             // alive=false + cancel this session's write lanes
-    mirror.reset();
-    invalidatePresetCache();
-    clearCopySource();
-    resetStatus();
+    // Per-session stores die with the disposed session; the next connect builds
+    // fresh ones via makeReadySession, so there is nothing to reset here.
   });
   const offConn = transport.on('connect', () => {
     const device = session.device;
