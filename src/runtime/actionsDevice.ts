@@ -45,18 +45,19 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
   dispatch({ t: 'requested' });
   try {
     const snap = await device.getSnapshot();
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    const session = makeReadySession(device);
+    dispatch({ t: 'synced', session });
     mirror.init(snap);
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync();
     // Production opens the scope in createBoundDevice; tests may call
     // wireUpConnection directly with no scope, so guard the registration.
-    const s = connectionScope();
-    if (s) {
-      s.add(startPolling());
-      s.add(startNotifyChannel(device));
+    const scope = connectionScope();
+    if (scope) {
+      scope.add(startPolling(session));
+      scope.add(startNotifyChannel(device));
       acquireDeviceLock();
-      s.add(() => releaseDeviceLock());
+      scope.add(() => releaseDeviceLock());
     }
     await fetchPresetInfo();
     Log.info('sync', 'connected', {

@@ -1,4 +1,4 @@
-import { activeSession, applyClipFlags, applyPeaks, status } from '@/state';
+import { activeSession, type ReadySession } from '@/state';
 import { mirror, isInFlight, peekReconcile, consumeReconcile, lastWriteMs, requestReconcile } from '@/state/mirror.svelte';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
@@ -26,25 +26,26 @@ interface Cadence {
   shouldRun?(now: number): boolean;
 }
 
-export function startPolling(clock: LoopClock = timerClock(STATUS_INTERVAL_MS)): Disposer {
+export function startPolling(session: ReadySession, clock: LoopClock = timerClock(STATUS_INTERVAL_MS)): Disposer {
+  const tele = session.telemetry;
   let stopped = false;
   const isHidden = () => typeof document !== 'undefined' && document.hidden;
   // Only the in-flight guards are loop-local. The cadence CLOCK stays on the
-  // status store (status.applyPeaks sets lastStatusMs and reads it for peak
+  // telemetry store (tele.applyPeaks sets lastStatusMs and reads it for peak
   // decay), so the gate must read the store, not a private copy.
   const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false, param: false };
 
   async function pollStatus(d: DspDevice): Promise<void> {
     try {
       const s = await d.getSystemStatus();
-      applyPeaks(s.peaks, performance.now());   // sets status.lastStatusMs
-      applyClipFlags(s.clipFlags);
-      status.cpu0 = s.cpu0;
-      status.cpu1 = s.cpu1;
-      status.errorCount = 0;
+      tele.applyPeaks(s.peaks, performance.now());   // sets tele.lastStatusMs
+      tele.applyClipFlags(s.clipFlags);
+      tele.cpu0 = s.cpu0;
+      tele.cpu1 = s.cpu1;
+      tele.errorCount = 0;
     } catch (e) {
-      status.errorCount++;
-      if (status.errorCount <= 3) Log.warn('poll', 'getSystemStatus failed', e);
+      tele.errorCount++;
+      if (tele.errorCount <= 3) Log.warn('poll', 'getSystemStatus failed', e);
     }
   }
 
@@ -52,24 +53,24 @@ export function startPolling(clock: LoopClock = timerClock(STATUS_INTERVAL_MS)):
     try {
       const b = await d.getBufferStats();
       if (b) {
-        status.bufferStats = b;
-        status.streaming = b.streaming;
-        status.pdmActive = b.pdmActive;
-        status.sequence = b.sequence;
+        tele.bufferStats = b;
+        tele.streaming = b.streaming;
+        tele.pdmActive = b.pdmActive;
+        tele.sequence = b.sequence;
       }
-      status.lastBufferMs = performance.now();
+      tele.lastBufferMs = performance.now();
     } catch (e) {
       Log.warn('poll', 'getBufferStats failed', e);
-      status.lastBufferMs = performance.now();
+      tele.lastBufferMs = performance.now();
     }
   }
 
   async function pollInfo(d: DspDevice): Promise<void> {
     try {
-      status.applyPartialInfo(await d.getSystemInfo());   // sets status.lastInfoMs
+      tele.applyPartialInfo(await d.getSystemInfo());   // sets tele.lastInfoMs
     } catch (e) {
       Log.warn('poll', 'getSystemInfo failed', e);
-      status.lastInfoMs = performance.now();
+      tele.lastInfoMs = performance.now();
     }
   }
 
@@ -94,7 +95,7 @@ export function startPolling(clock: LoopClock = timerClock(STATUS_INTERVAL_MS)):
     } catch (e) {
       Log.warn('poll', 'param reconcile failed', e);  // request stays pending
     } finally {
-      status.lastParamMs = performance.now();
+      tele.lastParamMs = performance.now();
     }
   }
 
@@ -111,14 +112,14 @@ export function startPolling(clock: LoopClock = timerClock(STATUS_INTERVAL_MS)):
     // lastParamMs === 0 means we've never reconciled this session: the first
     // pending request is eligible immediately rather than waiting a full floor
     // interval after connect.
-    return eager || status.lastParamMs === 0 || now - status.lastParamMs >= PARAM_INTERVAL_MS;
+    return eager || tele.lastParamMs === 0 || now - tele.lastParamMs >= PARAM_INTERVAL_MS;
   }
 
   const cadences: Cadence[] = [
-    { key: 'status', intervalMs: STATUS_INTERVAL_MS, runWhileHidden: false, lastMs: () => status.lastStatusMs, run: pollStatus },
-    { key: 'buffer', intervalMs: BUFFER_INTERVAL_MS, runWhileHidden: false, lastMs: () => status.lastBufferMs, run: pollBuffer },
-    { key: 'info',   intervalMs: INFO_INTERVAL_MS,   runWhileHidden: false, lastMs: () => status.lastInfoMs,   run: pollInfo },
-    { key: 'param',  intervalMs: PARAM_INTERVAL_MS,  runWhileHidden: false, lastMs: () => status.lastParamMs,  run: pollParam, shouldRun: shouldRunParam },
+    { key: 'status', intervalMs: STATUS_INTERVAL_MS, runWhileHidden: false, lastMs: () => tele.lastStatusMs, run: pollStatus },
+    { key: 'buffer', intervalMs: BUFFER_INTERVAL_MS, runWhileHidden: false, lastMs: () => tele.lastBufferMs, run: pollBuffer },
+    { key: 'info',   intervalMs: INFO_INTERVAL_MS,   runWhileHidden: false, lastMs: () => tele.lastInfoMs,   run: pollInfo },
+    { key: 'param',  intervalMs: PARAM_INTERVAL_MS,  runWhileHidden: false, lastMs: () => tele.lastParamMs,  run: pollParam, shouldRun: shouldRunParam },
   ];
   const anyRunWhileHidden = cadences.some((c) => c.runWhileHidden);
 
@@ -152,7 +153,7 @@ export function startPolling(clock: LoopClock = timerClock(STATUS_INTERVAL_MS)):
     () => { if (!anyRunWhileHidden) clock.cancel(); },   // tab hidden
   );
 
-  status.errorCount = 0;
+  tele.errorCount = 0;
   if (!(isHidden() && !anyRunWhileHidden)) clock.next(tick);
 
   const stop = () => {
