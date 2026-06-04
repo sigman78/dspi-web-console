@@ -1,6 +1,6 @@
 <script lang="ts">
   import EqSpectrum from './EqSpectrum.svelte';
-  import { session, connection } from '@/state';
+  import { connection, activeSession } from '@/state';
   import { connectRequested, reportConnectError, webUsbUnsupportedReason, isDeviceHeld } from '@/runtime';
 
   let busy = $state(false);
@@ -12,7 +12,7 @@
   const text = $derived.by(() => {
     if (unsupported) return 'WEBUSB UNAVAILABLE';
     switch (connection.phase) {
-      case 'ready':      return `ONLINE · ${session.device?.info.serial ?? ''}`;
+      case 'ready':      return `ONLINE · ${activeSession()?.device?.info.serial ?? ''}`;
       case 'connecting': return 'CONNECTING…';
       case 'errored':    return 'ERROR';
       case 'noDevice':   return 'WAITING FOR DEVICE…';

@@ -1,7 +1,7 @@
 <script lang="ts">
   import Panel from '../chrome/Panel.svelte';
   import KV from '../chrome/KV.svelte';
-  import { mirror, session, connection, status } from '@/state';
+  import { mirror, connection, status } from '@/state';
   import ChannelNamesPanel from '../system/ChannelNamesPanel.svelte';
   import ResetPanel from '../system/ResetPanel.svelte';
   import OutputsPanel from '../system/OutputsPanel.svelte';
@@ -35,10 +35,10 @@
     <Panel code="SY.01" title="DEVICE">
       <div class="kvgrid">
         <KV label="STATUS"   value={connection.label} tone={connection.connected ? 'ok' : 'off'} />
-        <KV label="SERIAL"   value={session.device?.info.serial ?? '—'} />
-        <KV label="FIRMWARE" value={session.device?.info.capabilities.fwLabel ?? '—'} />
+        <KV label="SERIAL"   value={s.info.serial} />
+        <KV label="FIRMWARE" value={s.info.capabilities.fwLabel} />
         <KV label="PLATFORM" value={snap?.platform.name ?? '—'} />
-        <KV label="FORMAT"   value={session.device?.info.capabilities.wireLabel ?? '—'} />
+        <KV label="FORMAT"   value={s.info.capabilities.wireLabel} />
         <KV label="OUTPUTS"  value={`${snap?.platform.outputCount ?? 0} / ${snap?.platform.totalChannelCount ?? 0}`} />
       </div>
     </Panel>
