@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from '@/device/DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
 import { wireUpConnection } from './actionsDevice';
-import { activeSession, connection, settings, mirror, resetStatus } from '@/state';
+import { activeSession, connection, settings, mirror } from '@/state';
 import { endConnection } from './connectionScope';
 
 // End-to-end HIL test: drives the production state-layer connection finish flow
@@ -28,7 +28,6 @@ describe('state.wireUpConnection — end-to-end against real hardware (HIL)', ()
   afterAll(async () => {
     endConnection();
     mirror.reset();
-    resetStatus();
     if (close) await close();
   });
 
