@@ -1,7 +1,7 @@
 <script lang="ts">
-  import LoudnessPanel from '../processing/LoudnessPanel.svelte';
-  import CrossfeedPanel from '../processing/CrossfeedPanel.svelte';
-  import LevellerPanel from '../processing/LevellerPanel.svelte';
+  import LoudnessPanel from '@/components/processing/LoudnessPanel.svelte';
+  import CrossfeedPanel from '@/components/processing/CrossfeedPanel.svelte';
+  import LevellerPanel from '@/components/processing/LevellerPanel.svelte';
 </script>
 
 <div class="grid">

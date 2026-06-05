@@ -1,11 +1,11 @@
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
-  import ValueField from '../chrome/ValueField.svelte';
-  import ToggleSwitch from '../chrome/ToggleSwitch.svelte';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import ValueField from '@/components/chrome/ValueField.svelte';
+  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { connection } from '@/state';
   import { Proc } from '@/domain';
   import { setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from '@/runtime';
-  import { getSession } from '../sessionContext';
+  import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
 

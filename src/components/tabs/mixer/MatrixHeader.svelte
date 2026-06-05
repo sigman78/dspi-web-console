@@ -6,9 +6,9 @@
     setOutputEnabled,
     setOutputMuted,
   } from '@/runtime';
-  import ValueField from '../../chrome/ValueField.svelte';
+  import ValueField from '@/components/chrome/ValueField.svelte';
   import { chKey } from '@/styles/palette';
-  import { getSession } from '../../sessionContext';
+  import { getSession } from '@/components/sessionContext';
 
   const {
     column,

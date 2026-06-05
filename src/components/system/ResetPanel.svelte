@@ -1,6 +1,6 @@
 <!-- src/components/system/ResetPanel.svelte -->
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
+  import Panel from '@/components/chrome/Panel.svelte';
   import { connection } from '@/state';
   import { factoryResetDevice } from '@/runtime';
 

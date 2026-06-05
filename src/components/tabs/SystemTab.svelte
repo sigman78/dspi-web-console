@@ -1,11 +1,11 @@
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
-  import KV from '../chrome/KV.svelte';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import KV from '@/components/chrome/KV.svelte';
   import { connection } from '@/state';
-  import ChannelNamesPanel from '../system/ChannelNamesPanel.svelte';
-  import ResetPanel from '../system/ResetPanel.svelte';
-  import OutputsPanel from '../system/OutputsPanel.svelte';
-  import I2sClockPanel from '../system/I2sClockPanel.svelte';
+  import ChannelNamesPanel from '@/components/system/ChannelNamesPanel.svelte';
+  import ResetPanel from '@/components/system/ResetPanel.svelte';
+  import OutputsPanel from '@/components/system/OutputsPanel.svelte';
+  import I2sClockPanel from '@/components/system/I2sClockPanel.svelte';
   import { chKey } from '@/styles/palette';
   import { clearClips } from '@/runtime';
   import { getSession } from '@/components/sessionContext';

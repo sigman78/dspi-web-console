@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
-  import SegmentedSelect from '../chrome/SegmentedSelect.svelte';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import PinSelect from './PinSelect.svelte';
   import { connection } from '@/state';
   import { setOutputType, setOutputDataPin } from '@/runtime';

@@ -1,12 +1,12 @@
 <!-- src/components/tabs/PresetsTab.svelte -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Panel from '../chrome/Panel.svelte';
-  import PresetTile from '../presets/PresetTile.svelte';
-  import PresetControls from '../presets/PresetControls.svelte';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import PresetTile from '@/components/presets/PresetTile.svelte';
+  import PresetControls from '@/components/presets/PresetControls.svelte';
   import { fetchPresetInfo, retryFetchPresetInfo, dismissPresetActionError } from '@/runtime';
   import { presetsDirty, connection } from '@/state';
-  import { getSession } from '../sessionContext';
+  import { getSession } from '@/components/sessionContext';
   import { PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';
 
   const SLOTS: PresetSlot[] = Array.from({ length: PRESET_SLOT_COUNT }, (_, i) => i as PresetSlot);

@@ -2,13 +2,13 @@
   import { setContext } from 'svelte';
   import type { ReadySession } from '@/state';
   import { settings } from '@/state';
-  import { SESSION_KEY } from '../sessionContext';
-  import OverviewTab from '../tabs/OverviewTab.svelte';
-  import EqualizerTab from '../tabs/EqualizerTab.svelte';
-  import MixerTab from '../tabs/MixerTab.svelte';
-  import ProcessingTab from '../tabs/ProcessingTab.svelte';
-  import PresetsTab from '../tabs/PresetsTab.svelte';
-  import SystemTab from '../tabs/SystemTab.svelte';
+  import { SESSION_KEY } from '@/components/sessionContext';
+  import OverviewTab from '@/components/tabs/OverviewTab.svelte';
+  import EqualizerTab from '@/components/tabs/EqualizerTab.svelte';
+  import MixerTab from '@/components/tabs/MixerTab.svelte';
+  import ProcessingTab from '@/components/tabs/ProcessingTab.svelte';
+  import PresetsTab from '@/components/tabs/PresetsTab.svelte';
+  import SystemTab from '@/components/tabs/SystemTab.svelte';
 
   const { session }: { session: ReadySession } = $props();
   // The session is stable while this component is mounted (a disconnect unmounts

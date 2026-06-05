@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
+  import Panel from '@/components/chrome/Panel.svelte';
   import { connection } from '@/state';
   import { setChannelName } from '@/runtime';
   import { CHANNEL_NAME_MAX_LEN, type ChannelId } from '@/domain';

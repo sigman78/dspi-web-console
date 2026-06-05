@@ -1,15 +1,15 @@
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
-  import ValueField from '../chrome/ValueField.svelte';
-  import SegmentedSelect from '../chrome/SegmentedSelect.svelte';
-  import ToggleSwitch from '../chrome/ToggleSwitch.svelte';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import ValueField from '@/components/chrome/ValueField.svelte';
+  import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
+  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { connection } from '@/state';
   import {
     setLevellerEnabled, setLevellerSpeed, setLevellerLookahead,
     setLevellerAmount, setLevellerMaxGain, setLevellerGate,
   } from '@/runtime';
   import { LevellerSpeed, Proc } from '@/domain';
-  import { getSession } from '../sessionContext';
+  import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
   const lv = $derived(s.mirror.current?.leveller);

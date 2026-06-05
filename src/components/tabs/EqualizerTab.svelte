@@ -1,15 +1,15 @@
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
-  import BodePlot, { type BodeCurve, type BodeMarker } from '../bode/BodePlot.svelte';
-  import BandsPanel from '../eq/BandsPanel.svelte';
-  import PreampPanel from '../eq/PreampPanel.svelte';
-  import OutputTrim from '../eq/OutputTrim.svelte';
-  import { mockEqCurve } from '../bode/bodeMock';
-  import { filterCurve, filterCurveAt } from '../bode/filterCurve';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import BodePlot, { type BodeCurve, type BodeMarker } from '@/components/bode/BodePlot.svelte';
+  import BandsPanel from '@/components/eq/BandsPanel.svelte';
+  import PreampPanel from '@/components/eq/PreampPanel.svelte';
+  import OutputTrim from '@/components/eq/OutputTrim.svelte';
+  import { mockEqCurve } from '@/components/bode/bodeMock';
+  import { filterCurve, filterCurveAt } from '@/components/bode/filterCurve';
   import { settings, setEqTarget, eqUi, setEqCopySource, clearEqCopySource } from '@/state';
   import { FilterType, defaultFilter, type FilterParams, inputIndexOf } from '@/domain';
   import { setEqFilter, setInputPreamp, copyEqBands } from '@/runtime';
-  import { getSession } from '../sessionContext';
+  import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
 

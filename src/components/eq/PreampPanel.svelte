@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
-  import ValueField from '../chrome/ValueField.svelte';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import ValueField from '@/components/chrome/ValueField.svelte';
   import { Eq, type ChannelId } from '@/domain';
   import { chKey } from '@/styles/palette';
 

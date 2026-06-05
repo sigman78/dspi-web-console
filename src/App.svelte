@@ -1,12 +1,12 @@
 <script lang="ts">
-  import TopBar from './components/chrome/TopBar.svelte';
-  import TabBar from './components/chrome/TabBar.svelte';
-  import ConnectingHero from './components/chrome/ConnectingHero.svelte';
-  import ConnectedApp from './components/chrome/ConnectedApp.svelte';
-  import PresetBoundaryModal from './components/presets/PresetBoundaryModal.svelte';
-  import Toaster from './components/chrome/Toaster.svelte';
-  import { app } from './state';
-  import { handleTabShortcut } from './input/tabShortcuts';
+  import TopBar from '@/components/chrome/TopBar.svelte';
+  import TabBar from '@/components/chrome/TabBar.svelte';
+  import ConnectingHero from '@/components/chrome/ConnectingHero.svelte';
+  import ConnectedApp from '@/components/chrome/ConnectedApp.svelte';
+  import PresetBoundaryModal from '@/components/presets/PresetBoundaryModal.svelte';
+  import Toaster from '@/components/chrome/Toaster.svelte';
+  import { app } from '@/state';
+  import { handleTabShortcut } from '@/input/tabShortcuts';
 
   // Visual-test override: ?mock=hero forces the connecting hero to render
   // even when a (real or mock) device would otherwise be connected. Read once

@@ -1,10 +1,10 @@
 <script lang="ts">
   import { SvelteSet } from 'svelte/reactivity';
-  import Panel from '../chrome/Panel.svelte';
-  import KV from '../chrome/KV.svelte';
-  import BodePlot, { type BodeCurve } from '../bode/BodePlot.svelte';
-  import { filterCurve } from '../bode/filterCurve';
-  import { getSession } from '../sessionContext';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import KV from '@/components/chrome/KV.svelte';
+  import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
+  import { filterCurve } from '@/components/bode/filterCurve';
+  import { getSession } from '@/components/sessionContext';
   import { matrixRows, ChannelId, inputIndexOf, CrossfeedPreset } from '@/domain';
   import { chKey } from '@/styles/palette';
 

@@ -12,7 +12,7 @@
   import { MasterVolumeMode } from '@/domain';
   import { PresetStartupMode } from '@/protocol';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import { getSession } from '../sessionContext';
+  import { getSession } from '@/components/sessionContext';
 
   const { onRequestRename }: { onRequestRename: () => void } = $props();
   const s = getSession();

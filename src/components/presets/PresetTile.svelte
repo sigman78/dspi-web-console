@@ -1,7 +1,7 @@
 <!-- src/components/presets/PresetTile.svelte -->
 <script lang="ts">
   import { presetsDirty } from '@/state';
-  import { getSession } from '../sessionContext';
+  import { getSession } from '@/components/sessionContext';
   import { loadPresetSlot, renamePresetSlot } from '@/runtime';
   import { PresetStartupMode } from '@/protocol';
   import { type PresetSlot, PRESET_NAME_MAX_LEN } from '@/domain';

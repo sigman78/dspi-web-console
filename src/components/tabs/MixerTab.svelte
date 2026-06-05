@@ -1,9 +1,9 @@
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
-  import MatrixHeader from './mixer/MatrixHeader.svelte';
-  import MatrixCell from './mixer/MatrixCell.svelte';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import MatrixHeader from '@/components/tabs/mixer/MatrixHeader.svelte';
+  import MatrixCell from '@/components/tabs/mixer/MatrixCell.svelte';
   import { matrixColumns, matrixRows } from '@/domain';
-  import { getSession } from '../sessionContext';
+  import { getSession } from '@/components/sessionContext';
   import { chKey } from '@/styles/palette';
 
   const s = getSession();
