@@ -1,6 +1,6 @@
 // Domain shapes for the bulk sections firmware 1.1.4 appended (wire V7–V10).
 // Each is surfaced on DspSnapshot as nullable — present only when the device's
-// packet carries the section (see device/snapshotCodec.ts gating on bulkLayout).
+// packet carries the section (see protocol/snapshotCodec.ts gating on bulkLayout).
 
 export const AudioInputSource = {
   Usb:   0,

@@ -1,7 +1,6 @@
 <script lang="ts">
   import MiniPin from './MiniPin.svelte';
-  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId, connection, activeSession } from '@/state';
-  import { eqUi } from '../eq/eqUi.svelte';
+  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId, connection, activeSession, eqUi } from '@/state';
   import type { ChannelModel, ChannelId } from '@/domain';
 
   const TAB_META: Record<TabId, { label: string; code: string }> = {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { PlatformType, createHardwareProfile } from '@/domain';
-import { fromBulkParams } from '@/device/snapshotCodec';
+import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';

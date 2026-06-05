@@ -3,7 +3,7 @@
   import StatusPill from './StatusPill.svelte';
   import DirtyDot from './DirtyDot.svelte';
   import MasterVolumeMini from './MasterVolumeMini.svelte';
-  import PresetActiveChip from './PresetActiveChip.svelte';
+  import PresetActiveChip from '../presets/PresetActiveChip.svelte';
   import { connection, activeSession } from '@/state';
   import { setBypass } from '@/runtime';
 

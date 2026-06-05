@@ -9,7 +9,7 @@
 // 1.1.4 opcodes) are added here per-feature when they land; the foundation
 // carries none yet.
 
-import { Wire } from '@/protocol';
+import * as Wire from './wireTypes';
 
 // Floor: V6 ships with fw 1.1.3, the minimum the console supports. Ceiling:
 // V10 is the 1.1.4 development branch — the newest wire shape the console knows.

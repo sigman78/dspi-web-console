@@ -1,10 +1,11 @@
-import * as proto from '@/protocol';
+import { type BulkParams } from './bulkParser';
+import * as Wire from './wireTypes';
 import * as domain from '@/domain';
 
 // Opaque handle for the preset-paste device-to-device copy. Runtime holds it
 // between captureState/restoreState but must never inspect it. Internally a
 // BulkParams packet; the brand keeps wire shape out of runtime types.
-export type DeviceState = proto.BulkParams & { readonly __brand: 'DeviceState' };
+export type DeviceState = BulkParams & { readonly __brand: 'DeviceState' };
 
 // Wire filter.type is a u8; clamp anything outside the known FilterType
 // values to Flat so a future firmware type can't slip through as a typed value.
@@ -55,9 +56,9 @@ function narrowLevellerSpeed(s: number): domain.LevellerSpeed {
   }
 }
 
-export function fromBulkParams(hardware: domain.HardwareProfile, bulk: proto.BulkParams): domain.DspSnapshot {
-  const channelNames = bulk.channelNames.slice(0, proto.Wire.Const.NUM_CHANNELS);
-  const layout = proto.Wire.bulkLayout(bulk);
+export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParams): domain.DspSnapshot {
+  const channelNames = bulk.channelNames.slice(0, Wire.Const.NUM_CHANNELS);
+  const layout = Wire.bulkLayout(bulk);
   const outputSlotTypes = layout.i2s ? bulk.i2s.outputSlotTypes : undefined;
 
   const channels = hardware.channels.map((channel) => ({

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, setOutputDelay } from './actions';
 import { activeSession } from '@/state';
-import { bootMock } from './session';
+import { bootMock } from './boot';
 import { cancelAllWrites } from './writes';
 import { endConnection } from './connectionScope';
 

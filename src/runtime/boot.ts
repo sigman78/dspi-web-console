@@ -5,7 +5,7 @@ import { matchesDspi, WebUsbTransport } from '@/transport/WebUsbTransport';
 import { withTimeout } from '@/transport/withTimeout';
 import { withWireMonitor } from '@/transport/withWireMonitor';
 import { formatDeviceInfo, wireMonitorEnabled } from '@/protocol/wireMonitor';
-import { attachTransportListeners, wireUpConnection } from './actionsDevice';
+import { attachTransportListeners, wireUpConnection } from './deviceService';
 import { beginConnection, endConnection } from './connectionScope';
 import { isDeviceHeld } from './deviceLock';
 import { settings, dispatch, connection } from '@/state';

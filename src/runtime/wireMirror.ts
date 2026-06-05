@@ -9,7 +9,7 @@
 
 import type { DspDevice } from '@/device/DspDevice';
 import type { DspSnapshot } from '@/domain';
-import { fromBulkParams } from '@/device/snapshotCodec';
+import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 
 let _buf: Uint8Array | null = null;          // working copy; advances on each splice

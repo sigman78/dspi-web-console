@@ -3,5 +3,6 @@ export * from './makeSession.svelte';
 export * from './mirror.svelte';
 export * from './presets.svelte';
 export * from './settings.svelte';
+export * from './eqUi.svelte';
 export * from './telemetry.svelte';
 export * from './notices.svelte';

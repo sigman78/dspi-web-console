@@ -2,8 +2,8 @@ import type { DspTransport } from '@/transport/DspTransport';
 import * as proto from '@/protocol';
 import { Codec, utf8Truncate, type Result } from '@/utils';
 import * as domain from '@/domain';
-import { fromBulkParams, narrowInputSource, type DeviceState } from './snapshotCodec';
-import { deriveCapabilities, FEATURE_MIN_WIRE, type DeviceCapabilities, type FirmwareVersion } from './capabilities';
+import { fromBulkParams, narrowInputSource, type DeviceState } from '@/protocol/snapshotCodec';
+import { deriveCapabilities, FEATURE_MIN_WIRE, type DeviceCapabilities, type FirmwareVersion } from '@/protocol/capabilities';
 
 // Human-readable minimum supported firmware, shown in the reject message. The
 // wire-version floor lives in capabilities.ts; this is its semver face.

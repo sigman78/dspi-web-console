@@ -5,10 +5,10 @@ import {
   settings,
   type ReadySession, type PresetsState,
 } from '@/state';
-import { reconcileAfterSync } from './actionsDevice';
+import { reconcileAfterSync } from './deviceService';
 import { fetchAndApplyAsBaseline } from './resync';
 import { flushAllWrites as flushWrites } from './writes';
-import { acceptsWriteFormat } from '@/device/capabilities';
+import { acceptsWriteFormat } from '@/protocol/capabilities';
 import { type PresetSlot, PRESET_SLOT_COUNT } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
 import { Log, Result } from '@/utils';

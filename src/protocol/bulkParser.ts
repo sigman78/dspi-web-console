@@ -21,7 +21,7 @@ import type {
 // Filters are typed as raw wire shape (WireFilter: {type: number, ...})
 // rather than FilterParams[][] so this file has zero domain imports for
 // filter concerns. The narrowing of `type: number` -> `FilterType` happens
-// in device/snapshotCodec.ts when assembling DspSnapshot.
+// in protocol/snapshotCodec.ts when assembling DspSnapshot.
 export interface WireFilter {
   type: number;
   bypass: boolean;

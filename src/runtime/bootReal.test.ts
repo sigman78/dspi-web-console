@@ -20,7 +20,7 @@ vi.mock('./deviceLock', () => ({
   releaseDeviceLock: vi.fn(),
 }));
 
-import { bootReal } from './session';
+import { bootReal } from './boot';
 import { dispatch } from '@/state';
 
 beforeEach(() => {

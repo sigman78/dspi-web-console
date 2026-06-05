@@ -3,7 +3,7 @@
   import TabBar from './components/chrome/TabBar.svelte';
   import ConnectingHero from './components/chrome/ConnectingHero.svelte';
   import ConnectedApp from './components/chrome/ConnectedApp.svelte';
-  import PresetBoundaryModal from './components/chrome/PresetBoundaryModal.svelte';
+  import PresetBoundaryModal from './components/presets/PresetBoundaryModal.svelte';
   import Toaster from './components/chrome/Toaster.svelte';
   import { app } from './state';
   import { handleTabShortcut } from './input/tabShortcuts';

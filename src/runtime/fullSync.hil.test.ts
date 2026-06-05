@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from '@/device/DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
-import { wireUpConnection } from './actionsDevice';
+import { wireUpConnection } from './deviceService';
 import { activeSession, connection, settings } from '@/state';
 import { endConnection } from './connectionScope';
 

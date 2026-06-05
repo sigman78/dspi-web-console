@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import ConnectingHero from './ConnectingHero.svelte';
 import { dispatch } from '@/state';
 
-vi.mock('../../runtime/session', () => ({
+vi.mock('../../runtime/boot', () => ({
   connectRequested: vi.fn().mockResolvedValue(undefined),
   reportConnectError: vi.fn(),
   webUsbUnsupportedReason: vi.fn(() => null),

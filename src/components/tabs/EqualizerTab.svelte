@@ -6,15 +6,9 @@
   import OutputTrim from '../eq/OutputTrim.svelte';
   import { mockEqCurve } from '../bode/bodeMock';
   import { filterCurve, filterCurveAt } from '../bode/filterCurve';
-  import { settings, setEqTarget } from '@/state';
-  import {
-    eqUi,
-    setEqCopySource,
-    clearEqCopySource,
-    applyCopyFrom,
-  } from '../eq/eqUi.svelte';
+  import { settings, setEqTarget, eqUi, setEqCopySource, clearEqCopySource } from '@/state';
   import { FilterType, defaultFilter, type FilterParams, inputIndexOf } from '@/domain';
-  import { setEqFilter, setInputPreamp } from '@/runtime';
+  import { setEqFilter, setInputPreamp, copyEqBands } from '@/runtime';
   import { getSession } from '../sessionContext';
 
   const s = getSession();
@@ -90,7 +84,7 @@
 
   function paste() {
     if (!channel || eqUi.copySource == null) return;
-    applyCopyFrom(s, eqUi.copySource, channel.id);
+    copyEqBands(s, eqUi.copySource, channel.id);
   }
 
   function exitCopy() {

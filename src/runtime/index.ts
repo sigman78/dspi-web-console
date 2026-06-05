@@ -7,9 +7,9 @@
 // internal coordination primitives used only by `actions.ts` and friends
 // inside this directory.
 export * from './actions';
-export * from './actionsDevice';
+export * from './deviceService';
 export * from './presets';
-export * from './session';
+export * from './boot';
 export * from './poll';
 export * from './deviceLock';
 export * from './notifyChannel';

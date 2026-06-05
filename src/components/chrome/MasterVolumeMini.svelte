@@ -1,7 +1,7 @@
 <script lang="ts">
   import { settings, connection, activeSession } from '@/state';
   import { setMasterVolume, toggleMute } from '@/runtime';
-  import SaveMasterVolumeButton from './SaveMasterVolumeButton.svelte';
+  import SaveMasterVolumeButton from '../presets/SaveMasterVolumeButton.svelte';
 
   const s = $derived(activeSession());
   const masterVolumeDb = $derived(s?.mirror.current?.masterVolumeDb ?? 0);

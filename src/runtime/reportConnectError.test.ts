@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { reportConnectError } from './session';
+import { reportConnectError } from './boot';
 import { UnsupportedFirmware, UnsupportedDevicePacket } from '@/device/DspDevice';
 import { dispatch, connection } from '@/state';
 

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from './actions';
-import { attachTransportListeners, factoryResetDevice } from './actionsDevice';
+import { attachTransportListeners, factoryResetDevice } from './deviceService';
 import { connection, settings, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
-import { bootMock } from './session';
+import { bootMock } from './boot';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
 import { parseBulkParams } from '@/protocol';
@@ -17,8 +17,8 @@ import {
   CrossfeedPreset,
   LevellerSpeed,
 } from '@/domain';
-import { fromBulkParams } from '@/device/snapshotCodec';
-import { deriveCapabilities } from '@/device/capabilities';
+import { fromBulkParams } from '@/protocol/snapshotCodec';
+import { deriveCapabilities } from '@/protocol/capabilities';
 
 import { cancelAllWrites, flushAllWrites as flushAllWritesFor } from './writes';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';

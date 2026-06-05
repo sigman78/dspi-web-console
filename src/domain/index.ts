@@ -10,7 +10,6 @@ export * from './platform';
 export * from './processing';
 export * from './presetLimits';
 
-export * from './hardware';
 export * from './mixer';
 export * from './mixerView';
 export * from './snapshot';

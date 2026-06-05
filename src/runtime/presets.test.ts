@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { bootMock } from './session';
+import { bootMock } from './boot';
 import { resetBoundary, boundary, resolveBoundary, settings, activeSession } from '@/state';
 import { PresetStartupMode, parseBulkParams } from '@/protocol';
 import type { PresetSlot } from '@/domain';
