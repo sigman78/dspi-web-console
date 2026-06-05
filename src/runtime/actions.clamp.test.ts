@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, setOutputDelay } from './actions';
-import { mirror, bindDevice } from '@/state';
-import { bootMock } from './session';
-import { cancelAllWrites as cancelWrites } from '@/device/writes';
+import { activeSession } from '@/state';
+import { bootMock } from './boot';
+import { cancelAllWrites } from './writes';
 import { endConnection } from './connectionScope';
 
+const cancelWrites = () => { const s = activeSession(); if (s) cancelAllWrites(s); };
 afterEach(() => { endConnection(); cancelWrites(); });
 
 describe('action boundary clamps out-of-range values', () => {
@@ -12,26 +13,22 @@ describe('action boundary clamps out-of-range values', () => {
     await bootMock('rp2350');
   });
 
-  afterEach(() => {
-    bindDevice(null);
-  });
-
   it('clamps master volume above 0 dB to 0', () => {
-    setMasterVolume(12);
-    expect(mirror.current?.masterVolumeDb).toBe(0);
+    setMasterVolume(activeSession()!, 12);
+    expect(activeSession()!.mirror.current?.masterVolumeDb).toBe(0);
   });
 
   it('clamps master volume below -60 dB to -60', () => {
-    setMasterVolume(-999);
-    expect(mirror.current?.masterVolumeDb).toBe(-60);
+    setMasterVolume(activeSession()!, -999);
+    expect(activeSession()!.mirror.current?.masterVolumeDb).toBe(-60);
   });
 
   it('clamps output delay above the UI cap to 170 ms', async () => {
     // setOutputDelay uses write() (await-then-mutate); flush microtasks to settle.
     vi.useFakeTimers();
-    setOutputDelay(0, 999);
+    setOutputDelay(activeSession()!, 0, 999);
     await vi.runAllTimersAsync();
     vi.useRealTimers();
-    expect(mirror.current?.outputs.find((o) => o.wireIndex === 0)?.delayMs).toBe(170);
+    expect(activeSession()!.mirror.current?.outputs.find((o) => o.wireIndex === 0)?.delayMs).toBe(170);
   });
 });

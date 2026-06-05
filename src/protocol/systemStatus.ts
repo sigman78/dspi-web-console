@@ -1,14 +1,7 @@
 // Parser side of the GetStatus packet (vendor request 0x50).
 // wValue=9 returns the variable-length combined "peaks + cpu + clip" packet
 // (peaks count varies per platform); other wValues each return a small
-// fixed-width scalar (u32 / i32 / mV / Hz). See docs/system-status-req.md
-// and the `SystemStatusValue` enum in `./wireTypes.ts`.
-//
-// Wire schema for the combined packet in `wireTypes.ts`
-// (`WireSystemStatus(numCh)`).
-// Spec: docs/HW-INTERFACE.md sec."systemStatus.ts".
-//
-// The synthesizer side is in `./systemStatus.syn.ts`.
+// fixed-width scalar. Synthesizer side in `./systemStatus.syn.ts`.
 
 import { Codec } from '@/utils';
 import * as Wire from './wireTypes';
@@ -40,17 +33,11 @@ export function parseSystemStatus(buffer: Uint8Array, numCh: number): SystemStat
   };
 }
 
-// Make a `target`-byte buffer the codec can decode, preserving v1's
-// lenient short-buffer semantics:
-//   - missing tail bytes are zero (so cpu/clip default to 0 on truncation),
-//   - a trailing odd byte inside the peaks region is dropped rather than
-//     letting it be half-read into a partial u16 peak,
-//   - any cpu/clip bytes that did arrive after the peaks region are
-//     splaced back at their natural offset, regardless of how many
-//     peak bytes were present.
-//
-// If `buf.byteLength >= target` the original buffer is returned (the
-// codec ignores trailing bytes past `target`).
+// Pad a short buffer to `target` bytes with lenient truncation semantics:
+// missing tail bytes read as zero (cpu/clip default to 0), a trailing odd
+// byte inside the peaks region is dropped rather than half-read into a u16
+// peak, and any cpu/clip bytes that did arrive are placed at their natural
+// offset. Buffers already >= target are returned as-is.
 function alignedPad(buf: Uint8Array, target: number, peaksRegion: number): Uint8Array {
   if (buf.byteLength >= target) return buf;
   const out = new Uint8Array(target);

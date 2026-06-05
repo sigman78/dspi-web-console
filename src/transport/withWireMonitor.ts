@@ -2,21 +2,16 @@ import { Log } from '@/utils';
 import * as WireMon from '@/protocol/wireMonitor';
 import type { DspTransport, TransportEvent } from './DspTransport';
 
-// Decorator: wraps a DspTransport so every ctrlIn/ctrlOut/notifyIn is logged
-// to the console at info level once the call settles. Sits INSIDE the timeout
-// decorator (closest to the metal) so it sees the real bytes and response and
-// its formatting cost is off the timeout-race path. Logging is fully guarded:
-// a formatter or Log failure can never break or delay a transfer. open/close/
-// isOpen/on pass through; notifyIn is forwarded only when the inner exposes it.
+// Decorator: log every settled ctrlIn/ctrlOut/notifyIn. Sits INSIDE the timeout
+// decorator so it sees the real bytes and its formatting cost is off the
+// timeout-race path. Logging is fully guarded: a formatter or Log failure can
+// never break or delay a transfer.
 export function withWireMonitor(inner: DspTransport): DspTransport {
-  // Logging must never break a transfer — swallow any console/Log failure.
   const warn = (...args: unknown[]): void => {
     try { Log.warn('wire', ...args); } catch { /* ignore */ }
   };
 
-  // Telemetry polls go to debug (Verbose, hidden by default); everything else to
-  // info. The whole block is guarded so a formatter or Log failure can never
-  // propagate into the transfer.
+  // Telemetry polls go to debug (hidden by default), everything else to info.
   const emit = (level: 'info' | 'debug', build: () => string | null): void => {
     try {
       const line = build();

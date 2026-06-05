@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ChannelId } from './channels';
-import { createHardwareProfile } from './hardware';
-import { PlatformType } from './platform';
+import { createHardwareProfile, PlatformType } from './platform';
 
 describe('hardware profiles', () => {
   it('puts PDM at compact slot 4 on RP2040 and routes it to firmware channel 6 via wire-channel override', () => {

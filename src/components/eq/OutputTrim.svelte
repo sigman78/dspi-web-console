@@ -1,14 +1,17 @@
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
-  import ValueField from '../chrome/ValueField.svelte';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import ValueField from '@/components/chrome/ValueField.svelte';
   import { setOutputGain, setOutputDelay } from '@/runtime';
   import { Mix, type OutputModel } from '@/domain';
+  import { getSession } from '@/components/sessionContext';
 
   const {
     output,
   }: {
     output: OutputModel;
   } = $props();
+
+  const s = getSession();
 </script>
 
 <Panel code="EQ.04" title="OUTPUT TRIM">
@@ -23,7 +26,7 @@
         step={Mix.OUTPUT_GAIN_STEP_DB}
         align="right"
         value={output.gainDb}
-        onChange={(v) => setOutputGain(output.wireIndex, v)}
+        onChange={(v) => setOutputGain(s, output.wireIndex, v)}
       />
     </div>
     <div class="cell">
@@ -35,7 +38,7 @@
         step={Mix.OUTPUT_DELAY_STEP_MS}
         align="right"
         value={output.delayMs}
-        onChange={(v) => setOutputDelay(output.wireIndex, v)}
+        onChange={(v) => setOutputDelay(s, output.wireIndex, v)}
       />
     </div>
   </div>

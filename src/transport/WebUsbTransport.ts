@@ -1,16 +1,14 @@
 import { type DspTransport, type TransportEvent, VENDOR_INTERFACE_INDEX } from './DspTransport';
 
-// The firmware changed its USB Vendor ID at 1.1.4 (RP-Pico block 0x2E8A ->
-// Weeb Labs block 0x2E8B); the PID is unchanged. Both pairs are listed so a
-// device on either firmware shows up in the picker. VID is a device-family
-// check only — the supported-version decision comes from GetPlatform, not VID.
+// Firmware changed its USB Vendor ID at 1.1.4 (0x2E8A -> 0x2E8B); PID unchanged.
+// Both pairs listed so either firmware shows in the picker. VID is a
+// device-family check only; the supported-version decision comes from GetPlatform.
 export const DSPI_USB_IDS = [
   { vendorId: 0x2E8A, productId: 0xFEAA },  // <= 1.1.3
   { vendorId: 0x2E8B, productId: 0xFEAA },  // >= 1.1.4
 ] as const;
 
-// Legacy scalar identity (the 1.1.3 pair). Retained for the node-usb HIL
-// harness, which talks to real 1.1.3 hardware.
+// Legacy scalar identity (the 1.1.3 pair) for the node-usb HIL harness.
 export const DSPI_VENDOR_ID = DSPI_USB_IDS[0].vendorId;
 export const DSPI_PRODUCT_ID = DSPI_USB_IDS[0].productId;
 
@@ -37,8 +35,7 @@ export class WebUsbTransport implements DspTransport {
   }
 
   // Human-readable reason WebUSB is unavailable, or null if it should work.
-  //  Distinguishes "browser doesn't ship WebUSB" from "page is served from
-  //  an insecure context"; the latter is the common LAN-dev-server gotcha. */
+  // Distinguishes "no WebUSB" from "insecure context" (the common LAN-dev gotcha).
   static unsupportedReason(): string | null {
     if (typeof navigator === 'undefined') return 'No navigator (SSR/no DOM).';
     if (typeof window !== 'undefined' && window.isSecureContext === false) {
@@ -132,8 +129,8 @@ export class WebUsbTransport implements DspTransport {
     }
   }
 
-  // Resolve the bulk-IN notify endpoint number lazily (low nibble of 0x83 = 3,
-  // but scan the claimed interface to be robust), then read one packet.
+  // Resolve the bulk-IN notify endpoint lazily (scan the interface; default 3),
+  // then read one packet.
   async notifyIn(length: number): Promise<Uint8Array> {
     const d = this.#requireDevice();
     if (this.#notifyEndpoint === null) {
@@ -141,8 +138,8 @@ export class WebUsbTransport implements DspTransport {
     }
     const r = await d.transferIn(this.#notifyEndpoint, length);
     if (r.status === 'stall') {
-      // Recoverable: clear the halt so the next read can succeed. The notify
-      // channel backs off and retries; without this the endpoint stays wedged.
+      // Clear the halt so the next read can succeed; without this the endpoint
+      // stays wedged. The notify channel backs off and retries.
       await d.clearHalt('in', this.#notifyEndpoint);
       throw new Error('notifyIn: endpoint stalled (halt cleared)');
     }

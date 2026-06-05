@@ -1,22 +1,19 @@
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
-  import BodePlot, { type BodeCurve, type BodeMarker } from '../bode/BodePlot.svelte';
-  import BandsPanel from '../eq/BandsPanel.svelte';
-  import PreampPanel from '../eq/PreampPanel.svelte';
-  import OutputTrim from '../eq/OutputTrim.svelte';
-  import { mockEqCurve } from '../bode/bodeMock';
-  import { filterCurve, filterCurveAt } from '../bode/filterCurve';
-  import { mirror, settings, setEqTarget } from '@/state';
-  import {
-    eqUi,
-    setEqCopySource,
-    clearEqCopySource,
-    applyCopyFrom,
-  } from '../eq/eqUi.svelte';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import BodePlot, { type BodeCurve, type BodeMarker } from '@/components/bode/BodePlot.svelte';
+  import BandsPanel from '@/components/eq/BandsPanel.svelte';
+  import PreampPanel from '@/components/eq/PreampPanel.svelte';
+  import OutputTrim from '@/components/eq/OutputTrim.svelte';
+  import { mockEqCurve } from '@/components/bode/bodeMock';
+  import { filterCurve, filterCurveAt } from '@/components/bode/filterCurve';
+  import { settings, setEqTarget, eqUi, setEqCopySource, clearEqCopySource } from '@/state';
   import { FilterType, defaultFilter, type FilterParams, inputIndexOf } from '@/domain';
-  import { setEqFilter, setInputPreamp } from '@/runtime';
+  import { setEqFilter, setInputPreamp, copyEqBands } from '@/runtime';
+  import { getSession } from '@/components/sessionContext';
 
-  const snap = $derived(mirror.current);
+  const s = getSession();
+
+  const snap = $derived(s.mirror.current);
 
   // Auto-pick a default channel when entering the tab unselected.
   $effect(() => {
@@ -28,7 +25,7 @@
   const channel = $derived(
     settings.eqTarget != null ? snap?.channels.find((c) => c.id === settings.eqTarget) ?? null : null,
   );
-  // Input preamp index for the selected channel; null if not an input.
+  // null when the selected channel is not an input.
   const inputIndex = $derived(channel ? inputIndexOf(channel.id) : null);
   const outputForChannel = $derived(
     channel?.isOutput ? snap?.outputs.find((o) => o.id === channel.id) ?? null : null,
@@ -69,13 +66,13 @@
   function patchBand(i: number, patch: Partial<FilterParams>) {
     if (!channel) return;
     const next = { ...channel.filters[i], ...patch };
-    setEqFilter(channel.id, i, next);
+    setEqFilter(s, channel.id, i, next);
   }
 
   function reset() {
     if (!channel) return;
     for (let i = 0; i < channel.filters.length; i++) {
-      setEqFilter(channel.id, i, defaultFilter());
+      setEqFilter(s, channel.id, i, defaultFilter());
     }
     // Preamp has its own reset action via PreampPanel's reset button.
   }
@@ -87,15 +84,15 @@
 
   function paste() {
     if (!channel || eqUi.copySource == null) return;
-    applyCopyFrom(eqUi.copySource, channel.id);
+    copyEqBands(s, eqUi.copySource, channel.id);
   }
 
   function exitCopy() {
     clearEqCopySource();
   }
 
-  // Defensive: if the source channel disappears from the snapshot while
-  // selection is armed, drop the source so the pulsation stops cleanly.
+  // Drop the copy source if its channel disappears from the snapshot, so the
+  // pulsation stops cleanly.
   $effect(() => {
     const src = eqUi.copySource;
     if (src == null) return;
@@ -111,11 +108,11 @@
 
   function setPreamp(v: number) {
     if (inputIndex === null) return;
-    setInputPreamp(inputIndex, v);
+    setInputPreamp(s, inputIndex, v);
   }
   function resetPreamp() {
     if (inputIndex === null) return;
-    setInputPreamp(inputIndex, 0);
+    setInputPreamp(s, inputIndex, 0);
   }
 </script>
 

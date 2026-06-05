@@ -1,7 +1,5 @@
-// EQ filter taxonomy and per-band parameters.
-// Numeric values of FilterType are firmware-pinned (mirrors
-// DSPiConsole.Core/Models/FilterParams.cs), but the enum is a
-// domain concept used everywhere from the EQ canvas to preset import.
+// EQ filter taxonomy and per-band parameters. FilterType numeric values are
+// firmware-pinned; the enum is a domain concept used across the EQ stack.
 
 export const FilterType = {
   Flat: 0,

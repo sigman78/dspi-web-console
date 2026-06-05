@@ -1,8 +1,5 @@
-// Mixer matrix shapes: per-cell crosspoint, per-output trim, and the
-// enriched app-model wrappers (RouteModel, OutputModel). Pure type
-// definitions — no snapshot dependency, no cycle with snapshot.ts.
-//
-// Matrix-tab projections (matrixColumns, matrixRows) live in mixerView.ts.
+// Mixer matrix type definitions: crosspoint, output trim, and the enriched
+// app-model wrappers. Snapshot-free to avoid a cycle with snapshot.ts.
 
 import type { ChannelId, InputSlot, OutputSlot, OutputMode } from './channels';
 

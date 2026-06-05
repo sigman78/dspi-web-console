@@ -1,6 +1,5 @@
-// UTF-8 helpers. Bare metric + codepoint-aware truncation; the underlying
-// BinWriter does raw byte truncation, which can split a multi-byte
-// sequence mid-character. Call `utf8Truncate` upstream of the codec when
+// Codepoint-aware UTF-8 truncation. BinWriter truncates by raw bytes, which can
+// split a multi-byte sequence; call `utf8Truncate` upstream of the codec when
 // silent cropping is desired.
 
 const ENCODER = new TextEncoder();
@@ -11,8 +10,7 @@ export function utf8ByteLength(s: string): number {
 }
 
 // Truncate `s` to fit within `maxBytes` UTF-8 bytes without splitting a
-// codepoint. Iterates by codepoint (Array.from handles surrogate pairs)
-// and accumulates byte cost until the next codepoint would overflow.
+// codepoint (iterating by codepoint handles surrogate pairs).
 export function utf8Truncate(s: string, maxBytes: number): string {
   if (maxBytes <= 0) return '';
   if (utf8ByteLength(s) <= maxBytes) return s;

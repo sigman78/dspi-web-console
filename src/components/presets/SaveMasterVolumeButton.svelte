@@ -1,24 +1,26 @@
 <script lang="ts">
-  import { presets, session } from '@/state';
+  import { connection, activeSession } from '@/state';
   import { saveMasterVolumeBaseline } from '@/runtime';
-  import { MasterVolumeMode } from '@/domain';
+  import { MasterVolumeMode, DIFF_TOLERANCE } from '@/domain';
 
-  const connected = $derived(session.status === 'connected');
-  const mode = $derived(presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent);
+  const s = $derived(activeSession());
+  const connected = $derived(connection.connected);
+  const mode = $derived(s?.presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent);
   const visible = $derived(mode === MasterVolumeMode.Independent);
 
-  let confirming = $state(false);
-  let savedTick  = $state(false);
+  // Enabled unless the live volume provably equals the saved boot baseline.
+  // Unknown saved value (not yet fetched) or any other edge -> stays enabled.
+  const saved = $derived(s?.presets.savedMasterVolumeDb);
+  const live = $derived(s?.mirror.current?.masterVolumeDb ?? null);
+  const clean = $derived(saved != null && live != null && Math.abs(live - saved) <= DIFF_TOLERANCE.db);
 
-  async function onClick() {
-    if (savedTick) return;
+  let confirming = $state(false);
+
+  function onClick() {
     if (!confirming) { confirming = true; return; }
     confirming = false;
-    const r = await saveMasterVolumeBaseline();
-    if (r.ok) {
-      savedTick = true;
-      setTimeout(() => { savedTick = false; }, 1200);
-    }
+    // Failure surfaces via the toast channel; success is silent.
+    if (s) saveMasterVolumeBaseline(s);
   }
 
   function onBlur() { confirming = false; }
@@ -28,13 +30,12 @@
   <button
     class="save"
     class:confirming
-    class:saved={savedTick}
     onclick={onClick}
     onblur={onBlur}
-    disabled={!connected}
+    disabled={!connected || clean}
     title="Save the current master volume as the boot-baseline volume"
   >
-    {#if savedTick}OK{:else if confirming}CONFIRM{:else}SAVE{/if}
+    {#if confirming}CONFIRM{:else}SAVE{/if}
   </button>
 {/if}
 
@@ -55,10 +56,5 @@
     color: var(--warn);
     border-color: color-mix(in oklab, var(--warn) 50%, var(--border));
     background: color-mix(in oklab, var(--warn) 14%, transparent);
-  }
-  .save.saved {
-    color: var(--ok);
-    border-color: color-mix(in oklab, var(--ok) 50%, var(--border));
-    background: color-mix(in oklab, var(--ok) 14%, transparent);
   }
 </style>

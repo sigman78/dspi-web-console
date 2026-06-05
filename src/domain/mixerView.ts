@@ -1,8 +1,5 @@
-// Matrix-tab projections: shape the snapshot into per-column / per-row
-// structures the matrix UI renders. Pure functions over DspSnapshot.
-//
-// Lives separately from mixer.ts so mixer.ts can stay a pure leaf of
-// type definitions — no DspSnapshot import, no cycle with snapshot.ts.
+// Matrix-tab projections over DspSnapshot. Separate from mixer.ts so that
+// stays snapshot-free (avoids a cycle with snapshot.ts).
 
 import { ChannelId, type InputSlot, type OutputMode, type OutputSlot } from './channels';
 import type { RouteModel } from './mixer';

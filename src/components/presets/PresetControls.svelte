@@ -1,9 +1,7 @@
-<!-- src/components/presets/PresetControls.svelte -->
 <script lang="ts">
   import {
-    presets, presetsDirty,
-    copySource, setCopySource, clearCopySource,
-    settings, session,
+    presetsDirty,
+    settings, connection,
   } from '@/state';
   import {
     saveActivePreset, revertActivePreset,
@@ -13,81 +11,82 @@
   import { MasterVolumeMode } from '@/domain';
   import { PresetStartupMode } from '@/protocol';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import { getSession } from '@/components/sessionContext';
 
   const { onRequestRename }: { onRequestRename: () => void } = $props();
+  const s = getSession();
 
-  const active = $derived(presets.active);
-  const dir = $derived(presets.directory);
-  const dirty = $derived(presetsDirty.current);
-  const connected = $derived(session.status === 'connected');
+  const active = $derived(s.presets.active);
+  const dir = $derived(s.presets.directory);
+  const dirty = $derived(presetsDirty(s));
+  const connected = $derived(connection.connected);
   const activeOccupied = $derived.by(() => {
     if (active == null || !dir) return false;
     return dir.occupiedSlotsSet.has(active);
   });
 
-  // Action button enable/disable — visual predicates only.
+  // Action button enable/disable -- visual predicates only.
   // The busy guard lives in the handlers below (silent no-op on click
   // while a wire op is in flight) so the buttons don't visibly flicker
-  // disabled→enabled during fast wire ops like a preset switch.
+  // disabled->enabled during fast wire ops like a preset switch.
   const canSave = $derived(active != null && (dirty || !activeOccupied));
   const canRevert = $derived(active != null && activeOccupied && dirty);
   const canRename = $derived(active != null);
-  const canCopy = $derived(active != null && activeOccupied && !dirty && copySource.slot == null);
-  const isCopyHeld = $derived(copySource.slot != null);
-  const canPaste = $derived(copySource.slot != null && active != null && copySource.slot !== active);
+  const canCopy = $derived(active != null && activeOccupied && !dirty && s.copySource.slot == null);
+  const isCopyHeld = $derived(s.copySource.slot != null);
+  const canPaste = $derived(s.copySource.slot != null && active != null && s.copySource.slot !== active);
   const canSetStartup = $derived(active != null);
 
-  // Settings group state
   const startupMode = $derived(dir?.startupMode ?? PresetStartupMode.Specified);
   const mvMode = $derived(dir?.masterVolumeMode ?? MasterVolumeMode.Independent);
   const includePins = $derived(dir?.includePins ?? false);
 
   async function onSave() {
-    if (presets.busy || active == null) return;
+    if (s.presets.busy || active == null) return;
     if (!activeOccupied) {
       const fallback = `Preset ${active + 1}`;
-      const currentName = presets.names[active] ?? '';
+      const currentName = s.presets.names[active] ?? '';
       if (currentName.length === 0) {
-        await renamePresetSlot(active, fallback);
+        await renamePresetSlot(s, active, fallback);
       }
     }
-    await saveActivePreset();
+    await saveActivePreset(s);
   }
 
   async function onRevert() {
-    if (presets.busy) return;
-    await revertActivePreset();
+    if (s.presets.busy) return;
+    await revertActivePreset(s);
   }
 
   function onCopy() {
-    if (presets.busy || active == null) return;
-    setCopySource(active);
+    if (s.presets.busy || active == null) return;
+    s.copySource.slot = active;
   }
   function onDrop() {
-    if (presets.busy) return;
-    clearCopySource();
+    if (s.presets.busy) return;
+    s.copySource.slot = null;
   }
 
   async function onPaste() {
-    if (presets.busy) return;
-    const src = copySource.slot;
+    if (s.presets.busy) return;
+    const src = s.copySource.slot;
     if (src == null) return;
-    const r = await pastePresetTo(src);
-    if ('ok' in r && r.ok) clearCopySource();
+    const r = await pastePresetTo(s, src);
+    if ('ok' in r && r.ok) s.copySource.slot = null;
   }
 
   async function onSetStartup() {
-    if (presets.busy || active == null) return;
+    if (s.presets.busy || active == null) return;
     if (startupMode !== PresetStartupMode.Specified) {
-      await setStartupMode(PresetStartupMode.Specified);
+      await setStartupMode(s, PresetStartupMode.Specified);
     }
-    await setStartupDefault(active);
+    await setStartupDefault(s, active);
   }
 
   const startupLastActive = $derived(startupMode === PresetStartupMode.LastActive);
 
   function onStartupLastActiveChange(v: boolean) {
-    void setStartupMode(v ? PresetStartupMode.LastActive : PresetStartupMode.Specified);
+    void setStartupMode(s, v ? PresetStartupMode.LastActive : PresetStartupMode.Specified);
   }
 
 </script>
@@ -129,14 +128,14 @@
       label="Master volume"
       ariaLabel="Include master volume in preset"
       checked={mvMode === MasterVolumeMode.WithPreset}
-      onChange={(v) => void setMasterVolumeMode(v ? MasterVolumeMode.WithPreset : MasterVolumeMode.Independent)}
+      onChange={(v) => void setMasterVolumeMode(s, v ? MasterVolumeMode.WithPreset : MasterVolumeMode.Independent)}
     />
     <ToggleSwitch
       size="sm"
       label="Pin assignments"
       ariaLabel="Include pin assignments in preset"
       checked={includePins}
-      onChange={(v) => void setPresetIncludePins(v)}
+      onChange={(v) => void setPresetIncludePins(s, v)}
     />
   </fieldset>
 

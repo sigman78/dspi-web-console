@@ -6,7 +6,7 @@
 
 import { describe, it, test, expect, beforeEach, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
-import { DspDevice, UnsupportedFirmware, UnsupportedOnFirmware } from './DspDevice';
+import { DspDevice, UnsupportedFirmware, UnsupportedOnFirmware, UnsupportedDevicePacket } from './DspDevice';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PresetResult, PinConfigResult, WireCmd, SystemStatusValue, Wire, NotifyEventId } from '@/protocol';
 import {
@@ -978,6 +978,13 @@ describe('connect-time capabilities + version gating', () => {
     const err = await DspDevice.create(transport).catch((e) => e);
     expect(err).toBeInstanceOf(UnsupportedFirmware);
     expect((err as UnsupportedFirmware).firmwareVersion).toBe('1.1.2');
+  });
+
+  it('rejects a wire-supported device that reports a truncated payload', async () => {
+    // V6 wire (supported) but a payload shorter than the V6 floor — a malformed
+    // firmware. Floor sections are treated as guaranteed, so connect rejects it.
+    const transport = new MockTransport({ platform: 'rp2350', wireVersion: 6, payloadLength: Wire.BulkSizes.V3 });
+    await expect(DspDevice.create(transport)).rejects.toBeInstanceOf(UnsupportedDevicePacket);
   });
 
   // The snapshot from a V10 device carries formatVersion 10; the paste path

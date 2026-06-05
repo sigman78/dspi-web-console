@@ -1,37 +1,37 @@
-<!-- src/components/tabs/PresetsTab.svelte -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Panel from '../chrome/Panel.svelte';
-  import PresetTile from '../presets/PresetTile.svelte';
-  import PresetControls from '../presets/PresetControls.svelte';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import PresetTile from '@/components/presets/PresetTile.svelte';
+  import PresetControls from '@/components/presets/PresetControls.svelte';
   import { fetchPresetInfo, retryFetchPresetInfo, dismissPresetActionError } from '@/runtime';
-  import { presets, presetsDirty, copySource, clearCopySource, session } from '@/state';
+  import { presetsDirty, connection } from '@/state';
+  import { getSession } from '@/components/sessionContext';
   import { PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';
 
   const SLOTS: PresetSlot[] = Array.from({ length: PRESET_SLOT_COUNT }, (_, i) => i as PresetSlot);
-  const connected = $derived(session.status === 'connected');
+  const connected = $derived(connection.connected);
+  const s = getSession();
 
-  // Refs to tile components so the controls pane can trigger inline rename.
+  // Lets the controls pane trigger inline rename on the active tile.
   const tileRefs = $state<Record<number, { enterRename: () => void } | null>>({});
   function requestRename() {
-    const a = presets.active;
+    const a = s.presets.active;
     if (a == null) return;
     tileRefs[a]?.enterRename();
   }
 
-  // COPY/PASTE invariant: source mark clears when RAM goes dirty from a
-  // user edit. Preset Load/Paste apply mirror.current and presetBaseline
-  // atomically via fetchAndApplyAsBaseline(), so there is no transient
-  // dirty=true window to filter out during wire ops.
+  // Clear the copy source once RAM goes dirty from a user edit. Load/Paste
+  // apply mirror.current and the baseline atomically, so they leave no
+  // transient dirty window to filter out here.
   $effect(() => {
-    if (presetsDirty.current && copySource.slot != null) {
-      clearCopySource();
+    if (presetsDirty(s) && s.copySource.slot != null) {
+      s.copySource.slot = null;
     }
   });
 
   onMount(() => {
-    void fetchPresetInfo();
-    return () => { clearCopySource(); };
+    void fetchPresetInfo(s);
+    return () => { s.copySource.slot = null; };
   });
 </script>
 
@@ -40,12 +40,12 @@
     <div class="body-pad">
       {#if !connected}
         <div class="placeholder">Not connected.</div>
-      {:else if presets.directory == null && presets.lastFetchError}
+      {:else if s.presets.directory == null && s.presets.lastFetchError}
         <div class="error">
-          <div class="msg">{presets.lastFetchError}</div>
-          <button class="retry" onclick={retryFetchPresetInfo} disabled={presets.busy}>RETRY</button>
+          <div class="msg">{s.presets.lastFetchError}</div>
+          <button class="retry" onclick={() => retryFetchPresetInfo(s)} disabled={s.presets.busy}>RETRY</button>
         </div>
-      {:else if presets.directory == null}
+      {:else if s.presets.directory == null}
         <div class="placeholder">Loading presets…</div>
       {:else}
         <div class="tile-grid">
@@ -53,10 +53,10 @@
             <PresetTile {slot} bind:this={tileRefs[slot]} />
           {/each}
         </div>
-        {#if presets.lastActionError}
+        {#if s.presets.lastActionError}
           <div class="action-error">
-            <span>{presets.lastActionError}</span>
-            <button onclick={() => dismissPresetActionError()} aria-label="Dismiss">×</button>
+            <span>{s.presets.lastActionError}</span>
+            <button onclick={() => dismissPresetActionError(s)} aria-label="Dismiss">×</button>
           </div>
         {/if}
         <div class="legend">

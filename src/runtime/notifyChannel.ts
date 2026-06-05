@@ -1,7 +1,6 @@
-import type { DspDevice } from '@/device/DspDevice';
 import { parseNotifyPacket, isReconcileTrigger, isPresetOpEcho, ParamSource, type NotifyEvent } from '@/protocol';
 import { applyParamChange } from './notifyApply';
-import { requestReconcile, presetGuardActive } from '@/state/mirror.svelte';
+import { pushNotice, type ReadySession } from '@/state';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 
 // Default poll cadence: loose enough that idle cost is a few 64-byte reads/sec,
@@ -15,7 +14,9 @@ const NOTIFY_MAX_BACKOFF_MS = 5000;
 
 // Start the notify read loop for a device. Returns a stop disposer. No-op (and
 // the loop never arms) on devices without the notifications capability.
-export function startNotifyChannel(device: DspDevice, clock: LoopClock = timerClock(NOTIFY_INTERVAL_MS)): Disposer {
+export function startNotifyChannel(session: ReadySession, clock: LoopClock = timerClock(NOTIFY_INTERVAL_MS)): Disposer {
+  const device = session.device;
+  const mir = session.mirror;
   if (!device.capabilities.features.notifications) {
     return () => {};
   }
@@ -35,22 +36,27 @@ export function startNotifyChannel(device: DspDevice, clock: LoopClock = timerCl
   function handle(event: NotifyEvent): void {
     const seq = 'seq' in event ? event.seq : null;
     if (seq !== null) {
-      // A gap means a possibly-external event was missed — always re-read,
-      // even under a preset guard (the guard only knows about its own echoes).
-      if (lastSeq !== null && ((lastSeq + 1) & 0xff) !== seq) requestReconcile(true);
+      // A gap means a possibly-external event was missed -- always re-read, even
+      // under a preset guard (the guard only knows about its own echoes).
+      if (lastSeq !== null && ((lastSeq + 1) & 0xff) !== seq) mir.requestReconcile(true);
       lastSeq = seq;
     }
-    // A non-HOST PARAM_CHANGED is applied precisely and locally (Layer 2); only
-    // if the apply declines do we fall back to a full reconcile. HOST echoes fall
-    // through to isReconcileTrigger below, which drops them.
+    // The device notification is the authority that the slot actually loaded.
+    if (event.kind === 'presetLoaded') {
+      const name = session.presets.names[event.slot] ?? '';
+      pushNotice('info', name ? `Loaded preset "${name}"` : `Loaded preset ${String(event.slot).padStart(2, '0')}`);
+    }
+    // Non-HOST PARAM_CHANGED is applied locally; only if the apply declines do we
+    // fall back to a full reconcile. HOST echoes fall through to isReconcileTrigger
+    // below, which drops them.
     if (event.kind === 'paramChanged' && event.source !== ParamSource.Host) {
-      if (!applyParamChange(device, event)) requestReconcile(true);
+      if (!applyParamChange(device, mir, event)) mir.requestReconcile(true);
       return;
     }
-    // Suppress ONLY the full-reconcile backstop echoes (preset/bulk) of our own
-    // in-flight preset op. Bulk/preset/seq-gap still reconcile.
-    if (isReconcileTrigger(event) && !(presetGuardActive() && isPresetOpEcho(event))) {
-      requestReconcile(true);
+    // Suppress ONLY the full-reconcile backstop echoes of our own in-flight preset
+    // op. Bulk/preset/seq-gap still reconcile.
+    if (isReconcileTrigger(event) && !(mir.presetGuardActive() && isPresetOpEcho(event))) {
+      mir.requestReconcile(true);
     }
   }
 
@@ -59,13 +65,13 @@ export function startNotifyChannel(device: DspDevice, clock: LoopClock = timerCl
     try {
       const bytes = await device.readNotification();
       if (bytes === null) {
-        // The transport structurally exposes no notify endpoint, so reads will
-        // always be null. Stop rather than spin a no-op loop forever.
+        // No notify endpoint: reads will always be null. Stop rather than spin a
+        // no-op loop forever.
         Log.warn('notify', 'transport exposes no notify endpoint; stopping channel');
         teardown();
         return;
       }
-      backoffMs = 0;   // healthy read ⇒ back to normal cadence
+      backoffMs = 0;   // healthy read -> normal cadence
       if (bytes.byteLength > 0) handle(parseNotifyPacket(bytes));
     } catch (e) {
       backoffMs = backoffMs === 0
@@ -78,7 +84,7 @@ export function startNotifyChannel(device: DspDevice, clock: LoopClock = timerCl
 
   offVisibility = subscribeVisibility(
     () => clock.next(pump),   // shown: resume (poll.ts owns the resume reconcile)
-    () => clock.cancel(),     // hidden: pause
+    () => clock.cancel(),
   );
 
   if (!isHidden()) clock.next(pump);

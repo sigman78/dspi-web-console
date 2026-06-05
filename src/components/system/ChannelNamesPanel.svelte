@@ -1,12 +1,15 @@
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
-  import { mirror, session } from '@/state';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import { connection } from '@/state';
   import { setChannelName } from '@/runtime';
   import { CHANNEL_NAME_MAX_LEN, type ChannelId } from '@/domain';
   import { chKey } from '@/styles/palette';
+  import { getSession } from '@/components/sessionContext';
 
-  const channels = $derived(mirror.current?.channels ?? []);
-  const connected = $derived(session.status === 'connected');
+  const s = getSession();
+
+  const channels = $derived(s.mirror.current?.channels ?? []);
+  const connected = $derived(connection.connected);
 
   let editingId: ChannelId | null = $state(null);
   let pendingValue = $state('');
@@ -23,7 +26,7 @@
     // Guard re-entry: Enter/Escape unmount the input, which then fires blur.
     if (editingId !== id) return;
     if (pendingValue !== originalValue) {
-      setChannelName(id, pendingValue);
+      setChannelName(s, id, pendingValue);
     }
     editingId = null;
   }

@@ -1,4 +1,4 @@
-// Constants-heavy modules — exposed as namespaces (Eq.FREQ_MIN_HZ, etc).
+// Constants-heavy modules -- exposed as namespaces (Eq.FREQ_MIN_HZ, etc).
 export * as Eq from './eqLimits';
 export * as Mix from './mixerLimits';
 export * as Proc from './processingLimits';
@@ -10,7 +10,6 @@ export * from './platform';
 export * from './processing';
 export * from './presetLimits';
 
-export * from './hardware';
 export * from './mixer';
 export * from './mixerView';
 export * from './snapshot';

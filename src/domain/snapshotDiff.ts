@@ -1,8 +1,7 @@
-// Typed structural change-set between two DspSnapshot instances. Generalizes
-// the old boolean presetDiff: a single-pass walker emits one SnapshotChange per
-// changed area (aggregate granularity), carrying the NEW value (from `b`).
-// Two consumers: presetsDirty (kind-filtered .some()) and SP3's notification
-// apply (exhaustive switch). Tolerances mask wire float round-trip jitter.
+// Typed structural change-set between two DspSnapshot instances. Single-pass
+// walker emits one SnapshotChange per changed area, carrying the NEW value
+// (from `b`). Consumers: presetsDirty and notification apply. Tolerances mask
+// wire float round-trip jitter.
 
 import type { DspSnapshot } from './snapshot';
 import type { I2sConfig } from './platform';
@@ -30,13 +29,13 @@ export type SnapshotChange =
   | { kind: 'route';         index: number; value: RouteModel }
   | { kind: 'loudness';      value: Loudness }
   | { kind: 'crossfeed';     value: Crossfeed }
-  | { kind: 'leveller';      value: Leveller | null }
+  | { kind: 'leveller';      value: Leveller }
   | { kind: 'inputConfig';   value: InputConfig | null }
   | { kind: 'userVolume';    value: UserVolume | null }
   | { kind: 'dacHwMute';     value: DacHwMute | null }
   | { kind: 'lgSoundSyncEnabled'; value: boolean }
   | { kind: 'lgSoundSyncStatus';  value: { present: boolean; volume: number; muted: boolean } }
-  | { kind: 'i2s';           value: I2sConfig | null }
+  | { kind: 'i2s';           value: I2sConfig }
   | { kind: 'outputPins';    value: number[] };
 
 function neq(a: number, b: number, tol: number): boolean {
@@ -128,7 +127,7 @@ function pinsDiffer(a: number[], b: number[]): boolean {
 function diffLgSoundSync(a: LgSoundSync | null, b: LgSoundSync | null, out: SnapshotChange[]): void {
   const an = a == null, bn = b == null;
   if (an || bn) {
-    if (an === bn) return;           // both absent → no change
+    if (an === bn) return;           // both absent -> no change
     if (b != null) {
       out.push({ kind: 'lgSoundSyncEnabled', value: b.enabled });
       out.push({ kind: 'lgSoundSyncStatus', value: { present: b.present, volume: b.volume, muted: b.muted } });
@@ -152,7 +151,7 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
 
   if (loudnessDiffers(a.loudness, b.loudness)) out.push({ kind: 'loudness', value: b.loudness });
   if (crossfeedDiffers(a.crossfeed, b.crossfeed)) out.push({ kind: 'crossfeed', value: b.crossfeed });
-  if (nullableChanged(a.leveller, b.leveller, levellerDiffers)) out.push({ kind: 'leveller', value: b.leveller });
+  if (levellerDiffers(a.leveller, b.leveller)) out.push({ kind: 'leveller', value: b.leveller });
 
   for (let i = 0; i < b.channels.length; i++) {
     const ca = a.channels[i], cb = b.channels[i];
@@ -169,9 +168,8 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
     if (outputDiffers(oa, b.outputs[i])) out.push({ kind: 'output', index: i, value: b.outputs[i] });
   }
 
-  // Routes are a fixed input×output grid per device; iterate the live side.
-  // A route present in `b` but absent in `a` (length grew — unreachable
-  // same-session) counts as a change. Shrinkage is unreachable and not emitted.
+  // Fixed input x output grid; iterate the live side. A route in `b` but
+  // absent in `a` counts as a change.
   for (let i = 0; i < b.routes.length; i++) {
     const ra = a.routes[i];
     if (ra === undefined || routeDiffers(ra, b.routes[i])) out.push({ kind: 'route', index: i, value: b.routes[i] });
@@ -182,7 +180,7 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
   if (nullableChanged(a.dacHwMute,   b.dacHwMute,   dacHwMuteDiffers))   out.push({ kind: 'dacHwMute',   value: b.dacHwMute });
   diffLgSoundSync(a.lgSoundSync, b.lgSoundSync, out);
 
-  if (nullableChanged(a.i2s, b.i2s, i2sDiffers)) out.push({ kind: 'i2s', value: b.i2s });
+  if (i2sDiffers(a.i2s, b.i2s)) out.push({ kind: 'i2s', value: b.i2s });
   if (pinsDiffer(a.outputPins, b.outputPins)) out.push({ kind: 'outputPins', value: b.outputPins });
 
   return out;

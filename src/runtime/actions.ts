@@ -7,42 +7,26 @@ import {
   CHANNEL_NAME_MAX_LEN,
 } from '@/domain';
 import * as Clamp from '@/domain/clamp';
-import type { DspTransport } from '@/transport/DspTransport';
-import type { DspDevice } from '@/device/DspDevice';
 import {
-  bindDevice, session, setStatus,
-  presets,
-  settings, reconcileEqTarget,
-  resetStatus, status,
-  clearCopySource,
+  type ReadySession,
+  settings,
+  pushNotice,
 } from '@/state';
-import { Result, Log, type VoidResult } from '@/utils';
-import { startPolling } from './poll';
-import { startNotifyChannel } from './notifyChannel';
-import { connectionScope, endConnection } from './connectionScope';
-import { acquireDeviceLock, releaseDeviceLock } from './deviceLock';
-import { mirror } from '@/state/mirror.svelte';
-import { write, scrub, flushAllWrites, cancelAllWrites } from '@/device/writes';
+import { Log } from '@/utils';
+import { write, scrub, writeChecked, command } from './writes';
 import { focusOutput, focusRoute } from './focus';
-import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
-const MUTE_DB = -128; // per spec
 
-function _setMasterVolume(db: number): void {
-  const d = session.device;
-  if (!d) return;
-  scrub(
+function _setMasterVolume(s: ReadySession, db: number): void {
+  scrub(s,
     'masterVolume',
-    () => { if (mirror.current) mirror.current.masterVolumeDb = db; },
-    () => d.setMasterVolume(db),
+    () => { s.mirror.snapshot.masterVolumeDb = db; },
+    () => s.device.setMasterVolume(db),
   );
 }
 
-let inflightSync: Promise<void> | null = null;
-
-export function setEqFilter(channel: ChannelId, band: number, filter: FilterParams): void {
-  if (!mirror.current?.channels) return;
-  const ch = mirror.current.channels.find((c) => c.id === channel);
+export function setEqFilter(s: ReadySession, channel: ChannelId, band: number, filter: FilterParams): void {
+  const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
   if (!ch) return;
   if (band >= ch.filters.length) {
     throw new Error(`band ${band} out of range for channel ${channel}`);
@@ -53,20 +37,20 @@ export function setEqFilter(channel: ChannelId, band: number, filter: FilterPara
     q: Clamp.bandQ(filter.q),
     gain: Clamp.bandGainDb(filter.gain),
   };
-  const d = session.device;
-  if (!d) return;
-  ch.filters[band] = { ...clamped };
-  void write(
-    () => d.setFilter(channel, band, clamped),
-    () => {},
+  void write(s,
+    () => s.device.setFilter(channel, band, clamped),
+    () => {
+      const c = s.mirror.snapshot.channels.find((c) => c.id === channel);
+      if (c) c.filters[band] = { ...clamped };
+    },
   );
 }
 
 // Copy all bands from source channel onto target channel as N independent granular writes.
-export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
-  if (sourceId === targetId || !mirror.current?.channels) return;
-  const src = mirror.current.channels.find((c) => c.id === sourceId);
-  const tgt = mirror.current.channels.find((c) => c.id === targetId);
+export function copyEqBands(s: ReadySession, sourceId: ChannelId, targetId: ChannelId): void {
+  if (sourceId === targetId) return;
+  const src = s.mirror.snapshot.channels.find((c) => c.id === sourceId);
+  const tgt = s.mirror.snapshot.channels.find((c) => c.id === targetId);
   if (!src || !tgt) return;
   const len = Math.min(src.filters.length, tgt.filters.length);
   const copied = src.filters.slice(0, len).map((f) => ({
@@ -75,578 +59,353 @@ export function copyEqBands(sourceId: ChannelId, targetId: ChannelId): void {
     q: Clamp.bandQ(f.q),
     gain: Clamp.bandGainDb(f.gain),
   }));
-  const d = session.device;
-  if (!d) return;
   for (let i = 0; i < len; i++) {
     const band = i;
     const filter = copied[i];
-    void write(
-      () => d.setFilter(targetId, band, filter),
+    void write(s,
+      () => s.device.setFilter(targetId, band, filter),
       () => {
-        if (!mirror.current) return;
-        const t = mirror.current.channels.find((c) => c.id === targetId);
+        const t = s.mirror.snapshot.channels.find((c) => c.id === targetId);
         if (t) t.filters[band] = { ...filter };
       },
     );
   }
 }
 
-export function setBypass(enabled: boolean): void {
-  const d = session.device;
-  if (!d) return;
-  void write(
-    () => d.setBypass(enabled),
-    () => { if (mirror.current) mirror.current.bypass = enabled; },
+export function setBypass(s: ReadySession, enabled: boolean): void {
+  void write(s,
+    () => s.device.setBypass(enabled),
+    () => { s.mirror.snapshot.bypass = enabled; },
   );
 }
 
-// Telemetry-only action: clears firmware-side latched clip flags (0x83) and
-// resets the host-side OR-latch (`status.clipLatched`). Not routed through
-// the write/scrub helpers because clip state lives in telemetry, not the
-// DSP snapshot, so the post-send resync would be pure overhead. If the
-// wire send fails, the host array stays cleared — the next poll cycle
-// will re-latch from `clipFlags` if firmware still sees the condition.
-export function clearClips(): void {
-  const d = session.device;
-  if (!d) return;
-  for (let i = 0; i < status.clipLatched.length; i++) status.clipLatched[i] = false;
-  void d.clearClips().catch((e) => Log.error('clearClips', 'send failed', e));
+// Clears firmware-side latched clip flags (0x83) and the host-side OR-latch.
+// Not routed through write/scrub: clip state lives in telemetry, not the DSP
+// snapshot, so the post-send resync would be pure overhead. On send failure the
+// host array stays cleared; the next poll re-latches from clipFlags if firmware
+// still sees the condition.
+export function clearClips(s: ReadySession): void {
+  for (let i = 0; i < s.telemetry.clipLatched.length; i++) s.telemetry.clipLatched[i] = false;
+  void s.device.clearClips().catch((e) => Log.error('clearClips', 'send failed', e));
 }
 
 // Empty / whitespace-only input clears the custom name on the device; the
-// snapshot mirrors that by falling back to defaultName, matching what
-// `displayNameForChannel` produces after a bulk resync. The outputs[]
-// name mirror keeps MatrixHeader and OverviewTab in sync without waiting
-// for the trailing bulk resync.
-export function setChannelName(id: ChannelId, name: string): void {
-  if (!mirror.current?.channels) return;
-  const ch = mirror.current.channels.find((c) => c.id === id);
+// snapshot mirrors that by falling back to defaultName. The outputs[] name
+// mirror keeps MatrixHeader and OverviewTab in sync without waiting for the
+// trailing bulk resync.
+export function setChannelName(s: ReadySession, id: ChannelId, name: string): void {
+  const ch = s.mirror.snapshot.channels.find((c) => c.id === id);
   if (!ch) return;
   const resolved = name.trim() || ch.defaultName;
   const clamped = Clamp.nameToByteBudget(resolved, CHANNEL_NAME_MAX_LEN);
-  const d = session.device;
-  if (!d) return;
-  void write(
-    () => d.setChannelName(id, clamped),
+  void write(s,
+    () => s.device.setChannelName(id, clamped),
     () => {
-      if (!mirror.current) return;
-      const c = mirror.current.channels.find((c) => c.id === id);
+      const c = s.mirror.snapshot.channels.find((c) => c.id === id);
       if (c) c.name = clamped;
-      const o = mirror.current.outputs.find((o) => o.id === id);
+      const o = s.mirror.snapshot.outputs.find((o) => o.id === id);
       if (o) o.name = clamped;
     },
   );
 }
 
-export function setLoudnessEnabled(enabled: boolean): void {
-  const d = session.device;
-  if (!d) return;
-  void write(
-    () => d.setLoudnessEnabled(enabled),
-    () => { if (mirror.current) mirror.current.loudness.enabled = enabled; },
+export function setLoudnessEnabled(s: ReadySession, enabled: boolean): void {
+  void write(s,
+    () => s.device.setLoudnessEnabled(enabled),
+    () => { s.mirror.snapshot.loudness.enabled = enabled; },
   );
 }
 
-export function setLoudnessRefSpl(db: number): void {
+export function setLoudnessRefSpl(s: ReadySession, db: number): void {
   db = Clamp.loudnessRefSpl(db);
-  const d = session.device;
-  if (!d) return;
-  scrub(
+  scrub(s,
     'loudnessRefSpl',
-    () => { if (mirror.current) mirror.current.loudness.refSpl = db; },
-    () => d.setLoudnessRefSpl(db),
+    () => { s.mirror.snapshot.loudness.refSpl = db; },
+    () => s.device.setLoudnessRefSpl(db),
   );
 }
 
-export function setLoudnessIntensityPct(pct: number): void {
+export function setLoudnessIntensityPct(s: ReadySession, pct: number): void {
   pct = Clamp.loudnessIntensityPct(pct);
-  const d = session.device;
-  if (!d) return;
-  scrub(
+  scrub(s,
     'loudnessIntensity',
-    () => { if (mirror.current) mirror.current.loudness.intensityPct = pct; },
-    () => d.setLoudnessIntensity(pct),
+    () => { s.mirror.snapshot.loudness.intensityPct = pct; },
+    () => s.device.setLoudnessIntensity(pct),
   );
 }
 
-export function setCrossfeedEnabled(enabled: boolean): void {
-  const d = session.device;
-  if (!d) return;
-  void write(
-    () => d.setCrossfeedEnabled(enabled),
-    () => { if (mirror.current) mirror.current.crossfeed.enabled = enabled; },
+export function setCrossfeedEnabled(s: ReadySession, enabled: boolean): void {
+  void write(s,
+    () => s.device.setCrossfeedEnabled(enabled),
+    () => { s.mirror.snapshot.crossfeed.enabled = enabled; },
   );
 }
 
-export function setCrossfeedPreset(preset: CrossfeedPreset): void {
-  const d = session.device;
-  if (!d) return;
-  void write(
-    () => d.setCrossfeedPreset(preset),
-    () => { if (mirror.current) mirror.current.crossfeed.preset = preset; },
+export function setCrossfeedPreset(s: ReadySession, preset: CrossfeedPreset): void {
+  void write(s,
+    () => s.device.setCrossfeedPreset(preset),
+    () => { s.mirror.snapshot.crossfeed.preset = preset; },
   );
 }
 
-export function setCrossfeedItd(itd: boolean): void {
-  const d = session.device;
-  if (!d) return;
-  void write(
-    () => d.setCrossfeedItd(itd),
-    () => { if (mirror.current) mirror.current.crossfeed.itd = itd; },
+export function setCrossfeedItd(s: ReadySession, itd: boolean): void {
+  void write(s,
+    () => s.device.setCrossfeedItd(itd),
+    () => { s.mirror.snapshot.crossfeed.itd = itd; },
   );
 }
 
-export function setCrossfeedFreq(hz: number): void {
+export function setCrossfeedFreq(s: ReadySession, hz: number): void {
   hz = Clamp.crossfeedFreqHz(hz);
-  const d = session.device;
-  if (!d) return;
-  scrub(
+  scrub(s,
     'crossfeedFreq',
-    () => { if (mirror.current) mirror.current.crossfeed.freq = hz; },
-    () => d.setCrossfeedFreq(hz),
+    () => { s.mirror.snapshot.crossfeed.freq = hz; },
+    () => s.device.setCrossfeedFreq(hz),
   );
 }
 
-export function setCrossfeedFeedDb(db: number): void {
+export function setCrossfeedFeedDb(s: ReadySession, db: number): void {
   db = Clamp.crossfeedFeedDb(db);
-  const d = session.device;
-  if (!d) return;
-  scrub(
+  scrub(s,
     'crossfeedFeedDb',
-    () => { if (mirror.current) mirror.current.crossfeed.feedDb = db; },
-    () => d.setCrossfeedFeedDb(db),
+    () => { s.mirror.snapshot.crossfeed.feedDb = db; },
+    () => s.device.setCrossfeedFeedDb(db),
   );
 }
 
-export function setLevellerEnabled(enabled: boolean): void {
-  const d = session.device;
-  if (!d) return;
-  void write(
-    () => d.setLevellerEnabled(enabled),
-    () => { if (mirror.current?.leveller) mirror.current.leveller.enabled = enabled; },
+export function setLevellerEnabled(s: ReadySession, enabled: boolean): void {
+  void write(s,
+    () => s.device.setLevellerEnabled(enabled),
+    () => { s.mirror.snapshot.leveller.enabled = enabled; },
   );
 }
 
-export function setLevellerSpeed(speed: LevellerSpeed): void {
-  const d = session.device;
-  if (!d) return;
-  void write(
-    () => d.setLevellerSpeed(speed),
-    () => { if (mirror.current?.leveller) mirror.current.leveller.speed = speed; },
+export function setLevellerSpeed(s: ReadySession, speed: LevellerSpeed): void {
+  void write(s,
+    () => s.device.setLevellerSpeed(speed),
+    () => { s.mirror.snapshot.leveller.speed = speed; },
   );
 }
 
-export function setLevellerLookahead(lookahead: boolean): void {
-  const d = session.device;
-  if (!d) return;
-  void write(
-    () => d.setLevellerLookahead(lookahead),
-    () => { if (mirror.current?.leveller) mirror.current.leveller.lookahead = lookahead; },
+export function setLevellerLookahead(s: ReadySession, lookahead: boolean): void {
+  void write(s,
+    () => s.device.setLevellerLookahead(lookahead),
+    () => { s.mirror.snapshot.leveller.lookahead = lookahead; },
   );
 }
 
-export function setLevellerAmount(pct: number): void {
+export function setLevellerAmount(s: ReadySession, pct: number): void {
   pct = Clamp.levellerAmountPct(pct);
-  const d = session.device;
-  if (!d) return;
-  scrub(
+  scrub(s,
     'levellerAmount',
-    () => { if (mirror.current?.leveller) mirror.current.leveller.amount = pct; },
-    () => d.setLevellerAmount(pct),
+    () => { s.mirror.snapshot.leveller.amount = pct; },
+    () => s.device.setLevellerAmount(pct),
   );
 }
 
-export function setLevellerMaxGain(db: number): void {
+export function setLevellerMaxGain(s: ReadySession, db: number): void {
   db = Clamp.levellerMaxGainDb(db);
-  const d = session.device;
-  if (!d) return;
-  scrub(
+  scrub(s,
     'levellerMaxGain',
-    () => { if (mirror.current?.leveller) mirror.current.leveller.maxGainDb = db; },
-    () => d.setLevellerMaxGain(db),
+    () => { s.mirror.snapshot.leveller.maxGainDb = db; },
+    () => s.device.setLevellerMaxGain(db),
   );
 }
 
-export function setLevellerGate(db: number): void {
+export function setLevellerGate(s: ReadySession, db: number): void {
   db = Clamp.levellerGateDb(db);
-  const d = session.device;
-  if (!d) return;
-  scrub(
+  scrub(s,
     'levellerGate',
-    () => { if (mirror.current?.leveller) mirror.current.leveller.gateDb = db; },
-    () => d.setLevellerGate(db),
+    () => { s.mirror.snapshot.leveller.gateDb = db; },
+    () => s.device.setLevellerGate(db),
   );
 }
 
-export function setMasterPreamp(db: number): void {
+export function setMasterPreamp(s: ReadySession, db: number): void {
   db = Clamp.preampDb(db);
-  const d = session.device;
-  if (!d) return;
-  scrub(
+  scrub(s,
     'masterPreamp',
-    () => { if (mirror.current) mirror.current.masterPreampDb = db; },
-    () => d.setMasterPreamp(db),
+    () => { s.mirror.snapshot.masterPreampDb = db; },
+    () => s.device.setMasterPreamp(db),
   );
 }
 
-export function setInputPreamp(channel: InputSlot, db: number): void {
+export function setInputPreamp(s: ReadySession, channel: InputSlot, db: number): void {
   db = Clamp.preampDb(db);
-  const cur = mirror.current?.inputPreampDb;
-  if (!cur) return;
+  const cur = s.mirror.snapshot.inputPreampDb;
   const next: [number, number] = [cur[0], cur[1]];
   next[channel] = db;
-  const d = session.device;
-  if (!d) return;
-  scrub(
+  scrub(s,
     `inputPreamp:${channel}`,
-    () => { if (mirror.current) mirror.current.inputPreampDb = next; },
-    () => d.setInputPreamp(channel, db),
+    () => { s.mirror.snapshot.inputPreampDb = next; },
+    () => s.device.setInputPreamp(channel, db),
   );
 }
 
-// All three crosspoint mutations share one per-item granular lane keyed by the
-// cell. Each send reads the full {enabled, invert, gainDb} tuple from `draft`
-// and writes it via setMatrixRoute, so a toggle and a gain drag on the same
-// cell coalesce into one consistent write. Per-item writes do not mute audio
-// (unlike the bulk path), which is why crosspoint gain stays granular.
+// Crosspoint verbs are click/commit-paced (no drag), so they use the plain
+// write() lane: send first, patch on ack. SetMatrixRoute is a whole-tuple
+// command, so the patch is merged in host code -- read the cell, apply the field
+// change, send the full tuple. Sequential commits stay consistent because each
+// read sees the prior edit's settled mirror (two edits to the same cell within
+// one round-trip could clobber, but that's unreachable at click pace). Per-item
+// writes also avoid the bulk path's audio mute, so crosspoint stays granular.
 function scheduleCrosspointWrite(
+  s: ReadySession,
   input: InputSlot,
   output: OutputSlot,
   mutate: (r: RouteModel) => RouteModel,
 ): void {
-  if (!mirror.current?.routes) return;
-  const route = focusRoute(input, output);
-  const d = session.device;
-  if (!d) return;
-  scrub(
-    `crosspoint:${input}:${output}`,
-    () => route.modify(mutate),
-    async () => {
-      const c = route.read();
-      await d.setMatrixRoute(input, output, {
-        enabled: c.enabled,
-        invert: c.invert,
-        gainDb: c.gainDb,
-      });
-    },
+  const route = focusRoute(s, input, output);
+  const next = mutate(route.read());
+  void write(s,
+    () => s.device.setMatrixRoute(input, output, { enabled: next.enabled, invert: next.invert, gainDb: next.gainDb }),
+    () => route.modify(() => next),
   );
 }
 
-export function setCrosspointGain(input: InputSlot, output: OutputSlot, gainDb: number): void {
+export function setCrosspointGain(s: ReadySession, input: InputSlot, output: OutputSlot, gainDb: number): void {
   gainDb = Clamp.crosspointGainDb(gainDb);
-  scheduleCrosspointWrite(input, output, (r) => ({ ...r, gainDb }));
+  scheduleCrosspointWrite(s, input, output, (r) => ({ ...r, gainDb }));
 }
 
-export function setCrosspointEnabled(input: InputSlot, output: OutputSlot, enabled: boolean): void {
-  scheduleCrosspointWrite(input, output, (r) => ({ ...r, enabled }));
+export function setCrosspointEnabled(s: ReadySession, input: InputSlot, output: OutputSlot, enabled: boolean): void {
+  scheduleCrosspointWrite(s, input, output, (r) => ({ ...r, enabled }));
 }
 
-export function setCrosspointInvert(input: InputSlot, output: OutputSlot, invert: boolean): void {
-  scheduleCrosspointWrite(input, output, (r) => ({ ...r, invert }));
+export function setCrosspointInvert(s: ReadySession, input: InputSlot, output: OutputSlot, invert: boolean): void {
+  scheduleCrosspointWrite(s, input, output, (r) => ({ ...r, invert }));
 }
 
-export function setOutputGain(slot: OutputSlot, gainDb: number): void {
+// Click/commit-paced ValueField (no drag): plain write(), patch on ack. Scalar
+// verb, no tuple to merge.
+export function setOutputGain(s: ReadySession, slot: OutputSlot, gainDb: number): void {
   gainDb = Clamp.outputGainDb(gainDb);
-  if (!mirror.current?.outputs) return;
-  const out = focusOutput(slot);
-  const d = session.device;
-  if (!d) return;
-  scrub(
-    `outputGain:${slot}`,
+  const out = focusOutput(s, slot);
+  void write(s,
+    () => s.device.setOutputGain(slot, gainDb),
     () => out.modify((o) => ({ ...o, gainDb })),
-    () => d.setOutputGain(slot, gainDb),
   );
 }
 
-// Write-path output addressing: locate the output by wire slot in the draft
-// being mutated. A missing slot is a silent no-op.
-export function setOutputDelay(slot: OutputSlot, delayMs: number): void {
-  if (!mirror.current?.outputs) return;
+export function setOutputDelay(s: ReadySession, slot: OutputSlot, delayMs: number): void {
   delayMs = Clamp.outputDelayMs(delayMs);
-  const d = session.device;
-  if (!d) return;
-  void write(
-    () => d.setOutputDelay(slot, delayMs),
+  void write(s,
+    () => s.device.setOutputDelay(slot, delayMs),
     () => {
-      if (!mirror.current) return;
-      const o = mirror.current.outputs.find((o) => o.wireIndex === slot);
+      const o = s.mirror.snapshot.outputs.find((o) => o.wireIndex === slot);
       if (o) o.delayMs = delayMs;
     },
   );
 }
 
-export function setOutputEnabled(slot: OutputSlot, enabled: boolean): void {
-  if (!mirror.current?.outputs) return;
-  const d = session.device;
-  if (!d) return;
-  void write(
-    () => d.setOutputEnable(slot, enabled),
+export function setOutputEnabled(s: ReadySession, slot: OutputSlot, enabled: boolean): void {
+  void write(s,
+    () => s.device.setOutputEnable(slot, enabled),
     () => {
-      if (!mirror.current) return;
-      const o = mirror.current.outputs.find((o) => o.wireIndex === slot);
+      const o = s.mirror.snapshot.outputs.find((o) => o.wireIndex === slot);
       if (o) o.enabled = enabled;
     },
   );
 }
 
-export function setOutputMuted(slot: OutputSlot, muted: boolean): void {
-  if (!mirror.current?.outputs) return;
-  const d = session.device;
-  if (!d) return;
-  void write(
-    () => d.setOutputMute(slot, muted),
+export function setOutputMuted(s: ReadySession, slot: OutputSlot, muted: boolean): void {
+  void write(s,
+    () => s.device.setOutputMute(slot, muted),
     () => {
-      if (!mirror.current) return;
-      const o = mirror.current.outputs.find((o) => o.wireIndex === slot);
+      const o = s.mirror.snapshot.outputs.find((o) => o.wireIndex === slot);
       if (o) o.muted = muted;
     },
   );
 }
 
-export async function syncDeviceSnapshot(): Promise<void> {
-  if (inflightSync) return inflightSync;
-  const d = session.device;
-  if (!d) throw new Error('No device');
-  inflightSync = (async () => {
-    try {
-      const snap = await d.getSnapshot();
-      mirror.init(snap);
-    } catch (err) {
-      Log.error('sync', 'syncDeviceSnapshot failed', err);
-      setStatus('error', (err as Error).message);
-      throw err;
-    } finally {
-      inflightSync = null;
-    }
-  })();
-  return inflightSync;
-}
-
-export async function finishConnection(device: DspDevice): Promise<void> {
-  if (session.device !== device) {
-    throw new Error('Cannot finish connection for inactive device');
-  }
-  setStatus('connecting');
-  try {
-    await syncDeviceSnapshot();
-    setStatus('connected');
-    settings.lastSerial = device.info.serial;
-    await reconcileAfterSync();
-    // Production opens the scope in createBoundDevice; tests may call
-    // finishConnection directly with no scope, so guard the registration.
-    const s = connectionScope();
-    if (s) {
-      s.add(startPolling());
-      s.add(startNotifyChannel(device));
-      s.add(() => cancelAllWrites());
-      acquireDeviceLock();
-      s.add(() => releaseDeviceLock());
-    }
-    await fetchPresetInfo();
-    Log.info('sync', 'connected', {
-      platform: mirror.current?.platform.name,
-      wire: device.capabilities.wire,
-      masterVolumeDb: mirror.current?.masterVolumeDb,
-    });
-  } catch (err) {
-    Log.error('sync', 'finishConnection failed', err);
-    setStatus('error', (err as Error).message);
-    throw err;
-  }
-}
-
-// Re-apply UI policy that should outlive a (re)connect (mute, eqTarget).
-// Runs after the snapshot is hydrated and the connection is marked
-// connected, so it sees the freshly-synced device state and can write
-// through it. reconcileEqTarget is a pure state-layer step that runs
-// before the device-touching mute restore -- it doesn't need the device.
-export async function reconcileAfterSync(): Promise<void> {
-  reconcileEqTarget();
-  const d = session.device;
-  if (!d) return;
-  if (settings.soft.muted) {
-    const restoreFrom = settings.soft.mutedFromDb ?? mirror.current?.masterVolumeDb ?? 0;
-    settings.soft.mutedFromDb = restoreFrom;
-    if (mirror.current) mirror.current.masterVolumeDb = MUTE_DB;
-    await d.setMasterVolume(MUTE_DB);
-  }
-}
-
-export function setMasterVolume(db: number): void {
+export function setMasterVolume(s: ReadySession, db: number): void {
   db = Clamp.masterVolumeDb(db);
   if (settings.soft.muted) {
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
   }
-  _setMasterVolume(db);
+  _setMasterVolume(s, db);
 }
 
-export function toggleMute(): void {
-  if (!session.device) return;
+export function toggleMute(s: ReadySession): void {
   if (settings.soft.muted) {
     const restore = settings.soft.mutedFromDb ?? 0;
     settings.soft.muted = false;
     settings.soft.mutedFromDb = null;
-    _setMasterVolume(restore);
+    _setMasterVolume(s, restore);
   } else {
-    settings.soft.mutedFromDb = mirror.current?.masterVolumeDb ?? 0;
+    settings.soft.mutedFromDb = s.mirror.snapshot.masterVolumeDb;
     settings.soft.muted = true;
-    _setMasterVolume(MUTE_DB);
+    _setMasterVolume(s, Clamp.MUTE_DB);
   }
 }
 
-export function attachTransportListeners(transport: DspTransport): () => void {
-  const offDisc = transport.on('disconnect', () => {
-    // endConnection() disposes the scope, which removes THIS very listener
-    // mid-emit (offDisc). Deleting the currently-firing entry from the
-    // transport's listener Set during its forEach is safe — it won't be
-    // revisited and won't throw.
-    endConnection();                 // disposes commands, resync, poll loop, listeners
-    bindDevice(null);
-    setStatus('disconnected');
-    mirror.reset();
-    invalidatePresetCache();
-    clearCopySource();
-    resetStatus();
+export function setMasterVolumeMode(s: ReadySession, mode: MasterVolumeMode): void {
+  void command(s,'set master volume mode', () => s.device.setMasterVolumeMode(mode), () => {
+    if (s.presets.directory) s.presets.directory = { ...s.presets.directory, masterVolumeMode: mode };
   });
-  const offConn = transport.on('connect', () => {
-    const device = session.device;
-    if (!device) return;
-    void finishConnection(device).catch((e) => {
-      Log.error('transport', 'auto-finish after connect failed', e);
-      setStatus('error', (e as Error).message);
-    });
+}
+
+// 0xD6 SaveMasterVolume -- writes the directory's boot-baseline volume. In Mode 0
+// this is the post-boot starting volume; in Mode 1 firmware accepts the call but
+// it stays dormant until the user flips back to Mode 0. Fire-and-forget: only
+// failure surfaces; success is silent (the Save button's state conveys it).
+export function saveMasterVolumeBaseline(s: ReadySession): void {
+  void command(s,'save master volume', () => s.device.saveMasterVolume(), (ok) => {
+    if (!ok) { pushNotice('warn', 'Saving master volume failed (flash write error).'); return; }
+    // Mirror the saved baseline so the Save button settles to clean without a refetch.
+    s.presets.savedMasterVolumeDb = s.mirror.snapshot.masterVolumeDb;
   });
-  return () => { offDisc(); offConn(); };
 }
 
-// Master-volume mode --------------------------------------------------------
+// Discrete (commit-paced) config commands on the writeChecked() lane. Patching on
+// ack (not before the send) keeps the mirror unchanged when the device rejects the
+// command; the rejection surfaces as a warn toast and the background poll
+// reconciles to committed truth. Never calls syncDeviceSnapshot (would discard
+// unsaved EQ/mixer edits). setOutputType's SET is queued, not applied (the switch
+// is deferred in firmware) -- the optimistic patch + reconcile converge to truth.
 
-export async function setMasterVolumeMode(mode: MasterVolumeMode): Promise<void> {
-  const d = session.device; if (!d) return;
-  await d.setMasterVolumeMode(mode);
-  if (presets.directory) {
-    presets.directory = { ...presets.directory, masterVolumeMode: mode };
-  }
+function patchI2s(s: ReadySession, update: (i: I2sConfig) => I2sConfig): void {
+  s.mirror.snapshot.i2s = update(s.mirror.snapshot.i2s);
 }
 
-// 0xD6 SaveMasterVolume — writes the directory's boot-baseline volume.
-// In Mode 0 this is the post-boot starting volume; in Mode 1 firmware
-// accepts the call but it's dormant until the user flips back to Mode 0.
-// Returns a Result so callers can show a success indicator.
-export async function saveMasterVolumeBaseline(): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  const success = await d.saveMasterVolume();
-  return success ? Result.ok() : Result.fail('write error', 'flash write error');
+function patchOutputPin(s: ReadySession, index: number, pin: number): void {
+  const pins = s.mirror.snapshot.outputPins.slice();
+  pins[index] = pin;
+  s.mirror.snapshot.outputPins = pins;
 }
 
-export async function factoryResetDevice(): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  // Drain any parked optimistic write so a pre-reset bulk send can't settle
-  // mid-reset and re-push stale params (mirrors the preset load/paste flows).
-  await flushAllWrites();
-  const r = await d.factoryReset();
-  // r.message is always present on the failure branch; map the typed flash
-  // code to the action wrapper's string channel.
-  if (!r.ok) return Result.fail('factory reset failed', r.message);
-  invalidatePresetCache();
-  clearCopySource();
-  await syncDeviceSnapshot();
-  return Result.ok();
+export function setOutputDataPin(s: ReadySession, pinOutputIndex: number, pin: number): void {
+  void writeChecked(s,
+    'set output pin',
+    () => s.device.setOutputPin(pinOutputIndex, pin),
+    () => patchOutputPin(s, pinOutputIndex, pin),
+  );
 }
 
-// Output pin / I2S config verbs -------------------------------------------
-// Direct-call pattern: call granular device method, await typed Result,
-// do a targeted readback of only the affected field, and mutate the mirror
-// with just that field. Never calls syncDeviceSnapshot (would discard
-// unsaved EQ/mixer edits in mirror.current).
-
-const settle = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
-function patchI2s(update: (i: I2sConfig) => I2sConfig): void {
-  if (mirror.current?.i2s) mirror.current.i2s = update(mirror.current.i2s);
-}
-
-export async function setOutputDataPin(pinOutputIndex: number, pin: number): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  await flushAllWrites();
-  const r = await d.setOutputPin(pinOutputIndex, pin);
-  if (!r.ok) return Result.fail('pin set failed', r.message);
-  const actual = await d.getOutputPin(pinOutputIndex);
-  if (mirror.current) {
-    const pins = mirror.current.outputPins.slice();
-    pins[pinOutputIndex] = actual;
-    mirror.current.outputPins = pins;
-  }
-  return Result.ok();
-}
-
-export async function setOutputType(slot: OutputSlot, type: number): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushAllWrites();
-  const r = await d.setOutputType(slot, type);
-  if (!r.ok) return Result.fail('type switch failed', r.message);
-  const applyType = (v: number) =>
-    patchI2s((i) => ({
+export function setOutputType(s: ReadySession, slot: OutputSlot, type: number): void {
+  void writeChecked(s,
+    'switch output type',
+    () => s.device.setOutputType(slot, type),
+    () => patchI2s(s, (i) => ({
       ...i,
-      outputSlotTypes: i.outputSlotTypes.map((x, j) => (j === slot ? v : x)) as [number, number, number, number],
-    }));
-  applyType(type);
-  await settle(50);
-  const actual = await d.getOutputType(slot);
-  applyType(actual);
-  return actual === type ? Result.ok() : Result.fail('type not applied', 'device did not switch type');
+      outputSlotTypes: i.outputSlotTypes.map((x, j) => (j === slot ? type : x)) as [number, number, number, number],
+    })),
+  );
 }
 
-export async function setI2sBckPin(pin: number): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushAllWrites();
-  const r = await d.setI2sBckPin(pin);
-  if (!r.ok) return Result.fail('bck set failed', r.message);
-  const actual = await d.getI2sBckPin();
-  patchI2s((i) => ({ ...i, bckPin: actual }));
-  return Result.ok();
+export function setI2sBckPin(s: ReadySession, pin: number): void {
+  void writeChecked(s,'set I2S BCK pin', () => s.device.setI2sBckPin(pin), () => patchI2s(s, (i) => ({ ...i, bckPin: pin })));
 }
 
-export async function setMckEnabled(on: boolean): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushAllWrites();
-  const r = await d.setMckEnable(on);
-  if (!r.ok) return Result.fail('mck enable failed', r.message);
-  const actual = await d.getMckEnable();
-  patchI2s((i) => ({ ...i, mckEnabled: actual === 1 }));
-  return Result.ok();
+export function setMckEnabled(s: ReadySession, on: boolean): void {
+  void writeChecked(s,'set MCK enable', () => s.device.setMckEnable(on), () => patchI2s(s, (i) => ({ ...i, mckEnabled: on })));
 }
 
-export async function setMckPin(pin: number): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushAllWrites();
-  const r = await d.setMckPin(pin);
-  if (!r.ok) return Result.fail('mck pin failed', r.message);
-  const actual = await d.getMckPin();
-  patchI2s((i) => ({ ...i, mckPin: actual }));
-  return Result.ok();
+export function setMckPin(s: ReadySession, pin: number): void {
+  void writeChecked(s,'set MCK pin', () => s.device.setMckPin(pin), () => patchI2s(s, (i) => ({ ...i, mckPin: pin })));
 }
 
-export async function setMckMultiplier(encoded: number): Promise<VoidResult> {
-  const d = session.device;
-  if (!d) return Result.fail('no device', 'no device');
-  if (!mirror.current?.i2s) return Result.fail('no i2s', 'platform has no I2S config');
-  await flushAllWrites();
-  const r = await d.setMckMultiplier(encoded);
-  if (!r.ok) return Result.fail('mck multiplier failed', r.message);
-  const actual = await d.getMckMultiplier();
-  patchI2s((i) => ({ ...i, mckMultiplierEncoded: actual }));
-  return Result.ok();
+export function setMckMultiplier(s: ReadySession, encoded: number): void {
+  void writeChecked(s,'set MCK multiplier', () => s.device.setMckMultiplier(encoded), () => patchI2s(s, (i) => ({ ...i, mckMultiplierEncoded: encoded })));
 }

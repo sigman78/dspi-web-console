@@ -1,29 +1,32 @@
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
-  import ValueField from '../chrome/ValueField.svelte';
-  import ToggleSwitch from '../chrome/ToggleSwitch.svelte';
-  import { mirror, session } from '@/state';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import ValueField from '@/components/chrome/ValueField.svelte';
+  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import { connection } from '@/state';
   import { Proc } from '@/domain';
   import { setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from '@/runtime';
+  import { getSession } from '@/components/sessionContext';
 
-  const loudness = $derived(mirror.current?.loudness);
-  const connected = $derived(session.status === 'connected');
+  const s = getSession();
+
+  const loudness = $derived(s.mirror.current?.loudness);
+  const connected = $derived(connection.connected);
   const enabled = $derived(loudness?.enabled ?? false);
   const editable = $derived(connected && enabled);
 
   function toggleEnabled() {
     if (!loudness) return;
-    setLoudnessEnabled(!loudness.enabled);
+    setLoudnessEnabled(s, !loudness.enabled);
   }
 
   function onRefSplInput(e: Event) {
     const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setLoudnessRefSpl(v);
+    if (!Number.isNaN(v)) setLoudnessRefSpl(s, v);
   }
 
   function onIntensityInput(e: Event) {
     const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setLoudnessIntensityPct(v);
+    if (!Number.isNaN(v)) setLoudnessIntensityPct(s, v);
   }
 </script>
 
@@ -54,7 +57,7 @@
       kind="dB"
       precision={0}
       disabled={!editable}
-      onChange={(v) => setLoudnessRefSpl(v)}
+      onChange={(v) => setLoudnessRefSpl(s, v)}
     />
 
     <span class="lbl">INTENSITY</span>
@@ -72,7 +75,7 @@
       kind="pct"
       precision={1}
       disabled={!editable}
-      onChange={(v) => setLoudnessIntensityPct(v)}
+      onChange={(v) => setLoudnessIntensityPct(s, v)}
     />
   </div>
 </Panel>

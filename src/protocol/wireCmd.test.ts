@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { DspTransport } from '@/transport/DspTransport';
 import { Codec } from '@/utils';
-import { WireCmd, readCmd, writeCmd } from './wireCmd';
+import { WireCmd, readCmd, writeCmd, actionCmd } from './wireCmd';
 
 // Minimal in-memory transport for unit tests.
 function fakeTransport(opts: {
@@ -44,5 +44,24 @@ describe('writeCmd', () => {
     await writeCmd(t, WireCmd.SetMasterVolume, -3.5);
     expect(captured!.req).toBe(WireCmd.SetMasterVolume.code);
     expect(captured!.data.byteLength).toBe(4);
+  });
+});
+
+describe('actionCmd', () => {
+  it('returns the first byte of the response', async () => {
+    const t = fakeTransport({ in: () => new Uint8Array([0x02]) });
+    expect(await actionCmd(t, { code: 0x51 })).toBe(0x02);
+  });
+
+  it('returns 0xFF when the response is empty', async () => {
+    const t = fakeTransport({ in: () => new Uint8Array() });
+    expect(await actionCmd(t, { code: 0x51 })).toBe(0xFF);
+  });
+
+  it('passes the command code, wValue, and a 1-byte length to ctrlIn', async () => {
+    let call: { req: number; val: number; len: number } | null = null;
+    const t = fakeTransport({ in: (req, val, len) => { call = { req, val, len }; return new Uint8Array([0]); } });
+    await actionCmd(t, { code: 0x90 }, 7);
+    expect(call).toEqual({ req: 0x90, val: 7, len: 1 });
   });
 });

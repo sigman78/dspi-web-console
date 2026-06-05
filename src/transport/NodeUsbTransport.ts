@@ -3,14 +3,8 @@ import { type DspTransport, type TransportEvent, VENDOR_INTERFACE_INDEX } from '
 
 const USB_CLASS_VENDOR = 0xFF;
 
-//
-// libusb-backed DspTransport used by HIL tests. Mirrors WebUsbTransport's
-// surface so DspDevice and the protocol parsers don't have to know which
-// transport they're talking through.
-//
-// Hotplug events (the `'connect'`/`'disconnect'` listeners) are minimal
-// for now: `'connect'` fires once on a successful open(), `'disconnect'`
-// fires once on close(). Multi-device hotplug is phase 4.
+// libusb-backed DspTransport used by HIL tests. 'connect' fires on open(),
+// 'disconnect' on close(); full hotplug is not yet wired.
 export class NodeUsbTransport implements DspTransport {
   #device: Device;
   #interfaceNumber = VENDOR_INTERFACE_INDEX;
@@ -69,12 +63,9 @@ export class NodeUsbTransport implements DspTransport {
   ctrlOut(request: number, value: number, data: Uint8Array): Promise<void> {
     this.#requireOpen();
     const VENDOR_OUT = 0x41;
-    // Pass the Uint8Array directly. The `usb` library's OUT validation is
-    // `obj instanceof Uint8Array`. Under vitest with environment: 'jsdom',
-    // global Uint8Array is jsdom's, while Node's Buffer extends Node's
-    // separate Uint8Array -- so Buffer.from(data) produces an object that
-    // fails the global instanceof check. Forwarding `data` works because
-    // it was created with the same (global jsdom) Uint8Array constructor.
+    // Pass the Uint8Array directly. The `usb` library validates OUT with
+    // `instanceof Uint8Array`; under vitest jsdom, Buffer.from(data) extends
+    // Node's Uint8Array and fails the global (jsdom) check, but `data` passes.
     return new Promise((resolve, reject) => {
       this.#device.controlTransfer(
         VENDOR_OUT, request, value, this.#interfaceNumber, data,

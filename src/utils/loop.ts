@@ -1,12 +1,10 @@
-// Shared scheduling primitives for background loops (poll, notify). The loop
-// bodies stay separate; only the generic clock + visibility plumbing is shared.
+// Shared scheduling primitives for background loops (poll, notify).
 
 import type { Disposer } from './disposer';
 
-// Pluggable scheduler for one pending callback. next() MUST be idempotent:
-// calling it while a callback is already pending cancels the prior and arms a
-// fresh one (no double-fire). delayMs overrides the factory cadence for that one
-// arm (used for error backoff); omit it for the default.
+// Pluggable scheduler for one pending callback. next() MUST be idempotent: an
+// arm while a callback is pending cancels the prior and arms a fresh one (no
+// double-fire). delayMs overrides the factory cadence for that arm (error backoff).
 export interface LoopClock {
   next(cb: () => void, delayMs?: number): void;
   cancel(): void;

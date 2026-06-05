@@ -1,18 +1,15 @@
-// Firmware capability derivation. Pure (no I/O): given the four numbers read at
-// connect, classify what the console can do with this device. UI/runtime read
-// the result via `device.capabilities` and must never branch on raw fw/wire
-// numbers themselves.
+// Firmware capability derivation. Pure (no I/O): classify what the console can
+// do with this device. UI/runtime read the result via `device.capabilities`
+// and must never branch on raw fw/wire numbers.
 //
-// Section presence is derived structurally (observed wire version + payload
-// length, via Wire.bulkLayout) rather than from fw semver — the robust signal,
-// since in-development firmwares can misreport their semver. Feature flags (for
-// 1.1.4 opcodes) are added here per-feature when they land; the foundation
-// carries none yet.
+// Section presence is derived structurally (wire version + payload length, via
+// Wire.bulkLayout) rather than fw semver, since in-development firmwares can
+// misreport their semver.
 
-import { Wire } from '@/protocol';
+import * as Wire from './wireTypes';
 
 // Floor: V6 ships with fw 1.1.3, the minimum the console supports. Ceiling:
-// V10 is the 1.1.4 development branch — the newest wire shape the console knows.
+// V10 is the 1.1.4 development branch -- the newest wire shape the console knows.
 export const MIN_SUPPORTED_WIRE = 6;
 export const MAX_KNOWN_WIRE = 10;
 
@@ -29,19 +26,19 @@ export interface DeviceCapabilities {
   // Metadata / escape hatch. Surfaced for display (e.g. the reject message) and
   // for future wire-invisible feature gating. UI must not branch on these.
   readonly fw: FirmwareVersion;
-  readonly fwLabel: string;       // "1.1.4" — formatted once, here
+  readonly fwLabel: string;       // "1.1.4" -- formatted once, here
   readonly wire: number;
-  readonly wireLabel: string;     // "V10"   — formatted once, here
+  readonly wireLabel: string;     // "V10"   -- formatted once, here
   readonly platformId: number;
 
   // Support classification, keyed on the observed wire version:
-  //   unsupported — older than the V6 floor; connect is rejected.
-  //   supported   — V6 (1.1.3) through V10 (1.1.4 branch).
-  //   future      — newer than the console knows; read known sections only.
+  //   unsupported -- older than the V6 floor; connect is rejected.
+  //   supported   -- V6 (1.1.3) through V10 (1.1.4 branch).
+  //   future      -- newer than the console knows; read known sections only.
   readonly support: 'unsupported' | 'supported' | 'future';
 
   // Which bulk-packet sections this device's packet carries. Single source of
-  // truth — wraps Wire.bulkLayout, never a parallel re-derivation.
+  // truth -- wraps Wire.bulkLayout, never a parallel re-derivation.
   readonly sections: Wire.BulkLayout;
 
   // Feature flags drive UI affordances and runtime behavior. Each lands with
@@ -77,7 +74,7 @@ export const FEATURE_MIN_WIRE: Record<keyof DeviceCapabilities['features'], numb
 };
 
 // The single firmware-version string formatter. Display reads this projection
-// off the frozen authority — never re-derives the version itself.
+// off the frozen authority -- never re-derives the version itself.
 function formatFirmwareVersion(fw: FirmwareVersion): string {
   return `${fw.major}.${fw.minor}.${fw.patch}`;
 }

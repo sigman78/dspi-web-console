@@ -20,12 +20,12 @@ vi.mock('./deviceLock', () => ({
   releaseDeviceLock: vi.fn(),
 }));
 
-import { bootReal } from './session';
-import { setStatus } from '@/state';
+import { bootReal } from './boot';
+import { dispatch } from '@/state';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  setStatus('idle');
+  dispatch({ t: 'disconnected' });
 });
 
 describe('bootReal — auto-connect gating', () => {

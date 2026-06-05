@@ -6,8 +6,9 @@
     setOutputEnabled,
     setOutputMuted,
   } from '@/runtime';
-  import ValueField from '../../chrome/ValueField.svelte';
+  import ValueField from '@/components/chrome/ValueField.svelte';
   import { chKey } from '@/styles/palette';
+  import { getSession } from '@/components/sessionContext';
 
   const {
     column,
@@ -21,7 +22,8 @@
     unavailable?: boolean;
   } = $props();
 
-  // Split a channel display name into base + L/R suffix, mirroring the JSX.
+  const s = getSession();
+
   function splitLR(name: string): { base: string; side: string | null } {
     const m = name.match(/^(.+?)\s+([LR])$/);
     return m ? { base: m[1], side: m[2] } : { base: name, side: null };
@@ -29,10 +31,10 @@
   const parts = $derived(splitLR(column.name));
 
   function onPower(): void {
-    setOutputEnabled(outputIndex, !column.enabled);
+    setOutputEnabled(s, outputIndex, !column.enabled);
   }
   function onMute(): void {
-    setOutputMuted(outputIndex, !column.muted);
+    setOutputMuted(s, outputIndex, !column.muted);
   }
 </script>
 
@@ -92,7 +94,7 @@
       align="center"
       value={column.gainDb}
       disabled={!column.enabled}
-      onChange={(v) => setOutputGain(outputIndex, v)}
+      onChange={(v) => setOutputGain(s, outputIndex, v)}
     />
   </div>
   <div class="field">
@@ -105,7 +107,7 @@
       align="center"
       value={column.delayMs}
       disabled={!column.enabled}
-      onChange={(v) => setOutputDelay(outputIndex, v)}
+      onChange={(v) => setOutputDelay(s, outputIndex, v)}
     />
   </div>
 </div>

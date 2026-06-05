@@ -1,14 +1,15 @@
 <script lang="ts">
   import { SvelteSet } from 'svelte/reactivity';
-  import Panel from '../chrome/Panel.svelte';
-  import KV from '../chrome/KV.svelte';
-  import BodePlot, { type BodeCurve } from '../bode/BodePlot.svelte';
-  import { filterCurve } from '../bode/filterCurve';
-  import { mirror, status } from '@/state';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import KV from '@/components/chrome/KV.svelte';
+  import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
+  import { filterCurve } from '@/components/bode/filterCurve';
+  import { getSession } from '@/components/sessionContext';
   import { matrixRows, ChannelId, inputIndexOf, CrossfeedPreset } from '@/domain';
   import { chKey } from '@/styles/palette';
 
-  const snap = $derived(mirror.current);
+  const s = getSession();
+  const snap = $derived(s.mirror.current);
   const rows = $derived(matrixRows(snap));
 
   function preampOffsetFor(c: { id: ChannelId; isOutput: boolean }): number {
@@ -18,8 +19,8 @@
     return snap?.inputPreampDb[idx] ?? 0;
   }
 
-  // Channels worth charting: both inputs always, plus every enabled output
-  // (muted ones still drawn -- the curve reflects EQ shape, not audibility).
+  // Both inputs always, plus enabled outputs. Muted ones still draw -- the
+  // curve reflects EQ shape, not audibility.
   const activeChannels = $derived.by(() => {
     if (!snap) return [];
     const enabledOutIds = new Set(
@@ -30,8 +31,7 @@
     );
   });
 
-  // Stereo pairs whose curves merge into a single bicolor dashed line when
-  // both sides hold identical EQ state.
+  // Pairs whose two curves merge into one line when both sides share EQ state.
   const STEREO_PAIRS: ReadonlyArray<readonly [ChannelId, ChannelId]> = [
     [ChannelId.In1L, ChannelId.In1R],
     [ChannelId.Out1L, ChannelId.Out1R],
@@ -62,8 +62,7 @@
       const ptsL = filterCurve(l.filters, preampOffsetFor(l));
       const ptsR = filterCurve(r.filters, preampOffsetFor(r));
       if (curvesEqual(ptsL, ptsR)) {
-        // Single solid line whose stroke fades L -> R across the plot --
-        // a visual cue that both channels share this response.
+        // Stroke fades L -> R across the plot to signal a shared response.
         out.push({
           id: `ov-${l.id}-${r.id}`,
           label: `${l.shortName}/${r.shortName}`,
@@ -90,9 +89,7 @@
     return `${signed && v >= 0 ? '+' : ''}${v.toFixed(1)}`;
   }
 
-  // Mirror src/components/processing/CrossfeedPanel.svelte: presets 0..2 are
-  // PRESET 1..3, value 3 is CUSTOM. Using identical labels keeps the State
-  // pane and the Processing tab readable as a single product.
+  // Labels match CrossfeedPanel so the State pane and Processing tab read alike.
   const CROSSFEED_PRESET_LABEL: Record<CrossfeedPreset, string> = {
     [CrossfeedPreset.Preset1]: 'PRESET 1',
     [CrossfeedPreset.Preset2]: 'PRESET 2',
@@ -178,9 +175,9 @@
             <span class="odelay">{out.delayMs.toFixed(1)} ms</span>
             <span
               class="oclip"
-              class:on={status.clipLatched[out.id]}
-              title={status.clipLatched[out.id] ? `${out.shortName} · CLIPPED` : ''}
-            >{status.clipLatched[out.id] ? '●' : '·'}</span>
+              class:on={s.telemetry.clipLatched[out.id]}
+              title={s.telemetry.clipLatched[out.id] ? `${out.shortName} · CLIPPED` : ''}
+            >{s.telemetry.clipLatched[out.id] ? '●' : '·'}</span>
             <span class="ostatus" class:mute={out.muted} class:on={out.enabled && !out.muted}>
               {out.muted ? '✕' : out.enabled ? '●' : '○'}
             </span>

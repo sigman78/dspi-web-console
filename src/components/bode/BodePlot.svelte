@@ -116,7 +116,6 @@
     return chShade(id, 'bright');
   }
 
-  // Build path data per curve (memoized via $derived on curves).
   const built = $derived.by(() => {
     return curves.map((c) => {
       const off = c.offsetPx ?? 0;
@@ -133,7 +132,6 @@
   const solid = $derived(built.filter((b) => !b.c.dashed));
   const single = $derived(curves.length === 1);
 
-  // Static axis tick lists.
   const F_MAJOR = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
   const F_MINOR: number[] = (() => {
     const set = new Set(F_MAJOR);
@@ -192,7 +190,6 @@
     if (r.width === 0 || r.height === 0) return;
     const sx = (e.clientX - r.left) / r.width;
     const sy = (e.clientY - r.top) / r.height;
-    // Map to internal coords.
     let ix = sx * W;
     const iy = sy * height;
     if (ix < PAD_L || ix > W || iy < 0 || iy > plotH) {
@@ -268,7 +265,6 @@
     {/each}
   </defs>
 
-  <!-- Minor (log) vertical lines -->
   {#each F_MINOR as f (f)}
     <line
       x1={xForF(f)} x2={xForF(f)} y1={0} y2={plotH}
@@ -277,7 +273,6 @@
     />
   {/each}
 
-  <!-- Horizontal dB lines + labels -->
   {#each yTicks as db (db)}
     {@const y = yForDb(db)}
     <line
@@ -297,7 +292,6 @@
     </text>
   {/each}
 
-  <!-- Major decade lines + labels -->
   {#each F_MAJOR as f (f)}
     {@const x = xForF(f)}
     <line
@@ -313,7 +307,6 @@
     </text>
   {/each}
 
-  <!-- Single-curve fill -->
   {#if single && solid[0]}
     <path
       d={solid[0].d + ` L ${W} ${plotH} L ${PAD_L} ${plotH} Z`}
@@ -322,7 +315,6 @@
     />
   {/if}
 
-  <!-- Dashed curves first (under) -->
   {#each dashed as b (b.c.id)}
     <path
       d={b.d}
@@ -336,7 +328,6 @@
     />
   {/each}
 
-  <!-- Solid curves on top -->
   {#each solid as b (b.c.id)}
     <path
       d={b.d}
@@ -348,7 +339,6 @@
     />
   {/each}
 
-  <!-- Markers (e.g. EQ band positions) -->
   {#each markers as m, i (m.id ?? i)}
     {@const mx = xForF(Math.max(Eq.FREQ_MIN_HZ, Math.min(Eq.FREQ_MAX_HZ, m.f)))}
     {@const my = yForDb(Math.max(yMin, Math.min(yMax, m.db)))}
@@ -371,7 +361,6 @@
     {/if}
   {/each}
 
-  <!-- Crosshair -->
   {#if crosshair && cx != null && cy != null && cFreq != null && cDb != null}
     <line
       x1={cx} x2={cx} y1={0} y2={plotH}

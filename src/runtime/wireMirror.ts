@@ -1,7 +1,7 @@
-// Layer-2 wire mirror: owns the spliced raw WireBulkParams buffer and produces
-// before/after domain snapshots for a PARAM_CHANGED splice. Auto-reseeds from
-// DspDevice.lastRawBulk by reference identity — a full read replaces that array,
-// which we detect and adopt — so there are no explicit reseed call sites.
+// Owns the spliced raw WireBulkParams buffer and produces before/after domain
+// snapshots for a PARAM_CHANGED splice. Auto-reseeds from DspDevice.lastRawBulk by
+// reference identity (a full read replaces that array, which we detect and adopt),
+// so there are no explicit reseed call sites.
 //
 // The diff base is this buffer's own prior decode (prev), NOT mirror.current:
 // granular user writes drift mirror.current from the raw buffer, so diffing the
@@ -9,7 +9,7 @@
 
 import type { DspDevice } from '@/device/DspDevice';
 import type { DspSnapshot } from '@/domain';
-import { fromBulkParams } from '@/device/snapshotCodec';
+import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 
 let _buf: Uint8Array | null = null;          // working copy; advances on each splice
@@ -26,7 +26,7 @@ export function spliceWireParam(
 ): { prev: DspSnapshot; next: DspSnapshot } | null {
   const base = device.lastRawBulk;
   if (!base) return null;
-  if (base !== _seededFrom) {                 // a full read landed → adopt it
+  if (base !== _seededFrom) {                 // a full read landed -> adopt it
     _buf = new Uint8Array(base);
     _seededFrom = base;
   }

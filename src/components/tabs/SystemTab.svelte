@@ -1,17 +1,20 @@
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
-  import KV from '../chrome/KV.svelte';
-  import { mirror, session, status } from '@/state';
-  import ChannelNamesPanel from '../system/ChannelNamesPanel.svelte';
-  import ResetPanel from '../system/ResetPanel.svelte';
-  import OutputsPanel from '../system/OutputsPanel.svelte';
-  import I2sClockPanel from '../system/I2sClockPanel.svelte';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import KV from '@/components/chrome/KV.svelte';
+  import { connection } from '@/state';
+  import ChannelNamesPanel from '@/components/system/ChannelNamesPanel.svelte';
+  import ResetPanel from '@/components/system/ResetPanel.svelte';
+  import OutputsPanel from '@/components/system/OutputsPanel.svelte';
+  import I2sClockPanel from '@/components/system/I2sClockPanel.svelte';
   import { chKey } from '@/styles/palette';
   import { clearClips } from '@/runtime';
+  import { getSession } from '@/components/sessionContext';
 
-  const snap = $derived(mirror.current);
-  const info = $derived(status.info);
-  const connected = $derived(session.status === 'connected');
+  const s = getSession();
+
+  const snap = $derived(s.mirror.current);
+  const info = $derived(s.telemetry.info);
+  const connected = $derived(connection.connected);
 
   function fmtNum(v: number | null | undefined): string { return v == null ? '—' : String(v); }
   function isNonZero(v: number | null | undefined): boolean { return v != null && v > 0; }
@@ -31,11 +34,11 @@
   <div class="col">
     <Panel code="SY.01" title="DEVICE">
       <div class="kvgrid">
-        <KV label="STATUS"   value={session.status.toUpperCase()} tone={session.status === 'connected' ? 'ok' : 'off'} />
-        <KV label="SERIAL"   value={session.lastDeviceInfo?.serial ?? '—'} />
-        <KV label="FIRMWARE" value={session.lastDeviceInfo?.capabilities.fwLabel ?? '—'} />
+        <KV label="STATUS"   value={connection.label} tone={connection.connected ? 'ok' : 'off'} />
+        <KV label="SERIAL"   value={s.info.serial} />
+        <KV label="FIRMWARE" value={s.info.capabilities.fwLabel} />
         <KV label="PLATFORM" value={snap?.platform.name ?? '—'} />
-        <KV label="FORMAT"   value={session.lastDeviceInfo?.capabilities.wireLabel ?? '—'} />
+        <KV label="FORMAT"   value={s.info.capabilities.wireLabel} />
         <KV label="OUTPUTS"  value={`${snap?.platform.outputCount ?? 0} / ${snap?.platform.totalChannelCount ?? 0}`} />
       </div>
     </Panel>
@@ -46,18 +49,18 @@
         <KV label="SAMPLE"    value={info?.sampleRateHz  != null ? `${(info.sampleRateHz / 1000).toFixed(1)} kHz` : '—'} />
         <KV label="VOLTAGE"   value={info?.coreVoltageMv != null ? `${(info.coreVoltageMv / 1000).toFixed(3)} V` : '—'} />
         <KV label="TEMP"      value={info?.tempCDegC     != null ? `${(info.tempCDegC / 100).toFixed(1)} °C` : '—'} />
-        <KV label="CPU0"      value={`${status.cpu0}%`} />
-        <KV label="CPU1"      value={`${status.cpu1}%`} />
-        <KV label="STREAMING" value={status.streaming ? 'YES' : 'NO'} tone={status.streaming ? 'ok' : 'off'} />
-        <KV label="PDM"       value={status.pdmActive ? 'ACTIVE' : 'IDLE'} tone={status.pdmActive ? 'ok' : 'off'} />
-        <KV label="SEQ"       value={String(status.sequence)} />
-        <KV label="POLL ERR"  value={String(status.errorCount)} tone={status.errorCount > 0 ? undefined : 'off'} />
+        <KV label="CPU0"      value={`${s.telemetry.cpu0}%`} />
+        <KV label="CPU1"      value={`${s.telemetry.cpu1}%`} />
+        <KV label="STREAMING" value={s.telemetry.streaming ? 'YES' : 'NO'} tone={s.telemetry.streaming ? 'ok' : 'off'} />
+        <KV label="PDM"       value={s.telemetry.pdmActive ? 'ACTIVE' : 'IDLE'} tone={s.telemetry.pdmActive ? 'ok' : 'off'} />
+        <KV label="SEQ"       value={String(s.telemetry.sequence)} />
+        <KV label="POLL ERR"  value={String(s.telemetry.errorCount)} tone={s.telemetry.errorCount > 0 ? undefined : 'off'} />
       </div>
     </Panel>
 
     <Panel code="SY.04" title="ERROR COUNTERS">
       {#snippet right()}
-        <button class="clear-btn" onclick={clearClips} disabled={!connected} title="Clear latched clip flags">CLEAR</button>
+        <button class="clear-btn" onclick={() => clearClips(s)} disabled={!connected} title="Clear latched clip flags">CLEAR</button>
       {/snippet}
       <div class="kvgrid">
         <KV label="PDM RING OVR" value={fmtNum(info?.pdmRingOverruns)}       tone={isNonZero(info?.pdmRingOverruns)       ? undefined : 'off'} />
@@ -68,16 +71,15 @@
         <KV label="SPDIF UNR"    value={fmtNum(info?.spdifUnderruns)}        tone={isNonZero(info?.spdifUnderruns)        ? undefined : 'off'} />
         <KV label="SPDIF STARV"  value={fmtNum(info?.spdifStarvationsTotal)} tone={isNonZero(info?.spdifStarvationsTotal) ? undefined : 'off'} />
       </div>
-      <!-- Per-channel latched clip flags. Latch is host-side OR over every
-           20 Hz status packet; CLEAR button above resets both firmware
-           (ClearClips 0x83) and host array. -->
+      <!-- Latch is a host-side OR over every 20 Hz status packet; CLEAR above
+           resets both firmware (ClearClips 0x83) and the host array. -->
       <div class="subhdr">CLIP / CHANNEL</div>
       <div class="clipgrid">
         {#each snap?.channels ?? [] as ch (ch.id)}
           <span
             class="clipsq ch-{chKey(ch.id)}"
-            class:on={status.clipLatched[ch.id]}
-            title="{ch.shortName} · {ch.name}{status.clipLatched[ch.id] ? ' · CLIPPED' : ''}"
+            class:on={s.telemetry.clipLatched[ch.id]}
+            title="{ch.shortName} · {ch.name}{s.telemetry.clipLatched[ch.id] ? ' · CLIPPED' : ''}"
           >{ch.shortName}</span>
         {/each}
       </div>

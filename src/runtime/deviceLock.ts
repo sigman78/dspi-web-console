@@ -2,7 +2,7 @@
 // tab holds an exclusive lock for its session; other tabs query it to detect
 // that the device is already in use. Web Locks ships in every Chromium browser
 // (so it is present exactly when WebUSB is), and the browser auto-releases the
-// lock if the holding tab closes or crashes — no heartbeats needed.
+// lock if the holding tab closes or crashes -- no heartbeats needed.
 const LOCK_NAME = 'dspi-device-active';
 
 let release: (() => void) | null = null;

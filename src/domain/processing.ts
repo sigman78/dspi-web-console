@@ -1,5 +1,4 @@
-// Audio processing modules — DSP blocks the user toggles on/off in
-// the Processing tab. Mirrors `bulk_params.h` sections 3 (crossfeed),
+// DSP processing blocks. Mirrors bulk_params.h sections 3 (crossfeed),
 // 12 (leveller), and the global-params loudness fields.
 
 export interface Loudness {
@@ -44,8 +43,8 @@ export interface Leveller {
   gateDb: number;
 }
 
-// Master volume persistence mode. 0 = global (host calls SaveMasterVolume
-// to persist); 1 = travels with each preset.
+// Master volume persistence: 0 = global (persisted via SaveMasterVolume);
+// 1 = travels with each preset.
 export const MasterVolumeMode = {
   Independent: 0,
   WithPreset:  1,

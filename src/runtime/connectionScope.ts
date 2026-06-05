@@ -4,8 +4,7 @@ type Disposer = () => void;
 
 // Owns the teardown of resources started for one device connection (poll loop,
 // resync timer, command lanes, transport listeners). The app holds one device
-// at a time, so there is a single module-level active scope. See
-// docs/superpowers/specs/2026-05-21-connection-scope-design.md.
+// at a time, so there is a single module-level active scope.
 export class ConnectionScope {
   #disposers: Disposer[] = [];
   add(d: Disposer): void { this.#disposers.push(d); }
@@ -20,8 +19,7 @@ export class ConnectionScope {
 
 let active: ConnectionScope | null = null;
 
-// Open a fresh scope, disposing any prior one (generalizes the old
-// attachTransportListeners self-clean).
+// Open a fresh scope, disposing any prior one.
 export function beginConnection(): ConnectionScope {
   active?.dispose();
   active = new ConnectionScope();

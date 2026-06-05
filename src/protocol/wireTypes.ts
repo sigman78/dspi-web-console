@@ -1,16 +1,6 @@
-// Wire-format codec schemas mirroring docs/bulk_params.h.
-//
-// Every export is intended to be consumed via a namespace import:
-//
-//   import * as Wire from './wireTypes';
-//   Wire.Header.write(w, {...});
-//   Wire.Const.NUM_CHANNELS;
-//   Wire.BulkLimits.MaxRequestSize;
-//
-// The C struct names are mirrored exactly except for the redundant
-// `Wire` prefix -- the namespace `Wire` already supplies it.  So
-// firmware's `WireHeader` <-> `Wire.Header`, `WireBandParams` <->
-// `Wire.BandParams`, and so on.
+// Wire-format codec schemas, consumed via `import * as Wire from './wireTypes'`.
+// C struct names are mirrored minus the redundant `Wire` prefix (the namespace
+// supplies it): firmware `WireBandParams` <-> `Wire.BandParams`.
 //
 // Layout summary (V10, total 2960 bytes):
 //   off    bytes  C struct                    section
@@ -37,9 +27,7 @@ import { Codec, type BinCodec } from '@/utils';
 
 const { u8, u16, u32, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
 
-// Wire-format dimensions (sized to the largest platform: RP2350).
-// Names mirror the WIRE_* macros in bulk_params.h. SERIAL_LEN comes
-// from the vendor protocol's GetSerial payload size (32 bytes).
+// Wire-format dimensions, sized to the largest platform (RP2350).
 export const Const = {
   NUM_CHANNELS:        11,  // WIRE_MAX_CHANNELS
   NUM_OUTPUTS:          9,  // WIRE_MAX_OUTPUT_CHANNELS
@@ -118,7 +106,7 @@ export const PinConfig = struct({
 
 // Section 9: EQ band parameters (16 B). Byte 1 was `reserved` through V9;
 // V10 firmware reinterprets it as `bypass` (1 = band excluded from the
-// response). Decoding it on older firmware is harmless — it reads 0.
+// response). Decoding it on older firmware is harmless -- it reads 0.
 export const BandParams = struct({
   type:      u8,
   bypass:    u8,
@@ -202,13 +190,10 @@ export const DacHwMute = struct({
   _reserved:  reserved(8),
 });
 
-// Other vendor-control packets.
-// These don't appear in `bulk_params.h` because they're not part of the
-// bulk transfer; they're standalone control-transfer payloads.
+// Standalone control-transfer payloads (not part of the bulk transfer).
 
 // 8-byte payload of `SetMatrixRoute` / response of `GetMatrixRoute`
-// (vendor requests 0x70 / 0x71). Mirrors `MatrixRoutePacket` in
-// docs/mixer.md. Field names are camelCased to match domain shapes.
+// (vendor requests 0x70 / 0x71).
 export const MatrixRoutePacket = struct({
   input:       u8,
   output:      u8,
@@ -217,9 +202,7 @@ export const MatrixRoutePacket = struct({
   gainDb:      f32,
 });
 
-// 16-byte payload of `SetEqParam` (vendor request 0x43):
-//   u8 channel, u8 band, u8 type, u8 _reserved, f32 freq, f32 q, f32 gain.
-// Mirrors `EncodeSetFilter` in `DSPiConsole.Usb/DspDevice.cs`.
+// 16-byte payload of `SetEqParam` (vendor request 0x43).
 export const SetFilterPacket = struct({
   channel:   u8,
   band:      u8,
@@ -264,9 +247,8 @@ export const BufferStats = struct({
   pdm:      PdmBufferStats,
 });
 
-// 16-byte live S/PDIF-RX status (GetSpdifRxStatus 0xE2). `state` maps to the
-// domain SpdifInputState enum and `inputSource` to AudioInputSource; the
-// narrowing happens in DspDevice, this codec stays raw.
+// 16-byte live S/PDIF-RX status (GetSpdifRxStatus 0xE2). Stays raw; `state`
+// and `inputSource` are narrowed to domain enums in DspDevice.
 export const SpdifRxStatus = struct({
   state:        u8,
   inputSource:  u8,
@@ -279,7 +261,7 @@ export const SpdifRxStatus = struct({
 });
 
 // Length of the raw IEC-60958 channel-status block (GetSpdifRxChStatus 0xE3).
-// No semantic codec — surfaced verbatim as bytes.
+// No semantic codec -- surfaced verbatim as bytes.
 export const SPDIF_RX_CH_STATUS_LEN = 24;
 
 // 32-byte `GetSerial` response: NUL-terminated UTF-8 inside a fixed
@@ -348,7 +330,6 @@ export const SystemStatusValue = {
 } as const;
 export type SystemStatusValue = (typeof SystemStatusValue)[keyof typeof SystemStatusValue];
 
-// Section sizes -- equal to on-wire sizes since Task 1 padded V6 codecs to 16B.
 const V2_PREFIX_SIZE =
   sizeOf(Header) +
   sizeOf(GlobalParams) +
@@ -443,7 +424,7 @@ export type PresetStartupMode = (typeof PresetStartupMode)[keyof typeof PresetSt
 
 // Preset directory packet (response to GetPresetDir 0x95). Schema is the
 // V12+ 7-byte shape; legacy firmware truncates to 6 bytes (no trailing
-// masterVolumeMode byte) and `decodePadded` zero-extends — masterVolumeMode
+// masterVolumeMode byte) and `decodePadded` zero-extends -- masterVolumeMode
 // reads as 0, the correct legacy semantic ("independent" mode), not a
 // sentinel. Always request 7 bytes from the device: WinUSB treats
 // device-overrun as a babble error and fails the transfer.

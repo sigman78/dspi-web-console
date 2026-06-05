@@ -1,32 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { actionCmd, FlashResult, PresetResult, flashResultFromByte, presetResultFromByte, PinConfigResult, pinConfigResultFromByte } from './results';
-import type { DspTransport } from '@/transport/DspTransport';
-
-const mkTransport = (response: Uint8Array): DspTransport => ({
-  open: vi.fn(), close: vi.fn(), isOpen: () => true,
-  on: () => () => {},
-  ctrlIn: vi.fn(async () => response),
-  ctrlOut: vi.fn(async () => {}),
-});
-
-describe('actionCmd', () => {
-  it('returns the first byte of the response', async () => {
-    const t = mkTransport(new Uint8Array([0x02]));
-    const code = await actionCmd(t, { code: 0x51 });
-    expect(code).toBe(0x02);
-  });
-
-  it('returns 0xFF when the response is empty', async () => {
-    const t = mkTransport(new Uint8Array());
-    expect(await actionCmd(t, { code: 0x51 })).toBe(0xFF);
-  });
-
-  it('passes wValue through to ctrlIn', async () => {
-    const t = mkTransport(new Uint8Array([0]));
-    await actionCmd(t, { code: 0x90 }, 7);
-    expect(t.ctrlIn).toHaveBeenCalledWith(0x90, 7, 1);
-  });
-});
+import { describe, it, expect } from 'vitest';
+import { FlashResult, PresetResult, flashResultFromByte, presetResultFromByte, PinConfigResult, pinConfigResultFromByte } from './results';
 
 describe('flashResultFromByte', () => {
   it('returns ok on 0', () => {

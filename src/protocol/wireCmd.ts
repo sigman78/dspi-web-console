@@ -1,18 +1,9 @@
-// Vendor-control command codes ("`bRequest`" of the USB control transfer).
-// Values mirror `VendorCommands` in `DspDevice.cs`.
+// Vendor-control command codes (`bRequest` of the USB control transfer).
 //
-// Each entry carries its `code` (the byte the firmware dispatches on) and,
-// where the payload is a single fixed-size codec, the `codec` to use for
-// encode/decode.  The `readCmd` / `writeCmd` helpers below consume those
-// descriptors to remove the `sizeOf + ctrlIn + decode` ceremony from
-// every device method.
-//
-// Commands without a `codec` are either:
-//   * bit-packed wValues (GetEqParam — multi-read, see DspDevice.getFilter),
-//   * variable-length payloads (GetAllParams, GetStatus, GetBufferStats),
-//   * host-side unimplemented (left listed for forward reference).
-//
-// Both DspDevice and MockTransport access entries via `WireCmd.X.code`.
+// Each entry carries its `code` and, where the payload is a single fixed-size
+// codec, the `codec` for encode/decode (consumed by readCmd / writeCmd below).
+// Entries without a `codec` use bit-packed wValues, variable-length payloads,
+// or are host-side unimplemented.
 
 import type { DspTransport } from '@/transport/DspTransport';
 import { type BinCodec, Codec } from '@/utils';
@@ -28,20 +19,14 @@ export interface ReadCmd<T>  { readonly code: number; readonly codec: BinCodec<T
 export interface WriteCmd<T> { readonly code: number; readonly codec: BinCodec<T> }
 export interface RawCmd      { readonly code: number }
 
-// Re-type a wire-level codec to a narrower API-level shape. The codec at
-// runtime still reads/writes raw u8/u16/etc.; this is purely a type-system
-// nudge so writeCmd<T> / readCmd<T> see the typed identifier (ChannelId,
-// InputSlot, FilterType, ...) instead of bare number. Required because
-// BinCodec<T> is invariant in T (read returns T, write consumes T) so a
-// direct assignability check fails even when the runtime values are
-// compatible.
+// Re-type a wire codec to a narrower API-level shape (ChannelId, FilterType,
+// ...) at the type level only; the runtime codec is unchanged. Needed because
+// BinCodec<T> is invariant in T, so a direct assignment is rejected.
 function tighten<T>(codec: BinCodec<unknown>): BinCodec<T> {
   return codec as BinCodec<T>;
 }
 
-// Payload shapes for codec-carrying commands. Named so each WireCmd entry
-// references the type once instead of duplicating it across the codec
-// cast and the satisfies clause.
+// Payload shapes for codec-carrying commands.
 type SetEqParamPayload = {
   channel: ChannelId; band: number; type: FilterType;
   frequency: number; q: number; gain: number;
@@ -75,7 +60,7 @@ export const WireCmd = {
 
   // Persistence (action-style IN; return 1-byte FlashResult).
   // On V3+ firmware these redirect through the preset system on the
-  // currently-active slot. See docs/HW-PROFILES.md §2.
+  // currently-active slot. See docs/HW-PROFILES.md sec 2.
   SaveParams:           { code: 0x51 } satisfies RawCmd,
   LoadParams:           { code: 0x52 } satisfies RawCmd,
   FactoryReset:         { code: 0x53 } satisfies RawCmd,
@@ -139,7 +124,7 @@ export const WireCmd = {
   GetBufferStats:       { code: 0xB0 } satisfies RawCmd,
   ResetBufferStats:     { code: 0xB1 } satisfies RawCmd,
 
-  // Presets (0x90..0x9A). See docs/HW-PROFILES.md §1b.
+  // Presets (0x90..0x9A). See docs/HW-PROFILES.md sec 1b.
   // GetPresetDir / GetPresetActive carry hand-rolled payloads; the others
   // are codec-driven or action-IN.
   PresetSave:           { code: 0x90 } satisfies RawCmd,
@@ -202,12 +187,9 @@ export const WireCmd = {
 
 // Helpers
 
-// Read a fixed-size payload via a `ReadCmd<T>` descriptor.
-//
-// USB control-IN transfers may return fewer bytes than requested when
-// the device sends only its actual payload (NUL-terminated strings
-// shorter than the buffer, etc.); `decodePadded` zero-pads up to the
-// codec's size so trailing-NUL fields still decode correctly.
+// Read a fixed-size payload via a `ReadCmd<T>` descriptor. Control-IN may
+// return fewer bytes than requested (short NUL-terminated strings, etc.), so
+// `decodePadded` zero-pads to the codec's size before decoding.
 export async function readCmd<T>(
   t: DspTransport, c: ReadCmd<T>, wValue = 0,
 ): Promise<T> {
@@ -219,4 +201,17 @@ export async function writeCmd<T>(
   t: DspTransport, c: WriteCmd<T>, value: T, wValue = 0,
 ): Promise<void> {
   await t.ctrlOut(c.code, wValue, Codec.encode(c.codec, value));
+}
+
+// Action-style IN: control-IN that the firmware uses to *trigger* a side
+// effect and return a 1-byte status code. Returns 0xFF if the response
+// is empty (transport-level failure short of a throw). The raw byte is
+// decoded into a typed Result by the helpers in results.ts.
+export async function actionCmd(
+  t: DspTransport,
+  cmd: { code: number },
+  wValue = 0,
+): Promise<number> {
+  const r = await t.ctrlIn(cmd.code, wValue, 1);
+  return r.length >= 1 ? r[0] : 0xFF;
 }

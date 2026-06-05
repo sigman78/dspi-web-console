@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from '@/device/DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
-import { finishConnection } from './actions';
-import { session, bindDevice, settings, mirror, resetStatus } from '@/state';
+import { wireUpConnection } from './deviceService';
+import { activeSession, connection, settings } from '@/state';
 import { endConnection } from './connectionScope';
 
 // End-to-end HIL test: drives the production state-layer connection finish flow
@@ -15,7 +15,7 @@ import { endConnection } from './connectionScope';
 // 'disconnect' transport events would fire after this test (during
 // teardown) and re-trigger connection finish against a closing transport.
 
-describe('state.finishConnection — end-to-end against real hardware (HIL)', () => {
+describe('state.wireUpConnection — end-to-end against real hardware (HIL)', () => {
   let device: DspDevice;
   let close: () => Promise<void>;
 
@@ -23,26 +23,22 @@ describe('state.finishConnection — end-to-end against real hardware (HIL)', ()
     const opened = await openSingleDevice();
     device = opened.device;
     close = opened.close;
-    bindDevice(device);
   });
 
   afterAll(async () => {
     endConnection();
-    bindDevice(null);
-    mirror.reset();
-    resetStatus();
     if (close) await close();
   });
 
   it('hydrates connection + mirror.current from real device', async () => {
-    await finishConnection(device);
+    await wireUpConnection(device);
 
-    expect(session.status).toBe('connected');
-    expect(session.lastDeviceInfo?.serial.length ?? 0).toBeGreaterThan(0);
-    expect(session.lastDeviceInfo?.capabilities.fwLabel.length ?? 0).toBeGreaterThan(0);
-    expect(settings.lastSerial).toBe(session.lastDeviceInfo?.serial);
+    expect(connection.connected).toBe(true);
+    expect(activeSession()?.device?.info.serial.length ?? 0).toBeGreaterThan(0);
+    expect(activeSession()?.device?.info.capabilities.fwLabel.length ?? 0).toBeGreaterThan(0);
+    expect(settings.lastSerial).toBe(activeSession()?.device?.info.serial);
 
-    const snap = mirror.current;
+    const snap = activeSession()?.mirror.current ?? null;
     expect(snap).not.toBeNull();
     if (!snap) return;
 
@@ -54,18 +50,18 @@ describe('state.finishConnection — end-to-end against real hardware (HIL)', ()
     expect(device.capabilities.wire).toBeGreaterThanOrEqual(2);
   });
 
-  it('is idempotent: a second finishConnection settles to the same state', async () => {
+  it('is idempotent: a second wireUpConnection settles to the same state', async () => {
     const before = {
-      serial: session.lastDeviceInfo?.serial,
-      fw: session.lastDeviceInfo?.capabilities.fwLabel,
-      platform: mirror.current?.platform.name,
-      wire: session.lastDeviceInfo?.capabilities.wire,
+      serial: activeSession()?.device?.info.serial,
+      fw: activeSession()?.device?.info.capabilities.fwLabel,
+      platform: activeSession()?.mirror.current?.platform.name,
+      wire: activeSession()?.device?.info.capabilities.wire,
     };
-    await finishConnection(device);
-    expect(session.status).toBe('connected');
-    expect(session.lastDeviceInfo?.serial).toBe(before.serial);
-    expect(session.lastDeviceInfo?.capabilities.fwLabel).toBe(before.fw);
-    expect(mirror.current?.platform.name).toBe(before.platform);
-    expect(session.lastDeviceInfo?.capabilities.wire).toBe(before.wire);
+    await wireUpConnection(device);
+    expect(connection.connected).toBe(true);
+    expect(activeSession()?.device?.info.serial).toBe(before.serial);
+    expect(activeSession()?.device?.info.capabilities.fwLabel).toBe(before.fw);
+    expect(activeSession()?.mirror.current?.platform.name).toBe(before.platform);
+    expect(activeSession()?.device?.info.capabilities.wire).toBe(before.wire);
   });
 });

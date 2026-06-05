@@ -1,17 +1,19 @@
 <script lang="ts">
-  import Panel from '../chrome/Panel.svelte';
-  import ValueField from '../chrome/ValueField.svelte';
-  import SegmentedSelect from '../chrome/SegmentedSelect.svelte';
-  import ToggleSwitch from '../chrome/ToggleSwitch.svelte';
-  import { mirror, session } from '@/state';
+  import Panel from '@/components/chrome/Panel.svelte';
+  import ValueField from '@/components/chrome/ValueField.svelte';
+  import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
+  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import { connection } from '@/state';
   import {
     setLevellerEnabled, setLevellerSpeed, setLevellerLookahead,
     setLevellerAmount, setLevellerMaxGain, setLevellerGate,
   } from '@/runtime';
   import { LevellerSpeed, Proc } from '@/domain';
+  import { getSession } from '@/components/sessionContext';
 
-  const lv = $derived(mirror.current?.leveller);
-  const connected = $derived(session.status === 'connected');
+  const s = getSession();
+  const lv = $derived(s.mirror.current?.leveller);
+  const connected = $derived(connection.connected);
   const enabled = $derived(lv?.enabled ?? false);
   const editable = $derived(connected && enabled);
 
@@ -23,23 +25,23 @@
 
   function toggleEnabled() {
     if (!lv) return;
-    setLevellerEnabled(!lv.enabled);
+    setLevellerEnabled(s, !lv.enabled);
   }
   function toggleLookahead() {
     if (!lv) return;
-    setLevellerLookahead(!lv.lookahead);
+    setLevellerLookahead(s, !lv.lookahead);
   }
   function onAmountInput(e: Event) {
     const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setLevellerAmount(v);
+    if (!Number.isNaN(v)) setLevellerAmount(s, v);
   }
   function onMaxGainInput(e: Event) {
     const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setLevellerMaxGain(v);
+    if (!Number.isNaN(v)) setLevellerMaxGain(s, v);
   }
   function onGateInput(e: Event) {
     const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setLevellerGate(v);
+    if (!Number.isNaN(v)) setLevellerGate(s, v);
   }
 </script>
 
@@ -62,7 +64,7 @@
         options={SPEED_OPTIONS}
         disabled={!editable}
         ariaLabel="Leveller speed"
-        onChange={(v) => setLevellerSpeed(v)}
+        onChange={(v) => setLevellerSpeed(s, v)}
       />
     </div>
 
@@ -81,7 +83,7 @@
       kind="pct"
       precision={0}
       disabled={!editable}
-      onChange={(v) => setLevellerAmount(v)}
+      onChange={(v) => setLevellerAmount(s, v)}
     />
 
     <span class="lbl">MAX GAIN</span>
@@ -99,7 +101,7 @@
       kind="dB"
       precision={1}
       disabled={!editable}
-      onChange={(v) => setLevellerMaxGain(v)}
+      onChange={(v) => setLevellerMaxGain(s, v)}
     />
 
     <span class="lbl">GATE</span>
@@ -117,7 +119,7 @@
       kind="dB"
       precision={0}
       disabled={!editable}
-      onChange={(v) => setLevellerGate(v)}
+      onChange={(v) => setLevellerGate(s, v)}
     />
 
     <span class="lbl">LOOKAHEAD</span>

@@ -1,21 +1,22 @@
-<!-- src/components/presets/PresetTile.svelte -->
 <script lang="ts">
-  import { presets, presetsDirty, copySource } from '@/state';
+  import { presetsDirty } from '@/state';
+  import { getSession } from '@/components/sessionContext';
   import { loadPresetSlot, renamePresetSlot } from '@/runtime';
   import { PresetStartupMode } from '@/protocol';
   import { type PresetSlot, PRESET_NAME_MAX_LEN } from '@/domain';
 
   const { slot }: { slot: PresetSlot } = $props();
+  const s = getSession();
 
-  const occupied = $derived(presets.directory?.occupiedSlotsSet.has(slot) ?? false);
-  const isActive = $derived(presets.active === slot);
+  const occupied = $derived(s.presets.directory?.occupiedSlotsSet.has(slot) ?? false);
+  const isActive = $derived(s.presets.active === slot);
   const isStartup = $derived.by(() => {
-    const d = presets.directory;
+    const d = s.presets.directory;
     return d != null && d.startupMode === PresetStartupMode.Specified && d.defaultSlot === slot;
   });
-  const isCopySource = $derived(copySource.slot === slot);
-  const isDirty = $derived(isActive && presetsDirty.current);
-  const name = $derived(presets.names[slot] ?? '');
+  const isCopySource = $derived(s.copySource.slot === slot);
+  const isDirty = $derived(isActive && presetsDirty(s));
+  const name = $derived(s.presets.names[slot] ?? '');
 
   let editing = $state(false);
   let editValue = $state('');
@@ -40,7 +41,7 @@
     editing = false;
     const trimmed = editValue.trim();
     if (trimmed.length > 0 && trimmed !== name) {
-      await renamePresetSlot(slot, trimmed);
+      await renamePresetSlot(s, slot, trimmed);
     }
   }
   function cancelRename() {
@@ -60,7 +61,7 @@
   async function onClick() {
     if (editing) return;
     if (isActive) return;
-    await loadPresetSlot(slot);
+    await loadPresetSlot(s, slot);
   }
 
   function onKeyDown(e: KeyboardEvent) {

@@ -1,7 +1,6 @@
-// Apply one SnapshotChange to a DspSnapshot, in place. The inverse of
-// diffSnapshots: aggregate kinds replace the whole object (reactive under a
-// Svelte deep proxy); the lgSoundSync split sets sub-fields. Exhaustive switch —
-// TypeScript flags any unhandled kind.
+// Apply one SnapshotChange to a DspSnapshot in place; inverse of diffSnapshots.
+// Aggregate kinds replace the whole object (reactive under a Svelte deep proxy).
+// Exhaustive switch -- TypeScript flags any unhandled kind.
 
 import type { DspSnapshot } from './snapshot';
 import type { SnapshotChange } from './snapshotDiff';

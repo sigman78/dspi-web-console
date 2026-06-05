@@ -3,16 +3,17 @@
   import StatusPill from './StatusPill.svelte';
   import DirtyDot from './DirtyDot.svelte';
   import MasterVolumeMini from './MasterVolumeMini.svelte';
-  import PresetActiveChip from './PresetActiveChip.svelte';
-  import { status, session, mirror } from '@/state';
+  import PresetActiveChip from '@/components/presets/PresetActiveChip.svelte';
+  import { connection, activeSession } from '@/state';
   import { setBypass } from '@/runtime';
 
-  const connected = $derived(session.status === 'connected');
-  const info = $derived(status.info);
-  const bypassed = $derived(mirror.current?.bypass ?? false);
+  const s = $derived(activeSession());
+  const connected = $derived(connection.connected);
+  const info = $derived(s?.telemetry.info ?? null);
+  const bypassed = $derived(s?.mirror.current?.bypass ?? false);
 
-  const cpu0 = $derived(connected ? `${status.cpu0}%` : '—');
-  const cpu1 = $derived(connected ? `${status.cpu1}%` : '—');
+  const cpu0 = $derived(connected ? `${s?.telemetry.cpu0 ?? 0}%` : '—');
+  const cpu1 = $derived(connected ? `${s?.telemetry.cpu1 ?? 0}%` : '—');
   const fsKHz = $derived(
     connected && info?.sampleRateHz != null ? `${(info.sampleRateHz / 1000).toFixed(0)}k` : '—'
   );
@@ -36,8 +37,8 @@
 
   <div class="spacer"></div>
 
-  <Telem label="CPU0" value={cpu0} bar={connected ? status.cpu0 / 100 : undefined} />
-  <Telem label="CPU1" value={cpu1} bar={connected ? status.cpu1 / 100 : undefined} />
+  <Telem label="CPU0" value={cpu0} bar={connected ? (s?.telemetry.cpu0 ?? 0) / 100 : undefined} />
+  <Telem label="CPU1" value={cpu1} bar={connected ? (s?.telemetry.cpu1 ?? 0) / 100 : undefined} />
   <Telem label="FS"   value={fsKHz} />
   <Telem label="CLK"  value={clkMHz} />
   <Telem label="V"    value={voltage} />
@@ -50,7 +51,7 @@
   <button
     class="bypass"
     class:on={bypassed}
-    onclick={() => setBypass(!bypassed)}
+    onclick={() => { if (s) setBypass(s, !bypassed); }}
     disabled={!connected}
     title={bypassed ? 'EQ bypass on (signal passes through)' : 'EQ active'}
     aria-label={bypassed ? 'Disable EQ bypass' : 'Enable EQ bypass'}

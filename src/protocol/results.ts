@@ -1,9 +1,6 @@
-// src/protocol/results.ts
-import type { DspTransport } from '@/transport/DspTransport';
 import { Result } from '@/utils';
 
-// FlashResult — returned by SaveParams (0x51), LoadParams (0x52), FactoryReset (0x53).
-// Mirrors `FlashResult` in DspDevice.cs.
+// FlashResult -- returned by SaveParams (0x51), LoadParams (0x52), FactoryReset (0x53).
 export const FlashResult = {
   Ok:        0x00,
   ErrWrite:  0x01,
@@ -12,8 +9,8 @@ export const FlashResult = {
 } as const;
 export type FlashResult = (typeof FlashResult)[keyof typeof FlashResult];
 
-// PresetResult — returned by every Preset* command (0x90–0x9A) plus
-// SaveMasterVolume (0xD6). Mirrors `PresetResult` in DspDevice.cs.
+// PresetResult -- returned by every Preset* command (0x90-0x9A) plus
+// SaveMasterVolume (0xD6).
 export const PresetResult = {
   Ok:              0x00,
   InvalidSlot:     0x01,
@@ -22,18 +19,6 @@ export const PresetResult = {
   FlashWriteError: 0x04,
 } as const;
 export type PresetResult = (typeof PresetResult)[keyof typeof PresetResult];
-
-// Action-style IN: control-IN that the firmware uses to *trigger* a side
-// effect and return a 1-byte status code. Returns 0xFF if the response
-// is empty (transport-level failure short of a throw).
-export async function actionCmd(
-  t: DspTransport,
-  cmd: { code: number },
-  wValue = 0,
-): Promise<number> {
-  const r = await t.ctrlIn(cmd.code, wValue, 1);
-  return r.length >= 1 ? r[0] : 0xFF;
-}
 
 const flashCodes = new Set<number>(Object.values(FlashResult));
 const presetCodes = new Set<number>(Object.values(PresetResult));
@@ -69,8 +54,8 @@ export function presetResultFromByte(byte: number): Result<void, PresetResult> {
   return Result.fail(code, presetMessage[code]);
 }
 
-// PinConfigResult — returned by output-pin (0x7C), output-type (0xC0), and
-// I2S/MCK pin commands (0xC2/0xC6/0xC8). Mirrors PIN_CONFIG_* in firmware config.h.
+// PinConfigResult -- returned by output-pin (0x7C), output-type (0xC0), and
+// I2S/MCK pin commands (0xC2/0xC6/0xC8).
 export const PinConfigResult = {
   Success:       0x00,
   InvalidPin:    0x01,

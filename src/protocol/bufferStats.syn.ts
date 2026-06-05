@@ -1,8 +1,5 @@
-// Synthesizer side of the GetBufferStats packet: encodes a domain shape
-// into the canonical 44-byte wire packet. Used by tests and by
-// `MockTransport` to serve `GetBufferStats` without hardware. The parser
-// lives in `./bufferStats.ts`; both sides share the `WireBufferStats`
-// schema in `./wireTypes.ts`.
+// Synthesizer side of the GetBufferStats packet (encode); the parser is in
+// `./bufferStats.ts`. Both share the `BufferStats` schema in `./wireTypes.ts`.
 
 import { Codec } from '@/utils';
 import type { PdmBufferStats, SpdifBufferStats } from './bufferStats';

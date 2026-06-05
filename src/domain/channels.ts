@@ -1,7 +1,5 @@
-// Channel identity.
-// Numeric values are pinned by firmware (see `WIRE_*` macros and
-// `DspDevice.cs`). The enum itself is a domain identifier:
-// every UI surface, layout decision, and routing matrix indexes by it.
+// Channel identity. Numeric values are firmware-pinned (WIRE_* macros);
+// the enum is the domain identifier every UI/layout/routing surface indexes by.
 
 export const ChannelId = {
   In1L: 0,
@@ -24,17 +22,15 @@ export const InputChannelId = {
 } as const;
 export type InputChannelId = (typeof InputChannelId)[keyof typeof InputChannelId];
 
-// Stereo-input slot index (0 = Left, 1 = Right). Distinct from ChannelId
-// -- RouteModel.inputIndex uses this 0-based pair index, not the wire-level
-// channel id. A future dual-input platform would extend this enum.
+// Stereo-input slot index (0 = Left, 1 = Right). Distinct from ChannelId:
+// RouteModel.inputIndex uses this 0-based pair index, not the wire-level id.
 export const InputSlot = { Left: 0, Right: 1 } as const;
 export type InputSlot = (typeof InputSlot)[keyof typeof InputSlot];
 
-// Output slot index in matrix routes / outputs[] arrays.
-// Note: this is NOT the wire-level ChannelId (which starts at 2 for outputs).
-// It is the 0-based slot used by SetOutput*/SetMatrixRoute commands and by
-// the bulk packet's crosspoint/output arrays. RP2040 uses a compact 0..4
-// matrix, so PDM is slot 4 there; RP2350 uses 0..8, so PDM is slot 8.
+// Output slot index in matrix routes / outputs[] arrays. NOT the wire-level
+// ChannelId (outputs start at 2). 0-based slot used by SetOutput*/
+// SetMatrixRoute and the bulk crosspoint/output arrays. RP2040 is a compact
+// 0..4 matrix (PDM is slot 4); RP2350 is 0..8 (PDM is slot 8).
 export const OutputSlot = {
   Out1L: 0, Out1R: 1,
   Out2L: 2, Out2R: 3,
@@ -98,10 +94,8 @@ export function displayNameForChannel(id: ChannelId, channelNames: readonly stri
   return fromDevice || channelById(id).name;
 }
 
-// Index into a stereo input pair (`mirror.current.inputPreampDb[Left|Right]`).
-// Returns InputSlot.Left for In1L, InputSlot.Right for In1R, null for any non-input channel.
-// Centralises the "there is exactly one stereo input pair" assumption
-// so a future second pair changes one place.
+// InputSlot for In1L/In1R, null for any non-input channel. Centralises the
+// "exactly one stereo input pair" assumption.
 export function inputIndexOf(id: ChannelId): InputSlot | null {
   if (id === ChannelId.In1L) return InputSlot.Left;
   if (id === ChannelId.In1R) return InputSlot.Right;
