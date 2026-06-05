@@ -45,7 +45,7 @@ export async function write(
       if (!s.alive) return;
       Log.error('writes', 'write send failed; forcing resync', err);
       dispatch({ t: 'failed', message: errMessage(err) });
-      void forceResyncNow();
+      void forceResyncNow(s);
     } finally {
       s.mirror.dropInflight();
     }
@@ -145,7 +145,7 @@ function makeLane(key: string, ms: number, mirror: MirrorState): Lane {
           if (!s.alive) return;
           Log.error('writes', `scrub ${key} send failed; forcing resync`, err);
           dispatch({ t: 'failed', message: errMessage(err) });
-          void forceResyncNow();
+          void forceResyncNow(s);
         } finally {
           if (claimedInflight) {
             mirror.dropInflight();

@@ -9,6 +9,7 @@ import {
   settings, reconcileEqTarget,
   pushNotice,
   dispatch, makeReadySession, activeSession,
+  type ReadySession,
 } from '@/state';
 import { Log } from '@/utils';
 import { flushAllWrites } from './writes';
@@ -21,10 +22,8 @@ import { MUTE_DB } from '@/domain/clamp';
 
 let inflightSync: Promise<void> | null = null;
 
-export async function syncDeviceSnapshot(): Promise<void> {
+export async function syncDeviceSnapshot(s: ReadySession): Promise<void> {
   if (inflightSync) return inflightSync;
-  const s = activeSession();
-  if (!s) throw new Error('No device');
   const d = s.device;
   inflightSync = (async () => {
     try {
@@ -49,7 +48,7 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
     dispatch({ t: 'synced', session });
     session.mirror.init(snap);
     settings.lastSerial = device.info.serial;
-    await reconcileAfterSync();
+    await reconcileAfterSync(session);
     // Production opens the scope in createBoundDevice; tests may call
     // wireUpConnection directly with no scope, so guard the registration.
     const scope = connectionScope();
@@ -77,10 +76,8 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
 // connected, so it sees the freshly-synced device state and can write
 // through it. reconcileEqTarget is a pure state-layer step that runs
 // before the device-touching mute restore -- it doesn't need the device.
-export async function reconcileAfterSync(): Promise<void> {
-  reconcileEqTarget();
-  const s = activeSession();
-  if (!s) return;
+export async function reconcileAfterSync(s: ReadySession): Promise<void> {
+  reconcileEqTarget(s.mirror.current?.channels);
   const d = s.device;
   if (settings.soft.muted) {
     const restoreFrom = settings.soft.mutedFromDb ?? s.mirror.current?.masterVolumeDb ?? 0;
@@ -124,7 +121,7 @@ export async function factoryResetDevice(): Promise<void> {
     if (!r.ok) { pushNotice('warn', r.message); return; }  // non-ok flash status
     invalidatePresetCache(s);
     s.copySource.slot = null;
-    await syncDeviceSnapshot();
+    await syncDeviceSnapshot(s);
     pushNotice('info', 'Factory reset complete.');
   } catch (e) {
     Log.error('action', 'factory reset failed', e);

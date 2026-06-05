@@ -283,7 +283,7 @@ describe('runtime/presets', () => {
       await d.setLoudnessEnabled(!savedLoudnessBefore);
       // Resync refreshes liveMirror().current ONLY; liveMirror().baseline stays pinned at the
       // last baseline (the fullSync snapshot).
-      await forceResyncNow();
+      await forceResyncNow(sess());
       expect(liveMirror().current!.loudness.enabled).toBe(!savedLoudnessBefore);
       expect(liveMirror().baseline!.loudness.enabled).toBe(savedLoudnessBefore);
     });

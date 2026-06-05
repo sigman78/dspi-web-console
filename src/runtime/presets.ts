@@ -230,8 +230,8 @@ async function executeLoad(
         // to match the slot the device just loaded.
         s.presets.active = slot;
         await settleAfterLoad();
-        await fetchAndApplyAsBaseline();
-        await reconcileAfterSync();
+        await fetchAndApplyAsBaseline(s);
+        await reconcileAfterSync(s);
       } else {
         recordActionError(s.presets, 'Load', new Error(r.message ?? `error ${r.code}`));
       }
@@ -345,8 +345,8 @@ export async function pastePresetTo(s: ReadySession, src: PresetSlot): Promise<R
       }
       s.presets.active = active;
       await settleAfterLoad();
-      await fetchAndApplyAsBaseline();
-      await reconcileAfterSync();
+      await fetchAndApplyAsBaseline(s);
+      await reconcileAfterSync(s);
       return r5;
     });
   } catch (e) {

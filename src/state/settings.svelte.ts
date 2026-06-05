@@ -1,5 +1,4 @@
-import type { ChannelId } from '@/domain';
-import { activeSession } from './appState.svelte';
+import type { ChannelId, ChannelModel } from '@/domain';
 
 export type TabId = 'overview' | 'eq' | 'mixer' | 'processing' | 'presets' | 'system';
 
@@ -185,10 +184,9 @@ export function setEagerReconcile(value: boolean): void {
 // isn't in mirror.current.channels (e.g. user reconnected to a smaller-
 // platform device), fall back to the first output channel. eqTarget === null
 // stays null -- explicit "no selection" is a valid persisted state.
-export function reconcileEqTarget(): void {
+export function reconcileEqTarget(channels: readonly ChannelModel[] | undefined): void {
   const target = settings.eqTarget;
   if (target === null) return;
-  const channels = activeSession()?.mirror.current?.channels;
   if (!channels) return;
   if (channels.some((c) => c.id === target)) return;
   const firstOutput = channels.find((c) => c.isOutput);
