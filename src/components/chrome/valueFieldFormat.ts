@@ -1,6 +1,3 @@
-// Format / parse helpers for ValueField. Lives in its own module so the
-// formatter table is unit-testable without spinning up a Svelte component.
-
 export type ValueKind =
   | 'dB'
   | 'dB-signed'
@@ -16,8 +13,8 @@ interface FormatterEntry {
   format: (v: number, precision: number) => string;
 }
 
-// Sign char for signed-kind formatters. Uses U+2212 (true minus) so the
-// glyph aligns visually with `+` and the leading space placeholder.
+// Uses U+2212 (true minus) so the glyph aligns visually with `+` and the
+// leading space placeholder.
 function signOf(v: number): string {
   if (v > 0) return '+';
   if (v < 0) return '−';

@@ -79,22 +79,20 @@ export function setBypass(s: ReadySession, enabled: boolean): void {
   );
 }
 
-// Telemetry-only action: clears firmware-side latched clip flags (0x83) and
-// resets the host-side OR-latch (`s.telemetry.clipLatched`). Not routed through
-// the write/scrub helpers because clip state lives in telemetry, not the
-// DSP snapshot, so the post-send resync would be pure overhead. If the
-// wire send fails, the host array stays cleared — the next poll cycle
-// will re-latch from `clipFlags` if firmware still sees the condition.
+// Clears firmware-side latched clip flags (0x83) and the host-side OR-latch.
+// Not routed through write/scrub: clip state lives in telemetry, not the DSP
+// snapshot, so the post-send resync would be pure overhead. On send failure the
+// host array stays cleared; the next poll re-latches from clipFlags if firmware
+// still sees the condition.
 export function clearClips(s: ReadySession): void {
   for (let i = 0; i < s.telemetry.clipLatched.length; i++) s.telemetry.clipLatched[i] = false;
   void s.device.clearClips().catch((e) => Log.error('clearClips', 'send failed', e));
 }
 
 // Empty / whitespace-only input clears the custom name on the device; the
-// snapshot mirrors that by falling back to defaultName, matching what
-// `displayNameForChannel` produces after a bulk resync. The outputs[]
-// name mirror keeps MatrixHeader and OverviewTab in sync without waiting
-// for the trailing bulk resync.
+// snapshot mirrors that by falling back to defaultName. The outputs[] name
+// mirror keeps MatrixHeader and OverviewTab in sync without waiting for the
+// trailing bulk resync.
 export function setChannelName(s: ReadySession, id: ChannelId, name: string): void {
   const ch = s.mirror.snapshot.channels.find((c) => c.id === id);
   if (!ch) return;
@@ -244,15 +242,13 @@ export function setInputPreamp(s: ReadySession, channel: InputSlot, db: number):
   );
 }
 
-// All three crosspoint verbs are click/commit-paced (button + ValueField, no
-// drag), so they use the plain write() lane: send first, patch the mirror on
-// ack. SetMatrixRoute is a whole-tuple command, so the patch is merged in host
-// code — read the current cell, apply the field change, send the full tuple.
-// Sequential commits stay consistent because each read sees the prior edit's
-// settled mirror. (Two edits to the same cell within one USB round-trip could
-// clobber, but that's unreachable at click pace; add a coalesce key if a
-// programmatic same-cell burst is ever introduced.) Per-item writes also avoid
-// the bulk path's audio mute, which is why crosspoint stays granular.
+// Crosspoint verbs are click/commit-paced (no drag), so they use the plain
+// write() lane: send first, patch on ack. SetMatrixRoute is a whole-tuple
+// command, so the patch is merged in host code -- read the cell, apply the field
+// change, send the full tuple. Sequential commits stay consistent because each
+// read sees the prior edit's settled mirror (two edits to the same cell within
+// one round-trip could clobber, but that's unreachable at click pace). Per-item
+// writes also avoid the bulk path's audio mute, so crosspoint stays granular.
 function scheduleCrosspointWrite(
   s: ReadySession,
   input: InputSlot,
@@ -280,8 +276,8 @@ export function setCrosspointInvert(s: ReadySession, input: InputSlot, output: O
   scheduleCrosspointWrite(s, input, output, (r) => ({ ...r, invert }));
 }
 
-// Click/commit-paced ValueField (no drag): plain write(), patch the mirror on
-// ack. Scalar verb — no tuple to merge. Mirrors its sibling setOutputDelay.
+// Click/commit-paced ValueField (no drag): plain write(), patch on ack. Scalar
+// verb, no tuple to merge.
 export function setOutputGain(s: ReadySession, slot: OutputSlot, gainDb: number): void {
   gainDb = Clamp.outputGainDb(gainDb);
   const out = focusOutput(s, slot);
@@ -291,8 +287,6 @@ export function setOutputGain(s: ReadySession, slot: OutputSlot, gainDb: number)
   );
 }
 
-// Write-path output addressing: locate the output by wire slot in the draft
-// being mutated. A missing slot is a silent no-op.
 export function setOutputDelay(s: ReadySession, slot: OutputSlot, delayMs: number): void {
   delayMs = Clamp.outputDelayMs(delayMs);
   void write(s,
@@ -346,37 +340,30 @@ export function toggleMute(s: ReadySession): void {
   }
 }
 
-// Master-volume mode --------------------------------------------------------
-
 export function setMasterVolumeMode(s: ReadySession, mode: MasterVolumeMode): void {
   void command(s,'set master volume mode', () => s.device.setMasterVolumeMode(mode), () => {
     if (s.presets.directory) s.presets.directory = { ...s.presets.directory, masterVolumeMode: mode };
   });
 }
 
-// 0xD6 SaveMasterVolume — writes the directory's boot-baseline volume.
-// In Mode 0 this is the post-boot starting volume; in Mode 1 firmware
-// accepts the call but it's dormant until the user flips back to Mode 0.
-// Fire-and-forget: only failure surfaces (warn here, or an error toast on a
-// throw via command). Success is silent — the Save button's state conveys it.
+// 0xD6 SaveMasterVolume -- writes the directory's boot-baseline volume. In Mode 0
+// this is the post-boot starting volume; in Mode 1 firmware accepts the call but
+// it stays dormant until the user flips back to Mode 0. Fire-and-forget: only
+// failure surfaces; success is silent (the Save button's state conveys it).
 export function saveMasterVolumeBaseline(s: ReadySession): void {
   void command(s,'save master volume', () => s.device.saveMasterVolume(), (ok) => {
     if (!ok) { pushNotice('warn', 'Saving master volume failed (flash write error).'); return; }
-    // Device saved its current master volume as the boot baseline → mirror it
-    // so the Save button settles to clean without a refetch.
+    // Mirror the saved baseline so the Save button settles to clean without a refetch.
     s.presets.savedMasterVolumeDb = s.mirror.snapshot.masterVolumeDb;
   });
 }
 
-// Output pin / I2S config verbs -------------------------------------------
-// Discrete (commit-paced) config commands on the writeChecked() lane: guard
-// prerequisites explicitly, send the typed command, and patch the mirror with
-// the requested value on ack (no readback). Patching on ack (not before the
-// send) keeps the mirror unchanged when the device rejects the command; the
-// rejection surfaces as a warn toast and the background poll reconciles to
-// committed truth. Never calls syncDeviceSnapshot (would discard unsaved
-// EQ/mixer edits). setOutputType's SET is queued, not applied (the switch is
-// deferred in firmware) — the optimistic patch + reconcile converge to truth.
+// Discrete (commit-paced) config commands on the writeChecked() lane. Patching on
+// ack (not before the send) keeps the mirror unchanged when the device rejects the
+// command; the rejection surfaces as a warn toast and the background poll
+// reconciles to committed truth. Never calls syncDeviceSnapshot (would discard
+// unsaved EQ/mixer edits). setOutputType's SET is queued, not applied (the switch
+// is deferred in firmware) -- the optimistic patch + reconcile converge to truth.
 
 function patchI2s(s: ReadySession, update: (i: I2sConfig) => I2sConfig): void {
   s.mirror.snapshot.i2s = update(s.mirror.snapshot.i2s);

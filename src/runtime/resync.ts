@@ -18,7 +18,6 @@ export async function forceResyncNow(s: ReadySession): Promise<void> {
 // atomically). Use for preset transitions (Load / Paste / Revert) where there
 // is no meaningful "dirty" state: the atomic apply avoids the microtask window
 // where draft and saved disagree and observers see a spurious dirty flip.
-// See docs/ARCH.md for the baseline/draft split.
 export async function fetchAndApplyAsBaseline(s: ReadySession): Promise<void> {
   try {
     const snap = await s.device.getSnapshot();

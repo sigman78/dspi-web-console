@@ -19,10 +19,9 @@ export interface Settings {
   lastSerial: string | null;
   warnOnPresetSwitchDirty: boolean;
   // When true, a successful write/scrub asks the background param poll to
-  // reconcile at the next tick instead of waiting for its interval. Default
-  // off — the inflight-gated poll floor catches clamp/coupling drift on its
-  // own cadence. Temporary: remove once firmware cross-coupling is ruled out
-  // and clamp parity is audited. See DEVICE-BASED-MODEL.md.
+  // reconcile next tick instead of waiting for its interval. Default off; the
+  // inflight-gated poll floor catches clamp/coupling drift on its own cadence.
+  // Temporary: remove once firmware cross-coupling is ruled out.
   eagerReconcile: boolean;
 }
 
@@ -43,9 +42,7 @@ function defaults(): Settings {
 }
 
 
-// Per-field validators. Each accepts unknown input and falls back to a
-// default rather than throwing
-// ------------------------------
+// Per-field validators: accept unknown input, fall back to a default not throw.
 function bool(v: unknown, fallback: boolean): boolean {
   return typeof v === 'boolean' ? v : fallback;
 }
@@ -95,15 +92,9 @@ function parseV1(raw: string, fallback: Settings): Settings {
   };
 }
 
-// LEGACY MIGRATION -- REMOVE AFTER 2026-Q4 (or when telemetry confirms
-// no remaining users on legacy keys, whichever comes first).
-//
-// Reads pre-v1 keys ('ui/v2', 'connection/v1'), produces a v1 Settings,
-// persists it, deletes the legacy keys. Returns null when no legacy
-// data is present (true first-run).
-//
-// Once removed, loadSettings() collapses to: read v1 or return defaults
-//
+// LEGACY MIGRATION -- REMOVE AFTER 2026-Q4. Reads pre-v1 keys ('ui/v2',
+// 'connection/v1'), produces and persists a v1 Settings, deletes the legacy
+// keys. Returns null when no legacy data is present (true first-run).
 function migrateLegacyKeys(): Settings | null {
   if (!hasStorage()) return null;
   const ui = safeJSON(localStorage.getItem('dspi-console-web/ui/v2'));
@@ -142,16 +133,13 @@ export function loadSettings(): Settings {
   return migrateLegacyKeys() ?? defaults();
 }
 
-// Reactive store. Initialized to defaults at module load; restore
-// persisted values explicitly via restoreSettings() during app startup,
-// so importing this module is a pure operation (no localStorage I/O,
-// no legacy migration writes).
+// Initialized to defaults at module load; restoreSettings() applies persisted
+// values explicitly, so importing this module is pure (no localStorage I/O).
 export const settings = $state<Settings>(defaults());
 
-// Mutates `settings` in place from persisted storage. Call once during
-// startup, before mounting the app and before startSettingsPersistence().
-// In-place mutation preserves the identity of the exported `settings`
-// reference so prior imports remain valid.
+// Mutates `settings` in place from storage, once during startup before mounting
+// and before startSettingsPersistence(). In-place preserves the exported
+// reference's identity so prior imports stay valid.
 export function restoreSettings(): void {
   const loaded = loadSettings();
   settings.version = loaded.version;
@@ -179,11 +167,9 @@ export function setEagerReconcile(value: boolean): void {
   settings.eagerReconcile = value;
 }
 
-// After connection sync hydrates mirror.current, validate the persisted
-// eqTarget against the connected platform's channel set. If the stored ID
-// isn't in mirror.current.channels (e.g. user reconnected to a smaller-
-// platform device), fall back to the first output channel. eqTarget === null
-// stays null -- explicit "no selection" is a valid persisted state.
+// Validate the persisted eqTarget against the connected platform's channel set;
+// if the stored ID isn't present (e.g. reconnected to a smaller device), fall
+// back to the first output. null stays null -- "no selection" is valid.
 export function reconcileEqTarget(channels: readonly ChannelModel[] | undefined): void {
   const target = settings.eqTarget;
   if (target === null) return;

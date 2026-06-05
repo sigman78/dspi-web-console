@@ -13,7 +13,7 @@
     [FilterType.Allpass]: 'Allpass',
   };
 
-  // Notch/Allpass are intentionally omitted — they're 1.1.4/V10-only. When
+  // Notch/Allpass are intentionally omitted -- they're 1.1.4/V10-only. When
   // surfacing them, gate on caps.features.notchFilter / allpassFilter, or they
   // leak into the 1.1.3 (V6) UI. Same caution for any per-band bypass control.
   export const TYPE_ORDER: FilterType[] = [

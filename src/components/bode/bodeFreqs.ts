@@ -1,7 +1,6 @@
-// Canonical frequency grid for the Bode plot.
-// 201 log-spaced bins inclusive of 20 Hz and 20 kHz. Both the plot and the
-// (future) filter-response converter sample at these exact frequencies, so a
-// curve produced anywhere can be rendered anywhere without resampling.
+// Canonical frequency grid for the Bode plot: 201 log-spaced bins inclusive
+// of 20 Hz and 20 kHz. Plot and filter-response converter sample at these
+// exact frequencies, so a curve produced anywhere renders without resampling.
 
 import { Eq } from '@/domain';
 

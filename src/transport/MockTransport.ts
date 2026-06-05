@@ -18,29 +18,21 @@ import {
 export interface MockOptions {
   platform: 'rp2040' | 'rp2350';
   serial?: string;
-  // Wire version the mock reports/synthesizes (default 6). For V7-V10 the
-  // tail sections are built faithfully via buildBulkParams, so capability
-  // gating, read tolerance and the V6-write merge are testable against a
-  // newer device with real tail data.
+  // Wire version the mock reports/synthesizes (default 6). V7-V10 tail sections
+  // are built faithfully so capability gating and the V6-write merge are testable.
   wireVersion?: number;
   // Firmware version reported by GetPlatform (default 1.0.0). Set alongside
   // wireVersion for a coherent device (e.g. 1.1.4 + V10).
   fwVersion?: { major: number; minor: number; patch: number };
-  // Override the header's payloadLength (default = the built packet size).
-  // Simulates a malformed device that reports a truncated payload for an
-  // otherwise-supported wire version — exercises the connect truncation guard.
+  // Override the header's payloadLength to simulate a malformed device that
+  // reports a truncated payload, exercising the connect truncation guard.
   payloadLength?: number;
 }
 
-// Default crosspoint / output state (mirrors what defaultBulkParams
-// initializes for a slot). Materialising them upfront lets Set*
-// commands mutate one slice without rebuilding the whole shape every time.
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
 
-// Default BulkParams used to (a) seed #mockState at construction and
-// (b) reset live state when LoadPreset hits an empty slot — per
-// user_presets_spec.md §REQ_PRESET_LOAD, current firmware applies factory
-// defaults instead of returning SlotEmpty.
+// Seeds #mockState at construction and resets live state on empty-slot
+// LoadPreset (firmware applies factory defaults rather than returning SlotEmpty).
 function defaultMockBulkState(platform: PlatformType): BulkParams {
   const numCh  = platform === PlatformType.RP2350 ? 11 : 7;
   const numOut = platform === PlatformType.RP2350 ? 9  : 5;
@@ -48,8 +40,7 @@ function defaultMockBulkState(platform: PlatformType): BulkParams {
 }
 
 // Full snapshot of mutable mock state so PresetSave/Load round-trips every
-// field, not just the bulk-packet contents. Defined outside the class because
-// TypeScript doesn't allow interface declarations inside class bodies.
+// field, not just the bulk-packet contents.
 interface MockSnapshot {
   bulk: BulkParams;
   masterVolumeDb: number;
@@ -79,30 +70,23 @@ export class MockTransport implements DspTransport {
   #mockState: BulkParams;
   #channelNames: string[] = Array.from({ length: Wire.Const.NUM_CHANNELS }, () => '');
 
-  // Preset directory + 10-slot snapshots. Kept here (rather than in
-  // SynthesizeOptions) because the directory metadata is not part of
-  // the bulk packet — it's its own wire surface.
+  // Preset directory + 10-slot snapshots. Directory metadata is its own wire
+  // surface, not part of the bulk packet.
   #presetOccupiedMask = 0;
   #presetStartupMode = 0;       // PresetStartupMode.Specified (firmware default)
   #presetDefaultSlot = 0;
   #presetLastActiveSlot = 0;    // always-active default
-  #presetIncludePins = true;    // default per HW-PROFILES §0
+  #presetIncludePins = true;    // default per HW-PROFILES sec 0
   #presetActiveSlot = 0;
-  // Per-slot names live in the directory sector, not the slot payload — they
-  // survive LoadPreset and are deliberately NOT in MockSnapshot. Matches
-  // firmware behavior (HW-PROFILES §1b: SetPresetName is independent of save).
+  // Per-slot names live in the directory sector, not the slot payload, so they
+  // survive LoadPreset and are deliberately NOT in MockSnapshot.
   #presetNames: string[] = Array.from({ length: 10 }, () => '');
-  // Per-slot full snapshots so PresetSave/Load round-trips every mock field,
-  // not just the bulk-packet contents. null = empty slot.
+  // null = empty slot.
   #presetSlots: (MockSnapshot | null)[] = Array.from({ length: 10 }, () => null);
 
-  // Latched clip bitmask. Seeded with a demo pattern so the CLEAR button +
-  // per-channel clip indicators have something visible to drive under mock:
-  //   bit 1 → In1R   (right of the input pair — shows in TabBar)
-  //   bit 4 → Out2L  (left of Out2 pair — shows in TabBar, Overview, System)
-  // Real firmware latches the clip on overflow; ClearClips (0x83) clears it.
-  // The mock mirrors that semantic: clip stays asserted across polls, and
-  // the CLEAR button zeroes it on the next status read.
+  // Latched clip bitmask, seeded with a demo pattern (bit 1 In1R, bit 4 Out2L)
+  // so the CLEAR button and clip indicators have something visible to drive.
+  // Stays asserted across polls until ClearClips (0x83), mirroring firmware.
   #clipFlags = 0b0001_0010;
 
   constructor(opts: MockOptions) {
@@ -113,10 +97,6 @@ export class MockTransport implements DspTransport {
     const fw = opts.fwVersion ?? { major: 1, minor: 0, patch: 0 };
     this.#fwMajor = fw.major;
     this.#fwMinorPatch = ((fw.minor & 0xF) << 4) | (fw.patch & 0xF);
-    // Pre-allocate output / crosspoint slots so per-command Set*'s can
-    // index into them without conditional shape building. GetAllParams
-    // re-synthesises from this state, so mutations show up in the next
-    // bulk read -- i.e. the post-mutation resync sees the change.
     this.#mockState = defaultMockBulkState(this.#platform);
     // Override the all-zero defaults with realistic pin/I2S values so granular
     // pin/type tests start from a valid hardware state.
@@ -143,7 +123,7 @@ export class MockTransport implements DspTransport {
 
   isOpen(): boolean { return this.#open; }
 
-  // Test helper: enqueue a raw notify packet for the next notifyIn().
+  // Enqueue a raw notify packet for the next notifyIn().
   pushNotify(bytes: Uint8Array): void {
     this.#notifyQueue.push(bytes);
   }
@@ -212,10 +192,8 @@ export class MockTransport implements DspTransport {
       case WireCmd.SaveMasterVolume.code:
         this.#savedMasterVolumeDb = this.#masterVolumeDb;
         return new Uint8Array([0]); // PresetResult.Ok
-      // Action-style IN: just acknowledge with FlashResult.Ok. Real firmware
-      // mutates flash + (on V3+) the active slot; this mock doesn't simulate
-      // that side effect — preset round-trips go through PresetSave/Load
-      // directly instead.
+      // Acknowledge with FlashResult.Ok; preset round-trips go through
+      // PresetSave/Load directly rather than flash side effects.
       case WireCmd.SaveParams.code:
       case WireCmd.LoadParams.code:
       case WireCmd.FactoryReset.code:
@@ -279,8 +257,8 @@ export class MockTransport implements DspTransport {
         out[3] = this.#presetDefaultSlot;
         out[4] = this.#presetLastActiveSlot;
         out[5] = this.#presetIncludePins ? 1 : 0;
-        // Same byte as GetMasterVolumeMode (0xD5) — HW-PROFILES §1a: single
-        // directory-sector byte; using the live field keeps both read paths in sync.
+        // Same directory-sector byte as GetMasterVolumeMode; reuse the live
+        // field so both read paths stay in sync.
         out[6] = this.#masterVolumeMode;
         return out.slice(0, Math.min(length, out.byteLength));
       }
@@ -314,9 +292,8 @@ export class MockTransport implements DspTransport {
         if (snap) {
           this.#restoreSnapshot(snap);
         } else {
-          // Per user_presets_spec.md §REQ_PRESET_LOAD: load on an empty
-          // slot applies factory defaults and returns Ok. The historic
-          // PRESET_ERR_SLOT_EMPTY (0x02) is now reserved.
+          // Load on an empty slot applies factory defaults and returns Ok
+          // (the historic SLOT_EMPTY error is reserved).
           this.#resetLiveToDefaults();
         }
         this.#presetActiveSlot = slot;
@@ -328,9 +305,8 @@ export class MockTransport implements DspTransport {
         if (slot >= 10) return new Uint8Array([0x01]); // InvalidSlot
         this.#presetSlots[slot] = null;
         this.#presetOccupiedMask &= ~(1 << slot) & 0xFFFF;
-        // NOTE: per user_presets_spec.md §REQ_PRESET_DELETE, the slot name
-        // lives in the directory sector and persists through delete. Real
-        // firmware does NOT clear it; the mock must mirror that.
+        // Slot name lives in the directory sector and persists through delete,
+        // mirroring firmware.
         return new Uint8Array([0]); // Ok
       }
       case WireCmd.GetStatus.code: {
@@ -600,9 +576,8 @@ export class MockTransport implements DspTransport {
     };
   }
 
-  // Build the bulk packet at the configured wire version from #mockState.
-  // For V6-V10 the tail is real (buildBulkParams emits it). For a sub-V6
-  // reject-path mock we still build a V6 body but report the true (sub-V6)
+  // Build the bulk packet at the configured wire version from #mockState. A
+  // sub-V6 reject-path mock builds a V6 body but reports the true (sub-V6)
   // version in the header so the connect-reject path is exercised.
   #synthBulkPacket(): Uint8Array {
     const buildVer = Math.min(Math.max(this.#wireVersion, 6), Wire.MAX_WIRE_VERSION);
@@ -622,10 +597,7 @@ export class MockTransport implements DspTransport {
     this.#channelNames = bulk.channelNames.slice(0, Wire.Const.NUM_CHANNELS);
   }
 
-  // Reset live state to factory defaults. Used by empty-slot PresetLoad
-  // (per spec §REQ_PRESET_LOAD: load on empty slot applies factory
-  // defaults; PRESET_ERR_SLOT_EMPTY is reserved). Scalars revert to the
-  // mock's constructor defaults; channel names clear.
+  // Reset live state to factory defaults (empty-slot PresetLoad).
   #resetLiveToDefaults(): void {
     this.#applyBulkState(defaultMockBulkState(this.#platform));
     this.#savedMasterVolumeDb = 0;
@@ -633,13 +605,10 @@ export class MockTransport implements DspTransport {
 
   #restoreSnapshot(s: MockSnapshot): void {
     this.#mockState = JSON.parse(JSON.stringify(s.bulk)) as BulkParams;
-    // Per HW-PROFILES §3: master volume *value* rides the preset payload
-    // only in Mode 1 (with-preset). In Mode 0 (independent), LoadPreset
-    // leaves master volume alone — it's owned by the directory sector,
-    // restored via GetSavedMasterVolume on boot. The mock checks the
-    // *current* (live) mode, matching the firmware's runtime decision.
-    // Mode itself is global and is NOT part of the preset payload, so
-    // it's intentionally absent from MockSnapshot.
+    // Master volume value rides the preset payload only in Mode 1 (with-preset).
+    // In Mode 0 (independent) LoadPreset leaves it alone (directory-owned). The
+    // mock checks the live mode, matching firmware; mode itself is global and
+    // not part of the payload.
     if (this.#masterVolumeMode === MasterVolumeMode.WithPreset) {
       this.#masterVolumeDb = s.masterVolumeDb;
       this.#mockState.masterVolumeDb = s.masterVolumeDb;
@@ -658,9 +627,7 @@ export class MockTransport implements DspTransport {
     this.#mockState.channelNames = [...this.#channelNames];
   }
 
-  // Resolve the OutputState slot for a wValue-encoded output index. Returns
-  // a writable reference into #mockState so callers can mutate fields in
-  // place.
+  // Writable reference to the OutputState slot for a wValue-encoded output index.
   #output(wValue: number): OutputState {
     return this.#mockState.outputs![wValue & 0xFF];
   }
@@ -686,9 +653,7 @@ export class MockTransport implements DspTransport {
     return false;
   }
 
-  // Dispatch GetStatus by wValue.  See docs/system-status-req.md and
-  // SystemStatusValue in protocol/wireTypes.ts.  Returns a fresh buffer
-  // sized to whatever the caller requested.
+  // Dispatch GetStatus by wValue, returning a fresh buffer sized to the request.
   #synthStatus(wValue: number, length: number): Uint8Array {
     switch (wValue) {
       case SystemStatusValue.CombinedPeaks: {

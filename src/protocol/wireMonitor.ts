@@ -1,17 +1,14 @@
-// Wire-protocol monitor (Level 1): pure formatters that turn one wire
-// message into a terse single-line string for the browser console. Enabled
-// via `?debug`; consumed by the withWireMonitor transport decorator. The
-// command table is the existing WireCmd; we derive a code ->{name, codec}
-// reverse map so nothing is duplicated. All decoding is best-effort and
-// guarded — a decode failure degrades to a name + byte-count line.
+// Wire-protocol monitor: formatters that turn one wire message into a terse
+// single-line string for the browser console. Enabled via `?debug`, consumed
+// by the withWireMonitor transport decorator. Decoding is best-effort: a
+// failure degrades to a name + byte-count line.
 
 import { Codec, type BinCodec } from '@/utils';
 import { WireCmd } from './wireCmd';
 import type { BulkLayout } from './wireTypes';
 import { parseNotifyPacket, ParamSource } from './notify';
 
-// Turn on only when the page URL carries `?debug`. Read at call time so the
-// gate is testable and reflects the live URL; it is consulted once at boot.
+// Read at call time so the gate is testable and reflects the live URL.
 export function wireMonitorEnabled(): boolean {
   if (typeof location === 'undefined') return false;
   return new URLSearchParams(location.search).get('debug') !== null;
@@ -26,7 +23,7 @@ interface CmdInfo {
   codec?: BinCodec<unknown>;
 }
 
-// code ->{name, codec?} derived from the single WireCmd source of truth.
+// code ->{name, codec?} reverse map derived from WireCmd.
 const CMD_BY_CODE = new Map<number, CmdInfo>();
 for (const [name, entry] of Object.entries(WireCmd)) {
   const codec = 'codec' in entry ? (entry.codec as BinCodec<unknown>) : undefined;
@@ -109,8 +106,7 @@ export function formatNotify(bytes: Uint8Array): string | null {
   }
 }
 
-// Structural subset of the device's connection info needed for the banner.
-// Kept structural (not an import of DspDeviceInfo) so this protocol-layer module
+// Structural (not an import of DspDeviceInfo) so this protocol-layer module
 // doesn't depend on the device layer; `device.info` satisfies it as-is.
 interface DeviceInfoLike {
   readonly serial: string;
@@ -129,9 +125,8 @@ interface DeviceInfoLike {
   };
 }
 
-// Multi-line connection banner, logged once at connect (info level) so a debug
-// session is self-documenting: which device, firmware/wire, and what its bulk
-// packet carries.
+// Multi-line connection banner logged once at connect, so a debug session is
+// self-documenting: which device, firmware/wire, and what its bulk packet carries.
 export function formatDeviceInfo(info: DeviceInfoLike): string[] {
   const c = info.capabilities;
   const sections = Object.entries(c.sections)
@@ -146,11 +141,8 @@ export function formatDeviceInfo(info: DeviceInfoLike): string[] {
   ];
 }
 
-// Commands the runtime polls continuously for telemetry: GetStatus (peaks + env
-// scalars + error counters) and GetBufferStats (DMA/ring fill). These would bury
-// the interesting traffic, so the decorator logs them at debug (Verbose) level —
-// hidden by default in DevTools, one filter click away — while everything else
-// stays at info.
+// Telemetry commands polled continuously; logged at debug level so they don't
+// bury the interesting traffic (everything else stays at info).
 const POLL_CODES = new Set<number>([WireCmd.GetStatus.code, WireCmd.GetBufferStats.code]);
 
 export function isPollCommand(request: number): boolean {

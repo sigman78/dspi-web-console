@@ -1,10 +1,5 @@
-// EQ parameter ranges and editor step sizes.
-// Single source of truth for the user-editable bounds of an EQ band
-// (frequency / Q / gain) and the global preamp adjustment, plus the
-// vertical span the Bode plot reserves when rendering an EQ response.
-//
-// Re-exported as the `Eq` namespace from `../domain` — call sites use
-// `Eq.FREQ_MIN_HZ`, `Eq.Q_MIN`, etc.
+// EQ parameter ranges and editor step sizes (band freq/Q/gain, global
+// preamp, Bode plot span). Re-exported as the `Eq` namespace from `../domain`.
 
 // Audio band -- also the Bode plot's horizontal extent.
 export const FREQ_MIN_HZ = 20;

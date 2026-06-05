@@ -1,15 +1,9 @@
-// Composable codec layer on top of BinReader / BinWriter (./binStream.ts).
-// A `BinCodec<T>` reads a `T` from a reader and writes a `T` to a writer,
-// and carries a static byte size when known. Everything lives on the
-// `Codec` namespace: primitives (`Codec.u8` etc.), combinators
-// (`Codec.struct`, `Codec.arr`, `Codec.nulStr`, `Codec.fixedStr`,
-// `Codec.reserved`) and top-level helpers (`Codec.encode`, `Codec.decode`,
-// `Codec.decodePadded`, `Codec.sizeOf`). Schema-dense call sites are
-// expected to destructure (`const { u8, struct, arr } = Codec`).
+// Composable codec layer on top of BinReader/BinWriter. A `BinCodec<T>` reads
+// and writes a `T` and carries a static byte size when known. Everything lives
+// on the `Codec` namespace; schema-dense call sites destructure it
+// (`const { u8, struct, arr } = Codec`).
 
 import { BinReader, BinWriter } from './binStream';
-
-// Codec interface
 
 export interface BinCodec<T> {
   readonly size?: number; // size in bytes if known, `undefined` for variable length
@@ -24,8 +18,6 @@ type StripPad<T> = { [K in keyof T as K extends `_${string}` ? never : K]: T[K] 
 type StructValue<F> = StripPad<{ [K in keyof F]: F[K] extends BinCodec<infer V> ? V : never }>;
 
 export type { FieldsOf, StructValue };
-
-// Primitive codecs
 
 const prim = <T>(size: number, read: (r: BinReader) => T, write: (w: BinWriter, v: T) => void): BinCodec<T> =>
   ({ size, read, write });
@@ -74,10 +66,8 @@ function fixedStr(n: number): BinCodec<string> {
   };
 }
 
-// struct combinator.
-// Schema: a record where keys map to codecs. Keys starting with "_" are
-// padding/reserved slots; the codec still reads/writes them in place,
-// but they are stripped from the result type so call sites stay clean.
+// Schema: keys map to codecs. Keys starting with "_" are padding/reserved slots;
+// they are read/written in place but stripped from the result type.
 function struct<F extends Record<string, BinCodec<any>>>(fields: F): BinCodec<StructValue<F>> {
   const entries = Object.entries(fields);
   let total = 0;
@@ -129,14 +119,10 @@ function decode<T>(codec: BinCodec<T>, bytes: Uint8Array): T {
   return codec.read(new BinReader(bytes));
 }
 
-// Decode bytes that may be shorter than the codec's expected size.
-// Zero-pads up to `codec.size` before decoding; appropriate for
-// boundaries where the source legitimately truncates (USB control-IN
-// transfers, network packets with implicit-zero tails, etc.).
-//
-// Use sparingly: this masks "buffer too short" bugs.  For internal
-// buffers (parsers operating on already-validated packets), use the
-// strict `decode` instead.
+// Zero-pad a short buffer up to `codec.size` before decoding, for boundaries
+// where the source legitimately truncates (USB control-IN, implicit-zero tails).
+// Use sparingly: it masks "buffer too short" bugs; prefer strict `decode` for
+// already-validated internal buffers.
 function decodePadded<T>(codec: BinCodec<T>, bytes: Uint8Array): T {
   const size = sizeOf(codec);
   if (bytes.byteLength >= size) return decode(codec, bytes);
@@ -147,7 +133,6 @@ function decodePadded<T>(codec: BinCodec<T>, bytes: Uint8Array): T {
 
 // All entries are little-endian.
 export const Codec = {
-  // primitives
   u8:    prim<number> (1, r => r.u8(),    (w, v) => { w.u8(v); }),
   i8:    prim<number> (1, r => r.i8(),    (w, v) => { w.i8(v); }),
   u16:   prim<number> (2, r => r.u16(),   (w, v) => { w.u16(v); }),
@@ -157,13 +142,11 @@ export const Codec = {
   f32:   prim<number> (4, r => r.f32(),   (w, v) => { w.f32(v); }),
   f64:   prim<number> (8, r => r.f64(),   (w, v) => { w.f64(v); }),
   bool8: prim<boolean>(1, r => r.bool8(), (w, v) => { w.bool8(v); }),
-  // combinators
   reserved,
   arr,
   nulStr,
   fixedStr,
   struct,
-  // helpers
   encode,
   decode,
   decodePadded,

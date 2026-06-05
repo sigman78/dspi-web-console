@@ -1,7 +1,6 @@
-// The root app-model: DspSnapshot is the assembled, UI-shaped picture of
-// the device's current parameters. ChannelModel is the per-EQ-channel
-// enrichment of the wire-shaped channel data. Assembled by the device-layer
-// snapshot codec from a parsed wire packet + the detected hardware profile.
+// Root app-model: the assembled, UI-shaped picture of the device's current
+// parameters, built by the device-layer snapshot codec from a parsed wire
+// packet plus the detected hardware profile.
 
 import type { ChannelId, OutputMode } from './channels';
 import type { PlatformInfo, I2sConfig } from './platform';
@@ -32,14 +31,13 @@ export interface DspSnapshot {
   routes: RouteModel[];
   loudness: Loudness;
   crossfeed: Crossfeed;
-  // Floor sections (wire V4 / V3) — always present on a supported device (V6
-  // connect floor), so non-null. Absence is only reachable below the floor,
-  // which connect rejects.
+  // Non-null: floor sections always present on a supported device (connect
+  // rejects firmware below the V6 floor).
   leveller: Leveller;
   i2s: I2sConfig;
   // GPIO pin per pin-output index, in hardware output order; the last entry is the PDM sub.
   outputPins: number[];
-  // 1.1.4 sections — null on firmware whose packet does not carry them.
+  // 1.1.4 sections -- null on firmware whose packet does not carry them.
   inputConfig: InputConfig | null;
   lgSoundSync: LgSoundSync | null;
   userVolume: UserVolume | null;

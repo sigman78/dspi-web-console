@@ -49,7 +49,6 @@
 
   const display = $derived(customFormat ? customFormat(value) : formatValue(kind, value, effectivePrecision));
 
-  // Color resolves entirely from existing CSS tokens -- no new theme colors.
   // Disabled overrides any tone tinting.
   const toneColor = $derived(
     disabled ? 'var(--text-faint)' :
@@ -63,11 +62,9 @@
   let hover = $state(false);
   let invalid = $state(false);
   let inputEl = $state<HTMLInputElement | null>(null);
-  // Pinned at beginEdit so the commit no-op check compares against what
-  // the user *started* editing from, not the current device-truth value
-  // (which can change underneath via resync). Without pinning, a snapshot
-  // replace during an active edit causes commit() to silently no-op when
-  // the user types the value they originally meant.
+  // Pinned at beginEdit so the no-op check compares against the value the
+  // user started from, not the live device-truth value (which can change
+  // mid-edit via resync and would otherwise swallow a legitimate commit).
   let pinnedValue = 0;
   // Set when Escape exits the editor so the unmount-triggered blur
   // doesn't sneak the typed draft through commit().

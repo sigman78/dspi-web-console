@@ -71,9 +71,8 @@
         <KV label="SPDIF UNR"    value={fmtNum(info?.spdifUnderruns)}        tone={isNonZero(info?.spdifUnderruns)        ? undefined : 'off'} />
         <KV label="SPDIF STARV"  value={fmtNum(info?.spdifStarvationsTotal)} tone={isNonZero(info?.spdifStarvationsTotal) ? undefined : 'off'} />
       </div>
-      <!-- Per-channel latched clip flags. Latch is host-side OR over every
-           20 Hz status packet; CLEAR button above resets both firmware
-           (ClearClips 0x83) and host array. -->
+      <!-- Latch is a host-side OR over every 20 Hz status packet; CLEAR above
+           resets both firmware (ClearClips 0x83) and the host array. -->
       <div class="subhdr">CLIP / CHANNEL</div>
       <div class="clipgrid">
         {#each snap?.channels ?? [] as ch (ch.id)}

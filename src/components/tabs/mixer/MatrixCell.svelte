@@ -109,7 +109,7 @@
   }
   .cell.dim { opacity: 0.4; }
   /* PDM-exclusivity hint: diagonal hatch overlay over a desaturated grey
-     wash. Stronger visual signal than a plain opacity dim — users can tell
+     wash. Stronger visual signal than a plain opacity dim -- users can tell
      "this column is locked out" at a glance without confusing it with the
      normal !enabled dim. Background stacked: hatch on top, grey wash below. */
   .cell.unavailable {

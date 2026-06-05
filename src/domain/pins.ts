@@ -1,6 +1,6 @@
 // Client-side mirror of the firmware GPIO rules (usb_audio.c
-// is_valid_gpio_pin / is_pin_in_use). Feeds the pin dropdowns and the
-// BCK/MCK guard states. The firmware status byte remains the backstop.
+// is_valid_gpio_pin / is_pin_in_use); the firmware status byte stays the
+// backstop. Feeds the pin dropdowns and BCK/MCK guard states.
 import { PlatformType } from './platform';
 import type { DspSnapshot } from './snapshot';
 

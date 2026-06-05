@@ -1,6 +1,5 @@
-// Mock curve generators for the Bode plot showcase.
-// Pure math over BODE_FREQS -- independent of the real biquad converter so the
-// plot can be developed and demoed before that lands.
+// Mock curve generators for the Bode plot showcase: pure math over BODE_FREQS,
+// independent of the real biquad converter.
 
 import { BODE_BINS, BODE_FREQS } from './bodeFreqs';
 import type { BodeCurve } from './BodePlot.svelte';

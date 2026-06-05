@@ -11,11 +11,9 @@
   const columns = $derived(matrixColumns(s.mirror.current));
   const rows = $derived(matrixRows(s.mirror.current));
 
-  // PDM-exclusivity hint. Per docs/mixer.md: when PDM (the last output)
-  // is enabled, only outputs 0,1 (S/PDIF 1) and the PDM index itself are
-  // available. We don't enforce this client-side -- firmware is the source
-  // of truth -- we just dim the unavailable columns so the user understands
-  // why a write may not stick.
+  // When PDM (the last output) is enabled, only outputs 0,1 (S/PDIF 1) and the
+  // PDM index stay available. Not enforced client-side -- firmware is the
+  // source of truth -- so we just dim the locked-out columns.
   const pdmIndex = $derived(s.mirror.current?.platform.pdmOutputIndex ?? -1);
   const pdmActive = $derived(pdmIndex >= 0 && (columns[pdmIndex]?.enabled ?? false));
   function isUnavailable(outputIndex: number): boolean {
@@ -41,7 +39,6 @@
   {:else}
     <div class="wrap">
       <div class="matrix" style="grid-template-columns: {cols};">
-        <!-- Header row: corner + one MatrixHeader per output -->
         <div class="corner">IN ╲ OUT</div>
         {#each columns as col, i (col.wireIdx)}
           <MatrixHeader
@@ -52,7 +49,6 @@
           />
         {/each}
 
-        <!-- Body: one row per input -->
         {#each rows as row (row.inputIndex)}
           {@const parts = splitLR(row.label)}
           <div class="row-head ch-{chKey(row.inputId)}">

@@ -1,7 +1,5 @@
-// Transient user-facing notices (toasts). The action boundary pushes one when a
-// device rejects a command or an action throws unexpectedly; the Toaster renders
-// them and they auto-expire. Distinct from session.status (connection state) —
-// these are ephemeral, per-action messages, not a persistent mode.
+// Transient user-facing notices (toasts), auto-expiring. Ephemeral per-action
+// messages, distinct from connection state which is a persistent mode.
 
 export type NoticeKind = 'error' | 'warn' | 'info';
 export interface Notice {

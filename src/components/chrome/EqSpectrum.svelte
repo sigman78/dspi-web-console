@@ -1,8 +1,7 @@
 <script lang="ts">
-  // Decorative looped 1990s-style EQ spectrum. Pure CSS animation, no props,
-  // no state subscription. Honors prefers-reduced-motion.
-  // Heights and delays are a fixed pseudo-random pattern so the spectrum
-  // looks lively without a runtime RNG. Indices align with the 16 bars.
+  // Decorative looped EQ spectrum. Pure CSS animation, honors
+  // prefers-reduced-motion. Fixed pseudo-random heights/delays avoid a
+  // runtime RNG.
   const HEIGHTS = [30, 55, 72, 90, 60, 48, 80, 40, 68, 84, 52, 74, 36, 60, 44, 68];
   const DELAYS  = [-0.05, -0.50, -0.20, -0.80, -0.30, -1.10, -0.10, -0.95,
                    -0.45, -0.65, -0.25, -0.85, -0.40, -1.20, -0.15, -0.75];

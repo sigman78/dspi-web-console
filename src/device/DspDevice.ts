@@ -5,13 +5,12 @@ import * as domain from '@/domain';
 import { fromBulkParams, narrowInputSource, type DeviceState } from '@/protocol/snapshotCodec';
 import { deriveCapabilities, FEATURE_MIN_WIRE, type DeviceCapabilities, type FirmwareVersion } from '@/protocol/capabilities';
 
-// Human-readable minimum supported firmware, shown in the reject message. The
-// wire-version floor lives in capabilities.ts; this is its semver face.
+// Semver face of the wire-version floor that lives in capabilities.ts; shown in
+// the reject message.
 const MIN_SUPPORTED_FW = '1.1.3';
 
-// Thrown at connect when the device firmware predates the supported floor.
-// Carries the actual + minimum versions so the connect UI can render an
-// upgrade prompt.
+// Thrown at connect when firmware predates the supported floor. Carries the
+// versions so the connect UI can render an upgrade prompt.
 export class UnsupportedFirmware extends Error {
   constructor(readonly firmwareVersion: string, readonly minimum: string = MIN_SUPPORTED_FW) {
     super(`DSPi firmware ${firmwareVersion} is older than the minimum supported ${minimum}.`);
@@ -20,10 +19,9 @@ export class UnsupportedFirmware extends Error {
 }
 
 // Thrown at connect when a wire-supported device reports a parameter packet
-// shorter than the V6 floor (a malformed / truncated firmware). The console
-// treats the V6 sections as guaranteed once connected, so such a device is
-// rejected rather than silently defaulting them. Surfaced through the same
-// upgrade-prompt UI as UnsupportedFirmware.
+// shorter than the V6 floor (malformed/truncated firmware). The console treats
+// V6 sections as guaranteed, so such a device is rejected rather than silently
+// defaulting them.
 export class UnsupportedDevicePacket extends Error {
   constructor(readonly fwLabel: string, readonly got: number, readonly need: number) {
     super(`DSPi firmware ${fwLabel} sent an incomplete parameter packet (${got} bytes, need at least ${need}). Update the firmware.`);
@@ -31,10 +29,9 @@ export class UnsupportedDevicePacket extends Error {
   }
 }
 
-// Thrown when a granular command is invoked on a device whose capabilities do
-// not advertise the feature. Distinct from UnsupportedFirmware, which rejects
-// the whole device at connect time. Carries the command name and a human
-// requirement string for surfacing in the UI / logs.
+// Thrown when a granular command is invoked on a device whose capabilities
+// don't advertise the feature. Distinct from UnsupportedFirmware, which rejects
+// the whole device at connect time.
 export class UnsupportedOnFirmware extends Error {
   constructor(readonly feature: string, readonly requires: string) {
     super(`${feature} requires ${requires}; the connected device does not support it.`);
@@ -62,8 +59,7 @@ function platformTypeFromId(platformId: number): domain.PlatformType {
   return platformId === 1 ? domain.PlatformType.RP2350 : domain.PlatformType.RP2040;
 }
 
-// Clamp an unknown S/PDIF state byte to the domain enum (forward-compat: an
-// unrecognised future state reads as Inactive rather than a bogus value).
+// Forward-compat: an unrecognised future state byte reads as Inactive.
 function narrowSpdifInputState(n: number): domain.SpdifInputState {
   switch (n) {
     case domain.SpdifInputState.Inactive:
@@ -76,9 +72,8 @@ function narrowSpdifInputState(n: number): domain.SpdifInputState {
   }
 }
 
-// Throw if the connected device's capabilities don't advertise `feature`. The
-// human requirement label is derived from the single FEATURE_MIN_WIRE map, so
-// call sites name only the feature.
+// Throw if the connected device's capabilities don't advertise `feature`; the
+// requirement label comes from FEATURE_MIN_WIRE so call sites name only the feature.
 function requireFeature(
   features: DeviceCapabilities['features'],
   feature: keyof DeviceCapabilities['features'],
@@ -116,10 +111,9 @@ export class DspDevice {
       proto.readCmd(transport, proto.WireCmd.GetPlatform),
     ]);
 
-    // Peek the bulk packet so capabilities reflect the device's observed wire
-    // structure, not just its (potentially misreported) semver. Read at
-    // MaxReadSize so a newer device can send its whole packet without overrun;
-    // parseBulkParams keeps only the V6 prefix.
+    // Peek the bulk packet so capabilities reflect the observed wire structure,
+    // not just the (potentially misreported) semver. Read at MaxReadSize so a
+    // newer device can send its whole packet without overrun.
     const bulkBytes = await transport.ctrlIn(
       proto.WireCmd.GetAllParams.code, 0, proto.Wire.BulkLimits.MaxReadSize,
     );
@@ -136,7 +130,7 @@ export class DspDevice {
     }
     // A supported wire version must also carry at least the V6 floor payload.
     // A shorter packet means the device omits floor sections the console treats
-    // as guaranteed (i2s/leveller) — reject instead of silently defaulting them.
+    // as guaranteed (i2s/leveller) -- reject instead of silently defaulting them.
     if (bulk.payloadLength < proto.Wire.BulkSizes.V6Full) {
       throw new UnsupportedDevicePacket(capabilities.fwLabel, bulk.payloadLength, proto.Wire.BulkSizes.V6Full);
     }
@@ -174,8 +168,7 @@ export class DspDevice {
   }
 
   // Raw bytes of the last bulk packet read. Substrate for the deferred per-field
-  // notify patch path and passthrough writes (docs/HW-NOTIFICATIONS.md,
-  // FW-VERSIONS.md). Unused by Layer 1.
+  // notify patch path and passthrough writes; unused by Layer 1.
   get lastRawBulk(): Uint8Array | null {
     return this.#lastRawBulk;
   }
@@ -184,15 +177,12 @@ export class DspDevice {
     return domain.wireChannelFor(this.hardware, channel);
   }
 
-  // Snapshot-out: fetch the wire packet and return the domain view. The sole
-  // app-facing read path.
+  // Fetch the wire packet and return the domain view. The sole app-facing read path.
   async getSnapshot(): Promise<domain.DspSnapshot> {
     return fromBulkParams(this.hardware, await this.getAllParams());
   }
 
-  // Opaque capture for the device-to-device paste copy. The blob is a wire
-  // packet; runtime never inspects it (the brand keeps the wire shape out of
-  // runtime types).
+  // Opaque wire-packet capture for device-to-device paste; runtime never inspects it.
   async captureState(): Promise<DeviceState> {
     return (await this.getAllParams()) as DeviceState;
   }
@@ -207,8 +197,7 @@ export class DspDevice {
     return proto.parseBulkParams(bytes);
   }
 
-  // Read one notification packet, or null if the transport has no notify
-  // endpoint. The notify channel polls this; parsing lives in protocol/notify.
+  // Read one notification packet, or null if the transport has no notify endpoint.
   async readNotification(): Promise<Uint8Array | null> {
     return this.transport.notifyIn
       ? this.transport.notifyIn(proto.NOTIFY_PACKET_SIZE)
@@ -228,13 +217,9 @@ export class DspDevice {
     return proto.parseSystemStatus(bytes, numCh);
   }
 
-  // Slow-poll telemetry (env scalars + cumulative error counters). Each
-  // wValue is a separate vendor read; WebUSB serialises control transfers
-  // anyway, but Promise.allSettled lets a single STALL on one wValue
-  // (typical of older firmware missing a counter) leave the rest of the
-  // panel populated. The caller folds non-null fields into the store.
-  // Run at ~1Hz from poll.ts. See docs/system-status-req.md for the wire
-  // format per code.
+  // Slow-poll telemetry (env scalars + cumulative error counters). Each wValue
+  // is a separate vendor read; allSettled lets a single STALL on one wValue
+  // (older firmware missing a counter) leave the rest of the panel populated.
   async getSystemInfo(): Promise<proto.PartialSystemInfo> {
     const u32 = (wValue: number) =>
       this.transport.ctrlIn(proto.WireCmd.GetStatus.code, wValue, 4)
@@ -284,21 +269,15 @@ export class DspDevice {
     return proto.parseBufferStats(bytes);
   }
 
-  // Persistence ----------------------------------------------------------
-  // 0x51 / 0x52 / 0x53 are action-style IN with a 1-byte FlashResult.
-
+  // Persistence: 0x51/0x52/0x53 are action-style IN with a 1-byte FlashResult.
   async factoryReset(): Promise<Result<void, proto.FlashResult>> {
     return proto.flashResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.FactoryReset));
   }
-
-  // Telemetry actions -----------------------------------------------------
 
   // 0x83 OUT, no payload. Clears latched clip flags so they can re-arm.
   async clearClips(): Promise<void> {
     await this.transport.ctrlOut(proto.WireCmd.ClearClips.code, 0, new Uint8Array(0));
   }
-
-  // Preamps / master volume ------------------------------------------------
 
   async setMasterPreamp(db: number): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetPreamp, db);
@@ -316,19 +295,15 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetMasterVolumeMode, mode);
   }
 
-  // Action-style IN: persists live master volume to flash, returns 1-byte
-  // PresetResult status. 0 = ok. WebUSB transfer failures throw, so the
-  // host-side surface is a simple boolean.
+  // Action-style IN: persists live master volume to flash. Returns ok-boolean;
+  // transfer failures throw rather than surfacing the status byte.
   async saveMasterVolume(): Promise<boolean> {
     const r = await this.transport.ctrlIn(proto.WireCmd.SaveMasterVolume.code, 0, 1);
     return r.length >= 1 && r[0] === 0;
   }
 
-  // Matrix mixer ----------------------------------------------------------
   // SetMatrixRoute always sends the full crosspoint state (enabled+invert+
-  // gainDb) -- callers must merge any patch with current snapshot values
-  // before calling.
-
+  // gainDb); callers must merge a patch with current snapshot values first.
   async setMatrixRoute(
     input: domain.InputSlot,
     output: domain.OutputSlot,
@@ -346,17 +321,13 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetOutputGain, db, output);
   }
 
-  // Presets ---------------------------------------------------------------
-  // Wire surface for the 11-command preset system (0x90–0x9A). See
-  // docs/HW-PROFILES.md for the persistence model.
-
+  // Wire surface for the 11-command preset system (0x90-0x9A).
   async getPresetDirectory(): Promise<domain.PresetDirectoryInfo> {
     const bytes = await this.transport.ctrlIn(
       proto.WireCmd.PresetGetDir.code, 0, proto.PresetDirRequestSize,
     );
-    // decodePadded zero-extends a legacy 6-byte response to the V12+
-    // 7-byte schema; masterVolumeMode then reads 0 (= Independent), which
-    // is the correct legacy semantic, not a sentinel.
+    // decodePadded zero-extends a legacy 6-byte response to the 7-byte schema;
+    // masterVolumeMode then reads 0 (= Independent), the correct legacy semantic.
     const r = Codec.decodePadded(proto.PresetDirectory, bytes);
     return {
       occupiedSlotsSet: occupiedMaskToSet(r.occupiedMask),
@@ -368,19 +339,10 @@ export class DspDevice {
     };
   }
 
-  // 0x9A: returns the active slot (0..9) or `null` for "no active slot".
-  // The firmware-documented sentinel is `0xFF` (transient: device powered
-  // up before fetchPresetInfo settled, or the directory's last-active
-  // byte was never written). Any other byte outside `0..9` is undefined
-  // by the spec; we collapse it to `null` rather than `throw` so the UI
-  // layer's single coercion (`null → 0`) handles all "unusable" responses
-  // uniformly. If a firmware revision starts emitting values in
-  // `10..0xFE`, this guard hides it — file an issue against firmware
-  // before broadening the surface here.
-  //
-  // UI layer should coerce `null → 0` for display per the always-active
-  // model in HW-PROFILES §0; persistence-aware code (dirty tracking,
-  // autosave) should treat `null` as "no slot to write to" and skip.
+  // 0x9A: returns the active slot (0..9), or null for "no active slot". The
+  // sentinel 0xFF and any other out-of-range byte collapse to null (not throw)
+  // so the UI's single null->0 coercion handles all unusable responses
+  // uniformly; persistence-aware code treats null as "no slot to write to".
   async getActivePreset(): Promise<domain.PresetSlot | null> {
     const r = await this.transport.ctrlIn(proto.WireCmd.PresetGetActive.code, 0, 1);
     if (r.length < 1) return null;
@@ -389,10 +351,8 @@ export class DspDevice {
     return b as domain.PresetSlot;
   }
 
-  // 0x93 / 0x94: 32-byte NUL-terminated UTF-8 name per slot (0..9).
-  // Same codec as channel names; wValue carries the slot index.
-  // Names are silently cropped at a codepoint boundary to fit the 31-byte
-  // wire budget. Slot is a compile-time `PresetSlot`; no runtime guard here.
+  // 0x93/0x94: 32-byte NUL-terminated UTF-8 name per slot; wValue carries the
+  // slot. Names are cropped at a codepoint boundary to fit the 31-byte budget.
   async setPresetName(slot: domain.PresetSlot, name: string): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.PresetSetName, utf8Truncate(name, domain.PRESET_NAME_MAX_LEN), slot);
   }
@@ -421,13 +381,10 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.PresetSetIncludePins, include);
   }
 
-  // Per-parameter ("granular") lane -----------------------------------------
-  // Every write goes through a granular verb. The bulk read path
-  // (getSnapshot) and the paste-only bulk write path (restoreState) are the
-  // only consumers of the all-params packet; the edit path is entirely
-  // per-field.
+  // Per-parameter ("granular") lane: every write goes through a granular verb.
+  // The all-params packet is read-only here (getSnapshot) plus the paste-only
+  // restoreState write; the edit path is entirely per-field.
 
-  // EQ
   async setFilter(channel: domain.ChannelId, band: number, p: domain.FilterParams): Promise<void> {
     const wireChannel = this.deviceChannel(channel);
     return proto.writeCmd(this.transport, proto.WireCmd.SetEqParam, {
@@ -437,9 +394,8 @@ export class DspDevice {
   }
 
   // One ctrlIn per parameter with a bit-packed wValue. Not atomic against
-  // concurrent writers; for an atomic snapshot use getAllParams(). Type comes
-  // back as u32, the rest f32. `decode` (not `decodePadded`) makes a truncated
-  // read throw rather than silently zero-pad.
+  // concurrent writers; use getAllParams() for an atomic snapshot. `decode`
+  // (not `decodePadded`) makes a truncated read throw rather than zero-pad.
   async getFilter(channel: domain.ChannelId, band: number): Promise<domain.FilterParams> {
     const wireChannel = this.deviceChannel(channel);
     const code = proto.WireCmd.GetEqParam.code;
@@ -461,7 +417,6 @@ export class DspDevice {
     };
   }
 
-  // Bypass
   async setBypass(enabled: boolean): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetBypass, enabled);
   }
@@ -470,7 +425,6 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetBypass);
   }
 
-  // Preamps / master volume (reads)
   async getMasterPreamp(): Promise<number> {
     return proto.readCmd(this.transport, proto.WireCmd.GetPreamp);
   }
@@ -491,9 +445,8 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetSavedMasterVolume);
   }
 
-  // Matrix mixer
-  // GetMatrixRoute packs input/output into wValue since our transport surface
-  // only exposes wValue (no wIndex).
+  // GetMatrixRoute packs input/output into wValue since the transport surface
+  // exposes only wValue (no wIndex).
   async getMatrixRoute(
     input: domain.InputSlot,
     output: domain.OutputSlot,
@@ -582,9 +535,8 @@ export class DspDevice {
     return proto.actionCmd(this.transport, proto.WireCmd.GetMckMultiplier, 0);
   }
 
-  // Channel names
-  // Names are silently cropped to fit the 31-byte UTF-8 wire budget;
-  // validation and user-facing errors belong at the state/UI layer above.
+  // Names are cropped to fit the 31-byte UTF-8 wire budget; validation and
+  // user-facing errors belong at the state/UI layer above.
   async setChannelName(channel: domain.ChannelId, name: string): Promise<void> {
     const wireChannel = this.deviceChannel(channel);
     return proto.writeCmd(this.transport, proto.WireCmd.SetChannelName, utf8Truncate(name, domain.CHANNEL_NAME_MAX_LEN), wireChannel);
@@ -594,7 +546,6 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetChannelName, this.deviceChannel(channel));
   }
 
-  // Preset read-side
   async getPresetStartup(): Promise<{ mode: number; slot: number }> {
     return proto.readCmd(this.transport, proto.WireCmd.PresetGetStartup);
   }
@@ -603,7 +554,6 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.PresetGetIncludePins);
   }
 
-  // Persistence
   async saveParams(): Promise<Result<void, proto.FlashResult>> {
     return proto.flashResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SaveParams));
   }
@@ -612,19 +562,16 @@ export class DspDevice {
     return proto.flashResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.LoadParams));
   }
 
-  // Telemetry actions
-  // Firmware echoes 0x01 on success; return a boolean so callers don't see
-  // the wire shape.
+  // Firmware echoes 0x01 on success; return a boolean so callers don't see the wire shape.
   async resetBufferStats(): Promise<boolean> {
     const r = await this.transport.ctrlIn(proto.WireCmd.ResetBufferStats.code, 1, 1);
     return r.length >= 1 && r[0] === 0x01;
   }
 
   // Clear every preset slot in order, pacing between deletes so the firmware's
-  // deferred flash erase (~45 ms per slot with interrupts disabled) doesn't
-  // drop the next control transfer into a USB blackout window. Returns the
-  // first non-recoverable failure; an empty-slot delete is success (erase is
-  // idempotent). pacingMs defaults to 50; pass 0 in tests.
+  // deferred flash erase (~45 ms/slot with interrupts disabled) doesn't drop the
+  // next control transfer into a USB blackout window. Returns the first
+  // non-recoverable failure; an empty-slot delete is success. pacingMs: 0 in tests.
   async clearAllPresets(opts: { pacingMs?: number } = {}): Promise<Result<void, proto.PresetResult>> {
     const pacingMs = opts.pacingMs ?? 50;
     for (let slot = 0 as domain.PresetSlot; slot < 10; slot = (slot + 1) as domain.PresetSlot) {
@@ -639,7 +586,6 @@ export class DspDevice {
     return { ok: true, value: undefined };
   }
 
-  // Loudness
   async setLoudnessEnabled(enabled: boolean): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLoudnessEnabled, enabled);
   }
@@ -652,7 +598,6 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLoudnessIntensity, pct);
   }
 
-  // Crossfeed
   async setCrossfeedEnabled(enabled: boolean): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedEnabled, enabled);
   }
@@ -673,7 +618,6 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedFeedDb, db);
   }
 
-  // Volume Leveller
   async setLevellerEnabled(enabled: boolean): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerEnabled, enabled);
   }
@@ -698,9 +642,8 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerGate, db);
   }
 
-  // --- v1.1.4 granular surface (capability-gated) ---------------------------
-  // Each method throws UnsupportedOnFirmware when the device's capabilities
-  // don't advertise the feature; getters narrow wire shapes to domain types.
+  // v1.1.4 granular surface: each method throws UnsupportedOnFirmware when the
+  // device's capabilities don't advertise the feature.
 
   // Per-band EQ bypass. wValue = (wireChannel<<8)|band, mirroring getFilter's
   // channel remap (e.g. RP2040 PDM -> wire channel 6).

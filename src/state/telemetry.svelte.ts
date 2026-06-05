@@ -1,11 +1,9 @@
 import { type BufferStats, type PartialSystemInfo, Wire } from '@/protocol';
 const { NUM_CHANNELS } = Wire.Const;
 
-// Canonical Svelte 5 reactive store: each $state class field gets its own
-// signal source, so reads from any module bind to the right subscribers
-// regardless of update frequency. The plain `$state(object)` pattern works
-// for data updated once at sync time but has been observed to miss
-// subscribers when properties are mutated 20x/sec from RAF callbacks.
+// Per-field $state (not $state(object)): each field gets its own signal source.
+// The object form was observed to miss subscribers when properties are mutated
+// 20x/sec from RAF callbacks.
 export class StatusStore {
   peaks = $state<number[]>(Array(NUM_CHANNELS).fill(0));
   peakHoldDb = $state<number[]>(Array(NUM_CHANNELS).fill(-90));
@@ -43,7 +41,7 @@ export class StatusStore {
     this.errorCount = 0;
   }
 
-  // Apply peak normalization (0..1) with 30 dB/sec decay. Per-index writes.
+  // Peak normalization (0..1) with 30 dB/sec hold decay.
   applyPeaks(raw: ArrayLike<number>, nowMs: number): void {
     const dt = this.lastStatusMs > 0 ? (nowMs - this.lastStatusMs) / 1000 : 0;
     const decayDb = 30 * dt;
@@ -65,11 +63,9 @@ export class StatusStore {
     }
   }
 
-  // Fold a partial readout into the store: non-null fields update; null
-  // fields keep their previous value (or stay null on first cycle, which
-  // renders as '--'). This is why `info` is PartialSystemInfo -- once any
-  // field has been read successfully it stays a number; siblings that
-  // fail this cycle don't erase what we've learned.
+  // Fold a partial readout in: non-null fields update; null fields keep their
+  // previous value, so a field that failed this cycle doesn't erase a value read
+  // earlier (first-cycle null renders as '--').
   applyPartialInfo(p: PartialSystemInfo): void {
     if (this.info === null) {
       this.info = { ...p };

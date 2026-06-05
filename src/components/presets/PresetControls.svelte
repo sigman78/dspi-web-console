@@ -1,4 +1,3 @@
-<!-- src/components/presets/PresetControls.svelte -->
 <script lang="ts">
   import {
     presetsDirty,
@@ -26,10 +25,10 @@
     return dir.occupiedSlotsSet.has(active);
   });
 
-  // Action button enable/disable — visual predicates only.
+  // Action button enable/disable -- visual predicates only.
   // The busy guard lives in the handlers below (silent no-op on click
   // while a wire op is in flight) so the buttons don't visibly flicker
-  // disabled→enabled during fast wire ops like a preset switch.
+  // disabled->enabled during fast wire ops like a preset switch.
   const canSave = $derived(active != null && (dirty || !activeOccupied));
   const canRevert = $derived(active != null && activeOccupied && dirty);
   const canRename = $derived(active != null);
@@ -38,7 +37,6 @@
   const canPaste = $derived(s.copySource.slot != null && active != null && s.copySource.slot !== active);
   const canSetStartup = $derived(active != null);
 
-  // Settings group state
   const startupMode = $derived(dir?.startupMode ?? PresetStartupMode.Specified);
   const mvMode = $derived(dir?.masterVolumeMode ?? MasterVolumeMode.Independent);
   const includePins = $derived(dir?.includePins ?? false);

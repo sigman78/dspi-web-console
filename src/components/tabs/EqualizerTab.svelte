@@ -25,7 +25,7 @@
   const channel = $derived(
     settings.eqTarget != null ? snap?.channels.find((c) => c.id === settings.eqTarget) ?? null : null,
   );
-  // Input preamp index for the selected channel; null if not an input.
+  // null when the selected channel is not an input.
   const inputIndex = $derived(channel ? inputIndexOf(channel.id) : null);
   const outputForChannel = $derived(
     channel?.isOutput ? snap?.outputs.find((o) => o.id === channel.id) ?? null : null,
@@ -91,8 +91,8 @@
     clearEqCopySource();
   }
 
-  // Defensive: if the source channel disappears from the snapshot while
-  // selection is armed, drop the source so the pulsation stops cleanly.
+  // Drop the copy source if its channel disappears from the snapshot, so the
+  // pulsation stops cleanly.
   $effect(() => {
     const src = eqUi.copySource;
     if (src == null) return;

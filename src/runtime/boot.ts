@@ -11,11 +11,10 @@ import { isDeviceHeld } from './deviceLock';
 import { settings, dispatch, connection } from '@/state';
 import { Log } from '@/utils';
 
-// Per-call ceiling on USB control transfers. A frozen firmware would
-// otherwise leave the mutation coalescer waiting forever on a dead
-// promise; the next schedule() would queue behind it. 2 s is long enough
-// to absorb USB hub jitter on Windows and short enough that a hung
-// control transfer becomes visible as an error within one human breath.
+// Per-call ceiling on USB control transfers. Without it, a frozen firmware leaves
+// the mutation coalescer waiting forever on a dead promise and the next
+// schedule() queues behind it. 2 s absorbs USB hub jitter on Windows yet surfaces
+// a hung transfer as an error within one human breath.
 const CTRL_TIMEOUT_MS = 2000;
 
 let booting = false;
@@ -37,13 +36,11 @@ async function createBoundDevice(
   transport: DspTransport,
   openTransport?: () => Promise<void>,
 ): Promise<DspDevice> {
-  // Wrap with the timeout decorator before handing to DspDevice so every
-  // ctrlIn/ctrlOut inherits the deadline. attachTransportListeners stays
-  // on the underlying transport -- connect/disconnect events come from the
-  // real transport, not from the timeout wrapper.
-  // The wire monitor (gated on ?debug) sits inside the timeout wrapper so it
-  // logs the real bytes/response and its formatting is off the timeout-race
-  // path. attachTransportListeners + close still target the raw transport.
+  // Wrap with the timeout decorator before DspDevice so every ctrlIn/ctrlOut
+  // inherits the deadline. The wire monitor (gated on ?debug) sits inside the
+  // timeout wrapper so its formatting is off the timeout-race path.
+  // attachTransportListeners + close target the raw transport, since
+  // connect/disconnect events come from there, not the wrappers.
   const monitored = wireMonitorEnabled() ? withWireMonitor(transport) : transport;
   const wrapped = withTimeout(monitored, { ctrlMs: CTRL_TIMEOUT_MS });
   const scope = beginConnection();                   // fresh scope (disposes any prior)
@@ -92,11 +89,11 @@ export async function bootReal(): Promise<void> {
   if (booting) return;
   booting = true;
   try {
-    // Another tab in this browser already holds the device. Auto-claiming here
-    // would throw a raw "unable to claim interface" error and clobber the hero
-    // with a diagnostics panel; skip the attempt so the "DEVICE IN USE" advisory
-    // shows instead. (The desktop app / another browser can't be detected this
-    // way and still falls back to the claim-failure text.)
+    // Another tab in this browser already holds the device. Auto-claiming would
+    // throw a raw "unable to claim interface" error and clobber the hero with a
+    // diagnostics panel; skip it so the "DEVICE IN USE" advisory shows instead.
+    // (The desktop app / another browser can't be detected this way and still
+    // falls back to the claim-failure text.)
     if (await isDeviceHeld()) return;
     const transport = new WebUsbTransport();
     const ok = await transport.tryAutoConnect();

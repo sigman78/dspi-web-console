@@ -5,20 +5,17 @@ import type { PresetsState } from './presets.svelte';
 import type { MirrorState } from './mirror.svelte';
 import type { WriteCoordinator } from '@/runtime/writes';
 
-// Wraps a bound device. Carries device identity only; per-device runtime state
-// (mirror, presets, telemetry, scope, lifecycle guard) attaches here as it lands.
+// A bound device plus its per-device runtime state (mirror, presets, telemetry,
+// writes, lifecycle guard).
 export interface ReadySession {
   readonly device: DspDevice;
   readonly info: DspDeviceInfo;
   readonly hardware: HardwareProfile;
   // UI-only preset copy-source slot, owned by this device session.
   readonly copySource: { slot: PresetSlot | null };
-  // Per-device telemetry (peaks, CPU, buffer, poll-cadence timestamps).
   readonly telemetry: StatusStore;
-  // Per-device preset directory / names / active slot / dirty-baseline inputs.
   readonly presets: PresetsState;
   readonly mirror: MirrorState;
-  // Per-device write coordination (coalesce lanes + in-flight registry).
   readonly writes: WriteCoordinator;
   // Lifecycle guard: a write that settles after dispose() is dropped.
   alive: boolean;
@@ -26,8 +23,7 @@ export interface ReadySession {
 }
 
 // Discriminates an 'error' status so the UI can give certain failures a tailored
-// treatment (e.g. a firmware-upgrade prompt) instead of the generic diagnostics
-// panel. null = an ordinary/unclassified error.
+// treatment (e.g. a firmware-upgrade prompt). null = ordinary/unclassified error.
 export type SessionErrorKind = null | 'unsupported-firmware';
 
 export type AppState =
@@ -42,8 +38,8 @@ export type AppEvent =
   | { t: 'failed'; message: string; errorKind?: SessionErrorKind }
   | { t: 'disconnected' };
 
-// The single writer of connection phase. The next state is determined by the
-// event alone; the current state is not consulted (no legal-transition guard).
+// Next state is determined by the event alone; the current state is not
+// consulted (no legal-transition guard).
 export function transition(_state: AppState, event: AppEvent): AppState {
   switch (event.t) {
     case 'requested':    return { kind: 'connecting' };
@@ -53,9 +49,9 @@ export function transition(_state: AppState, event: AppEvent): AppState {
   }
 }
 
-// $state.raw: the union is reactive on reassignment (phase change), but its
-// contents are NOT deep-proxied — so a stored ReadySession keeps its identity and
-// its own internal $state cells stay the single reactive source for per-field UI.
+// $state.raw: reactive on reassignment (phase change) but not deep-proxied, so a
+// stored ReadySession keeps its identity and its own internal $state cells stay
+// the single reactive source for per-field UI.
 let _app = $state.raw<AppState>({ kind: 'noDevice' });
 
 export const app = {
@@ -63,7 +59,6 @@ export const app = {
 };
 
 // Read-only connection state derived from the machine, for UI gating + display.
-// Replaces the legacy session.status/error/errorKind projection.
 export const connection = {
   get phase(): AppState['kind'] { return _app.kind; },
   get connected(): boolean { return _app.kind === 'ready'; },

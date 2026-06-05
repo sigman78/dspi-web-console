@@ -142,7 +142,7 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
       freq: bulk.crossfeed.freq,
       feedDb: bulk.crossfeed.feedDb,
     },
-    // Floor sections — bulkParser always populates these (defaults when the
+    // Floor sections -- bulkParser always populates these (defaults when the
     // wire omits them), so the domain carries them unconditionally.
     leveller: {
       enabled: bulk.leveller.enabled,

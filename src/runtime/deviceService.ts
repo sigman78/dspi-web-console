@@ -1,7 +1,7 @@
 // Connection & whole-device service operations, split out from actions.ts
 // (which holds the granular per-parameter verbs). Everything here touches the
 // whole session or the whole snapshot: connect/sync/reconcile, transport-event
-// wiring, and the factory-reset command — as opposed to a single mirror field.
+// wiring, and the factory-reset command -- as opposed to a single mirror field.
 
 import type { DspTransport } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -71,11 +71,10 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
   }
 }
 
-// Re-apply UI policy that should outlive a (re)connect (mute, eqTarget).
-// Runs after the snapshot is hydrated and the connection is marked
-// connected, so it sees the freshly-synced device state and can write
-// through it. reconcileEqTarget is a pure state-layer step that runs
-// before the device-touching mute restore -- it doesn't need the device.
+// Re-apply UI policy that should outlive a (re)connect (mute, eqTarget). Runs
+// after the snapshot is hydrated, so it sees freshly-synced device state and can
+// write through it. reconcileEqTarget is a pure state-layer step before the
+// device-touching mute restore.
 export async function reconcileAfterSync(s: ReadySession): Promise<void> {
   reconcileEqTarget(s.mirror.current?.channels);
   const d = s.device;
@@ -91,14 +90,12 @@ export function attachTransportListeners(transport: DspTransport, device: DspDev
   const offDisc = transport.on('disconnect', () => {
     // endConnection() disposes the scope, which removes THIS very listener
     // mid-emit (offDisc). Deleting the currently-firing entry from the
-    // transport's listener Set during its forEach is safe — it won't be
+    // transport's listener Set during its forEach is safe -- it won't be
     // revisited and won't throw.
     const outgoing = activeSession();
     endConnection();                 // disposes resync, poll loop, listeners
     dispatch({ t: 'disconnected' });
     outgoing?.dispose();             // alive=false + cancel this session's write lanes
-    // Per-session stores die with the disposed session; the next connect builds
-    // fresh ones via makeReadySession, so there is nothing to reset here.
   });
   const offConn = transport.on('connect', () => {
     void wireUpConnection(device).catch((e) => {

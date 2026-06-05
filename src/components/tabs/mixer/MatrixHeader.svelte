@@ -24,7 +24,6 @@
 
   const s = getSession();
 
-  // Split a channel display name into base + L/R suffix, mirroring the JSX.
   function splitLR(name: string): { base: string; side: string | null } {
     const m = name.match(/^(.+?)\s+([LR])$/);
     return m ? { base: m[1], side: m[2] } : { base: name, side: null };

@@ -1,4 +1,3 @@
-<!-- src/components/presets/PresetActiveChip.svelte -->
 <script lang="ts">
   import { presetsDirty, setTab, connection, activeSession } from '@/state';
 

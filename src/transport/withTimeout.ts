@@ -12,12 +12,10 @@ export interface TimeoutOpts {
   ctrlMs: number;
 }
 
-// Decorator: wraps a DspTransport so that ctrlIn/ctrlOut reject with a
-// TimeoutError if they don't settle within `opts.ctrlMs`. The underlying
-// transfer is NOT cancelled -- WebUSB has no AbortSignal. The promise just
-// rejects; the transfer eventually settles into the void. Safe because the
-// transport surface is single-in-flight from the mutation pipeline's
-// perspective. open/close/isOpen/on are pass-through.
+// Decorator: ctrlIn/ctrlOut reject with TimeoutError if they don't settle
+// within `opts.ctrlMs`. The underlying transfer is NOT cancelled (WebUSB has no
+// AbortSignal); the promise just rejects. Safe because the transport surface is
+// single-in-flight from the mutation pipeline's perspective.
 export function withTimeout(inner: DspTransport, opts: TimeoutOpts): DspTransport {
   const race = <T>(operation: string, p: Promise<T>): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | null = null;

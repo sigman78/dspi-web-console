@@ -1,4 +1,3 @@
-<!-- src/components/tabs/PresetsTab.svelte -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
@@ -13,7 +12,7 @@
   const connected = $derived(connection.connected);
   const s = getSession();
 
-  // Refs to tile components so the controls pane can trigger inline rename.
+  // Lets the controls pane trigger inline rename on the active tile.
   const tileRefs = $state<Record<number, { enterRename: () => void } | null>>({});
   function requestRename() {
     const a = s.presets.active;
@@ -21,10 +20,9 @@
     tileRefs[a]?.enterRename();
   }
 
-  // COPY/PASTE invariant: source mark clears when RAM goes dirty from a
-  // user edit. Preset Load/Paste apply mirror.current and presetBaseline
-  // atomically via fetchAndApplyAsBaseline(), so there is no transient
-  // dirty=true window to filter out during wire ops.
+  // Clear the copy source once RAM goes dirty from a user edit. Load/Paste
+  // apply mirror.current and the baseline atomically, so they leave no
+  // transient dirty window to filter out here.
   $effect(() => {
     if (presetsDirty(s) && s.copySource.slot != null) {
       s.copySource.slot = null;

@@ -1,4 +1,3 @@
-<!-- src/components/presets/PresetTile.svelte -->
 <script lang="ts">
   import { presetsDirty } from '@/state';
   import { getSession } from '@/components/sessionContext';

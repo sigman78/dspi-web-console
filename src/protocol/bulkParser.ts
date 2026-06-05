@@ -1,7 +1,5 @@
-// Bulk packet parser.  Wire layout codecs live in `./wireTypes.ts`,
-// mirroring docs/bulk_params.h.  This file maps those wire structs onto
-// the `BulkParams` DTO and gates optional sections by version and buffer
-// length.
+// Bulk packet parser. Maps the wire structs from `./wireTypes.ts` onto the
+// `BulkParams` DTO and gates optional sections by version and buffer length.
 
 import { BinReader, BinWriter } from '@/utils';
 import * as Wire from './wireTypes';
@@ -11,17 +9,13 @@ import type {
   I2sConfig,
 } from '@/domain';
 
-// The parsed bulk packet as a plain DTO. Fields mirror bulk_params.h
-// section by section. All sections are populated. When the wire packet omits
-// an optional V6 section (older firmware), the parser substitutes values from
-// defaultBulkParams(). The formatVersion field is preserved so downstream
-// consumers (e.g. fromBulkParams) can decide whether to surface those as null
-// in their own DTOs.
+// The parsed bulk packet as a plain DTO. All sections are populated; when the
+// wire omits an optional section (older firmware) the parser substitutes
+// defaultBulkParams(). formatVersion is preserved so consumers can decide
+// whether to surface those as null in their own DTOs.
 //
-// Filters are typed as raw wire shape (WireFilter: {type: number, ...})
-// rather than FilterParams[][] so this file has zero domain imports for
-// filter concerns. The narrowing of `type: number` -> `FilterType` happens
-// in protocol/snapshotCodec.ts when assembling DspSnapshot.
+// Filters stay raw wire shape (type: number) so this file has zero domain
+// imports; narrowing to FilterType happens in snapshotCodec.ts.
 export interface WireFilter {
   type: number;
   bypass: boolean;
@@ -138,7 +132,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
   const channelNames = Wire.ChannelNames.read(r);
 
   // Optional V6 tail sections -- read if present, else use factory defaults.
-  // Codecs are 16 B each (Task 1), so sequential reads line up with on-wire offsets.
+  // Codecs are 16 B each, so sequential reads line up with on-wire offsets.
   const i2s = layout.i2s
     ? (() => {
         const w = Wire.I2SConfig.read(r);
@@ -352,13 +346,13 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
 
   Wire.ChannelNames.write(w, bulk.channelNames);
 
-  // V6 tail — always present (writeVersion >= 6).
+  // V6 tail -- always present (writeVersion >= 6).
   Wire.I2SConfig.write(w, bulk.i2s);
   Wire.LevellerConfig.write(w, bulk.leveller);
   Wire.PreampConfig.write(w, { preampDb: [bulk.preampLDb, bulk.preampRDb] });
   Wire.MasterVolume.write(w, { masterVolumeDb: bulk.masterVolumeDb });
 
-  // V7-V10 tail — written only when the target version includes the section.
+  // V7-V10 tail -- written only when the target version includes the section.
   if (writeVersion >= 7) {
     Wire.InputConfig.write(w, { inputSource: bulk.inputConfig.source, spdifRxPin: bulk.inputConfig.spdifRxPin });
   }

@@ -1,4 +1,4 @@
-// Action surface for preset operations. Wraps DspDevice calls
+// Action surface for preset operations.
 
 import {
   presetsDirty, askBoundary,
@@ -15,15 +15,14 @@ import { Log, Result } from '@/utils';
 
 const PRESET_LOAD_SETTLE_MS = 100;
 
-// A console-initiated preset op (Load / Paste / Revert) re-fetches device truth
-// itself (fetchAndApplyAsBaseline). The firmware emits bulk/preset notifications
-// for that same op — some trailing past the action's return — which the
-// NotifyChannel would otherwise reconcile redundantly. Hold the suppression
-// guard across the op plus this grace so the late echoes are absorbed too. Sized
-// to comfortably cover a few notify read cycles (cadence ~150 ms).
+// A console-initiated preset op re-fetches device truth itself. The firmware
+// emits bulk/preset notifications for that op, some trailing past the action's
+// return, which the NotifyChannel would otherwise reconcile redundantly. Hold the
+// suppression guard across the op plus this grace so late echoes are absorbed too.
+// Sized to cover a few notify read cycles (cadence ~150 ms).
 const PRESET_ECHO_GRACE_MS = 500;
 
-// loadPreset only acks the command; the firmware copies flash→RAM asynchronously
+// loadPreset only acks the command; the firmware copies flash->RAM asynchronously
 // in its main loop (~100 ms). Wait this out before reading or overwriting RAM.
 function settleAfterLoad(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, PRESET_LOAD_SETTLE_MS));
@@ -44,17 +43,15 @@ async function withBusy<T>(ps: PresetsState, fn: () => Promise<T>): Promise<T> {
   try { return await fn(); } finally { ps.busy = false; }
 }
 
-// Mutating-action error surfacing. Each mutating action calls
-// clearActionError() at the top so a successful retry erases the
-// previous error, and recordActionError() on a failure path or in
-// catch. The label is prepended so the user knows which operation failed.
+// Mutating-action error surfacing. Each action clears the error at the top (so a
+// successful retry erases the previous one) and records on failure; the label is
+// prepended so the user knows which operation failed.
 //
 // Contract split: Result-returning actions (load/save/paste/delete) report
 // failures through their typed Result. The void actions (rename, startup
-// default/mode, include-pins) are record-only — they surface failures solely
-// via presets.lastActionError (which the UI reads reactively) and do NOT
-// rethrow, since their callers await without a catch and a rethrow would only
-// leak an unhandled rejection.
+// default/mode, include-pins) surface failures solely via lastActionError and do
+// NOT rethrow -- their callers await without a catch, so a rethrow would leak an
+// unhandled rejection.
 
 function recordActionError(ps: PresetsState, label: string, e: unknown): string {
   const msg = (e as Error)?.message ?? String(e);
@@ -80,7 +77,7 @@ export function dismissPresetActionError(s: ReadySession): void {
 }
 
 // Eager + lazy entry point. Idempotent when the cache is populated.
-// Never throws — errors are captured in presets.lastFetchError so the
+// Never throws -- errors are captured in presets.lastFetchError so the
 // UI can surface them with a retry button.
 export async function fetchPresetInfo(s: ReadySession): Promise<void> {
   if (s.presets.directory != null) return;
@@ -111,9 +108,8 @@ export async function fetchPresetInfo(s: ReadySession): Promise<void> {
       Log.warn('presets', 'getSavedMasterVolume failed', e);
     }
 
-    // Step 2: names. Each one is independent — a single bad slot shouldn't
-    // hide the whole grid. Failing names land as '' (renders as [unnamed]
-    // in the UI).
+    // Step 2: names. Each is independent -- a single bad slot shouldn't hide the
+    // whole grid. Failing names land as '' (renders as [unnamed] in the UI).
     const names: string[] = Array.from({ length: PRESET_SLOT_COUNT }, () => '');
     for (let i = 0; i < PRESET_SLOT_COUNT; i++) {
       try {
@@ -147,7 +143,7 @@ export function invalidatePresetCache(s: ReadySession): void {
   s.presets.savedMasterVolumeDb = null;
 }
 
-// PresetSave(active). RAM didn't change → just advance the baseline so
+// PresetSave(active). RAM didn't change -- just advance the baseline so
 // the dirty diff origin moves.
 export async function saveActivePreset(s: ReadySession): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = s.device;
@@ -178,7 +174,7 @@ export async function saveActivePreset(s: ReadySession): Promise<Result<void, Pr
 
 // PresetSave(N) for an arbitrary slot. Firmware sets lastActive = slot, so the
 // just-saved slot becomes active; the host mirrors that into presets.active and
-// advances the baseline (RAM is what we just captured into the now-active slot).
+// advances the baseline.
 export async function savePresetSlot(s: ReadySession, slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = s.device;
   clearActionError(s.presets);
@@ -205,11 +201,11 @@ export async function savePresetSlot(s: ReadySession, slot: PresetSlot): Promise
   }
 }
 
-// Wire-level load + post-load epilogue, no dirty gating. Called by
-// loadPresetSlot (after gating) and revertActivePreset. Uses
-// fetchAndApplyAsBaseline (not fullSync) so session.status never flips to
-// 'connecting' — that would unmount the main view and flash the splash
-// mid-load. reconcileAfterSync re-applies soft-mute over the loaded volume.
+// Wire-level load + post-load epilogue, no dirty gating. Called by loadPresetSlot
+// (after gating) and revertActivePreset. Uses fetchAndApplyAsBaseline (not
+// fullSync) so session.status never flips to 'connecting', which would unmount the
+// main view and flash the splash mid-load. reconcileAfterSync re-applies soft-mute
+// over the loaded volume.
 async function executeLoad(
   s: ReadySession,
   slot: PresetSlot,
@@ -246,10 +242,8 @@ async function executeLoad(
 }
 
 export async function loadPresetSlot(s: ReadySession, slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
-  // Dirty-RAM gating. Modal fires only when:
-  //   - RAM is dirty AND
-  //   - warnOnPresetSwitchDirty is on AND
-  //   - the active slot exists (no slot to save into otherwise).
+  // Dirty-RAM gating. Modal fires only when RAM is dirty, warnOnPresetSwitchDirty
+  // is on, and an active slot exists (else there's nowhere to save into).
   if (settings.warnOnPresetSwitchDirty && presetsDirty(s) && s.presets.active != null) {
     const choice = await askBoundary({
       title: 'Unsaved changes',
@@ -263,7 +257,7 @@ export async function loadPresetSlot(s: ReadySession, slot: PresetSlot): Promise
       const r = await saveActivePreset(s);
       if (!('ok' in r) || !r.ok) return r as Result<void, PresetResult> | PresetActionError;
     }
-    // 'discard' falls through — proceed to load.
+    // 'discard' falls through -- proceed to load.
   }
 
   return executeLoad(s, slot);
@@ -278,20 +272,19 @@ export async function revertActivePreset(s: ReadySession): Promise<Result<void, 
   return executeLoad(s, active);
 }
 
-// PresetCopy doesn't exist on the wire; PASTE composes a whole-state swap
-// using the device's bulk capture/restore so the active-slot pointer never
-// changes:
+// PresetCopy doesn't exist on the wire; PASTE composes a whole-state swap using
+// the device's bulk capture/restore so the active-slot pointer never changes:
 //
-//   1. LoadPreset(src)     — RAM = src flash content; device pointer → src
-//   2. captureState()      — capture src content as an opaque device blob
-//   3. LoadPreset(active)  — restore RAM + device pointer to pre-paste slot
-//   4. restoreState(blob)  — push src content into active's RAM (no flash)
-//   5. SavePreset(active)  — flash[active] = RAM = src content
+//   1. LoadPreset(src)     -- RAM = src flash content; device pointer -> src
+//   2. captureState()      -- capture src content as an opaque device blob
+//   3. LoadPreset(active)  -- restore RAM + device pointer to pre-paste slot
+//   4. restoreState(blob)  -- push src content into active's RAM (no flash)
+//   5. SavePreset(active)  -- flash[active] = RAM = src content
 //
 // End state: active slot holds source's content, RAM matches, active unchanged.
-// The UI's copy/paste invariant guarantees clean RAM here (copy source clears
-// on dirty), so there's no boundary-modal gate; a violating caller gets
-// stale-source behaviour, not data loss.
+// The UI's copy/paste invariant guarantees clean RAM here (copy source clears on
+// dirty), so there's no boundary-modal gate; a violating caller gets stale-source
+// behaviour, not data loss.
 export async function pastePresetTo(s: ReadySession, src: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = s.device;
   const active = s.presets.active;
@@ -299,23 +292,23 @@ export async function pastePresetTo(s: ReadySession, src: PresetSlot): Promise<R
   if (active === src) return activeSlotError('source and target are the same');
   clearActionError(s.presets);
   // Paste runs three loads + a save, each emitting source=preset notifications;
-  // suppress those self-echoes — step-8's fetchAndApplyAsBaseline is the resync.
+  // suppress those self-echoes -- the trailing fetchAndApplyAsBaseline is the resync.
   const mir = s.mirror;
   mir.beginPresetGuard();
   try {
     return await withBusy(s.presets, async () => {
       await flushWrites(s);
-      // Step 1: Load source into RAM (device pointer → src).
+      // Step 1: Load source into RAM (device pointer -> src).
       const r1 = await d.loadPreset(src);
       if (!r1.ok) {
         recordActionError(s.presets, 'Paste', new Error(r1.message ?? `error ${r1.code}`));
         return r1;
       }
-      // Step 2: Capture src content as a blob — only after the load has settled
+      // Step 2: Capture src content as a blob -- only after the load has settled
       // into RAM, else we'd capture the previous (active) slot's content.
       await settleAfterLoad();
       const sourceBlob = await d.captureState();
-      // Step 3: Restore active slot in RAM (device pointer → active).
+      // Step 3: Restore active slot in RAM (device pointer -> active).
       const r3 = await d.loadPreset(active);
       if (!r3.ok) {
         recordActionError(s.presets, 'Paste', new Error(r3.message ?? `error ${r3.code}`));
@@ -323,9 +316,8 @@ export async function pastePresetTo(s: ReadySession, src: PresetSlot): Promise<R
       }
       // Step 4: Push src content into active's RAM (no flash; pointer unchanged).
       // Wait for the active-slot load to settle first, otherwise its deferred
-      // flash→RAM copy could land after restoreState and clobber the source.
+      // flash->RAM copy could land after restoreState and clobber the source.
       await settleAfterLoad();
-      // Write gate
       if (!acceptsWriteFormat(d.capabilities, sourceBlob.formatVersion)) {
         const msg = `Paste blocked: snapshot format v${sourceBlob.formatVersion} cannot be written to device wire v${d.capabilities.wire}`;
         recordActionError(s.presets, 'Paste', new Error(msg));

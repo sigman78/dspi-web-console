@@ -6,9 +6,8 @@ import { createPresetsState } from './presets.svelte';
 import { MirrorState } from './mirror.svelte';
 import { WriteCoordinator } from '@/runtime/writes';
 
-// Assembles a per-device session from its constituent stores. Lives apart from
-// the state machine (appState) so appState stays a runtime leaf — it references
-// these store classes type-only, breaking the import cycle.
+// Assembles a per-device session from its constituent stores. Kept apart from
+// appState, which references these store classes type-only to avoid an import cycle.
 export function makeReadySession(device: DspDevice): ReadySession {
   const copySource = $state<{ slot: PresetSlot | null }>({ slot: null });
   const telemetry = new StatusStore();

@@ -1,6 +1,5 @@
-// Lightweight diagnostic logger. On in dev/build by default; turn off via
-// `?log=0` URL param. Outputs are tagged `[dspi]` and grouped by stage so
-// you can grep DevTools console for what happened across a connect cycle.
+// Lightweight diagnostic logger. On by default; disable via `?log=0`. Outputs
+// are tagged `[dspi:<stage>]` so DevTools can be filtered by stage.
 
 const enabled = (() => {
   if (typeof globalThis === 'undefined') return false;
@@ -18,7 +17,7 @@ export const Log = {
     if (!enabled) return;
     console.info(fmt(stage), ...args);
   },
-  // Verbose level — hidden by default in DevTools (filter to "Verbose" to see).
+  // Verbose level -- hidden by default in DevTools (filter to "Verbose" to see).
   // Used for high-volume, low-signal output like telemetry-poll wire traffic.
   debug(stage: string, ...args: unknown[]): void {
     if (!enabled) return;

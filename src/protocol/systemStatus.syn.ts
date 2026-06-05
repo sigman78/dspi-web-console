@@ -1,7 +1,6 @@
-// Synthesizer side of the GetStatus packet: encodes a domain shape into
-// the canonical wire bytes. Used by tests and by `MockTransport` to serve
-// `GetStatus` without hardware. The parser lives in `./systemStatus.ts`;
-// both sides share the `WireSystemStatus(numCh)` schema in `./wireTypes.ts`.
+// Synthesizer side of the GetStatus packet (encode); the parser is in
+// `./systemStatus.ts`. Both share the `SystemStatus(numCh)` schema in
+// `./wireTypes.ts`.
 
 import { Codec } from '@/utils';
 import * as Wire from './wireTypes';

@@ -36,26 +36,25 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
   function handle(event: NotifyEvent): void {
     const seq = 'seq' in event ? event.seq : null;
     if (seq !== null) {
-      // A gap means a possibly-external event was missed — always re-read,
-      // even under a preset guard (the guard only knows about its own echoes).
+      // A gap means a possibly-external event was missed -- always re-read, even
+      // under a preset guard (the guard only knows about its own echoes).
       if (lastSeq !== null && ((lastSeq + 1) & 0xff) !== seq) mir.requestReconcile(true);
       lastSeq = seq;
     }
-    // Confirm a preset load (user- or externally-triggered) via a toast. The
-    // device notification is the authority that the slot actually loaded.
+    // The device notification is the authority that the slot actually loaded.
     if (event.kind === 'presetLoaded') {
       const name = session.presets.names[event.slot] ?? '';
       pushNotice('info', name ? `Loaded preset "${name}"` : `Loaded preset ${String(event.slot).padStart(2, '0')}`);
     }
-    // A non-HOST PARAM_CHANGED is applied precisely and locally (Layer 2); only
-    // if the apply declines do we fall back to a full reconcile. HOST echoes fall
-    // through to isReconcileTrigger below, which drops them.
+    // Non-HOST PARAM_CHANGED is applied locally; only if the apply declines do we
+    // fall back to a full reconcile. HOST echoes fall through to isReconcileTrigger
+    // below, which drops them.
     if (event.kind === 'paramChanged' && event.source !== ParamSource.Host) {
       if (!applyParamChange(device, mir, event)) mir.requestReconcile(true);
       return;
     }
-    // Suppress ONLY the full-reconcile backstop echoes (preset/bulk) of our own
-    // in-flight preset op. Bulk/preset/seq-gap still reconcile.
+    // Suppress ONLY the full-reconcile backstop echoes of our own in-flight preset
+    // op. Bulk/preset/seq-gap still reconcile.
     if (isReconcileTrigger(event) && !(mir.presetGuardActive() && isPresetOpEcho(event))) {
       mir.requestReconcile(true);
     }
@@ -66,13 +65,13 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
     try {
       const bytes = await device.readNotification();
       if (bytes === null) {
-        // The transport structurally exposes no notify endpoint, so reads will
-        // always be null. Stop rather than spin a no-op loop forever.
+        // No notify endpoint: reads will always be null. Stop rather than spin a
+        // no-op loop forever.
         Log.warn('notify', 'transport exposes no notify endpoint; stopping channel');
         teardown();
         return;
       }
-      backoffMs = 0;   // healthy read ⇒ back to normal cadence
+      backoffMs = 0;   // healthy read -> normal cadence
       if (bytes.byteLength > 0) handle(parseNotifyPacket(bytes));
     } catch (e) {
       backoffMs = backoffMs === 0
@@ -85,7 +84,7 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
 
   offVisibility = subscribeVisibility(
     () => clock.next(pump),   // shown: resume (poll.ts owns the resume reconcile)
-    () => clock.cancel(),     // hidden: pause
+    () => clock.cancel(),
   );
 
   if (!isHidden()) clock.next(pump);

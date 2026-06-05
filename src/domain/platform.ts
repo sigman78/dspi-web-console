@@ -1,14 +1,6 @@
-// Hardware platform identity, descriptor, output transport configuration, and
-// the derived per-platform hardware profile.
-//
-// PlatformType is the firmware-pinned identity byte (RP2040=0, RP2350=1).
-// PlatformInfo is the descriptor derived from PlatformType (channel counts,
-// PDM index, display name).
-// I2sConfig is the per-platform output transport configuration (I2S vs SPDIF
-// per slot, pin assignments) — mutable per session, but conceptually a
-// "what is this physical platform doing" property.
-// HardwareProfile extends PlatformInfo with the full channel/slot/pin layout
-// built per PlatformType.
+// Hardware platform identity and the derived per-platform profile.
+// PlatformType is the firmware-pinned identity byte (RP2040=0, RP2350=1);
+// HardwareProfile carries the full channel/slot/pin layout built from it.
 
 import { ChannelId, channelById, type ChannelId as ChannelIdValue, type ChannelLayout, type OutputSlot as OutputSlotValue } from './channels';
 
@@ -44,8 +36,7 @@ export interface HardwareProfile extends PlatformInfo {
   wireChannelByUiChannel: Partial<Record<ChannelIdValue, ChannelIdValue>>;
   uiChannelByWireChannel: Partial<Record<ChannelIdValue, ChannelIdValue>>;
   // Default GPIO pin per output channel. Keyed on the L-anchor for stereo
-  // I2S pairs (one pin drives both L and R); standalone for PDM. Awaiting
-  // a Pin Routing UI consumer.
+  // I2S pairs (one pin drives both L and R); standalone for PDM.
   defaultPinByChannel: Partial<Record<ChannelIdValue, number>>;
 }
 

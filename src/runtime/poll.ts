@@ -7,17 +7,16 @@ const BUFFER_INTERVAL_MS = 250;  // ~4 Hz  -- buffer stats
 const INFO_INTERVAL_MS = 1000;   // ~1 Hz  -- env scalars + counters
 const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile floor
 // A drag is "active" until writes have been quiet this long. The scrub lane
-// coalesces at 16 ms and inflight is 0 in the gaps between coalesced sends, so
-// the inflight counter alone can't tell mid-drag from drag-done. 100 ms is
-// comfortably above the 16 ms coalesce window and a 60 fps frame, while still
-// reconciling promptly after the user lets go.
+// coalesces at 16 ms and inflight is 0 in the gaps between sends, so the inflight
+// counter alone can't tell mid-drag from drag-done. 100 ms sits above the 16 ms
+// coalesce window and a 60 fps frame, yet reconciles promptly after the user lets go.
 export const RECONCILE_QUIET_MS = 100;
 
 interface Cadence {
   key: 'status' | 'buffer' | 'info' | 'param';
   intervalMs: number;
   runWhileHidden: boolean;          // today all false (pause everything when hidden)
-  lastMs(): number;                 // cadence clock — reads the STORE timestamp
+  lastMs(): number;                 // cadence clock -- reads the STORE timestamp
   run(d: DspDevice): Promise<void>; // owns its own timestamp update
   // Optional override of the default interval gate. Returns true when the
   // cadence should run this tick. Used by the param reconcile cadence, which
@@ -75,20 +74,18 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   }
 
   // Background param-mirror reconcile. shouldRunParam already decided this tick
-  // is eligible; here we fetch, then re-check before applying. Because
-  // getSnapshot is async, a write can land during the fetch — if it does, the
-  // snapshot is stale relative to the user's latest optimistic value, so we
-  // DISCARD it and leave the request pending (no mid-drag clobber). The request
-  // is consumed only on a successful, still-valid apply: a fetch failure or a
-  // mid-fetch write both keep it pending so the next eligible tick retries.
-  // replaceCurrent (not init) keeps presetBaseline pinned.
+  // is eligible; we fetch, then re-check before applying. getSnapshot is async, so
+  // a write can land during the fetch -- if it does, the snapshot is stale relative
+  // to the user's latest optimistic value, so we discard it and leave the request
+  // pending (no mid-drag clobber). The request is consumed only on a successful,
+  // still-valid apply: a fetch failure or a mid-fetch write keep it pending for the
+  // next eligible tick. replaceCurrent (not init) keeps presetBaseline pinned.
   async function pollParam(d: DspDevice): Promise<void> {
     const startedAt = performance.now();
     try {
       const snap = await d.getSnapshot();
-      // Re-check the gate across the await: a write during the fetch (inflight,
-      // or a fresh write timestamp after we started) means our snapshot is
-      // already stale. Drop it; the pending request drives a later retry.
+      // Re-check the gate across the await: a write during the fetch (inflight, or
+      // a fresh write timestamp after we started) means the snapshot is stale.
       if (mir.inflight > 0 || mir.lastWriteMs >= startedAt) return;
       mir.replaceCurrent(snap);
       mir.consumeReconcile();
@@ -100,10 +97,10 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   }
 
   // Run when a reconcile is pending, no write is in flight, AND writes have been
-  // quiet for RECONCILE_QUIET_MS (the inflight counter is 0 in the gaps between
-  // coalesced scrub sends, so the quiet window is what actually distinguishes
-  // mid-drag from drag-done). Then either eager, or the floor interval elapsed.
-  // Peek (not consume) so a skipped tick leaves the request pending.
+  // quiet for RECONCILE_QUIET_MS (inflight is 0 in the gaps between coalesced scrub
+  // sends, so the quiet window is what distinguishes mid-drag from drag-done). Then
+  // either eager, or the floor interval elapsed. Peek (not consume) so a skipped
+  // tick leaves the request pending.
   function shouldRunParam(now: number): boolean {
     if (mir.inflight > 0) return false;
     if (now - mir.lastWriteMs < RECONCILE_QUIET_MS) return false;
@@ -138,18 +135,18 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
 
   const tick = () => {
     if (stopped) return;
-    if (isHidden() && !anyRunWhileHidden) return;   // hidden ⇒ stop ticking (zero wakeups)
+    if (isHidden() && !anyRunWhileHidden) return;   // hidden -> stop ticking (zero wakeups)
     clock.next(tick);                                // re-arm first; doPoll is fire-and-forget
     void doPoll();
   };
 
-  // Removed by stop(), so it never fires after dispose — no `stopped` guard.
+  // Removed by stop(), so it never fires after dispose -- no `stopped` guard.
   const offVisibility = subscribeVisibility(
     () => {                        // tab shown
       mir.requestReconcile(true);  // repaint to truth after a blind period
-      clock.next(tick);            // resume
+      clock.next(tick);
     },
-    () => { if (!anyRunWhileHidden) clock.cancel(); },   // tab hidden
+    () => { if (!anyRunWhileHidden) clock.cancel(); },
   );
 
   tele.errorCount = 0;

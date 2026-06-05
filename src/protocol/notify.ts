@@ -43,12 +43,11 @@ const NotifyHeader = struct({ version: u8, event: u8, _flags: reserved(1), seq: 
 
 // PARAM_CHANGED fixed prefix (8 B) after the header: little-endian offset and
 // size, the source byte, then 3 reserved. The variable `value` (size bytes)
-// follows at byte 12 and is sliced manually — its length is data-dependent, so
+// follows at byte 12 and is sliced manually -- its length is data-dependent, so
 // it can't be a static codec field.
 const ParamChangedPrefix = struct({ offset: u16, size: u16, source: u8, _reserved: reserved(3) });
 
-// Value-less events: the discriminant carries no data and NotifyEvents are only
-// ever read, so a shared singleton per kind is safe.
+// Value-less events: NotifyEvents are only ever read, so a shared singleton is safe.
 const IDLE: NotifyEvent = { kind: 'idle' };
 const IGNORED: NotifyEvent = { kind: 'ignored' };
 
@@ -79,7 +78,7 @@ export function parseNotifyPacket(bytes: Uint8Array): NotifyEvent {
 }
 
 // Whether this event means device state changed out from under us and the
-// mirror should re-read the bulk packet. HOST echoes are suppressed — our
+// mirror should re-read the bulk packet. HOST echoes are suppressed -- our
 // optimistic mirror already holds them.
 export function isReconcileTrigger(e: NotifyEvent): boolean {
   switch (e.kind) {
@@ -94,8 +93,8 @@ export function isReconcileTrigger(e: NotifyEvent): boolean {
 }
 
 // Whether this event is a plausible echo of a console-initiated bulk/preset op
-// (Load / Paste / Save / Factory). While the console runs such an op — which
-// does its own authoritative re-fetch — the NotifyChannel suppresses these to
+// (Load / Paste / Save / Factory). While the console runs such an op -- which
+// does its own authoritative re-fetch -- the NotifyChannel suppresses these to
 // avoid redundant reconciles. Deliberately narrow: a PARAM_CHANGED is never an
 // echo (a GPIO/internal field change must always be reflected), and a
 // bulkInvalidated from a non-host-class source is treated as a real external

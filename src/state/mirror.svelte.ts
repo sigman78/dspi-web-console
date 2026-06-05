@@ -1,11 +1,8 @@
 // Per-session device-state store. Two reactive cells:
-//   - current   — our belief of device RAM. Mutates on every user write;
-//                 cleared on disconnect.
-//   - baseline  — what `current` looked like at the last preset save/load (or
-//                 connect). Pinned until a baseline refresh; presetsDirty
-//                 compares current against it.
+//   - current   -- our belief of device RAM; mutates on every user write.
+//   - baseline  -- what `current` was at the last preset save/load (or connect),
+//                 pinned until a baseline refresh; presetsDirty diffs against it.
 // Plus an inflight counter that gates the UI dirty dot and the resync soft-skip.
-// Reached only through a session (`session.mirror`); not a global singleton.
 
 import type { DspSnapshot } from '@/domain';
 
@@ -20,9 +17,8 @@ export class MirrorState {
   presetGuardDepth = 0;
   presetGuardUntilMs = 0;
 
-  // Non-null live snapshot. A ready session's `current` is set at synced and only
-  // nulled on dispose (no action runs then), so actions read/mutate via `snapshot`
-  // to drop their per-call null guards. Throws if read before sync (a bug).
+  // Non-null live snapshot for actions, which run only between sync and dispose.
+  // Lets callers drop per-call null guards; throws if read before sync (a bug).
   get snapshot(): DspSnapshot {
     if (!this.current) throw new Error('MirrorState.snapshot read before a snapshot was set');
     return this.current;

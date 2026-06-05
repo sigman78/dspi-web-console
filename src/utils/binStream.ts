@@ -1,13 +1,9 @@
-// Cursor-based little-endian binary reader and writer over `Uint8Array`.
-// Pure byte-level: no codec/schema knowledge.
-// Reads return sub-views (no copy) and never advance past `end` or `size`;
-// writes target a fixed-size buffer constructed up-front and never grow.
-// The composable codec layer built on these primitives lives in `./binCodec.ts`.
+// Cursor-based little-endian binary reader/writer over `Uint8Array`, no codec
+// knowledge. Reads return sub-views (no copy) and never advance past the end;
+// writes target a fixed-size buffer that never grows. Codec layer: ./binCodec.ts.
 
 const TEXT_DECODER = new TextDecoder();
 const TEXT_ENCODER = new TextEncoder();
-
-// BinReader
 
 export class BinReader {
   private readonly view: DataView;
@@ -74,8 +70,6 @@ export class BinReader {
   }
 }
 
-// BinWriter
-
 export class BinWriter {
   private readonly buf: Uint8Array;
   private readonly view: DataView;
@@ -123,13 +117,13 @@ export class BinWriter {
   f64(v: number): this { this.view.setFloat64(this.take(8), v, true); return this; }
   bool8(v: boolean): this { return this.u8(v ? 1 : 0); }
 
-  // Write `s` UTF-8 into a fixed `maxBytes` window, NUL-padded; truncates if too long (always leaves at least one trailing zero unless the string already fills the window).
+  // Write `s` UTF-8 into a fixed `maxBytes` window, NUL-padded; truncates to
+  // leave at least one trailing zero.
   utf8Nul(s: string, maxBytes: number): this {
     const at = this.take(maxBytes);
     const enc = TEXT_ENCODER.encode(s);
     const n = Math.min(enc.byteLength, maxBytes - 1);
     this.buf.set(enc.subarray(0, n), at);
-    // remaining bytes already zero
     return this;
   }
 
@@ -141,11 +135,9 @@ export class BinWriter {
     return this;
   }
 
-  // The written bytes (the underlying buffer, not a copy)
+  // The underlying buffer, not a copy.
   toUint8Array(): Uint8Array { return this.buf; }
 }
-
-// Diagnostic helpers
 
 // Hex preview of the first `n` bytes for diagnostic logs.
 export function bytesPreview(buf: Uint8Array, n = 16): string {

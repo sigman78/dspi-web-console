@@ -9,7 +9,7 @@
   const visible = $derived(mode === MasterVolumeMode.Independent);
 
   // Enabled unless the live volume provably equals the saved boot baseline.
-  // Unknown saved value (not yet fetched) or any other edge → stays enabled.
+  // Unknown saved value (not yet fetched) or any other edge -> stays enabled.
   const saved = $derived(s?.presets.savedMasterVolumeDb);
   const live = $derived(s?.mirror.current?.masterVolumeDb ?? null);
   const clean = $derived(saved != null && live != null && Math.abs(live - saved) <= DIFF_TOLERANCE.db);

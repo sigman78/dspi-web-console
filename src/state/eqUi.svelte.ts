@@ -1,9 +1,7 @@
 import type { ChannelId } from '@/domain';
 
-// EQ copy-source selection. Ephemeral UI state: the EQ tab arms a source
-// channel, then pastes its bands onto a target. The paste itself is a runtime
-// action (copyEqBands) the consumer calls directly — this store only holds the
-// armed selection so it stays a state-layer leaf with no runtime dependency.
+// EQ copy-source selection. Holds only the armed source channel (so it stays a
+// state-layer leaf); the paste is a runtime action the consumer calls directly.
 export const eqUi = $state<{
   copySource: ChannelId | null;
 }>({

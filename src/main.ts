@@ -19,7 +19,6 @@ startSettingsPersistence();
 const params = new URLSearchParams(location.search);
 const mock = params.get('mock');
 
-// Mock interface mode
 if (mock === 'rp2040' || mock === 'rp2350') {
   void bootMock(mock).catch((e) => dispatch({ t: 'failed', message: (e as Error).message }));
 } else {
@@ -28,7 +27,7 @@ if (mock === 'rp2040' || mock === 'rp2350') {
 
 registerNavigatorReconnect();
 
-// Show warning with unsaved changes
+// Warn on unsaved preset changes before unload.
 window.addEventListener('beforeunload', (e) => {
   const s = activeSession();
   if (s && presetsDirty(s)) {

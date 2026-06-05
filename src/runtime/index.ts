@@ -1,11 +1,8 @@
-// Public verb surface — actions, preset operations, session lifecycle.
-// All flat-exported; verb-heavy modules read best without a namespace
-// prefix (`setMasterVolume()` reads as the call site's intent; wrapping
-// in `Actions.setMasterVolume()` would add noise without scope value).
+// Public verb surface -- actions, preset operations, session lifecycle. Flat
+// exports so call sites read as `setMasterVolume()`, not `Actions.setMasterVolume()`.
 //
-// Intentionally NOT re-exported: `commands`, `focus`, `resync`. They are
-// internal coordination primitives used only by `actions.ts` and friends
-// inside this directory.
+// Intentionally NOT re-exported: `commands`, `focus`, `resync` -- internal
+// coordination primitives used only within this directory.
 export * from './actions';
 export * from './deviceService';
 export * from './presets';
