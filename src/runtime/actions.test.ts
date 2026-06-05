@@ -20,8 +20,14 @@ import {
 import { fromBulkParams } from '@/device/snapshotCodec';
 import { deriveCapabilities } from '@/device/capabilities';
 
-import { cancelAllWrites as cancelWrites, flushAllWrites } from './writes';
+import { cancelAllWrites, flushAllWrites as flushAllWritesFor } from './writes';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
+
+// Test wrappers: the write lanes are now session-scoped, but these cleanup/flush
+// call sites always target whatever session is active. Resolve it here so the
+// existing call sites stay unchanged.
+const cancelWrites = () => { const s = activeSession(); if (s) cancelAllWrites(s); };
+const flushAllWrites = () => flushAllWritesFor(activeSession()!);
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 

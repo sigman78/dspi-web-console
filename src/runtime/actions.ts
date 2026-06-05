@@ -18,7 +18,7 @@ import { focusOutput, focusRoute } from './focus';
 
 
 function _setMasterVolume(s: ReadySession, db: number): void {
-  scrub(
+  scrub(s,
     'masterVolume',
     () => { s.mirror.snapshot.masterVolumeDb = db; },
     () => s.device.setMasterVolume(db),
@@ -37,7 +37,7 @@ export function setEqFilter(s: ReadySession, channel: ChannelId, band: number, f
     q: Clamp.bandQ(filter.q),
     gain: Clamp.bandGainDb(filter.gain),
   };
-  void write(
+  void write(s,
     () => s.device.setFilter(channel, band, clamped),
     () => {
       const c = s.mirror.snapshot.channels.find((c) => c.id === channel);
@@ -62,7 +62,7 @@ export function copyEqBands(s: ReadySession, sourceId: ChannelId, targetId: Chan
   for (let i = 0; i < len; i++) {
     const band = i;
     const filter = copied[i];
-    void write(
+    void write(s,
       () => s.device.setFilter(targetId, band, filter),
       () => {
         const t = s.mirror.snapshot.channels.find((c) => c.id === targetId);
@@ -73,7 +73,7 @@ export function copyEqBands(s: ReadySession, sourceId: ChannelId, targetId: Chan
 }
 
 export function setBypass(s: ReadySession, enabled: boolean): void {
-  void write(
+  void write(s,
     () => s.device.setBypass(enabled),
     () => { s.mirror.snapshot.bypass = enabled; },
   );
@@ -100,7 +100,7 @@ export function setChannelName(s: ReadySession, id: ChannelId, name: string): vo
   if (!ch) return;
   const resolved = name.trim() || ch.defaultName;
   const clamped = Clamp.nameToByteBudget(resolved, CHANNEL_NAME_MAX_LEN);
-  void write(
+  void write(s,
     () => s.device.setChannelName(id, clamped),
     () => {
       const c = s.mirror.snapshot.channels.find((c) => c.id === id);
@@ -112,7 +112,7 @@ export function setChannelName(s: ReadySession, id: ChannelId, name: string): vo
 }
 
 export function setLoudnessEnabled(s: ReadySession, enabled: boolean): void {
-  void write(
+  void write(s,
     () => s.device.setLoudnessEnabled(enabled),
     () => { s.mirror.snapshot.loudness.enabled = enabled; },
   );
@@ -120,7 +120,7 @@ export function setLoudnessEnabled(s: ReadySession, enabled: boolean): void {
 
 export function setLoudnessRefSpl(s: ReadySession, db: number): void {
   db = Clamp.loudnessRefSpl(db);
-  scrub(
+  scrub(s,
     'loudnessRefSpl',
     () => { s.mirror.snapshot.loudness.refSpl = db; },
     () => s.device.setLoudnessRefSpl(db),
@@ -129,7 +129,7 @@ export function setLoudnessRefSpl(s: ReadySession, db: number): void {
 
 export function setLoudnessIntensityPct(s: ReadySession, pct: number): void {
   pct = Clamp.loudnessIntensityPct(pct);
-  scrub(
+  scrub(s,
     'loudnessIntensity',
     () => { s.mirror.snapshot.loudness.intensityPct = pct; },
     () => s.device.setLoudnessIntensity(pct),
@@ -137,21 +137,21 @@ export function setLoudnessIntensityPct(s: ReadySession, pct: number): void {
 }
 
 export function setCrossfeedEnabled(s: ReadySession, enabled: boolean): void {
-  void write(
+  void write(s,
     () => s.device.setCrossfeedEnabled(enabled),
     () => { s.mirror.snapshot.crossfeed.enabled = enabled; },
   );
 }
 
 export function setCrossfeedPreset(s: ReadySession, preset: CrossfeedPreset): void {
-  void write(
+  void write(s,
     () => s.device.setCrossfeedPreset(preset),
     () => { s.mirror.snapshot.crossfeed.preset = preset; },
   );
 }
 
 export function setCrossfeedItd(s: ReadySession, itd: boolean): void {
-  void write(
+  void write(s,
     () => s.device.setCrossfeedItd(itd),
     () => { s.mirror.snapshot.crossfeed.itd = itd; },
   );
@@ -159,7 +159,7 @@ export function setCrossfeedItd(s: ReadySession, itd: boolean): void {
 
 export function setCrossfeedFreq(s: ReadySession, hz: number): void {
   hz = Clamp.crossfeedFreqHz(hz);
-  scrub(
+  scrub(s,
     'crossfeedFreq',
     () => { s.mirror.snapshot.crossfeed.freq = hz; },
     () => s.device.setCrossfeedFreq(hz),
@@ -168,7 +168,7 @@ export function setCrossfeedFreq(s: ReadySession, hz: number): void {
 
 export function setCrossfeedFeedDb(s: ReadySession, db: number): void {
   db = Clamp.crossfeedFeedDb(db);
-  scrub(
+  scrub(s,
     'crossfeedFeedDb',
     () => { s.mirror.snapshot.crossfeed.feedDb = db; },
     () => s.device.setCrossfeedFeedDb(db),
@@ -176,21 +176,21 @@ export function setCrossfeedFeedDb(s: ReadySession, db: number): void {
 }
 
 export function setLevellerEnabled(s: ReadySession, enabled: boolean): void {
-  void write(
+  void write(s,
     () => s.device.setLevellerEnabled(enabled),
     () => { s.mirror.snapshot.leveller.enabled = enabled; },
   );
 }
 
 export function setLevellerSpeed(s: ReadySession, speed: LevellerSpeed): void {
-  void write(
+  void write(s,
     () => s.device.setLevellerSpeed(speed),
     () => { s.mirror.snapshot.leveller.speed = speed; },
   );
 }
 
 export function setLevellerLookahead(s: ReadySession, lookahead: boolean): void {
-  void write(
+  void write(s,
     () => s.device.setLevellerLookahead(lookahead),
     () => { s.mirror.snapshot.leveller.lookahead = lookahead; },
   );
@@ -198,7 +198,7 @@ export function setLevellerLookahead(s: ReadySession, lookahead: boolean): void 
 
 export function setLevellerAmount(s: ReadySession, pct: number): void {
   pct = Clamp.levellerAmountPct(pct);
-  scrub(
+  scrub(s,
     'levellerAmount',
     () => { s.mirror.snapshot.leveller.amount = pct; },
     () => s.device.setLevellerAmount(pct),
@@ -207,7 +207,7 @@ export function setLevellerAmount(s: ReadySession, pct: number): void {
 
 export function setLevellerMaxGain(s: ReadySession, db: number): void {
   db = Clamp.levellerMaxGainDb(db);
-  scrub(
+  scrub(s,
     'levellerMaxGain',
     () => { s.mirror.snapshot.leveller.maxGainDb = db; },
     () => s.device.setLevellerMaxGain(db),
@@ -216,7 +216,7 @@ export function setLevellerMaxGain(s: ReadySession, db: number): void {
 
 export function setLevellerGate(s: ReadySession, db: number): void {
   db = Clamp.levellerGateDb(db);
-  scrub(
+  scrub(s,
     'levellerGate',
     () => { s.mirror.snapshot.leveller.gateDb = db; },
     () => s.device.setLevellerGate(db),
@@ -225,7 +225,7 @@ export function setLevellerGate(s: ReadySession, db: number): void {
 
 export function setMasterPreamp(s: ReadySession, db: number): void {
   db = Clamp.preampDb(db);
-  scrub(
+  scrub(s,
     'masterPreamp',
     () => { s.mirror.snapshot.masterPreampDb = db; },
     () => s.device.setMasterPreamp(db),
@@ -237,7 +237,7 @@ export function setInputPreamp(s: ReadySession, channel: InputSlot, db: number):
   const cur = s.mirror.snapshot.inputPreampDb;
   const next: [number, number] = [cur[0], cur[1]];
   next[channel] = db;
-  scrub(
+  scrub(s,
     `inputPreamp:${channel}`,
     () => { s.mirror.snapshot.inputPreampDb = next; },
     () => s.device.setInputPreamp(channel, db),
@@ -261,7 +261,7 @@ function scheduleCrosspointWrite(
 ): void {
   const route = focusRoute(s, input, output);
   const next = mutate(route.read());
-  void write(
+  void write(s,
     () => s.device.setMatrixRoute(input, output, { enabled: next.enabled, invert: next.invert, gainDb: next.gainDb }),
     () => route.modify(() => next),
   );
@@ -285,7 +285,7 @@ export function setCrosspointInvert(s: ReadySession, input: InputSlot, output: O
 export function setOutputGain(s: ReadySession, slot: OutputSlot, gainDb: number): void {
   gainDb = Clamp.outputGainDb(gainDb);
   const out = focusOutput(s, slot);
-  void write(
+  void write(s,
     () => s.device.setOutputGain(slot, gainDb),
     () => out.modify((o) => ({ ...o, gainDb })),
   );
@@ -295,7 +295,7 @@ export function setOutputGain(s: ReadySession, slot: OutputSlot, gainDb: number)
 // being mutated. A missing slot is a silent no-op.
 export function setOutputDelay(s: ReadySession, slot: OutputSlot, delayMs: number): void {
   delayMs = Clamp.outputDelayMs(delayMs);
-  void write(
+  void write(s,
     () => s.device.setOutputDelay(slot, delayMs),
     () => {
       const o = s.mirror.snapshot.outputs.find((o) => o.wireIndex === slot);
@@ -305,7 +305,7 @@ export function setOutputDelay(s: ReadySession, slot: OutputSlot, delayMs: numbe
 }
 
 export function setOutputEnabled(s: ReadySession, slot: OutputSlot, enabled: boolean): void {
-  void write(
+  void write(s,
     () => s.device.setOutputEnable(slot, enabled),
     () => {
       const o = s.mirror.snapshot.outputs.find((o) => o.wireIndex === slot);
@@ -315,7 +315,7 @@ export function setOutputEnabled(s: ReadySession, slot: OutputSlot, enabled: boo
 }
 
 export function setOutputMuted(s: ReadySession, slot: OutputSlot, muted: boolean): void {
-  void write(
+  void write(s,
     () => s.device.setOutputMute(slot, muted),
     () => {
       const o = s.mirror.snapshot.outputs.find((o) => o.wireIndex === slot);
@@ -349,7 +349,7 @@ export function toggleMute(s: ReadySession): void {
 // Master-volume mode --------------------------------------------------------
 
 export function setMasterVolumeMode(s: ReadySession, mode: MasterVolumeMode): void {
-  void command('set master volume mode', () => s.device.setMasterVolumeMode(mode), () => {
+  void command(s,'set master volume mode', () => s.device.setMasterVolumeMode(mode), () => {
     if (s.presets.directory) s.presets.directory = { ...s.presets.directory, masterVolumeMode: mode };
   });
 }
@@ -360,7 +360,7 @@ export function setMasterVolumeMode(s: ReadySession, mode: MasterVolumeMode): vo
 // Fire-and-forget: only failure surfaces (warn here, or an error toast on a
 // throw via command). Success is silent — the Save button's state conveys it.
 export function saveMasterVolumeBaseline(s: ReadySession): void {
-  void command('save master volume', () => s.device.saveMasterVolume(), (ok) => {
+  void command(s,'save master volume', () => s.device.saveMasterVolume(), (ok) => {
     if (!ok) { pushNotice('warn', 'Saving master volume failed (flash write error).'); return; }
     // Device saved its current master volume as the boot baseline → mirror it
     // so the Save button settles to clean without a refetch.
@@ -389,7 +389,7 @@ function patchOutputPin(s: ReadySession, index: number, pin: number): void {
 }
 
 export function setOutputDataPin(s: ReadySession, pinOutputIndex: number, pin: number): void {
-  void writeChecked(
+  void writeChecked(s,
     'set output pin',
     () => s.device.setOutputPin(pinOutputIndex, pin),
     () => patchOutputPin(s, pinOutputIndex, pin),
@@ -397,7 +397,7 @@ export function setOutputDataPin(s: ReadySession, pinOutputIndex: number, pin: n
 }
 
 export function setOutputType(s: ReadySession, slot: OutputSlot, type: number): void {
-  void writeChecked(
+  void writeChecked(s,
     'switch output type',
     () => s.device.setOutputType(slot, type),
     () => patchI2s(s, (i) => ({
@@ -408,17 +408,17 @@ export function setOutputType(s: ReadySession, slot: OutputSlot, type: number): 
 }
 
 export function setI2sBckPin(s: ReadySession, pin: number): void {
-  void writeChecked('set I2S BCK pin', () => s.device.setI2sBckPin(pin), () => patchI2s(s, (i) => ({ ...i, bckPin: pin })));
+  void writeChecked(s,'set I2S BCK pin', () => s.device.setI2sBckPin(pin), () => patchI2s(s, (i) => ({ ...i, bckPin: pin })));
 }
 
 export function setMckEnabled(s: ReadySession, on: boolean): void {
-  void writeChecked('set MCK enable', () => s.device.setMckEnable(on), () => patchI2s(s, (i) => ({ ...i, mckEnabled: on })));
+  void writeChecked(s,'set MCK enable', () => s.device.setMckEnable(on), () => patchI2s(s, (i) => ({ ...i, mckEnabled: on })));
 }
 
 export function setMckPin(s: ReadySession, pin: number): void {
-  void writeChecked('set MCK pin', () => s.device.setMckPin(pin), () => patchI2s(s, (i) => ({ ...i, mckPin: pin })));
+  void writeChecked(s,'set MCK pin', () => s.device.setMckPin(pin), () => patchI2s(s, (i) => ({ ...i, mckPin: pin })));
 }
 
 export function setMckMultiplier(s: ReadySession, encoded: number): void {
-  void writeChecked('set MCK multiplier', () => s.device.setMckMultiplier(encoded), () => patchI2s(s, (i) => ({ ...i, mckMultiplierEncoded: encoded })));
+  void writeChecked(s,'set MCK multiplier', () => s.device.setMckMultiplier(encoded), () => patchI2s(s, (i) => ({ ...i, mckMultiplierEncoded: encoded })));
 }

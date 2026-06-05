@@ -156,7 +156,7 @@ export async function saveActivePreset(s: ReadySession): Promise<Result<void, Pr
   clearActionError(s.presets);
   try {
     return await withBusy(s.presets, async () => {
-      await flushWrites();
+      await flushWrites(s);
       const r = await d.savePreset(active);
       if (r.ok) {
         if (s.presets.directory) {
@@ -184,7 +184,7 @@ export async function savePresetSlot(s: ReadySession, slot: PresetSlot): Promise
   clearActionError(s.presets);
   try {
     return await withBusy(s.presets, async () => {
-      await flushWrites();
+      await flushWrites(s);
       const r = await d.savePreset(slot);
       if (r.ok) {
         if (s.presets.directory) {
@@ -222,7 +222,7 @@ async function executeLoad(
   mir.beginPresetGuard();
   try {
     return await withBusy(s.presets, async () => {
-      await flushWrites();
+      await flushWrites(s);
       const r = await d.loadPreset(slot);
       if (r.ok) {
         // Reflect active slot in UI immediately. If the subsequent resync or
@@ -304,7 +304,7 @@ export async function pastePresetTo(s: ReadySession, src: PresetSlot): Promise<R
   mir.beginPresetGuard();
   try {
     return await withBusy(s.presets, async () => {
-      await flushWrites();
+      await flushWrites(s);
       // Step 1: Load source into RAM (device pointer → src).
       const r1 = await d.loadPreset(src);
       if (!r1.ok) {

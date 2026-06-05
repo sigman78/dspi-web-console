@@ -1,4 +1,4 @@
-import { activeSession, type ReadySession } from '@/state';
+import type { ReadySession } from '@/state';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
 
@@ -124,9 +124,8 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   const anyRunWhileHidden = cadences.some((c) => c.runWhileHidden);
 
   async function doPoll(): Promise<void> {
-    if (stopped) return;
-    const d = activeSession()?.device;
-    if (!d) return;
+    if (stopped || !session.alive) return;
+    const d = session.device;
     const now = performance.now();
     for (const c of cadences) {
       if (isHidden() && !c.runWhileHidden) continue;

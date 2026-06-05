@@ -113,19 +113,17 @@ export function attachTransportListeners(transport: DspTransport, device: DspDev
 }
 
 export async function factoryResetDevice(): Promise<void> {
-  const d = activeSession()?.device;
-  if (!d) return;
+  const s = activeSession();
+  if (!s) return;
+  const d = s.device;
   try {
     // Drain any parked optimistic write so a pre-reset bulk send can't settle
     // mid-reset and re-push stale params (mirrors the preset load/paste flows).
-    await flushAllWrites();
+    await flushAllWrites(s);
     const r = await d.factoryReset();
     if (!r.ok) { pushNotice('warn', r.message); return; }  // non-ok flash status
-    const sess = activeSession();
-    if (sess) {
-      invalidatePresetCache(sess);
-      sess.copySource.slot = null;
-    }
+    invalidatePresetCache(s);
+    s.copySource.slot = null;
     await syncDeviceSnapshot();
     pushNotice('info', 'Factory reset complete.');
   } catch (e) {

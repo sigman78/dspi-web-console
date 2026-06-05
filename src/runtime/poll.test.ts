@@ -91,6 +91,21 @@ describe('startPolling', () => {
     expect(clock.armed()).toBe(false);  // dispose cancelled the clock
   });
 
+  it('polls the captured session device, not whichever session is active', async () => {
+    const a = pollDevice();
+    const sessionA = connect(a.device);
+    const clock = manualClock();
+    const stop = startPolling(sessionA, clock);
+    // A second session becomes active mid-life of A's loop (reconnect / switch).
+    const b = pollDevice();
+    connect(b.device);
+    clock.fire();
+    await Promise.resolve(); await Promise.resolve();
+    expect(a.calls.status).toBe(1);   // loop stays bound to its captured session
+    expect(b.calls.status).toBe(0);   // not the newly-active session's device
+    stop();
+  });
+
   it('does not poll while the document is hidden', async () => {
     const { device, calls } = pollDevice();
     const session = connect(device);
@@ -210,7 +225,7 @@ describe('param reconcile cadence', () => {
       const clock = manualClock();
       const stop = startPolling(session, clock);
       vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);   // clear of t=0 floor
-      await write(async () => {}, () => {});             // stamps lastWriteMs = now
+      await write(session, async () => {}, () => {});    // stamps lastWriteMs = now
       clock.fire();
       await settle();
       expect(calls.snapshot).toBe(0);                    // write too recent: blocked

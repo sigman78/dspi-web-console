@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, setOutputDelay } from './actions';
 import { activeSession } from '@/state';
 import { bootMock } from './session';
-import { cancelAllWrites as cancelWrites } from './writes';
+import { cancelAllWrites } from './writes';
 import { endConnection } from './connectionScope';
 
+const cancelWrites = () => { const s = activeSession(); if (s) cancelAllWrites(s); };
 afterEach(() => { endConnection(); cancelWrites(); });
 
 describe('action boundary clamps out-of-range values', () => {
