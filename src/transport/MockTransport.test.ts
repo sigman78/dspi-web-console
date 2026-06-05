@@ -306,6 +306,7 @@ describe('MockTransport — GetEqParam multi-read', () => {
     const d = await createDevice(t);
     await d.setFilter(2, 5, {
       type: FilterType.LowShelf,
+      bypass: false,
       frequency: 320,
       q: 0.9,
       gain: 4.5,
@@ -351,5 +352,30 @@ describe('MockTransport — notify queue', () => {
     expect(first[1]).toBe(NotifyEventId.BulkInvalidated);
     const second = await t.notifyIn(64);
     expect(Array.from(second)).toEqual([0]);  // idle again
+  });
+});
+
+describe('MockTransport — V10 device fidelity', () => {
+  it('GetAllParams from a V10 mock returns a 2960 B packet with a real tail', async () => {
+    const mock = new MockTransport({ platform: 'rp2350', wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } });
+    await mock.open();
+    const bytes = await mock.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize);
+    expect(bytes.byteLength).toBe(Wire.BulkSizes.V10);
+    const p = parseBulkParams(bytes);
+    expect(p.formatVersion).toBe(10);
+    expect(p.dacHwMute.pin).toBe(11);
+    expect(p.inputConfig.spdifRxPin).toBe(5);
+  });
+
+  it('a V10 SetAllParams round-trips the tail through the mock', async () => {
+    const mock = new MockTransport({ platform: 'rp2350', wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } });
+    await mock.open();
+    const read = await mock.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize);
+    const bulk = parseBulkParams(read);
+    bulk.userVolume = { volumeDb: -9, mute: true };
+    await mock.ctrlOut(WireCmd.SetAllParams.code, 0, buildBulkParams(bulk));
+    const back = parseBulkParams(await mock.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    expect(back.userVolume.mute).toBe(true);
+    expect(back.userVolume.volumeDb).toBeCloseTo(-9, 4);
   });
 });

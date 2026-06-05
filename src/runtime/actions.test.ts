@@ -216,7 +216,7 @@ describe('setEqFilter', () => {
 
   it('patches the snapshot after send acks', async () => {
     // setEqFilter awaits the wire send, then mutates draft (await-then-mutate).
-    setEqFilter(0, 1, { type: FilterType.Peaking, frequency: 2000, q: 1, gain: 3 });
+    setEqFilter(0, 1, { type: FilterType.Peaking, bypass: false, frequency: 2000, q: 1, gain: 3 });
     await vi.runAllTimersAsync();
     expect(mirror.current?.channels[0].filters[1].frequency).toBe(2000);
     expect(mirror.current?.channels[0].filters[1].type).toBe(FilterType.Peaking);
@@ -226,7 +226,7 @@ describe('setEqFilter', () => {
   it('rapid edits to the same band each apply independently (no coalescing)', async () => {
     // Each write() call is independent; the snapshot holds the last applied value.
     for (let f = 100; f <= 1000; f += 100) {
-      setEqFilter(0, 1, { type: FilterType.Peaking, frequency: f, q: 1, gain: 0 });
+      setEqFilter(0, 1, { type: FilterType.Peaking, bypass: false, frequency: f, q: 1, gain: 0 });
     }
     await vi.runAllTimersAsync();
     expect(mirror.current?.channels[0].filters[1].frequency).toBe(1000);
@@ -270,9 +270,9 @@ describe('setEqFilter', () => {
   });
 
   it('edits to different bands are all reflected in the snapshot', async () => {
-    setEqFilter(0, 0, { type: FilterType.Peaking, frequency: 100, q: 1, gain: 0 });
-    setEqFilter(0, 1, { type: FilterType.Peaking, frequency: 200, q: 1, gain: 0 });
-    setEqFilter(0, 2, { type: FilterType.Peaking, frequency: 300, q: 1, gain: 0 });
+    setEqFilter(0, 0, { type: FilterType.Peaking, bypass: false, frequency: 100, q: 1, gain: 0 });
+    setEqFilter(0, 1, { type: FilterType.Peaking, bypass: false, frequency: 200, q: 1, gain: 0 });
+    setEqFilter(0, 2, { type: FilterType.Peaking, bypass: false, frequency: 300, q: 1, gain: 0 });
     await vi.runAllTimersAsync();
     expect(mirror.current?.channels[0].filters[0].frequency).toBe(100);
     expect(mirror.current?.channels[0].filters[1].frequency).toBe(200);
@@ -282,7 +282,7 @@ describe('setEqFilter', () => {
   it('throws on out-of-range band and leaves snapshot unchanged', async () => {
     const before = { ...mirror.current!.channels[0].filters[1] };
     const n = mirror.current!.channels[0].filters.length;
-    expect(() => setEqFilter(0, n, { type: FilterType.Peaking, frequency: 9999, q: 1, gain: 12 })).toThrow();
+    expect(() => setEqFilter(0, n, { type: FilterType.Peaking, bypass: false, frequency: 9999, q: 1, gain: 12 })).toThrow();
     await vi.runAllTimersAsync();
     // Snapshot must not have changed for the valid band.
     expect(mirror.current?.channels[0].filters[1]).toEqual(before);
@@ -700,7 +700,7 @@ describe('granular writes: eqFilter (per-band)', () => {
     });
     bindDevice(device);
     const ch = mirror.current!.channels[0].id;
-    setEqFilter(ch, 0, { type: FilterType.Peaking, frequency: 1000, q: 1.0, gain: 3 });
+    setEqFilter(ch, 0, { type: FilterType.Peaking, bypass: false, frequency: 1000, q: 1.0, gain: 3 });
     await vi.runAllTimersAsync();
     expect(mirror.current!.channels[0].filters[0].frequency).toBe(1000); // patched after ack
     expect(calls).toHaveLength(1);
@@ -711,7 +711,7 @@ describe('granular writes: eqFilter (per-band)', () => {
   it('setEqFilter throws on out-of-range band', () => {
     const ch = mirror.current!.channels[0].id;
     const n = mirror.current!.channels[0].filters.length;
-    expect(() => setEqFilter(ch, n, { type: FilterType.Peaking, frequency: 1, q: 1, gain: 0 })).toThrow();
+    expect(() => setEqFilter(ch, n, { type: FilterType.Peaking, bypass: false, frequency: 1, q: 1, gain: 0 })).toThrow();
   });
 
   it('copyEqBands sends N independent setFilter calls (one per band)', async () => {
@@ -725,8 +725,8 @@ describe('granular writes: eqFilter (per-band)', () => {
     const len = Math.min(mirror.current!.channels.find((c) => c.id === src)!.filters.length,
                          mirror.current!.channels.find((c) => c.id === tgt)!.filters.length);
     // Edit source first
-    setEqFilter(src, 0, { type: FilterType.Peaking, frequency: 2500, q: 2, gain: -4 });
-    setEqFilter(src, 1, { type: FilterType.Peaking, frequency: 5000, q: 1.5, gain: 2 });
+    setEqFilter(src, 0, { type: FilterType.Peaking, bypass: false, frequency: 2500, q: 2, gain: -4 });
+    setEqFilter(src, 1, { type: FilterType.Peaking, bypass: false, frequency: 5000, q: 1.5, gain: 2 });
     await vi.runAllTimersAsync();
     // Reset mock call count for copyEqBands test
     vi.mocked(device.setFilter).mockClear();

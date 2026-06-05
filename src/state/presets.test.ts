@@ -16,6 +16,7 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
     crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5 } as any,
     leveller: null, i2s: null,
     outputPins: [],
+    inputConfig: null, lgSoundSync: null, userVolume: null, dacHwMute: null,
     ...overrides,
   };
 }
@@ -89,6 +90,67 @@ describe('presets store', () => {
     settings.soft.muted = true;
     if (mirror.current) mirror.current.masterVolumeDb = -128;
     expect(presetsDirty.current).toBe(false);
+  });
+
+  it('presetsDirty flips true on a per-band bypass change (SP1 gap closed)', () => {
+    const withBand = (bypass: boolean): DspSnapshot => mkSnap({
+      channels: [{
+        id: 0 as any, name: 'ch0', defaultName: 'ch0', shortName: 'c0',
+        bandCount: 1, isOutput: false, outputMode: null,
+        filters: [{ type: 0, bypass, frequency: 1000, q: 1, gain: 0 }],
+      }],
+    });
+    seed(withBand(false));
+    expect(presetsDirty.current).toBe(false);
+    if (mirror.current) mirror.current.channels[0].filters[0].bypass = true;
+    expect(presetsDirty.current).toBe(true);
+  });
+
+  it('presetsDirty ignores a device-reported lgSoundSync status change', () => {
+    seed(mkSnap({ lgSoundSync: { enabled: true, present: false, volume: 0, muted: false } as any }));
+    expect(presetsDirty.current).toBe(false);
+    if (mirror.current?.lgSoundSync) {
+      mirror.current.lgSoundSync.present = true;
+      mirror.current.lgSoundSync.volume = 42;
+    }
+    expect(presetsDirty.current).toBe(false);
+  });
+
+  it('presetsDirty flips true on an lgSoundSync.enabled change', () => {
+    seed(mkSnap({ lgSoundSync: { enabled: false, present: false, volume: 0, muted: false } as any }));
+    expect(presetsDirty.current).toBe(false);
+    if (mirror.current?.lgSoundSync) mirror.current.lgSoundSync.enabled = true;
+    expect(presetsDirty.current).toBe(true);
+  });
+
+  it('presetsDirty flips true on a userVolume change', () => {
+    seed(mkSnap({ userVolume: { volumeDb: 0, mute: false } as any }));
+    expect(presetsDirty.current).toBe(false);
+    if (mirror.current?.userVolume) mirror.current.userVolume.volumeDb = -6;
+    expect(presetsDirty.current).toBe(true);
+  });
+
+  it('presetsDirty flips true on an i2s config change', () => {
+    seed(mkSnap({ i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 } as any }));
+    expect(presetsDirty.current).toBe(false);
+    if (mirror.current?.i2s) mirror.current.i2s.bckPin = 20;
+    expect(presetsDirty.current).toBe(true);
+  });
+
+  it('presetsDirty counts an outputPins change only when includePins is true', () => {
+    const dir = (includePins: boolean) => ({
+      occupiedSlotsSet: new Set<number>(),
+      startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
+      includePins, masterVolumeMode: 0 as any,
+    });
+    seed(mkSnap({ outputPins: [6, 7] }));
+    if (mirror.current) mirror.current.outputPins[1] = 8;
+    // includePins=false → pins are not part of the preset → not dirty
+    presets.directory = dir(false) as any;
+    expect(presetsDirty.current).toBe(false);
+    // includePins=true → pins ride the preset → dirty
+    presets.directory = dir(true) as any;
+    expect(presetsDirty.current).toBe(true);
   });
 
   it('resetPresets clears all fields', () => {

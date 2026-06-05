@@ -18,10 +18,10 @@ import {
 export interface MockOptions {
   platform: 'rp2040' | 'rp2350';
   serial?: string;
-  // Wire version the mock reports/synthesizes (default 6). For V7+ the appended
-  // sections are modeled as opaque trailing bytes the console doesn't parse, so
-  // capability gating, read tolerance and the V6-write merge can be tested
-  // against a newer device.
+  // Wire version the mock reports/synthesizes (default 6). For V7-V10 the
+  // tail sections are built faithfully via buildBulkParams, so capability
+  // gating, read tolerance and the V6-write merge are testable against a
+  // newer device with real tail data.
   wireVersion?: number;
   // Firmware version reported by GetPlatform (default 1.0.0). Set alongside
   // wireVersion for a coherent device (e.g. 1.1.4 + V10).
@@ -65,7 +65,6 @@ export class MockTransport implements DspTransport {
   #wireVersion: number;
   #fwMajor: number;
   #fwMinorPatch: number;
-  #bulkTail: Uint8Array;
   #masterVolumeDb = 0;
   #masterPreampDb = 0;
   #inputPreampDb: [number, number] = [0, 0];
@@ -108,9 +107,6 @@ export class MockTransport implements DspTransport {
     const fw = opts.fwVersion ?? { major: 1, minor: 0, patch: 0 };
     this.#fwMajor = fw.major;
     this.#fwMinorPatch = ((fw.minor & 0xF) << 4) | (fw.patch & 0xF);
-    // Opaque V7+ tail (16 B per version past V6). Zero-filled; preserved across
-    // V6 writes to mirror the firmware's merge of a shorter SetAllParams.
-    this.#bulkTail = new Uint8Array(Math.max(0, this.#wireVersion - 6) * 16);
     // Pre-allocate output / crosspoint slots so per-command Set*'s can
     // index into them without conditional shape building. GetAllParams
     // re-synthesises from this state, so mutations show up in the next
@@ -233,6 +229,37 @@ export class MockTransport implements DspTransport {
           default: return new Uint8Array(length);
         }
       }
+      case WireCmd.GetBandBypass.code: {
+        const ch = (value >> 8) & 0xFF;
+        const band = value & 0xFF;
+        return Codec.encode(Codec.bool8, this.#mockState.filters?.[ch]?.[band]?.bypass ?? false);
+      }
+      case WireCmd.GetUserVolume.code:
+        return Codec.encode(Codec.f32, this.#mockState.userVolume.volumeDb);
+      case WireCmd.GetUserMute.code:
+        return Codec.encode(Codec.bool8, this.#mockState.userVolume.mute);
+      case WireCmd.GetInputSource.code:
+        return Codec.encode(Codec.u8, this.#mockState.inputConfig.source);
+      case WireCmd.GetSpdifRxStatus.code:
+        return Codec.encode(Wire.SpdifRxStatus, {
+          state: 2, inputSource: this.#mockState.inputConfig.source,
+          lockCount: 1, lossCount: 0, sampleRate: 48000, parityErrors: 0, fifoFillPct: 50,
+        });
+      case WireCmd.GetSpdifRxChStatus.code:
+        return new Uint8Array(Wire.SPDIF_RX_CH_STATUS_LEN);
+      case WireCmd.GetSpdifRxPin.code:
+        return Codec.encode(Codec.u8, this.#mockState.inputConfig.spdifRxPin);
+      case WireCmd.SetSpdifRxPin.code:
+        this.#mockState.inputConfig.spdifRxPin = value & 0xFF;
+        return new Uint8Array([0x00]); // PinConfigResult: ok
+      case WireCmd.TestDacHwMute.code:
+        return new Uint8Array([0x00]); // status: pulse scheduled
+      case WireCmd.GetLgSoundSyncEnabled.code:
+        return Codec.encode(Codec.bool8, this.#mockState.lgSoundSync.enabled);
+      case WireCmd.GetLgSoundSyncStatus.code:
+        return Codec.encode(Wire.LgSoundSync, this.#mockState.lgSoundSync);
+      case WireCmd.GetDacHwMute.code:
+        return Codec.encode(Wire.DacHwMute, this.#mockState.dacHwMute);
       case WireCmd.GetChannelName.code: {
         const ch = value & 0xFF;
         const name = this.#mockState.channelNames[ch] ?? '';
@@ -406,11 +433,38 @@ export class MockTransport implements DspTransport {
         if (row && row[p.band]) {
           row[p.band] = {
             type: p.type as FilterParams['type'],
+            bypass: row[p.band].bypass,
             frequency: p.frequency,
             q: p.q,
             gain: p.gain,
           };
         }
+        return;
+      }
+      case WireCmd.SetBandBypass.code: {
+        const ch = (value >> 8) & 0xFF;
+        const band = value & 0xFF;
+        const row = this.#mockState.filters?.[ch];
+        if (row && row[band]) row[band] = { ...row[band], bypass: Codec.decode(Codec.bool8, data) };
+        return;
+      }
+      case WireCmd.SetUserVolume.code:
+        this.#mockState.userVolume.volumeDb = Codec.decode(Codec.f32, data);
+        return;
+      case WireCmd.SetUserMute.code:
+        this.#mockState.userVolume.mute = Codec.decode(Codec.bool8, data);
+        return;
+      case WireCmd.SetInputSource.code:
+        this.#mockState.inputConfig.source = Codec.decode(Codec.u8, data);
+        return;
+      case WireCmd.SetLgSoundSyncEnabled.code:
+        this.#mockState.lgSoundSync.enabled = Codec.decode(Codec.bool8, data);
+        return;
+      case WireCmd.SetDacHwMute.code: {
+        const w = Codec.decode(Wire.DacHwMute, data);
+        this.#mockState.dacHwMute = {
+          enabled: w.enabled, activeLow: w.activeLow, pin: w.pin, holdMs: w.holdMs, releaseMs: w.releaseMs,
+        };
         return;
       }
       case WireCmd.SetMatrixRoute.code: {
@@ -540,19 +594,16 @@ export class MockTransport implements DspTransport {
     };
   }
 
-  // Build the bulk packet at the configured wire version. The V2-V6 prefix
-  // comes from #mockState; for V7+ the appended sections are the opaque
-  // #bulkTail bytes (the console doesn't parse them). The header always reports
-  // this wire version + total length -- including sub-V6 versions, so the
-  // connect-reject path is testable too.
+  // Build the bulk packet at the configured wire version from #mockState.
+  // For V6-V10 the tail is real (buildBulkParams emits it). For a sub-V6
+  // reject-path mock we still build a V6 body but report the true (sub-V6)
+  // version in the header so the connect-reject path is exercised.
   #synthBulkPacket(): Uint8Array {
-    const v6 = buildBulkParams(this.#mockState);
-    const out = new Uint8Array(v6.byteLength + this.#bulkTail.byteLength);
-    out.set(v6);
-    if (this.#bulkTail.byteLength > 0) out.set(this.#bulkTail, v6.byteLength);
+    const buildVer = Math.min(Math.max(this.#wireVersion, 6), Wire.MAX_WIRE_VERSION);
+    const out = buildBulkParams(this.#mockState, buildVer);
     const dv = new DataView(out.buffer);
-    dv.setUint8(0, this.#wireVersion);       // header.formatVersion
-    dv.setUint16(6, out.byteLength, true);   // header.payloadLength
+    dv.setUint8(0, this.#wireVersion);        // report true version (may be < 6)
+    dv.setUint16(6, out.byteLength, true);    // payloadLength
     return out;
   }
 

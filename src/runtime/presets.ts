@@ -7,7 +7,7 @@ import {
 } from '@/state';
 import { reconcileAfterSync } from './actions';
 import { fetchAndApplyAsBaseline } from './resync';
-import { mirror } from '@/state/mirror.svelte';
+import { mirror, beginPresetGuard, endPresetGuard } from '@/state/mirror.svelte';
 import { flushAllWrites as flushWrites } from '@/device/writes';
 import type { DspDevice } from '@/device/DspDevice';
 import { acceptsWriteFormat } from '@/device/capabilities';
@@ -16,6 +16,14 @@ import { type PresetResult, PresetStartupMode } from '@/protocol';
 import { Log, Result } from '@/utils';
 
 const PRESET_LOAD_SETTLE_MS = 100;
+
+// A console-initiated preset op (Load / Paste / Revert) re-fetches device truth
+// itself (fetchAndApplyAsBaseline). The firmware emits bulk/preset notifications
+// for that same op — some trailing past the action's return — which the
+// NotifyChannel would otherwise reconcile redundantly. Hold the suppression
+// guard across the op plus this grace so the late echoes are absorbed too. Sized
+// to comfortably cover a few notify read cycles (cadence ~150 ms).
+const PRESET_ECHO_GRACE_MS = 500;
 
 // loadPreset only acks the command; the firmware copies flash→RAM asynchronously
 // in its main loop (~100 ms). Wait this out before reading or overwriting RAM.
@@ -206,6 +214,9 @@ async function executeLoad(
   slot: PresetSlot,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
   clearActionError();
+  // Suppress the NotifyChannel's redundant reconciles for this self-induced op;
+  // our own fetchAndApplyAsBaseline below is the authoritative resync.
+  beginPresetGuard();
   try {
     return await withBusy(async () => {
       await flushWrites();
@@ -226,6 +237,8 @@ async function executeLoad(
   } catch (e) {
     recordActionError('Load', e);
     throw e;
+  } finally {
+    endPresetGuard(PRESET_ECHO_GRACE_MS);
   }
 }
 
@@ -288,6 +301,9 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
   if (active == null) return activeSlotError('no active slot');
   if (active === src) return activeSlotError('source and target are the same');
   clearActionError();
+  // Paste runs three loads + a save, each emitting source=preset notifications;
+  // suppress those self-echoes — step-8's fetchAndApplyAsBaseline is the resync.
+  beginPresetGuard();
   try {
     return await withBusy(async () => {
       await flushWrites();
@@ -338,6 +354,8 @@ export async function pastePresetTo(src: PresetSlot): Promise<Result<void, Prese
   } catch (e) {
     recordActionError('Paste', e);
     throw e;
+  } finally {
+    endPresetGuard(PRESET_ECHO_GRACE_MS);
   }
 }
 

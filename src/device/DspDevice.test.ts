@@ -6,7 +6,7 @@
 
 import { describe, it, test, expect, beforeEach, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
-import { DspDevice, UnsupportedFirmware } from './DspDevice';
+import { DspDevice, UnsupportedFirmware, UnsupportedOnFirmware } from './DspDevice';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PresetResult, PinConfigResult, WireCmd, SystemStatusValue, Wire, NotifyEventId } from '@/protocol';
 import {
@@ -14,6 +14,8 @@ import {
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   FilterType,
   ChannelId,
+  AudioInputSource,
+  SpdifInputState,
   type PresetSlot,
 } from '@/domain';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -803,6 +805,7 @@ describe('DspDevice — getFilter multi-read', () => {
 
     await expect(d.setFilter(2, 0, {
       type: FilterType.Peaking,
+      bypass: false,
       frequency: 1000,
       q: 1,
       gain: 0,
@@ -829,7 +832,7 @@ describe('DspDevice — getFilter multi-read', () => {
       },
     };
     const d = await createDevice(t, 'rp2040');
-    await d.setFilter(ChannelId.Pdm, 0, { type: FilterType.Peaking, frequency: 80, q: 1, gain: -3 });
+    await d.setFilter(ChannelId.Pdm, 0, { type: FilterType.Peaking, bypass: false, frequency: 80, q: 1, gain: -3 });
     await d.getFilter(ChannelId.Pdm, 1);
     await d.setChannelName(ChannelId.Pdm, 'Sub');
     await d.getChannelName(ChannelId.Pdm);
@@ -1046,5 +1049,108 @@ describe('lastRawBulk', () => {
     await dev.getAllParams();
     expect(dev.lastRawBulk!.byteLength).toBe(2960);   // full V10 image retained
     expect(dev.lastRawBulk![0]).toBe(10);             // header formatVersion
+  });
+});
+
+describe('DspDevice — v1.1.4 granular surface', () => {
+  // withIdentity/createDevice always inject a V6 bulk packet, so these tests
+  // drive a real MockTransport directly to control the reported wire version.
+  const v10 = () => DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 10 }));
+  const v6  = () => DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 6 }));
+
+  test('setBandBypass/getBandBypass round-trip on a V10 device', async () => {
+    const d = await v10();
+    await d.setBandBypass(0, 2, true);
+    expect(await d.getBandBypass(0, 2)).toBe(true);
+    await d.setBandBypass(0, 2, false);
+    expect(await d.getBandBypass(0, 2)).toBe(false);
+  });
+
+  test('setBandBypass remaps the RP2040 PDM channel (set and get agree)', async () => {
+    const d = await DspDevice.create(new MockTransport({ platform: 'rp2040', wireVersion: 10 }));
+    await d.setBandBypass(ChannelId.Pdm, 0, true);
+    expect(await d.getBandBypass(ChannelId.Pdm, 0)).toBe(true);
+  });
+
+  test('band-bypass methods throw UnsupportedOnFirmware on a V6 device', async () => {
+    const d = await v6();
+    await expect(d.setBandBypass(0, 2, true)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+    await expect(d.getBandBypass(0, 2)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+  });
+
+  test('user volume + mute round-trip on V10', async () => {
+    const d = await v10();
+    await d.setUserVolume(-12);
+    expect(await d.getUserVolume()).toBeCloseTo(-12, 4);
+    await d.setUserMute(true);
+    expect(await d.getUserMute()).toBe(true);
+  });
+
+  test('input source round-trips on V10', async () => {
+    const d = await v10();
+    await d.setInputSource(AudioInputSource.Spdif);
+    expect(await d.getInputSource()).toBe(AudioInputSource.Spdif);
+  });
+
+  test('user-volume + input-source methods throw on V6', async () => {
+    const d = await v6();
+    await expect(d.setUserVolume(-12)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+    await expect(d.setInputSource(AudioInputSource.Usb)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+  });
+
+  test('getSpdifRxStatus narrows state + inputSource on V10', async () => {
+    const d = await v10();
+    await d.setInputSource(AudioInputSource.Spdif);
+    const s = await d.getSpdifRxStatus();
+    expect(s.state).toBe(SpdifInputState.Locked);
+    expect(s.inputSource).toBe(AudioInputSource.Spdif);
+    expect(s.sampleRate).toBe(48000);
+  });
+
+  test('getSpdifRxChStatus returns the 24-byte block on V10', async () => {
+    const d = await v10();
+    expect((await d.getSpdifRxChStatus()).byteLength).toBe(24);
+  });
+
+  test('S/PDIF RX pin round-trips on V10', async () => {
+    const d = await v10();
+    await d.setSpdifRxPin(15);
+    expect(await d.getSpdifRxPin()).toBe(15);
+  });
+
+  test('S/PDIF RX methods throw on V6', async () => {
+    const d = await v6();
+    await expect(d.getSpdifRxStatus()).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+    await expect(d.getSpdifRxChStatus()).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+    await expect(d.setSpdifRxPin(15)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+    await expect(d.getSpdifRxPin()).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+  });
+
+  test('LG Sound Sync enable + status round-trip on V10', async () => {
+    const d = await v10();
+    await d.setLgSoundSyncEnabled(true);
+    expect(await d.getLgSoundSyncEnabled()).toBe(true);
+    expect((await d.getLgSoundSyncStatus()).enabled).toBe(true);
+  });
+
+  test('DAC HW mute config round-trips on V10', async () => {
+    const d = await v10();
+    const cfg = { enabled: true, activeLow: true, pin: 11, holdMs: 20, releaseMs: 50 };
+    await d.setDacHwMute(cfg);
+    expect(await d.getDacHwMute()).toEqual(cfg);
+    await expect(d.testDacHwMute()).resolves.toBeUndefined();
+  });
+
+  test('DAC HW mute is gated separately from LG Sound Sync (throws on V9)', async () => {
+    const d = await DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 9 }));
+    expect(await d.getLgSoundSyncEnabled()).toBe(false); // supported at V8+
+    await expect(d.getDacHwMute()).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+  });
+
+  test('LG + DAC set methods throw on V6', async () => {
+    const d = await v6();
+    await expect(d.setLgSoundSyncEnabled(true)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
+    await expect(d.setDacHwMute({ enabled: true, activeLow: true, pin: 11, holdMs: 20, releaseMs: 50 }))
+      .rejects.toBeInstanceOf(UnsupportedOnFirmware);
   });
 });
