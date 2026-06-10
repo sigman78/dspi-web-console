@@ -54,7 +54,7 @@ export interface DeviceCapabilities {
     readonly bandBypass: boolean;        // per-band EQ bypass byte honored (wire >= 10)
     readonly notchFilter: boolean;       // FilterType.Notch (wire >= 10)
     readonly allpassFilter: boolean;     // FilterType.Allpass (wire >= 10)
-    readonly outputConfigSave: boolean;  // 0x52 SaveOutputConfig; pre-V10 the opcode was the removed sync LoadParams (wire >= 10)
+    readonly outputConfigSave: boolean;  // SaveOutputConfig flash write (wire >= 10)
   };
 }
 
