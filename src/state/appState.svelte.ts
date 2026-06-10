@@ -5,6 +5,7 @@ import type { PresetsState } from './presets.svelte';
 import type { MirrorState } from './mirror.svelte';
 import type { LinkHealth } from './linkHealth.svelte';
 import type { WriteCoordinator } from '@/runtime/writes';
+import type { NotifyWaiters } from '@/runtime/notifyWaiters';
 
 // A bound device plus its per-device runtime state (mirror, presets, telemetry,
 // writes, lifecycle guard).
@@ -22,6 +23,7 @@ export interface ReadySession {
   readonly mirror: MirrorState;
   readonly health: LinkHealth;
   readonly writes: WriteCoordinator;
+  readonly notifyWaiters: NotifyWaiters;
   // Lifecycle guard: a write that settles after dispose() is dropped.
   alive: boolean;
   dispose(): void;
