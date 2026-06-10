@@ -558,8 +558,7 @@ export class MockTransport implements DspTransport {
         return;
       }
       case WireCmd.SetOutputConfigMode.code:
-        this.#outputConfigMode = Codec.decode(Codec.u8, data) === 1
-          ? OutputConfigMode.WithPreset : OutputConfigMode.Independent;
+        this.#outputConfigMode = Codec.decode(Codec.u8, data) as OutputConfigMode;
         return;
 
       case WireCmd.ClearClips.code:

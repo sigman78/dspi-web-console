@@ -32,6 +32,8 @@ export interface PresetDirectoryInfo {
   // 0..9, or `null` when firmware reports 0xFF ("no slot ever active").
   lastActiveSlot: PresetSlot | null;
 
+  // See OutputConfigMode above. Legacy firmware reports the include-pins bool
+  // here; values are 1:1.
   outputConfigMode: OutputConfigMode;
 
   // V12+: 0=Independent, 1=WithPreset. Legacy firmware -> 0 (Independent).

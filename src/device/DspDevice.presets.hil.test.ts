@@ -43,7 +43,7 @@ describe('DspDevice — presets (HIL)', () => {
     // defined. Anything else is a firmware divergence we want to catch.
     expect([PresetStartupMode.Specified, PresetStartupMode.LastActive])
       .toContain(dir.startupMode);
-    expect([0, 1]).toContain(dir.outputConfigMode);
+    expect(Object.values(OutputConfigMode)).toContain(dir.outputConfigMode);
   });
 
   it('reads the active preset slot', async () => {
