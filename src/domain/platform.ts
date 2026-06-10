@@ -2,7 +2,7 @@
 // PlatformType is the firmware-pinned identity byte (RP2040=0, RP2350=1);
 // HardwareProfile carries the full channel/slot/pin layout built from it.
 
-import { ChannelId, channelById, type ChannelId as ChannelIdValue, type ChannelLayout, type OutputSlot as OutputSlotValue } from './channels';
+import { ChannelId, channelLayoutById, type ChannelId as ChannelIdValue, type ChannelLayout, type OutputSlot as OutputSlotValue } from './channels';
 
 export const PlatformType = {
   RP2040: 0,
@@ -53,8 +53,8 @@ interface HardwareProfileConfig {
 function buildHardwareProfile(config: HardwareProfileConfig): HardwareProfile {
   const inputChannels = INPUT_CHANNELS;
   const outputChannels = config.outputChannels;
-  const inputs = inputChannels.map(channelById);
-  const outputs = outputChannels.map(channelById);
+  const inputs = inputChannels.map(channelLayoutById);
+  const outputs = outputChannels.map(channelLayoutById);
   const channels = [...inputs, ...outputs];
 
   const outputSlotByChannel: Partial<Record<ChannelIdValue, OutputSlotValue>> = {};
@@ -145,5 +145,5 @@ export function displayNameForHardwareChannel(
 ): string {
   const wireChannel = wireChannelFor(profile, id);
   const fromDevice = channelNames[wireChannel]?.trim();
-  return fromDevice || channelById(id).name;
+  return fromDevice || channelLayoutById(id).name;
 }

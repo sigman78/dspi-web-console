@@ -16,6 +16,7 @@ import {
   MasterVolumeMode,
   CrossfeedPreset,
   LevellerSpeed,
+  matrixColumns,
 } from '@/domain';
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { deriveCapabilities } from '@/protocol/capabilities';
@@ -397,18 +398,18 @@ describe('setChannelName', () => {
     expect(liveMirror().current!.channels[0].name).toBe('padded'); // resolved (trimmed)
   });
 
-  it('also patches the snapshot outputs[i].name when the channel is an output', async () => {
+  it('renamed output channel shows the new name through the matrix join', async () => {
     // ChannelId.Out1L = 2; corresponding outputs[] entry has wireIndex 0.
     setChannelName(activeSession()!, 2 satisfies ChannelId, 'Front Left');
     await vi.runAllTimersAsync();
 
     const channel = liveMirror().current!.channels.find((c) => c.id === 2);
-    const output = liveMirror().current!.outputs.find((o) => o.wireIndex === 0);
+    const column = matrixColumns(liveMirror().current).find((c) => c.wireIdx === 0);
     expect(channel?.name).toBe('Front Left');
-    expect(output?.name).toBe('Front Left');
+    expect(column?.name).toBe('Front Left');
   });
 
-  it('patches RP2040 PDM output name at compact output slot 4', async () => {
+  it('renames RP2040 PDM and joins it at compact output slot 4', async () => {
     const rp2040Device = initializedDevice({
       setChannelName: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
@@ -420,21 +421,21 @@ describe('setChannelName', () => {
     await vi.runAllTimersAsync();
 
     const channel = liveMirror().current!.channels.find((c) => c.id === 10);
-    const output = liveMirror().current!.outputs.find((o) => o.wireIndex === 4);
+    const column = matrixColumns(liveMirror().current).find((c) => c.wireIdx === 4);
     expect(channel?.name).toBe('Sub');
-    expect(output?.name).toBe('Sub');
+    expect(column?.name).toBe('Sub');
     expect(liveMirror().current!.outputs.some((o) => o.wireIndex === 8)).toBe(false);
   });
 
-  it('does not touch outputs[] when renaming an input channel', async () => {
-    const outputsBefore = liveMirror().current!.outputs.map((o) => o.name).slice();
+  it('does not change output column names when renaming an input channel', async () => {
+    const namesBefore = matrixColumns(liveMirror().current).map((c) => c.name);
 
     // ChannelId.In1L = 0 — no entry in outputs[].
     setChannelName(activeSession()!, 0 satisfies ChannelId, 'Mic 1');
     await vi.runAllTimersAsync();
 
-    const outputsAfter = liveMirror().current!.outputs.map((o) => o.name);
-    expect(outputsAfter).toEqual(outputsBefore);
+    const namesAfter = matrixColumns(liveMirror().current).map((c) => c.name);
+    expect(namesAfter).toEqual(namesBefore);
   });
 });
 
@@ -656,7 +657,7 @@ describe('bulk writes: eq/delay/names', () => {
     vi.useRealTimers();
   });
 
-  it('setChannelName sets name and mirrors to the denormalized output entry', async () => {
+  it('setChannelName sets the channel name and the matrix column joins it', async () => {
     vi.useFakeTimers();
     const setChannelNameFn = vi.fn(async () => {});
     const device = initializedDevice({
@@ -669,7 +670,7 @@ describe('bulk writes: eq/delay/names', () => {
     setChannelName(activeSession()!, outId, 'Custom');
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.channels.find((c) => c.id === outId)!.name).toBe('Custom');
-    expect(liveMirror().current!.outputs.find((o) => o.id === outId)!.name).toBe('Custom');
+    expect(matrixColumns(liveMirror().current).find((c) => c.id === outId)!.name).toBe('Custom');
     vi.useRealTimers();
   });
 });

@@ -4,7 +4,7 @@
   import PinSelect from './PinSelect.svelte';
   import { connection } from '@/state';
   import { setOutputType, setOutputDataPin } from '@/runtime';
-  import { availablePinsFor, channelById, ChannelId, type OutputSlot } from '@/domain';
+  import { availablePinsFor, channelLayoutById, ChannelId, type OutputSlot } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -15,7 +15,7 @@
   // Each SPDIF slot is a stereo output pair (OUT n -> nL / nR).
   function pairShort(slot: number): string {
     const lId = (ChannelId.Out1L + slot * 2) as ChannelId;
-    return `${channelById(lId).shortName} / ${channelById((lId + 1) as ChannelId).shortName}`;
+    return `${channelLayoutById(lId).shortName} / ${channelLayoutById((lId + 1) as ChannelId).shortName}`;
   }
 
   const TYPE_OPTS: ReadonlyArray<{ value: number; label: string }> = [

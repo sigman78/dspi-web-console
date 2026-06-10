@@ -90,9 +90,7 @@ export function clearClips(s: ReadySession): void {
 }
 
 // Empty / whitespace-only input clears the custom name on the device; the
-// snapshot mirrors that by falling back to defaultName. The outputs[] name
-// mirror keeps MatrixHeader and OverviewTab in sync without waiting for the
-// trailing bulk resync.
+// snapshot mirrors that by falling back to defaultName.
 export function setChannelName(s: ReadySession, id: ChannelId, name: string): void {
   const ch = s.mirror.snapshot.channels.find((c) => c.id === id);
   if (!ch) return;
@@ -103,8 +101,6 @@ export function setChannelName(s: ReadySession, id: ChannelId, name: string): vo
     () => {
       const c = s.mirror.snapshot.channels.find((c) => c.id === id);
       if (c) c.name = clamped;
-      const o = s.mirror.snapshot.outputs.find((o) => o.id === id);
-      if (o) o.name = clamped;
     },
   );
 }

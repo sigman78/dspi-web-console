@@ -11,22 +11,22 @@ function band(o: Partial<FilterParams> = {}): FilterParams {
 function channel(id: number, name = `ch${id}`): ChannelModel {
   return {
     id: id as any, name, defaultName: name, shortName: `c${id}`,
-    bandCount: 12, isOutput: false, outputMode: null,
+    bandCount: 12, isOutput: false,
     filters: Array.from({ length: 12 }, () => band()),
   };
 }
 
 function output(id: number): OutputModel {
   return {
-    id: id as any, wireIndex: 0 as any, name: `out${id}`, shortName: `o${id}`,
-    outputMode: 'Analog' as any, enabled: true, muted: false, gainDb: 0, delayMs: 0,
+    id: id as any, wireIndex: 0 as any, shortName: `o${id}`,
+    enabled: true, muted: false, gainDb: 0, delayMs: 0,
   };
 }
 
 function route(inputIndex: number, outputId: number): RouteModel {
   return {
-    inputIndex: inputIndex as any, inputName: `in${inputIndex}`,
-    outputId: outputId as any, outputWireIndex: 0 as any, outputName: `out${outputId}`,
+    inputIndex: inputIndex as any,
+    outputId: outputId as any, outputWireIndex: 0 as any,
     enabled: false, invert: false, gainDb: 0,
   };
 }

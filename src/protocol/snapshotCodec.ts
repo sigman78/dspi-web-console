@@ -59,7 +59,6 @@ function narrowLevellerSpeed(s: number): domain.LevellerSpeed {
 export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParams): domain.DspSnapshot {
   const channelNames = bulk.channelNames.slice(0, Wire.Const.NUM_CHANNELS);
   const layout = Wire.bulkLayout(bulk);
-  const outputSlotTypes = layout.i2s ? bulk.i2s.outputSlotTypes : undefined;
 
   const channels = hardware.channels.map((channel) => ({
     id: channel.id,
@@ -68,7 +67,6 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
     shortName: channel.shortName,
     bandCount: channel.bandCount,
     isOutput: channel.isOutput,
-    outputMode: domain.outputModeForChannel(channel.id, outputSlotTypes),
     filters: (bulk.filters[domain.wireChannelFor(hardware, channel.id)]?.slice(0, channel.bandCount) ?? []).map<domain.FilterParams>((filter) => ({
       type: narrowFilterType(filter.type),
       bypass: filter.bypass,
@@ -83,17 +81,11 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
     if (wireIndex == null) {
       throw new Error(`Channel ${channel.id} is not an output channel`);
     }
-    const outputMode = domain.outputModeForChannel(channel.id, outputSlotTypes);
-    if (outputMode === null) {
-      throw new Error(`Channel ${channel.id} has no output mode`);
-    }
     const state = bulk.outputs[wireIndex];
     return {
       id: channel.id,
       wireIndex,
-      name: domain.displayNameForHardwareChannel(hardware, channel.id, channelNames),
       shortName: channel.shortName,
-      outputMode,
       enabled: state.enabled,
       muted: state.muted,
       gainDb: state.gainDb,
@@ -103,15 +95,12 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
 
   const routes: domain.RouteModel[] = [];
   for (let inputIndex = 0; inputIndex < hardware.inputs.length; inputIndex++) {
-    const input = hardware.inputs[inputIndex];
     for (const output of outputs) {
       const cp = bulk.crosspoints[inputIndex][output.wireIndex];
       routes.push({
         inputIndex: inputIndex as domain.InputSlot,
-        inputName: domain.displayNameForHardwareChannel(hardware, input.id, channelNames),
         outputId: output.id,
         outputWireIndex: output.wireIndex,
-        outputName: output.name,
         enabled: cp.enabled,
         invert: cp.invert,
         gainDb: cp.gainDb,

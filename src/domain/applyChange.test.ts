@@ -9,13 +9,13 @@ function band(o: Partial<FilterParams> = {}): FilterParams {
   return { type: 0, bypass: false, frequency: 1000, q: 1.0, gain: 0, ...o };
 }
 function channel(id: number, name = `ch${id}`): ChannelModel {
-  return { id: id as any, name, defaultName: name, shortName: `c${id}`, bandCount: 12, isOutput: false, outputMode: null, filters: Array.from({ length: 12 }, () => band()) };
+  return { id: id as any, name, defaultName: name, shortName: `c${id}`, bandCount: 12, isOutput: false, filters: Array.from({ length: 12 }, () => band()) };
 }
 function output(id: number): OutputModel {
-  return { id: id as any, wireIndex: 0 as any, name: `out${id}`, shortName: `o${id}`, outputMode: 'Analog' as any, enabled: true, muted: false, gainDb: 0, delayMs: 0 };
+  return { id: id as any, wireIndex: 0 as any, shortName: `o${id}`, enabled: true, muted: false, gainDb: 0, delayMs: 0 };
 }
 function route(i: number, o: number): RouteModel {
-  return { inputIndex: i as any, inputName: `in${i}`, outputId: o as any, outputWireIndex: 0 as any, outputName: `out${o}`, enabled: false, invert: false, gainDb: 0 };
+  return { inputIndex: i as any, outputId: o as any, outputWireIndex: 0 as any, enabled: false, invert: false, gainDb: 0 };
 }
 function snap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
   const base: DspSnapshot = {

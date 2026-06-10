@@ -24,10 +24,10 @@ describe('fromBulkParams', () => {
     expect(snapshot.outputs).toHaveLength(9);
     expect(snapshot.channels).toHaveLength(11);
     expect(snapshot.masterVolumeDb).toBeCloseTo(-12.5);
-    expect(snapshot.outputs[0].name).toBe('Left Woofer');
-    expect(snapshot.channels[0].outputMode).toBeNull();
-    expect(snapshot.outputs[0].outputMode).toBe('I2S');
-    expect(snapshot.outputs[8].outputMode).toBe('PDM');
+    const columns = matrixColumns(snapshot);
+    expect(columns[0].name).toBe('Left Woofer');
+    expect(columns[0].outputMode).toBe('I2S');
+    expect(columns[8].outputMode).toBe('PDM');
     expect(snapshot.outputs[8].wireIndex).toBe(8);
     expect(snapshot.routes).toHaveLength(18);
   });
@@ -84,10 +84,10 @@ describe('fromBulkParams', () => {
     }));
     const snapshot = fromBulkParams(createHardwareProfile(PlatformType.RP2040), bulk);
     const pdmChannel = snapshot.channels.find((channel) => channel.id === 10);
-    const pdmOutput = snapshot.outputs.find((output) => output.id === 10);
+    const pdmColumn = matrixColumns(snapshot).find((column) => column.id === 10);
 
     expect(pdmChannel?.name).toBe('RP2040 Sub');
-    expect(pdmOutput?.name).toBe('RP2040 Sub');
+    expect(pdmColumn?.name).toBe('RP2040 Sub');
     expect(pdmChannel?.filters[0].frequency).toBe(321);
     expect(pdmChannel?.filters[0].gain).toBe(-2);
   });
