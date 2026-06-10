@@ -14,7 +14,7 @@ import { BAND_GAIN_STEP_DB, FREQ_STEP_HZ, Q_STEP } from './eqLimits';
 // Half the relevant UI step: wire f32 round-trip jitter can never reach it,
 // a real edit always does.
 export const DIFF_TOLERANCE = {
-  db:   BAND_GAIN_STEP_DB / 2, // 0.1 / 2 = 0.05
+  db:   BAND_GAIN_STEP_DB / 2, // Finest dB step among the fields this tolerance guards (preamp/volume steps are coarser). 0.1 / 2 = 0.05
   freq: FREQ_STEP_HZ / 2,      // 1 / 2 = 0.5
   // No gain-field step halves to 0.005; crosspoint has no UI step,
   // loudness intensity step is 0.5, leveller amount step is 1. Using literal.

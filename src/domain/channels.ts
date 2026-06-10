@@ -56,7 +56,7 @@ export interface ChannelLayout {
 
 // Firmware allocates 12 wire band slots but enables 10 per channel on both
 // platforms and rejects band >= 10; bands 10-11 can never hold data.
-export const EQ_BAND_COUNT = 10;
+const EQ_BAND_COUNT = 10;
 
 export const ALL_CHANNELS: readonly ChannelLayout[] = [
   { id: ChannelId.In1L,  name: 'Input 1 Left',  shortName: 'I1L', bandCount: EQ_BAND_COUNT, isOutput: false },
