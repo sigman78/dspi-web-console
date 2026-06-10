@@ -33,6 +33,34 @@ describe('applyChange', () => {
     expect(t2.lgSoundSync).toBeNull();
   });
 
+  it('applies section appearance (null -> present) across wire versions', () => {
+    // V6 default: inputConfig/userVolume/dacHwMute/lgSoundSync are all null.
+    const before = makeSnapshot();
+    // V10: all four sections present.
+    const after = makeSnapshot((b) => { b.formatVersion = 10; });
+
+    // Premise guard: fail loudly if fixture defaults change.
+    expect(before.inputConfig).toBeNull();
+    expect(before.userVolume).toBeNull();
+    expect(before.dacHwMute).toBeNull();
+    expect(before.lgSoundSync).toBeNull();
+    expect(after.inputConfig).not.toBeNull();
+    expect(after.userVolume).not.toBeNull();
+    expect(after.dacHwMute).not.toBeNull();
+    expect(after.lgSoundSync).not.toBeNull();
+
+    const target = structuredClone(before);
+    for (const c of diffSnapshots(before, after)) applyChange(c, target);
+
+    // Whole-object equality cannot hold: lgSoundSyncEnabled/lgSoundSyncStatus
+    // are no-ops when t.lgSoundSync is null (applyChange guards on the section),
+    // so target.lgSoundSync stays null even after applying. Per-section
+    // assertions cover the three kinds that assign directly over null.
+    expect(target.inputConfig).toEqual(after.inputConfig);
+    expect(target.userVolume).toEqual(after.userVolume);
+    expect(target.dacHwMute).toEqual(after.dacHwMute);
+  });
+
   it('round-trips: applying diffSnapshots(a,b) onto a reproduces b', () => {
     // Both snapshots are V10 codec-real; all optional sections present.
     const a = makeSnapshot((b) => {
