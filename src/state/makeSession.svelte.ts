@@ -4,6 +4,7 @@ import type { ReadySession } from './appState.svelte';
 import { StatusStore } from './telemetry.svelte';
 import { createPresetsState } from './presets.svelte';
 import { MirrorState } from './mirror.svelte';
+import { LinkHealth } from './linkHealth.svelte';
 import { WriteCoordinator } from '@/runtime/writes';
 
 // Assembles a per-device session from its constituent stores. Kept apart from
@@ -13,10 +14,11 @@ export function makeReadySession(device: DspDevice, attempt = 0): ReadySession {
   const telemetry = new StatusStore();
   const presets = createPresetsState();
   const mirror = new MirrorState();
+  const health = new LinkHealth();
   const writes = new WriteCoordinator(mirror);
   const session: ReadySession = {
     device, info: device.info, hardware: device.hardware, attempt,
-    copySource, telemetry, presets, mirror, writes,
+    copySource, telemetry, presets, mirror, health, writes,
     alive: true,
     dispose() { session.alive = false; writes.cancel(); },
   };

@@ -3,6 +3,7 @@ import type { HardwareProfile, PresetSlot } from '@/domain';
 import type { StatusStore } from './telemetry.svelte';
 import type { PresetsState } from './presets.svelte';
 import type { MirrorState } from './mirror.svelte';
+import type { LinkHealth } from './linkHealth.svelte';
 import type { WriteCoordinator } from '@/runtime/writes';
 
 // A bound device plus its per-device runtime state (mirror, presets, telemetry,
@@ -19,6 +20,7 @@ export interface ReadySession {
   readonly telemetry: StatusStore;
   readonly presets: PresetsState;
   readonly mirror: MirrorState;
+  readonly health: LinkHealth;
   readonly writes: WriteCoordinator;
   // Lifecycle guard: a write that settles after dispose() is dropped.
   alive: boolean;
