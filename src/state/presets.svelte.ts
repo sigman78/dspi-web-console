@@ -50,7 +50,7 @@ export function presetsDirty(s: ReadySession): boolean {
   // Pins ride the preset only when includePins is set; otherwise a pin change
   // isn't preset content and must not mark dirty. Unknown directory => excluded.
   const includePins = s.presets.directory?.includePins === true;
-  return diffSnapshots(m.baseline, m.current).some((c) => {
+  return diffSnapshots(m.baseline, m.current).some((c): boolean => {
     switch (CHANGE_CLASS[c.kind]) {
       case 'runtime-status': return false;
       case 'volume':         return !(ignoreVol || soft);

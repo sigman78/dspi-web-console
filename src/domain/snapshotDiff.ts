@@ -9,13 +9,20 @@ import type { OutputModel, RouteModel } from './mixer';
 import type { FilterParams } from './filter';
 import type { Loudness, Crossfeed, Leveller } from './processing';
 import type { InputConfig, LgSoundSync, UserVolume, DacHwMute } from './deviceSections';
+import { BAND_GAIN_STEP_DB, FREQ_STEP_HZ, Q_STEP } from './eqLimits';
 
+// Half the relevant UI step: wire f32 round-trip jitter can never reach it,
+// a real edit always does.
 export const DIFF_TOLERANCE = {
-  db:   0.05,
-  freq: 0.5,
+  db:   BAND_GAIN_STEP_DB / 2, // 0.1 / 2 = 0.05
+  freq: FREQ_STEP_HZ / 2,      // 1 / 2 = 0.5
+  // No gain-field step halves to 0.005; crosspoint has no UI step,
+  // loudness intensity step is 0.5, leveller amount step is 1. Using literal.
   gain: 0.005,
-  q:    0.005,
-  ms:   0.00005,
+  q:    Q_STEP / 2,             // 0.01 / 2 = 0.005
+  // NOT step/2: f32 round-trip jitter bound. Delay diffs must not mask
+  // sub-step external changes; f32 ulp at max delay is ~1.5e-5 < this.
+  ms:   5e-5,
 } as const;
 
 export type SnapshotChange =
@@ -212,3 +219,6 @@ type _Covered =
 type _Complete = [Exclude<keyof DspSnapshot, _Covered | _Exempt>] extends [never] ? true : never;
 const _complete: _Complete = true;
 void _complete;
+type _NoStale = [Exclude<_Covered | _Exempt, keyof DspSnapshot>] extends [never] ? true : never;
+const _noStale: _NoStale = true;
+void _noStale;
