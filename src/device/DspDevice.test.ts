@@ -410,11 +410,6 @@ describe('DspDevice — persistence (legacy save/load/reset)', () => {
     expect(r.ok).toBe(true);
   });
 
-  it('loadParams returns ok on success', async () => {
-    const r = await d.loadParams();
-    expect(r.ok).toBe(true);
-  });
-
   it('factoryReset returns ok on success', async () => {
     const r = await d.factoryReset();
     expect(r.ok).toBe(true);
@@ -1159,5 +1154,16 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     await expect(d.setLgSoundSyncEnabled(true)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
     await expect(d.setDacHwMute({ enabled: true, activeLow: true, pin: 11, holdMs: 20, releaseMs: 50 }))
       .rejects.toBeInstanceOf(UnsupportedOnFirmware);
+  });
+
+  test('saveOutputConfig returns ok on a V10 device', async () => {
+    const d = await v10();
+    const r = await d.saveOutputConfig();
+    expect(r.ok).toBe(true);
+  });
+
+  test('saveOutputConfig throws UnsupportedOnFirmware on a V6 device', async () => {
+    const d = await v6();
+    await expect(d.saveOutputConfig()).rejects.toBeInstanceOf(UnsupportedOnFirmware);
   });
 });

@@ -62,7 +62,6 @@ export const WireCmd = {
   // On V3+ firmware these redirect through the preset system on the
   // currently-active slot. See docs/HW-PROFILES.md sec 2.
   SaveParams:           { code: 0x51 } satisfies RawCmd,
-  LoadParams:           { code: 0x52 } satisfies RawCmd,
   FactoryReset:         { code: 0x53 } satisfies RawCmd,
 
   GetSerial:            { code: 0x7E, codec: Wire.Serial }     satisfies ReadCmd<string>,
@@ -183,6 +182,11 @@ export const WireCmd = {
   SetDacHwMute:          { code: 0xEA, codec: tighten<DacHwMute>(Wire.DacHwMute) } satisfies WriteCmd<DacHwMute>,
   GetDacHwMute:          { code: 0xEB, codec: tighten<DacHwMute>(Wire.DacHwMute) } satisfies ReadCmd<DacHwMute>,
   TestDacHwMute:         { code: 0xEC } satisfies RawCmd,
+  // Persist live output config (pins, output types, I2S BCK/MCK, S/PDIF RX
+  // pin) to the preset directory's device-global block. Action-IN, 1-byte
+  // PresetResult. Repurposes legacy 0x52 (the removed sync LoadParams);
+  // V10+ only — on older firmware the opcode is a synchronous revert-to-saved.
+  SaveOutputConfig:      { code: 0x52 } satisfies RawCmd,
 } as const;
 
 // Helpers

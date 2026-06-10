@@ -1,6 +1,6 @@
 import { Result } from '@/utils';
 
-// FlashResult -- returned by SaveParams (0x51), LoadParams (0x52), FactoryReset (0x53).
+// FlashResult -- returned by SaveParams (0x51) and FactoryReset (0x53).
 export const FlashResult = {
   Ok:        0x00,
   ErrWrite:  0x01,
@@ -10,7 +10,7 @@ export const FlashResult = {
 export type FlashResult = (typeof FlashResult)[keyof typeof FlashResult];
 
 // PresetResult -- returned by every Preset* command (0x90-0x9A) plus
-// SaveMasterVolume (0xD6).
+// SaveMasterVolume (0xD6) and SaveOutputConfig (0x52, V10+).
 export const PresetResult = {
   Ok:              0x00,
   InvalidSlot:     0x01,

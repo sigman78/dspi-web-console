@@ -204,9 +204,10 @@ export class MockTransport implements DspTransport {
       // Acknowledge with FlashResult.Ok; preset round-trips go through
       // PresetSave/Load directly rather than flash side effects.
       case WireCmd.SaveParams.code:
-      case WireCmd.LoadParams.code:
       case WireCmd.FactoryReset.code:
         return new Uint8Array([0]); // FlashResult.Ok
+      case WireCmd.SaveOutputConfig.code:
+        return new Uint8Array([0]); // PresetResult.Ok
       case WireCmd.GetEqParam.code: {
         // Bit-packed wValue: (channel << 8) | (band << 4) | param
         const channel = (value >> 8) & 0xFF;

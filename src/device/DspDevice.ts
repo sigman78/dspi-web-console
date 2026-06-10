@@ -558,10 +558,6 @@ export class DspDevice {
     return proto.flashResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SaveParams));
   }
 
-  async loadParams(): Promise<Result<void, proto.FlashResult>> {
-    return proto.flashResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.LoadParams));
-  }
-
   // Firmware echoes 0x01 on success; return a boolean so callers don't see the wire shape.
   async resetBufferStats(): Promise<boolean> {
     const r = await this.transport.ctrlIn(proto.WireCmd.ResetBufferStats.code, 1, 1);
@@ -760,5 +756,14 @@ export class DspDevice {
   async testDacHwMute(): Promise<void> {
     requireFeature(this.capabilities.features, 'dacHwMute');
     await proto.actionCmd(this.transport, proto.WireCmd.TestDacHwMute);
+  }
+
+  // Persist the live physical-IO block (output pins, output types, I2S
+  // BCK/MCK, S/PDIF RX pin) to the directory's device-global block. Accepted
+  // in both output-config modes, dormant in WITH_PRESET. The gate is
+  // load-bearing: on pre-V10 firmware 0x52 is the removed sync LoadParams.
+  async saveOutputConfig(): Promise<Result<void, proto.PresetResult>> {
+    requireFeature(this.capabilities.features, 'outputConfigSave');
+    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SaveOutputConfig));
   }
 }

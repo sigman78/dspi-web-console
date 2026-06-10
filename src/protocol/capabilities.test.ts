@@ -77,6 +77,7 @@ describe('deriveCapabilities — 1.1.4 features', () => {
     expect(v6.features.bandBypass).toBe(false);
     expect(v6.features.notchFilter).toBe(false);
     expect(v6.features.dacHwMute).toBe(false);
+    expect(v6.features.outputConfigSave).toBe(false);
     expect(v6.sections.inputSource).toBe(false);
   });
 
@@ -89,6 +90,7 @@ describe('deriveCapabilities — 1.1.4 features', () => {
     expect(v10.features.bandBypass).toBe(true);
     expect(v10.features.notchFilter).toBe(true);
     expect(v10.features.allpassFilter).toBe(true);
+    expect(v10.features.outputConfigSave).toBe(true);
     expect(v10.sections.dacHwMute).toBe(true);
   });
 

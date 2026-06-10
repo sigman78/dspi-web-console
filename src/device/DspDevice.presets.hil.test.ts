@@ -1,5 +1,5 @@
 // HIL coverage for the preset surface (0x90–0x9A) plus the legacy
-// SaveParams/LoadParams/FactoryReset family. Uses slots 8 and 9 by
+// SaveParams/FactoryReset persistence commands. Uses slots 8 and 9 by
 // convention so tests don't stomp on user presets in slots 0–7.
 //
 // Run via `npm run test:hil` against connected hardware. Does NOT run
