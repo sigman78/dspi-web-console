@@ -8,6 +8,7 @@ import type { BulkParams } from '@/protocol';
 // Contract: applyChange(diffSnapshots(a, b)) over codec-real snapshots
 // converges target to b exactly. Fixtures go through build->parse->decode so
 // they carry every invariant the codec produces -- hand-built fixtures cannot.
+// New BulkParams sections need a mutator here.
 const hw = createHardwareProfile(PlatformType.RP2350);
 
 function decode(b: BulkParams): DspSnapshot {
@@ -53,7 +54,9 @@ describe('diff/apply round-trip over codec-real snapshots', () => {
       m.mutate(mutated);
       const after = decode(mutated);
       const target = structuredClone(before);
-      for (const c of diffSnapshots(before, after)) applyChange(c, target);
+      const changes = diffSnapshots(before, after);
+      expect(changes.length).toBeGreaterThan(0);   // mutator must produce a real diff
+      for (const c of changes) applyChange(c, target);
       expect(target).toEqual(after);
     });
   }

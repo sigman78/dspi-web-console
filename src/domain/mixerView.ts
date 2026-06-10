@@ -1,4 +1,4 @@
-// Matrix-tab projections over DspSnapshot. Separate from mixer.ts so that
+// Snapshot joins and matrix-tab projections over DspSnapshot. Separate from mixer.ts so that
 // stays snapshot-free (avoids a cycle with snapshot.ts).
 
 import { ChannelId, slotForOutputChannel, type InputSlot, type OutputMode, type OutputSlot } from './channels';
