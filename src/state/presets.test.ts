@@ -3,7 +3,7 @@ import { presetsDirty, resetBoundary, askBoundary, resolveBoundary } from './pre
 import { activeSession, dispatch } from './appState.svelte';
 import { makeReadySession } from './makeSession.svelte';
 import { settings } from './settings.svelte';
-import type { DspSnapshot } from '@/domain';
+import { OutputConfigMode, type DspSnapshot } from '@/domain';
 
 const liveMirror = () => activeSession()!.mirror;
 const ps = () => activeSession()!.presets;
@@ -79,7 +79,7 @@ describe('presets store', () => {
     ps().directory = {
       occupiedSlotsSet: new Set(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      includePins: false,
+      outputConfigMode: OutputConfigMode.Independent,
       masterVolumeMode: 1 as any,
     };
     liveMirror().snapshot.masterVolumeDb = -12;
@@ -91,7 +91,7 @@ describe('presets store', () => {
     ps().directory = {
       occupiedSlotsSet: new Set(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      includePins: false,
+      outputConfigMode: OutputConfigMode.Independent,
       masterVolumeMode: 1 as any,
     };
     settings.soft.muted = true;
@@ -148,19 +148,19 @@ describe('presets store', () => {
     expect(dirty()).toBe(true);
   });
 
-  it('presetsDirty counts an outputPins change only when includePins is true', () => {
-    const dir = (includePins: boolean) => ({
+  it('presetsDirty counts an outputPins change only in WithPreset mode', () => {
+    const dir = (mode: OutputConfigMode) => ({
       occupiedSlotsSet: new Set<number>(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      includePins, masterVolumeMode: 0 as any,
+      outputConfigMode: mode, masterVolumeMode: 0 as any,
     });
     seed(mkSnap({ outputPins: [6, 7] }));
     liveMirror().snapshot.outputPins[1] = 8;
-    // includePins=false → pins are not part of the preset → not dirty
-    ps().directory = dir(false) as any;
+    // Independent → pins are not part of the preset → not dirty
+    ps().directory = dir(OutputConfigMode.Independent) as any;
     expect(dirty()).toBe(false);
-    // includePins=true → pins ride the preset → dirty
-    ps().directory = dir(true) as any;
+    // WithPreset → pins ride the preset → dirty
+    ps().directory = dir(OutputConfigMode.WithPreset) as any;
     expect(dirty()).toBe(true);
   });
 
@@ -169,7 +169,7 @@ describe('presets store', () => {
     ps().directory = {
       occupiedSlotsSet: new Set(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      includePins: false,
+      outputConfigMode: OutputConfigMode.Independent,
       masterVolumeMode: 0 as any,
     };
     ps().active = 3 as any;

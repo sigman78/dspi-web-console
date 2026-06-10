@@ -5,7 +5,7 @@ import {
   makeReadySession, dispatch, type ReadySession,
 } from '@/state';
 import { PresetStartupMode, parseBulkParams } from '@/protocol';
-import type { PresetSlot } from '@/domain';
+import { type PresetSlot, OutputConfigMode } from '@/domain';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import {
   fetchPresetInfo,
@@ -17,7 +17,7 @@ import {
   renamePresetSlot,
   setStartupDefault,
   setStartupMode,
-  setPresetIncludePins,
+  setOutputConfigMode,
   pastePresetTo,
   dismissPresetActionError,
 } from './presets';
@@ -217,28 +217,28 @@ describe('runtime/presets', () => {
     });
   });
 
-  describe('setPresetIncludePins', () => {
-    it('writes the flag through to the device and mirrors it in the directory cache', async () => {
+  describe('setOutputConfigMode', () => {
+    it('writes the mode through to the device and mirrors it in the directory cache', async () => {
       await fetchPresetInfo(sess());
-      const r = await setPresetIncludePins(sess(), true);
+      const r = await setOutputConfigMode(sess(), OutputConfigMode.WithPreset);
       expect('ok' in r && r.ok).toBe(true);
-      expect(ps().directory!.includePins).toBe(true);
-      await setPresetIncludePins(sess(), false);
-      expect(ps().directory!.includePins).toBe(false);
+      expect(ps().directory!.outputConfigMode).toBe(OutputConfigMode.WithPreset);
+      await setOutputConfigMode(sess(), OutputConfigMode.Independent);
+      expect(ps().directory!.outputConfigMode).toBe(OutputConfigMode.Independent);
     });
 
     it('records an action error (record-only, no rethrow) when the device write fails', async () => {
       await fetchPresetInfo(sess());
       const d = activeSession()!.device as any;
-      const orig = d.setPresetIncludePins;
-      d.setPresetIncludePins = async () => { throw new Error('wire fail'); };
+      const orig = d.setOutputConfigMode;
+      d.setOutputConfigMode = async () => { throw new Error('wire fail'); };
       try {
-        const r = await setPresetIncludePins(sess(), true);
+        const r = await setOutputConfigMode(sess(), OutputConfigMode.WithPreset);
         expect('ok' in r && r.ok).toBe(false);
-        expect(ps().lastActionError).toContain('Set include pins');
+        expect(ps().lastActionError).toContain('Set output config mode');
         expect(ps().lastActionError).toContain('wire fail');
       } finally {
-        d.setPresetIncludePins = orig;
+        d.setOutputConfigMode = orig;
       }
     });
   });

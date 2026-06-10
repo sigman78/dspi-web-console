@@ -10,7 +10,7 @@ import {
 import { Codec } from '@/utils';
 import {
   PlatformType,
-  CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
+  CrossfeedPreset, LevellerSpeed, MasterVolumeMode, OutputConfigMode,
   type FilterParams,
   type CrossPoint, type OutputState,
 } from '@/domain';
@@ -77,7 +77,7 @@ export class MockTransport implements DspTransport {
   #presetStartupMode = 0;       // PresetStartupMode.Specified (firmware default)
   #presetDefaultSlot = 0;
   #presetLastActiveSlot = 0;    // always-active default
-  #presetIncludePins = true;    // default per HW-PROFILES sec 0
+  #outputConfigMode: OutputConfigMode = OutputConfigMode.WithPreset;  // firmware default; factory reset resets to it
   #presetActiveSlot = 0;
   // Per-slot names live in the directory sector, not the slot payload, so they
   // survive LoadPreset and are deliberately NOT in MockSnapshot.
@@ -266,7 +266,7 @@ export class MockTransport implements DspTransport {
         out[2] = this.#presetStartupMode;
         out[3] = this.#presetDefaultSlot;
         out[4] = this.#presetLastActiveSlot;
-        out[5] = this.#presetIncludePins ? 1 : 0;
+        out[5] = this.#outputConfigMode;
         // Same directory-sector byte as GetMasterVolumeMode; reuse the live
         // field so both read paths stay in sync.
         out[6] = this.#masterVolumeMode;
@@ -277,8 +277,8 @@ export class MockTransport implements DspTransport {
           mode: this.#presetStartupMode,
           slot: this.#presetDefaultSlot,
         });
-      case WireCmd.PresetGetIncludePins.code:
-        return Codec.encode(Codec.bool8, this.#presetIncludePins);
+      case WireCmd.GetOutputConfigMode.code:
+        return Codec.encode(Codec.u8, this.#outputConfigMode);
       case WireCmd.PresetGetActive.code:
         return new Uint8Array([this.#presetActiveSlot]);
       case WireCmd.PresetGetName.code: {
@@ -557,8 +557,9 @@ export class MockTransport implements DspTransport {
         this.#presetDefaultSlot = cfg.slot;
         return;
       }
-      case WireCmd.PresetSetIncludePins.code:
-        this.#presetIncludePins = Codec.decode(Codec.bool8, data);
+      case WireCmd.SetOutputConfigMode.code:
+        this.#outputConfigMode = Codec.decode(Codec.u8, data) === 1
+          ? OutputConfigMode.WithPreset : OutputConfigMode.Independent;
         return;
 
       case WireCmd.ClearClips.code:

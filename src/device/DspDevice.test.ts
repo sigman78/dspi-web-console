@@ -11,7 +11,7 @@ import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PresetResult, PinConfigResult, WireCmd, SystemStatusValue, Wire, NotifyEventId } from '@/protocol';
 import {
   PlatformType,
-  CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
+  CrossfeedPreset, LevellerSpeed, MasterVolumeMode, OutputConfigMode,
   FilterType,
   ChannelId,
   AudioInputSource,
@@ -490,7 +490,7 @@ describe('DspDevice — preset directory and active slot', () => {
     const dir = await d.getPresetDirectory();
     expect(dir.occupiedSlotsSet.size).toBe(0);
     expect(dir.startupMode).toBe(0);
-    expect(dir.includePins).toBe(true);
+    expect(dir.outputConfigMode).toBe(OutputConfigMode.WithPreset);
     expect(dir.masterVolumeMode).toBe(0);
     expect(dir.lastActiveSlot).toBe(0); // mock default; real firmware returns 0xFF → null until first save
   });
@@ -644,17 +644,17 @@ describe('DspDevice — preset startup + include-pins', () => {
     expect(dir.defaultSlot).toBe(7);
   });
 
-  it('roundtrips include-pins flag', async () => {
-    await d.setPresetIncludePins(false);
-    expect(await d.getPresetIncludePins()).toBe(false);
-    await d.setPresetIncludePins(true);
-    expect(await d.getPresetIncludePins()).toBe(true);
+  it('roundtrips output-config mode', async () => {
+    await d.setOutputConfigMode(OutputConfigMode.Independent);
+    expect(await d.getOutputConfigMode()).toBe(OutputConfigMode.Independent);
+    await d.setOutputConfigMode(OutputConfigMode.WithPreset);
+    expect(await d.getOutputConfigMode()).toBe(OutputConfigMode.WithPreset);
   });
 
-  it('reflects include-pins in directory packet', async () => {
-    await d.setPresetIncludePins(false);
+  it('reflects output-config mode in directory packet', async () => {
+    await d.setOutputConfigMode(OutputConfigMode.Independent);
     const dir = await d.getPresetDirectory();
-    expect(dir.includePins).toBe(false);
+    expect(dir.outputConfigMode).toBe(OutputConfigMode.Independent);
   });
 });
 

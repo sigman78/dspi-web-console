@@ -4,7 +4,7 @@
 import {
   type PresetSlot, PRESET_SLOT_COUNT,
   type PresetDirectoryInfo,
-  MasterVolumeMode,
+  MasterVolumeMode, OutputConfigMode,
   diffSnapshots,
   CHANGE_CLASS,
 } from '@/domain';
@@ -47,14 +47,14 @@ export function presetsDirty(s: ReadySession): boolean {
   if (!m.current || !m.baseline) return false;
   const ignoreVol = (s.presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent) === MasterVolumeMode.Independent;
   const soft = settings.soft.muted;
-  // Pins ride the preset only when includePins is set; otherwise a pin change
+  // IO config rides the preset only in WithPreset mode; otherwise an IO change
   // isn't preset content and must not mark dirty. Unknown directory => excluded.
-  const includePins = s.presets.directory?.includePins === true;
+  const withPresetIo = s.presets.directory?.outputConfigMode === OutputConfigMode.WithPreset;
   return diffSnapshots(m.baseline, m.current).some((c): boolean => {
     switch (CHANGE_CLASS[c.kind]) {
       case 'runtime-status': return false;
       case 'volume':         return !(ignoreVol || soft);
-      case 'pin-config':     return includePins;
+      case 'pin-config':     return withPresetIo;
       case 'preset-content': return true;
     }
   });

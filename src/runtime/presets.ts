@@ -9,7 +9,7 @@ import { reconcileAfterSync } from './deviceService';
 import { fetchAndApplyAsBaseline } from './resync';
 import { flushAllWrites as flushWrites } from './writes';
 import { acceptsWriteFormat } from '@/protocol/capabilities';
-import { type PresetSlot, PRESET_SLOT_COUNT } from '@/domain';
+import { type PresetSlot, PRESET_SLOT_COUNT, type OutputConfigMode } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
 import { Log, Result } from '@/utils';
 
@@ -464,20 +464,20 @@ export async function setStartupMode(
   }
 }
 
-export async function setPresetIncludePins(
-  s: ReadySession, include: boolean,
+export async function setOutputConfigMode(
+  s: ReadySession, mode: OutputConfigMode,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = s.device;
   clearActionError(s.presets);
   try {
     return await withBusy(s.presets, async () => {
-      await d.setPresetIncludePins(include);
+      await d.setOutputConfigMode(mode);
       if (s.presets.directory) {
-        s.presets.directory = { ...s.presets.directory, includePins: include };
+        s.presets.directory = { ...s.presets.directory, outputConfigMode: mode };
       }
       return Result.ok();
     });
   } catch (e) {
-    return recordToResult(s.presets, 'Set include pins', e);
+    return recordToResult(s.presets, 'Set output config mode', e);
   }
 }

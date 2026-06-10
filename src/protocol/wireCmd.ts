@@ -9,7 +9,7 @@ import type { DspTransport } from '@/transport/DspTransport';
 import { type BinCodec, Codec } from '@/utils';
 import * as Wire from './wireTypes';
 import type {
-  ChannelId, InputSlot, OutputSlot, FilterType, MasterVolumeMode,
+  ChannelId, InputSlot, OutputSlot, FilterType, MasterVolumeMode, OutputConfigMode,
   AudioInputSource, LgSoundSync, DacHwMute,
 } from '@/domain';
 
@@ -134,8 +134,11 @@ export const WireCmd = {
   PresetGetDir:         { code: 0x95 } satisfies RawCmd,
   PresetSetStartup:     { code: 0x96, codec: Wire.PresetStartupConfig } satisfies WriteCmd<{ mode: number; slot: number }>,
   PresetGetStartup:     { code: 0x97, codec: Wire.PresetStartupConfig } satisfies ReadCmd<{ mode: number; slot: number }>,
-  PresetSetIncludePins: { code: 0x98, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
-  PresetGetIncludePins: { code: 0x99, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
+  // Output-config persistence mode (1.1.4 semantics; legacy include-pins bool
+  // on older firmware, values 1:1). Deliberately ungated: the opcode exists
+  // and is value-compatible across the whole support window.
+  SetOutputConfigMode:  { code: 0x98, codec: tighten<OutputConfigMode>(Codec.u8) } satisfies WriteCmd<OutputConfigMode>,
+  GetOutputConfigMode:  { code: 0x99, codec: tighten<OutputConfigMode>(Codec.u8) } satisfies ReadCmd<OutputConfigMode>,
   PresetGetActive:      { code: 0x9A } satisfies RawCmd,
 
   // Loudness (V4+) -- see docs/HW-TODO.md section 1

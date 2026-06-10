@@ -448,7 +448,7 @@ describe('actions — master volume mode', () => {
     activeSession()!.presets.directory = {
       occupiedSlotsSet: new Set(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      includePins: false,
+      outputConfigMode: 0 as any,
       masterVolumeMode: MasterVolumeMode.Independent,
     };
     setMasterVolumeMode(activeSession()!, MasterVolumeMode.WithPreset);

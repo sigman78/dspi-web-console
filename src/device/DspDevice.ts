@@ -334,7 +334,7 @@ export class DspDevice {
       startupMode:      r.startupMode,
       defaultSlot:      r.defaultSlot as domain.PresetSlot,
       lastActiveSlot:   r.lastActiveSlot === 0xFF ? null : (r.lastActiveSlot as domain.PresetSlot),
-      includePins:      r.includePins,
+      outputConfigMode: r.outputConfigMode as domain.OutputConfigMode,
       masterVolumeMode: r.masterVolumeMode as domain.MasterVolumeMode,
     };
   }
@@ -377,8 +377,8 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.PresetSetStartup, config);
   }
 
-  async setPresetIncludePins(include: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.PresetSetIncludePins, include);
+  async setOutputConfigMode(mode: domain.OutputConfigMode): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetOutputConfigMode, mode);
   }
 
   // Per-parameter ("granular") lane: every write goes through a granular verb.
@@ -550,8 +550,8 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.PresetGetStartup);
   }
 
-  async getPresetIncludePins(): Promise<boolean> {
-    return proto.readCmd(this.transport, proto.WireCmd.PresetGetIncludePins);
+  async getOutputConfigMode(): Promise<domain.OutputConfigMode> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetOutputConfigMode);
   }
 
   async saveParams(): Promise<Result<void, proto.FlashResult>> {

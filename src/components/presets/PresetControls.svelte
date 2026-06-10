@@ -6,9 +6,9 @@
   import {
     saveActivePreset, revertActivePreset,
     setStartupDefault, setStartupMode, pastePresetTo, renamePresetSlot,
-    setMasterVolumeMode, setPresetIncludePins,
+    setMasterVolumeMode, setOutputConfigMode,
   } from '@/runtime';
-  import { MasterVolumeMode } from '@/domain';
+  import { MasterVolumeMode, OutputConfigMode } from '@/domain';
   import { PresetStartupMode } from '@/protocol';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { getSession } from '@/components/sessionContext';
@@ -39,7 +39,7 @@
 
   const startupMode = $derived(dir?.startupMode ?? PresetStartupMode.Specified);
   const mvMode = $derived(dir?.masterVolumeMode ?? MasterVolumeMode.Independent);
-  const includePins = $derived(dir?.includePins ?? false);
+  const ocMode = $derived(dir?.outputConfigMode ?? OutputConfigMode.Independent);
 
   async function onSave() {
     if (s.presets.busy || active == null) return;
@@ -132,10 +132,10 @@
     />
     <ToggleSwitch
       size="sm"
-      label="Pin assignments"
-      ariaLabel="Include pin assignments in preset"
-      checked={includePins}
-      onChange={(v) => void setPresetIncludePins(s, v)}
+      label="IO config (pins, types, I2S clock)"
+      ariaLabel="Include IO configuration in preset"
+      checked={ocMode === OutputConfigMode.WithPreset}
+      onChange={(v) => void setOutputConfigMode(s, v ? OutputConfigMode.WithPreset : OutputConfigMode.Independent)}
     />
   </fieldset>
 

@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from './DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
 import { PresetStartupMode } from '@/protocol';
+import { OutputConfigMode } from '@/domain';
 
 const TEST_SLOT_A = 8;
 const TEST_SLOT_B = 9;
@@ -42,7 +43,7 @@ describe('DspDevice — presets (HIL)', () => {
     // defined. Anything else is a firmware divergence we want to catch.
     expect([PresetStartupMode.Specified, PresetStartupMode.LastActive])
       .toContain(dir.startupMode);
-    expect(typeof dir.includePins).toBe('boolean');
+    expect([0, 1]).toContain(dir.outputConfigMode);
   });
 
   it('reads the active preset slot', async () => {
