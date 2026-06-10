@@ -23,6 +23,8 @@
     { value: 1, label: 'I2S' },
   ];
 
+  // outputPins = stereo pairs + trailing PDM, so numSpdif <= 4 and the
+  // slot index always fits the I2sPairSlot (0|1|2|3) cast below.
   const numSpdif = $derived(snap ? snap.outputPins.length - 1 : 0);
   const pdmIndex = $derived(snap ? snap.outputPins.length - 1 : -1);
   const pdmEnabled = $derived(
