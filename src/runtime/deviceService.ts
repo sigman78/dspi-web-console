@@ -31,7 +31,7 @@ export async function syncDeviceSnapshot(s: ReadySession): Promise<void> {
       s.mirror.init(snap);
     } catch (err) {
       Log.error('sync', 'syncDeviceSnapshot failed', err);
-      dispatch({ t: 'failed', message: (err as Error).message, attempt: s.attempt });
+      s.health.noteFail('sync', err);
       throw err;
     } finally {
       inflightSync = null;

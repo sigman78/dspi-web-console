@@ -27,6 +27,7 @@ interface Cadence {
 export function startPolling(session: ReadySession, clock: LoopClock = timerClock(STATUS_INTERVAL_MS)): Disposer {
   const tele = session.telemetry;
   const mir = session.mirror;
+  const health = session.health;
   let stopped = false;
   const isHidden = () => typeof document !== 'undefined' && document.hidden;
   // Only the in-flight guards are loop-local. The cadence CLOCK stays on the
@@ -42,8 +43,10 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       tele.cpu0 = s.cpu0;
       tele.cpu1 = s.cpu1;
       tele.errorCount = 0;
+      health.noteOk();
     } catch (e) {
       tele.errorCount++;
+      health.noteFail('poll:status', e);
       if (tele.errorCount <= 3) Log.warn('poll', 'getSystemStatus failed', e);
     }
   }
@@ -57,8 +60,10 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
         tele.pdmActive = b.pdmActive;
         tele.sequence = b.sequence;
       }
+      health.noteOk();
       tele.lastBufferMs = performance.now();
     } catch (e) {
+      health.noteFail('poll:buffer', e);
       Log.warn('poll', 'getBufferStats failed', e);
       tele.lastBufferMs = performance.now();
     }
@@ -67,7 +72,9 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   async function pollInfo(d: DspDevice): Promise<void> {
     try {
       tele.applyPartialInfo(await d.getSystemInfo());   // sets tele.lastInfoMs
+      health.noteOk();
     } catch (e) {
+      health.noteFail('poll:info', e);
       Log.warn('poll', 'getSystemInfo failed', e);
       tele.lastInfoMs = performance.now();
     }
@@ -89,7 +96,9 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       if (mir.inflight > 0 || mir.lastWriteMs >= startedAt) return;
       mir.replaceCurrent(snap);
       mir.consumeReconcile();
+      health.noteOk();
     } catch (e) {
+      health.noteFail('poll:param', e);
       Log.warn('poll', 'param reconcile failed', e);  // request stays pending
     } finally {
       tele.lastParamMs = performance.now();

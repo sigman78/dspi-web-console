@@ -74,6 +74,7 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
       backoffMs = 0;   // healthy read -> normal cadence
       if (bytes.byteLength > 0) handle(parseNotifyPacket(bytes));
     } catch (e) {
+      session.health.noteFail('notify', e);
       backoffMs = backoffMs === 0
         ? NOTIFY_INTERVAL_MS * 2
         : Math.min(backoffMs * 2, NOTIFY_MAX_BACKOFF_MS);

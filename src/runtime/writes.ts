@@ -5,7 +5,8 @@
 // always lands on the session the send/mutate closures target, even across a
 // reconnect or switch.
 //
-// write()        -- click-paced. Await ack, then mutate. Failure -> forceResyncNow.
+// write()        -- click-paced. Await ack, then mutate. Failure -> toast +
+//                   forceResyncNow; link health decides anything bigger.
 // scrub()        -- drag-paced sliders. Optimistic mutate + 16 ms coalesce lane.
 // writeChecked() -- commit-paced commands returning a typed Result. A non-ok is a
 //                   local device rejection (warn toast), not a connection error.
@@ -13,7 +14,7 @@
 // All respect the per-session `alive` guard: a send that settles after its
 // session was disposed (disconnect) is silently dropped (no mutate, no recovery).
 
-import { settings, pushNotice, dispatch, type ReadySession } from '@/state';
+import { settings, pushNotice, type ReadySession } from '@/state';
 import type { MirrorState } from '@/state/mirror.svelte';
 import { forceResyncNow } from './resync';
 import { Log, type Result } from '@/utils';
@@ -23,8 +24,8 @@ function errMessage(e: unknown): string {
 }
 
 // Click-paced write. Awaits the wire ack, mutates the mirror on success. On
-// throw: flips status to 'error' and forces a resync to recover ground truth.
-// The mutate is never applied on failure, so the mirror never holds an
+// throw: reports link health, toasts, and forces a resync to recover ground
+// truth. The mutate is never applied on failure, so the mirror never holds an
 // optimistic value that didn't survive.
 export async function write(
   s: ReadySession,
@@ -42,9 +43,14 @@ export async function write(
       }
     } catch (err) {
       if (!s.alive) return;
-      Log.error('writes', 'write send failed; forcing resync', err);
-      dispatch({ t: 'failed', message: errMessage(err) });
-      void forceResyncNow(s);
+      Log.error('writes', 'write send failed', err);
+      s.health.noteFail('write', err);
+      // Degraded: the probe owns recovery; per-failure toasts and 2s-timeout
+      // resync fetches would only pile up behind a dead link.
+      if (!s.health.degraded) {
+        pushNotice('error', `Write failed: ${errMessage(err)}`);
+        void forceResyncNow(s);
+      }
     } finally {
       s.mirror.dropInflight();
     }
@@ -75,7 +81,8 @@ export function command<T>(
     } catch (err) {
       if (!s.alive) return;
       Log.error('writes', `${op} failed`, err);
-      pushNotice('error', `${op} failed`);
+      s.health.noteFail(op, err);
+      if (!s.health.degraded) pushNotice('error', `${op} failed`);
     } finally {
       s.mirror.dropInflight();
     }
@@ -139,9 +146,12 @@ function makeLane(key: string, ms: number, mirror: MirrorState): Lane {
           if (s.alive) mirror.requestReconcile(settings.eagerReconcile);
         } catch (err) {
           if (!s.alive) return;
-          Log.error('writes', `scrub ${key} send failed; forcing resync`, err);
-          dispatch({ t: 'failed', message: errMessage(err) });
-          void forceResyncNow(s);
+          Log.error('writes', `scrub ${key} send failed`, err);
+          s.health.noteFail(`scrub ${key}`, err);
+          if (!s.health.degraded) {
+            pushNotice('error', `Write failed: ${errMessage(err)}`);
+            void forceResyncNow(s);
+          }
         } finally {
           if (claimedInflight) {
             mirror.dropInflight();

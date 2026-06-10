@@ -119,6 +119,37 @@ describe('write() helper', () => {
   });
 });
 
+describe('write() failure policy', () => {
+  beforeEach(() => {
+    installSession();
+    clearNotices();
+    vi.clearAllMocks();
+  });
+
+  it('a failed write stays connected, reports health, toasts, and resyncs', async () => {
+    const { forceResyncNow } = await import('@/runtime/resync');
+    await write(session, async () => { throw new Error('boom'); }, () => {});
+    expect(connection.connected).toBe(true);
+    expect(session.health.failTotal).toBe(1);
+    expect(notices.list.some((n) => n.kind === 'error')).toBe(true);
+    expect(forceResyncNow).toHaveBeenCalledWith(session);
+  });
+
+  it('while degraded, a failed write neither toasts nor resyncs', async () => {
+    const { forceResyncNow } = await import('@/runtime/resync');
+    session.health.degraded = true;
+    await write(session, async () => { throw new Error('boom'); }, () => {});
+    expect(notices.list.length).toBe(0);
+    expect(forceResyncNow).not.toHaveBeenCalled();
+  });
+
+  it('a failed command reports health and stays connected', async () => {
+    await command(session, 'set thing', async () => { throw new Error('boom'); }, () => {});
+    expect(session.health.failTotal).toBe(1);
+    expect(connection.connected).toBe(true);
+  });
+});
+
 describe('writeChecked() helper', () => {
   beforeEach(() => {
     installSession();
