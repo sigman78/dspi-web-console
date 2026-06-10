@@ -24,8 +24,38 @@ const PRESET_ECHO_GRACE_MS = 500;
 
 // loadPreset only acks the command; the firmware copies flash->RAM asynchronously
 // in its main loop (~100 ms). Wait this out before reading or overwriting RAM.
+// Fallback for devices without the notify channel; loadAndSettle is the primary path.
 function settleAfterLoad(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, PRESET_LOAD_SETTLE_MS));
+}
+
+// Event loss is possible (firmware ring overflow guarantees BULK_INVALIDATED
+// delivery, not presetLoaded), so the await is bounded; on timeout we proceed
+// as the old fixed sleep did -- by then far more than the copy window has passed.
+const PRESET_LOADED_TIMEOUT_MS = 1000;
+
+// LoadPreset only ACKs; firmware copies flash->RAM in its main loop. On
+// notify-capable devices, await the firmware's own presetLoaded(slot) -- it is
+// delivered strictly after the copy completes (the notify drain shares the
+// firmware main thread with the load). Register the waiter BEFORE sending so
+// the event can't be missed. Legacy devices fall back to the sleep.
+async function loadAndSettle(s: ReadySession, slot: PresetSlot): Promise<Result<void, PresetResult>> {
+  const d = s.device;
+  if (!d.capabilities.features.notifications) {
+    const r = await d.loadPreset(slot);
+    if (r.ok) await settleAfterLoad();
+    return r;
+  }
+  const loaded = s.notifyWaiters.waitFor(
+    (e) => e.kind === 'presetLoaded' && e.slot === slot,
+    PRESET_LOADED_TIMEOUT_MS,
+  );
+  const r = await d.loadPreset(slot);
+  if (!r.ok) return r;                       // waiter times out harmlessly
+  if (await loaded === null) {
+    Log.warn('presets', `presetLoaded(${slot}) not observed within ${PRESET_LOADED_TIMEOUT_MS}ms; proceeding`);
+  }
+  return r;
 }
 
 export type PresetActionError =
@@ -219,13 +249,12 @@ async function executeLoad(
   try {
     return await withBusy(s.presets, async () => {
       await flushWrites(s);
-      const r = await d.loadPreset(slot);
+      const r = await loadAndSettle(s, slot);
       if (r.ok) {
         // Reflect active slot in UI immediately. If the subsequent resync or
         // soft-mute reconcile throws, we still want the header/active marker
         // to match the slot the device just loaded.
         s.presets.active = slot;
-        await settleAfterLoad();
         await fetchAndApplyAsBaseline(s);
         await reconcileAfterSync(s);
       } else {
@@ -298,26 +327,25 @@ export async function pastePresetTo(s: ReadySession, src: PresetSlot): Promise<R
   try {
     return await withBusy(s.presets, async () => {
       await flushWrites(s);
-      // Step 1: Load source into RAM (device pointer -> src).
-      const r1 = await d.loadPreset(src);
+      // Step 1: Load source into RAM (device pointer -> src). loadAndSettle
+      // gates on the device's own load-complete signal, so the capture below
+      // can't grab the previous (active) slot's content.
+      const r1 = await loadAndSettle(s, src);
       if (!r1.ok) {
         recordActionError(s.presets, 'Paste', new Error(r1.message ?? `error ${r1.code}`));
         return r1;
       }
-      // Step 2: Capture src content as a blob -- only after the load has settled
-      // into RAM, else we'd capture the previous (active) slot's content.
-      await settleAfterLoad();
+      // Step 2: Capture src content as a blob.
       const sourceBlob = await d.captureState();
-      // Step 3: Restore active slot in RAM (device pointer -> active).
-      const r3 = await d.loadPreset(active);
+      // Step 3: Restore active slot in RAM (device pointer -> active), settled
+      // for the same reason: its deferred flash->RAM copy must not land after
+      // restoreState and clobber the source content.
+      const r3 = await loadAndSettle(s, active);
       if (!r3.ok) {
         recordActionError(s.presets, 'Paste', new Error(r3.message ?? `error ${r3.code}`));
         return r3;
       }
       // Step 4: Push src content into active's RAM (no flash; pointer unchanged).
-      // Wait for the active-slot load to settle first, otherwise its deferred
-      // flash->RAM copy could land after restoreState and clobber the source.
-      await settleAfterLoad();
       if (!acceptsWriteFormat(d.capabilities, sourceBlob.formatVersion)) {
         const msg = `Paste blocked: snapshot format v${sourceBlob.formatVersion} cannot be written to device wire v${d.capabilities.wire}`;
         recordActionError(s.presets, 'Paste', new Error(msg));

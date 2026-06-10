@@ -55,6 +55,7 @@ export class MockTransport implements DspTransport {
   #open = false;
   #listeners = new Map<TransportEvent, Set<() => void>>();
   #notifyQueue: Uint8Array[] = [];
+  #notifySeq = 0;
   #serial: string;
   #platform: PlatformType;
   #wireVersion: number;
@@ -126,6 +127,14 @@ export class MockTransport implements DspTransport {
   // Enqueue a raw notify packet for the next notifyIn().
   pushNotify(bytes: Uint8Array): void {
     this.#notifyQueue.push(bytes);
+  }
+
+  // Mirrors firmware: a load emits presetLoaded(slot) then bulkInvalidated(Preset).
+  #pushPresetLoadEvents(slot: number): void {
+    this.#notifySeq = (this.#notifySeq + 1) & 0xff;
+    this.pushNotify(new Uint8Array([2, 0x04, 0, this.#notifySeq, slot, 0, 0, 0]));
+    this.#notifySeq = (this.#notifySeq + 1) & 0xff;
+    this.pushNotify(new Uint8Array([2, 0x03, 0, this.#notifySeq, 3, 0, 0, 0]));
   }
 
   async notifyIn(length: number): Promise<Uint8Array> {
@@ -298,6 +307,7 @@ export class MockTransport implements DspTransport {
         }
         this.#presetActiveSlot = slot;
         this.#presetLastActiveSlot = slot;
+        this.#pushPresetLoadEvents(slot);
         return new Uint8Array([0]); // Ok
       }
       case WireCmd.PresetDelete.code: {
