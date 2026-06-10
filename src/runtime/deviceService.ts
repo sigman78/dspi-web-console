@@ -15,6 +15,7 @@ import { Log } from '@/utils';
 import { flushAllWrites } from './writes';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
+import { startLinkProbe } from './linkProbe';
 import { endConnection, type ConnectionScope } from './connectionScope';
 import { acquireDeviceLock, releaseDeviceLock } from './deviceLock';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
@@ -56,6 +57,7 @@ export async function wireUpConnection(device: DspDevice, scope?: ConnectionScop
     if (scope) {
       scope.add(startPolling(session));
       scope.add(startNotifyChannel(session));
+      scope.add(startLinkProbe(session));
       acquireDeviceLock();
       scope.add(() => releaseDeviceLock());
     }

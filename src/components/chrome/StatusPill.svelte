@@ -18,10 +18,12 @@
     }
   }
 
+  const degraded = $derived(connection.connected && (s?.health.degraded ?? false));
+
   const text = $derived.by(() => {
     if (unsupported) return 'WEBUSB UNAVAILABLE';
     switch (connection.phase) {
-      case 'ready':      return 'ONLINE';
+      case 'ready':      return degraded ? 'LINK UNSTABLE' : 'ONLINE';
       case 'connecting': return 'CONNECTING…';
       // Keep the pill text fixed-width: the (possibly long) message lives in
       // the hover tooltip and the browser console, never in the bar itself.
@@ -32,7 +34,7 @@
 
   const tone = $derived.by(() => {
     if (unsupported || connection.phase === 'errored') return 'err';
-    if (connection.connected) return 'ok';
+    if (connection.connected) return degraded ? 'warn' : 'ok';
     if (connection.phase === 'connecting') return 'warn';
     return 'idle';
   });
@@ -45,9 +47,11 @@
   title={unsupported ??
     (connection.phase === 'errored'
       ? `ERROR · ${connection.error ?? ''}`
-      : (s ? presetsDirty(s) : false) && connection.connected
-        ? `${text} · unsaved changes`
-        : text)}
+      : degraded
+        ? `LINK UNSTABLE · ${s?.health.lastErrorOp ?? ''}: ${s?.health.lastErrorMsg ?? ''}`
+        : (s ? presetsDirty(s) : false) && connection.connected
+          ? `${text} · unsaved changes`
+          : text)}
 >
   <span class="dot"></span>
   {text}
