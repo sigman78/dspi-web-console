@@ -94,3 +94,48 @@ describe('activeSession()', () => {
     expect(activeSession()).toBe(fakeSession);
   });
 });
+
+import { newAttempt, clearAttempt, currentAttempt } from './appState.svelte';
+
+describe('attempt tokens', () => {
+  it('newAttempt mints monotonically increasing tokens and makes them current', () => {
+    const a = newAttempt();
+    const b = newAttempt();
+    expect(b).toBeGreaterThan(a);
+    expect(currentAttempt()).toBe(b);
+  });
+
+  it('clearAttempt leaves no current attempt', () => {
+    newAttempt();
+    clearAttempt();
+    expect(currentAttempt()).toBeNull();
+  });
+
+  it('dispatch drops an event carrying a stale attempt', () => {
+    const stale = newAttempt();
+    newAttempt();
+    dispatch({ t: 'disconnected' });                       // unscoped: passes, → noDevice
+    dispatch({ t: 'failed', message: 'late', attempt: stale });
+    expect(app.current.kind).toBe('noDevice');             // stale failed dropped
+  });
+
+  it('dispatch drops a scoped event after clearAttempt', () => {
+    const a = newAttempt();
+    dispatch({ t: 'disconnected' });
+    clearAttempt();
+    dispatch({ t: 'failed', message: 'late', attempt: a });
+    expect(app.current.kind).toBe('noDevice');
+  });
+
+  it('dispatch accepts an event carrying the current attempt', () => {
+    const a = newAttempt();
+    dispatch({ t: 'failed', message: 'now', attempt: a });
+    expect(app.current.kind).toBe('errored');
+  });
+
+  it('dispatch accepts unscoped events regardless of current attempt', () => {
+    newAttempt();
+    dispatch({ t: 'failed', message: 'forced' });
+    expect(app.current.kind).toBe('errored');
+  });
+});

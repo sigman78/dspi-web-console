@@ -1,45 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { applyChange } from './applyChange';
 import { diffSnapshots } from './snapshotDiff';
-import type { DspSnapshot, ChannelModel } from './snapshot';
-import type { OutputModel, RouteModel } from './mixer';
+import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
 import type { FilterParams } from './filter';
 
 function band(o: Partial<FilterParams> = {}): FilterParams {
   return { type: 0, bypass: false, frequency: 1000, q: 1.0, gain: 0, ...o };
 }
-function channel(id: number, name = `ch${id}`): ChannelModel {
-  return { id: id as any, name, defaultName: name, shortName: `c${id}`, bandCount: 12, isOutput: false, outputMode: null, filters: Array.from({ length: 12 }, () => band()) };
-}
-function output(id: number): OutputModel {
-  return { id: id as any, wireIndex: 0 as any, name: `out${id}`, shortName: `o${id}`, outputMode: 'Analog' as any, enabled: true, muted: false, gainDb: 0, delayMs: 0 };
-}
-function route(i: number, o: number): RouteModel {
-  return { inputIndex: i as any, inputName: `in${i}`, outputId: o as any, outputWireIndex: 0 as any, outputName: `out${o}`, enabled: false, invert: false, gainDb: 0 };
-}
-function snap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
-  const base: DspSnapshot = {
-    platform: { name: 'rp2350', type: 'rp2350', totalChannelCount: 11, outputCount: 4 } as any,
-    bypass: false, masterPreampDb: 0, inputPreampDb: [0, 0], masterVolumeDb: 0,
-    channels: Array.from({ length: 11 }, (_, i) => channel(i)),
-    outputs: Array.from({ length: 4 }, (_, i) => output(i + 7)),
-    routes: [route(0, 7)],
-    loudness: { enabled: false, refSpl: 85, intensityPct: 0 },
-    crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5 } as any,
-    leveller: { enabled: false, speed: 1, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40 } as any,
-    i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 } as any,
-    outputPins: [6, 7],
-    inputConfig: null, lgSoundSync: null, userVolume: null, dacHwMute: null,
-  };
-  return structuredClone({ ...base, ...overrides });
-}
 
 describe('applyChange', () => {
   it('applies a single kind in place', () => {
-    const t = snap();
+    const t = makeSnapshot((b) => { b.numPinOutputs = 2; b.pins[0] = 6; b.pins[1] = 7; });
     applyChange({ kind: 'bypass', value: true }, t);
     expect(t.bypass).toBe(true);
-    applyChange({ kind: 'band', channel: 2, band: 4, value: band({ gain: 6 }) }, t);
+    applyChange({ kind: 'band', channelIndex: 2, band: 4, value: band({ gain: 6 }) }, t);
     expect(t.channels[2].filters[4].gain).toBe(6);
     applyChange({ kind: 'inputPreamp', channel: 1, value: -3 }, t);
     expect(t.inputPreampDb[1]).toBe(-3);
@@ -48,33 +22,71 @@ describe('applyChange', () => {
   });
 
   it('applies lgSoundSync split kinds when the section is present, skips when null', () => {
-    const t = snap({ lgSoundSync: { enabled: false, present: false, volume: 0, muted: false } as any });
+    // V10 snapshot carries lgSoundSync non-null.
+    const t = makeSnapshot((b) => { b.formatVersion = 10; });
     applyChange({ kind: 'lgSoundSyncEnabled', value: true }, t);
     applyChange({ kind: 'lgSoundSyncStatus', value: { present: true, volume: 40, muted: false } }, t);
     expect(t.lgSoundSync).toEqual({ enabled: true, present: true, volume: 40, muted: false });
     // null section: a status change is a no-op, not a crash
-    const t2 = snap({ lgSoundSync: null });
+    const t2 = makeSnapshot(); // V6 → lgSoundSync null
     applyChange({ kind: 'lgSoundSyncEnabled', value: true }, t2);
     expect(t2.lgSoundSync).toBeNull();
   });
 
+  it('applies section appearance (null -> present) across wire versions', () => {
+    // V6 default: inputConfig/userVolume/dacHwMute/lgSoundSync are all null.
+    const before = makeSnapshot();
+    // V10: all four sections present.
+    const after = makeSnapshot((b) => { b.formatVersion = 10; });
+
+    // Premise guard: fail loudly if fixture defaults change.
+    expect(before.inputConfig).toBeNull();
+    expect(before.userVolume).toBeNull();
+    expect(before.dacHwMute).toBeNull();
+    expect(before.lgSoundSync).toBeNull();
+    expect(after.inputConfig).not.toBeNull();
+    expect(after.userVolume).not.toBeNull();
+    expect(after.dacHwMute).not.toBeNull();
+    expect(after.lgSoundSync).not.toBeNull();
+
+    const target = structuredClone(before);
+    for (const c of diffSnapshots(before, after)) applyChange(c, target);
+
+    // Whole-object equality cannot hold: lgSoundSyncEnabled/lgSoundSyncStatus
+    // are no-ops when t.lgSoundSync is null (applyChange guards on the section),
+    // so target.lgSoundSync stays null even after applying. Per-section
+    // assertions cover the three kinds that assign directly over null.
+    expect(target.inputConfig).toEqual(after.inputConfig);
+    expect(target.userVolume).toEqual(after.userVolume);
+    expect(target.dacHwMute).toEqual(after.dacHwMute);
+  });
+
   it('round-trips: applying diffSnapshots(a,b) onto a reproduces b', () => {
-    const a = snap();
-    const b = snap({
-      bypass: true, masterVolumeDb: -6, masterPreampDb: -2, inputPreampDb: [0, -1],
-      loudness: { enabled: true, refSpl: 80, intensityPct: 0.5 },
-      crossfeed: { enabled: true, preset: 1, itd: true, freq: 650, feedDb: 3 } as any,
-      leveller: { enabled: true, speed: 1, lookahead: false, amount: 50, maxGainDb: 12, gateDb: -50 } as any,
-      inputConfig: { source: 1, spdifRxPin: 5 } as any,
-      userVolume: { volumeDb: -4, mute: true } as any,
-      dacHwMute: { enabled: true, activeLow: true, pin: 11, holdMs: 5, releaseMs: 7 } as any,
-      i2s: { outputSlotTypes: [0, 1, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 } as any,
-      outputPins: [6, 8],
+    // Both snapshots are V10 codec-real; all optional sections present.
+    const a = makeSnapshot((b) => {
+      b.formatVersion = 10;
+      b.numPinOutputs = 2;
+      b.pins[0] = 6;
+      b.pins[1] = 7;
     });
-    b.channels[3].name = 'Sub';
+    const b = structuredClone(a);
+
+    b.bypass = true;
+    b.masterVolumeDb = -6;
+    b.masterPreampDb = -2;
+    b.inputPreampDb = [b.inputPreampDb[0], -1];
+    b.loudness = { enabled: true, refSpl: 80, intensityPct: 0.5 };
+    b.crossfeed = { ...b.crossfeed, enabled: true, preset: 1, itd: true, freq: 650, feedDb: 3 };
+    b.leveller = { ...b.leveller, enabled: true, amount: 50, maxGainDb: 12, gateDb: -50 };
+    b.inputConfig = { ...b.inputConfig!, source: 1 };
+    b.userVolume = { volumeDb: -4, mute: true };
+    b.dacHwMute = { ...b.dacHwMute!, enabled: true };
+    b.i2s = { ...b.i2s, outputSlotTypes: [0, 1, 0, 0] };
+    b.outputPins = [6, 8];
+    b.channels[3] = { ...b.channels[3], name: 'Sub' };
     b.channels[0].filters[2] = band({ gain: 4, bypass: true });
-    b.outputs[1].enabled = false;
-    b.routes[0] = { ...route(0, 7), enabled: true };
+    b.outputs[1] = { ...b.outputs[1], enabled: !b.outputs[1].enabled };
+    b.routes[0] = { ...b.routes[0], enabled: !b.routes[0].enabled };
 
     for (const c of diffSnapshots(a, b)) applyChange(c, a);
     expect(a).toEqual(b);

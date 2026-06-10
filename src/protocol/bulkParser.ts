@@ -112,6 +112,12 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
 
   Wire.LegacyChannels.read(r);  // 16 B reserved block, ignored
 
+  // Parsed but deliberately not modeled: firmware's delay engine only reads
+  // output-channel delays (input entries are stored-but-inert), and the bulk
+  // outputs section overrides the output entries right after this section is
+  // applied -- outputs[].delayMs is the authoritative copy the snapshot models.
+  // The builder echoes the parsed values back unchanged; firmware's
+  // outputs-section override makes that harmless.
   const delaysMs = Wire.ChannelDelays.read(r);
 
   const crosspoints = Array.from({ length: Wire.Const.NUM_INPUTS }, () =>

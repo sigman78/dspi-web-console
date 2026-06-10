@@ -16,6 +16,7 @@ import {
   MasterVolumeMode,
   CrossfeedPreset,
   LevellerSpeed,
+  matrixColumns,
 } from '@/domain';
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { deriveCapabilities } from '@/protocol/capabilities';
@@ -122,15 +123,14 @@ describe('actions wiring', () => {
     dispatch({ t: 'synced', session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: 0 }))));
 
-    setMasterVolume(activeSession()!, -12);    // queues -12 in the coalescer
-    toggleMute(activeSession()!);              // queues -128 (MUTE_DB), overwriting -12
+    setMasterVolume(activeSession()!, -12);    // sends immediately
+    toggleMute(activeSession()!);              // parks -128 (MUTE_DB) behind it
 
-    await vi.advanceTimersByTimeAsync(50);   // flush the trailing-edge timer
+    await vi.advanceTimersByTimeAsync(50);
     await vi.runAllTimersAsync();
 
     expect(settings.soft.muted).toBe(true);
     expect(calls.at(-1)).toBe(-128);          // mute is the last value on the wire
-    expect(calls).not.toContain(-12);        // the slider value was coalesced away
   });
 
   it('disconnect cancels pending coalescer + resync and resets state', async () => {
@@ -146,13 +146,14 @@ describe('actions wiring', () => {
     connectionScope()!.add(attachTransportListeners(transport, device));
     connectionScope()!.add(() => cancelWrites());
 
-    setMasterVolume(activeSession()!, -9);    // queues a write
-    transport.emit('disconnect');             // should cancel before timer fires
+    setMasterVolume(activeSession()!, -9);    // sends immediately
+    setMasterVolume(activeSession()!, -6);    // parks behind the in-flight send
+    transport.emit('disconnect');             // should drop the parked send
 
     await vi.advanceTimersByTimeAsync(100);
     await vi.runAllTimersAsync();
 
-    expect(calls).toEqual([]);                // pending coalescer dropped
+    expect(calls).toEqual([-9]);              // parked -6 dropped
     expect(connection.phase).toBe('noDevice');
     expect(activeSession()).toBeNull();       // session (and its telemetry) dropped
   });
@@ -167,15 +168,15 @@ describe('actions wiring', () => {
     beginConnection();
     connectionScope()!.add(attachTransportListeners(t1, {} as DspDevice));
     expect(t1.listenerCount('disconnect')).toBe(1);
-    expect(t1.listenerCount('connect')).toBe(1);
+    // No transport 'connect' listener: transports emit connect before
+    // listeners attach, so a handler there could never fire in production.
+    expect(t1.listenerCount('connect')).toBe(0);
 
     beginConnection();                        // disposes the t1 scope
     connectionScope()!.add(attachTransportListeners(t2, {} as DspDevice));
-    // t1 listeners removed, t2 listeners attached
+    // t1 listener removed, t2 listener attached
     expect(t1.listenerCount('disconnect')).toBe(0);
-    expect(t1.listenerCount('connect')).toBe(0);
     expect(t2.listenerCount('disconnect')).toBe(1);
-    expect(t2.listenerCount('connect')).toBe(1);
   });
 
   it('copyEqBands copies all bands into the snapshot in N granular operations', async () => {
@@ -343,12 +344,13 @@ describe('setInputPreamp', () => {
     dispatch({ t: 'synced', session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
 
-    setInputPreamp(activeSession()!, 0, -1);
-    setInputPreamp(activeSession()!, 0, -2);
-    setInputPreamp(activeSession()!, 0, -3);
-    setInputPreamp(activeSession()!, 1, -10);
+    setInputPreamp(activeSession()!, 0, -1);   // fires immediately
+    setInputPreamp(activeSession()!, 0, -2);   // parked...
+    setInputPreamp(activeSession()!, 0, -3);   // ...replaced: latest wins
+    setInputPreamp(activeSession()!, 1, -10);  // separate lane, fires immediately
     await vi.runAllTimersAsync();
-    expect(setInputPreampFn).toHaveBeenCalledTimes(2);
+    expect(setInputPreampFn).toHaveBeenCalledTimes(3);
+    expect(setInputPreampFn).not.toHaveBeenCalledWith(0, -2);
     expect(setInputPreampFn).toHaveBeenCalledWith(0, -3);
     expect(setInputPreampFn).toHaveBeenCalledWith(1, -10);
   });
@@ -396,18 +398,18 @@ describe('setChannelName', () => {
     expect(liveMirror().current!.channels[0].name).toBe('padded'); // resolved (trimmed)
   });
 
-  it('also patches the snapshot outputs[i].name when the channel is an output', async () => {
+  it('renamed output channel shows the new name through the matrix join', async () => {
     // ChannelId.Out1L = 2; corresponding outputs[] entry has wireIndex 0.
     setChannelName(activeSession()!, 2 satisfies ChannelId, 'Front Left');
     await vi.runAllTimersAsync();
 
     const channel = liveMirror().current!.channels.find((c) => c.id === 2);
-    const output = liveMirror().current!.outputs.find((o) => o.wireIndex === 0);
+    const column = matrixColumns(liveMirror().current).find((c) => c.wireIdx === 0);
     expect(channel?.name).toBe('Front Left');
-    expect(output?.name).toBe('Front Left');
+    expect(column?.name).toBe('Front Left');
   });
 
-  it('patches RP2040 PDM output name at compact output slot 4', async () => {
+  it('renames RP2040 PDM and joins it at compact output slot 4', async () => {
     const rp2040Device = initializedDevice({
       setChannelName: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
@@ -419,21 +421,21 @@ describe('setChannelName', () => {
     await vi.runAllTimersAsync();
 
     const channel = liveMirror().current!.channels.find((c) => c.id === 10);
-    const output = liveMirror().current!.outputs.find((o) => o.wireIndex === 4);
+    const column = matrixColumns(liveMirror().current).find((c) => c.wireIdx === 4);
     expect(channel?.name).toBe('Sub');
-    expect(output?.name).toBe('Sub');
+    expect(column?.name).toBe('Sub');
     expect(liveMirror().current!.outputs.some((o) => o.wireIndex === 8)).toBe(false);
   });
 
-  it('does not touch outputs[] when renaming an input channel', async () => {
-    const outputsBefore = liveMirror().current!.outputs.map((o) => o.name).slice();
+  it('does not change output column names when renaming an input channel', async () => {
+    const namesBefore = matrixColumns(liveMirror().current).map((c) => c.name);
 
     // ChannelId.In1L = 0 — no entry in outputs[].
     setChannelName(activeSession()!, 0 satisfies ChannelId, 'Mic 1');
     await vi.runAllTimersAsync();
 
-    const outputsAfter = liveMirror().current!.outputs.map((o) => o.name);
-    expect(outputsAfter).toEqual(outputsBefore);
+    const namesAfter = matrixColumns(liveMirror().current).map((c) => c.name);
+    expect(namesAfter).toEqual(namesBefore);
   });
 });
 
@@ -655,7 +657,7 @@ describe('bulk writes: eq/delay/names', () => {
     vi.useRealTimers();
   });
 
-  it('setChannelName sets name and mirrors to the denormalized output entry', async () => {
+  it('setChannelName sets the channel name and the matrix column joins it', async () => {
     vi.useFakeTimers();
     const setChannelNameFn = vi.fn(async () => {});
     const device = initializedDevice({
@@ -668,7 +670,7 @@ describe('bulk writes: eq/delay/names', () => {
     setChannelName(activeSession()!, outId, 'Custom');
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.channels.find((c) => c.id === outId)!.name).toBe('Custom');
-    expect(liveMirror().current!.outputs.find((o) => o.id === outId)!.name).toBe('Custom');
+    expect(matrixColumns(liveMirror().current).find((c) => c.id === outId)!.name).toBe('Custom');
     vi.useRealTimers();
   });
 });

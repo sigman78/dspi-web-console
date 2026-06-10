@@ -484,12 +484,12 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetOutputDelay, output);
   }
 
-  async setOutputType(slot: domain.OutputSlot, type: number): Promise<Result<void, proto.PinConfigResult>> {
+  async setOutputType(slot: domain.I2sPairSlot, type: number): Promise<Result<void, proto.PinConfigResult>> {
     const wValue = ((type & 0xFF) << 8) | (slot & 0xFF);
     return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetOutputType, wValue));
   }
 
-  async getOutputType(slot: domain.OutputSlot): Promise<number> {
+  async getOutputType(slot: domain.I2sPairSlot): Promise<number> {
     return proto.actionCmd(this.transport, proto.WireCmd.GetOutputType, slot);
   }
 

@@ -4,7 +4,7 @@
   import PinSelect from './PinSelect.svelte';
   import { connection } from '@/state';
   import { setOutputType, setOutputDataPin } from '@/runtime';
-  import { availablePinsFor, channelById, ChannelId, type OutputSlot } from '@/domain';
+  import { availablePinsFor, channelLayoutById, ChannelId, type I2sPairSlot } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -15,7 +15,7 @@
   // Each SPDIF slot is a stereo output pair (OUT n -> nL / nR).
   function pairShort(slot: number): string {
     const lId = (ChannelId.Out1L + slot * 2) as ChannelId;
-    return `${channelById(lId).shortName} / ${channelById((lId + 1) as ChannelId).shortName}`;
+    return `${channelLayoutById(lId).shortName} / ${channelLayoutById((lId + 1) as ChannelId).shortName}`;
   }
 
   const TYPE_OPTS: ReadonlyArray<{ value: number; label: string }> = [
@@ -23,6 +23,8 @@
     { value: 1, label: 'I2S' },
   ];
 
+  // outputPins = stereo pairs + trailing PDM, so numSpdif <= 4 and the
+  // slot index always fits the I2sPairSlot (0|1|2|3) cast below.
   const numSpdif = $derived(snap ? snap.outputPins.length - 1 : 0);
   const pdmIndex = $derived(snap ? snap.outputPins.length - 1 : -1);
   const pdmEnabled = $derived(
@@ -46,7 +48,7 @@
             options={TYPE_OPTS}
             ariaLabel={`Out ${slot + 1} output type`}
             disabled={!connected}
-            onChange={(t) => void setOutputType(s, slot as OutputSlot, t)}
+            onChange={(t) => void setOutputType(s, slot as I2sPairSlot, t)}
           />
           <PinSelect
             value={snap.outputPins[slot]}

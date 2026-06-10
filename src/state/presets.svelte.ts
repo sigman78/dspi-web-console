@@ -5,7 +5,8 @@ import {
   type PresetSlot, PRESET_SLOT_COUNT,
   type PresetDirectoryInfo,
   MasterVolumeMode,
-  diffSnapshots, type SnapshotChange,
+  diffSnapshots,
+  CHANGE_CLASS,
 } from '@/domain';
 import { settings } from './settings.svelte';
 import type { ReadySession } from './appState.svelte';
@@ -39,9 +40,6 @@ export function createPresetsState(): PresetsState {
   return s;
 }
 
-// Device-reported kinds that change without a user edit; never count as dirty.
-const RUNTIME_CHANGE_KINDS = new Set<SnapshotChange['kind']>(['lgSoundSyncStatus']);
-
 // Re-evaluates on every read in a tracking context. The diff is ~132 ops, cheap
 // enough per read; the change-set is empty in the clean case.
 export function presetsDirty(s: ReadySession): boolean {
@@ -52,10 +50,14 @@ export function presetsDirty(s: ReadySession): boolean {
   // Pins ride the preset only when includePins is set; otherwise a pin change
   // isn't preset content and must not mark dirty. Unknown directory => excluded.
   const includePins = s.presets.directory?.includePins === true;
-  return diffSnapshots(m.baseline, m.current).some((c) =>
-    !RUNTIME_CHANGE_KINDS.has(c.kind) &&
-    !(c.kind === 'masterVolume' && (ignoreVol || soft)) &&
-    !(c.kind === 'outputPins' && !includePins));
+  return diffSnapshots(m.baseline, m.current).some((c): boolean => {
+    switch (CHANGE_CLASS[c.kind]) {
+      case 'runtime-status': return false;
+      case 'volume':         return !(ignoreVol || soft);
+      case 'pin-config':     return includePins;
+      case 'preset-content': return true;
+    }
+  });
 }
 
 // Clears any pending boundary modal so test runs don't carry state.

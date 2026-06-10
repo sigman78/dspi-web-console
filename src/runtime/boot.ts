@@ -6,7 +6,7 @@ import { withTimeout } from '@/transport/withTimeout';
 import { withWireMonitor } from '@/transport/withWireMonitor';
 import { formatDeviceInfo, wireMonitorEnabled } from '@/protocol/wireMonitor';
 import { attachTransportListeners, wireUpConnection } from './deviceService';
-import { beginConnection, endConnection } from './connectionScope';
+import { beginConnection, endConnection, type ConnectionScope } from './connectionScope';
 import { isDeviceHeld } from './deviceLock';
 import { settings, dispatch, connection } from '@/state';
 import { Log } from '@/utils';
@@ -25,15 +25,17 @@ export function webUsbUnsupportedReason(): string | null {
 
 // Maps a connect failure onto session status. UnsupportedFirmware gets a
 // distinct kind so the hero shows an upgrade prompt instead of the generic
-// diagnostics panel.
-export function reportConnectError(err: unknown): void {
+// diagnostics panel. `attempt` scopes the dispatch to the failing attempt so a
+// stale failure can't clobber a newer connection's state.
+export function reportConnectError(err: unknown, attempt?: number): void {
   const message = (err as Error)?.message ?? String(err);
   const upgrade = err instanceof UnsupportedFirmware || err instanceof UnsupportedDevicePacket;
-  dispatch({ t: 'failed', message, errorKind: upgrade ? 'unsupported-firmware' : null });
+  dispatch({ t: 'failed', message, errorKind: upgrade ? 'unsupported-firmware' : null, attempt });
 }
 
 async function createBoundDevice(
   transport: DspTransport,
+  scope: ConnectionScope,
   openTransport?: () => Promise<void>,
 ): Promise<DspDevice> {
   // Wrap with the timeout decorator before DspDevice so every ctrlIn/ctrlOut
@@ -43,10 +45,9 @@ async function createBoundDevice(
   // connect/disconnect events come from there, not the wrappers.
   const monitored = wireMonitorEnabled() ? withWireMonitor(transport) : transport;
   const wrapped = withTimeout(monitored, { ctrlMs: CTRL_TIMEOUT_MS });
-  const scope = beginConnection();                   // fresh scope (disposes any prior)
   try {
     const device = await DspDevice.create(wrapped, openTransport);
-    scope.add(attachTransportListeners(transport, device));
+    scope.add(attachTransportListeners(transport, device, scope.attempt));
     if (wireMonitorEnabled()) {
       // Connection banner (info level). A debug banner must never break a real
       // connection, so swallow any logging failure.
@@ -56,7 +57,6 @@ async function createBoundDevice(
     }
     return device;
   } catch (err) {
-    endConnection();                                 // dispose the partial scope
     try {
       await transport.close();
     } catch (closeErr) {
@@ -66,23 +66,37 @@ async function createBoundDevice(
   }
 }
 
+// Entry points own the attempt: mint the scope, report failure with its token
+// BEFORE endConnection() clears it (a cleared token would drop the dispatch and
+// strand the UI in 'connecting').
+
 export async function connectRequested(): Promise<void> {
+  if (connection.phase === 'connecting') return;
+  const scope = beginConnection();
   try {
-    dispatch({ t: 'requested' });
+    dispatch({ t: 'requested', attempt: scope.attempt });
     const transport = new WebUsbTransport();
-    const device = await createBoundDevice(transport, () => transport.requestAndOpen());
-    await wireUpConnection(device);
+    const device = await createBoundDevice(transport, scope, () => transport.requestAndOpen());
+    await wireUpConnection(device, scope);
   } catch (err) {
     Log.error('connect', 'connect failed', err);
-    reportConnectError(err);
+    reportConnectError(err, scope.attempt);
+    endConnection();
     throw err;
   }
 }
 
 export async function bootMock(platform: 'rp2040' | 'rp2350'): Promise<void> {
-  const transport = new MockTransport({ platform });
-  const device = await createBoundDevice(transport, undefined);
-  await wireUpConnection(device);
+  const scope = beginConnection();
+  try {
+    const transport = new MockTransport({ platform });
+    const device = await createBoundDevice(transport, scope, undefined);
+    await wireUpConnection(device, scope);
+  } catch (err) {
+    reportConnectError(err, scope.attempt);
+    endConnection();
+    throw err;
+  }
 }
 
 export async function bootReal(): Promise<void> {
@@ -98,8 +112,15 @@ export async function bootReal(): Promise<void> {
     const transport = new WebUsbTransport();
     const ok = await transport.tryAutoConnect();
     if (!ok) return;
-    const device = await createBoundDevice(transport, async () => {});
-    await wireUpConnection(device);
+    const scope = beginConnection();
+    try {
+      const device = await createBoundDevice(transport, scope, async () => {});
+      await wireUpConnection(device, scope);
+    } catch (err) {
+      reportConnectError(err, scope.attempt);
+      endConnection();
+      throw err;
+    }
   } finally {
     booting = false;
   }
@@ -115,6 +136,7 @@ export function registerNavigatorReconnect(): void {
     if (booting) return;
     if (connection.connected || connection.phase === 'connecting') return;
     Log.info('reconnect', 'last-known device re-enumerated, attempting bootReal()');
-    void bootReal().catch(reportConnectError);
+    // bootReal reports failures itself with its own attempt token.
+    void bootReal().catch((e) => Log.error('reconnect', 'auto-reconnect failed', e));
   });
 }

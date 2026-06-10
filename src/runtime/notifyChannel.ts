@@ -12,6 +12,10 @@ const NOTIFY_INTERVAL_MS = 150;
 // storm. A healthy read resets to the normal cadence.
 const NOTIFY_MAX_BACKOFF_MS = 5000;
 
+// Pump fast while an action awaits a specific event via the waiter registry --
+// the endpoint usually has a stale IDLE armed, so an event needs ~2 reads.
+const NOTIFY_BURST_MS = 8;
+
 // Start the notify read loop for a device. Returns a stop disposer. No-op (and
 // the loop never arms) on devices without the notifications capability.
 export function startNotifyChannel(session: ReadySession, clock: LoopClock = timerClock(NOTIFY_INTERVAL_MS)): Disposer {
@@ -31,9 +35,11 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
     stopped = true;
     clock.cancel();
     offVisibility();
+    session.notifyWaiters.setKick(null);
   }
 
   function handle(event: NotifyEvent): void {
+    session.notifyWaiters.notify(event);   // observe-only; routing below is unchanged
     const seq = 'seq' in event ? event.seq : null;
     if (seq !== null) {
       // A gap means a possibly-external event was missed -- always re-read, even
@@ -74,18 +80,23 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
       backoffMs = 0;   // healthy read -> normal cadence
       if (bytes.byteLength > 0) handle(parseNotifyPacket(bytes));
     } catch (e) {
+      session.health.noteFail('notify', e);
       backoffMs = backoffMs === 0
         ? NOTIFY_INTERVAL_MS * 2
         : Math.min(backoffMs * 2, NOTIFY_MAX_BACKOFF_MS);
       Log.warn('notify', 'read failed; backing off', e);
     }
-    if (!stopped && !isHidden()) clock.next(pump, backoffMs || undefined);
+    if (!stopped && !isHidden()) {
+      clock.next(pump, backoffMs || (session.notifyWaiters.pending() ? NOTIFY_BURST_MS : undefined));
+    }
   }
 
   offVisibility = subscribeVisibility(
     () => clock.next(pump),   // shown: resume (poll.ts owns the resume reconcile)
     () => clock.cancel(),
   );
+
+  session.notifyWaiters.setKick(() => clock.next(pump, 0));
 
   if (!isHidden()) clock.next(pump);
 

@@ -7,9 +7,10 @@ const BUFFER_INTERVAL_MS = 250;  // ~4 Hz  -- buffer stats
 const INFO_INTERVAL_MS = 1000;   // ~1 Hz  -- env scalars + counters
 const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile floor
 // A drag is "active" until writes have been quiet this long. The scrub lane
-// coalesces at 16 ms and inflight is 0 in the gaps between sends, so the inflight
-// counter alone can't tell mid-drag from drag-done. 100 ms sits above the 16 ms
-// coalesce window and a 60 fps frame, yet reconciles promptly after the user lets go.
+// paces sends by ack latency and inflight can be 0 in the gaps between them, so
+// the inflight counter alone can't tell mid-drag from drag-done. 100 ms sits
+// above an ack round-trip and a 60 fps frame, yet reconciles promptly after the
+// user lets go.
 export const RECONCILE_QUIET_MS = 100;
 
 interface Cadence {
@@ -27,6 +28,7 @@ interface Cadence {
 export function startPolling(session: ReadySession, clock: LoopClock = timerClock(STATUS_INTERVAL_MS)): Disposer {
   const tele = session.telemetry;
   const mir = session.mirror;
+  const health = session.health;
   let stopped = false;
   const isHidden = () => typeof document !== 'undefined' && document.hidden;
   // Only the in-flight guards are loop-local. The cadence CLOCK stays on the
@@ -42,8 +44,10 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       tele.cpu0 = s.cpu0;
       tele.cpu1 = s.cpu1;
       tele.errorCount = 0;
+      health.noteOk();
     } catch (e) {
       tele.errorCount++;
+      health.noteFail('poll:status', e);
       if (tele.errorCount <= 3) Log.warn('poll', 'getSystemStatus failed', e);
     }
   }
@@ -57,8 +61,10 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
         tele.pdmActive = b.pdmActive;
         tele.sequence = b.sequence;
       }
+      health.noteOk();
       tele.lastBufferMs = performance.now();
     } catch (e) {
+      health.noteFail('poll:buffer', e);
       Log.warn('poll', 'getBufferStats failed', e);
       tele.lastBufferMs = performance.now();
     }
@@ -67,7 +73,9 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   async function pollInfo(d: DspDevice): Promise<void> {
     try {
       tele.applyPartialInfo(await d.getSystemInfo());   // sets tele.lastInfoMs
+      health.noteOk();
     } catch (e) {
+      health.noteFail('poll:info', e);
       Log.warn('poll', 'getSystemInfo failed', e);
       tele.lastInfoMs = performance.now();
     }
@@ -89,7 +97,9 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       if (mir.inflight > 0 || mir.lastWriteMs >= startedAt) return;
       mir.replaceCurrent(snap);
       mir.consumeReconcile();
+      health.noteOk();
     } catch (e) {
+      health.noteFail('poll:param', e);
       Log.warn('poll', 'param reconcile failed', e);  // request stays pending
     } finally {
       tele.lastParamMs = performance.now();

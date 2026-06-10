@@ -4,21 +4,25 @@ import type { ReadySession } from './appState.svelte';
 import { StatusStore } from './telemetry.svelte';
 import { createPresetsState } from './presets.svelte';
 import { MirrorState } from './mirror.svelte';
+import { LinkHealth } from './linkHealth.svelte';
 import { WriteCoordinator } from '@/runtime/writes';
+import { NotifyWaiters } from '@/runtime/notifyWaiters';
 
 // Assembles a per-device session from its constituent stores. Kept apart from
 // appState, which references these store classes type-only to avoid an import cycle.
-export function makeReadySession(device: DspDevice): ReadySession {
+export function makeReadySession(device: DspDevice, attempt = 0): ReadySession {
   const copySource = $state<{ slot: PresetSlot | null }>({ slot: null });
   const telemetry = new StatusStore();
   const presets = createPresetsState();
   const mirror = new MirrorState();
+  const health = new LinkHealth();
   const writes = new WriteCoordinator(mirror);
+  const notifyWaiters = new NotifyWaiters();
   const session: ReadySession = {
-    device, info: device.info, hardware: device.hardware,
-    copySource, telemetry, presets, mirror, writes,
+    device, info: device.info, hardware: device.hardware, attempt,
+    copySource, telemetry, presets, mirror, health, writes, notifyWaiters,
     alive: true,
-    dispose() { session.alive = false; writes.cancel(); },
+    dispose() { session.alive = false; writes.cancel(); notifyWaiters.cancelAll(); },
   };
   return session;
 }

@@ -51,3 +51,17 @@ describe('active scope', () => {
     expect(d).toHaveBeenCalledTimes(1);
   });
 });
+
+import { currentAttempt } from '@/state';
+
+describe('attempt ownership', () => {
+  it('beginConnection mints a fresh current attempt; endConnection clears it', () => {
+    const s1 = beginConnection();
+    expect(currentAttempt()).toBe(s1.attempt);
+    const s2 = beginConnection();
+    expect(s2.attempt).toBeGreaterThan(s1.attempt);
+    expect(currentAttempt()).toBe(s2.attempt);
+    endConnection();
+    expect(currentAttempt()).toBeNull();
+  });
+});

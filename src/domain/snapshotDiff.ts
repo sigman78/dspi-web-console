@@ -9,13 +9,20 @@ import type { OutputModel, RouteModel } from './mixer';
 import type { FilterParams } from './filter';
 import type { Loudness, Crossfeed, Leveller } from './processing';
 import type { InputConfig, LgSoundSync, UserVolume, DacHwMute } from './deviceSections';
+import { BAND_GAIN_STEP_DB, FREQ_STEP_HZ, Q_STEP } from './eqLimits';
 
+// Half the relevant UI step: wire f32 round-trip jitter can never reach it,
+// a real edit always does.
 export const DIFF_TOLERANCE = {
-  db:   0.05,
-  freq: 0.5,
+  db:   BAND_GAIN_STEP_DB / 2, // Finest dB step among the fields this tolerance guards (preamp/volume steps are coarser). 0.1 / 2 = 0.05
+  freq: FREQ_STEP_HZ / 2,      // 1 / 2 = 0.5
+  // No gain-field step halves to 0.005; crosspoint has no UI step,
+  // loudness intensity step is 0.5, leveller amount step is 1. Using literal.
   gain: 0.005,
-  q:    0.005,
-  ms:   0.00005,
+  q:    Q_STEP / 2,             // 0.01 / 2 = 0.005
+  // NOT step/2: f32 round-trip jitter bound. Delay diffs must not mask
+  // sub-step external changes; f32 ulp at max delay is ~1.5e-5 < this.
+  ms:   5e-5,
 } as const;
 
 export type SnapshotChange =
@@ -23,8 +30,10 @@ export type SnapshotChange =
   | { kind: 'masterPreamp';  value: number }
   | { kind: 'inputPreamp';   channel: 0 | 1; value: number }
   | { kind: 'masterVolume';  value: number }
-  | { kind: 'channelName';   channel: number; value: string }
-  | { kind: 'band';          channel: number; band: number; value: FilterParams }
+  // channelIndex: array position into channels[] (NOT a ChannelId; e.g. PDM is
+  // position 6 on RP2040 but has ChannelId 10).
+  | { kind: 'channelName';   channelIndex: number; value: string }
+  | { kind: 'band';          channelIndex: number; band: number; value: FilterParams }
   | { kind: 'output';        index: number; value: OutputModel }
   | { kind: 'route';         index: number; value: RouteModel }
   | { kind: 'loudness';      value: Loudness }
@@ -156,9 +165,9 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
   for (let i = 0; i < b.channels.length; i++) {
     const ca = a.channels[i], cb = b.channels[i];
     if (ca === undefined) continue;
-    if (ca.name !== cb.name) out.push({ kind: 'channelName', channel: i, value: cb.name });
+    if (ca.name !== cb.name) out.push({ kind: 'channelName', channelIndex: i, value: cb.name });
     for (let j = 0; j < cb.filters.length; j++) {
-      if (bandDiffers(ca.filters[j], cb.filters[j])) out.push({ kind: 'band', channel: i, band: j, value: cb.filters[j] });
+      if (bandDiffers(ca.filters[j], cb.filters[j])) out.push({ kind: 'band', channelIndex: i, band: j, value: cb.filters[j] });
     }
   }
 
@@ -185,3 +194,31 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
 
   return out;
 }
+
+// Every top-level DspSnapshot key must be either covered by a change kind or
+// explicitly exempted here. Adding a field without deciding its diff story is
+// a compile error.
+type _Exempt  = 'platform';
+type _Covered =
+  | 'bypass'
+  | 'masterPreampDb'
+  | 'inputPreampDb'
+  | 'masterVolumeDb'
+  | 'channels'
+  | 'outputs'
+  | 'routes'
+  | 'loudness'
+  | 'crossfeed'
+  | 'leveller'
+  | 'inputConfig'
+  | 'userVolume'
+  | 'dacHwMute'
+  | 'lgSoundSync'
+  | 'i2s'
+  | 'outputPins';
+type _Complete = [Exclude<keyof DspSnapshot, _Covered | _Exempt>] extends [never] ? true : never;
+const _complete: _Complete = true;
+void _complete;
+type _NoStale = [Exclude<_Covered | _Exempt, keyof DspSnapshot>] extends [never] ? true : never;
+const _noStale: _NoStale = true;
+void _noStale;

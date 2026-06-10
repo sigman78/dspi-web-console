@@ -9,7 +9,9 @@ export async function forceResyncNow(s: ReadySession): Promise<void> {
   try {
     const snap = await s.device.getSnapshot();
     s.mirror.replaceCurrent(snap);
+    s.health.noteOk();
   } catch (err) {
+    s.health.noteFail('resync', err);
     Log.warn('resync', 'bulk re-fetch failed', err);
   }
 }
@@ -22,7 +24,9 @@ export async function fetchAndApplyAsBaseline(s: ReadySession): Promise<void> {
   try {
     const snap = await s.device.getSnapshot();
     s.mirror.init(snap);
+    s.health.noteOk();
   } catch (err) {
+    s.health.noteFail('resync', err);
     Log.warn('resync', 'baseline re-fetch failed', err);
   }
 }

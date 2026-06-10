@@ -12,6 +12,9 @@
   const snap = $derived(s.mirror.current);
   const rows = $derived(matrixRows(snap));
 
+  // Names live on channels[] only; join by id for output-shaped rows.
+  const nameById = $derived(new Map((snap?.channels ?? []).map((c) => [c.id, c.name])));
+
   function preampOffsetFor(c: { id: ChannelId; isOutput: boolean }): number {
     if (c.isOutput) return 0;
     const idx = inputIndexOf(c.id);
@@ -141,7 +144,7 @@
             <div class="targets">
               {#each row.cells.filter((c) => c.enabled) as cell (cell.outputWireIndex)}
                 <span class="chip ch-{chKey(cell.outputId)}">
-                  {cell.outputName.replace(/^Out /, '')} {fmtDb(cell.gainDb)}dB
+                  {(nameById.get(cell.outputId) ?? '').replace(/^Out /, '')} {fmtDb(cell.gainDb)}dB
                 </span>
               {/each}
             </div>
@@ -170,7 +173,7 @@
         {#each snap?.outputs ?? [] as out (out.id)}
           <div class="outrow" class:dim={!out.enabled}>
             <span class="oid ch-{chKey(out.id)}">{out.shortName}</span>
-            <span class="oname">{out.name}</span>
+            <span class="oname">{nameById.get(out.id) ?? ''}</span>
             <span class="ogain">{fmtDb(out.gainDb)} dB</span>
             <span class="odelay">{out.delayMs.toFixed(1)} ms</span>
             <span

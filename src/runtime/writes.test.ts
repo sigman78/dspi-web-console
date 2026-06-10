@@ -119,6 +119,37 @@ describe('write() helper', () => {
   });
 });
 
+describe('write() failure policy', () => {
+  beforeEach(() => {
+    installSession();
+    clearNotices();
+    vi.clearAllMocks();
+  });
+
+  it('a failed write stays connected, reports health, toasts, and resyncs', async () => {
+    const { forceResyncNow } = await import('@/runtime/resync');
+    await write(session, async () => { throw new Error('boom'); }, () => {});
+    expect(connection.connected).toBe(true);
+    expect(session.health.failTotal).toBe(1);
+    expect(notices.list.some((n) => n.kind === 'error')).toBe(true);
+    expect(forceResyncNow).toHaveBeenCalledWith(session);
+  });
+
+  it('while degraded, a failed write neither toasts nor resyncs', async () => {
+    const { forceResyncNow } = await import('@/runtime/resync');
+    session.health.degraded = true;
+    await write(session, async () => { throw new Error('boom'); }, () => {});
+    expect(notices.list.length).toBe(0);
+    expect(forceResyncNow).not.toHaveBeenCalled();
+  });
+
+  it('a failed command reports health and stays connected', async () => {
+    await command(session, 'set thing', async () => { throw new Error('boom'); }, () => {});
+    expect(session.health.failTotal).toBe(1);
+    expect(connection.connected).toBe(true);
+  });
+});
+
 describe('writeChecked() helper', () => {
   beforeEach(() => {
     installSession();
@@ -242,8 +273,14 @@ describe('scrub() helper', () => {
     const mutate = vi.fn();
     const send = vi.fn(async () => {});
     scrub(session, 'k1', mutate, send);
-    expect(mutate).toHaveBeenCalledTimes(1);   // BEFORE the timer fires
+    expect(mutate).toHaveBeenCalledTimes(1);   // synchronous, before any send settles
     await flushAllWrites(session);
+  });
+
+  it('sends immediately when the lane is idle', () => {
+    const send = vi.fn(async () => {});
+    scrub(session, 'k1', () => {}, send);
+    expect(send).toHaveBeenCalledTimes(1);     // no coalesce timer in front
   });
 
   it('stamps write activity on the call (before any send settles)', async () => {
@@ -254,13 +291,16 @@ describe('scrub() helper', () => {
     await flushAllWrites(session);
   });
 
-  it('coalesces rapid calls to one send per key', async () => {
-    const send = vi.fn(async () => {});
-    scrub(session, 'k1', () => {}, send);
-    scrub(session, 'k1', () => {}, send);
-    scrub(session, 'k1', () => {}, send);
+  it('coalesces to the latest value while a send is in flight', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const sends: number[] = [];
+    scrub(session, 'k1', () => {}, async () => { sends.push(1); await gate; });
+    scrub(session, 'k1', () => {}, async () => { sends.push(2); });
+    scrub(session, 'k1', () => {}, async () => { sends.push(3); });
+    release();
     await flushAllWrites(session);
-    expect(send).toHaveBeenCalledTimes(1);     // latest wins
+    expect(sends).toEqual([1, 3]);             // 2 was replaced before the wire freed up
   });
 
   it('different keys do not coalesce', async () => {
@@ -273,13 +313,28 @@ describe('scrub() helper', () => {
     expect(sendB).toHaveBeenCalledTimes(1);
   });
 
-  it('cancelAllWrites cancels pending sends', async () => {
-    const send = vi.fn(async () => {});
-    scrub(session, 'k1', () => {}, send);
+  it('cancelAllWrites drops a parked send without firing it', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const parked = vi.fn(async () => {});
+    scrub(session, 'k1', () => {}, async () => { await gate; });
+    scrub(session, 'k1', () => {}, parked);    // parked behind the in-flight send
     cancelAllWrites(session);
-    // Timer cancelled; send must not fire even after wait
-    await new Promise((r) => setTimeout(r, 30));
-    expect(send).not.toHaveBeenCalled();
+    release();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(parked).not.toHaveBeenCalled();
+    expect(session.mirror.inflight).toBe(0);
+  });
+
+  it('claims inflight once for a burst and drops it when the lane drains', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    scrub(session, 'k1', () => {}, async () => { await gate; });
+    scrub(session, 'k1', () => {}, async () => {});
+    expect(session.mirror.inflight).toBe(1);
+    release();
+    await flushAllWrites(session);
+    expect(session.mirror.inflight).toBe(0);
   });
 
   it('cancelAllWrites resets inflight to 0', () => {

@@ -103,7 +103,7 @@ describe('presets store', () => {
     const withBand = (bypass: boolean): DspSnapshot => mkSnap({
       channels: [{
         id: 0 as any, name: 'ch0', defaultName: 'ch0', shortName: 'c0',
-        bandCount: 1, isOutput: false, outputMode: null,
+        bandCount: 1, isOutput: false,
         filters: [{ type: 0, bypass, frequency: 1000, q: 1, gain: 0 }],
       }],
     });

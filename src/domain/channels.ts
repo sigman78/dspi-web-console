@@ -42,6 +42,10 @@ export type OutputSlot = (typeof OutputSlot)[keyof typeof OutputSlot];
 
 export type OutputMode = 'SPDIF' | 'I2S' | 'PDM';
 
+// Stereo-pair index into i2s.outputSlotTypes (and SetOutputType's wValue).
+// NOT an OutputSlot: pairs 0-3 cover output channels in L/R pairs.
+export type I2sPairSlot = 0 | 1 | 2 | 3;
+
 export interface ChannelLayout {
   id: ChannelId;
   name: string;
@@ -50,6 +54,8 @@ export interface ChannelLayout {
   isOutput: boolean;
 }
 
+// Firmware allocates 12 wire band slots but enables 10 per channel on both
+// platforms and rejects band >= 10; bands 10-11 can never hold data.
 const EQ_BAND_COUNT = 10;
 
 export const ALL_CHANNELS: readonly ChannelLayout[] = [
@@ -66,32 +72,15 @@ export const ALL_CHANNELS: readonly ChannelLayout[] = [
   { id: ChannelId.Pdm,   name: 'PDM',           shortName: 'PDM', bandCount: EQ_BAND_COUNT, isOutput: true  },
 ] as const;
 
-export function channelById(id: ChannelId): ChannelLayout {
+export function channelLayoutById(id: ChannelId): ChannelLayout {
   const channel = ALL_CHANNELS.find((x) => x.id === id);
   if (!channel) throw new Error(`Unknown ChannelId: ${id}`);
   return channel;
 }
 
-export function slotForOutputChannel(id: ChannelId): number | null {
+export function slotForOutputChannel(id: ChannelId): I2sPairSlot | null {
   if (id < ChannelId.Out1L || id > ChannelId.Out4R) return null;
-  return (id - ChannelId.Out1L) >> 1;
-}
-
-export function outputModeForChannel(
-  id: ChannelId,
-  outputSlotTypes: ArrayLike<number> | null | undefined,
-): OutputMode | null {
-  if (id === ChannelId.In1L || id === ChannelId.In1R) return null;
-  if (id === ChannelId.Pdm) return 'PDM';
-  const slot = slotForOutputChannel(id);
-  if (slot === null) return null;
-  if (!outputSlotTypes) return 'SPDIF';
-  return outputSlotTypes[slot] === 1 ? 'I2S' : 'SPDIF';
-}
-
-export function displayNameForChannel(id: ChannelId, channelNames: readonly string[]): string {
-  const fromDevice = channelNames[id]?.trim();
-  return fromDevice || channelById(id).name;
+  return ((id - ChannelId.Out1L) >> 1) as I2sPairSlot;
 }
 
 // InputSlot for In1L/In1R, null for any non-input channel. Centralises the

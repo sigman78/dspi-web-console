@@ -2,7 +2,7 @@
 // parameters, built by the device-layer snapshot codec from a parsed wire
 // packet plus the detected hardware profile.
 
-import type { ChannelId, OutputMode } from './channels';
+import type { ChannelId } from './channels';
 import type { PlatformInfo, I2sConfig } from './platform';
 import type { FilterParams } from './filter';
 import type { Loudness, Crossfeed, Leveller } from './processing';
@@ -16,7 +16,6 @@ export interface ChannelModel {
   shortName: string;
   bandCount: number;
   isOutput: boolean;
-  outputMode: OutputMode | null;
   filters: FilterParams[];
 }
 

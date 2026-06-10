@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { bootMock } from './boot';
-import { resetBoundary, boundary, resolveBoundary, settings, activeSession } from '@/state';
+import {
+  resetBoundary, boundary, resolveBoundary, settings, activeSession,
+  makeReadySession, dispatch, type ReadySession,
+} from '@/state';
 import { PresetStartupMode, parseBulkParams } from '@/protocol';
 import type { PresetSlot } from '@/domain';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
@@ -601,5 +604,82 @@ describe('runtime/presets', () => {
         (realDevice as any).savePreset = origSave;
       }
     });
+  });
+});
+
+// Stub-device tests for the notify-driven load settle. Independent of the
+// bootMock harness above: the stub controls event delivery directly.
+describe('notify-driven load settle', () => {
+  function makeTestSnapshot(): unknown {
+    return { channels: [], outputs: [], routes: [], masterVolumeDb: 0 };
+  }
+
+  function installSessionWith(device: unknown): ReadySession {
+    const s = makeReadySession(device as never);
+    dispatch({ t: 'synced', session: s });
+    return s;
+  }
+
+  beforeEach(() => {
+    settings.warnOnPresetSwitchDirty = false;
+    settings.soft.muted = false;
+  });
+
+  afterEach(() => {
+    dispatch({ t: 'disconnected' });
+    vi.useRealTimers();
+  });
+
+  it('waits for presetLoaded before re-reading device truth', async () => {
+    vi.useFakeTimers();
+    const device = {
+      capabilities: { features: { notifications: true } },
+      loadPreset: vi.fn(async () => ({ ok: true, value: undefined })),
+      getSnapshot: vi.fn(async () => makeTestSnapshot()),
+      setMasterVolume: vi.fn(async () => {}),
+    };
+    const s = installSessionWith(device);
+    const p = loadPresetSlot(s, 2 as PresetSlot);
+    // Well past the legacy 100 ms sleep: the re-read must still be gated on
+    // the device's own event, not on elapsed time.
+    await vi.advanceTimersByTimeAsync(150);
+    expect(device.loadPreset).toHaveBeenCalled();
+    expect(device.getSnapshot).not.toHaveBeenCalled();
+    s.notifyWaiters.notify({ kind: 'presetLoaded', seq: 1, slot: 2 });
+    const r = await p;
+    expect('ok' in r && r.ok).toBe(true);
+    expect(device.getSnapshot).toHaveBeenCalled();
+  });
+
+  it('falls back to the settle sleep on devices without notifications', async () => {
+    vi.useFakeTimers();
+    const device = {
+      capabilities: { features: { notifications: false } },
+      loadPreset: vi.fn(async () => ({ ok: true, value: undefined })),
+      getSnapshot: vi.fn(async () => makeTestSnapshot()),
+      setMasterVolume: vi.fn(async () => {}),
+    };
+    const s = installSessionWith(device);
+    const p = loadPresetSlot(s, 2 as PresetSlot);
+    await vi.advanceTimersByTimeAsync(100);        // PRESET_LOAD_SETTLE_MS
+    const r = await p;
+    expect('ok' in r && r.ok).toBe(true);
+    expect(device.getSnapshot).toHaveBeenCalled();
+  });
+
+  it('proceeds after the timeout when the event never arrives', async () => {
+    vi.useFakeTimers();
+    const device = {
+      capabilities: { features: { notifications: true } },
+      loadPreset: vi.fn(async () => ({ ok: true, value: undefined })),
+      getSnapshot: vi.fn(async () => makeTestSnapshot()),
+      setMasterVolume: vi.fn(async () => {}),
+    };
+    const s = installSessionWith(device);
+    const p = loadPresetSlot(s, 2 as PresetSlot);
+    await vi.advanceTimersByTimeAsync(1000);       // PRESET_LOADED_TIMEOUT_MS
+    const r = await p;
+    expect('ok' in r && r.ok).toBe(true);
+    expect(device.getSnapshot).toHaveBeenCalled();
   });
 });
