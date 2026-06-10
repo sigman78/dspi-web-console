@@ -23,8 +23,10 @@ export type SnapshotChange =
   | { kind: 'masterPreamp';  value: number }
   | { kind: 'inputPreamp';   channel: 0 | 1; value: number }
   | { kind: 'masterVolume';  value: number }
-  | { kind: 'channelName';   channel: number; value: string }
-  | { kind: 'band';          channel: number; band: number; value: FilterParams }
+  // channelIndex: array position into channels[] (NOT a ChannelId; e.g. PDM is
+  // position 6 on RP2040 but has ChannelId 10).
+  | { kind: 'channelName';   channelIndex: number; value: string }
+  | { kind: 'band';          channelIndex: number; band: number; value: FilterParams }
   | { kind: 'output';        index: number; value: OutputModel }
   | { kind: 'route';         index: number; value: RouteModel }
   | { kind: 'loudness';      value: Loudness }
@@ -156,9 +158,9 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
   for (let i = 0; i < b.channels.length; i++) {
     const ca = a.channels[i], cb = b.channels[i];
     if (ca === undefined) continue;
-    if (ca.name !== cb.name) out.push({ kind: 'channelName', channel: i, value: cb.name });
+    if (ca.name !== cb.name) out.push({ kind: 'channelName', channelIndex: i, value: cb.name });
     for (let j = 0; j < cb.filters.length; j++) {
-      if (bandDiffers(ca.filters[j], cb.filters[j])) out.push({ kind: 'band', channel: i, band: j, value: cb.filters[j] });
+      if (bandDiffers(ca.filters[j], cb.filters[j])) out.push({ kind: 'band', channelIndex: i, band: j, value: cb.filters[j] });
     }
   }
 

@@ -1,6 +1,6 @@
 import {
   type FilterParams,
-  type ChannelId, type InputSlot, type OutputSlot,
+  type ChannelId, type InputSlot, type OutputSlot, type I2sPairSlot,
   type RouteModel,
   type I2sConfig,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
@@ -379,7 +379,7 @@ export function setOutputDataPin(s: ReadySession, pinOutputIndex: number, pin: n
   );
 }
 
-export function setOutputType(s: ReadySession, slot: OutputSlot, type: number): void {
+export function setOutputType(s: ReadySession, slot: I2sPairSlot, type: number): void {
   void writeChecked(s,
     'switch output type',
     () => s.device.setOutputType(slot, type),

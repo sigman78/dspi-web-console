@@ -4,7 +4,7 @@
   import PinSelect from './PinSelect.svelte';
   import { connection } from '@/state';
   import { setOutputType, setOutputDataPin } from '@/runtime';
-  import { availablePinsFor, channelLayoutById, ChannelId, type OutputSlot } from '@/domain';
+  import { availablePinsFor, channelLayoutById, ChannelId, type I2sPairSlot } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -46,7 +46,7 @@
             options={TYPE_OPTS}
             ariaLabel={`Out ${slot + 1} output type`}
             disabled={!connected}
-            onChange={(t) => void setOutputType(s, slot as OutputSlot, t)}
+            onChange={(t) => void setOutputType(s, slot as I2sPairSlot, t)}
           />
           <PinSelect
             value={snap.outputPins[slot]}

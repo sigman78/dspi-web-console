@@ -39,7 +39,7 @@ describe('applyChange', () => {
     const t = snap();
     applyChange({ kind: 'bypass', value: true }, t);
     expect(t.bypass).toBe(true);
-    applyChange({ kind: 'band', channel: 2, band: 4, value: band({ gain: 6 }) }, t);
+    applyChange({ kind: 'band', channelIndex: 2, band: 4, value: band({ gain: 6 }) }, t);
     expect(t.channels[2].filters[4].gain).toBe(6);
     applyChange({ kind: 'inputPreamp', channel: 1, value: -3 }, t);
     expect(t.inputPreampDb[1]).toBe(-3);

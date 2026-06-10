@@ -11,8 +11,8 @@ export function applyChange(c: SnapshotChange, t: DspSnapshot): void {
     case 'masterPreamp':      t.masterPreampDb = c.value; break;
     case 'inputPreamp':       t.inputPreampDb[c.channel] = c.value; break;
     case 'masterVolume':      t.masterVolumeDb = c.value; break;
-    case 'channelName':       t.channels[c.channel].name = c.value; break;
-    case 'band':              t.channels[c.channel].filters[c.band] = c.value; break;
+    case 'channelName':       t.channels[c.channelIndex].name = c.value; break;
+    case 'band':              t.channels[c.channelIndex].filters[c.band] = c.value; break;
     case 'output':            t.outputs[c.index] = c.value; break;
     case 'route':             t.routes[c.index] = c.value; break;
     case 'loudness':          t.loudness = c.value; break;

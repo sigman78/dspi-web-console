@@ -89,13 +89,13 @@ describe('diffSnapshots — existing coverage', () => {
   it('emits one channelName change with its index', () => {
     const b = snap();
     b.channels[3] = { ...b.channels[3], name: 'Subwoofer' };
-    expect(diffSnapshots(snap(), b)).toEqual([{ kind: 'channelName', channel: 3, value: 'Subwoofer' }]);
+    expect(diffSnapshots(snap(), b)).toEqual([{ kind: 'channelName', channelIndex: 3, value: 'Subwoofer' }]);
   });
 
   it('emits one band change for an above-tolerance frequency move', () => {
     const b = snap();
     b.channels[0].filters[2] = band({ frequency: 1000 + DIFF_TOLERANCE.freq * 2 });
-    expect(diffSnapshots(snap(), b)).toEqual([{ kind: 'band', channel: 0, band: 2, value: b.channels[0].filters[2] }]);
+    expect(diffSnapshots(snap(), b)).toEqual([{ kind: 'band', channelIndex: 0, band: 2, value: b.channels[0].filters[2] }]);
   });
 
   it('ignores a sub-tolerance band frequency move', () => {
@@ -107,7 +107,7 @@ describe('diffSnapshots — existing coverage', () => {
   it('emits one band change when only bypass flips (closes the SP1 gap)', () => {
     const b = snap();
     b.channels[0].filters[2] = band({ bypass: true });
-    expect(diffSnapshots(snap(), b)).toEqual([{ kind: 'band', channel: 0, band: 2, value: b.channels[0].filters[2] }]);
+    expect(diffSnapshots(snap(), b)).toEqual([{ kind: 'band', channelIndex: 0, band: 2, value: b.channels[0].filters[2] }]);
   });
 
   it('emits an output change on an enabled flip', () => {
