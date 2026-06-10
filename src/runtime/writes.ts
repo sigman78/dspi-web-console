@@ -7,7 +7,7 @@
 //
 // write()        -- click-paced. Await ack, then mutate. Failure -> toast +
 //                   forceResyncNow; link health decides anything bigger.
-// scrub()        -- drag-paced sliders. Optimistic mutate + 16 ms coalesce lane.
+// scrub()        -- drag-paced sliders. Optimistic mutate + latest-wins lane.
 // writeChecked() -- commit-paced commands returning a typed Result. A non-ok is a
 //                   local device rejection (warn toast), not a connection error.
 //
@@ -109,12 +109,12 @@ export function writeChecked<E>(
   });
 }
 
-// Per-key 16 ms latest-wins coalesce lane. Each scrub() call replaces the pending
-// send for its key; the timer fires once per drag-quiet window. Alive-guarded
-// against the session captured at schedule time: a send that completes after that
-// session was disposed is silently dropped (no mirror update, no recovery resync).
-
-const COALESCE_MS = 16;
+// Per-key latest-wins lane: sends immediately when the wire is free; while a
+// send is in flight, newer schedule() calls replace the parked one (queue
+// depth 1), so pacing self-adapts to ack latency and a slow ack can never
+// build a backlog of stale intermediate values. Alive-guarded against the
+// session captured at schedule time: a send that completes after that session
+// was disposed is silently dropped (no mirror update, no recovery resync).
 
 interface Lane {
   schedule(s: ReadySession, send: () => Promise<void>): void;
@@ -122,68 +122,69 @@ interface Lane {
   flushNow(): Promise<void>;
 }
 
-function makeLane(key: string, ms: number, mirror: MirrorState): Lane {
-  let timer: ReturnType<typeof setTimeout> | null = null;
+function makeLane(key: string, mirror: MirrorState): Lane {
   let pending: (() => Promise<void>) | null = null;
   let pendingSession: ReadySession | null = null;
-  let inFlight: Promise<void> = Promise.resolve();
-  let claimedInflight = false;
+  let sending = false;
+  let claimed = false;
+  let chain: Promise<void> = Promise.resolve();
 
-  function fire(): void {
-    timer = null;
-    const thunk = pending!;
+  function pump(): void {
+    if (sending || pending === null) return;
+    const thunk = pending;
     const s = pendingSession!;
     pending = null;
     pendingSession = null;
-    inFlight = inFlight
-      .catch(() => undefined)
-      .then(async () => {
-        try {
-          await thunk();
-          // The optimistic mutate already left the mirror at the value we sent.
-          // No per-settle resync; flag a reconcile for the inflight-gated
-          // background param poll to honor.
-          if (s.alive) mirror.requestReconcile(settings.eagerReconcile);
-        } catch (err) {
-          if (!s.alive) return;
+    sending = true;
+    chain = (async () => {
+      try {
+        await thunk();
+        // The optimistic mutate already left the mirror at the value we sent.
+        // No per-settle resync; flag a reconcile for the inflight-gated
+        // background param poll to honor.
+        if (s.alive) mirror.requestReconcile(settings.eagerReconcile);
+      } catch (err) {
+        if (s.alive) {
           Log.error('writes', `scrub ${key} send failed`, err);
           s.health.noteFail(`scrub ${key}`, err);
           if (!s.health.degraded) {
             pushNotice('error', `Write failed: ${errMessage(err)}`);
             void forceResyncNow(s);
           }
-        } finally {
-          if (claimedInflight) {
-            mirror.dropInflight();
-            claimedInflight = false;
-          }
         }
-      });
+      } finally {
+        sending = false;
+        if (pending !== null) {
+          pump();
+        } else if (claimed) {
+          mirror.dropInflight();
+          claimed = false;
+        }
+      }
+    })();
   }
 
   return {
     schedule(s, send) {
       pending = send;
       pendingSession = s;
-      if (!claimedInflight) {
+      if (!claimed) {
         mirror.bumpInflight();
-        claimedInflight = true;
+        claimed = true;
       }
-      if (timer === null) timer = setTimeout(fire, ms);
+      pump();
     },
     cancel() {
-      if (timer !== null) clearTimeout(timer);
-      timer = null;
       pending = null;
       pendingSession = null;
-      if (claimedInflight) {
+      if (claimed) {
         mirror.dropInflight();
-        claimedInflight = false;
+        claimed = false;
       }
     },
-    flushNow() {
-      if (timer !== null) { clearTimeout(timer); fire(); }
-      return inFlight;
+    async flushNow() {
+      pump();
+      while (sending || pending !== null) await chain;
     },
   };
 }
@@ -196,7 +197,7 @@ export class WriteCoordinator {
 
   laneFor(key: string): Lane {
     let lane = this.lanes.get(key);
-    if (!lane) { lane = makeLane(key, COALESCE_MS, this.mirror); this.lanes.set(key, lane); }
+    if (!lane) { lane = makeLane(key, this.mirror); this.lanes.set(key, lane); }
     return lane;
   }
   async flush(): Promise<void> {
@@ -213,8 +214,8 @@ export class WriteCoordinator {
 }
 
 // Drag-paced write. Mutates the mirror immediately (optimistic, for drag feel at
-// 60 fps), schedules a coalesced wire send per key on the active session's
-// coordinator, and gates the settle on that session's `alive` flag.
+// 60 fps), then sends right away or parks the latest value behind the in-flight
+// send on the session's per-key lane, gating the settle on its `alive` flag.
 export function scrub(
   s: ReadySession,
   key: string,

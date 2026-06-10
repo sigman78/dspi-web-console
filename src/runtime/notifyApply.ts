@@ -15,7 +15,7 @@ export function applyParamChange(device: DspDevice, mir: MirrorState, ev: ParamC
   const target = mir.current;
   if (!target) return false;
   // Drop during a drag -> backstop reconcile (global guard; per-field merge deferred).
-  // inflight is 0 in the ~16 ms gaps between coalesced scrub sends, so the
+  // inflight can be 0 in the gaps between scrub-lane sends, so the
   // write-quiet window is what distinguishes mid-drag from done.
   if (mir.inflight > 0 || performance.now() - mir.lastWriteMs < RECONCILE_QUIET_MS) return false;
   let r;

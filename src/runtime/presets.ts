@@ -240,7 +240,6 @@ async function executeLoad(
   s: ReadySession,
   slot: PresetSlot,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  const d = s.device;
   clearActionError(s.presets);
   // Suppress the NotifyChannel's redundant reconciles for this self-induced op;
   // our own fetchAndApplyAsBaseline below is the authoritative resync.

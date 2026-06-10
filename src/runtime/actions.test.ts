@@ -122,15 +122,14 @@ describe('actions wiring', () => {
     dispatch({ t: 'synced', session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: 0 }))));
 
-    setMasterVolume(activeSession()!, -12);    // queues -12 in the coalescer
-    toggleMute(activeSession()!);              // queues -128 (MUTE_DB), overwriting -12
+    setMasterVolume(activeSession()!, -12);    // sends immediately
+    toggleMute(activeSession()!);              // parks -128 (MUTE_DB) behind it
 
-    await vi.advanceTimersByTimeAsync(50);   // flush the trailing-edge timer
+    await vi.advanceTimersByTimeAsync(50);
     await vi.runAllTimersAsync();
 
     expect(settings.soft.muted).toBe(true);
     expect(calls.at(-1)).toBe(-128);          // mute is the last value on the wire
-    expect(calls).not.toContain(-12);        // the slider value was coalesced away
   });
 
   it('disconnect cancels pending coalescer + resync and resets state', async () => {
@@ -146,13 +145,14 @@ describe('actions wiring', () => {
     connectionScope()!.add(attachTransportListeners(transport, device));
     connectionScope()!.add(() => cancelWrites());
 
-    setMasterVolume(activeSession()!, -9);    // queues a write
-    transport.emit('disconnect');             // should cancel before timer fires
+    setMasterVolume(activeSession()!, -9);    // sends immediately
+    setMasterVolume(activeSession()!, -6);    // parks behind the in-flight send
+    transport.emit('disconnect');             // should drop the parked send
 
     await vi.advanceTimersByTimeAsync(100);
     await vi.runAllTimersAsync();
 
-    expect(calls).toEqual([]);                // pending coalescer dropped
+    expect(calls).toEqual([-9]);              // parked -6 dropped
     expect(connection.phase).toBe('noDevice');
     expect(activeSession()).toBeNull();       // session (and its telemetry) dropped
   });
@@ -343,12 +343,13 @@ describe('setInputPreamp', () => {
     dispatch({ t: 'synced', session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
 
-    setInputPreamp(activeSession()!, 0, -1);
-    setInputPreamp(activeSession()!, 0, -2);
-    setInputPreamp(activeSession()!, 0, -3);
-    setInputPreamp(activeSession()!, 1, -10);
+    setInputPreamp(activeSession()!, 0, -1);   // fires immediately
+    setInputPreamp(activeSession()!, 0, -2);   // parked...
+    setInputPreamp(activeSession()!, 0, -3);   // ...replaced: latest wins
+    setInputPreamp(activeSession()!, 1, -10);  // separate lane, fires immediately
     await vi.runAllTimersAsync();
-    expect(setInputPreampFn).toHaveBeenCalledTimes(2);
+    expect(setInputPreampFn).toHaveBeenCalledTimes(3);
+    expect(setInputPreampFn).not.toHaveBeenCalledWith(0, -2);
     expect(setInputPreampFn).toHaveBeenCalledWith(0, -3);
     expect(setInputPreampFn).toHaveBeenCalledWith(1, -10);
   });

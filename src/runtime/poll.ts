@@ -7,9 +7,10 @@ const BUFFER_INTERVAL_MS = 250;  // ~4 Hz  -- buffer stats
 const INFO_INTERVAL_MS = 1000;   // ~1 Hz  -- env scalars + counters
 const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile floor
 // A drag is "active" until writes have been quiet this long. The scrub lane
-// coalesces at 16 ms and inflight is 0 in the gaps between sends, so the inflight
-// counter alone can't tell mid-drag from drag-done. 100 ms sits above the 16 ms
-// coalesce window and a 60 fps frame, yet reconciles promptly after the user lets go.
+// paces sends by ack latency and inflight can be 0 in the gaps between them, so
+// the inflight counter alone can't tell mid-drag from drag-done. 100 ms sits
+// above an ack round-trip and a 60 fps frame, yet reconciles promptly after the
+// user lets go.
 export const RECONCILE_QUIET_MS = 100;
 
 interface Cadence {
