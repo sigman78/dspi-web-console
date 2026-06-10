@@ -167,15 +167,15 @@ describe('actions wiring', () => {
     beginConnection();
     connectionScope()!.add(attachTransportListeners(t1, {} as DspDevice));
     expect(t1.listenerCount('disconnect')).toBe(1);
-    expect(t1.listenerCount('connect')).toBe(1);
+    // No transport 'connect' listener: transports emit connect before
+    // listeners attach, so a handler there could never fire in production.
+    expect(t1.listenerCount('connect')).toBe(0);
 
     beginConnection();                        // disposes the t1 scope
     connectionScope()!.add(attachTransportListeners(t2, {} as DspDevice));
-    // t1 listeners removed, t2 listeners attached
+    // t1 listener removed, t2 listener attached
     expect(t1.listenerCount('disconnect')).toBe(0);
-    expect(t1.listenerCount('connect')).toBe(0);
     expect(t2.listenerCount('disconnect')).toBe(1);
-    expect(t2.listenerCount('connect')).toBe(1);
   });
 
   it('copyEqBands copies all bands into the snapshot in N granular operations', async () => {

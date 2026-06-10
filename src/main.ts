@@ -2,11 +2,12 @@ import { mount } from 'svelte';
 import './app.css';
 import App from './App.svelte';
 import {
-  dispatch, activeSession,
+  activeSession,
   restoreSettings, startSettingsPersistence,
   presetsDirty,
 } from './state';
 import { bootMock, bootReal, registerNavigatorReconnect } from './runtime';
+import { Log } from './utils';
 import { paletteCSS } from './styles/palette';
 
 const paletteStyle = document.createElement('style');
@@ -19,10 +20,11 @@ startSettingsPersistence();
 const params = new URLSearchParams(location.search);
 const mock = params.get('mock');
 
+// Boot reports its own failures (with errorKind) via reportConnectError.
 if (mock === 'rp2040' || mock === 'rp2350') {
-  void bootMock(mock).catch((e) => dispatch({ t: 'failed', message: (e as Error).message }));
+  void bootMock(mock).catch((e) => Log.error('boot', 'mock boot failed', e));
 } else {
-  void bootReal().catch((e) => dispatch({ t: 'failed', message: (e as Error).message }));
+  void bootReal().catch((e) => Log.error('boot', 'boot failed', e));
 }
 
 registerNavigatorReconnect();

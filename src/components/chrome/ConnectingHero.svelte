@@ -1,7 +1,7 @@
 <script lang="ts">
   import EqSpectrum from './EqSpectrum.svelte';
   import { connection, activeSession } from '@/state';
-  import { connectRequested, reportConnectError, webUsbUnsupportedReason, isDeviceHeld } from '@/runtime';
+  import { connectRequested, webUsbUnsupportedReason, isDeviceHeld } from '@/runtime';
 
   let busy = $state(false);
   const unsupported = webUsbUnsupportedReason();
@@ -58,8 +58,8 @@
     busy = true;
     try {
       await connectRequested();
-    } catch (e) {
-      reportConnectError(e);
+    } catch {
+      // connectRequested already reported the failure with its errorKind.
     } finally {
       busy = false;
     }

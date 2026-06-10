@@ -15,7 +15,7 @@ import { Log } from '@/utils';
 import { flushAllWrites } from './writes';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
-import { connectionScope, endConnection } from './connectionScope';
+import { endConnection, type ConnectionScope } from './connectionScope';
 import { acquireDeviceLock, releaseDeviceLock } from './deviceLock';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 import { MUTE_DB } from '@/domain/clamp';
@@ -31,7 +31,7 @@ export async function syncDeviceSnapshot(s: ReadySession): Promise<void> {
       s.mirror.init(snap);
     } catch (err) {
       Log.error('sync', 'syncDeviceSnapshot failed', err);
-      dispatch({ t: 'failed', message: (err as Error).message });
+      dispatch({ t: 'failed', message: (err as Error).message, attempt: s.attempt });
       throw err;
     } finally {
       inflightSync = null;
@@ -40,18 +40,19 @@ export async function syncDeviceSnapshot(s: ReadySession): Promise<void> {
   return inflightSync;
 }
 
-export async function wireUpConnection(device: DspDevice): Promise<void> {
-  dispatch({ t: 'requested' });
+export async function wireUpConnection(device: DspDevice, scope?: ConnectionScope): Promise<void> {
+  const attempt = scope?.attempt;
+  dispatch({ t: 'requested', attempt });
   try {
     const snap = await device.getSnapshot();
-    const session = makeReadySession(device);
-    dispatch({ t: 'synced', session });
+    const session = makeReadySession(device, attempt ?? 0);
+    dispatch({ t: 'synced', session, attempt });
     session.mirror.init(snap);
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync(session);
-    // Production opens the scope in createBoundDevice; tests may call
-    // wireUpConnection directly with no scope, so guard the registration.
-    const scope = connectionScope();
+    // Registration targets the attempt's own scope (never the ambient active
+    // one) so a concurrent attempt can't adopt this session's machinery.
+    // Tests may call without a scope.
     if (scope) {
       scope.add(startPolling(session));
       scope.add(startNotifyChannel(session));
@@ -66,7 +67,7 @@ export async function wireUpConnection(device: DspDevice): Promise<void> {
     });
   } catch (err) {
     Log.error('sync', 'wireUpConnection failed', err);
-    dispatch({ t: 'failed', message: (err as Error).message });
+    dispatch({ t: 'failed', message: (err as Error).message, attempt });
     throw err;
   }
 }
@@ -86,24 +87,18 @@ export async function reconcileAfterSync(s: ReadySession): Promise<void> {
   }
 }
 
-export function attachTransportListeners(transport: DspTransport, device: DspDevice): () => void {
+export function attachTransportListeners(transport: DspTransport, _device: DspDevice, attempt?: number): () => void {
   const offDisc = transport.on('disconnect', () => {
-    // endConnection() disposes the scope, which removes THIS very listener
-    // mid-emit (offDisc). Deleting the currently-firing entry from the
+    // Dispatch first: endConnection() clears the attempt token, which would
+    // drop this very event. Deleting the currently-firing entry from the
     // transport's listener Set during its forEach is safe -- it won't be
     // revisited and won't throw.
     const outgoing = activeSession();
+    dispatch({ t: 'disconnected', attempt });
     endConnection();                 // disposes resync, poll loop, listeners
-    dispatch({ t: 'disconnected' });
     outgoing?.dispose();             // alive=false + cancel this session's write lanes
   });
-  const offConn = transport.on('connect', () => {
-    void wireUpConnection(device).catch((e) => {
-      Log.error('transport', 'auto-finish after connect failed', e);
-      dispatch({ t: 'failed', message: (e as Error).message });
-    });
-  });
-  return () => { offDisc(); offConn(); };
+  return () => { offDisc(); };
 }
 
 export async function factoryResetDevice(): Promise<void> {

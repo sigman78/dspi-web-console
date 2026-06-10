@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { connection, dispatch, presetsDirty, activeSession } from '@/state';
+  import { connection, presetsDirty, activeSession } from '@/state';
   import { connectRequested, webUsbUnsupportedReason } from '@/runtime';
 
   const s = $derived(activeSession());
@@ -11,8 +11,8 @@
     busy = true;
     try {
       await connectRequested();
-    } catch (e) {
-      dispatch({ t: 'failed', message: (e as Error).message });
+    } catch {
+      // connectRequested already reported the failure with its errorKind.
     } finally {
       busy = false;
     }
@@ -41,7 +41,7 @@
 <button
   class="pill {tone}"
   onclick={connect}
-  disabled={busy || unsupported !== null || connection.connected}
+  disabled={busy || unsupported !== null || connection.connected || connection.phase === 'connecting'}
   title={unsupported ??
     (connection.phase === 'errored'
       ? `ERROR · ${connection.error ?? ''}`
