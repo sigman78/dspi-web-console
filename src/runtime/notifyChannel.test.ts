@@ -102,6 +102,33 @@ describe('startNotifyChannel', () => {
     stop();
   });
 
+  it('resolves a registered waiter from a presetLoaded packet while still suppressing the self-echo reconcile', async () => {
+    const { mock, session, mir } = await v10Setup();
+    mir.beginPresetGuard();
+    mock.pushNotify(new Uint8Array([2, 4, 0, 1, 4, 0, 0, 0])); // PRESET_LOADED, slot 4
+    const p = session.notifyWaiters.waitFor((e) => e.kind === 'presetLoaded' && e.slot === 4, 1000);
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();
+    await expect(p).resolves.toMatchObject({ kind: 'presetLoaded', slot: 4 });
+    expect(mir.peekReconcile().wanted).toBe(false);   // echo still suppressed: observe, don't consume
+    mir.endPresetGuard(0);
+    stop();
+  });
+
+  it('bursts the read cadence while a waiter is pending, reverts once resolved', async () => {
+    const { mock, session } = await v10Setup();
+    const m = delayClock();
+    const stop = startNotifyChannel(session, m.clock);
+    void session.notifyWaiters.waitFor((e) => e.kind === 'presetLoaded', 1000);
+    await m.tick();                          // idle read; waiter pending → burst re-arm
+    expect(m.delays.at(-1)).toBe(8);
+    mock.pushNotify(new Uint8Array([2, 4, 0, 1, 0, 0, 0, 0]));
+    await m.tick();                          // event delivered; waiter gone → default re-arm
+    expect(m.delays.at(-1)).toBeUndefined();
+    stop();
+  });
+
   it('reconciles when a seq gap reveals a missed event', async () => {
     const { mock, session, mir } = await v10Setup();
     // A HOST echo at seq=1 (no trigger), then a HOST echo at seq=3 (gap → 2 missed); size=0
