@@ -19,6 +19,7 @@ export const CHANGE_CLASS: Record<SnapshotChange['kind'], ChangeClass> = {
   crossfeed:          'preset-content',
   leveller:           'preset-content',
   inputConfig:        'preset-content',
+  spdifRxPin:         'pin-config',
   userVolume:         'preset-content',
   dacHwMute:          'preset-content',
   lgSoundSyncEnabled: 'preset-content',

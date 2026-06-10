@@ -40,6 +40,7 @@ export type SnapshotChange =
   | { kind: 'crossfeed';     value: Crossfeed }
   | { kind: 'leveller';      value: Leveller }
   | { kind: 'inputConfig';   value: InputConfig | null }
+  | { kind: 'spdifRxPin';    value: number }
   | { kind: 'userVolume';    value: UserVolume | null }
   | { kind: 'dacHwMute';     value: DacHwMute | null }
   | { kind: 'lgSoundSyncEnabled'; value: boolean }
@@ -103,8 +104,18 @@ function levellerDiffers(a: Leveller, b: Leveller): boolean {
       || neq(a.gateDb,    b.gateDb,    DIFF_TOLERANCE.db);
 }
 
-function inputConfigDiffers(a: InputConfig, b: InputConfig): boolean {
-  return a.source !== b.source || a.spdifRxPin !== b.spdifRxPin;
+// inputConfig splits: `source` is preset content; `spdifRxPin` belongs to the
+// output-config block (rides the 0x98 persistence mode, not the preset, on
+// 1.1.4). A source change carries the whole section; nullness mismatch keeps
+// the whole-section change so a section can materialize.
+function diffInputConfig(a: InputConfig | null | undefined, b: InputConfig | null | undefined, out: SnapshotChange[]): void {
+  const an = a == null, bn = b == null;
+  if (an || bn) {
+    if (an !== bn) out.push({ kind: 'inputConfig', value: b ?? null });
+    return;
+  }
+  if (a.source !== b.source) out.push({ kind: 'inputConfig', value: b });
+  else if (a.spdifRxPin !== b.spdifRxPin) out.push({ kind: 'spdifRxPin', value: b.spdifRxPin });
 }
 
 function userVolumeDiffers(a: UserVolume, b: UserVolume): boolean {
@@ -184,7 +195,7 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
     if (ra === undefined || routeDiffers(ra, b.routes[i])) out.push({ kind: 'route', index: i, value: b.routes[i] });
   }
 
-  if (nullableChanged(a.inputConfig, b.inputConfig, inputConfigDiffers)) out.push({ kind: 'inputConfig', value: b.inputConfig });
+  diffInputConfig(a.inputConfig, b.inputConfig, out);
   if (nullableChanged(a.userVolume,  b.userVolume,  userVolumeDiffers))  out.push({ kind: 'userVolume',  value: b.userVolume });
   if (nullableChanged(a.dacHwMute,   b.dacHwMute,   dacHwMuteDiffers))   out.push({ kind: 'dacHwMute',   value: b.dacHwMute });
   diffLgSoundSync(a.lgSoundSync, b.lgSoundSync, out);

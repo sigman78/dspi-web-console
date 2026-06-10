@@ -19,6 +19,7 @@ export function applyChange(c: SnapshotChange, t: DspSnapshot): void {
     case 'crossfeed':         t.crossfeed = c.value; break;
     case 'leveller':          t.leveller = c.value; break;
     case 'inputConfig':       t.inputConfig = c.value; break;
+    case 'spdifRxPin':        if (t.inputConfig) t.inputConfig = { ...t.inputConfig, spdifRxPin: c.value }; break;
     case 'userVolume':        t.userVolume = c.value; break;
     case 'dacHwMute':         t.dacHwMute = c.value; break;
     case 'i2s':               t.i2s = c.value; break;

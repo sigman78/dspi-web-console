@@ -21,6 +21,15 @@ describe('applyChange', () => {
     expect(t.outputPins).toEqual([6, 8]);
   });
 
+  it('applies spdifRxPin when the section is present, skips when null', () => {
+    const t = makeSnapshot((b) => { b.formatVersion = 10; });
+    applyChange({ kind: 'spdifRxPin', value: 9 }, t);
+    expect(t.inputConfig!.spdifRxPin).toBe(9);
+    const t2 = makeSnapshot();   // V6 -> inputConfig null
+    applyChange({ kind: 'spdifRxPin', value: 9 }, t2);
+    expect(t2.inputConfig).toBeNull();
+  });
+
   it('applies lgSoundSync split kinds when the section is present, skips when null', () => {
     // V10 snapshot carries lgSoundSync non-null.
     const t = makeSnapshot((b) => { b.formatVersion = 10; });

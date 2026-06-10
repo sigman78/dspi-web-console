@@ -197,6 +197,20 @@ describe('diffSnapshots — 1.1.4 sections', () => {
     expect(changes).toContainEqual({ kind: 'lgSoundSyncStatus', value: { present: true, volume: 40, muted: false } });
     expect(changes).toHaveLength(2);
   });
+
+  it('emits spdifRxPin (not inputConfig) on a pin-only change', () => {
+    const a = makeV10();
+    const b = structuredClone(a);
+    b.inputConfig = { ...b.inputConfig!, spdifRxPin: b.inputConfig!.spdifRxPin + 1 };
+    expect(diffSnapshots(a, b)).toEqual([{ kind: 'spdifRxPin', value: b.inputConfig.spdifRxPin }]);
+  });
+
+  it('emits a single inputConfig change when source and pin both change', () => {
+    const a = makeV10();
+    const b = structuredClone(a);
+    b.inputConfig = { source: a.inputConfig!.source === 1 ? 0 : 1, spdifRxPin: a.inputConfig!.spdifRxPin + 1 } as typeof b.inputConfig;
+    expect(diffSnapshots(a, b)).toEqual([{ kind: 'inputConfig', value: b.inputConfig }]);
+  });
 });
 
 describe('diffSnapshots — i2s + output pins', () => {
