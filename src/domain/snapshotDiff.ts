@@ -187,3 +187,28 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
 
   return out;
 }
+
+// Every top-level DspSnapshot key must be either covered by a change kind or
+// explicitly exempted here. Adding a field without deciding its diff story is
+// a compile error.
+type _Exempt  = 'platform';
+type _Covered =
+  | 'bypass'
+  | 'masterPreampDb'
+  | 'inputPreampDb'
+  | 'masterVolumeDb'
+  | 'channels'
+  | 'outputs'
+  | 'routes'
+  | 'loudness'
+  | 'crossfeed'
+  | 'leveller'
+  | 'inputConfig'
+  | 'userVolume'
+  | 'dacHwMute'
+  | 'lgSoundSync'
+  | 'i2s'
+  | 'outputPins';
+type _Complete = [Exclude<keyof DspSnapshot, _Covered | _Exempt>] extends [never] ? true : never;
+const _complete: _Complete = true;
+void _complete;
