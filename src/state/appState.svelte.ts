@@ -11,6 +11,9 @@ export interface ReadySession {
   readonly device: DspDevice;
   readonly info: DspDeviceInfo;
   readonly hardware: HardwareProfile;
+  // Attempt token of the connection that created this session; stamps
+  // session-scoped events so dispatch can drop them once superseded.
+  readonly attempt: number;
   // UI-only preset copy-source slot, owned by this device session.
   readonly copySource: { slot: PresetSlot | null };
   readonly telemetry: StatusStore;

@@ -1,11 +1,14 @@
+import { newAttempt, clearAttempt } from '@/state';
 import { Log } from '@/utils';
 
 type Disposer = () => void;
 
 // Owns the teardown of resources started for one device connection (poll loop,
 // resync timer, command lanes, transport listeners). The app holds one device
-// at a time, so there is a single module-level active scope.
+// at a time, so there is a single module-level active scope. Each scope carries
+// the attempt token that scopes this connection's app events.
 export class ConnectionScope {
+  readonly attempt = newAttempt();
   #disposers: Disposer[] = [];
   add(d: Disposer): void { this.#disposers.push(d); }
   // LIFO, idempotent, error-isolating: one failing disposer must not strand the rest.
@@ -32,4 +35,5 @@ export function connectionScope(): ConnectionScope | null { return active; }
 export function endConnection(): void {
   active?.dispose();
   active = null;
+  clearAttempt();
 }
