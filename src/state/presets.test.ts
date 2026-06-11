@@ -140,7 +140,7 @@ describe('presets store', () => {
     expect(dirty()).toBe(true);
   });
 
-  it('presetsDirty flips true on an i2s config change', () => {
+  it('presetsDirty flips true on an i2s config change (legacy device, no directory)', () => {
     seed(mkSnap({ i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 } as any }));
     expect(dirty()).toBe(false);
     const i2s = liveMirror().snapshot.i2s;
