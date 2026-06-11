@@ -166,6 +166,12 @@ export class MockTransport implements DspTransport {
         const bulk = this.#synthBulkPacket();
         return bulk.slice(0, Math.min(length, bulk.byteLength));
       }
+      case WireCmd.EnterBootloader.code: {
+        // Firmware acks one byte, then reboots to UF2 ~100 ms later; mirror
+        // that with a deferred close so the normal disconnect flow runs.
+        setTimeout(() => { void this.close(); }, 100);
+        return new Uint8Array([1]);
+      }
       case WireCmd.GetMasterVolume.code:
         return Codec.encode(Codec.f32, this.#mockState.masterVolumeDb);
       case WireCmd.GetPreamp.code:
