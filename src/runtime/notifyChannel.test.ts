@@ -62,15 +62,6 @@ beforeEach(() => { clearNotices(); });
 afterEach(() => { dispatch({ t: 'disconnected' }); });
 
 describe('startNotifyChannel', () => {
-  it('does nothing on a device without the notifications capability', async () => {
-    const dev = await DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 6, fwVersion: { major: 1, minor: 1, patch: 3 } }));
-    const session = connect(dev);
-    const m = manualClock();
-    const stop = startNotifyChannel(session, m.clock);
-    expect(m.armed()).toBe(false);   // loop never started
-    stop();
-  });
-
   it('requests a reconcile on a BULK_INVALIDATED event', async () => {
     const { mock, session, mir } = await v10Setup();
     mock.pushNotify(new Uint8Array([2, 3, 0, 1, 3, 0, 0, 0]));

@@ -5,17 +5,17 @@ import { Wire } from '@/protocol';
 const fw = (major: number, minor: number, patch: number) => ({ major, minor, patch });
 
 describe('deriveCapabilities — support classification', () => {
-  it('rejects firmware below the V6 floor as unsupported', () => {
-    const c = deriveCapabilities({ fw: fw(1, 1, 2), wireVersion: 5, payloadLength: 2864, platformId: 1 });
+  it('rejects firmware below the V10 floor as unsupported', () => {
+    const c = deriveCapabilities({ fw: fw(1, 1, 3), wireVersion: 6, payloadLength: 2896, platformId: 1 });
     expect(c.support).toBe('unsupported');
   });
 
-  it('classifies the V6 stable (1.1.3) as supported', () => {
-    const c = deriveCapabilities({ fw: fw(1, 1, 3), wireVersion: 6, payloadLength: 2896, platformId: 1 });
-    expect(c.support).toBe('supported');
+  it('rejects the last pre-release wire (V9) as unsupported', () => {
+    const c = deriveCapabilities({ fw: fw(1, 1, 4), wireVersion: 9, payloadLength: 2944, platformId: 1 });
+    expect(c.support).toBe('unsupported');
   });
 
-  it('classifies the V10 dev branch (1.1.4) as supported', () => {
+  it('classifies released 1.1.4 (V10) as supported', () => {
     const c = deriveCapabilities({ fw: fw(1, 1, 4), wireVersion: 10, payloadLength: 2960, platformId: 1 });
     expect(c.support).toBe('supported');
   });
@@ -104,27 +104,23 @@ describe('deriveCapabilities — 1.1.4 features', () => {
 
 describe('acceptsWriteFormat — firmware-merge write rule', () => {
   const caps = (wire: number) =>
-    deriveCapabilities({ fw: fw(1, 1, 3), wireVersion: wire, payloadLength: 2896, platformId: 1 });
+    deriveCapabilities({ fw: fw(1, 1, 4), wireVersion: wire, payloadLength: 2960, platformId: 1 });
 
   it('accepts an equal-version blob (the common same-session case)', () => {
-    expect(acceptsWriteFormat(caps(6), 6)).toBe(true);
-  });
-
-  it('accepts a lower-version blob onto a higher device (merges up)', () => {
-    expect(acceptsWriteFormat(caps(10), 6)).toBe(true);
+    expect(acceptsWriteFormat(caps(10), 10)).toBe(true);
   });
 
   it('rejects a higher-version blob the firmware would refuse', () => {
-    expect(acceptsWriteFormat(caps(6), 10)).toBe(false);
+    expect(acceptsWriteFormat(caps(10), MAX_KNOWN_WIRE + 1)).toBe(false);
   });
 
-  it('rejects a blob below the V6 floor regardless of device', () => {
+  it('rejects a blob below the V10 floor regardless of device', () => {
     expect(acceptsWriteFormat(caps(10), MIN_SUPPORTED_WIRE - 1)).toBe(false);
   });
 
   it('still accepts known-format blobs on a future (too-new) device — option C', () => {
     const future = caps(MAX_KNOWN_WIRE + 1);
-    expect(acceptsWriteFormat(future, 6)).toBe(true);
+    expect(acceptsWriteFormat(future, 10)).toBe(true);
     expect(acceptsWriteFormat(future, MAX_KNOWN_WIRE)).toBe(true);
   });
 });

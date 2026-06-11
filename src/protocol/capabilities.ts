@@ -8,9 +8,10 @@
 
 import * as Wire from './wireTypes';
 
-// Floor: V6 ships with fw 1.1.3, the minimum the console supports. Ceiling:
-// V10 is the 1.1.4 development branch -- the newest wire shape the console knows.
-export const MIN_SUPPORTED_WIRE = 6;
+// Floor: V10 ships with released fw 1.1.4 -- the single supported wire shape
+// (single-stable policy per docs/FW-VERSIONS.md; 1.1.3/V6 support dropped).
+// Ceiling: V10 is also the newest shape the console knows.
+export const MIN_SUPPORTED_WIRE = 10;
 export const MAX_KNOWN_WIRE = 10;
 
 // Notification Protocol v2 requires the V7 bulk bump; devices below this wire have no v2 notify channel.
@@ -32,8 +33,8 @@ export interface DeviceCapabilities {
   readonly platformId: number;
 
   // Support classification, keyed on the observed wire version:
-  //   unsupported -- older than the V6 floor; connect is rejected.
-  //   supported   -- V6 (1.1.3) through V10 (1.1.4 branch).
+  //   unsupported -- older than the V10 floor; connect is rejected.
+  //   supported   -- V10 (1.1.4).
   //   future      -- newer than the console knows; read known sections only.
   readonly support: 'unsupported' | 'supported' | 'future';
 

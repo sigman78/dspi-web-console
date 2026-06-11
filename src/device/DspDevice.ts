@@ -7,7 +7,7 @@ import { deriveCapabilities, FEATURE_MIN_WIRE, type DeviceCapabilities, type Fir
 
 // Semver face of the wire-version floor that lives in capabilities.ts; shown in
 // the reject message.
-const MIN_SUPPORTED_FW = '1.1.3';
+const MIN_SUPPORTED_FW = '1.1.4';
 
 // Thrown at connect when firmware predates the supported floor. Carries the
 // versions so the connect UI can render an upgrade prompt.
@@ -128,11 +128,11 @@ export class DspDevice {
     if (capabilities.support === 'unsupported') {
       throw new UnsupportedFirmware(capabilities.fwLabel);
     }
-    // A supported wire version must also carry at least the V6 floor payload.
-    // A shorter packet means the device omits floor sections the console treats
-    // as guaranteed (i2s/leveller) -- reject instead of silently defaulting them.
-    if (bulk.payloadLength < proto.Wire.BulkSizes.V6Full) {
-      throw new UnsupportedDevicePacket(capabilities.fwLabel, bulk.payloadLength, proto.Wire.BulkSizes.V6Full);
+    // A supported wire version must also carry at least the V10 floor payload.
+    // A shorter packet means the device omits sections the console treats as
+    // guaranteed -- reject instead of silently defaulting them.
+    if (bulk.payloadLength < proto.Wire.BulkSizes.V10) {
+      throw new UnsupportedDevicePacket(capabilities.fwLabel, bulk.payloadLength, proto.Wire.BulkSizes.V10);
     }
 
     const platformType = platformTypeFromId(platform.platformId);
