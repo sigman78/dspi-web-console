@@ -5,7 +5,7 @@
   } from '@/state';
   import {
     saveActivePreset, revertActivePreset,
-    setStartupDefault, setStartupMode, pastePresetTo, renamePresetSlot,
+    setStartupDefault, setStartupMode, copyActivePreset, pastePresetTo, renamePresetSlot,
     setMasterVolumeMode, setOutputConfigMode,
   } from '@/runtime';
   import { MasterVolumeMode, OutputConfigMode } from '@/domain';
@@ -32,9 +32,9 @@
   const canSave = $derived(active != null && (dirty || !activeOccupied));
   const canRevert = $derived(active != null && activeOccupied && dirty);
   const canRename = $derived(active != null);
-  const canCopy = $derived(active != null && activeOccupied && !dirty && s.copySource.slot == null);
-  const isCopyHeld = $derived(s.copySource.slot != null);
-  const canPaste = $derived(s.copySource.slot != null && active != null && s.copySource.slot !== active);
+  const held = $derived(s.copySource.held);
+  const canCopy = $derived(active != null && activeOccupied && !dirty && held == null);
+  const canPaste = $derived(held != null && active != null && held.slot !== active);
   const canSetStartup = $derived(active != null);
 
   const startupMode = $derived(dir?.startupMode ?? PresetStartupMode.Specified);
@@ -58,21 +58,20 @@
     await revertActivePreset(s);
   }
 
-  function onCopy() {
+  async function onCopy() {
     if (s.presets.busy || active == null) return;
-    s.copySource.slot = active;
+    await copyActivePreset(s);
   }
   function onDrop() {
     if (s.presets.busy) return;
-    s.copySource.slot = null;
+    s.copySource.held = null;
   }
 
+  // The clipboard survives a successful paste: the blob is immutable, so the
+  // user can stamp it into several slots. DROP is the explicit release.
   async function onPaste() {
-    if (s.presets.busy) return;
-    const src = s.copySource.slot;
-    if (src == null) return;
-    const r = await pastePresetTo(s, src);
-    if ('ok' in r && r.ok) s.copySource.slot = null;
+    if (s.presets.busy || held == null) return;
+    await pastePresetTo(s, held.blob);
   }
 
   async function onSetStartup() {
@@ -100,8 +99,8 @@
       <button class="btn" onclick={onRevert} disabled={!canRevert}>REVERT</button>
     </div>
     <div class="row2">
-      {#if isCopyHeld}
-        <button class="btn warn" onclick={onDrop}>DROP</button>
+      {#if held != null}
+        <button class="btn warn" onclick={onDrop} title={`Drop the copied preset "${held.name}"`}>DROP</button>
       {:else}
         <button
           class="btn"
@@ -110,7 +109,13 @@
           title={canCopy ? '' : (dirty ? 'Save changes to copy this state' : '')}
         >COPY</button>
       {/if}
-      <button class="btn" class:primary={canPaste} onclick={onPaste} disabled={!canPaste}>PASTE</button>
+      <button
+        class="btn"
+        class:primary={canPaste}
+        onclick={onPaste}
+        disabled={!canPaste}
+        title={held != null ? `Paste "${held.name}" into the active preset` : ''}
+      >PASTE</button>
     </div>
     <div class="row2">
       <button class="btn" disabled title="Not yet implemented">IMPORT</button>

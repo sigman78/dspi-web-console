@@ -1,6 +1,7 @@
 // Client-side mirror of the firmware GPIO rules (usb_audio.c
 // is_valid_gpio_pin / is_pin_in_use); the firmware status byte stays the
 // backstop. Feeds the pin dropdowns and BCK/MCK guard states.
+import { OutputSlotType } from './channels';
 import { PlatformType } from './platform';
 import type { DspSnapshot } from './snapshot';
 
@@ -31,7 +32,7 @@ export function pinsInUse(snapshot: DspSnapshot): Map<number, string> {
   });
   const i2s = snapshot.i2s;
   if (i2s) {
-    if (i2s.outputSlotTypes.some((t) => t === 1)) {
+    if (i2s.outputSlotTypes.some((t) => t === OutputSlotType.I2s)) {
       m.set(i2s.bckPin, PIN_LABEL.bck);
       m.set(i2s.bckPin + 1, PIN_LABEL.lrclk);
     }

@@ -16,8 +16,10 @@
       <p>{boundary.pending.message}</p>
       <div class="actions">
         <button class="btn" onclick={() => resolveBoundary('cancel')}>Cancel</button>
-        <button class="btn warn" onclick={() => resolveBoundary('discard')}>Switch anyway</button>
-        <button class="btn primary" onclick={() => resolveBoundary('save')}>{boundary.pending.saveLabel}</button>
+        <button class="btn warn" onclick={() => resolveBoundary('discard')}>{boundary.pending.discardLabel ?? 'Switch anyway'}</button>
+        {#if boundary.pending.saveLabel}
+          <button class="btn primary" onclick={() => resolveBoundary('save')}>{boundary.pending.saveLabel}</button>
+        {/if}
       </div>
     </div>
   </div>

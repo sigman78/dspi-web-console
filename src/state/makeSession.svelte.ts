@@ -1,6 +1,5 @@
 import type { DspDevice } from '@/device/DspDevice';
-import type { PresetSlot } from '@/domain';
-import type { ReadySession } from './appState.svelte';
+import type { PresetClipboard, ReadySession } from './appState.svelte';
 import { StatusStore } from './telemetry.svelte';
 import { createPresetsState } from './presets.svelte';
 import { MirrorState } from './mirror.svelte';
@@ -11,7 +10,7 @@ import { NotifyWaiters } from '@/runtime/notifyWaiters';
 // Assembles a per-device session from its constituent stores. Kept apart from
 // appState, which references these store classes type-only to avoid an import cycle.
 export function makeReadySession(device: DspDevice, attempt = 0): ReadySession {
-  const copySource = $state<{ slot: PresetSlot | null }>({ slot: null });
+  const copySource = $state<{ held: PresetClipboard | null }>({ held: null });
   const telemetry = new StatusStore();
   const presets = createPresetsState();
   const mirror = new MirrorState();

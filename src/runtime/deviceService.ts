@@ -104,7 +104,7 @@ export async function factoryResetDevice(): Promise<void> {
     const r = await d.factoryReset();
     if (!r.ok) { pushNotice('warn', r.message); return; }  // non-ok flash status
     invalidatePresetCache(s);
-    s.copySource.slot = null;
+    s.copySource.held = null;
     await syncDeviceSnapshot(s);
     pushNotice('info', 'Factory reset complete.');
   } catch (e) {

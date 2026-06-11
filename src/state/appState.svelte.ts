@@ -1,4 +1,5 @@
 import type { DspDevice, DspDeviceInfo } from '@/device/DspDevice';
+import type { DeviceState } from '@/protocol/snapshotCodec';
 import type { HardwareProfile, PresetSlot } from '@/domain';
 import type { StatusStore } from './telemetry.svelte';
 import type { PresetsState } from './presets.svelte';
@@ -6,6 +7,12 @@ import type { MirrorState } from './mirror.svelte';
 import type { LinkHealth } from './linkHealth.svelte';
 import type { WriteCoordinator } from '@/runtime/writes';
 import type { NotifyWaiters } from '@/runtime/notifyWaiters';
+
+export interface PresetClipboard {
+  slot: PresetSlot;
+  name: string;
+  blob: DeviceState;
+}
 
 // A bound device plus its per-device runtime state (mirror, presets, telemetry,
 // writes, lifecycle guard).
@@ -16,8 +23,11 @@ export interface ReadySession {
   // Attempt token of the connection that created this session; stamps
   // session-scoped events so dispatch can drop them once superseded.
   readonly attempt: number;
-  // UI-only preset copy-source slot, owned by this device session.
-  readonly copySource: { slot: PresetSlot | null };
+  // Preset clipboard, owned by this device session. Content is snapshotted at
+  // copy time (the copy precondition guarantees RAM == flash[slot] just then),
+  // so the held blob is immutable: later edits, preset switches, or source
+  // slot deletion can't invalidate it. slot/name are display hints only.
+  readonly copySource: { held: PresetClipboard | null };
   readonly telemetry: StatusStore;
   readonly presets: PresetsState;
   readonly mirror: MirrorState;

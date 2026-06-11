@@ -71,7 +71,8 @@ export type BoundaryChoice = 'save' | 'discard' | 'cancel';
 export interface BoundaryPrompt {
   title: string;
   message: string;
-  saveLabel: string; // e.g. "Save and continue", "Save and disconnect"
+  saveLabel?: string;    // e.g. "Save & switch"; omitted = no save option (discard/cancel only)
+  discardLabel?: string; // defaults to "Switch anyway"
 }
 
 interface BoundaryState {

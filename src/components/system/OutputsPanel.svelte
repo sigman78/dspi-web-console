@@ -5,7 +5,7 @@
   import SaveOutputConfigButton from './SaveOutputConfigButton.svelte';
   import { connection } from '@/state';
   import { setOutputType, setOutputDataPin } from '@/runtime';
-  import { availablePinsFor, channelLayoutById, ChannelId, type I2sPairSlot } from '@/domain';
+  import { availablePinsFor, channelLayoutById, ChannelId, OutputSlotType, type I2sPairSlot } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -20,8 +20,8 @@
   }
 
   const TYPE_OPTS: ReadonlyArray<{ value: number; label: string }> = [
-    { value: 0, label: 'SPDIF' },
-    { value: 1, label: 'I2S' },
+    { value: OutputSlotType.Spdif, label: 'SPDIF' },
+    { value: OutputSlotType.I2s, label: 'I2S' },
   ];
 
   // outputPins = stereo pairs + trailing PDM, so numSpdif <= 4 and the
@@ -46,7 +46,7 @@
           </span>
           <SegmentedSelect
             size="sm"
-            value={snap.i2s?.outputSlotTypes[slot] ?? 0}
+            value={snap.i2s?.outputSlotTypes[slot] ?? OutputSlotType.Spdif}
             options={TYPE_OPTS}
             ariaLabel={`Out ${slot + 1} output type`}
             disabled={!connected}

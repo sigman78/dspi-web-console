@@ -10,6 +10,7 @@ import { fetchAndApplyAsBaseline } from './resync';
 import { flushAllWrites as flushWrites } from './writes';
 import { type PresetSlot, PRESET_SLOT_COUNT, OutputConfigMode } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
+import type { DeviceState } from '@/protocol/snapshotCodec';
 import { Log, Result } from '@/utils';
 
 // Settle pause after the paste-path SavePreset before re-reading device state.
@@ -224,8 +225,7 @@ export async function savePresetSlot(s: ReadySession, slot: PresetSlot): Promise
 // Wire-level load + post-load epilogue, no dirty gating. Called by loadPresetSlot
 // (after gating) and revertActivePreset. Uses fetchAndApplyAsBaseline (not
 // fullSync) so session.status never flips to 'connecting', which would unmount the
-// main view and flash the splash mid-load. reconcileAfterSync re-applies soft-mute
-// over the loaded volume.
+// main view and flash the splash mid-load.
 async function executeLoad(
   s: ReadySession,
   slot: PresetSlot,
@@ -241,7 +241,7 @@ async function executeLoad(
       const r = await loadAndSettle(s, slot);
       if (r.ok) {
         // Reflect active slot in UI immediately. If the subsequent resync or
-        // soft-mute reconcile throws, we still want the header/active marker
+        // EQ-target reconcile throws, we still want the header/active marker
         // to match the slot the device just loaded.
         s.presets.active = slot;
         await fetchAndApplyAsBaseline(s);
@@ -290,54 +290,58 @@ export async function revertActivePreset(s: ReadySession): Promise<Result<void, 
   return executeLoad(s, active);
 }
 
-// PresetCopy doesn't exist on the wire; PASTE composes a whole-state swap using
-// the device's bulk capture/restore so the active-slot pointer never changes:
+// COPY snapshots the active preset's content into the session clipboard. The
+// UI's copy precondition (occupied + clean RAM) guarantees RAM == flash[active]
+// right now, so one captureState() grabs exactly the source preset — no loads.
+export async function copyActivePreset(s: ReadySession): Promise<Result<void, PresetResult> | PresetActionError> {
+  const active = s.presets.active;
+  if (active == null) return activeSlotError('no active slot');
+  clearActionError(s.presets);
+  try {
+    return await withBusy(s.presets, async () => {
+      const blob = await s.device.captureState();
+      s.copySource.held = { slot: active, name: s.presets.names[active] ?? '', blob };
+      return Result.ok();
+    });
+  } catch (e) {
+    return recordToResult(s.presets, 'Copy', e);
+  }
+}
+
+// PresetCopy doesn't exist on the wire; PASTE pushes the clipboard blob
+// (captured at copy time) into the active slot's RAM and flashes it:
 //
-//   1. LoadPreset(src)     -- RAM = src flash content; device pointer -> src
-//   2. captureState()      -- capture src content as an opaque device blob
-//   3. LoadPreset(active)  -- restore RAM + device pointer to pre-paste slot
-//   4. restoreState(blob)  -- push src content into active's RAM (no flash)
-//   5. SavePreset(active)  -- flash[active] = RAM = src content
+//   1. restoreState(blob)  -- clipboard content into active's RAM (no flash)
+//   2. SavePreset(active)  -- flash[active] = RAM = clipboard content
 //
-// End state: active slot holds source's content, RAM matches, active unchanged.
-// The UI's copy/paste invariant guarantees clean RAM here (copy source clears on
-// dirty), so there's no boundary-modal gate; a violating caller gets stale-source
-// behaviour, not data loss.
-export async function pastePresetTo(s: ReadySession, src: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
+// The blob is immutable, so paste is reachable with dirty RAM (e.g. copy, tweak
+// a knob, paste): it would silently overwrite those tweaks wholesale, hence the
+// boundary-modal gate. No save option — saving first would flash the tweaks
+// into the very slot the paste is about to overwrite.
+export async function pastePresetTo(s: ReadySession, blob: DeviceState): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = s.device;
   const active = s.presets.active;
   if (active == null) return activeSlotError('no active slot');
-  if (active === src) return activeSlotError('source and target are the same');
+  if (presetsDirty(s)) {
+    const choice = await askBoundary({
+      title: 'Unsaved changes',
+      message: 'Pasting will overwrite the unsaved changes in the active preset.',
+      discardLabel: 'Paste anyway',
+    });
+    if (choice !== 'discard') {
+      return { ok: false, code: 'active', message: 'cancelled' };
+    }
+  }
   clearActionError(s.presets);
-  // Paste runs three loads + a save, each emitting source=preset notifications;
-  // suppress those self-echoes -- the trailing fetchAndApplyAsBaseline is the resync.
+  // The restore + save emit source=preset notifications; suppress those
+  // self-echoes -- the trailing fetchAndApplyAsBaseline is the resync.
   const mir = s.mirror;
   mir.beginPresetGuard();
   try {
     return await withBusy(s.presets, async () => {
       await flushWrites(s);
-      // Step 1: Load source into RAM (device pointer -> src). loadAndSettle
-      // gates on the device's own load-complete signal, so the capture below
-      // can't grab the previous (active) slot's content.
-      const r1 = await loadAndSettle(s, src);
-      if (!r1.ok) {
-        recordActionError(s.presets, 'Paste', new Error(r1.message ?? `error ${r1.code}`));
-        return r1;
-      }
-      // Step 2: Capture src content as a blob.
-      const sourceBlob = await d.captureState();
-      // Step 3: Restore active slot in RAM (device pointer -> active), settled
-      // for the same reason: its deferred flash->RAM copy must not land after
-      // restoreState and clobber the source content.
-      const r3 = await loadAndSettle(s, active);
-      if (!r3.ok) {
-        recordActionError(s.presets, 'Paste', new Error(r3.message ?? `error ${r3.code}`));
-        return r3;
-      }
-      // Step 4: Push src content into active's RAM (no flash; pointer unchanged).
       // The blob is this device's own capture, so the format always matches.
-      await d.restoreState(sourceBlob);
-      // Step 5: Flash active slot = RAM = src content.
+      await d.restoreState(blob);
       const r5 = await d.savePreset(active);
       if (!r5.ok) {
         recordActionError(s.presets, 'Paste', new Error(r5.message ?? `error ${r5.code}`));

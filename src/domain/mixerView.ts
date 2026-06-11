@@ -1,7 +1,7 @@
 // Snapshot joins and matrix-tab projections over DspSnapshot. Separate from mixer.ts so that
 // stays snapshot-free (avoids a cycle with snapshot.ts).
 
-import { ChannelId, slotForOutputChannel, type InputSlot, type OutputMode, type OutputSlot } from './channels';
+import { ChannelId, OutputSlotType, slotForOutputChannel, type InputSlot, type OutputMode, type OutputSlot } from './channels';
 import type { RouteModel } from './mixer';
 import type { ChannelModel, DspSnapshot } from './snapshot';
 
@@ -35,7 +35,7 @@ export function outputModeForChannel(s: DspSnapshot, id: ChannelId): OutputMode 
   if (id === ChannelId.Pdm) return 'PDM';
   const slot = slotForOutputChannel(id);
   if (slot === null) throw new Error(`Channel ${id} has no output mode`);
-  return s.i2s.outputSlotTypes[slot] === 1 ? 'I2S' : 'SPDIF';
+  return s.i2s.outputSlotTypes[slot] === OutputSlotType.I2s ? 'I2S' : 'SPDIF';
 }
 
 export function matrixColumns(snapshot: DspSnapshot | null): MatrixColumn[] {
