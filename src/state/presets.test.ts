@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { presetsDirty, resetBoundary, askBoundary, resolveBoundary } from './presets.svelte';
 import { activeSession, dispatch } from './appState.svelte';
 import { makeReadySession } from './makeSession.svelte';
-import { settings } from './settings.svelte';
 import { OutputConfigMode, type DspSnapshot } from '@/domain';
 
 const liveMirror = () => activeSession()!.mirror;
@@ -40,8 +39,6 @@ describe('presets store', () => {
     dispatch({ t: 'disconnected' });
     dispatch({ t: 'synced', session: makeReadySession({ info: {}, hardware: {} } as never) });
     resetBoundary();
-    settings.soft.muted = false;
-    settings.soft.mutedFromDb = null;
   });
 
   it('initial state has null directory and empty names', () => {
@@ -86,7 +83,7 @@ describe('presets store', () => {
     expect(dirty()).toBe(true);
   });
 
-  it('presetsDirty skips volume when softMuted', () => {
+  it('presetsDirty detects a volume change in Mode 1 regardless of userVolume.mute', () => {
     seed(mkSnap({ masterVolumeDb: 0 }));
     ps().directory = {
       occupiedSlotsSet: new Set(),
@@ -94,9 +91,8 @@ describe('presets store', () => {
       outputConfigMode: OutputConfigMode.Independent,
       masterVolumeMode: 1 as any,
     };
-    settings.soft.muted = true;
-    liveMirror().snapshot.masterVolumeDb = -128;
-    expect(dirty()).toBe(false);
+    liveMirror().snapshot.masterVolumeDb = -12;
+    expect(dirty()).toBe(true);
   });
 
   it('presetsDirty flips true on a per-band bypass change (SP1 gap closed)', () => {

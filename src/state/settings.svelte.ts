@@ -12,10 +12,6 @@ export interface Settings {
   showDebugStats: boolean;
   tab: TabId;
   eqTarget: ChannelId | null;
-  soft: {
-    muted: boolean;
-    mutedFromDb: number | null;
-  };
   lastSerial: string | null;
   warnOnPresetSwitchDirty: boolean;
   // When true, a successful write/scrub asks the background param poll to
@@ -34,7 +30,6 @@ function defaults(): Settings {
     showDebugStats: false,
     tab: 'overview',
     eqTarget: null,
-    soft: { muted: false, mutedFromDb: null },
     lastSerial: null,
     warnOnPresetSwitchDirty: true,
     eagerReconcile: false,
@@ -51,9 +46,6 @@ function tabId(v: unknown, fallback: TabId): TabId {
 }
 function channelIdOrNull(v: unknown): ChannelId | null {
   return typeof v === 'number' ? (v as ChannelId) : null;
-}
-function numberOrNull(v: unknown): number | null {
-  return typeof v === 'number' ? v : null;
 }
 function stringOrNull(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
@@ -75,17 +67,12 @@ function safeJSON(raw: string | null): Record<string, unknown> | null {
 function parseV1(raw: string, fallback: Settings): Settings {
   const obj = safeJSON(raw);
   if (!obj) return fallback;
-  const soft = (obj.soft && typeof obj.soft === 'object') ? (obj.soft as Record<string, unknown>) : {};
   return {
     version: 1,
     theme: theme(obj.theme),
     showDebugStats: bool(obj.showDebugStats, fallback.showDebugStats),
     tab: tabId(obj.tab, fallback.tab),
     eqTarget: channelIdOrNull(obj.eqTarget),
-    soft: {
-      muted: bool(soft.muted, false),
-      mutedFromDb: numberOrNull(soft.mutedFromDb),
-    },
     lastSerial: stringOrNull(obj.lastSerial),
     warnOnPresetSwitchDirty: bool(obj.warnOnPresetSwitchDirty, true),
     eagerReconcile: bool(obj.eagerReconcile, false),
@@ -106,10 +93,6 @@ function migrateLegacyKeys(): Settings | null {
     showDebugStats: bool(ui?.showDebugStats, false),
     tab: tabId(ui?.tab, 'overview'),
     eqTarget: channelIdOrNull(ui?.eqTarget),
-    soft: {
-      muted: bool(ui?.muted, false),
-      mutedFromDb: numberOrNull(ui?.mutedFromDb),
-    },
     lastSerial: stringOrNull(conn?.lastSerial),
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
@@ -147,8 +130,6 @@ export function restoreSettings(): void {
   settings.showDebugStats = loaded.showDebugStats;
   settings.tab = loaded.tab;
   settings.eqTarget = loaded.eqTarget;
-  settings.soft.muted = loaded.soft.muted;
-  settings.soft.mutedFromDb = loaded.soft.mutedFromDb;
   settings.lastSerial = loaded.lastSerial;
   settings.warnOnPresetSwitchDirty = loaded.warnOnPresetSwitchDirty;
   settings.eagerReconcile = loaded.eagerReconcile;
@@ -189,7 +170,6 @@ export function startSettingsPersistence(): void {
         showDebugStats: settings.showDebugStats,
         tab: settings.tab,
         eqTarget: settings.eqTarget,
-        soft: { muted: settings.soft.muted, mutedFromDb: settings.soft.mutedFromDb },
         lastSerial: settings.lastSerial,
         warnOnPresetSwitchDirty: settings.warnOnPresetSwitchDirty,
         eagerReconcile: settings.eagerReconcile,

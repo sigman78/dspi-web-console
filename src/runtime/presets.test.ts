@@ -589,7 +589,6 @@ describe('notify-driven load settle', () => {
 
   beforeEach(() => {
     settings.warnOnPresetSwitchDirty = false;
-    settings.soft.muted = false;
   });
 
   afterEach(() => {

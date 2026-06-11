@@ -11,21 +11,11 @@ import {
 import * as Clamp from '@/domain/clamp';
 import {
   type ReadySession,
-  settings,
   pushNotice,
 } from '@/state';
 import { Log } from '@/utils';
 import { write, scrub, writeChecked, command } from './writes';
 import { focusOutput, focusRoute } from './focus';
-
-
-function _setMasterVolume(s: ReadySession, db: number): void {
-  scrub(s,
-    'masterVolume',
-    () => { s.mirror.snapshot.masterVolumeDb = db; },
-    () => s.device.setMasterVolume(db),
-  );
-}
 
 export function setEqFilter(s: ReadySession, channel: ChannelId, band: number, filter: FilterParams): void {
   const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
@@ -318,24 +308,21 @@ export function setOutputMuted(s: ReadySession, slot: OutputSlot, muted: boolean
 
 export function setMasterVolume(s: ReadySession, db: number): void {
   db = Clamp.masterVolumeDb(db);
-  if (settings.soft.muted) {
-    settings.soft.muted = false;
-    settings.soft.mutedFromDb = null;
-  }
-  _setMasterVolume(s, db);
+  scrub(s,
+    'masterVolume',
+    () => { s.mirror.snapshot.masterVolumeDb = db; },
+    () => s.device.setMasterVolume(db),
+  );
 }
 
+// Flips the firmware vendor user-mute bit (0xDC). The firmware ORs this with
+// the UAC1 OS mute — they're independent; we reflect and control only this bit.
 export function toggleMute(s: ReadySession): void {
-  if (settings.soft.muted) {
-    const restore = settings.soft.mutedFromDb ?? 0;
-    settings.soft.muted = false;
-    settings.soft.mutedFromDb = null;
-    _setMasterVolume(s, restore);
-  } else {
-    settings.soft.mutedFromDb = s.mirror.snapshot.masterVolumeDb;
-    settings.soft.muted = true;
-    _setMasterVolume(s, Clamp.MUTE_DB);
-  }
+  const next = !(s.mirror.snapshot.userVolume?.mute ?? false);
+  void write(s,
+    () => s.device.setUserMute(next),
+    () => { if (s.mirror.snapshot.userVolume) s.mirror.snapshot.userVolume.mute = next; },
+  );
 }
 
 export function setMasterVolumeMode(s: ReadySession, mode: MasterVolumeMode): void {
@@ -418,19 +405,6 @@ export function setMckPin(s: ReadySession, pin: number): void {
 
 export function setMckMultiplier(s: ReadySession, encoded: number): void {
   void writeChecked(s,'set MCK multiplier', () => s.device.setMckMultiplier(encoded), () => patchI2s(s, (i) => ({ ...i, mckMultiplierEncoded: encoded })));
-}
-
-// M2 — User volume axis (UAC1 host volume, separate from master volume).
-// Firmware clamps [-60, 0]; firmware pushes PARAM_CHANGED/UAC1 notifications
-// when the OS slider changes, which notifyApply reconciles automatically.
-
-export function setUserVolume(s: ReadySession, db: number): void {
-  db = Clamp.userVolumeDb(db);
-  scrub(s,
-    'userVolume',
-    () => { if (s.mirror.snapshot.userVolume) s.mirror.snapshot.userVolume.volumeDb = db; },
-    () => s.device.setUserVolume(db),
-  );
 }
 
 export function setUserMute(s: ReadySession, mute: boolean): void {

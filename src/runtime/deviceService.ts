@@ -19,7 +19,6 @@ import { startLinkProbe } from './linkProbe';
 import { endConnection, type ConnectionScope } from './connectionScope';
 import { acquireDeviceLock, releaseDeviceLock } from './deviceLock';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
-import { MUTE_DB } from '@/domain/clamp';
 
 let inflightSync: Promise<void> | null = null;
 
@@ -74,19 +73,10 @@ export async function wireUpConnection(device: DspDevice, scope?: ConnectionScop
   }
 }
 
-// Re-apply UI policy that should outlive a (re)connect (mute, eqTarget). Runs
-// after the snapshot is hydrated, so it sees freshly-synced device state and can
-// write through it. reconcileEqTarget is a pure state-layer step before the
-// device-touching mute restore.
+// Reconcile UI policy after (re)connect. reconcileEqTarget validates the
+// persisted EQ target against the connected platform's channel set.
 export async function reconcileAfterSync(s: ReadySession): Promise<void> {
   reconcileEqTarget(s.mirror.current?.channels);
-  const d = s.device;
-  if (settings.soft.muted) {
-    const restoreFrom = settings.soft.mutedFromDb ?? s.mirror.current?.masterVolumeDb ?? 0;
-    settings.soft.mutedFromDb = restoreFrom;
-    if (s.mirror.current) s.mirror.current.masterVolumeDb = MUTE_DB;
-    await d.setMasterVolume(MUTE_DB);
-  }
 }
 
 export function attachTransportListeners(transport: DspTransport, _device: DspDevice, attempt?: number): () => void {

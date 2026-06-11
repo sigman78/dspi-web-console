@@ -3,7 +3,6 @@
   import StatusPill from './StatusPill.svelte';
   import DirtyDot from './DirtyDot.svelte';
   import MasterVolumeMini from './MasterVolumeMini.svelte';
-  import UserVolumeMini from './UserVolumeMini.svelte';
   import PresetActiveChip from '@/components/presets/PresetActiveChip.svelte';
   import { connection, activeSession } from '@/state';
   import { setBypass } from '@/runtime';
@@ -48,8 +47,6 @@
   <span class="div"></span>
 
   <MasterVolumeMini />
-  <span class="div"></span>
-  <UserVolumeMini />
 
   <button
     class="bypass"

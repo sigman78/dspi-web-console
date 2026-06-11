@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserVolume, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource } from './actions';
+import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './deviceService';
 import { connection, settings, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { bootMock } from './boot';
@@ -108,9 +108,6 @@ const liveMirror = () => activeSession()!.mirror;
 describe('actions wiring', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    // reset module-scope settings state used by toggleMute
-    settings.soft.muted = false;
-    settings.soft.mutedFromDb = null;
     const bulk = parseBulkParams(makeBulk({ masterVolumeDb: 0 }));
     dispatch({ t: 'synced', session: makeReadySession({} as never) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
@@ -120,19 +117,32 @@ describe('actions wiring', () => {
     vi.useRealTimers();
   });
 
-  it('mute lands as the final wire write even with a slider value pending', async () => {
-    const { device, calls } = makeFakeDevice();
+  it('toggleMute flips userVolume.mute on the device and does not touch masterVolume', async () => {
+    const setUserMuteFn = vi.fn(async () => {});
+    const setMasterVolumeFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setUserMute: setUserMuteFn,
+      setMasterVolume: setMasterVolumeFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
     dispatch({ t: 'synced', session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: 0 }))));
+    const snap = fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: -12 })));
+    if (snap.userVolume) snap.userVolume.mute = false;
+    liveMirror().replaceCurrent(snap);
 
-    setMasterVolume(activeSession()!, -12);    // sends immediately
-    toggleMute(activeSession()!);              // parks -128 (MUTE_DB) behind it
-
-    await vi.advanceTimersByTimeAsync(50);
+    toggleMute(activeSession()!);
     await vi.runAllTimersAsync();
 
-    expect(settings.soft.muted).toBe(true);
-    expect(calls.at(-1)).toBe(-128);          // mute is the last value on the wire
+    expect(setUserMuteFn).toHaveBeenCalledWith(true);
+    expect(liveMirror().current?.userVolume?.mute).toBe(true);
+    expect(setMasterVolumeFn).not.toHaveBeenCalled();
+    expect(liveMirror().current?.masterVolumeDb).toBe(-12);
+
+    // toggle back
+    toggleMute(activeSession()!);
+    await vi.runAllTimersAsync();
+    expect(setUserMuteFn).toHaveBeenCalledWith(false);
+    expect(liveMirror().current?.userVolume?.mute).toBe(false);
   });
 
   it('disconnect cancels pending coalescer + resync and resets state', async () => {
@@ -1025,14 +1035,13 @@ describe('boolean device flags are explicit setters', () => {
   });
 });
 
-// ── M2 — User volume axis ────────────────────────────────────────────────────
+// ── M2 — User mute ───────────────────────────────────────────────────────────
 
-describe('setUserVolume / setUserMute', () => {
+describe('setUserMute', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
     const device = initializedDevice({
-      setUserVolume: vi.fn(async () => {}),
       setUserMute: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
@@ -1041,35 +1050,7 @@ describe('setUserVolume / setUserMute', () => {
   });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('setUserVolume applies optimistically and sends via scrub lane', async () => {
-    const setUserVolumeFn = vi.fn(async () => {});
-    const device = initializedDevice({
-      setUserVolume: setUserVolumeFn,
-      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
-    setUserVolume(activeSession()!, -20);
-    expect(liveMirror().current?.userVolume?.volumeDb).toBe(-20);
-    await vi.runAllTimersAsync();
-    expect(setUserVolumeFn).toHaveBeenCalledWith(-20);
-  });
-
-  it('setUserVolume clamps to [-60, 0]', async () => {
-    const setUserVolumeFn = vi.fn(async () => {});
-    const device = initializedDevice({
-      setUserVolume: setUserVolumeFn,
-      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
-    });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
-    setUserVolume(activeSession()!, 10);   // above max
-    expect(liveMirror().current?.userVolume?.volumeDb).toBe(0);
-    setUserVolume(activeSession()!, -100); // below min
-    expect(liveMirror().current?.userVolume?.volumeDb).toBe(-60);
-  });
-
-  it('setUserMute patches snapshot after ack', async () => {
+  it('patches snapshot after ack', async () => {
     const setUserMuteFn = vi.fn(async () => {});
     const device = initializedDevice({
       setUserMute: setUserMuteFn,

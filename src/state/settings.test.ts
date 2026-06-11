@@ -20,8 +20,6 @@ describe('loadSettings', () => {
     expect(s.tab).toBe('overview');
     expect(s.eqTarget).toBeNull();
     expect(s.showDebugStats).toBe(false);
-    expect(s.soft.muted).toBe(false);
-    expect(s.soft.mutedFromDb).toBeNull();
     expect(s.lastSerial).toBeNull();
     expect(s.theme).toBe('dark');
   });
@@ -33,7 +31,6 @@ describe('loadSettings', () => {
       showDebugStats: true,
       tab: 'eq',
       eqTarget: null,
-      soft: { muted: false, mutedFromDb: null },
       lastSerial: 'ABC123',
     }));
     const s = loadSettings();
@@ -54,16 +51,12 @@ describe('legacy migration', () => {
   test('migrates ui/v2 only', () => {
     localStorage.setItem(LEGACY_UI_KEY, JSON.stringify({
       showDebugStats: true,
-      muted: true,
-      mutedFromDb: -12,
       tab: 'mixer',
       eqTarget: null,
     }));
     const s = loadSettings();
     expect(s.showDebugStats).toBe(true);
     expect(s.tab).toBe('mixer');
-    expect(s.soft.muted).toBe(true);
-    expect(s.soft.mutedFromDb).toBe(-12);
     expect(s.lastSerial).toBeNull();
     expect(localStorage.getItem(LEGACY_UI_KEY)).toBeNull();
     expect(localStorage.getItem(V1_KEY)).not.toBeNull();
@@ -94,7 +87,6 @@ describe('legacy migration', () => {
       showDebugStats: false,
       tab: 'processing',
       eqTarget: null,
-      soft: { muted: false, mutedFromDb: null },
       lastSerial: 'V1WINS',
     }));
     localStorage.setItem(LEGACY_UI_KEY, JSON.stringify({ tab: 'system' }));
@@ -137,7 +129,6 @@ describe('warnOnPresetSwitchDirty', () => {
       showDebugStats: false,
       tab: 'overview',
       eqTarget: null,
-      soft: { muted: false, mutedFromDb: null },
       lastSerial: null,
       warnOnPresetSwitchDirty: false,
     };
