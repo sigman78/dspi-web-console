@@ -39,7 +39,7 @@ describe('makeReadySession()', () => {
     expect(s.device).toBe(device);
     expect(s.info).toEqual({ serial: 'X1' });
     expect(s.hardware).toEqual({ name: 'rp2350' });
-    expect(s.copySource.slot).toBeNull();
+    expect(s.copySource.held).toBeNull();
     expect(s.telemetry.errorCount).toBe(0);
     expect(s.presets.directory).toBeNull();
     expect(s.presets.busy).toBe(false);

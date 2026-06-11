@@ -4,7 +4,7 @@
   import PresetTile from '@/components/presets/PresetTile.svelte';
   import PresetControls from '@/components/presets/PresetControls.svelte';
   import { fetchPresetInfo, retryFetchPresetInfo, dismissPresetActionError } from '@/runtime';
-  import { presetsDirty, connection } from '@/state';
+  import { connection } from '@/state';
   import { getSession } from '@/components/sessionContext';
   import { PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';
 
@@ -20,18 +20,10 @@
     tileRefs[a]?.enterRename();
   }
 
-  // Clear the copy source once RAM goes dirty from a user edit. Load/Paste
-  // apply mirror.current and the baseline atomically, so they leave no
-  // transient dirty window to filter out here.
-  $effect(() => {
-    if (presetsDirty(s) && s.copySource.slot != null) {
-      s.copySource.slot = null;
-    }
-  });
-
+  // The clipboard is a snapshot taken at copy time, so edits, preset switches
+  // and tab changes can't invalidate it -- no clearing effects here.
   onMount(() => {
     void fetchPresetInfo(s);
-    return () => { s.copySource.slot = null; };
   });
 </script>
 

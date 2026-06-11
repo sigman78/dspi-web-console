@@ -14,7 +14,7 @@
     const d = s.presets.directory;
     return d != null && d.startupMode === PresetStartupMode.Specified && d.defaultSlot === slot;
   });
-  const isCopySource = $derived(s.copySource.slot === slot);
+  const isCopySource = $derived(s.copySource.held?.slot === slot);
   const isDirty = $derived(isActive && presetsDirty(s));
   const name = $derived(s.presets.names[slot] ?? '');
 
