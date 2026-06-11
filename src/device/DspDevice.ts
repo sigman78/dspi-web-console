@@ -725,4 +725,12 @@ export class DspDevice {
   async saveOutputConfig(): Promise<Result<void, proto.PresetResult>> {
     return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SaveOutputConfig));
   }
+
+  // Reboot into the UF2 bootloader (BOOTSEL mode) for firmware update.
+  // Firmware sends a 1-byte success response, waits 100 ms, then calls
+  // reset_usb_boot(). The device disconnects mid-flight; the transfer may
+  // throw. The caller is expected to treat both outcomes as normal.
+  async enterBootloader(): Promise<void> {
+    await proto.actionCmd(this.transport, proto.WireCmd.EnterBootloader);
+  }
 }

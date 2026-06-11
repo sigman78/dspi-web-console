@@ -43,6 +43,12 @@ export const levellerAmountPct = (p: number) => toRange(p, Proc.LEVELLER_AMOUNT_
 export const levellerMaxGainDb = (db: number) => toRange(db, Proc.LEVELLER_MAX_GAIN_MIN_DB, Proc.LEVELLER_MAX_GAIN_MAX_DB);
 export const levellerGateDb = (db: number) => toRange(db, Proc.LEVELLER_GATE_MIN_DB, Proc.LEVELLER_GATE_MAX_DB);
 
+// User volume axis (firmware clamps [-60, 0] dB). Same range as master volume
+// for the UI, but a separate DSP axis -- never touches MUTE_DB.
+export const USER_VOLUME_MIN_DB = -60;
+export const USER_VOLUME_MAX_DB = 0;
+export const userVolumeDb = (db: number) => toRange(db, USER_VOLUME_MIN_DB, USER_VOLUME_MAX_DB);
+
 // Names are encoded into a fixed NUL-terminated wire buffer. Delegates to the
 // wire-layer truncator so host and wire agree on the byte budget.
 export function nameToByteBudget(name: string, maxBytes: number): string {

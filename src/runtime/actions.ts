@@ -3,6 +3,8 @@ import {
   type ChannelId, type InputSlot, type OutputSlot, type I2sPairSlot,
   type RouteModel,
   type I2sConfig,
+  type AudioInputSource,
+  type DacHwMute,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   CHANNEL_NAME_MAX_LEN,
 } from '@/domain';
@@ -416,4 +418,97 @@ export function setMckPin(s: ReadySession, pin: number): void {
 
 export function setMckMultiplier(s: ReadySession, encoded: number): void {
   void writeChecked(s,'set MCK multiplier', () => s.device.setMckMultiplier(encoded), () => patchI2s(s, (i) => ({ ...i, mckMultiplierEncoded: encoded })));
+}
+
+// M2 — User volume axis (UAC1 host volume, separate from master volume).
+// Firmware clamps [-60, 0]; firmware pushes PARAM_CHANGED/UAC1 notifications
+// when the OS slider changes, which notifyApply reconciles automatically.
+
+export function setUserVolume(s: ReadySession, db: number): void {
+  db = Clamp.userVolumeDb(db);
+  scrub(s,
+    'userVolume',
+    () => { if (s.mirror.snapshot.userVolume) s.mirror.snapshot.userVolume.volumeDb = db; },
+    () => s.device.setUserVolume(db),
+  );
+}
+
+export function setUserMute(s: ReadySession, mute: boolean): void {
+  void write(s,
+    () => s.device.setUserMute(mute),
+    () => { if (s.mirror.snapshot.userVolume) s.mirror.snapshot.userVolume.mute = mute; },
+  );
+}
+
+// M3 — Per-band EQ bypass. Band edits flow through write() (await-then-patch),
+// matching setEqFilter's lane. setFilter does not carry bypass, so bypass is
+// a separate granular command.
+
+export function setBandBypass(s: ReadySession, channel: ChannelId, band: number, bypassed: boolean): void {
+  const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
+  if (!ch || band >= ch.filters.length) return;
+  void write(s,
+    () => s.device.setBandBypass(channel, band, bypassed),
+    () => {
+      const c = s.mirror.snapshot.channels.find((c) => c.id === channel);
+      if (c && c.filters[band]) c.filters[band] = { ...c.filters[band], bypass: bypassed };
+    },
+  );
+}
+
+// M1 — Input source switch. Pipeline reset is audible; surface an info notice.
+export function setInputSource(s: ReadySession, source: AudioInputSource): void {
+  void write(s,
+    () => s.device.setInputSource(source),
+    () => { if (s.mirror.snapshot.inputConfig) s.mirror.snapshot.inputConfig.source = source; },
+  );
+  pushNotice('info', 'Input source changed — firmware pipeline reset (brief audio mute).');
+}
+
+// M1 — S/PDIF RX pin. Action-style: status byte on rejection.
+export function setSpdifRxPin(s: ReadySession, gpio: number): void {
+  void writeChecked(s,
+    'set S/PDIF RX pin',
+    () => s.device.setSpdifRxPin(gpio),
+    () => { if (s.mirror.snapshot.inputConfig) s.mirror.snapshot.inputConfig.spdifRxPin = gpio; },
+  );
+}
+
+// M7 — LG Sound Sync enable toggle.
+export function setLgSoundSyncEnabled(s: ReadySession, enabled: boolean): void {
+  void write(s,
+    () => s.device.setLgSoundSyncEnabled(enabled),
+    () => { if (s.mirror.snapshot.lgSoundSync) s.mirror.snapshot.lgSoundSync.enabled = enabled; },
+  );
+}
+
+// M6 — DAC HW mute config (whole-struct write, command lane).
+export function setDacHwMute(s: ReadySession, cfg: DacHwMute): void {
+  void command(s, 'set DAC HW mute', () => s.device.setDacHwMute(cfg), (_ok, s) => {
+    if (s.mirror.snapshot.dacHwMute) s.mirror.snapshot.dacHwMute = { ...cfg };
+    s.mirror.requestReconcile(false);
+  });
+}
+
+// M6 — DAC HW mute test pulse (~1s). Fire-and-forget.
+export function testDacHwMute(s: ReadySession): void {
+  void s.device.testDacHwMute().catch((e) => { pushNotice('error', `DAC mute test failed: ${e instanceof Error ? e.message : String(e)}`); });
+}
+
+// M9 — Buffer stats reset.
+export function resetBufferStats(s: ReadySession): void {
+  void s.device.resetBufferStats().catch((e) => { pushNotice('error', `Buffer stats reset failed: ${e instanceof Error ? e.message : String(e)}`); });
+}
+
+// M8 — Enter UF2 bootloader. The device disconnects immediately (100 ms delay
+// in firmware before reset_usb_boot). The transfer may throw as the device
+// drops mid-response; that is expected and is treated as a normal disconnect.
+export async function enterBootloader(s: ReadySession): Promise<void> {
+  try {
+    await s.device.enterBootloader();
+  } catch {
+    // Device dropped during or after the command -- that's the expected path.
+  }
+  // The transport disconnect event fires naturally after the device reboots
+  // and triggers normal disconnect flow via attachTransportListeners.
 }

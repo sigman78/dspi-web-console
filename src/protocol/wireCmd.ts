@@ -190,6 +190,12 @@ export const WireCmd = {
   // PresetResult. Repurposes legacy 0x52 (the removed sync LoadParams);
   // V10+ only — on older firmware the opcode is a synchronous revert-to-saved.
   SaveOutputConfig:      { code: 0x52 } satisfies RawCmd,
+
+  // M8 — System command: reboot into UF2 bootloader (BOOTSEL).
+  // Action-IN; firmware sends 1-byte success (0x01) then calls reset_usb_boot().
+  // The device disconnects ~100 ms after the response, so the transfer may
+  // throw. Callers must treat both a clean return and a throw as expected.
+  EnterBootloader:       { code: 0xF0 } satisfies RawCmd,
 } as const;
 
 // Helpers
