@@ -2,14 +2,14 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import { connection } from '@/state';
-  import ChannelNamesPanel from '@/components/system/ChannelNamesPanel.svelte';
-  import ResetPanel from '@/components/system/ResetPanel.svelte';
+  import DevicePanel from '@/components/system/DevicePanel.svelte';
+  import InputConfigPanel from '@/components/system/InputConfigPanel.svelte';
   import OutputsPanel from '@/components/system/OutputsPanel.svelte';
   import I2sClockPanel from '@/components/system/I2sClockPanel.svelte';
-  import BufferStatsPanel from '@/components/system/BufferStatsPanel.svelte';
   import LgSoundSyncPanel from '@/components/system/LgSoundSyncPanel.svelte';
+  import ChannelNamesPanel from '@/components/system/ChannelNamesPanel.svelte';
   import DacHwMutePanel from '@/components/system/DacHwMutePanel.svelte';
-  import InputConfigPanel from '@/components/system/InputConfigPanel.svelte';
+  import BufferStatsPanel from '@/components/system/BufferStatsPanel.svelte';
   import { chKey } from '@/styles/palette';
   import { clearClips } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
@@ -26,30 +26,19 @@
 
 <div class="grid">
   <div class="col">
-    <ResetPanel />
-    <DacHwMutePanel />
-    <OutputsPanel />
-    <I2sClockPanel />
-  </div>
-
-  <div class="col">
+    <DevicePanel />
     <InputConfigPanel />
-    <ChannelNamesPanel />
-    <LgSoundSyncPanel />
+    <OutputsPanel />
   </div>
 
   <div class="col">
-    <Panel code="SY.01" title="DEVICE">
-      <div class="kvgrid">
-        <KV label="STATUS"   value={connection.label} tone={connection.connected ? 'ok' : 'off'} />
-        <KV label="SERIAL"   value={s.info.serial} />
-        <KV label="FIRMWARE" value={s.info.capabilities.fwLabel} />
-        <KV label="PLATFORM" value={snap?.platform.name ?? '—'} />
-        <KV label="FORMAT"   value={s.info.capabilities.wireLabel} />
-        <KV label="OUTPUTS"  value={`${snap?.platform.outputCount ?? 0} / ${snap?.platform.totalChannelCount ?? 0}`} />
-      </div>
-    </Panel>
+    <I2sClockPanel />
+    <LgSoundSyncPanel />
+    <ChannelNamesPanel />
+    <DacHwMutePanel />
+  </div>
 
+  <div class="col">
     <Panel code="SY.02" title="TELEMETRY">
       <div class="kvgrid">
         <KV label="CLOCK"     value={info?.clockHz       != null ? `${(info.clockHz / 1_000_000).toFixed(0)} MHz` : '—'} />
@@ -120,9 +109,6 @@
   }
   .clear-btn:disabled { opacity: 0.45; cursor: default; }
 
-  /* Per-channel latched clip indicators. Sits below the kvgrid; spans the
-     panel's full width regardless of the kvgrid's 2-column layout (this is
-     a sibling element). */
   .subhdr {
     font-family: var(--font-mono);
     font-size: 9px;

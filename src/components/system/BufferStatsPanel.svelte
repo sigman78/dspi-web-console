@@ -1,6 +1,5 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
-  import KV from '@/components/chrome/KV.svelte';
   import { connection } from '@/state';
   import { resetBufferStats } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
@@ -16,6 +15,9 @@
 
 <Panel code="SY.12" title="BUFFER STATS">
   {#snippet right()}
+    {#if bs}
+      <span class="seq">SEQ {bs.sequence}</span>
+    {/if}
     <button
       class="reset-btn"
       onclick={() => resetBufferStats(s)}
@@ -25,33 +27,51 @@
   {/snippet}
 
   {#if bs}
-    <div class="kvgrid">
-      <KV label="SEQUENCE"    value={String(bs.sequence)} />
-      <KV label="STREAMING"   value={bs.streaming ? 'YES' : 'NO'} tone={bs.streaming ? 'ok' : 'off'} />
-      <KV label="PDM ACTIVE"  value={bs.pdmActive ? 'YES' : 'NO'} tone={bs.pdmActive ? 'ok' : 'off'} />
-      <KV label="SPDIF SLOTS" value={String(bs.numSpdif)} />
-    </div>
-
-    {#each bs.spdif.slice(0, bs.numSpdif) as slot, i (i)}
-      <div class="subhdr">SPDIF {i + 1}</div>
-      <div class="kvgrid">
-        <KV label="FREE"    value={String(slot.consumerFree)} />
-        <KV label="PREP"    value={String(slot.consumerPrepared)} />
-        <KV label="PLAY"    value={String(slot.consumerPlaying)} />
-        <KV label="FILL"    value={pct(slot.consumerFillPct)} />
-        <KV label="MIN"     value={pct(slot.consumerMinFillPct)} />
-        <KV label="MAX"     value={pct(slot.consumerMaxFillPct)} />
-      </div>
-    {/each}
-
-    <div class="subhdr">PDM DMA / RING</div>
-    <div class="kvgrid">
-      <KV label="DMA FILL"  value={pct(bs.pdm.dmaFillPct)} />
-      <KV label="DMA MIN"   value={pct(bs.pdm.dmaMinFillPct)} />
-      <KV label="DMA MAX"   value={pct(bs.pdm.dmaMaxFillPct)} />
-      <KV label="RING FILL" value={pct(bs.pdm.ringFillPct)} />
-      <KV label="RING MIN"  value={pct(bs.pdm.ringMinFillPct)} />
-      <KV label="RING MAX"  value={pct(bs.pdm.ringMaxFillPct)} />
+    <div class="tblwrap">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th class="src">SRC</th>
+            <th>FILL</th>
+            <th>MIN</th>
+            <th>MAX</th>
+            <th>FREE</th>
+            <th>PREP</th>
+            <th>PLAY</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each bs.spdif.slice(0, bs.numSpdif) as slot, i (i)}
+            <tr>
+              <td class="src">SPDIF {i + 1}</td>
+              <td>{pct(slot.consumerFillPct)}</td>
+              <td>{pct(slot.consumerMinFillPct)}</td>
+              <td>{pct(slot.consumerMaxFillPct)}</td>
+              <td>{slot.consumerFree}</td>
+              <td>{slot.consumerPrepared}</td>
+              <td>{slot.consumerPlaying}</td>
+            </tr>
+          {/each}
+          <tr>
+            <td class="src">PDM DMA</td>
+            <td>{pct(bs.pdm.dmaFillPct)}</td>
+            <td>{pct(bs.pdm.dmaMinFillPct)}</td>
+            <td>{pct(bs.pdm.dmaMaxFillPct)}</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td class="src">PDM RING</td>
+            <td>{pct(bs.pdm.ringFillPct)}</td>
+            <td>{pct(bs.pdm.ringMinFillPct)}</td>
+            <td>{pct(bs.pdm.ringMaxFillPct)}</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   {:else}
     <p class="idle">Waiting for buffer stats…</p>
@@ -59,16 +79,36 @@
 </Panel>
 
 <style>
-  .kvgrid { padding: 10px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .subhdr {
+  .tblwrap { padding: 8px 14px 12px; overflow-x: auto; }
+  .tbl {
+    width: 100%;
+    border-collapse: collapse;
     font-family: var(--font-mono);
     font-size: 9px;
+  }
+  .tbl thead th {
+    color: var(--text-faint);
     font-weight: 700;
     letter-spacing: 1.5px;
+    text-align: right;
+    padding: 2px 6px;
+    border-bottom: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
+  }
+  .tbl thead th.src { text-align: left; }
+  .tbl tbody td {
+    color: var(--text-dim);
+    text-align: right;
+    padding: 3px 6px;
+    border-bottom: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
+  }
+  .tbl tbody td.src { color: var(--text-faint); text-align: left; letter-spacing: 0.5px; }
+  .tbl tbody tr:last-child td { border-bottom: none; }
+
+  .seq {
+    font-family: var(--font-mono);
+    font-size: 9px;
     color: var(--text-faint);
-    padding: 6px 14px 0;
-    border-top: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
-    margin-top: 2px;
+    letter-spacing: 0.5px;
   }
   .reset-btn {
     font-family: var(--font-mono);
