@@ -1,12 +1,12 @@
 # DSPi USB Interface
 
-All communication is **vendor-class control transfers** on a claimed interface. No interrupt or bulk endpoints; no streaming.
+All communication is **vendor-class control transfers** on a claimed interface, plus (firmware ≥ 1.1.4) a bulk-IN notify endpoint `0x83` on the same interface — see `HW-NOTIFICATIONS.md`. No streaming.
 
 ### Identity
 
 - **VID / PID**:
   - `0x2E8A / 0xFEAA` — RP-Pico vendor block, used by firmware **≤ v1.1.3**.
-  - `0x2E8B / 0xFEAA` — Weeb Labs–owned vendor block, used by firmware **≥ v1.1.4** (`working_spdif_input` branch, `firmware/DSPi/usb_descriptors.h` defines `USB_VENDOR_ID = 0x2E8B`). PID is unchanged.
+  - `0x2E8B / 0xFEAA` — Weeb Labs–owned vendor block, used by firmware **≥ v1.1.4** (released v1.1.4, `firmware/DSPi/usb_descriptors.h` defines `USB_VENDOR_ID = 0x2E8B`). PID is unchanged.
   - Both pairs must be listed in `navigator.usb.requestDevice` filters; see `docs/FW-VERSIONS.md` § "USB identity migration".
 - **Interface class**: `0xFF` (vendor)
 - **Interface number**: auto-discovered by class match; legacy hard-coded fallback `2`
@@ -115,7 +115,8 @@ The Leveller block in the bulk packet is V4+ optional — `null` on older firmwa
 
 | Codes | Group | Method | Returns |
 |---|---|---|---|
-| `0x51 / 0x52 / 0x53` | `SaveParams` / `LoadParams` / `FactoryReset` | `saveParams` / `loadParams` / `factoryReset` | `Result<void, FlashResult>` |
+| `0x51 / 0x53` | `SaveParams` / `FactoryReset` | `saveParams` / `factoryReset` | `Result<void, FlashResult>` |
+| `0x52` | `SaveOutputConfig` (1.1.4+; was `LoadParams` ≤ 1.1.3 — removed) | `saveOutputConfig` (V10-gated) | `Result<void, PresetResult>` |
 | `0x83` | `ClearClips` | `clearClips` | `void` |
 | `0xB1` | `ResetBufferStats` | `resetBufferStats` | `boolean` |
 | `0x9B / 0x9C` | `SetChannelName` / `GetChannelName` | `setChannelName` / `getChannelName` | UTF-8 string |
@@ -123,7 +124,7 @@ The Leveller block in the bulk packet is V4+ optional — `null` on older firmwa
 | `0x93 / 0x94` | `PresetGetName` / `PresetSetName` | `getPresetName` / `setPresetName` | UTF-8 string |
 | `0x95` | `PresetGetDir` | `getPresetDirectory` | `PresetDirectoryInfo` |
 | `0x96 / 0x97` | `PresetSetStartup` / `PresetGetStartup` | `setPresetStartup` / `getPresetStartup` | `{mode, slot}` |
-| `0x98 / 0x99` | `PresetSetIncludePins` / `PresetGetIncludePins` | `setPresetIncludePins` / `getPresetIncludePins` | `boolean` |
+| `0x98 / 0x99` | Output-config persistence mode (fw: `SET/GET_OUTPUT_CONFIG_MODE`; `1=WITH_PRESET`, `0=INDEPENDENT` — wire-compatible with the old include-pins bool, but now governs output pins + output types + I2S BCK/MCK + SPDIF RX pin as one block) | `setOutputConfigMode` / `getOutputConfigMode` | `boolean` |
 | `0x9A` | `PresetGetActive` | `getActivePreset` | `u8` (0xFF transient — coerce to 0) |
 | `0xD4 / 0xD5` | Master volume mode | `setMasterVolumeMode` / `getMasterVolumeMode` | `MasterVolumeMode` |
 | `0xD6 / 0xD7` | Save/get saved master volume | `saveMasterVolume` / `getSavedMasterVolume` | `boolean` / `f32` |
@@ -156,7 +157,7 @@ Firmware-defined commands with no `DspDevice` method yet. See `HW-TODO.md §1` f
 | `0xB2 / 0xB3` | USB error stats | `GetUsbErrorStats` / `ResetUsbErrorStats` — counter packet |
 | `0xF0` | `EnterBootloader` | Jumps to ROM bootloader |
 
-**v1.1.4 / `working_spdif_input` branch only** — entire feature set below is unwired in console:
+**v1.1.4+ only** — the console ships typed, capability-gated `DspDevice` methods for all of these; none are surfaced in runtime/UI yet:
 
 | Codes | Group | Notes |
 |---|---|---|
@@ -172,13 +173,13 @@ Firmware-defined commands with no `DspDevice` method yet. See `HW-TODO.md §1` f
 | `0xEA / 0xEB` | DAC HW mute config | 16-byte `WireDacHwMute` (enable, active-low, pin, hold/release ms). |
 | `0xEC` | `TestDacHwMute` | No payload; pulses mute ~1s. |
 
-The branch also adds two new EQ filter types: `FILTER_NOTCH = 6` and `FILTER_ALLPASS = 7`.
+1.1.4 also adds two new EQ filter types: `FILTER_NOTCH = 6` and `FILTER_ALLPASS = 7`.
 
 Preset surface and persistence command reference: see `docs/HW-PROFILES.md`.
 
 ## Bulk packet layout — `GetAllParams 0xA0`
 
-The largest packet on the wire and the structure most likely to drift between firmware revisions. Layout mirrors `DSPiConsole.Usb/BulkParamsParser.cs`. **Min size 2832 B (V2); max request size 2896 B (V6) on shipped firmware, 2960 B (V10) on the `working_spdif_input` development branch.**
+The largest packet on the wire and the structure most likely to drift between firmware revisions. Layout mirrors `DSPiConsole.Usb/BulkParamsParser.cs`. **Min size 2832 B (V2); max request size 2896 B (V6) on 1.1.3, 2960 B (V10) on released 1.1.4.**
 
 | Offset | Size | Section | Contents |
 |---|---|---|---|
@@ -196,10 +197,10 @@ The largest packet on the wire and the structure most likely to drift between fi
 | 2848 | 16 | Leveller (opt) | Present when packet ≥ 2864: `u8 enabled, u8 speed, u8 lookahead, u8 _, f32 amount, f32 maxGainDb, f32 gateDb` |
 | 2864 | 16 | Per-channel preamp (V6+) | `f32 preampL, f32 preampR` |
 | 2880 | 16 | Master volume (V6+) | `f32 masterVolDb` |
-| 2896 | 16 | Input config (V7+, branch) | `u8 inputSource, u8 spdifRxPin` — InputSource enum (0=USB, 1=SPDIF) |
-| 2912 | 16 | LG Sound Sync (V8+, branch) | `u8 enabled, u8 present, u8 volume, u8 muted` — only `enabled` honored on SET |
-| 2928 | 16 | User volume (V9+, branch) | `f32 userVolumeDb, u8 userMute` |
-| 2944 | 16 | DAC HW mute (V10+, branch) | `u8 enabled, u8 activeLow, u8 pin, u8 _, u16 holdMs, u16 releaseMs` |
+| 2896 | 16 | Input config (V7+) | `u8 inputSource, u8 spdifRxPin` — InputSource enum (0=USB, 1=SPDIF) |
+| 2912 | 16 | LG Sound Sync (V8+) | `u8 enabled, u8 present, u8 volume, u8 muted` — only `enabled` honored on SET |
+| 2928 | 16 | User volume (V9+) | `f32 userVolumeDb, u8 userMute` |
+| 2944 | 16 | DAC HW mute (V10+) | `u8 enabled, u8 activeLow, u8 pin, u8 _, u16 holdMs, u16 releaseMs` |
 
 Optional trailing sections are gated on **packet length** AND (where noted) **format version**. The 9-output crosspoint and output arrays are always present in full — the platform's actual output count comes from the header (`numOut`); RP2040's matrix view hides unused columns.
 
@@ -287,14 +288,14 @@ The two move independently: a firmware bump can change wire behavior without bum
 | **V3** | 2848 B | `WireI2SConfig` (16 B) — output slot types, BCK/MCK pins, MCK enable, MCK multiplier as **raw byte** (128, or 0 meaning 256) | Full read; writes via V6 only |
 | **V4** | 2864 B | `WireLevellerConfig` (16 B) — enabled, speed, lookahead, amount, max gain, gate threshold | Full read; writes via V6 only |
 | **V5** | 2864 B | Same size as V4. MCK multiplier encoding switched to `0=128×, 1=256×`. Pre-V5 firmware reads/writes the raw form. Console always assumes V5+ encoding | Read-OK for V5+ firmware; V3-V4 firmware's mck byte is misread as encoded |
-| **V6** | 2896 B | `WirePreampConfig` (16 B, V6Preamp = 2880 B) — per-input-channel preamp; `WireMasterVolume` (16 B, V6Full = 2896 B) — `f32 masterVolumeDb` with `-128` mute sentinel. **Last version on `main` (v1.1.3).** | Full read/write — this is what the console writes back |
-| **V7** *(branch)* | 2912 B | `WireInputConfig` (16 B) — `u8 inputSource` (`0=USB`, `1=SPDIF`), `u8 spdifRxPin` | Not wired |
-| **V8** *(branch)* | 2928 B | `WireLgSoundSync` (16 B) — `u8 enabled, u8 present, u8 volume, u8 muted`. Only `enabled` is honored on bulk SET; the rest are observation-only | Not wired |
-| **V9** *(branch)* | 2944 B | `WireUserVolume` (16 B) — `f32 userVolumeDb` (`[-60, 0]` dB), `u8 userMute`. Vendor-channel mirror of UAC1 host volume but always honored regardless of input source | Not wired |
-| **V10** *(branch)* | 2960 B | `WireDacHwMute` (16 B) — `u8 enabled, u8 activeLow, u8 pin, u16 holdMs, u16 releaseMs`. Board-level external DAC mute pin config | Not wired |
-| **V10 EQ change** *(branch)* | (same 2960 B) | `WireBandParams.bypass` at offset 1 (was `reserved`) — `1`=user-bypassed. Cooperates with the new `SetBandBypass 0xD8` opcode and the new `bypass` byte at offset 3 of `SetEqParam 0x42` (was `reserved`). Old console always writes `0` there, preserving "active" semantics | Console reads byte at offset 1 of each band; treats as ignored padding |
+| **V6** | 2896 B | `WirePreampConfig` (16 B, V6Preamp = 2880 B) — per-input-channel preamp; `WireMasterVolume` (16 B, V6Full = 2896 B) — `f32 masterVolumeDb` with `-128` mute sentinel. **Last version on v1.1.3.** | Full read/write — this is what the console writes back |
+| **V7** | 2912 B | `WireInputConfig` (16 B) — `u8 inputSource` (`0=USB`, `1=SPDIF`), `u8 spdifRxPin` | Parsed into the snapshot; no UI yet |
+| **V8** | 2928 B | `WireLgSoundSync` (16 B) — `u8 enabled, u8 present, u8 volume, u8 muted`. Only `enabled` is honored on bulk SET; the rest are observation-only | Parsed into the snapshot; no UI yet |
+| **V9** | 2944 B | `WireUserVolume` (16 B) — `f32 userVolumeDb` (`[-60, 0]` dB), `u8 userMute`. Vendor-channel mirror of UAC1 host volume but always honored regardless of input source | Parsed into the snapshot; no UI yet |
+| **V10** | 2960 B | `WireDacHwMute` (16 B) — `u8 enabled, u8 activeLow, u8 pin, u16 holdMs, u16 releaseMs`. Board-level external DAC mute pin config | Parsed into the snapshot; no UI yet |
+| **V10 EQ change** | (same 2960 B) | `WireBandParams.bypass` at offset 1 (was `reserved`) — `1`=user-bypassed. Cooperates with the new `SetBandBypass 0xD8` opcode and the new `bypass` byte at offset 3 of `SetEqParam 0x42` (was `reserved`). Old console always writes `0` there, preserving "active" semantics | Console decodes `bypass` per band; no UI toggle yet |
 
-V6 is what the console writes via `SetAllParams 0xA1`. `buildBulkParams` rejects any other version (see `src/protocol/bulkParser.ts`). V7-V10 are only present on the development `working_spdif_input` branch (target v1.1.4) and the parser/writer have no support yet — connecting the current console to v1.1.4 firmware reads back a 2960 B packet but truncates / ignores everything past offset 2880.
+V6 is what the console writes via `SetAllParams 0xA1`. `buildBulkParams` rejects any other version (see `src/protocol/bulkParser.ts`). V7-V10 sections ship on released 1.1.4. The console parses all of them (`bulkLayout` gates on version + length) and retains the full raw image; writes are normalized to a V6 packet, which 1.1.4 firmware merges (write path accepts formats 2-10). Note: in INDEPENDENT output-config mode the firmware skips the pin section and RX-pin hot-swap of a bulk SET entirely.
 
 ### Vendor commands added since v1.1.3 (WIRE = V3)
 
@@ -320,7 +321,7 @@ These opcodes pre-date v1.1.3 but behave differently on current firmware. Anythi
 | `0x51` | `SaveParams` | **Deferred to main loop.** Always returns `FLASH_OK` immediately; the actual flash write happens asynchronously. The host can no longer detect a save failure synchronously. | Console treats the response as "accepted," not "committed." |
 | `0x53` | `FactoryReset` | **Deferred to main loop**, brackets reset with pipeline mute / Core-1 sync / delay-line zero. Always returns `FLASH_OK`. | Same — fire-and-forget. |
 | `0x92` | `PresetDelete` | Switched from single-slot pending flag to a 16-bit pending mask — multiple deletes queue back-to-back without dropping. | No host change. |
-| `0x95` | `PresetGetDir` | Response grew from **6 → 7 bytes**; byte 6 is `master_volume_mode` (0=independent, 1=with-preset). Older firmware truncates to 6 bytes. | Console always requests 7 B; `decodePadded` zero-extends legacy 6-B responses (treating mv mode as `independent`, the correct legacy semantic). |
+| `0x95` | `PresetGetDir` | Response grew from **6 → 7 bytes**; byte 5 is `output_config_mode` (was `include_pins`; values 1:1: 0=independent, 1=with-preset), byte 6 is `master_volume_mode` (0=independent, 1=with-preset). Older firmware truncates to 6 bytes. | Console always requests 7 B; `decodePadded` zero-extends legacy 6-B responses (treating mv mode as `independent`, the correct legacy semantic). |
 | `0xC0` | `SetOutputType` | Switched from single pending slot to a per-slot pending bitmask. Tear-down/setup of pools is gated by `output_type_switch_in_progress`; buffer-stats reads return safe zeroes during the window. | No host change. |
 | `0xC8` | `SetMckMultiplier` | `wValue` encoding **changed**: was raw `128` or `256`; now `0=128×`, `1=256×`. Also rejects `256×` at sample rates ≥ 96 kHz (`PIN_CONFIG_INVALID_PIN`) and auto-clamps to `128×` on rate changes. | Console sends `0`/`1` already. Connecting the current console to V3/V4 firmware would mis-set the multiplier. |
 | `0xC9` | `GetMckMultiplier` | Returns the encoded byte (`0`/`1`) instead of the raw `128`/`256`. Also runs the 96 kHz clamp before answering. | Console reads the encoded form. |
@@ -331,15 +332,15 @@ These don't change the wire protocol but affect what hosts observe across a v1.1
 
 - **Master volume soft-start.** v1.1.3 used a Taylor-series dB→linear approximation that could produce deafening output transients during boot before the saved master volume applied. Replaced with `powf` (`8c7759f`). Boot-time audio loud spikes should be gone.
 - **RP2040 max delay reduced.** `MAX_DELAY_SAMPLES` was unified at `4096` (85 ms at 48 kHz) on both platforms; now RP2040 caps at `2048` (42 ms). The `delay_ms` field per output is still wired through, but on RP2040 the firmware silently clamps to the new ceiling.
-- **Pin restoration default flipped.** `PresetGetIncludePins` now defaults to `1` (presets restore pin assignments). Hosts that depend on the prior default should set explicitly via `PresetSetIncludePins 0x98`.
+- **Include-pins became output-config mode.** The 0x98/0x99 bool was broadened to a persistence mode for the whole physical-IO block (pins + types + BCK/MCK + SPDIF RX pin). Default is `1` (WITH_PRESET — presets restore IO); factory reset resets to it. In `0` (INDEPENDENT) preset load / factory reset / bulk SET never touch live IO; persistence is via `SaveOutputConfig 0x52`.
 - **Flash clock divider** lowered (`fc4998b`, `2e655b6`) and **flash write pipeline reset** added (`25be9fb`) — should reduce save/load glitches but doesn't change the wire surface.
 - **I2S output fixes** since v1.1.3: channel L/R packing (`a5953fc`), output selection (`601a841`), 96 kHz / 24-bit playback (`11e6b45`, `003a694`), I2S clock rounding (`01bcb65`), MCK multiplier set path (`31506d2`, `7cc937a`, `43cb7ce`), and preset-save popping (`f4a732e`).
 
 ---
 
-## v1.1.4 — `working_spdif_input` development branch
+## v1.1.4 — released (`main`)
 
-Firmware is `1.1.4` and `WIRE_FORMAT_VERSION` is `10` on this branch (`firmware/DSPi/config.h`, `bulk_params.h`). None of the additions below are wired in the console.
+Firmware `1.1.4`, `WIRE_FORMAT_VERSION = 10` (`firmware/DSPi/config.h`, `bulk_params.h`). The console wires the full device/protocol surface below; user-visible features are still pending (see docs/V114-FINAL.md migration list).
 
 ### New vendor commands
 
@@ -347,13 +348,14 @@ All four sections below are gated behind their respective bulk-packet versions b
 
 | Codes | Group | Notes | FW commit |
 |---|---|---|---|
+| `0x52` | `SaveOutputConfig` | Action-IN, no payload, 1-byte `PresetResult`; flash write deferred to main loop. Persists live pins/types/BCK/MCK/SPDIF-RX-pin to the directory's device-global block. Accepted in both output-config modes (dormant in WITH_PRESET). Repurposes the removed `LoadParams` | output-config persistence series |
 | `0xD8 / 0xD9` | Per-band EQ bypass | `wValue = (channel<<8) \| band`, 1-byte body. The same byte is exposed at offset 1 of every `WireBandParams` (was `reserved`) and at offset 3 of the `SetEqParam 0x42` payload. Old SetEqParam writes (offset 3 = `0`) still mean "active" | `a5f7b18` — Per-band bypass toggle |
 | `0xDA / 0xDB` | User volume | `f32 dB`, clamped to `[-CENTER_VOLUME_INDEX=60, 0]`. Same quantity as UAC1 host slider but vendor-channel write path bypasses input-source gating | `0b1d415` — Added command to set user volume |
 | `0xDC / 0xDD` | User mute | `u8 0/1`. Distinct from UAC1 `audio_state.mute` — the audio path OR's them, but UAC1 mute is USB-gated while user_mute is always honored | (same series as user volume) |
 | `0xE0 / 0xE1` | Input source | `u8 InputSource` enum: `0=USB`, `1=SPDIF`. Drives a full pipeline reset when switched | `9b153d9` and predecessors — Fix EMC blocking release wait |
 | `0xE2` | `GetSpdifRxStatus` | 16-byte `SpdifRxStatusPacket`: `u8 state` (`Inactive=0`, `Acquiring=1`, `Locked=2`, `Relocking=3`), `u8 inputSource, u8 lockCount, u8 lossCount, u32 sampleRate, u32 parityErrors, u16 fifoFillPct, u16 _` | SPDIF input series |
 | `0xE3` | `GetSpdifRxChStatus` | 24-byte raw IEC 60958 channel-status block (cumulative bits across subframes; layout per the standard) | SPDIF input series |
-| `0xE4 / 0xE5` | SPDIF RX pin | Action-style IN; `wValue` = GPIO. Saves to RAM, persisted with presets when `include_pins` is set | `4e3a129` — SPDIF IN pin assignment follows output pin conventions |
+| `0xE4 / 0xE5` | SPDIF RX pin | Action-style IN; `wValue` = GPIO. Saves to RAM; persisted via `PresetSave` (WITH_PRESET mode) or `SaveOutputConfig 0x52` (INDEPENDENT mode) | `4e3a129` — SPDIF IN pin assignment follows output pin conventions |
 | `0xE6 / 0xE7` | LG Sound Sync enable | Per-preset toggle | `1722c0c` — Added LG Sound Sync compatibility |
 | `0xE8` | `GetLgSoundSyncStatus` | 16-byte `LgSoundSyncStatus`: `u8 enabled, u8 present, u8 volume (0..100 or 0xFF=never decoded), u8 muted` — read-only observation of LG TV signaling | LG series |
 | `0xEA / 0xEB` | DAC HW mute config | 16-byte `DacHwMuteConfig`: `u8 enabled, u8 activeLow, u8 pin, u16 holdMs, u16 releaseMs` — board-level external DAC MUTE pin | `7186eb7` — Added DAC hardware mute function |
@@ -384,9 +386,9 @@ Two protocol versions coexist:
 
 The `src` byte on `PARAM_CHANGED` distinguishes where the write came from: `UNKNOWN=0, HOST_SET=1, BULK_SET=2, PRESET=3, FACTORY=4, GPIO=5, INTERNAL=6, UAC1=7`. `UAC1` notably lets the console tell its own outbound host-volume writes apart from OS slider changes (commit `09b0486`).
 
-Wiring this on the console side requires claiming the interrupt endpoint, decoding packets, and routing `PARAM_CHANGED` through a `wireOffset → state` dispatcher. None of that exists yet.
+Console-side wiring is shipped: `notifyChannel` reads the endpoint, `wireMirror` splices `PARAM_CHANGED` values into the retained raw bulk image, and `notifyApply` applies the re-decoded change set — see `HW-NOTIFICATIONS.md`.
 
-### Behavior changes on existing commands (branch only)
+### Behavior changes on existing commands (1.1.4)
 
 | Code | Group | Change |
 |---|---|---|
