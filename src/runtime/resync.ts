@@ -28,5 +28,6 @@ export async function fetchAndApplyAsBaseline(s: ReadySession): Promise<void> {
   } catch (err) {
     s.health.noteFail('resync', err);
     Log.warn('resync', 'baseline re-fetch failed', err);
+    throw err;
   }
 }

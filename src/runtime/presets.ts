@@ -240,12 +240,27 @@ async function executeLoad(
       await flushWrites(s);
       const r = await loadAndSettle(s, slot);
       if (r.ok) {
-        // Reflect active slot in UI immediately. If the subsequent resync or
-        // EQ-target reconcile throws, we still want the header/active marker
-        // to match the slot the device just loaded.
-        s.presets.active = slot;
-        await fetchAndApplyAsBaseline(s);
-        await reconcileAfterSync(s);
+        // The firmware ACKs PresetLoad and emits presetLoaded BEFORE it
+        // validates the slot; a CRC/layout-invalid slot is silently not
+        // applied (RAM and last_active stay untouched) and the wire trace
+        // is indistinguishable from success. The active-slot read-back is
+        // the only verdict, so verify before trusting the load.
+        const deviceActive = await s.device.getActivePreset();
+        if (deviceActive !== slot) {
+          s.presets.active = deviceActive;
+          await fetchAndApplyAsBaseline(s);
+          return recordToResult(s.presets, 'Load', new Error(
+            `device rejected preset ${String(slot).padStart(2, '0')} — slot data incompatible or corrupt (saved by older firmware?)`,
+          ));
+        }
+        try {
+          await fetchAndApplyAsBaseline(s);
+          await reconcileAfterSync(s);
+          s.presets.active = slot;
+        } catch (e) {
+          s.presets.active = null;
+          return recordToResult(s.presets, 'Load refresh', e);
+        }
       } else {
         recordActionError(s.presets, 'Load', new Error(r.message ?? `error ${r.code}`));
       }
