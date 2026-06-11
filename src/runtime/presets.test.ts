@@ -4,7 +4,7 @@ import {
   resetBoundary, boundary, resolveBoundary, settings, activeSession,
   makeReadySession, dispatch, notices, clearNotices, type ReadySession,
 } from '@/state';
-import { PresetStartupMode, parseBulkParams } from '@/protocol';
+import { PresetStartupMode, parseBulkParams, Wire } from '@/protocol';
 import { type PresetSlot, OutputConfigMode } from '@/domain';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import {
@@ -353,7 +353,7 @@ describe('runtime/presets', () => {
       await savePresetSlot(sess(), active);
       expect(ps().active).toBe(active);
 
-      const sourceBlob = parseBulkParams(makeBulk({ formatVersion: 10, payloadLength: 2960 }));
+      const sourceBlob = parseBulkParams(makeBulk({ formatVersion: 10, payloadLength: Wire.BulkSizes.V10 }));
       const realDevice = activeSession()!.device;
       const calls: string[] = [];
       const origLoad   = realDevice.loadPreset.bind(realDevice);

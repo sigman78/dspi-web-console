@@ -19,8 +19,8 @@ export class UnsupportedFirmware extends Error {
 }
 
 // Thrown at connect when a wire-supported device reports a parameter packet
-// shorter than the V6 floor (malformed/truncated firmware). The console treats
-// V6 sections as guaranteed, so such a device is rejected rather than silently
+// shorter than the V10 floor (malformed/truncated firmware). The console treats
+// V10 sections as guaranteed, so such a device is rejected rather than silently
 // defaulting them.
 export class UnsupportedDevicePacket extends Error {
   constructor(readonly fwLabel: string, readonly got: number, readonly need: number) {
