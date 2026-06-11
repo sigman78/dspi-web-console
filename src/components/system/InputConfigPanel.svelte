@@ -21,9 +21,9 @@
     [SpdifInputState.Relocking]: 'RELOCKING',
   };
 
-  function stateTone(state: number): 'ok' | 'warn' | 'off' | undefined {
+  function stateTone(state: number): 'ok' | 'off' | undefined {
     if (state === SpdifInputState.Locked) return 'ok';
-    if (state === SpdifInputState.Acquiring || state === SpdifInputState.Relocking) return 'warn';
+    if (state === SpdifInputState.Acquiring || state === SpdifInputState.Relocking) return undefined;
     return 'off';
   }
 
