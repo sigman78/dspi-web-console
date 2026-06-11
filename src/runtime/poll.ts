@@ -1,10 +1,12 @@
 import type { ReadySession } from '@/state';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
+import { AudioInputSource } from '@/domain';
 
 const STATUS_INTERVAL_MS = 50;   // ~20 Hz -- peaks + cpu
 const BUFFER_INTERVAL_MS = 250;  // ~4 Hz  -- buffer stats
 const INFO_INTERVAL_MS = 1000;   // ~1 Hz  -- env scalars + counters
+const SPDIF_RX_INTERVAL_MS = 1000;  // ~1 Hz  -- S/PDIF RX status (SPDIF input only)
 const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile floor
 // A drag is "active" until writes have been quiet this long. The scrub lane
 // paces sends by ack latency and inflight can be 0 in the gaps between them, so
@@ -14,7 +16,7 @@ const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile
 export const RECONCILE_QUIET_MS = 100;
 
 interface Cadence {
-  key: 'status' | 'buffer' | 'info' | 'param';
+  key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'param';
   intervalMs: number;
   runWhileHidden: boolean;          // today all false (pause everything when hidden)
   lastMs(): number;                 // cadence clock -- reads the STORE timestamp
@@ -34,7 +36,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   // Only the in-flight guards are loop-local. The cadence CLOCK stays on the
   // telemetry store (tele.applyPeaks sets lastStatusMs and reads it for peak
   // decay), so the gate must read the store, not a private copy.
-  const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false, param: false };
+  const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false, spdifRx: false, param: false };
 
   async function pollStatus(d: DspDevice): Promise<void> {
     try {
@@ -81,6 +83,28 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     }
   }
 
+  // S/PDIF RX live status. Only runs when the snapshot shows SPDIF input source
+  // (the opcode is valid on USB input too, but the data is stale/zeroed there).
+  // lastSpdifRxMs is tracked locally (not on the telemetry store) because no
+  // other subsystem needs to read it.
+  let lastSpdifRxMs = 0;
+  async function pollSpdifRx(d: DspDevice): Promise<void> {
+    try {
+      tele.spdifRxStatus = await d.getSpdifRxStatus();
+      health.noteOk();
+    } catch (e) {
+      health.noteFail('poll:spdifRx', e);
+      Log.warn('poll', 'getSpdifRxStatus failed', e);
+    } finally {
+      lastSpdifRxMs = performance.now();
+    }
+  }
+
+  function shouldRunSpdifRx(now: number): boolean {
+    if (mir.current?.inputConfig?.source !== AudioInputSource.Spdif) return false;
+    return now - lastSpdifRxMs >= SPDIF_RX_INTERVAL_MS;
+  }
+
   // Background param-mirror reconcile. shouldRunParam already decided this tick
   // is eligible; we fetch, then re-check before applying. getSnapshot is async, so
   // a write can land during the fetch -- if it does, the snapshot is stale relative
@@ -123,10 +147,11 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   }
 
   const cadences: Cadence[] = [
-    { key: 'status', intervalMs: STATUS_INTERVAL_MS, runWhileHidden: false, lastMs: () => tele.lastStatusMs, run: pollStatus },
-    { key: 'buffer', intervalMs: BUFFER_INTERVAL_MS, runWhileHidden: false, lastMs: () => tele.lastBufferMs, run: pollBuffer },
-    { key: 'info',   intervalMs: INFO_INTERVAL_MS,   runWhileHidden: false, lastMs: () => tele.lastInfoMs,   run: pollInfo },
-    { key: 'param',  intervalMs: PARAM_INTERVAL_MS,  runWhileHidden: false, lastMs: () => tele.lastParamMs,  run: pollParam, shouldRun: shouldRunParam },
+    { key: 'status',  intervalMs: STATUS_INTERVAL_MS,   runWhileHidden: false, lastMs: () => tele.lastStatusMs, run: pollStatus },
+    { key: 'buffer',  intervalMs: BUFFER_INTERVAL_MS,   runWhileHidden: false, lastMs: () => tele.lastBufferMs, run: pollBuffer },
+    { key: 'info',    intervalMs: INFO_INTERVAL_MS,     runWhileHidden: false, lastMs: () => tele.lastInfoMs,   run: pollInfo },
+    { key: 'spdifRx', intervalMs: SPDIF_RX_INTERVAL_MS, runWhileHidden: false, lastMs: () => lastSpdifRxMs,     run: pollSpdifRx, shouldRun: shouldRunSpdifRx },
+    { key: 'param',   intervalMs: PARAM_INTERVAL_MS,    runWhileHidden: false, lastMs: () => tele.lastParamMs,  run: pollParam, shouldRun: shouldRunParam },
   ];
   const anyRunWhileHidden = cadences.some((c) => c.runWhileHidden);
 

@@ -1,4 +1,5 @@
 import { type BufferStats, type PartialSystemInfo, Wire } from '@/protocol';
+import type { SpdifRxStatus } from '@/domain';
 const { NUM_CHANNELS } = Wire.Const;
 
 // Per-field $state (not $state(object)): each field gets its own signal source.
@@ -14,6 +15,7 @@ export class StatusStore {
   pdmActive = $state(false);
   sequence = $state(0);
   bufferStats = $state<BufferStats | null>(null);
+  spdifRxStatus = $state<SpdifRxStatus | null>(null);
   info = $state<PartialSystemInfo | null>(null);
   lastStatusMs = $state(0);
   lastBufferMs = $state(0);
@@ -33,6 +35,7 @@ export class StatusStore {
     this.pdmActive = false;
     this.sequence = 0;
     this.bufferStats = null;
+    this.spdifRxStatus = null;
     this.info = null;
     this.lastStatusMs = 0;
     this.lastBufferMs = 0;

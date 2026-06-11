@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { PlatformType, createHardwareProfile } from '@/domain';
+import { PlatformType, createHardwareProfile, AudioInputSource, SpdifInputState } from '@/domain';
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
@@ -311,6 +311,61 @@ describe('param reconcile cadence', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('S/PDIF RX status cadence', () => {
+  afterEach(() => { teardown(); });
+
+  it('polls getSpdifRxStatus when input source is SPDIF', async () => {
+    const spdifStatus = {
+      state: SpdifInputState.Locked, inputSource: AudioInputSource.Spdif,
+      lockCount: 1, lossCount: 0, sampleRate: 44100, parityErrors: 0, fifoFillPct: 50,
+    };
+    const device = {
+      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      hardware: hw,
+      getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
+      getBufferStats: vi.fn(async () => null),
+      getSystemInfo: vi.fn(async () => ({})),
+      getSpdifRxStatus: vi.fn(async () => spdifStatus),
+      getSnapshot: vi.fn(async () => fromBulkParams(hw, parseBulkParams(makeBulk()))),
+    } as unknown as DspDevice;
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    // Set input source to SPDIF so the cadence gate passes.
+    snap.inputConfig = { source: AudioInputSource.Spdif, spdifRxPin: 15 };
+    session.mirror.init(snap);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getSpdifRxStatus).toHaveBeenCalled();
+    expect(session.telemetry.spdifRxStatus).toEqual(spdifStatus);
+    stop();
+  });
+
+  it('does not poll getSpdifRxStatus when input source is USB', async () => {
+    const device = {
+      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      hardware: hw,
+      getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
+      getBufferStats: vi.fn(async () => null),
+      getSystemInfo: vi.fn(async () => ({})),
+      getSpdifRxStatus: vi.fn(async () => ({ state: 0, inputSource: 0, lockCount: 0, lossCount: 0, sampleRate: 0, parityErrors: 0, fifoFillPct: 0 })),
+      getSnapshot: vi.fn(async () => fromBulkParams(hw, parseBulkParams(makeBulk()))),
+    } as unknown as DspDevice;
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    // USB input (default in bulkFixtures): cadence should not fire.
+    snap.inputConfig = { source: AudioInputSource.Usb, spdifRxPin: 15 };
+    session.mirror.init(snap);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getSpdifRxStatus).not.toHaveBeenCalled();
+    stop();
   });
 });
 

@@ -9,6 +9,7 @@
   import BufferStatsPanel from '@/components/system/BufferStatsPanel.svelte';
   import LgSoundSyncPanel from '@/components/system/LgSoundSyncPanel.svelte';
   import DacHwMutePanel from '@/components/system/DacHwMutePanel.svelte';
+  import InputConfigPanel from '@/components/system/InputConfigPanel.svelte';
   import { chKey } from '@/styles/palette';
   import { clearClips } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
@@ -32,6 +33,7 @@
   </div>
 
   <div class="col">
+    <InputConfigPanel />
     <ChannelNamesPanel />
     <LgSoundSyncPanel />
   </div>
