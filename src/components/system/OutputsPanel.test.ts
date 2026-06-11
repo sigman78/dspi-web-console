@@ -21,7 +21,11 @@ const snap = {
   i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
 };
 
-const session = { mirror: { current: snap } } as any;
+const session = {
+  mirror: { current: snap },
+  presets: { directory: null },
+  device: { capabilities: { features: { outputConfigSave: false } } },
+} as any;
 
 beforeEach(() => { verbs.setOutputType.mockClear(); verbs.setOutputDataPin.mockClear(); });
 
