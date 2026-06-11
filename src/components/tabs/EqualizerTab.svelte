@@ -8,7 +8,7 @@
   import { filterCurve, filterCurveAt } from '@/components/bode/filterCurve';
   import { settings, setEqTarget, eqUi, setEqCopySource, clearEqCopySource } from '@/state';
   import { FilterType, defaultFilter, type FilterParams, inputIndexOf } from '@/domain';
-  import { setEqFilter, setInputPreamp, copyEqBands } from '@/runtime';
+  import { setEqFilter, setInputPreamp, copyEqBands, setBandBypass } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -65,8 +65,14 @@
 
   function patchBand(i: number, patch: Partial<FilterParams>) {
     if (!channel) return;
-    const next = { ...channel.filters[i], ...patch };
-    setEqFilter(s, channel.id, i, next);
+    if ('bypass' in patch && patch.bypass !== undefined) {
+      setBandBypass(s, channel.id, i, patch.bypass);
+    }
+    // Send the non-bypass fields if there are any (type/freq/q/gain changes).
+    const { bypass: _bypass, ...rest } = patch;
+    if (Object.keys(rest).length > 0) {
+      setEqFilter(s, channel.id, i, { ...channel.filters[i], ...rest });
+    }
   }
 
   function reset() {

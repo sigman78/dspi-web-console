@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { bootMock } from './boot';
 import {
   resetBoundary, boundary, resolveBoundary, settings, activeSession,
-  makeReadySession, dispatch, type ReadySession,
+  makeReadySession, dispatch, notices, clearNotices, type ReadySession,
 } from '@/state';
-import { PresetStartupMode, parseBulkParams } from '@/protocol';
-import type { PresetSlot } from '@/domain';
+import { PresetStartupMode, parseBulkParams, Wire } from '@/protocol';
+import { type PresetSlot, OutputConfigMode } from '@/domain';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import {
   fetchPresetInfo,
@@ -17,7 +17,7 @@ import {
   renamePresetSlot,
   setStartupDefault,
   setStartupMode,
-  setPresetIncludePins,
+  setOutputConfigMode,
   pastePresetTo,
   dismissPresetActionError,
 } from './presets';
@@ -217,28 +217,28 @@ describe('runtime/presets', () => {
     });
   });
 
-  describe('setPresetIncludePins', () => {
-    it('writes the flag through to the device and mirrors it in the directory cache', async () => {
+  describe('setOutputConfigMode', () => {
+    it('writes the mode through to the device and mirrors it in the directory cache', async () => {
       await fetchPresetInfo(sess());
-      const r = await setPresetIncludePins(sess(), true);
+      const r = await setOutputConfigMode(sess(), OutputConfigMode.WithPreset);
       expect('ok' in r && r.ok).toBe(true);
-      expect(ps().directory!.includePins).toBe(true);
-      await setPresetIncludePins(sess(), false);
-      expect(ps().directory!.includePins).toBe(false);
+      expect(ps().directory!.outputConfigMode).toBe(OutputConfigMode.WithPreset);
+      await setOutputConfigMode(sess(), OutputConfigMode.Independent);
+      expect(ps().directory!.outputConfigMode).toBe(OutputConfigMode.Independent);
     });
 
     it('records an action error (record-only, no rethrow) when the device write fails', async () => {
       await fetchPresetInfo(sess());
       const d = activeSession()!.device as any;
-      const orig = d.setPresetIncludePins;
-      d.setPresetIncludePins = async () => { throw new Error('wire fail'); };
+      const orig = d.setOutputConfigMode;
+      d.setOutputConfigMode = async () => { throw new Error('wire fail'); };
       try {
-        const r = await setPresetIncludePins(sess(), true);
+        const r = await setOutputConfigMode(sess(), OutputConfigMode.WithPreset);
         expect('ok' in r && r.ok).toBe(false);
-        expect(ps().lastActionError).toContain('Set include pins');
+        expect(ps().lastActionError).toContain('Set output config mode');
         expect(ps().lastActionError).toContain('wire fail');
       } finally {
-        d.setPresetIncludePins = orig;
+        d.setOutputConfigMode = orig;
       }
     });
   });
@@ -353,7 +353,7 @@ describe('runtime/presets', () => {
       await savePresetSlot(sess(), active);
       expect(ps().active).toBe(active);
 
-      const sourceBlob = parseBulkParams(makeBulk());
+      const sourceBlob = parseBulkParams(makeBulk({ formatVersion: 10, payloadLength: Wire.BulkSizes.V10 }));
       const realDevice = activeSession()!.device;
       const calls: string[] = [];
       const origLoad   = realDevice.loadPreset.bind(realDevice);
@@ -422,19 +422,13 @@ describe('runtime/presets', () => {
       if ('code' in r) expect(r.code).toBe('active');
     });
 
-    it('blocks paste when sourceBlob wire is higher than the device can accept', async () => {
-      // Firmware-merge write rule: a blob whose wire is HIGHER than the device's
-      // wire is rejected (the firmware would refuse it). Arises mid-session after
-      // a firmware update bumps the format. restoreState must not run and the
-      // action must surface an error. (Lower/equal blobs merge — see the
-      // acceptsWriteFormat unit matrix for that path; this runtime harness is
-      // V6-only so it can't host a higher device to exercise the accept side.)
+    it('calls restoreState unconditionally (no format gate; blob is this device\'s own capture)', async () => {
+      // Paste no longer format-gates: the blob is always captured from the same
+      // device, so the wire version always matches. Verify restoreState is reached.
       await fetchPresetInfo(sess());
       const active = 1 as PresetSlot;
       await savePresetSlot(sess(), active);
       expect(ps().active).toBe(active);
-      const liveFmt = activeSession()!.device.capabilities.wire;
-      const wrongFmt = liveFmt + 1;
 
       const realDevice = activeSession()!.device;
       const origLoad   = realDevice.loadPreset.bind(realDevice);
@@ -447,21 +441,16 @@ describe('runtime/presets', () => {
       (realDevice as any).loadPreset = async (_slot: number) => ({ ok: true });
       (realDevice as any).savePreset = savePresetSpy;
       (realDevice as any).getAllParams = async () => {
-        // Capture path. Return a parsed blob with an incompatible formatVersion.
         const b = parseBulkParams(makeBulk());
-        return { ...b, formatVersion: wrongFmt };
+        return { ...b };
       };
       (realDevice as any).setAllParams = setAllParamsSpy;
 
       try {
         const r = await pastePresetTo(sess(), 3 as PresetSlot);
-        expect(r.ok).toBe(false);
-        if (!r.ok && 'message' in r) {
-          expect(r.message).toMatch(/Paste blocked: snapshot format/);
-        }
-        expect(ps().lastActionError).toMatch(/^Paste:.*Paste blocked: snapshot format/);
-        expect(setAllParamsSpy).not.toHaveBeenCalled();
-        expect(savePresetSpy).not.toHaveBeenCalled();
+        expect(r.ok).toBe(true);
+        expect(setAllParamsSpy).toHaveBeenCalled();
+        expect(savePresetSpy).toHaveBeenCalled();
       } finally {
         (realDevice as any).loadPreset = origLoad;
         (realDevice as any).savePreset = origSave;
@@ -470,51 +459,6 @@ describe('runtime/presets', () => {
       }
     });
 
-    it('captures source RAM only after the source load has settled', async () => {
-      // loadPreset is async on the wire (deferred flash→RAM copy). Capturing
-      // before the settle would read the previous (active) slot's RAM, not src.
-      await fetchPresetInfo(sess());
-      const src    = 3 as PresetSlot;
-      const active = 1 as PresetSlot;
-      await savePresetSlot(sess(), active);
-      expect(ps().active).toBe(active);
-
-      const realDevice = activeSession()!.device;
-      const origLoad   = realDevice.loadPreset.bind(realDevice);
-      const origSave   = realDevice.savePreset.bind(realDevice);
-      const origGetAll = realDevice.getAllParams.bind(realDevice);
-      const origSetAll = realDevice.setAllParams.bind(realDevice);
-      const events: string[] = [];
-      (realDevice as any).loadPreset = async (slot: number) => { events.push(`load:${slot}`); return { ok: true }; };
-      (realDevice as any).savePreset = async (slot: number) => { events.push(`save:${slot}`); return { ok: true }; };
-      (realDevice as any).setAllParams = async () => { events.push('setAll'); };
-      (realDevice as any).getAllParams = async () => { events.push('capture'); return parseBulkParams(makeBulk()); };
-
-      vi.useFakeTimers();
-      try {
-        const pending = pastePresetTo(sess(), src);
-        // Advance to just before the 100 ms settle: load(src) has resolved (it
-        // completes via microtasks) but the capture is still gated by the timer.
-        await vi.advanceTimersByTimeAsync(99);
-        expect(events).toEqual([`load:${src}`]);
-        // Cross the first settle: capture runs, then load(active). restoreState
-        // (setAll) stays gated behind the second settle.
-        await vi.advanceTimersByTimeAsync(2);
-        expect(events).toEqual([`load:${src}`, 'capture', `load:${active}`]);
-        // Cross the second settle: only now is the source pushed into active RAM.
-        await vi.advanceTimersByTimeAsync(100);
-        expect(events).toContain('setAll');
-        // Drain the rest of the flow so no promise/timer dangles.
-        await vi.advanceTimersByTimeAsync(500);
-        await pending;
-      } finally {
-        vi.useRealTimers();
-        (realDevice as any).loadPreset = origLoad;
-        (realDevice as any).savePreset = origSave;
-        (realDevice as any).getAllParams = origGetAll;
-        (realDevice as any).setAllParams = origSetAll;
-      }
-    });
   });
 
   describe('loadPresetSlot dirty gating', () => {
@@ -605,6 +549,29 @@ describe('runtime/presets', () => {
       }
     });
   });
+
+  describe('paste under output-config mode (V10 device)', () => {
+    it('toasts that IO config was not applied in Independent mode, stays silent in WithPreset', async () => {
+      dispatch({ t: 'disconnected' });
+      await bootMock('rp2350', { wireVersion: 10 });
+      await fetchPresetInfo(sess());
+      await savePresetSlot(sess(), 1 as PresetSlot);
+      await loadPresetSlot(sess(), 0 as PresetSlot);
+      await saveActivePreset(sess());
+
+      clearNotices();
+      await setOutputConfigMode(sess(), OutputConfigMode.Independent);
+      let r = await pastePresetTo(sess(), 1 as PresetSlot);
+      expect('ok' in r && r.ok).toBe(true);
+      expect(notices.list.some((n) => n.kind === 'info' && /not applied/i.test(n.message))).toBe(true);
+
+      clearNotices();
+      await setOutputConfigMode(sess(), OutputConfigMode.WithPreset);
+      r = await pastePresetTo(sess(), 1 as PresetSlot);
+      expect('ok' in r && r.ok).toBe(true);
+      expect(notices.list.some((n) => /not applied/i.test(n.message))).toBe(false);
+    });
+  });
 });
 
 // Stub-device tests for the notify-driven load settle. Independent of the
@@ -622,7 +589,6 @@ describe('notify-driven load settle', () => {
 
   beforeEach(() => {
     settings.warnOnPresetSwitchDirty = false;
-    settings.soft.muted = false;
   });
 
   afterEach(() => {
@@ -633,15 +599,13 @@ describe('notify-driven load settle', () => {
   it('waits for presetLoaded before re-reading device truth', async () => {
     vi.useFakeTimers();
     const device = {
-      capabilities: { features: { notifications: true } },
       loadPreset: vi.fn(async () => ({ ok: true, value: undefined })),
       getSnapshot: vi.fn(async () => makeTestSnapshot()),
       setMasterVolume: vi.fn(async () => {}),
     };
     const s = installSessionWith(device);
     const p = loadPresetSlot(s, 2 as PresetSlot);
-    // Well past the legacy 100 ms sleep: the re-read must still be gated on
-    // the device's own event, not on elapsed time.
+    // Re-read must be gated on the device's own event, not on elapsed time.
     await vi.advanceTimersByTimeAsync(150);
     expect(device.loadPreset).toHaveBeenCalled();
     expect(device.getSnapshot).not.toHaveBeenCalled();
@@ -651,26 +615,9 @@ describe('notify-driven load settle', () => {
     expect(device.getSnapshot).toHaveBeenCalled();
   });
 
-  it('falls back to the settle sleep on devices without notifications', async () => {
-    vi.useFakeTimers();
-    const device = {
-      capabilities: { features: { notifications: false } },
-      loadPreset: vi.fn(async () => ({ ok: true, value: undefined })),
-      getSnapshot: vi.fn(async () => makeTestSnapshot()),
-      setMasterVolume: vi.fn(async () => {}),
-    };
-    const s = installSessionWith(device);
-    const p = loadPresetSlot(s, 2 as PresetSlot);
-    await vi.advanceTimersByTimeAsync(100);        // PRESET_LOAD_SETTLE_MS
-    const r = await p;
-    expect('ok' in r && r.ok).toBe(true);
-    expect(device.getSnapshot).toHaveBeenCalled();
-  });
-
   it('proceeds after the timeout when the event never arrives', async () => {
     vi.useFakeTimers();
     const device = {
-      capabilities: { features: { notifications: true } },
       loadPreset: vi.fn(async () => ({ ok: true, value: undefined })),
       getSnapshot: vi.fn(async () => makeTestSnapshot()),
       setMasterVolume: vi.fn(async () => {}),

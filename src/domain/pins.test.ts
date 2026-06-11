@@ -13,6 +13,8 @@ function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
     leveller: null,
     outputPins: [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
+    inputConfig: { source: 0, spdifRxPin: 5 },
+    dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
     ...over,
   } as DspSnapshot;
 }
@@ -48,13 +50,22 @@ describe('pins', () => {
     expect(valid).not.toContain(6);
   });
 
-  test('with no output pins registered, an active I2S slot yields only BCK/LRCLK', () => {
+  test('with no output pins registered, an active I2S slot yields BCK/LRCLK plus the RX pin', () => {
     const m = pinsInUse(snap({
       outputPins: [],
       i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
     }));
-    expect(m.size).toBe(2);
+    expect(m.size).toBe(3);
     expect(m.get(14)).toBe('BCK');
     expect(m.get(15)).toBe('LRCLK');
+    expect(m.get(5)).toBe('SPDIF RX');
+  });
+
+  test('the S/PDIF RX pin is always in use; the DAC mute pin only when enabled', () => {
+    const off = pinsInUse(snap());
+    expect(off.get(5)).toBe('SPDIF RX');
+    expect(off.has(11)).toBe(false);
+    const on = pinsInUse(snap({ dacHwMute: { enabled: true, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 } }));
+    expect(on.get(11)).toBe('DAC MUTE');
   });
 });

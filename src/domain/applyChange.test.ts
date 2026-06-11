@@ -21,44 +21,19 @@ describe('applyChange', () => {
     expect(t.outputPins).toEqual([6, 8]);
   });
 
-  it('applies lgSoundSync split kinds when the section is present, skips when null', () => {
-    // V10 snapshot carries lgSoundSync non-null.
+  it('applies spdifRxPin without disturbing the input source', () => {
+    const t = makeSnapshot((b) => { b.formatVersion = 10; });
+    const source = t.inputConfig.source;
+    applyChange({ kind: 'spdifRxPin', value: 9 }, t);
+    expect(t.inputConfig.spdifRxPin).toBe(9);
+    expect(t.inputConfig.source).toBe(source);
+  });
+
+  it('applies the lgSoundSync split kinds independently', () => {
     const t = makeSnapshot((b) => { b.formatVersion = 10; });
     applyChange({ kind: 'lgSoundSyncEnabled', value: true }, t);
     applyChange({ kind: 'lgSoundSyncStatus', value: { present: true, volume: 40, muted: false } }, t);
     expect(t.lgSoundSync).toEqual({ enabled: true, present: true, volume: 40, muted: false });
-    // null section: a status change is a no-op, not a crash
-    const t2 = makeSnapshot(); // V6 → lgSoundSync null
-    applyChange({ kind: 'lgSoundSyncEnabled', value: true }, t2);
-    expect(t2.lgSoundSync).toBeNull();
-  });
-
-  it('applies section appearance (null -> present) across wire versions', () => {
-    // V6 default: inputConfig/userVolume/dacHwMute/lgSoundSync are all null.
-    const before = makeSnapshot();
-    // V10: all four sections present.
-    const after = makeSnapshot((b) => { b.formatVersion = 10; });
-
-    // Premise guard: fail loudly if fixture defaults change.
-    expect(before.inputConfig).toBeNull();
-    expect(before.userVolume).toBeNull();
-    expect(before.dacHwMute).toBeNull();
-    expect(before.lgSoundSync).toBeNull();
-    expect(after.inputConfig).not.toBeNull();
-    expect(after.userVolume).not.toBeNull();
-    expect(after.dacHwMute).not.toBeNull();
-    expect(after.lgSoundSync).not.toBeNull();
-
-    const target = structuredClone(before);
-    for (const c of diffSnapshots(before, after)) applyChange(c, target);
-
-    // Whole-object equality cannot hold: lgSoundSyncEnabled/lgSoundSyncStatus
-    // are no-ops when t.lgSoundSync is null (applyChange guards on the section),
-    // so target.lgSoundSync stays null even after applying. Per-section
-    // assertions cover the three kinds that assign directly over null.
-    expect(target.inputConfig).toEqual(after.inputConfig);
-    expect(target.userVolume).toEqual(after.userVolume);
-    expect(target.dacHwMute).toEqual(after.dacHwMute);
   });
 
   it('round-trips: applying diffSnapshots(a,b) onto a reproduces b', () => {
@@ -78,9 +53,9 @@ describe('applyChange', () => {
     b.loudness = { enabled: true, refSpl: 80, intensityPct: 0.5 };
     b.crossfeed = { ...b.crossfeed, enabled: true, preset: 1, itd: true, freq: 650, feedDb: 3 };
     b.leveller = { ...b.leveller, enabled: true, amount: 50, maxGainDb: 12, gateDb: -50 };
-    b.inputConfig = { ...b.inputConfig!, source: 1 };
+    b.inputConfig = { ...b.inputConfig, source: 1 };
     b.userVolume = { volumeDb: -4, mute: true };
-    b.dacHwMute = { ...b.dacHwMute!, enabled: true };
+    b.dacHwMute = { ...b.dacHwMute, enabled: true };
     b.i2s = { ...b.i2s, outputSlotTypes: [0, 1, 0, 0] };
     b.outputPins = [6, 8];
     b.channels[3] = { ...b.channels[3], name: 'Sub' };

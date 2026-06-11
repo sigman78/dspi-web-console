@@ -1,17 +1,12 @@
 <script lang="ts">
-  import { settings, connection, activeSession } from '@/state';
+  import { connection, activeSession } from '@/state';
   import { setMasterVolume, toggleMute } from '@/runtime';
   import SaveMasterVolumeButton from '@/components/presets/SaveMasterVolumeButton.svelte';
 
   const s = $derived(activeSession());
   const masterVolumeDb = $derived(s?.mirror.current?.masterVolumeDb ?? 0);
   const connected = $derived(connection.connected);
-  // While soft-muted, keep the slider at the *pre-mute* position rather
-  // than jumping to MUTE_DB. The dB readout shows "OFF" instead. Unmute
-  // restores the snapshot value via toggleMute().
-  const sliderValue = $derived(
-    settings.soft.muted ? (settings.soft.mutedFromDb ?? 0) : masterVolumeDb,
-  );
+  const muted = $derived(s?.mirror.current?.userVolume.mute ?? false);
 
   function onChange(e: Event) {
     const v = parseFloat((e.target as HTMLInputElement).value);
@@ -23,25 +18,25 @@
   <span class="lbl">VOL</span>
   <input
     type="range"
-    class:muted={settings.soft.muted}
+    class:muted
     min="-60" max="0" step="0.5"
-    value={sliderValue}
+    value={masterVolumeDb}
     oninput={onChange}
-    disabled={!connected || settings.soft.muted}
+    disabled={!connected}
     aria-label="Master volume"
   />
-  <span class="db" class:muted={settings.soft.muted}>
-    {connected ? (settings.soft.muted ? 'OFF' : masterVolumeDb.toFixed(1)) : '—'}
+  <span class="db" class:muted>
+    {connected ? masterVolumeDb.toFixed(1) : '—'}
   </span>
   <button
     class="mute"
-    class:on={settings.soft.muted}
+    class:on={muted}
     onclick={() => { if (s) toggleMute(s); }}
     disabled={!connected}
-    title={settings.soft.muted ? 'Unmute' : 'Mute'}
-    aria-label={settings.soft.muted ? 'Unmute' : 'Mute'}
+    title={muted ? 'Unmute' : 'Mute'}
+    aria-label={muted ? 'Unmute' : 'Mute'}
   >
-    {#if settings.soft.muted}
+    {#if muted}
       <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 6h2l3-3v10l-3-3H3z" fill="currentColor" />
         <line x1="11" y1="6" x2="14" y2="9" />

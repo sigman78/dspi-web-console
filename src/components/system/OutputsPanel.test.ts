@@ -19,9 +19,15 @@ const snap = {
   outputs: [{ wireIndex: 8, enabled: false }],
   outputPins: [6, 7, 8, 9, 10],
   i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
+  inputConfig: { source: 0, spdifRxPin: 5 },
+  dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
 };
 
-const session = { mirror: { current: snap } } as any;
+const session = {
+  mirror: { current: snap },
+  presets: { directory: null },
+  device: {},
+} as any;
 
 beforeEach(() => { verbs.setOutputType.mockClear(); verbs.setOutputDataPin.mockClear(); });
 

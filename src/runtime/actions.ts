@@ -3,27 +3,19 @@ import {
   type ChannelId, type InputSlot, type OutputSlot, type I2sPairSlot,
   type RouteModel,
   type I2sConfig,
+  type AudioInputSource,
+  type DacHwMute,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   CHANNEL_NAME_MAX_LEN,
 } from '@/domain';
 import * as Clamp from '@/domain/clamp';
 import {
   type ReadySession,
-  settings,
   pushNotice,
 } from '@/state';
 import { Log } from '@/utils';
 import { write, scrub, writeChecked, command } from './writes';
 import { focusOutput, focusRoute } from './focus';
-
-
-function _setMasterVolume(s: ReadySession, db: number): void {
-  scrub(s,
-    'masterVolume',
-    () => { s.mirror.snapshot.masterVolumeDb = db; },
-    () => s.device.setMasterVolume(db),
-  );
-}
 
 export function setEqFilter(s: ReadySession, channel: ChannelId, band: number, filter: FilterParams): void {
   const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
@@ -41,7 +33,9 @@ export function setEqFilter(s: ReadySession, channel: ChannelId, band: number, f
     () => s.device.setFilter(channel, band, clamped),
     () => {
       const c = s.mirror.snapshot.channels.find((c) => c.id === channel);
-      if (c) c.filters[band] = { ...clamped };
+      // setFilter's wire command carries no bypass byte; keep the mirror's
+      // live value so a concurrent setBandBypass ack is never clobbered.
+      if (c) c.filters[band] = { ...clamped, bypass: c.filters[band].bypass };
     },
   );
 }
@@ -66,7 +60,8 @@ export function copyEqBands(s: ReadySession, sourceId: ChannelId, targetId: Chan
       () => s.device.setFilter(targetId, band, filter),
       () => {
         const t = s.mirror.snapshot.channels.find((c) => c.id === targetId);
-        if (t) t.filters[band] = { ...filter };
+        // Bypass doesn't travel on setFilter; the target keeps its own.
+        if (t) t.filters[band] = { ...filter, bypass: t.filters[band].bypass };
       },
     );
   }
@@ -316,24 +311,17 @@ export function setOutputMuted(s: ReadySession, slot: OutputSlot, muted: boolean
 
 export function setMasterVolume(s: ReadySession, db: number): void {
   db = Clamp.masterVolumeDb(db);
-  if (settings.soft.muted) {
-    settings.soft.muted = false;
-    settings.soft.mutedFromDb = null;
-  }
-  _setMasterVolume(s, db);
+  scrub(s,
+    'masterVolume',
+    () => { s.mirror.snapshot.masterVolumeDb = db; },
+    () => s.device.setMasterVolume(db),
+  );
 }
 
+// Flips the firmware vendor user-mute bit (0xDC). The firmware ORs this with
+// the UAC1 OS mute — they're independent; we reflect and control only this bit.
 export function toggleMute(s: ReadySession): void {
-  if (settings.soft.muted) {
-    const restore = settings.soft.mutedFromDb ?? 0;
-    settings.soft.muted = false;
-    settings.soft.mutedFromDb = null;
-    _setMasterVolume(s, restore);
-  } else {
-    settings.soft.mutedFromDb = s.mirror.snapshot.masterVolumeDb;
-    settings.soft.muted = true;
-    _setMasterVolume(s, Clamp.MUTE_DB);
-  }
+  setUserMute(s, !s.mirror.snapshot.userVolume.mute);
 }
 
 export function setMasterVolumeMode(s: ReadySession, mode: MasterVolumeMode): void {
@@ -351,6 +339,18 @@ export function saveMasterVolumeBaseline(s: ReadySession): void {
     if (!ok) { pushNotice('warn', 'Saving master volume failed (flash write error).'); return; }
     // Mirror the saved baseline so the Save button settles to clean without a refetch.
     s.presets.savedMasterVolumeDb = s.mirror.snapshot.masterVolumeDb;
+  });
+}
+
+// 0x52 SaveOutputConfig -- persists the live physical-IO block (output pins,
+// output types, I2S BCK/MCK, S/PDIF RX pin) to the directory's device-global
+// block. Meaningful in Independent mode (the block is the boot source);
+// firmware accepts it in WithPreset mode but it stays dormant. Fire-and-forget:
+// only failure surfaces; success is silent (there is no saved-readback opcode,
+// so no clean-detect).
+export function saveOutputConfigBaseline(s: ReadySession): void {
+  void command(s, 'save output config', () => s.device.saveOutputConfig(), (r) => {
+    if (!r.ok) pushNotice('warn', `Saving output config failed (${r.message ?? 'flash error'}).`);
   });
 }
 
@@ -404,4 +404,112 @@ export function setMckPin(s: ReadySession, pin: number): void {
 
 export function setMckMultiplier(s: ReadySession, encoded: number): void {
   void writeChecked(s,'set MCK multiplier', () => s.device.setMckMultiplier(encoded), () => patchI2s(s, (i) => ({ ...i, mckMultiplierEncoded: encoded })));
+}
+
+export function setUserMute(s: ReadySession, mute: boolean): void {
+  void write(s,
+    () => s.device.setUserMute(mute),
+    () => { s.mirror.snapshot.userVolume.mute = mute; },
+  );
+}
+
+// M3 — Per-band EQ bypass. Band edits flow through write() (await-then-patch),
+// matching setEqFilter's lane. setFilter does not carry bypass, so bypass is
+// a separate granular command.
+
+export function setBandBypass(s: ReadySession, channel: ChannelId, band: number, bypassed: boolean): void {
+  const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
+  if (!ch || band >= ch.filters.length) return;
+  void write(s,
+    () => s.device.setBandBypass(channel, band, bypassed),
+    () => {
+      const c = s.mirror.snapshot.channels.find((c) => c.id === channel);
+      if (c && c.filters[band]) c.filters[band] = { ...c.filters[band], bypass: bypassed };
+    },
+  );
+}
+
+// M1 — Input source switch. Pipeline reset is audible; surface an info notice
+// only once the device acked. The retained RX status frame belongs to the
+// previous source epoch -- drop it so a SPDIF re-entry can't show a stale lock.
+export function setInputSource(s: ReadySession, source: AudioInputSource): void {
+  void write(s,
+    () => s.device.setInputSource(source),
+    () => {
+      s.mirror.snapshot.inputConfig.source = source;
+      s.telemetry.spdifRxStatus = null;
+      pushNotice('info', 'Input source changed — firmware pipeline reset (brief audio mute).');
+    },
+  );
+}
+
+// M1 — S/PDIF RX pin. Action-style: status byte on rejection.
+export function setSpdifRxPin(s: ReadySession, gpio: number): void {
+  void writeChecked(s,
+    'set S/PDIF RX pin',
+    () => s.device.setSpdifRxPin(gpio),
+    () => { s.mirror.snapshot.inputConfig.spdifRxPin = gpio; },
+  );
+}
+
+// M7 — LG Sound Sync enable toggle.
+export function setLgSoundSyncEnabled(s: ReadySession, enabled: boolean): void {
+  void write(s,
+    () => s.device.setLgSoundSyncEnabled(enabled),
+    () => { s.mirror.snapshot.lgSoundSync.enabled = enabled; },
+  );
+}
+
+// M6 — DAC HW mute config. The wire takes the whole struct, so the verb takes
+// a partial and merges over the live mirror optimistically BEFORE sending:
+// a second edit inside the first ack window then builds on the first instead
+// of silently reverting it from a stale captured struct.
+//
+// The firmware applies the struct in a deferred handler that SWALLOWS
+// validation failures (bad pin / collision / hold_ms out of [1,500]); its own
+// contract says hosts must read the config back to learn the verdict. So the
+// verb clamps the timings, waits out the deferred apply, reads the echo back
+// as device truth, and warns when an enable didn't stick.
+const DAC_HW_MUTE_APPLY_MS = 200;
+
+export function setDacHwMute(s: ReadySession, patch: Partial<DacHwMute>): void {
+  const merged = { ...s.mirror.snapshot.dacHwMute, ...patch };
+  const next: DacHwMute = merged.enabled
+    ? { ...merged, holdMs: Clamp.dacHwMuteHoldMs(merged.holdMs), releaseMs: Clamp.dacHwMuteReleaseMs(merged.releaseMs) }
+    : merged;
+  s.mirror.snapshot.dacHwMute = next;
+  void command(s, 'set DAC HW mute', async () => {
+    await s.device.setDacHwMute(next);
+    await new Promise((r) => setTimeout(r, DAC_HW_MUTE_APPLY_MS));
+    return s.device.getDacHwMute();
+  }, (echo, s) => {
+    s.mirror.snapshot.dacHwMute = echo;
+    if (next.enabled && (echo.enabled !== next.enabled || echo.pin !== next.pin)) {
+      pushNotice('warn', 'DAC HW mute config rejected by the device (pin in use or invalid).');
+    }
+    s.mirror.requestReconcile(false);
+  });
+}
+
+// M6 — DAC HW mute test pulse (~1s). Fire-and-forget.
+export function testDacHwMute(s: ReadySession): void {
+  void s.device.testDacHwMute().catch((e) => { pushNotice('error', `DAC mute test failed: ${e instanceof Error ? e.message : String(e)}`); });
+}
+
+// M9 — Buffer stats reset.
+export function resetBufferStats(s: ReadySession): void {
+  void s.device.resetBufferStats().catch((e) => { pushNotice('error', `Buffer stats reset failed: ${e instanceof Error ? e.message : String(e)}`); });
+}
+
+// M8 — Enter UF2 bootloader. The device disconnects immediately (100 ms delay
+// in firmware before reset_usb_boot). The transfer may throw as the device
+// drops mid-response; that is expected and is treated as a normal disconnect.
+export async function enterBootloader(s: ReadySession): Promise<void> {
+  try {
+    await s.device.enterBootloader();
+  } catch {
+    // Device dropped during or after the command -- that's the expected path.
+  }
+  // The transport disconnect event fires naturally after the device reboots
+  // and triggers normal disconnect flow via attachTransportListeners.
 }

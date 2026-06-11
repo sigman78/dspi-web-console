@@ -3,11 +3,11 @@ import * as proto from '@/protocol';
 import { Codec, utf8Truncate, type Result } from '@/utils';
 import * as domain from '@/domain';
 import { fromBulkParams, narrowInputSource, type DeviceState } from '@/protocol/snapshotCodec';
-import { deriveCapabilities, FEATURE_MIN_WIRE, type DeviceCapabilities, type FirmwareVersion } from '@/protocol/capabilities';
+import { deriveCapabilities, type DeviceCapabilities, type FirmwareVersion } from '@/protocol/capabilities';
 
 // Semver face of the wire-version floor that lives in capabilities.ts; shown in
 // the reject message.
-const MIN_SUPPORTED_FW = '1.1.3';
+const MIN_SUPPORTED_FW = '1.1.4';
 
 // Thrown at connect when firmware predates the supported floor. Carries the
 // versions so the connect UI can render an upgrade prompt.
@@ -19,23 +19,13 @@ export class UnsupportedFirmware extends Error {
 }
 
 // Thrown at connect when a wire-supported device reports a parameter packet
-// shorter than the V6 floor (malformed/truncated firmware). The console treats
-// V6 sections as guaranteed, so such a device is rejected rather than silently
+// shorter than the V10 floor (malformed/truncated firmware). The console treats
+// V10 sections as guaranteed, so such a device is rejected rather than silently
 // defaulting them.
 export class UnsupportedDevicePacket extends Error {
   constructor(readonly fwLabel: string, readonly got: number, readonly need: number) {
     super(`DSPi firmware ${fwLabel} sent an incomplete parameter packet (${got} bytes, need at least ${need}). Update the firmware.`);
     this.name = 'UnsupportedDevicePacket';
-  }
-}
-
-// Thrown when a granular command is invoked on a device whose capabilities
-// don't advertise the feature. Distinct from UnsupportedFirmware, which rejects
-// the whole device at connect time.
-export class UnsupportedOnFirmware extends Error {
-  constructor(readonly feature: string, readonly requires: string) {
-    super(`${feature} requires ${requires}; the connected device does not support it.`);
-    this.name = 'UnsupportedOnFirmware';
   }
 }
 
@@ -69,17 +59,6 @@ function narrowSpdifInputState(n: number): domain.SpdifInputState {
       return n;
     default:
       return domain.SpdifInputState.Inactive;
-  }
-}
-
-// Throw if the connected device's capabilities don't advertise `feature`; the
-// requirement label comes from FEATURE_MIN_WIRE so call sites name only the feature.
-function requireFeature(
-  features: DeviceCapabilities['features'],
-  feature: keyof DeviceCapabilities['features'],
-): void {
-  if (!features[feature]) {
-    throw new UnsupportedOnFirmware(feature, `wire V${FEATURE_MIN_WIRE[feature]}`);
   }
 }
 
@@ -128,11 +107,11 @@ export class DspDevice {
     if (capabilities.support === 'unsupported') {
       throw new UnsupportedFirmware(capabilities.fwLabel);
     }
-    // A supported wire version must also carry at least the V6 floor payload.
-    // A shorter packet means the device omits floor sections the console treats
-    // as guaranteed (i2s/leveller) -- reject instead of silently defaulting them.
-    if (bulk.payloadLength < proto.Wire.BulkSizes.V6Full) {
-      throw new UnsupportedDevicePacket(capabilities.fwLabel, bulk.payloadLength, proto.Wire.BulkSizes.V6Full);
+    // A supported wire version must also carry at least the V10 floor payload.
+    // A shorter packet means the device omits sections the console treats as
+    // guaranteed -- reject instead of silently defaulting them.
+    if (bulk.payloadLength < proto.Wire.BulkSizes.V10) {
+      throw new UnsupportedDevicePacket(capabilities.fwLabel, bulk.payloadLength, proto.Wire.BulkSizes.V10);
     }
 
     const platformType = platformTypeFromId(platform.platformId);
@@ -334,7 +313,7 @@ export class DspDevice {
       startupMode:      r.startupMode,
       defaultSlot:      r.defaultSlot as domain.PresetSlot,
       lastActiveSlot:   r.lastActiveSlot === 0xFF ? null : (r.lastActiveSlot as domain.PresetSlot),
-      includePins:      r.includePins,
+      outputConfigMode: r.outputConfigMode as domain.OutputConfigMode,
       masterVolumeMode: r.masterVolumeMode as domain.MasterVolumeMode,
     };
   }
@@ -377,8 +356,8 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.PresetSetStartup, config);
   }
 
-  async setPresetIncludePins(include: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.PresetSetIncludePins, include);
+  async setOutputConfigMode(mode: domain.OutputConfigMode): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetOutputConfigMode, mode);
   }
 
   // Per-parameter ("granular") lane: every write goes through a granular verb.
@@ -550,16 +529,12 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.PresetGetStartup);
   }
 
-  async getPresetIncludePins(): Promise<boolean> {
-    return proto.readCmd(this.transport, proto.WireCmd.PresetGetIncludePins);
+  async getOutputConfigMode(): Promise<domain.OutputConfigMode> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetOutputConfigMode);
   }
 
   async saveParams(): Promise<Result<void, proto.FlashResult>> {
     return proto.flashResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SaveParams));
-  }
-
-  async loadParams(): Promise<Result<void, proto.FlashResult>> {
-    return proto.flashResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.LoadParams));
   }
 
   // Firmware echoes 0x01 on success; return a boolean so callers don't see the wire shape.
@@ -642,58 +617,48 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerGate, db);
   }
 
-  // v1.1.4 granular surface: each method throws UnsupportedOnFirmware when the
-  // device's capabilities don't advertise the feature.
+  // v1.1.4 granular surface (unconditional: the V10 floor guarantees support).
 
   // Per-band EQ bypass. wValue = (wireChannel<<8)|band, mirroring getFilter's
   // channel remap (e.g. RP2040 PDM -> wire channel 6).
   async setBandBypass(channel: domain.ChannelId, band: number, bypassed: boolean): Promise<void> {
-    requireFeature(this.capabilities.features, 'bandBypass');
     const wValue = (this.deviceChannel(channel) << 8) | (band & 0xFF);
     return proto.writeCmd(this.transport, proto.WireCmd.SetBandBypass, bypassed, wValue);
   }
 
   async getBandBypass(channel: domain.ChannelId, band: number): Promise<boolean> {
-    requireFeature(this.capabilities.features, 'bandBypass');
     const wValue = (this.deviceChannel(channel) << 8) | (band & 0xFF);
     return proto.readCmd(this.transport, proto.WireCmd.GetBandBypass, wValue);
   }
 
   // User volume axis (separate from the master-volume limit).
   async setUserVolume(db: number): Promise<void> {
-    requireFeature(this.capabilities.features, 'userVolumeAxis');
     return proto.writeCmd(this.transport, proto.WireCmd.SetUserVolume, db);
   }
 
   async getUserVolume(): Promise<number> {
-    requireFeature(this.capabilities.features, 'userVolumeAxis');
     return proto.readCmd(this.transport, proto.WireCmd.GetUserVolume);
   }
 
   async setUserMute(mute: boolean): Promise<void> {
-    requireFeature(this.capabilities.features, 'userVolumeAxis');
     return proto.writeCmd(this.transport, proto.WireCmd.SetUserMute, mute);
   }
 
   async getUserMute(): Promise<boolean> {
-    requireFeature(this.capabilities.features, 'userVolumeAxis');
     return proto.readCmd(this.transport, proto.WireCmd.GetUserMute);
   }
 
   // Input source select (USB / S/PDIF).
   async setInputSource(source: domain.AudioInputSource): Promise<void> {
-    requireFeature(this.capabilities.features, 'inputSourceSwitch');
     return proto.writeCmd(this.transport, proto.WireCmd.SetInputSource, source);
   }
 
   async getInputSource(): Promise<domain.AudioInputSource> {
-    requireFeature(this.capabilities.features, 'inputSourceSwitch');
     return proto.readCmd(this.transport, proto.WireCmd.GetInputSource);
   }
 
   // Live S/PDIF-RX lock telemetry (no bulk equivalent).
   async getSpdifRxStatus(): Promise<domain.SpdifRxStatus> {
-    requireFeature(this.capabilities.features, 'spdifRx');
     const w = await proto.readCmd(this.transport, proto.WireCmd.GetSpdifRxStatus);
     return {
       state:        narrowSpdifInputState(w.state),
@@ -708,7 +673,6 @@ export class DspDevice {
 
   // Raw 24-byte IEC-60958 channel-status block (no domain shape yet).
   async getSpdifRxChStatus(): Promise<Uint8Array> {
-    requireFeature(this.capabilities.features, 'spdifRx');
     return this.transport.ctrlIn(
       proto.WireCmd.GetSpdifRxChStatus.code, 0, proto.Wire.SPDIF_RX_CH_STATUS_LEN,
     );
@@ -717,48 +681,56 @@ export class DspDevice {
   // S/PDIF RX GPIO pin. Action-style IN: pin in wValue, returns a
   // PinConfigResult status byte (mirrors setOutputPin).
   async setSpdifRxPin(gpio: number): Promise<Result<void, proto.PinConfigResult>> {
-    requireFeature(this.capabilities.features, 'spdifRx');
     return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetSpdifRxPin, gpio & 0xFF));
   }
 
   async getSpdifRxPin(): Promise<number> {
-    requireFeature(this.capabilities.features, 'spdifRx');
     return proto.readCmd(this.transport, proto.WireCmd.GetSpdifRxPin);
   }
 
   // LG Sound Sync. Only `enabled` is host-configurable; status read returns the
   // full domain shape (present/volume/muted are runtime state).
   async setLgSoundSyncEnabled(enabled: boolean): Promise<void> {
-    requireFeature(this.capabilities.features, 'lgSoundSync');
     return proto.writeCmd(this.transport, proto.WireCmd.SetLgSoundSyncEnabled, enabled);
   }
 
   async getLgSoundSyncEnabled(): Promise<boolean> {
-    requireFeature(this.capabilities.features, 'lgSoundSync');
     return proto.readCmd(this.transport, proto.WireCmd.GetLgSoundSyncEnabled);
   }
 
   async getLgSoundSyncStatus(): Promise<domain.LgSoundSync> {
-    requireFeature(this.capabilities.features, 'lgSoundSync');
     const w = await proto.readCmd(this.transport, proto.WireCmd.GetLgSoundSyncStatus);
     return { enabled: w.enabled, present: w.present, volume: w.volume, muted: w.muted };
   }
 
   // DAC hardware-mute pin configuration.
   async setDacHwMute(cfg: domain.DacHwMute): Promise<void> {
-    requireFeature(this.capabilities.features, 'dacHwMute');
     return proto.writeCmd(this.transport, proto.WireCmd.SetDacHwMute, cfg);
   }
 
   async getDacHwMute(): Promise<domain.DacHwMute> {
-    requireFeature(this.capabilities.features, 'dacHwMute');
     const w = await proto.readCmd(this.transport, proto.WireCmd.GetDacHwMute);
     return { enabled: w.enabled, activeLow: w.activeLow, pin: w.pin, holdMs: w.holdMs, releaseMs: w.releaseMs };
   }
 
   // Pulse the DAC mute pin (~1s) for wiring verification. No payload.
   async testDacHwMute(): Promise<void> {
-    requireFeature(this.capabilities.features, 'dacHwMute');
     await proto.actionCmd(this.transport, proto.WireCmd.TestDacHwMute);
+  }
+
+  // Persist the live physical-IO block (output pins, output types, I2S
+  // BCK/MCK, S/PDIF RX pin) to the directory's device-global block. Accepted
+  // in both output-config modes, dormant in WITH_PRESET. (0x52 was the removed
+  // pre-V10 sync LoadParams; the V10 connect floor keeps it unreachable there.)
+  async saveOutputConfig(): Promise<Result<void, proto.PresetResult>> {
+    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SaveOutputConfig));
+  }
+
+  // Reboot into the UF2 bootloader (BOOTSEL mode) for firmware update.
+  // Firmware sends a 1-byte success response, waits 100 ms, then calls
+  // reset_usb_boot(). The device disconnects mid-flight; the transfer may
+  // throw. The caller is expected to treat both outcomes as normal.
+  async enterBootloader(): Promise<void> {
+    await proto.actionCmd(this.transport, proto.WireCmd.EnterBootloader);
   }
 }

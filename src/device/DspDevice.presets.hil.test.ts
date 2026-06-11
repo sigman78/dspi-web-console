@@ -1,5 +1,5 @@
 // HIL coverage for the preset surface (0x90–0x9A) plus the legacy
-// SaveParams/LoadParams/FactoryReset family. Uses slots 8 and 9 by
+// SaveParams/FactoryReset persistence commands. Uses slots 8 and 9 by
 // convention so tests don't stomp on user presets in slots 0–7.
 //
 // Run via `npm run test:hil` against connected hardware. Does NOT run
@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from './DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
 import { PresetStartupMode } from '@/protocol';
+import { OutputConfigMode } from '@/domain';
 
 const TEST_SLOT_A = 8;
 const TEST_SLOT_B = 9;
@@ -42,7 +43,7 @@ describe('DspDevice — presets (HIL)', () => {
     // defined. Anything else is a firmware divergence we want to catch.
     expect([PresetStartupMode.Specified, PresetStartupMode.LastActive])
       .toContain(dir.startupMode);
-    expect(typeof dir.includePins).toBe('boolean');
+    expect(Object.values(OutputConfigMode)).toContain(dir.outputConfigMode);
   });
 
   it('reads the active preset slot', async () => {

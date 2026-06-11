@@ -9,7 +9,7 @@ import type { DspTransport } from '@/transport/DspTransport';
 import { type BinCodec, Codec } from '@/utils';
 import * as Wire from './wireTypes';
 import type {
-  ChannelId, InputSlot, OutputSlot, FilterType, MasterVolumeMode,
+  ChannelId, InputSlot, OutputSlot, FilterType, MasterVolumeMode, OutputConfigMode,
   AudioInputSource, LgSoundSync, DacHwMute,
 } from '@/domain';
 
@@ -62,7 +62,6 @@ export const WireCmd = {
   // On V3+ firmware these redirect through the preset system on the
   // currently-active slot. See docs/HW-PROFILES.md sec 2.
   SaveParams:           { code: 0x51 } satisfies RawCmd,
-  LoadParams:           { code: 0x52 } satisfies RawCmd,
   FactoryReset:         { code: 0x53 } satisfies RawCmd,
 
   GetSerial:            { code: 0x7E, codec: Wire.Serial }     satisfies ReadCmd<string>,
@@ -135,8 +134,11 @@ export const WireCmd = {
   PresetGetDir:         { code: 0x95 } satisfies RawCmd,
   PresetSetStartup:     { code: 0x96, codec: Wire.PresetStartupConfig } satisfies WriteCmd<{ mode: number; slot: number }>,
   PresetGetStartup:     { code: 0x97, codec: Wire.PresetStartupConfig } satisfies ReadCmd<{ mode: number; slot: number }>,
-  PresetSetIncludePins: { code: 0x98, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
-  PresetGetIncludePins: { code: 0x99, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
+  // Output-config persistence mode (1.1.4 semantics; legacy include-pins bool
+  // on older firmware, values 1:1). Deliberately ungated: the opcode exists
+  // and is value-compatible across the whole support window.
+  SetOutputConfigMode:  { code: 0x98, codec: tighten<OutputConfigMode>(Codec.u8) } satisfies WriteCmd<OutputConfigMode>,
+  GetOutputConfigMode:  { code: 0x99, codec: tighten<OutputConfigMode>(Codec.u8) } satisfies ReadCmd<OutputConfigMode>,
   PresetGetActive:      { code: 0x9A } satisfies RawCmd,
 
   // Loudness (V4+) -- see docs/HW-TODO.md section 1
@@ -183,6 +185,17 @@ export const WireCmd = {
   SetDacHwMute:          { code: 0xEA, codec: tighten<DacHwMute>(Wire.DacHwMute) } satisfies WriteCmd<DacHwMute>,
   GetDacHwMute:          { code: 0xEB, codec: tighten<DacHwMute>(Wire.DacHwMute) } satisfies ReadCmd<DacHwMute>,
   TestDacHwMute:         { code: 0xEC } satisfies RawCmd,
+  // Persist live output config (pins, output types, I2S BCK/MCK, S/PDIF RX
+  // pin) to the preset directory's device-global block. Action-IN, 1-byte
+  // PresetResult. Repurposes legacy 0x52 (the removed sync LoadParams);
+  // V10+ only — on older firmware the opcode is a synchronous revert-to-saved.
+  SaveOutputConfig:      { code: 0x52 } satisfies RawCmd,
+
+  // M8 — System command: reboot into UF2 bootloader (BOOTSEL).
+  // Action-IN; firmware sends 1-byte success (0x01) then calls reset_usb_boot().
+  // The device disconnects ~100 ms after the response, so the transfer may
+  // throw. Callers must treat both a clean return and a throw as expected.
+  EnterBootloader:       { code: 0xF0 } satisfies RawCmd,
 } as const;
 
 // Helpers

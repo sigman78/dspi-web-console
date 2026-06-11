@@ -436,7 +436,7 @@ export const PresetDirectory = struct({
   startupMode:      u8,
   defaultSlot:      u8,
   lastActiveSlot:   u8,
-  includePins:      bool8,
+  outputConfigMode: u8,    // byte 5: output-config mode (1.1.4); legacy include-pins bool, values 1:1
   masterVolumeMode: u8,
 });
 

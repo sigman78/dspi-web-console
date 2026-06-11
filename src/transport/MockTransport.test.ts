@@ -79,12 +79,12 @@ describe('MockTransport — wire version knob', () => {
     expect(back.masterVolumeDb).toBeCloseTo(-11);
   });
 
-  it('defaults to V6 when no wire version is given', async () => {
+  it('defaults to V10 when no wire version is given', async () => {
     const t = new MockTransport({ platform: 'rp2350' });
     await t.open();
     const bytes = await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize);
-    expect(bytes.byteLength).toBe(2896);
-    expect(parseBulkParams(bytes).formatVersion).toBe(6);
+    expect(bytes.byteLength).toBe(Wire.BulkSizes.V10);
+    expect(parseBulkParams(bytes).formatVersion).toBe(10);
   });
 
   it('reports a sub-floor wire version so the connect-reject path is testable', async () => {
@@ -145,7 +145,7 @@ describe('MockTransport — mixer matrix round-trip', () => {
       enabled: true, phaseInvert: false, gainDb: 1.25,
     });
     await t.ctrlOut(WireCmd.SetMatrixRoute.code, 0, payload);
-    const bulk = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, 2896));
+    const bulk = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
     expect(bulk.crosspoints[0][2].enabled).toBe(true);
     expect(bulk.crosspoints[0][2].gainDb).toBeCloseTo(1.25, 4);
   });
@@ -163,7 +163,7 @@ describe('MockTransport — mixer matrix round-trip', () => {
     expect(Codec.decode(Codec.f32,   await t.ctrlIn(WireCmd.GetOutputDelay.code,  out, 4))).toBeCloseTo(4.2, 4);
 
     // And the bulk view reflects it too.
-    const bulk = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, 2896));
+    const bulk = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
     expect(bulk.outputs[out].enabled).toBe(true);
     expect(bulk.outputs[out].muted).toBe(true);
     expect(bulk.outputs[out].gainDb).toBeCloseTo(-2.5, 4);

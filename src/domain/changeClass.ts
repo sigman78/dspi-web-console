@@ -1,10 +1,11 @@
 import type { SnapshotChange } from './snapshotDiff';
 
-export type ChangeClass = 'preset-content' | 'runtime-status' | 'volume' | 'pin-config';
+export type ChangeClass = 'preset-content' | 'runtime-status' | 'volume' | 'output-config';
 
 // Drives presetsDirty masking: runtime-status never dirties; volume dirties
-// only in WithPreset mode and never while soft-muted; pin-config dirties only
-// when the preset includes pins. Record over the kind union: a new kind
+// only in WithPreset mode; output-config (the physical-IO block: pins, output
+// types, I2S clock, S/PDIF RX pin) dirties only when the directory's
+// output-config mode is WithPreset. Record over the kind union: a new kind
 // cannot be added without classifying it.
 export const CHANGE_CLASS: Record<SnapshotChange['kind'], ChangeClass> = {
   bypass:             'preset-content',
@@ -19,10 +20,14 @@ export const CHANGE_CLASS: Record<SnapshotChange['kind'], ChangeClass> = {
   crossfeed:          'preset-content',
   leveller:           'preset-content',
   inputConfig:        'preset-content',
-  userVolume:         'preset-content',
+  spdifRxPin:         'output-config',
+  // Device-global host-volume axis (mirrors the UAC1 OS slider, vendor mute
+  // bit). Not preset content -- console mute or an OS slider move must not
+  // dirty the active preset.
+  userVolume:         'runtime-status',
   dacHwMute:          'preset-content',
   lgSoundSyncEnabled: 'preset-content',
   lgSoundSyncStatus:  'runtime-status',
-  i2s:                'preset-content',
-  outputPins:         'pin-config',
+  i2s:                'output-config',
+  outputPins:         'output-config',
 };

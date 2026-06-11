@@ -19,17 +19,16 @@ export function applyChange(c: SnapshotChange, t: DspSnapshot): void {
     case 'crossfeed':         t.crossfeed = c.value; break;
     case 'leveller':          t.leveller = c.value; break;
     case 'inputConfig':       t.inputConfig = c.value; break;
+    case 'spdifRxPin':        t.inputConfig = { ...t.inputConfig, spdifRxPin: c.value }; break;
     case 'userVolume':        t.userVolume = c.value; break;
     case 'dacHwMute':         t.dacHwMute = c.value; break;
     case 'i2s':               t.i2s = c.value; break;
     case 'outputPins':        t.outputPins = c.value; break;
-    case 'lgSoundSyncEnabled': if (t.lgSoundSync) t.lgSoundSync.enabled = c.value; break;
+    case 'lgSoundSyncEnabled': t.lgSoundSync.enabled = c.value; break;
     case 'lgSoundSyncStatus':
-      if (t.lgSoundSync) {
-        t.lgSoundSync.present = c.value.present;
-        t.lgSoundSync.volume = c.value.volume;
-        t.lgSoundSync.muted = c.value.muted;
-      }
+      t.lgSoundSync.present = c.value.present;
+      t.lgSoundSync.volume = c.value.volume;
+      t.lgSoundSync.muted = c.value.muted;
       break;
   }
 }

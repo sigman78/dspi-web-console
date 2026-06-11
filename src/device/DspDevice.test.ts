@@ -6,12 +6,12 @@
 
 import { describe, it, test, expect, beforeEach, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
-import { DspDevice, UnsupportedFirmware, UnsupportedOnFirmware, UnsupportedDevicePacket } from './DspDevice';
+import { DspDevice, UnsupportedFirmware, UnsupportedDevicePacket } from './DspDevice';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { PresetResult, PinConfigResult, WireCmd, SystemStatusValue, Wire, NotifyEventId } from '@/protocol';
 import {
   PlatformType,
-  CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
+  CrossfeedPreset, LevellerSpeed, MasterVolumeMode, OutputConfigMode,
   FilterType,
   ChannelId,
   AudioInputSource,
@@ -48,12 +48,14 @@ function withIdentity(base: DspTransport, platform: TestPlatform = 'rp2350'): Ds
       const identity = identityBytes(request, length, platform);
       if (identity) return Promise.resolve(identity);
       // resolveInfo reads the bulk packet at connect to derive capabilities.
-      // Own that read here with a synth V6 packet so command-mapping fakes
-      // connect as supported firmware and don't see a spurious GetAllParams
-      // call. Tests needing real bulk content use MockTransport via
-      // DspDevice.create directly, bypassing this helper.
+      // Inject a V10 packet so command-mapping tests connect as supported
+      // firmware and don't see a spurious GetAllParams call. Tests needing
+      // real bulk content use MockTransport via DspDevice.create directly.
       if (request === WireCmd.GetAllParams.code) {
-        return Promise.resolve(makeBulk({}, { platformId: platform === 'rp2350' ? 1 : 0 }));
+        return Promise.resolve(makeBulk(
+          { formatVersion: 10, payloadLength: Wire.BulkSizes.V10 },
+          { platformId: platform === 'rp2350' ? 1 : 0 },
+        ));
       }
       return base.ctrlIn(request, value, length);
     },
@@ -410,11 +412,6 @@ describe('DspDevice — persistence (legacy save/load/reset)', () => {
     expect(r.ok).toBe(true);
   });
 
-  it('loadParams returns ok on success', async () => {
-    const r = await d.loadParams();
-    expect(r.ok).toBe(true);
-  });
-
   it('factoryReset returns ok on success', async () => {
     const r = await d.factoryReset();
     expect(r.ok).toBe(true);
@@ -495,7 +492,7 @@ describe('DspDevice — preset directory and active slot', () => {
     const dir = await d.getPresetDirectory();
     expect(dir.occupiedSlotsSet.size).toBe(0);
     expect(dir.startupMode).toBe(0);
-    expect(dir.includePins).toBe(true);
+    expect(dir.outputConfigMode).toBe(OutputConfigMode.WithPreset);
     expect(dir.masterVolumeMode).toBe(0);
     expect(dir.lastActiveSlot).toBe(0); // mock default; real firmware returns 0xFF → null until first save
   });
@@ -649,17 +646,17 @@ describe('DspDevice — preset startup + include-pins', () => {
     expect(dir.defaultSlot).toBe(7);
   });
 
-  it('roundtrips include-pins flag', async () => {
-    await d.setPresetIncludePins(false);
-    expect(await d.getPresetIncludePins()).toBe(false);
-    await d.setPresetIncludePins(true);
-    expect(await d.getPresetIncludePins()).toBe(true);
+  it('roundtrips output-config mode', async () => {
+    await d.setOutputConfigMode(OutputConfigMode.Independent);
+    expect(await d.getOutputConfigMode()).toBe(OutputConfigMode.Independent);
+    await d.setOutputConfigMode(OutputConfigMode.WithPreset);
+    expect(await d.getOutputConfigMode()).toBe(OutputConfigMode.WithPreset);
   });
 
-  it('reflects include-pins in directory packet', async () => {
-    await d.setPresetIncludePins(false);
+  it('reflects output-config mode in directory packet', async () => {
+    await d.setOutputConfigMode(OutputConfigMode.Independent);
     const dir = await d.getPresetDirectory();
-    expect(dir.includePins).toBe(false);
+    expect(dir.outputConfigMode).toBe(OutputConfigMode.Independent);
   });
 });
 
@@ -922,7 +919,7 @@ describe('I2S clock commands', () => {
 });
 
 describe('setAllParams', () => {
-  it('issues one ctrlOut with code=0xA1, wValue=0, byteLength=2896', async () => {
+  it('issues one ctrlOut with code=0xA1, wValue=0, byteLength=2960', async () => {
     const transport = new MockTransport({ platform: 'rp2350' });
     const ctrlOutSpy = vi.spyOn(transport, 'ctrlOut');
     const dev = await DspDevice.create(transport);
@@ -934,7 +931,7 @@ describe('setAllParams', () => {
     const calls = ctrlOutSpy.mock.calls.filter((c) => c[0] === 0xA1);
     expect(calls).toHaveLength(1);
     expect(calls[0][1]).toBe(0);              // wValue
-    expect(calls[0][2].byteLength).toBe(2896); // exact V6 size
+    expect(calls[0][2].byteLength).toBe(Wire.BulkSizes.V10); // V10 device round-trips its full tail
   });
 
   it('mock direct getters reflect values written through setAllParams', async () => {
@@ -964,26 +961,26 @@ describe('connect-time capabilities + version gating', () => {
   it('attaches capabilities derived from the connected device', async () => {
     const dev = await createDevice(new MockTransport({ platform: 'rp2350' }), 'rp2350');
     expect(dev.capabilities.support).toBe('supported');
-    expect(dev.capabilities.wire).toBe(6);
+    expect(dev.capabilities.wire).toBe(10);
     expect(dev.info.capabilities).toBe(dev.capabilities);
   });
 
-  it('rejects a device older than the V6 floor with UnsupportedFirmware', async () => {
-    const transport = new MockTransport({ platform: 'rp2350', wireVersion: 5, fwVersion: { major: 1, minor: 1, patch: 2 } });
+  it('rejects a device older than the V10 floor with UnsupportedFirmware', async () => {
+    const transport = new MockTransport({ platform: 'rp2350', wireVersion: 6, fwVersion: { major: 1, minor: 1, patch: 3 } });
     await expect(DspDevice.create(transport)).rejects.toBeInstanceOf(UnsupportedFirmware);
   });
 
   it('UnsupportedFirmware reports the actual firmware version', async () => {
-    const transport = new MockTransport({ platform: 'rp2350', wireVersion: 5, fwVersion: { major: 1, minor: 1, patch: 2 } });
+    const transport = new MockTransport({ platform: 'rp2350', wireVersion: 6, fwVersion: { major: 1, minor: 1, patch: 3 } });
     const err = await DspDevice.create(transport).catch((e) => e);
     expect(err).toBeInstanceOf(UnsupportedFirmware);
-    expect((err as UnsupportedFirmware).firmwareVersion).toBe('1.1.2');
+    expect((err as UnsupportedFirmware).firmwareVersion).toBe('1.1.3');
   });
 
   it('rejects a wire-supported device that reports a truncated payload', async () => {
-    // V6 wire (supported) but a payload shorter than the V6 floor — a malformed
+    // V10 wire (supported) but a payload shorter than the V10 floor — malformed
     // firmware. Floor sections are treated as guaranteed, so connect rejects it.
-    const transport = new MockTransport({ platform: 'rp2350', wireVersion: 6, payloadLength: Wire.BulkSizes.V3 });
+    const transport = new MockTransport({ platform: 'rp2350', wireVersion: 10, payloadLength: Wire.BulkSizes.V3 });
     await expect(DspDevice.create(transport)).rejects.toBeInstanceOf(UnsupportedDevicePacket);
   });
 
@@ -1048,7 +1045,7 @@ describe('lastRawBulk', () => {
     const dev = await DspDevice.create(new MockTransport({ platform: 'rp2350' }));
     expect(dev.lastRawBulk).toBeNull();
     await dev.getAllParams();
-    expect(dev.lastRawBulk!.byteLength).toBe(2896);   // V6 image
+    expect(dev.lastRawBulk!.byteLength).toBe(Wire.BulkSizes.V10);
   });
 
   it('retains the full V10 image on a 1.1.4 device', async () => {
@@ -1060,10 +1057,7 @@ describe('lastRawBulk', () => {
 });
 
 describe('DspDevice — v1.1.4 granular surface', () => {
-  // withIdentity/createDevice always inject a V6 bulk packet, so these tests
-  // drive a real MockTransport directly to control the reported wire version.
   const v10 = () => DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 10 }));
-  const v6  = () => DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 6 }));
 
   test('setBandBypass/getBandBypass round-trip on a V10 device', async () => {
     const d = await v10();
@@ -1079,12 +1073,6 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     expect(await d.getBandBypass(ChannelId.Pdm, 0)).toBe(true);
   });
 
-  test('band-bypass methods throw UnsupportedOnFirmware on a V6 device', async () => {
-    const d = await v6();
-    await expect(d.setBandBypass(0, 2, true)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
-    await expect(d.getBandBypass(0, 2)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
-  });
-
   test('user volume + mute round-trip on V10', async () => {
     const d = await v10();
     await d.setUserVolume(-12);
@@ -1097,12 +1085,6 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     const d = await v10();
     await d.setInputSource(AudioInputSource.Spdif);
     expect(await d.getInputSource()).toBe(AudioInputSource.Spdif);
-  });
-
-  test('user-volume + input-source methods throw on V6', async () => {
-    const d = await v6();
-    await expect(d.setUserVolume(-12)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
-    await expect(d.setInputSource(AudioInputSource.Usb)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
   });
 
   test('getSpdifRxStatus narrows state + inputSource on V10', async () => {
@@ -1125,14 +1107,6 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     expect(await d.getSpdifRxPin()).toBe(15);
   });
 
-  test('S/PDIF RX methods throw on V6', async () => {
-    const d = await v6();
-    await expect(d.getSpdifRxStatus()).rejects.toBeInstanceOf(UnsupportedOnFirmware);
-    await expect(d.getSpdifRxChStatus()).rejects.toBeInstanceOf(UnsupportedOnFirmware);
-    await expect(d.setSpdifRxPin(15)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
-    await expect(d.getSpdifRxPin()).rejects.toBeInstanceOf(UnsupportedOnFirmware);
-  });
-
   test('LG Sound Sync enable + status round-trip on V10', async () => {
     const d = await v10();
     await d.setLgSoundSyncEnabled(true);
@@ -1148,16 +1122,9 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     await expect(d.testDacHwMute()).resolves.toBeUndefined();
   });
 
-  test('DAC HW mute is gated separately from LG Sound Sync (throws on V9)', async () => {
-    const d = await DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 9 }));
-    expect(await d.getLgSoundSyncEnabled()).toBe(false); // supported at V8+
-    await expect(d.getDacHwMute()).rejects.toBeInstanceOf(UnsupportedOnFirmware);
-  });
-
-  test('LG + DAC set methods throw on V6', async () => {
-    const d = await v6();
-    await expect(d.setLgSoundSyncEnabled(true)).rejects.toBeInstanceOf(UnsupportedOnFirmware);
-    await expect(d.setDacHwMute({ enabled: true, activeLow: true, pin: 11, holdMs: 20, releaseMs: 50 }))
-      .rejects.toBeInstanceOf(UnsupportedOnFirmware);
+  test('saveOutputConfig returns ok on a V10 device', async () => {
+    const d = await v10();
+    const r = await d.saveOutputConfig();
+    expect(r.ok).toBe(true);
   });
 });

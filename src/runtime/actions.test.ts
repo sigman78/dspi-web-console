@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from './actions';
+import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './deviceService';
 import { connection, settings, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { bootMock } from './boot';
@@ -17,6 +17,8 @@ import {
   CrossfeedPreset,
   LevellerSpeed,
   matrixColumns,
+  AudioInputSource,
+  type DacHwMute,
 } from '@/domain';
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { deriveCapabilities } from '@/protocol/capabilities';
@@ -106,9 +108,6 @@ const liveMirror = () => activeSession()!.mirror;
 describe('actions wiring', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    // reset module-scope settings state used by toggleMute
-    settings.soft.muted = false;
-    settings.soft.mutedFromDb = null;
     const bulk = parseBulkParams(makeBulk({ masterVolumeDb: 0 }));
     dispatch({ t: 'synced', session: makeReadySession({} as never) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
@@ -118,19 +117,32 @@ describe('actions wiring', () => {
     vi.useRealTimers();
   });
 
-  it('mute lands as the final wire write even with a slider value pending', async () => {
-    const { device, calls } = makeFakeDevice();
+  it('toggleMute flips userVolume.mute on the device and does not touch masterVolume', async () => {
+    const setUserMuteFn = vi.fn(async () => {});
+    const setMasterVolumeFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setUserMute: setUserMuteFn,
+      setMasterVolume: setMasterVolumeFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
     dispatch({ t: 'synced', session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: 0 }))));
+    const snap = fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: -12 })));
+    if (snap.userVolume) snap.userVolume.mute = false;
+    liveMirror().replaceCurrent(snap);
 
-    setMasterVolume(activeSession()!, -12);    // sends immediately
-    toggleMute(activeSession()!);              // parks -128 (MUTE_DB) behind it
-
-    await vi.advanceTimersByTimeAsync(50);
+    toggleMute(activeSession()!);
     await vi.runAllTimersAsync();
 
-    expect(settings.soft.muted).toBe(true);
-    expect(calls.at(-1)).toBe(-128);          // mute is the last value on the wire
+    expect(setUserMuteFn).toHaveBeenCalledWith(true);
+    expect(liveMirror().current?.userVolume?.mute).toBe(true);
+    expect(setMasterVolumeFn).not.toHaveBeenCalled();
+    expect(liveMirror().current?.masterVolumeDb).toBe(-12);
+
+    // toggle back
+    toggleMute(activeSession()!);
+    await vi.runAllTimersAsync();
+    expect(setUserMuteFn).toHaveBeenCalledWith(false);
+    expect(liveMirror().current?.userVolume?.mute).toBe(false);
   });
 
   it('disconnect cancels pending coalescer + resync and resets state', async () => {
@@ -448,7 +460,7 @@ describe('actions — master volume mode', () => {
     activeSession()!.presets.directory = {
       occupiedSlotsSet: new Set(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      includePins: false,
+      outputConfigMode: 0 as any,
       masterVolumeMode: MasterVolumeMode.Independent,
     };
     setMasterVolumeMode(activeSession()!, MasterVolumeMode.WithPreset);
@@ -472,6 +484,26 @@ describe('actions — master volume mode', () => {
     await flushAllWrites();
     expect(notices.list).toHaveLength(0);
     expect(activeSession()!.presets.savedMasterVolumeDb).toBe(liveMirror().current!.masterVolumeDb);
+  });
+
+  it('saveOutputConfigBaseline warns on failure and stays silent on success', async () => {
+    clearNotices();
+    const failDevice = initializedDevice({
+      saveOutputConfig: async () => ({ ok: false as const, code: 4 as any, message: 'preset flash write error' }),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(failDevice) });
+    saveOutputConfigBaseline(activeSession()!);
+    await flushAllWrites();
+    expect(notices.list.some((n) => n.kind === 'warn' && /output config/i.test(n.message))).toBe(true);
+
+    clearNotices();
+    const okDevice = initializedDevice({
+      saveOutputConfig: async () => ({ ok: true as const, value: undefined }),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(okDevice) });
+    saveOutputConfigBaseline(activeSession()!);
+    await flushAllWrites();
+    expect(notices.list).toHaveLength(0);
   });
 });
 
@@ -1000,6 +1032,216 @@ describe('boolean device flags are explicit setters', () => {
     expect(liveMirror().current!.routes[0].invert).toBe(!initial);
     expect(calls.at(-1)!.invert).toBe(!initial);
     vi.useRealTimers();
+  });
+});
+
+// ── M2 — User mute ───────────────────────────────────────────────────────────
+
+describe('setUserMute', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    const bulk = parseBulkParams(makeBulk());
+    const device = initializedDevice({
+      setUserMute: vi.fn(async () => {}),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('patches snapshot after ack', async () => {
+    const setUserMuteFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setUserMute: setUserMuteFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    setUserMute(activeSession()!, true);
+    await vi.runAllTimersAsync();
+    expect(liveMirror().current?.userVolume?.mute).toBe(true);
+    expect(setUserMuteFn).toHaveBeenCalledWith(true);
+  });
+});
+
+// ── M3 — Per-band EQ bypass ───────────────────────────────────────────────────
+
+describe('setBandBypass', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    const bulk = parseBulkParams(makeBulk());
+    const device = initializedDevice({
+      setBandBypass: vi.fn(async () => {}),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('patches the band bypass flag after ack', async () => {
+    const setBandBypassFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setBandBypass: setBandBypassFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    const ch = liveMirror().current!.channels[0].id;
+    setBandBypass(activeSession()!, ch, 0, true);
+    await vi.runAllTimersAsync();
+    expect(liveMirror().current?.channels[0].filters[0].bypass).toBe(true);
+    expect(setBandBypassFn).toHaveBeenCalledWith(ch, 0, true);
+  });
+
+  it('is a no-op for an out-of-range band', async () => {
+    const setBandBypassFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setBandBypass: setBandBypassFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    const ch = liveMirror().current!.channels[0].id;
+    const n = liveMirror().current!.channels[0].filters.length;
+    setBandBypass(activeSession()!, ch, n + 5, true);
+    await vi.runAllTimersAsync();
+    expect(setBandBypassFn).not.toHaveBeenCalled();
+  });
+});
+
+// ── M7 — LG Sound Sync ───────────────────────────────────────────────────────
+
+describe('setLgSoundSyncEnabled', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('patches lgSoundSync.enabled after ack', async () => {
+    const setLgSoundSyncEnabledFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setLgSoundSyncEnabled: setLgSoundSyncEnabledFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    const bulk = parseBulkParams(makeBulk());
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    setLgSoundSyncEnabled(activeSession()!, true);
+    await vi.runAllTimersAsync();
+    expect(liveMirror().current?.lgSoundSync?.enabled).toBe(true);
+    expect(setLgSoundSyncEnabledFn).toHaveBeenCalledWith(true);
+  });
+});
+
+// ── M6 — DAC HW mute config ───────────────────────────────────────────────────
+
+describe('setDacHwMute', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  function dacHarness() {
+    const sent: DacHwMute[] = [];
+    const setDacHwMuteFn = vi.fn(async (cfg: DacHwMute) => { sent.push(cfg); });
+    // Echo device: GET returns the last accepted SET, per the firmware's
+    // read-back-to-verify contract.
+    const device = initializedDevice({
+      setDacHwMute: setDacHwMuteFn,
+      getDacHwMute: vi.fn(async () => sent[sent.length - 1]),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    const bulk = parseBulkParams(makeBulk());
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    return { sent, setDacHwMuteFn };
+  }
+
+  it('patches dacHwMute optimistically and settles on the device echo', async () => {
+    const { setDacHwMuteFn } = dacHarness();
+    const cfg: DacHwMute = { enabled: true, activeLow: true, pin: 20, holdMs: 50, releaseMs: 10 };
+    setDacHwMute(activeSession()!, cfg);
+    expect(liveMirror().current?.dacHwMute).toEqual(cfg);   // optimistic
+    await vi.runAllTimersAsync();
+    expect(liveMirror().current?.dacHwMute).toEqual(cfg);   // echo agrees
+    expect(setDacHwMuteFn).toHaveBeenCalledWith(cfg);
+  });
+
+  it('merges a second quick edit over the first optimistic patch (no stale-struct revert)', async () => {
+    const { sent } = dacHarness();
+    setDacHwMute(activeSession()!, { activeLow: true });
+    setDacHwMute(activeSession()!, { holdMs: 50 });   // inside the first ack window
+    await vi.runAllTimersAsync();
+    expect(sent[1]).toMatchObject({ activeLow: true, holdMs: 50 });
+    expect(liveMirror().current?.dacHwMute).toMatchObject({ activeLow: true, holdMs: 50 });
+  });
+
+  it('clamps holdMs into the firmware range when enabling', async () => {
+    const { sent } = dacHarness();
+    setDacHwMute(activeSession()!, { enabled: true });   // virgin device: holdMs 0
+    await vi.runAllTimersAsync();
+    expect(sent[0].holdMs).toBeGreaterThanOrEqual(1);
+  });
+
+  it('warns and reverts when the device swallows an enable', async () => {
+    const rejected: DacHwMute = { enabled: false, activeLow: false, pin: 0, holdMs: 0, releaseMs: 0 };
+    const device = initializedDevice({
+      setDacHwMute: vi.fn(async () => {}),
+      getDacHwMute: vi.fn(async () => rejected),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    const bulk = parseBulkParams(makeBulk());
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    clearNotices();
+    setDacHwMute(activeSession()!, { enabled: true, pin: 6 });
+    // Step just past the deferred-apply wait; running ALL timers would also
+    // expire the warn notice's TTL before it can be observed.
+    await vi.advanceTimersByTimeAsync(250);
+    expect(liveMirror().current?.dacHwMute).toEqual(rejected);
+    expect(notices.list.some((n) => n.kind === 'warn' && /DAC HW mute/i.test(n.message))).toBe(true);
+  });
+});
+
+// ── M1 — Input source switch ─────────────────────────────────────────────────
+
+describe('setInputSource', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('patches inputConfig.source after ack and pushes an info notice', async () => {
+    const setInputSourceFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setInputSource: setInputSourceFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    const bulk = parseBulkParams(makeBulk());
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    clearNotices();
+    setInputSource(activeSession()!, AudioInputSource.Spdif);
+    // Notice rides the ack: nothing surfaces until the send settles.
+    expect(notices.list.some((n) => n.kind === 'info' && /input source/i.test(n.message))).toBe(false);
+    // Settle the write's microtasks without running the notice-expiry timer.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(notices.list.some((n) => n.kind === 'info' && /input source/i.test(n.message))).toBe(true);
+    expect(liveMirror().current?.inputConfig.source).toBe(AudioInputSource.Spdif);
+    expect(setInputSourceFn).toHaveBeenCalledWith(AudioInputSource.Spdif);
+  });
+
+  it('drops the retained S/PDIF RX status frame on a source switch', async () => {
+    const device = initializedDevice({
+      setInputSource: vi.fn(async () => {}),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    const bulk = parseBulkParams(makeBulk());
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    activeSession()!.telemetry.spdifRxStatus = {
+      state: 2, inputSource: 1, lockCount: 3, lossCount: 0,
+      sampleRate: 48000, parityErrors: 0, fifoFillPct: 50,
+    };
+    setInputSource(activeSession()!, AudioInputSource.Spdif);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(activeSession()!.telemetry.spdifRxStatus).toBeNull();
   });
 });
 

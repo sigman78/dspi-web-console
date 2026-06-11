@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { presetsDirty, resetBoundary, askBoundary, resolveBoundary } from './presets.svelte';
 import { activeSession, dispatch } from './appState.svelte';
 import { makeReadySession } from './makeSession.svelte';
-import { settings } from './settings.svelte';
-import type { DspSnapshot } from '@/domain';
+import { OutputConfigMode, type DspSnapshot } from '@/domain';
 
 const liveMirror = () => activeSession()!.mirror;
 const ps = () => activeSession()!.presets;
@@ -22,7 +21,10 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
     leveller: { enabled: false, speed: 1, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40 } as any,
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 } as any,
     outputPins: [],
-    inputConfig: null, lgSoundSync: null, userVolume: null, dacHwMute: null,
+    inputConfig: { source: 0, spdifRxPin: 5 } as any,
+    lgSoundSync: { enabled: false, present: false, volume: 0, muted: false },
+    userVolume:  { volumeDb: 0, mute: false },
+    dacHwMute:   { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
     ...overrides,
   };
 }
@@ -40,8 +42,6 @@ describe('presets store', () => {
     dispatch({ t: 'disconnected' });
     dispatch({ t: 'synced', session: makeReadySession({ info: {}, hardware: {} } as never) });
     resetBoundary();
-    settings.soft.muted = false;
-    settings.soft.mutedFromDb = null;
   });
 
   it('initial state has null directory and empty names', () => {
@@ -79,24 +79,23 @@ describe('presets store', () => {
     ps().directory = {
       occupiedSlotsSet: new Set(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      includePins: false,
+      outputConfigMode: OutputConfigMode.Independent,
       masterVolumeMode: 1 as any,
     };
     liveMirror().snapshot.masterVolumeDb = -12;
     expect(dirty()).toBe(true);
   });
 
-  it('presetsDirty skips volume when softMuted', () => {
+  it('presetsDirty detects a volume change in Mode 1 regardless of userVolume.mute', () => {
     seed(mkSnap({ masterVolumeDb: 0 }));
     ps().directory = {
       occupiedSlotsSet: new Set(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      includePins: false,
+      outputConfigMode: OutputConfigMode.Independent,
       masterVolumeMode: 1 as any,
     };
-    settings.soft.muted = true;
-    liveMirror().snapshot.masterVolumeDb = -128;
-    expect(dirty()).toBe(false);
+    liveMirror().snapshot.masterVolumeDb = -12;
+    expect(dirty()).toBe(true);
   });
 
   it('presetsDirty flips true on a per-band bypass change (SP1 gap closed)', () => {
@@ -132,35 +131,58 @@ describe('presets store', () => {
     expect(dirty()).toBe(true);
   });
 
-  it('presetsDirty flips true on a userVolume change', () => {
-    seed(mkSnap({ userVolume: { volumeDb: 0, mute: false } as any }));
-    expect(dirty()).toBe(false);
+  it('presetsDirty ignores the userVolume axis (device-global, not preset content)', () => {
+    seed(mkSnap({ userVolume: { volumeDb: 0, mute: false } }));
     const uv = liveMirror().snapshot.userVolume;
-    if (uv) uv.volumeDb = -6;
-    expect(dirty()).toBe(true);
+    uv.volumeDb = -6;
+    uv.mute = true;
+    expect(dirty()).toBe(false);
   });
 
-  it('presetsDirty flips true on an i2s config change', () => {
+  it('presetsDirty stays false on an i2s change while the directory (mode) is unknown', () => {
     seed(mkSnap({ i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 } as any }));
-    expect(dirty()).toBe(false);
     const i2s = liveMirror().snapshot.i2s;
     if (i2s) i2s.bckPin = 20;
-    expect(dirty()).toBe(true);
+    expect(dirty()).toBe(false);
   });
 
-  it('presetsDirty counts an outputPins change only when includePins is true', () => {
-    const dir = (includePins: boolean) => ({
+  it('presetsDirty counts an outputPins change only in WithPreset mode', () => {
+    const dir = (mode: OutputConfigMode) => ({
       occupiedSlotsSet: new Set<number>(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      includePins, masterVolumeMode: 0 as any,
+      outputConfigMode: mode, masterVolumeMode: 0 as any,
     });
     seed(mkSnap({ outputPins: [6, 7] }));
     liveMirror().snapshot.outputPins[1] = 8;
-    // includePins=false → pins are not part of the preset → not dirty
-    ps().directory = dir(false) as any;
+    // Independent → pins are not part of the preset → not dirty
+    ps().directory = dir(OutputConfigMode.Independent) as any;
     expect(dirty()).toBe(false);
-    // includePins=true → pins ride the preset → dirty
-    ps().directory = dir(true) as any;
+    // WithPreset → pins ride the preset → dirty
+    ps().directory = dir(OutputConfigMode.WithPreset) as any;
+    expect(dirty()).toBe(true);
+  });
+
+  const dirWithMode = (outputConfigMode: OutputConfigMode) => ({
+    occupiedSlotsSet: new Set<number>(),
+    startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
+    outputConfigMode, masterVolumeMode: 0 as any,
+  });
+
+  it('masks an i2s change by output-config mode', () => {
+    seed(mkSnap());
+    liveMirror().snapshot.i2s.bckPin = 20;
+    ps().directory = dirWithMode(OutputConfigMode.Independent) as any;
+    expect(dirty()).toBe(false);
+    ps().directory = dirWithMode(OutputConfigMode.WithPreset) as any;
+    expect(dirty()).toBe(true);
+  });
+
+  it('masks a spdifRxPin change by output-config mode', () => {
+    seed(mkSnap({ inputConfig: { source: 0, spdifRxPin: 5 } as any }));
+    liveMirror().snapshot.inputConfig!.spdifRxPin = 7;
+    ps().directory = dirWithMode(OutputConfigMode.Independent) as any;
+    expect(dirty()).toBe(false);
+    ps().directory = dirWithMode(OutputConfigMode.WithPreset) as any;
     expect(dirty()).toBe(true);
   });
 
@@ -169,7 +191,7 @@ describe('presets store', () => {
     ps().directory = {
       occupiedSlotsSet: new Set(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      includePins: false,
+      outputConfigMode: OutputConfigMode.Independent,
       masterVolumeMode: 0 as any,
     };
     ps().active = 3 as any;

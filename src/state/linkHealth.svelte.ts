@@ -37,7 +37,6 @@ export class LinkHealth {
   }
 
   noteFail(op: string, err: unknown, now: number = performance.now()): void {
-    if (!isHealthEvent(err)) return;
     this.#consecutive += 1;
     this.failTotal += 1;
     this.#window.push(now);
@@ -55,7 +54,3 @@ export class LinkHealth {
   }
 }
 
-// Thrown before any transfer is attempted; a capability gap, not link trouble.
-export function isHealthEvent(err: unknown): boolean {
-  return !(err instanceof Error && err.name === 'UnsupportedOnFirmware');
-}

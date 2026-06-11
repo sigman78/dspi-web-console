@@ -2,18 +2,22 @@
 
 import {
   presetsDirty, askBoundary,
-  settings,
+  settings, pushNotice,
   type ReadySession, type PresetsState,
 } from '@/state';
 import { reconcileAfterSync } from './deviceService';
 import { fetchAndApplyAsBaseline } from './resync';
 import { flushAllWrites as flushWrites } from './writes';
-import { acceptsWriteFormat } from '@/protocol/capabilities';
-import { type PresetSlot, PRESET_SLOT_COUNT } from '@/domain';
+import { type PresetSlot, PRESET_SLOT_COUNT, OutputConfigMode } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
 import { Log, Result } from '@/utils';
 
-const PRESET_LOAD_SETTLE_MS = 100;
+// Settle pause after the paste-path SavePreset before re-reading device state.
+const POST_SAVE_SETTLE_MS = 100;
+
+function settleAfterSave(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, POST_SAVE_SETTLE_MS));
+}
 
 // A console-initiated preset op re-fetches device truth itself. The firmware
 // emits bulk/preset notifications for that op, some trailing past the action's
@@ -22,35 +26,21 @@ const PRESET_LOAD_SETTLE_MS = 100;
 // Sized to cover a few notify read cycles (cadence ~150 ms).
 const PRESET_ECHO_GRACE_MS = 500;
 
-// loadPreset only acks the command; the firmware copies flash->RAM asynchronously
-// in its main loop (~100 ms). Wait this out before reading or overwriting RAM.
-// Fallback for devices without the notify channel; loadAndSettle is the primary path.
-function settleAfterLoad(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, PRESET_LOAD_SETTLE_MS));
-}
-
 // Event loss is possible (firmware ring overflow guarantees BULK_INVALIDATED
 // delivery, not presetLoaded), so the await is bounded; on timeout we proceed
-// as the old fixed sleep did -- by then far more than the copy window has passed.
+// -- by then far more than the firmware's flash->RAM copy window has passed.
 const PRESET_LOADED_TIMEOUT_MS = 1000;
 
-// LoadPreset only ACKs; firmware copies flash->RAM in its main loop. On
-// notify-capable devices, await the firmware's own presetLoaded(slot) -- it is
-// delivered strictly after the copy completes (the notify drain shares the
-// firmware main thread with the load). Register the waiter BEFORE sending so
-// the event can't be missed. Legacy devices fall back to the sleep.
+// LoadPreset only ACKs; firmware copies flash->RAM in its main loop. Await the
+// firmware's own presetLoaded(slot) -- it is delivered strictly after the copy
+// completes (the notify drain shares the firmware main thread with the load).
+// Register the waiter BEFORE sending so the event can't be missed.
 async function loadAndSettle(s: ReadySession, slot: PresetSlot): Promise<Result<void, PresetResult>> {
-  const d = s.device;
-  if (!d.capabilities.features.notifications) {
-    const r = await d.loadPreset(slot);
-    if (r.ok) await settleAfterLoad();
-    return r;
-  }
   const loaded = s.notifyWaiters.waitFor(
     (e) => e.kind === 'presetLoaded' && e.slot === slot,
     PRESET_LOADED_TIMEOUT_MS,
   );
-  const r = await d.loadPreset(slot);
+  const r = await s.device.loadPreset(slot);
   if (!r.ok) return r;                       // waiter times out harmlessly
   if (await loaded === null) {
     Log.warn('presets', `presetLoaded(${slot}) not observed within ${PRESET_LOADED_TIMEOUT_MS}ms; proceeding`);
@@ -345,11 +335,7 @@ export async function pastePresetTo(s: ReadySession, src: PresetSlot): Promise<R
         return r3;
       }
       // Step 4: Push src content into active's RAM (no flash; pointer unchanged).
-      if (!acceptsWriteFormat(d.capabilities, sourceBlob.formatVersion)) {
-        const msg = `Paste blocked: snapshot format v${sourceBlob.formatVersion} cannot be written to device wire v${d.capabilities.wire}`;
-        recordActionError(s.presets, 'Paste', new Error(msg));
-        return { ok: false, code: 'error', message: msg };
-      }
+      // The blob is this device's own capture, so the format always matches.
       await d.restoreState(sourceBlob);
       // Step 5: Flash active slot = RAM = src content.
       const r5 = await d.savePreset(active);
@@ -363,9 +349,14 @@ export async function pastePresetTo(s: ReadySession, src: PresetSlot): Promise<R
         s.presets.directory = { ...s.presets.directory, occupiedSlotsSet: set };
       }
       s.presets.active = active;
-      await settleAfterLoad();
+      await settleAfterSave();
       await fetchAndApplyAsBaseline(s);
       await reconcileAfterSync(s);
+      // 1.1.4 bulk SET skips the physical-IO sections in Independent mode --
+      // the pasted pins/types/I2S clock/RX pin were kept, not applied.
+      if (s.presets.directory?.outputConfigMode === OutputConfigMode.Independent) {
+        pushNotice('info', 'IO config not applied (independent mode): pins, output types, I2S clock and S/PDIF RX pin kept their device values.');
+      }
       return r5;
     });
   } catch (e) {
@@ -464,20 +455,20 @@ export async function setStartupMode(
   }
 }
 
-export async function setPresetIncludePins(
-  s: ReadySession, include: boolean,
+export async function setOutputConfigMode(
+  s: ReadySession, mode: OutputConfigMode,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
   const d = s.device;
   clearActionError(s.presets);
   try {
     return await withBusy(s.presets, async () => {
-      await d.setPresetIncludePins(include);
+      await d.setOutputConfigMode(mode);
       if (s.presets.directory) {
-        s.presets.directory = { ...s.presets.directory, includePins: include };
+        s.presets.directory = { ...s.presets.directory, outputConfigMode: mode };
       }
       return Result.ok();
     });
   } catch (e) {
-    return recordToResult(s.presets, 'Set include pins', e);
+    return recordToResult(s.presets, 'Set output config mode', e);
   }
 }

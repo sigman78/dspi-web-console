@@ -2,6 +2,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import PinSelect from './PinSelect.svelte';
+  import SaveOutputConfigButton from './SaveOutputConfigButton.svelte';
   import { connection } from '@/state';
   import { setOutputType, setOutputDataPin } from '@/runtime';
   import { availablePinsFor, channelLayoutById, ChannelId, type I2sPairSlot } from '@/domain';
@@ -34,6 +35,7 @@
 </script>
 
 <Panel code="SY.07" title="OUTPUTS">
+  {#snippet right()}<SaveOutputConfigButton />{/snippet}
   {#if snap}
     <div class="rows">
       {#each Array.from({ length: numSpdif }) as _unused, slot (slot)}

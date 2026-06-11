@@ -10,7 +10,7 @@ import {
 import { Codec } from '@/utils';
 import {
   PlatformType,
-  CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
+  CrossfeedPreset, LevellerSpeed, MasterVolumeMode, OutputConfigMode,
   type FilterParams,
   type CrossPoint, type OutputState,
 } from '@/domain';
@@ -18,11 +18,12 @@ import {
 export interface MockOptions {
   platform: 'rp2040' | 'rp2350';
   serial?: string;
-  // Wire version the mock reports/synthesizes (default 6). V7-V10 tail sections
-  // are built faithfully so capability gating and the V6-write merge are testable.
+  // Wire version the mock reports/synthesizes (default 10 = released 1.1.4).
+  // V7-V10 tail sections are built faithfully; pass an older version to
+  // simulate a legacy device (e.g. for connect-reject tests).
   wireVersion?: number;
-  // Firmware version reported by GetPlatform (default 1.0.0). Set alongside
-  // wireVersion for a coherent device (e.g. 1.1.4 + V10).
+  // Firmware version reported by GetPlatform (default 1.1.4). Set alongside
+  // wireVersion for a coherent device (e.g. 1.1.3 + V6).
   fwVersion?: { major: number; minor: number; patch: number };
   // Override the header's payloadLength to simulate a malformed device that
   // reports a truncated payload, exercising the connect truncation guard.
@@ -77,7 +78,7 @@ export class MockTransport implements DspTransport {
   #presetStartupMode = 0;       // PresetStartupMode.Specified (firmware default)
   #presetDefaultSlot = 0;
   #presetLastActiveSlot = 0;    // always-active default
-  #presetIncludePins = true;    // default per HW-PROFILES sec 0
+  #outputConfigMode: OutputConfigMode = OutputConfigMode.WithPreset;  // firmware default; factory reset resets to it
   #presetActiveSlot = 0;
   // Per-slot names live in the directory sector, not the slot payload, so they
   // survive LoadPreset and are deliberately NOT in MockSnapshot.
@@ -93,9 +94,9 @@ export class MockTransport implements DspTransport {
   constructor(opts: MockOptions) {
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
     this.#platform = opts.platform === 'rp2040' ? PlatformType.RP2040 : PlatformType.RP2350;
-    this.#wireVersion = opts.wireVersion ?? 6;
+    this.#wireVersion = opts.wireVersion ?? 10;
     this.#payloadLength = opts.payloadLength;
-    const fw = opts.fwVersion ?? { major: 1, minor: 0, patch: 0 };
+    const fw = opts.fwVersion ?? { major: 1, minor: 1, patch: 4 };
     this.#fwMajor = fw.major;
     this.#fwMinorPatch = ((fw.minor & 0xF) << 4) | (fw.patch & 0xF);
     this.#mockState = defaultMockBulkState(this.#platform);
@@ -165,6 +166,12 @@ export class MockTransport implements DspTransport {
         const bulk = this.#synthBulkPacket();
         return bulk.slice(0, Math.min(length, bulk.byteLength));
       }
+      case WireCmd.EnterBootloader.code: {
+        // Firmware acks one byte, then reboots to UF2 ~100 ms later; mirror
+        // that with a deferred close so the normal disconnect flow runs.
+        setTimeout(() => { void this.close(); }, 100);
+        return new Uint8Array([1]);
+      }
       case WireCmd.GetMasterVolume.code:
         return Codec.encode(Codec.f32, this.#mockState.masterVolumeDb);
       case WireCmd.GetPreamp.code:
@@ -204,9 +211,10 @@ export class MockTransport implements DspTransport {
       // Acknowledge with FlashResult.Ok; preset round-trips go through
       // PresetSave/Load directly rather than flash side effects.
       case WireCmd.SaveParams.code:
-      case WireCmd.LoadParams.code:
       case WireCmd.FactoryReset.code:
         return new Uint8Array([0]); // FlashResult.Ok
+      case WireCmd.SaveOutputConfig.code:
+        return new Uint8Array([0]); // PresetResult.Ok
       case WireCmd.GetEqParam.code: {
         // Bit-packed wValue: (channel << 8) | (band << 4) | param
         const channel = (value >> 8) & 0xFF;
@@ -265,7 +273,7 @@ export class MockTransport implements DspTransport {
         out[2] = this.#presetStartupMode;
         out[3] = this.#presetDefaultSlot;
         out[4] = this.#presetLastActiveSlot;
-        out[5] = this.#presetIncludePins ? 1 : 0;
+        out[5] = this.#outputConfigMode;
         // Same directory-sector byte as GetMasterVolumeMode; reuse the live
         // field so both read paths stay in sync.
         out[6] = this.#masterVolumeMode;
@@ -276,8 +284,8 @@ export class MockTransport implements DspTransport {
           mode: this.#presetStartupMode,
           slot: this.#presetDefaultSlot,
         });
-      case WireCmd.PresetGetIncludePins.code:
-        return Codec.encode(Codec.bool8, this.#presetIncludePins);
+      case WireCmd.GetOutputConfigMode.code:
+        return Codec.encode(Codec.u8, this.#outputConfigMode);
       case WireCmd.PresetGetActive.code:
         return new Uint8Array([this.#presetActiveSlot]);
       case WireCmd.PresetGetName.code: {
@@ -556,8 +564,8 @@ export class MockTransport implements DspTransport {
         this.#presetDefaultSlot = cfg.slot;
         return;
       }
-      case WireCmd.PresetSetIncludePins.code:
-        this.#presetIncludePins = Codec.decode(Codec.bool8, data);
+      case WireCmd.SetOutputConfigMode.code:
+        this.#outputConfigMode = Codec.decode(Codec.u8, data) as OutputConfigMode;
         return;
 
       case WireCmd.ClearClips.code:

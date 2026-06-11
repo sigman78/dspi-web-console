@@ -15,16 +15,20 @@ export function toRange(v: number, min: number, max: number): number {
   return v;
 }
 
-// UI exposes [-60, 0]. The internal mute path writes MUTE_DB (-128) and must
-// NOT be clamped; only the user-input setMasterVolume(db) path calls this.
 export const MASTER_VOLUME_MIN_DB = -60;
 export const MASTER_VOLUME_MAX_DB = 0;
 export const masterVolumeDb = (db: number) =>
   toRange(db, MASTER_VOLUME_MIN_DB, MASTER_VOLUME_MAX_DB);
 
-// Mute sentinel (per spec): the dB written to silence the master volume. Not a
-// clamp bound -- deliberately below MASTER_VOLUME_MIN_DB and never clamped.
-export const MUTE_DB = -128;
+// DAC HW mute timing bounds (firmware dac_hw_mute.h; an enabled config with
+// hold_ms outside [1, 500] is silently rejected by the deferred handler).
+export const DAC_HW_MUTE_HOLD_MS_MIN = 1;
+export const DAC_HW_MUTE_HOLD_MS_MAX = 500;
+export const DAC_HW_MUTE_RELEASE_MS_MAX = 500;
+export const dacHwMuteHoldMs = (ms: number) =>
+  toRange(ms, DAC_HW_MUTE_HOLD_MS_MIN, DAC_HW_MUTE_HOLD_MS_MAX);
+export const dacHwMuteReleaseMs = (ms: number) =>
+  toRange(ms, 0, DAC_HW_MUTE_RELEASE_MS_MAX);
 
 export const bandFrequencyHz = (hz: number) => toRange(hz, Eq.FREQ_MIN_HZ, Eq.FREQ_MAX_HZ);
 export const bandQ = (q: number) => toRange(q, Eq.Q_MIN, Eq.Q_MAX);

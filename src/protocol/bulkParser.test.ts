@@ -194,7 +194,7 @@ describe('buildBulkParams + defaultBulkParams', () => {
   it('default bulk roundtrips through build+parse cleanly', () => {
     const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
     const bytes = buildBulkParams(base);
-    expect(bytes.byteLength).toBe(Wire.BulkSizes.V6Full);
+    expect(bytes.byteLength).toBe(Wire.BulkSizes.V10);
     const parsed = parseBulkParams(bytes);
     expect(parsed).toEqual(base);
   });
@@ -225,7 +225,7 @@ describe('buildBulkParams + defaultBulkParams', () => {
 describe('bulkParser — forward-compat with newer wire versions', () => {
   it('surfaces payloadLength from the header', () => {
     const p = parseBulkParams(makeBulk());
-    expect(p.payloadLength).toBe(Wire.BulkSizes.V6Full);
+    expect(p.payloadLength).toBe(Wire.BulkSizes.V10);
   });
 
   // 1.1.4 firmware rejects a SetAllParams whose platform_id (-2) or channel
@@ -264,7 +264,9 @@ describe('bulkParser — V7-V10 tail decode', () => {
   });
 
   it('falls back to factory defaults for the tail on a V6 packet', () => {
-    const p = parseBulkParams(makeBulk());
+    const p = parseBulkParams(makeBulk({
+      formatVersion: 6, payloadLength: Wire.BulkSizes.V6Full,
+    }));
     expect(p.inputConfig).toEqual({ source: 0, spdifRxPin: 5 });
     expect(p.lgSoundSync.enabled).toBe(false);
     expect(p.userVolume.mute).toBe(false);
@@ -278,7 +280,7 @@ describe('bulkParser — V7-V10 tail decode', () => {
       })),
     );
     filters[2][4] = { type: FilterType.Peaking, bypass: true, frequency: 800, q: 1, gain: 2 };
-    const obj = makeBulkObject({ formatVersion: 10, payloadLength: Wire.BulkSizes.V10, filters });
+    const obj = makeBulkObject({ filters });
     const p = parseBulkParams(buildBulkParams(obj));
     expect(p.filters[2][4].bypass).toBe(true);
     expect(p.filters[0][0].bypass).toBe(false);
@@ -286,18 +288,16 @@ describe('bulkParser — V7-V10 tail decode', () => {
 });
 
 describe('buildBulkParams — version-aware', () => {
-  it('emits V6 (2896 B) for a V6 snapshot, with no tail', () => {
+  it('emits V10 (2960 B) for the V10 default snapshot', () => {
     const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
     const bytes = buildBulkParams(base);
-    expect(bytes.byteLength).toBe(Wire.BulkSizes.V6Full);
-    expect(parseBulkParams(bytes).formatVersion).toBe(6);
+    expect(bytes.byteLength).toBe(Wire.BulkSizes.V10);
+    expect(parseBulkParams(bytes).formatVersion).toBe(10);
   });
 
   it('emits V10 (2960 B) for a V10 snapshot, preserving the tail', () => {
     const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    const v10 = { ...base, formatVersion: 10, payloadLength: Wire.BulkSizes.V10,
-      inputConfig: { source: 1, spdifRxPin: 5 },
-      userVolume:  { volumeDb: -3, mute: true } };
+    const v10 = { ...base, inputConfig: { source: 1, spdifRxPin: 5 }, userVolume: { volumeDb: -3, mute: true } };
     const bytes = buildBulkParams(v10);
     expect(bytes.byteLength).toBe(Wire.BulkSizes.V10);
     const p = parseBulkParams(bytes);
@@ -308,8 +308,7 @@ describe('buildBulkParams — version-aware', () => {
 
   it('changing a legacy field on a V10 snapshot leaves the tail intact', () => {
     const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    const v10 = { ...base, formatVersion: 10, payloadLength: Wire.BulkSizes.V10,
-      dacHwMute: { enabled: true, activeLow: false, pin: 11, holdMs: 5, releaseMs: 7 } };
+    const v10 = { ...base, dacHwMute: { enabled: true, activeLow: false, pin: 11, holdMs: 5, releaseMs: 7 } };
     const edited = { ...v10, bypass: true };
     const p = parseBulkParams(buildBulkParams(edited));
     expect(p.bypass).toBe(true);
@@ -318,8 +317,7 @@ describe('buildBulkParams — version-aware', () => {
 
   it('an explicit lower write version down-converts (firmware-merge path)', () => {
     const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    const v10 = { ...base, formatVersion: 10, payloadLength: Wire.BulkSizes.V10 };
-    const bytes = buildBulkParams(v10, 6);
+    const bytes = buildBulkParams(base, 6);
     expect(bytes.byteLength).toBe(Wire.BulkSizes.V6Full);
     expect(parseBulkParams(bytes).formatVersion).toBe(6);
   });

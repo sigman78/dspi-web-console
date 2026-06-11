@@ -238,8 +238,8 @@ export function defaultBulkParams(opts: {
   const numIn = opts.numIn ?? Wire.Const.NUM_INPUTS;
   const maxBands = opts.maxBands ?? Wire.Const.BANDS_MAX;
   return {
-    formatVersion: 6,
-    payloadLength: Wire.BulkSizes.V6Full,
+    formatVersion: 10,
+    payloadLength: Wire.BulkSizes.V10,
     platformId:    opts.platformId,
     numCh:         opts.numCh,
     numOut:        opts.numOut,
