@@ -10,10 +10,11 @@ Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScrip
 
 ## HW/FW Compatibility status
 
-- Moving from PoC to beta
-- 1.1.3 mostly wire/feature complete
-- 1.1.4 target partial (mostly wire)
-- RP2350 tested e2e, RP2040 only MCU hw w/o audio out
+- **Requires firmware 1.1.4+** (wire format V10). Older firmware (≤ 1.1.3) is detected at connect and rejected with a firmware-update notice — flash a current [DSPi release](https://github.com/WeebLabs/DSPi) via the UF2 bootloader (hold BOOTSEL while plugging in).
+- Firmware newer than the console knows (wire > V10) connects best-effort.
+- The full 1.1.4 surface is wired: S/PDIF input + RX status, LG Sound Sync, user volume/mute, DAC hardware mute, per-band EQ bypass, Notch/Allpass filters, output-config persistence modes (with-preset / independent), buffer stats, device notifications, and an UPDATE FIRMWARE button that reboots into the bootloader.
+- Both USB identities are recognized: `2E8B:FEAA` (fw ≥ 1.1.4) and the legacy `2E8A:FEAA` (≤ 1.1.3, upgrade-prompt only).
+- RP2350 tested end-to-end; RP2040 verified on MCU hardware only (no audio out).
 
 ## Requirements
 
