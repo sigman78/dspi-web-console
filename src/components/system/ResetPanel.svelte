@@ -1,14 +1,20 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
-  import { connection } from '@/state';
-  import { factoryResetDevice } from '@/runtime';
+  import { connection, activeSession } from '@/state';
+  import { factoryResetDevice, enterBootloader } from '@/runtime';
 
   const connected = $derived(connection.connected);
 
   function onFactoryReset() {
     if (!confirm('Factory reset wipes ALL presets and resets live audio to defaults. Continue?')) return;
-    // Result (success + failure) surfaces via the toast channel.
     void factoryResetDevice();
+  }
+
+  function onEnterBootloader() {
+    if (!confirm('Enter UF2 bootloader for firmware update? The device will disconnect immediately.')) return;
+    const s = activeSession();
+    if (!s) return;
+    void enterBootloader(s);
   }
 </script>
 
@@ -16,6 +22,9 @@
   <div class="body">
     <button class="danger" onclick={onFactoryReset} disabled={!connected}>FACTORY RESET</button>
     <p class="hint">Wipes all presets and resets live audio to firmware defaults.</p>
+
+    <button class="danger fw" onclick={onEnterBootloader} disabled={!connected}>UPDATE FIRMWARE</button>
+    <p class="hint">Reboots into UF2 bootloader — device disconnects immediately.</p>
   </div>
 </Panel>
 
@@ -30,6 +39,11 @@
     align-self: flex-start;
   }
   .danger:disabled { opacity: 0.4; cursor: default; }
+  .danger.fw {
+    background: color-mix(in oklab, var(--warn) 10%, transparent);
+    border-color: color-mix(in oklab, var(--warn) 50%, var(--border));
+    color: var(--warn);
+  }
   .hint {
     font-family: var(--font-mono); font-size: 9px; letter-spacing: 1px;
     color: var(--text-faint); margin: 0;
