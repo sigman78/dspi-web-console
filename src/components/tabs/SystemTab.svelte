@@ -6,6 +6,7 @@
   import ResetPanel from '@/components/system/ResetPanel.svelte';
   import OutputsPanel from '@/components/system/OutputsPanel.svelte';
   import I2sClockPanel from '@/components/system/I2sClockPanel.svelte';
+  import BufferStatsPanel from '@/components/system/BufferStatsPanel.svelte';
   import { chKey } from '@/styles/palette';
   import { clearClips } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
@@ -53,7 +54,6 @@
         <KV label="CPU1"      value={`${s.telemetry.cpu1}%`} />
         <KV label="STREAMING" value={s.telemetry.streaming ? 'YES' : 'NO'} tone={s.telemetry.streaming ? 'ok' : 'off'} />
         <KV label="PDM"       value={s.telemetry.pdmActive ? 'ACTIVE' : 'IDLE'} tone={s.telemetry.pdmActive ? 'ok' : 'off'} />
-        <KV label="SEQ"       value={String(s.telemetry.sequence)} />
         <KV label="POLL ERR"  value={String(s.telemetry.errorCount)} tone={s.telemetry.errorCount > 0 ? undefined : 'off'} />
       </div>
     </Panel>
@@ -86,6 +86,8 @@
       <!-- TODO(system-info-extra): per-slot SPDIF starvations (wValues 18-21)
            and USB state (10-12) -->
     </Panel>
+
+    <BufferStatsPanel />
   </div>
 </div>
 
