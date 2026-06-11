@@ -422,19 +422,13 @@ describe('runtime/presets', () => {
       if ('code' in r) expect(r.code).toBe('active');
     });
 
-    it('blocks paste when sourceBlob wire is higher than the device can accept', async () => {
-      // Firmware-merge write rule: a blob whose wire is HIGHER than the device's
-      // wire is rejected (the firmware would refuse it). Arises mid-session after
-      // a firmware update bumps the format. restoreState must not run and the
-      // action must surface an error. (Lower/equal blobs merge — see the
-      // acceptsWriteFormat unit matrix for that path; this runtime harness is
-      // V6-only so it can't host a higher device to exercise the accept side.)
+    it('calls restoreState unconditionally (no format gate; blob is this device\'s own capture)', async () => {
+      // Paste no longer format-gates: the blob is always captured from the same
+      // device, so the wire version always matches. Verify restoreState is reached.
       await fetchPresetInfo(sess());
       const active = 1 as PresetSlot;
       await savePresetSlot(sess(), active);
       expect(ps().active).toBe(active);
-      const liveFmt = activeSession()!.device.capabilities.wire;
-      const wrongFmt = liveFmt + 1;
 
       const realDevice = activeSession()!.device;
       const origLoad   = realDevice.loadPreset.bind(realDevice);
@@ -447,21 +441,16 @@ describe('runtime/presets', () => {
       (realDevice as any).loadPreset = async (_slot: number) => ({ ok: true });
       (realDevice as any).savePreset = savePresetSpy;
       (realDevice as any).getAllParams = async () => {
-        // Capture path. Return a parsed blob with an incompatible formatVersion.
         const b = parseBulkParams(makeBulk());
-        return { ...b, formatVersion: wrongFmt };
+        return { ...b };
       };
       (realDevice as any).setAllParams = setAllParamsSpy;
 
       try {
         const r = await pastePresetTo(sess(), 3 as PresetSlot);
-        expect(r.ok).toBe(false);
-        if (!r.ok && 'message' in r) {
-          expect(r.message).toMatch(/Paste blocked: snapshot format/);
-        }
-        expect(ps().lastActionError).toMatch(/^Paste:.*Paste blocked: snapshot format/);
-        expect(setAllParamsSpy).not.toHaveBeenCalled();
-        expect(savePresetSpy).not.toHaveBeenCalled();
+        expect(r.ok).toBe(true);
+        expect(setAllParamsSpy).toHaveBeenCalled();
+        expect(savePresetSpy).toHaveBeenCalled();
       } finally {
         (realDevice as any).loadPreset = origLoad;
         (realDevice as any).savePreset = origSave;

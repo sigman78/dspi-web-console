@@ -7,13 +7,11 @@
   const s = getSession();
   const connected = $derived(connection.connected);
   const mode = $derived(s.presets.directory?.outputConfigMode ?? OutputConfigMode.WithPreset);
-  // Shown only when the IO block is device-global and the firmware has the
-  // 0x52 verb (1.1.4+). WithPreset fallback while the directory is unknown
-  // keeps the button hidden rather than offering a dormant save. No
-  // saved-readback opcode exists, so no clean-detect -- enabled while visible.
-  const visible = $derived(
-    s.device.capabilities.features.outputConfigSave && mode === OutputConfigMode.Independent,
-  );
+  // Shown only when the IO block is device-global. WithPreset fallback while
+  // the directory is unknown keeps the button hidden rather than offering a
+  // dormant save. No saved-readback opcode exists, so no clean-detect --
+  // enabled while visible.
+  const visible = $derived(mode === OutputConfigMode.Independent);
 
   let confirming = $state(false);
 

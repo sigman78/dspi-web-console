@@ -121,7 +121,6 @@ interface DeviceInfoLike {
     readonly wireLabel: string;
     readonly support: string;
     readonly sections: BulkLayout;
-    readonly features: { readonly notifications: boolean };
   };
 }
 
@@ -137,7 +136,7 @@ export function formatDeviceInfo(info: DeviceInfoLike): string[] {
     `* device connected - ${info.hardware.name} (platformId ${c.platformId})`,
     `  firmware ${c.fwLabel} | wire ${c.wireLabel} (${c.support})`,
     `  serial "${info.serial}" | ${info.hardware.totalChannelCount} ch / ${info.hardware.outputCount} out`,
-    `  sections ${sections} | notify ${c.features.notifications ? 'on' : 'off'}`,
+    `  sections ${sections}`,
   ];
 }
 

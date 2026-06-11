@@ -8,13 +8,11 @@ import {
 import { reconcileAfterSync } from './deviceService';
 import { fetchAndApplyAsBaseline } from './resync';
 import { flushAllWrites as flushWrites } from './writes';
-import { acceptsWriteFormat } from '@/protocol/capabilities';
 import { type PresetSlot, PRESET_SLOT_COUNT, OutputConfigMode } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
 import { Log, Result } from '@/utils';
 
 // Settle pause after the paste-path SavePreset before re-reading device state.
-// Timing-conservative carry-over; the copy/paste redesign revisits it.
 const POST_SAVE_SETTLE_MS = 100;
 
 function settleAfterSave(): Promise<void> {
@@ -337,11 +335,7 @@ export async function pastePresetTo(s: ReadySession, src: PresetSlot): Promise<R
         return r3;
       }
       // Step 4: Push src content into active's RAM (no flash; pointer unchanged).
-      if (!acceptsWriteFormat(d.capabilities, sourceBlob.formatVersion)) {
-        const msg = `Paste blocked: snapshot format v${sourceBlob.formatVersion} cannot be written to device wire v${d.capabilities.wire}`;
-        recordActionError(s.presets, 'Paste', new Error(msg));
-        return { ok: false, code: 'error', message: msg };
-      }
+      // The blob is this device's own capture, so the format always matches.
       await d.restoreState(sourceBlob);
       // Step 5: Flash active slot = RAM = src content.
       const r5 = await d.savePreset(active);
@@ -360,8 +354,7 @@ export async function pastePresetTo(s: ReadySession, src: PresetSlot): Promise<R
       await reconcileAfterSync(s);
       // 1.1.4 bulk SET skips the physical-IO sections in Independent mode --
       // the pasted pins/types/I2S clock/RX pin were kept, not applied.
-      if (s.device.capabilities.features.outputConfigSave
-          && s.presets.directory?.outputConfigMode === OutputConfigMode.Independent) {
+      if (s.presets.directory?.outputConfigMode === OutputConfigMode.Independent) {
         pushNotice('info', 'IO config not applied (independent mode): pins, output types, I2S clock and S/PDIF RX pin kept their device values.');
       }
       return r5;

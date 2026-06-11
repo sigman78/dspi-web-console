@@ -140,12 +140,11 @@ describe('presets store', () => {
     expect(dirty()).toBe(true);
   });
 
-  it('presetsDirty flips true on an i2s config change (legacy device, no directory)', () => {
+  it('presetsDirty stays false on an i2s change while the directory (mode) is unknown', () => {
     seed(mkSnap({ i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 } as any }));
-    expect(dirty()).toBe(false);
     const i2s = liveMirror().snapshot.i2s;
     if (i2s) i2s.bckPin = 20;
-    expect(dirty()).toBe(true);
+    expect(dirty()).toBe(false);
   });
 
   it('presetsDirty counts an outputPins change only in WithPreset mode', () => {
@@ -164,25 +163,13 @@ describe('presets store', () => {
     expect(dirty()).toBe(true);
   });
 
-  function syncModeGovernedSession(): void {
-    dispatch({ t: 'disconnected' });
-    dispatch({
-      t: 'synced',
-      session: makeReadySession({
-        info: {}, hardware: {},
-        capabilities: { features: { outputConfigSave: true } },
-      } as never),
-    });
-  }
-
   const dirWithMode = (outputConfigMode: OutputConfigMode) => ({
     occupiedSlotsSet: new Set<number>(),
     startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
     outputConfigMode, masterVolumeMode: 0 as any,
   });
 
-  it('masks an i2s change by output-config mode on mode-governed (1.1.4) devices', () => {
-    syncModeGovernedSession();
+  it('masks an i2s change by output-config mode', () => {
     seed(mkSnap());
     liveMirror().snapshot.i2s.bckPin = 20;
     ps().directory = dirWithMode(OutputConfigMode.Independent) as any;
@@ -191,15 +178,7 @@ describe('presets store', () => {
     expect(dirty()).toBe(true);
   });
 
-  it('keeps i2s as preset content on legacy devices regardless of mode', () => {
-    seed(mkSnap());
-    liveMirror().snapshot.i2s.bckPin = 20;
-    ps().directory = dirWithMode(OutputConfigMode.Independent) as any;
-    expect(dirty()).toBe(true);
-  });
-
   it('masks a spdifRxPin change by output-config mode', () => {
-    syncModeGovernedSession();
     seed(mkSnap({ inputConfig: { source: 0, spdifRxPin: 5 } as any }));
     liveMirror().snapshot.inputConfig!.spdifRxPin = 7;
     ps().directory = dirWithMode(OutputConfigMode.Independent) as any;

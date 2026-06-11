@@ -1,19 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { LinkHealth, isHealthEvent } from './linkHealth.svelte';
-import { UnsupportedOnFirmware } from '@/device/DspDevice';
-
-describe('isHealthEvent', () => {
-  it('counts generic transfer errors and timeouts', () => {
-    expect(isHealthEvent(new Error('controlTransferIn(40) status=stall'))).toBe(true);
-    const t = new Error('timeout');
-    t.name = 'DspTimeoutError';
-    expect(isHealthEvent(t)).toBe(true);
-  });
-
-  it('excludes capability errors thrown before any transfer', () => {
-    expect(isHealthEvent(new UnsupportedOnFirmware('bandBypass', 'wire V7'))).toBe(false);
-  });
-});
+import { LinkHealth } from './linkHealth.svelte';
 
 describe('LinkHealth', () => {
   let h: LinkHealth;
@@ -86,12 +72,6 @@ describe('LinkHealth', () => {
     fail();
     h.noteOk(now);
     expect(h.degraded).toBe(false);   // never 5 in-window, never 3 consecutive
-  });
-
-  it('non-health errors are ignored entirely', () => {
-    h.noteFail('cap', new UnsupportedOnFirmware('spdifRx', 'wire V8'), now);
-    expect(h.failTotal).toBe(0);
-    expect(h.lastErrorOp).toBeNull();
   });
 
   it('records the last failing op for the UI', () => {

@@ -16,14 +16,10 @@ const NOTIFY_MAX_BACKOFF_MS = 5000;
 // the endpoint usually has a stale IDLE armed, so an event needs ~2 reads.
 const NOTIFY_BURST_MS = 8;
 
-// Start the notify read loop for a device. Returns a stop disposer. No-op (and
-// the loop never arms) on devices without the notifications capability.
+// Start the notify read loop for a device. Returns a stop disposer.
 export function startNotifyChannel(session: ReadySession, clock: LoopClock = timerClock(NOTIFY_INTERVAL_MS)): Disposer {
   const device = session.device;
   const mir = session.mirror;
-  if (!device.capabilities.features.notifications) {
-    return () => {};
-  }
 
   let stopped = false;
   let lastSeq: number | null = null;

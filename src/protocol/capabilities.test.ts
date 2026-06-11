@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveCapabilities, acceptsWriteFormat, MIN_SUPPORTED_WIRE, MAX_KNOWN_WIRE, NOTIFY_MIN_WIRE } from './capabilities';
+import { deriveCapabilities, MIN_SUPPORTED_WIRE, MAX_KNOWN_WIRE } from './capabilities';
 import { Wire } from '@/protocol';
 
 const fw = (major: number, minor: number, patch: number) => ({ major, minor, patch });
@@ -55,72 +55,13 @@ describe('deriveCapabilities — metadata + sections', () => {
     expect(c.sections.preamp).toBe(true);
     expect(c.sections.masterVolume).toBe(false);
   });
-});
 
-describe('deriveCapabilities — features', () => {
-  it('enables notifications only on wire >= NOTIFY_MIN_WIRE', () => {
-    const below = deriveCapabilities({ fw: fw(1, 1, 3), wireVersion: NOTIFY_MIN_WIRE - 1, payloadLength: 2896, platformId: 1 });
-    const at    = deriveCapabilities({ fw: fw(1, 1, 4), wireVersion: NOTIFY_MIN_WIRE,     payloadLength: 2912, platformId: 1 });
-    const above = deriveCapabilities({ fw: fw(1, 1, 4), wireVersion: NOTIFY_MIN_WIRE + 1, payloadLength: 2928, platformId: 1 });
-    expect(below.features.notifications).toBe(false);
-    expect(at.features.notifications).toBe(true);
-    expect(above.features.notifications).toBe(true);
-  });
-});
-
-describe('deriveCapabilities — 1.1.4 features', () => {
-  const v6 = deriveCapabilities({ fw: { major: 1, minor: 1, patch: 3 }, wireVersion: 6, payloadLength: 2896, platformId: 1 });
-  const v10 = deriveCapabilities({ fw: { major: 1, minor: 1, patch: 4 }, wireVersion: 10, payloadLength: 2960, platformId: 1 });
-
-  it('a 1.1.3 (V6) device exposes none of the new features', () => {
-    expect(v6.features.inputSourceSwitch).toBe(false);
-    expect(v6.features.bandBypass).toBe(false);
-    expect(v6.features.notchFilter).toBe(false);
-    expect(v6.features.dacHwMute).toBe(false);
-    expect(v6.features.outputConfigSave).toBe(false);
-    expect(v6.sections.inputSource).toBe(false);
+  it('does not expose a features object (V10 floor makes all capabilities unconditional)', () => {
+    const c = deriveCapabilities({ fw: fw(1, 1, 4), wireVersion: 10, payloadLength: 2960, platformId: 1 });
+    expect((c as unknown as Record<string, unknown>)['features']).toBeUndefined();
   });
 
-  it('a 1.1.4 (V10) device exposes the full new surface', () => {
-    expect(v10.features.inputSourceSwitch).toBe(true);
-    expect(v10.features.spdifRx).toBe(true);
-    expect(v10.features.lgSoundSync).toBe(true);
-    expect(v10.features.userVolumeAxis).toBe(true);
-    expect(v10.features.dacHwMute).toBe(true);
-    expect(v10.features.bandBypass).toBe(true);
-    expect(v10.features.notchFilter).toBe(true);
-    expect(v10.features.allpassFilter).toBe(true);
-    expect(v10.features.outputConfigSave).toBe(true);
-    expect(v10.sections.dacHwMute).toBe(true);
-  });
-
-  it('section thresholds track wire version (V8 device: LG yes, user-volume no)', () => {
-    const v8 = deriveCapabilities({ fw: { major: 1, minor: 1, patch: 4 }, wireVersion: 8, payloadLength: 2928, platformId: 1 });
-    expect(v8.features.lgSoundSync).toBe(true);
-    expect(v8.features.userVolumeAxis).toBe(false);
-    expect(v8.features.dacHwMute).toBe(false);
-  });
-});
-
-describe('acceptsWriteFormat — firmware-merge write rule', () => {
-  const caps = (wire: number) =>
-    deriveCapabilities({ fw: fw(1, 1, 4), wireVersion: wire, payloadLength: 2960, platformId: 1 });
-
-  it('accepts an equal-version blob (the common same-session case)', () => {
-    expect(acceptsWriteFormat(caps(10), 10)).toBe(true);
-  });
-
-  it('rejects a higher-version blob the firmware would refuse', () => {
-    expect(acceptsWriteFormat(caps(10), MAX_KNOWN_WIRE + 1)).toBe(false);
-  });
-
-  it('rejects a blob below the V10 floor regardless of device', () => {
-    expect(acceptsWriteFormat(caps(10), MIN_SUPPORTED_WIRE - 1)).toBe(false);
-  });
-
-  it('still accepts known-format blobs on a future (too-new) device — option C', () => {
-    const future = caps(MAX_KNOWN_WIRE + 1);
-    expect(acceptsWriteFormat(future, 10)).toBe(true);
-    expect(acceptsWriteFormat(future, MAX_KNOWN_WIRE)).toBe(true);
+  it('MIN_SUPPORTED_WIRE is 10 (V10 floor)', () => {
+    expect(MIN_SUPPORTED_WIRE).toBe(10);
   });
 });
