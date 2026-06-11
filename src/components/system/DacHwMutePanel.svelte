@@ -4,37 +4,35 @@
   import PinSelect from './PinSelect.svelte';
   import { connection } from '@/state';
   import { setDacHwMute, testDacHwMute } from '@/runtime';
-  import { availablePinsFor, type DacHwMute } from '@/domain';
+  import { availablePinsFor, assignablePins, isAssignablePin, pinsInUse, type DacHwMute } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
   const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
   const cfg = $derived(snap?.dacHwMute);
-  const editable = $derived(connected && cfg != null);
-
-  // The firmware persists pin/polarity/timings only together with enabled=1
-  // (a disabled write zeroes them), so edits made while disabled are staged
-  // here and shipped as one struct when the user flips the header toggle.
-  let draft = $state<DacHwMute | null>(null);
-  const view = $derived(draft ?? cfg);
+  const editable = $derived(connected && cfg != null && cfg.enabled);
 
   let testBusy = $state(false);
 
   function patch(p: Partial<DacHwMute>) {
-    if (!cfg) return;
-    if (cfg.enabled) { setDacHwMute(s, p); return; }
-    draft = { ...(draft ?? cfg), ...p };
+    if (editable) setDacHwMute(s, p);
   }
 
+  // The firmware zeroes the whole struct on disable and silently rejects an
+  // enabled write whose pin is invalid or taken, so the enable write must
+  // ship a usable pin up front: the stored one when free, else the first
+  // free assignable pin. Timings are clamped into range by the runtime verb.
   function onToggleEnabled() {
-    if (!cfg) return;
+    if (!cfg || !snap) return;
     if (cfg.enabled) {
       setDacHwMute(s, { enabled: false });
-    } else {
-      setDacHwMute(s, { ...(draft ?? cfg), enabled: true });
+      return;
     }
-    draft = null;
+    const inUse = pinsInUse(snap);
+    const free = (p: number) => isAssignablePin(snap.platform.type, p) && !inUse.has(p);
+    const pin = free(cfg.pin) ? cfg.pin : (assignablePins(snap.platform.type).find(free) ?? cfg.pin);
+    setDacHwMute(s, { enabled: true, pin });
   }
 
   function onToggleActiveLow(v: boolean) {
@@ -74,14 +72,14 @@
     />
   {/snippet}
 
-  {#if cfg && view && snap}
-    <div class="rows" class:dimmed={!cfg.enabled && !draft}>
+  {#if cfg && snap}
+    <div class="rows" class:dimmed={!cfg.enabled}>
       <div class="row">
         <ToggleSwitch
           size="sm"
           label="ACTIVE LOW"
           ariaLabel="DAC mute active low"
-          checked={view.activeLow}
+          checked={cfg.activeLow}
           disabled={!editable}
           onChange={onToggleActiveLow}
         />
@@ -90,8 +88,8 @@
       <div class="row">
         <span class="lbl">GPIO PIN</span>
         <PinSelect
-          value={view.pin}
-          candidates={availablePinsFor(snap.platform.type, snap, view.pin)}
+          value={cfg.pin}
+          candidates={availablePinsFor(snap.platform.type, snap, cfg.pin)}
           ariaLabel="DAC HW mute GPIO pin"
           disabled={!editable}
           onChange={onPin}
@@ -106,7 +104,7 @@
           min="1"
           max="500"
           step="1"
-          value={view.holdMs}
+          value={cfg.holdMs}
           onchange={onHoldMs}
           disabled={!editable}
           aria-label="DAC mute hold time ms"
@@ -121,7 +119,7 @@
           min="0"
           max="500"
           step="1"
-          value={view.releaseMs}
+          value={cfg.releaseMs}
           onchange={onReleaseMs}
           disabled={!editable}
           aria-label="DAC mute release time ms"
