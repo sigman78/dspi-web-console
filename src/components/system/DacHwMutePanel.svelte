@@ -5,6 +5,7 @@
   import { connection } from '@/state';
   import { setDacHwMute, testDacHwMute } from '@/runtime';
   import { availablePinsFor, assignablePins, isAssignablePin, pinsInUse, type DacHwMute } from '@/domain';
+  import { DAC_HW_MUTE_HOLD_MS_MIN, DAC_HW_MUTE_HOLD_MS_MAX, DAC_HW_MUTE_RELEASE_MS_MAX } from '@/domain/clamp';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -43,14 +44,16 @@
     patch({ pin });
   }
 
+  // No clamping here: Clamp.* in the setDacHwMute verb is the sole authority;
+  // the input min/max attributes are a UI affordance over the same bounds.
   function onHoldMs(e: Event) {
     const v = parseInt((e.target as HTMLInputElement).value, 10);
-    if (!Number.isNaN(v)) patch({ holdMs: Math.max(0, v) });
+    if (!Number.isNaN(v)) patch({ holdMs: v });
   }
 
   function onReleaseMs(e: Event) {
     const v = parseInt((e.target as HTMLInputElement).value, 10);
-    if (!Number.isNaN(v)) patch({ releaseMs: Math.max(0, v) });
+    if (!Number.isNaN(v)) patch({ releaseMs: v });
   }
 
   function onTest() {
@@ -101,8 +104,8 @@
         <input
           class="numfield"
           type="number"
-          min="1"
-          max="500"
+          min={DAC_HW_MUTE_HOLD_MS_MIN}
+          max={DAC_HW_MUTE_HOLD_MS_MAX}
           step="1"
           value={cfg.holdMs}
           onchange={onHoldMs}
@@ -117,7 +120,7 @@
           class="numfield"
           type="number"
           min="0"
-          max="500"
+          max={DAC_HW_MUTE_RELEASE_MS_MAX}
           step="1"
           value={cfg.releaseMs}
           onchange={onReleaseMs}

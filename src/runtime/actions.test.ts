@@ -42,7 +42,7 @@ function initializedDevice(methods: Partial<DspDevice>): DspDevice {
       platformType: PlatformType.RP2350,
       hardware: testHardware,
       capabilities: deriveCapabilities({
-        fw: { major: 1, minor: 1, patch: 3 }, wireVersion: 6, payloadLength: 2896, platformId: 1,
+        fw: { major: 1, minor: 1, patch: 4 }, wireVersion: 10, payloadLength: 2960, platformId: 1,
       }),
     },
     hardware: testHardware,

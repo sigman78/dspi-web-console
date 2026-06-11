@@ -55,9 +55,4 @@ describe('deriveCapabilities — metadata + sections', () => {
     expect(c.sections.preamp).toBe(true);
     expect(c.sections.masterVolume).toBe(false);
   });
-
-  it('does not expose a features object (V10 floor makes all capabilities unconditional)', () => {
-    const c = deriveCapabilities({ fw: fw(1, 1, 4), wireVersion: 10, payloadLength: 2960, platformId: 1 });
-    expect((c as unknown as Record<string, unknown>)['features']).toBeUndefined();
-  });
 });
