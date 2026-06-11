@@ -6,7 +6,7 @@
   const s = $derived(activeSession());
   const masterVolumeDb = $derived(s?.mirror.current?.masterVolumeDb ?? 0);
   const connected = $derived(connection.connected);
-  const muted = $derived(s?.mirror.current?.userVolume?.mute ?? false);
+  const muted = $derived(s?.mirror.current?.userVolume.mute ?? false);
 
   function onChange(e: Event) {
     const v = parseFloat((e.target as HTMLInputElement).value);

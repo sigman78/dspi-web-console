@@ -128,12 +128,12 @@ describe('snapshotCodec — 1.1.4 sections', () => {
     expect(snap.dacHwMute).toEqual({ enabled: true, activeLow: true, pin: 11, holdMs: 10, releaseMs: 20 });
   });
 
-  it('nulls the 1.1.4 sections on a V6 packet', () => {
+  it('carries the parser-filled factory defaults for sections a packet omits', () => {
     const snap = fromBulkParams(hw, makeBulkObject({ formatVersion: 6, payloadLength: WireNS.BulkSizes.V6Full }));
-    expect(snap.inputConfig).toBeNull();
-    expect(snap.lgSoundSync).toBeNull();
-    expect(snap.userVolume).toBeNull();
-    expect(snap.dacHwMute).toBeNull();
+    expect(snap.inputConfig).toEqual({ source: 0, spdifRxPin: 5 });
+    expect(snap.userVolume).toEqual({ volumeDb: 0, mute: false });
+    expect(snap.lgSoundSync.enabled).toBe(false);
+    expect(snap.dacHwMute.enabled).toBe(false);
   });
 
   it('carries per-band bypass into FilterParams', () => {

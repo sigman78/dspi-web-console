@@ -1,7 +1,7 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
-  import { connection, activeSession } from '@/state';
+  import { connection } from '@/state';
   import { factoryResetDevice, enterBootloader } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
 
@@ -9,17 +9,23 @@
   const snap = $derived(s.mirror.current);
   const connected = $derived(connection.connected);
 
+  // Two-step arm/confirm (the SaveOutputConfigButton idiom) instead of the
+  // blocking native confirm(); blur disarms.
+  let arming = $state<'reset' | 'fw' | null>(null);
+
   function onFactoryReset() {
-    if (!confirm('Factory reset wipes ALL presets and resets live audio to defaults. Continue?')) return;
+    if (arming !== 'reset') { arming = 'reset'; return; }
+    arming = null;
     void factoryResetDevice();
   }
 
   function onEnterBootloader() {
-    if (!confirm('Enter UF2 bootloader for firmware update? The device will disconnect immediately.')) return;
-    const sess = activeSession();
-    if (!sess) return;
-    void enterBootloader(sess);
+    if (arming !== 'fw') { arming = 'fw'; return; }
+    arming = null;
+    void enterBootloader(s);
   }
+
+  function disarm() { arming = null; }
 </script>
 
 <Panel code="SY.01" title="DEVICE">
@@ -35,16 +41,20 @@
   <div class="actions">
     <button
       class="danger"
+      class:arming={arming === 'reset'}
       onclick={onFactoryReset}
+      onblur={disarm}
       disabled={!connected}
       title="Wipes all presets and resets live audio to firmware defaults."
-    >FACTORY RESET</button>
+    >{arming === 'reset' ? 'CONFIRM RESET' : 'FACTORY RESET'}</button>
     <button
       class="danger fw"
+      class:arming={arming === 'fw'}
       onclick={onEnterBootloader}
+      onblur={disarm}
       disabled={!connected}
       title="Reboots into UF2 bootloader — device disconnects immediately."
-    >UPDATE FIRMWARE</button>
+    >{arming === 'fw' ? 'CONFIRM REBOOT' : 'UPDATE FIRMWARE'}</button>
   </div>
 </Panel>
 
@@ -70,9 +80,17 @@
     cursor: pointer;
   }
   .danger:disabled { opacity: 0.4; cursor: default; }
+  .danger.arming {
+    background: color-mix(in oklab, var(--err) 28%, transparent);
+    border-color: var(--err);
+  }
   .danger.fw {
     background: color-mix(in oklab, var(--warn) 10%, transparent);
     border-color: color-mix(in oklab, var(--warn) 50%, var(--border));
     color: var(--warn);
+  }
+  .danger.fw.arming {
+    background: color-mix(in oklab, var(--warn) 26%, transparent);
+    border-color: var(--warn);
   }
 </style>

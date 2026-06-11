@@ -1173,10 +1173,12 @@ describe('setInputSource', () => {
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
     clearNotices();
     setInputSource(activeSession()!, AudioInputSource.Spdif);
-    // Notice is pushed immediately (before the ack).
+    // Notice rides the ack: nothing surfaces until the send settles.
+    expect(notices.list.some((n) => n.kind === 'info' && /input source/i.test(n.message))).toBe(false);
+    // Settle the write's microtasks without running the notice-expiry timer.
+    await vi.advanceTimersByTimeAsync(0);
     expect(notices.list.some((n) => n.kind === 'info' && /input source/i.test(n.message))).toBe(true);
-    await vi.runAllTimersAsync();
-    expect(liveMirror().current?.inputConfig?.source).toBe(AudioInputSource.Spdif);
+    expect(liveMirror().current?.inputConfig.source).toBe(AudioInputSource.Spdif);
     expect(setInputSourceFn).toHaveBeenCalledWith(AudioInputSource.Spdif);
   });
 });

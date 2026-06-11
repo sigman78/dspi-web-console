@@ -8,7 +8,7 @@
 
   const s = getSession();
   const connected = $derived(connection.connected);
-  const lgs = $derived(s.mirror.current?.lgSoundSync ?? null);
+  const lgs = $derived(s.mirror.current?.lgSoundSync);
   const enabled = $derived(lgs?.enabled ?? false);
 </script>
 
@@ -17,25 +17,22 @@
     <ToggleSwitch
       size="sm"
       checked={enabled}
-      disabled={!connected || lgs === null}
+      disabled={!connected || !lgs}
       ariaLabel={enabled ? 'Disable LG Sound Sync' : 'Enable LG Sound Sync'}
       onChange={(v) => setLgSoundSyncEnabled(s, v)}
     />
   {/snippet}
 
-  {#if lgs !== null}
+  {#if lgs}
     <div class="kvgrid" class:dimmed={!enabled}>
       <KV label="PRESENT" value={lgs.present ? 'YES' : 'NO'} tone={lgs.present ? 'ok' : 'off'} />
       <KV label="VOLUME"  value={`${lgs.volume}`} />
       <KV label="MUTED"   value={lgs.muted ? 'YES' : 'NO'} tone={lgs.muted ? undefined : 'off'} />
     </div>
-  {:else}
-    <p class="na">Not available on this firmware.</p>
   {/if}
 </Panel>
 
 <style>
   .kvgrid { padding: 12px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .kvgrid.dimmed { opacity: 0.45; }
-  .na { font-family: var(--font-mono); font-size: 9px; color: var(--text-faint); padding: 12px 14px; margin: 0; }
 </style>

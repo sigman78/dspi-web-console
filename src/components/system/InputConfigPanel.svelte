@@ -10,7 +10,7 @@
   const s = getSession();
   const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
-  const inputConfig = $derived(snap?.inputConfig ?? null);
+  const inputConfig = $derived(snap?.inputConfig);
   const spdifStatus = $derived(s.telemetry.spdifRxStatus);
   const isSpdif = $derived(inputConfig?.source === AudioInputSource.Spdif);
 
@@ -33,7 +33,7 @@
 </script>
 
 <Panel code="SY.11" title="INPUT CONFIG">
-  {#if inputConfig !== null && snap !== null}
+  {#if inputConfig && snap}
     <div class="kvgrid">
       <KV label="SOURCE" value={inputConfig.source === AudioInputSource.Spdif ? 'S/PDIF' : 'USB'} />
       <div class="src-btns">
@@ -82,8 +82,6 @@
         <p class="idle">Waiting for S/PDIF status…</p>
       {/if}
     {/if}
-  {:else}
-    <p class="na">Not available on this firmware.</p>
   {/if}
 </Panel>
 
@@ -121,5 +119,5 @@
     margin-top: 4px;
   }
   .pinrow { padding: 6px 14px 6px; }
-  .idle, .na { font-family: var(--font-mono); font-size: 9px; color: var(--text-faint); padding: 8px 14px; margin: 0; }
+  .idle { font-family: var(--font-mono); font-size: 9px; color: var(--text-faint); padding: 8px 14px; margin: 0; }
 </style>

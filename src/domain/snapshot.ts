@@ -36,9 +36,10 @@ export interface DspSnapshot {
   i2s: I2sConfig;
   // GPIO pin per pin-output index, in hardware output order; the last entry is the PDM sub.
   outputPins: number[];
-  // 1.1.4 sections -- null on firmware whose packet does not carry them.
-  inputConfig: InputConfig | null;
-  lgSoundSync: LgSoundSync | null;
-  userVolume: UserVolume | null;
-  dacHwMute: DacHwMute | null;
+  // 1.1.4 sections -- the V10 connect floor guarantees every supported
+  // device's packet carries them.
+  inputConfig: InputConfig;
+  lgSoundSync: LgSoundSync;
+  userVolume: UserVolume;
+  dacHwMute: DacHwMute;
 }

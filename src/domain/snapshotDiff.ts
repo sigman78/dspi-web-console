@@ -39,10 +39,10 @@ export type SnapshotChange =
   | { kind: 'loudness';      value: Loudness }
   | { kind: 'crossfeed';     value: Crossfeed }
   | { kind: 'leveller';      value: Leveller }
-  | { kind: 'inputConfig';   value: InputConfig | null }
+  | { kind: 'inputConfig';   value: InputConfig }
   | { kind: 'spdifRxPin';    value: number }
-  | { kind: 'userVolume';    value: UserVolume | null }
-  | { kind: 'dacHwMute';     value: DacHwMute | null }
+  | { kind: 'userVolume';    value: UserVolume }
+  | { kind: 'dacHwMute';     value: DacHwMute }
   | { kind: 'lgSoundSyncEnabled'; value: boolean }
   | { kind: 'lgSoundSyncStatus';  value: { present: boolean; volume: number; muted: boolean } }
   | { kind: 'i2s';           value: I2sConfig }
@@ -50,14 +50,6 @@ export type SnapshotChange =
 
 function neq(a: number, b: number, tol: number): boolean {
   return Math.abs(a - b) > tol;
-}
-
-// Changed iff exactly one side is absent (null/undefined), else by `differs`.
-// Tolerates undefined as equivalent to null so partial fixtures don't crash.
-function nullableChanged<T>(a: T | null | undefined, b: T | null | undefined, differs: (x: T, y: T) => boolean): boolean {
-  const an = a == null, bn = b == null;
-  if (an || bn) return an !== bn;
-  return differs(a as T, b as T);
 }
 
 function bandDiffers(a: FilterParams, b: FilterParams): boolean {
@@ -106,14 +98,8 @@ function levellerDiffers(a: Leveller, b: Leveller): boolean {
 
 // inputConfig splits: `source` is preset content; `spdifRxPin` belongs to the
 // output-config block (rides the 0x98 persistence mode, not the preset, on
-// 1.1.4). A source change carries the whole section; nullness mismatch keeps
-// the whole-section change so a section can materialize.
-function diffInputConfig(a: InputConfig | null | undefined, b: InputConfig | null | undefined, out: SnapshotChange[]): void {
-  const an = a == null, bn = b == null;
-  if (an || bn) {
-    if (an !== bn) out.push({ kind: 'inputConfig', value: b ?? null });
-    return;
-  }
+// 1.1.4). A source change carries the whole section.
+function diffInputConfig(a: InputConfig, b: InputConfig, out: SnapshotChange[]): void {
   if (a.source !== b.source) out.push({ kind: 'inputConfig', value: b });
   else if (a.spdifRxPin !== b.spdifRxPin) out.push({ kind: 'spdifRxPin', value: b.spdifRxPin });
 }
@@ -143,17 +129,8 @@ function pinsDiffer(a: number[], b: number[]): boolean {
 }
 
 // lgSoundSync splits into a host-settable `enabled` kind and a device-reported
-// status kind. Nullness mismatch (unreachable same-session) emits both.
-function diffLgSoundSync(a: LgSoundSync | null, b: LgSoundSync | null, out: SnapshotChange[]): void {
-  const an = a == null, bn = b == null;
-  if (an || bn) {
-    if (an === bn) return;           // both absent -> no change
-    if (b != null) {
-      out.push({ kind: 'lgSoundSyncEnabled', value: b.enabled });
-      out.push({ kind: 'lgSoundSyncStatus', value: { present: b.present, volume: b.volume, muted: b.muted } });
-    }
-    return;
-  }
+// status kind.
+function diffLgSoundSync(a: LgSoundSync, b: LgSoundSync, out: SnapshotChange[]): void {
   if (a.enabled !== b.enabled) out.push({ kind: 'lgSoundSyncEnabled', value: b.enabled });
   if (a.present !== b.present || a.volume !== b.volume || a.muted !== b.muted) {
     out.push({ kind: 'lgSoundSyncStatus', value: { present: b.present, volume: b.volume, muted: b.muted } });
@@ -196,8 +173,8 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
   }
 
   diffInputConfig(a.inputConfig, b.inputConfig, out);
-  if (nullableChanged(a.userVolume,  b.userVolume,  userVolumeDiffers))  out.push({ kind: 'userVolume',  value: b.userVolume });
-  if (nullableChanged(a.dacHwMute,   b.dacHwMute,   dacHwMuteDiffers))   out.push({ kind: 'dacHwMute',   value: b.dacHwMute });
+  if (userVolumeDiffers(a.userVolume, b.userVolume)) out.push({ kind: 'userVolume', value: b.userVolume });
+  if (dacHwMuteDiffers(a.dacHwMute, b.dacHwMute))    out.push({ kind: 'dacHwMute',  value: b.dacHwMute });
   diffLgSoundSync(a.lgSoundSync, b.lgSoundSync, out);
 
   if (i2sDiffers(a.i2s, b.i2s)) out.push({ kind: 'i2s', value: b.i2s });

@@ -37,6 +37,8 @@ export function pinsInUse(snapshot: DspSnapshot): Map<number, string> {
     }
     if (i2s.mckEnabled) m.set(i2s.mckPin, PIN_LABEL.mck);
   }
+  m.set(snapshot.inputConfig.spdifRxPin, 'SPDIF RX');
+  if (snapshot.dacHwMute.enabled) m.set(snapshot.dacHwMute.pin, 'DAC MUTE');
   return m;
 }
 

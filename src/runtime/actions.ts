@@ -33,7 +33,9 @@ export function setEqFilter(s: ReadySession, channel: ChannelId, band: number, f
     () => s.device.setFilter(channel, band, clamped),
     () => {
       const c = s.mirror.snapshot.channels.find((c) => c.id === channel);
-      if (c) c.filters[band] = { ...clamped };
+      // setFilter's wire command carries no bypass byte; keep the mirror's
+      // live value so a concurrent setBandBypass ack is never clobbered.
+      if (c) c.filters[band] = { ...clamped, bypass: c.filters[band].bypass };
     },
   );
 }
@@ -58,7 +60,8 @@ export function copyEqBands(s: ReadySession, sourceId: ChannelId, targetId: Chan
       () => s.device.setFilter(targetId, band, filter),
       () => {
         const t = s.mirror.snapshot.channels.find((c) => c.id === targetId);
-        if (t) t.filters[band] = { ...filter };
+        // Bypass doesn't travel on setFilter; the target keeps its own.
+        if (t) t.filters[band] = { ...filter, bypass: t.filters[band].bypass };
       },
     );
   }
@@ -318,11 +321,7 @@ export function setMasterVolume(s: ReadySession, db: number): void {
 // Flips the firmware vendor user-mute bit (0xDC). The firmware ORs this with
 // the UAC1 OS mute — they're independent; we reflect and control only this bit.
 export function toggleMute(s: ReadySession): void {
-  const next = !(s.mirror.snapshot.userVolume?.mute ?? false);
-  void write(s,
-    () => s.device.setUserMute(next),
-    () => { if (s.mirror.snapshot.userVolume) s.mirror.snapshot.userVolume.mute = next; },
-  );
+  setUserMute(s, !s.mirror.snapshot.userVolume.mute);
 }
 
 export function setMasterVolumeMode(s: ReadySession, mode: MasterVolumeMode): void {
@@ -410,7 +409,7 @@ export function setMckMultiplier(s: ReadySession, encoded: number): void {
 export function setUserMute(s: ReadySession, mute: boolean): void {
   void write(s,
     () => s.device.setUserMute(mute),
-    () => { if (s.mirror.snapshot.userVolume) s.mirror.snapshot.userVolume.mute = mute; },
+    () => { s.mirror.snapshot.userVolume.mute = mute; },
   );
 }
 
@@ -430,13 +429,18 @@ export function setBandBypass(s: ReadySession, channel: ChannelId, band: number,
   );
 }
 
-// M1 — Input source switch. Pipeline reset is audible; surface an info notice.
+// M1 — Input source switch. Pipeline reset is audible; surface an info notice
+// only once the device acked. The retained RX status frame belongs to the
+// previous source epoch -- drop it so a SPDIF re-entry can't show a stale lock.
 export function setInputSource(s: ReadySession, source: AudioInputSource): void {
   void write(s,
     () => s.device.setInputSource(source),
-    () => { if (s.mirror.snapshot.inputConfig) s.mirror.snapshot.inputConfig.source = source; },
+    () => {
+      s.mirror.snapshot.inputConfig.source = source;
+      s.telemetry.spdifRxStatus = null;
+      pushNotice('info', 'Input source changed — firmware pipeline reset (brief audio mute).');
+    },
   );
-  pushNotice('info', 'Input source changed — firmware pipeline reset (brief audio mute).');
 }
 
 // M1 — S/PDIF RX pin. Action-style: status byte on rejection.
@@ -444,7 +448,7 @@ export function setSpdifRxPin(s: ReadySession, gpio: number): void {
   void writeChecked(s,
     'set S/PDIF RX pin',
     () => s.device.setSpdifRxPin(gpio),
-    () => { if (s.mirror.snapshot.inputConfig) s.mirror.snapshot.inputConfig.spdifRxPin = gpio; },
+    () => { s.mirror.snapshot.inputConfig.spdifRxPin = gpio; },
   );
 }
 
@@ -452,14 +456,19 @@ export function setSpdifRxPin(s: ReadySession, gpio: number): void {
 export function setLgSoundSyncEnabled(s: ReadySession, enabled: boolean): void {
   void write(s,
     () => s.device.setLgSoundSyncEnabled(enabled),
-    () => { if (s.mirror.snapshot.lgSoundSync) s.mirror.snapshot.lgSoundSync.enabled = enabled; },
+    () => { s.mirror.snapshot.lgSoundSync.enabled = enabled; },
   );
 }
 
-// M6 — DAC HW mute config (whole-struct write, command lane).
-export function setDacHwMute(s: ReadySession, cfg: DacHwMute): void {
-  void command(s, 'set DAC HW mute', () => s.device.setDacHwMute(cfg), (_ok, s) => {
-    if (s.mirror.snapshot.dacHwMute) s.mirror.snapshot.dacHwMute = { ...cfg };
+// M6 — DAC HW mute config. The wire takes the whole struct, so the verb takes
+// a partial and merges over the live mirror optimistically BEFORE sending:
+// a second edit inside the first ack window then builds on the first instead
+// of silently reverting it from a stale captured struct. Failures toast and
+// the background reconcile restores device truth.
+export function setDacHwMute(s: ReadySession, patch: Partial<DacHwMute>): void {
+  const next = { ...s.mirror.snapshot.dacHwMute, ...patch };
+  s.mirror.snapshot.dacHwMute = next;
+  void command(s, 'set DAC HW mute', () => s.device.setDacHwMute(next), (_ok, s) => {
     s.mirror.requestReconcile(false);
   });
 }

@@ -58,7 +58,6 @@ function narrowLevellerSpeed(s: number): domain.LevellerSpeed {
 
 export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParams): domain.DspSnapshot {
   const channelNames = bulk.channelNames.slice(0, Wire.Const.NUM_CHANNELS);
-  const layout = Wire.bulkLayout(bulk);
 
   const channels = hardware.channels.map((channel) => ({
     id: channel.id,
@@ -143,12 +142,12 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
     },
     i2s: bulk.i2s,
     outputPins: bulk.pins.slice(0, bulk.numPinOutputs),
-    inputConfig: layout.inputSource
-      ? { source: narrowInputSource(bulk.inputConfig.source), spdifRxPin: bulk.inputConfig.spdifRxPin }
-      : null,
-    lgSoundSync: layout.lgSoundSync ? { enabled: bulk.lgSoundSync.enabled, present: bulk.lgSoundSync.present, volume: bulk.lgSoundSync.volume, muted: bulk.lgSoundSync.muted } : null,
-    userVolume:  layout.userVolume  ? { volumeDb: bulk.userVolume.volumeDb, mute: bulk.userVolume.mute } : null,
-    dacHwMute:   layout.dacHwMute   ? { enabled: bulk.dacHwMute.enabled, activeLow: bulk.dacHwMute.activeLow, pin: bulk.dacHwMute.pin, holdMs: bulk.dacHwMute.holdMs, releaseMs: bulk.dacHwMute.releaseMs } : null,
+    // V7-V10 sections -- same unconditional carry: the parser substitutes
+    // factory defaults when a packet omits them (test-only under the V10 floor).
+    inputConfig: { source: narrowInputSource(bulk.inputConfig.source), spdifRxPin: bulk.inputConfig.spdifRxPin },
+    lgSoundSync: { enabled: bulk.lgSoundSync.enabled, present: bulk.lgSoundSync.present, volume: bulk.lgSoundSync.volume, muted: bulk.lgSoundSync.muted },
+    userVolume:  { volumeDb: bulk.userVolume.volumeDb, mute: bulk.userVolume.mute },
+    dacHwMute:   { enabled: bulk.dacHwMute.enabled, activeLow: bulk.dacHwMute.activeLow, pin: bulk.dacHwMute.pin, holdMs: bulk.dacHwMute.holdMs, releaseMs: bulk.dacHwMute.releaseMs },
   };
 }
 

@@ -16,6 +16,8 @@ const snap = {
   platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
   outputPins: [6, 7, 8, 9, 10],
   i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
+  inputConfig: { source: 0, spdifRxPin: 5 },
+  dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
 };
 
 const session = { telemetry: { info: { sampleRateHz: 96000 } }, mirror: { current: snap } } as any;

@@ -10,36 +10,32 @@
   const s = getSession();
   const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
-  const cfg = $derived(snap?.dacHwMute ?? null);
+  const cfg = $derived(snap?.dacHwMute);
   const editable = $derived(connected && (cfg?.enabled ?? false));
 
   let testBusy = $state(false);
 
   function onToggleEnabled() {
-    if (!cfg || !snap) return;
-    setDacHwMute(s, { ...cfg, enabled: !cfg.enabled });
+    if (!cfg) return;
+    setDacHwMute(s, { enabled: !cfg.enabled });
   }
 
   function onToggleActiveLow(v: boolean) {
-    if (!cfg || !snap) return;
-    setDacHwMute(s, { ...cfg, activeLow: v });
+    setDacHwMute(s, { activeLow: v });
   }
 
   function onPin(pin: number) {
-    if (!cfg) return;
-    setDacHwMute(s, { ...cfg, pin });
+    setDacHwMute(s, { pin });
   }
 
   function onHoldMs(e: Event) {
-    if (!cfg) return;
     const v = parseInt((e.target as HTMLInputElement).value, 10);
-    if (!Number.isNaN(v)) setDacHwMute(s, { ...cfg, holdMs: Math.max(0, v) });
+    if (!Number.isNaN(v)) setDacHwMute(s, { holdMs: Math.max(0, v) });
   }
 
   function onReleaseMs(e: Event) {
-    if (!cfg) return;
     const v = parseInt((e.target as HTMLInputElement).value, 10);
-    if (!Number.isNaN(v)) setDacHwMute(s, { ...cfg, releaseMs: Math.max(0, v) });
+    if (!Number.isNaN(v)) setDacHwMute(s, { releaseMs: Math.max(0, v) });
   }
 
   function onTest() {
@@ -55,13 +51,13 @@
     <ToggleSwitch
       size="sm"
       checked={cfg?.enabled ?? false}
-      disabled={!connected || cfg === null}
+      disabled={!connected || !cfg}
       ariaLabel={cfg?.enabled ? 'Disable DAC HW mute' : 'Enable DAC HW mute'}
       onChange={() => onToggleEnabled()}
     />
   {/snippet}
 
-  {#if cfg !== null && snap !== null}
+  {#if cfg && snap}
     <div class="rows" class:dimmed={!cfg.enabled}>
       <div class="row">
         <ToggleSwitch
@@ -124,8 +120,6 @@
         >{testBusy ? 'TESTING…' : 'TEST PULSE'}</button>
       </div>
     </div>
-  {:else}
-    <p class="na">Not available on this firmware.</p>
   {/if}
 </Panel>
 
@@ -169,5 +163,4 @@
   }
   .test-btn:hover:not(:disabled) { background: color-mix(in oklab, var(--warn) 16%, transparent); }
   .test-btn:disabled { opacity: 0.4; cursor: default; }
-  .na { font-family: var(--font-mono); font-size: 9px; color: var(--text-faint); padding: 12px 14px; margin: 0; }
 </style>

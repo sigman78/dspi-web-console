@@ -101,7 +101,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   }
 
   function shouldRunSpdifRx(now: number): boolean {
-    if (mir.current?.inputConfig?.source !== AudioInputSource.Spdif) return false;
+    if (mir.current?.inputConfig.source !== AudioInputSource.Spdif) return false;
     return now - lastSpdifRxMs >= SPDIF_RX_INTERVAL_MS;
   }
 

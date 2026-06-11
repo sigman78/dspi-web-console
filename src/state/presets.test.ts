@@ -21,7 +21,10 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
     leveller: { enabled: false, speed: 1, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40 } as any,
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 } as any,
     outputPins: [],
-    inputConfig: null, lgSoundSync: null, userVolume: null, dacHwMute: null,
+    inputConfig: { source: 0, spdifRxPin: 5 } as any,
+    lgSoundSync: { enabled: false, present: false, volume: 0, muted: false },
+    userVolume:  { volumeDb: 0, mute: false },
+    dacHwMute:   { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
     ...overrides,
   };
 }
@@ -128,12 +131,12 @@ describe('presets store', () => {
     expect(dirty()).toBe(true);
   });
 
-  it('presetsDirty flips true on a userVolume change', () => {
-    seed(mkSnap({ userVolume: { volumeDb: 0, mute: false } as any }));
-    expect(dirty()).toBe(false);
+  it('presetsDirty ignores the userVolume axis (device-global, not preset content)', () => {
+    seed(mkSnap({ userVolume: { volumeDb: 0, mute: false } }));
     const uv = liveMirror().snapshot.userVolume;
-    if (uv) uv.volumeDb = -6;
-    expect(dirty()).toBe(true);
+    uv.volumeDb = -6;
+    uv.mute = true;
+    expect(dirty()).toBe(false);
   });
 
   it('presetsDirty stays false on an i2s change while the directory (mode) is unknown', () => {
