@@ -7,6 +7,7 @@
   import OutputsPanel from '@/components/system/OutputsPanel.svelte';
   import I2sClockPanel from '@/components/system/I2sClockPanel.svelte';
   import BufferStatsPanel from '@/components/system/BufferStatsPanel.svelte';
+  import LgSoundSyncPanel from '@/components/system/LgSoundSyncPanel.svelte';
   import { chKey } from '@/styles/palette';
   import { clearClips } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
@@ -30,6 +31,7 @@
 
   <div class="col">
     <ChannelNamesPanel />
+    <LgSoundSyncPanel />
   </div>
 
   <div class="col">
