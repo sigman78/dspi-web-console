@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from './actions';
+import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './deviceService';
 import { connection, settings, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { bootMock } from './boot';
@@ -472,6 +472,26 @@ describe('actions — master volume mode', () => {
     await flushAllWrites();
     expect(notices.list).toHaveLength(0);
     expect(activeSession()!.presets.savedMasterVolumeDb).toBe(liveMirror().current!.masterVolumeDb);
+  });
+
+  it('saveOutputConfigBaseline warns on failure and stays silent on success', async () => {
+    clearNotices();
+    const failDevice = initializedDevice({
+      saveOutputConfig: async () => ({ ok: false as const, code: 4 as any, message: 'preset flash write error' }),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(failDevice) });
+    saveOutputConfigBaseline(activeSession()!);
+    await flushAllWrites();
+    expect(notices.list.some((n) => n.kind === 'warn' && /output config/i.test(n.message))).toBe(true);
+
+    clearNotices();
+    const okDevice = initializedDevice({
+      saveOutputConfig: async () => ({ ok: true as const, value: undefined }),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(okDevice) });
+    saveOutputConfigBaseline(activeSession()!);
+    await flushAllWrites();
+    expect(notices.list).toHaveLength(0);
   });
 });
 

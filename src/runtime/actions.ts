@@ -354,6 +354,18 @@ export function saveMasterVolumeBaseline(s: ReadySession): void {
   });
 }
 
+// 0x52 SaveOutputConfig -- persists the live physical-IO block (output pins,
+// output types, I2S BCK/MCK, S/PDIF RX pin) to the directory's device-global
+// block. Meaningful in Independent mode (the block is the boot source);
+// firmware accepts it in WithPreset mode but it stays dormant. Fire-and-forget:
+// only failure surfaces; success is silent (there is no saved-readback opcode,
+// so no clean-detect).
+export function saveOutputConfigBaseline(s: ReadySession): void {
+  void command(s, 'save output config', () => s.device.saveOutputConfig(), (r) => {
+    if (!r.ok) pushNotice('warn', `Saving output config failed (${r.message ?? 'flash error'}).`);
+  });
+}
+
 // Discrete (commit-paced) config commands on the writeChecked() lane. Patching on
 // ack (not before the send) keeps the mirror unchanged when the device rejects the
 // command; the rejection surfaces as a warn toast and the background poll

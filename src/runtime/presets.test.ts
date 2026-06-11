@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { bootMock } from './boot';
 import {
   resetBoundary, boundary, resolveBoundary, settings, activeSession,
-  makeReadySession, dispatch, type ReadySession,
+  makeReadySession, dispatch, notices, clearNotices, type ReadySession,
 } from '@/state';
 import { PresetStartupMode, parseBulkParams } from '@/protocol';
 import { type PresetSlot, OutputConfigMode } from '@/domain';
@@ -603,6 +603,29 @@ describe('runtime/presets', () => {
         (realDevice as any).loadPreset = origLoad;
         (realDevice as any).savePreset = origSave;
       }
+    });
+  });
+
+  describe('paste under output-config mode (V10 device)', () => {
+    it('toasts that IO config was not applied in Independent mode, stays silent in WithPreset', async () => {
+      dispatch({ t: 'disconnected' });
+      await bootMock('rp2350', { wireVersion: 10 });
+      await fetchPresetInfo(sess());
+      await savePresetSlot(sess(), 1 as PresetSlot);
+      await loadPresetSlot(sess(), 0 as PresetSlot);
+      await saveActivePreset(sess());
+
+      clearNotices();
+      await setOutputConfigMode(sess(), OutputConfigMode.Independent);
+      let r = await pastePresetTo(sess(), 1 as PresetSlot);
+      expect('ok' in r && r.ok).toBe(true);
+      expect(notices.list.some((n) => n.kind === 'info' && /not applied/i.test(n.message))).toBe(true);
+
+      clearNotices();
+      await setOutputConfigMode(sess(), OutputConfigMode.WithPreset);
+      r = await pastePresetTo(sess(), 1 as PresetSlot);
+      expect('ok' in r && r.ok).toBe(true);
+      expect(notices.list.some((n) => /not applied/i.test(n.message))).toBe(false);
     });
   });
 });

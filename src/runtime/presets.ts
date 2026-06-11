@@ -2,14 +2,14 @@
 
 import {
   presetsDirty, askBoundary,
-  settings,
+  settings, pushNotice,
   type ReadySession, type PresetsState,
 } from '@/state';
 import { reconcileAfterSync } from './deviceService';
 import { fetchAndApplyAsBaseline } from './resync';
 import { flushAllWrites as flushWrites } from './writes';
 import { acceptsWriteFormat } from '@/protocol/capabilities';
-import { type PresetSlot, PRESET_SLOT_COUNT, type OutputConfigMode } from '@/domain';
+import { type PresetSlot, PRESET_SLOT_COUNT, OutputConfigMode } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
 import { Log, Result } from '@/utils';
 
@@ -366,6 +366,12 @@ export async function pastePresetTo(s: ReadySession, src: PresetSlot): Promise<R
       await settleAfterLoad();
       await fetchAndApplyAsBaseline(s);
       await reconcileAfterSync(s);
+      // 1.1.4 bulk SET skips the physical-IO sections in Independent mode --
+      // the pasted pins/types/I2S clock/RX pin were kept, not applied.
+      if (s.device.capabilities.features.outputConfigSave
+          && s.presets.directory?.outputConfigMode === OutputConfigMode.Independent) {
+        pushNotice('info', 'IO config not applied (independent mode): pins, output types, I2S clock and S/PDIF RX pin kept their device values.');
+      }
       return r5;
     });
   } catch (e) {

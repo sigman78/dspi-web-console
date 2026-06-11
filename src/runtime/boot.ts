@@ -86,10 +86,10 @@ export async function connectRequested(): Promise<void> {
   }
 }
 
-export async function bootMock(platform: 'rp2040' | 'rp2350'): Promise<void> {
+export async function bootMock(platform: 'rp2040' | 'rp2350', opts: { wireVersion?: number } = {}): Promise<void> {
   const scope = beginConnection();
   try {
-    const transport = new MockTransport({ platform });
+    const transport = new MockTransport({ platform, ...opts });
     const device = await createBoundDevice(transport, scope, undefined);
     await wireUpConnection(device, scope);
   } catch (err) {
