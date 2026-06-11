@@ -14,7 +14,7 @@
   }
 </script>
 
-<Panel code="SY.08" title="BUFFER STATS">
+<Panel code="SY.12" title="BUFFER STATS">
   {#snippet right()}
     <button
       class="reset-btn"
