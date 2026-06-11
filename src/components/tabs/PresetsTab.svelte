@@ -35,7 +35,7 @@
       {:else if s.presets.directory == null && s.presets.lastFetchError}
         <div class="error">
           <div class="msg">{s.presets.lastFetchError}</div>
-          <button class="retry" onclick={() => retryFetchPresetInfo(s)} disabled={s.presets.busy}>RETRY</button>
+          <button class="chip accent" onclick={() => retryFetchPresetInfo(s)} disabled={s.presets.busy}>RETRY</button>
         </div>
       {:else if s.presets.directory == null}
         <div class="placeholder">Loading presets…</div>
@@ -93,15 +93,6 @@
     display: flex; flex-direction: column; gap: 12px; align-items: flex-start;
   }
   .msg { color: var(--err); }
-  .retry {
-    padding: 4px 12px; border-radius: 3px;
-    font-family: inherit; font-size: 10px; letter-spacing: 1px; font-weight: 700;
-    background: color-mix(in oklab, var(--accent) 12%, transparent);
-    border: 1px solid color-mix(in oklab, var(--accent) 40%, var(--border));
-    color: var(--accent); cursor: pointer;
-  }
-  .retry:hover:not(:disabled) { border-color: var(--accent); }
-  .retry:disabled { opacity: 0.4; cursor: default; }
   .action-error {
     display: flex; align-items: center; justify-content: space-between;
     padding: 8px 12px;

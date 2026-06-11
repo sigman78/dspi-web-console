@@ -15,10 +15,10 @@
       <h2 id="bdry-title">{boundary.pending.title}</h2>
       <p>{boundary.pending.message}</p>
       <div class="actions">
-        <button class="btn" onclick={() => resolveBoundary('cancel')}>Cancel</button>
-        <button class="btn warn" onclick={() => resolveBoundary('discard')}>{boundary.pending.discardLabel ?? 'Switch anyway'}</button>
+        <button class="chip md" onclick={() => resolveBoundary('cancel')}>Cancel</button>
+        <button class="chip md warn" onclick={() => resolveBoundary('discard')}>{boundary.pending.discardLabel ?? 'Switch anyway'}</button>
         {#if boundary.pending.saveLabel}
-          <button class="btn primary" onclick={() => resolveBoundary('save')}>{boundary.pending.saveLabel}</button>
+          <button class="chip md accent" onclick={() => resolveBoundary('save')}>{boundary.pending.saveLabel}</button>
         {/if}
       </div>
     </div>
@@ -46,17 +46,4 @@
   h2 { font-size: 12px; letter-spacing: 1.5px; margin: 0 0 8px; color: var(--text); }
   p  { font-size: 11px; color: var(--text-dim); margin: 0 0 16px; line-height: 1.4; }
   .actions { display: flex; gap: 8px; justify-content: flex-end; }
-  .btn {
-    padding: 5px 12px; border-radius: 4px;
-    font-family: inherit; font-size: 10px; letter-spacing: 1px; font-weight: 600;
-    background: var(--panel-solid); color: var(--text-dim);
-    border: 1px solid var(--border); cursor: pointer;
-  }
-  .btn:hover { color: var(--text); border-color: var(--border-hi); }
-  .btn.warn   { color: var(--warn); border-color: color-mix(in oklab, var(--warn) 40%, var(--border)); }
-  .btn.primary {
-    color: var(--accent);
-    border-color: color-mix(in oklab, var(--accent) 50%, var(--border));
-    background: color-mix(in oklab, var(--accent) 12%, transparent);
-  }
 </style>

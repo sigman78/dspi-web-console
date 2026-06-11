@@ -41,7 +41,7 @@
       {#each Array.from({ length: numSpdif }) as _unused, slot (slot)}
         <div class="row">
           <span class="lbl">
-            <span class="out">OUT {slot + 1}</span>
+            <span class="microlbl">OUT {slot + 1}</span>
             <span class="pair">{pairShort(slot)}</span>
           </span>
           <SegmentedSelect
@@ -63,7 +63,7 @@
       {/each}
 
       <div class="row">
-        <span class="lbl"><span class="out">PDM SUB</span></span>
+        <span class="lbl"><span class="microlbl">PDM SUB</span></span>
         <span class="fixed">PDM</span>
         <PinSelect
           value={snap.outputPins[pdmIndex]}
@@ -85,8 +85,6 @@
   .row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; }
   .rows > .hint { grid-column: 1 / -1; }
   .lbl { display: flex; align-items: baseline; gap: 11px; }
-  .out { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--text-dim); }
   .pair { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.5px; color: var(--text-faint); }
   .fixed { font-family: var(--font-mono); font-size: 10px; color: var(--text-faint); }
-  .hint { font-family: var(--font-mono); font-size: 9px; color: var(--text-faint); }
 </style>

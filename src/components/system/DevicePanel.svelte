@@ -40,16 +40,16 @@
   <div class="divider"></div>
   <div class="actions">
     <button
-      class="danger"
-      class:arming={arming === 'reset'}
+      class="chip md danger"
+      class:armed={arming === 'reset'}
       onclick={onFactoryReset}
       onblur={disarm}
       disabled={!connected}
       title="Wipes all presets and resets live audio to firmware defaults."
     >{arming === 'reset' ? 'CONFIRM RESET' : 'FACTORY RESET'}</button>
     <button
-      class="danger fw"
-      class:arming={arming === 'fw'}
+      class="chip md warn"
+      class:armed={arming === 'fw'}
       onclick={onEnterBootloader}
       onblur={disarm}
       disabled={!connected}
@@ -66,31 +66,5 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
-  }
-  .danger {
-    padding: 6px 14px;
-    border-radius: 4px;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 1.5px;
-    font-weight: 700;
-    background: color-mix(in oklab, var(--err) 12%, transparent);
-    border: 1px solid color-mix(in oklab, var(--err) 50%, var(--border));
-    color: var(--err);
-    cursor: pointer;
-  }
-  .danger:disabled { opacity: 0.4; cursor: default; }
-  .danger.arming {
-    background: color-mix(in oklab, var(--err) 28%, transparent);
-    border-color: var(--err);
-  }
-  .danger.fw {
-    background: color-mix(in oklab, var(--warn) 10%, transparent);
-    border-color: color-mix(in oklab, var(--warn) 50%, var(--border));
-    color: var(--warn);
-  }
-  .danger.fw.arming {
-    background: color-mix(in oklab, var(--warn) 26%, transparent);
-    border-color: var(--warn);
   }
 </style>

@@ -55,7 +55,7 @@
 
     <Panel code="SY.04" title="ERROR COUNTERS">
       {#snippet right()}
-        <button class="clear-btn" onclick={() => clearClips(s)} disabled={!connected} title="Clear latched clip flags">CLEAR</button>
+        <button class="chip" onclick={() => clearClips(s)} disabled={!connected} title="Clear latched clip flags">CLEAR</button>
       {/snippet}
       <div class="kvgrid">
         <KV label="PDM RING OVR" value={fmtNum(info?.pdmRingOverruns)}       tone={isNonZero(info?.pdmRingOverruns)       ? undefined : 'off'} />
@@ -91,34 +91,6 @@
   .col { display: flex; flex-direction: column; gap: var(--pad); min-height: 0; }
   .kvgrid { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-  .clear-btn {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding: 2px 8px;
-    border-radius: 3px;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    cursor: pointer;
-  }
-  .clear-btn:hover:not(:disabled) {
-    color: var(--text);
-    border-color: var(--border-hi);
-  }
-  .clear-btn:disabled { opacity: 0.45; cursor: default; }
-
-  .subhdr {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    color: var(--text-faint);
-    padding: 8px 14px 0;
-    border-top: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
-    margin-top: 6px;
-  }
   .clipgrid {
     display: flex;
     flex-wrap: wrap;

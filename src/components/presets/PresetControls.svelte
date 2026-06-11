@@ -93,35 +93,35 @@
 <div class="ctrl" class:disabled={!connected || dir == null}>
   <div class="group">
     <h4>ACTIONS</h4>
-    <button class="btn primary" onclick={onSave} disabled={!canSave}>SAVE</button>
+    <button class="chip md accent" onclick={onSave} disabled={!canSave}>SAVE</button>
     <div class="row2">
-      <button class="btn" onclick={onRequestRename} disabled={!canRename}>RENAME</button>
-      <button class="btn" onclick={onRevert} disabled={!canRevert}>REVERT</button>
+      <button class="chip md" onclick={onRequestRename} disabled={!canRename}>RENAME</button>
+      <button class="chip md" onclick={onRevert} disabled={!canRevert}>REVERT</button>
     </div>
     <div class="row2">
       {#if held != null}
-        <button class="btn warn" onclick={onDrop} title={`Drop the copied preset "${held.name}"`}>DROP</button>
+        <button class="chip md accent" onclick={onDrop} title={`Drop the copied preset "${held.name}"`}>DROP</button>
       {:else}
         <button
-          class="btn"
+          class="chip md"
           onclick={onCopy}
           disabled={!canCopy}
           title={canCopy ? '' : (dirty ? 'Save changes to copy this state' : '')}
         >COPY</button>
       {/if}
       <button
-        class="btn"
-        class:primary={canPaste}
+        class="chip md"
+        class:accent={canPaste}
         onclick={onPaste}
         disabled={!canPaste}
         title={held != null ? `Paste "${held.name}" into the active preset` : ''}
       >PASTE</button>
     </div>
     <div class="row2">
-      <button class="btn" disabled title="Not yet implemented">IMPORT</button>
-      <button class="btn" disabled title="Not yet implemented">EXPORT</button>
+      <button class="chip md" disabled title="Not yet implemented">IMPORT</button>
+      <button class="chip md" disabled title="Not yet implemented">EXPORT</button>
     </div>
-    <button class="btn" onclick={onSetStartup} disabled={!canSetStartup}>SET AS STARTUP</button>
+    <button class="chip md" onclick={onSetStartup} disabled={!canSetStartup}>SET AS STARTUP</button>
   </div>
 
   <div class="divider"></div>
@@ -190,39 +190,7 @@
     text-transform: uppercase;
   }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .btn {
-    text-align: center;
-    padding: 6px 10px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--panel-solid);
-    color: var(--text-dim);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 1.5px;
-    font-weight: 700;
-    cursor: pointer;
-    text-transform: uppercase;
-  }
-  .btn:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
-  .btn:disabled { opacity: 0.4; cursor: default; }
-  .btn.primary {
-    color: var(--accent);
-    border-color: color-mix(in oklab, var(--accent) 50%, var(--border));
-    background: color-mix(in oklab, var(--accent) 12%, transparent);
-  }
-  .btn.warn {
-    color: var(--accent);
-    border-color: color-mix(in oklab, var(--accent) 50%, var(--border));
-    background: color-mix(in oklab, var(--accent) 8%, transparent);
-  }
-  .hint {
-    margin: 2px 0 0;
-    font-family: var(--font-mono);
-    font-size: 9px;
-    line-height: 1.4;
-    color: var(--text-faint);
-  }
+  .hint { margin: 2px 0 0; }
   .divider {
     height: 1px;
     background: var(--border);

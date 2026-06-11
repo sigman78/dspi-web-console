@@ -38,14 +38,14 @@
       <KV label="SOURCE" value={inputConfig.source === AudioInputSource.Spdif ? 'S/PDIF' : 'USB'} />
       <div class="src-btns">
         <button
-          class="src"
-          class:active={inputConfig.source === AudioInputSource.Usb}
+          class="chip"
+          class:on={inputConfig.source === AudioInputSource.Usb}
           onclick={() => setInputSource(s, AudioInputSource.Usb)}
           disabled={!connected || inputConfig.source === AudioInputSource.Usb}
         >USB</button>
         <button
-          class="src"
-          class:active={inputConfig.source === AudioInputSource.Spdif}
+          class="chip"
+          class:on={inputConfig.source === AudioInputSource.Spdif}
           onclick={() => setInputSource(s, AudioInputSource.Spdif)}
           disabled={!connected || inputConfig.source === AudioInputSource.Spdif}
         >S/PDIF</button>
@@ -79,7 +79,7 @@
           <KV label="FIFO FILL"   value={`${spdifStatus.fifoFillPct}%`} />
         </div>
       {:else}
-        <p class="idle">Waiting for S/PDIF status…</p>
+        <p class="hint idle">Waiting for S/PDIF status…</p>
       {/if}
     {/if}
   {/if}
@@ -88,36 +88,6 @@
 <style>
   .kvgrid { padding: 10px 14px 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; }
   .src-btns { display: flex; gap: 4px; }
-  .src {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding: 3px 8px;
-    border-radius: 3px;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
-    border: 1px solid var(--border);
-    color: var(--text-faint);
-    cursor: pointer;
-  }
-  .src:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
-  .src:disabled { cursor: default; }
-  .src.active {
-    background: color-mix(in oklab, var(--accent) 14%, transparent);
-    border-color: color-mix(in oklab, var(--accent) 50%, var(--border));
-    color: var(--accent);
-    opacity: 1;
-  }
-  .subhdr {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    color: var(--text-faint);
-    padding: 6px 14px 0;
-    border-top: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
-    margin-top: 4px;
-  }
   .pinrow { padding: 6px 14px 6px; }
-  .idle { font-family: var(--font-mono); font-size: 9px; color: var(--text-faint); padding: 8px 14px; margin: 0; }
+  .idle { padding: 10px 14px; }
 </style>
