@@ -463,12 +463,30 @@ export function setLgSoundSyncEnabled(s: ReadySession, enabled: boolean): void {
 // M6 — DAC HW mute config. The wire takes the whole struct, so the verb takes
 // a partial and merges over the live mirror optimistically BEFORE sending:
 // a second edit inside the first ack window then builds on the first instead
-// of silently reverting it from a stale captured struct. Failures toast and
-// the background reconcile restores device truth.
+// of silently reverting it from a stale captured struct.
+//
+// The firmware applies the struct in a deferred handler that SWALLOWS
+// validation failures (bad pin / collision / hold_ms out of [1,500]); its own
+// contract says hosts must read the config back to learn the verdict. So the
+// verb clamps the timings, waits out the deferred apply, reads the echo back
+// as device truth, and warns when an enable didn't stick.
+const DAC_HW_MUTE_APPLY_MS = 200;
+
 export function setDacHwMute(s: ReadySession, patch: Partial<DacHwMute>): void {
-  const next = { ...s.mirror.snapshot.dacHwMute, ...patch };
+  const merged = { ...s.mirror.snapshot.dacHwMute, ...patch };
+  const next: DacHwMute = merged.enabled
+    ? { ...merged, holdMs: Clamp.dacHwMuteHoldMs(merged.holdMs), releaseMs: Clamp.dacHwMuteReleaseMs(merged.releaseMs) }
+    : merged;
   s.mirror.snapshot.dacHwMute = next;
-  void command(s, 'set DAC HW mute', () => s.device.setDacHwMute(next), (_ok, s) => {
+  void command(s, 'set DAC HW mute', async () => {
+    await s.device.setDacHwMute(next);
+    await new Promise((r) => setTimeout(r, DAC_HW_MUTE_APPLY_MS));
+    return s.device.getDacHwMute();
+  }, (echo, s) => {
+    s.mirror.snapshot.dacHwMute = echo;
+    if (next.enabled && (echo.enabled !== next.enabled || echo.pin !== next.pin)) {
+      pushNotice('warn', 'DAC HW mute config rejected by the device (pin in use or invalid).');
+    }
     s.mirror.requestReconcile(false);
   });
 }

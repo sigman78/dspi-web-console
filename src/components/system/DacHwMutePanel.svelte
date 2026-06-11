@@ -4,38 +4,55 @@
   import PinSelect from './PinSelect.svelte';
   import { connection } from '@/state';
   import { setDacHwMute, testDacHwMute } from '@/runtime';
-  import { availablePinsFor } from '@/domain';
+  import { availablePinsFor, type DacHwMute } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
   const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
   const cfg = $derived(snap?.dacHwMute);
-  const editable = $derived(connected && (cfg?.enabled ?? false));
+  const editable = $derived(connected && cfg != null);
+
+  // The firmware persists pin/polarity/timings only together with enabled=1
+  // (a disabled write zeroes them), so edits made while disabled are staged
+  // here and shipped as one struct when the user flips the header toggle.
+  let draft = $state<DacHwMute | null>(null);
+  const view = $derived(draft ?? cfg);
 
   let testBusy = $state(false);
 
+  function patch(p: Partial<DacHwMute>) {
+    if (!cfg) return;
+    if (cfg.enabled) { setDacHwMute(s, p); return; }
+    draft = { ...(draft ?? cfg), ...p };
+  }
+
   function onToggleEnabled() {
     if (!cfg) return;
-    setDacHwMute(s, { enabled: !cfg.enabled });
+    if (cfg.enabled) {
+      setDacHwMute(s, { enabled: false });
+    } else {
+      setDacHwMute(s, { ...(draft ?? cfg), enabled: true });
+    }
+    draft = null;
   }
 
   function onToggleActiveLow(v: boolean) {
-    setDacHwMute(s, { activeLow: v });
+    patch({ activeLow: v });
   }
 
   function onPin(pin: number) {
-    setDacHwMute(s, { pin });
+    patch({ pin });
   }
 
   function onHoldMs(e: Event) {
     const v = parseInt((e.target as HTMLInputElement).value, 10);
-    if (!Number.isNaN(v)) setDacHwMute(s, { holdMs: Math.max(0, v) });
+    if (!Number.isNaN(v)) patch({ holdMs: Math.max(0, v) });
   }
 
   function onReleaseMs(e: Event) {
     const v = parseInt((e.target as HTMLInputElement).value, 10);
-    if (!Number.isNaN(v)) setDacHwMute(s, { releaseMs: Math.max(0, v) });
+    if (!Number.isNaN(v)) patch({ releaseMs: Math.max(0, v) });
   }
 
   function onTest() {
@@ -57,24 +74,24 @@
     />
   {/snippet}
 
-  {#if cfg && snap}
-    <div class="rows" class:dimmed={!cfg.enabled}>
+  {#if cfg && view && snap}
+    <div class="rows" class:dimmed={!cfg.enabled && !draft}>
       <div class="row">
         <ToggleSwitch
           size="sm"
           label="ACTIVE LOW"
           ariaLabel="DAC mute active low"
-          checked={cfg.activeLow}
+          checked={view.activeLow}
           disabled={!editable}
           onChange={onToggleActiveLow}
         />
       </div>
 
       <div class="row">
-        <span class="lbl" class:faint={!editable}>GPIO PIN</span>
+        <span class="lbl">GPIO PIN</span>
         <PinSelect
-          value={cfg.pin}
-          candidates={availablePinsFor(snap.platform.type, snap, cfg.pin)}
+          value={view.pin}
+          candidates={availablePinsFor(snap.platform.type, snap, view.pin)}
           ariaLabel="DAC HW mute GPIO pin"
           disabled={!editable}
           onChange={onPin}
@@ -82,14 +99,14 @@
       </div>
 
       <div class="row">
-        <span class="lbl" class:faint={!editable}>HOLD MS</span>
+        <span class="lbl">HOLD MS</span>
         <input
           class="numfield"
           type="number"
-          min="0"
-          max="5000"
+          min="1"
+          max="500"
           step="1"
-          value={cfg.holdMs}
+          value={view.holdMs}
           onchange={onHoldMs}
           disabled={!editable}
           aria-label="DAC mute hold time ms"
@@ -97,14 +114,14 @@
       </div>
 
       <div class="row">
-        <span class="lbl" class:faint={!editable}>RELEASE MS</span>
+        <span class="lbl">RELEASE MS</span>
         <input
           class="numfield"
           type="number"
           min="0"
-          max="5000"
+          max="500"
           step="1"
-          value={cfg.releaseMs}
+          value={view.releaseMs}
           onchange={onReleaseMs}
           disabled={!editable}
           aria-label="DAC mute release time ms"
@@ -115,7 +132,7 @@
         <button
           class="test-btn"
           onclick={onTest}
-          disabled={!editable || testBusy}
+          disabled={!connected || !cfg.enabled || testBusy}
           title="Pulse the DAC mute pin for ~1 s to verify wiring"
         >{testBusy ? 'TESTING…' : 'TEST PULSE'}</button>
       </div>
@@ -136,7 +153,6 @@
     color: var(--text-faint);
     white-space: nowrap;
   }
-  .lbl.faint { opacity: 0.4; }
   .numfield {
     font-family: var(--font-mono);
     font-size: 10px;

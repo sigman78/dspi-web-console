@@ -1139,20 +1139,65 @@ describe('setDacHwMute', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('patches dacHwMute after ack', async () => {
-    const setDacHwMuteFn = vi.fn(async () => {});
+  function dacHarness() {
+    const sent: DacHwMute[] = [];
+    const setDacHwMuteFn = vi.fn(async (cfg: DacHwMute) => { sent.push(cfg); });
+    // Echo device: GET returns the last accepted SET, per the firmware's
+    // read-back-to-verify contract.
     const device = initializedDevice({
       setDacHwMute: setDacHwMuteFn,
+      getDacHwMute: vi.fn(async () => sent[sent.length - 1]),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
     const bulk = parseBulkParams(makeBulk());
     dispatch({ t: 'synced', session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    return { sent, setDacHwMuteFn };
+  }
+
+  it('patches dacHwMute optimistically and settles on the device echo', async () => {
+    const { setDacHwMuteFn } = dacHarness();
     const cfg: DacHwMute = { enabled: true, activeLow: true, pin: 20, holdMs: 50, releaseMs: 10 };
     setDacHwMute(activeSession()!, cfg);
+    expect(liveMirror().current?.dacHwMute).toEqual(cfg);   // optimistic
     await vi.runAllTimersAsync();
-    expect(liveMirror().current?.dacHwMute).toEqual(cfg);
+    expect(liveMirror().current?.dacHwMute).toEqual(cfg);   // echo agrees
     expect(setDacHwMuteFn).toHaveBeenCalledWith(cfg);
+  });
+
+  it('merges a second quick edit over the first optimistic patch (no stale-struct revert)', async () => {
+    const { sent } = dacHarness();
+    setDacHwMute(activeSession()!, { activeLow: true });
+    setDacHwMute(activeSession()!, { holdMs: 50 });   // inside the first ack window
+    await vi.runAllTimersAsync();
+    expect(sent[1]).toMatchObject({ activeLow: true, holdMs: 50 });
+    expect(liveMirror().current?.dacHwMute).toMatchObject({ activeLow: true, holdMs: 50 });
+  });
+
+  it('clamps holdMs into the firmware range when enabling', async () => {
+    const { sent } = dacHarness();
+    setDacHwMute(activeSession()!, { enabled: true });   // virgin device: holdMs 0
+    await vi.runAllTimersAsync();
+    expect(sent[0].holdMs).toBeGreaterThanOrEqual(1);
+  });
+
+  it('warns and reverts when the device swallows an enable', async () => {
+    const rejected: DacHwMute = { enabled: false, activeLow: false, pin: 0, holdMs: 0, releaseMs: 0 };
+    const device = initializedDevice({
+      setDacHwMute: vi.fn(async () => {}),
+      getDacHwMute: vi.fn(async () => rejected),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    const bulk = parseBulkParams(makeBulk());
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    clearNotices();
+    setDacHwMute(activeSession()!, { enabled: true, pin: 6 });
+    // Step just past the deferred-apply wait; running ALL timers would also
+    // expire the warn notice's TTL before it can be observed.
+    await vi.advanceTimersByTimeAsync(250);
+    expect(liveMirror().current?.dacHwMute).toEqual(rejected);
+    expect(notices.list.some((n) => n.kind === 'warn' && /DAC HW mute/i.test(n.message))).toBe(true);
   });
 });
 
@@ -1180,6 +1225,23 @@ describe('setInputSource', () => {
     expect(notices.list.some((n) => n.kind === 'info' && /input source/i.test(n.message))).toBe(true);
     expect(liveMirror().current?.inputConfig.source).toBe(AudioInputSource.Spdif);
     expect(setInputSourceFn).toHaveBeenCalledWith(AudioInputSource.Spdif);
+  });
+
+  it('drops the retained S/PDIF RX status frame on a source switch', async () => {
+    const device = initializedDevice({
+      setInputSource: vi.fn(async () => {}),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    const bulk = parseBulkParams(makeBulk());
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    activeSession()!.telemetry.spdifRxStatus = {
+      state: 2, inputSource: 1, lockCount: 3, lossCount: 0,
+      sampleRate: 48000, parityErrors: 0, fifoFillPct: 50,
+    };
+    setInputSource(activeSession()!, AudioInputSource.Spdif);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(activeSession()!.telemetry.spdifRxStatus).toBeNull();
   });
 });
 
