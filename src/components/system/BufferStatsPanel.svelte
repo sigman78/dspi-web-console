@@ -79,7 +79,8 @@
 </Panel>
 
 <style>
-  .tblwrap { padding: 8px 14px 12px; overflow-x: auto; }
+  .tblwrap { padding: 10px 14px 14px; overflow-x: auto; }
+  /* Typography mirrors KV: 9px faint labels (header + SRC), 12px/600 values. */
   .tbl {
     width: 100%;
     border-collapse: collapse;
@@ -89,19 +90,28 @@
   .tbl thead th {
     color: var(--text-faint);
     font-weight: 700;
-    letter-spacing: 1.5px;
+    letter-spacing: 1.2px;
     text-align: right;
-    padding: 2px 6px;
+    padding: 2px 6px 4px;
     border-bottom: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
   }
   .tbl thead th.src { text-align: left; }
   .tbl tbody td {
-    color: var(--text-dim);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
     text-align: right;
-    padding: 3px 6px;
+    padding: 6px;
     border-bottom: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
   }
-  .tbl tbody td.src { color: var(--text-faint); text-align: left; letter-spacing: 0.5px; }
+  .tbl tbody td.src {
+    font-size: 9px;
+    font-weight: 400;
+    color: var(--text-faint);
+    text-align: left;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+  }
   .tbl tbody tr:last-child td { border-bottom: none; }
 
   .seq {
