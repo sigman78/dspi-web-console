@@ -1,5 +1,6 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
+  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import PinSelect from './PinSelect.svelte';
   import { connection } from '@/state';
   import { setDacHwMute, testDacHwMute } from '@/runtime';
@@ -10,6 +11,7 @@
   const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
   const cfg = $derived(snap?.dacHwMute ?? null);
+  const editable = $derived(connected && (cfg?.enabled ?? false));
 
   let testBusy = $state(false);
 
@@ -18,9 +20,9 @@
     setDacHwMute(s, { ...cfg, enabled: !cfg.enabled });
   }
 
-  function onToggleActiveLow() {
+  function onToggleActiveLow(v: boolean) {
     if (!cfg || !snap) return;
-    setDacHwMute(s, { ...cfg, activeLow: !cfg.activeLow });
+    setDacHwMute(s, { ...cfg, activeLow: v });
   }
 
   function onPin(pin: number) {
@@ -49,41 +51,42 @@
 </script>
 
 <Panel code="SY.10" title="DAC HW MUTE">
+  {#snippet right()}
+    <ToggleSwitch
+      size="sm"
+      checked={cfg?.enabled ?? false}
+      disabled={!connected || cfg === null}
+      ariaLabel={cfg?.enabled ? 'Disable DAC HW mute' : 'Enable DAC HW mute'}
+      onChange={() => onToggleEnabled()}
+    />
+  {/snippet}
+
   {#if cfg !== null && snap !== null}
-    <div class="rows">
+    <div class="rows" class:dimmed={!cfg.enabled}>
       <div class="row">
-        <span class="lbl">ENABLED</span>
-        <button
-          class="toggle"
-          class:on={cfg.enabled}
-          onclick={onToggleEnabled}
-          disabled={!connected}
-        >{cfg.enabled ? 'YES' : 'NO'}</button>
+        <ToggleSwitch
+          size="sm"
+          label="ACTIVE LOW"
+          ariaLabel="DAC mute active low"
+          checked={cfg.activeLow}
+          disabled={!editable}
+          onChange={onToggleActiveLow}
+        />
       </div>
 
       <div class="row">
-        <span class="lbl">ACTIVE LOW</span>
-        <button
-          class="toggle"
-          class:on={cfg.activeLow}
-          onclick={onToggleActiveLow}
-          disabled={!connected}
-        >{cfg.activeLow ? 'YES' : 'NO'}</button>
-      </div>
-
-      <div class="row">
-        <span class="lbl">GPIO PIN</span>
+        <span class="lbl" class:faint={!editable}>GPIO PIN</span>
         <PinSelect
           value={cfg.pin}
           candidates={availablePinsFor(snap.platform.type, snap, cfg.pin)}
           ariaLabel="DAC HW mute GPIO pin"
-          disabled={!connected}
+          disabled={!editable}
           onChange={onPin}
         />
       </div>
 
       <div class="row">
-        <span class="lbl">HOLD MS</span>
+        <span class="lbl" class:faint={!editable}>HOLD MS</span>
         <input
           class="numfield"
           type="number"
@@ -92,13 +95,13 @@
           step="1"
           value={cfg.holdMs}
           onchange={onHoldMs}
-          disabled={!connected}
+          disabled={!editable}
           aria-label="DAC mute hold time ms"
         />
       </div>
 
       <div class="row">
-        <span class="lbl">RELEASE MS</span>
+        <span class="lbl" class:faint={!editable}>RELEASE MS</span>
         <input
           class="numfield"
           type="number"
@@ -107,7 +110,7 @@
           step="1"
           value={cfg.releaseMs}
           onchange={onReleaseMs}
-          disabled={!connected}
+          disabled={!editable}
           aria-label="DAC mute release time ms"
         />
       </div>
@@ -116,7 +119,7 @@
         <button
           class="test-btn"
           onclick={onTest}
-          disabled={!connected || testBusy}
+          disabled={!editable || testBusy}
           title="Pulse the DAC mute pin for ~1 s to verify wiring"
         >{testBusy ? 'TESTING…' : 'TEST PULSE'}</button>
       </div>
@@ -128,6 +131,7 @@
 
 <style>
   .rows { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .rows.dimmed { opacity: 0.45; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .test-row { justify-content: flex-start; margin-top: 4px; }
   .lbl {
@@ -138,26 +142,7 @@
     color: var(--text-faint);
     white-space: nowrap;
   }
-  .toggle {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding: 3px 8px;
-    border-radius: 3px;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
-    border: 1px solid var(--border);
-    color: var(--text-faint);
-    cursor: pointer;
-    min-width: 40px;
-  }
-  .toggle:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
-  .toggle:disabled { opacity: 0.4; cursor: default; }
-  .toggle.on {
-    background: color-mix(in oklab, var(--ok) 12%, transparent);
-    border-color: color-mix(in oklab, var(--ok) 50%, var(--border));
-    color: var(--ok);
-  }
+  .lbl.faint { opacity: 0.4; }
   .numfield {
     font-family: var(--font-mono);
     font-size: 10px;

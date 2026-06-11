@@ -1,5 +1,6 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
+  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import PinSelect from './PinSelect.svelte';
   import { connection } from '@/state';
@@ -14,11 +15,6 @@
   const anyI2s = $derived(snap?.i2s?.outputSlotTypes.some((t) => t === 1) ?? false);
   const rate = $derived(s.telemetry.info?.sampleRateHz ?? 0);
   const allow256 = $derived(rate < 96000);
-
-  const ENABLE_OPTS = [
-    { value: 0, label: 'OFF' },
-    { value: 1, label: 'ON' },
-  ];
 
   const bckCandidates = $derived(
     snap ? validBckPins(snap.platform.type, snap).map((pin) => ({ pin, usedBy: null })) : [],
@@ -50,13 +46,12 @@
 
       <div class="row">
         <span class="lbl">MCK</span>
-        <SegmentedSelect
+        <ToggleSwitch
           size="sm"
-          value={snap.i2s.mckEnabled ? 1 : 0}
-          options={ENABLE_OPTS}
-          ariaLabel="MCK enable"
+          checked={snap.i2s.mckEnabled}
+          ariaLabel={snap.i2s.mckEnabled ? 'Disable MCK' : 'Enable MCK'}
           disabled={!connected}
-          onChange={(v) => void setMckEnabled(s, v === 1)}
+          onChange={(v) => void setMckEnabled(s, v)}
         />
         <PinSelect
           value={snap.i2s.mckPin}
