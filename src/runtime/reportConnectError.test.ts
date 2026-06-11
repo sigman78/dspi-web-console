@@ -14,7 +14,7 @@ describe('reportConnectError', () => {
   });
 
   it('flags an UnsupportedDevicePacket (truncated payload) for the same upgrade prompt', () => {
-    reportConnectError(new UnsupportedDevicePacket('1.1.4', 2848, 2896));
+    reportConnectError(new UnsupportedDevicePacket('1.1.4', 2848, 2960));
     expect(connection.phase).toBe('errored');
     expect(connection.errorKind).toBe('unsupported-firmware');
     expect(connection.error).toContain('incomplete parameter packet');
