@@ -24,7 +24,7 @@ const snap = {
 const session = {
   mirror: { current: snap },
   presets: { directory: null },
-  device: { capabilities: { features: { outputConfigSave: false } } },
+  device: {},
 } as any;
 
 beforeEach(() => { verbs.setOutputType.mockClear(); verbs.setOutputDataPin.mockClear(); });

@@ -600,7 +600,6 @@ describe('notify-driven load settle', () => {
   it('waits for presetLoaded before re-reading device truth', async () => {
     vi.useFakeTimers();
     const device = {
-      capabilities: { features: { notifications: true } },
       loadPreset: vi.fn(async () => ({ ok: true, value: undefined })),
       getSnapshot: vi.fn(async () => makeTestSnapshot()),
       setMasterVolume: vi.fn(async () => {}),
@@ -620,7 +619,6 @@ describe('notify-driven load settle', () => {
   it('proceeds after the timeout when the event never arrives', async () => {
     vi.useFakeTimers();
     const device = {
-      capabilities: { features: { notifications: true } },
       loadPreset: vi.fn(async () => ({ ok: true, value: undefined })),
       getSnapshot: vi.fn(async () => makeTestSnapshot()),
       setMasterVolume: vi.fn(async () => {}),
