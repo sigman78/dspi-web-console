@@ -19,7 +19,7 @@
       <span class="seq">SEQ {bs.sequence}</span>
     {/if}
     <button
-      class="reset-btn"
+      class="chip"
       onclick={() => resetBufferStats(s)}
       disabled={!connected}
       title="Zero all buffer-stats counters on the device"
@@ -74,7 +74,7 @@
       </table>
     </div>
   {:else}
-    <p class="idle">Waiting for buffer stats…</p>
+    <p class="hint idle">Waiting for buffer stats…</p>
   {/if}
 </Panel>
 
@@ -120,19 +120,5 @@
     color: var(--text-faint);
     letter-spacing: 0.5px;
   }
-  .reset-btn {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding: 2px 8px;
-    border-radius: 3px;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    cursor: pointer;
-  }
-  .reset-btn:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
-  .reset-btn:disabled { opacity: 0.45; cursor: default; }
-  .idle { font-family: var(--font-mono); font-size: 9px; color: var(--text-faint); padding: 12px 14px; margin: 0; }
+  .idle { padding: 10px 14px; }
 </style>

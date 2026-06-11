@@ -1,0 +1,96 @@
+/* Shared control idioms for panel surfaces. One place for the recipes that
+   were copy-pasted (and drifting) across panel <style> blocks; components
+   keep only their layout and semantic-state styles.
+
+   .chip — small mono action button.
+     Tone via modifier: .accent / .warn / .danger set --tone and switch to the
+     tinted recipe. .md is the larger tier (modal / device actions).
+     .on — selected state for chip groups (wins over :disabled dimming, since
+     the selected chip is disabled to make the group radio-like).
+     .armed — two-step confirm emphasis; combine with a tone class.
+
+   .microlbl — control row label (KV stays the canon for label+value pairs).
+   .hint — faint mono helper/idle text; padding stays component-local.
+   .dimmed — inactive pane treatment for feature-off panel bodies. */
+
+.chip {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--text) 4%, transparent);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.chip:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
+.chip:disabled { opacity: 0.4; cursor: default; }
+
+.chip.md {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  padding: 6px 12px;
+  border-radius: 4px;
+}
+
+.chip.accent { --tone: var(--accent); }
+.chip.warn   { --tone: var(--warn); }
+.chip.danger { --tone: var(--err); }
+.chip.accent, .chip.warn, .chip.danger {
+  background: color-mix(in oklab, var(--tone) 10%, transparent);
+  border-color: color-mix(in oklab, var(--tone) 50%, var(--border));
+  color: var(--tone);
+}
+.chip.accent:hover:not(:disabled),
+.chip.warn:hover:not(:disabled),
+.chip.danger:hover:not(:disabled) {
+  color: var(--tone);
+  background: color-mix(in oklab, var(--tone) 16%, transparent);
+  border-color: var(--tone);
+}
+
+.chip.on {
+  --tone: var(--accent);
+  background: color-mix(in oklab, var(--tone) 14%, transparent);
+  border-color: color-mix(in oklab, var(--tone) 50%, var(--border));
+  color: var(--tone);
+  opacity: 1;
+}
+
+.chip.armed {
+  background: color-mix(in oklab, var(--tone) 26%, transparent);
+  border-color: var(--tone);
+}
+
+.microlbl {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.hint {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.4;
+  color: var(--text-faint);
+  margin: 0;
+}
+
+.dimmed { opacity: 0.45; }
+
+/* Section sub-header inside a panel body (border-separated). */
+.subhdr {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--text-faint);
+  padding: 8px 14px 0;
+  border-top: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
+  margin-top: 6px;
+}

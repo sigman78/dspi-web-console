@@ -34,5 +34,4 @@
 
 <style>
   .kvgrid { padding: 12px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .kvgrid.dimmed { opacity: 0.45; }
 </style>

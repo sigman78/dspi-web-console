@@ -27,8 +27,8 @@
 
 {#if visible}
   <button
-    class="save"
-    class:confirming
+    class="chip"
+    class:warn={confirming}
     onclick={onClick}
     onblur={onBlur}
     disabled={!connected}
@@ -37,23 +37,3 @@
     {#if confirming}CONFIRM{:else}SAVE{/if}
   </button>
 {/if}
-
-<style>
-  .save {
-    padding: 3px 8px;
-    border-radius: 3px;
-    font-family: var(--font-mono); font-size: 9px;
-    letter-spacing: 1px; font-weight: 700;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
-    border: 1px solid var(--border);
-    color: var(--text-faint);
-    cursor: pointer;
-  }
-  .save:hover:not(:disabled) { color: var(--text-dim); border-color: var(--border-hi); }
-  .save:disabled { opacity: 0.4; cursor: default; }
-  .save.confirming {
-    color: var(--warn);
-    border-color: color-mix(in oklab, var(--warn) 50%, var(--border));
-    background: color-mix(in oklab, var(--warn) 14%, transparent);
-  }
-</style>

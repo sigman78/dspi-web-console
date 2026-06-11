@@ -89,7 +89,7 @@
       </div>
 
       <div class="row">
-        <span class="lbl">GPIO PIN</span>
+        <span class="microlbl">GPIO PIN</span>
         <PinSelect
           value={cfg.pin}
           candidates={availablePinsFor(snap.platform.type, snap, cfg.pin)}
@@ -100,7 +100,7 @@
       </div>
 
       <div class="row">
-        <span class="lbl">HOLD MS</span>
+        <span class="microlbl">HOLD MS</span>
         <input
           class="numfield"
           type="number"
@@ -115,7 +115,7 @@
       </div>
 
       <div class="row">
-        <span class="lbl">RELEASE MS</span>
+        <span class="microlbl">RELEASE MS</span>
         <input
           class="numfield"
           type="number"
@@ -131,7 +131,7 @@
 
       <div class="row test-row">
         <button
-          class="test-btn"
+          class="chip warn"
           onclick={onTest}
           disabled={!connected || !cfg.enabled || testBusy}
           title="Pulse the DAC mute pin for ~1 s to verify wiring"
@@ -143,41 +143,14 @@
 
 <style>
   .rows { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
-  .rows.dimmed { opacity: 0.45; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .test-row { justify-content: flex-start; margin-top: 4px; }
-  .lbl {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    color: var(--text-faint);
-    white-space: nowrap;
-  }
+  /* Base input styling comes from the global input[type="number"] rule. */
   .numfield {
     font-family: var(--font-mono);
     font-size: 10px;
     padding: 3px 6px;
-    background: var(--panel-solid);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 4px;
     width: 80px;
     text-align: right;
   }
-  .numfield:disabled { opacity: 0.4; }
-  .test-btn {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding: 4px 12px;
-    border-radius: 3px;
-    background: color-mix(in oklab, var(--warn) 10%, transparent);
-    border: 1px solid color-mix(in oklab, var(--warn) 50%, var(--border));
-    color: var(--warn);
-    cursor: pointer;
-  }
-  .test-btn:hover:not(:disabled) { background: color-mix(in oklab, var(--warn) 16%, transparent); }
-  .test-btn:disabled { opacity: 0.4; cursor: default; }
 </style>

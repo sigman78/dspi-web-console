@@ -148,6 +148,36 @@ describe('runtime/presets', () => {
     });
   });
 
+  describe('load read-back verification', () => {
+    // The firmware ACKs PresetLoad and emits presetLoaded BEFORE validating
+    // the slot; a CRC/layout-invalid slot is silently not applied (RAM and
+    // last_active untouched). The console must not trust the notify alone.
+    it('surfaces an error and keeps device truth when the device silently rejects the load', async () => {
+      settings.warnOnPresetSwitchDirty = false;
+      await fetchPresetInfo(sess());
+      await savePresetSlot(sess(), 1 as PresetSlot);
+      expect(ps().active).toBe(1);
+      const d = activeSession()!.device as any;
+      const origLoad = d.loadPreset;
+      const origGetActive = d.getActivePreset;
+      d.loadPreset = async (slot: number) => {
+        sess().notifyWaiters.notify({ kind: 'presetLoaded', seq: 1, slot });
+        return { ok: true };
+      };
+      d.getActivePreset = async () => 1; // device never switched
+      try {
+        const r = await loadPresetSlot(sess(), 3 as PresetSlot);
+        expect(r.ok).toBe(false);
+        expect(ps().active).toBe(1);
+        expect(ps().lastActionError).toMatch(/^Load:/);
+        expect(ps().lastActionError).toMatch(/rejected/i);
+      } finally {
+        d.loadPreset = origLoad;
+        d.getActivePreset = origGetActive;
+      }
+    });
+  });
+
   describe('deletePresetSlot', () => {
     it('clears the occupied bit', async () => {
       await fetchPresetInfo(sess());
@@ -640,6 +670,7 @@ describe('notify-driven load settle', () => {
     vi.useFakeTimers();
     const device = {
       loadPreset: vi.fn(async () => ({ ok: true, value: undefined })),
+      getActivePreset: vi.fn(async () => 2),
       getSnapshot: vi.fn(async () => makeTestSnapshot()),
       setMasterVolume: vi.fn(async () => {}),
     };
@@ -659,6 +690,7 @@ describe('notify-driven load settle', () => {
     vi.useFakeTimers();
     const device = {
       loadPreset: vi.fn(async () => ({ ok: true, value: undefined })),
+      getActivePreset: vi.fn(async () => 2),
       getSnapshot: vi.fn(async () => makeTestSnapshot()),
       setMasterVolume: vi.fn(async () => {}),
     };
@@ -668,5 +700,27 @@ describe('notify-driven load settle', () => {
     const r = await p;
     expect('ok' in r && r.ok).toBe(true);
     expect(device.getSnapshot).toHaveBeenCalled();
+  });
+
+  it('does not mark a slot active when the post-load snapshot refresh fails', async () => {
+    vi.useFakeTimers();
+    const device = {
+      loadPreset: vi.fn(async () => ({ ok: true, value: undefined })),
+      getActivePreset: vi.fn(async () => 2),
+      getSnapshot: vi.fn(async () => { throw new Error('snapshot failed'); }),
+      setMasterVolume: vi.fn(async () => {}),
+    };
+    const s = installSessionWith(device);
+    s.presets.active = 1 as PresetSlot;
+
+    const p = loadPresetSlot(s, 2 as PresetSlot);
+    await vi.advanceTimersByTimeAsync(150);
+    s.notifyWaiters.notify({ kind: 'presetLoaded', seq: 1, slot: 2 });
+    const r = await p;
+
+    expect('ok' in r && r.ok).toBe(false);
+    expect(s.presets.active).toBe(null);
+    expect(s.presets.lastActionError).toContain('Load refresh');
+    expect(s.presets.lastActionError).toContain('snapshot failed');
   });
 });
