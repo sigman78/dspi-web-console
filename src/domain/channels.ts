@@ -42,6 +42,12 @@ export type OutputSlot = (typeof OutputSlot)[keyof typeof OutputSlot];
 
 export type OutputMode = 'SPDIF' | 'I2S' | 'PDM';
 
+// Wire encoding of a stereo pair's output type: each i2s.outputSlotTypes
+// entry and SetOutputType's payload byte. PDM is not part of this encoding
+// (the PDM sub is a fixed-mode slot outside the pair array).
+export const OutputSlotType = { Spdif: 0, I2s: 1 } as const;
+export type OutputSlotType = (typeof OutputSlotType)[keyof typeof OutputSlotType];
+
 // Stereo-pair index into i2s.outputSlotTypes (and SetOutputType's wValue).
 // NOT an OutputSlot: pairs 0-3 cover output channels in L/R pairs.
 export type I2sPairSlot = 0 | 1 | 2 | 3;

@@ -5,14 +5,14 @@
   import PinSelect from './PinSelect.svelte';
   import { connection } from '@/state';
   import { setI2sBckPin, setMckEnabled, setMckPin, setMckMultiplier } from '@/runtime';
-  import { validBckPins, availablePinsFor } from '@/domain';
+  import { validBckPins, availablePinsFor, OutputSlotType } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
 
   const snap = $derived(s.mirror.current);
   const connected = $derived(connection.connected);
-  const anyI2s = $derived(snap?.i2s?.outputSlotTypes.some((t) => t === 1) ?? false);
+  const anyI2s = $derived(snap?.i2s?.outputSlotTypes.some((t) => t === OutputSlotType.I2s) ?? false);
   const rate = $derived(s.telemetry.info?.sampleRateHz ?? 0);
   const allow256 = $derived(rate < 96000);
 
