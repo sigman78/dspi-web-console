@@ -13,9 +13,6 @@
     [FilterType.Allpass]: 'Allpass',
   };
 
-  // Notch/Allpass are intentionally omitted pending a UI design for these
-  // filter types. Firmware support (V10 floor) is guaranteed; no capability
-  // gate needed.
   export const TYPE_ORDER: FilterType[] = [
     FilterType.Flat,
     FilterType.Peaking,
@@ -23,6 +20,8 @@
     FilterType.HighShelf,
     FilterType.HighPass,
     FilterType.LowPass,
+    FilterType.Notch,
+    FilterType.Allpass,
   ];
 </script>
 

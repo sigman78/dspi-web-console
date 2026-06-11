@@ -78,6 +78,21 @@ function coeffsFor(type: FilterType, f: number, q: number, gainDb: number, fs: n
       a2: (1 - alpha) / a0,
     };
   }
+  if (type === FilterType.Notch) {
+    const a0 = 1 + alpha;
+    return {
+      b0: 1 / a0,
+      b1: (-2 * cosw0) / a0,
+      b2: 1 / a0,
+      a1: (-2 * cosw0) / a0,
+      a2: (1 - alpha) / a0,
+    };
+  }
+  if (type === FilterType.Allpass) {
+    // Allpass: flat magnitude (0 dB everywhere). Returning null causes
+    // filterCurve to contribute 0 dB from this band, which is correct.
+    return null;
+  }
   return null;
 }
 
