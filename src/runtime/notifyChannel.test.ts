@@ -63,7 +63,7 @@ afterEach(() => { dispatch({ t: 'disconnected' }); });
 
 describe('startNotifyChannel', () => {
   it('does nothing on a device without the notifications capability', async () => {
-    const dev = await DspDevice.create(new MockTransport({ platform: 'rp2350' })); // wire 6
+    const dev = await DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 6, fwVersion: { major: 1, minor: 1, patch: 3 } }));
     const session = connect(dev);
     const m = manualClock();
     const stop = startNotifyChannel(session, m.clock);

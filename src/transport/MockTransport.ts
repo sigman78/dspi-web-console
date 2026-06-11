@@ -18,11 +18,12 @@ import {
 export interface MockOptions {
   platform: 'rp2040' | 'rp2350';
   serial?: string;
-  // Wire version the mock reports/synthesizes (default 6). V7-V10 tail sections
-  // are built faithfully so capability gating and the V6-write merge are testable.
+  // Wire version the mock reports/synthesizes (default 10 = released 1.1.4).
+  // V7-V10 tail sections are built faithfully; pass an older version to
+  // simulate a legacy device (e.g. for connect-reject tests).
   wireVersion?: number;
-  // Firmware version reported by GetPlatform (default 1.0.0). Set alongside
-  // wireVersion for a coherent device (e.g. 1.1.4 + V10).
+  // Firmware version reported by GetPlatform (default 1.1.4). Set alongside
+  // wireVersion for a coherent device (e.g. 1.1.3 + V6).
   fwVersion?: { major: number; minor: number; patch: number };
   // Override the header's payloadLength to simulate a malformed device that
   // reports a truncated payload, exercising the connect truncation guard.
@@ -93,9 +94,9 @@ export class MockTransport implements DspTransport {
   constructor(opts: MockOptions) {
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
     this.#platform = opts.platform === 'rp2040' ? PlatformType.RP2040 : PlatformType.RP2350;
-    this.#wireVersion = opts.wireVersion ?? 6;
+    this.#wireVersion = opts.wireVersion ?? 10;
     this.#payloadLength = opts.payloadLength;
-    const fw = opts.fwVersion ?? { major: 1, minor: 0, patch: 0 };
+    const fw = opts.fwVersion ?? { major: 1, minor: 1, patch: 4 };
     this.#fwMajor = fw.major;
     this.#fwMinorPatch = ((fw.minor & 0xF) << 4) | (fw.patch & 0xF);
     this.#mockState = defaultMockBulkState(this.#platform);

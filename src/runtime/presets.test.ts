@@ -470,9 +470,11 @@ describe('runtime/presets', () => {
       }
     });
 
-    it('captures source RAM only after the source load has settled', async () => {
-      // loadPreset is async on the wire (deferred flash→RAM copy). Capturing
-      // before the settle would read the previous (active) slot's RAM, not src.
+    it('captures source RAM only after the source load has settled (legacy settle sleep)', async () => {
+      // Tests the 100 ms sleep path: requires a V6 device so loadAndSettle uses
+      // the timer fallback rather than the notify-driven path.
+      dispatch({ t: 'disconnected' });
+      await bootMock('rp2350', { wireVersion: 6 });
       await fetchPresetInfo(sess());
       const src    = 3 as PresetSlot;
       const active = 1 as PresetSlot;

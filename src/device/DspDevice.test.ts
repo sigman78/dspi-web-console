@@ -917,7 +917,7 @@ describe('I2S clock commands', () => {
 });
 
 describe('setAllParams', () => {
-  it('issues one ctrlOut with code=0xA1, wValue=0, byteLength=2896', async () => {
+  it('issues one ctrlOut with code=0xA1, wValue=0, byteLength=2960', async () => {
     const transport = new MockTransport({ platform: 'rp2350' });
     const ctrlOutSpy = vi.spyOn(transport, 'ctrlOut');
     const dev = await DspDevice.create(transport);
@@ -929,7 +929,7 @@ describe('setAllParams', () => {
     const calls = ctrlOutSpy.mock.calls.filter((c) => c[0] === 0xA1);
     expect(calls).toHaveLength(1);
     expect(calls[0][1]).toBe(0);              // wValue
-    expect(calls[0][2].byteLength).toBe(2896); // exact V6 size
+    expect(calls[0][2].byteLength).toBe(Wire.BulkSizes.V10); // V10 device round-trips its full tail
   });
 
   it('mock direct getters reflect values written through setAllParams', async () => {
@@ -1043,7 +1043,7 @@ describe('lastRawBulk', () => {
     const dev = await DspDevice.create(new MockTransport({ platform: 'rp2350' }));
     expect(dev.lastRawBulk).toBeNull();
     await dev.getAllParams();
-    expect(dev.lastRawBulk!.byteLength).toBe(2896);   // V6 image
+    expect(dev.lastRawBulk!.byteLength).toBe(Wire.BulkSizes.V10);
   });
 
   it('retains the full V10 image on a 1.1.4 device', async () => {
