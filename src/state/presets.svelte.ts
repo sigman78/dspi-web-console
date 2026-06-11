@@ -47,14 +47,16 @@ export function presetsDirty(s: ReadySession): boolean {
   if (!m.current || !m.baseline) return false;
   const ignoreVol = (s.presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent) === MasterVolumeMode.Independent;
   const soft = settings.soft.muted;
-  // IO config rides the preset only in WithPreset mode; otherwise an IO change
-  // isn't preset content and must not mark dirty. Unknown directory => excluded.
+  // IO config rides the preset only in WithPreset mode. On pre-1.1.4 firmware
+  // the mode bit gates only output pins on preset load -- i2s is unconditional
+  // preset content there. Unknown directory => excluded.
   const withPresetIo = s.presets.directory?.outputConfigMode === OutputConfigMode.WithPreset;
+  const modeGoverned = s.device.capabilities?.features.outputConfigSave === true;
   return diffSnapshots(m.baseline, m.current).some((c): boolean => {
     switch (CHANGE_CLASS[c.kind]) {
       case 'runtime-status': return false;
       case 'volume':         return !(ignoreVol || soft);
-      case 'pin-config':     return withPresetIo;
+      case 'output-config':  return withPresetIo || (!modeGoverned && c.kind === 'i2s');
       case 'preset-content': return true;
     }
   });

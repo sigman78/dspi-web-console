@@ -164,6 +164,50 @@ describe('presets store', () => {
     expect(dirty()).toBe(true);
   });
 
+  function syncModeGovernedSession(): void {
+    dispatch({ t: 'disconnected' });
+    dispatch({
+      t: 'synced',
+      session: makeReadySession({
+        info: {}, hardware: {},
+        capabilities: { features: { outputConfigSave: true } },
+      } as never),
+    });
+  }
+
+  const dirWithMode = (outputConfigMode: OutputConfigMode) => ({
+    occupiedSlotsSet: new Set<number>(),
+    startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
+    outputConfigMode, masterVolumeMode: 0 as any,
+  });
+
+  it('masks an i2s change by output-config mode on mode-governed (1.1.4) devices', () => {
+    syncModeGovernedSession();
+    seed(mkSnap());
+    liveMirror().snapshot.i2s.bckPin = 20;
+    ps().directory = dirWithMode(OutputConfigMode.Independent) as any;
+    expect(dirty()).toBe(false);
+    ps().directory = dirWithMode(OutputConfigMode.WithPreset) as any;
+    expect(dirty()).toBe(true);
+  });
+
+  it('keeps i2s as preset content on legacy devices regardless of mode', () => {
+    seed(mkSnap());
+    liveMirror().snapshot.i2s.bckPin = 20;
+    ps().directory = dirWithMode(OutputConfigMode.Independent) as any;
+    expect(dirty()).toBe(true);
+  });
+
+  it('masks a spdifRxPin change by output-config mode', () => {
+    syncModeGovernedSession();
+    seed(mkSnap({ inputConfig: { source: 0, spdifRxPin: 5 } as any }));
+    liveMirror().snapshot.inputConfig!.spdifRxPin = 7;
+    ps().directory = dirWithMode(OutputConfigMode.Independent) as any;
+    expect(dirty()).toBe(false);
+    ps().directory = dirWithMode(OutputConfigMode.WithPreset) as any;
+    expect(dirty()).toBe(true);
+  });
+
   it('a freshly installed session starts with cleared preset fields', () => {
     // Dirty the current session's preset fields.
     ps().directory = {
