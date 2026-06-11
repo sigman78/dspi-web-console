@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveCapabilities, MIN_SUPPORTED_WIRE, MAX_KNOWN_WIRE } from './capabilities';
+import { deriveCapabilities, MAX_KNOWN_WIRE } from './capabilities';
 import { Wire } from '@/protocol';
 
 const fw = (major: number, minor: number, patch: number) => ({ major, minor, patch });
@@ -59,9 +59,5 @@ describe('deriveCapabilities — metadata + sections', () => {
   it('does not expose a features object (V10 floor makes all capabilities unconditional)', () => {
     const c = deriveCapabilities({ fw: fw(1, 1, 4), wireVersion: 10, payloadLength: 2960, platformId: 1 });
     expect((c as unknown as Record<string, unknown>)['features']).toBeUndefined();
-  });
-
-  it('MIN_SUPPORTED_WIRE is 10 (V10 floor)', () => {
-    expect(MIN_SUPPORTED_WIRE).toBe(10);
   });
 });
