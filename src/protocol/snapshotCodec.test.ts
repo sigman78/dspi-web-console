@@ -129,7 +129,7 @@ describe('snapshotCodec — 1.1.4 sections', () => {
   });
 
   it('nulls the 1.1.4 sections on a V6 packet', () => {
-    const snap = fromBulkParams(hw, makeBulkObject()); // V6 default
+    const snap = fromBulkParams(hw, makeBulkObject({ formatVersion: 6, payloadLength: WireNS.BulkSizes.V6Full }));
     expect(snap.inputConfig).toBeNull();
     expect(snap.lgSoundSync).toBeNull();
     expect(snap.userVolume).toBeNull();

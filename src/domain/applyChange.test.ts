@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { applyChange } from './applyChange';
 import { diffSnapshots } from './snapshotDiff';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
+import * as Wire from '@/protocol/wireTypes';
 import type { FilterParams } from './filter';
 
 function band(o: Partial<FilterParams> = {}): FilterParams {
@@ -25,7 +26,7 @@ describe('applyChange', () => {
     const t = makeSnapshot((b) => { b.formatVersion = 10; });
     applyChange({ kind: 'spdifRxPin', value: 9 }, t);
     expect(t.inputConfig!.spdifRxPin).toBe(9);
-    const t2 = makeSnapshot();   // V6 -> inputConfig null
+    const t2 = makeSnapshot((b) => { b.formatVersion = 6; b.payloadLength = Wire.BulkSizes.V6Full; });
     applyChange({ kind: 'spdifRxPin', value: 9 }, t2);
     expect(t2.inputConfig).toBeNull();
   });
@@ -37,14 +38,14 @@ describe('applyChange', () => {
     applyChange({ kind: 'lgSoundSyncStatus', value: { present: true, volume: 40, muted: false } }, t);
     expect(t.lgSoundSync).toEqual({ enabled: true, present: true, volume: 40, muted: false });
     // null section: a status change is a no-op, not a crash
-    const t2 = makeSnapshot(); // V6 → lgSoundSync null
+    const t2 = makeSnapshot((b) => { b.formatVersion = 6; b.payloadLength = Wire.BulkSizes.V6Full; });
     applyChange({ kind: 'lgSoundSyncEnabled', value: true }, t2);
     expect(t2.lgSoundSync).toBeNull();
   });
 
   it('applies section appearance (null -> present) across wire versions', () => {
-    // V6 default: inputConfig/userVolume/dacHwMute/lgSoundSync are all null.
-    const before = makeSnapshot();
+    // V6: inputConfig/userVolume/dacHwMute/lgSoundSync are all null.
+    const before = makeSnapshot((b) => { b.formatVersion = 6; b.payloadLength = Wire.BulkSizes.V6Full; });
     // V10: all four sections present.
     const after = makeSnapshot((b) => { b.formatVersion = 10; });
 
