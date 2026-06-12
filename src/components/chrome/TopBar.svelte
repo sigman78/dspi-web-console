@@ -6,41 +6,12 @@
   import PresetActiveChip from '@/components/presets/PresetActiveChip.svelte';
   import { connection, activeSession } from '@/state';
   import { setBypass } from '@/runtime';
-  import { APP_VERSION, GIT_SHA, BUILD_DATE, REPO_URL, reportIssueUrl } from '@/buildInfo';
+  import { APP_VERSION, GIT_SHA, BUILD_DATE, REPO_URL } from '@/buildInfo';
 
   const s = $derived(activeSession());
   const connected = $derived(connection.connected);
   const info = $derived(s?.telemetry.info ?? null);
   const bypassed = $derived(s?.mirror.current?.bypass ?? false);
-
-  const fwLabel = $derived(s?.device?.info.capabilities.fwLabel ?? null);
-  const serial = $derived(s?.device?.info.serial ?? null);
-
-  let aboutOpen = $state(false);
-  let aboutEl = $state<HTMLElement | null>(null);
-
-  $effect(() => {
-    if (!aboutOpen) return;
-    function onDown(e: PointerEvent) {
-      if (aboutEl && !aboutEl.contains(e.target as Node)) aboutOpen = false;
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') aboutOpen = false;
-    }
-    document.addEventListener('pointerdown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  });
-
-  const issueUrl = $derived(reportIssueUrl({
-    fwLabel,
-    serial,
-    connectionPhase: connection.phase,
-    error: connection.error,
-  }));
 
   const cpu0 = $derived(connected ? `${s?.telemetry.cpu0 ?? 0}%` : '—');
   const cpu1 = $derived(connected ? `${s?.telemetry.cpu1 ?? 0}%` : '—');
@@ -59,15 +30,10 @@
 </script>
 
 <div class="topbar">
-  <div class="brand" bind:this={aboutEl}>
+  <div class="brand">
     <div class="cube">D</div>
     <span class="title">DSPI · CTRL</span>
-    <button
-      class="version"
-      onclick={() => { aboutOpen = !aboutOpen; }}
-      title="About this build"
-      aria-expanded={aboutOpen}
-    >v{APP_VERSION}</button>
+    <span class="version" title="Build {GIT_SHA} · {BUILD_DATE}">v{APP_VERSION}</span>
     <a
       class="gh"
       href={REPO_URL}
@@ -80,16 +46,6 @@
         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
       </svg>
     </a>
-    {#if aboutOpen}
-      <div class="about" role="dialog" aria-label="About">
-        <div class="about-row"><span class="about-k">CONSOLE</span><span>v{APP_VERSION} · {GIT_SHA} · {BUILD_DATE}</span></div>
-        <div class="about-row"><span class="about-k">FIRMWARE</span><span>{fwLabel ? `${fwLabel} · ${serial}` : '—'}</span></div>
-        <div class="about-links">
-          <a href={REPO_URL} target="_blank" rel="noreferrer">GITHUB ↗</a>
-          <a href={issueUrl} target="_blank" rel="noreferrer">REPORT ISSUE ↗</a>
-        </div>
-      </div>
-    {/if}
   </div>
 
   <div class="spacer"></div>
@@ -143,7 +99,7 @@
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
   }
-  .brand { display: flex; align-items: center; gap: 10px; position: relative; }
+  .brand { display: flex; align-items: center; gap: 10px; }
   .cube {
     width: 22px; height: 22px;
     border-radius: 5px;
@@ -154,56 +110,13 @@
     display: flex; align-items: center; justify-content: center;
   }
   .title { font-size: 12px; font-weight: 600; letter-spacing: 1px; }
-  .version {
-    font-size: 9px;
-    color: var(--text-faint);
-    font-family: inherit;
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    letter-spacing: 0.5px;
-  }
-  .version:hover { color: var(--text); }
+  .version { font-size: 9px; color: var(--text-faint); letter-spacing: 0.5px; }
   .gh {
     display: inline-flex;
     align-items: center;
     color: var(--text-faint);
   }
   .gh:hover { color: var(--text); }
-  .about {
-    position: absolute;
-    top: calc(100% + 10px);
-    left: 0;
-    z-index: 30;
-    min-width: 280px;
-    padding: 12px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    background: var(--panel);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--border-hi);
-    border-radius: var(--radius);
-    box-shadow: 0 8px 30px rgb(0 0 0 / 0.45);
-    font-size: 10px;
-  }
-  .about-row { display: flex; gap: 10px; align-items: baseline; }
-  .about-k { width: 64px; color: var(--text-faint); letter-spacing: 1px; font-size: 9px; }
-  .about-links {
-    display: flex;
-    gap: 14px;
-    padding-top: 8px;
-    border-top: 1px solid var(--border);
-  }
-  .about-links a {
-    color: var(--accent);
-    text-decoration: none;
-    font-size: 9px;
-    letter-spacing: 1px;
-  }
-  .about-links a:hover { text-decoration: underline; }
   .spacer { flex: 1; }
   .div { width: 1px; height: 22px; background: var(--border); }
   .bypass {
