@@ -11,6 +11,11 @@ process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ''} --no-experimental-
 
 export default defineConfig({
   plugins: [svelte()],
+  define: {
+    __APP_VERSION__: JSON.stringify('0.0.0-test'),
+    __GIT_SHA__: JSON.stringify('test'),
+    __BUILD_DATE__: JSON.stringify('1970-01-01'),
+  },
   test: {
     environment: 'jsdom',
     globals: true,

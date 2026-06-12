@@ -4,6 +4,15 @@ export type TabId = 'overview' | 'eq' | 'mixer' | 'processing' | 'presets' | 'sy
 
 export const TAB_ORDER: readonly TabId[] = ['overview', 'eq', 'mixer', 'processing', 'presets', 'system'];
 
+export const TAB_META: Record<TabId, { label: string; code: string }> = {
+  overview:   { label: 'OVERVIEW',   code: '01' },
+  eq:         { label: 'EQUALIZER',  code: '02' },
+  mixer:      { label: 'MIXER',      code: '03' },
+  processing: { label: 'PROCESSING', code: '04' },
+  presets:    { label: 'PRESETS',    code: '05' },
+  system:     { label: 'SYSTEM',     code: '06' },
+};
+
 const TAB_IDS: ReadonlySet<TabId> = new Set(TAB_ORDER);
 
 export interface Settings {

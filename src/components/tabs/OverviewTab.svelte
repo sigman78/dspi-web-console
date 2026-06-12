@@ -2,6 +2,7 @@
   import { SvelteSet } from 'svelte/reactivity';
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
+  import QuickRefPanel from './overview/QuickRefPanel.svelte';
   import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
   import { filterCurve } from '@/components/bode/filterCurve';
   import { getSession } from '@/components/sessionContext';
@@ -188,6 +189,8 @@
         {/each}
       </div>
     </Panel>
+
+    <QuickRefPanel />
   </div>
 </div>
 

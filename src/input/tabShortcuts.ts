@@ -1,5 +1,12 @@
 import { settings, setTab, TAB_ORDER } from '@/state';
 
+// Rendered by the Overview quick-reference panel. Derived from the same
+// TAB_ORDER the handler below dispatches on, so the help can't drift.
+export const TAB_SHORTCUTS: ReadonlyArray<{ keys: readonly string[]; action: string }> = [
+  { keys: ['Alt+N'], action: `SWITCH TO TAB N (1–${TAB_ORDER.length})` },
+  { keys: ['Alt+[', 'Alt+]'], action: 'PREV / NEXT TAB' },
+];
+
 const DIGIT_RE = /^Digit([1-9])$/;
 
 export function handleTabShortcut(e: KeyboardEvent): boolean {
