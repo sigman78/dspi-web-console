@@ -45,7 +45,7 @@
   }
   .keys {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 6px 14px;
   }
   .sc {
@@ -54,7 +54,6 @@
     gap: 8px;
     min-width: 0;
   }
-  .sc:last-child { grid-column: 1 / -1; }
   .kbd {
     flex-shrink: 0;
     font-size: 9px;

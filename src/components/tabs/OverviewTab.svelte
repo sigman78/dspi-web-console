@@ -153,8 +153,6 @@
         {/each}
       </div>
     </Panel>
-
-    <QuickRefPanel />
   </div>
 
   <div class="rightcol">
@@ -191,6 +189,8 @@
         {/each}
       </div>
     </Panel>
+
+    <QuickRefPanel />
   </div>
 </div>
 

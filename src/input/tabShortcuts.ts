@@ -1,9 +1,9 @@
-import { settings, setTab, TAB_ORDER, TAB_META } from '@/state';
+import { settings, setTab, TAB_ORDER } from '@/state';
 
 // Rendered by the Overview quick-reference panel. Derived from the same
 // TAB_ORDER the handler below dispatches on, so the help can't drift.
 export const TAB_SHORTCUTS: ReadonlyArray<{ keys: readonly string[]; action: string }> = [
-  ...TAB_ORDER.map((id, i) => ({ keys: [`Alt+${i + 1}`], action: TAB_META[id].label })),
+  { keys: ['Alt+N'], action: `SWITCH TO TAB N (1–${TAB_ORDER.length})` },
   { keys: ['Alt+[', 'Alt+]'], action: 'PREV / NEXT TAB' },
 ];
 
