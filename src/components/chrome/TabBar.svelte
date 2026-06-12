@@ -1,16 +1,7 @@
 <script lang="ts">
   import MiniPin from './MiniPin.svelte';
-  import { settings, setTab, setEqTarget, TAB_ORDER, type TabId, connection, activeSession, eqUi } from '@/state';
+  import { settings, setTab, setEqTarget, TAB_ORDER, TAB_META, connection, activeSession, eqUi } from '@/state';
   import type { ChannelModel, ChannelId } from '@/domain';
-
-  const TAB_META: Record<TabId, { label: string; code: string }> = {
-    overview:   { label: 'OVERVIEW',   code: '01' },
-    eq:         { label: 'EQUALIZER',  code: '02' },
-    mixer:      { label: 'MIXER',      code: '03' },
-    processing: { label: 'PROCESSING', code: '04' },
-    presets:    { label: 'PRESETS',    code: '05' },
-    system:     { label: 'SYSTEM',     code: '06' },
-  };
 
   const TABS = TAB_ORDER.map((id) => ({ id, ...TAB_META[id] }));
 

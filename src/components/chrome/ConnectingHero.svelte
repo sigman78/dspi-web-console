@@ -2,6 +2,7 @@
   import EqSpectrum from './EqSpectrum.svelte';
   import { connection, activeSession } from '@/state';
   import { connectRequested, webUsbUnsupportedReason, isDeviceHeld } from '@/runtime';
+  import { REPO_URL } from '@/buildInfo';
 
   let busy = $state(false);
   const unsupported = webUsbUnsupportedReason();
@@ -68,6 +69,9 @@
 
 <div class="connecting-hero">
   <EqSpectrum />
+  <div class="tagline">
+    Web console for the DSPi audio processor — connects over USB, nothing leaves your machine.
+  </div>
   <div class="status" class:is-error={connection.phase === 'errored'}>{text}</div>
   {#if unsupported}
     <div class="unsupported-panel warn-panel" role="alert" aria-label="WebUSB unavailable">
@@ -101,6 +105,13 @@
       </div>
     {/if}
   {/if}
+  <div class="footer-links">
+    <a href={REPO_URL} target="_blank" rel="noreferrer">OPEN SOURCE · GITHUB ↗</a>
+    <span class="sep">·</span>
+    <span>FIRMWARE 1.1.4+</span>
+    <span class="sep">·</span>
+    <span>CHROME / EDGE</span>
+  </div>
 </div>
 
 <style>
@@ -111,11 +122,33 @@
     gap: 14px;
     font-family: var(--font-mono);
   }
+  .tagline {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--text-dim);
+    max-width: min(520px, 90vw);
+    text-align: center;
+  }
   .status {
     font-size: 11px;
     letter-spacing: 2px;
     color: var(--accent);
   }
+  .footer-links {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--text-faint);
+  }
+  .footer-links a {
+    color: var(--text-faint);
+    text-decoration: none;
+  }
+  .footer-links a:hover { color: var(--text); text-decoration: underline; }
+  .sep { color: var(--border-hi); }
   .status.is-error {
     color: var(--err);
   }
