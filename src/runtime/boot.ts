@@ -9,7 +9,7 @@ import { attachTransportListeners, wireUpConnection } from './deviceService';
 import { beginConnection, endConnection, type ConnectionScope } from './connectionScope';
 import { isDeviceHeld } from './deviceLock';
 import { settings, dispatch, connection } from '@/state';
-import { Log } from '@/utils';
+import { Log, errMessage } from '@/utils';
 
 // Per-call ceiling on USB control transfers. Without it, a frozen firmware leaves
 // the mutation coalescer waiting forever on a dead promise and the next
@@ -28,7 +28,7 @@ export function webUsbUnsupportedReason(): string | null {
 // diagnostics panel. `attempt` scopes the dispatch to the failing attempt so a
 // stale failure can't clobber a newer connection's state.
 export function reportConnectError(err: unknown, attempt?: number): void {
-  const message = (err as Error)?.message ?? String(err);
+  const message = errMessage(err);
   const upgrade = err instanceof UnsupportedFirmware || err instanceof UnsupportedDevicePacket;
   dispatch({ t: 'failed', message, errorKind: upgrade ? 'unsupported-firmware' : null, attempt });
 }

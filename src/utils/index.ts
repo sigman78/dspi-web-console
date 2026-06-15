@@ -1,6 +1,7 @@
 export { Result } from './result';
 export type { VoidResult } from './result';
 export { Log } from './log';
+export { errMessage } from './errMessage';
 
 export { utf8Truncate, utf8ByteLength } from './utf8';
 

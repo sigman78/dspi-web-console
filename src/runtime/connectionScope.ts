@@ -29,6 +29,7 @@ export function beginConnection(): ConnectionScope {
   return active;
 }
 
+// Test-only accessor; production reaches the scope via beginConnection()'s return value.
 export function connectionScope(): ConnectionScope | null { return active; }
 
 // Dispose and clear the active scope. Idempotent.

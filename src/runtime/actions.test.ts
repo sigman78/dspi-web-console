@@ -23,13 +23,13 @@ import {
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { deriveCapabilities } from '@/protocol/capabilities';
 
-import { cancelAllWrites, flushAllWrites as flushAllWritesFor } from './writes';
+import { flushAllWrites as flushAllWritesFor } from './writes';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
 // Test wrappers: the write lanes are now session-scoped, but these cleanup/flush
 // call sites always target whatever session is active. Resolve it here so the
 // existing call sites stay unchanged.
-const cancelWrites = () => { const s = activeSession(); if (s) cancelAllWrites(s); };
+const cancelWrites = () => { const s = activeSession(); if (s) s.writes.cancel(); };
 const flushAllWrites = () => flushAllWritesFor(activeSession()!);
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
@@ -97,7 +97,7 @@ function makeSnapshot(platform: PlatformType = PlatformType.RP2350) {
 //     timers faking rAF, a later vi.runAllTimersAsync() churns it forever and
 //     aborts with "10000 timers, assuming an infinite loop". endConnection() ends it.
 //   - device/writes scrub-lane registry + inflight counter.
-//     cancelWrites() (alias for cancelAllWrites) clears lanes and drops tokens.
+//     cancelWrites() (calls s.writes.cancel()) clears lanes and drops tokens.
 afterEach(() => { endConnection(); cancelWrites(); dispatch({ t: 'disconnected' }); });
 
 // Each beforeEach/test installs a ready session (dispatch synced) BEFORE touching

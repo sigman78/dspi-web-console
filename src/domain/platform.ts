@@ -134,10 +134,6 @@ export function wireChannelFor(profile: HardwareProfile, channel: ChannelIdValue
   return profile.wireChannelByUiChannel[channel] ?? channel;
 }
 
-export function uiChannelFor(profile: HardwareProfile, channel: ChannelIdValue): ChannelIdValue {
-  return profile.uiChannelByWireChannel[channel] ?? channel;
-}
-
 export function displayNameForHardwareChannel(
   profile: HardwareProfile,
   id: ChannelIdValue,

@@ -22,7 +22,6 @@
     disabled = false,
     clamp = true,
     onChange,
-    customFormat,
   }: {
     value: number;
     min: number;
@@ -32,7 +31,7 @@
     precision?: number;
     unit?: string;
     tone?: 'signed';
-    align?: 'left' | 'center' | 'right';
+    align?: 'center' | 'right';
     size?: 'sm' | 'md';
     disabled?: boolean;
     // When true (default), out-of-range values are clamped to [min,max]
@@ -40,14 +39,13 @@
     // like unparseable input -- Enter marks the cell red.
     clamp?: boolean;
     onChange: (v: number) => void;
-    customFormat?: (v: number) => string;
   } = $props();
 
   const effectivePrecision = $derived(precision ?? defaultPrecisionFor(kind));
   const effectiveStep = $derived(step ?? Math.pow(10, -effectivePrecision));
   const effectiveUnit = $derived(unit ?? defaultUnitFor(kind));
 
-  const display = $derived(customFormat ? customFormat(value) : formatValue(kind, value, effectivePrecision));
+  const display = $derived(formatValue(kind, value, effectivePrecision));
 
   // Disabled overrides any tone tinting.
   const toneColor = $derived(
@@ -196,7 +194,6 @@
   }
   .vf[data-size="sm"] { height: 20px; padding: 0 6px; font-size: 10px; }
   .vf[data-size="md"] { height: 24px; padding: 0 8px; font-size: 11px; }
-  .vf[data-align="left"]   { justify-content: flex-start; }
   .vf[data-align="center"] { justify-content: center; }
   .vf[data-align="right"]  { justify-content: flex-end; }
 
@@ -259,7 +256,6 @@
     font-variant-numeric: tabular-nums;
   }
   .vf[data-size="sm"] input { padding: 0 6px; }
-  .vf[data-align="left"]   input { text-align: left; }
   .vf[data-align="center"] input { text-align: center; }
   .vf[data-align="right"]  input { text-align: right; }
 </style>

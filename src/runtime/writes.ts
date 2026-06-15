@@ -17,11 +17,7 @@
 import { settings, pushNotice, type ReadySession } from '@/state';
 import type { MirrorState } from '@/state/mirror.svelte';
 import { forceResyncNow } from './resync';
-import { Log, type Result } from '@/utils';
-
-function errMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
+import { Log, errMessage, type Result } from '@/utils';
 
 // Click-paced write. Awaits the wire ack, mutates the mirror on success. On
 // throw: reports link health, toasts, and forces a resync to recover ground
@@ -231,11 +227,4 @@ export function scrub(
 // operations. Used by preset transitions before issuing a flash command.
 export async function flushAllWrites(s: ReadySession): Promise<void> {
   await s.writes.flush();
-}
-
-// Cancel the given session's armed lanes without firing and clear its in-flight
-// registry. The session's own dispose() does this on disconnect; this export
-// remains for any direct mid-session caller.
-export function cancelAllWrites(s: ReadySession): void {
-  s.writes.cancel();
 }

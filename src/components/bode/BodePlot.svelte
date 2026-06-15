@@ -11,16 +11,11 @@
     /** Channel id whose palette colors the stroke + (single-curve) fill. */
     channelId?: ChannelId;
     label?: string;
-    /** Render as dashed; pairs with `offsetPx` so coincident curves stay
-     *  distinguishable from a solid twin. */
-    dashed?: boolean;
     /** Render the stroke as a horizontal gradient between two channels'
      *  palette colors (left-edge -> right-edge of the plot). Used to depict
      *  a stereo-locked pair as a single line whose color fades between the
      *  two channels. */
     gradientChannelIds?: [ChannelId, ChannelId];
-    /** Vertical pixel nudge applied to the path. Default 0. */
-    offsetPx?: number;
   };
 
   // Optional EQ-style band markers drawn on top of the curves.
@@ -34,7 +29,7 @@
 </script>
 
 <script lang="ts">
-  import { BODE_BINS, fForXNorm, nearestBinIndex } from './bodeFreqs';
+  import { BODE_BINS, fForXNorm } from './bodeFreqs';
   import { Eq } from '@/domain';
   import { chShade } from '@/styles/palette';
 
@@ -118,18 +113,14 @@
 
   const built = $derived.by(() => {
     return curves.map((c) => {
-      const off = c.offsetPx ?? 0;
       const pts: Array<[number, number]> = new Array(BODE_BINS);
       for (let i = 0; i < BODE_BINS; i++) {
-        pts[i] = [binsX[i], yForDb(c.points[i] ?? 0) + off];
+        pts[i] = [binsX[i], yForDb(c.points[i] ?? 0)];
       }
       return { c, d: catmullRomPath(pts), pts };
     });
   });
 
-  // Z-order: dashed curves under solid ones, otherwise array order.
-  const dashed = $derived(built.filter((b) => b.c.dashed));
-  const solid = $derived(built.filter((b) => !b.c.dashed));
   const single = $derived(curves.length === 1);
 
   const F_MAJOR = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
@@ -165,8 +156,7 @@
 
   function fmtFreqLabel(f: number): string {
     if (f >= 1000) {
-      const k = f / 1000;
-      return Number.isInteger(k) ? `${k}k` : `${k}k`;
+      return `${f / 1000}k`;
     }
     return String(f);
   }
@@ -228,8 +218,6 @@
   function badgeY(y: number): number {
     return Math.max(14, Math.min(plotH - 6, y - 8));
   }
-
-  void nearestBinIndex; // re-export tag for tree-shake friendliness
 </script>
 
 <div class="bode-wrap" bind:clientWidth={containerW}>
@@ -307,28 +295,15 @@
     </text>
   {/each}
 
-  {#if single && solid[0]}
+  {#if single && built[0]}
     <path
-      d={solid[0].d + ` L ${W} ${plotH} L ${PAD_L} ${plotH} Z`}
+      d={built[0].d + ` L ${W} ${plotH} L ${PAD_L} ${plotH} Z`}
       fill="url(#bodeFill-{curves[0].id})"
       vector-effect="non-scaling-stroke"
     />
   {/if}
 
-  {#each dashed as b (b.c.id)}
-    <path
-      d={b.d}
-      fill="none"
-      stroke={strokeFor(b.c)}
-      stroke-width="1.4"
-      stroke-opacity="0.85"
-      stroke-dasharray="4 3"
-      stroke-linecap="round"
-      vector-effect="non-scaling-stroke"
-    />
-  {/each}
-
-  {#each solid as b (b.c.id)}
+  {#each built as b (b.c.id)}
     <path
       d={b.d}
       fill="none"

@@ -57,6 +57,10 @@ function nulStr(maxBytes: number): BinCodec<string> {
   };
 }
 
+// `fixedStr` (here) and `f64` (in Codec below) round out the codec set as a
+// deliberately-complete, symmetric primitive layer. Neither has a current wire
+// caller -- the live wire format uses only NUL-terminated strings and 32-bit
+// scalars -- but they are retained so the primitive set stays whole.
 // Exactly `n` bytes of UTF-8, no NUL trim.
 function fixedStr(n: number): BinCodec<string> {
   return {

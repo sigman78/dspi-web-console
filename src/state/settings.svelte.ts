@@ -17,8 +17,6 @@ const TAB_IDS: ReadonlySet<TabId> = new Set(TAB_ORDER);
 
 export interface Settings {
   version: 1;
-  theme: 'dark' | 'light';
-  showDebugStats: boolean;
   tab: TabId;
   eqTarget: ChannelId | null;
   lastSerial: string | null;
@@ -35,8 +33,6 @@ const STORAGE_KEY = 'dspi-console-web/settings/v1';
 function defaults(): Settings {
   return {
     version: 1,
-    theme: 'dark',
-    showDebugStats: false,
     tab: 'overview',
     eqTarget: null,
     lastSerial: null,
@@ -59,9 +55,6 @@ function channelIdOrNull(v: unknown): ChannelId | null {
 function stringOrNull(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
 }
-function theme(v: unknown): 'dark' | 'light' {
-  return v === 'light' ? 'light' : 'dark';
-}
 
 function safeJSON(raw: string | null): Record<string, unknown> | null {
   if (raw === null) return null;
@@ -78,8 +71,6 @@ function parseV1(raw: string, fallback: Settings): Settings {
   if (!obj) return fallback;
   return {
     version: 1,
-    theme: theme(obj.theme),
-    showDebugStats: bool(obj.showDebugStats, fallback.showDebugStats),
     tab: tabId(obj.tab, fallback.tab),
     eqTarget: channelIdOrNull(obj.eqTarget),
     lastSerial: stringOrNull(obj.lastSerial),
@@ -99,7 +90,6 @@ function migrateLegacyKeys(): Settings | null {
 
   const merged: Settings = {
     ...defaults(),
-    showDebugStats: bool(ui?.showDebugStats, false),
     tab: tabId(ui?.tab, 'overview'),
     eqTarget: channelIdOrNull(ui?.eqTarget),
     lastSerial: stringOrNull(conn?.lastSerial),
@@ -135,8 +125,6 @@ export const settings = $state<Settings>(defaults());
 export function restoreSettings(): void {
   const loaded = loadSettings();
   settings.version = loaded.version;
-  settings.theme = loaded.theme;
-  settings.showDebugStats = loaded.showDebugStats;
   settings.tab = loaded.tab;
   settings.eqTarget = loaded.eqTarget;
   settings.lastSerial = loaded.lastSerial;
@@ -144,17 +132,11 @@ export function restoreSettings(): void {
   settings.eagerReconcile = loaded.eagerReconcile;
 }
 
-export function setShowDebugStats(value: boolean): void {
-  settings.showDebugStats = value;
-}
 export function setTab(t: TabId): void {
   settings.tab = t;
 }
 export function setEqTarget(id: ChannelId | null): void {
   settings.eqTarget = id;
-}
-export function setEagerReconcile(value: boolean): void {
-  settings.eagerReconcile = value;
 }
 
 // Validate the persisted eqTarget against the connected platform's channel set;
@@ -175,8 +157,6 @@ export function startSettingsPersistence(): void {
     $effect(() => {
       const snap: Settings = {
         version: 1,
-        theme: settings.theme,
-        showDebugStats: settings.showDebugStats,
         tab: settings.tab,
         eqTarget: settings.eqTarget,
         lastSerial: settings.lastSerial,

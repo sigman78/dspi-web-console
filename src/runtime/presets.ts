@@ -11,7 +11,7 @@ import { flushAllWrites as flushWrites } from './writes';
 import { type PresetSlot, PRESET_SLOT_COUNT, OutputConfigMode } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
 import type { DeviceState } from '@/protocol/snapshotCodec';
-import { Log, Result } from '@/utils';
+import { Log, Result, errMessage } from '@/utils';
 
 // Settle pause after the paste-path SavePreset before re-reading device state.
 const POST_SAVE_SETTLE_MS = 100;
@@ -75,7 +75,7 @@ async function withBusy<T>(ps: PresetsState, fn: () => Promise<T>): Promise<T> {
 // unhandled rejection.
 
 function recordActionError(ps: PresetsState, label: string, e: unknown): string {
-  const msg = (e as Error)?.message ?? String(e);
+  const msg = errMessage(e);
   const formatted = `${label}: ${msg}`;
   ps.lastActionError = formatted;
   Log.warn('presets', `${label} failed`, e);
@@ -112,7 +112,7 @@ export async function fetchPresetInfo(s: ReadySession): Promise<void> {
     try {
       [dir, active] = await Promise.all([d.getPresetDirectory(), d.getActivePreset()]);
     } catch (e) {
-      const msg = (e as Error)?.message ?? String(e);
+      const msg = errMessage(e);
       s.presets.lastFetchError = `Directory fetch failed: ${msg}`;
       Log.warn('presets', 'directory/active fetch failed', e);
       return;
