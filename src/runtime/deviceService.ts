@@ -11,7 +11,7 @@ import {
   dispatch, makeReadySession, activeSession,
   type ReadySession,
 } from '@/state';
-import { Log } from '@/utils';
+import { Log, errMessage } from '@/utils';
 import { flushAllWrites } from './writes';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
@@ -68,7 +68,7 @@ export async function wireUpConnection(device: DspDevice, scope?: ConnectionScop
     });
   } catch (err) {
     Log.error('sync', 'wireUpConnection failed', err);
-    dispatch({ t: 'failed', message: (err as Error).message, attempt });
+    dispatch({ t: 'failed', message: errMessage(err), attempt });
     throw err;
   }
 }

@@ -13,7 +13,7 @@ import {
   type ReadySession,
   pushNotice,
 } from '@/state';
-import { Log } from '@/utils';
+import { Log, errMessage } from '@/utils';
 import { write, scrub, writeChecked, command } from './writes';
 import { focusOutput, focusRoute } from './focus';
 
@@ -493,12 +493,12 @@ export function setDacHwMute(s: ReadySession, patch: Partial<DacHwMute>): void {
 
 // M6 — DAC HW mute test pulse (~1s). Fire-and-forget.
 export function testDacHwMute(s: ReadySession): void {
-  void s.device.testDacHwMute().catch((e) => { pushNotice('error', `DAC mute test failed: ${e instanceof Error ? e.message : String(e)}`); });
+  void s.device.testDacHwMute().catch((e) => { pushNotice('error', `DAC mute test failed: ${errMessage(e)}`); });
 }
 
 // M9 — Buffer stats reset.
 export function resetBufferStats(s: ReadySession): void {
-  void s.device.resetBufferStats().catch((e) => { pushNotice('error', `Buffer stats reset failed: ${e instanceof Error ? e.message : String(e)}`); });
+  void s.device.resetBufferStats().catch((e) => { pushNotice('error', `Buffer stats reset failed: ${errMessage(e)}`); });
 }
 
 // M8 — Enter UF2 bootloader. The device disconnects immediately (100 ms delay

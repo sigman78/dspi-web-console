@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { write, scrub, writeChecked, command, flushAllWrites, cancelAllWrites } from './writes';
+import { write, scrub, writeChecked, command, flushAllWrites } from './writes';
 import { connection, settings, notices, clearNotices, dispatch, makeReadySession, activeSession, type ReadySession } from '@/state';
 import { Result } from '@/utils';
 
@@ -7,6 +7,9 @@ import { Result } from '@/utils';
 vi.mock('@/runtime/resync', () => ({
   forceResyncNow: vi.fn(),
 }));
+
+// vi.mock is hoisted, so this static import resolves to the mock above.
+import { forceResyncNow } from '@/runtime/resync';
 
 // Install a ready session so writes resolve activeSession() and its
 // WriteCoordinator/alive guard. Disposing it (or dispatching disconnected)
@@ -101,7 +104,6 @@ describe('write() helper', () => {
   });
 
   it('does not call forceResyncNow on failure if generation changed', async () => {
-    const { forceResyncNow } = await import('@/runtime/resync');
     let resolveSend!: (err: Error) => void;
     const send = vi.fn(() => new Promise<void>((_, reject) => { resolveSend = (e) => reject(e); }));
     const p = write(session, send, () => {});
@@ -112,7 +114,6 @@ describe('write() helper', () => {
   });
 
   it('calls forceResyncNow on failure when generation unchanged', async () => {
-    const { forceResyncNow } = await import('@/runtime/resync');
     const send = vi.fn(async () => { throw new Error('boom'); });
     await write(session, send, () => {});
     expect(forceResyncNow).toHaveBeenCalled();
@@ -127,7 +128,6 @@ describe('write() failure policy', () => {
   });
 
   it('a failed write stays connected, reports health, toasts, and resyncs', async () => {
-    const { forceResyncNow } = await import('@/runtime/resync');
     await write(session, async () => { throw new Error('boom'); }, () => {});
     expect(connection.connected).toBe(true);
     expect(session.health.failTotal).toBe(1);
@@ -136,7 +136,6 @@ describe('write() failure policy', () => {
   });
 
   it('while degraded, a failed write neither toasts nor resyncs', async () => {
-    const { forceResyncNow } = await import('@/runtime/resync');
     session.health.degraded = true;
     await write(session, async () => { throw new Error('boom'); }, () => {});
     expect(notices.list.length).toBe(0);
@@ -182,14 +181,12 @@ describe('writeChecked() helper', () => {
   });
 
   it('treats a rejection as local — no resync, no status change', async () => {
-    const { forceResyncNow } = await import('@/runtime/resync');
     await writeChecked(session, 'set pin', async () => Result.fail('x', 'rejected'), () => {});
     expect(forceResyncNow).not.toHaveBeenCalled();
     expect(connection.connected).toBe(true);
   });
 
   it('error-toasts a transport throw without resyncing', async () => {
-    const { forceResyncNow } = await import('@/runtime/resync');
     await writeChecked(session, 'set pin', async () => { throw new Error('stall'); }, () => {});
     expect(notices.list).toHaveLength(1);
     expect(notices.list[0].kind).toBe('error');
@@ -266,7 +263,7 @@ describe('scrub() helper', () => {
   beforeEach(() => {
     installSession();
     vi.clearAllMocks();
-    cancelAllWrites(session);  // ensure no leftover lane state between tests
+    session.writes.cancel();  // ensure no leftover lane state between tests
   });
 
   it('mutates immediately (optimistic)', async () => {
@@ -313,13 +310,13 @@ describe('scrub() helper', () => {
     expect(sendB).toHaveBeenCalledTimes(1);
   });
 
-  it('cancelAllWrites drops a parked send without firing it', async () => {
+  it('cancel drops a parked send without firing it', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
     const parked = vi.fn(async () => {});
     scrub(session, 'k1', () => {}, async () => { await gate; });
     scrub(session, 'k1', () => {}, parked);    // parked behind the in-flight send
-    cancelAllWrites(session);
+    session.writes.cancel();
     release();
     await new Promise((r) => setTimeout(r, 10));
     expect(parked).not.toHaveBeenCalled();
@@ -337,16 +334,15 @@ describe('scrub() helper', () => {
     expect(session.mirror.inflight).toBe(0);
   });
 
-  it('cancelAllWrites resets inflight to 0', () => {
+  it('cancel resets inflight to 0', () => {
     scrub(session, 'k1', () => {}, async () => {});
     scrub(session, 'k2', () => {}, async () => {});
     expect(activeSession()!.mirror.inflight).toBeGreaterThan(0);
-    cancelAllWrites(session);
+    session.writes.cancel();
     expect(activeSession()!.mirror.inflight).toBe(0);
   });
 
   it('on send failure: forceResyncNow called, lane recovers', async () => {
-    const { forceResyncNow } = await import('@/runtime/resync');
     const send = vi.fn(async () => { throw new Error('boom'); });
     scrub(session, 'k1', () => {}, send);
     await flushAllWrites(session);
@@ -354,7 +350,6 @@ describe('scrub() helper', () => {
   });
 
   it('on send success: does NOT resync (case A — mirror already holds sent value)', async () => {
-    const { forceResyncNow } = await import('@/runtime/resync');
     const send = vi.fn(async () => {});
     scrub(session, 'k1', () => {}, send);
     await flushAllWrites(session);
@@ -382,7 +377,6 @@ describe('scrub() helper', () => {
   });
 
   it('stale-gen settle does not call forceResyncNow', async () => {
-    const { forceResyncNow } = await import('@/runtime/resync');
     vi.clearAllMocks();
     let resolveSend!: () => void;
     const send = vi.fn(() => new Promise<void>((r) => { resolveSend = r; }));
@@ -399,7 +393,7 @@ describe('scrub() helper', () => {
 describe('flushAllWrites covers write() calls', () => {
   beforeEach(() => {
     installSession();
-    cancelAllWrites(session);
+    session.writes.cancel();
   });
 
   it('flushAllWrites awaits in-flight write() before resolving', async () => {
