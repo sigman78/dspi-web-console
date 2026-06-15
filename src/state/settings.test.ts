@@ -19,22 +19,17 @@ describe('loadSettings', () => {
     expect(s.version).toBe(1);
     expect(s.tab).toBe('overview');
     expect(s.eqTarget).toBeNull();
-    expect(s.showDebugStats).toBe(false);
     expect(s.lastSerial).toBeNull();
-    expect(s.theme).toBe('dark');
   });
 
   test('loads valid v1 directly', () => {
     localStorage.setItem(V1_KEY, JSON.stringify({
       version: 1,
-      theme: 'dark',
-      showDebugStats: true,
       tab: 'eq',
       eqTarget: null,
       lastSerial: 'ABC123',
     }));
     const s = loadSettings();
-    expect(s.showDebugStats).toBe(true);
     expect(s.tab).toBe('eq');
     expect(s.lastSerial).toBe('ABC123');
   });
@@ -50,12 +45,10 @@ describe('loadSettings', () => {
 describe('legacy migration', () => {
   test('migrates ui/v2 only', () => {
     localStorage.setItem(LEGACY_UI_KEY, JSON.stringify({
-      showDebugStats: true,
       tab: 'mixer',
       eqTarget: null,
     }));
     const s = loadSettings();
-    expect(s.showDebugStats).toBe(true);
     expect(s.tab).toBe('mixer');
     expect(s.lastSerial).toBeNull();
     expect(localStorage.getItem(LEGACY_UI_KEY)).toBeNull();
@@ -83,8 +76,6 @@ describe('legacy migration', () => {
   test('v1 takes precedence over legacy keys (no migration runs)', () => {
     localStorage.setItem(V1_KEY, JSON.stringify({
       version: 1,
-      theme: 'dark',
-      showDebugStats: false,
       tab: 'processing',
       eqTarget: null,
       lastSerial: 'V1WINS',
@@ -125,8 +116,6 @@ describe('warnOnPresetSwitchDirty', () => {
   test('round-trips warnOnPresetSwitchDirty=false through localStorage', () => {
     const payload = {
       version: 1,
-      theme: 'dark',
-      showDebugStats: false,
       tab: 'overview',
       eqTarget: null,
       lastSerial: null,

@@ -8,10 +8,6 @@ export const DSPI_USB_IDS = [
   { vendorId: 0x2E8B, productId: 0xFEAA },  // >= 1.1.4
 ] as const;
 
-// Legacy scalar identity (the 1.1.3 pair) for the node-usb HIL harness.
-export const DSPI_VENDOR_ID = DSPI_USB_IDS[0].vendorId;
-export const DSPI_PRODUCT_ID = DSPI_USB_IDS[0].productId;
-
 export function matchesDspi(d: { vendorId: number; productId: number }): boolean {
   return DSPI_USB_IDS.some((id) => d.vendorId === id.vendorId && d.productId === id.productId);
 }

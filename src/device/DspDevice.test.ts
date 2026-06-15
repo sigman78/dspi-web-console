@@ -407,11 +407,6 @@ describe('DspDevice — persistence (legacy save/load/reset)', () => {
     d = await createDevice(t);
   });
 
-  it('saveParams returns ok on success', async () => {
-    const r = await d.saveParams();
-    expect(r.ok).toBe(true);
-  });
-
   it('factoryReset returns ok on success', async () => {
     const r = await d.factoryReset();
     expect(r.ok).toBe(true);

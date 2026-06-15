@@ -27,11 +27,3 @@ export function xNormForF(f: number): number {
 export function fForXNorm(x: number): number {
   return BODE_FMIN * Math.pow(BODE_FMAX / BODE_FMIN, x);
 }
-
-// Snap an arbitrary frequency to the nearest of the 201 bins. Returns the
-// bin index, not the frequency.
-export function nearestBinIndex(f: number): number {
-  const x = xNormForF(f);
-  const i = Math.round(x * (BODE_BINS - 1));
-  return Math.max(0, Math.min(BODE_BINS - 1, i));
-}

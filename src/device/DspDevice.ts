@@ -372,6 +372,11 @@ export class DspDevice {
     });
   }
 
+  // The granular getters below (getFilter/getMatrixRoute/getOutput*/getInputPreamp/
+  // getChannelName/getPresetStartup/etc.) exist solely as the HIL roundtrip contract
+  // surface; by design no production code reads through them (getSnapshot/getAllParams
+  // is the app read path). Kept as the per-verb read half of the granular contract.
+
   // One ctrlIn per parameter with a bit-packed wValue. Not atomic against
   // concurrent writers; use getAllParams() for an atomic snapshot. `decode`
   // (not `decodePadded`) makes a truncated read throw rather than zero-pad.
@@ -502,10 +507,6 @@ export class DspDevice {
     return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetMckPin, pin & 0xFF));
   }
 
-  async getMckPin(): Promise<number> {
-    return proto.actionCmd(this.transport, proto.WireCmd.GetMckPin, 0);
-  }
-
   async setMckMultiplier(encoded: number): Promise<Result<void, proto.PinConfigResult>> {
     return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetMckMultiplier, encoded & 0x01));
   }
@@ -531,10 +532,6 @@ export class DspDevice {
 
   async getOutputConfigMode(): Promise<domain.OutputConfigMode> {
     return proto.readCmd(this.transport, proto.WireCmd.GetOutputConfigMode);
-  }
-
-  async saveParams(): Promise<Result<void, proto.FlashResult>> {
-    return proto.flashResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SaveParams));
   }
 
   // Firmware echoes 0x01 on success; return a boolean so callers don't see the wire shape.

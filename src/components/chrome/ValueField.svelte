@@ -22,7 +22,6 @@
     disabled = false,
     clamp = true,
     onChange,
-    customFormat,
   }: {
     value: number;
     min: number;
@@ -40,14 +39,13 @@
     // like unparseable input -- Enter marks the cell red.
     clamp?: boolean;
     onChange: (v: number) => void;
-    customFormat?: (v: number) => string;
   } = $props();
 
   const effectivePrecision = $derived(precision ?? defaultPrecisionFor(kind));
   const effectiveStep = $derived(step ?? Math.pow(10, -effectivePrecision));
   const effectiveUnit = $derived(unit ?? defaultUnitFor(kind));
 
-  const display = $derived(customFormat ? customFormat(value) : formatValue(kind, value, effectivePrecision));
+  const display = $derived(formatValue(kind, value, effectivePrecision));
 
   // Disabled overrides any tone tinting.
   const toneColor = $derived(
