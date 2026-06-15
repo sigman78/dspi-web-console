@@ -44,12 +44,7 @@ function defaultMockBulkState(platform: PlatformType): BulkParams {
 // field, not just the bulk-packet contents.
 interface MockSnapshot {
   bulk: BulkParams;
-  masterVolumeDb: number;
-  masterPreampDb: number;
-  inputPreampDb: [number, number];
-  bypass: boolean;
   savedMasterVolumeDb: number;
-  channelNames: string[];
 }
 
 export class MockTransport implements DspTransport {
@@ -63,14 +58,9 @@ export class MockTransport implements DspTransport {
   #payloadLength: number | undefined;
   #fwMajor: number;
   #fwMinorPatch: number;
-  #masterVolumeDb = 0;
-  #masterPreampDb = 0;
-  #inputPreampDb: [number, number] = [0, 0];
-  #bypass = false;
   #masterVolumeMode: MasterVolumeMode = MasterVolumeMode.Independent;
   #savedMasterVolumeDb = 0;
   #mockState: BulkParams;
-  #channelNames: string[] = Array.from({ length: Wire.Const.NUM_CHANNELS }, () => '');
 
   // Preset directory + 10-slot snapshots. Directory metadata is its own wire
   // surface, not part of the bulk packet.
@@ -206,7 +196,7 @@ export class MockTransport implements DspTransport {
       case WireCmd.GetSavedMasterVolume.code:
         return Codec.encode(Codec.f32, this.#savedMasterVolumeDb);
       case WireCmd.SaveMasterVolume.code:
-        this.#savedMasterVolumeDb = this.#masterVolumeDb;
+        this.#savedMasterVolumeDb = this.#mockState.masterVolumeDb;
         return new Uint8Array([0]); // PresetResult.Ok
       // Acknowledge with FlashResult.Ok; preset round-trips go through
       // PresetSave/Load directly rather than flash side effects.
@@ -413,18 +403,16 @@ export class MockTransport implements DspTransport {
     this.#requireOpen();
     switch (request) {
       case WireCmd.SetMasterVolume.code:
-        this.#masterVolumeDb = Codec.decode(Codec.f32, data);
-        this.#mockState.masterVolumeDb = this.#masterVolumeDb;
+        this.#mockState.masterVolumeDb = Codec.decode(Codec.f32, data);
         return;
       case WireCmd.SetPreamp.code:
-        this.#masterPreampDb = Codec.decode(Codec.f32, data);
-        this.#mockState.preampDb = this.#masterPreampDb;
+        this.#mockState.preampDb = Codec.decode(Codec.f32, data);
         return;
       case WireCmd.SetInputPreamp.code: {
         const idx = (value & 0xFF) === 1 ? 1 : 0;
-        this.#inputPreampDb[idx] = Codec.decode(Codec.f32, data);
-        if (idx === 1) this.#mockState.preampRDb = this.#inputPreampDb[idx];
-        else this.#mockState.preampLDb = this.#inputPreampDb[idx];
+        const db = Codec.decode(Codec.f32, data);
+        if (idx === 1) this.#mockState.preampRDb = db;
+        else this.#mockState.preampLDb = db;
         return;
       }
       case WireCmd.SetEqParam.code: {
@@ -486,8 +474,7 @@ export class MockTransport implements DspTransport {
         this.#output(value).delayMs = Codec.decode(Codec.f32, data);
         return;
       case WireCmd.SetBypass.code:
-        this.#bypass = Codec.decode(Codec.bool8, data);
-        this.#mockState.bypass = this.#bypass;
+        this.#mockState.bypass = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetMasterVolumeMode.code:
         this.#masterVolumeMode = Codec.decode(Codec.u8, data) as MasterVolumeMode;
@@ -544,8 +531,7 @@ export class MockTransport implements DspTransport {
       case WireCmd.SetChannelName.code: {
         const ch = value & 0xFF;
         if (ch < Wire.Const.NUM_CHANNELS) {
-          this.#channelNames[ch] = Codec.decode(WireCmd.SetChannelName.codec, data);
-          this.#mockState.channelNames[ch] = this.#channelNames[ch];
+          this.#mockState.channelNames[ch] = Codec.decode(WireCmd.SetChannelName.codec, data);
         }
         return;
       }
@@ -585,12 +571,7 @@ export class MockTransport implements DspTransport {
   #captureSnapshot(): MockSnapshot {
     return {
       bulk: JSON.parse(JSON.stringify(this.#mockState)) as BulkParams,
-      masterVolumeDb: this.#masterVolumeDb,
-      masterPreampDb: this.#masterPreampDb,
-      inputPreampDb: [this.#inputPreampDb[0], this.#inputPreampDb[1]],
-      bypass: this.#bypass,
       savedMasterVolumeDb: this.#savedMasterVolumeDb,
-      channelNames: [...this.#channelNames],
     };
   }
 
@@ -608,11 +589,6 @@ export class MockTransport implements DspTransport {
 
   #applyBulkState(bulk: BulkParams): void {
     this.#mockState = bulk;
-    this.#masterVolumeDb = bulk.masterVolumeDb;
-    this.#masterPreampDb = bulk.preampDb;
-    this.#inputPreampDb = [bulk.preampLDb, bulk.preampRDb];
-    this.#bypass = bulk.bypass;
-    this.#channelNames = bulk.channelNames.slice(0, Wire.Const.NUM_CHANNELS);
   }
 
   // Reset live state to factory defaults (empty-slot PresetLoad).
@@ -622,27 +598,16 @@ export class MockTransport implements DspTransport {
   }
 
   #restoreSnapshot(s: MockSnapshot): void {
+    const liveMv = this.#mockState.masterVolumeDb;       // live value before restore
     this.#mockState = JSON.parse(JSON.stringify(s.bulk)) as BulkParams;
     // Master volume value rides the preset payload only in Mode 1 (with-preset).
     // In Mode 0 (independent) LoadPreset leaves it alone (directory-owned). The
     // mock checks the live mode, matching firmware; mode itself is global and
     // not part of the payload.
-    if (this.#masterVolumeMode === MasterVolumeMode.WithPreset) {
-      this.#masterVolumeDb = s.masterVolumeDb;
-      this.#mockState.masterVolumeDb = s.masterVolumeDb;
-    } else {
-      this.#mockState.masterVolumeDb = this.#masterVolumeDb;
+    if (this.#masterVolumeMode !== MasterVolumeMode.WithPreset) {
+      this.#mockState.masterVolumeDb = liveMv;            // Independent: directory-owned, keep live
     }
-    this.#masterPreampDb = s.masterPreampDb;
-    this.#inputPreampDb = [s.inputPreampDb[0], s.inputPreampDb[1]];
-    this.#bypass = s.bypass;
     this.#savedMasterVolumeDb = s.savedMasterVolumeDb;
-    this.#channelNames = [...s.channelNames];
-    this.#mockState.preampDb = this.#masterPreampDb;
-    this.#mockState.preampLDb = this.#inputPreampDb[0];
-    this.#mockState.preampRDb = this.#inputPreampDb[1];
-    this.#mockState.bypass = this.#bypass;
-    this.#mockState.channelNames = [...this.#channelNames];
   }
 
   // Writable reference to the OutputState slot for a wValue-encoded output index.
