@@ -24,14 +24,14 @@ export interface MatrixRow {
   cells: RouteModel[];
 }
 
-export function channelById(s: DspSnapshot, id: ChannelId): ChannelModel | undefined {
+function channelById(s: DspSnapshot, id: ChannelId): ChannelModel | undefined {
   return s.channels.find((c) => c.id === id);
 }
 
 // Output mode is a projection of i2s.outputSlotTypes (one type per stereo
 // pair); the PDM sub is fixed-mode. Throws on input channels -- they have
 // no output mode and no caller should ask.
-export function outputModeForChannel(s: DspSnapshot, id: ChannelId): OutputMode {
+function outputModeForChannel(s: DspSnapshot, id: ChannelId): OutputMode {
   if (id === ChannelId.Pdm) return 'PDM';
   const slot = slotForOutputChannel(id);
   if (slot === null) throw new Error(`Channel ${id} has no output mode`);

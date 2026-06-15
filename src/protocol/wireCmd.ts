@@ -141,12 +141,12 @@ export const WireCmd = {
   GetOutputConfigMode:  { code: 0x99, codec: tighten<OutputConfigMode>(Codec.u8) } satisfies ReadCmd<OutputConfigMode>,
   PresetGetActive:      { code: 0x9A } satisfies RawCmd,
 
-  // Loudness (V4+) -- see docs/HW-TODO.md section 1
+  // Loudness (V4+) -- firmware feature, deferred
   SetLoudnessEnabled:    { code: 0x58, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
   SetLoudnessRefSpl:     { code: 0x5A, codec: Codec.f32 }   satisfies WriteCmd<number>,
   SetLoudnessIntensity:  { code: 0x5C, codec: Codec.f32 }   satisfies WriteCmd<number>,
 
-  // Crossfeed (V4+) -- see docs/HW-TODO.md section 1. Fields land in firmware order:
+  // Crossfeed (V4+) -- firmware feature, deferred. Fields land in firmware order:
   // enable, preset, freq, feed, ITD. Even codes are SET, odd codes are GET.
   SetCrossfeedEnabled:   { code: 0x5E, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
   SetCrossfeedPreset:    { code: 0x60, codec: Codec.u8 }    satisfies WriteCmd<number>,
@@ -154,7 +154,7 @@ export const WireCmd = {
   SetCrossfeedFeedDb:    { code: 0x64, codec: Codec.f32 }   satisfies WriteCmd<number>,
   SetCrossfeedItd:       { code: 0x66, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
 
-  // Volume Leveller (V4+) -- see docs/HW-TODO.md section 1. Fields land in firmware
+  // Volume Leveller (V4+) -- firmware feature, deferred. Fields land in firmware
   // order: enable, amount, speed, max gain, lookahead, gate.
   SetLevellerEnabled:    { code: 0xB4, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
   SetLevellerAmount:     { code: 0xB6, codec: Codec.f32 }   satisfies WriteCmd<number>,

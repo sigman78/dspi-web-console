@@ -156,8 +156,7 @@
 
   function fmtFreqLabel(f: number): string {
     if (f >= 1000) {
-      const k = f / 1000;
-      return Number.isInteger(k) ? `${k}k` : `${k}k`;
+      return `${f / 1000}k`;
     }
     return String(f);
   }

@@ -90,7 +90,6 @@
       tone="signed"
       min={Mix.OUTPUT_GAIN_MIN_DB}
       max={Mix.OUTPUT_GAIN_MAX_DB}
-      size="md"
       align="center"
       value={column.gainDb}
       disabled={!column.enabled}
@@ -103,7 +102,6 @@
       kind="ms"
       min={Mix.OUTPUT_DELAY_MIN_MS}
       max={Mix.OUTPUT_DELAY_MAX_MS}
-      size="md"
       align="center"
       value={column.delayMs}
       disabled={!column.enabled}
