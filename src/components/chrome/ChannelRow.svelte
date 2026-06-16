@@ -110,7 +110,19 @@
   .row.selected .fill.warm { background: var(--warn); }
   .row.selected .fill.hot { background: var(--err); }
 
-  .row.dim .nm { opacity: 0.5; }
+  /* Disabled/unused channels get a faint diagonal hatch (carried over from the
+     old MiniPin look). Skipped when selected so an actively-edited channel
+     still reads as the solid accent fill. */
+  .row.dim:not(.selected) {
+    background:
+      repeating-linear-gradient(
+        135deg,
+        color-mix(in oklab, var(--text) 7%, transparent) 0 1px,
+        transparent 1px 6px
+      ),
+      color-mix(in oklab, var(--text) 2%, transparent);
+  }
+  .row.dim:not(.selected) .nm { opacity: 0.5; }
   .row.pulsate { animation: row-pulse 2s ease-in-out infinite; }
   @keyframes row-pulse {
     0%, 100% { background: color-mix(in oklab, var(--text) 3%, transparent); }
