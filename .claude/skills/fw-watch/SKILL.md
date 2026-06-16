@@ -131,7 +131,10 @@ only at Procedure step 10. Do NOT dump all of `main`'s history.
      dedup key (the same change may be attributed to a different SHA on a later
      run). An item is "already present" if a prior item names the same
      `(file, symbol)` regardless of SHA.
-   - Update the section's `_Last reviewed commit_` line to the new branch head.
+   - Update the section's `_Last reviewed commit_` line to the new branch head
+     **only when this run processed new commits for the branch**. On a no-op run
+     (no new commits — `status: "identical"`, `ahead == 0`) leave the section and
+     its `_Last reviewed commit_` line untouched.
 
 10. **Advance watermarks:** set each processed branch's entry in
     `state.branches` to its head SHA. Remove entries for branches that no longer
