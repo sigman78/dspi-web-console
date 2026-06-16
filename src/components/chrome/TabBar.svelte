@@ -1,41 +1,8 @@
 <script lang="ts">
-  import MiniPin from './MiniPin.svelte';
-  import { settings, setTab, setEqTarget, TAB_ORDER, TAB_META, connection, activeSession, eqUi } from '@/state';
-  import type { ChannelModel, ChannelId } from '@/domain';
+  import { settings, setTab, TAB_ORDER, TAB_META, connection } from '@/state';
 
   const TABS = TAB_ORDER.map((id) => ({ id, ...TAB_META[id] }));
-
-  const snap = $derived(activeSession()?.mirror.current ?? null);
-  const inputs = $derived(snap?.channels.filter((c) => !c.isOutput) ?? []);
-  const outputs = $derived(snap?.channels.filter((c) =>  c.isOutput) ?? []);
-  const selectable = $derived(settings.tab === 'eq');
   const disabled = $derived(!connection.connected);
-  const tele = $derived(activeSession()?.telemetry ?? null);
-
-  function levelDb(ch: ChannelModel): number {
-    const p = tele?.peaks[ch.id] ?? 0;
-    return p > 0 ? 20 * Math.log10(p) : -60;
-  }
-
-  function isDim(ch: ChannelModel): boolean {
-    if (!snap) return true;
-    if (!ch.isOutput) return false;
-    const out = snap.outputs.find((o) => o.id === ch.id);
-    return !out || !out.enabled;
-  }
-
-  function pickEq(id: ChannelId) {
-    if (!selectable) return;
-    setEqTarget(id);
-  }
-
-  // L/R suffix on the displayed shortName drives the visual pairing.
-  // PDM and any future singleton fall through to 'single'.
-  function pairSide(short: string): 'left' | 'right' | 'single' {
-    if (short.endsWith('L')) return 'left';
-    if (short.endsWith('R')) return 'right';
-    return 'single';
-  }
 </script>
 
 <div class="tabs" class:is-disabled={disabled}>
@@ -51,48 +18,6 @@
         <span class="tlabel">{t.label}</span>
       </button>
     {/each}
-
-    <span class="div"></span>
-
-    <div class="pinrow">
-      {#each inputs as ch (ch.id)}
-        <MiniPin
-          id={ch.shortName}
-          name={ch.name}
-          channelId={ch.id}
-          levelDb={levelDb(ch)}
-          dim={isDim(ch)}
-          selectable={selectable}
-          active={selectable && settings.eqTarget === ch.id}
-          pulsate={selectable && eqUi.copySource === ch.id}
-          clipped={tele?.clipLatched[ch.id] ?? false}
-          pairSide={pairSide(ch.shortName)}
-          onclick={() => pickEq(ch.id)}
-        />
-      {/each}
-    </div>
-    <span class="arrow">→</span>
-    <div class="pinrow grow">
-      {#each outputs as ch (ch.id)}
-        <MiniPin
-          id={ch.shortName}
-          name={ch.name}
-          channelId={ch.id}
-          levelDb={levelDb(ch)}
-          dim={isDim(ch)}
-          selectable={selectable}
-          active={selectable && settings.eqTarget === ch.id}
-          pulsate={selectable && eqUi.copySource === ch.id}
-          clipped={tele?.clipLatched[ch.id] ?? false}
-          pairSide={pairSide(ch.shortName)}
-          onclick={() => pickEq(ch.id)}
-        />
-      {/each}
-    </div>
-
-    {#if selectable}
-      <span class="hint">← EQ TARGET</span>
-    {/if}
   </div>
 </div>
 
@@ -142,15 +67,4 @@
   .tcode { color: var(--text-faint); font-size: 9px; }
   .tlabel { font-size: 10px; }
   .tab.active .tcode { color: color-mix(in oklab, var(--accent) 70%, transparent); }
-  .div { width: 1px; height: 22px; align-self: center; background: var(--border); margin: 0 4px; }
-  .pinrow { display: flex; gap: 4px; align-items: center; }
-  .pinrow.grow { flex: 1; overflow: hidden; }
-  .arrow { font-size: 9px; color: var(--text-faint); letter-spacing: 1px; align-self: center; }
-  .hint {
-    font-size: 9px;
-    color: var(--accent);
-    letter-spacing: 1px;
-    font-weight: 600;
-    align-self: center;
-  }
 </style>
