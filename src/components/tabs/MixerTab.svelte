@@ -4,6 +4,7 @@
   import MatrixCell from '@/components/tabs/mixer/MatrixCell.svelte';
   import { matrixColumns, matrixRows } from '@/domain';
   import { getSession } from '@/components/sessionContext';
+  import { settings } from '@/state';
   import { chKey } from '@/styles/palette';
 
   const s = getSession();
@@ -46,12 +47,13 @@
             outputIndex={col.wireIdx}
             zebra={i % 2 === 0}
             unavailable={isUnavailable(i)}
+            selected={settings.selectedChannel === col.id}
           />
         {/each}
 
         {#each rows as row (row.inputIndex)}
           {@const parts = splitLR(row.label)}
-          <div class="row-head ch-{chKey(row.inputId)}">
+          <div class="row-head ch-{chKey(row.inputId)}" class:selected={settings.selectedChannel === row.inputId}>
             <div class="ident">
               <span class="rid">IN{row.inputIndex + 1}</span>
               {#if parts.side}<span class="side">{parts.side}</span>{/if}
@@ -115,6 +117,7 @@
   }
 
   .row-head {
+    position: relative;
     padding: 10px 10px;
     border-right: 1px solid color-mix(in oklab, var(--text) 10%, transparent);
     background: color-mix(in oklab, var(--text) 1.5%, transparent);
@@ -144,6 +147,21 @@
     font-size: 11px;
     color: var(--text);
     font-family: var(--font-sans);
+  }
+  /* Selected-channel locator: a channel-color spine on the row's leading edge,
+     the horizontal mate of MatrixHeader's column line and the rail's L/R group
+     spine. Absolutely positioned so the grid never reflows. */
+  .row-head.selected::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--ch-base);
+    opacity: 0.85;
+    pointer-events: none;
   }
 
   .cell-wrap {
