@@ -157,7 +157,9 @@
     flex-direction: column;
     gap: 4px;
     width: 100%;
-    padding: 5px 7px;
+    /* Padding lives on the inner .body button (idle) and on the row itself only
+       while editing, so the clickable select target has no dead ring around it. */
+    padding: 0;
     border: 1px solid var(--border);
     border-radius: 4px;
     background: color-mix(in oklab, var(--text) 3%, transparent);
@@ -174,6 +176,9 @@
     background: color-mix(in oklab, var(--text) 7%, transparent);
   }
   .row.is-disabled { cursor: default; }
+  /* Editing swaps the .body button for bare input/track/clipline children, so
+     the row supplies the padding the .body otherwise would. */
+  .row.editing { padding: 5px 7px; }
   /* The clickable row body: a button so the whole row (name + meter) selects.
      Resets to inherit the row's box; lays its contents out like the row did. */
   .body {
@@ -183,7 +188,7 @@
     width: 100%;
     background: none;
     border: none;
-    padding: 0;
+    padding: 5px 7px;
     margin: 0;
     text-align: left;
     color: inherit;
