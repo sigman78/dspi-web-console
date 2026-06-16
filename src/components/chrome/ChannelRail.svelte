@@ -2,7 +2,7 @@
   import * as state from '@/state';
   import ChannelRow from './ChannelRow.svelte';
   import { chKey } from '@/styles/palette';
-  import { groupIntoPairs, type ChannelModel } from '@/domain';
+  import { groupIntoPairs, type ChannelGroup, type ChannelModel } from '@/domain';
 
   const snap = $derived(state.activeSession()?.mirror.current ?? null);
   const tele = $derived(state.activeSession()?.telemetry ?? null);
@@ -25,53 +25,34 @@
 </script>
 
 <div class="rail" class:is-disabled={disabled}>
-  {#if inputGroups.length}
-    <div class="microlbl">INPUTS</div>
-    {#each inputGroups as g (g.accentId)}
-      <div class="pair ch-{chKey(g.accentId)}">
-        <span class="spine"></span>
-        <div class="stack">
-          {#each g.members as ch (ch.id)}
-            <ChannelRow
-              name={ch.name}
-              channelId={ch.id}
-              levelDb={levelDb(ch)}
-              selected={state.settings.eqTarget === ch.id}
-              dim={isDim(ch)}
-              pulsate={state.eqUi.copySource === ch.id}
-              clipped={tele?.clipLatched[ch.id] ?? false}
-              disabled={disabled}
-              onclick={() => state.selectChannel(ch.id)}
-            />
-          {/each}
+  {#snippet section(label: string, groups: ChannelGroup<ChannelModel>[])}
+    {#if groups.length}
+      <div class="microlbl">{label}</div>
+      {#each groups as g (g.accentId)}
+        <div class="pair ch-{chKey(g.accentId)}">
+          <span class="spine"></span>
+          <div class="stack">
+            {#each g.members as ch (ch.id)}
+              <ChannelRow
+                name={ch.name}
+                channelId={ch.id}
+                levelDb={levelDb(ch)}
+                selected={state.settings.eqTarget === ch.id}
+                dim={isDim(ch)}
+                pulsate={state.eqUi.copySource === ch.id}
+                clipped={tele?.clipLatched[ch.id] ?? false}
+                disabled={disabled}
+                onclick={() => state.selectChannel(ch.id)}
+              />
+            {/each}
+          </div>
         </div>
-      </div>
-    {/each}
-  {/if}
+      {/each}
+    {/if}
+  {/snippet}
 
-  {#if outputGroups.length}
-    <div class="microlbl">OUTPUTS</div>
-    {#each outputGroups as g (g.accentId)}
-      <div class="pair ch-{chKey(g.accentId)}">
-        <span class="spine"></span>
-        <div class="stack">
-          {#each g.members as ch (ch.id)}
-            <ChannelRow
-              name={ch.name}
-              channelId={ch.id}
-              levelDb={levelDb(ch)}
-              selected={state.settings.eqTarget === ch.id}
-              dim={isDim(ch)}
-              pulsate={state.eqUi.copySource === ch.id}
-              clipped={tele?.clipLatched[ch.id] ?? false}
-              disabled={disabled}
-              onclick={() => state.selectChannel(ch.id)}
-            />
-          {/each}
-        </div>
-      </div>
-    {/each}
-  {/if}
+  {@render section('INPUTS', inputGroups)}
+  {@render section('OUTPUTS', outputGroups)}
 </div>
 
 <style>
