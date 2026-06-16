@@ -138,6 +138,11 @@ export function setTab(t: TabId): void {
 export function setEqTarget(id: ChannelId | null): void {
   settings.eqTarget = id;
 }
+// Rail selection: pick a channel globally and land on the EQ tab to edit it.
+export function selectChannel(id: ChannelId): void {
+  setEqTarget(id);
+  setTab('eq');
+}
 
 // Validate the persisted eqTarget against the connected platform's channel set;
 // if the stored ID isn't present (e.g. reconnected to a smaller device), fall

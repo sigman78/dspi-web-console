@@ -1,5 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from 'vitest';
-import { loadSettings } from './settings.svelte';
+import { loadSettings, settings, selectChannel } from './settings.svelte';
+import { ChannelId } from '@/domain';
 
 const V1_KEY = 'dspi-console-web/settings/v1';
 const LEGACY_UI_KEY = 'dspi-console-web/ui/v2';
@@ -157,5 +158,15 @@ describe('eagerReconcile', () => {
     localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, eagerReconcile: 'not-a-bool' }));
     const s = loadSettings();
     expect(s.eagerReconcile).toBe(false);
+  });
+});
+
+describe('selectChannel', () => {
+  test('sets the eq target and switches to the EQ tab', () => {
+    settings.tab = 'overview';
+    settings.eqTarget = null;
+    selectChannel(ChannelId.Out1L);
+    expect(settings.eqTarget).toBe(ChannelId.Out1L);
+    expect(settings.tab).toBe('eq');
   });
 });
