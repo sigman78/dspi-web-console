@@ -66,7 +66,7 @@
     cursor: pointer;
     transition: background 100ms, border-color 100ms, box-shadow 100ms;
   }
-  .row:hover:not(:disabled) {
+  .row:hover:not(:disabled):not(.selected) {
     border-color: var(--border-hi);
     background: color-mix(in oklab, var(--text) 7%, transparent);
   }
@@ -97,6 +97,12 @@
   .row.selected {
     background: var(--ch-base);
     border-color: var(--ch-base);
+  }
+  /* Hover on the selected row brightens the accent rather than letting the
+     generic hover paint a dark bg under the (dark) selected text. */
+  .row.selected:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--ch-base) 85%, var(--text));
+    border-color: color-mix(in oklab, var(--ch-base) 85%, var(--text));
   }
   .row.selected .nm { color: var(--bg); font-weight: 600; }
   .row.selected .track { background: color-mix(in oklab, var(--bg) 22%, transparent); }
