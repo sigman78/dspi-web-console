@@ -99,7 +99,14 @@
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
   }
-  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    /* Align with the channel rail column (rail width 196px minus the topbar's
+       16px right padding to the divider rhythm). */
+    min-width: 180px;
+  }
   .cube {
     width: 22px; height: 22px;
     border-radius: 5px;
