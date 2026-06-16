@@ -130,7 +130,7 @@
     >
       {#snippet right()}
         {#if !channel}
-          <span class="meta">SELECT CHANNEL ↑</span>
+          <span class="meta">SELECT CHANNEL ←</span>
         {/if}
       {/snippet}
       <div class="bode-host">
@@ -158,7 +158,7 @@
       {/if}
     {:else}
       <Panel code="EQ.02" title="BANDS · 10 BIQUAD">
-        <p class="hint">Pick a channel from the top-bar pin row to edit its EQ.</p>
+        <p class="hint">Pick a channel from the rail on the left to edit its EQ.</p>
       </Panel>
     {/if}
   </div>
