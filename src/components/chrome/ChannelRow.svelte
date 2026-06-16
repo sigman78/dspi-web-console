@@ -52,6 +52,7 @@
 
 <style>
   .row {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -66,6 +67,8 @@
     cursor: pointer;
     transition: background 100ms, border-color 100ms, box-shadow 100ms;
   }
+  /* Keep content above the hatch overlay (::before, see below). */
+  .row > * { position: relative; z-index: 1; }
   .row:hover:not(:disabled):not(.selected) {
     border-color: var(--border-hi);
     background: color-mix(in oklab, var(--text) 7%, transparent);
@@ -111,20 +114,32 @@
   .row.selected .fill.hot { background: var(--err); }
 
   /* Disabled/unused channels get a diagonal hatch (carried over from the old
-     MiniPin look). On the dark unselected row the stripes are light; on the
-     light accent fill of a selected channel they flip dark so the hatch still
-     reads — a selected-but-disabled channel stays visibly disabled. */
-  .row.dim:not(.selected) {
-    background:
-      repeating-linear-gradient(
-        135deg,
-        color-mix(in oklab, var(--text) 16%, transparent) 0 2px,
-        transparent 2px 6px
-      ),
-      color-mix(in oklab, var(--text) 2%, transparent);
+     MiniPin look). It lives on a ::before overlay so it can fade in/out — a
+     gradient painted on `background` can't be transitioned. On the dark
+     unselected row the stripes are light; on the light accent fill of a
+     selected channel they flip dark so the hatch still reads — a
+     selected-but-disabled channel stays visibly disabled. */
+  .row::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    background: repeating-linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--text) 16%, transparent) 0 2px,
+      transparent 2px 6px
+    );
+    transition: opacity 120ms ease;
   }
-  .row.dim.selected {
-    background-image: repeating-linear-gradient(
+  .row.dim::before { opacity: 1; }
+  .row.dim:not(.selected) {
+    background: color-mix(in oklab, var(--text) 2%, transparent);
+  }
+  .row.dim.selected::before {
+    background: repeating-linear-gradient(
       135deg,
       color-mix(in oklab, var(--bg) 45%, transparent) 0 2px,
       transparent 2px 6px
@@ -138,6 +153,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .row.pulsate { animation: none; background: color-mix(in oklab, var(--ch-base) 35%, transparent); }
+    .row::before { transition: none; }
   }
 
   /* Latched clip indicator: 1px red underline, always present to avoid reflow. */
