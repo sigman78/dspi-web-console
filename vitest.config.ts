@@ -7,6 +7,9 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 // installs a broken `localStorage` stub on globalThis that shadows jsdom's and
 // emits a startup warning. Disabling webstorage entirely lets jsdom own
 // `localStorage` and silences the warning. NODE_OPTIONS is inherited by forks.
+//
+// `--no-experimental-webstorage` requires Node >= 22.4, so CI is pinned to Node
+// 22 via .nvmrc (older Node rejects the flag in NODE_OPTIONS and hangs the run).
 process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ''} --no-experimental-webstorage`.trim();
 
 export default defineConfig({
