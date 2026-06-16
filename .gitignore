@@ -27,3 +27,7 @@ _base/
 *.njsproj
 *.sln
 *.sw?
+
+# /fw-watch skill — local-only firmware-tracking output (see .claude/skills/fw-watch)
+docs/FW-TODO.md
+docs/.fw-watch-state.json
