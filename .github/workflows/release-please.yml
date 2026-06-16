@@ -1,0 +1,26 @@
+name: Release Please
+
+# On every push to master, release-please maintains a "release PR" that bumps
+# the version and updates CHANGELOG.md from Conventional Commit messages. Merging
+# that PR tags vX.Y.Z and publishes a GitHub Release. The version bump in
+# package.json flows into the UI stamp automatically (vite injects pkg.version as
+# __APP_VERSION__), and the master push then triggers deploy.yml.
+#
+# Requires repo setting: Settings -> Actions -> General -> Workflow permissions
+# -> enable "Allow GitHub Actions to create and approve pull requests".
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
