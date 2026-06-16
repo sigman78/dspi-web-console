@@ -30,10 +30,10 @@ Run `gh auth status`. If it reports not logged in, stop and tell the user to run
 }
 ```
 
-If the file is absent, this is a **first run**: create it with empty `branches`,
-and seed each discovered branch's watermark to its merge-base with `main` (so the
-first report covers everything the branch has added on top of `main`). Do NOT dump
-all of `main`'s history.
+If the file is absent, this is a **first run**: there is no prior state, so every
+discovered branch is treated as a first sighting (its base is the merge-base
+with `main` — see Procedure step 4). The populated `branches` map is written
+only at Procedure step 10. Do NOT dump all of `main`'s history.
 
 ## Procedure
 
@@ -66,15 +66,19 @@ all of `main`'s history.
    gh api repos/WeebLabs/DSPi/compare/<base>...<branch> --jq '.files[].filename'
    ```
 
-   If the stored watermark is no longer reachable (compare errors or returns
-   `behind > 0` with `ahead == 0`, i.e. the branch was rebased/force-pushed),
-   fall back to the merge-base with `main`, re-scan from there, and note the reset
-   in the summary.
+   If the `<base>...<branch>` compare (base = stored watermark) errors with HTTP
+   404/422 **or** reports `status: "diverged"`, the watermark SHA is no longer an
+   ancestor of the branch head (the branch was rebased or force-pushed). Fall back
+   to the merge-base with `main`, re-scan from there, and note the reset in the
+   summary. Note: a positive `behind_by` on the `main...<branch>` compare in step 3
+   is expected (the branch just hasn't been rebased onto latest `main`) and is NOT
+   a reset signal.
 
 6. **Filter to console-relevant paths** and pull each one's patch:
 
    Relevant: `firmware/DSPi/config.h`, `firmware/DSPi/vendor_commands.c`,
-   `firmware/DSPi/bulk_params.h`, `firmware/DSPi/bulk_params.c`,
+   `firmware/DSPi/vendor_commands.h`, `firmware/DSPi/bulk_params.h`,
+   `firmware/DSPi/bulk_params.c`,
    `firmware/DSPi/usb_descriptors.c`, `firmware/DSPi/usb_descriptors.h`,
    `firmware/DSPi/notify.c`, `firmware/DSPi/notify.h`, and any **new**
    `firmware/DSPi/*.c` / `*.h` feature module.
@@ -109,7 +113,7 @@ all of `main`'s history.
    ```bash
    gh api repos/WeebLabs/DSPi/contents/firmware/DSPi/config.h?ref=<branch> \
      -H "Accept: application/vnd.github.raw" \
-     | grep -E 'FW_VERSION_(MAJOR|MINOR|PATCH)'
+     | grep -E '#define FW_VERSION_(MAJOR|MINOR|PATCH)\b'
    ```
 
    Label the section `## <branch> (fw reports X.Y.Z)`. If the version is plainly
@@ -120,8 +124,13 @@ all of `main`'s history.
    absent). For each branch, ensure a `## <branch> ...` section exists and:
    - **Append** newly found items as unchecked `- [ ]` entries.
    - **Never** modify, reorder, or uncheck existing items — the human owns triage.
-   - Skip items already present (match on the source pointer `file@sha` + opcode/
-     symbol) to avoid duplicates across runs.
+   - Skip items already present, matching on the **stable change identity** —
+     the `(file, symbol)` pair, where `symbol` is the opcode name, struct/field
+     name, module filename, or `VID/PID` as appropriate. The `@sha` in an item is
+     a non-authoritative provenance annotation only; do NOT include it in the
+     dedup key (the same change may be attributed to a different SHA on a later
+     run). An item is "already present" if a prior item names the same
+     `(file, symbol)` regardless of SHA.
    - Update the section's `_Last reviewed commit_` line to the new branch head.
 
 10. **Advance watermarks:** set each processed branch's entry in
