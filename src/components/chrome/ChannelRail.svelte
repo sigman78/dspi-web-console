@@ -41,7 +41,7 @@
                 dim={isDim(ch)}
                 pulsate={state.eqUi.copySource === ch.id}
                 clipped={tele?.clipLatched[ch.id] ?? false}
-                disabled={disabled}
+                disabled={disabled || isDim(ch)}
                 onclick={() => state.selectChannel(ch.id)}
               />
             {/each}
