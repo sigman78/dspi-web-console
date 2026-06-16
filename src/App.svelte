@@ -1,6 +1,7 @@
 <script lang="ts">
   import TopBar from '@/components/chrome/TopBar.svelte';
   import TabBar from '@/components/chrome/TabBar.svelte';
+  import ChannelRail from '@/components/chrome/ChannelRail.svelte';
   import ConnectingHero from '@/components/chrome/ConnectingHero.svelte';
   import ConnectedApp from '@/components/chrome/ConnectedApp.svelte';
   import PresetBoundaryModal from '@/components/presets/PresetBoundaryModal.svelte';
@@ -34,7 +35,12 @@
   <PresetBoundaryModal />
   <main>
     {#if !mockHero && appState.kind === 'ready'}
-      <ConnectedApp session={appState.session} />
+      <div class="work">
+        <ChannelRail />
+        <div class="content">
+          <ConnectedApp session={appState.session} />
+        </div>
+      </div>
     {:else}
       <div class="hero-wrap">
         <ConnectingHero />
@@ -52,13 +58,25 @@
     overflow: hidden;
   }
   main {
-    padding: var(--pad);
-    overflow: auto;
+    overflow: hidden;
     min-height: 0;
+  }
+  .work {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+  }
+  .content {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    padding: var(--pad);
   }
   .hero-wrap {
     display: grid;
     place-items: center;
     min-height: 100%;
+    padding: var(--pad);
   }
 </style>
