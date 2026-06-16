@@ -1,12 +1,37 @@
 <script lang="ts">
-  import * as state from '@/state';
+  import * as appState from '@/state';
   import ChannelRow from './ChannelRow.svelte';
+  import { setChannelName } from '@/runtime';
   import { chKey } from '@/styles/palette';
-  import { groupIntoPairs, type ChannelGroup, type ChannelModel } from '@/domain';
+  import { groupIntoPairs, type ChannelGroup, type ChannelId, type ChannelModel } from '@/domain';
 
-  const snap = $derived(state.activeSession()?.mirror.current ?? null);
-  const tele = $derived(state.activeSession()?.telemetry ?? null);
-  const disabled = $derived(!state.connection.connected);
+  const snap = $derived(appState.activeSession()?.mirror.current ?? null);
+  const tele = $derived(appState.activeSession()?.telemetry ?? null);
+  const disabled = $derived(!appState.connection.connected);
+
+  // Inline rename: one row editable at a time. The row component owns the
+  // pending text and its own commit-once guard; the rail tracks which row is
+  // open and routes the committed value through setChannelName.
+  let editingId = $state<ChannelId | null>(null);
+  let originalValue = '';
+
+  function startEdit(ch: ChannelModel): void {
+    if (!appState.connection.connected) return;
+    editingId = ch.id;
+    originalValue = ch.name;
+  }
+
+  function commitName(id: ChannelId, value: string): void {
+    if (editingId !== id) return; // re-entry guard (defense in depth)
+    editingId = null;
+    const s = appState.activeSession();
+    if (!s) return; // disconnected mid-edit: no-op rather than throw
+    if (value !== originalValue) setChannelName(s, id, value);
+  }
+
+  function cancelEdit(): void {
+    editingId = null;
+  }
 
   const inputGroups = $derived(groupIntoPairs(snap?.channels.filter((c) => !c.isOutput) ?? []));
   const outputGroups = $derived(groupIntoPairs(snap?.channels.filter((c) => c.isOutput) ?? []));
@@ -37,12 +62,17 @@
                 name={ch.name}
                 channelId={ch.id}
                 levelDb={levelDb(ch)}
-                selected={state.settings.eqTarget === ch.id}
+                defaultName={ch.defaultName}
+                selected={appState.settings.eqTarget === ch.id}
                 dim={isDim(ch)}
-                pulsate={state.eqUi.copySource === ch.id}
+                pulsate={appState.eqUi.copySource === ch.id}
                 clipped={tele?.clipLatched[ch.id] ?? false}
                 disabled={disabled}
-                onclick={() => state.selectChannel(ch.id)}
+                editing={editingId === ch.id}
+                onclick={() => appState.selectChannel(ch.id)}
+                onStartEdit={() => startEdit(ch)}
+                onCommitName={(value) => commitName(ch.id, value)}
+                onCancelEdit={cancelEdit}
               />
             {/each}
           </div>

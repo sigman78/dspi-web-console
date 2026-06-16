@@ -1,54 +1,141 @@
 <script lang="ts">
   import { chKey } from '@/styles/palette';
-  import type { ChannelId } from '@/domain';
+  import { CHANNEL_NAME_MAX_LEN, type ChannelId } from '@/domain';
 
   const {
     name,
     channelId,
     levelDb,
+    defaultName,
     selected = false,
     dim = false,
     pulsate = false,
     clipped = false,
     disabled = false,
+    editing = false,
     onclick,
+    onStartEdit,
+    onCommitName,
+    onCancelEdit,
   }: {
     name: string;
     channelId: ChannelId;
     levelDb: number;
+    defaultName: string;
     selected?: boolean;
     dim?: boolean;
     pulsate?: boolean;
     clipped?: boolean;
     disabled?: boolean;
+    editing?: boolean;
     onclick?: () => void;
+    onStartEdit?: () => void;
+    onCommitName?: (name: string) => void;
+    onCancelEdit?: () => void;
   } = $props();
 
   const pct = $derived(Math.max(0, Math.min(1, (levelDb + 60) / 60)));
   const warm = $derived(pct > 0.75 && pct <= 0.92);
   const hot = $derived(pct > 0.92);
 
+  let nameBtn = $state<HTMLButtonElement>();
+
+  // Each edit session ends with exactly one terminal callback. Enter/Escape and
+  // the blur that follows the input's unmount would otherwise both fire; this
+  // flag makes the trailing event a no-op (the same job ChannelNamesPanel's
+  // editingId re-entry guard does, kept local so the row is correct on its own).
+  let committed = false;
+
+  let wasEditing = false;
+  $effect(() => {
+    // Arm a fresh edit session on entry; return focus to the name button on
+    // exit so keyboard tab-order survives the rename (the outer row is never
+    // destroyed — only the inner control swaps — so the button is back already).
+    if (editing && !wasEditing) committed = false;
+    if (!editing && wasEditing) nameBtn?.focus();
+    wasEditing = editing;
+  });
+
   function handleClick() {
     if (!disabled) onclick?.();
   }
+
+  function startEdit() {
+    if (disabled) return;
+    // Clear the native word-selection a double-click leaves on the label so it
+    // doesn't collide with the input's select-all-on-mount.
+    window.getSelection()?.removeAllRanges();
+    onStartEdit?.();
+  }
+
+  // The editor input is uncontrolled: seeded once on mount, then read straight
+  // from the DOM on commit. With no reactive binding, the rail's telemetry-driven
+  // re-renders can't clobber in-progress typing.
+  function initInput(node: HTMLInputElement) {
+    node.value = name;
+    node.focus();
+    node.select();
+  }
+
+  function commitOnce(node: HTMLInputElement) {
+    if (committed) return;
+    committed = true;
+    onCommitName?.(node.value);
+  }
+
+  function onInputKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitOnce(e.currentTarget as HTMLInputElement);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      committed = true; // swallow the unmount blur that follows
+      onCancelEdit?.();
+    }
+  }
+
+  function onInputBlur(e: FocusEvent) {
+    commitOnce(e.currentTarget as HTMLInputElement);
+  }
 </script>
 
-<button
+<div
   class="row ch-{chKey(channelId)}"
   class:selected
   class:dim
   class:pulsate
-  {disabled}
-  aria-pressed={selected}
-  title={name}
-  onclick={handleClick}
+  class:editing
+  class:is-disabled={disabled}
 >
-  <span class="nm">{name}</span>
+  {#if editing}
+    <input
+      class="nm-input"
+      type="text"
+      use:initInput
+      maxlength={CHANNEL_NAME_MAX_LEN}
+      placeholder={defaultName}
+      spellcheck="false"
+      autocomplete="off"
+      aria-label={`Rename ${name}`}
+      onkeydown={onInputKeydown}
+      onblur={onInputBlur}
+    />
+  {:else}
+    <button
+      class="nm"
+      bind:this={nameBtn}
+      {disabled}
+      aria-pressed={selected}
+      title={name}
+      onclick={handleClick}
+      ondblclick={startEdit}
+    >{name}</button>
+  {/if}
   <span class="track">
     <span class="fill" class:warm class:hot style:width="{pct * 100}%"></span>
   </span>
   <span class="clipline" class:on={clipped}></span>
-</button>
+</div>
 
 <style>
   .row {
@@ -69,16 +156,46 @@
   }
   /* Keep content above the hatch overlay (::before, see below). */
   .row > * { position: relative; z-index: 1; }
-  .row:hover:not(:disabled):not(.selected) {
+  .row:hover:not(.is-disabled):not(.selected) {
     border-color: var(--border-hi);
     background: color-mix(in oklab, var(--text) 7%, transparent);
   }
-  .row:disabled { cursor: default; }
+  .row.is-disabled { cursor: default; }
+  /* The name is a button so the row can host the editor input as a sibling
+     (an <input> can't live inside a <button>). Reset it to look like the old
+     label. */
   .nm {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+    font-family: inherit;
     font-size: 10px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    cursor: inherit;
+  }
+  .nm:disabled { cursor: default; }
+  /* Inline editor. A solid --bg backdrop keeps the text legible on a selected
+     row (accent fill) or a dim row, instead of inheriting either. */
+  .nm-input {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    color: var(--text);
+    background: var(--bg);
+    border: none;
+    border-radius: 2px;
+    padding: 0 2px;
+    margin: 0;
+    font-family: inherit;
+    font-size: 10px;
+    outline: none;
+    box-shadow: inset 0 0 0 1px var(--accent);
   }
   .track {
     height: 4px;
@@ -103,7 +220,7 @@
   }
   /* Hover on the selected row brightens the accent rather than letting the
      generic hover paint a dark bg under the (dark) selected text. */
-  .row.selected:hover:not(:disabled) {
+  .row.selected:hover:not(.is-disabled) {
     background: color-mix(in oklab, var(--ch-base) 85%, var(--text));
     border-color: color-mix(in oklab, var(--ch-base) 85%, var(--text));
   }
@@ -135,6 +252,8 @@
     transition: opacity 120ms ease;
   }
   .row.dim::before { opacity: 1; }
+  /* While editing, drop the hatch so the input reads cleanly on a dim row. */
+  .row.editing::before { opacity: 0; }
   .row.dim:not(.selected) {
     background: color-mix(in oklab, var(--text) 2%, transparent);
   }
