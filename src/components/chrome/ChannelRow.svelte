@@ -110,19 +110,27 @@
   .row.selected .fill.warm { background: var(--warn); }
   .row.selected .fill.hot { background: var(--err); }
 
-  /* Disabled/unused channels get a faint diagonal hatch (carried over from the
-     old MiniPin look). Skipped when selected so an actively-edited channel
-     still reads as the solid accent fill. */
+  /* Disabled/unused channels get a diagonal hatch (carried over from the old
+     MiniPin look). On the dark unselected row the stripes are light; on the
+     light accent fill of a selected channel they flip dark so the hatch still
+     reads — a selected-but-disabled channel stays visibly disabled. */
   .row.dim:not(.selected) {
     background:
       repeating-linear-gradient(
         135deg,
-        color-mix(in oklab, var(--text) 7%, transparent) 0 1px,
-        transparent 1px 6px
+        color-mix(in oklab, var(--text) 16%, transparent) 0 2px,
+        transparent 2px 6px
       ),
       color-mix(in oklab, var(--text) 2%, transparent);
   }
-  .row.dim:not(.selected) .nm { opacity: 0.5; }
+  .row.dim.selected {
+    background-image: repeating-linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--bg) 45%, transparent) 0 2px,
+      transparent 2px 6px
+    );
+  }
+  .row.dim .nm { opacity: 0.55; }
   .row.pulsate { animation: row-pulse 2s ease-in-out infinite; }
   @keyframes row-pulse {
     0%, 100% { background: color-mix(in oklab, var(--text) 3%, transparent); }
