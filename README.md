@@ -6,6 +6,7 @@ Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScrip
 
 [> Launch <](https://sigman78.github.io/dspi-web-console/) | [> Demo (w/o device) <](https://sigman78.github.io/dspi-web-console/?mock=rp2350)
 
+[![CI](https://github.com/sigman78/dspi-web-console/actions/workflows/ci.yml/badge.svg)](https://github.com/sigman78/dspi-web-console/actions/workflows/ci.yml)
 [![Deploy to GitHub Pages](https://github.com/sigman78/dspi-web-console/actions/workflows/deploy.yml/badge.svg)](https://github.com/sigman78/dspi-web-console/actions/workflows/deploy.yml)
 
 ## HW/FW Compatibility status
@@ -71,6 +72,12 @@ The mock transport (`?mock=*`, also used in tests) synthesises a wire-faithful b
 ## Usb wire monitoring
 
 Append `?debug` to log every wire message to the browser console. High-volume telemetry polls go to the **Verbose** level (hidden by default)
+
+## Contributing & releases
+
+Branching model, commit conventions, and the (automated) release flow live in
+[CONTRIBUTING.md](./CONTRIBUTING.md). Shipped changes are tracked in
+[CHANGELOG.md](./CHANGELOG.md); upcoming work is in [TODO.md](./TODO.md).
 
 ## License
 
