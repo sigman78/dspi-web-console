@@ -6,7 +6,7 @@
 import type { DspTransport } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
 import {
-  settings, reconcileEqTarget,
+  settings, reconcileSelectedChannel,
   pushNotice,
   dispatch, makeReadySession, activeSession,
   type ReadySession,
@@ -73,10 +73,10 @@ export async function wireUpConnection(device: DspDevice, scope?: ConnectionScop
   }
 }
 
-// Reconcile UI policy after (re)connect. reconcileEqTarget validates the
-// persisted EQ target against the connected platform's channel set.
+// Reconcile UI policy after (re)connect. reconcileSelectedChannel validates the
+// persisted selection against the connected platform's channel set.
 export async function reconcileAfterSync(s: ReadySession): Promise<void> {
-  reconcileEqTarget(s.mirror.current?.channels);
+  reconcileSelectedChannel(s.mirror.current?.channels);
 }
 
 export function attachTransportListeners(transport: DspTransport, _device: DspDevice, attempt?: number): () => void {

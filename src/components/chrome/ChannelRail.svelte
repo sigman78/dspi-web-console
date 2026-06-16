@@ -63,7 +63,7 @@
                 channelId={ch.id}
                 levelDb={levelDb(ch)}
                 defaultName={ch.defaultName}
-                selected={appState.settings.eqTarget === ch.id}
+                selected={appState.settings.selectedChannel === ch.id}
                 dim={isDim(ch)}
                 pulsate={appState.eqUi.copySource === ch.id}
                 clipped={tele?.clipLatched[ch.id] ?? false}
