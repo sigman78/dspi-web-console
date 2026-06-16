@@ -118,4 +118,18 @@ describe('ChannelRow', () => {
     render(ChannelRow, { props: { ...base, editing: true } });
     expect(screen.getByRole('textbox').getAttribute('aria-label')).toBe('Rename Front L');
   });
+
+  test('Enter returns focus to the row button on exit', async () => {
+    const { rerender } = render(ChannelRow, { props: { ...base, editing: true } });
+    await fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+    await rerender({ ...base, editing: false });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Front L' }));
+  });
+
+  test('a click-away blur does not force focus back to the row', async () => {
+    const { rerender } = render(ChannelRow, { props: { ...base, editing: true } });
+    await fireEvent.blur(screen.getByRole('textbox'));
+    await rerender({ ...base, editing: false });
+    expect(document.activeElement).not.toBe(screen.getByRole('button', { name: 'Front L' }));
+  });
 });

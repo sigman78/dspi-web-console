@@ -38,21 +38,22 @@
   const warm = $derived(pct > 0.75 && pct <= 0.92);
   const hot = $derived(pct > 0.92);
 
-  let nameBtn = $state<HTMLButtonElement>();
+  let selectBtn = $state<HTMLButtonElement>();
 
   // Each edit session ends with exactly one terminal callback. Enter/Escape and
   // the blur that follows the input's unmount would otherwise both fire; this
-  // flag makes the trailing event a no-op (the same job ChannelNamesPanel's
-  // editingId re-entry guard does, kept local so the row is correct on its own).
+  // flag (re-armed in initInput on mount) makes the trailing event a no-op.
   let committed = false;
+  // Return focus to the select button only on a keyboard exit (Enter/Escape) —
+  // a click-away blur should leave focus where the user clicked.
+  let restoreFocus = false;
 
   let wasEditing = false;
   $effect(() => {
-    // Arm a fresh edit session on entry; return focus to the name button on
-    // exit so keyboard tab-order survives the rename (the outer row is never
-    // destroyed — only the inner control swaps — so the button is back already).
-    if (editing && !wasEditing) committed = false;
-    if (!editing && wasEditing) nameBtn?.focus();
+    if (!editing && wasEditing && restoreFocus) {
+      selectBtn?.focus();
+      restoreFocus = false;
+    }
     wasEditing = editing;
   });
 
@@ -72,6 +73,7 @@
   // from the DOM on commit. With no reactive binding, the rail's telemetry-driven
   // re-renders can't clobber in-progress typing.
   function initInput(node: HTMLInputElement) {
+    committed = false;
     node.value = name;
     node.focus();
     node.select();
@@ -86,10 +88,12 @@
   function onInputKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') {
       e.preventDefault();
+      restoreFocus = true;
       commitOnce(e.currentTarget as HTMLInputElement);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       committed = true; // swallow the unmount blur that follows
+      restoreFocus = true;
       onCancelEdit?.();
     }
   }
@@ -120,21 +124,30 @@
       onkeydown={onInputKeydown}
       onblur={onInputBlur}
     />
+    <span class="track">
+      <span class="fill" class:warm class:hot style:width="{pct * 100}%"></span>
+    </span>
+    <span class="clipline" class:on={clipped}></span>
   {:else}
+    <!-- The whole row body is the select target (click → select, double-click →
+         rename), so the meter area stays clickable. The editor input can't live
+         inside a <button>, so it replaces this body when editing. -->
     <button
-      class="nm"
-      bind:this={nameBtn}
+      class="body"
+      bind:this={selectBtn}
       {disabled}
       aria-pressed={selected}
       title={name}
       onclick={handleClick}
       ondblclick={startEdit}
-    >{name}</button>
+    >
+      <span class="nm">{name}</span>
+      <span class="track">
+        <span class="fill" class:warm class:hot style:width="{pct * 100}%"></span>
+      </span>
+      <span class="clipline" class:on={clipped}></span>
+    </button>
   {/if}
-  <span class="track">
-    <span class="fill" class:warm class:hot style:width="{pct * 100}%"></span>
-  </span>
-  <span class="clipline" class:on={clipped}></span>
 </div>
 
 <style>
@@ -161,25 +174,28 @@
     background: color-mix(in oklab, var(--text) 7%, transparent);
   }
   .row.is-disabled { cursor: default; }
-  /* The name is a button so the row can host the editor input as a sibling
-     (an <input> can't live inside a <button>). Reset it to look like the old
-     label. */
-  .nm {
-    display: block;
+  /* The clickable row body: a button so the whole row (name + meter) selects.
+     Resets to inherit the row's box; lays its contents out like the row did. */
+  .body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     width: 100%;
-    text-align: left;
     background: none;
     border: none;
     padding: 0;
+    margin: 0;
+    text-align: left;
     color: inherit;
     font-family: inherit;
+    cursor: inherit;
+  }
+  .nm {
     font-size: 10px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    cursor: inherit;
   }
-  .nm:disabled { cursor: default; }
   /* Inline editor. A solid --bg backdrop keeps the text legible on a selected
      row (accent fill) or a dim row, instead of inheriting either. */
   .nm-input {
