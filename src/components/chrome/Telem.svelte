@@ -8,7 +8,7 @@
     label: string;
     value: string;
     bar?: number;
-    priority?: 'health' | 'cpu1' | 'static';
+    priority?: 'health' | 'static';
   } = $props();
 </script>
 

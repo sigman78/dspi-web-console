@@ -6,7 +6,7 @@
   import { connection, activeSession } from '@/state';
   import { setBypass, webUsbUnsupportedReason } from '@/runtime';
   import { chromeConnectionStatus } from './connectionStatus';
-  import { APP_VERSION, GIT_SHA, BUILD_DATE, REPO_URL } from '@/buildInfo';
+  import { APP_VERSION, GIT_SHA, BUILD_DATE /*, REPO_URL */ } from '@/buildInfo';
 
   const s = $derived(activeSession());
   const connected = $derived(connection.connected);
@@ -48,6 +48,7 @@
       title="DSPI · CTRL v{APP_VERSION} · {GIT_SHA} · {BUILD_DATE}"
     >D</div>
     <span class="title">DSPI · CTRL</span>
+    <!-- Temporarily hidden: version + GitHub link. Build info remains in the cube tooltip.
     <span class="version" title="Build {GIT_SHA} · {BUILD_DATE}">v{APP_VERSION}</span>
     <a
       class="gh"
@@ -61,6 +62,7 @@
         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
       </svg>
     </a>
+    -->
   </div>
 
   <TabBar />
@@ -70,7 +72,7 @@
   <div class="rightcluster">
     <div class="stats">
       <Telem label="CPU0" value={cpu0} bar={connected ? (s?.telemetry.cpu0 ?? 0) / 100 : undefined} priority="health" />
-      <Telem label="CPU1" value={cpu1} bar={connected ? (s?.telemetry.cpu1 ?? 0) / 100 : undefined} priority="cpu1" />
+      <Telem label="CPU1" value={cpu1} bar={connected ? (s?.telemetry.cpu1 ?? 0) / 100 : undefined} priority="health" />
       <Telem label="FS"   value={fsKHz}   priority="static" />
       <Telem label="CLK"  value={clkMHz}  priority="static" />
       <Telem label="V"    value={voltage} priority="static" />
@@ -140,6 +142,7 @@
     color: var(--text-dim);
   }
   .title { font-size: 12px; font-weight: 600; letter-spacing: 1px; white-space: nowrap; }
+  /* Temporarily hidden with the version/gh markup above.
   .version { font-size: 9px; color: var(--text-faint); letter-spacing: 0.5px; }
   .gh {
     display: inline-flex;
@@ -147,6 +150,7 @@
     color: var(--text-faint);
   }
   .gh:hover { color: var(--text); }
+  */
   .spacer { flex: 1; }
   .div { width: 1px; height: 22px; background: var(--border); }
   .bypass {
@@ -174,16 +178,19 @@
   }
 
   /* Hide order: lowest value sheds first as width shrinks toward the 1024 floor. */
+  /* version + gh are temporarily commented out of the markup; their shed tier is moot.
   @media (max-width: 1640px) {
     .version, .gh { display: none; }
   }
+  */
   @media (max-width: 1580px) {
     .title { display: none; }
   }
   @media (max-width: 1480px) {
     :global(.topbar .telem.prio-static) { display: none; }
   }
-  @media (max-width: 1320px) {
-    :global(.topbar .telem.prio-cpu1) { display: none; }
+  /* Below this the whole HW-stats block (CPU0/CPU1/T°) drops at once. */
+  @media (max-width: 1280px) {
+    :global(.topbar .stats), .div { display: none; }
   }
 </style>
