@@ -19,15 +19,26 @@
 
 <div class="row" class:off class:bypassed>
   <div class="num">{String(index + 1).padStart(2, '0')}</div>
-  <BandTypeSelect value={band.type} onChange={(t) => onPatch({ type: t })} />
   <button
     class="byp"
     class:on={bypassed}
     title={bypassed ? 'Band bypassed — click to re-enable' : 'Bypass this band'}
     aria-label={bypassed ? 'Re-enable band' : 'Bypass band'}
+    aria-pressed={bypassed}
     onclick={() => onPatch({ bypass: !bypassed })}
     disabled={off}
-  >BYP</button>
+  >
+    {#if bypassed}
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+        <line x1="2" y1="8" x2="14" y2="8" />
+      </svg>
+    {:else}
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 11 C 5 11, 6 5, 8 5 S 11 11, 14 11" />
+      </svg>
+    {/if}
+  </button>
+  <BandTypeSelect value={band.type} onChange={(t) => onPatch({ type: t })} />
   <ValueField
     kind="hz"
     value={band.frequency}
@@ -64,7 +75,7 @@
 <style>
   .row {
     display: grid;
-    grid-template-columns: 28px 100px 28px 84px 64px 72px;
+    grid-template-columns: 28px 24px 100px 84px 64px 72px;
     gap: 6px;
     padding: 5px 14px;
     align-items: center;
@@ -76,23 +87,22 @@
   .row.bypassed { opacity: 0.45; }
   .num { color: var(--text-faint); }
   .byp {
-    font-family: var(--font-mono);
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    padding: 2px 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 20px;
+    padding: 0;
     border-radius: 3px;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
-    border: 1px solid var(--border);
-    color: var(--text-faint);
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-dim);
     cursor: pointer;
-    line-height: 1;
   }
-  .byp:hover:not(:disabled) { color: var(--text-dim); border-color: var(--border-hi); }
+  .byp:hover:not(:disabled) {
+    color: var(--text);
+    background: color-mix(in oklab, var(--text) 5%, transparent);
+  }
   .byp:disabled { opacity: 0.3; cursor: default; }
-  .byp.on {
-    background: color-mix(in oklab, var(--warn) 14%, transparent);
-    border-color: color-mix(in oklab, var(--warn) 50%, var(--border));
-    color: var(--warn);
-  }
+  .byp.on { color: var(--warn); }
 </style>
