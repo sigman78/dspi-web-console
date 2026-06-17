@@ -52,6 +52,7 @@
 
 <div class="rail">
   <div class="rail-head">
+    <div class="microlbl">PRESET</div>
     <PresetActiveChip />
   </div>
   <div class="rail-body" class:is-disabled={disabled}>
@@ -103,7 +104,11 @@
   .rail-head {
     padding: 10px;
     border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
+  .rail-head .microlbl { margin-top: 0; }
   .rail-body {
     flex: 1;
     min-height: 0;
