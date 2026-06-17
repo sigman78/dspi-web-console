@@ -66,7 +66,7 @@
   </div>
 
   {#if status.showPill}
-    <StatusPill />
+    <div class="pillslot"><StatusPill /></div>
   {/if}
 
   <TabBar />
@@ -120,6 +120,7 @@
     -webkit-backdrop-filter: blur(20px);
   }
   .brand { display: flex; align-items: center; gap: 10px; }
+  .pillslot { display: flex; align-items: center; }
   .rightcluster { display: flex; align-items: center; gap: 16px; }
   .cube {
     width: 22px; height: 22px;
