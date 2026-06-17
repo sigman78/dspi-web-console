@@ -6,7 +6,7 @@
   import OutputTrim from '@/components/eq/OutputTrim.svelte';
   import { mockEqCurve } from '@/components/bode/bodeMock';
   import { filterCurve, filterCurveAt } from '@/components/bode/filterCurve';
-  import { settings, setEqTarget, eqUi, setEqCopySource, clearEqCopySource } from '@/state';
+  import { settings, setSelectedChannel, eqUi, setEqCopySource, clearEqCopySource } from '@/state';
   import { FilterType, defaultFilter, type FilterParams, inputIndexOf } from '@/domain';
   import { setEqFilter, setInputPreamp, copyEqBands, setBandBypass } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
@@ -17,13 +17,13 @@
 
   // Auto-pick a default channel when entering the tab unselected.
   $effect(() => {
-    if (settings.eqTarget != null) return;
+    if (settings.selectedChannel != null) return;
     const first = snap?.outputs[0];
-    if (first) setEqTarget(first.id);
+    if (first) setSelectedChannel(first.id);
   });
 
   const channel = $derived(
-    settings.eqTarget != null ? snap?.channels.find((c) => c.id === settings.eqTarget) ?? null : null,
+    settings.selectedChannel != null ? snap?.channels.find((c) => c.id === settings.selectedChannel) ?? null : null,
   );
   // null when the selected channel is not an input.
   const inputIndex = $derived(channel ? inputIndexOf(channel.id) : null);
@@ -130,7 +130,7 @@
     >
       {#snippet right()}
         {#if !channel}
-          <span class="meta">SELECT CHANNEL ↑</span>
+          <span class="meta">SELECT CHANNEL ←</span>
         {/if}
       {/snippet}
       <div class="bode-host">
@@ -158,7 +158,7 @@
       {/if}
     {:else}
       <Panel code="EQ.02" title="BANDS · 10 BIQUAD">
-        <p class="hint">Pick a channel from the top-bar pin row to edit its EQ.</p>
+        <p class="hint">Pick a channel from the rail on the left to edit its EQ.</p>
       </Panel>
     {/if}
   </div>

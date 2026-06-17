@@ -7,7 +7,6 @@
   import OutputsPanel from '@/components/system/OutputsPanel.svelte';
   import I2sClockPanel from '@/components/system/I2sClockPanel.svelte';
   import LgSoundSyncPanel from '@/components/system/LgSoundSyncPanel.svelte';
-  import ChannelNamesPanel from '@/components/system/ChannelNamesPanel.svelte';
   import DacHwMutePanel from '@/components/system/DacHwMutePanel.svelte';
   import BufferStatsPanel from '@/components/system/BufferStatsPanel.svelte';
   import { chKey } from '@/styles/palette';
@@ -34,7 +33,6 @@
   <div class="col">
     <I2sClockPanel />
     <LgSoundSyncPanel />
-    <ChannelNamesPanel />
     <DacHwMutePanel />
   </div>
 

@@ -15,11 +15,13 @@
     outputIndex,
     zebra,
     unavailable = false,
+    selected = false,
   }: {
     column: MatrixColumn;
     outputIndex: OutputSlot;
     zebra: boolean;
     unavailable?: boolean;
+    selected?: boolean;
   } = $props();
 
   const s = getSession();
@@ -43,6 +45,7 @@
   class:dim={!column.enabled}
   class:zebra
   class:unavailable
+  class:selected
   title={unavailable ? 'unavailable while PDM subwoofer is active' : undefined}
 >
   <div class="icons">
@@ -123,6 +126,21 @@
   }
   .header.zebra { background: color-mix(in oklab, var(--text) 5%, transparent); }
   .header.dim { opacity: 0.5; }
+  /* Selected-channel locator: a channel-color line over the column, echoing the
+     rail's L/R group spine (var(--ch-base) bar). An absolutely-positioned strip
+     so the matrix grid never reflows. */
+  .header.selected::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--ch-base);
+    opacity: 0.85;
+    pointer-events: none;
+  }
   /* PDM exclusivity: same hatched-grey treatment as the cells in this
      column, so the whole column reads as one locked-out band. */
   .header.unavailable {

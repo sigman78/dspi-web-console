@@ -18,7 +18,7 @@ const TAB_IDS: ReadonlySet<TabId> = new Set(TAB_ORDER);
 export interface Settings {
   version: 1;
   tab: TabId;
-  eqTarget: ChannelId | null;
+  selectedChannel: ChannelId | null;
   lastSerial: string | null;
   warnOnPresetSwitchDirty: boolean;
   // When true, a successful write/scrub asks the background param poll to
@@ -34,7 +34,7 @@ function defaults(): Settings {
   return {
     version: 1,
     tab: 'overview',
-    eqTarget: null,
+    selectedChannel: null,
     lastSerial: null,
     warnOnPresetSwitchDirty: true,
     eagerReconcile: false,
@@ -72,7 +72,9 @@ function parseV1(raw: string, fallback: Settings): Settings {
   return {
     version: 1,
     tab: tabId(obj.tab, fallback.tab),
-    eqTarget: channelIdOrNull(obj.eqTarget),
+    // Legacy fallback: the field was persisted as `eqTarget` before the rail
+    // generalized selection beyond the EQ tab. Read it when the new key is absent.
+    selectedChannel: channelIdOrNull(obj.selectedChannel ?? obj.eqTarget),
     lastSerial: stringOrNull(obj.lastSerial),
     warnOnPresetSwitchDirty: bool(obj.warnOnPresetSwitchDirty, true),
     eagerReconcile: bool(obj.eagerReconcile, false),
@@ -91,7 +93,7 @@ function migrateLegacyKeys(): Settings | null {
   const merged: Settings = {
     ...defaults(),
     tab: tabId(ui?.tab, 'overview'),
-    eqTarget: channelIdOrNull(ui?.eqTarget),
+    selectedChannel: channelIdOrNull(ui?.eqTarget),
     lastSerial: stringOrNull(conn?.lastSerial),
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
@@ -126,7 +128,7 @@ export function restoreSettings(): void {
   const loaded = loadSettings();
   settings.version = loaded.version;
   settings.tab = loaded.tab;
-  settings.eqTarget = loaded.eqTarget;
+  settings.selectedChannel = loaded.selectedChannel;
   settings.lastSerial = loaded.lastSerial;
   settings.warnOnPresetSwitchDirty = loaded.warnOnPresetSwitchDirty;
   settings.eagerReconcile = loaded.eagerReconcile;
@@ -135,20 +137,25 @@ export function restoreSettings(): void {
 export function setTab(t: TabId): void {
   settings.tab = t;
 }
-export function setEqTarget(id: ChannelId | null): void {
-  settings.eqTarget = id;
+export function setSelectedChannel(id: ChannelId | null): void {
+  settings.selectedChannel = id;
+}
+// Rail selection: pick a channel globally and land on the EQ tab to edit it.
+export function selectChannel(id: ChannelId): void {
+  setSelectedChannel(id);
+  setTab('eq');
 }
 
-// Validate the persisted eqTarget against the connected platform's channel set;
+// Validate the persisted selection against the connected platform's channel set;
 // if the stored ID isn't present (e.g. reconnected to a smaller device), fall
 // back to the first output. null stays null -- "no selection" is valid.
-export function reconcileEqTarget(channels: readonly ChannelModel[] | undefined): void {
-  const target = settings.eqTarget;
+export function reconcileSelectedChannel(channels: readonly ChannelModel[] | undefined): void {
+  const target = settings.selectedChannel;
   if (target === null) return;
   if (!channels) return;
   if (channels.some((c) => c.id === target)) return;
   const firstOutput = channels.find((c) => c.isOutput);
-  settings.eqTarget = firstOutput?.id ?? null;
+  settings.selectedChannel = firstOutput?.id ?? null;
 }
 
 export function startSettingsPersistence(): void {
@@ -158,7 +165,7 @@ export function startSettingsPersistence(): void {
       const snap: Settings = {
         version: 1,
         tab: settings.tab,
-        eqTarget: settings.eqTarget,
+        selectedChannel: settings.selectedChannel,
         lastSerial: settings.lastSerial,
         warnOnPresetSwitchDirty: settings.warnOnPresetSwitchDirty,
         eagerReconcile: settings.eagerReconcile,

@@ -1,5 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from 'vitest';
-import { loadSettings } from './settings.svelte';
+import { loadSettings, settings, selectChannel } from './settings.svelte';
+import { ChannelId } from '@/domain';
 
 const V1_KEY = 'dspi-console-web/settings/v1';
 const LEGACY_UI_KEY = 'dspi-console-web/ui/v2';
@@ -18,7 +19,7 @@ describe('loadSettings', () => {
     const s = loadSettings();
     expect(s.version).toBe(1);
     expect(s.tab).toBe('overview');
-    expect(s.eqTarget).toBeNull();
+    expect(s.selectedChannel).toBeNull();
     expect(s.lastSerial).toBeNull();
   });
 
@@ -26,12 +27,24 @@ describe('loadSettings', () => {
     localStorage.setItem(V1_KEY, JSON.stringify({
       version: 1,
       tab: 'eq',
-      eqTarget: null,
+      selectedChannel: ChannelId.Out2L,
       lastSerial: 'ABC123',
     }));
     const s = loadSettings();
     expect(s.tab).toBe('eq');
+    expect(s.selectedChannel).toBe(ChannelId.Out2L);
     expect(s.lastSerial).toBe('ABC123');
+  });
+
+  test('falls back to the legacy eqTarget key when selectedChannel is absent', () => {
+    localStorage.setItem(V1_KEY, JSON.stringify({
+      version: 1,
+      tab: 'eq',
+      eqTarget: ChannelId.Out3R,
+      lastSerial: null,
+    }));
+    const s = loadSettings();
+    expect(s.selectedChannel).toBe(ChannelId.Out3R);
   });
 
   test('falls back to defaults on corrupted v1 JSON', () => {
@@ -157,5 +170,15 @@ describe('eagerReconcile', () => {
     localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, eagerReconcile: 'not-a-bool' }));
     const s = loadSettings();
     expect(s.eagerReconcile).toBe(false);
+  });
+});
+
+describe('selectChannel', () => {
+  test('sets the selected channel and switches to the EQ tab', () => {
+    settings.tab = 'overview';
+    settings.selectedChannel = null;
+    selectChannel(ChannelId.Out1L);
+    expect(settings.selectedChannel).toBe(ChannelId.Out1L);
+    expect(settings.tab).toBe('eq');
   });
 });

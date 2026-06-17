@@ -96,3 +96,29 @@ export function inputIndexOf(id: ChannelId): InputSlot | null {
   if (id === ChannelId.In1R) return InputSlot.Right;
   return null;
 }
+
+// A rail grouping: one stereo pair (members = [L, R]) or a single channel
+// (members = [ch]). accentId is the channel whose palette hue colors the group
+// (the L member of a pair). Pairing is by shortName suffix: an 'L'-suffixed
+// channel immediately followed by an 'R'-suffixed one. Anything else is a single.
+export interface ChannelGroup<T> {
+  accentId: ChannelId;
+  members: T[];
+}
+
+export function groupIntoPairs<T extends { id: ChannelId; shortName: string }>(
+  channels: readonly T[],
+): ChannelGroup<T>[] {
+  const groups: ChannelGroup<T>[] = [];
+  for (let i = 0; i < channels.length; i++) {
+    const cur = channels[i];
+    const next = channels[i + 1];
+    if (cur.shortName.endsWith('L') && next?.shortName.endsWith('R')) {
+      groups.push({ accentId: cur.id, members: [cur, next] });
+      i++;
+    } else {
+      groups.push({ accentId: cur.id, members: [cur] });
+    }
+  }
+  return groups;
+}
