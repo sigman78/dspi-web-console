@@ -23,20 +23,18 @@
 
 <style>
   .tabs {
-    background: color-mix(in oklab, var(--bg) 70%, transparent);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: stretch;
   }
   .tabs.is-disabled {
     opacity: 0.45;
     pointer-events: none;
   }
   .row {
-    padding: 0 16px;
     display: flex;
     align-items: stretch;
     gap: 14px;
+    height: 100%;
     font-family: var(--font-mono);
   }
   .tab {

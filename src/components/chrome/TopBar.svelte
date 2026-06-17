@@ -1,6 +1,7 @@
 <script lang="ts">
   import Telem from './Telem.svelte';
   import StatusPill from './StatusPill.svelte';
+  import TabBar from './TabBar.svelte';
   import DirtyDot from './DirtyDot.svelte';
   import MasterVolumeMini from './MasterVolumeMini.svelte';
   import PresetActiveChip from '@/components/presets/PresetActiveChip.svelte';
@@ -68,64 +69,58 @@
     <StatusPill />
   {/if}
 
+  <TabBar />
+
   <div class="spacer"></div>
 
-  <Telem label="CPU0" value={cpu0} bar={connected ? (s?.telemetry.cpu0 ?? 0) / 100 : undefined} />
-  <Telem label="CPU1" value={cpu1} bar={connected ? (s?.telemetry.cpu1 ?? 0) / 100 : undefined} />
-  <Telem label="FS"   value={fsKHz} />
-  <Telem label="CLK"  value={clkMHz} />
-  <Telem label="V"    value={voltage} />
-  <Telem label="T°"   value={temp} />
-
-  <span class="div"></span>
-
-  <MasterVolumeMini />
-
-  <button
-    class="bypass"
-    class:on={bypassed}
-    onclick={() => { if (s) setBypass(s, !bypassed); }}
-    disabled={!connected}
-    title={bypassed ? 'EQ bypass on (signal passes through)' : 'EQ active'}
-    aria-label={bypassed ? 'Disable EQ bypass' : 'Enable EQ bypass'}
-    aria-pressed={bypassed}
-  >
-    {#if bypassed}
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-        <line x1="2" y1="8" x2="14" y2="8" />
-      </svg>
-    {:else}
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M2 11 C 5 11, 6 5, 8 5 S 11 11, 14 11" />
-      </svg>
-    {/if}
-  </button>
-
-  <DirtyDot />
-
-  <PresetActiveChip />
+  <div class="rightcluster">
+    <Telem label="CPU0" value={cpu0} bar={connected ? (s?.telemetry.cpu0 ?? 0) / 100 : undefined} priority="health" />
+    <Telem label="CPU1" value={cpu1} bar={connected ? (s?.telemetry.cpu1 ?? 0) / 100 : undefined} priority="cpu1" />
+    <Telem label="FS"   value={fsKHz}   priority="static" />
+    <Telem label="CLK"  value={clkMHz}  priority="static" />
+    <Telem label="V"    value={voltage} priority="static" />
+    <Telem label="T°"   value={temp}    priority="health" />
+    <span class="div"></span>
+    <MasterVolumeMini />
+    <button
+      class="bypass"
+      class:on={bypassed}
+      onclick={() => { if (s) setBypass(s, !bypassed); }}
+      disabled={!connected}
+      title={bypassed ? 'EQ bypass on (signal passes through)' : 'EQ active'}
+      aria-label={bypassed ? 'Disable EQ bypass' : 'Enable EQ bypass'}
+      aria-pressed={bypassed}
+    >
+      {#if bypassed}
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+          <line x1="2" y1="8" x2="14" y2="8" />
+        </svg>
+      {:else}
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 11 C 5 11, 6 5, 8 5 S 11 11, 14 11" />
+        </svg>
+      {/if}
+    </button>
+    <DirtyDot />
+    <PresetActiveChip />
+  </div>
 </div>
 
 <style>
   .topbar {
-    padding: 8px 16px;
+    padding: 0 16px;
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: 16px;
+    min-height: 38px;
     font-family: var(--font-mono);
     border-bottom: 1px solid var(--border);
     background: color-mix(in oklab, var(--bg) 70%, transparent);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
   }
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    /* Align with the channel rail column (rail width 196px minus the topbar's
-       16px right padding to the divider rhythm). */
-    min-width: 180px;
-  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .rightcluster { display: flex; align-items: center; gap: 16px; }
   .cube {
     width: 22px; height: 22px;
     border-radius: 5px;

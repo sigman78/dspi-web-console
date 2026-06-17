@@ -3,10 +3,12 @@
     label,
     value,
     bar,
+    priority: _priority,
   }: {
     label: string;
     value: string;
     bar?: number;
+    priority?: string;
   } = $props();
 </script>
 

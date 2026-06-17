@@ -1,6 +1,5 @@
 <script lang="ts">
   import TopBar from '@/components/chrome/TopBar.svelte';
-  import TabBar from '@/components/chrome/TabBar.svelte';
   import ChannelRail from '@/components/chrome/ChannelRail.svelte';
   import ConnectingHero from '@/components/chrome/ConnectingHero.svelte';
   import ConnectedApp from '@/components/chrome/ConnectedApp.svelte';
@@ -31,7 +30,6 @@
 
 <div class="shell">
   <TopBar />
-  <TabBar />
   <PresetBoundaryModal />
   <main>
     {#if !mockHero && appState.kind === 'ready'}
@@ -53,7 +51,7 @@
 <style>
   .shell {
     display: grid;
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto 1fr;
     height: 100%;
     overflow: hidden;
   }
