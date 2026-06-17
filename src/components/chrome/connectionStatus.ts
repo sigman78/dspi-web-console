@@ -9,8 +9,6 @@ export interface ChromeConnectionInput {
 
 export interface ChromeConnectionStatus {
   tone: ChromeTone;
-  /** The bar shows the StatusPill only when the link is not healthy. */
-  showPill: boolean;
 }
 
 function connectionTone({ phase, connected, degraded, unsupported }: ChromeConnectionInput): ChromeTone {
@@ -22,5 +20,5 @@ function connectionTone({ phase, connected, degraded, unsupported }: ChromeConne
 
 export function chromeConnectionStatus(input: ChromeConnectionInput): ChromeConnectionStatus {
   const tone = connectionTone(input);
-  return { tone, showPill: tone !== 'ok' };
+  return { tone };
 }

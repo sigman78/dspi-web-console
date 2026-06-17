@@ -1,6 +1,5 @@
 <script lang="ts">
   import Telem from './Telem.svelte';
-  import StatusPill from './StatusPill.svelte';
   import TabBar from './TabBar.svelte';
   import DirtyDot from './DirtyDot.svelte';
   import MasterVolumeMini from './MasterVolumeMini.svelte';
@@ -64,21 +63,19 @@
     </a>
   </div>
 
-  {#if status.showPill}
-    <div class="pillslot"><StatusPill /></div>
-  {/if}
-
   <TabBar />
 
   <div class="spacer"></div>
 
   <div class="rightcluster">
-    <Telem label="CPU0" value={cpu0} bar={connected ? (s?.telemetry.cpu0 ?? 0) / 100 : undefined} priority="health" />
-    <Telem label="CPU1" value={cpu1} bar={connected ? (s?.telemetry.cpu1 ?? 0) / 100 : undefined} priority="cpu1" />
-    <Telem label="FS"   value={fsKHz}   priority="static" />
-    <Telem label="CLK"  value={clkMHz}  priority="static" />
-    <Telem label="V"    value={voltage} priority="static" />
-    <Telem label="T°"   value={temp}    priority="health" />
+    <div class="stats">
+      <Telem label="CPU0" value={cpu0} bar={connected ? (s?.telemetry.cpu0 ?? 0) / 100 : undefined} priority="health" />
+      <Telem label="CPU1" value={cpu1} bar={connected ? (s?.telemetry.cpu1 ?? 0) / 100 : undefined} priority="cpu1" />
+      <Telem label="FS"   value={fsKHz}   priority="static" />
+      <Telem label="CLK"  value={clkMHz}  priority="static" />
+      <Telem label="V"    value={voltage} priority="static" />
+      <Telem label="T°"   value={temp}    priority="health" />
+    </div>
     <span class="div"></span>
     <MasterVolumeMini />
     <button
@@ -118,8 +115,8 @@
     -webkit-backdrop-filter: blur(20px);
   }
   .brand { display: flex; align-items: center; gap: 10px; flex: none; }
-  .pillslot { display: flex; align-items: center; }
   .rightcluster { display: flex; align-items: center; gap: 16px; }
+  .stats { display: flex; align-items: center; gap: 8px; }
   .cube {
     width: 22px; height: 22px;
     border-radius: 5px;
@@ -177,16 +174,16 @@
   }
 
   /* Hide order: lowest value sheds first as width shrinks toward the 1024 floor. */
-  @media (max-width: 1320px) {
+  @media (max-width: 1640px) {
     .version, .gh { display: none; }
   }
-  @media (max-width: 1260px) {
+  @media (max-width: 1580px) {
     .title { display: none; }
   }
-  @media (max-width: 1160px) {
+  @media (max-width: 1480px) {
     :global(.topbar .telem.prio-static) { display: none; }
   }
-  @media (max-width: 1040px) {
+  @media (max-width: 1320px) {
     :global(.topbar .telem.prio-cpu1) { display: none; }
   }
 </style>

@@ -27,7 +27,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    min-width: 46px;
+    min-width: 38px;
     font-family: var(--font-mono);
   }
   .lbl { font-size: 9px; color: var(--text-faint); letter-spacing: 1px; }

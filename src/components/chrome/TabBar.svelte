@@ -64,6 +64,8 @@
   }
   .tcode { color: var(--text-faint); font-size: 9px; }
   .tlabel { font-size: 10px; }
-  .tab:not(.active) .tlabel { display: none; }
+  @media (max-width: 1260px) {
+    .tab:not(.active) .tlabel { display: none; }
+  }
   .tab.active .tcode { color: color-mix(in oklab, var(--accent) 70%, transparent); }
 </style>
