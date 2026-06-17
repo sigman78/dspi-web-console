@@ -5,13 +5,23 @@
   import MasterVolumeMini from './MasterVolumeMini.svelte';
   import PresetActiveChip from '@/components/presets/PresetActiveChip.svelte';
   import { connection, activeSession } from '@/state';
-  import { setBypass } from '@/runtime';
+  import { setBypass, webUsbUnsupportedReason } from '@/runtime';
+  import { chromeConnectionStatus } from './connectionStatus';
   import { APP_VERSION, GIT_SHA, BUILD_DATE, REPO_URL } from '@/buildInfo';
 
   const s = $derived(activeSession());
   const connected = $derived(connection.connected);
   const info = $derived(s?.telemetry.info ?? null);
   const bypassed = $derived(s?.mirror.current?.bypass ?? false);
+
+  const status = $derived(
+    chromeConnectionStatus({
+      phase: connection.phase,
+      connected: connection.connected,
+      degraded: connected && (s?.health.degraded ?? false),
+      unsupported: webUsbUnsupportedReason() !== null,
+    })
+  );
 
   const cpu0 = $derived(connected ? `${s?.telemetry.cpu0 ?? 0}%` : '—');
   const cpu1 = $derived(connected ? `${s?.telemetry.cpu1 ?? 0}%` : '—');
@@ -31,7 +41,13 @@
 
 <div class="topbar">
   <div class="brand">
-    <div class="cube">D</div>
+    <div
+      class="cube"
+      class:tone-warn={status.tone === 'warn'}
+      class:tone-err={status.tone === 'err'}
+      class:tone-idle={status.tone === 'idle'}
+      title="DSPI · CTRL v{APP_VERSION} · {GIT_SHA} · {BUILD_DATE}"
+    >D</div>
     <span class="title">DSPI · CTRL</span>
     <span class="version" title="Build {GIT_SHA} · {BUILD_DATE}">v{APP_VERSION}</span>
     <a
@@ -47,6 +63,10 @@
       </svg>
     </a>
   </div>
+
+  {#if status.showPill}
+    <StatusPill />
+  {/if}
 
   <div class="spacer"></div>
 
@@ -81,7 +101,6 @@
     {/if}
   </button>
 
-  <StatusPill />
   <DirtyDot />
 
   <PresetActiveChip />
@@ -115,6 +134,19 @@
     box-shadow: 0 0 18px color-mix(in oklab, var(--accent) 33%, transparent);
     color: var(--text); font-weight: 700; font-size: 9px;
     display: flex; align-items: center; justify-content: center;
+  }
+  .cube.tone-warn {
+    background: linear-gradient(135deg, var(--warn), color-mix(in oklab, var(--warn) 33%, transparent));
+    box-shadow: 0 0 18px color-mix(in oklab, var(--warn) 33%, transparent);
+  }
+  .cube.tone-err {
+    background: linear-gradient(135deg, var(--err), color-mix(in oklab, var(--err) 33%, transparent));
+    box-shadow: 0 0 18px color-mix(in oklab, var(--err) 33%, transparent);
+  }
+  .cube.tone-idle {
+    background: color-mix(in oklab, var(--text) 12%, transparent);
+    box-shadow: none;
+    color: var(--text-dim);
   }
   .title { font-size: 12px; font-weight: 600; letter-spacing: 1px; }
   .version { font-size: 9px; color: var(--text-faint); letter-spacing: 0.5px; }
