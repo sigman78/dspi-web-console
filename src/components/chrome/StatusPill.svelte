@@ -1,6 +1,7 @@
 <script lang="ts">
   import { connection, presetsDirty, activeSession } from '@/state';
   import { connectRequested, webUsbUnsupportedReason } from '@/runtime';
+  import { chromeConnectionStatus } from './connectionStatus';
 
   const s = $derived(activeSession());
   let busy = $state(false);
@@ -32,12 +33,14 @@
     }
   });
 
-  const tone = $derived.by(() => {
-    if (unsupported || connection.phase === 'errored') return 'err';
-    if (connection.connected) return degraded ? 'warn' : 'ok';
-    if (connection.phase === 'connecting') return 'warn';
-    return 'idle';
-  });
+  const tone = $derived(
+    chromeConnectionStatus({
+      phase: connection.phase,
+      connected: connection.connected,
+      degraded,
+      unsupported: unsupported !== null,
+    }).tone
+  );
 </script>
 
 <button
