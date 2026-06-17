@@ -117,7 +117,7 @@
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
   }
-  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand { display: flex; align-items: center; gap: 10px; flex: none; }
   .pillslot { display: flex; align-items: center; }
   .rightcluster { display: flex; align-items: center; gap: 16px; }
   .cube {
@@ -142,7 +142,7 @@
     box-shadow: none;
     color: var(--text-dim);
   }
-  .title { font-size: 12px; font-weight: 600; letter-spacing: 1px; }
+  .title { font-size: 12px; font-weight: 600; letter-spacing: 1px; white-space: nowrap; }
   .version { font-size: 9px; color: var(--text-faint); letter-spacing: 0.5px; }
   .gh {
     display: inline-flex;
@@ -177,16 +177,16 @@
   }
 
   /* Hide order: lowest value sheds first as width shrinks toward the 1024 floor. */
-  @media (max-width: 1380px) {
+  @media (max-width: 1320px) {
     .version, .gh { display: none; }
   }
-  @media (max-width: 1240px) {
+  @media (max-width: 1260px) {
     .title { display: none; }
   }
-  @media (max-width: 1140px) {
+  @media (max-width: 1160px) {
     :global(.topbar .telem.prio-static) { display: none; }
   }
-  @media (max-width: 1060px) {
+  @media (max-width: 1040px) {
     :global(.topbar .telem.prio-cpu1) { display: none; }
   }
 </style>
