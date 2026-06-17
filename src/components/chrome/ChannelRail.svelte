@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as appState from '@/state';
   import ChannelRow from './ChannelRow.svelte';
+  import PresetActiveChip from '@/components/presets/PresetActiveChip.svelte';
   import { setChannelName } from '@/runtime';
   import { chKey } from '@/styles/palette';
   import { groupIntoPairs, type ChannelGroup, type ChannelId, type ChannelModel } from '@/domain';
@@ -49,40 +50,45 @@
   }
 </script>
 
-<div class="rail" class:is-disabled={disabled}>
-  {#snippet section(label: string, groups: ChannelGroup<ChannelModel>[])}
-    {#if groups.length}
-      <div class="microlbl">{label}</div>
-      {#each groups as g (g.accentId)}
-        <div class="pair ch-{chKey(g.accentId)}">
-          <span class="spine"></span>
-          <div class="stack">
-            {#each g.members as ch (ch.id)}
-              <ChannelRow
-                name={ch.name}
-                channelId={ch.id}
-                levelDb={levelDb(ch)}
-                defaultName={ch.defaultName}
-                selected={appState.settings.selectedChannel === ch.id}
-                dim={isDim(ch)}
-                pulsate={appState.eqUi.copySource === ch.id}
-                clipped={tele?.clipLatched[ch.id] ?? false}
-                disabled={disabled}
-                editing={editingId === ch.id}
-                onclick={() => appState.selectChannel(ch.id)}
-                onStartEdit={() => startEdit(ch)}
-                onCommitName={(value) => commitName(ch.id, value)}
-                onCancelEdit={cancelEdit}
-              />
-            {/each}
+<div class="rail">
+  <div class="rail-head">
+    <PresetActiveChip />
+  </div>
+  <div class="rail-body" class:is-disabled={disabled}>
+    {#snippet section(label: string, groups: ChannelGroup<ChannelModel>[])}
+      {#if groups.length}
+        <div class="microlbl">{label}</div>
+        {#each groups as g (g.accentId)}
+          <div class="pair ch-{chKey(g.accentId)}">
+            <span class="spine"></span>
+            <div class="stack">
+              {#each g.members as ch (ch.id)}
+                <ChannelRow
+                  name={ch.name}
+                  channelId={ch.id}
+                  levelDb={levelDb(ch)}
+                  defaultName={ch.defaultName}
+                  selected={appState.settings.selectedChannel === ch.id}
+                  dim={isDim(ch)}
+                  pulsate={appState.eqUi.copySource === ch.id}
+                  clipped={tele?.clipLatched[ch.id] ?? false}
+                  disabled={disabled}
+                  editing={editingId === ch.id}
+                  onclick={() => appState.selectChannel(ch.id)}
+                  onStartEdit={() => startEdit(ch)}
+                  onCommitName={(value) => commitName(ch.id, value)}
+                  onCancelEdit={cancelEdit}
+                />
+              {/each}
+            </div>
           </div>
-        </div>
-      {/each}
-    {/if}
-  {/snippet}
+        {/each}
+      {/if}
+    {/snippet}
 
-  {@render section('INPUTS', inputGroups)}
-  {@render section('OUTPUTS', outputGroups)}
+    {@render section('INPUTS', inputGroups)}
+    {@render section('OUTPUTS', outputGroups)}
+  </div>
 </div>
 
 <style>
@@ -91,13 +97,23 @@
     flex: none;
     display: flex;
     flex-direction: column;
-    gap: 5px;
-    padding: 12px 10px;
-    overflow-y: auto;
     border-right: 1px solid var(--border);
     background: color-mix(in oklab, var(--bg) 40%, transparent);
   }
-  .rail.is-disabled { opacity: 0.45; pointer-events: none; }
+  .rail-head {
+    padding: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .rail-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .rail-body.is-disabled { opacity: 0.45; pointer-events: none; }
   .microlbl { margin-top: 4px; }
   .pair { display: flex; gap: 6px; }
   .spine {

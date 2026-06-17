@@ -4,7 +4,6 @@
   import TabBar from './TabBar.svelte';
   import DirtyDot from './DirtyDot.svelte';
   import MasterVolumeMini from './MasterVolumeMini.svelte';
-  import PresetActiveChip from '@/components/presets/PresetActiveChip.svelte';
   import { connection, activeSession } from '@/state';
   import { setBypass, webUsbUnsupportedReason } from '@/runtime';
   import { chromeConnectionStatus } from './connectionStatus';
@@ -102,7 +101,6 @@
       {/if}
     </button>
     <DirtyDot />
-    <PresetActiveChip />
   </div>
 </div>
 

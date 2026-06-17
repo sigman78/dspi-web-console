@@ -31,8 +31,9 @@
 
 <style>
   .chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 10px;
+    display: flex; align-items: center; gap: 6px;
+    width: 100%;
+    padding: 6px 8px;
     border-radius: 4px;
     font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px;
     background: color-mix(in oklab, var(--text) 4%, transparent);
