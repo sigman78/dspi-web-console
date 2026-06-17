@@ -1,17 +1,23 @@
 name: Release Please
 
-# On every push to master, release-please maintains a "release PR" that bumps
-# the version and updates CHANGELOG.md from Conventional Commit messages. Merging
-# that PR tags vX.Y.Z and publishes a GitHub Release. The version bump in
-# package.json flows into the UI stamp automatically (vite injects pkg.version as
-# __APP_VERSION__), and the master push then triggers deploy.yml.
+# Opt-in releases: run this workflow MANUALLY (Actions -> Release Please -> Run
+# workflow, on master) when you want to cut a release. release-please then opens
+# or refreshes a "release PR" that bumps the version and updates CHANGELOG.md
+# from Conventional Commit messages since the last release. Merging that PR tags
+# vX.Y.Z and publishes a GitHub Release. The version bump in package.json flows
+# into the UI stamp automatically (vite injects pkg.version as __APP_VERSION__),
+# and the master push from merging the release PR then triggers deploy.yml.
+#
+# Manual (workflow_dispatch) rather than on every push to master, so routine
+# merges don't churn a release PR; releases happen only when you ask for one.
+# Note: workflow_dispatch is only offered from the copy of this file on the
+# default branch (master).
 #
 # Requires repo setting: Settings -> Actions -> General -> Workflow permissions
 # -> enable "Allow GitHub Actions to create and approve pull requests".
 
 on:
-  push:
-    branches: [master]
+  workflow_dispatch:
 
 permissions:
   contents: write
