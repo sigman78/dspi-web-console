@@ -85,5 +85,7 @@
     letter-spacing: 1.2px;
     border-bottom: 1px solid var(--border);
   }
-  .head .r { text-align: right; }
+  /* Match ValueField's internal 8px horizontal padding so the numeric
+     labels sit directly above their right-aligned values. */
+  .head .r { text-align: right; padding-right: 8px; }
 </style>
