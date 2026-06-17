@@ -95,7 +95,7 @@
         </svg>
       {:else}
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M2 11 C 5 11, 6 5, 8 5 S 11 11, 14 11" />
+          <path d="M2 8 C 3.3 8 3.7 5 5 5 S 6.7 8 8 8 S 9.7 11 11 11 S 12.7 8 14 8" />
         </svg>
       {/if}
     </button>

@@ -47,8 +47,8 @@
 
   <div class="head">
     <div>#</div>
-    <div>TYPE</div>
     <div></div>
+    <div>TYPE</div>
     <div class="r">FREQ</div>
     <div class="r">Q</div>
     <div class="r">GAIN</div>
@@ -76,7 +76,7 @@
 
   .head {
     display: grid;
-    grid-template-columns: 28px 100px 1fr 84px 64px 72px;
+    grid-template-columns: 28px 24px 100px 84px 64px 72px;
     gap: 6px;
     padding: 8px 14px;
     font-family: var(--font-mono);
@@ -85,5 +85,7 @@
     letter-spacing: 1.2px;
     border-bottom: 1px solid var(--border);
   }
-  .head .r { text-align: right; }
+  /* Match ValueField's internal 8px horizontal padding so the numeric
+     labels sit directly above their right-aligned values. */
+  .head .r { text-align: right; padding-right: 8px; }
 </style>
