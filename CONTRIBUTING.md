@@ -36,8 +36,7 @@ Common types and their release effect (pre-1.0 `0.x` line):
 | --- | --- | --- |
 | `feat` | `feat(chrome): inline channel rename` | minor bump (`0.1.0` → `0.2.0`) |
 | `fix` | `fix(runtime): guard null session on commit` | patch bump (`0.1.0` → `0.1.1`) |
-| `refactor`, `perf` | `refactor(state): unify resync path` | patch bump |
-| `docs`, `chore`, `style`, `test`, `ci`, `build` | `chore: bump deps` | no release |
+| `refactor`, `perf`, `docs`, `chore`, `style`, `test`, `ci`, `build` | `refactor(state): unify resync path` | no release |
 
 A breaking change — `feat!:` / `fix!:` or a `BREAKING CHANGE:` footer — bumps the
 **minor** version while on `0.x` (it becomes a major bump once the project reaches
@@ -58,15 +57,22 @@ The local `pre-push` hook runs `check + test + build`; `pre-commit` runs
 
 ## Release process
 
-Releases are automated with
-[release-please](https://github.com/googleapis/release-please):
+Releases are **opt-in** — [release-please](https://github.com/googleapis/release-please)
+runs on demand, not on every merge, so routine work never churns a release PR:
 
 1. Merge feature/fix PRs into `master` using Conventional Commit messages.
-2. release-please maintains an open **release PR** that bumps `package.json`,
-   updates `CHANGELOG.md`, and lists the changes.
+2. When you want to cut a release, run the workflow manually:
+   **Actions → Release Please → Run workflow**, on the `master` branch.
+   release-please opens (or refreshes) a **release PR** that bumps
+   `package.json`, updates `CHANGELOG.md`, and lists the accumulated changes.
 3. Merging the release PR tags `vX.Y.Z`, publishes a **GitHub Release** (the
    "what's new"), and the resulting `master` push redeploys Pages with the new
    version shown in the UI stamp.
 
-No manual version edits — let release-please own `package.json` version and
-`CHANGELOG.md`.
+If a manual run reports nothing to release, there are no releasable commits
+since the last release — only non-releasing types (`refactor`, `perf`, `docs`,
+`chore`, `style`, `test`, `ci`, `build`); see the table above.
+
+No manual version edits — let release-please own the `package.json` version and
+`CHANGELOG.md`. To pin a specific next version, add a `Release-As: X.Y.Z` footer
+to a commit on `master` before running the workflow.
