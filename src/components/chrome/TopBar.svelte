@@ -175,4 +175,18 @@
     border-color: color-mix(in oklab, var(--err) 45%, transparent);
     color: var(--err);
   }
+
+  /* Hide order: lowest value sheds first as width shrinks toward the 1024 floor. */
+  @media (max-width: 1380px) {
+    .version, .gh { display: none; }
+  }
+  @media (max-width: 1240px) {
+    .title { display: none; }
+  }
+  @media (max-width: 1140px) {
+    :global(.topbar .telem.prio-static) { display: none; }
+  }
+  @media (max-width: 1060px) {
+    :global(.topbar .telem.prio-cpu1) { display: none; }
+  }
 </style>
