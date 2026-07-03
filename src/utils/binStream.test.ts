@@ -7,8 +7,8 @@ describe('BinReader / BinWriter primitives', () => {
     w.u8(0xA5).i8(-7)
      .u16(0xBEEF).i16(-1234)
      .u32(0xCAFEBABE).i32(-100000)
-     .f32(3.5).f64(-2.71828);
-    expect(w.pos).toBe(1+1+2+2+4+4+4+8);
+     .f32(3.5);
+    expect(w.pos).toBe(1+1+2+2+4+4+4);
 
     const r = new BinReader(w.toUint8Array());
     expect(r.u8()).toBe(0xA5);
@@ -18,7 +18,6 @@ describe('BinReader / BinWriter primitives', () => {
     expect(r.u32()).toBe(0xCAFEBABE);
     expect(r.i32()).toBe(-100000);
     expect(r.f32()).toBeCloseTo(3.5, 6);
-    expect(r.f64()).toBeCloseTo(-2.71828, 10);
   });
 
   it('writes little-endian byte order', () => {

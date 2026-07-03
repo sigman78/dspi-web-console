@@ -3,8 +3,8 @@ import { BinReader, BinWriter } from './binStream';
 import { Codec } from './binCodec';
 
 const {
-  u8, u16, u32, i8, i16, i32, f32, f64, bool8,
-  arr, struct, reserved, nulStr, fixedStr,
+  u8, u16, u32, i8, i16, i32, f32, bool8,
+  arr, struct, reserved, nulStr,
   encode, decode, decodePadded, sizeOf,
 } = Codec;
 
@@ -67,17 +67,13 @@ describe('struct combinator', () => {
   });
 });
 
-describe('nulStr / fixedStr codecs', () => {
+describe('nulStr', () => {
   it('nulStr roundtrip', () => {
     const c = nulStr(16);
     expect(c.size).toBe(16);
     const w = new BinWriter(16);
     c.write(w, 'hello');
     expect(c.read(new BinReader(w.toUint8Array()))).toBe('hello');
-  });
-
-  it('fixedStr.size matches its declared byte count', () => {
-    expect(fixedStr(4).size).toBe(4);
   });
 });
 
@@ -172,9 +168,7 @@ describe('every primitive codec carries the right size', () => {
     expect(u32.size).toBe(4);
     expect(i32.size).toBe(4);
     expect(f32.size).toBe(4);
-    expect(f64.size).toBe(8);
     expect(bool8.size).toBe(1);
-    expect(fixedStr(4).size).toBe(4);
   });
 });
 

@@ -51,7 +51,6 @@ export class BinReader {
   u32(): number { return this.view.getUint32(this.take(4), true); }
   i32(): number { return this.view.getInt32(this.take(4), true); }
   f32(): number { return this.view.getFloat32(this.take(4), true); }
-  f64(): number { return this.view.getFloat64(this.take(8), true); }
   bool8(): boolean { return this.u8() !== 0; }
 
   // Read up to a NUL within the next `maxBytes`; always advances by `maxBytes`.
@@ -114,7 +113,6 @@ export class BinWriter {
   u32(v: number): this { this.view.setUint32(this.take(4), v, true); return this; }
   i32(v: number): this { this.view.setInt32(this.take(4), v, true); return this; }
   f32(v: number): this { this.view.setFloat32(this.take(4), v, true); return this; }
-  f64(v: number): this { this.view.setFloat64(this.take(8), v, true); return this; }
   bool8(v: boolean): this { return this.u8(v ? 1 : 0); }
 
   // Write `s` UTF-8 into a fixed `maxBytes` window, NUL-padded; truncates to
