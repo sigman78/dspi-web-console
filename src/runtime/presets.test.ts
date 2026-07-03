@@ -325,7 +325,7 @@ describe('runtime/presets', () => {
   });
 
   describe('action error surfacing', () => {
-    it('records an error message (record-only, no rethrow) when setPresetName throws', async () => {
+    it('records an error message when setPresetName throws', async () => {
       await fetchPresetInfo(sess());
       const d = activeSession()!.device;
       const orig = d.setPresetName.bind(d);
@@ -335,21 +335,6 @@ describe('runtime/presets', () => {
         expect('ok' in r && r.ok).toBe(false);
         expect(ps().lastActionError).toContain('Rename');
         expect(ps().lastActionError).toContain('boom');
-      } finally {
-        (d as any).setPresetName = orig;
-      }
-    });
-
-    it('renamePresetSlot returns a typed failure on wire error', async () => {
-      await fetchPresetInfo(sess());
-      const d = activeSession()!.device;
-      const orig = d.setPresetName.bind(d);
-      (d as any).setPresetName = async () => { throw new Error('wire fail'); };
-      try {
-        const r = await renamePresetSlot(sess(), 1 as PresetSlot, 'X');
-        expect('ok' in r && r.ok).toBe(false);
-        // banner still recorded:
-        expect(ps().lastActionError).toContain('Rename');
       } finally {
         (d as any).setPresetName = orig;
       }
