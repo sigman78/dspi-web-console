@@ -9,27 +9,23 @@ function ev(init: Partial<KeyboardEventInit> & { code: string }): KeyboardEvent 
 describe('handleTabShortcut', () => {
   beforeEach(() => { setTab('overview'); });
 
-  it('Alt+1 jumps to overview', () => {
+  it('Alt+1 and Alt+6 jump to the first and last tab (range boundaries)', () => {
     setTab('mixer');
     const consumed = handleTabShortcut(ev({ code: 'Digit1' }));
     expect(consumed).toBe(true);
     expect(settings.tab).toBe('overview');
+
+    handleTabShortcut(ev({ code: 'Digit6' }));
+    expect(settings.tab).toBe('system');
   });
 
-  it('Alt+3 jumps to mixer', () => {
+  it('Alt+3 and Alt+5 jump to interior tabs', () => {
     const consumed = handleTabShortcut(ev({ code: 'Digit3' }));
     expect(consumed).toBe(true);
     expect(settings.tab).toBe('mixer');
-  });
 
-  it('Alt+5 jumps to presets', () => {
     handleTabShortcut(ev({ code: 'Digit5' }));
     expect(settings.tab).toBe('presets');
-  });
-
-  it('Alt+6 jumps to system', () => {
-    handleTabShortcut(ev({ code: 'Digit6' }));
-    expect(settings.tab).toBe('system');
   });
 
   it('Alt+] cycles forward', () => {

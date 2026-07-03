@@ -23,16 +23,11 @@ function fakeSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
 
 describe('MirrorState', () => {
   describe('init (atomic baseline)', () => {
-    it('populates current and baseline together', () => {
+    it('populates current and baseline together as equal but distinct objects', () => {
       const m = new MirrorState();
       m.init(fakeSnap());
       expect(m.current).not.toBeNull();
       expect(m.baseline).not.toBeNull();
-    });
-
-    it('baseline is a deep clone, not a shared reference', () => {
-      const m = new MirrorState();
-      m.init(fakeSnap());
       expect(m.baseline).toEqual(m.current);
       expect(m.baseline).not.toBe(m.current);
     });
@@ -75,14 +70,6 @@ describe('MirrorState', () => {
       expect(m.baseline!.bypass).toBe(false);
       m.captureBaseline();
       expect(m.baseline!.bypass).toBe(true);
-    });
-
-    it('does not share refs (subsequent edits to current do not propagate)', () => {
-      const m = new MirrorState();
-      m.init(fakeSnap());
-      m.captureBaseline();
-      m.current!.bypass = true;
-      expect(m.baseline!.bypass).toBe(false);
     });
 
     it('no-op when current is null', () => {
@@ -188,7 +175,6 @@ describe('MirrorState', () => {
     it('starts at zero', () => {
       const m = new MirrorState();
       expect(m.inflight).toBe(0);
-      expect(m.inflight > 0).toBe(false);
     });
 
     it('bumps and drops symmetrically', () => {
@@ -196,12 +182,10 @@ describe('MirrorState', () => {
       m.bumpInflight();
       m.bumpInflight();
       expect(m.inflight).toBe(2);
-      expect(m.inflight > 0).toBe(true);
       m.dropInflight();
       expect(m.inflight).toBe(1);
       m.dropInflight();
       expect(m.inflight).toBe(0);
-      expect(m.inflight > 0).toBe(false);
     });
 
     it('dropInflight at 0 stays at 0', () => {

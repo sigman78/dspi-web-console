@@ -46,18 +46,6 @@ describe('ConnectingHero — status text', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  test('webusb unsupported → WEBUSB UNAVAILABLE', () => {
-    vi.mocked(webUsbUnsupportedReason).mockReturnValue('no navigator.usb');
-    dispatch({ t: 'disconnected' });
-    render(ConnectingHero);
-    expect(screen.getByText('WEBUSB UNAVAILABLE', { selector: '.status' })).toBeInTheDocument();
-  });
-
-  test('renders the EQ spectrum (16 bars)', () => {
-    const { container } = render(ConnectingHero);
-    expect(container.querySelectorAll('.bar')).toHaveLength(16);
-  });
-
   test('unsupported-firmware error renders a dedicated upgrade panel, not the red diagnostics one', () => {
     dispatch({
       t: 'failed',

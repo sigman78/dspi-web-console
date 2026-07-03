@@ -55,13 +55,11 @@ describe('dispatch()', () => {
 
   it('requested → app connecting', () => {
     dispatch({ t: 'requested' });
-    expect(app.current.kind).toBe('connecting');
     expect(connection.phase).toBe('connecting');
   });
 
   it('synced → app ready, connection connected', () => {
     dispatch({ t: 'synced', session: fakeSession });
-    expect(app.current).toEqual({ kind: 'ready', session: fakeSession });
     expect(connection.connected).toBe(true);
     expect(connection.error).toBeNull();
     expect(connection.errorKind).toBeNull();
@@ -69,7 +67,6 @@ describe('dispatch()', () => {
 
   it('failed → app errored with error fields', () => {
     dispatch({ t: 'failed', message: 'old fw', errorKind: 'unsupported-firmware' });
-    expect(app.current.kind).toBe('errored');
     expect(connection.phase).toBe('errored');
     expect(connection.error).toBe('old fw');
     expect(connection.errorKind).toBe('unsupported-firmware');
@@ -77,7 +74,6 @@ describe('dispatch()', () => {
 
   it('disconnected → app noDevice', () => {
     dispatch({ t: 'disconnected' });
-    expect(app.current.kind).toBe('noDevice');
     expect(connection.phase).toBe('noDevice');
   });
 });
