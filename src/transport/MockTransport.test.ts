@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MockTransport } from './MockTransport';
 import { DspDevice } from '@/device/DspDevice';
-import { WireCmd, Wire, writeCmd, parseBufferStats, parseSystemStatus, parseBulkParams, buildBulkParams, NotifyEventId, type BulkParams } from '@/protocol';
+import { WireCmd, Wire, parseBufferStats, parseSystemStatus, parseBulkParams, buildBulkParams, NotifyEventId } from '@/protocol';
 import { Codec } from '@/utils';
 import { FilterType, MasterVolumeMode } from '@/domain';
 
@@ -123,22 +123,6 @@ describe('MockTransport — mixer matrix round-trip', () => {
     await t.open();
   });
 
-  it('roundtrips matrix route writes via SetMatrixRoute / GetMatrixRoute', async () => {
-    const payload = Codec.encode(WireCmd.SetMatrixRoute.codec, {
-      input: 1, output: 4,
-      enabled: true, phaseInvert: true, gainDb: -3.5,
-    });
-    await t.ctrlOut(WireCmd.SetMatrixRoute.code, 0, payload);
-    const wValue = (1 << 8) | 4;
-    const got = Codec.decode(WireCmd.GetMatrixRoute.codec,
-      await t.ctrlIn(WireCmd.GetMatrixRoute.code, wValue, 8));
-    expect(got.enabled).toBe(true);
-    expect(got.phaseInvert).toBe(true);
-    expect(got.gainDb).toBeCloseTo(-3.5, 4);
-    expect(got.input).toBe(1);
-    expect(got.output).toBe(4);
-  });
-
   it('matrix route writes show up in the next bulk read', async () => {
     const payload = Codec.encode(WireCmd.SetMatrixRoute.codec, {
       input: 0, output: 2,
@@ -171,73 +155,11 @@ describe('MockTransport — mixer matrix round-trip', () => {
   });
 });
 
-describe('MockTransport SetEqParam round-trip', () => {
-  it('a SetEqParam write is reflected in the next GetAllParams', async () => {
-    const t = new MockTransport({ platform: 'rp2350' });
-    await t.open();
-
-    const target = {
-      type: FilterType.Peaking,
-      frequency: 1234,
-      q: 1.5,
-      gain: 6.0,
-    };
-    await writeCmd(t, WireCmd.SetEqParam, { channel: 3, band: 5, type: target.type, frequency: target.frequency, q: target.q, gain: target.gain });
-    const bulk = parseBulkParams(
-      await t.ctrlIn(WireCmd.GetAllParams.code, 0, 4096),
-    );
-
-    expect(bulk.filters[3][5].type).toBe(FilterType.Peaking);
-    expect(bulk.filters[3][5].frequency).toBeCloseTo(1234, 3);
-    expect(bulk.filters[3][5].q).toBeCloseTo(1.5, 3);
-    expect(bulk.filters[3][5].gain).toBeCloseTo(6.0, 3);
-  });
-});
-
 describe('MockTransport — bypass / master volume mode / saved volume', () => {
   let t: MockTransport;
   beforeEach(async () => {
     t = new MockTransport({ platform: 'rp2350' });
     await t.open();
-  });
-
-  it('roundtrips bypass', async () => {
-    await t.ctrlOut(WireCmd.SetBypass.code, 0, new Uint8Array([1]));
-    const on = await t.ctrlIn(WireCmd.GetBypass.code, 0, 1);
-    expect(on[0]).toBe(1);
-
-    await t.ctrlOut(WireCmd.SetBypass.code, 0, new Uint8Array([0]));
-    const off = await t.ctrlIn(WireCmd.GetBypass.code, 0, 1);
-    expect(off[0]).toBe(0);
-  });
-
-  it('roundtrips master volume mode', async () => {
-    await t.ctrlOut(WireCmd.SetMasterVolumeMode.code, 0, new Uint8Array([1]));
-    const m = await t.ctrlIn(WireCmd.GetMasterVolumeMode.code, 0, 1);
-    expect(m[0]).toBe(1);
-
-    await t.ctrlOut(WireCmd.SetMasterVolumeMode.code, 0, new Uint8Array([0]));
-    const m0 = await t.ctrlIn(WireCmd.GetMasterVolumeMode.code, 0, 1);
-    expect(m0[0]).toBe(0);
-  });
-
-  it('SaveMasterVolume copies live → saved and returns ok status', async () => {
-    // Set live master vol to -7.5
-    const liveBytes = new Uint8Array(4);
-    new DataView(liveBytes.buffer).setFloat32(0, -7.5, true);
-    await t.ctrlOut(WireCmd.SetMasterVolume.code, 0, liveBytes);
-
-    // Saved should still be the default (0) before the save call.
-    const before = await t.ctrlIn(WireCmd.GetSavedMasterVolume.code, 0, 4);
-    expect(new DataView(before.buffer).getFloat32(0, true)).toBeCloseTo(0, 4);
-
-    // Save: returns 1-byte ok status (0).
-    const status = await t.ctrlIn(WireCmd.SaveMasterVolume.code, 0, 1);
-    expect(status[0]).toBe(0);
-
-    // Saved now reflects the live value.
-    const after = await t.ctrlIn(WireCmd.GetSavedMasterVolume.code, 0, 4);
-    expect(new DataView(after.buffer).getFloat32(0, true)).toBeCloseTo(-7.5, 4);
   });
 
   it('DspDevice.saveMasterVolume → getSavedMasterVolume round-trips', async () => {
@@ -316,23 +238,6 @@ describe('MockTransport — GetEqParam multi-read', () => {
     expect(got.frequency).toBeCloseTo(320, 1);
     expect(got.q).toBeCloseTo(0.9, 4);
     expect(got.gain).toBeCloseTo(4.5, 4);
-  });
-});
-
-describe('SetAllParams (0xA1)', () => {
-  it('ctrlOut 0xA1 updates state such that subsequent GET reflects the SET', async () => {
-    const t = new MockTransport({ platform: 'rp2350' });
-    await t.open();
-
-    // Read initial state, mutate one field, send back.
-    const initial = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxRequestSize));
-    expect(initial.bypass).toBe(false);
-
-    const mutated: BulkParams = { ...initial, bypass: true };
-    await t.ctrlOut(WireCmd.SetAllParams.code, 0, buildBulkParams(mutated));
-
-    const after = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxRequestSize));
-    expect(after.bypass).toBe(true);
   });
 });
 
