@@ -14,7 +14,7 @@
 // All respect the per-session `alive` guard: a send that settles after its
 // session was disposed (disconnect) is silently dropped (no mutate, no recovery).
 
-import { settings, pushNotice, type ReadySession } from '@/state';
+import { pushNotice, type ReadySession } from '@/state';
 import type { MirrorState } from '@/state/mirror.svelte';
 import { forceResyncNow } from './resync';
 import { Log, errMessage, type Result } from '@/utils';
@@ -35,7 +35,7 @@ export async function write(
       await send();
       if (s.alive) {
         mutate();
-        s.mirror.requestReconcile(settings.eagerReconcile);
+        s.mirror.requestReconcile(false);
       }
     } catch (err) {
       if (!s.alive) return;
@@ -101,7 +101,7 @@ export function writeChecked<E>(
   return command(s, op, send, (r, s) => {
     if (!r.ok) { pushNotice('warn', r.message); return; }
     patch();
-    s.mirror.requestReconcile(settings.eagerReconcile);
+    s.mirror.requestReconcile(false);
   });
 }
 
@@ -138,7 +138,7 @@ function makeLane(key: string, mirror: MirrorState): Lane {
         // The optimistic mutate already left the mirror at the value we sent.
         // No per-settle resync; flag a reconcile for the inflight-gated
         // background param poll to honor.
-        if (s.alive) mirror.requestReconcile(settings.eagerReconcile);
+        if (s.alive) mirror.requestReconcile(false);
       } catch (err) {
         if (s.alive) {
           Log.error('writes', `scrub ${key} send failed`, err);

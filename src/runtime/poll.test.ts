@@ -4,7 +4,7 @@ import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
-import { settings, dispatch, makeReadySession, type ReadySession } from '@/state';
+import { dispatch, makeReadySession, type ReadySession } from '@/state';
 import { write } from './writes';
 import { startPolling, RECONCILE_QUIET_MS } from './poll';
 import type { LoopClock } from '@/utils';
@@ -216,16 +216,16 @@ describe('param reconcile cadence', () => {
     stop();
   });
 
-  it('end-to-end: an eager write() drives a poll reconcile once writes go quiet', async () => {
+  it('end-to-end: an eager reconcile request drives a poll reconcile once writes go quiet', async () => {
     vi.useFakeTimers({ toFake: ['performance'] });
     try {
       const { device, calls } = paramDevice();
       const session = connect(device);
-      settings.eagerReconcile = true;
       const clock = manualClock();
       const stop = startPolling(session, clock);
       vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);   // clear of t=0 floor
       await write(session, async () => {}, () => {});    // stamps lastWriteMs = now
+      session.mirror.requestReconcile(true);              // e.g. notify-channel signal
       clock.fire();
       await settle();
       expect(calls.snapshot).toBe(0);                    // write too recent: blocked
@@ -233,7 +233,6 @@ describe('param reconcile cadence', () => {
       clock.fire();
       await settle();
       expect(calls.snapshot).toBe(1);                    // eager + quiet → reconciles
-      settings.eagerReconcile = false;
       stop();
     } finally {
       vi.useRealTimers();

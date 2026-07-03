@@ -21,11 +21,6 @@ export interface Settings {
   selectedChannel: ChannelId | null;
   lastSerial: string | null;
   warnOnPresetSwitchDirty: boolean;
-  // When true, a successful write/scrub asks the background param poll to
-  // reconcile next tick instead of waiting for its interval. Default off; the
-  // inflight-gated poll floor catches clamp/coupling drift on its own cadence.
-  // Temporary: remove once firmware cross-coupling is ruled out.
-  eagerReconcile: boolean;
 }
 
 const STORAGE_KEY = 'dspi-console-web/settings/v1';
@@ -37,7 +32,6 @@ function defaults(): Settings {
     selectedChannel: null,
     lastSerial: null,
     warnOnPresetSwitchDirty: true,
-    eagerReconcile: false,
   };
 }
 
@@ -77,7 +71,6 @@ function parseV1(raw: string, fallback: Settings): Settings {
     selectedChannel: channelIdOrNull(obj.selectedChannel ?? obj.eqTarget),
     lastSerial: stringOrNull(obj.lastSerial),
     warnOnPresetSwitchDirty: bool(obj.warnOnPresetSwitchDirty, true),
-    eagerReconcile: bool(obj.eagerReconcile, false),
   };
 }
 
@@ -131,7 +124,6 @@ export function restoreSettings(): void {
   settings.selectedChannel = loaded.selectedChannel;
   settings.lastSerial = loaded.lastSerial;
   settings.warnOnPresetSwitchDirty = loaded.warnOnPresetSwitchDirty;
-  settings.eagerReconcile = loaded.eagerReconcile;
 }
 
 export function setTab(t: TabId): void {
@@ -168,7 +160,6 @@ export function startSettingsPersistence(): void {
         selectedChannel: settings.selectedChannel,
         lastSerial: settings.lastSerial,
         warnOnPresetSwitchDirty: settings.warnOnPresetSwitchDirty,
-        eagerReconcile: settings.eagerReconcile,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
     });

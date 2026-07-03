@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { write, scrub, writeChecked, command, flushAllWrites } from './writes';
-import { connection, settings, notices, clearNotices, dispatch, makeReadySession, activeSession, type ReadySession } from '@/state';
+import { connection, notices, clearNotices, dispatch, makeReadySession, activeSession, type ReadySession } from '@/state';
 import { Result } from '@/utils';
 
 // Mock the resync module so write() failures don't actually fire HTTP.
@@ -37,23 +37,12 @@ describe('write() helper', () => {
     expect(mutate).toHaveBeenCalledTimes(1);
   });
 
-  it('requests a reconcile on success (non-eager when flag off)', async () => {
-    settings.eagerReconcile = false;
+  it('requests a non-eager reconcile on success', async () => {
     activeSession()!.mirror.consumeReconcile();  // clear any prior pending
     await write(session, async () => {}, () => {});
     const { wanted, eager } = activeSession()!.mirror.consumeReconcile();
     expect(wanted).toBe(true);
     expect(eager).toBe(false);
-  });
-
-  it('requests an eager reconcile on success when flag on', async () => {
-    settings.eagerReconcile = true;
-    activeSession()!.mirror.consumeReconcile();
-    await write(session, async () => {}, () => {});
-    const { wanted, eager } = activeSession()!.mirror.consumeReconcile();
-    expect(wanted).toBe(true);
-    expect(eager).toBe(true);
-    settings.eagerReconcile = false;
   });
 
   it('does not request a reconcile when send fails', async () => {
@@ -152,23 +141,16 @@ describe('write() failure policy', () => {
 describe('writeChecked() helper', () => {
   beforeEach(() => {
     installSession();
-    settings.eagerReconcile = false;
     activeSession()!.mirror.consumeReconcile();
     clearNotices();
     vi.clearAllMocks();
   });
 
-  it('patches and requests a non-eager reconcile on an ok Result (eagerReconcile off)', async () => {
+  it('patches and requests a non-eager reconcile on an ok Result', async () => {
     const patch = vi.fn();
     await writeChecked(session, 'op', async () => Result.ok(), patch);
     expect(patch).toHaveBeenCalledTimes(1);
     expect(activeSession()!.mirror.consumeReconcile()).toEqual({ wanted: true, eager: false });
-  });
-
-  it('honors settings.eagerReconcile=true on an ok Result', async () => {
-    settings.eagerReconcile = true;
-    await writeChecked(session, 'op', async () => Result.ok(), () => {});
-    expect(activeSession()!.mirror.consumeReconcile()).toEqual({ wanted: true, eager: true });
   });
 
   it('warns with the device message and skips the patch on a non-ok Result', async () => {
@@ -356,15 +338,13 @@ describe('scrub() helper', () => {
     expect(forceResyncNow).not.toHaveBeenCalled();
   });
 
-  it('on send success: requests a reconcile (eager per flag)', async () => {
-    settings.eagerReconcile = true;
+  it('on send success: requests a non-eager reconcile', async () => {
     activeSession()!.mirror.consumeReconcile();
     scrub(session, 'k1', () => {}, async () => {});
     await flushAllWrites(session);
     const { wanted, eager } = activeSession()!.mirror.consumeReconcile();
     expect(wanted).toBe(true);
-    expect(eager).toBe(true);
-    settings.eagerReconcile = false;
+    expect(eager).toBe(false);
   });
 
   it('on send failure: does not request a reconcile', async () => {
@@ -434,7 +414,6 @@ describe('flushAllWrites covers write() calls', () => {
 describe('write lanes are scoped to the passed session, not the active one', () => {
   beforeEach(() => {
     installSession();           // session B is the active one
-    settings.eagerReconcile = false;
     vi.clearAllMocks();
   });
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './deviceService';
-import { connection, settings, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
+import { connection, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { bootMock } from './boot';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -756,13 +756,11 @@ describe('output config verbs', () => {
     expect(liveMirror().current!.i2s.mckEnabled).toBe(true);
   });
 
-  it('requests a reconcile on a successful config write, honoring eagerReconcile', async () => {
-    settings.eagerReconcile = true;
+  it('requests a non-eager reconcile on a successful config write', async () => {
     activeSession()!.mirror.consumeReconcile(); // clear anything pending from boot
     setI2sBckPin(activeSession()!, 16);
     await flushAllWrites();
-    expect(activeSession()!.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
-    settings.eagerReconcile = false;
+    expect(activeSession()!.mirror.peekReconcile()).toEqual({ wanted: true, eager: false });
   });
 
   it('factoryResetDevice toasts completion on success', async () => {
