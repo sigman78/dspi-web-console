@@ -3,7 +3,17 @@ import type { DspDevice } from './DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
 import { PlatformType } from '@/domain';
 
-describe('DspDevice — read-side smoke (HIL)', () => {
+// Drives the *shape* of the production poll loop (status + buffer stats
+// intermixed) against real hardware without bringing in the actual
+// poll.ts module. Catches firmware regressions where status reads
+// silently return stale data, the sequence counter freezes, or a
+// buffer-stats race exposes a bad packet.
+
+const STATUS_INTERVAL_MS = 50;
+const BUFFER_INTERVAL_MS = 250;
+const RUN_DURATION_MS = 1500;
+
+describe('DspDevice — liveness & smoke (HIL)', () => {
   let device: DspDevice;
   let close: () => Promise<void>;
 
@@ -84,16 +94,37 @@ describe('DspDevice — read-side smoke (HIL)', () => {
     expect(typeof b.pdmActive).toBe('boolean');
   });
 
-  it('getBufferStats sequence advances over a short window', async () => {
-    const samples: number[] = [];
-    for (let i = 0; i < 5; i++) {
-      const b = await device.getBufferStats();
-      if (b) samples.push(b.sequence);
-      await new Promise((r) => setTimeout(r, 60));
+  it('intermixed transfers stay bounded and the buffer sequence advances', async () => {
+    const numCh = device.hardware.totalChannelCount;
+    const sequences: number[] = [];
+
+    let lastStatus = 0;
+    let lastBuffer = 0;
+    const start = Date.now();
+
+    while (Date.now() - start < RUN_DURATION_MS) {
+      const now = Date.now();
+      if (now - lastStatus >= STATUS_INTERVAL_MS) {
+        const s = await device.getSystemStatus();
+        for (let ch = 0; ch < numCh; ch++) {
+          expect(s.peaks[ch]).toBeGreaterThanOrEqual(0);
+          expect(s.peaks[ch]).toBeLessThanOrEqual(1);
+        }
+        expect(s.cpu0).toBeGreaterThanOrEqual(0);
+        expect(s.cpu0).toBeLessThanOrEqual(100);
+        lastStatus = now;
+      }
+      if (now - lastBuffer >= BUFFER_INTERVAL_MS) {
+        const b = await device.getBufferStats();
+        expect(b).not.toBeNull();
+        if (b) sequences.push(b.sequence);
+        lastBuffer = now;
+      }
+      await new Promise((r) => setTimeout(r, 10));
     }
-    expect(samples.length).toBeGreaterThan(0);
-    // Detect movement. If firmware is stuck, all samples are equal.
-    const moved = samples.some((s) => s !== samples[0]);
+
+    expect(sequences.length).toBeGreaterThan(1);
+    const moved = sequences.some((s) => s !== sequences[0]);
     expect(moved).toBe(true);
   });
 });
