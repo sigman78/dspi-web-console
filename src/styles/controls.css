@@ -14,7 +14,9 @@
 
    .microlbl — control row label (KV stays the canon for label+value pairs).
    .hint — faint mono helper/idle text; padding stays component-local.
-   .dimmed — inactive pane treatment for feature-off panel bodies.
+   .dimmed — semantic marker (no opacity) for feature-off panel bodies; the
+     body's labels/readouts stay full-contrast, the controls disabled by the
+     feature-off state carry the one dim layer themselves (U-P3 policy B).
    .kvgrid — the 2-col label/value grid shared by DevicePanel/SystemTab/
      OverviewTab; panels with a different padding/gap keep a local variant.
    .icon-toggle — small square icon button (topbar bypass / mini mute);
@@ -33,7 +35,9 @@
   cursor: pointer;
 }
 .chip:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
-.chip:disabled { opacity: 0.4; cursor: default; }
+/* Single dim layer (U-P3 policy B): the panel/row this sits in stays
+   full-contrast; this is the one opacity dim on the control itself. */
+.chip:disabled { opacity: var(--dim-disabled); cursor: default; }
 
 .chip.md {
   font-size: 10px;
@@ -98,7 +102,11 @@
   margin: 0;
 }
 
-.dimmed { opacity: 0.45; }
+/* Semantic marker only (U-P3 policy B) -- no opacity here. Feature-off panel
+   bodies keep full-contrast labels/readouts; the controls disabled by the
+   feature-off state carry the single dim layer (var(--dim-disabled))
+   themselves via their own :disabled rule. */
+.dimmed { }
 
 .kvgrid { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 

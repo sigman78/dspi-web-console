@@ -31,6 +31,12 @@
   --warn: oklch(82% 0.16 90);
   --err: oklch(67% 0.18 25);
 
+  /* Disabled-state legibility (U-P3, policy B "structure lit"): disabled/off
+     regions never stack opacity. Containers (headers, cells, rows, panel
+     bodies) stay full-contrast; exactly ONE dim layer, this token, applies
+     to the interactive control itself (input/button/select). */
+  --dim-disabled: 0.5;
+
   --pad: 16px;
   --radius-s: 3px;
   --radius-m: 5px;
@@ -56,4 +62,4 @@ input[type="number"], select, input[type="range"] {
   border-radius: 4px;
   padding: 0.25rem 0.4rem;
 }
-input[type="number"]:disabled, select:disabled { opacity: 0.45; }
+input[type="number"]:disabled, select:disabled { opacity: var(--dim-disabled); }

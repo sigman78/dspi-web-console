@@ -60,5 +60,7 @@
 
 <style>
   input[type="range"] { accent-color: var(--accent); margin: 0; }
-  input[type="range"]:disabled { opacity: 0.4; cursor: default; }
+  /* Single dim layer (U-P3 policy B): the row/panel around this stays
+     full-contrast; this is the one opacity dim on the control itself. */
+  input[type="range"]:disabled { opacity: var(--dim-disabled); cursor: default; }
 </style>

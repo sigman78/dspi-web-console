@@ -119,7 +119,7 @@
       {/snippet}
       <div class="outlist">
         {#each snap?.outputs ?? [] as out (out.id)}
-          <div class="outrow" class:dim={!out.enabled}>
+          <div class="outrow">
             <span class="oid ch-{chKey(out.id)}">{out.shortName}</span>
             <span class="oname">{nameById.get(out.id) ?? ''}</span>
             <span class="ogain">{fmtDb(out.gainDb)} dB</span>
@@ -205,7 +205,10 @@
     font-size: 10px;
     border-top: 1px solid var(--wash);
   }
-  .outrow.dim { opacity: 0.4; }
+  /* U-P3 policy B: no whole-row dim for a disabled output. This row is only
+     read-only values (name/gain/delay/clip/status), which stay full-contrast
+     per policy; the ostatus glyph (·/●/✕) already carries the off/on/muted
+     signal, so no separate control-dim layer is needed here either. */
   .oid { color: var(--ch-bright); font-weight: 600; }
   .oname { font-family: var(--font-sans); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ogain, .odelay { text-align: right; }

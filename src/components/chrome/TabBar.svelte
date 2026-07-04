@@ -26,8 +26,10 @@
     display: flex;
     align-items: stretch;
   }
+  /* U-P3 policy B: no whole-bar dim when disconnected (tab codes/labels are
+     structure, stay full-contrast). pointer-events still blocks interaction;
+     each .tab carries the single dim layer via its own :disabled rule. */
   .tabs.is-disabled {
-    opacity: 0.45;
     pointer-events: none;
   }
   .row {
@@ -50,6 +52,7 @@
     display: flex; gap: 6px; align-items: baseline;
     transition: background 100ms, color 100ms, box-shadow 100ms;
   }
+  .tab:disabled { opacity: var(--dim-disabled); cursor: default; }
   .tab.active {
     background:
       linear-gradient(to top,

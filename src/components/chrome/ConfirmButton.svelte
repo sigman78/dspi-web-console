@@ -75,7 +75,7 @@
 
 <style>
   .chip[aria-disabled="true"] {
-    opacity: 0.4;
+    opacity: var(--dim-disabled);
     cursor: default;
     pointer-events: none;
   }

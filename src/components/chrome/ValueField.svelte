@@ -219,7 +219,9 @@
   .vf.editing.invalid input { color: var(--err); }
   .vf.disabled {
     cursor: default;
-    opacity: 0.4;
+    /* Single dim layer (U-P3 policy B): the container this sits in stays
+       full-contrast; this is the one opacity dim on the control itself. */
+    opacity: var(--dim-disabled);
   }
 
   .display {

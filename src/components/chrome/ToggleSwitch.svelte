@@ -47,7 +47,7 @@
     color: var(--text-dim);
   }
   .sw:hover:not(:disabled) { color: var(--text); }
-  .sw:disabled { cursor: default; opacity: 0.4; }
+  .sw:disabled { cursor: default; opacity: var(--dim-disabled); }
 
   .track {
     --w: 34px; --h: 20px; --pad: 2.5px;

@@ -38,7 +38,6 @@
 
 <div
   class="header ch-{chKey(column.id)}"
-  class:dim={!column.enabled}
   class:zebra
   class:unavailable
   class:selected
@@ -121,7 +120,9 @@
     transition: opacity 120ms;
   }
   .header.zebra { background: var(--wash); }
-  .header.dim { opacity: 0.5; }
+  /* U-P3 policy B: no whole-header dim when the output is off. Channel code,
+     name, and mute/power buttons stay full-contrast; GAIN/DELAY ValueFields
+     below are disabled in that state and carry the single dim layer alone. */
   /* Selected-channel locator: a channel-color line over the column, echoing
      the rail's L/R group spine (ChannelRail .spine) and MixerTab's row-head
      mate (var(--ch-base) bar). An absolutely-positioned strip so the matrix

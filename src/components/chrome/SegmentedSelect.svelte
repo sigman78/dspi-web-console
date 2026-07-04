@@ -82,7 +82,7 @@
     color: var(--text);
     background: var(--wash);
   }
-  .opt:disabled { cursor: default; opacity: 0.4; }
+  .opt:disabled { cursor: default; opacity: var(--dim-disabled); }
   .opt.on {
     background: color-mix(in oklab, var(--ok) 10%, transparent);
     color: var(--ok);

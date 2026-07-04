@@ -201,6 +201,6 @@
   }
   .connect:disabled {
     cursor: default;
-    opacity: 0.55;
+    opacity: var(--dim-disabled);
   }
 </style>

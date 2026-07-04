@@ -14,7 +14,7 @@
   }
 </script>
 
-<div class="vol" class:dim={!connected}>
+<div class="vol">
   <span class="microlbl">VOL</span>
   <input
     type="range"
@@ -61,13 +61,17 @@
     font-size: 10px;
     color: var(--text-dim);
   }
-  .vol.dim { opacity: 0.5; }
+  /* U-P3 policy B: no whole-widget dim when disconnected. VOL label and the
+     dB readout stay full-contrast; the range input and mute icon-toggle are
+     disabled in that state and each carry the single dim layer themselves
+     (icon-toggle via its own :disabled rule in controls.css). */
   input[type="range"] {
     width: 120px;
     accent-color: var(--accent);
     margin: 0;
     padding: 0;
   }
+  input[type="range"]:disabled { opacity: var(--dim-disabled); cursor: default; }
   input[type="range"].muted {
     accent-color: var(--text-faint);
     opacity: 0.45;

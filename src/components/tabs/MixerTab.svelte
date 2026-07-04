@@ -62,7 +62,6 @@
                 inputIndex={row.inputIndex}
                 outputIndex={cell.outputWireIndex}
                 inputChannelId={row.inputId}
-                outputDisabled={!columns[ci]?.enabled}
                 unavailable={isUnavailable(ci)}
               />
             </div>

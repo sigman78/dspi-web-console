@@ -195,6 +195,10 @@
     font-family: inherit;
     cursor: inherit;
   }
+  /* U-P3 policy B: the rail around this stays full-contrast when disconnected
+     (see ChannelRail's .rail-body.is-disabled); this is the single dim layer
+     on the control itself. */
+  .body:disabled { opacity: var(--dim-disabled); cursor: default; }
   .nm {
     font-size: 10px;
     white-space: nowrap;
@@ -285,7 +289,9 @@
       transparent 2px 6px
     );
   }
-  .row.dim .nm { opacity: 0.55; }
+  /* U-P3 policy B: the row stays clickable/selectable even when it maps to
+     an off output, so this isn't a disabled region -- no opacity on the
+     name label. The hatch overlay above is the sole "off" signal. */
   .row.pulsate { animation: row-pulse 2s ease-in-out infinite; }
   @keyframes row-pulse {
     0%, 100% { background: var(--wash); }
