@@ -40,7 +40,7 @@
     return {
       id: `eq-${channel.id}`,
       channelId: channel.id,
-      points: filterCurve(bands, preampDb),
+      points: filterCurve(bands, preampDb, channel.xoverBands),
       label: channel.shortName,
     };
   });
@@ -53,9 +53,19 @@
       out.push({
         id: `m${i}`,
         f: b.frequency,
-        db: filterCurveAt(bands, preampDb, b.frequency),
+        db: filterCurveAt(bands, preampDb, b.frequency, channel.xoverBands),
         channelId: channel.id,
         label: String(i + 1),
+      });
+    });
+    channel.xoverBands.forEach((b, i) => {
+      if (b.type === FilterType.Flat) return;
+      out.push({
+        id: `x${i}`,
+        f: b.frequency,
+        db: filterCurveAt(bands, preampDb, b.frequency, channel.xoverBands),
+        channelId: channel.id,
+        label: `X${i + 1}`,
       });
     });
     return out;
