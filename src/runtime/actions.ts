@@ -14,7 +14,7 @@ import {
   pushNotice,
 } from '@/state';
 import { Log, errMessage } from '@/utils';
-import { write, scrub, writeChecked, command } from './writes';
+import { write, scrub, writeChecked, command } from './writes.svelte';
 import { focusOutput, focusRoute } from './focus';
 
 export function setEqFilter(s: ReadySession, channel: ChannelId, band: number, filter: FilterParams): void {
@@ -81,7 +81,7 @@ export function setBypass(s: ReadySession, enabled: boolean): void {
 // still sees the condition.
 export function clearClips(s: ReadySession): void {
   for (let i = 0; i < s.telemetry.clipLatched.length; i++) s.telemetry.clipLatched[i] = false;
-  void s.device.clearClips().catch((e) => Log.error('clearClips', 'send failed', e));
+  void s.queue.run(() => s.device.clearClips()).catch((e) => Log.error('clearClips', 'send failed', e));
 }
 
 // Empty / whitespace-only input clears the custom name on the device; the
@@ -478,27 +478,30 @@ export function setDacHwMute(s: ReadySession, patch: Partial<DacHwMute>): void {
     ? { ...merged, holdMs: Clamp.dacHwMuteHoldMs(merged.holdMs), releaseMs: Clamp.dacHwMuteReleaseMs(merged.releaseMs) }
     : merged;
   s.mirror.snapshot.dacHwMute = next;
+  // queued: false -- the apply wait must not hold the session queue (it would
+  // stall the status poll); each wire call queues itself and the wait sits
+  // between them.
   void command(s, 'set DAC HW mute', async () => {
-    await s.device.setDacHwMute(next);
+    await s.queue.run(() => s.device.setDacHwMute(next));
     await new Promise((r) => setTimeout(r, DAC_HW_MUTE_APPLY_MS));
-    return s.device.getDacHwMute();
+    return s.queue.run(() => s.device.getDacHwMute());
   }, (echo, s) => {
     s.mirror.snapshot.dacHwMute = echo;
     if (next.enabled && (echo.enabled !== next.enabled || echo.pin !== next.pin)) {
       pushNotice('warn', 'DAC HW mute config rejected by the device (pin in use or invalid).');
     }
     s.mirror.requestReconcile(false);
-  });
+  }, { queued: false });
 }
 
 // M6 — DAC HW mute test pulse (~1s). Fire-and-forget.
 export function testDacHwMute(s: ReadySession): void {
-  void s.device.testDacHwMute().catch((e) => { pushNotice('error', `DAC mute test failed: ${errMessage(e)}`); });
+  void s.queue.run(() => s.device.testDacHwMute()).catch((e) => { pushNotice('error', `DAC mute test failed: ${errMessage(e)}`); });
 }
 
 // M9 — Buffer stats reset.
 export function resetBufferStats(s: ReadySession): void {
-  void s.device.resetBufferStats().catch((e) => { pushNotice('error', `Buffer stats reset failed: ${errMessage(e)}`); });
+  void s.queue.run(() => s.device.resetBufferStats()).catch((e) => { pushNotice('error', `Buffer stats reset failed: ${errMessage(e)}`); });
 }
 
 // M8 — Enter UF2 bootloader. The device disconnects immediately (100 ms delay
@@ -506,7 +509,7 @@ export function resetBufferStats(s: ReadySession): void {
 // drops mid-response; that is expected and is treated as a normal disconnect.
 export async function enterBootloader(s: ReadySession): Promise<void> {
   try {
-    await s.device.enterBootloader();
+    await s.queue.run(() => s.device.enterBootloader());
   } catch {
     // Device dropped during or after the command -- that's the expected path.
   }

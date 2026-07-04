@@ -44,7 +44,7 @@ describe('makeReadySession()', () => {
     expect(s.presets.directory).toBeNull();
     expect(s.presets.busy).toBe(false);
     expect(s.mirror.current).toBeNull();
-    expect(s.mirror.inflight).toBe(0);
+    expect(s.writes.busy).toBe(false);
   });
 });
 

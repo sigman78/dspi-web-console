@@ -7,7 +7,7 @@ import {
 } from '@/state';
 import { reconcileAfterSync } from './deviceService';
 import { fetchAndApplyAsBaseline } from './resync';
-import { flushAllWrites as flushWrites } from './writes';
+import { flushAllWrites as flushWrites } from './writes.svelte';
 import { type PresetSlot, PRESET_SLOT_COUNT, OutputConfigMode } from '@/domain';
 import { type PresetResult, PresetStartupMode } from '@/protocol';
 import type { DeviceState } from '@/protocol/snapshotCodec';
@@ -41,7 +41,7 @@ async function loadAndSettle(s: ReadySession, slot: PresetSlot): Promise<Result<
     (e) => e.kind === 'presetLoaded' && e.slot === slot,
     PRESET_LOADED_TIMEOUT_MS,
   );
-  const r = await s.device.loadPreset(slot);
+  const r = await s.queue.run(() => s.device.loadPreset(slot));
   if (!r.ok) return r;                       // waiter times out harmlessly
   if (await loaded === null) {
     Log.warn('presets', `presetLoaded(${slot}) not observed within ${PRESET_LOADED_TIMEOUT_MS}ms; proceeding`);
@@ -110,7 +110,10 @@ export async function fetchPresetInfo(s: ReadySession): Promise<void> {
     let dir: Awaited<ReturnType<typeof d.getPresetDirectory>>;
     let active: Awaited<ReturnType<typeof d.getActivePreset>>;
     try {
-      [dir, active] = await Promise.all([d.getPresetDirectory(), d.getActivePreset()]);
+      [dir, active] = await Promise.all([
+        s.queue.run(() => d.getPresetDirectory()),
+        s.queue.run(() => d.getActivePreset()),
+      ]);
     } catch (e) {
       const msg = errMessage(e);
       s.presets.lastFetchError = `Directory fetch failed: ${msg}`;
@@ -124,7 +127,7 @@ export async function fetchPresetInfo(s: ReadySession): Promise<void> {
     // Boot-baseline master volume (independent of the directory packet).
     // Best-effort: a failure here must not hide the slot grid.
     try {
-      s.presets.savedMasterVolumeDb = await d.getSavedMasterVolume();
+      s.presets.savedMasterVolumeDb = await s.queue.run(() => d.getSavedMasterVolume());
     } catch (e) {
       Log.warn('presets', 'getSavedMasterVolume failed', e);
     }
@@ -134,7 +137,7 @@ export async function fetchPresetInfo(s: ReadySession): Promise<void> {
     const names: string[] = Array.from({ length: PRESET_SLOT_COUNT }, () => '');
     for (let i = 0; i < PRESET_SLOT_COUNT; i++) {
       try {
-        names[i] = await d.getPresetName(i as PresetSlot);
+        names[i] = await s.queue.run(() => d.getPresetName(i as PresetSlot));
       } catch (e) {
         Log.warn('presets', `getPresetName(${i}) failed`, e);
       }
@@ -174,7 +177,7 @@ export async function saveActivePreset(s: ReadySession): Promise<Result<void, Pr
   try {
     return await withBusy(s.presets, async () => {
       await flushWrites(s);
-      const r = await d.savePreset(active);
+      const r = await s.queue.run(() => d.savePreset(active));
       if (r.ok) {
         if (s.presets.directory) {
           const set = new Set(s.presets.directory.occupiedSlotsSet);
@@ -202,7 +205,7 @@ export async function savePresetSlot(s: ReadySession, slot: PresetSlot): Promise
   try {
     return await withBusy(s.presets, async () => {
       await flushWrites(s);
-      const r = await d.savePreset(slot);
+      const r = await s.queue.run(() => d.savePreset(slot));
       if (r.ok) {
         if (s.presets.directory) {
           const set = new Set(s.presets.directory.occupiedSlotsSet);
@@ -245,7 +248,7 @@ async function executeLoad(
         // applied (RAM and last_active stay untouched) and the wire trace
         // is indistinguishable from success. The active-slot read-back is
         // the only verdict, so verify before trusting the load.
-        const deviceActive = await s.device.getActivePreset();
+        const deviceActive = await s.queue.run(() => s.device.getActivePreset());
         if (deviceActive !== slot) {
           s.presets.active = deviceActive;
           await fetchAndApplyAsBaseline(s);
@@ -314,7 +317,7 @@ export async function copyActivePreset(s: ReadySession): Promise<Result<void, Pr
   clearActionError(s.presets);
   try {
     return await withBusy(s.presets, async () => {
-      const blob = await s.device.captureState();
+      const blob = await s.queue.run(() => s.device.captureState());
       s.copySource.held = { slot: active, name: s.presets.names[active] ?? '', blob };
       return Result.ok();
     });
@@ -356,8 +359,8 @@ export async function pastePresetTo(s: ReadySession, blob: DeviceState): Promise
     return await withBusy(s.presets, async () => {
       await flushWrites(s);
       // The blob is this device's own capture, so the format always matches.
-      await d.restoreState(blob);
-      const r5 = await d.savePreset(active);
+      await s.queue.run(() => d.restoreState(blob));
+      const r5 = await s.queue.run(() => d.savePreset(active));
       if (!r5.ok) {
         recordActionError(s.presets, 'Paste', new Error(r5.message ?? `error ${r5.code}`));
         return r5;
@@ -395,7 +398,7 @@ export async function deletePresetSlot(s: ReadySession, slot: PresetSlot): Promi
   clearActionError(s.presets);
   try {
     return await withBusy(s.presets, async () => {
-      const r = await d.deletePreset(slot);
+      const r = await s.queue.run(() => d.deletePreset(slot));
       if (r.ok && s.presets.directory) {
         const set = new Set(s.presets.directory.occupiedSlotsSet);
         set.delete(slot);
@@ -422,7 +425,7 @@ export async function renamePresetSlot(
   clearActionError(s.presets);
   try {
     return await withBusy(s.presets, async () => {
-      await d.setPresetName(slot, name);
+      await s.queue.run(() => d.setPresetName(slot, name));
       const next = [...s.presets.names];
       next[slot] = name;
       s.presets.names = next;
@@ -440,7 +443,7 @@ export async function setStartupDefault(
   clearActionError(s.presets);
   try {
     return await withBusy(s.presets, async () => {
-      await d.setPresetStartup({ mode: PresetStartupMode.Specified, slot });
+      await s.queue.run(() => d.setPresetStartup({ mode: PresetStartupMode.Specified, slot }));
       if (s.presets.directory) {
         s.presets.directory = {
           ...s.presets.directory,
@@ -463,7 +466,7 @@ export async function setStartupMode(
   clearActionError(s.presets);
   try {
     return await withBusy(s.presets, async () => {
-      await d.setPresetStartup({ mode, slot });
+      await s.queue.run(() => d.setPresetStartup({ mode, slot }));
       if (s.presets.directory) {
         s.presets.directory = { ...s.presets.directory, startupMode: mode };
       }
@@ -481,7 +484,7 @@ export async function setOutputConfigMode(
   clearActionError(s.presets);
   try {
     return await withBusy(s.presets, async () => {
-      await d.setOutputConfigMode(mode);
+      await s.queue.run(() => d.setOutputConfigMode(mode));
       if (s.presets.directory) {
         s.presets.directory = { ...s.presets.directory, outputConfigMode: mode };
       }

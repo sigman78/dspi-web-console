@@ -5,13 +5,19 @@ import type { LoopClock } from '@/utils';
 
 vi.mock('@/runtime/resync', () => ({ forceResyncNow: vi.fn() }));
 
-// Manual clock: collects the latest callback; step() fires it.
-function manualClock(): LoopClock & { step(): void } {
+// Manual clock: collects the latest callback; step() fires it. armed() reports
+// whether a callback is currently registered -- since startLinkProbe only
+// re-arms AFTER its async probe body (including the queued getBypass send)
+// fully settles, waiting on armed() (rather than a mock call count, which
+// updates mid-flight, before the tick's async body finishes) is what actually
+// serializes the test's steps with the loop's real completion.
+function manualClock(): LoopClock & { step(): void; armed(): boolean } {
   let cb: (() => void) | null = null;
   return {
     next(fn: () => void) { cb = fn; },
     cancel() { cb = null; },
     step() { const f = cb; cb = null; f?.(); },
+    armed() { return cb !== null; },
   };
 }
 
@@ -45,8 +51,11 @@ describe('startLinkProbe', () => {
     const clock = manualClock();
     const stop = startLinkProbe(s, clock);
     clock.step();
-    await vi.waitFor(() => expect(getBypass).toHaveBeenCalledTimes(1));
-    expect(s.health.degraded).toBe(false);
+    // Wait on the actual end state, not the mock call count: the count updates
+    // synchronously at send time, well before the queued op settles and
+    // noteRecovered() runs.
+    await vi.waitFor(() => expect(s.health.degraded).toBe(false));
+    expect(getBypass).toHaveBeenCalledTimes(1);
     stop();
   });
 
@@ -57,11 +66,18 @@ describe('startLinkProbe', () => {
     s.health.degraded = true;
     const clock = manualClock();
     const stop = startLinkProbe(s, clock);
-    for (let i = 0; i < 5; i++) {
+    // The first 4 failures re-arm the clock; wait for that (not the call
+    // count) before stepping again, so each step lands after the previous
+    // tick's async probe body has actually finished.
+    for (let i = 0; i < 4; i++) {
       clock.step();
-      await vi.waitFor(() => expect(getBypass).toHaveBeenCalledTimes(i + 1));
+      await vi.waitFor(() => expect(clock.armed()).toBe(true));
     }
+    // The 5th failure crosses PROBE_FAILS_TO_KILL and tears the session down
+    // instead of re-arming.
+    clock.step();
     await vi.waitFor(() => expect(close).toHaveBeenCalled());
+    expect(getBypass).toHaveBeenCalledTimes(5);
     expect(connection.phase).toBe('errored');
     expect(s.alive).toBe(false);
     stop();

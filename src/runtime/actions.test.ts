@@ -23,7 +23,7 @@ import {
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { deriveCapabilities } from '@/protocol/capabilities';
 
-import { flushAllWrites as flushAllWritesFor } from './writes';
+import { flushAllWrites as flushAllWritesFor } from './writes.svelte';
 import { beginConnection, connectionScope, endConnection } from './connectionScope';
 
 // Test wrappers: the write lanes are now session-scoped, but these cleanup/flush
@@ -648,6 +648,22 @@ describe('setDacHwMute', () => {
     setDacHwMute(activeSession()!, { enabled: true });   // virgin device: holdMs 0
     await vi.runAllTimersAsync();
     expect(sent[0].holdMs).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not hold the session queue across the deferred-apply wait', async () => {
+    const { setDacHwMuteFn } = dacHarness();
+    const s = activeSession()!;
+    setDacHwMute(s, { enabled: true, pin: 6 });
+    // Let the SET transfer settle but stay inside the 200 ms apply window.
+    await vi.advanceTimersByTimeAsync(50);
+    expect(setDacHwMuteFn).toHaveBeenCalled();
+    // Another op enqueued mid-wait must run without waiting out the window.
+    let ran = false;
+    const other = s.queue.run(async () => { ran = true; });
+    await vi.advanceTimersByTimeAsync(0);
+    await other;
+    expect(ran).toBe(true);
+    await vi.runAllTimersAsync();
   });
 
   it('warns and reverts when the device swallows an enable', async () => {

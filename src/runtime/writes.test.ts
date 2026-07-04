@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { write, scrub, writeChecked, command, flushAllWrites } from './writes';
+import { write, scrub, writeChecked, command, flushAllWrites } from './writes.svelte';
 import { connection, notices, clearNotices, dispatch, makeReadySession, activeSession, type ReadySession } from '@/state';
 import { Result } from '@/utils';
 
@@ -53,21 +53,14 @@ describe('write() helper', () => {
     expect(wanted).toBe(false);
   });
 
-  it('stamps write activity when called', async () => {
-    const before = activeSession()!.mirror.lastWriteMs;
-    await write(session, async () => {}, () => {});
-    expect(activeSession()!.mirror.lastWriteMs).toBeGreaterThanOrEqual(before);
-    expect(activeSession()!.mirror.lastWriteMs).toBeGreaterThan(0);
-  });
-
-  it('bumps inflight during send and drops after settle', async () => {
-    let inflightDuringSend = -1;
+  it('claims writes.busy during send and releases it after settle', async () => {
+    let busyDuringSend = false;
     const send = vi.fn(async () => {
-      inflightDuringSend = activeSession()!.mirror.inflight;
+      busyDuringSend = activeSession()!.writes.busy;
     });
     await write(session, send, () => {});
-    expect(inflightDuringSend).toBe(1);
-    expect(activeSession()!.mirror.inflight).toBe(0);
+    expect(busyDuringSend).toBe(true);
+    expect(activeSession()!.writes.busy).toBe(false);
   });
 
   it('does not mutate when send rejects', async () => {
@@ -76,7 +69,7 @@ describe('write() helper', () => {
     const send = vi.fn(async () => { throw new Error('boom'); });
     await write(session, send, mutate);
     expect(mutate).not.toHaveBeenCalled();
-    expect(s.mirror.inflight).toBe(0);
+    expect(s.writes.busy).toBe(false);
   });
 
   it('does not mutate when generation changes mid-flight', async () => {
@@ -89,7 +82,7 @@ describe('write() helper', () => {
     resolveSend!();
     await p;
     expect(mutate).not.toHaveBeenCalled();
-    expect(s.mirror.inflight).toBe(0);
+    expect(s.writes.busy).toBe(false);
   });
 
   it('does not call forceResyncNow on failure if generation changed', async () => {
@@ -262,14 +255,6 @@ describe('scrub() helper', () => {
     expect(send).toHaveBeenCalledTimes(1);     // no coalesce timer in front
   });
 
-  it('stamps write activity on the call (before any send settles)', async () => {
-    const before = activeSession()!.mirror.lastWriteMs;
-    scrub(session, 'k1', () => {}, async () => {});
-    expect(activeSession()!.mirror.lastWriteMs).toBeGreaterThan(0);
-    expect(activeSession()!.mirror.lastWriteMs).toBeGreaterThanOrEqual(before);
-    await flushAllWrites(session);
-  });
-
   it('coalesces to the latest value while a send is in flight', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
@@ -302,26 +287,26 @@ describe('scrub() helper', () => {
     release();
     await new Promise((r) => setTimeout(r, 10));
     expect(parked).not.toHaveBeenCalled();
-    expect(session.mirror.inflight).toBe(0);
+    expect(session.writes.busy).toBe(false);
   });
 
-  it('claims inflight once for a burst and drops it when the lane drains', async () => {
+  it('claims writes.busy once for a burst and releases it when the lane drains', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
     scrub(session, 'k1', () => {}, async () => { await gate; });
     scrub(session, 'k1', () => {}, async () => {});
-    expect(session.mirror.inflight).toBe(1);
+    expect(session.writes.busy).toBe(true);
     release();
     await flushAllWrites(session);
-    expect(session.mirror.inflight).toBe(0);
+    expect(session.writes.busy).toBe(false);
   });
 
-  it('cancel resets inflight to 0', () => {
+  it('cancel clears writes.busy', () => {
     scrub(session, 'k1', () => {}, async () => {});
     scrub(session, 'k2', () => {}, async () => {});
-    expect(activeSession()!.mirror.inflight).toBeGreaterThan(0);
+    expect(activeSession()!.writes.busy).toBe(true);
     session.writes.cancel();
-    expect(activeSession()!.mirror.inflight).toBe(0);
+    expect(activeSession()!.writes.busy).toBe(false);
   });
 
   it('on send failure: forceResyncNow called, lane recovers', async () => {
@@ -395,18 +380,18 @@ describe('flushAllWrites covers write() calls', () => {
     expect(mutated).toBe(true);
   });
 
-  it('inflight counter is non-zero during a write() in flight', async () => {
+  it('writes.busy is true during a write() in flight', async () => {
     let resolveSend!: () => void;
     const send = vi.fn(() => new Promise<void>((r) => { resolveSend = r; }));
     void write(session, send, () => {});
-    expect(activeSession()!.mirror.inflight).toBe(1);
+    expect(activeSession()!.writes.busy).toBe(true);
     resolveSend!();
     await flushAllWrites(session);
-    expect(activeSession()!.mirror.inflight).toBe(0);
+    expect(activeSession()!.writes.busy).toBe(false);
   });
 });
 
-// The write lanes must track inflight / alive / reconcile on the session they
+// The write lanes must track busy / alive / reconcile on the session they
 // are GIVEN, not on whichever session happens to be active when the send
 // settles. The send/mutate closures target the passed session; if lifecycle
 // attached to the active session instead, a reconnect (or a second device)
@@ -417,13 +402,13 @@ describe('write lanes are scoped to the passed session, not the active one', () 
     vi.clearAllMocks();
   });
 
-  it('write() bumps inflight and requests reconcile on the passed session', async () => {
+  it('write() claims writes.busy and requests reconcile on the passed session', async () => {
     const a = makeReadySession({ info: {}, hardware: {} } as never);  // not active
     a.mirror.consumeReconcile();
     session.mirror.consumeReconcile();
-    let inflightDuringSend = -1;
-    await write(a, async () => { inflightDuringSend = a.mirror.inflight; }, () => {});
-    expect(inflightDuringSend).toBe(1);                       // A's counter, not B's
+    let busyDuringSend = false;
+    await write(a, async () => { busyDuringSend = a.writes.busy; }, () => {});
+    expect(busyDuringSend).toBe(true);                        // A's coordinator, not B's
     expect(a.mirror.consumeReconcile().wanted).toBe(true);    // A got the reconcile
     expect(session.mirror.consumeReconcile().wanted).toBe(false);  // B untouched
   });

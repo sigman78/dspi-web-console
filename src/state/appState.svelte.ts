@@ -5,8 +5,9 @@ import type { StatusStore } from './telemetry.svelte';
 import type { PresetsState } from './presets.svelte';
 import type { MirrorState } from './mirror.svelte';
 import type { LinkHealth } from './linkHealth.svelte';
-import type { WriteCoordinator } from '@/runtime/writes';
+import type { WriteCoordinator } from '@/runtime/writes.svelte';
 import type { NotifyWaiters } from '@/runtime/notifyWaiters';
+import type { CommandQueue } from '@/runtime/commandQueue';
 
 export interface PresetClipboard {
   slot: PresetSlot;
@@ -34,6 +35,9 @@ export interface ReadySession {
   readonly health: LinkHealth;
   readonly writes: WriteCoordinator;
   readonly notifyWaiters: NotifyWaiters;
+  // Serializes every device control-transfer send for this session -- a
+  // snapshot fetch can never interleave with a write mid-flight.
+  readonly queue: CommandQueue;
   // Lifecycle guard: a write that settles after dispose() is dropped.
   alive: boolean;
   dispose(): void;

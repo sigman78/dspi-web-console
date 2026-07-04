@@ -52,7 +52,7 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
     // fall back to a full reconcile. HOST echoes fall through to isReconcileTrigger
     // below, which drops them.
     if (event.kind === 'paramChanged' && event.source !== ParamSource.Host) {
-      if (!applyParamChange(device, mir, event)) mir.requestReconcile(true);
+      if (!applyParamChange(session, event)) mir.requestReconcile(true);
       return;
     }
     // Suppress ONLY the full-reconcile backstop echoes of our own in-flight preset

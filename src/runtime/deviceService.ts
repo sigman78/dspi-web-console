@@ -12,7 +12,7 @@ import {
   type ReadySession,
 } from '@/state';
 import { Log, errMessage } from '@/utils';
-import { flushAllWrites } from './writes';
+import { flushAllWrites } from './writes.svelte';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
 import { startLinkProbe } from './linkProbe';
@@ -27,7 +27,7 @@ export async function syncDeviceSnapshot(s: ReadySession): Promise<void> {
   const d = s.device;
   inflightSync = (async () => {
     try {
-      const snap = await d.getSnapshot();
+      const snap = await s.queue.run(() => d.getSnapshot());
       s.mirror.init(snap);
     } catch (err) {
       Log.error('sync', 'syncDeviceSnapshot failed', err);
@@ -101,7 +101,7 @@ export async function factoryResetDevice(): Promise<void> {
     // Drain any parked optimistic write so a pre-reset bulk send can't settle
     // mid-reset and re-push stale params (mirrors the preset load/paste flows).
     await flushAllWrites(s);
-    const r = await d.factoryReset();
+    const r = await s.queue.run(() => d.factoryReset());
     if (!r.ok) { pushNotice('warn', r.message); return; }  // non-ok flash status
     invalidatePresetCache(s);
     s.copySource.held = null;

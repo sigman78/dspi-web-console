@@ -1,6 +1,6 @@
 <script lang="ts">
   import { activeSession } from '@/state';
-  const active = $derived((activeSession()?.mirror.inflight ?? 0) > 0);
+  const active = $derived(activeSession()?.writes.busy ?? false);
 </script>
 
 <span class="dirty-dot" class:active aria-hidden="true"></span>

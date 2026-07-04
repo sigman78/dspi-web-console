@@ -23,7 +23,7 @@ export function startLinkProbe(s: ReadySession, clock: LoopClock = timerClock(PR
     if (s.health.degraded && !probing && !isHidden()) {
       probing = true;
       try {
-        await s.device.getBypass();
+        await s.queue.run(() => s.device.getBypass(), { priority: true });
         s.health.noteRecovered();
         probeFails = 0;
         void forceResyncNow(s);

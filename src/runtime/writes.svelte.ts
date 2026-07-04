@@ -1,9 +1,11 @@
 // Write lanes for the device-first model: a runtime action routes its wire send
 // through one of these, which coordinates the mirror mutation, the reconcile
 // signal, and failure recovery. Each lane operates on the session it is GIVEN
-// (never the ambient active session), so inflight/alive/reconcile bookkeeping
+// (never the ambient active session), so busy/alive/reconcile bookkeeping
 // always lands on the session the send/mutate closures target, even across a
-// reconnect or switch.
+// reconnect or switch. Every send is serialized through the session's
+// CommandQueue (`s.queue`), so it can never interleave with a concurrent
+// snapshot fetch.
 //
 // write()        -- click-paced. Await ack, then mutate. Failure -> toast +
 //                   forceResyncNow; link health decides anything bigger.
@@ -14,6 +16,7 @@
 // All respect the per-session `alive` guard: a send that settles after its
 // session was disposed (disconnect) is silently dropped (no mutate, no recovery).
 
+import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 import { pushNotice, type ReadySession } from '@/state';
 import type { MirrorState } from '@/state/mirror.svelte';
 import { forceResyncNow } from './resync';
@@ -28,11 +31,10 @@ export async function write(
   send: () => Promise<unknown>,
   mutate: () => void,
 ): Promise<void> {
-  s.mirror.noteWriteActivity();
-  s.mirror.bumpInflight();
+  s.writes.claim();
   const settled = (async () => {
     try {
-      await send();
+      await s.queue.run(send);
       if (s.alive) {
         mutate();
         s.mirror.requestReconcile(false);
@@ -48,7 +50,7 @@ export async function write(
         void forceResyncNow(s);
       }
     } finally {
-      s.mirror.dropInflight();
+      s.writes.release();
     }
   })();
   s.writes.inflightWrites.add(settled);
@@ -67,12 +69,16 @@ export function command<T>(
   op: string,
   send: () => Promise<T>,
   onSettled: (result: T, s: ReadySession) => void,
+  opts: { queued?: boolean } = {},
 ): Promise<void> {
-  s.mirror.noteWriteActivity();
-  s.mirror.bumpInflight();
+  s.writes.claim();
   const settled = (async () => {
     try {
-      const r = await send();
+      // queued: false is for compound sends with a non-wire gap in the middle
+      // (a firmware settle wait): they queue each wire call themselves so the
+      // gap doesn't stall the whole session queue. The claim spans the full
+      // send either way, so the param reconcile can't interleave with the gap.
+      const r = opts.queued === false ? await send() : await s.queue.run(send);
       if (s.alive) onSettled(r, s);
     } catch (err) {
       if (!s.alive) return;
@@ -80,7 +86,7 @@ export function command<T>(
       s.health.noteFail(op, err);
       if (!s.health.degraded) pushNotice('error', `${op} failed`);
     } finally {
-      s.mirror.dropInflight();
+      s.writes.release();
     }
   })();
   s.writes.inflightWrites.add(settled);
@@ -118,7 +124,7 @@ interface Lane {
   flushNow(): Promise<void>;
 }
 
-function makeLane(key: string, mirror: MirrorState): Lane {
+function makeLane(key: string, coordinator: WriteCoordinator): Lane {
   let pending: (() => Promise<void>) | null = null;
   let pendingSession: ReadySession | null = null;
   let sending = false;
@@ -134,11 +140,11 @@ function makeLane(key: string, mirror: MirrorState): Lane {
     sending = true;
     chain = (async () => {
       try {
-        await thunk();
+        await s.queue.run(thunk);
         // The optimistic mutate already left the mirror at the value we sent.
-        // No per-settle resync; flag a reconcile for the inflight-gated
+        // No per-settle resync; flag a reconcile for the busy-gated
         // background param poll to honor.
-        if (s.alive) mirror.requestReconcile(false);
+        if (s.alive) coordinator.mirror.requestReconcile(false);
       } catch (err) {
         if (s.alive) {
           Log.error('writes', `scrub ${key} send failed`, err);
@@ -153,7 +159,7 @@ function makeLane(key: string, mirror: MirrorState): Lane {
         if (pending !== null) {
           pump();
         } else if (claimed) {
-          mirror.dropInflight();
+          coordinator.release();
           claimed = false;
         }
       }
@@ -165,7 +171,7 @@ function makeLane(key: string, mirror: MirrorState): Lane {
       pending = send;
       pendingSession = s;
       if (!claimed) {
-        mirror.bumpInflight();
+        coordinator.claim();
         claimed = true;
       }
       pump();
@@ -174,7 +180,7 @@ function makeLane(key: string, mirror: MirrorState): Lane {
       pending = null;
       pendingSession = null;
       if (claimed) {
-        mirror.dropInflight();
+        coordinator.release();
         claimed = false;
       }
     },
@@ -186,14 +192,23 @@ function makeLane(key: string, mirror: MirrorState): Lane {
 }
 
 export class WriteCoordinator {
-  readonly inflightWrites = new Set<Promise<void>>();
-  readonly lanes = new Map<string, Lane>();
+  // Counts registered-unsettled write()/command() ops plus lanes that are
+  // currently sending or hold a parked (coalesced) value. Exact -- no timing
+  // component -- because every device control call funnels through the
+  // session's CommandQueue, so a fetch can never interleave with a send.
+  #active = $state(0);
+  readonly inflightWrites = new SvelteSet<Promise<void>>();
+  readonly lanes = new SvelteMap<string, Lane>();
 
   constructor(readonly mirror: MirrorState) {}
 
+  get busy(): boolean { return this.#active > 0; }
+  claim(): void { this.#active += 1; }
+  release(): void { if (this.#active > 0) this.#active -= 1; }
+
   laneFor(key: string): Lane {
     let lane = this.lanes.get(key);
-    if (!lane) { lane = makeLane(key, this.mirror); this.lanes.set(key, lane); }
+    if (!lane) { lane = makeLane(key, this); this.lanes.set(key, lane); }
     return lane;
   }
   async flush(): Promise<void> {
@@ -218,7 +233,6 @@ export function scrub(
   mutate: () => void,
   send: () => Promise<void>,
 ): void {
-  s.mirror.noteWriteActivity();
   mutate();
   s.writes.laneFor(key).schedule(s, send);
 }

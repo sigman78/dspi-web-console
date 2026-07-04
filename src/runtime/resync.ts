@@ -7,7 +7,7 @@ import { Log } from '@/utils';
 // re-baseline (Preset Load / Revert) use fetchAndApplyAsBaseline.
 export async function forceResyncNow(s: ReadySession): Promise<void> {
   try {
-    const snap = await s.device.getSnapshot();
+    const snap = await s.queue.run(() => s.device.getSnapshot());
     s.mirror.replaceCurrent(snap);
     s.health.noteOk();
   } catch (err) {
@@ -22,7 +22,7 @@ export async function forceResyncNow(s: ReadySession): Promise<void> {
 // where draft and saved disagree and observers see a spurious dirty flip.
 export async function fetchAndApplyAsBaseline(s: ReadySession): Promise<void> {
   try {
-    const snap = await s.device.getSnapshot();
+    const snap = await s.queue.run(() => s.device.getSnapshot());
     s.mirror.init(snap);
     s.health.noteOk();
   } catch (err) {
