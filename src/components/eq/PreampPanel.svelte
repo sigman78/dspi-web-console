@@ -19,14 +19,50 @@
   const min = Eq.PREAMP_MIN_DB;
   const max = Eq.PREAMP_MAX_DB;
   const range = max - min;
+  const step = Eq.PREAMP_STEP_DB;
   // Tick positions in % across the slider track. Includes 0 (the unity line).
   const ticks = Eq.PREAMP_TICKS_DB;
   const fillPct = $derived(((preampDb - min) / range) * 100);
+
+  function clamp(v: number): number {
+    return Math.min(max, Math.max(min, v));
+  }
+
+  // Mirrors the drag path's onChange -- the only other way this value moves.
+  function onKey(e: KeyboardEvent): void {
+    let next: number;
+    switch (e.key) {
+      case 'ArrowUp':
+      case 'ArrowRight':
+        next = clamp(preampDb + step);
+        break;
+      case 'ArrowDown':
+      case 'ArrowLeft':
+        next = clamp(preampDb - step);
+        break;
+      case 'PageUp':
+        next = clamp(preampDb + step * 5);
+        break;
+      case 'PageDown':
+        next = clamp(preampDb - step * 5);
+        break;
+      case 'Home':
+        next = min;
+        break;
+      case 'End':
+        next = max;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    onChange(next);
+  }
 </script>
 
 <Panel code="EQ.03" title="PREAMP">
   {#snippet right()}
-    <button class="reset" onclick={onReset} title="Reset preamp to 0 dB">RESET</button>
+    <button class="chip hi" onclick={onReset} title="Reset preamp to 0 dB">RESET</button>
   {/snippet}
 
   <div class="row">
@@ -38,6 +74,7 @@
       aria-valuemin={min}
       aria-valuemax={max}
       aria-valuenow={preampDb}
+      onkeydown={onKey}
       onpointerdown={(e) => {
         const el = e.currentTarget as HTMLDivElement;
         const setFromEvent = (ev: PointerEvent) => {
@@ -79,19 +116,6 @@
 </Panel>
 
 <style>
-  .reset {
-    border: 1px solid var(--border-hi);
-    background: transparent;
-    color: var(--text-dim);
-    font-family: var(--font-mono);
-    font-size: 9px;
-    letter-spacing: 1px;
-    padding: 3px 8px;
-    border-radius: 3px;
-    cursor: pointer;
-  }
-  .reset:hover { background: color-mix(in oklab, var(--text) 6%, transparent); color: var(--text); }
-
   .row {
     padding: 12px 14px;
     display: flex;
@@ -102,19 +126,24 @@
     flex: 1;
     height: 22px;
     position: relative;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
+    background: var(--wash);
     border: 1px solid var(--border);
     border-radius: 4px;
     cursor: pointer;
     overflow: hidden;
     user-select: none;
     touch-action: none;
+    outline: none;
+  }
+  .track:focus-visible {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
   }
   .tick {
     position: absolute;
     top: 0; bottom: 0;
     width: 1px;
-    background: color-mix(in oklab, var(--text) 8%, transparent);
+    background: var(--wash-strong);
     pointer-events: none;
   }
   .tick.zero { background: color-mix(in oklab, var(--text) 25%, transparent); }

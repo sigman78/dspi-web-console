@@ -81,7 +81,7 @@
     <span class="div"></span>
     <MasterVolumeMini />
     <button
-      class="bypass"
+      class="icon-toggle bypass"
       class:on={bypassed}
       onclick={() => { if (s) setBypass(s, !bypassed); }}
       disabled={!connected}
@@ -121,7 +121,7 @@
   .stats { display: flex; align-items: center; gap: 8px; }
   .cube {
     width: 22px; height: 22px;
-    border-radius: 5px;
+    border-radius: var(--radius-m);
     position: relative;
     background: linear-gradient(135deg, var(--accent), color-mix(in oklab, var(--accent) 33%, transparent));
     box-shadow: 0 0 18px color-mix(in oklab, var(--accent) 33%, transparent);
@@ -153,29 +153,7 @@
   */
   .spacer { flex: 1; }
   .div { width: 1px; height: 22px; background: var(--border); }
-  .bypass {
-    width: 26px;
-    height: 22px;
-    padding: 0;
-    border-radius: 4px;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .bypass:hover:not(:disabled) {
-    color: var(--text);
-    border-color: var(--border-hi);
-  }
-  .bypass:disabled { cursor: default; opacity: 0.5; }
-  .bypass.on {
-    background: color-mix(in oklab, var(--err) 15%, transparent);
-    border-color: color-mix(in oklab, var(--err) 45%, transparent);
-    color: var(--err);
-  }
+  .bypass { width: 26px; }
 
   /* Hide order: lowest value sheds first as width shrinks toward the 1024 floor. */
   /* version + gh are temporarily commented out of the markup; their shed tier is moot.

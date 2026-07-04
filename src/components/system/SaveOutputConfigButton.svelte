@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
   import { connection } from '@/state';
   import { saveOutputConfigBaseline } from '@/runtime';
   import { OutputConfigMode } from '@/domain';
@@ -13,27 +14,20 @@
   // enabled while visible.
   const visible = $derived(mode === OutputConfigMode.Independent);
 
-  let confirming = $state(false);
-
-  function onClick() {
-    if (!confirming) { confirming = true; return; }
-    confirming = false;
+  function onConfirm() {
     // Failure surfaces via the toast channel; success is silent.
     saveOutputConfigBaseline(s);
   }
-
-  function onBlur() { confirming = false; }
 </script>
 
 {#if visible}
-  <button
-    class="chip"
-    class:warn={confirming}
-    onclick={onClick}
-    onblur={onBlur}
+  <ConfirmButton
+    label="SAVE"
+    confirmLabel="CONFIRM"
+    tone="warn"
+    {onConfirm}
     disabled={!connected}
     title="Persist the current IO config (pins, output types, I2S clock, S/PDIF RX pin) as the device boot config"
-  >
-    {#if confirming}CONFIRM{:else}SAVE{/if}
-  </button>
+    disabledReason="Connect a device to enable this action."
+  />
 {/if}

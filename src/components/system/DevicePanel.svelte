@@ -1,6 +1,7 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
+  import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
   import { connection } from '@/state';
   import { factoryResetDevice, enterBootloader } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
@@ -9,23 +10,13 @@
   const snap = $derived(s.mirror.current);
   const connected = $derived(connection.connected);
 
-  // Two-step arm/confirm (the SaveOutputConfigButton idiom) instead of the
-  // blocking native confirm(); blur disarms.
-  let arming = $state<'reset' | 'fw' | null>(null);
-
   function onFactoryReset() {
-    if (arming !== 'reset') { arming = 'reset'; return; }
-    arming = null;
     void factoryResetDevice();
   }
 
   function onEnterBootloader() {
-    if (arming !== 'fw') { arming = 'fw'; return; }
-    arming = null;
     void enterBootloader(s);
   }
-
-  function disarm() { arming = null; }
 </script>
 
 <Panel code="SY.01" title="DEVICE">
@@ -39,28 +30,33 @@
   </div>
   <div class="divider"></div>
   <div class="actions">
-    <button
-      class="chip md danger"
-      class:armed={arming === 'reset'}
-      onclick={onFactoryReset}
-      onblur={disarm}
+    <ConfirmButton
+      label="FACTORY RESET"
+      confirmLabel="CONFIRM RESET"
+      tone="danger"
+      toneAlways
+      extraClass="md"
+      onConfirm={onFactoryReset}
       disabled={!connected}
       title="Wipes all presets and resets live audio to firmware defaults."
-    >{arming === 'reset' ? 'CONFIRM RESET' : 'FACTORY RESET'}</button>
-    <button
-      class="chip md warn"
-      class:armed={arming === 'fw'}
-      onclick={onEnterBootloader}
-      onblur={disarm}
+      disabledReason="Connect a device to enable this action."
+    />
+    <ConfirmButton
+      label="UPDATE FIRMWARE"
+      confirmLabel="CONFIRM REBOOT"
+      tone="warn"
+      toneAlways
+      extraClass="md"
+      onConfirm={onEnterBootloader}
       disabled={!connected}
       title="Reboots into UF2 bootloader — device disconnects immediately."
-    >{arming === 'fw' ? 'CONFIRM REBOOT' : 'UPDATE FIRMWARE'}</button>
+      disabledReason="Connect a device to enable this action."
+    />
   </div>
 </Panel>
 
 <style>
-  .kvgrid { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .divider { height: 1px; background: color-mix(in oklab, var(--text) 4%, transparent); margin: 0 14px; }
+  .divider { height: 1px; background: var(--wash); margin: 0 14px; }
   .actions {
     padding: 12px 14px;
     display: grid;

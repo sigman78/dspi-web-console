@@ -87,7 +87,6 @@
 <style>
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--pad); height: 100%; }
   .col { display: flex; flex-direction: column; gap: var(--pad); min-height: 0; }
-  .kvgrid { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
   .clipgrid {
     display: flex;
@@ -104,9 +103,9 @@
     letter-spacing: 0.5px;
     text-align: center;
     color: var(--text-faint);
-    background: color-mix(in oklab, var(--text) 4%, transparent);
+    background: var(--wash);
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-s);
   }
   .clipsq.on {
     color: var(--err);

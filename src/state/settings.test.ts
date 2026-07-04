@@ -1,6 +1,10 @@
 import { describe, expect, test, beforeEach, afterEach } from 'vitest';
-import { loadSettings, settings, selectChannel } from './settings.svelte';
-import { ChannelId } from '@/domain';
+import { loadSettings, settings, selectChannel, reconcileSelectedChannel } from './settings.svelte';
+import { ChannelId, type ChannelModel } from '@/domain';
+
+function ch(id: ChannelId, isOutput: boolean): ChannelModel {
+  return { id, name: '', defaultName: '', shortName: '', bandCount: 10, isOutput, filters: [] };
+}
 
 const V1_KEY = 'dspi-console-web/settings/v1';
 const LEGACY_UI_KEY = 'dspi-console-web/ui/v2';
@@ -153,5 +157,39 @@ describe('selectChannel', () => {
     selectChannel(ChannelId.Out1L);
     expect(settings.selectedChannel).toBe(ChannelId.Out1L);
     expect(settings.tab).toBe('eq');
+  });
+});
+
+describe('reconcileSelectedChannel', () => {
+  const channels = [ch(ChannelId.In1L, false), ch(ChannelId.In1R, false), ch(ChannelId.Out1L, true), ch(ChannelId.Out1R, true)];
+
+  test('defaults a null selection to the first output channel', () => {
+    settings.selectedChannel = null;
+    reconcileSelectedChannel(channels);
+    expect(settings.selectedChannel).toBe(ChannelId.Out1L);
+  });
+
+  test('leaves a valid selection untouched', () => {
+    settings.selectedChannel = ChannelId.Out1R;
+    reconcileSelectedChannel(channels);
+    expect(settings.selectedChannel).toBe(ChannelId.Out1R);
+  });
+
+  test('falls back to the first output when the selection is not in the channel set', () => {
+    settings.selectedChannel = ChannelId.Out4L;
+    reconcileSelectedChannel(channels);
+    expect(settings.selectedChannel).toBe(ChannelId.Out1L);
+  });
+
+  test('clears to null when the channel set has no outputs', () => {
+    settings.selectedChannel = null;
+    reconcileSelectedChannel([ch(ChannelId.In1L, false)]);
+    expect(settings.selectedChannel).toBeNull();
+  });
+
+  test('is a no-op when channels is undefined (not yet connected)', () => {
+    settings.selectedChannel = null;
+    reconcileSelectedChannel(undefined);
+    expect(settings.selectedChannel).toBeNull();
   });
 });

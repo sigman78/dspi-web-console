@@ -34,7 +34,7 @@
 
 <Panel code="SY.11" title="INPUT CONFIG">
   {#if inputConfig && snap}
-    <div class="kvgrid">
+    <div class="cfgkvgrid">
       <KV label="SOURCE" value={inputConfig.source === AudioInputSource.Spdif ? 'S/PDIF' : 'USB'} />
       <div class="src-btns">
         <button
@@ -66,7 +66,7 @@
     {#if isSpdif}
       <div class="subhdr">S/PDIF RX STATUS</div>
       {#if spdifStatus}
-        <div class="kvgrid">
+        <div class="cfgkvgrid">
           <KV
             label="STATE"
             value={STATE_LABELS[spdifStatus.state] ?? 'UNKNOWN'}
@@ -86,7 +86,7 @@
 </Panel>
 
 <style>
-  .kvgrid { padding: 10px 14px 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; }
+  .cfgkvgrid { padding: 10px 14px 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; }
   .src-btns { display: flex; gap: 4px; }
   .pinrow { padding: 6px 14px 6px; }
   .idle { padding: 10px 14px; }

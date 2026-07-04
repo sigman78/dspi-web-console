@@ -47,7 +47,7 @@
     color: var(--text-dim);
   }
   .sw:hover:not(:disabled) { color: var(--text); }
-  .sw:disabled { cursor: default; opacity: 0.4; }
+  .sw:disabled { cursor: default; opacity: var(--dim-disabled); }
 
   .track {
     --w: 34px; --h: 20px; --pad: 2.5px;
@@ -56,7 +56,7 @@
     width: var(--w);
     height: var(--h);
     border-radius: 999px;
-    background: color-mix(in oklab, var(--text) 8%, transparent);
+    background: var(--wash-strong);
     border: 1px solid var(--border);
     transition: background-color 120ms ease, border-color 120ms ease;
   }

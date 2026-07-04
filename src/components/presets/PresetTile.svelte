@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { presetsDirty } from '@/state';
   import { getSession } from '@/components/sessionContext';
   import { loadPresetSlot, renamePresetSlot } from '@/runtime';
@@ -22,12 +23,13 @@
   let editValue = $state('');
   let renameInput: HTMLTextAreaElement | null = $state(null);
 
-  export function enterRename(): void {
+  export async function enterRename(): Promise<void> {
     // Slot names live in the directory and persist independently of
     // occupancy or active state, so any tile can be renamed.
     editValue = name;
     editing = true;
-    setTimeout(() => renameInput?.focus(), 0);
+    await tick();
+    renameInput?.focus();
   }
 
   function onDoubleClick(e: MouseEvent) {
@@ -114,7 +116,7 @@
     aspect-ratio: 1.15 / 1;
     background: var(--panel-hi);
     border: 1px solid var(--border);
-    border-radius: 5px;
+    border-radius: var(--radius-m);
     position: relative;
     cursor: pointer;
     padding: 10px;
@@ -157,7 +159,7 @@
   .wm {
     position: absolute; bottom: -8px; right: -2px;
     font-size: 52px;
-    color: color-mix(in oklab, var(--text) 4%, transparent);
+    color: var(--wash);
     font-weight: 800; line-height: 1; letter-spacing: -2px;
     font-variant-numeric: tabular-nums;
     pointer-events: none;
@@ -189,7 +191,7 @@
     background: var(--panel-solid);
     color: var(--text);
     border: 1px solid var(--accent);
-    border-radius: 5px;
+    border-radius: var(--radius-m);
     font: inherit;
     font-size: 13px;
     font-weight: 600;

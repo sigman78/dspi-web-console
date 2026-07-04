@@ -18,14 +18,12 @@
     inputIndex,
     outputIndex,
     inputChannelId,
-    outputDisabled,
     unavailable = false,
   }: {
     cell: RouteModel;
     inputIndex: InputSlot;
     outputIndex: OutputSlot;
     inputChannelId: ChannelId;
-    outputDisabled: boolean;
     unavailable?: boolean;
   } = $props();
 
@@ -45,7 +43,6 @@
 <div
   class="cell ch-{chKey(inputChannelId)}"
   class:active
-  class:dim={outputDisabled}
   class:unavailable
   title={unavailable ? 'unavailable while PDM subwoofer is active' : undefined}
 >
@@ -107,7 +104,10 @@
       inset 0 0 0 1px color-mix(in oklab, var(--ch-dim) 35%, transparent),
       inset 0 0 14px color-mix(in oklab, var(--ch-glow) 12%, transparent);
   }
-  .cell.dim { opacity: 0.4; }
+  /* U-P3 policy B: no whole-cell dim when the output is off. The OFF label
+     and cell structure stay full-contrast; the enable dot, gain field, and
+     NORM/phase button below are disabled in that state and carry the
+     single dim layer alone. */
   /* PDM-exclusivity hint: diagonal hatch overlay over a desaturated grey
      wash. Stronger visual signal than a plain opacity dim -- users can tell
      "this column is locked out" at a glance without confusing it with the
@@ -118,10 +118,10 @@
     background:
       repeating-linear-gradient(
         135deg,
-        color-mix(in oklab, var(--text) 8%, transparent) 0 2px,
+        var(--wash-strong) 0 2px,
         transparent 2px 6px
       ),
-      color-mix(in oklab, var(--text) 2%, transparent);
+      var(--wash-faint);
     box-shadow: none;
   }
   .cell.unavailable button { cursor: not-allowed; }
@@ -159,8 +159,8 @@
 
   .phase {
     padding: 3px 4px;
-    border-radius: 3px;
-    background: color-mix(in oklab, var(--text) 3%, transparent);
+    border-radius: var(--radius-s);
+    background: var(--wash);
     border: 1px solid var(--border);
     color: var(--text-faint);
     font-family: inherit;
@@ -173,7 +173,7 @@
     justify-content: center;
     gap: 5px;
   }
-  .phase[disabled] { cursor: default; opacity: 0.7; }
+  .phase[disabled] { cursor: default; opacity: var(--dim-disabled); }
   .cell.active .phase { color: var(--text-dim); }
   .phase.inv {
     background: color-mix(in oklab, var(--err) 18%, transparent);

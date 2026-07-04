@@ -17,7 +17,7 @@
 <Panel code="EQ.04" title="OUTPUT TRIM">
   <div class="row">
     <div class="cell">
-      <span class="lbl">GAIN</span>
+      <span class="microlbl lbl-w">GAIN</span>
       <ValueField
         kind="dB-signed"
         tone="signed"
@@ -30,7 +30,7 @@
       />
     </div>
     <div class="cell">
-      <span class="lbl">DELAY</span>
+      <span class="microlbl lbl-w">DELAY</span>
       <ValueField
         kind="ms"
         min={Mix.OUTPUT_DELAY_MIN_MS}
@@ -56,11 +56,5 @@
     align-items: center;
     gap: 10px;
   }
-  .lbl {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    color: var(--text-faint);
-    letter-spacing: 1px;
-    width: 44px;
-  }
+  .lbl-w { width: 44px; }
 </style>

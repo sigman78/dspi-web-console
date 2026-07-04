@@ -41,8 +41,8 @@
 
 <Panel code="EQ.02" title="BANDS · 10 BIQUAD">
   {#snippet right()}
-    <button class="btn" onclick={leftAction} title={leftTitle}>{leftLabel}</button>
-    <button class="btn" onclick={rightAction} title={rightTitle}>{rightLabel}</button>
+    <button class="chip hi act" onclick={leftAction} title={leftTitle}>{leftLabel}</button>
+    <button class="chip hi act" onclick={rightAction} title={rightTitle}>{rightLabel}</button>
   {/snippet}
 
   <div class="head">
@@ -60,19 +60,7 @@
 </Panel>
 
 <style>
-  .btn {
-    border: 1px solid var(--border-hi);
-    background: transparent;
-    color: var(--text-dim);
-    font-family: var(--font-mono);
-    font-size: 9px;
-    letter-spacing: 1px;
-    padding: 3px 8px;
-    border-radius: 3px;
-    cursor: pointer;
-  }
-  .btn + .btn { margin-left: 6px; }
-  .btn:hover { background: color-mix(in oklab, var(--text) 6%, transparent); color: var(--text); }
+  .act + .act { margin-left: 6px; }
 
   .head {
     display: grid;

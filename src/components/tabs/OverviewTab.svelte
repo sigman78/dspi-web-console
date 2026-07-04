@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { SvelteSet } from 'svelte/reactivity';
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import QuickRefPanel from './overview/QuickRefPanel.svelte';
-  import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
-  import { filterCurve } from '@/components/bode/filterCurve';
+  import BodePlot from '@/components/bode/BodePlot.svelte';
+  import { overviewCurves as computeOverviewCurves } from '@/components/bode/overviewCurves';
   import { getSession } from '@/components/sessionContext';
   import { matrixRows, ChannelId, inputIndexOf, CrossfeedPreset } from '@/domain';
   import { chKey } from '@/styles/palette';
@@ -35,59 +34,7 @@
     );
   });
 
-  // Pairs whose two curves merge into one line when both sides share EQ state.
-  const STEREO_PAIRS: ReadonlyArray<readonly [ChannelId, ChannelId]> = [
-    [ChannelId.In1L, ChannelId.In1R],
-    [ChannelId.Out1L, ChannelId.Out1R],
-    [ChannelId.Out2L, ChannelId.Out2R],
-    [ChannelId.Out3L, ChannelId.Out3R],
-    [ChannelId.Out4L, ChannelId.Out4R],
-  ];
-
-  function curvesEqual(a: number[], b: number[]): boolean {
-    if (a.length !== b.length) return false;
-    const eps = 1e-9;
-    for (let i = 0; i < a.length; i++) {
-      if (Math.abs(a[i] - b[i]) > eps) return false;
-    }
-    return true;
-  }
-
-  const overviewCurves = $derived.by<BodeCurve[]>(() => {
-    const out: BodeCurve[] = [];
-    const consumed = new SvelteSet<ChannelId>();
-    const byId = new Map(activeChannels.map((c) => [c.id, c]));
-
-    for (const [lId, rId] of STEREO_PAIRS) {
-      const l = byId.get(lId), r = byId.get(rId);
-      if (!l || !r) continue;
-      consumed.add(lId);
-      consumed.add(rId);
-      const ptsL = filterCurve(l.filters, preampOffsetFor(l));
-      const ptsR = filterCurve(r.filters, preampOffsetFor(r));
-      if (curvesEqual(ptsL, ptsR)) {
-        // Stroke fades L -> R across the plot to signal a shared response.
-        out.push({
-          id: `ov-${l.id}-${r.id}`,
-          label: `${l.shortName}/${r.shortName}`,
-          gradientChannelIds: [l.id, r.id],
-          points: ptsL,
-        });
-      } else {
-        out.push({ id: `ov-${l.id}`, channelId: l.id, label: l.shortName, points: ptsL });
-        out.push({ id: `ov-${r.id}`, channelId: r.id, label: r.shortName, points: ptsR });
-      }
-    }
-    // Singletons (e.g. PDM, or one half of a pair if the other isn't active).
-    for (const c of activeChannels) {
-      if (consumed.has(c.id)) continue;
-      out.push({
-        id: `ov-${c.id}`, channelId: c.id, label: c.shortName,
-        points: filterCurve(c.filters, preampOffsetFor(c)),
-      });
-    }
-    return out;
-  });
+  const overviewCurves = $derived(computeOverviewCurves(activeChannels, preampOffsetFor));
 
   function fmtDb(v: number, signed = true): string {
     return `${signed && v >= 0 ? '+' : ''}${v.toFixed(1)}`;
@@ -172,7 +119,7 @@
       {/snippet}
       <div class="outlist">
         {#each snap?.outputs ?? [] as out (out.id)}
-          <div class="outrow" class:dim={!out.enabled}>
+          <div class="outrow">
             <span class="oid ch-{chKey(out.id)}">{out.shortName}</span>
             <span class="oname">{nameById.get(out.id) ?? ''}</span>
             <span class="ogain">{fmtDb(out.gainDb)} dB</span>
@@ -215,7 +162,7 @@
     font-size: 9px;
     line-height: 1;
     padding: 3px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     color: var(--bg);
     background: var(--ch-base);
     border: 1px solid var(--ch-dim);
@@ -231,7 +178,7 @@
   .inp {
     font-size: 9px;
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     font-weight: 600;
     color: var(--bg);
     background: var(--ch-base);
@@ -242,13 +189,11 @@
   .chip {
     font-size: 9px;
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     color: var(--bg);
     background: var(--ch-base);
     border: 1px solid var(--ch-dim);
   }
-
-  .kvgrid { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
   .outlist { padding: 4px 0; }
   .outrow {
@@ -258,9 +203,12 @@
     padding: 6px 14px;
     font-family: var(--font-mono);
     font-size: 10px;
-    border-top: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
+    border-top: 1px solid var(--wash);
   }
-  .outrow.dim { opacity: 0.4; }
+  /* U-P3 policy B: no whole-row dim for a disabled output. This row is only
+     read-only values (name/gain/delay/clip/status), which stay full-contrast
+     per policy; the ostatus glyph (·/●/✕) already carries the off/on/muted
+     signal, so no separate control-dim layer is needed here either. */
   .oid { color: var(--ch-bright); font-weight: 600; }
   .oname { font-family: var(--font-sans); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ogain, .odelay { text-align: right; }

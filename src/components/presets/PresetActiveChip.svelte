@@ -36,14 +36,17 @@
     padding: 6px 8px;
     border-radius: 4px;
     font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
+    background: var(--wash);
     border: 1px solid var(--border);
     color: var(--text-dim);
     cursor: pointer;
   }
   .chip:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
-  .chip:disabled { cursor: default; opacity: 0.5; }
-  .chip.dim { opacity: 0.5; }
+  /* :disabled and .dim fire together (both driven by !connected) -- same
+     single dim layer via the token, not a stack; .dim covers the icon/text
+     inside that isn't itself a disabled form control. */
+  .chip:disabled { cursor: default; opacity: var(--dim-disabled); }
+  .chip.dim { opacity: var(--dim-disabled); }
   .chip.dirty {
     border-color: color-mix(in oklab, var(--accent) 45%, transparent);
     color: var(--accent);

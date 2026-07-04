@@ -1,6 +1,6 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
-  import ValueField from '@/components/chrome/ValueField.svelte';
+  import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { connection } from '@/state';
   import { Proc } from '@/domain';
@@ -18,16 +18,6 @@
     if (!loudness) return;
     setLoudnessEnabled(s, !loudness.enabled);
   }
-
-  function onRefSplInput(e: Event) {
-    const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setLoudnessRefSpl(s, v);
-  }
-
-  function onIntensityInput(e: Event) {
-    const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setLoudnessIntensityPct(s, v);
-  }
 </script>
 
 <Panel code="PR.02" title="LOUDNESS">
@@ -42,16 +32,9 @@
   {/snippet}
 
   <div class="grid">
-    <span class="lbl">REF SPL</span>
-    <input
-      type="range"
-      min={Proc.LOUDNESS_REF_SPL_MIN_DB} max={Proc.LOUDNESS_REF_SPL_MAX_DB} step={Proc.LOUDNESS_REF_SPL_STEP_DB}
-      value={loudness?.refSpl ?? 85}
-      oninput={onRefSplInput}
-      disabled={!editable}
-      aria-label="Loudness reference SPL"
-    />
-    <ValueField
+    <LabeledSlider
+      label="REF SPL"
+      ariaLabel="Loudness reference SPL"
       value={loudness?.refSpl ?? 85}
       min={Proc.LOUDNESS_REF_SPL_MIN_DB} max={Proc.LOUDNESS_REF_SPL_MAX_DB} step={Proc.LOUDNESS_REF_SPL_STEP_DB}
       kind="dB"
@@ -60,16 +43,9 @@
       onChange={(v) => setLoudnessRefSpl(s, v)}
     />
 
-    <span class="lbl">INTENSITY</span>
-    <input
-      type="range"
-      min={Proc.LOUDNESS_INTENSITY_MIN_PCT} max={Proc.LOUDNESS_INTENSITY_MAX_PCT} step={Proc.LOUDNESS_INTENSITY_STEP_PCT}
-      value={loudness?.intensityPct ?? 0}
-      oninput={onIntensityInput}
-      disabled={!editable}
-      aria-label="Loudness intensity"
-    />
-    <ValueField
+    <LabeledSlider
+      label="INTENSITY"
+      ariaLabel="Loudness intensity"
       value={loudness?.intensityPct ?? 0}
       min={Proc.LOUDNESS_INTENSITY_MIN_PCT} max={Proc.LOUDNESS_INTENSITY_MAX_PCT} step={Proc.LOUDNESS_INTENSITY_STEP_PCT}
       kind="pct"
@@ -88,15 +64,4 @@
     align-items: center;
     gap: 12px;
   }
-  .lbl {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    color: var(--text-faint);
-    letter-spacing: 1px;
-  }
-  input[type="range"] {
-    accent-color: var(--accent);
-    margin: 0;
-  }
-  input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 </style>

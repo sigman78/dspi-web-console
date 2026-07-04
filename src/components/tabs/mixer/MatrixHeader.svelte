@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { type MatrixColumn, type OutputSlot, Mix } from '@/domain';
+  import { type MatrixColumn, type OutputSlot, Mix, splitLR } from '@/domain';
   import {
     setOutputDelay,
     setOutputGain,
@@ -26,10 +26,6 @@
 
   const s = getSession();
 
-  function splitLR(name: string): { base: string; side: string | null } {
-    const m = name.match(/^(.+?)\s+([LR])$/);
-    return m ? { base: m[1], side: m[2] } : { base: name, side: null };
-  }
   const parts = $derived(splitLR(column.name));
 
   function onPower(): void {
@@ -42,7 +38,6 @@
 
 <div
   class="header ch-{chKey(column.id)}"
-  class:dim={!column.enabled}
   class:zebra
   class:unavailable
   class:selected
@@ -121,14 +116,17 @@
     gap: 6px;
     font-family: var(--font-mono);
     position: relative;
-    background: color-mix(in oklab, var(--text) 1.5%, transparent);
+    background: var(--wash-faint);
     transition: opacity 120ms;
   }
-  .header.zebra { background: color-mix(in oklab, var(--text) 5%, transparent); }
-  .header.dim { opacity: 0.5; }
-  /* Selected-channel locator: a channel-color line over the column, echoing the
-     rail's L/R group spine (var(--ch-base) bar). An absolutely-positioned strip
-     so the matrix grid never reflows. */
+  .header.zebra { background: var(--wash); }
+  /* U-P3 policy B: no whole-header dim when the output is off. Channel code,
+     name, and mute/power buttons stay full-contrast; GAIN/DELAY ValueFields
+     below are disabled in that state and carry the single dim layer alone. */
+  /* Selected-channel locator: a channel-color line over the column, echoing
+     the rail's L/R group spine (ChannelRail .spine) and MixerTab's row-head
+     mate (var(--ch-base) bar). An absolutely-positioned strip so the matrix
+     grid never reflows. */
   .header.selected::after {
     content: '';
     position: absolute;
@@ -148,10 +146,10 @@
     background:
       repeating-linear-gradient(
         135deg,
-        color-mix(in oklab, var(--text) 8%, transparent) 0 2px,
+        var(--wash-strong) 0 2px,
         transparent 2px 6px
       ),
-      color-mix(in oklab, var(--text) 2%, transparent);
+      var(--wash-faint);
   }
   .header.unavailable button { cursor: not-allowed; }
 
@@ -165,7 +163,7 @@
   .power, .mute {
     width: 18px;
     height: 18px;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     padding: 0;
     background: transparent;
     border: 1px solid var(--border-hi);

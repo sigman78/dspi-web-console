@@ -35,5 +35,5 @@
     border-radius: 4px;
     cursor: pointer;
   }
-  .pinsel:disabled { opacity: 0.4; cursor: default; }
+  .pinsel:disabled { opacity: var(--dim-disabled); cursor: default; }
 </style>

@@ -17,7 +17,7 @@
   const bypassed = $derived(band.bypass);
 </script>
 
-<div class="row" class:off class:bypassed>
+<div class="row" class:bypassed>
   <div class="num">{String(index + 1).padStart(2, '0')}</div>
   <button
     class="byp"
@@ -79,11 +79,17 @@
     gap: 6px;
     padding: 5px 14px;
     align-items: center;
-    border-top: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
+    border-top: 1px solid var(--wash);
     font-family: var(--font-mono);
     font-size: 11px;
   }
-  .row.off { opacity: 0.55; }
+  /* U-P3 policy B: no whole-row dim when the band is off (type = Flat). The
+     row's structure and the FLAT type stay full-contrast; the freq/Q/gain
+     ValueFields below are disabled in that state and carry the single dim
+     layer alone. */
+  /* Deliberately kept: bypass is a user toggle whose controls stay ENABLED
+     (not disabled), so this dim is the one and only layer for that state --
+     a real, single-layer visual distinction, not a stack. Do not touch. */
   .row.bypassed { opacity: 0.45; }
   .num { color: var(--text-faint); }
   .byp {
@@ -93,7 +99,7 @@
     width: 100%;
     height: 20px;
     padding: 0;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     background: transparent;
     border: 1px solid transparent;
     color: var(--text-dim);
@@ -101,8 +107,8 @@
   }
   .byp:hover:not(:disabled) {
     color: var(--text);
-    background: color-mix(in oklab, var(--text) 5%, transparent);
+    background: var(--wash);
   }
-  .byp:disabled { opacity: 0.3; cursor: default; }
+  .byp:disabled { opacity: var(--dim-disabled); cursor: default; }
   .byp.on { color: var(--warn); }
 </style>

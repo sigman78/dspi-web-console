@@ -15,6 +15,15 @@
   const editable = $derived(connected && cfg != null && cfg.enabled);
 
   let testBusy = $state(false);
+  let testTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Cancel a pending test-pulse timeout on unmount so it doesn't flip
+  // testBusy on a dead component.
+  $effect(() => {
+    return () => {
+      if (testTimer != null) clearTimeout(testTimer);
+    };
+  });
 
   function patch(p: Partial<DacHwMute>) {
     if (editable) setDacHwMute(s, p);
@@ -60,7 +69,7 @@
     if (testBusy) return;
     testBusy = true;
     testDacHwMute(s);
-    setTimeout(() => { testBusy = false; }, 1500);
+    testTimer = setTimeout(() => { testBusy = false; testTimer = null; }, 1500);
   }
 </script>
 
