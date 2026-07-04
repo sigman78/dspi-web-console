@@ -1,7 +1,7 @@
 // Snapshot joins and matrix-tab projections over DspSnapshot. Separate from mixer.ts so that
 // stays snapshot-free (avoids a cycle with snapshot.ts).
 
-import { ChannelId, OutputSlotType, slotForOutputChannel, type InputSlot, type OutputMode, type OutputSlot } from './channels';
+import { ChannelId, OutputSlotType, inputIndexOf, slotForOutputChannel, type InputSlot, type OutputMode, type OutputSlot } from './channels';
 import type { RouteModel } from './mixer';
 import type { ChannelModel, DspSnapshot } from './snapshot';
 
@@ -53,15 +53,28 @@ export function matrixColumns(snapshot: DspSnapshot | null): MatrixColumn[] {
   }));
 }
 
-export function matrixRows(snapshot: DspSnapshot | null): MatrixRow[] {
+// One row per hardware input channel (2 on V10, up to 8 on V16 RP2350).
+// activeInputs limits the rows to the LIVE input count (USB alt / I2S channel
+// count); null/undefined shows every hardware input.
+export function matrixRows(snapshot: DspSnapshot | null, activeInputs?: number | null): MatrixRow[] {
   if (!snapshot) return [];
-  const inputIds: ChannelId[] = [ChannelId.In1L, ChannelId.In1R];
-  const byInput: RouteModel[][] = [[], []];
-  for (const r of snapshot.routes) byInput[r.inputIndex].push(r);
-  return byInput.map((cells, idx) => ({
-    inputIndex: idx as InputSlot,
-    inputId: inputIds[idx],
-    label: channelById(snapshot, inputIds[idx])?.name ?? '',
-    cells,
-  }));
+  const inputs = snapshot.channels
+    .filter((c) => !c.isOutput)
+    .sort((a, b) => (inputIndexOf(a.id) ?? 0) - (inputIndexOf(b.id) ?? 0));
+  const shown = activeInputs != null ? inputs.slice(0, Math.max(1, activeInputs)) : inputs;
+  const byInput = new Map<number, RouteModel[]>();
+  for (const r of snapshot.routes) {
+    const cells = byInput.get(r.inputIndex);
+    if (cells) cells.push(r);
+    else byInput.set(r.inputIndex, [r]);
+  }
+  return shown.map((ch) => {
+    const idx = (inputIndexOf(ch.id) ?? 0) as InputSlot;
+    return {
+      inputIndex: idx,
+      inputId: ch.id,
+      label: ch.name,
+      cells: byInput.get(idx) ?? [],
+    };
+  });
 }

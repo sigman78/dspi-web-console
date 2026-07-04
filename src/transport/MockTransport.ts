@@ -293,7 +293,14 @@ export class MockTransport implements DspTransport {
         if (count !== 2 && count !== 4 && count !== 6 && count !== 8) return new Uint8Array([0x01]);
         const maxPairs = this.#platform === PlatformType.RP2350 ? 4 : 1;
         if (count / 2 > maxPairs) return new Uint8Array([0x03]);
+        const changed = this.#mockState.inputConfig.i2sInputChannels !== count;
         this.#mockState.inputConfig.i2sInputChannels = count;
+        // Firmware pushes INPUT_FORMAT only when the live count changed
+        // (I2S is the active source).
+        if (changed && this.#mockState.inputConfig.source === 2) {
+          this.#notifySeq = (this.#notifySeq + 1) & 0xff;
+          this.pushNotify(new Uint8Array([2, 0x05, 0, this.#notifySeq, count, 0, 0, 0]));
+        }
         return new Uint8Array([0x00]);
       }
       case WireCmd.GetI2sInputChannels.code:
