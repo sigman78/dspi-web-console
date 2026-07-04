@@ -82,7 +82,7 @@ describe('DspDevice — getSystemStatus hardware profile contract', () => {
     const t = new MockTransport({ platform: 'rp2350' });
     const d = await createDevice(t);
     const s = await d.getSystemStatus();
-    expect(s.peaks.length).toBe(11);
+    expect(s.peaks.length).toBe(17);
     expect(s.cpu0).toBe(25);
   });
 
@@ -105,7 +105,7 @@ describe('DspDevice — getSystemStatus hardware profile contract', () => {
     expect(d.hardware.totalChannelCount).toBe(7);
     const s = await d.getSystemStatus();
     expect(statusLength).toBe(7 * 2 + 4);
-    expect(s.peaks.length).toBe(11);
+    expect(s.peaks.length).toBe(17);
   });
 });
 
@@ -764,8 +764,8 @@ describe('setAllParams', () => {
 
     bulk.masterVolumeDb = -18;
     bulk.preampDb = 2.5;
-    bulk.preampLDb = -1.5;
-    bulk.preampRDb = -3;
+    bulk.inputPreampsDb[0] = -1.5;
+    bulk.inputPreampsDb[1] = -3;
     bulk.bypass = true;
     bulk.channelNames[0] = 'Bulk Name';
 

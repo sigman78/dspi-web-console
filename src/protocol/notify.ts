@@ -14,6 +14,7 @@ export const NotifyEventId = {
   ParamChanged:    0x02,
   BulkInvalidated: 0x03,
   PresetLoaded:    0x04,
+  InputFormat:     0x05,   // V16+: active input channel count changed
 } as const;
 
 export const ParamSource = {
@@ -32,7 +33,11 @@ export type NotifyEvent =
   | { kind: 'ignored' }                                        // v1 / unknown / malformed
   | { kind: 'paramChanged';    seq: number; source: number; offset: number; size: number; value: Uint8Array }
   | { kind: 'bulkInvalidated'; seq: number; source: number }
-  | { kind: 'presetLoaded';    seq: number; slot: number };
+  | { kind: 'presetLoaded';    seq: number; slot: number }
+  // Active input channel count changed (host switched the USB alt, or the
+  // I2S channel count changed live). Not bulk-borne: consumers re-layout
+  // input-count-dependent UI rather than re-reading the packet.
+  | { kind: 'inputFormat';     seq: number; channels: number };
 
 export type ParamChangedEvent = Extract<NotifyEvent, { kind: 'paramChanged' }>;
 
@@ -72,6 +77,8 @@ export function parseNotifyPacket(bytes: Uint8Array): NotifyEvent {
       return { kind: 'bulkInvalidated', seq: h.seq, source: bytes.length > 4 ? bytes[4] : 0 };
     case NotifyEventId.PresetLoaded:
       return { kind: 'presetLoaded', seq: h.seq, slot: bytes.length > 4 ? bytes[4] : 0 };
+    case NotifyEventId.InputFormat:
+      return { kind: 'inputFormat', seq: h.seq, channels: bytes.length > 4 ? bytes[4] : 0 };
     default:
       return IGNORED;
   }

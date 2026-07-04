@@ -16,21 +16,26 @@ export function synthesizeI32(v: number): Uint8Array {
 }
 
 export interface SynthesizeStatusOptions {
-  numCh: number;            // platform-specific (7 on RP2040, 11 on RP2350)
+  numCh: number;            // platform-specific (7 on RP2040, 11/17 on RP2350)
   peaks?: number[];         // 0..1, length numCh; missing entries -> 0
   cpu0?: number;
   cpu1?: number;
   clipFlags?: number;
+  // Present -> V16 wide layout (u32 clip flags + trailing count byte).
+  activeInputChannels?: number;
 }
 
 export function synthesizeSystemStatus(opts: SynthesizeStatusOptions): Uint8Array {
   const peaks = Array.from({ length: opts.numCh }, (_, i) =>
     Math.round((opts.peaks?.[i] ?? 0) * 32767),
   );
-  return Codec.encode(Wire.SystemStatus(opts.numCh), {
+  const common = {
     peaks,
     cpu0:      opts.cpu0      ?? 0,
     cpu1:      opts.cpu1      ?? 0,
     clipFlags: opts.clipFlags ?? 0,
-  });
+  };
+  return opts.activeInputChannels != null
+    ? Codec.encode(Wire.SystemStatus16(opts.numCh), { ...common, activeInputChannels: opts.activeInputChannels })
+    : Codec.encode(Wire.SystemStatus(opts.numCh), common);
 }

@@ -3,7 +3,7 @@ import { loadSettings, settings, selectChannel, reconcileSelectedChannel } from 
 import { ChannelId, type ChannelModel } from '@/domain';
 
 function ch(id: ChannelId, isOutput: boolean): ChannelModel {
-  return { id, name: '', defaultName: '', shortName: '', bandCount: 10, isOutput, filters: [] };
+  return { id, name: '', defaultName: '', shortName: '', bandCount: 10, isOutput, filters: [], xoverBands: [] };
 }
 
 const V1_KEY = 'dspi-console-web/settings/v1';

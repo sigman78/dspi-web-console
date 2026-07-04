@@ -107,15 +107,17 @@ export class DspDevice {
     if (capabilities.support === 'unsupported') {
       throw new UnsupportedFirmware(capabilities.fwLabel);
     }
-    // A supported wire version must also carry at least the V10 floor payload.
-    // A shorter packet means the device omits sections the console treats as
+    // A supported wire version must also carry at least its generation's
+    // floor payload (V10: 2960 B; V16: the full 5864 B packet). A shorter
+    // packet means the device omits sections the console treats as
     // guaranteed -- reject instead of silently defaulting them.
-    if (bulk.payloadLength < proto.Wire.BulkSizes.V10) {
-      throw new UnsupportedDevicePacket(capabilities.fwLabel, bulk.payloadLength, proto.Wire.BulkSizes.V10);
+    const minPayload = proto.Wire.bulkSizeForVersion(capabilities.wireGen);
+    if (bulk.payloadLength < minPayload) {
+      throw new UnsupportedDevicePacket(capabilities.fwLabel, bulk.payloadLength, minPayload);
     }
 
     const platformType = platformTypeFromId(platform.platformId);
-    const hardware = domain.createHardwareProfile(platformType);
+    const hardware = domain.createHardwareProfile(platformType, capabilities.wireGen);
     return {
       serial: serial.trim(),
       platformType,
@@ -185,15 +187,28 @@ export class DspDevice {
 
   // Push a complete DSP state in one control-OUT. Firmware applies it in its
   // main loop (~5 ms); callers needing the change visible should re-fetch.
+  // Always emits at THIS device's generation: V16 firmware accepts only the
+  // exact full-size packet, and a state captured from a device of the other
+  // generation converts through the max-shaped DTO (missing rows default,
+  // extra rows drop).
   async setAllParams(bulk: proto.BulkParams): Promise<void> {
-    const bytes = proto.buildBulkParams(bulk);
+    const bytes = proto.buildBulkParams(bulk, this.capabilities.wireGen);
     await this.transport.ctrlOut(proto.WireCmd.SetAllParams.code, 0, bytes);
+  }
+
+  // V16 devices use the wide combined-status layout (u32 clip flags + live
+  // active-input-count byte) and the 5-bit band field in GetEqParam wValues.
+  private get isWideWire(): boolean {
+    return this.capabilities.wireGen === 16;
   }
 
   async getSystemStatus(): Promise<proto.SystemStatus> {
     const numCh = this.hardware.totalChannelCount;
-    const bytes = await this.transport.ctrlIn(proto.WireCmd.GetStatus.code, 9, numCh * 2 + 4);
-    return proto.parseSystemStatus(bytes, numCh);
+    const wide = this.isWideWire;
+    const bytes = await this.transport.ctrlIn(
+      proto.WireCmd.GetStatus.code, 9, proto.systemStatusSize(numCh, wide),
+    );
+    return proto.parseSystemStatus(bytes, numCh, wide);
   }
 
   // Slow-poll telemetry (env scalars + cumulative error counters). Each wValue
@@ -382,11 +397,14 @@ export class DspDevice {
   // One ctrlIn per parameter with a bit-packed wValue. Not atomic against
   // concurrent writers; use getAllParams() for an atomic snapshot. `decode`
   // (not `decodePadded`) makes a truncated read throw rather than zero-pad.
+  // V16 widened the band field to 5 bits -- (band << 3) | param -- so
+  // crossover bands at 20..23 stay addressable; V10 packs (band << 4) | param.
   async getFilter(channel: domain.ChannelId, band: number): Promise<domain.FilterParams> {
     const wireChannel = this.deviceChannel(channel);
     const code = proto.WireCmd.GetEqParam.code;
-    const wValue = (param: number) =>
-      ((wireChannel & 0xFF) << 8) | ((band & 0xF) << 4) | (param & 0xF);
+    const wValue = this.isWideWire
+      ? (param: number) => ((wireChannel & 0xFF) << 8) | ((band & 0x1F) << 3) | (param & 0x7)
+      : (param: number) => ((wireChannel & 0xFF) << 8) | ((band & 0xF) << 4) | (param & 0xF);
     const t = this.transport;
     const [typeBytes, freqBytes, qBytes, gainBytes] = await Promise.all([
       t.ctrlIn(code, wValue(0), 4),
@@ -719,6 +737,59 @@ export class DspDevice {
   // Pulse the DAC mute pin (~1s) for wiring verification. No payload.
   async testDacHwMute(): Promise<void> {
     await proto.actionCmd(this.transport, proto.WireCmd.TestDacHwMute);
+  }
+
+  // V16 / fw 1.1.5 I2S-input surface. Gate on capabilities.features.i2sInput
+  // (multichannel variants on .multichannelInput) before calling.
+
+  // The device is the rate authority while I2S input is active; the rate is
+  // commanded, not detected. Accepted: 44100 / 48000 / 96000.
+  async setInputRate(hz: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetInputRate, hz);
+  }
+
+  // {current pipeline rate, host-selected I2S input rate}, both Hz.
+  async getInputRate(): Promise<{ currentHz: number; selectedHz: number }> {
+    const bytes = await this.transport.ctrlIn(proto.WireCmd.GetInputRate.code, 0, 8);
+    return {
+      currentHz:  Codec.decodePadded(Codec.u32, bytes.subarray(0, 4)),
+      selectedHz: Codec.decodePadded(Codec.u32, bytes.subarray(4, 8)),
+    };
+  }
+
+  // I2S RX data pin for a stereo pair (0..3; pair 0 is the always-present
+  // stereo input, RP2040 has only pair 0).
+  async setI2sRxPin(pair: number, gpio: number): Promise<Result<void, proto.PinConfigResult>> {
+    const wValue = ((pair & 0xFF) << 8) | (gpio & 0xFF);
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetI2sRxPin, wValue));
+  }
+
+  async getI2sRxPin(pair: number): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetI2sRxPin, pair & 0xFF);
+  }
+
+  // Active I2S input channel count (2/4/6/8). Raising the count re-validates
+  // the newly-activated pairs' pins on the device; a clash returns PinInUse.
+  async setI2sInputChannels(count: number): Promise<Result<void, proto.PinConfigResult>> {
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetI2sInputChannels, count & 0xFF));
+  }
+
+  async getI2sInputChannels(): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetI2sInputChannels);
+  }
+
+  // Crossover bands (V16+, output channels only) ride the EQ verbs at wire
+  // band indices XOVER_BAND_BASE..+3; these wrappers own that offset.
+  async setCrossoverBand(channel: domain.ChannelId, xoverIndex: number, p: domain.FilterParams): Promise<void> {
+    return this.setFilter(channel, domain.XOVER_BAND_BASE + xoverIndex, p);
+  }
+
+  async getCrossoverBand(channel: domain.ChannelId, xoverIndex: number): Promise<domain.FilterParams> {
+    return this.getFilter(channel, domain.XOVER_BAND_BASE + xoverIndex);
+  }
+
+  async setCrossoverBypass(channel: domain.ChannelId, xoverIndex: number, bypassed: boolean): Promise<void> {
+    return this.setBandBypass(channel, domain.XOVER_BAND_BASE + xoverIndex, bypassed);
   }
 
   // Persist the live physical-IO block (output pins, output types, I2S

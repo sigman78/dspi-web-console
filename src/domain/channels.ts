@@ -13,19 +13,35 @@ export const ChannelId = {
   Out4L: 8,
   Out4R: 9,
   Pdm: 10,
+  // Extra input pairs (RP2350 multichannel input, wire V16+). Ids continue
+  // past the V10 block so existing ids stay stable; the hardware profile's
+  // wire mapping places them at their on-wire indices.
+  In2L: 11,
+  In2R: 12,
+  In3L: 13,
+  In3R: 14,
+  In4L: 15,
+  In4R: 16,
 } as const;
 export type ChannelId = (typeof ChannelId)[keyof typeof ChannelId];
 
 export const InputChannelId = {
   In1L: ChannelId.In1L,
   In1R: ChannelId.In1R,
+  In2L: ChannelId.In2L,
+  In2R: ChannelId.In2R,
+  In3L: ChannelId.In3L,
+  In3R: ChannelId.In3R,
+  In4L: ChannelId.In4L,
+  In4R: ChannelId.In4R,
 } as const;
 export type InputChannelId = (typeof InputChannelId)[keyof typeof InputChannelId];
 
-// Stereo-input slot index (0 = Left, 1 = Right). Distinct from ChannelId:
-// RouteModel.inputIndex uses this 0-based pair index, not the wire-level id.
+// Input slot index into crosspoint rows / preamp arrays (0-based, L/R
+// interleaved: 0 = In1L .. 7 = In4R). Distinct from ChannelId: RouteModel.
+// inputIndex uses this index, not the wire-level id.
 export const InputSlot = { Left: 0, Right: 1 } as const;
-export type InputSlot = (typeof InputSlot)[keyof typeof InputSlot];
+export type InputSlot = number;
 
 // Output slot index in matrix routes / outputs[] arrays. NOT the wire-level
 // ChannelId (outputs start at 2). 0-based slot used by SetOutput*/
@@ -76,6 +92,12 @@ export const ALL_CHANNELS: readonly ChannelLayout[] = [
   { id: ChannelId.Out4L, name: 'Out 4 Left',    shortName: '4L',  bandCount: EQ_BAND_COUNT, isOutput: true  },
   { id: ChannelId.Out4R, name: 'Out 4 Right',   shortName: '4R',  bandCount: EQ_BAND_COUNT, isOutput: true  },
   { id: ChannelId.Pdm,   name: 'PDM',           shortName: 'PDM', bandCount: EQ_BAND_COUNT, isOutput: true  },
+  { id: ChannelId.In2L,  name: 'Input 2 Left',  shortName: 'I2L', bandCount: EQ_BAND_COUNT, isOutput: false },
+  { id: ChannelId.In2R,  name: 'Input 2 Right', shortName: 'I2R', bandCount: EQ_BAND_COUNT, isOutput: false },
+  { id: ChannelId.In3L,  name: 'Input 3 Left',  shortName: 'I3L', bandCount: EQ_BAND_COUNT, isOutput: false },
+  { id: ChannelId.In3R,  name: 'Input 3 Right', shortName: 'I3R', bandCount: EQ_BAND_COUNT, isOutput: false },
+  { id: ChannelId.In4L,  name: 'Input 4 Left',  shortName: 'I4L', bandCount: EQ_BAND_COUNT, isOutput: false },
+  { id: ChannelId.In4R,  name: 'Input 4 Right', shortName: 'I4R', bandCount: EQ_BAND_COUNT, isOutput: false },
 ] as const;
 
 export function channelLayoutById(id: ChannelId): ChannelLayout {
@@ -89,12 +111,22 @@ export function slotForOutputChannel(id: ChannelId): I2sPairSlot | null {
   return ((id - ChannelId.Out1L) >> 1) as I2sPairSlot;
 }
 
-// InputSlot for In1L/In1R, null for any non-input channel. Centralises the
-// "exactly one stereo input pair" assumption.
+// Input channels in slot order (In1L..In4R = slots 0..7).
+const INPUT_SLOT_ORDER: readonly ChannelId[] = [
+  ChannelId.In1L, ChannelId.In1R,
+  ChannelId.In2L, ChannelId.In2R,
+  ChannelId.In3L, ChannelId.In3R,
+  ChannelId.In4L, ChannelId.In4R,
+];
+
+// InputSlot for an input channel, null for any non-input channel.
 export function inputIndexOf(id: ChannelId): InputSlot | null {
-  if (id === ChannelId.In1L) return InputSlot.Left;
-  if (id === ChannelId.In1R) return InputSlot.Right;
-  return null;
+  const slot = INPUT_SLOT_ORDER.indexOf(id);
+  return slot === -1 ? null : slot;
+}
+
+export function inputChannelForSlot(slot: InputSlot): ChannelId | null {
+  return INPUT_SLOT_ORDER[slot] ?? null;
 }
 
 // A rail grouping: one stereo pair (members = [L, R]) or a single channel

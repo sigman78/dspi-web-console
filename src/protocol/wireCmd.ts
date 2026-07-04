@@ -196,6 +196,22 @@ export const WireCmd = {
   // The device disconnects ~100 ms after the response, so the transfer may
   // throw. Callers must treat both a clean return and a throw as expected.
   EnterBootloader:       { code: 0xF0 } satisfies RawCmd,
+
+  // --- V16 / fw 1.1.5 I2S-input surface ---
+  // The device is the rate authority while I2S input is active, so the rate
+  // is a command, not a detection. Set: u32 Hz payload (44100/48000/96000).
+  // Get: 8-byte response {current pipeline Hz, selected I2S Hz}.
+  SetInputRate:          { code: 0xED, codec: Codec.u32 } satisfies WriteCmd<number>,
+  GetInputRate:          { code: 0xEE } satisfies RawCmd,
+  // I2S RX data pin per stereo pair. Set is action-IN with
+  // wValue = (pair << 8) | GPIO, 1-byte PinConfigResult; Get takes the pair
+  // in wValue and returns that pair's GPIO.
+  SetI2sRxPin:           { code: 0xF1 } satisfies RawCmd,
+  GetI2sRxPin:           { code: 0xF2, codec: Codec.u8 } satisfies ReadCmd<number>,
+  // Active I2S input channel count (2/4/6/8; RP2350 multichannel). Set is
+  // action-IN with the count in wValue, 1-byte PinConfigResult.
+  SetI2sInputChannels:   { code: 0xF3 } satisfies RawCmd,
+  GetI2sInputChannels:   { code: 0xF4, codec: Codec.u8 } satisfies ReadCmd<number>,
 } as const;
 
 // Helpers

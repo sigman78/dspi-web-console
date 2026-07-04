@@ -27,17 +27,35 @@ import { Codec, type BinCodec } from '@/utils';
 
 const { u8, u16, u32, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
 
-// Wire-format dimensions, sized to the largest platform (RP2350).
+// Wire-format dimensions, sized to the largest platform (RP2350), per
+// channel-model generation. V10 (fw 1.1.4): 2 fixed inputs, 11 channels.
+// V16 (fw 1.1.5, unified channel model): 8 inputs, 17 channels, plus the
+// crossover section. `Const` keeps the V10 values (it also names the
+// generation-invariant dimensions); `Const16` overrides the ones that grew.
 export const Const = {
-  NUM_CHANNELS:        11,  // WIRE_MAX_CHANNELS
+  NUM_CHANNELS:        11,  // WIRE_MAX_CHANNELS (V10)
   NUM_OUTPUTS:          9,  // WIRE_MAX_OUTPUT_CHANNELS
-  NUM_INPUTS:           2,  // WIRE_MAX_INPUT_CHANNELS
+  NUM_INPUTS:           2,  // WIRE_MAX_INPUT_CHANNELS (V10)
   BANDS_MAX:           12,  // WIRE_MAX_BANDS
   NUM_PIN_OUTPUTS:      5,  // WIRE_MAX_PIN_OUTPUTS
   CHANNEL_NAME_LEN:    32,  // WIRE_NAME_LEN
   NUM_SPDIF_INSTANCES:  4,  // WIRE_MAX_SPDIF_INSTANCES
   SERIAL_LEN:          32,  // GetSerial response length
 } as const;
+
+export const Const16 = {
+  NUM_CHANNELS:        17,  // WIRE_MAX_CHANNELS (V16: 8 in + 9 out)
+  NUM_INPUTS:           8,  // WIRE_MAX_INPUT_CHANNELS (V16)
+  XOVER_BANDS:          4,  // WIRE_MAX_XOVER_BANDS
+} as const;
+
+// Wire array dimensions for a given format version. Versions above the
+// known ceiling parse with the newest known shape.
+export function dimsForVersion(v: number): { numCh: number; numIn: number } {
+  return v >= 16
+    ? { numCh: Const16.NUM_CHANNELS, numIn: Const16.NUM_INPUTS }
+    : { numCh: Const.NUM_CHANNELS,   numIn: Const.NUM_INPUTS };
+}
 
 // Section 1: header (16 B)
 export const Header = struct({
@@ -148,6 +166,11 @@ export const PreampConfig = struct({
   _reserved: reserved(8),
 });
 
+// Section 13, V16 shape: 8 input preamps, 32 bytes, no reserved pad.
+export const PreampConfig16 = struct({
+  preampDb: arr(f32, Const16.NUM_INPUTS),
+});
+
 // Section 14: master volume (V6+, optional). Full 16-byte on-wire
 // footprint: 4 B data + 12 B reserved.
 export const MasterVolume = struct({
@@ -155,11 +178,18 @@ export const MasterVolume = struct({
   _reserved:      reserved(12),
 });
 
-// Section 15: input config (16 B, V7+, optional). input_source: 0=USB, 1=S/PDIF.
+// Section 15: input config (16 B, V7+, optional). input_source: 0=USB,
+// 1=S/PDIF, 2=I2S (V16+). Bytes 2..7 are V16 I2S fields claimed from the
+// reserved pad with a "0 = absent" convention; on a V10 packet they read as
+// zeros and round-trip unchanged, so one codec serves both generations.
 export const InputConfig = struct({
-  inputSource: u8,
-  spdifRxPin:  u8,
-  _reserved:   reserved(14),
+  inputSource:      u8,
+  spdifRxPin:       u8,
+  i2sRxPin:         u8,            // I2S RX data GPIO, stereo pair 0
+  i2sInputRate:     u8,            // enum: 0=44100, 1=48000, 2=96000
+  i2sInputChannels: u8,            // active I2S input channels 2/4/6/8 (0 = absent)
+  i2sRxPinExt:      arr(u8, 3),    // RX data GPIOs for stereo pairs 1..3 (0 = unset)
+  _reserved:        reserved(8),
 });
 
 // Section 16: LG Sound Sync (16 B, V8+, optional). Only `enabled` is host-
@@ -297,6 +327,19 @@ export function SystemStatus(numCh: number) {
   });
 }
 
+// V16 combined-status shape: clip flags widen to u32 (17 channels exceed 16
+// bits) and a trailing live active-input-channel count byte is appended.
+// Peak count is 7 (RP2040) or 17 (RP2350).
+export function SystemStatus16(numCh: number) {
+  return struct({
+    peaks:               arr(u16, numCh),
+    cpu0:                u8,
+    cpu1:                u8,
+    clipFlags:           u32,
+    activeInputChannels: u8,
+  });
+}
+
 // `GetStatus` (0x50) wValue dispatch. Each code returns a small fixed
 // payload (u32 / i32 / 12-byte combined) -- see docs/system-status-req.md.
 // The base codec is `Codec.u32` / `Codec.i32`; this enum exists so call
@@ -324,9 +367,13 @@ export const SystemStatusValue = {
   // SPDIF DMA starvations
   SpdifStarvationsTotal: 17, // u32
 
+  // Live active input channel count, source-aware (V16+; u32)
+  ActiveInputChannels:   23,
+
   // TODO(system-info-extra): not yet wired
   // 10..12 (USB packets / alt setting / mounted),
-  // 18..21 (per-slot SPDIF starvations).
+  // 18..21 (per-slot SPDIF starvations),
+  // 22 (USB audio ring overruns).
 } as const;
 export type SystemStatusValue = (typeof SystemStatusValue)[keyof typeof SystemStatusValue];
 
@@ -359,12 +406,39 @@ export const BulkSizes = {
   V10:      V6_FULL_SIZE + sizeOf(InputConfig) + sizeOf(LgSoundSync) + sizeOf(UserVolume) + sizeOf(DacHwMute), // 2960
 } as const;
 
+// V16 packet total (5864 bytes). The V16 layout is not size-negotiable:
+// firmware accepts only the exact full-size packet (compat deliberately
+// broken at V16; WIRE_BULK_PARAMS_MIN_SIZE == sizeof(WireBulkParams)).
+export const BULK_SIZE_V16 =
+  sizeOf(Header) +
+  sizeOf(GlobalParams) +
+  sizeOf(CrossfeedParams) +
+  sizeOf(LegacyChannels) +
+  4 * Const16.NUM_CHANNELS +                                            // delays (17 f32)
+  sizeOf(Crosspoint) * (Const16.NUM_INPUTS * Const.NUM_OUTPUTS) +       // 8 x 9
+  sizeOf(OutputChannel) * Const.NUM_OUTPUTS +
+  sizeOf(PinConfig) +
+  sizeOf(BandParams) * (Const16.NUM_CHANNELS * Const.BANDS_MAX) +       // 17 x 12
+  Const.CHANNEL_NAME_LEN * Const16.NUM_CHANNELS +                       // names (17 x 32)
+  sizeOf(I2SConfig) +
+  sizeOf(LevellerConfig) +
+  sizeOf(PreampConfig16) +
+  sizeOf(MasterVolume) +
+  sizeOf(InputConfig) +
+  sizeOf(LgSoundSync) +
+  sizeOf(UserVolume) +
+  sizeOf(DacHwMute) +
+  sizeOf(BandParams) * (Const16.NUM_CHANNELS * Const16.XOVER_BANDS);    // crossover (17 x 4)
+
 // Newest wire version the console knows how to decode and write.
-export const MAX_WIRE_VERSION = 10;
+export const MAX_WIRE_VERSION = 16;
 
 // Packet size to allocate/write for a given target wire version (clamped to
-// the V6 floor and the V10 ceiling).
+// the V6 floor and the V16 ceiling). Versions 11..15 were in-development
+// intermediates the console never supported; they collapse to the V10 size
+// (writes to such devices are rejected at connect anyway).
 export function bulkSizeForVersion(v: number): number {
+  if (v >= 16) return BULK_SIZE_V16;
   if (v >= 10) return BulkSizes.V10;
   if (v === 9) return BulkSizes.V9;
   if (v === 8) return BulkSizes.V8;
@@ -375,10 +449,10 @@ export function bulkSizeForVersion(v: number): number {
 export const BulkLimits = {
   MinPacketSize:  BulkSizes.V2,
   // Size we WRITE: version-aware buildBulkParams emits at the device's own wire
-  // version, up to V10. This is the largest buffer it may allocate.
-  MaxRequestSize: BulkSizes.V10,
-  // Size we READ: the largest packet we tolerate receiving (V10).
-  MaxReadSize:    BulkSizes.V10,  // 2960
+  // version, up to V16. This is the largest buffer it may allocate.
+  MaxRequestSize: BULK_SIZE_V16,
+  // Size we READ: the largest packet we tolerate receiving (V16).
+  MaxReadSize:    BULK_SIZE_V16,  // 5864
 } as const;
 
 export interface BulkLayout {
@@ -390,11 +464,15 @@ export interface BulkLayout {
   lgSoundSync: boolean;
   userVolume: boolean;
   dacHwMute: boolean;
+  // V16 additions: the crossover section and the unified channel model's
+  // wide arrays (17 channels / 8 inputs) arrive together.
+  crossover: boolean;
 }
 
 // Determine which optional sections are present based on the header.
 // Both formatVersion and payloadLength must satisfy the threshold --
 // matches firmware's bulk_params_apply gating in bulk_params.c.
+// A V16 packet trivially satisfies every V10-era size threshold.
 export function bulkLayout(h: { formatVersion: number; payloadLength: number }): BulkLayout {
   const v = h.formatVersion;
   const len = h.payloadLength;
@@ -407,6 +485,7 @@ export function bulkLayout(h: { formatVersion: number; payloadLength: number }):
     lgSoundSync:  v >= 8  && len >= BulkSizes.V8,
     userVolume:   v >= 9  && len >= BulkSizes.V9,
     dacHwMute:    v >= 10 && len >= BulkSizes.V10,
+    crossover:    v >= 16 && len >= BULK_SIZE_V16,
   };
 }
 

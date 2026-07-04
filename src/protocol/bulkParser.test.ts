@@ -105,7 +105,8 @@ describe('bulkParser — per-channel + matrix', () => {
   it('parses NUL-terminated UTF-8 channel names', () => {
     const names = ['Input 1 L', 'Input 1 R', '', 'OUT3', '', '', '', '', '', '', 'PDM'];
     const p = parseBulkParams(makeBulk({ channelNames: names }));
-    expect(p.channelNames).toEqual(names);
+    expect(p.channelNames.slice(0, 11)).toEqual(names);
+    expect(p.channelNames.slice(11).every((n) => n === '')).toBe(true);
   });
 });
 
@@ -114,11 +115,11 @@ describe('bulkParser — per-channel + matrix', () => {
 describe('bulkParser — V6 trailing sections', () => {
   it('parses per-channel preamp + master volume on V6', () => {
     const p = parseBulkParams(makeBulk({
-      preampLDb: -1, preampRDb: -2,
+      inputPreampsDb: [-1, -2, 0, 0, 0, 0, 0, 0],
       masterVolumeDb: -12.5,
     }));
-    expect(p.preampLDb).toBeCloseTo(-1, 5);
-    expect(p.preampRDb).toBeCloseTo(-2, 5);
+    expect(p.inputPreampsDb[0]).toBeCloseTo(-1, 5);
+    expect(p.inputPreampsDb[1]).toBeCloseTo(-2, 5);
     expect(p.masterVolumeDb).toBeCloseTo(-12.5, 5);
   });
 
@@ -157,7 +158,7 @@ describe('bulkParser — short buffers', () => {
     const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
     const full = buildBulkParams({
       ...base,
-      preampLDb: -1.5, preampRDb: -2.5, masterVolumeDb: -7.25,
+      inputPreampsDb: [-1.5, -2.5, 0, 0, 0, 0, 0, 0], masterVolumeDb: -7.25,
     });
 
     for (const sz of [2864, 2868, 2872, 2876, 2880, 2884, 2888, 2892, 2896]) {
@@ -173,12 +174,12 @@ describe('bulkParser — short buffers', () => {
       const hasMaster = sz >= 2896;
 
       if (hasPreamp) {
-        expect(p.preampLDb).toBeCloseTo(-1.5, 5);
-        expect(p.preampRDb).toBeCloseTo(-2.5, 5);
+        expect(p.inputPreampsDb[0]).toBeCloseTo(-1.5, 5);
+        expect(p.inputPreampsDb[1]).toBeCloseTo(-2.5, 5);
       } else {
         // Section absent -- parser returns factory default (0).
-        expect(p.preampLDb).toBe(0);
-        expect(p.preampRDb).toBe(0);
+        expect(p.inputPreampsDb[0]).toBe(0);
+        expect(p.inputPreampsDb[1]).toBe(0);
       }
       if (hasMaster) {
         expect(p.masterVolumeDb).toBeCloseTo(-7.25, 5);
@@ -212,7 +213,8 @@ describe('buildBulkParams + defaultBulkParams', () => {
     expect(parsed.bypass).toBe(true);
     expect(parsed.preampDb).toBeCloseTo(-3.5);
     expect(parsed.masterVolumeDb).toBeCloseTo(-12);
-    expect(parsed.channelNames).toEqual(bulk.channelNames);
+    expect(parsed.channelNames.slice(0, 11)).toEqual(bulk.channelNames.slice(0, 11));
+    expect(parsed.channelNames.slice(11).every((n) => n === '')).toBe(true);
   });
 
   it('builder throws on sub-V6 (pre-floor) input', () => {
@@ -248,7 +250,7 @@ describe('bulkParser — V7-V10 tail decode', () => {
     const obj = makeBulkObject({
       formatVersion: 10,
       payloadLength: Wire.BulkSizes.V10,
-      inputConfig: { source: 1, spdifRxPin: 5 },
+      inputConfig: { source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0 },
       lgSoundSync: { enabled: true, present: true, volume: 40, muted: false },
       userVolume:  { volumeDb: -6.5, mute: true },
       dacHwMute:   { enabled: true, activeLow: true, pin: 11, holdMs: 20, releaseMs: 50 },
@@ -256,7 +258,7 @@ describe('bulkParser — V7-V10 tail decode', () => {
     const p = parseBulkParams(buildBulkParams(obj));
     expect(p.formatVersion).toBe(10);
     expect(p.payloadLength).toBe(Wire.BulkSizes.V10);
-    expect(p.inputConfig).toEqual({ source: 1, spdifRxPin: 5 });
+    expect(p.inputConfig).toEqual({ source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0 });
     expect(p.lgSoundSync).toEqual({ enabled: true, present: true, volume: 40, muted: false });
     expect(p.userVolume.volumeDb).toBeCloseTo(-6.5, 4);
     expect(p.userVolume.mute).toBe(true);
@@ -267,7 +269,7 @@ describe('bulkParser — V7-V10 tail decode', () => {
     const p = parseBulkParams(makeBulk({
       formatVersion: 6, payloadLength: Wire.BulkSizes.V6Full,
     }));
-    expect(p.inputConfig).toEqual({ source: 0, spdifRxPin: 5 });
+    expect(p.inputConfig).toEqual({ source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0 });
     expect(p.lgSoundSync.enabled).toBe(false);
     expect(p.userVolume.mute).toBe(false);
     expect(p.dacHwMute.pin).toBe(11);
@@ -290,12 +292,12 @@ describe('bulkParser — V7-V10 tail decode', () => {
 describe('buildBulkParams — version-aware', () => {
   it('emits V10 (2960 B) for a V10 snapshot, preserving the tail', () => {
     const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    const v10 = { ...base, inputConfig: { source: 1, spdifRxPin: 5 }, userVolume: { volumeDb: -3, mute: true } };
+    const v10 = { ...base, inputConfig: { source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0 }, userVolume: { volumeDb: -3, mute: true } };
     const bytes = buildBulkParams(v10);
     expect(bytes.byteLength).toBe(Wire.BulkSizes.V10);
     const p = parseBulkParams(bytes);
     expect(p.formatVersion).toBe(10);
-    expect(p.inputConfig).toEqual({ source: 1, spdifRxPin: 5 });
+    expect(p.inputConfig).toEqual({ source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0 });
     expect(p.userVolume.mute).toBe(true);
   });
 
