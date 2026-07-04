@@ -106,6 +106,14 @@ export interface ChannelGroup<T> {
   members: T[];
 }
 
+// Splits a display name like "Out 2 Left" into its L/R-stripped base and the
+// side letter, for headers that show the side as a small separate glyph.
+// Shared by the mixer's row/column headers (MixerTab, MatrixHeader).
+export function splitLR(name: string): { base: string; side: string | null } {
+  const m = name.match(/^(.+?)\s+([LR])$/);
+  return m ? { base: m[1], side: m[2] } : { base: name, side: null };
+}
+
 export function groupIntoPairs<T extends { id: ChannelId; shortName: string }>(
   channels: readonly T[],
 ): ChannelGroup<T>[] {

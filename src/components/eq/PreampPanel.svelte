@@ -19,9 +19,45 @@
   const min = Eq.PREAMP_MIN_DB;
   const max = Eq.PREAMP_MAX_DB;
   const range = max - min;
+  const step = Eq.PREAMP_STEP_DB;
   // Tick positions in % across the slider track. Includes 0 (the unity line).
   const ticks = Eq.PREAMP_TICKS_DB;
   const fillPct = $derived(((preampDb - min) / range) * 100);
+
+  function clamp(v: number): number {
+    return Math.min(max, Math.max(min, v));
+  }
+
+  // Mirrors the drag path's onChange -- the only other way this value moves.
+  function onKey(e: KeyboardEvent): void {
+    let next: number;
+    switch (e.key) {
+      case 'ArrowUp':
+      case 'ArrowRight':
+        next = clamp(preampDb + step);
+        break;
+      case 'ArrowDown':
+      case 'ArrowLeft':
+        next = clamp(preampDb - step);
+        break;
+      case 'PageUp':
+        next = clamp(preampDb + step * 5);
+        break;
+      case 'PageDown':
+        next = clamp(preampDb - step * 5);
+        break;
+      case 'Home':
+        next = min;
+        break;
+      case 'End':
+        next = max;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    onChange(next);
+  }
 </script>
 
 <Panel code="EQ.03" title="PREAMP">
@@ -38,6 +74,7 @@
       aria-valuemin={min}
       aria-valuemax={max}
       aria-valuenow={preampDb}
+      onkeydown={onKey}
       onpointerdown={(e) => {
         const el = e.currentTarget as HTMLDivElement;
         const setFromEvent = (ev: PointerEvent) => {
@@ -96,6 +133,11 @@
     overflow: hidden;
     user-select: none;
     touch-action: none;
+    outline: none;
+  }
+  .track:focus-visible {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
   }
   .tick {
     position: absolute;

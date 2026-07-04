@@ -1,6 +1,6 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
-  import ValueField from '@/components/chrome/ValueField.svelte';
+  import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { connection } from '@/state';
@@ -36,14 +36,6 @@
     if (!cf) return;
     setCrossfeedItd(s, !cf.itd);
   }
-  function onFreqInput(e: Event) {
-    const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setCrossfeedFreq(s, v);
-  }
-  function onFeedInput(e: Event) {
-    const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setCrossfeedFeedDb(s, v);
-  }
 </script>
 
 <Panel code="PR.01" title="CROSSFEED">
@@ -69,16 +61,9 @@
       />
     </div>
 
-    <span class="microlbl">CUTOFF</span>
-    <input
-      type="range"
-      min={Proc.CROSSFEED_FREQ_MIN_HZ} max={Proc.CROSSFEED_FREQ_MAX_HZ} step={Proc.CROSSFEED_FREQ_STEP_HZ}
-      value={cf?.freq ?? 700}
-      oninput={onFreqInput}
-      disabled={!slidersEditable}
-      aria-label="Crossfeed cutoff frequency"
-    />
-    <ValueField
+    <LabeledSlider
+      label="CUTOFF"
+      ariaLabel="Crossfeed cutoff frequency"
       value={cf?.freq ?? 700}
       min={Proc.CROSSFEED_FREQ_MIN_HZ} max={Proc.CROSSFEED_FREQ_MAX_HZ} step={Proc.CROSSFEED_FREQ_STEP_HZ}
       kind="hz"
@@ -87,16 +72,9 @@
       onChange={(v) => setCrossfeedFreq(s, v)}
     />
 
-    <span class="microlbl">FEED</span>
-    <input
-      type="range"
-      min={Proc.CROSSFEED_FEED_MIN_DB} max={Proc.CROSSFEED_FEED_MAX_DB} step={Proc.CROSSFEED_FEED_STEP_DB}
-      value={cf?.feedDb ?? 4.5}
-      oninput={onFeedInput}
-      disabled={!slidersEditable}
-      aria-label="Crossfeed feed level"
-    />
-    <ValueField
+    <LabeledSlider
+      label="FEED"
+      ariaLabel="Crossfeed feed level"
       value={cf?.feedDb ?? 4.5}
       min={Proc.CROSSFEED_FEED_MIN_DB} max={Proc.CROSSFEED_FEED_MAX_DB} step={Proc.CROSSFEED_FEED_STEP_DB}
       kind="dB"
@@ -127,6 +105,4 @@
     gap: 12px;
   }
   .span2 { grid-column: 2 / span 2; }
-  input[type="range"] { accent-color: var(--accent); margin: 0; }
-  input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 </style>

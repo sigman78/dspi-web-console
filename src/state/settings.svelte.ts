@@ -138,14 +138,15 @@ export function selectChannel(id: ChannelId): void {
   setTab('eq');
 }
 
-// Validate the persisted selection against the connected platform's channel set;
-// if the stored ID isn't present (e.g. reconnected to a smaller device), fall
-// back to the first output. null stays null -- "no selection" is valid.
+// Validate the persisted selection against the connected platform's channel
+// set: if the stored ID isn't present (e.g. reconnected to a smaller device)
+// or there was no selection yet, fall back to the first output. Absorbs the
+// EQ tab's former "auto-pick a channel on first visit" effect -- this runs
+// once at connect time instead, which also covers tabs other than EQ.
 export function reconcileSelectedChannel(channels: readonly ChannelModel[] | undefined): void {
-  const target = settings.selectedChannel;
-  if (target === null) return;
   if (!channels) return;
-  if (channels.some((c) => c.id === target)) return;
+  const target = settings.selectedChannel;
+  if (target !== null && channels.some((c) => c.id === target)) return;
   const firstOutput = channels.find((c) => c.isOutput);
   settings.selectedChannel = firstOutput?.id ?? null;
 }

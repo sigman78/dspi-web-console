@@ -1,6 +1,6 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
-  import ValueField from '@/components/chrome/ValueField.svelte';
+  import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { connection } from '@/state';
@@ -31,18 +31,6 @@
     if (!lv) return;
     setLevellerLookahead(s, !lv.lookahead);
   }
-  function onAmountInput(e: Event) {
-    const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setLevellerAmount(s, v);
-  }
-  function onMaxGainInput(e: Event) {
-    const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setLevellerMaxGain(s, v);
-  }
-  function onGateInput(e: Event) {
-    const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v)) setLevellerGate(s, v);
-  }
 </script>
 
 <Panel code="PR.03" title="LEVELLER">
@@ -68,16 +56,9 @@
       />
     </div>
 
-    <span class="microlbl">AMOUNT</span>
-    <input
-      type="range"
-      min={Proc.LEVELLER_AMOUNT_MIN_PCT} max={Proc.LEVELLER_AMOUNT_MAX_PCT} step={Proc.LEVELLER_AMOUNT_STEP_PCT}
-      value={lv?.amount ?? 0}
-      oninput={onAmountInput}
-      disabled={!editable}
-      aria-label="Leveller amount"
-    />
-    <ValueField
+    <LabeledSlider
+      label="AMOUNT"
+      ariaLabel="Leveller amount"
       value={lv?.amount ?? 0}
       min={Proc.LEVELLER_AMOUNT_MIN_PCT} max={Proc.LEVELLER_AMOUNT_MAX_PCT} step={Proc.LEVELLER_AMOUNT_STEP_PCT}
       kind="pct"
@@ -86,16 +67,9 @@
       onChange={(v) => setLevellerAmount(s, v)}
     />
 
-    <span class="microlbl">MAX GAIN</span>
-    <input
-      type="range"
-      min={Proc.LEVELLER_MAX_GAIN_MIN_DB} max={Proc.LEVELLER_MAX_GAIN_MAX_DB} step={Proc.LEVELLER_MAX_GAIN_STEP_DB}
-      value={lv?.maxGainDb ?? 0}
-      oninput={onMaxGainInput}
-      disabled={!editable}
-      aria-label="Leveller max gain"
-    />
-    <ValueField
+    <LabeledSlider
+      label="MAX GAIN"
+      ariaLabel="Leveller max gain"
       value={lv?.maxGainDb ?? 0}
       min={Proc.LEVELLER_MAX_GAIN_MIN_DB} max={Proc.LEVELLER_MAX_GAIN_MAX_DB} step={Proc.LEVELLER_MAX_GAIN_STEP_DB}
       kind="dB"
@@ -104,16 +78,9 @@
       onChange={(v) => setLevellerMaxGain(s, v)}
     />
 
-    <span class="microlbl">GATE</span>
-    <input
-      type="range"
-      min={Proc.LEVELLER_GATE_MIN_DB} max={Proc.LEVELLER_GATE_MAX_DB} step={Proc.LEVELLER_GATE_STEP_DB}
-      value={lv?.gateDb ?? -40}
-      oninput={onGateInput}
-      disabled={!editable}
-      aria-label="Leveller gate threshold"
-    />
-    <ValueField
+    <LabeledSlider
+      label="GATE"
+      ariaLabel="Leveller gate threshold"
       value={lv?.gateDb ?? -40}
       min={Proc.LEVELLER_GATE_MIN_DB} max={Proc.LEVELLER_GATE_MAX_DB} step={Proc.LEVELLER_GATE_STEP_DB}
       kind="dB"
@@ -144,6 +111,4 @@
     gap: 12px;
   }
   .span2 { grid-column: 2 / span 2; }
-  input[type="range"] { accent-color: var(--accent); margin: 0; }
-  input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 </style>

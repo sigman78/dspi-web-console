@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { presetsDirty } from '@/state';
   import { getSession } from '@/components/sessionContext';
   import { loadPresetSlot, renamePresetSlot } from '@/runtime';
@@ -22,12 +23,13 @@
   let editValue = $state('');
   let renameInput: HTMLTextAreaElement | null = $state(null);
 
-  export function enterRename(): void {
+  export async function enterRename(): Promise<void> {
     // Slot names live in the directory and persist independently of
     // occupancy or active state, so any tile can be renamed.
     editValue = name;
     editing = true;
-    setTimeout(() => renameInput?.focus(), 0);
+    await tick();
+    renameInput?.focus();
   }
 
   function onDoubleClick(e: MouseEvent) {

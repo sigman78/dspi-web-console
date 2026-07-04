@@ -2,7 +2,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import MatrixHeader from '@/components/tabs/mixer/MatrixHeader.svelte';
   import MatrixCell from '@/components/tabs/mixer/MatrixCell.svelte';
-  import { matrixColumns, matrixRows } from '@/domain';
+  import { matrixColumns, matrixRows, splitLR } from '@/domain';
   import { getSession } from '@/components/sessionContext';
   import { settings } from '@/state';
   import { chKey } from '@/styles/palette';
@@ -20,11 +20,6 @@
   function isUnavailable(outputIndex: number): boolean {
     if (!pdmActive) return false;
     return outputIndex !== 0 && outputIndex !== 1 && outputIndex !== pdmIndex;
-  }
-
-  function splitLR(name: string): { base: string; side: string | null } {
-    const m = name.match(/^(.+?)\s+([LR])$/);
-    return m ? { base: m[1], side: m[2] } : { base: name, side: null };
   }
 
   const cols = $derived(`96px repeat(${columns.length}, 128px)`);
