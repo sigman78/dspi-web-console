@@ -8,6 +8,13 @@ const BUFFER_INTERVAL_MS = 250;  // ~4 Hz  -- buffer stats
 const INFO_INTERVAL_MS = 1000;   // ~1 Hz  -- env scalars + counters
 const SPDIF_RX_INTERVAL_MS = 1000;  // ~1 Hz  -- S/PDIF RX status (SPDIF input only)
 const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile floor
+// Unconditional re-fetch floor, independent of any pending reconcile request.
+// Notify is the primary sync trigger, but firmware 1.1.4 has verified coverage
+// holes: the UAC1 OS volume slider does not emit PARAM_CHANGED
+// (`audio_set_volume` skips `param_write`), and GPIO sources aren't
+// implemented yet. This is what heals that drift -- do not remove it when
+// notify coverage improves without re-checking those holes.
+const PARAM_SAFETY_NET_MS = 10_000;
 
 interface Cadence {
   key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'param';
@@ -132,14 +139,27 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   // control call funnels through the session's CommandQueue, so a fetch can
   // never interleave with a send. Then either eager, or the floor interval
   // elapsed. Peek (not consume) so a skipped tick leaves the request pending.
+  // With nothing pending, fall through to the unconditional safety net
+  // (PARAM_SAFETY_NET_MS) -- gated on the preset guard too, so it can't land a
+  // redundant fetch mid preset-op (that flow already re-syncs itself via
+  // fetchAndApplyAsBaseline).
   function shouldRunParam(now: number): boolean {
+    // Degraded: the probe owns recovery. Without this gate a pending eager
+    // request would drive a bulk fetch into the dead link every ctrl-timeout
+    // (~2 s), each one failing -- the exact pile-up the write-path suppression
+    // exists to prevent. On recovery the probe clears degraded and re-arms an
+    // eager request, so healing resumes on the next tick.
+    if (health.degraded) return false;
     if (session.writes.busy) return false;
+    if (mir.presetGuardActive(now)) return false;
     const { wanted, eager } = mir.peekReconcile();
-    if (!wanted) return false;
-    // lastParamMs === 0 means we've never reconciled this session: the first
-    // pending request is eligible immediately rather than waiting a full floor
-    // interval after connect.
-    return eager || tele.lastParamMs === 0 || now - tele.lastParamMs >= PARAM_INTERVAL_MS;
+    if (wanted) {
+      // lastParamMs === 0 means we've never reconciled this session: the first
+      // pending request is eligible immediately rather than waiting a full
+      // floor interval after connect.
+      return eager || tele.lastParamMs === 0 || now - tele.lastParamMs >= PARAM_INTERVAL_MS;
+    }
+    return now - tele.lastParamMs >= PARAM_SAFETY_NET_MS;
   }
 
   const cadences: Cadence[] = [

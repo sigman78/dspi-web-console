@@ -4,8 +4,6 @@ import { beginConnection } from './connectionScope';
 import { dispatch, makeReadySession, connection, type ReadySession } from '@/state';
 import type { LoopClock } from '@/utils';
 
-vi.mock('@/runtime/resync', () => ({ forceResyncNow: vi.fn() }));
-
 // Manual clock: collects the latest callback; step() fires it. armed() reports
 // whether a callback is currently registered -- since startLinkProbe only
 // re-arms AFTER its async probe body (including the queued getBypass send)
@@ -50,10 +48,11 @@ describe('startLinkProbe', () => {
     stop();
   });
 
-  it('probes while degraded and clears on success', async () => {
+  it('probes while degraded, clears on success, and requests an eager reconcile', async () => {
     const getBypass = vi.fn(async () => false);
     const s = installSession({ getBypass, close: vi.fn(), info: {}, hardware: {} });
     s.health.degraded = true;
+    s.mirror.consumeReconcile();
     const clock = manualClock();
     const stop = startLinkProbe(s, clock);
     clock.step();
@@ -62,6 +61,8 @@ describe('startLinkProbe', () => {
     // noteRecovered() runs.
     await vi.waitFor(() => expect(s.health.degraded).toBe(false));
     expect(getBypass).toHaveBeenCalledTimes(1);
+    // Recovery repaints via the param cadence's eager path, not an ad-hoc fetch.
+    expect(s.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
     stop();
   });
 

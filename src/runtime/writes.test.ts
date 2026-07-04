@@ -3,14 +3,6 @@ import { write, scrub, writeChecked, command, flushAllWrites } from './writes.sv
 import { connection, notices, clearNotices, dispatch, makeReadySession, activeSession, type ReadySession } from '@/state';
 import { Result } from '@/utils';
 
-// Mock the resync module so write() failures don't actually fire HTTP.
-vi.mock('@/runtime/resync', () => ({
-  forceResyncNow: vi.fn(),
-}));
-
-// vi.mock is hoisted, so this static import resolves to the mock above.
-import { forceResyncNow } from '@/runtime/resync';
-
 // Install a ready session so writes resolve activeSession() and its
 // WriteCoordinator/alive guard. Disposing it (or dispatching disconnected)
 // simulates a disconnect mid-flight — the per-session `alive` guard replaces the
@@ -45,12 +37,11 @@ describe('write() helper', () => {
     expect(eager).toBe(false);
   });
 
-  it('does not request a reconcile when send fails', async () => {
+  it('requests an eager reconcile when send fails (failure-path recovery)', async () => {
     const s = activeSession()!;
     s.mirror.consumeReconcile();
     await write(session, async () => { throw new Error('boom'); }, () => {});
-    const { wanted } = s.mirror.consumeReconcile();
-    expect(wanted).toBe(false);
+    expect(s.mirror.consumeReconcile()).toEqual({ wanted: true, eager: true });
   });
 
   it('claims writes.busy during send and releases it after settle', async () => {
@@ -85,20 +76,24 @@ describe('write() helper', () => {
     expect(s.writes.busy).toBe(false);
   });
 
-  it('does not call forceResyncNow on failure if generation changed', async () => {
+  it('does not request a reconcile on failure if generation changed', async () => {
+    const s = activeSession()!;
+    s.mirror.consumeReconcile();
     let resolveSend!: (err: Error) => void;
     const send = vi.fn(() => new Promise<void>((_, reject) => { resolveSend = (e) => reject(e); }));
     const p = write(session, send, () => {});
     activeSession()?.dispose();
     resolveSend!(new Error('boom'));
     await p;
-    expect(forceResyncNow).not.toHaveBeenCalled();
+    expect(s.mirror.peekReconcile().wanted).toBe(false);
   });
 
-  it('calls forceResyncNow on failure when generation unchanged', async () => {
+  it('requests an eager reconcile on failure when generation unchanged', async () => {
+    const s = activeSession()!;
+    s.mirror.consumeReconcile();
     const send = vi.fn(async () => { throw new Error('boom'); });
     await write(session, send, () => {});
-    expect(forceResyncNow).toHaveBeenCalled();
+    expect(s.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
   });
 });
 
@@ -109,19 +104,21 @@ describe('write() failure policy', () => {
     vi.clearAllMocks();
   });
 
-  it('a failed write stays connected, reports health, toasts, and resyncs', async () => {
+  it('a failed write stays connected, reports health, toasts, and requests an eager reconcile', async () => {
+    session.mirror.consumeReconcile();
     await write(session, async () => { throw new Error('boom'); }, () => {});
     expect(connection.connected).toBe(true);
     expect(session.health.failTotal).toBe(1);
     expect(notices.list.some((n) => n.kind === 'error')).toBe(true);
-    expect(forceResyncNow).toHaveBeenCalledWith(session);
+    expect(session.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
   });
 
-  it('while degraded, a failed write neither toasts nor resyncs', async () => {
+  it('while degraded, a failed write neither toasts nor requests a reconcile', async () => {
     session.health.degraded = true;
+    session.mirror.consumeReconcile();
     await write(session, async () => { throw new Error('boom'); }, () => {});
     expect(notices.list.length).toBe(0);
-    expect(forceResyncNow).not.toHaveBeenCalled();
+    expect(session.mirror.peekReconcile().wanted).toBe(false);
   });
 
   it('a failed command reports health and stays connected', async () => {
@@ -155,17 +152,17 @@ describe('writeChecked() helper', () => {
     expect(notices.list[0].message).toContain('in use');
   });
 
-  it('treats a rejection as local — no resync, no status change', async () => {
+  it('treats a rejection as local — no reconcile request, no status change', async () => {
     await writeChecked(session, 'set pin', async () => Result.fail('x', 'rejected'), () => {});
-    expect(forceResyncNow).not.toHaveBeenCalled();
+    expect(activeSession()!.mirror.peekReconcile().wanted).toBe(false);
     expect(connection.connected).toBe(true);
   });
 
-  it('error-toasts a transport throw without resyncing', async () => {
+  it('error-toasts a transport throw without requesting a reconcile', async () => {
     await writeChecked(session, 'set pin', async () => { throw new Error('stall'); }, () => {});
     expect(notices.list).toHaveLength(1);
     expect(notices.list[0].kind).toBe('error');
-    expect(forceResyncNow).not.toHaveBeenCalled();
+    expect(activeSession()!.mirror.peekReconcile().wanted).toBe(false);
     expect(connection.connected).toBe(true);
   });
 
@@ -309,18 +306,20 @@ describe('scrub() helper', () => {
     expect(activeSession()!.writes.busy).toBe(false);
   });
 
-  it('on send failure: forceResyncNow called, lane recovers', async () => {
+  it('on send failure: requests an eager reconcile, lane recovers', async () => {
+    activeSession()!.mirror.consumeReconcile();
     const send = vi.fn(async () => { throw new Error('boom'); });
     scrub(session, 'k1', () => {}, send);
     await flushAllWrites(session);
-    expect(forceResyncNow).toHaveBeenCalled();
+    expect(activeSession()!.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
   });
 
-  it('on send success: does NOT resync (case A — mirror already holds sent value)', async () => {
+  it('on send success: does not request an eager reconcile (case A — mirror already holds sent value)', async () => {
+    activeSession()!.mirror.consumeReconcile();
     const send = vi.fn(async () => {});
     scrub(session, 'k1', () => {}, send);
     await flushAllWrites(session);
-    expect(forceResyncNow).not.toHaveBeenCalled();
+    expect(activeSession()!.mirror.peekReconcile().eager).toBe(false);
   });
 
   it('on send success: requests a non-eager reconcile', async () => {
@@ -332,26 +331,26 @@ describe('scrub() helper', () => {
     expect(eager).toBe(false);
   });
 
-  it('on send failure: does not request a reconcile', async () => {
+  it('on send failure: requests an eager reconcile (not merely non-eager)', async () => {
     const s = activeSession()!;
     s.mirror.consumeReconcile();
     scrub(session, 'k1', () => {}, async () => { throw new Error('boom'); });
     await flushAllWrites(session);
-    const { wanted } = s.mirror.consumeReconcile();
-    expect(wanted).toBe(false);
+    expect(s.mirror.consumeReconcile()).toEqual({ wanted: true, eager: true });
   });
 
-  it('stale-gen settle does not call forceResyncNow', async () => {
-    vi.clearAllMocks();
+  it('stale-gen settle does not request a reconcile', async () => {
     let resolveSend!: () => void;
     const send = vi.fn(() => new Promise<void>((r) => { resolveSend = r; }));
     scrub(session, 'k1', () => {}, send);
     // Wait for timer to fire (coalesce window) so send starts
     await new Promise((r) => setTimeout(r, 25));
-    activeSession()?.dispose();  // simulate disconnect mid-send
+    const s = activeSession()!;
+    s.mirror.consumeReconcile();
+    s.dispose();  // simulate disconnect mid-send
     resolveSend!();
     await flushAllWrites(session);
-    expect(forceResyncNow).not.toHaveBeenCalled();
+    expect(s.mirror.peekReconcile().wanted).toBe(false);
   });
 });
 

@@ -1,6 +1,5 @@
 import { dispatch, type ReadySession } from '@/state';
 import { endConnection } from './connectionScope';
-import { forceResyncNow } from './resync';
 import { Log, timerClock, type LoopClock, type Disposer } from '@/utils';
 
 const PROBE_INTERVAL_MS = 1000;
@@ -26,7 +25,9 @@ export function startLinkProbe(s: ReadySession, clock: LoopClock = timerClock(PR
         await s.queue.run(() => s.device.getBypass(), { priority: true });
         s.health.noteRecovered();
         probeFails = 0;
-        void forceResyncNow(s);
+        // Repaint via the param cadence's eager path (next tick), not an
+        // ad-hoc fetch: one reconcile path for every recovery source.
+        s.mirror.requestReconcile(true);
       } catch (err) {
         s.health.noteFail('probe', err);
         probeFails += 1;

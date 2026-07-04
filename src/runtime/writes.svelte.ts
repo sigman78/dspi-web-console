@@ -8,7 +8,7 @@
 // snapshot fetch.
 //
 // write()        -- click-paced. Await ack, then mutate. Failure -> toast +
-//                   forceResyncNow; link health decides anything bigger.
+//                   requestReconcile(true); link health decides anything bigger.
 // scrub()        -- drag-paced sliders. Optimistic mutate + latest-wins lane.
 // writeChecked() -- commit-paced commands returning a typed Result. A non-ok is a
 //                   local device rejection (warn toast), not a connection error.
@@ -19,13 +19,13 @@
 import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 import { pushNotice, type ReadySession } from '@/state';
 import type { MirrorState } from '@/state/mirror.svelte';
-import { forceResyncNow } from './resync';
 import { Log, errMessage, type Result } from '@/utils';
 
 // Click-paced write. Awaits the wire ack, mutates the mirror on success. On
-// throw: reports link health, toasts, and forces a resync to recover ground
-// truth. The mutate is never applied on failure, so the mirror never holds an
-// optimistic value that didn't survive.
+// throw: reports link health, toasts, and requests an eager reconcile to
+// recover ground truth on the next param-cadence tick (see
+// src/runtime/poll.ts). The mutate is never applied on failure, so the
+// mirror never holds an optimistic value that didn't survive.
 export async function write(
   s: ReadySession,
   send: () => Promise<unknown>,
@@ -43,11 +43,11 @@ export async function write(
       if (!s.alive) return;
       Log.error('writes', 'write send failed', err);
       s.health.noteFail('write', err);
-      // Degraded: the probe owns recovery; per-failure toasts and 2s-timeout
-      // resync fetches would only pile up behind a dead link.
+      // Degraded: the probe owns recovery; per-failure toasts and reconcile
+      // requests would only pile up behind a dead link.
       if (!s.health.degraded) {
         pushNotice('error', `Write failed: ${errMessage(err)}`);
-        void forceResyncNow(s);
+        s.mirror.requestReconcile(true);
       }
     } finally {
       s.writes.release();
@@ -151,7 +151,7 @@ function makeLane(key: string, coordinator: WriteCoordinator): Lane {
           s.health.noteFail(`scrub ${key}`, err);
           if (!s.health.degraded) {
             pushNotice('error', `Write failed: ${errMessage(err)}`);
-            void forceResyncNow(s);
+            s.mirror.requestReconcile(true);
           }
         }
       } finally {

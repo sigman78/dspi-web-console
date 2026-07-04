@@ -15,7 +15,7 @@ src/runtime/actions.ts and src/runtime/presets.ts
         v
 src/runtime/writes.svelte.ts  (write-lane helpers)
     - write(send, mutate): click-paced. Await the wire ack, then mutate the
-      mirror. No optimism, no coalescing. Failure -> forceResyncNow.
+      mirror. No optimism, no coalescing. Failure -> requestReconcile(true).
     - scrub(key, mutate, send): drag-paced. Optimistic mutate, per-key
       latest-wins coalesce lane. No resync on success.
     - writeChecked(op, send, patch): commit-paced commands returning a typed
@@ -61,9 +61,9 @@ Every device control-transfer send for a session is serialized through its `Comm
 
 Every action verb routes to one of the helpers in `src/runtime/writes.svelte.ts`. Scrub-class membership is implicit at the call site (a verb either calls `scrub` or `write`); there is no central policy table.
 
-**Direct class (`write`)** — toggles, dropdowns, channel names, output enable/mute/delay, EQ band commits. The helper awaits the wire ack, then mutates the mirror. On throw it flips status to `error` and calls `forceResyncNow` to recover ground truth; the mutate is never applied on failure. There is **no trailing resync on success** — a successful ack means firmware committed, and the mirror takes the value we sent. Alive-guarded: a send that settles after its session was disposed (disconnect) is dropped, since `s.alive` is re-checked before any mutation.
+**Direct class (`write`)** — toggles, dropdowns, channel names, output enable/mute/delay, EQ band commits. The helper awaits the wire ack, then mutates the mirror. On throw it reports link health and, unless the link is already `degraded`, toasts and calls `mirror.requestReconcile(true)` to recover ground truth on the param cadence's next tick; the mutate is never applied on failure. There is **no trailing resync on success** — a successful ack means firmware committed, and the mirror takes the value we sent. Alive-guarded: a send that settles after its session was disposed (disconnect) is dropped, since `s.alive` is re-checked before any mutation.
 
-**Scrub class (`scrub`)** — the 12 continuous-drag range sliders: `masterVolume`, `masterPreamp`, `inputPreamp:{ch}`, `crosspoint:{in}:{out}`, `outputGain:{slot}`, `loudnessRefSpl`, `loudnessIntensity`, `crossfeedFreq`, `crossfeedFeedDb`, `levellerAmount`, `levellerMaxGain`, `levellerGate`. The helper mutates the mirror immediately (drag feel), then schedules a coalesced send on a per-key 16 ms latest-wins lane. On **success it does not resync** — the optimistic mutate already left the mirror at the value we sent; it only requests a background reconcile (see below). On **failure** it runs `forceResyncNow` to recover ground truth. Crosspoint writes read the full `{ enabled, invert, gainDb }` tuple at fire time, so a toggle and a gain drag on the same cell coalesce into one consistent write.
+**Scrub class (`scrub`)** — the 12 continuous-drag range sliders: `masterVolume`, `masterPreamp`, `inputPreamp:{ch}`, `crosspoint:{in}:{out}`, `outputGain:{slot}`, `loudnessRefSpl`, `loudnessIntensity`, `crossfeedFreq`, `crossfeedFeedDb`, `levellerAmount`, `levellerMaxGain`, `levellerGate`. The helper mutates the mirror immediately (drag feel), then schedules a coalesced send on a per-key 16 ms latest-wins lane. On **success it does not resync** — the optimistic mutate already left the mirror at the value we sent; it only requests a (non-eager) background reconcile (see below). On **failure** it calls `mirror.requestReconcile(true)`, the same eager-recovery path as `write()`. Crosspoint writes read the full `{ enabled, invert, gainDb }` tuple at fire time, so a toggle and a gain drag on the same cell coalesce into one consistent write.
 
 **Checked class (`writeChecked`)** — the output pin / I2S config verbs (`setOutputDataPin`, `setOutputType`, `setI2sBckPin`, `setMckEnabled`, `setMckPin`, `setMckMultiplier`), whose device methods return a typed `Result<void, PinConfigResult>` rather than a bare ack. Same machinery as `write()` (per-session alive guard, inflight registry), but the device can **decline** a valid-looking command (pin in use, output active): a non-ok `Result` becomes a warn toast carrying the device's own message, the mirror is left untouched, and there is **no resync and no status flip** — a single rejected command is local, not a connection error. On ok it patches the mirror with the requested value (no readback). An actual throw (transport/bug) is an error toast, still local. The verbs are fire-and-forget `void`: success and failure both reach the user via the toast channel, so callers never await a `Result`.
 
@@ -73,26 +73,44 @@ All three lanes request a background reconcile on success and never re-fetch inl
 
 ## Read And Resync Paths
 
-`src/runtime/resync.ts` has exactly two entry points:
+`src/runtime/resync.ts` has exactly one entry point left after the D3 recovery-stack
+consolidation:
 
-- `forceResyncNow(s)` — bulk re-fetch + **current-only** apply (`mirror.replaceCurrent`). Failure recovery only (`write()`/`scrub()` throw paths). Current-only so the preset-dirty diff measured against the baseline does not drift on every resync.
 - `fetchAndApplyAsBaseline(s)` — bulk re-fetch + **atomic baseline** apply (`mirror.init`). Preset Load / Paste / Revert, where there is no meaningful dirty state; the atomic apply avoids the microtask window where `current` and baseline disagree and observers see a spurious dirty flip.
 
-Both take the session explicitly rather than resolving an active-device global. Initial connection calls `wireUpConnection(device)` -> `syncDeviceSnapshot(session)` -> `getSnapshot()` -> `mirror.init(snap)`, then starts polling and registers `cancelAllWrites` as a scope disposer. These whole-device service functions (`wireUpConnection`, `syncDeviceSnapshot`, `reconcileAfterSync`, `attachTransportListeners`, `factoryResetDevice`) live in `src/runtime/deviceService.ts` (renamed from `actionsDevice.ts`), split out from the per-parameter verbs in `actions.ts`, and each acts on the session it is given.
+There used to be a second entry point, `forceResyncNow` — a forced bulk re-fetch used by every failure-recovery path (write/scrub throw, probe recovery). It's gone: those paths now call `mirror.requestReconcile(true)` and heal through the same background param cadence that every other reconcile source uses (below), rather than firing an ad-hoc fetch of their own. This collapses "how does the mirror recover from drift" to a single mechanism regardless of the trigger (a failed write, a missed notify, a probe-verified recovery, or nothing at all — see the safety net).
+
+Initial connection calls `wireUpConnection(device)` -> `syncDeviceSnapshot(session)` -> `getSnapshot()` -> `mirror.init(snap)`, then starts polling and registers `cancelAllWrites` as a scope disposer. These whole-device service functions (`wireUpConnection`, `syncDeviceSnapshot`, `reconcileAfterSync`, `attachTransportListeners`, `factoryResetDevice`) live in `src/runtime/deviceService.ts` (renamed from `actionsDevice.ts`), split out from the per-parameter verbs in `actions.ts`, and each acts on the session it is given.
 
 ### Background param reconcile
 
-A successful write/scrub does **not** re-fetch inline. Instead it sets a reconcile flag (`requestReconcile` in `src/state/mirror.svelte.ts`), and a dedicated `param` cadence in `src/runtime/poll.ts` performs the bulk re-fetch (`getSnapshot` → `mirror.replaceCurrent`, baseline pinned) when it is eligible. Eligibility (`shouldRunParam`) requires all of:
+A successful write/scrub does **not** re-fetch inline. Instead it sets a reconcile flag (`requestReconcile` in `src/state/mirror.svelte.ts`), and a dedicated `param` cadence in `src/runtime/poll.ts` performs the bulk re-fetch (`getSnapshot` → `mirror.replaceCurrent`, baseline pinned) when it is eligible. Eligibility (`shouldRunParam`) requires:
 
 - **idle** — `session.writes.busy` is false. This is exact, not a heuristic: every device control-transfer send funnels through the session's `CommandQueue`, so a fetch can never interleave with a write that was already registered when the fetch was enqueued. There is no quiet-window timer.
-- **pending** — a reconcile was requested since the last run (peeked, not consumed, so a skipped tick stays pending).
-- **due** — either the request was **eager**, or the floor interval (`PARAM_INTERVAL_MS`, 3 s) has elapsed (the first reconcile of a session, `lastParamMs === 0`, is always due).
+- **not mid preset-op** — `mirror.presetGuardActive(now)` is false. A preset transition already re-syncs itself via `fetchAndApplyAsBaseline`; without this gate the cadence could land a redundant fetch inside that window.
+- then either:
+  - **pending + due** — a reconcile was requested since the last run (peeked, not consumed, so a skipped tick stays pending), and either the request was **eager** or the floor interval (`PARAM_INTERVAL_MS`, 3 s) has elapsed (the first reconcile of a session, `lastParamMs === 0`, is always due); or
+  - **the safety net** — nothing is pending, but the unconditional floor (`PARAM_SAFETY_NET_MS`, 10 s) has elapsed since the last param fetch.
 
-`pollParam` fetches through the queue, then re-checks `writes.busy` **after** the `getSnapshot` await: a scrub mutates the mirror optimistically at schedule time, before its send is even queued, so a drag that starts after the fetch was enqueued can still race ahead of the snapshot landing. If busy flipped true during the fetch, the snapshot is discarded rather than clobbering that optimistic value, and the request is left pending. The request is `consumeReconcile`'d only on a successful, still-valid apply — a fetch failure or a newly-busy session keeps it pending for the next eligible tick.
+The safety net exists because notify is the primary sync trigger but not a complete one: firmware 1.1.4 has verified coverage holes — the UAC1 OS volume slider does not emit `PARAM_CHANGED` (`audio_set_volume` skips `param_write`), and GPIO sources aren't implemented yet. Without an unconditional floor, drift from those sources would never reconcile until the next write, notify event, or visibility-resume. This floor must not be removed just because notify coverage improves elsewhere, without re-checking those two holes specifically.
 
-Writes always request a non-eager reconcile, so drift from a write/scrub self-corrects on the ~3 s floor cadence. Eager requests come from outside the write path: `src/runtime/notifyChannel.ts` (a missed sequence number, a param-change apply miss, or an explicit resync-needed event) and the visibility-resume repaint in `poll.ts`, both of which want truth at the next idle tick rather than waiting out the floor.
+`pollParam` fetches through the queue, then re-checks `writes.busy` **after** the `getSnapshot` await: a scrub mutates the mirror optimistically at schedule time, before its send is even queued, so a drag that starts after the fetch was enqueued can still race ahead of the snapshot landing. If busy flipped true during the fetch, the snapshot is discarded rather than clobbering that optimistic value, and the request is left pending. The request is `consumeReconcile`'d unconditionally after a successful, still-valid apply — a fetch failure or a newly-busy session keeps it pending for the next eligible tick; consuming when nothing was pending (the safety net's own case) is a harmless no-op, since it only resets two flags that are already false.
+
+Writes request a non-eager reconcile on success, so drift from a successful write/scrub self-corrects on the ~3 s floor cadence. A **failed** write/scrub requests an **eager** reconcile instead (unless the link is `degraded` — see Link Health, below), so failure recovery heals on the cadence's very next tick rather than waiting out the floor. Other eager requests come from `src/runtime/notifyChannel.ts` (a missed sequence number, a param-change apply miss, or an explicit resync-needed event), the visibility-resume repaint in `poll.ts`, and probe-verified link recovery (below) — all of which want truth at the next idle tick rather than waiting out the floor.
 
 Telemetry cadences (status/buffer/info) in `src/runtime/poll.ts` are independent of parameter writes; the `param` cadence is the one that observes them (via the reconcile flag).
+
+### Link Health And Probe Recovery
+
+`src/state/linkHealth.svelte.ts` (`LinkHealth`, one per session) is the single authority for the reactive `degraded` flag TopBar reads. It is consecutive-failure-only: every lane and poll reports thrown transfer failures (`noteFail`) and successes (`noteOk`) to it; typed device declines (non-ok `Result`s) never reach it, since those are the device working correctly, not a link problem.
+
+- `noteFail` increments a consecutive-failure streak (and `failTotal`, and the last-error fields for the UI); 3 consecutive thrown failures (`K_CONSECUTIVE`) flips `degraded` true.
+- `noteOk` resets the streak to 0 but does **not** clear `degraded`. With the serial `CommandQueue`, failures arrive one at a time rather than in a simultaneous burst, so a link that intermittently succeeds mid-outage must not flap back out of `degraded` and re-enable per-failure toasts and reconcile requests. `noteRecovered` (below) is the only thing that clears it.
+- `noteRecovered` clears `degraded` and the streak immediately. Only `src/runtime/linkProbe.ts`'s recovery probe calls it.
+
+While `degraded`, `write()`/`scrub()`/`command()` failures still update health but skip the toast and the reconcile request — the probe owns recovery, so per-failure noise would just pile up behind a link that's already known to be down.
+
+`startLinkProbe` (`src/runtime/linkProbe.ts`) is the recovery loop: idle while healthy, and once `degraded`, it issues the cheapest read (`getBypass`, priority-queued so it doesn't wait behind other traffic) once a second. A success calls `noteRecovered()` and `mirror.requestReconcile(true)` — repainting truth via the param cadence's next tick rather than an ad-hoc fetch, the same single reconcile mechanism every other recovery source uses. Persistent failure (`PROBE_FAILS_TO_KILL`, 5 consecutive probe failures — roughly 5-10 s of a 2 s control-transfer timeout each) tears the session down through the same path a USB unplug takes.
 
 ## Connection Lifecycle
 
@@ -119,7 +137,7 @@ Paste copies a source slot's content into the active slot and commits it immedia
 
 - **Scrub lanes are per key.** A global lane would drop edits when moving quickly between adjacent mixer cells.
 - **Per-session `alive` guard** lives inside `write()`, `scrub()`, and `writeChecked()` (and the shared `command` substrate). The session captured at call time is re-checked (`s.alive`) before any mirror mutation or recovery resync, so a stale settle from a disposed connection cannot corrupt a newly-connected one (always a fresh `ReadySession`). This is the single most bug-prone piece; it is covered in tests.
-- **EQ band edits mutate optimistically.** `setEqFilter` writes the clamped value into the mirror before calling `write()` (with an empty success mutate), so the EQ curve tracks a node drag without waiting for the ack. On failure the trailing `forceResyncNow` from `write()` corrects it. This is a deliberate exception to the direct-class "await-then-mutate" rule, made for drag responsiveness.
+- **EQ band edits mutate optimistically.** `setEqFilter` writes the clamped value into the mirror before calling `write()` (with an empty success mutate), so the EQ curve tracks a node drag without waiting for the ack. On failure the eager reconcile request from `write()` corrects it on the param cadence's next tick. This is a deliberate exception to the direct-class "await-then-mutate" rule, made for drag responsiveness.
 - **No write path resyncs inline on success.** Both direct and scrub writes leave the mirror at the value they sent and request a background reconcile instead (see Background param reconcile). A UI/firmware clamp mismatch persists only until the next eligible param poll (≤ ~3 s on the floor cadence, or the next idle tick if the notify channel or visibility-resume flagged an eager reconcile in the meantime). Values are clamped at the action boundary via `src/domain/clamp.ts`, the single authoritative host-side gate (including the `copyEqBands` path). Channel/preset names are truncated to their UTF-8 byte budget at the same boundary.
 - **The param reconcile is gated on `writes.busy`, exactly — no quiet window.** `shouldRunParam` returns false while `session.writes.busy` is true. This replaced an inflight-plus-quiet-window heuristic: the `CommandQueue` (`src/runtime/commandQueue.ts`) now serializes every device control-transfer send, so a fetch can never interleave with an already-registered write, and there is nothing left to approximate with a timer. `pollParam` additionally re-checks `writes.busy` after its `getSnapshot` await and discards the snapshot if a scrub's optimistic mutate raced ahead of the fetch. Both are covered in `poll.test.ts`.
 - **Mutating preset verbs return a typed `Result`**; the error banner is recorded via `presets.lastActionError`, dismissed only through `dismissPresetActionError()`. Components never write preset store state directly. Boolean device flags use explicit `setX(enabled)` verbs, not `toggleX()`.
@@ -140,7 +158,9 @@ Paste copies a source slot's content into the active slot and commits it immedia
 | Serial per-session command queue | `src/runtime/commandQueue.ts` |
 | Resync helpers | `src/runtime/resync.ts` |
 | DSP state mirror + reconcile signal | `src/state/mirror.svelte.ts` |
-| Telemetry + param reconcile poll | `src/runtime/poll.ts` |
+| Telemetry + param reconcile poll (incl. safety net) | `src/runtime/poll.ts` |
+| Link health policy (degraded flag) | `src/state/linkHealth.svelte.ts` |
+| Link probe / recovery loop | `src/runtime/linkProbe.ts` |
 | Preset state + dirty diff | `src/state/presets.svelte.ts` |
 | Device wire API (granular + bulk) | `src/device/DspDevice.ts` |
 | Snapshot decode (wire -> domain) | `src/protocol/snapshotCodec.ts` |

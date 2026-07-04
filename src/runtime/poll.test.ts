@@ -254,6 +254,92 @@ describe('param reconcile cadence', () => {
     expect(mir.peekReconcile().wanted).toBe(true);   // not consumed on failure
     stop();
   });
+
+  it('stands down while degraded — a pending eager request must not hammer a dead link', async () => {
+    const { device, calls } = paramDevice();
+    const session = connect(device);
+    const mir = session.mirror;
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+
+    mir.requestReconcile(true);
+    session.health.noteFail('write', new Error('x'));
+    session.health.noteFail('write', new Error('x'));
+    session.health.noteFail('write', new Error('x'));   // 3rd consecutive → degraded
+    expect(session.health.degraded).toBe(true);
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(0);                     // probe owns recovery
+
+    session.health.noteRecovered();                     // probe-verified recovery
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(1);                     // pending eager runs again
+    stop();
+  });
+});
+
+// Unconditional safety-net floor, independent of any pending reconcile
+// request: heals drift from firmware sources that never notify (UAC1 OS
+// volume) or request a reconcile (nothing today asks for it but the value
+// still moved on the device). Seeding tele.lastParamMs relative to the
+// current performance.now() keeps these deterministic instead of depending on
+// how much real wall-clock time the test process has already burned.
+describe('param safety net', () => {
+  afterEach(() => { teardown(); });
+
+  it('fires once PARAM_SAFETY_NET_MS has elapsed with nothing pending', async () => {
+    const { device, calls } = paramDevice();
+    const session = connect(device);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    session.telemetry.lastParamMs = performance.now() - 10_000;
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(1);
+    stop();
+  });
+
+  it('does not fire before PARAM_SAFETY_NET_MS has elapsed', async () => {
+    const { device, calls } = paramDevice();
+    const session = connect(device);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    session.telemetry.lastParamMs = performance.now() - 1_000;
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(0);
+    stop();
+  });
+
+  it('is skipped while a preset-op guard is active', async () => {
+    const { device, calls } = paramDevice();
+    const session = connect(device);
+    const mir = session.mirror;
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    session.telemetry.lastParamMs = performance.now() - 20_000;
+    mir.beginPresetGuard();
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(0);
+    mir.endPresetGuard(0);
+    stop();
+  });
+
+  it('is skipped while writes.busy', async () => {
+    const { device, calls } = paramDevice();
+    const session = connect(device);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    session.telemetry.lastParamMs = performance.now() - 20_000;
+    session.writes.claim();
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(0);
+    session.writes.release();
+    stop();
+  });
 });
 
 describe('S/PDIF RX status cadence', () => {
