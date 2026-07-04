@@ -21,9 +21,9 @@ export interface ReadySession {
   readonly device: DspDevice;
   readonly info: DspDeviceInfo;
   readonly hardware: HardwareProfile;
-  // Attempt token of the connection that created this session; stamps
-  // session-scoped events so dispatch can drop them once superseded.
-  readonly attempt: number;
+  // The owning connection's abort signal. `alive` is a getter over it, so
+  // there is exactly one source of truth for "is this connection still live".
+  readonly signal: AbortSignal;
   // Preset clipboard, owned by this device session. Content is snapshotted at
   // copy time (the copy precondition guarantees RAM == flash[slot] just then),
   // so the held blob is immutable: later edits, preset switches, or source
@@ -39,7 +39,7 @@ export interface ReadySession {
   // snapshot fetch can never interleave with a write mid-flight.
   readonly queue: CommandQueue;
   // Lifecycle guard: a write that settles after dispose() is dropped.
-  alive: boolean;
+  readonly alive: boolean;
   dispose(): void;
 }
 
@@ -54,10 +54,10 @@ export type AppState =
   | { kind: 'errored'; message: string; errorKind: SessionErrorKind };
 
 export type AppEvent =
-  | { t: 'requested';    attempt?: number }
-  | { t: 'synced';       session: ReadySession; attempt?: number }
-  | { t: 'failed';       message: string; errorKind?: SessionErrorKind; attempt?: number }
-  | { t: 'disconnected'; attempt?: number };
+  | { t: 'requested' }
+  | { t: 'synced';       session: ReadySession }
+  | { t: 'failed';       message: string; errorKind?: SessionErrorKind }
+  | { t: 'disconnected' };
 
 // Next state is determined by the event alone; the current state is not
 // consulted (no legal-transition guard).
@@ -99,21 +99,12 @@ export function activeSession(): ReadySession | null {
   return _app.kind === 'ready' ? _app.session : null;
 }
 
-// Attempt provenance: connection attempts mint a token (via ConnectionScope);
-// session-scoped events carry it, and dispatch drops events from a superseded
-// attempt so a late failure/disconnect can't clobber a newer connection's state.
-// `attempt: undefined` = unscoped (global user intent or a forced transition).
-let _attemptCounter = 0;
-let _currentAttempt: number | null = null;
-
-export function newAttempt(): number {
-  _currentAttempt = ++_attemptCounter;
-  return _currentAttempt;
-}
-export function clearAttempt(): void { _currentAttempt = null; }
-export function currentAttempt(): number | null { return _currentAttempt; }
-
+// Provenance is structural, not stamped: a superseded connection's
+// AbortController was aborted, which tears down its transport listeners and
+// session before any of its dispatch sites can fire. What used to be an
+// attempt-token check at dispatch time is now a `signal.aborted` check at
+// each call site in deviceService/boot/linkProbe -- dispatch itself no longer
+// filters anything.
 export function dispatch(event: AppEvent): void {
-  if (event.attempt !== undefined && event.attempt !== _currentAttempt) return;
   _app = transition(_app, event);
 }

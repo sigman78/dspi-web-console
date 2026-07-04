@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { startLinkProbe } from './linkProbe';
+import { beginConnection } from './connectionScope';
 import { dispatch, makeReadySession, connection, type ReadySession } from '@/state';
 import type { LoopClock } from '@/utils';
 
@@ -21,8 +22,13 @@ function manualClock(): LoopClock & { step(): void; armed(): boolean } {
   };
 }
 
+// Wires the session to the connection's controller, matching production
+// (wireUpConnection passes the same controller into makeReadySession) --
+// killSession's endConnection() only tears the session down if they share
+// a controller.
 function installSession(device: unknown): ReadySession {
-  const s = makeReadySession(device as never);
+  const controller = beginConnection();
+  const s = makeReadySession(device as never, controller);
   dispatch({ t: 'synced', session: s });
   return s;
 }

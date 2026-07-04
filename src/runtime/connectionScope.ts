@@ -1,40 +1,24 @@
-import { newAttempt, clearAttempt } from '@/state';
-import { Log } from '@/utils';
+// One AbortController per connection. Aborting it is the single teardown
+// signal for everything that connection started: transport listeners, the
+// device lock, poll/notify/probe loops, and the session itself (makeSession
+// registers its own abort listener). Resources register their own cleanup
+// via `signal.addEventListener('abort', ...)` at the point they're created,
+// so there is no separate disposer registry to keep in sync.
+let active: AbortController | null = null;
 
-type Disposer = () => void;
-
-// Owns the teardown of resources started for one device connection (poll loop,
-// resync timer, command lanes, transport listeners). The app holds one device
-// at a time, so there is a single module-level active scope. Each scope carries
-// the attempt token that scopes this connection's app events.
-export class ConnectionScope {
-  readonly attempt = newAttempt();
-  #disposers: Disposer[] = [];
-  add(d: Disposer): void { this.#disposers.push(d); }
-  // LIFO, idempotent, error-isolating: one failing disposer must not strand the rest.
-  dispose(): void {
-    while (this.#disposers.length) {
-      const d = this.#disposers.pop()!;
-      try { d(); } catch (e) { Log.error('scope', 'disposer failed', e); }
-    }
-  }
-}
-
-let active: ConnectionScope | null = null;
-
-// Open a fresh scope, disposing any prior one.
-export function beginConnection(): ConnectionScope {
-  active?.dispose();
-  active = new ConnectionScope();
+// Abort any prior connection and open a fresh lifecycle scope.
+export function beginConnection(): AbortController {
+  active?.abort();
+  active = new AbortController();
   return active;
 }
 
-// Test-only accessor; production reaches the scope via beginConnection()'s return value.
-export function connectionScope(): ConnectionScope | null { return active; }
+// Test-only accessor; production reaches the signal via beginConnection()'s
+// returned controller.
+export function connectionSignal(): AbortSignal | null { return active?.signal ?? null; }
 
-// Dispose and clear the active scope. Idempotent.
+// Abort and clear the active connection. Idempotent.
 export function endConnection(): void {
-  active?.dispose();
+  active?.abort();
   active = null;
-  clearAttempt();
 }

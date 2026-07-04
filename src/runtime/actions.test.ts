@@ -24,7 +24,7 @@ import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { deriveCapabilities } from '@/protocol/capabilities';
 
 import { flushAllWrites as flushAllWritesFor } from './writes.svelte';
-import { beginConnection, connectionScope, endConnection } from './connectionScope';
+import { beginConnection, endConnection } from './connectionScope';
 
 // Test wrappers: the write lanes are now session-scoped, but these cleanup/flush
 // call sites always target whatever session is active. Resolve it here so the
@@ -147,16 +147,17 @@ describe('actions wiring', () => {
 
   it('disconnect cancels pending coalescer + resync and resets state', async () => {
     const { device, calls } = makeFakeDevice();
-    dispatch({ t: 'synced', session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: 0 }))));
     const transport = new FakeTransport();
-    // Mirror production wiring: the connection scope owns the transport
-    // listeners and the command-cancel disposer (registered in
-    // wireUpConnection). endConnection() — fired by the disconnect handler —
-    // disposes them, which is what drops the pending coalescer write.
-    beginConnection();
-    connectionScope()!.add(attachTransportListeners(transport, device));
-    connectionScope()!.add(() => cancelWrites());
+    // Mirror production wiring: the session shares the connection's
+    // controller (as wireUpConnection does), and the transport-disconnect
+    // listener is registered on that same signal (as attachTransportListeners
+    // is in createBoundDevice). endConnection() -- fired by the disconnect
+    // handler -- aborts both the listener and the session's write lanes in
+    // one shot, which is what drops the pending coalescer write.
+    const controller = beginConnection();
+    dispatch({ t: 'synced', session: makeReadySession(device, controller) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: 0 }))));
+    controller.signal.addEventListener('abort', attachTransportListeners(transport, device), { once: true });
 
     setMasterVolume(activeSession()!, -9);    // sends immediately
     setMasterVolume(activeSession()!, -6);    // parks behind the in-flight send
