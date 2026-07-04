@@ -20,7 +20,7 @@ const TEST_SLOT_B = 9;
 const FLASH_SETTLE_MS = 100;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-describe('DspDevice — presets (HIL)', () => {
+describe.skipIf(!process.env.HIL_DESTRUCTIVE)('DspDevice — presets (HIL)', () => {
   let device: DspDevice;
   let close: () => Promise<void>;
 
