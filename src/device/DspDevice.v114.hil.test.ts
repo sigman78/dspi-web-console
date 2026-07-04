@@ -60,25 +60,6 @@ describe('DspDevice — 1.1.4 surface roundtrips (HIL)', () => {
     );
   });
 
-  it('preset save/load does NOT round-trip the user-volume axis (device-global)', async () => {
-    // The console classes userVolume as runtime-status (never preset-dirty);
-    // this pins the firmware behavior that justifies it.
-    await withSavedField(
-      () => device.getUserVolume(),
-      (db) => device.setUserVolume(db),
-      async () => {
-        const dir = await device.getPresetDirectory();
-        const active = await device.getActivePreset();
-        if (active == null || !dir.occupiedSlotsSet.has(active)) return; // need a saved active slot
-        await device.setUserVolume(-7.5);
-        const r = await device.loadPreset(active);
-        expect(r.ok).toBe(true);
-        await settle();
-        expect(await device.getUserVolume()).toBeCloseTo(-7.5, F32_TOL);
-      },
-    );
-  });
-
   it('per-band bypass: write→getBandBypass + bulk filter bypass byte cross-check', async () => {
     const channel = 0 as ChannelId;
     const band = 0;

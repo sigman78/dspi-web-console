@@ -7,7 +7,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DspDevice } from './DspDevice';
-import { openSingleDevice } from '@test/hil/setup';
+import { openSingleDevice, withSavedField } from '@test/hil/setup';
 import { PresetStartupMode } from '@/protocol';
 import { OutputConfigMode } from '@/domain';
 
@@ -66,6 +66,31 @@ describe.skipIf(!process.env.HIL_DESTRUCTIVE)('DspDevice — presets (HIL)', () 
     const load = await device.loadPreset(TEST_SLOT_A);
     expect(load.ok).toBe(true);
     await sleep(FLASH_SETTLE_MS);
+  });
+
+  it('preset save/load round-trips the user-volume axis (integer-quantized)', async () => {
+    // Bench-verified 2026-07-03 on fw 1.1.4: save captures the live user
+    // volume into the preset and load applies it back, quantized to whole
+    // dB (-7.5 saves/loads as -8; -3 comes back exactly). The live axis
+    // itself holds fractional dB fine -- the quantization is in the
+    // preset image.
+    await withSavedField(
+      () => device.getUserVolume(),
+      (db) => device.setUserVolume(db),
+      async () => {
+        await device.setUserVolume(-7.5);
+        const save = await device.savePreset(TEST_SLOT_A);
+        expect(save.ok).toBe(true);
+        await sleep(FLASH_SETTLE_MS);
+
+        await device.setUserVolume(-20);
+        const load = await device.loadPreset(TEST_SLOT_A);
+        expect(load.ok).toBe(true);
+        await sleep(FLASH_SETTLE_MS);
+
+        expect(await device.getUserVolume()).toBeCloseTo(-8, 3);
+      },
+    );
   });
 
   it('load on empty slot succeeds (firmware applies factory defaults)', async () => {
