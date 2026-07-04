@@ -148,16 +148,16 @@ describe('actions wiring', () => {
   it('disconnect cancels pending coalescer + resync and resets state', async () => {
     const { device, calls } = makeFakeDevice();
     const transport = new FakeTransport();
-    // Mirror production wiring: the session shares the connection's
-    // controller (as wireUpConnection does), and the transport-disconnect
-    // listener is registered on that same signal (as attachTransportListeners
-    // is in createBoundDevice). endConnection() -- fired by the disconnect
-    // handler -- aborts both the listener and the session's write lanes in
-    // one shot, which is what drops the pending coalescer write.
-    const controller = beginConnection();
-    dispatch({ t: 'synced', session: makeReadySession(device, controller) });
+    // Mirror production wiring: the session shares the connection's scope (as
+    // wireUpConnection does), and the transport-disconnect listener is
+    // registered on that same scope (as attachTransportListeners is in
+    // createBoundDevice). endConnection() -- fired by the disconnect handler
+    // -- aborts both the listener and the session's write lanes in one shot,
+    // which is what drops the pending coalescer write.
+    const scope = beginConnection();
+    dispatch({ t: 'synced', session: makeReadySession(device, scope) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: 0 }))));
-    controller.signal.addEventListener('abort', attachTransportListeners(transport, device), { once: true });
+    scope.onTeardown(attachTransportListeners(transport, device));
 
     setMasterVolume(activeSession()!, -9);    // sends immediately
     setMasterVolume(activeSession()!, -6);    // parks behind the in-flight send

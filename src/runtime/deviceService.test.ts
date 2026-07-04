@@ -4,10 +4,10 @@ import { wireUpConnection } from './deviceService';
 import { beginConnection, endConnection } from './connectionScope';
 import { connection, dispatch, activeSession } from '@/state';
 
-// Exercises the controller-guarded invariant that replaced the old
-// attempt-token dispatch filter: a connection superseded mid-flight (its
-// controller aborted by a newer beginConnection()) must not have its
-// eventual settle -- success or failure -- change app state.
+// Exercises the scope-guarded invariant that replaced the old attempt-token
+// dispatch filter: a connection superseded mid-flight (its scope aborted by
+// a newer beginConnection()) must not have its eventual settle -- success or
+// failure -- change app state.
 
 function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
   let resolve!: (v: T) => void;
@@ -31,7 +31,7 @@ describe('wireUpConnection — superseded-attempt guards', () => {
 
     expect(connection.phase).toBe('connecting');   // stale's own `requested` landed
     beginConnection();                             // a newer attempt supersedes it
-    expect(stale.signal.aborted).toBe(true);
+    expect(stale.aborted).toBe(true);
 
     snap.resolve({});                              // stale attempt's fetch finally settles
     await pending;
@@ -53,8 +53,8 @@ describe('wireUpConnection — superseded-attempt guards', () => {
   });
 
   it('a non-superseded connect still dispatches failed on snapshot error', async () => {
-    const controller = beginConnection();
-    const pending = wireUpConnection(stubDevice(() => Promise.reject(new Error('boom'))), controller);
+    const scope = beginConnection();
+    const pending = wireUpConnection(stubDevice(() => Promise.reject(new Error('boom'))), scope);
 
     await expect(pending).rejects.toThrow('boom');
     expect(connection.phase).toBe('errored');

@@ -100,9 +100,9 @@ export function activeSession(): ReadySession | null {
 }
 
 // Provenance is structural, not stamped: a superseded connection's
-// AbortController was aborted, which tears down its transport listeners and
+// ConnectionScope was aborted, which tears down its transport listeners and
 // session before any of its dispatch sites can fire. What used to be an
-// attempt-token check at dispatch time is now a `signal.aborted` check at
+// attempt-token check at dispatch time is now a `scope.aborted` check at
 // each call site in deviceService/boot/linkProbe -- dispatch itself no longer
 // filters anything.
 export function dispatch(event: AppEvent): void {

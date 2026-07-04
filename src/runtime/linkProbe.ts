@@ -53,7 +53,7 @@ export function startLinkProbe(s: ReadySession, clock: LoopClock = timerClock(PR
 // dispose() call here. The trailing failed dispatch is deliberately
 // unconditional -- unlike the guarded dispatches elsewhere, this is a forced
 // transition that must land in 'errored' regardless of the (already-aborted)
-// controller, so the user sees why the session ended.
+// scope, so the user sees why the session ended.
 async function killSession(s: ReadySession, err: unknown): Promise<void> {
   const msg = err instanceof Error ? err.message : String(err);
   Log.error('health', 'link dead; tearing down session', err);

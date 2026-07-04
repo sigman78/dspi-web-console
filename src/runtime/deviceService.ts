@@ -16,7 +16,7 @@ import { flushAllWrites } from './writes.svelte';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
 import { startLinkProbe } from './linkProbe';
-import { endConnection } from './connectionScope';
+import { endConnection, type ConnectionScope } from './connectionScope';
 import { acquireDeviceLock, releaseDeviceLock } from './deviceLock';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
@@ -40,36 +40,37 @@ export async function syncDeviceSnapshot(s: ReadySession): Promise<void> {
   return inflightSync;
 }
 
-export async function wireUpConnection(device: DspDevice, controller?: AbortController): Promise<void> {
-  if (controller?.signal.aborted) return;   // superseded before this attempt started
+export async function wireUpConnection(device: DspDevice, scope?: ConnectionScope): Promise<void> {
+  if (scope?.aborted) return;   // superseded before this attempt started
   dispatch({ t: 'requested' });
   try {
     const snap = await device.getSnapshot();
-    // A newer connection may have begun (and aborted this controller) while
+    // A newer connection may have begun (and aborted this scope) while
     // getSnapshot() was in flight. Bail without dispatching `synced` or
     // registering this attempt's resources: they'd never be torn down (the
     // abort that would trigger it already fired) and would leak.
-    if (controller?.signal.aborted) {
+    if (scope?.aborted) {
       Log.warn('sync', 'wireUpConnection: superseded connection finished snapshotting; discarding');
       return;
     }
-    const session = makeReadySession(device, controller);
+    const session = makeReadySession(device, scope);
     dispatch({ t: 'synced', session });
     session.mirror.init(snap);
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync(session);
-    // Re-check after the await: an abort-listener registered on an
-    // already-aborted signal never fires, so registering below would strand
-    // the loops and the device lock with no teardown path.
-    if (controller?.signal.aborted) return;
-    // Tests may call without a controller. Resources register their own
-    // abort cleanup directly on the signal rather than through a registry.
-    if (controller) {
-      controller.signal.addEventListener('abort', startPolling(session), { once: true });
-      controller.signal.addEventListener('abort', startNotifyChannel(session), { once: true });
-      controller.signal.addEventListener('abort', startLinkProbe(session), { once: true });
+    // Re-check after the await: onTeardown self-heals against an
+    // already-aborted scope (it fires immediately instead of stranding the
+    // resource), so this guard isn't for correctness -- it's to avoid
+    // starting the loops and lock only to have them stop on the next tick.
+    if (scope?.aborted) return;
+    // Tests may call without a scope. Resources register their own abort
+    // cleanup directly on the scope rather than through a registry.
+    if (scope) {
+      scope.onTeardown(startPolling(session));
+      scope.onTeardown(startNotifyChannel(session));
+      scope.onTeardown(startLinkProbe(session));
       acquireDeviceLock();
-      controller.signal.addEventListener('abort', () => releaseDeviceLock(), { once: true });
+      scope.onTeardown(() => releaseDeviceLock());
     }
     await fetchPresetInfo(session);
     Log.info('sync', 'connected', {
@@ -81,7 +82,7 @@ export async function wireUpConnection(device: DspDevice, controller?: AbortCont
     Log.error('sync', 'wireUpConnection failed', err);
     // A stale failure from a superseded attempt must not clobber whatever the
     // newer connection has already put in app state.
-    if (!controller?.signal.aborted) dispatch({ t: 'failed', message: errMessage(err) });
+    if (!scope?.aborted) dispatch({ t: 'failed', message: errMessage(err) });
     throw err;
   }
 }

@@ -7,16 +7,17 @@ import { LinkHealth } from './linkHealth.svelte';
 import { WriteCoordinator } from '@/runtime/writes.svelte';
 import { NotifyWaiters } from '@/runtime/notifyWaiters';
 import { CommandQueue } from '@/runtime/commandQueue';
+import { ConnectionScope } from '@/runtime/connectionScope';
 
 // Assembles a per-device session from its constituent stores. Kept apart from
 // appState, which references these store classes type-only to avoid an import cycle.
 //
-// Takes the owning connection's controller (not its signal) so dispose() can
-// abort it directly -- a session built for production always shares its
-// connection's controller; a session built bare for a test gets a private
-// one, and dispose() still works the same way either way.
-export function makeReadySession(device: DspDevice, controller: AbortController = new AbortController()): ReadySession {
-  const signal = controller.signal;
+// Takes the owning connection's scope (not its signal) so dispose() can abort
+// it directly -- a session built for production always shares its
+// connection's scope; a session built bare for a test gets a private one,
+// and dispose() still works the same way either way.
+export function makeReadySession(device: DspDevice, scope: ConnectionScope = new ConnectionScope()): ReadySession {
+  const signal = scope.signal;
   const copySource = $state<{ held: PresetClipboard | null }>({ held: null });
   const telemetry = new StatusStore();
   const presets = createPresetsState();
@@ -27,16 +28,16 @@ export function makeReadySession(device: DspDevice, controller: AbortController 
   const queue = new CommandQueue();
   // Single teardown hook, registered once: abort is the only way alive flips
   // false, so this is the only place session resources get released.
-  signal.addEventListener('abort', () => {
+  scope.onTeardown(() => {
     writes.cancel();
     queue.dispose();
     notifyWaiters.cancelAll();
-  }, { once: true });
+  });
   const session: ReadySession = {
     device, info: device.info, hardware: device.hardware, signal,
     copySource, telemetry, presets, mirror, health, writes, notifyWaiters, queue,
-    get alive() { return !signal.aborted; },
-    dispose() { controller.abort(); },
+    get alive() { return !scope.aborted; },
+    dispose() { scope.abort(); },
   };
   return session;
 }

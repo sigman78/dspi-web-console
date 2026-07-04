@@ -20,13 +20,13 @@ function manualClock(): LoopClock & { step(): void; armed(): boolean } {
   };
 }
 
-// Wires the session to the connection's controller, matching production
-// (wireUpConnection passes the same controller into makeReadySession) --
+// Wires the session to the connection's scope, matching production
+// (wireUpConnection passes the same scope into makeReadySession) --
 // killSession's endConnection() only tears the session down if they share
-// a controller.
+// a scope.
 function installSession(device: unknown): ReadySession {
-  const controller = beginConnection();
-  const s = makeReadySession(device as never, controller);
+  const scope = beginConnection();
+  const s = makeReadySession(device as never, scope);
   dispatch({ t: 'synced', session: s });
   return s;
 }

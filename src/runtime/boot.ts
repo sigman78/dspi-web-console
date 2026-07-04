@@ -6,7 +6,7 @@ import { withTimeout } from '@/transport/withTimeout';
 import { withWireMonitor } from '@/transport/withWireMonitor';
 import { formatDeviceInfo, wireMonitorEnabled } from '@/protocol/wireMonitor';
 import { attachTransportListeners, wireUpConnection } from './deviceService';
-import { beginConnection, endConnection } from './connectionScope';
+import { beginConnection, endConnection, type ConnectionScope } from './connectionScope';
 import { isDeviceHeld } from './deviceLock';
 import { settings, dispatch, connection } from '@/state';
 import { Log, errMessage } from '@/utils';
@@ -34,7 +34,7 @@ export function reportConnectError(err: unknown): void {
 
 async function createBoundDevice(
   transport: DspTransport,
-  controller: AbortController,
+  scope: ConnectionScope,
   openTransport?: () => Promise<void>,
 ): Promise<DspDevice> {
   // Wrap with the timeout decorator before DspDevice so every ctrlIn/ctrlOut
@@ -46,7 +46,7 @@ async function createBoundDevice(
   const wrapped = withTimeout(monitored, { ctrlMs: CTRL_TIMEOUT_MS });
   try {
     const device = await DspDevice.create(wrapped, openTransport);
-    controller.signal.addEventListener('abort', attachTransportListeners(transport, device), { once: true });
+    scope.onTeardown(attachTransportListeners(transport, device));
     if (wireMonitorEnabled()) {
       // Connection banner (info level). A debug banner must never break a real
       // connection, so swallow any logging failure.
@@ -65,24 +65,23 @@ async function createBoundDevice(
   }
 }
 
-// Entry points own the connection: mint the controller, and on failure only
+// Entry points own the connection: mint the scope, and on failure only
 // report/endConnection if this attempt hasn't already been superseded by a
-// newer one. A newer beginConnection() call aborts this controller and
-// re-points the active connection at its own controller, so calling
-// endConnection() here in that case would tear down the newer connection
-// instead of this dead one.
+// newer one. A newer beginConnection() call aborts this scope and re-points
+// the active connection at its own scope, so calling endConnection() here in
+// that case would tear down the newer connection instead of this dead one.
 
 export async function connectRequested(): Promise<void> {
   if (connection.phase === 'connecting') return;
-  const controller = beginConnection();
+  const scope = beginConnection();
   try {
     dispatch({ t: 'requested' });
     const transport = new WebUsbTransport();
-    const device = await createBoundDevice(transport, controller, () => transport.requestAndOpen());
-    await wireUpConnection(device, controller);
+    const device = await createBoundDevice(transport, scope, () => transport.requestAndOpen());
+    await wireUpConnection(device, scope);
   } catch (err) {
     Log.error('connect', 'connect failed', err);
-    if (!controller.signal.aborted) {
+    if (!scope.aborted) {
       reportConnectError(err);
       endConnection();
     }
@@ -91,13 +90,13 @@ export async function connectRequested(): Promise<void> {
 }
 
 export async function bootMock(platform: 'rp2040' | 'rp2350', opts: { wireVersion?: number } = {}): Promise<void> {
-  const controller = beginConnection();
+  const scope = beginConnection();
   try {
     const transport = new MockTransport({ platform, ...opts });
-    const device = await createBoundDevice(transport, controller, undefined);
-    await wireUpConnection(device, controller);
+    const device = await createBoundDevice(transport, scope, undefined);
+    await wireUpConnection(device, scope);
   } catch (err) {
-    if (!controller.signal.aborted) {
+    if (!scope.aborted) {
       reportConnectError(err);
       endConnection();
     }
@@ -118,12 +117,12 @@ export async function bootReal(): Promise<void> {
       const transport = new WebUsbTransport();
       const ok = await transport.tryAutoConnect();
       if (!ok) return;
-      const controller = beginConnection();
+      const scope = beginConnection();
       try {
-        const device = await createBoundDevice(transport, controller, async () => {});
-        await wireUpConnection(device, controller);
+        const device = await createBoundDevice(transport, scope, async () => {});
+        await wireUpConnection(device, scope);
       } catch (err) {
-        if (!controller.signal.aborted) {
+        if (!scope.aborted) {
           reportConnectError(err);
           endConnection();
         }
