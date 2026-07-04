@@ -53,6 +53,11 @@
 
 * { box-sizing: border-box; }
 html, body, #app { height: 100%; margin: 0; }
+/* Desktop-instrument responsive contract: the layout has a hard floor.
+   Below it the whole page pans as one unit (a single page-level scrollbar)
+   and panels never squeeze into per-panel scrollbars or wrapped titles.
+   The TopBar/TabBar shedding tiers bottom out just above this width. */
+body { min-width: 1160px; }
 button { font: inherit; color: inherit; }
 
 input[type="number"], select, input[type="range"] {
