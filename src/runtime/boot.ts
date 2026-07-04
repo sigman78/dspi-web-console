@@ -89,7 +89,10 @@ export async function connectRequested(): Promise<void> {
   }
 }
 
-export async function bootMock(platform: 'rp2040' | 'rp2350', opts: { wireVersion?: number } = {}): Promise<void> {
+export async function bootMock(
+  platform: 'rp2040' | 'rp2350',
+  opts: { wireVersion?: number; fwVersion?: { major: number; minor: number; patch: number } } = {},
+): Promise<void> {
   const scope = beginConnection();
   try {
     const transport = new MockTransport({ platform, ...opts });

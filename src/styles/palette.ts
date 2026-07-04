@@ -4,7 +4,8 @@ export type ChannelKey =
   | 'In1L' | 'In1R'
   | 'Out1L' | 'Out1R' | 'Out2L' | 'Out2R'
   | 'Out3L' | 'Out3R' | 'Out4L' | 'Out4R'
-  | 'Pdm';
+  | 'Pdm'
+  | 'In2L' | 'In2R' | 'In3L' | 'In3R' | 'In4L' | 'In4R';
 
 export type ShadeName = 'base' | 'bright' | 'dim' | 'glow';
 
@@ -22,6 +23,14 @@ const COLORS: Record<ChannelKey, Lch> = {
   Out4L: { l: 73, c: 0.115, h:   5 },
   Out4R: { l: 67, c: 0.135, h:  25 },
   Pdm:   { l: 70, c: 0.010, h: 250 },
+  // Extra input pairs (V16 multichannel input). Cool hues distinct from the
+  // In1 blues and clear of the output families.
+  In2L:  { l: 73, c: 0.115, h: 190 },
+  In2R:  { l: 67, c: 0.135, h: 200 },
+  In3L:  { l: 73, c: 0.115, h: 320 },
+  In3R:  { l: 67, c: 0.135, h: 335 },
+  In4L:  { l: 73, c: 0.115, h: 105 },
+  In4R:  { l: 67, c: 0.135, h: 120 },
 };
 
 const clampL = (v: number) => Math.max(0, Math.min(100, v));
@@ -48,6 +57,12 @@ const KEY_BY_ID: Record<number, ChannelKey> = {
   [ChannelId.Out4L]: 'Out4L',
   [ChannelId.Out4R]: 'Out4R',
   [ChannelId.Pdm]: 'Pdm',
+  [ChannelId.In2L]: 'In2L',
+  [ChannelId.In2R]: 'In2R',
+  [ChannelId.In3L]: 'In3L',
+  [ChannelId.In3R]: 'In3R',
+  [ChannelId.In4L]: 'In4L',
+  [ChannelId.In4R]: 'In4R',
 };
 
 export function chKey(id: ChannelId): ChannelKey {

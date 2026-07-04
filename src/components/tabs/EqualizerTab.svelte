@@ -2,6 +2,8 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import BodePlot, { type BodeCurve, type BodeMarker } from '@/components/bode/BodePlot.svelte';
   import BandsPanel from '@/components/eq/BandsPanel.svelte';
+  import XoverPanel from '@/components/eq/XoverPanel.svelte';
+  import { TYPE_ORDER, FIRST_ORDER_TYPES } from '@/components/eq/BandTypeSelect.svelte';
   import PreampPanel from '@/components/eq/PreampPanel.svelte';
   import OutputTrim from '@/components/eq/OutputTrim.svelte';
   import { mockEqCurve } from '@/components/bode/bodeMock';
@@ -27,6 +29,9 @@
     inputIndex !== null ? (snap?.inputPreampDb[inputIndex] ?? 0) : 0,
   );
   const bands = $derived(channel?.filters ?? []);
+  const bandTypes = $derived(
+    s.device.capabilities.features.firstOrderEq ? [...TYPE_ORDER, ...FIRST_ORDER_TYPES] : TYPE_ORDER,
+  );
 
   const curve = $derived.by<BodeCurve>(() => {
     if (!channel) {
@@ -143,10 +148,14 @@
         onCopy={copy}
         onPaste={paste}
         onExit={exitCopy}
+        types={bandTypes}
       />
       {#if inputIndex !== null}
         <PreampPanel preampDb={preampDb} accentChannelId={channel.id} onChange={setPreamp} onReset={resetPreamp} />
       {:else if outputForChannel}
+        {#if s.device.capabilities.features.crossover && channel.xoverBands.length > 0}
+          <XoverPanel {channel} />
+        {/if}
         <OutputTrim output={outputForChannel} />
       {/if}
     {:else}

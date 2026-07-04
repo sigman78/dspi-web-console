@@ -40,8 +40,8 @@
       return;
     }
     const inUse = pinsInUse(snap);
-    const free = (p: number) => isAssignablePin(snap.platform.type, p) && !inUse.has(p);
-    const pin = free(cfg.pin) ? cfg.pin : (assignablePins(snap.platform.type).find(free) ?? cfg.pin);
+    const free = (p: number) => isAssignablePin(snap.platform.type, p, snap.platform.wireGen) && !inUse.has(p);
+    const pin = free(cfg.pin) ? cfg.pin : (assignablePins(snap.platform.type, snap.platform.wireGen).find(free) ?? cfg.pin);
     setDacHwMute(s, { enabled: true, pin });
   }
 
