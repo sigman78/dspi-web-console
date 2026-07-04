@@ -16,6 +16,14 @@ const NOTIFY_MAX_BACKOFF_MS = 5000;
 // the endpoint usually has a stale IDLE armed, so an event needs ~2 reads.
 const NOTIFY_BURST_MS = 8;
 
+// The firmware ring (usb_audio.c) accumulates notify events while EP 0x83
+// goes unread -- e.g. a bench/HIL session that loads dozens of presets with
+// no host connected. A device that somehow never idles (ring wedged, or
+// pushing events faster than we drain) must not mute the channel forever, so
+// the backlog drain gives up after this many non-idle reads and goes live
+// anyway. The real firmware ring is smaller than this.
+const NOTIFY_BACKLOG_DRAIN_CAP = 64;
+
 // Start the notify read loop for a device. Returns a stop disposer.
 export function startNotifyChannel(session: ReadySession, clock: LoopClock = timerClock(NOTIFY_INTERVAL_MS)): Disposer {
   const device = session.device;
@@ -24,6 +32,15 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
   let stopped = false;
   let lastSeq: number | null = null;
   let backoffMs = 0;   // 0 = normal cadence; grows on consecutive read errors
+
+  // Backlog drain: the connect flow fetches its baseline snapshot before this
+  // channel starts, so anything sitting in the ring at that point is strictly
+  // history. Stay muted (no toast, no notifyWaiters, no reconcile) until the
+  // first idle keep-alive proves the ring is empty -- the firmware only arms
+  // idle when it has nothing queued, so that read is an exact "backlog fully
+  // drained" boundary.
+  let backlogMode = true;
+  let backlogDrained = 0;   // non-idle backlog reads seen so far; see NOTIFY_BACKLOG_DRAIN_CAP
   const isHidden = () => typeof document !== 'undefined' && document.hidden;
   let offVisibility: Disposer = () => {};
 
@@ -74,7 +91,24 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
         return;
       }
       backoffMs = 0;   // healthy read -> normal cadence
-      if (bytes.byteLength > 0) handle(parseNotifyPacket(bytes));
+      if (bytes.byteLength > 0) {
+        const event = parseNotifyPacket(bytes);
+        if (backlogMode) {
+          if (event.kind === 'idle') {
+            backlogMode = false;   // ring drained: everything from here is live
+          } else {
+            // Replay of history, not news -- drop it, but prime seq
+            // continuity so the first LIVE event isn't misread as a gap.
+            if ('seq' in event) lastSeq = event.seq;
+            if (++backlogDrained >= NOTIFY_BACKLOG_DRAIN_CAP) {
+              Log.warn('notify', 'backlog drain cap exceeded; going live without an idle boundary');
+              backlogMode = false;
+            }
+          }
+        } else {
+          handle(event);
+        }
+      }
     } catch (e) {
       session.health.noteFail('notify', e);
       backoffMs = backoffMs === 0
@@ -83,7 +117,11 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
       Log.warn('notify', 'read failed; backing off', e);
     }
     if (!stopped && !isHidden()) {
-      clock.next(pump, backoffMs || (session.notifyWaiters.pending() ? NOTIFY_BURST_MS : undefined));
+      // Errors always win (backoff a wedged endpoint); backlog drain reads as
+      // fast as possible so the toast storm doesn't linger at the normal
+      // 150ms cadence; otherwise the existing burst/default cadence applies.
+      const delay = backoffMs || (backlogMode ? 0 : (session.notifyWaiters.pending() ? NOTIFY_BURST_MS : undefined));
+      clock.next(pump, delay);
     }
   }
 
