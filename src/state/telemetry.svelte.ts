@@ -1,6 +1,9 @@
-import { type BufferStats, type PartialSystemInfo, Wire } from '@/protocol';
-import type { SpdifRxStatus } from '@/domain';
-const { NUM_CHANNELS } = Wire.Const;
+import type { BufferStats, PartialSystemInfo } from '@/protocol';
+import { ALL_CHANNELS, type SpdifRxStatus } from '@/domain';
+
+// Peaks/holds/clips are DOMAIN-ChannelId indexed (the poll loop remaps from
+// the device's wire index space); sized to the full domain id range.
+const NUM_CHANNELS = ALL_CHANNELS.length;
 
 // Per-field $state (not $state(object)): each field gets its own signal source.
 // The object form was observed to miss subscribers when properties are mutated
@@ -17,6 +20,8 @@ export class StatusStore {
   bufferStats = $state<BufferStats | null>(null);
   spdifRxStatus = $state<SpdifRxStatus | null>(null);
   info = $state<PartialSystemInfo | null>(null);
+  // Live active input channel count (V16+; null = not reported / V10 device).
+  activeInputChannels = $state<number | null>(null);
   lastStatusMs = $state(0);
   lastBufferMs = $state(0);
   lastInfoMs = $state(0);
@@ -37,6 +42,7 @@ export class StatusStore {
     this.bufferStats = null;
     this.spdifRxStatus = null;
     this.info = null;
+    this.activeInputChannels = null;
     this.lastStatusMs = 0;
     this.lastBufferMs = 0;
     this.lastInfoMs = 0;

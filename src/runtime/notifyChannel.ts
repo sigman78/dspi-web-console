@@ -60,6 +60,13 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
       if (lastSeq !== null && ((lastSeq + 1) & 0xff) !== seq) mir.requestReconcile(true);
       lastSeq = seq;
     }
+    // Live input-format change (USB alt switch / I2S count change). Not
+    // bulk-borne: update the runtime count directly; input-count-dependent
+    // UI reads it from the telemetry store.
+    if (event.kind === 'inputFormat') {
+      session.telemetry.activeInputChannels = event.channels;
+      return;
+    }
     // The device notification is the authority that the slot actually loaded.
     if (event.kind === 'presetLoaded') {
       const name = session.presets.names[event.slot] ?? '';

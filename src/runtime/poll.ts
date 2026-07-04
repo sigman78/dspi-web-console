@@ -1,7 +1,7 @@
 import type { ReadySession } from '@/state';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
-import { AudioInputSource } from '@/domain';
+import { ALL_CHANNELS, AudioInputSource, wireChannelFor } from '@/domain';
 
 const STATUS_INTERVAL_MS = 50;   // ~20 Hz -- peaks + cpu
 const BUFFER_INTERVAL_MS = 250;  // ~4 Hz  -- buffer stats
@@ -44,8 +44,19 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       // Priority: the 20 Hz status cadence must not stall behind a queued
       // snapshot fetch.
       const s = await session.queue.run(() => d.getSystemStatus(), { priority: true });
-      tele.applyPeaks(s.peaks, performance.now());   // sets tele.lastStatusMs
-      tele.applyClipFlags(s.clipFlags);
+      // Status peaks/clip bits are wire-channel indexed; the telemetry store is
+      // domain-ChannelId indexed. Identity on V10, shifted on V16 RP2350.
+      const hw = d.hardware;
+      const peaks: number[] = Array(ALL_CHANNELS.length).fill(0);
+      let clipFlags = 0;
+      for (const ch of hw.channels) {
+        const wire = wireChannelFor(hw, ch.id);
+        peaks[ch.id] = s.peaks[wire] ?? 0;
+        if (s.isClipping(wire)) clipFlags |= 1 << ch.id;
+      }
+      tele.applyPeaks(peaks, performance.now());   // sets tele.lastStatusMs
+      tele.applyClipFlags(clipFlags);
+      tele.activeInputChannels = s.activeInputChannels;
       tele.cpu0 = s.cpu0;
       tele.cpu1 = s.cpu1;
       tele.errorCount = 0;

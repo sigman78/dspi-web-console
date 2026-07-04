@@ -3,8 +3,8 @@ import {
   type ChannelId, type InputSlot, type OutputSlot, type I2sPairSlot,
   type RouteModel,
   type I2sConfig,
-  type AudioInputSource,
   type DacHwMute,
+  AudioInputSource,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   CHANNEL_NAME_MAX_LEN,
 } from '@/domain';
@@ -223,8 +223,7 @@ export function setMasterPreamp(s: ReadySession, db: number): void {
 
 export function setInputPreamp(s: ReadySession, channel: InputSlot, db: number): void {
   db = Clamp.preampDb(db);
-  const cur = s.mirror.snapshot.inputPreampDb;
-  const next: [number, number] = [cur[0], cur[1]];
+  const next = s.mirror.snapshot.inputPreampDb.slice();
   next[channel] = db;
   scrub(s,
     `inputPreamp:${channel}`,
@@ -429,6 +428,34 @@ export function setBandBypass(s: ReadySession, channel: ChannelId, band: number,
   );
 }
 
+// Crossover bands (V16+, output channels only). Same lane as the PEQ verbs;
+// the device wrapper owns the 20..23 wire band-index offset. Q and gain are
+// unused by crossover types but ride the packet for wire parity.
+export function setXoverBand(s: ReadySession, channel: ChannelId, band: number, filter: FilterParams): void {
+  const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
+  if (!ch || band >= ch.xoverBands.length) return;
+  const clamped: FilterParams = { ...filter, frequency: Clamp.bandFrequencyHz(filter.frequency) };
+  void write(s,
+    () => s.device.setCrossoverBand(channel, band, clamped),
+    () => {
+      const c = s.mirror.snapshot.channels.find((c) => c.id === channel);
+      if (c) c.xoverBands[band] = { ...clamped, bypass: c.xoverBands[band].bypass };
+    },
+  );
+}
+
+export function setXoverBypass(s: ReadySession, channel: ChannelId, band: number, bypassed: boolean): void {
+  const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
+  if (!ch || band >= ch.xoverBands.length) return;
+  void write(s,
+    () => s.device.setCrossoverBypass(channel, band, bypassed),
+    () => {
+      const c = s.mirror.snapshot.channels.find((c) => c.id === channel);
+      if (c && c.xoverBands[band]) c.xoverBands[band] = { ...c.xoverBands[band], bypass: bypassed };
+    },
+  );
+}
+
 // M1 — Input source switch. Pipeline reset is audible; surface an info notice
 // only once the device acked. The retained RX status frame belongs to the
 // previous source epoch -- drop it so a SPDIF re-entry can't show a stale lock.
@@ -449,6 +476,45 @@ export function setSpdifRxPin(s: ReadySession, gpio: number): void {
     'set S/PDIF RX pin',
     () => s.device.setSpdifRxPin(gpio),
     () => { s.mirror.snapshot.inputConfig.spdifRxPin = gpio; },
+  );
+}
+
+// V16 — I2S input rate. The device is the rate authority in I2S mode; when
+// I2S is the active source firmware applies the change deferred (audible
+// pipeline reset), otherwise it just stores the selection.
+export function setInputRate(s: ReadySession, hz: number): void {
+  void write(s,
+    () => s.device.setInputRate(hz),
+    () => {
+      s.mirror.snapshot.inputConfig.i2sInputRateHz = hz;
+      if (s.mirror.snapshot.inputConfig.source === AudioInputSource.I2s) {
+        pushNotice('info', 'I2S input rate changed — firmware pipeline reset (brief audio mute).');
+      }
+    },
+  );
+}
+
+// V16 — I2S RX data pin per stereo pair. Action-style status byte covers
+// invalid GPIO, clock/peripheral clash, or a pin already on another pair.
+export function setI2sRxPin(s: ReadySession, pair: number, gpio: number): void {
+  void writeChecked(s,
+    'set I2S RX pin',
+    () => s.device.setI2sRxPin(pair, gpio),
+    () => {
+      const pins = s.mirror.snapshot.inputConfig.i2sRxPins.slice();
+      pins[pair] = gpio;
+      s.mirror.snapshot.inputConfig.i2sRxPins = pins;
+    },
+  );
+}
+
+// V16 — active I2S input channel count (2/4/6/8, RP2350). The live count in
+// telemetry updates via the INPUT_FORMAT notify when I2S is active.
+export function setI2sInputChannels(s: ReadySession, count: number): void {
+  void writeChecked(s,
+    'set I2S input channels',
+    () => s.device.setI2sInputChannels(count),
+    () => { s.mirror.snapshot.inputConfig.i2sInputChannels = count; },
   );
 }
 
