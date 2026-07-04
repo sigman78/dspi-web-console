@@ -58,26 +58,39 @@ async function v10Setup() {
   return { mock, dev, session, mir: session.mirror };
 }
 
+// The channel starts in backlog-drain mode and stays muted until it reads an
+// idle keep-alive (the firmware's "ring is empty" boundary). Tests that mean
+// "the channel is already live" -- as every pre-existing test here did before
+// backlog mode existed -- must cross that boundary first: enqueue an idle
+// packet ahead of whatever they push next, and consume it with one extra tick.
+function primeLive(mock: MockTransport): void {
+  mock.pushNotify(new Uint8Array([0]));
+}
+
 beforeEach(() => { clearNotices(); });
 afterEach(() => { dispatch({ t: 'disconnected' }); });
 
 describe('startNotifyChannel', () => {
   it('requests a reconcile on a BULK_INVALIDATED event', async () => {
     const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
     mock.pushNotify(new Uint8Array([2, 3, 0, 1, 3, 0, 0, 0]));
     const m = manualClock();
     const stop = startNotifyChannel(session, m.clock);
-    await m.tick();
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live bulkInvalidated
     expect(mir.peekReconcile().wanted).toBe(true);
     stop();
   });
 
   it('toasts a confirmation and requests a reconcile on a PRESET_LOADED event', async () => {
     const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
     mock.pushNotify(new Uint8Array([2, 4, 0, 1, 3, 0, 0, 0])); // PRESET_LOADED, slot 3
     const m = manualClock();
     const stop = startNotifyChannel(session, m.clock);
-    await m.tick();
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live presetLoaded -- regression pin: live events still toast/reconcile
     expect(notices.list.some((n) => n.kind === 'info' && n.message.includes('03'))).toBe(true);
     expect(mir.peekReconcile().wanted).toBe(true);
     stop();
@@ -85,11 +98,13 @@ describe('startNotifyChannel', () => {
 
   it('does NOT reconcile on a HOST-sourced paramChanged echo', async () => {
     const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
     // PARAM_CHANGED, source=HOST(1), size=0
     mock.pushNotify(new Uint8Array([2, 2, 0, 1, 0x80, 0x0b, 0, 0, 1, 0, 0, 0]));
     const m = manualClock();
     const stop = startNotifyChannel(session, m.clock);
-    await m.tick();
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live HOST echo
     expect(mir.peekReconcile().wanted).toBe(false);
     stop();
   });
@@ -97,11 +112,13 @@ describe('startNotifyChannel', () => {
   it('resolves a registered waiter from a presetLoaded packet while still suppressing the self-echo reconcile', async () => {
     const { mock, session, mir } = await v10Setup();
     mir.beginPresetGuard();
+    primeLive(mock);
     mock.pushNotify(new Uint8Array([2, 4, 0, 1, 4, 0, 0, 0])); // PRESET_LOADED, slot 4
     const p = session.notifyWaiters.waitFor((e) => e.kind === 'presetLoaded' && e.slot === 4, 1000);
     const m = manualClock();
     const stop = startNotifyChannel(session, m.clock);
-    await m.tick();
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live presetLoaded
     await expect(p).resolves.toMatchObject({ kind: 'presetLoaded', slot: 4 });
     expect(mir.peekReconcile().wanted).toBe(false);   // echo still suppressed: observe, don't consume
     mir.endPresetGuard(0);
@@ -123,12 +140,14 @@ describe('startNotifyChannel', () => {
 
   it('reconciles when a seq gap reveals a missed event', async () => {
     const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
     // A HOST echo at seq=1 (no trigger), then a HOST echo at seq=3 (gap → 2 missed); size=0
     const host = (seq: number) => new Uint8Array([2, 2, 0, seq, 0x80, 0x0b, 0, 0, 1, 0, 0, 0]);
     mock.pushNotify(host(1));
     mock.pushNotify(host(3));
     const m = manualClock();
     const stop = startNotifyChannel(session, m.clock);
+    await m.tick();                       // idle: crosses the backlog boundary
     await m.tick();                       // seq 1, no gap, no trigger
     expect(mir.peekReconcile().wanted).toBe(false);
     await m.tick();                       // seq 3, gap → reconcile
@@ -147,13 +166,15 @@ describe('startNotifyChannel', () => {
 
   it('reconciles on a seq wraparound gap (255 → 1, missed 0)', async () => {
     const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
     // size=0 so the frame parses as a valid paramChanged (HOST echo, no value)
     const host = (seq: number) => new Uint8Array([2, 2, 0, seq, 0x80, 0x0b, 0, 0, 1, 0, 0, 0]);
     mock.pushNotify(host(255));
     mock.pushNotify(host(1));   // 255→0→1; seq 0 was missed
     const m = manualClock();
     const stop = startNotifyChannel(session, m.clock);
-    await m.tick();                       // seq 255, first event, no gap check
+    await m.tick();                       // idle: crosses the backlog boundary
+    await m.tick();                       // seq 255, first live event, no gap check
     expect(mir.peekReconcile().wanted).toBe(false);
     await m.tick();                       // seq 1, gap (expected 0) → reconcile
     expect(mir.peekReconcile().wanted).toBe(true);
@@ -162,11 +183,13 @@ describe('startNotifyChannel', () => {
 
   it('suppresses a self-sourced bulkInvalidated echo while a preset-op guard is held', async () => {
     const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
     mock.pushNotify(new Uint8Array([2, 3, 0, 1, 3, 0, 0, 0]));   // bulkInvalidated, src=preset
     const m = manualClock();
     mir.beginPresetGuard();
     const stop = startNotifyChannel(session, m.clock);
-    await m.tick();
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live self-echo
     expect(mir.peekReconcile().wanted).toBe(false);   // self-echo suppressed
     mir.endPresetGuard(0);
     stop();
@@ -174,11 +197,13 @@ describe('startNotifyChannel', () => {
 
   it('suppresses a presetLoaded echo while a preset-op guard is held', async () => {
     const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
     mock.pushNotify(new Uint8Array([2, 4, 0, 1, 1]));   // PRESET_LOADED, slot 1
     const m = manualClock();
     mir.beginPresetGuard();
     const stop = startNotifyChannel(session, m.clock);
-    await m.tick();
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live self-echo
     expect(mir.peekReconcile().wanted).toBe(false);
     mir.endPresetGuard(0);
     stop();
@@ -192,11 +217,13 @@ describe('startNotifyChannel', () => {
     const { mock, session, mir } = await v10Setup();
     mir.init(await session.device.getSnapshot());
     expect(mir.current?.bypass).toBe(false);
+    primeLive(mock);
     mock.pushNotify(paramChangedFrame(20, [1], 5));   // GPIO(5), bypass byte at offset 20
     const m = manualClock();
     mir.beginPresetGuard();
     const stop = startNotifyChannel(session, m.clock);
-    await m.tick();
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live paramChanged
     expect(mir.current?.bypass).toBe(true);   // applied despite the guard
     expect(mir.peekReconcile().wanted).toBe(false);  // not a full reconcile
     mir.endPresetGuard(0);
@@ -207,21 +234,25 @@ describe('startNotifyChannel', () => {
     resetWireMirror();
     const { mock, session, mir } = await v10Setup();
     mir.init(await session.device.getSnapshot());
+    primeLive(mock);
     mock.pushNotify(paramChangedFrame(60000, [1], 5));  // offset out of range → apply returns false
     const m = manualClock();
     const stop = startNotifyChannel(session, m.clock);
-    await m.tick();
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live paramChanged
     expect(mir.peekReconcile().wanted).toBe(true);     // backstop reconcile
     stop();
   });
 
   it('still reconciles a non-self bulkInvalidated (gpio source) under the guard', async () => {
     const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
     mock.pushNotify(new Uint8Array([2, 3, 0, 1, 5, 0, 0, 0]));   // bulkInvalidated, src=GPIO(5)
     const m = manualClock();
     mir.beginPresetGuard();
     const stop = startNotifyChannel(session, m.clock);
-    await m.tick();
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live bulkInvalidated
     expect(mir.peekReconcile().wanted).toBe(true);
     mir.endPresetGuard(0);
     stop();
@@ -229,12 +260,14 @@ describe('startNotifyChannel', () => {
 
   it('still reconciles on a seq gap even under the guard', async () => {
     const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
     // Two self-sourced echoes whose triggers are suppressed, but seq 1→3 is a gap.
     mock.pushNotify(new Uint8Array([2, 3, 0, 1, 3, 0, 0, 0]));   // bulkInvalidated src=preset seq=1
     mock.pushNotify(new Uint8Array([2, 3, 0, 3, 3, 0, 0, 0]));   // ...src=preset seq=3 (missed 2)
     const m = manualClock();
     mir.beginPresetGuard();
     const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // idle: crosses the backlog boundary
     await m.tick();
     expect(mir.peekReconcile().wanted).toBe(false);   // seq 1: echo suppressed, no gap yet
     await m.tick();
@@ -247,10 +280,12 @@ describe('startNotifyChannel', () => {
     const { mock, session, mir } = await v10Setup();
     mir.beginPresetGuard();
     mir.endPresetGuard(0);   // released with no trailing grace
+    primeLive(mock);
     mock.pushNotify(new Uint8Array([2, 3, 0, 1, 3, 0, 0, 0]));
     const m = manualClock();
     const stop = startNotifyChannel(session, m.clock);
-    await m.tick();
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live bulkInvalidated
     expect(mir.peekReconcile().wanted).toBe(true);
     stop();
   });
@@ -285,6 +320,85 @@ describe('startNotifyChannel', () => {
     expect(m.armed()).toBe(true);   // armed initially
     await m.tick();                 // reads null → stops, no re-arm
     expect(m.armed()).toBe(false);
+    stop();
+  });
+});
+
+// A device with no host connected accumulates notify events in its ring
+// (firmware always-armed pattern: an entry is popped only once a transfer is
+// ARMED). Connecting replays that backlog; these pin that it's read and
+// dropped silently rather than replayed as live toasts/reconciles.
+describe('startNotifyChannel backlog drain', () => {
+  it('drops backlog presetLoaded events before the first idle: no toast, no reconcile', async () => {
+    const { mock, session, mir } = await v10Setup();
+    mock.pushNotify(new Uint8Array([2, 4, 0, 1, 3, 0, 0, 0]));   // PRESET_LOADED, slot 3 (backlog)
+    mock.pushNotify(new Uint8Array([2, 4, 0, 2, 5, 0, 0, 0]));   // PRESET_LOADED, slot 5 (backlog)
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // backlog event 1: dropped
+    await m.tick();   // backlog event 2: dropped
+    expect(notices.list.length).toBe(0);
+    expect(mir.peekReconcile().wanted).toBe(false);
+    stop();
+  });
+
+  it('schedules backlog reads immediately (delay 0), not the default cadence', async () => {
+    const { mock, session } = await v10Setup();
+    mock.pushNotify(new Uint8Array([2, 4, 0, 1, 3, 0, 0, 0]));   // backlog event
+    const m = delayClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // backlog event: dropped, re-armed for an immediate re-read
+    expect(m.delays.at(-1)).toBe(0);
+    stop();
+  });
+
+  it('primes seq continuity so a contiguous first live event does not trigger a gap reconcile', async () => {
+    const { mock, session, mir } = await v10Setup();
+    // Backlog: HOST paramChanged echo at seq=5 (dropped, but its seq is recorded).
+    mock.pushNotify(new Uint8Array([2, 2, 0, 5, 0x80, 0x0b, 0, 0, 1, 0, 0, 0]));
+    mock.pushNotify(new Uint8Array([0]));   // idle: crosses the backlog boundary
+    // Live: contiguous with the backlog's seq=5 -- must NOT read as a gap.
+    mock.pushNotify(new Uint8Array([2, 2, 0, 6, 0x80, 0x0b, 0, 0, 1, 0, 0, 0]));
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // backlog seq=5: dropped, lastSeq primed to 5
+    await m.tick();   // idle boundary
+    await m.tick();   // live seq=6: contiguous with the primed 5
+    expect(mir.peekReconcile().wanted).toBe(false);
+    stop();
+  });
+
+  it('primes seq continuity so the very first live event still detects a gap against the backlog baseline', async () => {
+    // Same setup as above, but the live event skips a seq (5 -> 7, missing 6).
+    // This only reads as a gap if the backlog's seq=5 was actually recorded as
+    // lastSeq -- if priming were a no-op, this would be treated as the first
+    // event ever seen and skip the gap check entirely.
+    const { mock, session, mir } = await v10Setup();
+    mock.pushNotify(new Uint8Array([2, 2, 0, 5, 0x80, 0x0b, 0, 0, 1, 0, 0, 0]));   // backlog seq=5
+    mock.pushNotify(new Uint8Array([0]));   // idle: crosses the backlog boundary
+    mock.pushNotify(new Uint8Array([2, 2, 0, 7, 0x80, 0x0b, 0, 0, 1, 0, 0, 0]));   // live seq=7: skipped 6
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // backlog seq=5: dropped, lastSeq primed to 5
+    await m.tick();   // idle boundary
+    await m.tick();   // live seq=7: gap against the primed baseline
+    expect(mir.peekReconcile().wanted).toBe(true);
+    stop();
+  });
+
+  it('caps the backlog drain at 64 events and goes live anyway without ever seeing an idle', async () => {
+    const { mock, session, mir } = await v10Setup();
+    for (let i = 1; i <= 65; i++) {
+      mock.pushNotify(new Uint8Array([2, 4, 0, i & 0xff, 9, 0, 0, 0]));   // PRESET_LOADED, slot 9; no idle ever queued
+    }
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    for (let i = 0; i < 64; i++) await m.tick();   // drain the cap: all 64 dropped
+    expect(notices.list.length).toBe(0);
+    expect(mir.peekReconcile().wanted).toBe(false);
+    await m.tick();   // 65th read: cap exceeded on the previous read -> this one is live
+    expect(notices.list.some((n) => n.kind === 'info')).toBe(true);
+    expect(mir.peekReconcile().wanted).toBe(true);
     stop();
   });
 });

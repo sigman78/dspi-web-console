@@ -12,7 +12,7 @@ import {
   type ReadySession,
 } from '@/state';
 import { Log, errMessage } from '@/utils';
-import { flushAllWrites } from './writes';
+import { flushAllWrites } from './writes.svelte';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
 import { startLinkProbe } from './linkProbe';
@@ -27,7 +27,7 @@ export async function syncDeviceSnapshot(s: ReadySession): Promise<void> {
   const d = s.device;
   inflightSync = (async () => {
     try {
-      const snap = await d.getSnapshot();
+      const snap = await s.queue.run(() => d.getSnapshot());
       s.mirror.init(snap);
     } catch (err) {
       Log.error('sync', 'syncDeviceSnapshot failed', err);
@@ -41,24 +41,36 @@ export async function syncDeviceSnapshot(s: ReadySession): Promise<void> {
 }
 
 export async function wireUpConnection(device: DspDevice, scope?: ConnectionScope): Promise<void> {
-  const attempt = scope?.attempt;
-  dispatch({ t: 'requested', attempt });
+  if (scope?.aborted) return;   // superseded before this attempt started
+  dispatch({ t: 'requested' });
   try {
     const snap = await device.getSnapshot();
-    const session = makeReadySession(device, attempt ?? 0);
-    dispatch({ t: 'synced', session, attempt });
+    // A newer connection may have begun (and aborted this scope) while
+    // getSnapshot() was in flight. Bail without dispatching `synced` or
+    // registering this attempt's resources: they'd never be torn down (the
+    // abort that would trigger it already fired) and would leak.
+    if (scope?.aborted) {
+      Log.warn('sync', 'wireUpConnection: superseded connection finished snapshotting; discarding');
+      return;
+    }
+    const session = makeReadySession(device, scope);
+    dispatch({ t: 'synced', session });
     session.mirror.init(snap);
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync(session);
-    // Registration targets the attempt's own scope (never the ambient active
-    // one) so a concurrent attempt can't adopt this session's machinery.
-    // Tests may call without a scope.
+    // Re-check after the await: onTeardown self-heals against an
+    // already-aborted scope (it fires immediately instead of stranding the
+    // resource), so this guard isn't for correctness -- it's to avoid
+    // starting the loops and lock only to have them stop on the next tick.
+    if (scope?.aborted) return;
+    // Tests may call without a scope. Resources register their own abort
+    // cleanup directly on the scope rather than through a registry.
     if (scope) {
-      scope.add(startPolling(session));
-      scope.add(startNotifyChannel(session));
-      scope.add(startLinkProbe(session));
+      scope.onTeardown(startPolling(session));
+      scope.onTeardown(startNotifyChannel(session));
+      scope.onTeardown(startLinkProbe(session));
       acquireDeviceLock();
-      scope.add(() => releaseDeviceLock());
+      scope.onTeardown(() => releaseDeviceLock());
     }
     await fetchPresetInfo(session);
     Log.info('sync', 'connected', {
@@ -68,7 +80,9 @@ export async function wireUpConnection(device: DspDevice, scope?: ConnectionScop
     });
   } catch (err) {
     Log.error('sync', 'wireUpConnection failed', err);
-    dispatch({ t: 'failed', message: errMessage(err), attempt });
+    // A stale failure from a superseded attempt must not clobber whatever the
+    // newer connection has already put in app state.
+    if (!scope?.aborted) dispatch({ t: 'failed', message: errMessage(err) });
     throw err;
   }
 }
@@ -79,16 +93,16 @@ export async function reconcileAfterSync(s: ReadySession): Promise<void> {
   reconcileSelectedChannel(s.mirror.current?.channels);
 }
 
-export function attachTransportListeners(transport: DspTransport, _device: DspDevice, attempt?: number): () => void {
+export function attachTransportListeners(transport: DspTransport, _device: DspDevice): () => void {
   const offDisc = transport.on('disconnect', () => {
-    // Dispatch first: endConnection() clears the attempt token, which would
-    // drop this very event. Deleting the currently-firing entry from the
-    // transport's listener Set during its forEach is safe -- it won't be
+    // Dispatch first: the disconnected transition must land while this is
+    // still the active connection. endConnection() aborts the controller,
+    // which tears down the session (dispose is an abort listener) and this
+    // very listener in one shot -- deleting the currently-firing entry from
+    // the transport's listener Set during its forEach is safe, it won't be
     // revisited and won't throw.
-    const outgoing = activeSession();
-    dispatch({ t: 'disconnected', attempt });
-    endConnection();                 // disposes resync, poll loop, listeners
-    outgoing?.dispose();             // alive=false + cancel this session's write lanes
+    dispatch({ t: 'disconnected' });
+    endConnection();
   });
   return () => { offDisc(); };
 }
@@ -101,7 +115,7 @@ export async function factoryResetDevice(): Promise<void> {
     // Drain any parked optimistic write so a pre-reset bulk send can't settle
     // mid-reset and re-push stale params (mirrors the preset load/paste flows).
     await flushAllWrites(s);
-    const r = await d.factoryReset();
+    const r = await s.queue.run(() => d.factoryReset());
     if (!r.ok) { pushNotice('warn', r.message); return; }  // non-ok flash status
     invalidatePresetCache(s);
     s.copySource.held = null;

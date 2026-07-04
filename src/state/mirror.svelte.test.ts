@@ -151,50 +151,6 @@ describe('MirrorState', () => {
     });
   });
 
-  describe('write-activity timestamp', () => {
-    it('starts at 0 (no activity)', () => {
-      const m = new MirrorState();
-      expect(m.lastWriteMs).toBe(0);
-    });
-
-    it('noteWriteActivity stamps a positive timestamp', () => {
-      const m = new MirrorState();
-      m.noteWriteActivity();
-      expect(m.lastWriteMs).toBeGreaterThan(0);
-    });
-
-    it('reset clears the write-activity timestamp', () => {
-      const m = new MirrorState();
-      m.noteWriteActivity();
-      m.reset();
-      expect(m.lastWriteMs).toBe(0);
-    });
-  });
-
-  describe('inflight counter', () => {
-    it('starts at zero', () => {
-      const m = new MirrorState();
-      expect(m.inflight).toBe(0);
-    });
-
-    it('bumps and drops symmetrically', () => {
-      const m = new MirrorState();
-      m.bumpInflight();
-      m.bumpInflight();
-      expect(m.inflight).toBe(2);
-      m.dropInflight();
-      expect(m.inflight).toBe(1);
-      m.dropInflight();
-      expect(m.inflight).toBe(0);
-    });
-
-    it('dropInflight at 0 stays at 0', () => {
-      const m = new MirrorState();
-      m.dropInflight();
-      expect(m.inflight).toBe(0);
-    });
-  });
-
   describe('preset-op notify guard', () => {
     it('holds while a guard is open and for a trailing grace after it closes', () => {
       const m = new MirrorState();

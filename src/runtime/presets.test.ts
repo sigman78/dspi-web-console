@@ -23,7 +23,6 @@ import {
   pastePresetTo,
   dismissPresetActionError,
 } from './presets';
-import { forceResyncNow } from './resync';
 
 const liveMirror = () => activeSession()!.mirror;
 const sess = () => activeSession()!;
@@ -304,7 +303,7 @@ describe('runtime/presets', () => {
   });
 
   describe('dirty baseline survives resync', () => {
-    it('saved is not overwritten when forceResyncNow refreshes draft', async () => {
+    it('saved is not overwritten when a background reconcile refreshes draft', async () => {
       await fetchPresetInfo(sess());
       // Sanity: bootMock+fullSync populated both draft and saved.
       expect(liveMirror().current).not.toBe(null);
@@ -316,9 +315,11 @@ describe('runtime/presets', () => {
       // will reflect the change.
       const d = activeSession()!.device;
       await d.setLoudnessEnabled(!savedLoudnessBefore);
-      // Resync refreshes liveMirror().current ONLY; liveMirror().baseline stays pinned at the
-      // last baseline (the fullSync snapshot).
-      await forceResyncNow(sess());
+      // Failure-path recovery and the background param cadence both resync via
+      // replaceCurrent (current only); liveMirror().baseline stays pinned at
+      // the last baseline (the fullSync snapshot).
+      const snap = await sess().queue.run(() => sess().device.getSnapshot());
+      sess().mirror.replaceCurrent(snap);
       expect(liveMirror().current!.loudness.enabled).toBe(!savedLoudnessBefore);
       expect(liveMirror().baseline!.loudness.enabled).toBe(savedLoudnessBefore);
     });

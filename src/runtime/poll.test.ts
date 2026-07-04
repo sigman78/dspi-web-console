@@ -5,8 +5,7 @@ import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
 import { dispatch, makeReadySession, type ReadySession } from '@/state';
-import { write } from './writes';
-import { startPolling, RECONCILE_QUIET_MS } from './poll';
+import { startPolling } from './poll';
 import type { LoopClock } from '@/utils';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
@@ -60,8 +59,11 @@ function paramDevice() {
   return { device, calls, snap };
 }
 
-// Settle the fire-and-forget doPoll chain (a few awaited device calls deep).
-const settle = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+// Settle the fire-and-forget doPoll chain. Every device call now round-trips
+// through the session's CommandQueue (a couple of extra microtask hops per
+// call on top of the awaited device call itself), and doPoll awaits up to five
+// cadences in sequence, so this drains generously rather than counting hops.
+const settle = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
 
 // Fake device with a caller-supplied getSnapshot, for reconcile timing tests.
 function deviceWithSnapshot(getSnapshot: () => Promise<unknown>) {
@@ -84,7 +86,7 @@ describe('startPolling', () => {
     const clock = manualClock();
     const stop = startPolling(session, clock);
     clock.fire();                       // tick → doPoll
-    await Promise.resolve(); await Promise.resolve();
+    await settle();
     expect(calls.status).toBe(1);
     expect(clock.armed()).toBe(true);   // re-armed for the next tick
     stop();
@@ -100,7 +102,7 @@ describe('startPolling', () => {
     const b = pollDevice();
     connect(b.device);
     clock.fire();
-    await Promise.resolve(); await Promise.resolve();
+    await settle();
     expect(a.calls.status).toBe(1);   // loop stays bound to its captured session
     expect(b.calls.status).toBe(0);   // not the newly-active session's device
     stop();
@@ -114,7 +116,7 @@ describe('startPolling', () => {
     const stop = startPolling(session, clock);
     expect(clock.armed()).toBe(false);  // hidden ⇒ loop did not arm
     clock.fire();
-    await Promise.resolve();
+    await settle();
     expect(calls.status).toBe(0);
     stop();
     hiddenSpy.mockRestore();
@@ -148,18 +150,18 @@ describe('param reconcile cadence', () => {
     stop();
   });
 
-  it('does not reconcile while a write is in flight (no mid-drag clobber)', async () => {
+  it('does not reconcile while a write is registered-unsettled (no mid-drag clobber)', async () => {
     const { device, calls } = paramDevice();
     const session = connect(device);
     const mir = session.mirror;
     const clock = manualClock();
     const stop = startPolling(session, clock);
     mir.requestReconcile(false);
-    mir.bumpInflight();                      // simulate an in-flight write
+    session.writes.claim();                  // simulate a write registered-unsettled
     clock.fire();
     await settle();
     expect(calls.snapshot).toBe(0);
-    mir.dropInflight();
+    session.writes.release();
     stop();
   });
 
@@ -216,100 +218,127 @@ describe('param reconcile cadence', () => {
     stop();
   });
 
-  it('end-to-end: an eager reconcile request drives a poll reconcile once writes go quiet', async () => {
-    vi.useFakeTimers({ toFake: ['performance'] });
-    try {
-      const { device, calls } = paramDevice();
-      const session = connect(device);
-      const clock = manualClock();
-      const stop = startPolling(session, clock);
-      vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);   // clear of t=0 floor
-      await write(session, async () => {}, () => {});    // stamps lastWriteMs = now
-      session.mirror.requestReconcile(true);              // e.g. notify-channel signal
-      clock.fire();
-      await settle();
-      expect(calls.snapshot).toBe(0);                    // write too recent: blocked
-      vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);    // writes go quiet
-      clock.fire();
-      await settle();
-      expect(calls.snapshot).toBe(1);                    // eager + quiet → reconciles
-      stop();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('does not reconcile while writes are recent; reconciles once quiet (#1)', async () => {
-    vi.useFakeTimers({ toFake: ['performance'] });
-    try {
-      const { device, calls } = paramDevice();
-      const session = connect(device);
-      const mir = session.mirror;
-      const clock = manualClock();
-      const stop = startPolling(session, clock);
-      vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);
-      mir.noteWriteActivity();              // a write/scrub just happened
-      mir.requestReconcile(false);
-      clock.fire();
-      await settle();
-      expect(calls.snapshot).toBe(0);       // blocked: within quiet window
-      vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);
-      clock.fire();
-      await settle();
-      expect(calls.snapshot).toBe(1);       // quiet elapsed → reconciles
-      stop();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('discards the snapshot if a write lands during the fetch — no mid-drag clobber (#1)', async () => {
-    vi.useFakeTimers({ toFake: ['performance'] });
-    try {
-      let resolveSnap!: () => void;
-      const reconciled = fromBulkParams(hw, parseBulkParams(makeBulk()));
-      reconciled.masterVolumeDb = -99;
-      const device = deviceWithSnapshot(() => new Promise((r) => { resolveSnap = () => r(reconciled); }));
-      const session = connect(device);
-      const mir = session.mirror;
-      const initial = fromBulkParams(hw, parseBulkParams(makeBulk()));
-      initial.masterVolumeDb = -5;
-      mir.init(initial);
-      const clock = manualClock();
-      const stop = startPolling(session, clock);
-      vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);
-      mir.requestReconcile(false);
-      clock.fire();
-      await settle();                       // pollParam parked on getSnapshot
-      vi.advanceTimersByTime(1);
-      mir.noteWriteActivity();              // a write lands mid-fetch
-      resolveSnap();
-      await settle();
-      expect(mir.current!.masterVolumeDb).toBe(-5);   // discarded, not -99
-      expect(mir.peekReconcile().wanted).toBe(true);      // request still pending
-      stop();
-    } finally {
-      vi.useRealTimers();
-    }
+  it('discards the snapshot if a write becomes registered during the fetch — no mid-drag clobber', async () => {
+    let resolveSnap!: () => void;
+    const reconciled = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    reconciled.masterVolumeDb = -99;
+    const device = deviceWithSnapshot(() => new Promise((r) => { resolveSnap = () => r(reconciled); }));
+    const session = connect(device);
+    const mir = session.mirror;
+    const initial = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    initial.masterVolumeDb = -5;
+    mir.init(initial);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    mir.requestReconcile(false);
+    clock.fire();
+    await settle();                       // pollParam parked on getSnapshot
+    session.writes.claim();               // a write becomes registered mid-fetch
+    resolveSnap();
+    await settle();
+    expect(mir.current!.masterVolumeDb).toBe(-5);       // discarded, not -99
+    expect(mir.peekReconcile().wanted).toBe(true);      // request still pending
+    session.writes.release();
+    stop();
   });
 
   it('keeps the reconcile request pending when getSnapshot fails (#3)', async () => {
-    vi.useFakeTimers({ toFake: ['performance'] });
-    try {
-      const device = deviceWithSnapshot(async () => { throw new Error('boom'); });
-      const session = connect(device);
-      const mir = session.mirror;
-      const clock = manualClock();
-      const stop = startPolling(session, clock);
-      vi.advanceTimersByTime(RECONCILE_QUIET_MS + 1);
-      mir.requestReconcile(false);
-      clock.fire();
-      await settle();
-      expect(mir.peekReconcile().wanted).toBe(true);   // not consumed on failure
-      stop();
-    } finally {
-      vi.useRealTimers();
-    }
+    const device = deviceWithSnapshot(async () => { throw new Error('boom'); });
+    const session = connect(device);
+    const mir = session.mirror;
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    mir.requestReconcile(false);
+    clock.fire();
+    await settle();
+    expect(mir.peekReconcile().wanted).toBe(true);   // not consumed on failure
+    stop();
+  });
+
+  it('stands down while degraded — a pending eager request must not hammer a dead link', async () => {
+    const { device, calls } = paramDevice();
+    const session = connect(device);
+    const mir = session.mirror;
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+
+    mir.requestReconcile(true);
+    session.health.noteFail('write', new Error('x'));
+    session.health.noteFail('write', new Error('x'));
+    session.health.noteFail('write', new Error('x'));   // 3rd consecutive → degraded
+    expect(session.health.degraded).toBe(true);
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(0);                     // probe owns recovery
+
+    session.health.noteRecovered();                     // probe-verified recovery
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(1);                     // pending eager runs again
+    stop();
+  });
+});
+
+// Unconditional safety-net floor, independent of any pending reconcile
+// request: heals drift from firmware sources that never notify (UAC1 OS
+// volume) or request a reconcile (nothing today asks for it but the value
+// still moved on the device). Seeding tele.lastParamMs relative to the
+// current performance.now() keeps these deterministic instead of depending on
+// how much real wall-clock time the test process has already burned.
+describe('param safety net', () => {
+  afterEach(() => { teardown(); });
+
+  it('fires once PARAM_SAFETY_NET_MS has elapsed with nothing pending', async () => {
+    const { device, calls } = paramDevice();
+    const session = connect(device);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    session.telemetry.lastParamMs = performance.now() - 10_000;
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(1);
+    stop();
+  });
+
+  it('does not fire before PARAM_SAFETY_NET_MS has elapsed', async () => {
+    const { device, calls } = paramDevice();
+    const session = connect(device);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    session.telemetry.lastParamMs = performance.now() - 1_000;
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(0);
+    stop();
+  });
+
+  it('is skipped while a preset-op guard is active', async () => {
+    const { device, calls } = paramDevice();
+    const session = connect(device);
+    const mir = session.mirror;
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    session.telemetry.lastParamMs = performance.now() - 20_000;
+    mir.beginPresetGuard();
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(0);
+    mir.endPresetGuard(0);
+    stop();
+  });
+
+  it('is skipped while writes.busy', async () => {
+    const { device, calls } = paramDevice();
+    const session = connect(device);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    session.telemetry.lastParamMs = performance.now() - 20_000;
+    session.writes.claim();
+    clock.fire();
+    await settle();
+    expect(calls.snapshot).toBe(0);
+    session.writes.release();
+    stop();
   });
 });
 

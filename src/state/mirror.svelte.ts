@@ -2,18 +2,20 @@
 //   - current   -- our belief of device RAM; mutates on every user write.
 //   - baseline  -- what `current` was at the last preset save/load (or connect),
 //                 pinned until a baseline refresh; presetsDirty diffs against it.
-// Plus an inflight counter that gates the UI dirty dot and the resync soft-skip.
+// Plus the reconcile-intent flags that drive the background param poll, and the
+// preset-op guard that suppresses the NotifyChannel's self-echo reconciles
+// during a console-initiated preset transition. Write-in-flight bookkeeping
+// (the UI dirty dot, the reconcile gate) lives on WriteCoordinator.busy, not
+// here -- see src/runtime/writes.svelte.ts.
 
 import type { DspSnapshot } from '@/domain';
 
 export class MirrorState {
   current = $state<DspSnapshot | null>(null);
   baseline = $state<DspSnapshot | null>(null);
-  inflight = $state(0);
   reconcileWanted = $state(false);
   reconcileEager = $state(false);
   // Non-reactive: only the poll loop reads these.
-  lastWriteMs = 0;
   presetGuardDepth = 0;
   presetGuardUntilMs = 0;
 
@@ -39,11 +41,9 @@ export class MirrorState {
     this.current = null;
     this.reconcileWanted = false;
     this.reconcileEager = false;
-    this.lastWriteMs = 0;
     this.presetGuardDepth = 0;
     this.presetGuardUntilMs = 0;
   }
-  noteWriteActivity(): void { this.lastWriteMs = performance.now(); }
   requestReconcile(eager: boolean): void {
     this.reconcileWanted = true;
     if (eager) this.reconcileEager = true;
@@ -57,8 +57,6 @@ export class MirrorState {
     this.reconcileEager = false;
     return r;
   }
-  bumpInflight(): void { this.inflight += 1; }
-  dropInflight(): void { if (this.inflight > 0) this.inflight -= 1; }
   beginPresetGuard(): void { this.presetGuardDepth += 1; }
   endPresetGuard(trailingMs: number, now: number = performance.now()): void {
     if (this.presetGuardDepth > 0) this.presetGuardDepth -= 1;

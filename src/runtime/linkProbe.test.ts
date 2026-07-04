@@ -1,22 +1,32 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { startLinkProbe } from './linkProbe';
+import { beginConnection } from './connectionScope';
 import { dispatch, makeReadySession, connection, type ReadySession } from '@/state';
 import type { LoopClock } from '@/utils';
 
-vi.mock('@/runtime/resync', () => ({ forceResyncNow: vi.fn() }));
-
-// Manual clock: collects the latest callback; step() fires it.
-function manualClock(): LoopClock & { step(): void } {
+// Manual clock: collects the latest callback; step() fires it. armed() reports
+// whether a callback is currently registered -- since startLinkProbe only
+// re-arms AFTER its async probe body (including the queued getBypass send)
+// fully settles, waiting on armed() (rather than a mock call count, which
+// updates mid-flight, before the tick's async body finishes) is what actually
+// serializes the test's steps with the loop's real completion.
+function manualClock(): LoopClock & { step(): void; armed(): boolean } {
   let cb: (() => void) | null = null;
   return {
     next(fn: () => void) { cb = fn; },
     cancel() { cb = null; },
     step() { const f = cb; cb = null; f?.(); },
+    armed() { return cb !== null; },
   };
 }
 
+// Wires the session to the connection's scope, matching production
+// (wireUpConnection passes the same scope into makeReadySession) --
+// killSession's endConnection() only tears the session down if they share
+// a scope.
 function installSession(device: unknown): ReadySession {
-  const s = makeReadySession(device as never);
+  const scope = beginConnection();
+  const s = makeReadySession(device as never, scope);
   dispatch({ t: 'synced', session: s });
   return s;
 }
@@ -38,15 +48,21 @@ describe('startLinkProbe', () => {
     stop();
   });
 
-  it('probes while degraded and clears on success', async () => {
+  it('probes while degraded, clears on success, and requests an eager reconcile', async () => {
     const getBypass = vi.fn(async () => false);
     const s = installSession({ getBypass, close: vi.fn(), info: {}, hardware: {} });
     s.health.degraded = true;
+    s.mirror.consumeReconcile();
     const clock = manualClock();
     const stop = startLinkProbe(s, clock);
     clock.step();
-    await vi.waitFor(() => expect(getBypass).toHaveBeenCalledTimes(1));
-    expect(s.health.degraded).toBe(false);
+    // Wait on the actual end state, not the mock call count: the count updates
+    // synchronously at send time, well before the queued op settles and
+    // noteRecovered() runs.
+    await vi.waitFor(() => expect(s.health.degraded).toBe(false));
+    expect(getBypass).toHaveBeenCalledTimes(1);
+    // Recovery repaints via the param cadence's eager path, not an ad-hoc fetch.
+    expect(s.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
     stop();
   });
 
@@ -57,11 +73,18 @@ describe('startLinkProbe', () => {
     s.health.degraded = true;
     const clock = manualClock();
     const stop = startLinkProbe(s, clock);
-    for (let i = 0; i < 5; i++) {
+    // The first 4 failures re-arm the clock; wait for that (not the call
+    // count) before stepping again, so each step lands after the previous
+    // tick's async probe body has actually finished.
+    for (let i = 0; i < 4; i++) {
       clock.step();
-      await vi.waitFor(() => expect(getBypass).toHaveBeenCalledTimes(i + 1));
+      await vi.waitFor(() => expect(clock.armed()).toBe(true));
     }
+    // The 5th failure crosses PROBE_FAILS_TO_KILL and tears the session down
+    // instead of re-arming.
+    clock.step();
     await vi.waitFor(() => expect(close).toHaveBeenCalled());
+    expect(getBypass).toHaveBeenCalledTimes(5);
     expect(connection.phase).toBe('errored');
     expect(s.alive).toBe(false);
     stop();

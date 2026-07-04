@@ -1,67 +1,62 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ConnectionScope, beginConnection, connectionScope, endConnection } from './connectionScope';
+import { beginConnection, connectionScope, endConnection, ConnectionScope } from './connectionScope';
 
-describe('ConnectionScope', () => {
-  it('disposes registered disposers in LIFO order', () => {
-    const order: number[] = [];
-    const s = new ConnectionScope();
-    s.add(() => order.push(1));
-    s.add(() => order.push(2));
-    s.dispose();
-    expect(order).toEqual([2, 1]);
-  });
-
-  it('is idempotent: a second dispose runs nothing', () => {
-    const d = vi.fn();
-    const s = new ConnectionScope();
-    s.add(d);
-    s.dispose();
-    s.dispose();
-    expect(d).toHaveBeenCalledTimes(1);
-  });
-
-  it('isolates a throwing disposer so the rest still run', () => {
-    const after = vi.fn();
-    const s = new ConnectionScope();
-    s.add(after);                       // added first → disposed last
-    s.add(() => { throw new Error('boom'); });
-    expect(() => s.dispose()).not.toThrow();
-    expect(after).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('active scope', () => {
-  it('beginConnection disposes the prior active scope', () => {
-    const prior = vi.fn();
-    beginConnection();
-    connectionScope()!.add(prior);
-    beginConnection();                  // should dispose the first scope
-    expect(prior).toHaveBeenCalledTimes(1);
+describe('beginConnection / endConnection', () => {
+  it('beginConnection aborts the prior active connection', () => {
+    const onAbort = vi.fn();
+    const first = beginConnection();
+    first.onTeardown(onAbort);
+    beginConnection();                  // should abort the first scope
+    expect(onAbort).toHaveBeenCalledTimes(1);
     endConnection();
   });
 
-  it('endConnection disposes and clears the active scope', () => {
-    const d = vi.fn();
-    beginConnection();
-    connectionScope()!.add(d);
+  it('endConnection aborts and clears the active connection', () => {
+    const onAbort = vi.fn();
+    const c = beginConnection();
+    c.onTeardown(onAbort);
     endConnection();
-    expect(d).toHaveBeenCalledTimes(1);
+    expect(onAbort).toHaveBeenCalledTimes(1);
     expect(connectionScope()).toBeNull();
     endConnection();                    // idempotent, no throw
-    expect(d).toHaveBeenCalledTimes(1);
+    expect(onAbort).toHaveBeenCalledTimes(1);
+  });
+
+  it('beginConnection mints a fresh scope each time; endConnection clears it', () => {
+    const c1 = beginConnection();
+    expect(connectionScope()).toBe(c1);
+    const c2 = beginConnection();
+    expect(connectionScope()).toBe(c2);
+    expect(c2).not.toBe(c1);
+    endConnection();
+    expect(connectionScope()).toBeNull();
+  });
+
+  it('double-abort of the same connection is a no-op beyond the first', () => {
+    const onAbort = vi.fn();
+    const c = beginConnection();
+    c.onTeardown(onAbort);
+    endConnection();
+    c.abort();                          // already aborted; must not fire again
+    expect(onAbort).toHaveBeenCalledTimes(1);
   });
 });
 
-import { currentAttempt } from '@/state';
+describe('ConnectionScope.onTeardown', () => {
+  it('fires exactly once on abort', () => {
+    const scope = new ConnectionScope();
+    const fn = vi.fn();
+    scope.onTeardown(fn);
+    scope.abort();
+    scope.abort();                      // idempotent; must not refire
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
 
-describe('attempt ownership', () => {
-  it('beginConnection mints a fresh current attempt; endConnection clears it', () => {
-    const s1 = beginConnection();
-    expect(currentAttempt()).toBe(s1.attempt);
-    const s2 = beginConnection();
-    expect(s2.attempt).toBeGreaterThan(s1.attempt);
-    expect(currentAttempt()).toBe(s2.attempt);
-    endConnection();
-    expect(currentAttempt()).toBeNull();
+  it('fires immediately when the scope is already aborted', () => {
+    const scope = new ConnectionScope();
+    scope.abort();
+    const fn = vi.fn();
+    scope.onTeardown(fn);               // would never fire via 'abort' listener alone
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });

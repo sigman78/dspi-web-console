@@ -23,8 +23,8 @@ import {
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { deriveCapabilities } from '@/protocol/capabilities';
 
-import { flushAllWrites as flushAllWritesFor } from './writes';
-import { beginConnection, connectionScope, endConnection } from './connectionScope';
+import { flushAllWrites as flushAllWritesFor } from './writes.svelte';
+import { beginConnection, endConnection } from './connectionScope';
 
 // Test wrappers: the write lanes are now session-scoped, but these cleanup/flush
 // call sites always target whatever session is active. Resolve it here so the
@@ -147,16 +147,17 @@ describe('actions wiring', () => {
 
   it('disconnect cancels pending coalescer + resync and resets state', async () => {
     const { device, calls } = makeFakeDevice();
-    dispatch({ t: 'synced', session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: 0 }))));
     const transport = new FakeTransport();
-    // Mirror production wiring: the connection scope owns the transport
-    // listeners and the command-cancel disposer (registered in
-    // wireUpConnection). endConnection() — fired by the disconnect handler —
-    // disposes them, which is what drops the pending coalescer write.
-    beginConnection();
-    connectionScope()!.add(attachTransportListeners(transport, device));
-    connectionScope()!.add(() => cancelWrites());
+    // Mirror production wiring: the session shares the connection's scope (as
+    // wireUpConnection does), and the transport-disconnect listener is
+    // registered on that same scope (as attachTransportListeners is in
+    // createBoundDevice). endConnection() -- fired by the disconnect handler
+    // -- aborts both the listener and the session's write lanes in one shot,
+    // which is what drops the pending coalescer write.
+    const scope = beginConnection();
+    dispatch({ t: 'synced', session: makeReadySession(device, scope) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: 0 }))));
+    scope.onTeardown(attachTransportListeners(transport, device));
 
     setMasterVolume(activeSession()!, -9);    // sends immediately
     setMasterVolume(activeSession()!, -6);    // parks behind the in-flight send
@@ -648,6 +649,22 @@ describe('setDacHwMute', () => {
     setDacHwMute(activeSession()!, { enabled: true });   // virgin device: holdMs 0
     await vi.runAllTimersAsync();
     expect(sent[0].holdMs).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not hold the session queue across the deferred-apply wait', async () => {
+    const { setDacHwMuteFn } = dacHarness();
+    const s = activeSession()!;
+    setDacHwMute(s, { enabled: true, pin: 6 });
+    // Let the SET transfer settle but stay inside the 200 ms apply window.
+    await vi.advanceTimersByTimeAsync(50);
+    expect(setDacHwMuteFn).toHaveBeenCalled();
+    // Another op enqueued mid-wait must run without waiting out the window.
+    let ran = false;
+    const other = s.queue.run(async () => { ran = true; });
+    await vi.advanceTimersByTimeAsync(0);
+    await other;
+    expect(ran).toBe(true);
+    await vi.runAllTimersAsync();
   });
 
   it('warns and reverts when the device swallows an enable', async () => {

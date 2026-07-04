@@ -4,23 +4,22 @@
 // applied -- reconcile instead"; the full-reconcile backstop heals any declined or
 // garbled event. Never throws.
 
-import type { DspDevice } from '@/device/DspDevice';
+import type { ReadySession } from '@/state';
 import type { ParamChangedEvent } from '@/protocol';
 import { diffSnapshots, applyChange } from '@/domain';
-import type { MirrorState } from '@/state/mirror.svelte';
 import { spliceWireParam } from './wireMirror';
-import { RECONCILE_QUIET_MS } from './poll';
 
-export function applyParamChange(device: DspDevice, mir: MirrorState, ev: ParamChangedEvent): boolean {
+export function applyParamChange(s: ReadySession, ev: ParamChangedEvent): boolean {
+  const mir = s.mirror;
   const target = mir.current;
   if (!target) return false;
-  // Drop during a drag -> backstop reconcile (global guard; per-field merge deferred).
-  // inflight can be 0 in the gaps between scrub-lane sends, so the
-  // write-quiet window is what distinguishes mid-drag from done.
-  if (mir.inflight > 0 || performance.now() - mir.lastWriteMs < RECONCILE_QUIET_MS) return false;
+  // Drop during a drag/write -> backstop reconcile (global guard; per-field
+  // merge deferred). writes.busy is exact: every control-transfer send funnels
+  // through the session's CommandQueue, so there is no quiet-window guess.
+  if (s.writes.busy) return false;
   let r;
   try {
-    r = spliceWireParam(device, ev.offset, ev.value);
+    r = spliceWireParam(s.device, ev.offset, ev.value);
   } catch {
     return false;                       // parse/decode threw -> reconcile
   }

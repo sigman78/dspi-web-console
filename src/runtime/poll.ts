@@ -8,12 +8,13 @@ const BUFFER_INTERVAL_MS = 250;  // ~4 Hz  -- buffer stats
 const INFO_INTERVAL_MS = 1000;   // ~1 Hz  -- env scalars + counters
 const SPDIF_RX_INTERVAL_MS = 1000;  // ~1 Hz  -- S/PDIF RX status (SPDIF input only)
 const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile floor
-// A drag is "active" until writes have been quiet this long. The scrub lane
-// paces sends by ack latency and inflight can be 0 in the gaps between them, so
-// the inflight counter alone can't tell mid-drag from drag-done. 100 ms sits
-// above an ack round-trip and a 60 fps frame, yet reconciles promptly after the
-// user lets go.
-export const RECONCILE_QUIET_MS = 100;
+// Unconditional re-fetch floor, independent of any pending reconcile request.
+// Notify is the primary sync trigger, but firmware 1.1.4 has verified coverage
+// holes: the UAC1 OS volume slider does not emit PARAM_CHANGED
+// (`audio_set_volume` skips `param_write`), and GPIO sources aren't
+// implemented yet. This is what heals that drift -- do not remove it when
+// notify coverage improves without re-checking those holes.
+const PARAM_SAFETY_NET_MS = 10_000;
 
 interface Cadence {
   key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'param';
@@ -40,7 +41,9 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
 
   async function pollStatus(d: DspDevice): Promise<void> {
     try {
-      const s = await d.getSystemStatus();
+      // Priority: the 20 Hz status cadence must not stall behind a queued
+      // snapshot fetch.
+      const s = await session.queue.run(() => d.getSystemStatus(), { priority: true });
       tele.applyPeaks(s.peaks, performance.now());   // sets tele.lastStatusMs
       tele.applyClipFlags(s.clipFlags);
       tele.cpu0 = s.cpu0;
@@ -56,7 +59,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
 
   async function pollBuffer(d: DspDevice): Promise<void> {
     try {
-      const b = await d.getBufferStats();
+      const b = await session.queue.run(() => d.getBufferStats());
       if (b) {
         tele.bufferStats = b;
         tele.streaming = b.streaming;
@@ -74,7 +77,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
 
   async function pollInfo(d: DspDevice): Promise<void> {
     try {
-      tele.applyPartialInfo(await d.getSystemInfo());   // sets tele.lastInfoMs
+      tele.applyPartialInfo(await session.queue.run(() => d.getSystemInfo()));   // sets tele.lastInfoMs
       health.noteOk();
     } catch (e) {
       health.noteFail('poll:info', e);
@@ -90,7 +93,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   let lastSpdifRxMs = 0;
   async function pollSpdifRx(d: DspDevice): Promise<void> {
     try {
-      tele.spdifRxStatus = await d.getSpdifRxStatus();
+      tele.spdifRxStatus = await session.queue.run(() => d.getSpdifRxStatus());
       health.noteOk();
     } catch (e) {
       health.noteFail('poll:spdifRx', e);
@@ -106,19 +109,20 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   }
 
   // Background param-mirror reconcile. shouldRunParam already decided this tick
-  // is eligible; we fetch, then re-check before applying. getSnapshot is async, so
-  // a write can land during the fetch -- if it does, the snapshot is stale relative
-  // to the user's latest optimistic value, so we discard it and leave the request
-  // pending (no mid-drag clobber). The request is consumed only on a successful,
-  // still-valid apply: a fetch failure or a mid-fetch write keep it pending for the
-  // next eligible tick. replaceCurrent (not init) keeps presetBaseline pinned.
+  // is eligible; we fetch, then re-check before applying. The CommandQueue makes
+  // the fetch atomic with respect to any write already registered when it was
+  // enqueued -- no send can interleave mid-fetch -- but a scrub mutates the
+  // mirror optimistically at schedule time, before its send is even queued, so a
+  // drag that starts after this fetch was enqueued can still race ahead of the
+  // snapshot landing. Re-checking `writes.busy` after the await catches that
+  // case: discard rather than clobber, leaving the request pending (no mid-drag
+  // clobber). The request is consumed only on a successful, still-valid apply: a
+  // fetch failure or a newly-busy session keep it pending for the next eligible
+  // tick. replaceCurrent (not init) keeps presetBaseline pinned.
   async function pollParam(d: DspDevice): Promise<void> {
-    const startedAt = performance.now();
     try {
-      const snap = await d.getSnapshot();
-      // Re-check the gate across the await: a write during the fetch (inflight, or
-      // a fresh write timestamp after we started) means the snapshot is stale.
-      if (mir.inflight > 0 || mir.lastWriteMs >= startedAt) return;
+      const snap = await session.queue.run(() => d.getSnapshot());
+      if (session.writes.busy) return;
       mir.replaceCurrent(snap);
       mir.consumeReconcile();
       health.noteOk();
@@ -130,20 +134,32 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     }
   }
 
-  // Run when a reconcile is pending, no write is in flight, AND writes have been
-  // quiet for RECONCILE_QUIET_MS (inflight is 0 in the gaps between coalesced scrub
-  // sends, so the quiet window is what distinguishes mid-drag from drag-done). Then
-  // either eager, or the floor interval elapsed. Peek (not consume) so a skipped
-  // tick leaves the request pending.
+  // Run when a reconcile is pending and no write is registered-unsettled or lane
+  // active. writes.busy is exact (no quiet-window guess needed): every device
+  // control call funnels through the session's CommandQueue, so a fetch can
+  // never interleave with a send. Then either eager, or the floor interval
+  // elapsed. Peek (not consume) so a skipped tick leaves the request pending.
+  // With nothing pending, fall through to the unconditional safety net
+  // (PARAM_SAFETY_NET_MS) -- gated on the preset guard too, so it can't land a
+  // redundant fetch mid preset-op (that flow already re-syncs itself via
+  // fetchAndApplyAsBaseline).
   function shouldRunParam(now: number): boolean {
-    if (mir.inflight > 0) return false;
-    if (now - mir.lastWriteMs < RECONCILE_QUIET_MS) return false;
+    // Degraded: the probe owns recovery. Without this gate a pending eager
+    // request would drive a bulk fetch into the dead link every ctrl-timeout
+    // (~2 s), each one failing -- the exact pile-up the write-path suppression
+    // exists to prevent. On recovery the probe clears degraded and re-arms an
+    // eager request, so healing resumes on the next tick.
+    if (health.degraded) return false;
+    if (session.writes.busy) return false;
+    if (mir.presetGuardActive(now)) return false;
     const { wanted, eager } = mir.peekReconcile();
-    if (!wanted) return false;
-    // lastParamMs === 0 means we've never reconciled this session: the first
-    // pending request is eligible immediately rather than waiting a full floor
-    // interval after connect.
-    return eager || tele.lastParamMs === 0 || now - tele.lastParamMs >= PARAM_INTERVAL_MS;
+    if (wanted) {
+      // lastParamMs === 0 means we've never reconciled this session: the first
+      // pending request is eligible immediately rather than waiting a full
+      // floor interval after connect.
+      return eager || tele.lastParamMs === 0 || now - tele.lastParamMs >= PARAM_INTERVAL_MS;
+    }
+    return now - tele.lastParamMs >= PARAM_SAFETY_NET_MS;
   }
 
   const cadences: Cadence[] = [

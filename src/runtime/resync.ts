@@ -1,20 +1,12 @@
 import type { ReadySession } from '@/state';
 import { Log } from '@/utils';
 
-// Forced bulk re-fetch + current-only apply. Used by failure recovery after
-// a write throws. Current-only because the preset-dirty diff measures against
-// `presetBaseline`, which must NOT drift on every resync; callers that need to
-// re-baseline (Preset Load / Revert) use fetchAndApplyAsBaseline.
-export async function forceResyncNow(s: ReadySession): Promise<void> {
-  try {
-    const snap = await s.device.getSnapshot();
-    s.mirror.replaceCurrent(snap);
-    s.health.noteOk();
-  } catch (err) {
-    s.health.noteFail('resync', err);
-    Log.warn('resync', 'bulk re-fetch failed', err);
-  }
-}
+// Sole entry point left here after the D3 recovery-stack consolidation:
+// failure recovery (write/scrub/probe) no longer forces its own bulk re-fetch
+// on throw -- it calls `mirror.requestReconcile(true)` and heals through the
+// background param cadence (src/runtime/poll.ts) on its next eligible tick.
+// This function remains because baseline semantics (mirror.init, draft+saved
+// together) are specific to preset transitions and don't fit that cadence.
 
 // Fetch device state and apply it as a fresh baseline (draft + saved together,
 // atomically). Use for preset transitions (Load / Paste / Revert) where there
@@ -22,7 +14,7 @@ export async function forceResyncNow(s: ReadySession): Promise<void> {
 // where draft and saved disagree and observers see a spurious dirty flip.
 export async function fetchAndApplyAsBaseline(s: ReadySession): Promise<void> {
   try {
-    const snap = await s.device.getSnapshot();
+    const snap = await s.queue.run(() => s.device.getSnapshot());
     s.mirror.init(snap);
     s.health.noteOk();
   } catch (err) {

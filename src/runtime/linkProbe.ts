@@ -1,6 +1,5 @@
 import { dispatch, type ReadySession } from '@/state';
 import { endConnection } from './connectionScope';
-import { forceResyncNow } from './resync';
 import { Log, timerClock, type LoopClock, type Disposer } from '@/utils';
 
 const PROBE_INTERVAL_MS = 1000;
@@ -23,10 +22,12 @@ export function startLinkProbe(s: ReadySession, clock: LoopClock = timerClock(PR
     if (s.health.degraded && !probing && !isHidden()) {
       probing = true;
       try {
-        await s.device.getBypass();
+        await s.queue.run(() => s.device.getBypass(), { priority: true });
         s.health.noteRecovered();
         probeFails = 0;
-        void forceResyncNow(s);
+        // Repaint via the param cadence's eager path (next tick), not an
+        // ad-hoc fetch: one reconcile path for every recovery source.
+        s.mirror.requestReconcile(true);
       } catch (err) {
         s.health.noteFail('probe', err);
         probeFails += 1;
@@ -47,15 +48,16 @@ export function startLinkProbe(s: ReadySession, clock: LoopClock = timerClock(PR
 }
 
 // device.close() makes the transport emit 'disconnect', which runs the standard
-// teardown (disconnected dispatch + endConnection + session.dispose) via the
-// existing listener. The trailing failed dispatch is deliberately unscoped: the
-// attempt token was just cleared, and this forced transition must land in
-// 'errored' so the user sees why the session ended.
+// teardown (disconnected dispatch + endConnection) via the existing listener;
+// endConnection()'s abort tears down the session too, so there is no separate
+// dispose() call here. The trailing failed dispatch is deliberately
+// unconditional -- unlike the guarded dispatches elsewhere, this is a forced
+// transition that must land in 'errored' regardless of the (already-aborted)
+// scope, so the user sees why the session ended.
 async function killSession(s: ReadySession, err: unknown): Promise<void> {
   const msg = err instanceof Error ? err.message : String(err);
   Log.error('health', 'link dead; tearing down session', err);
   try { await s.device.close(); } catch { /* already gone */ }
   endConnection();
-  if (s.alive) s.dispose();
   dispatch({ t: 'failed', message: `Device stopped responding (${msg})` });
 }

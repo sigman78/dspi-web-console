@@ -17,7 +17,7 @@ import { Log, errMessage } from '@/utils';
 // a hung transfer as an error within one human breath.
 const CTRL_TIMEOUT_MS = 2000;
 
-let booting = false;
+let inflightBoot: Promise<void> | null = null;
 
 export function webUsbUnsupportedReason(): string | null {
   return WebUsbTransport.unsupportedReason();
@@ -25,12 +25,11 @@ export function webUsbUnsupportedReason(): string | null {
 
 // Maps a connect failure onto session status. UnsupportedFirmware gets a
 // distinct kind so the hero shows an upgrade prompt instead of the generic
-// diagnostics panel. `attempt` scopes the dispatch to the failing attempt so a
-// stale failure can't clobber a newer connection's state.
-export function reportConnectError(err: unknown, attempt?: number): void {
+// diagnostics panel.
+export function reportConnectError(err: unknown): void {
   const message = errMessage(err);
   const upgrade = err instanceof UnsupportedFirmware || err instanceof UnsupportedDevicePacket;
-  dispatch({ t: 'failed', message, errorKind: upgrade ? 'unsupported-firmware' : null, attempt });
+  dispatch({ t: 'failed', message, errorKind: upgrade ? 'unsupported-firmware' : null });
 }
 
 async function createBoundDevice(
@@ -47,7 +46,7 @@ async function createBoundDevice(
   const wrapped = withTimeout(monitored, { ctrlMs: CTRL_TIMEOUT_MS });
   try {
     const device = await DspDevice.create(wrapped, openTransport);
-    scope.add(attachTransportListeners(transport, device, scope.attempt));
+    scope.onTeardown(attachTransportListeners(transport, device));
     if (wireMonitorEnabled()) {
       // Connection banner (info level). A debug banner must never break a real
       // connection, so swallow any logging failure.
@@ -66,22 +65,26 @@ async function createBoundDevice(
   }
 }
 
-// Entry points own the attempt: mint the scope, report failure with its token
-// BEFORE endConnection() clears it (a cleared token would drop the dispatch and
-// strand the UI in 'connecting').
+// Entry points own the connection: mint the scope, and on failure only
+// report/endConnection if this attempt hasn't already been superseded by a
+// newer one. A newer beginConnection() call aborts this scope and re-points
+// the active connection at its own scope, so calling endConnection() here in
+// that case would tear down the newer connection instead of this dead one.
 
 export async function connectRequested(): Promise<void> {
   if (connection.phase === 'connecting') return;
   const scope = beginConnection();
   try {
-    dispatch({ t: 'requested', attempt: scope.attempt });
+    dispatch({ t: 'requested' });
     const transport = new WebUsbTransport();
     const device = await createBoundDevice(transport, scope, () => transport.requestAndOpen());
     await wireUpConnection(device, scope);
   } catch (err) {
     Log.error('connect', 'connect failed', err);
-    reportConnectError(err, scope.attempt);
-    endConnection();
+    if (!scope.aborted) {
+      reportConnectError(err);
+      endConnection();
+    }
     throw err;
   }
 }
@@ -93,37 +96,43 @@ export async function bootMock(platform: 'rp2040' | 'rp2350', opts: { wireVersio
     const device = await createBoundDevice(transport, scope, undefined);
     await wireUpConnection(device, scope);
   } catch (err) {
-    reportConnectError(err, scope.attempt);
-    endConnection();
+    if (!scope.aborted) {
+      reportConnectError(err);
+      endConnection();
+    }
     throw err;
   }
 }
 
 export async function bootReal(): Promise<void> {
-  if (booting) return;
-  booting = true;
-  try {
-    // Another tab in this browser already holds the device. Auto-claiming would
-    // throw a raw "unable to claim interface" error and clobber the hero with a
-    // diagnostics panel; skip it so the "DEVICE IN USE" advisory shows instead.
-    // (The desktop app / another browser can't be detected this way and still
-    // falls back to the claim-failure text.)
-    if (await isDeviceHeld()) return;
-    const transport = new WebUsbTransport();
-    const ok = await transport.tryAutoConnect();
-    if (!ok) return;
-    const scope = beginConnection();
+  if (inflightBoot) return inflightBoot;
+  inflightBoot = (async () => {
     try {
-      const device = await createBoundDevice(transport, scope, async () => {});
-      await wireUpConnection(device, scope);
-    } catch (err) {
-      reportConnectError(err, scope.attempt);
-      endConnection();
-      throw err;
+      // Another tab in this browser already holds the device. Auto-claiming would
+      // throw a raw "unable to claim interface" error and clobber the hero with a
+      // diagnostics panel; skip it so the "DEVICE IN USE" advisory shows instead.
+      // (The desktop app / another browser can't be detected this way and still
+      // falls back to the claim-failure text.)
+      if (await isDeviceHeld()) return;
+      const transport = new WebUsbTransport();
+      const ok = await transport.tryAutoConnect();
+      if (!ok) return;
+      const scope = beginConnection();
+      try {
+        const device = await createBoundDevice(transport, scope, async () => {});
+        await wireUpConnection(device, scope);
+      } catch (err) {
+        if (!scope.aborted) {
+          reportConnectError(err);
+          endConnection();
+        }
+        throw err;
+      }
+    } finally {
+      inflightBoot = null;
     }
-  } finally {
-    booting = false;
-  }
+  })();
+  return inflightBoot;
 }
 
 export function registerNavigatorReconnect(): void {
@@ -133,10 +142,10 @@ export function registerNavigatorReconnect(): void {
     if (!target) return;
     if (!matchesDspi(event.device)) return;
     if (event.device.serialNumber !== target) return;
-    if (booting) return;
+    if (inflightBoot) return;
     if (connection.connected || connection.phase === 'connecting') return;
     Log.info('reconnect', 'last-known device re-enumerated, attempting bootReal()');
-    // bootReal reports failures itself with its own attempt token.
+    // bootReal reports failures itself, guarded against a superseded attempt.
     void bootReal().catch((e) => Log.error('reconnect', 'auto-reconnect failed', e));
   });
 }
