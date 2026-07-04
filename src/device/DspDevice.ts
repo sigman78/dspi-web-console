@@ -9,11 +9,19 @@ import { deriveCapabilities, type DeviceCapabilities, type FirmwareVersion } fro
 // the reject message.
 const MIN_SUPPORTED_FW = '1.1.4';
 
-// Thrown at connect when firmware predates the supported floor. Carries the
-// versions so the connect UI can render an upgrade prompt.
+// Thrown at connect when firmware predates the supported floor, or reports
+// an in-development wire format the console doesn't speak (11..15 -- e.g. a
+// mid-branch 1.1.5 beta whose semver still reads 1.1.4). Carries the versions
+// so the connect UI can render an upgrade prompt.
 export class UnsupportedFirmware extends Error {
-  constructor(readonly firmwareVersion: string, readonly minimum: string = MIN_SUPPORTED_FW) {
-    super(`DSPi firmware ${firmwareVersion} is older than the minimum supported ${minimum}.`);
+  constructor(
+    readonly firmwareVersion: string,
+    readonly minimum: string = MIN_SUPPORTED_FW,
+    wireLabel?: string,
+  ) {
+    super(wireLabel
+      ? `DSPi firmware ${firmwareVersion} uses the unreleased wire format ${wireLabel}, which this console does not support. Flash the released ${minimum} firmware or a current development build.`
+      : `DSPi firmware ${firmwareVersion} is older than the minimum supported ${minimum}.`);
     this.name = 'UnsupportedFirmware';
   }
 }
@@ -105,7 +113,14 @@ export class DspDevice {
       platformId:    platform.platformId,
     });
     if (capabilities.support === 'unsupported') {
-      throw new UnsupportedFirmware(capabilities.fwLabel);
+      // Wire above the V10 floor but still unsupported = an 11..15 in-dev
+      // intermediate; name the wire format, since the semver alone reads
+      // like a supported release.
+      const intermediate = capabilities.wire > 10;
+      throw new UnsupportedFirmware(
+        capabilities.fwLabel, undefined,
+        intermediate ? capabilities.wireLabel : undefined,
+      );
     }
     // A supported wire version must also carry at least its generation's
     // floor payload (V10: 2960 B; V16: the full 5864 B packet). A shorter
