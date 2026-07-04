@@ -121,7 +121,7 @@ describe('presets store', () => {
     expect(dirty()).toBe(true);
   });
 
-  it('presetsDirty ignores the userVolume axis (device-global, not preset content)', () => {
+  it('presetsDirty ignores the userVolume axis (OS-slider moves must not dirty)', () => {
     seed(mkSnap({ userVolume: { volumeDb: 0, mute: false } }));
     const uv = liveMirror().snapshot.userVolume;
     uv.volumeDb = -6;
