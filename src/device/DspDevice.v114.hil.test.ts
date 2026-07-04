@@ -60,25 +60,6 @@ describe('DspDevice — 1.1.4 surface roundtrips (HIL)', () => {
     );
   });
 
-  it('preset save/load does NOT round-trip the user-volume axis (device-global)', async () => {
-    // The console classes userVolume as runtime-status (never preset-dirty);
-    // this pins the firmware behavior that justifies it.
-    await withSavedField(
-      () => device.getUserVolume(),
-      (db) => device.setUserVolume(db),
-      async () => {
-        const dir = await device.getPresetDirectory();
-        const active = await device.getActivePreset();
-        if (active == null || !dir.occupiedSlotsSet.has(active)) return; // need a saved active slot
-        await device.setUserVolume(-7.5);
-        const r = await device.loadPreset(active);
-        expect(r.ok).toBe(true);
-        await settle();
-        expect(await device.getUserVolume()).toBeCloseTo(-7.5, F32_TOL);
-      },
-    );
-  });
-
   it('per-band bypass: write→getBandBypass + bulk filter bypass byte cross-check', async () => {
     const channel = 0 as ChannelId;
     const band = 0;
@@ -115,77 +96,79 @@ describe('DspDevice — 1.1.4 surface roundtrips (HIL)', () => {
     expect(status.volume).toBeGreaterThanOrEqual(0);
   });
 
-  it('DAC HW mute: disabled writes zero the config; enabled writes round-trip (pin NONE = no GPIO claimed)', async () => {
-    // Firmware contract (dac_hw_mute.c): enabled=0 is always accepted and
-    // zeroes the stored config; enabled=1 validates hold/release/pin in a
-    // deferred handler that swallows failures (read back to learn the verdict).
-    const PIN_NONE = 0xFF;
-    await withSavedField(
-      () => device.getDacHwMute(),
-      async (cfg) => { await device.setDacHwMute(cfg); await settle(); },
-      async () => {
-        const saved = await device.getDacHwMute();
+  describe.skipIf(!process.env.HIL_INVASIVE)('invasive tests with audible/pipeline side effects', () => {
+    it('DAC HW mute: disabled writes zero the config; enabled writes round-trip (pin NONE = no GPIO claimed)', async () => {
+      // Firmware contract (dac_hw_mute.c): enabled=0 is always accepted and
+      // zeroes the stored config; enabled=1 validates hold/release/pin in a
+      // deferred handler that swallows failures (read back to learn the verdict).
+      const PIN_NONE = 0xFF;
+      await withSavedField(
+        () => device.getDacHwMute(),
+        async (cfg) => { await device.setDacHwMute(cfg); await settle(); },
+        async () => {
+          const saved = await device.getDacHwMute();
 
-        if (saved.enabled) {
-          // Configured bench: vary timings within the firmware's [1,500] range,
-          // keep the wired pin.
-          const target = { ...saved, holdMs: 25, releaseMs: 35 };
+          if (saved.enabled) {
+            // Configured bench: vary timings within the firmware's [1,500] range,
+            // keep the wired pin.
+            const target = { ...saved, holdMs: 25, releaseMs: 35 };
+            await device.setDacHwMute(target);
+            await settle();
+            expect(await device.getDacHwMute()).toEqual(target);
+            const bulk = await device.getAllParams();
+            expect(bulk.dacHwMute).toEqual(target);
+            return;
+          }
+
+          // Disabled write with non-zero fields -> accepted but zeroed.
+          await device.setDacHwMute({ enabled: false, activeLow: true, pin: PIN_NONE, holdMs: 25, releaseMs: 35 });
+          await settle();
+          const zeroed = await device.getDacHwMute();
+          expect(zeroed.enabled).toBe(false);
+          expect(zeroed.holdMs).toBe(0);
+          expect(zeroed.releaseMs).toBe(0);
+
+          // Enabled write with pin NONE: validated + applied, no GPIO claimed.
+          const target = { enabled: true, activeLow: true, pin: PIN_NONE, holdMs: 25, releaseMs: 35 };
           await device.setDacHwMute(target);
           await settle();
           expect(await device.getDacHwMute()).toEqual(target);
           const bulk = await device.getAllParams();
           expect(bulk.dacHwMute).toEqual(target);
-          return;
-        }
+        },
+      );
+    });
 
-        // Disabled write with non-zero fields -> accepted but zeroed.
-        await device.setDacHwMute({ enabled: false, activeLow: true, pin: PIN_NONE, holdMs: 25, releaseMs: 35 });
-        await settle();
-        const zeroed = await device.getDacHwMute();
-        expect(zeroed.enabled).toBe(false);
-        expect(zeroed.holdMs).toBe(0);
-        expect(zeroed.releaseMs).toBe(0);
+    it('input source: USB↔S/PDIF switch round-trips; RX status parses while on S/PDIF', async () => {
+      await withSavedField(
+        () => device.getInputSource(),
+        async (src) => { await device.setInputSource(src); await settle(); },
+        async () => {
+          await device.setInputSource(AudioInputSource.Spdif);
+          await settle();
+          expect(await device.getInputSource()).toBe(AudioInputSource.Spdif);
+          let bulk = await device.getAllParams();
+          expect(bulk.inputConfig.source).toBe(AudioInputSource.Spdif);
 
-        // Enabled write with pin NONE: validated + applied, no GPIO claimed.
-        const target = { enabled: true, activeLow: true, pin: PIN_NONE, holdMs: 25, releaseMs: 35 };
-        await device.setDacHwMute(target);
-        await settle();
-        expect(await device.getDacHwMute()).toEqual(target);
-        const bulk = await device.getAllParams();
-        expect(bulk.dacHwMute).toEqual(target);
-      },
-    );
-  });
+          const rx = await device.getSpdifRxStatus();
+          expect([
+            SpdifInputState.Inactive, SpdifInputState.Acquiring,
+            SpdifInputState.Locked, SpdifInputState.Relocking,
+          ]).toContain(rx.state);
+          expect(rx.fifoFillPct).toBeGreaterThanOrEqual(0);
+          expect(rx.fifoFillPct).toBeLessThanOrEqual(100);
 
-  it('input source: USB↔S/PDIF switch round-trips; RX status parses while on S/PDIF', async () => {
-    await withSavedField(
-      () => device.getInputSource(),
-      async (src) => { await device.setInputSource(src); await settle(); },
-      async () => {
-        await device.setInputSource(AudioInputSource.Spdif);
-        await settle();
-        expect(await device.getInputSource()).toBe(AudioInputSource.Spdif);
-        let bulk = await device.getAllParams();
-        expect(bulk.inputConfig.source).toBe(AudioInputSource.Spdif);
+          const ch = await device.getSpdifRxChStatus();
+          expect(ch.byteLength).toBe(24);
 
-        const rx = await device.getSpdifRxStatus();
-        expect([
-          SpdifInputState.Inactive, SpdifInputState.Acquiring,
-          SpdifInputState.Locked, SpdifInputState.Relocking,
-        ]).toContain(rx.state);
-        expect(rx.fifoFillPct).toBeGreaterThanOrEqual(0);
-        expect(rx.fifoFillPct).toBeLessThanOrEqual(100);
-
-        const ch = await device.getSpdifRxChStatus();
-        expect(ch.byteLength).toBe(24);
-
-        await device.setInputSource(AudioInputSource.Usb);
-        await settle();
-        expect(await device.getInputSource()).toBe(AudioInputSource.Usb);
-        bulk = await device.getAllParams();
-        expect(bulk.inputConfig.source).toBe(AudioInputSource.Usb);
-      },
-    );
+          await device.setInputSource(AudioInputSource.Usb);
+          await settle();
+          expect(await device.getInputSource()).toBe(AudioInputSource.Usb);
+          bulk = await device.getAllParams();
+          expect(bulk.inputConfig.source).toBe(AudioInputSource.Usb);
+        },
+      );
+    });
   });
 
   it('S/PDIF RX pin: get matches bulk; no-op set of the current pin is accepted', async () => {

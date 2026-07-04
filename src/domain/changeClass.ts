@@ -21,9 +21,10 @@ export const CHANGE_CLASS: Record<SnapshotChange['kind'], ChangeClass> = {
   leveller:           'preset-content',
   inputConfig:        'preset-content',
   spdifRxPin:         'output-config',
-  // Device-global host-volume axis (mirrors the UAC1 OS slider, vendor mute
-  // bit). Not preset content -- console mute or an OS slider move must not
-  // dirty the active preset.
+  // Host-volume axis (mirrors the UAC1 OS slider, vendor mute bit). Firmware
+  // presets DO store and re-apply volumeDb (whole-dB quantized; mute is
+  // session-only) -- but the console still must not dirty the preset on a
+  // console mute or an OS slider move, and it has no editor for this axis.
   userVolume:         'runtime-status',
   dacHwMute:          'preset-content',
   lgSoundSyncEnabled: 'preset-content',

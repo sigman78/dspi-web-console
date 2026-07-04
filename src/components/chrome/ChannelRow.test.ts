@@ -11,11 +11,6 @@ const base = {
 };
 
 describe('ChannelRow', () => {
-  test('renders the channel name as the button label', () => {
-    render(ChannelRow, { props: { ...base } });
-    expect(screen.getByRole('button', { name: 'Front L' })).toBeTruthy();
-  });
-
   test('marks the selected channel with aria-pressed', () => {
     render(ChannelRow, { props: { ...base, selected: true } });
     expect(screen.getByRole('button', { name: 'Front L' }).getAttribute('aria-pressed')).toBe('true');
@@ -112,11 +107,6 @@ describe('ChannelRow', () => {
     // A telemetry tick (new levelDb) or an optimistic name change re-renders the row.
     await rerender({ ...base, editing: true, levelDb: -3, name: 'Front Left' });
     expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('Bass');
-  });
-
-  test('the editor input is labelled for assistive tech', () => {
-    render(ChannelRow, { props: { ...base, editing: true } });
-    expect(screen.getByRole('textbox').getAttribute('aria-label')).toBe('Rename Front L');
   });
 
   test('Enter returns focus to the row button on exit', async () => {

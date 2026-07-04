@@ -45,8 +45,5 @@ describe('Paste round-trip via setAllParams (HIL)', () => {
     await new Promise((r) => setTimeout(r, SETTLE_MS));
     const after = await device.getAllParams();
     expect(after.masterVolumeDb).toBeCloseTo(mutated.masterVolumeDb, 1);
-    // restore original device state
-    await device.setAllParams(source);
-    await new Promise((r) => setTimeout(r, SETTLE_MS));
   });
 });

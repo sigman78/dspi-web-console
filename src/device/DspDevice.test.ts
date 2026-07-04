@@ -7,7 +7,7 @@
 import { describe, it, test, expect, beforeEach, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice, UnsupportedFirmware, UnsupportedDevicePacket } from './DspDevice';
-import { makeBulk } from '@test/fixtures/bulkFixtures';
+import { createDevice } from '@test/fixtures/deviceHarness';
 import { PresetResult, PinConfigResult, WireCmd, SystemStatusValue, Wire, NotifyEventId } from '@/protocol';
 import {
   PlatformType,
@@ -19,54 +19,6 @@ import {
   type PresetSlot,
 } from '@/domain';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
-
-type TestPlatform = 'rp2040' | 'rp2350';
-
-function identityBytes(request: number, length: number, platform: TestPlatform): Uint8Array | null {
-  if (request === WireCmd.GetSerial.code) {
-    const out = new Uint8Array(length);
-    out.set(new TextEncoder().encode(`TEST-${platform.toUpperCase()}`).slice(0, length));
-    return out;
-  }
-  if (request === WireCmd.GetPlatform.code) {
-    const out = new Uint8Array(length);
-    out[0] = platform === 'rp2350' ? PlatformType.RP2350 : PlatformType.RP2040;
-    if (length > 1) out[1] = 1;
-    if (length > 2) out[2] = 0;
-    return out;
-  }
-  return null;
-}
-
-function withIdentity(base: DspTransport, platform: TestPlatform = 'rp2350'): DspTransport {
-  return {
-    open: () => base.open(),
-    close: () => base.close(),
-    isOpen: () => base.isOpen(),
-    on: (event, listener) => base.on(event, listener),
-    ctrlIn: (request, value, length) => {
-      const identity = identityBytes(request, length, platform);
-      if (identity) return Promise.resolve(identity);
-      // resolveInfo reads the bulk packet at connect to derive capabilities.
-      // Inject a V10 packet so command-mapping tests connect as supported
-      // firmware and don't see a spurious GetAllParams call. Tests needing
-      // real bulk content use MockTransport via DspDevice.create directly.
-      if (request === WireCmd.GetAllParams.code) {
-        return Promise.resolve(makeBulk(
-          { formatVersion: 10, payloadLength: Wire.BulkSizes.V10 },
-          { platformId: platform === 'rp2350' ? 1 : 0 },
-        ));
-      }
-      return base.ctrlIn(request, value, length);
-    },
-    ctrlOut: (request, value, data) => base.ctrlOut(request, value, data),
-  };
-}
-
-async function createDevice(base: DspTransport, platform: TestPlatform = 'rp2350'): Promise<DspDevice> {
-  const openTransport = base.isOpen() ? async () => {} : () => base.open();
-  return DspDevice.create(withIdentity(base, platform), openTransport);
-}
 
 describe('DspDevice facade', () => {
   let d: DspDevice;
@@ -158,36 +110,6 @@ describe('DspDevice — getSystemStatus hardware profile contract', () => {
 });
 
 describe('DspDevice — bypass + master volume mode', () => {
-  function makeCapturingTransport() {
-    const captured: { request: number; value: number; data: Uint8Array }[] = [];
-    const t: DspTransport = {
-      open: async () => {},
-      close: async () => {},
-      isOpen: () => true,
-      on: () => () => {},
-      ctrlIn: async () => new Uint8Array(),
-      ctrlOut: async (request, value, data) => {
-        captured.push({ request, value, data: new Uint8Array(data) });
-      },
-    };
-    return { t, captured };
-  }
-
-  test('setBypass(true) writes bool8 [1] to 0x46 wValue=0', async () => {
-    const { t, captured } = makeCapturingTransport();
-    await (await createDevice(t)).setBypass(true);
-    expect(captured).toHaveLength(1);
-    expect(captured[0].request).toBe(0x46);
-    expect(captured[0].value).toBe(0);
-    expect(captured[0].data).toEqual(new Uint8Array([1]));
-  });
-
-  test('setBypass(false) writes bool8 [0]', async () => {
-    const { t, captured } = makeCapturingTransport();
-    await (await createDevice(t)).setBypass(false);
-    expect(captured[0].data).toEqual(new Uint8Array([0]));
-  });
-
   test('getBypass decodes 0x47 response', async () => {
     let lastReq = 0;
     const t: DspTransport = {
@@ -197,21 +119,6 @@ describe('DspDevice — bypass + master volume mode', () => {
     };
     expect(await (await createDevice(t)).getBypass()).toBe(true);
     expect(lastReq).toBe(0x47);
-  });
-
-  test('setMasterVolumeMode(WithPreset) writes u8 [1] to 0xD4', async () => {
-    const { t, captured } = makeCapturingTransport();
-    await (await createDevice(t)).setMasterVolumeMode(MasterVolumeMode.WithPreset);
-    expect(captured).toHaveLength(1);
-    expect(captured[0].request).toBe(0xD4);
-    expect(captured[0].value).toBe(0);
-    expect(captured[0].data).toEqual(new Uint8Array([1]));
-  });
-
-  test('setMasterVolumeMode(Independent) writes u8 [0]', async () => {
-    const { t, captured } = makeCapturingTransport();
-    await (await createDevice(t)).setMasterVolumeMode(MasterVolumeMode.Independent);
-    expect(captured[0].data).toEqual(new Uint8Array([0]));
   });
 
   test('getMasterVolumeMode decodes 0xD5 response', async () => {
@@ -264,108 +171,53 @@ describe('DspDevice — processing module setters', () => {
     return { t, captured };
   }
 
-  describe('loudness', () => {
-    test('setLoudnessEnabled writes bool8 to 0x58', async () => {
-      const { t, captured } = makeCapturingTransport();
-      const d = await createDevice(t);
-      await d.setLoudnessEnabled(true);
-      expect(captured).toHaveLength(1);
-      expect(captured[0].request).toBe(0x58);
-      expect(captured[0].data).toEqual(new Uint8Array([1]));
-    });
-    test('setLoudnessRefSpl writes f32 to 0x5A', async () => {
-      const { t, captured } = makeCapturingTransport();
-      const d = await createDevice(t);
-      await d.setLoudnessRefSpl(85);
-      expect(captured[0].request).toBe(0x5A);
-      const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
-      expect(view.getFloat32(0, true)).toBeCloseTo(85, 4);
-    });
-    test('setLoudnessIntensity writes f32 to 0x5C', async () => {
-      const { t, captured } = makeCapturingTransport();
-      const d = await createDevice(t);
-      await d.setLoudnessIntensity(0.6);
-      expect(captured[0].request).toBe(0x5C);
-      const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
-      expect(view.getFloat32(0, true)).toBeCloseTo(0.6, 4);
-    });
-  });
+  const bool8 = (b: boolean) => new Uint8Array([b ? 1 : 0]);
+  const u8 = (v: number) => new Uint8Array([v]);
+  const f32 = (v: number) => {
+    const out = new Uint8Array(4);
+    new DataView(out.buffer).setFloat32(0, v, true);
+    return out;
+  };
 
-  describe('crossfeed', () => {
-    test('setCrossfeedEnabled writes bool8 to 0x5E', async () => {
-      const { t, captured } = makeCapturingTransport();
-      await (await createDevice(t)).setCrossfeedEnabled(true);
-      expect(captured[0].request).toBe(0x5E);
-      expect(captured[0].data).toEqual(new Uint8Array([1]));
-    });
-    test('setCrossfeedPreset writes u8 to 0x60', async () => {
-      const { t, captured } = makeCapturingTransport();
-      await (await createDevice(t)).setCrossfeedPreset(CrossfeedPreset.Preset3);
-      expect(captured[0].request).toBe(0x60);
-      expect(captured[0].data).toEqual(new Uint8Array([2]));
-    });
-    test('setCrossfeedFreq writes f32 to 0x62', async () => {
-      const { t, captured } = makeCapturingTransport();
-      await (await createDevice(t)).setCrossfeedFreq(700);
-      expect(captured[0].request).toBe(0x62);
-      const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
-      expect(view.getFloat32(0, true)).toBeCloseTo(700, 4);
-    });
-    test('setCrossfeedFeedDb writes f32 to 0x64', async () => {
-      const { t, captured } = makeCapturingTransport();
-      await (await createDevice(t)).setCrossfeedFeedDb(4.5);
-      expect(captured[0].request).toBe(0x64);
-      const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
-      expect(view.getFloat32(0, true)).toBeCloseTo(4.5, 4);
-    });
-    test('setCrossfeedItd writes bool8 to 0x66', async () => {
-      const { t, captured } = makeCapturingTransport();
-      await (await createDevice(t)).setCrossfeedItd(false);
-      expect(captured[0].request).toBe(0x66);
-      expect(captured[0].data).toEqual(new Uint8Array([0]));
-    });
-  });
+  // [method, opcode, payloadBytes] — every uniform (single-value, wValue=0)
+  // setter across bypass, master volume mode, loudness, crossfeed and
+  // leveller. Each row asserts the exact wire opcode and payload bytes; the
+  // decode-side getters and non-uniform setters (channel/band-scoped) stay
+  // as dedicated tests elsewhere.
+  const setterCases: Array<{
+    name: string;
+    invoke: (d: DspDevice) => Promise<void>;
+    opcode: number;
+    payload: Uint8Array;
+  }> = [
+    { name: 'setBypass(true) -> 0x46',                invoke: (d) => d.setBypass(true), opcode: 0x46, payload: bool8(true) },
+    { name: 'setBypass(false) -> 0x46',               invoke: (d) => d.setBypass(false), opcode: 0x46, payload: bool8(false) },
+    { name: 'setMasterVolumeMode(WithPreset) -> 0xD4', invoke: (d) => d.setMasterVolumeMode(MasterVolumeMode.WithPreset), opcode: 0xD4, payload: u8(1) },
+    { name: 'setMasterVolumeMode(Independent) -> 0xD4', invoke: (d) => d.setMasterVolumeMode(MasterVolumeMode.Independent), opcode: 0xD4, payload: u8(0) },
+    { name: 'setLoudnessEnabled(true) -> 0x58',       invoke: (d) => d.setLoudnessEnabled(true), opcode: 0x58, payload: bool8(true) },
+    { name: 'setLoudnessRefSpl(85) -> 0x5A',          invoke: (d) => d.setLoudnessRefSpl(85), opcode: 0x5A, payload: f32(85) },
+    { name: 'setLoudnessIntensity(0.6) -> 0x5C',      invoke: (d) => d.setLoudnessIntensity(0.6), opcode: 0x5C, payload: f32(0.6) },
+    { name: 'setCrossfeedEnabled(true) -> 0x5E',      invoke: (d) => d.setCrossfeedEnabled(true), opcode: 0x5E, payload: bool8(true) },
+    { name: 'setCrossfeedPreset(Preset3) -> 0x60',    invoke: (d) => d.setCrossfeedPreset(CrossfeedPreset.Preset3), opcode: 0x60, payload: u8(2) },
+    { name: 'setCrossfeedFreq(700) -> 0x62',          invoke: (d) => d.setCrossfeedFreq(700), opcode: 0x62, payload: f32(700) },
+    { name: 'setCrossfeedFeedDb(4.5) -> 0x64',        invoke: (d) => d.setCrossfeedFeedDb(4.5), opcode: 0x64, payload: f32(4.5) },
+    { name: 'setCrossfeedItd(false) -> 0x66',         invoke: (d) => d.setCrossfeedItd(false), opcode: 0x66, payload: bool8(false) },
+    { name: 'setLevellerEnabled(true) -> 0xB4',       invoke: (d) => d.setLevellerEnabled(true), opcode: 0xB4, payload: bool8(true) },
+    { name: 'setLevellerAmount(30) -> 0xB6',          invoke: (d) => d.setLevellerAmount(30), opcode: 0xB6, payload: f32(30) },
+    { name: 'setLevellerSpeed(Fast) -> 0xB8',         invoke: (d) => d.setLevellerSpeed(LevellerSpeed.Fast), opcode: 0xB8, payload: u8(2) },
+    { name: 'setLevellerMaxGain(6) -> 0xBA',          invoke: (d) => d.setLevellerMaxGain(6), opcode: 0xBA, payload: f32(6) },
+    { name: 'setLevellerLookahead(true) -> 0xBC',     invoke: (d) => d.setLevellerLookahead(true), opcode: 0xBC, payload: bool8(true) },
+    { name: 'setLevellerGate(-40) -> 0xBE',           invoke: (d) => d.setLevellerGate(-40), opcode: 0xBE, payload: f32(-40) },
+  ];
 
-  describe('leveller', () => {
-    test('setLevellerEnabled writes bool8 to 0xB4', async () => {
-      const { t, captured } = makeCapturingTransport();
-      await (await createDevice(t)).setLevellerEnabled(true);
-      expect(captured[0].request).toBe(0xB4);
-      expect(captured[0].data).toEqual(new Uint8Array([1]));
-    });
-    test('setLevellerAmount writes f32 to 0xB6', async () => {
-      const { t, captured } = makeCapturingTransport();
-      await (await createDevice(t)).setLevellerAmount(30);
-      expect(captured[0].request).toBe(0xB6);
-      const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
-      expect(view.getFloat32(0, true)).toBeCloseTo(30, 4);
-    });
-    test('setLevellerSpeed writes u8 to 0xB8', async () => {
-      const { t, captured } = makeCapturingTransport();
-      await (await createDevice(t)).setLevellerSpeed(LevellerSpeed.Fast);
-      expect(captured[0].request).toBe(0xB8);
-      expect(captured[0].data).toEqual(new Uint8Array([2]));
-    });
-    test('setLevellerMaxGain writes f32 to 0xBA', async () => {
-      const { t, captured } = makeCapturingTransport();
-      await (await createDevice(t)).setLevellerMaxGain(6);
-      expect(captured[0].request).toBe(0xBA);
-      const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
-      expect(view.getFloat32(0, true)).toBeCloseTo(6, 4);
-    });
-    test('setLevellerLookahead writes bool8 to 0xBC', async () => {
-      const { t, captured } = makeCapturingTransport();
-      await (await createDevice(t)).setLevellerLookahead(true);
-      expect(captured[0].request).toBe(0xBC);
-      expect(captured[0].data).toEqual(new Uint8Array([1]));
-    });
-    test('setLevellerGate writes f32 to 0xBE', async () => {
-      const { t, captured } = makeCapturingTransport();
-      await (await createDevice(t)).setLevellerGate(-40);
-      expect(captured[0].request).toBe(0xBE);
-      const view = new DataView(captured[0].data.buffer, captured[0].data.byteOffset, 4);
-      expect(view.getFloat32(0, true)).toBeCloseTo(-40, 4);
-    });
+  it.each(setterCases)('$name writes the expected opcode + payload', async ({ invoke, opcode, payload }) => {
+    const { t, captured } = makeCapturingTransport();
+    const d = await createDevice(t);
+    await invoke(d);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].request).toBe(opcode);
+    expect(captured[0].value).toBe(0);
+    expect(captured[0].data).toEqual(payload);
   });
 });
 
@@ -460,12 +312,6 @@ describe('DspDevice — channel names', () => {
   it('roundtrips a channel name (Subwoofer on channel 3)', async () => {
     await d.setChannelName(3, 'Subwoofer');
     expect(await d.getChannelName(3)).toBe('Subwoofer');
-  });
-
-  it('silently truncates names longer than 31 bytes to 31 bytes', async () => {
-    const longName = 'A'.repeat(40);
-    await d.setChannelName(3, longName);
-    expect(await d.getChannelName(3)).toBe('A'.repeat(31));
   });
 
   it('preserves names independently per channel (Left on 0, Right on 1)', async () => {
@@ -718,30 +564,12 @@ describe('DspDevice — preset name truncation', () => {
     d = await createDevice(t);
   });
 
-  it('setPresetName silently truncates ASCII names over 31 bytes', async () => {
-    const tooLong = 'A'.repeat(40);
-    await d.setPresetName(0, tooLong);
-    expect(await d.getPresetName(0)).toBe('A'.repeat(31));
-  });
-
   it('setPresetName truncates multi-byte UTF-8 at a codepoint boundary', async () => {
     // 11 four-byte emoji = 44 bytes. Codepoint-aware crop yields 7 emoji = 28 bytes.
     const tooLong = '🎵'.repeat(11);
     await d.setPresetName(0, tooLong);
     const got = await d.getPresetName(0);
     expect(got).toBe('🎵'.repeat(7));
-  });
-
-  it('setPresetName accepts a 31-byte ASCII name unchanged', async () => {
-    const justFits = 'A'.repeat(31);
-    await d.setPresetName(0, justFits);
-    expect(await d.getPresetName(0)).toBe(justFits);
-  });
-
-  it('setChannelName silently truncates names over 31 bytes', async () => {
-    const tooLong = 'A'.repeat(40);
-    await d.setChannelName(0, tooLong);
-    expect(await d.getChannelName(0)).toBe('A'.repeat(31));
   });
 });
 

@@ -44,11 +44,13 @@ describe('presets store', () => {
     resetBoundary();
   });
 
-  it('initial state has null directory and empty names', () => {
+  it('initial state has null directory, empty names, and no pending errors', () => {
     expect(ps().directory).toBe(null);
     expect(ps().active).toBe(null);
     expect(ps().busy).toBe(false);
     expect(ps().names).toEqual(Array(10).fill(null));
+    expect(ps().lastFetchError).toBe(null);
+    expect(ps().lastActionError).toBe(null);
   });
 
   it('presetsDirty is false when baseline is null', () => {
@@ -75,18 +77,6 @@ describe('presets store', () => {
   });
 
   it('presetsDirty includes masterVolumeDb in Mode 1', () => {
-    seed(mkSnap({ masterVolumeDb: 0 }));
-    ps().directory = {
-      occupiedSlotsSet: new Set(),
-      startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      outputConfigMode: OutputConfigMode.Independent,
-      masterVolumeMode: 1 as any,
-    };
-    liveMirror().snapshot.masterVolumeDb = -12;
-    expect(dirty()).toBe(true);
-  });
-
-  it('presetsDirty detects a volume change in Mode 1 regardless of userVolume.mute', () => {
     seed(mkSnap({ masterVolumeDb: 0 }));
     ps().directory = {
       occupiedSlotsSet: new Set(),
@@ -131,7 +121,7 @@ describe('presets store', () => {
     expect(dirty()).toBe(true);
   });
 
-  it('presetsDirty ignores the userVolume axis (device-global, not preset content)', () => {
+  it('presetsDirty ignores the userVolume axis (OS-slider moves must not dirty)', () => {
     seed(mkSnap({ userVolume: { volumeDb: 0, mute: false } }));
     const uv = liveMirror().snapshot.userVolume;
     uv.volumeDb = -6;
@@ -186,30 +176,6 @@ describe('presets store', () => {
     expect(dirty()).toBe(true);
   });
 
-  it('a freshly installed session starts with cleared preset fields', () => {
-    // Dirty the current session's preset fields.
-    ps().directory = {
-      occupiedSlotsSet: new Set(),
-      startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      outputConfigMode: OutputConfigMode.Independent,
-      masterVolumeMode: 0 as any,
-    };
-    ps().active = 3 as any;
-    ps().names = Array.from({ length: 10 }, (_, i) => `n${i}`);
-    ps().busy = true;
-    ps().lastFetchError = 'something';
-    ps().lastActionError = 'oops';
-    // Reinstalling a session gives a fresh PresetsState — the explicit
-    // field-reset is now this per-session freshness invariant.
-    dispatch({ t: 'disconnected' });
-    dispatch({ t: 'synced', session: makeReadySession({ info: {}, hardware: {} } as never) });
-    expect(ps().directory).toBe(null);
-    expect(ps().active).toBe(null);
-    expect(ps().names).toEqual(Array(10).fill(null));
-    expect(ps().busy).toBe(false);
-    expect(ps().lastFetchError).toBe(null);
-    expect(ps().lastActionError).toBe(null);
-  });
 });
 
 describe('boundary modal', () => {

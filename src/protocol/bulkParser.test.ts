@@ -288,13 +288,6 @@ describe('bulkParser — V7-V10 tail decode', () => {
 });
 
 describe('buildBulkParams — version-aware', () => {
-  it('emits V10 (2960 B) for the V10 default snapshot', () => {
-    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    const bytes = buildBulkParams(base);
-    expect(bytes.byteLength).toBe(Wire.BulkSizes.V10);
-    expect(parseBulkParams(bytes).formatVersion).toBe(10);
-  });
-
   it('emits V10 (2960 B) for a V10 snapshot, preserving the tail', () => {
     const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
     const v10 = { ...base, inputConfig: { source: 1, spdifRxPin: 5 }, userVolume: { volumeDb: -3, mute: true } };

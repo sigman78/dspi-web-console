@@ -72,13 +72,14 @@ describe('startNotifyChannel', () => {
     stop();
   });
 
-  it('toasts a confirmation on a PRESET_LOADED event', async () => {
-    const { mock, session } = await v10Setup();
+  it('toasts a confirmation and requests a reconcile on a PRESET_LOADED event', async () => {
+    const { mock, session, mir } = await v10Setup();
     mock.pushNotify(new Uint8Array([2, 4, 0, 1, 3, 0, 0, 0])); // PRESET_LOADED, slot 3
     const m = manualClock();
     const stop = startNotifyChannel(session, m.clock);
     await m.tick();
     expect(notices.list.some((n) => n.kind === 'info' && n.message.includes('03'))).toBe(true);
+    expect(mir.peekReconcile().wanted).toBe(true);
     stop();
   });
 
@@ -159,16 +160,6 @@ describe('startNotifyChannel', () => {
     stop();
   });
 
-  it('requests a reconcile on a PRESET_LOADED event', async () => {
-    const { mock, session, mir } = await v10Setup();
-    mock.pushNotify(new Uint8Array([2, 4, 0, 1, 3]));  // PRESET_LOADED, slot 3
-    const m = manualClock();
-    const stop = startNotifyChannel(session, m.clock);
-    await m.tick();
-    expect(mir.peekReconcile().wanted).toBe(true);
-    stop();
-  });
-
   it('suppresses a self-sourced bulkInvalidated echo while a preset-op guard is held', async () => {
     const { mock, session, mir } = await v10Setup();
     mock.pushNotify(new Uint8Array([2, 3, 0, 1, 3, 0, 0, 0]));   // bulkInvalidated, src=preset
@@ -209,6 +200,18 @@ describe('startNotifyChannel', () => {
     expect(mir.current?.bypass).toBe(true);   // applied despite the guard
     expect(mir.peekReconcile().wanted).toBe(false);  // not a full reconcile
     mir.endPresetGuard(0);
+    stop();
+  });
+
+  it('falls back to a reconcile when the apply declines (out-of-range offset)', async () => {
+    resetWireMirror();
+    const { mock, session, mir } = await v10Setup();
+    mir.init(await session.device.getSnapshot());
+    mock.pushNotify(paramChangedFrame(60000, [1], 5));  // offset out of range → apply returns false
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();
+    expect(mir.peekReconcile().wanted).toBe(true);     // backstop reconcile
     stop();
   });
 
@@ -290,44 +293,3 @@ describe('startNotifyChannel', () => {
 function paramChangedFrame(offset: number, value: number[], source = 5, seq = 1): Uint8Array {
   return new Uint8Array([2, 0x02, 0, seq, offset & 0xff, (offset >> 8) & 0xff, value.length & 0xff, (value.length >> 8) & 0xff, source, 0, 0, 0, ...value]);
 }
-
-describe('startNotifyChannel — Layer 2 PARAM_CHANGED apply', () => {
-  it('applies a non-HOST paramChanged locally without requesting a reconcile', async () => {
-    resetWireMirror();
-    const { mock, session, mir } = await v10Setup();
-    mir.init(await session.device.getSnapshot());   // current + dev.lastRawBulk
-    expect(mir.current?.bypass).toBe(false);
-    mock.pushNotify(paramChangedFrame(20, [1], 5));  // bypass byte (offset 20), source=GPIO(5)
-    const m = manualClock();
-    const stop = startNotifyChannel(session, m.clock);
-    await m.tick();
-    expect(mir.current?.bypass).toBe(true);     // applied locally
-    expect(mir.peekReconcile().wanted).toBe(false);    // no full reconcile
-    stop();
-  });
-
-  it('falls back to a reconcile when the apply declines (out-of-range offset)', async () => {
-    resetWireMirror();
-    const { mock, session, mir } = await v10Setup();
-    mir.init(await session.device.getSnapshot());
-    mock.pushNotify(paramChangedFrame(60000, [1], 5));  // offset out of range → apply returns false
-    const m = manualClock();
-    const stop = startNotifyChannel(session, m.clock);
-    await m.tick();
-    expect(mir.peekReconcile().wanted).toBe(true);     // backstop reconcile
-    stop();
-  });
-
-  it('drops a HOST-sourced paramChanged (our own echo) without applying or reconciling', async () => {
-    resetWireMirror();
-    const { mock, session, mir } = await v10Setup();
-    mir.init(await session.device.getSnapshot());
-    mock.pushNotify(paramChangedFrame(20, [1], 1));  // source=HOST(1)
-    const m = manualClock();
-    const stop = startNotifyChannel(session, m.clock);
-    await m.tick();
-    expect(mir.current?.bypass).toBe(false);    // not applied
-    expect(mir.peekReconcile().wanted).toBe(false);    // not reconciled
-    stop();
-  });
-});

@@ -1,46 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice } from './DspDevice';
-import type { DspTransport } from '@/transport/DspTransport';
-import { WireCmd } from '@/protocol';
-import { PlatformType } from '@/domain';
-
-type TestPlatform = 'rp2040' | 'rp2350';
-
-function identityBytes(request: number, length: number, platform: TestPlatform): Uint8Array | null {
-  if (request === WireCmd.GetSerial.code) {
-    const out = new Uint8Array(length);
-    out.set(new TextEncoder().encode(`TEST-${platform.toUpperCase()}`).slice(0, length));
-    return out;
-  }
-  if (request === WireCmd.GetPlatform.code) {
-    const out = new Uint8Array(length);
-    out[0] = platform === 'rp2350' ? PlatformType.RP2350 : PlatformType.RP2040;
-    if (length > 1) out[1] = 1;
-    if (length > 2) out[2] = 0;
-    return out;
-  }
-  return null;
-}
-
-function withIdentity(base: DspTransport, platform: TestPlatform = 'rp2350'): DspTransport {
-  return {
-    open: () => base.open(),
-    close: () => base.close(),
-    isOpen: () => base.isOpen(),
-    on: (event, listener) => base.on(event, listener),
-    ctrlIn: (request, value, length) => {
-      const identity = identityBytes(request, length, platform);
-      return identity ? Promise.resolve(identity) : base.ctrlIn(request, value, length);
-    },
-    ctrlOut: (request, value, data) => base.ctrlOut(request, value, data),
-  };
-}
-
-async function createDevice(base: DspTransport, platform: TestPlatform = 'rp2350'): Promise<DspDevice> {
-  const openTransport = base.isOpen() ? async () => {} : () => base.open();
-  return DspDevice.create(withIdentity(base, platform), openTransport);
-}
+import { createDevice } from '@test/fixtures/deviceHarness';
 
 describe('DspDevice snapshot API', () => {
   let d: DspDevice;

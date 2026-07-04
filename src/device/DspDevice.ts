@@ -373,9 +373,11 @@ export class DspDevice {
   }
 
   // The granular getters below (getFilter/getMatrixRoute/getOutput*/getInputPreamp/
-  // getChannelName/getPresetStartup/etc.) exist solely as the HIL roundtrip contract
-  // surface; by design no production code reads through them (getSnapshot/getAllParams
-  // is the app read path). Kept as the per-verb read half of the granular contract.
+  // getChannelName/getPresetStartup/etc.) mostly exist as HIL or unit-test roundtrip
+  // coverage for the granular write path -- getSnapshot/getAllParams is the app read
+  // path. Exceptions: getBypass, getSavedMasterVolume, getSpdifRxStatus, and
+  // getDacHwMute are also read by production code (linkProbe/presets/poll/actions).
+  // Kept as the per-verb read half of the granular contract.
 
   // One ctrlIn per parameter with a bit-packed wValue. Not atomic against
   // concurrent writers; use getAllParams() for an atomic snapshot. `decode`
@@ -444,10 +446,12 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetOutputEnable, on, output);
   }
 
+  // unused: no production, HIL, or unit-test caller remains.
   async getOutputEnable(output: domain.OutputSlot): Promise<boolean> {
     return proto.readCmd(this.transport, proto.WireCmd.GetOutputEnable, output);
   }
 
+  // unused: no production, HIL, or unit-test caller remains.
   async getOutputGain(output: domain.OutputSlot): Promise<number> {
     return proto.readCmd(this.transport, proto.WireCmd.GetOutputGain, output);
   }
@@ -456,6 +460,7 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetOutputMute, mute, output);
   }
 
+  // unused: no production, HIL, or unit-test caller remains.
   async getOutputMute(output: domain.OutputSlot): Promise<boolean> {
     return proto.readCmd(this.transport, proto.WireCmd.GetOutputMute, output);
   }
@@ -464,6 +469,7 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetOutputDelay, ms, output);
   }
 
+  // unused: no production, HIL, or unit-test caller remains.
   async getOutputDelay(output: domain.OutputSlot): Promise<number> {
     return proto.readCmd(this.transport, proto.WireCmd.GetOutputDelay, output);
   }

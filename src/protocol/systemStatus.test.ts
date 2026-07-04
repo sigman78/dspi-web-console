@@ -6,16 +6,16 @@ import * as Wire from './wireTypes';
 describe('parseSystemStatus', () => {
   it('parses RP2350 (11-channel) status', () => {
     const peaks = [0.5, 1.0, 0.0, 0.25, 0.125, 0.75, 0.5, 0.5, 0.5, 0.5, 0.1];
-    const buf = synthesizeSystemStatus({ numCh: 11, peaks, cpu0: 42, cpu1: 19, clipFlags: 0b11 });
+    const buf = synthesizeSystemStatus({ numCh: 11, peaks, cpu0: 42, cpu1: 19, clipFlags: 0xABCD });
     const s = parseSystemStatus(buf, 11);
     expect(s.peaks.length).toBe(Wire.Const.NUM_CHANNELS);
     for (let i = 0; i < 11; i++) expect(s.peaks[i]).toBeCloseTo(peaks[i], 3);
     expect(s.cpu0).toBe(42);
     expect(s.cpu1).toBe(19);
-    expect(s.clipFlags).toBe(0b11);
+    expect(s.clipFlags).toBe(0xABCD);
     expect(s.isClipping(0)).toBe(true);
-    expect(s.isClipping(1)).toBe(true);
-    expect(s.isClipping(2)).toBe(false);
+    expect(s.isClipping(1)).toBe(false);
+    expect(s.isClipping(2)).toBe(true);
   });
 
   it('parses RP2040 (7-channel) status, leaves higher peaks at 0', () => {
@@ -35,15 +35,5 @@ describe('parseSystemStatus', () => {
     expect(s.cpu0).toBe(0);
     expect(s.cpu1).toBe(0);
     expect(s.clipFlags).toBe(0);
-  });
-
-  it('roundtrips through synthesize ↔ parse', () => {
-    const peaks = Array.from({ length: 11 }, (_, i) => (i + 1) / 11);
-    const buf = synthesizeSystemStatus({ numCh: 11, peaks, cpu0: 5, cpu1: 95, clipFlags: 0xABCD });
-    const s = parseSystemStatus(buf, 11);
-    for (let i = 0; i < 11; i++) expect(s.peaks[i]).toBeCloseTo(peaks[i], 3);
-    expect(s.cpu0).toBe(5);
-    expect(s.cpu1).toBe(95);
-    expect(s.clipFlags).toBe(0xABCD);
   });
 });

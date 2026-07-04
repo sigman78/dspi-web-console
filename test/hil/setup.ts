@@ -8,6 +8,11 @@
 //
 // Excluded from `npm run check` and from the default vitest run; only
 // invoked via `npm run test:hil` against a connected DSPi.
+//
+// Environment flags (optional; HIL tests are opt-in):
+// - HIL_DESTRUCTIVE: enables flash-writing preset tests (DspDevice.presets.hil.test.ts).
+// - HIL_INVASIVE: enables audible/pipeline-side-effect tests like input-source switching
+//   and DAC mute configuration (DspDevice.v114.hil.test.ts).
 
 import { usb } from 'usb';
 import { DspDevice } from '@/device/DspDevice';

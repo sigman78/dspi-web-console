@@ -57,19 +57,6 @@ function nulStr(maxBytes: number): BinCodec<string> {
   };
 }
 
-// `fixedStr` (here) and `f64` (in Codec below) round out the codec set as a
-// deliberately-complete, symmetric primitive layer. Neither has a current wire
-// caller -- the live wire format uses only NUL-terminated strings and 32-bit
-// scalars -- but they are retained so the primitive set stays whole.
-// Exactly `n` bytes of UTF-8, no NUL trim.
-function fixedStr(n: number): BinCodec<string> {
-  return {
-    size: n,
-    read(r) { return r.utf8Fixed(n); },
-    write(w, v) { w.utf8Fixed(v, n); },
-  };
-}
-
 // Schema: keys map to codecs. Keys starting with "_" are padding/reserved slots;
 // they are read/written in place but stripped from the result type.
 function struct<F extends Record<string, BinCodec<any>>>(fields: F): BinCodec<StructValue<F>> {
@@ -144,12 +131,10 @@ export const Codec = {
   u32:   prim<number> (4, r => r.u32(),   (w, v) => { w.u32(v); }),
   i32:   prim<number> (4, r => r.i32(),   (w, v) => { w.i32(v); }),
   f32:   prim<number> (4, r => r.f32(),   (w, v) => { w.f32(v); }),
-  f64:   prim<number> (8, r => r.f64(),   (w, v) => { w.f64(v); }),
   bool8: prim<boolean>(1, r => r.bool8(), (w, v) => { w.bool8(v); }),
   reserved,
   arr,
   nulStr,
-  fixedStr,
   struct,
   encode,
   decode,
