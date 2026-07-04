@@ -93,7 +93,7 @@
     letter-spacing: 1.2px;
     text-align: right;
     padding: 2px 6px 4px;
-    border-bottom: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
+    border-bottom: 1px solid var(--wash);
   }
   .tbl thead th.src { text-align: left; }
   .tbl tbody td {
@@ -102,7 +102,7 @@
     color: var(--text);
     text-align: right;
     padding: 6px;
-    border-bottom: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
+    border-bottom: 1px solid var(--wash);
   }
   .tbl tbody td.src {
     font-size: 9px;

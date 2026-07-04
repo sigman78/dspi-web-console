@@ -215,7 +215,7 @@
     font-size: 9px;
     line-height: 1;
     padding: 3px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     color: var(--bg);
     background: var(--ch-base);
     border: 1px solid var(--ch-dim);
@@ -231,7 +231,7 @@
   .inp {
     font-size: 9px;
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     font-weight: 600;
     color: var(--bg);
     background: var(--ch-base);
@@ -242,13 +242,11 @@
   .chip {
     font-size: 9px;
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     color: var(--bg);
     background: var(--ch-base);
     border: 1px solid var(--ch-dim);
   }
-
-  .kvgrid { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
   .outlist { padding: 4px 0; }
   .outrow {
@@ -258,7 +256,7 @@
     padding: 6px 14px;
     font-family: var(--font-mono);
     font-size: 10px;
-    border-top: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
+    border-top: 1px solid var(--wash);
   }
   .outrow.dim { opacity: 0.4; }
   .oid { color: var(--ch-bright); font-weight: 600; }

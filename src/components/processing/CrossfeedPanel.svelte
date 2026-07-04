@@ -58,7 +58,7 @@
   {/snippet}
 
   <div class="grid">
-    <span class="lbl">PRESET</span>
+    <span class="microlbl">PRESET</span>
     <div class="span2">
       <SegmentedSelect
         value={cf?.preset ?? 0}
@@ -69,7 +69,7 @@
       />
     </div>
 
-    <span class="lbl">CUTOFF</span>
+    <span class="microlbl">CUTOFF</span>
     <input
       type="range"
       min={Proc.CROSSFEED_FREQ_MIN_HZ} max={Proc.CROSSFEED_FREQ_MAX_HZ} step={Proc.CROSSFEED_FREQ_STEP_HZ}
@@ -87,7 +87,7 @@
       onChange={(v) => setCrossfeedFreq(s, v)}
     />
 
-    <span class="lbl">FEED</span>
+    <span class="microlbl">FEED</span>
     <input
       type="range"
       min={Proc.CROSSFEED_FEED_MIN_DB} max={Proc.CROSSFEED_FEED_MAX_DB} step={Proc.CROSSFEED_FEED_STEP_DB}
@@ -105,7 +105,7 @@
       onChange={(v) => setCrossfeedFeedDb(s, v)}
     />
 
-    <span class="lbl">ITD</span>
+    <span class="microlbl">ITD</span>
     <div class="span2">
       <ToggleSwitch
         size="sm"
@@ -127,12 +127,6 @@
     gap: 12px;
   }
   .span2 { grid-column: 2 / span 2; }
-  .lbl {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    color: var(--text-faint);
-    letter-spacing: 1px;
-  }
   input[type="range"] { accent-color: var(--accent); margin: 0; }
   input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 </style>

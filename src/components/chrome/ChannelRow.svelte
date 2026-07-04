@@ -162,7 +162,7 @@
     padding: 0;
     border: 1px solid var(--border);
     border-radius: 4px;
-    background: color-mix(in oklab, var(--text) 3%, transparent);
+    background: var(--wash);
     color: var(--text);
     font-family: var(--font-mono);
     text-align: left;
@@ -173,7 +173,7 @@
   .row > * { position: relative; z-index: 1; }
   .row:hover:not(.is-disabled):not(.selected) {
     border-color: var(--border-hi);
-    background: color-mix(in oklab, var(--text) 7%, transparent);
+    background: var(--wash-strong);
   }
   .row.is-disabled { cursor: default; }
   /* Editing swaps the .body button for bare input/track/clipline children, so
@@ -276,7 +276,7 @@
   /* While editing, drop the hatch so the input reads cleanly on a dim row. */
   .row.editing::before { opacity: 0; }
   .row.dim:not(.selected) {
-    background: color-mix(in oklab, var(--text) 2%, transparent);
+    background: var(--wash-faint);
   }
   .row.dim.selected::before {
     background: repeating-linear-gradient(
@@ -288,7 +288,7 @@
   .row.dim .nm { opacity: 0.55; }
   .row.pulsate { animation: row-pulse 2s ease-in-out infinite; }
   @keyframes row-pulse {
-    0%, 100% { background: color-mix(in oklab, var(--text) 3%, transparent); }
+    0%, 100% { background: var(--wash); }
     50%      { background: color-mix(in oklab, var(--ch-base) 45%, transparent); }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -303,5 +303,5 @@
     border-radius: 1px;
     pointer-events: none;
   }
-  .clipline.on { background: #ff0000; }
+  .clipline.on { background: var(--err); }
 </style>

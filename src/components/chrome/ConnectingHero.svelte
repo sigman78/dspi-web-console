@@ -74,20 +74,20 @@
   </div>
   <div class="status" class:is-error={connection.phase === 'errored'}>{text}</div>
   {#if unsupported}
-    <div class="unsupported-panel warn-panel" role="alert" aria-label="WebUSB unavailable">
-      <div class="warn-panel__header">WEBUSB UNAVAILABLE</div>
-      <pre class="warn-panel__body">{unsupported}</pre>
+    <div class="unsupported-panel alert-panel warn" role="alert" aria-label="WebUSB unavailable">
+      <div class="alert-panel__header">WEBUSB UNAVAILABLE</div>
+      <pre class="alert-panel__body">{unsupported}</pre>
     </div>
   {:else}
     {#if showUnsupportedFirmware}
-      <div class="warn-panel" role="alert" aria-label="Firmware update required">
-        <div class="warn-panel__header">FIRMWARE UPDATE REQUIRED</div>
-        <pre class="warn-panel__body">{connection.error}</pre>
+      <div class="alert-panel warn" role="alert" aria-label="Firmware update required">
+        <div class="alert-panel__header">FIRMWARE UPDATE REQUIRED</div>
+        <pre class="alert-panel__body">{connection.error}</pre>
       </div>
     {:else if heldElsewhere && !showErrorPanel}
-      <div class="held-panel warn-panel" role="status" aria-label="Device in use">
-        <div class="warn-panel__header">DEVICE IN USE</div>
-        <pre class="warn-panel__body">This device looks like it's open in another browser tab. Close it there, or click CONNECT to try anyway.</pre>
+      <div class="held-panel alert-panel warn" role="status" aria-label="Device in use">
+        <div class="alert-panel__header">DEVICE IN USE</div>
+        <pre class="alert-panel__body">This device looks like it's open in another browser tab. Close it there, or click CONNECT to try anyway.</pre>
       </div>
     {/if}
     <button
@@ -99,9 +99,9 @@
       CONNECT
     </button>
     {#if showErrorPanel}
-      <div class="error-panel" role="alert" aria-label="Connection error details">
-        <div class="error-panel__header">DIAGNOSTICS</div>
-        <pre class="error-panel__body">{connection.error}</pre>
+      <div class="alert-panel" role="alert" aria-label="Connection error details">
+        <div class="alert-panel__header">DIAGNOSTICS</div>
+        <pre class="alert-panel__body">{connection.error}</pre>
       </div>
     {/if}
   {/if}
@@ -152,53 +152,28 @@
   .status.is-error {
     color: var(--err);
   }
-  .error-panel {
+  /* Diagnostics/warning callout. Default tone is --err; .warn swaps --tone
+     to --warn (same pattern as .chip.warn in controls.css). */
+  .alert-panel {
+    --tone: var(--err);
     margin-top: 4px;
     width: min(640px, 90vw);
-    border: 1px solid color-mix(in oklab, var(--err) 55%, var(--border));
-    background: color-mix(in oklab, var(--err) 7%, var(--panel));
+    border: 1px solid color-mix(in oklab, var(--tone) 55%, var(--border));
+    background: color-mix(in oklab, var(--tone) 7%, var(--panel));
     border-radius: var(--radius);
     overflow: hidden;
     text-align: left;
   }
-  .error-panel__header {
+  .alert-panel.warn { --tone: var(--warn); }
+  .alert-panel__header {
     padding: 6px 12px;
     font-size: 10px;
     letter-spacing: 2px;
-    color: var(--err);
-    background: color-mix(in oklab, var(--err) 10%, transparent);
-    border-bottom: 1px solid color-mix(in oklab, var(--err) 35%, var(--border));
+    color: var(--tone);
+    background: color-mix(in oklab, var(--tone) 10%, transparent);
+    border-bottom: 1px solid color-mix(in oklab, var(--tone) 35%, var(--border));
   }
-  .error-panel__body {
-    margin: 0;
-    padding: 10px 12px;
-    max-height: 240px;
-    overflow: auto;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    line-height: 1.5;
-    color: var(--text);
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-  .warn-panel {
-    margin-top: 4px;
-    width: min(640px, 90vw);
-    border: 1px solid color-mix(in oklab, var(--warn) 55%, var(--border));
-    background: color-mix(in oklab, var(--warn) 7%, var(--panel));
-    border-radius: var(--radius);
-    overflow: hidden;
-    text-align: left;
-  }
-  .warn-panel__header {
-    padding: 6px 12px;
-    font-size: 10px;
-    letter-spacing: 2px;
-    color: var(--warn);
-    background: color-mix(in oklab, var(--warn) 10%, transparent);
-    border-bottom: 1px solid color-mix(in oklab, var(--warn) 35%, var(--border));
-  }
-  .warn-panel__body {
+  .alert-panel__body {
     margin: 0;
     padding: 10px 12px;
     max-height: 240px;

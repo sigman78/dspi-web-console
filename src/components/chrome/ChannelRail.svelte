@@ -121,6 +121,10 @@
   .rail-body.is-disabled { opacity: 0.45; pointer-events: none; }
   .microlbl { margin-top: 4px; }
   .pair { display: flex; gap: 6px; }
+  /* Selected-channel spine: 3px var(--ch-base) bar at 0.85 opacity, 2px
+     radius. Same recipe as MatrixHeader's .header.selected::after (column)
+     and MixerTab's .row-head.selected::after (row) — a real element here
+     since it sits beside stacked rows rather than overlaying a single one. */
   .spine {
     width: 3px;
     flex: none;

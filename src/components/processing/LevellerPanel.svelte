@@ -57,7 +57,7 @@
   {/snippet}
 
   <div class="grid">
-    <span class="lbl">SPEED</span>
+    <span class="microlbl">SPEED</span>
     <div class="span2">
       <SegmentedSelect
         value={lv?.speed ?? LevellerSpeed.Medium}
@@ -68,7 +68,7 @@
       />
     </div>
 
-    <span class="lbl">AMOUNT</span>
+    <span class="microlbl">AMOUNT</span>
     <input
       type="range"
       min={Proc.LEVELLER_AMOUNT_MIN_PCT} max={Proc.LEVELLER_AMOUNT_MAX_PCT} step={Proc.LEVELLER_AMOUNT_STEP_PCT}
@@ -86,7 +86,7 @@
       onChange={(v) => setLevellerAmount(s, v)}
     />
 
-    <span class="lbl">MAX GAIN</span>
+    <span class="microlbl">MAX GAIN</span>
     <input
       type="range"
       min={Proc.LEVELLER_MAX_GAIN_MIN_DB} max={Proc.LEVELLER_MAX_GAIN_MAX_DB} step={Proc.LEVELLER_MAX_GAIN_STEP_DB}
@@ -104,7 +104,7 @@
       onChange={(v) => setLevellerMaxGain(s, v)}
     />
 
-    <span class="lbl">GATE</span>
+    <span class="microlbl">GATE</span>
     <input
       type="range"
       min={Proc.LEVELLER_GATE_MIN_DB} max={Proc.LEVELLER_GATE_MAX_DB} step={Proc.LEVELLER_GATE_STEP_DB}
@@ -122,7 +122,7 @@
       onChange={(v) => setLevellerGate(s, v)}
     />
 
-    <span class="lbl">LOOKAHEAD</span>
+    <span class="microlbl">LOOKAHEAD</span>
     <div class="span2">
       <ToggleSwitch
         size="sm"
@@ -144,12 +144,6 @@
     gap: 12px;
   }
   .span2 { grid-column: 2 / span 2; }
-  .lbl {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    color: var(--text-faint);
-    letter-spacing: 1px;
-  }
   input[type="range"] { accent-color: var(--accent); margin: 0; }
   input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 </style>

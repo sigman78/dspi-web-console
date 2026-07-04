@@ -8,10 +8,17 @@
      .on — selected state for chip groups (wins over :disabled dimming, since
      the selected chip is disabled to make the group radio-like).
      .armed — two-step confirm emphasis; combine with a tone class.
+     .hi — outlined variant (transparent fill, --border-hi edge) shared by
+     the small "outline button" recipes (BandsPanel copy/paste/reset/exit,
+     PreampPanel reset) that predate .chip.
 
    .microlbl — control row label (KV stays the canon for label+value pairs).
    .hint — faint mono helper/idle text; padding stays component-local.
-   .dimmed — inactive pane treatment for feature-off panel bodies. */
+   .dimmed — inactive pane treatment for feature-off panel bodies.
+   .kvgrid — the 2-col label/value grid shared by DevicePanel/SystemTab/
+     OverviewTab; panels with a different padding/gap keep a local variant.
+   .icon-toggle — small square icon button (topbar bypass / mini mute);
+     width is the only per-caller variance, set via a local override. */
 
 .chip {
   font-family: var(--font-mono);
@@ -19,8 +26,8 @@
   font-weight: 700;
   letter-spacing: 1px;
   padding: 3px 10px;
-  border-radius: 3px;
-  background: color-mix(in oklab, var(--text) 4%, transparent);
+  border-radius: var(--radius-s);
+  background: var(--wash);
   border: 1px solid var(--border);
   color: var(--text-dim);
   cursor: pointer;
@@ -33,6 +40,16 @@
   letter-spacing: 1.5px;
   padding: 6px 12px;
   border-radius: 4px;
+}
+
+.chip.hi {
+  background: transparent;
+  border-color: var(--border-hi);
+  padding: 3px 8px;
+  font-weight: 400;
+}
+.chip.hi:hover:not(:disabled) {
+  background: var(--wash-strong);
 }
 
 .chip.accent { --tone: var(--accent); }
@@ -83,6 +100,28 @@
 
 .dimmed { opacity: 0.45; }
 
+.kvgrid { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.icon-toggle {
+  height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  background: var(--wash);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-toggle:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
+.icon-toggle:disabled { cursor: default; opacity: 0.5; }
+.icon-toggle.on {
+  background: color-mix(in oklab, var(--err) 15%, transparent);
+  border-color: color-mix(in oklab, var(--err) 45%, transparent);
+  color: var(--err);
+}
+
 /* Section sub-header inside a panel body (border-separated). */
 .subhdr {
   font-family: var(--font-mono);
@@ -91,6 +130,6 @@
   letter-spacing: 1.5px;
   color: var(--text-faint);
   padding: 8px 14px 0;
-  border-top: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
+  border-top: 1px solid var(--wash);
   margin-top: 6px;
 }

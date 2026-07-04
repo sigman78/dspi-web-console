@@ -59,8 +59,7 @@
 </Panel>
 
 <style>
-  .kvgrid { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .divider { height: 1px; background: color-mix(in oklab, var(--text) 4%, transparent); margin: 0 14px; }
+  .divider { height: 1px; background: var(--wash); margin: 0 14px; }
   .actions {
     padding: 12px 14px;
     display: grid;

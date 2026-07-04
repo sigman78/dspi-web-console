@@ -26,7 +26,7 @@
 
 <Panel code="EQ.03" title="PREAMP">
   {#snippet right()}
-    <button class="reset" onclick={onReset} title="Reset preamp to 0 dB">RESET</button>
+    <button class="chip hi" onclick={onReset} title="Reset preamp to 0 dB">RESET</button>
   {/snippet}
 
   <div class="row">
@@ -79,19 +79,6 @@
 </Panel>
 
 <style>
-  .reset {
-    border: 1px solid var(--border-hi);
-    background: transparent;
-    color: var(--text-dim);
-    font-family: var(--font-mono);
-    font-size: 9px;
-    letter-spacing: 1px;
-    padding: 3px 8px;
-    border-radius: 3px;
-    cursor: pointer;
-  }
-  .reset:hover { background: color-mix(in oklab, var(--text) 6%, transparent); color: var(--text); }
-
   .row {
     padding: 12px 14px;
     display: flex;
@@ -102,7 +89,7 @@
     flex: 1;
     height: 22px;
     position: relative;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
+    background: var(--wash);
     border: 1px solid var(--border);
     border-radius: 4px;
     cursor: pointer;
@@ -114,7 +101,7 @@
     position: absolute;
     top: 0; bottom: 0;
     width: 1px;
-    background: color-mix(in oklab, var(--text) 8%, transparent);
+    background: var(--wash-strong);
     pointer-events: none;
   }
   .tick.zero { background: color-mix(in oklab, var(--text) 25%, transparent); }

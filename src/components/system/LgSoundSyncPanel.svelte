@@ -24,7 +24,7 @@
   {/snippet}
 
   {#if lgs}
-    <div class="kvgrid" class:dimmed={!enabled}>
+    <div class="lgkvgrid" class:dimmed={!enabled}>
       <KV label="PRESENT" value={lgs.present ? 'YES' : 'NO'} tone={lgs.present ? 'ok' : 'off'} />
       <KV label="VOLUME"  value={`${lgs.volume}`} />
       <KV label="MUTED"   value={lgs.muted ? 'YES' : 'NO'} tone={lgs.muted ? undefined : 'off'} />
@@ -33,5 +33,5 @@
 </Panel>
 
 <style>
-  .kvgrid { padding: 12px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .lgkvgrid { padding: 12px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 </style>

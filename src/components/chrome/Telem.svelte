@@ -13,7 +13,7 @@
 </script>
 
 <div class="telem prio-{priority}">
-  <div class="lbl">{label}</div>
+  <div class="microlbl">{label}</div>
   <div class="val">{value}</div>
   {#if bar !== undefined}
     <div class="track">
@@ -30,11 +30,10 @@
     min-width: 38px;
     font-family: var(--font-mono);
   }
-  .lbl { font-size: 9px; color: var(--text-faint); letter-spacing: 1px; }
   .val { font-size: 11px; color: var(--text); font-weight: 600; }
   .track {
     height: 2px;
-    background: color-mix(in oklab, var(--text) 8%, transparent);
+    background: var(--wash-strong);
     border-radius: 1px;
     overflow: hidden;
   }

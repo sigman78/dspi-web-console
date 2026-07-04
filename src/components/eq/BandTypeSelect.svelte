@@ -54,7 +54,7 @@
     background: transparent;
     color: var(--text);
     border: 1px solid transparent;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     padding: 2px 4px;
     font-family: var(--font-sans);
     font-size: 11px;
@@ -71,7 +71,7 @@
     background-repeat: no-repeat;
     padding-right: 16px;
   }
-  .bts:hover { background-color: color-mix(in oklab, var(--text) 6%, transparent); }
+  .bts:hover { background-color: var(--wash-strong); }
   .bts:focus { outline: none; border-color: var(--accent); }
   .bts.off { color: var(--text-faint); }
   .bts option { background: var(--panel-solid); color: var(--text); }

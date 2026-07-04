@@ -20,12 +20,20 @@
   --border: color-mix(in oklab, var(--text) 7%, transparent);
   --border-hi: color-mix(in oklab, var(--text) 14%, transparent);
 
+  /* Wash scale: the 3 tint levels every ad-hoc color-mix(text N%) collapsed
+     onto (faint divider / idle wash / hover-active wash). */
+  --wash-faint: color-mix(in oklab, var(--text) 2%, transparent);
+  --wash: color-mix(in oklab, var(--text) 4%, transparent);
+  --wash-strong: color-mix(in oklab, var(--text) 8%, transparent);
+
   --accent: oklch(72% 0.13 265);
   --ok: oklch(78% 0.16 150);
   --warn: oklch(82% 0.16 90);
   --err: oklch(67% 0.18 25);
 
   --pad: 16px;
+  --radius-s: 3px;
+  --radius-m: 5px;
   --radius: 8px;
 
   --font-sans: 'IBM Plex Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;

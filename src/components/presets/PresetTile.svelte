@@ -114,7 +114,7 @@
     aspect-ratio: 1.15 / 1;
     background: var(--panel-hi);
     border: 1px solid var(--border);
-    border-radius: 5px;
+    border-radius: var(--radius-m);
     position: relative;
     cursor: pointer;
     padding: 10px;
@@ -157,7 +157,7 @@
   .wm {
     position: absolute; bottom: -8px; right: -2px;
     font-size: 52px;
-    color: color-mix(in oklab, var(--text) 4%, transparent);
+    color: var(--wash);
     font-weight: 800; line-height: 1; letter-spacing: -2px;
     font-variant-numeric: tabular-nums;
     pointer-events: none;
@@ -189,7 +189,7 @@
     background: var(--panel-solid);
     color: var(--text);
     border: 1px solid var(--accent);
-    border-radius: 5px;
+    border-radius: var(--radius-m);
     font: inherit;
     font-size: 13px;
     font-weight: 600;

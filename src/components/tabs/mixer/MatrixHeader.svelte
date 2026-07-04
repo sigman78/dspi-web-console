@@ -121,14 +121,15 @@
     gap: 6px;
     font-family: var(--font-mono);
     position: relative;
-    background: color-mix(in oklab, var(--text) 1.5%, transparent);
+    background: var(--wash-faint);
     transition: opacity 120ms;
   }
-  .header.zebra { background: color-mix(in oklab, var(--text) 5%, transparent); }
+  .header.zebra { background: var(--wash); }
   .header.dim { opacity: 0.5; }
-  /* Selected-channel locator: a channel-color line over the column, echoing the
-     rail's L/R group spine (var(--ch-base) bar). An absolutely-positioned strip
-     so the matrix grid never reflows. */
+  /* Selected-channel locator: a channel-color line over the column, echoing
+     the rail's L/R group spine (ChannelRail .spine) and MixerTab's row-head
+     mate (var(--ch-base) bar). An absolutely-positioned strip so the matrix
+     grid never reflows. */
   .header.selected::after {
     content: '';
     position: absolute;
@@ -148,10 +149,10 @@
     background:
       repeating-linear-gradient(
         135deg,
-        color-mix(in oklab, var(--text) 8%, transparent) 0 2px,
+        var(--wash-strong) 0 2px,
         transparent 2px 6px
       ),
-      color-mix(in oklab, var(--text) 2%, transparent);
+      var(--wash-faint);
   }
   .header.unavailable button { cursor: not-allowed; }
 
@@ -165,7 +166,7 @@
   .power, .mute {
     width: 18px;
     height: 18px;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     padding: 0;
     background: transparent;
     border: 1px solid var(--border-hi);

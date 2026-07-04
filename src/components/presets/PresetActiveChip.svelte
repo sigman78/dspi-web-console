@@ -36,7 +36,7 @@
     padding: 6px 8px;
     border-radius: 4px;
     font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
+    background: var(--wash);
     border: 1px solid var(--border);
     color: var(--text-dim);
     cursor: pointer;

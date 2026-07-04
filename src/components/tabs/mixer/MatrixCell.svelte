@@ -118,10 +118,10 @@
     background:
       repeating-linear-gradient(
         135deg,
-        color-mix(in oklab, var(--text) 8%, transparent) 0 2px,
+        var(--wash-strong) 0 2px,
         transparent 2px 6px
       ),
-      color-mix(in oklab, var(--text) 2%, transparent);
+      var(--wash-faint);
     box-shadow: none;
   }
   .cell.unavailable button { cursor: not-allowed; }
@@ -159,8 +159,8 @@
 
   .phase {
     padding: 3px 4px;
-    border-radius: 3px;
-    background: color-mix(in oklab, var(--text) 3%, transparent);
+    border-radius: var(--radius-s);
+    background: var(--wash);
     border: 1px solid var(--border);
     color: var(--text-faint);
     font-family: inherit;

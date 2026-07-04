@@ -28,7 +28,7 @@
 
 {#if visible}
   <button
-    class="save"
+    class="chip save"
     class:confirming
     onclick={onClick}
     onblur={onBlur}
@@ -40,18 +40,13 @@
 {/if}
 
 <style>
+  /* Narrower than the shared .chip padding and a step dimmer at rest; the
+     .confirming tone swap stays local. */
   .save {
     padding: 3px 8px;
-    border-radius: 3px;
-    font-family: var(--font-mono); font-size: 9px;
-    letter-spacing: 1px; font-weight: 700;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
-    border: 1px solid var(--border);
     color: var(--text-faint);
-    cursor: pointer;
   }
-  .save:hover:not(:disabled) { color: var(--text-dim); border-color: var(--border-hi); }
-  .save:disabled { opacity: 0.4; cursor: default; }
+  .save:hover:not(:disabled) { color: var(--text-dim); }
   .save.confirming {
     color: var(--warn);
     border-color: color-mix(in oklab, var(--warn) 50%, var(--border));

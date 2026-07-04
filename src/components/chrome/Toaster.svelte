@@ -38,7 +38,7 @@
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 14px oklch(0% 0 0 / 0.4);
   }
   .toast.error { border-left-color: var(--err); }
   .toast.warn  { border-left-color: var(--warn); }

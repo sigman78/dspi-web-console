@@ -58,9 +58,9 @@
     flex-shrink: 0;
     font-size: 9px;
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     border: 1px solid var(--border-hi);
-    background: color-mix(in oklab, var(--text) 5%, transparent);
+    background: var(--wash);
     color: var(--text-dim);
     letter-spacing: 0.5px;
   }

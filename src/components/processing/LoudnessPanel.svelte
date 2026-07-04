@@ -42,7 +42,7 @@
   {/snippet}
 
   <div class="grid">
-    <span class="lbl">REF SPL</span>
+    <span class="microlbl">REF SPL</span>
     <input
       type="range"
       min={Proc.LOUDNESS_REF_SPL_MIN_DB} max={Proc.LOUDNESS_REF_SPL_MAX_DB} step={Proc.LOUDNESS_REF_SPL_STEP_DB}
@@ -60,7 +60,7 @@
       onChange={(v) => setLoudnessRefSpl(s, v)}
     />
 
-    <span class="lbl">INTENSITY</span>
+    <span class="microlbl">INTENSITY</span>
     <input
       type="range"
       min={Proc.LOUDNESS_INTENSITY_MIN_PCT} max={Proc.LOUDNESS_INTENSITY_MAX_PCT} step={Proc.LOUDNESS_INTENSITY_STEP_PCT}
@@ -87,12 +87,6 @@
     grid-template-columns: 90px 1fr 64px;
     align-items: center;
     gap: 12px;
-  }
-  .lbl {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    color: var(--text-faint);
-    letter-spacing: 1px;
   }
   input[type="range"] {
     accent-color: var(--accent);

@@ -198,7 +198,7 @@
   .vf[data-align="right"]  { justify-content: flex-end; }
 
   .vf.hover:not(.editing):not(.disabled) {
-    background: color-mix(in oklab, var(--text) 4%, transparent);
+    background: var(--wash);
     box-shadow:
       inset 0 -1px 0 0 color-mix(in oklab, var(--text) 32%, transparent),
       0 -2px 6px -2px color-mix(in oklab, var(--text) 18%, transparent) inset;

@@ -63,7 +63,7 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     overflow: hidden;
-    background: color-mix(in oklab, var(--text) 2%, transparent);
+    background: var(--wash-faint);
   }
   .opt {
     font-family: var(--font-mono);
@@ -80,7 +80,7 @@
   .opt:last-child { border-right: none; }
   .opt:hover:not(:disabled):not(.on) {
     color: var(--text);
-    background: color-mix(in oklab, var(--text) 4%, transparent);
+    background: var(--wash);
   }
   .opt:disabled { cursor: default; opacity: 0.4; }
   .opt.on {

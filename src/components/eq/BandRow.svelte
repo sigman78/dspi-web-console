@@ -79,7 +79,7 @@
     gap: 6px;
     padding: 5px 14px;
     align-items: center;
-    border-top: 1px solid color-mix(in oklab, var(--text) 4%, transparent);
+    border-top: 1px solid var(--wash);
     font-family: var(--font-mono);
     font-size: 11px;
   }
@@ -93,7 +93,7 @@
     width: 100%;
     height: 20px;
     padding: 0;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     background: transparent;
     border: 1px solid transparent;
     color: var(--text-dim);
@@ -101,7 +101,7 @@
   }
   .byp:hover:not(:disabled) {
     color: var(--text);
-    background: color-mix(in oklab, var(--text) 5%, transparent);
+    background: var(--wash);
   }
   .byp:disabled { opacity: 0.3; cursor: default; }
   .byp.on { color: var(--warn); }

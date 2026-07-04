@@ -15,7 +15,7 @@
 </script>
 
 <div class="vol" class:dim={!connected}>
-  <span class="lbl">VOL</span>
+  <span class="microlbl">VOL</span>
   <input
     type="range"
     class:muted
@@ -29,7 +29,7 @@
     {connected ? masterVolumeDb.toFixed(1) : '—'}
   </span>
   <button
-    class="mute"
+    class="icon-toggle mute"
     class:on={muted}
     onclick={() => { if (s) toggleMute(s); }}
     disabled={!connected}
@@ -62,7 +62,6 @@
     color: var(--text-dim);
   }
   .vol.dim { opacity: 0.5; }
-  .lbl { font-size: 9px; color: var(--text-faint); letter-spacing: 1px; }
   input[type="range"] {
     width: 120px;
     accent-color: var(--accent);
@@ -84,27 +83,5 @@
     color: var(--text-faint);
     letter-spacing: 0.5px;
   }
-  .mute {
-    width: 24px;
-    height: 22px;
-    padding: 0;
-    border-radius: 4px;
-    background: color-mix(in oklab, var(--text) 4%, transparent);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .mute:hover:not(:disabled) {
-    color: var(--text);
-    border-color: var(--border-hi);
-  }
-  .mute:disabled { cursor: default; opacity: 0.5; }
-  .mute.on {
-    background: color-mix(in oklab, var(--err) 15%, transparent);
-    border-color: color-mix(in oklab, var(--err) 45%, transparent);
-    color: var(--err);
-  }
+  .mute { width: 24px; }
 </style>
