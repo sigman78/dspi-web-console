@@ -4,7 +4,7 @@
   import PinSelect from './PinSelect.svelte';
   import { connection } from '@/state';
   import { stageInputSource, stageSpdifRxPin, stageInputRate, stageI2sRxPin, stageI2sInputChannels } from '@/runtime';
-  import { AudioInputSource, SpdifInputState, availablePinsFor, I2S_INPUT_RATES_HZ } from '@/domain';
+  import { AudioInputSource, SpdifInputState, availablePinsFor, I2S_INPUT_RATES_HZ, liveCsPinConfigs } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -18,7 +18,7 @@
   const isSpdif = $derived(source === AudioInputSource.Spdif);
   const isI2s = $derived(source === AudioInputSource.I2s);
   const features = $derived(s.device.capabilities.features);
-  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c });
+  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
   const effSpdifRxPin = $derived(inputConfig ? s.staging.valueOf('spdifRxPin', inputConfig.spdifRxPin) : 0);
   const effRate = $derived(inputConfig ? s.staging.valueOf('inputRate', inputConfig.i2sInputRateHz) : 0);

@@ -42,6 +42,9 @@ export interface DeviceFeatures {
   // External control interfaces (UART transport + I2C target), configured via
   // 0xF5-0xF9. Landed before the 1.1.5 release; V10 firmware lacks them.
   readonly controlInterfaces: boolean;
+  // Control Surfaces: physical controls/indicators on user GPIOs, configured
+  // via 0x84-0x87. Same 1.1.5 vintage as controlInterfaces.
+  readonly controlSurfaces: boolean;
 }
 
 export interface DeviceCapabilities {
@@ -109,6 +112,7 @@ export function deriveCapabilities(input: {
       multichannelInput: isV16 && platformId === 1,
       activeInputCount:  isV16,
       controlInterfaces: isV16,
+      controlSurfaces:   isV16,
     },
   };
 }

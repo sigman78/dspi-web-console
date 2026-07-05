@@ -31,6 +31,11 @@ export function isAssignablePin(platform: PlatformType, pin: number, wireGen: Wi
 export interface CtrlIfaceConfigs {
   uart?: UartControlConfig | null;
   i2c?: I2cControlConfig | null;
+  // Live control-surface bindings, indexed by slot (null = slot empty or
+  // down); their pins are reserved like any fixed peripheral's. A CS pin
+  // picker passes the OTHER slots here so the edited slot's own pins stay
+  // selectable.
+  cs?: readonly ({ gpio0: number; gpio1: number | null } | null)[] | null;
 }
 
 const NO_CTRL_IFACES: CtrlIfaceConfigs = {};
@@ -72,6 +77,11 @@ export function pinsInUse(snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTR
     m.set(ctrl.i2c.sdaPin, 'I2C SDA');
     m.set(ctrl.i2c.sclPin, 'I2C SCL');
   }
+  ctrl.cs?.forEach((b, slot) => {
+    if (!b) return;
+    m.set(b.gpio0, `CS slot ${slot + 1}`);
+    if (b.gpio1 != null) m.set(b.gpio1, `CS slot ${slot + 1}`);
+  });
   return m;
 }
 

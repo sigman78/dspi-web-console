@@ -5,7 +5,8 @@ import {
   type I2sConfig,
   type DacHwMute,
   type UartControlConfig, type I2cControlConfig,
-  AudioInputSource,
+  type CsBinding,
+  AudioInputSource, CsType, EMPTY_CS_BINDING,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   CHANNEL_NAME_MAX_LEN,
 } from '@/domain';
@@ -544,6 +545,35 @@ export function setI2cControlConfig(s: ReadySession, cfg: I2cControlConfig): voi
       s.ctrlIfaces.i2c = cfg;
     },
   );
+}
+
+// V16 — Control Surfaces binding apply (0x84 + status poll). Immediate lane
+// like the UART/I2C config above: a binding apply never restarts the audio
+// path, so it bypasses the staged-apply gate. The polled status read-back
+// must land in state on BOTH branches (a rejection is exactly what the panel
+// needs to show), and the slot's live binding is re-read regardless of
+// outcome -- on failure the firmware keeps and reports the previous one.
+// Resolves true only when the device accepted the binding.
+export async function applyCsBinding(s: ReadySession, slot: number, binding: CsBinding): Promise<boolean> {
+  let ok = false;
+  await command(s, 'set control-surface binding',
+    async () => {
+      const r = await s.device.setCsBinding(slot, binding);
+      const live = await s.device.getCsBinding(slot);
+      return { result: r.result, status: r.status, live };
+    },
+    (r, s) => {
+      s.controlSurfaces.status = r.status;
+      s.controlSurfaces.bindings[slot] = r.live.type === CsType.None ? null : r.live;
+      if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      ok = true;
+    },
+  );
+  return ok;
+}
+
+export function clearCsBinding(s: ReadySession, slot: number): Promise<boolean> {
+  return applyCsBinding(s, slot, EMPTY_CS_BINDING);
 }
 
 // M7 — LG Sound Sync enable toggle.

@@ -10,5 +10,6 @@ export const LATEST_CHANGES = {
     'UART / I2C external control interfaces (System tab)',
     'Heavy device config now stages — review and APPLY as one batch, one audio restart',
     'Preset copy/paste via snapshot clipboard',
+    'Control Surfaces: bind buttons, switches, pots, encoders and LEDs on spare GPIOs (System tab)',
   ],
 } as const;

@@ -5,7 +5,7 @@
   import PinSelect from './PinSelect.svelte';
   import { connection } from '@/state';
   import { stageI2sBckPin, stageMckEnabled, stageMckPin, stageMckMultiplier } from '@/runtime';
-  import { validBckPins, availablePinsFor, OutputSlotType } from '@/domain';
+  import { validBckPins, availablePinsFor, OutputSlotType, liveCsPinConfigs } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -16,7 +16,7 @@
   const anyI2s = $derived(snap?.i2s?.outputSlotTypes.some((t) => t === OutputSlotType.I2s) ?? false);
   const rate = $derived(s.telemetry.info?.sampleRateHz ?? 0);
   const allow256 = $derived(rate < 96000);
-  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c });
+  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
 
   const effBckPin = $derived(snap ? s.staging.valueOf('bckPin', snap.i2s.bckPin) : 0);
   const effMckEnabled = $derived(snap ? s.staging.valueOf('mckEnabled', snap.i2s.mckEnabled) : false);

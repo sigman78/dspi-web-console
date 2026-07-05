@@ -15,9 +15,11 @@ import {
   XOVER_BAND_BASE, MAX_XOVER_BANDS,
   DEFAULT_UART_CONTROL_CONFIG, DEFAULT_I2C_CONTROL_CONFIG,
   isValidUartPinPair, isValidI2cPinPair, isValidUartBaud, isValidI2cAddress,
+  CsType, CS_GPIO_UNUSED, CS_MAX_BINDINGS, validateCsBinding,
   type FilterParams,
   type CrossPoint, type OutputState,
   type UartControlConfig, type I2cControlConfig,
+  type CsCaps, type CsNounCaps, type CsKind,
 } from '@/domain';
 
 export interface MockOptions {
@@ -36,6 +38,45 @@ export interface MockOptions {
 }
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
+
+// Control Surfaces caps tables, firmware capability format version 1
+// (control_surfaces.c s_caps / s_noun_desc).
+const MOCK_CS_CAPS: CsCaps = {
+  capsVersion: 1,
+  maxBindings: CS_MAX_BINDINGS,
+  types: [
+    { actions: 0x0000, pinCount: 0, pinClass: 0 },  // NONE
+    { actions: 0x00BC, pinCount: 1, pinClass: 0 },  // BUTTON: INC/DEC/TOGGLE/SET/TRIGGER
+    { actions: 0x0040, pinCount: 1, pinClass: 0 },  // SWITCH: FOLLOW
+    { actions: 0x0001, pinCount: 1, pinClass: 1 },  // POT: ADJUST, ADC pins
+    { actions: 0x0002, pinCount: 2, pinClass: 0 },  // ENCODER: STEP
+    { actions: 0x0100, pinCount: 1, pinClass: 0 },  // LED: IND_EQUALS
+  ],
+};
+
+const MOCK_CS_NOUNS: CsNounCaps[] = [
+  { kind: 0 as CsKind, enumCount: 0,  actions: 0x002F, minQ8: -15360, maxQ8: 0 },  // USER_VOLUME −60..0 dB
+  { kind: 0 as CsKind, enumCount: 0,  actions: 0x002F, minQ8: -32512, maxQ8: 0 },  // MASTER_VOLUME −127..0 dB
+  { kind: 1 as CsKind, enumCount: 0,  actions: 0x0170, minQ8: 0, maxQ8: 0 },       // USER_MUTE
+  { kind: 1 as CsKind, enumCount: 0,  actions: 0x0170, minQ8: 0, maxQ8: 0 },       // LOUDNESS
+  { kind: 1 as CsKind, enumCount: 0,  actions: 0x0170, minQ8: 0, maxQ8: 0 },       // CROSSFEED
+  { kind: 1 as CsKind, enumCount: 0,  actions: 0x0170, minQ8: 0, maxQ8: 0 },       // LEVELLER
+  { kind: 2 as CsKind, enumCount: 10, actions: 0x012E, minQ8: 0, maxQ8: 0 },       // PRESET
+  { kind: 2 as CsKind, enumCount: 3,  actions: 0x012E, minQ8: 0, maxQ8: 0 },       // INPUT_SOURCE
+  { kind: 1 as CsKind, enumCount: 0,  actions: 0x0180, minQ8: 0, maxQ8: 0 },       // CLIP: TRIGGER/IND_EQUALS
+];
+
+// Wire-shaped stored binding (gpio1 stays raw 0xFF when unused).
+interface MockCsBinding {
+  type: number; noun: number; action: number; flags: number;
+  gpio0: number; gpio1: number;
+  value: number; step: number; rangeMin: number; rangeMax: number;
+}
+
+const emptyCsBinding = (): MockCsBinding => ({
+  type: 0, noun: 0, action: 0, flags: 0, gpio0: 0, gpio1: 0,
+  value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+});
 
 function concatChunks(chunks: Uint8Array[]): Uint8Array {
   const total = chunks.reduce((n, c) => n + c.length, 0);
@@ -115,6 +156,15 @@ export class MockTransport implements DspTransport {
   #i2cLastStatus = 0x00;
   #uartLive = false;
   #i2cLive = false;
+
+  // Control surfaces (V16+, 0x84-0x87). The mock applies a SET immediately,
+  // but reports PENDING on the first status read after an accepted SET so
+  // the device-side poll loop's deferred-apply handling gets exercised.
+  #csBindings: MockCsBinding[] = Array.from({ length: CS_MAX_BINDINGS }, emptyCsBinding);
+  #csSlotStatus: number[] = Array.from({ length: CS_MAX_BINDINGS }, () => 0);
+  #csLastStatus = 0x00;
+  #csLastSlot = 0;
+  #csPendingPolls = 0;
 
   constructor(opts: MockOptions) {
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
@@ -506,6 +556,48 @@ export class MockTransport implements DspTransport {
           protoVersion: 1,
         });
       }
+      case WireCmd.GetCsBinding.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        if (value >= CS_MAX_BINDINGS) throw new Error('MockTransport: GetCsBinding slot out of range (STALL)');
+        const b = this.#csBindings[value];
+        return Codec.encode(Wire.CsBinding, b);
+      }
+      case WireCmd.GetCsCaps.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        if (value === 0xFFFF) {
+          return Codec.encode(Wire.CsCapsHeader, {
+            capsVersion: MOCK_CS_CAPS.capsVersion,
+            maxBindings: MOCK_CS_CAPS.maxBindings,
+            typeCount: MOCK_CS_CAPS.types.length,
+            nounCount: MOCK_CS_NOUNS.length,
+            types: MOCK_CS_CAPS.types.map((t) => ({ actions: t.actions, pinCount: t.pinCount, pinClass: t.pinClass })),
+          });
+        }
+        if (value < MOCK_CS_NOUNS.length) {
+          const n = MOCK_CS_NOUNS[value];
+          return Codec.encode(Wire.CsNounDesc, {
+            kind: n.kind, enumCount: n.enumCount, actions: n.actions, minQ8: n.minQ8, maxQ8: n.maxQ8,
+          });
+        }
+        throw new Error('MockTransport: GetCsCaps noun index out of range (STALL)');
+      }
+      case WireCmd.GetCsStatus.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        let lastStatus = this.#csLastStatus;
+        if (this.#csPendingPolls > 0) {
+          this.#csPendingPolls -= 1;
+          lastStatus = 0x16;                          // CS_STATUS_PENDING
+        }
+        let activeMask = 0;
+        this.#csBindings.forEach((b, i) => {
+          if (b.type !== CsType.None && this.#csSlotStatus[i] === 0) activeMask |= 1 << i;
+        });
+        return Codec.encode(Wire.CsStatusPacket, {
+          lastStatus, lastSlot: this.#csLastSlot,
+          maxBindings: CS_MAX_BINDINGS, activeMask,
+          slotStatus: this.#csSlotStatus.slice(),
+        });
+      }
       case WireCmd.GetBufferStats.code:
         return synthesizeBufferStats({
           numSpdif: this.#numSpdif(),
@@ -714,6 +806,22 @@ export class MockTransport implements DspTransport {
         return;
       }
 
+      case WireCmd.SetCsBinding.code: {
+        if (!this.#isV16) return;
+        if (value >= CS_MAX_BINDINGS) {
+          // Bad slot is rejected by the handler itself -- immediate, no
+          // PENDING window.
+          this.#csLastStatus = 0x10;                  // CS_STATUS_INVALID_SLOT
+          this.#csLastSlot = value & 0xFF;
+          return;
+        }
+        const w = Codec.decode(Wire.CsBinding, data);
+        this.#csLastSlot = value;
+        this.#csPendingPolls = 1;
+        this.#csLastStatus = this.#applyCsBinding(value, w);
+        return;
+      }
+
       case WireCmd.SetAllParams.code: {
         this.#applySetAllParams(data);
         return;
@@ -852,7 +960,51 @@ export class MockTransport implements DspTransport {
     if (this.#peripheralPinInUse(pin, excludeIdx)) return true;
     if (this.#uartCtrl.enabled && (pin === this.#uartCtrl.txPin || pin === this.#uartCtrl.rxPin)) return true;
     if (this.#i2cCtrl.enabled && (pin === this.#i2cCtrl.sdaPin || pin === this.#i2cCtrl.sclPin)) return true;
+    if (this.#csOwnsPin(pin)) return true;
     return false;
+  }
+
+  // Pin claimed by a live control-surface binding (fw
+  // control_surfaces_owns_pin, wired into pin_used_by_fixed_peripheral).
+  #csOwnsPin(pin: number, excludeSlot = -1): boolean {
+    return this.#csBindings.some((b, i) =>
+      i !== excludeSlot && b.type !== CsType.None && this.#csSlotStatus[i] === 0 &&
+      (b.gpio0 === pin || (b.gpio1 !== CS_GPIO_UNUSED && b.gpio1 === pin)));
+  }
+
+  // Validate + apply one binding, mirroring control_surfaces_apply_binding:
+  // table validation (shared with the console via validateCsBinding), then
+  // GPIO range, then conflicts against every other claim. Applies
+  // immediately on success; the PENDING window is simulated by the status
+  // read, not here.
+  #applyCsBinding(slot: number, w: MockCsBinding): number {
+    if (w.type === CsType.None) {
+      this.#csBindings[slot] = emptyCsBinding();
+      this.#csSlotStatus[slot] = 0;
+      return 0x00;
+    }
+    const tableStatus = validateCsBinding(
+      {
+        type: w.type as CsType, noun: w.noun as never, action: w.action as never, flags: w.flags,
+        gpio0: w.gpio0, gpio1: w.gpio1 === CS_GPIO_UNUSED ? null : w.gpio1,
+        value: w.value, step: w.step, rangeMin: w.rangeMin, rangeMax: w.rangeMax,
+      },
+      MOCK_CS_CAPS, MOCK_CS_NOUNS,
+    );
+    if (tableStatus !== 0x00) return tableStatus;
+    const pins = MOCK_CS_CAPS.types[w.type].pinCount === 2 ? [w.gpio0, w.gpio1] : [w.gpio0];
+    for (const pin of pins) {
+      if (!this.#isValidGpio(pin)) return 0x01;                                  // InvalidPin
+      const conflict =
+        this.#peripheralPinInUse(pin, 0xFF)
+        || (this.#uartCtrl.enabled && (pin === this.#uartCtrl.txPin || pin === this.#uartCtrl.rxPin))
+        || (this.#i2cCtrl.enabled && (pin === this.#i2cCtrl.sdaPin || pin === this.#i2cCtrl.sclPin))
+        || this.#csOwnsPin(pin, slot);                                           // own slot re-uses its pins freely
+      if (conflict) return 0x02;                                                 // PinInUse
+    }
+    this.#csBindings[slot] = { ...w };
+    this.#csSlotStatus[slot] = 0;
+    return 0x00;
   }
 
   #validateUartConfig(cfg: { txPin: number; rxPin: number; baud: number }): number {
@@ -860,6 +1012,7 @@ export class MockTransport implements DspTransport {
     if (!this.#isValidGpio(cfg.txPin) || !this.#isValidGpio(cfg.rxPin)) return 0x01;  // InvalidPin
     if (!isValidUartPinPair(cfg.txPin, cfg.rxPin)) return 0x01;
     if (this.#peripheralPinInUse(cfg.txPin, 0xFF) || this.#peripheralPinInUse(cfg.rxPin, 0xFF)) return 0x02; // PinInUse
+    if (this.#csOwnsPin(cfg.txPin) || this.#csOwnsPin(cfg.rxPin)) return 0x02;
     const i2c = this.#i2cCtrl;
     if (i2c.enabled && [cfg.txPin, cfg.rxPin].includes(i2c.sdaPin)) return 0x02;
     if (i2c.enabled && [cfg.txPin, cfg.rxPin].includes(i2c.sclPin)) return 0x02;
@@ -871,6 +1024,7 @@ export class MockTransport implements DspTransport {
     if (!this.#isValidGpio(cfg.sdaPin) || !this.#isValidGpio(cfg.sclPin)) return 0x01; // InvalidPin
     if (!isValidI2cPinPair(cfg.sdaPin, cfg.sclPin)) return 0x01;
     if (this.#peripheralPinInUse(cfg.sdaPin, 0xFF) || this.#peripheralPinInUse(cfg.sclPin, 0xFF)) return 0x02; // PinInUse
+    if (this.#csOwnsPin(cfg.sdaPin) || this.#csOwnsPin(cfg.sclPin)) return 0x02;
     const uart = this.#uartCtrl;
     if (uart.enabled && [cfg.sdaPin, cfg.sclPin].includes(uart.txPin)) return 0x02;
     if (uart.enabled && [cfg.sdaPin, cfg.sclPin].includes(uart.rxPin)) return 0x02;

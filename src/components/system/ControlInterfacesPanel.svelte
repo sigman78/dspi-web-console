@@ -6,7 +6,7 @@
   import { connection } from '@/state';
   import { setUartControlConfig, setI2cControlConfig } from '@/runtime';
   import {
-    validUartTxPins, validI2cSdaPins,
+    validUartTxPins, validI2cSdaPins, liveCsPinConfigs,
     UART_COMMON_BAUDS, I2C_ADDRESS_MIN, I2C_ADDRESS_MAX,
     type UartControlConfig, type I2cControlConfig,
   } from '@/domain';
@@ -20,11 +20,12 @@
   const i2c = $derived(s.ctrlIfaces.i2c);
   const status = $derived(s.ctrlIfaces.status);
 
+  const csPins = $derived(liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status));
   const uartTxCandidates = $derived(
-    snap ? validUartTxPins(snap.platform.type, snap, { i2c }).map((pin) => ({ pin, usedBy: null })) : [],
+    snap ? validUartTxPins(snap.platform.type, snap, { i2c, cs: csPins }).map((pin) => ({ pin, usedBy: null })) : [],
   );
   const i2cSdaCandidates = $derived(
-    snap ? validI2cSdaPins(snap.platform.type, snap, { uart }).map((pin) => ({ pin, usedBy: null })) : [],
+    snap ? validI2cSdaPins(snap.platform.type, snap, { uart, cs: csPins }).map((pin) => ({ pin, usedBy: null })) : [],
   );
 
   function lastStatusMessage(byte: number | undefined): string | null {

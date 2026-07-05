@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FlashResult, PresetResult, flashResultFromByte, presetResultFromByte, PinConfigResult, pinConfigResultFromByte } from './results';
+import { FlashResult, PresetResult, flashResultFromByte, presetResultFromByte, PinConfigResult, pinConfigResultFromByte, CsStatusCode, csStatusFromByte } from './results';
 
 describe('flashResultFromByte', () => {
   it('returns ok on 0', () => {
@@ -64,6 +64,33 @@ describe('pinConfigResultFromByte', () => {
     if (!r.ok) {
       expect(r.code).toBe(PinConfigResult.InvalidParam);
       expect(r.message).toMatch(/range/i);
+    }
+  });
+});
+
+describe('csStatusFromByte', () => {
+  it('0x00 maps to ok', () => {
+    expect(csStatusFromByte(0x00).ok).toBe(true);
+  });
+
+  it('CS and shared-namespace codes carry the byte through as the typed code', () => {
+    const adc = csStatusFromByte(CsStatusCode.PinNotAdc);
+    expect(adc.ok).toBe(false);
+    if (!adc.ok) {
+      expect(adc.code).toBe(CsStatusCode.PinNotAdc);
+      expect(adc.message).toMatch(/ADC pin/);
+    }
+    const inUse = csStatusFromByte(PinConfigResult.PinInUse);
+    expect(inUse.ok).toBe(false);
+    if (!inUse.ok) expect(inUse.code).toBe(PinConfigResult.PinInUse);
+  });
+
+  it('an unknown non-zero byte fails with the generic message rather than throwing', () => {
+    const r = csStatusFromByte(0x7f);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe(0x7f);
+      expect(r.message).toMatch(/failed to apply/i);
     }
   });
 });

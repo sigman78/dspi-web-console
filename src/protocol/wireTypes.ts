@@ -25,7 +25,7 @@
 
 import { Codec, type BinCodec } from '@/utils';
 
-const { u8, u16, u32, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
+const { u8, u16, u32, i16, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
 
 // Wire-format dimensions, sized to the largest platform (RP2350), per
 // channel-model generation. V10 (fw 1.1.4): 2 fixed inputs, 11 channels.
@@ -324,6 +324,62 @@ export const CtrlIfaceStatus = struct({
   i2cLive:        bool8,
   protoVersion:   u8,
   _reserved:      reserved(3),
+});
+
+// Control Surfaces (V16 / fw 1.1.5, 0x84-0x87). Continuous dB fields are
+// signed 8.8 fixed point (1.0 dB = 256); bool/enum values are plain ints.
+
+// 16-byte payload of SetCsBinding (0x84, wValue = slot) / response of
+// GetCsBinding (0x85). gpio1 is 0xFF (CS_GPIO_UNUSED) unless the type
+// needs two pins (encoder channel B).
+export const CsBinding = struct({
+  type:      u8,
+  noun:      u8,
+  action:    u8,
+  flags:     u8,
+  gpio0:     u8,
+  gpio1:     u8,
+  _reserved: reserved(2),
+  value:     i16,
+  step:      i16,
+  rangeMin:  i16,
+  rangeMax:  i16,
+});
+
+// 4-byte per-type capability descriptor inside CsCapsHeader.
+export const CsTypeDesc = struct({
+  actions:  u16,
+  pinCount: u8,
+  pinClass: u8,   // 0 = any GPIO, 1 = ADC (26-28)
+});
+
+// 28-byte GetCsCaps (0x86) response for wValue = 0xFFFF: limits plus the
+// 6-entry type table (indexed by CsType, including the all-zero NONE row).
+export const CsCapsHeader = struct({
+  capsVersion: u8,
+  maxBindings: u8,
+  typeCount:   u8,
+  nounCount:   u8,
+  types:       arr(CsTypeDesc, 6),
+});
+
+// 8-byte GetCsCaps response for wValue = noun index (0..noun_count-1).
+export const CsNounDesc = struct({
+  kind:      u8,    // 0 = continuous, 1 = bool, 2 = enum
+  enumCount: u8,
+  actions:   u16,
+  minQ8:     i16,
+  maxQ8:     i16,
+});
+
+// 12-byte GetCsStatus (0x87) response. last_status is PENDING (0x16) until
+// the deferred main-loop apply of the most recent SET has run.
+export const CsStatusPacket = struct({
+  lastStatus:  u8,
+  lastSlot:    u8,
+  maxBindings: u8,
+  activeMask:  u8,   // bit N = binding N live
+  slotStatus:  arr(u8, 8),
 });
 
 // 32-byte `GetSerial` response: NUL-terminated UTF-8 inside a fixed

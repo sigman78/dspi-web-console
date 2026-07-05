@@ -6,8 +6,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice, UnsupportedFirmware } from './DspDevice';
-import { parseNotifyPacket, WireCmd, buildBulkParams, PinConfigResult } from '@/protocol';
-import { ChannelId, FilterType } from '@/domain';
+import { parseNotifyPacket, WireCmd, buildBulkParams, PinConfigResult, CsStatusCode } from '@/protocol';
+import { ChannelId, FilterType, CsType, CsNoun, CsAction, EMPTY_CS_BINDING, dbToQ8 } from '@/domain';
 
 const FW_115 = { major: 1, minor: 1, patch: 5 };
 
@@ -283,6 +283,102 @@ describe('DspDevice — V16 external control interfaces', () => {
     expect(d.capabilities.features.controlInterfaces).toBe(false);
     const cfg = await d.getUartControlConfig();
     expect(cfg.enabled).toBe(false);
+  });
+});
+
+describe('DspDevice — V16 Control Surfaces (0x84-0x87)', () => {
+  const encoderBinding = {
+    type: CsType.Encoder, noun: CsNoun.MasterVolume, action: CsAction.Step,
+    flags: 0, gpio0: 21, gpio1: 22, value: 0, step: dbToQ8(1), rangeMin: 0, rangeMax: 0,
+  };
+
+  it('reports the controlSurfaces feature on V16 only', async () => {
+    const v16 = await v16Device();
+    expect(v16.capabilities.features.controlSurfaces).toBe(true);
+    const v10 = await DspDevice.create(new MockTransport({ platform: 'rp2350' }));
+    expect(v10.capabilities.features.controlSurfaces).toBe(false);
+  });
+
+  it('enumerates caps: header limits, type table, and one descriptor per noun', async () => {
+    const d = await v16Device();
+    const { caps, nouns } = await d.getCsCaps();
+    expect(caps.maxBindings).toBe(8);
+    expect(caps.types).toHaveLength(6);
+    expect(caps.types[CsType.Encoder].pinCount).toBe(2);
+    expect(caps.types[CsType.Pot].pinClass).toBe(1);
+    expect(nouns).toHaveLength(9);
+    expect(nouns[CsNoun.MasterVolume].minQ8).toBe(dbToQ8(-127));
+    expect(nouns[CsNoun.Preset].enumCount).toBe(10);
+  });
+
+  it('applies an encoder binding through the deferred poll and round-trips it', async () => {
+    const d = await v16Device();
+    // GP21/22 are collision-free on the default mock layout (outputs 6-10,
+    // I2S RX pair 0 on GPIO 1, clocks idle).
+    const { result, status } = await d.setCsBinding(2, encoderBinding);
+    expect(result.ok).toBe(true);
+    expect(status.lastStatus).toBe(0x00);
+    expect(status.lastSlot).toBe(2);
+    expect(status.activeMask & (1 << 2)).toBeTruthy();
+    expect(await d.getCsBinding(2)).toEqual(encoderBinding);
+  });
+
+  it('rejects an action outside the type∩noun mask with INVALID_ACTION', async () => {
+    const d = await v16Device();
+    const { result } = await d.setCsBinding(0, {
+      ...encoderBinding, noun: CsNoun.UserMute,   // bool noun takes no STEP
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(CsStatusCode.InvalidAction);
+    expect((await d.getCsBinding(0)).type).toBe(CsType.None);
+  });
+
+  it('rejects a pot on a non-ADC pin with PIN_NOT_ADC; accepts it on GP26', async () => {
+    const d = await v16Device();
+    const pot = {
+      type: CsType.Pot, noun: CsNoun.UserVolume, action: CsAction.Adjust,
+      flags: 0, gpio0: 20, gpio1: null, value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+    };
+    const bad = await d.setCsBinding(1, pot);
+    expect(bad.result.ok).toBe(false);
+    if (!bad.result.ok) expect(bad.result.code).toBe(CsStatusCode.PinNotAdc);
+
+    const good = await d.setCsBinding(1, { ...pot, gpio0: 26 });
+    expect(good.result.ok).toBe(true);
+  });
+
+  it('rejects a pin already claimed by an output with PIN_IN_USE', async () => {
+    const d = await v16Device();
+    const { result } = await d.setCsBinding(0, { ...encoderBinding, gpio0: 6 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(PinConfigResult.PinInUse);
+  });
+
+  it('a configured single-pin binding rides the 0xFF second-pin sentinel; clear stores the zero blob', async () => {
+    const d = await v16Device();
+    const led = {
+      type: CsType.Led, noun: CsNoun.Loudness, action: CsAction.IndEquals,
+      flags: 0, gpio0: 20, gpio1: null, value: 1, step: 0, rangeMin: 0, rangeMax: 0,
+    };
+    await d.setCsBinding(6, led);
+    // 0xFF on the wire maps back to null (unused second pin).
+    expect((await d.getCsBinding(6)).gpio1).toBeNull();
+
+    await d.clearCsBinding(6);
+    // Cleared slot round-trips as the all-zero blob: gpio1 reads 0, not null.
+    expect(await d.getCsBinding(6)).toEqual(EMPTY_CS_BINDING);
+    expect(EMPTY_CS_BINDING.gpio1).toBe(0);
+  });
+
+  it('clearCsBinding releases the slot and its pins', async () => {
+    const d = await v16Device();
+    await d.setCsBinding(3, encoderBinding);
+    const { result, status } = await d.clearCsBinding(3);
+    expect(result.ok).toBe(true);
+    expect(status.activeMask & (1 << 3)).toBe(0);
+    // The freed pin is claimable by another slot again.
+    const reclaim = await d.setCsBinding(4, encoderBinding);
+    expect(reclaim.result.ok).toBe(true);
   });
 });
 

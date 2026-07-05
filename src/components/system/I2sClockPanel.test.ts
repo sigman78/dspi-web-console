@@ -37,6 +37,7 @@ const session = {
   telemetry: { info: { sampleRateHz: 96000 } },
   mirror: { current: snap },
   ctrlIfaces: { uart: null, i2c: null, status: null },
+  controlSurfaces: { caps: null, nouns: [], bindings: [], status: null },
   staging,
 } as any;
 

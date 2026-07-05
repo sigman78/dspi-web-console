@@ -9,6 +9,7 @@
   import LgSoundSyncPanel from '@/components/system/LgSoundSyncPanel.svelte';
   import DacHwMutePanel from '@/components/system/DacHwMutePanel.svelte';
   import ControlInterfacesPanel from '@/components/system/ControlInterfacesPanel.svelte';
+  import ControlSurfacesPanel from '@/components/system/ControlSurfacesPanel.svelte';
   import BufferStatsPanel from '@/components/system/BufferStatsPanel.svelte';
   import { chKey } from '@/styles/palette';
   import { clearClips } from '@/runtime';
@@ -38,6 +39,9 @@
     <DacHwMutePanel />
     {#if features.controlInterfaces}
       <ControlInterfacesPanel />
+    {/if}
+    {#if features.controlSurfaces}
+      <ControlSurfacesPanel />
     {/if}
   </div>
 

@@ -64,6 +64,69 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(Wire.bulkSizeForVersion(5)).toBe(2896);
   });
 
+  it('CsBinding encodes the spec worked examples byte-for-byte and round-trips', () => {
+    // Encoder GP27/28 -> master volume, 1 dB/detent (spec 8.2a).
+    const encoder = {
+      type: 4, noun: 1, action: 1, flags: 0, gpio0: 27, gpio1: 28,
+      value: 0, step: 256, rangeMin: 0, rangeMax: 0,
+    };
+    const encoderBytes = Uint8Array.from([
+      0x04, 0x01, 0x01, 0x00, 0x1B, 0x1C, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    ]);
+    expect(Codec.encode(Wire.CsBinding, encoder)).toEqual(encoderBytes);
+    expect(Codec.decode(Wire.CsBinding, encoderBytes)).toEqual(encoder);
+
+    // LED GP20 indicating loudness on (spec 8.2b).
+    const led = {
+      type: 5, noun: 3, action: 8, flags: 0, gpio0: 20, gpio1: 0xFF,
+      value: 1, step: 0, rangeMin: 0, rangeMax: 0,
+    };
+    const ledBytes = Uint8Array.from([
+      0x05, 0x03, 0x08, 0x00, 0x14, 0xFF, 0x00, 0x00,
+      0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ]);
+    expect(Codec.encode(Wire.CsBinding, led)).toEqual(ledBytes);
+    expect(Codec.decode(Wire.CsBinding, ledBytes)).toEqual(led);
+
+    // Clear-slot binding is 16 zero bytes (spec 8.3).
+    const clear = {
+      type: 0, noun: 0, action: 0, flags: 0, gpio0: 0, gpio1: 0,
+      value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+    };
+    expect(Codec.encode(Wire.CsBinding, clear)).toEqual(new Uint8Array(16));
+  });
+
+  it('CsBinding round-trips negative q8.8 fields as signed int16', () => {
+    const b = {
+      type: 3, noun: 0, action: 0, flags: 0x02, gpio0: 26, gpio1: 0xFF,
+      value: 0, step: 0, rangeMin: -7680, rangeMax: -128,   // −30 dB .. −0.5 dB
+    };
+    const back = Codec.decode(Wire.CsBinding, Codec.encode(Wire.CsBinding, b));
+    expect(back.rangeMin).toBe(-7680);
+    expect(back.rangeMax).toBe(-128);
+  });
+
+  it('CS caps/status codecs decode a synthesized wire image at the documented offsets', () => {
+    expect(Codec.sizeOf(Wire.CsCapsHeader)).toBe(28);
+    expect(Codec.sizeOf(Wire.CsNounDesc)).toBe(8);
+    expect(Codec.sizeOf(Wire.CsStatusPacket)).toBe(12);
+
+    // MASTER_VOLUME noun descriptor: continuous, −127..0 dB, mask 0x002F.
+    const nounBytes = Uint8Array.from([0x00, 0x00, 0x2F, 0x00, 0x00, 0x81, 0x00, 0x00]);
+    const noun = Codec.decode(Wire.CsNounDesc, nounBytes);
+    expect(noun).toEqual({ kind: 0, enumCount: 0, actions: 0x002F, minQ8: -32512, maxQ8: 0 });
+
+    const status = Codec.decode(Wire.CsStatusPacket, Uint8Array.from([
+      0x16, 0x03, 0x08, 0b0000_0101,
+      0, 0x02, 0, 0, 0, 0, 0, 0,
+    ]));
+    expect(status.lastStatus).toBe(0x16);
+    expect(status.lastSlot).toBe(3);
+    expect(status.activeMask).toBe(0b101);
+    expect(status.slotStatus[1]).toBe(0x02);
+  });
+
   it('SpdifRxStatus is 16 bytes and round-trips its fields', () => {
     expect(Codec.sizeOf(Wire.SpdifRxStatus)).toBe(16);
     const bytes = Codec.encode(Wire.SpdifRxStatus, {

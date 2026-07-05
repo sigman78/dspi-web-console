@@ -40,6 +40,7 @@ const session = {
   mirror: { current: snap },
   presets: { directory: null },
   ctrlIfaces: { uart: null, i2c: null, status: null },
+  controlSurfaces: { caps: null, nouns: [], bindings: [], status: null },
   staging,
   device: {},
 } as any;

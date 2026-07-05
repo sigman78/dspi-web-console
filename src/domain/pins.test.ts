@@ -101,6 +101,20 @@ describe('pins', () => {
     expect(validBckPins(PlatformType.RP2350, s, ctrl)).not.toContain(16);
   });
 
+  test('live control-surface bindings reserve their pins as CS slot N; empty slots reserve nothing', () => {
+    const s = snapV16();
+    const ctrl = { cs: [null, { gpio0: 21, gpio1: 22 }, null, { gpio0: 26, gpio1: null }] };
+
+    const m = pinsInUse(s, ctrl);
+    expect(m.get(21)).toBe('CS slot 2');
+    expect(m.get(22)).toBe('CS slot 2');
+    expect(m.get(26)).toBe('CS slot 4');
+
+    const list = availablePinsFor(PlatformType.RP2350, s, 6, ctrl);
+    expect(list.find((c) => c.pin === 21)?.usedBy).toBe('CS slot 2');
+    expect(list.find((c) => c.pin === 20)?.usedBy).toBeNull();
+  });
+
   test('validUartTxPins only offers parity/instance-valid TX pins, and excludes the I2C pins when enabled', () => {
     const s = snapV16();
     expect(validUartTxPins(PlatformType.RP2350, s)).toContain(16);

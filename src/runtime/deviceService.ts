@@ -12,6 +12,7 @@ import {
   type ReadySession,
 } from '@/state';
 import { Log, errMessage } from '@/utils';
+import * as Domain from '@/domain';
 import { flushAllWrites } from './writes.svelte';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
@@ -45,6 +46,35 @@ export async function fetchCtrlIfaceInfo(s: ReadySession): Promise<void> {
     Log.warn('ctrlIfaces', 'fetch failed', err);
   } finally {
     s.ctrlIfaces.busy = false;
+  }
+}
+
+// Control Surfaces mirror of fetchCtrlIfaceInfo: caps (host order: header,
+// then per-noun descriptors -- DspDevice owns that loop), live status, then
+// every slot's binding. Idempotent once caps are populated; never throws.
+export async function fetchControlSurfaces(s: ReadySession): Promise<void> {
+  if (!s.device.capabilities.features.controlSurfaces) return;
+  if (s.controlSurfaces.caps != null) return;
+  const d = s.device;
+  s.controlSurfaces.busy = true;
+  try {
+    const { caps, nouns } = await s.queue.run(() => d.getCsCaps());
+    const status = await s.queue.run(() => d.getCsStatus());
+    const bindings: (Domain.CsBinding | null)[] = [];
+    for (let slot = 0; slot < caps.maxBindings; slot++) {
+      const b = await s.queue.run(() => d.getCsBinding(slot));
+      bindings.push(b.type === Domain.CsType.None ? null : b);
+    }
+    s.controlSurfaces.caps = caps;
+    s.controlSurfaces.nouns = nouns;
+    s.controlSurfaces.status = status;
+    s.controlSurfaces.bindings = bindings;
+    s.controlSurfaces.lastFetchError = null;
+  } catch (err) {
+    s.controlSurfaces.lastFetchError = errMessage(err);
+    Log.warn('controlSurfaces', 'fetch failed', err);
+  } finally {
+    s.controlSurfaces.busy = false;
   }
 }
 
@@ -100,6 +130,7 @@ export async function wireUpConnection(device: DspDevice, scope?: ConnectionScop
     }
     await fetchPresetInfo(session);
     await fetchCtrlIfaceInfo(session);
+    await fetchControlSurfaces(session);
     Log.info('sync', 'connected', {
       platform: session.mirror.current?.platform.name,
       wire: device.capabilities.wire,

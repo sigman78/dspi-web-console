@@ -4,7 +4,7 @@
   import PinSelect from './PinSelect.svelte';
   import { connection } from '@/state';
   import { setDacHwMute, testDacHwMute } from '@/runtime';
-  import { availablePinsFor, assignablePins, isAssignablePin, pinsInUse, type DacHwMute } from '@/domain';
+  import { availablePinsFor, assignablePins, isAssignablePin, pinsInUse, liveCsPinConfigs, type DacHwMute } from '@/domain';
   import { DAC_HW_MUTE_HOLD_MS_MIN, DAC_HW_MUTE_HOLD_MS_MAX, DAC_HW_MUTE_RELEASE_MS_MAX } from '@/domain/clamp';
   import { getSession } from '@/components/sessionContext';
 
@@ -13,7 +13,7 @@
   const snap = $derived(s.mirror.current);
   const cfg = $derived(snap?.dacHwMute);
   const editable = $derived(connected && cfg != null && cfg.enabled);
-  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c });
+  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
 
   let testBusy = $state(false);
   let testTimer: ReturnType<typeof setTimeout> | null = null;

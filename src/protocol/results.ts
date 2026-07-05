@@ -86,3 +86,37 @@ export function pinConfigResultFromByte(byte: number): Result<void, PinConfigRes
     : PinConfigResult.InvalidPin;
   return Result.fail(code, pinConfigMessage[code]);
 }
+
+// CsStatusCode -- Control Surfaces (0x84-0x87) extends the shared
+// PIN_CONFIG_* namespace from 0x10.
+export const CsStatusCode = {
+  InvalidSlot:   0x10,
+  InvalidType:   0x11,
+  InvalidNoun:   0x12,
+  InvalidAction: 0x13,
+  InvalidValue:  0x14,
+  PinNotAdc:     0x15,
+  Pending:       0x16,
+} as const;
+export type CsStatusCode = (typeof CsStatusCode)[keyof typeof CsStatusCode];
+
+// User-facing texts matching the original desktop app's map; 0x00-0x05 share
+// the PIN_CONFIG_* namespace on the wire but carry CS-specific phrasing here.
+const csStatusMessage: Record<number, string> = {
+  [PinConfigResult.InvalidPin]:  "A pin is out of range, or an encoder's two pins are equal",
+  [PinConfigResult.PinInUse]:    'A pin is already claimed by another peripheral or binding',
+  [CsStatusCode.InvalidSlot]:    'Invalid slot',
+  [CsStatusCode.InvalidType]:    'Unsupported component type',
+  [CsStatusCode.InvalidNoun]:    'Unsupported function',
+  [CsStatusCode.InvalidAction]:  "That action isn't allowed for this component and function",
+  [CsStatusCode.InvalidValue]:   'A value, step, or range is out of bounds',
+  [CsStatusCode.PinNotAdc]:      'A potentiometer must use an ADC pin (GPIO 26, 27, or 28)',
+  [CsStatusCode.Pending]:        'Still applying, please retry',
+};
+
+// Decode a control-surfaces status byte into a typed Result. Unknown non-zero
+// bytes fail with a generic message rather than throwing.
+export function csStatusFromByte(byte: number): Result<void, number> {
+  if (byte === PinConfigResult.Success) return Result.ok();
+  return Result.fail(byte, csStatusMessage[byte] ?? 'Failed to apply the binding');
+}

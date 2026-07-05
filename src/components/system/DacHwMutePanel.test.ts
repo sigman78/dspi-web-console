@@ -24,7 +24,11 @@ function makeSnap(dacHwMute: object, outputPins = [6, 7, 8, 9, 10]) {
 }
 
 function renderPanel(snap: object) {
-  const session = { mirror: { current: snap }, ctrlIfaces: { uart: null, i2c: null, status: null } } as any;
+  const session = {
+    mirror: { current: snap },
+    ctrlIfaces: { uart: null, i2c: null, status: null },
+    controlSurfaces: { caps: null, nouns: [], bindings: [], status: null },
+  } as any;
   render(DacHwMutePanel, { context: new Map([[SESSION_KEY, session]]) });
   return session;
 }

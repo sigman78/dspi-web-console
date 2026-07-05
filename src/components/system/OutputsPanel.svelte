@@ -5,7 +5,7 @@
   import SaveOutputConfigButton from './SaveOutputConfigButton.svelte';
   import { connection } from '@/state';
   import { stageOutputType, stageOutputDataPin } from '@/runtime';
-  import { availablePinsFor, channelLayoutById, ChannelId, OutputSlotType, type I2sPairSlot } from '@/domain';
+  import { availablePinsFor, channelLayoutById, ChannelId, OutputSlotType, liveCsPinConfigs, type I2sPairSlot } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -13,7 +13,7 @@
   const snap = $derived(s.mirror.current);
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
   const connected = $derived(connection.connected);
-  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c });
+  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
 
   function effOutputType(slot: number): number {
     return s.staging.valueOf(`outputType:${slot}`, snap?.i2s?.outputSlotTypes[slot] ?? OutputSlotType.Spdif);
