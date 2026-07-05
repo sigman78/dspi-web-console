@@ -92,6 +92,16 @@ function fwVersionParts(info: { fwMajor: number; fwMinorPatch: number }): Firmwa
   };
 }
 
+function ctrlIfaceStatusFromWire(w: {
+  uartLastStatus: number; uartLive: boolean; i2cLastStatus: number; i2cLive: boolean; protoVersion: number;
+}): domain.ControlIfaceStatus {
+  return {
+    uartLastStatus: w.uartLastStatus, uartLive: w.uartLive,
+    i2cLastStatus: w.i2cLastStatus, i2cLive: w.i2cLive,
+    protoVersion: w.protoVersion,
+  };
+}
+
 
 export class DspDevice {
   #lastRawBulk: Uint8Array | null = null;
@@ -865,6 +875,53 @@ export class DspDevice {
 
   async getI2sInputChannels(): Promise<number> {
     return proto.readCmd(this.transport, proto.WireCmd.GetI2sInputChannels);
+  }
+
+  // External control interfaces (V16+, gate on capabilities.features.controlInterfaces):
+  // a UART control transport and an I2C target, configured over 0xF5-0xF9.
+
+  async getUartControlConfig(): Promise<domain.UartControlConfig> {
+    const w = await proto.readCmd(this.transport, proto.WireCmd.GetUartConfig);
+    return { enabled: w.enabled, txPin: w.txPin, rxPin: w.rxPin, notifyEnabled: w.notifyEnable, baud: w.baud };
+  }
+
+  // SET is a plain control-OUT (no status byte); the result of the write is
+  // read back from GetCtrlIfaceStatus's uart_last_status field. Both
+  // transfers run as one exclusive unit so no other vendor request can land
+  // between them and observe a status from an unrelated op.
+  async setUartControlConfig(
+    cfg: domain.UartControlConfig,
+  ): Promise<{ result: Result<void, proto.PinConfigResult>; status: domain.ControlIfaceStatus }> {
+    return this.transport.exclusive(async (raw) => {
+      await proto.writeCmd(raw, proto.WireCmd.SetUartConfig, {
+        enabled: cfg.enabled, txPin: cfg.txPin, rxPin: cfg.rxPin, notifyEnable: cfg.notifyEnabled, baud: cfg.baud,
+      });
+      const status = ctrlIfaceStatusFromWire(await proto.readCmd(raw, proto.WireCmd.GetCtrlIfaceStatus));
+      return { result: proto.pinConfigResultFromByte(status.uartLastStatus), status };
+    });
+  }
+
+  async getI2cControlConfig(): Promise<domain.I2cControlConfig> {
+    const w = await proto.readCmd(this.transport, proto.WireCmd.GetI2cConfig);
+    return { enabled: w.enabled, sdaPin: w.sdaPin, sclPin: w.sclPin, address: w.address };
+  }
+
+  // Mirrors setUartControlConfig: control-OUT + a status read-back sharing
+  // one exclusive transport session.
+  async setI2cControlConfig(
+    cfg: domain.I2cControlConfig,
+  ): Promise<{ result: Result<void, proto.PinConfigResult>; status: domain.ControlIfaceStatus }> {
+    return this.transport.exclusive(async (raw) => {
+      await proto.writeCmd(raw, proto.WireCmd.SetI2cConfig, {
+        enabled: cfg.enabled, sdaPin: cfg.sdaPin, sclPin: cfg.sclPin, address: cfg.address,
+      });
+      const status = ctrlIfaceStatusFromWire(await proto.readCmd(raw, proto.WireCmd.GetCtrlIfaceStatus));
+      return { result: proto.pinConfigResultFromByte(status.i2cLastStatus), status };
+    });
+  }
+
+  async getControlIfaceStatus(): Promise<domain.ControlIfaceStatus> {
+    return ctrlIfaceStatusFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCtrlIfaceStatus));
   }
 
   // Crossover bands (V16+, output channels only) ride the EQ verbs at wire

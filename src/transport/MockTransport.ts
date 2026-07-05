@@ -13,8 +13,11 @@ import {
   PlatformType, OutputSlotType,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode, OutputConfigMode,
   XOVER_BAND_BASE, MAX_XOVER_BANDS,
+  DEFAULT_UART_CONTROL_CONFIG, DEFAULT_I2C_CONTROL_CONFIG,
+  isValidUartPinPair, isValidI2cPinPair, isValidUartBaud, isValidI2cAddress,
   type FilterParams,
   type CrossPoint, type OutputState,
+  type UartControlConfig, type I2cControlConfig,
 } from '@/domain';
 
 export interface MockOptions {
@@ -103,6 +106,15 @@ export class MockTransport implements DspTransport {
   // non-chunk vendor request tears down whichever session is open.
   #getChunkSession: { buf: Uint8Array; offset: number } | null = null;
   #setChunkSession: { chunks: Uint8Array[]; length: number; target: number } | null = null;
+
+  // External control interfaces (V16+, 0xF5-0xF9). Shipped-disabled defaults;
+  // last_status/live start at "no attempt yet" / down.
+  #uartCtrl: UartControlConfig = { ...DEFAULT_UART_CONTROL_CONFIG };
+  #i2cCtrl: I2cControlConfig = { ...DEFAULT_I2C_CONTROL_CONFIG };
+  #uartLastStatus = 0x00;
+  #i2cLastStatus = 0x00;
+  #uartLive = false;
+  #i2cLive = false;
 
   constructor(opts: MockOptions) {
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
@@ -474,6 +486,26 @@ export class MockTransport implements DspTransport {
         this.#mockState.i2s.mckMultiplierEncoded = raw;
         return new Uint8Array([0x00]);
       }
+      case WireCmd.GetUartConfig.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        const c = this.#uartCtrl;
+        return Codec.encode(Wire.UartCtrlConfig, {
+          enabled: c.enabled, txPin: c.txPin, rxPin: c.rxPin, notifyEnable: c.notifyEnabled, baud: c.baud,
+        });
+      }
+      case WireCmd.GetI2cConfig.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        const c = this.#i2cCtrl;
+        return Codec.encode(Wire.I2cCtrlConfig, { enabled: c.enabled, sdaPin: c.sdaPin, sclPin: c.sclPin, address: c.address });
+      }
+      case WireCmd.GetCtrlIfaceStatus.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        return Codec.encode(Wire.CtrlIfaceStatus, {
+          uartLastStatus: this.#uartLastStatus, uartLive: this.#uartLive,
+          i2cLastStatus: this.#i2cLastStatus, i2cLive: this.#i2cLive,
+          protoVersion: 1,
+        });
+      }
       case WireCmd.GetBufferStats.code:
         return synthesizeBufferStats({
           numSpdif: this.#numSpdif(),
@@ -661,6 +693,27 @@ export class MockTransport implements DspTransport {
         this.#clipFlags = 0;
         return;
 
+      case WireCmd.SetUartConfig.code: {
+        if (!this.#isV16) return;
+        const cfg = Codec.decode(Wire.UartCtrlConfig, data);
+        this.#uartLastStatus = this.#validateUartConfig(cfg);
+        if (this.#uartLastStatus === 0x00) {
+          this.#uartCtrl = { enabled: cfg.enabled, txPin: cfg.txPin, rxPin: cfg.rxPin, notifyEnabled: cfg.notifyEnable, baud: cfg.baud };
+          this.#uartLive = cfg.enabled;
+        }
+        return;
+      }
+      case WireCmd.SetI2cConfig.code: {
+        if (!this.#isV16) return;
+        const cfg = Codec.decode(Wire.I2cCtrlConfig, data);
+        this.#i2cLastStatus = this.#validateI2cConfig(cfg);
+        if (this.#i2cLastStatus === 0x00) {
+          this.#i2cCtrl = { enabled: cfg.enabled, sdaPin: cfg.sdaPin, sclPin: cfg.sclPin, address: cfg.address };
+          this.#i2cLive = cfg.enabled;
+        }
+        return;
+      }
+
       case WireCmd.SetAllParams.code: {
         this.#applySetAllParams(data);
         return;
@@ -767,13 +820,17 @@ export class MockTransport implements DspTransport {
   }
 
   #isValidGpio(pin: number): boolean {
-    // Debug UART pins: GPIO 12 through V10, GPIO 16/17 from V16 (fw moved it).
-    if (this.#isV16 ? (pin === 16 || pin === 17) : pin === 12) return false;
+    // Debug UART pin: GPIO 12 through V10 only. Fw 1.1.5 (V16) removed the
+    // dedicated debug UART, freeing 16/17 for general use.
+    if (!this.#isV16 && pin === 12) return false;
     if (pin >= 23 && pin <= 25) return false;
     return pin >= 0 && pin <= (this.#platform === PlatformType.RP2350 ? 29 : 28);
   }
 
-  #pinInUse(pin: number, excludeIdx: number): boolean {
+  // Peripheral pins only (outputs/I2S/MCK/I2S-RX) -- excludes the ctrl
+  // interfaces themselves, so a ctrl-iface SET can validate against every
+  // OTHER peripheral without self-conflicting on its own current pins.
+  #peripheralPinInUse(pin: number, excludeIdx: number): boolean {
     const pins = this.#mockState.pins;
     for (let i = 0; i < this.#mockState.numPinOutputs; i++) {
       if (i === excludeIdx) continue;
@@ -789,6 +846,35 @@ export class MockTransport implements DspTransport {
       for (let p = 0; p < activePairs; p++) if (rxPins[p] === pin) return true;
     }
     return false;
+  }
+
+  #pinInUse(pin: number, excludeIdx: number): boolean {
+    if (this.#peripheralPinInUse(pin, excludeIdx)) return true;
+    if (this.#uartCtrl.enabled && (pin === this.#uartCtrl.txPin || pin === this.#uartCtrl.rxPin)) return true;
+    if (this.#i2cCtrl.enabled && (pin === this.#i2cCtrl.sdaPin || pin === this.#i2cCtrl.sclPin)) return true;
+    return false;
+  }
+
+  #validateUartConfig(cfg: { txPin: number; rxPin: number; baud: number }): number {
+    if (!isValidUartBaud(cfg.baud)) return 0x05;                                  // InvalidParam
+    if (!this.#isValidGpio(cfg.txPin) || !this.#isValidGpio(cfg.rxPin)) return 0x01;  // InvalidPin
+    if (!isValidUartPinPair(cfg.txPin, cfg.rxPin)) return 0x01;
+    if (this.#peripheralPinInUse(cfg.txPin, 0xFF) || this.#peripheralPinInUse(cfg.rxPin, 0xFF)) return 0x02; // PinInUse
+    const i2c = this.#i2cCtrl;
+    if (i2c.enabled && [cfg.txPin, cfg.rxPin].includes(i2c.sdaPin)) return 0x02;
+    if (i2c.enabled && [cfg.txPin, cfg.rxPin].includes(i2c.sclPin)) return 0x02;
+    return 0x00;
+  }
+
+  #validateI2cConfig(cfg: { sdaPin: number; sclPin: number; address: number }): number {
+    if (!isValidI2cAddress(cfg.address)) return 0x05;                             // InvalidParam
+    if (!this.#isValidGpio(cfg.sdaPin) || !this.#isValidGpio(cfg.sclPin)) return 0x01; // InvalidPin
+    if (!isValidI2cPinPair(cfg.sdaPin, cfg.sclPin)) return 0x01;
+    if (this.#peripheralPinInUse(cfg.sdaPin, 0xFF) || this.#peripheralPinInUse(cfg.sclPin, 0xFF)) return 0x02; // PinInUse
+    const uart = this.#uartCtrl;
+    if (uart.enabled && [cfg.sdaPin, cfg.sclPin].includes(uart.txPin)) return 0x02;
+    if (uart.enabled && [cfg.sdaPin, cfg.sclPin].includes(uart.rxPin)) return 0x02;
+    return 0x00;
   }
 
   // Live active input channel count: USB-source count is the alt-driven value

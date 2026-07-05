@@ -6,7 +6,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice, UnsupportedFirmware } from './DspDevice';
-import { parseNotifyPacket, WireCmd, buildBulkParams } from '@/protocol';
+import { parseNotifyPacket, WireCmd, buildBulkParams, PinConfigResult } from '@/protocol';
 import { ChannelId, FilterType } from '@/domain';
 
 const FW_115 = { major: 1, minor: 1, patch: 5 };
@@ -215,6 +215,74 @@ describe('DspDevice — V16 chunked bulk-params (WinUSB 4 KB control-transfer ca
 
     expect(ctrlInSpy.mock.calls.some((c) => c[0] === WireCmd.GetAllParamsChunk.code)).toBe(false);
     expect(ctrlOutSpy.mock.calls.some((c) => c[0] === WireCmd.SetAllParamsChunk.code)).toBe(false);
+  });
+});
+
+describe('DspDevice — V16 external control interfaces', () => {
+  it('reports the controlInterfaces feature on V16 only', async () => {
+    const v16 = await v16Device();
+    expect(v16.capabilities.features.controlInterfaces).toBe(true);
+    const v10 = await DspDevice.create(new MockTransport({ platform: 'rp2350' }));
+    expect(v10.capabilities.features.controlInterfaces).toBe(false);
+  });
+
+  it('sets a valid UART config; GET reflects it and status reports it live', async () => {
+    const d = await v16Device();
+    // 12/13: collision-free against the mock's default output pins (6-10),
+    // I2S clock (13/14) is idle (MCK disabled), and I2S RX pair 0 (GPIO 1).
+    const { result, status } = await d.setUartControlConfig({
+      enabled: true, txPin: 12, rxPin: 13, notifyEnabled: true, baud: 57600,
+    });
+    expect(result.ok).toBe(true);
+    expect(status.uartLive).toBe(true);
+    expect(status.uartLastStatus).toBe(0);
+    const cfg = await d.getUartControlConfig();
+    expect(cfg).toEqual({ enabled: true, txPin: 12, rxPin: 13, notifyEnabled: true, baud: 57600 });
+  });
+
+  it('rejects an out-of-range baud with InvalidParam and leaves the config unchanged', async () => {
+    const d = await v16Device();
+    const before = await d.getUartControlConfig();
+    const { result, status } = await d.setUartControlConfig({
+      enabled: true, txPin: 12, rxPin: 13, notifyEnabled: false, baud: 1_000_001,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(PinConfigResult.InvalidParam);
+    expect(status.uartLastStatus).toBe(PinConfigResult.InvalidParam);
+    expect(await d.getUartControlConfig()).toEqual(before);
+  });
+
+  it('rejects an I2C pin pair with wrong parity or a cross-instance pair', async () => {
+    const d = await v16Device();
+    const wrongParity = await d.setI2cControlConfig({ enabled: true, sdaPin: 19, sclPin: 18, address: 0x42 });
+    expect(wrongParity.result.ok).toBe(false);
+    const crossInstance = await d.setI2cControlConfig({ enabled: true, sdaPin: 18, sclPin: 17, address: 0x42 });
+    expect(crossInstance.result.ok).toBe(false);
+  });
+
+  it('sets a valid I2C config and reads it back via GetCtrlIfaceStatus', async () => {
+    const d = await v16Device();
+    const { result, status } = await d.setI2cControlConfig({ enabled: true, sdaPin: 2, sclPin: 3, address: 0x50 });
+    expect(result.ok).toBe(true);
+    expect(status.i2cLive).toBe(true);
+    const cfg = await d.getI2cControlConfig();
+    expect(cfg).toEqual({ enabled: true, sdaPin: 2, sclPin: 3, address: 0x50 });
+  });
+
+  it('reserves its pins against output-pin assignment once enabled', async () => {
+    const d = await v16Device();
+    const { result } = await d.setUartControlConfig({ enabled: true, txPin: 12, rxPin: 13, notifyEnabled: false, baud: 115200 });
+    expect(result.ok).toBe(true);
+    const clash = await d.setOutputPin(0, 12);
+    expect(clash.ok).toBe(false);
+    if (!clash.ok) expect(clash.code).toBe(PinConfigResult.PinInUse);
+  });
+
+  it('a V10 device has no control-interface state to corrupt (feature-gated, GETs read disabled defaults)', async () => {
+    const d = await DspDevice.create(new MockTransport({ platform: 'rp2350' }));
+    expect(d.capabilities.features.controlInterfaces).toBe(false);
+    const cfg = await d.getUartControlConfig();
+    expect(cfg.enabled).toBe(false);
   });
 });
 

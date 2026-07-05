@@ -39,6 +39,9 @@ export interface DeviceFeatures {
   // Runtime active-input-count reporting: GetStatus trailing byte, status
   // wValue 23, and the INPUT_FORMAT notify event.
   readonly activeInputCount: boolean;
+  // External control interfaces (UART transport + I2C target), configured via
+  // 0xF5-0xF9. Landed before the 1.1.5 release; V10 firmware lacks them.
+  readonly controlInterfaces: boolean;
 }
 
 export interface DeviceCapabilities {
@@ -105,6 +108,7 @@ export function deriveCapabilities(input: {
       i2sInput:          isV16,
       multichannelInput: isV16 && platformId === 1,
       activeInputCount:  isV16,
+      controlInterfaces: isV16,
     },
   };
 }

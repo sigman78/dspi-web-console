@@ -294,6 +294,38 @@ export const SpdifRxStatus = struct({
 // No semantic codec -- surfaced verbatim as bytes.
 export const SPDIF_RX_CH_STATUS_LEN = 24;
 
+// 8-byte payload of SetUartConfig (0xF5) / response of GetUartConfig (0xF6).
+// Fixed 8N1 framing -- only baud is configurable.
+export const UartCtrlConfig = struct({
+  enabled:      bool8,
+  txPin:        u8,
+  rxPin:        u8,
+  notifyEnable: bool8,
+  baud:         u32,
+});
+
+// 8-byte payload of SetI2cConfig (0xF7) / response of GetI2cConfig (0xF8).
+export const I2cCtrlConfig = struct({
+  enabled:   bool8,
+  sdaPin:    u8,
+  sclPin:    u8,
+  address:   u8,
+  _reserved: reserved(4),
+});
+
+// 8-byte response of GetCtrlIfaceStatus (0xF9). last_status is the
+// PIN_CONFIG_* result of the most recent SET for that interface; live
+// reflects whether the interface is actually up (can differ from
+// config.enabled after a boot-time pin collision kept it down).
+export const CtrlIfaceStatus = struct({
+  uartLastStatus: u8,
+  uartLive:       bool8,
+  i2cLastStatus:  u8,
+  i2cLive:        bool8,
+  protoVersion:   u8,
+  _reserved:      reserved(3),
+});
+
 // 32-byte `GetSerial` response: NUL-terminated UTF-8 inside a fixed
 // 32-byte window.
 export const Serial = nulStr(Const.SERIAL_LEN);

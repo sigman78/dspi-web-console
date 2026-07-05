@@ -217,6 +217,17 @@ export const WireCmd = {
   // action-IN with the count in wValue, 1-byte PinConfigResult.
   SetI2sInputChannels:   { code: 0xF3 } satisfies RawCmd,
   GetI2sInputChannels:   { code: 0xF4, codec: Codec.u8 } satisfies ReadCmd<number>,
+
+  // --- V16 / fw 1.1.5 external control interfaces (UART + I2C) ---
+  // SETs are plain control-OUT with the struct payload; the firmware refuses
+  // them over UART/I2C itself (USB-only), which is moot here since the
+  // console always speaks USB. The result of a SET is read back from
+  // GetCtrlIfaceStatus's matching last_status field; see DspDevice.
+  SetUartConfig:         { code: 0xF5, codec: Wire.UartCtrlConfig } satisfies WriteCmd<{ enabled: boolean; txPin: number; rxPin: number; notifyEnable: boolean; baud: number }>,
+  GetUartConfig:         { code: 0xF6, codec: Wire.UartCtrlConfig } satisfies ReadCmd<{ enabled: boolean; txPin: number; rxPin: number; notifyEnable: boolean; baud: number }>,
+  SetI2cConfig:          { code: 0xF7, codec: Wire.I2cCtrlConfig } satisfies WriteCmd<{ enabled: boolean; sdaPin: number; sclPin: number; address: number }>,
+  GetI2cConfig:          { code: 0xF8, codec: Wire.I2cCtrlConfig } satisfies ReadCmd<{ enabled: boolean; sdaPin: number; sclPin: number; address: number }>,
+  GetCtrlIfaceStatus:    { code: 0xF9, codec: Wire.CtrlIfaceStatus } satisfies ReadCmd<{ uartLastStatus: number; uartLive: boolean; i2cLastStatus: number; i2cLive: boolean; protoVersion: number }>,
 } as const;
 
 // Helpers
