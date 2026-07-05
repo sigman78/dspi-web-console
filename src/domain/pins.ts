@@ -1,11 +1,15 @@
 // Client-side mirror of the firmware GPIO rules (vendor_commands.c
 // is_valid_gpio_pin / is_pin_in_use); the firmware status byte stays the
 // backstop. Feeds the pin dropdowns and BCK/MCK guard states.
-// Generation-dependent: the debug UART sits on GPIO 12 through V10 and on
-// GPIO 16/17 from V16; V16 also reserves the active I2S RX data pins.
+// Generation-dependent: the debug UART sits on GPIO 12 through V10; fw 1.1.5
+// (V16) removed the debug UART, freeing GPIO 16/17 for general use there.
+// V16 also reserves the active I2S RX data pins and (dynamically, since it's
+// runtime config rather than a wire section) any enabled external
+// control-interface pins -- see CtrlIfaceConfigs below.
 import { OutputSlotType } from './channels';
 import { PlatformType, type WireGen } from './platform';
 import type { DspSnapshot } from './snapshot';
+import type { UartControlConfig, I2cControlConfig } from './controlInterfaces';
 
 const PIN_LABEL = { bck: 'BCK', lrclk: 'LRCLK', mck: 'MCK' } as const;
 
@@ -15,10 +19,21 @@ function maxGpio(platform: PlatformType): number {
 
 export function isAssignablePin(platform: PlatformType, pin: number, wireGen: WireGen = 10): boolean {
   if (pin < 0 || pin > maxGpio(platform)) return false;
-  if (wireGen >= 16 ? (pin === 16 || pin === 17) : pin === 12) return false;   // debug UART
+  if (wireGen < 16 && pin === 12) return false;   // debug UART (V10 only)
   if (pin >= 23 && pin <= 25) return false;
   return true;
 }
+
+// Fetched control-interface configs, threaded through to the pin-picker
+// helpers below so their GPIOs are excluded when enabled. Optional and
+// defaults to none: callers that haven't fetched the ctrl-iface state yet
+// (or are on a V10 device, where it's absent) get the pre-existing behavior.
+export interface CtrlIfaceConfigs {
+  uart?: UartControlConfig | null;
+  i2c?: I2cControlConfig | null;
+}
+
+const NO_CTRL_IFACES: CtrlIfaceConfigs = {};
 
 export function assignablePins(platform: PlatformType, wireGen: WireGen = 10): number[] {
   const out: number[] = [];
@@ -26,7 +41,7 @@ export function assignablePins(platform: PlatformType, wireGen: WireGen = 10): n
   return out;
 }
 
-export function pinsInUse(snapshot: DspSnapshot): Map<number, string> {
+export function pinsInUse(snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES): Map<number, string> {
   const m = new Map<number, string>();
   const lastIdx = snapshot.outputPins.length - 1;
   snapshot.outputPins.forEach((pin, idx) => {
@@ -49,24 +64,34 @@ export function pinsInUse(snapshot: DspSnapshot): Map<number, string> {
   for (let p = 0; p < activePairs && p < cfg.i2sRxPins.length; p++) {
     if (cfg.i2sRxPins[p] > 0) m.set(cfg.i2sRxPins[p], `I2S RX ${p + 1}`);
   }
+  if (ctrl.uart?.enabled) {
+    m.set(ctrl.uart.txPin, 'UART TX');
+    m.set(ctrl.uart.rxPin, 'UART RX');
+  }
+  if (ctrl.i2c?.enabled) {
+    m.set(ctrl.i2c.sdaPin, 'I2C SDA');
+    m.set(ctrl.i2c.sclPin, 'I2C SCL');
+  }
   return m;
 }
 
 export interface PinCandidate { pin: number; usedBy: string | null; }
 
 export function availablePinsFor(
-  platform: PlatformType, snapshot: DspSnapshot, selfPin: number,
+  platform: PlatformType, snapshot: DspSnapshot, selfPin: number, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
 ): PinCandidate[] {
-  const inUse = pinsInUse(snapshot);
+  const inUse = pinsInUse(snapshot, ctrl);
   return assignablePins(platform, snapshot.platform.wireGen).map((pin) => ({
     pin,
     usedBy: pin === selfPin ? null : (inUse.get(pin) ?? null),
   }));
 }
 
-export function validBckPins(platform: PlatformType, snapshot: DspSnapshot): number[] {
+export function validBckPins(
+  platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
+): number[] {
   const wireGen = snapshot.platform.wireGen;
-  const inUse = pinsInUse(snapshot);
+  const inUse = pinsInUse(snapshot, ctrl);
   const free = (p: number) => {
     const u = inUse.get(p);
     return u == null || u === PIN_LABEL.bck || u === PIN_LABEL.lrclk;
