@@ -105,27 +105,32 @@
           disabled={!connected || !uart.enabled}
           onChange={onUartTxPin}
         />
-        <span class="hint">RX GP{uart.rxPin}</span>
+        <span class="microlbl">RX PIN</span>
+        <PinSelect
+          value={uart.rxPin}
+          candidates={[{ pin: uart.rxPin, usedBy: null }]}
+          ariaLabel="UART RX pin (follows TX)"
+          disabled
+          onChange={() => {}}
+        />
       </div>
 
       <div class="row">
         <span class="microlbl">BAUD</span>
-        <div class="src-btns">
+        <select
+          class="sel"
+          value={String(uart.baud)}
+          aria-label="UART baud rate"
+          disabled={!connected || !uart.enabled}
+          onchange={(e) => patchUart({ baud: Number((e.currentTarget as HTMLSelectElement).value) })}
+        >
           {#each UART_COMMON_BAUDS as baud (baud)}
-            <button
-              class="chip"
-              class:on={uart.baud === baud}
-              onclick={() => patchUart({ baud })}
-              disabled={!connected || !uart.enabled || uart.baud === baud}
-            >{baud}</button>
+            <option value={String(baud)}>{baud}</option>
           {/each}
-        </div>
-      </div>
-
-      <div class="row">
+        </select>
+        <span class="microlbl">NOTIFY</span>
         <ToggleSwitch
           size="sm"
-          label="NOTIFY"
           ariaLabel="Push async notifications over UART"
           checked={uart.notifyEnabled}
           disabled={!connected || !uart.enabled}
@@ -162,7 +167,14 @@
           disabled={!connected || !i2c.enabled}
           onChange={onI2cSdaPin}
         />
-        <span class="hint">SCL GP{i2c.sclPin}</span>
+        <span class="microlbl">SCL PIN</span>
+        <PinSelect
+          value={i2c.sclPin}
+          candidates={[{ pin: i2c.sclPin, usedBy: null }]}
+          ariaLabel="I2C SCL pin (follows SDA)"
+          disabled
+          onChange={() => {}}
+        />
       </div>
 
       <div class="row">
@@ -199,9 +211,31 @@
     color: var(--text-faint);
     text-transform: uppercase;
   }
-  .rows { padding: 4px 14px 12px; display: flex; flex-direction: column; gap: 8px; }
-  .row { display: flex; align-items: center; gap: 10px; }
-  .src-btns { display: flex; flex-wrap: wrap; gap: 4px; }
+  /* The global .subhdr (controls.css) adds a border-top + margin-top section
+     separator; drop both on the first subheader so it sits right under the
+     panel header, matching other System panels' first-row rhythm. */
+  .subhdr:first-of-type { margin-top: 0; border-top: none; }
+  .rows {
+    padding: 4px 14px 12px;
+    display: grid;
+    grid-template-columns: max-content max-content max-content max-content;
+    gap: 8px 10px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; }
+  .rows > .hint, .rows > :global(.kv) { grid-column: 1 / -1; }
+  .sel {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 6px;
+    background: var(--panel-solid);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .sel:disabled { opacity: var(--dim-disabled); cursor: default; }
   .numfield {
     font-family: var(--font-mono);
     font-size: 10px;
