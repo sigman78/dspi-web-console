@@ -2,6 +2,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import QuickRefPanel from './overview/QuickRefPanel.svelte';
+  import LatestChangesPanel from './overview/LatestChangesPanel.svelte';
   import BodePlot from '@/components/bode/BodePlot.svelte';
   import { overviewCurves as computeOverviewCurves } from '@/components/bode/overviewCurves';
   import { getSession } from '@/components/sessionContext';
@@ -74,6 +75,8 @@
 
 <div class="grid">
   <div class="leftcol">
+    <LatestChangesPanel />
+
     <Panel code="OV.01" title="MERGED FILTER RESPONSE · ALL CHANNELS">
       {#snippet right()}
         <div class="legend">
