@@ -3,6 +3,7 @@ import type { DeviceState } from '@/protocol/snapshotCodec';
 import type { HardwareProfile, PresetSlot } from '@/domain';
 import type { StatusStore } from './telemetry.svelte';
 import type { PresetsState } from './presets.svelte';
+import type { CtrlIfacesState } from './ctrlIfaces.svelte';
 import type { MirrorState } from './mirror.svelte';
 import type { LinkHealth } from './linkHealth.svelte';
 import type { WriteCoordinator } from '@/runtime/writes.svelte';
@@ -31,6 +32,8 @@ export interface ReadySession {
   readonly copySource: { held: PresetClipboard | null };
   readonly telemetry: StatusStore;
   readonly presets: PresetsState;
+  // V16-only (capabilities.features.controlInterfaces); stays all-null on V10.
+  readonly ctrlIfaces: CtrlIfacesState;
   readonly mirror: MirrorState;
   readonly health: LinkHealth;
   readonly writes: WriteCoordinator;

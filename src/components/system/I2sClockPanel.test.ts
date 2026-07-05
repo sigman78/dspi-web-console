@@ -20,7 +20,11 @@ const snap = {
   dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
 };
 
-const session = { telemetry: { info: { sampleRateHz: 96000 } }, mirror: { current: snap } } as any;
+const session = {
+  telemetry: { info: { sampleRateHz: 96000 } },
+  mirror: { current: snap },
+  ctrlIfaces: { uart: null, i2c: null, status: null },
+} as any;
 
 describe('I2sClockPanel', () => {
   test('256x multiplier option is disabled at 96 kHz', () => {

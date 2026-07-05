@@ -26,6 +26,7 @@ const snap = {
 const session = {
   mirror: { current: snap },
   presets: { directory: null },
+  ctrlIfaces: { uart: null, i2c: null, status: null },
   device: {},
 } as any;
 

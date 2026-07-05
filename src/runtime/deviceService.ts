@@ -22,6 +22,32 @@ import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
 let inflightSync: Promise<void> | null = null;
 
+// Eager + lazy entry point for the V16 external control interfaces, mirroring
+// fetchPresetInfo: idempotent once populated, never throws (errors land in
+// lastFetchError). No-ops on a device that lacks the feature (V10).
+export async function fetchCtrlIfaceInfo(s: ReadySession): Promise<void> {
+  if (!s.device.capabilities.features.controlInterfaces) return;
+  if (s.ctrlIfaces.uart != null) return;
+  const d = s.device;
+  s.ctrlIfaces.busy = true;
+  try {
+    const [uart, i2c, status] = await Promise.all([
+      s.queue.run(() => d.getUartControlConfig()),
+      s.queue.run(() => d.getI2cControlConfig()),
+      s.queue.run(() => d.getControlIfaceStatus()),
+    ]);
+    s.ctrlIfaces.uart = uart;
+    s.ctrlIfaces.i2c = i2c;
+    s.ctrlIfaces.status = status;
+    s.ctrlIfaces.lastFetchError = null;
+  } catch (err) {
+    s.ctrlIfaces.lastFetchError = errMessage(err);
+    Log.warn('ctrlIfaces', 'fetch failed', err);
+  } finally {
+    s.ctrlIfaces.busy = false;
+  }
+}
+
 export async function syncDeviceSnapshot(s: ReadySession): Promise<void> {
   if (inflightSync) return inflightSync;
   const d = s.device;
@@ -73,6 +99,7 @@ export async function wireUpConnection(device: DspDevice, scope?: ConnectionScop
       scope.onTeardown(() => releaseDeviceLock());
     }
     await fetchPresetInfo(session);
+    await fetchCtrlIfaceInfo(session);
     Log.info('sync', 'connected', {
       platform: session.mirror.current?.platform.name,
       wire: device.capabilities.wire,

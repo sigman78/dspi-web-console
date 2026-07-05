@@ -15,9 +15,10 @@
   const anyI2s = $derived(snap?.i2s?.outputSlotTypes.some((t) => t === OutputSlotType.I2s) ?? false);
   const rate = $derived(s.telemetry.info?.sampleRateHz ?? 0);
   const allow256 = $derived(rate < 96000);
+  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c });
 
   const bckCandidates = $derived(
-    snap ? validBckPins(snap.platform.type, snap).map((pin) => ({ pin, usedBy: null })) : [],
+    snap ? validBckPins(snap.platform.type, snap, ctrlPins).map((pin) => ({ pin, usedBy: null })) : [],
   );
   const multOpts = $derived([
     { value: 0, label: '128×' },
@@ -55,7 +56,7 @@
         />
         <PinSelect
           value={snap.i2s.mckPin}
-          candidates={availablePinsFor(snap.platform.type, snap, snap.i2s.mckPin)}
+          candidates={availablePinsFor(snap.platform.type, snap, snap.i2s.mckPin, ctrlPins)}
           ariaLabel="MCK pin"
           disabled={!connected || snap.i2s.mckEnabled}
           onChange={(p) => void setMckPin(s, p)}

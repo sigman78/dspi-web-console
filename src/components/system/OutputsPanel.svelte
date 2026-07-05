@@ -12,6 +12,7 @@
 
   const snap = $derived(s.mirror.current);
   const connected = $derived(connection.connected);
+  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c });
 
   // Each SPDIF slot is a stereo output pair (OUT n -> nL / nR).
   function pairShort(slot: number): string {
@@ -54,7 +55,7 @@
           />
           <PinSelect
             value={snap.outputPins[slot]}
-            candidates={availablePinsFor(snap.platform.type, snap, snap.outputPins[slot])}
+            candidates={availablePinsFor(snap.platform.type, snap, snap.outputPins[slot], ctrlPins)}
             ariaLabel={`Out ${slot + 1} data pin`}
             disabled={!connected}
             onChange={(p) => void setOutputDataPin(s, slot, p)}
@@ -67,7 +68,7 @@
         <span class="fixed">PDM</span>
         <PinSelect
           value={snap.outputPins[pdmIndex]}
-          candidates={availablePinsFor(snap.platform.type, snap, snap.outputPins[pdmIndex])}
+          candidates={availablePinsFor(snap.platform.type, snap, snap.outputPins[pdmIndex], ctrlPins)}
           ariaLabel="PDM sub data pin"
           disabled={!connected || pdmEnabled}
           onChange={(p) => void setOutputDataPin(s, pdmIndex, p)}

@@ -4,6 +4,7 @@ import {
   type RouteModel,
   type I2sConfig,
   type DacHwMute,
+  type UartControlConfig, type I2cControlConfig,
   AudioInputSource,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   CHANNEL_NAME_MAX_LEN,
@@ -515,6 +516,33 @@ export function setI2sInputChannels(s: ReadySession, count: number): void {
     'set I2S input channels',
     () => s.device.setI2sInputChannels(count),
     () => { s.mirror.snapshot.inputConfig.i2sInputChannels = count; },
+  );
+}
+
+// V16 — external control interfaces (UART / I2C). The SET's result is only
+// known from the device's read-back status (see DspDevice.setUartControlConfig),
+// so this can't be a plain writeChecked: the status must land in ctrlIfaces
+// on BOTH branches (a rejected pin/baud is still useful to show as
+// last-status text), whereas writeChecked's patch only runs on ok.
+export function setUartControlConfig(s: ReadySession, cfg: UartControlConfig): void {
+  void command(s, 'set UART control config',
+    () => s.device.setUartControlConfig(cfg),
+    (r, s) => {
+      s.ctrlIfaces.status = r.status;
+      if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.ctrlIfaces.uart = cfg;
+    },
+  );
+}
+
+export function setI2cControlConfig(s: ReadySession, cfg: I2cControlConfig): void {
+  void command(s, 'set I2C control config',
+    () => s.device.setI2cControlConfig(cfg),
+    (r, s) => {
+      s.ctrlIfaces.status = r.status;
+      if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.ctrlIfaces.i2c = cfg;
+    },
   );
 }
 

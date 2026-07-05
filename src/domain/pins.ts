@@ -9,7 +9,7 @@
 import { OutputSlotType } from './channels';
 import { PlatformType, type WireGen } from './platform';
 import type { DspSnapshot } from './snapshot';
-import type { UartControlConfig, I2cControlConfig } from './controlInterfaces';
+import { isValidUartPinPair, isValidI2cPinPair, type UartControlConfig, type I2cControlConfig } from './controlInterfaces';
 
 const PIN_LABEL = { bck: 'BCK', lrclk: 'LRCLK', mck: 'MCK' } as const;
 
@@ -98,5 +98,40 @@ export function validBckPins(
   };
   return assignablePins(platform, wireGen).filter(
     (p) => isAssignablePin(platform, p + 1, wireGen) && free(p) && free(p + 1),
+  );
+}
+
+// UART TX candidates: RX always rides tx+1 (the wire format's fixed pattern),
+// so -- like BCK/LRCLK above -- only the primary pin is picked; the panel
+// shows RX as a derived hint. `ctrl` should omit `uart` (the interface being
+// edited) so its own current pins don't count as taken; it still needs `i2c`
+// so the other interface's pins are excluded.
+export function validUartTxPins(
+  platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
+): number[] {
+  const wireGen = snapshot.platform.wireGen;
+  const inUse = pinsInUse(snapshot, ctrl);
+  const free = (p: number) => inUse.get(p) == null;
+  return assignablePins(platform, wireGen).filter(
+    (p) => p % 4 === 0
+      && isAssignablePin(platform, p + 1, wireGen)
+      && isValidUartPinPair(p, p + 1)
+      && free(p) && free(p + 1),
+  );
+}
+
+// I2C SDA candidates: SCL always rides sda+1 (same reasoning as above).
+// `ctrl` should omit `i2c` and carry `uart`.
+export function validI2cSdaPins(
+  platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
+): number[] {
+  const wireGen = snapshot.platform.wireGen;
+  const inUse = pinsInUse(snapshot, ctrl);
+  const free = (p: number) => inUse.get(p) == null;
+  return assignablePins(platform, wireGen).filter(
+    (p) => p % 2 === 0
+      && isAssignablePin(platform, p + 1, wireGen)
+      && isValidI2cPinPair(p, p + 1)
+      && free(p) && free(p + 1),
   );
 }

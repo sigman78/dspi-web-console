@@ -2,6 +2,7 @@ import type { DspDevice } from '@/device/DspDevice';
 import type { PresetClipboard, ReadySession } from './appState.svelte';
 import { StatusStore } from './telemetry.svelte';
 import { createPresetsState } from './presets.svelte';
+import { createCtrlIfacesState } from './ctrlIfaces.svelte';
 import { MirrorState } from './mirror.svelte';
 import { LinkHealth } from './linkHealth.svelte';
 import { WriteCoordinator } from '@/runtime/writes.svelte';
@@ -21,6 +22,7 @@ export function makeReadySession(device: DspDevice, scope: ConnectionScope = new
   const copySource = $state<{ held: PresetClipboard | null }>({ held: null });
   const telemetry = new StatusStore();
   const presets = createPresetsState();
+  const ctrlIfaces = createCtrlIfacesState();
   const mirror = new MirrorState();
   const health = new LinkHealth();
   const writes = new WriteCoordinator(mirror);
@@ -35,7 +37,7 @@ export function makeReadySession(device: DspDevice, scope: ConnectionScope = new
   });
   const session: ReadySession = {
     device, info: device.info, hardware: device.hardware, signal,
-    copySource, telemetry, presets, mirror, health, writes, notifyWaiters, queue,
+    copySource, telemetry, presets, ctrlIfaces, mirror, health, writes, notifyWaiters, queue,
     get alive() { return !scope.aborted; },
     dispose() { scope.abort(); },
   };

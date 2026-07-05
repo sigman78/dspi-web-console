@@ -15,6 +15,7 @@
   const isSpdif = $derived(inputConfig?.source === AudioInputSource.Spdif);
   const isI2s = $derived(inputConfig?.source === AudioInputSource.I2s);
   const features = $derived(s.device.capabilities.features);
+  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c });
   // Configured count (0 = firmware default of 2); pairs 0..activePairs-1 show a pin select.
   const i2sChannels = $derived(inputConfig?.i2sInputChannels || 2);
   const i2sActivePairs = $derived(Math.max(1, Math.floor(i2sChannels / 2)));
@@ -75,7 +76,7 @@
     <div class="pinrow">
       <PinSelect
         value={inputConfig.spdifRxPin}
-        candidates={availablePinsFor(snap.platform.type, snap, inputConfig.spdifRxPin)}
+        candidates={availablePinsFor(snap.platform.type, snap, inputConfig.spdifRxPin, ctrlPins)}
         ariaLabel="S/PDIF RX GPIO pin"
         disabled={!connected}
         onChange={(p) => setSpdifRxPin(s, p)}
@@ -115,7 +116,7 @@
         <div class="pinrow">
           <PinSelect
             value={inputConfig.i2sRxPins[pair] ?? 0}
-            candidates={availablePinsFor(snap.platform.type, snap, inputConfig.i2sRxPins[pair] ?? 0)}
+            candidates={availablePinsFor(snap.platform.type, snap, inputConfig.i2sRxPins[pair] ?? 0, ctrlPins)}
             ariaLabel={`I2S RX data pin, stereo pair ${pair + 1}`}
             disabled={!connected}
             onChange={(p) => setI2sRxPin(s, pair, p)}
