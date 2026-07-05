@@ -46,7 +46,11 @@ describe('state.wireUpConnection — end-to-end against real hardware (HIL)', ()
     expect(snap.platform.totalChannelCount).toBeGreaterThan(0);
     expect(snap.channels.length).toBe(snap.platform.totalChannelCount);
     expect(snap.outputs.length).toBe(snap.platform.outputCount);
-    expect(snap.routes.length).toBe(2 * snap.platform.outputCount);
+    // Input count isn't carried directly on platform metadata; derive it from
+    // the two counts the snapshot does carry (V10: 2 inputs, V16 RP2350: 8).
+    const inputCount = snap.platform.totalChannelCount - snap.platform.outputCount;
+    expect(inputCount).toBeGreaterThan(0);
+    expect(snap.routes.length).toBe(inputCount * snap.platform.outputCount);
     expect(device.capabilities.wire).toBeGreaterThanOrEqual(2);
   });
 

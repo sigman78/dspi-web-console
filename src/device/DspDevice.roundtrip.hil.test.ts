@@ -61,7 +61,7 @@ describe('DspDevice — write→read roundtrips and bulk cross-validation (HIL)'
     );
   });
 
-  it('input preamp L/R: write→getInputPreamp + bulk.preampLDb/preampRDb cross-check', async () => {
+  it('input preamp L/R: write→getInputPreamp + bulk.inputPreampsDb cross-check', async () => {
     const bulk0 = await device.getAllParams();
     if (!hasFormatVersion(bulk0, 6)) return;
 
@@ -77,9 +77,7 @@ describe('DspDevice — write→read roundtrips and bulk cross-validation (HIL)'
             expect(direct).toBeCloseTo(target, F32_TOL);
 
             const bulk = await device.getAllParams();
-            const fromBulk = channel === 0 ? bulk.preampLDb : bulk.preampRDb;
-            expect(fromBulk).not.toBeNull();
-            expect(fromBulk!).toBeCloseTo(target, F32_TOL);
+            expect(bulk.inputPreampsDb[channel]).toBeCloseTo(target, F32_TOL);
           }
         },
       );
