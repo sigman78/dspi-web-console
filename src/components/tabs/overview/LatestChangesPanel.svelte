@@ -26,10 +26,10 @@
   }
   .list li {
     font-family: var(--font-sans);
-    font-size: 10px;
-    color: var(--text-faint);
+    font-size: 12px;
+    color: var(--text-dim);
     line-height: 1.5;
-    padding-left: 12px;
+    padding-left: 14px;
     position: relative;
   }
   .list li::before {
@@ -38,6 +38,7 @@
     left: 0;
     color: var(--text-faint);
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 10px;
+    top: 2px;
   }
 </style>
