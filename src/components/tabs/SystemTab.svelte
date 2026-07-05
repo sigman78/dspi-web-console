@@ -8,8 +8,6 @@
   import I2sClockPanel from '@/components/system/I2sClockPanel.svelte';
   import LgSoundSyncPanel from '@/components/system/LgSoundSyncPanel.svelte';
   import DacHwMutePanel from '@/components/system/DacHwMutePanel.svelte';
-  import ControlInterfacesPanel from '@/components/system/ControlInterfacesPanel.svelte';
-  import ControlSurfacesPanel from '@/components/system/ControlSurfacesPanel.svelte';
   import BufferStatsPanel from '@/components/system/BufferStatsPanel.svelte';
   import { chKey } from '@/styles/palette';
   import { clearClips } from '@/runtime';
@@ -20,7 +18,6 @@
   const snap = $derived(s.mirror.current);
   const info = $derived(s.telemetry.info);
   const connected = $derived(connection.connected);
-  const features = $derived(s.device.capabilities.features);
 
   function fmtNum(v: number | null | undefined): string { return v == null ? '—' : String(v); }
   function isNonZero(v: number | null | undefined): boolean { return v != null && v > 0; }
@@ -37,12 +34,6 @@
     <I2sClockPanel />
     <LgSoundSyncPanel />
     <DacHwMutePanel />
-    {#if features.controlInterfaces}
-      <ControlInterfacesPanel />
-    {/if}
-    {#if features.controlSurfaces}
-      <ControlSurfacesPanel />
-    {/if}
   </div>
 
   <div class="col">

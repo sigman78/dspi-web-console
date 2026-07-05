@@ -1,13 +1,25 @@
 <script lang="ts">
-  import { settings, setTab, TAB_ORDER, TAB_META, connection } from '@/state';
+  import { settings, setTab, TAB_ORDER, TAB_META, connection, activeSession } from '@/state';
 
-  const TABS = TAB_ORDER.map((id) => ({ id, ...TAB_META[id] }));
+  // The CONTROL tab hosts V16-only panels; hide it (not disable) when the
+  // connected device lacks both control features. With no session (offline)
+  // it stays visible-but-disabled like every other tab, so the bar doesn't
+  // reflow on connect/disconnect.
+  const controlSupported = $derived.by(() => {
+    const f = activeSession()?.device.capabilities.features;
+    return f == null || f.controlInterfaces || f.controlSurfaces;
+  });
+  const tabs = $derived(
+    TAB_ORDER
+      .filter((id) => id !== 'control' || controlSupported)
+      .map((id) => ({ id, ...TAB_META[id] })),
+  );
   const disabled = $derived(!connection.connected);
 </script>
 
 <div class="tabs" class:is-disabled={disabled}>
   <div class="row">
-    {#each TABS as t (t.id)}
+    {#each tabs as t (t.id)}
       <button
         class="tab"
         class:active={settings.tab === t.id}

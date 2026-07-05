@@ -9,14 +9,14 @@ function ev(init: Partial<KeyboardEventInit> & { code: string }): KeyboardEvent 
 describe('handleTabShortcut', () => {
   beforeEach(() => { setTab('overview'); });
 
-  it('Alt+1 and Alt+6 jump to the first and last tab (range boundaries)', () => {
+  it('Alt+1 and Alt+7 jump to the first and last tab (range boundaries)', () => {
     setTab('mixer');
     const consumed = handleTabShortcut(ev({ code: 'Digit1' }));
     expect(consumed).toBe(true);
     expect(settings.tab).toBe('overview');
 
-    handleTabShortcut(ev({ code: 'Digit6' }));
-    expect(settings.tab).toBe('system');
+    handleTabShortcut(ev({ code: 'Digit7' }));
+    expect(settings.tab).toBe('control');
   });
 
   it('Alt+3 and Alt+5 jump to interior tabs', () => {
@@ -34,8 +34,8 @@ describe('handleTabShortcut', () => {
     expect(settings.tab).toBe('mixer');
   });
 
-  it('Alt+] wraps from system back to overview', () => {
-    setTab('system');
+  it('Alt+] wraps from the last tab back to overview', () => {
+    setTab('control');
     handleTabShortcut(ev({ code: 'BracketRight' }));
     expect(settings.tab).toBe('overview');
   });
@@ -46,10 +46,10 @@ describe('handleTabShortcut', () => {
     expect(settings.tab).toBe('eq');
   });
 
-  it('Alt+[ wraps from overview back to system', () => {
+  it('Alt+[ wraps from overview back to the last tab', () => {
     setTab('overview');
     handleTabShortcut(ev({ code: 'BracketLeft' }));
-    expect(settings.tab).toBe('system');
+    expect(settings.tab).toBe('control');
   });
 
   it('returns false (no-op) when alt is not held', () => {
@@ -66,9 +66,9 @@ describe('handleTabShortcut', () => {
     expect(settings.tab).toBe('overview');
   });
 
-  it('ignores Alt+0 and Alt+7 (out of range)', () => {
+  it('ignores Alt+0 and Alt+8 (out of range)', () => {
     expect(handleTabShortcut(ev({ code: 'Digit0' }))).toBe(false);
-    expect(handleTabShortcut(ev({ code: 'Digit7' }))).toBe(false);
+    expect(handleTabShortcut(ev({ code: 'Digit8' }))).toBe(false);
     expect(settings.tab).toBe('overview');
   });
 

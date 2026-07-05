@@ -7,9 +7,9 @@ export const LATEST_CHANGES = {
     'Firmware 1.1.5 / wire V16: 8-in/9-out on RP2350 — 1.1.4 devices remain fully supported',
     'I2S multichannel input (up to 8 channels), input source config now contextual',
     'Per-output crossover filters, rendered in the response plots',
-    'UART / I2C external control interfaces (System tab)',
+    'UART / I2C external control interfaces (Control tab)',
     'Heavy device config now stages — review and APPLY as one batch, one audio restart',
     'Preset copy/paste via snapshot clipboard',
-    'Control Surfaces: bind buttons, switches, pots, encoders and LEDs on spare GPIOs (System tab)',
+    'Control Surfaces: bind buttons, switches, pots, encoders and LEDs on spare GPIOs (Control tab)',
   ],
 } as const;
