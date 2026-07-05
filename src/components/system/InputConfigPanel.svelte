@@ -72,18 +72,42 @@
       </div>
     </div>
 
-    <div class="subhdr">S/PDIF RX PIN</div>
-    <div class="pinrow">
-      <PinSelect
-        value={inputConfig.spdifRxPin}
-        candidates={availablePinsFor(snap.platform.type, snap, inputConfig.spdifRxPin, ctrlPins)}
-        ariaLabel="S/PDIF RX GPIO pin"
-        disabled={!connected}
-        onChange={(p) => setSpdifRxPin(s, p)}
-      />
-    </div>
+    {#if inputConfig.source === AudioInputSource.Usb}
+      <p class="hint idle">USB input needs no configuration.</p>
+    {/if}
 
-    {#if features.i2sInput}
+    {#if isSpdif}
+      <div class="subhdr">S/PDIF RX PIN</div>
+      <div class="pinrow">
+        <PinSelect
+          value={inputConfig.spdifRxPin}
+          candidates={availablePinsFor(snap.platform.type, snap, inputConfig.spdifRxPin, ctrlPins)}
+          ariaLabel="S/PDIF RX GPIO pin"
+          disabled={!connected}
+          onChange={(p) => setSpdifRxPin(s, p)}
+        />
+      </div>
+
+      <div class="subhdr">S/PDIF RX STATUS</div>
+      {#if spdifStatus}
+        <div class="cfgkvgrid">
+          <KV
+            label="STATE"
+            value={STATE_LABELS[spdifStatus.state] ?? 'UNKNOWN'}
+            tone={stateTone(spdifStatus.state)}
+          />
+          <KV label="SAMPLE RATE" value={fmtRate(spdifStatus.sampleRate)} />
+          <KV label="LOCK COUNT"  value={String(spdifStatus.lockCount)} />
+          <KV label="LOSS COUNT"  value={String(spdifStatus.lossCount)} tone={spdifStatus.lossCount > 0 ? undefined : 'off'} />
+          <KV label="PARITY ERR"  value={String(spdifStatus.parityErrors)} tone={spdifStatus.parityErrors > 0 ? undefined : 'off'} />
+          <KV label="FIFO FILL"   value={`${spdifStatus.fifoFillPct}%`} />
+        </div>
+      {:else}
+        <p class="hint idle">Waiting for S/PDIF status…</p>
+      {/if}
+    {/if}
+
+    {#if isI2s && features.i2sInput}
       <div class="subhdr">I2S INPUT</div>
       <div class="cfgkvgrid">
         <KV label="RATE" value={`${(inputConfig.i2sInputRateHz / 1000).toFixed(1)} kHz`} />
@@ -123,26 +147,6 @@
           />
         </div>
       {/each}
-    {/if}
-
-    {#if isSpdif}
-      <div class="subhdr">S/PDIF RX STATUS</div>
-      {#if spdifStatus}
-        <div class="cfgkvgrid">
-          <KV
-            label="STATE"
-            value={STATE_LABELS[spdifStatus.state] ?? 'UNKNOWN'}
-            tone={stateTone(spdifStatus.state)}
-          />
-          <KV label="SAMPLE RATE" value={fmtRate(spdifStatus.sampleRate)} />
-          <KV label="LOCK COUNT"  value={String(spdifStatus.lockCount)} />
-          <KV label="LOSS COUNT"  value={String(spdifStatus.lossCount)} tone={spdifStatus.lossCount > 0 ? undefined : 'off'} />
-          <KV label="PARITY ERR"  value={String(spdifStatus.parityErrors)} tone={spdifStatus.parityErrors > 0 ? undefined : 'off'} />
-          <KV label="FIFO FILL"   value={`${spdifStatus.fifoFillPct}%`} />
-        </div>
-      {:else}
-        <p class="hint idle">Waiting for S/PDIF status…</p>
-      {/if}
     {/if}
   {/if}
 </Panel>
