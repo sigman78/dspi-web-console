@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.3.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.2.0...dspi-console-web-v0.3.0) (2026-07-05)
+
+
+### Features
+
+* **bode:** crossover + first-order curves in the response plot ([2f156c6](https://github.com/sigman78/dspi-web-console/commit/2f156c6608abb44981052e9cdb8add230dcb5b2f))
+* **mixer:** follow the live active input count ([d1be6b3](https://github.com/sigman78/dspi-web-console/commit/d1be6b3a84abe27fa10747e2abb6899c5913477e))
+* **notify:** name the UART/I2C param sources ([140b6dc](https://github.com/sigman78/dspi-web-console/commit/140b6dc3bc4077c7ce0cddb2b8b9f38d7fe49cfe))
+* **pins:** dynamic control-interface pin ownership ([0c65db7](https://github.com/sigman78/dspi-web-console/commit/0c65db7748a78afcd6e9696b97e1b34234a0d1e2))
+* **proto:** chunked bulk-params access for the WinUSB 4 KB cap ([486611f](https://github.com/sigman78/dspi-web-console/commit/486611f86bb5c979fdc846aeb070a17bfb2723e1))
+* **proto:** dual-wire foundation for fw 1.1.5 (wire V16) ([3beeea0](https://github.com/sigman78/dspi-web-console/commit/3beeea086f7e288815df35f4634c63d179a94125))
+* **proto:** external control-interface config surface ([84b664f](https://github.com/sigman78/dspi-web-console/commit/84b664ff11ccc28f77eef6089a924bac989ad4fe))
+* **runtime:** V16 runtime wiring (input-format notify, meters remap, I2S + crossover actions) ([d84c31d](https://github.com/sigman78/dspi-web-console/commit/d84c31d3ff96b07a9c2a6920b353d7a77a2c92af))
+* **transport:** serialize vendor control transfers ([728702b](https://github.com/sigman78/dspi-web-console/commit/728702bd46b90c023852f8af97f75161af7abef2))
+* **ui:** control-interfaces panel ([e718a07](https://github.com/sigman78/dspi-web-console/commit/e718a076bab2b2a85e73785f8bd22a14ef851d95))
+* **ui:** latest-changes panel on the overview tab ([9dbb422](https://github.com/sigman78/dspi-web-console/commit/9dbb422a77fbe1b4964799269ca298be5148e81c))
+* **ui:** stage heavy config changes behind a single apply gate ([4495ba1](https://github.com/sigman78/dspi-web-console/commit/4495ba19b166866cb873cb6922800d75d0285e91))
+* **ui:** surface V16 features behind capability gates ([aa34854](https://github.com/sigman78/dspi-web-console/commit/aa348549bb1555fd847aae3ad287f8f4936994a5))
+
+
+### Bug Fixes
+
+* **hil:** survive first contact with 1.1.5-beta hardware ([568bc26](https://github.com/sigman78/dspi-web-console/commit/568bc2677c1d1c5aa2481069588ad249f9899739))
+* **notify:** silently drain the ring backlog before going live ([57c1607](https://github.com/sigman78/dspi-web-console/commit/57c1607620d579f40565d99cfd82d49e0fd34692))
+
 ## [0.2.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.1.0...dspi-console-web-v0.2.0) (2026-06-17)
 
 
