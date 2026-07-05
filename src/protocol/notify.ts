@@ -26,6 +26,8 @@ export const ParamSource = {
   Gpio:     5,
   Internal: 6,
   Uac1:     7,
+  Uart:     8,
+  I2c:      9,
 } as const;
 
 export type NotifyEvent =
