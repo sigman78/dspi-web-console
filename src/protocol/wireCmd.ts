@@ -103,6 +103,11 @@ export const WireCmd = {
   // Bulk
   GetAllParams:         { code: 0xA0 } satisfies RawCmd,
   SetAllParams:         { code: 0xA1 } satisfies RawCmd,
+  // Chunked bulk access (fw 1.1.5+, V16 only): wValue = byte offset, chunks
+  // <= 4096 B. A session is torn down by any interleaved non-chunk vendor
+  // request; see DspDevice.getAllParams/setAllParams.
+  GetAllParamsChunk:    { code: 0xA2 } satisfies RawCmd,
+  SetAllParamsChunk:    { code: 0xA3 } satisfies RawCmd,
 
   // Output pin assignment (0x7C/0x7D) and I2S output config (0xC0-0xC9).
   // All are action-style IN: args in wValue, response is 1-byte status/value.

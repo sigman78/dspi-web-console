@@ -109,6 +109,18 @@ function readWireFilter(r: BinReader): WireFilter {
   return { type: b.type, bypass: b.bypass === 1, frequency: b.frequency, q: b.q, gain: b.gain };
 }
 
+// Decode just the 16-byte Wire.Header from a (possibly partial) bulk read --
+// used to derive capabilities/total length without transferring the whole
+// packet (the WinUSB 4 KB control-transfer cap makes a full V16 peek
+// untransferable on some hosts).
+export function peekBulkHeader(bytes: Uint8Array): ReturnType<typeof Wire.Header.read> {
+  const need = Codec.sizeOf(Wire.Header);
+  if (bytes.length < need) {
+    throw new Error(`peekBulkHeader: buffer too small (${bytes.length} bytes, need ${need}).`);
+  }
+  return Wire.Header.read(new BinReader(bytes));
+}
+
 export function parseBulkParams(buffer: Uint8Array): BulkParams {
   if (buffer.length < Wire.BulkLimits.MinPacketSize) {
     throw new Error(

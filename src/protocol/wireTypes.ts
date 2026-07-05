@@ -453,6 +453,12 @@ export const BulkLimits = {
   MaxRequestSize: BULK_SIZE_V16,
   // Size we READ: the largest packet we tolerate receiving (V16).
   MaxReadSize:    BULK_SIZE_V16,  // 5864
+  // WinUSB caps a control transfer's data stage at 4 KB; the largest single
+  // EP0 transfer any host backend can rely on. Above this, DspDevice chunks
+  // via 0xA2/0xA3 (fw 1.1.5+).
+  MaxControlTransfer: 4096,
+  // Firmware-recommended chunk size for the chunked bulk-params commands.
+  ChunkSize: 2048,
 } as const;
 
 export interface BulkLayout {

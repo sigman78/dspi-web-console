@@ -17,6 +17,9 @@ export function wireMonitorEnabled(): boolean {
 // Bulk transfers carry the whole param block; we render version + size only.
 const BULK_READ = WireCmd.GetAllParams.code;   // 0xA0
 const BULK_WRITE = WireCmd.SetAllParams.code;  // 0xA1
+// Chunked bulk access (fw 1.1.5+): wValue is the byte offset, worth showing.
+const BULK_READ_CHUNK = WireCmd.GetAllParamsChunk.code;   // 0xA2
+const BULK_WRITE_CHUNK = WireCmd.SetAllParamsChunk.code;  // 0xA3
 
 interface CmdInfo {
   name: string;
@@ -71,6 +74,9 @@ export function formatCtrlOut(request: number, value: number, data: Uint8Array):
   if (request === BULK_WRITE) {
     return `<> SetAllParams (bulk) v${data[0] ?? 0} ${data.length} B`;
   }
+  if (request === BULK_WRITE_CHUNK) {
+    return `<> SetAllParamsChunk @${value} ${data.length} B`;
+  }
   const info = CMD_BY_CODE.get(request);
   const name = info ? info.name : `0x${request.toString(16)}`;
   return `-> ${name}${fmtWValue(value)} ${decodeOrSize(info, data)}`;
@@ -79,6 +85,9 @@ export function formatCtrlOut(request: number, value: number, data: Uint8Array):
 export function formatCtrlIn(request: number, value: number, bytes: Uint8Array): string {
   if (request === BULK_READ) {
     return `<> GetAllParams (bulk) v${bytes[0] ?? 0} ${bytes.length} B`;
+  }
+  if (request === BULK_READ_CHUNK) {
+    return `<> GetAllParamsChunk @${value} ${bytes.length} B`;
   }
   const info = CMD_BY_CODE.get(request);
   const name = info ? info.name : `0x${request.toString(16)}`;

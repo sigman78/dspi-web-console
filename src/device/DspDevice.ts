@@ -38,6 +38,18 @@ export class UnsupportedDevicePacket extends Error {
   }
 }
 
+// Safety bound on the chunked bulk-read loop: guards against a runaway
+// transfer if a device misreports its header payloadLength.
+const MAX_BULK_CHUNKS = 32;
+
+function concatChunks(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) { out.set(c, offset); offset += c.length; }
+  return out;
+}
+
 // Bit N of the firmware's u16 occupiedMask = slot N populated.
 function occupiedMaskToSet(mask: number): ReadonlySet<domain.PresetSlot> {
   const s = new Set<domain.PresetSlot>();
@@ -99,18 +111,19 @@ export class DspDevice {
       proto.readCmd(transport, proto.WireCmd.GetPlatform),
     ]);
 
-    // Peek the bulk packet so capabilities reflect the observed wire structure,
-    // not just the (potentially misreported) semver. Read at MaxReadSize so a
-    // newer device can send its whole packet without overrun.
-    const bulkBytes = await transport.ctrlIn(
-      proto.WireCmd.GetAllParams.code, 0, proto.Wire.BulkLimits.MaxReadSize,
+    // Peek just the 16-byte header so capabilities reflect the observed wire
+    // structure, not just the (potentially misreported) semver -- a full
+    // V16 packet is too large for a single control transfer on some hosts
+    // (WinUSB's 4 KB cap), but the header alone always fits.
+    const headerBytes = await transport.ctrlIn(
+      proto.WireCmd.GetAllParams.code, 0, Codec.sizeOf(proto.Wire.Header),
     );
-    const bulk = proto.parseBulkParams(bulkBytes);
+    const header = proto.peekBulkHeader(headerBytes);
 
     const capabilities = deriveCapabilities({
       fw:            fwVersionParts(platform),
-      wireVersion:   bulk.formatVersion,
-      payloadLength: bulk.payloadLength,
+      wireVersion:   header.formatVersion,
+      payloadLength: header.payloadLength,
       platformId:    platform.platformId,
     });
     if (capabilities.support === 'unsupported') {
@@ -128,8 +141,8 @@ export class DspDevice {
     // packet means the device omits sections the console treats as
     // guaranteed -- reject instead of silently defaulting them.
     const minPayload = proto.Wire.bulkSizeForVersion(capabilities.wireGen);
-    if (bulk.payloadLength < minPayload) {
-      throw new UnsupportedDevicePacket(capabilities.fwLabel, bulk.payloadLength, minPayload);
+    if (header.payloadLength < minPayload) {
+      throw new UnsupportedDevicePacket(capabilities.fwLabel, header.payloadLength, minPayload);
     }
 
     const platformType = platformTypeFromId(platform.platformId);
@@ -190,9 +203,45 @@ export class DspDevice {
   }
 
   async getAllParams(): Promise<proto.BulkParams> {
-    const bytes = await this.transport.ctrlIn(proto.WireCmd.GetAllParams.code, 0, proto.Wire.BulkLimits.MaxReadSize);
+    const chunked = proto.Wire.bulkSizeForVersion(this.capabilities.wireGen) > proto.Wire.BulkLimits.MaxControlTransfer;
+    const bytes = chunked
+      ? await this.#readAllParamsChunked()
+      : await this.transport.ctrlIn(proto.WireCmd.GetAllParams.code, 0, proto.Wire.BulkLimits.MaxReadSize);
     this.#lastRawBulk = bytes;
     return proto.parseBulkParams(bytes);
+  }
+
+  // Read the bulk packet via the chunked 0xA2 session (V16: the 5864 B packet
+  // exceeds the 4096 B WinUSB control-transfer cap). Runs as one exclusive
+  // unit so no other vendor request can land between chunks and tear the
+  // firmware's session down; a STALL anywhere retries the whole transfer
+  // from offset 0 exactly once, matching the firmware's session-loss contract.
+  async #readAllParamsChunked(): Promise<Uint8Array> {
+    const attempt = () => this.transport.exclusive(async (raw) => {
+      const chunkSize = proto.Wire.BulkLimits.ChunkSize;
+      const first = await raw.ctrlIn(proto.WireCmd.GetAllParamsChunk.code, 0, chunkSize);
+      const header = proto.peekBulkHeader(first);
+      const total = header.payloadLength > 0 && header.payloadLength <= proto.Wire.BulkLimits.MaxReadSize
+        ? header.payloadLength
+        : proto.Wire.bulkSizeForVersion(this.capabilities.wireGen);
+
+      const chunks = [first];
+      let received = first.length;
+      for (let i = 1; received < total && i < MAX_BULK_CHUNKS; i++) {
+        const want = Math.min(chunkSize, total - received);
+        const next = await raw.ctrlIn(proto.WireCmd.GetAllParamsChunk.code, received, want);
+        chunks.push(next);
+        received += next.length;
+        if (next.length < want) break;   // short chunk: device says this is the end
+      }
+      return concatChunks(chunks);
+    });
+
+    try {
+      return await attempt();
+    } catch {
+      return attempt();
+    }
   }
 
   // Read one notification packet, or null if the transport has no notify endpoint.
@@ -210,7 +259,30 @@ export class DspDevice {
   // extra rows drop).
   async setAllParams(bulk: proto.BulkParams): Promise<void> {
     const bytes = proto.buildBulkParams(bulk, this.capabilities.wireGen);
-    await this.transport.ctrlOut(proto.WireCmd.SetAllParams.code, 0, bytes);
+    if (bytes.length > proto.Wire.BulkLimits.MaxControlTransfer) {
+      await this.#writeAllParamsChunked(bytes);
+    } else {
+      await this.transport.ctrlOut(proto.WireCmd.SetAllParams.code, 0, bytes);
+    }
+  }
+
+  // Write the bulk packet via the chunked 0xA3 session (mirrors
+  // #readAllParamsChunked). Chunks must land sequentially from offset 0;
+  // the firmware applies the packet when the last byte arrives.
+  async #writeAllParamsChunked(bytes: Uint8Array): Promise<void> {
+    const attempt = () => this.transport.exclusive(async (raw) => {
+      const chunkSize = proto.Wire.BulkLimits.ChunkSize;
+      for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+        const chunk = bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length));
+        await raw.ctrlOut(proto.WireCmd.SetAllParamsChunk.code, offset, chunk);
+      }
+    });
+
+    try {
+      await attempt();
+    } catch {
+      await attempt();
+    }
   }
 
   // V16 devices use the wide combined-status layout (u32 clip flags + live

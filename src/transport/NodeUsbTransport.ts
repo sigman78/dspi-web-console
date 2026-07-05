@@ -5,13 +5,13 @@ const USB_CLASS_VENDOR = 0xFF;
 
 // libusb's Windows backend rejects control transfers above 4096 bytes
 // (MAX_CTRL_BUFFER_LENGTH) with LIBUSB_ERROR_INVALID_PARAM. Clamp IN
-// requests so oversized reads (the V16 bulk packet is 5864 B) return a
-// truncated buffer instead of failing before the header is even read --
-// the parser's own length checks then produce a meaningful error, and
-// pre-V16 packets (<= 4096 B) are unaffected. Reading a full V16 packet
-// over libusb on Windows is impossible until the firmware offers a
-// chunked read; WebUSB (Chrome's own WinUSB path) is not subject to
-// this libusb limit.
+// requests so an oversized single-shot read returns a truncated buffer
+// instead of failing outright -- the parser's own length checks then
+// produce a meaningful error. Firmware 1.1.5+ offers chunked bulk-params
+// commands (0xA2/0xA3) that DspDevice uses automatically once the packet
+// exceeds this cap, so this clamp is now a defensive guard against
+// oversized foreign reads rather than a known-broken path; WebUSB (Chrome's
+// own WinUSB path) is not subject to this libusb limit at all.
 const LIBUSB_MAX_CTRL_LENGTH = 4096;
 
 // libusb-backed DspTransport used by HIL tests. 'connect' fires on open(),

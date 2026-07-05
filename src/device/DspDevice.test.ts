@@ -822,8 +822,10 @@ describe('connect-time capabilities + version gating', () => {
 describe('getAllParams', () => {
   it('requests MaxReadSize so a newer (V10) device does not overrun the transfer', async () => {
     const transport = new MockTransport({ platform: 'rp2350' });
-    const ctrlInSpy = vi.spyOn(transport, 'ctrlIn');
     const dev = await DspDevice.create(transport);
+    // Spy after connect: resolveInfo's own connect-time read is a 16-byte
+    // header peek, not the full-packet read this test is about.
+    const ctrlInSpy = vi.spyOn(transport, 'ctrlIn');
 
     await dev.getAllParams();
 

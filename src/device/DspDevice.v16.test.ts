@@ -3,10 +3,10 @@
 // index shift, crossover band addressing, the wide status layout, and the
 // I2S-input command surface.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice, UnsupportedFirmware } from './DspDevice';
-import { parseNotifyPacket } from '@/protocol';
+import { parseNotifyPacket, WireCmd, buildBulkParams } from '@/protocol';
 import { ChannelId, FilterType } from '@/domain';
 
 const FW_115 = { major: 1, minor: 1, patch: 5 };
@@ -157,6 +157,64 @@ describe('DspDevice — cross-generation state conversion', () => {
     // The mock accepted the packet, i.e. it arrived at the exact V16 size.
     const bulk = await v16.getAllParams();
     expect(bulk.formatVersion).toBe(16);
+  });
+});
+
+describe('DspDevice — V16 chunked bulk-params (WinUSB 4 KB control-transfer cap)', () => {
+  it('getAllParams never requests more than 4096 B per transfer and uses 0xA2', async () => {
+    const mock = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: FW_115 });
+    const ctrlInSpy = vi.spyOn(mock, 'ctrlIn');
+    const d = await DspDevice.create(mock);
+    ctrlInSpy.mockClear();   // drop the connect-time 16-byte header peek
+
+    await d.getAllParams();
+
+    const calls = ctrlInSpy.mock.calls;
+    for (const c of calls) expect(c[2]).toBeLessThanOrEqual(4096);
+    expect(calls.some((c) => c[0] === WireCmd.GetAllParamsChunk.code)).toBe(true);
+    expect(calls.some((c) => c[0] === WireCmd.GetAllParams.code)).toBe(false);
+  });
+
+  it('setAllParams emits sequential 0xA3 chunks that concatenate to the exact V16 packet; the write round-trips', async () => {
+    const mock = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: FW_115 });
+    const d = await DspDevice.create(mock);
+    const bulk = await d.getAllParams();
+    bulk.masterVolumeDb = -21;
+
+    const ctrlOutSpy = vi.spyOn(mock, 'ctrlOut');
+    await d.setAllParams(bulk);
+
+    const chunkCalls = ctrlOutSpy.mock.calls.filter((c) => c[0] === WireCmd.SetAllParamsChunk.code);
+    expect(chunkCalls.length).toBeGreaterThan(1);
+
+    let expectedOffset = 0;
+    const pieces: Uint8Array[] = [];
+    for (const [, value, data] of chunkCalls) {
+      expect(value).toBe(expectedOffset);
+      const bytes = data as Uint8Array;
+      expect(bytes.length).toBeLessThanOrEqual(4096);
+      pieces.push(bytes);
+      expectedOffset += bytes.length;
+    }
+    const concatenated = new Uint8Array(expectedOffset);
+    let off = 0;
+    for (const p of pieces) { concatenated.set(p, off); off += p.length; }
+    expect(concatenated).toEqual(buildBulkParams(bulk, 16));
+
+    const back = await d.getAllParams();
+    expect(back.masterVolumeDb).toBeCloseTo(-21, 4);
+  });
+
+  it('a V10 device stays single-shot: never issues 0xA2/0xA3', async () => {
+    const mock = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
+    const ctrlInSpy = vi.spyOn(mock, 'ctrlIn');
+    const ctrlOutSpy = vi.spyOn(mock, 'ctrlOut');
+    const d = await DspDevice.create(mock);
+    const bulk = await d.getAllParams();
+    await d.setAllParams(bulk);
+
+    expect(ctrlInSpy.mock.calls.some((c) => c[0] === WireCmd.GetAllParamsChunk.code)).toBe(false);
+    expect(ctrlOutSpy.mock.calls.some((c) => c[0] === WireCmd.SetAllParamsChunk.code)).toBe(false);
   });
 });
 

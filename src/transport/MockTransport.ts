@@ -34,6 +34,14 @@ export interface MockOptions {
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
 
+function concatChunks(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) { out.set(c, offset); offset += c.length; }
+  return out;
+}
+
 // Seeds #mockState at construction and resets live state on empty-slot
 // LoadPreset (firmware applies factory defaults rather than returning SlotEmpty).
 // V16 grows the RP2350 to the unified 17-channel space (8 inputs); RP2040
@@ -89,6 +97,12 @@ export class MockTransport implements DspTransport {
   // so the CLEAR button and clip indicators have something visible to drive.
   // Stays asserted across polls until ClearClips (0x83), mirroring firmware.
   #clipFlags = 0b0001_0010;
+
+  // Chunked bulk-params (0xA2/0xA3) session state, V16-only. Mirrors the
+  // firmware contract: chunks must be sequential from offset 0, and any
+  // non-chunk vendor request tears down whichever session is open.
+  #getChunkSession: { buf: Uint8Array; offset: number } | null = null;
+  #setChunkSession: { chunks: Uint8Array[]; length: number; target: number } | null = null;
 
   constructor(opts: MockOptions) {
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
@@ -159,6 +173,8 @@ export class MockTransport implements DspTransport {
 
   async ctrlIn(request: number, value: number, length: number): Promise<Uint8Array> {
     this.#requireOpen();
+    if (request !== WireCmd.GetAllParamsChunk.code) this.#getChunkSession = null;
+    if (request !== WireCmd.SetAllParamsChunk.code) this.#setChunkSession = null;
     switch (request) {
       case WireCmd.GetSerial.code: {
         const enc = new TextEncoder();
@@ -177,6 +193,22 @@ export class MockTransport implements DspTransport {
       case WireCmd.GetAllParams.code: {
         const bulk = this.#synthBulkPacket();
         return bulk.slice(0, Math.min(length, bulk.byteLength));
+      }
+      case WireCmd.GetAllParamsChunk.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        if (value === 0) {
+          this.#getChunkSession = { buf: this.#synthBulkPacket(), offset: 0 };
+        }
+        const session = this.#getChunkSession;
+        if (!session || value !== session.offset) {
+          this.#getChunkSession = null;
+          throw new Error(`MockTransport: GetAllParamsChunk out-of-order offset ${value}`);
+        }
+        const end = Math.min(session.offset + length, session.buf.length);
+        const chunk = session.buf.slice(session.offset, end);
+        session.offset = end;
+        if (session.offset >= session.buf.length) this.#getChunkSession = null;
+        return chunk;
       }
       case WireCmd.EnterBootloader.code: {
         // Firmware acks one byte, then reboots to UF2 ~100 ms later; mirror
@@ -463,6 +495,8 @@ export class MockTransport implements DspTransport {
 
   async ctrlOut(request: number, value: number, data: Uint8Array): Promise<void> {
     this.#requireOpen();
+    if (request !== WireCmd.GetAllParamsChunk.code) this.#getChunkSession = null;
+    if (request !== WireCmd.SetAllParamsChunk.code) this.#setChunkSession = null;
     switch (request) {
       case WireCmd.SetMasterVolume.code:
         this.#mockState.masterVolumeDb = Codec.decode(Codec.f32, data);
@@ -628,13 +662,36 @@ export class MockTransport implements DspTransport {
         return;
 
       case WireCmd.SetAllParams.code: {
-        this.#applyBulkState(parseBulkParams(data));
+        this.#applySetAllParams(data);
+        return;
+      }
+
+      case WireCmd.SetAllParamsChunk.code: {
+        if (!this.#isV16) return;
+        if (value === 0) {
+          this.#setChunkSession = { chunks: [], length: 0, target: this.#synthBulkPacket().length };
+        }
+        const session = this.#setChunkSession;
+        if (!session || value !== session.length) {
+          this.#setChunkSession = null;
+          throw new Error(`MockTransport: SetAllParamsChunk out-of-order offset ${value}`);
+        }
+        session.chunks.push(new Uint8Array(data));
+        session.length += data.length;
+        if (session.length >= session.target) {
+          this.#applySetAllParams(concatChunks(session.chunks));
+          this.#setChunkSession = null;
+        }
         return;
       }
 
       default:
         return;
     }
+  }
+
+  #applySetAllParams(data: Uint8Array): void {
+    this.#applyBulkState(parseBulkParams(data));
   }
 
   #captureSnapshot(): MockSnapshot {
