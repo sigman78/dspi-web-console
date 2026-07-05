@@ -1,4 +1,5 @@
 import type { DspTransport } from '@/transport/DspTransport';
+import { withSerializedCtrl, type SerializedDspTransport } from '@/transport/withSerializedCtrl';
 import * as proto from '@/protocol';
 import { Codec, utf8Truncate, type Result } from '@/utils';
 import * as domain from '@/domain';
@@ -84,7 +85,7 @@ export class DspDevice {
   #lastRawBulk: Uint8Array | null = null;
 
   protected constructor(
-    protected readonly transport: DspTransport,
+    protected readonly transport: SerializedDspTransport,
     private readonly _info: DspDeviceInfo,
   ) {}
 
@@ -145,8 +146,9 @@ export class DspDevice {
     transport: DspTransport,
     openTransport: () => Promise<void> = () => transport.open(),
   ): Promise<DspDevice> {
-    const info = await DspDevice.resolveInfo(transport, openTransport);
-    return new DspDevice(transport, info);
+    const serialized = withSerializedCtrl(transport);
+    const info = await DspDevice.resolveInfo(serialized, openTransport);
+    return new DspDevice(serialized, info);
   }
 
   async close(): Promise<void> { await this.transport.close(); }
