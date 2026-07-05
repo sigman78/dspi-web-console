@@ -4,6 +4,7 @@
 // Intentionally NOT re-exported: `commands`, `focus`, `resync` -- internal
 // coordination primitives used only within this directory.
 export * from './actions';
+export * from './stagedActions';
 export * from './deviceService';
 export * from './presets';
 export * from './boot';

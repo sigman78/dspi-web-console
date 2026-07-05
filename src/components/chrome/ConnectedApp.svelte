@@ -3,6 +3,7 @@
   import type { ReadySession } from '@/state';
   import { settings } from '@/state';
   import { SESSION_KEY } from '@/components/sessionContext';
+  import PendingChangesBar from './PendingChangesBar.svelte';
   import OverviewTab from '@/components/tabs/OverviewTab.svelte';
   import EqualizerTab from '@/components/tabs/EqualizerTab.svelte';
   import MixerTab from '@/components/tabs/MixerTab.svelte';
@@ -18,6 +19,7 @@
   setContext(SESSION_KEY, session);
 </script>
 
+<PendingChangesBar />
 {#if settings.tab === 'overview'}
   <OverviewTab />
 {:else if settings.tab === 'eq'}

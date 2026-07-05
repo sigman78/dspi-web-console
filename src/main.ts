@@ -33,10 +33,10 @@ if (mock === 'rp2040' || mock === 'rp2350') {
 
 registerNavigatorReconnect();
 
-// Warn on unsaved preset changes before unload.
+// Warn on unsaved preset changes or unapplied staged edits before unload.
 window.addEventListener('beforeunload', (e) => {
   const s = activeSession();
-  if (s && presetsDirty(s)) {
+  if (s && (presetsDirty(s) || s.staging.entries.length > 0)) {
     e.preventDefault();
     e.returnValue = '';
   }
