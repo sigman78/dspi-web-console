@@ -10,7 +10,7 @@
   const s = getSession();
 
   const columns = $derived(matrixColumns(s.mirror.current));
-  const rows = $derived(matrixRows(s.mirror.current));
+  const rows = $derived(matrixRows(s.mirror.current, s.telemetry.activeInputChannels));
 
   // When PDM (the last output) is enabled, only outputs 0,1 (S/PDIF 1) and the
   // PDM index stay available. Not enforced client-side -- firmware is the

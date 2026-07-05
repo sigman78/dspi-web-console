@@ -17,13 +17,17 @@ export interface ChannelModel {
   bandCount: number;
   isOutput: boolean;
   filters: FilterParams[];
+  // Crossover bands (V16+, output channels only; addressed at wire band
+  // indices XOVER_BAND_BASE..+3). Empty on inputs and on V10 devices.
+  xoverBands: FilterParams[];
 }
 
 export interface DspSnapshot {
   platform: PlatformInfo;
   bypass: boolean;
   masterPreampDb: number;
-  inputPreampDb: [number, number];
+  // Per-input-slot preamp, one entry per hardware input channel (2 or 8).
+  inputPreampDb: number[];
   masterVolumeDb: number;
   channels: ChannelModel[];
   outputs: OutputModel[];

@@ -7,14 +7,22 @@
     index,
     band,
     onPatch,
+    types,
   }: {
     index: number;
     band: FilterParams;
     onPatch: (patch: Partial<FilterParams>) => void;
+    types?: FilterType[];
   } = $props();
 
   const off = $derived(band.type === FilterType.Flat);
   const bypassed = $derived(band.bypass);
+  // First-order sections (V16+) are single-parameter: no Q, and the 1st-order
+  // all-pass has no gain either.
+  const firstOrder = $derived(
+    band.type === FilterType.Allpass1 || band.type === FilterType.LowShelf1 || band.type === FilterType.HighShelf1,
+  );
+  const noGain = $derived(band.type === FilterType.Allpass1);
 </script>
 
 <div class="row" class:bypassed>
@@ -38,7 +46,7 @@
       </svg>
     {/if}
   </button>
-  <BandTypeSelect value={band.type} onChange={(t) => onPatch({ type: t })} />
+  <BandTypeSelect value={band.type} onChange={(t) => onPatch({ type: t })} {types} />
   <ValueField
     kind="hz"
     value={band.frequency}
@@ -56,7 +64,7 @@
     max={Eq.Q_MAX}
     step={Eq.Q_STEP}
     align="right"
-    disabled={off || bypassed}
+    disabled={off || bypassed || firstOrder}
     onChange={(v) => onPatch({ q: v })}
   />
   <ValueField
@@ -67,7 +75,7 @@
     step={Eq.BAND_GAIN_STEP_DB}
     tone="signed"
     align="right"
-    disabled={off || bypassed}
+    disabled={off || bypassed || noGain}
     onChange={(v) => onPatch({ gain: v })}
   />
 </div>

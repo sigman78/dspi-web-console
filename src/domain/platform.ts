@@ -16,6 +16,10 @@ export interface PlatformInfo {
   outputCount: number;
   totalChannelCount: number;
   pdmOutputIndex: number;
+  // Channel-model generation of the connected device (see WireGen below).
+  // Rides the snapshot so pure-domain helpers (pin rules) can follow the
+  // firmware generation without reaching into protocol capabilities.
+  wireGen: WireGen;
 }
 
 export interface I2sConfig {
@@ -40,18 +44,34 @@ export interface HardwareProfile extends PlatformInfo {
   defaultPinByChannel: Partial<Record<ChannelIdValue, number>>;
 }
 
-const INPUT_CHANNELS = [ChannelId.In1L, ChannelId.In1R] as const;
+// Channel-model generation the device's wire format follows. V10 (fw 1.1.4)
+// has 2 fixed inputs and outputs starting at wire index 2; V16 (fw 1.1.5)
+// unifies inputs as first-class channels (8 on RP2350) with outputs after
+// them. Domain ChannelIds are stable across generations; only the profile's
+// wire mapping moves.
+export type WireGen = 10 | 16;
+
+const STEREO_INPUT_CHANNELS = [ChannelId.In1L, ChannelId.In1R] as const;
+
+const V16_RP2350_INPUT_CHANNELS = [
+  ChannelId.In1L, ChannelId.In1R,
+  ChannelId.In2L, ChannelId.In2R,
+  ChannelId.In3L, ChannelId.In3R,
+  ChannelId.In4L, ChannelId.In4R,
+] as const;
 
 interface HardwareProfileConfig {
   type: PlatformType;
   name: string;
+  wireGen: WireGen;
+  inputChannels: readonly ChannelIdValue[];
   outputChannels: readonly ChannelIdValue[];
   wireChannelOverrides?: Partial<Record<ChannelIdValue, ChannelIdValue>>;
   defaultPins: Partial<Record<ChannelIdValue, number>>;
 }
 
 function buildHardwareProfile(config: HardwareProfileConfig): HardwareProfile {
-  const inputChannels = INPUT_CHANNELS;
+  const inputChannels = config.inputChannels;
   const outputChannels = config.outputChannels;
   const inputs = inputChannels.map(channelLayoutById);
   const outputs = outputChannels.map(channelLayoutById);
@@ -76,6 +96,7 @@ function buildHardwareProfile(config: HardwareProfileConfig): HardwareProfile {
     outputCount: outputs.length,
     totalChannelCount: channels.length,
     pdmOutputIndex: outputChannels.indexOf(ChannelId.Pdm),
+    wireGen: config.wireGen,
     inputChannels,
     outputChannels,
     inputs,
@@ -88,46 +109,105 @@ function buildHardwareProfile(config: HardwareProfileConfig): HardwareProfile {
   };
 }
 
+const RP2040_OUTPUT_CHANNELS = [
+  ChannelId.Out1L, ChannelId.Out1R,
+  ChannelId.Out2L, ChannelId.Out2R,
+  ChannelId.Pdm,
+] as const;
+
+const RP2350_OUTPUT_CHANNELS = [
+  ChannelId.Out1L, ChannelId.Out1R,
+  ChannelId.Out2L, ChannelId.Out2R,
+  ChannelId.Out3L, ChannelId.Out3R,
+  ChannelId.Out4L, ChannelId.Out4R,
+  ChannelId.Pdm,
+] as const;
+
+const RP2040_DEFAULT_PINS = {
+  [ChannelId.Out1L]: 6,
+  [ChannelId.Out2L]: 7,
+  [ChannelId.Pdm]: 10,
+} as const;
+
+const RP2350_DEFAULT_PINS = {
+  [ChannelId.Out1L]: 6,
+  [ChannelId.Out2L]: 7,
+  [ChannelId.Out3L]: 8,
+  [ChannelId.Out4L]: 9,
+  [ChannelId.Pdm]: 10,
+} as const;
+
+// V16 RP2350 wire index space: inputs 0..7, outputs 8..16. Domain ids keep
+// their V10 values; this table is the whole difference.
+const V16_RP2350_WIRE_OVERRIDES: Partial<Record<ChannelIdValue, ChannelIdValue>> = {
+  [ChannelId.In2L]: 2 as ChannelIdValue,
+  [ChannelId.In2R]: 3 as ChannelIdValue,
+  [ChannelId.In3L]: 4 as ChannelIdValue,
+  [ChannelId.In3R]: 5 as ChannelIdValue,
+  [ChannelId.In4L]: 6 as ChannelIdValue,
+  [ChannelId.In4R]: 7 as ChannelIdValue,
+  [ChannelId.Out1L]: 8 as ChannelIdValue,
+  [ChannelId.Out1R]: 9 as ChannelIdValue,
+  [ChannelId.Out2L]: 10 as ChannelIdValue,
+  [ChannelId.Out2R]: 11 as ChannelIdValue,
+  [ChannelId.Out3L]: 12 as ChannelIdValue,
+  [ChannelId.Out3R]: 13 as ChannelIdValue,
+  [ChannelId.Out4L]: 14 as ChannelIdValue,
+  [ChannelId.Out4R]: 15 as ChannelIdValue,
+  [ChannelId.Pdm]: 16 as ChannelIdValue,
+};
+
+// V10 profiles (fw 1.1.4). RP2040 keeps its PDM remap; RP2350 is identity.
 export const HARDWARE_PROFILES: Record<PlatformType, HardwareProfile> = {
   [PlatformType.RP2040]: buildHardwareProfile({
     type: PlatformType.RP2040,
     name: 'RP2040',
-    outputChannels: [
-      ChannelId.Out1L, ChannelId.Out1R,
-      ChannelId.Out2L, ChannelId.Out2R,
-      ChannelId.Pdm,
-    ],
+    wireGen: 10,
+    inputChannels: STEREO_INPUT_CHANNELS,
+    outputChannels: RP2040_OUTPUT_CHANNELS,
     wireChannelOverrides: {
       [ChannelId.Pdm]: ChannelId.Out3L,
     },
-    defaultPins: {
-      [ChannelId.Out1L]: 6,
-      [ChannelId.Out2L]: 7,
-      [ChannelId.Pdm]: 10,
-    },
+    defaultPins: RP2040_DEFAULT_PINS,
   }),
   [PlatformType.RP2350]: buildHardwareProfile({
     type: PlatformType.RP2350,
     name: 'RP2350',
-    outputChannels: [
-      ChannelId.Out1L, ChannelId.Out1R,
-      ChannelId.Out2L, ChannelId.Out2R,
-      ChannelId.Out3L, ChannelId.Out3R,
-      ChannelId.Out4L, ChannelId.Out4R,
-      ChannelId.Pdm,
-    ],
-    defaultPins: {
-      [ChannelId.Out1L]: 6,
-      [ChannelId.Out2L]: 7,
-      [ChannelId.Out3L]: 8,
-      [ChannelId.Out4L]: 9,
-      [ChannelId.Pdm]: 10,
-    },
+    wireGen: 10,
+    inputChannels: STEREO_INPUT_CHANNELS,
+    outputChannels: RP2350_OUTPUT_CHANNELS,
+    defaultPins: RP2350_DEFAULT_PINS,
   }),
 };
 
-export function createHardwareProfile(type: PlatformType): HardwareProfile {
-  return HARDWARE_PROFILES[type];
+// V16 profiles (fw 1.1.5, unified channel model). RP2040 has the same 7-wide
+// index space as V10 (2 inputs, outputs from 2, PDM at 6); RP2350 grows to
+// 8 inputs with outputs shifted to 8..16.
+const V16_HARDWARE_PROFILES: Record<PlatformType, HardwareProfile> = {
+  [PlatformType.RP2040]: buildHardwareProfile({
+    type: PlatformType.RP2040,
+    name: 'RP2040',
+    wireGen: 16,
+    inputChannels: STEREO_INPUT_CHANNELS,
+    outputChannels: RP2040_OUTPUT_CHANNELS,
+    wireChannelOverrides: {
+      [ChannelId.Pdm]: ChannelId.Out3L,
+    },
+    defaultPins: RP2040_DEFAULT_PINS,
+  }),
+  [PlatformType.RP2350]: buildHardwareProfile({
+    type: PlatformType.RP2350,
+    name: 'RP2350',
+    wireGen: 16,
+    inputChannels: V16_RP2350_INPUT_CHANNELS,
+    outputChannels: RP2350_OUTPUT_CHANNELS,
+    wireChannelOverrides: V16_RP2350_WIRE_OVERRIDES,
+    defaultPins: RP2350_DEFAULT_PINS,
+  }),
+};
+
+export function createHardwareProfile(type: PlatformType, wireGen: WireGen = 10): HardwareProfile {
+  return wireGen >= 16 ? V16_HARDWARE_PROFILES[type] : HARDWARE_PROFILES[type];
 }
 
 export function wireChannelFor(profile: HardwareProfile, channel: ChannelIdValue): ChannelIdValue {

@@ -13,6 +13,7 @@
   const snap = $derived(s.mirror.current);
   const cfg = $derived(snap?.dacHwMute);
   const editable = $derived(connected && cfg != null && cfg.enabled);
+  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c });
 
   let testBusy = $state(false);
   let testTimer: ReturnType<typeof setTimeout> | null = null;
@@ -39,9 +40,9 @@
       setDacHwMute(s, { enabled: false });
       return;
     }
-    const inUse = pinsInUse(snap);
-    const free = (p: number) => isAssignablePin(snap.platform.type, p) && !inUse.has(p);
-    const pin = free(cfg.pin) ? cfg.pin : (assignablePins(snap.platform.type).find(free) ?? cfg.pin);
+    const inUse = pinsInUse(snap, ctrlPins);
+    const free = (p: number) => isAssignablePin(snap.platform.type, p, snap.platform.wireGen) && !inUse.has(p);
+    const pin = free(cfg.pin) ? cfg.pin : (assignablePins(snap.platform.type, snap.platform.wireGen).find(free) ?? cfg.pin);
     setDacHwMute(s, { enabled: true, pin });
   }
 
@@ -101,7 +102,7 @@
         <span class="microlbl">GPIO PIN</span>
         <PinSelect
           value={cfg.pin}
-          candidates={availablePinsFor(snap.platform.type, snap, cfg.pin)}
+          candidates={availablePinsFor(snap.platform.type, snap, cfg.pin, ctrlPins)}
           ariaLabel="DAC HW mute GPIO pin"
           disabled={!editable}
           onChange={onPin}

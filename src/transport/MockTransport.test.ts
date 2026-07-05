@@ -260,6 +260,39 @@ describe('MockTransport — notify queue', () => {
   });
 });
 
+describe('MockTransport — chunked bulk sessions (V16)', () => {
+  async function v16Mock(): Promise<MockTransport> {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    await t.open();
+    return t;
+  }
+
+  it('rejects a SET chunk whose offset does not match the bytes accumulated so far', async () => {
+    const t = await v16Mock();
+    const chunkSize = Wire.BulkLimits.ChunkSize;
+    const full = await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize);
+
+    await t.ctrlOut(WireCmd.SetAllParamsChunk.code, 0, full.subarray(0, chunkSize));
+    await expect(
+      t.ctrlOut(WireCmd.SetAllParamsChunk.code, chunkSize + 1, full.subarray(chunkSize, chunkSize * 2)),
+    ).rejects.toThrow();
+  });
+
+  it('invalidates an open GET session when a non-chunk vendor request is interleaved', async () => {
+    const t = await v16Mock();
+    const chunkSize = Wire.BulkLimits.ChunkSize;
+
+    await t.ctrlIn(WireCmd.GetAllParamsChunk.code, 0, chunkSize);
+    await t.ctrlIn(WireCmd.GetSerial.code, 0, 16);   // interleaved, non-chunk request
+
+    // The session is gone: resuming at the offset that was valid a moment
+    // ago is now out-of-order (no active session).
+    await expect(
+      t.ctrlIn(WireCmd.GetAllParamsChunk.code, chunkSize, chunkSize),
+    ).rejects.toThrow();
+  });
+});
+
 describe('MockTransport — V10 device fidelity', () => {
   it('GetAllParams from a V10 mock returns a 2960 B packet with a real tail', async () => {
     const mock = new MockTransport({ platform: 'rp2350', wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } });

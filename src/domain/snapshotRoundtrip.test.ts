@@ -31,7 +31,7 @@ const MUTATORS: Array<{ name: string; mutate: (b: BulkParams) => void }> = [
   { name: 'crosspoint',          mutate: (b) => { b.crosspoints[1][2].gainDb = -3; b.crosspoints[1][2].enabled = true; } },
   { name: 'master volume',       mutate: (b) => { b.masterVolumeDb = -12; } },
   { name: 'master preamp',       mutate: (b) => { b.preampDb = -2; } },
-  { name: 'input preamp',        mutate: (b) => { b.preampRDb = -4; } },
+  { name: 'input preamp',        mutate: (b) => { b.inputPreampsDb[1] = -4; } },
   { name: 'bypass',              mutate: (b) => { b.bypass = !b.bypass; } },
   { name: 'loudness',            mutate: (b) => { b.loudness.enabled = !b.loudness.enabled; b.loudness.intensityPct = 40; } },
   { name: 'crossfeed',           mutate: (b) => { b.crossfeed.enabled = !b.crossfeed.enabled; b.crossfeed.feedDb = -4; } },

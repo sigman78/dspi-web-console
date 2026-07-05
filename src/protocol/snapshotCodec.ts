@@ -1,5 +1,4 @@
 import { type BulkParams } from './bulkParser';
-import * as Wire from './wireTypes';
 import * as domain from '@/domain';
 
 // Opaque handle for the preset-paste device-to-device copy. Runtime holds it
@@ -9,24 +8,20 @@ export type DeviceState = BulkParams & { readonly __brand: 'DeviceState' };
 
 // Wire filter.type is a u8; clamp anything outside the known FilterType
 // values to Flat so a future firmware type can't slip through as a typed value.
+const KNOWN_FILTER_TYPES: ReadonlySet<number> = new Set(Object.values(domain.FilterType));
+
 function narrowFilterType(t: number): domain.FilterType {
-  switch (t) {
-    case domain.FilterType.Flat:
-    case domain.FilterType.Peaking:
-    case domain.FilterType.LowShelf:
-    case domain.FilterType.HighShelf:
-    case domain.FilterType.LowPass:
-    case domain.FilterType.HighPass:
-    case domain.FilterType.Notch:
-    case domain.FilterType.Allpass:
-      return t;
-    default:
-      return domain.FilterType.Flat;
-  }
+  return KNOWN_FILTER_TYPES.has(t) ? (t as domain.FilterType) : domain.FilterType.Flat;
 }
 
 export function narrowInputSource(s: number): domain.AudioInputSource {
-  return s === 1 ? domain.AudioInputSource.Spdif : domain.AudioInputSource.Usb;
+  switch (s) {
+    case domain.AudioInputSource.Spdif:
+    case domain.AudioInputSource.I2s:
+      return s;
+    default:
+      return domain.AudioInputSource.Usb;
+  }
 }
 
 function narrowPlatform(p: number): domain.PlatformType {
@@ -56,24 +51,35 @@ function narrowLevellerSpeed(s: number): domain.LevellerSpeed {
   }
 }
 
-export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParams): domain.DspSnapshot {
-  const channelNames = bulk.channelNames.slice(0, Wire.Const.NUM_CHANNELS);
+function narrowFilter(filter: { type: number; bypass: boolean; frequency: number; q: number; gain: number }): domain.FilterParams {
+  return {
+    type: narrowFilterType(filter.type),
+    bypass: filter.bypass,
+    frequency: filter.frequency,
+    q: filter.q,
+    gain: filter.gain,
+  };
+}
 
-  const channels = hardware.channels.map((channel) => ({
-    id: channel.id,
-    name: domain.displayNameForHardwareChannel(hardware, channel.id, channelNames),
-    defaultName: channel.name,
-    shortName: channel.shortName,
-    bandCount: channel.bandCount,
-    isOutput: channel.isOutput,
-    filters: (bulk.filters[domain.wireChannelFor(hardware, channel.id)]?.slice(0, channel.bandCount) ?? []).map<domain.FilterParams>((filter) => ({
-      type: narrowFilterType(filter.type),
-      bypass: filter.bypass,
-      frequency: filter.frequency,
-      q: filter.q,
-      gain: filter.gain,
-    })),
-  }));
+export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParams): domain.DspSnapshot {
+  const channelNames = bulk.channelNames;
+  const hasCrossover = bulk.formatVersion >= 16;
+
+  const channels = hardware.channels.map((channel) => {
+    const wireChannel = domain.wireChannelFor(hardware, channel.id);
+    return {
+      id: channel.id,
+      name: domain.displayNameForHardwareChannel(hardware, channel.id, channelNames),
+      defaultName: channel.name,
+      shortName: channel.shortName,
+      bandCount: channel.bandCount,
+      isOutput: channel.isOutput,
+      filters: (bulk.filters[wireChannel]?.slice(0, channel.bandCount) ?? []).map(narrowFilter),
+      xoverBands: hasCrossover && channel.isOutput
+        ? (bulk.crossover[wireChannel] ?? []).map(narrowFilter)
+        : [],
+    };
+  });
 
   const outputs: domain.OutputModel[] = hardware.outputs.map((channel) => {
     const wireIndex = hardware.outputSlotByChannel[channel.id];
@@ -114,10 +120,11 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
       outputCount: hardware.outputCount,
       totalChannelCount: hardware.totalChannelCount,
       pdmOutputIndex: hardware.pdmOutputIndex,
+      wireGen: hardware.wireGen,
     },
     bypass: bulk.bypass,
     masterPreampDb: bulk.preampDb,
-    inputPreampDb: [bulk.preampLDb, bulk.preampRDb],
+    inputPreampDb: bulk.inputPreampsDb.slice(0, hardware.inputs.length),
     masterVolumeDb: bulk.masterVolumeDb,
     channels,
     outputs,
@@ -144,7 +151,13 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
     outputPins: bulk.pins.slice(0, bulk.numPinOutputs),
     // V7-V10 sections -- same unconditional carry: the parser substitutes
     // factory defaults when a packet omits them (test-only under the V10 floor).
-    inputConfig: { source: narrowInputSource(bulk.inputConfig.source), spdifRxPin: bulk.inputConfig.spdifRxPin },
+    inputConfig: {
+      source: narrowInputSource(bulk.inputConfig.source),
+      spdifRxPin: bulk.inputConfig.spdifRxPin,
+      i2sRxPins: [...bulk.inputConfig.i2sRxPins],
+      i2sInputRateHz: domain.i2sRateDecode(bulk.inputConfig.i2sInputRateEnc),
+      i2sInputChannels: bulk.inputConfig.i2sInputChannels,
+    },
     lgSoundSync: { enabled: bulk.lgSoundSync.enabled, present: bulk.lgSoundSync.present, volume: bulk.lgSoundSync.volume, muted: bulk.lgSoundSync.muted },
     userVolume:  { volumeDb: bulk.userVolume.volumeDb, mute: bulk.userVolume.mute },
     dacHwMute:   { enabled: bulk.dacHwMute.enabled, activeLow: bulk.dacHwMute.activeLow, pin: bulk.dacHwMute.pin, holdMs: bulk.dacHwMute.holdMs, releaseMs: bulk.dacHwMute.releaseMs },

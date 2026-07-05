@@ -7,3 +7,5 @@ export * from './settings.svelte';
 export * from './eqUi.svelte';
 export * from './telemetry.svelte';
 export * from './notices.svelte';
+export * from './ctrlIfaces.svelte';
+export * from './staging.svelte';

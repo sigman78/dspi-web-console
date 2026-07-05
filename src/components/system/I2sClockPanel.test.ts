@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
 
 vi.mock('@/runtime', () => ({
-  setI2sBckPin: vi.fn(), setMckEnabled: vi.fn(), setMckPin: vi.fn(), setMckMultiplier: vi.fn(),
+  stageI2sBckPin: vi.fn(), stageMckEnabled: vi.fn(), stageMckPin: vi.fn(), stageMckMultiplier: vi.fn(),
 }));
 
 vi.mock('@/state', () => ({
@@ -20,7 +20,25 @@ const snap = {
   dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
 };
 
-const session = { telemetry: { info: { sampleRateHz: 96000 } }, mirror: { current: snap } } as any;
+const staging = {
+  has: () => false,
+  get: () => undefined,
+  valueOf: (_key: string, live: unknown) => live,
+  overlaySnapshot: (s: unknown) => s,
+  entries: [],
+  applying: false,
+  stage: () => {},
+  discard: () => {},
+  discardAll: () => {},
+  applyAll: async () => {},
+};
+
+const session = {
+  telemetry: { info: { sampleRateHz: 96000 } },
+  mirror: { current: snap },
+  ctrlIfaces: { uart: null, i2c: null, status: null },
+  staging,
+} as any;
 
 describe('I2sClockPanel', () => {
   test('256x multiplier option is disabled at 96 kHz', () => {

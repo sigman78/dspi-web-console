@@ -3,6 +3,8 @@ import type { DeviceState } from '@/protocol/snapshotCodec';
 import type { HardwareProfile, PresetSlot } from '@/domain';
 import type { StatusStore } from './telemetry.svelte';
 import type { PresetsState } from './presets.svelte';
+import type { CtrlIfacesState } from './ctrlIfaces.svelte';
+import type { StagingState } from './staging.svelte';
 import type { MirrorState } from './mirror.svelte';
 import type { LinkHealth } from './linkHealth.svelte';
 import type { WriteCoordinator } from '@/runtime/writes.svelte';
@@ -31,6 +33,11 @@ export interface ReadySession {
   readonly copySource: { held: PresetClipboard | null };
   readonly telemetry: StatusStore;
   readonly presets: PresetsState;
+  // V16-only (capabilities.features.controlInterfaces); stays all-null on V10.
+  readonly ctrlIfaces: CtrlIfacesState;
+  // Pending heavy device-config edits (input source, I2S/S/PDIF pins, MCK/BCK,
+  // output type), staged here until PendingChangesBar's APPLY commits them.
+  readonly staging: StagingState;
   readonly mirror: MirrorState;
   readonly health: LinkHealth;
   readonly writes: WriteCoordinator;

@@ -58,7 +58,9 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(Wire.bulkSizeForVersion(6)).toBe(2896);
     expect(Wire.bulkSizeForVersion(7)).toBe(2912);
     expect(Wire.bulkSizeForVersion(10)).toBe(2960);
-    expect(Wire.bulkSizeForVersion(99)).toBe(2960);
+    expect(Wire.bulkSizeForVersion(12)).toBe(2960);
+    expect(Wire.bulkSizeForVersion(16)).toBe(5864);
+    expect(Wire.bulkSizeForVersion(99)).toBe(5864);
     expect(Wire.bulkSizeForVersion(5)).toBe(2896);
   });
 

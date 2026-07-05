@@ -28,12 +28,14 @@ export const DIFF_TOLERANCE = {
 export type SnapshotChange =
   | { kind: 'bypass';        value: boolean }
   | { kind: 'masterPreamp';  value: number }
-  | { kind: 'inputPreamp';   channel: 0 | 1; value: number }
+  | { kind: 'inputPreamp';   channel: number; value: number }
   | { kind: 'masterVolume';  value: number }
   // channelIndex: array position into channels[] (NOT a ChannelId; e.g. PDM is
   // position 6 on RP2040 but has ChannelId 10).
   | { kind: 'channelName';   channelIndex: number; value: string }
   | { kind: 'band';          channelIndex: number; band: number; value: FilterParams }
+  // Crossover band (V16+): band is the LOCAL crossover index 0..3.
+  | { kind: 'xoverBand';     channelIndex: number; band: number; value: FilterParams }
   | { kind: 'output';        index: number; value: OutputModel }
   | { kind: 'route';         index: number; value: RouteModel }
   | { kind: 'loudness';      value: Loudness }
@@ -98,9 +100,15 @@ function levellerDiffers(a: Leveller, b: Leveller): boolean {
 
 // inputConfig splits: `source` is preset content; `spdifRxPin` belongs to the
 // output-config block (rides the 0x98 persistence mode, not the preset, on
-// 1.1.4). A source change carries the whole section.
+// 1.1.4). A source change carries the whole section; so does any change to
+// the V16 I2S fields (pins/rate/channel count).
 function diffInputConfig(a: InputConfig, b: InputConfig, out: SnapshotChange[]): void {
-  if (a.source !== b.source) out.push({ kind: 'inputConfig', value: b });
+  const i2sChanged =
+    a.i2sInputRateHz !== b.i2sInputRateHz ||
+    a.i2sInputChannels !== b.i2sInputChannels ||
+    a.i2sRxPins.length !== b.i2sRxPins.length ||
+    a.i2sRxPins.some((v, i) => v !== b.i2sRxPins[i]);
+  if (a.source !== b.source || i2sChanged) out.push({ kind: 'inputConfig', value: b });
   else if (a.spdifRxPin !== b.spdifRxPin) out.push({ kind: 'spdifRxPin', value: b.spdifRxPin });
 }
 
@@ -142,8 +150,9 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
 
   if (a.bypass !== b.bypass) out.push({ kind: 'bypass', value: b.bypass });
   if (neq(a.masterPreampDb, b.masterPreampDb, DIFF_TOLERANCE.db)) out.push({ kind: 'masterPreamp', value: b.masterPreampDb });
-  if (neq(a.inputPreampDb[0], b.inputPreampDb[0], DIFF_TOLERANCE.db)) out.push({ kind: 'inputPreamp', channel: 0, value: b.inputPreampDb[0] });
-  if (neq(a.inputPreampDb[1], b.inputPreampDb[1], DIFF_TOLERANCE.db)) out.push({ kind: 'inputPreamp', channel: 1, value: b.inputPreampDb[1] });
+  for (let i = 0; i < b.inputPreampDb.length; i++) {
+    if (neq(a.inputPreampDb[i] ?? 0, b.inputPreampDb[i], DIFF_TOLERANCE.db)) out.push({ kind: 'inputPreamp', channel: i, value: b.inputPreampDb[i] });
+  }
   if (neq(a.masterVolumeDb, b.masterVolumeDb, DIFF_TOLERANCE.db)) out.push({ kind: 'masterVolume', value: b.masterVolumeDb });
 
   if (loudnessDiffers(a.loudness, b.loudness)) out.push({ kind: 'loudness', value: b.loudness });
@@ -156,6 +165,10 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
     if (ca.name !== cb.name) out.push({ kind: 'channelName', channelIndex: i, value: cb.name });
     for (let j = 0; j < cb.filters.length; j++) {
       if (bandDiffers(ca.filters[j], cb.filters[j])) out.push({ kind: 'band', channelIndex: i, band: j, value: cb.filters[j] });
+    }
+    for (let j = 0; j < cb.xoverBands.length; j++) {
+      const xa = ca.xoverBands[j];
+      if (xa === undefined || bandDiffers(xa, cb.xoverBands[j])) out.push({ kind: 'xoverBand', channelIndex: i, band: j, value: cb.xoverBands[j] });
     }
   }
 

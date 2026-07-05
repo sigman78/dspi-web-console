@@ -18,6 +18,7 @@ export * from './changeClass';
 export * from './applyChange';
 export * from './presetDirectory';
 export * from './pins';
+export * from './controlInterfaces';
 
 // clamp.ts is intentionally NOT re-exported here; import it directly at the
 // action boundary that owns the clamp gate.

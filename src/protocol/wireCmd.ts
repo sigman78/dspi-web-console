@@ -103,6 +103,11 @@ export const WireCmd = {
   // Bulk
   GetAllParams:         { code: 0xA0 } satisfies RawCmd,
   SetAllParams:         { code: 0xA1 } satisfies RawCmd,
+  // Chunked bulk access (fw 1.1.5+, V16 only): wValue = byte offset, chunks
+  // <= 4096 B. A session is torn down by any interleaved non-chunk vendor
+  // request; see DspDevice.getAllParams/setAllParams.
+  GetAllParamsChunk:    { code: 0xA2 } satisfies RawCmd,
+  SetAllParamsChunk:    { code: 0xA3 } satisfies RawCmd,
 
   // Output pin assignment (0x7C/0x7D) and I2S output config (0xC0-0xC9).
   // All are action-style IN: args in wValue, response is 1-byte status/value.
@@ -196,6 +201,33 @@ export const WireCmd = {
   // The device disconnects ~100 ms after the response, so the transfer may
   // throw. Callers must treat both a clean return and a throw as expected.
   EnterBootloader:       { code: 0xF0 } satisfies RawCmd,
+
+  // --- V16 / fw 1.1.5 I2S-input surface ---
+  // The device is the rate authority while I2S input is active, so the rate
+  // is a command, not a detection. Set: u32 Hz payload (44100/48000/96000).
+  // Get: 8-byte response {current pipeline Hz, selected I2S Hz}.
+  SetInputRate:          { code: 0xED, codec: Codec.u32 } satisfies WriteCmd<number>,
+  GetInputRate:          { code: 0xEE } satisfies RawCmd,
+  // I2S RX data pin per stereo pair. Set is action-IN with
+  // wValue = (pair << 8) | GPIO, 1-byte PinConfigResult; Get takes the pair
+  // in wValue and returns that pair's GPIO.
+  SetI2sRxPin:           { code: 0xF1 } satisfies RawCmd,
+  GetI2sRxPin:           { code: 0xF2, codec: Codec.u8 } satisfies ReadCmd<number>,
+  // Active I2S input channel count (2/4/6/8; RP2350 multichannel). Set is
+  // action-IN with the count in wValue, 1-byte PinConfigResult.
+  SetI2sInputChannels:   { code: 0xF3 } satisfies RawCmd,
+  GetI2sInputChannels:   { code: 0xF4, codec: Codec.u8 } satisfies ReadCmd<number>,
+
+  // --- V16 / fw 1.1.5 external control interfaces (UART + I2C) ---
+  // SETs are plain control-OUT with the struct payload; the firmware refuses
+  // them over UART/I2C itself (USB-only), which is moot here since the
+  // console always speaks USB. The result of a SET is read back from
+  // GetCtrlIfaceStatus's matching last_status field; see DspDevice.
+  SetUartConfig:         { code: 0xF5, codec: Wire.UartCtrlConfig } satisfies WriteCmd<{ enabled: boolean; txPin: number; rxPin: number; notifyEnable: boolean; baud: number }>,
+  GetUartConfig:         { code: 0xF6, codec: Wire.UartCtrlConfig } satisfies ReadCmd<{ enabled: boolean; txPin: number; rxPin: number; notifyEnable: boolean; baud: number }>,
+  SetI2cConfig:          { code: 0xF7, codec: Wire.I2cCtrlConfig } satisfies WriteCmd<{ enabled: boolean; sdaPin: number; sclPin: number; address: number }>,
+  GetI2cConfig:          { code: 0xF8, codec: Wire.I2cCtrlConfig } satisfies ReadCmd<{ enabled: boolean; sdaPin: number; sclPin: number; address: number }>,
+  GetCtrlIfaceStatus:    { code: 0xF9, codec: Wire.CtrlIfaceStatus } satisfies ReadCmd<{ uartLastStatus: number; uartLive: boolean; i2cLastStatus: number; i2cLive: boolean; protoVersion: number }>,
 } as const;
 
 // Helpers

@@ -3,6 +3,17 @@ import { type DspTransport, type TransportEvent, VENDOR_INTERFACE_INDEX } from '
 
 const USB_CLASS_VENDOR = 0xFF;
 
+// libusb's Windows backend rejects control transfers above 4096 bytes
+// (MAX_CTRL_BUFFER_LENGTH) with LIBUSB_ERROR_INVALID_PARAM. Clamp IN
+// requests so an oversized single-shot read returns a truncated buffer
+// instead of failing outright -- the parser's own length checks then
+// produce a meaningful error. Firmware 1.1.5+ offers chunked bulk-params
+// commands (0xA2/0xA3) that DspDevice uses automatically once the packet
+// exceeds this cap, so this clamp is now a defensive guard against
+// oversized foreign reads rather than a known-broken path; WebUSB (Chrome's
+// own WinUSB path) is not subject to this libusb limit at all.
+const LIBUSB_MAX_CTRL_LENGTH = 4096;
+
 // libusb-backed DspTransport used by HIL tests. 'connect' fires on open(),
 // 'disconnect' on close(); full hotplug is not yet wired.
 export class NodeUsbTransport implements DspTransport {
@@ -46,9 +57,10 @@ export class NodeUsbTransport implements DspTransport {
   ctrlIn(request: number, value: number, length: number): Promise<Uint8Array> {
     this.#requireOpen();
     const VENDOR_IN = 0xC1;
+    const capped = Math.min(length, LIBUSB_MAX_CTRL_LENGTH);
     return new Promise((resolve, reject) => {
       this.#device.controlTransfer(
-        VENDOR_IN, request, value, this.#interfaceNumber, length,
+        VENDOR_IN, request, value, this.#interfaceNumber, capped,
         (err, data) => {
           if (err) return reject(err);
           if (!data || typeof data === 'number') {

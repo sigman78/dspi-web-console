@@ -2,6 +2,7 @@
   import { FilterType } from '@/domain';
 
   // UI label per FilterType. "Off" is the user-facing name for Flat.
+  // Crossover labels are consumed by the crossover editor, not this select.
   export const TYPE_LABELS: Record<FilterType, string> = {
     [FilterType.Flat]: 'Off',
     [FilterType.Peaking]: 'Peaking',
@@ -11,8 +12,30 @@
     [FilterType.HighPass]: 'High Pass',
     [FilterType.Notch]: 'Notch',
     [FilterType.Allpass]: 'Allpass',
+    [FilterType.Allpass1]: 'Allpass 1st',
+    [FilterType.LowShelf1]: 'Low Shelf 1st',
+    [FilterType.HighShelf1]: 'High Shelf 1st',
+    [FilterType.Lr2Lp]: 'LR2 LP',   [FilterType.Lr2Hp]: 'LR2 HP',
+    [FilterType.Lr4Lp]: 'LR4 LP',   [FilterType.Lr4Hp]: 'LR4 HP',
+    [FilterType.Lr6Lp]: 'LR6 LP',   [FilterType.Lr6Hp]: 'LR6 HP',
+    [FilterType.Lr8Lp]: 'LR8 LP',   [FilterType.Lr8Hp]: 'LR8 HP',
+    [FilterType.Bw1Lp]: 'BW1 LP',   [FilterType.Bw1Hp]: 'BW1 HP',
+    [FilterType.Bw2Lp]: 'BW2 LP',   [FilterType.Bw2Hp]: 'BW2 HP',
+    [FilterType.Bw3Lp]: 'BW3 LP',   [FilterType.Bw3Hp]: 'BW3 HP',
+    [FilterType.Bw4Lp]: 'BW4 LP',   [FilterType.Bw4Hp]: 'BW4 HP',
+    [FilterType.Bw5Lp]: 'BW5 LP',   [FilterType.Bw5Hp]: 'BW5 HP',
+    [FilterType.Bw6Lp]: 'BW6 LP',   [FilterType.Bw6Hp]: 'BW6 HP',
+    [FilterType.Bw7Lp]: 'BW7 LP',   [FilterType.Bw7Hp]: 'BW7 HP',
+    [FilterType.Bw8Lp]: 'BW8 LP',   [FilterType.Bw8Hp]: 'BW8 HP',
+    [FilterType.Bes2Lp]: 'BES2 LP', [FilterType.Bes2Hp]: 'BES2 HP',
+    [FilterType.Bes4Lp]: 'BES4 LP', [FilterType.Bes4Hp]: 'BES4 HP',
+    [FilterType.Bes6Lp]: 'BES6 LP', [FilterType.Bes6Hp]: 'BES6 HP',
+    [FilterType.Bes8Lp]: 'BES8 LP', [FilterType.Bes8Hp]: 'BES8 HP',
   };
 
+  // PEQ types this select offers. First-order types (V16+) are appended by
+  // the EQ tab when the device reports the firstOrderEq capability;
+  // crossover types never appear here (they live in the crossover editor).
   export const TYPE_ORDER: FilterType[] = [
     FilterType.Flat,
     FilterType.Peaking,
@@ -23,15 +46,31 @@
     FilterType.Notch,
     FilterType.Allpass,
   ];
+
+  export const FIRST_ORDER_TYPES: FilterType[] = [
+    FilterType.LowShelf1,
+    FilterType.HighShelf1,
+    FilterType.Allpass1,
+  ];
+
+  // Crossover editor's offering: Off + the full 32..63 range, LP/HP
+  // interleaved in family/order sequence (matches the wire value order).
+  export const XOVER_TYPE_ORDER: FilterType[] = [
+    FilterType.Flat,
+    ...Array.from({ length: 32 }, (_, i) => (FilterType.Lr2Lp + i) as FilterType),
+  ];
 </script>
 
 <script lang="ts">
   const {
     value,
     onChange,
+    types = TYPE_ORDER,
   }: {
     value: FilterType;
     onChange: (v: FilterType) => void;
+    // Offered types; callers append FIRST_ORDER_TYPES on firstOrderEq-capable devices.
+    types?: FilterType[];
   } = $props();
 
   const isOff = $derived(value === FilterType.Flat);
@@ -43,7 +82,7 @@
   value={value}
   onchange={(e) => onChange(Number((e.currentTarget as HTMLSelectElement).value) as FilterType)}
 >
-  {#each TYPE_ORDER as t (t)}
+  {#each types as t (t)}
     <option value={t}>{TYPE_LABELS[t]}</option>
   {/each}
 </select>

@@ -62,6 +62,9 @@ export const PinConfigResult = {
   PinInUse:      0x02,
   InvalidOutput: 0x03,
   OutputActive:  0x04,
+  // fw 1.1.5+: a value outside its accepted range (UART baud, I2C address),
+  // as opposed to a pin conflict.
+  InvalidParam:  0x05,
 } as const;
 export type PinConfigResult = (typeof PinConfigResult)[keyof typeof PinConfigResult];
 
@@ -73,6 +76,7 @@ const pinConfigMessage: Record<PinConfigResult, string> = {
   [PinConfigResult.PinInUse]:      'GPIO pin already in use',
   [PinConfigResult.InvalidOutput]: 'invalid output index',
   [PinConfigResult.OutputActive]:  'output is active; disable it first',
+  [PinConfigResult.InvalidParam]:  'value out of range',
 };
 
 export function pinConfigResultFromByte(byte: number): Result<void, PinConfigResult> {

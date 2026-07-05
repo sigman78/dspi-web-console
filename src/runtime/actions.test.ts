@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource } from './actions';
+import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource, setUartControlConfig } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './deviceService';
 import { connection, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { bootMock } from './boot';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
-import { parseBulkParams } from '@/protocol';
+import { parseBulkParams, PinConfigResult } from '@/protocol';
+import { Result } from '@/utils';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import {
   FilterType,
@@ -19,6 +20,8 @@ import {
   matrixColumns,
   AudioInputSource,
   type DacHwMute,
+  type UartControlConfig,
+  type ControlIfaceStatus,
 } from '@/domain';
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { deriveCapabilities } from '@/protocol/capabilities';
@@ -783,6 +786,40 @@ describe('output config verbs', () => {
   it('factoryResetDevice toasts completion on success', async () => {
     await factoryResetDevice();
     expect(notices.list.some((n) => n.kind === 'info' && n.message.includes('Factory reset complete'))).toBe(true);
+  });
+});
+
+// ── V16 — external control interfaces ────────────────────────────────────────
+
+describe('setUartControlConfig', () => {
+  const cfg: UartControlConfig = { enabled: true, txPin: 12, rxPin: 13, notifyEnabled: false, baud: 115200 };
+
+  function harness(setResult: { result: Result<void, PinConfigResult>; status: ControlIfaceStatus }) {
+    const device = initializedDevice({
+      setUartControlConfig: vi.fn(async () => setResult),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    return activeSession()!;
+  }
+
+  it('patches ctrlIfaces.uart and stores the fresh status on a successful set', async () => {
+    const status = { uartLastStatus: 0, uartLive: true, i2cLastStatus: 0, i2cLive: false, protoVersion: 1 };
+    const s = harness({ result: Result.ok(), status });
+    setUartControlConfig(s, cfg);
+    await flushAllWrites();
+    expect(s.ctrlIfaces.uart).toEqual(cfg);
+    expect(s.ctrlIfaces.status).toEqual(status);
+  });
+
+  it('on a rejected set, leaves ctrlIfaces.uart untouched but stores the status and warns with the decoded message', async () => {
+    const status = { uartLastStatus: PinConfigResult.InvalidParam, uartLive: false, i2cLastStatus: 0, i2cLive: false, protoVersion: 1 };
+    const s = harness({ result: Result.fail(PinConfigResult.InvalidParam, 'value out of range'), status });
+    clearNotices();
+    setUartControlConfig(s, cfg);
+    await flushAllWrites();
+    expect(s.ctrlIfaces.uart).toBeNull();
+    expect(s.ctrlIfaces.status).toEqual(status);
+    expect(notices.list.some((n) => n.kind === 'warn' && /out of range/.test(n.message))).toBe(true);
   });
 });
 

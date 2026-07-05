@@ -130,6 +130,25 @@
   color: var(--err);
 }
 
+/* .staged — small accent dot marking a control holding a pending (unapplied)
+   staged-apply value (see state/staging.svelte.ts). Apply directly to a chip/
+   toggle/segmented-option; wrap a control with no class prop of its own
+   (PinSelect, SegmentedSelect) in a `.stage-wrap` span instead so the dot has
+   something to anchor to. */
+.staged { position: relative; }
+.staged::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 4px color-mix(in oklab, var(--accent) 70%, transparent);
+}
+.stage-wrap { display: inline-block; }
+
 /* Section sub-header inside a panel body (border-separated). */
 .subhdr {
   font-family: var(--font-mono);

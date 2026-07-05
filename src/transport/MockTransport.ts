@@ -5,14 +5,19 @@ import {
   synthesizeBufferStats,
 } from '@/protocol/syn';
 import {
-  buildBulkParams, defaultBulkParams, parseBulkParams, type BulkParams,
+  buildBulkParams, defaultBulkParams, parseBulkParams,
+  type BulkParams, type WireFilter,
 } from '@/protocol/bulkParser';
 import { Codec } from '@/utils';
 import {
   PlatformType, OutputSlotType,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode, OutputConfigMode,
+  XOVER_BAND_BASE, MAX_XOVER_BANDS,
+  DEFAULT_UART_CONTROL_CONFIG, DEFAULT_I2C_CONTROL_CONFIG,
+  isValidUartPinPair, isValidI2cPinPair, isValidUartBaud, isValidI2cAddress,
   type FilterParams,
   type CrossPoint, type OutputState,
+  type UartControlConfig, type I2cControlConfig,
 } from '@/domain';
 
 export interface MockOptions {
@@ -32,12 +37,27 @@ export interface MockOptions {
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
 
+function concatChunks(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) { out.set(c, offset); offset += c.length; }
+  return out;
+}
+
 // Seeds #mockState at construction and resets live state on empty-slot
 // LoadPreset (firmware applies factory defaults rather than returning SlotEmpty).
-function defaultMockBulkState(platform: PlatformType): BulkParams {
-  const numCh  = platform === PlatformType.RP2350 ? 11 : 7;
-  const numOut = platform === PlatformType.RP2350 ? 9  : 5;
-  return defaultBulkParams({ platformId: platform, numCh, numOut });
+// V16 grows the RP2350 to the unified 17-channel space (8 inputs); RP2040
+// stays 7-wide on both generations.
+function defaultMockBulkState(platform: PlatformType, wireVersion: number): BulkParams {
+  const v16 = wireVersion >= 16;
+  const numIn  = v16 && platform === PlatformType.RP2350 ? 8 : 2;
+  const numOut = platform === PlatformType.RP2350 ? 9 : 5;
+  const numCh  = numIn + numOut;
+  return defaultBulkParams({
+    platformId: platform, numCh, numOut, numIn,
+    formatVersion: Math.max(wireVersion, 6),
+  });
 }
 
 // Full snapshot of mutable mock state so PresetSave/Load round-trips every
@@ -81,6 +101,21 @@ export class MockTransport implements DspTransport {
   // Stays asserted across polls until ClearClips (0x83), mirroring firmware.
   #clipFlags = 0b0001_0010;
 
+  // Chunked bulk-params (0xA2/0xA3) session state, V16-only. Mirrors the
+  // firmware contract: chunks must be sequential from offset 0, and any
+  // non-chunk vendor request tears down whichever session is open.
+  #getChunkSession: { buf: Uint8Array; offset: number } | null = null;
+  #setChunkSession: { chunks: Uint8Array[]; length: number; target: number } | null = null;
+
+  // External control interfaces (V16+, 0xF5-0xF9). Shipped-disabled defaults;
+  // last_status/live start at "no attempt yet" / down.
+  #uartCtrl: UartControlConfig = { ...DEFAULT_UART_CONTROL_CONFIG };
+  #i2cCtrl: I2cControlConfig = { ...DEFAULT_I2C_CONTROL_CONFIG };
+  #uartLastStatus = 0x00;
+  #i2cLastStatus = 0x00;
+  #uartLive = false;
+  #i2cLive = false;
+
   constructor(opts: MockOptions) {
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
     this.#platform = opts.platform === 'rp2040' ? PlatformType.RP2040 : PlatformType.RP2350;
@@ -89,7 +124,7 @@ export class MockTransport implements DspTransport {
     const fw = opts.fwVersion ?? { major: 1, minor: 1, patch: 4 };
     this.#fwMajor = fw.major;
     this.#fwMinorPatch = ((fw.minor & 0xF) << 4) | (fw.patch & 0xF);
-    this.#mockState = defaultMockBulkState(this.#platform);
+    this.#mockState = defaultMockBulkState(this.#platform, this.#wireVersion);
     // Override the all-zero defaults with realistic pin/I2S values so granular
     // pin/type tests start from a valid hardware state.
     const numPin = this.#platform === PlatformType.RP2350 ? 5 : 3;
@@ -101,6 +136,19 @@ export class MockTransport implements DspTransport {
       outputSlotTypes: [0, 0, 0, 0],
       bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0,
     };
+    if (this.#isV16) {
+      // Firmware V16 defaults: RX data pins on the collision-free GPIO 1..4
+      // block, stereo, 48 kHz.
+      this.#mockState.inputConfig.i2sRxPins = [1, 2, 3, 4];
+      this.#mockState.inputConfig.i2sInputChannels = 2;
+      this.#mockState.inputConfig.i2sInputRateEnc = 1;
+    }
+  }
+
+  get #isV16(): boolean { return this.#wireVersion >= 16; }
+
+  #numChannels(): number {
+    return this.#mockState.numCh;
   }
 
   async open(): Promise<void> {
@@ -137,6 +185,8 @@ export class MockTransport implements DspTransport {
 
   async ctrlIn(request: number, value: number, length: number): Promise<Uint8Array> {
     this.#requireOpen();
+    if (request !== WireCmd.GetAllParamsChunk.code) this.#getChunkSession = null;
+    if (request !== WireCmd.SetAllParamsChunk.code) this.#setChunkSession = null;
     switch (request) {
       case WireCmd.GetSerial.code: {
         const enc = new TextEncoder();
@@ -156,6 +206,22 @@ export class MockTransport implements DspTransport {
         const bulk = this.#synthBulkPacket();
         return bulk.slice(0, Math.min(length, bulk.byteLength));
       }
+      case WireCmd.GetAllParamsChunk.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        if (value === 0) {
+          this.#getChunkSession = { buf: this.#synthBulkPacket(), offset: 0 };
+        }
+        const session = this.#getChunkSession;
+        if (!session || value !== session.offset) {
+          this.#getChunkSession = null;
+          throw new Error(`MockTransport: GetAllParamsChunk out-of-order offset ${value}`);
+        }
+        const end = Math.min(session.offset + length, session.buf.length);
+        const chunk = session.buf.slice(session.offset, end);
+        session.offset = end;
+        if (session.offset >= session.buf.length) this.#getChunkSession = null;
+        return chunk;
+      }
       case WireCmd.EnterBootloader.code: {
         // Firmware acks one byte, then reboots to UF2 ~100 ms later; mirror
         // that with a deferred close so the normal disconnect flow runs.
@@ -167,8 +233,8 @@ export class MockTransport implements DspTransport {
       case WireCmd.GetPreamp.code:
         return Codec.encode(Codec.f32, this.#mockState.preampDb);
       case WireCmd.GetInputPreamp.code: {
-        const idx = (value & 0xFF) === 1 ? 1 : 0;
-        return Codec.encode(Codec.f32, idx === 1 ? this.#mockState.preampRDb : this.#mockState.preampLDb);
+        const idx = value & 0xFF;
+        return Codec.encode(Codec.f32, this.#mockState.inputPreampsDb[idx] ?? 0);
       }
       case WireCmd.GetMatrixRoute.code: {
         const input = (value >> 8) & 0xFF;
@@ -206,24 +272,26 @@ export class MockTransport implements DspTransport {
       case WireCmd.SaveOutputConfig.code:
         return new Uint8Array([0]); // PresetResult.Ok
       case WireCmd.GetEqParam.code: {
-        // Bit-packed wValue: (channel << 8) | (band << 4) | param
+        // Bit-packed wValue. V10: (channel << 8) | (band << 4) | param.
+        // V16: band widens to 5 bits, (channel << 8) | (band << 3) | param.
         const channel = (value >> 8) & 0xFF;
-        const band = (value >> 4) & 0xF;
-        const param = value & 0xF;
-        const f = this.#mockState.filters?.[channel]?.[band];
+        const band  = this.#isV16 ? (value >> 3) & 0x1F : (value >> 4) & 0xF;
+        const param = this.#isV16 ? value & 0x7 : value & 0xF;
+        const f = this.#bandAt(channel, band);
         if (!f) return new Uint8Array(length);
         switch (param) {
           case 0: return Codec.encode(Codec.u32, f.type);       // Type widens to u32 on the wire
           case 1: return Codec.encode(Codec.f32, f.frequency);
           case 2: return Codec.encode(Codec.f32, f.q);
           case 3: return Codec.encode(Codec.f32, f.gain);
+          case 4: return Codec.encode(Codec.u32, f.bypass ? 1 : 0);
           default: return new Uint8Array(length);
         }
       }
       case WireCmd.GetBandBypass.code: {
         const ch = (value >> 8) & 0xFF;
         const band = value & 0xFF;
-        return Codec.encode(Codec.bool8, this.#mockState.filters?.[ch]?.[band]?.bypass ?? false);
+        return Codec.encode(Codec.bool8, this.#bandAt(ch, band)?.bypass ?? false);
       }
       case WireCmd.GetUserVolume.code:
         return Codec.encode(Codec.f32, this.#mockState.userVolume.volumeDb);
@@ -243,6 +311,44 @@ export class MockTransport implements DspTransport {
       case WireCmd.SetSpdifRxPin.code:
         this.#mockState.inputConfig.spdifRxPin = value & 0xFF;
         return new Uint8Array([0x00]); // PinConfigResult: ok
+      case WireCmd.GetInputRate.code: {
+        // {current pipeline Hz, selected I2S input Hz}
+        const out = new Uint8Array(8);
+        const dv = new DataView(out.buffer);
+        dv.setUint32(0, 48_000, true);
+        dv.setUint32(4, this.#i2sRateHz(), true);
+        return out;
+      }
+      case WireCmd.SetI2sRxPin.code: {
+        const pair = (value >> 8) & 0xFF;
+        const pin = value & 0xFF;
+        if (pair >= 4) return new Uint8Array([0x03]);                    // InvalidOutput: no such pair
+        if (!this.#isValidGpio(pin)) return new Uint8Array([0x01]);      // InvalidPin
+        if (this.#pinInUse(pin, 0xFF)) return new Uint8Array([0x02]);    // PinInUse
+        this.#mockState.inputConfig.i2sRxPins[pair] = pin;
+        return new Uint8Array([0x00]);
+      }
+      case WireCmd.GetI2sRxPin.code: {
+        const pair = value & 0xFF;
+        return Codec.encode(Codec.u8, this.#mockState.inputConfig.i2sRxPins[pair] ?? 0);
+      }
+      case WireCmd.SetI2sInputChannels.code: {
+        const count = value & 0xFF;
+        if (count !== 2 && count !== 4 && count !== 6 && count !== 8) return new Uint8Array([0x01]);
+        const maxPairs = this.#platform === PlatformType.RP2350 ? 4 : 1;
+        if (count / 2 > maxPairs) return new Uint8Array([0x03]);
+        const changed = this.#mockState.inputConfig.i2sInputChannels !== count;
+        this.#mockState.inputConfig.i2sInputChannels = count;
+        // Firmware pushes INPUT_FORMAT only when the live count changed
+        // (I2S is the active source).
+        if (changed && this.#mockState.inputConfig.source === 2) {
+          this.#notifySeq = (this.#notifySeq + 1) & 0xff;
+          this.pushNotify(new Uint8Array([2, 0x05, 0, this.#notifySeq, count, 0, 0, 0]));
+        }
+        return new Uint8Array([0x00]);
+      }
+      case WireCmd.GetI2sInputChannels.code:
+        return Codec.encode(Codec.u8, this.#mockState.inputConfig.i2sInputChannels || 2);
       case WireCmd.TestDacHwMute.code:
         return new Uint8Array([0x00]); // status: pulse scheduled
       case WireCmd.GetLgSoundSyncEnabled.code:
@@ -380,6 +486,26 @@ export class MockTransport implements DspTransport {
         this.#mockState.i2s.mckMultiplierEncoded = raw;
         return new Uint8Array([0x00]);
       }
+      case WireCmd.GetUartConfig.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        const c = this.#uartCtrl;
+        return Codec.encode(Wire.UartCtrlConfig, {
+          enabled: c.enabled, txPin: c.txPin, rxPin: c.rxPin, notifyEnable: c.notifyEnabled, baud: c.baud,
+        });
+      }
+      case WireCmd.GetI2cConfig.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        const c = this.#i2cCtrl;
+        return Codec.encode(Wire.I2cCtrlConfig, { enabled: c.enabled, sdaPin: c.sdaPin, sclPin: c.sclPin, address: c.address });
+      }
+      case WireCmd.GetCtrlIfaceStatus.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        return Codec.encode(Wire.CtrlIfaceStatus, {
+          uartLastStatus: this.#uartLastStatus, uartLive: this.#uartLive,
+          i2cLastStatus: this.#i2cLastStatus, i2cLive: this.#i2cLive,
+          protoVersion: 1,
+        });
+      }
       case WireCmd.GetBufferStats.code:
         return synthesizeBufferStats({
           numSpdif: this.#numSpdif(),
@@ -401,6 +527,8 @@ export class MockTransport implements DspTransport {
 
   async ctrlOut(request: number, value: number, data: Uint8Array): Promise<void> {
     this.#requireOpen();
+    if (request !== WireCmd.GetAllParamsChunk.code) this.#getChunkSession = null;
+    if (request !== WireCmd.SetAllParamsChunk.code) this.#setChunkSession = null;
     switch (request) {
       case WireCmd.SetMasterVolume.code:
         this.#mockState.masterVolumeDb = Codec.decode(Codec.f32, data);
@@ -409,19 +537,19 @@ export class MockTransport implements DspTransport {
         this.#mockState.preampDb = Codec.decode(Codec.f32, data);
         return;
       case WireCmd.SetInputPreamp.code: {
-        const idx = (value & 0xFF) === 1 ? 1 : 0;
-        const db = Codec.decode(Codec.f32, data);
-        if (idx === 1) this.#mockState.preampRDb = db;
-        else this.#mockState.preampLDb = db;
+        const idx = value & 0xFF;
+        if (idx < this.#mockState.inputPreampsDb.length) {
+          this.#mockState.inputPreampsDb[idx] = Codec.decode(Codec.f32, data);
+        }
         return;
       }
       case WireCmd.SetEqParam.code: {
         const p = Codec.decode(Wire.SetFilterPacket, data);
-        const row = this.#mockState.filters?.[p.channel];
-        if (row && row[p.band]) {
-          row[p.band] = {
+        const slot = this.#bandSlot(p.channel, p.band);
+        if (slot) {
+          slot.row[slot.idx] = {
             type: p.type as FilterParams['type'],
-            bypass: row[p.band].bypass,
+            bypass: slot.row[slot.idx].bypass,
             frequency: p.frequency,
             q: p.q,
             gain: p.gain,
@@ -432,8 +560,8 @@ export class MockTransport implements DspTransport {
       case WireCmd.SetBandBypass.code: {
         const ch = (value >> 8) & 0xFF;
         const band = value & 0xFF;
-        const row = this.#mockState.filters?.[ch];
-        if (row && row[band]) row[band] = { ...row[band], bypass: Codec.decode(Codec.bool8, data) };
+        const slot = this.#bandSlot(ch, band);
+        if (slot) slot.row[slot.idx] = { ...slot.row[slot.idx], bypass: Codec.decode(Codec.bool8, data) };
         return;
       }
       case WireCmd.SetUserVolume.code:
@@ -445,6 +573,13 @@ export class MockTransport implements DspTransport {
       case WireCmd.SetInputSource.code:
         this.#mockState.inputConfig.source = Codec.decode(Codec.u8, data);
         return;
+      case WireCmd.SetInputRate.code: {
+        const hz = Codec.decode(Codec.u32, data);
+        if (hz === 44100 || hz === 48000 || hz === 96000) {
+          this.#mockState.inputConfig.i2sInputRateEnc = hz === 44100 ? 0 : hz === 96000 ? 2 : 1;
+        }
+        return;
+      }
       case WireCmd.SetLgSoundSyncEnabled.code:
         this.#mockState.lgSoundSync.enabled = Codec.decode(Codec.bool8, data);
         return;
@@ -530,7 +665,7 @@ export class MockTransport implements DspTransport {
 
       case WireCmd.SetChannelName.code: {
         const ch = value & 0xFF;
-        if (ch < Wire.Const.NUM_CHANNELS) {
+        if (ch < this.#numChannels()) {
           this.#mockState.channelNames[ch] = Codec.decode(WireCmd.SetChannelName.codec, data);
         }
         return;
@@ -558,14 +693,58 @@ export class MockTransport implements DspTransport {
         this.#clipFlags = 0;
         return;
 
+      case WireCmd.SetUartConfig.code: {
+        if (!this.#isV16) return;
+        const cfg = Codec.decode(Wire.UartCtrlConfig, data);
+        this.#uartLastStatus = this.#validateUartConfig(cfg);
+        if (this.#uartLastStatus === 0x00) {
+          this.#uartCtrl = { enabled: cfg.enabled, txPin: cfg.txPin, rxPin: cfg.rxPin, notifyEnabled: cfg.notifyEnable, baud: cfg.baud };
+          this.#uartLive = cfg.enabled;
+        }
+        return;
+      }
+      case WireCmd.SetI2cConfig.code: {
+        if (!this.#isV16) return;
+        const cfg = Codec.decode(Wire.I2cCtrlConfig, data);
+        this.#i2cLastStatus = this.#validateI2cConfig(cfg);
+        if (this.#i2cLastStatus === 0x00) {
+          this.#i2cCtrl = { enabled: cfg.enabled, sdaPin: cfg.sdaPin, sclPin: cfg.sclPin, address: cfg.address };
+          this.#i2cLive = cfg.enabled;
+        }
+        return;
+      }
+
       case WireCmd.SetAllParams.code: {
-        this.#applyBulkState(parseBulkParams(data));
+        this.#applySetAllParams(data);
+        return;
+      }
+
+      case WireCmd.SetAllParamsChunk.code: {
+        if (!this.#isV16) return;
+        if (value === 0) {
+          this.#setChunkSession = { chunks: [], length: 0, target: this.#synthBulkPacket().length };
+        }
+        const session = this.#setChunkSession;
+        if (!session || value !== session.length) {
+          this.#setChunkSession = null;
+          throw new Error(`MockTransport: SetAllParamsChunk out-of-order offset ${value}`);
+        }
+        session.chunks.push(new Uint8Array(data));
+        session.length += data.length;
+        if (session.length >= session.target) {
+          this.#applySetAllParams(concatChunks(session.chunks));
+          this.#setChunkSession = null;
+        }
         return;
       }
 
       default:
         return;
     }
+  }
+
+  #applySetAllParams(data: Uint8Array): void {
+    this.#applyBulkState(parseBulkParams(data));
   }
 
   #captureSnapshot(): MockSnapshot {
@@ -593,7 +772,7 @@ export class MockTransport implements DspTransport {
 
   // Reset live state to factory defaults (empty-slot PresetLoad).
   #resetLiveToDefaults(): void {
-    this.#applyBulkState(defaultMockBulkState(this.#platform));
+    this.#applyBulkState(defaultMockBulkState(this.#platform, this.#wireVersion));
     this.#savedMasterVolumeDb = 0;
   }
 
@@ -615,16 +794,43 @@ export class MockTransport implements DspTransport {
     return this.#mockState.outputs![wValue & 0xFF];
   }
 
+  // Resolves a wire (channel, band) address to its storage slot: PEQ bands in
+  // filters[], crossover bands (V16, wire indices 20..23) in crossover[].
+  #bandSlot(ch: number, band: number): { row: WireFilter[]; idx: number } | null {
+    if (ch >= this.#numChannels()) return null;
+    if (band < Wire.Const.BANDS_MAX) {
+      const row = this.#mockState.filters?.[ch];
+      return row?.[band] ? { row, idx: band } : null;
+    }
+    if (this.#isV16 && band >= XOVER_BAND_BASE && band < XOVER_BAND_BASE + MAX_XOVER_BANDS) {
+      const row = this.#mockState.crossover?.[ch];
+      const idx = band - XOVER_BAND_BASE;
+      return row?.[idx] ? { row, idx } : null;
+    }
+    return null;
+  }
+
+  #bandAt(ch: number, band: number): WireFilter | null {
+    const slot = this.#bandSlot(ch, band);
+    return slot ? slot.row[slot.idx] : null;
+  }
+
   #numSpdif(): number {
     return this.#platform === PlatformType.RP2350 ? 4 : 2;
   }
 
   #isValidGpio(pin: number): boolean {
-    if (pin === 12 || (pin >= 23 && pin <= 25)) return false;
+    // Debug UART pin: GPIO 12 through V10 only. Fw 1.1.5 (V16) removed the
+    // dedicated debug UART, freeing 16/17 for general use.
+    if (!this.#isV16 && pin === 12) return false;
+    if (pin >= 23 && pin <= 25) return false;
     return pin >= 0 && pin <= (this.#platform === PlatformType.RP2350 ? 29 : 28);
   }
 
-  #pinInUse(pin: number, excludeIdx: number): boolean {
+  // Peripheral pins only (outputs/I2S/MCK/I2S-RX) -- excludes the ctrl
+  // interfaces themselves, so a ctrl-iface SET can validate against every
+  // OTHER peripheral without self-conflicting on its own current pins.
+  #peripheralPinInUse(pin: number, excludeIdx: number): boolean {
     const pins = this.#mockState.pins;
     for (let i = 0; i < this.#mockState.numPinOutputs; i++) {
       if (i === excludeIdx) continue;
@@ -633,18 +839,72 @@ export class MockTransport implements DspTransport {
     const i2s = this.#mockState.i2s;
     if (i2s.outputSlotTypes.some((type) => type === OutputSlotType.I2s) && (pin === i2s.bckPin || pin === i2s.bckPin + 1)) return true;
     if (i2s.mckEnabled && pin === i2s.mckPin) return true;
+    if (this.#isV16) {
+      // Active I2S RX pairs reserve their data pins (fw is_pin_in_use).
+      const activePairs = (this.#mockState.inputConfig.i2sInputChannels || 2) / 2;
+      const rxPins = this.#mockState.inputConfig.i2sRxPins;
+      for (let p = 0; p < activePairs; p++) if (rxPins[p] === pin) return true;
+    }
     return false;
+  }
+
+  #pinInUse(pin: number, excludeIdx: number): boolean {
+    if (this.#peripheralPinInUse(pin, excludeIdx)) return true;
+    if (this.#uartCtrl.enabled && (pin === this.#uartCtrl.txPin || pin === this.#uartCtrl.rxPin)) return true;
+    if (this.#i2cCtrl.enabled && (pin === this.#i2cCtrl.sdaPin || pin === this.#i2cCtrl.sclPin)) return true;
+    return false;
+  }
+
+  #validateUartConfig(cfg: { txPin: number; rxPin: number; baud: number }): number {
+    if (!isValidUartBaud(cfg.baud)) return 0x05;                                  // InvalidParam
+    if (!this.#isValidGpio(cfg.txPin) || !this.#isValidGpio(cfg.rxPin)) return 0x01;  // InvalidPin
+    if (!isValidUartPinPair(cfg.txPin, cfg.rxPin)) return 0x01;
+    if (this.#peripheralPinInUse(cfg.txPin, 0xFF) || this.#peripheralPinInUse(cfg.rxPin, 0xFF)) return 0x02; // PinInUse
+    const i2c = this.#i2cCtrl;
+    if (i2c.enabled && [cfg.txPin, cfg.rxPin].includes(i2c.sdaPin)) return 0x02;
+    if (i2c.enabled && [cfg.txPin, cfg.rxPin].includes(i2c.sclPin)) return 0x02;
+    return 0x00;
+  }
+
+  #validateI2cConfig(cfg: { sdaPin: number; sclPin: number; address: number }): number {
+    if (!isValidI2cAddress(cfg.address)) return 0x05;                             // InvalidParam
+    if (!this.#isValidGpio(cfg.sdaPin) || !this.#isValidGpio(cfg.sclPin)) return 0x01; // InvalidPin
+    if (!isValidI2cPinPair(cfg.sdaPin, cfg.sclPin)) return 0x01;
+    if (this.#peripheralPinInUse(cfg.sdaPin, 0xFF) || this.#peripheralPinInUse(cfg.sclPin, 0xFF)) return 0x02; // PinInUse
+    const uart = this.#uartCtrl;
+    if (uart.enabled && [cfg.sdaPin, cfg.sclPin].includes(uart.txPin)) return 0x02;
+    if (uart.enabled && [cfg.sdaPin, cfg.sclPin].includes(uart.rxPin)) return 0x02;
+    return 0x00;
+  }
+
+  // Live active input channel count: USB-source count is the alt-driven value
+  // (always 2 in the mock); I2S follows the configured channel count.
+  #activeInputChannels(): number {
+    const cfg = this.#mockState.inputConfig;
+    return cfg.source === 2 ? (cfg.i2sInputChannels || 2) : 2;
+  }
+
+  #i2sRateHz(): number {
+    const enc = this.#mockState.inputConfig.i2sInputRateEnc;
+    return enc === 0 ? 44100 : enc === 2 ? 96000 : 48000;
   }
 
   // Dispatch GetStatus by wValue, returning a fresh buffer sized to the request.
   #synthStatus(wValue: number, length: number): Uint8Array {
     switch (wValue) {
       case SystemStatusValue.CombinedPeaks: {
-        // Caller sizes the request: numCh = (length - 4) / 2.
-        const numCh = Math.max(0, (length - 4) >> 1);
+        // Caller sizes the request: numCh = (length - tail) / 2, where the
+        // tail is 4 B on V10 and 7 B on V16 (u32 clip + input-count byte).
+        const tail = this.#isV16 ? 7 : 4;
+        const numCh = Math.max(0, (length - tail) >> 1);
         const peaks = Array.from({ length: numCh }, (_, i) => (i + 1) / numCh);
-        return synthesizeSystemStatus({ numCh, peaks, cpu0: 25, cpu1: 12, clipFlags: this.#clipFlags });
+        return synthesizeSystemStatus({
+          numCh, peaks, cpu0: 25, cpu1: 12, clipFlags: this.#clipFlags,
+          ...(this.#isV16 ? { activeInputChannels: this.#activeInputChannels() } : {}),
+        });
       }
+      case SystemStatusValue.ActiveInputChannels:
+        return synthesizeU32(this.#isV16 ? this.#activeInputChannels() : 0);
       // Environment scalars
       case SystemStatusValue.ClockHz:        return synthesizeU32(125_000_000);
       case SystemStatusValue.CoreVoltageMv:  return synthesizeU32(3300);

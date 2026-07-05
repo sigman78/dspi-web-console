@@ -57,4 +57,13 @@ describe('pinConfigResultFromByte', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe(PinConfigResult.InvalidPin);
   });
+
+  it('0x05 maps to InvalidParam with a range-style message', () => {
+    const r = pinConfigResultFromByte(PinConfigResult.InvalidParam);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe(PinConfigResult.InvalidParam);
+      expect(r.message).toMatch(/range/i);
+    }
+  });
 });

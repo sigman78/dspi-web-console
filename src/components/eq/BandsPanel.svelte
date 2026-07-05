@@ -1,7 +1,7 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
   import BandRow from './BandRow.svelte';
-  import type { FilterParams, ChannelId } from '@/domain';
+  import type { FilterParams, FilterType, ChannelId } from '@/domain';
 
   const {
     bands,
@@ -12,6 +12,7 @@
     onCopy,
     onPaste,
     onExit,
+    types,
   }: {
     bands: FilterParams[];
     onPatch: (index: number, patch: Partial<FilterParams>) => void;
@@ -21,6 +22,7 @@
     onCopy: () => void;
     onPaste: () => void;
     onExit: () => void;
+    types?: FilterType[];
   } = $props();
 
   const inSelection = $derived(copySource != null);
@@ -55,7 +57,7 @@
   </div>
 
   {#each bands as band, i (i)}
-    <BandRow index={i} {band} onPatch={(p) => onPatch(i, p)} />
+    <BandRow index={i} {band} onPatch={(p) => onPatch(i, p)} {types} />
   {/each}
 </Panel>
 

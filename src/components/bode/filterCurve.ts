@@ -1,5 +1,6 @@
 import { FilterType, type FilterParams } from '@/domain';
 import { BODE_BINS, BODE_FREQS } from './bodeFreqs';
+import { xoverSectionCoeffs } from './xoverCurve';
 
 // Sample rate the biquad coefficients are computed at.
 // TODO(eq-state): once mirror.current exposes a stable Fs field, source from
@@ -10,10 +11,11 @@ export const EQ_SAMPLE_RATE = 48000;
 const TWO_PI = Math.PI * 2;
 const LN10 = Math.log(10);
 
-interface Coeffs {
+export interface BiquadCoeffs {
   b0: number; b1: number; b2: number;
   a1: number; a2: number;
 }
+type Coeffs = BiquadCoeffs;
 
 // RBJ Audio EQ Cookbook biquads, normalized so a0 = 1.
 function coeffsFor(type: FilterType, f: number, q: number, gainDb: number, fs: number): Coeffs | null {
@@ -88,10 +90,34 @@ function coeffsFor(type: FilterType, f: number, q: number, gainDb: number, fs: n
       a2: (1 - alpha) / a0,
     };
   }
-  if (type === FilterType.Allpass) {
-    // Allpass: flat magnitude (0 dB everywhere). Returning null causes
+  if (type === FilterType.Allpass || type === FilterType.Allpass1) {
+    // Allpasses: flat magnitude (0 dB everywhere). Returning null causes
     // filterCurve to contribute 0 dB from this band, which is correct.
     return null;
+  }
+  // First-order shelves (V16+), firmware-exact forms (dsp_pipeline.c):
+  // LowShelf1 has DC gain A^2 and unity at Nyquist; HighShelf1 the mirror.
+  if (type === FilterType.LowShelf1) {
+    const A = Math.pow(10, gainDb / 40);
+    const a0 = (sinw0 / A) + 1 + cosw0;
+    return {
+      b0: ((A * sinw0) + 1 + cosw0) / a0,
+      b1: ((A * sinw0) - 1 - cosw0) / a0,
+      b2: 0,
+      a1: ((sinw0 / A) - 1 - cosw0) / a0,
+      a2: 0,
+    };
+  }
+  if (type === FilterType.HighShelf1) {
+    const A = Math.pow(10, gainDb / 40);
+    const a0 = sinw0 + (1 / A) + (cosw0 / A);
+    return {
+      b0: (sinw0 + A + (A * cosw0)) / a0,
+      b1: (sinw0 - A - (A * cosw0)) / a0,
+      b2: 0,
+      a1: (sinw0 - (1 / A) - (cosw0 / A)) / a0,
+      a2: 0,
+    };
   }
   return null;
 }
@@ -112,16 +138,37 @@ function magDbAt(c: Coeffs, w: number): number {
   return (10 / LN10) * Math.log(num2 / den2);
 }
 
-// Sum the dB response of every (non-Flat) band, plus the preamp.
-// Pure function: same input -> same output. Length is always BODE_BINS.
-export function filterCurve(bands: ReadonlyArray<FilterParams>, preampDb: number): number[] {
-  const fs = EQ_SAMPLE_RATE;
-  const out = new Array<number>(BODE_BINS);
-  for (let i = 0; i < BODE_BINS; i++) out[i] = preampDb;
+// Every active section (PEQ biquads + crossover cascades) for the given bands.
+function sectionsFor(
+  bands: ReadonlyArray<FilterParams>,
+  xoverBands: ReadonlyArray<FilterParams>,
+  fs: number,
+): Coeffs[] {
+  const out: Coeffs[] = [];
   for (const band of bands) {
     if (band.bypass) continue;
     const c = coeffsFor(band.type, band.frequency, band.q, band.gain, fs);
-    if (!c) continue;
+    if (c) out.push(c);
+  }
+  for (const band of xoverBands) {
+    if (band.bypass) continue;
+    out.push(...xoverSectionCoeffs(band.type, band.frequency, fs));
+  }
+  return out;
+}
+
+// Sum the dB response of every (non-Flat) band, plus the preamp. Crossover
+// bands (output channels, V16+) contribute their full section cascade.
+// Pure function: same input -> same output. Length is always BODE_BINS.
+export function filterCurve(
+  bands: ReadonlyArray<FilterParams>,
+  preampDb: number,
+  xoverBands: ReadonlyArray<FilterParams> = [],
+): number[] {
+  const fs = EQ_SAMPLE_RATE;
+  const out = new Array<number>(BODE_BINS);
+  for (let i = 0; i < BODE_BINS; i++) out[i] = preampDb;
+  for (const c of sectionsFor(bands, xoverBands, fs)) {
     for (let i = 0; i < BODE_BINS; i++) {
       const w = TWO_PI * BODE_FREQS[i] / fs;
       out[i] += magDbAt(c, w);
@@ -138,15 +185,11 @@ export function filterCurveAt(
   bands: ReadonlyArray<FilterParams>,
   preampDb: number,
   f: number,
+  xoverBands: ReadonlyArray<FilterParams> = [],
 ): number {
   const fs = EQ_SAMPLE_RATE;
   const w = TWO_PI * f / fs;
   let db = preampDb;
-  for (const band of bands) {
-    if (band.bypass) continue;
-    const c = coeffsFor(band.type, band.frequency, band.q, band.gain, fs);
-    if (!c) continue;
-    db += magDbAt(c, w);
-  }
+  for (const c of sectionsFor(bands, xoverBands, fs)) db += magDbAt(c, w);
   return db;
 }

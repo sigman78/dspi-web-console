@@ -3,8 +3,9 @@ import {
   type ChannelId, type InputSlot, type OutputSlot, type I2sPairSlot,
   type RouteModel,
   type I2sConfig,
-  type AudioInputSource,
   type DacHwMute,
+  type UartControlConfig, type I2cControlConfig,
+  AudioInputSource,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   CHANNEL_NAME_MAX_LEN,
 } from '@/domain';
@@ -223,8 +224,7 @@ export function setMasterPreamp(s: ReadySession, db: number): void {
 
 export function setInputPreamp(s: ReadySession, channel: InputSlot, db: number): void {
   db = Clamp.preampDb(db);
-  const cur = s.mirror.snapshot.inputPreampDb;
-  const next: [number, number] = [cur[0], cur[1]];
+  const next = s.mirror.snapshot.inputPreampDb.slice();
   next[channel] = db;
   scrub(s,
     `inputPreamp:${channel}`,
@@ -371,16 +371,16 @@ function patchOutputPin(s: ReadySession, index: number, pin: number): void {
   s.mirror.snapshot.outputPins = pins;
 }
 
-export function setOutputDataPin(s: ReadySession, pinOutputIndex: number, pin: number): void {
-  void writeChecked(s,
+export function setOutputDataPin(s: ReadySession, pinOutputIndex: number, pin: number): Promise<boolean> {
+  return writeChecked(s,
     'set output pin',
     () => s.device.setOutputPin(pinOutputIndex, pin),
     () => patchOutputPin(s, pinOutputIndex, pin),
   );
 }
 
-export function setOutputType(s: ReadySession, slot: I2sPairSlot, type: number): void {
-  void writeChecked(s,
+export function setOutputType(s: ReadySession, slot: I2sPairSlot, type: number): Promise<boolean> {
+  return writeChecked(s,
     'switch output type',
     () => s.device.setOutputType(slot, type),
     () => patchI2s(s, (i) => ({
@@ -390,20 +390,20 @@ export function setOutputType(s: ReadySession, slot: I2sPairSlot, type: number):
   );
 }
 
-export function setI2sBckPin(s: ReadySession, pin: number): void {
-  void writeChecked(s,'set I2S BCK pin', () => s.device.setI2sBckPin(pin), () => patchI2s(s, (i) => ({ ...i, bckPin: pin })));
+export function setI2sBckPin(s: ReadySession, pin: number): Promise<boolean> {
+  return writeChecked(s,'set I2S BCK pin', () => s.device.setI2sBckPin(pin), () => patchI2s(s, (i) => ({ ...i, bckPin: pin })));
 }
 
-export function setMckEnabled(s: ReadySession, on: boolean): void {
-  void writeChecked(s,'set MCK enable', () => s.device.setMckEnable(on), () => patchI2s(s, (i) => ({ ...i, mckEnabled: on })));
+export function setMckEnabled(s: ReadySession, on: boolean): Promise<boolean> {
+  return writeChecked(s,'set MCK enable', () => s.device.setMckEnable(on), () => patchI2s(s, (i) => ({ ...i, mckEnabled: on })));
 }
 
-export function setMckPin(s: ReadySession, pin: number): void {
-  void writeChecked(s,'set MCK pin', () => s.device.setMckPin(pin), () => patchI2s(s, (i) => ({ ...i, mckPin: pin })));
+export function setMckPin(s: ReadySession, pin: number): Promise<boolean> {
+  return writeChecked(s,'set MCK pin', () => s.device.setMckPin(pin), () => patchI2s(s, (i) => ({ ...i, mckPin: pin })));
 }
 
-export function setMckMultiplier(s: ReadySession, encoded: number): void {
-  void writeChecked(s,'set MCK multiplier', () => s.device.setMckMultiplier(encoded), () => patchI2s(s, (i) => ({ ...i, mckMultiplierEncoded: encoded })));
+export function setMckMultiplier(s: ReadySession, encoded: number): Promise<boolean> {
+  return writeChecked(s,'set MCK multiplier', () => s.device.setMckMultiplier(encoded), () => patchI2s(s, (i) => ({ ...i, mckMultiplierEncoded: encoded })));
 }
 
 export function setUserMute(s: ReadySession, mute: boolean): void {
@@ -429,11 +429,39 @@ export function setBandBypass(s: ReadySession, channel: ChannelId, band: number,
   );
 }
 
+// Crossover bands (V16+, output channels only). Same lane as the PEQ verbs;
+// the device wrapper owns the 20..23 wire band-index offset. Q and gain are
+// unused by crossover types but ride the packet for wire parity.
+export function setXoverBand(s: ReadySession, channel: ChannelId, band: number, filter: FilterParams): void {
+  const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
+  if (!ch || band >= ch.xoverBands.length) return;
+  const clamped: FilterParams = { ...filter, frequency: Clamp.bandFrequencyHz(filter.frequency) };
+  void write(s,
+    () => s.device.setCrossoverBand(channel, band, clamped),
+    () => {
+      const c = s.mirror.snapshot.channels.find((c) => c.id === channel);
+      if (c) c.xoverBands[band] = { ...clamped, bypass: c.xoverBands[band].bypass };
+    },
+  );
+}
+
+export function setXoverBypass(s: ReadySession, channel: ChannelId, band: number, bypassed: boolean): void {
+  const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
+  if (!ch || band >= ch.xoverBands.length) return;
+  void write(s,
+    () => s.device.setCrossoverBypass(channel, band, bypassed),
+    () => {
+      const c = s.mirror.snapshot.channels.find((c) => c.id === channel);
+      if (c && c.xoverBands[band]) c.xoverBands[band] = { ...c.xoverBands[band], bypass: bypassed };
+    },
+  );
+}
+
 // M1 — Input source switch. Pipeline reset is audible; surface an info notice
 // only once the device acked. The retained RX status frame belongs to the
 // previous source epoch -- drop it so a SPDIF re-entry can't show a stale lock.
-export function setInputSource(s: ReadySession, source: AudioInputSource): void {
-  void write(s,
+export function setInputSource(s: ReadySession, source: AudioInputSource): Promise<boolean> {
+  return write(s,
     () => s.device.setInputSource(source),
     () => {
       s.mirror.snapshot.inputConfig.source = source;
@@ -444,11 +472,77 @@ export function setInputSource(s: ReadySession, source: AudioInputSource): void 
 }
 
 // M1 — S/PDIF RX pin. Action-style: status byte on rejection.
-export function setSpdifRxPin(s: ReadySession, gpio: number): void {
-  void writeChecked(s,
+export function setSpdifRxPin(s: ReadySession, gpio: number): Promise<boolean> {
+  return writeChecked(s,
     'set S/PDIF RX pin',
     () => s.device.setSpdifRxPin(gpio),
     () => { s.mirror.snapshot.inputConfig.spdifRxPin = gpio; },
+  );
+}
+
+// V16 — I2S input rate. The device is the rate authority in I2S mode; when
+// I2S is the active source firmware applies the change deferred (audible
+// pipeline reset), otherwise it just stores the selection.
+export function setInputRate(s: ReadySession, hz: number): Promise<boolean> {
+  return write(s,
+    () => s.device.setInputRate(hz),
+    () => {
+      s.mirror.snapshot.inputConfig.i2sInputRateHz = hz;
+      if (s.mirror.snapshot.inputConfig.source === AudioInputSource.I2s) {
+        pushNotice('info', 'I2S input rate changed — firmware pipeline reset (brief audio mute).');
+      }
+    },
+  );
+}
+
+// V16 — I2S RX data pin per stereo pair. Action-style status byte covers
+// invalid GPIO, clock/peripheral clash, or a pin already on another pair.
+export function setI2sRxPin(s: ReadySession, pair: number, gpio: number): Promise<boolean> {
+  return writeChecked(s,
+    'set I2S RX pin',
+    () => s.device.setI2sRxPin(pair, gpio),
+    () => {
+      const pins = s.mirror.snapshot.inputConfig.i2sRxPins.slice();
+      pins[pair] = gpio;
+      s.mirror.snapshot.inputConfig.i2sRxPins = pins;
+    },
+  );
+}
+
+// V16 — active I2S input channel count (2/4/6/8, RP2350). The live count in
+// telemetry updates via the INPUT_FORMAT notify when I2S is active.
+export function setI2sInputChannels(s: ReadySession, count: number): Promise<boolean> {
+  return writeChecked(s,
+    'set I2S input channels',
+    () => s.device.setI2sInputChannels(count),
+    () => { s.mirror.snapshot.inputConfig.i2sInputChannels = count; },
+  );
+}
+
+// V16 — external control interfaces (UART / I2C). The SET's result is only
+// known from the device's read-back status (see DspDevice.setUartControlConfig),
+// so this can't be a plain writeChecked: the status must land in ctrlIfaces
+// on BOTH branches (a rejected pin/baud is still useful to show as
+// last-status text), whereas writeChecked's patch only runs on ok.
+export function setUartControlConfig(s: ReadySession, cfg: UartControlConfig): void {
+  void command(s, 'set UART control config',
+    () => s.device.setUartControlConfig(cfg),
+    (r, s) => {
+      s.ctrlIfaces.status = r.status;
+      if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.ctrlIfaces.uart = cfg;
+    },
+  );
+}
+
+export function setI2cControlConfig(s: ReadySession, cfg: I2cControlConfig): void {
+  void command(s, 'set I2C control config',
+    () => s.device.setI2cControlConfig(cfg),
+    (r, s) => {
+      s.ctrlIfaces.status = r.status;
+      if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.ctrlIfaces.i2c = cfg;
+    },
   );
 }
 

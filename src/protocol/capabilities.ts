@@ -8,16 +8,40 @@
 
 import * as Wire from './wireTypes';
 
-// Floor: V10 ships with released fw 1.1.4 -- the single supported wire shape
-// (single-stable policy per docs/FW-VERSIONS.md; 1.1.3/V6 support dropped).
-// Ceiling: V10 is also the newest shape the console knows.
+// Support window: V10 (released fw 1.1.4) and V16 (fw 1.1.5, unified channel
+// model). Wire versions 11..15 were in-development intermediates with shifting
+// layouts the console never shipped against -- rejected like pre-V10 firmware.
 export const MIN_SUPPORTED_WIRE = 10;
-export const MAX_KNOWN_WIRE = 10;
+export const MAX_KNOWN_WIRE = 16;
+const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16];
 
 export interface FirmwareVersion {
   major: number;
   minor: number;
   patch: number;
+}
+
+// Feature flags for surfaces the V10 floor lacks. UI gates on these, never on
+// wire numbers. All are V16-borne; multichannel input additionally needs the
+// RP2350's extra stereo pairs (RP2040 stays 2-in on every firmware).
+export interface DeviceFeatures {
+  // Per-output crossover bands (wire band indices 20..23) + crossover
+  // FilterType range 32..63.
+  readonly crossover: boolean;
+  // First-order PEQ types: Allpass1 / LowShelf1 / HighShelf1 (8..10).
+  readonly firstOrderEq: boolean;
+  // I2S input source (InputSource 2) with device-authoritative rate and
+  // configurable RX data pin(s).
+  readonly i2sInput: boolean;
+  // More than one input stereo pair: 4/6/8-channel USB alts and multichannel
+  // I2S (SetI2sInputChannels / pair-addressed RX pins).
+  readonly multichannelInput: boolean;
+  // Runtime active-input-count reporting: GetStatus trailing byte, status
+  // wValue 23, and the INPUT_FORMAT notify event.
+  readonly activeInputCount: boolean;
+  // External control interfaces (UART transport + I2C target), configured via
+  // 0xF5-0xF9. Landed before the 1.1.5 release; V10 firmware lacks them.
+  readonly controlInterfaces: boolean;
 }
 
 export interface DeviceCapabilities {
@@ -30,18 +54,21 @@ export interface DeviceCapabilities {
   readonly platformId: number;
 
   // Support classification, keyed on the observed wire version:
-  //   unsupported -- older than the V10 floor; connect is rejected.
-  //   supported   -- V10 (1.1.4).
+  //   unsupported -- below the V10 floor, or an 11..15 in-dev intermediate.
+  //   supported   -- V10 (1.1.4) or V16 (1.1.5).
   //   future      -- newer than the console knows; read known sections only.
   readonly support: 'unsupported' | 'supported' | 'future';
+
+  // Channel-model generation the device's packet follows (V16 for future
+  // devices too -- newest known shape). Selects codec dims and the hardware
+  // profile's wire mapping; everything above reads `features` instead.
+  readonly wireGen: 10 | 16;
 
   // Which bulk-packet sections this device's packet carries. Single source of
   // truth -- wraps Wire.bulkLayout, never a parallel re-derivation.
   readonly sections: Wire.BulkLayout;
 
-  // No per-feature flags: with the single-stable V10 floor, every supported
-  // device carries the full 1.1.4 surface. Reintroduce flags only when a
-  // newer wire adds features the floor lacks (see docs/FW-VERSIONS.md).
+  readonly features: DeviceFeatures;
 }
 
 // The single firmware-version string formatter. Display reads this projection
@@ -59,9 +86,12 @@ export function deriveCapabilities(input: {
   const { fw, wireVersion, payloadLength, platformId } = input;
 
   const support: DeviceCapabilities['support'] =
-    wireVersion < MIN_SUPPORTED_WIRE ? 'unsupported'
-    : wireVersion > MAX_KNOWN_WIRE   ? 'future'
-    : 'supported';
+    SUPPORTED_WIRE_VERSIONS.includes(wireVersion) ? 'supported'
+    : wireVersion > MAX_KNOWN_WIRE                ? 'future'
+    : 'unsupported';
+
+  const wireGen = wireVersion >= 16 ? 16 : 10;
+  const isV16 = wireGen === 16;
 
   return {
     fw,
@@ -70,6 +100,15 @@ export function deriveCapabilities(input: {
     wireLabel: `V${wireVersion}`,
     platformId,
     support,
+    wireGen,
     sections: Wire.bulkLayout({ formatVersion: wireVersion, payloadLength }),
+    features: {
+      crossover:         isV16,
+      firstOrderEq:      isV16,
+      i2sInput:          isV16,
+      multichannelInput: isV16 && platformId === 1,
+      activeInputCount:  isV16,
+      controlInterfaces: isV16,
+    },
   };
 }

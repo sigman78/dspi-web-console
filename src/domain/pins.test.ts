@@ -1,7 +1,8 @@
 import { describe, test, expect } from 'vitest';
 import { PlatformType } from './platform';
 import type { DspSnapshot } from './snapshot';
-import { isAssignablePin, pinsInUse, availablePinsFor, validBckPins } from './pins';
+import { isAssignablePin, pinsInUse, availablePinsFor, validBckPins, validUartTxPins, validI2cSdaPins } from './pins';
+import { DEFAULT_UART_CONTROL_CONFIG } from './controlInterfaces';
 
 function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
   return {
@@ -17,6 +18,11 @@ function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
     dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
     ...over,
   } as DspSnapshot;
+}
+
+function snapV16(over: Partial<DspSnapshot> = {}): DspSnapshot {
+  const base = snap(over);
+  return { ...base, platform: { ...base.platform, wireGen: 16 } } as DspSnapshot;
 }
 
 describe('pins', () => {
@@ -67,5 +73,49 @@ describe('pins', () => {
     expect(off.has(11)).toBe(false);
     const on = pinsInUse(snap({ dacHwMute: { enabled: true, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 } }));
     expect(on.get(11)).toBe('DAC MUTE');
+  });
+
+  test('a V10 snapshot still reserves GPIO 12', () => {
+    const list = availablePinsFor(PlatformType.RP2350, snap(), 6);   // default fixture wireGen = 10
+    expect(list.some((c) => c.pin === 12)).toBe(false);
+  });
+
+  test('on a V16 snapshot GPIO 16/17 are assignable when no control interface is enabled', () => {
+    const list = availablePinsFor(PlatformType.RP2350, snapV16(), 6);
+    expect(list.find((c) => c.pin === 16)?.usedBy).toBeNull();
+    expect(list.find((c) => c.pin === 17)?.usedBy).toBeNull();
+  });
+
+  test('enabling UART removes its TX/RX pins from availablePinsFor and validBckPins', () => {
+    const s = snapV16();
+    const ctrl = { uart: { ...DEFAULT_UART_CONTROL_CONFIG, enabled: true } };   // tx 16 / rx 17
+
+    const withoutUart = availablePinsFor(PlatformType.RP2350, s, 6);
+    expect(withoutUart.find((c) => c.pin === 16)?.usedBy).toBeNull();
+
+    const withUart = availablePinsFor(PlatformType.RP2350, s, 6, ctrl);
+    expect(withUart.find((c) => c.pin === 16)?.usedBy).toBe('UART TX');
+    expect(withUart.find((c) => c.pin === 17)?.usedBy).toBe('UART RX');
+
+    expect(validBckPins(PlatformType.RP2350, s)).toContain(16);
+    expect(validBckPins(PlatformType.RP2350, s, ctrl)).not.toContain(16);
+  });
+
+  test('validUartTxPins only offers parity/instance-valid TX pins, and excludes the I2C pins when enabled', () => {
+    const s = snapV16();
+    expect(validUartTxPins(PlatformType.RP2350, s)).toContain(16);
+    expect(validUartTxPins(PlatformType.RP2350, s)).not.toContain(17);   // fails tx%4==0
+
+    const i2cEnabled = { i2c: { enabled: true, sdaPin: 16, sclPin: 17, address: 0x42 } };
+    expect(validUartTxPins(PlatformType.RP2350, s, i2cEnabled)).not.toContain(16);
+  });
+
+  test('validI2cSdaPins only offers parity/instance-valid SDA pins, and excludes the UART pins when enabled', () => {
+    const s = snapV16();
+    expect(validI2cSdaPins(PlatformType.RP2350, s)).toContain(18);
+    expect(validI2cSdaPins(PlatformType.RP2350, s)).not.toContain(19);   // fails sda%2==0
+
+    const uartEnabled = { uart: { enabled: true, txPin: 18, rxPin: 19, notifyEnabled: false, baud: 115200 } };
+    expect(validI2cSdaPins(PlatformType.RP2350, s, uartEnabled)).not.toContain(18);
   });
 });

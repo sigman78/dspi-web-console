@@ -25,22 +25,25 @@ import { Log, errMessage, type Result } from '@/utils';
 // throw: reports link health, toasts, and requests an eager reconcile to
 // recover ground truth on the next param-cadence tick (see
 // src/runtime/poll.ts). The mutate is never applied on failure, so the
-// mirror never holds an optimistic value that didn't survive.
+// mirror never holds an optimistic value that didn't survive. Resolves true
+// once the send acked and the mutate ran; false on failure or a stale
+// session -- the staged-apply batch (runtime/stagedActions.ts) halts on the
+// first false.
 export async function write(
   s: ReadySession,
   send: () => Promise<unknown>,
   mutate: () => void,
-): Promise<void> {
+): Promise<boolean> {
   s.writes.claim();
-  const settled = (async () => {
+  const settled = (async (): Promise<boolean> => {
     try {
       await s.queue.run(send);
-      if (s.alive) {
-        mutate();
-        s.mirror.requestReconcile(false);
-      }
+      if (!s.alive) return false;
+      mutate();
+      s.mirror.requestReconcile(false);
+      return true;
     } catch (err) {
-      if (!s.alive) return;
+      if (!s.alive) return false;
       Log.error('writes', 'write send failed', err);
       s.health.noteFail('write', err);
       // Degraded: the probe owns recovery; per-failure toasts and reconcile
@@ -49,6 +52,7 @@ export async function write(
         pushNotice('error', `Write failed: ${errMessage(err)}`);
         s.mirror.requestReconcile(true);
       }
+      return false;
     } finally {
       s.writes.release();
     }
@@ -97,18 +101,22 @@ export function command<T>(
 // Commit-paced command returning a typed device Result. A non-ok is the device
 // declining a valid-looking command (pin in use, output active) -- surfaced as a
 // warn toast carrying the device's own message, mirror untouched, no resync or
-// status flip. On ok, patch the mirror and request a reconcile.
-export function writeChecked<E>(
+// status flip. On ok, patch the mirror and request a reconcile. Resolves true
+// only when the Result was ok and the patch ran.
+export async function writeChecked<E>(
   s: ReadySession,
   op: string,
   send: () => Promise<Result<void, E>>,
   patch: () => void,
-): Promise<void> {
-  return command(s, op, send, (r, s) => {
+): Promise<boolean> {
+  let ok = false;
+  await command(s, op, send, (r, s) => {
     if (!r.ok) { pushNotice('warn', r.message); return; }
     patch();
     s.mirror.requestReconcile(false);
+    ok = true;
   });
+  return ok;
 }
 
 // Per-key latest-wins lane: sends immediately when the wire is free; while a
@@ -197,7 +205,7 @@ export class WriteCoordinator {
   // component -- because every device control call funnels through the
   // session's CommandQueue, so a fetch can never interleave with a send.
   #active = $state(0);
-  readonly inflightWrites = new SvelteSet<Promise<void>>();
+  readonly inflightWrites = new SvelteSet<Promise<unknown>>();
   readonly lanes = new SvelteMap<string, Lane>();
 
   constructor(readonly mirror: MirrorState) {}

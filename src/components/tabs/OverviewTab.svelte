@@ -2,6 +2,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import QuickRefPanel from './overview/QuickRefPanel.svelte';
+  import LatestChangesPanel from './overview/LatestChangesPanel.svelte';
   import BodePlot from '@/components/bode/BodePlot.svelte';
   import { overviewCurves as computeOverviewCurves } from '@/components/bode/overviewCurves';
   import { getSession } from '@/components/sessionContext';
@@ -10,7 +11,7 @@
 
   const s = getSession();
   const snap = $derived(s.mirror.current);
-  const rows = $derived(matrixRows(snap));
+  const rows = $derived(matrixRows(snap, s.telemetry.activeInputChannels));
 
   // Names live on channels[] only; join by id for output-shaped rows.
   const nameById = $derived(new Map((snap?.channels ?? []).map((c) => [c.id, c.name])));
@@ -22,16 +23,20 @@
     return snap?.inputPreampDb[idx] ?? 0;
   }
 
-  // Both inputs always, plus enabled outputs. Muted ones still draw -- the
+  // Live inputs, plus enabled outputs. Muted ones still draw -- the
   // curve reflects EQ shape, not audibility.
   const activeChannels = $derived.by(() => {
     if (!snap) return [];
+    const activeInputs = s.telemetry.activeInputChannels;
     const enabledOutIds = new Set(
       snap.outputs.filter((o) => o.enabled).map((o) => o.id),
     );
-    return snap.channels.filter(
-      (c) => !c.isOutput || enabledOutIds.has(c.id),
-    );
+    return snap.channels.filter((c) => {
+      if (c.isOutput) return enabledOutIds.has(c.id);
+      if (activeInputs == null) return true;
+      const slot = inputIndexOf(c.id);
+      return slot !== null && slot < Math.max(2, activeInputs);
+    });
   });
 
   const overviewCurves = $derived(computeOverviewCurves(activeChannels, preampOffsetFor));
@@ -70,6 +75,8 @@
 
 <div class="grid">
   <div class="leftcol">
+    <LatestChangesPanel />
+
     <Panel code="OV.01" title="MERGED FILTER RESPONSE · ALL CHANNELS">
       {#snippet right()}
         <div class="legend">

@@ -4,14 +4,23 @@
   import PinSelect from './PinSelect.svelte';
   import SaveOutputConfigButton from './SaveOutputConfigButton.svelte';
   import { connection } from '@/state';
-  import { setOutputType, setOutputDataPin } from '@/runtime';
+  import { stageOutputType, stageOutputDataPin } from '@/runtime';
   import { availablePinsFor, channelLayoutById, ChannelId, OutputSlotType, type I2sPairSlot } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
 
   const snap = $derived(s.mirror.current);
+  const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
   const connected = $derived(connection.connected);
+  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c });
+
+  function effOutputType(slot: number): number {
+    return s.staging.valueOf(`outputType:${slot}`, snap?.i2s?.outputSlotTypes[slot] ?? OutputSlotType.Spdif);
+  }
+  function effOutputPin(index: number): number {
+    return s.staging.valueOf(`outputPin:${index}`, snap?.outputPins[index] ?? 0);
+  }
 
   // Each SPDIF slot is a stereo output pair (OUT n -> nL / nR).
   function pairShort(slot: number): string {
@@ -44,34 +53,40 @@
             <span class="microlbl">OUT {slot + 1}</span>
             <span class="pair">{pairShort(slot)}</span>
           </span>
-          <SegmentedSelect
-            size="sm"
-            value={snap.i2s?.outputSlotTypes[slot] ?? OutputSlotType.Spdif}
-            options={TYPE_OPTS}
-            ariaLabel={`Out ${slot + 1} output type`}
-            disabled={!connected}
-            onChange={(t) => void setOutputType(s, slot as I2sPairSlot, t)}
-          />
-          <PinSelect
-            value={snap.outputPins[slot]}
-            candidates={availablePinsFor(snap.platform.type, snap, snap.outputPins[slot])}
-            ariaLabel={`Out ${slot + 1} data pin`}
-            disabled={!connected}
-            onChange={(p) => void setOutputDataPin(s, slot, p)}
-          />
+          <span class="stage-wrap" class:staged={s.staging.has(`outputType:${slot}`)}>
+            <SegmentedSelect
+              size="sm"
+              value={effOutputType(slot)}
+              options={TYPE_OPTS}
+              ariaLabel={`Out ${slot + 1} output type`}
+              disabled={!connected}
+              onChange={(t) => stageOutputType(s, slot as I2sPairSlot, t)}
+            />
+          </span>
+          <span class="stage-wrap" class:staged={s.staging.has(`outputPin:${slot}`)} title={s.staging.has(`outputPin:${slot}`) ? `device: GP${snap.outputPins[slot]}` : undefined}>
+            <PinSelect
+              value={effOutputPin(slot)}
+              candidates={overlaySnap ? availablePinsFor(snap.platform.type, overlaySnap, effOutputPin(slot), ctrlPins) : []}
+              ariaLabel={`Out ${slot + 1} data pin`}
+              disabled={!connected}
+              onChange={(p) => stageOutputDataPin(s, slot, p)}
+            />
+          </span>
         </div>
       {/each}
 
       <div class="row">
         <span class="lbl"><span class="microlbl">PDM SUB</span></span>
         <span class="fixed">PDM</span>
-        <PinSelect
-          value={snap.outputPins[pdmIndex]}
-          candidates={availablePinsFor(snap.platform.type, snap, snap.outputPins[pdmIndex])}
-          ariaLabel="PDM sub data pin"
-          disabled={!connected || pdmEnabled}
-          onChange={(p) => void setOutputDataPin(s, pdmIndex, p)}
-        />
+        <span class="stage-wrap" class:staged={s.staging.has(`outputPin:${pdmIndex}`)} title={s.staging.has(`outputPin:${pdmIndex}`) ? `device: GP${snap.outputPins[pdmIndex]}` : undefined}>
+          <PinSelect
+            value={effOutputPin(pdmIndex)}
+            candidates={overlaySnap ? availablePinsFor(snap.platform.type, overlaySnap, effOutputPin(pdmIndex), ctrlPins) : []}
+            ariaLabel="PDM sub data pin"
+            disabled={!connected || pdmEnabled}
+            onChange={(p) => stageOutputDataPin(s, pdmIndex, p)}
+          />
+        </span>
       </div>
       {#if pdmEnabled}
         <div class="hint">Disable the PDM output (Mixer) to reassign its pin.</div>

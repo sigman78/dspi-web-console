@@ -14,6 +14,7 @@ export const CHANGE_CLASS: Record<SnapshotChange['kind'], ChangeClass> = {
   masterVolume:       'volume',
   channelName:        'preset-content',
   band:               'preset-content',
+  xoverBand:          'preset-content',
   output:             'preset-content',
   route:              'preset-content',
   loudness:           'preset-content',
