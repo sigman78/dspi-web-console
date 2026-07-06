@@ -5,7 +5,7 @@
     FilterType, groupIntoPairs, autoEqDisplayName, autoEqSourceLabel, autoEqFiltersToBands,
   } from '@/domain';
   import {
-    autoEqDb, ensureAutoEqDb, isAutoEqFavorite, toggleAutoEqFavorite,
+    autoEqDb, autoEqEntries, ensureAutoEqDb, isAutoEqFavorite, toggleAutoEqFavorite,
     saveAutoEqUserEntry, deleteAutoEqUserEntry, searchAutoEq,
   } from '@/state';
   import { applyAutoEqEntry, preampTargetLabel } from '@/runtime';
@@ -124,7 +124,7 @@
   >
     <header>
       <span class="title">AUTOEQ LIBRARY</span>
-      <span class="meta">{autoEqDb.entries.length} PROFILES &middot; {generatedDate}</span>
+      <span class="meta">{autoEqEntries().length} PROFILES &middot; {generatedDate}</span>
       <button class="chip hi" onclick={onClose} title="Close" aria-label="Close">&times;</button>
     </header>
 
