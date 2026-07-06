@@ -373,6 +373,32 @@ describe('S/PDIF RX status cadence', () => {
     stop();
   });
 
+  it('polls on the first tick even when performance.now() is below the interval', async () => {
+    // Regression: with lastSpdifRxMs = 0 and no never-polled escape, a process
+    // younger than SPDIF_RX_INTERVAL_MS never passed the gate (CI flake).
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(10);
+    const device = {
+      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      hardware: hw,
+      getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
+      getBufferStats: vi.fn(async () => null),
+      getSystemInfo: vi.fn(async () => ({})),
+      getSpdifRxStatus: vi.fn(async () => ({ state: SpdifInputState.Locked, inputSource: AudioInputSource.Spdif, lockCount: 1, lossCount: 0, sampleRate: 44100, parityErrors: 0, fifoFillPct: 50 })),
+      getSnapshot: vi.fn(async () => fromBulkParams(hw, parseBulkParams(makeBulk()))),
+    } as unknown as DspDevice;
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    snap.inputConfig = { source: AudioInputSource.Spdif, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0 };
+    session.mirror.init(snap);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getSpdifRxStatus).toHaveBeenCalled();
+    stop();
+    nowSpy.mockRestore();
+  });
+
   it('does not poll getSpdifRxStatus when input source is USB', async () => {
     const device = {
       info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
