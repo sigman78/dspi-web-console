@@ -84,7 +84,7 @@
   }
 </script>
 
-<Panel code="SY.13" title="CONTROL INTERFACES">
+<Panel code="CT.01" title="CONTROL INTERFACES">
   {#if uart}
     <div class="subhdr">
       UART

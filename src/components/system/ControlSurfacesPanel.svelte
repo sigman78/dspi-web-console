@@ -314,7 +314,7 @@
   }
 </script>
 
-<Panel code="SY.14" title="CONTROL SURFACES">
+<Panel code="CT.02" title="CONTROL SURFACES">
   {#if caps}
     {#if visibleSlots.length === 0}
       <div class="hint pad empty">
@@ -510,12 +510,6 @@
       {/if}
     </div>
 
-    <div class="hint pad foot">
-      Buttons and switches wire between the GPIO and GND (internal pull-up);
-      pots use an ADC pin (GPIO 26–28) between 3V3 and GND; encoders use two
-      GPIOs with common to GND; LEDs drive active-high by default. Stored on
-      the device — survives preset changes and factory reset.
-    </div>
   {:else if cs.lastFetchError}
     <div class="hint err pad">{cs.lastFetchError}</div>
   {:else}
@@ -584,8 +578,7 @@
   }
   .result.ok { color: var(--ok); }
   .hint.err { color: var(--err); }
-  .addrow { display: flex; align-items: center; gap: 10px; padding: 10px 14px 4px; }
+  .addrow { display: flex; align-items: center; gap: 10px; padding: 10px 14px 12px; }
   .empty { text-align: center; padding-top: 14px; }
-  .foot { padding-bottom: 12px; }
   .pad { padding: 10px 14px; }
 </style>
