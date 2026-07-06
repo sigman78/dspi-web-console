@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  autoEqDb, ensureAutoEqDb, hydrateAutoEqLibrary,
+  autoEqDb, autoEqEntries, setAutoEqEntries, ensureAutoEqDb, hydrateAutoEqLibrary,
   isAutoEqFavorite, toggleAutoEqFavorite,
   saveAutoEqUserEntry, deleteAutoEqUserEntry,
   searchAutoEq,
@@ -12,7 +12,7 @@ const USER_KEY = 'dspi-console-web/autoeq-user/v1';
 
 function resetDbState() {
   autoEqDb.status = 'idle';
-  autoEqDb.entries = [];
+  setAutoEqEntries([]);
   autoEqDb.generatedAt = null;
   autoEqDb.error = null;
 }
@@ -88,10 +88,10 @@ describe('favorites', () => {
 
 describe('searchAutoEq scoping', () => {
   beforeEach(() => {
-    autoEqDb.entries = [
+    setAutoEqEntries([
       { id: 'oratory1990/Sony WH-1000XM4', manufacturer: 'Sony', model: 'WH-1000XM4', source: 'oratory1990', formFactor: 'over-ear', preamp: -6, filters: [] },
       { id: 'crinacle/Foo Bar', manufacturer: 'Foo', model: 'Bar', source: 'crinacle', formFactor: 'in-ear', preamp: -3, filters: [] },
-    ];
+    ]);
     saveAutoEqUserEntry('My Custom', -2, bands10(1000));
   });
 
@@ -131,7 +131,7 @@ describe('ensureAutoEqDb', () => {
     ensureAutoEqDb();
     expect(autoEqDb.status).toBe('loading');
     await vi.waitFor(() => expect(autoEqDb.status).toBe('ready'));
-    expect(autoEqDb.entries).toHaveLength(1);
+    expect(autoEqEntries()).toHaveLength(1);
     expect(autoEqDb.generatedAt).toBe(payload.generatedAt);
   });
 

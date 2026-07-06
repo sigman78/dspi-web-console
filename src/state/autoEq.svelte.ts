@@ -11,17 +11,27 @@ export type AutoEqDbStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export interface AutoEqDbState {
   status: AutoEqDbStatus;
-  entries: AutoEqEntry[];
   generatedAt: string | null;
   error: string | null;
 }
 
 export const autoEqDb = $state<AutoEqDbState>({
   status: 'idle',
-  entries: [],
   generatedAt: null,
   error: null,
 });
+
+// DB entries are immutable after load: a raw signal (reassigned wholesale,
+// never mutated) keeps the ~4k-entry tree free of deep proxies and signals.
+let dbEntries = $state.raw<AutoEqEntry[]>([]);
+
+export function autoEqEntries(): AutoEqEntry[] {
+  return dbEntries;
+}
+
+export function setAutoEqEntries(entries: AutoEqEntry[]): void {
+  dbEntries = entries;
+}
 
 function isAutoEqDatabase(v: unknown): v is AutoEqDatabase {
   if (typeof v !== 'object' || v === null) return false;
@@ -40,7 +50,7 @@ export function ensureAutoEqDb(): void {
       if (!r.ok) throw new Error(`fetch failed: ${r.status}`);
       const data: unknown = await r.json();
       if (!isAutoEqDatabase(data)) throw new Error('invalid AutoEQ database payload');
-      autoEqDb.entries = data.entries;
+      dbEntries = data.entries;
       autoEqDb.generatedAt = data.generatedAt;
       autoEqDb.status = 'ready';
     })
@@ -179,7 +189,7 @@ export function searchAutoEq(query: string, scope: 'all' | 'favs' | 'user'): Aut
   if (scope === 'user') return user.filter(matches);
   if (scope === 'favs') {
     const favs = library.favIds;
-    return [...user, ...autoEqDb.entries].filter((e) => favs.includes(e.id) && matches(e));
+    return [...user, ...dbEntries].filter((e) => favs.includes(e.id) && matches(e));
   }
-  return [...user.filter(matches), ...autoEqDb.entries.filter(matches)];
+  return [...user.filter(matches), ...dbEntries.filter(matches)];
 }
