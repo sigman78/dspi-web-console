@@ -11,3 +11,4 @@ export * from './boot';
 export * from './poll';
 export * from './deviceLock';
 export * from './notifyChannel';
+export * from './autoEqApply';

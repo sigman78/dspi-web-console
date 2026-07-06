@@ -13,6 +13,7 @@
     onPaste,
     onExit,
     types,
+    onLibrary,
   }: {
     bands: FilterParams[];
     onPatch: (index: number, patch: Partial<FilterParams>) => void;
@@ -23,6 +24,7 @@
     onPaste: () => void;
     onExit: () => void;
     types?: FilterType[];
+    onLibrary?: () => void;
   } = $props();
 
   const inSelection = $derived(copySource != null);
@@ -43,6 +45,9 @@
 
 <Panel code="EQ.02" title="BANDS · 10 BIQUAD">
   {#snippet right()}
+    {#if onLibrary && !inSelection}
+      <button class="chip hi act" onclick={onLibrary} title="Browse the AutoEQ profile library">AUTOEQ</button>
+    {/if}
     <button class="chip hi act" onclick={leftAction} title={leftTitle}>{leftLabel}</button>
     <button class="chip hi act" onclick={rightAction} title={rightTitle}>{rightLabel}</button>
   {/snippet}

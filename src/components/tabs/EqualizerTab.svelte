@@ -6,6 +6,7 @@
   import { TYPE_ORDER, FIRST_ORDER_TYPES } from '@/components/eq/BandTypeSelect.svelte';
   import PreampPanel from '@/components/eq/PreampPanel.svelte';
   import OutputTrim from '@/components/eq/OutputTrim.svelte';
+  import AutoEqBrowser from '@/components/eq/AutoEqBrowser.svelte';
   import { mockEqCurve } from '@/components/bode/bodeMock';
   import { filterCurve, filterCurveAt } from '@/components/bode/filterCurve';
   import { settings, eqUi, setEqCopySource, clearEqCopySource } from '@/state';
@@ -29,6 +30,8 @@
     inputIndex !== null ? (snap?.inputPreampDb[inputIndex] ?? 0) : 0,
   );
   const bands = $derived(channel?.filters ?? []);
+  const libraryPreampDb = $derived(inputIndex !== null ? preampDb : (outputForChannel?.gainDb ?? 0));
+  let libOpen = $state(false);
   const bandTypes = $derived(
     s.device.capabilities.features.firstOrderEq ? [...TYPE_ORDER, ...FIRST_ORDER_TYPES] : TYPE_ORDER,
   );
@@ -159,6 +162,7 @@
         onPaste={paste}
         onExit={exitCopy}
         types={bandTypes}
+        onLibrary={() => (libOpen = true)}
       />
       {#if inputIndex !== null}
         <PreampPanel preampDb={preampDb} accentChannelId={channel.id} onChange={setPreamp} onReset={resetPreamp} />
@@ -175,6 +179,10 @@
     {/if}
   </div>
 </div>
+
+{#if libOpen && channel}
+  <AutoEqBrowser {channel} preampDb={libraryPreampDb} onClose={() => (libOpen = false)} />
+{/if}
 
 <style>
   .grid {
