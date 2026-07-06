@@ -7,6 +7,20 @@
   let busy = $state(false);
   const unsupported = webUsbUnsupportedReason();
 
+  const setupCmd = `curl -fsSL ${location.origin}${import.meta.env.BASE_URL}setup-linux.sh | sh`;
+  let linuxOpen = $state(false);
+  let copied = $state(false);
+
+  async function copySetupCmd() {
+    try {
+      await navigator.clipboard.writeText(setupCmd);
+      copied = true;
+      setTimeout(() => { copied = false; }, 1500);
+    } catch {
+      // clipboard unavailable (permissions/insecure context); command stays selectable
+    }
+  }
+
   // Mirrors StatusPill.svelte's text/disabled derivation. Kept duplicated
   // (six lines of switch) rather than extracted; the two presentations may
   // diverge and an early shared module would be the wrong abstraction.
@@ -104,6 +118,28 @@
         <pre class="alert-panel__body">{connection.error}</pre>
       </div>
     {/if}
+    {#if !connection.connected}
+      <details class="linux-panel" bind:open={linuxOpen} aria-label="Linux USB setup">
+        <summary>LINUX? ONE-TIME USB SETUP</summary>
+        <div class="linux-panel__body">
+          <p>
+            Linux shows the DSPi in the USB picker but blocks opening it until a
+            udev rule grants access. Run this once, then replug the device:
+          </p>
+          <div class="cmd-row">
+            <code>{setupCmd}</code>
+            <button class="copy" onclick={copySetupCmd}>{copied ? 'COPIED' : 'COPY'}</button>
+          </div>
+          <p class="fine">
+            The script prints a diagnostics report and asks for sudo only if
+            something needs changing. Prefer manual? Install
+            <a href="{import.meta.env.BASE_URL}70-dspi.rules" download>70-dspi.rules</a>
+            into /etc/udev/rules.d/ and run
+            <code class="inline">udevadm control --reload</code>.
+          </p>
+        </div>
+      </details>
+    {/if}
   {/if}
   <div class="footer-links">
     <a href={REPO_URL} target="_blank" rel="noreferrer">OPEN SOURCE · GITHUB ↗</a>
@@ -185,6 +221,80 @@
     white-space: pre-wrap;
     word-break: break-word;
   }
+  .linux-panel {
+    margin-top: 4px;
+    width: min(860px, 92vw);
+    border: 1px solid var(--border);
+    background: color-mix(in oklab, var(--panel) 60%, transparent);
+    border-radius: var(--radius);
+    text-align: left;
+  }
+  .linux-panel summary {
+    padding: 8px 14px;
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+  }
+  .linux-panel summary:hover { color: var(--text); }
+  .linux-panel[open] summary {
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+  .linux-panel__body {
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .linux-panel__body p {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--text-dim);
+  }
+  .linux-panel__body p.fine {
+    font-size: 13px;
+    color: var(--text-faint);
+  }
+  .linux-panel__body a { color: var(--accent); }
+  .cmd-row {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .cmd-row code {
+    flex: 1;
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--text);
+    background: color-mix(in oklab, var(--accent) 6%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  code.inline {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text);
+  }
+  .copy {
+    padding: 0 14px;
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .copy:hover { color: var(--text); border-color: var(--border-hi); }
+
   .connect {
     padding: 10px 26px;
     background: color-mix(in oklab, var(--accent) 12%, transparent);
