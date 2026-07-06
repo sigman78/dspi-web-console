@@ -1,0 +1,5 @@
+# DSPi USB DSP -- grants the active local user access so WebUSB can open it.
+# Install to /etc/udev/rules.d/ (the 70- prefix must stay below 73 so the
+# uaccess tag is processed), then: udevadm control --reload && udevadm trigger
+SUBSYSTEM=="usb", ATTR{idVendor}=="2e8a", ATTR{idProduct}=="feaa", TAG+="uaccess", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2e8b", ATTR{idProduct}=="feaa", TAG+="uaccess", MODE="0660", GROUP="plugdev"
