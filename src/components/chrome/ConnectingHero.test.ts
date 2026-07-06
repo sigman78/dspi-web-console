@@ -112,3 +112,19 @@ describe('ConnectingHero — button behavior', () => {
     expect(connectRequested).not.toHaveBeenCalled();
   });
 });
+
+describe('ConnectingHero — Linux USB setup panel', () => {
+  test('rendered collapsed while waiting for a device, with the setup command', () => {
+    const { container } = render(ConnectingHero);
+    const details = container.querySelector<HTMLDetailsElement>('details.linux-panel');
+    expect(details).not.toBeNull();
+    expect(details!.open).toBe(false);
+    expect(details).toHaveTextContent('setup-linux.sh | sh');
+  });
+
+  test('not rendered when WebUSB itself is unavailable', () => {
+    vi.mocked(webUsbUnsupportedReason).mockReturnValue('no navigator.usb');
+    const { container } = render(ConnectingHero);
+    expect(container.querySelector('details.linux-panel')).toBeNull();
+  });
+});
