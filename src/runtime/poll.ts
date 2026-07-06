@@ -116,7 +116,9 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
 
   function shouldRunSpdifRx(now: number): boolean {
     if (mir.current?.inputConfig.source !== AudioInputSource.Spdif) return false;
-    return now - lastSpdifRxMs >= SPDIF_RX_INTERVAL_MS;
+    // lastSpdifRxMs === 0 means never polled this session: eligible immediately,
+    // not a full interval after the performance.now() epoch.
+    return lastSpdifRxMs === 0 || now - lastSpdifRxMs >= SPDIF_RX_INTERVAL_MS;
   }
 
   // Background param-mirror reconcile. shouldRunParam already decided this tick
