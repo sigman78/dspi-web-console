@@ -11,5 +11,6 @@ export const LATEST_CHANGES = {
     'Heavy device config now stages — review and APPLY as one batch, one audio restart',
     'Preset copy/paste via snapshot clipboard',
     'Control Surfaces: bind buttons, switches, pots, encoders and LEDs on spare GPIOs (Control tab)',
+    'AutoEQ headphone profile library with own saved entries (EQ tab)',
   ],
 } as const;

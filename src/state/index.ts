@@ -10,3 +10,4 @@ export * from './notices.svelte';
 export * from './ctrlIfaces.svelte';
 export * from './controlSurfaces.svelte';
 export * from './staging.svelte';
+export * from './autoEq.svelte';
