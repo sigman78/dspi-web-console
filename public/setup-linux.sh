@@ -5,7 +5,9 @@
 # access to its /dev/bus/usb node. This installs a udev rule granting that to
 # the locally-logged-in user, plus the snap/plugdev fallbacks some distros need.
 #
-#   curl -fsSL https://sigman78.github.io/dspi-web-console/setup-linux.sh | sh
+#   curl -fsSL https://<console-host>/setup-linux.sh | sh
+#
+# (served from the same origin as the console, whatever domain it lives on)
 #
 # Runs read-only diagnostics first and only escalates to sudo for the steps it
 # found necessary. Idempotent: safe to re-run.
