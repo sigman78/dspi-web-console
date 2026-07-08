@@ -4,7 +4,9 @@ A browser-based configurator for the [Weeb Labs DSPi](https://github.com/WeebLab
 
 Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScript, bundled with Vite).
 
-[> Launch <](https://sigman78.github.io/dspi-web-console/) | [> Demo (w/o device) <](https://sigman78.github.io/dspi-web-console/?mock=rp2350)
+[> Launch <](https://dspi-ctrl.fyi) | [> Demo (w/o device) <](https://dspi-ctrl.fyi/?mock=rp2350)
+
+> **[dspi-ctrl.fyi](https://dspi-ctrl.fyi)** is the stable release. The rolling test build (latest `master`) is on [GitHub Pages](https://sigman78.github.io/dspi-web-console/).
 
 [![CI](https://github.com/sigman78/dspi-web-console/actions/workflows/ci.yml/badge.svg)](https://github.com/sigman78/dspi-web-console/actions/workflows/ci.yml)
 [![Deploy to GitHub Pages](https://github.com/sigman78/dspi-web-console/actions/workflows/deploy.yml/badge.svg)](https://github.com/sigman78/dspi-web-console/actions/workflows/deploy.yml)
