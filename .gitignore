@@ -15,7 +15,8 @@ coverage
 .vite
 .env*
 
-_base/
+# Reference material kept locally, not part of this repo.
+_base*/
 
 # Editor directories and files
 .vscode/*

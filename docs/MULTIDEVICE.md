@@ -15,9 +15,9 @@ Per-device state was moved onto a single `ReadySession` object (`src/state/appSt
 The runtime no longer re-resolves "the active device" inside its functions. Every device-touching verb and service receives the session (or the narrowest input it actually needs) as a parameter, so it acts on exactly the device its caller named:
 
 - Granular write verbs in `src/runtime/actions.ts` and preset verbs in `src/runtime/presets.ts` take `s: ReadySession` first.
-- The write lanes in `src/runtime/writes.ts` (`write`, `scrub`, `command`, `writeChecked`) operate on the session they are given; `WriteCoordinator` is constructed with its own `MirrorState`, so inflight/alive/reconcile bookkeeping always lands on the right session, even across a reconnect.
+- The write lanes in `src/runtime/writes.svelte.ts` (`write`, `scrub`, `command`, `writeChecked`) operate on the session they are given; `WriteCoordinator` is constructed with its own `MirrorState`, so inflight/alive/reconcile bookkeeping always lands on the right session, even across a reconnect.
 - Polling is per-session: `startPolling(session)` in `src/runtime/poll.ts` captures that session's telemetry and mirror.
-- The whole-device service layer was parameterized too: `syncDeviceSnapshot(s)` / `reconcileAfterSync(s)` in `src/runtime/deviceService.ts`, and `forceResyncNow(s)` / `fetchAndApplyAsBaseline(s)` in `src/runtime/resync.ts`. The state-layer `reconcileEqTarget(channels)` takes just the channel list it reads.
+- The whole-device service layer was parameterized too: `syncDeviceSnapshot(s)` / `reconcileAfterSync(s)` in `src/runtime/deviceService.ts`, and `fetchAndApplyAsBaseline(s)` in `src/runtime/resync.ts`. The state-layer `reconcileEqTarget(channels)` takes just the channel list it reads.
 - `factoryResetDevice` resolves `activeSession()` exactly once at the UI entry point, then threads that session through its epilogue, so a single logical operation has a single device-resolution point.
 
 The net effect: no function in `src/runtime/deviceService.ts` or `src/runtime/resync.ts` re-resolves the active-session global mid-operation. The cross-device contamination class (a snapshot or failed-write recovery from device A landing on device B's mirror) is closed by construction.
@@ -35,7 +35,7 @@ One connection-lifecycle seam is intentionally left for the registry work: the d
 - `src/state/appState.svelte.ts` -- `AppState` machine, `dispatch`, `activeSession()`; today holds one `ReadySession`, the future seam for `Map + activeSessionId`.
 - `src/state/makeSession.svelte.ts` -- builds a `ReadySession` (device + mirror + telemetry + presets + writes + dispose).
 - `src/state/mirror.svelte.ts`, `telemetry.svelte.ts`, `presets.svelte.ts` -- per-session reactive stores (no global singletons).
-- `src/runtime/writes.ts` -- session-scoped write lanes; `WriteCoordinator` owns its `MirrorState`.
+- `src/runtime/writes.svelte.ts` -- session-scoped write lanes; `WriteCoordinator` owns its `MirrorState`.
 - `src/runtime/poll.ts` -- `startPolling(session)`.
 - `src/runtime/deviceService.ts`, `src/runtime/resync.ts` -- whole-device services, all session-parameterized.
 - `src/runtime/boot.ts` -- connect/boot entry points that create and wire a session per connection.

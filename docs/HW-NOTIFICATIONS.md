@@ -1,7 +1,6 @@
 # Device notifications (Notification Protocol v2)
 
 How the console consumes the firmware's back-event channel. Sibling to
-[FW-VERSIONS.md](FW-VERSIONS.md) (version strategy) and
 [HW-DSPUSB.md](HW-DSPUSB.md) (wire reference). Authoritative firmware source:
 `DSPi/Documentation/Features/notification_protocol_v2_spec.md` on `main`
 (released 1.1.4; the `working_spdif_input` branch was merged and deleted).
@@ -25,10 +24,9 @@ write. Notification v2 is the mechanism by which the device tells the host
 "something changed out from under you," so the mirror can become multi-writer
 aware.
 
-This revises the deferral in [FW-VERSIONS.md](FW-VERSIONS.md), which assumed
-"polling continues to work because all fields are mirrored in the bulk packet."
-True that they are mirrored — but the console does not continuously poll them, so
-external changes are missed.
+This revises an earlier assumption that "polling continues to work because all
+fields are mirrored in the bulk packet." True that they are mirrored — but the
+console does not continuously poll them, so external changes are missed.
 
 ## Firmware channel — verified facts
 
@@ -51,7 +49,8 @@ From released 1.1.4 `main` (`notify.c/.h`, `usb_descriptors.c`):
   `actual_length`, not a header length field.
 - **Events:** `IDLE 0x00`, `MASTER_VOLUME_V1 0x01` (legacy, co-emitted),
   `PARAM_CHANGED 0x02`, `BULK_INVALIDATED 0x03`, `PRESET_LOADED 0x04`,
-  `ERROR 0x05`.
+  `INPUT_FORMAT 0x05` (V16+ only — active input channel count changed; not
+  bulk-borne, applied straight to runtime telemetry rather than the mirror).
 - **`PARAM_CHANGED` payload:** `wire_offset(u16 LE)`, `wire_size(u16 LE)`,
   `source(u8)`, `reserved(3)`, then `wire_size` value bytes (same encoding as the
   bulk packet). `wire_offset` is `offsetof(WireBulkParams, field)` (arrays:
@@ -62,7 +61,8 @@ From released 1.1.4 `main` (`notify.c/.h`, `usb_descriptors.c`):
   **suppress per-field events** and emit a single `BULK_INVALIDATED` — the host
   should re-read the whole bulk packet.
 - **Source tags:** `UNKNOWN 0`, `HOST 1`, `BULK 2`, `PRESET 3`, `FACTORY 4`,
-  `GPIO 5`, `INTERNAL 6`, `UAC1 7`. Lets the host suppress its own echoes.
+  `GPIO 5`, `INTERNAL 6`, `UAC1 7`, `UART 8`, `I2C 9` (the last two are 1.1.5+
+  control-interface sources). Lets the host suppress its own echoes.
 - **Identity:** 1.1.4 bumps `bcdDevice` (Windows re-reads the descriptor) and
   ships an MS OS 2.0 descriptor that auto-binds WinUSB to interface 2 — likely
   **no Zadig** for new devices.
@@ -116,9 +116,12 @@ The write-driven bulk reconcile (`pollParam`) and preset copy
 
 ### Layer 1 — NotifyChannel as a resync trigger (build now, 1.1.4+)
 
-A host-paced read loop on EP `0x83`, started on connect for v2-capable devices
-(`capabilities.features.notifications`, keyed on observed wire ≥ 7), stopped on
-disconnect, owned by the connection scope.
+A host-paced read loop on EP `0x83`, started unconditionally on connect
+(`startNotifyChannel(session)` inside `wireUpConnection`, alongside
+`startPolling`/`startLinkProbe`), stopped on disconnect, owned by the connection
+scope. There is no per-feature capability flag gating this — the support floor
+(`MIN_SUPPORTED_WIRE = 10`) is what keeps pre-1.1.4 devices out, since they are
+rejected as `unsupported` before a session (and this channel) ever starts.
 
 Discriminate by length/version first: a 1-byte `0x00` is `IDLE`; byte 0 `== 0x02`
 is a v2 packet (dispatch on byte 1); anything else is a v1 or unknown packet and
@@ -146,8 +149,8 @@ is nothing.
 
 **The one seam Layer 1 adds:** retain the raw `WireBulkParams` bytes on each
 `getAllParams`. Layer 1 does not use them, but they are the shared substrate for
-Layer 2 and for passthrough writes (see FW-VERSIONS.md) — capturing them now
-means neither later step retrofits the read path.
+Layer 2 and for passthrough writes — capturing them now means neither later
+step retrofits the read path.
 
 ### Layer 2 — precise per-field application (substrate shipped; per-field merge deferred)
 
@@ -300,9 +303,16 @@ likely suffices.
 
 ## Capability gating & lifecycle
 
-- Gated by `capabilities.features.notifications`, derived in
-  `deriveCapabilities` (observed wire ≥ 7 ⇒ 1.1.4+). Absent on 1.1.3 → channel
-  never starts.
+- No per-feature gate: `startNotifyChannel(session)` runs unconditionally in
+  `wireUpConnection`, the same as `startPolling`/`startLinkProbe`. There is no
+  `notifications` entry in `DeviceFeatures` (`src/protocol/capabilities.ts`) —
+  unlike `crossover`/`activeInputCount`/etc., every supported device gets the
+  channel.
+- What actually excludes pre-1.1.4 devices is the wire support floor
+  (`MIN_SUPPORTED_WIRE = 10`): a device below it is classified `unsupported`
+  and never reaches connection wiring, so the channel never starts. Wire
+  versions 7–9 are rejected the same way — the old "keyed on observed wire ≥ 7"
+  gate is obsolete.
 - Started on connect (after the initial snapshot), stopped on disconnect,
   disposed via the connection scope (same lifecycle discipline as polling).
 - The status/peaks/buffer poll cadences in `poll.ts` are unaffected — they cover
@@ -321,9 +331,10 @@ likely suffices.
 
 ## Scope summary
 
-**Shipped (Layer 1):** capability flag; bulk-IN transport method + `MockTransport`
-synthesis; `notifyChannel` read loop mapping events → reconcile (+ preset
-toast); `seq`-gap handling; raw wire buffer retained on `getAllParams`.
+**Shipped (Layer 1):** unconditional channel start at connect (no capability
+flag); bulk-IN transport method + `MockTransport` synthesis; `notifyChannel`
+read loop mapping events → reconcile (+ preset toast); `seq`-gap handling; raw
+wire buffer retained on `getAllParams`.
 
 **Shipped (Layer 2 substrate):** wire-mirror splice (`wireMirror.ts`) and
 targeted notify application (`notifyApply.ts`). Still deferred: per-field
