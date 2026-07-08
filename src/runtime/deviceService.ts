@@ -109,8 +109,26 @@ export async function wireUpConnection(device: DspDevice, scope?: ConnectionScop
       return;
     }
     const session = makeReadySession(device, scope);
-    dispatch({ t: 'synced', session });
     session.mirror.init(snap);
+    // Seed the live input-channel count from one status read BEFORE the UI first
+    // renders as `ready`. Channel-dependent views (the channel rail, mixer matrix,
+    // overview response) treat a null count as "show every possible input", so
+    // without this they'd paint full-width and then snap to the real width when
+    // the first status poll lands a frame later -- the visible "all channels ->
+    // actual config" flash. V10 reports null here, which is correctly "show all"
+    // (its true fixed width). Best-effort: on failure the first poll fills it in
+    // shortly, i.e. the prior behaviour, so a failed seed never blocks connect.
+    try {
+      const status = await session.queue.run(() => device.getSystemStatus());
+      session.telemetry.activeInputChannels = status.activeInputChannels;
+    } catch (err) {
+      Log.warn('sync', 'initial status seed failed; first poll will fill it in', err);
+    }
+    // The status read is an await point: a newer connection may have superseded
+    // this one meanwhile. Bail before dispatching `synced` (mirrors the
+    // post-getSnapshot guard above) -- scope teardown reclaims the session.
+    if (scope?.aborted) return;
+    dispatch({ t: 'synced', session });
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync(session);
     // Re-check after the await: onTeardown self-heals against an
