@@ -18,7 +18,6 @@ import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
 import { startLinkProbe } from './linkProbe';
 import { endConnection, type ConnectionScope } from './connectionScope';
-import { acquireDeviceLock, releaseDeviceLock } from './deviceLock';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
 let inflightSync: Promise<void> | null = null;
@@ -125,8 +124,6 @@ export async function wireUpConnection(device: DspDevice, scope?: ConnectionScop
       scope.onTeardown(startPolling(session));
       scope.onTeardown(startNotifyChannel(session));
       scope.onTeardown(startLinkProbe(session));
-      acquireDeviceLock();
-      scope.onTeardown(() => releaseDeviceLock());
     }
     await fetchPresetInfo(session);
     await fetchCtrlIfaceInfo(session);

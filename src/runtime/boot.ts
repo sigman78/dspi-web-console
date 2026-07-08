@@ -1,14 +1,13 @@
 import { DspDevice, UnsupportedFirmware, UnsupportedDevicePacket } from '@/device/DspDevice';
 import type { DspTransport } from '@/transport/DspTransport';
 import { MockTransport } from '@/transport/MockTransport';
-import { matchesDspi, WebUsbTransport } from '@/transport/WebUsbTransport';
+import { matchesDspi, WebUsbTransport, DeviceInUse } from '@/transport/WebUsbTransport';
 import { withTimeout } from '@/transport/withTimeout';
 import { withWireMonitor } from '@/transport/withWireMonitor';
 import { formatDeviceInfo, wireMonitorEnabled } from '@/protocol/wireMonitor';
 import { attachTransportListeners, wireUpConnection } from './deviceService';
 import { beginConnection, endConnection, type ConnectionScope } from './connectionScope';
-import { isDeviceHeld } from './deviceLock';
-import { settings, dispatch, connection } from '@/state';
+import { settings, dispatch, connection, type SessionErrorKind } from '@/state';
 import { Log, errMessage } from '@/utils';
 
 // Per-call ceiling on USB control transfers. Without it, a frozen firmware leaves
@@ -23,13 +22,19 @@ export function webUsbUnsupportedReason(): string | null {
   return WebUsbTransport.unsupportedReason();
 }
 
-// Maps a connect failure onto session status. UnsupportedFirmware gets a
-// distinct kind so the hero shows an upgrade prompt instead of the generic
-// diagnostics panel.
+// Maps a connect failure onto session status. Certain failures get a distinct
+// kind so the hero can tailor its advice: UnsupportedFirmware -> upgrade prompt,
+// DeviceInUse (interface claim failed) -> "device in use" causes. Everything else
+// falls through to the generic diagnostics panel.
 export function reportConnectError(err: unknown): void {
   const message = errMessage(err);
-  const upgrade = err instanceof UnsupportedFirmware || err instanceof UnsupportedDevicePacket;
-  dispatch({ t: 'failed', message, errorKind: upgrade ? 'unsupported-firmware' : null });
+  let errorKind: SessionErrorKind = null;
+  if (err instanceof UnsupportedFirmware || err instanceof UnsupportedDevicePacket) {
+    errorKind = 'unsupported-firmware';
+  } else if (err instanceof DeviceInUse) {
+    errorKind = 'device-in-use';
+  }
+  dispatch({ t: 'failed', message, errorKind });
 }
 
 async function createBoundDevice(
@@ -111,12 +116,6 @@ export async function bootReal(): Promise<void> {
   if (inflightBoot) return inflightBoot;
   inflightBoot = (async () => {
     try {
-      // Another tab in this browser already holds the device. Auto-claiming would
-      // throw a raw "unable to claim interface" error and clobber the hero with a
-      // diagnostics panel; skip it so the "DEVICE IN USE" advisory shows instead.
-      // (The desktop app / another browser can't be detected this way and still
-      // falls back to the claim-failure text.)
-      if (await isDeviceHeld()) return;
       const transport = new WebUsbTransport();
       const ok = await transport.tryAutoConnect();
       if (!ok) return;
