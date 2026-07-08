@@ -103,15 +103,16 @@ main() {
         info "device: DSPi detected"
     fi
 
-    if [ "$need_rule" -eq 0 ] && [ -z "$need_snap" ]; then
+    # A correct rule that was never activated against the plugged-in device (no
+    # reload/replug since it was written) leaves the node restricted. Re-trigger
+    # it in place instead of asking the user to replug.
+    need_activate=0
+    if [ "$dev_found" -eq 1 ] && [ "$dev_accessible" -eq 0 ]; then need_activate=1; fi
+
+    if [ "$need_rule" -eq 0 ] && [ -z "$need_snap" ] && [ "$need_activate" -eq 0 ]; then
         echo
-        if [ "$dev_found" -eq 1 ] && [ "$dev_accessible" -eq 0 ] && [ "$as_root" -eq 0 ]; then
-            echo "Everything is installed but the device node is still restricted."
-            echo "Replug the DSPi (the rule applies on plug-in), then reconnect."
-        else
-            echo "Nothing to do -- system is already set up."
-            echo "Reminder: WebUSB needs a Chromium-based browser (Firefox does not support it)."
-        fi
+        echo "Nothing to do -- system is already set up."
+        echo "Reminder: WebUSB needs a Chromium-based browser (Firefox does not support it)."
         exit 0
     fi
 
@@ -130,6 +131,10 @@ main() {
         $SUDO udevadm control --reload
         $SUDO udevadm trigger --action=add --subsystem-match=usb
         echo "Reloaded udev rules."
+    elif [ "$need_activate" -eq 1 ]; then
+        $SUDO udevadm control --reload
+        $SUDO udevadm trigger --action=add --subsystem-match=usb
+        echo "Re-applied the existing rule to the connected DSPi (no replug needed)."
     fi
 
     for s in $need_snap; do
