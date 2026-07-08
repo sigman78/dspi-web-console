@@ -13,10 +13,8 @@ this project follows [Semantic Versioning](https://semver.org/) (currently in th
 
 * **bode:** crossover + first-order curves in the response plot ([2f156c6](https://github.com/sigman78/dspi-web-console/commit/2f156c6608abb44981052e9cdb8add230dcb5b2f))
 * **eq:** AutoEQ profile library with user-saved entries ([5f60261](https://github.com/sigman78/dspi-web-console/commit/5f6026164bd733c483cecd5577427a4f50367bd6))
-* **eq:** AutoEQ profile library with user-saved entries ([ca9ef47](https://github.com/sigman78/dspi-web-console/commit/ca9ef470bac2008756f23e0ec4f25288814d24cd))
 * **hero:** collapsed Linux USB setup guide on the connect screen ([f90c5a0](https://github.com/sigman78/dspi-web-console/commit/f90c5a04e3ae7e994b280c0470b268decbd04104))
 * **linux:** one-line USB access setup script ([a2faae4](https://github.com/sigman78/dspi-web-console/commit/a2faae4b15fc579f31731b0b341a13d3564e20ce))
-* **linux:** one-line USB access setup script + udev rules asset ([19f67a3](https://github.com/sigman78/dspi-web-console/commit/19f67a3bbc12da7bf4e2cc3c0377558b32bad42a))
 * **mixer:** follow the live active input count ([d1be6b3](https://github.com/sigman78/dspi-web-console/commit/d1be6b3a84abe27fa10747e2abb6899c5913477e))
 * **notify:** name the UART/I2C param sources ([140b6dc](https://github.com/sigman78/dspi-web-console/commit/140b6dc3bc4077c7ce0cddb2b8b9f38d7fe49cfe))
 * **pins:** dynamic control-interface pin ownership ([0c65db7](https://github.com/sigman78/dspi-web-console/commit/0c65db7748a78afcd6e9696b97e1b34234a0d1e2))
@@ -28,7 +26,6 @@ this project follows [Semantic Versioning](https://semver.org/) (currently in th
 * **ui:** control surfaces — bind physical controls on spare GPIOs ([976e523](https://github.com/sigman78/dspi-web-console/commit/976e523a8c7124712d3e85c672522ccefa41ae4f))
 * **ui:** control-interfaces panel ([e718a07](https://github.com/sigman78/dspi-web-console/commit/e718a076bab2b2a85e73785f8bd22a14ef851d95))
 * **ui:** dedicated Control tab for interfaces and surfaces ([0498e28](https://github.com/sigman78/dspi-web-console/commit/0498e28bd7eb2b3306ed0b3ecbcd90a53d87c5ea))
-* **ui:** dedicated Control tab for interfaces and surfaces ([8849c90](https://github.com/sigman78/dspi-web-console/commit/8849c90e32ca7e2ad0fc04a35443c0d2928b5072))
 * **ui:** latest-changes panel on the overview tab ([9dbb422](https://github.com/sigman78/dspi-web-console/commit/9dbb422a77fbe1b4964799269ca298be5148e81c))
 * **ui:** source-aware input names, pair output enables, hide disabled channels ([#63](https://github.com/sigman78/dspi-web-console/issues/63)) ([ee169c5](https://github.com/sigman78/dspi-web-console/commit/ee169c5dcbba33ddfb22ba32767cec510b2bb297))
 * **ui:** stage heavy config changes behind a single apply gate ([4495ba1](https://github.com/sigman78/dspi-web-console/commit/4495ba19b166866cb873cb6922800d75d0285e91))
@@ -42,7 +39,6 @@ this project follows [Semantic Versioning](https://semver.org/) (currently in th
 * **linux:** grant WebUSB access via MODE 0666 (uaccess-only fails on Arch) ([#57](https://github.com/sigman78/dspi-web-console/issues/57)) ([bbf7571](https://github.com/sigman78/dspi-web-console/commit/bbf7571ca57874ef5ac9a44229e945287be0f30d))
 * **notify:** silently drain the ring backlog before going live ([57c1607](https://github.com/sigman78/dspi-web-console/commit/57c1607620d579f40565d99cfd82d49e0fd34692))
 * **poll:** S/PDIF cadence never fires while performance.now() &lt; interval ([48a755f](https://github.com/sigman78/dspi-web-console/commit/48a755f00fc638cf25bd394eacab12b64c760188))
-* **poll:** S/PDIF cadence never fires while performance.now() &lt; interval ([2423190](https://github.com/sigman78/dspi-web-console/commit/2423190efcd85e97639ba1b0205bc06c899874c3))
 * **ui:** always-swap web fonts and skeleton the tab bar until device ready ([#64](https://github.com/sigman78/dspi-web-console/issues/64)) ([aaf5e9f](https://github.com/sigman78/dspi-web-console/commit/aaf5e9f4690e92df9fddc39cb702416ba09d8b6c))
 * **ui:** eliminate first-load flashes (channel width, hero blink, white page) ([#59](https://github.com/sigman78/dspi-web-console/issues/59)) ([141f3d0](https://github.com/sigman78/dspi-web-console/commit/141f3d035d60b40cc6ac6698bea4bf8fc61be9d7))
 
@@ -50,7 +46,6 @@ this project follows [Semantic Versioning](https://semver.org/) (currently in th
 ### Performance Improvements
 
 * **autoeq:** keep DB entries out of deep reactive state ([38c85a9](https://github.com/sigman78/dspi-web-console/commit/38c85a9f47f2a29677c92b2a2000a90d1f32c758))
-* **autoeq:** keep DB entries out of deep reactive state ([9a1a657](https://github.com/sigman78/dspi-web-console/commit/9a1a657a3831f57b4152456f05e0554ca7414343))
 
 ## [0.2.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.1.0...dspi-console-web-v0.2.0) (2026-06-17)
 
