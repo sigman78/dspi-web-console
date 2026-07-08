@@ -13,6 +13,14 @@ name: Release Please
 # Note: workflow_dispatch is only offered from the copy of this file on the
 # default branch (master).
 #
+# Production wiring: when this run actually cuts a release (release_created),
+# the job then advances the `release` branch to the tagged commit. Cloudflare
+# Workers Builds watches `release` and deploys it to dspi-ctrl.fyi -- so the
+# official domain always tracks the exact version release-please just stamped.
+# GitHub Pages (deploy.yml, every master push) stays the rolling test channel.
+# Done in-job because a release cut with GITHUB_TOKEN does not trigger a separate
+# `on: release` workflow; Cloudflare's own webhook still fires on the branch push.
+#
 # Requires repo setting: Settings -> Actions -> General -> Workflow permissions
 # -> enable "Allow GitHub Actions to create and approve pull requests".
 
@@ -28,5 +36,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Only when a release was actually cut this run: point `release` at the
+      # tagged commit so Cloudflare deploys it. PATCH updates the branch; if it
+      # does not exist yet (first release), POST creates it.
+      - name: Advance release branch to the tagged commit
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X PATCH "repos/${{ github.repository }}/git/refs/heads/release" \
+            -f sha="${{ steps.release.outputs.sha }}" -F force=true \
+          || gh api -X POST "repos/${{ github.repository }}/git/refs" \
+            -f ref="refs/heads/release" -f sha="${{ steps.release.outputs.sha }}"

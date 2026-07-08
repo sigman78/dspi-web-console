@@ -1,0 +1,13 @@
+{
+  // Cloudflare Workers static-assets deploy for the official domain (dspi-ctrl.fyi).
+  // Assets-only: no server Worker, just the built SPA. Cloudflare Workers Builds
+  // (Git integration) clones the connected branch, runs `npm run build`, and
+  // uploads ./dist. The build uses the default base '/' (apex domain); GitHub
+  // Pages remains the rolling test channel off master via deploy.yml.
+  "name": "dspi-console",
+  "compatibility_date": "2026-01-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
