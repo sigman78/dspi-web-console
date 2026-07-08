@@ -1,11 +1,16 @@
 # Changelog
 
+All notable changes to dspi-web-console are documented here. Entries are
+generated automatically by [release-please](https://github.com/googleapis/release-please)
+from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
+this project follows [Semantic Versioning](https://semver.org/) (currently in the
+`0.x` pre-1.0 line — minor versions may include breaking changes).
+
 ## [0.2.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.1.0...dspi-console-web-v0.2.0) (2026-06-17)
 
 
 ### Features
 
-* add /fw-watch firmware-tracking skill ([ce085cf](https://github.com/sigman78/dspi-web-console/commit/ce085cfd1d9f12363b8005804b9a9a9523cdb122))
 * add /fw-watch firmware-tracking skill ([6553ca4](https://github.com/sigman78/dspi-web-console/commit/6553ca4b3c437280da0064c6c51302efab563c8c))
 * **chrome:** active-expanded tabs; keep merged row to one line ([2c248f0](https://github.com/sigman78/dspi-web-console/commit/2c248f06a26e6b625d42b4f09514300daba4ab48))
 * **chrome:** carry connection state in the brand cube; conditional status pill ([8759277](https://github.com/sigman78/dspi-web-console/commit/8759277e1fd5db97174262e8383a627cbaeb53be))
@@ -21,7 +26,6 @@
 * **chrome:** progressive hide order for the single top row ([0e3f7b5](https://github.com/sigman78/dspi-web-console/commit/0e3f7b53cabdebc982b840463a00fd7448b4916a))
 * **domain:** groupIntoPairs channel grouping helper ([786f52c](https://github.com/sigman78/dspi-web-console/commit/786f52cbed400128ffe828aa3535eb797ef94af4))
 * **eq:** full sine glyph for active bypass state ([9eaac84](https://github.com/sigman78/dspi-web-console/commit/9eaac846e9c8a3d83a1a31b94893329977029ab4))
-* **eq:** wave/line band bypass toggle; fix band table alignment ([08f0385](https://github.com/sigman78/dspi-web-console/commit/08f0385d3960ff22e13e705e39cab474159312ab))
 * **eq:** wave/line band bypass toggle; fix band table alignment ([23b88c4](https://github.com/sigman78/dspi-web-console/commit/23b88c4c01bfc1234a744c6593a37955810ca85a))
 * **mixer:** locate the selected channel in the routing matrix ([2215f2c](https://github.com/sigman78/dspi-web-console/commit/2215f2c758e043b5485319c41c16385ba7db5b29))
 * **shell:** mount ChannelRail beside tab content ([b20d1d8](https://github.com/sigman78/dspi-web-console/commit/b20d1d817032a8f0cec45d6bdb02c88d92a1de66))
@@ -39,13 +43,3 @@
 * **fw-watch:** correct rebase-detection, dedup key, and minor skill wording ([f681500](https://github.com/sigman78/dspi-web-console/commit/f68150072d48c464eeea3d68d1f6cddda0bc5ad8))
 * **fw-watch:** leave section untouched on no-op runs ([931971e](https://github.com/sigman78/dspi-web-console/commit/931971e84359762867a4b19bb49903167b02ce3c))
 * **ui:** better disabled hatching ([046b664](https://github.com/sigman78/dspi-web-console/commit/046b66445b211b2e8c69f8a42acd99a1cec58195))
-
-## Changelog
-
-All notable changes to dspi-web-console are documented here. Entries are
-generated automatically by [release-please](https://github.com/googleapis/release-please)
-from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
-this project follows [Semantic Versioning](https://semver.org/) (currently in the
-`0.x` pre-1.0 line — minor versions may include breaking changes).
-
-<!-- release-please inserts new version sections below this line -->

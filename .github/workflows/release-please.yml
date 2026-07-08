@@ -28,6 +28,12 @@ permissions:
   contents: write
   pull-requests: write
 
+# Serialize runs so a manual dispatch and a manifest-change push can't race on
+# tagging / advancing `release`. Queue rather than cancel -- never interrupt a
+# release mid-tag.
+concurrency:
+  group: release-please
+
 jobs:
   release-please:
     runs-on: ubuntu-latest
