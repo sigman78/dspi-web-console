@@ -7,7 +7,7 @@ All communication is **vendor-class control transfers** on a claimed interface, 
 - **VID / PID**:
   - `0x2E8A / 0xFEAA` — RP-Pico vendor block, used by firmware **≤ v1.1.3**.
   - `0x2E8B / 0xFEAA` — Weeb Labs–owned vendor block, used by firmware **≥ v1.1.4** (released v1.1.4, `firmware/DSPi/usb_descriptors.h` defines `USB_VENDOR_ID = 0x2E8B`). PID is unchanged.
-  - Both pairs must be listed in `navigator.usb.requestDevice` filters; see `docs/FW-VERSIONS.md` § "USB identity migration".
+  - Both pairs must be listed in `navigator.usb.requestDevice` filters.
 - **Interface class**: `0xFF` (vendor)
 - **Interface number**: auto-discovered by class match; legacy hard-coded fallback `2`
 - **Control transfer type**: `requestType: 'vendor', recipient: 'interface'`
@@ -39,7 +39,7 @@ The transport surface only exposes `wValue` (no `wIndex`). Commands that need tw
 
 ### MockTransport behavior
 
-- Returns a synthesized V6 bulk packet via `synthesizeBulkParams`.
+- Returns a bulk packet built from `defaultBulkParams` (`src/protocol/bulkParser.ts`), defaulting to wire V10 — configurable via `MockOptions.wireVersion` (e.g. V16).
 - Returns a deterministic status packet (peak sweep across channels).
 - Returns a 44-byte buffer-stats packet with `streaming=1, pdmActive=1`.
 - Echoes master-volume / preamp / input-preamp writes back to readers.
@@ -69,7 +69,7 @@ Codecs: scalars in `binCodec.ts` (`u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `f32`,
 | `0x83` | `ClearClips` | `0` | OUT | Clears latched clip flags |
 | `0xB1` | `ResetBufferStats` | `1` | IN | Echoes `0x01` on success; resets min/max watermarks |
 
-`GetStatus` is overloaded: `wValue=9` returns the peak-sweep packet (polled at ~20 Hz from `poll.ts`), other `wValue` codes return individual counters (clock, voltage, temp, error counts) polled at ~1 Hz via `getSystemInfo()` using `Promise.allSettled` so a single STALL on one counter doesn't blank the whole panel. See `docs/system-status-req.md` for the full counter list.
+`GetStatus` is overloaded: `wValue=9` returns the peak-sweep packet (polled at ~20 Hz from `poll.ts`), other `wValue` codes return individual counters (clock, voltage, temp, error counts) polled at ~1 Hz via `getSystemInfo()` using `Promise.allSettled` so a single STALL on one counter doesn't blank the whole panel. Full counter list in §Per-counter status reads below.
 
 ### EQ filter
 
@@ -111,7 +111,7 @@ The Leveller block in the bulk packet is V4+ optional — `null` on older firmwa
 
 ### Persistence and presets
 
-`DspDevice` exposes the full preset wire surface plus the legacy persistence trio. State-runtime/UI integration is the next layer; see `HW-TODO.md §3` and `HW-PROFILES.md §6`.
+`DspDevice` exposes the full preset wire surface plus the legacy persistence trio. State-runtime/UI integration is the next layer.
 
 | Codes | Group | Method | Returns |
 |---|---|---|---|
@@ -132,7 +132,7 @@ The Leveller block in the bulk packet is V4+ optional — `null` on older firmwa
 
 ### Pin / I2S clock surface
 
-These are action-style IN commands (args in `wValue`, 1-byte status/value response). See `docs/PINS-CONFIG.md`.
+These are action-style IN commands (args in `wValue`, 1-byte status/value response).
 
 | Codes | Group | Method | Notes |
 |---|---|---|---|
@@ -145,7 +145,7 @@ These are action-style IN commands (args in `wValue`, 1-byte status/value respon
 
 ### Not yet wired
 
-Firmware-defined commands with no `DspDevice` method yet. See `HW-TODO.md §1` for the backlog.
+Firmware-defined commands with no `DspDevice` method yet.
 
 **Shipped firmware (≤ v1.1.3 main):**
 
@@ -175,11 +175,9 @@ Firmware-defined commands with no `DspDevice` method yet. See `HW-TODO.md §1` f
 
 1.1.4 also adds two new EQ filter types: `FILTER_NOTCH = 6` and `FILTER_ALLPASS = 7`.
 
-Preset surface and persistence command reference: see `docs/HW-PROFILES.md`.
-
 ## Bulk packet layout — `GetAllParams 0xA0`
 
-The largest packet on the wire and the structure most likely to drift between firmware revisions. Layout mirrors `DSPiConsole.Usb/BulkParamsParser.cs`. **Min size 2832 B (V2); max request size 2896 B (V6) on 1.1.3, 2960 B (V10) on released 1.1.4.**
+The largest packet on the wire and the structure most likely to drift between firmware revisions. Layout mirrors `DSPiConsole.Usb/BulkParamsParser.cs`. **Min size 2832 B (V2); 2960 B (V10) on 1.1.4; 5864 B (V16) on 1.1.5 — the current max.** The V16 packet exceeds `Wire.BulkLimits.MaxControlTransfer` (4096 B, the WinUSB control-transfer ceiling), so it's read/written via the chunked `0xA2`/`0xA3` session instead of a single control transfer; V10 and below fit one transfer. See `bulkSizeForVersion` in `src/protocol/wireTypes.ts` and the read/write paths in `src/device/DspDevice.ts`.
 
 | Offset | Size | Section | Contents |
 |---|---|---|---|
@@ -204,7 +202,9 @@ The largest packet on the wire and the structure most likely to drift between fi
 
 Optional trailing sections are gated on **packet length** AND (where noted) **format version**. The 9-output crosspoint and output arrays are always present in full — the platform's actual output count comes from the header (`numOut`); RP2040's matrix view hides unused columns.
 
-`synthesizeBulkParams(opts)` in `bulkParser.syn.ts` produces a wire-faithful packet of any allowed shape; used by `MockTransport` and parser tests.
+**V16 layout.** The table above is the V10-and-earlier fixed-offset layout (unchanged back through V2). V16 restructures around a unified channel model: 8 inputs + 9 outputs share one 17-wide EQ/delay/name/preamp array (vs V10's 2-input/9-output split riding an 11-wide legacy array), crosspoints widen to `8 × 9`, and a new crossover section is appended — `17 channels × 4 bands`, same `WireBandParams` shape as the main EQ section but with `FilterType` 32–63. Total packet size is 5864 B (`Wire.BULK_SIZE_V16`). See `Wire.Const16` and `BULK_SIZE_V16` in `src/protocol/wireTypes.ts` for the authoritative sizes — this doc doesn't re-derive V16 byte offsets.
+
+`defaultBulkParams(opts)` in `src/protocol/bulkParser.ts` produces a wire-faithful factory-default packet of any allowed shape; used by `MockTransport` and parser tests.
 
 ## Status packets
 
@@ -232,7 +232,7 @@ The `numSpdif` / `SpdifBufferStats` naming refers to firmware-internal SPDIF DMA
 
 ### Per-counter status reads (`GetStatus 0x50 wValue ≠ 9`)
 
-Each `wValue` returns one `u32` or `i32`. Listed in `SystemStatusValue` enum. Wire format reference in `docs/system-status-req.md`.
+Each `wValue` returns one `u32` or `i32`. Listed in `SystemStatusValue` enum.
 
 | wValue (name) | Type | What |
 |---|---|---|
@@ -282,20 +282,24 @@ The two move independently: a firmware bump can change wire behavior without bum
 
 ### Bulk packet schema
 
+Today's connect-time floor is V10: `deriveCapabilities` (`src/protocol/capabilities.ts`) classifies any wire version outside `{10, 16}` as `'unsupported'` — including every V2-V9 row below — and `DspDevice.resolveInfo` throws `UnsupportedFirmware` before any further reads. The V2-V9 rows are kept for schema-history context; a device actually reporting one of them can no longer connect at all.
+
 | WIRE | Packet size | Sections added | Console support |
 |---|---|---|---|
 | **V2** | 2832 B | Baseline (header, global, crossfeed, legacy channels, delays, crosspoints, outputs, pin config, EQ, channel names) | Read-only fallback |
-| **V3** | 2848 B | `WireI2SConfig` (16 B) — output slot types, BCK/MCK pins, MCK enable, MCK multiplier as **raw byte** (128, or 0 meaning 256) | Full read; writes via V6 only |
-| **V4** | 2864 B | `WireLevellerConfig` (16 B) — enabled, speed, lookahead, amount, max gain, gate threshold | Full read; writes via V6 only |
+| **V3** | 2848 B | `WireI2SConfig` (16 B) — output slot types, BCK/MCK pins, MCK enable, MCK multiplier as **raw byte** (128, or 0 meaning 256) | Full read; writes version-matched, not pinned to V6 (see below) |
+| **V4** | 2864 B | `WireLevellerConfig` (16 B) — enabled, speed, lookahead, amount, max gain, gate threshold | Full read; writes version-matched, not pinned to V6 (see below) |
 | **V5** | 2864 B | Same size as V4. MCK multiplier encoding switched to `0=128×, 1=256×`. Pre-V5 firmware reads/writes the raw form. Console always assumes V5+ encoding | Read-OK for V5+ firmware; V3-V4 firmware's mck byte is misread as encoded |
-| **V6** | 2896 B | `WirePreampConfig` (16 B, V6Preamp = 2880 B) — per-input-channel preamp; `WireMasterVolume` (16 B, V6Full = 2896 B) — `f32 masterVolumeDb` with `-128` mute sentinel. **Last version on v1.1.3.** | Full read/write — this is what the console writes back |
-| **V7** | 2912 B | `WireInputConfig` (16 B) — `u8 inputSource` (`0=USB`, `1=SPDIF`), `u8 spdifRxPin` | Parsed into the snapshot; no UI yet |
-| **V8** | 2928 B | `WireLgSoundSync` (16 B) — `u8 enabled, u8 present, u8 volume, u8 muted`. Only `enabled` is honored on bulk SET; the rest are observation-only | Parsed into the snapshot; no UI yet |
-| **V9** | 2944 B | `WireUserVolume` (16 B) — `f32 userVolumeDb` (`[-60, 0]` dB), `u8 userMute`. Vendor-channel mirror of UAC1 host volume but always honored regardless of input source | Parsed into the snapshot; no UI yet |
-| **V10** | 2960 B | `WireDacHwMute` (16 B) — `u8 enabled, u8 activeLow, u8 pin, u16 holdMs, u16 releaseMs`. Board-level external DAC mute pin config | Parsed into the snapshot; no UI yet |
+| **V6** | 2896 B | `WirePreampConfig` (16 B, V6Preamp = 2880 B) — per-input-channel preamp; `WireMasterVolume` (16 B, V6Full = 2896 B) — `f32 masterVolumeDb` with `-128` mute sentinel. **Last version on v1.1.3.** Also the write floor: `buildBulkParams` throws below this | Full read; writes version-matched, not pinned to V6 (see below) |
+| **V7** | 2912 B | `WireInputConfig` (16 B) — `u8 inputSource` (`0=USB`, `1=SPDIF`), `u8 spdifRxPin` | Folded into the V10 packet on released 1.1.4; no standalone UI |
+| **V8** | 2928 B | `WireLgSoundSync` (16 B) — `u8 enabled, u8 present, u8 volume, u8 muted`. Only `enabled` is honored on bulk SET; the rest are observation-only | Folded into the V10 packet on released 1.1.4; no standalone UI |
+| **V9** | 2944 B | `WireUserVolume` (16 B) — `f32 userVolumeDb` (`[-60, 0]` dB), `u8 userMute`. Vendor-channel mirror of UAC1 host volume but always honored regardless of input source | Folded into the V10 packet on released 1.1.4; no standalone UI |
+| **V10** | 2960 B | `WireDacHwMute` (16 B) — `u8 enabled, u8 activeLow, u8 pin, u16 holdMs, u16 releaseMs`. Board-level external DAC mute pin config. **Released with fw 1.1.4** | Full read/write — one of two supported generations |
 | **V10 EQ change** | (same 2960 B) | `WireBandParams.bypass` at offset 1 (was `reserved`) — `1`=user-bypassed. Cooperates with the new `SetBandBypass 0xD8` opcode and the new `bypass` byte at offset 3 of `SetEqParam 0x42` (was `reserved`). Old console always writes `0` there, preserving "active" semantics | Console decodes `bypass` per band; no UI toggle yet |
+| **V11-V15** | — | In-development intermediates with shifting layouts the console never shipped against | Rejected at connect, same as pre-V10 firmware (`UnsupportedFirmware`) |
+| **V16** | 5864 B | Unified channel model — 8 inputs + 9 outputs share one 17-wide EQ/delay/name/preamp array (`Const16` in `wireTypes.ts`), crosspoints widen to `8 × 9`, and a new crossover section is appended (`17 channels × 4 bands`, `FilterType` 32-63). **Released with fw 1.1.5** | Full read/write — the other of the two supported generations; exceeds the 4 KB control-transfer cap, so it's read/written via the chunked `0xA2`/`0xA3` session |
 
-V6 is what the console writes via `SetAllParams 0xA1`. `buildBulkParams` rejects any other version (see `src/protocol/bulkParser.ts`). V7-V10 sections ship on released 1.1.4. The console parses all of them (`bulkLayout` gates on version + length) and retains the full raw image; writes are normalized to a V6 packet, which 1.1.4 firmware merges (write path accepts formats 2-10). Note: in INDEPENDENT output-config mode the firmware skips the pin section and RX-pin hot-swap of a bulk SET entirely.
+Writes are version-matched, not pinned to V6: `buildBulkParams` (`src/protocol/bulkParser.ts`) only enforces a V6 floor — it throws if the snapshot's `formatVersion` is below 6 — then snaps the write to a shipped generation: V16 if the request is ≥ 16, otherwise V10 (so an 11-15 request collapses to V10). In practice `DspDevice.setAllParams` always requests the connected device's own generation (`capabilities.wireGen`, 10 or 16), so a V10 device receives a V10 packet and a V16 device its full V16 packet — never a fixed V6 packet. The console parses all sections up to and including V16 (`bulkLayout` gates on version + length) and retains the full raw image. Note: in INDEPENDENT output-config mode the firmware skips the pin section and RX-pin hot-swap of a bulk SET entirely.
 
 ### Vendor commands added since v1.1.3 (WIRE = V3)
 
@@ -323,7 +327,7 @@ These opcodes pre-date v1.1.3 but behave differently on current firmware. Anythi
 | `0x92` | `PresetDelete` | Switched from single-slot pending flag to a 16-bit pending mask — multiple deletes queue back-to-back without dropping. | No host change. |
 | `0x95` | `PresetGetDir` | Response grew from **6 → 7 bytes**; byte 5 is `output_config_mode` (was `include_pins`; values 1:1: 0=independent, 1=with-preset), byte 6 is `master_volume_mode` (0=independent, 1=with-preset). Older firmware truncates to 6 bytes. | Console always requests 7 B; `decodePadded` zero-extends legacy 6-B responses (treating mv mode as `independent`, the correct legacy semantic). |
 | `0xC0` | `SetOutputType` | Switched from single pending slot to a per-slot pending bitmask. Tear-down/setup of pools is gated by `output_type_switch_in_progress`; buffer-stats reads return safe zeroes during the window. | No host change. |
-| `0xC8` | `SetMckMultiplier` | `wValue` encoding **changed**: was raw `128` or `256`; now `0=128×`, `1=256×`. Also rejects `256×` at sample rates ≥ 96 kHz (`PIN_CONFIG_INVALID_PIN`) and auto-clamps to `128×` on rate changes. | Console sends `0`/`1` already. Connecting the current console to V3/V4 firmware would mis-set the multiplier. |
+| `0xC8` | `SetMckMultiplier` | `wValue` encoding **changed**: was raw `128` or `256`; now `0=128×`, `1=256×`. Also rejects `256×` at sample rates ≥ 96 kHz (`PIN_CONFIG_INVALID_PIN`) and auto-clamps to `128×` on rate changes. | Console sends `0`/`1` already — moot in practice, since V3/V4 firmware (below the V10 connect floor) can no longer connect at all. |
 | `0xC9` | `GetMckMultiplier` | Returns the encoded byte (`0`/`1`) instead of the raw `128`/`256`. Also runs the 96 kHz clamp before answering. | Console reads the encoded form. |
 
 ### Hardware / DSP changes worth flagging
@@ -340,7 +344,7 @@ These don't change the wire protocol but affect what hosts observe across a v1.1
 
 ## v1.1.4 — released (`main`)
 
-Firmware `1.1.4`, `WIRE_FORMAT_VERSION = 10` (`firmware/DSPi/config.h`, `bulk_params.h`). The console wires the full device/protocol surface below; user-visible features are still pending (see docs/V114-FINAL.md migration list).
+Firmware `1.1.4`, `WIRE_FORMAT_VERSION = 10` (`firmware/DSPi/config.h`, `bulk_params.h`). The console wires the full device/protocol surface below; user-visible features are still pending — see §Console-side gaps summary at the end of this doc.
 
 ### New vendor commands
 

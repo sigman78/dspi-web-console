@@ -13,9 +13,10 @@ Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScrip
 
 ## HW/FW Compatibility status
 
-- **Requires firmware 1.1.4+** (wire format V10). Older firmware (≤ 1.1.3) is detected at connect and rejected with a firmware-update notice — flash a current [DSPi release](https://github.com/WeebLabs/DSPi) via the UF2 bootloader (hold BOOTSEL while plugging in).
-- Firmware newer than the console knows (wire > V10) connects best-effort.
-- The full 1.1.4 surface is wired: S/PDIF input + RX status, LG Sound Sync, user volume/mute, DAC hardware mute, per-band EQ bypass, Notch/Allpass filters, output-config persistence modes (with-preset / independent), buffer stats, device notifications, and an UPDATE FIRMWARE button that reboots into the bootloader.
+- **Requires firmware 1.1.4+.** Two firmware generations are fully supported: **1.1.4** (wire V10) and **1.1.5** (wire V16, unified channel model). Older firmware (≤ 1.1.3) and in-development intermediates (wire 11–15) are detected at connect and rejected with a firmware-update notice — flash a current [DSPi release](https://github.com/WeebLabs/DSPi) via the UF2 bootloader (hold BOOTSEL while plugging in).
+- Firmware newer than the console knows (wire > V16) connects best-effort, reading only the sections it recognizes.
+- **1.1.4 (V10)** surface: S/PDIF input + RX status, LG Sound Sync, user volume/mute, DAC hardware mute, per-band EQ bypass, Notch/Allpass filters, output-config persistence modes (with-preset / independent), buffer stats, device notifications, and an UPDATE FIRMWARE button that reboots into the bootloader.
+- **1.1.5 (V16)** adds: up to 8-in / 9-out on RP2350, I2S multichannel input, per-output crossover filters, first-order shelf/allpass EQ, UART/I2C external control interfaces, Control Surfaces (physical controls/LEDs on spare GPIOs), and live active-input-count reporting. Every V16-only surface is gated on device capabilities, so a V10 device simply doesn't show them.
 - Both USB identities are recognized: `2E8B:FEAA` (fw ≥ 1.1.4) and the legacy `2E8A:FEAA` (≤ 1.1.3, upgrade-prompt only).
 - RP2350 tested end-to-end; RP2040 verified on MCU hardware only (no audio out).
 
@@ -24,7 +25,7 @@ Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScrip
 - A Chromium-based browser (Chrome, Edge, Brave, Opera). WebUSB is not available in Firefox or Safari.
 - HTTPS, or `localhost` for development. WebUSB requires a secure context.
 - **Windows users:** bind the DSPi's vendor interface (interface 2) to **WinUSB** via [Zadig](https://zadig.akeo.ie/) if your device was previously paired with libusb-win32. Close any other app holding the interface — only one process can claim it at a time.
-- **Linux users:** browser needs usb device access permissions [properly configured](https://www.reddit.com/r/Keychron/comments/12f3gat/useviaapp_in_linux_ie_via_support_useful_for/).
+- **Linux users:** the browser needs a udev rule to open the DSPi. The connect screen has a **"LINUX? ONE-TIME USB SETUP"** panel with a one-liner (`curl … /setup-linux.sh | sh`) that installs it; or drop [`70-dspi.rules`](public/70-dspi.rules) into `/etc/udev/rules.d/` yourself, run `udevadm control --reload`, and replug.
 
 ## Quick start
 
@@ -40,8 +41,9 @@ Then open the URL in Chrome/Edge, click **Connect**, and pick your DSPi.
 Append a `?mock=` flag to boot against a wire-faithful synthesized device — useful for trying out the UI:
 
 ```
-http://localhost:5173/?mock=rp2040
-http://localhost:5173/?mock=rp2350
+http://localhost:5173/?mock=rp2040          # V10 / fw 1.1.4
+http://localhost:5173/?mock=rp2350          # V10 / fw 1.1.4
+http://localhost:5173/?mock=rp2350&fw=115   # V16 / fw 1.1.5 (8-in/9-out, control interfaces + surfaces)
 ```
 
 ## Build & test
@@ -79,7 +81,7 @@ Append `?debug` to log every wire message to the browser console. High-volume te
 
 Branching model, commit conventions, and the (automated) release flow live in
 [CONTRIBUTING.md](./CONTRIBUTING.md). Shipped changes are tracked in
-[CHANGELOG.md](./CHANGELOG.md); upcoming work is in [TODO.md](./TODO.md).
+[CHANGELOG.md](./CHANGELOG.md).
 
 ## License
 

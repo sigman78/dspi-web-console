@@ -15,7 +15,28 @@ coverage
 .vite
 .env*
 
-_base/
+# Reference material kept locally, not part of this repo.
+# DSPi/ is the firmware source, cloned separately (not a submodule).
+_base*/
+DSPi/
+
+# Local tooling scratch (browser-automation captures, agent workspaces)
+.playwright-mcp/
+.superpowers/
+
+# Local-only working docs (plans, reviews, ideation) — kept out of the repo by
+# convention. Under docs/, everything is local scratch except the canonical set
+# whitelisted below; new docs/*.md are ignored by default (git add -f to track).
+docs/archived/
+docs/ideation/
+docs/notes/
+docs/plans/
+docs/superpowers/
+docs/*.md
+!docs/ARCH.md
+!docs/HW-DSPUSB.md
+!docs/HW-NOTIFICATIONS.md
+!docs/MULTIDEVICE.md
 
 # Editor directories and files
 .vscode/*
