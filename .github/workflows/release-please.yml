@@ -1,14 +1,15 @@
 name: Release Please
 
-# Opt-in releases: first merge the commits you want to ship from master into the
-# release branch, then run this workflow manually. release-please opens or
-# refreshes a release PR against `release` that bumps the version and updates
-# CHANGELOG.md from Conventional Commit messages since the last release.
+# Opt-in releases: run this workflow manually when you want to cut a release.
+# release-please opens or refreshes a release PR against `master` that bumps the
+# version and updates CHANGELOG.md from Conventional Commit messages since the
+# last release.
 #
-# Merging that release PR back into `release` triggers this workflow on push,
-# tags vX.Y.Z, and publishes a GitHub Release. The version bump in package.json
-# flows into the UI stamp automatically (vite injects pkg.version as
-# __APP_VERSION__).
+# Merging that release PR back into `master` changes
+# .release-please-manifest.json, which triggers this workflow on push. That run
+# tags vX.Y.Z, publishes a GitHub Release, and advances `release` to the tagged
+# commit. The version bump in package.json flows into the UI stamp automatically
+# (vite injects pkg.version as __APP_VERSION__).
 #
 # Cloudflare Workers Builds watches `release` and deploys it to dspi-ctrl.fyi.
 # GitHub Pages (deploy.yml, every master push) stays the rolling test channel.
@@ -19,7 +20,9 @@ name: Release Please
 on:
   workflow_dispatch:
   push:
-    branches: [release]
+    branches: [master]
+    paths:
+      - .release-please-manifest.json
 
 permissions:
   contents: write
@@ -33,4 +36,17 @@ jobs:
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          target-branch: release
+          target-branch: master
+
+      # Only when a release was actually cut this run: point `release` at the
+      # tagged commit so Cloudflare deploys it. PATCH updates the branch; if it
+      # does not exist yet (first release), POST creates it.
+      - name: Advance release branch to the tagged commit
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X PATCH "repos/${{ github.repository }}/git/refs/heads/release" \
+            -f sha="${{ steps.release.outputs.sha }}" -F force=true \
+          || gh api -X POST "repos/${{ github.repository }}/git/refs" \
+            -f ref="refs/heads/release" -f sha="${{ steps.release.outputs.sha }}"
