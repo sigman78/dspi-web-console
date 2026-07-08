@@ -1,5 +1,7 @@
-# DSPi USB DSP -- grants the active local user access so WebUSB can open it.
-# Install to /etc/udev/rules.d/ (the 70- prefix must stay below 73 so the
-# uaccess tag is processed), then: udevadm control --reload && udevadm trigger
-SUBSYSTEM=="usb", ATTR{idVendor}=="2e8a", ATTR{idProduct}=="feaa", TAG+="uaccess", MODE="0660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTR{idVendor}=="2e8b", ATTR{idProduct}=="feaa", TAG+="uaccess", MODE="0660", GROUP="plugdev"
+# DSPi USB DSP -- open access on just this board so WebUSB can open it.
+# uaccess grants the active local session; MODE 0666 is the fallback for systems
+# where uaccess does not apply (e.g. Arch, which has no plugdev group).
+# Install to /etc/udev/rules.d/ (the 70- prefix must stay below 73 so the uaccess
+# tag is processed), then: udevadm control --reload && udevadm trigger --action=add
+SUBSYSTEM=="usb", ATTR{idVendor}=="2e8a", ATTR{idProduct}=="feaa", TAG+="uaccess", MODE="0666"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2e8b", ATTR{idProduct}=="feaa", TAG+="uaccess", MODE="0666"
