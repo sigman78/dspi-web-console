@@ -52,7 +52,16 @@ export function stageInputSource(s: ReadySession, source: Domain.AudioInputSourc
     to: fmtSource(source),
     value: source,
     order: ORDER.inputSource,
-    apply: () => setInputSource(s, source),
+    // Firmware regenerates default input-channel names on a source switch,
+    // but tags the resulting PARAM_CHANGED notifies Host-sourced -- the
+    // notify channel drops those as an echo of this write. The optimistic
+    // patch only touches inputConfig.source, so force a reconcile to pick
+    // up the regenerated names from a fresh bulk read.
+    apply: async () => {
+      const ok = await setInputSource(s, source);
+      if (ok) s.mirror.requestReconcile(true);
+      return ok;
+    },
     overlay: (snap) => ({ ...snap, inputConfig: { ...snap.inputConfig, source } }),
   }));
 }

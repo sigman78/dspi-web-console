@@ -17,6 +17,9 @@ describe('fromBulkParams', () => {
         mckEnabled: true,
         mckMultiplierEncoded: 1,
       },
+      // matrixColumns only surfaces enabled outputs; the fixture default is
+      // disabled, so enable all 9 to exercise the full column set below.
+      outputs: Array.from({ length: 9 }, () => ({ enabled: true, muted: false, gainDb: 0, delayMs: 0 })),
     }));
     const snapshot = fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk);
 
@@ -33,8 +36,10 @@ describe('fromBulkParams', () => {
   });
 
   it('maps RP2040 PDM to compact matrix slot 4', () => {
+    // Compact slots 0-3 enabled so matrixColumns/matrixRows below cover the
+    // full RP2040 output set; matrixColumns only surfaces enabled outputs.
     const outputs = Array.from({ length: 9 }, () => ({
-      enabled: false,
+      enabled: true,
       muted: false,
       gainDb: 0,
       delayMs: 0,
@@ -81,6 +86,9 @@ describe('fromBulkParams', () => {
       numCh: 7,
       filters,
       channelNames: names,
+      // matrixColumns only surfaces enabled outputs; enable the PDM slot
+      // (compact index 4) so pdmColumn below can find it.
+      outputs: Array.from({ length: 9 }, (_, i) => ({ enabled: i === 4, muted: false, gainDb: 0, delayMs: 0 })),
     }));
     const snapshot = fromBulkParams(createHardwareProfile(PlatformType.RP2040), bulk);
     const pdmChannel = snapshot.channels.find((channel) => channel.id === 10);
@@ -154,5 +162,55 @@ describe('snapshotCodec — 1.1.4 sections', () => {
     expect(snap.channels[0].filters[0].type).toBe(FilterType.Notch);
     expect(snap.channels[0].filters[1].type).toBe(FilterType.Allpass);
     expect(snap.channels[0].filters[2].type).toBe(FilterType.Flat);
+  });
+});
+
+// V16 8-input RP2350 profile, for the multichannel USB/I2S naming cases.
+const hw16 = createHardwareProfile(PlatformType.RP2350, 16);
+
+function bulkWithSource(source: AudioInputSource, overrides: Partial<Parameters<typeof makeBulkObject>[0]> = {}) {
+  return makeBulkObject({
+    formatVersion: 16, payloadLength: WireNS.BULK_SIZE_V16,
+    inputConfig: { source, spdifRxPin: 5, i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 1, i2sInputChannels: 8 },
+    ...overrides,
+  });
+}
+
+describe('snapshotCodec — source-aware input defaults', () => {
+  it('names USB inputs as independent channels (no L/R suffix on any of the 8)', () => {
+    const snap = fromBulkParams(hw16, bulkWithSource(AudioInputSource.Usb));
+    const inputs = snap.channels.filter((c) => !c.isOutput);
+    expect(inputs.map((c) => c.name)).toEqual(['USB 1', 'USB 2', 'USB 3', 'USB 4', 'USB 5', 'USB 6', 'USB 7', 'USB 8']);
+    expect(inputs.every((c) => !/[LR]$/.test(c.shortName))).toBe(true);
+  });
+
+  it('names I2S inputs as four true stereo pairs', () => {
+    const snap = fromBulkParams(hw16, bulkWithSource(AudioInputSource.I2s));
+    const inputs = snap.channels.filter((c) => !c.isOutput);
+    expect(inputs.map((c) => c.name)).toEqual([
+      'I2S 1 L', 'I2S 1 R', 'I2S 2 L', 'I2S 2 R', 'I2S 3 L', 'I2S 3 R', 'I2S 4 L', 'I2S 4 R',
+    ]);
+    expect(inputs.map((c) => c.shortName)).toEqual(['I1L', 'I1R', 'I2L', 'I2R', 'I3L', 'I3R', 'I4L', 'I4R']);
+  });
+
+  it('names S/PDIF as a single stereo pair regardless of the extra multichannel slots', () => {
+    const snap = fromBulkParams(hw16, bulkWithSource(AudioInputSource.Spdif));
+    expect(snap.channels[0].name).toBe('SPDIF L');
+    expect(snap.channels[1].name).toBe('SPDIF R');
+  });
+
+  it('lets a device-supplied name win over the source default, while defaultName keeps tracking the source', () => {
+    const bulk = bulkWithSource(AudioInputSource.Spdif, { channelNames: ['Turntable', ''] });
+    const snap = fromBulkParams(hw16, bulk);
+    expect(snap.channels[0].name).toBe('Turntable');        // device name wins over the default
+    expect(snap.channels[0].defaultName).toBe('SPDIF L');   // default still reflects the live source
+    expect(snap.channels[1].name).toBe('SPDIF R');           // no device name -> falls back to the default
+  });
+
+  it('leaves output channel default names unaffected by an input source change', () => {
+    const outputDefaults = (source: AudioInputSource) =>
+      fromBulkParams(hw16, bulkWithSource(source)).channels.filter((c) => c.isOutput).map((c) => c.defaultName);
+    expect(outputDefaults(AudioInputSource.Usb)).toEqual(outputDefaults(AudioInputSource.I2s));
+    expect(outputDefaults(AudioInputSource.Usb)).toEqual(outputDefaults(AudioInputSource.Spdif));
   });
 });

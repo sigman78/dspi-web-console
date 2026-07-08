@@ -1,4 +1,4 @@
-import type { ChannelId, ChannelModel } from '@/domain';
+import { inputIndexOf, type ChannelId, type ChannelModel, type OutputModel } from '@/domain';
 
 export type TabId = 'overview' | 'eq' | 'mixer' | 'processing' | 'presets' | 'system' | 'control';
 
@@ -139,17 +139,48 @@ export function selectChannel(id: ChannelId): void {
   setTab('eq');
 }
 
+// What the rail/mixer actually render: an output is visible iff enabled; an
+// input is visible iff its slot is within the live count (min 2), or the
+// count isn't known yet (null -- don't bounce the selection before the first
+// status poll lands).
+export interface SelectionVisibility {
+  enabledOutputIds: readonly ChannelId[];
+  activeInputs: number | null;
+}
+
+// Shared shape-builder for reconcileSelectedChannel's callers (connect-time
+// sync and the live-visibility effect alike).
+export function selectionVisibilityOf(outputs: readonly OutputModel[], activeInputs: number | null): SelectionVisibility {
+  return {
+    enabledOutputIds: outputs.filter((o) => o.enabled).map((o) => o.id),
+    activeInputs,
+  };
+}
+
+function isChannelVisible(channel: ChannelModel, visibility: SelectionVisibility): boolean {
+  if (channel.isOutput) return visibility.enabledOutputIds.includes(channel.id);
+  if (visibility.activeInputs == null) return true;
+  const slot = inputIndexOf(channel.id);
+  return slot !== null && slot < Math.max(2, visibility.activeInputs);
+}
+
 // Validate the persisted selection against the connected platform's channel
-// set: if the stored ID isn't present (e.g. reconnected to a smaller device)
-// or there was no selection yet, fall back to the first output. Absorbs the
-// EQ tab's former "auto-pick a channel on first visit" effect -- this runs
-// once at connect time instead, which also covers tabs other than EQ.
-export function reconcileSelectedChannel(channels: readonly ChannelModel[] | undefined): void {
+// set AND current visibility (the rail/mixer hide disabled outputs and input
+// channels beyond the live count): if the stored ID isn't present, isn't
+// visible, or there was no selection yet, fall back to the first ENABLED
+// output (null if none are enabled). Absorbs the EQ tab's former "auto-pick a
+// channel on first visit" effect -- runs at connect and again whenever
+// visibility changes, so it also covers tabs other than EQ.
+export function reconcileSelectedChannel(
+  channels: readonly ChannelModel[] | undefined,
+  visibility: SelectionVisibility,
+): void {
   if (!channels) return;
   const target = settings.selectedChannel;
-  if (target !== null && channels.some((c) => c.id === target)) return;
-  const firstOutput = channels.find((c) => c.isOutput);
-  settings.selectedChannel = firstOutput?.id ?? null;
+  const current = target !== null ? channels.find((c) => c.id === target) : undefined;
+  if (current && isChannelVisible(current, visibility)) return;
+  const firstEnabledOutput = channels.find((c) => c.isOutput && visibility.enabledOutputIds.includes(c.id));
+  settings.selectedChannel = firstEnabledOutput?.id ?? null;
 }
 
 export function startSettingsPersistence(): void {

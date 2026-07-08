@@ -1,9 +1,13 @@
 import { describe, expect, test, beforeEach, afterEach } from 'vitest';
-import { loadSettings, settings, selectChannel, reconcileSelectedChannel } from './settings.svelte';
+import { loadSettings, settings, selectChannel, reconcileSelectedChannel, type SelectionVisibility } from './settings.svelte';
 import { ChannelId, type ChannelModel } from '@/domain';
 
 function ch(id: ChannelId, isOutput: boolean): ChannelModel {
   return { id, name: '', defaultName: '', shortName: '', bandCount: 10, isOutput, filters: [], xoverBands: [] };
+}
+
+function visibility(enabledOutputIds: ChannelId[], activeInputs: number | null = null): SelectionVisibility {
+  return { enabledOutputIds, activeInputs };
 }
 
 const V1_KEY = 'dspi-console-web/settings/v1';
@@ -161,35 +165,64 @@ describe('selectChannel', () => {
 });
 
 describe('reconcileSelectedChannel', () => {
-  const channels = [ch(ChannelId.In1L, false), ch(ChannelId.In1R, false), ch(ChannelId.Out1L, true), ch(ChannelId.Out1R, true)];
+  const channels = [
+    ch(ChannelId.In1L, false), ch(ChannelId.In1R, false),
+    ch(ChannelId.In2L, false), ch(ChannelId.In2R, false),
+    ch(ChannelId.Out1L, true), ch(ChannelId.Out1R, true),
+  ];
+  const allOutputsEnabled = visibility([ChannelId.Out1L, ChannelId.Out1R]);
 
-  test('defaults a null selection to the first output channel', () => {
+  test('defaults a null selection to the first enabled output channel', () => {
     settings.selectedChannel = null;
-    reconcileSelectedChannel(channels);
+    reconcileSelectedChannel(channels, allOutputsEnabled);
     expect(settings.selectedChannel).toBe(ChannelId.Out1L);
   });
 
-  test('leaves a valid selection untouched', () => {
+  test('leaves a valid enabled-output selection untouched', () => {
     settings.selectedChannel = ChannelId.Out1R;
-    reconcileSelectedChannel(channels);
+    reconcileSelectedChannel(channels, allOutputsEnabled);
     expect(settings.selectedChannel).toBe(ChannelId.Out1R);
   });
 
-  test('falls back to the first output when the selection is not in the channel set', () => {
+  test('falls back to the first enabled output when the selection is not in the channel set', () => {
     settings.selectedChannel = ChannelId.Out4L;
-    reconcileSelectedChannel(channels);
+    reconcileSelectedChannel(channels, allOutputsEnabled);
     expect(settings.selectedChannel).toBe(ChannelId.Out1L);
-  });
-
-  test('clears to null when the channel set has no outputs', () => {
-    settings.selectedChannel = null;
-    reconcileSelectedChannel([ch(ChannelId.In1L, false)]);
-    expect(settings.selectedChannel).toBeNull();
   });
 
   test('is a no-op when channels is undefined (not yet connected)', () => {
     settings.selectedChannel = null;
-    reconcileSelectedChannel(undefined);
+    reconcileSelectedChannel(undefined, allOutputsEnabled);
     expect(settings.selectedChannel).toBeNull();
+  });
+
+  test('a disabled-output selection falls back to the first enabled output', () => {
+    settings.selectedChannel = ChannelId.Out1R;
+    reconcileSelectedChannel(channels, visibility([ChannelId.Out1L]));
+    expect(settings.selectedChannel).toBe(ChannelId.Out1L);
+  });
+
+  test('clears to null when every output is disabled', () => {
+    settings.selectedChannel = ChannelId.Out1L;
+    reconcileSelectedChannel(channels, visibility([]));
+    expect(settings.selectedChannel).toBeNull();
+  });
+
+  test('an input beyond the live input count falls back to the first enabled output', () => {
+    settings.selectedChannel = ChannelId.In2L;
+    reconcileSelectedChannel(channels, visibility([ChannelId.Out1L, ChannelId.Out1R], 2));
+    expect(settings.selectedChannel).toBe(ChannelId.Out1L);
+  });
+
+  test('an input within the live input count is preserved', () => {
+    settings.selectedChannel = ChannelId.In1R;
+    reconcileSelectedChannel(channels, visibility([ChannelId.Out1L, ChannelId.Out1R], 2));
+    expect(settings.selectedChannel).toBe(ChannelId.In1R);
+  });
+
+  test('an input selection is preserved while activeInputs is null (count not yet known)', () => {
+    settings.selectedChannel = ChannelId.In2R;
+    reconcileSelectedChannel(channels, visibility([ChannelId.Out1L, ChannelId.Out1R], null));
+    expect(settings.selectedChannel).toBe(ChannelId.In2R);
   });
 });

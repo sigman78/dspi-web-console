@@ -46,7 +46,9 @@ describe('DspDevice — V16 wire index shift (RP2350 outputs at 8..16)', () => {
     // The name must land on WIRE channel 8, not the domain id 2.
     const bulk = await d.getAllParams();
     expect(bulk.channelNames[8]).toBe('Front L');
-    expect(bulk.channelNames[2]).toBe('');
+    // Wire channel 2 is In2L (input slot 2) on V16 RP2350, not Out1L -- it
+    // must keep its own USB default, not the rename.
+    expect(bulk.channelNames[2]).toBe('USB 3');
     const snap = await d.getSnapshot();
     expect(snap.channels.find((c) => c.id === ChannelId.Out1L)?.name).toBe('Front L');
   });

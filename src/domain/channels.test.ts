@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { ChannelId, groupIntoPairs } from './channels';
+import { ChannelId, groupIntoPairs, groupInputSlotPairs } from './channels';
 
 type Ch = { id: ChannelId; shortName: string };
 
@@ -44,5 +44,40 @@ describe('groupIntoPairs', () => {
   test('a single mono channel is one group', () => {
     const groups = groupIntoPairs([{ id: ChannelId.Pdm, shortName: 'PDM' }]);
     expect(groups).toEqual([{ accentId: ChannelId.Pdm, members: [{ id: ChannelId.Pdm, shortName: 'PDM' }] }]);
+  });
+});
+
+describe('groupInputSlotPairs', () => {
+  // Names carry no L/R suffix (mirrors USB's per-channel default naming) --
+  // the point of this grouping is that it pairs by position, not name.
+  const usbStyle = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({ id: i as ChannelId, shortName: `U${i + 1}` }));
+
+  test('pairs a 2-channel source into one stereo pair', () => {
+    const groups = groupInputSlotPairs(usbStyle(2));
+    expect(groups.map((g) => g.members.length)).toEqual([2]);
+    expect(groups[0].members.map((m) => m.id)).toEqual([0, 1]);
+  });
+
+  test('pairs a 4-channel source into two pairs', () => {
+    const groups = groupInputSlotPairs(usbStyle(4));
+    expect(groups.map((g) => g.members.length)).toEqual([2, 2]);
+    expect(groups.map((g) => g.accentId)).toEqual([0, 2]);
+  });
+
+  test('pairs a 6-channel source into three pairs', () => {
+    const groups = groupInputSlotPairs(usbStyle(6));
+    expect(groups.map((g) => g.members.length)).toEqual([2, 2, 2]);
+  });
+
+  test('pairs an 8-channel source into four pairs', () => {
+    const groups = groupInputSlotPairs(usbStyle(8));
+    expect(groups.map((g) => g.members.length)).toEqual([2, 2, 2, 2]);
+    expect(groups.map((g) => g.accentId)).toEqual([0, 2, 4, 6]);
+  });
+
+  test('an odd trailing channel degrades to a single', () => {
+    const groups = groupInputSlotPairs(usbStyle(3));
+    expect(groups.map((g) => g.members.length)).toEqual([2, 1]);
   });
 });

@@ -6,7 +6,7 @@
 import type { DspTransport } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
 import {
-  settings, reconcileSelectedChannel,
+  settings, reconcileSelectedChannel, selectionVisibilityOf,
   pushNotice,
   dispatch, makeReadySession, activeSession,
   type ReadySession,
@@ -161,9 +161,11 @@ export async function wireUpConnection(device: DspDevice, scope?: ConnectionScop
 }
 
 // Reconcile UI policy after (re)connect. reconcileSelectedChannel validates the
-// persisted selection against the connected platform's channel set.
+// persisted selection against the connected platform's channel set and its
+// visibility (disabled outputs, live input count).
 export async function reconcileAfterSync(s: ReadySession): Promise<void> {
-  reconcileSelectedChannel(s.mirror.current?.channels);
+  const snap = s.mirror.current;
+  reconcileSelectedChannel(snap?.channels, selectionVisibilityOf(snap?.outputs ?? [], s.telemetry.activeInputChannels));
 }
 
 export function attachTransportListeners(transport: DspTransport, _device: DspDevice): () => void {

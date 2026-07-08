@@ -1,6 +1,8 @@
 // Channel identity. Numeric values are firmware-pinned (WIRE_* macros);
 // the enum is the domain identifier every UI/layout/routing surface indexes by.
 
+import { AudioInputSource } from './deviceSections';
+
 export const ChannelId = {
   In1L: 0,
   In1R: 1,
@@ -129,6 +131,33 @@ export function inputChannelForSlot(slot: InputSlot): ChannelId | null {
   return INPUT_SLOT_ORDER[slot] ?? null;
 }
 
+// Source-aware default input names, mirroring firmware's default-name
+// scheme. USB exposes independent per-channel streams with no L/R
+// relationship ("USB 1".."USB 8"); I2S and S/PDIF are true stereo pairs.
+// Output default names are unaffected -- ALL_CHANNELS' static table
+// remains their source of truth.
+export function defaultInputName(source: AudioInputSource, slot: InputSlot): string {
+  switch (source) {
+    case AudioInputSource.I2s:
+      return `I2S ${Math.floor(slot / 2) + 1} ${slot % 2 === 0 ? 'L' : 'R'}`;
+    case AudioInputSource.Spdif:
+      return `SPDIF ${slot % 2 === 0 ? 'L' : 'R'}`;
+    default:
+      return `USB ${slot + 1}`;
+  }
+}
+
+export function defaultInputShortName(source: AudioInputSource, slot: InputSlot): string {
+  switch (source) {
+    case AudioInputSource.I2s:
+      return `I${Math.floor(slot / 2) + 1}${slot % 2 === 0 ? 'L' : 'R'}`;
+    case AudioInputSource.Spdif:
+      return slot % 2 === 0 ? 'SL' : 'SR';
+    default:
+      return `U${slot + 1}`;
+  }
+}
+
 // A rail grouping: one stereo pair (members = [L, R]) or a single channel
 // (members = [ch]). accentId is the channel whose palette hue colors the group
 // (the L member of a pair). Pairing is by shortName suffix: an 'L'-suffixed
@@ -159,6 +188,23 @@ export function groupIntoPairs<T extends { id: ChannelId; shortName: string }>(
     } else {
       groups.push({ accentId: cur.id, members: [cur] });
     }
+  }
+  return groups;
+}
+
+// Rail-only variant: groups input channels by slot position (0,1),(2,3),..
+// regardless of name suffix. USB default names carry no L/R (each channel is
+// an independent stream), so groupIntoPairs can't pair them; the rail still
+// wants a stereo-width visual grouping (a 2ch USB source is one pair, 8ch is
+// four). Outputs keep the suffix-based grouping above.
+export function groupInputSlotPairs<T extends { id: ChannelId }>(
+  channels: readonly T[],
+): ChannelGroup<T>[] {
+  const groups: ChannelGroup<T>[] = [];
+  for (let i = 0; i < channels.length; i += 2) {
+    const cur = channels[i];
+    const next = channels[i + 1];
+    groups.push({ accentId: cur.id, members: next ? [cur, next] : [cur] });
   }
   return groups;
 }

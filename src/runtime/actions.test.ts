@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource, setUartControlConfig } from './actions';
+import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputPairEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource, setUartControlConfig } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './deviceService';
 import { connection, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { bootMock } from './boot';
@@ -384,6 +384,9 @@ describe('setChannelName', () => {
 
   it('renamed output channel shows the new name through the matrix join', async () => {
     // ChannelId.Out1L = 2; corresponding outputs[] entry has wireIndex 0.
+    // matrixColumns only surfaces enabled outputs, and the fixture default
+    // is disabled, so enable the slot to join it.
+    liveMirror().current!.outputs.find((o) => o.wireIndex === 0)!.enabled = true;
     setChannelName(activeSession()!, 2 satisfies ChannelId, 'Front Left');
     await vi.runAllTimersAsync();
 
@@ -400,6 +403,7 @@ describe('setChannelName', () => {
     });
     dispatch({ t: 'synced', session: makeReadySession(rp2040Device) });
     liveMirror().replaceCurrent(makeSnapshot(PlatformType.RP2040));
+    liveMirror().current!.outputs.find((o) => o.wireIndex === 4)!.enabled = true;
 
     setChannelName(activeSession()!, 10 satisfies ChannelId, 'Sub');
     await vi.runAllTimersAsync();
@@ -501,6 +505,44 @@ describe('bulk writes: toggles', () => {
     await vi.runAllTimersAsync();
     expect(liveMirror().current?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(!before);
     expect(setOutputMuteFn).toHaveBeenCalledWith(slot, !before);
+    vi.useRealTimers();
+  });
+
+  it('setOutputPairEnabled writes both channels of the pair and patches both mirror entries', async () => {
+    vi.useFakeTimers();
+    const calls: Array<[number, boolean]> = [];
+    const device = initializedDevice({
+      setOutputEnable: vi.fn(async (slot: number, enabled: boolean) => { calls.push([slot, enabled]); }),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+
+    setOutputPairEnabled(activeSession()!, 0, true);
+    await vi.runAllTimersAsync();
+
+    expect(calls).toEqual(expect.arrayContaining([[0, true], [1, true]]));
+    expect(liveMirror().current?.outputs.find((o) => o.wireIndex === 0)?.enabled).toBe(true);
+    expect(liveMirror().current?.outputs.find((o) => o.wireIndex === 1)?.enabled).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it('setOutputPairEnabled normalizes a half-enabled pair to a single state', async () => {
+    vi.useFakeTimers();
+    const device = initializedDevice({
+      setOutputEnable: vi.fn(async () => {}),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    liveMirror().current!.outputs.find((o) => o.wireIndex === 2)!.enabled = true;
+    liveMirror().current!.outputs.find((o) => o.wireIndex === 3)!.enabled = false;
+
+    setOutputPairEnabled(activeSession()!, 1, false);
+    await vi.runAllTimersAsync();
+
+    expect(liveMirror().current?.outputs.find((o) => o.wireIndex === 2)?.enabled).toBe(false);
+    expect(liveMirror().current?.outputs.find((o) => o.wireIndex === 3)?.enabled).toBe(false);
     vi.useRealTimers();
   });
 });

@@ -53,6 +53,17 @@
   function fmtRate(hz: number): string {
     return hz > 0 ? `${(hz / 1000).toFixed(1)} kHz` : '—';
   }
+
+  // Host-selected USB width (alt setting), live from telemetry. Only
+  // meaningful while the device actually runs on USB, so a pending
+  // source switch hides it rather than showing the old source's count.
+  const usbDetected = $derived.by(() => {
+    const n = s.telemetry.activeInputChannels;
+    return n == null ? '—' : `${n} CH`;
+  });
+  const showUsbDetected = $derived(
+    features.activeInputCount && liveSource === AudioInputSource.Usb,
+  );
 </script>
 
 <Panel code="SY.11" title="INPUT CONFIG">
@@ -90,7 +101,12 @@
     {/if}
 
     {#if source === AudioInputSource.Usb}
-      <p class="hint idle">USB input needs no configuration.</p>
+      {#if showUsbDetected}
+        <div class="cfgkvgrid">
+          <KV label="DETECTED" value={usbDetected} tone={s.telemetry.activeInputChannels == null ? 'off' : undefined} />
+        </div>
+      {/if}
+      <p class="hint idle">USB input needs no configuration{features.activeInputCount ? ' — channel count follows the host' : ''}.</p>
     {/if}
 
     {#if isSpdif}

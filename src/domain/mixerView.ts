@@ -38,9 +38,11 @@ function outputModeForChannel(s: DspSnapshot, id: ChannelId): OutputMode {
   return s.i2s.outputSlotTypes[slot] === OutputSlotType.I2s ? 'I2S' : 'SPDIF';
 }
 
+// Disabled outputs are hidden entirely -- the mixer only shows what can
+// actually carry signal (SYSTEM > OUTPUTS is where enable/disable lives).
 export function matrixColumns(snapshot: DspSnapshot | null): MatrixColumn[] {
   if (!snapshot) return [];
-  return snapshot.outputs.map((output) => ({
+  return snapshot.outputs.filter((o) => o.enabled).map((output) => ({
     id: output.id,
     wireIdx: output.wireIndex,
     shortName: output.shortName,
@@ -62,11 +64,19 @@ export function matrixRows(snapshot: DspSnapshot | null, activeInputs?: number |
     .filter((c) => !c.isOutput)
     .sort((a, b) => (inputIndexOf(a.id) ?? 0) - (inputIndexOf(b.id) ?? 0));
   const shown = activeInputs != null ? inputs.slice(0, Math.max(1, activeInputs)) : inputs;
+  // Column position of each enabled output, so a row's cells can be filtered
+  // and ordered to line up with matrixColumns() rather than trusting the
+  // route list's own order.
+  const columnOrder = new Map(snapshot.outputs.filter((o) => o.enabled).map((o, i) => [o.wireIndex, i]));
   const byInput = new Map<number, RouteModel[]>();
   for (const r of snapshot.routes) {
+    if (!columnOrder.has(r.outputWireIndex)) continue;
     const cells = byInput.get(r.inputIndex);
     if (cells) cells.push(r);
     else byInput.set(r.inputIndex, [r]);
+  }
+  for (const cells of byInput.values()) {
+    cells.sort((a, b) => columnOrder.get(a.outputWireIndex)! - columnOrder.get(b.outputWireIndex)!);
   }
   return shown.map((ch) => {
     const idx = (inputIndexOf(ch.id) ?? 0) as InputSlot;

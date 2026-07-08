@@ -218,8 +218,9 @@ export function displayNameForHardwareChannel(
   profile: HardwareProfile,
   id: ChannelIdValue,
   channelNames: readonly string[],
+  fallbackName: string,
 ): string {
   const wireChannel = wireChannelFor(profile, id);
   const fromDevice = channelNames[wireChannel]?.trim();
-  return fromDevice || channelLayoutById(id).name;
+  return fromDevice || fallbackName;
 }
