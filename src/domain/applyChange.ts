@@ -4,6 +4,21 @@
 
 import type { DspSnapshot } from './snapshot';
 import type { SnapshotChange } from './snapshotDiff';
+import type { AudioInputSource } from './deviceSections';
+import { defaultInputName, defaultInputShortName, inputIndexOf } from './channels';
+
+// A source change regenerates every input channel's default name/short name
+// (mirrors the firmware-side regen). diffSnapshots only tracks InputConfig
+// as a whole -- there is no separate change kind for per-channel defaults --
+// so the inputConfig case recomputes them directly.
+function refreshInputDefaults(t: DspSnapshot, source: AudioInputSource): void {
+  for (const ch of t.channels) {
+    const slot = inputIndexOf(ch.id);
+    if (slot === null) continue;
+    ch.defaultName = defaultInputName(source, slot);
+    ch.shortName = defaultInputShortName(source, slot);
+  }
+}
 
 export function applyChange(c: SnapshotChange, t: DspSnapshot): void {
   switch (c.kind) {
@@ -19,7 +34,7 @@ export function applyChange(c: SnapshotChange, t: DspSnapshot): void {
     case 'loudness':          t.loudness = c.value; break;
     case 'crossfeed':         t.crossfeed = c.value; break;
     case 'leveller':          t.leveller = c.value; break;
-    case 'inputConfig':       t.inputConfig = c.value; break;
+    case 'inputConfig':       t.inputConfig = c.value; refreshInputDefaults(t, c.value.source); break;
     case 'spdifRxPin':        t.inputConfig = { ...t.inputConfig, spdifRxPin: c.value }; break;
     case 'userVolume':        t.userVolume = c.value; break;
     case 'dacHwMute':         t.dacHwMute = c.value; break;

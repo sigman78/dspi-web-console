@@ -2,8 +2,8 @@
 // optionally its stereo twin).
 
 import {
-  type ChannelId, type AutoEqEntry,
-  groupIntoPairs, inputIndexOf, autoEqFiltersToBands, isFirstOrderType, defaultFilter,
+  type ChannelId, type ChannelModel, type AutoEqEntry,
+  groupIntoPairs, groupInputSlotPairs, inputIndexOf, autoEqFiltersToBands, isFirstOrderType, defaultFilter,
 } from '@/domain';
 import type { ReadySession } from '@/state';
 import { setEqFilter, setInputPreamp, setOutputGain } from './actions';
@@ -12,10 +12,25 @@ export function preampTargetLabel(channel: { isOutput: boolean }): 'INPUT PREAMP
   return channel.isOutput ? 'OUTPUT TRIM' : 'INPUT PREAMP';
 }
 
+// Stereo-twin lookup for "apply to pair": output names are always true L/R,
+// so suffix pairing (groupIntoPairs) still works; USB input defaults drop
+// L/R (defaultInputName), so inputs pair by slot position instead
+// (groupInputSlotPairs) -- same structural pairing the rail uses.
+function twinGroup(channels: readonly ChannelModel[], channelId: ChannelId): ChannelModel[] | null {
+  const target = channels.find((c) => c.id === channelId);
+  if (!target) return null;
+  const groups = target.isOutput
+    ? groupIntoPairs(channels.filter((c) => c.isOutput))
+    : groupInputSlotPairs(channels.filter((c) => !c.isOutput));
+  return groups.find((g) => g.members.length === 2 && g.members.some((c) => c.id === channelId))?.members ?? null;
+}
+
+export function hasStereoTwin(channels: readonly ChannelModel[], channelId: ChannelId): boolean {
+  return twinGroup(channels, channelId) !== null;
+}
+
 function twinOf(s: ReadySession, channelId: ChannelId): ChannelId | null {
-  const group = groupIntoPairs(s.mirror.snapshot.channels)
-    .find((g) => g.members.length === 2 && g.members.some((c) => c.id === channelId));
-  return group?.members.find((c) => c.id !== channelId)?.id ?? null;
+  return twinGroup(s.mirror.snapshot.channels, channelId)?.find((c) => c.id !== channelId)?.id ?? null;
 }
 
 export function applyAutoEqEntry(

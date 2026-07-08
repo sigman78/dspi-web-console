@@ -18,13 +18,11 @@
     inputIndex,
     outputIndex,
     inputChannelId,
-    unavailable = false,
   }: {
     cell: RouteModel;
     inputIndex: InputSlot;
     outputIndex: OutputSlot;
     inputChannelId: ChannelId;
-    unavailable?: boolean;
   } = $props();
 
   const s = getSession();
@@ -43,8 +41,6 @@
 <div
   class="cell ch-{chKey(inputChannelId)}"
   class:active
-  class:unavailable
-  title={unavailable ? 'unavailable while PDM subwoofer is active' : undefined}
 >
   <button
     type="button"
@@ -104,27 +100,6 @@
       inset 0 0 0 1px color-mix(in oklab, var(--ch-dim) 35%, transparent),
       inset 0 0 14px color-mix(in oklab, var(--ch-glow) 12%, transparent);
   }
-  /* U-P3 policy B: no whole-cell dim when the output is off. The OFF label
-     and cell structure stay full-contrast; the enable dot, gain field, and
-     NORM/phase button below are disabled in that state and carry the
-     single dim layer alone. */
-  /* PDM-exclusivity hint: diagonal hatch overlay over a desaturated grey
-     wash. Stronger visual signal than a plain opacity dim -- users can tell
-     "this column is locked out" at a glance without confusing it with the
-     normal !enabled dim. Background stacked: hatch on top, grey wash below. */
-  .cell.unavailable {
-    cursor: not-allowed;
-    color: var(--text-faint);
-    background:
-      repeating-linear-gradient(
-        135deg,
-        var(--wash-strong) 0 2px,
-        transparent 2px 6px
-      ),
-      var(--wash-faint);
-    box-shadow: none;
-  }
-  .cell.unavailable button { cursor: not-allowed; }
 
   .enable {
     background: transparent;

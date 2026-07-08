@@ -2,13 +2,13 @@
   import { onMount } from 'svelte';
   import {
     type ChannelModel, type AutoEqEntry,
-    FilterType, groupIntoPairs, autoEqDisplayName, autoEqSourceLabel, autoEqFiltersToBands,
+    FilterType, autoEqDisplayName, autoEqSourceLabel, autoEqFiltersToBands,
   } from '@/domain';
   import {
     autoEqDb, autoEqEntries, ensureAutoEqDb, isAutoEqFavorite, toggleAutoEqFavorite,
     saveAutoEqUserEntry, deleteAutoEqUserEntry, searchAutoEq,
   } from '@/state';
-  import { applyAutoEqEntry, preampTargetLabel } from '@/runtime';
+  import { applyAutoEqEntry, preampTargetLabel, hasStereoTwin } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
 
   const {
@@ -50,10 +50,7 @@
 
   const hasTwin = $derived.by(() => {
     const chans = s.mirror.current?.channels;
-    if (!chans) return false;
-    return groupIntoPairs(chans).some(
-      (g) => g.members.length === 2 && g.members.some((c) => c.id === channel.id),
-    );
+    return chans ? hasStereoTwin(chans, channel.id) : false;
   });
 
   const selectedBandCount = $derived(

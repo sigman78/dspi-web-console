@@ -300,6 +300,13 @@ export function setOutputEnabled(s: ReadySession, slot: OutputSlot, enabled: boo
   );
 }
 
+// Both channels of a stereo pair, normalizing a half-enabled pair to a single
+// state. Two independent write()s -- no tuple to merge, same as setOutputEnabled.
+export function setOutputPairEnabled(s: ReadySession, pair: I2sPairSlot, enabled: boolean): void {
+  setOutputEnabled(s, (pair * 2) as OutputSlot, enabled);
+  setOutputEnabled(s, (pair * 2 + 1) as OutputSlot, enabled);
+}
+
 export function setOutputMuted(s: ReadySession, slot: OutputSlot, muted: boolean): void {
   void write(s,
     () => s.device.setOutputMute(slot, muted),

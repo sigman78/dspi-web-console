@@ -3,7 +3,6 @@
   import {
     setOutputDelay,
     setOutputGain,
-    setOutputEnabled,
     setOutputMuted,
   } from '@/runtime';
   import ValueField from '@/components/chrome/ValueField.svelte';
@@ -14,13 +13,11 @@
     column,
     outputIndex,
     zebra,
-    unavailable = false,
     selected = false,
   }: {
     column: MatrixColumn;
     outputIndex: OutputSlot;
     zebra: boolean;
-    unavailable?: boolean;
     selected?: boolean;
   } = $props();
 
@@ -28,9 +25,6 @@
 
   const parts = $derived(splitLR(column.name));
 
-  function onPower(): void {
-    setOutputEnabled(s, outputIndex, !column.enabled);
-  }
   function onMute(): void {
     setOutputMuted(s, outputIndex, !column.muted);
   }
@@ -39,9 +33,7 @@
 <div
   class="header ch-{chKey(column.id)}"
   class:zebra
-  class:unavailable
   class:selected
-  title={unavailable ? 'unavailable while PDM subwoofer is active' : undefined}
 >
   <div class="icons">
     <button
@@ -61,18 +53,6 @@
         {/if}
       </svg>
     </button>
-    <button
-      type="button"
-      class="power"
-      class:on={column.enabled}
-      onclick={onPower}
-      title="toggle output enable"
-    >
-      <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
-        <path d="M8 2.5 V 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-        <path d="M5.2 4.4 A 5 5 0 1 0 10.8 4.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" />
-      </svg>
-    </button>
   </div>
 
   <div class="ident">
@@ -90,7 +70,6 @@
       max={Mix.OUTPUT_GAIN_MAX_DB}
       align="center"
       value={column.gainDb}
-      disabled={!column.enabled}
       onChange={(v) => setOutputGain(s, outputIndex, v)}
     />
   </div>
@@ -102,7 +81,6 @@
       max={Mix.OUTPUT_DELAY_MAX_MS}
       align="center"
       value={column.delayMs}
-      disabled={!column.enabled}
       onChange={(v) => setOutputDelay(s, outputIndex, v)}
     />
   </div>
@@ -120,9 +98,6 @@
     transition: opacity 120ms;
   }
   .header.zebra { background: var(--wash); }
-  /* U-P3 policy B: no whole-header dim when the output is off. Channel code,
-     name, and mute/power buttons stay full-contrast; GAIN/DELAY ValueFields
-     below are disabled in that state and carry the single dim layer alone. */
   /* Selected-channel locator: a channel-color line over the column, echoing
      the rail's L/R group spine (ChannelRail .spine) and MixerTab's row-head
      mate (var(--ch-base) bar). An absolutely-positioned strip so the matrix
@@ -139,20 +114,6 @@
     opacity: 0.85;
     pointer-events: none;
   }
-  /* PDM exclusivity: same hatched-grey treatment as the cells in this
-     column, so the whole column reads as one locked-out band. */
-  .header.unavailable {
-    color: var(--text-faint);
-    background:
-      repeating-linear-gradient(
-        135deg,
-        var(--wash-strong) 0 2px,
-        transparent 2px 6px
-      ),
-      var(--wash-faint);
-  }
-  .header.unavailable button { cursor: not-allowed; }
-
   .icons {
     position: absolute;
     top: 6px;
@@ -160,7 +121,7 @@
     display: flex;
     gap: 2px;
   }
-  .power, .mute {
+  .mute {
     width: 18px;
     height: 18px;
     border-radius: var(--radius-s);
@@ -174,11 +135,6 @@
     justify-content: center;
     transition: background 120ms, border-color 120ms, color 120ms;
   }
-  .power.on {
-    background: color-mix(in oklab, var(--accent) 15%, transparent);
-    border-color: var(--accent);
-    color: var(--accent);
-  }
   .mute.on {
     background: color-mix(in oklab, var(--err) 20%, transparent);
     border-color: var(--err);
@@ -189,7 +145,7 @@
     display: flex;
     align-items: baseline;
     gap: 6px;
-    padding-right: 46px; /* room for icon group */
+    padding-right: 26px; /* room for icon group */
   }
   .cid {
     font-size: 10px;

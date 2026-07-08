@@ -64,14 +64,18 @@ function narrowFilter(filter: { type: number; bypass: boolean; frequency: number
 export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParams): domain.DspSnapshot {
   const channelNames = bulk.channelNames;
   const hasCrossover = bulk.formatVersion >= 16;
+  const inputSource = narrowInputSource(bulk.inputConfig.source);
 
   const channels = hardware.channels.map((channel) => {
     const wireChannel = domain.wireChannelFor(hardware, channel.id);
+    const inputSlot = domain.inputIndexOf(channel.id);
+    const defaultName = inputSlot !== null ? domain.defaultInputName(inputSource, inputSlot) : channel.name;
+    const shortName = inputSlot !== null ? domain.defaultInputShortName(inputSource, inputSlot) : channel.shortName;
     return {
       id: channel.id,
-      name: domain.displayNameForHardwareChannel(hardware, channel.id, channelNames),
-      defaultName: channel.name,
-      shortName: channel.shortName,
+      name: domain.displayNameForHardwareChannel(hardware, channel.id, channelNames, defaultName),
+      defaultName,
+      shortName,
       bandCount: channel.bandCount,
       isOutput: channel.isOutput,
       filters: (bulk.filters[wireChannel]?.slice(0, channel.bandCount) ?? []).map(narrowFilter),
@@ -152,7 +156,7 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
     // V7-V10 sections -- same unconditional carry: the parser substitutes
     // factory defaults when a packet omits them (test-only under the V10 floor).
     inputConfig: {
-      source: narrowInputSource(bulk.inputConfig.source),
+      source: inputSource,
       spdifRxPin: bulk.inputConfig.spdifRxPin,
       i2sRxPins: [...bulk.inputConfig.i2sRxPins],
       i2sInputRateHz: domain.i2sRateDecode(bulk.inputConfig.i2sInputRateEnc),

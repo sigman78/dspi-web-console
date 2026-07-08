@@ -1,11 +1,12 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
+  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import PinSelect from './PinSelect.svelte';
   import SaveOutputConfigButton from './SaveOutputConfigButton.svelte';
   import { connection } from '@/state';
-  import { stageOutputType, stageOutputDataPin } from '@/runtime';
-  import { availablePinsFor, channelLayoutById, ChannelId, OutputSlotType, liveCsPinConfigs, type I2sPairSlot } from '@/domain';
+  import { stageOutputType, stageOutputDataPin, setOutputPairEnabled, setOutputEnabled } from '@/runtime';
+  import { availablePinsFor, channelLayoutById, ChannelId, OutputSlotType, liveCsPinConfigs, type I2sPairSlot, type OutputSlot } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -41,6 +42,39 @@
     snap?.outputs.find((o) => o.wireIndex === snap.platform.pdmOutputIndex)?.enabled ?? false,
   );
 
+  function pairEnabled(pair: number): boolean {
+    if (!snap) return false;
+    return snap.outputs.some((o) => (o.wireIndex === pair * 2 || o.wireIndex === pair * 2 + 1) && o.enabled);
+  }
+
+  // PDM and the "Core-1 EQ" outputs (every slot except pair 0 and PDM itself)
+  // are mutually exclusive on the wire -- a conflicting SET_OUTPUT_ENABLE is
+  // silently dropped by firmware, so the interlock must disable the toggles,
+  // not just style them.
+  // Firmware only blocks ENABLING across the interlock; switching off always
+  // works, so an already-on toggle stays operable.
+  function pairLockedByPdm(pair: number): boolean {
+    if (!snap || !pdmEnabled || pairEnabled(pair)) return false;
+    const wireL = pair * 2;
+    return wireL >= 2 && wireL <= snap.platform.pdmOutputIndex - 1;
+  }
+  const pdmLockedByOutputs = $derived(
+    snap && !pdmEnabled
+      ? snap.outputs.some((o) => o.wireIndex >= 2 && o.wireIndex <= snap.platform.pdmOutputIndex - 1 && o.enabled)
+      : false,
+  );
+  const pdmLockTitle = $derived(
+    numSpdif > 2 ? `unavailable while outputs 2–${numSpdif} are active` : 'unavailable while output 2 is active',
+  );
+
+  function onPairToggle(pair: number, next: boolean): void {
+    setOutputPairEnabled(s, pair as I2sPairSlot, next);
+  }
+  function onPdmToggle(next: boolean): void {
+    if (!snap) return;
+    setOutputEnabled(s, snap.platform.pdmOutputIndex as OutputSlot, next);
+  }
+
 </script>
 
 <Panel code="SY.07" title="OUTPUTS">
@@ -52,6 +86,15 @@
           <span class="lbl">
             <span class="microlbl">OUT {slot + 1}</span>
             <span class="pair">{pairShort(slot)}</span>
+          </span>
+          <span title={pairLockedByPdm(slot) ? 'unavailable while PDM subwoofer is active' : undefined}>
+            <ToggleSwitch
+              size="sm"
+              checked={pairEnabled(slot)}
+              disabled={!connected || pairLockedByPdm(slot)}
+              ariaLabel={`Out ${slot + 1} enable`}
+              onChange={(v) => onPairToggle(slot, v)}
+            />
           </span>
           <span class="stage-wrap" class:staged={s.staging.has(`outputType:${slot}`)}>
             <SegmentedSelect
@@ -77,6 +120,15 @@
 
       <div class="row">
         <span class="lbl"><span class="microlbl">PDM SUB</span></span>
+        <span title={pdmLockedByOutputs ? pdmLockTitle : undefined}>
+          <ToggleSwitch
+            size="sm"
+            checked={pdmEnabled}
+            disabled={!connected || pdmLockedByOutputs}
+            ariaLabel="PDM sub enable"
+            onChange={onPdmToggle}
+          />
+        </span>
         <span class="fixed">PDM</span>
         <span class="stage-wrap" class:staged={s.staging.has(`outputPin:${pdmIndex}`)} title={s.staging.has(`outputPin:${pdmIndex}`) ? `device: GP${snap.outputPins[pdmIndex]}` : undefined}>
           <PinSelect
@@ -89,14 +141,14 @@
         </span>
       </div>
       {#if pdmEnabled}
-        <div class="hint">Disable the PDM output (Mixer) to reassign its pin.</div>
+        <div class="hint">Disable the PDM output to reassign its pin.</div>
       {/if}
     </div>
   {/if}
 </Panel>
 
 <style>
-  .rows { padding: 14px; display: grid; grid-template-columns: max-content max-content max-content; gap: 8px 10px; align-items: center; justify-content: space-between; }
+  .rows { padding: 14px; display: grid; grid-template-columns: max-content max-content max-content max-content; gap: 8px 10px; align-items: center; justify-content: space-between; }
   .row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; }
   .rows > .hint { grid-column: 1 / -1; }
   .lbl { display: flex; align-items: baseline; gap: 11px; }

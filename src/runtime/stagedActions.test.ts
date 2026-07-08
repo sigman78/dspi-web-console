@@ -39,6 +39,22 @@ describe('runtime/stagedActions', () => {
       stageInputSource(s, live);
       expect(s.staging.has('inputSource')).toBe(false);
     });
+
+    // Firmware regenerates default input-channel names on a source switch but
+    // tags the notify Host-sourced, which the notify channel drops as a
+    // self-echo -- applying the stage must force a reconcile itself so the
+    // mirror picks up the regenerated names from a fresh bulk read.
+    it('requests an eager reconcile once the apply succeeds', async () => {
+      const s = sess();
+      const live = s.mirror.snapshot.inputConfig.source;
+      const target = live === AudioInputSource.Spdif ? AudioInputSource.Usb : AudioInputSource.Spdif;
+
+      stageInputSource(s, target);
+      expect(s.mirror.peekReconcile()).toEqual({ wanted: false, eager: false });
+
+      await s.staging.applyAll();
+      expect(s.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
+    });
   });
 
   describe('stageI2sRxPin', () => {

@@ -12,26 +12,18 @@
   const columns = $derived(matrixColumns(s.mirror.current));
   const rows = $derived(matrixRows(s.mirror.current, s.telemetry.activeInputChannels));
 
-  // When PDM (the last output) is enabled, only outputs 0,1 (S/PDIF 1) and the
-  // PDM index stay available. Not enforced client-side -- firmware is the
-  // source of truth -- so we just dim the locked-out columns.
-  const pdmIndex = $derived(s.mirror.current?.platform.pdmOutputIndex ?? -1);
-  const pdmActive = $derived(pdmIndex >= 0 && (columns[pdmIndex]?.enabled ?? false));
-  function isUnavailable(outputIndex: number): boolean {
-    if (!pdmActive) return false;
-    return outputIndex !== 0 && outputIndex !== 1 && outputIndex !== pdmIndex;
-  }
-
   const cols = $derived(`96px repeat(${columns.length}, 128px)`);
 </script>
 
 <Panel code="MX.01" title="ROUTING MATRIX">
   {#snippet right()}
-    <span class="meta">click cell to enable · click ⌽ for phase invert · click power/mute per output</span>
+    <span class="meta">click cell to enable · click ⌽ for phase invert · click mute per output</span>
   {/snippet}
 
   {#if !s.mirror.current}
     <p class="empty">No platform info loaded yet.</p>
+  {:else if columns.length === 0}
+    <p class="empty">All outputs are disabled — enable them in SYSTEM ▸ OUTPUTS.</p>
   {:else}
     <div class="wrap">
       <div class="matrix" style="grid-template-columns: {cols};">
@@ -41,7 +33,6 @@
             column={col}
             outputIndex={col.wireIdx}
             zebra={i % 2 === 0}
-            unavailable={isUnavailable(i)}
             selected={settings.selectedChannel === col.id}
           />
         {/each}
@@ -62,7 +53,6 @@
                 inputIndex={row.inputIndex}
                 outputIndex={cell.outputWireIndex}
                 inputChannelId={row.inputId}
-                unavailable={isUnavailable(ci)}
               />
             </div>
           {/each}

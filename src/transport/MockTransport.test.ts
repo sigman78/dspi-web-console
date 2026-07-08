@@ -3,7 +3,7 @@ import { MockTransport } from './MockTransport';
 import { DspDevice } from '@/device/DspDevice';
 import { WireCmd, Wire, parseBufferStats, parseSystemStatus, parseBulkParams, buildBulkParams, NotifyEventId } from '@/protocol';
 import { Codec } from '@/utils';
-import { FilterType, MasterVolumeMode } from '@/domain';
+import { FilterType, MasterVolumeMode, AudioInputSource, ChannelId } from '@/domain';
 
 async function createDevice(t: MockTransport): Promise<DspDevice> {
   const openTransport = t.isOpen() ? async () => {} : () => t.open();
@@ -290,6 +290,43 @@ describe('MockTransport — chunked bulk sessions (V16)', () => {
     await expect(
       t.ctrlIn(WireCmd.GetAllParamsChunk.code, chunkSize, chunkSize),
     ).rejects.toThrow();
+  });
+});
+
+describe('MockTransport — source-aware input channel names', () => {
+  async function v16Device(): Promise<DspDevice> {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    return createDevice(t);
+  }
+
+  it('seeds default input names for the default (USB) source at boot', async () => {
+    const d = await v16Device();
+    const bulk = await d.getAllParams();
+    expect(bulk.channelNames.slice(0, 8)).toEqual(['USB 1', 'USB 2', 'USB 3', 'USB 4', 'USB 5', 'USB 6', 'USB 7', 'USB 8']);
+  });
+
+  it('regenerates default input names on a source switch, preserving a custom name', async () => {
+    const d = await v16Device();
+    // Slot 2 (In2L) gets a real custom name; it must survive the switch.
+    await d.setChannelName(ChannelId.In2L, 'Turntable');
+
+    await d.setInputSource(AudioInputSource.Spdif);
+    const bulk = await d.getAllParams();
+
+    expect(bulk.channelNames[0]).toBe('SPDIF L');   // untouched default -> regenerated
+    expect(bulk.channelNames[1]).toBe('SPDIF R');
+    expect(bulk.channelNames[2]).toBe('Turntable');  // custom name survives the switch
+  });
+
+  it('does not regenerate names on an I2S channel-count change (names key on source, not count)', async () => {
+    const d = await v16Device();
+    await d.setInputSource(AudioInputSource.I2s);
+    const before = (await d.getAllParams()).channelNames.slice(0, 8);
+
+    await d.setI2sInputChannels(4);
+    const after = (await d.getAllParams()).channelNames.slice(0, 8);
+
+    expect(after).toEqual(before);
   });
 });
 

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { setContext } from 'svelte';
   import type { ReadySession } from '@/state';
-  import { settings, setTab } from '@/state';
+  import { settings, setTab, reconcileSelectedChannel, selectionVisibilityOf } from '@/state';
   import { SESSION_KEY } from '@/components/sessionContext';
   import PendingChangesBar from './PendingChangesBar.svelte';
   import OverviewTab from '@/components/tabs/OverviewTab.svelte';
@@ -28,6 +28,19 @@
   );
   $effect(() => {
     if (settings.tab === 'control' && !controlSupported) setTab('system');
+  });
+
+  // Re-validate the global selection whenever what's actually visible in the
+  // rail/mixer changes (an output gets disabled, or the live input count
+  // narrows) -- not just once at connect. selectionVisibilityOf only reads
+  // each output's `enabled`/`id`, so this stays inert across unrelated mirror
+  // writes (gain, delay, mute, EQ edits).
+  const channelVisibility = $derived(selectionVisibilityOf(
+    session.mirror.current?.outputs ?? [],
+    session.telemetry.activeInputChannels,
+  ));
+  $effect(() => {
+    reconcileSelectedChannel(session.mirror.current?.channels, channelVisibility);
   });
 </script>
 

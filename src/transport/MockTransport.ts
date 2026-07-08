@@ -10,12 +10,13 @@ import {
 } from '@/protocol/bulkParser';
 import { Codec } from '@/utils';
 import {
-  PlatformType, OutputSlotType,
+  PlatformType, OutputSlotType, AudioInputSource,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode, OutputConfigMode,
   XOVER_BAND_BASE, MAX_XOVER_BANDS,
   DEFAULT_UART_CONTROL_CONFIG, DEFAULT_I2C_CONTROL_CONFIG,
   isValidUartPinPair, isValidI2cPinPair, isValidUartBaud, isValidI2cAddress,
   CsType, CS_GPIO_UNUSED, CS_MAX_BINDINGS, validateCsBinding,
+  defaultInputName,
   type FilterParams,
   type CrossPoint, type OutputState,
   type UartControlConfig, type I2cControlConfig,
@@ -95,10 +96,21 @@ function defaultMockBulkState(platform: PlatformType, wireVersion: number): Bulk
   const numIn  = v16 && platform === PlatformType.RP2350 ? 8 : 2;
   const numOut = platform === PlatformType.RP2350 ? 9 : 5;
   const numCh  = numIn + numOut;
-  return defaultBulkParams({
+  const state = defaultBulkParams({
     platformId: platform, numCh, numOut, numIn,
     formatVersion: Math.max(wireVersion, 6),
   });
+  // A fresh packet has every output disabled; the mock stands in for a
+  // configured device, so enable the stereo outputs (PDM, the last slot, stays
+  // off) -- the ?mock= demo then shows live output channels in the rail.
+  for (let i = 0; i < numOut - 1; i++) state.outputs![i].enabled = true;
+  // Mirrors firmware boot init: input channel names start populated with the
+  // default source's names, not empty. Input slots are wire-first (slot
+  // index === wire index) on every profile this mock builds.
+  for (let slot = 0; slot < numIn; slot++) {
+    state.channelNames[slot] = defaultInputName(state.inputConfig.source as AudioInputSource, slot);
+  }
+  return state;
 }
 
 // Full snapshot of mutable mock state so PresetSave/Load round-trips every
@@ -662,9 +674,13 @@ export class MockTransport implements DspTransport {
       case WireCmd.SetUserMute.code:
         this.#mockState.userVolume.mute = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetInputSource.code:
-        this.#mockState.inputConfig.source = Codec.decode(Codec.u8, data);
+      case WireCmd.SetInputSource.code: {
+        const newSource = Codec.decode(Codec.u8, data);
+        const oldSource = this.#mockState.inputConfig.source;
+        this.#mockState.inputConfig.source = newSource;
+        if (newSource !== oldSource) this.#regenerateInputDefaultNames(oldSource, newSource);
         return;
+      }
       case WireCmd.SetInputRate.code: {
         const hz = Codec.decode(Codec.u32, data);
         if (hz === 44100 || hz === 48000 || hz === 96000) {
@@ -876,6 +892,21 @@ export class MockTransport implements DspTransport {
 
   #applyBulkState(bulk: BulkParams): void {
     this.#mockState = bulk;
+  }
+
+  // Mirrors firmware's default-name regen on a source switch: only channel
+  // names still equal to the OLD default get overwritten, so a user-set
+  // custom name survives. I2S channel-count changes don't regen names --
+  // the firmware scheme keys only on (channel, source).
+  #regenerateInputDefaultNames(oldSource: number, newSource: number): void {
+    const numIn = this.#mockState.numIn;
+    for (let slot = 0; slot < numIn; slot++) {
+      const oldDefault = defaultInputName(oldSource as AudioInputSource, slot);
+      const newDefault = defaultInputName(newSource as AudioInputSource, slot);
+      if (oldDefault === newDefault) continue;
+      if ((this.#mockState.channelNames[slot] ?? '') !== oldDefault) continue;
+      this.#mockState.channelNames[slot] = newDefault;
+    }
   }
 
   // Reset live state to factory defaults (empty-slot PresetLoad).
