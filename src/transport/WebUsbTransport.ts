@@ -14,6 +14,17 @@ export function matchesDspi(d: { vendorId: number; productId: number }): boolean
 
 const USB_CLASS_VENDOR = 0xFF;
 
+// Thrown when the vendor interface can't be claimed -- almost always because the
+// device is already open (another browser tab, the DSPi Console app, or another
+// process), or on Windows because the interface isn't bound to WinUSB. Tagged so
+// the connect path can surface a "device in use" advisory instead of a raw error.
+export class DeviceInUse extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'DeviceInUse';
+  }
+}
+
 export class WebUsbTransport implements DspTransport {
   #device: USBDevice | null = null;
   #interfaceNumber = VENDOR_INTERFACE_INDEX;
@@ -79,7 +90,7 @@ export class WebUsbTransport implements DspTransport {
     try {
       await d.claimInterface(this.#interfaceNumber);
     } catch (err) {
-      throw new Error(claimErrorHint(err, d, this.#interfaceNumber), { cause: err });
+      throw new DeviceInUse(claimErrorHint(err, d, this.#interfaceNumber), { cause: err });
     }
 
     navigator.usb.addEventListener('connect', this.#onConnect);

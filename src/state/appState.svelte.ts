@@ -54,8 +54,9 @@ export interface ReadySession {
 }
 
 // Discriminates an 'error' status so the UI can give certain failures a tailored
-// treatment (e.g. a firmware-upgrade prompt). null = ordinary/unclassified error.
-export type SessionErrorKind = null | 'unsupported-firmware';
+// treatment (a firmware-upgrade prompt, a device-in-use advisory). null =
+// ordinary/unclassified error.
+export type SessionErrorKind = null | 'unsupported-firmware' | 'device-in-use';
 
 export type AppState =
   | { kind: 'noDevice' }

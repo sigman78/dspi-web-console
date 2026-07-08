@@ -46,6 +46,22 @@ describe('ConnectingHero — status text', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  test('device-in-use error renders the DEVICE IN USE advisory with probable causes, not the diagnostics panel', () => {
+    dispatch({
+      t: 'failed',
+      message: 'Unable to claim interface. — tried interface 0. …',
+      errorKind: 'device-in-use',
+    });
+    render(ConnectingHero);
+    const panel = screen.getByRole('alert', { name: /device in use/i });
+    expect(panel).toHaveTextContent('another browser tab');
+    expect(panel).toHaveTextContent(/Zadig/);
+    // The raw diagnostics panel is suppressed in favor of the advisory.
+    expect(screen.queryByLabelText('Connection error details')).not.toBeInTheDocument();
+    // Retry stays available.
+    expect(screen.getByRole('button', { name: 'CONNECT' })).not.toBeDisabled();
+  });
+
   test('unsupported-firmware error renders a dedicated upgrade panel, not the red diagnostics one', () => {
     dispatch({
       t: 'failed',

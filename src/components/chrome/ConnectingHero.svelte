@@ -1,7 +1,7 @@
 <script lang="ts">
   import EqSpectrum from './EqSpectrum.svelte';
   import { connection, activeSession } from '@/state';
-  import { connectRequested, webUsbUnsupportedReason, isDeviceHeld } from '@/runtime';
+  import { connectRequested, webUsbUnsupportedReason } from '@/runtime';
   import { REPO_URL } from '@/buildInfo';
 
   let busy = $state(false);
@@ -37,33 +37,18 @@
   const showUnsupportedFirmware = $derived(
     connection.errorKind === 'unsupported-firmware'
   );
+  // Shown only after a real claim failure (errorKind === 'device-in-use'), so it
+  // never appears when the device is simply unplugged (that path has no error).
+  const showDeviceInUse = $derived(
+    connection.errorKind === 'device-in-use'
+  );
   const showErrorPanel = $derived(
-    connection.error !== null && !showUnsupportedFirmware
+    connection.error !== null && !showUnsupportedFirmware && !showDeviceInUse
   );
 
   const disabled = $derived(
     busy || unsupported !== null || connection.phase === 'connecting'
   );
-
-  let heldElsewhere = $state(false);
-
-  async function refreshHeld() {
-    heldElsewhere =
-      (connection.phase === 'noDevice' || connection.phase === 'errored') &&
-      await isDeviceHeld();
-  }
-
-  $effect(() => {
-    void connection.phase;      // re-check when our own status changes
-    void refreshHeld();
-    const onFocus = () => { if (document.visibilityState === 'visible') void refreshHeld(); };
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
-    return () => {
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
-    };
-  });
 
   async function connect() {
     if (disabled) return;
@@ -98,10 +83,19 @@
         <div class="alert-panel__header">FIRMWARE UPDATE REQUIRED</div>
         <pre class="alert-panel__body">{connection.error}</pre>
       </div>
-    {:else if heldElsewhere && !showErrorPanel}
-      <div class="held-panel alert-panel warn" role="status" aria-label="Device in use">
+    {:else if showDeviceInUse}
+      <div class="held-panel alert-panel warn" role="alert" aria-label="Device in use">
         <div class="alert-panel__header">DEVICE IN USE</div>
-        <pre class="alert-panel__body">This device looks like it's open in another browser tab. Close it there, or click CONNECT to try anyway.</pre>
+        <div class="alert-panel__body alert-panel__body--rich">
+          <p>Couldn't get exclusive access to the DSPi. Usually one of:</p>
+          <ul class="causes">
+            <li>It's already open in another browser tab or window.</li>
+            <li>The DSPi Console desktop app is running — close it.</li>
+            <li>Another program has the device open.</li>
+            <li>On Windows, the USB interface isn't bound to WinUSB (run Zadig).</li>
+          </ul>
+          <p>Close whatever's using it, then click CONNECT to retry.</p>
+        </div>
       </div>
     {/if}
     <button
@@ -221,6 +215,18 @@
     white-space: pre-wrap;
     word-break: break-word;
   }
+  /* Structured body (paragraphs + list) opts out of the raw-text pre-wrap so the
+     template's own indentation/newlines don't render as stray whitespace. */
+  .alert-panel__body--rich { white-space: normal; }
+  .alert-panel__body p { margin: 0; }
+  .causes {
+    margin: 6px 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .causes li { color: var(--text-dim); }
   .linux-panel {
     margin-top: 4px;
     width: min(860px, 92vw);

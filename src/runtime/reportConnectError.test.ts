@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { reportConnectError } from './boot';
 import { UnsupportedFirmware, UnsupportedDevicePacket } from '@/device/DspDevice';
+import { DeviceInUse } from '@/transport/WebUsbTransport';
 import { dispatch, connection } from '@/state';
 
 beforeEach(() => dispatch({ t: 'disconnected' }));
@@ -18,6 +19,12 @@ describe('reportConnectError', () => {
     expect(connection.phase).toBe('errored');
     expect(connection.errorKind).toBe('unsupported-firmware');
     expect(connection.error).toContain('incomplete parameter packet');
+  });
+
+  it('flags a DeviceInUse (claim failure) so the UI can show the in-use advisory', () => {
+    reportConnectError(new DeviceInUse('Unable to claim interface.'));
+    expect(connection.phase).toBe('errored');
+    expect(connection.errorKind).toBe('device-in-use');
   });
 
   it('leaves an ordinary error unclassified', () => {
