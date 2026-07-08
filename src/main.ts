@@ -4,7 +4,7 @@ import App from './App.svelte';
 import {
   activeSession,
   restoreSettings, startSettingsPersistence,
-  presetsDirty,
+  presetsDirty, endInitialBoot,
 } from './state';
 import { bootMock, bootReal, registerNavigatorReconnect } from './runtime';
 import { Log } from './utils';
@@ -24,12 +24,15 @@ const mockOpts = params.get('fw') === '115'
   ? { wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } }
   : {};
 
-// Boot reports its own failures (with errorKind) via reportConnectError.
-if (mock === 'rp2040' || mock === 'rp2350') {
-  void bootMock(mock, mockOpts).catch((e) => Log.error('boot', 'mock boot failed', e));
-} else {
-  void bootReal().catch((e) => Log.error('boot', 'boot failed', e));
-}
+// Boot reports its own failures (with errorKind) via reportConnectError. The
+// attempt resolves once the state machine has settled (device synced + snapshot
+// loaded, or no device found), which is exactly when the boot splash may lift.
+const bootAttempt = (mock === 'rp2040' || mock === 'rp2350')
+  ? bootMock(mock, mockOpts)
+  : bootReal();
+void bootAttempt
+  .catch((e) => Log.error('boot', 'boot failed', e))
+  .finally(endInitialBoot);
 
 registerNavigatorReconnect();
 

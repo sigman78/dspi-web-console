@@ -242,6 +242,7 @@
     color: var(--text-dim);
     cursor: pointer;
     user-select: none;
+    text-align: center;
   }
   .linux-panel summary:hover { color: var(--text); }
   .linux-panel[open] summary {

@@ -6,6 +6,14 @@
     <meta name="color-scheme" content="dark light" />
     <meta name="theme-color" content="#0b1220" />
 
+    <!-- Critical inline paint: dark background from the very first frame, before
+         the bundled stylesheet/JS load. Without it the SPA shows a white flash
+         until app.css applies. Matches app.css --bg (oklch 10% 0.01 250). -->
+    <style>
+      html { background-color: oklch(10% 0.01 250); color-scheme: dark; }
+      body { margin: 0; }
+    </style>
+
     <title>DSPi Console Web</title>
     <meta
       name="description"
