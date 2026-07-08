@@ -95,10 +95,15 @@ function defaultMockBulkState(platform: PlatformType, wireVersion: number): Bulk
   const numIn  = v16 && platform === PlatformType.RP2350 ? 8 : 2;
   const numOut = platform === PlatformType.RP2350 ? 9 : 5;
   const numCh  = numIn + numOut;
-  return defaultBulkParams({
+  const state = defaultBulkParams({
     platformId: platform, numCh, numOut, numIn,
     formatVersion: Math.max(wireVersion, 6),
   });
+  // A fresh packet has every output disabled; the mock stands in for a
+  // configured device, so enable the stereo outputs (PDM, the last slot, stays
+  // off) -- the ?mock= demo then shows live output channels in the rail.
+  for (let i = 0; i < numOut - 1; i++) state.outputs![i].enabled = true;
+  return state;
 }
 
 // Full snapshot of mutable mock state so PresetSave/Load round-trips every

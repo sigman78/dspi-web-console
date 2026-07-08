@@ -44,16 +44,18 @@
       return slot !== null && slot < Math.max(2, activeInputs);
     }) ?? [],
   ));
-  const outputGroups = $derived(groupIntoPairs(snap?.channels.filter((c) => c.isOutput) ?? []));
+  // Show only enabled outputs, mirroring how inputs show only the live count.
+  const outputGroups = $derived(groupIntoPairs(
+    snap?.channels.filter((c) => c.isOutput && !isDisabledOutput(c)) ?? [],
+  ));
 
   function levelDb(ch: ChannelModel): number {
     const p = tele?.peaks[ch.id] ?? 0;
     return p > 0 ? 20 * Math.log10(p) : -60;
   }
 
-  function isDim(ch: ChannelModel): boolean {
-    if (!snap) return true;
-    if (!ch.isOutput) return false;
+  function isDisabledOutput(ch: ChannelModel): boolean {
+    if (!snap || !ch.isOutput) return false;
     const out = snap.outputs.find((o) => o.id === ch.id);
     return !out || !out.enabled;
   }
@@ -79,7 +81,6 @@
                   levelDb={levelDb(ch)}
                   defaultName={ch.defaultName}
                   selected={appState.settings.selectedChannel === ch.id}
-                  dim={isDim(ch)}
                   pulsate={appState.eqUi.copySource === ch.id}
                   clipped={tele?.clipLatched[ch.id] ?? false}
                   disabled={disabled}
