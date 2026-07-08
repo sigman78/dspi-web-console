@@ -1,10 +1,15 @@
 /* Latin-subset @font-face declarations, redeclared here (rather than importing
    @fontsource's per-weight CSS) for two reasons:
-     1. font-display: optional -- the browser uses the fallback if the web font
-        isn't ready within a ~100ms block window and then does NOT swap it in
-        mid-session. That eliminates the layout shift (panels resizing as text
-        reflows) that font-display: swap causes on load. On cached loads the web
-        font is ready immediately, so it is used from first paint.
+     1. font-display: swap -- the web font is always used once it loads. This
+        matters at the UI's small sizes (9px mono, 10px sans): JetBrains Mono
+        and IBM Plex Sans are drawn with tall x-heights that stay legible there,
+        whereas the system fallbacks (Consolas / system-ui) render smaller and
+        thinner. `optional` (the previous value) would freeze on the fallback
+        for a whole page view whenever the font missed a ~100ms window, so the
+        UI often rendered in the harder-to-read fallback. The swap-in reflow it
+        traded that for is negligible now -- the real load shifts (channel width,
+        white flash, hero blink) are fixed elsewhere, and fonts are cached after
+        the first visit, so most loads never swap at all.
      2. Only the `latin` subset is declared. The UI is English; the cyrillic /
         greek / vietnamese / latin-ext subsets @fontsource ships were never
         downloaded for English text anyway, so dropping them costs nothing.
@@ -14,7 +19,7 @@
 @font-face {
   font-family: 'IBM Plex Sans';
   font-style: normal;
-  font-display: optional;
+  font-display: swap;
   font-weight: 400;
   src: url('@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2') format('woff2');
   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
@@ -22,7 +27,7 @@
 @font-face {
   font-family: 'IBM Plex Sans';
   font-style: normal;
-  font-display: optional;
+  font-display: swap;
   font-weight: 500;
   src: url('@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-500-normal.woff2') format('woff2');
   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
@@ -30,7 +35,7 @@
 @font-face {
   font-family: 'IBM Plex Sans';
   font-style: normal;
-  font-display: optional;
+  font-display: swap;
   font-weight: 600;
   src: url('@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-600-normal.woff2') format('woff2');
   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
@@ -39,7 +44,7 @@
 @font-face {
   font-family: 'JetBrains Mono';
   font-style: normal;
-  font-display: optional;
+  font-display: swap;
   font-weight: 400;
   src: url('@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2') format('woff2');
   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
@@ -47,7 +52,7 @@
 @font-face {
   font-family: 'JetBrains Mono';
   font-style: normal;
-  font-display: optional;
+  font-display: swap;
   font-weight: 500;
   src: url('@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2') format('woff2');
   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
@@ -55,7 +60,7 @@
 @font-face {
   font-family: 'JetBrains Mono';
   font-style: normal;
-  font-display: optional;
+  font-display: swap;
   font-weight: 600;
   src: url('@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2') format('woff2');
   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
@@ -64,7 +69,7 @@
 @font-face {
   font-family: 'Inter';
   font-style: normal;
-  font-display: optional;
+  font-display: swap;
   font-weight: 400;
   src: url('@fontsource/inter/files/inter-latin-400-normal.woff2') format('woff2');
   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
@@ -72,7 +77,7 @@
 @font-face {
   font-family: 'Inter';
   font-style: normal;
-  font-display: optional;
+  font-display: swap;
   font-weight: 500;
   src: url('@fontsource/inter/files/inter-latin-500-normal.woff2') format('woff2');
   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
