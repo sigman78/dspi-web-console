@@ -2,8 +2,9 @@
 # DSPi web console -- Linux USB access setup.
 #
 # WebUSB can list the DSPi without any setup, but opening it requires write
-# access to its /dev/bus/usb node. This installs a udev rule granting that to
-# the locally-logged-in user, plus the snap/plugdev fallbacks some distros need.
+# access to its /dev/bus/usb node. This installs a udev rule granting that
+# (uaccess for the active session, with a MODE 0666 fallback), plus the snap
+# raw-usb fallback some distros need.
 #
 #   curl -fsSL https://<console-host>/setup-linux.sh | sh
 #
@@ -14,9 +15,11 @@
 set -eu
 
 RULES_PATH=/etc/udev/rules.d/70-dspi.rules
-RULES_CONTENT='# DSPi USB DSP -- grants the active local user access so WebUSB can open it.
-SUBSYSTEM=="usb", ATTR{idVendor}=="2e8a", ATTR{idProduct}=="feaa", TAG+="uaccess", MODE="0660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTR{idVendor}=="2e8b", ATTR{idProduct}=="feaa", TAG+="uaccess", MODE="0660", GROUP="plugdev"'
+RULES_CONTENT='# DSPi USB DSP -- open access on just this board so WebUSB can open it.
+# uaccess grants the active local session; MODE 0666 is the fallback for systems
+# where uaccess does not apply (e.g. Arch, which has no plugdev group).
+SUBSYSTEM=="usb", ATTR{idVendor}=="2e8a", ATTR{idProduct}=="feaa", TAG+="uaccess", MODE="0666"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2e8b", ATTR{idProduct}=="feaa", TAG+="uaccess", MODE="0666"'
 
 info() { printf '  %s\n' "$1"; }
 fail() {
@@ -61,12 +64,11 @@ main() {
         info "systemd-logind: present (uaccess tag will grant per-session access)"
     else
         logind=0
-        info "systemd-logind: absent (relying on the plugdev group fallback)"
+        info "systemd-logind: absent (relying on the MODE 0666 fallback)"
     fi
 
     as_root=0
     if [ "$(id -u)" -eq 0 ]; then as_root=1; fi
-    user="${SUDO_USER:-$(id -un)}"
 
     need_rule=0
     if [ -f "$RULES_PATH" ] && [ "$(cat "$RULES_PATH")" = "$RULES_CONTENT" ]; then
@@ -77,20 +79,6 @@ main() {
     else
         need_rule=1
         info "udev rule: missing -- will install $RULES_PATH"
-    fi
-
-    need_group=0
-    if [ "$logind" -eq 0 ] && [ "$user" != "root" ]; then
-        if getent group plugdev >/dev/null 2>&1; then
-            if id -nG "$user" | tr ' ' '\n' | grep -qx plugdev; then
-                info "plugdev group: $user is a member"
-            else
-                need_group=1
-                info "plugdev group: will add $user (fallback path, no logind)"
-            fi
-        else
-            info "plugdev group: does not exist on this system -- skipping"
-        fi
     fi
 
     need_snap=""
@@ -115,7 +103,7 @@ main() {
         info "device: DSPi detected"
     fi
 
-    if [ "$need_rule" -eq 0 ] && [ "$need_group" -eq 0 ] && [ -z "$need_snap" ]; then
+    if [ "$need_rule" -eq 0 ] && [ -z "$need_snap" ]; then
         echo
         if [ "$dev_found" -eq 1 ] && [ "$dev_accessible" -eq 0 ] && [ "$as_root" -eq 0 ]; then
             echo "Everything is installed but the device node is still restricted."
@@ -140,13 +128,8 @@ main() {
         printf '%s\n' "$RULES_CONTENT" | $SUDO tee "$RULES_PATH" >/dev/null
         echo "Installed $RULES_PATH"
         $SUDO udevadm control --reload
-        $SUDO udevadm trigger --subsystem-match=usb
+        $SUDO udevadm trigger --action=add --subsystem-match=usb
         echo "Reloaded udev rules."
-    fi
-
-    if [ "$need_group" -eq 1 ]; then
-        $SUDO usermod -aG plugdev "$user"
-        echo "Added $user to the plugdev group (takes effect after re-login)."
     fi
 
     for s in $need_snap; do
