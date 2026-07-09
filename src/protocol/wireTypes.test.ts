@@ -142,4 +142,26 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     });
   });
 
+  it('InputConfig round-trips the multi-SPDIF fields at bytes 8-10', () => {
+    const bytes = Codec.encode(Wire.InputConfig, {
+      inputSource: 1, spdifRxPin: 5, i2sRxPin: 0, i2sInputRate: 1, i2sInputChannels: 0,
+      i2sRxPinExt: [0, 0, 0],
+      spdifRxPinExt: [16, 17],
+      spdifRxEnabledExtP1: 2, // mask+1 -> mask 1 (SPDIF2 enabled)
+    });
+    expect(bytes[8]).toBe(16);
+    expect(bytes[9]).toBe(17);
+    expect(bytes[10]).toBe(2);
+    const back = Codec.decode(Wire.InputConfig, bytes);
+    expect(back.spdifRxPinExt).toEqual([16, 17]);
+    expect(back.spdifRxEnabledExtP1).toBe(2);
+  });
+
+  it('GetSpdifInputConfig (0xEF) decodes [count, enableMask, pin0, pin1, pin2]', () => {
+    expect(Codec.sizeOf(Wire.SpdifInputConfig)).toBe(5);
+    const bytes = Uint8Array.from([3, 0b011, 5, 16, 17]);
+    const cfg = Codec.decode(Wire.SpdifInputConfig, bytes);
+    expect(cfg).toEqual({ count: 3, enableMask: 0b011, pins: [5, 16, 17] });
+  });
+
 });

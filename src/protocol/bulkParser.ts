@@ -37,6 +37,9 @@ export interface WireInputConfig {
   i2sRxPins: number[];          // length 4, pair 0 first (0 = unset)
   i2sInputRateEnc: number;      // 0=44100, 1=48000, 2=96000
   i2sInputChannels: number;     // 2/4/6/8 (0 = absent)
+  // fw 1.1.5+ multi-SPDIF fields; zeros on older packets ("absent" convention).
+  spdifRxPinExt: number[];      // length 2, GPIOs for SPDIF2/3 (0 = absent/keep-live)
+  spdifRxEnabledExtP1: number;  // enable mask + 1 (0 = absent)
 }
 export interface WireLgSoundSync { enabled: boolean; present: boolean; volume: number; muted: boolean; }
 export interface WireUserVolume  { volumeDb: number; mute: boolean; }
@@ -239,6 +242,8 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
           i2sRxPins: [w.i2sRxPin, ...w.i2sRxPinExt],
           i2sInputRateEnc: w.i2sInputRate,
           i2sInputChannels: w.i2sInputChannels,
+          spdifRxPinExt: [...w.spdifRxPinExt],
+          spdifRxEnabledExtP1: w.spdifRxEnabledExtP1,
         };
       })()
     : def.inputConfig;
@@ -364,7 +369,7 @@ export function defaultBulkParams(opts: {
     leveller: { enabled: false, speed: 0, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40, detectorMask: 0xFF, applyMask: 0xFF },
     inputPreampsDb: Array.from({ length: Wire.Const16.NUM_INPUTS }, () => 0),
     masterVolumeDb: 0,
-    inputConfig: { source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0 },
+    inputConfig: { source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0 },
     lgSoundSync: { enabled: false, present: false, volume: 0, muted: false },
     userVolume:  { volumeDb: 0, mute: false },
     dacHwMute:   { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
@@ -459,12 +464,14 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
   // V7-V16 tail -- written only when the target version includes the section.
   if (writeVersion >= 7) {
     Wire.InputConfig.write(w, {
-      inputSource:      bulk.inputConfig.source,
-      spdifRxPin:       bulk.inputConfig.spdifRxPin,
-      i2sRxPin:         bulk.inputConfig.i2sRxPins[0] ?? 0,
-      i2sInputRate:     bulk.inputConfig.i2sInputRateEnc,
-      i2sInputChannels: bulk.inputConfig.i2sInputChannels,
-      i2sRxPinExt:      bulk.inputConfig.i2sRxPins.slice(1, 4),
+      inputSource:         bulk.inputConfig.source,
+      spdifRxPin:          bulk.inputConfig.spdifRxPin,
+      i2sRxPin:            bulk.inputConfig.i2sRxPins[0] ?? 0,
+      i2sInputRate:        bulk.inputConfig.i2sInputRateEnc,
+      i2sInputChannels:    bulk.inputConfig.i2sInputChannels,
+      i2sRxPinExt:         bulk.inputConfig.i2sRxPins.slice(1, 4),
+      spdifRxPinExt:       bulk.inputConfig.spdifRxPinExt,
+      spdifRxEnabledExtP1: bulk.inputConfig.spdifRxEnabledExtP1,
     });
   }
   if (writeVersion >= 8) {

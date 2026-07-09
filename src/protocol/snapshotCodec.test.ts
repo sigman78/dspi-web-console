@@ -124,7 +124,7 @@ describe('snapshotCodec — 1.1.4 sections', () => {
   it('maps the V10 tail into nullable domain sections', () => {
     const bulk = makeBulkObject({
       formatVersion: 10, payloadLength: WireNS.BulkSizes.V10,
-      inputConfig: { source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0 },
+      inputConfig: { source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0 },
       lgSoundSync: { enabled: true, present: false, volume: 30, muted: false },
       userVolume:  { volumeDb: -4, mute: false },
       dacHwMute:   { enabled: true, activeLow: true, pin: 11, holdMs: 10, releaseMs: 20 },
@@ -171,7 +171,7 @@ const hw16 = createHardwareProfile(PlatformType.RP2350, 16);
 function bulkWithSource(source: AudioInputSource, overrides: Partial<Parameters<typeof makeBulkObject>[0]> = {}) {
   return makeBulkObject({
     formatVersion: 16, payloadLength: WireNS.BULK_SIZE_V16,
-    inputConfig: { source, spdifRxPin: 5, i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 1, i2sInputChannels: 8 },
+    inputConfig: { source, spdifRxPin: 5, i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 1, i2sInputChannels: 8, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0 },
     ...overrides,
   });
 }
