@@ -1,5 +1,6 @@
 import { mount } from 'svelte';
 import './app.css';
+import 'virtual:palette.css';
 import App from './App.svelte';
 import {
   activeSession,
@@ -8,11 +9,6 @@ import {
 } from './state';
 import { bootMock, bootReal, registerNavigatorReconnect } from './runtime';
 import { Log } from './utils';
-import { paletteCSS } from './styles/palette';
-
-const paletteStyle = document.createElement('style');
-paletteStyle.textContent = paletteCSS();
-document.head.appendChild(paletteStyle);
 
 restoreSettings();
 startSettingsPersistence();
