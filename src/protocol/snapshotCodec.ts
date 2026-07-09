@@ -24,10 +24,6 @@ export function narrowInputSource(s: number): domain.AudioInputSource {
   }
 }
 
-function narrowPlatform(p: number): domain.PlatformType {
-  return p === 1 ? domain.PlatformType.RP2350 : domain.PlatformType.RP2040;
-}
-
 function narrowCrossfeedPreset(p: number): domain.CrossfeedPreset {
   switch (p) {
     case domain.CrossfeedPreset.Preset1:
@@ -118,14 +114,7 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
   }
 
   return {
-    platform: {
-      type: narrowPlatform(bulk.platformId),
-      name: hardware.name,
-      outputCount: hardware.outputCount,
-      totalChannelCount: hardware.totalChannelCount,
-      pdmOutputIndex: hardware.pdmOutputIndex,
-      channelModel: hardware.channelModel,
-    },
+    platform: domain.pickSummary(hardware),
     bypass: bulk.bypass,
     masterPreampDb: bulk.preampDb,
     inputPreampDb: bulk.inputPreampsDb.slice(0, hardware.inputs.length),

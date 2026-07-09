@@ -10,18 +10,6 @@ export const PlatformType = {
 } as const;
 export type PlatformType = (typeof PlatformType)[keyof typeof PlatformType];
 
-export interface PlatformInfo {
-  type: PlatformType;
-  name: string;
-  outputCount: number;
-  totalChannelCount: number;
-  pdmOutputIndex: number;
-  // Channel-model generation of the connected device (see ChannelFamily below).
-  // Rides the snapshot so pure-domain helpers (pin rules) can follow the
-  // firmware generation without reaching into protocol capabilities.
-  channelModel: ChannelFamily;
-}
-
 export interface I2sConfig {
   outputSlotTypes: [number, number, number, number];
   bckPin: number;
@@ -30,7 +18,20 @@ export interface I2sConfig {
   mckMultiplierEncoded: number;
 }
 
-export interface HardwareProfile extends PlatformInfo {
+// The full per-platform layout and the single source of truth for platform
+// identity. The small identity/summary fields at the top are what the snapshot
+// copies out (via `pickSummary` in snapshot.ts) so pure-domain helpers (pin
+// rules) can follow the firmware generation without dragging the channel/slot/
+// pin maps below through the mirror.
+export interface HardwareProfile {
+  type: PlatformType;
+  name: string;
+  outputCount: number;
+  totalChannelCount: number;
+  pdmOutputIndex: number;
+  // Channel-model family of the connected device (see ChannelFamily below).
+  channelModel: ChannelFamily;
+
   inputChannels: readonly ChannelIdValue[];
   outputChannels: readonly ChannelIdValue[];
   inputs: readonly ChannelLayout[];
