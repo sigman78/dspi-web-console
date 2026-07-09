@@ -40,6 +40,11 @@ export interface MockOptions {
   // source set to I2S and this many active input channels (2/4/6/8) instead of
   // the default USB stereo, so the multichannel UI has more than a pair to show.
   i2sInputChannels?: number;
+  // Imaginary multi-SPDIF demo (fw 1.1.5+, RP2350 only): boot with this many
+  // selectable S/PDIF inputs enabled (1 = just the always-on input 1; 2/3
+  // additionally enable input 2/3 on their default GPIOs) so the source
+  // picker has more than one SPDIF input to show.
+  spdifInputsEnabled?: number;
 }
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
@@ -221,6 +226,22 @@ export class MockTransport implements DspTransport {
           this.#mockState.channelNames[slot] = defaultInputName(AudioInputSource.I2s, slot);
         }
       }
+
+      // Multi-SPDIF (fw 1.1.5+) is RP2350-only, mirroring capabilities'
+      // multiSpdifInputs gate. Seed inputs 2/3 on collision-free GPIOs,
+      // "present but disabled" by default so the picker has real pins to
+      // offer; RP2040 stays single-input (fields stay at the all-zero
+      // "absent" default from defaultBulkParams).
+      if (this.#platform === PlatformType.RP2350) {
+        this.#mockState.inputConfig.spdifRxPinExt = [20, 21];
+        this.#mockState.inputConfig.spdifRxEnabledExtP1 = 1;   // mask 0: both disabled
+        if (opts.spdifInputsEnabled && opts.spdifInputsEnabled > 1) {
+          const n = Math.min(3, Math.max(1, opts.spdifInputsEnabled | 0));
+          let mask = 0;
+          for (let i = 2; i <= n; i++) mask |= 1 << (i - 2);
+          this.#mockState.inputConfig.spdifRxEnabledExtP1 = mask + 1;
+        }
+      }
     }
   }
 
@@ -390,11 +411,54 @@ export class MockTransport implements DspTransport {
         });
       case WireCmd.GetSpdifRxChStatus.code:
         return new Uint8Array(Wire.SPDIF_RX_CH_STATUS_LEN);
-      case WireCmd.GetSpdifRxPin.code:
-        return Codec.encode(Codec.u8, this.#mockState.inputConfig.spdifRxPin);
-      case WireCmd.SetSpdifRxPin.code:
-        this.#mockState.inputConfig.spdifRxPin = value & 0xFF;
-        return new Uint8Array([0x00]); // PinConfigResult: ok
+      case WireCmd.GetSpdifRxPin.code: {
+        const index = value & 0xFF;
+        const gpio = index === 0
+          ? this.#mockState.inputConfig.spdifRxPin
+          : (this.#mockState.inputConfig.spdifRxPinExt[index - 1] ?? 0);
+        return Codec.encode(Codec.u8, gpio);
+      }
+      case WireCmd.SetSpdifRxPin.code: {
+        const index = (value >> 8) & 0xFF;
+        const gpio = value & 0xFF;
+        if (index >= this.#spdifInputCount()) return new Uint8Array([0x03]);   // InvalidOutput: no such input
+        if (!this.#isValidGpio(gpio)) return new Uint8Array([0x01]);           // InvalidPin
+        if (this.#pinInUse(gpio, 0xFF)) return new Uint8Array([0x02]);         // PinInUse
+        if (index === 0) this.#mockState.inputConfig.spdifRxPin = gpio;
+        else this.#mockState.inputConfig.spdifRxPinExt[index - 1] = gpio;
+        return new Uint8Array([0x00]);
+      }
+      // Enable/disable a selectable S/PDIF input (index 1..2; index 0 -- always
+      // on -- accepts enable as a no-op and refuses disable). Updates the
+      // mask+1-encoded spdifRxEnabledExtP1 field so it rides the bulk packet.
+      case WireCmd.SetSpdifInputEnable.code: {
+        const index = (value >> 8) & 0xFF;
+        const enable = (value & 0xFF) !== 0;
+        if (index === 0) return new Uint8Array([enable ? 0x00 : 0x03]);
+        if (index >= this.#spdifInputCount()) return new Uint8Array([0x03]);  // InvalidOutput
+        const cfg = this.#mockState.inputConfig;
+        const bit = 1 << (index - 1);
+        let mask = cfg.spdifRxEnabledExtP1 === 0 ? 0 : cfg.spdifRxEnabledExtP1 - 1;
+        if (enable) {
+          const pin = cfg.spdifRxPinExt[index - 1];
+          if (!this.#isValidGpio(pin)) return new Uint8Array([0x01]);
+          if (this.#pinInUse(pin, 0xFF)) return new Uint8Array([0x02]);       // PinInUse
+          mask |= bit;
+        } else {
+          mask &= ~bit;
+        }
+        cfg.spdifRxEnabledExtP1 = mask + 1;
+        return new Uint8Array([0x00]);
+      }
+      case WireCmd.GetSpdifInputConfig.code: {
+        const cfg = this.#mockState.inputConfig;
+        const mask = cfg.spdifRxEnabledExtP1 === 0 ? 0 : cfg.spdifRxEnabledExtP1 - 1;
+        return Codec.encode(Wire.SpdifInputConfig, {
+          count: this.#spdifInputCount(),
+          enableMask: 1 | (mask << 1),
+          pins: [cfg.spdifRxPin, cfg.spdifRxPinExt[0] ?? 0, cfg.spdifRxPinExt[1] ?? 0],
+        });
+      }
       case WireCmd.GetInputRate.code: {
         // {current pipeline Hz, selected I2S input Hz}
         const out = new Uint8Array(8);
@@ -986,6 +1050,12 @@ export class MockTransport implements DspTransport {
     return this.#platform === PlatformType.RP2350 ? 4 : 2;
   }
 
+  // Selectable S/PDIF RX inputs sharing the one receiver (fw 1.1.5+ RP2350
+  // only). Mirrors capabilities.ts's multiSpdifInputs gate.
+  #spdifInputCount(): number {
+    return this.#isV16 && this.#platform === PlatformType.RP2350 ? 3 : 1;
+  }
+
   #isValidGpio(pin: number): boolean {
     // Debug UART pin: GPIO 12 through V10 only. Fw 1.1.5 (V16) removed the
     // dedicated debug UART, freeing 16/17 for general use.
@@ -1012,6 +1082,12 @@ export class MockTransport implements DspTransport {
       const rxPins = this.#mockState.inputConfig.i2sRxPins;
       for (let p = 0; p < activePairs; p++) if (rxPins[p] === pin) return true;
     }
+    // S/PDIF RX: input 1 is always claimed; inputs 2/3 only while enabled
+    // (mirrors the I2S RX loop above).
+    const spdif = this.#mockState.inputConfig;
+    if (pin === spdif.spdifRxPin) return true;
+    const spdifExtMask = spdif.spdifRxEnabledExtP1 === 0 ? 0 : spdif.spdifRxEnabledExtP1 - 1;
+    for (let i = 0; i < 2; i++) if ((spdifExtMask & (1 << i)) !== 0 && spdif.spdifRxPinExt[i] === pin) return true;
     return false;
   }
 

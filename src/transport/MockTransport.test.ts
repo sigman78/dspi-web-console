@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MockTransport } from './MockTransport';
 import { DspDevice } from '@/device/DspDevice';
-import { WireCmd, Wire, parseBufferStats, parseSystemStatus, parseBulkParams, buildBulkParams, NotifyEventId } from '@/protocol';
+import { WireCmd, Wire, parseBufferStats, parseSystemStatus, parseBulkParams, buildBulkParams, NotifyEventId, PinConfigResult } from '@/protocol';
 import { Codec } from '@/utils';
 import { FilterType, MasterVolumeMode, AudioInputSource, ChannelId } from '@/domain';
 
@@ -382,5 +382,79 @@ describe('MockTransport — imaginary I2S multichannel demo mode', () => {
     await t.open();
     const p = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
     expect(p.inputConfig.source).toBe(AudioInputSource.Usb);
+  });
+});
+
+describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
+  async function v18Mock(platform: 'rp2040' | 'rp2350' = 'rp2350', spdifInputsEnabled?: number): Promise<MockTransport> {
+    const t = new MockTransport({
+      platform, wireVersion: 18, fwVersion: { major: 1, minor: 1, patch: 5 },
+      ...(spdifInputsEnabled != null ? { spdifInputsEnabled } : {}),
+    });
+    await t.open();
+    return t;
+  }
+
+  it('seeds inputs 2/3 present-but-disabled on RP2350; stays absent on RP2040', async () => {
+    const rp2350 = parseBulkParams(await (await v18Mock('rp2350')).ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    expect(rp2350.inputConfig.spdifRxPinExt).toEqual([20, 21]);
+    expect(rp2350.inputConfig.spdifRxEnabledExtP1).toBe(1);  // mask 0: both disabled but present
+
+    const rp2040 = parseBulkParams(await (await v18Mock('rp2040')).ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    expect(rp2040.inputConfig.spdifRxPinExt).toEqual([0, 0]);
+    expect(rp2040.inputConfig.spdifRxEnabledExtP1).toBe(0);
+  });
+
+  it('the ?spdif=3 demo option pre-enables inputs 2 and 3', async () => {
+    const t = await v18Mock('rp2350', 3);
+    const cfg = Codec.decode(Wire.SpdifInputConfig, await t.ctrlIn(WireCmd.GetSpdifInputConfig.code, 0, 5));
+    expect(cfg.enableMask).toBe(0b111);
+  });
+
+  it('SetSpdifRxPin / GetSpdifRxPin round-trip per instance', async () => {
+    const t = await v18Mock();
+    for (const [index, gpio] of [[0, 15], [1, 22], [2, 26]] as const) {
+      const status = await t.ctrlIn(WireCmd.SetSpdifRxPin.code, (index << 8) | gpio, 1);
+      expect(status[0]).toBe(PinConfigResult.Success);
+      const got = await t.ctrlIn(WireCmd.GetSpdifRxPin.code, index, 1);
+      expect(got[0]).toBe(gpio);
+    }
+  });
+
+  it('rejects an out-of-range instance with InvalidOutput', async () => {
+    const t = await v18Mock();
+    const status = await t.ctrlIn(WireCmd.SetSpdifRxPin.code, (3 << 8) | 15, 1);  // only instances 0..2 exist
+    expect(status[0]).toBe(PinConfigResult.InvalidOutput);
+  });
+
+  it('rejects the extended instances on a single-input platform (RP2040)', async () => {
+    const t = await v18Mock('rp2040');
+    const status = await t.ctrlIn(WireCmd.SetSpdifRxPin.code, (1 << 8) | 15, 1);
+    expect(status[0]).toBe(PinConfigResult.InvalidOutput);
+  });
+
+  it('SetSpdifInputEnable flips the enable bit; GetSpdifInputConfig reflects count/mask/pins', async () => {
+    const t = await v18Mock();
+    const status = await t.ctrlIn(WireCmd.SetSpdifInputEnable.code, (1 << 8) | 1, 1);  // enable input 2
+    expect(status[0]).toBe(PinConfigResult.Success);
+
+    const cfg = Codec.decode(Wire.SpdifInputConfig, await t.ctrlIn(WireCmd.GetSpdifInputConfig.code, 0, 5));
+    expect(cfg.count).toBe(3);
+    expect(cfg.enableMask).toBe(0b011);   // bit0 (input1, always set) + bit1 (input2)
+    expect(cfg.pins).toEqual([5, 20, 21]);
+  });
+
+  it('disabling instance 0 (the always-on input) is InvalidOutput', async () => {
+    const t = await v18Mock();
+    const status = await t.ctrlIn(WireCmd.SetSpdifInputEnable.code, (0 << 8) | 0, 1);
+    expect(status[0]).toBe(PinConfigResult.InvalidOutput);
+  });
+
+  it('enabling an input whose pin collides with a reserved pin is PinInUse', async () => {
+    const t = await v18Mock();
+    // Claim GPIO 20 (input 2's default pin) for an output pin first.
+    await t.ctrlIn(WireCmd.SetOutputPin.code, (20 << 8) | 0, 1);
+    const status = await t.ctrlIn(WireCmd.SetSpdifInputEnable.code, (1 << 8) | 1, 1);
+    expect(status[0]).toBe(PinConfigResult.PinInUse);
   });
 });

@@ -2,9 +2,10 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import PinSelect from './PinSelect.svelte';
+  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { connection } from '@/state';
-  import { stageInputSource, stageSpdifRxPin, stageInputRate, stageI2sRxPin, stageI2sInputChannels } from '@/runtime';
-  import { AudioInputSource, SpdifInputState, availablePinsFor, I2S_INPUT_RATES_HZ, liveCsPinConfigs } from '@/domain';
+  import { stageInputSource, stageSpdifRxPin, stageSpdifRxPinExt, stageSpdifInputEnabled, stageInputRate, stageI2sRxPin, stageI2sInputChannels } from '@/runtime';
+  import { AudioInputSource, isSpdifSource, SpdifInputState, availablePinsFor, I2S_INPUT_RATES_HZ, liveCsPinConfigs } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -15,12 +16,16 @@
   const liveSource = $derived(inputConfig?.source ?? AudioInputSource.Usb);
   const source = $derived(s.staging.valueOf('inputSource', liveSource));
   const sourcePending = $derived(source !== liveSource);
-  const isSpdif = $derived(source === AudioInputSource.Spdif);
+  const isSpdif = $derived(isSpdifSource(source));
   const isI2s = $derived(source === AudioInputSource.I2s);
   const features = $derived(s.device.capabilities.features);
   const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
   const effSpdifRxPin = $derived(inputConfig ? s.staging.valueOf('spdifRxPin', inputConfig.spdifRxPin) : 0);
+  // True once any optional S/PDIF input is enabled -- promotes input 1's label from "S/PDIF" to "S/PDIF 1".
+  const anyOptionalEnabled = $derived(inputConfig?.spdifExtEnabled.some(Boolean) ?? false);
+  // Optional inputs the platform supports beyond input 1 (0 unless multiSpdifInputs).
+  const spdifExtCount = $derived(Math.max(0, s.device.capabilities.spdifInputCount - 1));
   const effRate = $derived(inputConfig ? s.staging.valueOf('inputRate', inputConfig.i2sInputRateHz) : 0);
   // Configured count (0 = firmware default of 2); pairs 0..activePairs-1 show a pin select.
   const liveChannels = $derived(inputConfig?.i2sInputChannels || 2);
@@ -31,11 +36,21 @@
     return s.staging.valueOf(`i2sRxPin:${pair}`, inputConfig?.i2sRxPins[pair] ?? 0);
   }
 
-  const SOURCE_LABELS: Record<number, string> = {
-    [AudioInputSource.Usb]:   'USB',
-    [AudioInputSource.Spdif]: 'S/PDIF',
-    [AudioInputSource.I2s]:   'I2S',
-  };
+  function effSpdifExtEnabled(i: number): boolean {
+    return s.staging.valueOf(`spdifEnable:${i}`, inputConfig?.spdifExtEnabled[i] ?? false);
+  }
+
+  function effSpdifRxPinExt(i: number): number {
+    return s.staging.valueOf(`spdifRxPinExt:${i}`, inputConfig?.spdifRxPinExt[i] ?? 0);
+  }
+
+  const SOURCE_LABELS = $derived<Record<number, string>>({
+    [AudioInputSource.Usb]:    'USB',
+    [AudioInputSource.Spdif]:  anyOptionalEnabled ? 'S/PDIF 1' : 'S/PDIF',
+    [AudioInputSource.Spdif2]: 'S/PDIF 2',
+    [AudioInputSource.Spdif3]: 'S/PDIF 3',
+    [AudioInputSource.I2s]:    'I2S',
+  });
 
   const STATE_LABELS: Record<number, string> = {
     [SpdifInputState.Inactive]:  'INACTIVE',
@@ -84,7 +99,25 @@
           class:staged={s.staging.has('inputSource') && source === AudioInputSource.Spdif}
           onclick={() => stageInputSource(s, AudioInputSource.Spdif)}
           disabled={!connected || source === AudioInputSource.Spdif}
-        >S/PDIF</button>
+        >{SOURCE_LABELS[AudioInputSource.Spdif]}</button>
+        {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[0]}
+          <button
+            class="chip"
+            class:on={source === AudioInputSource.Spdif2}
+            class:staged={s.staging.has('inputSource') && source === AudioInputSource.Spdif2}
+            onclick={() => stageInputSource(s, AudioInputSource.Spdif2)}
+            disabled={!connected || source === AudioInputSource.Spdif2}
+          >{SOURCE_LABELS[AudioInputSource.Spdif2]}</button>
+        {/if}
+        {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[1]}
+          <button
+            class="chip"
+            class:on={source === AudioInputSource.Spdif3}
+            class:staged={s.staging.has('inputSource') && source === AudioInputSource.Spdif3}
+            onclick={() => stageInputSource(s, AudioInputSource.Spdif3)}
+            disabled={!connected || source === AudioInputSource.Spdif3}
+          >{SOURCE_LABELS[AudioInputSource.Spdif3]}</button>
+        {/if}
         {#if features.i2sInput}
           <button
             class="chip"
@@ -110,7 +143,7 @@
     {/if}
 
     {#if isSpdif}
-      <div class="subhdr">S/PDIF RX PIN</div>
+      <div class="subhdr">{anyOptionalEnabled ? 'S/PDIF 1 RX PIN' : 'S/PDIF RX PIN'}</div>
       <div class="pinrow">
         <span class="stage-wrap" class:staged={s.staging.has('spdifRxPin')} title={s.staging.has('spdifRxPin') ? `device: GP${inputConfig.spdifRxPin}` : undefined}>
           <PinSelect
@@ -122,6 +155,36 @@
           />
         </span>
       </div>
+
+      {#if features.multiSpdifInputs}
+        {#each Array.from({ length: spdifExtCount }, (_, i) => i) as i (i)}
+          <div class="subhdr">S/PDIF {i + 2}</div>
+          <div class="pinrow">
+            <span class="stage-wrap" class:staged={s.staging.has(`spdifEnable:${i}`)} title={s.staging.has(`spdifEnable:${i}`) ? `device: ${inputConfig.spdifExtEnabled[i] ? 'ON' : 'OFF'}` : undefined}>
+              <ToggleSwitch
+                size="sm"
+                checked={effSpdifExtEnabled(i)}
+                disabled={!connected}
+                ariaLabel={effSpdifExtEnabled(i) ? `Disable S/PDIF ${i + 2} input` : `Enable S/PDIF ${i + 2} input`}
+                onChange={() => stageSpdifInputEnabled(s, i, !effSpdifExtEnabled(i))}
+              />
+            </span>
+          </div>
+          {#if effSpdifExtEnabled(i)}
+            <div class="pinrow">
+              <span class="stage-wrap" class:staged={s.staging.has(`spdifRxPinExt:${i}`)} title={s.staging.has(`spdifRxPinExt:${i}`) ? `device: GP${inputConfig.spdifRxPinExt[i] ?? 0}` : undefined}>
+                <PinSelect
+                  value={effSpdifRxPinExt(i)}
+                  candidates={availablePinsFor(snap.platform.type, overlaySnap, effSpdifRxPinExt(i), ctrlPins)}
+                  ariaLabel={`S/PDIF ${i + 2} RX GPIO pin`}
+                  disabled={!connected}
+                  onChange={(p) => stageSpdifRxPinExt(s, i, p)}
+                />
+              </span>
+            </div>
+          {/if}
+        {/each}
+      {/if}
 
       <div class="subhdr">S/PDIF RX STATUS</div>
       {#if spdifStatus}
