@@ -1,32 +1,62 @@
 <script module lang="ts">
+  import { SvelteMap } from 'svelte/reactivity';
+  import type { ChannelId } from '@/domain';
+
   // Discrete LED VU scale: fixed-colour segments (deep→bright green, then amber,
-  // then coral red) instead of a swept gradient. Segments light up to the level;
-  // the peak-hold marker lingers as one held LED above the fill (see below).
+  // then coral red). The segment DOM is static; which LEDs are lit is driven by
+  // the track's --vu-lit / --vu-peak custom properties (see the .seg CSS).
   const VU_SEGMENTS = 12;
   const AMBER_AT = 0.72; // fraction where the amber band starts
   const RED_AT = 0.9;    // fraction where the red band starts
 
-  const VU_SCALE = Array.from({ length: VU_SEGMENTS }, (_, i) => {
+  const VU_COLORS = Array.from({ length: VU_SEGMENTS }, (_, i) => {
     const mid = (i + 0.5) / VU_SEGMENTS;
-    let on: string;
-    if (mid >= RED_AT) on = 'var(--err)';
-    else if (mid >= AMBER_AT) on = 'var(--warn)';
-    else {
-      // Deep→bright green ramp across the green band (discrete per segment).
-      const f = mid / AMBER_AT;
-      on = `oklch(${(56 + 24 * f).toFixed(1)}% ${(0.13 + 0.06 * f).toFixed(3)} 150)`;
-    }
-    return { lo: i / VU_SEGMENTS, on };
+    if (mid >= RED_AT) return 'var(--err)';
+    if (mid >= AMBER_AT) return 'var(--warn)';
+    // Deep→bright green ramp across the green band (discrete per segment).
+    const f = mid / AMBER_AT;
+    return `oklch(${(56 + 24 * f).toFixed(1)}% ${(0.13 + 0.06 * f).toFixed(3)} 150)`;
   });
 
   // First LED of the red band -- only a held peak that reaches here lingers.
-  const RED_SEG_FROM = VU_SCALE.findIndex((s) => s.on === 'var(--err)');
+  const RED_SEG_FROM = VU_COLORS.findIndex((c) => c === 'var(--err)');
+
+  // Red-peak hold, shared across every meter on the rail. While a channel's
+  // level sits in the red band its held segment + expiry is refreshed here; once
+  // it leaves the band the entry counts down and a SINGLE shared timeout — armed
+  // for the nearest expiry — sweeps it out. Reactive (SvelteMap) so each row's
+  // marker derives straight off its own entry with no per-row setTimeout.
+  const RED_HOLD_MS = 1000;
+  const redHolds = new SvelteMap<ChannelId, { seg: number; until: number }>();
+  let sweepTimer = 0;
+
+  function sweepRedHolds(): void {
+    clearTimeout(sweepTimer);
+    sweepTimer = 0;
+    const now = performance.now();
+    let next = Infinity;
+    for (const [id, hold] of redHolds) {
+      if (hold.until <= now) redHolds.delete(id);
+      else next = Math.min(next, hold.until);
+    }
+    if (next < Infinity) sweepTimer = window.setTimeout(sweepRedHolds, next - now);
+  }
+
+  // Refresh a channel's red hold to the running-max segment and a fresh expiry.
+  function armRedHold(id: ChannelId, seg: number): void {
+    redHolds.set(id, { seg, until: performance.now() + RED_HOLD_MS });
+    if (!sweepTimer) sweepRedHolds();
+  }
+
+  function releaseRedHold(id: ChannelId): void {
+    if (redHolds.delete(id)) sweepRedHolds();
+  }
 </script>
 
 <script lang="ts">
   import { untrack } from 'svelte';
   import { chKey } from '@/styles/palette';
-  import { CHANNEL_NAME_MAX_LEN, type ChannelId } from '@/domain';
+  import { CHANNEL_NAME_MAX_LEN } from '@/domain';
 
   const {
     name,
@@ -60,34 +90,30 @@
 
   const pct = $derived(Math.max(0, Math.min(1, (levelDb + 60) / 60)));
 
-  // Peak-hold: the meter's high-water mark snaps up with the level, holds at the
-  // max, then simply turns off after the hold window -- no gradual fall. The
-  // release timer is armed only once the level drops below the mark, so the held
-  // LED lingers above the fill as a max-out cue, then clears.
-  const PEAK_HOLD_MS = 1000;
-  let peak = $state(0);
-  let peakTimer = 0;
+  // Fill height as an LED count (0..VU_SEGMENTS); the whole hot path is this one
+  // number pushed to a --vu-lit custom property, so a tick tweaks a single
+  // attribute rather than re-toggling a class on all 12 segment nodes.
+  const litCount = $derived(Math.max(0, Math.min(VU_SEGMENTS, Math.ceil(pct * VU_SEGMENTS))));
 
+  // While the live level is in the red band, keep this channel's shared hold
+  // refreshed to the running-max red segment; the module timer clears it once
+  // the level drops out and the hold window lapses. Depends only on pct (the
+  // map read/write is untracked), so arming can't re-trigger this effect.
   $effect(() => {
-    const p = pct;
-    if (p >= untrack(() => peak)) {
-      // New high-water mark: ride up, cancel any pending release.
-      if (peakTimer) { clearTimeout(peakTimer); peakTimer = 0; }
-      peak = p;
-    } else if (!peakTimer) {
-      // Dropped below the mark: hold it, then turn it off.
-      peakTimer = window.setTimeout(() => { peakTimer = 0; peak = 0; }, PEAK_HOLD_MS);
+    const top = litCount - 1;
+    if (top >= RED_SEG_FROM) {
+      const id = channelId;
+      untrack(() => armRedHold(id, Math.max(top, redHolds.get(id)?.seg ?? -1)));
     }
   });
-  $effect(() => () => { if (peakTimer) clearTimeout(peakTimer); });
+  $effect(() => () => releaseRedHold(channelId));
 
-  // Which LED the held peak sits in. Only a peak that reached the red band
-  // lingers as a floating LED (>= half a segment clear of the fill); green/amber
-  // peaks just track the level with no hold marker.
-  const peakIdx = $derived(Math.min(VU_SEGMENTS - 1, Math.floor(peak * VU_SEGMENTS)));
-  const peakFloating = $derived(
-    peakIdx >= RED_SEG_FROM && peak > pct + 0.5 / VU_SEGMENTS,
-  );
+  // The held red LED, exposed only while it floats ABOVE the current fill (once
+  // the level recedes past it); -1 otherwise, so no marker while it rides the top
+  // of the fill or after the hold clears. SvelteMap keys track per-channel, so
+  // this recomputes only when THIS row's hold changes.
+  const heldSeg = $derived(redHolds.get(channelId)?.seg ?? -1);
+  const peakOut = $derived(heldSeg >= litCount ? heldSeg : -1);
 
   let selectBtn = $state<HTMLButtonElement>();
 
@@ -155,14 +181,12 @@
 </script>
 
 {#snippet meter()}
-  <span class="track" aria-hidden="true">
-    {#each VU_SCALE as seg, i (i)}
-      <span
-        class="seg"
-        class:lit={pct > seg.lo || (peakFloating && i === peakIdx)}
-        class:peak={peakFloating && i === peakIdx}
-        style:--seg-on={seg.on}
-      ></span>
+  <!-- Static segment DOM: each LED's colour and index are set once. A tick only
+       rewrites --vu-lit (fill height) and --vu-peak (held red LED) on the track;
+       CSS lights each segment from those two numbers. -->
+  <span class="track" aria-hidden="true" style:--vu-lit={litCount} style:--vu-peak={peakOut}>
+    {#each VU_COLORS as color, i (i)}
+      <span class="seg" style:--seg-c={color} style:--vu-i={i}></span>
     {/each}
   </span>
 {/snippet}
@@ -306,21 +330,25 @@
     border-radius: 2px;
     background: oklch(0% 0 0 / 0.5);
   }
-  /* Each LED: fixed colour when lit (deep→bright green / amber / red per its
-     scale slot), dark when off, framed by a 1px near-black inset outline. */
+  /* Each LED is flat -- no bevel/outline. Lit/off and the peak glow are derived
+     purely from the track's two numbers (--vu-lit fill height, --vu-peak held
+     LED) against this segment's own index (--vu-i): --on is 1 when this LED sits
+     below the fill, --is-peak is 1 only on the held red LED. The 1px gaps + dark
+     track bezel are the sole separators, so the row reads the same on any bg. */
   .seg {
     flex: 1 1 0;
     min-width: 0;
     border-radius: 1px;
-    background-color: color-mix(in oklab, var(--text) 9%, transparent);
-    box-shadow: inset 0 0 0 1px oklch(0% 0 0 / 0.6);
+    --on: clamp(0, calc(var(--vu-lit) - var(--vu-i)), 1);
+    --is-peak: clamp(0, calc(1 - abs(var(--vu-i) - var(--vu-peak))), 1);
+    --show: max(var(--on), var(--is-peak));
+    background-color: color-mix(in oklab,
+      var(--seg-c) calc(var(--show) * 100%),
+      color-mix(in oklab, var(--text) 9%, transparent));
+    /* Held peak LED lifts with an outer glow; zero-width/transparent otherwise. */
+    box-shadow: 0 0 calc(var(--is-peak) * 5px)
+      color-mix(in oklab, var(--seg-c) calc(var(--is-peak) * 100%), transparent);
     transition: background-color 45ms linear;
-  }
-  .seg.lit { background-color: var(--seg-on); }
-  /* Held peak LED: same colour, lifted with an outer glow so it reads as the
-     lingering max-out marker floating above the fill. */
-  .seg.peak {
-    box-shadow: inset 0 0 0 1px oklch(0% 0 0 / 0.6), 0 0 5px var(--seg-on);
   }
 
   /* Selected: the channel's hue fills the button; text flips to bg contrast.

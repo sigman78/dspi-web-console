@@ -68,3 +68,11 @@ input[type="number"], select, input[type="range"] {
   padding: 0.25rem 0.4rem;
 }
 input[type="number"]:disabled, select:disabled { opacity: var(--dim-disabled); }
+
+/* Segmented VU meter (ChannelRow): registered as <number> so the per-segment
+   lit/peak math (clamp/abs against these) resolves as computed values rather
+   than token substitution. --vu-lit/--vu-peak are set on the track and inherit
+   down to segments; --vu-i is each segment's own index. */
+@property --vu-lit { syntax: '<number>'; inherits: true; initial-value: 0; }
+@property --vu-peak { syntax: '<number>'; inherits: true; initial-value: -1; }
+@property --vu-i { syntax: '<number>'; inherits: false; initial-value: 0; }
