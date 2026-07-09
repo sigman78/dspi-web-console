@@ -2,6 +2,9 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
+  import { loudnessResponse } from '@/components/bode/loudnessCurve';
+  import { centeredDbDomain } from '@/components/bode/dbDomain';
   import { connection } from '@/state';
   import { Proc } from '@/domain';
   import { setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from '@/runtime';
@@ -13,6 +16,11 @@
   const connected = $derived(connection.connected);
   const enabled = $derived(loudness?.enabled ?? false);
   const editable = $derived(connected && enabled);
+
+  const loudCurve = $derived<BodeCurve[]>([
+    { id: 'loudness', points: loudnessResponse(loudness?.refSpl ?? 85, loudness?.intensityPct ?? 0) },
+  ]);
+  const loudRange = $derived(centeredDbDomain([loudCurve[0].points]));
 
   function toggleEnabled() {
     if (!loudness) return;
@@ -30,6 +38,10 @@
       onChange={toggleEnabled}
     />
   {/snippet}
+
+  <div class="graph" class:off={!enabled}>
+    <BodePlot curves={loudCurve} height={96} crosshair={false} yRange={loudRange} />
+  </div>
 
   <div class="grid">
     <LabeledSlider
@@ -57,6 +69,8 @@
 </Panel>
 
 <style>
+  .graph { padding: 10px 12px 0; }
+  .graph.off { opacity: 0.4; }
   .grid {
     padding: 14px;
     display: grid;
