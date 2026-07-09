@@ -759,6 +759,17 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerGate, db);
   }
 
+  // Multichannel leveller masks (fw V18+). detector = inputs feeding the shared
+  // detector; apply = inputs receiving the gain. Bit k = input channel k.
+  async setLevellerMasks(detector: number, apply: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerMasks,
+      { detector: detector & 0xFF, apply: apply & 0xFF });
+  }
+
+  async getLevellerMasks(): Promise<{ detector: number; apply: number }> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetLevellerMasks);
+  }
+
   // v1.1.4 granular surface (unconditional: the V10 floor guarantees support).
 
   // Per-band EQ bypass. wValue = (wireChannel<<8)|band, mirroring getFilter's

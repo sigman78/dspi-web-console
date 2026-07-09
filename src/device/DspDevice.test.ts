@@ -912,6 +912,18 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     expect(await d.getInputSource()).toBe(AudioInputSource.Spdif);
   });
 
+  test('leveller masks round-trip in detector-then-apply order', async () => {
+    const d = await v10();
+    // Default is all-on.
+    expect(await d.getLevellerMasks()).toEqual({ detector: 0xFF, apply: 0xFF });
+    // Asymmetric values prove the byte order (detector first, apply second).
+    await d.setLevellerMasks(0x03, 0x05);
+    expect(await d.getLevellerMasks()).toEqual({ detector: 0x03, apply: 0x05 });
+    // High bit / masking: values above a byte are truncated to u8.
+    await d.setLevellerMasks(0x1FF, 0x80);
+    expect(await d.getLevellerMasks()).toEqual({ detector: 0xFF, apply: 0x80 });
+  });
+
   test('getSpdifRxStatus narrows state + inputSource on V10', async () => {
     const d = await v10();
     await d.setInputSource(AudioInputSource.Spdif);

@@ -158,6 +158,14 @@ export const LevellerConfig = struct({
   gateDb:    f32,
 });
 
+// Live leveller channel masks (fw V18+): payload of REQ_SET/GET_LEVELLER_MASKS
+// (0xDE/0xDF), 2 bytes [detector_mask, apply_mask]. Distinct from the bulk
+// section above; carried as a standalone command so masks can be edited live.
+export const LevellerMasks = struct({
+  detector: u8,
+  apply:    u8,
+});
+
 // Section 13: per-channel preamp (V6+, optional). Full 16-byte on-wire
 // footprint: 8 B data + 8 B reserved. Models the full section size so
 // sequential reads/writes don't require absolute seeks.

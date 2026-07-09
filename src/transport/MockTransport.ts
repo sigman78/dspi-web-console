@@ -134,6 +134,9 @@ export class MockTransport implements DspTransport {
   #masterVolumeMode: MasterVolumeMode = MasterVolumeMode.Independent;
   #savedMasterVolumeDb = 0;
   #mockState: BulkParams;
+  // Live leveller masks (V18+). Not carried by the V16 bulk state, so held
+  // separately as a simple SET/GET loopback (0xDE/0xDF).
+  #levellerMasks = { detector: 0xFF, apply: 0xFF };
 
   // Preset directory + 10-slot snapshots. Directory metadata is its own wire
   // surface, not part of the bulk packet.
@@ -359,6 +362,8 @@ export class MockTransport implements DspTransport {
         return Codec.encode(Codec.f32, this.#mockState.userVolume.volumeDb);
       case WireCmd.GetUserMute.code:
         return Codec.encode(Codec.bool8, this.#mockState.userVolume.mute);
+      case WireCmd.GetLevellerMasks.code:
+        return Codec.encode(Wire.LevellerMasks, this.#levellerMasks);
       case WireCmd.GetInputSource.code:
         return Codec.encode(Codec.u8, this.#mockState.inputConfig.source);
       case WireCmd.GetSpdifRxStatus.code:
@@ -769,6 +774,9 @@ export class MockTransport implements DspTransport {
         return;
       case WireCmd.SetLevellerGate.code:
         this.#mockState.leveller!.gateDb = Codec.decode(Codec.f32, data);
+        return;
+      case WireCmd.SetLevellerMasks.code:
+        this.#levellerMasks = Codec.decode(Wire.LevellerMasks, data);
         return;
 
       case WireCmd.SetChannelName.code: {

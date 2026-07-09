@@ -47,6 +47,7 @@ type CsStatusPayload = {
   lastStatus: number; lastSlot: number; maxBindings: number;
   activeMask: number; slotStatus: number[];
 };
+type LevellerMasksPayload = { detector: number; apply: number };
 
 // Command table
 
@@ -176,6 +177,9 @@ export const WireCmd = {
   SetLevellerMaxGain:    { code: 0xBA, codec: Codec.f32 }   satisfies WriteCmd<number>,
   SetLevellerLookahead:  { code: 0xBC, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
   SetLevellerGate:       { code: 0xBE, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  // Multichannel leveller masks (V18+): payload = [detector_mask, apply_mask].
+  SetLevellerMasks:      { code: 0xDE, codec: Wire.LevellerMasks } satisfies WriteCmd<LevellerMasksPayload>,
+  GetLevellerMasks:      { code: 0xDF, codec: Wire.LevellerMasks } satisfies ReadCmd<LevellerMasksPayload>,
 
   // --- v1.1.4 / working_spdif_input granular surface (docs/HW-DSPUSB.md) ---
   // Per-band EQ bypass: wValue = (channel<<8)|band, 1-byte body.
