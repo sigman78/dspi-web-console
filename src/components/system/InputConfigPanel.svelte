@@ -100,7 +100,7 @@
 
 <Panel code="SY.11" title="INPUT CONFIG">
   {#if inputConfig && snap && overlaySnap}
-    <div class="srcsel">
+    <div class="cfgkvgrid">
       <KV label="SOURCE" value={SOURCE_LABELS[liveSource] ?? 'USB'} />
       <div class="src-btns">
         <button
@@ -116,7 +116,7 @@
           class:staged={s.staging.has('inputSource') && source === AudioInputSource.Spdif}
           onclick={() => stageInputSource(s, AudioInputSource.Spdif)}
           disabled={!connected || source === AudioInputSource.Spdif}
-        >{SOURCE_LABELS[AudioInputSource.Spdif]}</button>
+        >{spdifInputCount > 1 ? 'S/P 1' : 'S/P'}</button>
         {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[0]}
           <button
             class="chip"
@@ -124,7 +124,7 @@
             class:staged={s.staging.has('inputSource') && source === AudioInputSource.Spdif2}
             onclick={() => stageInputSource(s, AudioInputSource.Spdif2)}
             disabled={!connected || source === AudioInputSource.Spdif2}
-          >{SOURCE_LABELS[AudioInputSource.Spdif2]}</button>
+          >S/P 2</button>
         {/if}
         {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[1]}
           <button
@@ -133,7 +133,7 @@
             class:staged={s.staging.has('inputSource') && source === AudioInputSource.Spdif3}
             onclick={() => stageInputSource(s, AudioInputSource.Spdif3)}
             disabled={!connected || source === AudioInputSource.Spdif3}
-          >{SOURCE_LABELS[AudioInputSource.Spdif3]}</button>
+          >S/P 3</button>
         {/if}
         {#if features.i2sInput}
           <button
@@ -260,9 +260,8 @@
 
 <style>
   .cfgkvgrid { padding: 10px 14px 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; }
-  /* SOURCE: current-value KV over a full-width chip row (fits all inputs on one line). */
-  .srcsel { padding: 10px 14px 6px; display: grid; gap: 8px; }
-  .src-btns { display: flex; flex-wrap: wrap; gap: 4px; }
+  .src-btns { display: flex; gap: 4px; }
+  .src-btns button { white-space: nowrap; }
   .pinrow { padding: 6px 14px 6px; }
   .idle { padding: 10px 14px; }
   .pending { padding: 0 14px 8px; color: var(--accent); }
