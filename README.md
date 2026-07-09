@@ -1,6 +1,6 @@
 # DSPi Console Web
 
-A browser-based configurator for the [Weeb Labs DSPi](https://github.com/WeebLabs/DSPi) — no installer, no driver stack, just open a tab and tune.
+A browser-based configurator for the [Weeb Labs DSPi](https://github.com/WeebLabs/DSPi)
 
 Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScript, bundled with Vite).
 
