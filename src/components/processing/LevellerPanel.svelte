@@ -35,7 +35,11 @@
   );
   const activeCount = $derived(s.telemetry.activeInputChannels ?? inputChannels.length);
   const channelCount = $derived(Math.min(Math.max(activeCount, 2), inputChannels.length || 2));
-  const showMasks = $derived(inputChannels.length > 2 && channelCount > 2);
+  // Masks are wire V18 only. V16/V17 firmware (incl. 1.1.5-beta3) carries no
+  // mask bytes, so a toggle would 0xDE-stall and snap back on the next bulk
+  // refresh -- hide the whole block unless the device actually supports it.
+  const masksSupported = $derived(s.device.capabilities.features.levellerMasks);
+  const showMasks = $derived(masksSupported && inputChannels.length > 2 && channelCount > 2);
   const shownChannels = $derived(inputChannels.slice(0, channelCount));
 
   const detectorMask = $derived(lv?.detectorMask ?? 0xFF);

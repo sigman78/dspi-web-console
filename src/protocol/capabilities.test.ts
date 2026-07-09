@@ -66,6 +66,14 @@ describe('deriveCapabilities — V16 feature flags', () => {
     expect(c.features.i2sInput).toBe(true);
     expect(c.features.multichannelInput).toBe(false);
   });
+
+  it('gates leveller channel masks on wire V18 (off for V16/V17, on for V18)', () => {
+    const at = (v: number, len: number) =>
+      deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: v, payloadLength: len, platformId: 1 }).features.levellerMasks;
+    expect(at(16, Wire.BULK_SIZE_V16)).toBe(false);
+    expect(at(17, Wire.BULK_SIZE_V17)).toBe(false);   // 1.1.5-beta3
+    expect(at(18, Wire.BULK_SIZE_V18)).toBe(true);
+  });
 });
 
 describe('deriveCapabilities — metadata + sections', () => {

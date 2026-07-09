@@ -19,14 +19,16 @@ startSettingsPersistence();
 
 const params = new URLSearchParams(location.search);
 const mock = params.get('mock');
-// ?mock=rp2350&fw=115 boots the mock as a V16 / fw 1.1.5 device (default V10 / 1.1.4).
-// ?mock=rp2350&i2s=8 additionally boots it with an imaginary 8-channel I2S input
-// (implies the V16 / 1.1.5 profile) so the multichannel UI can be demoed.
+// ?mock=rp2350&fw=115 boots the mock as the released 1.1.5 device (wire V18 --
+// the full leveller-mask + ADAT surface; default is V10 / 1.1.4).
+// ?mock=rp2350&i2s=8 additionally gives it an imaginary 8-channel I2S input
+// (implies the 1.1.5 profile) so the multichannel UI -- incl. the leveller
+// channel masks, which are V18-only -- can be demoed without hardware.
 const i2sParam = params.get('i2s');
 const i2sInputChannels = i2sParam != null ? Math.min(8, Math.max(2, Number(i2sParam) | 0)) : undefined;
-const wantV16 = params.get('fw') === '115' || (i2sInputChannels != null && i2sInputChannels > 2);
+const want115 = params.get('fw') === '115' || (i2sInputChannels != null && i2sInputChannels > 2);
 const mockOpts = {
-  ...(wantV16 ? { wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } } : {}),
+  ...(want115 ? { wireVersion: 18, fwVersion: { major: 1, minor: 1, patch: 5 } } : {}),
   ...(i2sInputChannels != null ? { i2sInputChannels } : {}),
 };
 

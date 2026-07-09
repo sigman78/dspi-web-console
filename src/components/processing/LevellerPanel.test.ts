@@ -26,12 +26,13 @@ const INPUT_IDS = [
   ChannelId.In3L, ChannelId.In3R, ChannelId.In4L, ChannelId.In4R,
 ];
 
-function makeSession(o: { detectorMask?: number; applyMask?: number; activeInputChannels?: number | null } = {}) {
+function makeSession(o: { detectorMask?: number; applyMask?: number; activeInputChannels?: number | null; levellerMasks?: boolean } = {}) {
   const channels = INPUT_IDS.map((id, i) => ({
     id, name: `In ${i + 1}`, defaultName: `In ${i + 1}`, shortName: `I${i + 1}`,
     bandCount: 12, isOutput: false, filters: [], xoverBands: [],
   }));
   return {
+    device: { capabilities: { features: { levellerMasks: o.levellerMasks ?? true } } },
     telemetry: { activeInputChannels: o.activeInputChannels ?? 8 },
     mirror: {
       current: {
@@ -51,6 +52,14 @@ function renderPanel(session: unknown) {
 }
 
 describe('LevellerPanel — channel masks', () => {
+  test('hides the CHANNELS section on firmware without mask support (pre-V18)', () => {
+    // 8 live inputs but the device is V16/V17 -- masks unsupported, so the whole
+    // block must stay hidden rather than offer toggles that snap back.
+    renderPanel(makeSession({ activeInputChannels: 8, levellerMasks: false }));
+    expect(screen.queryByText('CHANNELS')).toBeNull();
+    expect(screen.queryByText('DETECTOR')).toBeNull();
+  });
+
   test('hides the CHANNELS section when only two inputs are live', () => {
     renderPanel(makeSession({ activeInputChannels: 2 }));
     expect(screen.queryByText('CHANNELS')).toBeNull();

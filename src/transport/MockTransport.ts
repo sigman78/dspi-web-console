@@ -36,7 +36,7 @@ export interface MockOptions {
   // Override the header's payloadLength to simulate a malformed device that
   // reports a truncated payload, exercising the connect truncation guard.
   payloadLength?: number;
-  // Imaginary I2S multichannel input for the demo (V16 only): boot with the
+  // Imaginary I2S multichannel input for the demo (V16+ only): boot with the
   // source set to I2S and this many active input channels (2/4/6/8) instead of
   // the default USB stereo, so the multichannel UI has more than a pair to show.
   i2sInputChannels?: number;
