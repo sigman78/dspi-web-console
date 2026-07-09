@@ -264,8 +264,9 @@
   .pinrow { padding: 6px 14px 6px; }
   .idle { padding: 10px 14px; }
   .pending { padding: 0 14px 8px; color: var(--accent); }
-  /* S/PDIF inputs: one aligned row per selectable input -- title | toggle | pin. */
-  .spdif-grid { padding: 8px 14px 4px; display: grid; grid-template-columns: auto auto 1fr; gap: 8px 12px; align-items: center; }
+  /* S/PDIF inputs: one row per selectable input -- title | toggle | pin --
+     spread across the panel width (title at left, pin at the right edge). */
+  .spdif-grid { padding: 8px 14px 4px; display: grid; grid-template-columns: auto auto auto; justify-content: space-between; row-gap: 12px; column-gap: 12px; align-items: center; }
   .spdif-title { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--text-dim); white-space: nowrap; }
   .spdif-toggle { display: flex; align-items: center; justify-content: center; min-width: 34px; }
   .dash { color: var(--text-faint); }
