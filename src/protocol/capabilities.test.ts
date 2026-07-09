@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { deriveCapabilities, MAX_KNOWN_WIRE } from './capabilities';
 import { Wire } from '@/protocol';
+import { ChannelFamily } from '@/domain';
 
 const fw = (major: number, minor: number, patch: number) => ({ major, minor, patch });
 
@@ -23,13 +24,13 @@ describe('deriveCapabilities — support classification', () => {
   it('classifies a wire version beyond MAX_KNOWN_WIRE as future', () => {
     const c = deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: MAX_KNOWN_WIRE + 1, payloadLength: 6000, platformId: 1 });
     expect(c.support).toBe('future');
-    expect(c.wireGen).toBe(16);
+    expect(c.channelModel).toBe(ChannelFamily.Unified);
   });
 
   it('classifies V16 (1.1.5 unified channel model) as supported', () => {
     const c = deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 16, payloadLength: Wire.BULK_SIZE_V16, platformId: 1 });
     expect(c.support).toBe('supported');
-    expect(c.wireGen).toBe(16);
+    expect(c.channelModel).toBe(ChannelFamily.Unified);
     expect(c.sections.crossover).toBe(true);
   });
 
@@ -44,7 +45,7 @@ describe('deriveCapabilities — support classification', () => {
 describe('deriveCapabilities — V16 feature flags', () => {
   it('V10 devices expose no V16 features', () => {
     const c = deriveCapabilities({ fw: fw(1, 1, 4), wireVersion: 10, payloadLength: 2960, platformId: 1 });
-    expect(c.wireGen).toBe(10);
+    expect(c.channelModel).toBe(ChannelFamily.Legacy);
     expect(c.features.crossover).toBe(false);
     expect(c.features.i2sInput).toBe(false);
     expect(c.features.multichannelInput).toBe(false);
@@ -64,6 +65,14 @@ describe('deriveCapabilities — V16 feature flags', () => {
     const c = deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 16, payloadLength: Wire.BULK_SIZE_V16, platformId: 0 });
     expect(c.features.i2sInput).toBe(true);
     expect(c.features.multichannelInput).toBe(false);
+  });
+
+  it('gates leveller channel masks on wire V18 (off for V16/V17, on for V18)', () => {
+    const at = (v: number, len: number) =>
+      deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: v, payloadLength: len, platformId: 1 }).features.levellerMasks;
+    expect(at(16, Wire.BULK_SIZE_V16)).toBe(false);
+    expect(at(17, Wire.BULK_SIZE_V17)).toBe(false);   // 1.1.5-beta3
+    expect(at(18, Wire.BULK_SIZE_V18)).toBe(true);
   });
 });
 

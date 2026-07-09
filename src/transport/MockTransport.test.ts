@@ -354,3 +354,33 @@ describe('MockTransport — V10 device fidelity', () => {
     expect(back.userVolume.volumeDb).toBeCloseTo(-9, 4);
   });
 });
+
+describe('MockTransport — imaginary I2S multichannel demo mode', () => {
+  it('boots a V16 mock with an I2S multichannel input', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 16, i2sInputChannels: 8 });
+    await t.open();
+    const p = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    expect(p.inputConfig.source).toBe(AudioInputSource.I2s);
+    expect(p.inputConfig.i2sInputChannels).toBe(8);
+  });
+
+  it('reports the multichannel count via system status (what the UI reads)', async () => {
+    const dev = await DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 16, i2sInputChannels: 6 }));
+    const status = await dev.getSystemStatus();
+    expect(status.activeInputChannels).toBe(6);
+  });
+
+  it('clamps an odd count down to the nearest even value', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 16, i2sInputChannels: 5 });
+    await t.open();
+    const p = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    expect(p.inputConfig.i2sInputChannels).toBe(4);
+  });
+
+  it('ignores the knob on a V10 mock (stays USB stereo)', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10, i2sInputChannels: 8 });
+    await t.open();
+    const p = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    expect(p.inputConfig.source).toBe(AudioInputSource.Usb);
+  });
+});

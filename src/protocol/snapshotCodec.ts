@@ -24,10 +24,6 @@ export function narrowInputSource(s: number): domain.AudioInputSource {
   }
 }
 
-function narrowPlatform(p: number): domain.PlatformType {
-  return p === 1 ? domain.PlatformType.RP2350 : domain.PlatformType.RP2040;
-}
-
 function narrowCrossfeedPreset(p: number): domain.CrossfeedPreset {
   switch (p) {
     case domain.CrossfeedPreset.Preset1:
@@ -118,14 +114,7 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
   }
 
   return {
-    platform: {
-      type: narrowPlatform(bulk.platformId),
-      name: hardware.name,
-      outputCount: hardware.outputCount,
-      totalChannelCount: hardware.totalChannelCount,
-      pdmOutputIndex: hardware.pdmOutputIndex,
-      wireGen: hardware.wireGen,
-    },
+    platform: domain.pickSummary(hardware),
     bypass: bulk.bypass,
     masterPreampDb: bulk.preampDb,
     inputPreampDb: bulk.inputPreampsDb.slice(0, hardware.inputs.length),
@@ -150,6 +139,10 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
       amount: bulk.leveller.amount,
       maxGainDb: bulk.leveller.maxGainDb,
       gateDb: bulk.leveller.gateDb,
+      // Channel masks come from the V18 bulk section; the parser defaults them
+      // to all-on (0xFF) on pre-V18 packets, so this is always populated.
+      detectorMask: bulk.leveller.detectorMask,
+      applyMask: bulk.leveller.applyMask,
     },
     i2s: bulk.i2s,
     outputPins: bulk.pins.slice(0, bulk.numPinOutputs),

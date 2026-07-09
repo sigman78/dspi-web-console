@@ -3,7 +3,7 @@
 // packet plus the detected hardware profile.
 
 import type { ChannelId } from './channels';
-import type { PlatformInfo, I2sConfig } from './platform';
+import type { HardwareProfile, I2sConfig, PlatformType, ChannelFamily } from './platform';
 import type { FilterParams } from './filter';
 import type { Loudness, Crossfeed, Leveller } from './processing';
 import type { OutputModel, RouteModel } from './mixer';
@@ -22,8 +22,33 @@ export interface ChannelModel {
   xoverBands: FilterParams[];
 }
 
+// The platform identity the snapshot carries: the display/pin-rule subset of
+// the device's HardwareProfile, copied in by pickSummary so the snapshot stays
+// a lightweight value and doesn't drag the profile's channel/slot/pin maps
+// through the mirror. Local re-declaration rather than a Pick<HardwareProfile>
+// so the shape reads plainly at a glance; pickSummary keeps the two in step.
+export interface PlatformSummary {
+  type: PlatformType;
+  name: string;
+  outputCount: number;
+  totalChannelCount: number;
+  pdmOutputIndex: number;
+  channelModel: ChannelFamily;
+}
+
+export function pickSummary(hw: HardwareProfile): PlatformSummary {
+  return {
+    type: hw.type,
+    name: hw.name,
+    outputCount: hw.outputCount,
+    totalChannelCount: hw.totalChannelCount,
+    pdmOutputIndex: hw.pdmOutputIndex,
+    channelModel: hw.channelModel,
+  };
+}
+
 export interface DspSnapshot {
-  platform: PlatformInfo;
+  platform: PlatformSummary;
   bypass: boolean;
   masterPreampDb: number;
   // Per-input-slot preamp, one entry per hardware input channel (2 or 8).

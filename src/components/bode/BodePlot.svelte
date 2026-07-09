@@ -16,6 +16,8 @@
      *  a stereo-locked pair as a single line whose color fades between the
      *  two channels. */
     gradientChannelIds?: [ChannelId, ChannelId];
+    /** Explicit stroke/fill color, wins over channelId/gradientChannelIds/default. */
+    color?: string;
   };
 
   // Optional EQ-style band markers drawn on top of the curves.
@@ -101,10 +103,12 @@
   }
 
   function strokeFor(c: BodeCurve): string {
+    if (c.color) return c.color;
     if (c.gradientChannelIds) return `url(#bodeGrad-${c.id})`;
     return c.channelId != null ? chShade(c.channelId, 'bright') : 'var(--accent)';
   }
   function fillStopFor(c: BodeCurve): string {
+    if (c.color) return c.color;
     return c.channelId != null ? chShade(c.channelId, 'bright') : 'var(--accent)';
   }
   function gradientChannelColor(id: ChannelId): string {

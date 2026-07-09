@@ -168,17 +168,17 @@ export class DspDevice {
         intermediate ? capabilities.wireLabel : undefined,
       );
     }
-    // A supported wire version must also carry at least its generation's
-    // floor payload (V10: 2960 B; V16: the full 5864 B packet). A shorter
+    // A supported device must carry the full packet for its exact wire
+    // version (V10: 2960 B; V16: 5864; V17: 5872; V18: 5876). A shorter
     // packet means the device omits sections the console treats as
-    // guaranteed -- reject instead of silently defaulting them.
-    const minPayload = proto.Wire.bulkSizeForVersion(capabilities.wireGen);
+    // guaranteed -- reject rather than silently defaulting them.
+    const minPayload = proto.Wire.bulkSizeForVersion(capabilities.wire);
     if (header.payloadLength < minPayload) {
       throw new UnsupportedDevicePacket(capabilities.fwLabel, header.payloadLength, minPayload);
     }
 
     const platformType = platformTypeFromId(platform.platformId);
-    const hardware = domain.createHardwareProfile(platformType, capabilities.wireGen);
+    const hardware = domain.createHardwareProfile(platformType, capabilities.channelModel);
     return {
       serial: serial.trim(),
       platformType,
@@ -235,7 +235,7 @@ export class DspDevice {
   }
 
   async getAllParams(): Promise<proto.BulkParams> {
-    const chunked = proto.Wire.bulkSizeForVersion(this.capabilities.wireGen) > proto.Wire.BulkLimits.MaxControlTransfer;
+    const chunked = proto.Wire.bulkSizeForVersion(this.capabilities.wire) > proto.Wire.BulkLimits.MaxControlTransfer;
     const bytes = chunked
       ? await this.#readAllParamsChunked()
       : await this.transport.ctrlIn(proto.WireCmd.GetAllParams.code, 0, proto.Wire.BulkLimits.MaxReadSize);
@@ -255,7 +255,7 @@ export class DspDevice {
       const header = proto.peekBulkHeader(first);
       const total = header.payloadLength > 0 && header.payloadLength <= proto.Wire.BulkLimits.MaxReadSize
         ? header.payloadLength
-        : proto.Wire.bulkSizeForVersion(this.capabilities.wireGen);
+        : proto.Wire.bulkSizeForVersion(this.capabilities.wire);
 
       const chunks = [first];
       let received = first.length;
@@ -285,12 +285,12 @@ export class DspDevice {
 
   // Push a complete DSP state in one control-OUT. Firmware applies it in its
   // main loop (~5 ms); callers needing the change visible should re-fetch.
-  // Always emits at THIS device's generation: V16 firmware accepts only the
-  // exact full-size packet, and a state captured from a device of the other
-  // generation converts through the max-shaped DTO (missing rows default,
-  // extra rows drop).
+  // Always emits at THIS device's exact wire version: V16+ firmware accepts
+  // only the exact full-size packet for its own version, and a state captured
+  // from a device of another generation/version converts through the
+  // max-shaped DTO (missing rows default, extra rows drop).
   async setAllParams(bulk: proto.BulkParams): Promise<void> {
-    const bytes = proto.buildBulkParams(bulk, this.capabilities.wireGen);
+    const bytes = proto.buildBulkParams(bulk, this.capabilities.wire);
     if (bytes.length > proto.Wire.BulkLimits.MaxControlTransfer) {
       await this.#writeAllParamsChunked(bytes);
     } else {
@@ -320,7 +320,7 @@ export class DspDevice {
   // V16 devices use the wide combined-status layout (u32 clip flags + live
   // active-input-count byte) and the 5-bit band field in GetEqParam wValues.
   private get isWideWire(): boolean {
-    return this.capabilities.wireGen === 16;
+    return this.capabilities.channelModel === domain.ChannelFamily.Unified;
   }
 
   async getSystemStatus(): Promise<proto.SystemStatus> {
@@ -757,6 +757,17 @@ export class DspDevice {
 
   async setLevellerGate(db: number): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerGate, db);
+  }
+
+  // Multichannel leveller masks (fw V18+). detector = inputs feeding the shared
+  // detector; apply = inputs receiving the gain. Bit k = input channel k.
+  async setLevellerMasks(detector: number, apply: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerMasks,
+      { detector: detector & 0xFF, apply: apply & 0xFF });
+  }
+
+  async getLevellerMasks(): Promise<{ detector: number; apply: number }> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetLevellerMasks);
   }
 
   // v1.1.4 granular surface (unconditional: the V10 floor guarantees support).

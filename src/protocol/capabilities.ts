@@ -7,13 +7,15 @@
 // misreport their semver.
 
 import * as Wire from './wireTypes';
+import { ChannelFamily } from '@/domain';
 
-// Support window: V10 (released fw 1.1.4) and V16 (fw 1.1.5, unified channel
-// model). Wire versions 11..15 were in-development intermediates with shifting
+// Support window: V10 (released fw 1.1.4) and V16-V18 (fw 1.1.5, unified
+// channel model; V17 adds ADAT config, V18 adds leveller channel masks).
+// Wire versions 11..15 were in-development intermediates with shifting
 // layouts the console never shipped against -- rejected like pre-V10 firmware.
 export const MIN_SUPPORTED_WIRE = 10;
-export const MAX_KNOWN_WIRE = 16;
-const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16];
+export const MAX_KNOWN_WIRE = 18;
+const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16, 17, 18];
 
 export interface FirmwareVersion {
   major: number;
@@ -45,6 +47,10 @@ export interface DeviceFeatures {
   // Control Surfaces: physical controls/indicators on user GPIOs, configured
   // via 0x84-0x87. Same 1.1.5 vintage as controlInterfaces.
   readonly controlSurfaces: boolean;
+  // Per-input leveller channel masks (SetLevellerMasks 0xDE + the 20-byte
+  // WireLevellerConfig). Wire V18 only -- V16/V17 (incl. 1.1.5-beta3) have the
+  // 16-byte leveller with no masks, so the mask controls must stay hidden.
+  readonly levellerMasks: boolean;
 }
 
 export interface DeviceCapabilities {
@@ -58,14 +64,14 @@ export interface DeviceCapabilities {
 
   // Support classification, keyed on the observed wire version:
   //   unsupported -- below the V10 floor, or an 11..15 in-dev intermediate.
-  //   supported   -- V10 (1.1.4) or V16 (1.1.5).
+  //   supported   -- V10 (1.1.4) or V16-V18 (1.1.5).
   //   future      -- newer than the console knows; read known sections only.
   readonly support: 'unsupported' | 'supported' | 'future';
 
   // Channel-model generation the device's packet follows (V16 for future
   // devices too -- newest known shape). Selects codec dims and the hardware
   // profile's wire mapping; everything above reads `features` instead.
-  readonly wireGen: 10 | 16;
+  readonly channelModel: ChannelFamily;
 
   // Which bulk-packet sections this device's packet carries. Single source of
   // truth -- wraps Wire.bulkLayout, never a parallel re-derivation.
@@ -93,8 +99,8 @@ export function deriveCapabilities(input: {
     : wireVersion > MAX_KNOWN_WIRE                ? 'future'
     : 'unsupported';
 
-  const wireGen = wireVersion >= 16 ? 16 : 10;
-  const isV16 = wireGen === 16;
+  const channelModel = wireVersion >= 16 ? ChannelFamily.Unified : ChannelFamily.Legacy;
+  const isV16 = channelModel === ChannelFamily.Unified;
 
   return {
     fw,
@@ -103,7 +109,7 @@ export function deriveCapabilities(input: {
     wireLabel: `V${wireVersion}`,
     platformId,
     support,
-    wireGen,
+    channelModel,
     sections: Wire.bulkLayout({ formatVersion: wireVersion, payloadLength }),
     features: {
       crossover:         isV16,
@@ -113,6 +119,9 @@ export function deriveCapabilities(input: {
       activeInputCount:  isV16,
       controlInterfaces: isV16,
       controlSurfaces:   isV16,
+      // Masks are a V18 addition, not just V16-generation -- key on the exact
+      // wire version so V16/V17 devices (e.g. 1.1.5-beta3) don't expose them.
+      levellerMasks:     wireVersion >= 18,
     },
   };
 }

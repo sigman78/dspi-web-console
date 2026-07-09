@@ -3,6 +3,9 @@
   import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
+  import { crossfeedResponse } from '@/components/bode/crossfeedCurve';
+  import { centeredDbDomain } from '@/components/bode/dbDomain';
   import { connection } from '@/state';
   import {
     setCrossfeedEnabled, setCrossfeedPreset, setCrossfeedItd,
@@ -18,6 +21,13 @@
   const isCustom = $derived((cf?.preset ?? CrossfeedPreset.Preset1) === CrossfeedPreset.Custom);
   const editable = $derived(connected && enabled);
   const slidersEditable = $derived(editable && isCustom);
+
+  const resp = $derived(crossfeedResponse(cf?.freq ?? 700, cf?.feedDb ?? 4.5));
+  const cfCurves = $derived<BodeCurve[]>([
+    { id: 'xfeed-direct', points: resp.direct, color: 'color-mix(in oklab, var(--text) 45%, transparent)', label: 'Direct' },
+    { id: 'xfeed-cross', points: resp.crossfeed, color: 'var(--accent)', label: 'Crossfeed' },
+  ]);
+  const cfRange = $derived(centeredDbDomain([resp.crossfeed, resp.direct]));
 
   // Preset labels: PRESET 1/2/3 plus CUSTOM. If the firmware ships
   // descriptive labels later, they swap in here without restructure.
@@ -48,6 +58,10 @@
       onChange={toggleEnabled}
     />
   {/snippet}
+
+  <div class="graph" class:off={!enabled}>
+    <BodePlot curves={cfCurves} height={96} crosshair={false} yRange={cfRange} />
+  </div>
 
   <div class="grid">
     <span class="microlbl">PRESET</span>
@@ -97,6 +111,8 @@
 </Panel>
 
 <style>
+  .graph { padding: 10px 12px 0; }
+  .graph.off { opacity: 0.4; }
   .grid {
     padding: 14px;
     display: grid;

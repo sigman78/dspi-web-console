@@ -36,6 +36,10 @@ export interface MockOptions {
   // Override the header's payloadLength to simulate a malformed device that
   // reports a truncated payload, exercising the connect truncation guard.
   payloadLength?: number;
+  // Imaginary I2S multichannel input for the demo (V16+ only): boot with the
+  // source set to I2S and this many active input channels (2/4/6/8) instead of
+  // the default USB stereo, so the multichannel UI has more than a pair to show.
+  i2sInputChannels?: number;
 }
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
@@ -204,6 +208,19 @@ export class MockTransport implements DspTransport {
       this.#mockState.inputConfig.i2sRxPins = [1, 2, 3, 4];
       this.#mockState.inputConfig.i2sInputChannels = 2;
       this.#mockState.inputConfig.i2sInputRateEnc = 1;
+
+      // Imaginary I2S multichannel input for the demo: switch the source to I2S
+      // with the requested channel count (clamped even, 2..8) and re-derive the
+      // source-aware input names, so the multichannel UI has more than a stereo
+      // pair to display.
+      if (opts.i2sInputChannels && opts.i2sInputChannels > 2) {
+        const n = Math.min(8, Math.max(2, opts.i2sInputChannels - (opts.i2sInputChannels % 2)));
+        this.#mockState.inputConfig.source = AudioInputSource.I2s;
+        this.#mockState.inputConfig.i2sInputChannels = n;
+        for (let slot = 0; slot < n; slot++) {
+          this.#mockState.channelNames[slot] = defaultInputName(AudioInputSource.I2s, slot);
+        }
+      }
     }
   }
 
@@ -359,6 +376,11 @@ export class MockTransport implements DspTransport {
         return Codec.encode(Codec.f32, this.#mockState.userVolume.volumeDb);
       case WireCmd.GetUserMute.code:
         return Codec.encode(Codec.bool8, this.#mockState.userVolume.mute);
+      case WireCmd.GetLevellerMasks.code:
+        return Codec.encode(Wire.LevellerMasks, {
+          detector: this.#mockState.leveller!.detectorMask,
+          apply: this.#mockState.leveller!.applyMask,
+        });
       case WireCmd.GetInputSource.code:
         return Codec.encode(Codec.u8, this.#mockState.inputConfig.source);
       case WireCmd.GetSpdifRxStatus.code:
@@ -770,6 +792,12 @@ export class MockTransport implements DspTransport {
       case WireCmd.SetLevellerGate.code:
         this.#mockState.leveller!.gateDb = Codec.decode(Codec.f32, data);
         return;
+      case WireCmd.SetLevellerMasks.code: {
+        const m = Codec.decode(Wire.LevellerMasks, data);
+        this.#mockState.leveller!.detectorMask = m.detector;
+        this.#mockState.leveller!.applyMask = m.apply;
+        return;
+      }
 
       case WireCmd.SetChannelName.code: {
         const ch = value & 0xFF;

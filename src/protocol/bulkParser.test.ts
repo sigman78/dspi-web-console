@@ -132,6 +132,7 @@ describe('bulkParser — V6 trailing sections', () => {
       leveller: {
         enabled: true, speed: 1, lookahead: true,
         amount: 60, maxGainDb: 12, gateDb: -50,
+        detectorMask: 0xFF, applyMask: 0xFF,
       },
     }));
     expect(p.i2s.outputSlotTypes).toEqual([0, 1, 0, 1]);

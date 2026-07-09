@@ -807,6 +807,14 @@ describe('connect-time capabilities + version gating', () => {
     await expect(DspDevice.create(transport)).rejects.toBeInstanceOf(UnsupportedDevicePacket);
   });
 
+  // 5868 is >= the old V16-generation floor (5864) but < the exact V18 size
+  // (5876), so it would have passed a generation-keyed floor check and only
+  // fails now that the check keys on the exact observed wire version.
+  it('rejects a V18 device that reports a short payload (< exact V18 size)', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 18, payloadLength: 5868 });
+    await expect(DspDevice.create(t)).rejects.toThrow(UnsupportedDevicePacket);
+  });
+
   // The snapshot from a V10 device carries formatVersion 10; the paste path
   // (captureState -> restoreState -> setAllParams) must not throw — the writer
   // normalizes it to a V6 packet the firmware merges.
@@ -912,6 +920,18 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     expect(await d.getInputSource()).toBe(AudioInputSource.Spdif);
   });
 
+  test('leveller masks round-trip in detector-then-apply order', async () => {
+    const d = await v10();
+    // Default is all-on.
+    expect(await d.getLevellerMasks()).toEqual({ detector: 0xFF, apply: 0xFF });
+    // Asymmetric values prove the byte order (detector first, apply second).
+    await d.setLevellerMasks(0x03, 0x05);
+    expect(await d.getLevellerMasks()).toEqual({ detector: 0x03, apply: 0x05 });
+    // High bit / masking: values above a byte are truncated to u8.
+    await d.setLevellerMasks(0x1FF, 0x80);
+    expect(await d.getLevellerMasks()).toEqual({ detector: 0xFF, apply: 0x80 });
+  });
+
   test('getSpdifRxStatus narrows state + inputSource on V10', async () => {
     const d = await v10();
     await d.setInputSource(AudioInputSource.Spdif);
@@ -951,5 +971,27 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     const d = await v10();
     const r = await d.saveOutputConfig();
     expect(r.ok).toBe(true);
+  });
+});
+
+describe('DspDevice — V18 bulk integration', () => {
+  const v18 = () => DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 18 }));
+
+  test('reads a full-size V18 packet; masks default all-on, ADAT absent', async () => {
+    const d = await v18();
+    const bulk = await d.getAllParams();
+    expect(bulk.formatVersion).toBe(18);
+    expect(bulk.payloadLength).toBe(Wire.BULK_SIZE_V18);   // 5876
+    expect(bulk.leveller.detectorMask).toBe(0xFF);
+    expect(bulk.leveller.applyMask).toBe(0xFF);
+    expect(bulk.adat).toEqual({ enabled: false, pin: 0 });
+  });
+
+  test('setLevellerMasks flows through the synthesized bulk into the snapshot', async () => {
+    const d = await v18();
+    await d.setLevellerMasks(0x03, 0x0C);
+    const snap = await d.getSnapshot();
+    expect(snap.leveller.detectorMask).toBe(0x03);
+    expect(snap.leveller.applyMask).toBe(0x0C);
   });
 });
