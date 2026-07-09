@@ -22,10 +22,8 @@
   const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
   const effSpdifRxPin = $derived(inputConfig ? s.staging.valueOf('spdifRxPin', inputConfig.spdifRxPin) : 0);
-  // True once any optional S/PDIF input is enabled -- promotes input 1's label from "S/PDIF" to "S/PDIF 1".
-  const anyOptionalEnabled = $derived(inputConfig?.spdifExtEnabled.some(Boolean) ?? false);
-  // Optional inputs the platform supports beyond input 1 (0 unless multiSpdifInputs).
-  const spdifExtCount = $derived(Math.max(0, s.device.capabilities.spdifInputCount - 1));
+  // Selectable S/PDIF inputs (1 unless the platform has the multi-SPDIF receiver, then 3).
+  const spdifInputCount = $derived(s.device.capabilities.spdifInputCount);
   const effRate = $derived(inputConfig ? s.staging.valueOf('inputRate', inputConfig.i2sInputRateHz) : 0);
   // Configured count (0 = firmware default of 2); pairs 0..activePairs-1 show a pin select.
   const liveChannels = $derived(inputConfig?.i2sInputChannels || 2);
@@ -44,9 +42,28 @@
     return s.staging.valueOf(`spdifRxPinExt:${i}`, inputConfig?.spdifRxPinExt[i] ?? 0);
   }
 
+  // Unified per-input accessors over the S/PDIF rows: row 0 = input 1 (scalar,
+  // always on), rows 1..2 = optional inputs (extIndex = i - 1).
+  function spdifTitle(i: number): string {
+    return i === 0 ? (spdifInputCount > 1 ? 'S/PDIF 1' : 'S/PDIF') : `S/PDIF ${i + 1}`;
+  }
+  function effSpdifPin(i: number): number {
+    return i === 0 ? effSpdifRxPin : effSpdifRxPinExt(i - 1);
+  }
+  function devSpdifPin(i: number): number {
+    return i === 0 ? (inputConfig?.spdifRxPin ?? 0) : (inputConfig?.spdifRxPinExt[i - 1] ?? 0);
+  }
+  function spdifPinKey(i: number): string {
+    return i === 0 ? 'spdifRxPin' : `spdifRxPinExt:${i - 1}`;
+  }
+  function onSpdifPin(i: number, gpio: number): void {
+    if (i === 0) stageSpdifRxPin(s, gpio);
+    else stageSpdifRxPinExt(s, i - 1, gpio);
+  }
+
   const SOURCE_LABELS = $derived<Record<number, string>>({
     [AudioInputSource.Usb]:    'USB',
-    [AudioInputSource.Spdif]:  anyOptionalEnabled ? 'S/PDIF 1' : 'S/PDIF',
+    [AudioInputSource.Spdif]:  spdifInputCount > 1 ? 'S/PDIF 1' : 'S/PDIF',
     [AudioInputSource.Spdif2]: 'S/PDIF 2',
     [AudioInputSource.Spdif3]: 'S/PDIF 3',
     [AudioInputSource.I2s]:    'I2S',
@@ -143,48 +160,36 @@
     {/if}
 
     {#if isSpdif}
-      <div class="subhdr">{anyOptionalEnabled ? 'S/PDIF 1 RX PIN' : 'S/PDIF RX PIN'}</div>
-      <div class="pinrow">
-        <span class="stage-wrap" class:staged={s.staging.has('spdifRxPin')} title={s.staging.has('spdifRxPin') ? `device: GP${inputConfig.spdifRxPin}` : undefined}>
-          <PinSelect
-            value={effSpdifRxPin}
-            candidates={availablePinsFor(snap.platform.type, overlaySnap, effSpdifRxPin, ctrlPins)}
-            ariaLabel="S/PDIF RX GPIO pin"
-            disabled={!connected}
-            onChange={(p) => stageSpdifRxPin(s, p)}
-          />
-        </span>
-      </div>
-
-      {#if features.multiSpdifInputs}
-        {#each Array.from({ length: spdifExtCount }, (_, i) => i) as i (i)}
-          <div class="subhdr">S/PDIF {i + 2}</div>
-          <div class="pinrow">
-            <span class="stage-wrap" class:staged={s.staging.has(`spdifEnable:${i}`)} title={s.staging.has(`spdifEnable:${i}`) ? `device: ${inputConfig.spdifExtEnabled[i] ? 'ON' : 'OFF'}` : undefined}>
-              <ToggleSwitch
-                size="sm"
-                checked={effSpdifExtEnabled(i)}
-                disabled={!connected}
-                ariaLabel={effSpdifExtEnabled(i) ? `Disable S/PDIF ${i + 2} input` : `Enable S/PDIF ${i + 2} input`}
-                onChange={() => stageSpdifInputEnabled(s, i, !effSpdifExtEnabled(i))}
-              />
-            </span>
-          </div>
-          {#if effSpdifExtEnabled(i)}
-            <div class="pinrow">
-              <span class="stage-wrap" class:staged={s.staging.has(`spdifRxPinExt:${i}`)} title={s.staging.has(`spdifRxPinExt:${i}`) ? `device: GP${inputConfig.spdifRxPinExt[i] ?? 0}` : undefined}>
-                <PinSelect
-                  value={effSpdifRxPinExt(i)}
-                  candidates={availablePinsFor(snap.platform.type, overlaySnap, effSpdifRxPinExt(i), ctrlPins)}
-                  ariaLabel={`S/PDIF ${i + 2} RX GPIO pin`}
+      <div class="subhdr">S/PDIF RX</div>
+      <div class="spdif-grid">
+        {#each Array.from({ length: spdifInputCount }, (_, i) => i) as i (i)}
+          <span class="spdif-title">{spdifTitle(i)}</span>
+          <span class="spdif-toggle">
+            {#if i === 0}
+              <span class="dash" title="always enabled">—</span>
+            {:else}
+              <span class="stage-wrap" class:staged={s.staging.has(`spdifEnable:${i - 1}`)} title={s.staging.has(`spdifEnable:${i - 1}`) ? `device: ${inputConfig.spdifExtEnabled[i - 1] ? 'ON' : 'OFF'}` : undefined}>
+                <ToggleSwitch
+                  size="sm"
+                  checked={effSpdifExtEnabled(i - 1)}
                   disabled={!connected}
-                  onChange={(p) => stageSpdifRxPinExt(s, i, p)}
+                  ariaLabel={effSpdifExtEnabled(i - 1) ? `Disable ${spdifTitle(i)} input` : `Enable ${spdifTitle(i)} input`}
+                  onChange={() => stageSpdifInputEnabled(s, i - 1, !effSpdifExtEnabled(i - 1))}
                 />
               </span>
-            </div>
-          {/if}
+            {/if}
+          </span>
+          <span class="stage-wrap" class:staged={s.staging.has(spdifPinKey(i))} title={s.staging.has(spdifPinKey(i)) ? `device: GP${devSpdifPin(i)}` : undefined}>
+            <PinSelect
+              value={effSpdifPin(i)}
+              candidates={availablePinsFor(snap.platform.type, overlaySnap, effSpdifPin(i), ctrlPins)}
+              ariaLabel={`${spdifTitle(i)} RX GPIO pin`}
+              disabled={!connected}
+              onChange={(p) => onSpdifPin(i, p)}
+            />
+          </span>
         {/each}
-      {/if}
+      </div>
 
       <div class="subhdr">S/PDIF RX STATUS</div>
       {#if spdifStatus}
@@ -259,4 +264,9 @@
   .pinrow { padding: 6px 14px 6px; }
   .idle { padding: 10px 14px; }
   .pending { padding: 0 14px 8px; color: var(--accent); }
+  /* S/PDIF inputs: one aligned row per selectable input -- title | toggle | pin. */
+  .spdif-grid { padding: 8px 14px 4px; display: grid; grid-template-columns: auto auto 1fr; gap: 8px 12px; align-items: center; }
+  .spdif-title { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--text-dim); white-space: nowrap; }
+  .spdif-toggle { display: flex; align-items: center; justify-content: center; min-width: 34px; }
+  .dash { color: var(--text-faint); }
 </style>
