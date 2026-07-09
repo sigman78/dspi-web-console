@@ -7,8 +7,9 @@
   import {
     setLevellerEnabled, setLevellerSpeed, setLevellerLookahead,
     setLevellerAmount, setLevellerMaxGain, setLevellerGate,
+    setLevellerMasks, toggleLevellerDetectorChannel, toggleLevellerApplyChannel,
   } from '@/runtime';
-  import { LevellerSpeed, Proc } from '@/domain';
+  import { LevellerSpeed, Proc, inputIndexOf } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -23,6 +24,31 @@
     { value: LevellerSpeed.Fast,   label: 'FAST' },
   ] as const satisfies ReadonlyArray<{ value: LevellerSpeed; label: string }>;
 
+  // Multichannel leveller masks (fw V18+): which input channels feed the shared
+  // detector, and which receive the gain. Meaningless with a single stereo
+  // input, so the whole block is hidden unless more than two inputs are live.
+  const inputChannels = $derived(
+    (s.mirror.current?.channels ?? [])
+      .filter((c) => !c.isOutput)
+      .map((c) => ({ id: c.id, name: c.name, index: inputIndexOf(c.id) ?? 0 }))
+      .sort((a, b) => a.index - b.index),
+  );
+  const activeCount = $derived(s.telemetry.activeInputChannels ?? inputChannels.length);
+  const channelCount = $derived(Math.min(Math.max(activeCount, 2), inputChannels.length || 2));
+  const showMasks = $derived(inputChannels.length > 2 && channelCount > 2);
+  const shownChannels = $derived(inputChannels.slice(0, channelCount));
+
+  const detectorMask = $derived(lv?.detectorMask ?? 0xFF);
+  const applyMask = $derived(lv?.applyMask ?? 0xFF);
+  const isSet = (mask: number, i: number) => (mask & (1 << i)) !== 0;
+
+  // detector/apply bitmasks over input indices; mirror the macOS reference.
+  const MASK_PRESETS = [
+    { label: 'ALL', title: 'All channels (night mode)', detector: 0xFF, apply: 0xFF },
+    { label: 'L·R', title: 'Front L/R only',            detector: 0x03, apply: 0x03 },
+    { label: 'CTR', title: 'Center only (dialog boost)', detector: 0x04, apply: 0x04 },
+  ] as const;
+
   function toggleEnabled() {
     if (!lv) return;
     setLevellerEnabled(s, !lv.enabled);
@@ -32,6 +58,26 @@
     setLevellerLookahead(s, !lv.lookahead);
   }
 </script>
+
+{#snippet maskRow(label: string, mask: number, onToggle: (index: number) => void)}
+  <span class="microlbl">{label}</span>
+  <div class="chips span2">
+    {#each shownChannels as ch (ch.id)}
+      <button
+        type="button"
+        class="chip"
+        class:on={isSet(mask, ch.index)}
+        disabled={!editable}
+        title={ch.name || `Input ${ch.index + 1}`}
+        aria-label={`${label} ${ch.name || `input ${ch.index + 1}`}`}
+        aria-pressed={isSet(mask, ch.index)}
+        onclick={() => { if (editable) onToggle(ch.index); }}
+      >
+        {ch.index + 1}
+      </button>
+    {/each}
+  </div>
+{/snippet}
 
 <Panel code="PR.03" title="LEVELLER">
   {#snippet right()}
@@ -45,6 +91,26 @@
   {/snippet}
 
   <div class="grid">
+    {#if showMasks}
+      <span class="microlbl">CHANNELS</span>
+      <div class="presets span2">
+        {#each MASK_PRESETS as p (p.label)}
+          <button
+            type="button"
+            class="preset"
+            disabled={!editable}
+            title={p.title}
+            onclick={() => { if (editable) setLevellerMasks(s, p.detector, p.apply); }}
+          >{p.label}</button>
+        {/each}
+      </div>
+
+      {@render maskRow('DETECTOR', detectorMask, (i: number) => toggleLevellerDetectorChannel(s, i))}
+      {@render maskRow('APPLY', applyMask, (i: number) => toggleLevellerApplyChannel(s, i))}
+
+      <div class="rule"></div>
+    {/if}
+
     <span class="microlbl">SPEED</span>
     <div class="span2">
       <SegmentedSelect
@@ -111,4 +177,59 @@
     gap: 12px;
   }
   .span2 { grid-column: 2 / span 2; }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .chip {
+    min-width: 24px;
+    height: 24px;
+    padding: 0 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    background: var(--wash-faint);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .chip:hover:not(:disabled):not(.on) {
+    color: var(--text);
+    background: var(--wash);
+  }
+  .chip.on {
+    color: var(--ok);
+    background: color-mix(in oklab, var(--ok) 12%, transparent);
+    border-color: color-mix(in oklab, var(--ok) 40%, var(--border));
+  }
+  .chip:disabled { cursor: default; opacity: var(--dim-disabled); }
+
+  .presets {
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+  .preset {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 3px 7px;
+    color: var(--text-dim);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .preset:hover:not(:disabled) { color: var(--text); background: var(--wash); }
+  .preset:disabled { cursor: default; opacity: var(--dim-disabled); }
+
+  .rule {
+    grid-column: 1 / -1;
+    height: 1px;
+    background: var(--border);
+    margin: 2px 0;
+  }
 </style>
