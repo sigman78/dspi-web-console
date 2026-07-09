@@ -1,4 +1,30 @@
+<script module lang="ts">
+  // Discrete LED VU scale: fixed-colour segments (deep→bright green, then amber,
+  // then coral red) instead of a swept gradient. Segments light up to the level;
+  // the peak-hold marker lingers as one held LED above the fill (see below).
+  const VU_SEGMENTS = 12;
+  const AMBER_AT = 0.72; // fraction where the amber band starts
+  const RED_AT = 0.9;    // fraction where the red band starts
+
+  const VU_SCALE = Array.from({ length: VU_SEGMENTS }, (_, i) => {
+    const mid = (i + 0.5) / VU_SEGMENTS;
+    let on: string;
+    if (mid >= RED_AT) on = 'var(--err)';
+    else if (mid >= AMBER_AT) on = 'var(--warn)';
+    else {
+      // Deep→bright green ramp across the green band (discrete per segment).
+      const f = mid / AMBER_AT;
+      on = `oklch(${(56 + 24 * f).toFixed(1)}% ${(0.13 + 0.06 * f).toFixed(3)} 150)`;
+    }
+    return { lo: i / VU_SEGMENTS, on };
+  });
+
+  // First LED of the red band -- only a held peak that reaches here lingers.
+  const RED_SEG_FROM = VU_SCALE.findIndex((s) => s.on === 'var(--err)');
+</script>
+
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { chKey } from '@/styles/palette';
   import { CHANNEL_NAME_MAX_LEN, type ChannelId } from '@/domain';
 
@@ -10,7 +36,6 @@
     selected = false,
     dim = false,
     pulsate = false,
-    clipped = false,
     disabled = false,
     editing = false,
     onclick,
@@ -25,7 +50,6 @@
     selected?: boolean;
     dim?: boolean;
     pulsate?: boolean;
-    clipped?: boolean;
     disabled?: boolean;
     editing?: boolean;
     onclick?: () => void;
@@ -35,8 +59,35 @@
   } = $props();
 
   const pct = $derived(Math.max(0, Math.min(1, (levelDb + 60) / 60)));
-  const warm = $derived(pct > 0.75 && pct <= 0.92);
-  const hot = $derived(pct > 0.92);
+
+  // Peak-hold: the meter's high-water mark snaps up with the level, holds at the
+  // max, then simply turns off after the hold window -- no gradual fall. The
+  // release timer is armed only once the level drops below the mark, so the held
+  // LED lingers above the fill as a max-out cue, then clears.
+  const PEAK_HOLD_MS = 1000;
+  let peak = $state(0);
+  let peakTimer = 0;
+
+  $effect(() => {
+    const p = pct;
+    if (p >= untrack(() => peak)) {
+      // New high-water mark: ride up, cancel any pending release.
+      if (peakTimer) { clearTimeout(peakTimer); peakTimer = 0; }
+      peak = p;
+    } else if (!peakTimer) {
+      // Dropped below the mark: hold it, then turn it off.
+      peakTimer = window.setTimeout(() => { peakTimer = 0; peak = 0; }, PEAK_HOLD_MS);
+    }
+  });
+  $effect(() => () => { if (peakTimer) clearTimeout(peakTimer); });
+
+  // Which LED the held peak sits in. Only a peak that reached the red band
+  // lingers as a floating LED (>= half a segment clear of the fill); green/amber
+  // peaks just track the level with no hold marker.
+  const peakIdx = $derived(Math.min(VU_SEGMENTS - 1, Math.floor(peak * VU_SEGMENTS)));
+  const peakFloating = $derived(
+    peakIdx >= RED_SEG_FROM && peak > pct + 0.5 / VU_SEGMENTS,
+  );
 
   let selectBtn = $state<HTMLButtonElement>();
 
@@ -103,6 +154,19 @@
   }
 </script>
 
+{#snippet meter()}
+  <span class="track" aria-hidden="true">
+    {#each VU_SCALE as seg, i (i)}
+      <span
+        class="seg"
+        class:lit={pct > seg.lo || (peakFloating && i === peakIdx)}
+        class:peak={peakFloating && i === peakIdx}
+        style:--seg-on={seg.on}
+      ></span>
+    {/each}
+  </span>
+{/snippet}
+
 <div
   class="row ch-{chKey(channelId)}"
   class:selected
@@ -124,10 +188,7 @@
       onkeydown={onInputKeydown}
       onblur={onInputBlur}
     />
-    <span class="track">
-      <span class="fill" class:warm class:hot style:width="{pct * 100}%"></span>
-    </span>
-    <span class="clipline" class:on={clipped}></span>
+    {@render meter()}
   {:else}
     <!-- The whole row body is the select target (click → select, double-click →
          rename), so the meter area stays clickable. The editor input can't live
@@ -142,10 +203,7 @@
       ondblclick={startEdit}
     >
       <span class="nm">{name}</span>
-      <span class="track">
-        <span class="fill" class:warm class:hot style:width="{pct * 100}%"></span>
-      </span>
-      <span class="clipline" class:on={clipped}></span>
+      {@render meter()}
     </button>
   {/if}
 </div>
@@ -162,7 +220,17 @@
     padding: 0;
     border: 1px solid var(--border);
     border-radius: 4px;
-    background: var(--wash);
+    /* Per-channel button fill: the channel's own hue tints a left-anchored
+       gradient (base at the left edge, fading right so it reads off the coloured
+       spine beside it) over the neutral wash, plus a soft inset glow bleeding in
+       from that same edge -- the TabBar active-tab treatment, per channel. */
+    background:
+      linear-gradient(to right,
+        color-mix(in oklab, var(--ch-base) 20%, transparent),
+        color-mix(in oklab, var(--ch-base) 6%, transparent) 45%,
+        transparent 85%),
+      var(--wash);
+    box-shadow: inset 12px 0 20px -14px color-mix(in oklab, var(--ch-glow) 45%, transparent);
     color: var(--text);
     font-family: var(--font-mono);
     text-align: left;
@@ -173,11 +241,16 @@
   .row > * { position: relative; z-index: 1; }
   .row:hover:not(.is-disabled):not(.selected) {
     border-color: var(--border-hi);
-    background: var(--wash-strong);
+    background:
+      linear-gradient(to right,
+        color-mix(in oklab, var(--ch-base) 30%, transparent),
+        color-mix(in oklab, var(--ch-base) 10%, transparent) 45%,
+        transparent 85%),
+      var(--wash-strong);
   }
   .row.is-disabled { cursor: default; }
-  /* Editing swaps the .body button for bare input/track/clipline children, so
-     the row supplies the padding the .body otherwise would. */
+  /* Editing swaps the .body button for bare input/track children, so the row
+     supplies the padding the .body otherwise would. */
   .row.editing { padding: 5px 7px; }
   /* The clickable row body: a button so the whole row (name + meter) selects.
      Resets to inherit the row's box; lays its contents out like the row did. */
@@ -222,26 +295,40 @@
     outline: none;
     box-shadow: inset 0 0 0 1px var(--accent);
   }
+  /* Discrete LED meter: a row of fixed-width segments in a dark bezel. The dark
+     track bg shows through the 1px gaps and the 1px pad as the frame, so the
+     meter reads the same on any row background (incl. a selected accent fill). */
   .track {
-    height: 4px;
-    background: color-mix(in oklab, var(--text) 12%, transparent);
+    display: flex;
+    gap: 1px;
+    height: 6px;
+    padding: 1px;
     border-radius: 2px;
-    overflow: hidden;
+    background: oklch(0% 0 0 / 0.5);
   }
-  .fill {
-    display: block;
-    height: 100%;
-    background: var(--ch-bright);
-    border-radius: 2px;
-    transition: width 80ms linear;
+  /* Each LED: fixed colour when lit (deep→bright green / amber / red per its
+     scale slot), dark when off, framed by a 1px near-black inset outline. */
+  .seg {
+    flex: 1 1 0;
+    min-width: 0;
+    border-radius: 1px;
+    background-color: color-mix(in oklab, var(--text) 9%, transparent);
+    box-shadow: inset 0 0 0 1px oklch(0% 0 0 / 0.6);
+    transition: background-color 45ms linear;
   }
-  .fill.warm { background: var(--warn); }
-  .fill.hot { background: var(--err); }
+  .seg.lit { background-color: var(--seg-on); }
+  /* Held peak LED: same colour, lifted with an outer glow so it reads as the
+     lingering max-out marker floating above the fill. */
+  .seg.peak {
+    box-shadow: inset 0 0 0 1px oklch(0% 0 0 / 0.6), 0 0 5px var(--seg-on);
+  }
 
-  /* Selected: the channel's hue fills the button; text flips to bg contrast. */
+  /* Selected: the channel's hue fills the button; text flips to bg contrast.
+     Drop the idle inner glow -- the solid fill already carries the colour. */
   .row.selected {
     background: var(--ch-base);
     border-color: var(--ch-base);
+    box-shadow: none;
   }
   /* Hover on the selected row brightens the accent rather than letting the
      generic hover paint a dark bg under the (dark) selected text. */
@@ -250,10 +337,6 @@
     border-color: color-mix(in oklab, var(--ch-base) 85%, var(--text));
   }
   .row.selected .nm { color: var(--bg); font-weight: 600; }
-  .row.selected .track { background: color-mix(in oklab, var(--bg) 22%, transparent); }
-  .row.selected .fill { background: var(--bg); }
-  .row.selected .fill.warm { background: var(--warn); }
-  .row.selected .fill.hot { background: var(--err); }
 
   /* Disabled/unused channels get a diagonal hatch (carried over from the old
      MiniPin look). It lives on a ::before overlay so it can fade in/out — a
@@ -279,6 +362,9 @@
   .row.dim::before { opacity: 1; }
   /* While editing, drop the hatch so the input reads cleanly on a dim row. */
   .row.editing::before { opacity: 0; }
+  /* Off/unused channels: flatten to a faint neutral wash and kill the glow --
+     the colour cue belongs to live channels. */
+  .row.dim { box-shadow: none; }
   .row.dim:not(.selected) {
     background: var(--wash-faint);
   }
@@ -301,13 +387,4 @@
     .row.pulsate { animation: none; background: color-mix(in oklab, var(--ch-base) 35%, transparent); }
     .row::before { transition: none; }
   }
-
-  /* Latched clip indicator: 1px red underline, always present to avoid reflow. */
-  .clipline {
-    height: 1px;
-    background: transparent;
-    border-radius: 1px;
-    pointer-events: none;
-  }
-  .clipline.on { background: var(--err); }
 </style>

@@ -1178,6 +1178,29 @@ export class MockTransport implements DspTransport {
     return enc === 0 ? 44100 : enc === 2 ? 96000 : 48000;
   }
 
+  // Time-driven fake meter levels so the sidebar VU meters animate in mock/demo
+  // mode as if the device were streaming. Each channel rides a slow swell and a
+  // faster tremor at a decorrelated phase, with sparse Math.pow-sharpened
+  // transients that punch into the amber/red zones. Pure function of the clock
+  // (no RNG), so it stays smooth across the 20 Hz poll cadence.
+  #animatedPeaks(numCh: number): number[] {
+    const t = performance.now() / 1000;
+    return Array.from({ length: numCh }, (_, i) => {
+      const phase = i * 1.9;
+      const slow = 0.5 + 0.5 * Math.sin(t * 0.6 + phase);
+      const fast = 0.5 + 0.5 * Math.sin(t * 4.7 + phase * 2.3);
+      const spike = Math.pow(0.5 + 0.5 * Math.sin(t * 1.3 + phase * 3.1), 14);
+      // Target reading in the meter's own 0..1 domain: a low floor, a slow swell
+      // shaped by a faster tremor, plus sparse transients that reach the red.
+      const level = Math.min(1, 0.1 + 0.75 * slow * (0.5 + 0.5 * fast) + 0.35 * spike);
+      // The wire carries LINEAR amplitude, but the meter reads 20·log10 mapped
+      // onto -60..0 dB. Inverting that here (level -> 10^(3·(level-1))) makes the
+      // animation sweep the whole meter instead of bunching up near clip, where
+      // a linear ramp would sit (0.34 amplitude already reads ~84%).
+      return Math.pow(10, 3 * (level - 1));
+    });
+  }
+
   // Dispatch GetStatus by wValue, returning a fresh buffer sized to the request.
   #synthStatus(wValue: number, length: number): Uint8Array {
     switch (wValue) {
@@ -1186,7 +1209,7 @@ export class MockTransport implements DspTransport {
         // tail is 4 B on V10 and 7 B on V16 (u32 clip + input-count byte).
         const tail = this.#isV16 ? 7 : 4;
         const numCh = Math.max(0, (length - tail) >> 1);
-        const peaks = Array.from({ length: numCh }, (_, i) => (i + 1) / numCh);
+        const peaks = this.#animatedPeaks(numCh);
         return synthesizeSystemStatus({
           numCh, peaks, cpu0: 25, cpu1: 12, clipFlags: this.#clipFlags,
           ...(this.#isV16 ? { activeInputChannels: this.#activeInputChannels() } : {}),
