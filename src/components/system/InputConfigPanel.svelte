@@ -100,8 +100,8 @@
 
 <Panel code="SY.11" title="INPUT CONFIG">
   {#if inputConfig && snap && overlaySnap}
-    <div class="cfgkvgrid">
-      <KV label="SOURCE" value={SOURCE_LABELS[source] ?? 'USB'} />
+    <div class="srcsel">
+      <KV label="SOURCE" value={SOURCE_LABELS[liveSource] ?? 'USB'} />
       <div class="src-btns">
         <button
           class="chip"
@@ -260,7 +260,9 @@
 
 <style>
   .cfgkvgrid { padding: 10px 14px 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; }
-  .src-btns { display: flex; gap: 4px; }
+  /* SOURCE: current-value KV over a full-width chip row (fits all inputs on one line). */
+  .srcsel { padding: 10px 14px 6px; display: grid; gap: 8px; }
+  .src-btns { display: flex; flex-wrap: wrap; gap: 4px; }
   .pinrow { padding: 6px 14px 6px; }
   .idle { padding: 10px 14px; }
   .pending { padding: 0 14px 8px; color: var(--accent); }
