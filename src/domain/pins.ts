@@ -7,7 +7,7 @@
 // runtime config rather than a wire section) any enabled external
 // control-interface pins -- see CtrlIfaceConfigs below.
 import { OutputSlotType } from './channels';
-import { PlatformType, type WireGen } from './platform';
+import { PlatformType, ChannelFamily } from './platform';
 import type { DspSnapshot } from './snapshot';
 import { isValidUartPinPair, isValidI2cPinPair, type UartControlConfig, type I2cControlConfig } from './controlInterfaces';
 
@@ -17,9 +17,9 @@ function maxGpio(platform: PlatformType): number {
   return platform === PlatformType.RP2350 ? 29 : 28;
 }
 
-export function isAssignablePin(platform: PlatformType, pin: number, wireGen: WireGen = 10): boolean {
+export function isAssignablePin(platform: PlatformType, pin: number, channelModel: ChannelFamily = ChannelFamily.Legacy): boolean {
   if (pin < 0 || pin > maxGpio(platform)) return false;
-  if (wireGen < 16 && pin === 12) return false;   // debug UART (V10 only)
+  if (channelModel === ChannelFamily.Legacy && pin === 12) return false;   // debug UART (V10 only)
   if (pin >= 23 && pin <= 25) return false;
   return true;
 }
@@ -40,9 +40,9 @@ export interface CtrlIfaceConfigs {
 
 const NO_CTRL_IFACES: CtrlIfaceConfigs = {};
 
-export function assignablePins(platform: PlatformType, wireGen: WireGen = 10): number[] {
+export function assignablePins(platform: PlatformType, channelModel: ChannelFamily = ChannelFamily.Legacy): number[] {
   const out: number[] = [];
-  for (let p = 0; p <= maxGpio(platform); p++) if (isAssignablePin(platform, p, wireGen)) out.push(p);
+  for (let p = 0; p <= maxGpio(platform); p++) if (isAssignablePin(platform, p, channelModel)) out.push(p);
   return out;
 }
 
@@ -91,7 +91,7 @@ export function availablePinsFor(
   platform: PlatformType, snapshot: DspSnapshot, selfPin: number, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
 ): PinCandidate[] {
   const inUse = pinsInUse(snapshot, ctrl);
-  return assignablePins(platform, snapshot.platform.wireGen).map((pin) => ({
+  return assignablePins(platform, snapshot.platform.channelModel).map((pin) => ({
     pin,
     usedBy: pin === selfPin ? null : (inUse.get(pin) ?? null),
   }));
@@ -100,14 +100,14 @@ export function availablePinsFor(
 export function validBckPins(
   platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
 ): number[] {
-  const wireGen = snapshot.platform.wireGen;
+  const channelModel = snapshot.platform.channelModel;
   const inUse = pinsInUse(snapshot, ctrl);
   const free = (p: number) => {
     const u = inUse.get(p);
     return u == null || u === PIN_LABEL.bck || u === PIN_LABEL.lrclk;
   };
-  return assignablePins(platform, wireGen).filter(
-    (p) => isAssignablePin(platform, p + 1, wireGen) && free(p) && free(p + 1),
+  return assignablePins(platform, channelModel).filter(
+    (p) => isAssignablePin(platform, p + 1, channelModel) && free(p) && free(p + 1),
   );
 }
 
@@ -119,12 +119,12 @@ export function validBckPins(
 export function validUartTxPins(
   platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
 ): number[] {
-  const wireGen = snapshot.platform.wireGen;
+  const channelModel = snapshot.platform.channelModel;
   const inUse = pinsInUse(snapshot, ctrl);
   const free = (p: number) => inUse.get(p) == null;
-  return assignablePins(platform, wireGen).filter(
+  return assignablePins(platform, channelModel).filter(
     (p) => p % 4 === 0
-      && isAssignablePin(platform, p + 1, wireGen)
+      && isAssignablePin(platform, p + 1, channelModel)
       && isValidUartPinPair(p, p + 1)
       && free(p) && free(p + 1),
   );
@@ -135,12 +135,12 @@ export function validUartTxPins(
 export function validI2cSdaPins(
   platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
 ): number[] {
-  const wireGen = snapshot.platform.wireGen;
+  const channelModel = snapshot.platform.channelModel;
   const inUse = pinsInUse(snapshot, ctrl);
   const free = (p: number) => inUse.get(p) == null;
-  return assignablePins(platform, wireGen).filter(
+  return assignablePins(platform, channelModel).filter(
     (p) => p % 2 === 0
-      && isAssignablePin(platform, p + 1, wireGen)
+      && isAssignablePin(platform, p + 1, channelModel)
       && isValidI2cPinPair(p, p + 1)
       && free(p) && free(p + 1),
   );

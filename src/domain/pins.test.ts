@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { PlatformType } from './platform';
+import { PlatformType, ChannelFamily } from './platform';
 import type { DspSnapshot } from './snapshot';
 import { isAssignablePin, pinsInUse, availablePinsFor, validBckPins, validUartTxPins, validI2cSdaPins } from './pins';
 import { DEFAULT_UART_CONTROL_CONFIG } from './controlInterfaces';
@@ -22,7 +22,7 @@ function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
 
 function snapV16(over: Partial<DspSnapshot> = {}): DspSnapshot {
   const base = snap(over);
-  return { ...base, platform: { ...base.platform, wireGen: 16 } } as DspSnapshot;
+  return { ...base, platform: { ...base.platform, channelModel: ChannelFamily.Unified } } as DspSnapshot;
 }
 
 describe('pins', () => {
@@ -76,7 +76,7 @@ describe('pins', () => {
   });
 
   test('a V10 snapshot still reserves GPIO 12', () => {
-    const list = availablePinsFor(PlatformType.RP2350, snap(), 6);   // default fixture wireGen = 10
+    const list = availablePinsFor(PlatformType.RP2350, snap(), 6);   // default fixture channelModel = Legacy
     expect(list.some((c) => c.pin === 12)).toBe(false);
   });
 

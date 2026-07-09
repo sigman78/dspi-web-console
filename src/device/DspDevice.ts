@@ -168,17 +168,17 @@ export class DspDevice {
         intermediate ? capabilities.wireLabel : undefined,
       );
     }
-    // A supported wire version must also carry at least its generation's
-    // floor payload (V10: 2960 B; V16: the full 5864 B packet). A shorter
+    // A supported device must carry the full packet for its exact wire
+    // version (V10: 2960 B; V16: 5864; V17: 5872; V18: 5876). A shorter
     // packet means the device omits sections the console treats as
-    // guaranteed -- reject instead of silently defaulting them.
-    const minPayload = proto.Wire.bulkSizeForVersion(capabilities.wireGen);
+    // guaranteed -- reject rather than silently defaulting them.
+    const minPayload = proto.Wire.bulkSizeForVersion(capabilities.wire);
     if (header.payloadLength < minPayload) {
       throw new UnsupportedDevicePacket(capabilities.fwLabel, header.payloadLength, minPayload);
     }
 
     const platformType = platformTypeFromId(platform.platformId);
-    const hardware = domain.createHardwareProfile(platformType, capabilities.wireGen);
+    const hardware = domain.createHardwareProfile(platformType, capabilities.channelModel);
     return {
       serial: serial.trim(),
       platformType,
@@ -235,7 +235,7 @@ export class DspDevice {
   }
 
   async getAllParams(): Promise<proto.BulkParams> {
-    const chunked = proto.Wire.bulkSizeForVersion(this.capabilities.wireGen) > proto.Wire.BulkLimits.MaxControlTransfer;
+    const chunked = proto.Wire.bulkSizeForVersion(this.capabilities.wire) > proto.Wire.BulkLimits.MaxControlTransfer;
     const bytes = chunked
       ? await this.#readAllParamsChunked()
       : await this.transport.ctrlIn(proto.WireCmd.GetAllParams.code, 0, proto.Wire.BulkLimits.MaxReadSize);
@@ -320,7 +320,7 @@ export class DspDevice {
   // V16 devices use the wide combined-status layout (u32 clip flags + live
   // active-input-count byte) and the 5-bit band field in GetEqParam wValues.
   private get isWideWire(): boolean {
-    return this.capabilities.wireGen === 16;
+    return this.capabilities.channelModel === domain.ChannelFamily.Unified;
   }
 
   async getSystemStatus(): Promise<proto.SystemStatus> {

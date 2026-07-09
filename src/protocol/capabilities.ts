@@ -7,6 +7,7 @@
 // misreport their semver.
 
 import * as Wire from './wireTypes';
+import { ChannelFamily } from '@/domain';
 
 // Support window: V10 (released fw 1.1.4) and V16-V18 (fw 1.1.5, unified
 // channel model; V17 adds ADAT config, V18 adds leveller channel masks).
@@ -66,7 +67,7 @@ export interface DeviceCapabilities {
   // Channel-model generation the device's packet follows (V16 for future
   // devices too -- newest known shape). Selects codec dims and the hardware
   // profile's wire mapping; everything above reads `features` instead.
-  readonly wireGen: 10 | 16;
+  readonly channelModel: ChannelFamily;
 
   // Which bulk-packet sections this device's packet carries. Single source of
   // truth -- wraps Wire.bulkLayout, never a parallel re-derivation.
@@ -94,8 +95,8 @@ export function deriveCapabilities(input: {
     : wireVersion > MAX_KNOWN_WIRE                ? 'future'
     : 'unsupported';
 
-  const wireGen = wireVersion >= 16 ? 16 : 10;
-  const isV16 = wireGen === 16;
+  const channelModel = wireVersion >= 16 ? ChannelFamily.Unified : ChannelFamily.Legacy;
+  const isV16 = channelModel === ChannelFamily.Unified;
 
   return {
     fw,
@@ -104,7 +105,7 @@ export function deriveCapabilities(input: {
     wireLabel: `V${wireVersion}`,
     platformId,
     support,
-    wireGen,
+    channelModel,
     sections: Wire.bulkLayout({ formatVersion: wireVersion, payloadLength }),
     features: {
       crossover:         isV16,

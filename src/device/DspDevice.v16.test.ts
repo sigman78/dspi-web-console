@@ -7,7 +7,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice, UnsupportedFirmware } from './DspDevice';
 import { parseNotifyPacket, WireCmd, buildBulkParams, PinConfigResult, CsStatusCode } from '@/protocol';
-import { ChannelId, FilterType, CsType, CsNoun, CsAction, EMPTY_CS_BINDING, dbToQ8 } from '@/domain';
+import { ChannelId, FilterType, CsType, CsNoun, CsAction, EMPTY_CS_BINDING, dbToQ8, ChannelFamily } from '@/domain';
 
 const FW_115 = { major: 1, minor: 1, patch: 5 };
 
@@ -19,7 +19,7 @@ describe('DspDevice — V16 connect + profile', () => {
   it('classifies a V16 RP2350 as supported with the 17-channel profile', async () => {
     const d = await v16Device();
     expect(d.capabilities.support).toBe('supported');
-    expect(d.capabilities.wireGen).toBe(16);
+    expect(d.capabilities.channelModel).toBe(ChannelFamily.Unified);
     expect(d.hardware.totalChannelCount).toBe(17);
     expect(d.hardware.inputs.length).toBe(8);
     expect(d.capabilities.features.multichannelInput).toBe(true);

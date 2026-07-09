@@ -807,6 +807,14 @@ describe('connect-time capabilities + version gating', () => {
     await expect(DspDevice.create(transport)).rejects.toBeInstanceOf(UnsupportedDevicePacket);
   });
 
+  // 5868 is >= the old V16-generation floor (5864) but < the exact V18 size
+  // (5876), so it would have passed a generation-keyed floor check and only
+  // fails now that the check keys on the exact observed wire version.
+  it('rejects a V18 device that reports a short payload (< exact V18 size)', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 18, payloadLength: 5868 });
+    await expect(DspDevice.create(t)).rejects.toThrow(UnsupportedDevicePacket);
+  });
+
   // The snapshot from a V10 device carries formatVersion 10; the paste path
   // (captureState -> restoreState -> setAllParams) must not throw — the writer
   // normalizes it to a V6 packet the firmware merges.

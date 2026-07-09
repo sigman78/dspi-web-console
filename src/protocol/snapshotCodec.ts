@@ -124,7 +124,7 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
       outputCount: hardware.outputCount,
       totalChannelCount: hardware.totalChannelCount,
       pdmOutputIndex: hardware.pdmOutputIndex,
-      wireGen: hardware.wireGen,
+      channelModel: hardware.channelModel,
     },
     bypass: bulk.bypass,
     masterPreampDb: bulk.preampDb,
