@@ -831,14 +831,29 @@ export class DspDevice {
     );
   }
 
-  // S/PDIF RX GPIO pin. Action-style IN: pin in wValue, returns a
-  // PinConfigResult status byte (mirrors setOutputPin).
-  async setSpdifRxPin(gpio: number): Promise<Result<void, proto.PinConfigResult>> {
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetSpdifRxPin, gpio & 0xFF));
+  // S/PDIF RX GPIO pin (fw 1.1.5+: up to 3 selectable instances, 0..2;
+  // instance 0 is the always-present default). Action-style IN: wValue =
+  // (instance<<8)|GPIO, returns a PinConfigResult status byte (mirrors
+  // setI2sRxPin).
+  async setSpdifRxPin(gpio: number, instance = 0): Promise<Result<void, proto.PinConfigResult>> {
+    const wValue = ((instance & 0xFF) << 8) | (gpio & 0xFF);
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetSpdifRxPin, wValue));
   }
 
-  async getSpdifRxPin(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetSpdifRxPin);
+  async getSpdifRxPin(instance = 0): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetSpdifRxPin, instance & 0xFF);
+  }
+
+  // Enable/disable a selectable S/PDIF input (instance 1..2; instance 0 is
+  // always on). wValue = (instance<<8)|enable.
+  async setSpdifInputEnabled(instance: number, on: boolean): Promise<Result<void, proto.PinConfigResult>> {
+    const wValue = ((instance & 0xFF) << 8) | (on ? 1 : 0);
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetSpdifInputEnable, wValue));
+  }
+
+  // { count, enableMask, pins } for all 3 selectable S/PDIF input slots.
+  async getSpdifInputConfig(): Promise<{ count: number; enableMask: number; pins: number[] }> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetSpdifInputConfig);
   }
 
   // LG Sound Sync. Only `enabled` is host-configurable; status read returns the
