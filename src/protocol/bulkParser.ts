@@ -59,6 +59,14 @@ export interface WireLeveller {
   amount: number;
   maxGainDb: number;
   gateDb: number;
+  detectorMask: number;
+  applyMask: number;
+}
+
+// Section 20: ADAT lightpipe output config (V17+).
+export interface WireAdat {
+  enabled: boolean;
+  pin: number;
 }
 
 export interface BulkParams {
@@ -98,6 +106,7 @@ export interface BulkParams {
   dacHwMute:   WireDacHwMute;         // V10+
 
   crossover: WireFilter[][];          // [17][4], V16+ (flat defaults on V10)
+  adat: WireAdat;                     // V17+
 }
 
 function defaultWireFilter(): WireFilter {
@@ -195,13 +204,23 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
     : def.i2s;
 
   const leveller = layout.leveller
-    ? (() => {
-        const w = Wire.LevellerConfig.read(r);
-        return {
-          enabled: w.enabled, speed: w.speed, lookahead: w.lookahead,
-          amount: w.amount, maxGainDb: w.maxGainDb, gateDb: w.gateDb,
-        };
-      })()
+    ? (layout.levellerMasks
+        ? (() => {
+            const w = Wire.LevellerConfig18.read(r);
+            return {
+              enabled: w.enabled, speed: w.speed, lookahead: w.lookahead,
+              amount: w.amount, maxGainDb: w.maxGainDb, gateDb: w.gateDb,
+              detectorMask: w.detectorMask, applyMask: w.applyMask,
+            };
+          })()
+        : (() => {
+            const w = Wire.LevellerConfig.read(r);
+            return {
+              enabled: w.enabled, speed: w.speed, lookahead: w.lookahead,
+              amount: w.amount, maxGainDb: w.maxGainDb, gateDb: w.gateDb,
+              detectorMask: 0xFF, applyMask: 0xFF,
+            };
+          })())
     : def.leveller;
 
   const inputPreampsDb = [...def.inputPreampsDb];
@@ -239,6 +258,10 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
       crossover[ch] = Array.from({ length: Wire.Const16.XOVER_BANDS }, () => readWireFilter(r));
     }
   }
+
+  const adat = layout.adat
+    ? (() => { const w = Wire.AdatConfig.read(r); return { enabled: w.enabled, pin: w.pin }; })()
+    : def.adat;
 
   return {
     formatVersion: h.formatVersion,
@@ -281,6 +304,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
     userVolume,
     dacHwMute,
     crossover,
+    adat,
   };
 }
 
@@ -337,7 +361,7 @@ export function defaultBulkParams(opts: {
       mckEnabled: false,
       mckMultiplierEncoded: 0,
     },
-    leveller: { enabled: false, speed: 0, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40 },
+    leveller: { enabled: false, speed: 0, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40, detectorMask: 0xFF, applyMask: 0xFF },
     inputPreampsDb: Array.from({ length: Wire.Const16.NUM_INPUTS }, () => 0),
     masterVolumeDb: 0,
     inputConfig: { source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0 },
@@ -346,6 +370,7 @@ export function defaultBulkParams(opts: {
     dacHwMute:   { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
     crossover: Array.from({ length: Wire.Const16.NUM_CHANNELS }, () =>
       Array.from({ length: Wire.Const16.XOVER_BANDS }, defaultWireFilter)),
+    adat: { enabled: false, pin: 0 },
   };
 }
 
@@ -360,7 +385,7 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
     throw new Error(`buildBulkParams: snapshot formatVersion ${bulk.formatVersion} is below the V6 floor`);
   }
   const requested = Math.min(version ?? bulk.formatVersion, Wire.MAX_WIRE_VERSION);
-  const writeVersion = requested >= 16 ? 16 : Math.min(requested, 10);
+  const writeVersion = requested >= 16 ? requested : Math.min(requested, 10);
   const dims = Wire.dimsForVersion(writeVersion);
   const size = Wire.bulkSizeForVersion(writeVersion);
   const w = new BinWriter(size);
@@ -419,7 +444,11 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
 
   // V6 tail -- always present (writeVersion >= 6).
   Wire.I2SConfig.write(w, bulk.i2s);
-  Wire.LevellerConfig.write(w, bulk.leveller);
+  if (writeVersion >= 18) {
+    Wire.LevellerConfig18.write(w, bulk.leveller);
+  } else {
+    Wire.LevellerConfig.write(w, bulk.leveller);
+  }
   if (writeVersion >= 16) {
     Wire.PreampConfig16.write(w, { preampDb: bulk.inputPreampsDb.slice(0, Wire.Const16.NUM_INPUTS) });
   } else {
@@ -454,6 +483,9 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
         Wire.BandParams.write(w, { type: f.type, bypass: f.bypass ? 1 : 0, frequency: f.frequency, q: f.q, gain: f.gain });
       }
     }
+  }
+  if (writeVersion >= 17) {
+    Wire.AdatConfig.write(w, { enabled: bulk.adat.enabled, pin: bulk.adat.pin });
   }
 
   return w.toUint8Array();

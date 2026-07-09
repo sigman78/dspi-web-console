@@ -158,6 +158,22 @@ export const LevellerConfig = struct({
   gateDb:    f32,
 });
 
+// Section 12, V18 shape: the 16-byte V4 leveller + detector/apply channel masks
+// (+4 B). detectorMask/applyMask: bit k = input channel k. Interior grow, so a
+// V18 packet shifts every following section by +4 bytes.
+export const LevellerConfig18 = struct({
+  enabled:      bool8,
+  speed:        u8,
+  lookahead:    bool8,
+  _pad:         reserved(1),
+  amount:       f32,
+  maxGainDb:    f32,
+  gateDb:       f32,
+  detectorMask: u8,
+  applyMask:    u8,
+  _pad2:        reserved(2),
+});
+
 // Live leveller channel masks (fw V18+): payload of REQ_SET/GET_LEVELLER_MASKS
 // (0xDE/0xDF), 2 bytes [detector_mask, apply_mask]. Distinct from the bulk
 // section above; carried as a standalone command so masks can be edited live.
@@ -226,6 +242,15 @@ export const DacHwMute = struct({
   holdMs:     u16,
   releaseMs:  u16,
   _reserved:  reserved(8),
+});
+
+// Section 20: ADAT lightpipe output config (8 B, V17+; RP2350 only). enabled/pin
+// are persisted intent; pin == 0 means the platform default. Zeroed/ignored on
+// RP2040. Appended at the very end of the packet, after the crossover section.
+export const AdatConfig = struct({
+  enabled:   bool8,
+  pin:       u8,
+  _reserved: reserved(6),
 });
 
 // Standalone control-transfer payloads (not part of the bulk transfer).
@@ -526,14 +551,21 @@ export const BULK_SIZE_V16 =
   sizeOf(DacHwMute) +
   sizeOf(BandParams) * (Const16.NUM_CHANNELS * Const16.XOVER_BANDS);    // crossover (17 x 4)
 
+// V17 appends the 8-byte ADAT config; V18 additionally grows the leveller
+// section 16->20 in place. Firmware still accepts only exact-size packets.
+export const BULK_SIZE_V17 = BULK_SIZE_V16 + sizeOf(AdatConfig);                                  // 5872
+export const BULK_SIZE_V18 = BULK_SIZE_V17 + sizeOf(LevellerConfig18) - sizeOf(LevellerConfig);   // 5876
+
 // Newest wire version the console knows how to decode and write.
-export const MAX_WIRE_VERSION = 16;
+export const MAX_WIRE_VERSION = 18;
 
 // Packet size to allocate/write for a given target wire version (clamped to
-// the V6 floor and the V16 ceiling). Versions 11..15 were in-development
+// the V6 floor and the V18 ceiling). Versions 11..15 were in-development
 // intermediates the console never supported; they collapse to the V10 size
 // (writes to such devices are rejected at connect anyway).
 export function bulkSizeForVersion(v: number): number {
+  if (v >= 18) return BULK_SIZE_V18;
+  if (v >= 17) return BULK_SIZE_V17;
   if (v >= 16) return BULK_SIZE_V16;
   if (v >= 10) return BulkSizes.V10;
   if (v === 9) return BulkSizes.V9;
@@ -545,10 +577,10 @@ export function bulkSizeForVersion(v: number): number {
 export const BulkLimits = {
   MinPacketSize:  BulkSizes.V2,
   // Size we WRITE: version-aware buildBulkParams emits at the device's own wire
-  // version, up to V16. This is the largest buffer it may allocate.
-  MaxRequestSize: BULK_SIZE_V16,
-  // Size we READ: the largest packet we tolerate receiving (V16).
-  MaxReadSize:    BULK_SIZE_V16,  // 5864
+  // version, up to V18. This is the largest buffer it may allocate.
+  MaxRequestSize: BULK_SIZE_V18,
+  // Size we READ: the largest packet we tolerate receiving (V18).
+  MaxReadSize:    BULK_SIZE_V18,  // 5876
   // WinUSB caps a control transfer's data stage at 4 KB; the largest single
   // EP0 transfer any host backend can rely on. Above this, DspDevice chunks
   // via 0xA2/0xA3 (fw 1.1.5+).
@@ -569,6 +601,10 @@ export interface BulkLayout {
   // V16 additions: the crossover section and the unified channel model's
   // wide arrays (17 channels / 8 inputs) arrive together.
   crossover: boolean;
+  // V17: ADAT lightpipe config, appended at the very end of the packet.
+  adat: boolean;
+  // V18: leveller detector/apply channel masks (interior section grow).
+  levellerMasks: boolean;
 }
 
 // Determine which optional sections are present based on the header.
@@ -587,7 +623,9 @@ export function bulkLayout(h: { formatVersion: number; payloadLength: number }):
     lgSoundSync:  v >= 8  && len >= BulkSizes.V8,
     userVolume:   v >= 9  && len >= BulkSizes.V9,
     dacHwMute:    v >= 10 && len >= BulkSizes.V10,
-    crossover:    v >= 16 && len >= BULK_SIZE_V16,
+    crossover:     v >= 16 && len >= BULK_SIZE_V16,
+    adat:          v >= 17 && len >= BULK_SIZE_V17,
+    levellerMasks: v >= 18 && len >= BULK_SIZE_V18,
   };
 }
 

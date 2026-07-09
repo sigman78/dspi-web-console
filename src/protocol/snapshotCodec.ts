@@ -150,12 +150,10 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
       amount: bulk.leveller.amount,
       maxGainDb: bulk.leveller.maxGainDb,
       gateDb: bulk.leveller.gateDb,
-      // Channel masks are not in the V16 bulk packet; default all-on until the
-      // V18 bulk read lands (Phase 2, docs/PLAN-LEVELLER-V18.md). Live edits are
-      // held in the mirror by setLevellerMasks; a fresh snapshot decode resets
-      // to all-on until the bulk carries them.
-      detectorMask: 0xFF,
-      applyMask: 0xFF,
+      // Channel masks come from the V18 bulk section; the parser defaults them
+      // to all-on (0xFF) on pre-V18 packets, so this is always populated.
+      detectorMask: bulk.leveller.detectorMask,
+      applyMask: bulk.leveller.applyMask,
     },
     i2s: bulk.i2s,
     outputPins: bulk.pins.slice(0, bulk.numPinOutputs),
