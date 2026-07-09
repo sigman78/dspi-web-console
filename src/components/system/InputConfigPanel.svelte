@@ -2,9 +2,10 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import PinSelect from './PinSelect.svelte';
+  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { connection } from '@/state';
-  import { stageInputSource, stageSpdifRxPin, stageInputRate, stageI2sRxPin, stageI2sInputChannels } from '@/runtime';
-  import { AudioInputSource, SpdifInputState, availablePinsFor, I2S_INPUT_RATES_HZ, liveCsPinConfigs } from '@/domain';
+  import { stageInputSource, stageSpdifRxPin, stageSpdifRxPinExt, stageSpdifInputEnabled, stageInputRate, stageI2sRxPin, stageI2sInputChannels } from '@/runtime';
+  import { AudioInputSource, isSpdifSource, SpdifInputState, availablePinsFor, I2S_INPUT_RATES_HZ, liveCsPinConfigs } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -15,12 +16,14 @@
   const liveSource = $derived(inputConfig?.source ?? AudioInputSource.Usb);
   const source = $derived(s.staging.valueOf('inputSource', liveSource));
   const sourcePending = $derived(source !== liveSource);
-  const isSpdif = $derived(source === AudioInputSource.Spdif);
+  const isSpdif = $derived(isSpdifSource(source));
   const isI2s = $derived(source === AudioInputSource.I2s);
   const features = $derived(s.device.capabilities.features);
   const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
   const effSpdifRxPin = $derived(inputConfig ? s.staging.valueOf('spdifRxPin', inputConfig.spdifRxPin) : 0);
+  // Selectable S/PDIF inputs (1 unless the platform has the multi-SPDIF receiver, then 3).
+  const spdifInputCount = $derived(s.device.capabilities.spdifInputCount);
   const effRate = $derived(inputConfig ? s.staging.valueOf('inputRate', inputConfig.i2sInputRateHz) : 0);
   // Configured count (0 = firmware default of 2); pairs 0..activePairs-1 show a pin select.
   const liveChannels = $derived(inputConfig?.i2sInputChannels || 2);
@@ -31,11 +34,40 @@
     return s.staging.valueOf(`i2sRxPin:${pair}`, inputConfig?.i2sRxPins[pair] ?? 0);
   }
 
-  const SOURCE_LABELS: Record<number, string> = {
-    [AudioInputSource.Usb]:   'USB',
-    [AudioInputSource.Spdif]: 'S/PDIF',
-    [AudioInputSource.I2s]:   'I2S',
-  };
+  function effSpdifExtEnabled(i: number): boolean {
+    return s.staging.valueOf(`spdifEnable:${i}`, inputConfig?.spdifExtEnabled[i] ?? false);
+  }
+
+  function effSpdifRxPinExt(i: number): number {
+    return s.staging.valueOf(`spdifRxPinExt:${i}`, inputConfig?.spdifRxPinExt[i] ?? 0);
+  }
+
+  // Unified per-input accessors over the S/PDIF rows: row 0 = input 1 (scalar,
+  // always on), rows 1..2 = optional inputs (extIndex = i - 1).
+  function spdifTitle(i: number): string {
+    return i === 0 ? (spdifInputCount > 1 ? 'S/PDIF 1' : 'S/PDIF') : `S/PDIF ${i + 1}`;
+  }
+  function effSpdifPin(i: number): number {
+    return i === 0 ? effSpdifRxPin : effSpdifRxPinExt(i - 1);
+  }
+  function devSpdifPin(i: number): number {
+    return i === 0 ? (inputConfig?.spdifRxPin ?? 0) : (inputConfig?.spdifRxPinExt[i - 1] ?? 0);
+  }
+  function spdifPinKey(i: number): string {
+    return i === 0 ? 'spdifRxPin' : `spdifRxPinExt:${i - 1}`;
+  }
+  function onSpdifPin(i: number, gpio: number): void {
+    if (i === 0) stageSpdifRxPin(s, gpio);
+    else stageSpdifRxPinExt(s, i - 1, gpio);
+  }
+
+  const SOURCE_LABELS = $derived<Record<number, string>>({
+    [AudioInputSource.Usb]:    'USB',
+    [AudioInputSource.Spdif]:  spdifInputCount > 1 ? 'S/PDIF 1' : 'S/PDIF',
+    [AudioInputSource.Spdif2]: 'S/PDIF 2',
+    [AudioInputSource.Spdif3]: 'S/PDIF 3',
+    [AudioInputSource.I2s]:    'I2S',
+  });
 
   const STATE_LABELS: Record<number, string> = {
     [SpdifInputState.Inactive]:  'INACTIVE',
@@ -69,7 +101,7 @@
 <Panel code="SY.11" title="INPUT CONFIG">
   {#if inputConfig && snap && overlaySnap}
     <div class="cfgkvgrid">
-      <KV label="SOURCE" value={SOURCE_LABELS[source] ?? 'USB'} />
+      <KV label="SOURCE" value={SOURCE_LABELS[liveSource] ?? 'USB'} />
       <div class="src-btns">
         <button
           class="chip"
@@ -84,7 +116,25 @@
           class:staged={s.staging.has('inputSource') && source === AudioInputSource.Spdif}
           onclick={() => stageInputSource(s, AudioInputSource.Spdif)}
           disabled={!connected || source === AudioInputSource.Spdif}
-        >S/PDIF</button>
+        >{spdifInputCount > 1 ? 'S/P 1' : 'S/P'}</button>
+        {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[0]}
+          <button
+            class="chip"
+            class:on={source === AudioInputSource.Spdif2}
+            class:staged={s.staging.has('inputSource') && source === AudioInputSource.Spdif2}
+            onclick={() => stageInputSource(s, AudioInputSource.Spdif2)}
+            disabled={!connected || source === AudioInputSource.Spdif2}
+          >S/P 2</button>
+        {/if}
+        {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[1]}
+          <button
+            class="chip"
+            class:on={source === AudioInputSource.Spdif3}
+            class:staged={s.staging.has('inputSource') && source === AudioInputSource.Spdif3}
+            onclick={() => stageInputSource(s, AudioInputSource.Spdif3)}
+            disabled={!connected || source === AudioInputSource.Spdif3}
+          >S/P 3</button>
+        {/if}
         {#if features.i2sInput}
           <button
             class="chip"
@@ -110,17 +160,35 @@
     {/if}
 
     {#if isSpdif}
-      <div class="subhdr">S/PDIF RX PIN</div>
-      <div class="pinrow">
-        <span class="stage-wrap" class:staged={s.staging.has('spdifRxPin')} title={s.staging.has('spdifRxPin') ? `device: GP${inputConfig.spdifRxPin}` : undefined}>
-          <PinSelect
-            value={effSpdifRxPin}
-            candidates={availablePinsFor(snap.platform.type, overlaySnap, effSpdifRxPin, ctrlPins)}
-            ariaLabel="S/PDIF RX GPIO pin"
-            disabled={!connected}
-            onChange={(p) => stageSpdifRxPin(s, p)}
-          />
-        </span>
+      <div class="subhdr">S/PDIF RX</div>
+      <div class="spdif-grid">
+        {#each Array.from({ length: spdifInputCount }, (_, i) => i) as i (i)}
+          <span class="spdif-title">{spdifTitle(i)}</span>
+          <span class="spdif-toggle">
+            {#if i === 0}
+              <span class="dash" title="always enabled">—</span>
+            {:else}
+              <span class="stage-wrap" class:staged={s.staging.has(`spdifEnable:${i - 1}`)} title={s.staging.has(`spdifEnable:${i - 1}`) ? `device: ${inputConfig.spdifExtEnabled[i - 1] ? 'ON' : 'OFF'}` : undefined}>
+                <ToggleSwitch
+                  size="sm"
+                  checked={effSpdifExtEnabled(i - 1)}
+                  disabled={!connected}
+                  ariaLabel={effSpdifExtEnabled(i - 1) ? `Disable ${spdifTitle(i)} input` : `Enable ${spdifTitle(i)} input`}
+                  onChange={() => stageSpdifInputEnabled(s, i - 1, !effSpdifExtEnabled(i - 1))}
+                />
+              </span>
+            {/if}
+          </span>
+          <span class="stage-wrap" class:staged={s.staging.has(spdifPinKey(i))} title={s.staging.has(spdifPinKey(i)) ? `device: GP${devSpdifPin(i)}` : undefined}>
+            <PinSelect
+              value={effSpdifPin(i)}
+              candidates={availablePinsFor(snap.platform.type, overlaySnap, effSpdifPin(i), ctrlPins)}
+              ariaLabel={`${spdifTitle(i)} RX GPIO pin`}
+              disabled={!connected}
+              onChange={(p) => onSpdifPin(i, p)}
+            />
+          </span>
+        {/each}
       </div>
 
       <div class="subhdr">S/PDIF RX STATUS</div>
@@ -193,7 +261,14 @@
 <style>
   .cfgkvgrid { padding: 10px 14px 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; }
   .src-btns { display: flex; gap: 4px; }
+  .src-btns button { white-space: nowrap; }
   .pinrow { padding: 6px 14px 6px; }
   .idle { padding: 10px 14px; }
   .pending { padding: 0 14px 8px; color: var(--accent); }
+  /* S/PDIF inputs: one row per selectable input -- title | toggle | pin --
+     spread across the panel width (title at left, pin at the right edge). */
+  .spdif-grid { padding: 8px 14px 4px; display: grid; grid-template-columns: auto auto auto; justify-content: space-between; row-gap: 12px; column-gap: 12px; align-items: center; }
+  .spdif-title { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--text-dim); white-space: nowrap; }
+  .spdif-toggle { display: flex; align-items: center; justify-content: center; min-width: 34px; }
+  .dash { color: var(--text-faint); }
 </style>

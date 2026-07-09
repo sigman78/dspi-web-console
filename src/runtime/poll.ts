@@ -1,7 +1,7 @@
 import type { ReadySession } from '@/state';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
-import { ALL_CHANNELS, AudioInputSource, wireChannelFor } from '@/domain';
+import { ALL_CHANNELS, isSpdifSource, wireChannelFor } from '@/domain';
 
 const STATUS_INTERVAL_MS = 50;   // ~20 Hz -- peaks + cpu
 const BUFFER_INTERVAL_MS = 250;  // ~4 Hz  -- buffer stats
@@ -115,7 +115,8 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   }
 
   function shouldRunSpdifRx(now: number): boolean {
-    if (mir.current?.inputConfig.source !== AudioInputSource.Spdif) return false;
+    const source = mir.current?.inputConfig.source;
+    if (source === undefined || !isSpdifSource(source)) return false;
     // lastSpdifRxMs === 0 means never polled this session: eligible immediately,
     // not a full interval after the performance.now() epoch.
     return lastSpdifRxMs === 0 || now - lastSpdifRxMs >= SPDIF_RX_INTERVAL_MS;

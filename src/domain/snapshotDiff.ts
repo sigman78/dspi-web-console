@@ -43,6 +43,7 @@ export type SnapshotChange =
   | { kind: 'leveller';      value: Leveller }
   | { kind: 'inputConfig';   value: InputConfig }
   | { kind: 'spdifRxPin';    value: number }
+  | { kind: 'spdifExt';      value: { spdifRxPinExt: number[]; spdifExtEnabled: boolean[] } }
   | { kind: 'userVolume';    value: UserVolume }
   | { kind: 'dacHwMute';     value: DacHwMute }
   | { kind: 'lgSoundSyncEnabled'; value: boolean }
@@ -98,18 +99,27 @@ function levellerDiffers(a: Leveller, b: Leveller): boolean {
       || neq(a.gateDb,    b.gateDb,    DIFF_TOLERANCE.db);
 }
 
-// inputConfig splits: `source` is preset content; `spdifRxPin` belongs to the
-// output-config block (rides the 0x98 persistence mode, not the preset, on
-// 1.1.4). A source change carries the whole section; so does any change to
-// the V16 I2S fields (pins/rate/channel count).
+function arrayDiffers<T>(a: T[], b: T[]): boolean {
+  return a.length !== b.length || a.some((v, i) => v !== b[i]);
+}
+
+// inputConfig splits: `source` is preset content; `spdifRxPin`/spdifExt belong
+// to the output-config block (rides the 0x98 persistence mode, not the
+// preset, on 1.1.4). A source change carries the whole section; so does any
+// change to the V16 I2S fields (pins/rate/channel count).
 function diffInputConfig(a: InputConfig, b: InputConfig, out: SnapshotChange[]): void {
   const i2sChanged =
     a.i2sInputRateHz !== b.i2sInputRateHz ||
     a.i2sInputChannels !== b.i2sInputChannels ||
-    a.i2sRxPins.length !== b.i2sRxPins.length ||
-    a.i2sRxPins.some((v, i) => v !== b.i2sRxPins[i]);
-  if (a.source !== b.source || i2sChanged) out.push({ kind: 'inputConfig', value: b });
-  else if (a.spdifRxPin !== b.spdifRxPin) out.push({ kind: 'spdifRxPin', value: b.spdifRxPin });
+    arrayDiffers(a.i2sRxPins, b.i2sRxPins);
+  if (a.source !== b.source || i2sChanged) {
+    out.push({ kind: 'inputConfig', value: b });
+    return;
+  }
+  if (a.spdifRxPin !== b.spdifRxPin) out.push({ kind: 'spdifRxPin', value: b.spdifRxPin });
+  if (arrayDiffers(a.spdifRxPinExt, b.spdifRxPinExt) || arrayDiffers(a.spdifExtEnabled, b.spdifExtEnabled)) {
+    out.push({ kind: 'spdifExt', value: { spdifRxPinExt: b.spdifRxPinExt, spdifExtEnabled: b.spdifExtEnabled } });
+  }
 }
 
 function userVolumeDiffers(a: UserVolume, b: UserVolume): boolean {

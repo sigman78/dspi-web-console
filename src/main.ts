@@ -20,12 +20,18 @@ const mock = params.get('mock');
 // ?mock=rp2350&i2s=8 additionally gives it an imaginary 8-channel I2S input
 // (implies the 1.1.5 profile) so the multichannel UI -- incl. the leveller
 // channel masks, which are V18-only -- can be demoed without hardware.
+// ?mock=rp2350&spdif=3 additionally pre-enables SPDIF inputs 2/3 (implies the
+// 1.1.5 profile) so the multi-SPDIF source picker has more than one input to
+// demo without hardware.
 const i2sParam = params.get('i2s');
 const i2sInputChannels = i2sParam != null ? Math.min(8, Math.max(2, Number(i2sParam) | 0)) : undefined;
-const want115 = params.get('fw') === '115' || (i2sInputChannels != null && i2sInputChannels > 2);
+const spdifParam = params.get('spdif');
+const spdifInputsEnabled = spdifParam != null ? Math.min(3, Math.max(1, Number(spdifParam) | 0)) : undefined;
+const want115 = params.get('fw') === '115' || (i2sInputChannels != null && i2sInputChannels > 2) || spdifInputsEnabled != null;
 const mockOpts = {
   ...(want115 ? { wireVersion: 18, fwVersion: { major: 1, minor: 1, patch: 5 } } : {}),
   ...(i2sInputChannels != null ? { i2sInputChannels } : {}),
+  ...(spdifInputsEnabled != null ? { spdifInputsEnabled } : {}),
 };
 
 // Boot reports its own failures (with errorKind) via reportConnectError. The

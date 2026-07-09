@@ -16,7 +16,7 @@ Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScrip
 - **Requires firmware 1.1.4+.** Two channel-model generations are fully supported: **1.1.4** (wire V10) and **1.1.5** (wire V16–V18, unified channel model — V16/V17/V18 share one channel model and differ only by additive sections). Older firmware (≤ 1.1.3) and in-development intermediates (wire 11–15) are detected at connect and rejected with a firmware-update notice — flash a current [DSPi release](https://github.com/WeebLabs/DSPi) via the UF2 bootloader (hold BOOTSEL while plugging in).
 - Firmware newer than the console knows (wire > V18) connects best-effort, reading only the sections it recognizes.
 - **1.1.4 (V10)** surface: S/PDIF input + RX status, LG Sound Sync, user volume/mute, DAC hardware mute, per-band EQ bypass, Notch/Allpass filters, output-config persistence modes (with-preset / independent), buffer stats, device notifications, and an UPDATE FIRMWARE button that reboots into the bootloader.
-- **1.1.5 (V16–V18)** adds: up to 8-in / 9-out on RP2350, I2S multichannel input, per-output crossover filters, first-order shelf/allpass EQ, UART/I2C external control interfaces, Control Surfaces (physical controls/LEDs on spare GPIOs), live active-input-count reporting, and — on the V18 release — per-input volume-leveller channel masks. Every 1.1.5 surface is gated on device capabilities, per feature and on the exact wire version where it matters (e.g. the leveller masks need V18), so older firmware simply doesn't show what it can't do.
+- **1.1.5 (V16–V18)** adds: up to 8-in / 9-out on RP2350, I2S multichannel input, up to three selectable S/PDIF inputs sharing one receiver (RP2350), per-output crossover filters, first-order shelf/allpass EQ, UART/I2C external control interfaces, Control Surfaces (physical controls/LEDs on spare GPIOs), live active-input-count reporting, and — on the V18 release — per-input volume-leveller channel masks. Every 1.1.5 surface is gated on device capabilities, per feature and on the exact wire version where it matters (e.g. the leveller masks need V18), so older firmware simply doesn't show what it can't do.
 - Both USB identities are recognized: `2E8B:FEAA` (fw ≥ 1.1.4) and the legacy `2E8A:FEAA` (≤ 1.1.3, upgrade-prompt only).
 - RP2350 tested end-to-end; RP2040 verified on MCU hardware only (no audio out).
 
@@ -45,6 +45,7 @@ http://localhost:5173/?mock=rp2040          # V10 / fw 1.1.4
 http://localhost:5173/?mock=rp2350          # V10 / fw 1.1.4
 http://localhost:5173/?mock=rp2350&fw=115   # V18 / fw 1.1.5 (8-in/9-out, crossover, control interfaces + surfaces)
 http://localhost:5173/?mock=rp2350&i2s=8    # V18 / fw 1.1.5 with an 8-channel I2S input (multichannel UI + leveller masks)
+http://localhost:5173/?mock=rp2350&spdif=3  # V18 / fw 1.1.5 with 3 selectable S/PDIF inputs (multi-SPDIF source picker)
 ```
 
 ## Build & test

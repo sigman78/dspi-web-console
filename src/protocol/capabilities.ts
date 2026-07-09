@@ -38,6 +38,9 @@ export interface DeviceFeatures {
   // More than one input stereo pair: 4/6/8-channel USB alts and multichannel
   // I2S (SetI2sInputChannels / pair-addressed RX pins).
   readonly multichannelInput: boolean;
+  // Multiple selectable S/PDIF inputs sharing one receiver (RP2350 only,
+  // same platform gate as multichannelInput).
+  readonly multiSpdifInputs: boolean;
   // Runtime active-input-count reporting: GetStatus trailing byte, status
   // wValue 23, and the INPUT_FORMAT notify event.
   readonly activeInputCount: boolean;
@@ -78,6 +81,11 @@ export interface DeviceCapabilities {
   readonly sections: Wire.BulkLayout;
 
   readonly features: DeviceFeatures;
+
+  // Number of selectable S/PDIF inputs (1 unless multiSpdifInputs is set, then
+  // 3). Numeric sibling of features.multiSpdifInputs -- DeviceFeatures stays
+  // boolean-only.
+  readonly spdifInputCount: number;
 }
 
 // The single firmware-version string formatter. Display reads this projection
@@ -101,6 +109,7 @@ export function deriveCapabilities(input: {
 
   const channelModel = wireVersion >= 16 ? ChannelFamily.Unified : ChannelFamily.Legacy;
   const isV16 = channelModel === ChannelFamily.Unified;
+  const multiSpdifInputs = isV16 && platformId === 1;
 
   return {
     fw,
@@ -116,6 +125,7 @@ export function deriveCapabilities(input: {
       firstOrderEq:      isV16,
       i2sInput:          isV16,
       multichannelInput: isV16 && platformId === 1,
+      multiSpdifInputs,
       activeInputCount:  isV16,
       controlInterfaces: isV16,
       controlSurfaces:   isV16,
@@ -123,5 +133,6 @@ export function deriveCapabilities(input: {
       // wire version so V16/V17 devices (e.g. 1.1.5-beta3) don't expose them.
       levellerMasks:     wireVersion >= 18,
     },
+    spdifInputCount: multiSpdifInputs ? 3 : 1,
   };
 }

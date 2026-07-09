@@ -14,7 +14,7 @@ function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
     leveller: null,
     outputPins: [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
-    inputConfig: { source: 0, spdifRxPin: 5 },
+    inputConfig: { source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false] },
     dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
     ...over,
   } as DspSnapshot;

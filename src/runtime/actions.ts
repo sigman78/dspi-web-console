@@ -513,6 +513,25 @@ export function setSpdifRxPin(s: ReadySession, gpio: number): Promise<boolean> {
   );
 }
 
+// fw 1.1.5+ — RX pin for optional S/PDIF input 2/3. extIndex 0 = input 2
+// (device instance 1), extIndex 1 = input 3 (device instance 2).
+export function setSpdifRxPinExt(s: ReadySession, extIndex: number, gpio: number): Promise<boolean> {
+  return writeChecked(s,
+    'set S/PDIF RX pin',
+    () => s.device.setSpdifRxPin(gpio, extIndex + 1),
+    () => { s.mirror.snapshot.inputConfig.spdifRxPinExt[extIndex] = gpio; },
+  );
+}
+
+// fw 1.1.5+ — enable/disable optional S/PDIF input 2/3 (extIndex as above).
+export function setSpdifInputEnabled(s: ReadySession, extIndex: number, on: boolean): Promise<boolean> {
+  return writeChecked(s,
+    'set S/PDIF input enable',
+    () => s.device.setSpdifInputEnabled(extIndex + 1, on),
+    () => { s.mirror.snapshot.inputConfig.spdifExtEnabled[extIndex] = on; },
+  );
+}
+
 // V16 — I2S input rate. The device is the rate authority in I2S mode; when
 // I2S is the active source firmware applies the change deferred (audible
 // pipeline reset), otherwise it just stores the selection.

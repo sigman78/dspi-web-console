@@ -952,6 +952,75 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     expect(await d.getSpdifRxPin()).toBe(15);
   });
 
+  test('setSpdifRxPin packs (instance<<8)|gpio; omitting instance keeps back-compat wValue===gpio', async () => {
+    const seen: number[] = [];
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async (req, val) => {
+        if (req === WireCmd.SetSpdifRxPin.code) seen.push(val);
+        return new Uint8Array([0x00]);
+      },
+      ctrlOut: async () => {},
+    };
+    const d = await createDevice(t);
+
+    await d.setSpdifRxPin(15);
+    await d.setSpdifRxPin(9, 2);
+
+    expect(seen).toEqual([15, (2 << 8) | 9]);
+  });
+
+  test('getSpdifRxPin sends the instance as wValue', async () => {
+    const seen: number[] = [];
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async (req, val) => {
+        if (req === WireCmd.GetSpdifRxPin.code) { seen.push(val); return new Uint8Array([7]); }
+        return new Uint8Array([0]);
+      },
+      ctrlOut: async () => {},
+    };
+    const d = await createDevice(t);
+
+    expect(await d.getSpdifRxPin()).toBe(7);
+    expect(await d.getSpdifRxPin(2)).toBe(7);
+    expect(seen).toEqual([0, 2]);
+  });
+
+  test('setSpdifInputEnabled packs (instance<<8)|enableBit', async () => {
+    const seen: number[] = [];
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async (req, val) => {
+        if (req === WireCmd.SetSpdifInputEnable.code) seen.push(val);
+        return new Uint8Array([0x00]);
+      },
+      ctrlOut: async () => {},
+    };
+    const d = await createDevice(t);
+
+    const r1 = await d.setSpdifInputEnabled(1, true);
+    const r2 = await d.setSpdifInputEnabled(2, false);
+
+    expect(seen).toEqual([(1 << 8) | 1, (2 << 8) | 0]);
+    expect(r1.ok).toBe(true);
+    expect(r2.ok).toBe(true);
+  });
+
+  test('getSpdifInputConfig decodes [count, enableMask, pin0, pin1, pin2]', async () => {
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async (req, _val, len) => {
+        if (req === WireCmd.GetSpdifInputConfig.code) return Uint8Array.from([3, 0b101, 5, 16, 17]);
+        return new Uint8Array(len);
+      },
+      ctrlOut: async () => {},
+    };
+    const d = await createDevice(t);
+
+    expect(await d.getSpdifInputConfig()).toEqual({ count: 3, enableMask: 0b101, pins: [5, 16, 17] });
+  });
+
   test('LG Sound Sync enable + status round-trip on V10', async () => {
     const d = await v10();
     await d.setLgSoundSyncEnabled(true);

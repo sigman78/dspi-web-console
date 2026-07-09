@@ -3,11 +3,21 @@
 // packet carries the section (see protocol/snapshotCodec.ts gating on bulkLayout).
 
 export const AudioInputSource = {
-  Usb:   0,
-  Spdif: 1,
-  I2s:   2,   // V16+
+  Usb:    0,
+  Spdif:  1,
+  I2s:    2,   // V16+
+  // 3 reserved for future ADAT.
+  Spdif2: 4,   // fw 1.1.5+ selectable S/PDIF input 2
+  Spdif3: 5,   // fw 1.1.5+ selectable S/PDIF input 3
 } as const;
 export type AudioInputSource = (typeof AudioInputSource)[keyof typeof AudioInputSource];
+
+export function isSpdifSource(s: AudioInputSource): boolean {
+  return s === AudioInputSource.Spdif || s === AudioInputSource.Spdif2 || s === AudioInputSource.Spdif3;
+}
+
+// One S/PDIF receiver, up to 3 selectable input GPIOs (input 1 + two optional).
+export const SPDIF_RX_MAX_INSTANCES = 3;
 
 // Maximum I2S RX stereo pairs on the largest platform (RP2350; RP2040 has 1).
 export const I2S_RX_MAX_PAIRS = 4;
@@ -36,6 +46,11 @@ export interface InputConfig {
   i2sInputRateHz: number;
   // Active I2S input channel count: 2/4/6/8 (0 = firmware default / absent).
   i2sInputChannels: number;
+  // fw 1.1.5+ optional S/PDIF inputs 2/3 (index 0 = input 2, index 1 = input 3).
+  // GPIO per input; 0 = unset.
+  spdifRxPinExt: number[];
+  // Whether inputs 2/3 are enabled.
+  spdifExtEnabled: boolean[];
 }
 
 // V8 -- LG Sound Sync. Only `enabled` is host-configurable; the rest is

@@ -67,6 +67,24 @@ describe('deriveCapabilities — V16 feature flags', () => {
     expect(c.features.multichannelInput).toBe(false);
   });
 
+  it('V16 RP2350 gets multiple selectable S/PDIF inputs, mirroring multichannelInput', () => {
+    const c = deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 16, payloadLength: Wire.BULK_SIZE_V16, platformId: 1 });
+    expect(c.features.multiSpdifInputs).toBe(true);
+    expect(c.spdifInputCount).toBe(3);
+  });
+
+  it('V16 RP2040 stays single-S/PDIF-input (stereo-only part)', () => {
+    const c = deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 16, payloadLength: Wire.BULK_SIZE_V16, platformId: 0 });
+    expect(c.features.multiSpdifInputs).toBe(false);
+    expect(c.spdifInputCount).toBe(1);
+  });
+
+  it('V10 (1.1.4) devices stay single-S/PDIF-input regardless of platform', () => {
+    const c = deriveCapabilities({ fw: fw(1, 1, 4), wireVersion: 10, payloadLength: 2960, platformId: 1 });
+    expect(c.features.multiSpdifInputs).toBe(false);
+    expect(c.spdifInputCount).toBe(1);
+  });
+
   it('gates leveller channel masks on wire V18 (off for V16/V17, on for V18)', () => {
     const at = (v: number, len: number) =>
       deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: v, payloadLength: len, platformId: 1 }).features.levellerMasks;

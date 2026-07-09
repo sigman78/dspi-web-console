@@ -25,6 +25,7 @@ describe('bulkParser — V16 packet', () => {
     bulk.inputConfig = {
       source: 2, spdifRxPin: 5,
       i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 2, i2sInputChannels: 6,
+      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0,
     };
     bulk.crossover[8][0] = { type: 34, bypass: false, frequency: 2400, q: 0.707, gain: 0 };
     bulk.crossover[16][3] = { type: 33, bypass: true, frequency: 120, q: 0.5, gain: 0 };
@@ -43,6 +44,7 @@ describe('bulkParser — V16 packet', () => {
     expect(p.inputConfig).toEqual({
       source: 2, spdifRxPin: 5,
       i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 2, i2sInputChannels: 6,
+      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0,
     });
     expect(p.crossover[8][0].type).toBe(34);
     expect(p.crossover[8][0].frequency).toBeCloseTo(2400, 3);

@@ -211,6 +211,19 @@ describe('diffSnapshots — 1.1.4 sections', () => {
     b.inputConfig = { source: a.inputConfig!.source === 1 ? 0 : 1, spdifRxPin: a.inputConfig!.spdifRxPin + 1 } as typeof b.inputConfig;
     expect(diffSnapshots(a, b)).toEqual([{ kind: 'inputConfig', value: b.inputConfig }]);
   });
+
+  it('emits spdifExt (not inputConfig) when an optional S/PDIF input pin or enable flag changes', () => {
+    const a = makeV10();
+    const b = structuredClone(a);
+    b.inputConfig = {
+      ...b.inputConfig!,
+      spdifRxPinExt: [16, 0],
+      spdifExtEnabled: [true, false],
+    };
+    expect(diffSnapshots(a, b)).toEqual([
+      { kind: 'spdifExt', value: { spdifRxPinExt: [16, 0], spdifExtEnabled: [true, false] } },
+    ]);
+  });
 });
 
 describe('diffSnapshots — i2s + output pins', () => {

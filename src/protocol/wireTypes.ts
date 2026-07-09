@@ -203,17 +203,19 @@ export const MasterVolume = struct({
 });
 
 // Section 15: input config (16 B, V7+, optional). input_source: 0=USB,
-// 1=S/PDIF, 2=I2S (V16+). Bytes 2..7 are V16 I2S fields claimed from the
-// reserved pad with a "0 = absent" convention; on a V10 packet they read as
-// zeros and round-trip unchanged, so one codec serves both generations.
+// 1=S/PDIF, 2=I2S (V16+). Bytes 2..10 are claimed from the reserved pad with
+// a "0 = absent" convention; on an older packet they read as zeros and
+// round-trip unchanged, so one codec serves every generation.
 export const InputConfig = struct({
-  inputSource:      u8,
-  spdifRxPin:       u8,
-  i2sRxPin:         u8,            // I2S RX data GPIO, stereo pair 0
-  i2sInputRate:     u8,            // enum: 0=44100, 1=48000, 2=96000
-  i2sInputChannels: u8,            // active I2S input channels 2/4/6/8 (0 = absent)
-  i2sRxPinExt:      arr(u8, 3),    // RX data GPIOs for stereo pairs 1..3 (0 = unset)
-  _reserved:        reserved(8),
+  inputSource:          u8,
+  spdifRxPin:           u8,
+  i2sRxPin:             u8,            // I2S RX data GPIO, stereo pair 0
+  i2sInputRate:         u8,            // enum: 0=44100, 1=48000, 2=96000
+  i2sInputChannels:     u8,            // active I2S input channels 2/4/6/8 (0 = absent)
+  i2sRxPinExt:          arr(u8, 3),    // RX data GPIOs for stereo pairs 1..3 (0 = unset)
+  spdifRxPinExt:        arr(u8, 2),    // GPIOs for SPDIF2/3 (fw 1.1.5+; 0 = absent/keep-live)
+  spdifRxEnabledExtP1:  u8,            // enable mask + 1; 0 = absent, else (byte-1): bit0=SPDIF2, bit1=SPDIF3
+  _reserved:            reserved(5),
 });
 
 // Section 16: LG Sound Sync (16 B, V8+, optional). Only `enabled` is host-
@@ -326,6 +328,15 @@ export const SpdifRxStatus = struct({
 // Length of the raw IEC-60958 channel-status block (GetSpdifRxChStatus 0xE3).
 // No semantic codec -- surfaced verbatim as bytes.
 export const SPDIF_RX_CH_STATUS_LEN = 24;
+
+// 5-byte GetSpdifInputConfig response (0xEF, fw 1.1.5+). enableMask here is
+// unshifted: bit0 = input 1 (always set), bit1 = input 2, bit2 = input 3.
+// Distinct from spdifRxEnabledExtP1's mask+1 encoding in the bulk section.
+export const SpdifInputConfig = struct({
+  count:      u8,
+  enableMask: u8,
+  pins:       arr(u8, 3),
+});
 
 // 8-byte payload of SetUartConfig (0xF5) / response of GetUartConfig (0xF6).
 // Fixed 8N1 framing -- only baud is configurable.
