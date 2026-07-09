@@ -96,7 +96,7 @@ export async function connectRequested(): Promise<void> {
 
 export async function bootMock(
   platform: 'rp2040' | 'rp2350',
-  opts: { wireVersion?: number; fwVersion?: { major: number; minor: number; patch: number } } = {},
+  opts: { wireVersion?: number; fwVersion?: { major: number; minor: number; patch: number }; i2sInputChannels?: number } = {},
 ): Promise<void> {
   const scope = beginConnection();
   try {

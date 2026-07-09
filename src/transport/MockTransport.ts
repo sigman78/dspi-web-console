@@ -36,6 +36,10 @@ export interface MockOptions {
   // Override the header's payloadLength to simulate a malformed device that
   // reports a truncated payload, exercising the connect truncation guard.
   payloadLength?: number;
+  // Imaginary I2S multichannel input for the demo (V16 only): boot with the
+  // source set to I2S and this many active input channels (2/4/6/8) instead of
+  // the default USB stereo, so the multichannel UI has more than a pair to show.
+  i2sInputChannels?: number;
 }
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
@@ -204,6 +208,19 @@ export class MockTransport implements DspTransport {
       this.#mockState.inputConfig.i2sRxPins = [1, 2, 3, 4];
       this.#mockState.inputConfig.i2sInputChannels = 2;
       this.#mockState.inputConfig.i2sInputRateEnc = 1;
+
+      // Imaginary I2S multichannel input for the demo: switch the source to I2S
+      // with the requested channel count (clamped even, 2..8) and re-derive the
+      // source-aware input names, so the multichannel UI has more than a stereo
+      // pair to display.
+      if (opts.i2sInputChannels && opts.i2sInputChannels > 2) {
+        const n = Math.min(8, Math.max(2, opts.i2sInputChannels - (opts.i2sInputChannels % 2)));
+        this.#mockState.inputConfig.source = AudioInputSource.I2s;
+        this.#mockState.inputConfig.i2sInputChannels = n;
+        for (let slot = 0; slot < n; slot++) {
+          this.#mockState.channelNames[slot] = defaultInputName(AudioInputSource.I2s, slot);
+        }
+      }
     }
   }
 
