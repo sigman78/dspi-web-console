@@ -255,7 +255,7 @@ export class DspDevice {
       const header = proto.peekBulkHeader(first);
       const total = header.payloadLength > 0 && header.payloadLength <= proto.Wire.BulkLimits.MaxReadSize
         ? header.payloadLength
-        : proto.Wire.bulkSizeForVersion(this.capabilities.wireGen);
+        : proto.Wire.bulkSizeForVersion(this.capabilities.wire);
 
       const chunks = [first];
       let received = first.length;
@@ -285,12 +285,12 @@ export class DspDevice {
 
   // Push a complete DSP state in one control-OUT. Firmware applies it in its
   // main loop (~5 ms); callers needing the change visible should re-fetch.
-  // Always emits at THIS device's generation: V16 firmware accepts only the
-  // exact full-size packet, and a state captured from a device of the other
-  // generation converts through the max-shaped DTO (missing rows default,
-  // extra rows drop).
+  // Always emits at THIS device's exact wire version: V16+ firmware accepts
+  // only the exact full-size packet for its own version, and a state captured
+  // from a device of another generation/version converts through the
+  // max-shaped DTO (missing rows default, extra rows drop).
   async setAllParams(bulk: proto.BulkParams): Promise<void> {
-    const bytes = proto.buildBulkParams(bulk, this.capabilities.wireGen);
+    const bytes = proto.buildBulkParams(bulk, this.capabilities.wire);
     if (bytes.length > proto.Wire.BulkLimits.MaxControlTransfer) {
       await this.#writeAllParamsChunked(bytes);
     } else {

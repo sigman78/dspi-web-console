@@ -965,3 +965,25 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     expect(r.ok).toBe(true);
   });
 });
+
+describe('DspDevice — V18 bulk integration', () => {
+  const v18 = () => DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 18 }));
+
+  test('reads a full-size V18 packet; masks default all-on, ADAT absent', async () => {
+    const d = await v18();
+    const bulk = await d.getAllParams();
+    expect(bulk.formatVersion).toBe(18);
+    expect(bulk.payloadLength).toBe(Wire.BULK_SIZE_V18);   // 5876
+    expect(bulk.leveller.detectorMask).toBe(0xFF);
+    expect(bulk.leveller.applyMask).toBe(0xFF);
+    expect(bulk.adat).toEqual({ enabled: false, pin: 0 });
+  });
+
+  test('setLevellerMasks flows through the synthesized bulk into the snapshot', async () => {
+    const d = await v18();
+    await d.setLevellerMasks(0x03, 0x0C);
+    const snap = await d.getSnapshot();
+    expect(snap.leveller.detectorMask).toBe(0x03);
+    expect(snap.leveller.applyMask).toBe(0x0C);
+  });
+});

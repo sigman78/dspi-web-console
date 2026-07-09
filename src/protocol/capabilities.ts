@@ -8,12 +8,13 @@
 
 import * as Wire from './wireTypes';
 
-// Support window: V10 (released fw 1.1.4) and V16 (fw 1.1.5, unified channel
-// model). Wire versions 11..15 were in-development intermediates with shifting
+// Support window: V10 (released fw 1.1.4) and V16-V18 (fw 1.1.5, unified
+// channel model; V17 adds ADAT config, V18 adds leveller channel masks).
+// Wire versions 11..15 were in-development intermediates with shifting
 // layouts the console never shipped against -- rejected like pre-V10 firmware.
 export const MIN_SUPPORTED_WIRE = 10;
-export const MAX_KNOWN_WIRE = 16;
-const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16];
+export const MAX_KNOWN_WIRE = 18;
+const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16, 17, 18];
 
 export interface FirmwareVersion {
   major: number;
@@ -58,7 +59,7 @@ export interface DeviceCapabilities {
 
   // Support classification, keyed on the observed wire version:
   //   unsupported -- below the V10 floor, or an 11..15 in-dev intermediate.
-  //   supported   -- V10 (1.1.4) or V16 (1.1.5).
+  //   supported   -- V10 (1.1.4) or V16-V18 (1.1.5).
   //   future      -- newer than the console knows; read known sections only.
   readonly support: 'unsupported' | 'supported' | 'future';
 
