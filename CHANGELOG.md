@@ -6,6 +6,13 @@ from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
 this project follows [Semantic Versioning](https://semver.org/) (currently in the
 `0.x` pre-1.0 line — minor versions may include breaking changes).
 
+## [0.4.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.3.0...dspi-console-web-v0.4.0) (2026-07-09)
+
+
+### Features
+
+* **leveller:** channel-aware volume leveller with per-input detector/apply masks ([#66](https://github.com/sigman78/dspi-web-console/issues/66)) ([34fba15](https://github.com/sigman78/dspi-web-console/commit/34fba158888c2b7a37225cbb2ea480b9c4a0176d))
+
 ## [0.3.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.2.0...dspi-console-web-v0.3.0) (2026-07-08)
 
 
