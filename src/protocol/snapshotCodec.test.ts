@@ -130,7 +130,7 @@ describe('snapshotCodec — 1.1.4 sections', () => {
       dacHwMute:   { enabled: true, activeLow: true, pin: 11, holdMs: 10, releaseMs: 20 },
     });
     const snap = fromBulkParams(hw, bulk);
-    expect(snap.inputConfig).toEqual({ source: AudioInputSource.Spdif, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0 });
+    expect(snap.inputConfig).toEqual({ source: AudioInputSource.Spdif, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false] });
     expect(snap.lgSoundSync).toEqual({ enabled: true, present: false, volume: 30, muted: false });
     expect(snap.userVolume).toEqual({ volumeDb: -4, mute: false });
     expect(snap.dacHwMute).toEqual({ enabled: true, activeLow: true, pin: 11, holdMs: 10, releaseMs: 20 });
@@ -138,7 +138,7 @@ describe('snapshotCodec — 1.1.4 sections', () => {
 
   it('carries the parser-filled factory defaults for sections a packet omits', () => {
     const snap = fromBulkParams(hw, makeBulkObject({ formatVersion: 6, payloadLength: WireNS.BulkSizes.V6Full }));
-    expect(snap.inputConfig).toEqual({ source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0 });
+    expect(snap.inputConfig).toEqual({ source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false] });
     expect(snap.userVolume).toEqual({ volumeDb: 0, mute: false });
     expect(snap.lgSoundSync.enabled).toBe(false);
     expect(snap.dacHwMute.enabled).toBe(false);

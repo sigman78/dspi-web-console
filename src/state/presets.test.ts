@@ -21,7 +21,7 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
     leveller: { enabled: false, speed: 1, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40 } as any,
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 } as any,
     outputPins: [],
-    inputConfig: { source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0 } as any,
+    inputConfig: { source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false] } as any,
     lgSoundSync: { enabled: false, present: false, volume: 0, muted: false },
     userVolume:  { volumeDb: 0, mute: false },
     dacHwMute:   { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
@@ -169,7 +169,7 @@ describe('presets store', () => {
   });
 
   it('masks a spdifRxPin change by output-config mode', () => {
-    seed(mkSnap({ inputConfig: { source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0 } as any }));
+    seed(mkSnap({ inputConfig: { source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false] } as any }));
     liveMirror().snapshot.inputConfig!.spdifRxPin = 7;
     ps().directory = dirWithMode(OutputConfigMode.Independent) as any;
     expect(dirty()).toBe(false);

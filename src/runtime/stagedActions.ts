@@ -10,7 +10,8 @@
 import * as Domain from '@/domain';
 import { type ReadySession, type StagedEntry } from '@/state';
 import {
-  setInputSource, setInputRate, setSpdifRxPin, setI2sRxPin, setI2sInputChannels,
+  setInputSource, setInputRate, setSpdifRxPin, setSpdifRxPinExt, setSpdifInputEnabled,
+  setI2sRxPin, setI2sInputChannels,
   setI2sBckPin, setMckEnabled, setMckPin, setMckMultiplier, setOutputType, setOutputDataPin,
 } from './actions';
 
@@ -20,6 +21,7 @@ const ORDER = {
   mck: 14,
   spdifRxPin: 20,
   i2sRxPin: 20,
+  spdifEnable: 21,   // after spdifRxPin: enable validates against the configured pin
   i2sChannels: 30,
   inputRate: 40,
   inputSource: 50,
@@ -91,6 +93,44 @@ export function stageSpdifRxPin(s: ReadySession, gpio: number): void {
     order: ORDER.spdifRxPin,
     apply: () => setSpdifRxPin(s, gpio),
     overlay: (snap) => ({ ...snap, inputConfig: { ...snap.inputConfig, spdifRxPin: gpio } }),
+  }));
+}
+
+export function stageSpdifRxPinExt(s: ReadySession, extIndex: number, gpio: number): void {
+  const key = `spdifRxPinExt:${extIndex}`;
+  const live = s.mirror.snapshot.inputConfig.spdifRxPinExt[extIndex] ?? 0;
+  stageOrDiscard(s, key, live, gpio, () => ({
+    key,
+    label: `S/PDIF ${extIndex + 2} RX pin`,
+    from: fmtPin(live),
+    to: fmtPin(gpio),
+    value: gpio,
+    order: ORDER.spdifRxPin,
+    apply: () => setSpdifRxPinExt(s, extIndex, gpio),
+    overlay: (snap) => {
+      const pins = snap.inputConfig.spdifRxPinExt.slice();
+      pins[extIndex] = gpio;
+      return { ...snap, inputConfig: { ...snap.inputConfig, spdifRxPinExt: pins } };
+    },
+  }));
+}
+
+export function stageSpdifInputEnabled(s: ReadySession, extIndex: number, on: boolean): void {
+  const key = `spdifEnable:${extIndex}`;
+  const live = s.mirror.snapshot.inputConfig.spdifExtEnabled[extIndex] ?? false;
+  stageOrDiscard(s, key, live, on, () => ({
+    key,
+    label: `S/PDIF ${extIndex + 2} input`,
+    from: fmtOnOff(live),
+    to: fmtOnOff(on),
+    value: on,
+    order: ORDER.spdifEnable,
+    apply: () => setSpdifInputEnabled(s, extIndex, on),
+    overlay: (snap) => {
+      const enabled = snap.inputConfig.spdifExtEnabled.slice();
+      enabled[extIndex] = on;
+      return { ...snap, inputConfig: { ...snap.inputConfig, spdifExtEnabled: enabled } };
+    },
   }));
 }
 

@@ -28,6 +28,17 @@ describe('applyChange', () => {
     expect(t.inputConfig.source).toBe(source);
   });
 
+  it('applies spdifExt without disturbing spdifRxPin or the input source', () => {
+    const t = makeSnapshot((b) => { b.formatVersion = 10; });
+    const source = t.inputConfig.source;
+    const spdifRxPin = t.inputConfig.spdifRxPin;
+    applyChange({ kind: 'spdifExt', value: { spdifRxPinExt: [16, 17], spdifExtEnabled: [true, true] } }, t);
+    expect(t.inputConfig.spdifRxPinExt).toEqual([16, 17]);
+    expect(t.inputConfig.spdifExtEnabled).toEqual([true, true]);
+    expect(t.inputConfig.spdifRxPin).toBe(spdifRxPin);
+    expect(t.inputConfig.source).toBe(source);
+  });
+
   it('applies the lgSoundSync split kinds independently', () => {
     const t = makeSnapshot((b) => { b.formatVersion = 10; });
     applyChange({ kind: 'lgSoundSyncEnabled', value: true }, t);

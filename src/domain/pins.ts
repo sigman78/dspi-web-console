@@ -61,6 +61,13 @@ export function pinsInUse(snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTR
     if (i2s.mckEnabled) m.set(i2s.mckPin, PIN_LABEL.mck);
   }
   m.set(snapshot.inputConfig.spdifRxPin, 'SPDIF RX');
+  // fw 1.1.5+ optional S/PDIF inputs 2/3: reserve a pin only while enabled
+  // (matching firmware behavior -- a disabled optional input holds no GPIO).
+  for (let i = 0; i < 2; i++) {
+    if (snapshot.inputConfig.spdifExtEnabled[i] && snapshot.inputConfig.spdifRxPinExt[i] > 0) {
+      m.set(snapshot.inputConfig.spdifRxPinExt[i], `S/PDIF ${i + 2} RX`);
+    }
+  }
   if (snapshot.dacHwMute.enabled) m.set(snapshot.dacHwMute.pin, 'DAC MUTE');
   // V16: the active I2S RX stereo pairs reserve their data pins (i2sInputChannels
   // is 0 on V10 packets, so this block is inert there).

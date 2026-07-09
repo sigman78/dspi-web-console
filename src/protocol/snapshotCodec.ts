@@ -18,6 +18,8 @@ export function narrowInputSource(s: number): domain.AudioInputSource {
   switch (s) {
     case domain.AudioInputSource.Spdif:
     case domain.AudioInputSource.I2s:
+    case domain.AudioInputSource.Spdif2:
+    case domain.AudioInputSource.Spdif3:
       return s;
     default:
       return domain.AudioInputSource.Usb;
@@ -45,6 +47,13 @@ function narrowLevellerSpeed(s: number): domain.LevellerSpeed {
     default:
       return domain.LevellerSpeed.Slow;
   }
+}
+
+// p1 = enable mask + 1 (0 = absent -> both off; else bit0 = input2, bit1 = input3).
+function decodeSpdifExtEnabled(p1: number): boolean[] {
+  if (p1 === 0) return [false, false];
+  const mask = p1 - 1;
+  return [(mask & 1) !== 0, (mask & 2) !== 0];
 }
 
 function narrowFilter(filter: { type: number; bypass: boolean; frequency: number; q: number; gain: number }): domain.FilterParams {
@@ -154,6 +163,8 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
       i2sRxPins: [...bulk.inputConfig.i2sRxPins],
       i2sInputRateHz: domain.i2sRateDecode(bulk.inputConfig.i2sInputRateEnc),
       i2sInputChannels: bulk.inputConfig.i2sInputChannels,
+      spdifRxPinExt: [...bulk.inputConfig.spdifRxPinExt],
+      spdifExtEnabled: decodeSpdifExtEnabled(bulk.inputConfig.spdifRxEnabledExtP1),
     },
     lgSoundSync: { enabled: bulk.lgSoundSync.enabled, present: bulk.lgSoundSync.present, volume: bulk.lgSoundSync.volume, muted: bulk.lgSoundSync.muted },
     userVolume:  { volumeDb: bulk.userVolume.volumeDb, mute: bulk.userVolume.mute },

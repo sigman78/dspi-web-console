@@ -1,7 +1,7 @@
 // Channel identity. Numeric values are firmware-pinned (WIRE_* macros);
 // the enum is the domain identifier every UI/layout/routing surface indexes by.
 
-import { AudioInputSource } from './deviceSections';
+import { AudioInputSource, isSpdifSource } from './deviceSections';
 
 export const ChannelId = {
   In1L: 0,
@@ -136,23 +136,23 @@ export function inputChannelForSlot(slot: InputSlot): ChannelId | null {
 // relationship ("USB 1".."USB 8"); I2S and S/PDIF are true stereo pairs.
 // Output default names are unaffected -- ALL_CHANNELS' static table
 // remains their source of truth.
+// Spdif2/Spdif3 select which GPIO the single S/PDIF receiver listens on --
+// same receiver, same stereo pair -- so they name identically to Spdif.
 export function defaultInputName(source: AudioInputSource, slot: InputSlot): string {
+  if (isSpdifSource(source)) return `SPDIF ${slot % 2 === 0 ? 'L' : 'R'}`;
   switch (source) {
     case AudioInputSource.I2s:
       return `I2S ${Math.floor(slot / 2) + 1} ${slot % 2 === 0 ? 'L' : 'R'}`;
-    case AudioInputSource.Spdif:
-      return `SPDIF ${slot % 2 === 0 ? 'L' : 'R'}`;
     default:
       return `USB ${slot + 1}`;
   }
 }
 
 export function defaultInputShortName(source: AudioInputSource, slot: InputSlot): string {
+  if (isSpdifSource(source)) return slot % 2 === 0 ? 'SL' : 'SR';
   switch (source) {
     case AudioInputSource.I2s:
       return `I${Math.floor(slot / 2) + 1}${slot % 2 === 0 ? 'L' : 'R'}`;
-    case AudioInputSource.Spdif:
-      return slot % 2 === 0 ? 'SL' : 'SR';
     default:
       return `U${slot + 1}`;
   }
