@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setOutputDelay, setOutputGain, setOutputEnabled, setOutputPairEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource, setUartControlConfig } from './actions';
+import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setLevellerMasks, toggleLevellerDetectorChannel, toggleLevellerApplyChannel, setOutputDelay, setOutputGain, setOutputEnabled, setOutputPairEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource, setUartControlConfig } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './deviceService';
 import { connection, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { bootMock } from './boot';
@@ -300,6 +300,7 @@ const thinVerbCases: ThinVerbCase[] = [
   { name: 'setCrossfeedPreset', method: 'setCrossfeedPreset', mirrorPath: 'crossfeed.preset', lane: 'write', makeStub: (fn) => ({ setCrossfeedPreset: fn }), invoke: () => setCrossfeedPreset(activeSession()!, CrossfeedPreset.Preset2), expectedArgs: () => [CrossfeedPreset.Preset2], read: () => liveMirror().current!.crossfeed.preset, expected: CrossfeedPreset.Preset2 },
   { name: 'setLevellerSpeed', method: 'setLevellerSpeed', mirrorPath: 'leveller.speed', lane: 'write', makeStub: (fn) => ({ setLevellerSpeed: fn }), invoke: () => setLevellerSpeed(activeSession()!, LevellerSpeed.Fast), expectedArgs: () => [LevellerSpeed.Fast], read: () => liveMirror().current!.leveller?.speed, expected: LevellerSpeed.Fast },
   { name: 'setLevellerAmount', method: 'setLevellerAmount', mirrorPath: 'leveller.amount', lane: 'scrub', makeStub: (fn) => ({ setLevellerAmount: fn }), invoke: () => setLevellerAmount(activeSession()!, 33), expectedArgs: () => [33], read: () => liveMirror().current!.leveller?.amount, expected: 33 },
+  { name: 'setLevellerMasks', method: 'setLevellerMasks', mirrorPath: 'leveller.detectorMask', lane: 'write', makeStub: (fn) => ({ setLevellerMasks: fn }), invoke: () => setLevellerMasks(activeSession()!, 0x03, 0x05), expectedArgs: () => [0x03, 0x05], read: () => liveMirror().current!.leveller?.detectorMask, expected: 0x03 },
   { name: 'setLoudnessEnabled', method: 'setLoudnessEnabled', mirrorPath: 'loudness.enabled', lane: 'write', makeStub: (fn) => ({ setLoudnessEnabled: fn }), invoke: () => setLoudnessEnabled(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.loudness.enabled, expected: true },
   { name: 'setLoudnessRefSpl', method: 'setLoudnessRefSpl', mirrorPath: 'loudness.refSpl', lane: 'scrub', makeStub: (fn) => ({ setLoudnessRefSpl: fn }), invoke: () => setLoudnessRefSpl(activeSession()!, 90), expectedArgs: () => [90], read: () => liveMirror().current!.loudness.refSpl, expected: 90 },
   { name: 'setLoudnessIntensityPct', method: 'setLoudnessIntensity', mirrorPath: 'loudness.intensityPct', lane: 'scrub', makeStub: (fn) => ({ setLoudnessIntensity: fn }), invoke: () => setLoudnessIntensityPct(activeSession()!, 50), expectedArgs: () => [50], read: () => liveMirror().current!.loudness.intensityPct, expected: 50 },
@@ -337,6 +338,51 @@ describe('thin verbs: device call + mirror patch (parameterized)', () => {
     await vi.runAllTimersAsync();
     expect(c.read()).toEqual(c.expected);     // patched after settle
     expect(fn).toHaveBeenCalledWith(...c.expectedArgs());
+  });
+});
+
+describe('leveller channel masks (toggle logic)', () => {
+  let masksFn: ReturnType<typeof vi.fn<() => Promise<void>>>;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    masksFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setLevellerMasks: masksFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('starts all-on (0xFF / 0xFF)', () => {
+    expect(liveMirror().current!.leveller?.detectorMask).toBe(0xFF);
+    expect(liveMirror().current!.leveller?.applyMask).toBe(0xFF);
+  });
+
+  it('detector toggle clears one bit and leaves the apply mask untouched', async () => {
+    toggleLevellerDetectorChannel(activeSession()!, 0);
+    await vi.runAllTimersAsync();
+    expect(masksFn).toHaveBeenCalledWith(0xFE, 0xFF);
+    expect(liveMirror().current!.leveller?.detectorMask).toBe(0xFE);
+    expect(liveMirror().current!.leveller?.applyMask).toBe(0xFF);
+  });
+
+  it('apply toggle clears one bit and leaves the detector mask untouched', async () => {
+    toggleLevellerApplyChannel(activeSession()!, 2);
+    await vi.runAllTimersAsync();
+    expect(masksFn).toHaveBeenCalledWith(0xFF, 0xFB);
+    expect(liveMirror().current!.leveller?.applyMask).toBe(0xFB);
+    expect(liveMirror().current!.leveller?.detectorMask).toBe(0xFF);
+  });
+
+  it('toggling the same channel twice restores it', async () => {
+    toggleLevellerDetectorChannel(activeSession()!, 3);
+    await vi.runAllTimersAsync();
+    expect(liveMirror().current!.leveller?.detectorMask).toBe(0xF7);
+    toggleLevellerDetectorChannel(activeSession()!, 3);
+    await vi.runAllTimersAsync();
+    expect(liveMirror().current!.leveller?.detectorMask).toBe(0xFF);
   });
 });
 

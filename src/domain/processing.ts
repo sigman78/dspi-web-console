@@ -41,6 +41,12 @@ export interface Leveller {
   amount: number;
   maxGainDb: number;
   gateDb: number;
+  // Multichannel masks (fw V18+): bit k selects input channel k. detectorMask =
+  // inputs that feed the shared RMS detector; applyMask = inputs that receive
+  // the computed gain. Default all-on (0xFF) matches the firmware factory value
+  // and is the effective behaviour on pre-V18 firmware (single-instance leveller).
+  detectorMask: number;
+  applyMask: number;
 }
 
 // Master volume persistence: 0 = global (persisted via SaveMasterVolume);

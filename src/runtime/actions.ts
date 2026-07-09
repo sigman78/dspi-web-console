@@ -214,6 +214,31 @@ export function setLevellerGate(s: ReadySession, db: number): void {
   );
 }
 
+// Multichannel leveller masks (fw V18+): both masks travel together in one
+// command, so a single-channel toggle reads the current pair from the mirror,
+// flips one bit, and re-sends both. Discrete edit -> write lane.
+export function setLevellerMasks(s: ReadySession, detector: number, apply: number): void {
+  detector &= 0xFF;
+  apply &= 0xFF;
+  void write(s,
+    () => s.device.setLevellerMasks(detector, apply),
+    () => {
+      s.mirror.snapshot.leveller.detectorMask = detector;
+      s.mirror.snapshot.leveller.applyMask = apply;
+    },
+  );
+}
+
+export function toggleLevellerDetectorChannel(s: ReadySession, ch: number): void {
+  const detector = s.mirror.snapshot.leveller.detectorMask ^ (1 << ch);
+  setLevellerMasks(s, detector, s.mirror.snapshot.leveller.applyMask);
+}
+
+export function toggleLevellerApplyChannel(s: ReadySession, ch: number): void {
+  const apply = s.mirror.snapshot.leveller.applyMask ^ (1 << ch);
+  setLevellerMasks(s, s.mirror.snapshot.leveller.detectorMask, apply);
+}
+
 export function setMasterPreamp(s: ReadySession, db: number): void {
   db = Clamp.preampDb(db);
   scrub(s,
