@@ -13,8 +13,9 @@ import { Log, isMobileDevice } from './utils';
 
 const target = document.getElementById('app')!;
 
-// Phones and tablets can't host the console (USB cable + desktop layout), so
-// they get a permanent "open this on a PC" splash and none of the boot path.
+// Phones can't host the console (USB cable + desktop layout), so they get a
+// permanent "open this on a PC" splash and none of the boot path. Tablets
+// deliberately fall through to the regular app.
 if (isMobileDevice()) {
   // Lift the desktop layout floor (body min-width) so the splash fits a phone.
   document.body.classList.add('mobile-splash-mode');

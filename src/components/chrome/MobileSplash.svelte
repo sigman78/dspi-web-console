@@ -16,8 +16,7 @@
     <div class="panel__body">
       <p>
         This console configures the DSPi board over a USB cable and is built
-        for desktop browsers — there's nothing it can do from a phone or
-        tablet.
+        for desktop browsers — there's nothing it can do from a phone.
       </p>
       <p>To set up your device, open this address on a PC or laptop in Chrome or Edge:</p>
       <code class="url">{consoleUrl}</code>

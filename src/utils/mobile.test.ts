@@ -11,50 +11,48 @@ const UA = {
     'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
   androidTabletChrome:
     'Mozilla/5.0 (Linux; Android 14; SM-X910) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-  androidFirefox: 'Mozilla/5.0 (Android 14; Mobile; rv:126.0) Gecko/126.0 Firefox/126.0',
-  // Only the generic Mobi token marks this one as mobile — exercises the fallback branch.
-  kaiOs: 'Mozilla/5.0 (Mobile; rv:48.0) Gecko/48.0 Firefox/48.0 KAIOS/2.5',
+  androidPhoneFirefox: 'Mozilla/5.0 (Android 14; Mobile; rv:126.0) Gecko/126.0 Firefox/126.0',
+  androidTabletFirefox: 'Mozilla/5.0 (Android 14; Tablet; rv:126.0) Gecko/126.0 Firefox/126.0',
   iphoneSafari:
     'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
   ipadSafariLegacy:
     'Mozilla/5.0 (iPad; CPU OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+  // Only the generic Mobi token marks this one as mobile — exercises the fallback branch.
+  kaiOs: 'Mozilla/5.0 (Mobile; rv:48.0) Gecko/48.0 Firefox/48.0 KAIOS/2.5',
 };
 
-const noHints = { uaDataMobile: undefined, maxTouchPoints: 0 };
+const noHints = { uaDataMobile: undefined };
 
 describe('detectMobile', () => {
   it.each([
     ['Windows Chrome', UA.windowsChrome],
-    ['macOS Safari', UA.macSafari],
+    ['macOS Safari (incl. iPadOS 13+ desktop-mode UA)', UA.macSafari],
     ['Linux Firefox', UA.linuxFirefox],
   ])('classifies %s as desktop', (_name, ua) => {
     expect(detectMobile({ ua, ...noHints })).toBe(false);
   });
 
-  it('does not flag a Windows touch laptop as mobile', () => {
-    expect(detectMobile({ ua: UA.windowsChrome, uaDataMobile: false, maxTouchPoints: 10 })).toBe(false);
-  });
-
   it.each([
     ['Android phone Chrome', UA.androidPhoneChrome],
-    ['Android tablet Chrome', UA.androidTabletChrome],
-    ['Android Firefox', UA.androidFirefox],
-    ['KaiOS (generic Mobi token only)', UA.kaiOs],
+    ['Android phone Firefox', UA.androidPhoneFirefox],
     ['iPhone Safari', UA.iphoneSafari],
-    ['legacy iPad Safari', UA.ipadSafariLegacy],
+    ['KaiOS (generic Mobi token only)', UA.kaiOs],
   ])('classifies %s as mobile', (_name, ua) => {
     expect(detectMobile({ ua, ...noHints })).toBe(true);
   });
 
-  it('detects iPadOS 13+ masquerading as macOS via touch points', () => {
-    expect(detectMobile({ ua: UA.macSafari, uaDataMobile: undefined, maxTouchPoints: 5 })).toBe(true);
+  it.each([
+    ['Android tablet Chrome', UA.androidTabletChrome],
+    ['Android tablet Firefox', UA.androidTabletFirefox],
+  ])('leaves %s on the desktop app', (_name, ua) => {
+    expect(detectMobile({ ua, ...noHints })).toBe(false);
+  });
+
+  it('leaves a legacy iPad on the desktop app despite its Mobile UA token', () => {
+    expect(detectMobile({ ua: UA.ipadSafariLegacy, ...noHints })).toBe(false);
   });
 
   it('trusts a userAgentData.mobile=true hint over an unrecognized UA', () => {
-    expect(detectMobile({ ua: 'SomeFutureBrowser/1.0', uaDataMobile: true, maxTouchPoints: 0 })).toBe(true);
-  });
-
-  it('still flags an Android tablet when Chromium reports uaData.mobile=false', () => {
-    expect(detectMobile({ ua: UA.androidTabletChrome, uaDataMobile: false, maxTouchPoints: 5 })).toBe(true);
+    expect(detectMobile({ ua: 'SomeFutureBrowser/1.0', uaDataMobile: true })).toBe(true);
   });
 });
