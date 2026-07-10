@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [master]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,6 +15,14 @@ concurrency:
 
 jobs:
   verify:
+    # Squash-merged PRs (committed by GitHub, title carries "(#NN)") were
+    # already verified by the pull_request run; the push trigger only covers
+    # direct pushes. The committer check keeps locally-pushed commits that
+    # merely mention "(#123)" (e.g. reverts of squash merges) verified.
+    if: >-
+      github.event_name != 'push' ||
+      !(contains(github.event.head_commit.message, '(#') &&
+        github.event.head_commit.committer.email == 'noreply@github.com')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
