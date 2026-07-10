@@ -1,7 +1,9 @@
 name: Deploy to GitHub Pages
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [master]
   workflow_dispatch:
 
@@ -16,9 +18,23 @@ concurrency:
 
 jobs:
   build:
+    # "skipped" is an all-jobs-skipped CI run, which only happens for
+    # squash-merge pushes already verified (and forced green) on the PR; a red
+    # direct push concludes "failure" and blocks here. The event guard keeps
+    # fork-PR CI runs (whose head branch may be named "master") from deploying
+    # unmerged code.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       (github.event.workflow_run.conclusion == 'success' ||
+        github.event.workflow_run.conclusion == 'skipped'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Deploy exactly the SHA CI verified; manual dispatches always
+          # deploy master regardless of the branch picked in the UI.
+          ref: ${{ github.event.workflow_run.head_sha || 'master' }}
 
       - uses: actions/setup-node@v5
         with:

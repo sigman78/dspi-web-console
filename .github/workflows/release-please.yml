@@ -12,7 +12,8 @@ name: Release Please
 # (vite injects pkg.version as __APP_VERSION__).
 #
 # Cloudflare Workers Builds watches `release` and deploys it to dspi-ctrl.fyi.
-# GitHub Pages (deploy.yml, every master push) stays the rolling test channel.
+# GitHub Pages (deploy.yml, after CI passes on master) stays the rolling test
+# channel.
 #
 # Requires repo setting: Settings -> Actions -> General -> Workflow permissions
 # -> enable "Allow GitHub Actions to create and approve pull requests".
