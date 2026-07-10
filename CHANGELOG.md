@@ -6,6 +6,15 @@ from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
 this project follows [Semantic Versioning](https://semver.org/) (currently in the
 `0.x` pre-1.0 line — minor versions may include breaking changes).
 
+## [0.5.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.4.0...dspi-console-web-v0.5.0) (2026-07-10)
+
+
+### Features
+
+* multiple selectable S/PDIF inputs (fw 1.1.5) ([#68](https://github.com/sigman78/dspi-web-console/issues/68)) ([46d8af1](https://github.com/sigman78/dspi-web-console/commit/46d8af1af71ab46190adf66e2a194a75e8ca4887))
+* **ui:** permanent mobile splash pointing phones to a PC ([#71](https://github.com/sigman78/dspi-web-console/issues/71)) ([d95c114](https://github.com/sigman78/dspi-web-console/commit/d95c1149d3cc137f30f914bc6618985a16e089a6))
+* **ui:** segmented LED channel VU meters with per-channel row styling ([#70](https://github.com/sigman78/dspi-web-console/issues/70)) ([a4d7109](https://github.com/sigman78/dspi-web-console/commit/a4d710949bb0ad50873f4d8b1edef91002dcfcad))
+
 ## [0.4.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.3.0...dspi-console-web-v0.4.0) (2026-07-09)
 
 
