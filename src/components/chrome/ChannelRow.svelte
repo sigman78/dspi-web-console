@@ -21,13 +21,11 @@
   // First LED of the red band -- only a held peak that reaches here lingers.
   const RED_SEG_FROM = VU_COLORS.findIndex((c) => c === 'var(--err)');
 
-  // Red-peak hold, shared across every meter on the rail. While a channel's
-  // level sits in the red band its held segment + expiry is refreshed here; once
-  // it leaves the band the entry counts down and a SINGLE shared timeout — armed
-  // for the nearest expiry — sweeps it out. Reactive (SvelteMap) so each row's
-  // marker derives straight off its own entry with no per-row setTimeout.
+  // Red-peak hold, shared across every meter on the rail. An active entry has no
+  // expiry; leaving the red band starts its hold window. One timeout, armed for
+  // the nearest released entry, sweeps expired holds for the entire rail.
   const RED_HOLD_MS = 1000;
-  const redHolds = new SvelteMap<ChannelId, { seg: number; until: number }>();
+  const redHolds = new SvelteMap<ChannelId, { seg: number; until: number | null }>();
   let sweepTimer = 0;
 
   function sweepRedHolds(): void {
@@ -36,16 +34,23 @@
     const now = performance.now();
     let next = Infinity;
     for (const [id, hold] of redHolds) {
+      if (hold.until === null) continue;
       if (hold.until <= now) redHolds.delete(id);
       else next = Math.min(next, hold.until);
     }
     if (next < Infinity) sweepTimer = window.setTimeout(sweepRedHolds, next - now);
   }
 
-  // Refresh a channel's red hold to the running-max segment and a fresh expiry.
-  function armRedHold(id: ChannelId, seg: number): void {
-    redHolds.set(id, { seg, until: performance.now() + RED_HOLD_MS });
-    if (!sweepTimer) sweepRedHolds();
+  function updateRedHold(id: ChannelId, seg: number): void {
+    const hold = redHolds.get(id);
+    if (seg >= RED_SEG_FROM) {
+      if (!hold || seg > hold.seg) redHolds.set(id, { seg, until: null });
+      else hold.until = null;
+    } else if (hold?.until === null) {
+      // Mutating the non-rendered expiry avoids invalidating map subscribers.
+      hold.until = performance.now() + RED_HOLD_MS;
+      if (!sweepTimer) sweepRedHolds();
+    }
   }
 
   function releaseRedHold(id: ChannelId): void {
@@ -95,16 +100,12 @@
   // attribute rather than re-toggling a class on all 12 segment nodes.
   const litCount = $derived(Math.max(0, Math.min(VU_SEGMENTS, Math.ceil(pct * VU_SEGMENTS))));
 
-  // While the live level is in the red band, keep this channel's shared hold
-  // refreshed to the running-max red segment; the module timer clears it once
-  // the level drops out and the hold window lapses. Depends only on pct (the
-  // map read/write is untracked), so arming can't re-trigger this effect.
+  // This effect follows quantized LED transitions, not every telemetry sample.
+  // Map access is untracked so a held-marker update cannot re-trigger it.
   $effect(() => {
     const top = litCount - 1;
-    if (top >= RED_SEG_FROM) {
-      const id = channelId;
-      untrack(() => armRedHold(id, Math.max(top, redHolds.get(id)?.seg ?? -1)));
-    }
+    const id = channelId;
+    untrack(() => updateRedHold(id, top));
   });
   $effect(() => () => releaseRedHold(channelId));
 
