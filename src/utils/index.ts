@@ -3,6 +3,8 @@ export type { VoidResult } from './result';
 export { Log } from './log';
 export { errMessage } from './errMessage';
 
+export { detectMobile, isMobileDevice, type MobileSignals } from './mobile';
+
 export { utf8Truncate, utf8ByteLength } from './utf8';
 
 export { BinReader, BinWriter } from './binStream';

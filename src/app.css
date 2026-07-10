@@ -58,6 +58,8 @@ html, body, #app { height: 100%; margin: 0; }
    and panels never squeeze into per-panel scrollbars or wrapped titles.
    The TopBar/TabBar shedding tiers bottom out just above this width. */
 body { min-width: 1160px; }
+/* The mobile splash (main.ts) is the one phone-sized page; it opts out. */
+body.mobile-splash-mode { min-width: 0; }
 button { font: inherit; color: inherit; }
 
 input[type="number"], select, input[type="range"] {
