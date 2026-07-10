@@ -1,4 +1,4 @@
-import { describe, test, expect, vi } from 'vitest';
+import { afterEach, describe, test, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { ChannelId } from '@/domain';
 import ChannelRow from './ChannelRow.svelte';
@@ -9,6 +9,8 @@ const base = {
   levelDb: -6,
   defaultName: 'Out 1 Left',
 };
+
+afterEach(() => vi.useRealTimers());
 
 describe('ChannelRow', () => {
   test('marks the selected channel with aria-pressed', () => {
@@ -121,5 +123,39 @@ describe('ChannelRow', () => {
     await fireEvent.blur(screen.getByRole('textbox'));
     await rerender({ ...base, editing: false });
     expect(document.activeElement).not.toBe(screen.getByRole('button', { name: 'Front L' }));
+  });
+
+  test('holds a sustained red peak for one second after it leaves red', async () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(ChannelRow, { props: { ...base, levelDb: 0 } });
+    const track = container.querySelector<HTMLElement>('.track')!;
+
+    // Staying red longer than the hold duration must not expire the peak.
+    await vi.advanceTimersByTimeAsync(1500);
+    await rerender({ ...base, levelDb: -10 });
+    expect(track.style.getPropertyValue('--vu-peak')).toBe('11');
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(track.style.getPropertyValue('--vu-peak')).toBe('11');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(track.style.getPropertyValue('--vu-peak')).toBe('-1');
+  });
+
+  test('uses one release timer for multiple channel peaks', async () => {
+    vi.useFakeTimers();
+    const first = render(ChannelRow, { props: { ...base, levelDb: 0 } });
+    const second = render(ChannelRow, {
+      props: { ...base, channelId: ChannelId.Out1R, name: 'Front R', levelDb: 0 },
+    });
+
+    await first.rerender({ ...base, levelDb: -10 });
+    await second.rerender({
+      ...base,
+      channelId: ChannelId.Out1R,
+      name: 'Front R',
+      levelDb: -10,
+    });
+
+    expect(vi.getTimerCount()).toBe(1);
   });
 });

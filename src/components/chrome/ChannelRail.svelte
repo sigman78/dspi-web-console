@@ -82,7 +82,6 @@
                   defaultName={ch.defaultName}
                   selected={appState.settings.selectedChannel === ch.id}
                   pulsate={appState.eqUi.copySource === ch.id}
-                  clipped={tele?.clipLatched[ch.id] ?? false}
                   disabled={disabled}
                   editing={editingId === ch.id}
                   onclick={() => appState.selectChannel(ch.id)}

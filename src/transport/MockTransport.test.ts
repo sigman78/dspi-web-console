@@ -101,7 +101,10 @@ describe('MockTransport — status + buffer stats', () => {
     await t.open();
     const bytes = await t.ctrlIn(WireCmd.GetStatus.code, 9, 11 * 2 + 4);
     const s = parseSystemStatus(bytes, 11);
-    expect(s.peaks[10]).toBeGreaterThan(0.5);  // last channel close to 1.0
+    expect(s.peaks.length).toBeGreaterThanOrEqual(11);
+    // Levels are animated (time-driven) rather than a fixed staircase; the
+    // invariant is that every reported peak is a normalized 0..1 sample.
+    expect(Array.from(s.peaks).slice(0, 11).every((p) => p >= 0 && p <= 1)).toBe(true);
     expect(s.cpu0).toBe(25);
   });
 
