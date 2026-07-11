@@ -106,6 +106,17 @@ function csBindingFromWire(w: {
   };
 }
 
+function csIrCommandFromWire(w: {
+  noun: number; action: number; flags: number; target: number; index: number;
+  protocol: number; value: number; step: number; code: number;
+}): domain.CsIrCommand {
+  return {
+    noun: w.noun as domain.CsNoun, action: w.action as domain.CsAction, flags: w.flags,
+    target: w.target, index: w.index, protocol: w.protocol as domain.CsIrProto,
+    value: w.value, step: w.step, code: w.code,
+  };
+}
+
 // Poll cadence/ceiling for a deferred CS apply (binding/name SET, save,
 // revert), matching the desktop app: up to 25 polls at 20 ms (~500 ms
 // budget) for what is normally a few-ms directory-sector flash write.
@@ -1121,6 +1132,50 @@ export class DspDevice {
       }
       return pollCsStatus(raw, 0xFF);
     });
+  }
+
+  // IR command sub-slots (0x8D/0x8E, caps v3): same deferred-SET model as
+  // setCsBinding, reported in last_slot as 0x80 | sub-slot.
+  async getCsIrCmd(sub: number): Promise<domain.CsIrCommand> {
+    return csIrCommandFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCsIrCmd, sub & 0xFF));
+  }
+
+  async setCsIrCmd(
+    sub: number, cmd: domain.CsIrCommand,
+  ): Promise<{ result: Result<void, number>; status: domain.CsStatus }> {
+    return this.transport.exclusive(async (raw) => {
+      await proto.writeCmd(raw, proto.WireCmd.SetCsIrCmd, {
+        noun: cmd.noun, action: cmd.action, flags: cmd.flags, target: cmd.target, index: cmd.index,
+        protocol: cmd.protocol, value: cmd.value, step: cmd.step, code: cmd.code,
+      }, sub & 0xFF);
+      return pollCsStatus(raw, 0x80 | (sub & 0xFF));
+    });
+  }
+
+  // IR learn (0x8F, caps v3): GET-type action command, wValue 1/0/2 =
+  // arm/cancel/read-result. Arm STALLs with no live CS_TYPE_IR binding,
+  // surfaced here as NO_IR (the firmware never gets to queue anything, so
+  // there is no status poll to fall back on -- unlike csSave/csRevert's BUSY,
+  // this is the whole answer). Completion normally arrives on the notify
+  // stream (event 0x0A); csIrLearnResult is the poll-based fallback (I2C, or
+  // a host that missed the notification).
+  async csIrLearnArm(): Promise<Result<void, number>> {
+    try {
+      await proto.actionCmd(this.transport, proto.WireCmd.CsIrLearn, 1);
+      return Result.ok();
+    } catch {
+      return Result.fail<number>(proto.CsStatusCode.NoIr, 'Set up the IR receiver first');
+    }
+  }
+
+  async csIrLearnCancel(): Promise<void> {
+    await proto.actionCmd(this.transport, proto.WireCmd.CsIrLearn, 0);
+  }
+
+  async csIrLearnResult(): Promise<domain.CsIrLearnResult> {
+    const size = Codec.sizeOf(proto.Wire.CsIrLearnResult);
+    const w = Codec.decodePadded(proto.Wire.CsIrLearnResult, await this.transport.ctrlIn(proto.WireCmd.CsIrLearn.code, 2, size));
+    return { state: w.state, protocol: w.protocol as domain.CsIrProto, code: w.code };
   }
 
   // Crossover bands (V16+, output channels only) ride the EQ verbs at wire

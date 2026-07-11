@@ -15,11 +15,12 @@ import {
   XOVER_BAND_BASE, MAX_XOVER_BANDS,
   DEFAULT_UART_CONTROL_CONFIG, DEFAULT_I2C_CONTROL_CONFIG,
   isValidUartPinPair, isValidI2cPinPair, isValidUartBaud, isValidI2cAddress,
-  CsType, CsKind, CsAction,
-  CS_GPIO_UNUSED, CS_MAX_BINDINGS, CS_FLAG_INVERT, CS_NDF_DEFERRED,
+  CsType, CsKind, CsAction, CsIrProto,
+  CS_GPIO_UNUSED, CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_FLAG_INVERT, CS_NDF_DEFERRED,
   CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q, CS_UNIT_PERCENT,
   CS_TARGET_NONE, CS_TARGET_INPUT_CH, CS_TARGET_OUTPUT_CH, CS_TARGET_DSP_CH, CS_TARGET_DSP_BAND,
-  dbToQ8, percentToQ8, qToQ8, validateCsBinding,
+  CS_IR_LEARN_IDLE, CS_IR_LEARN_ARMED, CS_IR_LEARN_DONE, CS_IR_LEARN_TIMEOUT,
+  dbToQ8, percentToQ8, qToQ8, validateCsBinding, validateCsIrCommand,
   PRESET_SLOT_COUNT, FilterType,
   defaultInputName,
   type FilterParams,
@@ -53,6 +54,10 @@ export interface MockOptions {
   // Override the reported GetCsCaps capsVersion (default 3), e.g. to simulate
   // a firmware whose Control Surfaces module predates the console's v2 floor.
   csCapsVersion?: number;
+  // Browser-demo convenience: an armed IR learn completes by itself after
+  // ~1.5 s with a distinct NEC code, standing in for a press on an imaginary
+  // remote. Off by default so tests drive learns explicitly.
+  irLearnAutoComplete?: boolean;
 }
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
@@ -62,7 +67,7 @@ const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, ga
 const MOCK_CS_CAPS: CsCaps = {
   capsVersion: 3,
   maxBindings: CS_MAX_BINDINGS,
-  maxIrCommands: 8,
+  maxIrCommands: CS_MAX_IR_COMMANDS,
   types: [
     { actions: 0x0000, pinCount: 0, pinClass: 0 },  // NONE
     { actions: 0x02BC, pinCount: 1, pinClass: 0 },  // BUTTON: INC/DEC/TOGGLE/SET/TRIGGER/MOMENTARY
@@ -162,6 +167,16 @@ interface MockCsBinding {
 const emptyCsBinding = (): MockCsBinding => ({
   type: 0, noun: 0, action: 0, flags: 0, gpio0: 0, gpio1: 0, event: 0, target: 0, index: 0,
   value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+});
+
+// Wire-shaped stored IR command (one sub-slot).
+interface MockCsIrCommand {
+  noun: number; action: number; flags: number; target: number; index: number;
+  protocol: number; value: number; step: number; code: number;
+}
+
+const emptyCsIrCommand = (): MockCsIrCommand => ({
+  noun: 0, action: 0, flags: 0, target: 0, index: 0, protocol: 0, value: 0, step: 0, code: 0,
 });
 
 function concatChunks(chunks: Uint8Array[]): Uint8Array {
@@ -271,6 +286,20 @@ export class MockTransport implements DspTransport {
   #csPendingPolls = 0;
   #csCapsVersion: number;
 
+  // IR command sub-slots (0x8D/0x8E/0x8F, caps v3): same live-preview /
+  // deferred-SET model as the bindings above, plus the learn state machine
+  // (armed by CsIrLearn wValue=1, completed by mockCompleteIrLearn/
+  // mockTimeoutIrLearn -- the notify-stream analogue of a decoded remote
+  // press -- or read back directly via CsIrLearn wValue=2).
+  #csIrCommands: MockCsIrCommand[] = Array.from({ length: CS_MAX_IR_COMMANDS }, emptyCsIrCommand);
+  #csIrCmdStatus: number[] = Array.from({ length: CS_MAX_IR_COMMANDS }, () => 0);
+  #csSavedIrCommands: MockCsIrCommand[] = Array.from({ length: CS_MAX_IR_COMMANDS }, emptyCsIrCommand);
+  #csIrLearnState: number = CS_IR_LEARN_IDLE;
+  #csIrLearnResult: { protocol: number; code: number } = { protocol: 0, code: 0 };
+  #irLearnAutoComplete = false;
+  #irLearnTimer: ReturnType<typeof setTimeout> | null = null;
+  #irLearnDemoCount = 0;
+
   constructor(opts: MockOptions) {
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
     this.#platform = opts.platform === 'rp2040' ? PlatformType.RP2040 : PlatformType.RP2350;
@@ -282,6 +311,7 @@ export class MockTransport implements DspTransport {
     this.#mockState = defaultMockBulkState(this.#platform, this.#wireVersion);
     this.#csNouns = buildMockCsNouns(this.#platform, this.#mockState.numIn, this.#mockState.numOut, this.#mockState.numCh);
     this.#csCapsVersion = opts.csCapsVersion ?? MOCK_CS_CAPS.capsVersion;
+    this.#irLearnAutoComplete = opts.irLearnAutoComplete ?? false;
     // Override the all-zero defaults with realistic pin/I2S values so granular
     // pin/type tests start from a valid hardware state.
     const numPin = this.#platform === PlatformType.RP2350 ? 5 : 3;
@@ -343,6 +373,7 @@ export class MockTransport implements DspTransport {
   }
 
   async close(): Promise<void> {
+    if (this.#irLearnTimer != null) { clearTimeout(this.#irLearnTimer); this.#irLearnTimer = null; }
     this.#open = false;
     this.#emit('disconnect');
   }
@@ -360,6 +391,27 @@ export class MockTransport implements DspTransport {
     this.pushNotify(new Uint8Array([2, 0x04, 0, this.#notifySeq, slot, 0, 0, 0]));
     this.#notifySeq = (this.#notifySeq + 1) & 0xff;
     this.pushNotify(new Uint8Array([2, 0x03, 0, this.#notifySeq, 3, 0, 0, 0]));
+  }
+
+  // Test hook standing in for a decoded remote press while a learn is armed:
+  // records the result (read back by CsIrLearn wValue=2 / GetCsStatus) and
+  // pushes the 0x0A notify event -- the CS_IR_LEARN_DONE body is exactly the
+  // CsIrLearnResult wire shape, reused verbatim here.
+  mockCompleteIrLearn(protocol: number, code: number): void {
+    this.#csIrLearnState = CS_IR_LEARN_DONE;
+    this.#csIrLearnResult = { protocol, code };
+    this.#notifySeq = (this.#notifySeq + 1) & 0xff;
+    const body = Codec.encode(Wire.CsIrLearnResult, { state: CS_IR_LEARN_DONE, protocol, code });
+    this.pushNotify(concatChunks([new Uint8Array([2, 0x0A, 0, this.#notifySeq]), body]));
+  }
+
+  // Test hook for the 10-second learn window expiring unanswered.
+  mockTimeoutIrLearn(): void {
+    this.#csIrLearnState = CS_IR_LEARN_TIMEOUT;
+    this.#csIrLearnResult = { protocol: 0, code: 0 };
+    this.#notifySeq = (this.#notifySeq + 1) & 0xff;
+    const body = Codec.encode(Wire.CsIrLearnResult, { state: CS_IR_LEARN_TIMEOUT, protocol: 0, code: 0 });
+    this.pushNotify(concatChunks([new Uint8Array([2, 0x0A, 0, this.#notifySeq]), body]));
   }
 
   async notifyIn(length: number): Promise<Uint8Array> {
@@ -746,6 +798,11 @@ export class MockTransport implements DspTransport {
         const b = this.#csBindings[value];
         return Codec.encode(Wire.CsBinding, b);
       }
+      case WireCmd.GetCsIrCmd.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        if (value >= CS_MAX_IR_COMMANDS) throw new Error('MockTransport: GetCsIrCmd sub-slot out of range (STALL)');
+        return Codec.encode(Wire.CsIrCommand, this.#csIrCommands[value]);
+      }
       case WireCmd.GetCsCaps.code: {
         if (!this.#isV16) return new Uint8Array(length);
         if (value === 0xFFFF) {
@@ -781,17 +838,51 @@ export class MockTransport implements DspTransport {
         this.#csBindings.forEach((b, i) => {
           if (b.type !== CsType.None && this.#csSlotStatus[i] === 0) activeMask |= 1 << i;
         });
+        let irActiveMask = 0;
+        const irUp = this.#hasLiveIrBinding();
+        this.#csIrCommands.forEach((c, i) => {
+          if (c.protocol !== CsIrProto.None && this.#csIrCmdStatus[i] === 0 && irUp) irActiveMask |= 1 << i;
+        });
         return Codec.encode(Wire.CsStatusPacket, {
           lastStatus, lastSlot: this.#csLastSlot,
           maxBindings: CS_MAX_BINDINGS, dirty: this.#csDirty, activeMask,
           slotStatus: this.#csSlotStatus.slice(),
-          irActiveMask: 0, irLearnState: 0, irCmdStatus: new Array(8).fill(0),
+          irActiveMask, irLearnState: this.#csIrLearnState, irCmdStatus: this.#csIrCmdStatus.slice(),
         });
       }
       case WireCmd.GetCsName.code: {
         if (!this.#isV16) return new Uint8Array(length);
         if (value >= CS_MAX_BINDINGS) throw new Error('MockTransport: GetCsName slot out of range (STALL)');
         return Codec.encode(Wire.CsName, this.#csNames[value] ?? '');
+      }
+      case WireCmd.CsIrLearn.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        if (value === 1) {
+          if (!this.#hasLiveIrBinding()) {
+            this.#csLastStatus = 0x1E;               // CS_STATUS_NO_IR
+            throw new Error('MockTransport: CsIrLearn arm with no live IR receiver (STALL)');
+          }
+          this.#csIrLearnState = CS_IR_LEARN_ARMED;
+          if (this.#irLearnAutoComplete) {
+            if (this.#irLearnTimer != null) clearTimeout(this.#irLearnTimer);
+            this.#irLearnTimer = setTimeout(() => {
+              this.#irLearnTimer = null;
+              if (this.#csIrLearnState !== CS_IR_LEARN_ARMED) return;
+              this.mockCompleteIrLearn(CsIrProto.Nec, 0x20DF0000 + (++this.#irLearnDemoCount));
+            }, 1500);
+          }
+          return new Uint8Array([1]);
+        }
+        if (value === 0) {
+          if (this.#irLearnTimer != null) { clearTimeout(this.#irLearnTimer); this.#irLearnTimer = null; }
+          this.#csIrLearnState = CS_IR_LEARN_IDLE;
+          return new Uint8Array([1]);
+        }
+        return Codec.encode(Wire.CsIrLearnResult, {
+          state: this.#csIrLearnState,
+          protocol: this.#csIrLearnResult.protocol,
+          code: this.#csIrLearnResult.code,
+        });
       }
       case WireCmd.CsSave.code: {
         if (!this.#isV16) return new Uint8Array(length);
@@ -800,6 +891,7 @@ export class MockTransport implements DspTransport {
         if (this.#csPendingPolls > 0) throw new Error('MockTransport: CsSave while pending (STALL)');
         this.#csSavedBindings = this.#csBindings.map((b) => ({ ...b }));
         this.#csSavedNames = this.#csNames.slice();
+        this.#csSavedIrCommands = this.#csIrCommands.map((c) => ({ ...c }));
         this.#csDirty = false;
         this.#csLastSlot = 0xFF;
         this.#csLastStatus = 0x00;
@@ -811,6 +903,8 @@ export class MockTransport implements DspTransport {
         if (this.#csPendingPolls > 0) throw new Error('MockTransport: CsRevert while pending (STALL)');
         this.#csBindings = this.#csSavedBindings.map((b) => ({ ...b }));
         this.#csNames = this.#csSavedNames.slice();
+        this.#csIrCommands = this.#csSavedIrCommands.map((c) => ({ ...c }));
+        this.#csIrCmdStatus = this.#csIrCmdStatus.map(() => 0);
         this.#csSlotStatus = this.#csSlotStatus.map(() => 0);
         this.#csDirty = false;
         this.#csLastSlot = 0xFF;
@@ -1067,6 +1161,20 @@ export class MockTransport implements DspTransport {
         return;
       }
 
+      case WireCmd.SetCsIrCmd.code: {
+        if (!this.#isV16) return;
+        if (value >= CS_MAX_IR_COMMANDS) {
+          this.#csLastStatus = 0x10;                  // CS_STATUS_INVALID_SLOT
+          this.#csLastSlot = 0x80 | (value & 0xFF);
+          return;
+        }
+        const w = Codec.decode(Wire.CsIrCommand, data);
+        this.#csLastSlot = 0x80 | value;
+        this.#csPendingPolls = 1;
+        this.#csLastStatus = this.#applyCsIrCommand(value, w);
+        return;
+      }
+
       case WireCmd.SetAllParams.code: {
         this.#applySetAllParams(data);
         return;
@@ -1244,6 +1352,13 @@ export class MockTransport implements DspTransport {
       (b.gpio0 === pin || (b.gpio1 !== CS_GPIO_UNUSED && b.gpio1 === pin)));
   }
 
+  // Whether a live CS_TYPE_IR binding exists (the receiver): gates both IR
+  // command activity (ir_active_mask) and learn arm (CS_STATUS_NO_IR).
+  #hasLiveIrBinding(excludeSlot = -1): boolean {
+    return this.#csBindings.some((b, i) =>
+      i !== excludeSlot && b.type === CsType.Ir && this.#csSlotStatus[i] === 0);
+  }
+
   // Sharing probe for button pins (fw cs_check_button_share): every other
   // active binding on `pin` must be a button with the same INVERT sense and
   // a different event; anything else is a conflict.
@@ -1283,6 +1398,9 @@ export class MockTransport implements DspTransport {
       MOCK_CS_CAPS, this.#csNouns,
     );
     if (tableStatus !== 0x00) return tableStatus;
+    // One IR receiver per device: a second live CS_TYPE_IR binding is
+    // rejected outright, before any pin check.
+    if (w.type === CsType.Ir && this.#hasLiveIrBinding(slot)) return 0x1D;         // IrInUse
     const pins = MOCK_CS_CAPS.types[w.type].pinCount === 2 ? [w.gpio0, w.gpio1] : [w.gpio0];
     for (const pin of pins) {
       if (!this.#isValidGpio(pin)) return 0x01;                                  // InvalidPin
@@ -1300,6 +1418,25 @@ export class MockTransport implements DspTransport {
     }
     this.#csBindings[slot] = { ...w };
     this.#csSlotStatus[slot] = 0;
+    this.#csDirty = true;
+    return 0x00;
+  }
+
+  // Validate + apply one IR command sub-slot, mirroring #applyCsBinding's
+  // shape: table validation (shared with the console via
+  // validateCsIrCommand), applied immediately on success.
+  #applyCsIrCommand(sub: number, w: MockCsIrCommand): number {
+    const status = validateCsIrCommand(
+      {
+        noun: w.noun as never, action: w.action as never, flags: w.flags,
+        target: w.target, index: w.index, protocol: w.protocol as never,
+        value: w.value, step: w.step, code: w.code,
+      },
+      MOCK_CS_CAPS, this.#csNouns,
+    );
+    if (status !== 0x00) return status;
+    this.#csIrCommands[sub] = { ...w };
+    this.#csIrCmdStatus[sub] = 0;
     this.#csDirty = true;
     return 0x00;
   }

@@ -82,11 +82,20 @@ export async function fetchControlSurfaces(s: ReadySession): Promise<void> {
       bindings.push(b.type === Domain.CsType.None ? null : b);
       names.push(await s.queue.run(() => d.getCsName(slot)));
     }
+    let irCommands: (Domain.CsIrCommand | null)[] | null = null;
+    if (caps.maxIrCommands > 0) {
+      irCommands = [];
+      for (let sub = 0; sub < caps.maxIrCommands; sub++) {
+        const cmd = await s.queue.run(() => d.getCsIrCmd(sub));
+        irCommands.push(cmd.protocol === Domain.CsIrProto.None ? null : cmd);
+      }
+    }
     s.controlSurfaces.caps = caps;
     s.controlSurfaces.nouns = nouns;
     s.controlSurfaces.status = status;
     s.controlSurfaces.bindings = bindings;
     s.controlSurfaces.names = names;
+    if (irCommands) s.controlSurfaces.irCommands = irCommands;
     s.controlSurfaces.lastFetchError = null;
   } catch (err) {
     s.controlSurfaces.lastFetchError = errMessage(err);

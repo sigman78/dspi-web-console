@@ -457,6 +457,33 @@ export const CsStatusPacket = struct({
 // shape as ChannelName; slot names are metadata independent of the binding.
 export const CsName = nulStr(32);
 
+// 16-byte payload of SetCsIrCmd (0x8D, wValue = sub-slot) / response of
+// GetCsIrCmd (0x8E). A button-shaped binding fired by a learned IR code
+// instead of a GPIO edge; protocol CS_IR_PROTO_NONE (0) with every other
+// byte 0 is an empty sub-slot.
+export const CsIrCommand = struct({
+  noun:      u8,
+  action:    u8,
+  flags:     u8,
+  target:    u8,
+  index:     u8,
+  protocol:  u8,
+  value:     i16,
+  step:      i16,
+  _reserved: reserved(2),
+  code:      u32,
+});
+
+// 8-byte response of CsIrLearn (0x8F, wValue = 2): the captured protocol/code
+// once an armed learn has completed or timed out. `state` is CS_IR_LEARN_*
+// (0..3); protocol/code read 0 on a timeout.
+export const CsIrLearnResult = struct({
+  state:     u8,
+  protocol:  u8,
+  _reserved: reserved(2),
+  code:      u32,
+});
+
 // 32-byte `GetSerial` response: NUL-terminated UTF-8 inside a fixed
 // 32-byte window.
 export const Serial = nulStr(Const.SERIAL_LEN);

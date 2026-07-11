@@ -1,15 +1,17 @@
 // Control Surfaces (fw 1.1.5, wire V16+, caps v3): user-wired physical
 // controls and indicators (buttons, switches, pots, encoders, LEDs, PWM
 // LEDs, an IR remote receiver) on spare GPIOs, configured over vendor
-// commands 0x84-0x87, 0x8B-0x8C, 0x9D-0x9E. Which (type, noun, action)
-// combinations are legal comes from the device-served caps tables read at
-// connect (GetCsCaps), never from hardcoded masks; this module holds the wire
+// commands 0x84-0x8F, 0x9D-0x9E. Which (type, noun, action) combinations
+// are legal comes from the device-served caps tables read at connect
+// (GetCsCaps), never from hardcoded masks; this module holds the wire
 // enums, q8.8 helpers, UI labels, and the client-side pre-validation that
 // mirrors the firmware's own check order.
 //
 // Binding and slot-name SETs are live-only previews: CS_SAVE persists the
 // whole live config to flash, CS_REVERT discards the preview and re-applies
-// the stored one. `CsStatus.dirty` reports whether the two differ.
+// the stored one. `CsStatus.dirty` reports whether the two differ. IR
+// commands (sub-slots of the single IR container binding) follow the same
+// preview/save/revert model.
 
 export const CsType = {
   None:    0,
@@ -98,6 +100,24 @@ export const CsKind = {
 } as const;
 export type CsKind = (typeof CsKind)[keyof typeof CsKind];
 
+// IrCommand.protocol; NONE marks an empty sub-slot. A host treats
+// protocol+code as an opaque pair -- see control_surfaces_spec.md 2.7 for the
+// per-protocol code encodings.
+export const CsIrProto = {
+  None: 0,
+  Nec:  1,
+  Rc5:  2,
+  Rc6:  3,
+  Hash: 4,
+} as const;
+export type CsIrProto = (typeof CsIrProto)[keyof typeof CsIrProto];
+
+// The button-shaped action subset an IrCommand may carry (section 2.7):
+// everything except the pot/encoder/indicator-only actions.
+const CS_IR_BUTTON_ACTIONS =
+  (1 << CsAction.Inc) | (1 << CsAction.Dec) | (1 << CsAction.Toggle) |
+  (1 << CsAction.Set) | (1 << CsAction.Trigger) | (1 << CsAction.Momentary);
+
 export const CS_FLAG_INVERT  = 0x01;
 export const CS_FLAG_REVERSE = 0x02;
 export const CS_FLAG_WRAP    = 0x04;
@@ -109,6 +129,14 @@ export const CS_KNOWN_FLAGS  = CS_FLAG_INVERT | CS_FLAG_REVERSE | CS_FLAG_WRAP |
 export const CS_MAX_BINDINGS = 16;
 export const CS_GPIO_UNUSED  = 0xFF;
 export const CS_NAME_MAX_LEN = 31;   // bytes, UTF-8 (32-byte NUL-terminated window)
+
+export const CS_MAX_IR_COMMANDS = 8;
+
+// GetCsStatus.irLearnState / the CsIrLearn(wValue=2) result read.
+export const CS_IR_LEARN_IDLE    = 0;
+export const CS_IR_LEARN_ARMED   = 1;
+export const CS_IR_LEARN_DONE    = 2;
+export const CS_IR_LEARN_TIMEOUT = 3;
 
 export const CS_PINCLASS_ANY = 0;
 export const CS_PINCLASS_ADC = 1;
@@ -162,6 +190,36 @@ export const EMPTY_CS_BINDING: CsBinding = {
   gpio0: 0, gpio1: 0, event: CsEvent.Press, target: 0, index: 0,
   value: 0, step: 0, rangeMin: 0, rangeMax: 0,
 };
+
+// One IR sub-slot command: a button-shaped binding fired by a learned
+// protocol+code instead of a GPIO edge (section 2.7). noun/action/target/
+// index/value/step follow the same rules as CsBinding's fields of the same
+// names; there is no gpio/event/range -- those are the container binding's.
+export interface CsIrCommand {
+  noun: CsNoun;
+  action: CsAction;
+  flags: number;
+  target: number;
+  index: number;
+  protocol: CsIrProto;
+  value: number;
+  step: number;
+  code: number;
+}
+
+// A cleared sub-slot is the ALL-ZERO 16-byte blob (protocol NONE, code 0).
+export const EMPTY_CS_IR_COMMAND: CsIrCommand = {
+  noun: CsNoun.UserVolume, action: CsAction.Adjust, flags: 0,
+  target: 0, index: 0, protocol: CsIrProto.None, value: 0, step: 0, code: 0,
+};
+
+// CsIrLearn(wValue=2) result read / GetCsStatus.irLearnState pairing.
+// protocol/code read 0 while idle/armed or on a timeout.
+export interface CsIrLearnResult {
+  state: number;   // CS_IR_LEARN_*
+  protocol: CsIrProto;
+  code: number;
+}
 
 // Device-served capability tables (GetCsCaps).
 export interface CsTypeCaps {
@@ -289,6 +347,14 @@ export const CS_EVENT_LABEL: Record<CsEvent, string> = {
   [CsEvent.Double]: 'Double Press',
 };
 
+export const CS_IR_PROTO_LABEL: Record<CsIrProto, string> = {
+  [CsIrProto.None]: '—',
+  [CsIrProto.Nec]:  'NEC',
+  [CsIrProto.Rc5]:  'RC5',
+  [CsIrProto.Rc6]:  'RC6',
+  [CsIrProto.Hash]: 'Hash',
+};
+
 // Action labels read differently against an enum noun: stepping a preset is
 // "Next"/"Previous", stepping a volume is "Increase"/"Decrease".
 export function csActionLabel(action: CsAction, isEnum: boolean): string {
@@ -324,7 +390,7 @@ export function liveCsPinConfigs(
 // device runtime state the caps tables don't carry, so CS_TARGET_DSP_BAND
 // only bounds `target`, same as the other targeted kinds -- the device is
 // still the final authority (INVALID_TARGET on a genuinely bad band).
-function validateCsTarget(b: CsBinding, noun: CsNounCaps): number {
+function validateCsTarget(b: { target: number; index: number }, noun: CsNounCaps): number {
   switch (noun.targetKind) {
     case CS_TARGET_NONE:
       return (b.target !== 0 || b.index !== 0) ? 0x17 : 0x00;         // INVALID_TARGET
@@ -404,5 +470,50 @@ export function validateCsBinding(
 
   if (type.pinClass === CS_PINCLASS_ADC && !CS_ADC_PINS.includes(b.gpio0)) return 0x15; // PIN_NOT_ADC
   if (type.pinCount === 2 && (b.gpio1 == null || b.gpio1 === b.gpio0)) return 0x01;     // INVALID_PIN
+  return 0x00;
+}
+
+// Client-side pre-validation for one IR sub-slot command, mirroring the same
+// firmware check order as validateCsBinding above (minus the parts an
+// IrCommand has no fields for: type, gpio/pin class, event). The one-IR-
+// receiver-per-device check (CS_STATUS_IR_IN_USE) is a CsBinding concern, not
+// this command's -- it belongs to the caller alongside the other cross-slot
+// device state.
+export function validateCsIrCommand(
+  cmd: CsIrCommand, caps: CsCaps, nouns: readonly CsNounCaps[],
+): number {
+  const isEmpty = cmd.protocol === CsIrProto.None && cmd.noun === 0 && cmd.action === 0 &&
+    cmd.flags === 0 && cmd.target === 0 && cmd.index === 0 &&
+    cmd.value === 0 && cmd.step === 0 && cmd.code === 0;
+  if (isEmpty) return 0x00;                                       // clear is always valid
+
+  if (cmd.protocol === CsIrProto.None) return 0x14;               // non-zero remainder on an "empty" slot
+  if (cmd.protocol > CsIrProto.Hash) return 0x14;                 // unrecognized protocol byte
+  if (cmd.code === 0) return 0x14;                                // never-learned code on an occupied slot
+
+  if (cmd.noun >= nouns.length) return 0x12;                      // INVALID_NOUN
+  if (!(CS_IR_BUTTON_ACTIONS & (1 << cmd.action))) return 0x13;   // INVALID_ACTION (button subset only)
+  if (cmd.flags & ~(CS_FLAG_WRAP | CS_FLAG_REPEAT)) return 0x14;  // INVALID_VALUE (unknown flags)
+
+  const irType = caps.types[CsType.Ir];
+  const noun = nouns[cmd.noun];
+  if (!irType || !(irType.actions & noun.actions & (1 << cmd.action))) return 0x13; // INVALID_ACTION
+
+  if ((cmd.flags & CS_FLAG_REPEAT) && cmd.action !== CsAction.Inc && cmd.action !== CsAction.Dec)
+    return 0x14;                                                  // INVALID_VALUE (REPEAT: INC/DEC only)
+
+  const targetStatus = validateCsTarget(cmd, noun);
+  if (targetStatus !== 0x00) return targetStatus;
+
+  if (noun.kind === CsKind.Continuous) {
+    if ((cmd.action === CsAction.Set || cmd.action === CsAction.Momentary) &&
+        (cmd.value < noun.minQ8 || cmd.value > noun.maxQ8)) return 0x14;
+    if (cmd.step < 0) return 0x14;
+  } else if (noun.kind === CsKind.Bool) {
+    if ((cmd.action === CsAction.Set || cmd.action === CsAction.Momentary) &&
+        cmd.value !== 0 && cmd.value !== 1) return 0x14;
+  } else if (noun.kind === CsKind.Enum) {
+    if (cmd.action === CsAction.Set && (cmd.value < 0 || cmd.value >= noun.enumCount)) return 0x14;
+  }
   return 0x00;
 }

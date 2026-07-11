@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CsType, CsNoun, CsAction, CsKind, CsEvent,
+  CsType, CsNoun, CsAction, CsKind, CsEvent, CsIrProto,
   CS_FLAG_REVERSE, CS_FLAG_REPEAT, CS_FLAG_ACCEL,
   CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q,
   CS_TARGET_NONE, CS_TARGET_INPUT_CH, CS_TARGET_DSP_BAND,
-  dbToQ8, q8ToDb, legalActions, validateCsBinding, liveCsPinConfigs,
-  EMPTY_CS_BINDING,
-  type CsBinding, type CsCaps, type CsNounCaps, type CsStatus,
+  dbToQ8, q8ToDb, legalActions, validateCsBinding, validateCsIrCommand, liveCsPinConfigs,
+  EMPTY_CS_BINDING, EMPTY_CS_IR_COMMAND,
+  type CsBinding, type CsCaps, type CsNounCaps, type CsStatus, type CsIrCommand,
 } from './controlSurfaces';
 
 // Firmware caps-v3 tables as TEST INPUTS (the console itself reads them from
@@ -228,6 +228,64 @@ describe('validateCsBinding', () => {
     expect(validateCsBinding(binding({ type: CsType.Ir, gpio0: 15, flags: 0x02 }), caps, nouns)).toBe(0x14);
     expect(validateCsBinding(binding({
       type: CsType.Ir, gpio0: 15, noun: CsNoun.UserMute, action: CsAction.Toggle,
+    }), caps, nouns)).toBe(0x14);
+  });
+});
+
+describe('validateCsIrCommand', () => {
+  function irCmd(over: Partial<CsIrCommand>): CsIrCommand {
+    return { ...EMPTY_CS_IR_COMMAND, ...over };
+  }
+
+  it('accepts the cleared (all-zero) command', () => {
+    expect(validateCsIrCommand(EMPTY_CS_IR_COMMAND, caps, nouns)).toBe(0x00);
+  });
+
+  it('accepts a well-formed occupied command', () => {
+    expect(validateCsIrCommand(irCmd({
+      noun: CsNoun.MasterVolume, action: CsAction.Inc, protocol: CsIrProto.Nec, code: 0x12345678, step: 256,
+    }), caps, nouns)).toBe(0x00);
+  });
+
+  it('rejects an action outside the IR button subset with INVALID_ACTION', () => {
+    // ADJUST is legal for MASTER_VOLUME, but not for an IR command.
+    expect(validateCsIrCommand(irCmd({
+      noun: CsNoun.MasterVolume, action: CsAction.Adjust, protocol: CsIrProto.Nec, code: 1,
+    }), caps, nouns)).toBe(0x13);
+  });
+
+  it('rejects an occupied slot with code 0 (never learned) with INVALID_VALUE', () => {
+    expect(validateCsIrCommand(irCmd({
+      noun: CsNoun.UserMute, action: CsAction.Toggle, protocol: CsIrProto.Nec, code: 0,
+    }), caps, nouns)).toBe(0x14);
+  });
+
+  it('rejects a flag bit an IR command may not carry with INVALID_VALUE', () => {
+    // CS_FLAG_REVERSE only makes sense on a pot/encoder, not an IR command.
+    expect(validateCsIrCommand(irCmd({
+      noun: CsNoun.UserMute, action: CsAction.Toggle, protocol: CsIrProto.Nec, code: 1, flags: CS_FLAG_REVERSE,
+    }), caps, nouns)).toBe(0x14);
+  });
+
+  it('rejects REPEAT on an action other than INC/DEC with INVALID_VALUE', () => {
+    expect(validateCsIrCommand(irCmd({
+      noun: CsNoun.UserMute, action: CsAction.Toggle, protocol: CsIrProto.Nec, code: 1, flags: CS_FLAG_REPEAT,
+    }), caps, nouns)).toBe(0x14);
+  });
+
+  it('accepts REPEAT on INC/DEC', () => {
+    expect(validateCsIrCommand(irCmd({
+      noun: CsNoun.MasterVolume, action: CsAction.Inc, protocol: CsIrProto.Nec, code: 1, flags: CS_FLAG_REPEAT, step: 256,
+    }), caps, nouns)).toBe(0x00);
+  });
+
+  it('rejects a non-zero remainder on an otherwise-empty (protocol NONE) command', () => {
+    expect(validateCsIrCommand(irCmd({ code: 123 }), caps, nouns)).toBe(0x14);
+  });
+
+  it('rejects an unrecognized protocol byte', () => {
+    expect(validateCsIrCommand(irCmd({
+      noun: CsNoun.UserMute, action: CsAction.Toggle, protocol: 5 as CsIrProto, code: 1,
     }), caps, nouns)).toBe(0x14);
   });
 });

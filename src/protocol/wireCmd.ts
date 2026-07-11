@@ -48,6 +48,10 @@ type CsStatusPayload = {
   activeMask: number; slotStatus: number[];
   irActiveMask: number; irLearnState: number; irCmdStatus: number[];
 };
+type CsIrCommandPayload = {
+  noun: number; action: number; flags: number; target: number; index: number;
+  protocol: number; value: number; step: number; code: number;
+};
 type LevellerMasksPayload = { detector: number; apply: number };
 
 // Command table
@@ -264,6 +268,15 @@ export const WireCmd = {
   // polled the same way.
   SetCsName:             { code: 0x8B, codec: Wire.CsName } satisfies WriteCmd<string>,
   GetCsName:             { code: 0x8C, codec: Wire.CsName } satisfies ReadCmd<string>,
+  // IR command sub-slots: same deferred SET model as SetCsBinding, reported
+  // in last_slot as 0x80 | sub-slot. GetCsIrCmd is a plain live read.
+  SetCsIrCmd:            { code: 0x8D, codec: Wire.CsIrCommand } satisfies WriteCmd<CsIrCommandPayload>,
+  GetCsIrCmd:            { code: 0x8E, codec: Wire.CsIrCommand } satisfies ReadCmd<CsIrCommandPayload>,
+  // GET-type action command (wValue 1 = arm, 0 = cancel, 2 = read result),
+  // in the mold of CsSave/CsRevert below. Arm/cancel return a 1-byte ack;
+  // the result read returns the 8-byte CsIrLearnResult instead, so this
+  // stays a RawCmd and DspDevice decodes each response shape itself.
+  CsIrLearn:             { code: 0x8F } satisfies RawCmd,
   // Persist / discard the live CS preview (bindings + names). Action-style
   // IN: 1-byte accept/reject, real result via GetCsStatus (last_slot 0xFF).
   CsSave:                { code: 0x9D } satisfies RawCmd,

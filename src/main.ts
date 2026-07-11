@@ -43,6 +43,8 @@ if (isMobileDevice()) {
     ...(want115 ? { wireVersion: 18, fwVersion: { major: 1, minor: 1, patch: 5 } } : {}),
     ...(i2sInputChannels != null ? { i2sInputChannels } : {}),
     ...(spdifInputsEnabled != null ? { spdifInputsEnabled } : {}),
+    // Demo remote: an armed IR learn self-completes with a fresh NEC code.
+    irLearnAutoComplete: true,
   };
 
   // Boot reports its own failures (with errorKind) via reportConnectError. The

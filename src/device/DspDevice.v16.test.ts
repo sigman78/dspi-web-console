@@ -9,6 +9,7 @@ import { DspDevice, UnsupportedFirmware } from './DspDevice';
 import { parseNotifyPacket, WireCmd, buildBulkParams, PinConfigResult, CsStatusCode } from '@/protocol';
 import {
   ChannelId, FilterType, CsType, CsNoun, CsAction, CsEvent, EMPTY_CS_BINDING, dbToQ8, ChannelFamily,
+  CsIrProto, EMPTY_CS_IR_COMMAND, CS_IR_LEARN_DONE, CS_IR_LEARN_IDLE,
 } from '@/domain';
 
 const FW_115 = { major: 1, minor: 1, patch: 5 };
@@ -472,9 +473,98 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
   });
 });
 
+describe('DspDevice — V16 Control Surfaces IR commands (0x8D-0x8F)', () => {
+  const irReceiver = {
+    type: CsType.Ir, noun: CsNoun.UserVolume, action: CsAction.Adjust,
+    flags: 0, gpio0: 20, gpio1: null, event: CsEvent.Press, target: 0, index: 0,
+    value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+  };
+  const necToggle = {
+    noun: CsNoun.UserMute, action: CsAction.Toggle, flags: 0, target: 0, index: 0,
+    protocol: CsIrProto.Nec, value: 0, step: 0, code: 0x12345678,
+  };
+
+  it('setCsIrCmd/getCsIrCmd round-trip an accepted command (last_slot 0x80|sub)', async () => {
+    const d = await v16Device();
+    const { result, status } = await d.setCsIrCmd(2, necToggle);
+    expect(result.ok).toBe(true);
+    expect(status.lastSlot).toBe(0x80 | 2);
+    expect(await d.getCsIrCmd(2)).toEqual(necToggle);
+  });
+
+  it('a rejected IR command leaves the sub-slot empty and surfaces the failure status', async () => {
+    const d = await v16Device();
+    // ADJUST isn't in the IR button subset (INC/DEC/TOGGLE/SET/TRIGGER/MOMENTARY).
+    const { result } = await d.setCsIrCmd(0, { ...necToggle, action: CsAction.Adjust });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(CsStatusCode.InvalidAction);
+    expect((await d.getCsIrCmd(0)).protocol).toBe(CsIrProto.None);
+  });
+
+  it('clearing a sub-slot is a SET of the all-zero command', async () => {
+    const d = await v16Device();
+    await d.setCsIrCmd(3, necToggle);
+    const { result } = await d.setCsIrCmd(3, EMPTY_CS_IR_COMMAND);
+    expect(result.ok).toBe(true);
+    expect(await d.getCsIrCmd(3)).toEqual(EMPTY_CS_IR_COMMAND);
+  });
+
+  it('csIrLearnArm succeeds with a live IR receiver binding; csIrLearnResult reads back a completed learn', async () => {
+    const raw = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: FW_115 });
+    const d = await DspDevice.create(raw);
+    await d.setCsBinding(0, irReceiver);
+    const arm = await d.csIrLearnArm();
+    expect(arm.ok).toBe(true);
+    raw.mockCompleteIrLearn(CsIrProto.Rc5, 0xABCD);
+    const result = await d.csIrLearnResult();
+    expect(result).toEqual({ state: CS_IR_LEARN_DONE, protocol: CsIrProto.Rc5, code: 0xABCD });
+  });
+
+  it('csIrLearnArm fails with NO_IR when no live IR receiver exists', async () => {
+    const d = await v16Device();
+    const arm = await d.csIrLearnArm();
+    expect(arm.ok).toBe(false);
+    if (!arm.ok) expect(arm.code).toBe(CsStatusCode.NoIr);
+  });
+
+  it('csIrLearnCancel returns learn state to idle', async () => {
+    const raw = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: FW_115 });
+    const d = await DspDevice.create(raw);
+    await d.setCsBinding(0, irReceiver);
+    await d.csIrLearnArm();
+    await d.csIrLearnCancel();
+    expect((await d.csIrLearnResult()).state).toBe(CS_IR_LEARN_IDLE);
+  });
+
+  it('a second live IR receiver binding is rejected with IR_IN_USE', async () => {
+    const d = await v16Device();
+    await d.setCsBinding(0, irReceiver);
+    const { result } = await d.setCsBinding(1, { ...irReceiver, gpio0: 21 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(CsStatusCode.IrInUse);
+  });
+});
+
 describe('notify — INPUT_FORMAT (0x05)', () => {
   it('decodes the v2 input-format packet', () => {
     const e = parseNotifyPacket(new Uint8Array([2, 0x05, 0, 7, 6, 0, 0, 0]));
     expect(e).toEqual({ kind: 'inputFormat', seq: 7, channels: 6 });
+  });
+});
+
+describe('notify — CS_IR_LEARN (0x0A)', () => {
+  it('decodes a done packet with protocol and code', () => {
+    const e = parseNotifyPacket(new Uint8Array([2, 0x0A, 0, 9, 2, 1, 0, 0, 0x78, 0x56, 0x34, 0x12]));
+    expect(e).toEqual({ kind: 'csIrLearn', seq: 9, state: CS_IR_LEARN_DONE, protocol: CsIrProto.Nec, code: 0x12345678 });
+  });
+
+  it('decodes a timeout packet with protocol/code zeroed', () => {
+    const e = parseNotifyPacket(new Uint8Array([2, 0x0A, 0, 10, 3, 0, 0, 0, 0, 0, 0, 0]));
+    expect(e).toEqual({ kind: 'csIrLearn', seq: 10, state: 3, protocol: 0, code: 0 });
+  });
+
+  it('ignores a short packet rather than misreading it', () => {
+    const e = parseNotifyPacket(new Uint8Array([2, 0x0A, 0, 9, 2, 1, 0, 0]));
+    expect(e).toEqual({ kind: 'ignored' });
   });
 });

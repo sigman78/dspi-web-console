@@ -322,6 +322,32 @@ describe('startNotifyChannel', () => {
     expect(m.armed()).toBe(false);
     stop();
   });
+
+  it('lands a CS_IR_LEARN done event in the controlSurfaces learn sub-state', async () => {
+    const { mock, session } = await v10Setup();
+    primeLive(mock);
+    // state=DONE(2), protocol=NEC(1), code=0x12345678 LE
+    mock.pushNotify(new Uint8Array([2, 0x0A, 0, 1, 2, 1, 0, 0, 0x78, 0x56, 0x34, 0x12]));
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live csIrLearn
+    expect(session.controlSurfaces.irLearn).toEqual({ state: 2, protocol: 1, code: 0x12345678 });
+    stop();
+  });
+
+  it('a CS_IR_LEARN timeout event lands but does not request a reconcile', async () => {
+    const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
+    mock.pushNotify(new Uint8Array([2, 0x0A, 0, 1, 3, 0, 0, 0, 0, 0, 0, 0]));   // state=TIMEOUT(3)
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();
+    await m.tick();
+    expect(session.controlSurfaces.irLearn).toEqual({ state: 3, protocol: 0, code: 0 });
+    expect(mir.peekReconcile().wanted).toBe(false);
+    stop();
+  });
 });
 
 // A device with no host connected accumulates notify events in its ring

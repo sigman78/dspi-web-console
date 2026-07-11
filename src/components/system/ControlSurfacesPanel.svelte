@@ -2,11 +2,14 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import PinSelect from './PinSelect.svelte';
+  import CsIrCommands from './CsIrCommands.svelte';
   import { connection } from '@/state';
   import { applyCsBinding, clearCsBinding, applyCsName, csSaveConfig, csRevertConfig } from '@/runtime';
   import * as Domain from '@/domain';
   import { csStatusFromByte } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
+  import * as CsUnit from './csUnitDisplay';
+  import * as CsField from './csFieldHelpers';
 
   const s = getSession();
   const connected = $derived(connection.connected);
@@ -28,7 +31,6 @@
     limitRange: boolean; rangeMin: number; rangeMax: number;
   }
   const drafts = $state<Record<number, Draft>>({});
-  const results = $state<Record<number, { ok: boolean; text: string } | null>>({});
   let applying = $state(false);
 
   const maxSlots = $derived(caps?.maxBindings ?? Domain.CS_MAX_BINDINGS);
@@ -38,11 +40,25 @@
   );
   const allUsed = $derived(visibleSlots.length >= maxSlots);
 
-  // The IR remote receiver is a separate future editor (learned commands, not
-  // a plain type/noun/action binding); exclude it from the add-control list.
   const typeOptions = $derived(
-    caps ? caps.types.map((_, i) => i).filter((i) => caps.types[i].pinCount > 0 && i !== Domain.CsType.Ir) : [],
+    caps ? caps.types.map((_, i) => i).filter((i) => caps.types[i].pinCount > 0) : [],
   );
+
+  // Firmware allows only one live IR component (CS_STATUS_IR_IN_USE on a
+  // second); hiding the option once a slot already holds one (live or
+  // drafted) is a cheap client-side nicety, not enforcement -- the device
+  // remains the authority and its rejection still surfaces via status.
+  const irReceiverSlot = $derived(
+    (() => {
+      for (let i = 0; i < maxSlots; i++) {
+        if (cs.bindings[i]?.type === Domain.CsType.Ir || drafts[i]?.type === Domain.CsType.Ir) return i;
+      }
+      return null;
+    })(),
+  );
+  function typeOptionsFor(slot: number): number[] {
+    return typeOptions.filter((t) => t !== Domain.CsType.Ir || irReceiverSlot === null || irReceiverSlot === slot);
+  }
 
   const STEPPY: readonly number[] = [Domain.CsAction.Step, Domain.CsAction.Inc, Domain.CsAction.Dec];
 
@@ -56,22 +72,6 @@
     [Domain.CsType.Button]:  [Domain.CsAction.Toggle, Domain.CsAction.Trigger, Domain.CsAction.Inc, Domain.CsAction.Set, Domain.CsAction.Dec],
   };
 
-  // Crossfeed voicing and leveller-speed enum labels (the CROSSFEED_PRESET/
-  // LEVELLER_SPEED nouns don't identify curve names; same generic labels the
-  // console's other Crossfeed/Leveller panels use).
-  const CROSSFEED_PRESET_LABEL: Record<number, string> = {
-    [Domain.CrossfeedPreset.Preset1]: 'Preset 1',
-    [Domain.CrossfeedPreset.Preset2]: 'Preset 2',
-    [Domain.CrossfeedPreset.Preset3]: 'Preset 3',
-    [Domain.CrossfeedPreset.Custom]:  'Custom',
-  };
-  const LEVELLER_SPEED_LABEL: Record<number, string> = {
-    [Domain.LevellerSpeed.Slow]:   'Slow',
-    [Domain.LevellerSpeed.Medium]: 'Medium',
-    [Domain.LevellerSpeed.Fast]:   'Fast',
-  };
-  const SAMPLE_RATE_LABEL: Record<number, string> = { 0: '44.1 kHz', 1: '48 kHz', 2: '96 kHz' };
-
   function nounOptionsFor(typeIdx: number): number[] {
     if (!caps) return [];
     const mask = caps.types[typeIdx]?.actions ?? 0;
@@ -83,21 +83,17 @@
     return Domain.legalActions(caps.types[typeIdx]?.actions ?? 0, cs.nouns[nounIdx]?.actions ?? 0);
   }
 
-  function kindOf(d: Draft): number { return cs.nouns[d.noun]?.kind ?? Domain.CsKind.Bool; }
-  function contOf(d: Draft): boolean { return kindOf(d) === Domain.CsKind.Continuous; }
-  function enumOf(d: Draft): boolean { return kindOf(d) === Domain.CsKind.Enum; }
-  function unitOf(d: Draft): number { return cs.nouns[d.noun]?.unit ?? Domain.CS_UNIT_NONE; }
-  function targetKindOf(d: Draft): number { return cs.nouns[d.noun]?.targetKind ?? Domain.CS_TARGET_NONE; }
+  function contOf(d: Draft): boolean { return CsField.contOf(cs.nouns, d.noun); }
+  function enumOf(d: Draft): boolean { return CsField.enumOf(cs.nouns, d.noun); }
+  function unitOf(d: Draft): number { return CsField.unitOf(cs.nouns, d.noun); }
+  function targetKindOf(d: Draft): number { return CsField.targetKindOf(cs.nouns, d.noun); }
 
-  function showValueOf(d: Draft): boolean {
-    return d.action === Domain.CsAction.Set || d.action === Domain.CsAction.IndEquals
-      || d.action === Domain.CsAction.IndAbove || d.action === Domain.CsAction.Momentary;
-  }
-  function showStepOf(d: Draft): boolean { return STEPPY.includes(d.action); }
+  function showValueOf(d: Draft): boolean { return CsField.showValueOf(d.action); }
+  function showStepOf(d: Draft): boolean { return CsField.showStepOf(d.action, STEPPY); }
   function showRangeOf(d: Draft): boolean {
     return (d.action === Domain.CsAction.Adjust || d.action === Domain.CsAction.IndLevel) && contOf(d);
   }
-  function showWrapOf(d: Draft): boolean { return enumOf(d) && STEPPY.includes(d.action); }
+  function showWrapOf(d: Draft): boolean { return CsField.showWrapOf(cs.nouns, d.noun, d.action, STEPPY); }
   function showReverseOf(d: Draft): boolean { return d.type === Domain.CsType.Pot || d.type === Domain.CsType.Encoder; }
   function showAccelOf(d: Draft): boolean { return d.type === Domain.CsType.Encoder; }
   function showRepeatOf(d: Draft): boolean {
@@ -107,128 +103,32 @@
   // MOMENTARY and REPEAT are only legal on the press event; lock the picker
   // there rather than let the user build an invalid combination.
   function eventLocked(d: Draft): boolean { return d.action === Domain.CsAction.Momentary || d.repeat; }
-  function showTargetOf(d: Draft): boolean { return targetKindOf(d) !== Domain.CS_TARGET_NONE; }
-  function showBandOf(d: Draft): boolean { return targetKindOf(d) === Domain.CS_TARGET_DSP_BAND; }
+  function showTargetOf(d: Draft): boolean { return CsField.showTargetOf(cs.nouns, d.noun); }
+  function showBandOf(d: Draft): boolean { return CsField.showBandOf(cs.nouns, d.noun); }
   function twoPins(d: Draft): boolean { return caps?.types[d.type]?.pinCount === 2; }
   function adcOnly(d: Draft): boolean { return caps?.types[d.type]?.pinClass === Domain.CS_PINCLASS_ADC; }
 
   function invertLabel(d: Draft): string {
+    if (d.type === Domain.CsType.Ir) return 'Idle-low receiver';
     if (d.type === Domain.CsType.Led || d.type === Domain.CsType.LedPwm) return 'Active-low LED';
     if (showReverseOf(d)) return 'Pull-down wiring';
     return 'Active-high wiring';
   }
 
-  function valueLabel(d: Draft): string {
-    if (d.action === Domain.CsAction.IndEquals) return 'LIGHT WHEN';
-    if (d.action === Domain.CsAction.IndAbove) return 'LIGHT WHEN ≥';
-    if (d.action === Domain.CsAction.Momentary) return 'WHILE HELD';
-    return contOf(d) ? 'TARGET LEVEL' : 'SET TO';
-  }
+  function valueLabel(d: Draft): string { return CsField.valueLabel(d.action, contOf(d)); }
 
-  // Unit-aware conversion between the wire's 8.8/plain-int encoding and the
-  // draft's display units (see domain/controlSurfaces.ts's q8 helpers). Hz is
-  // a plain integer on the wire; step on a Hz/Q noun is an 8.8-octave size,
-  // not the unit itself.
-  function valueToDisplay(unit: number, q8: number): number {
-    switch (unit) {
-      case Domain.CS_UNIT_DB:      return Domain.q8ToDb(q8);
-      case Domain.CS_UNIT_Q:       return Domain.q8ToQ(q8);
-      case Domain.CS_UNIT_PERCENT: return Domain.q8ToPercent(q8);
-      default:                     return q8;
-    }
-  }
-  function displayToValue(unit: number, display: number): number {
-    switch (unit) {
-      case Domain.CS_UNIT_DB:      return Domain.dbToQ8(display);
-      case Domain.CS_UNIT_Q:       return Domain.qToQ8(display);
-      case Domain.CS_UNIT_PERCENT: return Domain.percentToQ8(display);
-      default:                     return Math.round(display);
-    }
-  }
-  function isLogStep(unit: number): boolean { return unit === Domain.CS_UNIT_HZ || unit === Domain.CS_UNIT_Q; }
-  function stepToDisplay(unit: number, q8: number): number {
-    return isLogStep(unit) ? Domain.q8StepToOctaves(q8) : valueToDisplay(unit, q8);
-  }
-  function displayToStep(unit: number, display: number): number {
-    return isLogStep(unit) ? Domain.octavesToQ8Step(display) : displayToValue(unit, display);
-  }
-  function unitSuffix(unit: number): string {
-    switch (unit) {
-      case Domain.CS_UNIT_DB:      return 'dB';
-      case Domain.CS_UNIT_PERCENT: return '%';
-      case Domain.CS_UNIT_HZ:      return 'Hz';
-      case Domain.CS_UNIT_Q:       return 'Q';
-      default:                     return '';
-    }
-  }
-  function stepUnitSuffix(unit: number): string { return isLogStep(unit) ? 'octaves' : unitSuffix(unit); }
-
-  function boolValueOptions(d: Draft): { v: number; label: string }[] {
-    const clip = d.noun === Domain.CsNoun.Clip;
-    return [
-      { v: 1, label: clip ? 'Clipping' : 'On' },
-      { v: 0, label: clip ? 'Not clipping' : 'Off' },
-    ];
-  }
+  function boolValueOptions(d: Draft): { v: number; label: string }[] { return CsField.boolValueOptions(d.noun); }
 
   function enumValueOptions(d: Draft): { v: number; label: string }[] {
-    const count = cs.nouns[d.noun]?.enumCount ?? 0;
-    const idx = Array.from({ length: count }, (_, i) => i);
-    if (d.noun === Domain.CsNoun.Preset) {
-      return idx.map((i) => {
-        const name = s.presets.names[i];
-        return { v: i, label: `Preset ${i + 1}${name ? ` · ${name}` : ''}` };
-      });
-    }
-    if (d.noun === Domain.CsNoun.InputSource) {
-      const names = ['USB', 'S/PDIF', 'I2S'];
-      return idx.map((i) => ({ v: i, label: names[i] ?? String(i) }));
-    }
-    if (d.noun === Domain.CsNoun.CrossfeedPreset) return idx.map((i) => ({ v: i, label: CROSSFEED_PRESET_LABEL[i] ?? String(i) }));
-    if (d.noun === Domain.CsNoun.LevellerSpeed) return idx.map((i) => ({ v: i, label: LEVELLER_SPEED_LABEL[i] ?? String(i) }));
-    if (d.noun === Domain.CsNoun.SampleRate) return idx.map((i) => ({ v: i, label: SAMPLE_RATE_LABEL[i] ?? String(i) }));
-    return idx.map((i) => ({ v: i, label: String(i) }));
+    return CsField.enumValueOptions(cs.nouns, d.noun, s.presets.names);
   }
 
-  // Target/band pickers. INPUT_CH/OUTPUT_CH index into the platform's input or
-  // output channel list; DSP_CH/DSP_BAND index into the combined (inputs then
-  // outputs) list, matching the firmware's addressing and snap.channels' order.
   function targetOptionsFor(d: Draft): { v: number; label: string }[] {
-    if (!snap) return [];
-    const kind = targetKindOf(d);
-    const count = cs.nouns[d.noun]?.targetCount ?? 0;
-    let opts: { v: number; label: string }[];
-    switch (kind) {
-      case Domain.CS_TARGET_INPUT_CH:
-        opts = snap.channels.filter((c) => !c.isOutput).map((c, i) => ({ v: i, label: c.name }));
-        break;
-      case Domain.CS_TARGET_OUTPUT_CH:
-        opts = snap.channels.filter((c) => c.isOutput).map((c, i) => ({ v: i, label: c.name }));
-        break;
-      case Domain.CS_TARGET_DSP_CH:
-      case Domain.CS_TARGET_DSP_BAND:
-        opts = snap.channels.map((c, i) => ({ v: i, label: c.name }));
-        break;
-      default:
-        opts = [];
-    }
-    return opts.filter((o) => o.v < count);
+    return snap ? CsField.targetOptionsFor(cs.nouns, d.noun, snap.channels) : [];
   }
 
-  // Valid bands for the selected channel: PEQ bands 1..bandCount, plus (only
-  // for FILTER_FREQ/FILTER_BYPASS, output channels only) the crossover bands
-  // at wire indices XOVER_BAND_BASE.. (see control_surfaces_spec.md 4.4).
   function bandOptionsFor(d: Draft): { v: number; label: string }[] {
-    if (!snap) return [];
-    const ch = snap.channels[d.target];
-    if (!ch) return [];
-    const opts: { v: number; label: string }[] = [];
-    for (let i = 0; i < ch.bandCount; i++) opts.push({ v: i, label: `Band ${i + 1}` });
-    const allowsXover = d.noun === Domain.CsNoun.FilterFreq || d.noun === Domain.CsNoun.FilterBypass;
-    if (allowsXover && ch.isOutput) {
-      for (let i = 0; i < ch.xoverBands.length; i++) opts.push({ v: Domain.XOVER_BAND_BASE + i, label: `XO ${i + 1}` });
-    }
-    return opts;
+    return snap ? CsField.bandOptionsFor(d.noun, d.target, snap.channels) : [];
   }
 
   // Only LIVE sibling bindings reserve pins (fw control_surfaces_owns_pin);
@@ -262,22 +162,34 @@
     const cont = noun?.kind === Domain.CsKind.Continuous;
     const bool = noun?.kind === Domain.CsKind.Bool;
     const unit = noun?.unit ?? Domain.CS_UNIT_NONE;
-    d.step = !STEPPY.includes(d.action) ? 0 : isLogStep(unit) ? 0 : 1;   // 0 = firmware default (1/12 octave); else 1 unit/position
+    d.step = !STEPPY.includes(d.action) ? 0 : CsUnit.isLogStep(unit) ? 0 : 1;   // 0 = firmware default (1/12 octave); else 1 unit/position
     if (d.action === Domain.CsAction.Set || d.action === Domain.CsAction.Momentary) {
-      d.value = noun && cont ? valueToDisplay(unit, noun.maxQ8) : bool ? 1 : 0;
+      d.value = noun && cont ? CsUnit.valueToDisplay(unit, noun.maxQ8) : bool ? 1 : 0;
     } else if (d.action === Domain.CsAction.IndEquals) {
       d.value = bool ? 1 : 0;
     } else if (d.action === Domain.CsAction.IndAbove) {
-      d.value = noun && cont ? valueToDisplay(unit, noun.maxQ8) : 0;
+      d.value = noun && cont ? CsUnit.valueToDisplay(unit, noun.maxQ8) : 0;
     } else {
       d.value = 0;
     }
     d.limitRange = false;
-    d.rangeMin = noun && cont ? valueToDisplay(unit, noun.minQ8) : 0;
-    d.rangeMax = noun && cont ? valueToDisplay(unit, noun.maxQ8) : 0;
+    d.rangeMin = noun && cont ? CsUnit.valueToDisplay(unit, noun.minQ8) : 0;
+    d.rangeMax = noun && cont ? CsUnit.valueToDisplay(unit, noun.maxQ8) : 0;
   }
 
+  // IR's container binding always carries noun=action=0 and the rest zeroed
+  // (validateCsBinding rejects anything else); only gpio0 and invert are real.
   function defaultDraft(typeIdx: number, slot: number): Draft {
+    if (typeIdx === Domain.CsType.Ir) {
+      const d: Draft = {
+        type: typeIdx, noun: 0, action: 0, event: Domain.CsEvent.Press,
+        gpio0: 0, gpio1: 0, target: 0, index: 0,
+        invert: false, reverse: false, wrap: false, accel: false, repeat: false,
+        value: 0, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
+      };
+      d.gpio0 = firstFree(candidatesFor(slot, -1, false));
+      return d;
+    }
     const noun = nounOptionsFor(typeIdx)[0] ?? Domain.CsNoun.MasterVolume;
     const d: Draft = {
       type: typeIdx, noun, action: defaultAction(typeIdx, noun), event: Domain.CsEvent.Press,
@@ -305,11 +217,11 @@
       wrap: (b.flags & Domain.CS_FLAG_WRAP) !== 0,
       accel: (b.flags & Domain.CS_FLAG_ACCEL) !== 0,
       repeat: (b.flags & Domain.CS_FLAG_REPEAT) !== 0,
-      value: cont ? valueToDisplay(unit, b.value) : b.value,
-      step: cont ? stepToDisplay(unit, b.step) : b.step,
+      value: cont ? CsUnit.valueToDisplay(unit, b.value) : b.value,
+      step: cont ? CsUnit.stepToDisplay(unit, b.step) : b.step,
       limitRange: limited,
-      rangeMin: cont ? valueToDisplay(unit, limited ? b.rangeMin : noun?.minQ8 ?? 0) : 0,
-      rangeMax: cont ? valueToDisplay(unit, limited ? b.rangeMax : noun?.maxQ8 ?? 0) : 0,
+      rangeMin: cont ? CsUnit.valueToDisplay(unit, limited ? b.rangeMin : noun?.minQ8 ?? 0) : 0,
+      rangeMax: cont ? CsUnit.valueToDisplay(unit, limited ? b.rangeMax : noun?.maxQ8 ?? 0) : 0,
     };
   }
 
@@ -321,10 +233,17 @@
     const d = drafts[slot] ?? draftFromLive(cs.bindings[slot]!);
     fn(d);
     drafts[slot] = d;
-    results[slot] = null;
   }
 
   function buildBinding(d: Draft): Domain.CsBinding {
+    if (d.type === Domain.CsType.Ir) {
+      return {
+        type: Domain.CsType.Ir, noun: 0 as Domain.CsNoun, action: 0 as Domain.CsAction,
+        flags: d.invert ? Domain.CS_FLAG_INVERT : 0,
+        gpio0: d.gpio0, gpio1: null, event: Domain.CsEvent.Press,
+        target: 0, index: 0, value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+      };
+    }
     const cont = contOf(d);
     const unit = unitOf(d);
     const forcedPress = d.action === Domain.CsAction.Momentary || d.repeat;
@@ -343,10 +262,10 @@
       event,
       target: showTargetOf(d) ? d.target : 0,
       index: showBandOf(d) ? d.index : 0,
-      value: showValueOf(d) ? (cont ? displayToValue(unit, d.value) : Math.round(d.value)) : 0,
-      step: showStepOf(d) ? (cont ? displayToStep(unit, d.step) : Math.round(d.step)) : 0,
-      rangeMin: showRangeOf(d) && d.limitRange ? displayToValue(unit, d.rangeMin) : 0,
-      rangeMax: showRangeOf(d) && d.limitRange ? displayToValue(unit, d.rangeMax) : 0,
+      value: showValueOf(d) ? (cont ? CsUnit.displayToValue(unit, d.value) : Math.round(d.value)) : 0,
+      step: showStepOf(d) ? (cont ? CsUnit.displayToStep(unit, d.step) : Math.round(d.step)) : 0,
+      rangeMin: showRangeOf(d) && d.limitRange ? CsUnit.displayToValue(unit, d.rangeMin) : 0,
+      rangeMax: showRangeOf(d) && d.limitRange ? CsUnit.displayToValue(unit, d.rangeMax) : 0,
     };
   }
 
@@ -374,20 +293,11 @@
     return { text: 'INACTIVE', cls: 'warn' };
   }
 
-  function statusText(byte: number): string {
-    const r = csStatusFromByte(byte);
-    return r.ok ? 'Applied — unsaved' : r.message;
-  }
-
   function inactiveHint(slot: number): string {
     const byte = cs.status?.slotStatus[slot] ?? 0;
     const r = csStatusFromByte(byte);
     const why = r.ok ? 'failed to apply the binding' : r.message.toLowerCase();
     return `Not running: ${why}. Reassign the conflicting pin, then apply.`;
-  }
-
-  function failText(): string {
-    return statusText(cs.status?.lastStatus ?? 0xFF);
   }
 
   function firstFreeSlot(): number | null {
@@ -405,21 +315,18 @@
     const slot = firstFreeSlot();
     if (slot == null) return;
     drafts[slot] = defaultDraft(typeIdx, slot);
-    results[slot] = null;
   }
 
+  // Rejections surface via the runtime actions' warn toasts; the panel's only
+  // success feedback is the pill/staged-dot state flip.
   async function apply(slot: number): Promise<void> {
     const live = cs.bindings[slot];
     const d = drafts[slot] ?? (live ? draftFromLive(live) : null);
     if (!d) return;
     applying = true;
     try {
-      const ok = await applyCsBinding(s, slot, buildBinding(d));
-      if (ok) {
+      if (await applyCsBinding(s, slot, buildBinding(d))) {
         delete drafts[slot];                       // device truth takes over
-        results[slot] = { ok: true, text: 'Applied — unsaved' };
-      } else {
-        results[slot] = { ok: false, text: failText() };
       }
     } finally {
       applying = false;
@@ -428,19 +335,15 @@
 
   function revert(slot: number): void {
     delete drafts[slot];
-    results[slot] = null;
   }
 
   // Remove = drop a never-applied draft locally; clear a live slot on the
   // device (the all-zero binding).
   async function remove(slot: number): Promise<void> {
-    results[slot] = null;
     if (!cs.bindings[slot]) { delete drafts[slot]; return; }
     applying = true;
     try {
-      const ok = await clearCsBinding(s, slot);
-      if (ok) { delete drafts[slot]; delete results[slot]; }
-      else results[slot] = { ok: false, text: failText() };
+      if (await clearCsBinding(s, slot)) delete drafts[slot];
     } finally {
       applying = false;
     }
@@ -464,14 +367,21 @@
     }
   }
 
+  let irResetTick = $state(0);
+  // Written by CsIrCommands (bind): any IR sub-slot holds unapplied edits.
+  // Lights the receiver slot's title dot -- the sub-panel shows no dots of
+  // its own, dirtiness always surfaces on the owning control's title.
+  let irDirty = $state(false);
+
   async function discardConfig(): Promise<void> {
     applying = true;
     try {
       await csRevertConfig(s);
-      // The device just rewound every slot to its stored state; local drafts
-      // and per-slot results no longer describe anything real.
+      // The device just rewound every slot (and every IR sub-slot) to its
+      // stored state; local drafts no longer describe anything real.
+      // irResetTick tells CsIrCommands to drop its own.
       for (const key of Object.keys(drafts)) delete drafts[Number(key)];
-      for (const key of Object.keys(results)) delete results[Number(key)];
+      irResetTick++;
     } finally {
       applying = false;
     }
@@ -484,17 +394,14 @@
 </script>
 
 <Panel code="CT.02" title="CONTROL SURFACES">
-  {#if caps}
-    {#if cs.status?.dirty}
-      <div class="dirtybar">
-        <span class="dirtytext">UNSAVED CHANGES — live preview, not yet written to flash</span>
-        <div class="dirtyactions">
-          <button type="button" class="chip accent" disabled={applying} onclick={saveConfig}>SAVE</button>
-          <button type="button" class="chip hi" disabled={applying} onclick={discardConfig}>DISCARD</button>
-        </div>
-      </div>
+  {#snippet right()}
+    {#if caps && cs.status?.dirty}
+      <span class="unsaved" title="Live preview — not yet written to flash">UNSAVED</span>
+      <button type="button" class="chip accent" disabled={applying} onclick={saveConfig}>SAVE</button>
+      <button type="button" class="chip hi" disabled={applying} onclick={discardConfig}>DISCARD</button>
     {/if}
-
+  {/snippet}
+  {#if caps}
     {#if visibleSlots.length === 0}
       <div class="hint pad empty">
         No controls configured. Wire a button, switch, knob, encoder, or LED to a
@@ -505,18 +412,18 @@
     {#each visibleSlots as slot (slot)}
       {@const d = draftOf(slot)}
       {@const p = pill(slot)}
-      {@const actions = actionOptionsFor(d.type, d.noun)}
+      {@const actions = d.type === Domain.CsType.Ir ? [] : actionOptionsFor(d.type, d.noun)}
+      {@const slotDirty = isDirty(slot) || (d.type === Domain.CsType.Ir && irDirty)}
       <div class="slot">
         <div class="slothead">
-          <span class="stitle">{Domain.CS_TYPE_LABEL[d.type as Domain.CsType].toUpperCase()}</span>
+          <span class="stitle" class:staged={slotDirty}
+            title={slotDirty ? 'Unapplied changes — APPLY to preview them live' : undefined}
+            >{Domain.CS_TYPE_LABEL[d.type as Domain.CsType].toUpperCase()}</span>
           <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
             value={cs.names[slot] ?? ''} aria-label={`Name for control ${slot + 1}`}
             disabled={busy || applying}
             onchange={(e) => renameSlot(slot, (e.currentTarget as HTMLInputElement).value)} />
           <span class="pill {p.cls}">{p.text}</span>
-          {#if cs.bindings[slot] && isDirty(slot)}
-            <span class="dirty">Unapplied changes</span>
-          {/if}
           <span class="spacer"></span>
           <button type="button" class="x" aria-label={`Remove control ${slot + 1}`}
             disabled={applying} onclick={() => remove(slot)}>✕</button>
@@ -533,30 +440,31 @@
               onchange={(e) => {
                 const t = Number((e.currentTarget as HTMLSelectElement).value);
                 drafts[slot] = defaultDraft(t, slot);
-                results[slot] = null;
               }}>
-              {#each typeOptions as t (t)}
+              {#each typeOptionsFor(slot) as t (t)}
                 <option value={String(t)}>{Domain.CS_TYPE_LABEL[t as Domain.CsType]}</option>
               {/each}
             </select>
-            <span class="microlbl">CONTROLS</span>
-            <select class="sel" value={String(d.noun)} aria-label="Controlled function" disabled={busy || applying}
-              onchange={(e) => {
-                const n = Number((e.currentTarget as HTMLSelectElement).value);
-                editDraft(slot, (dr) => {
-                  dr.noun = n;
-                  dr.target = 0;
-                  dr.index = 0;
-                  const legal = actionOptionsFor(dr.type, n);
-                  if (!legal.includes(dr.action as Domain.CsAction)) dr.action = defaultAction(dr.type, n);
-                  defaultOperands(dr);
-                  if (dr.action === Domain.CsAction.Momentary) dr.event = Domain.CsEvent.Press;
-                });
-              }}>
-              {#each nounOptionsFor(d.type) as n (n)}
-                <option value={String(n)}>{Domain.CS_NOUN_LABEL[n as Domain.CsNoun]}</option>
-              {/each}
-            </select>
+            {#if d.type !== Domain.CsType.Ir}
+              <span class="microlbl">CONTROLS</span>
+              <select class="sel" value={String(d.noun)} aria-label="Controlled function" disabled={busy || applying}
+                onchange={(e) => {
+                  const n = Number((e.currentTarget as HTMLSelectElement).value);
+                  editDraft(slot, (dr) => {
+                    dr.noun = n;
+                    dr.target = 0;
+                    dr.index = 0;
+                    const legal = actionOptionsFor(dr.type, n);
+                    if (!legal.includes(dr.action as Domain.CsAction)) dr.action = defaultAction(dr.type, n);
+                    defaultOperands(dr);
+                    if (dr.action === Domain.CsAction.Momentary) dr.event = Domain.CsEvent.Press;
+                  });
+                }}>
+                {#each nounOptionsFor(d.type) as n (n)}
+                  <option value={String(n)}>{Domain.CS_NOUN_LABEL[n as Domain.CsNoun]}</option>
+                {/each}
+              </select>
+            {/if}
           </div>
 
           {#if actions.length > 1 || showEventOf(d)}
@@ -612,7 +520,7 @@
             {/if}
           </div>
 
-          {#if showTargetOf(d)}
+          {#if d.type !== Domain.CsType.Ir && showTargetOf(d)}
             <div class="row">
               <span class="microlbl">{targetKindOf(d) === Domain.CS_TARGET_INPUT_CH ? 'INPUT' : targetKindOf(d) === Domain.CS_TARGET_OUTPUT_CH ? 'OUTPUT' : 'CHANNEL'}</span>
               <select class="sel" value={String(d.target)} aria-label="Target channel" disabled={busy || applying}
@@ -633,17 +541,17 @@
             </div>
           {/if}
 
-          {#if showValueOf(d) || showStepOf(d)}
+          {#if d.type !== Domain.CsType.Ir && (showValueOf(d) || showStepOf(d))}
             <div class="row">
               {#if showValueOf(d)}
                 <span class="microlbl">{valueLabel(d)}</span>
                 {#if contOf(d)}
                   <input class="numfield" type="number" step="0.5"
-                    min={cs.nouns[d.noun] ? valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
-                    max={cs.nouns[d.noun] ? valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
-                    value={d.value} aria-label={`${valueLabel(d)} (${unitSuffix(unitOf(d))})`} disabled={busy || applying}
+                    min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
+                    max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
+                    value={d.value} aria-label={`${valueLabel(d)} (${CsUnit.unitSuffix(unitOf(d))})`} disabled={busy || applying}
                     onchange={(e) => { const v = num(e); if (v != null) editDraft(slot, (dr) => { dr.value = v; }); }} />
-                  <span class="hint">{unitSuffix(unitOf(d))}</span>
+                  <span class="hint">{CsUnit.unitSuffix(unitOf(d))}</span>
                 {:else}
                   <select class="sel" value={String(d.value)} aria-label={valueLabel(d)} disabled={busy || applying}
                     onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editDraft(slot, (dr) => { dr.value = v; }); }}>
@@ -661,16 +569,16 @@
                     value={d.step} aria-label="Step size (positions)" disabled={busy || applying}
                     onchange={(e) => { const v = num(e); if (v != null) editDraft(slot, (dr) => { dr.step = v; }); }} />
                 {:else}
-                  <input class="numfield" type="number" step={isLogStep(unitOf(d)) ? '0.01' : '0.5'} min="0"
-                    value={d.step} aria-label={`Step size (${stepUnitSuffix(unitOf(d))})`} disabled={busy || applying}
+                  <input class="numfield" type="number" step={CsUnit.isLogStep(unitOf(d)) ? '0.01' : '0.5'} min="0"
+                    value={d.step} aria-label={`Step size (${CsUnit.stepUnitSuffix(unitOf(d))})`} disabled={busy || applying}
                     onchange={(e) => { const v = num(e); if (v != null) editDraft(slot, (dr) => { dr.step = v; }); }} />
-                  <span class="hint">{stepUnitSuffix(unitOf(d))}</span>
+                  <span class="hint">{CsUnit.stepUnitSuffix(unitOf(d))}</span>
                 {/if}
               {/if}
             </div>
           {/if}
 
-          {#if showRangeOf(d)}
+          {#if d.type !== Domain.CsType.Ir && showRangeOf(d)}
             <div class="row">
               <span class="microlbl">LIMIT RANGE</span>
               <ToggleSwitch size="sm" checked={d.limitRange} disabled={busy || applying}
@@ -679,17 +587,17 @@
               {#if d.limitRange}
                 <span class="microlbl">MINIMUM</span>
                 <input class="numfield" type="number" step="0.5"
-                  min={cs.nouns[d.noun] ? valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
-                  max={cs.nouns[d.noun] ? valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
-                  value={d.rangeMin} aria-label={`Range minimum (${unitSuffix(unitOf(d))})`} disabled={busy || applying}
+                  min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
+                  max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
+                  value={d.rangeMin} aria-label={`Range minimum (${CsUnit.unitSuffix(unitOf(d))})`} disabled={busy || applying}
                   onchange={(e) => { const v = num(e); if (v != null) editDraft(slot, (dr) => { dr.rangeMin = v; }); }} />
                 <span class="microlbl">MAXIMUM</span>
                 <input class="numfield" type="number" step="0.5"
-                  min={cs.nouns[d.noun] ? valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
-                  max={cs.nouns[d.noun] ? valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
-                  value={d.rangeMax} aria-label={`Range maximum (${unitSuffix(unitOf(d))})`} disabled={busy || applying}
+                  min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
+                  max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
+                  value={d.rangeMax} aria-label={`Range maximum (${CsUnit.unitSuffix(unitOf(d))})`} disabled={busy || applying}
                   onchange={(e) => { const v = num(e); if (v != null) editDraft(slot, (dr) => { dr.rangeMax = v; }); }} />
-                <span class="hint">{unitSuffix(unitOf(d))}</span>
+                <span class="hint">{CsUnit.unitSuffix(unitOf(d))}</span>
               {/if}
             </div>
           {/if}
@@ -731,18 +639,18 @@
             <button type="button" class="chip hi" onclick={() => revert(slot)}
               disabled={applying || !cs.bindings[slot] || !isDirty(slot)}>REVERT</button>
           </div>
-          {#if results[slot] != null}
-            {@const r = results[slot]!}
-            <div class="hint result" class:err={!r.ok} class:ok={r.ok}>{r.text}</div>
-          {/if}
         </div>
+
+        {#if cs.bindings[slot]?.type === Domain.CsType.Ir}
+          <CsIrCommands resetSignal={irResetTick} onDirtyChange={(d) => { irDirty = d; }} />
+        {/if}
       </div>
     {/each}
 
     <div class="addrow">
       <select class="sel" value="" aria-label="Add control" disabled={busy || applying || allUsed} onchange={addControl}>
         <option value="" disabled>ADD CONTROL…</option>
-        {#each typeOptions as t (t)}
+        {#each typeOptionsFor(-1) as t (t)}
           <option value={String(t)}>{Domain.CS_TYPE_LABEL[t as Domain.CsType]}</option>
         {/each}
       </select>
@@ -759,19 +667,13 @@
 </Panel>
 
 <style>
-  .dirtybar {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-    padding: 8px 14px;
-    background: color-mix(in oklab, var(--accent) 8%, transparent);
-    border-bottom: 1px solid color-mix(in oklab, var(--accent) 30%, var(--border));
-    font-family: var(--font-mono);
-    font-size: 10px;
+  .unsaved {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    color: var(--accent);
+    white-space: nowrap;
   }
-  .dirtytext { flex: 1; min-width: 200px; color: var(--accent); font-weight: 700; letter-spacing: 0.6px; }
-  .dirtyactions { display: flex; gap: 6px; flex: none; }
   .slot { border-bottom: 1px solid var(--wash); }
   .slothead {
     display: flex;
@@ -808,7 +710,6 @@
   .pill.new  { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 50%, transparent); }
   .pill.ok   { color: var(--ok);     border-color: color-mix(in oklab, var(--ok) 50%, transparent); }
   .pill.warn { color: var(--warn);   border-color: color-mix(in oklab, var(--warn) 50%, transparent); }
-  .dirty { font-size: 9px; color: var(--accent); }
   .spacer { flex: 1; }
   .x {
     background: none;
@@ -841,7 +742,6 @@
     padding: 3px 6px;
     width: 64px;
   }
-  .result.ok { color: var(--ok); }
   .hint.err { color: var(--err); }
   .addrow { display: flex; align-items: center; gap: 10px; padding: 10px 14px 12px; }
   .empty { text-align: center; padding-top: 14px; }

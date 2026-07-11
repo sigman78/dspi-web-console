@@ -6,7 +6,9 @@ import {
   type DacHwMute,
   type UartControlConfig, type I2cControlConfig,
   type CsBinding,
+  type CsIrCommand,
   AudioInputSource, CsType, EMPTY_CS_BINDING,
+  CsIrProto, EMPTY_CS_IR_COMMAND, CS_IR_LEARN_ARMED,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   CHANNEL_NAME_MAX_LEN,
 } from '@/domain';
@@ -666,15 +668,16 @@ export async function csSaveConfig(s: ReadySession): Promise<boolean> {
 }
 
 // V16 — discard the live Control Surfaces preview and re-apply the stored
-// config. The device rewinds every slot's binding and name to what was last
-// saved, so this re-fetches all of them (plus status) rather than trusting
-// whatever the panel's local drafts were showing.
+// config. The device rewinds every slot's binding and name, and every IR
+// command sub-slot, to what was last saved, so this re-fetches all of them
+// (plus status) rather than trusting whatever the panel's local drafts were
+// showing.
 export async function csRevertConfig(s: ReadySession): Promise<boolean> {
   let ok = false;
   await command(s, 'revert control-surface config',
     async () => {
       const r = await s.device.csRevert();
-      if (!r.result.ok) return { result: r.result, status: r.status, bindings: null, names: null };
+      if (!r.result.ok) return { result: r.result, status: r.status, bindings: null, names: null, irCommands: null };
       const bindings: (CsBinding | null)[] = [];
       const names: string[] = [];
       for (let slot = 0; slot < r.status.maxBindings; slot++) {
@@ -682,17 +685,84 @@ export async function csRevertConfig(s: ReadySession): Promise<boolean> {
         bindings.push(b.type === CsType.None ? null : b);
         names.push(await s.device.getCsName(slot));
       }
-      return { result: r.result, status: r.status, bindings, names };
+      const maxIrCommands = s.controlSurfaces.caps?.maxIrCommands ?? 0;
+      let irCommands: (CsIrCommand | null)[] | null = null;
+      if (maxIrCommands > 0) {
+        irCommands = [];
+        for (let sub = 0; sub < maxIrCommands; sub++) {
+          const cmd = await s.device.getCsIrCmd(sub);
+          irCommands.push(cmd.protocol === CsIrProto.None ? null : cmd);
+        }
+      }
+      return { result: r.result, status: r.status, bindings, names, irCommands };
     },
     (r, s) => {
       s.controlSurfaces.status = r.status;
       if (r.bindings) s.controlSurfaces.bindings = r.bindings;
       if (r.names) s.controlSurfaces.names = r.names;
+      if (r.irCommands) s.controlSurfaces.irCommands = r.irCommands;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
       ok = true;
     },
   );
   return ok;
+}
+
+// V16 — Control Surfaces IR command apply (0x8D + status poll, sub-slot
+// encoded as 0x80 | sub in last_slot). Same shape as applyCsBinding: the
+// polled status and the slot's live command land in state on both branches,
+// resolving true only when the device accepted the command.
+export async function applyCsIrCommand(s: ReadySession, sub: number, cmd: CsIrCommand): Promise<boolean> {
+  let ok = false;
+  await command(s, 'set control-surface IR command',
+    async () => {
+      const r = await s.device.setCsIrCmd(sub, cmd);
+      const live = await s.device.getCsIrCmd(sub);
+      return { result: r.result, status: r.status, live };
+    },
+    (r, s) => {
+      s.controlSurfaces.status = r.status;
+      s.controlSurfaces.irCommands[sub] = r.live.protocol === CsIrProto.None ? null : r.live;
+      if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      ok = true;
+    },
+  );
+  return ok;
+}
+
+export function clearCsIrCommand(s: ReadySession, sub: number): Promise<boolean> {
+  return applyCsIrCommand(s, sub, EMPTY_CS_IR_COMMAND);
+}
+
+// V16 — arm the IR learn window (0x8F, wValue=1). Fails immediately (no
+// status poll, no queued apply) with NO_IR when there is no live IR
+// receiver; on success the sub-state moves to ARMED so the panel can show
+// "listening" until the notify channel reports completion (see
+// notifyChannel.ts's csIrLearn routing).
+export async function csIrLearnArm(s: ReadySession): Promise<boolean> {
+  // Drop any previous result synchronously, BEFORE the device round-trip:
+  // the panel's completion effect runs during the await, and a stale
+  // DONE/TIMEOUT would complete the new learn instantly with the old code.
+  s.controlSurfaces.irLearn = null;
+  let ok = false;
+  await command(s, 'arm IR learn',
+    () => s.device.csIrLearnArm(),
+    (result, s) => {
+      if (!result.ok) { pushNotice('warn', result.message); return; }
+      s.controlSurfaces.irLearn = { state: CS_IR_LEARN_ARMED, protocol: CsIrProto.None, code: 0 };
+      ok = true;
+    },
+  );
+  return ok;
+}
+
+// V16 — cancel an armed IR learn (0x8F, wValue=0); pushes no notification,
+// so the sub-state returns to idle locally rather than waiting on one.
+export async function csIrLearnCancel(s: ReadySession): Promise<void> {
+  await command(s, 'cancel IR learn',
+    () => s.device.csIrLearnCancel(),
+    (_result, s) => { s.controlSurfaces.irLearn = null; },
+  );
 }
 
 // M7 — LG Sound Sync enable toggle.
