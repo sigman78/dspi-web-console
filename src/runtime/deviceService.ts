@@ -48,9 +48,17 @@ export async function fetchCtrlIfaceInfo(s: ReadySession): Promise<void> {
   }
 }
 
+// Minimum GetCsCaps format version this console understands (section 11.1 of
+// the spec adds the v3 IR/preview tail, but the v2 preview model -- event/
+// target/index, units, dirty/save/revert -- is the floor this panel needs).
+const MIN_CS_CAPS_VERSION = 2;
+
 // Control Surfaces mirror of fetchCtrlIfaceInfo: caps (host order: header,
 // then per-noun descriptors -- DspDevice owns that loop), live status, then
-// every slot's binding. Idempotent once caps are populated; never throws.
+// every slot's binding and name. Idempotent once caps are populated; never
+// throws. A capability format below MIN_CS_CAPS_VERSION leaves caps null (the
+// panel stays gated) with an explanatory lastFetchError instead of trying to
+// render a v1 device against v2+ assumptions.
 export async function fetchControlSurfaces(s: ReadySession): Promise<void> {
   if (!s.device.capabilities.features.controlSurfaces) return;
   if (s.controlSurfaces.caps != null) return;
@@ -58,16 +66,24 @@ export async function fetchControlSurfaces(s: ReadySession): Promise<void> {
   s.controlSurfaces.busy = true;
   try {
     const { caps, nouns } = await s.queue.run(() => d.getCsCaps());
+    if (caps.capsVersion < MIN_CS_CAPS_VERSION) {
+      s.controlSurfaces.lastFetchError =
+        `This device's Control Surfaces protocol (v${caps.capsVersion}) predates the version this console requires (v${MIN_CS_CAPS_VERSION}+). Update the device firmware.`;
+      return;
+    }
     const status = await s.queue.run(() => d.getCsStatus());
     const bindings: (Domain.CsBinding | null)[] = [];
+    const names: string[] = [];
     for (let slot = 0; slot < caps.maxBindings; slot++) {
       const b = await s.queue.run(() => d.getCsBinding(slot));
       bindings.push(b.type === Domain.CsType.None ? null : b);
+      names.push(await s.queue.run(() => d.getCsName(slot)));
     }
     s.controlSurfaces.caps = caps;
     s.controlSurfaces.nouns = nouns;
     s.controlSurfaces.status = status;
     s.controlSurfaces.bindings = bindings;
+    s.controlSurfaces.names = names;
     s.controlSurfaces.lastFetchError = null;
   } catch (err) {
     s.controlSurfaces.lastFetchError = errMessage(err);

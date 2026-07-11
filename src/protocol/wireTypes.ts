@@ -370,61 +370,92 @@ export const CtrlIfaceStatus = struct({
   _reserved:      reserved(3),
 });
 
-// Control Surfaces (V16 / fw 1.1.5, 0x84-0x87). Continuous dB fields are
-// signed 8.8 fixed point (1.0 dB = 256); bool/enum values are plain ints.
+// Control Surfaces (V16 / fw 1.1.5, caps v3, 0x84-0x87 + 0x8B-0x8C + 0x9D-0x9E).
+// Continuous dB/percent/Q fields are signed 8.8 fixed point; Hz fields are
+// plain integers; bool/enum values are plain ints. Binding/name SETs are
+// live-only previews -- CsSave/CsRevert persist or discard them.
 
-// 16-byte payload of SetCsBinding (0x84, wValue = slot) / response of
-// GetCsBinding (0x85). gpio1 is 0xFF (CS_GPIO_UNUSED) unless the type
-// needs two pins (encoder channel B).
+// 24-byte payload of SetCsBinding (0x84, wValue = slot) / response of
+// GetCsBinding (0x85). gpio1 is 0xFF (CS_GPIO_UNUSED) unless the type needs
+// two pins (encoder channel B); event is a button concept (0 otherwise).
 export const CsBinding = struct({
-  type:      u8,
-  noun:      u8,
-  action:    u8,
-  flags:     u8,
-  gpio0:     u8,
-  gpio1:     u8,
-  _reserved: reserved(2),
-  value:     i16,
-  step:      i16,
-  rangeMin:  i16,
-  rangeMax:  i16,
+  type:       u8,
+  noun:       u8,
+  action:     u8,
+  flags:      u8,
+  gpio0:      u8,
+  gpio1:      u8,
+  event:      u8,
+  target:     u8,
+  index:      u8,
+  _reserved:  reserved(1),
+  value:      i16,
+  step:       i16,
+  rangeMin:   i16,
+  rangeMax:   i16,
+  _reserved2: reserved(6),
 });
 
-// 4-byte per-type capability descriptor inside CsCapsHeader.
+// 4-byte per-type capability descriptor inside the GetCsCaps header/body.
 export const CsTypeDesc = struct({
   actions:  u16,
   pinCount: u8,
   pinClass: u8,   // 0 = any GPIO, 1 = ADC (26-28)
 });
 
-// 28-byte GetCsCaps (0x86) response for wValue = 0xFFFF: limits plus the
-// 6-entry type table (indexed by CsType, including the all-zero NONE row).
-export const CsCapsHeader = struct({
+// 4-byte GetCsCaps (0x86, wValue = 0xFFFF) response prefix. type_count
+// CsTypeDesc entries and the v3 tail (CsCapsBody) follow; type_count varies
+// by firmware, so DspDevice decodes the prefix first and builds the body
+// codec from it rather than assuming a fixed table length.
+export const CsCapsPrefix = struct({
   capsVersion: u8,
   maxBindings: u8,
   typeCount:   u8,
   nounCount:   u8,
-  types:       arr(CsTypeDesc, 6),
 });
 
-// 8-byte GetCsCaps response for wValue = noun index (0..noun_count-1).
+// Body following CsCapsPrefix: `typeCount` CsTypeDesc entries, then the v3
+// tail {max_ir_commands, reserved[3]}. A caps-v2 response (no tail) decodes
+// via decodePadded with maxIrCommands 0.
+export function CsCapsBody(typeCount: number) {
+  return struct({
+    types:         arr(CsTypeDesc, typeCount),
+    maxIrCommands: u8,
+    _reserved:     reserved(3),
+  });
+}
+
+// 12-byte GetCsCaps response for wValue = noun index (0..noun_count-1).
 export const CsNounDesc = struct({
-  kind:      u8,    // 0 = continuous, 1 = bool, 2 = enum
-  enumCount: u8,
-  actions:   u16,
-  minQ8:     i16,
-  maxQ8:     i16,
+  kind:        u8,    // 0 = continuous, 1 = bool, 2 = enum
+  enumCount:   u8,
+  actions:     u16,
+  minQ8:       i16,
+  maxQ8:       i16,
+  unit:        u8,    // CS_UNIT_*
+  targetKind:  u8,    // CS_TARGET_*
+  targetCount: u8,
+  dflags:      u8,    // CS_NDF_*
 });
 
-// 12-byte GetCsStatus (0x87) response. last_status is PENDING (0x16) until
-// the deferred main-loop apply of the most recent SET has run.
+// 32-byte GetCsStatus (0x87) response. last_status is PENDING (0x16) until
+// the deferred main-loop apply of the most recent SET (binding, name, save,
+// or revert) has run; last_slot is 0xFF for a save/revert result.
 export const CsStatusPacket = struct({
-  lastStatus:  u8,
-  lastSlot:    u8,
-  maxBindings: u8,
-  activeMask:  u8,   // bit N = binding N live
-  slotStatus:  arr(u8, 8),
+  lastStatus:   u8,
+  lastSlot:     u8,
+  maxBindings:  u8,
+  dirty:        bool8,   // live config differs from the last save
+  activeMask:   u16,     // bit N = binding N live
+  slotStatus:   arr(u8, 16),
+  irActiveMask: u8,
+  irLearnState: u8,
+  irCmdStatus:  arr(u8, 8),
 });
+
+// 32-byte NUL-terminated slot name (SetCsName 0x8B / GetCsName 0x8C). Same
+// shape as ChannelName; slot names are metadata independent of the binding.
+export const CsName = nulStr(32);
 
 // 32-byte `GetSerial` response: NUL-terminated UTF-8 inside a fixed
 // 32-byte window.

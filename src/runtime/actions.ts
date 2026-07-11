@@ -627,6 +627,74 @@ export function clearCsBinding(s: ReadySession, slot: number): Promise<boolean> 
   return applyCsBinding(s, slot, EMPTY_CS_BINDING);
 }
 
+// V16 — Control Surfaces slot name (0x8B + status poll). Names are slot
+// metadata independent of the binding, so this is its own deferred apply on
+// the same shared status channel as the binding SET. Resolves true only when
+// the device accepted the name.
+export async function applyCsName(s: ReadySession, slot: number, name: string): Promise<boolean> {
+  let ok = false;
+  await command(s, 'set control-surface name',
+    async () => {
+      const r = await s.device.setCsName(slot, name);
+      const live = await s.device.getCsName(slot);
+      return { result: r.result, status: r.status, live };
+    },
+    (r, s) => {
+      s.controlSurfaces.status = r.status;
+      s.controlSurfaces.names[slot] = r.live;
+      if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      ok = true;
+    },
+  );
+  return ok;
+}
+
+// V16 — persist the whole live Control Surfaces preview (bindings + names) to
+// flash and clear `dirty`. Resolves true only on success; failure (BUSY, a
+// flash write error) surfaces as a warn toast and leaves the preview live.
+export async function csSaveConfig(s: ReadySession): Promise<boolean> {
+  let ok = false;
+  await command(s, 'save control-surface config',
+    () => s.device.csSave(),
+    (r, s) => {
+      s.controlSurfaces.status = r.status;
+      if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      ok = true;
+    },
+  );
+  return ok;
+}
+
+// V16 — discard the live Control Surfaces preview and re-apply the stored
+// config. The device rewinds every slot's binding and name to what was last
+// saved, so this re-fetches all of them (plus status) rather than trusting
+// whatever the panel's local drafts were showing.
+export async function csRevertConfig(s: ReadySession): Promise<boolean> {
+  let ok = false;
+  await command(s, 'revert control-surface config',
+    async () => {
+      const r = await s.device.csRevert();
+      if (!r.result.ok) return { result: r.result, status: r.status, bindings: null, names: null };
+      const bindings: (CsBinding | null)[] = [];
+      const names: string[] = [];
+      for (let slot = 0; slot < r.status.maxBindings; slot++) {
+        const b = await s.device.getCsBinding(slot);
+        bindings.push(b.type === CsType.None ? null : b);
+        names.push(await s.device.getCsName(slot));
+      }
+      return { result: r.result, status: r.status, bindings, names };
+    },
+    (r, s) => {
+      s.controlSurfaces.status = r.status;
+      if (r.bindings) s.controlSurfaces.bindings = r.bindings;
+      if (r.names) s.controlSurfaces.names = r.names;
+      if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      ok = true;
+    },
+  );
+  return ok;
+}
+
 // M7 — LG Sound Sync enable toggle.
 export function setLgSoundSyncEnabled(s: ReadySession, enabled: boolean): void {
   void write(s,

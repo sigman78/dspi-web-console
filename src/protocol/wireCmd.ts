@@ -40,12 +40,13 @@ type DeviceInfoPayload = {
 };
 type CsBindingPayload = {
   type: number; noun: number; action: number; flags: number;
-  gpio0: number; gpio1: number;
+  gpio0: number; gpio1: number; event: number; target: number; index: number;
   value: number; step: number; rangeMin: number; rangeMax: number;
 };
 type CsStatusPayload = {
-  lastStatus: number; lastSlot: number; maxBindings: number;
+  lastStatus: number; lastSlot: number; maxBindings: number; dirty: boolean;
   activeMask: number; slotStatus: number[];
+  irActiveMask: number; irLearnState: number; irCmdStatus: number[];
 };
 type LevellerMasksPayload = { detector: number; apply: number };
 
@@ -248,16 +249,25 @@ export const WireCmd = {
   GetI2cConfig:          { code: 0xF8, codec: Wire.I2cCtrlConfig } satisfies ReadCmd<{ enabled: boolean; sdaPin: number; sclPin: number; address: number }>,
   GetCtrlIfaceStatus:    { code: 0xF9, codec: Wire.CtrlIfaceStatus } satisfies ReadCmd<{ uartLastStatus: number; uartLive: boolean; i2cLastStatus: number; i2cLive: boolean; protoVersion: number }>,
 
-  // --- V16 / fw 1.1.5 Control Surfaces (0x84-0x87) ---
+  // --- V16 / fw 1.1.5 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E) ---
   // SetCsBinding is a control-OUT (wValue = slot) with NO response: firmware
   // latches the binding and applies it from the main loop, so the outcome is
   // learned by polling GetCsStatus until last_status leaves PENDING (see
   // DspDevice.setCsBinding). GetCsCaps stays raw: wValue 0xFFFF returns the
-  // 28-byte header + type table, a noun index its 8-byte descriptor.
+  // capsVersion/typeCount-driven header + type table (parsed dynamically in
+  // DspDevice), a noun index its 12-byte descriptor.
   SetCsBinding:          { code: 0x84, codec: Wire.CsBinding } satisfies WriteCmd<CsBindingPayload>,
   GetCsBinding:          { code: 0x85, codec: Wire.CsBinding } satisfies ReadCmd<CsBindingPayload>,
   GetCsCaps:             { code: 0x86 } satisfies RawCmd,
   GetCsStatus:           { code: 0x87, codec: Wire.CsStatusPacket } satisfies ReadCmd<CsStatusPayload>,
+  // Slot name SET/GET: same live-only-preview semantics as SetCsBinding,
+  // polled the same way.
+  SetCsName:             { code: 0x8B, codec: Wire.CsName } satisfies WriteCmd<string>,
+  GetCsName:             { code: 0x8C, codec: Wire.CsName } satisfies ReadCmd<string>,
+  // Persist / discard the live CS preview (bindings + names). Action-style
+  // IN: 1-byte accept/reject, real result via GetCsStatus (last_slot 0xFF).
+  CsSave:                { code: 0x9D } satisfies RawCmd,
+  CsRevert:              { code: 0x9E } satisfies RawCmd,
 } as const;
 
 // Helpers

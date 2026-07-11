@@ -85,6 +85,18 @@ describe('csStatusFromByte', () => {
     if (!inUse.ok) expect(inUse.code).toBe(PinConfigResult.PinInUse);
   });
 
+  it('carries the v2/v3 status codes (target/event/busy) through with a specific message', () => {
+    const target = csStatusFromByte(CsStatusCode.InvalidTarget);
+    expect(target.ok).toBe(false);
+    if (!target.ok) {
+      expect(target.code).toBe(CsStatusCode.InvalidTarget);
+      expect(target.message).toMatch(/channel|band/i);
+    }
+    const busy = csStatusFromByte(CsStatusCode.Busy);
+    expect(busy.ok).toBe(false);
+    if (!busy.ok) expect(busy.message).toMatch(/applying|retry/i);
+  });
+
   it('an unknown non-zero byte fails with the generic message rather than throwing', () => {
     const r = csStatusFromByte(0x7f);
     expect(r.ok).toBe(false);

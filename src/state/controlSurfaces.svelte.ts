@@ -9,6 +9,7 @@ export interface ControlSurfacesState {
   caps: CsCaps | null;
   nouns: CsNounCaps[];
   bindings: (CsBinding | null)[];   // indexed by slot; null = empty (type NONE)
+  names: string[];                  // indexed by slot; slot metadata, independent of the binding
   status: CsStatus | null;
   busy: boolean;
   lastFetchError: string | null;
@@ -19,6 +20,7 @@ export function createControlSurfacesState(): ControlSurfacesState {
     caps: null,
     nouns: [],
     bindings: Array.from({ length: CS_MAX_BINDINGS }, () => null),
+    names: Array.from({ length: CS_MAX_BINDINGS }, () => ''),
     status: null,
     busy: false,
     lastFetchError: null,

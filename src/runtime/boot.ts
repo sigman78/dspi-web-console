@@ -1,6 +1,6 @@
 import { DspDevice, UnsupportedFirmware, UnsupportedDevicePacket } from '@/device/DspDevice';
 import type { DspTransport } from '@/transport/DspTransport';
-import { MockTransport } from '@/transport/MockTransport';
+import { MockTransport, type MockOptions } from '@/transport/MockTransport';
 import { matchesDspi, WebUsbTransport, DeviceInUse } from '@/transport/WebUsbTransport';
 import { withTimeout } from '@/transport/withTimeout';
 import { withWireMonitor } from '@/transport/withWireMonitor';
@@ -96,7 +96,7 @@ export async function connectRequested(): Promise<void> {
 
 export async function bootMock(
   platform: 'rp2040' | 'rp2350',
-  opts: { wireVersion?: number; fwVersion?: { major: number; minor: number; patch: number }; i2sInputChannels?: number } = {},
+  opts: Omit<MockOptions, 'platform'> = {},
 ): Promise<void> {
   const scope = beginConnection();
   try {

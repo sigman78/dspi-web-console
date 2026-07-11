@@ -15,12 +15,17 @@ import {
   XOVER_BAND_BASE, MAX_XOVER_BANDS,
   DEFAULT_UART_CONTROL_CONFIG, DEFAULT_I2C_CONTROL_CONFIG,
   isValidUartPinPair, isValidI2cPinPair, isValidUartBaud, isValidI2cAddress,
-  CsType, CS_GPIO_UNUSED, CS_MAX_BINDINGS, validateCsBinding,
+  CsType, CsKind, CsAction,
+  CS_GPIO_UNUSED, CS_MAX_BINDINGS, CS_FLAG_INVERT, CS_NDF_DEFERRED,
+  CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q, CS_UNIT_PERCENT,
+  CS_TARGET_NONE, CS_TARGET_INPUT_CH, CS_TARGET_OUTPUT_CH, CS_TARGET_DSP_CH, CS_TARGET_DSP_BAND,
+  dbToQ8, percentToQ8, qToQ8, validateCsBinding,
+  PRESET_SLOT_COUNT, FilterType,
   defaultInputName,
   type FilterParams,
   type CrossPoint, type OutputState,
   type UartControlConfig, type I2cControlConfig,
-  type CsCaps, type CsNounCaps, type CsKind,
+  type CsCaps, type CsNounCaps,
 } from '@/domain';
 
 export interface MockOptions {
@@ -45,46 +50,117 @@ export interface MockOptions {
   // additionally enable input 2/3 on their default GPIOs) so the source
   // picker has more than one SPDIF input to show.
   spdifInputsEnabled?: number;
+  // Override the reported GetCsCaps capsVersion (default 3), e.g. to simulate
+  // a firmware whose Control Surfaces module predates the console's v2 floor.
+  csCapsVersion?: number;
 }
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
 
-// Control Surfaces caps tables, firmware capability format version 1
-// (control_surfaces.c s_caps / s_noun_desc).
+// Control Surfaces caps tables, firmware capability format version 3
+// (control_surfaces.c s_caps / control_surfaces_nouns.c cs_noun_table).
 const MOCK_CS_CAPS: CsCaps = {
-  capsVersion: 1,
+  capsVersion: 3,
   maxBindings: CS_MAX_BINDINGS,
+  maxIrCommands: 8,
   types: [
     { actions: 0x0000, pinCount: 0, pinClass: 0 },  // NONE
-    { actions: 0x00BC, pinCount: 1, pinClass: 0 },  // BUTTON: INC/DEC/TOGGLE/SET/TRIGGER
+    { actions: 0x02BC, pinCount: 1, pinClass: 0 },  // BUTTON: INC/DEC/TOGGLE/SET/TRIGGER/MOMENTARY
     { actions: 0x0040, pinCount: 1, pinClass: 0 },  // SWITCH: FOLLOW
     { actions: 0x0001, pinCount: 1, pinClass: 1 },  // POT: ADJUST, ADC pins
     { actions: 0x0002, pinCount: 2, pinClass: 0 },  // ENCODER: STEP
-    { actions: 0x0100, pinCount: 1, pinClass: 0 },  // LED: IND_EQUALS
+    { actions: 0x0500, pinCount: 1, pinClass: 0 },  // LED: IND_EQUALS/IND_ABOVE
+    { actions: 0x0D00, pinCount: 1, pinClass: 0 },  // LED_PWM: IND_EQUALS/IND_ABOVE/IND_LEVEL
+    { actions: 0x02BC, pinCount: 1, pinClass: 0 },  // IR: same command actions as BUTTON
   ],
 };
 
-const MOCK_CS_NOUNS: CsNounCaps[] = [
-  { kind: 0 as CsKind, enumCount: 0,  actions: 0x002F, minQ8: -15360, maxQ8: 0 },  // USER_VOLUME −60..0 dB
-  { kind: 0 as CsKind, enumCount: 0,  actions: 0x002F, minQ8: -32512, maxQ8: 0 },  // MASTER_VOLUME −127..0 dB
-  { kind: 1 as CsKind, enumCount: 0,  actions: 0x0170, minQ8: 0, maxQ8: 0 },       // USER_MUTE
-  { kind: 1 as CsKind, enumCount: 0,  actions: 0x0170, minQ8: 0, maxQ8: 0 },       // LOUDNESS
-  { kind: 1 as CsKind, enumCount: 0,  actions: 0x0170, minQ8: 0, maxQ8: 0 },       // CROSSFEED
-  { kind: 1 as CsKind, enumCount: 0,  actions: 0x0170, minQ8: 0, maxQ8: 0 },       // LEVELLER
-  { kind: 2 as CsKind, enumCount: 10, actions: 0x012E, minQ8: 0, maxQ8: 0 },       // PRESET
-  { kind: 2 as CsKind, enumCount: 3,  actions: 0x012E, minQ8: 0, maxQ8: 0 },       // INPUT_SOURCE
-  { kind: 1 as CsKind, enumCount: 0,  actions: 0x0180, minQ8: 0, maxQ8: 0 },       // CLIP: TRIGGER/IND_EQUALS
-];
+// Action-mask groups, mirroring control_surfaces_nouns.c's CS_CONT_RW etc.
+const CS_CONT_RW = (1 << CsAction.Adjust) | (1 << CsAction.Step) | (1 << CsAction.Inc) |
+                   (1 << CsAction.Dec) | (1 << CsAction.Set) | (1 << CsAction.IndAbove) | (1 << CsAction.IndLevel);
+const CS_BOOL_RW = (1 << CsAction.Toggle) | (1 << CsAction.Set) | (1 << CsAction.Follow) |
+                   (1 << CsAction.Momentary) | (1 << CsAction.IndEquals);
+const CS_ENUM_RW = (1 << CsAction.Step) | (1 << CsAction.Inc) | (1 << CsAction.Dec) |
+                   (1 << CsAction.Set) | (1 << CsAction.IndEquals);
+const CS_BOOL_RO = 1 << CsAction.IndEquals;
+const CS_ENUM_RO = 1 << CsAction.IndEquals;
+const CS_CONT_RO = (1 << CsAction.IndAbove) | (1 << CsAction.IndLevel);
+const CS_CLIP_ACTIONS = (1 << CsAction.Trigger) | (1 << CsAction.IndEquals);
+const CS_TRIGGER_ONLY = 1 << CsAction.Trigger;
+
+// PEQ FilterType values run 0..HighShelf1 contiguously (crossover types start
+// at 32 and are not front-panel material); mirrors CS_PEQ_TYPE_COUNT.
+const CS_PEQ_TYPE_COUNT = FilterType.HighShelf1 + 1;
+
+function contNoun(
+  minQ8: number, maxQ8: number, unit: number,
+  targetKind = CS_TARGET_NONE, targetCount = 0, dflags = 0, actions = CS_CONT_RW,
+): CsNounCaps {
+  return { kind: CsKind.Continuous, enumCount: 0, actions, minQ8, maxQ8, unit, targetKind, targetCount, dflags };
+}
+
+function boolNoun(actions = CS_BOOL_RW, targetKind = CS_TARGET_NONE, targetCount = 0, dflags = 0): CsNounCaps {
+  return { kind: CsKind.Bool, enumCount: 0, actions, minQ8: 0, maxQ8: 0, unit: CS_UNIT_NONE, targetKind, targetCount, dflags };
+}
+
+function enumNoun(enumCount: number, actions = CS_ENUM_RW, targetKind = CS_TARGET_NONE, targetCount = 0, dflags = 0): CsNounCaps {
+  return { kind: CsKind.Enum, enumCount, actions, minQ8: 0, maxQ8: 0, unit: CS_UNIT_NONE, targetKind, targetCount, dflags };
+}
+
+// The 35-entry noun catalog (control_surfaces_nouns.c cs_noun_table), keyed
+// on CsNoun's index order. Target counts follow the mock's own V16 channel
+// layout (numIn/numOut/numCh already vary by platform); ADAT_ACTIVE's action
+// mask is RP2350-only, exactly like the firmware's #if PICO_RP2350 gate.
+function buildMockCsNouns(platform: PlatformType, numIn: number, numOut: number, numCh: number): CsNounCaps[] {
+  const adatActions = platform === PlatformType.RP2350 ? CS_BOOL_RO : 0;
+  return [
+    contNoun(-15360, 0, CS_UNIT_DB),                                                           // 0  USER_VOLUME
+    contNoun(-32512, 0, CS_UNIT_DB),                                                            // 1  MASTER_VOLUME
+    boolNoun(),                                                                                  // 2  USER_MUTE
+    boolNoun(),                                                                                  // 3  LOUDNESS
+    boolNoun(),                                                                                  // 4  CROSSFEED
+    boolNoun(),                                                                                  // 5  LEVELLER
+    enumNoun(PRESET_SLOT_COUNT, CS_ENUM_RW, CS_TARGET_NONE, 0, CS_NDF_DEFERRED),                // 6  PRESET
+    enumNoun(3, CS_ENUM_RW, CS_TARGET_NONE, 0, CS_NDF_DEFERRED),                                // 7  INPUT_SOURCE
+    boolNoun(CS_CLIP_ACTIONS),                                                                  // 8  CLIP
+    boolNoun(),                                                                                  // 9  EQ_BYPASS
+    boolNoun(),                                                                                  // 10 LG_SYNC
+    enumNoun(CrossfeedPreset.Custom + 1),                                                       // 11 CROSSFEED_PRESET
+    boolNoun(),                                                                                  // 12 CROSSFEED_ITD
+    contNoun(0, percentToQ8(100), CS_UNIT_PERCENT),                                             // 13 LEVELLER_AMOUNT
+    enumNoun(Object.keys(LevellerSpeed).length),                                                // 14 LEVELLER_SPEED
+    boolNoun(),                                                                                  // 15 LEVELLER_LOOKAHEAD
+    contNoun(dbToQ8(-24), dbToQ8(24), CS_UNIT_DB, CS_TARGET_INPUT_CH, numIn),                   // 16 PREAMP
+    contNoun(dbToQ8(-60), dbToQ8(12), CS_UNIT_DB, CS_TARGET_OUTPUT_CH, numOut),                 // 17 OUTPUT_GAIN
+    boolNoun(CS_BOOL_RW, CS_TARGET_OUTPUT_CH, numOut),                                          // 18 OUTPUT_MUTE
+    boolNoun(CS_BOOL_RW, CS_TARGET_OUTPUT_CH, numOut),                                          // 19 OUTPUT_ENABLE
+    contNoun(20, 20000, CS_UNIT_HZ, CS_TARGET_DSP_BAND, numCh, CS_NDF_DEFERRED),                // 20 FILTER_FREQ
+    contNoun(dbToQ8(-24), dbToQ8(24), CS_UNIT_DB, CS_TARGET_DSP_BAND, numCh, CS_NDF_DEFERRED),  // 21 FILTER_GAIN
+    contNoun(qToQ8(0.1), qToQ8(10), CS_UNIT_Q, CS_TARGET_DSP_BAND, numCh, CS_NDF_DEFERRED),     // 22 FILTER_Q
+    enumNoun(CS_PEQ_TYPE_COUNT, CS_ENUM_RW, CS_TARGET_DSP_BAND, numCh, CS_NDF_DEFERRED),        // 23 FILTER_TYPE
+    boolNoun(CS_BOOL_RW, CS_TARGET_DSP_BAND, numCh, CS_NDF_DEFERRED),                           // 24 FILTER_BYPASS
+    boolNoun(),                                                                                  // 25 SIGGEN
+    boolNoun(CS_TRIGGER_ONLY),                                                                  // 26 DAC_MUTE_TEST
+    boolNoun(CS_BOOL_RO, CS_TARGET_DSP_CH, numCh),                                              // 27 CLIP_CH
+    contNoun(dbToQ8(-60), 0, CS_UNIT_DB, CS_TARGET_DSP_CH, numCh, 0, CS_CONT_RO),               // 28 LEVEL (read-only)
+    boolNoun(CS_BOOL_RO),                                                                        // 29 SPDIF_LOCK
+    enumNoun(3, CS_ENUM_RO),                                                                     // 30 SAMPLE_RATE
+    boolNoun(CS_BOOL_RO),                                                                        // 31 USB_STREAMING
+    boolNoun(adatActions),                                                                       // 32 ADAT_ACTIVE (RP2350 only)
+    boolNoun(CS_BOOL_RO),                                                                        // 33 LG_PRESENT
+    boolNoun(CS_BOOL_RO),                                                                        // 34 LG_MUTED
+  ];
+}
 
 // Wire-shaped stored binding (gpio1 stays raw 0xFF when unused).
 interface MockCsBinding {
   type: number; noun: number; action: number; flags: number;
-  gpio0: number; gpio1: number;
+  gpio0: number; gpio1: number; event: number; target: number; index: number;
   value: number; step: number; rangeMin: number; rangeMax: number;
 }
 
 const emptyCsBinding = (): MockCsBinding => ({
-  type: 0, noun: 0, action: 0, flags: 0, gpio0: 0, gpio1: 0,
+  type: 0, noun: 0, action: 0, flags: 0, gpio0: 0, gpio1: 0, event: 0, target: 0, index: 0,
   value: 0, step: 0, rangeMin: 0, rangeMax: 0,
 });
 
@@ -178,14 +254,22 @@ export class MockTransport implements DspTransport {
   #uartLive = false;
   #i2cLive = false;
 
-  // Control surfaces (V16+, 0x84-0x87). The mock applies a SET immediately,
-  // but reports PENDING on the first status read after an accepted SET so
-  // the device-side poll loop's deferred-apply handling gets exercised.
+  // Control surfaces (V16+, 0x84-0x8C, 0x9D-0x9E). The mock applies a SET
+  // immediately, but reports PENDING on the first status read after an
+  // accepted SET so the device-side poll loop's deferred-apply handling gets
+  // exercised. Bindings/names are a live preview: CsSave copies them into the
+  // #csSaved* snapshot and clears dirty, CsRevert restores from it.
+  #csNouns!: CsNounCaps[];
   #csBindings: MockCsBinding[] = Array.from({ length: CS_MAX_BINDINGS }, emptyCsBinding);
   #csSlotStatus: number[] = Array.from({ length: CS_MAX_BINDINGS }, () => 0);
+  #csNames: string[] = Array.from({ length: CS_MAX_BINDINGS }, () => '');
+  #csSavedBindings: MockCsBinding[] = Array.from({ length: CS_MAX_BINDINGS }, emptyCsBinding);
+  #csSavedNames: string[] = Array.from({ length: CS_MAX_BINDINGS }, () => '');
+  #csDirty = false;
   #csLastStatus = 0x00;
   #csLastSlot = 0;
   #csPendingPolls = 0;
+  #csCapsVersion: number;
 
   constructor(opts: MockOptions) {
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
@@ -196,6 +280,8 @@ export class MockTransport implements DspTransport {
     this.#fwMajor = fw.major;
     this.#fwMinorPatch = ((fw.minor & 0xF) << 4) | (fw.patch & 0xF);
     this.#mockState = defaultMockBulkState(this.#platform, this.#wireVersion);
+    this.#csNouns = buildMockCsNouns(this.#platform, this.#mockState.numIn, this.#mockState.numOut, this.#mockState.numCh);
+    this.#csCapsVersion = opts.csCapsVersion ?? MOCK_CS_CAPS.capsVersion;
     // Override the all-zero defaults with realistic pin/I2S values so granular
     // pin/type tests start from a valid hardware state.
     const numPin = this.#platform === PlatformType.RP2350 ? 5 : 3;
@@ -663,18 +749,23 @@ export class MockTransport implements DspTransport {
       case WireCmd.GetCsCaps.code: {
         if (!this.#isV16) return new Uint8Array(length);
         if (value === 0xFFFF) {
-          return Codec.encode(Wire.CsCapsHeader, {
-            capsVersion: MOCK_CS_CAPS.capsVersion,
+          const prefixBytes = Codec.encode(Wire.CsCapsPrefix, {
+            capsVersion: this.#csCapsVersion,
             maxBindings: MOCK_CS_CAPS.maxBindings,
             typeCount: MOCK_CS_CAPS.types.length,
-            nounCount: MOCK_CS_NOUNS.length,
-            types: MOCK_CS_CAPS.types.map((t) => ({ actions: t.actions, pinCount: t.pinCount, pinClass: t.pinClass })),
+            nounCount: this.#csNouns.length,
           });
+          const bodyBytes = Codec.encode(Wire.CsCapsBody(MOCK_CS_CAPS.types.length), {
+            types: MOCK_CS_CAPS.types.map((t) => ({ actions: t.actions, pinCount: t.pinCount, pinClass: t.pinClass })),
+            maxIrCommands: MOCK_CS_CAPS.maxIrCommands,
+          });
+          return concatChunks([prefixBytes, bodyBytes]);
         }
-        if (value < MOCK_CS_NOUNS.length) {
-          const n = MOCK_CS_NOUNS[value];
+        if (value < this.#csNouns.length) {
+          const n = this.#csNouns[value];
           return Codec.encode(Wire.CsNounDesc, {
             kind: n.kind, enumCount: n.enumCount, actions: n.actions, minQ8: n.minQ8, maxQ8: n.maxQ8,
+            unit: n.unit, targetKind: n.targetKind, targetCount: n.targetCount, dflags: n.dflags,
           });
         }
         throw new Error('MockTransport: GetCsCaps noun index out of range (STALL)');
@@ -692,9 +783,40 @@ export class MockTransport implements DspTransport {
         });
         return Codec.encode(Wire.CsStatusPacket, {
           lastStatus, lastSlot: this.#csLastSlot,
-          maxBindings: CS_MAX_BINDINGS, activeMask,
+          maxBindings: CS_MAX_BINDINGS, dirty: this.#csDirty, activeMask,
           slotStatus: this.#csSlotStatus.slice(),
+          irActiveMask: 0, irLearnState: 0, irCmdStatus: new Array(8).fill(0),
         });
+      }
+      case WireCmd.GetCsName.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        if (value >= CS_MAX_BINDINGS) throw new Error('MockTransport: GetCsName slot out of range (STALL)');
+        return Codec.encode(Wire.CsName, this.#csNames[value] ?? '');
+      }
+      case WireCmd.CsSave.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        // Firmware STALLs a save/revert whose predecessor is still pending;
+        // it never answers the busy case with a byte.
+        if (this.#csPendingPolls > 0) throw new Error('MockTransport: CsSave while pending (STALL)');
+        this.#csSavedBindings = this.#csBindings.map((b) => ({ ...b }));
+        this.#csSavedNames = this.#csNames.slice();
+        this.#csDirty = false;
+        this.#csLastSlot = 0xFF;
+        this.#csLastStatus = 0x00;
+        this.#csPendingPolls = 1;
+        return new Uint8Array([1]);
+      }
+      case WireCmd.CsRevert.code: {
+        if (!this.#isV16) return new Uint8Array(length);
+        if (this.#csPendingPolls > 0) throw new Error('MockTransport: CsRevert while pending (STALL)');
+        this.#csBindings = this.#csSavedBindings.map((b) => ({ ...b }));
+        this.#csNames = this.#csSavedNames.slice();
+        this.#csSlotStatus = this.#csSlotStatus.map(() => 0);
+        this.#csDirty = false;
+        this.#csLastSlot = 0xFF;
+        this.#csLastStatus = 0x00;
+        this.#csPendingPolls = 1;
+        return new Uint8Array([1]);
       }
       case WireCmd.GetBufferStats.code:
         return synthesizeBufferStats({
@@ -930,6 +1052,21 @@ export class MockTransport implements DspTransport {
         return;
       }
 
+      case WireCmd.SetCsName.code: {
+        if (!this.#isV16) return;
+        if (value >= CS_MAX_BINDINGS) {
+          this.#csLastStatus = 0x10;                  // CS_STATUS_INVALID_SLOT
+          this.#csLastSlot = value & 0xFF;
+          return;
+        }
+        this.#csNames[value] = Codec.decode(Wire.CsName, data);
+        this.#csDirty = true;
+        this.#csLastSlot = value;
+        this.#csPendingPolls = 1;
+        this.#csLastStatus = 0x00;
+        return;
+      }
+
       case WireCmd.SetAllParams.code: {
         this.#applySetAllParams(data);
         return;
@@ -1107,38 +1244,63 @@ export class MockTransport implements DspTransport {
       (b.gpio0 === pin || (b.gpio1 !== CS_GPIO_UNUSED && b.gpio1 === pin)));
   }
 
+  // Sharing probe for button pins (fw cs_check_button_share): every other
+  // active binding on `pin` must be a button with the same INVERT sense and
+  // a different event; anything else is a conflict.
+  #checkButtonShare(w: MockCsBinding, pin: number, exceptSlot: number): number {
+    for (let i = 0; i < CS_MAX_BINDINGS; i++) {
+      if (i === exceptSlot || this.#csSlotStatus[i] !== 0) continue;
+      const other = this.#csBindings[i];
+      if (other.type === CsType.None) continue;
+      const usesPin = other.gpio0 === pin || (other.gpio1 !== CS_GPIO_UNUSED && other.gpio1 === pin);
+      if (!usesPin) continue;
+      if (other.type !== CsType.Button) return 0x02;                            // PinInUse
+      if ((other.flags ^ w.flags) & CS_FLAG_INVERT) return 0x14;               // InvalidValue
+      if (other.event === w.event) return 0x1A;                                 // EventInUse
+    }
+    return 0x00;
+  }
+
   // Validate + apply one binding, mirroring control_surfaces_apply_binding:
   // table validation (shared with the console via validateCsBinding), then
-  // GPIO range, then conflicts against every other claim. Applies
-  // immediately on success; the PENDING window is simulated by the status
-  // read, not here.
+  // GPIO range, then conflicts against every other claim (buttons may share
+  // a GPIO on distinct events). Applies immediately on success; the PENDING
+  // window is simulated by the status read, not here.
   #applyCsBinding(slot: number, w: MockCsBinding): number {
     if (w.type === CsType.None) {
       this.#csBindings[slot] = emptyCsBinding();
       this.#csSlotStatus[slot] = 0;
+      this.#csDirty = true;
       return 0x00;
     }
     const tableStatus = validateCsBinding(
       {
         type: w.type as CsType, noun: w.noun as never, action: w.action as never, flags: w.flags,
         gpio0: w.gpio0, gpio1: w.gpio1 === CS_GPIO_UNUSED ? null : w.gpio1,
+        event: w.event as never, target: w.target, index: w.index,
         value: w.value, step: w.step, rangeMin: w.rangeMin, rangeMax: w.rangeMax,
       },
-      MOCK_CS_CAPS, MOCK_CS_NOUNS,
+      MOCK_CS_CAPS, this.#csNouns,
     );
     if (tableStatus !== 0x00) return tableStatus;
     const pins = MOCK_CS_CAPS.types[w.type].pinCount === 2 ? [w.gpio0, w.gpio1] : [w.gpio0];
     for (const pin of pins) {
       if (!this.#isValidGpio(pin)) return 0x01;                                  // InvalidPin
+      if (this.#csOwnsPin(pin, slot)) {
+        if (w.type !== CsType.Button) return 0x02;                              // PinInUse
+        const shareStatus = this.#checkButtonShare(w, pin, slot);
+        if (shareStatus !== 0x00) return shareStatus;
+        continue;
+      }
       const conflict =
         this.#peripheralPinInUse(pin, 0xFF)
         || (this.#uartCtrl.enabled && (pin === this.#uartCtrl.txPin || pin === this.#uartCtrl.rxPin))
-        || (this.#i2cCtrl.enabled && (pin === this.#i2cCtrl.sdaPin || pin === this.#i2cCtrl.sclPin))
-        || this.#csOwnsPin(pin, slot);                                           // own slot re-uses its pins freely
+        || (this.#i2cCtrl.enabled && (pin === this.#i2cCtrl.sdaPin || pin === this.#i2cCtrl.sclPin));
       if (conflict) return 0x02;                                                 // PinInUse
     }
     this.#csBindings[slot] = { ...w };
     this.#csSlotStatus[slot] = 0;
+    this.#csDirty = true;
     return 0x00;
   }
 
