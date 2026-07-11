@@ -97,6 +97,14 @@ export const CsStatusCode = {
   InvalidValue:  0x14,
   PinNotAdc:     0x15,
   Pending:       0x16,
+  InvalidTarget: 0x17,
+  InvalidEvent:  0x18,
+  PwmConflict:   0x19,
+  EventInUse:    0x1A,
+  Busy:          0x1B,
+  FlashError:    0x1C,
+  IrInUse:       0x1D,
+  NoIr:          0x1E,
 } as const;
 export type CsStatusCode = (typeof CsStatusCode)[keyof typeof CsStatusCode];
 
@@ -112,6 +120,14 @@ const csStatusMessage: Record<number, string> = {
   [CsStatusCode.InvalidValue]:   'A value, step, or range is out of bounds',
   [CsStatusCode.PinNotAdc]:      'A potentiometer must use an ADC pin (GPIO 26, 27, or 28)',
   [CsStatusCode.Pending]:        'Still applying, please retry',
+  [CsStatusCode.InvalidTarget]:  'Invalid channel or band for this function',
+  [CsStatusCode.InvalidEvent]:   "That event isn't valid for this component",
+  [CsStatusCode.PwmConflict]:    'Another PWM LED already uses this PWM output',
+  [CsStatusCode.EventInUse]:     'Another binding already uses this pin and event',
+  [CsStatusCode.Busy]:           'A previous change is still applying; retry shortly',
+  [CsStatusCode.FlashError]:     'Failed to save to flash',
+  [CsStatusCode.IrInUse]:        'Another slot already holds the IR receiver',
+  [CsStatusCode.NoIr]:           'Set up the IR receiver first',
 };
 
 // Decode a control-surfaces status byte into a typed Result. Unknown non-zero

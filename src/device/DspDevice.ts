@@ -94,24 +94,60 @@ function fwVersionParts(info: { fwMajor: number; fwMinorPatch: number }): Firmwa
 
 function csBindingFromWire(w: {
   type: number; noun: number; action: number; flags: number;
-  gpio0: number; gpio1: number; value: number; step: number; rangeMin: number; rangeMax: number;
+  gpio0: number; gpio1: number; event: number; target: number; index: number;
+  value: number; step: number; rangeMin: number; rangeMax: number;
 }): domain.CsBinding {
   return {
     type: w.type as domain.CsType, noun: w.noun as domain.CsNoun, action: w.action as domain.CsAction,
     flags: w.flags, gpio0: w.gpio0,
     gpio1: w.gpio1 === domain.CS_GPIO_UNUSED ? null : w.gpio1,
+    event: w.event as domain.CsEvent, target: w.target, index: w.index,
     value: w.value, step: w.step, rangeMin: w.rangeMin, rangeMax: w.rangeMax,
   };
 }
 
-// Poll cadence/ceiling for the deferred SetCsBinding apply, matching the
-// desktop app: up to 25 polls at 20 ms (~500 ms budget) for what is normally
-// a few-ms directory-sector flash write.
+function csIrCommandFromWire(w: {
+  noun: number; action: number; flags: number; target: number; index: number;
+  protocol: number; value: number; step: number; code: number;
+}): domain.CsIrCommand {
+  return {
+    noun: w.noun as domain.CsNoun, action: w.action as domain.CsAction, flags: w.flags,
+    target: w.target, index: w.index, protocol: w.protocol as domain.CsIrProto,
+    value: w.value, step: w.step, code: w.code,
+  };
+}
+
+// Poll cadence/ceiling for a deferred CS apply (binding/name SET, save,
+// revert), matching the desktop app: up to 25 polls at 20 ms (~500 ms
+// budget) for what is normally a few-ms directory-sector flash write.
 const CS_APPLY_POLL_MS = 20;
 const CS_APPLY_MAX_POLLS = 25;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Poll GetCsStatus until `matchSlot`'s result lands (0xFF for save/revert),
+// or the budget runs out. Shared by setCsBinding, setCsName, csSave, and
+// csRevert -- all funnel through the same last_status/last_slot channel.
+async function pollCsStatus(
+  raw: DspTransport, matchSlot: number,
+): Promise<{ result: Result<void, number>; status: domain.CsStatus }> {
+  let status: domain.CsStatus = await proto.readCmd(raw, proto.WireCmd.GetCsStatus);
+  for (let poll = 1; poll < CS_APPLY_MAX_POLLS; poll++) {
+    if (status.lastSlot === matchSlot && status.lastStatus !== proto.CsStatusCode.Pending) {
+      return { result: proto.csStatusFromByte(status.lastStatus), status };
+    }
+    await sleep(CS_APPLY_POLL_MS);
+    status = await proto.readCmd(raw, proto.WireCmd.GetCsStatus);
+  }
+  if (status.lastSlot === matchSlot && status.lastStatus !== proto.CsStatusCode.Pending) {
+    return { result: proto.csStatusFromByte(status.lastStatus), status };
+  }
+  return {
+    result: Result.fail<number>(proto.CsStatusCode.Pending, 'Still applying, please retry'),
+    status,
+  };
 }
 
 function ctrlIfaceStatusFromWire(w: {
@@ -973,28 +1009,48 @@ export class DspDevice {
   }
 
   // Control Surfaces (V16+, gate on capabilities.features.controlSurfaces):
-  // physical controls/indicators on user GPIOs, configured over 0x84-0x87.
+  // physical controls/indicators on user GPIOs, configured over 0x84-0x87,
+  // 0x8B-0x8C, 0x9D-0x9E.
 
-  // Capability enumeration, host order per spec: header (wValue 0xFFFF)
-  // first, then one CsNounDesc per noun index.
+  // Capability enumeration, host order per spec: header+types (wValue
+  // 0xFFFF) first, then one CsNounDesc per noun index. type_count varies by
+  // firmware capability version, so the body codec is built from the
+  // decoded prefix rather than assumed fixed-length; requesting a generous
+  // buffer is safe (over-reading is fine, under-reading risks a WinUSB
+  // babble error), so this asks for room for CS_MAX_KNOWN_TYPES entries.
   async getCsCaps(): Promise<{ caps: domain.CsCaps; nouns: domain.CsNounCaps[] }> {
-    const h = Codec.decodePadded(
-      proto.Wire.CsCapsHeader,
-      await this.transport.ctrlIn(proto.WireCmd.GetCsCaps.code, 0xFFFF, Codec.sizeOf(proto.Wire.CsCapsHeader)),
-    );
+    const CS_MAX_KNOWN_TYPES = 16;
+    const prefixSize = Codec.sizeOf(proto.Wire.CsCapsPrefix);
+    const maxBodySize = Codec.sizeOf(proto.Wire.CsTypeDesc) * CS_MAX_KNOWN_TYPES + 4; // + v3 tail
+    const raw = await this.transport.ctrlIn(proto.WireCmd.GetCsCaps.code, 0xFFFF, prefixSize + maxBodySize);
+    const prefix = Codec.decodePadded(proto.Wire.CsCapsPrefix, raw);
+    // Beyond the request window the v3 tail offset (4 + 4*type_count) is
+    // unreachable; refuse rather than misparse.
+    if (prefix.typeCount > CS_MAX_KNOWN_TYPES) {
+      throw new Error(`Control Surfaces caps table too large (${prefix.typeCount} component types)`);
+    }
+    const typeCount = prefix.typeCount;
+    // Short (caps-v2) responses lack the v3 tail; decodePadded zero-fills it,
+    // reading maxIrCommands as 0.
+    const body = Codec.decodePadded(proto.Wire.CsCapsBody(typeCount), raw.subarray(prefixSize));
+
     const nouns: domain.CsNounCaps[] = [];
-    for (let n = 0; n < h.nounCount; n++) {
+    for (let n = 0; n < prefix.nounCount; n++) {
       const d = Codec.decodePadded(
         proto.Wire.CsNounDesc,
         await this.transport.ctrlIn(proto.WireCmd.GetCsCaps.code, n, Codec.sizeOf(proto.Wire.CsNounDesc)),
       );
-      nouns.push({ kind: d.kind as domain.CsKind, enumCount: d.enumCount, actions: d.actions, minQ8: d.minQ8, maxQ8: d.maxQ8 });
+      nouns.push({
+        kind: d.kind as domain.CsKind, enumCount: d.enumCount, actions: d.actions,
+        minQ8: d.minQ8, maxQ8: d.maxQ8, unit: d.unit,
+        targetKind: d.targetKind, targetCount: d.targetCount, dflags: d.dflags,
+      });
     }
     return {
-      // The codec reads the caps-v1 6-entry type table; a future firmware
-      // with more types still reports them via typeCount, but their rows
-      // are beyond this codec's window -- slice to what both agree on.
-      caps: { capsVersion: h.capsVersion, maxBindings: h.maxBindings, types: h.types.slice(0, Math.min(h.typeCount, h.types.length)) },
+      caps: {
+        capsVersion: prefix.capsVersion, maxBindings: prefix.maxBindings,
+        types: body.types, maxIrCommands: body.maxIrCommands,
+      },
       nouns,
     };
   }
@@ -1019,29 +1075,107 @@ export class DspDevice {
       await proto.writeCmd(raw, proto.WireCmd.SetCsBinding, {
         type: b.type, noun: b.noun, action: b.action, flags: b.flags,
         gpio0: b.gpio0, gpio1: b.gpio1 ?? domain.CS_GPIO_UNUSED,
+        event: b.event, target: b.target, index: b.index,
         value: b.value, step: b.step, rangeMin: b.rangeMin, rangeMax: b.rangeMax,
       }, slot & 0xFF);
-      let status: domain.CsStatus = await proto.readCmd(raw, proto.WireCmd.GetCsStatus);
-      for (let poll = 1; poll < CS_APPLY_MAX_POLLS; poll++) {
-        if (status.lastSlot === slot && status.lastStatus !== proto.CsStatusCode.Pending) {
-          return { result: proto.csStatusFromByte(status.lastStatus), status };
-        }
-        await sleep(CS_APPLY_POLL_MS);
-        status = await proto.readCmd(raw, proto.WireCmd.GetCsStatus);
-      }
-      if (status.lastSlot === slot && status.lastStatus !== proto.CsStatusCode.Pending) {
-        return { result: proto.csStatusFromByte(status.lastStatus), status };
-      }
-      return {
-        result: Result.fail<number>(proto.CsStatusCode.Pending, 'Still applying, please retry'),
-        status,
-      };
+      return pollCsStatus(raw, slot);
     });
   }
 
   // Clearing a slot is a SET of the all-zero binding (type NONE).
   async clearCsBinding(slot: number): Promise<{ result: Result<void, number>; status: domain.CsStatus }> {
     return this.setCsBinding(slot, domain.EMPTY_CS_BINDING);
+  }
+
+  async getCsName(slot: number): Promise<string> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetCsName, slot & 0xFF);
+  }
+
+  // Slot names are metadata independent of the binding; the SET is a
+  // live-only preview polled the same way as setCsBinding.
+  async setCsName(
+    slot: number, name: string,
+  ): Promise<{ result: Result<void, number>; status: domain.CsStatus }> {
+    return this.transport.exclusive(async (raw) => {
+      await proto.writeCmd(raw, proto.WireCmd.SetCsName, utf8Truncate(name, domain.CS_NAME_MAX_LEN), slot & 0xFF);
+      return pollCsStatus(raw, slot);
+    });
+  }
+
+  // Persist the whole live CS preview (bindings + names) to flash. The
+  // 1-byte control-IN response is 1 = accepted; a save/revert whose
+  // predecessor is still pending STALLs the transfer instead of answering,
+  // surfaced here as the BUSY result. The real outcome always lands in
+  // GetCsStatus with last_slot 0xFF. The follow-up status read doubles as
+  // the disconnect discriminator: on a genuine transport failure it throws
+  // too, so only a live-device STALL maps to BUSY.
+  async csSave(): Promise<{ result: Result<void, number>; status: domain.CsStatus }> {
+    return this.transport.exclusive(async (raw) => {
+      try {
+        await proto.actionCmd(raw, proto.WireCmd.CsSave);
+      } catch {
+        const status = await proto.readCmd(raw, proto.WireCmd.GetCsStatus);
+        return { result: Result.fail<number>(proto.CsStatusCode.Busy, 'A save or revert is already in progress'), status };
+      }
+      return pollCsStatus(raw, 0xFF);
+    });
+  }
+
+  // Discard the live preview and re-apply the stored config.
+  async csRevert(): Promise<{ result: Result<void, number>; status: domain.CsStatus }> {
+    return this.transport.exclusive(async (raw) => {
+      try {
+        await proto.actionCmd(raw, proto.WireCmd.CsRevert);
+      } catch {
+        const status = await proto.readCmd(raw, proto.WireCmd.GetCsStatus);
+        return { result: Result.fail<number>(proto.CsStatusCode.Busy, 'A save or revert is already in progress'), status };
+      }
+      return pollCsStatus(raw, 0xFF);
+    });
+  }
+
+  // IR command sub-slots (0x8D/0x8E, caps v3): same deferred-SET model as
+  // setCsBinding, reported in last_slot as 0x80 | sub-slot.
+  async getCsIrCmd(sub: number): Promise<domain.CsIrCommand> {
+    return csIrCommandFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCsIrCmd, sub & 0xFF));
+  }
+
+  async setCsIrCmd(
+    sub: number, cmd: domain.CsIrCommand,
+  ): Promise<{ result: Result<void, number>; status: domain.CsStatus }> {
+    return this.transport.exclusive(async (raw) => {
+      await proto.writeCmd(raw, proto.WireCmd.SetCsIrCmd, {
+        noun: cmd.noun, action: cmd.action, flags: cmd.flags, target: cmd.target, index: cmd.index,
+        protocol: cmd.protocol, value: cmd.value, step: cmd.step, code: cmd.code,
+      }, sub & 0xFF);
+      return pollCsStatus(raw, 0x80 | (sub & 0xFF));
+    });
+  }
+
+  // IR learn (0x8F, caps v3): GET-type action command, wValue 1/0/2 =
+  // arm/cancel/read-result. Arm STALLs with no live CS_TYPE_IR binding,
+  // surfaced here as NO_IR (the firmware never gets to queue anything, so
+  // there is no status poll to fall back on -- unlike csSave/csRevert's BUSY,
+  // this is the whole answer). Completion normally arrives on the notify
+  // stream (event 0x0A); csIrLearnResult is the poll-based fallback (I2C, or
+  // a host that missed the notification).
+  async csIrLearnArm(): Promise<Result<void, number>> {
+    try {
+      await proto.actionCmd(this.transport, proto.WireCmd.CsIrLearn, 1);
+      return Result.ok();
+    } catch {
+      return Result.fail<number>(proto.CsStatusCode.NoIr, 'Set up the IR receiver first');
+    }
+  }
+
+  async csIrLearnCancel(): Promise<void> {
+    await proto.actionCmd(this.transport, proto.WireCmd.CsIrLearn, 0);
+  }
+
+  async csIrLearnResult(): Promise<domain.CsIrLearnResult> {
+    const size = Codec.sizeOf(proto.Wire.CsIrLearnResult);
+    const w = Codec.decodePadded(proto.Wire.CsIrLearnResult, await this.transport.ctrlIn(proto.WireCmd.CsIrLearn.code, 2, size));
+    return { state: w.state, protocol: w.protocol as domain.CsIrProto, code: w.code };
   }
 
   // Crossover bands (V16+, output channels only) ride the EQ verbs at wire

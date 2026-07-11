@@ -15,6 +15,7 @@ export const NotifyEventId = {
   BulkInvalidated: 0x03,
   PresetLoaded:    0x04,
   InputFormat:     0x05,   // V16+: active input channel count changed
+  CsIrLearn:       0x0A,   // V16+ (fw 1.1.5 caps v3): IR learn armed -> done/timeout
 } as const;
 
 export const ParamSource = {
@@ -39,11 +40,15 @@ export type NotifyEvent =
   // Active input channel count changed (host switched the USB alt, or the
   // I2S channel count changed live). Not bulk-borne: consumers re-layout
   // input-count-dependent UI rather than re-reading the packet.
-  | { kind: 'inputFormat';     seq: number; channels: number };
+  | { kind: 'inputFormat';     seq: number; channels: number }
+  // Completion of an armed IR learn (section 3.6.1): exactly one push per
+  // completed arm, none on cancel. state 2 = done (protocol/code valid), 3 =
+  // timeout (protocol/code 0).
+  | { kind: 'csIrLearn';       seq: number; state: number; protocol: number; code: number };
 
 export type ParamChangedEvent = Extract<NotifyEvent, { kind: 'paramChanged' }>;
 
-const { u8, u16, reserved, struct } = Codec;
+const { u8, u16, u32, reserved, struct } = Codec;
 
 // v2 frame header (4 B). `flags` (byte 2) is unused by the console.
 const NotifyHeader = struct({ version: u8, event: u8, _flags: reserved(1), seq: u8 });
@@ -53,6 +58,11 @@ const NotifyHeader = struct({ version: u8, event: u8, _flags: reserved(1), seq: 
 // follows at byte 12 and is sliced manually -- its length is data-dependent, so
 // it can't be a static codec field.
 const ParamChangedPrefix = struct({ offset: u16, size: u16, source: u8, _reserved: reserved(3) });
+
+// CS_IR_LEARN fixed suffix (8 B) after the header: same shape as the
+// CsIrLearn(wValue=2) result read (Wire.CsIrLearnResult), reused here since
+// the notify body carries the identical {state, protocol, code} triple.
+const CsIrLearnSuffix = struct({ state: u8, protocol: u8, _reserved: reserved(2), code: u32 });
 
 // Value-less events: NotifyEvents are only ever read, so a shared singleton is safe.
 const IDLE: NotifyEvent = { kind: 'idle' };
@@ -81,6 +91,11 @@ export function parseNotifyPacket(bytes: Uint8Array): NotifyEvent {
       return { kind: 'presetLoaded', seq: h.seq, slot: bytes.length > 4 ? bytes[4] : 0 };
     case NotifyEventId.InputFormat:
       return { kind: 'inputFormat', seq: h.seq, channels: bytes.length > 4 ? bytes[4] : 0 };
+    case NotifyEventId.CsIrLearn: {
+      if (bytes.length < 12) return IGNORED;
+      const p = Codec.decode(CsIrLearnSuffix, bytes.subarray(4));
+      return { kind: 'csIrLearn', seq: h.seq, state: p.state, protocol: p.protocol, code: p.code };
+    }
     default:
       return IGNORED;
   }

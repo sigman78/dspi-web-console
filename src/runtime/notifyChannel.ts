@@ -67,6 +67,13 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
       session.telemetry.activeInputChannels = event.channels;
       return;
     }
+    // IR learn completion (done or timeout); arm/cancel already set the
+    // ARMED/idle sub-state locally (runtime/actions.ts), this is the one
+    // event that reports how an armed learn ended.
+    if (event.kind === 'csIrLearn') {
+      session.controlSurfaces.irLearn = { state: event.state, protocol: event.protocol, code: event.code };
+      return;
+    }
     // The device notification is the authority that the slot actually loaded.
     if (event.kind === 'presetLoaded') {
       const name = session.presets.names[event.slot] ?? '';

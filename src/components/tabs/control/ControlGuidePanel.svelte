@@ -16,9 +16,9 @@
     <div class="sect">
       <div class="microlbl">CONTROL SURFACES</div>
       <div class="hint">
-        Bind physical controls on spare GPIOs — no external MCU needed. Up to 8
-        bindings, applied live and stored on the device: they survive preset
-        changes and factory reset.
+        Bind physical controls on spare GPIOs — no external MCU needed. Up to 16
+        bindings, applied live as a preview: save to write them to the device,
+        where they survive preset changes and factory reset.
       </div>
     </div>
     <div class="sect">
