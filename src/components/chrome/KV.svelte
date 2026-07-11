@@ -3,20 +3,23 @@
     label,
     value,
     tone,
+    title,
   }: {
     label: string;
     value: string;
-    tone?: 'ok' | 'off';
+    tone?: 'ok' | 'off' | 'warn';
+    title?: string;
   } = $props();
 </script>
 
-<div class="kv">
+<div class="kv" {title} class:help={title != null}>
   <div class="lbl">{label}</div>
-  <div class="val" class:ok={tone === 'ok'} class:off={tone === 'off'}>{value}</div>
+  <div class="val" class:ok={tone === 'ok'} class:off={tone === 'off'} class:warn={tone === 'warn'}>{value}</div>
 </div>
 
 <style>
   .kv { font-family: var(--font-mono); }
+  .kv.help { cursor: help; }
   .lbl {
     font-size: 9px;
     color: var(--text-faint);
@@ -31,4 +34,5 @@
   }
   .val.ok { color: var(--ok); }
   .val.off { color: var(--text-faint); }
+  .val.warn { color: var(--warn); }
 </style>

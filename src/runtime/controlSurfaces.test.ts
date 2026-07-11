@@ -36,6 +36,7 @@ describe('runtime/controlSurfaces', () => {
     await bootMock('rp2350', { wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 }, csCapsVersion: 1 });
     const s = sess();
     expect(s.controlSurfaces.caps).toBeNull();
+    expect(s.controlSurfaces.deviceCapsVersion).toBe(1);   // still recorded for display
     expect(s.controlSurfaces.bindings.every((b) => b === null)).toBe(true);
     expect(s.controlSurfaces.lastFetchError).toBeTruthy();
   });

@@ -3,12 +3,21 @@
   import KV from '@/components/chrome/KV.svelte';
   import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
   import { connection } from '@/state';
-  import { factoryResetDevice, enterBootloader } from '@/runtime';
+  import { factoryResetDevice, enterBootloader, MIN_CS_CAPS_VERSION, MAX_KNOWN_CS_CAPS_VERSION } from '@/runtime';
+  import { SUPPORT_WINDOW } from '@/protocol/capabilities';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
   const snap = $derived(s.mirror.current);
   const connected = $derived(connection.connected);
+
+  // Sub-protocol versions the wire format can't convey: shown so users can
+  // tell at a glance why a feature panel is gated on their firmware.
+  const cs = $derived(s.controlSurfaces);
+  const csTooOld = $derived(cs.deviceCapsVersion != null && cs.caps == null && !cs.busy);
+  const csProto = $derived(cs.deviceCapsVersion == null ? '—' : `v${cs.deviceCapsVersion}`);
+  const ctrlProto = $derived(
+    s.ctrlIfaces.status ? `v${s.ctrlIfaces.status.protoVersion}` : '—');
 
   function onFactoryReset() {
     void factoryResetDevice();
@@ -23,10 +32,16 @@
   <div class="kvgrid">
     <KV label="STATUS"   value={connection.label} tone={connection.connected ? 'ok' : 'off'} />
     <KV label="SERIAL"   value={s.info.serial} />
-    <KV label="FIRMWARE" value={s.info.capabilities.fwLabel} />
+    <KV label="FIRMWARE" value={s.info.capabilities.fwLabel}
+        title={`Firmware releases this console supports: ${SUPPORT_WINDOW.fw}.`} />
     <KV label="PLATFORM" value={snap?.platform.name ?? '—'} />
-    <KV label="FORMAT"   value={s.info.capabilities.wireLabel} />
+    <KV label="FORMAT"   value={s.info.capabilities.wireLabel}
+        title={`Wire formats this console supports: ${SUPPORT_WINDOW.wire}. Newer formats load with known sections only.`} />
     <KV label="OUTPUTS"  value={`${snap?.platform.outputCount ?? 0} / ${snap?.platform.totalChannelCount ?? 0}`} />
+    <KV label="CS PROTO"   value={csProto} tone={csTooOld ? 'warn' : cs.deviceCapsVersion == null ? 'off' : undefined}
+        title={`Control Surfaces protocol versions this console supports: v${MIN_CS_CAPS_VERSION}–v${MAX_KNOWN_CS_CAPS_VERSION}.`} />
+    <KV label="CTRL PROTO" value={ctrlProto} tone={s.ctrlIfaces.status ? undefined : 'off'}
+        title="External control interface (UART/I2C) protocol this console knows: v1." />
   </div>
   <div class="divider"></div>
   <div class="actions">

@@ -51,7 +51,9 @@ export async function fetchCtrlIfaceInfo(s: ReadySession): Promise<void> {
 // Minimum GetCsCaps format version this console understands (section 11.1 of
 // the spec adds the v3 IR/preview tail, but the v2 preview model -- event/
 // target/index, units, dirty/save/revert -- is the floor this panel needs).
-const MIN_CS_CAPS_VERSION = 2;
+export const MIN_CS_CAPS_VERSION = 2;
+// Newest caps format the console models (v3 = the IR/preview tail).
+export const MAX_KNOWN_CS_CAPS_VERSION = 3;
 
 // Control Surfaces mirror of fetchCtrlIfaceInfo: caps (host order: header,
 // then per-noun descriptors -- DspDevice owns that loop), live status, then
@@ -66,6 +68,7 @@ export async function fetchControlSurfaces(s: ReadySession): Promise<void> {
   s.controlSurfaces.busy = true;
   try {
     const { caps, nouns } = await s.queue.run(() => d.getCsCaps());
+    s.controlSurfaces.deviceCapsVersion = caps.capsVersion;
     if (caps.capsVersion < MIN_CS_CAPS_VERSION) {
       s.controlSurfaces.lastFetchError =
         `This device's Control Surfaces protocol (v${caps.capsVersion}) predates the version this console requires (v${MIN_CS_CAPS_VERSION}+). Update the device firmware.`;

@@ -6,6 +6,10 @@
 import { CS_MAX_BINDINGS, type CsBinding, type CsCaps, type CsNounCaps, type CsStatus } from '@/domain';
 
 export interface ControlSurfacesState {
+  // Raw device-reported GetCsCaps version, recorded even when it fails the
+  // console's floor check (caps stays null then) so the UI can say why the
+  // panel is gated.
+  deviceCapsVersion: number | null;
   caps: CsCaps | null;
   nouns: CsNounCaps[];
   bindings: (CsBinding | null)[];   // indexed by slot; null = empty (type NONE)
@@ -17,6 +21,7 @@ export interface ControlSurfacesState {
 
 export function createControlSurfacesState(): ControlSurfacesState {
   const s = $state<ControlSurfacesState>({
+    deviceCapsVersion: null,
     caps: null,
     nouns: [],
     bindings: Array.from({ length: CS_MAX_BINDINGS }, () => null),
