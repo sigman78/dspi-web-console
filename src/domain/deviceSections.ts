@@ -51,6 +51,8 @@ export interface InputConfig {
   spdifRxPinExt: number[];
   // Whether inputs 2/3 are enabled.
   spdifExtEnabled: boolean[];
+  // I2S clock role (fw V21+): 0 = master (legacy default), 1 = slave.
+  i2sClockMode: number;
 }
 
 // V8 -- LG Sound Sync. Only `enabled` is host-configurable; the rest is
@@ -96,4 +98,40 @@ export interface SpdifRxStatus {
   sampleRate: number;
   parityErrors: number;
   fifoFillPct: number;
+}
+
+// V21 -- live I2S slave-clock lock state, reported by GetI2sSlaveStatus
+// (0x8A). Note the state ordering differs from SpdifInputState (Relocking
+// precedes Locked here) -- this mirrors the firmware enum, not a typo.
+export const I2sSlaveClockState = {
+  Inactive:  0,
+  Acquiring: 1,
+  Relocking: 2,
+  Locked:    3,
+} as const;
+export type I2sSlaveClockState = (typeof I2sSlaveClockState)[keyof typeof I2sSlaveClockState];
+
+// Forward-compat: an unrecognised future state byte reads as Inactive.
+export function narrowI2sSlaveClockState(n: number): I2sSlaveClockState {
+  switch (n) {
+    case I2sSlaveClockState.Inactive:
+    case I2sSlaveClockState.Acquiring:
+    case I2sSlaveClockState.Relocking:
+    case I2sSlaveClockState.Locked:
+      return n;
+    default:
+      return I2sSlaveClockState.Inactive;
+  }
+}
+
+// Live I2S slave-clock telemetry. Pure status (not host-configurable); the
+// bulk packet has no equivalent, so this is read-only via the granular opcode.
+export interface I2sSlaveStatus {
+  state: I2sSlaveClockState;
+  clockMode: number;
+  lockCount: number;
+  lossCount: number;
+  detectedRateHz: number;
+  measuredHz: number;
+  slipCount: number;
 }

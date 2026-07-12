@@ -41,10 +41,11 @@ describe('deriveCapabilities — support classification', () => {
     }
   });
 
-  it('classifies V19/V20 as supported; V21 reports future', () => {
+  it('classifies V19/V20/V21 as supported; V22 reports future', () => {
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 19, payloadLength: Wire.BULK_SIZE_V19, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 20, payloadLength: Wire.BULK_SIZE_V20, platformId: 1 }).support).toBe('supported');
-    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 21, payloadLength: Wire.BULK_SIZE_V20, platformId: 1 }).support).toBe('future');
+    expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 21, payloadLength: Wire.BULK_SIZE_V21, platformId: 1 }).support).toBe('supported');
+    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 22, payloadLength: Wire.BULK_SIZE_V21, platformId: 1 }).support).toBe('future');
   });
 });
 
@@ -112,6 +113,13 @@ describe('deriveCapabilities — V16 feature flags', () => {
       deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: v, payloadLength: Wire.BULK_SIZE_V20, platformId: 1 }).features.crossfeedPairMask;
     expect(at(19)).toBe(false);
     expect(at(20)).toBe(true);
+  });
+
+  it('gates I2S slave-clock mode on wire V21 (off through V20, on for V21)', () => {
+    const at = (v: number) =>
+      deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: v, payloadLength: Wire.BULK_SIZE_V21, platformId: 1 }).features.i2sSlaveClock;
+    expect(at(20)).toBe(false);
+    expect(at(21)).toBe(true);
   });
 });
 

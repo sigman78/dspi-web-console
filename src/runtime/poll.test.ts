@@ -362,7 +362,7 @@ describe('S/PDIF RX status cadence', () => {
     const session = connect(device);
     const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
     // Set input source to SPDIF so the cadence gate passes.
-    snap.inputConfig = { source: AudioInputSource.Spdif, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false] };
+    snap.inputConfig = { source: AudioInputSource.Spdif, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0 };
     session.mirror.init(snap);
     const clock = manualClock();
     const stop = startPolling(session, clock);
@@ -388,7 +388,7 @@ describe('S/PDIF RX status cadence', () => {
     } as unknown as DspDevice;
     const session = connect(device);
     const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
-    snap.inputConfig = { source: AudioInputSource.Spdif, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false] };
+    snap.inputConfig = { source: AudioInputSource.Spdif, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0 };
     session.mirror.init(snap);
     const clock = manualClock();
     const stop = startPolling(session, clock);
@@ -412,13 +412,75 @@ describe('S/PDIF RX status cadence', () => {
     const session = connect(device);
     const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
     // USB input (default in bulkFixtures): cadence should not fire.
-    snap.inputConfig = { source: AudioInputSource.Usb, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false] };
+    snap.inputConfig = { source: AudioInputSource.Usb, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0 };
     session.mirror.init(snap);
     const clock = manualClock();
     const stop = startPolling(session, clock);
     clock.fire();
     await settle();
     expect(device.getSpdifRxStatus).not.toHaveBeenCalled();
+    stop();
+  });
+});
+
+describe('I2S slave-clock status cadence', () => {
+  afterEach(() => { teardown(); });
+
+  function baseDevice(getI2sSlaveStatus: () => Promise<unknown>) {
+    return {
+      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      hardware: hw,
+      capabilities: { features: { i2sSlaveClock: true } },
+      getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
+      getBufferStats: vi.fn(async () => null),
+      getSystemInfo: vi.fn(async () => ({})),
+      getI2sSlaveStatus: vi.fn(getI2sSlaveStatus),
+      getSnapshot: vi.fn(async () => fromBulkParams(hw, parseBulkParams(makeBulk()))),
+    } as unknown as DspDevice;
+  }
+
+  it('polls getI2sSlaveStatus when the feature is present and clock mode is slave', async () => {
+    const status = { state: 3, clockMode: 1, lockCount: 1, lossCount: 0, detectedRateHz: 48000, measuredHz: 48000, slipCount: 0 };
+    const device = baseDevice(async () => status);
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    snap.inputConfig = { ...snap.inputConfig, i2sClockMode: 1 };
+    session.mirror.init(snap);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getI2sSlaveStatus).toHaveBeenCalled();
+    expect(session.telemetry.i2sSlaveStatus).toEqual(status);
+    stop();
+  });
+
+  it('does not poll getI2sSlaveStatus when clock mode is master', async () => {
+    const device = baseDevice(async () => ({ state: 0, clockMode: 0, lockCount: 0, lossCount: 0, detectedRateHz: 0, measuredHz: 0, slipCount: 0 }));
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    snap.inputConfig = { ...snap.inputConfig, i2sClockMode: 0 };
+    session.mirror.init(snap);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getI2sSlaveStatus).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('does not poll getI2sSlaveStatus when the device lacks the feature, even in slave mode', async () => {
+    const device = baseDevice(async () => ({ state: 3, clockMode: 1, lockCount: 1, lossCount: 0, detectedRateHz: 48000, measuredHz: 48000, slipCount: 0 }));
+    (device as unknown as { capabilities: { features: { i2sSlaveClock: boolean } } }).capabilities.features.i2sSlaveClock = false;
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    snap.inputConfig = { ...snap.inputConfig, i2sClockMode: 1 };
+    session.mirror.init(snap);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getI2sSlaveStatus).not.toHaveBeenCalled();
     stop();
   });
 });

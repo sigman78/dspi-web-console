@@ -11,7 +11,7 @@ import { PlatformType, ChannelFamily } from './platform';
 import type { DspSnapshot } from './snapshot';
 import { isValidUartPinPair, isValidI2cPinPair, type UartControlConfig, type I2cControlConfig } from './controlInterfaces';
 
-const PIN_LABEL = { bck: 'BCK', lrclk: 'LRCLK', mck: 'MCK' } as const;
+const PIN_LABEL = { bck: 'BCK', lrclk: 'LRCLK', mck: 'MCK', bckSlave: 'BCK (slave)', lrclkSlave: 'LRCLK (slave)' } as const;
 
 function maxGpio(platform: PlatformType): number {
   return platform === PlatformType.RP2350 ? 29 : 28;
@@ -59,6 +59,12 @@ export function pinsInUse(snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTR
       m.set(i2s.bckPin + 1, PIN_LABEL.lrclk);
     }
     if (i2s.mckEnabled) m.set(i2s.mckPin, PIN_LABEL.mck);
+    // fw V21+: the slave BCK/LRCLK pair is only reserved in split clock-pin
+    // mode (unified mode shares the master pair above).
+    if (i2s.clockPinMode === 1 && i2s.bckPinSlave > 0) {
+      m.set(i2s.bckPinSlave, PIN_LABEL.bckSlave);
+      m.set(i2s.bckPinSlave + 1, PIN_LABEL.lrclkSlave);
+    }
   }
   m.set(snapshot.inputConfig.spdifRxPin, 'SPDIF RX');
   // fw 1.1.5+ optional S/PDIF inputs 2/3: reserve a pin only while enabled
@@ -112,6 +118,23 @@ export function validBckPins(
   const free = (p: number) => {
     const u = inUse.get(p);
     return u == null || u === PIN_LABEL.bck || u === PIN_LABEL.lrclk;
+  };
+  return assignablePins(platform, channelModel).filter(
+    (p) => isAssignablePin(platform, p + 1, channelModel) && free(p) && free(p + 1),
+  );
+}
+
+// Slave-mode BCK candidates (fw V21+, split clock-pin mode): same adjacency
+// rule as validBckPins, but a pin currently holding the slave pair is free
+// for re-selection (not the master pair -- that's still reserved).
+export function validBckPinsSlave(
+  platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
+): number[] {
+  const channelModel = snapshot.platform.channelModel;
+  const inUse = pinsInUse(snapshot, ctrl);
+  const free = (p: number) => {
+    const u = inUse.get(p);
+    return u == null || u === PIN_LABEL.bckSlave || u === PIN_LABEL.lrclkSlave;
   };
   return assignablePins(platform, channelModel).filter(
     (p) => isAssignablePin(platform, p + 1, channelModel) && free(p) && free(p + 1),

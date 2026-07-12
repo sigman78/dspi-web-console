@@ -739,6 +739,61 @@ describe('I2S clock commands', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe(PinConfigResult.OutputActive);
   });
+
+  test('role 0 (default) BCK pin SET/GET packs wValue identically to the pre-V21 encoding', async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    const d = await DspDevice.create(t);
+    const ctrlInSpy = vi.spyOn(t, 'ctrlIn');
+
+    expect((await d.setI2sBckPin(16)).ok).toBe(true);
+    const setCall = ctrlInSpy.mock.calls.find((c) => c[0] === WireCmd.SetI2sBckPin.code);
+    expect(setCall?.[1]).toBe(16);   // role 0 -> wValue === pin, unchanged from legacy
+
+    await d.getI2sBckPin();
+    const getCall = ctrlInSpy.mock.calls.find((c) => c[0] === WireCmd.GetI2sBckPin.code);
+    expect(getCall?.[1]).toBe(0);    // role 0 -> wValue === 0, unchanged from legacy
+  });
+
+  test('role 1 (slave) BCK pin is independent of the master (role 0) pin', async () => {
+    const d = await dev();
+    expect((await d.setI2sBckPin(21, 1)).ok).toBe(true);
+    expect(await d.getI2sBckPin(1)).toBe(21);
+    // Master pin (role 0, default) is untouched by the slave-pin SET.
+    expect(await d.getI2sBckPin()).toBe(14);
+  });
+});
+
+describe('I2S slave-clock commands (fw V21)', () => {
+  async function dev() {
+    const t = new MockTransport({ platform: 'rp2350' });
+    return await DspDevice.create(t);
+  }
+
+  test('clock mode round-trips master/slave', async () => {
+    const d = await dev();
+    expect(await d.getI2sClockMode()).toBe(0);
+    await d.setI2sClockMode(1);
+    expect(await d.getI2sClockMode()).toBe(1);
+  });
+
+  test('slave status reports LOCKED only when clock mode is slave AND input source is I2S', async () => {
+    const d = await dev();
+    const idle = await d.getI2sSlaveStatus();
+    expect(idle.state).toBe(0);   // INACTIVE: master mode, not I2S input yet
+
+    await d.setI2sClockMode(1);
+    await d.setInputSource(AudioInputSource.I2s);
+    const locked = await d.getI2sSlaveStatus();
+    expect(locked.state).toBe(3); // LOCKED
+    expect(locked.detectedRateHz).toBe(48000);
+  });
+
+  test('clock pin mode round-trips unified/split', async () => {
+    const d = await dev();
+    expect(await d.getI2sClockPinMode()).toBe(0);
+    expect((await d.setI2sClockPinMode(1)).ok).toBe(true);
+    expect(await d.getI2sClockPinMode()).toBe(1);
+  });
 });
 
 describe('setAllParams', () => {

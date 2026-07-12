@@ -7,6 +7,7 @@ const STATUS_INTERVAL_MS = 50;   // ~20 Hz -- peaks + cpu
 const BUFFER_INTERVAL_MS = 250;  // ~4 Hz  -- buffer stats
 const INFO_INTERVAL_MS = 1000;   // ~1 Hz  -- env scalars + counters
 const SPDIF_RX_INTERVAL_MS = 1000;  // ~1 Hz  -- S/PDIF RX status (SPDIF input only)
+const I2S_SLAVE_INTERVAL_MS = 1000;  // ~1 Hz  -- I2S slave-clock status (slave mode only)
 const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile floor
 // Unconditional re-fetch floor, independent of any pending reconcile request.
 // Notify is the primary sync trigger, but firmware 1.1.4 has verified coverage
@@ -17,7 +18,7 @@ const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile
 const PARAM_SAFETY_NET_MS = 10_000;
 
 interface Cadence {
-  key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'param';
+  key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'i2sSlave' | 'param';
   intervalMs: number;
   runWhileHidden: boolean;          // today all false (pause everything when hidden)
   lastMs(): number;                 // cadence clock -- reads the STORE timestamp
@@ -37,7 +38,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   // Only the in-flight guards are loop-local. The cadence CLOCK stays on the
   // telemetry store (tele.applyPeaks sets lastStatusMs and reads it for peak
   // decay), so the gate must read the store, not a private copy.
-  const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false, spdifRx: false, param: false };
+  const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false, spdifRx: false, i2sSlave: false, param: false };
 
   async function pollStatus(d: DspDevice): Promise<void> {
     try {
@@ -122,6 +123,28 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     return lastSpdifRxMs === 0 || now - lastSpdifRxMs >= SPDIF_RX_INTERVAL_MS;
   }
 
+  // I2S slave-clock live status. Only runs when the device supports the
+  // feature and the live clock mode is slave -- the opcode is valid on
+  // master-mode firmware too, but the data is meaningless there.
+  let lastI2sSlaveMs = 0;
+  async function pollI2sSlave(d: DspDevice): Promise<void> {
+    try {
+      tele.i2sSlaveStatus = await session.queue.run(() => d.getI2sSlaveStatus());
+      health.noteOk();
+    } catch (e) {
+      health.noteFail('poll:i2sSlave', e);
+      Log.warn('poll', 'getI2sSlaveStatus failed', e);
+    } finally {
+      lastI2sSlaveMs = performance.now();
+    }
+  }
+
+  function shouldRunI2sSlave(now: number): boolean {
+    if (!session.device.capabilities?.features.i2sSlaveClock) return false;
+    if (mir.current?.inputConfig.i2sClockMode !== 1) return false;
+    return lastI2sSlaveMs === 0 || now - lastI2sSlaveMs >= I2S_SLAVE_INTERVAL_MS;
+  }
+
   // Background param-mirror reconcile. shouldRunParam already decided this tick
   // is eligible; we fetch, then re-check before applying. The CommandQueue makes
   // the fetch atomic with respect to any write already registered when it was
@@ -181,6 +204,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     { key: 'buffer',  intervalMs: BUFFER_INTERVAL_MS,   runWhileHidden: false, lastMs: () => tele.lastBufferMs, run: pollBuffer },
     { key: 'info',    intervalMs: INFO_INTERVAL_MS,     runWhileHidden: false, lastMs: () => tele.lastInfoMs,   run: pollInfo },
     { key: 'spdifRx', intervalMs: SPDIF_RX_INTERVAL_MS, runWhileHidden: false, lastMs: () => lastSpdifRxMs,     run: pollSpdifRx, shouldRun: shouldRunSpdifRx },
+    { key: 'i2sSlave', intervalMs: I2S_SLAVE_INTERVAL_MS, runWhileHidden: false, lastMs: () => lastI2sSlaveMs, run: pollI2sSlave, shouldRun: shouldRunI2sSlave },
     { key: 'param',   intervalMs: PARAM_INTERVAL_MS,    runWhileHidden: false, lastMs: () => tele.lastParamMs,  run: pollParam, shouldRun: shouldRunParam },
   ];
   const anyRunWhileHidden = cadences.some((c) => c.runWhileHidden);

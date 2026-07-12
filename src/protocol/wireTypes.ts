@@ -161,14 +161,19 @@ export const BandParams = struct({
 // Section 10: channel names (352 B)
 export const ChannelNames = arr(nulStr(Const.CHANNEL_NAME_LEN), Const.NUM_CHANNELS);
 
-// Section 11: I2S config (16 B, V3+, optional)
+// Section 11: I2S config (16 B, V3+, optional). clockPinModeP1/bckPinSlave
+// (fw V21+ i2s slave-clock pins) claim two of the reserved bytes; NOT
+// version-gated -- 0 is the safe absent value on every pre-V21 packet, so one
+// codec serves every generation.
 export const I2SConfig = struct({
   outputSlotTypes:      arr(u8, Const.NUM_SPDIF_INSTANCES),
   bckPin:               u8,
   mckPin:               u8,
   mckEnabled:           bool8,
   mckMultiplierEncoded: u8,
-  _reserved:            reserved(8),
+  clockPinModeP1:       u8,   // 0=absent, 1=unified, 2=split
+  bckPinSlave:          u8,   // slave-mode BCK GPIO; LRCLK = +1. 0 = unset
+  _reserved:            reserved(6),
 });
 
 // Section 12: leveller (16 B, V4+, optional)
@@ -240,6 +245,21 @@ export const InputConfig = struct({
   spdifRxPinExt:        arr(u8, 2),    // GPIOs for SPDIF2/3 (fw 1.1.5+; 0 = absent/keep-live)
   spdifRxEnabledExtP1:  u8,            // enable mask + 1; 0 = absent, else (byte-1): bit0=SPDIF2, bit1=SPDIF3
   _reserved:            reserved(5),
+});
+
+// Section 15, V21 shape: the first reserved byte becomes the I2S clock role.
+// 0 = master (legacy default), 1 = slave. Same 16-byte size as InputConfig.
+export const InputConfig21 = struct({
+  inputSource:          u8,
+  spdifRxPin:           u8,
+  i2sRxPin:             u8,
+  i2sInputRate:         u8,
+  i2sInputChannels:     u8,
+  i2sRxPinExt:          arr(u8, 3),
+  spdifRxPinExt:        arr(u8, 2),
+  spdifRxEnabledExtP1:  u8,
+  i2sClockMode:         u8,
+  _reserved:            reserved(4),
 });
 
 // Section 16: LG Sound Sync (16 B, V8+, optional). Only `enabled` is host-
@@ -347,6 +367,20 @@ export const SpdifRxStatus = struct({
   parityErrors: u32,
   fifoFillPct:  u16,
   _reserved:    reserved(2),
+});
+
+// 16-byte live I2S slave-clock status (GetI2sSlaveStatus 0x8A, fw V21+).
+// `state` is narrowed to a domain enum in DspDevice. detectedRate is
+// 44100/48000/96000, 0 unless state is LOCKED.
+export const I2sSlaveStatus = struct({
+  state:        u8,
+  clockMode:    u8,
+  lockCount:    u8,
+  lossCount:    u8,
+  detectedRate: u32,
+  measuredHz:   u32,
+  slipCount:    u8,
+  _reserved:    reserved(3),
 });
 
 // Length of the raw IEC-60958 channel-status block (GetSpdifRxChStatus 0xE3).
@@ -654,15 +688,19 @@ export const BULK_SIZE_V18 = BULK_SIZE_V17 + sizeOf(LevellerConfig18) - sizeOf(L
 // total packet size is unchanged from V18.
 export const BULK_SIZE_V19 = BULK_SIZE_V18;
 export const BULK_SIZE_V20 = BULK_SIZE_V18;
+// V21 claims the InputConfig's first reserved byte (i2s_clock_mode) -- also
+// no packet-size change.
+export const BULK_SIZE_V21 = BULK_SIZE_V20;
 
 // Newest wire version the console knows how to decode and write.
-export const MAX_WIRE_VERSION = 20;
+export const MAX_WIRE_VERSION = 21;
 
 // Packet size to allocate/write for a given target wire version (clamped to
-// the V6 floor and the V20 ceiling). Versions 11..15 were in-development
+// the V6 floor and the V21 ceiling). Versions 11..15 were in-development
 // intermediates the console never supported; they collapse to the V10 size
 // (writes to such devices are rejected at connect anyway).
 export function bulkSizeForVersion(v: number): number {
+  if (v >= 21) return BULK_SIZE_V21;
   if (v >= 20) return BULK_SIZE_V20;
   if (v >= 19) return BULK_SIZE_V19;
   if (v >= 18) return BULK_SIZE_V18;
@@ -678,10 +716,10 @@ export function bulkSizeForVersion(v: number): number {
 export const BulkLimits = {
   MinPacketSize:  BulkSizes.V2,
   // Size we WRITE: version-aware buildBulkParams emits at the device's own wire
-  // version, up to V20. This is the largest buffer it may allocate.
-  MaxRequestSize: BULK_SIZE_V20,
-  // Size we READ: the largest packet we tolerate receiving (V20).
-  MaxReadSize:    BULK_SIZE_V20,  // 5876
+  // version, up to V21. This is the largest buffer it may allocate.
+  MaxRequestSize: BULK_SIZE_V21,
+  // Size we READ: the largest packet we tolerate receiving (V21).
+  MaxReadSize:    BULK_SIZE_V21,  // 5876
   // WinUSB caps a control transfer's data stage at 4 KB; the largest single
   // EP0 transfer any host backend can rely on. Above this, DspDevice chunks
   // via 0xA2/0xA3 (fw 1.1.5+).
@@ -710,6 +748,8 @@ export interface BulkLayout {
   loudnessMask: boolean;
   // V20: crossfeed output-pair mask (CrossfeedParams reserved-byte claim).
   crossfeedPairMask: boolean;
+  // V21: I2S clock-mode byte (InputConfig reserved-byte claim).
+  i2sClockMode: boolean;
 }
 
 // Determine which optional sections are present based on the header.
@@ -733,6 +773,7 @@ export function bulkLayout(h: { formatVersion: number; payloadLength: number }):
     levellerMasks:     v >= 18 && len >= BULK_SIZE_V18,
     loudnessMask:      v >= 19 && len >= BULK_SIZE_V19,
     crossfeedPairMask: v >= 20 && len >= BULK_SIZE_V20,
+    i2sClockMode:      v >= 21 && len >= BULK_SIZE_V21,
   };
 }
 

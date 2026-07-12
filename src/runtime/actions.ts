@@ -472,6 +472,26 @@ export function setMckMultiplier(s: ReadySession, encoded: number): Promise<bool
   return writeChecked(s,'set MCK multiplier', () => s.device.setMckMultiplier(encoded), () => patchI2s(s, (i) => ({ ...i, mckMultiplierEncoded: encoded })));
 }
 
+// I2S slave-clock role (fw V21+). Deferred apply on the device: patch the
+// mirror optimistically once the SET acks, matching setInputSource's lane
+// (no status byte to check).
+export function setI2sClockMode(s: ReadySession, mode: number): Promise<boolean> {
+  return write(s,
+    () => s.device.setI2sClockMode(mode),
+    () => { s.mirror.snapshot.inputConfig = { ...s.mirror.snapshot.inputConfig, i2sClockMode: mode }; },
+  );
+}
+
+// BCK/LRCLK pin-sharing mode (fw V21+): 0 = unified, 1 = split.
+export function setI2sClockPinMode(s: ReadySession, mode: number): Promise<boolean> {
+  return writeChecked(s, 'set I2S clock pin mode', () => s.device.setI2sClockPinMode(mode), () => patchI2s(s, (i) => ({ ...i, clockPinMode: mode })));
+}
+
+// Slave-mode BCK pin (fw V21+, role 1). LRCLK rides pin+1 on the device side.
+export function setI2sBckPinSlave(s: ReadySession, pin: number): Promise<boolean> {
+  return writeChecked(s, 'set I2S BCK pin (slave)', () => s.device.setI2sBckPin(pin, 1), () => patchI2s(s, (i) => ({ ...i, bckPinSlave: pin })));
+}
+
 export function setUserMute(s: ReadySession, mute: boolean): void {
   void write(s,
     () => s.device.setUserMute(mute),

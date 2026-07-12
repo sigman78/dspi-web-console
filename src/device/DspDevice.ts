@@ -668,12 +668,15 @@ export class DspDevice {
     return proto.actionCmd(this.transport, proto.WireCmd.GetOutputPin, pinOutputIndex);
   }
 
-  async setI2sBckPin(pin: number): Promise<Result<void, proto.PinConfigResult>> {
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetI2sBckPin, pin & 0xFF));
+  // role 0 = master/unified pair (default; legacy encoding, byte-identical to
+  // pre-V21 firmware), role 1 = slave pair (fw V21+).
+  async setI2sBckPin(pin: number, role = 0): Promise<Result<void, proto.PinConfigResult>> {
+    const wValue = ((role & 0xFF) << 8) | (pin & 0xFF);
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetI2sBckPin, wValue));
   }
 
-  async getI2sBckPin(): Promise<number> {
-    return proto.actionCmd(this.transport, proto.WireCmd.GetI2sBckPin, 0);
+  async getI2sBckPin(role = 0): Promise<number> {
+    return proto.actionCmd(this.transport, proto.WireCmd.GetI2sBckPin, role & 0xFF);
   }
 
   async setMckEnable(on: boolean): Promise<Result<void, proto.PinConfigResult>> {
@@ -978,6 +981,40 @@ export class DspDevice {
 
   async getI2sInputChannels(): Promise<number> {
     return proto.readCmd(this.transport, proto.WireCmd.GetI2sInputChannels);
+  }
+
+  // I2S slave-clock mode (fw V21+, gate on capabilities.features.i2sSlaveClock).
+  // SET is deferred apply (firmware applies from the main loop), so a GET
+  // right after a SET may still report the old mode.
+  async setI2sClockMode(mode: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetI2sClockMode, mode & 0xFF);
+  }
+
+  async getI2sClockMode(): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetI2sClockMode);
+  }
+
+  async getI2sSlaveStatus(): Promise<domain.I2sSlaveStatus> {
+    const w = await proto.readCmd(this.transport, proto.WireCmd.GetI2sSlaveStatus);
+    return {
+      state: domain.narrowI2sSlaveClockState(w.state),
+      clockMode: w.clockMode,
+      lockCount: w.lockCount,
+      lossCount: w.lossCount,
+      detectedRateHz: w.detectedRate,
+      measuredHz: w.measuredHz,
+      slipCount: w.slipCount,
+    };
+  }
+
+  // BCK/LRCLK pin-sharing mode: 0 = unified (master+slave share one pair),
+  // 1 = split (master + slave each get their own BCK/LRCLK pair).
+  async setI2sClockPinMode(mode: number): Promise<Result<void, proto.PinConfigResult>> {
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetI2sClockPinMode, mode & 0xFF));
+  }
+
+  async getI2sClockPinMode(): Promise<number> {
+    return proto.actionCmd(this.transport, proto.WireCmd.GetI2sClockPinMode, 0);
   }
 
   // External control interfaces (V16+, gate on capabilities.features.controlInterfaces):

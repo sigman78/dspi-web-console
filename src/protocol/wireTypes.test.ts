@@ -62,11 +62,26 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(Wire.bulkSizeForVersion(16)).toBe(5864);
     expect(Wire.bulkSizeForVersion(17)).toBe(5872);
     expect(Wire.bulkSizeForVersion(18)).toBe(5876);
-    // V19/V20 claim reserved bytes already inside the V18 layout -- size unchanged.
+    // V19/V20/V21 claim reserved bytes already inside the V18 layout -- size unchanged.
     expect(Wire.bulkSizeForVersion(19)).toBe(5876);
     expect(Wire.bulkSizeForVersion(20)).toBe(5876);
+    expect(Wire.bulkSizeForVersion(21)).toBe(5876);
     expect(Wire.bulkSizeForVersion(99)).toBe(5876);
     expect(Wire.bulkSizeForVersion(5)).toBe(2896);
+  });
+
+  it('BULK_SIZE_V21 equals BULK_SIZE_V20 (no packet-size change)', () => {
+    expect(Wire.BULK_SIZE_V21).toBe(Wire.BULK_SIZE_V20);
+    expect(Wire.MAX_WIRE_VERSION).toBe(21);
+  });
+
+  it('bulkLayout gates i2sClockMode on wire V21 AND payloadLength', () => {
+    const v20 = Wire.bulkLayout({ formatVersion: 20, payloadLength: Wire.BULK_SIZE_V20 });
+    expect(v20.i2sClockMode).toBe(false);
+    const v21 = Wire.bulkLayout({ formatVersion: 21, payloadLength: Wire.BULK_SIZE_V21 });
+    expect(v21.i2sClockMode).toBe(true);
+    const truncated = Wire.bulkLayout({ formatVersion: 21, payloadLength: Wire.BULK_SIZE_V20 - 1 });
+    expect(truncated.i2sClockMode).toBe(false);
   });
 
   it('CsBinding encodes the spec worked examples byte-for-byte and round-trips', () => {
@@ -189,6 +204,47 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     const bytes = Uint8Array.from([3, 0b011, 5, 16, 17]);
     const cfg = Codec.decode(Wire.SpdifInputConfig, bytes);
     expect(cfg).toEqual({ count: 3, enableMask: 0b011, pins: [5, 16, 17] });
+  });
+
+  it('InputConfig21 is 16 bytes and carries i2sClockMode at byte 11', () => {
+    expect(Codec.sizeOf(Wire.InputConfig21)).toBe(16);
+    const bytes = Codec.encode(Wire.InputConfig21, {
+      inputSource: 2, spdifRxPin: 5, i2sRxPin: 1, i2sInputRate: 1, i2sInputChannels: 8,
+      i2sRxPinExt: [2, 3, 4],
+      spdifRxPinExt: [0, 0],
+      spdifRxEnabledExtP1: 0,
+      i2sClockMode: 1,
+    });
+    expect(bytes[11]).toBe(1);
+    const back = Codec.decode(Wire.InputConfig21, bytes);
+    expect(back.i2sClockMode).toBe(1);
+    expect(back.i2sRxPin).toBe(1);
+  });
+
+  it('I2SConfig round-trips the V21 slave-clock pins at bytes 8-9', () => {
+    expect(Codec.sizeOf(Wire.I2SConfig)).toBe(16);
+    const bytes = Codec.encode(Wire.I2SConfig, {
+      outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0,
+      clockPinModeP1: 2, bckPinSlave: 26,
+    });
+    expect(bytes[8]).toBe(2);
+    expect(bytes[9]).toBe(26);
+    const back = Codec.decode(Wire.I2SConfig, bytes);
+    expect(back.clockPinModeP1).toBe(2);
+    expect(back.bckPinSlave).toBe(26);
+  });
+
+  it('I2sSlaveStatus is 16 bytes and round-trips its fields', () => {
+    expect(Codec.sizeOf(Wire.I2sSlaveStatus)).toBe(16);
+    const bytes = Codec.encode(Wire.I2sSlaveStatus, {
+      state: 3, clockMode: 1, lockCount: 2, lossCount: 1,
+      detectedRate: 48000, measuredHz: 48001, slipCount: 0,
+    });
+    const back = Codec.decode(Wire.I2sSlaveStatus, bytes);
+    expect(back).toMatchObject({
+      state: 3, clockMode: 1, lockCount: 2, lossCount: 1,
+      detectedRate: 48000, measuredHz: 48001, slipCount: 0,
+    });
   });
 
 });

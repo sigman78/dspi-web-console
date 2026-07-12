@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { bootMock } from './boot';
 import { activeSession, clearNotices } from '@/state';
 import { AudioInputSource } from '@/domain';
-import { stageInputSource, stageI2sRxPin, stageI2sInputChannels, stageMckEnabled } from './stagedActions';
+import {
+  stageInputSource, stageI2sRxPin, stageI2sInputChannels, stageMckEnabled,
+  stageI2sClockMode, stageI2sClockPinMode, stageI2sBckPinSlave,
+} from './stagedActions';
 
 const sess = () => activeSession()!;
 
@@ -96,6 +99,88 @@ describe('runtime/stagedActions', () => {
       expect(s.staging.has('i2sRxPin:3')).toBe(false);
       expect(s.staging.has('i2sRxPin:0')).toBe(true);
       expect(s.staging.has('i2sRxPin:1')).toBe(true);
+    });
+  });
+
+  describe('stageI2sClockMode', () => {
+    beforeEach(async () => {
+      await bootMock('rp2350');
+      clearNotices();
+    });
+
+    it('stages a pending role switch; applying it calls device.setI2sClockMode with the staged value', async () => {
+      const s = sess();
+      const live = s.mirror.snapshot.inputConfig.i2sClockMode;
+      const target = live === 1 ? 0 : 1;
+      const spy = vi.spyOn(s.device, 'setI2sClockMode');
+
+      stageI2sClockMode(s, target);
+      expect(s.staging.has('i2sClockMode')).toBe(true);
+      expect(spy).not.toHaveBeenCalled();
+
+      await s.staging.applyAll();
+      expect(spy).toHaveBeenCalledWith(target);
+      expect(s.staging.has('i2sClockMode')).toBe(false);
+      expect(s.mirror.snapshot.inputConfig.i2sClockMode).toBe(target);
+    });
+
+    it('staging the live value discards a pending entry instead of creating one', () => {
+      const s = sess();
+      const live = s.mirror.snapshot.inputConfig.i2sClockMode;
+      stageI2sClockMode(s, live === 1 ? 0 : 1);
+      expect(s.staging.has('i2sClockMode')).toBe(true);
+      stageI2sClockMode(s, live);
+      expect(s.staging.has('i2sClockMode')).toBe(false);
+    });
+  });
+
+  describe('stageI2sClockPinMode', () => {
+    beforeEach(async () => {
+      await bootMock('rp2350');
+      clearNotices();
+    });
+
+    it('stages a pending pin-mode switch; applying it calls device.setI2sClockPinMode', async () => {
+      const s = sess();
+      const live = s.mirror.snapshot.i2s.clockPinMode;
+      const target = live === 1 ? 0 : 1;
+      const spy = vi.spyOn(s.device, 'setI2sClockPinMode');
+
+      stageI2sClockPinMode(s, target);
+      expect(s.staging.has('i2sClockPinMode')).toBe(true);
+
+      await s.staging.applyAll();
+      expect(spy).toHaveBeenCalledWith(target);
+      expect(s.staging.has('i2sClockPinMode')).toBe(false);
+      expect(s.mirror.snapshot.i2s.clockPinMode).toBe(target);
+    });
+  });
+
+  describe('stageI2sBckPinSlave', () => {
+    beforeEach(async () => {
+      await bootMock('rp2350');
+      clearNotices();
+    });
+
+    it('stages a pending slave BCK pin; applying it calls device.setI2sBckPin(pin, 1)', async () => {
+      const s = sess();
+      const target = 21;   // distinct from the mock's default slave BCK pin (26 on rp2350)
+      const spy = vi.spyOn(s.device, 'setI2sBckPin');
+
+      stageI2sBckPinSlave(s, target);
+      expect(s.staging.has('bckPinSlave')).toBe(true);
+
+      await s.staging.applyAll();
+      expect(spy).toHaveBeenCalledWith(target, 1);
+      expect(s.staging.has('bckPinSlave')).toBe(false);
+      expect(s.mirror.snapshot.i2s.bckPinSlave).toBe(target);
+    });
+
+    it('staging the live pin discards the pending entry', () => {
+      const s = sess();
+      const live = s.mirror.snapshot.i2s.bckPinSlave;
+      stageI2sBckPinSlave(s, live);
+      expect(s.staging.has('bckPinSlave')).toBe(false);
     });
   });
 

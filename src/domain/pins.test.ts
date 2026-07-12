@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { PlatformType, ChannelFamily } from './platform';
 import type { DspSnapshot } from './snapshot';
-import { isAssignablePin, pinsInUse, availablePinsFor, validBckPins, validUartTxPins, validI2cSdaPins } from './pins';
+import { isAssignablePin, pinsInUse, availablePinsFor, validBckPins, validBckPinsSlave, validUartTxPins, validI2cSdaPins } from './pins';
 import { DEFAULT_UART_CONTROL_CONFIG } from './controlInterfaces';
 
 function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
@@ -37,7 +37,7 @@ describe('pins', () => {
   test('switching a slot to I2S puts BCK and LRCLK into the in-use set', () => {
     const before = pinsInUse(snap());
     expect(before.has(14)).toBe(false);
-    const after = pinsInUse(snap({ i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 } }));
+    const after = pinsInUse(snap({ i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 0 } }));
     expect(after.get(14)).toMatch(/BCK/);
     expect(after.get(15)).toMatch(/LRCLK/);
   });
@@ -56,10 +56,33 @@ describe('pins', () => {
     expect(valid).not.toContain(6);
   });
 
+  test('a split-mode slave BCK/LRCLK pair is reserved only when clockPinMode is split', () => {
+    const unified = pinsInUse(snap({
+      i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 26 },
+    }));
+    expect(unified.has(26)).toBe(false);
+    expect(unified.has(27)).toBe(false);
+
+    const split = pinsInUse(snap({
+      i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 1, bckPinSlave: 26 },
+    }));
+    expect(split.get(26)).toMatch(/BCK/);
+    expect(split.get(27)).toMatch(/LRCLK/);
+  });
+
+  test('validBckPinsSlave keeps the currently-assigned slave pair selectable but excludes the master pair', () => {
+    const split = snap({
+      i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 1, bckPinSlave: 26 },
+    });
+    const valid = validBckPinsSlave(PlatformType.RP2350, split);
+    expect(valid).toContain(26);   // self pair stays selectable
+    expect(valid).not.toContain(14);   // master BCK/LRCLK pair stays reserved
+  });
+
   test('with no output pins registered, an active I2S slot yields BCK/LRCLK plus the RX pin', () => {
     const m = pinsInUse(snap({
       outputPins: [],
-      i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
+      i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 0 },
     }));
     expect(m.size).toBe(3);
     expect(m.get(14)).toBe('BCK');

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setLevellerMasks, toggleLevellerDetectorChannel, toggleLevellerApplyChannel, setLoudnessOutputMask, toggleLoudnessOutputChannel, setCrossfeedOutputPairs, toggleCrossfeedOutputPair, setOutputDelay, setOutputGain, setOutputEnabled, setOutputPairEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource, setUartControlConfig } from './actions';
+import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setLevellerMasks, toggleLevellerDetectorChannel, toggleLevellerApplyChannel, setLoudnessOutputMask, toggleLoudnessOutputChannel, setCrossfeedOutputPairs, toggleCrossfeedOutputPair, setOutputDelay, setOutputGain, setOutputEnabled, setOutputPairEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setI2sClockMode, setI2sClockPinMode, setI2sBckPinSlave, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource, setUartControlConfig } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './deviceService';
 import { connection, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { bootMock } from './boot';
@@ -934,6 +934,24 @@ describe('output config verbs', () => {
     setMckEnabled(activeSession()!, true);
     await flushAllWrites();
     expect(liveMirror().current!.i2s.mckEnabled).toBe(true);
+  });
+
+  test('setI2sClockMode success patches draft.inputConfig.i2sClockMode', async () => {
+    setI2sClockMode(activeSession()!, 1);
+    await flushAllWrites();
+    expect(liveMirror().current!.inputConfig.i2sClockMode).toBe(1);
+  });
+
+  test('setI2sClockPinMode success patches draft.i2s.clockPinMode', async () => {
+    setI2sClockPinMode(activeSession()!, 1);
+    await flushAllWrites();
+    expect(liveMirror().current!.i2s.clockPinMode).toBe(1);
+  });
+
+  test('setI2sBckPinSlave success patches draft.i2s.bckPinSlave', async () => {
+    setI2sBckPinSlave(activeSession()!, 21);
+    await flushAllWrites();
+    expect(liveMirror().current!.i2s.bckPinSlave).toBe(21);
   });
 
   it('requests a non-eager reconcile on a successful config write', async () => {

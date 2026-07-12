@@ -128,6 +128,7 @@ describe('bulkParser — V6 trailing sections', () => {
       i2s: {
         outputSlotTypes: [0, 1, 0, 1],
         bckPin: 26, mckPin: 27, mckEnabled: true, mckMultiplierEncoded: 1,
+        clockPinModeP1: 0, bckPinSlave: 0,
       },
       leveller: {
         enabled: true, speed: 1, lookahead: true,
@@ -251,7 +252,7 @@ describe('bulkParser — V7-V10 tail decode', () => {
     const obj = makeBulkObject({
       formatVersion: 10,
       payloadLength: Wire.BulkSizes.V10,
-      inputConfig: { source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0 },
+      inputConfig: { source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 },
       lgSoundSync: { enabled: true, present: true, volume: 40, muted: false },
       userVolume:  { volumeDb: -6.5, mute: true },
       dacHwMute:   { enabled: true, activeLow: true, pin: 11, holdMs: 20, releaseMs: 50 },
@@ -259,7 +260,7 @@ describe('bulkParser — V7-V10 tail decode', () => {
     const p = parseBulkParams(buildBulkParams(obj));
     expect(p.formatVersion).toBe(10);
     expect(p.payloadLength).toBe(Wire.BulkSizes.V10);
-    expect(p.inputConfig).toEqual({ source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0 });
+    expect(p.inputConfig).toEqual({ source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 });
     expect(p.lgSoundSync).toEqual({ enabled: true, present: true, volume: 40, muted: false });
     expect(p.userVolume.volumeDb).toBeCloseTo(-6.5, 4);
     expect(p.userVolume.mute).toBe(true);
@@ -270,7 +271,7 @@ describe('bulkParser — V7-V10 tail decode', () => {
     const p = parseBulkParams(makeBulk({
       formatVersion: 6, payloadLength: Wire.BulkSizes.V6Full,
     }));
-    expect(p.inputConfig).toEqual({ source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0 });
+    expect(p.inputConfig).toEqual({ source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 });
     expect(p.lgSoundSync.enabled).toBe(false);
     expect(p.userVolume.mute).toBe(false);
     expect(p.dacHwMute.pin).toBe(11);
@@ -293,12 +294,12 @@ describe('bulkParser — V7-V10 tail decode', () => {
 describe('buildBulkParams — version-aware', () => {
   it('emits V10 (2960 B) for a V10 snapshot, preserving the tail', () => {
     const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    const v10 = { ...base, inputConfig: { source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0 }, userVolume: { volumeDb: -3, mute: true } };
+    const v10 = { ...base, inputConfig: { source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 }, userVolume: { volumeDb: -3, mute: true } };
     const bytes = buildBulkParams(v10);
     expect(bytes.byteLength).toBe(Wire.BulkSizes.V10);
     const p = parseBulkParams(bytes);
     expect(p.formatVersion).toBe(10);
-    expect(p.inputConfig).toEqual({ source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0 });
+    expect(p.inputConfig).toEqual({ source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 });
     expect(p.userVolume.mute).toBe(true);
   });
 
