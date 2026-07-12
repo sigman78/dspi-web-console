@@ -138,6 +138,9 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
       itd: bulk.crossfeed.itd,
       freq: bulk.crossfeed.freq,
       feedDb: bulk.crossfeed.feedDb,
+      // Output-pair mask comes from the V20 bulk section; the parser defaults
+      // it to 0x01 (legacy stereo) on pre-V20 packets, so this is always populated.
+      outputPairMask: bulk.crossfeed.outputPairMask,
     },
     // Floor sections -- bulkParser always populates these (defaults when the
     // wire omits them), so the domain carries them unconditionally.

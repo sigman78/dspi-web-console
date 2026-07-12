@@ -78,6 +78,7 @@ function routeDiffers(a: RouteModel, b: RouteModel): boolean {
 
 function loudnessDiffers(a: Loudness, b: Loudness): boolean {
   return a.enabled !== b.enabled
+      || a.outputMask !== b.outputMask
       || neq(a.refSpl,       b.refSpl,       DIFF_TOLERANCE.db)
       || neq(a.intensityPct, b.intensityPct, DIFF_TOLERANCE.gain);
 }
@@ -86,6 +87,7 @@ function crossfeedDiffers(a: Crossfeed, b: Crossfeed): boolean {
   return a.enabled !== b.enabled
       || a.preset  !== b.preset
       || a.itd     !== b.itd
+      || a.outputPairMask !== b.outputPairMask
       || neq(a.freq,   b.freq,   DIFF_TOLERANCE.freq)
       || neq(a.feedDb, b.feedDb, DIFF_TOLERANCE.db);
 }
@@ -94,6 +96,8 @@ function levellerDiffers(a: Leveller, b: Leveller): boolean {
   return a.enabled   !== b.enabled
       || a.speed     !== b.speed
       || a.lookahead !== b.lookahead
+      || a.detectorMask !== b.detectorMask
+      || a.applyMask    !== b.applyMask
       || neq(a.amount,    b.amount,    DIFF_TOLERANCE.gain)
       || neq(a.maxGainDb, b.maxGainDb, DIFF_TOLERANCE.db)
       || neq(a.gateDb,    b.gateDb,    DIFF_TOLERANCE.db);

@@ -81,6 +81,17 @@ export const GlobalParams = struct({
   loudnessIntensityPct: f32,
 });
 
+// Section 2, V19 shape: the reserved pad becomes the per-output loudness mask.
+// Bit k = loudness processes output channel k. Same 16-byte size as GlobalParams.
+export const GlobalParams19 = struct({
+  preampDb:             f32,
+  bypass:               bool8,
+  loudnessEnabled:      bool8,
+  loudnessOutputMask:   u16,
+  loudnessRefSpl:       f32,
+  loudnessIntensityPct: f32,
+});
+
 // Section 3: crossfeed (16 B)
 export const CrossfeedParams = struct({
   enabled:    bool8,
@@ -90,6 +101,19 @@ export const CrossfeedParams = struct({
   freq:       f32,
   feedDb:     f32,
   _reserved2: reserved(4),
+});
+
+// Section 3, V20 shape: the reserved byte becomes the output-pair mask. Bit p =
+// crossfeed runs on output pair p (outputs 2p/2p+1); the mono PDM sub is
+// excluded. Same 16-byte size as CrossfeedParams.
+export const CrossfeedParams20 = struct({
+  enabled:         bool8,
+  preset:          u8,
+  itd:             bool8,
+  outputPairMask:  u8,
+  freq:            f32,
+  feedDb:          f32,
+  _reserved2:      reserved(4),
 });
 
 // Section 4: legacy gain/mute (16 B, ignored on read; zero on write)
@@ -625,14 +649,22 @@ export const BULK_SIZE_V16 =
 export const BULK_SIZE_V17 = BULK_SIZE_V16 + sizeOf(AdatConfig);                                  // 5872
 export const BULK_SIZE_V18 = BULK_SIZE_V17 + sizeOf(LevellerConfig18) - sizeOf(LevellerConfig);   // 5876
 
+// V19/V20 claim reserved bytes already inside the V18 layout (loudness output
+// mask in GlobalParams, crossfeed output-pair mask in CrossfeedParams) --
+// total packet size is unchanged from V18.
+export const BULK_SIZE_V19 = BULK_SIZE_V18;
+export const BULK_SIZE_V20 = BULK_SIZE_V18;
+
 // Newest wire version the console knows how to decode and write.
-export const MAX_WIRE_VERSION = 18;
+export const MAX_WIRE_VERSION = 20;
 
 // Packet size to allocate/write for a given target wire version (clamped to
-// the V6 floor and the V18 ceiling). Versions 11..15 were in-development
+// the V6 floor and the V20 ceiling). Versions 11..15 were in-development
 // intermediates the console never supported; they collapse to the V10 size
 // (writes to such devices are rejected at connect anyway).
 export function bulkSizeForVersion(v: number): number {
+  if (v >= 20) return BULK_SIZE_V20;
+  if (v >= 19) return BULK_SIZE_V19;
   if (v >= 18) return BULK_SIZE_V18;
   if (v >= 17) return BULK_SIZE_V17;
   if (v >= 16) return BULK_SIZE_V16;
@@ -646,10 +678,10 @@ export function bulkSizeForVersion(v: number): number {
 export const BulkLimits = {
   MinPacketSize:  BulkSizes.V2,
   // Size we WRITE: version-aware buildBulkParams emits at the device's own wire
-  // version, up to V18. This is the largest buffer it may allocate.
-  MaxRequestSize: BULK_SIZE_V18,
-  // Size we READ: the largest packet we tolerate receiving (V18).
-  MaxReadSize:    BULK_SIZE_V18,  // 5876
+  // version, up to V20. This is the largest buffer it may allocate.
+  MaxRequestSize: BULK_SIZE_V20,
+  // Size we READ: the largest packet we tolerate receiving (V20).
+  MaxReadSize:    BULK_SIZE_V20,  // 5876
   // WinUSB caps a control transfer's data stage at 4 KB; the largest single
   // EP0 transfer any host backend can rely on. Above this, DspDevice chunks
   // via 0xA2/0xA3 (fw 1.1.5+).
@@ -674,6 +706,10 @@ export interface BulkLayout {
   adat: boolean;
   // V18: leveller detector/apply channel masks (interior section grow).
   levellerMasks: boolean;
+  // V19: per-output loudness mask (GlobalParams reserved-byte claim).
+  loudnessMask: boolean;
+  // V20: crossfeed output-pair mask (CrossfeedParams reserved-byte claim).
+  crossfeedPairMask: boolean;
 }
 
 // Determine which optional sections are present based on the header.
@@ -692,9 +728,11 @@ export function bulkLayout(h: { formatVersion: number; payloadLength: number }):
     lgSoundSync:  v >= 8  && len >= BulkSizes.V8,
     userVolume:   v >= 9  && len >= BulkSizes.V9,
     dacHwMute:    v >= 10 && len >= BulkSizes.V10,
-    crossover:     v >= 16 && len >= BULK_SIZE_V16,
-    adat:          v >= 17 && len >= BULK_SIZE_V17,
-    levellerMasks: v >= 18 && len >= BULK_SIZE_V18,
+    crossover:         v >= 16 && len >= BULK_SIZE_V16,
+    adat:              v >= 17 && len >= BULK_SIZE_V17,
+    levellerMasks:     v >= 18 && len >= BULK_SIZE_V18,
+    loudnessMask:      v >= 19 && len >= BULK_SIZE_V19,
+    crossfeedPairMask: v >= 20 && len >= BULK_SIZE_V20,
   };
 }
 

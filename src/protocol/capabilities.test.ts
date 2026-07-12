@@ -40,6 +40,12 @@ describe('deriveCapabilities — support classification', () => {
       expect(c.support).toBe('unsupported');
     }
   });
+
+  it('classifies V19/V20 as supported; V21 reports future', () => {
+    expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 19, payloadLength: Wire.BULK_SIZE_V19, platformId: 1 }).support).toBe('supported');
+    expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 20, payloadLength: Wire.BULK_SIZE_V20, platformId: 1 }).support).toBe('supported');
+    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 21, payloadLength: Wire.BULK_SIZE_V20, platformId: 1 }).support).toBe('future');
+  });
 });
 
 describe('deriveCapabilities — V16 feature flags', () => {
@@ -91,6 +97,21 @@ describe('deriveCapabilities — V16 feature flags', () => {
     expect(at(16, Wire.BULK_SIZE_V16)).toBe(false);
     expect(at(17, Wire.BULK_SIZE_V17)).toBe(false);   // 1.1.5-beta3
     expect(at(18, Wire.BULK_SIZE_V18)).toBe(true);
+  });
+
+  it('gates the loudness output mask on wire V19 (off through V18, on for V19+)', () => {
+    const at = (v: number) =>
+      deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: v, payloadLength: Wire.BULK_SIZE_V19, platformId: 1 }).features.loudnessOutputMask;
+    expect(at(18)).toBe(false);
+    expect(at(19)).toBe(true);
+    expect(at(20)).toBe(true);
+  });
+
+  it('gates the crossfeed output-pair mask on wire V20 (off through V19, on for V20)', () => {
+    const at = (v: number) =>
+      deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: v, payloadLength: Wire.BULK_SIZE_V20, platformId: 1 }).features.crossfeedPairMask;
+    expect(at(19)).toBe(false);
+    expect(at(20)).toBe(true);
   });
 });
 

@@ -53,6 +53,9 @@ export interface WireCrossfeed {
   itd: boolean;
   freq: number;
   feedDb: number;
+  // Output-pair mask (fw V20+): bit p = output pair p. Default 0x01 (pair 1
+  // only) on pre-V20 packets -- matches firmware's legacy stereo behaviour.
+  outputPairMask: number;
 }
 
 export interface WireLeveller {
@@ -156,8 +159,36 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
     maxBands:   h.maxBands,
   });
 
-  const g  = Wire.GlobalParams.read(r);
-  const cf = Wire.CrossfeedParams.read(r);
+  // Sections 2/3 are required (always present, fixed position); only the
+  // codec variant used to decode them depends on the wire version -- both
+  // variants are the same 16-byte size, so stream position is unaffected.
+  const g = layout.loudnessMask
+    ? (() => {
+        const w = Wire.GlobalParams19.read(r);
+        return {
+          preampDb: w.preampDb, bypass: w.bypass, loudnessEnabled: w.loudnessEnabled,
+          loudnessRefSpl: w.loudnessRefSpl, loudnessIntensityPct: w.loudnessIntensityPct,
+          loudnessOutputMask: w.loudnessOutputMask,
+        };
+      })()
+    : (() => {
+        const w = Wire.GlobalParams.read(r);
+        return {
+          preampDb: w.preampDb, bypass: w.bypass, loudnessEnabled: w.loudnessEnabled,
+          loudnessRefSpl: w.loudnessRefSpl, loudnessIntensityPct: w.loudnessIntensityPct,
+          loudnessOutputMask: 0xFFFF,
+        };
+      })();
+
+  const cf = layout.crossfeedPairMask
+    ? (() => {
+        const w = Wire.CrossfeedParams20.read(r);
+        return { enabled: w.enabled, preset: w.preset, itd: w.itd, freq: w.freq, feedDb: w.feedDb, outputPairMask: w.outputPairMask };
+      })()
+    : (() => {
+        const w = Wire.CrossfeedParams.read(r);
+        return { enabled: w.enabled, preset: w.preset, itd: w.itd, freq: w.freq, feedDb: w.feedDb, outputPairMask: 0x01 };
+      })();
 
   Wire.LegacyChannels.read(r);  // 16 B reserved block, ignored
 
@@ -284,10 +315,11 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
       enabled:      g.loudnessEnabled,
       refSpl:       g.loudnessRefSpl,
       intensityPct: g.loudnessIntensityPct,
+      outputMask:   g.loudnessOutputMask,
     },
     crossfeed: {
       enabled: cf.enabled, preset: cf.preset, itd: cf.itd,
-      freq: cf.freq, feedDb: cf.feedDb,
+      freq: cf.freq, feedDb: cf.feedDb, outputPairMask: cf.outputPairMask,
     },
 
     delaysMs,
@@ -339,8 +371,8 @@ export function defaultBulkParams(opts: {
     bypass: false,
     preampDb: 0,
 
-    loudness:  { enabled: false, refSpl: 85, intensityPct: 0 },
-    crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5 },
+    loudness:  { enabled: false, refSpl: 85, intensityPct: 0, outputMask: 0xFFFF },
+    crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5, outputPairMask: 0x01 },
 
     delaysMs: Array.from({ length: Wire.Const16.NUM_CHANNELS }, () => 0),
 
@@ -405,21 +437,43 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
     payloadLength: size,
   });
 
-  Wire.GlobalParams.write(w, {
-    preampDb:             bulk.preampDb,
-    bypass:               bulk.bypass,
-    loudnessEnabled:      bulk.loudness.enabled,
-    loudnessRefSpl:       bulk.loudness.refSpl,
-    loudnessIntensityPct: bulk.loudness.intensityPct,
-  });
+  if (writeVersion >= 19) {
+    Wire.GlobalParams19.write(w, {
+      preampDb:             bulk.preampDb,
+      bypass:               bulk.bypass,
+      loudnessEnabled:      bulk.loudness.enabled,
+      loudnessOutputMask:   bulk.loudness.outputMask,
+      loudnessRefSpl:       bulk.loudness.refSpl,
+      loudnessIntensityPct: bulk.loudness.intensityPct,
+    });
+  } else {
+    Wire.GlobalParams.write(w, {
+      preampDb:             bulk.preampDb,
+      bypass:               bulk.bypass,
+      loudnessEnabled:      bulk.loudness.enabled,
+      loudnessRefSpl:       bulk.loudness.refSpl,
+      loudnessIntensityPct: bulk.loudness.intensityPct,
+    });
+  }
 
-  Wire.CrossfeedParams.write(w, {
-    enabled: bulk.crossfeed.enabled,
-    preset:  bulk.crossfeed.preset,
-    itd:     bulk.crossfeed.itd,
-    freq:    bulk.crossfeed.freq,
-    feedDb:  bulk.crossfeed.feedDb,
-  });
+  if (writeVersion >= 20) {
+    Wire.CrossfeedParams20.write(w, {
+      enabled: bulk.crossfeed.enabled,
+      preset:  bulk.crossfeed.preset,
+      itd:     bulk.crossfeed.itd,
+      outputPairMask: bulk.crossfeed.outputPairMask,
+      freq:    bulk.crossfeed.freq,
+      feedDb:  bulk.crossfeed.feedDb,
+    });
+  } else {
+    Wire.CrossfeedParams.write(w, {
+      enabled: bulk.crossfeed.enabled,
+      preset:  bulk.crossfeed.preset,
+      itd:     bulk.crossfeed.itd,
+      freq:    bulk.crossfeed.freq,
+      feedDb:  bulk.crossfeed.feedDb,
+    });
+  }
 
   Wire.LegacyChannels.write(w, undefined);
   for (let i = 0; i < dims.numCh; i++) Codec.f32.write(w, bulk.delaysMs[i] ?? 0);

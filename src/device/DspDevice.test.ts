@@ -932,6 +932,26 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     expect(await d.getLevellerMasks()).toEqual({ detector: 0xFF, apply: 0x80 });
   });
 
+  test('loudness output mask round-trips and masks to u16', async () => {
+    const d = await v10();
+    expect(await d.getLoudnessOutputMask()).toBe(0xFFFF);
+    await d.setLoudnessOutputMask(0x00F0);
+    expect(await d.getLoudnessOutputMask()).toBe(0x00F0);
+    // Values above a u16 are truncated.
+    await d.setLoudnessOutputMask(0x1FFFF);
+    expect(await d.getLoudnessOutputMask()).toBe(0xFFFF);
+  });
+
+  test('crossfeed output-pair mask round-trips and masks to u8', async () => {
+    const d = await v10();
+    expect(await d.getCrossfeedOutputPairs()).toBe(0x01);
+    await d.setCrossfeedOutputPairs(0x0D);
+    expect(await d.getCrossfeedOutputPairs()).toBe(0x0D);
+    // Values above a byte are truncated.
+    await d.setCrossfeedOutputPairs(0x1FF);
+    expect(await d.getCrossfeedOutputPairs()).toBe(0xFF);
+  });
+
   test('getSpdifRxStatus narrows state + inputSource on V10', async () => {
     const d = await v10();
     await d.setInputSource(AudioInputSource.Spdif);
@@ -1062,5 +1082,40 @@ describe('DspDevice — V18 bulk integration', () => {
     const snap = await d.getSnapshot();
     expect(snap.leveller.detectorMask).toBe(0x03);
     expect(snap.leveller.applyMask).toBe(0x0C);
+  });
+});
+
+describe('DspDevice — V19/V20 bulk integration', () => {
+  const v19 = () => DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 19 }));
+  const v20 = () => DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 20 }));
+
+  test('reads a full-size V19 packet; loudness mask defaults all-on, crossfeed pair mask defaults to pair 1', async () => {
+    const d = await v19();
+    const bulk = await d.getAllParams();
+    expect(bulk.formatVersion).toBe(19);
+    expect(bulk.payloadLength).toBe(Wire.BULK_SIZE_V19);
+    expect(bulk.loudness.outputMask).toBe(0xFFFF);
+    expect(bulk.crossfeed.outputPairMask).toBe(0x01);
+  });
+
+  test('setLoudnessOutputMask flows through the synthesized bulk into the snapshot', async () => {
+    const d = await v19();
+    await d.setLoudnessOutputMask(0x00F0);
+    const snap = await d.getSnapshot();
+    expect(snap.loudness.outputMask).toBe(0x00F0);
+  });
+
+  test('reads a full-size V20 packet at the same size as V18/V19', async () => {
+    const d = await v20();
+    const bulk = await d.getAllParams();
+    expect(bulk.formatVersion).toBe(20);
+    expect(bulk.payloadLength).toBe(Wire.BULK_SIZE_V20);
+  });
+
+  test('setCrossfeedOutputPairs flows through the synthesized bulk into the snapshot', async () => {
+    const d = await v20();
+    await d.setCrossfeedOutputPairs(0x0D);
+    const snap = await d.getSnapshot();
+    expect(snap.crossfeed.outputPairMask).toBe(0x0D);
   });
 });

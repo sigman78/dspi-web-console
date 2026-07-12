@@ -29,21 +29,21 @@ describe('bulkParser — header + global', () => {
   it('parses global flags + preamp', () => {
     const buf = makeBulk({
       bypass: true, preampDb: -3.5,
-      loudness: { enabled: true, refSpl: 75, intensityPct: 0.5 },
+      loudness: { enabled: true, refSpl: 75, intensityPct: 0.5, outputMask: 0xFFFF },
     });
     const p = parseBulkParams(buf);
     expect(p.bypass).toBe(true);
     expect(p.preampDb).toBeCloseTo(-3.5, 5);
-    expect(p.loudness).toEqual({ enabled: true, refSpl: 75, intensityPct: 0.5 });
+    expect(p.loudness).toEqual({ enabled: true, refSpl: 75, intensityPct: 0.5, outputMask: 0xFFFF });
   });
 
   it('parses crossfeed', () => {
     const buf = makeBulk({
-      crossfeed: { enabled: true, preset: 2, itd: true, freq: 700, feedDb: -8 },
+      crossfeed: { enabled: true, preset: 2, itd: true, freq: 700, feedDb: -8, outputPairMask: 0x01 },
     });
     const p = parseBulkParams(buf);
     expect(p.crossfeed).toEqual({
-      enabled: true, preset: 2, itd: true, freq: 700, feedDb: -8,
+      enabled: true, preset: 2, itd: true, freq: 700, feedDb: -8, outputPairMask: 0x01,
     });
   });
 });
