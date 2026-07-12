@@ -9,20 +9,21 @@
 import * as Wire from './wireTypes';
 import { ChannelFamily } from '@/domain';
 
-// Support window: V10 (released fw 1.1.4) and V16-V20 (fw 1.1.5, unified
+// Support window: V10 (released fw 1.1.4) and V16-V21 (fw 1.1.5, unified
 // channel model; V17 adds ADAT config, V18 adds leveller channel masks, V19
-// adds the per-output loudness mask, V20 adds the crossfeed output-pair mask).
+// adds the per-output loudness mask, V20 adds the crossfeed output-pair mask,
+// V21 adds I2S slave-clock mode).
 // Wire versions 11..15 were in-development intermediates with shifting
 // layouts the console never shipped against -- rejected like pre-V10 firmware.
 export const MIN_SUPPORTED_WIRE = 10;
-export const MAX_KNOWN_WIRE = 20;
-const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16, 17, 18, 19, 20];
+export const MAX_KNOWN_WIRE = 21;
+const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16, 17, 18, 19, 20, 21];
 
 // UI-facing description of the support window (device-panel tooltips). Keep
 // in step with SUPPORTED_WIRE_VERSIONS and the fw releases that carry them.
 export const SUPPORT_WINDOW = {
   fw: '1.1.4 and 1.1.5',
-  wire: 'V10 and V16–V20',
+  wire: 'V10 and V16–V21',
 } as const;
 
 export interface FirmwareVersion {
@@ -68,6 +69,9 @@ export interface DeviceFeatures {
   // Crossfeed output-pair mask (SetCrossfeedOutputs 0xFC + CrossfeedParams20).
   // Wire V20 only -- earlier firmware has no pair-mask field to write to.
   readonly crossfeedPairMask: boolean;
+  // I2S slave-clock mode (SetI2sClockMode 0x88 + InputConfig21's clock-mode
+  // byte). Wire V21 only -- earlier firmware has no clock-role field.
+  readonly i2sSlaveClock: boolean;
 }
 
 export interface DeviceCapabilities {
@@ -81,7 +85,7 @@ export interface DeviceCapabilities {
 
   // Support classification, keyed on the observed wire version:
   //   unsupported -- below the V10 floor, or an 11..15 in-dev intermediate.
-  //   supported   -- V10 (1.1.4) or V16-V20 (1.1.5).
+  //   supported   -- V10 (1.1.4) or V16-V21 (1.1.5).
   //   future      -- newer than the console knows; read known sections only.
   readonly support: 'unsupported' | 'supported' | 'future';
 
@@ -148,6 +152,7 @@ export function deriveCapabilities(input: {
       levellerMasks:     wireVersion >= 18,
       loudnessOutputMask: wireVersion >= 19,
       crossfeedPairMask:  wireVersion >= 20,
+      i2sSlaveClock:      wireVersion >= 21,
     },
     spdifInputCount: multiSpdifInputs ? 3 : 1,
   };

@@ -240,6 +240,13 @@ describe('diffSnapshots — 1.1.4 sections', () => {
       { kind: 'spdifExt', value: { spdifRxPinExt: [16, 0], spdifExtEnabled: [true, false] } },
     ]);
   });
+
+  it('emits inputConfig (not spdifRxPin/spdifExt) on an i2sClockMode-only change', () => {
+    const a = makeV10();
+    const b = structuredClone(a);
+    b.inputConfig = { ...b.inputConfig!, i2sClockMode: b.inputConfig!.i2sClockMode === 1 ? 0 : 1 };
+    expect(diffSnapshots(a, b)).toEqual([{ kind: 'inputConfig', value: b.inputConfig }]);
+  });
 });
 
 describe('diffSnapshots — i2s + output pins', () => {
@@ -259,6 +266,20 @@ describe('diffSnapshots — i2s + output pins', () => {
     const a = makeSnapshot();
     const b = structuredClone(a);
     b.i2s = { ...b.i2s, outputSlotTypes: [0, 1, 0, 0] };
+    expect(diffSnapshots(a, b)).toEqual([{ kind: 'i2s', value: b.i2s }]);
+  });
+
+  it('emits i2s on a clockPinMode change', () => {
+    const a = makeSnapshot();
+    const b = structuredClone(a);
+    b.i2s = { ...b.i2s, clockPinMode: b.i2s.clockPinMode === 1 ? 0 : 1 };
+    expect(diffSnapshots(a, b)).toEqual([{ kind: 'i2s', value: b.i2s }]);
+  });
+
+  it('emits i2s on a bckPinSlave change', () => {
+    const a = makeSnapshot();
+    const b = structuredClone(a);
+    b.i2s = { ...b.i2s, bckPinSlave: 26 };
     expect(diffSnapshots(a, b)).toEqual([{ kind: 'i2s', value: b.i2s }]);
   });
 

@@ -423,6 +423,75 @@ describe('MockTransport — loudness/crossfeed output masks (V19/V20)', () => {
   });
 });
 
+describe('MockTransport — I2S slave clock (V21)', () => {
+  async function v21Mock(): Promise<MockTransport> {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 21, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    await t.open();
+    return t;
+  }
+
+  it('GetI2sClockMode defaults to master (0); SetI2sClockMode round-trips to slave (1)', async () => {
+    const t = await v21Mock();
+    expect(Codec.decode(Codec.u8, await t.ctrlIn(WireCmd.GetI2sClockMode.code, 0, 1))).toBe(0);
+    await t.ctrlOut(WireCmd.SetI2sClockMode.code, 0, Codec.encode(Codec.u8, 1));
+    expect(Codec.decode(Codec.u8, await t.ctrlIn(WireCmd.GetI2sClockMode.code, 0, 1))).toBe(1);
+  });
+
+  it('slave status transitions: INACTIVE by default, LOCKED once slave mode + I2S input are both set', async () => {
+    const t = await v21Mock();
+    const idle = Codec.decode(Wire.I2sSlaveStatus, await t.ctrlIn(WireCmd.GetI2sSlaveStatus.code, 0, 16));
+    expect(idle.state).toBe(0);
+    expect(idle.detectedRate).toBe(0);
+
+    await t.ctrlOut(WireCmd.SetI2sClockMode.code, 0, Codec.encode(Codec.u8, 1));
+    // Slave mode alone (still USB input) stays INACTIVE.
+    const stillIdle = Codec.decode(Wire.I2sSlaveStatus, await t.ctrlIn(WireCmd.GetI2sSlaveStatus.code, 0, 16));
+    expect(stillIdle.state).toBe(0);
+
+    await t.ctrlOut(WireCmd.SetInputSource.code, 0, Codec.encode(Codec.u8, AudioInputSource.I2s));
+    const locked = Codec.decode(Wire.I2sSlaveStatus, await t.ctrlIn(WireCmd.GetI2sSlaveStatus.code, 0, 16));
+    expect(locked.state).toBe(3);
+    expect(locked.detectedRate).toBe(48000);
+    expect(locked.lockCount).toBeGreaterThan(0);
+  });
+
+  it('GetI2sClockPinMode defaults to unified (0); SetI2sClockPinMode round-trips to split (1)', async () => {
+    const t = await v21Mock();
+    expect((await t.ctrlIn(WireCmd.GetI2sClockPinMode.code, 0, 1))[0]).toBe(0);
+    expect((await t.ctrlIn(WireCmd.SetI2sClockPinMode.code, 1, 1))[0]).toBe(PinConfigResult.Success);
+    expect((await t.ctrlIn(WireCmd.GetI2sClockPinMode.code, 0, 1))[0]).toBe(1);
+  });
+
+  it('SetI2sClockPinMode rejects a value outside 0/1 with InvalidParam', async () => {
+    const t = await v21Mock();
+    expect((await t.ctrlIn(WireCmd.SetI2sClockPinMode.code, 2, 1))[0]).toBe(PinConfigResult.InvalidParam);
+  });
+
+  it('role-indexed BCK pin: role 1 (slave) is independent of role 0 (master)', async () => {
+    const t = await v21Mock();
+    const masterWValue = 16;                    // role 0 -> wValue === pin
+    const slaveWValue = (1 << 8) | 21;           // role 1 -> wValue === (role<<8)|pin
+    expect((await t.ctrlIn(WireCmd.SetI2sBckPin.code, masterWValue, 1))[0]).toBe(PinConfigResult.Success);
+    expect((await t.ctrlIn(WireCmd.SetI2sBckPin.code, slaveWValue, 1))[0]).toBe(PinConfigResult.Success);
+    expect((await t.ctrlIn(WireCmd.GetI2sBckPin.code, 0, 1))[0]).toBe(16);
+    expect((await t.ctrlIn(WireCmd.GetI2sBckPin.code, 1, 1))[0]).toBe(21);
+  });
+
+  it('carries the slave-clock fields in the synthesized V21 bulk packet', async () => {
+    const t = await v21Mock();
+    await t.ctrlOut(WireCmd.SetI2sClockMode.code, 0, Codec.encode(Codec.u8, 1));
+    await t.ctrlIn(WireCmd.SetI2sClockPinMode.code, 1, 1);
+    await t.ctrlIn(WireCmd.SetI2sBckPin.code, (1 << 8) | 21, 1);
+
+    const p = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    expect(p.formatVersion).toBe(21);
+    expect(p.payloadLength).toBe(Wire.BULK_SIZE_V21);
+    expect(p.inputConfig.i2sClockMode).toBe(1);
+    expect(p.i2s.clockPinModeP1).toBe(2);   // split
+    expect(p.i2s.bckPinSlave).toBe(21);
+  });
+});
+
 describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
   async function v18Mock(platform: 'rp2040' | 'rp2350' = 'rp2350', spdifInputsEnabled?: number): Promise<MockTransport> {
     const t = new MockTransport({

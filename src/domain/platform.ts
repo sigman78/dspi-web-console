@@ -16,6 +16,13 @@ export interface I2sConfig {
   mckPin: number;
   mckEnabled: boolean;
   mckMultiplierEncoded: number;
+  // I2S slave-clock pins (fw V21+; decoded from clockPinModeP1, "0 = absent"
+  // wire convention). 0 = unified (legacy: master+slave share one BCK/LRCLK
+  // pair), 1 = split (master drives bckPin, slave listens on bckPinSlave;
+  // LRCLK = BCK+1 in both).
+  clockPinMode: number;
+  // Slave-mode BCK GPIO (LRCLK = +1). 0 = unset.
+  bckPinSlave: number;
 }
 
 // The full per-platform layout and the single source of truth for platform

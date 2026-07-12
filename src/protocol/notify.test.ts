@@ -34,6 +34,17 @@ describe('parseNotifyPacket', () => {
   it('ignores an unknown v2 event id', () => {
     expect(parseNotifyPacket(v2(0x7e, 1))).toEqual({ kind: 'ignored' });
   });
+
+  it('decodes I2S_SLAVE_STATE with its state and rate', () => {
+    // rate 48000 = 0x0000BB80, little-endian.
+    const pkt = v2(NotifyEventId.I2sSlaveState, 3, [3, 0x80, 0xBB, 0x00, 0x00]);
+    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'i2sSlaveState', seq: 3, state: 3, rateHz: 48000 });
+  });
+
+  it('ignores a truncated I2S_SLAVE_STATE packet (below the 9-byte minimum)', () => {
+    const pkt = v2(NotifyEventId.I2sSlaveState, 3, [3, 0x80, 0xBB, 0x00]);   // 8 bytes total
+    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'ignored' });
+  });
 });
 
 describe('isReconcileTrigger', () => {

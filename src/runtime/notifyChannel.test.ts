@@ -348,6 +348,20 @@ describe('startNotifyChannel', () => {
     expect(mir.peekReconcile().wanted).toBe(false);
     stop();
   });
+
+  it('an I2S_SLAVE_STATE event lands the state+rate in telemetry directly, no reconcile', async () => {
+    const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
+    // state=LOCKED(3), rate=48000 LE
+    mock.pushNotify(new Uint8Array([2, 0x09, 0, 1, 3, 0x80, 0xBB, 0x00, 0x00]));
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live i2sSlaveState
+    expect(session.telemetry.i2sSlaveStatus).toMatchObject({ state: 3, detectedRateHz: 48000 });
+    expect(mir.peekReconcile().wanted).toBe(false);
+    stop();
+  });
 });
 
 // A device with no host connected accumulates notify events in its ring

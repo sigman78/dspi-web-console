@@ -115,6 +115,7 @@ function diffInputConfig(a: InputConfig, b: InputConfig, out: SnapshotChange[]):
   const i2sChanged =
     a.i2sInputRateHz !== b.i2sInputRateHz ||
     a.i2sInputChannels !== b.i2sInputChannels ||
+    a.i2sClockMode !== b.i2sClockMode ||
     arrayDiffers(a.i2sRxPins, b.i2sRxPins);
   if (a.source !== b.source || i2sChanged) {
     out.push({ kind: 'inputConfig', value: b });
@@ -143,6 +144,8 @@ function i2sDiffers(a: I2sConfig, b: I2sConfig): boolean {
       || a.mckPin !== b.mckPin
       || a.mckEnabled !== b.mckEnabled
       || a.mckMultiplierEncoded !== b.mckMultiplierEncoded
+      || a.clockPinMode !== b.clockPinMode
+      || a.bckPinSlave !== b.bckPinSlave
       || a.outputSlotTypes.some((v, i) => v !== b.outputSlotTypes[i]);
 }
 

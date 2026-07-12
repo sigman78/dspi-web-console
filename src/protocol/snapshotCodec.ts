@@ -56,6 +56,11 @@ function decodeSpdifExtEnabled(p1: number): boolean[] {
   return [(mask & 1) !== 0, (mask & 2) !== 0];
 }
 
+// p1 = clock_pin_mode + 1 (0 = absent -> unified; else value - 1: 0 = unified, 1 = split).
+function decodeClockPinMode(p1: number): number {
+  return p1 === 0 ? 0 : p1 - 1;
+}
+
 function narrowFilter(filter: { type: number; bypass: boolean; frequency: number; q: number; gain: number }): domain.FilterParams {
   return {
     type: narrowFilterType(filter.type),
@@ -156,7 +161,18 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
       detectorMask: bulk.leveller.detectorMask,
       applyMask: bulk.leveller.applyMask,
     },
-    i2s: bulk.i2s,
+    i2s: {
+      outputSlotTypes: bulk.i2s.outputSlotTypes,
+      bckPin: bulk.i2s.bckPin,
+      mckPin: bulk.i2s.mckPin,
+      mckEnabled: bulk.i2s.mckEnabled,
+      mckMultiplierEncoded: bulk.i2s.mckMultiplierEncoded,
+      // clockPinMode comes from the V16-gen I2S section's clockPinModeP1 byte;
+      // the parser defaults it to 0 (absent) on packets that predate the
+      // slave-clock feature, so this is always populated.
+      clockPinMode: decodeClockPinMode(bulk.i2s.clockPinModeP1),
+      bckPinSlave: bulk.i2s.bckPinSlave,
+    },
     outputPins: bulk.pins.slice(0, bulk.numPinOutputs),
     // V7-V10 sections -- same unconditional carry: the parser substitutes
     // factory defaults when a packet omits them (test-only under the V10 floor).
@@ -168,6 +184,9 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
       i2sInputChannels: bulk.inputConfig.i2sInputChannels,
       spdifRxPinExt: [...bulk.inputConfig.spdifRxPinExt],
       spdifExtEnabled: decodeSpdifExtEnabled(bulk.inputConfig.spdifRxEnabledExtP1),
+      // I2S clock role comes from the V21 bulk section; the parser defaults
+      // it to 0 (master) on pre-V21 packets, so this is always populated.
+      i2sClockMode: bulk.inputConfig.i2sClockMode,
     },
     lgSoundSync: { enabled: bulk.lgSoundSync.enabled, present: bulk.lgSoundSync.present, volume: bulk.lgSoundSync.volume, muted: bulk.lgSoundSync.muted },
     userVolume:  { volumeDb: bulk.userVolume.volumeDb, mute: bulk.userVolume.mute },

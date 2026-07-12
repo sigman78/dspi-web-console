@@ -131,6 +131,9 @@ export const WireCmd = {
   GetOutputPin:         { code: 0x7D } satisfies RawCmd,
   SetOutputType:        { code: 0xC0 } satisfies RawCmd,
   GetOutputType:        { code: 0xC1 } satisfies RawCmd,
+  // Role-indexed (fw V21+): SET wValue = (role<<8)|GPIO, GET wValue = role.
+  // role 0 = master/unified pair (legacy encoding, byte-identical to pre-V21);
+  // role 1 = slave pair. See DspDevice.setI2sBckPin/getI2sBckPin.
   SetI2sBckPin:         { code: 0xC2 } satisfies RawCmd,
   GetI2sBckPin:         { code: 0xC3 } satisfies RawCmd,
   SetMckEnable:         { code: 0xC4 } satisfies RawCmd,
@@ -248,6 +251,19 @@ export const WireCmd = {
   // action-IN with the count in wValue, 1-byte PinConfigResult.
   SetI2sInputChannels:   { code: 0xF3 } satisfies RawCmd,
   GetI2sInputChannels:   { code: 0xF4, codec: Codec.u8 } satisfies ReadCmd<number>,
+
+  // --- V21 / fw 1.1.5 I2S slave-clock mode ---
+  // Clock role: payload u8, 0 = master, 1 = slave. Deferred apply -- firmware
+  // applies from the main loop, so GET doesn't reflect a just-sent SET
+  // immediately.
+  SetI2sClockMode:       { code: 0x88, codec: Codec.u8 } satisfies WriteCmd<number>,
+  GetI2sClockMode:       { code: 0x89, codec: Codec.u8 } satisfies ReadCmd<number>,
+  // Live slave-clock lock status (no bulk equivalent).
+  GetI2sSlaveStatus:     { code: 0x8A, codec: Wire.I2sSlaveStatus },
+  // BCK/LRCLK pin-sharing mode: wValue = 0 unified / 1 split, 1-byte
+  // PinConfigResult (same convention as SetI2sBckPin below).
+  SetI2sClockPinMode:    { code: 0xFE } satisfies RawCmd,
+  GetI2sClockPinMode:    { code: 0xFF } satisfies RawCmd,
 
   // --- V16 / fw 1.1.5 external control interfaces (UART + I2C) ---
   // SETs are plain control-OUT with the struct payload; the firmware refuses

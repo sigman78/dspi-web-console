@@ -5,7 +5,7 @@
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { connection } from '@/state';
   import { stageInputSource, stageSpdifRxPin, stageSpdifRxPinExt, stageSpdifInputEnabled, stageInputRate, stageI2sRxPin, stageI2sInputChannels } from '@/runtime';
-  import { AudioInputSource, isSpdifSource, SpdifInputState, availablePinsFor, I2S_INPUT_RATES_HZ, liveCsPinConfigs } from '@/domain';
+  import { AudioInputSource, isSpdifSource, SpdifInputState, I2sSlaveClockState, availablePinsFor, I2S_INPUT_RATES_HZ, liveCsPinConfigs } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -25,6 +25,13 @@
   // Selectable S/PDIF inputs (1 unless the platform has the multi-SPDIF receiver, then 3).
   const spdifInputCount = $derived(s.device.capabilities.spdifInputCount);
   const effRate = $derived(inputConfig ? s.staging.valueOf('inputRate', inputConfig.i2sInputRateHz) : 0);
+  // fw V21+: while the clock role is SLAVE, the external master owns the
+  // rate -- the RATE row goes read-only (auto-detected) instead of the
+  // firmware-applied selector below.
+  const clockMode = $derived(inputConfig ? s.staging.valueOf('i2sClockMode', inputConfig.i2sClockMode) : 0);
+  const slaveStatus = $derived(s.telemetry.i2sSlaveStatus);
+  const showSlaveRate = $derived(Boolean(features.i2sSlaveClock) && clockMode === 1);
+  const slaveRateLocked = $derived(slaveStatus?.state === I2sSlaveClockState.Locked);
   // Configured count (0 = firmware default of 2); pairs 0..activePairs-1 show a pin select.
   const liveChannels = $derived(inputConfig?.i2sInputChannels || 2);
   const i2sChannels = $derived(s.staging.valueOf('i2sChannels', liveChannels));
@@ -213,18 +220,28 @@
     {#if isI2s && features.i2sInput}
       <div class="subhdr">I2S INPUT</div>
       <div class="cfgkvgrid">
-        <KV label="RATE" value={fmtRate(effRate)} />
-        <div class="src-btns">
-          {#each I2S_INPUT_RATES_HZ as hz (hz)}
-            <button
-              class="chip"
-              class:on={effRate === hz}
-              class:staged={s.staging.has('inputRate') && effRate === hz}
-              onclick={() => stageInputRate(s, hz)}
-              disabled={!connected || effRate === hz}
-            >{hz / 1000}k</button>
-          {/each}
-        </div>
+        {#if showSlaveRate}
+          <KV
+            label="RATE"
+            value={slaveRateLocked ? fmtRate(slaveStatus?.detectedRateHz ?? 0) : '—'}
+            tone={slaveRateLocked ? 'ok' : 'off'}
+            title="Slave clock mode: rate follows the external I2S master"
+          />
+          <p class="hint">auto-detected — external master sets the rate</p>
+        {:else}
+          <KV label="RATE" value={fmtRate(effRate)} />
+          <div class="src-btns">
+            {#each I2S_INPUT_RATES_HZ as hz (hz)}
+              <button
+                class="chip"
+                class:on={effRate === hz}
+                class:staged={s.staging.has('inputRate') && effRate === hz}
+                onclick={() => stageInputRate(s, hz)}
+                disabled={!connected || effRate === hz}
+              >{hz / 1000}k</button>
+            {/each}
+          </div>
+        {/if}
         {#if features.multichannelInput}
           <KV label="CHANNELS" value={String(i2sChannels)} />
           <div class="src-btns">

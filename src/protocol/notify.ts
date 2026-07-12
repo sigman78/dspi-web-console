@@ -16,6 +16,7 @@ export const NotifyEventId = {
   PresetLoaded:    0x04,
   InputFormat:     0x05,   // V16+: active input channel count changed
   CsIrLearn:       0x0A,   // V16+ (fw 1.1.5 caps v3): IR learn armed -> done/timeout
+  I2sSlaveState:   0x09,   // V21+: I2S slave-clock lock state changed
 } as const;
 
 export const ParamSource = {
@@ -44,7 +45,10 @@ export type NotifyEvent =
   // Completion of an armed IR learn (section 3.6.1): exactly one push per
   // completed arm, none on cancel. state 2 = done (protocol/code valid), 3 =
   // timeout (protocol/code 0).
-  | { kind: 'csIrLearn';       seq: number; state: number; protocol: number; code: number };
+  | { kind: 'csIrLearn';       seq: number; state: number; protocol: number; code: number }
+  // I2S slave-clock lock state changed (V21+). rateHz is the detected input
+  // rate, 0 until state is LOCKED.
+  | { kind: 'i2sSlaveState';   seq: number; state: number; rateHz: number };
 
 export type ParamChangedEvent = Extract<NotifyEvent, { kind: 'paramChanged' }>;
 
@@ -63,6 +67,9 @@ const ParamChangedPrefix = struct({ offset: u16, size: u16, source: u8, _reserve
 // CsIrLearn(wValue=2) result read (Wire.CsIrLearnResult), reused here since
 // the notify body carries the identical {state, protocol, code} triple.
 const CsIrLearnSuffix = struct({ state: u8, protocol: u8, _reserved: reserved(2), code: u32 });
+
+// I2S_SLAVE_STATE fixed suffix (5 B) after the header: {state, rateHz}.
+const I2sSlaveStateSuffix = struct({ state: u8, rateHz: u32 });
 
 // Value-less events: NotifyEvents are only ever read, so a shared singleton is safe.
 const IDLE: NotifyEvent = { kind: 'idle' };
@@ -95,6 +102,11 @@ export function parseNotifyPacket(bytes: Uint8Array): NotifyEvent {
       if (bytes.length < 12) return IGNORED;
       const p = Codec.decode(CsIrLearnSuffix, bytes.subarray(4));
       return { kind: 'csIrLearn', seq: h.seq, state: p.state, protocol: p.protocol, code: p.code };
+    }
+    case NotifyEventId.I2sSlaveState: {
+      if (bytes.length < 9) return IGNORED;
+      const p = Codec.decode(I2sSlaveStateSuffix, bytes.subarray(4));
+      return { kind: 'i2sSlaveState', seq: h.seq, state: p.state, rateHz: p.rateHz };
     }
     default:
       return IGNORED;

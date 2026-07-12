@@ -13,17 +13,21 @@ import {
   setInputSource, setInputRate, setSpdifRxPin, setSpdifRxPinExt, setSpdifInputEnabled,
   setI2sRxPin, setI2sInputChannels,
   setI2sBckPin, setMckEnabled, setMckPin, setMckMultiplier, setOutputType, setOutputDataPin,
+  setI2sClockMode, setI2sClockPinMode, setI2sBckPinSlave,
 } from './actions';
 
 const ORDER = {
   outputPin: 10,
   bckPin: 12,
-  mck: 14,
+  clockPinMode: 13,   // before bckPinSlave: split mode must exist before its pin is set
+  bckPinSlave: 14,
+  mck: 16,
   spdifRxPin: 20,
   i2sRxPin: 20,
   spdifEnable: 21,   // after spdifRxPin: enable validates against the configured pin
   i2sChannels: 30,
   inputRate: 40,
+  i2sClockMode: 45,   // after pin config, before the source switch below
   inputSource: 50,
 } as const;
 
@@ -39,6 +43,8 @@ function fmtSource(source: Domain.AudioInputSource): string {
   }
 }
 function fmtOutputType(type: number): string { return type === Domain.OutputSlotType.I2s ? 'I2S' : 'SPDIF'; }
+function fmtClockMode(mode: number): string { return mode === 1 ? 'slave' : 'master'; }
+function fmtClockPinMode(mode: number): string { return mode === 1 ? 'split' : 'unified'; }
 
 function stageOrDiscard(s: ReadySession, key: string, live: unknown, next: unknown, build: () => StagedEntry): void {
   if (live === next) { s.staging.discard(key); return; }
@@ -193,6 +199,48 @@ export function stageI2sBckPin(s: ReadySession, pin: number): void {
     order: ORDER.bckPin,
     apply: () => setI2sBckPin(s, pin),
     overlay: (snap) => ({ ...snap, i2s: { ...snap.i2s, bckPin: pin } }),
+  }));
+}
+
+export function stageI2sClockMode(s: ReadySession, mode: number): void {
+  const live = s.mirror.snapshot.inputConfig.i2sClockMode;
+  stageOrDiscard(s, 'i2sClockMode', live, mode, () => ({
+    key: 'i2sClockMode',
+    label: 'I2S clock mode',
+    from: fmtClockMode(live),
+    to: fmtClockMode(mode),
+    value: mode,
+    order: ORDER.i2sClockMode,
+    apply: () => setI2sClockMode(s, mode),
+    overlay: (snap) => ({ ...snap, inputConfig: { ...snap.inputConfig, i2sClockMode: mode } }),
+  }));
+}
+
+export function stageI2sClockPinMode(s: ReadySession, mode: number): void {
+  const live = s.mirror.snapshot.i2s.clockPinMode;
+  stageOrDiscard(s, 'i2sClockPinMode', live, mode, () => ({
+    key: 'i2sClockPinMode',
+    label: 'I2S BCK pin mode',
+    from: fmtClockPinMode(live),
+    to: fmtClockPinMode(mode),
+    value: mode,
+    order: ORDER.clockPinMode,
+    apply: () => setI2sClockPinMode(s, mode),
+    overlay: (snap) => ({ ...snap, i2s: { ...snap.i2s, clockPinMode: mode } }),
+  }));
+}
+
+export function stageI2sBckPinSlave(s: ReadySession, pin: number): void {
+  const live = s.mirror.snapshot.i2s.bckPinSlave;
+  stageOrDiscard(s, 'bckPinSlave', live, pin, () => ({
+    key: 'bckPinSlave',
+    label: 'I2S BCK pin (slave)',
+    from: fmtPin(live),
+    to: fmtPin(pin),
+    value: pin,
+    order: ORDER.bckPinSlave,
+    apply: () => setI2sBckPinSlave(s, pin),
+    overlay: (snap) => ({ ...snap, i2s: { ...snap.i2s, bckPinSlave: pin } }),
   }));
 }
 
