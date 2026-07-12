@@ -540,6 +540,10 @@ export class MockTransport implements DspTransport {
           detector: this.#mockState.leveller!.detectorMask,
           apply: this.#mockState.leveller!.applyMask,
         });
+      case WireCmd.GetLoudnessMask.code:
+        return Codec.encode(Codec.u16, this.#mockState.loudness!.outputMask);
+      case WireCmd.GetCrossfeedOutputs.code:
+        return Codec.encode(Codec.u8, this.#mockState.crossfeed!.outputPairMask);
       case WireCmd.GetInputSource.code:
         return Codec.encode(Codec.u8, this.#mockState.inputConfig.source);
       case WireCmd.GetSpdifRxStatus.code:
@@ -1035,6 +1039,9 @@ export class MockTransport implements DspTransport {
       case WireCmd.SetLoudnessIntensity.code:
         this.#mockState.loudness!.intensityPct = Codec.decode(Codec.f32, data);
         return;
+      case WireCmd.SetLoudnessMask.code:
+        this.#mockState.loudness!.outputMask = Codec.decode(Codec.u16, data);
+        return;
 
       // Crossfeed
       case WireCmd.SetCrossfeedEnabled.code:
@@ -1051,6 +1058,9 @@ export class MockTransport implements DspTransport {
         return;
       case WireCmd.SetCrossfeedFeedDb.code:
         this.#mockState.crossfeed!.feedDb = Codec.decode(Codec.f32, data);
+        return;
+      case WireCmd.SetCrossfeedOutputs.code:
+        this.#mockState.crossfeed!.outputPairMask = Codec.decode(Codec.u8, data);
         return;
 
       // Leveller

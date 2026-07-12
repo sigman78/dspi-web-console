@@ -3,6 +3,7 @@
   import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import MaskChipRow from '@/components/chrome/MaskChipRow.svelte';
   import { connection } from '@/state';
   import {
     setLevellerEnabled, setLevellerSpeed, setLevellerLookahead,
@@ -44,7 +45,11 @@
 
   const detectorMask = $derived(lv?.detectorMask ?? 0xFF);
   const applyMask = $derived(lv?.applyMask ?? 0xFF);
-  const isSet = (mask: number, i: number) => (mask & (1 << i)) !== 0;
+  const channelItems = $derived(
+    shownChannels.map((ch) => ({
+      key: ch.id, index: ch.index, label: String(ch.index + 1), title: ch.name || `Input ${ch.index + 1}`,
+    })),
+  );
 
   // detector/apply bitmasks over input indices; mirror the macOS reference.
   const MASK_PRESETS = [
@@ -62,26 +67,6 @@
     setLevellerLookahead(s, !lv.lookahead);
   }
 </script>
-
-{#snippet maskRow(label: string, mask: number, onToggle: (index: number) => void)}
-  <span class="microlbl">{label}</span>
-  <div class="chips span2">
-    {#each shownChannels as ch (ch.id)}
-      <button
-        type="button"
-        class="chip"
-        class:on={isSet(mask, ch.index)}
-        disabled={!editable}
-        title={ch.name || `Input ${ch.index + 1}`}
-        aria-label={`${label} ${ch.name || `input ${ch.index + 1}`}`}
-        aria-pressed={isSet(mask, ch.index)}
-        onclick={() => { if (editable) onToggle(ch.index); }}
-      >
-        {ch.index + 1}
-      </button>
-    {/each}
-  </div>
-{/snippet}
 
 <Panel code="PR.03" title="LEVELLER">
   {#snippet right()}
@@ -109,8 +94,8 @@
         {/each}
       </div>
 
-      {@render maskRow('DETECTOR', detectorMask, (i: number) => toggleLevellerDetectorChannel(s, i))}
-      {@render maskRow('APPLY', applyMask, (i: number) => toggleLevellerApplyChannel(s, i))}
+      <MaskChipRow label="DETECTOR" items={channelItems} mask={detectorMask} disabled={!editable} onToggle={(i) => toggleLevellerDetectorChannel(s, i)} />
+      <MaskChipRow label="APPLY" items={channelItems} mask={applyMask} disabled={!editable} onToggle={(i) => toggleLevellerApplyChannel(s, i)} />
 
       <div class="rule"></div>
     {/if}
@@ -181,35 +166,6 @@
     gap: 12px;
   }
   .span2 { grid-column: 2 / span 2; }
-
-  .chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-  .chip {
-    min-width: 24px;
-    height: 24px;
-    padding: 0 4px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-dim);
-    background: var(--wash-faint);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .chip:hover:not(:disabled):not(.on) {
-    color: var(--text);
-    background: var(--wash);
-  }
-  .chip.on {
-    color: var(--ok);
-    background: color-mix(in oklab, var(--ok) 12%, transparent);
-    border-color: color-mix(in oklab, var(--ok) 40%, var(--border));
-  }
-  .chip:disabled { cursor: default; opacity: var(--dim-disabled); }
 
   .presets {
     display: flex;

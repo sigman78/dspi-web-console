@@ -5,6 +5,11 @@ export interface Loudness {
   enabled: boolean;
   refSpl: number;
   intensityPct: number;
+  // Per-output mask (fw V19+): bit k selects output channel k. Default all-on
+  // (0xFFFF) matches the firmware factory value and is the effective behaviour
+  // on pre-V19 firmware. Firmware does no zero-to-default remap, so this must
+  // never be sent as 0.
+  outputMask: number;
 }
 
 // Crossfeed preset selector. Presets 0..2 are firmware-fixed curves;
@@ -23,6 +28,11 @@ export interface Crossfeed {
   itd: boolean;
   freq: number;
   feedDb: number;
+  // Output-pair mask (fw V20+): bit p selects output pair p (outputs 2p/2p+1;
+  // the mono PDM sub is not a pair and is excluded). Default 0x01 (pair 1 only)
+  // matches the firmware factory value -- legacy stereo behaviour. Firmware
+  // does no zero-to-default remap, so this must never be sent as 0.
+  outputPairMask: number;
 }
 
 // Leveller speed. Slow/Medium/Fast pick a curve smoothing

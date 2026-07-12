@@ -165,6 +165,9 @@ export const WireCmd = {
   SetLoudnessEnabled:    { code: 0x58, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
   SetLoudnessRefSpl:     { code: 0x5A, codec: Codec.f32 }   satisfies WriteCmd<number>,
   SetLoudnessIntensity:  { code: 0x5C, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  // Per-output loudness mask (V19+): payload = u16 LE, bit k = output channel k.
+  SetLoudnessMask:       { code: 0xFA, codec: Codec.u16 }   satisfies WriteCmd<number>,
+  GetLoudnessMask:       { code: 0xFB, codec: Codec.u16 }   satisfies ReadCmd<number>,
 
   // Crossfeed (V4+) -- firmware feature, deferred. Fields land in firmware order:
   // enable, preset, freq, feed, ITD. Even codes are SET, odd codes are GET.
@@ -173,6 +176,10 @@ export const WireCmd = {
   SetCrossfeedFreq:      { code: 0x62, codec: Codec.f32 }   satisfies WriteCmd<number>,
   SetCrossfeedFeedDb:    { code: 0x64, codec: Codec.f32 }   satisfies WriteCmd<number>,
   SetCrossfeedItd:       { code: 0x66, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
+  // Crossfeed output-pair mask (V20+): payload = u8, bit p = output pair p
+  // (outputs 2p/2p+1; the mono PDM sub is excluded).
+  SetCrossfeedOutputs:   { code: 0xFC, codec: Codec.u8 }    satisfies WriteCmd<number>,
+  GetCrossfeedOutputs:   { code: 0xFD, codec: Codec.u8 }    satisfies ReadCmd<number>,
 
   // Volume Leveller (V4+) -- firmware feature, deferred. Fields land in firmware
   // order: enable, amount, speed, max gain, lookahead, gate.

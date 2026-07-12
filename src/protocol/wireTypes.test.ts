@@ -62,6 +62,9 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(Wire.bulkSizeForVersion(16)).toBe(5864);
     expect(Wire.bulkSizeForVersion(17)).toBe(5872);
     expect(Wire.bulkSizeForVersion(18)).toBe(5876);
+    // V19/V20 claim reserved bytes already inside the V18 layout -- size unchanged.
+    expect(Wire.bulkSizeForVersion(19)).toBe(5876);
+    expect(Wire.bulkSizeForVersion(20)).toBe(5876);
     expect(Wire.bulkSizeForVersion(99)).toBe(5876);
     expect(Wire.bulkSizeForVersion(5)).toBe(2896);
   });

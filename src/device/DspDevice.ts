@@ -751,6 +751,15 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLoudnessIntensity, pct);
   }
 
+  // Per-output loudness mask (fw V19+). Bit k = output channel k.
+  async setLoudnessOutputMask(mask: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetLoudnessMask, mask & 0xFFFF);
+  }
+
+  async getLoudnessOutputMask(): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetLoudnessMask);
+  }
+
   async setCrossfeedEnabled(enabled: boolean): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedEnabled, enabled);
   }
@@ -769,6 +778,16 @@ export class DspDevice {
 
   async setCrossfeedFeedDb(db: number): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedFeedDb, db);
+  }
+
+  // Crossfeed output-pair mask (fw V20+). Bit p = output pair p (outputs
+  // 2p/2p+1; the mono PDM sub is excluded).
+  async setCrossfeedOutputPairs(mask: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedOutputs, mask & 0xFF);
+  }
+
+  async getCrossfeedOutputPairs(): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetCrossfeedOutputs);
   }
 
   async setLevellerEnabled(enabled: boolean): Promise<void> {

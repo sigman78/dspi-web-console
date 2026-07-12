@@ -388,6 +388,41 @@ describe('MockTransport — imaginary I2S multichannel demo mode', () => {
   });
 });
 
+describe('MockTransport — loudness/crossfeed output masks (V19/V20)', () => {
+  async function v20Mock(): Promise<MockTransport> {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 20, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    await t.open();
+    return t;
+  }
+
+  it('GetLoudnessMask/GetCrossfeedOutputs default to 0xFFFF / 0x01', async () => {
+    const t = await v20Mock();
+    expect(Codec.decode(Codec.u16, await t.ctrlIn(WireCmd.GetLoudnessMask.code, 0, 2))).toBe(0xFFFF);
+    expect(Codec.decode(Codec.u8, await t.ctrlIn(WireCmd.GetCrossfeedOutputs.code, 0, 1))).toBe(0x01);
+  });
+
+  it('SetLoudnessMask/SetCrossfeedOutputs round-trip through Get', async () => {
+    const t = await v20Mock();
+    await t.ctrlOut(WireCmd.SetLoudnessMask.code, 0, Codec.encode(Codec.u16, 0x00F0));
+    expect(Codec.decode(Codec.u16, await t.ctrlIn(WireCmd.GetLoudnessMask.code, 0, 2))).toBe(0x00F0);
+
+    await t.ctrlOut(WireCmd.SetCrossfeedOutputs.code, 0, Codec.encode(Codec.u8, 0x0D));
+    expect(Codec.decode(Codec.u8, await t.ctrlIn(WireCmd.GetCrossfeedOutputs.code, 0, 1))).toBe(0x0D);
+  });
+
+  it('carries both masks in the synthesized V20 bulk packet', async () => {
+    const t = await v20Mock();
+    await t.ctrlOut(WireCmd.SetLoudnessMask.code, 0, Codec.encode(Codec.u16, 0x0F0F));
+    await t.ctrlOut(WireCmd.SetCrossfeedOutputs.code, 0, Codec.encode(Codec.u8, 0x03));
+
+    const p = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    expect(p.formatVersion).toBe(20);
+    expect(p.payloadLength).toBe(Wire.BULK_SIZE_V20);
+    expect(p.loudness.outputMask).toBe(0x0F0F);
+    expect(p.crossfeed.outputPairMask).toBe(0x03);
+  });
+});
+
 describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
   async function v18Mock(platform: 'rp2040' | 'rp2350' = 'rp2350', spdifInputsEnabled?: number): Promise<MockTransport> {
     const t = new MockTransport({

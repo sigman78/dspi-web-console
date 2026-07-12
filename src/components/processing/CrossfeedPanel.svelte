@@ -3,13 +3,14 @@
   import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import MaskChipRow from '@/components/chrome/MaskChipRow.svelte';
   import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
   import { crossfeedResponse } from '@/components/bode/crossfeedCurve';
   import { centeredDbDomain } from '@/components/bode/dbDomain';
   import { connection } from '@/state';
   import {
     setCrossfeedEnabled, setCrossfeedPreset, setCrossfeedItd,
-    setCrossfeedFreq, setCrossfeedFeedDb,
+    setCrossfeedFreq, setCrossfeedFeedDb, toggleCrossfeedOutputPair,
   } from '@/runtime';
   import { CrossfeedPreset, Proc } from '@/domain';
   import { getSession } from '@/components/sessionContext';
@@ -21,6 +22,38 @@
   const isCustom = $derived((cf?.preset ?? CrossfeedPreset.Preset1) === CrossfeedPreset.Custom);
   const editable = $derived(connected && enabled);
   const slidersEditable = $derived(editable && isCustom);
+
+  // Output-pair mask (fw V20+): which stereo output pairs get crossfeed.
+  // Pair p covers output slots 2p/2p+1; the mono PDM sub never forms a pair
+  // and is dropped by the floor division below. There's no dedicated
+  // per-platform pair-count field, so it's derived from the live output count.
+  const outputSlotById = $derived(new Map((s.mirror.current?.outputs ?? []).map((o) => [o.id, o.wireIndex])));
+  const outputChannels = $derived(
+    (s.mirror.current?.channels ?? [])
+      .filter((c) => c.isOutput)
+      .map((c) => ({ id: c.id, name: c.name, index: outputSlotById.get(c.id) ?? 0 }))
+      .sort((a, b) => a.index - b.index),
+  );
+  const nameByIndex = $derived(new Map<number, string>(outputChannels.map((ch) => [ch.index, ch.name])));
+  const pairCount = $derived(Math.min(4, Math.floor(outputChannels.length / 2)));
+  // Meaningless with a single pair, and only wire V20+ has a mask to write to.
+  const pairSupported = $derived(s.device.capabilities.features.crossfeedPairMask);
+  const showPairs = $derived(pairSupported && pairCount > 1);
+  const pairItems = $derived(
+    Array.from({ length: pairCount }, (_, p) => {
+      const i0 = 2 * p;
+      const i1 = 2 * p + 1;
+      const n0 = nameByIndex.get(i0);
+      const n1 = nameByIndex.get(i1);
+      return {
+        key: p,
+        index: p,
+        label: `${i0 + 1}·${i1 + 1}`,
+        title: n0 && n1 ? `${n0} / ${n1}` : `Outputs ${i0 + 1}/${i1 + 1}`,
+      };
+    }),
+  );
+  const pairMask = $derived(cf?.outputPairMask ?? 0x01);
 
   const resp = $derived(crossfeedResponse(cf?.freq ?? 700, cf?.feedDb ?? 4.5));
   const cfCurves = $derived<BodeCurve[]>([
@@ -64,6 +97,11 @@
   </div>
 
   <div class="grid">
+    {#if showPairs}
+      <MaskChipRow label="PAIRS" items={pairItems} mask={pairMask} disabled={!editable} onToggle={(i) => toggleCrossfeedOutputPair(s, i)} />
+      <div class="rule"></div>
+    {/if}
+
     <span class="microlbl">PRESET</span>
     <div class="span2">
       <SegmentedSelect
@@ -121,4 +159,10 @@
     gap: 12px;
   }
   .span2 { grid-column: 2 / span 2; }
+  .rule {
+    grid-column: 1 / -1;
+    height: 1px;
+    background: var(--border);
+    margin: 2px 0;
+  }
 </style>

@@ -120,9 +120,9 @@ describe('diffSnapshots — existing coverage', () => {
   it('emits loudness / crossfeed / leveller section changes', () => {
     const a = makeSnapshot();
     const bLoudness = structuredClone(a);
-    bLoudness.loudness = { enabled: true, refSpl: 85, intensityPct: 0 };
+    bLoudness.loudness = { enabled: true, refSpl: 85, intensityPct: 0, outputMask: 0xFFFF };
     expect(diffSnapshots(a, bLoudness))
-      .toEqual([{ kind: 'loudness', value: { enabled: true, refSpl: 85, intensityPct: 0 } }]);
+      .toEqual([{ kind: 'loudness', value: { enabled: true, refSpl: 85, intensityPct: 0, outputMask: 0xFFFF } }]);
 
     const bCf = structuredClone(a);
     bCf.crossfeed = { ...bCf.crossfeed, enabled: true };
@@ -132,6 +132,22 @@ describe('diffSnapshots — existing coverage', () => {
     bLev.leveller = { ...bLev.leveller, enabled: true };
     expect(diffSnapshots(a, bLev)).toEqual([{ kind: 'leveller', value: bLev.leveller }]);
     expect(diffSnapshots(bLev, structuredClone(bLev))).toEqual([]);
+  });
+
+  it('emits section changes on mask-only edits', () => {
+    const a = makeSnapshot();
+
+    const bLoudness = structuredClone(a);
+    bLoudness.loudness = { ...bLoudness.loudness, outputMask: bLoudness.loudness.outputMask ^ 0x01 };
+    expect(diffSnapshots(a, bLoudness)).toEqual([{ kind: 'loudness', value: bLoudness.loudness }]);
+
+    const bCf = structuredClone(a);
+    bCf.crossfeed = { ...bCf.crossfeed, outputPairMask: bCf.crossfeed.outputPairMask ^ 0x02 };
+    expect(diffSnapshots(a, bCf)).toEqual([{ kind: 'crossfeed', value: bCf.crossfeed }]);
+
+    const bLev = structuredClone(a);
+    bLev.leveller = { ...bLev.leveller, applyMask: bLev.leveller.applyMask ^ 0x04 };
+    expect(diffSnapshots(a, bLev)).toEqual([{ kind: 'leveller', value: bLev.leveller }]);
   });
 
   it('collects multiple simultaneous changes', () => {

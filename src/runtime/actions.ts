@@ -129,6 +129,22 @@ export function setLoudnessIntensityPct(s: ReadySession, pct: number): void {
   );
 }
 
+// Per-output loudness mask (fw V19+): a single-channel toggle reads the
+// current mask from the mirror, flips one bit, and re-sends the whole mask.
+// Discrete edit -> write lane.
+export function setLoudnessOutputMask(s: ReadySession, mask: number): void {
+  mask &= 0xFFFF;
+  void write(s,
+    () => s.device.setLoudnessOutputMask(mask),
+    () => { s.mirror.snapshot.loudness.outputMask = mask; },
+  );
+}
+
+export function toggleLoudnessOutputChannel(s: ReadySession, ch: number): void {
+  const mask = s.mirror.snapshot.loudness.outputMask ^ (1 << ch);
+  setLoudnessOutputMask(s, mask);
+}
+
 export function setCrossfeedEnabled(s: ReadySession, enabled: boolean): void {
   void write(s,
     () => s.device.setCrossfeedEnabled(enabled),
@@ -166,6 +182,21 @@ export function setCrossfeedFeedDb(s: ReadySession, db: number): void {
     () => { s.mirror.snapshot.crossfeed.feedDb = db; },
     () => s.device.setCrossfeedFeedDb(db),
   );
+}
+
+// Crossfeed output-pair mask (fw V20+): same single-command toggle pattern as
+// the loudness output mask above. Discrete edit -> write lane.
+export function setCrossfeedOutputPairs(s: ReadySession, mask: number): void {
+  mask &= 0xFF;
+  void write(s,
+    () => s.device.setCrossfeedOutputPairs(mask),
+    () => { s.mirror.snapshot.crossfeed.outputPairMask = mask; },
+  );
+}
+
+export function toggleCrossfeedOutputPair(s: ReadySession, pair: number): void {
+  const mask = s.mirror.snapshot.crossfeed.outputPairMask ^ (1 << pair);
+  setCrossfeedOutputPairs(s, mask);
 }
 
 export function setLevellerEnabled(s: ReadySession, enabled: boolean): void {

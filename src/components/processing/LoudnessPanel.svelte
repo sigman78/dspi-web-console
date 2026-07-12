@@ -2,12 +2,13 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import MaskChipRow from '@/components/chrome/MaskChipRow.svelte';
   import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
   import { loudnessResponse } from '@/components/bode/loudnessCurve';
   import { centeredDbDomain } from '@/components/bode/dbDomain';
   import { connection } from '@/state';
   import { Proc } from '@/domain';
-  import { setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct } from '@/runtime';
+  import { setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, toggleLoudnessOutputChannel } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -21,6 +22,27 @@
     { id: 'loudness', points: loudnessResponse(loudness?.refSpl ?? 85, loudness?.intensityPct ?? 0) },
   ]);
   const loudRange = $derived(centeredDbDomain([loudCurve[0].points]));
+
+  // Per-output loudness mask (fw V19+): which output channels get loudness
+  // compensation. Index is the platform-compact protocol output slot (the
+  // same one OutputModel.wireIndex carries), not the raw ChannelId -- bit k
+  // on the wire means output slot k, PDM included.
+  const outputSlotById = $derived(new Map((s.mirror.current?.outputs ?? []).map((o) => [o.id, o.wireIndex])));
+  const outputChannels = $derived(
+    (s.mirror.current?.channels ?? [])
+      .filter((c) => c.isOutput)
+      .map((c) => ({ id: c.id, name: c.name, index: outputSlotById.get(c.id) ?? 0 }))
+      .sort((a, b) => a.index - b.index),
+  );
+  // Meaningless with a single output, and only wire V19+ has a mask to write to.
+  const maskSupported = $derived(s.device.capabilities.features.loudnessOutputMask);
+  const showMask = $derived(maskSupported && outputChannels.length > 1);
+  const outputItems = $derived(
+    outputChannels.map((ch) => ({
+      key: ch.id, index: ch.index, label: String(ch.index + 1), title: ch.name || `Output ${ch.index + 1}`,
+    })),
+  );
+  const outputMask = $derived(loudness?.outputMask ?? 0xFFFF);
 
   function toggleEnabled() {
     if (!loudness) return;
@@ -44,6 +66,11 @@
   </div>
 
   <div class="grid">
+    {#if showMask}
+      <MaskChipRow label="OUTPUTS" items={outputItems} mask={outputMask} disabled={!editable} onToggle={(i) => toggleLoudnessOutputChannel(s, i)} />
+      <div class="rule"></div>
+    {/if}
+
     <LabeledSlider
       label="REF SPL"
       ariaLabel="Loudness reference SPL"
@@ -77,5 +104,11 @@
     grid-template-columns: 90px 1fr 64px;
     align-items: center;
     gap: 12px;
+  }
+  .rule {
+    grid-column: 1 / -1;
+    height: 1px;
+    background: var(--border);
+    margin: 2px 0;
   }
 </style>
