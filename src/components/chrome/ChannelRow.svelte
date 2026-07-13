@@ -216,8 +216,10 @@
     {@render meter()}
   {:else}
     <!-- The whole row body is the select target (click → select, double-click →
-         rename), so the meter area stays clickable. The editor input can't live
-         inside a <button>, so it replaces this body when editing. -->
+         rename), so the meter area stays clickable. Only the .chip carries the
+         button chrome; the meter sits below it, outside the visible face. The
+         editor input can't live inside a <button>, so it replaces this body
+         when editing. -->
     <button
       class="body"
       bind:this={selectBtn}
@@ -227,7 +229,7 @@
       onclick={handleClick}
       ondblclick={startEdit}
     >
-      <span class="nm">{name}</span>
+      <span class="chip"><span class="nm">{name}</span></span>
       {@render meter()}
     </button>
   {/if}
@@ -238,11 +240,36 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    /* Tight enough that the meter reads as this chip's, not the next row's. */
+    gap: 3px;
     width: 100%;
-    /* Padding lives on the inner .body button (idle) and on the row itself only
-       while editing, so the clickable select target has no dead ring around it. */
     padding: 0;
+    color: var(--text);
+    font-family: var(--font-mono);
+    text-align: left;
+  }
+  /* The clickable row body: a button so the whole row (chip + meter) selects.
+     Bare of chrome -- the visible face is the .chip inside it. */
+  .body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    text-align: left;
+    color: inherit;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  /* The visible button face: name only; the meter lives below it. Heights are
+     budgeted so chip (24) + gap (4) + track (8) matches the old one-piece row. */
+  .chip {
+    position: relative;
+    display: block;
+    padding: 5px 7px;
     border: 1px solid var(--border);
     border-radius: 4px;
     /* Per-channel button fill: the channel's own hue tints a left-anchored
@@ -256,15 +283,11 @@
         transparent 85%),
       var(--wash);
     box-shadow: inset 12px 0 20px -14px color-mix(in oklab, var(--ch-glow) 45%, transparent);
-    color: var(--text);
-    font-family: var(--font-mono);
-    text-align: left;
-    cursor: pointer;
     transition: background 100ms, border-color 100ms, box-shadow 100ms;
   }
-  /* Keep content above the hatch overlay (::before, see below). */
-  .row > * { position: relative; z-index: 1; }
-  .row:hover:not(.is-disabled):not(.selected) {
+  /* Keep the name above the hatch overlay (::before, see below). */
+  .chip > * { position: relative; z-index: 1; }
+  .row:not(.selected) .body:hover:not(:disabled) .chip {
     border-color: var(--border-hi);
     background:
       linear-gradient(to right,
@@ -272,26 +295,6 @@
         color-mix(in oklab, var(--ch-base) 10%, transparent) 45%,
         transparent 85%),
       var(--wash-strong);
-  }
-  .row.is-disabled { cursor: default; }
-  /* Editing swaps the .body button for bare input/track children, so the row
-     supplies the padding the .body otherwise would. */
-  .row.editing { padding: 5px 7px; }
-  /* The clickable row body: a button so the whole row (name + meter) selects.
-     Resets to inherit the row's box; lays its contents out like the row did. */
-  .body {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    width: 100%;
-    background: none;
-    border: none;
-    padding: 5px 7px;
-    margin: 0;
-    text-align: left;
-    color: inherit;
-    font-family: inherit;
-    cursor: inherit;
   }
   /* U-P3 policy B: the rail around this stays full-contrast when disconnected
      (see ChannelRail's .rail-body.is-disabled); this is the single dim layer
@@ -303,8 +306,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  /* Inline editor. A solid --bg backdrop keeps the text legible on a selected
-     row (accent fill) or a dim row, instead of inheriting either. */
+  /* Inline editor: replaces the .chip, so it takes the chip's height (24px)
+     via matching padding. A solid --bg backdrop keeps the text legible on a
+     selected row (accent fill) or a dim row, instead of inheriting either. */
   .nm-input {
     display: block;
     width: 100%;
@@ -312,8 +316,8 @@
     color: var(--text);
     background: var(--bg);
     border: none;
-    border-radius: 2px;
-    padding: 0 2px;
+    border-radius: 4px;
+    padding: 6px 8px;
     margin: 0;
     font-family: inherit;
     font-size: 10px;
@@ -352,28 +356,29 @@
     transition: background-color 45ms linear;
   }
 
-  /* Selected: the channel's hue fills the button; text flips to bg contrast.
-     Drop the idle inner glow -- the solid fill already carries the colour. */
-  .row.selected {
+  /* Selected: the channel's hue fills the button face; text flips to bg
+     contrast. Drop the idle inner glow -- the solid fill already carries the
+     colour. */
+  .row.selected .chip {
     background: var(--ch-base);
     border-color: var(--ch-base);
     box-shadow: none;
   }
   /* Hover on the selected row brightens the accent rather than letting the
      generic hover paint a dark bg under the (dark) selected text. */
-  .row.selected:hover:not(.is-disabled) {
+  .row.selected .body:hover:not(:disabled) .chip {
     background: color-mix(in oklab, var(--ch-base) 85%, var(--text));
     border-color: color-mix(in oklab, var(--ch-base) 85%, var(--text));
   }
   .row.selected .nm { color: var(--bg); font-weight: 600; }
 
   /* Disabled/unused channels get a diagonal hatch (carried over from the old
-     MiniPin look). It lives on a ::before overlay so it can fade in/out — a
-     gradient painted on `background` can't be transitioned. On the dark
-     unselected row the stripes are light; on the light accent fill of a
-     selected channel they flip dark so the hatch still reads — a
+     MiniPin look) on the button face. It lives on a ::before overlay so it can
+     fade in/out — a gradient painted on `background` can't be transitioned. On
+     the dark unselected face the stripes are light; on the light accent fill
+     of a selected channel they flip dark so the hatch still reads — a
      selected-but-disabled channel stays visibly disabled. */
-  .row::before {
+  .chip::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -388,16 +393,14 @@
     );
     transition: opacity 120ms ease;
   }
-  .row.dim::before { opacity: 1; }
-  /* While editing, drop the hatch so the input reads cleanly on a dim row. */
-  .row.editing::before { opacity: 0; }
+  .row.dim .chip::before { opacity: 1; }
   /* Off/unused channels: flatten to a faint neutral wash and kill the glow --
      the colour cue belongs to live channels. */
-  .row.dim { box-shadow: none; }
-  .row.dim:not(.selected) {
+  .row.dim .chip { box-shadow: none; }
+  .row.dim:not(.selected) .chip {
     background: var(--wash-faint);
   }
-  .row.dim.selected::before {
+  .row.dim.selected .chip::before {
     background: repeating-linear-gradient(
       135deg,
       color-mix(in oklab, var(--bg) 45%, transparent) 0 2px,
@@ -407,13 +410,13 @@
   /* U-P3 policy B: the row stays clickable/selectable even when it maps to
      an off output, so this isn't a disabled region -- no opacity on the
      name label. The hatch overlay above is the sole "off" signal. */
-  .row.pulsate { animation: row-pulse 2s ease-in-out infinite; }
+  .row.pulsate .chip { animation: row-pulse 2s ease-in-out infinite; }
   @keyframes row-pulse {
     0%, 100% { background: var(--wash); }
     50%      { background: color-mix(in oklab, var(--ch-base) 45%, transparent); }
   }
   @media (prefers-reduced-motion: reduce) {
-    .row.pulsate { animation: none; background: color-mix(in oklab, var(--ch-base) 35%, transparent); }
-    .row::before { transition: none; }
+    .row.pulsate .chip { animation: none; background: color-mix(in oklab, var(--ch-base) 35%, transparent); }
+    .chip::before { transition: none; }
   }
 </style>
