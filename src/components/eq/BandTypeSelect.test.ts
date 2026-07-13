@@ -1,38 +1,35 @@
 import { describe, it, expect } from 'vitest';
-import { TYPE_ORDER, FIRST_ORDER_TYPES, LT_TYPES, offeredTypes, isLtCapable } from './BandTypeSelect.svelte';
+import { render } from '@testing-library/svelte';
+import BandTypeSelect, { TYPE_ORDER, FIRST_ORDER_TYPES, offeredTypes } from './BandTypeSelect.svelte';
 import { FilterType } from '@/domain';
 
-const OFF = { firstOrderEq: false, linkwitzTransform: false };
-
 describe('offeredTypes', () => {
-  it('offers only the base PEQ types when neither feature is on', () => {
-    expect(offeredTypes(OFF)).toEqual(TYPE_ORDER);
+  it('offers only the base PEQ types when firstOrderEq is off', () => {
+    expect(offeredTypes({ firstOrderEq: false })).toEqual(TYPE_ORDER);
   });
 
   it('appends the first-order types when firstOrderEq is on', () => {
-    const types = offeredTypes({ ...OFF, firstOrderEq: true });
-    expect(types).toEqual([...TYPE_ORDER, ...FIRST_ORDER_TYPES]);
+    expect(offeredTypes({ firstOrderEq: true })).toEqual([...TYPE_ORDER, ...FIRST_ORDER_TYPES]);
   });
 
-  it('appends Linkwitz Transform only when linkwitzTransform is on', () => {
-    expect(offeredTypes({ ...OFF, linkwitzTransform: false })).not.toContain(FilterType.LinkwitzTransform);
-    const types = offeredTypes({ ...OFF, linkwitzTransform: true });
-    expect(types).toEqual([...TYPE_ORDER, ...LT_TYPES]);
-  });
-
-  it('offers both extensions together', () => {
-    const types = offeredTypes({ firstOrderEq: true, linkwitzTransform: true });
-    expect(types).toEqual([...TYPE_ORDER, ...FIRST_ORDER_TYPES, ...LT_TYPES]);
+  it('never offers Linkwitz Transform, even with every feature on', () => {
+    expect(offeredTypes({ firstOrderEq: true })).not.toContain(FilterType.LinkwitzTransform);
   });
 });
 
-describe('isLtCapable', () => {
-  it('is false for the base type list and for undefined', () => {
-    expect(isLtCapable(TYPE_ORDER)).toBe(false);
-    expect(isLtCapable(undefined)).toBe(false);
+describe('BandTypeSelect — Linkwitz Transform', () => {
+  it('never renders a selectable Linkwitz option for a non-LT band', () => {
+    const { container } = render(BandTypeSelect, { value: FilterType.Peaking, onChange: () => {} });
+    expect(container.querySelector(`option[value="${FilterType.LinkwitzTransform}"]`)).toBeNull();
   });
 
-  it('is true once Linkwitz Transform is in the offered list', () => {
-    expect(isLtCapable(offeredTypes({ firstOrderEq: false, linkwitzTransform: true }))).toBe(true);
+  it('renders Linkwitz selected but disabled for a band already set to it', () => {
+    const { container } = render(BandTypeSelect, { value: FilterType.LinkwitzTransform, onChange: () => {} });
+    const select = container.querySelector('select')!;
+    const ltOption = container.querySelector<HTMLOptionElement>(`option[value="${FilterType.LinkwitzTransform}"]`)!;
+    expect(ltOption).not.toBeNull();
+    expect(ltOption.disabled).toBe(true);
+    expect(ltOption.textContent).toBe('Linkwitz');
+    expect(select.value).toBe(String(FilterType.LinkwitzTransform));
   });
 });

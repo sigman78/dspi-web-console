@@ -1,7 +1,6 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
-  import BandRow, { BAND_ROW_COLS, BAND_ROW_COLS_LT } from './BandRow.svelte';
-  import { isLtCapable } from './BandTypeSelect.svelte';
+  import BandRow, { BAND_ROW_COLS } from './BandRow.svelte';
   import type { FilterParams, FilterType, ChannelId } from '@/domain';
 
   const {
@@ -42,9 +41,6 @@
   const rightTitle = $derived(
     inSelection ? 'Exit copy mode' : 'Reset all bands and preamp',
   );
-
-  const ltCapable = $derived(isLtCapable(types));
-  const gridCols = $derived(ltCapable ? BAND_ROW_COLS_LT : BAND_ROW_COLS);
 </script>
 
 <Panel code="EQ.02" title="BANDS · 10 BIQUAD">
@@ -56,18 +52,13 @@
     <button class="chip hi act" onclick={rightAction} title={rightTitle}>{rightLabel}</button>
   {/snippet}
 
-  <div class="head" style:grid-template-columns={gridCols}>
+  <div class="head" style:grid-template-columns={BAND_ROW_COLS}>
     <div>#</div>
     <div></div>
     <div>TYPE</div>
     <div class="r">FREQ</div>
     <div class="r">Q</div>
     <div class="r">GAIN</div>
-    {#if ltCapable}
-      <div class="r">FP</div>
-      <div class="r">QP</div>
-      <div class="r">DC</div>
-    {/if}
   </div>
 
   {#each bands as band, i (i)}
@@ -80,7 +71,7 @@
 
   .head {
     display: grid;
-    /* grid-template-columns set inline (gridCols), matching BandRow. */
+    /* grid-template-columns set inline (BAND_ROW_COLS), matching BandRow. */
     gap: 6px;
     padding: 8px 14px;
     font-family: var(--font-mono);

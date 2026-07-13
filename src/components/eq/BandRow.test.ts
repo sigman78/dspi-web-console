@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
 import BandRow from './BandRow.svelte';
-import { TYPE_ORDER, LT_TYPES } from './BandTypeSelect.svelte';
 import { FilterType, type FilterParams } from '@/domain';
 
 const ltBand = (over: Partial<FilterParams> = {}): FilterParams => ({
@@ -9,7 +8,7 @@ const ltBand = (over: Partial<FilterParams> = {}): FilterParams => ({
   bypass: false,
   frequency: 60,
   q: 0.9,
-  gain: 30, // fp, in Hz
+  gain: 30, // fp, in Hz -- unused by this read-only row
   qp: 1.1,
   ...over,
 });
@@ -18,83 +17,48 @@ const peakBand: FilterParams = {
   type: FilterType.Peaking, bypass: false, frequency: 1000, q: 1, gain: 3,
 };
 
-const LT_CAPABLE_TYPES = [...TYPE_ORDER, ...LT_TYPES];
-
-describe('BandRow — Linkwitz Transform gating', () => {
-  it('does not offer Linkwitz Transform in the type dropdown when the device lacks the feature', () => {
-    const { container } = render(BandRow, { index: 0, band: peakBand, onPatch: vi.fn(), types: TYPE_ORDER });
+describe('BandRow — Linkwitz Transform is display-only', () => {
+  it('does not offer Linkwitz Transform in the type dropdown for an ordinary band', () => {
+    const { container } = render(BandRow, { index: 0, band: peakBand, onPatch: vi.fn() });
     expect(container.querySelector(`option[value="${FilterType.LinkwitzTransform}"]`)).toBeNull();
   });
 
-  it('offers Linkwitz Transform in the type dropdown when the device has the feature', () => {
-    const { container } = render(BandRow, { index: 0, band: peakBand, onPatch: vi.fn(), types: LT_CAPABLE_TYPES });
-    expect(container.querySelector(`option[value="${FilterType.LinkwitzTransform}"]`)).not.toBeNull();
+  it('renders an existing LT band with "Linkwitz" selected and disabled in the dropdown', () => {
+    const { container } = render(BandRow, { index: 0, band: ltBand(), onPatch: vi.fn() });
+    const select = container.querySelector('select')!;
+    const ltOption = container.querySelector<HTMLOptionElement>(`option[value="${FilterType.LinkwitzTransform}"]`)!;
+    expect(select.value).toBe(String(FilterType.LinkwitzTransform));
+    expect(ltOption.disabled).toBe(true);
+    expect(ltOption.textContent).toBe('Linkwitz');
   });
-});
 
-describe('BandRow — Linkwitz Transform band controls', () => {
-  it('shows four controls (F0, Q0, FP, QP) and no dB gain control', () => {
-    const { container } = render(BandRow, { index: 0, band: ltBand(), onPatch: vi.fn(), types: LT_CAPABLE_TYPES });
+  it('disables the FREQ and Q controls for an LT band, still showing f0/Q0', () => {
+    const { container } = render(BandRow, { index: 0, band: ltBand({ frequency: 60, q: 0.9 }), onPatch: vi.fn() });
     const fields = container.querySelectorAll('.vf');
-    expect(fields).toHaveLength(4);
-    // FP reuses the Hz formatting/unit of a frequency field, never dB.
-    const units = Array.from(fields).map((f) => f.querySelector('.unit')?.textContent ?? '');
-    expect(units).toEqual(['Hz', '', 'Hz', '']);
+    expect(fields).toHaveLength(2); // FREQ, Q -- GAIN is the dash placeholder, not a .vf
+    for (const f of fields) expect(f.classList.contains('disabled')).toBe(true);
+    expect(fields[0].textContent).toContain('60');
+    expect(fields[1].textContent).toContain('0.9');
   });
 
-  it('a non-LT band on an LT-capable device keeps the ordinary FREQ/Q/GAIN controls and no DC readout', () => {
-    const { container } = render(BandRow, { index: 0, band: peakBand, onPatch: vi.fn(), types: LT_CAPABLE_TYPES });
+  it('shows a dash instead of a gain control for an LT band', () => {
+    const { container } = render(BandRow, { index: 0, band: ltBand(), onPatch: vi.fn() });
+    expect(container.querySelector('.gainDash')?.textContent).toBe('—');
+  });
+
+  it('an ordinary band keeps the normal enabled FREQ/Q/GAIN controls', () => {
+    const { container } = render(BandRow, { index: 0, band: peakBand, onPatch: vi.fn() });
     const fields = container.querySelectorAll('.vf');
     expect(fields).toHaveLength(3);
-    expect(container.querySelector('.dcboost')).toBeNull();
+    for (const f of fields) expect(f.classList.contains('disabled')).toBe(false);
+    expect(container.querySelector('.gainDash')).toBeNull();
   });
 
-  it('edits to the FP field patch the gain slot (not a new field)', async () => {
+  it('switching an LT band away to another type still calls onPatch with the new type', async () => {
     const onPatch = vi.fn();
-    const { container } = render(BandRow, { index: 0, band: ltBand(), onPatch, types: LT_CAPABLE_TYPES });
-    const fpField = container.querySelectorAll('.vf')[2];
-    await fireEvent.click(fpField);
-    const input = fpField.querySelector('input')!;
-    await fireEvent.input(input, { target: { value: '45' } });
-    await fireEvent.keyDown(input, { key: 'Enter' });
-    expect(onPatch).toHaveBeenCalledExactlyOnceWith({ gain: 45 });
-  });
-
-  it('edits to the QP field patch qp', async () => {
-    const onPatch = vi.fn();
-    const { container } = render(BandRow, { index: 0, band: ltBand(), onPatch, types: LT_CAPABLE_TYPES });
-    const qpField = container.querySelectorAll('.vf')[3];
-    await fireEvent.click(qpField);
-    const input = qpField.querySelector('input')!;
-    await fireEvent.input(input, { target: { value: '2' } });
-    await fireEvent.keyDown(input, { key: 'Enter' });
-    expect(onPatch).toHaveBeenCalledExactlyOnceWith({ qp: 2 });
-  });
-});
-
-describe('BandRow — DC-boost readout', () => {
-  it('reports 40*log10(f0/fp) and flags it above +15 dB', () => {
-    const { container } = render(BandRow, {
-      index: 0, band: ltBand({ frequency: 200, gain: 20 }), onPatch: vi.fn(), types: LT_CAPABLE_TYPES,
-    });
-    const dc = container.querySelector('.dcboost')!;
-    expect(dc.textContent).toBe('+40.0 dB');
-    expect(dc.classList.contains('warn')).toBe(true);
-  });
-
-  it('stays unwarned for a small implied boost', () => {
-    const { container } = render(BandRow, {
-      index: 0, band: ltBand({ frequency: 110, gain: 100 }), onPatch: vi.fn(), types: LT_CAPABLE_TYPES,
-    });
-    const dc = container.querySelector('.dcboost')!;
-    expect(dc.textContent).toBe('+1.7 dB');
-    expect(dc.classList.contains('warn')).toBe(false);
-  });
-
-  it('reads 0 dB once fp reaches f0 (flat alignment)', () => {
-    const { container } = render(BandRow, {
-      index: 0, band: ltBand({ frequency: 60, gain: 60 }), onPatch: vi.fn(), types: LT_CAPABLE_TYPES,
-    });
-    expect(container.querySelector('.dcboost')!.textContent).toBe(' 0.0 dB');
+    const { container } = render(BandRow, { index: 0, band: ltBand(), onPatch });
+    const select = container.querySelector('select')!;
+    await fireEvent.change(select, { target: { value: String(FilterType.Peaking) } });
+    expect(onPatch).toHaveBeenCalledExactlyOnceWith({ type: FilterType.Peaking });
   });
 });
