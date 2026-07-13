@@ -74,10 +74,14 @@ describe('bulkParser — V18 (leveller masks) packet', () => {
     bulk.leveller = { ...bulk.leveller, detectorMask: 0xAA, applyMask: 0x55 };
     bulk.inputPreampsDb = [0, -1, -2, -3, -4, -5, -6, -7];   // preamp (right after leveller)
     bulk.masterVolumeDb = -12;                                // master volume
-    bulk.inputConfig = { source: 2, spdifRxPin: 5, i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 2, i2sInputChannels: 6, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 };
+    bulk.inputConfig = {
+      source: 2, spdifRxPin: 5, i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 2, i2sInputChannels: 6,
+      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
+    };
     bulk.dacHwMute = { enabled: true, activeLow: true, pin: 11, holdMs: 20, releaseMs: 50 };
-    bulk.crossover[8][0] = { type: 34, bypass: false, frequency: 2400, q: 0.707, gain: 0 };
-    bulk.crossover[16][3] = { type: 33, bypass: true, frequency: 120, q: 0.5, gain: 0 };
+    bulk.crossover[8][0] = { type: 34, bypass: false, frequency: 2400, q: 0.707, gain: 0, qpRaw: 0 };
+    bulk.crossover[16][3] = { type: 33, bypass: true, frequency: 120, q: 0.5, gain: 0, qpRaw: 0 };
     bulk.adat = { enabled: true, pin: 30 };
 
     const p = parseBulkParams(buildBulkParams(bulk));
@@ -85,7 +89,11 @@ describe('bulkParser — V18 (leveller masks) packet', () => {
     expect(p.leveller.applyMask).toBe(0x55);
     expect(p.inputPreampsDb.map(Math.round)).toEqual([0, -1, -2, -3, -4, -5, -6, -7]);
     expect(p.masterVolumeDb).toBeCloseTo(-12, 4);
-    expect(p.inputConfig).toEqual({ source: 2, spdifRxPin: 5, i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 2, i2sInputChannels: 6, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 });
+    expect(p.inputConfig).toEqual({
+      source: 2, spdifRxPin: 5, i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 2, i2sInputChannels: 6,
+      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
+    });
     expect(p.dacHwMute).toEqual({ enabled: true, activeLow: true, pin: 11, holdMs: 20, releaseMs: 50 });
     expect(p.crossover[8][0].type).toBe(34);
     expect(p.crossover[8][0].frequency).toBeCloseTo(2400, 3);

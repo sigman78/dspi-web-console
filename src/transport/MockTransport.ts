@@ -525,6 +525,9 @@ export class MockTransport implements DspTransport {
           case 2: return Codec.encode(Codec.f32, f.q);
           case 3: return Codec.encode(Codec.f32, f.gain);
           case 4: return Codec.encode(Codec.u32, f.bypass ? 1 : 0);
+          // Linkwitz Transform qp sidecar (V22+): low 16 bits = qp_x512; 0 for
+          // every non-LT/non-PEQ band (qpRaw is always 0 there already).
+          case 5: return Codec.encode(Codec.u32, f.qpRaw);
           default: return new Uint8Array(length);
         }
       }
@@ -993,12 +996,18 @@ export class MockTransport implements DspTransport {
         const p = Codec.decode(Wire.SetFilterPacket, data);
         const slot = this.#bandSlot(p.channel, p.band);
         if (slot) {
+          // 18-byte form (trailing qp u16 LE) replaces the stored qp; the
+          // plain 16-byte form preserves it. The granular path latches qp
+          // regardless of type (only the bulk collect/apply path zeroes
+          // non-LT qp), matching vendor_commands.c.
+          const prevQpRaw = slot.row[slot.idx].qpRaw;
           slot.row[slot.idx] = {
             type: p.type as FilterParams['type'],
             bypass: slot.row[slot.idx].bypass,
             frequency: p.frequency,
             q: p.q,
             gain: p.gain,
+            qpRaw: data.byteLength >= 18 ? Codec.decode(Codec.u16, data.subarray(16, 18)) : prevQpRaw,
           };
         }
         return;

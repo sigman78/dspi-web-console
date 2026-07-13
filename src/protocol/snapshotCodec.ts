@@ -18,6 +18,7 @@ export function narrowInputSource(s: number): domain.AudioInputSource {
   switch (s) {
     case domain.AudioInputSource.Spdif:
     case domain.AudioInputSource.I2s:
+    case domain.AudioInputSource.Adat:
     case domain.AudioInputSource.Spdif2:
     case domain.AudioInputSource.Spdif3:
       return s;
@@ -61,13 +62,25 @@ function decodeClockPinMode(p1: number): number {
   return p1 === 0 ? 0 : p1 - 1;
 }
 
-function narrowFilter(filter: { type: number; bypass: boolean; frequency: number; q: number; gain: number }): domain.FilterParams {
+// p1 = adat_input_enabled + 1 (0 = absent -> false; else value - 1: 0 = disabled, 1 = enabled).
+function decodeAdatInputEnabled(p1: number): boolean {
+  return p1 !== 0 && p1 - 1 === 1;
+}
+
+// p1 = adat_input_clock_mode + 1 (0 = absent -> master; else value - 1: 0 = master, 1 = slave).
+function decodeAdatInputClockMode(p1: number): number {
+  return p1 === 0 ? 0 : p1 - 1;
+}
+
+function narrowFilter(filter: { type: number; bypass: boolean; frequency: number; q: number; gain: number; qpRaw: number }): domain.FilterParams {
+  const type = narrowFilterType(filter.type);
   return {
-    type: narrowFilterType(filter.type),
+    type,
     bypass: filter.bypass,
     frequency: filter.frequency,
     q: filter.q,
     gain: filter.gain,
+    ...(type === domain.FilterType.LinkwitzTransform ? { qp: domain.decodeQp(filter.qpRaw) } : {}),
   };
 }
 
@@ -187,7 +200,16 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
       // I2S clock role comes from the V21 bulk section; the parser defaults
       // it to 0 (master) on pre-V21 packets, so this is always populated.
       i2sClockMode: bulk.inputConfig.i2sClockMode,
+      // ADAT input comes from the V24 bulk section; the parser defaults its
+      // p1-encoded fields to 0 (absent) on pre-V24 packets, decoded below.
+      adatInputPin: bulk.inputConfig.adatInputPin,
+      adatInputEnabled: decodeAdatInputEnabled(bulk.inputConfig.adatInputEnabledP1),
+      adatInputClockMode: decodeAdatInputClockMode(bulk.inputConfig.adatInputClockModeP1),
     },
+    // Psychoacoustic bass comes from the V23 bulk section; the parser
+    // defaults it (disabled, all-outputs mask) on pre-V23 packets, so this is
+    // always populated.
+    psybass: { ...bulk.psybass },
     lgSoundSync: { enabled: bulk.lgSoundSync.enabled, present: bulk.lgSoundSync.present, volume: bulk.lgSoundSync.volume, muted: bulk.lgSoundSync.muted },
     userVolume:  { volumeDb: bulk.userVolume.volumeDb, mute: bulk.userVolume.mute },
     dacHwMute:   { enabled: bulk.dacHwMute.enabled, activeLow: bulk.dacHwMute.activeLow, pin: bulk.dacHwMute.pin, holdMs: bulk.dacHwMute.holdMs, releaseMs: bulk.dacHwMute.releaseMs },

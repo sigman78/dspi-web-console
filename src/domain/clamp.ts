@@ -35,6 +35,11 @@ export const bandQ = (q: number) => toRange(q, Eq.Q_MIN, Eq.Q_MAX);
 export const bandGainDb = (db: number) => toRange(db, Eq.BAND_GAIN_MIN_DB, Eq.BAND_GAIN_MAX_DB);
 export const preampDb = (db: number) => toRange(db, Eq.PREAMP_MIN_DB, Eq.PREAMP_MAX_DB);
 
+// Linkwitz Transform: f0/fp share one range, Q0/Qp share another (both
+// narrower than the general PEQ band -- see eqLimits.ts).
+export const bandLtFreqHz = (hz: number) => toRange(hz, Eq.LT_FREQ_MIN_HZ, Eq.LT_FREQ_MAX_HZ);
+export const bandLtQ = (q: number) => toRange(q, Eq.LT_Q_MIN, Eq.LT_Q_MAX);
+
 export const outputGainDb = (db: number) => toRange(db, Mix.OUTPUT_GAIN_MIN_DB, Mix.OUTPUT_GAIN_MAX_DB);
 export const outputDelayMs = (ms: number) => toRange(ms, Mix.OUTPUT_DELAY_MIN_MS, Mix.OUTPUT_DELAY_MAX_MS);
 export const crosspointGainDb = (db: number) => toRange(db, Mix.CROSSPOINT_GAIN_MIN_DB, Mix.CROSSPOINT_GAIN_MAX_DB);

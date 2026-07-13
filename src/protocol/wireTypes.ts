@@ -158,6 +158,19 @@ export const BandParams = struct({
   gain:      f32,
 });
 
+// Section 9, V22 shape: bytes 2-3 (previously reserved) carry the Linkwitz
+// Transform qp sidecar (u16 LE, round(Qp*512); 0 = 0.707 default) when
+// type == 11 (LINKWITZ_TRANSFORM); firmware forces it to 0 for every other
+// type. Same 16-byte size as BandParams.
+export const BandParamsQp = struct({
+  type:      u8,
+  bypass:    u8,
+  qp:        u16,
+  frequency: f32,
+  q:         f32,
+  gain:      f32,
+});
+
 // Section 10: channel names (352 B)
 export const ChannelNames = arr(nulStr(Const.CHANNEL_NAME_LEN), Const.NUM_CHANNELS);
 
@@ -262,6 +275,27 @@ export const InputConfig21 = struct({
   _reserved:            reserved(4),
 });
 
+// Section 15, V24 shape: bytes 12-14 (previously reserved) carry the ADAT
+// input config -- adat_input_pin (GPIO, 0 = absent/keep-live),
+// adat_input_enabled_p1 (0 absent / 1 disabled / 2 enabled), and
+// adat_input_clock_mode_p1 (0 absent / 1 master / 2 slave). Same 16-byte
+// size as InputConfig21.
+export const InputConfig24 = struct({
+  inputSource:          u8,
+  spdifRxPin:           u8,
+  i2sRxPin:             u8,
+  i2sInputRate:         u8,
+  i2sInputChannels:     u8,
+  i2sRxPinExt:          arr(u8, 3),
+  spdifRxPinExt:        arr(u8, 2),
+  spdifRxEnabledExtP1:  u8,
+  i2sClockMode:         u8,
+  adatInputPin:         u8,
+  adatInputEnabledP1:   u8,
+  adatInputClockModeP1: u8,
+  _reserved:            reserved(1),
+});
+
 // Section 16: LG Sound Sync (16 B, V8+, optional). Only `enabled` is host-
 // configurable through bulk apply; present/volume/muted are runtime state.
 export const LgSoundSync = struct({
@@ -299,6 +333,19 @@ export const AdatConfig = struct({
   _reserved: reserved(6),
 });
 
+// Section 21: psychoacoustic bass config (24 B, V23+; RP2350 only, but
+// structurally present on every V23+ packet). Appended after AdatConfig.
+export const PsybassParams = struct({
+  enabled:      bool8,
+  _reserved0:   reserved(1),
+  outputMask:   u16,
+  cutoffHz:     f32,
+  harmonicsDb:  f32,
+  driveDb:      f32,
+  characterPct: f32,
+  originalDb:   f32,
+});
+
 // Standalone control-transfer payloads (not part of the bulk transfer).
 
 // 8-byte payload of `SetMatrixRoute` / response of `GetMatrixRoute`
@@ -320,6 +367,21 @@ export const SetFilterPacket = struct({
   frequency: f32,
   q:         f32,
   gain:      f32,
+});
+
+// 18-byte payload of `SetEqParam` (vendor request 0x42) for a Linkwitz
+// Transform band (fw V22+): the 16-byte SetFilterPacket plus a trailing
+// qp u16 LE sidecar. Sending the 16-byte SetFilterPacket alone preserves
+// the band's currently-stored qp instead of replacing it.
+export const SetFilterPacketQp = struct({
+  channel:   u8,
+  band:      u8,
+  type:      u8,
+  _pad:      reserved(1),
+  frequency: f32,
+  q:         f32,
+  gain:      f32,
+  qp:        u16,
 });
 
 // 8-byte SPDIF DMA consumer stats (one entry inside `BufferStats`).
@@ -691,15 +753,24 @@ export const BULK_SIZE_V20 = BULK_SIZE_V18;
 // V21 claims the InputConfig's first reserved byte (i2s_clock_mode) -- also
 // no packet-size change.
 export const BULK_SIZE_V21 = BULK_SIZE_V20;
+// V22 claims the PEQ band section's reserved bytes (Linkwitz Transform qp) --
+// also no packet-size change.
+export const BULK_SIZE_V22 = BULK_SIZE_V21;
+// V23 appends the 24-byte psychoacoustic bass section after AdatConfig.
+export const BULK_SIZE_V23 = BULK_SIZE_V22 + sizeOf(PsybassParams);
+// V24 claims InputConfig's remaining reserved bytes (ADAT input config) --
+// also no packet-size change.
+export const BULK_SIZE_V24 = BULK_SIZE_V23;
 
 // Newest wire version the console knows how to decode and write.
-export const MAX_WIRE_VERSION = 21;
+export const MAX_WIRE_VERSION = 24;
 
 // Packet size to allocate/write for a given target wire version (clamped to
-// the V6 floor and the V21 ceiling). Versions 11..15 were in-development
-// intermediates the console never supported; they collapse to the V10 size
-// (writes to such devices are rejected at connect anyway).
+// the V6 floor and the MAX_WIRE_VERSION ceiling). Versions 11..15 were
+// in-development intermediates the console never supported; they collapse to
+// the V10 size (writes to such devices are rejected at connect anyway).
 export function bulkSizeForVersion(v: number): number {
+  if (v >= 23) return BULK_SIZE_V24;
   if (v >= 21) return BULK_SIZE_V21;
   if (v >= 20) return BULK_SIZE_V20;
   if (v >= 19) return BULK_SIZE_V19;
@@ -716,10 +787,10 @@ export function bulkSizeForVersion(v: number): number {
 export const BulkLimits = {
   MinPacketSize:  BulkSizes.V2,
   // Size we WRITE: version-aware buildBulkParams emits at the device's own wire
-  // version, up to V21. This is the largest buffer it may allocate.
-  MaxRequestSize: BULK_SIZE_V21,
-  // Size we READ: the largest packet we tolerate receiving (V21).
-  MaxReadSize:    BULK_SIZE_V21,  // 5876
+  // version, up to MAX_WIRE_VERSION. This is the largest buffer it may allocate.
+  MaxRequestSize: BULK_SIZE_V24,
+  // Size we READ: the largest packet we tolerate receiving (V24).
+  MaxReadSize:    BULK_SIZE_V24,  // 5900
   // WinUSB caps a control transfer's data stage at 4 KB; the largest single
   // EP0 transfer any host backend can rely on. Above this, DspDevice chunks
   // via 0xA2/0xA3 (fw 1.1.5+).
@@ -750,6 +821,14 @@ export interface BulkLayout {
   crossfeedPairMask: boolean;
   // V21: I2S clock-mode byte (InputConfig reserved-byte claim).
   i2sClockMode: boolean;
+  // V22: PEQ/crossover band reserved bytes are the Linkwitz Transform qp
+  // sidecar (BandParamsQp shape). Not type-gated here -- fw forces qp to 0
+  // for every non-LT band, so decoding it unconditionally is harmless.
+  bandQp: boolean;
+  // V23: psychoacoustic bass section, appended after AdatConfig.
+  psybass: boolean;
+  // V24: ADAT input config bytes (InputConfig reserved-byte claim).
+  adatInput: boolean;
 }
 
 // Determine which optional sections are present based on the header.
@@ -774,6 +853,9 @@ export function bulkLayout(h: { formatVersion: number; payloadLength: number }):
     loudnessMask:      v >= 19 && len >= BULK_SIZE_V19,
     crossfeedPairMask: v >= 20 && len >= BULK_SIZE_V20,
     i2sClockMode:      v >= 21 && len >= BULK_SIZE_V21,
+    bandQp:            v >= 22 && len >= BULK_SIZE_V22,
+    psybass:           v >= 23 && len >= BULK_SIZE_V23,
+    adatInput:         v >= 24 && len >= BULK_SIZE_V24,
   };
 }
 

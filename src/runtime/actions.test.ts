@@ -275,6 +275,29 @@ describe('setEqFilter', () => {
     // Snapshot must not have changed for the valid band.
     expect(liveMirror().current?.channels[0].filters[1]).toEqual(before);
   });
+
+  // Linkwitz Transform's gain slot carries fp in Hz, not dB -- clamping it
+  // with the plain +/-24 dB gain range would mangle a real fp value (e.g.
+  // 90 Hz would get clamped down to 24). It needs its own freq/Q ranges.
+  it('clamps an LT band with the f0/fp/Q0/Qp ranges instead of the plain freq/gain/Q ranges', async () => {
+    setEqFilter(activeSession()!, 0, 1, {
+      type: FilterType.LinkwitzTransform, bypass: false, frequency: 5, q: 30, gain: 90000, qp: 0.05,
+    });
+    await vi.runAllTimersAsync();
+    const band = liveMirror().current!.channels[0].filters[1];
+    expect(band.frequency).toBe(10);   // LT_FREQ_MIN_HZ, not the plain FREQ_MIN_HZ (20)
+    expect(band.q).toBe(20);           // LT_Q_MAX, not the plain Q_MAX (24)
+    expect(band.gain).toBe(20000);     // fp clamped as a frequency (LT_FREQ_MAX_HZ), not as dB
+    expect(band.qp).toBe(0.1);         // LT_Q_MIN
+  });
+
+  it('defaults a missing qp to QP_DEFAULT before clamping', async () => {
+    setEqFilter(activeSession()!, 0, 1, {
+      type: FilterType.LinkwitzTransform, bypass: false, frequency: 60, q: 0.7, gain: 45,
+    });
+    await vi.runAllTimersAsync();
+    expect(liveMirror().current?.channels[0].filters[1].qp).toBe(0.707);
+  });
 });
 
 // Thin verbs: each just sends one value to one device method and patches one

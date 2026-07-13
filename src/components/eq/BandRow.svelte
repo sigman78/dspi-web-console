@@ -1,3 +1,8 @@
+<script lang="ts" module>
+  // Shared with BandsPanel's header so the grid columns always line up.
+  export const BAND_ROW_COLS = '28px 24px 100px 84px 64px 72px';
+</script>
+
 <script lang="ts">
   import { FilterType, type FilterParams, Eq } from '@/domain';
   import ValueField from '@/components/chrome/ValueField.svelte';
@@ -23,9 +28,15 @@
     band.type === FilterType.Allpass1 || band.type === FilterType.LowShelf1 || band.type === FilterType.HighShelf1,
   );
   const noGain = $derived(band.type === FilterType.Allpass1);
+
+  // Linkwitz Transform is display-only in this UI (see BandTypeSelect): a
+  // band already set to it renders read-only -- freq/Q show f0/Q0 but can't
+  // be edited, and gain has no dB meaning here (it's fp in Hz on the wire),
+  // so that cell shows a dash instead.
+  const isLt = $derived(band.type === FilterType.LinkwitzTransform);
 </script>
 
-<div class="row" class:bypassed>
+<div class="row" class:bypassed style:grid-template-columns={BAND_ROW_COLS}>
   <div class="num">{String(index + 1).padStart(2, '0')}</div>
   <button
     class="byp"
@@ -54,7 +65,7 @@
     max={Eq.FREQ_MAX_HZ}
     step={Eq.FREQ_STEP_HZ}
     align="right"
-    disabled={off || bypassed}
+    disabled={off || bypassed || isLt}
     onChange={(v) => onPatch({ frequency: v })}
   />
   <ValueField
@@ -64,32 +75,47 @@
     max={Eq.Q_MAX}
     step={Eq.Q_STEP}
     align="right"
-    disabled={off || bypassed || firstOrder}
+    disabled={off || bypassed || firstOrder || isLt}
     onChange={(v) => onPatch({ q: v })}
   />
-  <ValueField
-    kind="dB-signed"
-    value={band.gain}
-    min={Eq.BAND_GAIN_MIN_DB}
-    max={Eq.BAND_GAIN_MAX_DB}
-    step={Eq.BAND_GAIN_STEP_DB}
-    tone="signed"
-    align="right"
-    disabled={off || bypassed || noGain}
-    onChange={(v) => onPatch({ gain: v })}
-  />
+  {#if isLt}
+    <div class="gainDash">—</div>
+  {:else}
+    <ValueField
+      kind="dB-signed"
+      value={band.gain}
+      min={Eq.BAND_GAIN_MIN_DB}
+      max={Eq.BAND_GAIN_MAX_DB}
+      step={Eq.BAND_GAIN_STEP_DB}
+      tone="signed"
+      align="right"
+      disabled={off || bypassed || noGain}
+      onChange={(v) => onPatch({ gain: v })}
+    />
+  {/if}
 </div>
 
 <style>
   .row {
     display: grid;
-    grid-template-columns: 28px 24px 100px 84px 64px 72px;
+    /* grid-template-columns set inline (BAND_ROW_COLS). */
     gap: 6px;
     padding: 5px 14px;
     align-items: center;
     border-top: 1px solid var(--wash);
     font-family: var(--font-mono);
     font-size: 11px;
+  }
+  /* Linkwitz Transform's gain slot has no dB meaning here (it's fp in Hz on
+     the wire) -- placeholder in the GAIN cell instead of a real control. */
+  .gainDash {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: 24px;
+    padding: 0 8px;
+    color: var(--text-faint);
+    font-variant-numeric: tabular-nums;
   }
   /* U-P3 policy B: no whole-row dim when the band is off (type = Flat). The
      row's structure and the FLAT type stay full-contrast; the freq/Q/gain

@@ -26,9 +26,10 @@ if (isMobileDevice()) {
 
   const params = new URLSearchParams(location.search);
   const mock = params.get('mock');
-  // ?mock=rp2350&fw=115 boots the mock as the released 1.1.5 device (wire V21 --
-  // the full leveller-mask + ADAT + loudness/crossfeed-mask + I2S slave-clock
-  // surface; default is V10 / 1.1.4).
+  // ?mock=rp2350&fw=115 boots the mock as the current 1.1.5 dev build (wire
+  // V24 -- the full leveller-mask + ADAT + loudness/crossfeed-mask + I2S
+  // slave-clock + Linkwitz Transform + psybass + ADAT-input surface; default
+  // is V10 / 1.1.4).
   // ?mock=rp2350&i2s=8 additionally gives it an imaginary 8-channel I2S input
   // (implies the 1.1.5 profile) so the multichannel UI -- incl. the leveller
   // channel masks, which are V18-only -- can be demoed without hardware.
@@ -41,7 +42,7 @@ if (isMobileDevice()) {
   const spdifInputsEnabled = spdifParam != null ? Math.min(3, Math.max(1, Number(spdifParam) | 0)) : undefined;
   const want115 = params.get('fw') === '115' || (i2sInputChannels != null && i2sInputChannels > 2) || spdifInputsEnabled != null;
   const mockOpts = {
-    ...(want115 ? { wireVersion: 21, fwVersion: { major: 1, minor: 1, patch: 5 } } : {}),
+    ...(want115 ? { wireVersion: 24, fwVersion: { major: 1, minor: 1, patch: 5 } } : {}),
     ...(i2sInputChannels != null ? { i2sInputChannels } : {}),
     ...(spdifInputsEnabled != null ? { spdifInputsEnabled } : {}),
     // Demo remote: an armed IR learn self-completes with a fresh NEC code.

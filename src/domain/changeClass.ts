@@ -20,6 +20,7 @@ export const CHANGE_CLASS: Record<SnapshotChange['kind'], ChangeClass> = {
   loudness:           'preset-content',
   crossfeed:          'preset-content',
   leveller:           'preset-content',
+  psybass:            'preset-content',
   inputConfig:        'preset-content',
   spdifRxPin:         'output-config',
   spdifExt:           'output-config',

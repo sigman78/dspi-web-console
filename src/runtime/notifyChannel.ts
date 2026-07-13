@@ -91,6 +91,11 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
       };
       return;
     }
+    // ADAT input lock state changed. Silent no-op for now -- telemetry wiring
+    // (mirroring i2sSlaveState above) lands with the ADAT input UI branch.
+    if (event.kind === 'adatInputState') {
+      return;
+    }
     // The device notification is the authority that the slot actually loaded.
     if (event.kind === 'presetLoaded') {
       const name = session.presets.names[event.slot] ?? '';

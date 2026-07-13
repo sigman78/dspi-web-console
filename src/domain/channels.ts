@@ -143,6 +143,8 @@ export function defaultInputName(source: AudioInputSource, slot: InputSlot): str
   switch (source) {
     case AudioInputSource.I2s:
       return `I2S ${Math.floor(slot / 2) + 1} ${slot % 2 === 0 ? 'L' : 'R'}`;
+    case AudioInputSource.Adat:
+      return `ADAT ${slot % 2 === 0 ? 'L' : 'R'}`;
     default:
       return `USB ${slot + 1}`;
   }
@@ -153,6 +155,8 @@ export function defaultInputShortName(source: AudioInputSource, slot: InputSlot)
   switch (source) {
     case AudioInputSource.I2s:
       return `I${Math.floor(slot / 2) + 1}${slot % 2 === 0 ? 'L' : 'R'}`;
+    case AudioInputSource.Adat:
+      return slot % 2 === 0 ? 'AL' : 'AR';
     default:
       return `U${slot + 1}`;
   }

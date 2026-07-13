@@ -15,6 +15,7 @@
     [FilterType.Allpass1]: 'Allpass 1st',
     [FilterType.LowShelf1]: 'Low Shelf 1st',
     [FilterType.HighShelf1]: 'High Shelf 1st',
+    [FilterType.LinkwitzTransform]: 'Linkwitz',
     [FilterType.Lr2Lp]: 'LR2 LP',   [FilterType.Lr2Hp]: 'LR2 HP',
     [FilterType.Lr4Lp]: 'LR4 LP',   [FilterType.Lr4Hp]: 'LR4 HP',
     [FilterType.Lr6Lp]: 'LR6 LP',   [FilterType.Lr6Hp]: 'LR6 HP',
@@ -59,6 +60,16 @@
     FilterType.Flat,
     ...Array.from({ length: 32 }, (_, i) => (FilterType.Lr2Lp + i) as FilterType),
   ];
+
+  // Single source of truth for which PEQ types the EQ tab offers, given the
+  // device's feature flags. Linkwitz Transform is display-only (see the
+  // component below): it's never offered here, even on a capable device --
+  // a band already set to it still renders correctly, just not selectable.
+  export function offeredTypes(features: { firstOrderEq: boolean }): FilterType[] {
+    let types = TYPE_ORDER;
+    if (features.firstOrderEq) types = [...types, ...FIRST_ORDER_TYPES];
+    return types;
+  }
 </script>
 
 <script lang="ts">
@@ -74,6 +85,14 @@
   } = $props();
 
   const isOff = $derived(value === FilterType.Flat);
+  // A band already set to Linkwitz Transform (another host, a preset, or
+  // device state) keeps showing "Linkwitz" selected even though `types`
+  // never offers it -- appended as a disabled option so it renders as the
+  // current value but can't be re-picked. Switching away to any other
+  // offered type still works normally.
+  const showLt = $derived(
+    value === FilterType.LinkwitzTransform && !types.includes(FilterType.LinkwitzTransform),
+  );
 </script>
 
 <select
@@ -85,6 +104,9 @@
   {#each types as t (t)}
     <option value={t}>{TYPE_LABELS[t]}</option>
   {/each}
+  {#if showLt}
+    <option value={FilterType.LinkwitzTransform} disabled>{TYPE_LABELS[FilterType.LinkwitzTransform]}</option>
+  {/if}
 </select>
 
 <style>

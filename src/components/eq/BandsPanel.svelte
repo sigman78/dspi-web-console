@@ -1,6 +1,6 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
-  import BandRow from './BandRow.svelte';
+  import BandRow, { BAND_ROW_COLS } from './BandRow.svelte';
   import type { FilterParams, FilterType, ChannelId } from '@/domain';
 
   const {
@@ -52,7 +52,7 @@
     <button class="chip hi act" onclick={rightAction} title={rightTitle}>{rightLabel}</button>
   {/snippet}
 
-  <div class="head">
+  <div class="head" style:grid-template-columns={BAND_ROW_COLS}>
     <div>#</div>
     <div></div>
     <div>TYPE</div>
@@ -71,7 +71,7 @@
 
   .head {
     display: grid;
-    grid-template-columns: 28px 24px 100px 84px 64px 72px;
+    /* grid-template-columns set inline (BAND_ROW_COLS), matching BandRow. */
     gap: 6px;
     padding: 8px 14px;
     font-family: var(--font-mono);

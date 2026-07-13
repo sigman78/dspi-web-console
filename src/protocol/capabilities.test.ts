@@ -41,11 +41,14 @@ describe('deriveCapabilities — support classification', () => {
     }
   });
 
-  it('classifies V19/V20/V21 as supported; V22 reports future', () => {
+  it('classifies V19..V24 as supported; V25 reports future', () => {
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 19, payloadLength: Wire.BULK_SIZE_V19, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 20, payloadLength: Wire.BULK_SIZE_V20, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 21, payloadLength: Wire.BULK_SIZE_V21, platformId: 1 }).support).toBe('supported');
-    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 22, payloadLength: Wire.BULK_SIZE_V21, platformId: 1 }).support).toBe('future');
+    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 22, payloadLength: Wire.BULK_SIZE_V22, platformId: 1 }).support).toBe('supported');
+    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 23, payloadLength: Wire.BULK_SIZE_V23, platformId: 1 }).support).toBe('supported');
+    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 24, payloadLength: Wire.BULK_SIZE_V24, platformId: 1 }).support).toBe('supported');
+    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 25, payloadLength: Wire.BULK_SIZE_V24, platformId: 1 }).support).toBe('future');
   });
 });
 
@@ -120,6 +123,29 @@ describe('deriveCapabilities — V16 feature flags', () => {
       deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: v, payloadLength: Wire.BULK_SIZE_V21, platformId: 1 }).features.i2sSlaveClock;
     expect(at(20)).toBe(false);
     expect(at(21)).toBe(true);
+  });
+
+  it('gates the Linkwitz Transform feature on wire V22 (off through V21, on for V22+)', () => {
+    const at = (v: number, len: number) =>
+      deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: v, payloadLength: len, platformId: 1 }).features.linkwitzTransform;
+    expect(at(21, Wire.BULK_SIZE_V21)).toBe(false);
+    expect(at(22, Wire.BULK_SIZE_V22)).toBe(true);
+  });
+
+  it('gates psybass on wire V23 + RP2350 (off through V22, off on RP2040, on for V23 RP2350)', () => {
+    const at = (v: number, len: number, platformId: number) =>
+      deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: v, payloadLength: len, platformId }).features.psybass;
+    expect(at(22, Wire.BULK_SIZE_V22, 1)).toBe(false);
+    expect(at(23, Wire.BULK_SIZE_V23, 0)).toBe(false);
+    expect(at(23, Wire.BULK_SIZE_V23, 1)).toBe(true);
+  });
+
+  it('gates ADAT input on wire V24 + RP2350 (off on V23, off on RP2040, on for V24 RP2350)', () => {
+    const at = (v: number, platformId: number) =>
+      deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: v, payloadLength: Wire.BULK_SIZE_V24, platformId }).features.adatInput;
+    expect(at(23, 1)).toBe(false);
+    expect(at(24, 0)).toBe(false);
+    expect(at(24, 1)).toBe(true);
   });
 });
 

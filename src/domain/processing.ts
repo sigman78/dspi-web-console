@@ -59,6 +59,20 @@ export interface Leveller {
   applyMask: number;
 }
 
+// Psychoacoustic bass enhancement (fw V23+, RP2350 only). outputMask mirrors
+// the loudness/crossfeed per-output mask convention: bit k selects output
+// channel k, default all-on (0xFFFF) matches the firmware factory value.
+// Firmware does no zero-to-default remap, so this must never be sent as 0.
+export interface Psybass {
+  enabled: boolean;
+  outputMask: number;
+  cutoffHz: number;
+  harmonicsDb: number;
+  driveDb: number;
+  characterPct: number;
+  originalDb: number;
+}
+
 // Master volume persistence: 0 = global (persisted via SaveMasterVolume);
 // 1 = travels with each preset.
 export const MasterVolumeMode = {
