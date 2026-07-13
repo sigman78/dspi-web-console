@@ -3,10 +3,10 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseBulkParams, buildBulkParams, defaultBulkParams, type BulkParams } from './bulkParser';
+import { parseBulkParams, buildBulkParams, defaultBulkParams, type BulkParams, type WireFilter } from './bulkParser';
 import { makeBulk, makeBulkObject } from '@test/fixtures/bulkFixtures';
 import * as Wire from './wireTypes';
-import { FilterType, type FilterParams } from '@/domain';
+import { FilterType } from '@/domain';
 
 const { NUM_CHANNELS, NUM_OUTPUTS, BANDS_MAX } = Wire.Const;
 
@@ -89,12 +89,12 @@ describe('bulkParser — per-channel + matrix', () => {
   });
 
   it('parses non-trivial filter at ch=3 band=5', () => {
-    const filters: FilterParams[][] = Array.from({ length: NUM_CHANNELS }, () =>
+    const filters: WireFilter[][] = Array.from({ length: NUM_CHANNELS }, () =>
       Array.from({ length: BANDS_MAX }, () => ({
-        type: FilterType.Flat, bypass: false, frequency: 1000, q: 1, gain: 0,
-      } as FilterParams)),
+        type: FilterType.Flat, bypass: false, frequency: 1000, q: 1, gain: 0, qpRaw: 0,
+      } as WireFilter)),
     );
-    filters[3][5] = { type: FilterType.Peaking, bypass: false, frequency: 2500, q: 0.7, gain: 4.5 };
+    filters[3][5] = { type: FilterType.Peaking, bypass: false, frequency: 2500, q: 0.7, gain: 4.5, qpRaw: 0 };
     const f = parseBulkParams(makeBulk({ filters })).filters[3][5];
     expect(f.type).toBe(FilterType.Peaking);
     expect(f.frequency).toBeCloseTo(2500, 4);
@@ -252,7 +252,11 @@ describe('bulkParser — V7-V10 tail decode', () => {
     const obj = makeBulkObject({
       formatVersion: 10,
       payloadLength: Wire.BulkSizes.V10,
-      inputConfig: { source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 },
+      inputConfig: {
+        source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
+        spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+        adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
+      },
       lgSoundSync: { enabled: true, present: true, volume: 40, muted: false },
       userVolume:  { volumeDb: -6.5, mute: true },
       dacHwMute:   { enabled: true, activeLow: true, pin: 11, holdMs: 20, releaseMs: 50 },
@@ -260,7 +264,11 @@ describe('bulkParser — V7-V10 tail decode', () => {
     const p = parseBulkParams(buildBulkParams(obj));
     expect(p.formatVersion).toBe(10);
     expect(p.payloadLength).toBe(Wire.BulkSizes.V10);
-    expect(p.inputConfig).toEqual({ source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 });
+    expect(p.inputConfig).toEqual({
+      source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
+      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
+    });
     expect(p.lgSoundSync).toEqual({ enabled: true, present: true, volume: 40, muted: false });
     expect(p.userVolume.volumeDb).toBeCloseTo(-6.5, 4);
     expect(p.userVolume.mute).toBe(true);
@@ -271,19 +279,23 @@ describe('bulkParser — V7-V10 tail decode', () => {
     const p = parseBulkParams(makeBulk({
       formatVersion: 6, payloadLength: Wire.BulkSizes.V6Full,
     }));
-    expect(p.inputConfig).toEqual({ source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 });
+    expect(p.inputConfig).toEqual({
+      source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
+      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
+    });
     expect(p.lgSoundSync.enabled).toBe(false);
     expect(p.userVolume.mute).toBe(false);
     expect(p.dacHwMute.pin).toBe(11);
   });
 
   it('decodes per-band bypass', () => {
-    const filters: FilterParams[][] = Array.from({ length: NUM_CHANNELS }, () =>
+    const filters: WireFilter[][] = Array.from({ length: NUM_CHANNELS }, () =>
       Array.from({ length: BANDS_MAX }, () => ({
-        type: FilterType.Flat, bypass: false, frequency: 1000, q: 1, gain: 0,
+        type: FilterType.Flat, bypass: false, frequency: 1000, q: 1, gain: 0, qpRaw: 0,
       })),
     );
-    filters[2][4] = { type: FilterType.Peaking, bypass: true, frequency: 800, q: 1, gain: 2 };
+    filters[2][4] = { type: FilterType.Peaking, bypass: true, frequency: 800, q: 1, gain: 2, qpRaw: 0 };
     const obj = makeBulkObject({ filters });
     const p = parseBulkParams(buildBulkParams(obj));
     expect(p.filters[2][4].bypass).toBe(true);
@@ -294,12 +306,24 @@ describe('bulkParser — V7-V10 tail decode', () => {
 describe('buildBulkParams — version-aware', () => {
   it('emits V10 (2960 B) for a V10 snapshot, preserving the tail', () => {
     const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    const v10 = { ...base, inputConfig: { source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 }, userVolume: { volumeDb: -3, mute: true } };
+    const v10 = {
+      ...base,
+      inputConfig: {
+        source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
+        spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+        adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
+      },
+      userVolume: { volumeDb: -3, mute: true },
+    };
     const bytes = buildBulkParams(v10);
     expect(bytes.byteLength).toBe(Wire.BulkSizes.V10);
     const p = parseBulkParams(bytes);
     expect(p.formatVersion).toBe(10);
-    expect(p.inputConfig).toEqual({ source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 });
+    expect(p.inputConfig).toEqual({
+      source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
+      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
+    });
     expect(p.userVolume.mute).toBe(true);
   });
 

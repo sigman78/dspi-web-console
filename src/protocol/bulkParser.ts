@@ -10,9 +10,14 @@
 import { BinReader, BinWriter, Codec } from '@/utils';
 import * as Wire from './wireTypes';
 import type {
-  Loudness,
+  Loudness, Psybass,
   CrossPoint, OutputState,
 } from '@/domain';
+
+// PEQ FilterType 11 = LINKWITZ_TRANSFORM (fw config.h). Duplicated as a raw
+// wire value rather than imported from domain.FilterType -- this file stays
+// domain-free (see the file banner above).
+const WIRE_FILTER_TYPE_LINKWITZ_TRANSFORM = 11;
 
 // Wire-shaped I2S section: domain I2sConfig's clockPinMode is DECODED from
 // clockPinModeP1 (0 = absent -> 0, else p1-1) in snapshotCodec.ts, mirroring
@@ -41,6 +46,11 @@ export interface WireFilter {
   frequency: number;
   q: number;
   gain: number;
+  // Linkwitz Transform qp sidecar (V22+ wire; BandParams reserved bytes).
+  // Raw u16 (round(Qp*512), 0 = default 0.707); 0 for every non-LT band --
+  // firmware forces it on apply. Decoded to a true Qp value in
+  // snapshotCodec.narrowFilter, never here (this file stays mechanical).
+  qpRaw: number;
 }
 
 export interface WireInputConfig {
@@ -55,6 +65,12 @@ export interface WireInputConfig {
   spdifRxEnabledExtP1: number;  // enable mask + 1 (0 = absent)
   // fw V21+ I2S clock role: 0 = master, 1 = slave. 0 on older packets.
   i2sClockMode: number;
+  // fw V24+ ADAT input config; zeros ("absent") on older packets. GPIO raw;
+  // enabled/clockMode are p1-encoded (0 = absent), same convention as
+  // spdifRxEnabledExtP1 -- decoded in snapshotCodec.ts.
+  adatInputPin: number;
+  adatInputEnabledP1: number;
+  adatInputClockModeP1: number;
 }
 export interface WireLgSoundSync { enabled: boolean; present: boolean; volume: number; muted: boolean; }
 export interface WireUserVolume  { volumeDb: number; mute: boolean; }
@@ -89,6 +105,10 @@ export interface WireAdat {
   enabled: boolean;
   pin: number;
 }
+
+// Section 21: psychoacoustic bass config (V23+). Wire-shaped 1:1 with
+// domain.Psybass -- no narrowing needed in snapshotCodec.ts.
+export type WirePsybass = Psybass;
 
 export interface BulkParams {
   formatVersion: number;
@@ -128,15 +148,32 @@ export interface BulkParams {
 
   crossover: WireFilter[][];          // [17][4], V16+ (flat defaults on V10)
   adat: WireAdat;                     // V17+
+  psybass: WirePsybass;               // V23+
 }
 
 function defaultWireFilter(): WireFilter {
-  return { type: 0, bypass: false, frequency: 1000, q: 1, gain: 0 };
+  return { type: 0, bypass: false, frequency: 1000, q: 1, gain: 0, qpRaw: 0 };
 }
 
-function readWireFilter(r: BinReader): WireFilter {
+function readWireFilter(r: BinReader, withQp: boolean): WireFilter {
+  if (withQp) {
+    const b = Wire.BandParamsQp.read(r);
+    return { type: b.type, bypass: b.bypass === 1, frequency: b.frequency, q: b.q, gain: b.gain, qpRaw: b.qp };
+  }
   const b = Wire.BandParams.read(r);
-  return { type: b.type, bypass: b.bypass === 1, frequency: b.frequency, q: b.q, gain: b.gain };
+  return { type: b.type, bypass: b.bypass === 1, frequency: b.frequency, q: b.q, gain: b.gain, qpRaw: 0 };
+}
+
+function writeWireFilter(w: BinWriter, f: WireFilter, withQp: boolean): void {
+  if (withQp) {
+    Wire.BandParamsQp.write(w, {
+      type: f.type, bypass: f.bypass ? 1 : 0,
+      qp: f.type === WIRE_FILTER_TYPE_LINKWITZ_TRANSFORM ? f.qpRaw : 0,
+      frequency: f.frequency, q: f.q, gain: f.gain,
+    });
+    return;
+  }
+  Wire.BandParams.write(w, { type: f.type, bypass: f.bypass ? 1 : 0, frequency: f.frequency, q: f.q, gain: f.gain });
 }
 
 // Decode just the 16-byte Wire.Header from a (possibly partial) bulk read --
@@ -227,7 +264,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
 
   const filters = [...def.filters];
   for (let ch = 0; ch < dims.numCh; ch++) {
-    filters[ch] = Array.from({ length: Wire.Const.BANDS_MAX }, () => readWireFilter(r));
+    filters[ch] = Array.from({ length: Wire.Const.BANDS_MAX }, () => readWireFilter(r, layout.bandQp));
   }
 
   const channelNames = [...def.channelNames];
@@ -282,7 +319,24 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
   const masterVol = layout.masterVolume ? Wire.MasterVolume.read(r) : { masterVolumeDb: def.masterVolumeDb };
 
   const inputConfig = layout.inputSource
-    ? (layout.i2sClockMode
+    ? (layout.adatInput
+        ? (() => {
+            const w = Wire.InputConfig24.read(r);
+            return {
+              source: w.inputSource,
+              spdifRxPin: w.spdifRxPin,
+              i2sRxPins: [w.i2sRxPin, ...w.i2sRxPinExt],
+              i2sInputRateEnc: w.i2sInputRate,
+              i2sInputChannels: w.i2sInputChannels,
+              spdifRxPinExt: [...w.spdifRxPinExt],
+              spdifRxEnabledExtP1: w.spdifRxEnabledExtP1,
+              i2sClockMode: w.i2sClockMode,
+              adatInputPin: w.adatInputPin,
+              adatInputEnabledP1: w.adatInputEnabledP1,
+              adatInputClockModeP1: w.adatInputClockModeP1,
+            };
+          })()
+        : layout.i2sClockMode
         ? (() => {
             const w = Wire.InputConfig21.read(r);
             return {
@@ -294,6 +348,9 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
               spdifRxPinExt: [...w.spdifRxPinExt],
               spdifRxEnabledExtP1: w.spdifRxEnabledExtP1,
               i2sClockMode: w.i2sClockMode,
+              adatInputPin: 0,
+              adatInputEnabledP1: 0,
+              adatInputClockModeP1: 0,
             };
           })()
         : (() => {
@@ -307,6 +364,9 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
               spdifRxPinExt: [...w.spdifRxPinExt],
               spdifRxEnabledExtP1: w.spdifRxEnabledExtP1,
               i2sClockMode: 0,
+              adatInputPin: 0,
+              adatInputEnabledP1: 0,
+              adatInputClockModeP1: 0,
             };
           })())
     : def.inputConfig;
@@ -323,13 +383,23 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
   const crossover = [...def.crossover];
   if (layout.crossover) {
     for (let ch = 0; ch < Wire.Const16.NUM_CHANNELS; ch++) {
-      crossover[ch] = Array.from({ length: Wire.Const16.XOVER_BANDS }, () => readWireFilter(r));
+      crossover[ch] = Array.from({ length: Wire.Const16.XOVER_BANDS }, () => readWireFilter(r, layout.bandQp));
     }
   }
 
   const adat = layout.adat
     ? (() => { const w = Wire.AdatConfig.read(r); return { enabled: w.enabled, pin: w.pin }; })()
     : def.adat;
+
+  const psybass = layout.psybass
+    ? (() => {
+        const w = Wire.PsybassParams.read(r);
+        return {
+          enabled: w.enabled, outputMask: w.outputMask, cutoffHz: w.cutoffHz,
+          harmonicsDb: w.harmonicsDb, driveDb: w.driveDb, characterPct: w.characterPct, originalDb: w.originalDb,
+        };
+      })()
+    : def.psybass;
 
   return {
     formatVersion: h.formatVersion,
@@ -374,6 +444,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
     dacHwMute,
     crossover,
     adat,
+    psybass,
   };
 }
 
@@ -435,13 +506,18 @@ export function defaultBulkParams(opts: {
     leveller: { enabled: false, speed: 0, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40, detectorMask: 0xFF, applyMask: 0xFF },
     inputPreampsDb: Array.from({ length: Wire.Const16.NUM_INPUTS }, () => 0),
     masterVolumeDb: 0,
-    inputConfig: { source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 },
+    inputConfig: {
+      source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
+      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
+    },
     lgSoundSync: { enabled: false, present: false, volume: 0, muted: false },
     userVolume:  { volumeDb: 0, mute: false },
     dacHwMute:   { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
     crossover: Array.from({ length: Wire.Const16.NUM_CHANNELS }, () =>
       Array.from({ length: Wire.Const16.XOVER_BANDS }, defaultWireFilter)),
     adat: { enabled: false, pin: 0 },
+    psybass: { enabled: false, outputMask: 0xFFFF, cutoffHz: 80, harmonicsDb: 0, driveDb: 6, characterPct: 50, originalDb: 0 },
   };
 }
 
@@ -526,10 +602,10 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
 
   Wire.PinConfig.write(w, { numPinOutputs: bulk.numPinOutputs, pins: bulk.pins });
 
+  const withBandQp = writeVersion >= 22;
   for (let ch = 0; ch < dims.numCh; ch++) {
     for (let b = 0; b < Wire.Const.BANDS_MAX; b++) {
-      const f = bulk.filters[ch][b];
-      Wire.BandParams.write(w, { type: f.type, bypass: f.bypass ? 1 : 0, frequency: f.frequency, q: f.q, gain: f.gain });
+      writeWireFilter(w, bulk.filters[ch][b], withBandQp);
     }
   }
 
@@ -550,7 +626,22 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
   Wire.MasterVolume.write(w, { masterVolumeDb: bulk.masterVolumeDb });
 
   // V7-V16 tail -- written only when the target version includes the section.
-  if (writeVersion >= 21) {
+  if (writeVersion >= 24) {
+    Wire.InputConfig24.write(w, {
+      inputSource:         bulk.inputConfig.source,
+      spdifRxPin:          bulk.inputConfig.spdifRxPin,
+      i2sRxPin:            bulk.inputConfig.i2sRxPins[0] ?? 0,
+      i2sInputRate:        bulk.inputConfig.i2sInputRateEnc,
+      i2sInputChannels:    bulk.inputConfig.i2sInputChannels,
+      i2sRxPinExt:         bulk.inputConfig.i2sRxPins.slice(1, 4),
+      spdifRxPinExt:       bulk.inputConfig.spdifRxPinExt,
+      spdifRxEnabledExtP1: bulk.inputConfig.spdifRxEnabledExtP1,
+      i2sClockMode:        bulk.inputConfig.i2sClockMode,
+      adatInputPin:         bulk.inputConfig.adatInputPin,
+      adatInputEnabledP1:   bulk.inputConfig.adatInputEnabledP1,
+      adatInputClockModeP1: bulk.inputConfig.adatInputClockModeP1,
+    });
+  } else if (writeVersion >= 21) {
     Wire.InputConfig21.write(w, {
       inputSource:         bulk.inputConfig.source,
       spdifRxPin:          bulk.inputConfig.spdifRxPin,
@@ -586,13 +677,19 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
   if (writeVersion >= 16) {
     for (let ch = 0; ch < Wire.Const16.NUM_CHANNELS; ch++) {
       for (let b = 0; b < Wire.Const16.XOVER_BANDS; b++) {
-        const f = bulk.crossover[ch][b];
-        Wire.BandParams.write(w, { type: f.type, bypass: f.bypass ? 1 : 0, frequency: f.frequency, q: f.q, gain: f.gain });
+        writeWireFilter(w, bulk.crossover[ch][b], withBandQp);
       }
     }
   }
   if (writeVersion >= 17) {
     Wire.AdatConfig.write(w, { enabled: bulk.adat.enabled, pin: bulk.adat.pin });
+  }
+  if (writeVersion >= 23) {
+    Wire.PsybassParams.write(w, {
+      enabled: bulk.psybass.enabled, outputMask: bulk.psybass.outputMask, cutoffHz: bulk.psybass.cutoffHz,
+      harmonicsDb: bulk.psybass.harmonicsDb, driveDb: bulk.psybass.driveDb,
+      characterPct: bulk.psybass.characterPct, originalDb: bulk.psybass.originalDb,
+    });
   }
 
   return w.toUint8Array();

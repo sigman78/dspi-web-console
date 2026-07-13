@@ -74,10 +74,10 @@ describe('fromBulkParams', () => {
 
   it('maps RP2040 PDM EQ and name from firmware channel 6', () => {
     const filters = Array.from({ length: 11 }, () =>
-      Array.from({ length: 12 }, () => ({ type: 0, bypass: false, frequency: 1000, q: 1, gain: 0 })),
+      Array.from({ length: 12 }, () => ({ type: 0, bypass: false, frequency: 1000, q: 1, gain: 0, qpRaw: 0 })),
     );
-    filters[6][0] = { type: 1, bypass: false, frequency: 321, q: 0.8, gain: -2 };
-    filters[10][0] = { type: 1, bypass: false, frequency: 9999, q: 2, gain: 12 };
+    filters[6][0] = { type: 1, bypass: false, frequency: 321, q: 0.8, gain: -2, qpRaw: 0 };
+    filters[10][0] = { type: 1, bypass: false, frequency: 9999, q: 2, gain: 12, qpRaw: 0 };
 
     const names: string[] = [];
     names[6] = 'RP2040 Sub';
@@ -126,13 +126,21 @@ describe('snapshotCodec — 1.1.4 sections', () => {
   it('maps the V10 tail into nullable domain sections', () => {
     const bulk = makeBulkObject({
       formatVersion: 10, payloadLength: WireNS.BulkSizes.V10,
-      inputConfig: { source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 },
+      inputConfig: {
+        source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
+        spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+        adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
+      },
       lgSoundSync: { enabled: true, present: false, volume: 30, muted: false },
       userVolume:  { volumeDb: -4, mute: false },
       dacHwMute:   { enabled: true, activeLow: true, pin: 11, holdMs: 10, releaseMs: 20 },
     });
     const snap = fromBulkParams(hw, bulk);
-    expect(snap.inputConfig).toEqual({ source: AudioInputSource.Spdif, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0 });
+    expect(snap.inputConfig).toEqual({
+      source: AudioInputSource.Spdif, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0,
+      spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0,
+      adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0,
+    });
     expect(snap.lgSoundSync).toEqual({ enabled: true, present: false, volume: 30, muted: false });
     expect(snap.userVolume).toEqual({ volumeDb: -4, mute: false });
     expect(snap.dacHwMute).toEqual({ enabled: true, activeLow: true, pin: 11, holdMs: 10, releaseMs: 20 });
@@ -140,7 +148,11 @@ describe('snapshotCodec — 1.1.4 sections', () => {
 
   it('carries the parser-filled factory defaults for sections a packet omits', () => {
     const snap = fromBulkParams(hw, makeBulkObject({ formatVersion: 6, payloadLength: WireNS.BulkSizes.V6Full }));
-    expect(snap.inputConfig).toEqual({ source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0 });
+    expect(snap.inputConfig).toEqual({
+      source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0,
+      spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0,
+      adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0,
+    });
     expect(snap.userVolume).toEqual({ volumeDb: 0, mute: false });
     expect(snap.lgSoundSync.enabled).toBe(false);
     expect(snap.dacHwMute.enabled).toBe(false);
@@ -148,18 +160,18 @@ describe('snapshotCodec — 1.1.4 sections', () => {
 
   it('carries per-band bypass into FilterParams', () => {
     const filters = Array.from({ length: WireNS.Const.NUM_CHANNELS }, () =>
-      Array.from({ length: WireNS.Const.BANDS_MAX }, () => ({ type: 1, bypass: false, frequency: 1000, q: 1, gain: 0 })));
-    filters[0][0] = { type: 1, bypass: true, frequency: 1000, q: 1, gain: 2 };
+      Array.from({ length: WireNS.Const.BANDS_MAX }, () => ({ type: 1, bypass: false, frequency: 1000, q: 1, gain: 0, qpRaw: 0 })));
+    filters[0][0] = { type: 1, bypass: true, frequency: 1000, q: 1, gain: 2, qpRaw: 0 };
     const snap = fromBulkParams(hw, makeBulkObject({ formatVersion: 10, payloadLength: WireNS.BulkSizes.V10, filters }));
     expect(snap.channels[0].filters[0].bypass).toBe(true);
   });
 
   it('narrows Notch/Allpass wire types and clamps an unknown type to Flat', () => {
     const filters = Array.from({ length: WireNS.Const.NUM_CHANNELS }, () =>
-      Array.from({ length: WireNS.Const.BANDS_MAX }, () => ({ type: 0, bypass: false, frequency: 1000, q: 1, gain: 0 })));
-    filters[0][0] = { type: FilterType.Notch, bypass: false, frequency: 1000, q: 1, gain: 0 };
-    filters[0][1] = { type: FilterType.Allpass, bypass: false, frequency: 1000, q: 1, gain: 0 };
-    filters[0][2] = { type: 99, bypass: false, frequency: 1000, q: 1, gain: 0 };
+      Array.from({ length: WireNS.Const.BANDS_MAX }, () => ({ type: 0, bypass: false, frequency: 1000, q: 1, gain: 0, qpRaw: 0 })));
+    filters[0][0] = { type: FilterType.Notch, bypass: false, frequency: 1000, q: 1, gain: 0, qpRaw: 0 };
+    filters[0][1] = { type: FilterType.Allpass, bypass: false, frequency: 1000, q: 1, gain: 0, qpRaw: 0 };
+    filters[0][2] = { type: 99, bypass: false, frequency: 1000, q: 1, gain: 0, qpRaw: 0 };
     const snap = fromBulkParams(hw, makeBulkObject({ formatVersion: 10, payloadLength: WireNS.BulkSizes.V10, filters }));
     expect(snap.channels[0].filters[0].type).toBe(FilterType.Notch);
     expect(snap.channels[0].filters[1].type).toBe(FilterType.Allpass);
@@ -173,7 +185,11 @@ const hw16 = createHardwareProfile(PlatformType.RP2350, 16);
 function bulkWithSource(source: AudioInputSource, overrides: Partial<Parameters<typeof makeBulkObject>[0]> = {}) {
   return makeBulkObject({
     formatVersion: 16, payloadLength: WireNS.BULK_SIZE_V16,
-    inputConfig: { source, spdifRxPin: 5, i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 1, i2sInputChannels: 8, spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0 },
+    inputConfig: {
+      source, spdifRxPin: 5, i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 1, i2sInputChannels: 8,
+      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
+    },
     ...overrides,
   });
 }

@@ -16,6 +16,14 @@ export const BAND_GAIN_MIN_DB = -24;
 export const BAND_GAIN_MAX_DB = 24;
 export const BAND_GAIN_STEP_DB = 0.1;
 
+// Linkwitz Transform (V22+): f0/fp and Q0/Qp each have their own range --
+// wider on the low end for frequency (sealed-box tuning reaches down to
+// 10 Hz) and narrower on Q than the general PEQ band.
+export const LT_FREQ_MIN_HZ = 10;
+export const LT_FREQ_MAX_HZ = 20000;
+export const LT_Q_MIN = 0.1;
+export const LT_Q_MAX = 20;
+
 // Global EQ preamp.
 export const PREAMP_MIN_DB = -60;
 export const PREAMP_MAX_DB = 10;

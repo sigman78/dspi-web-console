@@ -1,4 +1,4 @@
-import { FilterType, type FilterParams } from '@/domain';
+import { FilterType, QP_DEFAULT, type FilterParams } from '@/domain';
 import { BODE_BINS, BODE_FREQS } from './bodeFreqs';
 import { xoverSectionCoeffs } from './xoverCurve';
 
@@ -17,8 +17,10 @@ export interface BiquadCoeffs {
 }
 type Coeffs = BiquadCoeffs;
 
-// RBJ Audio EQ Cookbook biquads, normalized so a0 = 1.
-function coeffsFor(type: FilterType, f: number, q: number, gainDb: number, fs: number): Coeffs | null {
+// RBJ Audio EQ Cookbook biquads, normalized so a0 = 1. `gainDb` doubles as
+// the Linkwitz Transform's fp (Hz, not dB) and `qp` as its Qp -- see
+// FilterType.LinkwitzTransform's doc comment.
+function coeffsFor(type: FilterType, f: number, q: number, gainDb: number, fs: number, qp?: number): Coeffs | null {
   if (type === FilterType.Flat) return null;
   const w0 = TWO_PI * f / fs;
   const cosw0 = Math.cos(w0);
@@ -119,6 +121,26 @@ function coeffsFor(type: FilterType, f: number, q: number, gainDb: number, fs: n
       a2: 0,
     };
   }
+  // Linkwitz Transform (V22+): replaces the measured sealed-box rolloff
+  // (f0, Q0 -- this section's `f`/`q`) with a target alignment (fp, Qp).
+  // `gainDb` carries fp in Hz; fp <= 0 is firmware's "flat" (no LT effect).
+  // Both corners are prewarped independently (sample-exact match to the
+  // firmware's digital design), unlike the analog-prototype forms above.
+  if (type === FilterType.LinkwitzTransform) {
+    const fp = gainDb;
+    if (fp <= 0) return null;
+    const q0 = Math.max(0.001, q);
+    const qpVal = qp === undefined || qp === 0 ? QP_DEFAULT : qp;
+    const g0 = Math.tan(Math.PI * f / fs);
+    const gp = Math.tan(Math.PI * fp / fs);
+    const b0 = 1 + g0 / q0 + g0 * g0;
+    const b1 = 2 * (g0 * g0 - 1);
+    const b2 = 1 - g0 / q0 + g0 * g0;
+    const a0 = 1 + gp / qpVal + gp * gp;
+    const a1 = 2 * (gp * gp - 1);
+    const a2 = 1 - gp / qpVal + gp * gp;
+    return { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 };
+  }
   return null;
 }
 
@@ -147,7 +169,7 @@ function sectionsFor(
   const out: Coeffs[] = [];
   for (const band of bands) {
     if (band.bypass) continue;
-    const c = coeffsFor(band.type, band.frequency, band.q, band.gain, fs);
+    const c = coeffsFor(band.type, band.frequency, band.q, band.gain, fs, band.qp);
     if (c) out.push(c);
   }
   for (const band of xoverBands) {

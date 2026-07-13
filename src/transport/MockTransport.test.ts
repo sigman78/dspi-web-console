@@ -244,6 +244,49 @@ describe('MockTransport — GetEqParam multi-read', () => {
   });
 });
 
+describe('MockTransport — Linkwitz Transform qp sidecar (V22+, raw wire level)', () => {
+  it('the 18-byte SetEqParam form stores qp; GetEqParam param 5 returns qp_x512', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 22, fwVersion: { major: 1, minor: 2, patch: 0 } });
+    await t.open();
+    const payload = Codec.encode(Wire.SetFilterPacketQp, {
+      channel: 2, band: 1, type: FilterType.LinkwitzTransform, frequency: 45, q: 0.6, gain: 90, qp: 768,
+    });
+    await t.ctrlOut(WireCmd.SetEqParam.code, 0, payload);
+
+    const wValue = (2 << 8) | (1 << 3) | 5;   // (channel<<8)|(band<<3)|param5
+    const raw = await t.ctrlIn(WireCmd.GetEqParam.code, wValue, 4);
+    expect(Codec.decode(Codec.u32, raw) & 0xFFFF).toBe(768);
+  });
+
+  it('the 16-byte SetEqParam form preserves a previously-stored qp', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 22, fwVersion: { major: 1, minor: 2, patch: 0 } });
+    await t.open();
+    await t.ctrlOut(WireCmd.SetEqParam.code, 0, Codec.encode(Wire.SetFilterPacketQp, {
+      channel: 2, band: 1, type: FilterType.LinkwitzTransform, frequency: 45, q: 0.6, gain: 90, qp: 768,
+    }));
+    // Re-send with the plain 16-byte form (frequency changes; qp omitted).
+    await t.ctrlOut(WireCmd.SetEqParam.code, 0, Codec.encode(Wire.SetFilterPacket, {
+      channel: 2, band: 1, type: FilterType.LinkwitzTransform, frequency: 50, q: 0.6, gain: 90,
+    }));
+
+    const wValue = (2 << 8) | (1 << 3) | 5;
+    const raw = await t.ctrlIn(WireCmd.GetEqParam.code, wValue, 4);
+    expect(Codec.decode(Codec.u32, raw) & 0xFFFF).toBe(768);
+  });
+
+  it('latches qp from the 18-byte form even for a non-LT type (only the bulk path zeroes it)', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 22, fwVersion: { major: 1, minor: 2, patch: 0 } });
+    await t.open();
+    await t.ctrlOut(WireCmd.SetEqParam.code, 0, Codec.encode(Wire.SetFilterPacketQp, {
+      channel: 2, band: 1, type: FilterType.Peaking, frequency: 1000, q: 1, gain: 3, qp: 999,
+    }));
+
+    const wValue = (2 << 8) | (1 << 3) | 5;
+    const raw = await t.ctrlIn(WireCmd.GetEqParam.code, wValue, 4);
+    expect(Codec.decode(Codec.u32, raw) & 0xFFFF).toBe(999);
+  });
+});
+
 describe('MockTransport — notify queue', () => {
   it('returns a 1-byte idle when the notify queue is empty', async () => {
     const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });

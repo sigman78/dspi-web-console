@@ -15,6 +15,7 @@
     [FilterType.Allpass1]: 'Allpass 1st',
     [FilterType.LowShelf1]: 'Low Shelf 1st',
     [FilterType.HighShelf1]: 'High Shelf 1st',
+    [FilterType.LinkwitzTransform]: 'Linkwitz Transform',
     [FilterType.Lr2Lp]: 'LR2 LP',   [FilterType.Lr2Hp]: 'LR2 HP',
     [FilterType.Lr4Lp]: 'LR4 LP',   [FilterType.Lr4Hp]: 'LR4 HP',
     [FilterType.Lr6Lp]: 'LR6 LP',   [FilterType.Lr6Hp]: 'LR6 HP',
@@ -53,12 +54,30 @@
     FilterType.Allpass1,
   ];
 
+  // Linkwitz Transform (V22+), gated on the linkwitzTransform capability.
+  export const LT_TYPES: FilterType[] = [FilterType.LinkwitzTransform];
+
   // Crossover editor's offering: Off + the full 32..63 range, LP/HP
   // interleaved in family/order sequence (matches the wire value order).
   export const XOVER_TYPE_ORDER: FilterType[] = [
     FilterType.Flat,
     ...Array.from({ length: 32 }, (_, i) => (FilterType.Lr2Lp + i) as FilterType),
   ];
+
+  // Single source of truth for which PEQ types the EQ tab offers, given the
+  // device's feature flags.
+  export function offeredTypes(features: { firstOrderEq: boolean; linkwitzTransform: boolean }): FilterType[] {
+    let types = TYPE_ORDER;
+    if (features.firstOrderEq) types = [...types, ...FIRST_ORDER_TYPES];
+    if (features.linkwitzTransform) types = [...types, ...LT_TYPES];
+    return types;
+  }
+
+  // Whether the offered-types list includes Linkwitz Transform -- shared by
+  // BandsPanel's header and BandRow so their extra FP/QP/DC columns agree.
+  export function isLtCapable(types: FilterType[] | undefined): boolean {
+    return (types ?? []).includes(FilterType.LinkwitzTransform);
+  }
 </script>
 
 <script lang="ts">

@@ -4,7 +4,8 @@
 // The value space is partitioned (fw config.h contract, wire V16+):
 //   0..7    second-order PEQ types (all firmware)
 //   8..10   first-order PEQ types (V16+)
-//   11..31  reserved for future PEQ types
+//   11      Linkwitz Transform (V22+)
+//   12..31  reserved for future PEQ types
 //   32..63  crossover types, contiguous from XoverFirst (V16+)
 
 export const FilterType = {
@@ -22,6 +23,11 @@ export const FilterType = {
   Allpass1: 8,
   LowShelf1: 9,
   HighShelf1: 10,
+
+  // Linkwitz Transform (V22+). freq/q hold the driver's resonant f0/Q0; the
+  // gain slot is reinterpreted to carry the target fp in Hz (not dB); the
+  // target Qp travels in the separate FilterParams.qp sidecar.
+  LinkwitzTransform: 11,
 
   // Crossover types (V16+): (family, order, LP/HP) per value.
   Lr2Lp: 32,  Lr2Hp: 33,
@@ -84,7 +90,9 @@ export interface FilterParams {
   bypass: boolean;
   frequency: number; // Hz
   q: number;
-  gain: number;     // dB
+  gain: number;     // dB (Linkwitz Transform: fp in Hz -- see FilterType.LinkwitzTransform)
+  // Linkwitz Transform target Qp (V22+ only; absent for every other type).
+  qp?: number;
 }
 
 export const defaultFilter = (): FilterParams => ({
@@ -94,3 +102,34 @@ export const defaultFilter = (): FilterParams => ({
   q: 1,
   gain: 0,
 });
+
+// Linkwitz Transform qp wire encoding: u16 = round(Qp*512); 0 means the
+// firmware default 0.707 rather than a literal zero Qp.
+export const QP_WIRE_SCALE = 512;
+export const QP_DEFAULT = 0.707;
+
+export function decodeQp(raw: number): number {
+  return raw === 0 ? QP_DEFAULT : raw / QP_WIRE_SCALE;
+}
+
+export function encodeQp(qp: number): number {
+  return Math.round(qp * QP_WIRE_SCALE);
+}
+
+// Seed sensible field values on a band-type switch. Every ordinary type
+// transition keeps freq/q/gain untouched (an unused field is simply ignored
+// downstream), but Linkwitz Transform reinterprets the gain slot as fp (Hz)
+// and carries qp separately, so switching into or out of it needs explicit
+// handling to avoid leaking a stale gain-as-Hz or fp-as-dB value.
+export function seedTypeChange(prev: FilterParams, nextType: FilterType): Partial<FilterParams> {
+  if (nextType === prev.type) return {};
+  if (nextType === FilterType.LinkwitzTransform) {
+    // f0/Q0 come from prev.frequency/prev.q as-is; start fp == f0 (flat) at
+    // the default Qp.
+    return { gain: prev.frequency, qp: QP_DEFAULT };
+  }
+  if (prev.type === FilterType.LinkwitzTransform) {
+    return { gain: 0, qp: undefined };
+  }
+  return {};
+}

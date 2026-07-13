@@ -536,8 +536,20 @@ export class DspDevice {
   // The all-params packet is read-only here (getSnapshot) plus the paste-only
   // restoreState write; the edit path is entirely per-field.
 
+  // Linkwitz Transform bands (V22+) send the 18-byte form (qp sidecar
+  // appended); every other type sends the plain 16-byte SetFilterPacket so
+  // older firmware never sees the extra bytes.
   async setFilter(channel: domain.ChannelId, band: number, p: domain.FilterParams): Promise<void> {
     const wireChannel = this.deviceChannel(channel);
+    if (p.type === domain.FilterType.LinkwitzTransform) {
+      const bytes = Codec.encode(proto.Wire.SetFilterPacketQp, {
+        channel: wireChannel, band, type: p.type,
+        frequency: p.frequency, q: p.q, gain: p.gain,
+        qp: domain.encodeQp(p.qp ?? domain.QP_DEFAULT),
+      });
+      await this.transport.ctrlOut(proto.WireCmd.SetEqParam.code, 0, bytes);
+      return;
+    }
     return proto.writeCmd(this.transport, proto.WireCmd.SetEqParam, {
       channel: wireChannel, band,
       type: p.type, frequency: p.frequency, q: p.q, gain: p.gain,
@@ -559,7 +571,8 @@ export class DspDevice {
   async getFilter(channel: domain.ChannelId, band: number): Promise<domain.FilterParams> {
     const wireChannel = this.deviceChannel(channel);
     const code = proto.WireCmd.GetEqParam.code;
-    const wValue = this.isWideWire
+    const wide = this.isWideWire;
+    const wValue = wide
       ? (param: number) => ((wireChannel & 0xFF) << 8) | ((band & 0x1F) << 3) | (param & 0x7)
       : (param: number) => ((wireChannel & 0xFF) << 8) | ((band & 0xF) << 4) | (param & 0xF);
     const t = this.transport;
@@ -569,13 +582,21 @@ export class DspDevice {
       t.ctrlIn(code, wValue(2), 4),
       t.ctrlIn(code, wValue(3), 4),
     ]);
-    return {
-      type:      Codec.decode(Codec.u32, typeBytes) as domain.FilterType,
+    const type = Codec.decode(Codec.u32, typeBytes) as domain.FilterType;
+    const result: domain.FilterParams = {
+      type,
       bypass:    false,  // not carried by the per-band GetEqParam protocol
       frequency: Codec.decode(Codec.f32, freqBytes),
       q:         Codec.decode(Codec.f32, qBytes),
       gain:      Codec.decode(Codec.f32, gainBytes),
     };
+    // Linkwitz Transform qp sidecar (V22+, param 5; only addressable via the
+    // wide 3-bit param field).
+    if (type === domain.FilterType.LinkwitzTransform && wide) {
+      const qpBytes = await t.ctrlIn(code, wValue(5), 4);
+      result.qp = domain.decodeQp(Codec.decode(Codec.u32, qpBytes) & 0xFFFF);
+    }
+    return result;
   }
 
   async setBypass(enabled: boolean): Promise<void> {

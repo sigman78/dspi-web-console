@@ -265,6 +265,33 @@ export const WireCmd = {
   SetI2sClockPinMode:    { code: 0xFE } satisfies RawCmd,
   GetI2sClockPinMode:    { code: 0xFF } satisfies RawCmd,
 
+  // --- V23 psychoacoustic bass (fw 1.1.5+, RP2350). Opcodes only -- no
+  // DspDevice methods yet; wiring lands with the psybass UI branch.
+  SetPsybassEnabled:     { code: 0x30, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
+  GetPsybassEnabled:     { code: 0x31, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
+  SetPsybassCutoff:      { code: 0x32, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  GetPsybassCutoff:      { code: 0x33, codec: Codec.f32 }   satisfies ReadCmd<number>,
+  SetPsybassHarmonics:   { code: 0x34, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  GetPsybassHarmonics:   { code: 0x35, codec: Codec.f32 }   satisfies ReadCmd<number>,
+  SetPsybassDrive:       { code: 0x36, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  GetPsybassDrive:       { code: 0x37, codec: Codec.f32 }   satisfies ReadCmd<number>,
+  SetPsybassCharacter:   { code: 0x38, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  GetPsybassCharacter:   { code: 0x39, codec: Codec.f32 }   satisfies ReadCmd<number>,
+  SetPsybassOriginal:    { code: 0x3A, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  GetPsybassOriginal:    { code: 0x3B, codec: Codec.f32 }   satisfies ReadCmd<number>,
+  SetPsybassMask:        { code: 0x3C, codec: Codec.u16 }   satisfies WriteCmd<number>,
+  GetPsybassMask:        { code: 0x3D, codec: Codec.u16 }   satisfies ReadCmd<number>,
+
+  // --- V24 ADAT input config (fw 1.1.5+, RP2350). Opcodes only -- no
+  // DspDevice methods yet; wiring lands with the ADAT input UI branch.
+  SetAdatInputEnable:    { code: 0x68, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
+  GetAdatInputEnable:    { code: 0x69, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
+  SetAdatInputPin:       { code: 0x6A, codec: Codec.u8 }    satisfies WriteCmd<number>,
+  GetAdatInputPin:       { code: 0x6B, codec: Codec.u8 }    satisfies ReadCmd<number>,
+  SetAdatInputClockMode: { code: 0x6C, codec: Codec.u8 }    satisfies WriteCmd<number>,
+  GetAdatInputClockMode: { code: 0x6D, codec: Codec.u8 }    satisfies ReadCmd<number>,
+  GetAdatInputStatus:    { code: 0x6E } satisfies RawCmd,
+
   // --- V16 / fw 1.1.5 external control interfaces (UART + I2C) ---
   // SETs are plain control-OUT with the struct payload; the firmware refuses
   // them over UART/I2C itself (USB-only), which is moot here since the

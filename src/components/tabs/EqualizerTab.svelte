@@ -3,14 +3,14 @@
   import BodePlot, { type BodeCurve, type BodeMarker } from '@/components/bode/BodePlot.svelte';
   import BandsPanel from '@/components/eq/BandsPanel.svelte';
   import XoverPanel from '@/components/eq/XoverPanel.svelte';
-  import { TYPE_ORDER, FIRST_ORDER_TYPES } from '@/components/eq/BandTypeSelect.svelte';
+  import { offeredTypes } from '@/components/eq/BandTypeSelect.svelte';
   import PreampPanel from '@/components/eq/PreampPanel.svelte';
   import OutputTrim from '@/components/eq/OutputTrim.svelte';
   import AutoEqBrowser from '@/components/eq/AutoEqBrowser.svelte';
   import { mockEqCurve } from '@/components/bode/bodeMock';
   import { filterCurve, filterCurveAt } from '@/components/bode/filterCurve';
   import { settings, eqUi, setEqCopySource, clearEqCopySource } from '@/state';
-  import { FilterType, defaultFilter, type FilterParams, inputIndexOf } from '@/domain';
+  import { FilterType, defaultFilter, seedTypeChange, type FilterParams, inputIndexOf } from '@/domain';
   import { setEqFilter, setInputPreamp, copyEqBands, setBandBypass } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
 
@@ -32,9 +32,7 @@
   const bands = $derived(channel?.filters ?? []);
   const libraryPreampDb = $derived(inputIndex !== null ? preampDb : (outputForChannel?.gainDb ?? 0));
   let libOpen = $state(false);
-  const bandTypes = $derived(
-    s.device.capabilities.features.firstOrderEq ? [...TYPE_ORDER, ...FIRST_ORDER_TYPES] : TYPE_ORDER,
-  );
+  const bandTypes = $derived(offeredTypes(s.device.capabilities.features));
 
   const curve = $derived.by<BodeCurve>(() => {
     if (!channel) {
@@ -81,9 +79,12 @@
     }
     // Send the non-bypass fields if there are any (type/freq/q/gain changes).
     const { bypass: _bypass, ...rest } = patch;
-    if (Object.keys(rest).length > 0) {
-      setEqFilter(s, channel.id, i, { ...channel.filters[i], ...rest });
-    }
+    if (Object.keys(rest).length === 0) return;
+    const current = channel.filters[i];
+    // A type switch may need to seed fields (see seedTypeChange's doc comment
+    // -- Linkwitz Transform reinterprets the gain slot as fp).
+    const seed = rest.type !== undefined ? seedTypeChange(current, rest.type) : {};
+    setEqFilter(s, channel.id, i, { ...current, ...rest, ...seed });
   }
 
   function reset() {

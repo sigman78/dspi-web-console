@@ -362,6 +362,19 @@ describe('startNotifyChannel', () => {
     expect(mir.peekReconcile().wanted).toBe(false);
     stop();
   });
+
+  it('an ADAT_INPUT_STATE event is a silent no-op (no reconcile)', async () => {
+    const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
+    // state=LOCKED(3), rate=48000 LE, clockMode=1 (slave)
+    mock.pushNotify(new Uint8Array([2, 0x0B, 0, 1, 3, 0x80, 0xBB, 0x00, 0x00, 1]));
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live adatInputState
+    expect(mir.peekReconcile().wanted).toBe(false);
+    stop();
+  });
 });
 
 // A device with no host connected accumulates notify events in its ring

@@ -34,6 +34,7 @@ export function applyChange(c: SnapshotChange, t: DspSnapshot): void {
     case 'loudness':          t.loudness = c.value; break;
     case 'crossfeed':         t.crossfeed = c.value; break;
     case 'leveller':          t.leveller = c.value; break;
+    case 'psybass':           t.psybass = c.value; break;
     case 'inputConfig':       t.inputConfig = c.value; refreshInputDefaults(t, c.value.source); break;
     case 'spdifRxPin':        t.inputConfig = { ...t.inputConfig, spdifRxPin: c.value }; break;
     case 'spdifExt':          t.inputConfig = { ...t.inputConfig, spdifRxPinExt: c.value.spdifRxPinExt, spdifExtEnabled: c.value.spdifExtEnabled }; break;

@@ -20,15 +20,16 @@ describe('bulkParser — V16 packet', () => {
     bulk.delaysMs[16] = 1.25;
     bulk.channelNames[16] = 'PDM sub';
     bulk.crosspoints[7][8] = { enabled: true, invert: true, gainDb: -6 };
-    bulk.filters[16][11] = { type: 1, bypass: true, frequency: 320, q: 2, gain: -3 };
+    bulk.filters[16][11] = { type: 1, bypass: true, frequency: 320, q: 2, gain: -3, qpRaw: 0 };
     bulk.inputPreampsDb = [0, -1, -2, -3, -4, -5, -6, -7];
     bulk.inputConfig = {
       source: 2, spdifRxPin: 5,
       i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 2, i2sInputChannels: 6,
       spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
     };
-    bulk.crossover[8][0] = { type: 34, bypass: false, frequency: 2400, q: 0.707, gain: 0 };
-    bulk.crossover[16][3] = { type: 33, bypass: true, frequency: 120, q: 0.5, gain: 0 };
+    bulk.crossover[8][0] = { type: 34, bypass: false, frequency: 2400, q: 0.707, gain: 0, qpRaw: 0 };
+    bulk.crossover[16][3] = { type: 33, bypass: true, frequency: 120, q: 0.5, gain: 0, qpRaw: 0 };
 
     const bytes = buildBulkParams(bulk);
     expect(bytes.byteLength).toBe(Wire.BULK_SIZE_V16);
@@ -45,6 +46,7 @@ describe('bulkParser — V16 packet', () => {
       source: 2, spdifRxPin: 5,
       i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 2, i2sInputChannels: 6,
       spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
     });
     expect(p.crossover[8][0].type).toBe(34);
     expect(p.crossover[8][0].frequency).toBeCloseTo(2400, 3);
@@ -53,7 +55,7 @@ describe('bulkParser — V16 packet', () => {
 
   it('down-converts a V16 snapshot to a V10 packet (rows beyond V10 dims drop)', () => {
     const bulk = v16Base();
-    bulk.crossover[8][0] = { type: 34, bypass: false, frequency: 2400, q: 0.707, gain: 0 };
+    bulk.crossover[8][0] = { type: 34, bypass: false, frequency: 2400, q: 0.707, gain: 0, qpRaw: 0 };
     bulk.inputPreampsDb[5] = -9;
     bulk.masterVolumeDb = -12;
 

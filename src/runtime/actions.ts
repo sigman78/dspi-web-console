@@ -11,6 +11,7 @@ import {
   CsIrProto, EMPTY_CS_IR_COMMAND, CS_IR_LEARN_ARMED,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
   CHANNEL_NAME_MAX_LEN,
+  FilterType, QP_DEFAULT,
 } from '@/domain';
 import * as Clamp from '@/domain/clamp';
 import {
@@ -21,18 +22,34 @@ import { Log, errMessage } from '@/utils';
 import { write, scrub, writeChecked, command } from './writes.svelte';
 import { focusOutput, focusRoute } from './focus';
 
+// Linkwitz Transform reinterprets the gain slot as fp (Hz), not dB, and
+// carries its own f0/fp/Q0/Qp ranges (see eqLimits.ts) -- clamping it with
+// the plain dB gain range would mangle a real fp value.
+function clampFilter(filter: FilterParams): FilterParams {
+  if (filter.type === FilterType.LinkwitzTransform) {
+    return {
+      ...filter,
+      frequency: Clamp.bandLtFreqHz(filter.frequency),
+      q: Clamp.bandLtQ(filter.q),
+      gain: Clamp.bandLtFreqHz(filter.gain),
+      qp: Clamp.bandLtQ(filter.qp ?? QP_DEFAULT),
+    };
+  }
+  return {
+    ...filter,
+    frequency: Clamp.bandFrequencyHz(filter.frequency),
+    q: Clamp.bandQ(filter.q),
+    gain: Clamp.bandGainDb(filter.gain),
+  };
+}
+
 export function setEqFilter(s: ReadySession, channel: ChannelId, band: number, filter: FilterParams): void {
   const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
   if (!ch) return;
   if (band >= ch.filters.length) {
     throw new Error(`band ${band} out of range for channel ${channel}`);
   }
-  const clamped: FilterParams = {
-    ...filter,
-    frequency: Clamp.bandFrequencyHz(filter.frequency),
-    q: Clamp.bandQ(filter.q),
-    gain: Clamp.bandGainDb(filter.gain),
-  };
+  const clamped = clampFilter(filter);
   void write(s,
     () => s.device.setFilter(channel, band, clamped),
     () => {
@@ -51,12 +68,7 @@ export function copyEqBands(s: ReadySession, sourceId: ChannelId, targetId: Chan
   const tgt = s.mirror.snapshot.channels.find((c) => c.id === targetId);
   if (!src || !tgt) return;
   const len = Math.min(src.filters.length, tgt.filters.length);
-  const copied = src.filters.slice(0, len).map((f) => ({
-    ...f,
-    frequency: Clamp.bandFrequencyHz(f.frequency),
-    q: Clamp.bandQ(f.q),
-    gain: Clamp.bandGainDb(f.gain),
-  }));
+  const copied = src.filters.slice(0, len).map(clampFilter);
   for (let i = 0; i < len; i++) {
     const band = i;
     const filter = copied[i];

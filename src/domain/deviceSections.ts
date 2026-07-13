@@ -6,7 +6,9 @@ export const AudioInputSource = {
   Usb:    0,
   Spdif:  1,
   I2s:    2,   // V16+
-  // 3 reserved for future ADAT.
+  // Structurally valid on both platforms (V24+ wire) so presets round-trip;
+  // selectability is gated separately and not yet exposed in the UI.
+  Adat:   3,
   Spdif2: 4,   // fw 1.1.5+ selectable S/PDIF input 2
   Spdif3: 5,   // fw 1.1.5+ selectable S/PDIF input 3
 } as const;
@@ -53,6 +55,13 @@ export interface InputConfig {
   spdifExtEnabled: boolean[];
   // I2S clock role (fw V21+): 0 = master (legacy default), 1 = slave.
   i2sClockMode: number;
+  // ADAT input (fw V24+, RP2350). pin: GPIO, 0 = absent/keep-live. enabled/
+  // clockMode collapse the wire's "absent" sentinel to the same default as
+  // i2sClockMode (false / master) -- gated devices (features.adatInput)
+  // always report a real value, so the collapse only matters pre-V24.
+  adatInputPin: number;
+  adatInputEnabled: boolean;
+  adatInputClockMode: number;  // 0 = master, 1 = slave
 }
 
 // V8 -- LG Sound Sync. Only `enabled` is host-configurable; the rest is

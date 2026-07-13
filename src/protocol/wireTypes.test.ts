@@ -62,17 +62,22 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(Wire.bulkSizeForVersion(16)).toBe(5864);
     expect(Wire.bulkSizeForVersion(17)).toBe(5872);
     expect(Wire.bulkSizeForVersion(18)).toBe(5876);
-    // V19/V20/V21 claim reserved bytes already inside the V18 layout -- size unchanged.
+    // V19/V20/V21/V22 claim reserved bytes already inside the V18 layout --
+    // size unchanged. V23 appends the psybass section (+24 B); V24 claims
+    // more reserved bytes -- size unchanged from V23.
     expect(Wire.bulkSizeForVersion(19)).toBe(5876);
     expect(Wire.bulkSizeForVersion(20)).toBe(5876);
     expect(Wire.bulkSizeForVersion(21)).toBe(5876);
-    expect(Wire.bulkSizeForVersion(99)).toBe(5876);
+    expect(Wire.bulkSizeForVersion(22)).toBe(5876);
+    expect(Wire.bulkSizeForVersion(23)).toBe(5900);
+    expect(Wire.bulkSizeForVersion(24)).toBe(5900);
+    expect(Wire.bulkSizeForVersion(99)).toBe(5900);
     expect(Wire.bulkSizeForVersion(5)).toBe(2896);
   });
 
   it('BULK_SIZE_V21 equals BULK_SIZE_V20 (no packet-size change)', () => {
     expect(Wire.BULK_SIZE_V21).toBe(Wire.BULK_SIZE_V20);
-    expect(Wire.MAX_WIRE_VERSION).toBe(21);
+    expect(Wire.MAX_WIRE_VERSION).toBe(24);
   });
 
   it('bulkLayout gates i2sClockMode on wire V21 AND payloadLength', () => {

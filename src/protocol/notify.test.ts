@@ -45,6 +45,17 @@ describe('parseNotifyPacket', () => {
     const pkt = v2(NotifyEventId.I2sSlaveState, 3, [3, 0x80, 0xBB, 0x00]);   // 8 bytes total
     expect(parseNotifyPacket(pkt)).toEqual({ kind: 'ignored' });
   });
+
+  it('decodes ADAT_INPUT_STATE with its state, rate and clock mode', () => {
+    // rate 48000 = 0x0000BB80, little-endian; clockMode = 1 (slave).
+    const pkt = v2(NotifyEventId.AdatInputState, 5, [3, 0x80, 0xBB, 0x00, 0x00, 1]);
+    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'adatInputState', seq: 5, state: 3, rateHz: 48000, clockMode: 1 });
+  });
+
+  it('ignores a truncated ADAT_INPUT_STATE packet (below the 10-byte minimum)', () => {
+    const pkt = v2(NotifyEventId.AdatInputState, 5, [3, 0x80, 0xBB, 0x00, 0x00]);   // 9 bytes total
+    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'ignored' });
+  });
 });
 
 describe('isReconcileTrigger', () => {

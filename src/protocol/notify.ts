@@ -17,6 +17,7 @@ export const NotifyEventId = {
   InputFormat:     0x05,   // V16+: active input channel count changed
   CsIrLearn:       0x0A,   // V16+ (fw 1.1.5 caps v3): IR learn armed -> done/timeout
   I2sSlaveState:   0x09,   // V21+: I2S slave-clock lock state changed
+  AdatInputState:  0x0B,   // V24+: ADAT input lock state changed
 } as const;
 
 export const ParamSource = {
@@ -48,7 +49,11 @@ export type NotifyEvent =
   | { kind: 'csIrLearn';       seq: number; state: number; protocol: number; code: number }
   // I2S slave-clock lock state changed (V21+). rateHz is the detected input
   // rate, 0 until state is LOCKED.
-  | { kind: 'i2sSlaveState';   seq: number; state: number; rateHz: number };
+  | { kind: 'i2sSlaveState';   seq: number; state: number; rateHz: number }
+  // ADAT input lock state changed (V24+). rateHz is the detected input rate,
+  // 0 unless locked. Silent no-op for now -- telemetry wiring lands with the
+  // ADAT input UI branch.
+  | { kind: 'adatInputState';  seq: number; state: number; rateHz: number; clockMode: number };
 
 export type ParamChangedEvent = Extract<NotifyEvent, { kind: 'paramChanged' }>;
 
@@ -70,6 +75,9 @@ const CsIrLearnSuffix = struct({ state: u8, protocol: u8, _reserved: reserved(2)
 
 // I2S_SLAVE_STATE fixed suffix (5 B) after the header: {state, rateHz}.
 const I2sSlaveStateSuffix = struct({ state: u8, rateHz: u32 });
+
+// ADAT_INPUT_STATE fixed suffix (6 B) after the header: {state, rateHz, clockMode}.
+const AdatInputStateSuffix = struct({ state: u8, rateHz: u32, clockMode: u8 });
 
 // Value-less events: NotifyEvents are only ever read, so a shared singleton is safe.
 const IDLE: NotifyEvent = { kind: 'idle' };
@@ -107,6 +115,11 @@ export function parseNotifyPacket(bytes: Uint8Array): NotifyEvent {
       if (bytes.length < 9) return IGNORED;
       const p = Codec.decode(I2sSlaveStateSuffix, bytes.subarray(4));
       return { kind: 'i2sSlaveState', seq: h.seq, state: p.state, rateHz: p.rateHz };
+    }
+    case NotifyEventId.AdatInputState: {
+      if (bytes.length < 10) return IGNORED;
+      const p = Codec.decode(AdatInputStateSuffix, bytes.subarray(4));
+      return { kind: 'adatInputState', seq: h.seq, state: p.state, rateHz: p.rateHz, clockMode: p.clockMode };
     }
     default:
       return IGNORED;

@@ -362,7 +362,7 @@ describe('S/PDIF RX status cadence', () => {
     const session = connect(device);
     const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
     // Set input source to SPDIF so the cadence gate passes.
-    snap.inputConfig = { source: AudioInputSource.Spdif, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0 };
+    snap.inputConfig = { source: AudioInputSource.Spdif, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0, adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0 };
     session.mirror.init(snap);
     const clock = manualClock();
     const stop = startPolling(session, clock);
@@ -388,7 +388,7 @@ describe('S/PDIF RX status cadence', () => {
     } as unknown as DspDevice;
     const session = connect(device);
     const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
-    snap.inputConfig = { source: AudioInputSource.Spdif, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0 };
+    snap.inputConfig = { source: AudioInputSource.Spdif, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0, adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0 };
     session.mirror.init(snap);
     const clock = manualClock();
     const stop = startPolling(session, clock);
@@ -412,7 +412,7 @@ describe('S/PDIF RX status cadence', () => {
     const session = connect(device);
     const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
     // USB input (default in bulkFixtures): cadence should not fire.
-    snap.inputConfig = { source: AudioInputSource.Usb, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0 };
+    snap.inputConfig = { source: AudioInputSource.Usb, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0, adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0 };
     session.mirror.init(snap);
     const clock = manualClock();
     const stop = startPolling(session, clock);

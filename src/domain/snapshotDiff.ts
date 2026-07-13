@@ -7,7 +7,7 @@ import type { DspSnapshot } from './snapshot';
 import type { I2sConfig } from './platform';
 import type { OutputModel, RouteModel } from './mixer';
 import type { FilterParams } from './filter';
-import type { Loudness, Crossfeed, Leveller } from './processing';
+import type { Loudness, Crossfeed, Leveller, Psybass } from './processing';
 import type { InputConfig, LgSoundSync, UserVolume, DacHwMute } from './deviceSections';
 import { BAND_GAIN_STEP_DB, FREQ_STEP_HZ, Q_STEP } from './eqLimits';
 
@@ -23,6 +23,8 @@ export const DIFF_TOLERANCE = {
   // NOT step/2: f32 round-trip jitter bound. Delay diffs must not mask
   // sub-step external changes; f32 ulp at max delay is ~1.5e-5 < this.
   ms:   5e-5,
+  // Half the Linkwitz Transform qp wire step (1/512).
+  qp:   1 / 1024,
 } as const;
 
 export type SnapshotChange =
@@ -41,6 +43,7 @@ export type SnapshotChange =
   | { kind: 'loudness';      value: Loudness }
   | { kind: 'crossfeed';     value: Crossfeed }
   | { kind: 'leveller';      value: Leveller }
+  | { kind: 'psybass';       value: Psybass }
   | { kind: 'inputConfig';   value: InputConfig }
   | { kind: 'spdifRxPin';    value: number }
   | { kind: 'spdifExt';      value: { spdifRxPinExt: number[]; spdifExtEnabled: boolean[] } }
@@ -55,12 +58,18 @@ function neq(a: number, b: number, tol: number): boolean {
   return Math.abs(a - b) > tol;
 }
 
+function qpDiffers(a: number | undefined, b: number | undefined): boolean {
+  if (a === undefined || b === undefined) return a !== b;
+  return neq(a, b, DIFF_TOLERANCE.qp);
+}
+
 function bandDiffers(a: FilterParams, b: FilterParams): boolean {
   return a.type !== b.type
       || a.bypass !== b.bypass
       || neq(a.frequency, b.frequency, DIFF_TOLERANCE.freq)
       || neq(a.q,         b.q,         DIFF_TOLERANCE.q)
-      || neq(a.gain,      b.gain,      DIFF_TOLERANCE.db);
+      || neq(a.gain,      b.gain,      DIFF_TOLERANCE.db)
+      || qpDiffers(a.qp, b.qp);
 }
 
 function outputDiffers(a: OutputModel, b: OutputModel): boolean {
@@ -92,6 +101,16 @@ function crossfeedDiffers(a: Crossfeed, b: Crossfeed): boolean {
       || neq(a.feedDb, b.feedDb, DIFF_TOLERANCE.db);
 }
 
+function psybassDiffers(a: Psybass, b: Psybass): boolean {
+  return a.enabled !== b.enabled
+      || a.outputMask !== b.outputMask
+      || neq(a.cutoffHz,     b.cutoffHz,     DIFF_TOLERANCE.freq)
+      || neq(a.harmonicsDb,  b.harmonicsDb,  DIFF_TOLERANCE.db)
+      || neq(a.driveDb,      b.driveDb,      DIFF_TOLERANCE.db)
+      || neq(a.characterPct, b.characterPct, DIFF_TOLERANCE.gain)
+      || neq(a.originalDb,   b.originalDb,   DIFF_TOLERANCE.db);
+}
+
 function levellerDiffers(a: Leveller, b: Leveller): boolean {
   return a.enabled   !== b.enabled
       || a.speed     !== b.speed
@@ -116,6 +135,9 @@ function diffInputConfig(a: InputConfig, b: InputConfig, out: SnapshotChange[]):
     a.i2sInputRateHz !== b.i2sInputRateHz ||
     a.i2sInputChannels !== b.i2sInputChannels ||
     a.i2sClockMode !== b.i2sClockMode ||
+    a.adatInputPin !== b.adatInputPin ||
+    a.adatInputEnabled !== b.adatInputEnabled ||
+    a.adatInputClockMode !== b.adatInputClockMode ||
     arrayDiffers(a.i2sRxPins, b.i2sRxPins);
   if (a.source !== b.source || i2sChanged) {
     out.push({ kind: 'inputConfig', value: b });
@@ -175,6 +197,7 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
   if (loudnessDiffers(a.loudness, b.loudness)) out.push({ kind: 'loudness', value: b.loudness });
   if (crossfeedDiffers(a.crossfeed, b.crossfeed)) out.push({ kind: 'crossfeed', value: b.crossfeed });
   if (levellerDiffers(a.leveller, b.leveller)) out.push({ kind: 'leveller', value: b.leveller });
+  if (psybassDiffers(a.psybass, b.psybass)) out.push({ kind: 'psybass', value: b.psybass });
 
   for (let i = 0; i < b.channels.length; i++) {
     const ca = a.channels[i], cb = b.channels[i];
@@ -228,6 +251,7 @@ type _Covered =
   | 'loudness'
   | 'crossfeed'
   | 'leveller'
+  | 'psybass'
   | 'inputConfig'
   | 'userVolume'
   | 'dacHwMute'

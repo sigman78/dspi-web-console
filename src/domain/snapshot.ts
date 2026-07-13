@@ -5,7 +5,7 @@
 import type { ChannelId } from './channels';
 import type { HardwareProfile, I2sConfig, PlatformType, ChannelFamily } from './platform';
 import type { FilterParams } from './filter';
-import type { Loudness, Crossfeed, Leveller } from './processing';
+import type { Loudness, Crossfeed, Leveller, Psybass } from './processing';
 import type { OutputModel, RouteModel } from './mixer';
 import type { InputConfig, LgSoundSync, UserVolume, DacHwMute } from './deviceSections';
 
@@ -62,6 +62,9 @@ export interface DspSnapshot {
   // Non-null: floor sections always present on a supported device (connect
   // rejects firmware below the V6 floor).
   leveller: Leveller;
+  // Psychoacoustic bass (fw V23+); bulkParser defaults it on older packets,
+  // so this is always populated.
+  psybass: Psybass;
   i2s: I2sConfig;
   // GPIO pin per pin-output index, in hardware output order; the last entry is the PDM sub.
   outputPins: number[];
