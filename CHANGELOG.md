@@ -6,6 +6,17 @@ from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
 this project follows [Semantic Versioning](https://semver.org/) (currently in the
 `0.x` pre-1.0 line — minor versions may include breaking changes).
 
+## [0.6.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.5.0...dspi-console-web-v0.6.0) (2026-07-13)
+
+
+### Features
+
+* **control-surfaces:** CS v2/v3 migration and IR remote command editor ([#76](https://github.com/sigman78/dspi-web-console/issues/76)) ([3ebde20](https://github.com/sigman78/dspi-web-console/commit/3ebde206b38684450067c6d13b04346e233dc570))
+* **eq:** fw wire V22-V24 support and Linkwitz Transform filter ([#79](https://github.com/sigman78/dspi-web-console/issues/79)) ([a78c863](https://github.com/sigman78/dspi-web-console/commit/a78c8632ad11fa13e2405bd4752a673c97eb16c0))
+* **processing:** per-output loudness and per-pair crossfeed masks (fw V19/V20) ([#77](https://github.com/sigman78/dspi-web-console/issues/77)) ([568e65e](https://github.com/sigman78/dspi-web-console/commit/568e65eef10dc115f952cbcbb87a262ef6a22681))
+* **system:** I2S slave clock mode support (fw wire V21) ([#78](https://github.com/sigman78/dspi-web-console/issues/78)) ([6630cab](https://github.com/sigman78/dspi-web-console/commit/6630cab237a5746ac357e65c4fa223fcae4ca091))
+* **ui:** move rail VU meters below the channel button face ([#80](https://github.com/sigman78/dspi-web-console/issues/80)) ([433108a](https://github.com/sigman78/dspi-web-console/commit/433108a1a1c1c71e8567c240170f0133fbd68c1b))
+
 ## [0.5.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.4.0...dspi-console-web-v0.5.0) (2026-07-10)
 
 
