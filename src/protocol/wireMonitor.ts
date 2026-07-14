@@ -1,5 +1,5 @@
 // Wire-protocol monitor: formatters that turn one wire message into a terse
-// single-line string for the browser console. Enabled via `?debug`, consumed
+// single-line string for the browser console. Enabled via `?log=wire`, consumed
 // by the withWireMonitor transport decorator. Decoding is best-effort: a
 // failure degrades to a name + byte-count line.
 
@@ -7,11 +7,11 @@ import { Codec, type BinCodec } from '@/utils';
 import { WireCmd } from './wireCmd';
 import type { BulkLayout } from './wireTypes';
 import { parseNotifyPacket, ParamSource } from './notify';
+import { wireLogEnabled } from '@/devOptions';
 
 // Read at call time so the gate is testable and reflects the live URL.
 export function wireMonitorEnabled(): boolean {
-  if (typeof location === 'undefined') return false;
-  return new URLSearchParams(location.search).get('debug') !== null;
+  return wireLogEnabled();
 }
 
 // Bulk transfers carry the whole param block; we render version + size only.

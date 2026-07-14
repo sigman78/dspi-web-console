@@ -1,12 +1,9 @@
 // Lightweight diagnostic logger. On by default; disable via `?log=0`. Outputs
 // are tagged `[dspi:<stage>]` so DevTools can be filtered by stage.
 
-const enabled = (() => {
-  if (typeof globalThis === 'undefined') return false;
-  if (typeof location === 'undefined') return true;
-  const p = new URLSearchParams(location.search).get('log');
-  return p !== '0';
-})();
+import { logSilenced } from '../devOptions';
+
+const enabled = typeof globalThis !== 'undefined' && !logSilenced();
 
 function fmt(stage: string): string {
   return `[dspi:${stage}]`;

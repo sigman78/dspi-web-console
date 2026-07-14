@@ -1,3 +1,5 @@
+import { activeMockProfile } from './mockProfiles';
+
 export const APP_VERSION = __APP_VERSION__;
 export const GIT_SHA = __GIT_SHA__;
 export const BUILD_DATE = __BUILD_DATE__;
@@ -12,9 +14,7 @@ export interface IssueContext {
 }
 
 export function reportIssueUrl(ctx: IssueContext = {}): string {
-  const mock = typeof window !== 'undefined'
-    ? new URLSearchParams(window.location.search).get('mock')
-    : null;
+  const mockProfile = activeMockProfile();
   const device = ctx.fwLabel
     ? `fw ${ctx.fwLabel}${ctx.serial ? ` · serial ${ctx.serial}` : ''}`
     : 'not connected';
@@ -22,7 +22,7 @@ export function reportIssueUrl(ctx: IssueContext = {}): string {
     `**Console:** v${APP_VERSION} (${GIT_SHA}, ${BUILD_DATE})`,
     `**Browser:** ${typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'}`,
     `**Device:** ${device}`,
-    `**Connection:** ${ctx.connectionPhase ?? 'unknown'}${mock ? ` (mock=${mock})` : ''}`,
+    `**Connection:** ${ctx.connectionPhase ?? 'unknown'}${mockProfile ? ` (mock=${mockProfile.name}, ${mockProfile.platform})` : ''}`,
     ...(ctx.error ? ['', '**Diagnostics:**', '```', ctx.error, '```'] : []),
     '',
     '**What happened:**',

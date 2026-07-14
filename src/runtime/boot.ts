@@ -43,7 +43,7 @@ async function createBoundDevice(
   openTransport?: () => Promise<void>,
 ): Promise<DspDevice> {
   // Wrap with the timeout decorator before DspDevice so every ctrlIn/ctrlOut
-  // inherits the deadline. The wire monitor (gated on ?debug) sits inside the
+  // inherits the deadline. The wire monitor (gated on ?log=wire) sits inside the
   // timeout wrapper so its formatting is off the timeout-race path.
   // attachTransportListeners + close target the raw transport, since
   // connect/disconnect events come from there, not the wrappers.

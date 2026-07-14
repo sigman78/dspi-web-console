@@ -4,7 +4,7 @@ A browser-based configurator for the [Weeb Labs DSPi](https://github.com/WeebLab
 
 Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScript, bundled with Vite).
 
-[> Launch <](https://dspi-ctrl.fyi) | [> Demo (w/o device) <](https://dspi-ctrl.fyi/?mock=rp2350)
+[> Launch <](https://dspi-ctrl.fyi) | [> Demo (w/o device) <](https://dspi-ctrl.fyi/?mock)
 
 > **[dspi-ctrl.fyi](https://dspi-ctrl.fyi)** is the stable release. The rolling test build (latest `master`) is on [GitHub Pages](https://sigman78.github.io/dspi-web-console/).
 
@@ -38,14 +38,14 @@ Then open the URL in Chrome/Edge, click **Connect**, and pick your DSPi.
 
 ### No hardware? Use the mock device.
 
-Append a `?mock=` flag to boot against a wire-faithful synthesized device — useful for trying out the UI:
+Append a `?mock` flag to boot against a wire-faithful synthesized device — useful for trying out the UI. It takes one profile token, plus an optional `&chip=` hardware flavor:
 
 ```
-http://localhost:5173/?mock=rp2040          # V10 / fw 1.1.4
-http://localhost:5173/?mock=rp2350          # V10 / fw 1.1.4
-http://localhost:5173/?mock=rp2350&fw=115   # V21 / fw 1.1.5 (8-in/9-out, crossover, control interfaces + surfaces)
-http://localhost:5173/?mock=rp2350&i2s=8    # V21 / fw 1.1.5 with an 8-channel I2S input (multichannel UI + leveller masks)
-http://localhost:5173/?mock=rp2350&spdif=3  # V21 / fw 1.1.5 with 3 selectable S/PDIF inputs (multi-SPDIF source picker)
+http://localhost:5173/?mock                     # newest wire / fw 1.1.5 (8-in/9-out, crossover, control interfaces + surfaces)
+http://localhost:5173/?mock=legacy              # legacy 1.1.4 / V10 surface
+http://localhost:5173/?mock=multi               # newest surface + 8ch I2S input + 3 S/PDIF inputs (multichannel demo)
+http://localhost:5173/?mock=v18                 # exact wire version 18, for testing per-version feature gates
+http://localhost:5173/?mock&chip=rp2040         # rp2040 flavor (5 outputs), combinable with any profile
 ```
 
 ## Build & test
@@ -77,7 +77,7 @@ The mock transport (`?mock=*`, also used in tests) synthesises a wire-faithful b
 
 ## Usb wire monitoring
 
-Append `?debug` to log every wire message to the browser console. High-volume telemetry polls go to the **Verbose** level (hidden by default)
+Append `?log=wire` to log every wire message to the browser console. High-volume telemetry polls go to the **Verbose** level (hidden by default)
 
 ## Contributing & releases
 

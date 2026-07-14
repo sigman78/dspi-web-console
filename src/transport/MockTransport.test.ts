@@ -555,7 +555,7 @@ describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
     expect(rp2040.inputConfig.spdifRxEnabledExtP1).toBe(0);
   });
 
-  it('the ?spdif=3 demo option pre-enables inputs 2 and 3', async () => {
+  it('spdifInputsEnabled pre-enables inputs 2 and 3', async () => {
     const t = await v18Mock('rp2350', 3);
     const cfg = Codec.decode(Wire.SpdifInputConfig, await t.ctrlIn(WireCmd.GetSpdifInputConfig.code, 0, 5));
     expect(cfg.enableMask).toBe(0b111);

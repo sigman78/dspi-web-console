@@ -17,7 +17,7 @@ All communication is **vendor-class control transfers** on a claimed interface, 
 | Implementation | File | Use |
 |---|---|---|
 | `WebUsbTransport` | `src/transport/WebUsbTransport.ts` | Production (browser via `navigator.usb`) |
-| `MockTransport` | `src/transport/MockTransport.ts` | Unit/integration tests; `?mock=rp2040` / `?mock=rp2350` dev URL |
+| `MockTransport` | `src/transport/MockTransport.ts` | Unit/integration tests; `?mock[=<profile>][&chip=]` dev URL (see `src/devOptions.ts`) |
 | `NodeUsbTransport` | `src/transport/NodeUsbTransport.ts` | Hardware-in-the-loop (HIL) tests via libusb |
 
 All implement `DspTransport`:

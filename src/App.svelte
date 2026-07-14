@@ -8,15 +8,13 @@
   import Toaster from '@/components/chrome/Toaster.svelte';
   import { app, settings, initialBoot } from '@/state';
   import { handleTabShortcut } from '@/input/tabShortcuts';
+  import { heroOverride } from '@/devOptions';
 
-  // Visual-test override: ?mock=hero forces the connecting hero to render
-  // even when a (real or mock) device would otherwise be connected. Read once
-  // at module load. Distinct value from ?mock=rp2040 / ?mock=rp2350 in
-  // src/main.ts so a mocked-but-connected session still hides the hero.
-  const mockHero = (() => {
-    if (typeof window === 'undefined') return false;
-    return new URLSearchParams(window.location.search).get('mock') === 'hero';
-  })();
+  // Visual-test override: ?hero forces the connecting hero to render even
+  // when a (real or mock) device would otherwise be connected. Read once at
+  // module load. Orthogonal to ?mock, so a mocked-but-connected session
+  // still hides the hero unless ?hero is also present.
+  const hero = heroOverride();
 
   const appState = $derived(app.current);
 
@@ -26,7 +24,7 @@
   // Cold users (no lastSerial) get the hero immediately; an errored attempt
   // (e.g. device-in-use) yields to the hero so its advisory shows.
   const showSplash = $derived(
-    !mockHero &&
+    !hero &&
     initialBoot.active &&
     settings.lastSerial != null &&
     appState.kind !== 'errored'
@@ -50,7 +48,7 @@
         <EqSpectrum />
         <div class="boot-status">CONNECTING…</div>
       </div>
-    {:else if !mockHero && appState.kind === 'ready'}
+    {:else if !hero && appState.kind === 'ready'}
       <div class="work">
         <ChannelRail />
         <div class="content">
