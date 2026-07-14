@@ -10,6 +10,7 @@ import {
 } from './state';
 import { bootMock, bootReal, registerNavigatorReconnect } from './runtime';
 import { Log, isMobileDevice } from './utils';
+import { activeMockProfile } from './mockProfiles';
 
 const target = document.getElementById('app')!;
 
@@ -24,36 +25,14 @@ if (isMobileDevice()) {
   restoreSettings();
   startSettingsPersistence();
 
-  const params = new URLSearchParams(location.search);
-  const mock = params.get('mock');
-  // ?mock=rp2350&fw=115 boots the mock as the current 1.1.5 dev build (wire
-  // V24 -- the full leveller-mask + ADAT + loudness/crossfeed-mask + I2S
-  // slave-clock + Linkwitz Transform + psybass + ADAT-input surface; default
-  // is V10 / 1.1.4).
-  // ?mock=rp2350&i2s=8 additionally gives it an imaginary 8-channel I2S input
-  // (implies the 1.1.5 profile) so the multichannel UI -- incl. the leveller
-  // channel masks, which are V18-only -- can be demoed without hardware.
-  // ?mock=rp2350&spdif=3 additionally pre-enables SPDIF inputs 2/3 (implies the
-  // 1.1.5 profile) so the multi-SPDIF source picker has more than one input to
-  // demo without hardware.
-  const i2sParam = params.get('i2s');
-  const i2sInputChannels = i2sParam != null ? Math.min(8, Math.max(2, Number(i2sParam) | 0)) : undefined;
-  const spdifParam = params.get('spdif');
-  const spdifInputsEnabled = spdifParam != null ? Math.min(3, Math.max(1, Number(spdifParam) | 0)) : undefined;
-  const want115 = params.get('fw') === '115' || (i2sInputChannels != null && i2sInputChannels > 2) || spdifInputsEnabled != null;
-  const mockOpts = {
-    ...(want115 ? { wireVersion: 24, fwVersion: { major: 1, minor: 1, patch: 5 } } : {}),
-    ...(i2sInputChannels != null ? { i2sInputChannels } : {}),
-    ...(spdifInputsEnabled != null ? { spdifInputsEnabled } : {}),
-    // Demo remote: an armed IR learn self-completes with a fresh NEC code.
-    irLearnAutoComplete: true,
-  };
+  // See src/devOptions.ts for the full ?mock/?hero/?log convention.
+  const mockProfile = activeMockProfile();
 
   // Boot reports its own failures (with errorKind) via reportConnectError. The
   // attempt resolves once the state machine has settled (device synced + snapshot
   // loaded, or no device found), which is exactly when the boot splash may lift.
-  const bootAttempt = (mock === 'rp2040' || mock === 'rp2350')
-    ? bootMock(mock, mockOpts)
+  const bootAttempt = mockProfile
+    ? bootMock(mockProfile.platform, mockProfile.opts)
     : bootReal();
   void bootAttempt
     .catch((e) => Log.error('boot', 'boot failed', e))
