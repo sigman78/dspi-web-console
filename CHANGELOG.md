@@ -6,6 +6,21 @@ from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
 this project follows [Semantic Versioning](https://semver.org/) (currently in the
 `0.x` pre-1.0 line — minor versions may include breaking changes).
 
+## [0.7.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.6.0...dspi-console-web-v0.7.0) (2026-07-22)
+
+
+### Features
+
+* **dsp:** stereo upmixer support (device layer + panel) ([#87](https://github.com/sigman78/dspi-web-console/issues/87)) ([16d1cc9](https://github.com/sigman78/dspi-web-console/commit/16d1cc9e4a23f5ea0273f0e380592bffac13e7ec))
+* **pins:** reset-to-default option in pin pickers (fw 0xFF escape hatch) ([#88](https://github.com/sigman78/dspi-web-console/issues/88)) ([ba06c0b](https://github.com/sigman78/dspi-web-console/commit/ba06c0bc5074578b1b77db2ec36b8986ddc9e400))
+* **processing:** psychoacoustic bass panel (PR.04) ([#86](https://github.com/sigman78/dspi-web-console/issues/86)) ([797d0a9](https://github.com/sigman78/dspi-web-console/commit/797d0a9c26354343594690bdb3d81af51a752afc))
+* **protocol:** fw wire V25-V26 support (stereo upmixer section) ([#84](https://github.com/sigman78/dspi-web-console/issues/84)) ([05e82e3](https://github.com/sigman78/dspi-web-console/commit/05e82e37588d873f74bbb4b6487d721b21343b24))
+
+
+### Bug Fixes
+
+* **protocol:** carry seq on ignored v2 notify frames; decode siggen/ADAT state events ([#85](https://github.com/sigman78/dspi-web-console/issues/85)) ([e5cc46b](https://github.com/sigman78/dspi-web-console/commit/e5cc46b4585ce79f73092cd031b9c1a84d24a401))
+
 ## [0.6.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.5.0...dspi-console-web-v0.6.0) (2026-07-13)
 
 
