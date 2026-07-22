@@ -547,6 +547,8 @@ export class MockTransport implements DspTransport {
         });
       case WireCmd.GetLoudnessMask.code:
         return Codec.encode(Codec.u16, this.#mockState.loudness!.outputMask);
+      case WireCmd.GetPsybassMask.code:
+        return Codec.encode(Codec.u16, this.#mockState.psybass!.outputMask);
       case WireCmd.GetCrossfeedOutputs.code:
         return Codec.encode(Codec.u8, this.#mockState.crossfeed!.outputPairMask);
       case WireCmd.GetI2sClockMode.code:
@@ -1090,6 +1092,29 @@ export class MockTransport implements DspTransport {
         return;
       case WireCmd.SetLoudnessMask.code:
         this.#mockState.loudness!.outputMask = Codec.decode(Codec.u16, data);
+        return;
+
+      // Psybass
+      case WireCmd.SetPsybassEnabled.code:
+        this.#mockState.psybass!.enabled = Codec.decode(Codec.bool8, data);
+        return;
+      case WireCmd.SetPsybassCutoff.code:
+        this.#mockState.psybass!.cutoffHz = Codec.decode(Codec.f32, data);
+        return;
+      case WireCmd.SetPsybassHarmonics.code:
+        this.#mockState.psybass!.harmonicsDb = Codec.decode(Codec.f32, data);
+        return;
+      case WireCmd.SetPsybassDrive.code:
+        this.#mockState.psybass!.driveDb = Codec.decode(Codec.f32, data);
+        return;
+      case WireCmd.SetPsybassCharacter.code:
+        this.#mockState.psybass!.characterPct = Codec.decode(Codec.f32, data);
+        return;
+      case WireCmd.SetPsybassOriginal.code:
+        this.#mockState.psybass!.originalDb = Codec.decode(Codec.f32, data);
+        return;
+      case WireCmd.SetPsybassMask.code:
+        this.#mockState.psybass!.outputMask = Codec.decode(Codec.u16, data);
         return;
 
       // Crossfeed

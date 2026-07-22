@@ -52,6 +52,12 @@ export const levellerAmountPct = (p: number) => toRange(p, Proc.LEVELLER_AMOUNT_
 export const levellerMaxGainDb = (db: number) => toRange(db, Proc.LEVELLER_MAX_GAIN_MIN_DB, Proc.LEVELLER_MAX_GAIN_MAX_DB);
 export const levellerGateDb = (db: number) => toRange(db, Proc.LEVELLER_GATE_MIN_DB, Proc.LEVELLER_GATE_MAX_DB);
 
+export const psybassCutoffHz = (hz: number) => toRange(hz, Proc.PSYBASS_CUTOFF_MIN_HZ, Proc.PSYBASS_CUTOFF_MAX_HZ);
+export const psybassHarmonicsDb = (db: number) => toRange(db, Proc.PSYBASS_HARMONICS_MIN_DB, Proc.PSYBASS_HARMONICS_MAX_DB);
+export const psybassDriveDb = (db: number) => toRange(db, Proc.PSYBASS_DRIVE_MIN_DB, Proc.PSYBASS_DRIVE_MAX_DB);
+export const psybassCharacterPct = (p: number) => toRange(p, Proc.PSYBASS_CHARACTER_MIN_PCT, Proc.PSYBASS_CHARACTER_MAX_PCT);
+export const psybassOriginalDb = (db: number) => toRange(db, Proc.PSYBASS_ORIGINAL_MIN_DB, Proc.PSYBASS_ORIGINAL_MAX_DB);
+
 // Names are encoded into a fixed NUL-terminated wire buffer. Delegates to the
 // wire-layer truncator so host and wire agree on the byte budget.
 export function nameToByteBudget(name: string, maxBytes: number): string {

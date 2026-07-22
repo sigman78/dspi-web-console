@@ -849,6 +849,40 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetLevellerMasks);
   }
 
+  // Psychoacoustic bass enhancement (fw V23+, RP2350 only).
+  async setPsybassEnabled(enabled: boolean): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassEnabled, enabled);
+  }
+
+  async setPsybassCutoff(hz: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassCutoff, hz);
+  }
+
+  async setPsybassHarmonics(db: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassHarmonics, db);
+  }
+
+  async setPsybassDrive(db: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassDrive, db);
+  }
+
+  async setPsybassCharacter(pct: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassCharacter, pct);
+  }
+
+  async setPsybassOriginal(db: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassOriginal, db);
+  }
+
+  // Per-output psybass mask (fw V23+). Bit k = output channel k.
+  async setPsybassMask(mask: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassMask, mask & 0xFFFF);
+  }
+
+  async getPsybassMask(): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetPsybassMask);
+  }
+
   // v1.1.4 granular surface (unconditional: the V10 floor guarantees support).
 
   // Per-band EQ bypass. wValue = (wireChannel<<8)|band, mirroring getFilter's

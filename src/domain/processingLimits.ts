@@ -32,3 +32,24 @@ export const LEVELLER_MAX_GAIN_STEP_DB = 0.5;
 export const LEVELLER_GATE_MIN_DB = -96;
 export const LEVELLER_GATE_MAX_DB = 0;
 export const LEVELLER_GATE_STEP_DB = 1;
+
+// Psychoacoustic bass enhancement (PR.04).
+export const PSYBASS_CUTOFF_MIN_HZ = 30;
+export const PSYBASS_CUTOFF_MAX_HZ = 300;
+export const PSYBASS_CUTOFF_STEP_HZ = 1;
+
+export const PSYBASS_HARMONICS_MIN_DB = -24;
+export const PSYBASS_HARMONICS_MAX_DB = 12;
+export const PSYBASS_HARMONICS_STEP_DB = 0.5;
+
+export const PSYBASS_DRIVE_MIN_DB = 0;
+export const PSYBASS_DRIVE_MAX_DB = 18;
+export const PSYBASS_DRIVE_STEP_DB = 0.5;
+
+export const PSYBASS_CHARACTER_MIN_PCT = 0;
+export const PSYBASS_CHARACTER_MAX_PCT = 100;
+export const PSYBASS_CHARACTER_STEP_PCT = 1;
+
+export const PSYBASS_ORIGINAL_MIN_DB = -60;
+export const PSYBASS_ORIGINAL_MAX_DB = 0;
+export const PSYBASS_ORIGINAL_STEP_DB = 0.5;

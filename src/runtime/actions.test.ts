@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setLevellerMasks, toggleLevellerDetectorChannel, toggleLevellerApplyChannel, setLoudnessOutputMask, toggleLoudnessOutputChannel, setCrossfeedOutputPairs, toggleCrossfeedOutputPair, setOutputDelay, setOutputGain, setOutputEnabled, setOutputPairEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setI2sClockMode, setI2sClockPinMode, setI2sBckPinSlave, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource, setUartControlConfig } from './actions';
+import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setLevellerMasks, toggleLevellerDetectorChannel, toggleLevellerApplyChannel, setLoudnessOutputMask, toggleLoudnessOutputChannel, setCrossfeedOutputPairs, toggleCrossfeedOutputPair, setOutputDelay, setOutputGain, setOutputEnabled, setOutputPairEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setI2sClockMode, setI2sClockPinMode, setI2sBckPinSlave, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource, setUartControlConfig, setPsybassEnabled, setPsybassCutoff, setPsybassHarmonics, setPsybassDrive, setPsybassCharacter, setPsybassOriginal, setPsybassOutputMask, togglePsybassOutputChannel } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './deviceService';
 import { connection, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
 import { bootMock } from './boot';
@@ -338,6 +338,13 @@ const thinVerbCases: ThinVerbCase[] = [
   // Slot-addressing case: channel 1, not the trivial default channel 0.
   { name: 'setInputPreamp', method: 'setInputPreamp', mirrorPath: 'inputPreampDb[1]', lane: 'scrub', makeStub: (fn) => ({ setInputPreamp: fn }), invoke: () => setInputPreamp(activeSession()!, 1, -4), expectedArgs: () => [1, -4], read: () => liveMirror().current!.inputPreampDb[1], expected: -4 },
   { name: 'setOutputEnabled', method: 'setOutputEnable', mirrorPath: 'outputs[0].enabled', lane: 'write', makeStub: (fn) => ({ setOutputEnable: fn }), invoke: () => setOutputEnabled(activeSession()!, out0().wireIndex, false), expectedArgs: () => [out0().wireIndex, false], read: () => out0().enabled, expected: false },
+  { name: 'setPsybassEnabled', method: 'setPsybassEnabled', mirrorPath: 'psybass.enabled', lane: 'write', makeStub: (fn) => ({ setPsybassEnabled: fn }), invoke: () => setPsybassEnabled(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.psybass.enabled, expected: true },
+  { name: 'setPsybassCutoff', method: 'setPsybassCutoff', mirrorPath: 'psybass.cutoffHz', lane: 'scrub', makeStub: (fn) => ({ setPsybassCutoff: fn }), invoke: () => setPsybassCutoff(activeSession()!, 120), expectedArgs: () => [120], read: () => liveMirror().current!.psybass.cutoffHz, expected: 120 },
+  { name: 'setPsybassHarmonics', method: 'setPsybassHarmonics', mirrorPath: 'psybass.harmonicsDb', lane: 'scrub', makeStub: (fn) => ({ setPsybassHarmonics: fn }), invoke: () => setPsybassHarmonics(activeSession()!, 4.5), expectedArgs: () => [4.5], read: () => liveMirror().current!.psybass.harmonicsDb, expected: 4.5 },
+  { name: 'setPsybassDrive', method: 'setPsybassDrive', mirrorPath: 'psybass.driveDb', lane: 'scrub', makeStub: (fn) => ({ setPsybassDrive: fn }), invoke: () => setPsybassDrive(activeSession()!, 9), expectedArgs: () => [9], read: () => liveMirror().current!.psybass.driveDb, expected: 9 },
+  { name: 'setPsybassCharacter', method: 'setPsybassCharacter', mirrorPath: 'psybass.characterPct', lane: 'scrub', makeStub: (fn) => ({ setPsybassCharacter: fn }), invoke: () => setPsybassCharacter(activeSession()!, 75), expectedArgs: () => [75], read: () => liveMirror().current!.psybass.characterPct, expected: 75 },
+  { name: 'setPsybassOriginal', method: 'setPsybassOriginal', mirrorPath: 'psybass.originalDb', lane: 'scrub', makeStub: (fn) => ({ setPsybassOriginal: fn }), invoke: () => setPsybassOriginal(activeSession()!, -12), expectedArgs: () => [-12], read: () => liveMirror().current!.psybass.originalDb, expected: -12 },
+  { name: 'setPsybassOutputMask', method: 'setPsybassMask', mirrorPath: 'psybass.outputMask', lane: 'write', makeStub: (fn) => ({ setPsybassMask: fn }), invoke: () => setPsybassOutputMask(activeSession()!, 0x00F0), expectedArgs: () => [0x00F0], read: () => liveMirror().current!.psybass.outputMask, expected: 0x00F0 },
 ];
 
 describe('thin verbs: device call + mirror patch (parameterized)', () => {
@@ -443,6 +450,41 @@ describe('loudness output mask (toggle logic)', () => {
     toggleLoudnessOutputChannel(activeSession()!, 5);
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.loudness.outputMask).toBe(0xFFFF);
+  });
+});
+
+describe('psybass output mask (toggle logic)', () => {
+  let maskFn: ReturnType<typeof vi.fn<() => Promise<void>>>;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    maskFn = vi.fn(async () => {});
+    const device = initializedDevice({
+      setPsybassMask: maskFn,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('starts all-on (0xFFFF)', () => {
+    expect(liveMirror().current!.psybass.outputMask).toBe(0xFFFF);
+  });
+
+  it('toggle clears one bit and re-sends the whole mask', async () => {
+    togglePsybassOutputChannel(activeSession()!, 0);
+    await vi.runAllTimersAsync();
+    expect(maskFn).toHaveBeenCalledWith(0xFFFE);
+    expect(liveMirror().current!.psybass.outputMask).toBe(0xFFFE);
+  });
+
+  it('toggling the same channel twice restores it', async () => {
+    togglePsybassOutputChannel(activeSession()!, 5);
+    await vi.runAllTimersAsync();
+    expect(liveMirror().current!.psybass.outputMask).toBe(0xFFFF ^ (1 << 5));
+    togglePsybassOutputChannel(activeSession()!, 5);
+    await vi.runAllTimersAsync();
+    expect(liveMirror().current!.psybass.outputMask).toBe(0xFFFF);
   });
 });
 

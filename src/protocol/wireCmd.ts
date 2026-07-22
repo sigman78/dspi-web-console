@@ -265,8 +265,7 @@ export const WireCmd = {
   SetI2sClockPinMode:    { code: 0xFE } satisfies RawCmd,
   GetI2sClockPinMode:    { code: 0xFF } satisfies RawCmd,
 
-  // --- V23 psychoacoustic bass (fw 1.1.5+, RP2350). Opcodes only -- no
-  // DspDevice methods yet; wiring lands with the psybass UI branch.
+  // --- V23 psychoacoustic bass (fw 1.1.5+, RP2350). ---
   SetPsybassEnabled:     { code: 0x30, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
   GetPsybassEnabled:     { code: 0x31, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
   SetPsybassCutoff:      { code: 0x32, codec: Codec.f32 }   satisfies WriteCmd<number>,

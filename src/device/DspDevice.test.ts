@@ -208,6 +208,12 @@ describe('DspDevice — processing module setters', () => {
     { name: 'setLevellerMaxGain(6) -> 0xBA',          invoke: (d) => d.setLevellerMaxGain(6), opcode: 0xBA, payload: f32(6) },
     { name: 'setLevellerLookahead(true) -> 0xBC',     invoke: (d) => d.setLevellerLookahead(true), opcode: 0xBC, payload: bool8(true) },
     { name: 'setLevellerGate(-40) -> 0xBE',           invoke: (d) => d.setLevellerGate(-40), opcode: 0xBE, payload: f32(-40) },
+    { name: 'setPsybassEnabled(true) -> 0x30',        invoke: (d) => d.setPsybassEnabled(true), opcode: 0x30, payload: bool8(true) },
+    { name: 'setPsybassCutoff(80) -> 0x32',           invoke: (d) => d.setPsybassCutoff(80), opcode: 0x32, payload: f32(80) },
+    { name: 'setPsybassHarmonics(0) -> 0x34',         invoke: (d) => d.setPsybassHarmonics(0), opcode: 0x34, payload: f32(0) },
+    { name: 'setPsybassDrive(6) -> 0x36',             invoke: (d) => d.setPsybassDrive(6), opcode: 0x36, payload: f32(6) },
+    { name: 'setPsybassCharacter(50) -> 0x38',        invoke: (d) => d.setPsybassCharacter(50), opcode: 0x38, payload: f32(50) },
+    { name: 'setPsybassOriginal(0) -> 0x3A',          invoke: (d) => d.setPsybassOriginal(0), opcode: 0x3A, payload: f32(0) },
   ];
 
   it.each(setterCases)('$name writes the expected opcode + payload', async ({ invoke, opcode, payload }) => {
@@ -1005,6 +1011,16 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     // Values above a byte are truncated.
     await d.setCrossfeedOutputPairs(0x1FF);
     expect(await d.getCrossfeedOutputPairs()).toBe(0xFF);
+  });
+
+  test('psybass output mask round-trips and masks to u16', async () => {
+    const d = await v10();
+    expect(await d.getPsybassMask()).toBe(0xFFFF);
+    await d.setPsybassMask(0x00F0);
+    expect(await d.getPsybassMask()).toBe(0x00F0);
+    // Values above a u16 are truncated.
+    await d.setPsybassMask(0x1FFFF);
+    expect(await d.getPsybassMask()).toBe(0xFFFF);
   });
 
   test('getSpdifRxStatus narrows state + inputSource on V10', async () => {
