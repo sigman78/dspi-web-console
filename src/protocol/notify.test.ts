@@ -31,8 +31,28 @@ describe('parseNotifyPacket', () => {
       .toEqual({ kind: 'presetLoaded', seq: 9, slot: 3 });
   });
 
-  it('ignores an unknown v2 event id', () => {
-    expect(parseNotifyPacket(v2(0x7e, 1))).toEqual({ kind: 'ignored' });
+  it('ignores an unknown v2 event id, but carries its seq', () => {
+    expect(parseNotifyPacket(v2(0x7e, 1))).toEqual({ kind: 'ignored', seq: 1 });
+  });
+
+  it('decodes SIGGEN_STATE with its state/reason/signalType/channel', () => {
+    const pkt = v2(NotifyEventId.SiggenState, 4, [2, 1, 3, 0xff]);
+    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'siggenState', seq: 4, state: 2, reason: 1, signalType: 3, channel: 0xff });
+  });
+
+  it('ignores a truncated SIGGEN_STATE packet (below the 8-byte minimum), but carries its seq', () => {
+    const pkt = v2(NotifyEventId.SiggenState, 4, [2, 1, 3]);   // 7 bytes total
+    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'ignored', seq: 4 });
+  });
+
+  it('decodes ADAT_STATE with its enabled/active/pin', () => {
+    const pkt = v2(NotifyEventId.AdatState, 6, [1, 0, 12, 0]);
+    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'adatState', seq: 6, enabled: true, active: false, pin: 12 });
+  });
+
+  it('ignores a truncated ADAT_STATE packet (below the 8-byte minimum), but carries its seq', () => {
+    const pkt = v2(NotifyEventId.AdatState, 6, [1, 0, 12]);   // 7 bytes total
+    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'ignored', seq: 6 });
   });
 
   it('decodes I2S_SLAVE_STATE with its state and rate', () => {
@@ -41,9 +61,9 @@ describe('parseNotifyPacket', () => {
     expect(parseNotifyPacket(pkt)).toEqual({ kind: 'i2sSlaveState', seq: 3, state: 3, rateHz: 48000 });
   });
 
-  it('ignores a truncated I2S_SLAVE_STATE packet (below the 9-byte minimum)', () => {
+  it('ignores a truncated I2S_SLAVE_STATE packet (below the 9-byte minimum), but carries its seq', () => {
     const pkt = v2(NotifyEventId.I2sSlaveState, 3, [3, 0x80, 0xBB, 0x00]);   // 8 bytes total
-    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'ignored' });
+    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'ignored', seq: 3 });
   });
 
   it('decodes ADAT_INPUT_STATE with its state, rate and clock mode', () => {
@@ -52,9 +72,9 @@ describe('parseNotifyPacket', () => {
     expect(parseNotifyPacket(pkt)).toEqual({ kind: 'adatInputState', seq: 5, state: 3, rateHz: 48000, clockMode: 1 });
   });
 
-  it('ignores a truncated ADAT_INPUT_STATE packet (below the 10-byte minimum)', () => {
+  it('ignores a truncated ADAT_INPUT_STATE packet (below the 10-byte minimum), but carries its seq', () => {
     const pkt = v2(NotifyEventId.AdatInputState, 5, [3, 0x80, 0xBB, 0x00, 0x00]);   // 9 bytes total
-    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'ignored' });
+    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'ignored', seq: 5 });
   });
 });
 
@@ -69,9 +89,11 @@ describe('isReconcileTrigger', () => {
     expect(isReconcileTrigger({ kind: 'paramChanged', seq: 1, source: ParamSource.Host, offset: 0, size: 0, value: new Uint8Array() })).toBe(false);
   });
 
-  it('never triggers on idle or ignored', () => {
+  it('never triggers on idle, ignored, siggenState, or adatState', () => {
     expect(isReconcileTrigger({ kind: 'idle' })).toBe(false);
     expect(isReconcileTrigger({ kind: 'ignored' })).toBe(false);
+    expect(isReconcileTrigger({ kind: 'siggenState', seq: 1, state: 2, reason: 1, signalType: 3, channel: 0xff })).toBe(false);
+    expect(isReconcileTrigger({ kind: 'adatState', seq: 1, enabled: true, active: true, pin: 12 })).toBe(false);
   });
 });
 
@@ -113,9 +135,14 @@ describe('parseNotifyPacket — PARAM_CHANGED payload', () => {
     expect(Array.from(ev.value)).toEqual([1, 2, 3, 4]);
   });
 
-  it('ignores a PARAM_CHANGED whose declared size overruns the packet', () => {
+  it('ignores a PARAM_CHANGED whose declared size overruns the packet, but carries its seq', () => {
     // size says 8 but only 1 value byte present
     const pkt = new Uint8Array([2, 0x02, 0, 1, 20, 0, 8, 0, 5, 0, 0, 0, 0x99]);
-    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'ignored' });
+    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'ignored', seq: 1 });
+  });
+
+  it('ignores a truncated PARAM_CHANGED below the 12-byte prefix minimum, but carries its seq', () => {
+    const pkt = new Uint8Array([2, 0x02, 0, 1, 20, 0, 1, 0, 5, 0, 0]);   // 11 bytes total
+    expect(parseNotifyPacket(pkt)).toEqual({ kind: 'ignored', seq: 1 });
   });
 });

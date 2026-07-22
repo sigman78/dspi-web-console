@@ -54,7 +54,7 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
 
   function handle(event: NotifyEvent): void {
     session.notifyWaiters.notify(event);   // observe-only; routing below is unchanged
-    const seq = 'seq' in event ? event.seq : null;
+    const seq = 'seq' in event ? event.seq ?? null : null;
     if (seq !== null) {
       // A gap means a possibly-external event was missed -- always re-read, even
       // under a preset guard (the guard only knows about its own echoes).
@@ -135,7 +135,7 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
           } else {
             // Replay of history, not news -- drop it, but prime seq
             // continuity so the first LIVE event isn't misread as a gap.
-            if ('seq' in event) lastSeq = event.seq;
+            if ('seq' in event) lastSeq = event.seq ?? null;
             if (++backlogDrained >= NOTIFY_BACKLOG_DRAIN_CAP) {
               Log.warn('notify', 'backlog drain cap exceeded; going live without an idle boundary');
               backlogMode = false;

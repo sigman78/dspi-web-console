@@ -375,6 +375,69 @@ describe('startNotifyChannel', () => {
     expect(mir.peekReconcile().wanted).toBe(false);
     stop();
   });
+
+  it('a SIGGEN_STATE event is a silent no-op (no reconcile)', async () => {
+    const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
+    // state=2 (running), reason=0, signalType=3, channel=0xff (no walk channel)
+    mock.pushNotify(new Uint8Array([2, 0x07, 0, 1, 2, 0, 3, 0xff]));
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live siggenState
+    expect(mir.peekReconcile().wanted).toBe(false);
+    stop();
+  });
+
+  it('an ADAT_STATE event is a silent no-op (no reconcile)', async () => {
+    const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
+    // enabled=1, active=1, pin=12
+    mock.pushNotify(new Uint8Array([2, 0x08, 0, 1, 1, 1, 12, 0]));
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live adatState
+    expect(mir.peekReconcile().wanted).toBe(false);
+    stop();
+  });
+
+  it('an unrecognized event between two known events does not create a phantom seq gap', async () => {
+    // seq 1: known bulkInvalidated (no trigger, src=GPIO so it WOULD trigger --
+    // use a HOST echo instead so only the gap check is exercised).
+    const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
+    const hostEcho = (seq: number) => new Uint8Array([2, 2, 0, seq, 0x80, 0x0b, 0, 0, 1, 0, 0, 0]);   // PARAM_CHANGED, HOST, size=0
+    mock.pushNotify(hostEcho(1));
+    mock.pushNotify(new Uint8Array([2, 0x07, 0, 2, 2, 0, 3, 0xff]));   // seq 2: SIGGEN_STATE, decoded but silent
+    mock.pushNotify(hostEcho(3));
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // seq 1: no gap, no trigger
+    expect(mir.peekReconcile().wanted).toBe(false);
+    await m.tick();   // seq 2: decoded siggenState, no trigger, no gap
+    expect(mir.peekReconcile().wanted).toBe(false);
+    await m.tick();   // seq 3: contiguous with seq 2 -- must NOT read as a gap
+    expect(mir.peekReconcile().wanted).toBe(false);
+    stop();
+  });
+
+  it('still reconciles when an unknown event itself reveals a genuine seq gap', async () => {
+    const { mock, session, mir } = await v10Setup();
+    primeLive(mock);
+    const hostEcho = (seq: number) => new Uint8Array([2, 2, 0, seq, 0x80, 0x0b, 0, 0, 1, 0, 0, 0]);
+    mock.pushNotify(hostEcho(1));
+    mock.pushNotify(new Uint8Array([2, 0x0C, 0, 3]));   // seq 3: unknown event id, seq skipped 2 -- gap
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // seq 1: no gap
+    expect(mir.peekReconcile().wanted).toBe(false);
+    await m.tick();   // seq 3: gap against seq 1 -- reconcile
+    expect(mir.peekReconcile().wanted).toBe(true);
+    stop();
+  });
 });
 
 // A device with no host connected accumulates notify events in its ring

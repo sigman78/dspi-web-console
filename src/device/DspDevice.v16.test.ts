@@ -563,8 +563,8 @@ describe('notify — CS_IR_LEARN (0x0A)', () => {
     expect(e).toEqual({ kind: 'csIrLearn', seq: 10, state: 3, protocol: 0, code: 0 });
   });
 
-  it('ignores a short packet rather than misreading it', () => {
+  it('ignores a short packet rather than misreading it, but carries its seq', () => {
     const e = parseNotifyPacket(new Uint8Array([2, 0x0A, 0, 9, 2, 1, 0, 0]));
-    expect(e).toEqual({ kind: 'ignored' });
+    expect(e).toEqual({ kind: 'ignored', seq: 9 });
   });
 });
