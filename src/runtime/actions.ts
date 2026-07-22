@@ -259,6 +259,73 @@ export function setLevellerGate(s: ReadySession, db: number): void {
   );
 }
 
+export function setPsybassEnabled(s: ReadySession, enabled: boolean): void {
+  void write(s,
+    () => s.device.setPsybassEnabled(enabled),
+    () => { s.mirror.snapshot.psybass.enabled = enabled; },
+  );
+}
+
+export function setPsybassCutoff(s: ReadySession, hz: number): void {
+  hz = Clamp.psybassCutoffHz(hz);
+  scrub(s,
+    'psybassCutoff',
+    () => { s.mirror.snapshot.psybass.cutoffHz = hz; },
+    () => s.device.setPsybassCutoff(hz),
+  );
+}
+
+export function setPsybassHarmonics(s: ReadySession, db: number): void {
+  db = Clamp.psybassHarmonicsDb(db);
+  scrub(s,
+    'psybassHarmonics',
+    () => { s.mirror.snapshot.psybass.harmonicsDb = db; },
+    () => s.device.setPsybassHarmonics(db),
+  );
+}
+
+export function setPsybassDrive(s: ReadySession, db: number): void {
+  db = Clamp.psybassDriveDb(db);
+  scrub(s,
+    'psybassDrive',
+    () => { s.mirror.snapshot.psybass.driveDb = db; },
+    () => s.device.setPsybassDrive(db),
+  );
+}
+
+export function setPsybassCharacter(s: ReadySession, pct: number): void {
+  pct = Clamp.psybassCharacterPct(pct);
+  scrub(s,
+    'psybassCharacter',
+    () => { s.mirror.snapshot.psybass.characterPct = pct; },
+    () => s.device.setPsybassCharacter(pct),
+  );
+}
+
+export function setPsybassOriginal(s: ReadySession, db: number): void {
+  db = Clamp.psybassOriginalDb(db);
+  scrub(s,
+    'psybassOriginal',
+    () => { s.mirror.snapshot.psybass.originalDb = db; },
+    () => s.device.setPsybassOriginal(db),
+  );
+}
+
+// Per-output psybass mask (fw V23+): same single-command toggle pattern as
+// the loudness/crossfeed masks above. Discrete edit -> write lane.
+export function setPsybassOutputMask(s: ReadySession, mask: number): void {
+  mask &= 0xFFFF;
+  void write(s,
+    () => s.device.setPsybassMask(mask),
+    () => { s.mirror.snapshot.psybass.outputMask = mask; },
+  );
+}
+
+export function togglePsybassOutputChannel(s: ReadySession, ch: number): void {
+  const mask = s.mirror.snapshot.psybass.outputMask ^ (1 << ch);
+  setPsybassOutputMask(s, mask);
+}
+
 // Multichannel leveller masks (fw V18+): both masks travel together in one
 // command, so a single-channel toggle reads the current pair from the mirror,
 // flips one bit, and re-sends both. Discrete edit -> write lane.
