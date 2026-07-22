@@ -9,22 +9,23 @@
 import * as Wire from './wireTypes';
 import { ChannelFamily } from '@/domain';
 
-// Support window: V10 (released fw 1.1.4) and V16-V24 (fw 1.1.5, unified
+// Support window: V10 (released fw 1.1.4) and V16-V26 (fw 1.1.5, unified
 // channel model; V17 adds ADAT config, V18 adds leveller channel masks, V19
 // adds the per-output loudness mask, V20 adds the crossfeed output-pair mask,
 // V21 adds I2S slave-clock mode, V22 adds the Linkwitz Transform qp sidecar,
-// V23 adds psychoacoustic bass, V24 adds ADAT input config).
+// V23 adds psychoacoustic bass, V24 adds ADAT input config, V25 adds the
+// stereo upmixer, V26 adds the upmixer presence bell).
 // Wire versions 11..15 were in-development intermediates with shifting
 // layouts the console never shipped against -- rejected like pre-V10 firmware.
 export const MIN_SUPPORTED_WIRE = 10;
-export const MAX_KNOWN_WIRE = 24;
-const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16, 17, 18, 19, 20, 21, 22, 23, 24];
+export const MAX_KNOWN_WIRE = 26;
+const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26];
 
 // UI-facing description of the support window (device-panel tooltips). Keep
 // in step with SUPPORTED_WIRE_VERSIONS and the fw releases that carry them.
 export const SUPPORT_WINDOW = {
   fw: '1.1.4 and 1.1.5',
-  wire: 'V10 and V16–V24',
+  wire: 'V10 and V16–V26',
 } as const;
 
 export interface FirmwareVersion {
@@ -81,6 +82,11 @@ export interface DeviceFeatures {
   // ADAT input (0x68-0x6E + InputConfig24's ADAT fields). Wire V24+, RP2350
   // only -- mirrors firmware's platform gate on the ADAT lightpipe hardware.
   readonly adatInput: boolean;
+  // Stereo upmixer (WireUpmixParams). Wire V25+, RP2350 only.
+  readonly upmix: boolean;
+  // Upmixer presence bell (UpmixParams' presenceQ1 byte). Wire V26+, RP2350
+  // only -- earlier firmware has no presence field to write to.
+  readonly upmixPresence: boolean;
 }
 
 export interface DeviceCapabilities {
@@ -165,6 +171,8 @@ export function deriveCapabilities(input: {
       linkwitzTransform:  wireVersion >= 22,
       psybass:            wireVersion >= 23 && platformId === 1,
       adatInput:          wireVersion >= 24 && platformId === 1,
+      upmix:              wireVersion >= 25 && platformId === 1,
+      upmixPresence:      wireVersion >= 26 && platformId === 1,
     },
     spdifInputCount: multiSpdifInputs ? 3 : 1,
   };

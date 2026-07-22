@@ -10,7 +10,7 @@
 import { BinReader, BinWriter, Codec } from '@/utils';
 import * as Wire from './wireTypes';
 import type {
-  Loudness, Psybass,
+  Loudness, Psybass, Upmix,
   CrossPoint, OutputState,
 } from '@/domain';
 
@@ -110,6 +110,12 @@ export interface WireAdat {
 // domain.Psybass -- no narrowing needed in snapshotCodec.ts.
 export type WirePsybass = Psybass;
 
+// Section 22: stereo upmixer config (V25+). Wire-shaped 1:1 with domain.Upmix
+// -- presenceQ1 is decoded to presenceDb right here (a plain scale, unlike
+// the Linkwitz Transform qp sidecar's type-conditional decode), so no
+// narrowing is needed in snapshotCodec.ts either.
+export type WireUpmix = Upmix;
+
 export interface BulkParams {
   formatVersion: number;
   payloadLength: number;
@@ -149,6 +155,7 @@ export interface BulkParams {
   crossover: WireFilter[][];          // [17][4], V16+ (flat defaults on V10)
   adat: WireAdat;                     // V17+
   psybass: WirePsybass;               // V23+
+  upmix: WireUpmix;                   // V25+
 }
 
 function defaultWireFilter(): WireFilter {
@@ -174,6 +181,16 @@ function writeWireFilter(w: BinWriter, f: WireFilter, withQp: boolean): void {
     return;
   }
   Wire.BandParams.write(w, { type: f.type, bypass: f.bypass ? 1 : 0, frequency: f.frequency, q: f.q, gain: f.gain });
+}
+
+// Upmixer presence-bell wire encoding (V26+ UpmixParams.presenceQ1): int8 =
+// round(clamp(dB, -12, 12) * 2). V25 packets have no presence byte -- callers
+// write 0 (flat) and read 0 unconditionally (see layout.upmixPresence).
+function encodePresenceQ1(db: number): number {
+  return Math.round(Math.max(-12, Math.min(12, db)) * 2);
+}
+function decodePresenceQ1(raw: number): number {
+  return raw / 2;
 }
 
 // Decode just the 16-byte Wire.Header from a (possibly partial) bulk read --
@@ -401,6 +418,20 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
       })()
     : def.psybass;
 
+  const upmix = layout.upmix
+    ? (() => {
+        const w = Wire.UpmixParams.read(r);
+        return {
+          enabled: w.enabled, centerMode: w.centerMode, surroundMode: w.surroundMode,
+          strengthPct: w.strengthPct, centerWidthPct: w.centerWidthPct, corrThresholdPct: w.corrThresholdPct,
+          attackMs: w.attackMs, releaseMs: w.releaseMs, detectorHpfHz: w.detectorHpfHz,
+          surroundDelayMs: w.surroundDelayMs, surroundHpfHz: w.surroundHpfHz, surroundLpfHz: w.surroundLpfHz,
+          decorrPct: w.decorrPct,
+          presenceDb: layout.upmixPresence ? decodePresenceQ1(w.presenceQ1) : 0,
+        };
+      })()
+    : def.upmix;
+
   return {
     formatVersion: h.formatVersion,
     payloadLength: h.payloadLength,
@@ -445,6 +476,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
     crossover,
     adat,
     psybass,
+    upmix,
   };
 }
 
@@ -518,6 +550,13 @@ export function defaultBulkParams(opts: {
       Array.from({ length: Wire.Const16.XOVER_BANDS }, defaultWireFilter)),
     adat: { enabled: false, pin: 0 },
     psybass: { enabled: false, outputMask: 0xFFFF, cutoffHz: 80, harmonicsDb: 0, driveDb: 6, characterPct: 50, originalDb: 0 },
+    upmix: {
+      enabled: false, centerMode: 1, surroundMode: 2,
+      strengthPct: 100, centerWidthPct: 25, corrThresholdPct: 30,
+      attackMs: 10, releaseMs: 100, detectorHpfHz: 200,
+      surroundDelayMs: 12, surroundHpfHz: 300, surroundLpfHz: 7000,
+      decorrPct: 90, presenceDb: 0,
+    },
   };
 }
 
@@ -689,6 +728,16 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
       enabled: bulk.psybass.enabled, outputMask: bulk.psybass.outputMask, cutoffHz: bulk.psybass.cutoffHz,
       harmonicsDb: bulk.psybass.harmonicsDb, driveDb: bulk.psybass.driveDb,
       characterPct: bulk.psybass.characterPct, originalDb: bulk.psybass.originalDb,
+    });
+  }
+  if (writeVersion >= 25) {
+    Wire.UpmixParams.write(w, {
+      enabled: bulk.upmix.enabled, centerMode: bulk.upmix.centerMode, surroundMode: bulk.upmix.surroundMode,
+      presenceQ1: writeVersion >= 26 ? encodePresenceQ1(bulk.upmix.presenceDb) : 0,
+      strengthPct: bulk.upmix.strengthPct, centerWidthPct: bulk.upmix.centerWidthPct, corrThresholdPct: bulk.upmix.corrThresholdPct,
+      attackMs: bulk.upmix.attackMs, releaseMs: bulk.upmix.releaseMs, detectorHpfHz: bulk.upmix.detectorHpfHz,
+      surroundDelayMs: bulk.upmix.surroundDelayMs, surroundHpfHz: bulk.upmix.surroundHpfHz, surroundLpfHz: bulk.upmix.surroundLpfHz,
+      decorrPct: bulk.upmix.decorrPct,
     });
   }
 

@@ -5,7 +5,7 @@
 import type { ChannelId } from './channels';
 import type { HardwareProfile, I2sConfig, PlatformType, ChannelFamily } from './platform';
 import type { FilterParams } from './filter';
-import type { Loudness, Crossfeed, Leveller, Psybass } from './processing';
+import type { Loudness, Crossfeed, Leveller, Psybass, Upmix } from './processing';
 import type { OutputModel, RouteModel } from './mixer';
 import type { InputConfig, LgSoundSync, UserVolume, DacHwMute } from './deviceSections';
 
@@ -65,6 +65,9 @@ export interface DspSnapshot {
   // Psychoacoustic bass (fw V23+); bulkParser defaults it on older packets,
   // so this is always populated.
   psybass: Psybass;
+  // Stereo upmixer (fw V25+; presenceDb fw V26+); bulkParser defaults it on
+  // older packets, so this is always populated.
+  upmix: Upmix;
   i2s: I2sConfig;
   // GPIO pin per pin-output index, in hardware output order; the last entry is the PDM sub.
   outputPins: number[];

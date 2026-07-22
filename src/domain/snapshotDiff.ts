@@ -7,7 +7,7 @@ import type { DspSnapshot } from './snapshot';
 import type { I2sConfig } from './platform';
 import type { OutputModel, RouteModel } from './mixer';
 import type { FilterParams } from './filter';
-import type { Loudness, Crossfeed, Leveller, Psybass } from './processing';
+import type { Loudness, Crossfeed, Leveller, Psybass, Upmix } from './processing';
 import type { InputConfig, LgSoundSync, UserVolume, DacHwMute } from './deviceSections';
 import { BAND_GAIN_STEP_DB, FREQ_STEP_HZ, Q_STEP } from './eqLimits';
 
@@ -44,6 +44,7 @@ export type SnapshotChange =
   | { kind: 'crossfeed';     value: Crossfeed }
   | { kind: 'leveller';      value: Leveller }
   | { kind: 'psybass';       value: Psybass }
+  | { kind: 'upmix';         value: Upmix }
   | { kind: 'inputConfig';   value: InputConfig }
   | { kind: 'spdifRxPin';    value: number }
   | { kind: 'spdifExt';      value: { spdifRxPinExt: number[]; spdifExtEnabled: boolean[] } }
@@ -109,6 +110,23 @@ function psybassDiffers(a: Psybass, b: Psybass): boolean {
       || neq(a.driveDb,      b.driveDb,      DIFF_TOLERANCE.db)
       || neq(a.characterPct, b.characterPct, DIFF_TOLERANCE.gain)
       || neq(a.originalDb,   b.originalDb,   DIFF_TOLERANCE.db);
+}
+
+function upmixDiffers(a: Upmix, b: Upmix): boolean {
+  return a.enabled      !== b.enabled
+      || a.centerMode   !== b.centerMode
+      || a.surroundMode !== b.surroundMode
+      || neq(a.strengthPct,      b.strengthPct,      DIFF_TOLERANCE.gain)
+      || neq(a.centerWidthPct,   b.centerWidthPct,   DIFF_TOLERANCE.gain)
+      || neq(a.corrThresholdPct, b.corrThresholdPct, DIFF_TOLERANCE.gain)
+      || neq(a.attackMs,         b.attackMs,         DIFF_TOLERANCE.ms)
+      || neq(a.releaseMs,        b.releaseMs,        DIFF_TOLERANCE.ms)
+      || neq(a.detectorHpfHz,    b.detectorHpfHz,    DIFF_TOLERANCE.freq)
+      || neq(a.surroundDelayMs,  b.surroundDelayMs,  DIFF_TOLERANCE.ms)
+      || neq(a.surroundHpfHz,    b.surroundHpfHz,    DIFF_TOLERANCE.freq)
+      || neq(a.surroundLpfHz,    b.surroundLpfHz,    DIFF_TOLERANCE.freq)
+      || neq(a.decorrPct,        b.decorrPct,        DIFF_TOLERANCE.gain)
+      || neq(a.presenceDb,       b.presenceDb,       DIFF_TOLERANCE.db);
 }
 
 function levellerDiffers(a: Leveller, b: Leveller): boolean {
@@ -198,6 +216,7 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
   if (crossfeedDiffers(a.crossfeed, b.crossfeed)) out.push({ kind: 'crossfeed', value: b.crossfeed });
   if (levellerDiffers(a.leveller, b.leveller)) out.push({ kind: 'leveller', value: b.leveller });
   if (psybassDiffers(a.psybass, b.psybass)) out.push({ kind: 'psybass', value: b.psybass });
+  if (upmixDiffers(a.upmix, b.upmix)) out.push({ kind: 'upmix', value: b.upmix });
 
   for (let i = 0; i < b.channels.length; i++) {
     const ca = a.channels[i], cb = b.channels[i];
@@ -252,6 +271,7 @@ type _Covered =
   | 'crossfeed'
   | 'leveller'
   | 'psybass'
+  | 'upmix'
   | 'inputConfig'
   | 'userVolume'
   | 'dacHwMute'

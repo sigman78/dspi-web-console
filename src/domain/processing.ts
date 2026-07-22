@@ -73,6 +73,43 @@ export interface Psybass {
   originalDb: number;
 }
 
+// Stereo upmixer center/surround modes (fw upmix.h). Documentation constants
+// only -- Upmix.centerMode/surroundMode carry the raw wire value (see below).
+export const UpmixCenterMode = {
+  Passive:  0,
+  Adaptive: 1,
+} as const;
+export type UpmixCenterMode = (typeof UpmixCenterMode)[keyof typeof UpmixCenterMode];
+
+export const UpmixSurroundMode = {
+  Off:      0,
+  Passive:  1,
+  Adaptive: 2,
+} as const;
+export type UpmixSurroundMode = (typeof UpmixSurroundMode)[keyof typeof UpmixSurroundMode];
+
+// Stereo upmixer (fw V25+, RP2350 only). Wire-1:1 like Psybass -- centerMode/
+// surroundMode are raw wire values (map via UpmixCenterMode/UpmixSurroundMode)
+// rather than narrowed enum types. presenceDb is fw V26+; bulkParser decodes
+// it from the wire's presenceQ1 int8 (dB x2), defaulting to 0 on V25 packets
+// (byte was reserved).
+export interface Upmix {
+  enabled: boolean;
+  centerMode: number;
+  surroundMode: number;
+  strengthPct: number;
+  centerWidthPct: number;
+  corrThresholdPct: number;
+  attackMs: number;
+  releaseMs: number;
+  detectorHpfHz: number;
+  surroundDelayMs: number;
+  surroundHpfHz: number;
+  surroundLpfHz: number;
+  decorrPct: number;
+  presenceDb: number;
+}
+
 // Master volume persistence: 0 = global (persisted via SaveMasterVolume);
 // 1 = travels with each preset.
 export const MasterVolumeMode = {
