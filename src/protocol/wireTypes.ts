@@ -25,7 +25,7 @@
 
 import { Codec, type BinCodec } from '@/utils';
 
-const { u8, u16, u32, i16, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
+const { u8, i8, u16, u32, i16, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
 
 // Wire-format dimensions, sized to the largest platform (RP2350), per
 // channel-model generation. V10 (fw 1.1.4): 2 fixed inputs, 11 channels.
@@ -344,6 +344,27 @@ export const PsybassParams = struct({
   driveDb:      f32,
   characterPct: f32,
   originalDb:   f32,
+});
+
+// Section 22: stereo upmixer config (44 B, V25+; RP2350 only, but
+// structurally present on every V25+ packet). Appended after PsybassParams.
+// Byte 3 (reserved through V25) becomes `presenceQ1` on V26+: int8,
+// round(clamp(presenceDb, -12, 12) * 2).
+export const UpmixParams = struct({
+  enabled:          bool8,
+  centerMode:       u8,
+  surroundMode:     u8,
+  presenceQ1:       i8,
+  strengthPct:      f32,
+  centerWidthPct:   f32,
+  corrThresholdPct: f32,
+  attackMs:         f32,
+  releaseMs:        f32,
+  detectorHpfHz:    f32,
+  surroundDelayMs:  f32,
+  surroundHpfHz:    f32,
+  surroundLpfHz:    f32,
+  decorrPct:        f32,
 });
 
 // Standalone control-transfer payloads (not part of the bulk transfer).
@@ -761,15 +782,21 @@ export const BULK_SIZE_V23 = BULK_SIZE_V22 + sizeOf(PsybassParams);
 // V24 claims InputConfig's remaining reserved bytes (ADAT input config) --
 // also no packet-size change.
 export const BULK_SIZE_V24 = BULK_SIZE_V23;
+// V25 appends the 44-byte stereo upmixer section after PsybassParams.
+export const BULK_SIZE_V25 = BULK_SIZE_V24 + sizeOf(UpmixParams);
+// V26 claims UpmixParams' reserved byte 3 (presence_q1) -- also no
+// packet-size change.
+export const BULK_SIZE_V26 = BULK_SIZE_V25;
 
 // Newest wire version the console knows how to decode and write.
-export const MAX_WIRE_VERSION = 24;
+export const MAX_WIRE_VERSION = 26;
 
 // Packet size to allocate/write for a given target wire version (clamped to
 // the V6 floor and the MAX_WIRE_VERSION ceiling). Versions 11..15 were
 // in-development intermediates the console never supported; they collapse to
 // the V10 size (writes to such devices are rejected at connect anyway).
 export function bulkSizeForVersion(v: number): number {
+  if (v >= 25) return BULK_SIZE_V26;
   if (v >= 23) return BULK_SIZE_V24;
   if (v >= 21) return BULK_SIZE_V21;
   if (v >= 20) return BULK_SIZE_V20;
@@ -788,9 +815,9 @@ export const BulkLimits = {
   MinPacketSize:  BulkSizes.V2,
   // Size we WRITE: version-aware buildBulkParams emits at the device's own wire
   // version, up to MAX_WIRE_VERSION. This is the largest buffer it may allocate.
-  MaxRequestSize: BULK_SIZE_V24,
-  // Size we READ: the largest packet we tolerate receiving (V24).
-  MaxReadSize:    BULK_SIZE_V24,  // 5900
+  MaxRequestSize: BULK_SIZE_V26,
+  // Size we READ: the largest packet we tolerate receiving (V26).
+  MaxReadSize:    BULK_SIZE_V26,  // 5944
   // WinUSB caps a control transfer's data stage at 4 KB; the largest single
   // EP0 transfer any host backend can rely on. Above this, DspDevice chunks
   // via 0xA2/0xA3 (fw 1.1.5+).
@@ -829,6 +856,10 @@ export interface BulkLayout {
   psybass: boolean;
   // V24: ADAT input config bytes (InputConfig reserved-byte claim).
   adatInput: boolean;
+  // V25: stereo upmixer section, appended after PsybassParams.
+  upmix: boolean;
+  // V26: upmixer presence-bell byte (UpmixParams reserved-byte claim).
+  upmixPresence: boolean;
 }
 
 // Determine which optional sections are present based on the header.
@@ -856,6 +887,8 @@ export function bulkLayout(h: { formatVersion: number; payloadLength: number }):
     bandQp:            v >= 22 && len >= BULK_SIZE_V22,
     psybass:           v >= 23 && len >= BULK_SIZE_V23,
     adatInput:         v >= 24 && len >= BULK_SIZE_V24,
+    upmix:             v >= 25 && len >= BULK_SIZE_V25,
+    upmixPresence:     v >= 26 && len >= BULK_SIZE_V26,
   };
 }
 

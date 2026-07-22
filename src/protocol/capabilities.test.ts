@@ -41,14 +41,16 @@ describe('deriveCapabilities — support classification', () => {
     }
   });
 
-  it('classifies V19..V24 as supported; V25 reports future', () => {
+  it('classifies V19..V26 as supported; V27 reports future', () => {
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 19, payloadLength: Wire.BULK_SIZE_V19, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 20, payloadLength: Wire.BULK_SIZE_V20, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 21, payloadLength: Wire.BULK_SIZE_V21, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 22, payloadLength: Wire.BULK_SIZE_V22, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 23, payloadLength: Wire.BULK_SIZE_V23, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 24, payloadLength: Wire.BULK_SIZE_V24, platformId: 1 }).support).toBe('supported');
-    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 25, payloadLength: Wire.BULK_SIZE_V24, platformId: 1 }).support).toBe('future');
+    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 25, payloadLength: Wire.BULK_SIZE_V25, platformId: 1 }).support).toBe('supported');
+    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 26, payloadLength: Wire.BULK_SIZE_V26, platformId: 1 }).support).toBe('supported');
+    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 27, payloadLength: Wire.BULK_SIZE_V26, platformId: 1 }).support).toBe('future');
   });
 });
 
@@ -146,6 +148,22 @@ describe('deriveCapabilities — V16 feature flags', () => {
     expect(at(23, 1)).toBe(false);
     expect(at(24, 0)).toBe(false);
     expect(at(24, 1)).toBe(true);
+  });
+
+  it('gates the upmixer on wire V25 + RP2350 (off through V24, off on RP2040, on for V25 RP2350)', () => {
+    const at = (v: number, len: number, platformId: number) =>
+      deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: v, payloadLength: len, platformId }).features.upmix;
+    expect(at(24, Wire.BULK_SIZE_V24, 1)).toBe(false);
+    expect(at(25, Wire.BULK_SIZE_V25, 0)).toBe(false);
+    expect(at(25, Wire.BULK_SIZE_V25, 1)).toBe(true);
+  });
+
+  it('gates upmixer presence on wire V26 + RP2350 (off on V25, off on RP2040, on for V26 RP2350)', () => {
+    const at = (v: number, platformId: number) =>
+      deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: v, payloadLength: Wire.BULK_SIZE_V26, platformId }).features.upmixPresence;
+    expect(at(25, 1)).toBe(false);
+    expect(at(26, 0)).toBe(false);
+    expect(at(26, 1)).toBe(true);
   });
 });
 
