@@ -82,6 +82,7 @@
             candidates={bckCandidates}
             ariaLabel="I2S BCK pin"
             disabled={!connected || anyI2s}
+            allowReset={features.pinResetDefault}
             onChange={(p) => stageI2sBckPin(s, p)}
           />
         </span>
@@ -108,6 +109,7 @@
             candidates={availablePinsFor(snap.platform.type, overlaySnap, effMckPin, ctrlPins)}
             ariaLabel="MCK pin"
             disabled={!connected || effMckEnabled}
+            allowReset={features.pinResetDefault}
             onChange={(p) => stageMckPin(s, p)}
           />
         </span>
@@ -171,6 +173,7 @@
                 candidates={slaveBckCandidates}
                 ariaLabel="I2S BCK pin (slave)"
                 disabled={!connected}
+                allowReset={features.pinResetDefault}
                 onChange={(p) => stageI2sBckPinSlave(s, p)}
               />
             </span>

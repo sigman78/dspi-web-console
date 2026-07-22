@@ -23,4 +23,24 @@ describe('PinSelect', () => {
     await fireEvent.change(screen.getByRole('combobox'), { target: { value: '16' } });
     expect(onChange).toHaveBeenCalledWith(16);
   });
+
+  test('omits the DEFAULT option when allowReset is unset', () => {
+    render(PinSelect, { props: { value: 6, candidates: CANDIDATES, ariaLabel: 'Slot 1 pin', onChange: vi.fn() } });
+    expect(screen.queryByRole('option', { name: 'DEFAULT' })).toBeNull();
+  });
+
+  test('allowReset renders a DEFAULT option ahead of the GPIO list', () => {
+    render(PinSelect, { props: { value: 6, candidates: CANDIDATES, ariaLabel: 'Slot 1 pin', allowReset: true, onChange: vi.fn() } });
+    const opts = screen.getAllByRole('option') as HTMLOptionElement[];
+    expect(opts[0].textContent).toBe('DEFAULT');
+    expect(opts[0].value).toBe('255');
+    expect(opts).toHaveLength(CANDIDATES.length + 1);
+  });
+
+  test('selecting DEFAULT fires onChange with the 0xFF sentinel', async () => {
+    const onChange = vi.fn();
+    render(PinSelect, { props: { value: 6, candidates: CANDIDATES, ariaLabel: 'Slot 1 pin', allowReset: true, onChange } });
+    await fireEvent.change(screen.getByRole('combobox'), { target: { value: '255' } });
+    expect(onChange).toHaveBeenCalledWith(255);
+  });
 });

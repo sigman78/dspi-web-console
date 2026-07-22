@@ -165,6 +165,14 @@ describe('deriveCapabilities — V16 feature flags', () => {
     expect(at(26, 0)).toBe(false);
     expect(at(26, 1)).toBe(true);
   });
+
+  it('gates the pin-reset escape hatch on wire V25 (off on V24, on for V25+), ungated on platform', () => {
+    const at = (v: number, len: number, platformId: number) =>
+      deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: v, payloadLength: len, platformId }).features.pinResetDefault;
+    expect(at(24, Wire.BULK_SIZE_V24, 1)).toBe(false);
+    expect(at(25, Wire.BULK_SIZE_V25, 0)).toBe(true);
+    expect(at(25, Wire.BULK_SIZE_V25, 1)).toBe(true);
+  });
 });
 
 describe('deriveCapabilities — metadata + sections', () => {

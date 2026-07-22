@@ -664,3 +664,85 @@ describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
     expect(status[0]).toBe(PinConfigResult.PinInUse);
   });
 });
+
+// Universal pin-reset escape hatch (fw config.h PIN_RESET_TO_DEFAULT = 0xFF):
+// every single-pin SET accepts the sentinel to restore that target's
+// platform default, index/pair/role-aware, still running the normal validation.
+describe('MockTransport — pin-reset-to-default (0xFF sentinel)', () => {
+  const RESET = Wire.Const.PIN_RESET_TO_DEFAULT;
+
+  it('SetOutputPin: move off the default, then the sentinel restores it', async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    await t.open();
+    await t.ctrlIn(WireCmd.SetOutputPin.code, (21 << 8) | 0, 1);
+    expect((await t.ctrlIn(WireCmd.GetOutputPin.code, 0, 1))[0]).toBe(21);
+
+    const status = await t.ctrlIn(WireCmd.SetOutputPin.code, (RESET << 8) | 0, 1);
+    expect(status[0]).toBe(PinConfigResult.Success);
+    expect((await t.ctrlIn(WireCmd.GetOutputPin.code, 0, 1))[0]).toBe(6);   // PICO_AUDIO_SPDIF_PIN
+  });
+
+  it('SetOutputPin: the RP2040 PDM slot resets to its own platform default (10), not RP2350\'s', async () => {
+    const t = new MockTransport({ platform: 'rp2040' });
+    await t.open();
+    await t.ctrlIn(WireCmd.SetOutputPin.code, (22 << 8) | 2, 1);   // PDM is pin-output index 2 on RP2040
+    const status = await t.ctrlIn(WireCmd.SetOutputPin.code, (RESET << 8) | 2, 1);
+    expect(status[0]).toBe(PinConfigResult.Success);
+    expect((await t.ctrlIn(WireCmd.GetOutputPin.code, 2, 1))[0]).toBe(10);
+  });
+
+  it('SetI2sBckPin: role-aware default (master 14, slave 26 on RP2350)', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 21, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    await t.open();
+    await t.ctrlIn(WireCmd.SetI2sBckPin.code, 19, 1);                  // role 0 -> off default
+    await t.ctrlIn(WireCmd.SetI2sBckPin.code, (1 << 8) | 21, 1);       // role 1 -> off default
+
+    expect((await t.ctrlIn(WireCmd.SetI2sBckPin.code, RESET, 1))[0]).toBe(PinConfigResult.Success);
+    expect((await t.ctrlIn(WireCmd.SetI2sBckPin.code, (1 << 8) | RESET, 1))[0]).toBe(PinConfigResult.Success);
+    expect((await t.ctrlIn(WireCmd.GetI2sBckPin.code, 0, 1))[0]).toBe(14);
+    expect((await t.ctrlIn(WireCmd.GetI2sBckPin.code, 1, 1))[0]).toBe(26);
+  });
+
+  it('SetMckPin: platform-specific default (13 on RP2350, 21 on RP2040)', async () => {
+    const rp2350 = new MockTransport({ platform: 'rp2350' });
+    await rp2350.open();
+    await rp2350.ctrlIn(WireCmd.SetMckPin.code, 19, 1);
+    expect((await rp2350.ctrlIn(WireCmd.SetMckPin.code, RESET, 1))[0]).toBe(PinConfigResult.Success);
+    expect((await rp2350.ctrlIn(WireCmd.GetMckPin.code, 0, 1))[0]).toBe(13);
+
+    const rp2040 = new MockTransport({ platform: 'rp2040' });
+    await rp2040.open();
+    await rp2040.ctrlIn(WireCmd.SetMckPin.code, 19, 1);
+    expect((await rp2040.ctrlIn(WireCmd.SetMckPin.code, RESET, 1))[0]).toBe(PinConfigResult.Success);
+    expect((await rp2040.ctrlIn(WireCmd.GetMckPin.code, 0, 1))[0]).toBe(21);
+  });
+
+  it('SetSpdifRxPin: per-instance default (5 / 20 / 21)', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 18, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    await t.open();
+    for (const [index, expected] of [[0, 5], [1, 20], [2, 21]] as const) {
+      await t.ctrlIn(WireCmd.SetSpdifRxPin.code, (index << 8) | 16, 1);   // off default first
+      const status = await t.ctrlIn(WireCmd.SetSpdifRxPin.code, (index << 8) | RESET, 1);
+      expect(status[0]).toBe(PinConfigResult.Success);
+      expect((await t.ctrlIn(WireCmd.GetSpdifRxPin.code, index, 1))[0]).toBe(expected);
+    }
+  });
+
+  it('SetI2sRxPin: per-pair default (contiguous block from GPIO 1)', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    await t.open();
+    await t.ctrlIn(WireCmd.SetI2sRxPin.code, (2 << 8) | 19, 1);
+    const status = await t.ctrlIn(WireCmd.SetI2sRxPin.code, (2 << 8) | RESET, 1);
+    expect(status[0]).toBe(PinConfigResult.Success);
+    expect((await t.ctrlIn(WireCmd.GetI2sRxPin.code, 2, 1))[0]).toBe(3);
+  });
+
+  it('a resolved default can still fail PinInUse if another peripheral already holds it', async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    await t.open();
+    await t.ctrlIn(WireCmd.SetOutputPin.code, (21 << 8) | 0, 1);   // move slot 0 off its own default (6)
+    await t.ctrlIn(WireCmd.SetOutputPin.code, (6 << 8) | 1, 1);    // slot 1 claims the now-free GPIO 6
+    const status = await t.ctrlIn(WireCmd.SetOutputPin.code, (RESET << 8) | 0, 1);   // slot 0 -> default collides with slot 1
+    expect(status[0]).toBe(PinConfigResult.PinInUse);
+  });
+});

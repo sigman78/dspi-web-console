@@ -314,22 +314,23 @@ export class MockTransport implements DspTransport {
     this.#csCapsVersion = opts.csCapsVersion ?? MOCK_CS_CAPS.capsVersion;
     this.#irLearnAutoComplete = opts.irLearnAutoComplete ?? false;
     // Override the all-zero defaults with realistic pin/I2S values so granular
-    // pin/type tests start from a valid hardware state.
+    // pin/type tests start from a valid hardware state. Sourced from the same
+    // platform-default tables the 0xFF pin-reset sentinel resolves through
+    // (see #defaultOutputPin etc. below), so boot state and a factory reset
+    // agree.
     const numPin = this.#platform === PlatformType.RP2350 ? 5 : 3;
     this.#mockState.numPinOutputs = numPin;
-    this.#mockState.pins = (this.#platform === PlatformType.RP2350
-      ? [6, 7, 8, 9, 10]
-      : [6, 7, 10, 0, 0]);
+    this.#mockState.pins = Array.from({ length: 5 }, (_, i) => (i < numPin ? this.#defaultOutputPin(i) : 0));
     this.#mockState.i2s = {
       outputSlotTypes: [0, 0, 0, 0],
-      bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0,
+      bckPin: this.#defaultBckPin(0), mckPin: this.#defaultMckPin(), mckEnabled: false, mckMultiplierEncoded: 0,
       clockPinModeP1: 0,
-      bckPinSlave: this.#platform === PlatformType.RP2350 ? 26 : 12,
+      bckPinSlave: this.#defaultBckPin(1),
     };
     if (this.#isV16) {
       // Firmware V16 defaults: RX data pins on the collision-free GPIO 1..4
       // block, stereo, 48 kHz.
-      this.#mockState.inputConfig.i2sRxPins = [1, 2, 3, 4];
+      this.#mockState.inputConfig.i2sRxPins = [0, 1, 2, 3].map((p) => this.#defaultI2sRxPin(p));
       this.#mockState.inputConfig.i2sInputChannels = 2;
       this.#mockState.inputConfig.i2sInputRateEnc = 1;
 
@@ -610,7 +611,8 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.SetSpdifRxPin.code: {
         const index = (value >> 8) & 0xFF;
-        const gpio = value & 0xFF;
+        let gpio = value & 0xFF;
+        if (index < this.#spdifInputCount() && gpio === Wire.Const.PIN_RESET_TO_DEFAULT) gpio = this.#defaultSpdifRxPin(index);
         if (index >= this.#spdifInputCount()) return new Uint8Array([0x03]);   // InvalidOutput: no such input
         if (!this.#isValidGpio(gpio)) return new Uint8Array([0x01]);           // InvalidPin
         if (this.#pinInUse(gpio, 0xFF)) return new Uint8Array([0x02]);         // PinInUse
@@ -659,7 +661,8 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.SetI2sRxPin.code: {
         const pair = (value >> 8) & 0xFF;
-        const pin = value & 0xFF;
+        let pin = value & 0xFF;
+        if (pair < 4 && pin === Wire.Const.PIN_RESET_TO_DEFAULT) pin = this.#defaultI2sRxPin(pair);
         if (pair >= 4) return new Uint8Array([0x03]);                    // InvalidOutput: no such pair
         if (!this.#isValidGpio(pin)) return new Uint8Array([0x01]);      // InvalidPin
         if (this.#pinInUse(pin, 0xFF)) return new Uint8Array([0x02]);    // PinInUse
@@ -770,7 +773,8 @@ export class MockTransport implements DspTransport {
         return new Uint8Array([this.#mockState.pins[value & 0xFF] ?? 0]);
       case WireCmd.SetOutputPin.code: {
         const idx = value & 0xFF;
-        const pin = (value >> 8) & 0xFF;
+        let pin = (value >> 8) & 0xFF;
+        if (idx < this.#mockState.numPinOutputs && pin === Wire.Const.PIN_RESET_TO_DEFAULT) pin = this.#defaultOutputPin(idx);
         let status = 0x00;
         if (idx >= this.#mockState.numPinOutputs) status = 0x03;
         else if (!this.#isValidGpio(pin)) status = 0x01;
@@ -795,7 +799,8 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.SetI2sBckPin.code: {
         const role = (value >> 8) & 0xFF;
-        const pin = value & 0xFF;
+        let pin = value & 0xFF;
+        if ((role === 0 || role === 1) && pin === Wire.Const.PIN_RESET_TO_DEFAULT) pin = this.#defaultBckPin(role);
         let status = 0x00;
         if (role === 1) {
           // Slave-mode BCK/LRCLK pair: an independent input pair, not subject
@@ -819,7 +824,8 @@ export class MockTransport implements DspTransport {
       case WireCmd.GetMckPin.code:
         return new Uint8Array([this.#mockState.i2s.mckPin]);
       case WireCmd.SetMckPin.code: {
-        const pin = value & 0xFF;
+        let pin = value & 0xFF;
+        if (pin === Wire.Const.PIN_RESET_TO_DEFAULT) pin = this.#defaultMckPin();
         let status = 0x00;
         if (!this.#isValidGpio(pin)) status = 0x01;
         else if (this.#mockState.i2s.mckEnabled) status = 0x04;
@@ -1417,6 +1423,40 @@ export class MockTransport implements DspTransport {
   // only). Mirrors capabilities.ts's multiSpdifInputs gate.
   #spdifInputCount(): number {
     return this.#isV16 && this.#platform === PlatformType.RP2350 ? 3 : 1;
+  }
+
+  // Platform-default GPIOs for the 0xFF pin-reset sentinel
+  // (Wire.Const.PIN_RESET_TO_DEFAULT), mirroring fw vendor_commands.c's
+  // default tables (docs/PINS-CONFIG.md sec 8, config.h). Index/role/
+  // instance/pair-aware, matching the SET commands' own addressing.
+  #defaultOutputPin(idx: number): number {
+    const rp2350 = [6, 7, 8, 9, 10];
+    const rp2040 = [6, 7, 10];
+    return (this.#platform === PlatformType.RP2350 ? rp2350 : rp2040)[idx] ?? 0;
+  }
+
+  // role 0 = master BCK (PICO_I2S_BCK_PIN, both platforms); role 1 = slave
+  // BCK (PICO_I2S_BCK_PIN_SLAVE, platform-specific).
+  #defaultBckPin(role: number): number {
+    if (role === 1) return this.#platform === PlatformType.RP2350 ? 26 : 12;
+    return 14;
+  }
+
+  // PICO_I2S_MCK_PIN: RP2350 keeps GPIO 13 (a CLK_GPOUTn pin); RP2040 falls
+  // back to GPIO 21 (13 isn't CLK_GPOUTn-capable there).
+  #defaultMckPin(): number {
+    return this.#platform === PlatformType.RP2350 ? 13 : 21;
+  }
+
+  // index 0 = PICO_SPDIF_RX_PIN_DEFAULT, 1/2 = the RP2350-only selectable
+  // inputs' PICO_SPDIF_RX_PIN2/3_DEFAULT.
+  #defaultSpdifRxPin(index: number): number {
+    return index === 0 ? 5 : index === 1 ? 20 : 21;
+  }
+
+  // Contiguous block starting at PICO_I2S_RX_PIN_DEFAULT (pair 0 = GPIO 1).
+  #defaultI2sRxPin(pair: number): number {
+    return 1 + pair;
   }
 
   #isValidGpio(pin: number): boolean {

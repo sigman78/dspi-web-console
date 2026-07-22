@@ -87,6 +87,12 @@ export interface DeviceFeatures {
   // Upmixer presence bell (UpmixParams' presenceQ1 byte). Wire V26+, RP2350
   // only -- earlier firmware has no presence field to write to.
   readonly upmixPresence: boolean;
+  // Universal pin-reset escape hatch: every single-pin SET command accepts
+  // GPIO byte 0xFF (Wire.Const.PIN_RESET_TO_DEFAULT) to restore that target's
+  // platform default. Proxy -- the feature shipped just before the V25 bump
+  // with no dedicated capability bit; V24 fw rejects 0xFF as INVALID_PIN
+  // harmlessly, but we don't offer the affordance there. Both platforms.
+  readonly pinResetDefault: boolean;
 }
 
 export interface DeviceCapabilities {
@@ -173,6 +179,7 @@ export function deriveCapabilities(input: {
       adatInput:          wireVersion >= 24 && platformId === 1,
       upmix:              wireVersion >= 25 && platformId === 1,
       upmixPresence:      wireVersion >= 26 && platformId === 1,
+      pinResetDefault:    wireVersion >= 25,
     },
     spdifInputCount: multiSpdifInputs ? 3 : 1,
   };

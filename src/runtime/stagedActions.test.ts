@@ -2,10 +2,14 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { bootMock } from './boot';
 import { activeSession, clearNotices } from '@/state';
 import { AudioInputSource } from '@/domain';
+import { Wire } from '@/protocol';
 import {
   stageInputSource, stageI2sRxPin, stageI2sInputChannels, stageMckEnabled,
   stageI2sClockMode, stageI2sClockPinMode, stageI2sBckPinSlave,
+  stageOutputDataPin, stageMckPin,
 } from './stagedActions';
+
+const { PIN_RESET_TO_DEFAULT } = Wire.Const;
 
 const sess = () => activeSession()!;
 
@@ -210,6 +214,53 @@ describe('runtime/stagedActions', () => {
       stageMckEnabled(s, !live);
       stageMckEnabled(s, live);
       expect(s.staging.has('mckEnabled')).toBe(false);
+    });
+  });
+
+  // Universal pin-reset escape hatch (fw 0xFF sentinel, V25+): staging DEFAULT
+  // on any pin picker. stageOutputDataPin stands in for the whole family --
+  // every stage*Pin function routes the sentinel through the same fmtPinTo /
+  // overlayPin / applyPin helpers.
+  describe('pin-reset-to-default (0xFF sentinel)', () => {
+    beforeEach(async () => {
+      await bootMock('rp2350');
+      clearNotices();
+    });
+
+    it('labels the staged change "default" instead of "GP255"', () => {
+      const s = sess();
+      stageOutputDataPin(s, 0, PIN_RESET_TO_DEFAULT);
+      const entry = s.staging.get('outputPin:0')!;
+      expect(entry.to).toBe('default');
+      expect(entry.from).toBe(`GP${s.mirror.snapshot.outputPins[0]}`);
+    });
+
+    it('applying sends the raw 0xFF sentinel to the device', async () => {
+      const s = sess();
+      const spy = vi.spyOn(s.device, 'setOutputPin');
+      stageOutputDataPin(s, 0, PIN_RESET_TO_DEFAULT);
+      await s.staging.applyAll();
+      expect(spy).toHaveBeenCalledWith(0, PIN_RESET_TO_DEFAULT);
+    });
+
+    it('overlay keeps the live pin instead of writing 0xFF into it', () => {
+      const s = sess();
+      const live = s.mirror.snapshot.outputPins[0];
+      stageOutputDataPin(s, 0, PIN_RESET_TO_DEFAULT);
+      const overlay = s.staging.overlaySnapshot(s.mirror.snapshot);
+      expect(overlay.outputPins[0]).toBe(live);
+      expect(overlay.outputPins).not.toContain(PIN_RESET_TO_DEFAULT);
+    });
+
+    it('requests an eager reconcile once the reset apply succeeds, unlike a plain pin move', async () => {
+      const s = sess();
+      stageMckPin(s, 20);   // plain move: an ordinary pin, not the sentinel
+      await s.staging.applyAll();
+      expect(s.mirror.peekReconcile()).toEqual({ wanted: true, eager: false });
+
+      stageOutputDataPin(s, 0, PIN_RESET_TO_DEFAULT);
+      await s.staging.applyAll();
+      expect(s.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
     });
   });
 });

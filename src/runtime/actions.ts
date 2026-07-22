@@ -18,6 +18,7 @@ import {
   type ReadySession,
   pushNotice,
 } from '@/state';
+import { Wire } from '@/protocol';
 import { Log, errMessage } from '@/utils';
 import { write, scrub, writeChecked, command } from './writes.svelte';
 import { focusOutput, focusRoute } from './focus';
@@ -632,6 +633,14 @@ function patchI2s(s: ReadySession, update: (i: I2sConfig) => I2sConfig): void {
   s.mirror.snapshot.i2s = update(s.mirror.snapshot.i2s);
 }
 
+// A pin reset (0xFF sentinel) resolves to a real GPIO device-side, so there
+// is nothing truthful to patch optimistically -- skip the patch and let the
+// staged flow's eager reconcile bring back the resolved pin (a mirrored
+// sentinel would briefly render as GP255).
+function unlessPinReset(pin: number, patch: () => void): () => void {
+  return () => { if (pin !== Wire.Const.PIN_RESET_TO_DEFAULT) patch(); };
+}
+
 function patchOutputPin(s: ReadySession, index: number, pin: number): void {
   const pins = s.mirror.snapshot.outputPins.slice();
   pins[index] = pin;
@@ -642,7 +651,7 @@ export function setOutputDataPin(s: ReadySession, pinOutputIndex: number, pin: n
   return writeChecked(s,
     'set output pin',
     () => s.device.setOutputPin(pinOutputIndex, pin),
-    () => patchOutputPin(s, pinOutputIndex, pin),
+    unlessPinReset(pin, () => patchOutputPin(s, pinOutputIndex, pin)),
   );
 }
 
@@ -658,7 +667,7 @@ export function setOutputType(s: ReadySession, slot: I2sPairSlot, type: number):
 }
 
 export function setI2sBckPin(s: ReadySession, pin: number): Promise<boolean> {
-  return writeChecked(s,'set I2S BCK pin', () => s.device.setI2sBckPin(pin), () => patchI2s(s, (i) => ({ ...i, bckPin: pin })));
+  return writeChecked(s,'set I2S BCK pin', () => s.device.setI2sBckPin(pin), unlessPinReset(pin, () => patchI2s(s, (i) => ({ ...i, bckPin: pin }))));
 }
 
 export function setMckEnabled(s: ReadySession, on: boolean): Promise<boolean> {
@@ -666,7 +675,7 @@ export function setMckEnabled(s: ReadySession, on: boolean): Promise<boolean> {
 }
 
 export function setMckPin(s: ReadySession, pin: number): Promise<boolean> {
-  return writeChecked(s,'set MCK pin', () => s.device.setMckPin(pin), () => patchI2s(s, (i) => ({ ...i, mckPin: pin })));
+  return writeChecked(s,'set MCK pin', () => s.device.setMckPin(pin), unlessPinReset(pin, () => patchI2s(s, (i) => ({ ...i, mckPin: pin }))));
 }
 
 export function setMckMultiplier(s: ReadySession, encoded: number): Promise<boolean> {
@@ -690,7 +699,7 @@ export function setI2sClockPinMode(s: ReadySession, mode: number): Promise<boole
 
 // Slave-mode BCK pin (fw V21+, role 1). LRCLK rides pin+1 on the device side.
 export function setI2sBckPinSlave(s: ReadySession, pin: number): Promise<boolean> {
-  return writeChecked(s, 'set I2S BCK pin (slave)', () => s.device.setI2sBckPin(pin, 1), () => patchI2s(s, (i) => ({ ...i, bckPinSlave: pin })));
+  return writeChecked(s, 'set I2S BCK pin (slave)', () => s.device.setI2sBckPin(pin, 1), unlessPinReset(pin, () => patchI2s(s, (i) => ({ ...i, bckPinSlave: pin }))));
 }
 
 export function setUserMute(s: ReadySession, mute: boolean): void {
@@ -763,7 +772,7 @@ export function setSpdifRxPin(s: ReadySession, gpio: number): Promise<boolean> {
   return writeChecked(s,
     'set S/PDIF RX pin',
     () => s.device.setSpdifRxPin(gpio),
-    () => { s.mirror.snapshot.inputConfig.spdifRxPin = gpio; },
+    unlessPinReset(gpio, () => { s.mirror.snapshot.inputConfig.spdifRxPin = gpio; }),
   );
 }
 
@@ -773,7 +782,7 @@ export function setSpdifRxPinExt(s: ReadySession, extIndex: number, gpio: number
   return writeChecked(s,
     'set S/PDIF RX pin',
     () => s.device.setSpdifRxPin(gpio, extIndex + 1),
-    () => { s.mirror.snapshot.inputConfig.spdifRxPinExt[extIndex] = gpio; },
+    unlessPinReset(gpio, () => { s.mirror.snapshot.inputConfig.spdifRxPinExt[extIndex] = gpio; }),
   );
 }
 
@@ -807,11 +816,11 @@ export function setI2sRxPin(s: ReadySession, pair: number, gpio: number): Promis
   return writeChecked(s,
     'set I2S RX pin',
     () => s.device.setI2sRxPin(pair, gpio),
-    () => {
+    unlessPinReset(gpio, () => {
       const pins = s.mirror.snapshot.inputConfig.i2sRxPins.slice();
       pins[pair] = gpio;
       s.mirror.snapshot.inputConfig.i2sRxPins = pins;
-    },
+    }),
   );
 }
 

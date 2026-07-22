@@ -41,6 +41,11 @@ export const Const = {
   CHANNEL_NAME_LEN:    32,  // WIRE_NAME_LEN
   NUM_SPDIF_INSTANCES:  4,  // WIRE_MAX_SPDIF_INSTANCES
   SERIAL_LEN:          32,  // GetSerial response length
+  // Sentinel pin byte accepted by every single-pin SET command (output data,
+  // I2S BCK/MCK, S/PDIF RX, I2S RX): "restore this target's platform default"
+  // (index/pair/role-aware). fw config.h PIN_RESET_TO_DEFAULT; V25+ only, see
+  // capabilities.ts's pinResetDefault.
+  PIN_RESET_TO_DEFAULT: 0xFF,
 } as const;
 
 export const Const16 = {
