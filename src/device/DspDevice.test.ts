@@ -9,6 +9,7 @@ import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice, UnsupportedFirmware, UnsupportedDevicePacket } from './DspDevice';
 import { createDevice } from '@test/fixtures/deviceHarness';
 import { PresetResult, PinConfigResult, WireCmd, SystemStatusValue, Wire, NotifyEventId } from '@/protocol';
+import { Codec } from '@/utils';
 import {
   PlatformType,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode, OutputConfigMode,
@@ -189,6 +190,7 @@ describe('DspDevice — processing module setters', () => {
     invoke: (d: DspDevice) => Promise<void>;
     opcode: number;
     payload: Uint8Array;
+    value?: number;
   }> = [
     { name: 'setBypass(true) -> 0x46',                invoke: (d) => d.setBypass(true), opcode: 0x46, payload: bool8(true) },
     { name: 'setBypass(false) -> 0x46',               invoke: (d) => d.setBypass(false), opcode: 0x46, payload: bool8(false) },
@@ -214,16 +216,68 @@ describe('DspDevice — processing module setters', () => {
     { name: 'setPsybassDrive(6) -> 0x36',             invoke: (d) => d.setPsybassDrive(6), opcode: 0x36, payload: f32(6) },
     { name: 'setPsybassCharacter(50) -> 0x38',        invoke: (d) => d.setPsybassCharacter(50), opcode: 0x38, payload: f32(50) },
     { name: 'setPsybassOriginal(0) -> 0x3A',          invoke: (d) => d.setPsybassOriginal(0), opcode: 0x3A, payload: f32(0) },
+    // Stereo upmixer: single opcode 0x4C, param id carried in wValue (not 0).
+    { name: 'setUpmixEnabled(true) -> 0x4C id0',      invoke: (d) => d.setUpmixEnabled(true), opcode: 0x4C, value: 0,  payload: f32(1) },
+    { name: 'setUpmixCenterMode(1) -> 0x4C id1',      invoke: (d) => d.setUpmixCenterMode(1), opcode: 0x4C, value: 1,  payload: f32(1) },
+    { name: 'setUpmixSurroundMode(2) -> 0x4C id2',    invoke: (d) => d.setUpmixSurroundMode(2), opcode: 0x4C, value: 2,  payload: f32(2) },
+    { name: 'setUpmixStrength(75) -> 0x4C id3',       invoke: (d) => d.setUpmixStrength(75), opcode: 0x4C, value: 3,  payload: f32(75) },
+    { name: 'setUpmixCenterWidth(40) -> 0x4C id4',    invoke: (d) => d.setUpmixCenterWidth(40), opcode: 0x4C, value: 4,  payload: f32(40) },
+    { name: 'setUpmixCorrThreshold(50) -> 0x4C id5',  invoke: (d) => d.setUpmixCorrThreshold(50), opcode: 0x4C, value: 5,  payload: f32(50) },
+    { name: 'setUpmixAttack(20) -> 0x4C id6',         invoke: (d) => d.setUpmixAttack(20), opcode: 0x4C, value: 6,  payload: f32(20) },
+    { name: 'setUpmixRelease(200) -> 0x4C id7',       invoke: (d) => d.setUpmixRelease(200), opcode: 0x4C, value: 7,  payload: f32(200) },
+    { name: 'setUpmixDetectorHpf(150) -> 0x4C id8',   invoke: (d) => d.setUpmixDetectorHpf(150), opcode: 0x4C, value: 8,  payload: f32(150) },
+    { name: 'setUpmixSurroundDelay(8) -> 0x4C id9',   invoke: (d) => d.setUpmixSurroundDelay(8), opcode: 0x4C, value: 9,  payload: f32(8) },
+    { name: 'setUpmixSurroundHpf(400) -> 0x4C id10',  invoke: (d) => d.setUpmixSurroundHpf(400), opcode: 0x4C, value: 10, payload: f32(400) },
+    { name: 'setUpmixSurroundLpf(6000) -> 0x4C id11', invoke: (d) => d.setUpmixSurroundLpf(6000), opcode: 0x4C, value: 11, payload: f32(6000) },
+    { name: 'setUpmixDecorr(80) -> 0x4C id12',        invoke: (d) => d.setUpmixDecorr(80), opcode: 0x4C, value: 12, payload: f32(80) },
+    { name: 'setUpmixPresence(3) -> 0x4C id13',       invoke: (d) => d.setUpmixPresence(3), opcode: 0x4C, value: 13, payload: f32(3) },
   ];
 
-  it.each(setterCases)('$name writes the expected opcode + payload', async ({ invoke, opcode, payload }) => {
+  it.each(setterCases)('$name writes the expected opcode + payload', async ({ invoke, opcode, payload, value }) => {
     const { t, captured } = makeCapturingTransport();
     const d = await createDevice(t);
     await invoke(d);
     expect(captured).toHaveLength(1);
     expect(captured[0].request).toBe(opcode);
-    expect(captured[0].value).toBe(0);
+    expect(captured[0].value).toBe(value ?? 0);
     expect(captured[0].data).toEqual(payload);
+  });
+});
+
+describe('DspDevice — getUpmixStatus decode', () => {
+  test('decodes 0x4E response, preserving a negative Q14 correlation', async () => {
+    let lastReq = 0, lastVal = 0;
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async (req, val) => {
+        lastReq = req; lastVal = val;
+        return Codec.encode(Wire.UpmixStatus, {
+          active: true, parkedReason: 0, corrQ14: -4096, balanceQ14: 2048,
+          centerGainQ15: 23170, lsGainQ15: 20000, rsGainQ15: 20000,
+        });
+      },
+      ctrlOut: async () => {},
+    };
+    const status = await (await createDevice(t)).getUpmixStatus();
+    expect(lastReq).toBe(0x4E);
+    expect(lastVal).toBe(0);
+    expect(status).toEqual({
+      active: true, parkedReason: 0, corrQ14: -4096, balanceQ14: 2048,
+      centerGainQ15: 23170, lsGainQ15: 20000, rsGainQ15: 20000,
+    });
+  });
+
+  test('narrows an out-of-range parkedReason byte to Disabled', async () => {
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async () => Codec.encode(Wire.UpmixStatus, {
+        active: false, parkedReason: 99, corrQ14: 0, balanceQ14: 0,
+        centerGainQ15: 0, lsGainQ15: 0, rsGainQ15: 0,
+      }),
+      ctrlOut: async () => {},
+    };
+    const status = await (await createDevice(t)).getUpmixStatus();
+    expect(status.parkedReason).toBe(1); // Disabled
   });
 });
 

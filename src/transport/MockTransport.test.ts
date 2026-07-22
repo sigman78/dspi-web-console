@@ -95,6 +95,62 @@ describe('MockTransport — wire version knob', () => {
   });
 });
 
+describe('MockTransport — stereo upmixer (V25/V26)', () => {
+  it('roundtrips a per-param SET/GET (0x4C/0x4D) by UPMIX_PARAM_* id', async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    await t.open();
+    const payload = new Uint8Array(4);
+    new DataView(payload.buffer).setFloat32(0, 66, true);
+    await t.ctrlOut(WireCmd.UpmixSetParam.code, Wire.UpmixParam.StrengthPct, payload);
+    const got = await t.ctrlIn(WireCmd.UpmixGetParam.code, Wire.UpmixParam.StrengthPct, 4);
+    expect(new DataView(got.buffer).getFloat32(0, true)).toBeCloseTo(66, 4);
+  });
+
+  it('roundtrips the 44-byte config packet (0x4A/0x4B), scaling presence to/from Q1', async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    await t.open();
+    const sent = Codec.encode(Wire.UpmixParams, {
+      enabled: true, centerMode: 1, surroundMode: 2, presenceQ1: 5, // 2.5 dB
+      strengthPct: 80, centerWidthPct: 30, corrThresholdPct: 40,
+      attackMs: 15, releaseMs: 150, detectorHpfHz: 250,
+      surroundDelayMs: 10, surroundHpfHz: 350, surroundLpfHz: 8000, decorrPct: 70,
+    });
+    await t.ctrlOut(WireCmd.UpmixSetConfig.code, 0, sent);
+    const got = Codec.decode(Wire.UpmixParams, await t.ctrlIn(WireCmd.UpmixGetConfig.code, 0, sent.byteLength));
+    expect(got.enabled).toBe(true);
+    expect(got.centerMode).toBe(1);
+    expect(got.surroundMode).toBe(2);
+    expect(got.presenceQ1).toBe(5);
+    expect(got.strengthPct).toBeCloseTo(80, 4);
+    expect(got.surroundLpfHz).toBeCloseTo(8000, 4);
+  });
+
+  it('GetUpmixStatus is only active while enabled AND the live input is stereo', async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    await t.open();
+    const one = new Uint8Array(4);
+    new DataView(one.buffer).setFloat32(0, 1, true);
+    await t.ctrlOut(WireCmd.UpmixSetParam.code, Wire.UpmixParam.Enabled, one);
+    const active = Codec.decode(Wire.UpmixStatus, await t.ctrlIn(WireCmd.UpmixGetStatus.code, 0, 16));
+    expect(active.active).toBe(true);
+    expect(active.parkedReason).toBe(0);
+
+    const zero = new Uint8Array(4);
+    await t.ctrlOut(WireCmd.UpmixSetParam.code, Wire.UpmixParam.Enabled, zero);
+    const disabled = Codec.decode(Wire.UpmixStatus, await t.ctrlIn(WireCmd.UpmixGetStatus.code, 0, 16));
+    expect(disabled.active).toBe(false);
+    expect(disabled.parkedReason).toBe(1); // Disabled
+
+    await t.ctrlOut(WireCmd.UpmixSetParam.code, Wire.UpmixParam.Enabled, one);
+    const t8ch = new MockTransport({ platform: 'rp2350', wireVersion: 16, i2sInputChannels: 8 });
+    await t8ch.open();
+    await t8ch.ctrlOut(WireCmd.UpmixSetParam.code, Wire.UpmixParam.Enabled, one);
+    const parked = Codec.decode(Wire.UpmixStatus, await t8ch.ctrlIn(WireCmd.UpmixGetStatus.code, 0, 16));
+    expect(parked.active).toBe(false);
+    expect(parked.parkedReason).toBe(2); // NotStereoInput
+  });
+});
+
 describe('MockTransport — status + buffer stats', () => {
   it('returns a parseable status packet', async () => {
     const t = new MockTransport({ platform: 'rp2350' });

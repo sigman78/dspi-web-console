@@ -58,6 +58,18 @@ export const psybassDriveDb = (db: number) => toRange(db, Proc.PSYBASS_DRIVE_MIN
 export const psybassCharacterPct = (p: number) => toRange(p, Proc.PSYBASS_CHARACTER_MIN_PCT, Proc.PSYBASS_CHARACTER_MAX_PCT);
 export const psybassOriginalDb = (db: number) => toRange(db, Proc.PSYBASS_ORIGINAL_MIN_DB, Proc.PSYBASS_ORIGINAL_MAX_DB);
 
+export const upmixStrengthPct = (p: number) => toRange(p, Proc.UPMIX_STRENGTH_MIN_PCT, Proc.UPMIX_STRENGTH_MAX_PCT);
+export const upmixCenterWidthPct = (p: number) => toRange(p, Proc.UPMIX_CENTER_WIDTH_MIN_PCT, Proc.UPMIX_CENTER_WIDTH_MAX_PCT);
+export const upmixCorrThresholdPct = (p: number) => toRange(p, Proc.UPMIX_CORR_THRESHOLD_MIN_PCT, Proc.UPMIX_CORR_THRESHOLD_MAX_PCT);
+export const upmixAttackMs = (ms: number) => toRange(ms, Proc.UPMIX_ATTACK_MIN_MS, Proc.UPMIX_ATTACK_MAX_MS);
+export const upmixReleaseMs = (ms: number) => toRange(ms, Proc.UPMIX_RELEASE_MIN_MS, Proc.UPMIX_RELEASE_MAX_MS);
+export const upmixDetectorHpfHz = (hz: number) => toRange(hz, Proc.UPMIX_DETECTOR_HPF_MIN_HZ, Proc.UPMIX_DETECTOR_HPF_MAX_HZ);
+export const upmixSurroundDelayMs = (ms: number) => toRange(ms, Proc.UPMIX_SURROUND_DELAY_MIN_MS, Proc.UPMIX_SURROUND_DELAY_MAX_MS);
+export const upmixSurroundHpfHz = (hz: number) => toRange(hz, Proc.UPMIX_SURROUND_HPF_MIN_HZ, Proc.UPMIX_SURROUND_HPF_MAX_HZ);
+export const upmixSurroundLpfHz = (hz: number) => toRange(hz, Proc.UPMIX_SURROUND_LPF_MIN_HZ, Proc.UPMIX_SURROUND_LPF_MAX_HZ);
+export const upmixDecorrPct = (p: number) => toRange(p, Proc.UPMIX_DECORR_MIN_PCT, Proc.UPMIX_DECORR_MAX_PCT);
+export const upmixPresenceDb = (db: number) => toRange(db, Proc.UPMIX_PRESENCE_MIN_DB, Proc.UPMIX_PRESENCE_MAX_DB);
+
 // Names are encoded into a fixed NUL-terminated wire buffer. Delegates to the
 // wire-layer truncator so host and wire agree on the byte budget.
 export function nameToByteBudget(name: string, maxBytes: number): string {

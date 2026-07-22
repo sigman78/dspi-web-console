@@ -53,6 +53,13 @@ type CsIrCommandPayload = {
   protocol: number; value: number; step: number; code: number;
 };
 type LevellerMasksPayload = { detector: number; apply: number };
+type UpmixConfigPayload = {
+  enabled: boolean; centerMode: number; surroundMode: number; presenceQ1: number;
+  strengthPct: number; centerWidthPct: number; corrThresholdPct: number;
+  attackMs: number; releaseMs: number; detectorHpfHz: number;
+  surroundDelayMs: number; surroundHpfHz: number; surroundLpfHz: number;
+  decorrPct: number;
+};
 
 // Command table
 
@@ -290,6 +297,20 @@ export const WireCmd = {
   SetAdatInputClockMode: { code: 0x6C, codec: Codec.u8 }    satisfies WriteCmd<number>,
   GetAdatInputClockMode: { code: 0x6D, codec: Codec.u8 }    satisfies ReadCmd<number>,
   GetAdatInputStatus:    { code: 0x6E } satisfies RawCmd,
+
+  // --- V25/V26 stereo upmixer (fw 1.1.5+, RP2350 only). ---
+  // Config pair carries the 44-byte struct shared with the bulk section
+  // (Wire.UpmixParams); no DspDevice methods yet -- values arrive via the
+  // bulk section like the ADAT input config above. Registered for
+  // completeness / MockTransport round-trip.
+  UpmixSetConfig:        { code: 0x4A, codec: tighten<UpmixConfigPayload>(Wire.UpmixParams) } satisfies WriteCmd<UpmixConfigPayload>,
+  UpmixGetConfig:        { code: 0x4B, codec: tighten<UpmixConfigPayload>(Wire.UpmixParams) } satisfies ReadCmd<UpmixConfigPayload>,
+  // Per-param SET/GET: wValue = UPMIX_PARAM_* id (Wire.UpmixParam), payload/
+  // response = one float; firmware rounds mode/enable ids to integer on SET.
+  UpmixSetParam:         { code: 0x4C, codec: Codec.f32 } satisfies WriteCmd<number>,
+  UpmixGetParam:         { code: 0x4D, codec: Codec.f32 } satisfies ReadCmd<number>,
+  // Live status (no bulk equivalent).
+  UpmixGetStatus:        { code: 0x4E, codec: Wire.UpmixStatus },
 
   // --- V16 / fw 1.1.5 external control interfaces (UART + I2C) ---
   // SETs are plain control-OUT with the struct payload; the firmware refuses

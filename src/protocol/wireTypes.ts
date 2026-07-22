@@ -367,6 +367,27 @@ export const UpmixParams = struct({
   decorrPct:        f32,
 });
 
+// REQ_UPMIX_SET_PARAM/GET_PARAM (0x4C/0x4D) wValue dispatch: UPMIX_PARAM_*
+// ids from upmix.h. Mode/enable ids (0-2) are rounded to integer by firmware
+// on SET; presence (13) is fw V26+ (ignored/zeroed on a V25 device).
+export const UpmixParam = {
+  Enabled:          0,
+  CenterMode:       1,
+  SurroundMode:     2,
+  StrengthPct:      3,
+  CenterWidthPct:   4,
+  CorrThresholdPct: 5,
+  AttackMs:         6,
+  ReleaseMs:        7,
+  DetectorHpfHz:    8,
+  SurroundDelayMs:  9,
+  SurroundHpfHz:   10,
+  SurroundLpfHz:   11,
+  DecorrPct:       12,
+  PresenceDb:      13,
+} as const;
+export type UpmixParam = (typeof UpmixParam)[keyof typeof UpmixParam];
+
 // Standalone control-transfer payloads (not part of the bulk transfer).
 
 // 8-byte payload of `SetMatrixRoute` / response of `GetMatrixRoute`
@@ -464,6 +485,21 @@ export const I2sSlaveStatus = struct({
   measuredHz:   u32,
   slipCount:    u8,
   _reserved:    reserved(3),
+});
+
+// 16-byte live stereo-upmixer status (GetUpmixStatus 0x4E, fw V25+, RP2350
+// only). parkedReason: 0 active / 1 disabled / 2 input not stereo / 3 rate
+// > 48 kHz -- narrowed to a domain enum in DspDevice. corr/balance are Q14
+// signed fixed point; gains are Q15 unsigned.
+export const UpmixStatus = struct({
+  active:        bool8,
+  parkedReason:  u8,
+  corrQ14:       i16,
+  balanceQ14:    i16,
+  centerGainQ15: u16,
+  lsGainQ15:     u16,
+  rsGainQ15:     u16,
+  _reserved:     reserved(4),
 });
 
 // Length of the raw IEC-60958 channel-status block (GetSpdifRxChStatus 0xE3).
