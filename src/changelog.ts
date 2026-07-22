@@ -6,12 +6,12 @@ import { APP_VERSION } from './buildInfo';
 export const LATEST_CHANGES = {
   version: APP_VERSION,
   highlights: [
-    'Newest 1.1.5 builds supported: Linkwitz Transform EQ bands display in the equalizer; psychoacoustic bass and ADAT input settings are preserved (editors coming)',
+    'Stereo Upmixer: derive Centre and surround channels from any stereo source — new panel in Processing, route Upmix C/Ls/Rs in the mixer (fw 1.1.5, RP2350)',
+    'Psychoacoustic bass: missing-fundamental harmonics with per-output selection — new PSYBASS panel (fw 1.1.5)',
+    'Pin pickers gain a DEFAULT option — the device restores its own factory pin, no guessing (fw 1.1.5)',
+    'Linkwitz Transform EQ bands display in the equalizer (fw 1.1.5)',
     'I2S slave clock mode: sync to an external I2S master with auto-detected rate and live lock status (fw 1.1.5)',
-    'Per-output loudness compensation: choose which outputs are compensated (fw 1.1.5)',
-    'Multichannel crossfeed: enable per stereo output pair — headphones crossfed, speaker pairs stay untouched (fw 1.1.5)',
     'IR remote control: learn buttons from any remote and bind them to device functions (Control tab)',
-    'Channel-aware volume leveller: choose which inputs are measured and which are levelled (fw 1.1.5)',
-    'Firmware 1.1.5 wire V16–V24 supported end-to-end — 1.1.4 devices remain fully supported',
+    'Firmware 1.1.5 wire V16–V26 supported end-to-end — 1.1.4 devices remain fully supported',
   ],
 } as const;
