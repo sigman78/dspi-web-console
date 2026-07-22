@@ -192,6 +192,7 @@
               candidates={availablePinsFor(snap.platform.type, overlaySnap, effSpdifPin(i), ctrlPins)}
               ariaLabel={`${spdifTitle(i)} RX GPIO pin`}
               disabled={!connected}
+              allowReset={features.pinResetDefault}
               onChange={(p) => onSpdifPin(i, p)}
             />
           </span>
@@ -266,6 +267,7 @@
               candidates={availablePinsFor(snap.platform.type, overlaySnap, effI2sRxPin(pair), ctrlPins)}
               ariaLabel={`I2S RX data pin, stereo pair ${pair + 1}`}
               disabled={!connected}
+              allowReset={features.pinResetDefault}
               onChange={(p) => stageI2sRxPin(s, pair, p)}
             />
           </span>

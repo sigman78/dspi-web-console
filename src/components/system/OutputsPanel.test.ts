@@ -47,7 +47,7 @@ function makeSession(snap: ReturnType<typeof makeSnap>) {
     ctrlIfaces: { uart: null, i2c: null, status: null },
     controlSurfaces: { caps: null, nouns: [], bindings: [], status: null },
     staging,
-    device: {},
+    device: { capabilities: { features: { pinResetDefault: false } } },
   } as any;
 }
 

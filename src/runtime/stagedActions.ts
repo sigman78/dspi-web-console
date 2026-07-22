@@ -8,6 +8,7 @@
 // `order` as one batch.
 
 import * as Domain from '@/domain';
+import { Wire } from '@/protocol';
 import { type ReadySession, type StagedEntry } from '@/state';
 import {
   setInputSource, setInputRate, setSpdifRxPin, setSpdifRxPinExt, setSpdifInputEnabled,
@@ -15,6 +16,8 @@ import {
   setI2sBckPin, setMckEnabled, setMckPin, setMckMultiplier, setOutputType, setOutputDataPin,
   setI2sClockMode, setI2sClockPinMode, setI2sBckPinSlave,
 } from './actions';
+
+const { PIN_RESET_TO_DEFAULT } = Wire.Const;
 
 const ORDER = {
   outputPin: 10,
@@ -32,6 +35,23 @@ const ORDER = {
 } as const;
 
 function fmtPin(pin: number): string { return `GP${pin}`; }
+// 'to' can be the reset sentinel (fw resolves it device-side, index/pair/
+// role-aware) -- render it literally instead of the meaningless "GP255".
+// 'from' is always the live device pin, never the sentinel.
+function fmtPinTo(pin: number): string { return pin === PIN_RESET_TO_DEFAULT ? 'default' : fmtPin(pin); }
+// The sentinel isn't a real GPIO: writing it into the overlay would falsely
+// free (or reserve) it in availablePinsFor's map. Keep the overlay at the
+// live pin until the apply resolves the real default.
+function overlayPin(current: number, next: number): number { return next === PIN_RESET_TO_DEFAULT ? current : next; }
+
+// Pin-reset (0xFF) resolves on the device; force an eager reconcile so the
+// resolved GPIO lands in the mirror right after this batch instead of
+// waiting out the background poll's multi-second floor (see runtime/poll.ts).
+async function applyPin(s: ReadySession, pin: number, send: () => Promise<boolean>): Promise<boolean> {
+  const ok = await send();
+  if (ok && pin === PIN_RESET_TO_DEFAULT) s.mirror.requestReconcile(true);
+  return ok;
+}
 function fmtHz(hz: number): string { return hz > 0 ? `${(hz / 1000).toFixed(1)} kHz` : '—'; }
 function fmtOnOff(v: boolean): string { return v ? 'on' : 'off'; }
 function fmtMultiplier(encoded: number): string { return encoded === 1 ? '256×' : '128×'; }
@@ -94,11 +114,11 @@ export function stageSpdifRxPin(s: ReadySession, gpio: number): void {
     key: 'spdifRxPin',
     label: 'S/PDIF RX pin',
     from: fmtPin(live),
-    to: fmtPin(gpio),
+    to: fmtPinTo(gpio),
     value: gpio,
     order: ORDER.spdifRxPin,
-    apply: () => setSpdifRxPin(s, gpio),
-    overlay: (snap) => ({ ...snap, inputConfig: { ...snap.inputConfig, spdifRxPin: gpio } }),
+    apply: () => applyPin(s, gpio, () => setSpdifRxPin(s, gpio)),
+    overlay: (snap) => ({ ...snap, inputConfig: { ...snap.inputConfig, spdifRxPin: overlayPin(snap.inputConfig.spdifRxPin, gpio) } }),
   }));
 }
 
@@ -109,13 +129,13 @@ export function stageSpdifRxPinExt(s: ReadySession, extIndex: number, gpio: numb
     key,
     label: `S/PDIF ${extIndex + 2} RX pin`,
     from: fmtPin(live),
-    to: fmtPin(gpio),
+    to: fmtPinTo(gpio),
     value: gpio,
     order: ORDER.spdifRxPin,
-    apply: () => setSpdifRxPinExt(s, extIndex, gpio),
+    apply: () => applyPin(s, gpio, () => setSpdifRxPinExt(s, extIndex, gpio)),
     overlay: (snap) => {
       const pins = snap.inputConfig.spdifRxPinExt.slice();
-      pins[extIndex] = gpio;
+      pins[extIndex] = overlayPin(pins[extIndex], gpio);
       return { ...snap, inputConfig: { ...snap.inputConfig, spdifRxPinExt: pins } };
     },
   }));
@@ -147,13 +167,13 @@ export function stageI2sRxPin(s: ReadySession, pair: number, gpio: number): void
     key,
     label: `I2S RX pair ${pair + 1} pin`,
     from: fmtPin(live),
-    to: fmtPin(gpio),
+    to: fmtPinTo(gpio),
     value: gpio,
     order: ORDER.i2sRxPin,
-    apply: () => setI2sRxPin(s, pair, gpio),
+    apply: () => applyPin(s, gpio, () => setI2sRxPin(s, pair, gpio)),
     overlay: (snap) => {
       const pins = snap.inputConfig.i2sRxPins.slice();
-      pins[pair] = gpio;
+      pins[pair] = overlayPin(pins[pair], gpio);
       return { ...snap, inputConfig: { ...snap.inputConfig, i2sRxPins: pins } };
     },
   }));
@@ -194,11 +214,11 @@ export function stageI2sBckPin(s: ReadySession, pin: number): void {
     key: 'bckPin',
     label: 'I2S BCK pin',
     from: fmtPin(live),
-    to: fmtPin(pin),
+    to: fmtPinTo(pin),
     value: pin,
     order: ORDER.bckPin,
-    apply: () => setI2sBckPin(s, pin),
-    overlay: (snap) => ({ ...snap, i2s: { ...snap.i2s, bckPin: pin } }),
+    apply: () => applyPin(s, pin, () => setI2sBckPin(s, pin)),
+    overlay: (snap) => ({ ...snap, i2s: { ...snap.i2s, bckPin: overlayPin(snap.i2s.bckPin, pin) } }),
   }));
 }
 
@@ -236,11 +256,11 @@ export function stageI2sBckPinSlave(s: ReadySession, pin: number): void {
     key: 'bckPinSlave',
     label: 'I2S BCK pin (slave)',
     from: fmtPin(live),
-    to: fmtPin(pin),
+    to: fmtPinTo(pin),
     value: pin,
     order: ORDER.bckPinSlave,
-    apply: () => setI2sBckPinSlave(s, pin),
-    overlay: (snap) => ({ ...snap, i2s: { ...snap.i2s, bckPinSlave: pin } }),
+    apply: () => applyPin(s, pin, () => setI2sBckPinSlave(s, pin)),
+    overlay: (snap) => ({ ...snap, i2s: { ...snap.i2s, bckPinSlave: overlayPin(snap.i2s.bckPinSlave, pin) } }),
   }));
 }
 
@@ -264,11 +284,11 @@ export function stageMckPin(s: ReadySession, pin: number): void {
     key: 'mckPin',
     label: 'MCK pin',
     from: fmtPin(live),
-    to: fmtPin(pin),
+    to: fmtPinTo(pin),
     value: pin,
     order: ORDER.mck,
-    apply: () => setMckPin(s, pin),
-    overlay: (snap) => ({ ...snap, i2s: { ...snap.i2s, mckPin: pin } }),
+    apply: () => applyPin(s, pin, () => setMckPin(s, pin)),
+    overlay: (snap) => ({ ...snap, i2s: { ...snap.i2s, mckPin: overlayPin(snap.i2s.mckPin, pin) } }),
   }));
 }
 
@@ -315,13 +335,13 @@ export function stageOutputDataPin(s: ReadySession, pinOutputIndex: number, pin:
     key,
     label: isPdm ? 'PDM sub pin' : `Out ${pinOutputIndex + 1} pin`,
     from: fmtPin(live),
-    to: fmtPin(pin),
+    to: fmtPinTo(pin),
     value: pin,
     order: ORDER.outputPin,
-    apply: () => setOutputDataPin(s, pinOutputIndex, pin),
+    apply: () => applyPin(s, pin, () => setOutputDataPin(s, pinOutputIndex, pin)),
     overlay: (snap) => {
       const pins = snap.outputPins.slice();
-      pins[pinOutputIndex] = pin;
+      pins[pinOutputIndex] = overlayPin(pins[pinOutputIndex], pin);
       return { ...snap, outputPins: pins };
     },
   }));

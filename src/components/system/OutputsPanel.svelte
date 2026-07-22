@@ -15,6 +15,7 @@
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
   const connected = $derived(connection.connected);
   const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
+  const allowReset = $derived(s.device.capabilities.features.pinResetDefault);
 
   function effOutputType(slot: number): number {
     return s.staging.valueOf(`outputType:${slot}`, snap?.i2s?.outputSlotTypes[slot] ?? OutputSlotType.Spdif);
@@ -112,6 +113,7 @@
               candidates={overlaySnap ? availablePinsFor(snap.platform.type, overlaySnap, effOutputPin(slot), ctrlPins) : []}
               ariaLabel={`Out ${slot + 1} data pin`}
               disabled={!connected}
+              {allowReset}
               onChange={(p) => stageOutputDataPin(s, slot, p)}
             />
           </span>
@@ -136,6 +138,7 @@
             candidates={overlaySnap ? availablePinsFor(snap.platform.type, overlaySnap, effOutputPin(pdmIndex), ctrlPins) : []}
             ariaLabel="PDM sub data pin"
             disabled={!connected || pdmEnabled}
+            {allowReset}
             onChange={(p) => stageOutputDataPin(s, pdmIndex, p)}
           />
         </span>
