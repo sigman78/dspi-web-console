@@ -6,6 +6,7 @@ import {
 } from '@/protocol/syn';
 import {
   buildBulkParams, defaultBulkParams, parseBulkParams,
+  encodePresenceQ1, decodePresenceQ1,
   type BulkParams, type WireFilter,
 } from '@/protocol/bulkParser';
 import { Codec } from '@/utils';
@@ -549,6 +550,23 @@ export class MockTransport implements DspTransport {
         return Codec.encode(Codec.u16, this.#mockState.loudness!.outputMask);
       case WireCmd.GetPsybassMask.code:
         return Codec.encode(Codec.u16, this.#mockState.psybass!.outputMask);
+
+      // Upmixer
+      case WireCmd.UpmixGetParam.code:
+        return Codec.encode(Codec.f32, this.#getUpmixParam(value));
+      case WireCmd.UpmixGetConfig.code: {
+        const u = this.#mockState.upmix!;
+        return Codec.encode(WireCmd.UpmixGetConfig.codec, {
+          enabled: u.enabled, centerMode: u.centerMode, surroundMode: u.surroundMode,
+          presenceQ1: encodePresenceQ1(u.presenceDb),
+          strengthPct: u.strengthPct, centerWidthPct: u.centerWidthPct, corrThresholdPct: u.corrThresholdPct,
+          attackMs: u.attackMs, releaseMs: u.releaseMs, detectorHpfHz: u.detectorHpfHz,
+          surroundDelayMs: u.surroundDelayMs, surroundHpfHz: u.surroundHpfHz, surroundLpfHz: u.surroundLpfHz,
+          decorrPct: u.decorrPct,
+        });
+      }
+      case WireCmd.UpmixGetStatus.code:
+        return Codec.encode(Wire.UpmixStatus, this.#upmixStatus());
       case WireCmd.GetCrossfeedOutputs.code:
         return Codec.encode(Codec.u8, this.#mockState.crossfeed!.outputPairMask);
       case WireCmd.GetI2sClockMode.code:
@@ -1117,6 +1135,22 @@ export class MockTransport implements DspTransport {
         this.#mockState.psybass!.outputMask = Codec.decode(Codec.u16, data);
         return;
 
+      // Upmixer
+      case WireCmd.UpmixSetParam.code:
+        this.#setUpmixParam(value, Codec.decode(Codec.f32, data));
+        return;
+      case WireCmd.UpmixSetConfig.code: {
+        const p = Codec.decode(WireCmd.UpmixSetConfig.codec, data);
+        this.#mockState.upmix = {
+          enabled: p.enabled, centerMode: p.centerMode, surroundMode: p.surroundMode,
+          strengthPct: p.strengthPct, centerWidthPct: p.centerWidthPct, corrThresholdPct: p.corrThresholdPct,
+          attackMs: p.attackMs, releaseMs: p.releaseMs, detectorHpfHz: p.detectorHpfHz,
+          surroundDelayMs: p.surroundDelayMs, surroundHpfHz: p.surroundHpfHz, surroundLpfHz: p.surroundLpfHz,
+          decorrPct: p.decorrPct, presenceDb: decodePresenceQ1(p.presenceQ1),
+        };
+        return;
+      }
+
       // Crossfeed
       case WireCmd.SetCrossfeedEnabled.code:
         this.#mockState.crossfeed!.enabled = Codec.decode(Codec.bool8, data);
@@ -1562,6 +1596,64 @@ export class MockTransport implements DspTransport {
   #i2sRateHz(): number {
     const enc = this.#mockState.inputConfig.i2sInputRateEnc;
     return enc === 0 ? 44100 : enc === 2 ? 96000 : 48000;
+  }
+
+  // Per-param GET/SET (0x4C/0x4D): wValue = UPMIX_PARAM_* id, single float.
+  // Mode/enable ids round to integer, matching firmware.
+  #getUpmixParam(id: number): number {
+    const u = this.#mockState.upmix!;
+    switch (id) {
+      case Wire.UpmixParam.Enabled:          return u.enabled ? 1 : 0;
+      case Wire.UpmixParam.CenterMode:       return u.centerMode;
+      case Wire.UpmixParam.SurroundMode:     return u.surroundMode;
+      case Wire.UpmixParam.StrengthPct:      return u.strengthPct;
+      case Wire.UpmixParam.CenterWidthPct:   return u.centerWidthPct;
+      case Wire.UpmixParam.CorrThresholdPct: return u.corrThresholdPct;
+      case Wire.UpmixParam.AttackMs:         return u.attackMs;
+      case Wire.UpmixParam.ReleaseMs:        return u.releaseMs;
+      case Wire.UpmixParam.DetectorHpfHz:    return u.detectorHpfHz;
+      case Wire.UpmixParam.SurroundDelayMs:  return u.surroundDelayMs;
+      case Wire.UpmixParam.SurroundHpfHz:    return u.surroundHpfHz;
+      case Wire.UpmixParam.SurroundLpfHz:    return u.surroundLpfHz;
+      case Wire.UpmixParam.DecorrPct:        return u.decorrPct;
+      case Wire.UpmixParam.PresenceDb:       return u.presenceDb;
+      default: return 0;
+    }
+  }
+
+  #setUpmixParam(id: number, value: number): void {
+    const u = this.#mockState.upmix!;
+    switch (id) {
+      case Wire.UpmixParam.Enabled:          u.enabled = Math.round(value) !== 0; return;
+      case Wire.UpmixParam.CenterMode:       u.centerMode = Math.round(value); return;
+      case Wire.UpmixParam.SurroundMode:     u.surroundMode = Math.round(value); return;
+      case Wire.UpmixParam.StrengthPct:      u.strengthPct = value; return;
+      case Wire.UpmixParam.CenterWidthPct:   u.centerWidthPct = value; return;
+      case Wire.UpmixParam.CorrThresholdPct: u.corrThresholdPct = value; return;
+      case Wire.UpmixParam.AttackMs:         u.attackMs = value; return;
+      case Wire.UpmixParam.ReleaseMs:        u.releaseMs = value; return;
+      case Wire.UpmixParam.DetectorHpfHz:    u.detectorHpfHz = value; return;
+      case Wire.UpmixParam.SurroundDelayMs:  u.surroundDelayMs = value; return;
+      case Wire.UpmixParam.SurroundHpfHz:    u.surroundHpfHz = value; return;
+      case Wire.UpmixParam.SurroundLpfHz:    u.surroundLpfHz = value; return;
+      case Wire.UpmixParam.DecorrPct:        u.decorrPct = value; return;
+      case Wire.UpmixParam.PresenceDb:       u.presenceDb = value; return;
+      default: return;
+    }
+  }
+
+  // Synthesized live status (0x4E, no bulk equivalent): active only while
+  // enabled AND the live input is stereo; parked_reason mirrors the check
+  // that gated it. Gains/correlation are plausible constants, not a real
+  // upmix computation -- zeroed while parked.
+  #upmixStatus(): { active: boolean; parkedReason: number; corrQ14: number; balanceQ14: number; centerGainQ15: number; lsGainQ15: number; rsGainQ15: number } {
+    const u = this.#mockState.upmix!;
+    const stereoInput = this.#activeInputChannels() === 2;
+    const active = u.enabled && stereoInput;
+    if (!active) {
+      return { active: false, parkedReason: !u.enabled ? 1 : 2, corrQ14: 0, balanceQ14: 0, centerGainQ15: 0, lsGainQ15: 0, rsGainQ15: 0 };
+    }
+    return { active: true, parkedReason: 0, corrQ14: 8192, balanceQ14: 0, centerGainQ15: 23170, lsGainQ15: 23170, rsGainQ15: 23170 };
   }
 
   // Time-driven fake meter levels so the sidebar VU meters animate in mock/demo

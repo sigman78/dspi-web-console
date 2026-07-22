@@ -186,10 +186,10 @@ function writeWireFilter(w: BinWriter, f: WireFilter, withQp: boolean): void {
 // Upmixer presence-bell wire encoding (V26+ UpmixParams.presenceQ1): int8 =
 // round(clamp(dB, -12, 12) * 2). V25 packets have no presence byte -- callers
 // write 0 (flat) and read 0 unconditionally (see layout.upmixPresence).
-function encodePresenceQ1(db: number): number {
+export function encodePresenceQ1(db: number): number {
   return Math.round(Math.max(-12, Math.min(12, db)) * 2);
 }
-function decodePresenceQ1(raw: number): number {
+export function decodePresenceQ1(raw: number): number {
   return raw / 2;
 }
 

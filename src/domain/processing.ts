@@ -110,6 +110,42 @@ export interface Upmix {
   presenceDb: number;
 }
 
+// Why the upmixer isn't actively processing right now (GetUpmixStatus 0x4E).
+export const UpmixParkedReason = {
+  Active:         0,
+  Disabled:       1,
+  NotStereoInput: 2,
+  RateAbove48k:   3,
+} as const;
+export type UpmixParkedReason = (typeof UpmixParkedReason)[keyof typeof UpmixParkedReason];
+
+// Forward-compat: an unrecognised future reason byte reads as Disabled.
+export function narrowUpmixParkedReason(n: number): UpmixParkedReason {
+  switch (n) {
+    case UpmixParkedReason.Active:
+    case UpmixParkedReason.Disabled:
+    case UpmixParkedReason.NotStereoInput:
+    case UpmixParkedReason.RateAbove48k:
+      return n;
+    default:
+      return UpmixParkedReason.Disabled;
+  }
+}
+
+// Live upmixer status (fw V25+, RP2350 only), reported by GetUpmixStatus
+// (0x4E). Pure status (not host-configurable); the bulk packet has no
+// equivalent. corr/balance are Q14 signed fixed point, gains are Q15
+// unsigned -- kept raw here, matching SpdifRxStatus/I2sSlaveStatus.
+export interface UpmixStatus {
+  active: boolean;
+  parkedReason: UpmixParkedReason;
+  corrQ14: number;
+  balanceQ14: number;
+  centerGainQ15: number;
+  lsGainQ15: number;
+  rsGainQ15: number;
+}
+
 // Master volume persistence: 0 = global (persisted via SaveMasterVolume);
 // 1 = travels with each preset.
 export const MasterVolumeMode = {

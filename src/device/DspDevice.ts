@@ -883,6 +883,86 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetPsybassMask);
   }
 
+  // Stereo upmixer (fw V25+, RP2350 only). Per-param SET (0x4C): wValue =
+  // UPMIX_PARAM_* id, payload = one float (firmware rounds mode/enable ids
+  // to integer). #setUpmixParam is shared plumbing, not a public verb --
+  // the named setters below are the grep-able per-verb surface the runtime
+  // actions call, mirroring the psybass setters above.
+  #setUpmixParam(id: proto.Wire.UpmixParam, value: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.UpmixSetParam, value, id);
+  }
+
+  async setUpmixEnabled(enabled: boolean): Promise<void> {
+    return this.#setUpmixParam(proto.Wire.UpmixParam.Enabled, enabled ? 1 : 0);
+  }
+
+  async setUpmixCenterMode(mode: number): Promise<void> {
+    return this.#setUpmixParam(proto.Wire.UpmixParam.CenterMode, mode);
+  }
+
+  async setUpmixSurroundMode(mode: number): Promise<void> {
+    return this.#setUpmixParam(proto.Wire.UpmixParam.SurroundMode, mode);
+  }
+
+  async setUpmixStrength(pct: number): Promise<void> {
+    return this.#setUpmixParam(proto.Wire.UpmixParam.StrengthPct, pct);
+  }
+
+  async setUpmixCenterWidth(pct: number): Promise<void> {
+    return this.#setUpmixParam(proto.Wire.UpmixParam.CenterWidthPct, pct);
+  }
+
+  async setUpmixCorrThreshold(pct: number): Promise<void> {
+    return this.#setUpmixParam(proto.Wire.UpmixParam.CorrThresholdPct, pct);
+  }
+
+  async setUpmixAttack(ms: number): Promise<void> {
+    return this.#setUpmixParam(proto.Wire.UpmixParam.AttackMs, ms);
+  }
+
+  async setUpmixRelease(ms: number): Promise<void> {
+    return this.#setUpmixParam(proto.Wire.UpmixParam.ReleaseMs, ms);
+  }
+
+  async setUpmixDetectorHpf(hz: number): Promise<void> {
+    return this.#setUpmixParam(proto.Wire.UpmixParam.DetectorHpfHz, hz);
+  }
+
+  async setUpmixSurroundDelay(ms: number): Promise<void> {
+    return this.#setUpmixParam(proto.Wire.UpmixParam.SurroundDelayMs, ms);
+  }
+
+  async setUpmixSurroundHpf(hz: number): Promise<void> {
+    return this.#setUpmixParam(proto.Wire.UpmixParam.SurroundHpfHz, hz);
+  }
+
+  async setUpmixSurroundLpf(hz: number): Promise<void> {
+    return this.#setUpmixParam(proto.Wire.UpmixParam.SurroundLpfHz, hz);
+  }
+
+  async setUpmixDecorr(pct: number): Promise<void> {
+    return this.#setUpmixParam(proto.Wire.UpmixParam.DecorrPct, pct);
+  }
+
+  async setUpmixPresence(db: number): Promise<void> {
+    return this.#setUpmixParam(proto.Wire.UpmixParam.PresenceDb, db);
+  }
+
+  // Live status (0x4E, no bulk equivalent). Raw Q14/Q15 fixed-point fields
+  // stay undecoded, matching getSpdifRxStatus/getI2sSlaveStatus.
+  async getUpmixStatus(): Promise<domain.UpmixStatus> {
+    const w = await proto.readCmd(this.transport, proto.WireCmd.UpmixGetStatus);
+    return {
+      active:        w.active,
+      parkedReason:  domain.narrowUpmixParkedReason(w.parkedReason),
+      corrQ14:       w.corrQ14,
+      balanceQ14:    w.balanceQ14,
+      centerGainQ15: w.centerGainQ15,
+      lsGainQ15:     w.lsGainQ15,
+      rsGainQ15:     w.rsGainQ15,
+    };
+  }
+
   // v1.1.4 granular surface (unconditional: the V10 floor guarantees support).
 
   // Per-band EQ bypass. wValue = (wireChannel<<8)|band, mirroring getFilter's
