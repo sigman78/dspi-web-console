@@ -9,8 +9,17 @@
 
   const s = getSession();
 
+  // Upmix repurposes the idle input slots 2-4 as derived-channel busses when
+  // the live input is a plain stereo pair (see matrixRows); reused here only
+  // when the device actually has the feature, matching the panel's own gate.
+  const upmixCtx = $derived(
+    s.device.capabilities.features.upmix && s.mirror.current?.upmix
+      ? { enabled: s.mirror.current.upmix.enabled, surroundMode: s.mirror.current.upmix.surroundMode }
+      : null
+  );
+
   const columns = $derived(matrixColumns(s.mirror.current));
-  const rows = $derived(matrixRows(s.mirror.current, s.telemetry.activeInputChannels));
+  const rows = $derived(matrixRows(s.mirror.current, s.telemetry.activeInputChannels, upmixCtx));
 
   const cols = $derived(`96px repeat(${columns.length}, 128px)`);
 </script>

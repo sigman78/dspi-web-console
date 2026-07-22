@@ -3,6 +3,7 @@
 
 import { ChannelId, OutputSlotType, inputIndexOf, slotForOutputChannel, type InputSlot, type OutputMode, type OutputSlot } from './channels';
 import type { RouteModel } from './mixer';
+import { UpmixSurroundMode } from './processing';
 import type { ChannelModel, DspSnapshot } from './snapshot';
 
 export interface MatrixColumn {
@@ -55,15 +56,37 @@ export function matrixColumns(snapshot: DspSnapshot | null): MatrixColumn[] {
   }));
 }
 
+// Upmix context for matrixRows' label override: when the upmixer is enabled
+// and the live input is a plain stereo pair, it repurposes the otherwise-idle
+// input slots 2-4 (In2L/In2R/In3L) as derived-channel busses so their audio
+// can be routed through the same crosspoint matrix as a real input would be.
+export interface UpmixRowContext {
+  enabled: boolean;
+  surroundMode: number;
+}
+
 // One row per hardware input channel (2 on V10, up to 8 on V16 RP2350).
 // activeInputs limits the rows to the LIVE input count (USB alt / I2S channel
-// count); null/undefined shows every hardware input.
-export function matrixRows(snapshot: DspSnapshot | null, activeInputs?: number | null): MatrixRow[] {
+// count); null/undefined shows every hardware input. When upmix is active
+// over a stereo pair, the row count is bumped so its derived-channel rows
+// (hidden by activeInputs otherwise, being silent on a plain stereo source)
+// stay visible for routing.
+export function matrixRows(
+  snapshot: DspSnapshot | null,
+  activeInputs?: number | null,
+  upmix?: UpmixRowContext | null,
+): MatrixRow[] {
   if (!snapshot) return [];
   const inputs = snapshot.channels
     .filter((c) => !c.isOutput)
     .sort((a, b) => (inputIndexOf(a.id) ?? 0) - (inputIndexOf(b.id) ?? 0));
-  const shown = activeInputs != null ? inputs.slice(0, Math.max(1, activeInputs)) : inputs;
+  const isStereoInput = activeInputs === 2;
+  const upmixActive = upmix?.enabled === true && isStereoInput;
+  const surroundActive = upmixActive && upmix!.surroundMode !== UpmixSurroundMode.Off;
+  const upmixRowFloor = upmixActive ? (surroundActive ? 5 : 3) : 0;
+  const shown = activeInputs != null
+    ? inputs.slice(0, Math.max(1, activeInputs, upmixRowFloor))
+    : inputs;
   // Column position of each enabled output, so a row's cells can be filtered
   // and ordered to line up with matrixColumns() rather than trusting the
   // route list's own order.
@@ -80,10 +103,16 @@ export function matrixRows(snapshot: DspSnapshot | null, activeInputs?: number |
   }
   return shown.map((ch) => {
     const idx = (inputIndexOf(ch.id) ?? 0) as InputSlot;
+    let label = ch.name;
+    if (upmixActive) {
+      if (idx === 2) label = 'Upmix C';
+      else if (idx === 3 && surroundActive) label = 'Upmix Ls';
+      else if (idx === 4 && surroundActive) label = 'Upmix Rs';
+    }
     return {
       inputIndex: idx,
       inputId: ch.id,
-      label: ch.name,
+      label,
       cells: byInput.get(idx) ?? [],
     };
   });
