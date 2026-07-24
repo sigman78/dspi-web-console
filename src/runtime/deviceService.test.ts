@@ -6,7 +6,7 @@ import { ConnectionScope } from './connectionScope';
 import { write } from './writes.svelte';
 import {
   connection, mintConnId, activeSession, activeRecord, recordOf, recordBySerial, sessionRecords,
-  resetAppState, settings, notices, clearNotices,
+  resetAppState, settings, notices, clearNotices, dispatch, makeReadySession,
 } from '@/state';
 
 // Exercises the scope-guarded invariant that replaced the old attempt-token
@@ -251,5 +251,23 @@ describe('link-probe death of the active session with a dormant survivor', () =>
       vi.useRealTimers();
       clearNotices();
     }
+  });
+});
+
+describe('resetAppState', () => {
+  it('disposes non-active records and stops their loops', async () => {
+    await bootMock('rp2350', { serial: 'LOOPY' });
+    const rec = activeRecord()!;
+    // A raw synced dispatch over a running session (a common test pattern)
+    // re-points active without deactivating it -- its loops keep running.
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession({ info: {}, hardware: {} } as never) });
+    expect(activeRecord()?.id).not.toBe(rec.id);
+    expect(rec.loops).not.toBeNull();
+
+    resetAppState();
+
+    expect(rec.loops).toBeNull();
+    expect(rec.session.alive).toBe(false);
+    expect(sessionRecords().size).toBe(0);
   });
 });

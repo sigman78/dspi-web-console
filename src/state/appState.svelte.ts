@@ -214,9 +214,16 @@ export function recordBySerial(serial: string): DeviceRecord | null {
   return null;
 }
 
-// Test-only: clears the registry and attempt slot without touching any
-// session's own resources (callers dispose() sessions themselves first).
+// Test-only: disposes every registered session (stopping any loops via its
+// scope teardown) before clearing the registry and attempt slot. Dropping
+// records without disposal would orphan running poll/notify/probe loops,
+// which then leak real timers into a later test's fake-timer window.
 export function resetAppState(): void {
+  for (const rec of _sessions.values()) {
+    rec.loops?.();
+    rec.loops = null;
+    rec.session.dispose();
+  }
   _sessions.clear();
   _activeId = null;
   _attempt = { kind: 'idle' };
