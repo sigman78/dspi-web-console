@@ -39,8 +39,8 @@ describe('DeviceSwitcher — device chips', () => {
 
     render(DeviceSwitcher);
 
-    const a = screen.getByRole('button', { name: 'AAA' });
-    const b = screen.getByRole('button', { name: 'BBB' });
+    const a = screen.getByRole('button', { name: /^AAA/ });
+    const b = screen.getByRole('button', { name: /^BBB/ });
     expect(a).toHaveAttribute('aria-pressed', 'false');
     expect(b).toHaveAttribute('aria-pressed', 'true');
   });
@@ -50,7 +50,7 @@ describe('DeviceSwitcher — device chips', () => {
     synced('BBB');
 
     render(DeviceSwitcher);
-    await fireEvent.click(screen.getByRole('button', { name: 'AAA' }));
+    await fireEvent.click(screen.getByRole('button', { name: /^AAA/ }));
 
     expect(activateSession).toHaveBeenCalledTimes(1);
     expect(activateSession).toHaveBeenCalledWith(idA);
@@ -61,7 +61,7 @@ describe('DeviceSwitcher — device chips', () => {
     synced('BBB');
 
     render(DeviceSwitcher);
-    await fireEvent.click(screen.getByRole('button', { name: 'BBB' }));
+    await fireEvent.click(screen.getByRole('button', { name: /^BBB/ }));
 
     expect(activateSession).not.toHaveBeenCalled();
   });
@@ -102,8 +102,8 @@ describe('DeviceSwitcher — adopt-failure badges', () => {
 
 describe('DeviceSwitcher — empty fleet', () => {
   test('renders nothing when there are no records and no failures', () => {
-    const { container } = render(DeviceSwitcher);
-    expect(container.querySelector('.switcher')).toBeNull();
+    render(DeviceSwitcher);
+    expect(screen.queryByRole('group', { name: 'Devices' })).not.toBeInTheDocument();
     expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 });

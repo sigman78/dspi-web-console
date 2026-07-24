@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as appState from '@/state';
   import ChannelRow from './ChannelRow.svelte';
+  import DeviceSwitcher from './DeviceSwitcher.svelte';
   import PresetActiveChip from '@/components/presets/PresetActiveChip.svelte';
   import { setChannelName } from '@/runtime';
   import { chKey } from '@/styles/palette';
@@ -63,6 +64,7 @@
 
 <div class="rail">
   <div class="rail-head">
+    <DeviceSwitcher />
     <div class="microlbl">PRESET</div>
     <PresetActiveChip />
   </div>
