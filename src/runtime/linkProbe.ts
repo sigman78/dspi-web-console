@@ -1,4 +1,4 @@
-import { dispatch, type ConnId, type ReadySession } from '@/state';
+import { dispatch, activeRecord, pushNotice, type ConnId, type ReadySession } from '@/state';
 import { Log, timerClock, type LoopClock, type Disposer } from '@/utils';
 
 const PROBE_INTERVAL_MS = 1000;
@@ -10,7 +10,12 @@ const PROBE_FAILS_TO_KILL = 5;
 // supported firmware) each tick. One success verifies recovery and repaints
 // truth; persistent failure tears the session down through the same path a USB
 // unplug takes. Hidden tabs don't probe (and don't advance the kill counter).
-export function startLinkProbe(s: ReadySession, id: ConnId, clock: LoopClock = timerClock(PROBE_INTERVAL_MS)): Disposer {
+export function startLinkProbe(
+  s: ReadySession,
+  id: ConnId,
+  clock: LoopClock = timerClock(PROBE_INTERVAL_MS),
+  opts?: { onKilled?: () => void },
+): Disposer {
   let stopped = false;
   let probing = false;
   let probeFails = 0;
@@ -32,7 +37,7 @@ export function startLinkProbe(s: ReadySession, id: ConnId, clock: LoopClock = t
         probeFails += 1;
         if (probeFails >= PROBE_FAILS_TO_KILL) {
           stopped = true;
-          await killSession(id, s, err);
+          await killSession(id, s, err, opts?.onKilled);
           return;
         }
       } finally {
@@ -52,12 +57,20 @@ export function startLinkProbe(s: ReadySession, id: ConnId, clock: LoopClock = t
 // build a bare session with no transport behind it. The trailing failed
 // dispatch is deliberately unconditional -- unlike the guarded dispatches
 // elsewhere, this is a forced transition that must land in 'errored'
-// regardless of prior teardown, so the user sees why the session ended.
-async function killSession(id: ConnId, s: ReadySession, err: unknown): Promise<void> {
+// regardless of prior teardown, so the user sees why the session ended --
+// UNLESS another session is still active, in which case the reducer's
+// active-session rule hides that dispatch (no hero over a live device), so the
+// death is surfaced as a notice instead. `onKilled` lets deviceService run
+// its own promotion policy without linkProbe importing it back (avoids an
+// import cycle).
+async function killSession(id: ConnId, s: ReadySession, err: unknown, onKilled?: () => void): Promise<void> {
   const msg = err instanceof Error ? err.message : String(err);
   Log.error('health', 'link dead; tearing down session', err);
   try { await s.device.close(); } catch { /* already gone */ }
   dispatch({ t: 'removed', id });
+  const anotherActive = activeRecord() !== null;
   s.dispose();
   dispatch({ t: 'failed', id, message: `Device stopped responding (${msg})` });
+  if (anotherActive) pushNotice('error', `${s.info.serial}: device stopped responding (${msg})`);
+  onKilled?.();
 }

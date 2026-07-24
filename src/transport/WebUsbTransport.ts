@@ -37,6 +37,13 @@ export class WebUsbTransport implements DspTransport {
     if (this.#device && e.device === this.#device) this.#emit('disconnect');
   };
 
+  // Pre-enumerated target (boot adopting an already-granted device, or a
+  // navigator 'connect' re-plug): tryAutoConnect() uses it directly instead of
+  // scanning navigator.usb.getDevices() for the first match.
+  constructor(device?: USBDevice) {
+    this.#device = device ?? null;
+  }
+
   static isSupported(): boolean {
     return typeof navigator !== 'undefined' && 'usb' in navigator;
   }
@@ -60,15 +67,19 @@ export class WebUsbTransport implements DspTransport {
 
   async tryAutoConnect(): Promise<boolean> {
     if (!WebUsbTransport.isSupported()) return false;
-    const devices = await navigator.usb.getDevices();
-    const match = devices.find(matchesDspi);
-    if (!match) return false;
-    this.#device = match;
+    if (!this.#device) {
+      const devices = await navigator.usb.getDevices();
+      const match = devices.find(matchesDspi);
+      if (!match) return false;
+      this.#device = match;
+    }
     await this.open();
     return true;
   }
 
-  async requestAndOpen(): Promise<void> {
+  // Picker half of requestAndOpen(): claims no interface, just resolves which
+  // device the user chose (or lets the browser's cancel rejection propagate).
+  async requestDevice(): Promise<USBDevice> {
     if (!WebUsbTransport.isSupported()) {
       throw new Error('WebUSB is not supported in this browser.');
     }
@@ -76,6 +87,11 @@ export class WebUsbTransport implements DspTransport {
       filters: [...DSPI_USB_IDS],
     });
     this.#device = device;
+    return device;
+  }
+
+  async requestAndOpen(): Promise<void> {
+    await this.requestDevice();
     await this.open();
   }
 

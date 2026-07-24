@@ -133,8 +133,20 @@ function activateRecord(rec: DeviceRecord): void {
   const session = rec.session;
   const stopPolling = startPolling(session);
   const stopNotify = startNotifyChannel(session);
-  const stopProbe = startLinkProbe(session, rec.id);
+  const stopProbe = startLinkProbe(session, rec.id, undefined, { onKilled: ensurePromotedActive });
   rec.loops = () => { stopPolling(); stopNotify(); stopProbe(); };
+}
+
+// Shared promotion policy for both session-death paths (transport disconnect
+// and the link probe's kill): if the reducer left a dormant record active,
+// start its loops and force a full resync (a dormant session can have drifted
+// via IR remote / control surfaces / other UART-I2C peers).
+function ensurePromotedActive(): void {
+  const next = activeRecord();
+  if (next && !next.loops) {
+    activateRecord(next);
+    next.session.mirror.requestReconcile(true);
+  }
 }
 
 // Stops this record's loops (no new traffic), then drains whatever writes
@@ -159,9 +171,17 @@ export async function activateSession(id: ConnId): Promise<void> {
   dispatch({ t: 'activated', id });
   activateRecord(rec);
   rec.session.mirror.requestReconcile(true);
+  // lastSerial now means "which adopted device to activate at boot", so every
+  // successful switch -- not just a fresh adoption -- updates it.
+  settings.lastSerial = rec.session.info.serial;
 }
 
-export async function wireUpConnection(device: DspDevice, scope?: ConnectionScope, id: ConnId = mintConnId()): Promise<void> {
+export async function wireUpConnection(
+  device: DspDevice,
+  scope?: ConnectionScope,
+  id: ConnId = mintConnId(),
+  opts?: { activate?: false },
+): Promise<void> {
   if (scope?.aborted) return;   // superseded before this attempt started
   dispatch({ t: 'requested', id });
   try {
@@ -197,24 +217,34 @@ export async function wireUpConnection(device: DspDevice, scope?: ConnectionScop
     // Captured before the dispatch: adoption makes id active immediately, so
     // this is the only chance to see who was active a moment ago.
     const prev = activeRecord();
-    dispatch({ t: 'synced', id, session });
-    if (prev) await deactivateRecord(prev);
-    settings.lastSerial = device.info.serial;
-    await reconcileAfterSync(session);
-    // Re-check after the await: onTeardown self-heals against an
-    // already-aborted scope (it fires immediately instead of stranding the
-    // resource), so this guard isn't for correctness -- it's to avoid
-    // starting the loops and lock only to have them stop on the next tick.
-    if (scope?.aborted) return;
-    // Tests may call without a scope. Resources register their own abort
-    // cleanup directly on the scope rather than through a registry.
-    if (scope) {
-      const rec = recordOf(id);
-      if (rec) {
-        activateRecord(rec);
-        scope.onTeardown(() => { rec.loops?.(); rec.loops = null; });
-      }
+    dispatch({ t: 'synced', id, session, activate: opts?.activate });
+    const rec = recordOf(id);
+    // The loop-stop teardown covers this record's whole life, not just this
+    // activation: a record that starts dormant can be activated later via
+    // activateSession and die after that, and the scope must still be able to
+    // stop its loops then. Tests may call without a scope -- resources
+    // register their own abort cleanup directly on the scope rather than
+    // through a registry.
+    if (rec && scope) scope.onTeardown(() => { rec.loops?.(); rec.loops = null; });
+    // The reducer may have activated this record regardless of the caller's
+    // intent (nothing else was active) -- gate the active-only side effects
+    // on the outcome, not the flag.
+    if (activeRecord()?.id === id) {
+      if (prev) await deactivateRecord(prev);
+      settings.lastSerial = device.info.serial;
+      await reconcileAfterSync(session);
+      // Re-check after the await: onTeardown self-heals against an
+      // already-aborted scope (it fires immediately instead of stranding the
+      // resource), so this guard isn't for correctness -- it's to avoid
+      // starting the loops and lock only to have them stop on the next tick.
+      if (scope?.aborted) return;
+      // Re-gate on the outcome too: a concurrent activation can move focus
+      // while the deactivate/reconcile awaits are parked, and starting loops
+      // here regardless would leave two records live.
+      if (rec && activeRecord()?.id === id) activateRecord(rec);
     }
+    // Adoption-cycle traffic is allowed even for a record that stays dormant
+    // afterward -- it goes quiet once these settle.
     await fetchPresetInfo(session);
     await fetchCtrlIfaceInfo(session);
     await fetchControlSurfaces(session);
@@ -251,14 +281,7 @@ export function attachTransportListeners(transport: DspTransport, id: ConnId, sc
     // is untouched.
     dispatch({ t: 'removed', id });
     scope.abort();
-    // If the reducer promoted a dormant record to active, start its loops --
-    // unreachable while only one device is ever connected, but the policy
-    // ships with the mechanism for when a second device is adopted.
-    const next = activeRecord();
-    if (next && !next.loops) {
-      activateRecord(next);
-      next.session.mirror.requestReconcile(true);
-    }
+    ensurePromotedActive();
   });
   return () => { offDisc(); };
 }
