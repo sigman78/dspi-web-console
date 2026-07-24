@@ -1,4 +1,5 @@
 export * from './appState.svelte';
+export * from './adoptFailures.svelte';
 export * from './bootPhase.svelte';
 export * from './makeSession.svelte';
 export * from './mirror.svelte';

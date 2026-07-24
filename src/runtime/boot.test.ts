@@ -3,7 +3,8 @@ import { bootReal, bootMock, bootMockFleet, connectRequested, registerNavigatorR
 import { MockTransport } from '@/transport/MockTransport';
 import {
   dispatch, mintConnId, settings, connection, resetAppState,
-  sessionRecords, activeRecord, recordBySerial,
+  sessionRecords, activeRecord, recordBySerial, adoptFailures, noteAdoptFailure,
+  notices, clearNotices,
 } from '@/state';
 
 // Bridges the WebUSB device surface WebUsbTransport actually touches
@@ -155,7 +156,7 @@ describe('bootReal — adopt-all-granted-devices loop', () => {
     expect(b.loops).not.toBeNull();
   });
 
-  it('keeps the working device active when another granted device fails to open, with no errored attempt visible', async () => {
+  it('keeps the working device active when another granted device fails to open, with no errored attempt visible, and records a badge for the straggler', async () => {
     fakeUsb.granted = [
       usbDeviceFromMock(new MockTransport({ platform: 'rp2350', serial: 'AAA' }), { serial: 'AAA' }),
       failingUsbDevice('BBB'),
@@ -168,6 +169,8 @@ describe('bootReal — adopt-all-granted-devices loop', () => {
     expect(activeRecord()?.id).toBe(a.id);
     expect(a.loops).not.toBeNull();
     expect(connection.phase).toBe('ready');
+    expect(adoptFailures().has('BBB')).toBe(true);
+    expect(adoptFailures().get('BBB')?.message).toBeTruthy();
   });
 
   it('activates the first device that actually adopts even when an earlier device in the list failed', async () => {
@@ -185,13 +188,14 @@ describe('bootReal — adopt-all-granted-devices loop', () => {
     expect(connection.phase).toBe('ready');
   });
 
-  it('paints the errored hero only when every granted device fails to adopt', async () => {
+  it('paints the errored hero only when every granted device fails to adopt, recording no badges', async () => {
     fakeUsb.granted = [failingUsbDevice('AAA'), failingUsbDevice('BBB')];
 
     await bootReal();
 
     expect(sessionRecords().size).toBe(0);
     expect(connection.phase).toBe('errored');
+    expect(adoptFailures().size).toBe(0);
   });
 });
 
@@ -233,6 +237,45 @@ describe('connectRequested — picker-first duplicate-serial guard', () => {
 
     expect(requestDevice).not.toHaveBeenCalled();
     expect(sessionRecords().size).toBe(0);
+  });
+});
+
+describe('connectRequested — badge recording while a device is live', () => {
+  it('records a badge for the picked serial when adoption fails after the picker, leaving the live device active', async () => {
+    await bootMock('rp2350', { serial: 'LIVE' });
+    fakeUsb.nextPicked = failingUsbDevice('BADPICK');
+
+    await expect(connectRequested()).rejects.toThrow();
+
+    expect(connection.phase).toBe('ready');
+    expect(activeRecord()?.session.info.serial).toBe('LIVE');
+    expect(adoptFailures().has('BADPICK')).toBe(true);
+    expect(adoptFailures().get('BADPICK')?.message).toBeTruthy();
+  });
+
+  it('records no badge when the picker is cancelled while a device is live', async () => {
+    await bootMock('rp2350', { serial: 'LIVE' });
+    fakeUsb.nextPicked = null;
+
+    await expect(connectRequested()).rejects.toThrow();
+
+    expect(connection.phase).toBe('ready');
+    expect(adoptFailures().size).toBe(0);
+  });
+
+  it('falls back to an error notice when the picked device carries no serial to key a badge by', async () => {
+    clearNotices();
+    await bootMock('rp2350', { serial: 'LIVE' });
+    const anon = failingUsbDevice('IGNORED');
+    Reflect.set(anon as unknown as Record<string, unknown>, 'serialNumber', undefined);
+    fakeUsb.nextPicked = anon;
+
+    await expect(connectRequested()).rejects.toThrow();
+
+    expect(connection.phase).toBe('ready');
+    expect(adoptFailures().size).toBe(0);
+    expect(notices.list.some((n) => n.kind === 'error')).toBe(true);
+    clearNotices();
   });
 });
 
@@ -359,5 +402,16 @@ describe('bootMockFleet', () => {
     expect(sessionRecords().size).toBe(1);
     expect(activeRecord()?.loops).not.toBeNull();
     expect(activeRecord()?.session.info.serial).not.toContain('MOCK-RP2350-1');
+  });
+});
+
+describe('badge lifecycle: a successful re-adoption clears its serial\'s badge', () => {
+  it('clears the badge once the same serial adopts successfully', async () => {
+    noteAdoptFailure({ serial: 'RETRY', message: 'boot adoption failed', errorKind: null });
+    expect(adoptFailures().has('RETRY')).toBe(true);
+
+    await bootMock('rp2350', { serial: 'RETRY' });
+
+    expect(adoptFailures().has('RETRY')).toBe(false);
   });
 });
