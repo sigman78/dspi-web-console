@@ -36,9 +36,11 @@ npm run dev          # http://localhost:5173
 
 Then open the URL in Chrome/Edge, click **Connect**, and pick your DSPi.
 
+Got more than one DSPi? The sidebar's **DEVICES** list shows every unit the site has permission for: **+** adopts another one via the USB picker, and clicking a row switches control to it (with a full device-state resync on every switch). Devices not currently selected stay connected and claimed — the native app can't steal them — but only the active one is polled.
+
 ### No hardware? Use the mock device.
 
-Append a `?mock` flag to boot against a wire-faithful synthesized device — useful for trying out the UI. It takes one profile token, plus an optional `&chip=` hardware flavor:
+Append a `?mock` flag to boot against a wire-faithful synthesized device — useful for trying out the UI. It takes one or more comma-separated profile tokens, plus an optional `&chip=` hardware flavor:
 
 ```
 http://localhost:5173/?mock                     # newest wire / fw 1.1.5 (8-in/9-out, crossover, control interfaces + surfaces)
@@ -46,6 +48,7 @@ http://localhost:5173/?mock=legacy              # legacy 1.1.4 / V10 surface
 http://localhost:5173/?mock=multi               # newest surface + 8ch I2S input + 3 S/PDIF inputs (multichannel demo)
 http://localhost:5173/?mock=v18                 # exact wire version 18, for testing per-version feature gates
 http://localhost:5173/?mock&chip=rp2040         # rp2040 flavor (5 outputs), combinable with any profile
+http://localhost:5173/?mock=rp2040,rp2350       # two-device fleet — one mock per entry, exercises the DEVICES switcher
 ```
 
 ## Build & test
