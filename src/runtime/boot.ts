@@ -1,13 +1,17 @@
 import { DspDevice, UnsupportedFirmware, UnsupportedDevicePacket } from '@/device/DspDevice';
 import type { DspTransport } from '@/transport/DspTransport';
 import { MockTransport, type MockOptions } from '@/transport/MockTransport';
+import type { MockProfile } from '@/mockProfiles';
 import { matchesDspi, WebUsbTransport, DeviceInUse } from '@/transport/WebUsbTransport';
 import { withTimeout } from '@/transport/withTimeout';
 import { withWireMonitor } from '@/transport/withWireMonitor';
 import { formatDeviceInfo, wireMonitorEnabled } from '@/protocol/wireMonitor';
-import { attachTransportListeners, wireUpConnection } from './deviceService';
+import { attachTransportListeners, wireUpConnection, activateSession } from './deviceService';
 import { ConnectionScope } from './connectionScope';
-import { settings, dispatch, connection, mintConnId, type ConnId, type SessionErrorKind } from '@/state';
+import {
+  settings, dispatch, mintConnId, activeRecord, recordBySerial, adoptionInProgress,
+  type ConnId, type SessionErrorKind,
+} from '@/state';
 import { Log, errMessage } from '@/utils';
 
 // Per-call ceiling on USB control transfers. Without it, a frozen firmware leaves
@@ -78,13 +82,25 @@ async function createBoundDevice(
 // the right connection.
 
 export async function connectRequested(): Promise<void> {
-  if (connection.phase === 'connecting') return;
+  if (adoptionInProgress() || inflightBoot) return;
   const id = mintConnId();
   const scope = new ConnectionScope();
   try {
     dispatch({ t: 'requested', id });
     const transport = new WebUsbTransport();
-    const device = await createBoundDevice(transport, scope, id, () => transport.requestAndOpen());
+    const picked = await transport.requestDevice();
+    const existing = picked.serialNumber ? recordBySerial(picked.serialNumber) : null;
+    if (existing) {
+      // We already hold this device's session -- switch to it instead of
+      // claiming its interface a second time. This attempt never got past the
+      // picker, so drop it back to idle rather than leaving it stuck
+      // 'connecting'.
+      dispatch({ t: 'removed', id });
+      scope.abort();
+      await activateSession(existing.id);
+      return;
+    }
+    const device = await createBoundDevice(transport, scope, id, () => transport.open());
     await wireUpConnection(device, scope, id);
   } catch (err) {
     Log.error('connect', 'connect failed', err);
@@ -99,13 +115,14 @@ export async function connectRequested(): Promise<void> {
 export async function bootMock(
   platform: 'rp2040' | 'rp2350',
   opts: Omit<MockOptions, 'platform'> = {},
+  connectOpts?: { activate?: false },
 ): Promise<void> {
   const id = mintConnId();
   const scope = new ConnectionScope();
   try {
     const transport = new MockTransport({ platform, ...opts });
     const device = await createBoundDevice(transport, scope, id, undefined);
-    await wireUpConnection(device, scope, id);
+    await wireUpConnection(device, scope, id, connectOpts);
   } catch (err) {
     if (!scope.aborted) {
       reportConnectError(id, err);
@@ -115,25 +132,60 @@ export async function bootMock(
   }
 }
 
+// Boots one mock device per profile -- the ?mock=<a>,<b> fleet harness. First
+// active, rest dormant, mirroring adoptGrantedDevices. Serials are made
+// distinct per index (only when there is more than one device) so registry
+// dedup and per-device UI stay unambiguous.
+export async function bootMockFleet(profiles: readonly MockProfile[]): Promise<void> {
+  for (const [i, p] of profiles.entries()) {
+    const opts = profiles.length > 1
+      ? { serial: `MOCK-${p.platform.toUpperCase()}-${i + 1}`, ...p.opts }
+      : p.opts;
+    await bootMock(p.platform, opts, i === 0 ? undefined : { activate: false });
+  }
+}
+
+// Adopts every granted device sequentially: the first becomes active (default
+// activation), the rest register dormant (unless the loop leaves nothing
+// active, in which case the reducer activates the next one anyway). A
+// per-device failure is logged and skipped -- a partial fleet must not paint
+// the error hero over a device that did come up; the hero only appears if the
+// whole loop adopts zero sessions, reusing the last failure's id/error so
+// reportConnectError can still classify it (unsupported firmware, in-use, ...).
+async function adoptGrantedDevices(granted: readonly USBDevice[]): Promise<void> {
+  // Captured before adopting: the first device's own adoption already
+  // overwrites settings.lastSerial (it becomes active by default), so reading
+  // it after the loop would always name whichever device came up first.
+  const wantSerial = settings.lastSerial;
+  let adopted = 0;
+  let lastFailure: { id: ConnId; err: unknown } | null = null;
+  for (const [i, usbDevice] of granted.entries()) {
+    const id = mintConnId();
+    const scope = new ConnectionScope();
+    try {
+      const transport = new WebUsbTransport(usbDevice);
+      const device = await createBoundDevice(transport, scope, id, () => transport.open());
+      await wireUpConnection(device, scope, id, i === 0 ? undefined : { activate: false });
+      adopted += 1;
+    } catch (err) {
+      Log.error('connect', 'boot adoption failed', err);
+      scope.abort();
+      lastFailure = { id, err };
+    }
+  }
+  if (adopted === 0 && lastFailure) reportConnectError(lastFailure.id, lastFailure.err);
+  const target = wantSerial ? recordBySerial(wantSerial) : null;
+  if (target && activeRecord()?.id !== target.id) await activateSession(target.id);
+}
+
 export async function bootReal(): Promise<void> {
   if (inflightBoot) return inflightBoot;
   inflightBoot = (async () => {
     try {
-      const transport = new WebUsbTransport();
-      const ok = await transport.tryAutoConnect();
-      if (!ok) return;
-      const id = mintConnId();
-      const scope = new ConnectionScope();
-      try {
-        const device = await createBoundDevice(transport, scope, id, async () => {});
-        await wireUpConnection(device, scope, id);
-      } catch (err) {
-        if (!scope.aborted) {
-          reportConnectError(id, err);
-          scope.abort();
-        }
-        throw err;
-      }
+      if (!WebUsbTransport.isSupported()) return;
+      const granted = (await navigator.usb.getDevices()).filter(matchesDspi);
+      if (granted.length === 0) return;
+      await adoptGrantedDevices(granted);
     } finally {
       inflightBoot = null;
     }
@@ -141,17 +193,38 @@ export async function bootReal(): Promise<void> {
   return inflightBoot;
 }
 
+// The 'connect' event only fires for devices this origin already holds a
+// permission grant for, so the grant IS the policy -- any granted DSPi gets
+// adopted, not just settings.lastSerial. Adoption always requests
+// `activate: false`: the reducer activates it only if nothing else is active,
+// so a live device never loses focus to a background replug.
+async function adoptReconnectedDevice(usbDevice: USBDevice): Promise<void> {
+  const id = mintConnId();
+  const scope = new ConnectionScope();
+  try {
+    const transport = new WebUsbTransport(usbDevice);
+    const device = await createBoundDevice(transport, scope, id, () => transport.open());
+    await wireUpConnection(device, scope, id, { activate: false });
+  } catch (err) {
+    if (!scope.aborted) scope.abort();
+    // With nothing else live, wireUpConnection's own failed dispatch has
+    // already painted the hero -- unclassified. Re-report so the tailored
+    // advice (device in use, unsupported firmware) isn't lost on this path.
+    if (activeRecord() === null) reportConnectError(id, err);
+    throw err;
+  }
+}
+
 export function registerNavigatorReconnect(): void {
   if (typeof navigator === 'undefined' || !('usb' in navigator)) return;
   navigator.usb.addEventListener('connect', (event: USBConnectionEvent) => {
-    const target = settings.lastSerial;
-    if (!target) return;
     if (!matchesDspi(event.device)) return;
-    if (event.device.serialNumber !== target) return;
-    if (inflightBoot) return;
-    if (connection.connected || connection.phase === 'connecting') return;
-    Log.info('reconnect', 'last-known device re-enumerated, attempting bootReal()');
-    // bootReal reports failures itself, guarded against a superseded attempt.
-    void bootReal().catch((e) => Log.error('reconnect', 'auto-reconnect failed', e));
+    if (event.device.serialNumber && recordBySerial(event.device.serialNumber)) return;   // already adopted
+    if (inflightBoot || adoptionInProgress()) return;
+    Log.info('reconnect', 'granted device re-enumerated, adopting in the background');
+    // Failures never paint over a live device (the reducer's active-session
+    // rule hides the failed dispatch); when idle, adoptReconnectedDevice
+    // classifies the hero that does show.
+    void adoptReconnectedDevice(event.device).catch((e) => Log.error('reconnect', 'auto-reconnect failed', e));
   });
 }

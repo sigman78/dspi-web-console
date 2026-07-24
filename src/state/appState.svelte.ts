@@ -88,7 +88,10 @@ export type AppState =
 
 export type AppEvent =
   | { t: 'requested'; id: ConnId }
-  | { t: 'synced'; id: ConnId; session: ReadySession }
+  // `activate: false` marks a background adoption: it registers dormant
+  // unless nothing else is active (the app never ends up with a registry and
+  // no active session).
+  | { t: 'synced'; id: ConnId; session: ReadySession; activate?: false }
   | { t: 'failed'; id: ConnId; message: string; errorKind?: SessionErrorKind }
   | { t: 'activated'; id: ConnId }
   | { t: 'removed'; id: ConnId };
@@ -119,7 +122,7 @@ export function dispatch(event: AppEvent): void {
       break;
     case 'synced':
       _sessions.set(event.id, { id: event.id, session: event.session, loops: null });
-      _activeId = event.id;
+      if (event.activate !== false || _activeId === null) _activeId = event.id;
       if (_attempt.kind !== 'idle' && _attempt.id === event.id) _attempt = { kind: 'idle' };
       break;
     case 'failed':
@@ -197,9 +200,30 @@ export function recordOf(id: ConnId): DeviceRecord | null {
   return _sessions.get(id) ?? null;
 }
 
-// Test-only: clears the registry and attempt slot without touching any
-// session's own resources (callers dispose() sessions themselves first).
+// True while an adoption attempt is in flight. `connection.phase` can't answer
+// this: it's the ready-wins view, so it reports 'ready' even mid-adoption
+// while another device stays active.
+export function adoptionInProgress(): boolean {
+  return _attempt.kind === 'connecting';
+}
+
+export function recordBySerial(serial: string): DeviceRecord | null {
+  for (const rec of _sessions.values()) {
+    if (rec.session.info.serial === serial) return rec;
+  }
+  return null;
+}
+
+// Test-only: disposes every registered session (stopping any loops via its
+// scope teardown) before clearing the registry and attempt slot. Dropping
+// records without disposal would orphan running poll/notify/probe loops,
+// which then leak real timers into a later test's fake-timer window.
 export function resetAppState(): void {
+  for (const rec of _sessions.values()) {
+    rec.loops?.();
+    rec.loops = null;
+    rec.session.dispose();
+  }
   _sessions.clear();
   _activeId = null;
   _attempt = { kind: 'idle' };

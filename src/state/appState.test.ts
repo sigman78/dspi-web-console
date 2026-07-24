@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  dispatch, mintConnId, activeSession, activeRecord, recordOf, sessionRecords, resetAppState,
-  connection, type ReadySession,
+  dispatch, mintConnId, activeSession, activeRecord, recordOf, recordBySerial, sessionRecords,
+  adoptionInProgress, resetAppState, connection, type ReadySession,
 } from './appState.svelte';
 import { makeReadySession } from './makeSession.svelte';
 
@@ -187,5 +187,50 @@ describe('dispatch() — registry semantics', () => {
     expect(connection.phase).toBe('errored');
     dispatch({ t: 'removed', id });
     expect(connection.phase).toBe('noDevice');
+  });
+});
+
+describe('dispatch() — background adoption (synced with activate: false)', () => {
+  it('registers dormant, leaving the existing active record untouched', () => {
+    const active = mintConnId();
+    const background = mintConnId();
+    dispatch({ t: 'synced', id: active, session: fakeSession });
+    dispatch({ t: 'synced', id: background, session: makeReadySession({ info: {}, hardware: {} } as never), activate: false });
+    expect(activeRecord()?.id).toBe(active);
+    expect(sessionRecords().has(background)).toBe(true);
+  });
+
+  it('becomes active anyway when nothing else is active (the registry never ends up with no active session)', () => {
+    const id = mintConnId();
+    dispatch({ t: 'synced', id, session: fakeSession, activate: false });
+    expect(activeRecord()?.id).toBe(id);
+  });
+});
+
+describe('adoptionInProgress()', () => {
+  it('is true only while an attempt is connecting', () => {
+    expect(adoptionInProgress()).toBe(false);
+    const id = mintConnId();
+    dispatch({ t: 'requested', id });
+    expect(adoptionInProgress()).toBe(true);
+    dispatch({ t: 'synced', id, session: fakeSession });
+    expect(adoptionInProgress()).toBe(false);
+  });
+});
+
+describe('recordBySerial()', () => {
+  it('finds a registered record by its session serial, dormant or active', () => {
+    const a = mintConnId();
+    const b = mintConnId();
+    const sessionA = makeReadySession({ info: { serial: 'AAA' }, hardware: {} } as never);
+    const sessionB = makeReadySession({ info: { serial: 'BBB' }, hardware: {} } as never);
+    dispatch({ t: 'synced', id: a, session: sessionA });
+    dispatch({ t: 'synced', id: b, session: sessionB, activate: false });
+    expect(recordBySerial('AAA')?.id).toBe(a);
+    expect(recordBySerial('BBB')?.id).toBe(b);
+  });
+
+  it('returns null for a serial that has no registered record', () => {
+    expect(recordBySerial('NOPE')).toBeNull();
   });
 });

@@ -74,7 +74,14 @@ export function resolveMockProfile(token: string, chip?: 'rp2040' | 'rp2350' | n
   }
 }
 
-export function activeMockProfile(): MockProfile | null {
+// A comma-separated ?mock token yields one profile per entry (an empty entry
+// resolves to `latest`, so `?mock=,legacy` works the way it reads). Pure and
+// exported for tests.
+export function resolveMockProfiles(token: string, chip?: 'rp2040' | 'rp2350' | null): MockProfile[] {
+  return token.split(',').map((t) => resolveMockProfile(t.trim(), chip));
+}
+
+export function activeMockProfiles(): MockProfile[] | null {
   const token = mockToken();
-  return token === null ? null : resolveMockProfile(token, mockChip());
+  return token === null ? null : resolveMockProfiles(token, mockChip());
 }

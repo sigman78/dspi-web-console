@@ -8,9 +8,9 @@ import {
   restoreSettings, startSettingsPersistence,
   presetsDirty, endInitialBoot,
 } from './state';
-import { bootMock, bootReal, registerNavigatorReconnect } from './runtime';
+import { bootMockFleet, bootReal, registerNavigatorReconnect } from './runtime';
 import { Log, isMobileDevice } from './utils';
-import { activeMockProfile } from './mockProfiles';
+import { activeMockProfiles } from './mockProfiles';
 
 const target = document.getElementById('app')!;
 
@@ -26,13 +26,13 @@ if (isMobileDevice()) {
   startSettingsPersistence();
 
   // See src/devOptions.ts for the full ?mock/?hero/?log convention.
-  const mockProfile = activeMockProfile();
+  const mockProfiles = activeMockProfiles();
 
   // Boot reports its own failures (with errorKind) via reportConnectError. The
   // attempt resolves once the state machine has settled (device synced + snapshot
   // loaded, or no device found), which is exactly when the boot splash may lift.
-  const bootAttempt = mockProfile
-    ? bootMock(mockProfile.platform, mockProfile.opts)
+  const bootAttempt = mockProfiles
+    ? bootMockFleet(mockProfiles)
     : bootReal();
   void bootAttempt
     .catch((e) => Log.error('boot', 'boot failed', e))
