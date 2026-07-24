@@ -6,6 +6,7 @@ import { APP_VERSION } from './buildInfo';
 export const LATEST_CHANGES = {
   version: APP_VERSION,
   highlights: [
+    'Multi-device: connect several DSPi units at once — the DEVICES list in the sidebar switches between them, with a full state resync on every switch',
     'Stereo Upmixer: derive Centre and surround channels from any stereo source — new panel in Processing, route Upmix C/Ls/Rs in the mixer (fw 1.1.5, RP2350)',
     'Psychoacoustic bass: missing-fundamental harmonics with per-output selection — new PSYBASS panel (fw 1.1.5)',
     'Pin pickers gain a DEFAULT option — the device restores its own factory pin, no guessing (fw 1.1.5)',
