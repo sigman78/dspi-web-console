@@ -10,6 +10,7 @@ import { LinkHealth } from './linkHealth.svelte';
 import { WriteCoordinator } from '@/runtime/writes.svelte';
 import { NotifyWaiters } from '@/runtime/notifyWaiters';
 import { CommandQueue } from '@/runtime/commandQueue';
+import { WireMirror } from '@/runtime/wireMirror';
 import { ConnectionScope } from '@/runtime/connectionScope';
 
 // Assembles a per-device session from its constituent stores. Kept apart from
@@ -32,6 +33,7 @@ export function makeReadySession(device: DspDevice, scope: ConnectionScope = new
   const writes = new WriteCoordinator(mirror);
   const notifyWaiters = new NotifyWaiters();
   const queue = new CommandQueue();
+  const wireMirror = new WireMirror();
   // Single teardown hook, registered once: abort is the only way alive flips
   // false, so this is the only place session resources get released.
   scope.onTeardown(() => {
@@ -41,7 +43,7 @@ export function makeReadySession(device: DspDevice, scope: ConnectionScope = new
   });
   const session: ReadySession = {
     device, info: device.info, hardware: device.hardware, signal,
-    copySource, telemetry, presets, ctrlIfaces, controlSurfaces, staging, mirror, health, writes, notifyWaiters, queue,
+    copySource, telemetry, presets, ctrlIfaces, controlSurfaces, staging, mirror, health, writes, notifyWaiters, queue, wireMirror,
     get alive() { return !scope.aborted; },
     dispose() { scope.abort(); },
   };

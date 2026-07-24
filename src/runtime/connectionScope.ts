@@ -21,22 +21,3 @@ export class ConnectionScope {
 
   abort(): void { this.#controller.abort(); }
 }
-
-let active: ConnectionScope | null = null;
-
-// Abort any prior connection and open a fresh lifecycle scope.
-export function beginConnection(): ConnectionScope {
-  active?.abort();
-  active = new ConnectionScope();
-  return active;
-}
-
-// Test-only accessor; production reaches the scope via beginConnection()'s
-// return value.
-export function connectionScope(): ConnectionScope | null { return active; }
-
-// Abort and clear the active connection. Idempotent.
-export function endConnection(): void {
-  active?.abort();
-  active = null;
-}

@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import ConnectingHero from './ConnectingHero.svelte';
-import { dispatch } from '@/state';
+import { dispatch, mintConnId, resetAppState } from '@/state';
 
 vi.mock('../../runtime/boot', () => ({
   connectRequested: vi.fn().mockResolvedValue(undefined),
@@ -12,26 +12,26 @@ vi.mock('../../runtime/boot', () => ({
 import { connectRequested, webUsbUnsupportedReason } from '@/runtime';
 
 beforeEach(() => {
-  dispatch({ t: 'disconnected' });
+  resetAppState();
   vi.mocked(webUsbUnsupportedReason).mockReturnValue(null);
 });
 
 describe('ConnectingHero — status text', () => {
   test('noDevice → WAITING FOR DEVICE…', () => {
-    dispatch({ t: 'disconnected' });
+    resetAppState();
     render(ConnectingHero);
     expect(screen.getByText('WAITING FOR DEVICE…')).toBeInTheDocument();
   });
 
   test('connecting → CONNECTING…', () => {
-    dispatch({ t: 'requested' });
+    dispatch({ t: 'requested', id: mintConnId() });
     render(ConnectingHero);
     expect(screen.getByText('CONNECTING…')).toBeInTheDocument();
   });
 
   test('error → ERROR status with full diagnostics panel', () => {
     const full = 'usb pipe broken\n  at transfer (chunk.js:42)\n  at connect (chunk.js:17)';
-    dispatch({ t: 'failed', message: full });
+    dispatch({ t: 'failed', id: mintConnId(), message: full });
     render(ConnectingHero);
     expect(screen.getByText('ERROR')).toBeInTheDocument();
     const panel = screen.getByRole('alert');
@@ -41,7 +41,7 @@ describe('ConnectingHero — status text', () => {
   });
 
   test('non-error states do not render the diagnostics panel', () => {
-    dispatch({ t: 'disconnected' });
+    resetAppState();
     render(ConnectingHero);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
@@ -49,6 +49,7 @@ describe('ConnectingHero — status text', () => {
   test('device-in-use error renders the DEVICE IN USE advisory with probable causes, not the diagnostics panel', () => {
     dispatch({
       t: 'failed',
+      id: mintConnId(),
       message: 'Unable to claim interface. — tried interface 0. …',
       errorKind: 'device-in-use',
     });
@@ -65,6 +66,7 @@ describe('ConnectingHero — status text', () => {
   test('unsupported-firmware error renders a dedicated upgrade panel, not the red diagnostics one', () => {
     dispatch({
       t: 'failed',
+      id: mintConnId(),
       message: 'DSPi firmware 1.1.2 is below the minimum supported 1.1.3. Update the device firmware to 1.1.3 or newer, then reconnect.',
       errorKind: 'unsupported-firmware',
     });
@@ -80,40 +82,40 @@ describe('ConnectingHero — status text', () => {
 
 describe('ConnectingHero — button behavior', () => {
   test('noDevice → button enabled', () => {
-    dispatch({ t: 'disconnected' });
+    resetAppState();
     render(ConnectingHero);
     expect(screen.getByRole('button', { name: 'CONNECT' })).not.toBeDisabled();
   });
 
   test('connecting → button disabled', () => {
-    dispatch({ t: 'requested' });
+    dispatch({ t: 'requested', id: mintConnId() });
     render(ConnectingHero);
     expect(screen.getByRole('button', { name: 'CONNECT' })).toBeDisabled();
   });
 
   test('error → button enabled (allows retry)', () => {
-    dispatch({ t: 'failed', message: 'oops' });
+    dispatch({ t: 'failed', id: mintConnId(), message: 'oops' });
     render(ConnectingHero);
     expect(screen.getByRole('button', { name: 'CONNECT' })).not.toBeDisabled();
   });
 
   test('webusb unsupported → CONNECT button is not rendered', () => {
     vi.mocked(webUsbUnsupportedReason).mockReturnValue('no navigator.usb');
-    dispatch({ t: 'disconnected' });
+    resetAppState();
     render(ConnectingHero);
     expect(screen.queryByRole('button', { name: 'CONNECT' })).not.toBeInTheDocument();
   });
 
   test('webusb unsupported → renders the reason in an alert panel', () => {
     vi.mocked(webUsbUnsupportedReason).mockReturnValue('this browser cannot do USB');
-    dispatch({ t: 'disconnected' });
+    resetAppState();
     render(ConnectingHero);
     const panel = screen.getByRole('alert');
     expect(panel).toHaveTextContent('this browser cannot do USB');
   });
 
   test('clicking enabled button calls connectRequested once', async () => {
-    dispatch({ t: 'disconnected' });
+    resetAppState();
     vi.mocked(connectRequested).mockClear();
     render(ConnectingHero);
     await fireEvent.click(screen.getByRole('button', { name: 'CONNECT' }));
@@ -121,7 +123,7 @@ describe('ConnectingHero — button behavior', () => {
   });
 
   test('clicking disabled button does not call connectRequested', async () => {
-    dispatch({ t: 'requested' });
+    dispatch({ t: 'requested', id: mintConnId() });
     vi.mocked(connectRequested).mockClear();
     render(ConnectingHero);
     await fireEvent.click(screen.getByRole('button', { name: 'CONNECT' }));

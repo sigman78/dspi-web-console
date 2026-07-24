@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { startLinkProbe } from './linkProbe';
-import { beginConnection } from './connectionScope';
-import { dispatch, makeReadySession, connection, type ReadySession } from '@/state';
+import { ConnectionScope } from './connectionScope';
+import { dispatch, mintConnId, makeReadySession, connection, resetAppState, type ConnId, type ReadySession } from '@/state';
 import type { LoopClock } from '@/utils';
 
 // Manual clock: collects the latest callback; step() fires it. armed() reports
@@ -20,28 +20,28 @@ function manualClock(): LoopClock & { step(): void; armed(): boolean } {
   };
 }
 
-// Wires the session to the connection's scope, matching production
-// (wireUpConnection passes the same scope into makeReadySession) --
-// killSession's endConnection() only tears the session down if they share
-// a scope.
-function installSession(device: unknown): ReadySession {
-  const scope = beginConnection();
+// Wires the session to its own connection scope, matching production
+// (wireUpConnection passes the same scope into makeReadySession) -- killing
+// the session only tears it down via that shared scope.
+function installSession(device: unknown): { id: ConnId; s: ReadySession } {
+  const id = mintConnId();
+  const scope = new ConnectionScope();
   const s = makeReadySession(device as never, scope);
-  dispatch({ t: 'synced', session: s });
-  return s;
+  dispatch({ t: 'synced', id, session: s });
+  return { id, s };
 }
 
 describe('startLinkProbe', () => {
   beforeEach(() => {
-    dispatch({ t: 'disconnected' });
+    resetAppState();
     vi.clearAllMocks();
   });
 
   it('does nothing while healthy', async () => {
     const getBypass = vi.fn(async () => false);
-    const s = installSession({ getBypass, close: vi.fn(), info: {}, hardware: {} });
+    const { id, s } = installSession({ getBypass, close: vi.fn(), info: {}, hardware: {} });
     const clock = manualClock();
-    const stop = startLinkProbe(s, clock);
+    const stop = startLinkProbe(s, id, clock);
     clock.step();
     await Promise.resolve();
     expect(getBypass).not.toHaveBeenCalled();
@@ -50,11 +50,11 @@ describe('startLinkProbe', () => {
 
   it('probes while degraded, clears on success, and requests an eager reconcile', async () => {
     const getBypass = vi.fn(async () => false);
-    const s = installSession({ getBypass, close: vi.fn(), info: {}, hardware: {} });
+    const { id, s } = installSession({ getBypass, close: vi.fn(), info: {}, hardware: {} });
     s.health.degraded = true;
     s.mirror.consumeReconcile();
     const clock = manualClock();
-    const stop = startLinkProbe(s, clock);
+    const stop = startLinkProbe(s, id, clock);
     clock.step();
     // Wait on the actual end state, not the mock call count: the count updates
     // synchronously at send time, well before the queued op settles and
@@ -69,10 +69,10 @@ describe('startLinkProbe', () => {
   it('kills the session after persistent probe failure', async () => {
     const getBypass = vi.fn(async () => { throw new Error('dead'); });
     const close = vi.fn(async () => {});
-    const s = installSession({ getBypass, close, info: {}, hardware: {} });
+    const { id, s } = installSession({ getBypass, close, info: {}, hardware: {} });
     s.health.degraded = true;
     const clock = manualClock();
-    const stop = startLinkProbe(s, clock);
+    const stop = startLinkProbe(s, id, clock);
     // The first 4 failures re-arm the clock; wait for that (not the call
     // count) before stepping again, so each step lands after the previous
     // tick's async probe body has actually finished.

@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { bootMock } from './boot';
 import {
   resetBoundary, boundary, resolveBoundary, settings, activeSession,
-  makeReadySession, dispatch, notices, clearNotices, type ReadySession,
+  makeReadySession, dispatch, mintConnId, resetAppState, notices, clearNotices, type ReadySession,
 } from '@/state';
 import { PresetStartupMode, parseBulkParams, Wire } from '@/protocol';
 import type { DeviceState } from '@/protocol/snapshotCodec';
@@ -33,6 +33,8 @@ describe('runtime/presets', () => {
     resetBoundary();
     await bootMock('rp2350');
   });
+
+  afterEach(() => { activeSession()?.dispose(); resetAppState(); });
 
   describe('fetchPresetInfo', () => {
     it('populates directory, names, active, and saved master volume', async () => {
@@ -606,7 +608,8 @@ describe('runtime/presets', () => {
 
   describe('paste under output-config mode (V10 device)', () => {
     it('toasts that IO config was not applied in Independent mode, stays silent in WithPreset', async () => {
-      dispatch({ t: 'disconnected' });
+      activeSession()?.dispose();
+      resetAppState();
       await bootMock('rp2350', { wireVersion: 10 });
       await fetchPresetInfo(sess());
       await savePresetSlot(sess(), 1 as PresetSlot);
@@ -639,7 +642,7 @@ describe('notify-driven load settle', () => {
 
   function installSessionWith(device: unknown): ReadySession {
     const s = makeReadySession(device as never);
-    dispatch({ t: 'synced', session: s });
+    dispatch({ t: 'synced', id: mintConnId(), session: s });
     return s;
   }
 
@@ -648,7 +651,7 @@ describe('notify-driven load settle', () => {
   });
 
   afterEach(() => {
-    dispatch({ t: 'disconnected' });
+    resetAppState();
     vi.useRealTimers();
   });
 

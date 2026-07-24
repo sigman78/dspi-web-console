@@ -1,5 +1,4 @@
-import { dispatch, type ReadySession } from '@/state';
-import { endConnection } from './connectionScope';
+import { dispatch, type ConnId, type ReadySession } from '@/state';
 import { Log, timerClock, type LoopClock, type Disposer } from '@/utils';
 
 const PROBE_INTERVAL_MS = 1000;
@@ -11,7 +10,7 @@ const PROBE_FAILS_TO_KILL = 5;
 // supported firmware) each tick. One success verifies recovery and repaints
 // truth; persistent failure tears the session down through the same path a USB
 // unplug takes. Hidden tabs don't probe (and don't advance the kill counter).
-export function startLinkProbe(s: ReadySession, clock: LoopClock = timerClock(PROBE_INTERVAL_MS)): Disposer {
+export function startLinkProbe(s: ReadySession, id: ConnId, clock: LoopClock = timerClock(PROBE_INTERVAL_MS)): Disposer {
   let stopped = false;
   let probing = false;
   let probeFails = 0;
@@ -33,7 +32,7 @@ export function startLinkProbe(s: ReadySession, clock: LoopClock = timerClock(PR
         probeFails += 1;
         if (probeFails >= PROBE_FAILS_TO_KILL) {
           stopped = true;
-          await killSession(s, err);
+          await killSession(id, s, err);
           return;
         }
       } finally {
@@ -47,17 +46,18 @@ export function startLinkProbe(s: ReadySession, clock: LoopClock = timerClock(PR
   return () => { stopped = true; clock.cancel(); };
 }
 
-// device.close() makes the transport emit 'disconnect', which runs the standard
-// teardown (disconnected dispatch + endConnection) via the existing listener;
-// endConnection()'s abort tears down the session too, so there is no separate
-// dispose() call here. The trailing failed dispatch is deliberately
-// unconditional -- unlike the guarded dispatches elsewhere, this is a forced
-// transition that must land in 'errored' regardless of the (already-aborted)
-// scope, so the user sees why the session ended.
-async function killSession(s: ReadySession, err: unknown): Promise<void> {
+// device.close() makes the transport emit 'disconnect', which in production
+// runs the standard teardown (removed dispatch + scope.abort()) via
+// attachTransportListeners; dispose() here is what does that in tests that
+// build a bare session with no transport behind it. The trailing failed
+// dispatch is deliberately unconditional -- unlike the guarded dispatches
+// elsewhere, this is a forced transition that must land in 'errored'
+// regardless of prior teardown, so the user sees why the session ended.
+async function killSession(id: ConnId, s: ReadySession, err: unknown): Promise<void> {
   const msg = err instanceof Error ? err.message : String(err);
   Log.error('health', 'link dead; tearing down session', err);
   try { await s.device.close(); } catch { /* already gone */ }
-  endConnection();
-  dispatch({ t: 'failed', message: `Device stopped responding (${msg})` });
+  dispatch({ t: 'removed', id });
+  s.dispose();
+  dispatch({ t: 'failed', id, message: `Device stopped responding (${msg})` });
 }

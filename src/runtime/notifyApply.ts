@@ -7,7 +7,6 @@
 import type { ReadySession } from '@/state';
 import type { ParamChangedEvent } from '@/protocol';
 import { diffSnapshots, applyChange } from '@/domain';
-import { spliceWireParam } from './wireMirror';
 
 export function applyParamChange(s: ReadySession, ev: ParamChangedEvent): boolean {
   const mir = s.mirror;
@@ -19,7 +18,7 @@ export function applyParamChange(s: ReadySession, ev: ParamChangedEvent): boolea
   if (s.writes.busy) return false;
   let r;
   try {
-    r = spliceWireParam(s.device, ev.offset, ev.value);
+    r = s.wireMirror.splice(s.device, ev.offset, ev.value);
   } catch {
     return false;                       // parse/decode threw -> reconcile
   }

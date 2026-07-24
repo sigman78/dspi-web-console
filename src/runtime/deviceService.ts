@@ -8,8 +8,8 @@ import type { DspDevice } from '@/device/DspDevice';
 import {
   settings, reconcileSelectedChannel, selectionVisibilityOf,
   pushNotice,
-  dispatch, makeReadySession, activeSession,
-  type ReadySession,
+  dispatch, makeReadySession, activeSession, activeRecord, recordOf, mintConnId,
+  type ReadySession, type ConnId, type DeviceRecord,
 } from '@/state';
 import { Log, errMessage } from '@/utils';
 import * as Domain from '@/domain';
@@ -17,10 +17,12 @@ import { flushAllWrites } from './writes.svelte';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
 import { startLinkProbe } from './linkProbe';
-import { endConnection, type ConnectionScope } from './connectionScope';
+import type { ConnectionScope } from './connectionScope';
 import { fetchPresetInfo, invalidatePresetCache } from './presets';
 
-let inflightSync: Promise<void> | null = null;
+// Per-session dedupe, keyed by identity rather than a single global slot: two
+// sessions (one active, one dormant) must be able to sync concurrently.
+const inflightSync = new WeakMap<ReadySession, Promise<void>>();
 
 // Eager + lazy entry point for the V16 external control interfaces, mirroring
 // fetchPresetInfo: idempotent once populated, never throws (errors land in
@@ -106,9 +108,10 @@ export async function fetchControlSurfaces(s: ReadySession): Promise<void> {
 }
 
 export async function syncDeviceSnapshot(s: ReadySession): Promise<void> {
-  if (inflightSync) return inflightSync;
+  const existing = inflightSync.get(s);
+  if (existing) return existing;
   const d = s.device;
-  inflightSync = (async () => {
+  const p = (async () => {
     try {
       const snap = await s.queue.run(() => d.getSnapshot());
       s.mirror.init(snap);
@@ -117,15 +120,50 @@ export async function syncDeviceSnapshot(s: ReadySession): Promise<void> {
       s.health.noteFail('sync', err);
       throw err;
     } finally {
-      inflightSync = null;
+      inflightSync.delete(s);
     }
   })();
-  return inflightSync;
+  inflightSync.set(s, p);
+  return p;
 }
 
-export async function wireUpConnection(device: DspDevice, scope?: ConnectionScope): Promise<void> {
+// Starts this record's poll/notify/probe loops (no-op if already running).
+function activateRecord(rec: DeviceRecord): void {
+  if (rec.loops) return;
+  const session = rec.session;
+  const stopPolling = startPolling(session);
+  const stopNotify = startNotifyChannel(session);
+  const stopProbe = startLinkProbe(session, rec.id);
+  rec.loops = () => { stopPolling(); stopNotify(); stopProbe(); };
+}
+
+// Stops this record's loops (no new traffic), then drains whatever writes
+// were already in flight.
+async function deactivateRecord(rec: DeviceRecord): Promise<void> {
+  rec.loops?.();
+  rec.loops = null;
+  await flushAllWrites(rec.session);
+}
+
+// Switch protocol: the previously active record goes dormant (loops stopped,
+// writes flushed) before the target record takes over; the target's loops
+// start only after it is the activated record, then it gets an eager full
+// resync via the normal param cadence (dormant sessions can drift via IR
+// remote / control surfaces / other UART-I2C peers).
+export async function activateSession(id: ConnId): Promise<void> {
+  const rec = recordOf(id);
+  if (!rec) return;
+  const prev = activeRecord();
+  if (prev?.id === id) return;
+  if (prev) await deactivateRecord(prev);
+  dispatch({ t: 'activated', id });
+  activateRecord(rec);
+  rec.session.mirror.requestReconcile(true);
+}
+
+export async function wireUpConnection(device: DspDevice, scope?: ConnectionScope, id: ConnId = mintConnId()): Promise<void> {
   if (scope?.aborted) return;   // superseded before this attempt started
-  dispatch({ t: 'requested' });
+  dispatch({ t: 'requested', id });
   try {
     const snap = await device.getSnapshot();
     // A newer connection may have begun (and aborted this scope) while
@@ -156,7 +194,11 @@ export async function wireUpConnection(device: DspDevice, scope?: ConnectionScop
     // this one meanwhile. Bail before dispatching `synced` (mirrors the
     // post-getSnapshot guard above) -- scope teardown reclaims the session.
     if (scope?.aborted) return;
-    dispatch({ t: 'synced', session });
+    // Captured before the dispatch: adoption makes id active immediately, so
+    // this is the only chance to see who was active a moment ago.
+    const prev = activeRecord();
+    dispatch({ t: 'synced', id, session });
+    if (prev) await deactivateRecord(prev);
     settings.lastSerial = device.info.serial;
     await reconcileAfterSync(session);
     // Re-check after the await: onTeardown self-heals against an
@@ -167,9 +209,11 @@ export async function wireUpConnection(device: DspDevice, scope?: ConnectionScop
     // Tests may call without a scope. Resources register their own abort
     // cleanup directly on the scope rather than through a registry.
     if (scope) {
-      scope.onTeardown(startPolling(session));
-      scope.onTeardown(startNotifyChannel(session));
-      scope.onTeardown(startLinkProbe(session));
+      const rec = recordOf(id);
+      if (rec) {
+        activateRecord(rec);
+        scope.onTeardown(() => { rec.loops?.(); rec.loops = null; });
+      }
     }
     await fetchPresetInfo(session);
     await fetchCtrlIfaceInfo(session);
@@ -183,7 +227,7 @@ export async function wireUpConnection(device: DspDevice, scope?: ConnectionScop
     Log.error('sync', 'wireUpConnection failed', err);
     // A stale failure from a superseded attempt must not clobber whatever the
     // newer connection has already put in app state.
-    if (!scope?.aborted) dispatch({ t: 'failed', message: errMessage(err) });
+    if (!scope?.aborted) dispatch({ t: 'failed', id, message: errMessage(err) });
     throw err;
   }
 }
@@ -196,16 +240,25 @@ export async function reconcileAfterSync(s: ReadySession): Promise<void> {
   reconcileSelectedChannel(snap?.channels, selectionVisibilityOf(snap?.outputs ?? [], s.telemetry.activeInputChannels));
 }
 
-export function attachTransportListeners(transport: DspTransport, _device: DspDevice): () => void {
+export function attachTransportListeners(transport: DspTransport, id: ConnId, scope: ConnectionScope): () => void {
   const offDisc = transport.on('disconnect', () => {
-    // Dispatch first: the disconnected transition must land while this is
-    // still the active connection. endConnection() aborts the controller,
-    // which tears down the session (dispose is an abort listener) and this
-    // very listener in one shot -- deleting the currently-firing entry from
-    // the transport's listener Set during its forEach is safe, it won't be
-    // revisited and won't throw.
-    dispatch({ t: 'disconnected' });
-    endConnection();
+    // Dispatch first: the removal must land while this connection's record
+    // still exists. scope.abort() tears down the session (dispose is an
+    // abort listener) and this very listener in one shot -- deleting the
+    // currently-firing entry from the transport's listener Set during its
+    // forEach is safe, it won't be revisited and won't throw. Removal is
+    // scoped to THIS connection id: an unrelated dormant connection's device
+    // is untouched.
+    dispatch({ t: 'removed', id });
+    scope.abort();
+    // If the reducer promoted a dormant record to active, start its loops --
+    // unreachable while only one device is ever connected, but the policy
+    // ships with the mechanism for when a second device is adopted.
+    const next = activeRecord();
+    if (next && !next.loops) {
+      activateRecord(next);
+      next.session.mirror.requestReconcile(true);
+    }
   });
   return () => { offDisc(); };
 }

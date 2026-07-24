@@ -1,16 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { write, scrub, writeChecked, command, flushAllWrites } from './writes.svelte';
-import { connection, notices, clearNotices, dispatch, makeReadySession, activeSession, type ReadySession } from '@/state';
+import { connection, notices, clearNotices, dispatch, mintConnId, makeReadySession, activeSession, type ReadySession } from '@/state';
 import { Result } from '@/utils';
 
 // Install a ready session so writes resolve activeSession() and its
-// WriteCoordinator/alive guard. Disposing it (or dispatching disconnected)
+// WriteCoordinator/alive guard. Disposing it (or resetting app state)
 // simulates a disconnect mid-flight — the per-session `alive` guard replaces the
 // old session.generation bump.
 let session: ReadySession;
 function installSession(): void {
   session = makeReadySession({ info: {}, hardware: {} } as never);
-  dispatch({ t: 'synced', session });
+  dispatch({ t: 'synced', id: mintConnId(), session });
 }
 
 describe('write() helper', () => {
