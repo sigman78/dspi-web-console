@@ -11,6 +11,8 @@ import type { LinkHealth } from './linkHealth.svelte';
 import type { WriteCoordinator } from '@/runtime/writes.svelte';
 import type { NotifyWaiters } from '@/runtime/notifyWaiters';
 import type { CommandQueue } from '@/runtime/commandQueue';
+import type { WireMirror } from '@/runtime/wireMirror';
+import { SvelteMap } from 'svelte/reactivity';
 
 export interface PresetClipboard {
   slot: PresetSlot;
@@ -48,6 +50,8 @@ export interface ReadySession {
   // Serializes every device control-transfer send for this session -- a
   // snapshot fetch can never interleave with a write mid-flight.
   readonly queue: CommandQueue;
+  // Raw wire-splice buffer for this session's PARAM_CHANGED notifications.
+  readonly wireMirror: WireMirror;
   // Lifecycle guard: a write that settles after dispose() is dropped.
   readonly alive: boolean;
   dispose(): void;
@@ -58,6 +62,24 @@ export interface ReadySession {
 // ordinary/unclassified error.
 export type SessionErrorKind = null | 'unsupported-firmware' | 'device-in-use';
 
+export type ConnId = number;
+
+// Ready sessions only. `loops` is the running-loop stop handle: non-null iff
+// this record's poll/notify/probe loops are running. Mutated by runtime
+// activation code (deviceService), never by the reducer.
+export interface DeviceRecord {
+  readonly id: ConnId;
+  readonly session: ReadySession;
+  loops: (() => void) | null;
+}
+
+// Single-slot connect attempt: adoption is serial (one attempt at a time), so
+// connecting/errored never need to be per-record.
+export type ConnectAttempt =
+  | { kind: 'idle' }
+  | { kind: 'connecting'; id: ConnId }
+  | { kind: 'errored'; id: ConnId; message: string; errorKind: SessionErrorKind };
+
 export type AppState =
   | { kind: 'noDevice' }
   | { kind: 'connecting' }
@@ -65,39 +87,90 @@ export type AppState =
   | { kind: 'errored'; message: string; errorKind: SessionErrorKind };
 
 export type AppEvent =
-  | { t: 'requested' }
-  | { t: 'synced';       session: ReadySession }
-  | { t: 'failed';       message: string; errorKind?: SessionErrorKind }
-  | { t: 'disconnected' };
+  | { t: 'requested'; id: ConnId }
+  | { t: 'synced'; id: ConnId; session: ReadySession }
+  | { t: 'failed'; id: ConnId; message: string; errorKind?: SessionErrorKind }
+  | { t: 'activated'; id: ConnId }
+  | { t: 'removed'; id: ConnId };
 
-// Next state is determined by the event alone; the current state is not
-// consulted (no legal-transition guard).
-export function transition(_state: AppState, event: AppEvent): AppState {
+// Ready sessions, keyed by connection id. svelte/reactivity so a device-list
+// UI can render from it directly.
+const _sessions = new SvelteMap<ConnId, DeviceRecord>();
+let _activeId = $state<ConnId | null>(null);
+let _attempt = $state.raw<ConnectAttempt>({ kind: 'idle' });
+
+let _nextId = 1;
+export function mintConnId(): ConnId { return _nextId++; }
+
+// Map insertion order tracks adoption order; the last key is the
+// most-recently-adopted remaining record.
+function mostRecentId(): ConnId | null {
+  let last: ConnId | null = null;
+  for (const id of _sessions.keys()) last = id;
+  return last;
+}
+
+// Next state is determined by the event alone; the current registry is
+// consulted only to decide whether a late/stale event still applies.
+export function dispatch(event: AppEvent): void {
   switch (event.t) {
-    case 'requested':    return { kind: 'connecting' };
-    case 'synced':       return { kind: 'ready', session: event.session };
-    case 'failed':       return { kind: 'errored', message: event.message, errorKind: event.errorKind ?? null };
-    case 'disconnected': return { kind: 'noDevice' };
+    case 'requested':
+      _attempt = { kind: 'connecting', id: event.id };
+      break;
+    case 'synced':
+      _sessions.set(event.id, { id: event.id, session: event.session, loops: null });
+      _activeId = event.id;
+      if (_attempt.kind !== 'idle' && _attempt.id === event.id) _attempt = { kind: 'idle' };
+      break;
+    case 'failed':
+      // A late failure after synced: the record never should have existed.
+      if (_sessions.has(event.id)) {
+        _sessions.delete(event.id);
+        if (_activeId === event.id) _activeId = mostRecentId();
+      }
+      // A failure paints the global error state only when no device remains
+      // active: a connection dying alongside a still-live device must not
+      // cover that device's UI with the error hero.
+      if (_activeId === null) {
+        _attempt = { kind: 'errored', id: event.id, message: event.message, errorKind: event.errorKind ?? null };
+      } else if (_attempt.kind !== 'idle' && _attempt.id === event.id) {
+        _attempt = { kind: 'idle' };
+      }
+      break;
+    case 'activated':
+      if (_sessions.has(event.id)) _activeId = event.id;
+      break;
+    case 'removed':
+      _sessions.delete(event.id);
+      if (_attempt.kind !== 'idle' && _attempt.id === event.id) _attempt = { kind: 'idle' };
+      if (_activeId === event.id) _activeId = mostRecentId();
+      break;
   }
 }
 
-// $state.raw: reactive on reassignment (phase change) but not deep-proxied, so a
-// stored ReadySession keeps its identity and its own internal $state cells stay
-// the single reactive source for per-field UI.
-let _app = $state.raw<AppState>({ kind: 'noDevice' });
+// Derived view over the registry + attempt slot, exposed as the single-slot
+// AppState components render from. Ready wins over connecting: an adoption in
+// progress must not hide the active device's UI.
+const _view = $derived.by((): AppState => {
+  const rec = _activeId !== null ? _sessions.get(_activeId) : undefined;
+  if (rec) return { kind: 'ready', session: rec.session };
+  if (_attempt.kind === 'connecting') return { kind: 'connecting' };
+  if (_attempt.kind === 'errored') return { kind: 'errored', message: _attempt.message, errorKind: _attempt.errorKind };
+  return { kind: 'noDevice' };
+});
 
 export const app = {
-  get current(): AppState { return _app; },
+  get current(): AppState { return _view; },
 };
 
 // Read-only connection state derived from the machine, for UI gating + display.
 export const connection = {
-  get phase(): AppState['kind'] { return _app.kind; },
-  get connected(): boolean { return _app.kind === 'ready'; },
-  get error(): string | null { return _app.kind === 'errored' ? _app.message : null; },
-  get errorKind(): SessionErrorKind { return _app.kind === 'errored' ? _app.errorKind : null; },
+  get phase(): AppState['kind'] { return _view.kind; },
+  get connected(): boolean { return _view.kind === 'ready'; },
+  get error(): string | null { return _view.kind === 'errored' ? _view.message : null; },
+  get errorKind(): SessionErrorKind { return _view.kind === 'errored' ? _view.errorKind : null; },
   get label(): string {
-    switch (_app.kind) {
+    switch (_view.kind) {
       case 'ready':      return 'CONNECTED';
       case 'connecting': return 'CONNECTING';
       case 'errored':    return 'ERROR';
@@ -107,15 +180,27 @@ export const connection = {
 };
 
 export function activeSession(): ReadySession | null {
-  return _app.kind === 'ready' ? _app.session : null;
+  const rec = _activeId !== null ? _sessions.get(_activeId) : undefined;
+  return rec?.session ?? null;
 }
 
-// Provenance is structural, not stamped: a superseded connection's
-// ConnectionScope was aborted, which tears down its transport listeners and
-// session before any of its dispatch sites can fire. What used to be an
-// attempt-token check at dispatch time is now a `scope.aborted` check at
-// each call site in deviceService/boot/linkProbe -- dispatch itself no longer
-// filters anything.
-export function dispatch(event: AppEvent): void {
-  _app = transition(_app, event);
+export function sessionRecords(): ReadonlyMap<ConnId, DeviceRecord> {
+  return _sessions;
+}
+
+export function activeRecord(): DeviceRecord | null {
+  const rec = _activeId !== null ? _sessions.get(_activeId) : undefined;
+  return rec ?? null;
+}
+
+export function recordOf(id: ConnId): DeviceRecord | null {
+  return _sessions.get(id) ?? null;
+}
+
+// Test-only: clears the registry and attempt slot without touching any
+// session's own resources (callers dispose() sessions themselves first).
+export function resetAppState(): void {
+  _sessions.clear();
+  _activeId = null;
+  _attempt = { kind: 'idle' };
 }

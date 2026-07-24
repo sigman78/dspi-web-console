@@ -1,8 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { applyParamChange } from './notifyApply';
 import { write } from './writes.svelte';
-import { resetWireMirror } from './wireMirror';
-import { dispatch, makeReadySession, type ReadySession } from '@/state';
+import { dispatch, mintConnId, makeReadySession, resetAppState, type ReadySession } from '@/state';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice } from '@/device/DspDevice';
 import type { ParamChangedEvent } from '@/protocol';
@@ -19,13 +18,12 @@ async function setup(): Promise<{ session: ReadySession; mir: ReadySession['mirr
   const mock = new MockTransport({ platform: 'rp2350', wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } });
   const dev = await DspDevice.create(mock);
   const session = makeReadySession(dev);
-  dispatch({ t: 'synced', session });
+  dispatch({ t: 'synced', id: mintConnId(), session });
   session.mirror.init(await dev.getSnapshot());   // current populated; dev.lastRawBulk populated
   return { session, mir: session.mirror };
 }
 
-beforeEach(() => { resetWireMirror(); });
-afterEach(() => { dispatch({ t: 'disconnected' }); });
+afterEach(() => { resetAppState(); });
 
 describe('applyParamChange', () => {
   it('applies a notified field into mirror.current and returns true', async () => {

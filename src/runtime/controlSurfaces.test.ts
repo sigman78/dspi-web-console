@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { bootMock } from './boot';
 import {
   applyCsBinding, clearCsBinding, applyCsName, csSaveConfig, csRevertConfig,
   applyCsIrCommand, clearCsIrCommand, csIrLearnArm, csIrLearnCancel,
 } from './actions';
-import { activeSession, clearNotices } from '@/state';
+import { activeSession, clearNotices, resetAppState } from '@/state';
 import {
   CsType, CsNoun, CsAction, CsEvent, CS_MAX_BINDINGS, dbToQ8,
   CsIrProto, CS_MAX_IR_COMMANDS, CS_IR_LEARN_ARMED, CS_IR_LEARN_DONE,
@@ -34,6 +34,8 @@ describe('runtime/controlSurfaces', () => {
     await bootMock('rp2350', { wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } });
     clearNotices();
   });
+
+  afterEach(() => { activeSession()?.dispose(); resetAppState(); });
 
   it('connect fetches caps, nouns, status, and every slot binding and name', () => {
     const s = sess();

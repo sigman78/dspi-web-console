@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { presetsDirty, resetBoundary, askBoundary, resolveBoundary } from './presets.svelte';
-import { activeSession, dispatch } from './appState.svelte';
+import { activeSession, dispatch, mintConnId, resetAppState } from './appState.svelte';
 import { makeReadySession } from './makeSession.svelte';
 import { OutputConfigMode, type DspSnapshot } from '@/domain';
 
@@ -47,8 +47,8 @@ function seed(snap: DspSnapshot): void {
 
 describe('presets store', () => {
   beforeEach(() => {
-    dispatch({ t: 'disconnected' });
-    dispatch({ t: 'synced', session: makeReadySession({ info: {}, hardware: {} } as never) });
+    resetAppState();
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession({ info: {}, hardware: {} } as never) });
     resetBoundary();
   });
 

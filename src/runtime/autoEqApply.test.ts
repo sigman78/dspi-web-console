@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { applyAutoEqEntry, preampTargetLabel } from './autoEqApply';
-import { dispatch, makeReadySession, activeSession } from '@/state';
+import { dispatch, mintConnId, makeReadySession, activeSession, resetAppState } from '@/state';
 import { parseBulkParams } from '@/protocol';
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { createHardwareProfile, FilterType, PlatformType, type AutoEqEntry } from '@/domain';
 import { deriveCapabilities } from '@/protocol/capabilities';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
-import { endConnection } from './connectionScope';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 
@@ -38,9 +37,9 @@ const flatEntry = (preamp: number): AutoEqEntry => ({
 });
 
 afterEach(() => {
-  endConnection();
+  activeSession()?.dispose();
   cancelWrites();
-  dispatch({ t: 'disconnected' });
+  resetAppState();
   vi.useRealTimers();
 });
 
@@ -53,7 +52,7 @@ function harness(methods: Partial<DspDevice> = {}, wireVersion: 10 | 16 = 10) {
     getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     ...methods,
   }, wireVersion);
-  dispatch({ t: 'synced', session: makeReadySession(device) });
+  dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
   liveMirror().replaceCurrent(fromBulkParams(testHardware, bulk));
   return device;
 }

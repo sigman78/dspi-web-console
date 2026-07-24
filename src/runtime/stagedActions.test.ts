@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { bootMock } from './boot';
-import { activeSession, clearNotices } from '@/state';
+import { activeSession, clearNotices, resetAppState } from '@/state';
 import { AudioInputSource } from '@/domain';
 import { Wire } from '@/protocol';
 import {
@@ -12,6 +12,8 @@ import {
 const { PIN_RESET_TO_DEFAULT } = Wire.Const;
 
 const sess = () => activeSession()!;
+
+afterEach(() => { activeSession()?.dispose(); resetAppState(); });
 
 describe('runtime/stagedActions', () => {
   describe('stageInputSource', () => {

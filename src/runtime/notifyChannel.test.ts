@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { startNotifyChannel } from './notifyChannel';
-import { notices, clearNotices, dispatch, makeReadySession, type ReadySession } from '@/state';
+import { notices, clearNotices, dispatch, mintConnId, makeReadySession, resetAppState, type ReadySession } from '@/state';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice } from '@/device/DspDevice';
-import { resetWireMirror } from './wireMirror';
 
 // A manual clock: tests call tick() to advance the loop one read at a time.
 // tick() flushes several microtasks so the async pump (readNotification →
@@ -45,7 +44,7 @@ function fakeNotifyingDevice(read: () => Promise<Uint8Array | null>): DspDevice 
 // session.device/session.mirror).
 function connect(dev: DspDevice): ReadySession {
   const session = makeReadySession(dev);
-  dispatch({ t: 'synced', session });
+  dispatch({ t: 'synced', id: mintConnId(), session });
   return session;
 }
 
@@ -68,7 +67,7 @@ function primeLive(mock: MockTransport): void {
 }
 
 beforeEach(() => { clearNotices(); });
-afterEach(() => { dispatch({ t: 'disconnected' }); });
+afterEach(() => { resetAppState(); });
 
 describe('startNotifyChannel', () => {
   it('requests a reconcile on a BULK_INVALIDATED event', async () => {
@@ -213,7 +212,6 @@ describe('startNotifyChannel', () => {
     // The preset guard suppresses only bulk/preset self-echoes; a GPIO paramChanged
     // is applied precisely regardless of the guard (Layer 2). Seeded mirror → apply
     // succeeds in place, no full reconcile.
-    resetWireMirror();
     const { mock, session, mir } = await v10Setup();
     mir.init(await session.device.getSnapshot());
     expect(mir.current?.bypass).toBe(false);
@@ -231,7 +229,6 @@ describe('startNotifyChannel', () => {
   });
 
   it('falls back to a reconcile when the apply declines (out-of-range offset)', async () => {
-    resetWireMirror();
     const { mock, session, mir } = await v10Setup();
     mir.init(await session.device.getSnapshot());
     primeLive(mock);

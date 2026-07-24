@@ -1,7 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { bootMock } from './boot';
-import { endConnection } from './connectionScope';
-import { activeSession, dispatch } from '@/state';
+import { activeSession, resetAppState } from '@/state';
 
 // Locks the connect ordering that kills the "all channels possible -> actual
 // configuration" flash: the mirror is initialised and the live input-channel
@@ -10,8 +9,8 @@ import { activeSession, dispatch } from '@/state';
 // first frame. The poll's status cadence is on a timer that never fires within a
 // test, so any non-null count here must have come from the pre-`synced` seed.
 
-beforeEach(() => { dispatch({ t: 'disconnected' }); });
-afterEach(() => { endConnection(); dispatch({ t: 'disconnected' }); });
+beforeEach(() => { resetAppState(); });
+afterEach(() => { activeSession()?.dispose(); resetAppState(); });
 
 describe('wireUpConnection — channel-width seed', () => {
   it('V16: seeds the live input count and mirror before the UI first renders', async () => {

@@ -3,7 +3,6 @@ import type { DspDevice } from '@/device/DspDevice';
 import { openSingleDevice } from '@test/hil/setup';
 import { wireUpConnection } from './deviceService';
 import { activeSession, connection, settings } from '@/state';
-import { endConnection } from './connectionScope';
 
 // End-to-end HIL test: drives the production state-layer connection finish flow
 // against real silicon. The most valuable thing this catches is the slice-3
@@ -26,7 +25,7 @@ describe('state.wireUpConnection — end-to-end against real hardware (HIL)', ()
   });
 
   afterAll(async () => {
-    endConnection();
+    activeSession()?.dispose();
     if (close) await close();
   });
 

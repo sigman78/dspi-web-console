@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setLevellerMasks, toggleLevellerDetectorChannel, toggleLevellerApplyChannel, setLoudnessOutputMask, toggleLoudnessOutputChannel, setCrossfeedOutputPairs, toggleCrossfeedOutputPair, setOutputDelay, setOutputGain, setOutputEnabled, setOutputPairEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setI2sClockMode, setI2sClockPinMode, setI2sBckPinSlave, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource, setUartControlConfig, setPsybassEnabled, setPsybassCutoff, setPsybassHarmonics, setPsybassDrive, setPsybassCharacter, setPsybassOriginal, setPsybassOutputMask, togglePsybassOutputChannel, setUpmixEnabled, setUpmixCenterMode, setUpmixSurroundMode, setUpmixStrength, setUpmixCenterWidth, setUpmixCorrThreshold, setUpmixAttack, setUpmixRelease, setUpmixDetectorHpf, setUpmixSurroundDelay, setUpmixSurroundHpf, setUpmixSurroundLpf, setUpmixDecorr, setUpmixPresence } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './deviceService';
-import { connection, notices, clearNotices, dispatch, makeReadySession, activeSession } from '@/state';
+import { connection, notices, clearNotices, dispatch, mintConnId, makeReadySession, activeSession, resetAppState } from '@/state';
 import { bootMock } from './boot';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -27,7 +27,7 @@ import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { deriveCapabilities } from '@/protocol/capabilities';
 
 import { flushAllWrites as flushAllWritesFor } from './writes.svelte';
-import { beginConnection, endConnection } from './connectionScope';
+import { ConnectionScope } from './connectionScope';
 
 // Test wrappers: the write lanes are now session-scoped, but these cleanup/flush
 // call sites always target whatever session is active. Resolve it here so the
@@ -98,10 +98,11 @@ function makeSnapshot(platform: PlatformType = PlatformType.RP2350) {
 //   - the rAF polling loop started by bootMock → wireUpConnection → startPolling.
 //     poll's tick() re-arms requestAnimationFrame unconditionally; with fake
 //     timers faking rAF, a later vi.runAllTimersAsync() churns it forever and
-//     aborts with "10000 timers, assuming an infinite loop". endConnection() ends it.
+//     aborts with "10000 timers, assuming an infinite loop". Disposing the
+//     active session aborts its scope, which stops the loop.
 //   - device/writes scrub-lane registry + inflight counter.
 //     cancelWrites() (calls s.writes.cancel()) clears lanes and drops tokens.
-afterEach(() => { endConnection(); cancelWrites(); dispatch({ t: 'disconnected' }); });
+afterEach(() => { activeSession()?.dispose(); cancelWrites(); resetAppState(); });
 
 // Each beforeEach/test installs a ready session (dispatch synced) BEFORE touching
 // the mirror, so this resolves the active session's MirrorState — the same
@@ -112,7 +113,7 @@ describe('actions wiring', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk({ masterVolumeDb: 0 }));
-    dispatch({ t: 'synced', session: makeReadySession({} as never) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession({} as never) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
 
@@ -128,7 +129,7 @@ describe('actions wiring', () => {
       setMasterVolume: setMasterVolumeFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     const snap = fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: -12 })));
     if (snap.userVolume) snap.userVolume.mute = false;
     liveMirror().replaceCurrent(snap);
@@ -154,13 +155,19 @@ describe('actions wiring', () => {
     // Mirror production wiring: the session shares the connection's scope (as
     // wireUpConnection does), and the transport-disconnect listener is
     // registered on that same scope (as attachTransportListeners is in
-    // createBoundDevice). endConnection() -- fired by the disconnect handler
-    // -- aborts both the listener and the session's write lanes in one shot,
+    // createBoundDevice). scope.abort() -- fired by the disconnect handler --
+    // tears down both the listener and the session's write lanes in one shot,
     // which is what drops the pending coalescer write.
-    const scope = beginConnection();
-    dispatch({ t: 'synced', session: makeReadySession(device, scope) });
+    // Drop the describe-level default session first: this test wants exactly
+    // one record in the registry, so a disconnect has no dormant record to
+    // promote (the outer beforeEach's stub session has no live device behind
+    // it, and promoting it would start real loops against it).
+    resetAppState();
+    const id = mintConnId();
+    const scope = new ConnectionScope();
+    dispatch({ t: 'synced', id, session: makeReadySession(device, scope) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: 0 }))));
-    scope.onTeardown(attachTransportListeners(transport, device));
+    scope.onTeardown(attachTransportListeners(transport, id, scope));
 
     setMasterVolume(activeSession()!, -9);    // sends immediately
     setMasterVolume(activeSession()!, -6);    // parks behind the in-flight send
@@ -182,7 +189,7 @@ describe('actions wiring', () => {
       setFilter: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => validBulk),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
 
     const sourceId = liveMirror().current!.channels[0].id;
@@ -208,7 +215,7 @@ describe('setEqFilter', () => {
       setFilter: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => {
@@ -241,7 +248,7 @@ describe('setEqFilter', () => {
       setFilter: vi.fn(async (_ch: number, _band: number, f: FilterParams) => { calls.push({ ...f }); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     // Edit frequency, let it settle, then edit gain built from the updated band
     // (the same {...current, ...patch} merge BandRow performs on commit).
@@ -371,7 +378,7 @@ describe('thin verbs: device call + mirror patch (parameterized)', () => {
       ...c.makeStub(fn),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
 
     const before = c.read();
@@ -396,7 +403,7 @@ describe('leveller channel masks (toggle logic)', () => {
       setLevellerMasks: masksFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
   });
   afterEach(() => { vi.useRealTimers(); });
@@ -441,7 +448,7 @@ describe('loudness output mask (toggle logic)', () => {
       setLoudnessOutputMask: maskFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
   });
   afterEach(() => { vi.useRealTimers(); });
@@ -476,7 +483,7 @@ describe('psybass output mask (toggle logic)', () => {
       setPsybassMask: maskFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
   });
   afterEach(() => { vi.useRealTimers(); });
@@ -511,7 +518,7 @@ describe('crossfeed output-pair mask (toggle logic)', () => {
       setCrossfeedOutputPairs: maskFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
   });
   afterEach(() => { vi.useRealTimers(); });
@@ -545,7 +552,7 @@ describe('setChannelName', () => {
       setChannelName: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => {
@@ -598,7 +605,7 @@ describe('setChannelName', () => {
       setChannelName: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(rp2040Device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(rp2040Device) });
     liveMirror().replaceCurrent(makeSnapshot(PlatformType.RP2040));
     liveMirror().current!.outputs.find((o) => o.wireIndex === 4)!.enabled = true;
 
@@ -643,7 +650,7 @@ describe('actions — master volume mode', () => {
   it('saveMasterVolumeBaseline warns on flash failure and stays silent on success', async () => {
     clearNotices();
     const failDevice = initializedDevice({ saveMasterVolume: async () => false });
-    dispatch({ t: 'synced', session: makeReadySession(failDevice) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(failDevice) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     saveMasterVolumeBaseline(activeSession()!);
     await flushAllWrites();
@@ -651,7 +658,7 @@ describe('actions — master volume mode', () => {
 
     clearNotices();
     const okDevice = initializedDevice({ saveMasterVolume: async () => true });
-    dispatch({ t: 'synced', session: makeReadySession(okDevice) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(okDevice) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     saveMasterVolumeBaseline(activeSession()!);
     await flushAllWrites();
@@ -664,7 +671,7 @@ describe('actions — master volume mode', () => {
     const failDevice = initializedDevice({
       saveOutputConfig: async () => ({ ok: false as const, code: 4 as any, message: 'preset flash write error' }),
     });
-    dispatch({ t: 'synced', session: makeReadySession(failDevice) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(failDevice) });
     saveOutputConfigBaseline(activeSession()!);
     await flushAllWrites();
     expect(notices.list.some((n) => n.kind === 'warn' && /output config/i.test(n.message))).toBe(true);
@@ -673,7 +680,7 @@ describe('actions — master volume mode', () => {
     const okDevice = initializedDevice({
       saveOutputConfig: async () => ({ ok: true as const, value: undefined }),
     });
-    dispatch({ t: 'synced', session: makeReadySession(okDevice) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(okDevice) });
     saveOutputConfigBaseline(activeSession()!);
     await flushAllWrites();
     expect(notices.list).toHaveLength(0);
@@ -694,7 +701,7 @@ describe('bulk writes: toggles', () => {
       setOutputMute: setOutputMuteFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     const slot = liveMirror().current!.outputs[0].wireIndex;
     const before = liveMirror().current!.outputs[0].muted;
@@ -712,7 +719,7 @@ describe('bulk writes: toggles', () => {
       setOutputEnable: vi.fn(async (slot: number, enabled: boolean) => { calls.push([slot, enabled]); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
 
     setOutputPairEnabled(activeSession()!, 0, true);
@@ -730,7 +737,7 @@ describe('bulk writes: toggles', () => {
       setOutputEnable: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     liveMirror().current!.outputs.find((o) => o.wireIndex === 2)!.enabled = true;
     liveMirror().current!.outputs.find((o) => o.wireIndex === 3)!.enabled = false;
@@ -748,7 +755,7 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dispatch({ t: 'synced', session: makeReadySession({} as never) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession({} as never) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => { vi.useRealTimers(); });
@@ -759,7 +766,7 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     const route = liveMirror().current!.routes[0];
     const before = route.enabled;
@@ -782,7 +789,7 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     const route = liveMirror().current!.routes[0];
     const beforeEnabled = route.enabled;
@@ -803,7 +810,7 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     const route = liveMirror().current!.routes[0];
     const before = route.invert;
@@ -824,7 +831,7 @@ describe('setBandBypass', () => {
       setBandBypass: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => { vi.useRealTimers(); });
@@ -835,7 +842,7 @@ describe('setBandBypass', () => {
       setBandBypass: setBandBypassFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     const ch = liveMirror().current!.channels[0].id;
     const n = liveMirror().current!.channels[0].filters.length;
@@ -862,7 +869,7 @@ describe('setDacHwMute', () => {
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
     const bulk = parseBulkParams(makeBulk());
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
     return { sent, setDacHwMuteFn };
   }
@@ -917,7 +924,7 @@ describe('setDacHwMute', () => {
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
     const bulk = parseBulkParams(makeBulk());
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
     clearNotices();
     setDacHwMute(activeSession()!, { enabled: true, pin: 6 });
@@ -942,7 +949,7 @@ describe('setInputSource', () => {
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
     const bulk = parseBulkParams(makeBulk());
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
     clearNotices();
     setInputSource(activeSession()!, AudioInputSource.Spdif);
@@ -961,7 +968,7 @@ describe('setInputSource', () => {
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
     const bulk = parseBulkParams(makeBulk());
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
     activeSession()!.telemetry.spdifRxStatus = {
       state: 2, inputSource: 1, lockCount: 3, lossCount: 0,
@@ -1055,7 +1062,7 @@ describe('setUartControlConfig', () => {
     const device = initializedDevice({
       setUartControlConfig: vi.fn(async () => setResult),
     });
-    dispatch({ t: 'synced', session: makeReadySession(device) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     return activeSession()!;
   }
 

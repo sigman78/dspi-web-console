@@ -4,7 +4,7 @@ import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
-import { dispatch, makeReadySession, type ReadySession } from '@/state';
+import { dispatch, mintConnId, makeReadySession, resetAppState, type ReadySession } from '@/state';
 import { startPolling } from './poll';
 import type { LoopClock } from '@/utils';
 
@@ -25,11 +25,11 @@ function manualClock(): LoopClock & { fire(): void; armed(): boolean } {
 // the now session-scoped telemetry resolves to a fresh per-test StatusStore.
 function connect(device: DspDevice): ReadySession {
   const session = makeReadySession(device);
-  dispatch({ t: 'synced', session });
+  dispatch({ t: 'synced', id: mintConnId(), session });
   return session;
 }
 function teardown(): void {
-  dispatch({ t: 'disconnected' });
+  resetAppState();
 }
 
 function pollDevice(status = { peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 }) {
