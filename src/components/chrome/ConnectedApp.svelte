@@ -13,9 +13,10 @@
   import ControlTab from '@/components/tabs/ControlTab.svelte';
 
   const { session }: { session: ReadySession } = $props();
-  // The session is stable while this component is mounted (a disconnect unmounts
-  // ConnectedApp; a reconnect mounts a fresh instance with the new session), so
-  // setting context once at init is correct -- the non-reactive capture is intended.
+  // The session is stable while this component is mounted: App keys this
+  // component on the session, so a disconnect, a reconnect, or a device switch
+  // each mount a fresh instance. Setting context once at init is therefore
+  // correct -- the non-reactive capture is intended.
   // svelte-ignore state_referenced_locally
   setContext(SESSION_KEY, session);
 

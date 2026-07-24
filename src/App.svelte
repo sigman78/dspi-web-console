@@ -52,7 +52,9 @@
       <div class="work">
         <ChannelRail />
         <div class="content">
-          <ConnectedApp session={appState.session} />
+          {#key appState.session}
+            <ConnectedApp session={appState.session} />
+          {/key}
         </div>
       </div>
     {:else}

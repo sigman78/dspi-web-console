@@ -9,6 +9,7 @@ import {
   settings, reconcileSelectedChannel, selectionVisibilityOf,
   pushNotice,
   dispatch, makeReadySession, activeSession, activeRecord, recordOf, mintConnId,
+  clearAdoptFailure,
   type ReadySession, type ConnId, type DeviceRecord,
 } from '@/state';
 import { Log, errMessage } from '@/utils';
@@ -218,6 +219,11 @@ export async function wireUpConnection(
     // this is the only chance to see who was active a moment ago.
     const prev = activeRecord();
     dispatch({ t: 'synced', id, session, activate: opts?.activate });
+    // A later successful adoption of the same physical device retires its
+    // stale badge. Badges are keyed by the USB descriptor serial; firmware
+    // GetSerial (info.serial) reads back the same value -- the equivalence
+    // recordBySerial and the reconnect dedup already rely on.
+    clearAdoptFailure(session.info.serial);
     const rec = recordOf(id);
     // The loop-stop teardown covers this record's whole life, not just this
     // activation: a record that starts dormant can be activated later via

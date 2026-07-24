@@ -10,6 +10,7 @@ import { attachTransportListeners, wireUpConnection, activateSession } from './d
 import { ConnectionScope } from './connectionScope';
 import {
   settings, dispatch, mintConnId, activeRecord, recordBySerial, adoptionInProgress,
+  noteAdoptFailure, pushNotice,
   type ConnId, type SessionErrorKind,
 } from '@/state';
 import { Log, errMessage } from '@/utils';
@@ -26,11 +27,11 @@ export function webUsbUnsupportedReason(): string | null {
   return WebUsbTransport.unsupportedReason();
 }
 
-// Maps a connect failure onto session status. Certain failures get a distinct
-// kind so the hero can tailor its advice: UnsupportedFirmware -> upgrade prompt,
-// DeviceInUse (interface claim failed) -> "device in use" causes. Everything else
-// falls through to the generic diagnostics panel.
-export function reportConnectError(id: ConnId, err: unknown): void {
+// Maps a connect failure onto a message + kind. Certain failures get a distinct
+// kind so the hero (or a badge) can tailor its advice: UnsupportedFirmware ->
+// upgrade prompt, DeviceInUse (interface claim failed) -> "device in use"
+// causes. Everything else falls through to the generic diagnostics panel.
+export function classifyConnectError(err: unknown): { message: string; errorKind: SessionErrorKind } {
   const message = errMessage(err);
   let errorKind: SessionErrorKind = null;
   if (err instanceof UnsupportedFirmware || err instanceof UnsupportedDevicePacket) {
@@ -38,6 +39,11 @@ export function reportConnectError(id: ConnId, err: unknown): void {
   } else if (err instanceof DeviceInUse) {
     errorKind = 'device-in-use';
   }
+  return { message, errorKind };
+}
+
+export function reportConnectError(id: ConnId, err: unknown): void {
+  const { message, errorKind } = classifyConnectError(err);
   dispatch({ t: 'failed', id, message, errorKind });
 }
 
@@ -85,10 +91,17 @@ export async function connectRequested(): Promise<void> {
   if (adoptionInProgress() || inflightBoot) return;
   const id = mintConnId();
   const scope = new ConnectionScope();
+  // Set once the picker resolves: distinguishes a post-picker adoption
+  // failure (badge- or notice-worthy while a device is live) from a picker
+  // cancel, which must surface nothing.
+  let devicePicked = false;
+  let pickedSerial: string | null = null;
   try {
     dispatch({ t: 'requested', id });
     const transport = new WebUsbTransport();
     const picked = await transport.requestDevice();
+    devicePicked = true;
+    pickedSerial = picked.serialNumber ?? null;
     const existing = picked.serialNumber ? recordBySerial(picked.serialNumber) : null;
     if (existing) {
       // We already hold this device's session -- switch to it instead of
@@ -106,6 +119,14 @@ export async function connectRequested(): Promise<void> {
     Log.error('connect', 'connect failed', err);
     if (!scope.aborted) {
       reportConnectError(id, err);
+      // While another device stays live the failed dispatch above is
+      // invisible by design; give the failure a badge, or a notice when the
+      // picked device carried no serial to key a badge by.
+      if (devicePicked && activeRecord() !== null) {
+        const classified = classifyConnectError(err);
+        if (pickedSerial !== null) noteAdoptFailure({ serial: pickedSerial, ...classified });
+        else pushNotice('error', `Couldn't connect the picked device: ${classified.message}`);
+      }
       scope.abort();
     }
     throw err;
@@ -149,16 +170,17 @@ export async function bootMockFleet(profiles: readonly MockProfile[]): Promise<v
 // activation), the rest register dormant (unless the loop leaves nothing
 // active, in which case the reducer activates the next one anyway). A
 // per-device failure is logged and skipped -- a partial fleet must not paint
-// the error hero over a device that did come up; the hero only appears if the
-// whole loop adopts zero sessions, reusing the last failure's id/error so
-// reportConnectError can still classify it (unsupported firmware, in-use, ...).
+// the error hero over a device that did come up. The hero only appears if the
+// whole loop adopts zero sessions (reusing the last failure's id/error so
+// reportConnectError can still classify it); otherwise each failure that
+// named a serial gets a badge instead.
 async function adoptGrantedDevices(granted: readonly USBDevice[]): Promise<void> {
   // Captured before adopting: the first device's own adoption already
   // overwrites settings.lastSerial (it becomes active by default), so reading
   // it after the loop would always name whichever device came up first.
   const wantSerial = settings.lastSerial;
   let adopted = 0;
-  let lastFailure: { id: ConnId; err: unknown } | null = null;
+  const failures: { id: ConnId; serial: string | null; err: unknown }[] = [];
   for (const [i, usbDevice] of granted.entries()) {
     const id = mintConnId();
     const scope = new ConnectionScope();
@@ -170,10 +192,18 @@ async function adoptGrantedDevices(granted: readonly USBDevice[]): Promise<void>
     } catch (err) {
       Log.error('connect', 'boot adoption failed', err);
       scope.abort();
-      lastFailure = { id, err };
+      failures.push({ id, serial: usbDevice.serialNumber ?? null, err });
     }
   }
-  if (adopted === 0 && lastFailure) reportConnectError(lastFailure.id, lastFailure.err);
+  if (adopted === 0) {
+    const last = failures.at(-1);
+    if (last) reportConnectError(last.id, last.err);
+  } else {
+    for (const f of failures) {
+      if (f.serial !== null) noteAdoptFailure({ serial: f.serial, ...classifyConnectError(f.err) });
+      else pushNotice('error', `A granted device failed to connect: ${errMessage(f.err)}`);
+    }
+  }
   const target = wantSerial ? recordBySerial(wantSerial) : null;
   if (target && activeRecord()?.id !== target.id) await activateSession(target.id);
 }
@@ -207,10 +237,16 @@ async function adoptReconnectedDevice(usbDevice: USBDevice): Promise<void> {
     await wireUpConnection(device, scope, id, { activate: false });
   } catch (err) {
     if (!scope.aborted) scope.abort();
-    // With nothing else live, wireUpConnection's own failed dispatch has
-    // already painted the hero -- unclassified. Re-report so the tailored
-    // advice (device in use, unsupported firmware) isn't lost on this path.
-    if (activeRecord() === null) reportConnectError(id, err);
+    if (activeRecord() === null) {
+      // With nothing else live, wireUpConnection's own failed dispatch has
+      // already painted the hero -- unclassified. Re-report so the tailored
+      // advice (device in use, unsupported firmware) isn't lost on this path.
+      reportConnectError(id, err);
+    } else if (usbDevice.serialNumber) {
+      noteAdoptFailure({ serial: usbDevice.serialNumber, ...classifyConnectError(err) });
+    } else {
+      pushNotice('error', `Couldn't reconnect a device: ${errMessage(err)}`);
+    }
     throw err;
   }
 }

@@ -13,6 +13,7 @@ import type { NotifyWaiters } from '@/runtime/notifyWaiters';
 import type { CommandQueue } from '@/runtime/commandQueue';
 import type { WireMirror } from '@/runtime/wireMirror';
 import { SvelteMap } from 'svelte/reactivity';
+import { clearAdoptFailures } from './adoptFailures.svelte';
 
 export interface PresetClipboard {
   slot: PresetSlot;
@@ -227,4 +228,5 @@ export function resetAppState(): void {
   _sessions.clear();
   _activeId = null;
   _attempt = { kind: 'idle' };
+  clearAdoptFailures();
 }
