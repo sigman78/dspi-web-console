@@ -36,7 +36,7 @@ npm run dev          # http://localhost:5173
 
 Then open the URL in Chrome/Edge, click **Connect**, and pick your DSPi.
 
-Got more than one DSPi? The sidebar's **DEVICES** list shows every unit the site has permission for: **+** adopts another one via the USB picker, and clicking a row switches control to it (with a full device-state resync on every switch). Devices not currently selected stay connected and claimed — the native app can't steal them — but only the active one is polled.
+**Multiple devices:** manage them from the sidebar's **DEVICES** list — **+** adopts another unit, clicking a row switches to it (full resync). Inactive units stay claimed; only the active one is polled.
 
 ### No hardware? Use the mock device.
 
