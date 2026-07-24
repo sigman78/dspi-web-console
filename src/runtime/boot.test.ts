@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { bootReal, bootMock, connectRequested, registerNavigatorReconnect } from './boot';
+import { bootReal, bootMock, bootMockFleet, connectRequested, registerNavigatorReconnect } from './boot';
 import { MockTransport } from '@/transport/MockTransport';
 import {
   dispatch, mintConnId, settings, connection, resetAppState,
@@ -335,5 +335,29 @@ describe('registerNavigatorReconnect — failure surfacing', () => {
     expect(connection.error).toBeNull();
     expect(recordBySerial('BUSY')).toBeNull();
     expect(activeRecord()?.session.info.serial).toBe('LIVE');
+  });
+});
+
+describe('bootMockFleet', () => {
+  it('boots one device per profile: first active, rest dormant, distinct serials', async () => {
+    await bootMockFleet([
+      { name: 'latest', platform: 'rp2350', opts: {} },
+      { name: 'legacy', platform: 'rp2040', opts: { wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } } },
+    ]);
+
+    expect(sessionRecords().size).toBe(2);
+    const first = recordBySerial('MOCK-RP2350-1')!;
+    const second = recordBySerial('MOCK-RP2040-2')!;
+    expect(activeRecord()?.id).toBe(first.id);
+    expect(first.loops).not.toBeNull();
+    expect(second.loops).toBeNull();
+  });
+
+  it('a single profile keeps the plain bootMock behavior (default serial, active)', async () => {
+    await bootMockFleet([{ name: 'latest', platform: 'rp2350', opts: {} }]);
+
+    expect(sessionRecords().size).toBe(1);
+    expect(activeRecord()?.loops).not.toBeNull();
+    expect(activeRecord()?.session.info.serial).not.toContain('MOCK-RP2350-1');
   });
 });

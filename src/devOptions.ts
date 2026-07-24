@@ -5,6 +5,9 @@
 //       legacy            wire V10 / fw 1.1.4
 //       multi             latest + 8ch I2S input + 3 S/PDIF inputs
 //       v<N>              exact bulk/wire format N (v10, v16..vMAX)
+//     a comma list (?mock=latest,legacy) boots one device per token: the
+//     first is active, the rest adopt dormant -- the multi-device fleet
+//     harness, no hardware needed
 //     &chip=rp2040|rp2350  hardware flavor, combinable with any profile
 //                          (default rp2350; rp2040 = 5 outputs, fewer pairs)
 //   ?hero               force the connecting hero even while connected

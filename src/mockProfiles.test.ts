@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveMockProfile } from './mockProfiles';
+import { resolveMockProfile, resolveMockProfiles } from './mockProfiles';
 import * as Wire from './protocol/wireTypes';
 
 describe('resolveMockProfile', () => {
@@ -63,5 +63,25 @@ describe('resolveMockProfile', () => {
 
   it('defaults to rp2350 when the chip is absent', () => {
     expect(resolveMockProfile('multi', null).platform).toBe('rp2350');
+  });
+});
+
+describe('resolveMockProfiles', () => {
+  it('splits a comma list into one profile per token', () => {
+    const list = resolveMockProfiles('latest,legacy');
+    expect(list).toHaveLength(2);
+    expect(list[0].name).toBe('latest');
+    expect(list[1].name).toBe('legacy');
+    expect(list[1].opts.wireVersion).toBe(10);
+  });
+
+  it('a single token yields the same profile as resolveMockProfile', () => {
+    expect(resolveMockProfiles('multi')).toEqual([resolveMockProfile('multi')]);
+  });
+
+  it('empty entries resolve to latest, and chip applies to every entry', () => {
+    const list = resolveMockProfiles(',legacy', 'rp2040');
+    expect(list[0].name).toBe('latest');
+    expect(list.every((p) => p.platform === 'rp2040')).toBe(true);
   });
 });

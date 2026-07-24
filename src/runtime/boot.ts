@@ -1,6 +1,7 @@
 import { DspDevice, UnsupportedFirmware, UnsupportedDevicePacket } from '@/device/DspDevice';
 import type { DspTransport } from '@/transport/DspTransport';
 import { MockTransport, type MockOptions } from '@/transport/MockTransport';
+import type { MockProfile } from '@/mockProfiles';
 import { matchesDspi, WebUsbTransport, DeviceInUse } from '@/transport/WebUsbTransport';
 import { withTimeout } from '@/transport/withTimeout';
 import { withWireMonitor } from '@/transport/withWireMonitor';
@@ -128,6 +129,19 @@ export async function bootMock(
       scope.abort();
     }
     throw err;
+  }
+}
+
+// Boots one mock device per profile -- the ?mock=<a>,<b> fleet harness. First
+// active, rest dormant, mirroring adoptGrantedDevices. Serials are made
+// distinct per index (only when there is more than one device) so registry
+// dedup and per-device UI stay unambiguous.
+export async function bootMockFleet(profiles: readonly MockProfile[]): Promise<void> {
+  for (const [i, p] of profiles.entries()) {
+    const opts = profiles.length > 1
+      ? { serial: `MOCK-${p.platform.toUpperCase()}-${i + 1}`, ...p.opts }
+      : p.opts;
+    await bootMock(p.platform, opts, i === 0 ? undefined : { activate: false });
   }
 }
 
