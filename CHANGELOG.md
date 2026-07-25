@@ -6,6 +6,14 @@ from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
 this project follows [Semantic Versioning](https://semver.org/) (currently in the
 `0.x` pre-1.0 line — minor versions may include breaking changes).
 
+## [0.8.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.7.0...dspi-console-web-v0.8.0) (2026-07-25)
+
+
+### Features
+
+* **app:** adopt all granted devices at boot, add-device and reconnect plumbing (M2) ([#92](https://github.com/sigman78/dspi-web-console/issues/92)) ([8a248c7](https://github.com/sigman78/dspi-web-console/commit/8a248c769942c08f322d7dfd64fbaec58ceffb61))
+* **app:** device switcher chips, add-device button, adopt-failure badges (M3) ([#93](https://github.com/sigman78/dspi-web-console/issues/93)) ([dba9d79](https://github.com/sigman78/dspi-web-console/commit/dba9d79616f5e0a5dae9c3bd4e67997690067de8))
+
 ## [0.7.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.6.0...dspi-console-web-v0.7.0) (2026-07-22)
 
 
