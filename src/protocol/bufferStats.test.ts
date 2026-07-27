@@ -11,7 +11,8 @@ describe('parseBufferStats', () => {
     sequence: 12345,
     spdif: [
       { consumerFree: 1, consumerPrepared: 2, consumerPlaying: 1,
-        consumerFillPct: 60, consumerMinFillPct: 30, consumerMaxFillPct: 80 },
+        consumerFillPct: 60, consumerMinFillPct: 30, consumerMaxFillPct: 80,
+        fillCentiPct: 10250 },
     ],
     pdm: {
       dmaFillPct: 50, dmaMinFillPct: 25, dmaMaxFillPct: 75,
@@ -37,7 +38,13 @@ describe('parseBufferStats', () => {
     expect(p.spdif[0]).toEqual({
       consumerFree: 1, consumerPrepared: 2, consumerPlaying: 1,
       consumerFillPct: 60, consumerMinFillPct: 30, consumerMaxFillPct: 80,
+      fillCentiPct: 10250,
     });
+  });
+
+  it('reads fillCentiPct as 0 from firmware that left the bytes reserved', () => {
+    const legacy = synthesizeBufferStats({ spdif: [{ consumerFillPct: 60 }] });
+    expect(parseBufferStats(legacy)!.spdif[0].fillCentiPct).toBe(0);
   });
 
   it('parses PDM block', () => {

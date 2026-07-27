@@ -988,7 +988,8 @@ export class MockTransport implements DspTransport {
           sequence: 1,
           spdif: [
             { consumerFree: 1, consumerPrepared: 2, consumerPlaying: 1,
-              consumerFillPct: 60, consumerMinFillPct: 30, consumerMaxFillPct: 80 },
+              consumerFillPct: 60, consumerMinFillPct: 30, consumerMaxFillPct: 80,
+              fillCentiPct: 6013 },
           ],
           pdm: {
             dmaFillPct: 50, dmaMinFillPct: 25, dmaMaxFillPct: 75,

@@ -11,6 +11,7 @@ export interface SpdifBufferStats {
   consumerFillPct: number;
   consumerMinFillPct: number;
   consumerMaxFillPct: number;
+  fillCentiPct: number; // 0.01% units, 0 on firmware without it
 }
 
 export interface PdmBufferStats {
