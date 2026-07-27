@@ -39,6 +39,7 @@ export function synthesizeBufferStats(opts: SynthesizeBufferStatsOptions = {}): 
 const SPDIF_FIELDS: (keyof SpdifBufferStats)[] = [
   'consumerFree', 'consumerPrepared', 'consumerPlaying',
   'consumerFillPct', 'consumerMinFillPct', 'consumerMaxFillPct',
+  'fillCentiPct',
 ];
 
 const PDM_FIELDS: (keyof PdmBufferStats)[] = [

@@ -432,7 +432,9 @@ export const SetFilterPacketQp = struct({
 });
 
 // 8-byte SPDIF DMA consumer stats (one entry inside `BufferStats`).
-// Six u8 metrics + 2 reserved bytes for forward compatibility.
+// Six u8 metrics + a u16 sample-granular fill in 0.01% units on the same
+// 16-bucket scale as consumerFillPct (5000 = 50.00%; can exceed 100%).
+// Former reserved bytes: reads 0 on firmware without it.
 export const SpdifBufferStats = struct({
   consumerFree:       u8,
   consumerPrepared:   u8,
@@ -440,7 +442,7 @@ export const SpdifBufferStats = struct({
   consumerFillPct:    u8,
   consumerMinFillPct: u8,
   consumerMaxFillPct: u8,
-  _reserved:          reserved(2),
+  fillCentiPct:       u16,
 });
 
 // 8-byte PDM DMA + ring stats (one entry inside `BufferStats`).
