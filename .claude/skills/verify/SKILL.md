@@ -37,7 +37,10 @@ navigation (`#processing`) does NOT reload.
 
 Playwright MCP tools work well. Tabs: 01 OVERVIEW / 02 EQUALIZER / 03 MIXER /
 04 PROCESSING / 05 PRESETS / 06 SYSTEM / 07 CONTROL (07 hidden on V10).
-Processing panels: PR.01 CROSSFEED, PR.02 LOUDNESS, PR.03 LEVELLER.
+Processing panels: PR.01 CROSSFEED, PR.02 LOUDNESS, PR.03 LEVELLER,
+PR.04 PSYBASS, PR.05 STEREO UPMIXER (PR.04/PR.05 are newest-wire + RP2350
+gated — hidden on legacy and rp2040 profiles).
+System panels include SY.08 I2S CLOCK, SY.11 INPUT CONFIG, SY.12 BUFFER STATS.
 
 Gotchas:
 - Effect controls are disabled until the effect's enable switch is on AND connected.
