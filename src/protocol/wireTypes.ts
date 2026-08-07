@@ -494,6 +494,26 @@ export const I2sSlaveStatus = struct({
   _reserved:    reserved(3),
 });
 
+// 2-byte SetSysClock payload (0x40, fw overclock branch). vregSel 0xFF means
+// "use the mode's default voltage".
+export const SysClockRequest = struct({
+  mode:    u8,
+  vregSel: u8,
+});
+
+// 8-byte GetSysClock response (0x41). storedVregSel preserves the raw 0xFF
+// sentinel; liveVreg is always a concrete enum. fallbackActive means the
+// device crash-rebooted to safe mode 0 (latched until a power cycle or a
+// fresh SetSysClock).
+export const SysClockStatus = struct({
+  activeMode:     u8,
+  storedMode:     u8,
+  storedVregSel:  u8,
+  liveVreg:       u8,
+  fallbackActive: bool8,
+  _reserved:      reserved(3),
+});
+
 // 16-byte live stereo-upmixer status (GetUpmixStatus 0x4E, fw V25+, RP2350
 // only). parkedReason: 0 active / 1 disabled / 2 input not stereo / 3 rate
 // > 48 kHz -- narrowed to a domain enum in DspDevice. corr/balance are Q14

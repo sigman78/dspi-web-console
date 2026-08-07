@@ -63,6 +63,10 @@ export interface MockOptions {
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
 
+// Mode-default vreg enums, indexed by SysClockMode (fw sys_clock.c table):
+// VREG_VOLTAGE_1_15/1_20/1_30. Identical on RP2040 and RP2350.
+const SYS_CLOCK_DEFAULT_VREG = [12, 13, 15];
+
 // Control Surfaces caps tables, firmware capability format version 3
 // (control_surfaces.c s_caps / control_surfaces_nouns.c cs_noun_table).
 const MOCK_CS_CAPS: CsCaps = {
@@ -300,6 +304,12 @@ export class MockTransport implements DspTransport {
   #irLearnAutoComplete = false;
   #irLearnTimer: ReturnType<typeof setTimeout> | null = null;
   #irLearnDemoCount = 0;
+
+  // Selectable system clock (fw overclock branch, 0x40/0x41).
+  #sysClockStoredMode = 0;
+  #sysClockStoredVreg = 0xFF;
+  #sysClockActiveMode = 0;
+  #sysClockFallback = false;
 
   constructor(opts: MockOptions) {
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
@@ -996,6 +1006,16 @@ export class MockTransport implements DspTransport {
             ringFillPct: 70, ringMinFillPct: 40, ringMaxFillPct: 90,
           },
         });
+      case WireCmd.GetSysClock.code:
+        return Codec.encode(Wire.SysClockStatus, {
+          activeMode: this.#sysClockActiveMode,
+          storedMode: this.#sysClockStoredMode,
+          storedVregSel: this.#sysClockStoredVreg,
+          liveVreg: this.#sysClockStoredVreg === 0xFF
+            ? SYS_CLOCK_DEFAULT_VREG[this.#sysClockActiveMode]
+            : this.#sysClockStoredVreg,
+          fallbackActive: this.#sysClockFallback,
+        });
       default:
         return new Uint8Array(length);
     }
@@ -1063,6 +1083,24 @@ export class MockTransport implements DspTransport {
         // Mock applies immediately (no deferred main-loop apply to emulate).
         this.#mockState.inputConfig.i2sClockMode = Codec.decode(Codec.u8, data);
         return;
+      case WireCmd.SetSysClock.code: {
+        const req = Codec.decode(Wire.SysClockRequest, data);
+        if (req.mode >= SYS_CLOCK_DEFAULT_VREG.length) {
+          throw new Error('MockTransport: SetSysClock invalid mode (STALL)');
+        }
+        // VREG_VOLTAGE_1_50 (RP2350, POWMAN limit unlocked) / 1_30 (RP2040 max).
+        const ceiling = this.#platform === PlatformType.RP2350 ? 19 : 15;
+        const defaultVreg = SYS_CLOCK_DEFAULT_VREG[req.mode];
+        if (req.vregSel !== 0xFF && (req.vregSel < defaultVreg || req.vregSel > ceiling)) {
+          throw new Error('MockTransport: SetSysClock invalid vregSel (STALL)');
+        }
+        // Mock applies immediately (no deferred main-loop apply to emulate).
+        this.#sysClockStoredMode = req.mode;
+        this.#sysClockStoredVreg = req.vregSel;
+        this.#sysClockActiveMode = req.mode;
+        this.#sysClockFallback = false;
+        return;
+      }
       case WireCmd.SetInputRate.code: {
         const hz = Codec.decode(Codec.u32, data);
         if (hz === 44100 || hz === 48000 || hz === 96000) {

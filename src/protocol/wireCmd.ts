@@ -53,6 +53,10 @@ type CsIrCommandPayload = {
   protocol: number; value: number; step: number; code: number;
 };
 type LevellerMasksPayload = { detector: number; apply: number };
+type SysClockStatusPayload = {
+  activeMode: number; storedMode: number; storedVregSel: number;
+  liveVreg: number; fallbackActive: boolean;
+};
 type UpmixConfigPayload = {
   enabled: boolean; centerMode: number; surroundMode: number; presenceQ1: number;
   strengthPct: number; centerWidthPct: number; corrThresholdPct: number;
@@ -351,6 +355,14 @@ export const WireCmd = {
   // IN: 1-byte accept/reject, real result via GetCsStatus (last_slot 0xFF).
   CsSave:                { code: 0x9D } satisfies RawCmd,
   CsRevert:              { code: 0x9E } satisfies RawCmd,
+
+  // --- Selectable system clock (fw overclock branch; no wire/version gate yet). ---
+  // SET is deferred apply (firmware applies from the main loop around the PLL
+  // step), so a GET right after a SET may still report the old active mode.
+  // Firmware validates before staging and STALLs on mode >= 3 or an
+  // out-of-range vregSel; undervolting the target mode is rejected.
+  SetSysClock:           { code: 0x40, codec: Wire.SysClockRequest } satisfies WriteCmd<{ mode: number; vregSel: number }>,
+  GetSysClock:           { code: 0x41, codec: Wire.SysClockStatus } satisfies ReadCmd<SysClockStatusPayload>,
 } as const;
 
 // Helpers

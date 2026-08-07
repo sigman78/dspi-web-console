@@ -255,4 +255,21 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     });
   });
 
+  it('SysClockRequest is 2 bytes', () => {
+    expect(Codec.sizeOf(Wire.SysClockRequest)).toBe(2);
+    const bytes = Codec.encode(Wire.SysClockRequest, { mode: 1, vregSel: 0xFF });
+    expect(bytes).toEqual(Uint8Array.from([1, 0xFF]));
+  });
+
+  it('SysClockStatus is 8 bytes and round-trips its fields', () => {
+    expect(Codec.sizeOf(Wire.SysClockStatus)).toBe(8);
+    const bytes = Codec.encode(Wire.SysClockStatus, {
+      activeMode: 0, storedMode: 1, storedVregSel: 0xFF, liveVreg: 12, fallbackActive: true,
+    });
+    const back = Codec.decode(Wire.SysClockStatus, bytes);
+    expect(back).toMatchObject({
+      activeMode: 0, storedMode: 1, storedVregSel: 0xFF, liveVreg: 12, fallbackActive: true,
+    });
+  });
+
 });

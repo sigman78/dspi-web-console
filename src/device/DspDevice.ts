@@ -1142,6 +1142,27 @@ export class DspDevice {
     };
   }
 
+  // Selectable system clock (fw overclock branch, no capability gate yet --
+  // callers probe GetSysClock to detect support). SET is deferred apply
+  // (firmware applies from the main loop around the PLL step), so a GET
+  // right after a SET may still report the old active mode. vregSel is the
+  // raw platform vreg enum; 0xFF requests the mode's default voltage. An
+  // invalid mode or an out-of-range vregSel STALLs the transfer.
+  async setSysClock(mode: number, vregSel: number = domain.SYS_CLOCK_VREG_DEFAULT): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetSysClock, { mode: mode & 0xFF, vregSel: vregSel & 0xFF });
+  }
+
+  async getSysClock(): Promise<domain.SysClockStatus> {
+    const w = await proto.readCmd(this.transport, proto.WireCmd.GetSysClock);
+    return {
+      activeMode: domain.narrowSysClockMode(w.activeMode),
+      storedMode: domain.narrowSysClockMode(w.storedMode),
+      storedVregSel: w.storedVregSel,
+      liveVreg: w.liveVreg,
+      fallbackActive: w.fallbackActive,
+    };
+  }
+
   // BCK/LRCLK pin-sharing mode: 0 = unified (master+slave share one pair),
   // 1 = split (master + slave each get their own BCK/LRCLK pair).
   async setI2sClockPinMode(mode: number): Promise<Result<void, proto.PinConfigResult>> {

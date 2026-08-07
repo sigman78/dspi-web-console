@@ -591,6 +591,52 @@ describe('MockTransport — I2S slave clock (V21)', () => {
   });
 });
 
+describe('MockTransport — selectable system clock (fw overclock branch)', () => {
+  async function sysClockMock(): Promise<MockTransport> {
+    const t = new MockTransport({ platform: 'rp2350' });
+    await t.open();
+    return t;
+  }
+
+  it('SET mode 1 with default vreg round-trips to the mode default liveVreg', async () => {
+    const t = await sysClockMock();
+    await t.ctrlOut(WireCmd.SetSysClock.code, 0, Codec.encode(Wire.SysClockRequest, { mode: 1, vregSel: 0xFF }));
+    const status = Codec.decode(Wire.SysClockStatus, await t.ctrlIn(WireCmd.GetSysClock.code, 0, 8));
+    expect(status.storedMode).toBe(1);
+    expect(status.activeMode).toBe(1);
+    expect(status.storedVregSel).toBe(0xFF);
+    expect(status.liveVreg).toBe(13);   // VREG_VOLTAGE_1_20, mode 1's default
+  });
+
+  it('an explicit vregSel above the mode default round-trips into liveVreg', async () => {
+    const t = await sysClockMock();
+    await t.ctrlOut(WireCmd.SetSysClock.code, 0, Codec.encode(Wire.SysClockRequest, { mode: 1, vregSel: 15 }));
+    const status = Codec.decode(Wire.SysClockStatus, await t.ctrlIn(WireCmd.GetSysClock.code, 0, 8));
+    expect(status.storedVregSel).toBe(15);
+    expect(status.liveVreg).toBe(15);
+  });
+
+  it('rejects mode 3 (out of range) and leaves stored state unchanged', async () => {
+    const t = await sysClockMock();
+    await expect(
+      t.ctrlOut(WireCmd.SetSysClock.code, 0, Codec.encode(Wire.SysClockRequest, { mode: 3, vregSel: 0xFF })),
+    ).rejects.toThrow();
+    const status = Codec.decode(Wire.SysClockStatus, await t.ctrlIn(WireCmd.GetSysClock.code, 0, 8));
+    expect(status.storedMode).toBe(0);
+    expect(status.activeMode).toBe(0);
+  });
+
+  it('rejects an undervolted vregSel (below the mode default) and leaves stored state unchanged', async () => {
+    const t = await sysClockMock();
+    await expect(
+      t.ctrlOut(WireCmd.SetSysClock.code, 0, Codec.encode(Wire.SysClockRequest, { mode: 1, vregSel: 12 })),
+    ).rejects.toThrow();
+    const status = Codec.decode(Wire.SysClockStatus, await t.ctrlIn(WireCmd.GetSysClock.code, 0, 8));
+    expect(status.storedMode).toBe(0);
+    expect(status.storedVregSel).toBe(0xFF);
+  });
+});
+
 describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
   async function v18Mock(platform: 'rp2040' | 'rp2350' = 'rp2350', spdifInputsEnabled?: number): Promise<MockTransport> {
     const t = new MockTransport({
