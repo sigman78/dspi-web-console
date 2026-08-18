@@ -51,6 +51,20 @@ export async function fetchCtrlIfaceInfo(s: ReadySession): Promise<void> {
   }
 }
 
+// Best-effort probe for the selectable system clock (fw overclock branch).
+// There is no capability flag for this feature -- support is discovered by
+// attempting GetSysClock itself, so an unsupported device (STALL/error) is
+// expected and left quiet: status stays null, which IS the unsupported
+// signal the panel gates on.
+export async function fetchSysClock(s: ReadySession): Promise<void> {
+  try {
+    s.sysClock.status = await s.queue.run(() => s.device.getSysClock());
+  } catch (err) {
+    s.sysClock.status = null;
+    Log.info('sysClock', 'probe failed (unsupported firmware)', err);
+  }
+}
+
 // Minimum GetCsCaps format version this console understands (section 11.1 of
 // the spec adds the v3 IR/preview tail, but the v2 preview model -- event/
 // target/index, units, dirty/save/revert -- is the floor this panel needs).
@@ -254,6 +268,7 @@ export async function wireUpConnection(
     await fetchPresetInfo(session);
     await fetchCtrlIfaceInfo(session);
     await fetchControlSurfaces(session);
+    await fetchSysClock(session);
     Log.info('sync', 'connected', {
       platform: session.mirror.current?.platform.name,
       wire: device.capabilities.wire,

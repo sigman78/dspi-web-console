@@ -4,6 +4,7 @@ import { StatusStore } from './telemetry.svelte';
 import { createPresetsState } from './presets.svelte';
 import { createCtrlIfacesState } from './ctrlIfaces.svelte';
 import { createControlSurfacesState } from './controlSurfaces.svelte';
+import { createSysClockState } from './sysClock.svelte';
 import { createStagingState } from './staging.svelte';
 import { MirrorState } from './mirror.svelte';
 import { LinkHealth } from './linkHealth.svelte';
@@ -27,6 +28,7 @@ export function makeReadySession(device: DspDevice, scope: ConnectionScope = new
   const presets = createPresetsState();
   const ctrlIfaces = createCtrlIfacesState();
   const controlSurfaces = createControlSurfacesState();
+  const sysClock = createSysClockState();
   const staging = createStagingState();
   const mirror = new MirrorState();
   const health = new LinkHealth();
@@ -43,7 +45,7 @@ export function makeReadySession(device: DspDevice, scope: ConnectionScope = new
   });
   const session: ReadySession = {
     device, info: device.info, hardware: device.hardware, signal,
-    copySource, telemetry, presets, ctrlIfaces, controlSurfaces, staging, mirror, health, writes, notifyWaiters, queue, wireMirror,
+    copySource, telemetry, presets, ctrlIfaces, controlSurfaces, sysClock, staging, mirror, health, writes, notifyWaiters, queue, wireMirror,
     get alive() { return !scope.aborted; },
     dispose() { scope.abort(); },
   };

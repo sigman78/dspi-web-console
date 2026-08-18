@@ -11,6 +11,9 @@
 //     &chip=rp2040|rp2350  hardware flavor, combinable with any profile
 //                          (default rp2350; rp2040 = 5 outputs, fewer pairs)
 //   ?hero               force the connecting hero even while connected
+//   ?sysclock=fallback  boot the mock system clock crash-fallen-back (stored
+//                       mode 2, active safe mode 0) to demo the fallback banner;
+//                       no-op below wire V26 (the mock STALLs the opcodes there)
 //   ?log=0              silence the diagnostic logger (errors still log)
 //   ?log=wire           additionally trace every wire message
 //
@@ -42,6 +45,10 @@ export function mockChip(): 'rp2040' | 'rp2350' | null {
 
 export function heroOverride(): boolean {
   return params()?.has('hero') ?? false;
+}
+
+export function mockSysClockFallback(): boolean {
+  return params()?.get('sysclock') === 'fallback';
 }
 
 export function logSilenced(): boolean {

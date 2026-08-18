@@ -5,6 +5,7 @@ import type { StatusStore } from './telemetry.svelte';
 import type { PresetsState } from './presets.svelte';
 import type { CtrlIfacesState } from './ctrlIfaces.svelte';
 import type { ControlSurfacesState } from './controlSurfaces.svelte';
+import type { SysClockState } from './sysClock.svelte';
 import type { StagingState } from './staging.svelte';
 import type { MirrorState } from './mirror.svelte';
 import type { LinkHealth } from './linkHealth.svelte';
@@ -41,6 +42,9 @@ export interface ReadySession {
   readonly ctrlIfaces: CtrlIfacesState;
   // V16-only (capabilities.features.controlSurfaces); stays all-null on V10.
   readonly controlSurfaces: ControlSurfacesState;
+  // Selectable system clock (fw overclock branch). No capability flag -- a
+  // null status after the connect-time probe IS the unsupported signal.
+  readonly sysClock: SysClockState;
   // Pending heavy device-config edits (input source, I2S/S/PDIF pins, MCK/BCK,
   // output type), staged here until PendingChangesBar's APPLY commits them.
   readonly staging: StagingState;

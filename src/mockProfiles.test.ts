@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { resolveMockProfile, resolveMockProfiles } from './mockProfiles';
+import { describe, it, expect, afterEach } from 'vitest';
+import { resolveMockProfile, resolveMockProfiles, activeMockProfiles } from './mockProfiles';
 import * as Wire from './protocol/wireTypes';
 
 describe('resolveMockProfile', () => {
@@ -83,5 +83,21 @@ describe('resolveMockProfiles', () => {
     const list = resolveMockProfiles(',legacy', 'rp2040');
     expect(list[0].name).toBe('latest');
     expect(list.every((p) => p.platform === 'rp2040')).toBe(true);
+  });
+});
+
+describe('activeMockProfiles', () => {
+  afterEach(() => window.history.replaceState({}, '', '/'));
+
+  it('carries no sysClockBoot override by default', () => {
+    window.history.replaceState({}, '', '/?mock');
+    expect(activeMockProfiles()?.[0].opts.sysClockBoot).toBeUndefined();
+  });
+
+  it('seeds every profile with a crash-fallback boot on ?sysclock=fallback', () => {
+    window.history.replaceState({}, '', '/?mock=latest,legacy&sysclock=fallback');
+    const profiles = activeMockProfiles();
+    expect(profiles).toHaveLength(2);
+    expect(profiles?.every((p) => p.opts.sysClockBoot?.storedMode === 2 && p.opts.sysClockBoot?.fallback === true)).toBe(true);
   });
 });
