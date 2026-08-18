@@ -13,6 +13,7 @@ import {
   CHANNEL_NAME_MAX_LEN,
   FilterType, QP_DEFAULT,
 } from '@/domain';
+import * as domain from '@/domain';
 import * as Clamp from '@/domain/clamp';
 import {
   type ReadySession,
@@ -1066,6 +1067,55 @@ export function setDacHwMute(s: ReadySession, patch: Partial<DacHwMute>): void {
     }
     s.mirror.requestReconcile(false);
   }, { queued: false });
+}
+
+// Selectable system clock (fw overclock branch). SET is a deferred apply --
+// firmware persists first, then tears down and rebuilds audio around the
+// vreg+PLL step -- so a GET right after SET may still report the old
+// activeMode. The confirm loop polls a few times so the panel shows live
+// progress instead of a single stale readback; it stops early once the
+// device reports the requested mode active. Not part of the bulk packet, so
+// a failure never resyncs the mirror -- the command() lane's own error
+// handling (toast + health.noteFail) is all a STALL needs.
+const SYS_CLOCK_APPLY_MS = 500;
+const SYS_CLOCK_CONFIRM_ATTEMPTS = 3;
+
+export async function applySysClock(s: ReadySession, mode: domain.SysClockMode, vregSel: number): Promise<void> {
+  s.sysClock.busy = true;
+  try {
+    await command(s, 'set system clock', async () => {
+      const d = s.device;
+      await s.queue.run(() => d.setSysClock(mode, vregSel));
+      let status: domain.SysClockStatus | null = null;
+      for (let i = 0; i < SYS_CLOCK_CONFIRM_ATTEMPTS; i++) {
+        await new Promise((r) => setTimeout(r, SYS_CLOCK_APPLY_MS));
+        status = await s.queue.run(() => d.getSysClock());
+        if (s.alive) s.sysClock.status = status;
+        // A fresh SET clears the fallback latch, so a readback that still
+        // carries it predates the apply -- keep polling.
+        if (status.activeMode === mode && !status.fallbackActive) break;
+      }
+      return status;
+    }, (status) => {
+      if (status && status.activeMode !== mode && !status.fallbackActive) {
+        pushNotice('warn', 'System clock switch has not been confirmed yet — the device may still be applying it.');
+      }
+    }, { queued: false });
+  } finally {
+    s.sysClock.busy = false;
+  }
+}
+
+// Manual re-read for the panel's REFRESH affordance -- the escape hatch when
+// a deferred apply outlasted the confirm loop and the stored status went
+// stale (there is no notify event or poll cadence for the system clock).
+export async function refreshSysClock(s: ReadySession): Promise<void> {
+  try {
+    const status = await s.queue.run(() => s.device.getSysClock());
+    if (s.alive) s.sysClock.status = status;
+  } catch (e) {
+    pushNotice('error', `System clock read failed: ${errMessage(e)}`);
+  }
 }
 
 // M6 — DAC HW mute test pulse (~1s). Fire-and-forget.

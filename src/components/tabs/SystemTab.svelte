@@ -8,6 +8,7 @@
   import I2sClockPanel from '@/components/system/I2sClockPanel.svelte';
   import LgSoundSyncPanel from '@/components/system/LgSoundSyncPanel.svelte';
   import DacHwMutePanel from '@/components/system/DacHwMutePanel.svelte';
+  import SysClockPanel from '@/components/system/SysClockPanel.svelte';
   import BufferStatsPanel from '@/components/system/BufferStatsPanel.svelte';
   import { chKey } from '@/styles/palette';
   import { clearClips } from '@/runtime';
@@ -34,6 +35,7 @@
     <I2sClockPanel />
     <LgSoundSyncPanel />
     <DacHwMutePanel />
+    <SysClockPanel />
   </div>
 
   <div class="col">

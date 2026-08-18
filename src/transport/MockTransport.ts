@@ -24,6 +24,7 @@ import {
   dbToQ8, percentToQ8, qToQ8, validateCsBinding, validateCsIrCommand,
   PRESET_SLOT_COUNT, FilterType,
   defaultInputName,
+  SYS_CLOCK_MODE_DEFAULT_VREG, SYS_CLOCK_VREG_CEILING_RP2040, SYS_CLOCK_VREG_CEILING_RP2350,
   type FilterParams,
   type CrossPoint, type OutputState,
   type UartControlConfig, type I2cControlConfig,
@@ -59,13 +60,18 @@ export interface MockOptions {
   // ~1.5 s with a distinct NEC code, standing in for a press on an imaginary
   // remote. Off by default so tests drive learns explicitly.
   irLearnAutoComplete?: boolean;
+  // Boot the selectable system clock pre-seeded instead of the fw power-on
+  // default (mode 0, no crash history). `fallback: true` simulates a device
+  // that crash-rebooted into safe mode 0 after storedMode failed to boot --
+  // the panel's fallback banner is otherwise unreachable without hardware.
+  sysClockBoot?: { storedMode: number; storedVregSel?: number; fallback?: boolean };
 }
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
 
-// Mode-default vreg enums, indexed by SysClockMode (fw sys_clock.c table):
-// VREG_VOLTAGE_1_15/1_20/1_30. Identical on RP2040 and RP2350.
-const SYS_CLOCK_DEFAULT_VREG = [12, 13, 15];
+// Selectable system clock lands on the wire at V26; earlier profiles must
+// STALL both opcodes so the console's probe-failure path is exercisable.
+const MIN_SYS_CLOCK_WIRE = 26;
 
 // Control Surfaces caps tables, firmware capability format version 3
 // (control_surfaces.c s_caps / control_surfaces_nouns.c cs_noun_table).
@@ -371,6 +377,16 @@ export class MockTransport implements DspTransport {
           for (let i = 2; i <= n; i++) mask |= 1 << (i - 2);
           this.#mockState.inputConfig.spdifRxEnabledExtP1 = mask + 1;
         }
+      }
+    }
+    if (opts.sysClockBoot) {
+      this.#sysClockStoredMode = opts.sysClockBoot.storedMode;
+      this.#sysClockStoredVreg = opts.sysClockBoot.storedVregSel ?? 0xFF;
+      if (opts.sysClockBoot.fallback) {
+        this.#sysClockActiveMode = 0;
+        this.#sysClockFallback = true;
+      } else {
+        this.#sysClockActiveMode = opts.sysClockBoot.storedMode;
       }
     }
   }
@@ -1007,12 +1023,17 @@ export class MockTransport implements DspTransport {
           },
         });
       case WireCmd.GetSysClock.code:
+        if (this.#wireVersion < MIN_SYS_CLOCK_WIRE) {
+          throw new Error('MockTransport: GetSysClock unsupported (STALL)');
+        }
         return Codec.encode(Wire.SysClockStatus, {
           activeMode: this.#sysClockActiveMode,
           storedMode: this.#sysClockStoredMode,
           storedVregSel: this.#sysClockStoredVreg,
-          liveVreg: this.#sysClockStoredVreg === 0xFF
-            ? SYS_CLOCK_DEFAULT_VREG[this.#sysClockActiveMode]
+          // A fallback boot runs safe mode 0 at its default voltage -- the
+          // stored (failed) vreg selection is not what is live.
+          liveVreg: this.#sysClockFallback || this.#sysClockStoredVreg === 0xFF
+            ? SYS_CLOCK_MODE_DEFAULT_VREG[this.#sysClockActiveMode]
             : this.#sysClockStoredVreg,
           fallbackActive: this.#sysClockFallback,
         });
@@ -1084,13 +1105,15 @@ export class MockTransport implements DspTransport {
         this.#mockState.inputConfig.i2sClockMode = Codec.decode(Codec.u8, data);
         return;
       case WireCmd.SetSysClock.code: {
+        if (this.#wireVersion < MIN_SYS_CLOCK_WIRE) {
+          throw new Error('MockTransport: SetSysClock unsupported (STALL)');
+        }
         const req = Codec.decode(Wire.SysClockRequest, data);
-        if (req.mode >= SYS_CLOCK_DEFAULT_VREG.length) {
+        if (req.mode >= SYS_CLOCK_MODE_DEFAULT_VREG.length) {
           throw new Error('MockTransport: SetSysClock invalid mode (STALL)');
         }
-        // VREG_VOLTAGE_1_50 (RP2350, POWMAN limit unlocked) / 1_30 (RP2040 max).
-        const ceiling = this.#platform === PlatformType.RP2350 ? 19 : 15;
-        const defaultVreg = SYS_CLOCK_DEFAULT_VREG[req.mode];
+        const ceiling = this.#platform === PlatformType.RP2350 ? SYS_CLOCK_VREG_CEILING_RP2350 : SYS_CLOCK_VREG_CEILING_RP2040;
+        const defaultVreg = SYS_CLOCK_MODE_DEFAULT_VREG[req.mode];
         if (req.vregSel !== 0xFF && (req.vregSel < defaultVreg || req.vregSel > ceiling)) {
           throw new Error('MockTransport: SetSysClock invalid vregSel (STALL)');
         }

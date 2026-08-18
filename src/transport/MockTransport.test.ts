@@ -593,10 +593,60 @@ describe('MockTransport — I2S slave clock (V21)', () => {
 
 describe('MockTransport — selectable system clock (fw overclock branch)', () => {
   async function sysClockMock(): Promise<MockTransport> {
-    const t = new MockTransport({ platform: 'rp2350' });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
     return t;
   }
+
+  it('GetSysClock STALLs on a pre-V26 mock (the console\'s probe-failure path)', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
+    await t.open();
+    await expect(t.ctrlIn(WireCmd.GetSysClock.code, 0, 8)).rejects.toThrow();
+  });
+
+  it('SetSysClock STALLs on a pre-V26 mock', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
+    await t.open();
+    await expect(
+      t.ctrlOut(WireCmd.SetSysClock.code, 0, Codec.encode(Wire.SysClockRequest, { mode: 1, vregSel: 0xFF })),
+    ).rejects.toThrow();
+  });
+
+  it('sysClockBoot seeds a crash-fallback boot (stored mode kept, safe mode active)', async () => {
+    const t = new MockTransport({
+      platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 5 },
+      sysClockBoot: { storedMode: 2, fallback: true },
+    });
+    await t.open();
+    const status = Codec.decode(Wire.SysClockStatus, await t.ctrlIn(WireCmd.GetSysClock.code, 0, 8));
+    expect(status.activeMode).toBe(0);
+    expect(status.storedMode).toBe(2);
+    expect(status.fallbackActive).toBe(true);
+  });
+
+  it('a fallback boot reports the safe-mode default liveVreg, not the failed stored selection', async () => {
+    const t = new MockTransport({
+      platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 5 },
+      sysClockBoot: { storedMode: 2, storedVregSel: 17, fallback: true },
+    });
+    await t.open();
+    const status = Codec.decode(Wire.SysClockStatus, await t.ctrlIn(WireCmd.GetSysClock.code, 0, 8));
+    expect(status.storedVregSel).toBe(17);
+    expect(status.liveVreg).toBe(12);   // mode 0's default, the only thing actually running
+  });
+
+  it('a successful SET after a fallback boot clears fallbackActive', async () => {
+    const t = new MockTransport({
+      platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 5 },
+      sysClockBoot: { storedMode: 2, fallback: true },
+    });
+    await t.open();
+    await t.ctrlOut(WireCmd.SetSysClock.code, 0, Codec.encode(Wire.SysClockRequest, { mode: 1, vregSel: 0xFF }));
+    const status = Codec.decode(Wire.SysClockStatus, await t.ctrlIn(WireCmd.GetSysClock.code, 0, 8));
+    expect(status.fallbackActive).toBe(false);
+    expect(status.activeMode).toBe(1);
+    expect(status.storedMode).toBe(1);
+  });
 
   it('SET mode 1 with default vreg round-trips to the mode default liveVreg', async () => {
     const t = await sysClockMock();

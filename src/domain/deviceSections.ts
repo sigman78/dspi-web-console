@@ -169,6 +169,25 @@ export function narrowSysClockMode(n: number): SysClockMode {
 // vregSel sentinel meaning "use the mode's default voltage".
 export const SYS_CLOCK_VREG_DEFAULT = 0xFF;
 
+// Clock speed in MHz, indexed by SysClockMode.
+export const SYS_CLOCK_MODE_MHZ = [307.2, 384, 480] as const;
+
+// Mode-default vreg enums, indexed by SysClockMode (fw sys_clock.c table):
+// VREG_VOLTAGE_1_15/1_20/1_30. Identical on RP2040 and RP2350.
+export const SYS_CLOCK_MODE_DEFAULT_VREG = [12, 13, 15] as const;
+
+// Platform vreg ceilings: VREG_VOLTAGE_1_30 (RP2040 max) / VREG_VOLTAGE_1_50
+// (RP2350, POWMAN limit unlocked). Enums from BENCH_MIN up (RP2350 only) are
+// flagged bench-only by the fw spec -- stable but outside validated silicon.
+export const SYS_CLOCK_VREG_CEILING_RP2040 = 15;
+export const SYS_CLOCK_VREG_CEILING_RP2350 = 19;
+export const SYS_CLOCK_VREG_BENCH_MIN = 16;
+
+// Raw vreg enum -> volts (vreg_voltage_t spacing: 50 mV/step, 0.55 V base).
+export function sysClockVregVolts(sel: number): number {
+  return 0.55 + 0.05 * sel;
+}
+
 // Live system-clock status. activeMode != storedMode means a crash-fallback
 // boot (device rebooted to safe mode 0 after a failed overclock) or an
 // unconfirmed runtime switch is in force.

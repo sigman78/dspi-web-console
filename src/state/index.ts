@@ -11,5 +11,6 @@ export * from './telemetry.svelte';
 export * from './notices.svelte';
 export * from './ctrlIfaces.svelte';
 export * from './controlSurfaces.svelte';
+export * from './sysClock.svelte';
 export * from './staging.svelte';
 export * from './autoEq.svelte';

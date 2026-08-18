@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mockToken, mockChip, heroOverride, logSilenced, wireLogEnabled } from './devOptions';
+import { mockToken, mockChip, heroOverride, logSilenced, wireLogEnabled, mockSysClockFallback } from './devOptions';
 
 afterEach(() => window.history.replaceState({}, '', '/'));
 
@@ -51,6 +51,20 @@ describe('heroOverride', () => {
   it('is false when ?hero is absent', () => {
     window.history.replaceState({}, '', '/');
     expect(heroOverride()).toBe(false);
+  });
+});
+
+describe('mockSysClockFallback', () => {
+  it('is true on ?sysclock=fallback', () => {
+    window.history.replaceState({}, '', '/?mock&sysclock=fallback');
+    expect(mockSysClockFallback()).toBe(true);
+  });
+
+  it('is false when ?sysclock is absent or has another value', () => {
+    window.history.replaceState({}, '', '/?mock');
+    expect(mockSysClockFallback()).toBe(false);
+    window.history.replaceState({}, '', '/?mock&sysclock=other');
+    expect(mockSysClockFallback()).toBe(false);
   });
 });
 

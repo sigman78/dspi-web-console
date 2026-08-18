@@ -859,7 +859,7 @@ describe('I2S slave-clock commands (fw V21)', () => {
 
 describe('selectable system clock (fw overclock branch)', () => {
   async function dev() {
-    const t = new MockTransport({ platform: 'rp2350' });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 5 } });
     return await DspDevice.create(t);
   }
 
