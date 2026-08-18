@@ -144,3 +144,38 @@ export interface I2sSlaveStatus {
   measuredHz: number;
   slipCount: number;
 }
+
+// Selectable system clock (fw overclock branch, REQ_SET/GET_SYS_CLOCK
+// 0x40/0x41). No wire/version gate yet -- support is probed via GetSysClock.
+export const SysClockMode = {
+  Mhz307p2: 0,   // firmware default / safe mode
+  Mhz384:   1,
+  Mhz480:   2,
+} as const;
+export type SysClockMode = (typeof SysClockMode)[keyof typeof SysClockMode];
+
+// Forward-compat: an unrecognised future mode byte reads as the safe default.
+export function narrowSysClockMode(n: number): SysClockMode {
+  switch (n) {
+    case SysClockMode.Mhz307p2:
+    case SysClockMode.Mhz384:
+    case SysClockMode.Mhz480:
+      return n;
+    default:
+      return SysClockMode.Mhz307p2;
+  }
+}
+
+// vregSel sentinel meaning "use the mode's default voltage".
+export const SYS_CLOCK_VREG_DEFAULT = 0xFF;
+
+// Live system-clock status. activeMode != storedMode means a crash-fallback
+// boot (device rebooted to safe mode 0 after a failed overclock) or an
+// unconfirmed runtime switch is in force.
+export interface SysClockStatus {
+  activeMode: SysClockMode;
+  storedMode: SysClockMode;
+  storedVregSel: number;
+  liveVreg: number;
+  fallbackActive: boolean;
+}

@@ -17,6 +17,7 @@ import {
   ChannelId,
   AudioInputSource,
   SpdifInputState,
+  SysClockMode,
   type PresetSlot,
 } from '@/domain';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -853,6 +854,29 @@ describe('I2S slave-clock commands (fw V21)', () => {
     expect(await d.getI2sClockPinMode()).toBe(0);
     expect((await d.setI2sClockPinMode(1)).ok).toBe(true);
     expect(await d.getI2sClockPinMode()).toBe(1);
+  });
+});
+
+describe('selectable system clock (fw overclock branch)', () => {
+  async function dev() {
+    const t = new MockTransport({ platform: 'rp2350' });
+    return await DspDevice.create(t);
+  }
+
+  test('setSysClock round-trips to the narrowed domain shape', async () => {
+    const d = await dev();
+    await d.setSysClock(2, 15);
+    const status = await d.getSysClock();
+    expect(status.activeMode).toBe(SysClockMode.Mhz480);
+    expect(status.storedMode).toBe(SysClockMode.Mhz480);
+    expect(status.fallbackActive).toBe(false);
+  });
+
+  test('setSysClock with the default arg sends the 0xFF sentinel', async () => {
+    const d = await dev();
+    await d.setSysClock(1);
+    const status = await d.getSysClock();
+    expect(status.storedVregSel).toBe(0xFF);
   });
 });
 
