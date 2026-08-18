@@ -217,6 +217,10 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
     lgSoundSync: { enabled: bulk.lgSoundSync.enabled, present: bulk.lgSoundSync.present, volume: bulk.lgSoundSync.volume, muted: bulk.lgSoundSync.muted },
     userVolume:  { volumeDb: bulk.userVolume.volumeDb, mute: bulk.userVolume.mute },
     dacHwMute:   { enabled: bulk.dacHwMute.enabled, activeLow: bulk.dacHwMute.activeLow, pin: bulk.dacHwMute.pin, holdMs: bulk.dacHwMute.holdMs, releaseMs: bulk.dacHwMute.releaseMs },
+    // ADAT lightpipe output comes from the V17 bulk section; the parser
+    // defaults it (disabled, pin 0) on pre-V17 packets, so this is always
+    // populated.
+    adat: { enabled: bulk.adat.enabled, pin: bulk.adat.pin },
   };
 }
 

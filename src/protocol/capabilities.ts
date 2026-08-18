@@ -61,6 +61,10 @@ export interface DeviceFeatures {
   // Control Surfaces: physical controls/indicators on user GPIOs, configured
   // via 0x84-0x87. Same 1.1.5 vintage as controlInterfaces.
   readonly controlSurfaces: boolean;
+  // ADAT lightpipe bulk output, streaming the 8 post-gain output channels
+  // (0xCA-0xCE + WireBulkParams.adat). Wire V17+, RP2350 only -- same
+  // platform gate as adatInput below.
+  readonly adatOutput: boolean;
   // Per-input leveller channel masks (SetLevellerMasks 0xDE + the 20-byte
   // WireLevellerConfig). Wire V18 only -- V16/V17 (incl. 1.1.5-beta3) have the
   // 16-byte leveller with no masks, so the mask controls must stay hidden.
@@ -168,6 +172,7 @@ export function deriveCapabilities(input: {
       activeInputCount:  isV16,
       controlInterfaces: isV16,
       controlSurfaces:   isV16,
+      adatOutput:         wireVersion >= 17 && platformId === 1,
       // Masks are a V18 addition, not just V16-generation -- key on the exact
       // wire version so V16/V17 devices (e.g. 1.1.5-beta3) don't expose them.
       levellerMasks:     wireVersion >= 18,

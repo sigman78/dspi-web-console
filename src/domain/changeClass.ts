@@ -31,6 +31,8 @@ export const CHANGE_CLASS: Record<SnapshotChange['kind'], ChangeClass> = {
   // console mute or an OS slider move, and it has no editor for this axis.
   userVolume:         'runtime-status',
   dacHwMute:          'preset-content',
+  // ADAT bulk section bundles enable + pin like dacHwMute; same classification.
+  adat:               'preset-content',
   lgSoundSyncEnabled: 'preset-content',
   lgSoundSyncStatus:  'runtime-status',
   i2s:                'output-config',

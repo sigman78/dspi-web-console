@@ -8,7 +8,7 @@ import type { I2sConfig } from './platform';
 import type { OutputModel, RouteModel } from './mixer';
 import type { FilterParams } from './filter';
 import type { Loudness, Crossfeed, Leveller, Psybass, Upmix } from './processing';
-import type { InputConfig, LgSoundSync, UserVolume, DacHwMute } from './deviceSections';
+import type { InputConfig, LgSoundSync, UserVolume, DacHwMute, AdatOutputConfig } from './deviceSections';
 import { BAND_GAIN_STEP_DB, FREQ_STEP_HZ, Q_STEP } from './eqLimits';
 
 // Half the relevant UI step: wire f32 round-trip jitter can never reach it,
@@ -50,6 +50,7 @@ export type SnapshotChange =
   | { kind: 'spdifExt';      value: { spdifRxPinExt: number[]; spdifExtEnabled: boolean[] } }
   | { kind: 'userVolume';    value: UserVolume }
   | { kind: 'dacHwMute';     value: DacHwMute }
+  | { kind: 'adat';          value: AdatOutputConfig }
   | { kind: 'lgSoundSyncEnabled'; value: boolean }
   | { kind: 'lgSoundSyncStatus';  value: { present: boolean; volume: number; muted: boolean } }
   | { kind: 'i2s';           value: I2sConfig }
@@ -179,6 +180,10 @@ function dacHwMuteDiffers(a: DacHwMute, b: DacHwMute): boolean {
       || a.releaseMs !== b.releaseMs;
 }
 
+function adatDiffers(a: AdatOutputConfig, b: AdatOutputConfig): boolean {
+  return a.enabled !== b.enabled || a.pin !== b.pin;
+}
+
 function i2sDiffers(a: I2sConfig, b: I2sConfig): boolean {
   return a.bckPin !== b.bckPin
       || a.mckPin !== b.mckPin
@@ -247,6 +252,7 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
   diffInputConfig(a.inputConfig, b.inputConfig, out);
   if (userVolumeDiffers(a.userVolume, b.userVolume)) out.push({ kind: 'userVolume', value: b.userVolume });
   if (dacHwMuteDiffers(a.dacHwMute, b.dacHwMute))    out.push({ kind: 'dacHwMute',  value: b.dacHwMute });
+  if (adatDiffers(a.adat, b.adat))                   out.push({ kind: 'adat', value: b.adat });
   diffLgSoundSync(a.lgSoundSync, b.lgSoundSync, out);
 
   if (i2sDiffers(a.i2s, b.i2s)) out.push({ kind: 'i2s', value: b.i2s });
@@ -275,6 +281,7 @@ type _Covered =
   | 'inputConfig'
   | 'userVolume'
   | 'dacHwMute'
+  | 'adat'
   | 'lgSoundSync'
   | 'i2s'
   | 'outputPins';

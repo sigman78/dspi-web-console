@@ -37,6 +37,7 @@ function makeSnap(over: {
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 0, ...over.i2s },
     inputConfig: { source: AudioInputSource.Usb, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0, ...over.inputConfig },
     dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
+    adat: { enabled: false, pin: 0 },
   };
 }
 

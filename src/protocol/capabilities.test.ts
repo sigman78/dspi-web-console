@@ -150,6 +150,14 @@ describe('deriveCapabilities — V16 feature flags', () => {
     expect(at(24, 1)).toBe(true);
   });
 
+  it('gates ADAT output on wire V17 + RP2350 (off on V16, off on RP2040, on for V17 RP2350)', () => {
+    const at = (v: number, len: number, platformId: number) =>
+      deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: v, payloadLength: len, platformId }).features.adatOutput;
+    expect(at(16, Wire.BULK_SIZE_V16, 1)).toBe(false);
+    expect(at(17, Wire.BULK_SIZE_V17, 0)).toBe(false);
+    expect(at(17, Wire.BULK_SIZE_V17, 1)).toBe(true);
+  });
+
   it('gates the upmixer on wire V25 + RP2350 (off through V24, off on RP2040, on for V25 RP2350)', () => {
     const at = (v: number, len: number, platformId: number) =>
       deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: v, payloadLength: len, platformId }).features.upmix;

@@ -157,6 +157,17 @@ export const WireCmd = {
   GetBufferStats:       { code: 0xB0 } satisfies RawCmd,
   ResetBufferStats:     { code: 0xB1 } satisfies RawCmd,
 
+  // --- V17 ADAT lightpipe bulk output (fw 1.1.5+, RP2350). Opcodes 0xCA-0xCE
+  // were I2S-DIN opcodes on a deleted fw branch; on fw >= 1.1.5 (wire >= 17)
+  // they are ADAT. Action-style: SETs carry the value in wValue and return a
+  // 1-byte PinConfigResult status (same convention as SetSpdifRxPin/
+  // SetI2sBckPin below).
+  SetAdatEnable:        { code: 0xCA } satisfies RawCmd,
+  GetAdatEnable:        { code: 0xCB, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
+  SetAdatPin:           { code: 0xCC } satisfies RawCmd,
+  GetAdatPin:           { code: 0xCD, codec: Codec.u8 } satisfies ReadCmd<number>,
+  GetAdatStatus:        { code: 0xCE, codec: Wire.AdatStatus },
+
   // Presets (0x90..0x9A). See docs/HW-PROFILES.md sec 1b.
   // GetPresetDir / GetPresetActive carry hand-rolled payloads; the others
   // are codec-driven or action-IN.

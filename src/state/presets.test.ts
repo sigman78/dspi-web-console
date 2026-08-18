@@ -33,6 +33,7 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
     lgSoundSync: { enabled: false, present: false, volume: 0, muted: false },
     userVolume:  { volumeDb: 0, mute: false },
     dacHwMute:   { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
+    adat:        { enabled: false, pin: 0 },
     ...overrides,
   };
 }

@@ -529,6 +529,19 @@ export const UpmixStatus = struct({
   _reserved:     reserved(4),
 });
 
+// 8-byte live ADAT lightpipe output status (GetAdatStatus 0xCE, fw V17+,
+// RP2350 only). `enabled` is persisted intent, `active` is running now.
+// `rateOk` reflects whether the device rate is 44.1/48 kHz -- the stream
+// auto-suspends outside that range and resumes when the rate returns.
+export const AdatStatus = struct({
+  enabled:     bool8,
+  active:      bool8,
+  pin:         u8,
+  rateOk:      bool8,
+  resyncCount: u16,
+  slipCount:   u16,
+});
+
 // Length of the raw IEC-60958 channel-status block (GetSpdifRxChStatus 0xE3).
 // No semantic codec -- surfaced verbatim as bytes.
 export const SPDIF_RX_CH_STATUS_LEN = 24;

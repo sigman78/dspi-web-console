@@ -73,6 +73,10 @@ const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, ga
 // STALL both opcodes so the console's probe-failure path is exercisable.
 const MIN_SYS_CLOCK_WIRE = 26;
 
+// ADAT lightpipe bulk output lands on the wire at V17; earlier profiles must
+// STALL the whole opcode range (0xCA-0xCE) -- a V16 device has no ADAT surface.
+const MIN_ADAT_WIRE = 17;
+
 // Control Surfaces caps tables, firmware capability format version 3
 // (control_surfaces.c s_caps / control_surfaces_nouns.c cs_noun_table).
 const MOCK_CS_CAPS: CsCaps = {
@@ -867,6 +871,56 @@ export class MockTransport implements DspTransport {
         this.#mockState.i2s.mckMultiplierEncoded = raw;
         return new Uint8Array([0x00]);
       }
+      // ADAT lightpipe bulk output (fw V17+, RP2350 only). 0xCA-0xCE were
+      // I2S-DIN opcodes on a deleted fw branch; on wire >= 17 they are ADAT.
+      // Below V17 the surface doesn't exist at all (STALL); on RP2040 (V17+)
+      // SETs return INVALID_OUTPUT and GETs read as zeros, matching firmware's
+      // platform gate on the lightpipe hardware.
+      case WireCmd.GetAdatEnable.code: {
+        if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: GetAdatEnable unsupported (STALL)');
+        if (this.#platform !== PlatformType.RP2350) return new Uint8Array(length);
+        return Codec.encode(Codec.bool8, this.#mockState.adat.enabled);
+      }
+      case WireCmd.SetAdatEnable.code: {
+        if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: SetAdatEnable unsupported (STALL)');
+        if (this.#platform !== PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
+        const enable = (value & 0xFF) !== 0;
+        if (!enable) {
+          this.#mockState.adat.enabled = false;
+          return new Uint8Array([0x00]);
+        }
+        // pin 0 (never explicitly configured) means "platform default".
+        const pin = this.#mockState.adat.pin || this.#defaultAdatPin();
+        if (!this.#isValidGpio(pin)) return new Uint8Array([0x01]);        // InvalidPin
+        if (this.#pinInUse(pin, 0xFF)) return new Uint8Array([0x02]);      // PinInUse
+        this.#mockState.adat.enabled = true;
+        return new Uint8Array([0x00]);
+      }
+      case WireCmd.GetAdatPin.code: {
+        if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: GetAdatPin unsupported (STALL)');
+        if (this.#platform !== PlatformType.RP2350) return new Uint8Array(length);
+        return Codec.encode(Codec.u8, this.#mockState.adat.pin);
+      }
+      case WireCmd.SetAdatPin.code: {
+        if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: SetAdatPin unsupported (STALL)');
+        if (this.#platform !== PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
+        let pin = value & 0xFF;
+        if (pin === Wire.Const.PIN_RESET_TO_DEFAULT) pin = this.#defaultAdatPin();
+        if (!this.#isValidGpio(pin)) return new Uint8Array([0x01]);        // InvalidPin
+        if (this.#pinInUse(pin, 0xFF)) return new Uint8Array([0x02]);      // PinInUse
+        this.#mockState.adat.pin = pin;
+        return new Uint8Array([0x00]);
+      }
+      case WireCmd.GetAdatStatus.code: {
+        if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: GetAdatStatus unsupported (STALL)');
+        if (this.#platform !== PlatformType.RP2350) return new Uint8Array(length);
+        const enabled = this.#mockState.adat.enabled;
+        // Mock always runs at 48 kHz -- rateOk (and thus active) is always true while enabled.
+        return Codec.encode(Wire.AdatStatus, {
+          enabled, active: enabled, pin: this.#mockState.adat.pin || this.#defaultAdatPin(),
+          rateOk: true, resyncCount: 0, slipCount: 0,
+        });
+      }
       case WireCmd.GetUartConfig.code: {
         if (!this.#isV16) return new Uint8Array(length);
         const c = this.#uartCtrl;
@@ -1519,6 +1573,11 @@ export class MockTransport implements DspTransport {
   // Contiguous block starting at PICO_I2S_RX_PIN_DEFAULT (pair 0 = GPIO 1).
   #defaultI2sRxPin(pair: number): number {
     return 1 + pair;
+  }
+
+  // PICO_ADAT_PIN (RP2350 only).
+  #defaultAdatPin(): number {
+    return 12;
   }
 
   #isValidGpio(pin: number): boolean {

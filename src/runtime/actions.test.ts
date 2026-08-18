@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setLevellerMasks, toggleLevellerDetectorChannel, toggleLevellerApplyChannel, setLoudnessOutputMask, toggleLoudnessOutputChannel, setCrossfeedOutputPairs, toggleCrossfeedOutputPair, setOutputDelay, setOutputGain, setOutputEnabled, setOutputPairEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setI2sClockMode, setI2sClockPinMode, setI2sBckPinSlave, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource, setUartControlConfig, setPsybassEnabled, setPsybassCutoff, setPsybassHarmonics, setPsybassDrive, setPsybassCharacter, setPsybassOriginal, setPsybassOutputMask, togglePsybassOutputChannel, setUpmixEnabled, setUpmixCenterMode, setUpmixSurroundMode, setUpmixStrength, setUpmixCenterWidth, setUpmixCorrThreshold, setUpmixAttack, setUpmixRelease, setUpmixDetectorHpf, setUpmixSurroundDelay, setUpmixSurroundHpf, setUpmixSurroundLpf, setUpmixDecorr, setUpmixPresence } from './actions';
+import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setLevellerMasks, toggleLevellerDetectorChannel, toggleLevellerApplyChannel, setLoudnessOutputMask, toggleLoudnessOutputChannel, setCrossfeedOutputPairs, toggleCrossfeedOutputPair, setOutputDelay, setOutputGain, setOutputEnabled, setOutputPairEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setI2sClockMode, setI2sClockPinMode, setI2sBckPinSlave, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource, setUartControlConfig, setPsybassEnabled, setPsybassCutoff, setPsybassHarmonics, setPsybassDrive, setPsybassCharacter, setPsybassOriginal, setPsybassOutputMask, togglePsybassOutputChannel, setUpmixEnabled, setUpmixCenterMode, setUpmixSurroundMode, setUpmixStrength, setUpmixCenterWidth, setUpmixCorrThreshold, setUpmixAttack, setUpmixRelease, setUpmixDetectorHpf, setUpmixSurroundDelay, setUpmixSurroundHpf, setUpmixSurroundLpf, setUpmixDecorr, setUpmixPresence, setAdatEnable, setAdatPin } from './actions';
 import { attachTransportListeners, factoryResetDevice } from './deviceService';
 import { connection, notices, clearNotices, dispatch, mintConnId, makeReadySession, activeSession, resetAppState } from '@/state';
 import { bootMock } from './boot';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
-import { parseBulkParams, PinConfigResult } from '@/protocol';
+import { parseBulkParams, PinConfigResult, Wire } from '@/protocol';
 import { Result } from '@/utils';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import {
@@ -1050,6 +1050,65 @@ describe('output config verbs', () => {
   it('factoryResetDevice toasts completion on success', async () => {
     await factoryResetDevice();
     expect(notices.list.some((n) => n.kind === 'info' && n.message.includes('Factory reset complete'))).toBe(true);
+  });
+});
+
+describe('ADAT output verbs (fw V17+, RP2350)', () => {
+  beforeEach(async () => {
+    await bootMock('rp2350', { wireVersion: 17, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    clearNotices();
+  });
+
+  it('setAdatEnable success patches draft.adat.enabled', async () => {
+    const ok = await setAdatEnable(activeSession()!, true);
+    expect(ok).toBe(true);
+    expect(liveMirror().current!.adat.enabled).toBe(true);
+  });
+
+  it('setAdatEnable(false) clears any stale adatStatus telemetry', async () => {
+    await setAdatEnable(activeSession()!, true);
+    activeSession()!.telemetry.adatStatus = { enabled: true, active: true, pin: 12, rateOk: true, resyncCount: 2, slipCount: 1 };
+    const ok = await setAdatEnable(activeSession()!, false);
+    expect(ok).toBe(true);
+    expect(liveMirror().current!.adat.enabled).toBe(false);
+    expect(activeSession()!.telemetry.adatStatus).toBeNull();
+  });
+
+  it('setAdatPin success patches draft.adat.pin', async () => {
+    const ok = await setAdatPin(activeSession()!, 20);
+    expect(ok).toBe(true);
+    expect(liveMirror().current!.adat.pin).toBe(20);
+  });
+
+  it('setAdatPin with the 0xFF reset sentinel skips the mirror patch and requests an eager reconcile', async () => {
+    activeSession()!.mirror.consumeReconcile(); // clear anything pending from boot
+    const pinBefore = liveMirror().current!.adat.pin;
+    const ok = await setAdatPin(activeSession()!, Wire.Const.PIN_RESET_TO_DEFAULT);
+    expect(ok).toBe(true);
+    expect(liveMirror().current!.adat.pin).toBe(pinBefore);
+    expect(activeSession()!.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
+  });
+});
+
+describe('ADAT output verbs — device rejection (RP2040 has no ADAT hardware)', () => {
+  beforeEach(async () => {
+    await bootMock('rp2040', { wireVersion: 17, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    clearNotices();
+  });
+
+  it('setAdatEnable leaves the mirror untouched and toasts the device message', async () => {
+    const ok = await setAdatEnable(activeSession()!, true);
+    expect(ok).toBe(false);
+    expect(liveMirror().current!.adat.enabled).toBe(false);
+    expect(notices.list).toHaveLength(1);
+  });
+
+  it('setAdatPin leaves the mirror untouched and toasts the device message', async () => {
+    const pinBefore = liveMirror().current!.adat.pin;
+    const ok = await setAdatPin(activeSession()!, 20);
+    expect(ok).toBe(false);
+    expect(liveMirror().current!.adat.pin).toBe(pinBefore);
+    expect(notices.list).toHaveLength(1);
   });
 });
 

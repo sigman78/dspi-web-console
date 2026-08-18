@@ -1173,6 +1173,39 @@ export class DspDevice {
     return proto.actionCmd(this.transport, proto.WireCmd.GetI2sClockPinMode, 0);
   }
 
+  // ADAT lightpipe bulk output (fw V17+, RP2350 only; gate on
+  // capabilities.features.adatOutput). Action-style: wValue carries the
+  // value, response is a PinConfigResult status byte. Enabling requires a
+  // valid pin.
+  async setAdatEnable(enabled: boolean): Promise<Result<void, proto.PinConfigResult>> {
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetAdatEnable, enabled ? 1 : 0));
+  }
+
+  async getAdatEnable(): Promise<boolean> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetAdatEnable);
+  }
+
+  // 0xFF (Wire.Const.PIN_RESET_TO_DEFAULT) resets to the platform default (GPIO 12).
+  async setAdatPin(pin: number): Promise<Result<void, proto.PinConfigResult>> {
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetAdatPin, pin & 0xFF));
+  }
+
+  async getAdatPin(): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetAdatPin);
+  }
+
+  async getAdatStatus(): Promise<domain.AdatOutputStatus> {
+    const w = await proto.readCmd(this.transport, proto.WireCmd.GetAdatStatus);
+    return {
+      enabled: w.enabled,
+      active: w.active,
+      pin: w.pin,
+      rateOk: w.rateOk,
+      resyncCount: w.resyncCount,
+      slipCount: w.slipCount,
+    };
+  }
+
   // External control interfaces (V16+, gate on capabilities.features.controlInterfaces):
   // a UART control transport and an I2C target, configured over 0xF5-0xF9.
 
