@@ -857,6 +857,41 @@ describe('I2S slave-clock commands (fw V21)', () => {
   });
 });
 
+describe('ADAT lightpipe output commands (fw V17+, RP2350)', () => {
+  async function dev() {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 17, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    return await DspDevice.create(t);
+  }
+
+  test('enable + pin round-trip', async () => {
+    const d = await dev();
+    expect((await d.setAdatPin(20)).ok).toBe(true);
+    expect(await d.getAdatPin()).toBe(20);
+    expect((await d.setAdatEnable(true)).ok).toBe(true);
+    expect(await d.getAdatEnable()).toBe(true);
+    expect((await d.setAdatEnable(false)).ok).toBe(true);
+    expect(await d.getAdatEnable()).toBe(false);
+  });
+
+  test('getAdatStatus reports enabled/active/pin once live', async () => {
+    const d = await dev();
+    await d.setAdatPin(20);
+    await d.setAdatEnable(true);
+    const status = await d.getAdatStatus();
+    expect(status.enabled).toBe(true);
+    expect(status.active).toBe(true);
+    expect(status.pin).toBe(20);
+    expect(status.rateOk).toBe(true);
+  });
+
+  test('setAdatPin rejection: RP2040 has no ADAT hardware', async () => {
+    const d = await DspDevice.create(new MockTransport({ platform: 'rp2040', wireVersion: 17, fwVersion: { major: 1, minor: 1, patch: 5 } }));
+    const r = await d.setAdatPin(20);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe(PinConfigResult.InvalidOutput);
+  });
+});
+
 describe('selectable system clock (fw overclock branch)', () => {
   async function dev() {
     const t = new MockTransport({ platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 5 } });

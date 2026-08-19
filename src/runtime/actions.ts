@@ -703,6 +703,34 @@ export function setI2sBckPinSlave(s: ReadySession, pin: number): Promise<boolean
   return writeChecked(s, 'set I2S BCK pin (slave)', () => s.device.setI2sBckPin(pin, 1), unlessPinReset(pin, () => patchI2s(s, (i) => ({ ...i, bckPinSlave: pin }))));
 }
 
+// ADAT lightpipe output (fw V17+, RP2350). Not one of the heavy staged
+// actions -- enabling/disabling the stream doesn't reset the audio pipeline
+// -- so it writes straight through writeChecked like setI2sClockPinMode above.
+export function setAdatEnable(s: ReadySession, enabled: boolean): Promise<boolean> {
+  return writeChecked(s, 'set ADAT enable', () => s.device.setAdatEnable(enabled), () => {
+    s.mirror.snapshot.adat = { ...s.mirror.snapshot.adat, enabled };
+    // Disabling stops the stream; drop the last-known counters so a later
+    // re-enable shows the "waiting for status" hint instead of frozen,
+    // pre-disable numbers.
+    if (!enabled) s.telemetry.adatStatus = null;
+  });
+}
+
+// A pin reset (0xFF) resolves to a real GPIO device-side, so there is
+// nothing truthful to patch optimistically -- same idiom as unlessPinReset:
+// skip the patch and force an eager reconcile so the resolved pin lands on
+// the next param-cadence tick instead of a mirrored sentinel briefly
+// rendering as GP255.
+export function setAdatPin(s: ReadySession, pin: number): Promise<boolean> {
+  return writeChecked(s, 'set ADAT pin', () => s.device.setAdatPin(pin), () => {
+    if (pin === Wire.Const.PIN_RESET_TO_DEFAULT) {
+      s.mirror.requestReconcile(true);
+    } else {
+      s.mirror.snapshot.adat = { ...s.mirror.snapshot.adat, pin };
+    }
+  });
+}
+
 export function setUserMute(s: ReadySession, mute: boolean): void {
   void write(s,
     () => s.device.setUserMute(mute),

@@ -47,6 +47,7 @@ function makeSnap(over: { source?: number; i2sClockMode?: number } = {}) {
       i2sClockMode: over.i2sClockMode ?? 0,
     },
     dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
+    adat: { enabled: false, pin: 0 },
   };
 }
 

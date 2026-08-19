@@ -96,6 +96,27 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
     if (event.kind === 'adatInputState') {
       return;
     }
+    // ADAT lightpipe OUTPUT stream state changed (start/stop, including
+    // rate-policy auto-suspend/resume). Patch the fields the event carries;
+    // the poll cadence's next tick refreshes rateOk/counts if the feature
+    // gate is still open. Not a reconcile trigger (isReconcileTrigger already
+    // excludes it) -- config changes ride PARAM_CHANGED at the adat_config
+    // bulk offsets instead.
+    if (event.kind === 'adatState') {
+      const prev = session.telemetry.adatStatus;
+      session.telemetry.adatStatus = {
+        enabled: event.enabled,
+        active: event.active,
+        pin: event.pin,
+        // An active stream implies the rate is fine; an inactive one is
+        // unknown from this event alone -- default true (never claim PARKED
+        // without evidence) and let the 1 Hz poll correct it within a second.
+        rateOk: event.active ? true : (prev?.rateOk ?? true),
+        resyncCount: prev?.resyncCount ?? 0,
+        slipCount: prev?.slipCount ?? 0,
+      };
+      return;
+    }
     // The device notification is the authority that the slot actually loaded.
     if (event.kind === 'presetLoaded') {
       const name = session.presets.names[event.slot] ?? '';

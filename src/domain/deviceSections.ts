@@ -64,6 +64,13 @@ export interface InputConfig {
   adatInputClockMode: number;  // 0 = master, 1 = slave
 }
 
+// V17 -- ADAT lightpipe bulk output config (RP2350 only). Persisted intent;
+// pin 0 means platform default (GPIO 12).
+export interface AdatOutputConfig {
+  enabled: boolean;
+  pin: number;
+}
+
 // V8 -- LG Sound Sync. Only `enabled` is host-configurable; the rest is
 // runtime state the device reports.
 export interface LgSoundSync {
@@ -142,6 +149,19 @@ export interface I2sSlaveStatus {
   lossCount: number;
   detectedRateHz: number;
   measuredHz: number;
+  slipCount: number;
+}
+
+// Live ADAT lightpipe output telemetry (GetAdatStatus 0xCE, fw V17+, RP2350
+// only). `enabled` is persisted intent, `active` is running now. `rateOk`
+// reflects whether the device rate is 44.1/48 kHz -- the stream auto-suspends
+// outside that range and resumes when the rate returns.
+export interface AdatOutputStatus {
+  enabled: boolean;
+  active: boolean;
+  pin: number;
+  rateOk: boolean;
+  resyncCount: number;
   slipCount: number;
 }
 

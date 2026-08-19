@@ -386,7 +386,7 @@ describe('startNotifyChannel', () => {
     stop();
   });
 
-  it('an ADAT_STATE event is a silent no-op (no reconcile)', async () => {
+  it('an ADAT_STATE event lands enabled/active/pin in telemetry directly, no reconcile', async () => {
     const { mock, session, mir } = await v10Setup();
     primeLive(mock);
     // enabled=1, active=1, pin=12
@@ -395,7 +395,22 @@ describe('startNotifyChannel', () => {
     const stop = startNotifyChannel(session, m.clock);
     await m.tick();   // idle: crosses the backlog boundary
     await m.tick();   // live adatState
+    expect(session.telemetry.adatStatus).toMatchObject({ enabled: true, active: true, pin: 12, resyncCount: 0, slipCount: 0 });
     expect(mir.peekReconcile().wanted).toBe(false);
+    stop();
+  });
+
+  it('a later ADAT_STATE event preserves the resync/slip counts a prior GetAdatStatus poll captured', async () => {
+    const { mock, session } = await v10Setup();
+    primeLive(mock);
+    session.telemetry.adatStatus = { enabled: true, active: true, pin: 12, rateOk: true, resyncCount: 3, slipCount: 1 };
+    // enabled=1, active=0, pin=12 (stream auto-suspended, e.g. rate > 48 kHz)
+    mock.pushNotify(new Uint8Array([2, 0x08, 0, 1, 1, 0, 12, 0]));
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live adatState
+    expect(session.telemetry.adatStatus).toMatchObject({ active: false, resyncCount: 3, slipCount: 1 });
     stop();
   });
 

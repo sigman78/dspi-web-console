@@ -272,4 +272,15 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     });
   });
 
+  it('AdatStatus is 8 bytes and round-trips its fields', () => {
+    expect(Codec.sizeOf(Wire.AdatStatus)).toBe(8);
+    const bytes = Codec.encode(Wire.AdatStatus, {
+      enabled: true, active: true, pin: 12, rateOk: true, resyncCount: 2, slipCount: 0,
+    });
+    const back = Codec.decode(Wire.AdatStatus, bytes);
+    expect(back).toMatchObject({
+      enabled: true, active: true, pin: 12, rateOk: true, resyncCount: 2, slipCount: 0,
+    });
+  });
+
 });

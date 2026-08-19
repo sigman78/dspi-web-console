@@ -16,6 +16,7 @@ function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
     inputConfig: { source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false] },
     dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
+    adat: { enabled: false, pin: 0 },
     ...over,
   } as DspSnapshot;
 }
@@ -96,6 +97,23 @@ describe('pins', () => {
     expect(off.has(11)).toBe(false);
     const on = pinsInUse(snap({ dacHwMute: { enabled: true, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 } }));
     expect(on.get(11)).toBe('DAC MUTE');
+  });
+
+  test('ADAT reserves its pin only while enabled, falling back to GPIO 12 when unset (pin 0)', () => {
+    const off = pinsInUse(snap());
+    expect(off.has(12)).toBe(false);
+    const onDefault = pinsInUse(snap({ adat: { enabled: true, pin: 0 } }));
+    expect(onDefault.get(12)).toBe('ADAT');
+    const onExplicit = pinsInUse(snap({ adat: { enabled: true, pin: 20 } }));
+    expect(onExplicit.get(20)).toBe('ADAT');
+    expect(onExplicit.has(12)).toBe(false);
+  });
+
+  test('availablePinsFor treats the ADAT panel\'s own current pin as free', () => {
+    const s = snap({ adat: { enabled: true, pin: 20 } });
+    const list = availablePinsFor(PlatformType.RP2350, s, 20);
+    expect(list.find((c) => c.pin === 20)?.usedBy).toBeNull();
+    expect(list.find((c) => c.pin === 8)?.usedBy).not.toBeNull();   // still a real output pin
   });
 
   test('a V10 snapshot still reserves GPIO 12', () => {

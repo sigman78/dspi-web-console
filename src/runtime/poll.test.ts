@@ -485,6 +485,68 @@ describe('I2S slave-clock status cadence', () => {
   });
 });
 
+describe('ADAT lightpipe output status cadence', () => {
+  afterEach(() => { teardown(); });
+
+  function baseDevice(getAdatStatus: () => Promise<unknown>) {
+    return {
+      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      hardware: hw,
+      capabilities: { features: { adatOutput: true } },
+      getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
+      getBufferStats: vi.fn(async () => null),
+      getSystemInfo: vi.fn(async () => ({})),
+      getAdatStatus: vi.fn(getAdatStatus),
+      getSnapshot: vi.fn(async () => fromBulkParams(hw, parseBulkParams(makeBulk()))),
+    } as unknown as DspDevice;
+  }
+
+  it('polls getAdatStatus when the feature is present and ADAT is enabled', async () => {
+    const status = { enabled: true, active: true, pin: 20, rateOk: true, resyncCount: 0, slipCount: 0 };
+    const device = baseDevice(async () => status);
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    snap.adat = { ...snap.adat, enabled: true };
+    session.mirror.init(snap);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getAdatStatus).toHaveBeenCalled();
+    expect(session.telemetry.adatStatus).toEqual(status);
+    stop();
+  });
+
+  it('does not poll getAdatStatus when ADAT is disabled', async () => {
+    const device = baseDevice(async () => ({ enabled: false, active: false, pin: 0, rateOk: true, resyncCount: 0, slipCount: 0 }));
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    snap.adat = { ...snap.adat, enabled: false };
+    session.mirror.init(snap);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getAdatStatus).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('does not poll getAdatStatus when the device lacks the feature, even while enabled', async () => {
+    const device = baseDevice(async () => ({ enabled: true, active: true, pin: 20, rateOk: true, resyncCount: 0, slipCount: 0 }));
+    (device as unknown as { capabilities: { features: { adatOutput: boolean } } }).capabilities.features.adatOutput = false;
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    snap.adat = { ...snap.adat, enabled: true };
+    session.mirror.init(snap);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getAdatStatus).not.toHaveBeenCalled();
+    stop();
+  });
+});
+
 describe('startPolling — visibility resume', () => {
   it('requests an eager reconcile when the tab becomes visible', () => {
     const stub = makeReadySession({ info: {}, hardware: {} } as never);

@@ -7,7 +7,7 @@ import type { HardwareProfile, I2sConfig, PlatformType, ChannelFamily } from './
 import type { FilterParams } from './filter';
 import type { Loudness, Crossfeed, Leveller, Psybass, Upmix } from './processing';
 import type { OutputModel, RouteModel } from './mixer';
-import type { InputConfig, LgSoundSync, UserVolume, DacHwMute } from './deviceSections';
+import type { InputConfig, LgSoundSync, UserVolume, DacHwMute, AdatOutputConfig } from './deviceSections';
 
 export interface ChannelModel {
   id: ChannelId;
@@ -77,4 +77,7 @@ export interface DspSnapshot {
   lgSoundSync: LgSoundSync;
   userVolume: UserVolume;
   dacHwMute: DacHwMute;
+  // ADAT lightpipe output config (fw V17+, RP2350); bulkParser defaults it
+  // (disabled, pin 0) on pre-V17 packets, so this is always populated.
+  adat: AdatOutputConfig;
 }

@@ -1,5 +1,5 @@
 import type { BufferStats, PartialSystemInfo } from '@/protocol';
-import { ALL_CHANNELS, type SpdifRxStatus, type I2sSlaveStatus } from '@/domain';
+import { ALL_CHANNELS, type SpdifRxStatus, type I2sSlaveStatus, type AdatOutputStatus } from '@/domain';
 
 // Peaks/holds/clips are DOMAIN-ChannelId indexed (the poll loop remaps from
 // the device's wire index space); sized to the full domain id range.
@@ -20,6 +20,7 @@ export class StatusStore {
   bufferStats = $state<BufferStats | null>(null);
   spdifRxStatus = $state<SpdifRxStatus | null>(null);
   i2sSlaveStatus = $state<I2sSlaveStatus | null>(null);
+  adatStatus = $state<AdatOutputStatus | null>(null);
   info = $state<PartialSystemInfo | null>(null);
   // Live active input channel count (V16+; null = not reported / V10 device).
   activeInputChannels = $state<number | null>(null);
@@ -43,6 +44,7 @@ export class StatusStore {
     this.bufferStats = null;
     this.spdifRxStatus = null;
     this.i2sSlaveStatus = null;
+    this.adatStatus = null;
     this.info = null;
     this.activeInputChannels = null;
     this.lastStatusMs = 0;

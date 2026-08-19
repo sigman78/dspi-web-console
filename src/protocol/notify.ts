@@ -58,7 +58,9 @@ export type NotifyEvent =
   | { kind: 'siggenState';     seq: number; state: number; reason: number; signalType: number; channel: number }
   // ADAT bulk-output stream state changed (RP2350), including rate-policy
   // auto-suspend/resume. Pure runtime telemetry -- config changes go through
-  // PARAM_CHANGED at the adat_config bulk offsets instead. Silent no-op.
+  // PARAM_CHANGED at the adat_config bulk offsets instead. Patches
+  // telemetry.adatStatus directly (runtime/notifyChannel.ts); never a
+  // reconcile trigger.
   | { kind: 'adatState';       seq: number; enabled: boolean; active: boolean; pin: number }
   // Completion of an armed IR learn (section 3.6.1): exactly one push per
   // completed arm, none on cancel. state 2 = done (protocol/code valid), 3 =

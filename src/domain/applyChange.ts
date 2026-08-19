@@ -41,6 +41,7 @@ export function applyChange(c: SnapshotChange, t: DspSnapshot): void {
     case 'spdifExt':          t.inputConfig = { ...t.inputConfig, spdifRxPinExt: c.value.spdifRxPinExt, spdifExtEnabled: c.value.spdifExtEnabled }; break;
     case 'userVolume':        t.userVolume = c.value; break;
     case 'dacHwMute':         t.dacHwMute = c.value; break;
+    case 'adat':              t.adat = c.value; break;
     case 'i2s':               t.i2s = c.value; break;
     case 'outputPins':        t.outputPins = c.value; break;
     case 'lgSoundSyncEnabled': t.lgSoundSync.enabled = c.value; break;

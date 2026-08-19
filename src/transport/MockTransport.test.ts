@@ -842,3 +842,14 @@ describe('MockTransport — pin-reset-to-default (0xFF sentinel)', () => {
     expect(status[0]).toBe(PinConfigResult.PinInUse);
   });
 });
+
+describe('MockTransport — ADAT lightpipe output (V17+, RP2350)', () => {
+  it('the 0xFF sentinel resets the pin to the platform default (GPIO 12)', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 17, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    await t.open();
+    await t.ctrlIn(WireCmd.SetAdatPin.code, 20, 1);
+    const status = await t.ctrlIn(WireCmd.SetAdatPin.code, Wire.Const.PIN_RESET_TO_DEFAULT, 1);
+    expect(status[0]).toBe(PinConfigResult.Success);
+    expect((await t.ctrlIn(WireCmd.GetAdatPin.code, 0, 1))[0]).toBe(12);
+  });
+});
