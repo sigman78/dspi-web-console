@@ -18,6 +18,7 @@ import {
   AudioInputSource,
   SpdifInputState,
   SysClockMode,
+  AdatInputLockState,
   type PresetSlot,
 } from '@/domain';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
@@ -889,6 +890,98 @@ describe('ADAT lightpipe output commands (fw V17+, RP2350)', () => {
     const r = await d.setAdatPin(20);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe(PinConfigResult.InvalidOutput);
+  });
+});
+
+describe('ADAT lightpipe input commands (fw V24+, RP2350)', () => {
+  async function dev() {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 24, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    return await DspDevice.create(t);
+  }
+
+  test('pin + enable + clock-mode round-trip', async () => {
+    const d = await dev();
+    expect((await d.setAdatInputPin(20)).ok).toBe(true);
+    expect(await d.getAdatInputPin()).toBe(20);
+    expect((await d.setAdatInputEnable(true)).ok).toBe(true);
+    expect(await d.getAdatInputEnable()).toBe(true);
+    expect((await d.setAdatInputClockMode(1)).ok).toBe(true);
+    expect(await d.getAdatInputClockMode()).toBe(1);
+    expect((await d.setAdatInputEnable(false)).ok).toBe(true);
+    expect(await d.getAdatInputEnable()).toBe(false);
+  });
+
+  test('enabling without a stored pin is rejected with InvalidPin', async () => {
+    const d = await dev();
+    const r = await d.setAdatInputEnable(true);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe(PinConfigResult.InvalidPin);
+  });
+
+  test('0xFF clear is refused while enabled, allowed while disabled', async () => {
+    const d = await dev();
+    await d.setAdatInputPin(20);
+    await d.setAdatInputEnable(true);
+    const clearWhileEnabled = await d.setAdatInputPin(0xFF);
+    expect(clearWhileEnabled.ok).toBe(false);
+    if (!clearWhileEnabled.ok) expect(clearWhileEnabled.code).toBe(PinConfigResult.PinInUse);
+
+    await d.setAdatInputEnable(false);
+    const clearWhileDisabled = await d.setAdatInputPin(0xFF);
+    expect(clearWhileDisabled.ok).toBe(true);
+    expect(await d.getAdatInputPin()).toBe(0xFF);
+  });
+
+  test('disabling is refused while ADAT is the active input source', async () => {
+    const d = await dev();
+    await d.setAdatInputPin(20);
+    await d.setAdatInputEnable(true);
+    await d.setInputSource(AudioInputSource.Adat);
+    const r = await d.setAdatInputEnable(false);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe(PinConfigResult.PinInUse);
+  });
+
+  test('loopback: sharing the live ADAT output pin is allowed, another used pin is not', async () => {
+    const d = await dev();
+    // Enable the output first so GPIO 12 is genuinely claimed -- the input
+    // taking it then exercises the one-directional TX-pin-sharing exception.
+    expect((await d.setAdatEnable(true)).ok).toBe(true);
+    expect((await d.setAdatInputPin(12)).ok).toBe(true);
+    const r = await d.setAdatInputPin(5);                  // S/PDIF RX's always-claimed default pin
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe(PinConfigResult.PinInUse);
+  });
+
+  test('RP2040: enable/pin SETs are rejected, GETs and clock mode still round-trip', async () => {
+    const d = await DspDevice.create(new MockTransport({ platform: 'rp2040', wireVersion: 24, fwVersion: { major: 1, minor: 1, patch: 5 } }));
+    const enableResult = await d.setAdatInputEnable(true);
+    expect(enableResult.ok).toBe(false);
+    if (!enableResult.ok) expect(enableResult.code).toBe(PinConfigResult.InvalidOutput);
+    const pinResult = await d.setAdatInputPin(20);
+    expect(pinResult.ok).toBe(false);
+    if (!pinResult.ok) expect(pinResult.code).toBe(PinConfigResult.InvalidOutput);
+
+    // Rejected SETs never stored anything, but the granular GETs still round
+    // trip stored config on RP2040 (unlike GetAdatInputStatus, which zeroes).
+    expect(await d.getAdatInputEnable()).toBe(false);
+    expect(await d.getAdatInputPin()).toBe(0xFF);
+
+    expect((await d.setAdatInputClockMode(1)).ok).toBe(true);
+    expect(await d.getAdatInputClockMode()).toBe(1);
+  });
+
+  test('getAdatInputStatus decodes the synthesized packet once locked', async () => {
+    const d = await dev();
+    await d.setAdatInputPin(20);
+    await d.setAdatInputEnable(true);
+    await d.setInputSource(AudioInputSource.Adat);
+    const status = await d.getAdatInputStatus();
+    expect(status.state).toBe(AdatInputLockState.Locked);
+    expect(status.enabled).toBe(true);
+    expect(status.pin).toBe(20);
+    expect(status.rateOk).toBe(true);
+    expect(status.detectedRateHz).toBe(48000);
   });
 });
 

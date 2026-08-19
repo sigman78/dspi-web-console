@@ -6,6 +6,7 @@
   import InputConfigPanel from '@/components/system/InputConfigPanel.svelte';
   import OutputsPanel from '@/components/system/OutputsPanel.svelte';
   import AdatPanel from '@/components/system/AdatPanel.svelte';
+  import AdatInputPanel from '@/components/system/AdatInputPanel.svelte';
   import I2sClockPanel from '@/components/system/I2sClockPanel.svelte';
   import LgSoundSyncPanel from '@/components/system/LgSoundSyncPanel.svelte';
   import DacHwMutePanel from '@/components/system/DacHwMutePanel.svelte';
@@ -33,6 +34,9 @@
     <OutputsPanel />
     {#if features.adatOutput}
       <AdatPanel />
+    {/if}
+    {#if features.adatInput}
+      <AdatInputPanel />
     {/if}
   </div>
 

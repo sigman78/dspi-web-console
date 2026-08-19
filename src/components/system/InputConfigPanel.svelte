@@ -5,7 +5,7 @@
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { connection } from '@/state';
   import { stageInputSource, stageSpdifRxPin, stageSpdifRxPinExt, stageSpdifInputEnabled, stageInputRate, stageI2sRxPin, stageI2sInputChannels } from '@/runtime';
-  import { AudioInputSource, isSpdifSource, SpdifInputState, I2sSlaveClockState, availablePinsFor, I2S_INPUT_RATES_HZ, liveCsPinConfigs } from '@/domain';
+  import { AudioInputSource, isSpdifSource, SpdifInputState, I2sSlaveClockState, AdatInputLockState, availablePinsFor, I2S_INPUT_RATES_HZ, liveCsPinConfigs } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -32,6 +32,10 @@
   const slaveStatus = $derived(s.telemetry.i2sSlaveStatus);
   const showSlaveRate = $derived(Boolean(features.i2sSlaveClock) && clockMode === 1);
   const slaveRateLocked = $derived(slaveStatus?.state === I2sSlaveClockState.Locked);
+  // ADAT input's clock mode/status are read live here (SY.15 owns the write
+  // path -- it applies immediately, so there's nothing to stage).
+  const adatClockMode = $derived(inputConfig?.adatInputClockMode ?? 0);
+  const adatStatus = $derived(s.telemetry.adatInputStatus);
   // Configured count (0 = firmware default of 2); pairs 0..activePairs-1 show a pin select.
   const liveChannels = $derived(inputConfig?.i2sInputChannels || 2);
   const i2sChannels = $derived(s.staging.valueOf('i2sChannels', liveChannels));
@@ -74,6 +78,7 @@
     [AudioInputSource.Spdif2]: 'S/PDIF 2',
     [AudioInputSource.Spdif3]: 'S/PDIF 3',
     [AudioInputSource.I2s]:    'I2S',
+    [AudioInputSource.Adat]:   'ADAT',
   });
 
   const STATE_LABELS: Record<number, string> = {
@@ -150,6 +155,15 @@
             onclick={() => stageInputSource(s, AudioInputSource.I2s)}
             disabled={!connected || isI2s}
           >I2S</button>
+        {/if}
+        {#if features.adatInput && inputConfig.adatInputEnabled && inputConfig.adatInputPin !== 0}
+          <button
+            class="chip"
+            class:on={source === AudioInputSource.Adat}
+            class:staged={s.staging.has('inputSource') && source === AudioInputSource.Adat}
+            onclick={() => stageInputSource(s, AudioInputSource.Adat)}
+            disabled={!connected || source === AudioInputSource.Adat}
+          >ADAT</button>
         {/if}
       </div>
     </div>
@@ -274,6 +288,39 @@
         </div>
       {/each}
     {/if}
+
+    {#if source === AudioInputSource.Adat && features.adatInput}
+      <div class="subhdr">ADAT INPUT</div>
+      <div class="cfgkvgrid">
+        {#if adatClockMode === 1}
+          <KV
+            label="RATE"
+            value={adatStatus?.state === AdatInputLockState.Locked ? fmtRate(adatStatus.detectedRateHz) : '—'}
+            tone={adatStatus?.state === AdatInputLockState.Locked ? 'ok' : 'off'}
+            title="Slave clock mode: rate follows the external ADAT master"
+          />
+          <p class="hint">auto-detected — external master sets the rate</p>
+        {:else}
+          <KV label="RATE" value={fmtRate(effRate)} />
+          <div class="src-btns">
+            {#each I2S_INPUT_RATES_HZ as hz (hz)}
+              <button
+                class="chip"
+                class:on={effRate === hz}
+                class:staged={s.staging.has('inputRate') && effRate === hz}
+                onclick={() => stageInputRate(s, hz)}
+                disabled={!connected || effRate === hz || hz > 48000}
+                title={hz > 48000 ? 'ADAT runs at 44.1/48 kHz only — higher rates park the input' : undefined}
+              >{hz / 1000}k</button>
+            {/each}
+          </div>
+          {#if adatStatus?.rateOk === false}
+            <p class="hint warn">PARKED — device rate above 48 kHz</p>
+          {/if}
+        {/if}
+      </div>
+      <p class="hint">Pin, clock mode, and live status live in the ADAT INPUT panel.</p>
+    {/if}
   {/if}
 </Panel>
 
@@ -284,6 +331,7 @@
   .pinrow { padding: 6px 14px 6px; }
   .idle { padding: 10px 14px; }
   .pending { padding: 0 14px 8px; color: var(--accent); }
+  .hint.warn { color: var(--warn); }
   /* S/PDIF inputs: one row per selectable input -- title | toggle | pin --
      spread across the panel width (title at left, pin at the right edge). */
   .spdif-grid { padding: 8px 14px 4px; display: grid; grid-template-columns: auto auto auto; justify-content: space-between; row-gap: 12px; column-gap: 12px; align-items: center; }

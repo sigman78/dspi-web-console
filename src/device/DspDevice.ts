@@ -1206,6 +1206,55 @@ export class DspDevice {
     };
   }
 
+  // ADAT lightpipe bulk input (fw V24+, RP2350 only; gate on
+  // capabilities.features.adatInput). Action-style like the ADAT output block
+  // above: wValue carries the value, response is a PinConfigResult status
+  // byte. Enabling requires a valid stored pin; disabling is refused while
+  // ADAT is the active input source. Clock mode SET is accepted on both
+  // platforms (presets round-trip) with a deferred device-side apply.
+  async setAdatInputEnable(enabled: boolean): Promise<Result<void, proto.PinConfigResult>> {
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetAdatInputEnable, enabled ? 1 : 0));
+  }
+
+  async getAdatInputEnable(): Promise<boolean> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetAdatInputEnable);
+  }
+
+  // 0xFF (Wire.Const.PIN_RESET_TO_DEFAULT) clears the stored pin instead of
+  // resetting to a default -- there is no platform default GPIO for ADAT input.
+  async setAdatInputPin(pin: number): Promise<Result<void, proto.PinConfigResult>> {
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetAdatInputPin, pin & 0xFF));
+  }
+
+  async getAdatInputPin(): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetAdatInputPin);
+  }
+
+  async setAdatInputClockMode(mode: number): Promise<Result<void, proto.PinConfigResult>> {
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetAdatInputClockMode, mode & 0xFF));
+  }
+
+  async getAdatInputClockMode(): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetAdatInputClockMode);
+  }
+
+  async getAdatInputStatus(): Promise<domain.AdatInputStatus> {
+    const w = await proto.readCmd(this.transport, proto.WireCmd.GetAdatInputStatus);
+    return {
+      state: domain.narrowAdatInputLockState(w.state),
+      clockMode: w.clockMode,
+      enabled: w.enabled,
+      pin: w.pin,
+      rateOk: w.rateOk,
+      lockCount: w.lockCount,
+      lossCount: w.lossCount,
+      slipCount: w.slipCount,
+      headerErr: w.headerErr,
+      detectedRateHz: w.detectedRate,
+      measuredHz: w.measuredHz,
+    };
+  }
+
   // External control interfaces (V16+, gate on capabilities.features.controlInterfaces):
   // a UART control transport and an I2C target, configured over 0xF5-0xF9.
 

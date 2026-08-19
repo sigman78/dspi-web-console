@@ -37,7 +37,10 @@
     const wantPin = cfg.pin || 12;
     const inUse = pinsInUse(snap, ctrlPins);
     const free = (p: number) => isAssignablePin(snap.platform.type, p, snap.platform.channelModel) && !inUse.has(p);
-    if (!free(wantPin)) {
+    // When the ADAT input borrowed our pin (loopback), relocating would break
+    // the loopback silently -- ship the enable as-is and let the device's
+    // PIN_IN_USE refusal explain (the input must be disabled first).
+    if (!free(wantPin) && inUse.get(wantPin) !== 'ADAT IN') {
       const pin = assignablePins(snap.platform.type, snap.platform.channelModel).find(free) ?? wantPin;
       const ok = await setAdatPin(s, pin);
       if (!ok) return;

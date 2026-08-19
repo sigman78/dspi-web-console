@@ -91,9 +91,33 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
       };
       return;
     }
-    // ADAT input lock state changed. Silent no-op for now -- telemetry wiring
-    // (mirroring i2sSlaveState above) lands with the ADAT input UI branch.
+    // ADAT input lock state changed. Patch the fields the event carries
+    // directly; the poll cadence's next tick refreshes the counters
+    // (lock/loss/slip/headerErr) if the feature/enabled gate is still open.
+    // enabled/pin/rateOk have no evidence in the event itself -- assume
+    // enabled (the event only fires for an enabled input) and otherwise
+    // preserve whatever the last poll observed.
     if (event.kind === 'adatInputState') {
+      // The mirror's enable flag is the intent authority: a console disable
+      // clears this telemetry, and the trailing LOCKED->INACTIVE transition
+      // event must not resurrect it (the poll cadence is closed by then). A
+      // mirror that hasn't synced yet does not veto; sync + the poll cadence
+      // correct anything an early event got wrong.
+      if (session.mirror.current?.inputConfig.adatInputEnabled === false) return;
+      const prev = session.telemetry.adatInputStatus;
+      session.telemetry.adatInputStatus = {
+        state: domain.narrowAdatInputLockState(event.state),
+        clockMode: event.clockMode,
+        enabled: prev?.enabled ?? true,
+        pin: prev?.pin ?? 0xFF,
+        rateOk: prev?.rateOk ?? true,
+        lockCount: prev?.lockCount ?? 0,
+        lossCount: prev?.lossCount ?? 0,
+        slipCount: prev?.slipCount ?? 0,
+        headerErr: prev?.headerErr ?? 0,
+        detectedRateHz: event.rateHz,
+        measuredHz: prev?.measuredHz ?? 0,
+      };
       return;
     }
     // ADAT lightpipe OUTPUT stream state changed (start/stop, including

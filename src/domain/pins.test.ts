@@ -14,7 +14,7 @@ function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
     leveller: null,
     outputPins: [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
-    inputConfig: { source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false] },
+    inputConfig: { source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0 },
     dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
     adat: { enabled: false, pin: 0 },
     ...over,
@@ -107,6 +107,30 @@ describe('pins', () => {
     const onExplicit = pinsInUse(snap({ adat: { enabled: true, pin: 20 } }));
     expect(onExplicit.get(20)).toBe('ADAT');
     expect(onExplicit.has(12)).toBe(false);
+  });
+
+  test('ADAT input reserves its pin only while enabled, and defers to the output\'s label under loopback', () => {
+    const inCfg = (over: Partial<{ adatInputPin: number; adatInputEnabled: boolean }>) => ({
+      source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false],
+      i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, i2sClockMode: 0,
+      adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0, ...over,
+    } as DspSnapshot['inputConfig']);
+    const disabled = pinsInUse(snap({ inputConfig: inCfg({ adatInputPin: 20, adatInputEnabled: false }) }));
+    expect(disabled.has(20)).toBe(false);
+
+    const unsetPin = pinsInUse(snap({ inputConfig: inCfg({ adatInputPin: 0, adatInputEnabled: true }) }));
+    expect(unsetPin.has(0)).toBe(false);
+
+    const enabled = pinsInUse(snap({ inputConfig: inCfg({ adatInputPin: 20, adatInputEnabled: true }) }));
+    expect(enabled.get(20)).toBe('ADAT IN');
+
+    // Loopback exception: input shares the output's own pin -- the output's
+    // claim, set first, keeps its label.
+    const loopback = pinsInUse(snap({
+      adat: { enabled: true, pin: 20 },
+      inputConfig: inCfg({ adatInputPin: 20, adatInputEnabled: true }),
+    }));
+    expect(loopback.get(20)).toBe('ADAT');
   });
 
   test('availablePinsFor treats the ADAT panel\'s own current pin as free', () => {

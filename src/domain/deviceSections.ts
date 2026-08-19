@@ -165,6 +165,49 @@ export interface AdatOutputStatus {
   slipCount: number;
 }
 
+// V24 -- live ADAT lightpipe input lock state, reported by GetAdatInputStatus
+// (0x6E, RP2350 only).
+export const AdatInputLockState = {
+  Inactive:  0,
+  Acquiring: 1,
+  Syncing:   2,
+  Locked:    3,
+  Relocking: 4,
+} as const;
+export type AdatInputLockState = (typeof AdatInputLockState)[keyof typeof AdatInputLockState];
+
+// Forward-compat: an unrecognised future state byte reads as Inactive.
+export function narrowAdatInputLockState(n: number): AdatInputLockState {
+  switch (n) {
+    case AdatInputLockState.Inactive:
+    case AdatInputLockState.Acquiring:
+    case AdatInputLockState.Syncing:
+    case AdatInputLockState.Locked:
+    case AdatInputLockState.Relocking:
+      return n;
+    default:
+      return AdatInputLockState.Inactive;
+  }
+}
+
+// Live ADAT lightpipe input telemetry (GetAdatInputStatus 0x6E, fw V24+,
+// RP2350 only). clockMode/pin are live values (not persisted config). rateOk
+// parks master-mode acquisition when the device rate exceeds 48 kHz -- always
+// true in slave mode.
+export interface AdatInputStatus {
+  state: AdatInputLockState;
+  clockMode: number;
+  enabled: boolean;
+  pin: number;
+  rateOk: boolean;
+  lockCount: number;
+  lossCount: number;
+  slipCount: number;
+  headerErr: number;
+  detectedRateHz: number;
+  measuredHz: number;
+}
+
 // Selectable system clock (fw overclock branch, REQ_SET/GET_SYS_CLOCK
 // 0x40/0x41). No wire/version gate yet -- support is probed via GetSysClock.
 export const SysClockMode = {

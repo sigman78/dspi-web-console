@@ -303,15 +303,16 @@ export const WireCmd = {
   SetPsybassMask:        { code: 0x3C, codec: Codec.u16 }   satisfies WriteCmd<number>,
   GetPsybassMask:        { code: 0x3D, codec: Codec.u16 }   satisfies ReadCmd<number>,
 
-  // --- V24 ADAT input config (fw 1.1.5+, RP2350). Opcodes only -- no
-  // DspDevice methods yet; wiring lands with the ADAT input UI branch.
-  SetAdatInputEnable:    { code: 0x68, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
+  // --- V24 ADAT input config (fw 1.1.5+, RP2350). Action-style, same
+  // convention as SetAdatEnable/SetAdatPin above: SETs carry the value in
+  // wValue and return a 1-byte PinConfigResult status.
+  SetAdatInputEnable:    { code: 0x68 } satisfies RawCmd,
   GetAdatInputEnable:    { code: 0x69, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
-  SetAdatInputPin:       { code: 0x6A, codec: Codec.u8 }    satisfies WriteCmd<number>,
+  SetAdatInputPin:       { code: 0x6A } satisfies RawCmd,
   GetAdatInputPin:       { code: 0x6B, codec: Codec.u8 }    satisfies ReadCmd<number>,
-  SetAdatInputClockMode: { code: 0x6C, codec: Codec.u8 }    satisfies WriteCmd<number>,
+  SetAdatInputClockMode: { code: 0x6C } satisfies RawCmd,
   GetAdatInputClockMode: { code: 0x6D, codec: Codec.u8 }    satisfies ReadCmd<number>,
-  GetAdatInputStatus:    { code: 0x6E } satisfies RawCmd,
+  GetAdatInputStatus:    { code: 0x6E, codec: Wire.AdatInputStatus },
 
   // --- V25/V26 stereo upmixer (fw 1.1.5+, RP2350 only). ---
   // Config pair carries the 44-byte struct shared with the bulk section

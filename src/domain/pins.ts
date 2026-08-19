@@ -77,6 +77,12 @@ export function pinsInUse(snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTR
   if (snapshot.dacHwMute.enabled) m.set(snapshot.dacHwMute.pin, 'DAC MUTE');
   // ADAT lightpipe output (fw V17+, RP2350): pin 0 means platform default (GPIO 12).
   if (snapshot.adat.enabled) m.set(snapshot.adat.pin || 12, 'ADAT');
+  // ADAT lightpipe input (fw V24+, RP2350): reserved only while enabled, no
+  // platform default (pin 0 = unset). Loopback onto the ADAT output's own pin
+  // is a supported exception -- don't overwrite that claim's label.
+  if (snapshot.inputConfig.adatInputEnabled && snapshot.inputConfig.adatInputPin !== 0 && !m.has(snapshot.inputConfig.adatInputPin)) {
+    m.set(snapshot.inputConfig.adatInputPin, 'ADAT IN');
+  }
   // V16: the active I2S RX stereo pairs reserve their data pins (i2sInputChannels
   // is 0 on V10 packets, so this block is inert there).
   const cfg = snapshot.inputConfig;
