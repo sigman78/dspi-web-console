@@ -15,10 +15,17 @@ export function toRange(v: number, min: number, max: number): number {
   return v;
 }
 
+// Firmware itself accepts -128..0 here (-128 is a mute sentinel); the console
+// deliberately restricts the ceiling UI to -60..0 (decision 2026-08-19).
 export const MASTER_VOLUME_MIN_DB = -60;
 export const MASTER_VOLUME_MAX_DB = 0;
 export const masterVolumeDb = (db: number) =>
   toRange(db, MASTER_VOLUME_MIN_DB, MASTER_VOLUME_MAX_DB);
+
+export const USER_VOLUME_MIN_DB = -60;
+export const USER_VOLUME_MAX_DB = 0;
+export const userVolumeDb = (db: number) =>
+  toRange(db, USER_VOLUME_MIN_DB, USER_VOLUME_MAX_DB);
 
 // DAC HW mute timing bounds (firmware dac_hw_mute.h; an enabled config with
 // hold_ms outside [1, 500] is silently rejected by the deferred handler).

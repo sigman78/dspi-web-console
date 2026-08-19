@@ -1,32 +1,54 @@
 <script lang="ts">
-  import { connection, activeSession } from '@/state';
-  import { setMasterVolume, toggleMute } from '@/runtime';
+  import { connection, activeSession, settings, setVolumeAxis } from '@/state';
+  import { setMasterVolume, setUserVolume, toggleMute } from '@/runtime';
   import SaveMasterVolumeButton from '@/components/presets/SaveMasterVolumeButton.svelte';
 
   const s = $derived(activeSession());
-  const masterVolumeDb = $derived(s?.mirror.current?.masterVolumeDb ?? 0);
   const connected = $derived(connection.connected);
   const muted = $derived(s?.mirror.current?.userVolume.mute ?? false);
 
+  const isMaster = $derived(settings.volumeAxis === 'master');
+  const masterVolumeDb = $derived(s?.mirror.current?.masterVolumeDb ?? 0);
+  const userVolumeDb = $derived(s?.mirror.current?.userVolume.volumeDb ?? 0);
+  const displayDb = $derived(isMaster ? masterVolumeDb : userVolumeDb);
+
   function onChange(e: Event) {
     const v = parseFloat((e.target as HTMLInputElement).value);
-    if (!Number.isNaN(v) && s) setMasterVolume(s, v);
+    if (Number.isNaN(v) || !s) return;
+    if (isMaster) setMasterVolume(s, v);
+    else setUserVolume(s, v);
+  }
+
+  // Just swaps which value the slider shows -- never copies a value across
+  // axes, never sends a write.
+  function toggleAxis() {
+    setVolumeAxis(isMaster ? 'user' : 'master');
   }
 </script>
 
 <div class="vol">
-  <span class="microlbl">VOL</span>
+  <button
+    class="microlbl axis-toggle"
+    onclick={toggleAxis}
+    title={isMaster
+      ? 'Master volume — device output ceiling, invisible to the OS. Click to control user volume.'
+      : 'User volume — mirrors the OS volume while USB input is active. Click to control the master ceiling.'}
+    aria-label={isMaster
+      ? 'Volume axis: master volume. Switch to user volume.'
+      : 'Volume axis: user volume. Switch to master volume.'}
+  >{isMaster ? 'MASTER' : 'USER'}</button>
   <input
     type="range"
     class:muted
-    min="-60" max="0" step="0.5"
-    value={masterVolumeDb}
+    class:master={isMaster}
+    min="-60" max="0" step={isMaster ? 0.5 : 1}
+    value={displayDb}
     oninput={onChange}
     disabled={!connected}
-    aria-label="Master volume"
+    aria-label={isMaster ? 'Master volume' : 'User volume'}
   />
   <span class="db" class:muted>
-    {connected ? masterVolumeDb.toFixed(1) : '—'}
+    {connected ? displayDb.toFixed(isMaster ? 1 : 0) : '—'}
   </span>
   <button
     class="icon-toggle mute"
@@ -49,7 +71,9 @@
       </svg>
     {/if}
   </button>
-  <SaveMasterVolumeButton />
+  {#if isMaster}
+    <SaveMasterVolumeButton />
+  {/if}
 </div>
 
 <style>
@@ -61,7 +85,7 @@
     font-size: 10px;
     color: var(--text-dim);
   }
-  /* U-P3 policy B: no whole-widget dim when disconnected. VOL label and the
+  /* U-P3 policy B: no whole-widget dim when disconnected. The axis toggle and
      dB readout stay full-contrast; the range input and mute icon-toggle are
      disabled in that state and each carry the single dim layer themselves
      (icon-toggle via its own :disabled rule in controls.css). */
@@ -71,11 +95,20 @@
     margin: 0;
     padding: 0;
   }
+  /* MASTER axis reads as a distinct (vendor-only, OS-invisible) ceiling. */
+  input[type="range"].master { accent-color: var(--err); }
   input[type="range"]:disabled { opacity: var(--dim-disabled); cursor: default; }
   input[type="range"].muted {
     accent-color: var(--text-faint);
     opacity: 0.45;
   }
+  .axis-toggle {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+  .axis-toggle:hover { color: var(--text-dim); }
   .db {
     font-size: 11px;
     color: var(--text);
