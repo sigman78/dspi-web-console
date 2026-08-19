@@ -7,7 +7,7 @@
 // misreport their semver.
 
 import * as Wire from './wireTypes';
-import { ChannelFamily } from '@/domain';
+import { ChannelFamily, SPDIF_RX_MAX_INSTANCES } from '@/domain';
 
 // Support window: V10 (released fw 1.1.4) and V16-V26 (fw 1.1.5, unified
 // channel model; V17 adds ADAT config, V18 adds leveller channel masks, V19
@@ -185,6 +185,6 @@ export function deriveCapabilities(input: {
       upmixPresence:      wireVersion >= 26 && platformId === 1,
       pinResetDefault:    wireVersion >= 25,
     },
-    spdifInputCount: multiSpdifInputs ? 3 : 1,
+    spdifInputCount: multiSpdifInputs ? SPDIF_RX_MAX_INSTANCES : 1,
   };
 }

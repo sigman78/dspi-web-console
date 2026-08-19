@@ -18,6 +18,12 @@ export function isSpdifSource(s: AudioInputSource): boolean {
   return s === AudioInputSource.Spdif || s === AudioInputSource.Spdif2 || s === AudioInputSource.Spdif3;
 }
 
+// One S/PDIF receiver, up to 3 selectable input GPIOs (input 1 + two optional).
+export const SPDIF_RX_MAX_INSTANCES = 3;
+
+// Maximum I2S RX stereo pairs on the largest platform (RP2350; RP2040 has 1).
+export const I2S_RX_MAX_PAIRS = 4;
+
 // I2S input sample rates the firmware accepts (device is the rate authority
 // while I2S input is active). Wire/flash encoding: 0=44100, 1=48000, 2=96000.
 export const I2S_INPUT_RATES_HZ = [44100, 48000, 96000] as const;

@@ -23,6 +23,7 @@ import {
   CS_IR_LEARN_IDLE, CS_IR_LEARN_ARMED, CS_IR_LEARN_DONE, CS_IR_LEARN_TIMEOUT,
   dbToQ8, percentToQ8, qToQ8, msToQ8, validateCsBinding, validateCsIrCommand,
   PRESET_SLOT_COUNT, FilterType,
+  SPDIF_RX_MAX_INSTANCES, I2S_RX_MAX_PAIRS,
   defaultInputName,
   SYS_CLOCK_MODE_DEFAULT_VREG, SYS_CLOCK_VREG_CEILING_RP2040, SYS_CLOCK_VREG_CEILING_RP2350,
   type FilterParams,
@@ -729,7 +730,7 @@ export class MockTransport implements DspTransport {
       case WireCmd.SetI2sInputChannels.code: {
         const count = value & 0xFF;
         if (count !== 2 && count !== 4 && count !== 6 && count !== 8) return new Uint8Array([0x01]);
-        const maxPairs = this.#platform === PlatformType.RP2350 ? 4 : 1;
+        const maxPairs = this.#platform === PlatformType.RP2350 ? I2S_RX_MAX_PAIRS : 1;
         if (count / 2 > maxPairs) return new Uint8Array([0x03]);
         const changed = this.#mockState.inputConfig.i2sInputChannels !== count;
         this.#mockState.inputConfig.i2sInputChannels = count;
@@ -1634,7 +1635,7 @@ export class MockTransport implements DspTransport {
   // Selectable S/PDIF RX inputs sharing the one receiver (fw 1.1.5+ RP2350
   // only). Mirrors capabilities.ts's multiSpdifInputs gate.
   #spdifInputCount(): number {
-    return this.#isV16 && this.#platform === PlatformType.RP2350 ? 3 : 1;
+    return this.#isV16 && this.#platform === PlatformType.RP2350 ? SPDIF_RX_MAX_INSTANCES : 1;
   }
 
   // Platform-default GPIOs for the 0xFF pin-reset sentinel
