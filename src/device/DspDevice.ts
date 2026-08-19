@@ -95,7 +95,8 @@ function fwVersionParts(info: { fwMajor: number; fwMinorPatch: number }): Firmwa
 function csBindingFromWire(w: {
   type: number; noun: number; action: number; flags: number;
   gpio0: number; gpio1: number; event: number; target: number; index: number;
-  value: number; step: number; rangeMin: number; rangeMax: number;
+  opaque0: number; value: number; step: number; rangeMin: number; rangeMax: number;
+  opaqueTail: number[];
 }): domain.CsBinding {
   return {
     type: w.type as domain.CsType, noun: w.noun as domain.CsNoun, action: w.action as domain.CsAction,
@@ -103,6 +104,7 @@ function csBindingFromWire(w: {
     gpio1: w.gpio1 === domain.CS_GPIO_UNUSED ? null : w.gpio1,
     event: w.event as domain.CsEvent, target: w.target, index: w.index,
     value: w.value, step: w.step, rangeMin: w.rangeMin, rangeMax: w.rangeMax,
+    opaque0: w.opaque0, opaqueTail: w.opaqueTail,
   };
 }
 
@@ -1371,6 +1373,7 @@ export class DspDevice {
         gpio0: b.gpio0, gpio1: b.gpio1 ?? domain.CS_GPIO_UNUSED,
         event: b.event, target: b.target, index: b.index,
         value: b.value, step: b.step, rangeMin: b.rangeMin, rangeMax: b.rangeMax,
+        opaque0: b.opaque0 ?? 0, opaqueTail: [...(b.opaqueTail ?? [0, 0, 0, 0, 0, 0])],
       }, slot & 0xFF);
       return pollCsStatus(raw, slot);
     });

@@ -24,7 +24,7 @@ const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16, 17, 18, 19, 20, 21, 
 // UI-facing description of the support window (device-panel tooltips). Keep
 // in step with SUPPORTED_WIRE_VERSIONS and the fw releases that carry them.
 export const SUPPORT_WINDOW = {
-  fw: '1.1.4 and 1.1.5',
+  fw: '1.1.4–1.1.6',
   wire: 'V10 and V16–V26',
 } as const;
 

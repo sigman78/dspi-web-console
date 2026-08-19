@@ -29,6 +29,9 @@
     invert: boolean; reverse: boolean; wrap: boolean; accel: boolean; repeat: boolean;
     value: number; step: number;
     limitRange: boolean; rangeMin: number; rangeMax: number;
+    // Opaque wire bytes from the live binding (newer-caps fields this console
+    // can't author); carried so an edit round-trip preserves them.
+    opaque0?: number; opaqueTail?: readonly number[];
   }
   const drafts = $state<Record<number, Draft>>({});
   let applying = $state(false);
@@ -40,8 +43,10 @@
   );
   const allUsed = $derived(visibleSlots.length >= maxSlots);
 
+  // pinCount 0 filters NONE; the type ceiling filters components a newer caps
+  // format publishes (v10's I2C display) whose bindings this console can't author.
   const typeOptions = $derived(
-    caps ? caps.types.map((_, i) => i).filter((i) => caps.types[i].pinCount > 0) : [],
+    caps ? caps.types.map((_, i) => i).filter((i) => caps.types[i].pinCount > 0 && i <= Domain.CS_MAX_KNOWN_TYPE) : [],
   );
 
   // Firmware allows only one live IR component (CS_STATUS_IR_IN_USE on a
@@ -227,6 +232,7 @@
       limitRange: limited,
       rangeMin: cont ? CsUnit.valueToDisplay(unit, limited ? b.rangeMin : noun?.minQ8 ?? 0) : 0,
       rangeMax: cont ? CsUnit.valueToDisplay(unit, limited ? b.rangeMax : noun?.maxQ8 ?? 0) : 0,
+      opaque0: b.opaque0, opaqueTail: b.opaqueTail,
     };
   }
 
@@ -247,6 +253,7 @@
         flags: d.invert ? Domain.CS_FLAG_INVERT : 0,
         gpio0: d.gpio0, gpio1: null, event: Domain.CsEvent.Press,
         target: 0, index: 0, value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+        opaque0: d.opaque0, opaqueTail: d.opaqueTail,
       };
     }
     const cont = contOf(d);
@@ -271,6 +278,7 @@
       step: showStepOf(d) ? (cont ? CsUnit.displayToStep(unit, d.step) : Math.round(d.step)) : 0,
       rangeMin: showRangeOf(d) && d.limitRange ? CsUnit.displayToValue(unit, d.rangeMin) : 0,
       rangeMax: showRangeOf(d) && d.limitRange ? CsUnit.displayToValue(unit, d.rangeMax) : 0,
+      opaque0: d.opaque0, opaqueTail: d.opaqueTail,
     };
   }
 
@@ -423,7 +431,7 @@
         <div class="slothead">
           <span class="stitle" class:staged={slotDirty}
             title={slotDirty ? 'Unapplied changes — APPLY to preview them live' : undefined}
-            >{Domain.CS_TYPE_LABEL[d.type as Domain.CsType].toUpperCase()}</span>
+            >{Domain.csTypeLabel(d.type).toUpperCase()}</span>
           <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
             value={cs.names[slot] ?? ''} aria-label={`Name for control ${slot + 1}`}
             disabled={busy || applying}
@@ -438,6 +446,12 @@
           <div class="hint err srow">{inactiveHint(slot)}</div>
         {/if}
 
+        {#if d.type > Domain.CS_MAX_KNOWN_TYPE}
+          <div class="hint pad">
+            Configured by a newer host (component type {d.type}) — this console
+            can't edit it. Removing the control clears the slot.
+          </div>
+        {:else}
         <div class="rows">
           <div class="row">
             <span class="microlbl">TYPE</span>
@@ -447,7 +461,7 @@
                 drafts[slot] = defaultDraft(t, slot);
               }}>
               {#each typeOptionsFor(slot) as t (t)}
-                <option value={String(t)}>{Domain.CS_TYPE_LABEL[t as Domain.CsType]}</option>
+                <option value={String(t)}>{Domain.csTypeLabel(t)}</option>
               {/each}
             </select>
             {#if d.type !== Domain.CsType.Ir}
@@ -645,6 +659,7 @@
               disabled={applying || !cs.bindings[slot] || !isDirty(slot)}>REVERT</button>
           </div>
         </div>
+        {/if}
 
         {#if cs.bindings[slot]?.type === Domain.CsType.Ir}
           <CsIrCommands resetSignal={irResetTick} onDirtyChange={(d) => { irDirty = d; }} />
@@ -656,7 +671,7 @@
       <select class="sel" value="" aria-label="Add control" disabled={busy || applying || allUsed} onchange={addControl}>
         <option value="" disabled>ADD CONTROL…</option>
         {#each typeOptionsFor(-1) as t (t)}
-          <option value={String(t)}>{Domain.CS_TYPE_LABEL[t as Domain.CsType]}</option>
+          <option value={String(t)}>{Domain.csTypeLabel(t)}</option>
         {/each}
       </select>
       {#if allUsed}

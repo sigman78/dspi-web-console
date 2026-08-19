@@ -296,6 +296,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
     type: CsType.Encoder, noun: CsNoun.MasterVolume, action: CsAction.Step,
     flags: 0, gpio0: 21, gpio1: 22, event: CsEvent.Press, target: 0, index: 0,
     value: 0, step: dbToQ8(1), rangeMin: 0, rangeMax: 0,
+    opaque0: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
   };
 
   it('reports the controlSurfaces feature on V16 only', async () => {
@@ -340,6 +341,14 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
     expect(status.activeMask & (1 << 2)).toBeTruthy();
     expect(status.dirty).toBe(true);
     expect(await d.getCsBinding(2)).toEqual(encoderBinding);
+  });
+
+  it('preserves the reserved wire bytes a newer caps format may have carved (v8 delays, v12 brightness)', async () => {
+    const d = await v16Device();
+    const withOpaque = { ...encoderBinding, opaque0: 0x5A, opaqueTail: [10, 0, 30, 0, 75, 0] };
+    const { result } = await d.setCsBinding(3, withOpaque);
+    expect(result.ok).toBe(true);
+    expect(await d.getCsBinding(3)).toEqual(withOpaque);
   });
 
   it('rejects an action outside the type∩noun mask with INVALID_ACTION', async () => {

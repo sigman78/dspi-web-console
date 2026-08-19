@@ -616,6 +616,10 @@ export const CtrlIfaceStatus = struct({
 // 24-byte payload of SetCsBinding (0x84, wValue = slot) / response of
 // GetCsBinding (0x85). gpio1 is 0xFF (CS_GPIO_UNUSED) unless the type needs
 // two pins (encoder channel B); event is a button concept (0 otherwise).
+// The two reserved regions are decoded and re-encoded verbatim (opaque0 /
+// opaqueTail), never zero-filled: newer caps formats carve real fields out of
+// them (v8 indicator on/off delays, v12 base brightness), and an edit
+// round-trip from this console must not wipe what another host configured.
 export const CsBinding = struct({
   type:       u8,
   noun:       u8,
@@ -626,12 +630,12 @@ export const CsBinding = struct({
   event:      u8,
   target:     u8,
   index:      u8,
-  _reserved:  reserved(1),
+  opaque0:    u8,
   value:      i16,
   step:       i16,
   rangeMin:   i16,
   rangeMax:   i16,
-  _reserved2: reserved(6),
+  opaqueTail: arr(u8, 6),
 });
 
 // 4-byte per-type capability descriptor inside the GetCsCaps header/body.

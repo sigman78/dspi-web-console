@@ -98,6 +98,7 @@ describe('wireTypes — V7–V10 tail codecs', () => {
       type: 4, noun: 1, action: 1, flags: 0, gpio0: 27, gpio1: 28,
       event: 0, target: 0, index: 0,
       value: 0, step: 256, rangeMin: 0, rangeMax: 0,
+      opaque0: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
     };
     const encoderBytes = Uint8Array.from([
       0x04, 0x01, 0x01, 0x00, 0x1B, 0x1C, 0x00, 0x00, 0x00, 0x00,
@@ -112,6 +113,7 @@ describe('wireTypes — V7–V10 tail codecs', () => {
       type: 5, noun: 3, action: 8, flags: 0, gpio0: 20, gpio1: 0xFF,
       event: 0, target: 0, index: 0,
       value: 1, step: 0, rangeMin: 0, rangeMax: 0,
+      opaque0: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
     };
     const ledBytes = Uint8Array.from([
       0x05, 0x03, 0x08, 0x00, 0x14, 0xFF, 0x00, 0x00, 0x00, 0x00,
@@ -126,6 +128,7 @@ describe('wireTypes — V7–V10 tail codecs', () => {
       type: 0, noun: 0, action: 0, flags: 0, gpio0: 0, gpio1: 0,
       event: 0, target: 0, index: 0,
       value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+      opaque0: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
     };
     expect(Codec.encode(Wire.CsBinding, clear)).toEqual(new Uint8Array(24));
   });
@@ -135,6 +138,7 @@ describe('wireTypes — V7–V10 tail codecs', () => {
       type: 3, noun: 0, action: 0, flags: 0x02, gpio0: 26, gpio1: 0xFF,
       event: 0, target: 0, index: 0,
       value: 0, step: 0, rangeMin: -7680, rangeMax: -128,   // −30 dB .. −0.5 dB
+      opaque0: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
     };
     const back = Codec.decode(Wire.CsBinding, Codec.encode(Wire.CsBinding, b));
     expect(back.rangeMin).toBe(-7680);
