@@ -11,6 +11,12 @@
   function pct(v: number | undefined): string {
     return v != null ? `${v}%` : '—';
   }
+
+  // Sample-granular fill in 0.01% units; reads 0 on firmware without the
+  // field, where the coarse 16-bucket pct is all we have.
+  function fill(slot: { fillCentiPct: number; consumerFillPct: number }): string {
+    return slot.fillCentiPct > 0 ? `${(slot.fillCentiPct / 100).toFixed(2)}%` : pct(slot.consumerFillPct);
+  }
 </script>
 
 <Panel code="SY.12" title="BUFFER STATS">
@@ -44,7 +50,7 @@
           {#each bs.spdif.slice(0, bs.numSpdif) as slot, i (i)}
             <tr>
               <td class="src">SPDIF {i + 1}</td>
-              <td>{pct(slot.consumerFillPct)}</td>
+              <td>{fill(slot)}</td>
               <td>{pct(slot.consumerMinFillPct)}</td>
               <td>{pct(slot.consumerMaxFillPct)}</td>
               <td>{slot.consumerFree}</td>
