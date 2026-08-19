@@ -1,8 +1,7 @@
 <script lang="ts">
-  import Panel from '@/components/chrome/Panel.svelte';
+  import ProcPanel from './ProcPanel.svelte';
   import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
-  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { connection } from '@/state';
   import { Proc, UpmixCenterMode, UpmixSurroundMode } from '@/domain';
   import {
@@ -51,27 +50,19 @@
     { value: UpmixSurroundMode.Passive,  label: 'PASSIVE' },
     { value: UpmixSurroundMode.Adaptive, label: 'LOGIC'   },
   ] as const satisfies ReadonlyArray<{ value: UpmixSurroundMode; label: string }>;
-
-  function toggleEnabled() {
-    if (!upmix) return;
-    setUpmixEnabled(s, !upmix.enabled);
-  }
 </script>
 
-<Panel code="PR.05" title="STEREO UPMIXER">
-  {#snippet right()}
-    <ToggleSwitch
-      size="sm"
-      checked={enabled}
-      disabled={!connected}
-      ariaLabel={enabled ? 'Disable stereo upmixer' : 'Enable stereo upmixer'}
-      onChange={toggleEnabled}
-    />
-  {/snippet}
-
+<ProcPanel
+  code="PR.05"
+  title="STEREO UPMIXER"
+  subject="stereo upmixer"
+  {enabled}
+  {connected}
+  onToggle={() => upmix && setUpmixEnabled(s, !upmix.enabled)}
+>
   <p class="hint status" class:active={parkedReason === null}>{statusText}</p>
 
-  <div class="grid">
+  <div class="proc-grid">
     <span class="section">CENTRE</span>
 
     <span class="microlbl">MODE</span>
@@ -222,21 +213,13 @@
       onChange={(v) => setUpmixDecorr(s, v)}
     />
   </div>
-</Panel>
+</ProcPanel>
 
 <style>
   .status {
     padding: 8px 14px 0;
   }
   .status.active { color: var(--ok); }
-  .grid {
-    padding: 14px;
-    display: grid;
-    grid-template-columns: 90px 1fr 64px;
-    align-items: center;
-    gap: 12px;
-  }
-  .span2 { grid-column: 2 / span 2; }
   .section {
     grid-column: 1 / -1;
     font-family: var(--font-mono);
@@ -244,11 +227,5 @@
     font-weight: 700;
     letter-spacing: 1.5px;
     color: var(--text-faint);
-  }
-  .rule {
-    grid-column: 1 / -1;
-    height: 1px;
-    background: var(--border);
-    margin: 2px 0;
   }
 </style>

@@ -1,10 +1,9 @@
 <script lang="ts">
-  import Panel from '@/components/chrome/Panel.svelte';
+  import ProcPanel from './ProcPanel.svelte';
   import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
-  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import MaskChipRow from '@/components/chrome/MaskChipRow.svelte';
   import { connection } from '@/state';
-  import { Proc } from '@/domain';
+  import { Proc, outputChannelsWithIndex, maskChipItems } from '@/domain';
   import {
     setPsybassEnabled, setPsybassCutoff, setPsybassHarmonics,
     setPsybassDrive, setPsybassCharacter, setPsybassOriginal,
@@ -22,39 +21,21 @@
   // Per-output psybass mask (fw V23+): same output-slot convention as the
   // loudness/crossfeed masks. Meaningless with a single output; the feature
   // gate already implies wire V23+, so no separate mask-support flag.
-  const outputSlotById = $derived(new Map((s.mirror.current?.outputs ?? []).map((o) => [o.id, o.wireIndex])));
-  const outputChannels = $derived(
-    (s.mirror.current?.channels ?? [])
-      .filter((c) => c.isOutput)
-      .map((c) => ({ id: c.id, name: c.name, index: outputSlotById.get(c.id) ?? 0 }))
-      .sort((a, b) => a.index - b.index),
-  );
+  const outputChannels = $derived(outputChannelsWithIndex(s.mirror.current));
   const showMask = $derived(outputChannels.length > 1);
-  const outputItems = $derived(
-    outputChannels.map((ch) => ({
-      key: ch.id, index: ch.index, label: String(ch.index + 1), title: ch.name || `Output ${ch.index + 1}`,
-    })),
-  );
+  const outputItems = $derived(maskChipItems(outputChannels, 'Output'));
   const outputMask = $derived(psybass?.outputMask ?? 0xFFFF);
-
-  function toggleEnabled() {
-    if (!psybass) return;
-    setPsybassEnabled(s, !psybass.enabled);
-  }
 </script>
 
-<Panel code="PR.04" title="PSYBASS">
-  {#snippet right()}
-    <ToggleSwitch
-      size="sm"
-      checked={enabled}
-      disabled={!connected}
-      ariaLabel={enabled ? 'Disable psybass' : 'Enable psybass'}
-      onChange={toggleEnabled}
-    />
-  {/snippet}
-
-  <div class="grid">
+<ProcPanel
+  code="PR.04"
+  title="PSYBASS"
+  subject="psybass"
+  {enabled}
+  {connected}
+  onToggle={() => psybass && setPsybassEnabled(s, !psybass.enabled)}
+>
+  <div class="proc-grid">
     {#if showMask}
       <MaskChipRow label="OUTPUTS" items={outputItems} mask={outputMask} disabled={!editable} onToggle={(i) => togglePsybassOutputChannel(s, i)} />
       <div class="rule"></div>
@@ -115,20 +96,4 @@
       onChange={(v) => setPsybassOriginal(s, v)}
     />
   </div>
-</Panel>
-
-<style>
-  .grid {
-    padding: 14px;
-    display: grid;
-    grid-template-columns: 90px 1fr 64px;
-    align-items: center;
-    gap: 12px;
-  }
-  .rule {
-    grid-column: 1 / -1;
-    height: 1px;
-    background: var(--border);
-    margin: 2px 0;
-  }
-</style>
+</ProcPanel>

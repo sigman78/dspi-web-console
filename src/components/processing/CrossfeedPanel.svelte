@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Panel from '@/components/chrome/Panel.svelte';
+  import ProcPanel from './ProcPanel.svelte';
   import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
@@ -12,7 +12,7 @@
     setCrossfeedEnabled, setCrossfeedPreset, setCrossfeedItd,
     setCrossfeedFreq, setCrossfeedFeedDb, toggleCrossfeedOutputPair,
   } from '@/runtime';
-  import { CrossfeedPreset, Proc } from '@/domain';
+  import { CrossfeedPreset, Proc, outputChannelsWithIndex } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -27,13 +27,7 @@
   // Pair p covers output slots 2p/2p+1; the mono PDM sub never forms a pair
   // and is dropped by the floor division below. There's no dedicated
   // per-platform pair-count field, so it's derived from the live output count.
-  const outputSlotById = $derived(new Map((s.mirror.current?.outputs ?? []).map((o) => [o.id, o.wireIndex])));
-  const outputChannels = $derived(
-    (s.mirror.current?.channels ?? [])
-      .filter((c) => c.isOutput)
-      .map((c) => ({ id: c.id, name: c.name, index: outputSlotById.get(c.id) ?? 0 }))
-      .sort((a, b) => a.index - b.index),
-  );
+  const outputChannels = $derived(outputChannelsWithIndex(s.mirror.current));
   const nameByIndex = $derived(new Map<number, string>(outputChannels.map((ch) => [ch.index, ch.name])));
   const pairCount = $derived(Math.min(4, Math.floor(outputChannels.length / 2)));
   // Meaningless with a single pair, and only wire V20+ has a mask to write to.
@@ -71,32 +65,25 @@
     { value: CrossfeedPreset.Custom,  label: 'CUSTOM' },
   ] as const satisfies ReadonlyArray<{ value: CrossfeedPreset; label: string }>;
 
-  function toggleEnabled() {
-    if (!cf) return;
-    setCrossfeedEnabled(s, !cf.enabled);
-  }
   function toggleItd() {
     if (!cf) return;
     setCrossfeedItd(s, !cf.itd);
   }
 </script>
 
-<Panel code="PR.01" title="CROSSFEED">
-  {#snippet right()}
-    <ToggleSwitch
-      size="sm"
-      checked={enabled}
-      disabled={!connected}
-      ariaLabel={enabled ? 'Disable crossfeed' : 'Enable crossfeed'}
-      onChange={toggleEnabled}
-    />
-  {/snippet}
-
+<ProcPanel
+  code="PR.01"
+  title="CROSSFEED"
+  subject="crossfeed"
+  {enabled}
+  {connected}
+  onToggle={() => cf && setCrossfeedEnabled(s, !cf.enabled)}
+>
   <div class="graph" class:off={!enabled}>
     <BodePlot curves={cfCurves} height={96} crosshair={false} yRange={cfRange} />
   </div>
 
-  <div class="grid">
+  <div class="proc-grid">
     {#if showPairs}
       <MaskChipRow label="PAIRS" items={pairItems} mask={pairMask} disabled={!editable} onToggle={(i) => toggleCrossfeedOutputPair(s, i)} />
       <div class="rule"></div>
@@ -146,23 +133,9 @@
       />
     </div>
   </div>
-</Panel>
+</ProcPanel>
 
 <style>
   .graph { padding: 10px 12px 0; }
   .graph.off { opacity: 0.4; }
-  .grid {
-    padding: 14px;
-    display: grid;
-    grid-template-columns: 90px 1fr 64px;
-    align-items: center;
-    gap: 12px;
-  }
-  .span2 { grid-column: 2 / span 2; }
-  .rule {
-    grid-column: 1 / -1;
-    height: 1px;
-    background: var(--border);
-    margin: 2px 0;
-  }
 </style>

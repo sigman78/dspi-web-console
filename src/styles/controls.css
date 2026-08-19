@@ -20,7 +20,10 @@
    .kvgrid — the 2-col label/value grid shared by DevicePanel/SystemTab/
      OverviewTab; panels with a different padding/gap keep a local variant.
    .icon-toggle — small square icon button (topbar bypass / mini mute);
-     width is the only per-caller variance, set via a local override. */
+     width is the only per-caller variance, set via a local override.
+   .proc-grid — the label/control/unit grid shared by the processing panels
+     (Crossfeed/Loudness/Leveller/Psybass/Upmix); .rule is a full-width
+     divider row, .span2 lets a control skip the label column. */
 
 .chip {
   font-family: var(--font-mono);
@@ -148,6 +151,21 @@
   box-shadow: 0 0 4px color-mix(in oklab, var(--accent) 70%, transparent);
 }
 .stage-wrap { display: inline-block; }
+
+.proc-grid {
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 90px 1fr 64px;
+  align-items: center;
+  gap: 12px;
+}
+.proc-grid > .rule {
+  grid-column: 1 / -1;
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+}
+.proc-grid > .span2 { grid-column: 2 / span 2; }
 
 /* Section sub-header inside a panel body (border-separated). */
 .subhdr {

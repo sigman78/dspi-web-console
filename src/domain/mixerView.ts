@@ -29,6 +29,45 @@ function channelById(s: DspSnapshot, id: ChannelId): ChannelModel | undefined {
   return s.channels.find((c) => c.id === id);
 }
 
+export interface OutputChannelWithIndex {
+  id: ChannelId;
+  name: string;
+  index: number;
+}
+
+// Output channels ordered by protocol output slot (OutputModel.wireIndex),
+// the convention the crossfeed/loudness/psybass output masks address bits
+// by. Shared by the panels whose per-output masks all key off this same
+// slot-ordered list.
+export function outputChannelsWithIndex(snapshot: DspSnapshot | null): OutputChannelWithIndex[] {
+  if (!snapshot) return [];
+  const outputSlotById = new Map(snapshot.outputs.map((o) => [o.id, o.wireIndex]));
+  return snapshot.channels
+    .filter((c) => c.isOutput)
+    .map((c) => ({ id: c.id, name: c.name, index: outputSlotById.get(c.id) ?? 0 }))
+    .sort((a, b) => a.index - b.index);
+}
+
+export interface MaskChipItem {
+  key: ChannelId;
+  index: number;
+  label: string;
+  title: string;
+}
+
+// MaskChipRow item mapping shared by the per-channel mask rows (loudness/
+// psybass output masks, leveller detector/apply masks): chip label is the
+// 1-based slot number, title falls back to "<noun> <slot>" when the channel
+// carries no name.
+export function maskChipItems(
+  channels: ReadonlyArray<{ id: ChannelId; name: string; index: number }>,
+  noun: string,
+): MaskChipItem[] {
+  return channels.map((ch) => ({
+    key: ch.id, index: ch.index, label: String(ch.index + 1), title: ch.name || `${noun} ${ch.index + 1}`,
+  }));
+}
+
 // Output mode is a projection of i2s.outputSlotTypes (one type per stereo
 // pair); the PDM sub is fixed-mode. Throws on input channels -- they have
 // no output mode and no caller should ask.

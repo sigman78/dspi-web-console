@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Panel from '@/components/chrome/Panel.svelte';
+  import ProcPanel from './ProcPanel.svelte';
   import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
@@ -10,7 +10,7 @@
     setLevellerAmount, setLevellerMaxGain, setLevellerGate,
     setLevellerMasks, toggleLevellerDetectorChannel, toggleLevellerApplyChannel,
   } from '@/runtime';
-  import { LevellerSpeed, Proc, inputIndexOf } from '@/domain';
+  import { LevellerSpeed, Proc, inputIndexOf, maskChipItems } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -45,11 +45,7 @@
 
   const detectorMask = $derived(lv?.detectorMask ?? 0xFF);
   const applyMask = $derived(lv?.applyMask ?? 0xFF);
-  const channelItems = $derived(
-    shownChannels.map((ch) => ({
-      key: ch.id, index: ch.index, label: String(ch.index + 1), title: ch.name || `Input ${ch.index + 1}`,
-    })),
-  );
+  const channelItems = $derived(maskChipItems(shownChannels, 'Input'));
 
   // detector/apply bitmasks over input indices; mirror the macOS reference.
   const MASK_PRESETS = [
@@ -58,28 +54,21 @@
     { label: 'CTR', title: 'Center only (dialog boost)', detector: 0x04, apply: 0x04 },
   ] as const;
 
-  function toggleEnabled() {
-    if (!lv) return;
-    setLevellerEnabled(s, !lv.enabled);
-  }
   function toggleLookahead() {
     if (!lv) return;
     setLevellerLookahead(s, !lv.lookahead);
   }
 </script>
 
-<Panel code="PR.03" title="LEVELLER">
-  {#snippet right()}
-    <ToggleSwitch
-      size="sm"
-      checked={enabled}
-      disabled={!connected}
-      ariaLabel={enabled ? 'Disable leveller' : 'Enable leveller'}
-      onChange={toggleEnabled}
-    />
-  {/snippet}
-
-  <div class="grid">
+<ProcPanel
+  code="PR.03"
+  title="LEVELLER"
+  subject="leveller"
+  {enabled}
+  {connected}
+  onToggle={() => lv && setLevellerEnabled(s, !lv.enabled)}
+>
+  <div class="proc-grid">
     {#if showMasks}
       <span class="microlbl">CHANNELS</span>
       <div class="presets span2">
@@ -155,18 +144,9 @@
       />
     </div>
   </div>
-</Panel>
+</ProcPanel>
 
 <style>
-  .grid {
-    padding: 14px;
-    display: grid;
-    grid-template-columns: 90px 1fr 64px;
-    align-items: center;
-    gap: 12px;
-  }
-  .span2 { grid-column: 2 / span 2; }
-
   .presets {
     display: flex;
     justify-content: flex-end;
@@ -185,11 +165,4 @@
   }
   .preset:hover:not(:disabled) { color: var(--text); background: var(--wash); }
   .preset:disabled { cursor: default; opacity: var(--dim-disabled); }
-
-  .rule {
-    grid-column: 1 / -1;
-    height: 1px;
-    background: var(--border);
-    margin: 2px 0;
-  }
 </style>
