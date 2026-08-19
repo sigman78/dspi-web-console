@@ -224,7 +224,7 @@ describe('MockTransport — bypass / master volume mode / saved volume', () => {
   it('DspDevice.saveMasterVolume → getSavedMasterVolume round-trips', async () => {
     const d = await createDevice(t);
     await d.setMasterVolume(-12.5);
-    expect(await d.saveMasterVolume()).toBe(true);
+    expect((await d.saveMasterVolume()).ok).toBe(true);
     expect(await d.getSavedMasterVolume()).toBeCloseTo(-12.5, 4);
   });
 });

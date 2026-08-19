@@ -104,21 +104,19 @@ describe.skipIf(!process.env.HIL_DESTRUCTIVE)('DspDevice — presets (HIL)', () 
     expect(r.ok).toBe(true);
   });
 
-  // DESTRUCTIVE: clears slots 0-9, not just 8/9. Disabled by default to
-  // protect real user presets on dev hardware. Uncomment to verify the
-  // `clearAllPresets` helper against firmware — only on a device where
-  // losing slots 0-7 is acceptable.
-  // it('clearAllPresets on test slots leaves them empty', async () => {
-  //   // Save into both test slots so there's something to clear.
-  //   await device.savePreset(TEST_SLOT_A);
-  //   await sleep(FLASH_SETTLE_MS);
-  //   await device.savePreset(TEST_SLOT_B);
-  //   await sleep(FLASH_SETTLE_MS);
-  //
-  //   const r = await device.clearAllPresets();
-  //   expect(r.ok).toBe(true);
-  //
-  //   const dir = await device.getPresetDirectory();
-  //   expect(dir.occupiedMask).toBe(0);
-  // });
+  // DESTRUCTIVE: clears slots 0-9, not just 8/9 — skipped to protect real
+  // user presets on dev hardware. Unskip only on a device where losing
+  // slots 0-7 is acceptable.
+  it.skip('clearAllPresets on test slots leaves them empty', async () => {
+    await device.savePreset(TEST_SLOT_A);
+    await sleep(FLASH_SETTLE_MS);
+    await device.savePreset(TEST_SLOT_B);
+    await sleep(FLASH_SETTLE_MS);
+
+    const r = await device.clearAllPresets();
+    expect(r.ok).toBe(true);
+
+    const dir = await device.getPresetDirectory();
+    expect(dir.occupiedMask).toBe(0);
+  });
 });

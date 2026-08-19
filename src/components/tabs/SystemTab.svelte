@@ -14,6 +14,7 @@
   import BufferStatsPanel from '@/components/system/BufferStatsPanel.svelte';
   import { chKey } from '@/styles/palette';
   import { clearClips } from '@/runtime';
+  import { formatRateKHz } from '@/utils';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -51,7 +52,7 @@
     <Panel code="SY.02" title="TELEMETRY">
       <div class="kvgrid">
         <KV label="CLOCK"     value={info?.clockHz       != null ? `${(info.clockHz / 1_000_000).toFixed(0)} MHz` : '—'} />
-        <KV label="SAMPLE"    value={info?.sampleRateHz  != null ? `${(info.sampleRateHz / 1000).toFixed(1)} kHz` : '—'} />
+        <KV label="SAMPLE"    value={info?.sampleRateHz  != null ? formatRateKHz(info.sampleRateHz) : '—'} />
         <KV label="VOLTAGE"   value={info?.coreVoltageMv != null ? `${(info.coreVoltageMv / 1000).toFixed(3)} V` : '—'} />
         <KV label="TEMP"      value={info?.tempCDegC     != null ? `${(info.tempCDegC / 100).toFixed(1)} °C` : '—'} />
         <KV label="CPU0"      value={`${s.telemetry.cpu0}%`} />

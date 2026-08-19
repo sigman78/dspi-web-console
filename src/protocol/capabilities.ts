@@ -17,7 +17,6 @@ import { ChannelFamily } from '@/domain';
 // stereo upmixer, V26 adds the upmixer presence bell).
 // Wire versions 11..15 were in-development intermediates with shifting
 // layouts the console never shipped against -- rejected like pre-V10 firmware.
-export const MIN_SUPPORTED_WIRE = 10;
 export const MAX_KNOWN_WIRE = 26;
 const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26];
 

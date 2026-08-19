@@ -1,5 +1,5 @@
 <script lang="ts">
-  import * as appState from '@/state';
+  import { activeSession, connection, settings, eqUi, selectChannel } from '@/state';
   import ChannelRow from './ChannelRow.svelte';
   import DeviceSwitcher from './DeviceSwitcher.svelte';
   import PresetActiveChip from '@/components/presets/PresetActiveChip.svelte';
@@ -7,9 +7,9 @@
   import { chKey } from '@/styles/palette';
   import { groupIntoPairs, groupInputSlotPairs, inputIndexOf, type ChannelGroup, type ChannelId, type ChannelModel } from '@/domain';
 
-  const snap = $derived(appState.activeSession()?.mirror.current ?? null);
-  const tele = $derived(appState.activeSession()?.telemetry ?? null);
-  const disabled = $derived(!appState.connection.connected);
+  const snap = $derived(activeSession()?.mirror.current ?? null);
+  const tele = $derived(activeSession()?.telemetry ?? null);
+  const disabled = $derived(!connection.connected);
 
   // Inline rename: one row editable at a time. The row component owns the
   // pending text and its own commit-once guard; the rail tracks which row is
@@ -18,7 +18,7 @@
   let originalValue = '';
 
   function startEdit(ch: ChannelModel): void {
-    if (!appState.connection.connected) return;
+    if (!connection.connected) return;
     editingId = ch.id;
     originalValue = ch.name;
   }
@@ -26,7 +26,7 @@
   function commitName(id: ChannelId, value: string): void {
     if (editingId !== id) return; // re-entry guard (defense in depth)
     editingId = null;
-    const s = appState.activeSession();
+    const s = activeSession();
     if (!s) return; // disconnected mid-edit: no-op rather than throw
     if (value !== originalValue) setChannelName(s, id, value);
   }
@@ -82,11 +82,11 @@
                   channelId={ch.id}
                   levelDb={levelDb(ch)}
                   defaultName={ch.defaultName}
-                  selected={appState.settings.selectedChannel === ch.id}
-                  pulsate={appState.eqUi.copySource === ch.id}
+                  selected={settings.selectedChannel === ch.id}
+                  pulsate={eqUi.copySource === ch.id}
                   disabled={disabled}
                   editing={editingId === ch.id}
-                  onclick={() => appState.selectChannel(ch.id)}
+                  onclick={() => selectChannel(ch.id)}
                   onStartEdit={() => startEdit(ch)}
                   onCommitName={(value) => commitName(ch.id, value)}
                   onCancelEdit={cancelEdit}

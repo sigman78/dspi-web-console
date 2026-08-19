@@ -6,6 +6,7 @@
   import { connection } from '@/state';
   import { stageInputSource, stageSpdifRxPin, stageSpdifRxPinExt, stageSpdifInputEnabled, stageInputRate, stageI2sRxPin, stageI2sInputChannels } from '@/runtime';
   import { AudioInputSource, isSpdifSource, SpdifInputState, I2sSlaveClockState, AdatInputLockState, availablePinsFor, I2S_INPUT_RATES_HZ, liveCsPinConfigs } from '@/domain';
+  import { formatRateKHz } from '@/utils';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -92,10 +93,6 @@
     if (state === SpdifInputState.Locked) return 'ok';
     if (state === SpdifInputState.Acquiring || state === SpdifInputState.Relocking) return undefined;
     return 'off';
-  }
-
-  function fmtRate(hz: number): string {
-    return hz > 0 ? `${(hz / 1000).toFixed(1)} kHz` : '—';
   }
 
   // Host-selected USB width (alt setting), live from telemetry. Only
@@ -221,7 +218,7 @@
             value={STATE_LABELS[spdifStatus.state] ?? 'UNKNOWN'}
             tone={stateTone(spdifStatus.state)}
           />
-          <KV label="SAMPLE RATE" value={fmtRate(spdifStatus.sampleRate)} />
+          <KV label="SAMPLE RATE" value={formatRateKHz(spdifStatus.sampleRate)} />
           <KV label="LOCK COUNT"  value={String(spdifStatus.lockCount)} />
           <KV label="LOSS COUNT"  value={String(spdifStatus.lossCount)} tone={spdifStatus.lossCount > 0 ? undefined : 'off'} />
           <KV label="PARITY ERR"  value={String(spdifStatus.parityErrors)} tone={spdifStatus.parityErrors > 0 ? undefined : 'off'} />
@@ -238,13 +235,13 @@
         {#if showSlaveRate}
           <KV
             label="RATE"
-            value={slaveRateLocked ? fmtRate(slaveStatus?.detectedRateHz ?? 0) : '—'}
+            value={slaveRateLocked ? formatRateKHz(slaveStatus?.detectedRateHz ?? 0) : '—'}
             tone={slaveRateLocked ? 'ok' : 'off'}
             title="Slave clock mode: rate follows the external I2S master"
           />
           <p class="hint">auto-detected — external master sets the rate</p>
         {:else}
-          <KV label="RATE" value={fmtRate(effRate)} />
+          <KV label="RATE" value={formatRateKHz(effRate)} />
           <div class="src-btns">
             {#each I2S_INPUT_RATES_HZ as hz (hz)}
               <button
@@ -295,13 +292,13 @@
         {#if adatClockMode === 1}
           <KV
             label="RATE"
-            value={adatStatus?.state === AdatInputLockState.Locked ? fmtRate(adatStatus.detectedRateHz) : '—'}
+            value={adatStatus?.state === AdatInputLockState.Locked ? formatRateKHz(adatStatus.detectedRateHz) : '—'}
             tone={adatStatus?.state === AdatInputLockState.Locked ? 'ok' : 'off'}
             title="Slave clock mode: rate follows the external ADAT master"
           />
           <p class="hint">auto-detected — external master sets the rate</p>
         {:else}
-          <KV label="RATE" value={fmtRate(effRate)} />
+          <KV label="RATE" value={formatRateKHz(effRate)} />
           <div class="src-btns">
             {#each I2S_INPUT_RATES_HZ as hz (hz)}
               <button

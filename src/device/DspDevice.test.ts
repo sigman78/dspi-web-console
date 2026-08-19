@@ -284,33 +284,37 @@ describe('DspDevice — getUpmixStatus decode', () => {
 });
 
 describe('DspDevice — saveMasterVolume action-IN', () => {
-  test('returns true when status byte is 0', async () => {
+  test('resolves ok when status byte is 0', async () => {
     const seen: { req: number; val: number; len: number }[] = [];
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, val, len) => { seen.push({ req, val, len }); return new Uint8Array([0]); },
       ctrlOut: async () => {},
     };
-    expect(await (await createDevice(t)).saveMasterVolume()).toBe(true);
+    const r = await (await createDevice(t)).saveMasterVolume();
+    expect(r.ok).toBe(true);
     expect(seen[0]).toEqual({ req: 0xD6, val: 0, len: 1 });
   });
 
-  test('returns false when status byte is non-zero', async () => {
+  test('fails with the device PresetResult code on a non-zero status byte', async () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async () => new Uint8Array([3]), // CrcFailure
       ctrlOut: async () => {},
     };
-    expect(await (await createDevice(t)).saveMasterVolume()).toBe(false);
+    const r = await (await createDevice(t)).saveMasterVolume();
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe(PresetResult.CrcFailure);
   });
 
-  test('returns false when response is empty', async () => {
+  test('fails when response is empty', async () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async () => new Uint8Array(0),
       ctrlOut: async () => {},
     };
-    expect(await (await createDevice(t)).saveMasterVolume()).toBe(false);
+    const r = await (await createDevice(t)).saveMasterVolume();
+    expect(r.ok).toBe(false);
   });
 });
 

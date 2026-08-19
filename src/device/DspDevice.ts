@@ -2,7 +2,7 @@ import type { DspTransport } from '@/transport/DspTransport';
 import { withSerializedCtrl, type SerializedDspTransport } from '@/transport/withSerializedCtrl';
 import * as proto from '@/protocol';
 import { Codec, utf8Truncate, Result } from '@/utils';
-import * as domain from '@/domain';
+import * as Domain from '@/domain';
 import { fromBulkParams, narrowInputSource, type DeviceState } from '@/protocol/snapshotCodec';
 import { deriveCapabilities, type DeviceCapabilities, type FirmwareVersion } from '@/protocol/capabilities';
 
@@ -51,35 +51,35 @@ function concatChunks(chunks: Uint8Array[]): Uint8Array {
 }
 
 // Bit N of the firmware's u16 occupiedMask = slot N populated.
-function occupiedMaskToSet(mask: number): ReadonlySet<domain.PresetSlot> {
-  const s = new Set<domain.PresetSlot>();
-  for (let i = 0; i < domain.PRESET_SLOT_COUNT; i++) {
-    if (mask & (1 << i)) s.add(i as domain.PresetSlot);
+function occupiedMaskToSet(mask: number): ReadonlySet<Domain.PresetSlot> {
+  const s = new Set<Domain.PresetSlot>();
+  for (let i = 0; i < Domain.PRESET_SLOT_COUNT; i++) {
+    if (mask & (1 << i)) s.add(i as Domain.PresetSlot);
   }
   return s;
 }
 
 export interface DspDeviceInfo {
   readonly serial: string;
-  readonly platformType: domain.PlatformType;
-  readonly hardware: domain.HardwareProfile;
+  readonly platformType: Domain.PlatformType;
+  readonly hardware: Domain.HardwareProfile;
   readonly capabilities: DeviceCapabilities;
 }
 
-function platformTypeFromId(platformId: number): domain.PlatformType {
-  return platformId === 1 ? domain.PlatformType.RP2350 : domain.PlatformType.RP2040;
+function platformTypeFromId(platformId: number): Domain.PlatformType {
+  return platformId === 1 ? Domain.PlatformType.RP2350 : Domain.PlatformType.RP2040;
 }
 
 // Forward-compat: an unrecognised future state byte reads as Inactive.
-function narrowSpdifInputState(n: number): domain.SpdifInputState {
+function narrowSpdifInputState(n: number): Domain.SpdifInputState {
   switch (n) {
-    case domain.SpdifInputState.Inactive:
-    case domain.SpdifInputState.Acquiring:
-    case domain.SpdifInputState.Locked:
-    case domain.SpdifInputState.Relocking:
+    case Domain.SpdifInputState.Inactive:
+    case Domain.SpdifInputState.Acquiring:
+    case Domain.SpdifInputState.Locked:
+    case Domain.SpdifInputState.Relocking:
       return n;
     default:
-      return domain.SpdifInputState.Inactive;
+      return Domain.SpdifInputState.Inactive;
   }
 }
 
@@ -97,12 +97,12 @@ function csBindingFromWire(w: {
   gpio0: number; gpio1: number; event: number; target: number; index: number;
   opaque0: number; value: number; step: number; rangeMin: number; rangeMax: number;
   opaqueTail: number[];
-}): domain.CsBinding {
+}): Domain.CsBinding {
   return {
-    type: w.type as domain.CsType, noun: w.noun as domain.CsNoun, action: w.action as domain.CsAction,
+    type: w.type as Domain.CsType, noun: w.noun as Domain.CsNoun, action: w.action as Domain.CsAction,
     flags: w.flags, gpio0: w.gpio0,
-    gpio1: w.gpio1 === domain.CS_GPIO_UNUSED ? null : w.gpio1,
-    event: w.event as domain.CsEvent, target: w.target, index: w.index,
+    gpio1: w.gpio1 === Domain.CS_GPIO_UNUSED ? null : w.gpio1,
+    event: w.event as Domain.CsEvent, target: w.target, index: w.index,
     value: w.value, step: w.step, rangeMin: w.rangeMin, rangeMax: w.rangeMax,
     opaque0: w.opaque0, opaqueTail: w.opaqueTail,
   };
@@ -111,10 +111,10 @@ function csBindingFromWire(w: {
 function csIrCommandFromWire(w: {
   noun: number; action: number; flags: number; target: number; index: number;
   protocol: number; value: number; step: number; code: number;
-}): domain.CsIrCommand {
+}): Domain.CsIrCommand {
   return {
-    noun: w.noun as domain.CsNoun, action: w.action as domain.CsAction, flags: w.flags,
-    target: w.target, index: w.index, protocol: w.protocol as domain.CsIrProto,
+    noun: w.noun as Domain.CsNoun, action: w.action as Domain.CsAction, flags: w.flags,
+    target: w.target, index: w.index, protocol: w.protocol as Domain.CsIrProto,
     value: w.value, step: w.step, code: w.code,
   };
 }
@@ -134,8 +134,8 @@ function sleep(ms: number): Promise<void> {
 // csRevert -- all funnel through the same last_status/last_slot channel.
 async function pollCsStatus(
   raw: DspTransport, matchSlot: number,
-): Promise<{ result: Result<void, number>; status: domain.CsStatus }> {
-  let status: domain.CsStatus = await proto.readCmd(raw, proto.WireCmd.GetCsStatus);
+): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
+  let status: Domain.CsStatus = await proto.readCmd(raw, proto.WireCmd.GetCsStatus);
   for (let poll = 1; poll < CS_APPLY_MAX_POLLS; poll++) {
     if (status.lastSlot === matchSlot && status.lastStatus !== proto.CsStatusCode.Pending) {
       return { result: proto.csStatusFromByte(status.lastStatus), status };
@@ -154,7 +154,7 @@ async function pollCsStatus(
 
 function ctrlIfaceStatusFromWire(w: {
   uartLastStatus: number; uartLive: boolean; i2cLastStatus: number; i2cLive: boolean; protoVersion: number;
-}): domain.ControlIfaceStatus {
+}): Domain.ControlIfaceStatus {
   return {
     uartLastStatus: w.uartLastStatus, uartLive: w.uartLive,
     i2cLastStatus: w.i2cLastStatus, i2cLive: w.i2cLive,
@@ -216,7 +216,7 @@ export class DspDevice {
     }
 
     const platformType = platformTypeFromId(platform.platformId);
-    const hardware = domain.createHardwareProfile(platformType, capabilities.channelModel);
+    const hardware = Domain.createHardwareProfile(platformType, capabilities.channelModel);
     return {
       serial: serial.trim(),
       platformType,
@@ -240,7 +240,7 @@ export class DspDevice {
     return this._info;
   }
 
-  get hardware(): domain.HardwareProfile {
+  get hardware(): Domain.HardwareProfile {
     return this._info.hardware;
   }
 
@@ -254,12 +254,12 @@ export class DspDevice {
     return this.#lastRawBulk;
   }
 
-  protected deviceChannel(channel: domain.ChannelId): domain.ChannelId {
-    return domain.wireChannelFor(this.hardware, channel);
+  protected deviceChannel(channel: Domain.ChannelId): Domain.ChannelId {
+    return Domain.wireChannelFor(this.hardware, channel);
   }
 
   // Fetch the wire packet and return the domain view. The sole app-facing read path.
-  async getSnapshot(): Promise<domain.DspSnapshot> {
+  async getSnapshot(): Promise<Domain.DspSnapshot> {
     return fromBulkParams(this.hardware, await this.getAllParams());
   }
 
@@ -358,7 +358,7 @@ export class DspDevice {
   // V16 devices use the wide combined-status layout (u32 clip flags + live
   // active-input-count byte) and the 5-bit band field in GetEqParam wValues.
   private get isWideWire(): boolean {
-    return this.capabilities.channelModel === domain.ChannelFamily.Unified;
+    return this.capabilities.channelModel === Domain.ChannelFamily.Unified;
   }
 
   async getSystemStatus(): Promise<proto.SystemStatus> {
@@ -373,6 +373,8 @@ export class DspDevice {
   // Slow-poll telemetry (env scalars + cumulative error counters). Each wValue
   // is a separate vendor read; allSettled lets a single STALL on one wValue
   // (older firmware missing a counter) leave the rest of the panel populated.
+  // Each promise is keyed to its SystemInfo field by name (not array position),
+  // so reordering the field list below can't silently cross-wire two values.
   async getSystemInfo(): Promise<proto.PartialSystemInfo> {
     const u32 = (wValue: number) =>
       this.transport.ctrlIn(proto.WireCmd.GetStatus.code, wValue, 4)
@@ -381,38 +383,29 @@ export class DspDevice {
       this.transport.ctrlIn(proto.WireCmd.GetStatus.code, wValue, 4)
         .then((b) => Codec.decodePadded(Codec.i32, b));
 
-    const settled = await Promise.allSettled([
-      u32(proto.SystemStatusValue.ClockHz),
-      u32(proto.SystemStatusValue.CoreVoltageMv),
-      u32(proto.SystemStatusValue.SampleRateHz),
-      i32(proto.SystemStatusValue.TempCDegC),
-      u32(proto.SystemStatusValue.PdmRingOverruns),
-      u32(proto.SystemStatusValue.PdmRingUnderruns),
-      u32(proto.SystemStatusValue.PdmDmaOverruns),
-      u32(proto.SystemStatusValue.PdmDmaUnderruns),
-      u32(proto.SystemStatusValue.SpdifOverruns),
-      u32(proto.SystemStatusValue.SpdifUnderruns),
-      u32(proto.SystemStatusValue.SpdifStarvationsTotal),
-    ]);
-
-    const v = (i: number): number | null =>
-      settled[i].status === 'fulfilled'
-        ? (settled[i] as PromiseFulfilledResult<number>).value
-        : null;
-
-    return {
-      clockHz:               v(0),
-      coreVoltageMv:         v(1),
-      sampleRateHz:          v(2),
-      tempCDegC:             v(3),
-      pdmRingOverruns:       v(4),
-      pdmRingUnderruns:      v(5),
-      pdmDmaOverruns:        v(6),
-      pdmDmaUnderruns:       v(7),
-      spdifOverruns:         v(8),
-      spdifUnderruns:        v(9),
-      spdifStarvationsTotal: v(10),
+    const reads: { [K in keyof proto.SystemInfo]: Promise<number> } = {
+      clockHz:               u32(proto.SystemStatusValue.ClockHz),
+      coreVoltageMv:         u32(proto.SystemStatusValue.CoreVoltageMv),
+      sampleRateHz:          u32(proto.SystemStatusValue.SampleRateHz),
+      tempCDegC:             i32(proto.SystemStatusValue.TempCDegC),
+      pdmRingOverruns:       u32(proto.SystemStatusValue.PdmRingOverruns),
+      pdmRingUnderruns:      u32(proto.SystemStatusValue.PdmRingUnderruns),
+      pdmDmaOverruns:        u32(proto.SystemStatusValue.PdmDmaOverruns),
+      pdmDmaUnderruns:       u32(proto.SystemStatusValue.PdmDmaUnderruns),
+      spdifOverruns:         u32(proto.SystemStatusValue.SpdifOverruns),
+      spdifUnderruns:        u32(proto.SystemStatusValue.SpdifUnderruns),
+      spdifStarvationsTotal: u32(proto.SystemStatusValue.SpdifStarvationsTotal),
     };
+
+    const entries = Object.entries(reads) as [keyof proto.SystemInfo, Promise<number>][];
+    const settled = await Promise.allSettled(entries.map(([, p]) => p));
+
+    const out = {} as proto.PartialSystemInfo;
+    entries.forEach(([key], i) => {
+      const r = settled[i];
+      out[key] = r.status === 'fulfilled' ? r.value : null;
+    });
+    return out;
   }
 
   async getBufferStats(): Promise<proto.BufferStats | null> {
@@ -436,7 +429,7 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetPreamp, db);
   }
 
-  async setInputPreamp(channel: domain.InputSlot, db: number): Promise<void> {
+  async setInputPreamp(channel: Domain.InputSlot, db: number): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetInputPreamp, db, channel);
   }
 
@@ -444,22 +437,21 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetMasterVolume, db);
   }
 
-  async setMasterVolumeMode(mode: domain.MasterVolumeMode): Promise<void> {
+  async setMasterVolumeMode(mode: Domain.MasterVolumeMode): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetMasterVolumeMode, mode);
   }
 
-  // Action-style IN: persists live master volume to flash. Returns ok-boolean;
-  // transfer failures throw rather than surfacing the status byte.
-  async saveMasterVolume(): Promise<boolean> {
-    const r = await this.transport.ctrlIn(proto.WireCmd.SaveMasterVolume.code, 0, 1);
-    return r.length >= 1 && r[0] === 0;
+  // Action-style IN: persists live master volume to flash. Shares the
+  // PresetResult status byte with SaveOutputConfig/Preset* (see results.ts).
+  async saveMasterVolume(): Promise<Result<void, proto.PresetResult>> {
+    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SaveMasterVolume));
   }
 
   // SetMatrixRoute always sends the full crosspoint state (enabled+invert+
   // gainDb); callers must merge a patch with current snapshot values first.
   async setMatrixRoute(
-    input: domain.InputSlot,
-    output: domain.OutputSlot,
+    input: Domain.InputSlot,
+    output: Domain.OutputSlot,
     p: { enabled: boolean; invert: boolean; gainDb: number },
   ): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetMatrixRoute, {
@@ -470,12 +462,12 @@ export class DspDevice {
     });
   }
 
-  async setOutputGain(output: domain.OutputSlot, db: number): Promise<void> {
+  async setOutputGain(output: Domain.OutputSlot, db: number): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetOutputGain, db, output);
   }
 
   // Wire surface for the 11-command preset system (0x90-0x9A).
-  async getPresetDirectory(): Promise<domain.PresetDirectoryInfo> {
+  async getPresetDirectory(): Promise<Domain.PresetDirectoryInfo> {
     const bytes = await this.transport.ctrlIn(
       proto.WireCmd.PresetGetDir.code, 0, proto.PresetDirRequestSize,
     );
@@ -485,10 +477,10 @@ export class DspDevice {
     return {
       occupiedSlotsSet: occupiedMaskToSet(r.occupiedMask),
       startupMode:      r.startupMode,
-      defaultSlot:      r.defaultSlot as domain.PresetSlot,
-      lastActiveSlot:   r.lastActiveSlot === 0xFF ? null : (r.lastActiveSlot as domain.PresetSlot),
-      outputConfigMode: r.outputConfigMode as domain.OutputConfigMode,
-      masterVolumeMode: r.masterVolumeMode as domain.MasterVolumeMode,
+      defaultSlot:      r.defaultSlot as Domain.PresetSlot,
+      lastActiveSlot:   r.lastActiveSlot === 0xFF ? null : (r.lastActiveSlot as Domain.PresetSlot),
+      outputConfigMode: r.outputConfigMode as Domain.OutputConfigMode,
+      masterVolumeMode: r.masterVolumeMode as Domain.MasterVolumeMode,
     };
   }
 
@@ -496,33 +488,33 @@ export class DspDevice {
   // sentinel 0xFF and any other out-of-range byte collapse to null (not throw)
   // so the UI's single null->0 coercion handles all unusable responses
   // uniformly; persistence-aware code treats null as "no slot to write to".
-  async getActivePreset(): Promise<domain.PresetSlot | null> {
+  async getActivePreset(): Promise<Domain.PresetSlot | null> {
     const r = await this.transport.ctrlIn(proto.WireCmd.PresetGetActive.code, 0, 1);
     if (r.length < 1) return null;
     const b = r[0];
     if (b === 0xFF || b >= 10) return null;
-    return b as domain.PresetSlot;
+    return b as Domain.PresetSlot;
   }
 
   // 0x93/0x94: 32-byte NUL-terminated UTF-8 name per slot; wValue carries the
   // slot. Names are cropped at a codepoint boundary to fit the 31-byte budget.
-  async setPresetName(slot: domain.PresetSlot, name: string): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.PresetSetName, utf8Truncate(name, domain.PRESET_NAME_MAX_LEN), slot);
+  async setPresetName(slot: Domain.PresetSlot, name: string): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.PresetSetName, utf8Truncate(name, Domain.PRESET_NAME_MAX_LEN), slot);
   }
 
-  async getPresetName(slot: domain.PresetSlot): Promise<string> {
+  async getPresetName(slot: Domain.PresetSlot): Promise<string> {
     return proto.readCmd(this.transport, proto.WireCmd.PresetGetName, slot);
   }
 
-  async savePreset(slot: domain.PresetSlot): Promise<Result<void, proto.PresetResult>> {
+  async savePreset(slot: Domain.PresetSlot): Promise<Result<void, proto.PresetResult>> {
     return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.PresetSave, slot));
   }
 
-  async loadPreset(slot: domain.PresetSlot): Promise<Result<void, proto.PresetResult>> {
+  async loadPreset(slot: Domain.PresetSlot): Promise<Result<void, proto.PresetResult>> {
     return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.PresetLoad, slot));
   }
 
-  async deletePreset(slot: domain.PresetSlot): Promise<Result<void, proto.PresetResult>> {
+  async deletePreset(slot: Domain.PresetSlot): Promise<Result<void, proto.PresetResult>> {
     return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.PresetDelete, slot));
   }
 
@@ -530,7 +522,7 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.PresetSetStartup, config);
   }
 
-  async setOutputConfigMode(mode: domain.OutputConfigMode): Promise<void> {
+  async setOutputConfigMode(mode: Domain.OutputConfigMode): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetOutputConfigMode, mode);
   }
 
@@ -541,13 +533,13 @@ export class DspDevice {
   // Linkwitz Transform bands (V22+) send the 18-byte form (qp sidecar
   // appended); every other type sends the plain 16-byte SetFilterPacket so
   // older firmware never sees the extra bytes.
-  async setFilter(channel: domain.ChannelId, band: number, p: domain.FilterParams): Promise<void> {
+  async setFilter(channel: Domain.ChannelId, band: number, p: Domain.FilterParams): Promise<void> {
     const wireChannel = this.deviceChannel(channel);
-    if (p.type === domain.FilterType.LinkwitzTransform) {
+    if (p.type === Domain.FilterType.LinkwitzTransform) {
       const bytes = Codec.encode(proto.Wire.SetFilterPacketQp, {
         channel: wireChannel, band, type: p.type,
         frequency: p.frequency, q: p.q, gain: p.gain,
-        qp: domain.encodeQp(p.qp ?? domain.QP_DEFAULT),
+        qp: Domain.encodeQp(p.qp ?? Domain.QP_DEFAULT),
       });
       await this.transport.ctrlOut(proto.WireCmd.SetEqParam.code, 0, bytes);
       return;
@@ -570,7 +562,7 @@ export class DspDevice {
   // (not `decodePadded`) makes a truncated read throw rather than zero-pad.
   // V16 widened the band field to 5 bits -- (band << 3) | param -- so
   // crossover bands at 20..23 stay addressable; V10 packs (band << 4) | param.
-  async getFilter(channel: domain.ChannelId, band: number): Promise<domain.FilterParams> {
+  async getFilter(channel: Domain.ChannelId, band: number): Promise<Domain.FilterParams> {
     const wireChannel = this.deviceChannel(channel);
     const code = proto.WireCmd.GetEqParam.code;
     const wide = this.isWideWire;
@@ -584,8 +576,8 @@ export class DspDevice {
       t.ctrlIn(code, wValue(2), 4),
       t.ctrlIn(code, wValue(3), 4),
     ]);
-    const type = Codec.decode(Codec.u32, typeBytes) as domain.FilterType;
-    const result: domain.FilterParams = {
+    const type = Codec.decode(Codec.u32, typeBytes) as Domain.FilterType;
+    const result: Domain.FilterParams = {
       type,
       bypass:    false,  // not carried by the per-band GetEqParam protocol
       frequency: Codec.decode(Codec.f32, freqBytes),
@@ -594,9 +586,9 @@ export class DspDevice {
     };
     // Linkwitz Transform qp sidecar (V22+, param 5; only addressable via the
     // wide 3-bit param field).
-    if (type === domain.FilterType.LinkwitzTransform && wide) {
+    if (type === Domain.FilterType.LinkwitzTransform && wide) {
       const qpBytes = await t.ctrlIn(code, wValue(5), 4);
-      result.qp = domain.decodeQp(Codec.decode(Codec.u32, qpBytes) & 0xFFFF);
+      result.qp = Domain.decodeQp(Codec.decode(Codec.u32, qpBytes) & 0xFFFF);
     }
     return result;
   }
@@ -613,7 +605,7 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetPreamp);
   }
 
-  async getInputPreamp(channel: domain.InputSlot): Promise<number> {
+  async getInputPreamp(channel: Domain.InputSlot): Promise<number> {
     return proto.readCmd(this.transport, proto.WireCmd.GetInputPreamp, channel);
   }
 
@@ -621,7 +613,7 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetMasterVolume);
   }
 
-  async getMasterVolumeMode(): Promise<domain.MasterVolumeMode> {
+  async getMasterVolumeMode(): Promise<Domain.MasterVolumeMode> {
     return proto.readCmd(this.transport, proto.WireCmd.GetMasterVolumeMode);
   }
 
@@ -632,52 +624,52 @@ export class DspDevice {
   // GetMatrixRoute packs input/output into wValue since the transport surface
   // exposes only wValue (no wIndex).
   async getMatrixRoute(
-    input: domain.InputSlot,
-    output: domain.OutputSlot,
+    input: Domain.InputSlot,
+    output: Domain.OutputSlot,
   ): Promise<{ enabled: boolean; invert: boolean; gainDb: number }> {
     const wValue = ((input & 0xFF) << 8) | (output & 0xFF);
     const r = await proto.readCmd(this.transport, proto.WireCmd.GetMatrixRoute, wValue);
     return { enabled: r.enabled, invert: r.phaseInvert, gainDb: r.gainDb };
   }
 
-  async setOutputEnable(output: domain.OutputSlot, on: boolean): Promise<void> {
+  async setOutputEnable(output: Domain.OutputSlot, on: boolean): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetOutputEnable, on, output);
   }
 
   // unused: no production, HIL, or unit-test caller remains.
-  async getOutputEnable(output: domain.OutputSlot): Promise<boolean> {
+  async getOutputEnable(output: Domain.OutputSlot): Promise<boolean> {
     return proto.readCmd(this.transport, proto.WireCmd.GetOutputEnable, output);
   }
 
   // unused: no production, HIL, or unit-test caller remains.
-  async getOutputGain(output: domain.OutputSlot): Promise<number> {
+  async getOutputGain(output: Domain.OutputSlot): Promise<number> {
     return proto.readCmd(this.transport, proto.WireCmd.GetOutputGain, output);
   }
 
-  async setOutputMute(output: domain.OutputSlot, mute: boolean): Promise<void> {
+  async setOutputMute(output: Domain.OutputSlot, mute: boolean): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetOutputMute, mute, output);
   }
 
   // unused: no production, HIL, or unit-test caller remains.
-  async getOutputMute(output: domain.OutputSlot): Promise<boolean> {
+  async getOutputMute(output: Domain.OutputSlot): Promise<boolean> {
     return proto.readCmd(this.transport, proto.WireCmd.GetOutputMute, output);
   }
 
-  async setOutputDelay(output: domain.OutputSlot, ms: number): Promise<void> {
+  async setOutputDelay(output: Domain.OutputSlot, ms: number): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetOutputDelay, ms, output);
   }
 
   // unused: no production, HIL, or unit-test caller remains.
-  async getOutputDelay(output: domain.OutputSlot): Promise<number> {
+  async getOutputDelay(output: Domain.OutputSlot): Promise<number> {
     return proto.readCmd(this.transport, proto.WireCmd.GetOutputDelay, output);
   }
 
-  async setOutputType(slot: domain.I2sPairSlot, type: number): Promise<Result<void, proto.PinConfigResult>> {
+  async setOutputType(slot: Domain.I2sPairSlot, type: number): Promise<Result<void, proto.PinConfigResult>> {
     const wValue = ((type & 0xFF) << 8) | (slot & 0xFF);
     return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetOutputType, wValue));
   }
 
-  async getOutputType(slot: domain.I2sPairSlot): Promise<number> {
+  async getOutputType(slot: Domain.I2sPairSlot): Promise<number> {
     return proto.actionCmd(this.transport, proto.WireCmd.GetOutputType, slot);
   }
 
@@ -724,12 +716,12 @@ export class DspDevice {
 
   // Names are cropped to fit the 31-byte UTF-8 wire budget; validation and
   // user-facing errors belong at the state/UI layer above.
-  async setChannelName(channel: domain.ChannelId, name: string): Promise<void> {
+  async setChannelName(channel: Domain.ChannelId, name: string): Promise<void> {
     const wireChannel = this.deviceChannel(channel);
-    return proto.writeCmd(this.transport, proto.WireCmd.SetChannelName, utf8Truncate(name, domain.CHANNEL_NAME_MAX_LEN), wireChannel);
+    return proto.writeCmd(this.transport, proto.WireCmd.SetChannelName, utf8Truncate(name, Domain.CHANNEL_NAME_MAX_LEN), wireChannel);
   }
 
-  async getChannelName(channel: domain.ChannelId): Promise<string> {
+  async getChannelName(channel: Domain.ChannelId): Promise<string> {
     return proto.readCmd(this.transport, proto.WireCmd.GetChannelName, this.deviceChannel(channel));
   }
 
@@ -737,7 +729,7 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.PresetGetStartup);
   }
 
-  async getOutputConfigMode(): Promise<domain.OutputConfigMode> {
+  async getOutputConfigMode(): Promise<Domain.OutputConfigMode> {
     return proto.readCmd(this.transport, proto.WireCmd.GetOutputConfigMode);
   }
 
@@ -753,7 +745,7 @@ export class DspDevice {
   // non-recoverable failure; an empty-slot delete is success. pacingMs: 0 in tests.
   async clearAllPresets(opts: { pacingMs?: number } = {}): Promise<Result<void, proto.PresetResult>> {
     const pacingMs = opts.pacingMs ?? 50;
-    for (let slot = 0 as domain.PresetSlot; slot < 10; slot = (slot + 1) as domain.PresetSlot) {
+    for (let slot = 0 as Domain.PresetSlot; slot < 10; slot = (slot + 1) as Domain.PresetSlot) {
       const r = await this.deletePreset(slot);
       if (!r.ok && r.code !== proto.PresetResult.SlotEmpty) {
         return r;
@@ -790,7 +782,7 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedEnabled, enabled);
   }
 
-  async setCrossfeedPreset(preset: domain.CrossfeedPreset): Promise<void> {
+  async setCrossfeedPreset(preset: Domain.CrossfeedPreset): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedPreset, preset);
   }
 
@@ -820,7 +812,7 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerEnabled, enabled);
   }
 
-  async setLevellerSpeed(speed: domain.LevellerSpeed): Promise<void> {
+  async setLevellerSpeed(speed: Domain.LevellerSpeed): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerSpeed, speed);
   }
 
@@ -952,11 +944,11 @@ export class DspDevice {
 
   // Live status (0x4E, no bulk equivalent). Raw Q14/Q15 fixed-point fields
   // stay undecoded, matching getSpdifRxStatus/getI2sSlaveStatus.
-  async getUpmixStatus(): Promise<domain.UpmixStatus> {
+  async getUpmixStatus(): Promise<Domain.UpmixStatus> {
     const w = await proto.readCmd(this.transport, proto.WireCmd.UpmixGetStatus);
     return {
       active:        w.active,
-      parkedReason:  domain.narrowUpmixParkedReason(w.parkedReason),
+      parkedReason:  Domain.narrowUpmixParkedReason(w.parkedReason),
       corrQ14:       w.corrQ14,
       balanceQ14:    w.balanceQ14,
       centerGainQ15: w.centerGainQ15,
@@ -969,12 +961,12 @@ export class DspDevice {
 
   // Per-band EQ bypass. wValue = (wireChannel<<8)|band, mirroring getFilter's
   // channel remap (e.g. RP2040 PDM -> wire channel 6).
-  async setBandBypass(channel: domain.ChannelId, band: number, bypassed: boolean): Promise<void> {
+  async setBandBypass(channel: Domain.ChannelId, band: number, bypassed: boolean): Promise<void> {
     const wValue = (this.deviceChannel(channel) << 8) | (band & 0xFF);
     return proto.writeCmd(this.transport, proto.WireCmd.SetBandBypass, bypassed, wValue);
   }
 
-  async getBandBypass(channel: domain.ChannelId, band: number): Promise<boolean> {
+  async getBandBypass(channel: Domain.ChannelId, band: number): Promise<boolean> {
     const wValue = (this.deviceChannel(channel) << 8) | (band & 0xFF);
     return proto.readCmd(this.transport, proto.WireCmd.GetBandBypass, wValue);
   }
@@ -997,16 +989,16 @@ export class DspDevice {
   }
 
   // Input source select (USB / S/PDIF).
-  async setInputSource(source: domain.AudioInputSource): Promise<void> {
+  async setInputSource(source: Domain.AudioInputSource): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetInputSource, source);
   }
 
-  async getInputSource(): Promise<domain.AudioInputSource> {
+  async getInputSource(): Promise<Domain.AudioInputSource> {
     return proto.readCmd(this.transport, proto.WireCmd.GetInputSource);
   }
 
   // Live S/PDIF-RX lock telemetry (no bulk equivalent).
-  async getSpdifRxStatus(): Promise<domain.SpdifRxStatus> {
+  async getSpdifRxStatus(): Promise<Domain.SpdifRxStatus> {
     const w = await proto.readCmd(this.transport, proto.WireCmd.GetSpdifRxStatus);
     return {
       state:        narrowSpdifInputState(w.state),
@@ -1061,17 +1053,17 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetLgSoundSyncEnabled);
   }
 
-  async getLgSoundSyncStatus(): Promise<domain.LgSoundSync> {
+  async getLgSoundSyncStatus(): Promise<Domain.LgSoundSync> {
     const w = await proto.readCmd(this.transport, proto.WireCmd.GetLgSoundSyncStatus);
     return { enabled: w.enabled, present: w.present, volume: w.volume, muted: w.muted };
   }
 
   // DAC hardware-mute pin configuration.
-  async setDacHwMute(cfg: domain.DacHwMute): Promise<void> {
+  async setDacHwMute(cfg: Domain.DacHwMute): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetDacHwMute, cfg);
   }
 
-  async getDacHwMute(): Promise<domain.DacHwMute> {
+  async getDacHwMute(): Promise<Domain.DacHwMute> {
     const w = await proto.readCmd(this.transport, proto.WireCmd.GetDacHwMute);
     return { enabled: w.enabled, activeLow: w.activeLow, pin: w.pin, holdMs: w.holdMs, releaseMs: w.releaseMs };
   }
@@ -1131,10 +1123,10 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetI2sClockMode);
   }
 
-  async getI2sSlaveStatus(): Promise<domain.I2sSlaveStatus> {
+  async getI2sSlaveStatus(): Promise<Domain.I2sSlaveStatus> {
     const w = await proto.readCmd(this.transport, proto.WireCmd.GetI2sSlaveStatus);
     return {
-      state: domain.narrowI2sSlaveClockState(w.state),
+      state: Domain.narrowI2sSlaveClockState(w.state),
       clockMode: w.clockMode,
       lockCount: w.lockCount,
       lossCount: w.lossCount,
@@ -1150,15 +1142,15 @@ export class DspDevice {
   // right after a SET may still report the old active mode. vregSel is the
   // raw platform vreg enum; 0xFF requests the mode's default voltage. An
   // invalid mode or an out-of-range vregSel STALLs the transfer.
-  async setSysClock(mode: number, vregSel: number = domain.SYS_CLOCK_VREG_DEFAULT): Promise<void> {
+  async setSysClock(mode: number, vregSel: number = Domain.SYS_CLOCK_VREG_DEFAULT): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetSysClock, { mode: mode & 0xFF, vregSel: vregSel & 0xFF });
   }
 
-  async getSysClock(): Promise<domain.SysClockStatus> {
+  async getSysClock(): Promise<Domain.SysClockStatus> {
     const w = await proto.readCmd(this.transport, proto.WireCmd.GetSysClock);
     return {
-      activeMode: domain.narrowSysClockMode(w.activeMode),
-      storedMode: domain.narrowSysClockMode(w.storedMode),
+      activeMode: Domain.narrowSysClockMode(w.activeMode),
+      storedMode: Domain.narrowSysClockMode(w.storedMode),
       storedVregSel: w.storedVregSel,
       liveVreg: w.liveVreg,
       fallbackActive: w.fallbackActive,
@@ -1196,7 +1188,7 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetAdatPin);
   }
 
-  async getAdatStatus(): Promise<domain.AdatOutputStatus> {
+  async getAdatStatus(): Promise<Domain.AdatOutputStatus> {
     const w = await proto.readCmd(this.transport, proto.WireCmd.GetAdatStatus);
     return {
       enabled: w.enabled,
@@ -1240,10 +1232,10 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetAdatInputClockMode);
   }
 
-  async getAdatInputStatus(): Promise<domain.AdatInputStatus> {
+  async getAdatInputStatus(): Promise<Domain.AdatInputStatus> {
     const w = await proto.readCmd(this.transport, proto.WireCmd.GetAdatInputStatus);
     return {
-      state: domain.narrowAdatInputLockState(w.state),
+      state: Domain.narrowAdatInputLockState(w.state),
       clockMode: w.clockMode,
       enabled: w.enabled,
       pin: w.pin,
@@ -1260,7 +1252,7 @@ export class DspDevice {
   // External control interfaces (V16+, gate on capabilities.features.controlInterfaces):
   // a UART control transport and an I2C target, configured over 0xF5-0xF9.
 
-  async getUartControlConfig(): Promise<domain.UartControlConfig> {
+  async getUartControlConfig(): Promise<Domain.UartControlConfig> {
     const w = await proto.readCmd(this.transport, proto.WireCmd.GetUartConfig);
     return { enabled: w.enabled, txPin: w.txPin, rxPin: w.rxPin, notifyEnabled: w.notifyEnable, baud: w.baud };
   }
@@ -1270,8 +1262,8 @@ export class DspDevice {
   // transfers run as one exclusive unit so no other vendor request can land
   // between them and observe a status from an unrelated op.
   async setUartControlConfig(
-    cfg: domain.UartControlConfig,
-  ): Promise<{ result: Result<void, proto.PinConfigResult>; status: domain.ControlIfaceStatus }> {
+    cfg: Domain.UartControlConfig,
+  ): Promise<{ result: Result<void, proto.PinConfigResult>; status: Domain.ControlIfaceStatus }> {
     return this.transport.exclusive(async (raw) => {
       await proto.writeCmd(raw, proto.WireCmd.SetUartConfig, {
         enabled: cfg.enabled, txPin: cfg.txPin, rxPin: cfg.rxPin, notifyEnable: cfg.notifyEnabled, baud: cfg.baud,
@@ -1281,7 +1273,7 @@ export class DspDevice {
     });
   }
 
-  async getI2cControlConfig(): Promise<domain.I2cControlConfig> {
+  async getI2cControlConfig(): Promise<Domain.I2cControlConfig> {
     const w = await proto.readCmd(this.transport, proto.WireCmd.GetI2cConfig);
     return { enabled: w.enabled, sdaPin: w.sdaPin, sclPin: w.sclPin, address: w.address };
   }
@@ -1289,8 +1281,8 @@ export class DspDevice {
   // Mirrors setUartControlConfig: control-OUT + a status read-back sharing
   // one exclusive transport session.
   async setI2cControlConfig(
-    cfg: domain.I2cControlConfig,
-  ): Promise<{ result: Result<void, proto.PinConfigResult>; status: domain.ControlIfaceStatus }> {
+    cfg: Domain.I2cControlConfig,
+  ): Promise<{ result: Result<void, proto.PinConfigResult>; status: Domain.ControlIfaceStatus }> {
     return this.transport.exclusive(async (raw) => {
       await proto.writeCmd(raw, proto.WireCmd.SetI2cConfig, {
         enabled: cfg.enabled, sdaPin: cfg.sdaPin, sclPin: cfg.sclPin, address: cfg.address,
@@ -1300,7 +1292,7 @@ export class DspDevice {
     });
   }
 
-  async getControlIfaceStatus(): Promise<domain.ControlIfaceStatus> {
+  async getControlIfaceStatus(): Promise<Domain.ControlIfaceStatus> {
     return ctrlIfaceStatusFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCtrlIfaceStatus));
   }
 
@@ -1314,7 +1306,7 @@ export class DspDevice {
   // decoded prefix rather than assumed fixed-length; requesting a generous
   // buffer is safe (over-reading is fine, under-reading risks a WinUSB
   // babble error), so this asks for room for CS_MAX_KNOWN_TYPES entries.
-  async getCsCaps(): Promise<{ caps: domain.CsCaps; nouns: domain.CsNounCaps[] }> {
+  async getCsCaps(): Promise<{ caps: Domain.CsCaps; nouns: Domain.CsNounCaps[] }> {
     const CS_MAX_KNOWN_TYPES = 16;
     const prefixSize = Codec.sizeOf(proto.Wire.CsCapsPrefix);
     const maxBodySize = Codec.sizeOf(proto.Wire.CsTypeDesc) * CS_MAX_KNOWN_TYPES + 4; // + v3 tail
@@ -1330,14 +1322,14 @@ export class DspDevice {
     // reading maxIrCommands as 0.
     const body = Codec.decodePadded(proto.Wire.CsCapsBody(typeCount), raw.subarray(prefixSize));
 
-    const nouns: domain.CsNounCaps[] = [];
+    const nouns: Domain.CsNounCaps[] = [];
     for (let n = 0; n < prefix.nounCount; n++) {
       const d = Codec.decodePadded(
         proto.Wire.CsNounDesc,
         await this.transport.ctrlIn(proto.WireCmd.GetCsCaps.code, n, Codec.sizeOf(proto.Wire.CsNounDesc)),
       );
       nouns.push({
-        kind: d.kind as domain.CsKind, enumCount: d.enumCount, actions: d.actions,
+        kind: d.kind as Domain.CsKind, enumCount: d.enumCount, actions: d.actions,
         minQ8: d.minQ8, maxQ8: d.maxQ8, unit: d.unit,
         targetKind: d.targetKind, targetCount: d.targetCount, dflags: d.dflags,
       });
@@ -1351,11 +1343,11 @@ export class DspDevice {
     };
   }
 
-  async getCsBinding(slot: number): Promise<domain.CsBinding> {
+  async getCsBinding(slot: number): Promise<Domain.CsBinding> {
     return csBindingFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCsBinding, slot & 0xFF));
   }
 
-  async getCsStatus(): Promise<domain.CsStatus> {
+  async getCsStatus(): Promise<Domain.CsStatus> {
     return proto.readCmd(this.transport, proto.WireCmd.GetCsStatus);
   }
 
@@ -1365,12 +1357,12 @@ export class DspDevice {
   // PENDING for this slot. The whole SET+poll runs as one exclusive unit so
   // no other vendor request can interleave and overwrite last_slot mid-poll.
   async setCsBinding(
-    slot: number, b: domain.CsBinding,
-  ): Promise<{ result: Result<void, number>; status: domain.CsStatus }> {
+    slot: number, b: Domain.CsBinding,
+  ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
     return this.transport.exclusive(async (raw) => {
       await proto.writeCmd(raw, proto.WireCmd.SetCsBinding, {
         type: b.type, noun: b.noun, action: b.action, flags: b.flags,
-        gpio0: b.gpio0, gpio1: b.gpio1 ?? domain.CS_GPIO_UNUSED,
+        gpio0: b.gpio0, gpio1: b.gpio1 ?? Domain.CS_GPIO_UNUSED,
         event: b.event, target: b.target, index: b.index,
         value: b.value, step: b.step, rangeMin: b.rangeMin, rangeMax: b.rangeMax,
         opaque0: b.opaque0 ?? 0, opaqueTail: [...(b.opaqueTail ?? [0, 0, 0, 0, 0, 0])],
@@ -1380,8 +1372,8 @@ export class DspDevice {
   }
 
   // Clearing a slot is a SET of the all-zero binding (type NONE).
-  async clearCsBinding(slot: number): Promise<{ result: Result<void, number>; status: domain.CsStatus }> {
-    return this.setCsBinding(slot, domain.EMPTY_CS_BINDING);
+  async clearCsBinding(slot: number): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
+    return this.setCsBinding(slot, Domain.EMPTY_CS_BINDING);
   }
 
   async getCsName(slot: number): Promise<string> {
@@ -1392,9 +1384,9 @@ export class DspDevice {
   // live-only preview polled the same way as setCsBinding.
   async setCsName(
     slot: number, name: string,
-  ): Promise<{ result: Result<void, number>; status: domain.CsStatus }> {
+  ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
     return this.transport.exclusive(async (raw) => {
-      await proto.writeCmd(raw, proto.WireCmd.SetCsName, utf8Truncate(name, domain.CS_NAME_MAX_LEN), slot & 0xFF);
+      await proto.writeCmd(raw, proto.WireCmd.SetCsName, utf8Truncate(name, Domain.CS_NAME_MAX_LEN), slot & 0xFF);
       return pollCsStatus(raw, slot);
     });
   }
@@ -1406,7 +1398,7 @@ export class DspDevice {
   // GetCsStatus with last_slot 0xFF. The follow-up status read doubles as
   // the disconnect discriminator: on a genuine transport failure it throws
   // too, so only a live-device STALL maps to BUSY.
-  async csSave(): Promise<{ result: Result<void, number>; status: domain.CsStatus }> {
+  async csSave(): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
     return this.transport.exclusive(async (raw) => {
       try {
         await proto.actionCmd(raw, proto.WireCmd.CsSave);
@@ -1419,7 +1411,7 @@ export class DspDevice {
   }
 
   // Discard the live preview and re-apply the stored config.
-  async csRevert(): Promise<{ result: Result<void, number>; status: domain.CsStatus }> {
+  async csRevert(): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
     return this.transport.exclusive(async (raw) => {
       try {
         await proto.actionCmd(raw, proto.WireCmd.CsRevert);
@@ -1433,13 +1425,13 @@ export class DspDevice {
 
   // IR command sub-slots (0x8D/0x8E, caps v3): same deferred-SET model as
   // setCsBinding, reported in last_slot as 0x80 | sub-slot.
-  async getCsIrCmd(sub: number): Promise<domain.CsIrCommand> {
+  async getCsIrCmd(sub: number): Promise<Domain.CsIrCommand> {
     return csIrCommandFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCsIrCmd, sub & 0xFF));
   }
 
   async setCsIrCmd(
-    sub: number, cmd: domain.CsIrCommand,
-  ): Promise<{ result: Result<void, number>; status: domain.CsStatus }> {
+    sub: number, cmd: Domain.CsIrCommand,
+  ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
     return this.transport.exclusive(async (raw) => {
       await proto.writeCmd(raw, proto.WireCmd.SetCsIrCmd, {
         noun: cmd.noun, action: cmd.action, flags: cmd.flags, target: cmd.target, index: cmd.index,
@@ -1469,24 +1461,24 @@ export class DspDevice {
     await proto.actionCmd(this.transport, proto.WireCmd.CsIrLearn, 0);
   }
 
-  async csIrLearnResult(): Promise<domain.CsIrLearnResult> {
+  async csIrLearnResult(): Promise<Domain.CsIrLearnResult> {
     const size = Codec.sizeOf(proto.Wire.CsIrLearnResult);
     const w = Codec.decodePadded(proto.Wire.CsIrLearnResult, await this.transport.ctrlIn(proto.WireCmd.CsIrLearn.code, 2, size));
-    return { state: w.state, protocol: w.protocol as domain.CsIrProto, code: w.code };
+    return { state: w.state, protocol: w.protocol as Domain.CsIrProto, code: w.code };
   }
 
   // Crossover bands (V16+, output channels only) ride the EQ verbs at wire
   // band indices XOVER_BAND_BASE..+3; these wrappers own that offset.
-  async setCrossoverBand(channel: domain.ChannelId, xoverIndex: number, p: domain.FilterParams): Promise<void> {
-    return this.setFilter(channel, domain.XOVER_BAND_BASE + xoverIndex, p);
+  async setCrossoverBand(channel: Domain.ChannelId, xoverIndex: number, p: Domain.FilterParams): Promise<void> {
+    return this.setFilter(channel, Domain.XOVER_BAND_BASE + xoverIndex, p);
   }
 
-  async getCrossoverBand(channel: domain.ChannelId, xoverIndex: number): Promise<domain.FilterParams> {
-    return this.getFilter(channel, domain.XOVER_BAND_BASE + xoverIndex);
+  async getCrossoverBand(channel: Domain.ChannelId, xoverIndex: number): Promise<Domain.FilterParams> {
+    return this.getFilter(channel, Domain.XOVER_BAND_BASE + xoverIndex);
   }
 
-  async setCrossoverBypass(channel: domain.ChannelId, xoverIndex: number, bypassed: boolean): Promise<void> {
-    return this.setBandBypass(channel, domain.XOVER_BAND_BASE + xoverIndex, bypassed);
+  async setCrossoverBypass(channel: Domain.ChannelId, xoverIndex: number, bypassed: boolean): Promise<void> {
+    return this.setBandBypass(channel, Domain.XOVER_BAND_BASE + xoverIndex, bypassed);
   }
 
   // Persist the live physical-IO block (output pins, output types, I2S

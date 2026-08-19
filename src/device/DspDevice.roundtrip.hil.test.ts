@@ -161,11 +161,10 @@ describe('DspDevice — write→read roundtrips and bulk cross-validation (HIL)'
 
     try {
       await device.setMasterVolume(-15);
-      expect(await device.saveMasterVolume()).toBe(true);
+      expect((await device.saveMasterVolume()).ok).toBe(true);
       // Brief settle: flash erase/write may extend past the USB ACK on some
-      // firmware builds. 100 ms is well above the ~45 ms worst-case noted in
-      // docs/superpowers/specs/2026-05-09-missing-wire-cmds-design.md (Risks);
-      // reliable in practice for the firmware revisions we test against.
+      // firmware builds (~45 ms worst-case); 100 ms settles reliably on the
+      // firmware revisions we test against.
       await new Promise((r) => setTimeout(r, 100));
 
       const saved = await device.getSavedMasterVolume();

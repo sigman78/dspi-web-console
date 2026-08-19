@@ -1,40 +1,25 @@
-import {
-  type FilterParams,
-  type ChannelId, type InputSlot, type OutputSlot, type I2sPairSlot,
-  type RouteModel,
-  type I2sConfig,
-  type DacHwMute,
-  type UartControlConfig, type I2cControlConfig,
-  type CsBinding,
-  type CsIrCommand,
-  AudioInputSource, CsType, EMPTY_CS_BINDING,
-  CsIrProto, EMPTY_CS_IR_COMMAND, CS_IR_LEARN_ARMED,
-  CrossfeedPreset, LevellerSpeed, MasterVolumeMode,
-  CHANNEL_NAME_MAX_LEN,
-  FilterType, QP_DEFAULT,
-} from '@/domain';
-import * as domain from '@/domain';
+import * as Domain from '@/domain';
 import * as Clamp from '@/domain/clamp';
 import {
   type ReadySession,
   pushNotice,
 } from '@/state';
 import { Wire } from '@/protocol';
-import { Log, errMessage } from '@/utils';
+import { errMessage } from '@/utils';
 import { write, scrub, writeChecked, command } from './writes.svelte';
 import { focusOutput, focusRoute } from './focus';
 
 // Linkwitz Transform reinterprets the gain slot as fp (Hz), not dB, and
 // carries its own f0/fp/Q0/Qp ranges (see eqLimits.ts) -- clamping it with
 // the plain dB gain range would mangle a real fp value.
-function clampFilter(filter: FilterParams): FilterParams {
-  if (filter.type === FilterType.LinkwitzTransform) {
+function clampFilter(filter: Domain.FilterParams): Domain.FilterParams {
+  if (filter.type === Domain.FilterType.LinkwitzTransform) {
     return {
       ...filter,
       frequency: Clamp.bandLtFreqHz(filter.frequency),
       q: Clamp.bandLtQ(filter.q),
       gain: Clamp.bandLtFreqHz(filter.gain),
-      qp: Clamp.bandLtQ(filter.qp ?? QP_DEFAULT),
+      qp: Clamp.bandLtQ(filter.qp ?? Domain.QP_DEFAULT),
     };
   }
   return {
@@ -45,7 +30,7 @@ function clampFilter(filter: FilterParams): FilterParams {
   };
 }
 
-export function setEqFilter(s: ReadySession, channel: ChannelId, band: number, filter: FilterParams): void {
+export function setEqFilter(s: ReadySession, channel: Domain.ChannelId, band: number, filter: Domain.FilterParams): void {
   const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
   if (!ch) return;
   if (band >= ch.filters.length) {
@@ -64,7 +49,7 @@ export function setEqFilter(s: ReadySession, channel: ChannelId, band: number, f
 }
 
 // Copy all bands from source channel onto target channel as N independent granular writes.
-export function copyEqBands(s: ReadySession, sourceId: ChannelId, targetId: ChannelId): void {
+export function copyEqBands(s: ReadySession, sourceId: Domain.ChannelId, targetId: Domain.ChannelId): void {
   if (sourceId === targetId) return;
   const src = s.mirror.snapshot.channels.find((c) => c.id === sourceId);
   const tgt = s.mirror.snapshot.channels.find((c) => c.id === targetId);
@@ -99,16 +84,16 @@ export function setBypass(s: ReadySession, enabled: boolean): void {
 // still sees the condition.
 export function clearClips(s: ReadySession): void {
   for (let i = 0; i < s.telemetry.clipLatched.length; i++) s.telemetry.clipLatched[i] = false;
-  void s.queue.run(() => s.device.clearClips()).catch((e) => Log.error('clearClips', 'send failed', e));
+  void command(s, 'clear clips', () => s.device.clearClips(), () => {});
 }
 
 // Empty / whitespace-only input clears the custom name on the device; the
 // snapshot mirrors that by falling back to defaultName.
-export function setChannelName(s: ReadySession, id: ChannelId, name: string): void {
+export function setChannelName(s: ReadySession, id: Domain.ChannelId, name: string): void {
   const ch = s.mirror.snapshot.channels.find((c) => c.id === id);
   if (!ch) return;
   const resolved = name.trim() || ch.defaultName;
-  const clamped = Clamp.nameToByteBudget(resolved, CHANNEL_NAME_MAX_LEN);
+  const clamped = Clamp.nameToByteBudget(resolved, Domain.CHANNEL_NAME_MAX_LEN);
   void write(s,
     () => s.device.setChannelName(id, clamped),
     () => {
@@ -166,7 +151,7 @@ export function setCrossfeedEnabled(s: ReadySession, enabled: boolean): void {
   );
 }
 
-export function setCrossfeedPreset(s: ReadySession, preset: CrossfeedPreset): void {
+export function setCrossfeedPreset(s: ReadySession, preset: Domain.CrossfeedPreset): void {
   void write(s,
     () => s.device.setCrossfeedPreset(preset),
     () => { s.mirror.snapshot.crossfeed.preset = preset; },
@@ -220,7 +205,7 @@ export function setLevellerEnabled(s: ReadySession, enabled: boolean): void {
   );
 }
 
-export function setLevellerSpeed(s: ReadySession, speed: LevellerSpeed): void {
+export function setLevellerSpeed(s: ReadySession, speed: Domain.LevellerSpeed): void {
   void write(s,
     () => s.device.setLevellerSpeed(speed),
     () => { s.mirror.snapshot.leveller.speed = speed; },
@@ -484,7 +469,7 @@ export function setMasterPreamp(s: ReadySession, db: number): void {
   );
 }
 
-export function setInputPreamp(s: ReadySession, channel: InputSlot, db: number): void {
+export function setInputPreamp(s: ReadySession, channel: Domain.InputSlot, db: number): void {
   db = Clamp.preampDb(db);
   const next = s.mirror.snapshot.inputPreampDb.slice();
   next[channel] = db;
@@ -504,9 +489,9 @@ export function setInputPreamp(s: ReadySession, channel: InputSlot, db: number):
 // writes also avoid the bulk path's audio mute, so crosspoint stays granular.
 function scheduleCrosspointWrite(
   s: ReadySession,
-  input: InputSlot,
-  output: OutputSlot,
-  mutate: (r: RouteModel) => RouteModel,
+  input: Domain.InputSlot,
+  output: Domain.OutputSlot,
+  mutate: (r: Domain.RouteModel) => Domain.RouteModel,
 ): void {
   const route = focusRoute(s, input, output);
   const next = mutate(route.read());
@@ -516,22 +501,22 @@ function scheduleCrosspointWrite(
   );
 }
 
-export function setCrosspointGain(s: ReadySession, input: InputSlot, output: OutputSlot, gainDb: number): void {
+export function setCrosspointGain(s: ReadySession, input: Domain.InputSlot, output: Domain.OutputSlot, gainDb: number): void {
   gainDb = Clamp.crosspointGainDb(gainDb);
   scheduleCrosspointWrite(s, input, output, (r) => ({ ...r, gainDb }));
 }
 
-export function setCrosspointEnabled(s: ReadySession, input: InputSlot, output: OutputSlot, enabled: boolean): void {
+export function setCrosspointEnabled(s: ReadySession, input: Domain.InputSlot, output: Domain.OutputSlot, enabled: boolean): void {
   scheduleCrosspointWrite(s, input, output, (r) => ({ ...r, enabled }));
 }
 
-export function setCrosspointInvert(s: ReadySession, input: InputSlot, output: OutputSlot, invert: boolean): void {
+export function setCrosspointInvert(s: ReadySession, input: Domain.InputSlot, output: Domain.OutputSlot, invert: boolean): void {
   scheduleCrosspointWrite(s, input, output, (r) => ({ ...r, invert }));
 }
 
 // Click/commit-paced ValueField (no drag): plain write(), patch on ack. Scalar
 // verb, no tuple to merge.
-export function setOutputGain(s: ReadySession, slot: OutputSlot, gainDb: number): void {
+export function setOutputGain(s: ReadySession, slot: Domain.OutputSlot, gainDb: number): void {
   gainDb = Clamp.outputGainDb(gainDb);
   const out = focusOutput(s, slot);
   void write(s,
@@ -540,41 +525,35 @@ export function setOutputGain(s: ReadySession, slot: OutputSlot, gainDb: number)
   );
 }
 
-export function setOutputDelay(s: ReadySession, slot: OutputSlot, delayMs: number): void {
+export function setOutputDelay(s: ReadySession, slot: Domain.OutputSlot, delayMs: number): void {
   delayMs = Clamp.outputDelayMs(delayMs);
+  const out = focusOutput(s, slot);
   void write(s,
     () => s.device.setOutputDelay(slot, delayMs),
-    () => {
-      const o = s.mirror.snapshot.outputs.find((o) => o.wireIndex === slot);
-      if (o) o.delayMs = delayMs;
-    },
+    () => out.modify((o) => ({ ...o, delayMs })),
   );
 }
 
-export function setOutputEnabled(s: ReadySession, slot: OutputSlot, enabled: boolean): void {
+export function setOutputEnabled(s: ReadySession, slot: Domain.OutputSlot, enabled: boolean): void {
+  const out = focusOutput(s, slot);
   void write(s,
     () => s.device.setOutputEnable(slot, enabled),
-    () => {
-      const o = s.mirror.snapshot.outputs.find((o) => o.wireIndex === slot);
-      if (o) o.enabled = enabled;
-    },
+    () => out.modify((o) => ({ ...o, enabled })),
   );
 }
 
 // Both channels of a stereo pair, normalizing a half-enabled pair to a single
 // state. Two independent write()s -- no tuple to merge, same as setOutputEnabled.
-export function setOutputPairEnabled(s: ReadySession, pair: I2sPairSlot, enabled: boolean): void {
-  setOutputEnabled(s, (pair * 2) as OutputSlot, enabled);
-  setOutputEnabled(s, (pair * 2 + 1) as OutputSlot, enabled);
+export function setOutputPairEnabled(s: ReadySession, pair: Domain.I2sPairSlot, enabled: boolean): void {
+  setOutputEnabled(s, (pair * 2) as Domain.OutputSlot, enabled);
+  setOutputEnabled(s, (pair * 2 + 1) as Domain.OutputSlot, enabled);
 }
 
-export function setOutputMuted(s: ReadySession, slot: OutputSlot, muted: boolean): void {
+export function setOutputMuted(s: ReadySession, slot: Domain.OutputSlot, muted: boolean): void {
+  const out = focusOutput(s, slot);
   void write(s,
     () => s.device.setOutputMute(slot, muted),
-    () => {
-      const o = s.mirror.snapshot.outputs.find((o) => o.wireIndex === slot);
-      if (o) o.muted = muted;
-    },
+    () => out.modify((o) => ({ ...o, muted })),
   );
 }
 
@@ -593,7 +572,7 @@ export function toggleMute(s: ReadySession): void {
   setUserMute(s, !s.mirror.snapshot.userVolume.mute);
 }
 
-export function setMasterVolumeMode(s: ReadySession, mode: MasterVolumeMode): void {
+export function setMasterVolumeMode(s: ReadySession, mode: Domain.MasterVolumeMode): void {
   void command(s,'set master volume mode', () => s.device.setMasterVolumeMode(mode), () => {
     if (s.presets.directory) s.presets.directory = { ...s.presets.directory, masterVolumeMode: mode };
   });
@@ -604,8 +583,8 @@ export function setMasterVolumeMode(s: ReadySession, mode: MasterVolumeMode): vo
 // it stays dormant until the user flips back to Mode 0. Fire-and-forget: only
 // failure surfaces; success is silent (the Save button's state conveys it).
 export function saveMasterVolumeBaseline(s: ReadySession): void {
-  void command(s,'save master volume', () => s.device.saveMasterVolume(), (ok) => {
-    if (!ok) { pushNotice('warn', 'Saving master volume failed (flash write error).'); return; }
+  void command(s,'save master volume', () => s.device.saveMasterVolume(), (r) => {
+    if (!r.ok) { pushNotice('warn', `Saving master volume failed (${r.message ?? 'flash error'}).`); return; }
     // Mirror the saved baseline so the Save button settles to clean without a refetch.
     s.presets.savedMasterVolumeDb = s.mirror.snapshot.masterVolumeDb;
   });
@@ -630,7 +609,7 @@ export function saveOutputConfigBaseline(s: ReadySession): void {
 // unsaved EQ/mixer edits). setOutputType's SET is queued, not applied (the switch
 // is deferred in firmware) -- the optimistic patch + reconcile converge to truth.
 
-function patchI2s(s: ReadySession, update: (i: I2sConfig) => I2sConfig): void {
+function patchI2s(s: ReadySession, update: (i: Domain.I2sConfig) => Domain.I2sConfig): void {
   s.mirror.snapshot.i2s = update(s.mirror.snapshot.i2s);
 }
 
@@ -656,7 +635,7 @@ export function setOutputDataPin(s: ReadySession, pinOutputIndex: number, pin: n
   );
 }
 
-export function setOutputType(s: ReadySession, slot: I2sPairSlot, type: number): Promise<boolean> {
+export function setOutputType(s: ReadySession, slot: Domain.I2sPairSlot, type: number): Promise<boolean> {
   return writeChecked(s,
     'switch output type',
     () => s.device.setOutputType(slot, type),
@@ -772,7 +751,7 @@ export function setUserMute(s: ReadySession, mute: boolean): void {
 // matching setEqFilter's lane. setFilter does not carry bypass, so bypass is
 // a separate granular command.
 
-export function setBandBypass(s: ReadySession, channel: ChannelId, band: number, bypassed: boolean): void {
+export function setBandBypass(s: ReadySession, channel: Domain.ChannelId, band: number, bypassed: boolean): void {
   const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
   if (!ch || band >= ch.filters.length) return;
   void write(s,
@@ -787,10 +766,10 @@ export function setBandBypass(s: ReadySession, channel: ChannelId, band: number,
 // Crossover bands (V16+, output channels only). Same lane as the PEQ verbs;
 // the device wrapper owns the 20..23 wire band-index offset. Q and gain are
 // unused by crossover types but ride the packet for wire parity.
-export function setXoverBand(s: ReadySession, channel: ChannelId, band: number, filter: FilterParams): void {
+export function setXoverBand(s: ReadySession, channel: Domain.ChannelId, band: number, filter: Domain.FilterParams): void {
   const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
   if (!ch || band >= ch.xoverBands.length) return;
-  const clamped: FilterParams = { ...filter, frequency: Clamp.bandFrequencyHz(filter.frequency) };
+  const clamped: Domain.FilterParams = { ...filter, frequency: Clamp.bandFrequencyHz(filter.frequency) };
   void write(s,
     () => s.device.setCrossoverBand(channel, band, clamped),
     () => {
@@ -800,7 +779,7 @@ export function setXoverBand(s: ReadySession, channel: ChannelId, band: number, 
   );
 }
 
-export function setXoverBypass(s: ReadySession, channel: ChannelId, band: number, bypassed: boolean): void {
+export function setXoverBypass(s: ReadySession, channel: Domain.ChannelId, band: number, bypassed: boolean): void {
   const ch = s.mirror.snapshot.channels.find((c) => c.id === channel);
   if (!ch || band >= ch.xoverBands.length) return;
   void write(s,
@@ -815,7 +794,7 @@ export function setXoverBypass(s: ReadySession, channel: ChannelId, band: number
 // M1 — Input source switch. Pipeline reset is audible; surface an info notice
 // only once the device acked. The retained RX status frame belongs to the
 // previous source epoch -- drop it so a SPDIF re-entry can't show a stale lock.
-export function setInputSource(s: ReadySession, source: AudioInputSource): Promise<boolean> {
+export function setInputSource(s: ReadySession, source: Domain.AudioInputSource): Promise<boolean> {
   return write(s,
     () => s.device.setInputSource(source),
     () => {
@@ -864,7 +843,7 @@ export function setInputRate(s: ReadySession, hz: number): Promise<boolean> {
     () => {
       s.mirror.snapshot.inputConfig.i2sInputRateHz = hz;
       const src = s.mirror.snapshot.inputConfig.source;
-      if (src === AudioInputSource.I2s || src === AudioInputSource.Adat) {
+      if (src === Domain.AudioInputSource.I2s || src === Domain.AudioInputSource.Adat) {
         pushNotice('info', 'Input rate changed — firmware pipeline reset (brief audio mute).');
       }
     },
@@ -900,7 +879,7 @@ export function setI2sInputChannels(s: ReadySession, count: number): Promise<boo
 // so this can't be a plain writeChecked: the status must land in ctrlIfaces
 // on BOTH branches (a rejected pin/baud is still useful to show as
 // last-status text), whereas writeChecked's patch only runs on ok.
-export function setUartControlConfig(s: ReadySession, cfg: UartControlConfig): void {
+export function setUartControlConfig(s: ReadySession, cfg: Domain.UartControlConfig): void {
   void command(s, 'set UART control config',
     () => s.device.setUartControlConfig(cfg),
     (r, s) => {
@@ -911,7 +890,7 @@ export function setUartControlConfig(s: ReadySession, cfg: UartControlConfig): v
   );
 }
 
-export function setI2cControlConfig(s: ReadySession, cfg: I2cControlConfig): void {
+export function setI2cControlConfig(s: ReadySession, cfg: Domain.I2cControlConfig): void {
   void command(s, 'set I2C control config',
     () => s.device.setI2cControlConfig(cfg),
     (r, s) => {
@@ -929,7 +908,7 @@ export function setI2cControlConfig(s: ReadySession, cfg: I2cControlConfig): voi
 // needs to show), and the slot's live binding is re-read regardless of
 // outcome -- on failure the firmware keeps and reports the previous one.
 // Resolves true only when the device accepted the binding.
-export async function applyCsBinding(s: ReadySession, slot: number, binding: CsBinding): Promise<boolean> {
+export async function applyCsBinding(s: ReadySession, slot: number, binding: Domain.CsBinding): Promise<boolean> {
   let ok = false;
   await command(s, 'set control-surface binding',
     async () => {
@@ -939,7 +918,7 @@ export async function applyCsBinding(s: ReadySession, slot: number, binding: CsB
     },
     (r, s) => {
       s.controlSurfaces.status = r.status;
-      s.controlSurfaces.bindings[slot] = r.live.type === CsType.None ? null : r.live;
+      s.controlSurfaces.bindings[slot] = r.live.type === Domain.CsType.None ? null : r.live;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
       ok = true;
     },
@@ -948,7 +927,7 @@ export async function applyCsBinding(s: ReadySession, slot: number, binding: CsB
 }
 
 export function clearCsBinding(s: ReadySession, slot: number): Promise<boolean> {
-  return applyCsBinding(s, slot, EMPTY_CS_BINDING);
+  return applyCsBinding(s, slot, Domain.EMPTY_CS_BINDING);
 }
 
 // V16 — Control Surfaces slot name (0x8B + status poll). Names are slot
@@ -1000,20 +979,20 @@ export async function csRevertConfig(s: ReadySession): Promise<boolean> {
     async () => {
       const r = await s.device.csRevert();
       if (!r.result.ok) return { result: r.result, status: r.status, bindings: null, names: null, irCommands: null };
-      const bindings: (CsBinding | null)[] = [];
+      const bindings: (Domain.CsBinding | null)[] = [];
       const names: string[] = [];
       for (let slot = 0; slot < r.status.maxBindings; slot++) {
         const b = await s.device.getCsBinding(slot);
-        bindings.push(b.type === CsType.None ? null : b);
+        bindings.push(b.type === Domain.CsType.None ? null : b);
         names.push(await s.device.getCsName(slot));
       }
       const maxIrCommands = s.controlSurfaces.caps?.maxIrCommands ?? 0;
-      let irCommands: (CsIrCommand | null)[] | null = null;
+      let irCommands: (Domain.CsIrCommand | null)[] | null = null;
       if (maxIrCommands > 0) {
         irCommands = [];
         for (let sub = 0; sub < maxIrCommands; sub++) {
           const cmd = await s.device.getCsIrCmd(sub);
-          irCommands.push(cmd.protocol === CsIrProto.None ? null : cmd);
+          irCommands.push(cmd.protocol === Domain.CsIrProto.None ? null : cmd);
         }
       }
       return { result: r.result, status: r.status, bindings, names, irCommands };
@@ -1034,7 +1013,7 @@ export async function csRevertConfig(s: ReadySession): Promise<boolean> {
 // encoded as 0x80 | sub in last_slot). Same shape as applyCsBinding: the
 // polled status and the slot's live command land in state on both branches,
 // resolving true only when the device accepted the command.
-export async function applyCsIrCommand(s: ReadySession, sub: number, cmd: CsIrCommand): Promise<boolean> {
+export async function applyCsIrCommand(s: ReadySession, sub: number, cmd: Domain.CsIrCommand): Promise<boolean> {
   let ok = false;
   await command(s, 'set control-surface IR command',
     async () => {
@@ -1044,7 +1023,7 @@ export async function applyCsIrCommand(s: ReadySession, sub: number, cmd: CsIrCo
     },
     (r, s) => {
       s.controlSurfaces.status = r.status;
-      s.controlSurfaces.irCommands[sub] = r.live.protocol === CsIrProto.None ? null : r.live;
+      s.controlSurfaces.irCommands[sub] = r.live.protocol === Domain.CsIrProto.None ? null : r.live;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
       ok = true;
     },
@@ -1053,7 +1032,7 @@ export async function applyCsIrCommand(s: ReadySession, sub: number, cmd: CsIrCo
 }
 
 export function clearCsIrCommand(s: ReadySession, sub: number): Promise<boolean> {
-  return applyCsIrCommand(s, sub, EMPTY_CS_IR_COMMAND);
+  return applyCsIrCommand(s, sub, Domain.EMPTY_CS_IR_COMMAND);
 }
 
 // V16 — arm the IR learn window (0x8F, wValue=1). Fails immediately (no
@@ -1071,7 +1050,7 @@ export async function csIrLearnArm(s: ReadySession): Promise<boolean> {
     () => s.device.csIrLearnArm(),
     (result, s) => {
       if (!result.ok) { pushNotice('warn', result.message); return; }
-      s.controlSurfaces.irLearn = { state: CS_IR_LEARN_ARMED, protocol: CsIrProto.None, code: 0 };
+      s.controlSurfaces.irLearn = { state: Domain.CS_IR_LEARN_ARMED, protocol: Domain.CsIrProto.None, code: 0 };
       ok = true;
     },
   );
@@ -1107,9 +1086,9 @@ export function setLgSoundSyncEnabled(s: ReadySession, enabled: boolean): void {
 // as device truth, and warns when an enable didn't stick.
 const DAC_HW_MUTE_APPLY_MS = 200;
 
-export function setDacHwMute(s: ReadySession, patch: Partial<DacHwMute>): void {
+export function setDacHwMute(s: ReadySession, patch: Partial<Domain.DacHwMute>): void {
   const merged = { ...s.mirror.snapshot.dacHwMute, ...patch };
-  const next: DacHwMute = merged.enabled
+  const next: Domain.DacHwMute = merged.enabled
     ? { ...merged, holdMs: Clamp.dacHwMuteHoldMs(merged.holdMs), releaseMs: Clamp.dacHwMuteReleaseMs(merged.releaseMs) }
     : merged;
   s.mirror.snapshot.dacHwMute = next;
@@ -1140,13 +1119,13 @@ export function setDacHwMute(s: ReadySession, patch: Partial<DacHwMute>): void {
 const SYS_CLOCK_APPLY_MS = 500;
 const SYS_CLOCK_CONFIRM_ATTEMPTS = 3;
 
-export async function applySysClock(s: ReadySession, mode: domain.SysClockMode, vregSel: number): Promise<void> {
+export async function applySysClock(s: ReadySession, mode: Domain.SysClockMode, vregSel: number): Promise<void> {
   s.sysClock.busy = true;
   try {
     await command(s, 'set system clock', async () => {
       const d = s.device;
       await s.queue.run(() => d.setSysClock(mode, vregSel));
-      let status: domain.SysClockStatus | null = null;
+      let status: Domain.SysClockStatus | null = null;
       for (let i = 0; i < SYS_CLOCK_CONFIRM_ATTEMPTS; i++) {
         await new Promise((r) => setTimeout(r, SYS_CLOCK_APPLY_MS));
         status = await s.queue.run(() => d.getSysClock());
@@ -1180,12 +1159,12 @@ export async function refreshSysClock(s: ReadySession): Promise<void> {
 
 // M6 — DAC HW mute test pulse (~1s). Fire-and-forget.
 export function testDacHwMute(s: ReadySession): void {
-  void s.queue.run(() => s.device.testDacHwMute()).catch((e) => { pushNotice('error', `DAC mute test failed: ${errMessage(e)}`); });
+  void command(s, 'DAC mute test', () => s.device.testDacHwMute(), () => {});
 }
 
 // M9 — Buffer stats reset.
 export function resetBufferStats(s: ReadySession): void {
-  void s.queue.run(() => s.device.resetBufferStats()).catch((e) => { pushNotice('error', `Buffer stats reset failed: ${errMessage(e)}`); });
+  void command(s, 'reset buffer stats', () => s.device.resetBufferStats(), () => {});
 }
 
 // M8 — Enter UF2 bootloader. The device disconnects immediately (100 ms delay

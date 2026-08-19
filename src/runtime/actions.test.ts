@@ -105,8 +105,7 @@ function makeSnapshot(platform: PlatformType = PlatformType.RP2350) {
 afterEach(() => { activeSession()?.dispose(); cancelWrites(); resetAppState(); });
 
 // Each beforeEach/test installs a ready session (dispatch synced) BEFORE touching
-// the mirror, so this resolves the active session's MirrorState — the same
-// instance the deleted `mirror` forwarder used to proxy to.
+// the mirror, so this resolves the active session's MirrorState.
 const liveMirror = () => activeSession()!.mirror;
 
 describe('actions wiring', () => {
@@ -647,17 +646,19 @@ describe('actions — master volume mode', () => {
     await vi.waitFor(() => expect(activeSession()!.presets.directory!.masterVolumeMode).toBe(MasterVolumeMode.WithPreset));
   });
 
-  it('saveMasterVolumeBaseline warns on flash failure and stays silent on success', async () => {
+  it('saveMasterVolumeBaseline warns with the device message on failure, and stays silent on success', async () => {
     clearNotices();
-    const failDevice = initializedDevice({ saveMasterVolume: async () => false });
+    const failDevice = initializedDevice({
+      saveMasterVolume: async () => ({ ok: false as const, code: 3 as any, message: 'preset CRC failure' }),
+    });
     dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(failDevice) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     actions.saveMasterVolumeBaseline(activeSession()!);
     await flushAllWrites();
-    expect(notices.list.some((n) => n.kind === 'warn' && /master volume/i.test(n.message))).toBe(true);
+    expect(notices.list.some((n) => n.kind === 'warn' && /master volume/i.test(n.message) && /preset CRC failure/.test(n.message))).toBe(true);
 
     clearNotices();
-    const okDevice = initializedDevice({ saveMasterVolume: async () => true });
+    const okDevice = initializedDevice({ saveMasterVolume: async () => ({ ok: true as const, value: undefined }) });
     dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(okDevice) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     actions.saveMasterVolumeBaseline(activeSession()!);

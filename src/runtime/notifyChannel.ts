@@ -2,7 +2,7 @@ import { parseNotifyPacket, isReconcileTrigger, isPresetOpEcho, ParamSource, typ
 import { applyParamChange } from './notifyApply';
 import { pushNotice, type ReadySession } from '@/state';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
-import * as domain from '@/domain';
+import * as Domain from '@/domain';
 
 // Default poll cadence: loose enough that idle cost is a few 64-byte reads/sec,
 // tight enough for prompt reflection of sparse events.
@@ -81,7 +81,7 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
     if (event.kind === 'i2sSlaveState') {
       const prev = session.telemetry.i2sSlaveStatus;
       session.telemetry.i2sSlaveStatus = {
-        state: domain.narrowI2sSlaveClockState(event.state),
+        state: Domain.narrowI2sSlaveClockState(event.state),
         clockMode: prev?.clockMode ?? 1,
         lockCount: prev?.lockCount ?? 0,
         lossCount: prev?.lossCount ?? 0,
@@ -106,7 +106,7 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
       if (session.mirror.current?.inputConfig.adatInputEnabled === false) return;
       const prev = session.telemetry.adatInputStatus;
       session.telemetry.adatInputStatus = {
-        state: domain.narrowAdatInputLockState(event.state),
+        state: Domain.narrowAdatInputLockState(event.state),
         clockMode: event.clockMode,
         enabled: prev?.enabled ?? true,
         pin: prev?.pin ?? 0xFF,

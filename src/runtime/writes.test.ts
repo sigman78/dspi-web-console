@@ -5,8 +5,7 @@ import { Result } from '@/utils';
 
 // Install a ready session so writes resolve activeSession() and its
 // WriteCoordinator/alive guard. Disposing it (or resetting app state)
-// simulates a disconnect mid-flight — the per-session `alive` guard replaces the
-// old session.generation bump.
+// simulates a disconnect mid-flight.
 let session: ReadySession;
 function installSession(): void {
   session = makeReadySession({ info: {}, hardware: {} } as never);
