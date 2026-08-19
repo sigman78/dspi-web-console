@@ -98,6 +98,12 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
     // enabled (the event only fires for an enabled input) and otherwise
     // preserve whatever the last poll observed.
     if (event.kind === 'adatInputState') {
+      // The mirror's enable flag is the intent authority: a console disable
+      // clears this telemetry, and the trailing LOCKED->INACTIVE transition
+      // event must not resurrect it (the poll cadence is closed by then). A
+      // mirror that hasn't synced yet does not veto; sync + the poll cadence
+      // correct anything an early event got wrong.
+      if (session.mirror.current?.inputConfig.adatInputEnabled === false) return;
       const prev = session.telemetry.adatInputStatus;
       session.telemetry.adatInputStatus = {
         state: domain.narrowAdatInputLockState(event.state),

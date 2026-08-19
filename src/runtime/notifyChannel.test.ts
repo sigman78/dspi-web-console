@@ -393,6 +393,21 @@ describe('startNotifyChannel', () => {
     stop();
   });
 
+  it('an ADAT_INPUT_STATE event while the mirror says disabled is dropped, not resurrected', async () => {
+    // The trailing LOCKED->INACTIVE transition after a console disable must
+    // not undo the disable path's telemetry clear.
+    const { mock, session } = await v10Setup();
+    primeLive(mock);
+    session.mirror.current = { inputConfig: { adatInputEnabled: false } } as unknown as typeof session.mirror.current;
+    mock.pushNotify(new Uint8Array([2, 0x0B, 0, 1, 0, 0, 0, 0, 0, 0]));
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // idle: crosses the backlog boundary
+    await m.tick();   // live adatInputState
+    expect(session.telemetry.adatInputStatus).toBeNull();
+    stop();
+  });
+
   it('a SIGGEN_STATE event is a silent no-op (no reconcile)', async () => {
     const { mock, session, mir } = await v10Setup();
     primeLive(mock);

@@ -101,7 +101,7 @@ export function stageInputRate(s: ReadySession, hz: number): void {
   const live = s.mirror.snapshot.inputConfig.i2sInputRateHz;
   stageOrDiscard(s, 'inputRate', live, hz, () => ({
     key: 'inputRate',
-    label: 'I2S input rate',
+    label: 'Input rate',
     from: fmtHz(live),
     to: fmtHz(hz),
     value: hz,

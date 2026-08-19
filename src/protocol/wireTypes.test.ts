@@ -283,15 +283,17 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     });
   });
 
-  it('AdatInputStatus is 20 bytes and round-trips its fields', () => {
+  it('AdatInputStatus decodes the fw byte layout at the spec offsets', () => {
     expect(Codec.sizeOf(Wire.AdatInputStatus)).toBe(20);
-    const bytes = Codec.encode(Wire.AdatInputStatus, {
-      state: 3, clockMode: 1, enabled: true, pin: 20, rateOk: true,
-      lockCount: 4, lossCount: 1, slipCount: 2, headerErr: 300,
-      detectedRate: 48000, measuredHz: 47998,
-    });
-    const back = Codec.decode(Wire.AdatInputStatus, bytes);
-    expect(back).toMatchObject({
+    // Literal packet, not an encode round-trip: pins the field offsets and
+    // LE byte order against the 20-byte AdatInputStatusPacket spec.
+    const bytes = new Uint8Array([
+      3, 1, 1, 20, 1, 4, 1, 2,   // state..slipCount
+      0x2C, 0x01, 0, 0,          // headerErr=300 LE, reserved
+      0x80, 0xBB, 0, 0,          // detectedRate=48000 LE
+      0x7E, 0xBB, 0, 0,          // measuredHz=47998 LE
+    ]);
+    expect(Codec.decode(Wire.AdatInputStatus, bytes)).toMatchObject({
       state: 3, clockMode: 1, enabled: true, pin: 20, rateOk: true,
       lockCount: 4, lossCount: 1, slipCount: 2, headerErr: 300,
       detectedRate: 48000, measuredHz: 47998,

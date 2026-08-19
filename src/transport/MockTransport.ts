@@ -889,6 +889,7 @@ export class MockTransport implements DspTransport {
         if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: SetAdatEnable unsupported (STALL)');
         if (this.#platform !== PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
         const enable = (value & 0xFF) !== 0;
+        if (enable === this.#mockState.adat.enabled) return new Uint8Array([0x00]);   // same-state no-op
         if (!enable) {
           this.#mockState.adat.enabled = false;
           return new Uint8Array([0x00]);
@@ -911,6 +912,7 @@ export class MockTransport implements DspTransport {
         let pin = value & 0xFF;
         if (pin === Wire.Const.PIN_RESET_TO_DEFAULT) pin = this.#defaultAdatPin();
         if (!this.#isValidGpio(pin)) return new Uint8Array([0x01]);        // InvalidPin
+        if (pin === (this.#mockState.adat.pin || this.#defaultAdatPin())) return new Uint8Array([0x00]); // same pin no-op (never self-blocks)
         if (this.#pinInUse(pin, 0xFF)) return new Uint8Array([0x02]);      // PinInUse
         this.#mockState.adat.pin = pin;
         return new Uint8Array([0x00]);
@@ -1740,6 +1742,10 @@ export class MockTransport implements DspTransport {
     if (this.#uartCtrl.enabled && (pin === this.#uartCtrl.txPin || pin === this.#uartCtrl.rxPin)) return true;
     if (this.#i2cCtrl.enabled && (pin === this.#i2cCtrl.sdaPin || pin === this.#i2cCtrl.sclPin)) return true;
     if (this.#csOwnsPin(pin)) return true;
+    // Both ADAT pins are claimed direction-agnostically while their side is
+    // enabled (fw pin_used_by_fixed_peripheral); the TX-pin-sharing loopback
+    // exception lives at the ADAT-input validation sites, not here.
+    if (this.#mockState.adat.enabled && pin === (this.#mockState.adat.pin || this.#defaultAdatPin())) return true;
     if (this.#adatInputEnabled() && pin === this.#mockState.inputConfig.adatInputPin) return true;
     return false;
   }

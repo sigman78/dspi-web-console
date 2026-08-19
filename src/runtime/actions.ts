@@ -854,16 +854,18 @@ export function setSpdifInputEnabled(s: ReadySession, extIndex: number, on: bool
   );
 }
 
-// V16 — I2S input rate. The device is the rate authority in I2S mode; when
-// I2S is the active source firmware applies the change deferred (audible
-// pipeline reset), otherwise it just stores the selection.
+// V16 — stored input rate, shared by I2S master and ADAT master mode (the
+// device is the rate authority in both). While one of them is the active
+// source firmware applies the change deferred (audible pipeline reset),
+// otherwise it just stores the selection.
 export function setInputRate(s: ReadySession, hz: number): Promise<boolean> {
   return write(s,
     () => s.device.setInputRate(hz),
     () => {
       s.mirror.snapshot.inputConfig.i2sInputRateHz = hz;
-      if (s.mirror.snapshot.inputConfig.source === AudioInputSource.I2s) {
-        pushNotice('info', 'I2S input rate changed — firmware pipeline reset (brief audio mute).');
+      const src = s.mirror.snapshot.inputConfig.source;
+      if (src === AudioInputSource.I2s || src === AudioInputSource.Adat) {
+        pushNotice('info', 'Input rate changed — firmware pipeline reset (brief audio mute).');
       }
     },
   );

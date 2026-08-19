@@ -942,9 +942,12 @@ describe('ADAT lightpipe input commands (fw V24+, RP2350)', () => {
     if (!r.ok) expect(r.code).toBe(PinConfigResult.PinInUse);
   });
 
-  test('loopback: sharing the ADAT output pin is allowed, another used pin is not', async () => {
+  test('loopback: sharing the live ADAT output pin is allowed, another used pin is not', async () => {
     const d = await dev();
-    expect((await d.setAdatInputPin(12)).ok).toBe(true);   // ADAT output's default pin (12)
+    // Enable the output first so GPIO 12 is genuinely claimed -- the input
+    // taking it then exercises the one-directional TX-pin-sharing exception.
+    expect((await d.setAdatEnable(true)).ok).toBe(true);
+    expect((await d.setAdatInputPin(12)).ok).toBe(true);
     const r = await d.setAdatInputPin(5);                  // S/PDIF RX's always-claimed default pin
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe(PinConfigResult.PinInUse);

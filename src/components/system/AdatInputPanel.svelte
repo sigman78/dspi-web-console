@@ -37,9 +37,10 @@
   // straight back into IN is a supported zero-hardware self test, so a pin
   // the output claims stays selectable here. Pin 0 (the wire's "unset"
   // sentinel for this target) is never a real candidate.
+  const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
   const pinCandidates = $derived(
-    snap
-      ? availablePinsFor(snap.platform.type, snap, pin, ctrlPins)
+    snap && overlaySnap
+      ? availablePinsFor(snap.platform.type, overlaySnap, pin, ctrlPins)
           .filter((c) => c.pin !== 0)
           .map((c) => (c.usedBy === 'ADAT' ? { ...c, usedBy: null } : c))
       : [],
@@ -119,10 +120,14 @@
         <div class="kvgrid">
           <KV
             label="STATE"
-            value={status.rateOk ? (STATE_LABELS[status.state] ?? 'UNKNOWN') : 'PARKED — RATE > 48 KHZ'}
-            tone={status.rateOk ? stateTone(status.state) : 'warn'}
+            value={STATE_LABELS[status.state] ?? 'UNKNOWN'}
+            tone={stateTone(status.state)}
           />
-          <KV label="RATE" value={fmtRate(status.detectedRateHz)} />
+          <KV
+            label="RATE"
+            value={status.rateOk ? fmtRate(status.detectedRateHz) : 'PARKED — RATE > 48 KHZ'}
+            tone={status.rateOk ? undefined : 'warn'}
+          />
           <KV label="LOCKS" value={String(status.lockCount)} />
           <KV label="LOSSES" value={String(status.lossCount)} tone={status.lossCount > 0 ? undefined : 'off'} />
           <KV label="SLIP" value={String(status.slipCount)} tone={status.slipCount > 0 ? 'warn' : undefined} />

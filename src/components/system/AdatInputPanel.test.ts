@@ -50,7 +50,10 @@ function makeSession(o: {
     mirror: { current: o.snap ?? makeSnap() },
     ctrlIfaces: { uart: null, i2c: null, status: null },
     controlSurfaces: { caps: null, nouns: [], bindings: [], status: null },
-    staging: { valueOf: (_key: string, live: unknown) => o.stagedSource ?? live },
+    staging: {
+      valueOf: (_key: string, live: unknown) => o.stagedSource ?? live,
+      overlaySnapshot: (snap: unknown) => snap,
+    },
   } as any;
 }
 
