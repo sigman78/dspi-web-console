@@ -86,12 +86,10 @@ describe('AdatPanel', () => {
     expect(setAdatPin.mock.invocationCallOrder[0]).toBeLessThan(setAdatEnable.mock.invocationCallOrder[0]);
   });
 
-  test('the pin picker is disabled while ADAT itself is disabled, even when connected', () => {
-    renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: false, pin: 20 } }) }));
+  test('the pin picker is enabled only while ADAT itself is enabled', () => {
+    const { unmount } = renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: false, pin: 20 } }) }));
     expect(screen.getByRole('combobox', { name: 'ADAT output GPIO pin' }).hasAttribute('disabled')).toBe(true);
-  });
-
-  test('the pin picker is enabled while ADAT is enabled and connected', () => {
+    unmount();
     renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }) }));
     expect(screen.getByRole('combobox', { name: 'ADAT output GPIO pin' }).hasAttribute('disabled')).toBe(false);
   });

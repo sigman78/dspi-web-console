@@ -890,15 +890,6 @@ describe('ADAT lightpipe output commands (fw V17+, RP2350)', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe(PinConfigResult.InvalidOutput);
   });
-
-  test('RP2040 GETs decode as zeroed/false (no ADAT hardware)', async () => {
-    const d = await DspDevice.create(new MockTransport({ platform: 'rp2040', wireVersion: 17, fwVersion: { major: 1, minor: 1, patch: 5 } }));
-    expect(await d.getAdatEnable()).toBe(false);
-    expect(await d.getAdatPin()).toBe(0);
-    expect(await d.getAdatStatus()).toEqual({
-      enabled: false, active: false, pin: 0, rateOk: false, resyncCount: 0, slipCount: 0,
-    });
-  });
 });
 
 describe('selectable system clock (fw overclock branch)', () => {

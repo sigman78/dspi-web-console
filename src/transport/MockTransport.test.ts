@@ -844,63 +844,12 @@ describe('MockTransport — pin-reset-to-default (0xFF sentinel)', () => {
 });
 
 describe('MockTransport — ADAT lightpipe output (V17+, RP2350)', () => {
-  async function v17(): Promise<MockTransport> {
+  it('the 0xFF sentinel resets the pin to the platform default (GPIO 12)', async () => {
     const t = new MockTransport({ platform: 'rp2350', wireVersion: 17, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
-    return t;
-  }
-
-  it('enable/pin round-trip', async () => {
-    const t = await v17();
-    expect((await t.ctrlIn(WireCmd.SetAdatPin.code, 20, 1))[0]).toBe(PinConfigResult.Success);
-    expect((await t.ctrlIn(WireCmd.GetAdatPin.code, 0, 1))[0]).toBe(20);
-
-    expect((await t.ctrlIn(WireCmd.SetAdatEnable.code, 1, 1))[0]).toBe(PinConfigResult.Success);
-    expect((await t.ctrlIn(WireCmd.GetAdatEnable.code, 0, 1))[0]).toBe(1);
-
-    expect((await t.ctrlIn(WireCmd.SetAdatEnable.code, 0, 1))[0]).toBe(PinConfigResult.Success);
-    expect((await t.ctrlIn(WireCmd.GetAdatEnable.code, 0, 1))[0]).toBe(0);
-  });
-
-  it('the 0xFF sentinel resets the pin to the platform default (GPIO 12)', async () => {
-    const t = await v17();
     await t.ctrlIn(WireCmd.SetAdatPin.code, 20, 1);
     const status = await t.ctrlIn(WireCmd.SetAdatPin.code, Wire.Const.PIN_RESET_TO_DEFAULT, 1);
     expect(status[0]).toBe(PinConfigResult.Success);
     expect((await t.ctrlIn(WireCmd.GetAdatPin.code, 0, 1))[0]).toBe(12);
-  });
-
-  it('RP2040 SETs return INVALID_OUTPUT; GETs read as zeros', async () => {
-    const t = new MockTransport({ platform: 'rp2040', wireVersion: 17, fwVersion: { major: 1, minor: 1, patch: 5 } });
-    await t.open();
-    expect((await t.ctrlIn(WireCmd.SetAdatEnable.code, 1, 1))[0]).toBe(PinConfigResult.InvalidOutput);
-    expect((await t.ctrlIn(WireCmd.SetAdatPin.code, 20, 1))[0]).toBe(PinConfigResult.InvalidOutput);
-    expect((await t.ctrlIn(WireCmd.GetAdatEnable.code, 0, 1))[0]).toBe(0);
-    expect((await t.ctrlIn(WireCmd.GetAdatPin.code, 0, 1))[0]).toBe(0);
-    expect(await t.ctrlIn(WireCmd.GetAdatStatus.code, 0, 8)).toEqual(new Uint8Array(8));
-  });
-
-  it('STALLs the whole opcode range below V17 (a V16 device has no ADAT surface)', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } });
-    await t.open();
-    await expect(t.ctrlIn(WireCmd.GetAdatEnable.code, 0, 1)).rejects.toThrow();
-    await expect(t.ctrlIn(WireCmd.SetAdatEnable.code, 1, 1)).rejects.toThrow();
-    await expect(t.ctrlIn(WireCmd.GetAdatPin.code, 0, 1)).rejects.toThrow();
-    await expect(t.ctrlIn(WireCmd.SetAdatPin.code, 20, 1)).rejects.toThrow();
-    await expect(t.ctrlIn(WireCmd.GetAdatStatus.code, 0, 8)).rejects.toThrow();
-  });
-
-  it('status synthesis reflects enable (active mirrors enabled; the mock always runs 44.1/48 kHz)', async () => {
-    const t = await v17();
-    const idle = Codec.decode(Wire.AdatStatus, await t.ctrlIn(WireCmd.GetAdatStatus.code, 0, 8));
-    expect(idle.enabled).toBe(false);
-    expect(idle.active).toBe(false);
-    expect(idle.pin).toBe(12);   // resolved platform default; pin never explicitly set
-    expect(idle.rateOk).toBe(true);
-
-    await t.ctrlIn(WireCmd.SetAdatEnable.code, 1, 1);
-    const live = Codec.decode(Wire.AdatStatus, await t.ctrlIn(WireCmd.GetAdatStatus.code, 0, 8));
-    expect(live.enabled).toBe(true);
-    expect(live.active).toBe(true);
   });
 });

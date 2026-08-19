@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, toggleMute, setEqFilter, setMasterPreamp, setInputPreamp, copyEqBands, setChannelName, setMasterVolumeMode, saveMasterVolumeBaseline, saveOutputConfigBaseline, setBypass, setCrosspointGain, setCrossfeedPreset, setLevellerSpeed, setLevellerAmount, setLevellerMasks, toggleLevellerDetectorChannel, toggleLevellerApplyChannel, setLoudnessOutputMask, toggleLoudnessOutputChannel, setCrossfeedOutputPairs, toggleCrossfeedOutputPair, setOutputDelay, setOutputGain, setOutputEnabled, setOutputPairEnabled, setOutputMuted, setCrosspointEnabled, setCrosspointInvert, setOutputDataPin, setOutputType, setI2sBckPin, setMckEnabled, setI2sClockMode, setI2sClockPinMode, setI2sBckPinSlave, setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, setUserMute, setBandBypass, setLgSoundSyncEnabled, setDacHwMute, setInputSource, setUartControlConfig, setPsybassEnabled, setPsybassCutoff, setPsybassHarmonics, setPsybassDrive, setPsybassCharacter, setPsybassOriginal, setPsybassOutputMask, togglePsybassOutputChannel, setUpmixEnabled, setUpmixCenterMode, setUpmixSurroundMode, setUpmixStrength, setUpmixCenterWidth, setUpmixCorrThreshold, setUpmixAttack, setUpmixRelease, setUpmixDetectorHpf, setUpmixSurroundDelay, setUpmixSurroundHpf, setUpmixSurroundLpf, setUpmixDecorr, setUpmixPresence, setAdatEnable, setAdatPin } from './actions';
+import * as actions from './actions';
 import { attachTransportListeners, factoryResetDevice } from './deviceService';
 import { connection, notices, clearNotices, dispatch, mintConnId, makeReadySession, activeSession, resetAppState } from '@/state';
 import { bootMock } from './boot';
@@ -134,7 +134,7 @@ describe('actions wiring', () => {
     if (snap.userVolume) snap.userVolume.mute = false;
     liveMirror().replaceCurrent(snap);
 
-    toggleMute(activeSession()!);
+    actions.toggleMute(activeSession()!);
     await vi.runAllTimersAsync();
 
     expect(setUserMuteFn).toHaveBeenCalledWith(true);
@@ -143,7 +143,7 @@ describe('actions wiring', () => {
     expect(liveMirror().current?.masterVolumeDb).toBe(-12);
 
     // toggle back
-    toggleMute(activeSession()!);
+    actions.toggleMute(activeSession()!);
     await vi.runAllTimersAsync();
     expect(setUserMuteFn).toHaveBeenCalledWith(false);
     expect(liveMirror().current?.userVolume?.mute).toBe(false);
@@ -169,8 +169,8 @@ describe('actions wiring', () => {
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: 0 }))));
     scope.onTeardown(attachTransportListeners(transport, id, scope));
 
-    setMasterVolume(activeSession()!, -9);    // sends immediately
-    setMasterVolume(activeSession()!, -6);    // parks behind the in-flight send
+    actions.setMasterVolume(activeSession()!, -9);    // sends immediately
+    actions.setMasterVolume(activeSession()!, -6);    // parks behind the in-flight send
     transport.emit('disconnect');             // should drop the parked send
 
     await vi.advanceTimersByTimeAsync(100);
@@ -194,7 +194,7 @@ describe('actions wiring', () => {
 
     const sourceId = liveMirror().current!.channels[0].id;
     const targetId = liveMirror().current!.channels[1].id;
-    copyEqBands(activeSession()!, sourceId, targetId);
+    actions.copyEqBands(activeSession()!, sourceId, targetId);
     // Flush microtasks so the async sends resolve and mutates apply.
     await vi.runAllTimersAsync();
 
@@ -225,7 +225,7 @@ describe('setEqFilter', () => {
   it('patches the snapshot after send acks', async () => {
     // setEqFilter awaits the wire send, then mutates draft (await-then-mutate).
     const beforeFreq = liveMirror().current!.channels[0].filters[1].frequency;
-    setEqFilter(activeSession()!, 0, 1, { type: FilterType.Peaking, bypass: false, frequency: 2000, q: 1, gain: 3 });
+    actions.setEqFilter(activeSession()!, 0, 1, { type: FilterType.Peaking, bypass: false, frequency: 2000, q: 1, gain: 3 });
     expect(liveMirror().current?.channels[0].filters[1].frequency).toBe(beforeFreq); // not optimistic — unchanged until ack
     await vi.runAllTimersAsync();
     expect(liveMirror().current?.channels[0].filters[1].frequency).toBe(2000);
@@ -236,7 +236,7 @@ describe('setEqFilter', () => {
   it('rapid edits to the same band each apply independently (no coalescing)', async () => {
     // Each write() call is independent; the snapshot holds the last applied value.
     for (let f = 100; f <= 1000; f += 100) {
-      setEqFilter(activeSession()!, 0, 1, { type: FilterType.Peaking, bypass: false, frequency: f, q: 1, gain: 0 });
+      actions.setEqFilter(activeSession()!, 0, 1, { type: FilterType.Peaking, bypass: false, frequency: f, q: 1, gain: 0 });
     }
     await vi.runAllTimersAsync();
     expect(liveMirror().current?.channels[0].filters[1].frequency).toBe(1000);
@@ -252,9 +252,9 @@ describe('setEqFilter', () => {
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     // Edit frequency, let it settle, then edit gain built from the updated band
     // (the same {...current, ...patch} merge BandRow performs on commit).
-    setEqFilter(activeSession()!, 0, 1, { ...liveMirror().current!.channels[0].filters[1], frequency: 2000 });
+    actions.setEqFilter(activeSession()!, 0, 1, { ...liveMirror().current!.channels[0].filters[1], frequency: 2000 });
     await vi.runAllTimersAsync();
-    setEqFilter(activeSession()!, 0, 1, { ...liveMirror().current!.channels[0].filters[1], gain: 4 });
+    actions.setEqFilter(activeSession()!, 0, 1, { ...liveMirror().current!.channels[0].filters[1], gain: 4 });
     await vi.runAllTimersAsync();
 
     expect(calls).toHaveLength(2);
@@ -265,9 +265,9 @@ describe('setEqFilter', () => {
   });
 
   it('edits to different bands are all reflected in the snapshot', async () => {
-    setEqFilter(activeSession()!, 0, 0, { type: FilterType.Peaking, bypass: false, frequency: 100, q: 1, gain: 0 });
-    setEqFilter(activeSession()!, 0, 1, { type: FilterType.Peaking, bypass: false, frequency: 200, q: 1, gain: 0 });
-    setEqFilter(activeSession()!, 0, 2, { type: FilterType.Peaking, bypass: false, frequency: 300, q: 1, gain: 0 });
+    actions.setEqFilter(activeSession()!, 0, 0, { type: FilterType.Peaking, bypass: false, frequency: 100, q: 1, gain: 0 });
+    actions.setEqFilter(activeSession()!, 0, 1, { type: FilterType.Peaking, bypass: false, frequency: 200, q: 1, gain: 0 });
+    actions.setEqFilter(activeSession()!, 0, 2, { type: FilterType.Peaking, bypass: false, frequency: 300, q: 1, gain: 0 });
     await vi.runAllTimersAsync();
     expect(liveMirror().current?.channels[0].filters[0].frequency).toBe(100);
     expect(liveMirror().current?.channels[0].filters[1].frequency).toBe(200);
@@ -277,7 +277,7 @@ describe('setEqFilter', () => {
   it('throws on out-of-range band and leaves snapshot unchanged', async () => {
     const before = { ...liveMirror().current!.channels[0].filters[1] };
     const n = liveMirror().current!.channels[0].filters.length;
-    expect(() => setEqFilter(activeSession()!, 0, n, { type: FilterType.Peaking, bypass: false, frequency: 9999, q: 1, gain: 12 })).toThrow();
+    expect(() => actions.setEqFilter(activeSession()!, 0, n, { type: FilterType.Peaking, bypass: false, frequency: 9999, q: 1, gain: 12 })).toThrow();
     await vi.runAllTimersAsync();
     // Snapshot must not have changed for the valid band.
     expect(liveMirror().current?.channels[0].filters[1]).toEqual(before);
@@ -287,7 +287,7 @@ describe('setEqFilter', () => {
   // with the plain +/-24 dB gain range would mangle a real fp value (e.g.
   // 90 Hz would get clamped down to 24). It needs its own freq/Q ranges.
   it('clamps an LT band with the f0/fp/Q0/Qp ranges instead of the plain freq/gain/Q ranges', async () => {
-    setEqFilter(activeSession()!, 0, 1, {
+    actions.setEqFilter(activeSession()!, 0, 1, {
       type: FilterType.LinkwitzTransform, bypass: false, frequency: 5, q: 30, gain: 90000, qp: 0.05,
     });
     await vi.runAllTimersAsync();
@@ -299,7 +299,7 @@ describe('setEqFilter', () => {
   });
 
   it('defaults a missing qp to QP_DEFAULT before clamping', async () => {
-    setEqFilter(activeSession()!, 0, 1, {
+    actions.setEqFilter(activeSession()!, 0, 1, {
       type: FilterType.LinkwitzTransform, bypass: false, frequency: 60, q: 0.7, gain: 45,
     });
     await vi.runAllTimersAsync();
@@ -326,46 +326,46 @@ interface ThinVerbCase {
 const out0 = () => liveMirror().current!.outputs[0];
 
 const thinVerbCases: ThinVerbCase[] = [
-  { name: 'setMasterPreamp', method: 'setMasterPreamp', mirrorPath: 'masterPreampDb', lane: 'scrub', makeStub: (fn) => ({ setMasterPreamp: fn }), invoke: () => setMasterPreamp(activeSession()!, -3), expectedArgs: () => [-3], read: () => liveMirror().current!.masterPreampDb, expected: -3 },
-  { name: 'setCrossfeedPreset', method: 'setCrossfeedPreset', mirrorPath: 'crossfeed.preset', lane: 'write', makeStub: (fn) => ({ setCrossfeedPreset: fn }), invoke: () => setCrossfeedPreset(activeSession()!, CrossfeedPreset.Preset2), expectedArgs: () => [CrossfeedPreset.Preset2], read: () => liveMirror().current!.crossfeed.preset, expected: CrossfeedPreset.Preset2 },
-  { name: 'setLevellerSpeed', method: 'setLevellerSpeed', mirrorPath: 'leveller.speed', lane: 'write', makeStub: (fn) => ({ setLevellerSpeed: fn }), invoke: () => setLevellerSpeed(activeSession()!, LevellerSpeed.Fast), expectedArgs: () => [LevellerSpeed.Fast], read: () => liveMirror().current!.leveller?.speed, expected: LevellerSpeed.Fast },
-  { name: 'setLevellerAmount', method: 'setLevellerAmount', mirrorPath: 'leveller.amount', lane: 'scrub', makeStub: (fn) => ({ setLevellerAmount: fn }), invoke: () => setLevellerAmount(activeSession()!, 33), expectedArgs: () => [33], read: () => liveMirror().current!.leveller?.amount, expected: 33 },
-  { name: 'setLevellerMasks', method: 'setLevellerMasks', mirrorPath: 'leveller.detectorMask', lane: 'write', makeStub: (fn) => ({ setLevellerMasks: fn }), invoke: () => setLevellerMasks(activeSession()!, 0x03, 0x05), expectedArgs: () => [0x03, 0x05], read: () => liveMirror().current!.leveller?.detectorMask, expected: 0x03 },
-  { name: 'setLoudnessOutputMask', method: 'setLoudnessOutputMask', mirrorPath: 'loudness.outputMask', lane: 'write', makeStub: (fn) => ({ setLoudnessOutputMask: fn }), invoke: () => setLoudnessOutputMask(activeSession()!, 0x00F0), expectedArgs: () => [0x00F0], read: () => liveMirror().current!.loudness.outputMask, expected: 0x00F0 },
-  { name: 'setCrossfeedOutputPairs', method: 'setCrossfeedOutputPairs', mirrorPath: 'crossfeed.outputPairMask', lane: 'write', makeStub: (fn) => ({ setCrossfeedOutputPairs: fn }), invoke: () => setCrossfeedOutputPairs(activeSession()!, 0x0D), expectedArgs: () => [0x0D], read: () => liveMirror().current!.crossfeed.outputPairMask, expected: 0x0D },
-  { name: 'setLoudnessEnabled', method: 'setLoudnessEnabled', mirrorPath: 'loudness.enabled', lane: 'write', makeStub: (fn) => ({ setLoudnessEnabled: fn }), invoke: () => setLoudnessEnabled(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.loudness.enabled, expected: true },
-  { name: 'setLoudnessRefSpl', method: 'setLoudnessRefSpl', mirrorPath: 'loudness.refSpl', lane: 'scrub', makeStub: (fn) => ({ setLoudnessRefSpl: fn }), invoke: () => setLoudnessRefSpl(activeSession()!, 90), expectedArgs: () => [90], read: () => liveMirror().current!.loudness.refSpl, expected: 90 },
-  { name: 'setLoudnessIntensityPct', method: 'setLoudnessIntensity', mirrorPath: 'loudness.intensityPct', lane: 'scrub', makeStub: (fn) => ({ setLoudnessIntensity: fn }), invoke: () => setLoudnessIntensityPct(activeSession()!, 50), expectedArgs: () => [50], read: () => liveMirror().current!.loudness.intensityPct, expected: 50 },
-  { name: 'setBypass', method: 'setBypass', mirrorPath: 'bypass', lane: 'write', makeStub: (fn) => ({ setBypass: fn }), invoke: () => setBypass(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.bypass, expected: true },
-  { name: 'setUserMute', method: 'setUserMute', mirrorPath: 'userVolume.mute', lane: 'write', makeStub: (fn) => ({ setUserMute: fn }), invoke: () => setUserMute(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.userVolume?.mute, expected: true },
-  { name: 'setLgSoundSyncEnabled', method: 'setLgSoundSyncEnabled', mirrorPath: 'lgSoundSync.enabled', lane: 'write', makeStub: (fn) => ({ setLgSoundSyncEnabled: fn }), invoke: () => setLgSoundSyncEnabled(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.lgSoundSync?.enabled, expected: true },
-  { name: 'setOutputDelay', method: 'setOutputDelay', mirrorPath: 'outputs[0].delayMs', lane: 'write', makeStub: (fn) => ({ setOutputDelay: fn }), invoke: () => setOutputDelay(activeSession()!, out0().wireIndex, 5), expectedArgs: () => [out0().wireIndex, 5], read: () => out0().delayMs, expected: 5 },
-  { name: 'setOutputGain', method: 'setOutputGain', mirrorPath: 'outputs[0].gainDb', lane: 'write', makeStub: (fn) => ({ setOutputGain: fn }), invoke: () => setOutputGain(activeSession()!, out0().wireIndex, -6), expectedArgs: () => [out0().wireIndex, -6], read: () => out0().gainDb, expected: -6 },
-  { name: 'setBandBypass', method: 'setBandBypass', mirrorPath: 'channels[0].filters[0].bypass', lane: 'write', makeStub: (fn) => ({ setBandBypass: fn }), invoke: () => setBandBypass(activeSession()!, liveMirror().current!.channels[0].id, 0, true), expectedArgs: () => [liveMirror().current!.channels[0].id, 0, true], read: () => liveMirror().current!.channels[0].filters[0].bypass, expected: true },
+  { name: 'setMasterPreamp', method: 'setMasterPreamp', mirrorPath: 'masterPreampDb', lane: 'scrub', makeStub: (fn) => ({ setMasterPreamp: fn }), invoke: () => actions.setMasterPreamp(activeSession()!, -3), expectedArgs: () => [-3], read: () => liveMirror().current!.masterPreampDb, expected: -3 },
+  { name: 'setCrossfeedPreset', method: 'setCrossfeedPreset', mirrorPath: 'crossfeed.preset', lane: 'write', makeStub: (fn) => ({ setCrossfeedPreset: fn }), invoke: () => actions.setCrossfeedPreset(activeSession()!, CrossfeedPreset.Preset2), expectedArgs: () => [CrossfeedPreset.Preset2], read: () => liveMirror().current!.crossfeed.preset, expected: CrossfeedPreset.Preset2 },
+  { name: 'setLevellerSpeed', method: 'setLevellerSpeed', mirrorPath: 'leveller.speed', lane: 'write', makeStub: (fn) => ({ setLevellerSpeed: fn }), invoke: () => actions.setLevellerSpeed(activeSession()!, LevellerSpeed.Fast), expectedArgs: () => [LevellerSpeed.Fast], read: () => liveMirror().current!.leveller?.speed, expected: LevellerSpeed.Fast },
+  { name: 'setLevellerAmount', method: 'setLevellerAmount', mirrorPath: 'leveller.amount', lane: 'scrub', makeStub: (fn) => ({ setLevellerAmount: fn }), invoke: () => actions.setLevellerAmount(activeSession()!, 33), expectedArgs: () => [33], read: () => liveMirror().current!.leveller?.amount, expected: 33 },
+  { name: 'setLevellerMasks', method: 'setLevellerMasks', mirrorPath: 'leveller.detectorMask', lane: 'write', makeStub: (fn) => ({ setLevellerMasks: fn }), invoke: () => actions.setLevellerMasks(activeSession()!, 0x03, 0x05), expectedArgs: () => [0x03, 0x05], read: () => liveMirror().current!.leveller?.detectorMask, expected: 0x03 },
+  { name: 'setLoudnessOutputMask', method: 'setLoudnessOutputMask', mirrorPath: 'loudness.outputMask', lane: 'write', makeStub: (fn) => ({ setLoudnessOutputMask: fn }), invoke: () => actions.setLoudnessOutputMask(activeSession()!, 0x00F0), expectedArgs: () => [0x00F0], read: () => liveMirror().current!.loudness.outputMask, expected: 0x00F0 },
+  { name: 'setCrossfeedOutputPairs', method: 'setCrossfeedOutputPairs', mirrorPath: 'crossfeed.outputPairMask', lane: 'write', makeStub: (fn) => ({ setCrossfeedOutputPairs: fn }), invoke: () => actions.setCrossfeedOutputPairs(activeSession()!, 0x0D), expectedArgs: () => [0x0D], read: () => liveMirror().current!.crossfeed.outputPairMask, expected: 0x0D },
+  { name: 'setLoudnessEnabled', method: 'setLoudnessEnabled', mirrorPath: 'loudness.enabled', lane: 'write', makeStub: (fn) => ({ setLoudnessEnabled: fn }), invoke: () => actions.setLoudnessEnabled(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.loudness.enabled, expected: true },
+  { name: 'setLoudnessRefSpl', method: 'setLoudnessRefSpl', mirrorPath: 'loudness.refSpl', lane: 'scrub', makeStub: (fn) => ({ setLoudnessRefSpl: fn }), invoke: () => actions.setLoudnessRefSpl(activeSession()!, 90), expectedArgs: () => [90], read: () => liveMirror().current!.loudness.refSpl, expected: 90 },
+  { name: 'setLoudnessIntensityPct', method: 'setLoudnessIntensity', mirrorPath: 'loudness.intensityPct', lane: 'scrub', makeStub: (fn) => ({ setLoudnessIntensity: fn }), invoke: () => actions.setLoudnessIntensityPct(activeSession()!, 50), expectedArgs: () => [50], read: () => liveMirror().current!.loudness.intensityPct, expected: 50 },
+  { name: 'setBypass', method: 'setBypass', mirrorPath: 'bypass', lane: 'write', makeStub: (fn) => ({ setBypass: fn }), invoke: () => actions.setBypass(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.bypass, expected: true },
+  { name: 'setUserMute', method: 'setUserMute', mirrorPath: 'userVolume.mute', lane: 'write', makeStub: (fn) => ({ setUserMute: fn }), invoke: () => actions.setUserMute(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.userVolume?.mute, expected: true },
+  { name: 'setLgSoundSyncEnabled', method: 'setLgSoundSyncEnabled', mirrorPath: 'lgSoundSync.enabled', lane: 'write', makeStub: (fn) => ({ setLgSoundSyncEnabled: fn }), invoke: () => actions.setLgSoundSyncEnabled(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.lgSoundSync?.enabled, expected: true },
+  { name: 'setOutputDelay', method: 'setOutputDelay', mirrorPath: 'outputs[0].delayMs', lane: 'write', makeStub: (fn) => ({ setOutputDelay: fn }), invoke: () => actions.setOutputDelay(activeSession()!, out0().wireIndex, 5), expectedArgs: () => [out0().wireIndex, 5], read: () => out0().delayMs, expected: 5 },
+  { name: 'setOutputGain', method: 'setOutputGain', mirrorPath: 'outputs[0].gainDb', lane: 'write', makeStub: (fn) => ({ setOutputGain: fn }), invoke: () => actions.setOutputGain(activeSession()!, out0().wireIndex, -6), expectedArgs: () => [out0().wireIndex, -6], read: () => out0().gainDb, expected: -6 },
+  { name: 'setBandBypass', method: 'setBandBypass', mirrorPath: 'channels[0].filters[0].bypass', lane: 'write', makeStub: (fn) => ({ setBandBypass: fn }), invoke: () => actions.setBandBypass(activeSession()!, liveMirror().current!.channels[0].id, 0, true), expectedArgs: () => [liveMirror().current!.channels[0].id, 0, true], read: () => liveMirror().current!.channels[0].filters[0].bypass, expected: true },
   // Slot-addressing case: channel 1, not the trivial default channel 0.
-  { name: 'setInputPreamp', method: 'setInputPreamp', mirrorPath: 'inputPreampDb[1]', lane: 'scrub', makeStub: (fn) => ({ setInputPreamp: fn }), invoke: () => setInputPreamp(activeSession()!, 1, -4), expectedArgs: () => [1, -4], read: () => liveMirror().current!.inputPreampDb[1], expected: -4 },
-  { name: 'setOutputEnabled', method: 'setOutputEnable', mirrorPath: 'outputs[0].enabled', lane: 'write', makeStub: (fn) => ({ setOutputEnable: fn }), invoke: () => setOutputEnabled(activeSession()!, out0().wireIndex, false), expectedArgs: () => [out0().wireIndex, false], read: () => out0().enabled, expected: false },
-  { name: 'setPsybassEnabled', method: 'setPsybassEnabled', mirrorPath: 'psybass.enabled', lane: 'write', makeStub: (fn) => ({ setPsybassEnabled: fn }), invoke: () => setPsybassEnabled(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.psybass.enabled, expected: true },
-  { name: 'setPsybassCutoff', method: 'setPsybassCutoff', mirrorPath: 'psybass.cutoffHz', lane: 'scrub', makeStub: (fn) => ({ setPsybassCutoff: fn }), invoke: () => setPsybassCutoff(activeSession()!, 120), expectedArgs: () => [120], read: () => liveMirror().current!.psybass.cutoffHz, expected: 120 },
-  { name: 'setPsybassHarmonics', method: 'setPsybassHarmonics', mirrorPath: 'psybass.harmonicsDb', lane: 'scrub', makeStub: (fn) => ({ setPsybassHarmonics: fn }), invoke: () => setPsybassHarmonics(activeSession()!, 4.5), expectedArgs: () => [4.5], read: () => liveMirror().current!.psybass.harmonicsDb, expected: 4.5 },
-  { name: 'setPsybassDrive', method: 'setPsybassDrive', mirrorPath: 'psybass.driveDb', lane: 'scrub', makeStub: (fn) => ({ setPsybassDrive: fn }), invoke: () => setPsybassDrive(activeSession()!, 9), expectedArgs: () => [9], read: () => liveMirror().current!.psybass.driveDb, expected: 9 },
-  { name: 'setPsybassCharacter', method: 'setPsybassCharacter', mirrorPath: 'psybass.characterPct', lane: 'scrub', makeStub: (fn) => ({ setPsybassCharacter: fn }), invoke: () => setPsybassCharacter(activeSession()!, 75), expectedArgs: () => [75], read: () => liveMirror().current!.psybass.characterPct, expected: 75 },
-  { name: 'setPsybassOriginal', method: 'setPsybassOriginal', mirrorPath: 'psybass.originalDb', lane: 'scrub', makeStub: (fn) => ({ setPsybassOriginal: fn }), invoke: () => setPsybassOriginal(activeSession()!, -12), expectedArgs: () => [-12], read: () => liveMirror().current!.psybass.originalDb, expected: -12 },
-  { name: 'setPsybassOutputMask', method: 'setPsybassMask', mirrorPath: 'psybass.outputMask', lane: 'write', makeStub: (fn) => ({ setPsybassMask: fn }), invoke: () => setPsybassOutputMask(activeSession()!, 0x00F0), expectedArgs: () => [0x00F0], read: () => liveMirror().current!.psybass.outputMask, expected: 0x00F0 },
-  { name: 'setUpmixEnabled', method: 'setUpmixEnabled', mirrorPath: 'upmix.enabled', lane: 'write', makeStub: (fn) => ({ setUpmixEnabled: fn }), invoke: () => setUpmixEnabled(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.upmix.enabled, expected: true },
-  { name: 'setUpmixCenterMode', method: 'setUpmixCenterMode', mirrorPath: 'upmix.centerMode', lane: 'write', makeStub: (fn) => ({ setUpmixCenterMode: fn }), invoke: () => setUpmixCenterMode(activeSession()!, 1), expectedArgs: () => [1], read: () => liveMirror().current!.upmix.centerMode, expected: 1 },
-  { name: 'setUpmixSurroundMode', method: 'setUpmixSurroundMode', mirrorPath: 'upmix.surroundMode', lane: 'write', makeStub: (fn) => ({ setUpmixSurroundMode: fn }), invoke: () => setUpmixSurroundMode(activeSession()!, 2), expectedArgs: () => [2], read: () => liveMirror().current!.upmix.surroundMode, expected: 2 },
-  { name: 'setUpmixStrength', method: 'setUpmixStrength', mirrorPath: 'upmix.strengthPct', lane: 'scrub', makeStub: (fn) => ({ setUpmixStrength: fn }), invoke: () => setUpmixStrength(activeSession()!, 75), expectedArgs: () => [75], read: () => liveMirror().current!.upmix.strengthPct, expected: 75 },
-  { name: 'setUpmixCenterWidth', method: 'setUpmixCenterWidth', mirrorPath: 'upmix.centerWidthPct', lane: 'scrub', makeStub: (fn) => ({ setUpmixCenterWidth: fn }), invoke: () => setUpmixCenterWidth(activeSession()!, 40), expectedArgs: () => [40], read: () => liveMirror().current!.upmix.centerWidthPct, expected: 40 },
-  { name: 'setUpmixCorrThreshold', method: 'setUpmixCorrThreshold', mirrorPath: 'upmix.corrThresholdPct', lane: 'scrub', makeStub: (fn) => ({ setUpmixCorrThreshold: fn }), invoke: () => setUpmixCorrThreshold(activeSession()!, 50), expectedArgs: () => [50], read: () => liveMirror().current!.upmix.corrThresholdPct, expected: 50 },
-  { name: 'setUpmixAttack', method: 'setUpmixAttack', mirrorPath: 'upmix.attackMs', lane: 'scrub', makeStub: (fn) => ({ setUpmixAttack: fn }), invoke: () => setUpmixAttack(activeSession()!, 20), expectedArgs: () => [20], read: () => liveMirror().current!.upmix.attackMs, expected: 20 },
-  { name: 'setUpmixRelease', method: 'setUpmixRelease', mirrorPath: 'upmix.releaseMs', lane: 'scrub', makeStub: (fn) => ({ setUpmixRelease: fn }), invoke: () => setUpmixRelease(activeSession()!, 200), expectedArgs: () => [200], read: () => liveMirror().current!.upmix.releaseMs, expected: 200 },
-  { name: 'setUpmixDetectorHpf', method: 'setUpmixDetectorHpf', mirrorPath: 'upmix.detectorHpfHz', lane: 'scrub', makeStub: (fn) => ({ setUpmixDetectorHpf: fn }), invoke: () => setUpmixDetectorHpf(activeSession()!, 150), expectedArgs: () => [150], read: () => liveMirror().current!.upmix.detectorHpfHz, expected: 150 },
-  { name: 'setUpmixSurroundDelay', method: 'setUpmixSurroundDelay', mirrorPath: 'upmix.surroundDelayMs', lane: 'scrub', makeStub: (fn) => ({ setUpmixSurroundDelay: fn }), invoke: () => setUpmixSurroundDelay(activeSession()!, 8), expectedArgs: () => [8], read: () => liveMirror().current!.upmix.surroundDelayMs, expected: 8 },
-  { name: 'setUpmixSurroundHpf', method: 'setUpmixSurroundHpf', mirrorPath: 'upmix.surroundHpfHz', lane: 'scrub', makeStub: (fn) => ({ setUpmixSurroundHpf: fn }), invoke: () => setUpmixSurroundHpf(activeSession()!, 400), expectedArgs: () => [400], read: () => liveMirror().current!.upmix.surroundHpfHz, expected: 400 },
-  { name: 'setUpmixSurroundLpf', method: 'setUpmixSurroundLpf', mirrorPath: 'upmix.surroundLpfHz', lane: 'scrub', makeStub: (fn) => ({ setUpmixSurroundLpf: fn }), invoke: () => setUpmixSurroundLpf(activeSession()!, 6000), expectedArgs: () => [6000], read: () => liveMirror().current!.upmix.surroundLpfHz, expected: 6000 },
-  { name: 'setUpmixDecorr', method: 'setUpmixDecorr', mirrorPath: 'upmix.decorrPct', lane: 'scrub', makeStub: (fn) => ({ setUpmixDecorr: fn }), invoke: () => setUpmixDecorr(activeSession()!, 80), expectedArgs: () => [80], read: () => liveMirror().current!.upmix.decorrPct, expected: 80 },
-  { name: 'setUpmixPresence', method: 'setUpmixPresence', mirrorPath: 'upmix.presenceDb', lane: 'scrub', makeStub: (fn) => ({ setUpmixPresence: fn }), invoke: () => setUpmixPresence(activeSession()!, 3), expectedArgs: () => [3], read: () => liveMirror().current!.upmix.presenceDb, expected: 3 },
+  { name: 'setInputPreamp', method: 'setInputPreamp', mirrorPath: 'inputPreampDb[1]', lane: 'scrub', makeStub: (fn) => ({ setInputPreamp: fn }), invoke: () => actions.setInputPreamp(activeSession()!, 1, -4), expectedArgs: () => [1, -4], read: () => liveMirror().current!.inputPreampDb[1], expected: -4 },
+  { name: 'setOutputEnabled', method: 'setOutputEnable', mirrorPath: 'outputs[0].enabled', lane: 'write', makeStub: (fn) => ({ setOutputEnable: fn }), invoke: () => actions.setOutputEnabled(activeSession()!, out0().wireIndex, false), expectedArgs: () => [out0().wireIndex, false], read: () => out0().enabled, expected: false },
+  { name: 'setPsybassEnabled', method: 'setPsybassEnabled', mirrorPath: 'psybass.enabled', lane: 'write', makeStub: (fn) => ({ setPsybassEnabled: fn }), invoke: () => actions.setPsybassEnabled(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.psybass.enabled, expected: true },
+  { name: 'setPsybassCutoff', method: 'setPsybassCutoff', mirrorPath: 'psybass.cutoffHz', lane: 'scrub', makeStub: (fn) => ({ setPsybassCutoff: fn }), invoke: () => actions.setPsybassCutoff(activeSession()!, 120), expectedArgs: () => [120], read: () => liveMirror().current!.psybass.cutoffHz, expected: 120 },
+  { name: 'setPsybassHarmonics', method: 'setPsybassHarmonics', mirrorPath: 'psybass.harmonicsDb', lane: 'scrub', makeStub: (fn) => ({ setPsybassHarmonics: fn }), invoke: () => actions.setPsybassHarmonics(activeSession()!, 4.5), expectedArgs: () => [4.5], read: () => liveMirror().current!.psybass.harmonicsDb, expected: 4.5 },
+  { name: 'setPsybassDrive', method: 'setPsybassDrive', mirrorPath: 'psybass.driveDb', lane: 'scrub', makeStub: (fn) => ({ setPsybassDrive: fn }), invoke: () => actions.setPsybassDrive(activeSession()!, 9), expectedArgs: () => [9], read: () => liveMirror().current!.psybass.driveDb, expected: 9 },
+  { name: 'setPsybassCharacter', method: 'setPsybassCharacter', mirrorPath: 'psybass.characterPct', lane: 'scrub', makeStub: (fn) => ({ setPsybassCharacter: fn }), invoke: () => actions.setPsybassCharacter(activeSession()!, 75), expectedArgs: () => [75], read: () => liveMirror().current!.psybass.characterPct, expected: 75 },
+  { name: 'setPsybassOriginal', method: 'setPsybassOriginal', mirrorPath: 'psybass.originalDb', lane: 'scrub', makeStub: (fn) => ({ setPsybassOriginal: fn }), invoke: () => actions.setPsybassOriginal(activeSession()!, -12), expectedArgs: () => [-12], read: () => liveMirror().current!.psybass.originalDb, expected: -12 },
+  { name: 'setPsybassOutputMask', method: 'setPsybassMask', mirrorPath: 'psybass.outputMask', lane: 'write', makeStub: (fn) => ({ setPsybassMask: fn }), invoke: () => actions.setPsybassOutputMask(activeSession()!, 0x00F0), expectedArgs: () => [0x00F0], read: () => liveMirror().current!.psybass.outputMask, expected: 0x00F0 },
+  { name: 'setUpmixEnabled', method: 'setUpmixEnabled', mirrorPath: 'upmix.enabled', lane: 'write', makeStub: (fn) => ({ setUpmixEnabled: fn }), invoke: () => actions.setUpmixEnabled(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.upmix.enabled, expected: true },
+  { name: 'setUpmixCenterMode', method: 'setUpmixCenterMode', mirrorPath: 'upmix.centerMode', lane: 'write', makeStub: (fn) => ({ setUpmixCenterMode: fn }), invoke: () => actions.setUpmixCenterMode(activeSession()!, 1), expectedArgs: () => [1], read: () => liveMirror().current!.upmix.centerMode, expected: 1 },
+  { name: 'setUpmixSurroundMode', method: 'setUpmixSurroundMode', mirrorPath: 'upmix.surroundMode', lane: 'write', makeStub: (fn) => ({ setUpmixSurroundMode: fn }), invoke: () => actions.setUpmixSurroundMode(activeSession()!, 2), expectedArgs: () => [2], read: () => liveMirror().current!.upmix.surroundMode, expected: 2 },
+  { name: 'setUpmixStrength', method: 'setUpmixStrength', mirrorPath: 'upmix.strengthPct', lane: 'scrub', makeStub: (fn) => ({ setUpmixStrength: fn }), invoke: () => actions.setUpmixStrength(activeSession()!, 75), expectedArgs: () => [75], read: () => liveMirror().current!.upmix.strengthPct, expected: 75 },
+  { name: 'setUpmixCenterWidth', method: 'setUpmixCenterWidth', mirrorPath: 'upmix.centerWidthPct', lane: 'scrub', makeStub: (fn) => ({ setUpmixCenterWidth: fn }), invoke: () => actions.setUpmixCenterWidth(activeSession()!, 40), expectedArgs: () => [40], read: () => liveMirror().current!.upmix.centerWidthPct, expected: 40 },
+  { name: 'setUpmixCorrThreshold', method: 'setUpmixCorrThreshold', mirrorPath: 'upmix.corrThresholdPct', lane: 'scrub', makeStub: (fn) => ({ setUpmixCorrThreshold: fn }), invoke: () => actions.setUpmixCorrThreshold(activeSession()!, 50), expectedArgs: () => [50], read: () => liveMirror().current!.upmix.corrThresholdPct, expected: 50 },
+  { name: 'setUpmixAttack', method: 'setUpmixAttack', mirrorPath: 'upmix.attackMs', lane: 'scrub', makeStub: (fn) => ({ setUpmixAttack: fn }), invoke: () => actions.setUpmixAttack(activeSession()!, 20), expectedArgs: () => [20], read: () => liveMirror().current!.upmix.attackMs, expected: 20 },
+  { name: 'setUpmixRelease', method: 'setUpmixRelease', mirrorPath: 'upmix.releaseMs', lane: 'scrub', makeStub: (fn) => ({ setUpmixRelease: fn }), invoke: () => actions.setUpmixRelease(activeSession()!, 200), expectedArgs: () => [200], read: () => liveMirror().current!.upmix.releaseMs, expected: 200 },
+  { name: 'setUpmixDetectorHpf', method: 'setUpmixDetectorHpf', mirrorPath: 'upmix.detectorHpfHz', lane: 'scrub', makeStub: (fn) => ({ setUpmixDetectorHpf: fn }), invoke: () => actions.setUpmixDetectorHpf(activeSession()!, 150), expectedArgs: () => [150], read: () => liveMirror().current!.upmix.detectorHpfHz, expected: 150 },
+  { name: 'setUpmixSurroundDelay', method: 'setUpmixSurroundDelay', mirrorPath: 'upmix.surroundDelayMs', lane: 'scrub', makeStub: (fn) => ({ setUpmixSurroundDelay: fn }), invoke: () => actions.setUpmixSurroundDelay(activeSession()!, 8), expectedArgs: () => [8], read: () => liveMirror().current!.upmix.surroundDelayMs, expected: 8 },
+  { name: 'setUpmixSurroundHpf', method: 'setUpmixSurroundHpf', mirrorPath: 'upmix.surroundHpfHz', lane: 'scrub', makeStub: (fn) => ({ setUpmixSurroundHpf: fn }), invoke: () => actions.setUpmixSurroundHpf(activeSession()!, 400), expectedArgs: () => [400], read: () => liveMirror().current!.upmix.surroundHpfHz, expected: 400 },
+  { name: 'setUpmixSurroundLpf', method: 'setUpmixSurroundLpf', mirrorPath: 'upmix.surroundLpfHz', lane: 'scrub', makeStub: (fn) => ({ setUpmixSurroundLpf: fn }), invoke: () => actions.setUpmixSurroundLpf(activeSession()!, 6000), expectedArgs: () => [6000], read: () => liveMirror().current!.upmix.surroundLpfHz, expected: 6000 },
+  { name: 'setUpmixDecorr', method: 'setUpmixDecorr', mirrorPath: 'upmix.decorrPct', lane: 'scrub', makeStub: (fn) => ({ setUpmixDecorr: fn }), invoke: () => actions.setUpmixDecorr(activeSession()!, 80), expectedArgs: () => [80], read: () => liveMirror().current!.upmix.decorrPct, expected: 80 },
+  { name: 'setUpmixPresence', method: 'setUpmixPresence', mirrorPath: 'upmix.presenceDb', lane: 'scrub', makeStub: (fn) => ({ setUpmixPresence: fn }), invoke: () => actions.setUpmixPresence(activeSession()!, 3), expectedArgs: () => [3], read: () => liveMirror().current!.upmix.presenceDb, expected: 3 },
 ];
 
 describe('thin verbs: device call + mirror patch (parameterized)', () => {
@@ -414,7 +414,7 @@ describe('leveller channel masks (toggle logic)', () => {
   });
 
   it('detector toggle clears one bit and leaves the apply mask untouched', async () => {
-    toggleLevellerDetectorChannel(activeSession()!, 0);
+    actions.toggleLevellerDetectorChannel(activeSession()!, 0);
     await vi.runAllTimersAsync();
     expect(masksFn).toHaveBeenCalledWith(0xFE, 0xFF);
     expect(liveMirror().current!.leveller?.detectorMask).toBe(0xFE);
@@ -422,7 +422,7 @@ describe('leveller channel masks (toggle logic)', () => {
   });
 
   it('apply toggle clears one bit and leaves the detector mask untouched', async () => {
-    toggleLevellerApplyChannel(activeSession()!, 2);
+    actions.toggleLevellerApplyChannel(activeSession()!, 2);
     await vi.runAllTimersAsync();
     expect(masksFn).toHaveBeenCalledWith(0xFF, 0xFB);
     expect(liveMirror().current!.leveller?.applyMask).toBe(0xFB);
@@ -430,10 +430,10 @@ describe('leveller channel masks (toggle logic)', () => {
   });
 
   it('toggling the same channel twice restores it', async () => {
-    toggleLevellerDetectorChannel(activeSession()!, 3);
+    actions.toggleLevellerDetectorChannel(activeSession()!, 3);
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.leveller?.detectorMask).toBe(0xF7);
-    toggleLevellerDetectorChannel(activeSession()!, 3);
+    actions.toggleLevellerDetectorChannel(activeSession()!, 3);
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.leveller?.detectorMask).toBe(0xFF);
   });
@@ -458,17 +458,17 @@ describe('loudness output mask (toggle logic)', () => {
   });
 
   it('toggle clears one bit and re-sends the whole mask', async () => {
-    toggleLoudnessOutputChannel(activeSession()!, 0);
+    actions.toggleLoudnessOutputChannel(activeSession()!, 0);
     await vi.runAllTimersAsync();
     expect(maskFn).toHaveBeenCalledWith(0xFFFE);
     expect(liveMirror().current!.loudness.outputMask).toBe(0xFFFE);
   });
 
   it('toggling the same channel twice restores it', async () => {
-    toggleLoudnessOutputChannel(activeSession()!, 5);
+    actions.toggleLoudnessOutputChannel(activeSession()!, 5);
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.loudness.outputMask).toBe(0xFFFF ^ (1 << 5));
-    toggleLoudnessOutputChannel(activeSession()!, 5);
+    actions.toggleLoudnessOutputChannel(activeSession()!, 5);
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.loudness.outputMask).toBe(0xFFFF);
   });
@@ -493,17 +493,17 @@ describe('psybass output mask (toggle logic)', () => {
   });
 
   it('toggle clears one bit and re-sends the whole mask', async () => {
-    togglePsybassOutputChannel(activeSession()!, 0);
+    actions.togglePsybassOutputChannel(activeSession()!, 0);
     await vi.runAllTimersAsync();
     expect(maskFn).toHaveBeenCalledWith(0xFFFE);
     expect(liveMirror().current!.psybass.outputMask).toBe(0xFFFE);
   });
 
   it('toggling the same channel twice restores it', async () => {
-    togglePsybassOutputChannel(activeSession()!, 5);
+    actions.togglePsybassOutputChannel(activeSession()!, 5);
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.psybass.outputMask).toBe(0xFFFF ^ (1 << 5));
-    togglePsybassOutputChannel(activeSession()!, 5);
+    actions.togglePsybassOutputChannel(activeSession()!, 5);
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.psybass.outputMask).toBe(0xFFFF);
   });
@@ -528,17 +528,17 @@ describe('crossfeed output-pair mask (toggle logic)', () => {
   });
 
   it('toggle sets an additional pair and re-sends the whole mask', async () => {
-    toggleCrossfeedOutputPair(activeSession()!, 1);
+    actions.toggleCrossfeedOutputPair(activeSession()!, 1);
     await vi.runAllTimersAsync();
     expect(maskFn).toHaveBeenCalledWith(0x03);
     expect(liveMirror().current!.crossfeed.outputPairMask).toBe(0x03);
   });
 
   it('toggling the same pair twice restores it', async () => {
-    toggleCrossfeedOutputPair(activeSession()!, 2);
+    actions.toggleCrossfeedOutputPair(activeSession()!, 2);
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.crossfeed.outputPairMask).toBe(0x01 | (1 << 2));
-    toggleCrossfeedOutputPair(activeSession()!, 2);
+    actions.toggleCrossfeedOutputPair(activeSession()!, 2);
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.crossfeed.outputPairMask).toBe(0x01);
   });
@@ -561,27 +561,27 @@ describe('setChannelName', () => {
 
   it('patches the snapshot channels[i].name after send acks', async () => {
     // setChannelName awaits the wire send, then mutates draft (await-then-mutate).
-    setChannelName(activeSession()!, 0 satisfies ChannelId, 'Studio Left');
+    actions.setChannelName(activeSession()!, 0 satisfies ChannelId, 'Studio Left');
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.channels[0].name).toBe('Studio Left');
   });
 
   it('treats empty input as a clear: snapshot falls back to defaultName', async () => {
     const defaultName = liveMirror().current!.channels[0].defaultName;
-    setChannelName(activeSession()!, 0 satisfies ChannelId, '');
+    actions.setChannelName(activeSession()!, 0 satisfies ChannelId, '');
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.channels[0].name).toBe(defaultName);
   });
 
   it('trims whitespace-only input the same as empty', async () => {
     const defaultName = liveMirror().current!.channels[0].defaultName;
-    setChannelName(activeSession()!, 0 satisfies ChannelId, '   ');
+    actions.setChannelName(activeSession()!, 0 satisfies ChannelId, '   ');
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.channels[0].name).toBe(defaultName);
   });
 
   it('trims whitespace and stores the resolved value in the snapshot', async () => {
-    setChannelName(activeSession()!, 0 satisfies ChannelId, '  padded  ');
+    actions.setChannelName(activeSession()!, 0 satisfies ChannelId, '  padded  ');
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.channels[0].name).toBe('padded'); // resolved (trimmed)
   });
@@ -591,7 +591,7 @@ describe('setChannelName', () => {
     // matrixColumns only surfaces enabled outputs, and the fixture default
     // is disabled, so enable the slot to join it.
     liveMirror().current!.outputs.find((o) => o.wireIndex === 0)!.enabled = true;
-    setChannelName(activeSession()!, 2 satisfies ChannelId, 'Front Left');
+    actions.setChannelName(activeSession()!, 2 satisfies ChannelId, 'Front Left');
     await vi.runAllTimersAsync();
 
     const channel = liveMirror().current!.channels.find((c) => c.id === 2);
@@ -609,7 +609,7 @@ describe('setChannelName', () => {
     liveMirror().replaceCurrent(makeSnapshot(PlatformType.RP2040));
     liveMirror().current!.outputs.find((o) => o.wireIndex === 4)!.enabled = true;
 
-    setChannelName(activeSession()!, 10 satisfies ChannelId, 'Sub');
+    actions.setChannelName(activeSession()!, 10 satisfies ChannelId, 'Sub');
     await vi.runAllTimersAsync();
 
     const channel = liveMirror().current!.channels.find((c) => c.id === 10);
@@ -623,7 +623,7 @@ describe('setChannelName', () => {
     const namesBefore = matrixColumns(liveMirror().current).map((c) => c.name);
 
     // ChannelId.In1L = 0 — no entry in outputs[].
-    setChannelName(activeSession()!, 0 satisfies ChannelId, 'Mic 1');
+    actions.setChannelName(activeSession()!, 0 satisfies ChannelId, 'Mic 1');
     await vi.runAllTimersAsync();
 
     const namesAfter = matrixColumns(liveMirror().current).map((c) => c.name);
@@ -643,7 +643,7 @@ describe('actions — master volume mode', () => {
       outputConfigMode: 0 as any,
       masterVolumeMode: MasterVolumeMode.Independent,
     };
-    setMasterVolumeMode(activeSession()!, MasterVolumeMode.WithPreset);
+    actions.setMasterVolumeMode(activeSession()!, MasterVolumeMode.WithPreset);
     await vi.waitFor(() => expect(activeSession()!.presets.directory!.masterVolumeMode).toBe(MasterVolumeMode.WithPreset));
   });
 
@@ -652,7 +652,7 @@ describe('actions — master volume mode', () => {
     const failDevice = initializedDevice({ saveMasterVolume: async () => false });
     dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(failDevice) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
-    saveMasterVolumeBaseline(activeSession()!);
+    actions.saveMasterVolumeBaseline(activeSession()!);
     await flushAllWrites();
     expect(notices.list.some((n) => n.kind === 'warn' && /master volume/i.test(n.message))).toBe(true);
 
@@ -660,7 +660,7 @@ describe('actions — master volume mode', () => {
     const okDevice = initializedDevice({ saveMasterVolume: async () => true });
     dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(okDevice) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
-    saveMasterVolumeBaseline(activeSession()!);
+    actions.saveMasterVolumeBaseline(activeSession()!);
     await flushAllWrites();
     expect(notices.list).toHaveLength(0);
     expect(activeSession()!.presets.savedMasterVolumeDb).toBe(liveMirror().current!.masterVolumeDb);
@@ -672,7 +672,7 @@ describe('actions — master volume mode', () => {
       saveOutputConfig: async () => ({ ok: false as const, code: 4 as any, message: 'preset flash write error' }),
     });
     dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(failDevice) });
-    saveOutputConfigBaseline(activeSession()!);
+    actions.saveOutputConfigBaseline(activeSession()!);
     await flushAllWrites();
     expect(notices.list.some((n) => n.kind === 'warn' && /output config/i.test(n.message))).toBe(true);
 
@@ -681,7 +681,7 @@ describe('actions — master volume mode', () => {
       saveOutputConfig: async () => ({ ok: true as const, value: undefined }),
     });
     dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(okDevice) });
-    saveOutputConfigBaseline(activeSession()!);
+    actions.saveOutputConfigBaseline(activeSession()!);
     await flushAllWrites();
     expect(notices.list).toHaveLength(0);
   });
@@ -705,7 +705,7 @@ describe('bulk writes: toggles', () => {
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     const slot = liveMirror().current!.outputs[0].wireIndex;
     const before = liveMirror().current!.outputs[0].muted;
-    setOutputMuted(activeSession()!, slot, !before);
+    actions.setOutputMuted(activeSession()!, slot, !before);
     await vi.runAllTimersAsync();
     expect(liveMirror().current?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(!before);
     expect(setOutputMuteFn).toHaveBeenCalledWith(slot, !before);
@@ -722,7 +722,7 @@ describe('bulk writes: toggles', () => {
     dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
 
-    setOutputPairEnabled(activeSession()!, 0, true);
+    actions.setOutputPairEnabled(activeSession()!, 0, true);
     await vi.runAllTimersAsync();
 
     expect(calls).toEqual(expect.arrayContaining([[0, true], [1, true]]));
@@ -742,7 +742,7 @@ describe('bulk writes: toggles', () => {
     liveMirror().current!.outputs.find((o) => o.wireIndex === 2)!.enabled = true;
     liveMirror().current!.outputs.find((o) => o.wireIndex === 3)!.enabled = false;
 
-    setOutputPairEnabled(activeSession()!, 1, false);
+    actions.setOutputPairEnabled(activeSession()!, 1, false);
     await vi.runAllTimersAsync();
 
     expect(liveMirror().current?.outputs.find((o) => o.wireIndex === 2)?.enabled).toBe(false);
@@ -770,7 +770,7 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     const route = liveMirror().current!.routes[0];
     const before = route.enabled;
-    setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, !before);
+    actions.setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, !before);
     expect(liveMirror().current!.routes[0].enabled).toBe(before);    // not optimistic — unchanged until ack
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.routes[0].enabled).toBe(!before);   // patched after ack
@@ -778,7 +778,7 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
     expect(calls[0].enabled).toBe(!before);
 
     // Explicit value, not a toggle: calling again with the same value must not flip it back.
-    setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, !before);
+    actions.setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, !before);
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.routes[0].enabled).toBe(!before);
   });
@@ -793,9 +793,9 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     const route = liveMirror().current!.routes[0];
     const beforeEnabled = route.enabled;
-    setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, !beforeEnabled);
+    actions.setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, !beforeEnabled);
     await vi.runAllTimersAsync();
-    setCrosspointGain(activeSession()!, route.inputIndex, route.outputWireIndex, -6);
+    actions.setCrosspointGain(activeSession()!, route.inputIndex, route.outputWireIndex, -6);
     await vi.runAllTimersAsync();
     expect(calls).toHaveLength(2);                 // one send per edit
     // The gain send merges with the committed mirror: the enable edit (now
@@ -814,7 +814,7 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     const route = liveMirror().current!.routes[0];
     const before = route.invert;
-    setCrosspointInvert(activeSession()!, route.inputIndex, route.outputWireIndex, !before);
+    actions.setCrosspointInvert(activeSession()!, route.inputIndex, route.outputWireIndex, !before);
     await vi.runAllTimersAsync();
     expect(calls).toHaveLength(1);
     expect(calls[0].invert).toBe(!before);
@@ -846,7 +846,7 @@ describe('setBandBypass', () => {
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
     const ch = liveMirror().current!.channels[0].id;
     const n = liveMirror().current!.channels[0].filters.length;
-    setBandBypass(activeSession()!, ch, n + 5, true);
+    actions.setBandBypass(activeSession()!, ch, n + 5, true);
     await vi.runAllTimersAsync();
     expect(setBandBypassFn).not.toHaveBeenCalled();
   });
@@ -877,7 +877,7 @@ describe('setDacHwMute', () => {
   it('patches dacHwMute optimistically and settles on the device echo', async () => {
     const { setDacHwMuteFn } = dacHarness();
     const cfg: DacHwMute = { enabled: true, activeLow: true, pin: 20, holdMs: 50, releaseMs: 10 };
-    setDacHwMute(activeSession()!, cfg);
+    actions.setDacHwMute(activeSession()!, cfg);
     expect(liveMirror().current?.dacHwMute).toEqual(cfg);   // optimistic
     await vi.runAllTimersAsync();
     expect(liveMirror().current?.dacHwMute).toEqual(cfg);   // echo agrees
@@ -886,8 +886,8 @@ describe('setDacHwMute', () => {
 
   it('merges a second quick edit over the first optimistic patch (no stale-struct revert)', async () => {
     const { sent } = dacHarness();
-    setDacHwMute(activeSession()!, { activeLow: true });
-    setDacHwMute(activeSession()!, { holdMs: 50 });   // inside the first ack window
+    actions.setDacHwMute(activeSession()!, { activeLow: true });
+    actions.setDacHwMute(activeSession()!, { holdMs: 50 });   // inside the first ack window
     await vi.runAllTimersAsync();
     expect(sent[1]).toMatchObject({ activeLow: true, holdMs: 50 });
     expect(liveMirror().current?.dacHwMute).toMatchObject({ activeLow: true, holdMs: 50 });
@@ -895,7 +895,7 @@ describe('setDacHwMute', () => {
 
   it('clamps holdMs into the firmware range when enabling', async () => {
     const { sent } = dacHarness();
-    setDacHwMute(activeSession()!, { enabled: true });   // virgin device: holdMs 0
+    actions.setDacHwMute(activeSession()!, { enabled: true });   // virgin device: holdMs 0
     await vi.runAllTimersAsync();
     expect(sent[0].holdMs).toBeGreaterThanOrEqual(1);
   });
@@ -903,7 +903,7 @@ describe('setDacHwMute', () => {
   it('does not hold the session queue across the deferred-apply wait', async () => {
     const { setDacHwMuteFn } = dacHarness();
     const s = activeSession()!;
-    setDacHwMute(s, { enabled: true, pin: 6 });
+    actions.setDacHwMute(s, { enabled: true, pin: 6 });
     // Let the SET transfer settle but stay inside the 200 ms apply window.
     await vi.advanceTimersByTimeAsync(50);
     expect(setDacHwMuteFn).toHaveBeenCalled();
@@ -927,7 +927,7 @@ describe('setDacHwMute', () => {
     dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
     clearNotices();
-    setDacHwMute(activeSession()!, { enabled: true, pin: 6 });
+    actions.setDacHwMute(activeSession()!, { enabled: true, pin: 6 });
     // Step just past the deferred-apply wait; running ALL timers would also
     // expire the warn notice's TTL before it can be observed.
     await vi.advanceTimersByTimeAsync(250);
@@ -952,7 +952,7 @@ describe('setInputSource', () => {
     dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
     clearNotices();
-    setInputSource(activeSession()!, AudioInputSource.Spdif);
+    actions.setInputSource(activeSession()!, AudioInputSource.Spdif);
     // Notice rides the ack: nothing surfaces until the send settles.
     expect(notices.list.some((n) => n.kind === 'info' && /input source/i.test(n.message))).toBe(false);
     // Settle the write's microtasks without running the notice-expiry timer.
@@ -974,7 +974,7 @@ describe('setInputSource', () => {
       state: 2, inputSource: 1, lockCount: 3, lossCount: 0,
       sampleRate: 48000, parityErrors: 0, fifoFillPct: 50,
     };
-    setInputSource(activeSession()!, AudioInputSource.Spdif);
+    actions.setInputSource(activeSession()!, AudioInputSource.Spdif);
     await vi.advanceTimersByTimeAsync(0);
     expect(activeSession()!.telemetry.spdifRxStatus).toBeNull();
   });
@@ -988,7 +988,7 @@ describe('output config verbs', () => {
 
   it('setOutputDataPin success patches draft.outputPins without discarding other edits', async () => {
     const before = liveMirror().current!.masterVolumeDb;
-    setOutputDataPin(activeSession()!, 0, 16);
+    actions.setOutputDataPin(activeSession()!, 0, 16);
     await flushAllWrites();
     expect(liveMirror().current!.outputPins[0]).toBe(16);
     expect(liveMirror().current!.masterVolumeDb).toBe(before);
@@ -997,7 +997,7 @@ describe('output config verbs', () => {
   it('setOutputDataPin failure leaves outputPins unchanged and toasts the device message', async () => {
     // pin 7 is in use by pinOutputIndex 1 — mock returns PinInUse
     const pinsBefore = liveMirror().current!.outputPins.slice();
-    setOutputDataPin(activeSession()!, 0, 7);
+    actions.setOutputDataPin(activeSession()!, 0, 7);
     await flushAllWrites();
     expect(liveMirror().current!.outputPins).toEqual(pinsBefore);
     expect(notices.list).toHaveLength(1);
@@ -1005,44 +1005,44 @@ describe('output config verbs', () => {
   });
 
   it('setOutputType updates draft.i2s.outputSlotTypes', async () => {
-    setOutputType(activeSession()!, 0, 1);
+    actions.setOutputType(activeSession()!, 0, 1);
     await flushAllWrites();
     expect(liveMirror().current!.i2s.outputSlotTypes[0]).toBe(1);
   });
 
   test('setI2sBckPin success patches draft.i2s.bckPin', async () => {
-    setI2sBckPin(activeSession()!, 16);
+    actions.setI2sBckPin(activeSession()!, 16);
     await flushAllWrites();
     expect(liveMirror().current!.i2s.bckPin).toBe(16);
   });
 
   test('setMckEnabled success patches draft.i2s.mckEnabled', async () => {
-    setMckEnabled(activeSession()!, true);
+    actions.setMckEnabled(activeSession()!, true);
     await flushAllWrites();
     expect(liveMirror().current!.i2s.mckEnabled).toBe(true);
   });
 
   test('setI2sClockMode success patches draft.inputConfig.i2sClockMode', async () => {
-    setI2sClockMode(activeSession()!, 1);
+    actions.setI2sClockMode(activeSession()!, 1);
     await flushAllWrites();
     expect(liveMirror().current!.inputConfig.i2sClockMode).toBe(1);
   });
 
   test('setI2sClockPinMode success patches draft.i2s.clockPinMode', async () => {
-    setI2sClockPinMode(activeSession()!, 1);
+    actions.setI2sClockPinMode(activeSession()!, 1);
     await flushAllWrites();
     expect(liveMirror().current!.i2s.clockPinMode).toBe(1);
   });
 
   test('setI2sBckPinSlave success patches draft.i2s.bckPinSlave', async () => {
-    setI2sBckPinSlave(activeSession()!, 21);
+    actions.setI2sBckPinSlave(activeSession()!, 21);
     await flushAllWrites();
     expect(liveMirror().current!.i2s.bckPinSlave).toBe(21);
   });
 
   it('requests a non-eager reconcile on a successful config write', async () => {
     activeSession()!.mirror.consumeReconcile(); // clear anything pending from boot
-    setI2sBckPin(activeSession()!, 16);
+    actions.setI2sBckPin(activeSession()!, 16);
     await flushAllWrites();
     expect(activeSession()!.mirror.peekReconcile()).toEqual({ wanted: true, eager: false });
   });
@@ -1060,22 +1060,22 @@ describe('ADAT output verbs (fw V17+, RP2350)', () => {
   });
 
   it('setAdatEnable success patches draft.adat.enabled', async () => {
-    const ok = await setAdatEnable(activeSession()!, true);
+    const ok = await actions.setAdatEnable(activeSession()!, true);
     expect(ok).toBe(true);
     expect(liveMirror().current!.adat.enabled).toBe(true);
   });
 
   it('setAdatEnable(false) clears any stale adatStatus telemetry', async () => {
-    await setAdatEnable(activeSession()!, true);
+    await actions.setAdatEnable(activeSession()!, true);
     activeSession()!.telemetry.adatStatus = { enabled: true, active: true, pin: 12, rateOk: true, resyncCount: 2, slipCount: 1 };
-    const ok = await setAdatEnable(activeSession()!, false);
+    const ok = await actions.setAdatEnable(activeSession()!, false);
     expect(ok).toBe(true);
     expect(liveMirror().current!.adat.enabled).toBe(false);
     expect(activeSession()!.telemetry.adatStatus).toBeNull();
   });
 
   it('setAdatPin success patches draft.adat.pin', async () => {
-    const ok = await setAdatPin(activeSession()!, 20);
+    const ok = await actions.setAdatPin(activeSession()!, 20);
     expect(ok).toBe(true);
     expect(liveMirror().current!.adat.pin).toBe(20);
   });
@@ -1083,7 +1083,7 @@ describe('ADAT output verbs (fw V17+, RP2350)', () => {
   it('setAdatPin with the 0xFF reset sentinel skips the mirror patch and requests an eager reconcile', async () => {
     activeSession()!.mirror.consumeReconcile(); // clear anything pending from boot
     const pinBefore = liveMirror().current!.adat.pin;
-    const ok = await setAdatPin(activeSession()!, Wire.Const.PIN_RESET_TO_DEFAULT);
+    const ok = await actions.setAdatPin(activeSession()!, Wire.Const.PIN_RESET_TO_DEFAULT);
     expect(ok).toBe(true);
     expect(liveMirror().current!.adat.pin).toBe(pinBefore);
     expect(activeSession()!.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
@@ -1091,24 +1091,15 @@ describe('ADAT output verbs (fw V17+, RP2350)', () => {
 });
 
 describe('ADAT output verbs — device rejection (RP2040 has no ADAT hardware)', () => {
-  beforeEach(async () => {
+  it('both verbs leave the mirror untouched and toast the device message', async () => {
     await bootMock('rp2040', { wireVersion: 17, fwVersion: { major: 1, minor: 1, patch: 5 } });
     clearNotices();
-  });
-
-  it('setAdatEnable leaves the mirror untouched and toasts the device message', async () => {
-    const ok = await setAdatEnable(activeSession()!, true);
-    expect(ok).toBe(false);
-    expect(liveMirror().current!.adat.enabled).toBe(false);
-    expect(notices.list).toHaveLength(1);
-  });
-
-  it('setAdatPin leaves the mirror untouched and toasts the device message', async () => {
     const pinBefore = liveMirror().current!.adat.pin;
-    const ok = await setAdatPin(activeSession()!, 20);
-    expect(ok).toBe(false);
+    expect(await actions.setAdatEnable(activeSession()!, true)).toBe(false);
+    expect(await actions.setAdatPin(activeSession()!, 20)).toBe(false);
+    expect(liveMirror().current!.adat.enabled).toBe(false);
     expect(liveMirror().current!.adat.pin).toBe(pinBefore);
-    expect(notices.list).toHaveLength(1);
+    expect(notices.list).toHaveLength(2);
   });
 });
 
@@ -1128,7 +1119,7 @@ describe('setUartControlConfig', () => {
   it('patches ctrlIfaces.uart and stores the fresh status on a successful set', async () => {
     const status = { uartLastStatus: 0, uartLive: true, i2cLastStatus: 0, i2cLive: false, protoVersion: 1 };
     const s = harness({ result: Result.ok(), status });
-    setUartControlConfig(s, cfg);
+    actions.setUartControlConfig(s, cfg);
     await flushAllWrites();
     expect(s.ctrlIfaces.uart).toEqual(cfg);
     expect(s.ctrlIfaces.status).toEqual(status);
@@ -1138,7 +1129,7 @@ describe('setUartControlConfig', () => {
     const status = { uartLastStatus: PinConfigResult.InvalidParam, uartLive: false, i2cLastStatus: 0, i2cLive: false, protoVersion: 1 };
     const s = harness({ result: Result.fail(PinConfigResult.InvalidParam, 'value out of range'), status });
     clearNotices();
-    setUartControlConfig(s, cfg);
+    actions.setUartControlConfig(s, cfg);
     await flushAllWrites();
     expect(s.ctrlIfaces.uart).toBeNull();
     expect(s.ctrlIfaces.status).toEqual(status);
