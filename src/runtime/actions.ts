@@ -731,6 +731,36 @@ export function setAdatPin(s: ReadySession, pin: number): Promise<boolean> {
   });
 }
 
+// ADAT lightpipe input (fw V24+, RP2350). Same writeChecked lane as the
+// output pair above.
+export function setAdatInputEnable(s: ReadySession, enabled: boolean): Promise<boolean> {
+  return writeChecked(s, 'set ADAT input enable', () => s.device.setAdatInputEnable(enabled), () => {
+    s.mirror.snapshot.inputConfig = { ...s.mirror.snapshot.inputConfig, adatInputEnabled: enabled };
+    // Disabling stops acquisition; drop the last-known counters so a later
+    // re-enable shows the "waiting for lock" hint instead of frozen,
+    // pre-disable numbers.
+    if (!enabled) s.telemetry.adatInputStatus = null;
+  });
+}
+
+// Unlike the ADAT output pin (which falls back to a platform default GPIO),
+// there is no default for the input -- 0xFF always resolves to unset, so the
+// mirror can be patched straight to 0 with no reconcile dance.
+export function setAdatInputPin(s: ReadySession, pin: number): Promise<boolean> {
+  return writeChecked(s, 'set ADAT input pin', () => s.device.setAdatInputPin(pin), () => {
+    s.mirror.snapshot.inputConfig = {
+      ...s.mirror.snapshot.inputConfig,
+      adatInputPin: pin === Wire.Const.PIN_RESET_TO_DEFAULT ? 0 : pin,
+    };
+  });
+}
+
+export function setAdatInputClockMode(s: ReadySession, mode: number): Promise<boolean> {
+  return writeChecked(s, 'set ADAT input clock mode', () => s.device.setAdatInputClockMode(mode), () => {
+    s.mirror.snapshot.inputConfig = { ...s.mirror.snapshot.inputConfig, adatInputClockMode: mode };
+  });
+}
+
 export function setUserMute(s: ReadySession, mute: boolean): void {
   void write(s,
     () => s.device.setUserMute(mute),

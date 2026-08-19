@@ -1103,6 +1103,58 @@ describe('ADAT output verbs — device rejection (RP2040 has no ADAT hardware)',
   });
 });
 
+describe('ADAT input verbs (fw V24+, RP2350)', () => {
+  beforeEach(async () => {
+    await bootMock('rp2350', { wireVersion: 24, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    clearNotices();
+  });
+
+  it('setAdatInputEnable success patches draft.inputConfig.adatInputEnabled and clears stale telemetry on disable', async () => {
+    await actions.setAdatInputPin(activeSession()!, 20);   // enable requires a stored pin
+    const enabled = await actions.setAdatInputEnable(activeSession()!, true);
+    expect(enabled).toBe(true);
+    expect(liveMirror().current!.inputConfig.adatInputEnabled).toBe(true);
+
+    activeSession()!.telemetry.adatInputStatus = {
+      state: 3, clockMode: 0, enabled: true, pin: 20, rateOk: true,
+      lockCount: 1, lossCount: 0, slipCount: 0, headerErr: 0, detectedRateHz: 48000, measuredHz: 48000,
+    };
+    const disabled = await actions.setAdatInputEnable(activeSession()!, false);
+    expect(disabled).toBe(true);
+    expect(liveMirror().current!.inputConfig.adatInputEnabled).toBe(false);
+    expect(activeSession()!.telemetry.adatInputStatus).toBeNull();
+  });
+
+  it('setAdatInputPin patches draft.inputConfig.adatInputPin, including the 0xFF reset clearing it to 0', async () => {
+    const ok = await actions.setAdatInputPin(activeSession()!, 20);
+    expect(ok).toBe(true);
+    expect(liveMirror().current!.inputConfig.adatInputPin).toBe(20);
+
+    const cleared = await actions.setAdatInputPin(activeSession()!, Wire.Const.PIN_RESET_TO_DEFAULT);
+    expect(cleared).toBe(true);
+    expect(liveMirror().current!.inputConfig.adatInputPin).toBe(0);
+  });
+
+  it('setAdatInputClockMode patches draft.inputConfig.adatInputClockMode', async () => {
+    const ok = await actions.setAdatInputClockMode(activeSession()!, 1);
+    expect(ok).toBe(true);
+    expect(liveMirror().current!.inputConfig.adatInputClockMode).toBe(1);
+  });
+});
+
+describe('ADAT input verbs — device rejection (RP2040 has no ADAT hardware)', () => {
+  it('both verbs leave the mirror untouched and toast the device message', async () => {
+    await bootMock('rp2040', { wireVersion: 24, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    clearNotices();
+    const pinBefore = liveMirror().current!.inputConfig.adatInputPin;
+    expect(await actions.setAdatInputEnable(activeSession()!, true)).toBe(false);
+    expect(await actions.setAdatInputPin(activeSession()!, 20)).toBe(false);
+    expect(liveMirror().current!.inputConfig.adatInputEnabled).toBe(false);
+    expect(liveMirror().current!.inputConfig.adatInputPin).toBe(pinBefore);
+    expect(notices.list).toHaveLength(2);
+  });
+});
+
 // ── V16 — external control interfaces ────────────────────────────────────────
 
 describe('setUartControlConfig', () => {

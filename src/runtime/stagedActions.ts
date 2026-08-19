@@ -57,9 +57,12 @@ function fmtOnOff(v: boolean): string { return v ? 'on' : 'off'; }
 function fmtMultiplier(encoded: number): string { return encoded === 1 ? '256×' : '128×'; }
 function fmtSource(source: Domain.AudioInputSource): string {
   switch (source) {
-    case Domain.AudioInputSource.Spdif: return 'S/PDIF';
-    case Domain.AudioInputSource.I2s:   return 'I2S';
-    default:                            return 'USB';
+    case Domain.AudioInputSource.Spdif:  return 'S/PDIF';
+    case Domain.AudioInputSource.Spdif2: return 'S/PDIF 2';
+    case Domain.AudioInputSource.Spdif3: return 'S/PDIF 3';
+    case Domain.AudioInputSource.I2s:    return 'I2S';
+    case Domain.AudioInputSource.Adat:   return 'ADAT';
+    default:                             return 'USB';
   }
 }
 function fmtOutputType(type: number): string { return type === Domain.OutputSlotType.I2s ? 'I2S' : 'SPDIF'; }

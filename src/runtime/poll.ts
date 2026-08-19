@@ -9,6 +9,7 @@ const INFO_INTERVAL_MS = 1000;   // ~1 Hz  -- env scalars + counters
 const SPDIF_RX_INTERVAL_MS = 1000;  // ~1 Hz  -- S/PDIF RX status (SPDIF input only)
 const I2S_SLAVE_INTERVAL_MS = 1000;  // ~1 Hz  -- I2S slave-clock status (slave mode only)
 const ADAT_INTERVAL_MS = 1000;   // ~1 Hz  -- ADAT lightpipe output status (enabled only)
+const ADAT_INPUT_INTERVAL_MS = 1000;   // ~1 Hz  -- ADAT lightpipe input status (enabled only)
 const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile floor
 // Unconditional re-fetch floor, independent of any pending reconcile request.
 // Notify is the primary sync trigger, but firmware 1.1.4 has verified coverage
@@ -19,7 +20,7 @@ const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile
 const PARAM_SAFETY_NET_MS = 10_000;
 
 interface Cadence {
-  key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'i2sSlave' | 'adat' | 'param';
+  key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'i2sSlave' | 'adat' | 'adatInput' | 'param';
   intervalMs: number;
   runWhileHidden: boolean;          // today all false (pause everything when hidden)
   lastMs(): number;                 // cadence clock -- reads the STORE timestamp
@@ -39,7 +40,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   // Only the in-flight guards are loop-local. The cadence CLOCK stays on the
   // telemetry store (tele.applyPeaks sets lastStatusMs and reads it for peak
   // decay), so the gate must read the store, not a private copy.
-  const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false, spdifRx: false, i2sSlave: false, adat: false, param: false };
+  const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false, spdifRx: false, i2sSlave: false, adat: false, adatInput: false, param: false };
 
   async function pollStatus(d: DspDevice): Promise<void> {
     try {
@@ -168,6 +169,28 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     return lastAdatMs === 0 || now - lastAdatMs >= ADAT_INTERVAL_MS;
   }
 
+  // ADAT lightpipe input live status. Only runs when the device supports the
+  // feature and the persisted intent is enabled -- the opcode is valid
+  // regardless, but the data is meaningless while disabled.
+  let lastAdatInputMs = 0;
+  async function pollAdatInput(d: DspDevice): Promise<void> {
+    try {
+      tele.adatInputStatus = await session.queue.run(() => d.getAdatInputStatus());
+      health.noteOk();
+    } catch (e) {
+      health.noteFail('poll:adatInput', e);
+      Log.warn('poll', 'getAdatInputStatus failed', e);
+    } finally {
+      lastAdatInputMs = performance.now();
+    }
+  }
+
+  function shouldRunAdatInput(now: number): boolean {
+    if (!session.device.capabilities?.features.adatInput) return false;
+    if (!mir.current?.inputConfig.adatInputEnabled) return false;
+    return lastAdatInputMs === 0 || now - lastAdatInputMs >= ADAT_INPUT_INTERVAL_MS;
+  }
+
   // Background param-mirror reconcile. shouldRunParam already decided this tick
   // is eligible; we fetch, then re-check before applying. The CommandQueue makes
   // the fetch atomic with respect to any write already registered when it was
@@ -229,6 +252,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     { key: 'spdifRx', intervalMs: SPDIF_RX_INTERVAL_MS, runWhileHidden: false, lastMs: () => lastSpdifRxMs,     run: pollSpdifRx, shouldRun: shouldRunSpdifRx },
     { key: 'i2sSlave', intervalMs: I2S_SLAVE_INTERVAL_MS, runWhileHidden: false, lastMs: () => lastI2sSlaveMs, run: pollI2sSlave, shouldRun: shouldRunI2sSlave },
     { key: 'adat',    intervalMs: ADAT_INTERVAL_MS,      runWhileHidden: false, lastMs: () => lastAdatMs,    run: pollAdat,    shouldRun: shouldRunAdat },
+    { key: 'adatInput', intervalMs: ADAT_INPUT_INTERVAL_MS, runWhileHidden: false, lastMs: () => lastAdatInputMs, run: pollAdatInput, shouldRun: shouldRunAdatInput },
     { key: 'param',   intervalMs: PARAM_INTERVAL_MS,    runWhileHidden: false, lastMs: () => tele.lastParamMs,  run: pollParam, shouldRun: shouldRunParam },
   ];
   const anyRunWhileHidden = cadences.some((c) => c.runWhileHidden);

@@ -1687,7 +1687,7 @@ export class MockTransport implements DspTransport {
       clockMode,
       enabled,
       pin: rawPin === 0 ? 0xFF : rawPin,
-      rateOk: locked,
+      rateOk: true,   // park flag; only 0 when master-mode rate > 48 kHz
       lockCount: locked ? 1 : 0,
       lossCount: 0,
       slipCount: 0,
