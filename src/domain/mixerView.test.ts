@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matrixColumns, matrixRows } from './mixerView';
+import { matrixColumns, matrixRows, outputChannelsWithIndex } from './mixerView';
 import { createHardwareProfile, PlatformType, ChannelFamily } from './platform';
 import { UpmixSurroundMode } from './processing';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
@@ -89,5 +89,30 @@ describe('matrixRows — upmix contextual row labels', () => {
     // row 2's real channel name must survive, not the derived-channel label.
     expect(rows[2].label).toBe(snap.channels.find((c) => c.id === rows[2].inputId)!.name);
     expect(rows[2].label).not.toBe('Upmix C');
+  });
+});
+
+describe('outputChannelsWithIndex', () => {
+  it('returns an empty list for a null snapshot', () => {
+    expect(outputChannelsWithIndex(null)).toEqual([]);
+  });
+
+  it('sorts output channels by wire index, not by declaration order', () => {
+    const snap = makeSnapshot();
+    // Reverse the wire-index assignment relative to declaration order.
+    snap.outputs = snap.outputs.map((o, i) => ({ ...o, wireIndex: snap.outputs[snap.outputs.length - 1 - i].wireIndex }));
+
+    const result = outputChannelsWithIndex(snap);
+    expect(result.map((c) => c.index)).toEqual([...result.map((c) => c.index)].sort((a, b) => a - b));
+    expect(result[0].id).toBe(snap.outputs[snap.outputs.length - 1].id);
+  });
+
+  it('falls back to index 0 for an output channel missing from the outputs list', () => {
+    const snap = makeSnapshot();
+    const missing = snap.outputs[snap.outputs.length - 1];
+    snap.outputs = snap.outputs.filter((o) => o.id !== missing.id);
+
+    const result = outputChannelsWithIndex(snap);
+    expect(result.find((c) => c.id === missing.id)?.index).toBe(0);
   });
 });

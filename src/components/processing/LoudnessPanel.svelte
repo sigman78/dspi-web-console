@@ -1,13 +1,12 @@
 <script lang="ts">
-  import Panel from '@/components/chrome/Panel.svelte';
+  import ProcPanel from './ProcPanel.svelte';
   import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
-  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import MaskChipRow from '@/components/chrome/MaskChipRow.svelte';
   import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
   import { loudnessResponse } from '@/components/bode/loudnessCurve';
   import { centeredDbDomain } from '@/components/bode/dbDomain';
   import { connection } from '@/state';
-  import { Proc } from '@/domain';
+  import { Proc, outputChannelsWithIndex, maskChipItems } from '@/domain';
   import { setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, toggleLoudnessOutputChannel } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
 
@@ -27,45 +26,27 @@
   // compensation. Index is the platform-compact protocol output slot (the
   // same one OutputModel.wireIndex carries), not the raw ChannelId -- bit k
   // on the wire means output slot k, PDM included.
-  const outputSlotById = $derived(new Map((s.mirror.current?.outputs ?? []).map((o) => [o.id, o.wireIndex])));
-  const outputChannels = $derived(
-    (s.mirror.current?.channels ?? [])
-      .filter((c) => c.isOutput)
-      .map((c) => ({ id: c.id, name: c.name, index: outputSlotById.get(c.id) ?? 0 }))
-      .sort((a, b) => a.index - b.index),
-  );
+  const outputChannels = $derived(outputChannelsWithIndex(s.mirror.current));
   // Meaningless with a single output, and only wire V19+ has a mask to write to.
   const maskSupported = $derived(s.device.capabilities.features.loudnessOutputMask);
   const showMask = $derived(maskSupported && outputChannels.length > 1);
-  const outputItems = $derived(
-    outputChannels.map((ch) => ({
-      key: ch.id, index: ch.index, label: String(ch.index + 1), title: ch.name || `Output ${ch.index + 1}`,
-    })),
-  );
+  const outputItems = $derived(maskChipItems(outputChannels, 'Output'));
   const outputMask = $derived(loudness?.outputMask ?? 0xFFFF);
-
-  function toggleEnabled() {
-    if (!loudness) return;
-    setLoudnessEnabled(s, !loudness.enabled);
-  }
 </script>
 
-<Panel code="PR.02" title="LOUDNESS">
-  {#snippet right()}
-    <ToggleSwitch
-      size="sm"
-      checked={enabled}
-      disabled={!connected}
-      ariaLabel={enabled ? 'Disable loudness' : 'Enable loudness'}
-      onChange={toggleEnabled}
-    />
-  {/snippet}
-
+<ProcPanel
+  code="PR.02"
+  title="LOUDNESS"
+  subject="loudness"
+  {enabled}
+  {connected}
+  onToggle={() => loudness && setLoudnessEnabled(s, !loudness.enabled)}
+>
   <div class="graph" class:off={!enabled}>
     <BodePlot curves={loudCurve} height={96} crosshair={false} yRange={loudRange} />
   </div>
 
-  <div class="grid">
+  <div class="proc-grid">
     {#if showMask}
       <MaskChipRow label="OUTPUTS" items={outputItems} mask={outputMask} disabled={!editable} onToggle={(i) => toggleLoudnessOutputChannel(s, i)} />
       <div class="rule"></div>
@@ -93,22 +74,9 @@
       onChange={(v) => setLoudnessIntensityPct(s, v)}
     />
   </div>
-</Panel>
+</ProcPanel>
 
 <style>
   .graph { padding: 10px 12px 0; }
   .graph.off { opacity: 0.4; }
-  .grid {
-    padding: 14px;
-    display: grid;
-    grid-template-columns: 90px 1fr 64px;
-    align-items: center;
-    gap: 12px;
-  }
-  .rule {
-    grid-column: 1 / -1;
-    height: 1px;
-    background: var(--border);
-    margin: 2px 0;
-  }
 </style>
