@@ -9,7 +9,7 @@ import { DspDevice, UnsupportedFirmware } from './DspDevice';
 import { parseNotifyPacket, WireCmd, buildBulkParams, PinConfigResult, CsStatusCode } from '@/protocol';
 import {
   ChannelId, FilterType, CsType, CsNoun, CsAction, CsEvent, EMPTY_CS_BINDING, dbToQ8, ChannelFamily,
-  CsIrProto, EMPTY_CS_IR_COMMAND, CS_IR_LEARN_DONE, CS_IR_LEARN_IDLE,
+  CsIrProto, EMPTY_CS_IR_COMMAND, CS_IR_LEARN_DONE, CS_IR_LEARN_IDLE, CS_UNIT_MS,
 } from '@/domain';
 
 const FW_115 = { major: 1, minor: 1, patch: 5 };
@@ -305,10 +305,10 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
     expect(v10.capabilities.features.controlSurfaces).toBe(false);
   });
 
-  it('enumerates caps v3: dynamic type/tail parsing and one descriptor per noun', async () => {
+  it('enumerates caps v4: dynamic type/tail parsing and one descriptor per noun', async () => {
     const d = await v16Device();
     const { caps, nouns } = await d.getCsCaps();
-    expect(caps.capsVersion).toBe(3);
+    expect(caps.capsVersion).toBe(4);
     expect(caps.maxBindings).toBe(16);
     // type_count-driven body: 8 types (NONE..IR), each read from the tail
     // that follows the dynamically-sized type table.
@@ -317,11 +317,16 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
     expect(caps.types[CsType.Pot].pinClass).toBe(1);
     expect(caps.types[CsType.LedPwm].actions & (1 << CsAction.IndLevel)).toBeTruthy();
     expect(caps.maxIrCommands).toBe(8);
-    expect(nouns).toHaveLength(35);
+    expect(nouns).toHaveLength(49);
     expect(nouns[CsNoun.MasterVolume].minQ8).toBe(dbToQ8(-127));
     expect(nouns[CsNoun.Preset].enumCount).toBe(10);
     expect(nouns[CsNoun.FilterFreq].targetCount).toBe(d.hardware.totalChannelCount);
     expect(nouns[CsNoun.Preamp].targetCount).toBe(d.hardware.inputs.length);
+    // caps v4 tail: OUTPUT_DELAY is the first CS_UNIT_MS noun and is
+    // per-output; PRESET_RELOAD is trigger-only.
+    expect(nouns[CsNoun.OutputDelay].unit).toBe(CS_UNIT_MS);
+    expect(nouns[CsNoun.OutputDelay].targetCount).toBe(d.hardware.outputs.length);
+    expect(nouns[CsNoun.PresetReload].actions).toBe(1 << CsAction.Trigger);
   });
 
   it('applies an encoder binding through the deferred poll, dirties the live config, and round-trips it', async () => {

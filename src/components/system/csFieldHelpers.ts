@@ -88,6 +88,8 @@ export function enumValueOptions(
   if (noun === Domain.CsNoun.CrossfeedPreset) return idx.map((i) => ({ v: i, label: CROSSFEED_PRESET_LABEL[i] ?? String(i) }));
   if (noun === Domain.CsNoun.LevellerSpeed) return idx.map((i) => ({ v: i, label: LEVELLER_SPEED_LABEL[i] ?? String(i) }));
   if (noun === Domain.CsNoun.SampleRate) return idx.map((i) => ({ v: i, label: SAMPLE_RATE_LABEL[i] ?? String(i) }));
+  if (noun === Domain.CsNoun.UpmixCenterMode) return idx.map((i) => ({ v: i, label: ['Passive', 'Logic'][i] ?? String(i) }));
+  if (noun === Domain.CsNoun.UpmixSurroundMode) return idx.map((i) => ({ v: i, label: ['Off', 'Passive', 'Logic'][i] ?? String(i) }));
   return idx.map((i) => ({ v: i, label: String(i) }));
 }
 

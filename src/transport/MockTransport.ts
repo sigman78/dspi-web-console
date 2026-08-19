@@ -18,10 +18,10 @@ import {
   isValidUartPinPair, isValidI2cPinPair, isValidUartBaud, isValidI2cAddress,
   CsType, CsKind, CsAction, CsIrProto,
   CS_GPIO_UNUSED, CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_FLAG_INVERT, CS_NDF_DEFERRED,
-  CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q, CS_UNIT_PERCENT,
+  CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q, CS_UNIT_PERCENT, CS_UNIT_MS,
   CS_TARGET_NONE, CS_TARGET_INPUT_CH, CS_TARGET_OUTPUT_CH, CS_TARGET_DSP_CH, CS_TARGET_DSP_BAND,
   CS_IR_LEARN_IDLE, CS_IR_LEARN_ARMED, CS_IR_LEARN_DONE, CS_IR_LEARN_TIMEOUT,
-  dbToQ8, percentToQ8, qToQ8, validateCsBinding, validateCsIrCommand,
+  dbToQ8, percentToQ8, qToQ8, msToQ8, validateCsBinding, validateCsIrCommand,
   PRESET_SLOT_COUNT, FilterType,
   defaultInputName,
   SYS_CLOCK_MODE_DEFAULT_VREG, SYS_CLOCK_VREG_CEILING_RP2040, SYS_CLOCK_VREG_CEILING_RP2350,
@@ -81,10 +81,10 @@ const MIN_ADAT_WIRE = 17;
 // the whole opcode range (0x68-0x6E).
 const MIN_ADAT_INPUT_WIRE = 24;
 
-// Control Surfaces caps tables, firmware capability format version 3
+// Control Surfaces caps tables, firmware capability format version 4
 // (control_surfaces.c s_caps / control_surfaces_nouns.c cs_noun_table).
 const MOCK_CS_CAPS: CsCaps = {
-  capsVersion: 3,
+  capsVersion: 4,
   maxBindings: CS_MAX_BINDINGS,
   maxIrCommands: CS_MAX_IR_COMMANDS,
   types: [
@@ -131,12 +131,14 @@ function enumNoun(enumCount: number, actions = CS_ENUM_RW, targetKind = CS_TARGE
   return { kind: CsKind.Enum, enumCount, actions, minQ8: 0, maxQ8: 0, unit: CS_UNIT_NONE, targetKind, targetCount, dflags };
 }
 
-// The 35-entry noun catalog (control_surfaces_nouns.c cs_noun_table), keyed
-// on CsNoun's index order. Target counts follow the mock's own V16 channel
-// layout (numIn/numOut/numCh already vary by platform); ADAT_ACTIVE's action
-// mask is RP2350-only, exactly like the firmware's #if PICO_RP2350 gate.
+// The 49-entry caps-v4 noun catalog (control_surfaces_nouns.c cs_noun_table),
+// keyed on CsNoun's index order. Target counts follow the mock's own V16
+// channel layout (numIn/numOut/numCh already vary by platform); the
+// ADAT_ACTIVE and upmix action masks are RP2350-only, exactly like the
+// firmware's #if PICO_RP2350 gates.
 function buildMockCsNouns(platform: PlatformType, numIn: number, numOut: number, numCh: number): CsNounCaps[] {
-  const adatActions = platform === PlatformType.RP2350 ? CS_BOOL_RO : 0;
+  const rp2350 = platform === PlatformType.RP2350;
+  const adatActions = rp2350 ? CS_BOOL_RO : 0;
   return [
     contNoun(-15360, 0, CS_UNIT_DB),                                                           // 0  USER_VOLUME
     contNoun(-32512, 0, CS_UNIT_DB),                                                            // 1  MASTER_VOLUME
@@ -173,6 +175,22 @@ function buildMockCsNouns(platform: PlatformType, numIn: number, numOut: number,
     boolNoun(adatActions),                                                                       // 32 ADAT_ACTIVE (RP2350 only)
     boolNoun(CS_BOOL_RO),                                                                        // 33 LG_PRESENT
     boolNoun(CS_BOOL_RO),                                                                        // 34 LG_MUTED
+    // caps v4 additions. Delay span mirrors the fw's platform MAX_DELAY_SAMPLES
+    // (42 ms RP2350 / 21 ms RP2040).
+    boolNoun(rp2350 ? CS_BOOL_RW : 0),                                                           // 35 UPMIX (RP2350 only)
+    enumNoun(2, rp2350 ? CS_ENUM_RW : 0),                                                        // 36 UPMIX_CENTER_MODE
+    enumNoun(3, rp2350 ? CS_ENUM_RW : 0),                                                        // 37 UPMIX_SURROUND_MODE
+    contNoun(0, percentToQ8(100), CS_UNIT_PERCENT, CS_TARGET_NONE, 0, 0, rp2350 ? CS_CONT_RW : 0), // 38 UPMIX_STRENGTH
+    contNoun(0, percentToQ8(100), CS_UNIT_PERCENT, CS_TARGET_NONE, 0, 0, rp2350 ? CS_CONT_RW : 0), // 39 UPMIX_WIDTH
+    contNoun(dbToQ8(-12), dbToQ8(12), CS_UNIT_DB, CS_TARGET_NONE, 0, 0, rp2350 ? CS_CONT_RW : 0),  // 40 UPMIX_PRESENCE
+    boolNoun(),                                                                                  // 41 PSYBASS
+    contNoun(30, 300, CS_UNIT_HZ),                                                               // 42 PSYBASS_CUTOFF
+    contNoun(dbToQ8(-24), dbToQ8(12), CS_UNIT_DB),                                               // 43 PSYBASS_HARMONICS
+    contNoun(0, dbToQ8(18), CS_UNIT_DB),                                                         // 44 PSYBASS_DRIVE
+    contNoun(0, percentToQ8(100), CS_UNIT_PERCENT),                                              // 45 PSYBASS_CHARACTER
+    contNoun(dbToQ8(-60), 0, CS_UNIT_DB),                                                        // 46 PSYBASS_ORIGINAL
+    contNoun(0, msToQ8(rp2350 ? 42 : 21), CS_UNIT_MS, CS_TARGET_OUTPUT_CH, numOut),              // 47 OUTPUT_DELAY
+    boolNoun(CS_TRIGGER_ONLY),                                                                   // 48 PRESET_RELOAD
   ];
 }
 

@@ -11,6 +11,7 @@ export function valueToDisplay(unit: number, q8: number): number {
     case Domain.CS_UNIT_DB:      return Domain.q8ToDb(q8);
     case Domain.CS_UNIT_Q:       return Domain.q8ToQ(q8);
     case Domain.CS_UNIT_PERCENT: return Domain.q8ToPercent(q8);
+    case Domain.CS_UNIT_MS:      return Domain.q8ToMs(q8);
     default:                     return q8;
   }
 }
@@ -20,6 +21,7 @@ export function displayToValue(unit: number, display: number): number {
     case Domain.CS_UNIT_DB:      return Domain.dbToQ8(display);
     case Domain.CS_UNIT_Q:       return Domain.qToQ8(display);
     case Domain.CS_UNIT_PERCENT: return Domain.percentToQ8(display);
+    case Domain.CS_UNIT_MS:      return Domain.msToQ8(display);
     default:                     return Math.round(display);
   }
 }
@@ -40,6 +42,7 @@ export function unitSuffix(unit: number): string {
     case Domain.CS_UNIT_PERCENT: return '%';
     case Domain.CS_UNIT_HZ:      return 'Hz';
     case Domain.CS_UNIT_Q:       return 'Q';
+    case Domain.CS_UNIT_MS:      return 'ms';
     default:                     return '';
   }
 }
