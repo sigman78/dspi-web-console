@@ -566,6 +566,18 @@ export function setMasterVolume(s: ReadySession, db: number): void {
   );
 }
 
+// User volume axis (0xDA): firmware quantizes to whole dB. The OS volume
+// slider writes this same field over UAC1 while USB is the active input;
+// source-tagged notifies and the safety-net poll reconcile the two writers.
+export function setUserVolume(s: ReadySession, db: number): void {
+  db = Clamp.userVolumeDb(db);
+  scrub(s,
+    'userVolume',
+    () => { s.mirror.snapshot.userVolume.volumeDb = db; },
+    () => s.device.setUserVolume(db),
+  );
+}
+
 // Flips the firmware vendor user-mute bit (0xDC). The firmware ORs this with
 // the UAC1 OS mute — they're independent; we reflect and control only this bit.
 export function toggleMute(s: ReadySession): void {

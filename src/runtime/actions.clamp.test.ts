@@ -16,9 +16,9 @@ describe('action boundary clamps out-of-range values', () => {
     expect(activeSession()!.mirror.current?.masterVolumeDb).toBe(0);
   });
 
-  it('clamps master volume below -60 dB to -60', () => {
+  it('clamps master volume below -128 dB to -128 (mute sentinel)', () => {
     setMasterVolume(activeSession()!, -999);
-    expect(activeSession()!.mirror.current?.masterVolumeDb).toBe(-60);
+    expect(activeSession()!.mirror.current?.masterVolumeDb).toBe(-128);
   });
 
   it('clamps output delay above the UI cap to 170 ms', async () => {

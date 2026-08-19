@@ -28,7 +28,9 @@ export const CHANGE_CLASS: Record<SnapshotChange['kind'], ChangeClass> = {
   // Host-volume axis (mirrors the UAC1 OS slider, vendor mute bit). Firmware
   // presets DO store and re-apply volumeDb (whole-dB quantized; mute is
   // session-only) -- but the console still must not dirty the preset on a
-  // console mute or an OS slider move, and it has no editor for this axis.
+  // console mute, an OS slider move, or a header-slider edit in USER mode
+  // (same as the mac app, which excludes user volume from dirty tracking
+  // entirely).
   userVolume:         'runtime-status',
   dacHwMute:          'preset-content',
   // ADAT bulk section bundles enable + pin like dacHwMute; same classification.

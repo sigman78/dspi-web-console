@@ -16,12 +16,17 @@ export const TAB_META: Record<TabId, { label: string; code: string }> = {
 
 const TAB_IDS: ReadonlySet<TabId> = new Set(TAB_ORDER);
 
+// Header volume slider axis: which of the two independent firmware volume
+// stages the top-bar slider currently drives (see MasterVolumeMini.svelte).
+export type VolumeAxis = 'user' | 'master';
+
 export interface Settings {
   version: 1;
   tab: TabId;
   selectedChannel: ChannelId | null;
   lastSerial: string | null;
   warnOnPresetSwitchDirty: boolean;
+  volumeAxis: VolumeAxis;
 }
 
 const STORAGE_KEY = 'dspi-console-web/settings/v1';
@@ -33,6 +38,7 @@ function defaults(): Settings {
     selectedChannel: null,
     lastSerial: null,
     warnOnPresetSwitchDirty: true,
+    volumeAxis: 'user',
   };
 }
 
@@ -49,6 +55,9 @@ function channelIdOrNull(v: unknown): ChannelId | null {
 }
 function stringOrNull(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
+}
+function volumeAxis(v: unknown, fallback: VolumeAxis): VolumeAxis {
+  return v === 'user' || v === 'master' ? v : fallback;
 }
 
 function safeJSON(raw: string | null): Record<string, unknown> | null {
@@ -72,6 +81,7 @@ function parseV1(raw: string, fallback: Settings): Settings {
     selectedChannel: channelIdOrNull(obj.selectedChannel ?? obj.eqTarget),
     lastSerial: stringOrNull(obj.lastSerial),
     warnOnPresetSwitchDirty: bool(obj.warnOnPresetSwitchDirty, true),
+    volumeAxis: volumeAxis(obj.volumeAxis, fallback.volumeAxis),
   };
 }
 
@@ -125,6 +135,7 @@ export function restoreSettings(): void {
   settings.selectedChannel = loaded.selectedChannel;
   settings.lastSerial = loaded.lastSerial;
   settings.warnOnPresetSwitchDirty = loaded.warnOnPresetSwitchDirty;
+  settings.volumeAxis = loaded.volumeAxis;
 }
 
 export function setTab(t: TabId): void {
@@ -132,6 +143,9 @@ export function setTab(t: TabId): void {
 }
 export function setSelectedChannel(id: ChannelId | null): void {
   settings.selectedChannel = id;
+}
+export function setVolumeAxis(axis: VolumeAxis): void {
+  settings.volumeAxis = axis;
 }
 // Rail selection: pick a channel globally and land on the EQ tab to edit it.
 export function selectChannel(id: ChannelId): void {
@@ -193,6 +207,7 @@ export function startSettingsPersistence(): void {
         selectedChannel: settings.selectedChannel,
         lastSerial: settings.lastSerial,
         warnOnPresetSwitchDirty: settings.warnOnPresetSwitchDirty,
+        volumeAxis: settings.volumeAxis,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
     });
