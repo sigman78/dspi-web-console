@@ -61,6 +61,22 @@ export const CsNoun = {
   AdatActive:         32,
   LgPresent:          33,
   LgMuted:            34,
+  // caps v4 additions. Upmix nouns are RP2350-only: their action masks read 0
+  // on RP2040 (same convention as AdatActive), so the pickers hide them.
+  Upmix:              35,
+  UpmixCenterMode:    36,
+  UpmixSurroundMode:  37,
+  UpmixStrength:      38,
+  UpmixWidth:         39,
+  UpmixPresence:      40,
+  Psybass:            41,
+  PsybassCutoff:      42,
+  PsybassHarmonics:   43,
+  PsybassDrive:       44,
+  PsybassCharacter:   45,
+  PsybassOriginal:    46,
+  OutputDelay:        47,
+  PresetReload:       48,
 } as const;
 export type CsNoun = (typeof CsNoun)[keyof typeof CsNoun];
 
@@ -148,6 +164,12 @@ export const CS_UNIT_DB      = 1;   // 8.8 signed dB; linear stepping
 export const CS_UNIT_HZ      = 2;   // plain integer Hz; log stepping (8.8-octave step)
 export const CS_UNIT_Q       = 3;   // 8.8 Q; log stepping (8.8-octave step)
 export const CS_UNIT_PERCENT = 4;   // 8.8 percent; linear stepping
+export const CS_UNIT_MS      = 5;   // 8.8 milliseconds; linear stepping, 0.1 ms default step (caps v4+)
+
+// Units this console can encode/decode. A noun carrying a unit above this is
+// from a newer caps format -- offering it in the editor would write mis-scaled
+// values to the device, so the pickers skip it.
+export const CS_MAX_KNOWN_UNIT = CS_UNIT_MS;
 
 // Target kinds (CsNounDesc.targetKind); what CsBinding.target addresses.
 export const CS_TARGET_NONE      = 0;   // target/index ignored
@@ -275,6 +297,9 @@ export const q8ToPercent = q8Decode;
 export const qToQ8 = q8Encode;
 export const q8ToQ = q8Decode;
 
+export const msToQ8 = q8Encode;
+export const q8ToMs = q8Decode;
+
 // CsBinding.step on a CS_UNIT_HZ/CS_UNIT_Q binding encodes an 8.8-octave
 // step size: 256 is one octave per detent; 0 selects the firmware's default
 // (1/12 octave).
@@ -339,7 +364,28 @@ export const CS_NOUN_LABEL: Record<CsNoun, string> = {
   [CsNoun.AdatActive]:        'ADAT Active',
   [CsNoun.LgPresent]:         'LG Source Present',
   [CsNoun.LgMuted]:           'LG Source Muted',
+  [CsNoun.Upmix]:             'Stereo Upmixer',
+  [CsNoun.UpmixCenterMode]:   'Upmix Centre Mode',
+  [CsNoun.UpmixSurroundMode]: 'Upmix Surround Mode',
+  [CsNoun.UpmixStrength]:     'Upmix Strength',
+  [CsNoun.UpmixWidth]:        'Upmix Centre Width',
+  [CsNoun.UpmixPresence]:     'Upmix Centre Presence',
+  [CsNoun.Psybass]:           'Psybass',
+  [CsNoun.PsybassCutoff]:     'Psybass Cutoff',
+  [CsNoun.PsybassHarmonics]:  'Psybass Harmonics',
+  [CsNoun.PsybassDrive]:      'Psybass Drive',
+  [CsNoun.PsybassCharacter]:  'Psybass Character',
+  [CsNoun.PsybassOriginal]:   'Psybass Original Level',
+  [CsNoun.OutputDelay]:       'Output Delay',
+  [CsNoun.PresetReload]:      'Reload Preset',
 };
+
+// A device with a newer caps format may publish nouns this console has no
+// name for; they stay offerable (the descriptor fully describes them) as
+// long as their unit is known.
+export function csNounLabel(noun: number): string {
+  return CS_NOUN_LABEL[noun as CsNoun] ?? `Function ${noun}`;
+}
 
 export const CS_EVENT_LABEL: Record<CsEvent, string> = {
   [CsEvent.Press]:  'Press',

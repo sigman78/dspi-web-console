@@ -69,8 +69,9 @@ export async function fetchSysClock(s: ReadySession): Promise<void> {
 // the spec adds the v3 IR/preview tail, but the v2 preview model -- event/
 // target/index, units, dirty/save/revert -- is the floor this panel needs).
 export const MIN_CS_CAPS_VERSION = 2;
-// Newest caps format the console models (v3 = the IR/preview tail).
-export const MAX_KNOWN_CS_CAPS_VERSION = 3;
+// Newest caps format the console models (v4 = the upmix/psybass/delay/
+// preset-reload nouns and the CS_UNIT_MS unit; no structure changes).
+export const MAX_KNOWN_CS_CAPS_VERSION = 4;
 
 // Control Surfaces mirror of fetchCtrlIfaceInfo: caps (host order: header,
 // then per-noun descriptors -- DspDevice owns that loop), live status, then

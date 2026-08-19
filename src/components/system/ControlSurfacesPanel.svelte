@@ -75,7 +75,10 @@
   function nounOptionsFor(typeIdx: number): number[] {
     if (!caps) return [];
     const mask = caps.types[typeIdx]?.actions ?? 0;
-    return cs.nouns.map((_, i) => i).filter((i) => (cs.nouns[i].actions & mask) !== 0);
+    // A unit above CS_MAX_KNOWN_UNIT is from a newer caps format this console
+    // can't encode -- offering the noun would write mis-scaled values.
+    return cs.nouns.map((_, i) => i).filter((i) =>
+      (cs.nouns[i].actions & mask) !== 0 && cs.nouns[i].unit <= Domain.CS_MAX_KNOWN_UNIT);
   }
 
   function actionOptionsFor(typeIdx: number, nounIdx: number): Domain.CsAction[] {
@@ -162,7 +165,9 @@
     const cont = noun?.kind === Domain.CsKind.Continuous;
     const bool = noun?.kind === Domain.CsKind.Bool;
     const unit = noun?.unit ?? Domain.CS_UNIT_NONE;
-    d.step = !STEPPY.includes(d.action) ? 0 : CsUnit.isLogStep(unit) ? 0 : 1;   // 0 = firmware default (1/12 octave); else 1 unit/position
+    // 0 = firmware default (1/12 octave); ms detents at 0.1 (whole ms is too
+    // coarse for delay alignment, spec 2.1); else 1 unit/position.
+    d.step = !STEPPY.includes(d.action) ? 0 : CsUnit.isLogStep(unit) ? 0 : unit === Domain.CS_UNIT_MS ? 0.1 : 1;
     if (d.action === Domain.CsAction.Set || d.action === Domain.CsAction.Momentary) {
       d.value = noun && cont ? CsUnit.valueToDisplay(unit, noun.maxQ8) : bool ? 1 : 0;
     } else if (d.action === Domain.CsAction.IndEquals) {
@@ -461,7 +466,7 @@
                   });
                 }}>
                 {#each nounOptionsFor(d.type) as n (n)}
-                  <option value={String(n)}>{Domain.CS_NOUN_LABEL[n as Domain.CsNoun]}</option>
+                  <option value={String(n)}>{Domain.csNounLabel(n)}</option>
                 {/each}
               </select>
             {/if}

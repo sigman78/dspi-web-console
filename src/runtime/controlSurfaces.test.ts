@@ -41,7 +41,7 @@ describe('runtime/controlSurfaces', () => {
     const s = sess();
     expect(s.controlSurfaces.caps?.maxBindings).toBe(CS_MAX_BINDINGS);
     expect(s.controlSurfaces.caps?.capsVersion).toBeGreaterThanOrEqual(2);
-    expect(s.controlSurfaces.nouns).toHaveLength(35);
+    expect(s.controlSurfaces.nouns).toHaveLength(49);
     expect(s.controlSurfaces.status?.activeMask).toBe(0);
     expect(s.controlSurfaces.status?.dirty).toBe(false);
     expect(s.controlSurfaces.bindings).toHaveLength(CS_MAX_BINDINGS);
@@ -58,6 +58,17 @@ describe('runtime/controlSurfaces', () => {
     expect(s.controlSurfaces.deviceCapsVersion).toBe(1);   // still recorded for display
     expect(s.controlSurfaces.bindings.every((b) => b === null)).toBe(true);
     expect(s.controlSurfaces.lastFetchError).toBeTruthy();
+  });
+
+  it('a newer caps format than the console models is accepted, not rejected (floor-only gate)', async () => {
+    // fw 1.1.6 already reports caps v13; the format is append-only, so a
+    // newer version must degrade (unknown nouns/units filtered in the
+    // pickers), never refuse the whole surface.
+    await bootMock('rp2350', { wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 }, csCapsVersion: 13 });
+    const s = sess();
+    expect(s.controlSurfaces.caps?.capsVersion).toBe(13);
+    expect(s.controlSurfaces.nouns).toHaveLength(49);
+    expect(s.controlSurfaces.lastFetchError).toBeNull();
   });
 
   it('applyCsBinding lands the accepted binding, marks the config dirty, and refreshes status', async () => {

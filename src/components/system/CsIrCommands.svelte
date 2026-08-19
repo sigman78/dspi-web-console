@@ -95,7 +95,9 @@
   function nounOptions(): number[] {
     if (!caps) return [];
     const mask = caps.types[Domain.CsType.Ir]?.actions ?? 0;
-    return cs.nouns.map((_, i) => i).filter((i) => (cs.nouns[i].actions & mask) !== 0);
+    // Same newer-caps unit guard as ControlSurfacesPanel.nounOptionsFor.
+    return cs.nouns.map((_, i) => i).filter((i) =>
+      (cs.nouns[i].actions & mask) !== 0 && cs.nouns[i].unit <= Domain.CS_MAX_KNOWN_UNIT);
   }
   function actionOptions(noun: number): Domain.CsAction[] {
     if (!caps) return [];
@@ -339,7 +341,7 @@
                 });
               }}>
               {#each nounOptions() as n (n)}
-                <option value={String(n)}>{Domain.CS_NOUN_LABEL[n as Domain.CsNoun]}</option>
+                <option value={String(n)}>{Domain.csNounLabel(n)}</option>
               {/each}
             </select>
             {#if actions.length > 1}
