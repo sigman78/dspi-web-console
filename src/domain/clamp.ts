@@ -15,9 +15,8 @@ export function toRange(v: number, min: number, max: number): number {
   return v;
 }
 
-// Firmware itself accepts -128..0 here (-128 is a mute sentinel); the console
-// deliberately restricts the ceiling UI to -60..0 (decision 2026-08-19).
-export const MASTER_VOLUME_MIN_DB = -60;
+// -128 is the firmware mute sentinel (rendered -infinity in the UI).
+export const MASTER_VOLUME_MIN_DB = -128;
 export const MASTER_VOLUME_MAX_DB = 0;
 export const masterVolumeDb = (db: number) =>
   toRange(db, MASTER_VOLUME_MIN_DB, MASTER_VOLUME_MAX_DB);

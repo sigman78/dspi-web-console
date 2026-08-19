@@ -2,6 +2,7 @@
   import { connection, activeSession, settings, setVolumeAxis } from '@/state';
   import { setMasterVolume, setUserVolume, toggleMute } from '@/runtime';
   import SaveMasterVolumeButton from '@/components/presets/SaveMasterVolumeButton.svelte';
+  import { MASTER_VOLUME_MAX_POS, masterDbToPos, posToMasterDb, formatMasterDb } from './masterVolumeTaper';
 
   const s = $derived(activeSession());
   const connected = $derived(connection.connected);
@@ -11,12 +12,14 @@
   const masterVolumeDb = $derived(s?.mirror.current?.masterVolumeDb ?? 0);
   const userVolumeDb = $derived(s?.mirror.current?.userVolume.volumeDb ?? 0);
   const displayDb = $derived(isMaster ? masterVolumeDb : userVolumeDb);
+  const masterPos = $derived(masterDbToPos(masterVolumeDb));
+  const readout = $derived(isMaster ? formatMasterDb(masterVolumeDb) : displayDb.toFixed(0));
 
   function onChange(e: Event) {
-    const v = parseFloat((e.target as HTMLInputElement).value);
-    if (Number.isNaN(v) || !s) return;
-    if (isMaster) setMasterVolume(s, v);
-    else setUserVolume(s, v);
+    const raw = parseFloat((e.target as HTMLInputElement).value);
+    if (Number.isNaN(raw) || !s) return;
+    if (isMaster) setMasterVolume(s, posToMasterDb(raw));
+    else setUserVolume(s, raw);
   }
 
   // Just swaps which value the slider shows -- never copies a value across
@@ -41,14 +44,15 @@
     type="range"
     class:muted
     class:master={isMaster}
-    min="-60" max="0" step={isMaster ? 0.5 : 1}
-    value={displayDb}
+    min={isMaster ? 0 : -60} max={isMaster ? MASTER_VOLUME_MAX_POS : 0} step="1"
+    value={isMaster ? masterPos : displayDb}
     oninput={onChange}
     disabled={!connected}
     aria-label={isMaster ? 'Master volume' : 'User volume'}
+    aria-valuetext={readout}
   />
   <span class="db" class:muted>
-    {connected ? displayDb.toFixed(isMaster ? 1 : 0) : '—'}
+    {connected ? readout : '—'}
   </span>
   <button
     class="icon-toggle mute"
