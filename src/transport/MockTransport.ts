@@ -198,12 +198,13 @@ function buildMockCsNouns(platform: PlatformType, numIn: number, numOut: number,
 interface MockCsBinding {
   type: number; noun: number; action: number; flags: number;
   gpio0: number; gpio1: number; event: number; target: number; index: number;
-  value: number; step: number; rangeMin: number; rangeMax: number;
+  opaque0: number; value: number; step: number; rangeMin: number; rangeMax: number;
+  opaqueTail: number[];
 }
 
 const emptyCsBinding = (): MockCsBinding => ({
   type: 0, noun: 0, action: 0, flags: 0, gpio0: 0, gpio1: 0, event: 0, target: 0, index: 0,
-  value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+  opaque0: 0, value: 0, step: 0, rangeMin: 0, rangeMax: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
 });
 
 // Wire-shaped stored IR command (one sub-slot).

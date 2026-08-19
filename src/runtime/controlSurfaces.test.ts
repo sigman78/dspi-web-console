@@ -16,12 +16,14 @@ const ledBinding = {
   type: CsType.Led, noun: CsNoun.Loudness, action: CsAction.IndEquals,
   flags: 0, gpio0: 20, gpio1: null, event: CsEvent.Press, target: 0, index: 0,
   value: 1, step: 0, rangeMin: 0, rangeMax: 0,
+  opaque0: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
 };
 
 const irReceiver = {
   type: CsType.Ir, noun: CsNoun.UserVolume, action: CsAction.Adjust,
   flags: 0, gpio0: 16, gpio1: null, event: CsEvent.Press, target: 0, index: 0,
   value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+  opaque0: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
 };
 
 const necToggle = {

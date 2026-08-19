@@ -6,6 +6,7 @@ import { APP_VERSION } from './buildInfo';
 export const LATEST_CHANGES = {
   version: APP_VERSION,
   highlights: [
+    'Firmware 1.1.6 ready: ADAT lightpipe input (SY.15) with loopback self-test, system clock control, and the caps v4 control-surface functions (upmixer, psybass, per-output delay, preset reload)',
     'Multi-device: connect several DSPi units at once — the DEVICES list in the sidebar switches between them, with a full state resync on every switch',
     'Stereo Upmixer: derive Centre and surround channels from any stereo source — new panel in Processing, route Upmix C/Ls/Rs in the mixer (fw 1.1.5, RP2350)',
     'Psychoacoustic bass: missing-fundamental harmonics with per-output selection — new PSYBASS panel (fw 1.1.5)',

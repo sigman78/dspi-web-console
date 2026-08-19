@@ -1067,6 +1067,13 @@ describe('connect-time capabilities + version gating', () => {
     expect((err as UnsupportedFirmware).firmwareVersion).toBe('1.1.3');
   });
 
+  it('accepts fw 1.1.6 (the gate is a floor, not a window)', async () => {
+    const transport = new MockTransport({ platform: 'rp2350', wireVersion: 26, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    const dev = await DspDevice.create(transport);
+    expect(dev.capabilities.fwLabel).toBe('1.1.6');
+    expect(dev.capabilities.wire).toBe(26);
+  });
+
   it('rejects a wire-supported device that reports a truncated payload', async () => {
     // V10 wire (supported) but a payload shorter than the V10 floor — malformed
     // firmware. Floor sections are treated as guaranteed, so connect rejects it.

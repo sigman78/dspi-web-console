@@ -25,6 +25,11 @@ export const CsType = {
 } as const;
 export type CsType = (typeof CsType)[keyof typeof CsType];
 
+// Component types this console can edit. A caps v10+ device may publish more
+// (CS_TYPE_DISPLAY = 8); those slots render read-only and the pickers skip
+// the type -- its bindings carry config this console can't author.
+export const CS_MAX_KNOWN_TYPE: number = CsType.Ir;
+
 export const CsNoun = {
   UserVolume:         0,
   MasterVolume:       1,
@@ -202,6 +207,11 @@ export interface CsBinding {
   step: number;
   rangeMin: number;
   rangeMax: number;
+  // Opaque wire bytes reserved on caps v2-v4 but carved into real fields by
+  // newer formats (v8 indicator delays, v12 base brightness). Carried through
+  // an edit round-trip verbatim; absent means zeros (a fresh binding).
+  opaque0?: number;
+  opaqueTail?: readonly number[];
 }
 
 // A cleared slot is the ALL-ZERO 24-byte blob -- gpio1 is 0 here, not
@@ -211,6 +221,7 @@ export const EMPTY_CS_BINDING: CsBinding = {
   type: CsType.None, noun: CsNoun.UserVolume, action: CsAction.Adjust, flags: 0,
   gpio0: 0, gpio1: 0, event: CsEvent.Press, target: 0, index: 0,
   value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+  opaque0: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
 };
 
 // One IR sub-slot command: a button-shaped binding fired by a learned
@@ -385,6 +396,12 @@ export const CS_NOUN_LABEL: Record<CsNoun, string> = {
 // long as their unit is known.
 export function csNounLabel(noun: number): string {
   return CS_NOUN_LABEL[noun as CsNoun] ?? `Function ${noun}`;
+}
+
+// Same fallback for component types a newer caps format publishes (v10's
+// I2C display is type 8) -- the raw Record lookup would render undefined.
+export function csTypeLabel(type: number): string {
+  return CS_TYPE_LABEL[type as CsType] ?? `Component ${type}`;
 }
 
 export const CS_EVENT_LABEL: Record<CsEvent, string> = {
