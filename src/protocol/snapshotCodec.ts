@@ -1,5 +1,5 @@
 import { type BulkParams } from './bulkParser';
-import * as domain from '@/domain';
+import * as Domain from '@/domain';
 
 // Opaque handle for the preset-paste device-to-device copy. Runtime holds it
 // between captureState/restoreState but must never inspect it. Internally a
@@ -8,46 +8,40 @@ export type DeviceState = BulkParams & { readonly __brand: 'DeviceState' };
 
 // Wire filter.type is a u8; clamp anything outside the known FilterType
 // values to Flat so a future firmware type can't slip through as a typed value.
-const KNOWN_FILTER_TYPES: ReadonlySet<number> = new Set(Object.values(domain.FilterType));
+const KNOWN_FILTER_TYPES: ReadonlySet<number> = new Set(Object.values(Domain.FilterType));
 
-function narrowFilterType(t: number): domain.FilterType {
-  return KNOWN_FILTER_TYPES.has(t) ? (t as domain.FilterType) : domain.FilterType.Flat;
+function narrowFilterType(t: number): Domain.FilterType {
+  return KNOWN_FILTER_TYPES.has(t) ? (t as Domain.FilterType) : Domain.FilterType.Flat;
 }
 
-export function narrowInputSource(s: number): domain.AudioInputSource {
-  switch (s) {
-    case domain.AudioInputSource.Spdif:
-    case domain.AudioInputSource.I2s:
-    case domain.AudioInputSource.Adat:
-    case domain.AudioInputSource.Spdif2:
-    case domain.AudioInputSource.Spdif3:
-      return s;
-    default:
-      return domain.AudioInputSource.Usb;
-  }
+// Wire enum narrowing: clamp anything outside `known` to `fallback` so a
+// future firmware value can't slip through as a typed value.
+function narrowEnum<T extends number>(v: number, known: readonly T[], fallback: T): T {
+  return known.includes(v as T) ? (v as T) : fallback;
 }
 
-function narrowCrossfeedPreset(p: number): domain.CrossfeedPreset {
-  switch (p) {
-    case domain.CrossfeedPreset.Preset1:
-    case domain.CrossfeedPreset.Preset2:
-    case domain.CrossfeedPreset.Preset3:
-    case domain.CrossfeedPreset.Custom:
-      return p;
-    default:
-      return domain.CrossfeedPreset.Preset1;
-  }
+export function narrowInputSource(s: number): Domain.AudioInputSource {
+  return narrowEnum(
+    s,
+    [Domain.AudioInputSource.Spdif, Domain.AudioInputSource.I2s, Domain.AudioInputSource.Adat, Domain.AudioInputSource.Spdif2, Domain.AudioInputSource.Spdif3],
+    Domain.AudioInputSource.Usb,
+  );
 }
 
-function narrowLevellerSpeed(s: number): domain.LevellerSpeed {
-  switch (s) {
-    case domain.LevellerSpeed.Slow:
-    case domain.LevellerSpeed.Medium:
-    case domain.LevellerSpeed.Fast:
-      return s;
-    default:
-      return domain.LevellerSpeed.Slow;
-  }
+function narrowCrossfeedPreset(p: number): Domain.CrossfeedPreset {
+  return narrowEnum(
+    p,
+    [Domain.CrossfeedPreset.Preset1, Domain.CrossfeedPreset.Preset2, Domain.CrossfeedPreset.Preset3, Domain.CrossfeedPreset.Custom],
+    Domain.CrossfeedPreset.Preset1,
+  );
+}
+
+function narrowLevellerSpeed(s: number): Domain.LevellerSpeed {
+  return narrowEnum(
+    s,
+    [Domain.LevellerSpeed.Slow, Domain.LevellerSpeed.Medium, Domain.LevellerSpeed.Fast],
+    Domain.LevellerSpeed.Slow,
+  );
 }
 
 // p1 = enable mask + 1 (0 = absent -> both off; else bit0 = input2, bit1 = input3).
@@ -72,7 +66,7 @@ function decodeAdatInputClockMode(p1: number): number {
   return p1 === 0 ? 0 : p1 - 1;
 }
 
-function narrowFilter(filter: { type: number; bypass: boolean; frequency: number; q: number; gain: number; qpRaw: number }): domain.FilterParams {
+function narrowFilter(filter: { type: number; bypass: boolean; frequency: number; q: number; gain: number; qpRaw: number }): Domain.FilterParams {
   const type = narrowFilterType(filter.type);
   return {
     type,
@@ -80,23 +74,23 @@ function narrowFilter(filter: { type: number; bypass: boolean; frequency: number
     frequency: filter.frequency,
     q: filter.q,
     gain: filter.gain,
-    ...(type === domain.FilterType.LinkwitzTransform ? { qp: domain.decodeQp(filter.qpRaw) } : {}),
+    ...(type === Domain.FilterType.LinkwitzTransform ? { qp: Domain.decodeQp(filter.qpRaw) } : {}),
   };
 }
 
-export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParams): domain.DspSnapshot {
+export function fromBulkParams(hardware: Domain.HardwareProfile, bulk: BulkParams): Domain.DspSnapshot {
   const channelNames = bulk.channelNames;
   const hasCrossover = bulk.formatVersion >= 16;
   const inputSource = narrowInputSource(bulk.inputConfig.source);
 
   const channels = hardware.channels.map((channel) => {
-    const wireChannel = domain.wireChannelFor(hardware, channel.id);
-    const inputSlot = domain.inputIndexOf(channel.id);
-    const defaultName = inputSlot !== null ? domain.defaultInputName(inputSource, inputSlot) : channel.name;
-    const shortName = inputSlot !== null ? domain.defaultInputShortName(inputSource, inputSlot) : channel.shortName;
+    const wireChannel = Domain.wireChannelFor(hardware, channel.id);
+    const inputSlot = Domain.inputIndexOf(channel.id);
+    const defaultName = inputSlot !== null ? Domain.defaultInputName(inputSource, inputSlot) : channel.name;
+    const shortName = inputSlot !== null ? Domain.defaultInputShortName(inputSource, inputSlot) : channel.shortName;
     return {
       id: channel.id,
-      name: domain.displayNameForHardwareChannel(hardware, channel.id, channelNames, defaultName),
+      name: Domain.displayNameForHardwareChannel(hardware, channel.id, channelNames, defaultName),
       defaultName,
       shortName,
       bandCount: channel.bandCount,
@@ -108,7 +102,7 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
     };
   });
 
-  const outputs: domain.OutputModel[] = hardware.outputs.map((channel) => {
+  const outputs: Domain.OutputModel[] = hardware.outputs.map((channel) => {
     const wireIndex = hardware.outputSlotByChannel[channel.id];
     if (wireIndex == null) {
       throw new Error(`Channel ${channel.id} is not an output channel`);
@@ -125,12 +119,12 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
     };
   });
 
-  const routes: domain.RouteModel[] = [];
+  const routes: Domain.RouteModel[] = [];
   for (let inputIndex = 0; inputIndex < hardware.inputs.length; inputIndex++) {
     for (const output of outputs) {
       const cp = bulk.crosspoints[inputIndex][output.wireIndex];
       routes.push({
-        inputIndex: inputIndex as domain.InputSlot,
+        inputIndex: inputIndex as Domain.InputSlot,
         outputId: output.id,
         outputWireIndex: output.wireIndex,
         enabled: cp.enabled,
@@ -141,7 +135,7 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
   }
 
   return {
-    platform: domain.pickSummary(hardware),
+    platform: Domain.pickSummary(hardware),
     bypass: bulk.bypass,
     masterPreampDb: bulk.preampDb,
     inputPreampDb: bulk.inputPreampsDb.slice(0, hardware.inputs.length),
@@ -193,7 +187,7 @@ export function fromBulkParams(hardware: domain.HardwareProfile, bulk: BulkParam
       source: inputSource,
       spdifRxPin: bulk.inputConfig.spdifRxPin,
       i2sRxPins: [...bulk.inputConfig.i2sRxPins],
-      i2sInputRateHz: domain.i2sRateDecode(bulk.inputConfig.i2sInputRateEnc),
+      i2sInputRateHz: Domain.i2sRateDecode(bulk.inputConfig.i2sInputRateEnc),
       i2sInputChannels: bulk.inputConfig.i2sInputChannels,
       spdifRxPinExt: [...bulk.inputConfig.spdifRxPinExt],
       spdifExtEnabled: decodeSpdifExtEnabled(bulk.inputConfig.spdifRxEnabledExtP1),

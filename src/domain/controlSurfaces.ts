@@ -159,7 +159,6 @@ export const CS_IR_LEARN_ARMED   = 1;
 export const CS_IR_LEARN_DONE    = 2;
 export const CS_IR_LEARN_TIMEOUT = 3;
 
-export const CS_PINCLASS_ANY = 0;
 export const CS_PINCLASS_ADC = 1;
 
 // Value units (CsNounDesc.unit). Fixes both the wire encoding of

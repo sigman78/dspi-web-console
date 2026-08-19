@@ -6,6 +6,7 @@
   import { connection } from '@/state';
   import { setAdatInputEnable, setAdatInputPin, setAdatInputClockMode } from '@/runtime';
   import { AudioInputSource, AdatInputLockState, availablePinsFor, liveCsPinConfigs } from '@/domain';
+  import { formatRateKHz } from '@/utils';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -58,10 +59,6 @@
     if (state === AdatInputLockState.Locked) return 'ok';
     if (state === AdatInputLockState.Inactive) return 'off';
     return undefined;
-  }
-
-  function fmtRate(hz: number): string {
-    return hz > 0 ? `${(hz / 1000).toFixed(1)} kHz` : '—';
   }
 </script>
 
@@ -125,7 +122,7 @@
           />
           <KV
             label="RATE"
-            value={status.rateOk ? fmtRate(status.detectedRateHz) : 'PARKED — RATE > 48 KHZ'}
+            value={status.rateOk ? formatRateKHz(status.detectedRateHz) : 'PARKED — RATE > 48 KHZ'}
             tone={status.rateOk ? undefined : 'warn'}
           />
           <KV label="LOCKS" value={String(status.lockCount)} />

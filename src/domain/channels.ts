@@ -127,10 +127,6 @@ export function inputIndexOf(id: ChannelId): InputSlot | null {
   return slot === -1 ? null : slot;
 }
 
-export function inputChannelForSlot(slot: InputSlot): ChannelId | null {
-  return INPUT_SLOT_ORDER[slot] ?? null;
-}
-
 // Source-aware default input names, mirroring firmware's default-name
 // scheme. USB exposes independent per-channel streams with no L/R
 // relationship ("USB 1".."USB 8"); I2S and S/PDIF are true stereo pairs.

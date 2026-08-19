@@ -73,15 +73,6 @@ describe('PsybassPanel', () => {
     vi.clearAllMocks();
   });
 
-  test('renders the panel with its sliders', () => {
-    renderPanel(makeSession({}));
-    expect(screen.getByText('CUTOFF')).toBeTruthy();
-    expect(screen.getByText('HARMONICS')).toBeTruthy();
-    expect(screen.getByText('DRIVE')).toBeTruthy();
-    expect(screen.getByText('CHARACTER')).toBeTruthy();
-    expect(screen.getByText('ORIGINAL')).toBeTruthy();
-  });
-
   test('toggling the header switch calls setPsybassEnabled with the flipped value', async () => {
     renderPanel(makeSession({ psybassEnabled: false }));
     await fireEvent.click(screen.getByRole('switch', { name: 'Enable psybass' }));

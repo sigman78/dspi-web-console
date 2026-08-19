@@ -62,27 +62,9 @@ export function isCrossoverType(t: number): boolean {
   return t >= XOVER_TYPE_FIRST && t <= XOVER_TYPE_LAST;
 }
 
-export function isPeqType(t: number): boolean {
-  return t >= 0 && t < XOVER_TYPE_FIRST;
-}
-
 // First-order sections require the firstOrderEq capability (wire V16+).
 export function isFirstOrderType(t: FilterType): boolean {
   return t === FilterType.Allpass1 || t === FilterType.LowShelf1 || t === FilterType.HighShelf1;
-}
-
-// Parameter usage per type: crossover and first-order all-pass carry no gain;
-// crossover, first-order sections, and all-passes carry no Q.
-export function filterUsesQ(t: FilterType): boolean {
-  if (isCrossoverType(t)) return false;
-  return !isFirstOrderType(t);
-}
-
-export function filterUsesGain(t: FilterType): boolean {
-  if (isCrossoverType(t)) return false;
-  return t !== FilterType.Allpass && t !== FilterType.Allpass1
-      && t !== FilterType.Notch
-      && t !== FilterType.LowPass && t !== FilterType.HighPass;
 }
 
 export interface FilterParams {

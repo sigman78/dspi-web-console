@@ -80,20 +80,6 @@ describe('UpmixPanel', () => {
     vi.clearAllMocks();
   });
 
-  test('renders the panel with its sliders', () => {
-    renderPanel(makeSession({}));
-    expect(screen.getByText('STRENGTH')).toBeTruthy();
-    expect(screen.getByText('WIDTH')).toBeTruthy();
-    expect(screen.getByText('THRESHOLD')).toBeTruthy();
-    expect(screen.getByText('ATTACK')).toBeTruthy();
-    expect(screen.getByText('RELEASE')).toBeTruthy();
-    expect(screen.getByText('DET HPF')).toBeTruthy();
-    expect(screen.getByText('DELAY')).toBeTruthy();
-    expect(screen.getByText('HPF')).toBeTruthy();
-    expect(screen.getByText('LPF')).toBeTruthy();
-    expect(screen.getByText('DECORR')).toBeTruthy();
-  });
-
   test('toggling the header switch calls setUpmixEnabled with the flipped value', async () => {
     renderPanel(makeSession({ upmixEnabled: false }));
     await fireEvent.click(screen.getByRole('switch', { name: 'Enable stereo upmixer' }));

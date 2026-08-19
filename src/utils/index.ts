@@ -11,5 +11,7 @@ export { BinReader, BinWriter } from './binStream';
 
 export { Codec, type BinCodec, type FieldsOf, type StructValue } from './binCodec';
 
+export { formatRateKHz } from './format';
+
 export type { Disposer } from './disposer';
 export { timerClock, rafClock, subscribeVisibility, type LoopClock } from './loop';

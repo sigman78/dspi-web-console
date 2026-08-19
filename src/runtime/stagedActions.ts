@@ -10,6 +10,7 @@
 import * as Domain from '@/domain';
 import { Wire } from '@/protocol';
 import { type ReadySession, type StagedEntry } from '@/state';
+import { formatRateKHz } from '@/utils';
 import {
   setInputSource, setInputRate, setSpdifRxPin, setSpdifRxPinExt, setSpdifInputEnabled,
   setI2sRxPin, setI2sInputChannels,
@@ -52,7 +53,6 @@ async function applyPin(s: ReadySession, pin: number, send: () => Promise<boolea
   if (ok && pin === PIN_RESET_TO_DEFAULT) s.mirror.requestReconcile(true);
   return ok;
 }
-function fmtHz(hz: number): string { return hz > 0 ? `${(hz / 1000).toFixed(1)} kHz` : '—'; }
 function fmtOnOff(v: boolean): string { return v ? 'on' : 'off'; }
 function fmtMultiplier(encoded: number): string { return encoded === 1 ? '256×' : '128×'; }
 function fmtSource(source: Domain.AudioInputSource): string {
@@ -102,8 +102,8 @@ export function stageInputRate(s: ReadySession, hz: number): void {
   stageOrDiscard(s, 'inputRate', live, hz, () => ({
     key: 'inputRate',
     label: 'Input rate',
-    from: fmtHz(live),
-    to: fmtHz(hz),
+    from: formatRateKHz(live),
+    to: formatRateKHz(hz),
     value: hz,
     order: ORDER.inputRate,
     apply: () => setInputRate(s, hz),

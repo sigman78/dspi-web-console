@@ -32,10 +32,6 @@ export function i2sRateDecode(enc: number): number {
   return enc === 0 ? 44100 : enc === 2 ? 96000 : 48000;
 }
 
-export function i2sRateEncode(hz: number): number {
-  return hz === 44100 ? 0 : hz === 96000 ? 2 : 1;
-}
-
 // V7 -- input routing. spdifRxPin is the GPIO the S/PDIF receiver listens on.
 // The i2s* fields are V16+; on a V10 device they read as zeros ("absent")
 // and are surfaced only behind the i2sInput capability.

@@ -9,10 +9,9 @@ import {
   resetAppState, settings, notices, clearNotices, dispatch, makeReadySession,
 } from '@/state';
 
-// Exercises the scope-guarded invariant that replaced the old attempt-token
-// dispatch filter: a connection superseded mid-flight (its scope aborted
-// directly by whoever decided to abandon it) must not have its eventual
-// settle -- success or failure -- change app state.
+// Exercises the scope-guard invariant: a connection superseded mid-flight
+// (its scope aborted directly by whoever decided to abandon it) must not
+// have its eventual settle -- success or failure -- change app state.
 
 function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
   let resolve!: (v: T) => void;

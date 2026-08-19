@@ -10,6 +10,7 @@
     stageI2sClockMode, stageI2sClockPinMode, stageI2sBckPinSlave,
   } from '@/runtime';
   import { validBckPins, validBckPinsSlave, availablePinsFor, OutputSlotType, liveCsPinConfigs, AudioInputSource, I2sSlaveClockState } from '@/domain';
+  import { formatRateKHz } from '@/utils';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -63,10 +64,6 @@
     if (state === I2sSlaveClockState.Locked) return 'ok';
     if (state === I2sSlaveClockState.Acquiring || state === I2sSlaveClockState.Relocking) return undefined;
     return 'off';
-  }
-
-  function fmtRate(hz: number): string {
-    return hz > 0 ? `${(hz / 1000).toFixed(1)} kHz` : '—';
   }
 
 </script>
@@ -190,7 +187,7 @@
       {:else if slaveStatus}
         <div class="kvgrid">
           <KV label="STATE" value={SLAVE_STATE_LABELS[slaveStatus.state] ?? 'UNKNOWN'} tone={slaveStateTone(slaveStatus.state)} />
-          <KV label="RATE" value={fmtRate(slaveStatus.detectedRateHz)} />
+          <KV label="RATE" value={formatRateKHz(slaveStatus.detectedRateHz)} />
         </div>
       {:else}
         <p class="hint idle">Waiting for I2S slave status…</p>
