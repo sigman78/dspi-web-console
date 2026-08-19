@@ -283,4 +283,19 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     });
   });
 
+  it('AdatInputStatus is 20 bytes and round-trips its fields', () => {
+    expect(Codec.sizeOf(Wire.AdatInputStatus)).toBe(20);
+    const bytes = Codec.encode(Wire.AdatInputStatus, {
+      state: 3, clockMode: 1, enabled: true, pin: 20, rateOk: true,
+      lockCount: 4, lossCount: 1, slipCount: 2, headerErr: 300,
+      detectedRate: 48000, measuredHz: 47998,
+    });
+    const back = Codec.decode(Wire.AdatInputStatus, bytes);
+    expect(back).toMatchObject({
+      state: 3, clockMode: 1, enabled: true, pin: 20, rateOk: true,
+      lockCount: 4, lossCount: 1, slipCount: 2, headerErr: 300,
+      detectedRate: 48000, measuredHz: 47998,
+    });
+  });
+
 });

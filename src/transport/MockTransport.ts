@@ -77,6 +77,10 @@ const MIN_SYS_CLOCK_WIRE = 26;
 // STALL the whole opcode range (0xCA-0xCE) -- a V16 device has no ADAT surface.
 const MIN_ADAT_WIRE = 17;
 
+// ADAT lightpipe input lands on the wire at V24; earlier profiles must STALL
+// the whole opcode range (0x68-0x6E).
+const MIN_ADAT_INPUT_WIRE = 24;
+
 // Control Surfaces caps tables, firmware capability format version 3
 // (control_surfaces.c s_caps / control_surfaces_nouns.c cs_noun_table).
 const MOCK_CS_CAPS: CsCaps = {
@@ -921,6 +925,77 @@ export class MockTransport implements DspTransport {
           rateOk: true, resyncCount: 0, slipCount: 0,
         });
       }
+      // ADAT lightpipe bulk input (fw V24+, RP2350 only for the enable/pin
+      // hardware surface). Action-style, same convention as the ADAT output
+      // block above. Backed directly by the InputConfig24 bulk fields
+      // (adatInputPin/adatInputEnabledP1/adatInputClockModeP1) so V24 bulk
+      // packets round-trip automatically. Unlike GetAdatInputStatus, the
+      // granular enable/pin/clock-mode GETs round-trip stored config on both
+      // platforms -- only the SETs and the live status are RP2350-gated.
+      case WireCmd.GetAdatInputEnable.code: {
+        if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: GetAdatInputEnable unsupported (STALL)');
+        return Codec.encode(Codec.bool8, this.#adatInputEnabled());
+      }
+      case WireCmd.SetAdatInputEnable.code: {
+        if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: SetAdatInputEnable unsupported (STALL)');
+        if (this.#platform !== PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
+        if (value > 1) return new Uint8Array([0x05]);                                // InvalidParam
+        const enable = value !== 0;
+        if (enable === this.#adatInputEnabled()) return new Uint8Array([0x00]);      // same-state no-op
+        if (!enable) {
+          // Refused while ADAT is the active input source.
+          if (this.#mockState.inputConfig.source === AudioInputSource.Adat) return new Uint8Array([0x02]); // PinInUse
+          this.#mockState.inputConfig.adatInputEnabledP1 = 1;
+          return new Uint8Array([0x00]);
+        }
+        const pin = this.#mockState.inputConfig.adatInputPin;
+        if (pin === 0 || !this.#isValidGpio(pin)) return new Uint8Array([0x01]);     // InvalidPin
+        const adatOutPin = this.#mockState.adat.pin || this.#defaultAdatPin();
+        // Sharing the ADAT output's own pin is the supported loopback exception.
+        if (this.#pinInUse(pin, 0xFF) && pin !== adatOutPin) return new Uint8Array([0x02]); // PinInUse
+        this.#mockState.inputConfig.adatInputEnabledP1 = 2;
+        return new Uint8Array([0x00]);
+      }
+      case WireCmd.GetAdatInputPin.code: {
+        if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: GetAdatInputPin unsupported (STALL)');
+        const pin = this.#mockState.inputConfig.adatInputPin;
+        return Codec.encode(Codec.u8, pin === 0 ? 0xFF : pin);
+      }
+      case WireCmd.SetAdatInputPin.code: {
+        if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: SetAdatInputPin unsupported (STALL)');
+        if (this.#platform !== PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
+        const raw = value & 0xFF;
+        if (raw === Wire.Const.PIN_RESET_TO_DEFAULT) {
+          // No default GPIO for ADAT input -- 0xFF clears the stored pin, only while disabled.
+          if (this.#adatInputEnabled()) return new Uint8Array([0x02]);               // PinInUse
+          this.#mockState.inputConfig.adatInputPin = 0;
+          return new Uint8Array([0x00]);
+        }
+        if (!this.#isValidGpio(raw)) return new Uint8Array([0x01]);                  // InvalidPin
+        if (raw === this.#mockState.inputConfig.adatInputPin) return new Uint8Array([0x00]); // same pin no-op
+        const adatOutPin = this.#mockState.adat.pin || this.#defaultAdatPin();
+        if (this.#pinInUse(raw, 0xFF) && raw !== adatOutPin) return new Uint8Array([0x02]); // PinInUse
+        this.#mockState.inputConfig.adatInputPin = raw;
+        return new Uint8Array([0x00]);
+      }
+      // Clock mode is accepted on both platforms (unlike enable/pin, which are
+      // RP2350-only) so presets round-trip.
+      case WireCmd.GetAdatInputClockMode.code: {
+        if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: GetAdatInputClockMode unsupported (STALL)');
+        return Codec.encode(Codec.u8, this.#adatInputClockMode());
+      }
+      case WireCmd.SetAdatInputClockMode.code: {
+        if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: SetAdatInputClockMode unsupported (STALL)');
+        // Deferred apply device-side (mock applies immediately).
+        if (value > 1) return new Uint8Array([0x05]);                                // InvalidParam
+        this.#mockState.inputConfig.adatInputClockModeP1 = value === 1 ? 2 : 1;
+        return new Uint8Array([0x00]);
+      }
+      case WireCmd.GetAdatInputStatus.code: {
+        if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: GetAdatInputStatus unsupported (STALL)');
+        if (this.#platform !== PlatformType.RP2350) return new Uint8Array(length);
+        return Codec.encode(Wire.AdatInputStatus, this.#adatInputStatus());
+      }
       case WireCmd.GetUartConfig.code: {
         if (!this.#isV16) return new Uint8Array(length);
         const c = this.#uartCtrl;
@@ -1580,6 +1655,48 @@ export class MockTransport implements DspTransport {
     return 12;
   }
 
+  // p1 = adat_input_enabled + 1 (0 = absent -> false; else value - 1: 0 =
+  // disabled, 1 = enabled). Same convention snapshotCodec.ts decodes for the
+  // bulk section.
+  #adatInputEnabled(): boolean {
+    const p1 = this.#mockState.inputConfig.adatInputEnabledP1;
+    return p1 !== 0 && p1 - 1 === 1;
+  }
+
+  // p1 = adat_input_clock_mode + 1 (0 = absent -> master; else value - 1: 0 =
+  // master, 1 = slave).
+  #adatInputClockMode(): number {
+    const p1 = this.#mockState.inputConfig.adatInputClockModeP1;
+    return p1 === 0 ? 0 : p1 - 1;
+  }
+
+  // Mock always runs at 48 kHz, so master-mode rate parking (device rate
+  // > 48 kHz) never triggers -- mirrors GetAdatStatus's rateOk simplification.
+  #adatInputStatus(): {
+    state: number; clockMode: number; enabled: boolean; pin: number; rateOk: boolean;
+    lockCount: number; lossCount: number; slipCount: number; headerErr: number;
+    detectedRate: number; measuredHz: number;
+  } {
+    const enabled = this.#adatInputEnabled();
+    const clockMode = this.#adatInputClockMode();
+    const rawPin = this.#mockState.inputConfig.adatInputPin;
+    const locked = enabled && this.#mockState.inputConfig.source === AudioInputSource.Adat;
+    const rate = 48000;
+    return {
+      state: locked ? 3 : 0,   // 3 = LOCKED, 0 = INACTIVE
+      clockMode,
+      enabled,
+      pin: rawPin === 0 ? 0xFF : rawPin,
+      rateOk: locked,
+      lockCount: locked ? 1 : 0,
+      lossCount: 0,
+      slipCount: 0,
+      headerErr: 0,
+      detectedRate: locked ? rate : 0,
+      measuredHz: locked && clockMode === 1 ? rate : 0,
+    };
+  }
+
   #isValidGpio(pin: number): boolean {
     // Debug UART pin: GPIO 12 through V10 only. Fw 1.1.5 (V16) removed the
     // dedicated debug UART, freeing 16/17 for general use.
@@ -1623,6 +1740,7 @@ export class MockTransport implements DspTransport {
     if (this.#uartCtrl.enabled && (pin === this.#uartCtrl.txPin || pin === this.#uartCtrl.rxPin)) return true;
     if (this.#i2cCtrl.enabled && (pin === this.#i2cCtrl.sdaPin || pin === this.#i2cCtrl.sclPin)) return true;
     if (this.#csOwnsPin(pin)) return true;
+    if (this.#adatInputEnabled() && pin === this.#mockState.inputConfig.adatInputPin) return true;
     return false;
   }
 

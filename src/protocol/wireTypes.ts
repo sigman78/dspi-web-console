@@ -542,6 +542,27 @@ export const AdatStatus = struct({
   slipCount:   u16,
 });
 
+// 20-byte live ADAT lightpipe input status (GetAdatInputStatus 0x6E, fw V24+,
+// RP2350 only; RP2040 reports 20 zero bytes). state/clockMode are live values,
+// not persisted config. rateOk parks master-mode acquisition when the device
+// rate exceeds 48 kHz -- always 1 in slave mode. detectedRate is the snapped
+// wire rate (slave, valid from SYNCING) or the device rate (master); 0 when
+// unknown/parked. measuredHz is the raw slave-mode wire rate, 0 in master mode.
+export const AdatInputStatus = struct({
+  state:        u8,
+  clockMode:    u8,
+  enabled:      bool8,
+  pin:          u8,
+  rateOk:       bool8,
+  lockCount:    u8,
+  lossCount:    u8,
+  slipCount:    u8,
+  headerErr:    u16,
+  _reserved:    reserved(2),
+  detectedRate: u32,
+  measuredHz:   u32,
+});
+
 // Length of the raw IEC-60958 channel-status block (GetSpdifRxChStatus 0xE3).
 // No semantic codec -- surfaced verbatim as bytes.
 export const SPDIF_RX_CH_STATUS_LEN = 24;
