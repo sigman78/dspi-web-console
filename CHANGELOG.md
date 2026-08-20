@@ -6,6 +6,25 @@ from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
 this project follows [Semantic Versioning](https://semver.org/) (currently in the
 `0.x` pre-1.0 line — minor versions may include breaking changes).
 
+## [0.9.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.8.0...dspi-console-web-v0.9.0) (2026-08-20)
+
+
+### Features
+
+* **cs:** Control Surfaces caps v4 nouns (35-48) and the ms unit ([#104](https://github.com/sigman78/dspi-web-console/issues/104)) ([cbb24f0](https://github.com/sigman78/dspi-web-console/commit/cbb24f0f6a976d8dceeba9b02155fd735143a102))
+* **protocol:** decode SpdifBufferStats fill_centi_pct ([#96](https://github.com/sigman78/dspi-web-console/issues/96)) ([252695d](https://github.com/sigman78/dspi-web-console/commit/252695dcc880bd95bbf053732965b7084f14e5b1))
+* **protocol:** sys clock wire layer (REQ_SET/GET_SYS_CLOCK 0x40/0x41) ([#99](https://github.com/sigman78/dspi-web-console/issues/99)) ([d0162cf](https://github.com/sigman78/dspi-web-console/commit/d0162cfadf0393ef3141118258bd647eb387fe42))
+* **ui:** ADAT input support (0x68-0x6E) with SY.15 panel, source entry, rate authority ([#103](https://github.com/sigman78/dspi-web-console/issues/103)) ([be369b4](https://github.com/sigman78/dspi-web-console/commit/be369b464218140ab0330ac52073f944caefc84a))
+* **ui:** ADAT output panel (SY.14) with pin reservation and live status ([#101](https://github.com/sigman78/dspi-web-console/issues/101)) ([ac2cd69](https://github.com/sigman78/dspi-web-console/commit/ac2cd6973df9114e783ada523975c303046a5073))
+* **ui:** dual-axis header volume slider (user/master) with click-to-cycle toggle ([#110](https://github.com/sigman78/dspi-web-console/issues/110)) ([e8fc906](https://github.com/sigman78/dspi-web-console/commit/e8fc9065ad8a3944bb296fc72ef4835b26532a4b))
+* **ui:** fine-grained SPDIF fill in buffer stats (fill_centi_pct) ([#102](https://github.com/sigman78/dspi-web-console/issues/102)) ([430cb8d](https://github.com/sigman78/dspi-web-console/commit/430cb8dcee8cf8c75df053e5f2146a74d4b2ce14))
+* **ui:** system clock panel (SY.13) with crash-fallback UX ([#100](https://github.com/sigman78/dspi-web-console/issues/100)) ([3dd4ec9](https://github.com/sigman78/dspi-web-console/commit/3dd4ec9cdffbb47cf5c5fa00bf13bb829aadff1e))
+
+
+### Bug Fixes
+
+* **cs:** fw 1.1.6 readiness — survive caps v13 surfaces, declare the support window ([#105](https://github.com/sigman78/dspi-web-console/issues/105)) ([b635ee7](https://github.com/sigman78/dspi-web-console/commit/b635ee778f540534429047d861140366e5b69092))
+
 ## [0.8.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.7.0...dspi-console-web-v0.8.0) (2026-07-25)
 
 
