@@ -185,8 +185,8 @@ export const CS_TARGET_DSP_BAND  = 4;   // target = DSP channel, index = filter 
 // Noun descriptor flags (CsNounDesc.dflags)
 export const CS_NDF_DEFERRED = 0x01;   // apply is deferred; engine steps from a target shadow
 
-// ADC-capable GPIOs on both platforms (GPIO 29 is the VSYS monitor, excluded).
-export const CS_ADC_PINS: readonly number[] = [26, 27, 28];
+// ADC-capable GPIOs on both platforms (RP2040/RP2350A: 26-28; RP2350B: 26-28, 40-43; GPIO 29 is VSYS monitor).
+export const CS_ADC_PINS: readonly number[] = [26, 27, 28, 40, 41, 42, 43];
 
 // One binding, host shape. gpio1 is null unless the type takes two pins;
 // continuous value/step/range fields stay in raw wire encoding (8.8 for
