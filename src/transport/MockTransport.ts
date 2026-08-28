@@ -1724,7 +1724,7 @@ export class MockTransport implements DspTransport {
     // dedicated debug UART, freeing 16/17 for general use.
     if (!this.#isV16 && pin === 12) return false;
     if (pin >= 23 && pin <= 25) return false;
-    return pin >= 0 && pin <= (this.#platform === PlatformType.RP2350 ? 29 : 28);
+    return pin >= 0 && pin <= (this.#platform === PlatformType.RP2350 ? 47 : 28);
   }
 
   // Peripheral pins only (outputs/I2S/MCK/I2S-RX) -- excludes the ctrl

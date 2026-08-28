@@ -14,7 +14,7 @@ import { isValidUartPinPair, isValidI2cPinPair, type UartControlConfig, type I2c
 const PIN_LABEL = { bck: 'BCK', lrclk: 'LRCLK', mck: 'MCK', bckSlave: 'BCK (slave)', lrclkSlave: 'LRCLK (slave)' } as const;
 
 function maxGpio(platform: PlatformType): number {
-  return platform === PlatformType.RP2350 ? 29 : 28;
+  return platform === PlatformType.RP2350 ? 47 : 28;
 }
 
 export function isAssignablePin(platform: PlatformType, pin: number, channelModel: ChannelFamily = ChannelFamily.Legacy): boolean {
