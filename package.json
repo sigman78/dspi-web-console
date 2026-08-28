@@ -10,6 +10,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "lint": "eslint \"{src,test}/**/*.{ts,svelte}\"",
     "lint:fix": "eslint \"{src,test}/**/*.{ts,svelte}\" --fix",
+    "lint:comments": "uvx unwaffle@0.15.0 check src test scripts --fail-on error",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",

@@ -1,0 +1,4 @@
+# Config for `npm run lint:comments` (https://github.com/sigman78/unwaffle).
+# STE prose-style rules are off: long WHY comments are house style in the
+# wire-protocol layers and would drown the culture findings.
+disable = ["STE"]
