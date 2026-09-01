@@ -126,5 +126,5 @@
     background: repeating-linear-gradient(45deg, transparent 0 2px, var(--wash-strong) 2px 3px);
     border: 1px solid var(--border);
   }
-  .adc-chip .adc-mark { font-size: 9px; line-height: 1; color: var(--text-faint); }
+  .adc-chip .adc-mark { font-size: 9px; line-height: 1; color: var(--warn); }
 </style>

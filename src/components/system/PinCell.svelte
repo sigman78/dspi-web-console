@@ -73,6 +73,16 @@
   }
   button.cell { cursor: pointer; }
   button.cell:disabled { cursor: default; }
+  button.cell:hover:not(:disabled) {
+    border-color: var(--border-hi);
+    background: var(--wash-strong);
+    color: var(--text);
+  }
+  button.cell.used:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--role-base) 28%, transparent);
+    border-color: var(--role-base);
+    color: var(--role-base);
+  }
   .cell.used {
     background: color-mix(in oklab, var(--role-base) 14%, transparent);
     border-color: color-mix(in oklab, var(--role-base) 45%, transparent);
@@ -94,9 +104,8 @@
     position: absolute;
     top: 1px;
     right: 2px;
-    font-size: 7px;
+    font-size: 8px;
     line-height: 1;
-    color: var(--text-faint);
+    color: var(--warn);
   }
-  .cell.used .adc-mark { color: var(--role-base); }
 </style>

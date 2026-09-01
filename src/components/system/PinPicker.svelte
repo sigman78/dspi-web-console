@@ -70,6 +70,7 @@
 <button
   type="button"
   class="trigger"
+  class:open={expanded}
   popovertarget={popoverId}
   popovertargetaction="toggle"
   style="anchor-name: {anchorName};"
@@ -134,6 +135,13 @@
   }
   .trigger:hover:not(:disabled)::after { color: var(--text); }
   .trigger:disabled::after { content: none; }
+  /* While the popup is open: the trigger is the thing being edited. */
+  .trigger.open {
+    border-color: var(--accent);
+    color: var(--text);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 45%, transparent);
+  }
+  .trigger.open::after { content: '▴'; color: var(--accent); }
 
   .popup {
     position-area: block-end span-inline-end;
@@ -142,9 +150,12 @@
     width: 272px;
     padding: 8px;
     background: var(--panel-solid);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-hi);
     border-radius: var(--radius-s);
-    box-shadow: 0 4px 14px oklch(0% 0 0 / 0.4);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--accent) 22%, transparent),
+      0 10px 30px oklch(0% 0 0 / 0.55),
+      0 2px 8px oklch(0% 0 0 / 0.35);
   }
 
   .grid {
