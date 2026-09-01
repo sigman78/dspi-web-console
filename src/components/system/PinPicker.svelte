@@ -127,8 +127,9 @@
      value. Pseudo-element so it stays out of textContent and the aria name. */
   .trigger::after {
     content: '▾';
-    margin-left: 5px;
-    font-size: 8px;
+    margin-left: 6px;
+    font-size: 11px;
+    line-height: 1;
     color: var(--text-faint);
   }
   .trigger:hover:not(:disabled)::after { color: var(--text); }
