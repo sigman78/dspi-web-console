@@ -9,7 +9,7 @@
     stageI2sBckPin, stageMckEnabled, stageMckPin, stageMckMultiplier,
     stageI2sClockMode, stageI2sClockPinMode, stageI2sBckPinSlave,
   } from '@/runtime';
-  import { validBckPins, validBckPinsSlave, availablePinsFor, OutputSlotType, liveCsPinConfigs, AudioInputSource, I2sSlaveClockState } from '@/domain';
+  import { validBckPins, validBckPinsSlave, availablePinsFor, OutputSlotType, liveCsPinConfigs, AudioInputSource, I2sSlaveClockState, CS_ADC_PINS } from '@/domain';
   import { formatRateKHz } from '@/utils';
   import { getSession } from '@/components/sessionContext';
 
@@ -35,10 +35,10 @@
   const effBckPinSlave = $derived(snap ? s.staging.valueOf('bckPinSlave', snap.i2s.bckPinSlave) : 0);
 
   const bckCandidates = $derived(
-    overlaySnap ? validBckPins(overlaySnap.platform.type, overlaySnap, ctrlPins).map((pin) => ({ pin, usedBy: null })) : [],
+    overlaySnap ? validBckPins(overlaySnap.platform.type, overlaySnap, ctrlPins).map((pin) => ({ pin, usedBy: null, role: null, adc: CS_ADC_PINS.includes(pin) })) : [],
   );
   const slaveBckCandidates = $derived(
-    overlaySnap ? validBckPinsSlave(overlaySnap.platform.type, overlaySnap, ctrlPins).map((pin) => ({ pin, usedBy: null })) : [],
+    overlaySnap ? validBckPinsSlave(overlaySnap.platform.type, overlaySnap, ctrlPins).map((pin) => ({ pin, usedBy: null, role: null, adc: CS_ADC_PINS.includes(pin) })) : [],
   );
   const multOpts = $derived([
     { value: 0, label: '128×' },

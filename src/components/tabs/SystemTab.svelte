@@ -7,6 +7,7 @@
   import OutputsPanel from '@/components/system/OutputsPanel.svelte';
   import AdatPanel from '@/components/system/AdatPanel.svelte';
   import AdatInputPanel from '@/components/system/AdatInputPanel.svelte';
+  import PinMapPanel from '@/components/system/PinMapPanel.svelte';
   import I2sClockPanel from '@/components/system/I2sClockPanel.svelte';
   import LgSoundSyncPanel from '@/components/system/LgSoundSyncPanel.svelte';
   import DacHwMutePanel from '@/components/system/DacHwMutePanel.svelte';
@@ -39,6 +40,7 @@
     {#if features.adatInput}
       <AdatInputPanel />
     {/if}
+    <PinMapPanel />
   </div>
 
   <div class="col">

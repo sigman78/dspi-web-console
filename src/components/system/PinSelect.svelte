@@ -32,8 +32,13 @@
     <option value={String(Wire.Const.PIN_RESET_TO_DEFAULT)}>{resetLabel}</option>
   {/if}
   {#each candidates as c (c.pin)}
-    <option value={String(c.pin)} disabled={c.usedBy !== null}>
-      GP{c.pin}{c.usedBy ? ` · ${c.usedBy}` : ''}
+    <option
+      value={String(c.pin)}
+      disabled={c.usedBy !== null}
+      class={c.usedBy !== null && c.role ? `pinrole-${c.role}` : ''}
+      style={c.usedBy !== null && c.role ? 'color: var(--role-base)' : ''}
+    >
+      GP{c.pin}{c.usedBy ? ` · ${c.usedBy}` : (c.adc ? ' · ADC' : '')}
     </option>
   {/each}
 </select>

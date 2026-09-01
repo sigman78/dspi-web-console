@@ -43,7 +43,7 @@
     snap && overlaySnap
       ? availablePinsFor(snap.platform.type, overlaySnap, pin, ctrlPins)
           .filter((c) => c.pin !== 0)
-          .map((c) => (c.usedBy === 'ADAT' ? { ...c, usedBy: null } : c))
+          .map((c) => (c.usedBy === 'ADAT' ? { ...c, usedBy: null, role: null } : c))
       : [],
   );
 

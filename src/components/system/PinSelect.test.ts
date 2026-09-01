@@ -1,20 +1,36 @@
 import { describe, test, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
+import type { PinCandidate } from '@/domain';
 import PinSelect from './PinSelect.svelte';
 
-const CANDIDATES = [
-  { pin: 6, usedBy: null },
-  { pin: 7, usedBy: 'Slot 2' },
-  { pin: 16, usedBy: null },
+const CANDIDATES: PinCandidate[] = [
+  { pin: 6, usedBy: null, role: null, adc: false },
+  { pin: 7, usedBy: 'Slot 2', role: 'audio-out', adc: false },
+  { pin: 16, usedBy: null, role: null, adc: false },
+  { pin: 26, usedBy: null, role: null, adc: true },
 ];
 
 describe('PinSelect', () => {
   test('renders an option per candidate and disables in-use ones', () => {
     render(PinSelect, { props: { value: 6, candidates: CANDIDATES, ariaLabel: 'Slot 1 pin', onChange: vi.fn() } });
     const opts = screen.getAllByRole('option') as HTMLOptionElement[];
-    expect(opts).toHaveLength(3);
+    expect(opts).toHaveLength(4);
     expect(opts.find((o) => o.value === '7')!.disabled).toBe(true);
     expect(opts.find((o) => o.value === '16')!.disabled).toBe(false);
+  });
+
+  test('a taken pin carries a pinrole class named after its role', () => {
+    render(PinSelect, { props: { value: 6, candidates: CANDIDATES, ariaLabel: 'Slot 1 pin', onChange: vi.fn() } });
+    const opts = screen.getAllByRole('option') as HTMLOptionElement[];
+    expect(opts.find((o) => o.value === '7')!.className).toContain('pinrole-audio-out');
+    expect(opts.find((o) => o.value === '16')!.className).not.toContain('pinrole-');
+  });
+
+  test('a free ADC-capable pin gets an ADC suffix; a taken pin does not', () => {
+    render(PinSelect, { props: { value: 6, candidates: CANDIDATES, ariaLabel: 'Slot 1 pin', onChange: vi.fn() } });
+    const opts = screen.getAllByRole('option') as HTMLOptionElement[];
+    expect(opts.find((o) => o.value === '26')!.textContent).toContain('· ADC');
+    expect(opts.find((o) => o.value === '7')!.textContent).not.toContain('ADC');
   });
 
   test('selecting a pin fires onChange with the numeric pin', async () => {

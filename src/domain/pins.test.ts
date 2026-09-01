@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { PlatformType, ChannelFamily } from './platform';
 import type { DspSnapshot } from './snapshot';
-import { isAssignablePin, pinsInUse, availablePinsFor, validBckPins, validBckPinsSlave, validUartTxPins, validI2cSdaPins } from './pins';
+import { isAssignablePin, pinsInUse, pinUses, availablePinsFor, validBckPins, validBckPinsSlave, validUartTxPins, validI2cSdaPins } from './pins';
 import { DEFAULT_UART_CONTROL_CONFIG } from './controlInterfaces';
 
 function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
@@ -196,5 +196,59 @@ describe('pins', () => {
 
     const uartEnabled = { uart: { enabled: true, txPin: 18, rxPin: 19, notifyEnabled: false, baud: 115200 } };
     expect(validI2cSdaPins(PlatformType.RP2350, s, uartEnabled)).not.toContain(18);
+  });
+
+  test('pinsInUse and pinUses stay label-identical over a fully-populated snapshot (projection invariant)', () => {
+    const s = snapV16({
+      outputPins: [6, 7, 8, 9, 10],
+      i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: true, mckMultiplierEncoded: 0, clockPinMode: 1, bckPinSlave: 26 },
+      inputConfig: {
+        source: 0, spdifRxPin: 5, spdifRxPinExt: [30, 31], spdifExtEnabled: [true, true],
+        i2sRxPins: [34, 36, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 4, i2sClockMode: 0,
+        adatInputPin: 32, adatInputEnabled: true, adatInputClockMode: 0,
+      },
+      dacHwMute: { enabled: true, activeLow: false, pin: 20, holdMs: 0, releaseMs: 0 },
+      adat: { enabled: true, pin: 21 },
+    });
+    const ctrl = {
+      uart: { enabled: true, txPin: 16, rxPin: 17, notifyEnabled: false, baud: 115200 },
+      i2c: { enabled: true, sdaPin: 18, sclPin: 19, address: 0x42 },
+      cs: [{ gpio0: 40, gpio1: 41 }, null, { gpio0: 42, gpio1: null }],
+    };
+
+    const uses = pinUses(s, ctrl);
+    const labels = pinsInUse(s, ctrl);
+    expect(uses.size).toBe(labels.size);
+    expect(uses.size).toBeGreaterThan(15);   // sanity: the fixture actually claims a broad pin set
+    uses.forEach((use, pin) => expect(labels.get(pin)).toBe(use.label));
+  });
+
+  test('availablePinsFor candidates carry role when taken, null when free, and the self-pin exception clears both', () => {
+    const s = snap({ dacHwMute: { enabled: true, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 } });
+    const list = availablePinsFor(PlatformType.RP2350, s, 11);
+
+    const selfCell = list.find((c) => c.pin === 11)!;
+    expect(selfCell.usedBy).toBeNull();
+    expect(selfCell.role).toBeNull();
+
+    const takenCell = list.find((c) => c.pin === 7)!;   // 'Slot 2' output pin
+    expect(takenCell.usedBy).toBe('Slot 2');
+    expect(takenCell.role).toBe('audio-out');
+
+    const freeCell = list.find((c) => c.pin === 16)!;
+    expect(freeCell.usedBy).toBeNull();
+    expect(freeCell.role).toBeNull();
+  });
+
+  test('the ADAT loopback exception keeps the audio-out role on the shared pin', () => {
+    const s = snap({
+      adat: { enabled: true, pin: 20 },
+      inputConfig: {
+        source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false],
+        i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, i2sClockMode: 0,
+        adatInputPin: 20, adatInputEnabled: true, adatInputClockMode: 0,
+      } as DspSnapshot['inputConfig'],
+    });
+    expect(pinUses(s).get(20)).toEqual({ label: 'ADAT', role: 'audio-out' });
   });
 });

@@ -6,7 +6,7 @@
   import { connection } from '@/state';
   import { setUartControlConfig, setI2cControlConfig } from '@/runtime';
   import {
-    validUartTxPins, validI2cSdaPins, liveCsPinConfigs,
+    validUartTxPins, validI2cSdaPins, liveCsPinConfigs, CS_ADC_PINS,
     UART_COMMON_BAUDS, I2C_ADDRESS_MIN, I2C_ADDRESS_MAX,
     type UartControlConfig, type I2cControlConfig,
   } from '@/domain';
@@ -22,10 +22,10 @@
 
   const csPins = $derived(liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status));
   const uartTxCandidates = $derived(
-    snap ? validUartTxPins(snap.platform.type, snap, { i2c, cs: csPins }).map((pin) => ({ pin, usedBy: null })) : [],
+    snap ? validUartTxPins(snap.platform.type, snap, { i2c, cs: csPins }).map((pin) => ({ pin, usedBy: null, role: null, adc: CS_ADC_PINS.includes(pin) })) : [],
   );
   const i2cSdaCandidates = $derived(
-    snap ? validI2cSdaPins(snap.platform.type, snap, { uart, cs: csPins }).map((pin) => ({ pin, usedBy: null })) : [],
+    snap ? validI2cSdaPins(snap.platform.type, snap, { uart, cs: csPins }).map((pin) => ({ pin, usedBy: null, role: null, adc: CS_ADC_PINS.includes(pin) })) : [],
   );
 
   function lastStatusMessage(byte: number | undefined): string | null {
@@ -109,7 +109,7 @@
         <span class="microlbl">RX PIN</span>
         <PinSelect
           value={uart.rxPin}
-          candidates={[{ pin: uart.rxPin, usedBy: null }]}
+          candidates={[{ pin: uart.rxPin, usedBy: null, role: null, adc: CS_ADC_PINS.includes(uart.rxPin) }]}
           ariaLabel="UART RX pin (follows TX)"
           disabled
           onChange={() => {}}
@@ -171,7 +171,7 @@
         <span class="microlbl">SCL PIN</span>
         <PinSelect
           value={i2c.sclPin}
-          candidates={[{ pin: i2c.sclPin, usedBy: null }]}
+          candidates={[{ pin: i2c.sclPin, usedBy: null, role: null, adc: CS_ADC_PINS.includes(i2c.sclPin) }]}
           ariaLabel="I2C SCL pin (follows SDA)"
           disabled
           onChange={() => {}}
