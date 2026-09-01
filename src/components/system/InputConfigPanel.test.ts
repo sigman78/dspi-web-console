@@ -175,19 +175,19 @@ describe('InputConfigPanel — S/PDIF pin pickers', () => {
 describe('InputConfigPanel — DEFAULTS chip', () => {
   test('is hidden without pin-reset firmware support', () => {
     renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Spdif }) }));
-    expect(screen.queryByRole('button', { name: 'DEFAULTS' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset input pins to defaults' })).toBeNull();
   });
 
   test('is hidden on the USB source, which has no pin pickers', () => {
     renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }), pinResetDefault: true }));
-    expect(screen.queryByRole('button', { name: 'DEFAULTS' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset input pins to defaults' })).toBeNull();
   });
 
   test('SPDIF view stages a reset for configured pins but skips ext inputs still at the UNSET sentinel', async () => {
     const snap = makeSnap({ source: AudioInputSource.Spdif });
     snap.inputConfig.spdifRxPinExt = [20, 0];
     renderPanel(makeSession({ snap, pinResetDefault: true, spdifInputCount: 3 }));
-    await fireEvent.click(screen.getByRole('button', { name: 'DEFAULTS' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Reset input pins to defaults' }));
     expect(stageSpdifRxPin).toHaveBeenCalledWith(expect.anything(), Wire.Const.PIN_RESET_TO_DEFAULT);
     expect(stageSpdifRxPinExt).toHaveBeenCalledWith(expect.anything(), 0, Wire.Const.PIN_RESET_TO_DEFAULT);
     // S/PDIF 3 is unset -- a reset would assign a GPIO with no way back to UNSET.
@@ -196,7 +196,7 @@ describe('InputConfigPanel — DEFAULTS chip', () => {
 
   test('I2S view stages a reset for every active RX pair, and never touches S/PDIF', async () => {
     renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.I2s }), pinResetDefault: true }));
-    await fireEvent.click(screen.getByRole('button', { name: 'DEFAULTS' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Reset input pins to defaults' }));
     expect(stageI2sRxPin).toHaveBeenCalledWith(expect.anything(), 0, Wire.Const.PIN_RESET_TO_DEFAULT);
     expect(stageSpdifRxPin).not.toHaveBeenCalled();
     expect(stageSpdifRxPinExt).not.toHaveBeenCalled();

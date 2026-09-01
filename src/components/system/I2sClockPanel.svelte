@@ -85,7 +85,7 @@
 <Panel code="SY.08" title="I2S CLOCK">
   {#snippet right()}
     {#if features.pinResetDefault}
-      <button class="chip" disabled={!connected} title="Stage factory-default clock pins" onclick={stageClockPinsToDefault}>DEFAULTS</button>
+      <button class="chip icon" disabled={!connected} title="Reset to defaults" aria-label="Reset clock pins to defaults" onclick={stageClockPinsToDefault}>↺</button>
     {/if}
   {/snippet}
   {#if snap?.i2s && overlaySnap}

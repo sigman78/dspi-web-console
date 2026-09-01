@@ -134,7 +134,7 @@
 <Panel code="SY.11" title="INPUT CONFIG">
   {#snippet right()}
     {#if features.pinResetDefault && (isSpdif || (isI2s && features.i2sInput))}
-      <button class="chip" disabled={!connected} title="Stage factory-default pins for this section" onclick={stageSectionPinsToDefault}>DEFAULTS</button>
+      <button class="chip icon" disabled={!connected} title="Reset to defaults" aria-label="Reset input pins to defaults" onclick={stageSectionPinsToDefault}>↺</button>
     {/if}
   {/snippet}
   {#if inputConfig && snap && overlaySnap}

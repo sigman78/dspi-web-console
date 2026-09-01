@@ -49,6 +49,14 @@
   border-radius: 4px;
 }
 
+/* Icon-only chip: a single glyph header action (e.g. the ↺ reset-to-defaults). */
+.chip.icon {
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 7px;
+  letter-spacing: 0;
+}
+
 .chip.hi {
   background: transparent;
   border-color: var(--border-hi);

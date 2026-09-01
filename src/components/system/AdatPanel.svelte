@@ -54,11 +54,12 @@
   {#snippet right()}
     {#if features.pinResetDefault}
       <button
-        class="chip"
+        class="chip icon"
         disabled={!editable}
-        title="Reset to the platform default pin"
+        title="Reset to defaults"
+        aria-label="Reset ADAT output pin to default"
         onclick={() => setAdatPin(s, Wire.Const.PIN_RESET_TO_DEFAULT)}
-      >DEFAULT</button>
+      >↺</button>
     {/if}
     <ToggleSwitch
       size="sm"

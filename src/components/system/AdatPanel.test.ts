@@ -101,7 +101,7 @@ describe('AdatPanel', () => {
 
   test('the DEFAULT chip sends the 0xFF reset sentinel', async () => {
     renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }) }));
-    await fireEvent.click(screen.getByRole('button', { name: 'DEFAULT' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Reset ADAT output pin to default' }));
     expect(setAdatPin).toHaveBeenCalledWith(expect.anything(), 0xFF);
   });
 
@@ -109,7 +109,7 @@ describe('AdatPanel', () => {
     const session = makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }) });
     session.device.capabilities.features.pinResetDefault = false;
     renderPanel(session);
-    expect(screen.queryByRole('button', { name: 'DEFAULT' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset ADAT output pin to default' })).toBeNull();
   });
 
   test('status section is absent while ADAT is disabled', () => {
@@ -156,6 +156,6 @@ describe('AdatPanel', () => {
     renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }) }));
     expect(screen.getByRole('switch', { name: 'Disable ADAT output' }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByRole('button', { name: 'ADAT output GPIO pin' }).hasAttribute('disabled')).toBe(true);
-    expect(screen.getByRole('button', { name: 'DEFAULT' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Reset ADAT output pin to default' }).hasAttribute('disabled')).toBe(true);
   });
 });

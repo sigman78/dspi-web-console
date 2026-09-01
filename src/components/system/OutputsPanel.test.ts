@@ -109,14 +109,14 @@ describe('OutputsPanel', () => {
   test('DEFAULTS chip is hidden without pin-reset firmware support', () => {
     const session = makeSession(makeSnap());
     render(OutputsPanel, { context: new Map([[SESSION_KEY, session]]) });
-    expect(screen.queryByRole('button', { name: 'DEFAULTS' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset output pins to defaults' })).toBeNull();
   });
 
   test('DEFAULTS chip stages a pin reset for every SPDIF slot plus PDM when PDM is idle', async () => {
     const session = makeSession(makeSnap());
     session.device.capabilities.features.pinResetDefault = true;
     render(OutputsPanel, { context: new Map([[SESSION_KEY, session]]) });
-    await fireEvent.click(screen.getByRole('button', { name: 'DEFAULTS' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Reset output pins to defaults' }));
     for (let slot = 0; slot < 4; slot++) {
       expect(verbs.stageOutputDataPin).toHaveBeenCalledWith(session, slot, Wire.Const.PIN_RESET_TO_DEFAULT);
     }
@@ -127,7 +127,7 @@ describe('OutputsPanel', () => {
     const session = makeSession(makeSnap([8]));
     session.device.capabilities.features.pinResetDefault = true;
     render(OutputsPanel, { context: new Map([[SESSION_KEY, session]]) });
-    await fireEvent.click(screen.getByRole('button', { name: 'DEFAULTS' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Reset output pins to defaults' }));
     expect(verbs.stageOutputDataPin).not.toHaveBeenCalledWith(session, 4, Wire.Const.PIN_RESET_TO_DEFAULT);
   });
 });

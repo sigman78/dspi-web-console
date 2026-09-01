@@ -89,7 +89,7 @@
 <Panel code="SY.07" title="OUTPUTS">
   {#snippet right()}
     {#if canResetPins}
-      <button class="chip" disabled={!connected} title="Stage factory-default pins for every output" onclick={stageOutputPinsToDefault}>DEFAULTS</button>
+      <button class="chip icon" disabled={!connected} title="Reset to defaults" aria-label="Reset output pins to defaults" onclick={stageOutputPinsToDefault}>↺</button>
     {/if}
     <SaveOutputConfigButton />
   {/snippet}
