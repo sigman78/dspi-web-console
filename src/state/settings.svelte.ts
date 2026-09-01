@@ -27,6 +27,7 @@ export interface Settings {
   lastSerial: string | null;
   warnOnPresetSwitchDirty: boolean;
   volumeAxis: VolumeAxis;
+  debugPanels: boolean;
 }
 
 const STORAGE_KEY = 'dspi-console-web/settings/v1';
@@ -39,6 +40,7 @@ function defaults(): Settings {
     lastSerial: null,
     warnOnPresetSwitchDirty: true,
     volumeAxis: 'user',
+    debugPanels: false,
   };
 }
 
@@ -82,6 +84,7 @@ function parseV1(raw: string, fallback: Settings): Settings {
     lastSerial: stringOrNull(obj.lastSerial),
     warnOnPresetSwitchDirty: bool(obj.warnOnPresetSwitchDirty, true),
     volumeAxis: volumeAxis(obj.volumeAxis, fallback.volumeAxis),
+    debugPanels: bool(obj.debugPanels, fallback.debugPanels),
   };
 }
 
@@ -136,6 +139,7 @@ export function restoreSettings(): void {
   settings.lastSerial = loaded.lastSerial;
   settings.warnOnPresetSwitchDirty = loaded.warnOnPresetSwitchDirty;
   settings.volumeAxis = loaded.volumeAxis;
+  settings.debugPanels = loaded.debugPanels;
 }
 
 export function setTab(t: TabId): void {
@@ -146,6 +150,9 @@ export function setSelectedChannel(id: ChannelId | null): void {
 }
 export function setVolumeAxis(axis: VolumeAxis): void {
   settings.volumeAxis = axis;
+}
+export function setDebugPanels(v: boolean): void {
+  settings.debugPanels = v;
 }
 // Rail selection: pick a channel globally and land on the EQ tab to edit it.
 export function selectChannel(id: ChannelId): void {
@@ -208,6 +215,7 @@ export function startSettingsPersistence(): void {
         lastSerial: settings.lastSerial,
         warnOnPresetSwitchDirty: settings.warnOnPresetSwitchDirty,
         volumeAxis: settings.volumeAxis,
+        debugPanels: settings.debugPanels,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
     });

@@ -1,7 +1,8 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
-  import { connection } from '@/state';
+  import { connection, settings } from '@/state';
+  import { debugPanelsForced } from '@/devOptions';
   import DevicePanel from '@/components/system/DevicePanel.svelte';
   import InputConfigPanel from '@/components/system/InputConfigPanel.svelte';
   import OutputsPanel from '@/components/system/OutputsPanel.svelte';
@@ -24,82 +25,89 @@
   const info = $derived(s.telemetry.info);
   const connected = $derived(connection.connected);
   const features = $derived(s.device.capabilities.features);
+  const debugPanels = $derived(settings.debugPanels || debugPanelsForced());
 
   function fmtNum(v: number | null | undefined): string { return v == null ? '—' : String(v); }
   function isNonZero(v: number | null | undefined): boolean { return v != null && v > 0; }
 </script>
 
-<div class="grid">
+<div class="grid" class:debug={debugPanels}>
   <div class="col">
     <DevicePanel />
-    <InputConfigPanel />
-    <OutputsPanel />
-    {#if features.adatOutput}
-      <AdatPanel />
-    {/if}
-    {#if features.adatInput}
-      <AdatInputPanel />
-    {/if}
+    <SysClockPanel />
     <PinMapPanel />
   </div>
 
   <div class="col">
-    <I2sClockPanel />
+    <InputConfigPanel />
+    {#if features.adatInput}
+      <AdatInputPanel />
+    {/if}
     <LgSoundSyncPanel />
-    <DacHwMutePanel />
-    <SysClockPanel />
   </div>
 
   <div class="col">
-    <Panel code="SY.02" title="TELEMETRY">
-      <div class="kvgrid">
-        <KV label="CLOCK"     value={info?.clockHz       != null ? `${(info.clockHz / 1_000_000).toFixed(0)} MHz` : '—'} />
-        <KV label="SAMPLE"    value={info?.sampleRateHz  != null ? formatRateKHz(info.sampleRateHz) : '—'} />
-        <KV label="VOLTAGE"   value={info?.coreVoltageMv != null ? `${(info.coreVoltageMv / 1000).toFixed(3)} V` : '—'} />
-        <KV label="TEMP"      value={info?.tempCDegC     != null ? `${(info.tempCDegC / 100).toFixed(1)} °C` : '—'} />
-        <KV label="CPU0"      value={`${s.telemetry.cpu0}%`} />
-        <KV label="CPU1"      value={`${s.telemetry.cpu1}%`} />
-        <KV label="STREAMING" value={s.telemetry.streaming ? 'YES' : 'NO'} tone={s.telemetry.streaming ? 'ok' : 'off'} />
-        <KV label="PDM"       value={s.telemetry.pdmActive ? 'ACTIVE' : 'IDLE'} tone={s.telemetry.pdmActive ? 'ok' : 'off'} />
-        <KV label="POLL ERR"  value={String(s.telemetry.errorCount)} tone={s.telemetry.errorCount > 0 ? undefined : 'off'} />
-      </div>
-    </Panel>
-
-    <Panel code="SY.04" title="ERROR COUNTERS">
-      {#snippet right()}
-        <button class="chip" onclick={() => clearClips(s)} disabled={!connected} title="Clear latched clip flags">CLEAR</button>
-      {/snippet}
-      <div class="kvgrid">
-        <KV label="PDM RING OVR" value={fmtNum(info?.pdmRingOverruns)}       tone={isNonZero(info?.pdmRingOverruns)       ? undefined : 'off'} />
-        <KV label="PDM RING UNR" value={fmtNum(info?.pdmRingUnderruns)}      tone={isNonZero(info?.pdmRingUnderruns)      ? undefined : 'off'} />
-        <KV label="PDM DMA OVR"  value={fmtNum(info?.pdmDmaOverruns)}        tone={isNonZero(info?.pdmDmaOverruns)        ? undefined : 'off'} />
-        <KV label="PDM DMA UNR"  value={fmtNum(info?.pdmDmaUnderruns)}       tone={isNonZero(info?.pdmDmaUnderruns)       ? undefined : 'off'} />
-        <KV label="SPDIF OVR"    value={fmtNum(info?.spdifOverruns)}         tone={isNonZero(info?.spdifOverruns)         ? undefined : 'off'} />
-        <KV label="SPDIF UNR"    value={fmtNum(info?.spdifUnderruns)}        tone={isNonZero(info?.spdifUnderruns)        ? undefined : 'off'} />
-        <KV label="SPDIF STARV"  value={fmtNum(info?.spdifStarvationsTotal)} tone={isNonZero(info?.spdifStarvationsTotal) ? undefined : 'off'} />
-      </div>
-      <!-- Latch is a host-side OR over every 20 Hz status packet; CLEAR above
-           resets both firmware (ClearClips 0x83) and the host array. -->
-      <div class="subhdr">CLIP / CHANNEL</div>
-      <div class="clipgrid">
-        {#each snap?.channels ?? [] as ch (ch.id)}
-          <span
-            class="clipsq ch-{chKey(ch.id)}"
-            class:on={s.telemetry.clipLatched[ch.id]}
-            title="{ch.shortName} · {ch.name}{s.telemetry.clipLatched[ch.id] ? ' · CLIPPED' : ''}"
-          >{ch.shortName}</span>
-        {/each}
-      </div>
-      <!-- TODO(system-info-extra): per-slot SPDIF starvations (wValues 18-21)
-           and USB state (10-12) -->
-    </Panel>
-
-    <BufferStatsPanel />
+    <OutputsPanel />
+    <I2sClockPanel />
+    {#if features.adatOutput}
+      <AdatPanel />
+    {/if}
+    <DacHwMutePanel />
   </div>
+
+  {#if debugPanels}
+    <div class="col">
+      <Panel code="SY.02" title="TELEMETRY">
+        <div class="kvgrid">
+          <KV label="CLOCK"     value={info?.clockHz       != null ? `${(info.clockHz / 1_000_000).toFixed(0)} MHz` : '—'} />
+          <KV label="SAMPLE"    value={info?.sampleRateHz  != null ? formatRateKHz(info.sampleRateHz) : '—'} />
+          <KV label="VOLTAGE"   value={info?.coreVoltageMv != null ? `${(info.coreVoltageMv / 1000).toFixed(3)} V` : '—'} />
+          <KV label="TEMP"      value={info?.tempCDegC     != null ? `${(info.tempCDegC / 100).toFixed(1)} °C` : '—'} />
+          <KV label="CPU0"      value={`${s.telemetry.cpu0}%`} />
+          <KV label="CPU1"      value={`${s.telemetry.cpu1}%`} />
+          <KV label="STREAMING" value={s.telemetry.streaming ? 'YES' : 'NO'} tone={s.telemetry.streaming ? 'ok' : 'off'} />
+          <KV label="PDM"       value={s.telemetry.pdmActive ? 'ACTIVE' : 'IDLE'} tone={s.telemetry.pdmActive ? 'ok' : 'off'} />
+          <KV label="POLL ERR"  value={String(s.telemetry.errorCount)} tone={s.telemetry.errorCount > 0 ? undefined : 'off'} />
+        </div>
+      </Panel>
+
+      <Panel code="SY.04" title="ERROR COUNTERS">
+        {#snippet right()}
+          <button class="chip" onclick={() => clearClips(s)} disabled={!connected} title="Clear latched clip flags">CLEAR</button>
+        {/snippet}
+        <div class="kvgrid">
+          <KV label="PDM RING OVR" value={fmtNum(info?.pdmRingOverruns)}       tone={isNonZero(info?.pdmRingOverruns)       ? undefined : 'off'} />
+          <KV label="PDM RING UNR" value={fmtNum(info?.pdmRingUnderruns)}      tone={isNonZero(info?.pdmRingUnderruns)      ? undefined : 'off'} />
+          <KV label="PDM DMA OVR"  value={fmtNum(info?.pdmDmaOverruns)}        tone={isNonZero(info?.pdmDmaOverruns)        ? undefined : 'off'} />
+          <KV label="PDM DMA UNR"  value={fmtNum(info?.pdmDmaUnderruns)}       tone={isNonZero(info?.pdmDmaUnderruns)       ? undefined : 'off'} />
+          <KV label="SPDIF OVR"    value={fmtNum(info?.spdifOverruns)}         tone={isNonZero(info?.spdifOverruns)         ? undefined : 'off'} />
+          <KV label="SPDIF UNR"    value={fmtNum(info?.spdifUnderruns)}        tone={isNonZero(info?.spdifUnderruns)        ? undefined : 'off'} />
+          <KV label="SPDIF STARV"  value={fmtNum(info?.spdifStarvationsTotal)} tone={isNonZero(info?.spdifStarvationsTotal) ? undefined : 'off'} />
+        </div>
+        <!-- Latch is a host-side OR over every 20 Hz status packet; CLEAR above
+             resets both firmware (ClearClips 0x83) and the host array. -->
+        <div class="subhdr">CLIP / CHANNEL</div>
+        <div class="clipgrid">
+          {#each snap?.channels ?? [] as ch (ch.id)}
+            <span
+              class="clipsq ch-{chKey(ch.id)}"
+              class:on={s.telemetry.clipLatched[ch.id]}
+              title="{ch.shortName} · {ch.name}{s.telemetry.clipLatched[ch.id] ? ' · CLIPPED' : ''}"
+            >{ch.shortName}</span>
+          {/each}
+        </div>
+        <!-- TODO(system-info-extra): per-slot SPDIF starvations (wValues 18-21)
+             and USB state (10-12) -->
+      </Panel>
+
+      <BufferStatsPanel />
+    </div>
+  {/if}
 </div>
 
 <style>
-  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--pad); height: 100%; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--pad); min-height: 100%; }
+  .grid.debug { grid-template-columns: repeat(3, 1fr) 0.66fr; }
   .col { display: flex; flex-direction: column; gap: var(--pad); min-height: 0; }
 
   .clipgrid {

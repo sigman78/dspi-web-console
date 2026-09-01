@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mockToken, mockChip, heroOverride, logSilenced, wireLogEnabled, mockSysClockFallback } from './devOptions';
+import { mockToken, mockChip, heroOverride, logSilenced, wireLogEnabled, mockSysClockFallback, debugPanelsForced } from './devOptions';
 
 afterEach(() => window.history.replaceState({}, '', '/'));
 
@@ -85,5 +85,19 @@ describe('log axis', () => {
     window.history.replaceState({}, '', '/');
     expect(logSilenced()).toBe(false);
     expect(wireLogEnabled()).toBe(false);
+  });
+});
+
+describe('debugPanelsForced', () => {
+  it('is true when ?debug is present, with any value', () => {
+    window.history.replaceState({}, '', '/?debug');
+    expect(debugPanelsForced()).toBe(true);
+    window.history.replaceState({}, '', '/?debug=1');
+    expect(debugPanelsForced()).toBe(true);
+  });
+
+  it('is false when ?debug is absent', () => {
+    window.history.replaceState({}, '', '/');
+    expect(debugPanelsForced()).toBe(false);
   });
 });

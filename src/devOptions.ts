@@ -16,6 +16,7 @@
 //                       no-op below wire V26 (the mock STALLs the opcodes there)
 //   ?log=0              silence the diagnostic logger (errors still log)
 //   ?log=wire           additionally trace every wire message
+//   ?debug              force the SYSTEM tab diagnostics panels visible
 //
 // Profile -> MockOptions resolution lives in src/mockProfiles.ts (it needs
 // Wire.MAX_WIRE_VERSION, which this module cannot import -- see below).
@@ -57,4 +58,8 @@ export function logSilenced(): boolean {
 
 export function wireLogEnabled(): boolean {
   return params()?.get('log') === 'wire';
+}
+
+export function debugPanelsForced(): boolean {
+  return params()?.has('debug') ?? false;
 }
