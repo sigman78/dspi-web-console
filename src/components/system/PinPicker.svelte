@@ -111,15 +111,21 @@
 
 <style>
   .trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    /* Fixed width so GPn / GPnn / UNSET / DEFAULT all line up; the chevron
+       stays pinned to the right edge, the label to the left. */
+    width: 70px;
     font-family: var(--font-mono);
     font-size: 10px;
-    padding: 3px 6px;
+    padding: 3px 7px;
     background: var(--panel-solid);
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: 4px;
     cursor: pointer;
-    min-width: 44px;
   }
   .trigger:hover:not(:disabled) { border-color: var(--border-hi); }
   .trigger:disabled { opacity: var(--dim-disabled); cursor: default; }
@@ -128,7 +134,6 @@
      value. Pseudo-element so it stays out of textContent and the aria name. */
   .trigger::after {
     content: '▾';
-    margin-left: 6px;
     font-size: 11px;
     line-height: 1;
     color: var(--text-faint);
