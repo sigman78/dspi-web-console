@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { PlatformType, ChannelFamily } from './platform';
 import type { DspSnapshot } from './snapshot';
-import { isAssignablePin, pinsInUse, pinUses, availablePinsFor, validBckPins, validBckPinsSlave, validUartTxPins, validI2cSdaPins } from './pins';
+import { isAssignablePin, pinsInUse, pinUses, availablePinsFor, validBckPins, validBckPinsSlave, validUartTxPins, validI2cSdaPins, pickerCells, pickerCellsFrom } from './pins';
 import { DEFAULT_UART_CONTROL_CONFIG } from './controlInterfaces';
 
 function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
@@ -250,5 +250,107 @@ describe('pins', () => {
       } as DspSnapshot['inputConfig'],
     });
     expect(pinUses(s).get(20)).toEqual({ label: 'ADAT', role: 'audio-out' });
+  });
+
+  test('pickerCells covers the full GPIO range for the platform', () => {
+    const rp2040 = snap({ platform: { type: PlatformType.RP2040, name: 'RP2040', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8, channelModel: ChannelFamily.Legacy } });
+    expect(pickerCells(PlatformType.RP2040, rp2040)).toHaveLength(29);
+    expect(pickerCells(PlatformType.RP2350, snap())).toHaveLength(48);
+  });
+
+  test('pickerCells marks 23-25 reserved always, and 12 only under the Legacy channel model', () => {
+    const legacy = pickerCells(PlatformType.RP2350, snap());
+    expect(legacy.filter((c) => c.pin >= 23 && c.pin <= 25).every((c) => c.reserved && !c.selectable)).toBe(true);
+    expect(legacy.find((c) => c.pin === 12)?.reserved).toBe(true);
+
+    const unified = pickerCells(PlatformType.RP2350, snapV16());
+    expect(unified.find((c) => c.pin === 12)?.reserved).toBe(false);
+    expect(unified.filter((c) => c.pin >= 23 && c.pin <= 25).every((c) => c.reserved)).toBe(true);
+  });
+
+  test('pickerCells selectable set matches availablePinsFor free set over a broadly-claimed snapshot', () => {
+    const s = snapV16({
+      i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: true, mckMultiplierEncoded: 0, clockPinMode: 1, bckPinSlave: 26 },
+      dacHwMute: { enabled: true, activeLow: false, pin: 20, holdMs: 0, releaseMs: 0 },
+      adat: { enabled: true, pin: 21 },
+    });
+    const ctrl = {
+      uart: { enabled: true, txPin: 16, rxPin: 17, notifyEnabled: false, baud: 115200 },
+      i2c: { enabled: true, sdaPin: 18, sclPin: 19, address: 0x42 },
+      cs: [{ gpio0: 40, gpio1: 41 }, null, { gpio0: 42, gpio1: null }],
+    };
+    const selfPin = 6;
+
+    const avail = availablePinsFor(PlatformType.RP2350, s, selfPin, ctrl)
+      .filter((c) => c.usedBy === null).map((c) => c.pin).sort((a, b) => a - b);
+    const picker = pickerCells(PlatformType.RP2350, s, ctrl, selfPin)
+      .filter((c) => c.selectable).map((c) => c.pin).sort((a, b) => a - b);
+    expect(picker).toEqual(avail);
+  });
+
+  test('pickerCells masks the self pin as free and carries use+reason on a taken pin', () => {
+    const s = snap({ dacHwMute: { enabled: true, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 } });
+    const cells = pickerCells(PlatformType.RP2350, s, undefined, 11);
+
+    const selfCell = cells.find((c) => c.pin === 11)!;
+    expect(selfCell.selectable).toBe(true);
+    expect(selfCell.use).toBeNull();
+
+    const takenCell = cells.find((c) => c.pin === 7)!;   // 'Slot 2' output pin
+    expect(takenCell.selectable).toBe(false);
+    expect(takenCell.use).toEqual({ label: 'Slot 2', role: 'audio-out' });
+    expect(takenCell.reason).toBe('Slot 2');
+  });
+
+  test('pickerCellsFrom over validBckPins: blocked-by-adjacency, candidate, and taken pins', () => {
+    const s = snap();
+    const valid = validBckPins(PlatformType.RP2350, s);
+    const blockedReason = (pin: number) => `needs GP${pin + 1} free`;
+
+    const cells = pickerCellsFrom(PlatformType.RP2350, s, undefined, valid, undefined, blockedReason);
+
+    // GP22 is free on its own but excluded from validBckPins because GP23 is reserved.
+    const blocked = cells.find((c) => c.pin === 22)!;
+    expect(blocked.selectable).toBe(false);
+    expect(blocked.use).toBeNull();
+    expect(blocked.reason).toBe('needs GP23 free');
+
+    const candidate = cells.find((c) => c.pin === 16)!;
+    expect(candidate.selectable).toBe(true);
+
+    const taken = cells.find((c) => c.pin === 7)!;   // 'Slot 2' output pin, excluded by validBckPins
+    expect(taken.selectable).toBe(false);
+    expect(taken.use).toEqual({ label: 'Slot 2', role: 'audio-out' });
+    expect(taken.reason).toBe('Slot 2');
+  });
+
+  test('pickerCellsFrom keeps the own pair partner selectable and tinted, as call sites pass it', () => {
+    const split = snap({
+      i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 1, bckPinSlave: 26 },
+    });
+    const valid = validBckPinsSlave(PlatformType.RP2350, split);
+    const cells = pickerCellsFrom(PlatformType.RP2350, split, undefined, valid, 26);
+
+    const ownCell = cells.find((c) => c.pin === 26)!;   // the slave BCK pin itself: self-masked free
+    expect(ownCell.selectable).toBe(true);
+    expect(ownCell.use).toBeNull();
+
+    // Its LRCLK partner is also a legal candidate (own-pair reselection) and
+    // keeps its label for the role tint.
+    const partnerCell = cells.find((c) => c.pin === 27)!;
+    expect(partnerCell.selectable).toBe(true);
+    expect(partnerCell.use).toEqual({ label: 'LRCLK (slave)', role: 'clock' });
+
+    const masterCell = cells.find((c) => c.pin === 14)!;   // master BCK pair, still reserved
+    expect(masterCell.selectable).toBe(false);
+    expect(masterCell.use).toEqual({ label: 'BCK', role: 'clock' });
+  });
+
+  test('pickerCellsFrom clears use for an explicit self pin even if it currently holds a label', () => {
+    const s = snap();
+    const cells = pickerCellsFrom(PlatformType.RP2350, s, undefined, [], 7);
+    const selfCell = cells.find((c) => c.pin === 7)!;   // normally 'Slot 2', masked by the explicit selfPin
+    expect(selfCell.selectable).toBe(true);
+    expect(selfCell.use).toBeNull();
   });
 });

@@ -1,10 +1,10 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import PinSelect from './PinSelect.svelte';
+  import PinPicker from './PinPicker.svelte';
   import { connection } from '@/state';
   import { setDacHwMute, testDacHwMute } from '@/runtime';
-  import { availablePinsFor, assignablePins, isAssignablePin, pinsInUse, liveCsPinConfigs, type DacHwMute } from '@/domain';
+  import { pickerCells, assignablePins, isAssignablePin, pinsInUse, liveCsPinConfigs, type DacHwMute } from '@/domain';
   import { DAC_HW_MUTE_HOLD_MS_MIN, DAC_HW_MUTE_HOLD_MS_MAX, DAC_HW_MUTE_RELEASE_MS_MAX } from '@/domain/clamp';
   import { getSession } from '@/components/sessionContext';
 
@@ -100,9 +100,9 @@
 
       <div class="row">
         <span class="microlbl">GPIO PIN</span>
-        <PinSelect
+        <PinPicker
           value={cfg.pin}
-          candidates={availablePinsFor(snap.platform.type, snap, cfg.pin, ctrlPins)}
+          cells={pickerCells(snap.platform.type, snap, ctrlPins, cfg.pin)}
           ariaLabel="DAC HW mute GPIO pin"
           disabled={!editable}
           onChange={onPin}

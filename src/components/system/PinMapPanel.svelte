@@ -1,5 +1,6 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
+  import PinCell from './PinCell.svelte';
   import * as Domain from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
@@ -61,15 +62,13 @@
   {#if snap}
     <div class="grid">
       {#each cells as cell (cell.pin)}
-        <div
-          class="cell {cell.use ? `pinrole-${cell.use.role}` : ''}"
-          class:used={!!cell.use}
-          class:reserved={!cell.assignable}
+        <PinCell
+          pin={cell.pin}
+          use={cell.use}
+          reserved={!cell.assignable}
+          adc={cell.adc}
           title={tooltipFor(cell)}
-        >
-          {#if cell.adc}<span class="adc-mark">▪</span>{/if}
-          <span class="num">GP{cell.pin}</span>
-        </div>
+        />
       {/each}
     </div>
 
@@ -93,43 +92,6 @@
     gap: 3px;
     padding: 12px 14px 8px;
   }
-  .cell {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px 2px;
-    border-radius: var(--radius-s);
-    border: 1px solid var(--border);
-    background: var(--wash);
-    color: var(--text-faint);
-    overflow: hidden;
-  }
-  .cell.used {
-    background: color-mix(in oklab, var(--role-base) 14%, transparent);
-    border-color: color-mix(in oklab, var(--role-base) 45%, transparent);
-    color: var(--role-base);
-  }
-  .cell.reserved {
-    background: repeating-linear-gradient(45deg, transparent 0 3px, var(--wash-strong) 3px 4px);
-  }
-  .cell.reserved .num { opacity: var(--dim-disabled); }
-  .num {
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.3px;
-  }
-  .adc-mark {
-    position: absolute;
-    top: 1px;
-    right: 2px;
-    font-size: 7px;
-    line-height: 1;
-    color: var(--text-faint);
-  }
-  .cell.used .adc-mark { color: var(--role-base); }
-
   .legend {
     display: flex;
     flex-wrap: wrap;
@@ -164,5 +126,5 @@
     background: repeating-linear-gradient(45deg, transparent 0 2px, var(--wash-strong) 2px 3px);
     border: 1px solid var(--border);
   }
-  .adc-chip .adc-mark { position: static; font-size: 9px; }
+  .adc-chip .adc-mark { font-size: 9px; line-height: 1; color: var(--text-faint); }
 </style>

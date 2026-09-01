@@ -88,25 +88,28 @@ describe('AdatPanel', () => {
 
   test('the pin picker is enabled only while ADAT itself is enabled', () => {
     const { unmount } = renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: false, pin: 20 } }) }));
-    expect(screen.getByRole('combobox', { name: 'ADAT output GPIO pin' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'ADAT output GPIO pin' }).hasAttribute('disabled')).toBe(true);
     unmount();
     renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }) }));
-    expect(screen.getByRole('combobox', { name: 'ADAT output GPIO pin' }).hasAttribute('disabled')).toBe(false);
+    expect(screen.getByRole('button', { name: 'ADAT output GPIO pin' }).hasAttribute('disabled')).toBe(false);
   });
 
   test('pin 0 (never configured) renders as GP12 selected, the resolved platform default', () => {
     renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 0 } }) }));
-    const select = screen.getByRole('combobox', { name: 'ADAT output GPIO pin' }) as HTMLSelectElement;
-    expect(select.value).toBe('12');
+    expect(screen.getByRole('button', { name: 'ADAT output GPIO pin' }).textContent).toBe('GP12');
   });
 
-  test('the pin select offers a DEFAULT option that sends the 0xFF reset sentinel', async () => {
+  test('the DEFAULT chip sends the 0xFF reset sentinel', async () => {
     renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }) }));
-    const select = screen.getByRole('combobox', { name: 'ADAT output GPIO pin' }) as HTMLSelectElement;
-    const defaultOpt = Array.from(select.options).find((o) => o.textContent === 'DEFAULT');
-    expect(defaultOpt).toBeTruthy();
-    await fireEvent.change(select, { target: { value: defaultOpt!.value } });
+    await fireEvent.click(screen.getByRole('button', { name: 'DEFAULT' }));
     expect(setAdatPin).toHaveBeenCalledWith(expect.anything(), 0xFF);
+  });
+
+  test('the DEFAULT chip is absent when the device lacks pin-reset support', () => {
+    const session = makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }) });
+    session.device.capabilities.features.pinResetDefault = false;
+    renderPanel(session);
+    expect(screen.queryByRole('button', { name: 'DEFAULT' })).toBeNull();
   });
 
   test('status section is absent while ADAT is disabled', () => {
@@ -152,6 +155,7 @@ describe('AdatPanel', () => {
     connected = false;
     renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }) }));
     expect(screen.getByRole('switch', { name: 'Disable ADAT output' }).hasAttribute('disabled')).toBe(true);
-    expect(screen.getByRole('combobox', { name: 'ADAT output GPIO pin' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'ADAT output GPIO pin' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'DEFAULT' }).hasAttribute('disabled')).toBe(true);
   });
 });

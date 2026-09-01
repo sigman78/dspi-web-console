@@ -136,7 +136,7 @@
 /* .staged — small accent dot marking a control holding a pending (unapplied)
    staged-apply value (see state/staging.svelte.ts). Apply directly to a chip/
    toggle/segmented-option; wrap a control with no class prop of its own
-   (PinSelect, SegmentedSelect) in a `.stage-wrap` span instead so the dot has
+   (PinPicker, SegmentedSelect) in a `.stage-wrap` span instead so the dot has
    something to anchor to. */
 .staged { position: relative; }
 .staged::after {

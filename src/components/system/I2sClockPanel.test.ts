@@ -2,6 +2,7 @@ import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
 import { AudioInputSource, I2sSlaveClockState } from '@/domain';
+import { Wire } from '@/protocol';
 
 const stageI2sBckPin = vi.fn();
 const stageMckEnabled = vi.fn();
@@ -58,9 +59,10 @@ function makeSession(o: {
   snap?: ReturnType<typeof makeSnap>;
   i2sSlaveClock?: boolean;
   i2sSlaveStatus?: object | null;
+  pinResetDefault?: boolean;
 } = {}) {
   return {
-    device: { capabilities: { features: { i2sSlaveClock: o.i2sSlaveClock ?? false } } },
+    device: { capabilities: { features: { i2sSlaveClock: o.i2sSlaveClock ?? false, pinResetDefault: o.pinResetDefault ?? false } } },
     telemetry: { info: { sampleRateHz: 96000 }, i2sSlaveStatus: o.i2sSlaveStatus ?? null },
     mirror: { current: o.snap ?? makeSnap() },
     ctrlIfaces: { uart: null, i2c: null, status: null },
@@ -125,14 +127,56 @@ describe('I2sClockPanel', () => {
   test('CLK PINS defaults to UNIFIED and hides the slave BCK pin select', () => {
     renderPanel(makeSession({ i2sSlaveClock: true }));
     expect(screen.getByRole('radio', { name: 'UNIFIED' }).getAttribute('aria-checked')).toBe('true');
-    expect(screen.queryByRole('combobox', { name: 'I2S BCK pin (slave)' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'I2S BCK pin (slave)' })).toBeNull();
   });
 
   test('SPLIT clock-pin mode reveals the slave BCK pin select and its LRCLK hint', () => {
     const snap = makeSnap({ i2s: { clockPinMode: 1, bckPinSlave: 26 } });
     renderPanel(makeSession({ snap, i2sSlaveClock: true }));
     expect(screen.getByRole('radio', { name: 'SPLIT' }).getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByRole('combobox', { name: 'I2S BCK pin (slave)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'I2S BCK pin (slave)' }).textContent).toBe('GP26');
     expect(screen.getByText('LRCLK GP27')).toBeTruthy();
+  });
+
+  test('a staged BCK pin reset blanks the LRCLK hint until the device resolves the real pin', () => {
+    const session = makeSession();
+    session.staging = { ...staging, valueOf: (key: string, live: unknown) => (key === 'bckPin' ? Wire.Const.PIN_RESET_TO_DEFAULT : live) };
+    renderPanel(session);
+    expect(screen.getByRole('button', { name: 'I2S BCK pin' }).textContent).toBe('DEFAULT');
+    expect(screen.getByText('LRCLK —')).toBeTruthy();
+  });
+
+  test('DEFAULTS chip is hidden without pin-reset firmware support', () => {
+    renderPanel(makeSession());
+    expect(screen.queryByRole('button', { name: 'DEFAULTS' })).toBeNull();
+  });
+
+  test('DEFAULTS chip stages a BCK and MCK pin reset when both are free to change', async () => {
+    renderPanel(makeSession({ pinResetDefault: true, i2sSlaveClock: true }));
+    await fireEvent.click(screen.getByRole('button', { name: 'DEFAULTS' }));
+    expect(stageI2sBckPin).toHaveBeenCalledWith(expect.anything(), Wire.Const.PIN_RESET_TO_DEFAULT);
+    expect(stageMckPin).toHaveBeenCalledWith(expect.anything(), Wire.Const.PIN_RESET_TO_DEFAULT);
+    expect(stageI2sBckPinSlave).not.toHaveBeenCalled();
+  });
+
+  test('DEFAULTS chip skips the BCK reset while an output slot runs I2S', async () => {
+    const snap = makeSnap({ i2s: { outputSlotTypes: [1, 0, 0, 0] } });
+    renderPanel(makeSession({ snap, pinResetDefault: true }));
+    await fireEvent.click(screen.getByRole('button', { name: 'DEFAULTS' }));
+    expect(stageI2sBckPin).not.toHaveBeenCalled();
+  });
+
+  test('DEFAULTS chip skips the MCK reset while MCK is enabled', async () => {
+    const snap = makeSnap({ i2s: { mckEnabled: true } });
+    renderPanel(makeSession({ snap, pinResetDefault: true }));
+    await fireEvent.click(screen.getByRole('button', { name: 'DEFAULTS' }));
+    expect(stageMckPin).not.toHaveBeenCalled();
+  });
+
+  test('DEFAULTS chip also resets the slave BCK pin in SPLIT clock-pin mode', async () => {
+    const snap = makeSnap({ i2s: { clockPinMode: 1 } });
+    renderPanel(makeSession({ snap, pinResetDefault: true, i2sSlaveClock: true }));
+    await fireEvent.click(screen.getByRole('button', { name: 'DEFAULTS' }));
+    expect(stageI2sBckPinSlave).toHaveBeenCalledWith(expect.anything(), Wire.Const.PIN_RESET_TO_DEFAULT);
   });
 });

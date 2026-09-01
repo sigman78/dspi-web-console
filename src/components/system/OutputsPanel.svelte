@@ -2,11 +2,12 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import PinSelect from './PinSelect.svelte';
+  import PinPicker from './PinPicker.svelte';
   import SaveOutputConfigButton from './SaveOutputConfigButton.svelte';
   import { connection } from '@/state';
   import { stageOutputType, stageOutputDataPin, setOutputPairEnabled, setOutputEnabled } from '@/runtime';
-  import { availablePinsFor, channelLayoutById, ChannelId, OutputSlotType, liveCsPinConfigs, type I2sPairSlot, type OutputSlot } from '@/domain';
+  import { pickerCells, channelLayoutById, ChannelId, OutputSlotType, liveCsPinConfigs, type I2sPairSlot, type OutputSlot } from '@/domain';
+  import { Wire } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -15,7 +16,7 @@
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
   const connected = $derived(connection.connected);
   const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
-  const allowReset = $derived(s.device.capabilities.features.pinResetDefault);
+  const canResetPins = $derived(s.device.capabilities.features.pinResetDefault);
 
   function effOutputType(slot: number): number {
     return s.staging.valueOf(`outputType:${slot}`, snap?.i2s?.outputSlotTypes[slot] ?? OutputSlotType.Spdif);
@@ -76,10 +77,22 @@
     setOutputEnabled(s, snap.platform.pdmOutputIndex as OutputSlot, next);
   }
 
+  // PDM's data pin can't be reassigned while the PDM output is active, so
+  // resetting it there would only draw a firmware refusal -- skip it.
+  function stageOutputPinsToDefault(): void {
+    for (let slot = 0; slot < numSpdif; slot++) stageOutputDataPin(s, slot, Wire.Const.PIN_RESET_TO_DEFAULT);
+    if (!pdmEnabled) stageOutputDataPin(s, pdmIndex, Wire.Const.PIN_RESET_TO_DEFAULT);
+  }
+
 </script>
 
 <Panel code="SY.07" title="OUTPUTS">
-  {#snippet right()}<SaveOutputConfigButton />{/snippet}
+  {#snippet right()}
+    {#if canResetPins}
+      <button class="chip" disabled={!connected} title="Stage factory-default pins for every output" onclick={stageOutputPinsToDefault}>DEFAULTS</button>
+    {/if}
+    <SaveOutputConfigButton />
+  {/snippet}
   {#if snap}
     <div class="rows">
       {#each Array.from({ length: numSpdif }) as _unused, slot (slot)}
@@ -108,12 +121,11 @@
             />
           </span>
           <span class="stage-wrap" class:staged={s.staging.has(`outputPin:${slot}`)} title={s.staging.has(`outputPin:${slot}`) ? `device: GP${snap.outputPins[slot]}` : undefined}>
-            <PinSelect
+            <PinPicker
               value={effOutputPin(slot)}
-              candidates={overlaySnap ? availablePinsFor(snap.platform.type, overlaySnap, effOutputPin(slot), ctrlPins) : []}
+              cells={overlaySnap ? pickerCells(snap.platform.type, overlaySnap, ctrlPins, effOutputPin(slot)) : []}
               ariaLabel={`Out ${slot + 1} data pin`}
               disabled={!connected}
-              {allowReset}
               onChange={(p) => stageOutputDataPin(s, slot, p)}
             />
           </span>
@@ -133,12 +145,11 @@
         </span>
         <span class="fixed">PDM</span>
         <span class="stage-wrap" class:staged={s.staging.has(`outputPin:${pdmIndex}`)} title={s.staging.has(`outputPin:${pdmIndex}`) ? `device: GP${snap.outputPins[pdmIndex]}` : undefined}>
-          <PinSelect
+          <PinPicker
             value={effOutputPin(pdmIndex)}
-            candidates={overlaySnap ? availablePinsFor(snap.platform.type, overlaySnap, effOutputPin(pdmIndex), ctrlPins) : []}
+            cells={overlaySnap ? pickerCells(snap.platform.type, overlaySnap, ctrlPins, effOutputPin(pdmIndex)) : []}
             ariaLabel="PDM sub data pin"
             disabled={!connected || pdmEnabled}
-            {allowReset}
             onChange={(p) => stageOutputDataPin(s, pdmIndex, p)}
           />
         </span>

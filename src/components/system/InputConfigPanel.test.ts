@@ -2,17 +2,21 @@ import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
 import { AudioInputSource, I2sSlaveClockState, AdatInputLockState } from '@/domain';
+import { Wire } from '@/protocol';
 
 const stageInputSource = vi.fn();
+const stageSpdifRxPin = vi.fn();
+const stageSpdifRxPinExt = vi.fn();
 const stageInputRate = vi.fn();
+const stageI2sRxPin = vi.fn();
 
 vi.mock('@/runtime', () => ({
   stageInputSource: (...a: unknown[]) => stageInputSource(...a),
-  stageSpdifRxPin: vi.fn(),
-  stageSpdifRxPinExt: vi.fn(),
+  stageSpdifRxPin: (...a: unknown[]) => stageSpdifRxPin(...a),
+  stageSpdifRxPinExt: (...a: unknown[]) => stageSpdifRxPinExt(...a),
   stageSpdifInputEnabled: vi.fn(),
   stageInputRate: (...a: unknown[]) => stageInputRate(...a),
-  stageI2sRxPin: vi.fn(),
+  stageI2sRxPin: (...a: unknown[]) => stageI2sRxPin(...a),
   stageI2sInputChannels: vi.fn(),
 }));
 
@@ -59,9 +63,11 @@ function makeSession(o: {
   i2sSlaveClock?: boolean;
   i2sSlaveStatus?: object | null;
   adatInputStatus?: object | null;
+  pinResetDefault?: boolean;
+  spdifInputCount?: number;
 } = {}) {
   return {
-    device: { capabilities: { features: { i2sInput: true, i2sSlaveClock: o.i2sSlaveClock ?? false, adatInput: true }, spdifInputCount: 1 } },
+    device: { capabilities: { features: { i2sInput: true, i2sSlaveClock: o.i2sSlaveClock ?? false, adatInput: true, pinResetDefault: o.pinResetDefault ?? false }, spdifInputCount: o.spdifInputCount ?? 1 } },
     telemetry: { spdifRxStatus: null, i2sSlaveStatus: o.i2sSlaveStatus ?? null, activeInputChannels: null, adatInputStatus: o.adatInputStatus ?? null },
     mirror: { current: o.snap ?? makeSnap() },
     ctrlIfaces: { uart: null, i2c: null, status: null },
@@ -144,5 +150,55 @@ describe('InputConfigPanel — ADAT source', () => {
     expect(chip96.hasAttribute('disabled')).toBe(true);
     expect(chip96.title).toMatch(/44\.1\/48 kHz only/);
     expect(screen.getByRole('button', { name: '48k' }).hasAttribute('disabled')).toBe(false);
+  });
+});
+
+describe('InputConfigPanel — S/PDIF pin pickers', () => {
+  test('an unconfigured ext S/PDIF input shows UNSET, unlike the always-configured primary', () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Spdif }), spdifInputCount: 2 }));
+    expect(screen.getByRole('button', { name: 'S/PDIF 1 RX GPIO pin' }).textContent).toBe('GP5');
+    expect(screen.getByRole('button', { name: 'S/PDIF 2 RX GPIO pin' }).textContent).toBe('UNSET');
+  });
+
+  test('ext S/PDIF pickers block re-selecting GP0 (the wire UNSET sentinel) once a real pin is assigned', () => {
+    const snap = makeSnap({ source: AudioInputSource.Spdif });
+    snap.inputConfig.spdifRxPinExt = [20, 0];
+    renderPanel(makeSession({ snap, spdifInputCount: 2 }));
+
+    // Only the ext row's GP0 cell carries the sentinel reason; the primary
+    // row's GP0 stays a normal free cell.
+    expect((screen.getByTitle('GP0 · reserved as the UNSET sentinel') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTitle('GP0 · free') as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe('InputConfigPanel — DEFAULTS chip', () => {
+  test('is hidden without pin-reset firmware support', () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Spdif }) }));
+    expect(screen.queryByRole('button', { name: 'DEFAULTS' })).toBeNull();
+  });
+
+  test('is hidden on the USB source, which has no pin pickers', () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }), pinResetDefault: true }));
+    expect(screen.queryByRole('button', { name: 'DEFAULTS' })).toBeNull();
+  });
+
+  test('SPDIF view stages a reset for configured pins but skips ext inputs still at the UNSET sentinel', async () => {
+    const snap = makeSnap({ source: AudioInputSource.Spdif });
+    snap.inputConfig.spdifRxPinExt = [20, 0];
+    renderPanel(makeSession({ snap, pinResetDefault: true, spdifInputCount: 3 }));
+    await fireEvent.click(screen.getByRole('button', { name: 'DEFAULTS' }));
+    expect(stageSpdifRxPin).toHaveBeenCalledWith(expect.anything(), Wire.Const.PIN_RESET_TO_DEFAULT);
+    expect(stageSpdifRxPinExt).toHaveBeenCalledWith(expect.anything(), 0, Wire.Const.PIN_RESET_TO_DEFAULT);
+    // S/PDIF 3 is unset -- a reset would assign a GPIO with no way back to UNSET.
+    expect(stageSpdifRxPinExt).not.toHaveBeenCalledWith(expect.anything(), 1, expect.anything());
+  });
+
+  test('I2S view stages a reset for every active RX pair, and never touches S/PDIF', async () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.I2s }), pinResetDefault: true }));
+    await fireEvent.click(screen.getByRole('button', { name: 'DEFAULTS' }));
+    expect(stageI2sRxPin).toHaveBeenCalledWith(expect.anything(), 0, Wire.Const.PIN_RESET_TO_DEFAULT);
+    expect(stageSpdifRxPin).not.toHaveBeenCalled();
+    expect(stageSpdifRxPinExt).not.toHaveBeenCalled();
   });
 });

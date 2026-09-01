@@ -72,8 +72,7 @@ describe('AdatInputPanel', () => {
     const blocked = screen.getByRole('switch', { name: 'Enable ADAT input' });
     expect(blocked.hasAttribute('disabled')).toBe(true);
     expect(screen.getByTitle('Assign a GPIO pin first')).toBeTruthy();
-    const select = screen.getByRole('combobox', { name: 'ADAT input GPIO pin' }) as HTMLSelectElement;
-    expect(select.value).toBe('0');
+    expect(screen.getByRole('button', { name: 'ADAT input GPIO pin' }).textContent).toBe('UNSET');
     unmount();
 
     renderPanel(makeSession({ snap: makeSnap({ inputConfig: { adatInputPin: 20 } }) }));
@@ -93,17 +92,17 @@ describe('AdatInputPanel', () => {
     expect(screen.getByTitle('Switch the input source away first')).toBeTruthy();
   });
 
-  test('the CLEAR reset option only appears while disabled, and sends the 0xFF sentinel', async () => {
+  test('the CLEAR chip only appears while disabled with an assigned pin, and sends the 0xFF sentinel', async () => {
     const { unmount } = renderPanel(makeSession({ snap: makeSnap({ inputConfig: { adatInputEnabled: true, adatInputPin: 20 } }) }));
-    let select = screen.getByRole('combobox', { name: 'ADAT input GPIO pin' }) as HTMLSelectElement;
-    expect(Array.from(select.options).some((o) => o.textContent === 'CLEAR')).toBe(false);
+    expect(screen.queryByRole('button', { name: 'CLEAR' })).toBeNull();
     unmount();
 
+    const { unmount: unmount2 } = renderPanel(makeSession({ snap: makeSnap({ inputConfig: { adatInputEnabled: false, adatInputPin: 0 } }) }));
+    expect(screen.queryByRole('button', { name: 'CLEAR' })).toBeNull();
+    unmount2();
+
     renderPanel(makeSession({ snap: makeSnap({ inputConfig: { adatInputEnabled: false, adatInputPin: 20 } }) }));
-    select = screen.getByRole('combobox', { name: 'ADAT input GPIO pin' }) as HTMLSelectElement;
-    const clearOpt = Array.from(select.options).find((o) => o.textContent === 'CLEAR');
-    expect(clearOpt).toBeTruthy();
-    await fireEvent.change(select, { target: { value: clearOpt!.value } });
+    await fireEvent.click(screen.getByRole('button', { name: 'CLEAR' }));
     expect(setAdatInputPin).toHaveBeenCalledWith(expect.anything(), 0xFF);
   });
 
@@ -111,11 +110,10 @@ describe('AdatInputPanel', () => {
     renderPanel(makeSession({
       snap: makeSnap({ adat: { enabled: true, pin: 20 }, dacHwMute: { enabled: true, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 } }),
     }));
-    const select = screen.getByRole('combobox', { name: 'ADAT input GPIO pin' }) as HTMLSelectElement;
-    const opt20 = Array.from(select.options).find((o) => o.value === '20') as HTMLOptionElement;
-    const opt11 = Array.from(select.options).find((o) => o.value === '11') as HTMLOptionElement;
+    const opts = screen.getAllByRole('option', { hidden: true }) as HTMLButtonElement[];
+    const opt20 = opts.find((o) => o.textContent?.includes('GP20'))!;
+    const opt11 = opts.find((o) => o.textContent?.includes('GP11'))!;
     expect(opt20.disabled).toBe(false);
-    expect(opt20.textContent).toBe('GP20');
     expect(opt11.disabled).toBe(true);
   });
 

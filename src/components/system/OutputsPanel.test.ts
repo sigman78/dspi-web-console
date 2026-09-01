@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
+import { Wire } from '@/protocol';
 
 const verbs = vi.hoisted(() => ({
   stageOutputType: vi.fn(),
@@ -103,5 +104,30 @@ describe('OutputsPanel', () => {
     expect(screen.getByRole('switch', { name: 'Out 1 enable' })).not.toBeDisabled();
     expect(screen.getByRole('switch', { name: 'Out 2 enable' })).not.toBeDisabled();
     expect(screen.getByRole('switch', { name: 'PDM sub enable' })).not.toBeDisabled();
+  });
+
+  test('DEFAULTS chip is hidden without pin-reset firmware support', () => {
+    const session = makeSession(makeSnap());
+    render(OutputsPanel, { context: new Map([[SESSION_KEY, session]]) });
+    expect(screen.queryByRole('button', { name: 'DEFAULTS' })).toBeNull();
+  });
+
+  test('DEFAULTS chip stages a pin reset for every SPDIF slot plus PDM when PDM is idle', async () => {
+    const session = makeSession(makeSnap());
+    session.device.capabilities.features.pinResetDefault = true;
+    render(OutputsPanel, { context: new Map([[SESSION_KEY, session]]) });
+    await fireEvent.click(screen.getByRole('button', { name: 'DEFAULTS' }));
+    for (let slot = 0; slot < 4; slot++) {
+      expect(verbs.stageOutputDataPin).toHaveBeenCalledWith(session, slot, Wire.Const.PIN_RESET_TO_DEFAULT);
+    }
+    expect(verbs.stageOutputDataPin).toHaveBeenCalledWith(session, 4, Wire.Const.PIN_RESET_TO_DEFAULT);
+  });
+
+  test('DEFAULTS chip skips the PDM pin while PDM is active', async () => {
+    const session = makeSession(makeSnap([8]));
+    session.device.capabilities.features.pinResetDefault = true;
+    render(OutputsPanel, { context: new Map([[SESSION_KEY, session]]) });
+    await fireEvent.click(screen.getByRole('button', { name: 'DEFAULTS' }));
+    expect(verbs.stageOutputDataPin).not.toHaveBeenCalledWith(session, 4, Wire.Const.PIN_RESET_TO_DEFAULT);
   });
 });

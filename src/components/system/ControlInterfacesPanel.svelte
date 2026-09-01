@@ -2,11 +2,11 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import PinSelect from './PinSelect.svelte';
+  import PinPicker from './PinPicker.svelte';
   import { connection } from '@/state';
   import { setUartControlConfig, setI2cControlConfig } from '@/runtime';
   import {
-    validUartTxPins, validI2cSdaPins, liveCsPinConfigs, CS_ADC_PINS,
+    validUartTxPins, validI2cSdaPins, pickerCellsFrom, liveCsPinConfigs,
     UART_COMMON_BAUDS, I2C_ADDRESS_MIN, I2C_ADDRESS_MAX,
     type UartControlConfig, type I2cControlConfig,
   } from '@/domain';
@@ -21,11 +21,19 @@
   const status = $derived(s.ctrlIfaces.status);
 
   const csPins = $derived(liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status));
-  const uartTxCandidates = $derived(
-    snap ? validUartTxPins(snap.platform.type, snap, { i2c, cs: csPins }).map((pin) => ({ pin, usedBy: null, role: null, adc: CS_ADC_PINS.includes(pin) })) : [],
+
+  function uartTxReason(pin: number): string {
+    return pin % 4 !== 0 ? 'UART TX must be GP0/4/8…' : `needs GP${pin + 1} free`;
+  }
+  function i2cSdaReason(pin: number): string {
+    return pin % 2 !== 0 ? 'SDA must be even' : `needs GP${pin + 1} free`;
+  }
+
+  const uartTxCells = $derived(
+    snap ? pickerCellsFrom(snap.platform.type, snap, { i2c, cs: csPins }, validUartTxPins(snap.platform.type, snap, { i2c, cs: csPins }), uart?.txPin, uartTxReason) : [],
   );
-  const i2cSdaCandidates = $derived(
-    snap ? validI2cSdaPins(snap.platform.type, snap, { uart, cs: csPins }).map((pin) => ({ pin, usedBy: null, role: null, adc: CS_ADC_PINS.includes(pin) })) : [],
+  const i2cSdaCells = $derived(
+    snap ? pickerCellsFrom(snap.platform.type, snap, { uart, cs: csPins }, validI2cSdaPins(snap.platform.type, snap, { uart, cs: csPins }), i2c?.sdaPin, i2cSdaReason) : [],
   );
 
   function lastStatusMessage(byte: number | undefined): string | null {
@@ -99,17 +107,17 @@
     <div class="rows" class:dimmed={!uart.enabled}>
       <div class="row">
         <span class="microlbl">TX PIN</span>
-        <PinSelect
+        <PinPicker
           value={uart.txPin}
-          candidates={uartTxCandidates}
+          cells={uartTxCells}
           ariaLabel="UART TX pin"
           disabled={!connected || !uart.enabled}
           onChange={onUartTxPin}
         />
         <span class="microlbl">RX PIN</span>
-        <PinSelect
+        <PinPicker
           value={uart.rxPin}
-          candidates={[{ pin: uart.rxPin, usedBy: null, role: null, adc: CS_ADC_PINS.includes(uart.rxPin) }]}
+          cells={[]}
           ariaLabel="UART RX pin (follows TX)"
           disabled
           onChange={() => {}}
@@ -161,17 +169,17 @@
     <div class="rows" class:dimmed={!i2c.enabled}>
       <div class="row">
         <span class="microlbl">SDA PIN</span>
-        <PinSelect
+        <PinPicker
           value={i2c.sdaPin}
-          candidates={i2cSdaCandidates}
+          cells={i2cSdaCells}
           ariaLabel="I2C SDA pin"
           disabled={!connected || !i2c.enabled}
           onChange={onI2cSdaPin}
         />
         <span class="microlbl">SCL PIN</span>
-        <PinSelect
+        <PinPicker
           value={i2c.sclPin}
-          candidates={[{ pin: i2c.sclPin, usedBy: null, role: null, adc: CS_ADC_PINS.includes(i2c.sclPin) }]}
+          cells={[]}
           ariaLabel="I2C SCL pin (follows SDA)"
           disabled
           onChange={() => {}}

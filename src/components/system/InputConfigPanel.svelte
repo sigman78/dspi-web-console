@@ -1,11 +1,12 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
-  import PinSelect from './PinSelect.svelte';
+  import PinPicker from './PinPicker.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { connection } from '@/state';
   import { stageInputSource, stageSpdifRxPin, stageSpdifRxPinExt, stageSpdifInputEnabled, stageInputRate, stageI2sRxPin, stageI2sInputChannels } from '@/runtime';
-  import { AudioInputSource, isSpdifSource, SpdifInputState, I2sSlaveClockState, AdatInputLockState, availablePinsFor, I2S_INPUT_RATES_HZ, liveCsPinConfigs } from '@/domain';
+  import { AudioInputSource, isSpdifSource, SpdifInputState, I2sSlaveClockState, AdatInputLockState, pickerCells, I2S_INPUT_RATES_HZ, liveCsPinConfigs, type PinPickerCell } from '@/domain';
+  import { Wire } from '@/protocol';
   import { formatRateKHz } from '@/utils';
   import { getSession } from '@/components/sessionContext';
 
@@ -73,6 +74,29 @@
     else stageSpdifRxPinExt(s, i - 1, gpio);
   }
 
+  function spdifPinCells(i: number): PinPickerCell[] {
+    if (!snap || !overlaySnap) return [];
+    const cells = pickerCells(snap.platform.type, overlaySnap, ctrlPins, effSpdifPin(i));
+    if (i === 0) return cells;
+    // ext inputs: GP0 on the wire means "not configured" -- keep it visible but unpickable.
+    return cells.map((c) => (c.pin === 0 ? { ...c, selectable: false, reason: 'reserved as the UNSET sentinel' } : c));
+  }
+
+  // Only the section currently shown gets reset -- the hidden section's
+  // pickers aren't rendered, so their targets can't be staged from here.
+  function stageSectionPinsToDefault(): void {
+    if (isSpdif) {
+      for (let i = 0; i < spdifInputCount; i++) {
+        // An ext input still at the unset sentinel is skipped: resetting it
+        // would materialize a GPIO with no way back to UNSET.
+        if (i > 0 && effSpdifPin(i) === 0) continue;
+        onSpdifPin(i, Wire.Const.PIN_RESET_TO_DEFAULT);
+      }
+    } else if (isI2s) {
+      for (let pair = 0; pair < i2sActivePairs; pair++) stageI2sRxPin(s, pair, Wire.Const.PIN_RESET_TO_DEFAULT);
+    }
+  }
+
   const SOURCE_LABELS = $derived<Record<number, string>>({
     [AudioInputSource.Usb]:    'USB',
     [AudioInputSource.Spdif]:  spdifInputCount > 1 ? 'S/PDIF 1' : 'S/PDIF',
@@ -108,6 +132,11 @@
 </script>
 
 <Panel code="SY.11" title="INPUT CONFIG">
+  {#snippet right()}
+    {#if features.pinResetDefault && (isSpdif || (isI2s && features.i2sInput))}
+      <button class="chip" disabled={!connected} title="Stage factory-default pins for this section" onclick={stageSectionPinsToDefault}>DEFAULTS</button>
+    {/if}
+  {/snippet}
   {#if inputConfig && snap && overlaySnap}
     <div class="cfgkvgrid">
       <KV label="SOURCE" value={SOURCE_LABELS[liveSource] ?? 'USB'} />
@@ -198,12 +227,12 @@
             {/if}
           </span>
           <span class="stage-wrap" class:staged={s.staging.has(spdifPinKey(i))} title={s.staging.has(spdifPinKey(i)) ? `device: GP${devSpdifPin(i)}` : undefined}>
-            <PinSelect
+            <PinPicker
               value={effSpdifPin(i)}
-              candidates={availablePinsFor(snap.platform.type, overlaySnap, effSpdifPin(i), ctrlPins)}
+              cells={spdifPinCells(i)}
+              placeholder={i === 0 ? undefined : 'UNSET'}
               ariaLabel={`${spdifTitle(i)} RX GPIO pin`}
               disabled={!connected}
-              allowReset={features.pinResetDefault}
               onChange={(p) => onSpdifPin(i, p)}
             />
           </span>
@@ -273,12 +302,11 @@
         <div class="subhdr">I2S RX PIN{i2sActivePairs > 1 ? ` · PAIR ${pair + 1}` : ''}</div>
         <div class="pinrow">
           <span class="stage-wrap" class:staged={s.staging.has(`i2sRxPin:${pair}`)} title={s.staging.has(`i2sRxPin:${pair}`) ? `device: GP${inputConfig.i2sRxPins[pair] ?? 0}` : undefined}>
-            <PinSelect
+            <PinPicker
               value={effI2sRxPin(pair)}
-              candidates={availablePinsFor(snap.platform.type, overlaySnap, effI2sRxPin(pair), ctrlPins)}
+              cells={pickerCells(snap.platform.type, overlaySnap, ctrlPins, effI2sRxPin(pair))}
               ariaLabel={`I2S RX data pin, stereo pair ${pair + 1}`}
               disabled={!connected}
-              allowReset={features.pinResetDefault}
               onChange={(p) => stageI2sRxPin(s, pair, p)}
             />
           </span>

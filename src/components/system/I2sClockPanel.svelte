@@ -3,13 +3,14 @@
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import KV from '@/components/chrome/KV.svelte';
-  import PinSelect from './PinSelect.svelte';
+  import PinPicker from './PinPicker.svelte';
   import { connection } from '@/state';
   import {
     stageI2sBckPin, stageMckEnabled, stageMckPin, stageMckMultiplier,
     stageI2sClockMode, stageI2sClockPinMode, stageI2sBckPinSlave,
   } from '@/runtime';
-  import { validBckPins, validBckPinsSlave, availablePinsFor, OutputSlotType, liveCsPinConfigs, AudioInputSource, I2sSlaveClockState, CS_ADC_PINS } from '@/domain';
+  import { validBckPins, validBckPinsSlave, pickerCells, pickerCellsFrom, OutputSlotType, liveCsPinConfigs, AudioInputSource, I2sSlaveClockState } from '@/domain';
+  import { Wire } from '@/protocol';
   import { formatRateKHz } from '@/utils';
   import { getSession } from '@/components/sessionContext';
 
@@ -34,11 +35,15 @@
   const effClockPinMode = $derived(snap ? s.staging.valueOf('i2sClockPinMode', snap.i2s.clockPinMode) : 0);
   const effBckPinSlave = $derived(snap ? s.staging.valueOf('bckPinSlave', snap.i2s.bckPinSlave) : 0);
 
-  const bckCandidates = $derived(
-    overlaySnap ? validBckPins(overlaySnap.platform.type, overlaySnap, ctrlPins).map((pin) => ({ pin, usedBy: null, role: null, adc: CS_ADC_PINS.includes(pin) })) : [],
+  const bckCells = $derived(
+    overlaySnap
+      ? pickerCellsFrom(overlaySnap.platform.type, overlaySnap, ctrlPins, validBckPins(overlaySnap.platform.type, overlaySnap, ctrlPins), effBckPin, (p) => `needs GP${p + 1} free`)
+      : [],
   );
-  const slaveBckCandidates = $derived(
-    overlaySnap ? validBckPinsSlave(overlaySnap.platform.type, overlaySnap, ctrlPins).map((pin) => ({ pin, usedBy: null, role: null, adc: CS_ADC_PINS.includes(pin) })) : [],
+  const slaveBckCells = $derived(
+    overlaySnap
+      ? pickerCellsFrom(overlaySnap.platform.type, overlaySnap, ctrlPins, validBckPinsSlave(overlaySnap.platform.type, overlaySnap, ctrlPins), effBckPinSlave, (p) => `needs GP${p + 1} free`)
+      : [],
   );
   const multOpts = $derived([
     { value: 0, label: '128×' },
@@ -66,24 +71,37 @@
     return 'off';
   }
 
+  // Each target is skipped while gated (active I2S slot, MCK on, unified pin
+  // mode) -- staging a reset there would only draw a firmware OUTPUT_ACTIVE
+  // refusal on APPLY.
+  function stageClockPinsToDefault(): void {
+    if (!anyI2s) stageI2sBckPin(s, Wire.Const.PIN_RESET_TO_DEFAULT);
+    if (!effMckEnabled) stageMckPin(s, Wire.Const.PIN_RESET_TO_DEFAULT);
+    if (features.i2sSlaveClock && effClockPinMode === 1) stageI2sBckPinSlave(s, Wire.Const.PIN_RESET_TO_DEFAULT);
+  }
+
 </script>
 
 <Panel code="SY.08" title="I2S CLOCK">
+  {#snippet right()}
+    {#if features.pinResetDefault}
+      <button class="chip" disabled={!connected} title="Stage factory-default clock pins" onclick={stageClockPinsToDefault}>DEFAULTS</button>
+    {/if}
+  {/snippet}
   {#if snap?.i2s && overlaySnap}
     <div class="rows">
       <div class="row">
         <span class="microlbl">BCK</span>
         <span class="stage-wrap" class:staged={s.staging.has('bckPin')} title={s.staging.has('bckPin') ? `device: GP${snap.i2s.bckPin}` : undefined}>
-          <PinSelect
+          <PinPicker
             value={effBckPin}
-            candidates={bckCandidates}
+            cells={bckCells}
             ariaLabel="I2S BCK pin"
             disabled={!connected || anyI2s}
-            allowReset={features.pinResetDefault}
             onChange={(p) => stageI2sBckPin(s, p)}
           />
         </span>
-        <span class="hint">LRCLK GP{effBckPin + 1}</span>
+        <span class="hint">{effBckPin === Wire.Const.PIN_RESET_TO_DEFAULT ? 'LRCLK —' : `LRCLK GP${effBckPin + 1}`}</span>
       </div>
       {#if anyI2s}
         <div class="hint">Set all slots to SPDIF to change BCK.</div>
@@ -101,12 +119,11 @@
           />
         </span>
         <span class="stage-wrap" class:staged={s.staging.has('mckPin')} title={s.staging.has('mckPin') ? `device: GP${snap.i2s.mckPin}` : undefined}>
-          <PinSelect
+          <PinPicker
             value={effMckPin}
-            candidates={availablePinsFor(snap.platform.type, overlaySnap, effMckPin, ctrlPins)}
+            cells={pickerCells(snap.platform.type, overlaySnap, ctrlPins, effMckPin)}
             ariaLabel="MCK pin"
             disabled={!connected || effMckEnabled}
-            allowReset={features.pinResetDefault}
             onChange={(p) => stageMckPin(s, p)}
           />
         </span>
@@ -165,16 +182,15 @@
           <div class="row">
             <span class="microlbl">SLAVE</span>
             <span class="stage-wrap" class:staged={s.staging.has('bckPinSlave')} title={s.staging.has('bckPinSlave') ? `device: GP${snap.i2s.bckPinSlave}` : undefined}>
-              <PinSelect
+              <PinPicker
                 value={effBckPinSlave}
-                candidates={slaveBckCandidates}
+                cells={slaveBckCells}
                 ariaLabel="I2S BCK pin (slave)"
                 disabled={!connected}
-                allowReset={features.pinResetDefault}
                 onChange={(p) => stageI2sBckPinSlave(s, p)}
               />
             </span>
-            <span class="hint">LRCLK GP{effBckPinSlave + 1}</span>
+            <span class="hint">{effBckPinSlave === Wire.Const.PIN_RESET_TO_DEFAULT ? 'LRCLK —' : `LRCLK GP${effBckPinSlave + 1}`}</span>
           </div>
         {/if}
       {/if}

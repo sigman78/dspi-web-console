@@ -200,3 +200,70 @@ export function validI2cSdaPins(
       && free(p) && free(p + 1),
   );
 }
+
+// Display-only decoration for the custom pin-picker grid (PinPicker v2): the
+// full GPIO range with per-cell state, for rendering only. Selectability
+// always derives from the existing validators -- never re-implemented here.
+export interface PinPickerCell {
+  pin: number;
+  adc: boolean;
+  use: PinUse | null;
+  reserved: boolean;
+  selectable: boolean;
+  reason: string | null;
+}
+
+export function pickerCells(
+  platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES, selfPin?: number,
+): PinPickerCell[] {
+  const channelModel = snapshot.platform.channelModel;
+  const uses = pinUses(snapshot, ctrl);
+  const cells: PinPickerCell[] = [];
+  for (let pin = 0; pin <= maxGpio(platform); pin++) {
+    const adc = CS_ADC_PINS.includes(pin);
+    if (!isAssignablePin(platform, pin, channelModel)) {
+      cells.push({ pin, adc, use: null, reserved: true, selectable: false, reason: 'reserved' });
+      continue;
+    }
+    if (pin === selfPin) {
+      cells.push({ pin, adc, use: null, reserved: false, selectable: true, reason: null });
+      continue;
+    }
+    const use = uses.get(pin) ?? null;
+    cells.push({
+      pin, adc, use, reserved: false,
+      selectable: use == null, reason: use?.label ?? null,
+    });
+  }
+  return cells;
+}
+
+export function pickerCellsFrom(
+  platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
+  selectablePins: readonly number[], selfPin?: number, blockedReason?: (pin: number) => string,
+): PinPickerCell[] {
+  const channelModel = snapshot.platform.channelModel;
+  const uses = pinUses(snapshot, ctrl);
+  const selectableSet = new Set(selectablePins);
+  const cells: PinPickerCell[] = [];
+  for (let pin = 0; pin <= maxGpio(platform); pin++) {
+    const adc = CS_ADC_PINS.includes(pin);
+    if (!isAssignablePin(platform, pin, channelModel)) {
+      cells.push({ pin, adc, use: null, reserved: true, selectable: false, reason: 'reserved' });
+      continue;
+    }
+    const isSelf = pin === selfPin;
+    if (selectableSet.has(pin) || isSelf) {
+      const use = isSelf ? null : uses.get(pin) ?? null;
+      cells.push({ pin, adc, use, reserved: false, selectable: true, reason: null });
+      continue;
+    }
+    const use = uses.get(pin);
+    if (use) {
+      cells.push({ pin, adc, use, reserved: false, selectable: false, reason: use.label });
+    } else {
+      cells.push({ pin, adc, use: null, reserved: false, selectable: false, reason: blockedReason?.(pin) ?? 'unavailable' });
+    }
+  }
+  return cells;
+}
