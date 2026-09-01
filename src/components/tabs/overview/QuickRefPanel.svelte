@@ -27,6 +27,8 @@
     </div>
     <div class="hint">
       Panel codes (OV.01, SY.02 …) identify panels — mention them when reporting issues.
+      Diagnostics panels (telemetry, error counters, buffer stats) are hidden by default —
+      toggle DEBUG in the SYSTEM tab's DEVICE panel, or open the app with ?debug in the URL.
     </div>
     <div class="links">
       <a href={REPO_URL} target="_blank" rel="noreferrer">GITHUB ↗</a>
