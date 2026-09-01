@@ -1,10 +1,10 @@
-# DSPi Console Web
+# DSPi Web Console
 
 A browser-based configurator for the [Weeb Labs DSPi](https://github.com/WeebLabs/DSPi)
 
 Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScript, bundled with Vite).
 
-[> Launch <](https://dspi-ctrl.fyi) | [> Demo (w/o device) <](https://dspi-ctrl.fyi/?mock)
+[> Launch App <](https://dspi-ctrl.fyi) | [> Demo (w/o device) <](https://dspi-ctrl.fyi/?mock)
 
 > **[dspi-ctrl.fyi](https://dspi-ctrl.fyi)** is the stable release. The rolling test build (latest `master`) is on [GitHub Pages](https://sigman78.github.io/dspi-web-console/).
 
@@ -13,19 +13,16 @@ Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScrip
 
 ## HW/FW Compatibility status
 
-- **Requires firmware 1.1.4+.** Two channel-model generations are fully supported: **1.1.4** (wire V10) and **1.1.5** (wire V16–V26, unified channel model — the V16+ versions share one channel model and differ only by additive sections). Older firmware (≤ 1.1.3) and in-development intermediates (wire 11–15) are detected at connect and rejected with a firmware-update notice — flash a current [DSPi release](https://github.com/WeebLabs/DSPi) via the UF2 bootloader (hold BOOTSEL while plugging in).
+- **Minimal fw 1.1.4 (V10)** — S/PDIF input, LG Sound Sync, user volume, DAC hardware mute, EQ with per-band bypass, presets, notifications, firmware update from the app. Fully supported; it just doesn't show the 1.1.5 features below.
+- **Current 1.1.5 (V16–V26)** adds: up to 8-in / 9-out on RP2350, multichannel I2S input, up to three selectable S/PDIF inputs, per-output crossover filters, first-order and Linkwitz Transform EQ, UART/I2C external control interfaces, Control Surfaces (physical controls/LEDs on spare GPIOs) with IR remote learn, I2S slave-clock mode, channel masks for the volume leveller / loudness / crossfeed, psychoacoustic bass enhancement, a stereo upmixer (Centre/Ls/Rs derived from a stereo source, RP2350), and pin reset-to-default. Every surface is gated per feature on the device's capabilities and the exact wire version that carries it, so older firmware simply doesn't show what it can't do.
 - Firmware newer than the console knows (wire > V26) connects best-effort, reading only the sections it recognizes.
-- **1.1.4 (V10)** is the legacy stereo surface — S/PDIF input, LG Sound Sync, user volume, DAC hardware mute, EQ with per-band bypass, presets, notifications, firmware update from the app. Fully supported; it just doesn't show the 1.1.5 features below.
-- **1.1.5 (V16–V26)** adds: up to 8-in / 9-out on RP2350, multichannel I2S input, up to three selectable S/PDIF inputs, per-output crossover filters, first-order and Linkwitz Transform EQ, UART/I2C external control interfaces, Control Surfaces (physical controls/LEDs on spare GPIOs) with IR remote learn, I2S slave-clock mode, channel masks for the volume leveller / loudness / crossfeed, psychoacoustic bass enhancement, a stereo upmixer (Centre/Ls/Rs derived from a stereo source, RP2350), and pin reset-to-default. Every surface is gated per feature on the device's capabilities and the exact wire version that carries it, so older firmware simply doesn't show what it can't do.
-- Both USB identities are recognized: `2E8B:FEAA` (fw ≥ 1.1.4) and the legacy `2E8A:FEAA` (≤ 1.1.3, upgrade-prompt only).
-- RP2350 tested end-to-end; RP2040 verified on MCU hardware only (no audio out).
 
 ## Requirements
 
-- A Chromium-based browser (Chrome, Edge, Brave, Opera). WebUSB is not available in Firefox or Safari.
-- HTTPS, or `localhost` for development. WebUSB requires a secure context.
+- A Chromium-based browser (Chrome, Edge, Brave, Opera).
 - **Windows users:** bind the DSPi's vendor interface (interface 2) to **WinUSB** via [Zadig](https://zadig.akeo.ie/) if your device was previously paired with libusb-win32. Close any other app holding the interface — only one process can claim it at a time.
-- **Linux users:** the browser needs a udev rule to open the DSPi. The connect screen has a **"LINUX? ONE-TIME USB SETUP"** panel with a one-liner (`curl … /setup-linux.sh | sh`) that installs it; or drop [`70-dspi.rules`](public/70-dspi.rules) into `/etc/udev/rules.d/` yourself, run `udevadm control --reload`, and replug.
+- **Linux users:** the browser needs a udev rule to open the DSPi. The connect screen has a hint with a one-liner (`curl … /setup-linux.sh | sh`) that installs it; or drop [`70-dspi.rules`](public/70-dspi.rules) into `/etc/udev/rules.d/` yourself, run `udevadm control --reload`, and replug.
+- Platform-specific troubleshooting instructions are available at [Wiki](https://github.com/sigman78/dspi-web-console/wiki) pages 
 
 ## Quick start
 
@@ -71,8 +68,6 @@ Use `npm run prepare` script to initialise hooks after `npm install`.
 
 - **pre-commit** — runs `eslint --fix` on staged `.ts`/`.svelte` files (via lint-staged).
 - **pre-push** — runs the full gate: `npm run check && npm run test && npm run build`.
-
-Bypass with `--no-verify` if you really need to.
 
 ## Mock vs hardware
 
