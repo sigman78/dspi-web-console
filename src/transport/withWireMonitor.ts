@@ -7,15 +7,28 @@ import type { DspTransport, TransportEvent } from './DspTransport';
 // timeout-race path. Logging is fully guarded: a formatter or Log failure can
 // never break or delay a transfer.
 export function withWireMonitor(inner: DspTransport): DspTransport {
+  // Last-seen bulk wire version, learned from GetAllParams/SetAllParams (or a
+  // chunk-0 GetAllParamsChunk/SetAllParamsChunk); lets a later PARAM_CHANGED
+  // notify be decoded against the right section layout.
+  let lastBulkVersion: number | null = null;
+
   const warn = (...args: unknown[]): void => {
-    try { Log.warn('wire', ...args); } catch { /* ignore */ }
+    try {
+      Log.warn('wire', ...args);
+      WireMon.recordWireLine(`! ${args.map(String).join(' ')}`);
+    } catch { /* ignore */ }
   };
 
   // Telemetry polls go to debug (hidden by default), everything else to info.
+  // Only info-level lines are captured -- debug-level polls would flood the
+  // rolling capture window.
   const emit = (level: 'info' | 'debug', build: () => string | null): void => {
     try {
       const line = build();
-      if (line) Log[level]('wire', line);
+      if (line) {
+        Log[level]('wire', line);
+        if (level === 'info') WireMon.recordWireLine(line);
+      }
     } catch (err) {
       warn('monitor formatter threw', err);
     }
@@ -30,6 +43,8 @@ export function withWireMonitor(inner: DspTransport): DspTransport {
     async ctrlIn(request, value, length) {
       try {
         const bytes = await inner.ctrlIn(request, value, length);
+        const version = WireMon.bulkVersionFromTraffic(request, value, bytes);
+        if (version !== null) lastBulkVersion = version;
         const level = WireMon.isPollCommand(request) ? 'debug' : 'info';
         emit(level, () => WireMon.formatCtrlIn(request, value, bytes));
         return bytes;
@@ -42,6 +57,8 @@ export function withWireMonitor(inner: DspTransport): DspTransport {
     async ctrlOut(request, value, data) {
       try {
         await inner.ctrlOut(request, value, data);
+        const version = WireMon.bulkVersionFromTraffic(request, value, data);
+        if (version !== null) lastBulkVersion = version;
         emit('info', () => WireMon.formatCtrlOut(request, value, data));
       } catch (err) {
         warn(`x ctrlOut 0x${request.toString(16)}`, err);
@@ -53,7 +70,7 @@ export function withWireMonitor(inner: DspTransport): DspTransport {
       ? {
           async notifyIn(length: number) {
             const bytes = await inner.notifyIn!(length);
-            emit('info', () => WireMon.formatNotify(bytes));
+            emit('info', () => WireMon.formatNotify(bytes, lastBulkVersion));
             return bytes;
           },
         }

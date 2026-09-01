@@ -7,6 +7,9 @@ import { BinReader, BinWriter } from './binStream';
 
 export interface BinCodec<T> {
   readonly size?: number; // size in bytes if known, `undefined` for variable length
+  // `struct()` schemas only: the field list in on-wire order, for callers that
+  // need to walk a struct's layout (e.g. an offset-to-field resolver).
+  readonly fields?: readonly (readonly [string, BinCodec<unknown>])[];
   read(r: BinReader): T;
   write(w: BinWriter, v: T): void;
 }
@@ -69,6 +72,7 @@ function struct<F extends Record<string, BinCodec<any>>>(fields: F): BinCodec<St
   }
   return {
     size: allFixed ? total : undefined,
+    fields: entries,
     read(r) {
       const out: Record<string, unknown> = {};
       for (const [name, codec] of entries) {

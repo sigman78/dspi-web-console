@@ -5,8 +5,10 @@
 
 import { Codec, type BinCodec } from '@/utils';
 import { WireCmd } from './wireCmd';
+import * as Wire from './wireTypes';
 import type { BulkLayout } from './wireTypes';
-import { parseNotifyPacket, ParamSource } from './notify';
+import { parseNotifyPacket, ParamSource, type ParamChangedEvent } from './notify';
+import { describeBulkOffset } from './bulkOffsets';
 import { wireLogEnabled } from '@/devOptions';
 
 // Read at call time so the gate is testable and reflects the live URL.
@@ -20,6 +22,17 @@ const BULK_WRITE = WireCmd.SetAllParams.code;  // 0xA1
 // Chunked bulk access (fw 1.1.5+): wValue is the byte offset, worth showing.
 const BULK_READ_CHUNK = WireCmd.GetAllParamsChunk.code;   // 0xA2
 const BULK_WRITE_CHUNK = WireCmd.SetAllParamsChunk.code;  // 0xA3
+
+// Derives the bulk wire version from control traffic that carries the
+// header's first byte (formatVersion): a full bulk transfer always does, and
+// a chunked transfer only at chunk offset 0. Lets withWireMonitor track the
+// device's wire version so it can enrich later PARAM_CHANGED notifications.
+export function bulkVersionFromTraffic(request: number, value: number, payload: Uint8Array): number | null {
+  if (payload.length === 0) return null;
+  if (request === BULK_READ || request === BULK_WRITE) return payload[0];
+  if ((request === BULK_READ_CHUNK || request === BULK_WRITE_CHUNK) && value === 0) return payload[0];
+  return null;
+}
 
 interface CmdInfo {
   name: string;
@@ -98,14 +111,48 @@ function srcName(source: number): string {
   return SOURCE_NAME.get(source) ?? `src${source}`;
 }
 
+function hexPreview(bytes: Uint8Array, max = 16): string {
+  return Array.from(bytes.subarray(0, max), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Appends what a PARAM_CHANGED splice actually touched, when the field can be
+// resolved: the exact field for an exact-size write, the whole band for a
+// firmware EQ write (bands are always spliced whole), or a path+delta for
+// anything coarser. Falls back to a byte-count + hex tail when the version is
+// unknown or the splice can't be resolved -- never throws.
+function formatParamChangedTail(e: ParamChangedEvent, bulkVersion: number | null): string {
+  const base = ` off=${e.offset}`;
+  try {
+    if (bulkVersion !== null) {
+      const hit = describeBulkOffset(e.offset, bulkVersion);
+      if (hit) {
+        if (hit.leaf && e.offset === hit.leafOffset && e.size === Codec.sizeOf(hit.leaf)) {
+          return `${base} ${hit.path}=${fmtValue(Codec.decode(hit.leaf, e.value))}`;
+        }
+        if (e.size === 16 && e.offset === hit.leafOffset && hit.path.endsWith('.type')) {
+          const bandCodec = bulkVersion >= 22 ? Wire.BandParamsQp : Wire.BandParams;
+          const decoded = Codec.decode(bandCodec, e.value);
+          const bandPath = hit.path.slice(0, hit.path.lastIndexOf('.'));
+          return `${base} ${bandPath} ${fmtValue(decoded)}`;
+        }
+        return hit.leaf ? `${base} ${hit.path}+${e.offset - hit.leafOffset}` : `${base} ${hit.path}`;
+      }
+    }
+  } catch {
+    // fall through to the byte-count fallback
+  }
+  return `${base} ${e.size}B ${hexPreview(e.value)}`;
+}
+
 // Returns null for idle keep-alives (suppressed to avoid console spam).
-export function formatNotify(bytes: Uint8Array): string | null {
+// `bulkVersion` enriches paramChanged with the field it wrote, when known.
+export function formatNotify(bytes: Uint8Array, bulkVersion: number | null = null): string | null {
   const e = parseNotifyPacket(bytes);
   switch (e.kind) {
     case 'idle':
       return null;
     case 'paramChanged':
-      return `<~ notify paramChanged seq=${e.seq} src=${srcName(e.source)}`;
+      return `<~ notify paramChanged seq=${e.seq} src=${srcName(e.source)}${formatParamChangedTail(e, bulkVersion)}`;
     case 'bulkInvalidated':
       return `<~ notify bulkInvalidated seq=${e.seq} src=${srcName(e.source)}`;
     case 'presetLoaded':
@@ -155,4 +202,22 @@ const POLL_CODES = new Set<number>([WireCmd.GetStatus.code, WireCmd.GetBufferSta
 
 export function isPollCommand(request: number): boolean {
   return POLL_CODES.has(request);
+}
+
+// Rolling capture of every logged wire line, for a tester to pull out of a
+// live session (`copy(__dspiWireLog.join('\n'))` in DevTools) without having
+// scrolled the console the whole time. Capped so a long session can't leak
+// memory.
+const MAX_CAPTURED_LINES = 2000;
+const capturedLines: string[] = [];
+let published = false;
+
+export function recordWireLine(line: string): void {
+  const prefix = typeof performance === 'undefined' ? '' : `[+${(performance.now() / 1000).toFixed(3)}s] `;
+  capturedLines.push(`${prefix}${line}`);
+  if (capturedLines.length > MAX_CAPTURED_LINES) capturedLines.shift();
+  if (!published) {
+    published = true;
+    (globalThis as Record<string, unknown>).__dspiWireLog = capturedLines;
+  }
 }
