@@ -75,7 +75,7 @@ The mock transport (`?mock=*`, also used in tests) synthesises a wire-faithful b
 
 ## Diagnostics panels
 
-The SYSTEM tab hides its diagnostics panels (TELEMETRY, ERROR COUNTERS, BUFFER STATS) by default. Toggle the **DEBUG** chip in the DEVICE panel header to show them — the choice persists per browser. Appending `?debug` to the URL forces them on regardless of the setting, which makes for good support links ("open the app with `?debug` and read me the error counters").
+The SYSTEM tab hides its diagnostics panels (TELEMETRY, ERROR COUNTERS, BUFFER STATS) by default. Toggle the **DEBUG** chip in the DEVICE panel header to show them — the choice persists per browser. Appending `?debug` to the URL forces them on regardless of the setting, which makes for good support links ("open the app with `?debug` and read me the error counters"). While the panels are hidden the console also skips the buffer-stats poll they feed on — a little less USB chatter for regular use.
 
 ## Usb wire monitoring
 

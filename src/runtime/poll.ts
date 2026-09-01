@@ -1,4 +1,5 @@
-import type { ReadySession } from '@/state';
+import { settings, type ReadySession } from '@/state';
+import { debugPanelsForced } from '@/devOptions';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
 import { ALL_CHANNELS, isSpdifSource, wireChannelFor } from '@/domain';
@@ -69,6 +70,15 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       health.noteFail('poll:status', e);
       if (tele.errorCount <= 3) Log.warn('poll', 'getSystemStatus failed', e);
     }
+  }
+
+  // Buffer stats feed only the debug-gated diagnostics panels (SY.02's
+  // STREAMING/PDM rows and SY.12) -- skip the 4 Hz fetch while they're hidden.
+  // lastBufferMs stays put while gated, so enabling DEBUG polls on the next
+  // tick and the panels populate immediately.
+  function shouldRunBuffer(now: number): boolean {
+    if (!settings.debugPanels && !debugPanelsForced()) return false;
+    return tele.lastBufferMs === 0 || now - tele.lastBufferMs >= BUFFER_INTERVAL_MS;
   }
 
   async function pollBuffer(d: DspDevice): Promise<void> {
@@ -247,7 +257,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
 
   const cadences: Cadence[] = [
     { key: 'status',  intervalMs: STATUS_INTERVAL_MS,   runWhileHidden: false, lastMs: () => tele.lastStatusMs, run: pollStatus },
-    { key: 'buffer',  intervalMs: BUFFER_INTERVAL_MS,   runWhileHidden: false, lastMs: () => tele.lastBufferMs, run: pollBuffer },
+    { key: 'buffer',  intervalMs: BUFFER_INTERVAL_MS,   runWhileHidden: false, lastMs: () => tele.lastBufferMs, run: pollBuffer, shouldRun: shouldRunBuffer },
     { key: 'info',    intervalMs: INFO_INTERVAL_MS,     runWhileHidden: false, lastMs: () => tele.lastInfoMs,   run: pollInfo },
     { key: 'spdifRx', intervalMs: SPDIF_RX_INTERVAL_MS, runWhileHidden: false, lastMs: () => lastSpdifRxMs,     run: pollSpdifRx, shouldRun: shouldRunSpdifRx },
     { key: 'i2sSlave', intervalMs: I2S_SLAVE_INTERVAL_MS, runWhileHidden: false, lastMs: () => lastI2sSlaveMs, run: pollI2sSlave, shouldRun: shouldRunI2sSlave },
