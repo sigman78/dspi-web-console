@@ -122,6 +122,17 @@
   }
   .trigger:hover:not(:disabled) { border-color: var(--border-hi); }
   .trigger:disabled { opacity: var(--dim-disabled); cursor: default; }
+  /* Editability cue: the dropdown chevron marks the value as assignable; a
+     disabled picker (e.g. the UART RX / I2C SCL followers) reads as a plain
+     value. Pseudo-element so it stays out of textContent and the aria name. */
+  .trigger::after {
+    content: '▾';
+    margin-left: 5px;
+    font-size: 8px;
+    color: var(--text-faint);
+  }
+  .trigger:hover:not(:disabled)::after { color: var(--text); }
+  .trigger:disabled::after { content: none; }
 
   .popup {
     position-area: block-end span-inline-end;
