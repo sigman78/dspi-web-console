@@ -69,7 +69,6 @@
         >
           {#if cell.adc}<span class="adc-mark">▪</span>{/if}
           <span class="num">GP{cell.pin}</span>
-          <span class="lbl">{cell.use ? cell.use.label : (cell.assignable ? '' : '—')}</span>
         </div>
       {/each}
     </div>
@@ -97,12 +96,9 @@
   .cell {
     position: relative;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1px;
-    min-height: 30px;
-    padding: 3px 2px;
+    padding: 4px 2px;
     border-radius: var(--radius-s);
     border: 1px solid var(--border);
     background: var(--wash);
@@ -123,15 +119,6 @@
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 0.3px;
-  }
-  .lbl {
-    font-family: var(--font-mono);
-    font-size: 8px;
-    max-width: 100%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    line-height: 1.2;
   }
   .adc-mark {
     position: absolute;
