@@ -13,9 +13,10 @@ Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScrip
 
 ## HW/FW Compatibility status
 
-- **Minimal fw 1.1.4 (V10)** — S/PDIF input, LG Sound Sync, user volume, DAC hardware mute, EQ with per-band bypass, presets, notifications, firmware update from the app. Fully supported; it just doesn't show the 1.1.5 features below.
-- **Current 1.1.5 (V16–V26)** adds: up to 8-in / 9-out on RP2350, multichannel I2S input, up to three selectable S/PDIF inputs, per-output crossover filters, first-order and Linkwitz Transform EQ, UART/I2C external control interfaces, Control Surfaces (physical controls/LEDs on spare GPIOs) with IR remote learn, I2S slave-clock mode, channel masks for the volume leveller / loudness / crossfeed, psychoacoustic bass enhancement, a stereo upmixer (Centre/Ls/Rs derived from a stereo source, RP2350), and pin reset-to-default. Every surface is gated per feature on the device's capabilities and the exact wire version that carries it, so older firmware simply doesn't show what it can't do.
-- Firmware newer than the console knows (wire > V26) connects best-effort, reading only the sections it recognizes.
+- **Minimal fw 1.1.4 (V10)** — S/PDIF input, LG Sound Sync, user volume, DAC hardware mute, EQ with per-band bypass, presets, notifications, firmware update from the app. Fully supported; it just doesn't show the newer features below.
+- **Current 1.1.5 / 1.1.6 (V16–V28)** adds: up to 8-in / 9-out on RP2350, multichannel I2S input, up to four selectable S/PDIF inputs, per-output crossover filters, first-order (shelves, all-pass, 6 dB/oct low/high pass) and Linkwitz Transform EQ, UART/I2C external control interfaces, Control Surfaces (physical controls/LEDs on spare GPIOs) with IR remote learn, I2S slave-clock mode, channel masks for the volume leveller / loudness / crossfeed, psychoacoustic bass enhancement, a stereo upmixer (Centre/Ls/Rs derived from a stereo source, with a surrounds-only mode; RP2350), and pin reset-to-default. Every surface is gated per feature on the device's capabilities and the exact wire version that carries it, so older firmware simply doesn't show what it can't do.
+- **fw 1.1.6** shares wire V28 with released 1.1.5 and is fully supported at that level. Its expanded Control Surfaces catalog (indicator delays, target groups, macros, I2C displays — caps v8–v13) connects and degrades gracefully in the CONTROL tab; dedicated editors for those are in progress.
+- Firmware newer than the console knows (wire > V28) connects best-effort, reading only the sections it recognizes.
 
 ## Requirements
 
@@ -40,7 +41,7 @@ Then open the URL in Chrome/Edge, click **Connect**, and pick your DSPi.
 Append a `?mock` flag to boot against a wire-faithful synthesized device — useful for trying out the UI. It takes one or more comma-separated profile tokens, plus an optional `&chip=` hardware flavor:
 
 ```
-http://localhost:5173/?mock                     # newest wire / fw 1.1.5 (8-in/9-out, crossover, control interfaces + surfaces)
+http://localhost:5173/?mock                     # newest wire / fw 1.1.6 (8-in/9-out, crossover, control interfaces + surfaces)
 http://localhost:5173/?mock=legacy              # legacy 1.1.4 / V10 surface
 http://localhost:5173/?mock=multi               # newest surface + 8ch I2S input + 3 S/PDIF inputs (multichannel demo)
 http://localhost:5173/?mock=v18                 # exact wire version 18, for testing per-version feature gates
