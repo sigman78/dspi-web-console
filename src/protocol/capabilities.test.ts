@@ -41,7 +41,7 @@ describe('deriveCapabilities — support classification', () => {
     }
   });
 
-  it('classifies V19..V26 as supported; V27 reports future', () => {
+  it('classifies V19..V28 as supported; V29 reports future', () => {
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 19, payloadLength: Wire.BULK_SIZE_V19, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 20, payloadLength: Wire.BULK_SIZE_V20, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 21, payloadLength: Wire.BULK_SIZE_V21, platformId: 1 }).support).toBe('supported');
@@ -50,7 +50,9 @@ describe('deriveCapabilities — support classification', () => {
     expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 24, payloadLength: Wire.BULK_SIZE_V24, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 25, payloadLength: Wire.BULK_SIZE_V25, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 26, payloadLength: Wire.BULK_SIZE_V26, platformId: 1 }).support).toBe('supported');
-    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 27, payloadLength: Wire.BULK_SIZE_V26, platformId: 1 }).support).toBe('future');
+    expect(deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: 27, payloadLength: Wire.BULK_SIZE_V27, platformId: 1 }).support).toBe('supported');
+    expect(deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: 28, payloadLength: Wire.BULK_SIZE_V28, platformId: 1 }).support).toBe('supported');
+    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 29, payloadLength: Wire.BULK_SIZE_V28, platformId: 1 }).support).toBe('future');
   });
 });
 
@@ -180,6 +182,35 @@ describe('deriveCapabilities — V16 feature flags', () => {
     expect(at(24, Wire.BULK_SIZE_V24, 1)).toBe(false);
     expect(at(25, Wire.BULK_SIZE_V25, 0)).toBe(true);
     expect(at(25, Wire.BULK_SIZE_V25, 1)).toBe(true);
+  });
+
+  it('gates the upmix centre OFF mode on wire V27 + RP2350 (off on V26, off on RP2040, on for V27 RP2350)', () => {
+    const at = (v: number, len: number, platformId: number) =>
+      deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: v, payloadLength: len, platformId }).features.upmixCenterOff;
+    expect(at(26, Wire.BULK_SIZE_V26, 1)).toBe(false);
+    expect(at(27, Wire.BULK_SIZE_V27, 0)).toBe(false);
+    expect(at(27, Wire.BULK_SIZE_V27, 1)).toBe(true);
+  });
+
+  it('gates first-order LP/HP on wire V28, ungated on platform', () => {
+    const at = (v: number, len: number, platformId: number) =>
+      deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: v, payloadLength: len, platformId }).features.firstOrderLpHp;
+    expect(at(27, Wire.BULK_SIZE_V27, 1)).toBe(false);
+    expect(at(28, Wire.BULK_SIZE_V28, 0)).toBe(true);
+    expect(at(28, Wire.BULK_SIZE_V28, 1)).toBe(true);
+  });
+
+  it('spdifInputCount is 3 through V27 and 4 at V28+ on the multi-SPDIF platform', () => {
+    const at = (v: number, len: number) =>
+      deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: v, payloadLength: len, platformId: 1 }).spdifInputCount;
+    expect(at(26, Wire.BULK_SIZE_V26)).toBe(3);
+    expect(at(27, Wire.BULK_SIZE_V27)).toBe(3);
+    expect(at(28, Wire.BULK_SIZE_V28)).toBe(4);
+  });
+
+  it('spdifInputCount stays 1 on RP2040 regardless of wire version', () => {
+    const c = deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: 28, payloadLength: Wire.BULK_SIZE_V28, platformId: 0 });
+    expect(c.spdifInputCount).toBe(1);
   });
 });
 

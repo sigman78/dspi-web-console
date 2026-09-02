@@ -61,8 +61,12 @@ export interface WireInputConfig {
   i2sInputRateEnc: number;      // 0=44100, 1=48000, 2=96000
   i2sInputChannels: number;     // 2/4/6/8 (0 = absent)
   // fw 1.1.5+ multi-SPDIF fields; zeros on older packets ("absent" convention).
-  spdifRxPinExt: number[];      // length 2, GPIOs for SPDIF2/3 (0 = absent/keep-live)
-  spdifRxEnabledExtP1: number;  // enable mask + 1 (0 = absent)
+  // Always length 3 (GPIOs for SPDIF2/3/4, 0 = absent/keep-live) -- pre-V28
+  // packets only carry SPDIF2/3 on the wire, so the parser pads the third
+  // (SPDIF4) entry to 0.
+  spdifRxPinExt: number[];
+  // Enable mask + 1 (0 = absent). Bit2 (SPDIF4) is a V28+ addition.
+  spdifRxEnabledExtP1: number;
   // fw V21+ I2S clock role: 0 = master, 1 = slave. 0 on older packets.
   i2sClockMode: number;
   // fw V24+ ADAT input config; zeros ("absent") on older packets. GPIO raw;
@@ -336,7 +340,24 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
   const masterVol = layout.masterVolume ? Wire.MasterVolume.read(r) : { masterVolumeDb: def.masterVolumeDb };
 
   const inputConfig = layout.inputSource
-    ? (layout.adatInput
+    ? (layout.spdifInput4
+        ? (() => {
+            const w = Wire.InputConfig28.read(r);
+            return {
+              source: w.inputSource,
+              spdifRxPin: w.spdifRxPin,
+              i2sRxPins: [w.i2sRxPin, ...w.i2sRxPinExt],
+              i2sInputRateEnc: w.i2sInputRate,
+              i2sInputChannels: w.i2sInputChannels,
+              spdifRxPinExt: [...w.spdifRxPinExt],
+              spdifRxEnabledExtP1: w.spdifRxEnabledExtP1,
+              i2sClockMode: w.i2sClockMode,
+              adatInputPin: w.adatInputPin,
+              adatInputEnabledP1: w.adatInputEnabledP1,
+              adatInputClockModeP1: w.adatInputClockModeP1,
+            };
+          })()
+        : layout.adatInput
         ? (() => {
             const w = Wire.InputConfig24.read(r);
             return {
@@ -345,7 +366,8 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
               i2sRxPins: [w.i2sRxPin, ...w.i2sRxPinExt],
               i2sInputRateEnc: w.i2sInputRate,
               i2sInputChannels: w.i2sInputChannels,
-              spdifRxPinExt: [...w.spdifRxPinExt],
+              // Pre-V28 wire only carries SPDIF2/3 -- pad the SPDIF4 slot 0.
+              spdifRxPinExt: [...w.spdifRxPinExt, 0],
               spdifRxEnabledExtP1: w.spdifRxEnabledExtP1,
               i2sClockMode: w.i2sClockMode,
               adatInputPin: w.adatInputPin,
@@ -362,7 +384,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
               i2sRxPins: [w.i2sRxPin, ...w.i2sRxPinExt],
               i2sInputRateEnc: w.i2sInputRate,
               i2sInputChannels: w.i2sInputChannels,
-              spdifRxPinExt: [...w.spdifRxPinExt],
+              spdifRxPinExt: [...w.spdifRxPinExt, 0],
               spdifRxEnabledExtP1: w.spdifRxEnabledExtP1,
               i2sClockMode: w.i2sClockMode,
               adatInputPin: 0,
@@ -378,7 +400,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
               i2sRxPins: [w.i2sRxPin, ...w.i2sRxPinExt],
               i2sInputRateEnc: w.i2sInputRate,
               i2sInputChannels: w.i2sInputChannels,
-              spdifRxPinExt: [...w.spdifRxPinExt],
+              spdifRxPinExt: [...w.spdifRxPinExt, 0],
               spdifRxEnabledExtP1: w.spdifRxEnabledExtP1,
               i2sClockMode: 0,
               adatInputPin: 0,
@@ -540,7 +562,7 @@ export function defaultBulkParams(opts: {
     masterVolumeDb: 0,
     inputConfig: {
       source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
-      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      spdifRxPinExt: [0, 0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
       adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
     },
     lgSoundSync: { enabled: false, present: false, volume: 0, muted: false },
@@ -665,7 +687,22 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
   Wire.MasterVolume.write(w, { masterVolumeDb: bulk.masterVolumeDb });
 
   // V7-V16 tail -- written only when the target version includes the section.
-  if (writeVersion >= 24) {
+  if (writeVersion >= 28) {
+    Wire.InputConfig28.write(w, {
+      inputSource:         bulk.inputConfig.source,
+      spdifRxPin:          bulk.inputConfig.spdifRxPin,
+      i2sRxPin:            bulk.inputConfig.i2sRxPins[0] ?? 0,
+      i2sInputRate:        bulk.inputConfig.i2sInputRateEnc,
+      i2sInputChannels:    bulk.inputConfig.i2sInputChannels,
+      i2sRxPinExt:         bulk.inputConfig.i2sRxPins.slice(1, 4),
+      spdifRxPinExt:       bulk.inputConfig.spdifRxPinExt.slice(0, 3),
+      spdifRxEnabledExtP1: bulk.inputConfig.spdifRxEnabledExtP1,
+      i2sClockMode:        bulk.inputConfig.i2sClockMode,
+      adatInputPin:         bulk.inputConfig.adatInputPin,
+      adatInputEnabledP1:   bulk.inputConfig.adatInputEnabledP1,
+      adatInputClockModeP1: bulk.inputConfig.adatInputClockModeP1,
+    });
+  } else if (writeVersion >= 24) {
     Wire.InputConfig24.write(w, {
       inputSource:         bulk.inputConfig.source,
       spdifRxPin:          bulk.inputConfig.spdifRxPin,
@@ -673,7 +710,9 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
       i2sInputRate:        bulk.inputConfig.i2sInputRateEnc,
       i2sInputChannels:    bulk.inputConfig.i2sInputChannels,
       i2sRxPinExt:         bulk.inputConfig.i2sRxPins.slice(1, 4),
-      spdifRxPinExt:       bulk.inputConfig.spdifRxPinExt,
+      // Old layout only carries SPDIF2/3 -- the SPDIF4 (third) entry has no
+      // wire home below V28 and is dropped.
+      spdifRxPinExt:       bulk.inputConfig.spdifRxPinExt.slice(0, 2),
       spdifRxEnabledExtP1: bulk.inputConfig.spdifRxEnabledExtP1,
       i2sClockMode:        bulk.inputConfig.i2sClockMode,
       adatInputPin:         bulk.inputConfig.adatInputPin,
@@ -688,7 +727,7 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
       i2sInputRate:        bulk.inputConfig.i2sInputRateEnc,
       i2sInputChannels:    bulk.inputConfig.i2sInputChannels,
       i2sRxPinExt:         bulk.inputConfig.i2sRxPins.slice(1, 4),
-      spdifRxPinExt:       bulk.inputConfig.spdifRxPinExt,
+      spdifRxPinExt:       bulk.inputConfig.spdifRxPinExt.slice(0, 2),
       spdifRxEnabledExtP1: bulk.inputConfig.spdifRxEnabledExtP1,
       i2sClockMode:        bulk.inputConfig.i2sClockMode,
     });
@@ -700,7 +739,7 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
       i2sInputRate:        bulk.inputConfig.i2sInputRateEnc,
       i2sInputChannels:    bulk.inputConfig.i2sInputChannels,
       i2sRxPinExt:         bulk.inputConfig.i2sRxPins.slice(1, 4),
-      spdifRxPinExt:       bulk.inputConfig.spdifRxPinExt,
+      spdifRxPinExt:       bulk.inputConfig.spdifRxPinExt.slice(0, 2),
       spdifRxEnabledExtP1: bulk.inputConfig.spdifRxEnabledExtP1,
     });
   }

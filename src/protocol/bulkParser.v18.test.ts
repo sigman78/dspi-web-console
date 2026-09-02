@@ -91,7 +91,7 @@ describe('bulkParser — V18 (leveller masks) packet', () => {
     expect(p.masterVolumeDb).toBeCloseTo(-12, 4);
     expect(p.inputConfig).toEqual({
       source: 2, spdifRxPin: 5, i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 2, i2sInputChannels: 6,
-      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      spdifRxPinExt: [0, 0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
       adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
     });
     expect(p.dacHwMute).toEqual({ enabled: true, activeLow: true, pin: 11, holdMs: 20, releaseMs: 50 });

@@ -75,9 +75,9 @@ export function pinUses(snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_
     }
   }
   m.set(snapshot.inputConfig.spdifRxPin, { label: 'SPDIF RX', role: 'audio-in' });
-  // fw 1.1.5+ optional S/PDIF inputs 2/3: reserve a pin only while enabled
+  // fw 1.1.5+ optional S/PDIF inputs 2/3/4: reserve a pin only while enabled
   // (matching firmware behavior -- a disabled optional input holds no GPIO).
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < snapshot.inputConfig.spdifRxPinExt.length; i++) {
     if (snapshot.inputConfig.spdifExtEnabled[i] && snapshot.inputConfig.spdifRxPinExt[i] > 0) {
       m.set(snapshot.inputConfig.spdifRxPinExt[i], { label: `S/PDIF ${i + 2} RX`, role: 'audio-in' });
     }

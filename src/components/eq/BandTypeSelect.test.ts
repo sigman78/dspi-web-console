@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/svelte';
-import BandTypeSelect, { TYPE_ORDER, FIRST_ORDER_TYPES, offeredTypes } from './BandTypeSelect.svelte';
+import BandTypeSelect, { TYPE_ORDER, FIRST_ORDER_TYPES, FIRST_ORDER_LP_HP_TYPES, offeredTypes } from './BandTypeSelect.svelte';
 import { FilterType } from '@/domain';
 
 describe('offeredTypes', () => {
@@ -13,7 +13,21 @@ describe('offeredTypes', () => {
   });
 
   it('never offers Linkwitz Transform, even with every feature on', () => {
-    expect(offeredTypes({ firstOrderEq: true })).not.toContain(FilterType.LinkwitzTransform);
+    expect(offeredTypes({ firstOrderEq: true, firstOrderLpHp: true })).not.toContain(FilterType.LinkwitzTransform);
+  });
+
+  it('withholds the first-order low/high pass types until firstOrderLpHp is on', () => {
+    expect(offeredTypes({ firstOrderEq: true })).not.toEqual(expect.arrayContaining(FIRST_ORDER_LP_HP_TYPES));
+    expect(offeredTypes({ firstOrderEq: true, firstOrderLpHp: false })).not.toEqual(expect.arrayContaining(FIRST_ORDER_LP_HP_TYPES));
+  });
+
+  it('appends the first-order low/high pass types when firstOrderLpHp is on, independent of firstOrderEq', () => {
+    expect(offeredTypes({ firstOrderEq: true, firstOrderLpHp: true }))
+      .toEqual([...TYPE_ORDER, ...FIRST_ORDER_TYPES, ...FIRST_ORDER_LP_HP_TYPES]);
+    // A device could in principle report firstOrderLpHp without firstOrderEq
+    // (they're independent capability gates) -- the LP/HP types still show up.
+    expect(offeredTypes({ firstOrderEq: false, firstOrderLpHp: true }))
+      .toEqual([...TYPE_ORDER, ...FIRST_ORDER_LP_HP_TYPES]);
   });
 });
 

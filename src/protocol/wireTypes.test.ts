@@ -74,13 +74,15 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(Wire.bulkSizeForVersion(24)).toBe(5900);
     expect(Wire.bulkSizeForVersion(25)).toBe(5944);
     expect(Wire.bulkSizeForVersion(26)).toBe(5944);
+    expect(Wire.bulkSizeForVersion(27)).toBe(5944);
+    expect(Wire.bulkSizeForVersion(28)).toBe(5944);
     expect(Wire.bulkSizeForVersion(99)).toBe(5944);
     expect(Wire.bulkSizeForVersion(5)).toBe(2896);
   });
 
   it('BULK_SIZE_V21 equals BULK_SIZE_V20 (no packet-size change)', () => {
     expect(Wire.BULK_SIZE_V21).toBe(Wire.BULK_SIZE_V20);
-    expect(Wire.MAX_WIRE_VERSION).toBe(26);
+    expect(Wire.MAX_WIRE_VERSION).toBe(28);
   });
 
   it('bulkLayout gates i2sClockMode on wire V21 AND payloadLength', () => {
@@ -211,11 +213,17 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(back.spdifRxEnabledExtP1).toBe(2);
   });
 
-  it('GetSpdifInputConfig (0xEF) decodes [count, enableMask, pin0, pin1, pin2]', () => {
-    expect(Codec.sizeOf(Wire.SpdifInputConfig)).toBe(5);
-    const bytes = Uint8Array.from([3, 0b011, 5, 16, 17]);
+  it('GetSpdifInputConfig (0xEF) decodes [count, enableMask, pin0, pin1, pin2, pin3]', () => {
+    expect(Codec.sizeOf(Wire.SpdifInputConfig)).toBe(6);
+    const bytes = Uint8Array.from([4, 0b0111, 5, 16, 17, 22]);
     const cfg = Codec.decode(Wire.SpdifInputConfig, bytes);
-    expect(cfg).toEqual({ count: 3, enableMask: 0b011, pins: [5, 16, 17] });
+    expect(cfg).toEqual({ count: 4, enableMask: 0b0111, pins: [5, 16, 17, 22] });
+  });
+
+  it('a legacy 5-byte GetSpdifInputConfig response zero-fills pin 4 via decodePadded', () => {
+    const bytes = Uint8Array.from([3, 0b011, 5, 16, 17]);
+    const cfg = Codec.decodePadded(Wire.SpdifInputConfig, bytes);
+    expect(cfg).toEqual({ count: 3, enableMask: 0b011, pins: [5, 16, 17, 0] });
   });
 
   it('InputConfig21 is 16 bytes and carries i2sClockMode at byte 11', () => {

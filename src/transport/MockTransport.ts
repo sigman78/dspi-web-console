@@ -392,15 +392,18 @@ export class MockTransport implements DspTransport {
       }
 
       // Multi-SPDIF (fw 1.1.5+) is RP2350-only, mirroring capabilities'
-      // multiSpdifInputs gate. Seed inputs 2/3 on collision-free GPIOs,
+      // multiSpdifInputs gate. Seed inputs 2/3/4 on collision-free GPIOs,
       // "present but disabled" by default so the picker has real pins to
       // offer; RP2040 stays single-input (fields stay at the all-zero
-      // "absent" default from defaultBulkParams).
+      // "absent" default from defaultBulkParams). Input 4 only actually
+      // reaches the wire at V28+ -- #spdifInputCount()/buildBulkParams gate
+      // it structurally, so seeding it unconditionally here is harmless.
       if (this.#platform === PlatformType.RP2350) {
-        this.#mockState.inputConfig.spdifRxPinExt = [20, 21];
-        this.#mockState.inputConfig.spdifRxEnabledExtP1 = 1;   // mask 0: both disabled
+        this.#mockState.inputConfig.spdifRxPinExt = [20, 21, 22];
+        this.#mockState.inputConfig.spdifRxEnabledExtP1 = 1;   // mask 0: all disabled
         if (opts.spdifInputsEnabled && opts.spdifInputsEnabled > 1) {
-          const n = Math.min(3, Math.max(1, opts.spdifInputsEnabled | 0));
+          const maxN = this.#wireVersion >= 28 ? 4 : 3;
+          const n = Math.min(maxN, Math.max(1, opts.spdifInputsEnabled | 0));
           let mask = 0;
           for (let i = 2; i <= n; i++) mask |= 1 << (i - 2);
           this.#mockState.inputConfig.spdifRxEnabledExtP1 = mask + 1;
@@ -699,10 +702,19 @@ export class MockTransport implements DspTransport {
       case WireCmd.GetSpdifInputConfig.code: {
         const cfg = this.#mockState.inputConfig;
         const mask = cfg.spdifRxEnabledExtP1 === 0 ? 0 : cfg.spdifRxEnabledExtP1 - 1;
+        const enableMask = 1 | (mask << 1);
+        // fw-faithful: a pre-V28 device answers the legacy 5-byte layout
+        // (no pin 4); V28+ answers the full 6-byte layout.
+        if (this.#wireVersion < 28) {
+          return Uint8Array.from([
+            this.#spdifInputCount(), enableMask,
+            cfg.spdifRxPin, cfg.spdifRxPinExt[0] ?? 0, cfg.spdifRxPinExt[1] ?? 0,
+          ]);
+        }
         return Codec.encode(Wire.SpdifInputConfig, {
           count: this.#spdifInputCount(),
-          enableMask: 1 | (mask << 1),
-          pins: [cfg.spdifRxPin, cfg.spdifRxPinExt[0] ?? 0, cfg.spdifRxPinExt[1] ?? 0],
+          enableMask,
+          pins: [cfg.spdifRxPin, cfg.spdifRxPinExt[0] ?? 0, cfg.spdifRxPinExt[1] ?? 0, cfg.spdifRxPinExt[2] ?? 0],
         });
       }
       case WireCmd.GetInputRate.code: {
@@ -1361,7 +1373,7 @@ export class MockTransport implements DspTransport {
       case WireCmd.UpmixSetConfig.code: {
         const p = Codec.decode(WireCmd.UpmixSetConfig.codec, data);
         this.#mockState.upmix = {
-          enabled: p.enabled, centerMode: p.centerMode, surroundMode: p.surroundMode,
+          enabled: p.enabled, centerMode: this.#clampCenterMode(p.centerMode), surroundMode: p.surroundMode,
           strengthPct: p.strengthPct, centerWidthPct: p.centerWidthPct, corrThresholdPct: p.corrThresholdPct,
           attackMs: p.attackMs, releaseMs: p.releaseMs, detectorHpfHz: p.detectorHpfHz,
           surroundDelayMs: p.surroundDelayMs, surroundHpfHz: p.surroundHpfHz, surroundLpfHz: p.surroundLpfHz,
@@ -1633,9 +1645,11 @@ export class MockTransport implements DspTransport {
   }
 
   // Selectable S/PDIF RX inputs sharing the one receiver (fw 1.1.5+ RP2350
-  // only). Mirrors capabilities.ts's multiSpdifInputs gate.
+  // only). Mirrors capabilities.ts's multiSpdifInputs gate; the fourth input
+  // additionally needs wire V28 (InputConfig's relayout).
   #spdifInputCount(): number {
-    return this.#isV16 && this.#platform === PlatformType.RP2350 ? SPDIF_RX_MAX_INSTANCES : 1;
+    if (!this.#isV16 || this.#platform !== PlatformType.RP2350) return 1;
+    return this.#wireVersion >= 28 ? SPDIF_RX_MAX_INSTANCES : 3;
   }
 
   // Platform-default GPIOs for the 0xFF pin-reset sentinel
@@ -1661,10 +1675,9 @@ export class MockTransport implements DspTransport {
     return this.#platform === PlatformType.RP2350 ? 13 : 21;
   }
 
-  // index 0 = PICO_SPDIF_RX_PIN_DEFAULT, 1/2 = the RP2350-only selectable
-  // inputs' PICO_SPDIF_RX_PIN2/3_DEFAULT.
+  // Mirrors fw's PICO_SPDIF_RX_PIN_DEFAULT / PIN2/3/4_DEFAULT table.
   #defaultSpdifRxPin(index: number): number {
-    return index === 0 ? 5 : index === 1 ? 20 : 21;
+    return index === 0 ? 5 : index === 1 ? 20 : index === 2 ? 21 : 22;
   }
 
   // Contiguous block starting at PICO_I2S_RX_PIN_DEFAULT (pair 0 = GPIO 1).
@@ -1748,12 +1761,12 @@ export class MockTransport implements DspTransport {
       const rxPins = this.#mockState.inputConfig.i2sRxPins;
       for (let p = 0; p < activePairs; p++) if (rxPins[p] === pin) return true;
     }
-    // S/PDIF RX: input 1 is always claimed; inputs 2/3 only while enabled
+    // S/PDIF RX: input 1 is always claimed; inputs 2/3/4 only while enabled
     // (mirrors the I2S RX loop above).
     const spdif = this.#mockState.inputConfig;
     if (pin === spdif.spdifRxPin) return true;
     const spdifExtMask = spdif.spdifRxEnabledExtP1 === 0 ? 0 : spdif.spdifRxEnabledExtP1 - 1;
-    for (let i = 0; i < 2; i++) if ((spdifExtMask & (1 << i)) !== 0 && spdif.spdifRxPinExt[i] === pin) return true;
+    for (let i = 0; i < 3; i++) if ((spdifExtMask & (1 << i)) !== 0 && spdif.spdifRxPinExt[i] === pin) return true;
     return false;
   }
 
@@ -1926,11 +1939,17 @@ export class MockTransport implements DspTransport {
     }
   }
 
+  // Firmware clamps an out-of-range centre-mode byte to Adaptive; OFF (2)
+  // only became a valid enum member at V27.
+  #clampCenterMode(mode: number): number {
+    return mode === 2 && this.#wireVersion < 27 ? 1 : mode;
+  }
+
   #setUpmixParam(id: number, value: number): void {
     const u = this.#mockState.upmix!;
     switch (id) {
       case Wire.UpmixParam.Enabled:          u.enabled = Math.round(value) !== 0; return;
-      case Wire.UpmixParam.CenterMode:       u.centerMode = Math.round(value); return;
+      case Wire.UpmixParam.CenterMode:       u.centerMode = this.#clampCenterMode(Math.round(value)); return;
       case Wire.UpmixParam.SurroundMode:     u.surroundMode = Math.round(value); return;
       case Wire.UpmixParam.StrengthPct:      u.strengthPct = value; return;
       case Wire.UpmixParam.CenterWidthPct:   u.centerWidthPct = value; return;

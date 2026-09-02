@@ -13,6 +13,7 @@ export interface MockProfile {
 
 const FW_1_1_4 = { major: 1, minor: 1, patch: 4 } as const;
 const FW_1_1_5 = { major: 1, minor: 1, patch: 5 } as const;
+const FW_1_1_6 = { major: 1, minor: 1, patch: 6 } as const;
 
 // Every profile sets irLearnAutoComplete: an armed IR learn self-completes
 // with a fresh NEC code, so the remote-pairing flow is demoable without an IR
@@ -22,8 +23,14 @@ function latest(platform: MockOptions['platform']): MockProfile {
   return {
     name: 'latest',
     platform,
-    opts: { wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: FW_1_1_5, irLearnAutoComplete: true },
+    opts: { wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: FW_1_1_6, irLearnAutoComplete: true },
   };
+}
+
+// Firmware version that shipped a given wire version: 1.1.4 for V10, 1.1.5
+// for V16-V26, 1.1.6 for V27+.
+function fwForWire(n: number): typeof FW_1_1_4 | typeof FW_1_1_5 | typeof FW_1_1_6 {
+  return n === 10 ? FW_1_1_4 : n >= 27 ? FW_1_1_6 : FW_1_1_5;
 }
 
 // Resolves a raw ?mock token (+ optional &chip flavor) to a profile. Profiles
@@ -51,7 +58,7 @@ export function resolveMockProfile(token: string, chip?: 'rp2040' | 'rp2350' | n
         platform,
         opts: {
           wireVersion: Wire.MAX_WIRE_VERSION,
-          fwVersion: FW_1_1_5,
+          fwVersion: FW_1_1_6,
           i2sInputChannels: 8,
           spdifInputsEnabled: 3,
           irLearnAutoComplete: true,
@@ -65,7 +72,7 @@ export function resolveMockProfile(token: string, chip?: 'rp2040' | 'rp2350' | n
           return {
             name: `v${n}`,
             platform,
-            opts: { wireVersion: n, fwVersion: n === 10 ? FW_1_1_4 : FW_1_1_5, irLearnAutoComplete: true },
+            opts: { wireVersion: n, fwVersion: fwForWire(n), irLearnAutoComplete: true },
           };
         }
       }

@@ -5,7 +5,8 @@
 //   0..7    second-order PEQ types (all firmware)
 //   8..10   first-order PEQ types (V16+)
 //   11      Linkwitz Transform (V22+)
-//   12..31  reserved for future PEQ types
+//   12..13  first-order low/high pass (proxy-gated on V28, see firstOrderLpHp)
+//   14..31  reserved for future PEQ types
 //   32..63  crossover types, contiguous from XoverFirst (V16+)
 
 export const FilterType = {
@@ -28,6 +29,12 @@ export const FilterType = {
   // gain slot is reinterpreted to carry the target fp in Hz (not dB); the
   // target Qp travels in the separate FilterParams.qp sidecar.
   LinkwitzTransform: 11,
+
+  // First-order low/high pass (proxy-gated on the firstOrderLpHp capability,
+  // V28+): single-pole 6 dB/oct, -3 dB at the corner, no resonance. freq
+  // only -- Q and gain are unused, same treatment as Allpass1.
+  LowPass1: 12,
+  HighPass1: 13,
 
   // Crossover types (V16+): (family, order, LP/HP) per value.
   Lr2Lp: 32,  Lr2Hp: 33,
@@ -65,6 +72,13 @@ export function isCrossoverType(t: number): boolean {
 // First-order sections require the firstOrderEq capability (wire V16+).
 export function isFirstOrderType(t: FilterType): boolean {
   return t === FilterType.Allpass1 || t === FilterType.LowShelf1 || t === FilterType.HighShelf1;
+}
+
+// First-order low/high pass types require the firstOrderLpHp capability
+// (V28+ proxy) -- kept distinct from isFirstOrderType so V16-era call sites
+// gating on firstOrderEq don't silently pick these up too.
+export function isFirstOrderLpHp(t: FilterType): boolean {
+  return t === FilterType.LowPass1 || t === FilterType.HighPass1;
 }
 
 export interface FilterParams {

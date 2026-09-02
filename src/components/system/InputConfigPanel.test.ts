@@ -39,14 +39,20 @@ const staging = {
   applyAll: async () => {},
 };
 
-function makeSnap(over: { source?: number; i2sClockMode?: number; i2sInputRateHz?: number; adatInputEnabled?: boolean; adatInputPin?: number; adatInputClockMode?: number } = {}) {
+function makeSnap(over: {
+  source?: number; i2sClockMode?: number; i2sInputRateHz?: number;
+  adatInputEnabled?: boolean; adatInputPin?: number; adatInputClockMode?: number;
+  spdifRxPinExt?: number[]; spdifExtEnabled?: boolean[];
+} = {}) {
   return {
     platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
     outputPins: [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 0 },
     inputConfig: {
       source: over.source ?? AudioInputSource.I2s,
-      spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false],
+      spdifRxPin: 5,
+      spdifRxPinExt: over.spdifRxPinExt ?? [0, 0, 0],
+      spdifExtEnabled: over.spdifExtEnabled ?? [false, false, false],
       i2sRxPins: [15], i2sInputRateHz: over.i2sInputRateHz ?? 48000, i2sInputChannels: 2,
       i2sClockMode: over.i2sClockMode ?? 0,
       adatInputEnabled: over.adatInputEnabled ?? false,
@@ -162,13 +168,22 @@ describe('InputConfigPanel — S/PDIF pin pickers', () => {
 
   test('ext S/PDIF pickers block re-selecting GP0 (the wire UNSET sentinel) once a real pin is assigned', () => {
     const snap = makeSnap({ source: AudioInputSource.Spdif });
-    snap.inputConfig.spdifRxPinExt = [20, 0];
+    snap.inputConfig.spdifRxPinExt = [20, 0, 0];
     renderPanel(makeSession({ snap, spdifInputCount: 2 }));
 
     // Only the ext row's GP0 cell carries the sentinel reason; the primary
     // row's GP0 stays a normal free cell.
     expect((screen.getByTitle('GP0 · reserved as the UNSET sentinel') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTitle('GP0 · free') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test('a V28+ device with spdifInputCount 4 renders all four S/PDIF RX pin rows, including input 4', () => {
+    const snap = makeSnap({ source: AudioInputSource.Spdif, spdifRxPinExt: [20, 21, 22] });
+    renderPanel(makeSession({ snap, spdifInputCount: 4 }));
+    expect(screen.getByRole('button', { name: 'S/PDIF 1 RX GPIO pin' }).textContent).toBe('GP5');
+    expect(screen.getByRole('button', { name: 'S/PDIF 2 RX GPIO pin' }).textContent).toBe('GP20');
+    expect(screen.getByRole('button', { name: 'S/PDIF 3 RX GPIO pin' }).textContent).toBe('GP21');
+    expect(screen.getByRole('button', { name: 'S/PDIF 4 RX GPIO pin' }).textContent).toBe('GP22');
   });
 });
 

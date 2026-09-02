@@ -235,9 +235,10 @@ export const WireCmd = {
   SetSpdifRxPin:         { code: 0xE4 } satisfies RawCmd,
   GetSpdifRxPin:         { code: 0xE5, codec: Codec.u8 } satisfies ReadCmd<number>,
   // Multi-SPDIF input enable (fw 1.1.5+): one physical receiver fanned out
-  // over up to 3 selectable GPIOs. Set is action-IN with
-  // wValue = (index<<8)|enable (index 1..2), 1-byte PinConfigResult; Get
-  // returns [count, enableMask, pin0, pin1, pin2] (enableMask unshifted).
+  // over up to 4 selectable GPIOs (V28+; 3 below). Set is action-IN with
+  // wValue = (index<<8)|enable (index 1..3), 1-byte PinConfigResult; Get
+  // returns [count, enableMask, pin0..pin3] (enableMask unshifted; a pre-V28
+  // response is the legacy 5-byte [count, enableMask, pin0..pin2]).
   SetSpdifInputEnable:   { code: 0xE9 } satisfies RawCmd,
   GetSpdifInputConfig:   { code: 0xEF, codec: Wire.SpdifInputConfig } satisfies ReadCmd<{ count: number; enableMask: number; pins: number[] }>,
   SetLgSoundSyncEnabled: { code: 0xE6, codec: Codec.bool8 } satisfies WriteCmd<boolean>,

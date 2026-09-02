@@ -11,15 +11,18 @@ export const AudioInputSource = {
   Adat:   3,
   Spdif2: 4,   // fw 1.1.5+ selectable S/PDIF input 2
   Spdif3: 5,   // fw 1.1.5+ selectable S/PDIF input 3
+  Spdif4: 6,   // fw 1.1.5+/V28 selectable S/PDIF input 4
 } as const;
 export type AudioInputSource = (typeof AudioInputSource)[keyof typeof AudioInputSource];
 
 export function isSpdifSource(s: AudioInputSource): boolean {
-  return s === AudioInputSource.Spdif || s === AudioInputSource.Spdif2 || s === AudioInputSource.Spdif3;
+  return s === AudioInputSource.Spdif || s === AudioInputSource.Spdif2
+      || s === AudioInputSource.Spdif3 || s === AudioInputSource.Spdif4;
 }
 
-// One S/PDIF receiver, up to 3 selectable input GPIOs (input 1 + two optional).
-export const SPDIF_RX_MAX_INSTANCES = 3;
+// One S/PDIF receiver, up to 4 selectable input GPIOs (input 1 + three
+// optional). Platform max at V28; pre-V28 devices expose 3 via capabilities.
+export const SPDIF_RX_MAX_INSTANCES = 4;
 
 // Maximum I2S RX stereo pairs on the largest platform (RP2350; RP2040 has 1).
 export const I2S_RX_MAX_PAIRS = 4;
@@ -44,10 +47,11 @@ export interface InputConfig {
   i2sInputRateHz: number;
   // Active I2S input channel count: 2/4/6/8 (0 = firmware default / absent).
   i2sInputChannels: number;
-  // fw 1.1.5+ optional S/PDIF inputs 2/3 (index 0 = input 2, index 1 = input 3).
-  // GPIO per input; 0 = unset.
+  // fw 1.1.5+ optional S/PDIF inputs 2/3/4 (index 0 = input 2, index 1 =
+  // input 3, index 2 = input 4). Always length 3 -- on pre-V28 packets the
+  // third (input 4) entry is padded 0/unset. GPIO per input; 0 = unset.
   spdifRxPinExt: number[];
-  // Whether inputs 2/3 are enabled.
+  // Whether inputs 2/3/4 are enabled. Always length 3, same padding as above.
   spdifExtEnabled: boolean[];
   // I2S clock role (fw V21+): 0 = master (legacy default), 1 = slave.
   i2sClockMode: number;

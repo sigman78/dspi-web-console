@@ -62,3 +62,17 @@ describe('BandRow — Linkwitz Transform is display-only', () => {
     expect(onPatch).toHaveBeenCalledExactlyOnceWith({ type: FilterType.Peaking });
   });
 });
+
+describe('BandRow — first-order low/high pass (LowPass1/HighPass1)', () => {
+  it('disables Q and gain, same as the first-order allpass', () => {
+    for (const type of [FilterType.LowPass1, FilterType.HighPass1]) {
+      const band: FilterParams = { type, bypass: false, frequency: 200, q: 1, gain: 6 };
+      const { container } = render(BandRow, { index: 0, band, onPatch: vi.fn() });
+      const fields = container.querySelectorAll('.vf');
+      expect(fields).toHaveLength(3); // FREQ, Q, GAIN -- no dash placeholder here
+      expect(fields[0].classList.contains('disabled')).toBe(false); // FREQ stays live
+      expect(fields[1].classList.contains('disabled')).toBe(true);  // Q
+      expect(fields[2].classList.contains('disabled')).toBe(true);  // GAIN
+    }
+  });
+});

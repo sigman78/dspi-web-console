@@ -83,4 +83,23 @@ describe('first-order EQ types in the curve', () => {
     const band: FilterParams = { ...defaultFilter(), type: FilterType.Allpass1, frequency: FC };
     for (const f of [100, FC, 10000]) expect(filterCurveAt([band], 0, f)).toBe(0);
   });
+
+  it('LowPass1 is -3.01 dB at fc and rolls off ~-6 dB/oct well past the corner', () => {
+    const lp: FilterParams = { ...defaultFilter(), type: FilterType.LowPass1, frequency: FC };
+    expect(filterCurveAt([lp], 0, FC)).toBeCloseTo(-3.0103, 2);
+    const oneOctave = filterCurveAt([lp], 0, FC * 4) - filterCurveAt([lp], 0, FC * 8);
+    expect(oneOctave).toBeGreaterThan(5);
+    expect(oneOctave).toBeLessThan(8);
+  });
+
+  it('HighPass1 mirrors LowPass1: -3.01 dB at fc, ~-6 dB/oct into the stopband below fc', () => {
+    const hp: FilterParams = { ...defaultFilter(), type: FilterType.HighPass1, frequency: FC };
+    const lp: FilterParams = { ...defaultFilter(), type: FilterType.LowPass1, frequency: FC };
+    expect(filterCurveAt([hp], 0, FC)).toBeCloseTo(-3.0103, 2);
+    const oneOctave = filterCurveAt([hp], 0, FC / 4) - filterCurveAt([hp], 0, FC / 8);
+    expect(oneOctave).toBeGreaterThan(5);
+    expect(oneOctave).toBeLessThan(8);
+    // HP(k*fc) mirrors LP(fc/k) -- same prewarped one-pole magnitude, HP/LP swapped.
+    expect(filterCurveAt([hp], 0, FC * 4)).toBeCloseTo(filterCurveAt([lp], 0, FC / 4), 1);
+  });
 });

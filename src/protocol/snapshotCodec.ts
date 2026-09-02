@@ -23,7 +23,10 @@ function narrowEnum<T extends number>(v: number, known: readonly T[], fallback: 
 export function narrowInputSource(s: number): Domain.AudioInputSource {
   return narrowEnum(
     s,
-    [Domain.AudioInputSource.Spdif, Domain.AudioInputSource.I2s, Domain.AudioInputSource.Adat, Domain.AudioInputSource.Spdif2, Domain.AudioInputSource.Spdif3],
+    [
+      Domain.AudioInputSource.Spdif, Domain.AudioInputSource.I2s, Domain.AudioInputSource.Adat,
+      Domain.AudioInputSource.Spdif2, Domain.AudioInputSource.Spdif3, Domain.AudioInputSource.Spdif4,
+    ],
     Domain.AudioInputSource.Usb,
   );
 }
@@ -44,11 +47,12 @@ function narrowLevellerSpeed(s: number): Domain.LevellerSpeed {
   );
 }
 
-// p1 = enable mask + 1 (0 = absent -> both off; else bit0 = input2, bit1 = input3).
+// p1 = enable mask + 1 (0 = absent -> all off; else bit0 = input2, bit1 =
+// input3, bit2 = input4 [V28+; unset on older packets]).
 function decodeSpdifExtEnabled(p1: number): boolean[] {
-  if (p1 === 0) return [false, false];
+  if (p1 === 0) return [false, false, false];
   const mask = p1 - 1;
-  return [(mask & 1) !== 0, (mask & 2) !== 0];
+  return [(mask & 1) !== 0, (mask & 2) !== 0, (mask & 4) !== 0];
 }
 
 // p1 = clock_pin_mode + 1 (0 = absent -> unified; else value - 1: 0 = unified, 1 = split).

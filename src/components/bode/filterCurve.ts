@@ -121,6 +121,30 @@ function coeffsFor(type: FilterType, f: number, q: number, gainDb: number, fs: n
       a2: 0,
     };
   }
+  // First-order low/high pass (V28+ proxy), the degenerate bilinear one-pole
+  // biquad half of firmware's hybrid design (dsp_pipeline.c) -- the other
+  // half (a TPT SVF used below Fs/7.5 for numerical stability) yields the
+  // same prewarped one-pole magnitude, so one form suffices for the curve.
+  if (type === FilterType.LowPass1) {
+    const a0 = sinw0 + 1 + cosw0;
+    return {
+      b0: sinw0 / a0,
+      b1: sinw0 / a0,
+      b2: 0,
+      a1: (sinw0 - 1 - cosw0) / a0,
+      a2: 0,
+    };
+  }
+  if (type === FilterType.HighPass1) {
+    const a0 = sinw0 + 1 + cosw0;
+    return {
+      b0: (1 + cosw0) / a0,
+      b1: -(1 + cosw0) / a0,
+      b2: 0,
+      a1: (sinw0 - 1 - cosw0) / a0,
+      a2: 0,
+    };
+  }
   // Linkwitz Transform (V22+): replaces the measured sealed-box rolloff
   // (f0, Q0 -- this section's `f`/`q`) with a target alignment (fp, Qp).
   // `gainDb` carries fp in Hz; fp <= 0 is firmware's "flat" (no LT effect).

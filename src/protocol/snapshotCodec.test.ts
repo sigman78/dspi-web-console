@@ -138,7 +138,7 @@ describe('snapshotCodec — 1.1.4 sections', () => {
     const snap = fromBulkParams(hw, bulk);
     expect(snap.inputConfig).toEqual({
       source: AudioInputSource.Spdif, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0,
-      spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0,
+      spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false, false], i2sClockMode: 0,
       adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0,
     });
     expect(snap.lgSoundSync).toEqual({ enabled: true, present: false, volume: 30, muted: false });
@@ -150,7 +150,7 @@ describe('snapshotCodec — 1.1.4 sections', () => {
     const snap = fromBulkParams(hw, makeBulkObject({ formatVersion: 6, payloadLength: WireNS.BulkSizes.V6Full }));
     expect(snap.inputConfig).toEqual({
       source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0,
-      spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0,
+      spdifRxPinExt: [0, 0, 0], spdifExtEnabled: [false, false, false], i2sClockMode: 0,
       adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0,
     });
     expect(snap.userVolume).toEqual({ volumeDb: 0, mute: false });

@@ -99,6 +99,26 @@ describe('pins', () => {
     expect(on.get(11)).toBe('DAC MUTE');
   });
 
+  test('a third optional S/PDIF input (input 4, V28+) reserves its pin only while enabled', () => {
+    const on = pinsInUse(snap({
+      inputConfig: {
+        source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0, 25], spdifExtEnabled: [false, false, true],
+        i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, i2sClockMode: 0,
+        adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0,
+      },
+    }));
+    expect(on.get(25)).toBe('S/PDIF 4 RX');
+
+    const off = pinsInUse(snap({
+      inputConfig: {
+        source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0, 25], spdifExtEnabled: [false, false, false],
+        i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, i2sClockMode: 0,
+        adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0,
+      },
+    }));
+    expect(off.has(25)).toBe(false);
+  });
+
   test('ADAT reserves its pin only while enabled, falling back to GPIO 12 when unset (pin 0)', () => {
     const off = pinsInUse(snap());
     expect(off.has(12)).toBe(false);

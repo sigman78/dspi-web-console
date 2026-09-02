@@ -46,11 +46,12 @@ function makeSession(o: {
   centerMode?: number;
   surroundMode?: number;
   upmixPresence?: boolean;
+  upmixCenterOff?: boolean;
   activeInputChannels?: number | null;
   sampleRateHz?: number | null;
 } = {}) {
   return {
-    device: { capabilities: { features: { upmixPresence: o.upmixPresence ?? true } } },
+    device: { capabilities: { features: { upmixPresence: o.upmixPresence ?? true, upmixCenterOff: o.upmixCenterOff ?? false } } },
     telemetry: {
       activeInputChannels: o.activeInputChannels ?? 2,
       info: { sampleRateHz: o.sampleRateHz ?? 48000 },
@@ -152,6 +153,21 @@ describe('UpmixPanel', () => {
     const group = screen.getByRole('radiogroup', { name: 'Upmix surround mode' });
     await fireEvent.click(within(group).getByRole('radio', { name: 'OFF' }));
     expect(setUpmixSurroundMode).toHaveBeenCalledWith(expect.anything(), 0);
+  });
+
+  test('centre-mode OFF option is hidden without the upmixCenterOff capability', () => {
+    renderPanel(makeSession({ upmixCenterOff: false, centerMode: 1 }));
+    const group = screen.getByRole('radiogroup', { name: 'Upmix center mode' });
+    expect(within(group).queryByRole('radio', { name: 'OFF' })).toBeNull();
+  });
+
+  test('centre-mode OFF option appears and dispatches value 2 when the device supports it', async () => {
+    renderPanel(makeSession({ upmixCenterOff: true, centerMode: 1 }));
+    const group = screen.getByRole('radiogroup', { name: 'Upmix center mode' });
+    const off = within(group).getByRole('radio', { name: 'OFF' });
+    expect(off).toBeTruthy();
+    await fireEvent.click(off);
+    expect(setUpmixCenterMode).toHaveBeenCalledWith(expect.anything(), 2);
   });
 
   test('status line reads ACTIVE when enabled, stereo input, rate <= 48k', () => {

@@ -1018,10 +1018,10 @@ export class DspDevice {
     );
   }
 
-  // S/PDIF RX GPIO pin (fw 1.1.5+: up to 3 selectable instances, 0..2;
-  // instance 0 is the always-present default). Action-style IN: wValue =
-  // (instance<<8)|GPIO, returns a PinConfigResult status byte (mirrors
-  // setI2sRxPin).
+  // S/PDIF RX GPIO pin (fw 1.1.5+: up to 4 selectable instances, 0..3 at
+  // wire V28+ (0..2 below); instance 0 is the always-present default).
+  // Action-style IN: wValue = (instance<<8)|GPIO, returns a PinConfigResult
+  // status byte (mirrors setI2sRxPin).
   async setSpdifRxPin(gpio: number, instance = 0): Promise<Result<void, proto.PinConfigResult>> {
     const wValue = ((instance & 0xFF) << 8) | (gpio & 0xFF);
     return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetSpdifRxPin, wValue));
@@ -1031,14 +1031,16 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetSpdifRxPin, instance & 0xFF);
   }
 
-  // Enable/disable a selectable S/PDIF input (instance 1..2; instance 0 is
-  // always on). wValue = (instance<<8)|enable.
+  // Enable/disable a selectable S/PDIF input (instance 1..3 at wire V28+,
+  // 1..2 below; instance 0 is always on). wValue = (instance<<8)|enable.
   async setSpdifInputEnabled(instance: number, on: boolean): Promise<Result<void, proto.PinConfigResult>> {
     const wValue = ((instance & 0xFF) << 8) | (on ? 1 : 0);
     return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetSpdifInputEnable, wValue));
   }
 
-  // { count, enableMask, pins } for all 3 selectable S/PDIF input slots.
+  // { count, enableMask, pins } for every selectable S/PDIF input slot (3
+  // below wire V28, 4 at V28+ -- readCmd's decodePadded zero-fills pin 4 on
+  // a legacy 5-byte response).
   async getSpdifInputConfig(): Promise<{ count: number; enableMask: number; pins: number[] }> {
     return proto.readCmd(this.transport, proto.WireCmd.GetSpdifInputConfig);
   }
