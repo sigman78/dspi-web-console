@@ -43,7 +43,7 @@ describe('runtime/controlSurfaces', () => {
     const s = sess();
     expect(s.controlSurfaces.caps?.maxBindings).toBe(CS_MAX_BINDINGS);
     expect(s.controlSurfaces.caps?.capsVersion).toBeGreaterThanOrEqual(2);
-    expect(s.controlSurfaces.nouns).toHaveLength(49);
+    expect(s.controlSurfaces.nouns).toHaveLength(57);
     expect(s.controlSurfaces.status?.activeMask).toBe(0);
     expect(s.controlSurfaces.status?.dirty).toBe(false);
     expect(s.controlSurfaces.bindings).toHaveLength(CS_MAX_BINDINGS);
@@ -69,7 +69,7 @@ describe('runtime/controlSurfaces', () => {
     await bootMock('rp2350', { wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 }, csCapsVersion: 13 });
     const s = sess();
     expect(s.controlSurfaces.caps?.capsVersion).toBe(13);
-    expect(s.controlSurfaces.nouns).toHaveLength(49);
+    expect(s.controlSurfaces.nouns).toHaveLength(57);
     expect(s.controlSurfaces.lastFetchError).toBeNull();
   });
 

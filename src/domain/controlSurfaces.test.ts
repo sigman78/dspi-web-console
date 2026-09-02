@@ -16,6 +16,9 @@ const caps: CsCaps = {
   capsVersion: 3,
   maxBindings: 16,
   maxIrCommands: 8,
+  maxGroups: 0,
+  maxMacros: 0,
+  maxMacroSteps: 0,
   types: [
     { actions: 0x0000, pinCount: 0, pinClass: 0 },   // NONE
     { actions: 0x02BC, pinCount: 1, pinClass: 0 },   // BUTTON

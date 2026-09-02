@@ -150,8 +150,9 @@ describe('wireTypes — V7–V10 tail codecs', () => {
   it('CS caps/status codecs decode a synthesized wire image at the documented offsets', () => {
     expect(Codec.sizeOf(Wire.CsCapsPrefix)).toBe(4);
     expect(Codec.sizeOf(Wire.CsNounDesc)).toBe(12);
-    expect(Codec.sizeOf(Wire.CsStatusPacket)).toBe(32);
-    expect(Codec.sizeOf(Wire.CsCapsBody(8))).toBe(36);   // 8 types * 4 + 4-byte v3 tail
+    expect(Codec.sizeOf(Wire.CsStatusPacketV3)).toBe(32);
+    expect(Codec.sizeOf(Wire.CsStatusPacketV6)).toBe(41);
+    expect(Codec.sizeOf(Wire.CsCapsBody(8))).toBe(36);   // 8 types * 4 + 4-byte tail
 
     // MASTER_VOLUME noun descriptor: continuous, −127..0 dB, mask 0x002F.
     const nounBytes = Uint8Array.from([
@@ -163,7 +164,7 @@ describe('wireTypes — V7–V10 tail codecs', () => {
       unit: 1, targetKind: 0, targetCount: 0, dflags: 0,
     });
 
-    const status = Codec.decode(Wire.CsStatusPacket, Uint8Array.from([
+    const status = Codec.decode(Wire.CsStatusPacketV3, Uint8Array.from([
       0x16, 0x03, 0x10, 0x01, 0x05, 0x00,
       0x00, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       0x00, 0x00,
@@ -178,11 +179,45 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(status.irCmdStatus).toHaveLength(8);
   });
 
-  it('a caps-v2 (no v3 tail) GetCsCaps body decodes with maxIrCommands 0 via decodePadded', () => {
+  it('CsStatusPacketV6 decodes the widened caps-v6+ IR fields at their own offsets', () => {
+    const status = Codec.decode(Wire.CsStatusPacketV6, Uint8Array.from([
+      0x16, 0x03, 0x10, 0x01, 0x05, 0x00,                              // lastStatus..activeMask (as V3)
+      0x00, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,             // slotStatus[16]
+      0x34, 0x12,                                                      // irActiveMask u16 LE = 0x1234
+      0x02,                                                            // irLearnState
+      0xAA, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xBB,             // irCmdStatus[16]
+    ]));
+    expect(status.lastSlot).toBe(3);
+    expect(status.activeMask).toBe(0b101);
+    expect(status.slotStatus[1]).toBe(0x02);
+    expect(status.irActiveMask).toBe(0x1234);
+    expect(status.irLearnState).toBe(0x02);
+    expect(status.irCmdStatus).toHaveLength(16);
+    expect(status.irCmdStatus[0]).toBe(0xAA);
+    expect(status.irCmdStatus[15]).toBe(0xBB);
+  });
+
+  it('a caps-v2 (no tail) GetCsCaps body decodes with every tail field 0 via decodePadded', () => {
     const shortBody = Codec.encode(Wire.CsTypeDesc, { actions: 0x0002, pinCount: 2, pinClass: 0 });
     const body = Codec.decodePadded(Wire.CsCapsBody(1), shortBody);
     expect(body.types).toEqual([{ actions: 0x0002, pinCount: 2, pinClass: 0 }]);
     expect(body.maxIrCommands).toBe(0);
+    expect(body.maxGroups).toBe(0);
+    expect(body.maxMacros).toBe(0);
+    expect(body.maxMacroSteps).toBe(0);
+  });
+
+  it('CsCapsBody carries the caps-v9+ groups/macros/macro-steps tail right after max_ir_commands', () => {
+    const bytes = Codec.encode(Wire.CsCapsBody(1), {
+      types: [{ actions: 0x0002, pinCount: 2, pinClass: 0 }],
+      maxIrCommands: 16, maxGroups: 8, maxMacros: 4, maxMacroSteps: 6,
+    });
+    expect(bytes.slice(4)).toEqual(Uint8Array.from([16, 8, 4, 6]));
+    const back = Codec.decode(Wire.CsCapsBody(1), bytes);
+    expect(back).toEqual({
+      types: [{ actions: 0x0002, pinCount: 2, pinClass: 0 }],
+      maxIrCommands: 16, maxGroups: 8, maxMacros: 4, maxMacroSteps: 6,
+    });
   });
 
   it('SpdifRxStatus is 16 bytes and round-trips its fields', () => {

@@ -1,6 +1,6 @@
-// Control Surfaces (fw 1.1.5, wire V16+, caps v3): user-wired physical
-// controls and indicators (buttons, switches, pots, encoders, LEDs, PWM
-// LEDs, an IR remote receiver) on spare GPIOs, configured over vendor
+// Control Surfaces (fw 1.1.5+, wire V16+, caps v2-v7 modeled): user-wired
+// physical controls and indicators (buttons, switches, pots, encoders, LEDs,
+// PWM LEDs, an IR remote receiver) on spare GPIOs, configured over vendor
 // commands 0x84-0x8F, 0x9D-0x9E. Which (type, noun, action) combinations
 // are legal comes from the device-served caps tables read at connect
 // (GetCsCaps), never from hardcoded masks; this module holds the wire
@@ -82,6 +82,9 @@ export const CsNoun = {
   PsybassOriginal:    46,
   OutputDelay:        47,
   PresetReload:       48,
+  // caps v7 additions.
+  LoudnessSpl:        49,
+  LoudnessIntensity:  50,
 } as const;
 export type CsNoun = (typeof CsNoun)[keyof typeof CsNoun];
 
@@ -151,7 +154,9 @@ export const CS_MAX_BINDINGS = 16;
 export const CS_GPIO_UNUSED  = 0xFF;
 export const CS_NAME_MAX_LEN = 31;   // bytes, UTF-8 (32-byte NUL-terminated window)
 
-export const CS_MAX_IR_COMMANDS = 8;
+// fw caps v6+: CS_MAX_IR_COMMANDS grew 8 -> 16. Pre-v6 devices report 8 via
+// caps.maxIrCommands; every host loop sizes from caps, not this constant.
+export const CS_MAX_IR_COMMANDS = 16;
 
 // GetCsStatus.irLearnState / the CsIrLearn(wValue=2) result read.
 export const CS_IR_LEARN_IDLE    = 0;
@@ -265,6 +270,9 @@ export interface CsCaps {
   maxBindings: number;
   types: CsTypeCaps[];
   maxIrCommands: number;
+  maxGroups: number;
+  maxMacros: number;
+  maxMacroSteps: number;
 }
 
 export interface CsNounCaps {
@@ -388,6 +396,8 @@ export const CS_NOUN_LABEL: Record<CsNoun, string> = {
   [CsNoun.PsybassOriginal]:   'Psybass Original Level',
   [CsNoun.OutputDelay]:       'Output Delay',
   [CsNoun.PresetReload]:      'Reload Preset',
+  [CsNoun.LoudnessSpl]:       'Loudness Reference SPL',
+  [CsNoun.LoudnessIntensity]: 'Loudness Intensity',
 };
 
 // A device with a newer caps format may publish nouns this console has no
