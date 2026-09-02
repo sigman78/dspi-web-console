@@ -6,6 +6,14 @@ from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
 this project follows [Semantic Versioning](https://semver.org/) (currently in the
 `0.x` pre-1.0 line — minor versions may include breaking changes).
 
+## [0.10.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.9.0...dspi-console-web-v0.10.0) (2026-09-02)
+
+
+### Features
+
+* **diag:** field-level paramChanged decode and capture buffer in wire monitor ([#114](https://github.com/sigman78/dspi-web-console/issues/114)) ([e664647](https://github.com/sigman78/dspi-web-console/commit/e664647770bd438c32ac30b155636cb9a1c33aee))
+* **ui:** pin map, popover pin pickers, and debug-gated SYSTEM tab layout ([#115](https://github.com/sigman78/dspi-web-console/issues/115)) ([7f032f8](https://github.com/sigman78/dspi-web-console/commit/7f032f8bd9b590c5f21bded6612cf1ba4175db71))
+
 ## [0.9.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.8.0...dspi-console-web-v0.9.0) (2026-08-20)
 
 
