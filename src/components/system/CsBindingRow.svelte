@@ -8,7 +8,7 @@
   // pin candidates, status) come from the session context, same as
   // CsIrCommands does for its own sub-slots.
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import PinSelect from './PinSelect.svelte';
+  import PinPicker from './PinPicker.svelte';
   import CsIrCommands from './CsIrCommands.svelte';
   import { connection } from '@/state';
   import * as Domain from '@/domain';
@@ -110,14 +110,15 @@
     return Domain.liveCsPinConfigs(cs.bindings, cs.status).map((pin, i) => (i === slot ? null : pin));
   }
 
-  function candidatesFor(selfPin: number, adc: boolean, excludePin?: number): Domain.PinCandidate[] {
+  function cellsFor(selfPin: number, adc: boolean, excludePin?: number): Domain.PinPickerCell[] {
     if (!snap) return [];
-    let cands = Domain.availablePinsFor(snap.platform.type, snap, selfPin, {
+    return Domain.pickerCells(snap.platform.type, snap, {
       uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: otherCsPins(),
+    }, selfPin).map((c) => {
+      if (adc && !Domain.CS_ADC_PINS.includes(c.pin)) c = { ...c, selectable: false, reason: 'not ADC-capable' };
+      if (excludePin != null && c.pin === excludePin) c = { ...c, selectable: false, reason: 'assigned to the other encoder pin' };
+      return c;
     });
-    if (adc) cands = cands.filter((c) => Domain.CS_ADC_PINS.includes(c.pin));
-    if (excludePin != null) cands = cands.filter((c) => c.pin !== excludePin);
-    return cands;
   }
 
   function inactiveHint(): string {
@@ -230,16 +231,16 @@
     <div class="row">
       {#if twoPins(d)}
         <span class="microlbl">GPIO A</span>
-        <PinSelect value={d.gpio0} candidates={candidatesFor(d.gpio0, false, d.gpio1)}
+        <PinPicker value={d.gpio0} cells={cellsFor(d.gpio0, false, d.gpio1)}
           ariaLabel="Encoder GPIO A" disabled={busy || applying}
           onChange={(pin) => onEdit((dr) => { dr.gpio0 = pin; })} />
         <span class="microlbl">GPIO B</span>
-        <PinSelect value={d.gpio1} candidates={candidatesFor(d.gpio1, false, d.gpio0)}
+        <PinPicker value={d.gpio1} cells={cellsFor(d.gpio1, false, d.gpio0)}
           ariaLabel="Encoder GPIO B" disabled={busy || applying}
           onChange={(pin) => onEdit((dr) => { dr.gpio1 = pin; })} />
       {:else}
         <span class="microlbl">GPIO</span>
-        <PinSelect value={d.gpio0} candidates={candidatesFor(d.gpio0, adcOnly(d))}
+        <PinPicker value={d.gpio0} cells={cellsFor(d.gpio0, adcOnly(d))}
           ariaLabel="Control GPIO" disabled={busy || applying}
           onChange={(pin) => onEdit((dr) => { dr.gpio0 = pin; })} />
       {/if}

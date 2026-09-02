@@ -1,8 +1,13 @@
-import { ChannelId } from '@/domain';
-import { COLORS, shadeFor } from './palette-colors';
-import type { ChannelKey, ShadeName } from './palette-colors';
+import { ChannelId, type PinRole } from '@/domain';
+import { COLORS, ROLE_COLORS, shadeFor } from './palette-colors';
+import type { ChannelKey, ShadeName, Lch } from './palette-colors';
 
 export type { ChannelKey, ShadeName } from './palette-colors';
+
+// Lockstep check: PinRole (src/domain/pins.ts) and ROLE_COLORS' PinRoleKey
+// (./palette-colors) must name the same set of roles -- a mismatch fails here
+// at typecheck rather than at render time.
+const _roleColorLockstep: Record<PinRole, Lch> = ROLE_COLORS;
 
 const KEY_BY_ID: Record<number, ChannelKey> = {
   [ChannelId.In1L]: 'In1L',

@@ -2,10 +2,11 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import KV from '@/components/chrome/KV.svelte';
-  import PinSelect from './PinSelect.svelte';
+  import PinPicker from './PinPicker.svelte';
   import { connection } from '@/state';
   import { setAdatInputEnable, setAdatInputPin, setAdatInputClockMode } from '@/runtime';
-  import { AudioInputSource, AdatInputLockState, availablePinsFor, liveCsPinConfigs } from '@/domain';
+  import { AudioInputSource, AdatInputLockState, pickerCells, liveCsPinConfigs } from '@/domain';
+  import { Wire } from '@/protocol';
   import { formatRateKHz } from '@/utils';
   import { getSession } from '@/components/sessionContext';
 
@@ -39,11 +40,13 @@
   // the output claims stays selectable here. Pin 0 (the wire's "unset"
   // sentinel for this target) is never a real candidate.
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
-  const pinCandidates = $derived(
+  const pinCells = $derived(
     snap && overlaySnap
-      ? availablePinsFor(snap.platform.type, overlaySnap, pin, ctrlPins)
-          .filter((c) => c.pin !== 0)
-          .map((c) => (c.usedBy === 'ADAT' ? { ...c, usedBy: null } : c))
+      ? pickerCells(snap.platform.type, overlaySnap, ctrlPins, pin).map((c) => {
+          if (c.use?.label === 'ADAT') return { ...c, use: null, selectable: true, reason: null };
+          if (c.pin === 0) return { ...c, selectable: false, reason: 'reserved as the UNSET sentinel' };
+          return c;
+        })
       : [],
   );
 
@@ -64,6 +67,14 @@
 
 <Panel code="SY.15" title="ADAT INPUT">
   {#snippet right()}
+    {#if features.pinResetDefault && !enabled && pin !== 0}
+      <button
+        class="chip"
+        disabled={!connected}
+        title="Clear the stored pin"
+        onclick={() => setAdatInputPin(s, Wire.Const.PIN_RESET_TO_DEFAULT)}
+      >CLEAR</button>
+    {/if}
     <span title={toggleTitle}>
       <ToggleSwitch
         size="sm"
@@ -79,14 +90,12 @@
     <div class="rows">
       <div class="row">
         <span class="microlbl">GPIO PIN</span>
-        <PinSelect
+        <PinPicker
           value={pin}
-          candidates={pinCandidates}
+          cells={pinCells}
           placeholder="UNSET"
           ariaLabel="ADAT input GPIO pin"
           disabled={!connected}
-          allowReset={features.pinResetDefault && !enabled && pin !== 0}
-          resetLabel="CLEAR"
           onChange={(p) => setAdatInputPin(s, p)}
         />
       </div>

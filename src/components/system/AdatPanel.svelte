@@ -2,10 +2,11 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import KV from '@/components/chrome/KV.svelte';
-  import PinSelect from './PinSelect.svelte';
+  import PinPicker from './PinPicker.svelte';
   import { connection } from '@/state';
   import { setAdatEnable, setAdatPin } from '@/runtime';
-  import { availablePinsFor, assignablePins, isAssignablePin, pinsInUse, liveCsPinConfigs } from '@/domain';
+  import { pickerCells, assignablePins, isAssignablePin, pinsInUse, liveCsPinConfigs } from '@/domain';
+  import { Wire } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -51,6 +52,15 @@
 
 <Panel code="SY.14" title="ADAT OUTPUT">
   {#snippet right()}
+    {#if features.pinResetDefault}
+      <button
+        class="chip icon"
+        disabled={!editable}
+        title="Reset to defaults"
+        aria-label="Reset ADAT output pin to default"
+        onclick={() => setAdatPin(s, Wire.Const.PIN_RESET_TO_DEFAULT)}
+      >↺</button>
+    {/if}
     <ToggleSwitch
       size="sm"
       checked={cfg?.enabled ?? false}
@@ -64,12 +74,11 @@
     <div class="rows">
       <div class="row">
         <span class="microlbl">GPIO PIN</span>
-        <PinSelect
+        <PinPicker
           value={effPin}
-          candidates={availablePinsFor(snap.platform.type, snap, effPin, ctrlPins)}
+          cells={pickerCells(snap.platform.type, snap, ctrlPins, effPin)}
           ariaLabel="ADAT output GPIO pin"
           disabled={!editable}
-          allowReset={features.pinResetDefault}
           onChange={(p) => setAdatPin(s, p)}
         />
       </div>

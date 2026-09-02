@@ -36,7 +36,7 @@ function renderPanel(snap: object) {
 
 const rowControls = () => [
   screen.getByRole('switch', { name: 'DAC mute active low' }),
-  screen.getByRole('combobox', { name: 'DAC HW mute GPIO pin' }),
+  screen.getByRole('button', { name: 'DAC HW mute GPIO pin' }),
   screen.getByRole('spinbutton', { name: 'DAC mute hold time ms' }),
   screen.getByRole('spinbutton', { name: 'DAC mute release time ms' }),
 ];

@@ -154,6 +154,40 @@ describe('warnOnPresetSwitchDirty', () => {
   });
 });
 
+describe('debugPanels', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  test('defaults debugPanels to false on first run', () => {
+    const s = loadSettings();
+    expect(s.debugPanels).toBe(false);
+  });
+
+  test('round-trips debugPanels=true through localStorage', () => {
+    const payload = {
+      version: 1,
+      tab: 'overview',
+      eqTarget: null,
+      lastSerial: null,
+      debugPanels: true,
+    };
+    localStorage.setItem(V1_KEY, JSON.stringify(payload));
+    const s = loadSettings();
+    expect(s.debugPanels).toBe(true);
+  });
+
+  test('falls back to false when debugPanels is missing or invalid', () => {
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, debugPanels: 'yes' }));
+    const s = loadSettings();
+    expect(s.debugPanels).toBe(false);
+  });
+});
+
 describe('selectChannel', () => {
   test('sets the selected channel and switches to the EQ tab', () => {
     settings.tab = 'overview';

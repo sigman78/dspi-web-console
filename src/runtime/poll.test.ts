@@ -4,7 +4,7 @@ import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
-import { dispatch, mintConnId, makeReadySession, resetAppState, type ReadySession } from '@/state';
+import { dispatch, mintConnId, makeReadySession, resetAppState, settings, type ReadySession } from '@/state';
 import { startPolling } from './poll';
 import type { LoopClock } from '@/utils';
 
@@ -120,6 +120,52 @@ describe('startPolling', () => {
     expect(calls.status).toBe(0);
     stop();
     hiddenSpy.mockRestore();
+  });
+});
+
+// Buffer stats feed only the debug-gated diagnostics panels, so the 4 Hz
+// fetch is skipped entirely while they're hidden.
+describe('buffer cadence debug gate', () => {
+  afterEach(() => {
+    teardown();
+    settings.debugPanels = false;
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('skips getBufferStats while the debug panels are hidden', async () => {
+    const { device, calls } = pollDevice();
+    const session = connect(device);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(calls.status).toBe(1);   // the loop itself ran
+    expect(calls.buffer).toBe(0);
+    stop();
+  });
+
+  it('polls getBufferStats when the persisted debug setting is on', async () => {
+    settings.debugPanels = true;
+    const { device, calls } = pollDevice();
+    const session = connect(device);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(calls.buffer).toBe(1);
+    stop();
+  });
+
+  it('polls getBufferStats when ?debug forces the panels on', async () => {
+    window.history.replaceState({}, '', '/?debug');
+    const { device, calls } = pollDevice();
+    const session = connect(device);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(calls.buffer).toBe(1);
+    stop();
   });
 });
 

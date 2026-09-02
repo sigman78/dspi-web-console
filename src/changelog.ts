@@ -6,11 +6,13 @@ import { APP_VERSION } from './buildInfo';
 export const LATEST_CHANGES = {
   version: APP_VERSION,
   highlights: [
+    'Pin map panel (SY.16): every GPIO at a glance — color-coded by role (outputs, inputs, clocks, control, surfaces), reserved pins hatched, ADC-capable marked',
+    'Pin pickers reworked: a pop-up grid of the whole GPIO range shows who holds each pin and why one is unavailable; factory-pin resets moved to DEFAULTS buttons in the panel headers (fw 1.1.5)',
+    'SYSTEM tab decluttered: panels regrouped into device / inputs / outputs columns; telemetry, error counters, and buffer stats sit behind the DEBUG toggle in the DEVICE panel (or ?debug in the URL)',
     'Firmware 1.1.6 ready: ADAT lightpipe input (SY.15) with loopback self-test, system clock control, and the caps v4 control-surface functions (upmixer, psybass, per-output delay, preset reload)',
     'Multi-device: connect several DSPi units at once — the DEVICES list in the sidebar switches between them, with a full state resync on every switch',
     'Stereo Upmixer: derive Centre and surround channels from any stereo source — new panel in Processing, route Upmix C/Ls/Rs in the mixer (fw 1.1.5, RP2350)',
     'Psychoacoustic bass: missing-fundamental harmonics with per-output selection — new PSYBASS panel (fw 1.1.5)',
-    'Pin pickers gain a DEFAULT option — the device restores its own factory pin, no guessing (fw 1.1.5)',
     'Linkwitz Transform EQ bands display in the equalizer (fw 1.1.5)',
     'I2S slave clock mode: sync to an external I2S master with auto-detected rate and live lock status (fw 1.1.5)',
     'IR remote control: learn buttons from any remote and bind them to device functions (Control tab)',

@@ -2,14 +2,17 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
-  import { connection } from '@/state';
+  import { connection, settings, setDebugPanels } from '@/state';
   import { factoryResetDevice, enterBootloader, MIN_CS_CAPS_VERSION, MAX_KNOWN_CS_CAPS_VERSION } from '@/runtime';
   import { SUPPORT_WINDOW } from '@/protocol/capabilities';
   import { getSession } from '@/components/sessionContext';
+  import { debugPanelsForced } from '@/devOptions';
 
   const s = getSession();
   const snap = $derived(s.mirror.current);
   const connected = $derived(connection.connected);
+  const forced = $derived(debugPanelsForced());
+  const debugEffective = $derived(settings.debugPanels || forced);
 
   // Sub-protocol versions the wire format can't convey: shown so users can
   // tell at a glance why a feature panel is gated on their firmware.
@@ -29,6 +32,15 @@
 </script>
 
 <Panel code="SY.01" title="DEVICE">
+  {#snippet right()}
+    <button
+      class="chip"
+      class:on={debugEffective}
+      onclick={() => setDebugPanels(!settings.debugPanels)}
+      disabled={forced}
+      title={forced ? 'Forced on by ?debug' : 'Show diagnostics panels (telemetry, error counters, buffer stats)'}
+    >DEBUG</button>
+  {/snippet}
   <div class="kvgrid">
     <KV label="STATUS"   value={connection.label} tone={connection.connected ? 'ok' : 'off'} />
     <KV label="SERIAL"   value={s.info.serial} />

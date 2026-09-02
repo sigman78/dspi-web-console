@@ -36,6 +36,20 @@ export const COLORS: Record<ChannelKey, Lch> = {
   In4R:  { l: 67, c: 0.135, h: 120 },
 };
 
+// Counterpart of PinRole in src/domain/pins.ts. Duplicated (not imported) so
+// this module stays import-free for the build-time paletteCSS() eval;
+// src/styles/palette.ts asserts the two key sets stay in lockstep.
+export type PinRoleKey = 'audio-out' | 'audio-in' | 'clock' | 'control' | 'surface' | 'system';
+
+export const ROLE_COLORS: Record<PinRoleKey, Lch> = {
+  'audio-out': { l: 73, c: 0.125, h:  65 },   // amber -- signal leaving
+  'audio-in':  { l: 73, c: 0.125, h: 150 },   // green -- signal entering
+  'clock':     { l: 73, c: 0.115, h: 210 },   // cyan
+  'control':   { l: 72, c: 0.120, h: 290 },   // violet -- UART/I2C
+  'surface':   { l: 72, c: 0.120, h: 335 },   // magenta -- CS bindings
+  'system':    { l: 70, c: 0.100, h:  25 },   // warm neutral -- DAC mute etc.
+};
+
 const clampL = (v: number) => Math.max(0, Math.min(100, v));
 const clampC = (v: number) => Math.max(0, Math.min(0.4, v));
 const fmt = (l: number, c: number, h: number) =>
@@ -53,7 +67,7 @@ export function shadeFor(color: Lch, shade: ShadeName): string {
 }
 
 export function paletteCSS(): string {
-  return (Object.keys(COLORS) as ChannelKey[])
+  const channelRules = (Object.keys(COLORS) as ChannelKey[])
     .map((key) => {
       const c = COLORS[key];
       return `.ch-${key} {
@@ -64,4 +78,18 @@ export function paletteCSS(): string {
 }`;
     })
     .join('\n');
+
+  const roleRules = (Object.keys(ROLE_COLORS) as PinRoleKey[])
+    .map((key) => {
+      const c = ROLE_COLORS[key];
+      return `.pinrole-${key} {
+  --role-base:   ${shadeFor(c, 'base')};
+  --role-bright: ${shadeFor(c, 'bright')};
+  --role-dim:    ${shadeFor(c, 'dim')};
+  --role-glow:   ${shadeFor(c, 'glow')};
+}`;
+    })
+    .join('\n');
+
+  return `${channelRules}\n${roleRules}`;
 }
