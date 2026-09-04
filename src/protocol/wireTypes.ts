@@ -301,6 +301,26 @@ export const InputConfig24 = struct({
   _reserved:            reserved(1),
 });
 
+// Section 15, V28 shape: a full interior relayout to fit the fourth
+// selectable S/PDIF input. spdifRxPinExt grows from 2 to 3 entries (SPDIF
+// 2/3/4 GPIOs, 0 = absent/keep-live), pushing every following field one byte
+// later; spdifRxEnabledExtP1's mask gains bit2 = SPDIF4. No reserved byte
+// remains. Same 16-byte size as InputConfig24.
+export const InputConfig28 = struct({
+  inputSource:          u8,
+  spdifRxPin:           u8,
+  i2sRxPin:             u8,
+  i2sInputRate:         u8,
+  i2sInputChannels:     u8,
+  i2sRxPinExt:          arr(u8, 3),
+  spdifRxPinExt:        arr(u8, 3),
+  spdifRxEnabledExtP1:  u8,
+  i2sClockMode:         u8,
+  adatInputPin:         u8,
+  adatInputEnabledP1:   u8,
+  adatInputClockModeP1: u8,
+});
+
 // Section 16: LG Sound Sync (16 B, V8+, optional). Only `enabled` is host-
 // configurable through bulk apply; present/volume/muted are runtime state.
 export const LgSoundSync = struct({
@@ -567,13 +587,16 @@ export const AdatInputStatus = struct({
 // No semantic codec -- surfaced verbatim as bytes.
 export const SPDIF_RX_CH_STATUS_LEN = 24;
 
-// 5-byte GetSpdifInputConfig response (0xEF, fw 1.1.5+). enableMask here is
-// unshifted: bit0 = input 1 (always set), bit1 = input 2, bit2 = input 3.
-// Distinct from spdifRxEnabledExtP1's mask+1 encoding in the bulk section.
+// 6-byte GetSpdifInputConfig response (0xEF, fw 1.1.6+/V28; 5 bytes on older
+// fw). enableMask here is unshifted: bit0 = input 1 (always set), bit1 =
+// input 2, bit2 = input 3, bit3 = input 4. Distinct from
+// spdifRxEnabledExtP1's mask+1 encoding in the bulk section. A pre-V28
+// device answers the legacy 5-byte layout (no pin 4) -- `decodePadded`
+// zero-fills pin 4 as absent.
 export const SpdifInputConfig = struct({
   count:      u8,
   enableMask: u8,
-  pins:       arr(u8, 3),
+  pins:       arr(u8, 4),
 });
 
 // 8-byte payload of SetUartConfig (0xF5) / response of GetUartConfig (0xF6).
@@ -888,16 +911,22 @@ export const BULK_SIZE_V25 = BULK_SIZE_V24 + sizeOf(UpmixParams);
 // V26 claims UpmixParams' reserved byte 3 (presence_q1) -- also no
 // packet-size change.
 export const BULK_SIZE_V26 = BULK_SIZE_V25;
+// V27 widens the upmix centre-mode enum (adds OFF) -- enum-only, no struct
+// change, so no packet-size change.
+export const BULK_SIZE_V27 = BULK_SIZE_V26;
+// V28 relayouts InputConfig's interior for the fourth S/PDIF input --
+// same 16-byte section size, so no packet-size change.
+export const BULK_SIZE_V28 = BULK_SIZE_V27;
 
 // Newest wire version the console knows how to decode and write.
-export const MAX_WIRE_VERSION = 26;
+export const MAX_WIRE_VERSION = 28;
 
 // Packet size to allocate/write for a given target wire version (clamped to
 // the V6 floor and the MAX_WIRE_VERSION ceiling). Versions 11..15 were
 // in-development intermediates the console never supported; they collapse to
 // the V10 size (writes to such devices are rejected at connect anyway).
 export function bulkSizeForVersion(v: number): number {
-  if (v >= 25) return BULK_SIZE_V26;
+  if (v >= 25) return BULK_SIZE_V28;
   if (v >= 23) return BULK_SIZE_V24;
   if (v >= 21) return BULK_SIZE_V21;
   if (v >= 20) return BULK_SIZE_V20;
@@ -916,9 +945,9 @@ export const BulkLimits = {
   MinPacketSize:  BulkSizes.V2,
   // Size we WRITE: version-aware buildBulkParams emits at the device's own wire
   // version, up to MAX_WIRE_VERSION. This is the largest buffer it may allocate.
-  MaxRequestSize: BULK_SIZE_V26,
-  // Size we READ: the largest packet we tolerate receiving (V26).
-  MaxReadSize:    BULK_SIZE_V26,  // 5944
+  MaxRequestSize: BULK_SIZE_V28,
+  // Size we READ: the largest packet we tolerate receiving (V28).
+  MaxReadSize:    BULK_SIZE_V28,  // 5944
   // WinUSB caps a control transfer's data stage at 4 KB; the largest single
   // EP0 transfer any host backend can rely on. Above this, DspDevice chunks
   // via 0xA2/0xA3 (fw 1.1.5+).
@@ -961,6 +990,9 @@ export interface BulkLayout {
   upmix: boolean;
   // V26: upmixer presence-bell byte (UpmixParams reserved-byte claim).
   upmixPresence: boolean;
+  // V28: InputConfig's interior relayout for the fourth S/PDIF input
+  // (3-entry spdifRxPinExt, mask bit2 = SPDIF4). Same section size as V24.
+  spdifInput4: boolean;
 }
 
 // Determine which optional sections are present based on the header.
@@ -990,6 +1022,7 @@ export function bulkLayout(h: { formatVersion: number; payloadLength: number }):
     adatInput:         v >= 24 && len >= BULK_SIZE_V24,
     upmix:             v >= 25 && len >= BULK_SIZE_V25,
     upmixPresence:     v >= 26 && len >= BULK_SIZE_V26,
+    spdifInput4:       v >= 28 && len >= BULK_SIZE_V28,
   };
 }
 

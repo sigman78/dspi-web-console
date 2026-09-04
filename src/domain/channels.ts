@@ -132,8 +132,8 @@ export function inputIndexOf(id: ChannelId): InputSlot | null {
 // relationship ("USB 1".."USB 8"); I2S and S/PDIF are true stereo pairs.
 // Output default names are unaffected -- ALL_CHANNELS' static table
 // remains their source of truth.
-// Spdif2/Spdif3 select which GPIO the single S/PDIF receiver listens on --
-// same receiver, same stereo pair -- so they name identically to Spdif.
+// Spdif2/Spdif3/Spdif4 select which GPIO the single S/PDIF receiver listens
+// on -- same receiver, same stereo pair -- so they name identically to Spdif.
 export function defaultInputName(source: AudioInputSource, slot: InputSlot): string {
   if (isSpdifSource(source)) return `SPDIF ${slot % 2 === 0 ? 'L' : 'R'}`;
   switch (source) {

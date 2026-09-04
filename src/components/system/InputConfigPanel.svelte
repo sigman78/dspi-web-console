@@ -102,6 +102,7 @@
     [AudioInputSource.Spdif]:  spdifInputCount > 1 ? 'S/PDIF 1' : 'S/PDIF',
     [AudioInputSource.Spdif2]: 'S/PDIF 2',
     [AudioInputSource.Spdif3]: 'S/PDIF 3',
+    [AudioInputSource.Spdif4]: 'S/PDIF 4',
     [AudioInputSource.I2s]:    'I2S',
     [AudioInputSource.Adat]:   'ADAT',
   });
@@ -172,6 +173,15 @@
             onclick={() => stageInputSource(s, AudioInputSource.Spdif3)}
             disabled={!connected || source === AudioInputSource.Spdif3}
           >S/P 3</button>
+        {/if}
+        {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[2]}
+          <button
+            class="chip"
+            class:on={source === AudioInputSource.Spdif4}
+            class:staged={s.staging.has('inputSource') && source === AudioInputSource.Spdif4}
+            onclick={() => stageInputSource(s, AudioInputSource.Spdif4)}
+            disabled={!connected || source === AudioInputSource.Spdif4}
+          >S/P 4</button>
         {/if}
         {#if features.i2sInput}
           <button

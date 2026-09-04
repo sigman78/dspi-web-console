@@ -60,6 +60,7 @@ function fmtSource(source: Domain.AudioInputSource): string {
     case Domain.AudioInputSource.Spdif:  return 'S/PDIF';
     case Domain.AudioInputSource.Spdif2: return 'S/PDIF 2';
     case Domain.AudioInputSource.Spdif3: return 'S/PDIF 3';
+    case Domain.AudioInputSource.Spdif4: return 'S/PDIF 4';
     case Domain.AudioInputSource.I2s:    return 'I2S';
     case Domain.AudioInputSource.Adat:   return 'ADAT';
     default:                             return 'USB';

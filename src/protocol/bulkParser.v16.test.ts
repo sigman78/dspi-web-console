@@ -45,7 +45,7 @@ describe('bulkParser — V16 packet', () => {
     expect(p.inputConfig).toEqual({
       source: 2, spdifRxPin: 5,
       i2sRxPins: [1, 2, 3, 4], i2sInputRateEnc: 2, i2sInputChannels: 6,
-      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      spdifRxPinExt: [0, 0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
       adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
     });
     expect(p.crossover[8][0].type).toBe(34);

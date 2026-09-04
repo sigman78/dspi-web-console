@@ -26,6 +26,18 @@ describe('resolveMockProfile', () => {
     expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 4 });
   });
 
+  it('parses v27/v28 with fw 1.1.6, while v26 stays on 1.1.5', () => {
+    expect(resolveMockProfile('v26').opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 5 });
+    expect(resolveMockProfile('v27').opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6 });
+    expect(resolveMockProfile('v28').opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6 });
+  });
+
+  it('latest boots at MAX_WIRE_VERSION with fw 1.1.6', () => {
+    const p = resolveMockProfile('latest');
+    expect(p.opts.wireVersion).toBe(Wire.MAX_WIRE_VERSION);
+    expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6 });
+  });
+
   it('falls back to latest for wire versions the console never supported (11..15)', () => {
     expect(resolveMockProfile('v12').name).toBe('latest');
   });

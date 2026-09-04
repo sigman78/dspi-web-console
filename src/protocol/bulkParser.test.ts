@@ -266,7 +266,9 @@ describe('bulkParser — V7-V10 tail decode', () => {
     expect(p.payloadLength).toBe(Wire.BulkSizes.V10);
     expect(p.inputConfig).toEqual({
       source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
-      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      // Old (pre-V28) wire only carries SPDIF2/3 -- the DTO pads a third
+      // (SPDIF4) entry to 0 so the shape is uniform across versions.
+      spdifRxPinExt: [0, 0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
       adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
     });
     expect(p.lgSoundSync).toEqual({ enabled: true, present: true, volume: 40, muted: false });
@@ -281,7 +283,7 @@ describe('bulkParser — V7-V10 tail decode', () => {
     }));
     expect(p.inputConfig).toEqual({
       source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
-      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      spdifRxPinExt: [0, 0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
       adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
     });
     expect(p.lgSoundSync.enabled).toBe(false);
@@ -321,7 +323,7 @@ describe('buildBulkParams — version-aware', () => {
     expect(p.formatVersion).toBe(10);
     expect(p.inputConfig).toEqual({
       source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
-      spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+      spdifRxPinExt: [0, 0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
       adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
     });
     expect(p.userVolume.mute).toBe(true);
@@ -331,10 +333,12 @@ describe('buildBulkParams — version-aware', () => {
     const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
     const bulk = {
       ...base,
-      inputConfig: { ...base.inputConfig, spdifRxPinExt: [16, 17], spdifRxEnabledExtP1: 3 },
+      inputConfig: { ...base.inputConfig, spdifRxPinExt: [16, 17, 0], spdifRxEnabledExtP1: 3 },
     };
     const p = parseBulkParams(buildBulkParams(bulk));
-    expect(p.inputConfig.spdifRxPinExt).toEqual([16, 17]);
+    // Pre-V28 wire only carries SPDIF2/3 -- the SPDIF4 (third) slot is
+    // dropped on write and comes back padded to 0.
+    expect(p.inputConfig.spdifRxPinExt).toEqual([16, 17, 0]);
     expect(p.inputConfig.spdifRxEnabledExtP1).toBe(3);
   });
 

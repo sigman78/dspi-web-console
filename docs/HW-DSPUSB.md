@@ -177,7 +177,7 @@ Firmware-defined commands with no `DspDevice` method yet.
 
 ## Bulk packet layout — `GetAllParams 0xA0`
 
-The largest packet on the wire and the structure most likely to drift between firmware revisions. Layout mirrors `DSPiConsole.Usb/BulkParamsParser.cs`. **Min size 2832 B (V2); 2960 B (V10) on 1.1.4; 5864 B (V16) on 1.1.5 — the current max.** The V16 packet exceeds `Wire.BulkLimits.MaxControlTransfer` (4096 B, the WinUSB control-transfer ceiling), so it's read/written via the chunked `0xA2`/`0xA3` session instead of a single control transfer; V10 and below fit one transfer. See `bulkSizeForVersion` in `src/protocol/wireTypes.ts` and the read/write paths in `src/device/DspDevice.ts`.
+The largest packet on the wire and the structure most likely to drift between firmware revisions. Layout mirrors `DSPiConsole.Usb/BulkParamsParser.cs`. **Min size 2832 B (V2); 2960 B (V10) on 1.1.4; 5864 B (V16) at the 1.1.5 base, grown by the V17–V25 appends and interior growth to 5944 B (V25–V28) on released 1.1.5/1.1.6 — the current max.** V16+ packets exceed `Wire.BulkLimits.MaxControlTransfer` (4096 B, the WinUSB control-transfer ceiling), so they're read/written via the chunked `0xA2`/`0xA3` session instead of a single control transfer; V10 and below fit one transfer. See `bulkSizeForVersion` in `src/protocol/wireTypes.ts` and the read/write paths in `src/device/DspDevice.ts`.
 
 | Offset | Size | Section | Contents |
 |---|---|---|---|
@@ -202,7 +202,7 @@ The largest packet on the wire and the structure most likely to drift between fi
 
 Optional trailing sections are gated on **packet length** AND (where noted) **format version**. The 9-output crosspoint and output arrays are always present in full — the platform's actual output count comes from the header (`numOut`); RP2040's matrix view hides unused columns.
 
-**V16 layout.** The table above is the V10-and-earlier fixed-offset layout (unchanged back through V2). V16 restructures around a unified channel model: 8 inputs + 9 outputs share one 17-wide EQ/delay/name/preamp array (vs V10's 2-input/9-output split riding an 11-wide legacy array), crosspoints widen to `8 × 9`, and a new crossover section is appended — `17 channels × 4 bands`, same `WireBandParams` shape as the main EQ section but with `FilterType` 32–63. Total packet size is 5864 B (`Wire.BULK_SIZE_V16`). See `Wire.Const16` and `BULK_SIZE_V16` in `src/protocol/wireTypes.ts` for the authoritative sizes — this doc doesn't re-derive V16 byte offsets.
+**V16 layout.** The table above is the V10-and-earlier fixed-offset layout (unchanged back through V2). V16 restructures around a unified channel model: 8 inputs + 9 outputs share one 17-wide EQ/delay/name/preamp array (vs V10's 2-input/9-output split riding an 11-wide legacy array), crosspoints widen to `8 × 9`, and a new crossover section is appended — `17 channels × 4 bands`, same `WireBandParams` shape as the main EQ section but with `FilterType` 32–63. V17–V28 evolve this layout further (appended ADAT/psybass/upmix sections, reserved-byte claims, and one interior relayout — see the schema table below); the authoritative sizes and per-version structs are `BULK_SIZE_V16`…`BULK_SIZE_V28` and `InputConfig`/`InputConfig21`/`InputConfig24`/`InputConfig28` in `src/protocol/wireTypes.ts` — this doc doesn't re-derive V16+ byte offsets.
 
 `defaultBulkParams(opts)` in `src/protocol/bulkParser.ts` produces a wire-faithful factory-default packet of any allowed shape; used by `MockTransport` and parser tests.
 
@@ -275,14 +275,14 @@ These are hardware/browser-environment quirks that bite during deployment.
 
 DSPi firmware reports two version axes:
 
-- **`FW_VERSION_BCD`** — semantic firmware revision (e.g. `0x113` = `1.1.3`). Exposed via `GetPlatform 0x7F`.
+- **`FW_VERSION_PACKED`** (named `FW_VERSION_BCD` before 1.1.6; it was always nibble packing, not BCD) — semantic firmware revision (e.g. `0x113` = `1.1.3`). Exposed via `GetPlatform 0x7F`; fw 1.1.6 widens that response from 4 to 6 bytes (full-width minor/patch as plain u8 at bytes 4–5, lifting the nibble cap of 15 — bytes 0–3 unchanged, so 4-byte readers are unaffected) and adds `GetBuildInfo 0x80`, a 64-byte git-describe/date provenance blob that is explicitly for humans only — no software may gate on it.
 - **`WIRE_FORMAT_VERSION`** — bulk-packet schema version, bumped only when `WireBulkParams` changes. Exposed in the bulk packet header byte 0.
 
 The two move independently: a firmware bump can change wire behavior without bumping `WIRE_FORMAT_VERSION` (e.g. new vendor commands, deferred-execution refactors, encoding tweaks on existing fields). The version table below is the **wire/protocol** history. The console parser gates each optional bulk section on **both** `formatVersion` AND `payloadLength` (see `bulkLayout()` in `src/protocol/wireTypes.ts`); a wire-version axis isn't enough — older firmware can ship an in-development build that lies about its version.
 
 ### Bulk packet schema
 
-Today's connect-time floor is V10: `deriveCapabilities` (`src/protocol/capabilities.ts`) classifies any wire version outside `{10, 16}` as `'unsupported'` — including every V2-V9 row below — and `DspDevice.resolveInfo` throws `UnsupportedFirmware` before any further reads. The V2-V9 rows are kept for schema-history context; a device actually reporting one of them can no longer connect at all.
+Today's connect-time floor is V10: `deriveCapabilities` (`src/protocol/capabilities.ts`) classifies any wire version outside `{10, 16–28}` as `'unsupported'` — including every V2-V9 row below and the V11-V15 in-dev intermediates — and `DspDevice.resolveInfo` throws `UnsupportedFirmware` before any further reads. The V2-V9 rows are kept for schema-history context; a device actually reporting one of them can no longer connect at all. Versions above V28 classify as `'future'`: the console connects best-effort, parses the sections it recognizes, and refuses bulk writes (firmware's bulk SET is version-and-size exact from V16 on, so a stale-version payload would be rejected anyway).
 
 | WIRE | Packet size | Sections added | Console support |
 |---|---|---|---|
@@ -294,12 +294,26 @@ Today's connect-time floor is V10: `deriveCapabilities` (`src/protocol/capabilit
 | **V7** | 2912 B | `WireInputConfig` (16 B) — `u8 inputSource` (`0=USB`, `1=SPDIF`), `u8 spdifRxPin` | Folded into the V10 packet on released 1.1.4; no standalone UI |
 | **V8** | 2928 B | `WireLgSoundSync` (16 B) — `u8 enabled, u8 present, u8 volume, u8 muted`. Only `enabled` is honored on bulk SET; the rest are observation-only | Folded into the V10 packet on released 1.1.4; no standalone UI |
 | **V9** | 2944 B | `WireUserVolume` (16 B) — `f32 userVolumeDb` (`[-60, 0]` dB), `u8 userMute`. Vendor-channel mirror of UAC1 host volume but always honored regardless of input source | Folded into the V10 packet on released 1.1.4; no standalone UI |
-| **V10** | 2960 B | `WireDacHwMute` (16 B) — `u8 enabled, u8 activeLow, u8 pin, u16 holdMs, u16 releaseMs`. Board-level external DAC mute pin config. **Released with fw 1.1.4** | Full read/write — one of two supported generations |
+| **V10** | 2960 B | `WireDacHwMute` (16 B) — `u8 enabled, u8 activeLow, u8 pin, u16 holdMs, u16 releaseMs`. Board-level external DAC mute pin config. **Released with fw 1.1.4** | Full read/write — the legacy supported generation |
 | **V10 EQ change** | (same 2960 B) | `WireBandParams.bypass` at offset 1 (was `reserved`) — `1`=user-bypassed. Cooperates with the new `SetBandBypass 0xD8` opcode and the new `bypass` byte at offset 3 of `SetEqParam 0x42` (was `reserved`). Old console always writes `0` there, preserving "active" semantics | Console decodes `bypass` per band; no UI toggle yet |
 | **V11-V15** | — | In-development intermediates with shifting layouts the console never shipped against | Rejected at connect, same as pre-V10 firmware (`UnsupportedFirmware`) |
-| **V16** | 5864 B | Unified channel model — 8 inputs + 9 outputs share one 17-wide EQ/delay/name/preamp array (`Const16` in `wireTypes.ts`), crosspoints widen to `8 × 9`, and a new crossover section is appended (`17 channels × 4 bands`, `FilterType` 32-63). **Released with fw 1.1.5** | Full read/write — the other of the two supported generations; exceeds the 4 KB control-transfer cap, so it's read/written via the chunked `0xA2`/`0xA3` session |
+| **V16** | 5864 B | Unified channel model — 8 inputs + 9 outputs share one 17-wide EQ/delay/name/preamp array (`Const16` in `wireTypes.ts`), crosspoints widen to `8 × 9`, and a new crossover section is appended (`17 channels × 4 bands`, `FilterType` 32-63). **The 1.1.5 base generation**; from here on, firmware's bulk SET accepts only an exact version + size match | Full read/write; V16+ exceeds the 4 KB control-transfer cap, so it's read/written via the chunked `0xA2`/`0xA3` session |
+| **V17** | 5872 B | Appends `WireAdatConfig` (8 B) — ADAT lightpipe output enable/pin (RP2350; zeroed on RP2040) | Full read/write |
+| **V18** | 5876 B | `WireLevellerConfig` grows 16 → 20 B (per-input detector/apply masks) — an **interior** grow, every later section shifts +4 | Full read/write |
+| **V19** | 5876 B | Global reserved bytes become `loudness_output_mask` (u16) | Full read/write |
+| **V20** | 5876 B | Crossfeed reserved byte becomes `output_pair_mask` (u8) | Full read/write |
+| **V21** | 5876 B | Input-config reserved byte becomes `i2s_clock_mode` (master/slave) | Full read/write |
+| **V22** | 5876 B | EQ `WireBandParams.reserved[2]` becomes the Linkwitz Transform target-Qp sidecar (u16, Q×512; zero for non-LT types) | Full read/write |
+| **V23** | 5900 B | Appends `WirePsybassParams` (24 B) — psychoacoustic bass | Full read/write |
+| **V24** | 5900 B | Input-config reserved bytes become the ADAT input pin/enable/clock fields (RP2350) | Full read/write |
+| **V25** | 5944 B | Appends `WireUpmixParams` (44 B) — stereo upmixer (RP2350; zeroed on RP2040) | Full read/write |
+| **V26** | 5944 B | Upmix reserved byte becomes `presence_q1` (centre presence bell, dB×2) | Full read/write |
+| **V27** | 5944 B | Upmix centre-mode enum gains OFF (2) — surrounds-only upmixing, L/R bit-exact. Enum widening only, no struct change | Full read/write |
+| **V28** | 5944 B | Input-config **interior relayout**: `spdif_rx_pin_ext` grows 2 → 3 entries (fourth selectable S/PDIF input, `INPUT_SOURCE_SPDIF4 = 6`), shifting the enable mask / clock mode / ADAT fields one byte later; section stays 16 B, now full. `GetSpdifInputConfig 0xEF` response grows 5 → 6 B. **Released with fw 1.1.5 (`main`) and carried unchanged by fw 1.1.6** | Full read/write — the current ceiling (`MAX_WIRE_VERSION`) |
 
-Writes are version-matched, not pinned to V6: `buildBulkParams` (`src/protocol/bulkParser.ts`) only enforces a V6 floor — it throws if the snapshot's `formatVersion` is below 6 — then snaps the write to a shipped generation: V16 if the request is ≥ 16, otherwise V10 (so an 11-15 request collapses to V10). In practice `DspDevice.setAllParams` always requests the connected device's own generation (`capabilities.wireGen`, 10 or 16), so a V10 device receives a V10 packet and a V16 device its full V16 packet — never a fixed V6 packet. The console parses all sections up to and including V16 (`bulkLayout` gates on version + length) and retains the full raw image. Note: in INDEPENDENT output-config mode the firmware skips the pin section and RX-pin hot-swap of a bulk SET entirely.
+fw 1.1.6 bumps no wire version (stays V28): its new surface is Control Surfaces capability formats v8–v13 (indicator delays, target groups, macros, I2C displays; vendor opcodes `0x20`–`0x2B`) plus the versioning provenance above (`0x7F` widening, `0x80` build info) — tracked in the firmware's `control_surfaces_*` specs, outside this doc's bulk-packet scope.
+
+Writes are version-matched, not pinned to V6: `buildBulkParams` (`src/protocol/bulkParser.ts`) only enforces a V6 floor — it throws if the snapshot's `formatVersion` is below 6 — then emits the target version's exact layout (an 11-15 request collapses to V10; requests above the ceiling clamp to `MAX_WIRE_VERSION`). In practice `DspDevice.setAllParams` always requests the connected device's own wire version, which from V16 on is also the only payload firmware will accept (version-and-size-exact apply). The console parses all sections up to and including V28 (`bulkLayout` gates on version + length) and retains the full raw image. Note: in INDEPENDENT output-config mode the firmware skips the pin section and RX-pin hot-swap of a bulk SET entirely.
 
 ### Vendor commands added since v1.1.3 (WIRE = V3)
 

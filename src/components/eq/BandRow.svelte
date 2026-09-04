@@ -23,11 +23,14 @@
   const off = $derived(band.type === FilterType.Flat);
   const bypassed = $derived(band.bypass);
   // First-order sections (V16+) are single-parameter: no Q, and the 1st-order
-  // all-pass has no gain either.
+  // all-pass and the first-order low/high pass (V28+) have no gain either.
   const firstOrder = $derived(
-    band.type === FilterType.Allpass1 || band.type === FilterType.LowShelf1 || band.type === FilterType.HighShelf1,
+    band.type === FilterType.Allpass1 || band.type === FilterType.LowShelf1 || band.type === FilterType.HighShelf1
+      || band.type === FilterType.LowPass1 || band.type === FilterType.HighPass1,
   );
-  const noGain = $derived(band.type === FilterType.Allpass1);
+  const noGain = $derived(
+    band.type === FilterType.Allpass1 || band.type === FilterType.LowPass1 || band.type === FilterType.HighPass1,
+  );
 
   // Linkwitz Transform is display-only in this UI (see BandTypeSelect): a
   // band already set to it renders read-only -- freq/Q show f0/Q0 but can't

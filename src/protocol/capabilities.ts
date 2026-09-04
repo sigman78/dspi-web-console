@@ -9,22 +9,23 @@
 import * as Wire from './wireTypes';
 import { ChannelFamily, SPDIF_RX_MAX_INSTANCES } from '@/domain';
 
-// Support window: V10 (released fw 1.1.4) and V16-V26 (fw 1.1.5, unified
-// channel model; V17 adds ADAT config, V18 adds leveller channel masks, V19
-// adds the per-output loudness mask, V20 adds the crossfeed output-pair mask,
-// V21 adds I2S slave-clock mode, V22 adds the Linkwitz Transform qp sidecar,
-// V23 adds psychoacoustic bass, V24 adds ADAT input config, V25 adds the
-// stereo upmixer, V26 adds the upmixer presence bell).
+// Support window: V10 (released fw 1.1.4) and V16-V28 (fw 1.1.5/1.1.6,
+// unified channel model; V17 adds ADAT config, V18 adds leveller channel
+// masks, V19 adds the per-output loudness mask, V20 adds the crossfeed
+// output-pair mask, V21 adds I2S slave-clock mode, V22 adds the Linkwitz
+// Transform qp sidecar, V23 adds psychoacoustic bass, V24 adds ADAT input
+// config, V25 adds the stereo upmixer, V26 adds the upmixer presence bell,
+// V27 adds the upmix centre OFF mode, V28 adds the fourth S/PDIF input).
 // Wire versions 11..15 were in-development intermediates with shifting
 // layouts the console never shipped against -- rejected like pre-V10 firmware.
-export const MAX_KNOWN_WIRE = 26;
-const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26];
+export const MAX_KNOWN_WIRE = 28;
+const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28];
 
 // UI-facing description of the support window (device-panel tooltips). Keep
 // in step with SUPPORTED_WIRE_VERSIONS and the fw releases that carry them.
 export const SUPPORT_WINDOW = {
   fw: '1.1.4–1.1.6',
-  wire: 'V10 and V16–V26',
+  wire: 'V10 and V16–V28',
 } as const;
 
 export interface FirmwareVersion {
@@ -90,6 +91,15 @@ export interface DeviceFeatures {
   // Upmixer presence bell (UpmixParams' presenceQ1 byte). Wire V26+, RP2350
   // only -- earlier firmware has no presence field to write to.
   readonly upmixPresence: boolean;
+  // Upmixer centre-mode OFF (surrounds-only upmixing, L/R bit-exact). Wire
+  // V27+ only -- an enum widening with no dedicated struct field, so it's
+  // keyed on the exact wire version: older firmware clamps an out-of-range
+  // centre-mode byte to Adaptive, so the option must stay hidden below V27.
+  readonly upmixCenterOff: boolean;
+  // First-order low/high pass PEQ types (FilterType 12/13). Wire V28+ only,
+  // as a conservative proxy: the types shipped with no dedicated wire/slot
+  // version bump just before V28, and pre-V28 firmware renders them flat.
+  readonly firstOrderLpHp: boolean;
   // Universal pin-reset escape hatch: every single-pin SET command accepts
   // GPIO byte 0xFF (Wire.Const.PIN_RESET_TO_DEFAULT) to restore that target's
   // platform default. Proxy -- the feature shipped just before the V25 bump
@@ -124,9 +134,9 @@ export interface DeviceCapabilities {
 
   readonly features: DeviceFeatures;
 
-  // Number of selectable S/PDIF inputs (1 unless multiSpdifInputs is set, then
-  // 3). Numeric sibling of features.multiSpdifInputs -- DeviceFeatures stays
-  // boolean-only.
+  // Number of selectable S/PDIF inputs (1 unless multiSpdifInputs is set,
+  // then 3, or 4 on wire V28+). Numeric sibling of features.multiSpdifInputs
+  // -- DeviceFeatures stays boolean-only.
   readonly spdifInputCount: number;
 }
 
@@ -183,8 +193,11 @@ export function deriveCapabilities(input: {
       adatInput:          wireVersion >= 24 && platformId === 1,
       upmix:              wireVersion >= 25 && platformId === 1,
       upmixPresence:      wireVersion >= 26 && platformId === 1,
+      upmixCenterOff:     wireVersion >= 27 && platformId === 1,
+      firstOrderLpHp:     wireVersion >= 28,
       pinResetDefault:    wireVersion >= 25,
     },
-    spdifInputCount: multiSpdifInputs ? SPDIF_RX_MAX_INSTANCES : 1,
+    // 3 selectable inputs through V27; V28 adds the fourth.
+    spdifInputCount: multiSpdifInputs ? (wireVersion >= 28 ? SPDIF_RX_MAX_INSTANCES : 3) : 1,
   };
 }

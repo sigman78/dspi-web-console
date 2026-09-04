@@ -19,6 +19,7 @@
   const enabled = $derived(upmix?.enabled ?? false);
   const editable = $derived(connected && enabled);
   const showPresence = $derived(s.device.capabilities.features.upmixPresence);
+  const showCenterOff = $derived(s.device.capabilities.features.upmixCenterOff);
 
   const centerMode = $derived(upmix?.centerMode ?? UpmixCenterMode.Adaptive);
   const surroundMode = $derived(upmix?.surroundMode ?? UpmixSurroundMode.Adaptive);
@@ -40,10 +41,13 @@
   );
   const statusText = $derived(parkedReason === null ? 'ACTIVE' : `PARKED — ${parkedReason}`);
 
-  const CENTER_MODE_OPTIONS = [
+  // OFF (V27+, capability-gated) leads the row, mirroring the surround row's
+  // OFF-first order below -- chips bind by value, so this is purely visual.
+  const CENTER_MODE_OPTIONS = $derived([
+    ...(showCenterOff ? [{ value: UpmixCenterMode.Off, label: 'OFF' }] : []),
     { value: UpmixCenterMode.Passive,  label: 'PASSIVE' },
     { value: UpmixCenterMode.Adaptive, label: 'LOGIC'   },
-  ] as const satisfies ReadonlyArray<{ value: UpmixCenterMode; label: string }>;
+  ] as ReadonlyArray<{ value: UpmixCenterMode; label: string }>);
 
   const SURROUND_MODE_OPTIONS = [
     { value: UpmixSurroundMode.Off,      label: 'OFF'     },

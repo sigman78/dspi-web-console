@@ -78,6 +78,10 @@ export interface Psybass {
 export const UpmixCenterMode = {
   Passive:  0,
   Adaptive: 1,
+  // V27+: surrounds-only upmixing, L/R bit-exact. Appended value -- older
+  // firmware clamps an out-of-range centre-mode byte to Adaptive, so this
+  // option must stay hidden below the upmixCenterOff capability.
+  Off:      2,
 } as const;
 export type UpmixCenterMode = (typeof UpmixCenterMode)[keyof typeof UpmixCenterMode];
 

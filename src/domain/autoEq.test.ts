@@ -81,6 +81,17 @@ describe('bandsToAutoEqFilters', () => {
     expect(filters[0].type).toBe('peaking');
   });
 
+  it('drops the first-order low/high pass types (12/13) -- AutoEQ never maps onto them', () => {
+    const bands: FilterParams[] = [
+      { type: FilterType.Peaking, bypass: false, frequency: 1000, q: 1, gain: 3 },
+      { type: FilterType.LowPass1, bypass: false, frequency: 100, q: 1, gain: 0 },
+      { type: FilterType.HighPass1, bypass: false, frequency: 12000, q: 1, gain: 0 },
+    ];
+    const filters = bandsToAutoEqFilters(bands);
+    expect(filters).toHaveLength(1);
+    expect(filters[0].type).toBe('peaking');
+  });
+
   it('does not encode the bypass flag', () => {
     const bands: FilterParams[] = [
       { type: FilterType.Peaking, bypass: true, frequency: 1000, q: 1, gain: 3 },

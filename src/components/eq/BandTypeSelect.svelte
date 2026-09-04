@@ -15,6 +15,8 @@
     [FilterType.Allpass1]: 'Allpass 1st',
     [FilterType.LowShelf1]: 'Low Shelf 1st',
     [FilterType.HighShelf1]: 'High Shelf 1st',
+    [FilterType.LowPass1]: 'Low Pass 1st',
+    [FilterType.HighPass1]: 'High Pass 1st',
     [FilterType.LinkwitzTransform]: 'Linkwitz',
     [FilterType.Lr2Lp]: 'LR2 LP',   [FilterType.Lr2Hp]: 'LR2 HP',
     [FilterType.Lr4Lp]: 'LR4 LP',   [FilterType.Lr4Hp]: 'LR4 HP',
@@ -54,6 +56,13 @@
     FilterType.Allpass1,
   ];
 
+  // First-order low/high pass (V28+ proxy capability); offered separately
+  // from FIRST_ORDER_TYPES since it needs firstOrderLpHp, not firstOrderEq.
+  export const FIRST_ORDER_LP_HP_TYPES: FilterType[] = [
+    FilterType.LowPass1,
+    FilterType.HighPass1,
+  ];
+
   // Crossover editor's offering: Off + the full 32..63 range, LP/HP
   // interleaved in family/order sequence (matches the wire value order).
   export const XOVER_TYPE_ORDER: FilterType[] = [
@@ -65,9 +74,10 @@
   // device's feature flags. Linkwitz Transform is display-only (see the
   // component below): it's never offered here, even on a capable device --
   // a band already set to it still renders correctly, just not selectable.
-  export function offeredTypes(features: { firstOrderEq: boolean }): FilterType[] {
+  export function offeredTypes(features: { firstOrderEq: boolean; firstOrderLpHp?: boolean }): FilterType[] {
     let types = TYPE_ORDER;
     if (features.firstOrderEq) types = [...types, ...FIRST_ORDER_TYPES];
+    if (features.firstOrderLpHp) types = [...types, ...FIRST_ORDER_LP_HP_TYPES];
     return types;
   }
 </script>

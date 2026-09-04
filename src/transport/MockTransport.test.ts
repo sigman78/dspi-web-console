@@ -125,6 +125,26 @@ describe('MockTransport — stereo upmixer (V25/V26)', () => {
     expect(got.surroundLpfHz).toBeCloseTo(8000, 4);
   });
 
+  it('centre-mode OFF (2) is accepted on V27+ and round-trips per-param', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 27, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    await t.open();
+    const payload = new Uint8Array(4);
+    new DataView(payload.buffer).setFloat32(0, 2, true);
+    await t.ctrlOut(WireCmd.UpmixSetParam.code, Wire.UpmixParam.CenterMode, payload);
+    const got = await t.ctrlIn(WireCmd.UpmixGetParam.code, Wire.UpmixParam.CenterMode, 4);
+    expect(new DataView(got.buffer).getFloat32(0, true)).toBe(2);
+  });
+
+  it('centre-mode OFF (2) clamps to Adaptive (1) below V27, mirroring firmware', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 26 });
+    await t.open();
+    const payload = new Uint8Array(4);
+    new DataView(payload.buffer).setFloat32(0, 2, true);
+    await t.ctrlOut(WireCmd.UpmixSetParam.code, Wire.UpmixParam.CenterMode, payload);
+    const got = await t.ctrlIn(WireCmd.UpmixGetParam.code, Wire.UpmixParam.CenterMode, 4);
+    expect(new DataView(got.buffer).getFloat32(0, true)).toBe(1);
+  });
+
   it('GetUpmixStatus is only active while enabled AND the live input is stereo', async () => {
     const t = new MockTransport({ platform: 'rp2350' });
     await t.open();
@@ -698,18 +718,23 @@ describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
   }
 
   it('seeds inputs 2/3 present-but-disabled on RP2350; stays absent on RP2040', async () => {
+    // Pre-V28 wire has no SPDIF4 slot -- the parser pads the third
+    // (SPDIF4) entry to 0 even though the mock's internal state seeds a
+    // real GPIO for it (it never reaches the wire below V28).
     const rp2350 = parseBulkParams(await (await v18Mock('rp2350')).ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
-    expect(rp2350.inputConfig.spdifRxPinExt).toEqual([20, 21]);
+    expect(rp2350.inputConfig.spdifRxPinExt).toEqual([20, 21, 0]);
     expect(rp2350.inputConfig.spdifRxEnabledExtP1).toBe(1);  // mask 0: both disabled but present
 
     const rp2040 = parseBulkParams(await (await v18Mock('rp2040')).ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
-    expect(rp2040.inputConfig.spdifRxPinExt).toEqual([0, 0]);
+    expect(rp2040.inputConfig.spdifRxPinExt).toEqual([0, 0, 0]);
     expect(rp2040.inputConfig.spdifRxEnabledExtP1).toBe(0);
   });
 
   it('spdifInputsEnabled pre-enables inputs 2 and 3', async () => {
     const t = await v18Mock('rp2350', 3);
-    const cfg = Codec.decode(Wire.SpdifInputConfig, await t.ctrlIn(WireCmd.GetSpdifInputConfig.code, 0, 5));
+    // Pre-V28: the mock answers the legacy 5-byte layout; decodePadded
+    // zero-fills pin 4 the same way readCmd does in production.
+    const cfg = Codec.decodePadded(Wire.SpdifInputConfig, await t.ctrlIn(WireCmd.GetSpdifInputConfig.code, 0, 5));
     expect(cfg.enableMask).toBe(0b111);
   });
 
@@ -740,10 +765,10 @@ describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
     const status = await t.ctrlIn(WireCmd.SetSpdifInputEnable.code, (1 << 8) | 1, 1);  // enable input 2
     expect(status[0]).toBe(PinConfigResult.Success);
 
-    const cfg = Codec.decode(Wire.SpdifInputConfig, await t.ctrlIn(WireCmd.GetSpdifInputConfig.code, 0, 5));
+    const cfg = Codec.decodePadded(Wire.SpdifInputConfig, await t.ctrlIn(WireCmd.GetSpdifInputConfig.code, 0, 5));
     expect(cfg.count).toBe(3);
     expect(cfg.enableMask).toBe(0b011);   // bit0 (input1, always set) + bit1 (input2)
-    expect(cfg.pins).toEqual([5, 20, 21]);
+    expect(cfg.pins).toEqual([5, 20, 21, 0]);
   });
 
   it('disabling instance 0 (the always-on input) is InvalidOutput', async () => {
@@ -758,6 +783,51 @@ describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
     await t.ctrlIn(WireCmd.SetOutputPin.code, (20 << 8) | 0, 1);
     const status = await t.ctrlIn(WireCmd.SetSpdifInputEnable.code, (1 << 8) | 1, 1);
     expect(status[0]).toBe(PinConfigResult.PinInUse);
+  });
+});
+
+describe('MockTransport — fourth S/PDIF input (wire V28+, RP2350)', () => {
+  async function v28Mock(spdifInputsEnabled?: number): Promise<MockTransport> {
+    const t = new MockTransport({
+      platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 6 },
+      ...(spdifInputsEnabled != null ? { spdifInputsEnabled } : {}),
+    });
+    await t.open();
+    return t;
+  }
+
+  it('GetSpdifInputConfig answers the full 6-byte layout with all 4 pins', async () => {
+    const t = await v28Mock(4);
+    const cfg = Codec.decode(Wire.SpdifInputConfig, await t.ctrlIn(WireCmd.GetSpdifInputConfig.code, 0, 6));
+    expect(cfg.count).toBe(4);
+    expect(cfg.enableMask).toBe(0b1111);
+    expect(cfg.pins).toEqual([5, 20, 21, 22]);
+  });
+
+  it('SetSpdifRxPin/SetSpdifInputEnable accept instance 3 (input 4)', async () => {
+    const t = await v28Mock();
+    expect((await t.ctrlIn(WireCmd.SetSpdifRxPin.code, (3 << 8) | 27, 1))[0]).toBe(PinConfigResult.Success);
+    expect((await t.ctrlIn(WireCmd.GetSpdifRxPin.code, 3, 1))[0]).toBe(27);
+    expect((await t.ctrlIn(WireCmd.SetSpdifInputEnable.code, (3 << 8) | 1, 1))[0]).toBe(PinConfigResult.Success);
+
+    const cfg = Codec.decode(Wire.SpdifInputConfig, await t.ctrlIn(WireCmd.GetSpdifInputConfig.code, 0, 6));
+    expect(cfg.enableMask & 0b1000).toBe(0b1000);
+  });
+
+  it('rejects instance 4 (out of range even at V28) with InvalidOutput', async () => {
+    const t = await v28Mock();
+    const status = await t.ctrlIn(WireCmd.SetSpdifRxPin.code, (4 << 8) | 15, 1);
+    expect(status[0]).toBe(PinConfigResult.InvalidOutput);
+  });
+
+  it('a V27 device still exposes only 3 selectable inputs (legacy layout)', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 27, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    await t.open();
+    const status = await t.ctrlIn(WireCmd.SetSpdifRxPin.code, (3 << 8) | 15, 1);
+    expect(status[0]).toBe(PinConfigResult.InvalidOutput);
+    const cfg = Codec.decodePadded(Wire.SpdifInputConfig, await t.ctrlIn(WireCmd.GetSpdifInputConfig.code, 0, 5));
+    expect(cfg.count).toBe(3);
+    expect(cfg.pins[3]).toBe(0);
   });
 });
 

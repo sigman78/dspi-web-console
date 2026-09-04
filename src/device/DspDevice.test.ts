@@ -1315,7 +1315,21 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     expect(r2.ok).toBe(true);
   });
 
-  test('getSpdifInputConfig decodes [count, enableMask, pin0, pin1, pin2]', async () => {
+  test('getSpdifInputConfig decodes a full 6-byte [count, enableMask, pin0..pin3] response', async () => {
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async (req, _val, len) => {
+        if (req === WireCmd.GetSpdifInputConfig.code) return Uint8Array.from([4, 0b1101, 5, 16, 17, 22]);
+        return new Uint8Array(len);
+      },
+      ctrlOut: async () => {},
+    };
+    const d = await createDevice(t);
+
+    expect(await d.getSpdifInputConfig()).toEqual({ count: 4, enableMask: 0b1101, pins: [5, 16, 17, 22] });
+  });
+
+  test('getSpdifInputConfig zero-fills pin 4 for a legacy 5-byte response', async () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, _val, len) => {
@@ -1326,7 +1340,7 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     };
     const d = await createDevice(t);
 
-    expect(await d.getSpdifInputConfig()).toEqual({ count: 3, enableMask: 0b101, pins: [5, 16, 17] });
+    expect(await d.getSpdifInputConfig()).toEqual({ count: 3, enableMask: 0b101, pins: [5, 16, 17, 0] });
   });
 
   test('LG Sound Sync enable + status round-trip on V10', async () => {
