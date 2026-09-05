@@ -923,3 +923,49 @@ describe('MockTransport — ADAT lightpipe output (V17+, RP2350)', () => {
     expect((await t.ctrlIn(WireCmd.GetAdatPin.code, 0, 1))[0]).toBe(12);
   });
 });
+
+describe('MockTransport — subharmonic synthesizer (V29+, both platforms)', () => {
+  async function v29Mock(platform: 'rp2040' | 'rp2350' = 'rp2350'): Promise<MockTransport> {
+    const t = new MockTransport({ platform, wireVersion: 29, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    await t.open();
+    return t;
+  }
+
+  it('clamps low/high to -30..+6 and boost to 0..+6, reading the clamped values back', async () => {
+    const t = await v29Mock();
+    await t.ctrlOut(WireCmd.SetSubharmLow.code, 0, Codec.encode(Codec.f32, -40));
+    expect(Codec.decode(Codec.f32, await t.ctrlIn(WireCmd.GetSubharmLow.code, 0, 4))).toBeCloseTo(-30, 4);
+
+    await t.ctrlOut(WireCmd.SetSubharmHigh.code, 0, Codec.encode(Codec.f32, 20));
+    expect(Codec.decode(Codec.f32, await t.ctrlIn(WireCmd.GetSubharmHigh.code, 0, 4))).toBeCloseTo(6, 4);
+
+    await t.ctrlOut(WireCmd.SetSubharmBoost.code, 0, Codec.encode(Codec.f32, 9));
+    expect(Codec.decode(Codec.f32, await t.ctrlIn(WireCmd.GetSubharmBoost.code, 0, 4))).toBeCloseTo(6, 4);
+  });
+
+  it('GET_ALL_PARAMS is 5960 B on a V29 mock and parses the subharm section', async () => {
+    const t = await v29Mock();
+    await t.ctrlOut(WireCmd.SetSubharmEnabled.code, 0, Codec.encode(Codec.bool8, true));
+    const bytes = await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize);
+    expect(bytes.byteLength).toBe(5960);
+    expect(parseBulkParams(bytes).subharm.enabled).toBe(true);
+  });
+
+  it('a pre-V29 mock STALLs 0x11 (GetSubharmEnabled) and answers 5944 B on GET_ALL_PARAMS', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    await t.open();
+    await expect(t.ctrlIn(WireCmd.GetSubharmEnabled.code, 0, 1)).rejects.toThrow();
+    const bytes = await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize);
+    expect(bytes.byteLength).toBe(5944);
+  });
+
+  it('headroom is 0 while disabled and positive once enabled with a band above the floor, on both platforms', async () => {
+    for (const platform of ['rp2350', 'rp2040'] as const) {
+      const t = await v29Mock(platform);
+      expect(Codec.decode(Codec.f32, await t.ctrlIn(WireCmd.GetSubharmHeadroom.code, 0, 4))).toBe(0);
+      await t.ctrlOut(WireCmd.SetSubharmEnabled.code, 0, Codec.encode(Codec.bool8, true));
+      await t.ctrlOut(WireCmd.SetSubharmLow.code, 0, Codec.encode(Codec.f32, 3));
+      expect(Codec.decode(Codec.f32, await t.ctrlIn(WireCmd.GetSubharmHeadroom.code, 0, 4))).toBeGreaterThan(0);
+    }
+  });
+});

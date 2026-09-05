@@ -87,6 +87,12 @@ export const CsNoun = {
   LoudnessIntensity:  50,
   // caps v8 addition. Read-only, IND actions only, untargeted.
   InputLevelMax:      51,
+  // caps v14 additions. Both platforms -- unlike the upmix nouns above there
+  // is no RP2350 gate on the subharmonic synthesizer.
+  Subharm:            57,
+  SubharmLow:         58,
+  SubharmHigh:        59,
+  SubharmBoost:       60,
 } as const;
 export type CsNoun = (typeof CsNoun)[keyof typeof CsNoun];
 
@@ -409,6 +415,10 @@ export const CS_NOUN_LABEL: Record<CsNoun, string> = {
   [CsNoun.LoudnessSpl]:       'Loudness Reference SPL',
   [CsNoun.LoudnessIntensity]: 'Loudness Intensity',
   [CsNoun.InputLevelMax]:     'Input Signal Level',
+  [CsNoun.Subharm]:           'Subharmonic Synth',
+  [CsNoun.SubharmLow]:        'Subharm 24–36 Hz',
+  [CsNoun.SubharmHigh]:       'Subharm 36–56 Hz',
+  [CsNoun.SubharmBoost]:      'Subharm LF Boost',
 };
 
 // A device with a newer caps format may publish nouns this console has no

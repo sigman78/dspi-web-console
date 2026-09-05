@@ -102,3 +102,12 @@ export const UPMIX_DECORR_STEP_PCT = 1;
 export const UPMIX_PRESENCE_MIN_DB = -12;
 export const UPMIX_PRESENCE_MAX_DB = 12;
 export const UPMIX_PRESENCE_STEP_DB = 0.5;
+
+// Subharmonic synthesizer.
+export const SUBHARM_LEVEL_MIN_DB = -30;
+export const SUBHARM_LEVEL_MAX_DB = 6;
+export const SUBHARM_LEVEL_STEP_DB = 0.5;
+
+export const SUBHARM_BOOST_MIN_DB = 0;
+export const SUBHARM_BOOST_MAX_DB = 6;
+export const SUBHARM_BOOST_STEP_DB = 0.5;

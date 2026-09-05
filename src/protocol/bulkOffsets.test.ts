@@ -6,7 +6,7 @@ import * as Wire from './wireTypes';
 describe('describeBulkOffset — total-size cross-check', () => {
   // Independently walks the same sections bulkSizeForVersion sums up; a drift
   // in either place shows up as a boundary mismatch here.
-  it.each([10, 16, 17, 18, 21, 24, 26])('resolves the last byte and rejects the next one (v%i)', (version) => {
+  it.each([10, 16, 17, 18, 21, 24, 26, 29])('resolves the last byte and rejects the next one (v%i)', (version) => {
     const total = Wire.bulkSizeForVersion(version);
     expect(describeBulkOffset(total - 1, version)).not.toBeNull();
     expect(describeBulkOffset(total, version)).toBeNull();
@@ -47,8 +47,37 @@ describe('describeBulkOffset — V18 interior leveller grow', () => {
   });
 });
 
+describe('describeBulkOffset — V29 subharm section', () => {
+  it('resolves the section start as subharm.enabled', () => {
+    const hit = describeBulkOffset(5944, 29);
+    expect(hit?.path).toBe('subharm.enabled');
+  });
+
+  it('resolves the low_db field offset', () => {
+    const hit = describeBulkOffset(5948, 29);
+    expect(hit?.path).toBe('subharm.lowDb');
+  });
+});
+
 describe('describeBulkOffset — edges', () => {
   it('rejects a negative offset', () => {
     expect(describeBulkOffset(-1, 26)).toBeNull();
+  });
+});
+
+describe('describeBulkOffset — V28 input-config interior relayout', () => {
+  function inputConfigBase(version: number): number {
+    for (let off = 0; off < 6000; off++) {
+      if (describeBulkOffset(off, version)?.path === 'inputConfig.inputSource') return off;
+    }
+    throw new Error('inputConfig section not found');
+  }
+
+  it('walks the 3-entry spdifRxPinExt on V28, so the enable mask sits one byte later than on V24', () => {
+    const v28 = inputConfigBase(28);
+    expect(describeBulkOffset(v28 + 10, 28)?.path).toBe('inputConfig.spdifRxPinExt');
+    expect(describeBulkOffset(v28 + 11, 28)?.path).toBe('inputConfig.spdifRxEnabledExtP1');
+    const v24 = inputConfigBase(24);
+    expect(describeBulkOffset(v24 + 10, 24)?.path).toBe('inputConfig.spdifRxEnabledExtP1');
   });
 });

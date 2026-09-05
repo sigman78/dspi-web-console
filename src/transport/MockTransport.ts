@@ -10,6 +10,7 @@ import {
   type BulkParams, type WireFilter,
 } from '@/protocol/bulkParser';
 import { Codec } from '@/utils';
+import * as Clamp from '@/domain/clamp';
 import {
   PlatformType, OutputSlotType, AudioInputSource,
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode, OutputConfigMode,
@@ -24,7 +25,7 @@ import {
   dbToQ8, percentToQ8, qToQ8, msToQ8, validateCsBinding, validateCsIrCommand,
   PRESET_SLOT_COUNT, FilterType,
   SPDIF_RX_MAX_INSTANCES, I2S_RX_MAX_PAIRS,
-  defaultInputName,
+  defaultInputName, Proc,
   SYS_CLOCK_MODE_DEFAULT_VREG, SYS_CLOCK_VREG_CEILING_RP2040, SYS_CLOCK_VREG_CEILING_RP2350,
   type FilterParams,
   type CrossPoint, type OutputState,
@@ -54,7 +55,7 @@ export interface MockOptions {
   // additionally enable input 2/3 on their default GPIOs) so the source
   // picker has more than one SPDIF input to show.
   spdifInputsEnabled?: number;
-  // Override the reported GetCsCaps capsVersion (default 13, matching fw
+  // Override the reported GetCsCaps capsVersion (default 14, matching fw
   // 1.1.6). The served type table, noun catalog, tail fields, and status
   // packet layout all follow this -- e.g. pass 1 to simulate a firmware
   // whose Control Surfaces module predates the console's v2 floor, or an
@@ -85,12 +86,16 @@ const MIN_ADAT_WIRE = 17;
 // the whole opcode range (0x68-0x6E).
 const MIN_ADAT_INPUT_WIRE = 24;
 
-// Control Surfaces caps tables, firmware capability format version 13
+// Subharmonic synthesizer lands on the wire at V29 on both platforms; earlier
+// profiles must STALL the whole opcode range (0x10-0x1A).
+const MIN_SUBHARM_WIRE = 29;
+
+// Control Surfaces caps tables, firmware capability format version 14
 // (control_surfaces.c s_caps / control_surfaces_nouns.c cs_noun_table). The
 // per-version handlers below (see #csTypeCount etc.) slice/zero this full
-// v13 catalog down to what an older simulated capsVersion would report.
+// v14 catalog down to what an older simulated capsVersion would report.
 const MOCK_CS_CAPS: CsCaps = {
-  capsVersion: 13,
+  capsVersion: 14,
   maxBindings: CS_MAX_BINDINGS,
   maxIrCommands: CS_MAX_IR_COMMANDS,
   maxGroups: 8,
@@ -218,6 +223,12 @@ function buildMockCsNouns(platform: PlatformType, numIn: number, numOut: number,
     enumNoun(16),                                                                                // 54 DISPLAY_PAGE
     boolNoun(),                                                                                  // 55 DISPLAY_EDIT
     enumNoun(1, CS_PAGE_VALUE_ACTIONS),                                                          // 56 PAGE_VALUE (STEP/INC/DEC/TOGGLE only)
+    // caps v14 additions. Both platforms -- unlike psybass/upmix there is no
+    // RP2350 gate on the subharmonic synthesizer.
+    boolNoun(),                                                                                   // 57 SUBHARM
+    contNoun(dbToQ8(-30), dbToQ8(6), CS_UNIT_DB),                                                 // 58 SUBHARM_LOW
+    contNoun(dbToQ8(-30), dbToQ8(6), CS_UNIT_DB),                                                 // 59 SUBHARM_HIGH
+    contNoun(0, dbToQ8(6), CS_UNIT_DB),                                                           // 60 SUBHARM_BOOST
   ];
 }
 
@@ -453,11 +464,12 @@ export class MockTransport implements DspTransport {
 
   // Per-version GetCsCaps/GetCsStatus shape, mirroring firmware's caps table
   // growth (control_surfaces.h): noun_count grows in steps (v<=6 49, v7 51,
-  // v8 52, v9 53, v10+ 57); the DISPLAY type row lands at v10; the IR-command
-  // ceiling doubles at v6; the max_groups/max_macros/max_macro_steps tail is
-  // carved from reserved bytes at v9 (zero before that).
+  // v8 52, v9 53, v10-13 57, v14+ 61); the DISPLAY type row lands at v10; the
+  // IR-command ceiling doubles at v6; the max_groups/max_macros/max_macro_steps
+  // tail is carved from reserved bytes at v9 (zero before that).
   #csNounCount(): number {
     const v = this.#csCapsVersion;
+    if (v >= 14) return 61;
     if (v >= 10) return 57;
     if (v === 9) return 53;
     if (v === 8) return 52;
@@ -662,6 +674,27 @@ export class MockTransport implements DspTransport {
         return Codec.encode(Codec.u16, this.#mockState.loudness!.outputMask);
       case WireCmd.GetPsybassMask.code:
         return Codec.encode(Codec.u16, this.#mockState.psybass!.outputMask);
+
+      // Subharmonic synthesizer (fw V29+, both platforms). Below V29 the
+      // whole opcode range STALLs, like the ADAT commands.
+      case WireCmd.GetSubharmEnabled.code:
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: GetSubharmEnabled unsupported (STALL)');
+        return Codec.encode(Codec.bool8, this.#mockState.subharm!.enabled);
+      case WireCmd.GetSubharmLow.code:
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: GetSubharmLow unsupported (STALL)');
+        return Codec.encode(Codec.f32, this.#mockState.subharm!.lowDb);
+      case WireCmd.GetSubharmHigh.code:
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: GetSubharmHigh unsupported (STALL)');
+        return Codec.encode(Codec.f32, this.#mockState.subharm!.highDb);
+      case WireCmd.GetSubharmBoost.code:
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: GetSubharmBoost unsupported (STALL)');
+        return Codec.encode(Codec.f32, this.#mockState.subharm!.boostDb);
+      case WireCmd.GetSubharmMask.code:
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: GetSubharmMask unsupported (STALL)');
+        return Codec.encode(Codec.u16, this.#mockState.subharm!.outputMask);
+      case WireCmd.GetSubharmHeadroom.code:
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: GetSubharmHeadroom unsupported (STALL)');
+        return Codec.encode(Codec.f32, this.#subharmHeadroom());
 
       // Upmixer
       case WireCmd.UpmixGetParam.code:
@@ -1438,6 +1471,30 @@ export class MockTransport implements DspTransport {
         this.#mockState.psybass!.outputMask = Codec.decode(Codec.u16, data);
         return;
 
+      // Subharmonic synthesizer (fw V29+, both platforms). Firmware clamps
+      // every SET to its documented range -- a GET afterwards reads the
+      // clamped value back.
+      case WireCmd.SetSubharmEnabled.code:
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmEnabled unsupported (STALL)');
+        this.#mockState.subharm!.enabled = Codec.decode(Codec.bool8, data);
+        return;
+      case WireCmd.SetSubharmLow.code:
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmLow unsupported (STALL)');
+        this.#mockState.subharm!.lowDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data));
+        return;
+      case WireCmd.SetSubharmHigh.code:
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmHigh unsupported (STALL)');
+        this.#mockState.subharm!.highDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data));
+        return;
+      case WireCmd.SetSubharmBoost.code:
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmBoost unsupported (STALL)');
+        this.#mockState.subharm!.boostDb = Clamp.subharmBoostDb(Codec.decode(Codec.f32, data));
+        return;
+      case WireCmd.SetSubharmMask.code:
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmMask unsupported (STALL)');
+        this.#mockState.subharm!.outputMask = Codec.decode(Codec.u16, data);
+        return;
+
       // Upmixer
       case WireCmd.UpmixSetParam.code:
         this.#setUpmixParam(value, Codec.decode(Codec.f32, data));
@@ -2051,6 +2108,20 @@ export class MockTransport implements DspTransport {
       return { active: false, parkedReason: !u.enabled ? 1 : 2, corrQ14: 0, balanceQ14: 0, centerGainQ15: 0, lsGainQ15: 0, rsGainQ15: 0 };
     }
     return { active: true, parkedReason: 0, corrQ14: 8192, balanceQ14: 0, centerGainQ15: 23170, lsGainQ15: 23170, rsGainQ15: 23170 };
+  }
+
+  // GetSubharmHeadroom (0x1A) stand-in: a documented approximation of the
+  // firmware's live worst-case-gain scan, not the scan itself. 0 while
+  // disabled; otherwise the boost bell plus a band-sum term, each band
+  // contributing 0 at the -30 dB floor. Monotone in the same inputs as
+  // firmware, which is all a host needs to reserve headroom against.
+  #subharmHeadroom(): number {
+    const s = this.#mockState.subharm!;
+    if (!s.enabled) return 0;
+    const bandGain = (db: number) => (db <= Proc.SUBHARM_LEVEL_MIN_DB ? 0 : 10 ** (db / 20));
+    const gLow = bandGain(s.lowDb);
+    const gHigh = bandGain(s.highDb);
+    return s.boostDb + 20 * Math.log10(1 + 0.85 * gLow + 0.85 * gHigh);
   }
 
   // Time-driven fake meter levels so the sidebar VU meters animate in mock/demo

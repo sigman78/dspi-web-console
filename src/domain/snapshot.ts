@@ -5,7 +5,7 @@
 import type { ChannelId } from './channels';
 import type { HardwareProfile, I2sConfig, PlatformType, ChannelFamily } from './platform';
 import type { FilterParams } from './filter';
-import type { Loudness, Crossfeed, Leveller, Psybass, Upmix } from './processing';
+import type { Loudness, Crossfeed, Leveller, Psybass, Upmix, Subharm } from './processing';
 import type { OutputModel, RouteModel } from './mixer';
 import type { InputConfig, LgSoundSync, UserVolume, DacHwMute, AdatOutputConfig } from './deviceSections';
 
@@ -68,6 +68,9 @@ export interface DspSnapshot {
   // Stereo upmixer (fw V25+; presenceDb fw V26+); bulkParser defaults it on
   // older packets, so this is always populated.
   upmix: Upmix;
+  // Subharmonic synthesizer (fw V29+); bulkParser defaults it on older
+  // packets, so this is always populated.
+  subharm: Subharm;
   i2s: I2sConfig;
   // GPIO pin per pin-output index, in hardware output order; the last entry is the PDM sub.
   outputPins: number[];

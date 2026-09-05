@@ -76,13 +76,15 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(Wire.bulkSizeForVersion(26)).toBe(5944);
     expect(Wire.bulkSizeForVersion(27)).toBe(5944);
     expect(Wire.bulkSizeForVersion(28)).toBe(5944);
-    expect(Wire.bulkSizeForVersion(99)).toBe(5944);
+    // V29 appends the subharmonic synthesizer section (+16 B).
+    expect(Wire.bulkSizeForVersion(29)).toBe(5960);
+    expect(Wire.bulkSizeForVersion(99)).toBe(5960);
     expect(Wire.bulkSizeForVersion(5)).toBe(2896);
   });
 
   it('BULK_SIZE_V21 equals BULK_SIZE_V20 (no packet-size change)', () => {
     expect(Wire.BULK_SIZE_V21).toBe(Wire.BULK_SIZE_V20);
-    expect(Wire.MAX_WIRE_VERSION).toBe(28);
+    expect(Wire.MAX_WIRE_VERSION).toBe(29);
   });
 
   it('bulkLayout gates i2sClockMode on wire V21 AND payloadLength', () => {
@@ -375,6 +377,19 @@ describe('wireTypes — V7–V10 tail codecs', () => {
       lockCount: 4, lossCount: 1, slipCount: 2, headerErr: 300,
       detectedRate: 48000, measuredHz: 47998,
     });
+  });
+
+  it('SubharmParams matches the fw wire byte layout, both directions', () => {
+    expect(Codec.sizeOf(Wire.SubharmParams)).toBe(16);
+    const value = { enabled: true, outputMask: 0x0103, lowDb: -6, highDb: 0, boostDb: 3 };
+    const bytes = new Uint8Array([
+      0x01, 0x00, 0x03, 0x01,             // enabled, reserved0, outputMask LE
+      0x00, 0x00, 0xC0, 0xC0,             // lowDb = -6.0 f32 LE
+      0x00, 0x00, 0x00, 0x00,             // highDb = 0.0 f32 LE
+      0x00, 0x00, 0x40, 0x40,             // boostDb = 3.0 f32 LE
+    ]);
+    expect(Codec.encode(Wire.SubharmParams, value)).toEqual(bytes);
+    expect(Codec.decode(Wire.SubharmParams, bytes)).toMatchObject(value);
   });
 
 });

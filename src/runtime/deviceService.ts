@@ -75,7 +75,7 @@ export const MIN_CS_CAPS_VERSION = 2;
 // 41-byte GetCsStatus layout; v7 = the loudness reference/intensity nouns;
 // v8 = indicator on/off delays and the INPUT_LEVEL_MAX noun; v12's
 // base_bright (byte 9) is modeled too, while v9-v11 (groups, macros,
-// display) are not yet).
+// display) are not yet; v14's subharm nouns are labelled).
 export const MAX_KNOWN_CS_CAPS_VERSION = 8;
 
 // Control Surfaces mirror of fetchCtrlIfaceInfo: caps (host order: header,

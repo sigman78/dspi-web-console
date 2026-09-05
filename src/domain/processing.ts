@@ -150,6 +150,18 @@ export interface UpmixStatus {
   rsGainQ15: number;
 }
 
+// Subharmonic synthesizer (fw V29+, both platforms). Wire-1:1 like Psybass --
+// lowDb/highDb of -30 dB mean the band is off; boostDb of 0 skips the LF
+// boost bell. outputMask follows the same per-output convention as Psybass,
+// default all-on (0xFFFF); never send it as 0.
+export interface Subharm {
+  enabled: boolean;
+  outputMask: number;
+  lowDb: number;
+  highDb: number;
+  boostDb: number;
+}
+
 // Master volume persistence: 0 = global (persisted via SaveMasterVolume);
 // 1 = travels with each preset.
 export const MasterVolumeMode = {

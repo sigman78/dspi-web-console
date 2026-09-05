@@ -41,7 +41,7 @@ describe('deriveCapabilities — support classification', () => {
     }
   });
 
-  it('classifies V19..V28 as supported; V29 reports future', () => {
+  it('classifies V19..V29 as supported; V30 reports future', () => {
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 19, payloadLength: Wire.BULK_SIZE_V19, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 20, payloadLength: Wire.BULK_SIZE_V20, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 21, payloadLength: Wire.BULK_SIZE_V21, platformId: 1 }).support).toBe('supported');
@@ -52,7 +52,8 @@ describe('deriveCapabilities — support classification', () => {
     expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 26, payloadLength: Wire.BULK_SIZE_V26, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: 27, payloadLength: Wire.BULK_SIZE_V27, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: 28, payloadLength: Wire.BULK_SIZE_V28, platformId: 1 }).support).toBe('supported');
-    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 29, payloadLength: Wire.BULK_SIZE_V28, platformId: 1 }).support).toBe('future');
+    expect(deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: 29, payloadLength: Wire.BULK_SIZE_V29, platformId: 1 }).support).toBe('supported');
+    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 30, payloadLength: Wire.BULK_SIZE_V29, platformId: 1 }).support).toBe('future');
   });
 });
 
@@ -198,6 +199,14 @@ describe('deriveCapabilities — V16 feature flags', () => {
     expect(at(27, Wire.BULK_SIZE_V27, 1)).toBe(false);
     expect(at(28, Wire.BULK_SIZE_V28, 0)).toBe(true);
     expect(at(28, Wire.BULK_SIZE_V28, 1)).toBe(true);
+  });
+
+  it('gates the subharmonic synthesizer on wire V29, ungated on platform', () => {
+    const at = (v: number, len: number, platformId: number) =>
+      deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: v, payloadLength: len, platformId }).features.subharm;
+    expect(at(28, Wire.BULK_SIZE_V28, 1)).toBe(false);
+    expect(at(29, Wire.BULK_SIZE_V29, 0)).toBe(true);
+    expect(at(29, Wire.BULK_SIZE_V29, 1)).toBe(true);
   });
 
   it('spdifInputCount is 3 through V27 and 4 at V28+ on the multi-SPDIF platform', () => {

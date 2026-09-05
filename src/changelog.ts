@@ -6,6 +6,7 @@ import { APP_VERSION } from './buildInfo';
 export const LATEST_CHANGES = {
   version: APP_VERSION,
   highlights: [
+    'Firmware 1.1.6 wire V29 (subharmonic synthesizer) supported end-to-end for bulk read/write and presets — panel to follow',
     'Pin map panel (SY.16): every GPIO at a glance — color-coded by role (outputs, inputs, clocks, control, surfaces), reserved pins hatched, ADC-capable marked',
     'Pin pickers reworked: a pop-up grid of the whole GPIO range shows who holds each pin and why one is unavailable; factory-pin resets moved to DEFAULTS buttons in the panel headers (fw 1.1.5)',
     'SYSTEM tab decluttered: panels regrouped into device / inputs / outputs columns; telemetry, error counters, and buffer stats sit behind the DEBUG toggle in the DEVICE panel (or ?debug in the URL)',

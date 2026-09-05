@@ -249,6 +249,15 @@ describe('diffSnapshots — 1.1.4 sections', () => {
   });
 });
 
+describe('diffSnapshots — subharm', () => {
+  it('emits a subharm change', () => {
+    const a = makeSnapshot();
+    const b = structuredClone(a);
+    b.subharm = { ...b.subharm, enabled: true };
+    expect(diffSnapshots(a, b)).toEqual([{ kind: 'subharm', value: b.subharm }]);
+  });
+});
+
 describe('diffSnapshots — i2s + output pins', () => {
   it('emits no i2s/pins change for identical snapshots', () => {
     const a = makeSnapshot((b) => { b.numPinOutputs = 2; b.pins[0] = 6; b.pins[1] = 7; });
