@@ -350,7 +350,12 @@ export const WireCmd = {
   SetCsBinding:          { code: 0x84, codec: Wire.CsBinding } satisfies WriteCmd<CsBindingPayload>,
   GetCsBinding:          { code: 0x85, codec: Wire.CsBinding } satisfies ReadCmd<CsBindingPayload>,
   GetCsCaps:             { code: 0x86 } satisfies RawCmd,
-  GetCsStatus:           { code: 0x87, codec: Wire.CsStatusPacket } satisfies ReadCmd<CsStatusPayload>,
+  // The codec here is the current-firmware (caps v6+) 41-byte shape, used
+  // generically by decodeOrSize in the wire monitor; a beta-era 32-byte
+  // response there just zero-pads, cosmetic for a debug log line. The
+  // functional read (both layouts) goes through DspDevice's own status
+  // helper, which discriminates by response length.
+  GetCsStatus:           { code: 0x87, codec: Wire.CsStatusPacketV6 } satisfies ReadCmd<CsStatusPayload>,
   // Slot name SET/GET: same live-only-preview semantics as SetCsBinding,
   // polled the same way.
   SetCsName:             { code: 0x8B, codec: Wire.CsName } satisfies WriteCmd<string>,

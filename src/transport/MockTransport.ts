@@ -54,8 +54,11 @@ export interface MockOptions {
   // additionally enable input 2/3 on their default GPIOs) so the source
   // picker has more than one SPDIF input to show.
   spdifInputsEnabled?: number;
-  // Override the reported GetCsCaps capsVersion (default 3), e.g. to simulate
-  // a firmware whose Control Surfaces module predates the console's v2 floor.
+  // Override the reported GetCsCaps capsVersion (default 13, matching fw
+  // 1.1.6). The served type table, noun catalog, tail fields, and status
+  // packet layout all follow this -- e.g. pass 1 to simulate a firmware
+  // whose Control Surfaces module predates the console's v2 floor, or an
+  // intermediate version to exercise one era's shape in isolation.
   csCapsVersion?: number;
   // Browser-demo convenience: an armed IR learn completes by itself after
   // ~1.5 s with a distinct NEC code, standing in for a press on an imaginary
@@ -82,12 +85,17 @@ const MIN_ADAT_WIRE = 17;
 // the whole opcode range (0x68-0x6E).
 const MIN_ADAT_INPUT_WIRE = 24;
 
-// Control Surfaces caps tables, firmware capability format version 4
-// (control_surfaces.c s_caps / control_surfaces_nouns.c cs_noun_table).
+// Control Surfaces caps tables, firmware capability format version 13
+// (control_surfaces.c s_caps / control_surfaces_nouns.c cs_noun_table). The
+// per-version handlers below (see #csTypeCount etc.) slice/zero this full
+// v13 catalog down to what an older simulated capsVersion would report.
 const MOCK_CS_CAPS: CsCaps = {
-  capsVersion: 4,
+  capsVersion: 13,
   maxBindings: CS_MAX_BINDINGS,
   maxIrCommands: CS_MAX_IR_COMMANDS,
+  maxGroups: 8,
+  maxMacros: 8,
+  maxMacroSteps: 8,
   types: [
     { actions: 0x0000, pinCount: 0, pinClass: 0 },  // NONE
     { actions: 0x02BC, pinCount: 1, pinClass: 0 },  // BUTTON: INC/DEC/TOGGLE/SET/TRIGGER/MOMENTARY
@@ -97,6 +105,7 @@ const MOCK_CS_CAPS: CsCaps = {
     { actions: 0x0500, pinCount: 1, pinClass: 0 },  // LED: IND_EQUALS/IND_ABOVE
     { actions: 0x0D00, pinCount: 1, pinClass: 0 },  // LED_PWM: IND_EQUALS/IND_ABOVE/IND_LEVEL
     { actions: 0x02BC, pinCount: 1, pinClass: 0 },  // IR: same command actions as BUTTON
+    { actions: 0x0000, pinCount: 2, pinClass: 0 },  // DISPLAY (caps v10+): I2C pin pair, no direct actions
   ],
 };
 
@@ -112,6 +121,11 @@ const CS_ENUM_RO = 1 << CsAction.IndEquals;
 const CS_CONT_RO = (1 << CsAction.IndAbove) | (1 << CsAction.IndLevel);
 const CS_CLIP_ACTIONS = (1 << CsAction.Trigger) | (1 << CsAction.IndEquals);
 const CS_TRIGGER_ONLY = 1 << CsAction.Trigger;
+// caps v9+ MACRO noun: fires a macro by index, no continuous/enum semantics.
+const CS_MACRO_ACTIONS = (1 << CsAction.Set) | (1 << CsAction.IndEquals);
+// caps v10+ PAGE_VALUE noun: steps/toggles the display's currently-focused
+// field; no direct SET (the display owns the edit cursor).
+const CS_PAGE_VALUE_ACTIONS = (1 << CsAction.Step) | (1 << CsAction.Inc) | (1 << CsAction.Dec) | (1 << CsAction.Toggle);
 
 // PEQ FilterType values run 0..HighShelf1 contiguously (crossover types start
 // at 32 and are not front-panel material); mirrors CS_PEQ_TYPE_COUNT.
@@ -192,6 +206,18 @@ function buildMockCsNouns(platform: PlatformType, numIn: number, numOut: number,
     contNoun(dbToQ8(-60), 0, CS_UNIT_DB),                                                        // 46 PSYBASS_ORIGINAL
     contNoun(0, msToQ8(rp2350 ? 42 : 21), CS_UNIT_MS, CS_TARGET_OUTPUT_CH, numOut),              // 47 OUTPUT_DELAY
     boolNoun(CS_TRIGGER_ONLY),                                                                   // 48 PRESET_RELOAD
+    // caps v7 additions.
+    contNoun(dbToQ8(40), dbToQ8(100), CS_UNIT_DB),                                               // 49 LOUDNESS_SPL
+    contNoun(0, percentToQ8(127), CS_UNIT_PERCENT),                                              // 50 LOUDNESS_INTENSITY
+    // caps v8 addition.
+    contNoun(dbToQ8(-60), 0, CS_UNIT_DB, CS_TARGET_NONE, 0, 0, CS_CONT_RO),                      // 51 INPUT_LEVEL_MAX (read-only)
+    // caps v9 addition.
+    enumNoun(8, CS_MACRO_ACTIONS),                                                               // 52 MACRO (SET/IND_EQUALS only)
+    // caps v10 additions.
+    contNoun(0, percentToQ8(100), CS_UNIT_PERCENT, CS_TARGET_NONE, 0, 0, CS_CONT_RO),            // 53 CPU_LOAD (read-only)
+    enumNoun(16),                                                                                // 54 DISPLAY_PAGE
+    boolNoun(),                                                                                  // 55 DISPLAY_EDIT
+    enumNoun(1, CS_PAGE_VALUE_ACTIONS),                                                          // 56 PAGE_VALUE (STEP/INC/DEC/TOGGLE only)
   ];
 }
 
@@ -423,6 +449,33 @@ export class MockTransport implements DspTransport {
   }
 
   get #isV16(): boolean { return this.#wireVersion >= 16; }
+
+  // Per-version GetCsCaps/GetCsStatus shape, mirroring firmware's caps table
+  // growth (control_surfaces.h): noun_count grows in steps (v<=6 49, v7 51,
+  // v8 52, v9 53, v10+ 57); the DISPLAY type row lands at v10; the IR-command
+  // ceiling doubles at v6; the max_groups/max_macros/max_macro_steps tail is
+  // carved from reserved bytes at v9 (zero before that).
+  #csNounCount(): number {
+    const v = this.#csCapsVersion;
+    if (v >= 10) return 57;
+    if (v === 9) return 53;
+    if (v === 8) return 52;
+    if (v === 7) return 51;
+    return 49;
+  }
+
+  #csTypeCount(): number {
+    return this.#csCapsVersion >= 10 ? 9 : 8;
+  }
+
+  #csMaxIr(): number {
+    return this.#csCapsVersion >= 6 ? 16 : 8;
+  }
+
+  #csCapsTail(): { maxGroups: number; maxMacros: number; maxMacroSteps: number } {
+    const carved = this.#csCapsVersion >= 9;
+    return { maxGroups: carved ? 8 : 0, maxMacros: carved ? 8 : 0, maxMacroSteps: carved ? 8 : 0 };
+  }
 
   #numChannels(): number {
     return this.#mockState.numCh;
@@ -1058,25 +1111,32 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.GetCsIrCmd.code: {
         if (!this.#isV16) return new Uint8Array(length);
-        if (value >= CS_MAX_IR_COMMANDS) throw new Error('MockTransport: GetCsIrCmd sub-slot out of range (STALL)');
+        if (value >= this.#csMaxIr()) throw new Error('MockTransport: GetCsIrCmd sub-slot out of range (STALL)');
         return Codec.encode(Wire.CsIrCommand, this.#csIrCommands[value]);
       }
       case WireCmd.GetCsCaps.code: {
         if (!this.#isV16) return new Uint8Array(length);
         if (value === 0xFFFF) {
+          const typeCount = this.#csTypeCount();
+          const types = MOCK_CS_CAPS.types.slice(0, typeCount)
+            .map((t) => ({ actions: t.actions, pinCount: t.pinCount, pinClass: t.pinClass }));
           const prefixBytes = Codec.encode(Wire.CsCapsPrefix, {
             capsVersion: this.#csCapsVersion,
             maxBindings: MOCK_CS_CAPS.maxBindings,
-            typeCount: MOCK_CS_CAPS.types.length,
-            nounCount: this.#csNouns.length,
+            typeCount,
+            nounCount: this.#csNounCount(),
           });
-          const bodyBytes = Codec.encode(Wire.CsCapsBody(MOCK_CS_CAPS.types.length), {
-            types: MOCK_CS_CAPS.types.map((t) => ({ actions: t.actions, pinCount: t.pinCount, pinClass: t.pinClass })),
-            maxIrCommands: MOCK_CS_CAPS.maxIrCommands,
+          // Caps v2 fw sends the type table with no tail at all -- not even
+          // max_ir_commands.
+          if (this.#csCapsVersion <= 2) {
+            return concatChunks([prefixBytes, Codec.encode(Codec.arr(Wire.CsTypeDesc, typeCount), types)]);
+          }
+          const bodyBytes = Codec.encode(Wire.CsCapsBody(typeCount), {
+            types, maxIrCommands: this.#csMaxIr(), ...this.#csCapsTail(),
           });
           return concatChunks([prefixBytes, bodyBytes]);
         }
-        if (value < this.#csNouns.length) {
+        if (value < this.#csNounCount()) {
           const n = this.#csNouns[value];
           return Codec.encode(Wire.CsNounDesc, {
             kind: n.kind, enumCount: n.enumCount, actions: n.actions, minQ8: n.minQ8, maxQ8: n.maxQ8,
@@ -1101,11 +1161,22 @@ export class MockTransport implements DspTransport {
         this.#csIrCommands.forEach((c, i) => {
           if (c.protocol !== CsIrProto.None && this.#csIrCmdStatus[i] === 0 && irUp) irActiveMask |= 1 << i;
         });
-        return Codec.encode(Wire.CsStatusPacket, {
+        // caps v6+ widens ir_active_mask to u16 and ir_cmd_status to 16
+        // entries; below that the wire layout is the 8-entry v3 shape.
+        if (this.#csCapsVersion >= 6) {
+          return Codec.encode(Wire.CsStatusPacketV6, {
+            lastStatus, lastSlot: this.#csLastSlot,
+            maxBindings: CS_MAX_BINDINGS, dirty: this.#csDirty, activeMask,
+            slotStatus: this.#csSlotStatus.slice(),
+            irActiveMask, irLearnState: this.#csIrLearnState, irCmdStatus: this.#csIrCmdStatus.slice(),
+          });
+        }
+        return Codec.encode(Wire.CsStatusPacketV3, {
           lastStatus, lastSlot: this.#csLastSlot,
           maxBindings: CS_MAX_BINDINGS, dirty: this.#csDirty, activeMask,
           slotStatus: this.#csSlotStatus.slice(),
-          irActiveMask, irLearnState: this.#csIrLearnState, irCmdStatus: this.#csIrCmdStatus.slice(),
+          irActiveMask: irActiveMask & 0xFF, irLearnState: this.#csIrLearnState,
+          irCmdStatus: this.#csIrCmdStatus.slice(0, 8),
         });
       }
       case WireCmd.GetCsName.code: {
@@ -1512,7 +1583,7 @@ export class MockTransport implements DspTransport {
 
       case WireCmd.SetCsIrCmd.code: {
         if (!this.#isV16) return;
-        if (value >= CS_MAX_IR_COMMANDS) {
+        if (value >= this.#csMaxIr()) {
           this.#csLastStatus = 0x10;                  // CS_STATUS_INVALID_SLOT
           this.#csLastSlot = 0x80 | (value & 0xFF);
           return;

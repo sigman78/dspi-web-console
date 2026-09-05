@@ -307,7 +307,9 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
   });
 
   it('enumerates caps v4: dynamic type/tail parsing and one descriptor per noun', async () => {
-    const d = await v16Device();
+    const d = await DspDevice.create(new MockTransport({
+      platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 4,
+    }));
     const { caps, nouns } = await d.getCsCaps();
     expect(caps.capsVersion).toBe(4);
     expect(caps.maxBindings).toBe(16);
@@ -318,6 +320,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
     expect(caps.types[CsType.Pot].pinClass).toBe(1);
     expect(caps.types[CsType.LedPwm].actions & (1 << CsAction.IndLevel)).toBeTruthy();
     expect(caps.maxIrCommands).toBe(8);
+    expect(caps.maxGroups).toBe(0);
     expect(nouns).toHaveLength(49);
     expect(nouns[CsNoun.MasterVolume].minQ8).toBe(dbToQ8(-127));
     expect(nouns[CsNoun.Preset].enumCount).toBe(10);
@@ -484,6 +487,36 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
     const { result } = await d.csSave();
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(CsStatusCode.Busy);
+  });
+});
+
+describe('DspDevice — Control Surfaces caps-version branching (32 vs 41-byte status, 8 vs 16 IR ceiling)', () => {
+  it('a caps v5 device (pre-v6) reports the 8-entry status layout and IR ceiling', async () => {
+    const raw = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 5 });
+    const d = await DspDevice.create(raw);
+    const { caps, nouns } = await d.getCsCaps();
+    expect(caps.maxIrCommands).toBe(8);
+    expect(caps.maxGroups).toBe(0);
+    expect(nouns).toHaveLength(49);
+
+    raw.mockCompleteIrLearn(CsIrProto.Nec, 0x11223344);
+    const status = await d.getCsStatus();
+    expect(status.irCmdStatus).toHaveLength(8);
+    expect(status.irLearnState).toBe(CS_IR_LEARN_DONE);
+  });
+
+  it('the default (caps v13) device reports the 16-entry v6+ status layout and IR ceiling', async () => {
+    const raw = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: FW_115 });
+    const d = await DspDevice.create(raw);
+    const { caps, nouns } = await d.getCsCaps();
+    expect(caps.maxIrCommands).toBe(16);
+    expect(caps.maxGroups).toBe(8);
+    expect(nouns).toHaveLength(57);
+
+    raw.mockCompleteIrLearn(CsIrProto.Nec, 0x11223344);
+    const status = await d.getCsStatus();
+    expect(status.irCmdStatus).toHaveLength(16);
+    expect(status.irLearnState).toBe(CS_IR_LEARN_DONE);
   });
 });
 

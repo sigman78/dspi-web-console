@@ -105,6 +105,13 @@ export const CsStatusCode = {
   FlashError:    0x1C,
   IrInUse:       0x1D,
   NoIr:          0x1E,
+  InvalidGroup:  0x1F,
+  InvalidMacro:  0x20,
+  InvalidStep:   0x21,
+  DisplayInUse:  0x22,
+  PinNotI2c:     0x23,
+  I2cInUse:      0x24,
+  InvalidPage:   0x25,
 } as const;
 export type CsStatusCode = (typeof CsStatusCode)[keyof typeof CsStatusCode];
 
@@ -128,6 +135,13 @@ const csStatusMessage: Record<number, string> = {
   [CsStatusCode.FlashError]:     'Failed to save to flash',
   [CsStatusCode.IrInUse]:        'Another slot already holds the IR receiver',
   [CsStatusCode.NoIr]:           'Set up the IR receiver first',
+  [CsStatusCode.InvalidGroup]:   'Group reference is empty, out of range, or incompatible with this function',
+  [CsStatusCode.InvalidMacro]:   'Invalid macro index or step count',
+  [CsStatusCode.InvalidStep]:    'Invalid macro step',
+  [CsStatusCode.DisplayInUse]:   'Another slot already holds the display',
+  [CsStatusCode.PinNotI2c]:      'SDA/SCL must be a valid I2C pin pair',
+  [CsStatusCode.I2cInUse]:       'That I2C bus is used by the control interface',
+  [CsStatusCode.InvalidPage]:    'Invalid display config or page',
 };
 
 // Decode a control-surfaces status byte into a typed Result. Unknown non-zero

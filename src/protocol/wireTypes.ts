@@ -679,14 +679,18 @@ export const CsCapsPrefix = struct({
   nounCount:   u8,
 });
 
-// Body following CsCapsPrefix: `typeCount` CsTypeDesc entries, then the v3
-// tail {max_ir_commands, reserved[3]}. A caps-v2 response (no tail) decodes
-// via decodePadded with maxIrCommands 0.
+// Body following CsCapsPrefix: `typeCount` CsTypeDesc entries, then the tail
+// {max_ir_commands, max_groups, max_macros, max_macro_steps}. max_ir_commands
+// is caps v3+; the other three are caps v9+, carved from the 3 bytes reserved
+// there through v8 (a v3-v8 response sends zeros for them). A caps-v2
+// response (no tail at all) decodes via decodePadded with every tail field 0.
 export function CsCapsBody(typeCount: number) {
   return struct({
     types:         arr(CsTypeDesc, typeCount),
     maxIrCommands: u8,
-    _reserved:     reserved(3),
+    maxGroups:     u8,
+    maxMacros:     u8,
+    maxMacroSteps: u8,
   });
 }
 
@@ -703,10 +707,12 @@ export const CsNounDesc = struct({
   dflags:      u8,    // CS_NDF_*
 });
 
-// 32-byte GetCsStatus (0x87) response. last_status is PENDING (0x16) until
-// the deferred main-loop apply of the most recent SET (binding, name, save,
-// or revert) has run; last_slot is 0xFF for a save/revert result.
-export const CsStatusPacket = struct({
+// 32-byte GetCsStatus (0x87) response, caps v2-v5 firmware (8-entry IR
+// status). last_status is PENDING (0x16) until the deferred main-loop apply
+// of the most recent SET (binding, name, save, or revert) has run; last_slot
+// is 0xFF for a save/revert result. DspDevice picks this layout vs.
+// CsStatusPacketV6 by response length, never a hardcoded caps version.
+export const CsStatusPacketV3 = struct({
   lastStatus:   u8,
   lastSlot:     u8,
   maxBindings:  u8,
@@ -716,6 +722,21 @@ export const CsStatusPacket = struct({
   irActiveMask: u8,
   irLearnState: u8,
   irCmdStatus:  arr(u8, 8),
+});
+
+// 41-byte GetCsStatus (0x87) response, caps v6+ firmware: CS_MAX_IR_COMMANDS
+// grew 8 -> 16, widening ir_active_mask to u16 and ir_cmd_status to 16 bytes.
+// Same first 22 bytes as CsStatusPacketV3.
+export const CsStatusPacketV6 = struct({
+  lastStatus:   u8,
+  lastSlot:     u8,
+  maxBindings:  u8,
+  dirty:        bool8,
+  activeMask:   u16,
+  slotStatus:   arr(u8, 16),
+  irActiveMask: u16,
+  irLearnState: u8,
+  irCmdStatus:  arr(u8, 16),
 });
 
 // 32-byte NUL-terminated slot name (SetCsName 0x8B / GetCsName 0x8C). Same

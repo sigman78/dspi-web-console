@@ -129,19 +129,33 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// GetCsStatus (0x87) has two on-wire layouts, told apart by response length
+// rather than a hardcoded caps version (fw sends whichever it has; WinUSB
+// never returns more than the device actually wrote): caps v2-v5 answers 32
+// bytes (CsStatusPacketV3, 8-entry IR status), caps v6+ answers 41 bytes
+// (CsStatusPacketV6, 16-entry IR status). Shared by every GetCsStatus call
+// site so the branch lives in one place.
+async function readCsStatus(t: DspTransport): Promise<Domain.CsStatus> {
+  const size = Codec.sizeOf(proto.Wire.CsStatusPacketV6);
+  const raw = await t.ctrlIn(proto.WireCmd.GetCsStatus.code, 0, size);
+  return raw.length >= size
+    ? Codec.decodePadded(proto.Wire.CsStatusPacketV6, raw)
+    : Codec.decodePadded(proto.Wire.CsStatusPacketV3, raw);
+}
+
 // Poll GetCsStatus until `matchSlot`'s result lands (0xFF for save/revert),
 // or the budget runs out. Shared by setCsBinding, setCsName, csSave, and
 // csRevert -- all funnel through the same last_status/last_slot channel.
 async function pollCsStatus(
   raw: DspTransport, matchSlot: number,
 ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
-  let status: Domain.CsStatus = await proto.readCmd(raw, proto.WireCmd.GetCsStatus);
+  let status: Domain.CsStatus = await readCsStatus(raw);
   for (let poll = 1; poll < CS_APPLY_MAX_POLLS; poll++) {
     if (status.lastSlot === matchSlot && status.lastStatus !== proto.CsStatusCode.Pending) {
       return { result: proto.csStatusFromByte(status.lastStatus), status };
     }
     await sleep(CS_APPLY_POLL_MS);
-    status = await proto.readCmd(raw, proto.WireCmd.GetCsStatus);
+    status = await readCsStatus(raw);
   }
   if (status.lastSlot === matchSlot && status.lastStatus !== proto.CsStatusCode.Pending) {
     return { result: proto.csStatusFromByte(status.lastStatus), status };
@@ -1311,17 +1325,19 @@ export class DspDevice {
   async getCsCaps(): Promise<{ caps: Domain.CsCaps; nouns: Domain.CsNounCaps[] }> {
     const CS_MAX_KNOWN_TYPES = 16;
     const prefixSize = Codec.sizeOf(proto.Wire.CsCapsPrefix);
-    const maxBodySize = Codec.sizeOf(proto.Wire.CsTypeDesc) * CS_MAX_KNOWN_TYPES + 4; // + v3 tail
+    const maxBodySize = Codec.sizeOf(proto.Wire.CsTypeDesc) * CS_MAX_KNOWN_TYPES + 4; // + tail
     const raw = await this.transport.ctrlIn(proto.WireCmd.GetCsCaps.code, 0xFFFF, prefixSize + maxBodySize);
     const prefix = Codec.decodePadded(proto.Wire.CsCapsPrefix, raw);
-    // Beyond the request window the v3 tail offset (4 + 4*type_count) is
+    // Beyond the request window the tail offset (4 + 4*type_count) is
     // unreachable; refuse rather than misparse.
     if (prefix.typeCount > CS_MAX_KNOWN_TYPES) {
       throw new Error(`Control Surfaces caps table too large (${prefix.typeCount} component types)`);
     }
     const typeCount = prefix.typeCount;
-    // Short (caps-v2) responses lack the v3 tail; decodePadded zero-fills it,
-    // reading maxIrCommands as 0.
+    // Short (caps-v2) responses lack the tail entirely; decodePadded
+    // zero-fills it, reading maxIrCommands/maxGroups/maxMacros/maxMacroSteps
+    // as 0. A caps v3-v8 response has max_ir_commands but zeros for the
+    // group/macro fields (carved from reserved bytes at v9).
     const body = Codec.decodePadded(proto.Wire.CsCapsBody(typeCount), raw.subarray(prefixSize));
 
     const nouns: Domain.CsNounCaps[] = [];
@@ -1340,6 +1356,7 @@ export class DspDevice {
       caps: {
         capsVersion: prefix.capsVersion, maxBindings: prefix.maxBindings,
         types: body.types, maxIrCommands: body.maxIrCommands,
+        maxGroups: body.maxGroups, maxMacros: body.maxMacros, maxMacroSteps: body.maxMacroSteps,
       },
       nouns,
     };
@@ -1350,7 +1367,7 @@ export class DspDevice {
   }
 
   async getCsStatus(): Promise<Domain.CsStatus> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetCsStatus);
+    return readCsStatus(this.transport);
   }
 
   // SET is a control-OUT with no response; the firmware latches the binding
@@ -1405,7 +1422,7 @@ export class DspDevice {
       try {
         await proto.actionCmd(raw, proto.WireCmd.CsSave);
       } catch {
-        const status = await proto.readCmd(raw, proto.WireCmd.GetCsStatus);
+        const status = await readCsStatus(raw);
         return { result: Result.fail<number>(proto.CsStatusCode.Busy, 'A save or revert is already in progress'), status };
       }
       return pollCsStatus(raw, 0xFF);
@@ -1418,7 +1435,7 @@ export class DspDevice {
       try {
         await proto.actionCmd(raw, proto.WireCmd.CsRevert);
       } catch {
-        const status = await proto.readCmd(raw, proto.WireCmd.GetCsStatus);
+        const status = await readCsStatus(raw);
         return { result: Result.fail<number>(proto.CsStatusCode.Busy, 'A save or revert is already in progress'), status };
       }
       return pollCsStatus(raw, 0xFF);
