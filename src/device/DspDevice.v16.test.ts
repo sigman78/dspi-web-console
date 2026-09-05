@@ -514,13 +514,13 @@ describe('DspDevice — Control Surfaces caps-version branching (32 vs 41-byte s
     expect(status.irLearnState).toBe(CS_IR_LEARN_DONE);
   });
 
-  it('the default (caps v13) device reports the 16-entry v6+ status layout and IR ceiling', async () => {
+  it('the default (caps v14) device reports the 16-entry v6+ status layout and IR ceiling', async () => {
     const raw = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: FW_115 });
     const d = await DspDevice.create(raw);
     const { caps, nouns } = await d.getCsCaps();
     expect(caps.maxIrCommands).toBe(16);
     expect(caps.maxGroups).toBe(8);
-    expect(nouns).toHaveLength(57);
+    expect(nouns).toHaveLength(61);
 
     raw.mockCompleteIrLearn(CsIrProto.Nec, 0x11223344);
     const status = await d.getCsStatus();

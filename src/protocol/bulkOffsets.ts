@@ -133,7 +133,7 @@ export function describeBulkOffset(offset: number, version: number): BulkOffsetH
   }
 
   if (version >= 7) {
-    const inputCodec = version >= 24 ? Wire.InputConfig24 : version >= 21 ? Wire.InputConfig21 : Wire.InputConfig;
+    const inputCodec = version >= 28 ? Wire.InputConfig28 : version >= 24 ? Wire.InputConfig24 : version >= 21 ? Wire.InputConfig21 : Wire.InputConfig;
     const size = Codec.sizeOf(inputCodec);
     if (offset < cursor + size) return resolveField('inputConfig', inputCodec, cursor, offset);
     cursor += size;
@@ -183,6 +183,12 @@ export function describeBulkOffset(offset: number, version: number): BulkOffsetH
   if (version >= 25) {
     const size = Codec.sizeOf(Wire.UpmixParams);
     if (offset < cursor + size) return resolveField('upmix', Wire.UpmixParams, cursor, offset);
+    cursor += size;
+  }
+
+  if (version >= 29) {
+    const size = Codec.sizeOf(Wire.SubharmParams);
+    if (offset < cursor + size) return resolveField('subharm', Wire.SubharmParams, cursor, offset);
   }
 
   return null;

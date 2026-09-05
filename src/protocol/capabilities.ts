@@ -9,23 +9,24 @@
 import * as Wire from './wireTypes';
 import { ChannelFamily, SPDIF_RX_MAX_INSTANCES } from '@/domain';
 
-// Support window: V10 (released fw 1.1.4) and V16-V28 (fw 1.1.5/1.1.6,
+// Support window: V10 (released fw 1.1.4) and V16-V29 (fw 1.1.5/1.1.6,
 // unified channel model; V17 adds ADAT config, V18 adds leveller channel
 // masks, V19 adds the per-output loudness mask, V20 adds the crossfeed
 // output-pair mask, V21 adds I2S slave-clock mode, V22 adds the Linkwitz
 // Transform qp sidecar, V23 adds psychoacoustic bass, V24 adds ADAT input
 // config, V25 adds the stereo upmixer, V26 adds the upmixer presence bell,
-// V27 adds the upmix centre OFF mode, V28 adds the fourth S/PDIF input).
-// Wire versions 11..15 were in-development intermediates with shifting
-// layouts the console never shipped against -- rejected like pre-V10 firmware.
-export const MAX_KNOWN_WIRE = 28;
-const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28];
+// V27 adds the upmix centre OFF mode, V28 adds the fourth S/PDIF input,
+// V29 adds the subharmonic synthesizer). Wire versions 11..15 were
+// in-development intermediates with shifting layouts the console never
+// shipped against -- rejected like pre-V10 firmware.
+export const MAX_KNOWN_WIRE = 29;
+const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29];
 
 // UI-facing description of the support window (device-panel tooltips). Keep
 // in step with SUPPORTED_WIRE_VERSIONS and the fw releases that carry them.
 export const SUPPORT_WINDOW = {
   fw: '1.1.4–1.1.6',
-  wire: 'V10 and V16–V28',
+  wire: 'V10 and V16–V29',
 } as const;
 
 export interface FirmwareVersion {
@@ -106,6 +107,10 @@ export interface DeviceFeatures {
   // with no dedicated capability bit; V24 fw rejects 0xFF as INVALID_PIN
   // harmlessly, but we don't offer the affordance there. Both platforms.
   readonly pinResetDefault: boolean;
+  // Subharmonic synthesizer (0x10-0x1A + WireSubharmParams). Wire V29+, both
+  // platforms -- the kernel runs in Q28 on RP2040, so no platform gate unlike
+  // psybass/upmix.
+  readonly subharm: boolean;
 }
 
 export interface DeviceCapabilities {
@@ -119,7 +124,7 @@ export interface DeviceCapabilities {
 
   // Support classification, keyed on the observed wire version:
   //   unsupported -- below the V10 floor, or an 11..15 in-dev intermediate.
-  //   supported   -- V10 (1.1.4) or V16-V21 (1.1.5).
+  //   supported   -- V10 (1.1.4) or V16-V29 (1.1.5/1.1.6).
   //   future      -- newer than the console knows; read known sections only.
   readonly support: 'unsupported' | 'supported' | 'future';
 
@@ -196,6 +201,7 @@ export function deriveCapabilities(input: {
       upmixCenterOff:     wireVersion >= 27 && platformId === 1,
       firstOrderLpHp:     wireVersion >= 28,
       pinResetDefault:    wireVersion >= 25,
+      subharm:            wireVersion >= 29,
     },
     // 3 selectable inputs through V27; V28 adds the fourth.
     spdifInputCount: multiSpdifInputs ? (wireVersion >= 28 ? SPDIF_RX_MAX_INSTANCES : 3) : 1,

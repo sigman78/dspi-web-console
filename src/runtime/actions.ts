@@ -313,6 +313,55 @@ export function togglePsybassOutputChannel(s: ReadySession, ch: number): void {
   setPsybassOutputMask(s, mask);
 }
 
+export function setSubharmEnabled(s: ReadySession, enabled: boolean): void {
+  void write(s,
+    () => s.device.setSubharmEnabled(enabled),
+    () => { s.mirror.snapshot.subharm.enabled = enabled; },
+  );
+}
+
+export function setSubharmLow(s: ReadySession, db: number): void {
+  db = Clamp.subharmLevelDb(db);
+  scrub(s,
+    'subharmLow',
+    () => { s.mirror.snapshot.subharm.lowDb = db; },
+    () => s.device.setSubharmLow(db),
+  );
+}
+
+export function setSubharmHigh(s: ReadySession, db: number): void {
+  db = Clamp.subharmLevelDb(db);
+  scrub(s,
+    'subharmHigh',
+    () => { s.mirror.snapshot.subharm.highDb = db; },
+    () => s.device.setSubharmHigh(db),
+  );
+}
+
+export function setSubharmBoost(s: ReadySession, db: number): void {
+  db = Clamp.subharmBoostDb(db);
+  scrub(s,
+    'subharmBoost',
+    () => { s.mirror.snapshot.subharm.boostDb = db; },
+    () => s.device.setSubharmBoost(db),
+  );
+}
+
+// Per-output subharm mask (fw V29+): same single-command toggle pattern as
+// the loudness/crossfeed/psybass masks above. Discrete edit -> write lane.
+export function setSubharmOutputMask(s: ReadySession, mask: number): void {
+  mask &= 0xFFFF;
+  void write(s,
+    () => s.device.setSubharmMask(mask),
+    () => { s.mirror.snapshot.subharm.outputMask = mask; },
+  );
+}
+
+export function toggleSubharmOutputChannel(s: ReadySession, ch: number): void {
+  const mask = s.mirror.snapshot.subharm.outputMask ^ (1 << ch);
+  setSubharmOutputMask(s, mask);
+}
+
 // Stereo upmixer (fw V25+, RP2350 only). Discrete mode/enable edits use the
 // write lane; continuous knobs scrub, one lane key each.
 export function setUpmixEnabled(s: ReadySession, enabled: boolean): void {
