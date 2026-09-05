@@ -46,12 +46,16 @@ const nouns: CsNounCaps[] = [
     unit: CS_UNIT_HZ, targetKind: CS_TARGET_DSP_BAND, targetCount: 7, dflags: 0 },  // 20 FILTER_FREQ
 ];
 
+// Caps v13: unlocks indicator delays (v8) and the brightness ceiling (v12) on
+// top of the same type/noun tables as `caps`.
+const caps13: CsCaps = { ...caps, capsVersion: 13 };
+
 function live(over: Partial<CsBinding>): CsBinding {
   return { ...EMPTY_CS_BINDING, ...over };
 }
 
-function roundTrip(b: CsBinding): CsBinding {
-  return buildBinding(draftFromLive(b, nouns), nouns, caps);
+function roundTrip(b: CsBinding, c: CsCaps = caps): CsBinding {
+  return buildBinding(draftFromLive(b, nouns), nouns, c);
 }
 
 // The no-op-APPLY invariant: a live binding turned into a display-unit draft
@@ -84,14 +88,34 @@ describe('csDraft round-trip', () => {
     expect(bindingsEqual(roundTrip(b), b)).toBe(true);
   });
 
-  it('carries opaque newer-caps bytes through untouched', () => {
+  it('carries reserved wire bytes through untouched', () => {
     const b = live({
       type: CsType.Button, noun: CsNoun.UserMute, action: CsAction.Toggle,
-      gpio0: 14, opaque0: 0xab, opaqueTail: [1, 2, 3],
+      gpio0: 14, reserved2: [1, 2],
     });
     const rebuilt = roundTrip(b);
-    expect(rebuilt.opaque0).toBe(0xab);
-    expect(rebuilt.opaqueTail).toEqual([1, 2, 3]);
+    expect(rebuilt.reserved2).toEqual([1, 2]);
+  });
+
+  it('reproduces an LED_PWM IND_ABOVE binding with a brightness ceiling and delays', () => {
+    const b = live({
+      type: CsType.LedPwm, noun: CsNoun.UserVolume, action: CsAction.IndAbove,
+      gpio0: 20, gpio1: null, value: 0, baseBright: 40, onDelay: 5, offDelay: 6000,
+    });
+    expect(bindingsEqual(roundTrip(b, caps13), b)).toBe(true);
+  });
+
+  // Wire 0 (full) and wire 100 both display as 100 %, told apart only by the
+  // limitBright toggle; both must rebuild to their own wire value or every
+  // untouched PWM LED on a caps-12+ device would read as dirty.
+  it('reproduces a full-brightness LED_PWM binding (base_bright 0) and a 100 % ceiling', () => {
+    const full = live({
+      type: CsType.LedPwm, noun: CsNoun.UserVolume, action: CsAction.IndAbove,
+      gpio0: 20, gpio1: null, baseBright: 0,
+    });
+    expect(bindingsEqual(roundTrip(full, caps13), full)).toBe(true);
+    const ceiling100 = live({ ...full, baseBright: 100 });
+    expect(bindingsEqual(roundTrip(ceiling100, caps13), ceiling100)).toBe(true);
   });
 });
 
@@ -106,12 +130,13 @@ describe('buildBinding conditional encoding', () => {
       gpio1: 7, target: 1, index: 2, value: 5, step: 3,
       limitRange: true, rangeMin: -10, rangeMax: 10,
       invert: true, reverse: true, wrap: true, accel: true, repeat: false,
+      onDelay: 5, offDelay: 6, limitBright: true, baseBright: 40,
     };
     expect(buildBinding(d, nouns, caps)).toEqual(live({
       type: CsType.Button, noun: CsNoun.UserMute, action: CsAction.Toggle,
       event: CsEvent.Press, gpio0: 14, gpio1: null,
       flags: CS_FLAG_INVERT,                         // reverse/wrap/accel masked
-      opaque0: undefined, opaqueTail: undefined,     // no live binding to carry them from
+      reserved2: undefined,                          // no live binding to carry it from
     }));
   });
 
@@ -121,6 +146,7 @@ describe('buildBinding conditional encoding', () => {
       event: CsEvent.Long, gpio0: 14, gpio1: 0, target: 0, index: 0,
       invert: false, reverse: false, wrap: false, accel: false, repeat: false,
       value: 1, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
+      onDelay: 0, offDelay: 0, limitBright: false, baseBright: 100,
     };
     expect(buildBinding(base, nouns, caps).event).toBe(CsEvent.Press);
 
@@ -135,17 +161,68 @@ describe('buildBinding conditional encoding', () => {
 
   // The IR container carries only the receiver pin and wiring polarity;
   // firmware's validateCsBinding rejects anything else non-zero.
-  it('zeroes everything but gpio0, invert, and opaque bytes for an IR binding', () => {
+  it('zeroes everything but gpio0, invert, and reserved bytes for an IR binding', () => {
     const d: Draft = {
       type: CsType.Ir, noun: 5, action: 3, event: CsEvent.Long,
       gpio0: 15, gpio1: 8, target: 1, index: 2, value: 9, step: 4,
       limitRange: true, rangeMin: -10, rangeMax: 10,
       invert: true, reverse: true, wrap: true, accel: true, repeat: true,
-      opaque0: 0xab, opaqueTail: [7],
+      onDelay: 5, offDelay: 6, limitBright: true, baseBright: 40,
+      reserved2: [7],
     };
     expect(buildBinding(d, nouns, caps)).toEqual(live({
       type: CsType.Ir, gpio0: 15, gpio1: null, flags: CS_FLAG_INVERT,
-      event: CsEvent.Press, opaque0: 0xab, opaqueTail: [7],
+      event: CsEvent.Press, reserved2: [7],
     }));
+  });
+
+  it('carries the brightness ceiling on IND_LEVEL but zeroes delays there', () => {
+    const d: Draft = {
+      type: CsType.LedPwm, noun: CsNoun.UserVolume, action: CsAction.IndLevel,
+      event: CsEvent.Press, gpio0: 20, gpio1: 0, target: 0, index: 0,
+      invert: false, reverse: false, wrap: false, accel: false, repeat: false,
+      value: 0, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
+      onDelay: 5, offDelay: 6, limitBright: true, baseBright: 40,
+    };
+    const built = buildBinding(d, nouns, caps13);
+    expect(built.onDelay).toBe(0);
+    expect(built.offDelay).toBe(0);
+    expect(built.baseBright).toBe(40);
+  });
+
+  it('zeroes the brightness ceiling on a plain LED even when the draft carries one', () => {
+    const d: Draft = {
+      type: CsType.Led, noun: CsNoun.UserVolume, action: CsAction.IndEquals,
+      event: CsEvent.Press, gpio0: 20, gpio1: 0, target: 0, index: 0,
+      invert: false, reverse: false, wrap: false, accel: false, repeat: false,
+      value: 1, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
+      onDelay: 0, offDelay: 0, limitBright: true, baseBright: 40,
+    };
+    expect(buildBinding(d, nouns, caps13).baseBright).toBe(0);
+  });
+
+  it('zeroes delays and the brightness ceiling below the caps versions that support them', () => {
+    const d: Draft = {
+      type: CsType.Led, noun: CsNoun.UserVolume, action: CsAction.IndAbove,
+      event: CsEvent.Press, gpio0: 20, gpio1: 0, target: 0, index: 0,
+      invert: false, reverse: false, wrap: false, accel: false, repeat: false,
+      value: 0, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
+      onDelay: 5, offDelay: 6, limitBright: true, baseBright: 40,
+    };
+    const built = buildBinding(d, nouns, caps);   // caps.capsVersion === 3
+    expect(built.onDelay).toBe(0);
+    expect(built.offDelay).toBe(0);
+    expect(built.baseBright).toBe(0);
+  });
+
+  it('builds baseBright 0 when limitBright is false even on a capable LED_PWM', () => {
+    const d: Draft = {
+      type: CsType.LedPwm, noun: CsNoun.UserVolume, action: CsAction.IndAbove,
+      event: CsEvent.Press, gpio0: 20, gpio1: 0, target: 0, index: 0,
+      invert: false, reverse: false, wrap: false, accel: false, repeat: false,
+      value: 0, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
+      onDelay: 0, offDelay: 0, limitBright: false, baseBright: 55,
+    };
+    expect(buildBinding(d, nouns, caps13).baseBright).toBe(0);
   });
 });

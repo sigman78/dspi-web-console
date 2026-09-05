@@ -84,6 +84,7 @@
         gpio0: 0, gpio1: 0, target: 0, index: 0,
         invert: false, reverse: false, wrap: false, accel: false, repeat: false,
         value: 0, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
+        onDelay: 0, offDelay: 0, limitBright: false, baseBright: 100,
       };
       d.gpio0 = firstFree(candidatesFor(slot, -1, false));
       return d;
@@ -94,6 +95,7 @@
       gpio0: 0, gpio1: 0, target: 0, index: 0,
       invert: false, reverse: false, wrap: false, accel: false, repeat: false,
       value: 0, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
+      onDelay: 0, offDelay: 0, limitBright: false, baseBright: 100,
     };
     d.gpio0 = firstFree(candidatesFor(slot, -1, adcOnly(d)));
     if (twoPins(d)) d.gpio1 = firstFree(candidatesFor(slot, -1, false, d.gpio0));

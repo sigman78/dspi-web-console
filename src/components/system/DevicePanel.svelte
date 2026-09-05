@@ -51,7 +51,7 @@
         title={`Wire formats this console supports: ${SUPPORT_WINDOW.wire}. Newer formats load with known sections only.`} />
     <KV label="OUTPUTS"  value={`${snap?.platform.outputCount ?? 0} / ${snap?.platform.totalChannelCount ?? 0}`} />
     <KV label="CS PROTO"   value={csProto} tone={csTooOld ? 'warn' : cs.deviceCapsVersion == null ? 'off' : undefined}
-        title={`Control Surfaces protocol versions this console supports: v${MIN_CS_CAPS_VERSION}–v${MAX_KNOWN_CS_CAPS_VERSION}.`} />
+        title={`Control Surfaces protocol versions this console supports: v${MIN_CS_CAPS_VERSION}–v${MAX_KNOWN_CS_CAPS_VERSION}. Newer formats load with known fields only.`} />
     <KV label="CTRL PROTO" value={ctrlProto} tone={s.ctrlIfaces.status ? undefined : 'off'}
         title="External control interface (UART/I2C) protocol this console knows: v1." />
   </div>

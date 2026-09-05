@@ -1,11 +1,11 @@
-// Control Surfaces (fw 1.1.5+, wire V16+, caps v2-v7 modeled): user-wired
-// physical controls and indicators (buttons, switches, pots, encoders, LEDs,
-// PWM LEDs, an IR remote receiver) on spare GPIOs, configured over vendor
-// commands 0x84-0x8F, 0x9D-0x9E. Which (type, noun, action) combinations
-// are legal comes from the device-served caps tables read at connect
-// (GetCsCaps), never from hardcoded masks; this module holds the wire
-// enums, q8.8 helpers, UI labels, and the client-side pre-validation that
-// mirrors the firmware's own check order.
+// Control Surfaces (fw 1.1.5+, wire V16+, caps v2-v8 modeled plus v12's
+// base_bright): user-wired physical controls and indicators (buttons,
+// switches, pots, encoders, LEDs, PWM LEDs, an IR remote receiver) on spare
+// GPIOs, configured over vendor commands 0x84-0x8F, 0x9D-0x9E. Which (type,
+// noun, action) combinations are legal comes from the device-served caps
+// tables read at connect (GetCsCaps), never from hardcoded masks; this module
+// holds the wire enums, q8.8 helpers, UI labels, and the client-side
+// pre-validation that mirrors the firmware's own check order.
 //
 // Binding and slot-name SETs are live-only previews: CS_SAVE persists the
 // whole live config to flash, CS_REVERT discards the preview and re-applies
@@ -85,6 +85,8 @@ export const CsNoun = {
   // caps v7 additions.
   LoudnessSpl:        49,
   LoudnessIntensity:  50,
+  // caps v8 addition. Read-only, IND actions only, untargeted.
+  InputLevelMax:      51,
 } as const;
 export type CsNoun = (typeof CsNoun)[keyof typeof CsNoun];
 
@@ -211,11 +213,19 @@ export interface CsBinding {
   step: number;
   rangeMin: number;
   rangeMax: number;
-  // Opaque wire bytes reserved on caps v2-v4 but carved into real fields by
-  // newer formats (v8 indicator delays, v12 base brightness). Carried through
-  // an edit round-trip verbatim; absent means zeros (a fresh binding).
-  opaque0?: number;
-  opaqueTail?: readonly number[];
+  // Percent 1-100, 0 = unset = full brightness (caps v12, CS_TYPE_LED_PWM
+  // only). Scales the final PWM duty linearly, applied before INVERT.
+  baseBright: number;
+  // 0.1 s units, 0 = immediate (caps v8). Legal only on LED/LED_PWM
+  // IND_EQUALS/IND_ABOVE: onDelay is a PLC TON (condition must hold true this
+  // long before the LED lights), offDelay a PLC TOF (hold false this long
+  // before it goes out).
+  onDelay: number;
+  offDelay: number;
+  // Reserved wire bytes carried through an edit round-trip verbatim (never
+  // zero-filled): a future format may carve a real field out of them. Absent
+  // means zeros (a fresh binding).
+  reserved2?: readonly number[];
 }
 
 // A cleared slot is the ALL-ZERO 24-byte blob -- gpio1 is 0 here, not
@@ -225,7 +235,7 @@ export const EMPTY_CS_BINDING: CsBinding = {
   type: CsType.None, noun: CsNoun.UserVolume, action: CsAction.Adjust, flags: 0,
   gpio0: 0, gpio1: 0, event: CsEvent.Press, target: 0, index: 0,
   value: 0, step: 0, rangeMin: 0, rangeMax: 0,
-  opaque0: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
+  baseBright: 0, onDelay: 0, offDelay: 0, reserved2: [0, 0],
 };
 
 // One IR sub-slot command: a button-shaped binding fired by a learned
@@ -398,6 +408,7 @@ export const CS_NOUN_LABEL: Record<CsNoun, string> = {
   [CsNoun.PresetReload]:      'Reload Preset',
   [CsNoun.LoudnessSpl]:       'Loudness Reference SPL',
   [CsNoun.LoudnessIntensity]: 'Loudness Intensity',
+  [CsNoun.InputLevelMax]:     'Input Signal Level',
 };
 
 // A device with a newer caps format may publish nouns this console has no
@@ -478,12 +489,13 @@ function validateCsTarget(b: { target: number; index: number }, noun: CsNounCaps
 }
 
 // Client-side pre-validation mirroring the firmware's cs_validate() order:
-// type -> noun -> action -> flags -> (IR container fields | action-allowed-
-// by-both-masks -> event -> repeat/accel flags -> target -> value/step/range
-// bounds) -> pin class/shape. Returns 0 on success or the CS_STATUS_* /
-// PIN_CONFIG_* byte the firmware would produce. Checks that need cross-
-// binding or device state (pin conflicts, PWM slice sharing, one-IR-per-
-// device) stay with the caller -- they are device truth, not table truth.
+// type -> noun -> action -> flags -> base_bright/delays/reserved2 -> (IR
+// container fields | action-allowed-by-both-masks -> event -> repeat/accel
+// flags -> target -> value/step/range bounds) -> pin class/shape. Returns 0
+// on success or the CS_STATUS_* / PIN_CONFIG_* byte the firmware would
+// produce. Checks that need cross-binding or device state (pin conflicts,
+// PWM slice sharing, one-IR-per-device) stay with the caller -- they are
+// device truth, not table truth.
 export function validateCsBinding(
   b: CsBinding, caps: CsCaps, nouns: readonly CsNounCaps[],
 ): number {
@@ -492,6 +504,19 @@ export function validateCsBinding(
   if (b.noun >= nouns.length) return 0x12;                       // INVALID_NOUN
   if (b.action >= CS_ACTION_COUNT) return 0x13;                  // INVALID_ACTION
   if (b.flags & ~CS_KNOWN_FLAGS) return 0x14;                    // INVALID_VALUE (unknown flags)
+
+  if (b.baseBright < 0 || b.baseBright > 100) return 0x14;
+  if (b.baseBright !== 0 && b.type !== CsType.LedPwm) return 0x14;
+  if (b.baseBright !== 0 && caps.capsVersion < 12) return 0x14;  // pre-v12 fw sees a reserved byte
+
+  if (b.onDelay < 0 || b.onDelay > 0xFFFF || b.offDelay < 0 || b.offDelay > 0xFFFF) return 0x14;
+  const delayed = b.onDelay !== 0 || b.offDelay !== 0;
+  const delayable = (b.type === CsType.Led || b.type === CsType.LedPwm) &&
+    (b.action === CsAction.IndEquals || b.action === CsAction.IndAbove);
+  if (delayed && !delayable) return 0x14;
+  if (delayed && caps.capsVersion < 8) return 0x14;              // pre-v8 fw sees reserved bytes
+
+  if (b.reserved2 && b.reserved2.some((byte) => byte !== 0)) return 0x14;
 
   const type = caps.types[b.type];
   const noun = nouns[b.noun];

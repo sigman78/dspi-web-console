@@ -71,6 +71,8 @@
   function showBandOf(d: Draft): boolean { return CsField.showBandOf(cs.nouns, d.noun); }
   function twoPins(d: Draft): boolean { return CsDraft.twoPins(d, caps); }
   function adcOnly(d: Draft): boolean { return CsDraft.adcOnly(d, caps); }
+  function showDelaysOf(d: Draft): boolean { return CsDraft.showDelaysOf(d, caps); }
+  function showBaseBrightOf(d: Draft): boolean { return CsDraft.showBaseBrightOf(d, caps); }
 
   function invertLabel(d: Draft): string {
     if (d.type === Domain.CsType.Ir) return 'Idle-low receiver';
@@ -324,6 +326,38 @@
             value={d.rangeMax} aria-label={`Range maximum (${CsUnit.unitSuffix(unitOf(d))})`} disabled={busy || applying}
             onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.rangeMax = v; }); }} />
           <span class="hint">{CsUnit.unitSuffix(unitOf(d))}</span>
+        {/if}
+      </div>
+    {/if}
+
+    {#if showDelaysOf(d) || showBaseBrightOf(d)}
+      <div class="row">
+        {#if showDelaysOf(d)}
+          <span class="microlbl">ON DELAY</span>
+          <input class="numfield" type="number" step="0.1" min="0" max="6553.5"
+            value={d.onDelay} aria-label="On delay (s)"
+            title="Condition must hold this long before the LED lights" disabled={busy || applying}
+            onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.onDelay = v; }); }} />
+          <span class="hint">s</span>
+          <span class="microlbl">OFF DELAY</span>
+          <input class="numfield" type="number" step="0.1" min="0" max="6553.5"
+            value={d.offDelay} aria-label="Off delay (s)"
+            title="Condition must hold this long before the LED goes out" disabled={busy || applying}
+            onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.offDelay = v; }); }} />
+          <span class="hint">s</span>
+        {/if}
+        {#if showBaseBrightOf(d)}
+          <span class="microlbl">LIMIT BRIGHTNESS</span>
+          <ToggleSwitch size="sm" checked={d.limitBright} disabled={busy || applying}
+            ariaLabel="Limit brightness"
+            onChange={(v) => onEdit((dr) => { dr.limitBright = v; })} />
+          {#if d.limitBright}
+            <span class="microlbl">CEILING</span>
+            <input class="numfield" type="number" step="1" min="1" max="100"
+              value={d.baseBright} aria-label="Brightness ceiling (%)" disabled={busy || applying}
+              onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.baseBright = v; }); }} />
+            <span class="hint">%</span>
+          {/if}
         {/if}
       </div>
     {/if}

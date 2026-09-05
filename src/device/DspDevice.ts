@@ -95,8 +95,8 @@ function fwVersionParts(info: { fwMajor: number; fwMinorPatch: number }): Firmwa
 function csBindingFromWire(w: {
   type: number; noun: number; action: number; flags: number;
   gpio0: number; gpio1: number; event: number; target: number; index: number;
-  opaque0: number; value: number; step: number; rangeMin: number; rangeMax: number;
-  opaqueTail: number[];
+  baseBright: number; value: number; step: number; rangeMin: number; rangeMax: number;
+  onDelay: number; offDelay: number; reserved2: number[];
 }): Domain.CsBinding {
   return {
     type: w.type as Domain.CsType, noun: w.noun as Domain.CsNoun, action: w.action as Domain.CsAction,
@@ -104,7 +104,7 @@ function csBindingFromWire(w: {
     gpio1: w.gpio1 === Domain.CS_GPIO_UNUSED ? null : w.gpio1,
     event: w.event as Domain.CsEvent, target: w.target, index: w.index,
     value: w.value, step: w.step, rangeMin: w.rangeMin, rangeMax: w.rangeMax,
-    opaque0: w.opaque0, opaqueTail: w.opaqueTail,
+    baseBright: w.baseBright, onDelay: w.onDelay, offDelay: w.offDelay, reserved2: w.reserved2,
   };
 }
 
@@ -1384,7 +1384,8 @@ export class DspDevice {
         gpio0: b.gpio0, gpio1: b.gpio1 ?? Domain.CS_GPIO_UNUSED,
         event: b.event, target: b.target, index: b.index,
         value: b.value, step: b.step, rangeMin: b.rangeMin, rangeMax: b.rangeMax,
-        opaque0: b.opaque0 ?? 0, opaqueTail: [...(b.opaqueTail ?? [0, 0, 0, 0, 0, 0])],
+        baseBright: b.baseBright, onDelay: b.onDelay, offDelay: b.offDelay,
+        reserved2: [...(b.reserved2 ?? [0, 0])],
       }, slot & 0xFF);
       return pollCsStatus(raw, slot);
     });

@@ -233,6 +233,49 @@ describe('validateCsBinding', () => {
       type: CsType.Ir, gpio0: 15, noun: CsNoun.UserMute, action: CsAction.Toggle,
     }), caps, nouns)).toBe(0x14);
   });
+
+  it('accepts indicator on/off delays only on LED/LED_PWM IND_EQUALS/IND_ABOVE at caps >= 8', () => {
+    const caps8 = { ...caps, capsVersion: 8 };
+    expect(validateCsBinding(binding({
+      type: CsType.Led, noun: CsNoun.UserVolume, action: CsAction.IndAbove, gpio0: 20, value: 0, onDelay: 10,
+    }), caps8, nouns)).toBe(0x00);
+    // IND_LEVEL isn't a delayable action even on an LED-family type.
+    expect(validateCsBinding(binding({
+      type: CsType.Led, noun: CsNoun.UserVolume, action: CsAction.IndLevel, gpio0: 20, onDelay: 10,
+    }), caps8, nouns)).toBe(0x14);
+    // A button is never delayable, regardless of action.
+    expect(validateCsBinding(binding({
+      type: CsType.Button, noun: CsNoun.UserMute, action: CsAction.Toggle, gpio0: 20, offDelay: 10,
+    }), caps8, nouns)).toBe(0x14);
+    // Pre-v8 firmware treats the delay bytes as reserved.
+    expect(validateCsBinding(binding({
+      type: CsType.Led, noun: CsNoun.UserVolume, action: CsAction.IndAbove, gpio0: 20, value: 0, onDelay: 10,
+    }), { ...caps, capsVersion: 7 }, nouns)).toBe(0x14);
+  });
+
+  it('accepts a brightness ceiling only on LED_PWM at caps >= 12', () => {
+    const caps12 = { ...caps, capsVersion: 12 };
+    expect(validateCsBinding(binding({
+      type: CsType.LedPwm, noun: CsNoun.Loudness, action: CsAction.IndEquals, gpio0: 20, value: 1, baseBright: 40,
+    }), caps12, nouns)).toBe(0x00);
+    // Wrong type: LED (not LED_PWM) can't carry a ceiling.
+    expect(validateCsBinding(binding({
+      type: CsType.Led, noun: CsNoun.Loudness, action: CsAction.IndEquals, gpio0: 20, value: 1, baseBright: 40,
+    }), caps12, nouns)).toBe(0x14);
+    // Out of the 1-100 percent range.
+    expect(validateCsBinding(binding({
+      type: CsType.LedPwm, noun: CsNoun.Loudness, action: CsAction.IndEquals, gpio0: 20, value: 1, baseBright: 101,
+    }), caps12, nouns)).toBe(0x14);
+    // Pre-v12 firmware treats the byte as reserved.
+    expect(validateCsBinding(binding({
+      type: CsType.LedPwm, noun: CsNoun.Loudness, action: CsAction.IndEquals, gpio0: 20, value: 1, baseBright: 40,
+    }), { ...caps, capsVersion: 11 }, nouns)).toBe(0x14);
+  });
+
+  it('rejects a non-zero reserved2 byte', () => {
+    expect(validateCsBinding({ ...encoderOk, reserved2: [1, 0] }, caps, nouns)).toBe(0x14);
+    expect(validateCsBinding({ ...encoderOk, reserved2: [0, 0] }, caps, nouns)).toBe(0x00);
+  });
 });
 
 describe('validateCsIrCommand', () => {
