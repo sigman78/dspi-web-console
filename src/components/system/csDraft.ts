@@ -5,6 +5,7 @@
 // Explicit-arg, like csFieldHelpers.ts: callers pass their own local caps/
 // nouns rather than this module reaching into session state.
 import * as Domain from '@/domain';
+import * as Clamp from '@/domain/clamp';
 import * as CsUnit from './csUnitDisplay';
 import * as CsField from './csFieldHelpers';
 
@@ -19,9 +20,13 @@ export interface Draft {
   invert: boolean; reverse: boolean; wrap: boolean; accel: boolean; repeat: boolean;
   value: number; step: number;
   limitRange: boolean; rangeMin: number; rangeMax: number;
-  // Opaque wire bytes from the live binding (newer-caps fields this console
-  // can't author); carried so an edit round-trip preserves them.
-  opaque0?: number; opaqueTail?: readonly number[];
+  // Indicator on/off delays, display seconds (wire 0.1 s units).
+  onDelay: number; offDelay: number;
+  // Brightness ceiling, display percent 1-100; meaningful only when limitBright.
+  limitBright: boolean; baseBright: number;
+  // Reserved wire bytes from the live binding (a future format's fields this
+  // console can't author yet); carried so an edit round-trip preserves them.
+  reserved2?: readonly number[];
 }
 
 export const STEPPY: readonly number[] = [Domain.CsAction.Step, Domain.CsAction.Inc, Domain.CsAction.Dec];
@@ -101,7 +106,11 @@ export function draftFromLive(b: Domain.CsBinding, nouns: readonly Domain.CsNoun
     limitRange: limited,
     rangeMin: cont ? CsUnit.valueToDisplay(unit, limited ? b.rangeMin : noun?.minQ8 ?? 0) : 0,
     rangeMax: cont ? CsUnit.valueToDisplay(unit, limited ? b.rangeMax : noun?.maxQ8 ?? 0) : 0,
-    opaque0: b.opaque0, opaqueTail: b.opaqueTail,
+    onDelay: b.onDelay / 10,
+    offDelay: b.offDelay / 10,
+    limitBright: b.baseBright !== 0,
+    baseBright: b.baseBright !== 0 ? b.baseBright : 100,
+    reserved2: b.reserved2,
   };
 }
 
@@ -120,6 +129,14 @@ export function twoPins(d: Draft, caps: Domain.CsCaps | null): boolean { return 
 export function adcOnly(d: Draft, caps: Domain.CsCaps | null): boolean {
   return caps?.types[d.type]?.pinClass === Domain.CS_PINCLASS_ADC;
 }
+export function showDelaysOf(d: Draft, caps: Domain.CsCaps | null): boolean {
+  return (caps?.capsVersion ?? 0) >= 8
+    && (d.type === Domain.CsType.Led || d.type === Domain.CsType.LedPwm)
+    && (d.action === Domain.CsAction.IndEquals || d.action === Domain.CsAction.IndAbove);
+}
+export function showBaseBrightOf(d: Draft, caps: Domain.CsCaps | null): boolean {
+  return (caps?.capsVersion ?? 0) >= 12 && d.type === Domain.CsType.LedPwm;
+}
 
 export function buildBinding(d: Draft, nouns: readonly Domain.CsNounCaps[], caps: Domain.CsCaps | null): Domain.CsBinding {
   if (d.type === Domain.CsType.Ir) {
@@ -128,7 +145,8 @@ export function buildBinding(d: Draft, nouns: readonly Domain.CsNounCaps[], caps
       flags: d.invert ? Domain.CS_FLAG_INVERT : 0,
       gpio0: d.gpio0, gpio1: null, event: Domain.CsEvent.Press,
       target: 0, index: 0, value: 0, step: 0, rangeMin: 0, rangeMax: 0,
-      opaque0: d.opaque0, opaqueTail: d.opaqueTail,
+      baseBright: 0, onDelay: 0, offDelay: 0,
+      reserved2: d.reserved2,
     };
   }
   const cont = CsField.contOf(nouns, d.noun);
@@ -153,7 +171,10 @@ export function buildBinding(d: Draft, nouns: readonly Domain.CsNounCaps[], caps
     step: CsField.showStepOf(d.action, STEPPY) ? (cont ? CsUnit.displayToStep(unit, d.step) : Math.round(d.step)) : 0,
     rangeMin: showRangeOf(d, nouns) && d.limitRange ? CsUnit.displayToValue(unit, d.rangeMin) : 0,
     rangeMax: showRangeOf(d, nouns) && d.limitRange ? CsUnit.displayToValue(unit, d.rangeMax) : 0,
-    opaque0: d.opaque0, opaqueTail: d.opaqueTail,
+    baseBright: showBaseBrightOf(d, caps) && d.limitBright ? Clamp.toRange(Math.round(d.baseBright), 1, 100) : 0,
+    onDelay: showDelaysOf(d, caps) ? Clamp.toRange(Math.round(d.onDelay * 10), 0, 0xFFFF) : 0,
+    offDelay: showDelaysOf(d, caps) ? Clamp.toRange(Math.round(d.offDelay * 10), 0, 0xFFFF) : 0,
+    reserved2: d.reserved2,
   };
 }
 
@@ -163,5 +184,6 @@ export function bindingsEqual(a: Domain.CsBinding, b: Domain.CsBinding): boolean
     && (a.gpio1 ?? null) === (b.gpio1 ?? null)
     && a.event === b.event && a.target === b.target && a.index === b.index
     && a.value === b.value && a.step === b.step
-    && a.rangeMin === b.rangeMin && a.rangeMax === b.rangeMax;
+    && a.rangeMin === b.rangeMin && a.rangeMax === b.rangeMax
+    && a.baseBright === b.baseBright && a.onDelay === b.onDelay && a.offDelay === b.offDelay;
 }

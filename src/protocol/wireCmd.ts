@@ -40,8 +40,9 @@ type DeviceInfoPayload = {
 };
 type CsBindingPayload = {
   type: number; noun: number; action: number; flags: number;
-  gpio0: number; gpio1: number; event: number; target: number; index: number;
+  gpio0: number; gpio1: number; event: number; target: number; index: number; baseBright: number;
   value: number; step: number; rangeMin: number; rangeMax: number;
+  onDelay: number; offDelay: number; reserved2: number[];
 };
 type CsStatusPayload = {
   lastStatus: number; lastSlot: number; maxBindings: number; dirty: boolean;

@@ -225,13 +225,14 @@ function buildMockCsNouns(platform: PlatformType, numIn: number, numOut: number,
 interface MockCsBinding {
   type: number; noun: number; action: number; flags: number;
   gpio0: number; gpio1: number; event: number; target: number; index: number;
-  opaque0: number; value: number; step: number; rangeMin: number; rangeMax: number;
-  opaqueTail: number[];
+  baseBright: number; value: number; step: number; rangeMin: number; rangeMax: number;
+  onDelay: number; offDelay: number; reserved2: number[];
 }
 
 const emptyCsBinding = (): MockCsBinding => ({
   type: 0, noun: 0, action: 0, flags: 0, gpio0: 0, gpio1: 0, event: 0, target: 0, index: 0,
-  opaque0: 0, value: 0, step: 0, rangeMin: 0, rangeMax: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
+  baseBright: 0, value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+  onDelay: 0, offDelay: 0, reserved2: [0, 0],
 });
 
 // Wire-shaped stored IR command (one sub-slot).
@@ -1904,8 +1905,9 @@ export class MockTransport implements DspTransport {
         gpio0: w.gpio0, gpio1: w.gpio1 === CS_GPIO_UNUSED ? null : w.gpio1,
         event: w.event as never, target: w.target, index: w.index,
         value: w.value, step: w.step, rangeMin: w.rangeMin, rangeMax: w.rangeMax,
+        baseBright: w.baseBright, onDelay: w.onDelay, offDelay: w.offDelay, reserved2: w.reserved2,
       },
-      MOCK_CS_CAPS, this.#csNouns,
+      { ...MOCK_CS_CAPS, capsVersion: this.#csCapsVersion }, this.#csNouns,
     );
     if (tableStatus !== 0x00) return tableStatus;
     // One IR receiver per device: a second live CS_TYPE_IR binding is

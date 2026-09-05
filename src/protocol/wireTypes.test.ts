@@ -99,8 +99,8 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     const encoder = {
       type: 4, noun: 1, action: 1, flags: 0, gpio0: 27, gpio1: 28,
       event: 0, target: 0, index: 0,
-      value: 0, step: 256, rangeMin: 0, rangeMax: 0,
-      opaque0: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
+      baseBright: 0, value: 0, step: 256, rangeMin: 0, rangeMax: 0,
+      onDelay: 0, offDelay: 0, reserved2: [0, 0],
     };
     const encoderBytes = Uint8Array.from([
       0x04, 0x01, 0x01, 0x00, 0x1B, 0x1C, 0x00, 0x00, 0x00, 0x00,
@@ -114,8 +114,8 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     const led = {
       type: 5, noun: 3, action: 8, flags: 0, gpio0: 20, gpio1: 0xFF,
       event: 0, target: 0, index: 0,
-      value: 1, step: 0, rangeMin: 0, rangeMax: 0,
-      opaque0: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
+      baseBright: 0, value: 1, step: 0, rangeMin: 0, rangeMax: 0,
+      onDelay: 0, offDelay: 0, reserved2: [0, 0],
     };
     const ledBytes = Uint8Array.from([
       0x05, 0x03, 0x08, 0x00, 0x14, 0xFF, 0x00, 0x00, 0x00, 0x00,
@@ -129,18 +129,48 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     const clear = {
       type: 0, noun: 0, action: 0, flags: 0, gpio0: 0, gpio1: 0,
       event: 0, target: 0, index: 0,
-      value: 0, step: 0, rangeMin: 0, rangeMax: 0,
-      opaque0: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
+      baseBright: 0, value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+      onDelay: 0, offDelay: 0, reserved2: [0, 0],
     };
     expect(Codec.encode(Wire.CsBinding, clear)).toEqual(new Uint8Array(24));
+
+    // Amplifier trigger, LED GP20 above -50 dB with a 600 s off-delay (spec 8.2g).
+    const ampTrigger = {
+      type: 5, noun: 51, action: 10, flags: 0, gpio0: 20, gpio1: 0xFF,
+      event: 0, target: 0, index: 0,
+      baseBright: 0, value: -12800, step: 0, rangeMin: 0, rangeMax: 0,
+      onDelay: 0, offDelay: 6000, reserved2: [0, 0],
+    };
+    const ampTriggerBytes = Uint8Array.from([
+      0x05, 0x33, 0x0A, 0x00, 0x14, 0xFF, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0xCE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x70, 0x17, 0x00, 0x00,
+    ]);
+    expect(Codec.encode(Wire.CsBinding, ampTrigger)).toEqual(ampTriggerBytes);
+    expect(Codec.decode(Wire.CsBinding, ampTriggerBytes)).toEqual(ampTrigger);
+
+    // LED_PWM: base_bright = 40% ceiling, on_delay = 0.5 s.
+    const ledPwm = {
+      type: 6, noun: 3, action: 8, flags: 0, gpio0: 21, gpio1: 0xFF,
+      event: 0, target: 0, index: 0,
+      baseBright: 40, value: 1, step: 0, rangeMin: 0, rangeMax: 0,
+      onDelay: 5, offDelay: 0, reserved2: [0, 0],
+    };
+    const ledPwmBytes = Uint8Array.from([
+      0x06, 0x03, 0x08, 0x00, 0x15, 0xFF, 0x00, 0x00, 0x00, 0x28,
+      0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x05, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ]);
+    expect(Codec.encode(Wire.CsBinding, ledPwm)).toEqual(ledPwmBytes);
+    expect(Codec.decode(Wire.CsBinding, ledPwmBytes)).toEqual(ledPwm);
   });
 
   it('CsBinding round-trips negative q8.8 fields as signed int16', () => {
     const b = {
       type: 3, noun: 0, action: 0, flags: 0x02, gpio0: 26, gpio1: 0xFF,
       event: 0, target: 0, index: 0,
-      value: 0, step: 0, rangeMin: -7680, rangeMax: -128,   // −30 dB .. −0.5 dB
-      opaque0: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
+      baseBright: 0, value: 0, step: 0, rangeMin: -7680, rangeMax: -128,   // −30 dB .. −0.5 dB
+      onDelay: 0, offDelay: 0, reserved2: [0, 0],
     };
     const back = Codec.decode(Wire.CsBinding, Codec.encode(Wire.CsBinding, b));
     expect(back.rangeMin).toBe(-7680);

@@ -296,7 +296,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
     type: CsType.Encoder, noun: CsNoun.MasterVolume, action: CsAction.Step,
     flags: 0, gpio0: 21, gpio1: 22, event: CsEvent.Press, target: 0, index: 0,
     value: 0, step: dbToQ8(1), rangeMin: 0, rangeMax: 0,
-    opaque0: 0, opaqueTail: [0, 0, 0, 0, 0, 0],
+    baseBright: 0, onDelay: 0, offDelay: 0, reserved2: [0, 0],
   };
 
   it('reports the controlSurfaces feature on V16 only', async () => {
@@ -346,12 +346,17 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
     expect(await d.getCsBinding(2)).toEqual(encoderBinding);
   });
 
-  it('preserves the reserved wire bytes a newer caps format may have carved (v8 delays, v12 brightness)', async () => {
+  it('sets and reads back an LED_PWM binding carrying a brightness ceiling and indicator delays', async () => {
     const d = await v16Device();
-    const withOpaque = { ...encoderBinding, opaque0: 0x5A, opaqueTail: [10, 0, 30, 0, 75, 0] };
-    const { result } = await d.setCsBinding(3, withOpaque);
+    const ledPwmBinding = {
+      type: CsType.LedPwm, noun: CsNoun.MasterVolume, action: CsAction.IndAbove,
+      flags: 0, gpio0: 20, gpio1: null, event: CsEvent.Press, target: 0, index: 0,
+      value: dbToQ8(-50), step: 0, rangeMin: 0, rangeMax: 0,
+      baseBright: 40, onDelay: 5, offDelay: 6000, reserved2: [0, 0],
+    };
+    const { result } = await d.setCsBinding(3, ledPwmBinding);
     expect(result.ok).toBe(true);
-    expect(await d.getCsBinding(3)).toEqual(withOpaque);
+    expect(await d.getCsBinding(3)).toEqual(ledPwmBinding);
   });
 
   it('rejects an action outside the type∩noun mask with INVALID_ACTION', async () => {
@@ -370,6 +375,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
       type: CsType.Button, noun: CsNoun.UserMute, action: CsAction.Toggle,
       flags: 0, gpio0: 20, gpio1: null, event: 3 as CsEvent, target: 0, index: 0,
       value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+      baseBright: 0, onDelay: 0, offDelay: 0,
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(CsStatusCode.InvalidEvent);
@@ -381,6 +387,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
       type: CsType.Pot, noun: CsNoun.UserVolume, action: CsAction.Adjust,
       flags: 0, gpio0: 20, gpio1: null, event: CsEvent.Press, target: 0, index: 0,
       value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+      baseBright: 0, onDelay: 0, offDelay: 0,
     };
     const bad = await d.setCsBinding(1, pot);
     expect(bad.result.ok).toBe(false);
@@ -403,6 +410,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
       type: CsType.Button, noun: CsNoun.UserMute, action: CsAction.Toggle,
       flags: 0, gpio0: 20, gpio1: null, event: CsEvent.Press, target: 0, index: 0,
       value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+      baseBright: 0, onDelay: 0, offDelay: 0,
     };
     const long = { ...press, noun: CsNoun.Loudness, event: CsEvent.Long };
     expect((await d.setCsBinding(0, press)).result.ok).toBe(true);
@@ -419,6 +427,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
       type: CsType.Led, noun: CsNoun.Loudness, action: CsAction.IndEquals,
       flags: 0, gpio0: 20, gpio1: null, event: CsEvent.Press, target: 0, index: 0,
       value: 1, step: 0, rangeMin: 0, rangeMax: 0,
+      baseBright: 0, onDelay: 0, offDelay: 0,
     };
     await d.setCsBinding(6, led);
     // 0xFF on the wire maps back to null (unused second pin).
@@ -518,6 +527,28 @@ describe('DspDevice — Control Surfaces caps-version branching (32 vs 41-byte s
     expect(status.irCmdStatus).toHaveLength(16);
     expect(status.irLearnState).toBe(CS_IR_LEARN_DONE);
   });
+
+  it('a caps v7 device rejects indicator delays (reserved bytes); a caps v8 device accepts them', async () => {
+    const delayedLed = {
+      type: CsType.Led, noun: CsNoun.MasterVolume, action: CsAction.IndAbove,
+      flags: 0, gpio0: 20, gpio1: null, event: CsEvent.Press, target: 0, index: 0,
+      value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+      baseBright: 0, onDelay: 10, offDelay: 0,
+    };
+
+    const v7 = await DspDevice.create(new MockTransport({
+      platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 7,
+    }));
+    const rejected = await v7.setCsBinding(0, delayedLed);
+    expect(rejected.result.ok).toBe(false);
+    if (!rejected.result.ok) expect(rejected.result.code).toBe(CsStatusCode.InvalidValue);
+
+    const v8 = await DspDevice.create(new MockTransport({
+      platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 8,
+    }));
+    const accepted = await v8.setCsBinding(0, delayedLed);
+    expect(accepted.result.ok).toBe(true);
+  });
 });
 
 describe('DspDevice — V16 Control Surfaces IR commands (0x8D-0x8F)', () => {
@@ -525,6 +556,7 @@ describe('DspDevice — V16 Control Surfaces IR commands (0x8D-0x8F)', () => {
     type: CsType.Ir, noun: CsNoun.UserVolume, action: CsAction.Adjust,
     flags: 0, gpio0: 20, gpio1: null, event: CsEvent.Press, target: 0, index: 0,
     value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+    baseBright: 0, onDelay: 0, offDelay: 0,
   };
   const necToggle = {
     noun: CsNoun.UserMute, action: CsAction.Toggle, flags: 0, target: 0, index: 0,

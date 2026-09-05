@@ -72,8 +72,11 @@ export const MIN_CS_CAPS_VERSION = 2;
 // Newest caps format the console models (v4 = the upmix/psybass/delay/
 // preset-reload nouns and the CS_UNIT_MS unit; v5 changed an upmix enum
 // signal, nothing this console models; v6 = CS_MAX_IR_COMMANDS 8->16 and the
-// 41-byte GetCsStatus layout; v7 = the loudness reference/intensity nouns).
-export const MAX_KNOWN_CS_CAPS_VERSION = 7;
+// 41-byte GetCsStatus layout; v7 = the loudness reference/intensity nouns;
+// v8 = indicator on/off delays and the INPUT_LEVEL_MAX noun; v12's
+// base_bright (byte 9) is modeled too, while v9-v11 (groups, macros,
+// display) are not yet).
+export const MAX_KNOWN_CS_CAPS_VERSION = 8;
 
 // Control Surfaces mirror of fetchCtrlIfaceInfo: caps (host order: header,
 // then per-noun descriptors -- DspDevice owns that loop), live status, then
