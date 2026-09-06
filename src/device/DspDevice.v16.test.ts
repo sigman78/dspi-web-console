@@ -10,6 +10,7 @@ import { parseNotifyPacket, WireCmd, buildBulkParams, PinConfigResult, CsStatusC
 import {
   ChannelId, FilterType, CsType, CsNoun, CsAction, CsEvent, EMPTY_CS_BINDING, dbToQ8, ChannelFamily,
   CsIrProto, EMPTY_CS_IR_COMMAND, CS_IR_LEARN_DONE, CS_IR_LEARN_IDLE, CS_UNIT_MS,
+  CS_TARGET_OUTPUT_CH,
 } from '@/domain';
 
 const FW_115 = { major: 1, minor: 1, patch: 5 };
@@ -548,6 +549,40 @@ describe('DspDevice — Control Surfaces caps-version branching (32 vs 41-byte s
     }));
     const accepted = await v8.setCsBinding(0, delayedLed);
     expect(accepted.result.ok).toBe(true);
+  });
+});
+
+describe('DspDevice — Control Surfaces target groups (0x20/0x21/0x26, caps v9+)', () => {
+  it('setCsGroup/getCsGroup round-trip an output group through the deferred poll', async () => {
+    const d = await v16Device();
+    const group = { targetKind: CS_TARGET_OUTPUT_CH, memberMask: 0b11, name: 'Mains' };
+    const { result, status } = await d.setCsGroup(1, group);
+    expect(result.ok).toBe(true);
+    expect(status.lastSlot).toBe(0x41);
+    expect(await d.getCsGroup(1)).toEqual(group);
+  });
+
+  it('rejects a mask bit above the output count with InvalidGroup, keeping the previous record', async () => {
+    const d = await v16Device();
+    const group = { targetKind: CS_TARGET_OUTPUT_CH, memberMask: 0b11, name: 'Mains' };
+    await d.setCsGroup(2, group);
+    const bad = await d.setCsGroup(2, { ...group, memberMask: 0xFFFFFFFF });
+    expect(bad.result.ok).toBe(false);
+    if (!bad.result.ok) expect(bad.result.code).toBe(CsStatusCode.InvalidGroup);
+    expect(await d.getCsGroup(2)).toEqual(group);
+  });
+
+  it('getCsExtStatus maps the idle macro sentinel (0xFF) to null', async () => {
+    const d = await v16Device();
+    const ext = await d.getCsExtStatus();
+    expect(ext.macroRunning).toBeNull();
+  });
+
+  it('a caps v8 device rejects getCsGroup (STALL, pre-v9 firmware has no such opcode)', async () => {
+    const d = await DspDevice.create(new MockTransport({
+      platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 8,
+    }));
+    await expect(d.getCsGroup(0)).rejects.toThrow();
   });
 });
 

@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   CsType, CsNoun, CsAction, CsKind, CsEvent,
   CS_FLAG_INVERT, CS_FLAG_REVERSE, CS_FLAG_ACCEL, CS_FLAG_REPEAT,
+  CS_FLAG_GROUP, CS_FLAG_LINK_ABS, CS_FLAG_GROUP_ALL,
   CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ,
-  CS_TARGET_NONE, CS_TARGET_DSP_BAND,
+  CS_TARGET_NONE, CS_TARGET_OUTPUT_CH, CS_TARGET_DSP_BAND,
   EMPTY_CS_BINDING,
   type CsBinding, type CsCaps, type CsNounCaps,
 } from '@/domain';
@@ -41,7 +42,10 @@ const nouns: CsNounCaps[] = [
   disabledNoun,                                                                     // 1
   { kind: CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
     unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0 },    // 2  USER_MUTE
-  ...Array(17).fill(disabledNoun),                                                  // 3..19
+  ...Array(15).fill(disabledNoun),                                                  // 3..17
+  { kind: CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
+    unit: CS_UNIT_NONE, targetKind: CS_TARGET_OUTPUT_CH, targetCount: 3, dflags: 0 }, // 18 OUTPUT_MUTE
+  disabledNoun,                                                                     // 19
   { kind: CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: 20, maxQ8: 20000,
     unit: CS_UNIT_HZ, targetKind: CS_TARGET_DSP_BAND, targetCount: 7, dflags: 0 },  // 20 FILTER_FREQ
 ];
@@ -49,6 +53,9 @@ const nouns: CsNounCaps[] = [
 // Caps v13: unlocks indicator delays (v8) and the brightness ceiling (v12) on
 // top of the same type/noun tables as `caps`.
 const caps13: CsCaps = { ...caps, capsVersion: 13 };
+
+// Caps v9: unlocks target groups (GROUP/LINK_ABS/GROUP_ALL flags).
+const caps9: CsCaps = { ...caps, capsVersion: 9, maxGroups: 8 };
 
 function live(over: Partial<CsBinding>): CsBinding {
   return { ...EMPTY_CS_BINDING, ...over };
@@ -117,6 +124,24 @@ describe('csDraft round-trip', () => {
     const ceiling100 = live({ ...full, baseBright: 100 });
     expect(bindingsEqual(roundTrip(ceiling100, caps13), ceiling100)).toBe(true);
   });
+
+  it('reproduces a grouped pot Adjust binding with LINK_ABS', () => {
+    const b = live({
+      type: CsType.Pot, noun: CsNoun.FilterFreq, action: CsAction.Adjust,
+      gpio0: 26, gpio1: null, flags: CS_FLAG_GROUP | CS_FLAG_LINK_ABS,
+      target: 3, index: 2,
+    });
+    expect(bindingsEqual(roundTrip(b, caps9), b)).toBe(true);
+  });
+
+  it('reproduces a grouped LED IND_ABOVE binding with GROUP_ALL', () => {
+    const b = live({
+      type: CsType.Led, noun: CsNoun.FilterFreq, action: CsAction.IndAbove,
+      gpio0: 20, gpio1: null, flags: CS_FLAG_GROUP | CS_FLAG_GROUP_ALL,
+      target: 1, index: 0, value: 5000,
+    });
+    expect(bindingsEqual(roundTrip(b, caps9), b)).toBe(true);
+  });
 });
 
 describe('buildBinding conditional encoding', () => {
@@ -131,6 +156,7 @@ describe('buildBinding conditional encoding', () => {
       limitRange: true, rangeMin: -10, rangeMax: 10,
       invert: true, reverse: true, wrap: true, accel: true, repeat: false,
       onDelay: 5, offDelay: 6, limitBright: true, baseBright: 40,
+      grouped: false, linkAbs: false, groupAll: false,
     };
     expect(buildBinding(d, nouns, caps)).toEqual(live({
       type: CsType.Button, noun: CsNoun.UserMute, action: CsAction.Toggle,
@@ -147,6 +173,7 @@ describe('buildBinding conditional encoding', () => {
       invert: false, reverse: false, wrap: false, accel: false, repeat: false,
       value: 1, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
       onDelay: 0, offDelay: 0, limitBright: false, baseBright: 100,
+      grouped: false, linkAbs: false, groupAll: false,
     };
     expect(buildBinding(base, nouns, caps).event).toBe(CsEvent.Press);
 
@@ -168,6 +195,7 @@ describe('buildBinding conditional encoding', () => {
       limitRange: true, rangeMin: -10, rangeMax: 10,
       invert: true, reverse: true, wrap: true, accel: true, repeat: true,
       onDelay: 5, offDelay: 6, limitBright: true, baseBright: 40,
+      grouped: true, linkAbs: true, groupAll: true,
       reserved2: [7],
     };
     expect(buildBinding(d, nouns, caps)).toEqual(live({
@@ -183,6 +211,7 @@ describe('buildBinding conditional encoding', () => {
       invert: false, reverse: false, wrap: false, accel: false, repeat: false,
       value: 0, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
       onDelay: 5, offDelay: 6, limitBright: true, baseBright: 40,
+      grouped: false, linkAbs: false, groupAll: false,
     };
     const built = buildBinding(d, nouns, caps13);
     expect(built.onDelay).toBe(0);
@@ -197,6 +226,7 @@ describe('buildBinding conditional encoding', () => {
       invert: false, reverse: false, wrap: false, accel: false, repeat: false,
       value: 1, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
       onDelay: 0, offDelay: 0, limitBright: true, baseBright: 40,
+      grouped: false, linkAbs: false, groupAll: false,
     };
     expect(buildBinding(d, nouns, caps13).baseBright).toBe(0);
   });
@@ -208,6 +238,7 @@ describe('buildBinding conditional encoding', () => {
       invert: false, reverse: false, wrap: false, accel: false, repeat: false,
       value: 0, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
       onDelay: 5, offDelay: 6, limitBright: true, baseBright: 40,
+      grouped: false, linkAbs: false, groupAll: false,
     };
     const built = buildBinding(d, nouns, caps);   // caps.capsVersion === 3
     expect(built.onDelay).toBe(0);
@@ -222,7 +253,49 @@ describe('buildBinding conditional encoding', () => {
       invert: false, reverse: false, wrap: false, accel: false, repeat: false,
       value: 0, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
       onDelay: 0, offDelay: 0, limitBright: false, baseBright: 55,
+      grouped: false, linkAbs: false, groupAll: false,
     };
     expect(buildBinding(d, nouns, caps13).baseBright).toBe(0);
+  });
+
+  it('drops GROUP/LINK_ABS/GROUP_ALL below caps v9 even when the draft carries them', () => {
+    const d: Draft = {
+      type: CsType.Pot, noun: CsNoun.FilterFreq, action: CsAction.Adjust,
+      event: CsEvent.Press, gpio0: 26, gpio1: 0, target: 3, index: 2,
+      invert: false, reverse: false, wrap: false, accel: false, repeat: false,
+      value: 0, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
+      onDelay: 0, offDelay: 0, limitBright: false, baseBright: 100,
+      grouped: true, linkAbs: true, groupAll: true,
+    };
+    const built = buildBinding(d, nouns, caps);   // caps.capsVersion === 3
+    expect(built.flags & (CS_FLAG_GROUP | CS_FLAG_LINK_ABS | CS_FLAG_GROUP_ALL)).toBe(0);
+  });
+
+  it('drops LINK_ABS on a grouped encoder Step even though the draft carries it', () => {
+    const d: Draft = {
+      type: CsType.Encoder, noun: CsNoun.FilterFreq, action: CsAction.Step,
+      event: CsEvent.Press, gpio0: 11, gpio1: 12, target: 3, index: 2,
+      invert: false, reverse: false, wrap: false, accel: false, repeat: false,
+      value: 0, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
+      onDelay: 0, offDelay: 0, limitBright: false, baseBright: 100,
+      grouped: true, linkAbs: true, groupAll: false,
+    };
+    const built = buildBinding(d, nouns, caps9);
+    expect(built.flags & CS_FLAG_GROUP).toBe(CS_FLAG_GROUP);
+    expect(built.flags & CS_FLAG_LINK_ABS).toBe(0);
+  });
+
+  it('drops GROUP_ALL on a grouped button Toggle even though the draft carries it', () => {
+    const d: Draft = {
+      type: CsType.Button, noun: CsNoun.OutputMute, action: CsAction.Toggle,
+      event: CsEvent.Press, gpio0: 14, gpio1: 0, target: 1, index: 0,
+      invert: false, reverse: false, wrap: false, accel: false, repeat: false,
+      value: 1, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
+      onDelay: 0, offDelay: 0, limitBright: false, baseBright: 100,
+      grouped: true, linkAbs: false, groupAll: true,
+    };
+    const built = buildBinding(d, nouns, caps9);
+    expect(built.flags & CS_FLAG_GROUP).toBe(CS_FLAG_GROUP);
+    expect(built.flags & CS_FLAG_GROUP_ALL).toBe(0);
   });
 });

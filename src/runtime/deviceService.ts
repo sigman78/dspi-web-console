@@ -74,8 +74,9 @@ export const MIN_CS_CAPS_VERSION = 2;
 // signal, nothing this console models; v6 = CS_MAX_IR_COMMANDS 8->16 and the
 // 41-byte GetCsStatus layout; v7 = the loudness reference/intensity nouns;
 // v8 = indicator on/off delays and the INPUT_LEVEL_MAX noun; v12's
-// base_bright (byte 9) is modeled too, while v9-v11 (groups, macros,
-// display) are not yet; v14's subharm nouns are labelled).
+// base_bright (byte 9) is modeled too; v9's target groups are modeled but
+// its macros are not, so this stays 8 until they land; displays (v10-v11)
+// are not; v14's subharm nouns are labelled).
 export const MAX_KNOWN_CS_CAPS_VERSION = 8;
 
 // Control Surfaces mirror of fetchCtrlIfaceInfo: caps (host order: header,
@@ -113,12 +114,25 @@ export async function fetchControlSurfaces(s: ReadySession): Promise<void> {
         irCommands.push(cmd.protocol === Domain.CsIrProto.None ? null : cmd);
       }
     }
+    const groupCount = Math.min(caps.maxGroups, Domain.CS_MAX_GROUPS);
+    let groups: (Domain.CsGroup | null)[] | null = null;
+    let extStatus: Domain.CsExtStatus | null = null;
+    if (groupCount > 0) {
+      groups = [];
+      for (let g = 0; g < groupCount; g++) {
+        const grp = await s.queue.run(() => d.getCsGroup(g));
+        groups.push(grp.targetKind === Domain.CS_TARGET_NONE ? null : grp);
+      }
+      extStatus = await s.queue.run(() => d.getCsExtStatus());
+    }
     s.controlSurfaces.caps = caps;
     s.controlSurfaces.nouns = nouns;
     s.controlSurfaces.status = status;
     s.controlSurfaces.bindings = bindings;
     s.controlSurfaces.names = names;
     if (irCommands) s.controlSurfaces.irCommands = irCommands;
+    if (groups) s.controlSurfaces.groups = groups;
+    if (extStatus) s.controlSurfaces.extStatus = extStatus;
     s.controlSurfaces.lastFetchError = null;
   } catch (err) {
     s.controlSurfaces.lastFetchError = errMessage(err);

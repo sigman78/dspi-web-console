@@ -18,11 +18,11 @@ import {
   DEFAULT_UART_CONTROL_CONFIG, DEFAULT_I2C_CONTROL_CONFIG,
   isValidUartPinPair, isValidI2cPinPair, isValidUartBaud, isValidI2cAddress,
   CsType, CsKind, CsAction, CsIrProto,
-  CS_GPIO_UNUSED, CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_FLAG_INVERT, CS_NDF_DEFERRED,
+  CS_GPIO_UNUSED, CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_MAX_GROUPS, CS_FLAG_INVERT, CS_FLAG_GROUP, CS_NDF_DEFERRED,
   CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q, CS_UNIT_PERCENT, CS_UNIT_MS,
   CS_TARGET_NONE, CS_TARGET_INPUT_CH, CS_TARGET_OUTPUT_CH, CS_TARGET_DSP_CH, CS_TARGET_DSP_BAND,
   CS_IR_LEARN_IDLE, CS_IR_LEARN_ARMED, CS_IR_LEARN_DONE, CS_IR_LEARN_TIMEOUT,
-  dbToQ8, percentToQ8, qToQ8, msToQ8, validateCsBinding, validateCsIrCommand,
+  dbToQ8, percentToQ8, qToQ8, msToQ8, validateCsBinding, validateCsIrCommand, validateCsGroup,
   PRESET_SLOT_COUNT, FilterType,
   SPDIF_RX_MAX_INSTANCES, I2S_RX_MAX_PAIRS,
   defaultInputName, Proc,
@@ -30,7 +30,7 @@ import {
   type FilterParams,
   type CrossPoint, type OutputState,
   type UartControlConfig, type I2cControlConfig,
-  type CsCaps, type CsNounCaps,
+  type CsCaps, type CsNounCaps, type CsGroup,
 } from '@/domain';
 
 export interface MockOptions {
@@ -256,6 +256,13 @@ const emptyCsIrCommand = (): MockCsIrCommand => ({
   noun: 0, action: 0, flags: 0, target: 0, index: 0, protocol: 0, value: 0, step: 0, code: 0,
 });
 
+// Wire-shaped stored target group (one of the 8 group slots, caps v9+).
+interface MockCsGroup {
+  targetKind: number; memberMask: number; name: string;
+}
+
+const emptyCsGroup = (): MockCsGroup => ({ targetKind: CS_TARGET_NONE, memberMask: 0, name: '' });
+
 function concatChunks(chunks: Uint8Array[]): Uint8Array {
   const total = chunks.reduce((n, c) => n + c.length, 0);
   const out = new Uint8Array(total);
@@ -376,6 +383,12 @@ export class MockTransport implements DspTransport {
   #irLearnAutoComplete = false;
   #irLearnTimer: ReturnType<typeof setTimeout> | null = null;
   #irLearnDemoCount = 0;
+
+  // Target groups (0x20/0x21/0x26, caps v9+): same live-preview / deferred-SET
+  // model as bindings above.
+  #csGroups: MockCsGroup[] = Array.from({ length: CS_MAX_GROUPS }, emptyCsGroup);
+  #csGroupStatus: number[] = Array.from({ length: CS_MAX_GROUPS }, () => 0);
+  #csSavedGroups: MockCsGroup[] = Array.from({ length: CS_MAX_GROUPS }, emptyCsGroup);
 
   // Selectable system clock (fw overclock branch, 0x40/0x41).
   #sysClockStoredMode = 0;
@@ -1218,6 +1231,20 @@ export class MockTransport implements DspTransport {
         if (value >= CS_MAX_BINDINGS) throw new Error('MockTransport: GetCsName slot out of range (STALL)');
         return Codec.encode(Wire.CsName, this.#csNames[value] ?? '');
       }
+      case WireCmd.GetCsGroup.code: {
+        if (this.#csCapsVersion < 9 || value >= CS_MAX_GROUPS) {
+          throw new Error('MockTransport: GetCsGroup unsupported or slot out of range (STALL)');
+        }
+        return Codec.encode(Wire.CsGroup, this.#csGroups[value]);
+      }
+      case WireCmd.GetCsExtStatus.code: {
+        if (this.#csCapsVersion < 9) throw new Error('MockTransport: GetCsExtStatus unsupported (STALL)');
+        return Codec.encode(Wire.CsExtStatusPacket, {
+          maxGroups: CS_MAX_GROUPS, maxMacros: 8, maxMacroSteps: 8,
+          macroRunning: 0xFF, macroStep: 0,
+          groupStatus: this.#csGroupStatus.slice(), macroStatus: Array.from({ length: 8 }, () => 0),
+        });
+      }
       case WireCmd.CsIrLearn.code: {
         if (!this.#isV16) return new Uint8Array(length);
         if (value === 1) {
@@ -1255,6 +1282,7 @@ export class MockTransport implements DspTransport {
         this.#csSavedBindings = this.#csBindings.map((b) => ({ ...b }));
         this.#csSavedNames = this.#csNames.slice();
         this.#csSavedIrCommands = this.#csIrCommands.map((c) => ({ ...c }));
+        this.#csSavedGroups = this.#csGroups.map((g) => ({ ...g }));
         this.#csDirty = false;
         this.#csLastSlot = 0xFF;
         this.#csLastStatus = 0x00;
@@ -1267,8 +1295,10 @@ export class MockTransport implements DspTransport {
         this.#csBindings = this.#csSavedBindings.map((b) => ({ ...b }));
         this.#csNames = this.#csSavedNames.slice();
         this.#csIrCommands = this.#csSavedIrCommands.map((c) => ({ ...c }));
+        this.#csGroups = this.#csSavedGroups.map((g) => ({ ...g }));
         this.#csIrCmdStatus = this.#csIrCmdStatus.map(() => 0);
         this.#csSlotStatus = this.#csSlotStatus.map(() => 0);
+        this.#csGroupStatus = this.#csGroupStatus.map(() => 0);
         this.#csDirty = false;
         this.#csLastSlot = 0xFF;
         this.#csLastStatus = 0x00;
@@ -1653,6 +1683,21 @@ export class MockTransport implements DspTransport {
         return;
       }
 
+      case WireCmd.SetCsGroup.code: {
+        if (this.#csCapsVersion < 9) throw new Error('MockTransport: SetCsGroup unsupported (STALL)');
+        if (value >= CS_MAX_GROUPS) {
+          // Bad slot is rejected immediately, no PENDING window.
+          this.#csLastStatus = 0x1F;                  // CS_STATUS_INVALID_GROUP
+          this.#csLastSlot = 0x40 | (value & 0xFF);
+          return;
+        }
+        const w = Codec.decode(Wire.CsGroup, data);
+        this.#csLastSlot = 0x40 | value;
+        this.#csPendingPolls = 1;
+        this.#csLastStatus = this.#applyCsGroup(value, w);
+        return;
+      }
+
       case WireCmd.SetAllParams.code: {
         this.#applySetAllParams(data);
         return;
@@ -1964,7 +2009,7 @@ export class MockTransport implements DspTransport {
         value: w.value, step: w.step, rangeMin: w.rangeMin, rangeMax: w.rangeMax,
         baseBright: w.baseBright, onDelay: w.onDelay, offDelay: w.offDelay, reserved2: w.reserved2,
       },
-      { ...MOCK_CS_CAPS, capsVersion: this.#csCapsVersion }, this.#csNouns,
+      { ...MOCK_CS_CAPS, capsVersion: this.#csCapsVersion }, this.#csNouns, this.#csGroupsAsDomain(),
     );
     if (tableStatus !== 0x00) return tableStatus;
     // One IR receiver per device: a second live CS_TYPE_IR binding is
@@ -2001,12 +2046,59 @@ export class MockTransport implements DspTransport {
         target: w.target, index: w.index, protocol: w.protocol as never,
         value: w.value, step: w.step, code: w.code,
       },
-      MOCK_CS_CAPS, this.#csNouns,
+      { ...MOCK_CS_CAPS, capsVersion: this.#csCapsVersion }, this.#csNouns, this.#csGroupsAsDomain(),
     );
     if (status !== 0x00) return status;
     this.#csIrCommands[sub] = { ...w };
     this.#csIrCmdStatus[sub] = 0;
     this.#csDirty = true;
+    return 0x00;
+  }
+
+  // (CsGroup | null)[] view of the stored groups for the shared validators.
+  #csGroupsAsDomain(): (CsGroup | null)[] {
+    return this.#csGroups.map((g) => (g.targetKind === CS_TARGET_NONE ? null : { ...g }));
+  }
+
+  // Validate + apply one target group, mirroring cs_validate_group. Applying
+  // a group re-validates every binding/IR command that references it (flags
+  // & GROUP && target === idx): a down slot that now validates comes back up,
+  // a live one that no longer does goes down with the failure code.
+  #applyCsGroup(idx: number, w: MockCsGroup): number {
+    const status = validateCsGroup(w, {
+      inputs: this.#mockState.numIn, outputs: this.#mockState.numOut, dsp: this.#mockState.numCh,
+    });
+    if (status !== 0x00) return status;
+    this.#csGroups[idx] = { ...w };
+    this.#csGroupStatus[idx] = 0;
+    this.#csDirty = true;
+
+    const caps = { ...MOCK_CS_CAPS, capsVersion: this.#csCapsVersion };
+    const groups = this.#csGroupsAsDomain();
+    this.#csBindings.forEach((b, slot) => {
+      if (b.type === CsType.None || !(b.flags & CS_FLAG_GROUP) || b.target !== idx) return;
+      this.#csSlotStatus[slot] = validateCsBinding(
+        {
+          type: b.type as CsType, noun: b.noun as never, action: b.action as never, flags: b.flags,
+          gpio0: b.gpio0, gpio1: b.gpio1 === CS_GPIO_UNUSED ? null : b.gpio1,
+          event: b.event as never, target: b.target, index: b.index,
+          value: b.value, step: b.step, rangeMin: b.rangeMin, rangeMax: b.rangeMax,
+          baseBright: b.baseBright, onDelay: b.onDelay, offDelay: b.offDelay, reserved2: b.reserved2,
+        },
+        caps, this.#csNouns, groups,
+      );
+    });
+    this.#csIrCommands.forEach((c, sub) => {
+      if (c.protocol === CsIrProto.None || !(c.flags & CS_FLAG_GROUP) || c.target !== idx) return;
+      this.#csIrCmdStatus[sub] = validateCsIrCommand(
+        {
+          noun: c.noun as never, action: c.action as never, flags: c.flags,
+          target: c.target, index: c.index, protocol: c.protocol as never,
+          value: c.value, step: c.step, code: c.code,
+        },
+        caps, this.#csNouns, groups,
+      );
+    });
     return 0x00;
   }
 

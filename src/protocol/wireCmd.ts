@@ -53,6 +53,12 @@ type CsIrCommandPayload = {
   noun: number; action: number; flags: number; target: number; index: number;
   protocol: number; value: number; step: number; code: number;
 };
+type CsGroupPayload = { targetKind: number; memberMask: number; name: string };
+type CsExtStatusPayload = {
+  maxGroups: number; maxMacros: number; maxMacroSteps: number;
+  macroRunning: number; macroStep: number;
+  groupStatus: number[]; macroStatus: number[];
+};
 type LevellerMasksPayload = { detector: number; apply: number };
 type SysClockStatusPayload = {
   activeMode: number; storedMode: number; storedVregSel: number;
@@ -388,6 +394,13 @@ export const WireCmd = {
   // IN: 1-byte accept/reject, real result via GetCsStatus (last_slot 0xFF).
   CsSave:                { code: 0x9D } satisfies RawCmd,
   CsRevert:              { code: 0x9E } satisfies RawCmd,
+
+  // Target groups (caps v9+, 0x20/0x21/0x26). Same deferred-SET model as
+  // SetCsBinding: the outcome is polled via GetCsStatus with last_slot
+  // 0x40 | group. 0x22-0x25 are the macro opcodes, not yet modeled.
+  SetCsGroup:            { code: 0x20, codec: Wire.CsGroup } satisfies WriteCmd<CsGroupPayload>,
+  GetCsGroup:            { code: 0x21, codec: Wire.CsGroup } satisfies ReadCmd<CsGroupPayload>,
+  GetCsExtStatus:        { code: 0x26, codec: Wire.CsExtStatusPacket } satisfies ReadCmd<CsExtStatusPayload>,
 
   // --- Selectable system clock (fw overclock branch; no wire/version gate yet). ---
   // SET is deferred apply (firmware applies from the main loop around the PLL

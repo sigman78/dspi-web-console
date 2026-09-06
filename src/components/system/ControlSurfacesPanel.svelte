@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import CsBindingRow from './CsBindingRow.svelte';
   import { connection } from '@/state';
@@ -85,6 +86,7 @@
         invert: false, reverse: false, wrap: false, accel: false, repeat: false,
         value: 0, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
         onDelay: 0, offDelay: 0, limitBright: false, baseBright: 100,
+        grouped: false, linkAbs: false, groupAll: false,
       };
       d.gpio0 = firstFree(candidatesFor(slot, -1, false));
       return d;
@@ -96,6 +98,7 @@
       invert: false, reverse: false, wrap: false, accel: false, repeat: false,
       value: 0, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
       onDelay: 0, offDelay: 0, limitBright: false, baseBright: 100,
+      grouped: false, linkAbs: false, groupAll: false,
     };
     d.gpio0 = firstFree(candidatesFor(slot, -1, adcOnly(d)));
     if (twoPins(d)) d.gpio1 = firstFree(candidatesFor(slot, -1, false, d.gpio0));
@@ -205,15 +208,22 @@
   // its own, dirtiness always surfaces on the owning control's title.
   let irDirty = $state(false);
 
+  // A revert (from this panel's DISCARD or the GROUPS panel's) rewinds every
+  // slot and IR sub-slot to its stored state, so local drafts no longer
+  // describe anything real; cs.revertEpoch bumps on success. irResetTick
+  // tells CsIrCommands to drop its own.
+  $effect(() => {
+    void cs.revertEpoch;   // the ONLY dependency -- the wipe must not track drafts
+    untrack(() => {
+      for (const key of Object.keys(drafts)) delete drafts[Number(key)];
+      irResetTick++;
+    });
+  });
+
   async function discardConfig(): Promise<void> {
     applying = true;
     try {
       await csRevertConfig(s);
-      // The device just rewound every slot (and every IR sub-slot) to its
-      // stored state; local drafts no longer describe anything real.
-      // irResetTick tells CsIrCommands to drop its own.
-      for (const key of Object.keys(drafts)) delete drafts[Number(key)];
-      irResetTick++;
     } finally {
       applying = false;
     }

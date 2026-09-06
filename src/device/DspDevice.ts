@@ -1519,6 +1519,39 @@ export class DspDevice {
     return { state: w.state, protocol: w.protocol as Domain.CsIrProto, code: w.code };
   }
 
+  // Target groups (0x20/0x21/0x26, caps v9+ only -- 0x21/0x26 STALL on older
+  // firmware; callers gate on caps.maxGroups > 0). Same deferred-SET model as
+  // setCsBinding, reported in last_slot as 0x40 | group.
+  async getCsGroup(idx: number): Promise<Domain.CsGroup> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetCsGroup, idx & 0xFF);
+  }
+
+  async setCsGroup(
+    idx: number, g: Domain.CsGroup,
+  ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
+    return this.transport.exclusive(async (raw) => {
+      await proto.writeCmd(raw, proto.WireCmd.SetCsGroup, {
+        targetKind: g.targetKind, memberMask: g.memberMask,
+        name: utf8Truncate(g.name, Domain.CS_NAME_MAX_LEN),
+      }, idx & 0xFF);
+      return pollCsStatus(raw, 0x40 | (idx & 0xFF));
+    });
+  }
+
+  // Clearing a group is a SET of the all-zero group (targetKind NONE).
+  async clearCsGroup(idx: number): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
+    return this.setCsGroup(idx, Domain.EMPTY_CS_GROUP);
+  }
+
+  async getCsExtStatus(): Promise<Domain.CsExtStatus> {
+    const w = await proto.readCmd(this.transport, proto.WireCmd.GetCsExtStatus);
+    return {
+      maxGroups: w.maxGroups, maxMacros: w.maxMacros, maxMacroSteps: w.maxMacroSteps,
+      macroRunning: w.macroRunning === 0xFF ? null : w.macroRunning,
+      macroStep: w.macroStep, groupStatus: w.groupStatus, macroStatus: w.macroStatus,
+    };
+  }
+
   // Crossover bands (V16+, output channels only) ride the EQ verbs at wire
   // band indices XOVER_BAND_BASE..+3; these wrappers own that offset.
   async setCrossoverBand(channel: Domain.ChannelId, xoverIndex: number, p: Domain.FilterParams): Promise<void> {

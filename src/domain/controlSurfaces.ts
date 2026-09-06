@@ -155,10 +155,15 @@ export const CS_FLAG_REVERSE = 0x02;
 export const CS_FLAG_WRAP    = 0x04;
 export const CS_FLAG_ACCEL   = 0x08;  // encoder: fast rotation multiplies the step
 export const CS_FLAG_REPEAT  = 0x10;  // button INC/DEC: auto-repeat while held
-// Bits above REPEAT are reserved; firmware rejects them with INVALID_VALUE.
-export const CS_KNOWN_FLAGS  = CS_FLAG_INVERT | CS_FLAG_REVERSE | CS_FLAG_WRAP | CS_FLAG_ACCEL | CS_FLAG_REPEAT;
+// caps v9+ group flags (below). `target` is a group index when GROUP is set.
+export const CS_FLAG_GROUP     = 0x20;  // target is a group index, not a channel
+export const CS_FLAG_LINK_ABS  = 0x40;  // grouped pot ADJUST: drive every member to the same value
+export const CS_FLAG_GROUP_ALL = 0x80;  // grouped IND_EQUALS/IND_ABOVE: AND instead of OR
+export const CS_GROUP_FLAGS  = CS_FLAG_GROUP | CS_FLAG_LINK_ABS | CS_FLAG_GROUP_ALL;
+export const CS_KNOWN_FLAGS  = CS_FLAG_INVERT | CS_FLAG_REVERSE | CS_FLAG_WRAP | CS_FLAG_ACCEL | CS_FLAG_REPEAT | CS_GROUP_FLAGS;
 
 export const CS_MAX_BINDINGS = 16;
+export const CS_MAX_GROUPS   = 8;
 export const CS_GPIO_UNUSED  = 0xFF;
 export const CS_NAME_MAX_LEN = 31;   // bytes, UTF-8 (32-byte NUL-terminated window)
 
@@ -213,6 +218,7 @@ export interface CsBinding {
   gpio0: number;
   gpio1: number | null;
   event: CsEvent;
+  // A group index (0-7) instead of a channel when CS_FLAG_GROUP is set.
   target: number;
   index: number;
   value: number;
@@ -272,6 +278,29 @@ export interface CsIrLearnResult {
   state: number;   // CS_IR_LEARN_*
   protocol: CsIrProto;
   code: number;
+}
+
+// One target group (caps v9+): a named set of channels a grouped binding or
+// IR command addresses at once via CS_FLAG_GROUP. targetKind 0 = empty slot.
+export interface CsGroup {
+  targetKind: number;   // CS_TARGET_INPUT_CH / OUTPUT_CH / DSP_CH; 0 = empty
+  memberMask: number;   // bit N = channel N of the kind's space
+  name: string;
+}
+
+export const EMPTY_CS_GROUP: CsGroup = { targetKind: CS_TARGET_NONE, memberMask: 0, name: '' };
+
+// GetCsExtStatus (0x26) packet: group/macro ceilings and per-slot validity.
+// Macro fields are decoded but not modeled beyond that -- 0x22-0x25 remain
+// unimplemented.
+export interface CsExtStatus {
+  maxGroups: number;
+  maxMacros: number;
+  maxMacroSteps: number;
+  macroRunning: number | null;   // null when idle (wire 0xFF)
+  macroStep: number;
+  groupStatus: number[];
+  macroStatus: number[];
 }
 
 // Device-served capability tables (GetCsCaps).
@@ -434,6 +463,16 @@ export function csTypeLabel(type: number): string {
   return CS_TYPE_LABEL[type as CsType] ?? `Component ${type}`;
 }
 
+export const CS_GROUP_KIND_LABEL: Record<number, string> = {
+  [CS_TARGET_INPUT_CH]:  'Input channels',
+  [CS_TARGET_OUTPUT_CH]: 'Output channels',
+  [CS_TARGET_DSP_CH]:    'DSP channels',
+};
+
+export function csGroupKindLabel(kind: number): string {
+  return CS_GROUP_KIND_LABEL[kind] ?? `Kind ${kind}`;
+}
+
 export const CS_EVENT_LABEL: Record<CsEvent, string> = {
   [CsEvent.Press]:  'Press',
   [CsEvent.Long]:   'Long Press',
@@ -498,6 +537,81 @@ function validateCsTarget(b: { target: number; index: number }, noun: CsNounCaps
   }
 }
 
+// Live channel counts by kind, for validateCsGroup's client-side bounds
+// check (mirrors fw's NUM_INPUT_CHANNELS / NUM_OUTPUT_CHANNELS / NUM_CHANNELS).
+export interface CsChannelCounts {
+  inputs: number;
+  outputs: number;
+  dsp: number;
+}
+
+export function csChannelCountForKind(kind: number, counts: CsChannelCounts): number {
+  switch (kind) {
+    case CS_TARGET_INPUT_CH:  return counts.inputs;
+    case CS_TARGET_OUTPUT_CH: return counts.outputs;
+    case CS_TARGET_DSP_CH:    return counts.dsp;
+    default:                  return 0;
+  }
+}
+
+// All-ones mask for `count` bits (all ones when count >= 32 -- (1 << 32) - 1
+// is not representable with a 32-bit shift).
+function maskLimit(count: number): number {
+  return count >= 32 ? 0xFFFFFFFF : ((1 << count) - 1) >>> 0;
+}
+
+// The group kind a noun's targets live in: DSP_CH and DSP_BAND nouns both
+// group over the DSP channel space (a band lives on a channel). An untargeted
+// noun cannot be grouped.
+export function csGroupKindForNoun(noun: CsNounCaps): number {
+  switch (noun.targetKind) {
+    case CS_TARGET_INPUT_CH:  return CS_TARGET_INPUT_CH;
+    case CS_TARGET_OUTPUT_CH: return CS_TARGET_OUTPUT_CH;
+    case CS_TARGET_DSP_CH:
+    case CS_TARGET_DSP_BAND:  return CS_TARGET_DSP_CH;
+    default:                  return CS_TARGET_NONE;
+  }
+}
+
+// The group's members that fall within the noun's own addressing range.
+export function csGroupMembers(group: CsGroup, noun: CsNounCaps): number {
+  return group.memberMask & maskLimit(noun.targetCount);
+}
+
+// Client-side pre-validation for one stored group, mirroring fw
+// cs_validate_group: an empty (targetKind NONE) slot must be the whole-zero
+// record; otherwise the kind must be one of the three channel kinds and the
+// mask must be non-empty and within the kind's live channel count.
+export function validateCsGroup(g: CsGroup, counts: CsChannelCounts): number {
+  if (g.targetKind === CS_TARGET_NONE) {
+    return (g.memberMask !== 0 || g.name !== '') ? 0x14 : 0x00;   // INVALID_VALUE
+  }
+  if (g.targetKind !== CS_TARGET_INPUT_CH && g.targetKind !== CS_TARGET_OUTPUT_CH && g.targetKind !== CS_TARGET_DSP_CH) {
+    return 0x1F;                                                  // INVALID_GROUP
+  }
+  const lim = maskLimit(csChannelCountForKind(g.targetKind, counts));
+  if (g.memberMask === 0 || (g.memberMask & ~lim) !== 0) return 0x1F;
+  return 0x00;
+}
+
+// Client-side pre-validation for a grouped binding/IR command's target,
+// mirroring fw cs_validate_group_ref (replaces validateCsTarget when
+// CS_FLAG_GROUP is set).
+function validateCsGroupRef(
+  b: { target: number; index: number }, noun: CsNounCaps, groups: readonly (CsGroup | null)[],
+): number {
+  if (b.target >= CS_MAX_GROUPS) return 0x1F;                     // INVALID_GROUP
+  const group = groups[b.target];
+  if (!group || group.targetKind === CS_TARGET_NONE) return 0x1F;
+  const wantKind = csGroupKindForNoun(noun);
+  if (wantKind === CS_TARGET_NONE || group.targetKind !== wantKind) return 0x1F;
+  if (csGroupMembers(group, noun) === 0) return 0x1F;
+  // DSP_BAND: per-channel band existence is device runtime state the tables
+  // don't carry, so the console can't bound `index` any further here.
+  if (noun.targetKind !== CS_TARGET_DSP_BAND && b.index !== 0) return 0x17;  // INVALID_TARGET
+  return 0x00;
+}
+
 // Client-side pre-validation mirroring the firmware's cs_validate() order:
 // type -> noun -> action -> flags -> base_bright/delays/reserved2 -> (IR
 // container fields | action-allowed-by-both-masks -> event -> repeat/accel
@@ -508,12 +622,24 @@ function validateCsTarget(b: { target: number; index: number }, noun: CsNounCaps
 // device truth, not table truth.
 export function validateCsBinding(
   b: CsBinding, caps: CsCaps, nouns: readonly CsNounCaps[],
+  groups: readonly (CsGroup | null)[] = [],
 ): number {
   if (b.type === CsType.None) return 0x00;                       // clear is always valid
   if (b.type >= caps.types.length) return 0x11;                  // INVALID_TYPE
   if (b.noun >= nouns.length) return 0x12;                       // INVALID_NOUN
   if (b.action >= CS_ACTION_COUNT) return 0x13;                  // INVALID_ACTION
   if (b.flags & ~CS_KNOWN_FLAGS) return 0x14;                    // INVALID_VALUE (unknown flags)
+
+  const type = caps.types[b.type];
+  const noun = nouns[b.noun];
+
+  if ((b.flags & CS_GROUP_FLAGS) && caps.capsVersion < 9) return 0x14;  // pre-v9 fw sees unknown bits
+  if ((b.flags & CS_FLAG_LINK_ABS) &&
+      !((b.flags & CS_FLAG_GROUP) && b.action === CsAction.Adjust && noun.kind === CsKind.Continuous))
+    return 0x14;
+  if ((b.flags & CS_FLAG_GROUP_ALL) &&
+      !((b.flags & CS_FLAG_GROUP) && (b.action === CsAction.IndEquals || b.action === CsAction.IndAbove)))
+    return 0x14;
 
   if (b.baseBright < 0 || b.baseBright > 100) return 0x14;
   if (b.baseBright !== 0 && b.type !== CsType.LedPwm) return 0x14;
@@ -527,9 +653,6 @@ export function validateCsBinding(
   if (delayed && caps.capsVersion < 8) return 0x14;              // pre-v8 fw sees reserved bytes
 
   if (b.reserved2 && b.reserved2.some((byte) => byte !== 0)) return 0x14;
-
-  const type = caps.types[b.type];
-  const noun = nouns[b.noun];
 
   if (b.type === CsType.Ir) {
     // Container slot: the receiver pin and its idle sense (INVERT) are the
@@ -555,7 +678,9 @@ export function validateCsBinding(
       return 0x14;
     if ((b.flags & CS_FLAG_ACCEL) && b.type !== CsType.Encoder) return 0x14;
 
-    const targetStatus = validateCsTarget(b, noun);
+    const targetStatus = (b.flags & CS_FLAG_GROUP)
+      ? validateCsGroupRef(b, noun, groups)
+      : validateCsTarget(b, noun);
     if (targetStatus !== 0x00) return targetStatus;
 
     if (noun.kind === CsKind.Continuous) {
@@ -588,6 +713,7 @@ export function validateCsBinding(
 // device state.
 export function validateCsIrCommand(
   cmd: CsIrCommand, caps: CsCaps, nouns: readonly CsNounCaps[],
+  groups: readonly (CsGroup | null)[] = [],
 ): number {
   const isEmpty = cmd.protocol === CsIrProto.None && cmd.noun === 0 && cmd.action === 0 &&
     cmd.flags === 0 && cmd.target === 0 && cmd.index === 0 &&
@@ -600,7 +726,10 @@ export function validateCsIrCommand(
 
   if (cmd.noun >= nouns.length) return 0x12;                      // INVALID_NOUN
   if (!(CS_IR_BUTTON_ACTIONS & (1 << cmd.action))) return 0x13;   // INVALID_ACTION (button subset only)
-  if (cmd.flags & ~(CS_FLAG_WRAP | CS_FLAG_REPEAT)) return 0x14;  // INVALID_VALUE (unknown flags)
+  // GROUP joins the allowed flag set at caps v10 (pre-v10 fw rejects it as
+  // unknown); LINK_ABS/GROUP_ALL never apply to an IR command.
+  const allowedFlags = CS_FLAG_WRAP | CS_FLAG_REPEAT | (caps.capsVersion >= 10 ? CS_FLAG_GROUP : 0);
+  if (cmd.flags & ~allowedFlags) return 0x14;                     // INVALID_VALUE (unknown flags)
 
   const irType = caps.types[CsType.Ir];
   const noun = nouns[cmd.noun];
@@ -609,7 +738,9 @@ export function validateCsIrCommand(
   if ((cmd.flags & CS_FLAG_REPEAT) && cmd.action !== CsAction.Inc && cmd.action !== CsAction.Dec)
     return 0x14;                                                  // INVALID_VALUE (REPEAT: INC/DEC only)
 
-  const targetStatus = validateCsTarget(cmd, noun);
+  const targetStatus = (cmd.flags & CS_FLAG_GROUP)
+    ? validateCsGroupRef(cmd, noun, groups)
+    : validateCsTarget(cmd, noun);
   if (targetStatus !== 0x00) return targetStatus;
 
   if (noun.kind === CsKind.Continuous) {

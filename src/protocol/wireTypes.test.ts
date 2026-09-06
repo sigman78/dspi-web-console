@@ -252,6 +252,33 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     });
   });
 
+  it('CsGroup encodes a named group to the 40-byte image and decodes back (reserved bytes skipped)', () => {
+    const group = { targetKind: 2, memberMask: 0x00000005, name: 'Fronts' };
+    const bytes = Codec.encode(Wire.CsGroup, group);
+    expect(bytes).toEqual(Uint8Array.from([
+      0x02, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00,
+      0x46, 0x72, 0x6F, 0x6E, 0x74, 0x73, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ]));
+    expect(Codec.decode(Wire.CsGroup, bytes)).toEqual(group);
+  });
+
+  it('CsExtStatusPacket decodes a synthesized 24-B image with per-slot status at their own offsets', () => {
+    expect(Codec.sizeOf(Wire.CsExtStatusPacket)).toBe(24);
+    const bytes = Uint8Array.from([
+      8, 8, 8, 0xFF, 0,           // maxGroups, maxMacros, maxMacroSteps, macroRunning, macroStep
+      0, 0, 0,                    // reserved
+      0, 0x1F, 0, 0, 0, 0, 0, 0,  // groupStatus[0..7]
+      0, 0, 0, 0, 0, 0, 0, 0xAA,  // macroStatus[0..7]
+    ]);
+    const status = Codec.decode(Wire.CsExtStatusPacket, bytes);
+    expect(status.macroRunning).toBe(0xFF);
+    expect(status.groupStatus[1]).toBe(0x1F);
+    expect(status.macroStatus[7]).toBe(0xAA);
+  });
+
   it('SpdifRxStatus is 16 bytes and round-trips its fields', () => {
     expect(Codec.sizeOf(Wire.SpdifRxStatus)).toBe(16);
     const bytes = Codec.encode(Wire.SpdifRxStatus, {
