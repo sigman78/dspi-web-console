@@ -76,6 +76,9 @@ export const upmixSurroundLpfHz = (hz: number) => toRange(hz, Proc.UPMIX_SURROUN
 export const upmixDecorrPct = (p: number) => toRange(p, Proc.UPMIX_DECORR_MIN_PCT, Proc.UPMIX_DECORR_MAX_PCT);
 export const upmixPresenceDb = (db: number) => toRange(db, Proc.UPMIX_PRESENCE_MIN_DB, Proc.UPMIX_PRESENCE_MAX_DB);
 
+export const subharmLevelDb = (db: number) => toRange(db, Proc.SUBHARM_LEVEL_MIN_DB, Proc.SUBHARM_LEVEL_MAX_DB);
+export const subharmBoostDb = (db: number) => toRange(db, Proc.SUBHARM_BOOST_MIN_DB, Proc.SUBHARM_BOOST_MAX_DB);
+
 // Names are encoded into a fixed NUL-terminated wire buffer. Delegates to the
 // wire-layer truncator so host and wire agree on the byte budget.
 export function nameToByteBudget(name: string, maxBytes: number): string {

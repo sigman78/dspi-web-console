@@ -10,7 +10,7 @@
 import { BinReader, BinWriter, Codec } from '@/utils';
 import * as Wire from './wireTypes';
 import type {
-  Loudness, Psybass, Upmix,
+  Loudness, Psybass, Upmix, Subharm,
   CrossPoint, OutputState,
 } from '@/domain';
 
@@ -120,6 +120,10 @@ export type WirePsybass = Psybass;
 // narrowing is needed in snapshotCodec.ts either.
 export type WireUpmix = Upmix;
 
+// Section 23: subharmonic synthesizer config (V29+). Wire-shaped 1:1 with
+// domain.Subharm -- no narrowing needed in snapshotCodec.ts.
+export type WireSubharm = Subharm;
+
 export interface BulkParams {
   formatVersion: number;
   payloadLength: number;
@@ -160,6 +164,7 @@ export interface BulkParams {
   adat: WireAdat;                     // V17+
   psybass: WirePsybass;               // V23+
   upmix: WireUpmix;                   // V25+
+  subharm: WireSubharm;               // V29+
 }
 
 function defaultWireFilter(): WireFilter {
@@ -454,6 +459,16 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
       })()
     : def.upmix;
 
+  const subharm = layout.subharm
+    ? (() => {
+        const w = Wire.SubharmParams.read(r);
+        return {
+          enabled: w.enabled, outputMask: w.outputMask,
+          lowDb: w.lowDb, highDb: w.highDb, boostDb: w.boostDb,
+        };
+      })()
+    : def.subharm;
+
   return {
     formatVersion: h.formatVersion,
     payloadLength: h.payloadLength,
@@ -499,6 +514,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
     adat,
     psybass,
     upmix,
+    subharm,
   };
 }
 
@@ -579,6 +595,7 @@ export function defaultBulkParams(opts: {
       surroundDelayMs: 12, surroundHpfHz: 300, surroundLpfHz: 7000,
       decorrPct: 90, presenceDb: 0,
     },
+    subharm: { enabled: false, outputMask: 0xFFFF, lowDb: 0, highDb: 0, boostDb: 0 },
   };
 }
 
@@ -777,6 +794,12 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
       attackMs: bulk.upmix.attackMs, releaseMs: bulk.upmix.releaseMs, detectorHpfHz: bulk.upmix.detectorHpfHz,
       surroundDelayMs: bulk.upmix.surroundDelayMs, surroundHpfHz: bulk.upmix.surroundHpfHz, surroundLpfHz: bulk.upmix.surroundLpfHz,
       decorrPct: bulk.upmix.decorrPct,
+    });
+  }
+  if (writeVersion >= 29) {
+    Wire.SubharmParams.write(w, {
+      enabled: bulk.subharm.enabled, outputMask: bulk.subharm.outputMask,
+      lowDb: bulk.subharm.lowDb, highDb: bulk.subharm.highDb, boostDb: bulk.subharm.boostDb,
     });
   }
 

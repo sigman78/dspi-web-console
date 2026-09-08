@@ -26,11 +26,10 @@ describe('bulkParser — V25/V26 packet sizes', () => {
     expect(Wire.BULK_SIZE_V26).toBe(Wire.BULK_SIZE_V25);
   });
 
-  it('bulkSizeForVersion maps 24->5900, 25->5944, 26->5944, 99->5944', () => {
+  it('bulkSizeForVersion maps 24->5900, 25->5944, 26->5944', () => {
     expect(Wire.bulkSizeForVersion(24)).toBe(5900);
     expect(Wire.bulkSizeForVersion(25)).toBe(5944);
     expect(Wire.bulkSizeForVersion(26)).toBe(5944);
-    expect(Wire.bulkSizeForVersion(99)).toBe(5944);
   });
 
   it('sectionLayout gates upmix on wire V25 AND payloadLength, upmixPresence on V26', () => {

@@ -20,6 +20,7 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
     crossfeed: { enabled: false, preset: 0, itd: false, freq: 700, feedDb: 4.5, outputPairMask: 0x01 } as any,
     leveller: { enabled: false, speed: 1, lookahead: false, amount: 0, maxGainDb: 0, gateDb: -40 } as any,
     psybass: { enabled: false, outputMask: 0xFFFF, cutoffHz: 80, harmonicsDb: 0, driveDb: 6, characterPct: 50, originalDb: 0 },
+    subharm: { enabled: false, outputMask: 0xFFFF, lowDb: 0, highDb: 0, boostDb: 0 },
     upmix: {
       enabled: false, centerMode: 1, surroundMode: 2,
       strengthPct: 100, centerWidthPct: 25, corrThresholdPct: 30,

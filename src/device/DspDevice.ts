@@ -971,6 +971,38 @@ export class DspDevice {
     };
   }
 
+  // Subharmonic synthesizer (fw V29+, both platforms).
+  async setSubharmEnabled(enabled: boolean): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmEnabled, enabled);
+  }
+
+  async setSubharmLow(db: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmLow, db);
+  }
+
+  async setSubharmHigh(db: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmHigh, db);
+  }
+
+  async setSubharmBoost(db: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmBoost, db);
+  }
+
+  // Per-output subharm mask (fw V29+). Bit k = output channel k.
+  async setSubharmMask(mask: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmMask, mask & 0xFFFF);
+  }
+
+  async getSubharmMask(): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetSubharmMask);
+  }
+
+  // Live worst-case gain (dB) of the current config, 0 while disabled. Read
+  // after any SET -- firmware computes it fresh on every GET.
+  async getSubharmHeadroom(): Promise<number> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetSubharmHeadroom);
+  }
+
   // v1.1.4 granular surface (unconditional: the V10 floor guarantees support).
 
   // Per-band EQ bypass. wValue = (wireChannel<<8)|band, mirroring getFilter's

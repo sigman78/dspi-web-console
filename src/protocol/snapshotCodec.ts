@@ -212,6 +212,10 @@ export function fromBulkParams(hardware: Domain.HardwareProfile, bulk: BulkParam
     // (disabled, firmware defaults) on pre-V25 packets, and presenceDb to 0 on
     // pre-V26 packets, so this is always populated.
     upmix: { ...bulk.upmix },
+    // Subharmonic synthesizer comes from the V29 bulk section; the parser
+    // defaults it (disabled, all-outputs mask) on pre-V29 packets, so this is
+    // always populated.
+    subharm: { ...bulk.subharm },
     lgSoundSync: { enabled: bulk.lgSoundSync.enabled, present: bulk.lgSoundSync.present, volume: bulk.lgSoundSync.volume, muted: bulk.lgSoundSync.muted },
     userVolume:  { volumeDb: bulk.userVolume.volumeDb, mute: bulk.userVolume.mute },
     dacHwMute:   { enabled: bulk.dacHwMute.enabled, activeLow: bulk.dacHwMute.activeLow, pin: bulk.dacHwMute.pin, holdMs: bulk.dacHwMute.holdMs, releaseMs: bulk.dacHwMute.releaseMs },

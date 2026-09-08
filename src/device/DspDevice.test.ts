@@ -233,6 +233,10 @@ describe('DspDevice — processing module setters', () => {
     { name: 'setUpmixSurroundLpf(6000) -> 0x4C id11', invoke: (d) => d.setUpmixSurroundLpf(6000), opcode: 0x4C, value: 11, payload: f32(6000) },
     { name: 'setUpmixDecorr(80) -> 0x4C id12',        invoke: (d) => d.setUpmixDecorr(80), opcode: 0x4C, value: 12, payload: f32(80) },
     { name: 'setUpmixPresence(3) -> 0x4C id13',       invoke: (d) => d.setUpmixPresence(3), opcode: 0x4C, value: 13, payload: f32(3) },
+    { name: 'setSubharmEnabled(true) -> 0x10',        invoke: (d) => d.setSubharmEnabled(true), opcode: 0x10, payload: bool8(true) },
+    { name: 'setSubharmLow(-6) -> 0x12',              invoke: (d) => d.setSubharmLow(-6), opcode: 0x12, payload: f32(-6) },
+    { name: 'setSubharmHigh(0) -> 0x14',              invoke: (d) => d.setSubharmHigh(0), opcode: 0x14, payload: f32(0) },
+    { name: 'setSubharmBoost(3) -> 0x16',             invoke: (d) => d.setSubharmBoost(3), opcode: 0x16, payload: f32(3) },
   ];
 
   it.each(setterCases)('$name writes the expected opcode + payload', async ({ invoke, opcode, payload, value }) => {
@@ -280,6 +284,28 @@ describe('DspDevice — getUpmixStatus decode', () => {
     };
     const status = await (await createDevice(t)).getUpmixStatus();
     expect(status.parkedReason).toBe(1); // Disabled
+  });
+});
+
+describe('DspDevice — subharmonic synthesizer (fw V29+, both platforms)', () => {
+  const v29 = () => DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 29 }));
+
+  test('subharm output mask round-trips and masks to u16', async () => {
+    const d = await v29();
+    expect(await d.getSubharmMask()).toBe(0xFFFF);
+    await d.setSubharmMask(0x00F0);
+    expect(await d.getSubharmMask()).toBe(0x00F0);
+    // Values above a u16 are truncated.
+    await d.setSubharmMask(0x1FFFF);
+    expect(await d.getSubharmMask()).toBe(0xFFFF);
+  });
+
+  test('getSubharmHeadroom is 0 while disabled, positive once enabled with a band above the floor', async () => {
+    const d = await v29();
+    expect(await d.getSubharmHeadroom()).toBe(0);
+    await d.setSubharmEnabled(true);
+    await d.setSubharmLow(3);
+    expect(await d.getSubharmHeadroom()).toBeGreaterThan(0);
   });
 });
 

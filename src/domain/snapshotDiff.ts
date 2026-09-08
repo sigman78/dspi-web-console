@@ -7,7 +7,7 @@ import type { DspSnapshot } from './snapshot';
 import type { I2sConfig } from './platform';
 import type { OutputModel, RouteModel } from './mixer';
 import type { FilterParams } from './filter';
-import type { Loudness, Crossfeed, Leveller, Psybass, Upmix } from './processing';
+import type { Loudness, Crossfeed, Leveller, Psybass, Upmix, Subharm } from './processing';
 import type { InputConfig, LgSoundSync, UserVolume, DacHwMute, AdatOutputConfig } from './deviceSections';
 import { BAND_GAIN_STEP_DB, FREQ_STEP_HZ, Q_STEP } from './eqLimits';
 
@@ -45,6 +45,7 @@ export type SnapshotChange =
   | { kind: 'leveller';      value: Leveller }
   | { kind: 'psybass';       value: Psybass }
   | { kind: 'upmix';         value: Upmix }
+  | { kind: 'subharm';       value: Subharm }
   | { kind: 'inputConfig';   value: InputConfig }
   | { kind: 'spdifRxPin';    value: number }
   | { kind: 'spdifExt';      value: { spdifRxPinExt: number[]; spdifExtEnabled: boolean[] } }
@@ -128,6 +129,14 @@ function upmixDiffers(a: Upmix, b: Upmix): boolean {
       || neq(a.surroundLpfHz,    b.surroundLpfHz,    DIFF_TOLERANCE.freq)
       || neq(a.decorrPct,        b.decorrPct,        DIFF_TOLERANCE.gain)
       || neq(a.presenceDb,       b.presenceDb,       DIFF_TOLERANCE.db);
+}
+
+function subharmDiffers(a: Subharm, b: Subharm): boolean {
+  return a.enabled !== b.enabled
+      || a.outputMask !== b.outputMask
+      || neq(a.lowDb,   b.lowDb,   DIFF_TOLERANCE.db)
+      || neq(a.highDb,  b.highDb,  DIFF_TOLERANCE.db)
+      || neq(a.boostDb, b.boostDb, DIFF_TOLERANCE.db);
 }
 
 function levellerDiffers(a: Leveller, b: Leveller): boolean {
@@ -222,6 +231,7 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
   if (levellerDiffers(a.leveller, b.leveller)) out.push({ kind: 'leveller', value: b.leveller });
   if (psybassDiffers(a.psybass, b.psybass)) out.push({ kind: 'psybass', value: b.psybass });
   if (upmixDiffers(a.upmix, b.upmix)) out.push({ kind: 'upmix', value: b.upmix });
+  if (subharmDiffers(a.subharm, b.subharm)) out.push({ kind: 'subharm', value: b.subharm });
 
   for (let i = 0; i < b.channels.length; i++) {
     const ca = a.channels[i], cb = b.channels[i];
@@ -278,6 +288,7 @@ type _Covered =
   | 'leveller'
   | 'psybass'
   | 'upmix'
+  | 'subharm'
   | 'inputConfig'
   | 'userVolume'
   | 'dacHwMute'

@@ -69,6 +69,20 @@ type UpmixConfigPayload = {
 // Command table
 
 export const WireCmd = {
+  // --- V29 subharmonic synthesizer (fw 1.1.6, both platforms). ---
+  SetSubharmEnabled:    { code: 0x10, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
+  GetSubharmEnabled:    { code: 0x11, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
+  SetSubharmLow:        { code: 0x12, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  GetSubharmLow:        { code: 0x13, codec: Codec.f32 }   satisfies ReadCmd<number>,
+  SetSubharmHigh:       { code: 0x14, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  GetSubharmHigh:       { code: 0x15, codec: Codec.f32 }   satisfies ReadCmd<number>,
+  SetSubharmBoost:      { code: 0x16, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  GetSubharmBoost:      { code: 0x17, codec: Codec.f32 }   satisfies ReadCmd<number>,
+  SetSubharmMask:       { code: 0x18, codec: Codec.u16 }   satisfies WriteCmd<number>,
+  GetSubharmMask:       { code: 0x19, codec: Codec.u16 }   satisfies ReadCmd<number>,
+  // Live worst-case gain (dB) of the current config; read-only.
+  GetSubharmHeadroom:   { code: 0x1A, codec: Codec.f32 }   satisfies ReadCmd<number>,
+
   // EQ: Set carries the 16-byte filter struct as payload (wValue=0).
   //     Get uses bit-packed wValue (channel<<8 | band<<4 | param); see DspDevice.getFilter.
   SetEqParam:           { code: 0x42, codec: tighten<SetEqParamPayload>(Wire.SetFilterPacket) } satisfies WriteCmd<SetEqParamPayload>,

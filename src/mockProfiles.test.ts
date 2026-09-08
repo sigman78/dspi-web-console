@@ -32,6 +32,12 @@ describe('resolveMockProfile', () => {
     expect(resolveMockProfile('v28').opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6 });
   });
 
+  it('parses v29 (subharmonic synthesizer) with fw 1.1.6', () => {
+    const p = resolveMockProfile('v29');
+    expect(p.opts.wireVersion).toBe(29);
+    expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6 });
+  });
+
   it('latest boots at MAX_WIRE_VERSION with fw 1.1.6', () => {
     const p = resolveMockProfile('latest');
     expect(p.opts.wireVersion).toBe(Wire.MAX_WIRE_VERSION);
