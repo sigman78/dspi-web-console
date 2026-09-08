@@ -429,7 +429,7 @@
           {#if CsField.showValueOf(d.action) || CsField.showStepOf(d.action, IR_STEPPY)}
             <div class="row">
               {#if CsField.showValueOf(d.action)}
-                <span class="microlbl">{CsField.valueLabel(d.action, CsField.contOf(cs.nouns, d.noun))}</span>
+                <span class="microlbl">{CsField.valueLabel(d.action, CsField.contOf(cs.nouns, d.noun), d.noun)}</span>
                 {#if CsField.contOf(cs.nouns, d.noun)}
                   <input class="numfield" type="number" step="0.5"
                     min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(CsField.unitOf(cs.nouns, d.noun), cs.nouns[d.noun].minQ8) : 0}
@@ -440,7 +440,7 @@
                 {:else}
                   <select class="sel" value={String(d.value)} aria-label="Value" disabled={busy || applyingSub != null}
                     onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editDraft(sub, (dr) => { dr.value = v; }); }}>
-                    {#each (CsField.enumOf(cs.nouns, d.noun) ? CsField.enumValueOptions(cs.nouns, d.noun, s.presets.names) : CsField.boolValueOptions(d.noun)) as o (o.v)}
+                    {#each (CsField.enumOf(cs.nouns, d.noun) ? CsField.enumValueOptions(cs.nouns, d.noun, s.presets.names, cs.macros) : CsField.boolValueOptions(d.noun)) as o (o.v)}
                       <option value={String(o.v)}>{o.label}</option>
                     {/each}
                   </select>

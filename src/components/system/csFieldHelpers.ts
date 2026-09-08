@@ -39,7 +39,11 @@ export function showBandOf(nouns: readonly Domain.CsNounCaps[], noun: number): b
   return targetKindOf(nouns, noun) === Domain.CS_TARGET_DSP_BAND;
 }
 
-export function valueLabel(action: number, cont: boolean): string {
+export function valueLabel(action: number, cont: boolean, noun: number): string {
+  if (noun === Domain.CsNoun.Macro) {
+    if (action === Domain.CsAction.Set) return 'FIRE';
+    if (action === Domain.CsAction.IndEquals) return 'LIT WHILE RUNNING';
+  }
   if (action === Domain.CsAction.IndEquals) return 'LIGHT WHEN';
   if (action === Domain.CsAction.IndAbove) return 'LIGHT WHEN ≥';
   if (action === Domain.CsAction.Momentary) return 'WHILE HELD';
@@ -72,6 +76,7 @@ const SAMPLE_RATE_LABEL: Record<number, string> = { 0: '44.1 kHz', 1: '48 kHz', 
 
 export function enumValueOptions(
   nouns: readonly Domain.CsNounCaps[], noun: number, presetNames: readonly (string | null)[],
+  macros: readonly (Domain.CsMacro | null)[] = [],
 ): { v: number; label: string }[] {
   const count = nouns[noun]?.enumCount ?? 0;
   const idx = Array.from({ length: count }, (_, i) => i);
@@ -79,6 +84,12 @@ export function enumValueOptions(
     return idx.map((i) => {
       const name = presetNames[i];
       return { v: i, label: `Preset ${i + 1}${name ? ` · ${name}` : ''}` };
+    });
+  }
+  if (noun === Domain.CsNoun.Macro) {
+    return idx.map((i) => {
+      const name = macros[i]?.name;
+      return { v: i, label: `Macro ${i + 1}${name ? ` · ${name}` : ''}` };
     });
   }
   if (noun === Domain.CsNoun.InputSource) {
@@ -140,6 +151,11 @@ export function bandOptionsFor(
 // ceiling for the panel/pickers to offer them.
 export function groupsAvailable(caps: Domain.CsCaps | null): boolean {
   return (caps?.capsVersion ?? 0) >= 9 && (caps?.maxGroups ?? 0) > 0;
+}
+
+// Macros exist from caps v9, same convention as groupsAvailable.
+export function macrosAvailable(caps: Domain.CsCaps | null): boolean {
+  return (caps?.capsVersion ?? 0) >= 9 && (caps?.maxMacros ?? 0) > 0;
 }
 
 // Groups a binding/IR command may target instead of a single channel: only

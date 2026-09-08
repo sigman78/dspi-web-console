@@ -10,7 +10,7 @@ import { parseNotifyPacket, WireCmd, buildBulkParams, PinConfigResult, CsStatusC
 import {
   ChannelId, FilterType, CsType, CsNoun, CsAction, CsEvent, EMPTY_CS_BINDING, dbToQ8, ChannelFamily,
   CsIrProto, EMPTY_CS_IR_COMMAND, CS_IR_LEARN_DONE, CS_IR_LEARN_IDLE, CS_UNIT_MS,
-  CS_TARGET_OUTPUT_CH,
+  CS_TARGET_OUTPUT_CH, EMPTY_CS_MACRO_STEP,
 } from '@/domain';
 
 const FW_115 = { major: 1, minor: 1, patch: 5 };
@@ -583,6 +583,87 @@ describe('DspDevice — Control Surfaces target groups (0x20/0x21/0x26, caps v9+
       platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 8,
     }));
     await expect(d.getCsGroup(0)).rejects.toThrow();
+  });
+});
+
+describe('DspDevice — Control Surfaces macros (0x22-0x25, caps v9+)', () => {
+  const macro = {
+    name: 'Night',
+    stepCount: 2,
+    steps: [
+      { noun: CsNoun.InputSource, action: CsAction.Set, flags: 0, target: 0, index: 0, value: 1, step: 0, preDelay: 5 },
+      { noun: CsNoun.Preamp, action: CsAction.Set, flags: 0, target: 0, index: 0, value: dbToQ8(0), step: 0, preDelay: 100 },
+      ...Array.from({ length: 6 }, () => EMPTY_CS_MACRO_STEP),
+    ],
+  };
+
+  it('setCsMacro/getCsMacro round-trip a named 2-step macro through the deferred poll', async () => {
+    const d = await v16Device();
+    const { result, status } = await d.setCsMacro(1, macro);
+    expect(result.ok).toBe(true);
+    expect(status.lastSlot).toBe(0x61);
+    const live = await d.getCsMacro(1);
+    expect(live.steps).toHaveLength(8);
+    expect(live).toEqual(macro);
+  });
+
+  it("re-applying with step 1's value out of range fails with InvalidValue, leaving stepCount and step 1 unchanged", async () => {
+    const d = await v16Device();
+    await d.setCsMacro(1, macro);
+    const bad = { ...macro, steps: macro.steps.map((s, i) => (i === 1 ? { ...s, value: 32767 } : s)) };
+    const { result } = await d.setCsMacro(1, bad);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(CsStatusCode.InvalidValue);
+    const live = await d.getCsMacro(1);
+    expect(live.stepCount).toBe(2);
+    expect(live.steps[1]).toEqual(macro.steps[1]);
+  });
+
+  it('csMacroFire reports the running macro/step through GetCsExtStatus, then goes idle once it finishes', async () => {
+    const d = await v16Device();
+    await d.setCsMacro(1, macro);
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(0);
+      const fire = await d.csMacroFire(1);
+      expect(fire.ok).toBe(true);
+      let ext = await d.getCsExtStatus();
+      expect(ext.macroRunning).toBe(1);
+      expect(ext.macroStep).toBe(0);
+
+      vi.advanceTimersByTime(1500);
+      ext = await d.getCsExtStatus();
+      expect(ext.macroRunning).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('firing an empty macro slot succeeds and stays idle', async () => {
+    const d = await v16Device();
+    const fire = await d.csMacroFire(2);
+    expect(fire.ok).toBe(true);
+    const ext = await d.getCsExtStatus();
+    expect(ext.macroRunning).toBeNull();
+  });
+
+  it('csMacroCancel returns a running macro to idle', async () => {
+    const d = await v16Device();
+    await d.setCsMacro(1, macro);
+    const fire = await d.csMacroFire(1);
+    expect(fire.ok).toBe(true);
+    expect((await d.getCsExtStatus()).macroRunning).toBe(1);
+    await d.csMacroCancel();
+    const ext = await d.getCsExtStatus();
+    expect(ext.macroRunning).toBeNull();
+  });
+
+  it('a caps v8 device rejects getCsMacro (STALL, pre-v9 firmware has no such opcode)', async () => {
+    const d = await DspDevice.create(new MockTransport({
+      platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 8,
+    }));
+    await expect(d.getCsMacro(0)).rejects.toThrow();
   });
 });
 

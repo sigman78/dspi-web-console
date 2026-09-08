@@ -1,15 +1,17 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { bootMock } from './boot';
 import {
   applyCsBinding, clearCsBinding, applyCsName, csSaveConfig, csRevertConfig,
   applyCsIrCommand, clearCsIrCommand, csIrLearnArm, csIrLearnCancel,
   applyCsGroup, clearCsGroup,
+  applyCsMacro, clearCsMacro, fireCsMacro, cancelCsMacro,
 } from './actions';
 import { activeSession, clearNotices, resetAppState } from '@/state';
 import {
   CsType, CsNoun, CsAction, CsEvent, CS_MAX_BINDINGS, dbToQ8,
   CsIrProto, CS_MAX_IR_COMMANDS, CS_IR_LEARN_ARMED, CS_IR_LEARN_DONE,
-  CS_MAX_GROUPS, CS_TARGET_OUTPUT_CH, CS_FLAG_GROUP,
+  CS_MAX_GROUPS, CS_TARGET_OUTPUT_CH, CS_FLAG_GROUP, CS_MAX_MACROS,
+  EMPTY_CS_MACRO_STEP,
 } from '@/domain';
 
 const sess = () => activeSession()!;
@@ -61,10 +63,17 @@ describe('runtime/controlSurfaces', () => {
     expect(s.controlSurfaces.extStatus?.maxGroups).toBe(CS_MAX_GROUPS);
   });
 
-  it('a pre-v9 caps device leaves groups and ext status empty', async () => {
+  it('connect reports the macro ceiling through ext status on the default mock', () => {
+    const s = sess();
+    expect(s.controlSurfaces.caps?.maxMacros).toBe(CS_MAX_MACROS);
+    expect(s.controlSurfaces.extStatus?.maxMacros).toBe(CS_MAX_MACROS);
+  });
+
+  it('a pre-v9 caps device leaves groups, macros, and ext status empty', async () => {
     await bootMock('rp2350', { wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 }, csCapsVersion: 8 });
     const s = sess();
     expect(s.controlSurfaces.caps?.maxGroups).toBe(0);
+    expect(s.controlSurfaces.caps?.maxMacros).toBe(0);
     expect(s.controlSurfaces.groups.every((g) => g === null)).toBe(true);
     expect(s.controlSurfaces.extStatus).toBeNull();
   });
@@ -254,6 +263,105 @@ describe('runtime/controlSurfaces', () => {
     await applyCsGroup(s, 0, group);
     expect(s.controlSurfaces.status?.slotStatus[4]).toBe(0);
     expect(s.controlSurfaces.status?.activeMask).toBe(1 << 4);
+  });
+
+  it('applyCsMacro lands the macro, marks the config dirty, and refreshes ext status', async () => {
+    const s = sess();
+    const macro = {
+      name: 'Night', stepCount: 1,
+      steps: [
+        { noun: CsNoun.UserMute, action: CsAction.Toggle, flags: 0, target: 0, index: 0, value: 0, step: 0, preDelay: 0 },
+        ...Array.from({ length: 7 }, () => EMPTY_CS_MACRO_STEP),
+      ],
+    };
+    const ok = await applyCsMacro(s, 0, macro);
+    expect(ok).toBe(true);
+    expect(s.controlSurfaces.macros[0]).toEqual(macro);
+    expect(s.controlSurfaces.status?.dirty).toBe(true);
+    expect(s.controlSurfaces.extStatus?.macroStatus[0]).toBe(0);
+  });
+
+  it('clearCsMacro empties the slot', async () => {
+    const s = sess();
+    const macro = {
+      name: 'Night', stepCount: 1,
+      steps: [
+        { noun: CsNoun.UserMute, action: CsAction.Toggle, flags: 0, target: 0, index: 0, value: 0, step: 0, preDelay: 0 },
+        ...Array.from({ length: 7 }, () => EMPTY_CS_MACRO_STEP),
+      ],
+    };
+    await applyCsMacro(s, 0, macro);
+    const ok = await clearCsMacro(s, 0);
+    expect(ok).toBe(true);
+    expect(s.controlSurfaces.macros[0]).toBeNull();
+  });
+
+  it('csRevertConfig restores the saved macro', async () => {
+    const s = sess();
+    const macro = {
+      name: 'Night', stepCount: 1,
+      steps: [
+        { noun: CsNoun.UserMute, action: CsAction.Toggle, flags: 0, target: 0, index: 0, value: 0, step: 0, preDelay: 0 },
+        ...Array.from({ length: 7 }, () => EMPTY_CS_MACRO_STEP),
+      ],
+    };
+    await applyCsMacro(s, 0, macro);
+    await csSaveConfig(s);
+
+    await clearCsMacro(s, 0);
+    expect(s.controlSurfaces.macros[0]).toBeNull();
+    expect(s.controlSurfaces.status?.dirty).toBe(true);
+
+    const ok = await csRevertConfig(s);
+    expect(ok).toBe(true);
+    expect(s.controlSurfaces.status?.dirty).toBe(false);
+    expect(s.controlSurfaces.macros[0]).toEqual(macro);
+  });
+
+  it('a macro step grouped over an output group goes INVALID_GROUP when the group is cleared, and clears once reapplied', async () => {
+    const s = sess();
+    const group = { targetKind: CS_TARGET_OUTPUT_CH, memberMask: 0b1, name: 'Sub' };
+    await applyCsGroup(s, 0, group);
+    const grouped = {
+      name: 'Mute Sub', stepCount: 1,
+      steps: [
+        { noun: CsNoun.OutputMute, action: CsAction.Toggle, flags: CS_FLAG_GROUP, target: 0, index: 0, value: 0, step: 0, preDelay: 0 },
+        ...Array.from({ length: 7 }, () => EMPTY_CS_MACRO_STEP),
+      ],
+    };
+    expect(await applyCsMacro(s, 0, grouped)).toBe(true);
+    expect(s.controlSurfaces.extStatus?.macroStatus[0]).toBe(0);
+
+    await clearCsGroup(s, 0);
+    expect(s.controlSurfaces.extStatus?.macroStatus[0]).toBe(0x1F);   // INVALID_GROUP
+
+    await applyCsGroup(s, 0, group);
+    expect(s.controlSurfaces.extStatus?.macroStatus[0]).toBe(0);
+  });
+
+  it('fireCsMacro sets extStatus.macroRunning while the macro is running; cancelCsMacro clears it', async () => {
+    const s = sess();
+    const macro = {
+      name: 'Delayed', stepCount: 1,
+      steps: [
+        { noun: CsNoun.UserMute, action: CsAction.Toggle, flags: 0, target: 0, index: 0, value: 0, step: 0, preDelay: 100 },
+        ...Array.from({ length: 7 }, () => EMPTY_CS_MACRO_STEP),
+      ],
+    };
+    await applyCsMacro(s, 0, macro);
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(0);
+      const ok = await fireCsMacro(s, 0);
+      expect(ok).toBe(true);
+      expect(s.controlSurfaces.extStatus?.macroRunning).toBe(0);
+
+      await cancelCsMacro(s);
+      expect(s.controlSurfaces.extStatus?.macroRunning).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('csIrLearnArm moves the sub-state to ARMED with a live IR receiver, and a notify DONE lands the result', async () => {

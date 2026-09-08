@@ -54,6 +54,12 @@ type CsIrCommandPayload = {
   protocol: number; value: number; step: number; code: number;
 };
 type CsGroupPayload = { targetKind: number; memberMask: number; name: string };
+type CsMacroStepPayload = {
+  noun: number; action: number; flags: number; target: number; index: number;
+  value: number; step: number; preDelay: number;
+};
+type CsMacroHeaderPayload = { name: string; stepCount: number };
+type CsMacroPayload = { name: string; stepCount: number; steps: CsMacroStepPayload[] };
 type CsExtStatusPayload = {
   maxGroups: number; maxMacros: number; maxMacroSteps: number;
   macroRunning: number; macroStep: number;
@@ -395,11 +401,20 @@ export const WireCmd = {
   CsSave:                { code: 0x9D } satisfies RawCmd,
   CsRevert:              { code: 0x9E } satisfies RawCmd,
 
-  // Target groups (caps v9+, 0x20/0x21/0x26). Same deferred-SET model as
-  // SetCsBinding: the outcome is polled via GetCsStatus with last_slot
-  // 0x40 | group. 0x22-0x25 are the macro opcodes, not yet modeled.
+  // Target groups (caps v9+, 0x20/0x21) and macros (caps v9+, 0x22-0x25); ext
+  // status is 0x26. Group/macro header/step SETs share SetCsBinding's
+  // deferred-apply model: the outcome is polled via GetCsStatus, reported in
+  // last_slot as 0x40 | group or 0x60 | macro. A macro step's wValue
+  // additionally packs (step << 8) | macro; hosts must write steps first and
+  // the header last (see DspDevice.setCsMacro).
   SetCsGroup:            { code: 0x20, codec: Wire.CsGroup } satisfies WriteCmd<CsGroupPayload>,
   GetCsGroup:            { code: 0x21, codec: Wire.CsGroup } satisfies ReadCmd<CsGroupPayload>,
+  SetCsMacro:            { code: 0x22, codec: Wire.CsMacroHeader } satisfies WriteCmd<CsMacroHeaderPayload>,
+  GetCsMacro:            { code: 0x23, codec: Wire.CsMacro } satisfies ReadCmd<CsMacroPayload>,
+  SetCsMacroStep:        { code: 0x24, codec: Wire.CsMacroStep } satisfies WriteCmd<CsMacroStepPayload>,
+  // GET-style action (wValue = macro to fire, 0xFFFF cancels the running
+  // macro), in the mold of CsSave/CsRevert: 1-byte ack, no status poll.
+  CsMacroFire:           { code: 0x25 } satisfies RawCmd,
   GetCsExtStatus:        { code: 0x26, codec: Wire.CsExtStatusPacket } satisfies ReadCmd<CsExtStatusPayload>,
 
   // --- Selectable system clock (fw overclock branch; no wire/version gate yet). ---

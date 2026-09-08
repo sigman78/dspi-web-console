@@ -119,6 +119,19 @@ function csIrCommandFromWire(w: {
   };
 }
 
+function csMacroFromWire(w: {
+  name: string; stepCount: number;
+  steps: { noun: number; action: number; flags: number; target: number; index: number; value: number; step: number; preDelay: number }[];
+}): Domain.CsMacro {
+  return {
+    name: w.name, stepCount: w.stepCount,
+    steps: w.steps.map((s) => ({
+      noun: s.noun as Domain.CsNoun, action: s.action as Domain.CsAction, flags: s.flags,
+      target: s.target, index: s.index, value: s.value, step: s.step, preDelay: s.preDelay,
+    })),
+  };
+}
+
 // Poll cadence/ceiling for a deferred CS apply (binding/name SET, save,
 // revert), matching the desktop app: up to 25 polls at 20 ms (~500 ms
 // budget) for what is normally a few-ms directory-sector flash write.
@@ -1550,6 +1563,63 @@ export class DspDevice {
       macroRunning: w.macroRunning === 0xFF ? null : w.macroRunning,
       macroStep: w.macroStep, groupStatus: w.groupStatus, macroStatus: w.macroStatus,
     };
+  }
+
+  // Macros (0x22-0x25, caps v9+ only -- callers gate on caps.maxMacros > 0).
+  // Header (0x22) and step (0x24) SETs share setCsBinding's deferred-apply
+  // model, reported in last_slot as 0x60 | macro; the step's wValue packs
+  // (step << 8) | macro.
+  async getCsMacro(idx: number): Promise<Domain.CsMacro> {
+    return csMacroFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCsMacro, idx & 0xFF));
+  }
+
+  // Writes steps 0..7 first, then the header last, as ONE exclusive unit: a
+  // concurrently-fired macro never sees step_count exceed its written steps.
+  // A failing step's result is returned immediately without touching the
+  // remaining steps or the header -- the firmware keeps the step's previous
+  // stored value, so a mid-write failure leaves a mix of old/new steps and an
+  // unchanged step_count.
+  async setCsMacro(
+    idx: number, m: Domain.CsMacro,
+  ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
+    return this.transport.exclusive(async (raw) => {
+      for (let step = 0; step < Domain.CS_MAX_MACRO_STEPS; step++) {
+        const s = m.steps[step] ?? Domain.EMPTY_CS_MACRO_STEP;
+        await proto.writeCmd(raw, proto.WireCmd.SetCsMacroStep, {
+          noun: s.noun, action: s.action, flags: s.flags, target: s.target, index: s.index,
+          value: s.value, step: s.step, preDelay: s.preDelay,
+        }, ((step & 0xFF) << 8) | (idx & 0xFF));
+        const stepResult = await pollCsStatus(raw, 0x60 | (idx & 0xFF));
+        if (!stepResult.result.ok) return stepResult;
+      }
+      await proto.writeCmd(raw, proto.WireCmd.SetCsMacro, {
+        name: utf8Truncate(m.name, Domain.CS_NAME_MAX_LEN), stepCount: m.stepCount,
+      }, idx & 0xFF);
+      return pollCsStatus(raw, 0x60 | (idx & 0xFF));
+    });
+  }
+
+  // Clearing a macro is a SET of the all-zero macro (name '', step_count 0,
+  // every step zeroed).
+  async clearCsMacro(idx: number): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
+    return this.setCsMacro(idx, Domain.EMPTY_CS_MACRO);
+  }
+
+  // Fire/cancel (0x25, GET-style): wValue < 8 fires that macro (restarting it
+  // if already running), 0xFFFF cancels the running macro at its next step
+  // boundary. Only reachable failure is a STALL for an out-of-range index --
+  // the firmware handler never touches cs_last_status/last_slot for it.
+  async csMacroFire(idx: number): Promise<Result<void, number>> {
+    try {
+      await proto.actionCmd(this.transport, proto.WireCmd.CsMacroFire, idx & 0xFF);
+      return Result.ok();
+    } catch {
+      return Result.fail<number>(proto.CsStatusCode.InvalidMacro, 'Macro slot is out of range');
+    }
+  }
+
+  async csMacroCancel(): Promise<void> {
+    await proto.actionCmd(this.transport, proto.WireCmd.CsMacroFire, 0xFFFF);
   }
 
   // Crossover bands (V16+, output channels only) ride the EQ verbs at wire

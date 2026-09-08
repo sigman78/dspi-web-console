@@ -1,6 +1,6 @@
 <script lang="ts">
-  // Target groups (caps v9+): a named set of channels a binding or IR command
-  // can address at once via CS_FLAG_GROUP. Sibling of ControlSurfacesPanel,
+  // Target groups (caps v9+): a named set of channels a binding, IR command,
+  // or macro step can address at once via CS_FLAG_GROUP. Sibling of ControlSurfacesPanel,
   // sharing the same fw dirty flag/save/revert, but with no parent of its own
   // to hand it a reset prop -- it watches cs.revertEpoch instead.
   import { untrack } from 'svelte';
@@ -85,14 +85,29 @@
     return r.ok ? 'Failed to apply the group.' : r.message;
   }
 
-  // How many bindings/IR commands reference this group -- informational only,
-  // not a delete guard (fw allows clearing an in-use group; dependents just
-  // go INACTIVE with INVALID_GROUP).
-  function usageCount(i: number): number {
-    let n = 0;
-    for (const b of cs.bindings) if (b && (b.flags & Domain.CS_FLAG_GROUP) && b.target === i) n++;
-    for (const c of cs.irCommands) if (c && (c.flags & Domain.CS_FLAG_GROUP) && c.target === i) n++;
-    return n;
+  // How many bindings/IR commands and macro steps reference this group --
+  // informational only, not a delete guard (fw allows clearing an in-use
+  // group; dependents just go INACTIVE / INVALID with INVALID_GROUP).
+  function usage(i: number): { controls: number; steps: number } {
+    let controls = 0;
+    let steps = 0;
+    for (const b of cs.bindings) if (b && (b.flags & Domain.CS_FLAG_GROUP) && b.target === i) controls++;
+    for (const c of cs.irCommands) if (c && (c.flags & Domain.CS_FLAG_GROUP) && c.target === i) controls++;
+    for (const m of cs.macros) {
+      if (!m) continue;
+      for (let k = 0; k < m.stepCount; k++) {
+        const st = m.steps[k];
+        if ((st.flags & Domain.CS_FLAG_GROUP) && st.target === i) steps++;
+      }
+    }
+    return { controls, steps };
+  }
+
+  function usageText(u: { controls: number; steps: number }): string {
+    const parts: string[] = [];
+    if (u.controls > 0) parts.push(`${u.controls} control${u.controls === 1 ? '' : 's'}`);
+    if (u.steps > 0) parts.push(`${u.steps} macro step${u.steps === 1 ? '' : 's'}`);
+    return `Used by ${parts.join(', ')}`;
   }
 
   function firstFreeSlot(): number | null {
@@ -171,7 +186,7 @@
     {@const d = draftOf(i)}
     {@const p = pill(i)}
     {@const dirty = isDirty(i)}
-    {@const n = usageCount(i)}
+    {@const u = usage(i)}
     <div class="slot">
       <div class="slothead">
         <span class="stitle" class:staged={dirty}
@@ -214,9 +229,9 @@
           {/if}
         </div>
 
-        {#if n > 0}
+        {#if u.controls + u.steps > 0}
           <div class="row">
-            <span class="hint">Used by {n} control{n === 1 ? '' : 's'}</span>
+            <span class="hint">{usageText(u)}</span>
           </div>
         {/if}
 

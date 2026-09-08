@@ -794,9 +794,42 @@ export const CsGroup = struct({
   name:       nulStr(32),
 });
 
+// 12-byte SET payload of SetCsMacroStep (0x24, wValue = (step<<8)|macro);
+// also one element of GetCsMacro's steps array. All-zero = empty step --
+// always valid, skipped at run time.
+export const CsMacroStep = struct({
+  noun:      u8,
+  action:    u8,
+  flags:     u8,
+  target:    u8,
+  index:     u8,
+  _reserved: reserved(1),
+  value:     i16,
+  step:      i16,
+  preDelay:  u16,
+});
+
+// 36-byte payload of SetCsMacro (0x22, wValue = macro 0-7): name + step count.
+export const CsMacroHeader = struct({
+  name:       nulStr(32),
+  stepCount:  u8,
+  _reserved:  reserved(3),
+});
+
+// 132-byte GetCsMacro (0x23) response, wValue = macro 0-7 (wValue >= 8
+// STALLs). Steps start at offset 36, 12 B each; execution uses
+// steps[0..step_count-1] -- stored steps beyond step_count are inert.
+// "Empty macro" = name '' + step_count 0.
+export const CsMacro = struct({
+  name:       nulStr(32),
+  stepCount:  u8,
+  _reserved:  reserved(3),
+  steps:      arr(CsMacroStep, 8),
+});
+
 // 24-byte GetCsExtStatus (0x26, wValue = 0) response: group/macro ceilings
-// and per-slot validity. Macro fields are decoded but not yet modeled --
-// 0x22-0x25 are the macro opcodes.
+// and per-slot validity. Macro fields (0x22-0x25 -- CsMacro/CsMacroStep/
+// CsMacroHeader above) are modeled.
 export const CsExtStatusPacket = struct({
   maxGroups:      u8,
   maxMacros:      u8,
