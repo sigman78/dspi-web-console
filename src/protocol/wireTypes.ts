@@ -784,6 +784,30 @@ export const CsIrLearnResult = struct({
   code:      u32,
 });
 
+// 40-byte payload of SetCsGroup (0x20, wValue = group 0-7) / response of
+// GetCsGroup (0x21). All-zero (targetKind 0) marks an empty slot; `reserved`
+// is zero-filled by the codec (firmware rejects a non-zero value).
+export const CsGroup = struct({
+  targetKind: u8,
+  _reserved:  reserved(3),
+  memberMask: u32,
+  name:       nulStr(32),
+});
+
+// 24-byte GetCsExtStatus (0x26, wValue = 0) response: group/macro ceilings
+// and per-slot validity. Macro fields are decoded but not yet modeled --
+// 0x22-0x25 are the macro opcodes.
+export const CsExtStatusPacket = struct({
+  maxGroups:      u8,
+  maxMacros:      u8,
+  maxMacroSteps:  u8,
+  macroRunning:   u8,   // index; 0xFF = idle
+  macroStep:      u8,
+  _reserved:      reserved(3),
+  groupStatus:    arr(u8, 8),
+  macroStatus:    arr(u8, 8),
+});
+
 // 32-byte `GetSerial` response: NUL-terminated UTF-8 inside a fixed
 // 32-byte window.
 export const Serial = nulStr(Const.SERIAL_LEN);

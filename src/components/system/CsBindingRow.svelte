@@ -12,7 +12,7 @@
   import CsIrCommands from './CsIrCommands.svelte';
   import { connection } from '@/state';
   import * as Domain from '@/domain';
-  import { csStatusFromByte } from '@/protocol';
+  import { csStatusFromByte, CsStatusCode } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
   import * as CsUnit from './csUnitDisplay';
   import * as CsField from './csFieldHelpers';
@@ -97,6 +97,17 @@
     return snap ? CsField.bandOptionsFor(d.noun, d.target, snap.channels) : [];
   }
 
+  function showGroupOf(d: Draft): boolean { return CsDraft.showGroupOf(d, caps, cs.nouns); }
+  function groupOptionsFor(d: Draft): { v: number; label: string }[] {
+    return CsField.groupOptionsFor(cs.nouns, d.noun, cs.groups);
+  }
+  function groupBandOptionsFor(d: Draft): { v: number; label: string }[] {
+    const g = cs.groups[d.target];
+    return snap && g ? CsField.groupBandOptionsFor(cs.nouns, d.noun, g, snap.channels) : [];
+  }
+  function showLinkAbsOf(d: Draft): boolean { return CsDraft.showLinkAbsOf(d, cs.nouns); }
+  function showGroupAllOf(d: Draft): boolean { return CsDraft.showGroupAllOf(d); }
+
   function nounOptionsFor(typeIdx: number): number[] { return CsDraft.nounOptionsFor(typeIdx, caps, cs.nouns); }
   function actionOptionsFor(typeIdx: number, nounIdx: number): Domain.CsAction[] {
     return CsDraft.actionOptionsFor(typeIdx, nounIdx, caps, cs.nouns);
@@ -127,7 +138,10 @@
     const byte = cs.status?.slotStatus[slot] ?? 0;
     const r = csStatusFromByte(byte);
     const why = r.ok ? 'failed to apply the binding' : r.message.toLowerCase();
-    return `Not running: ${why}. Reassign the conflicting pin, then apply.`;
+    const advice = byte === CsStatusCode.InvalidGroup
+      ? 'Fix or re-create the group, then apply.'
+      : 'Reassign the conflicting pin, then apply.';
+    return `Not running: ${why}. ${advice}`;
   }
 
   function num(e: Event): number | null {
@@ -182,6 +196,9 @@
               dr.noun = n;
               dr.target = 0;
               dr.index = 0;
+              dr.grouped = false;
+              dr.linkAbs = false;
+              dr.groupAll = false;
               const legal = actionOptionsFor(dr.type, n);
               if (!legal.includes(dr.action as Domain.CsAction)) dr.action = defaultAction(dr.type, n);
               defaultOperands(dr);
@@ -249,19 +266,44 @@
     </div>
 
     {#if d.type !== Domain.CsType.Ir && showTargetOf(d)}
+      {@const groupOpts = showGroupOf(d) ? groupOptionsFor(d) : []}
+      {@const missingGroup = showGroupOf(d) && d.grouped && !groupOpts.some((o) => o.v === d.target)}
       <div class="row">
         <span class="microlbl">{targetKindOf(d) === Domain.CS_TARGET_INPUT_CH ? 'INPUT' : targetKindOf(d) === Domain.CS_TARGET_OUTPUT_CH ? 'OUTPUT' : 'CHANNEL'}</span>
-        <select class="sel" value={String(d.target)} aria-label="Target channel" disabled={busy || applying}
-          onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); onEdit((dr) => { dr.target = v; dr.index = 0; }); }}>
-          {#each targetOptionsFor(d) as o (o.v)}
-            <option value={String(o.v)}>{o.label}</option>
-          {/each}
+        <select class="sel" value={d.grouped ? `g${d.target}` : String(d.target)} aria-label="Target channel" disabled={busy || applying}
+          onchange={(e) => {
+            const v = (e.currentTarget as HTMLSelectElement).value;
+            onEdit((dr) => {
+              if (v.startsWith('g')) { dr.grouped = true; dr.target = Number(v.slice(1)); }
+              else { dr.grouped = false; dr.target = Number(v); dr.linkAbs = false; dr.groupAll = false; }
+              dr.index = 0;
+            });
+          }}>
+          {#if showGroupOf(d) && (groupOpts.length > 0 || missingGroup)}
+            <optgroup label="CHANNELS">
+              {#each targetOptionsFor(d) as o (o.v)}
+                <option value={String(o.v)}>{o.label}</option>
+              {/each}
+            </optgroup>
+            <optgroup label="GROUPS">
+              {#each groupOpts as o (o.v)}
+                <option value={`g${o.v}`}>{o.label}</option>
+              {/each}
+              {#if missingGroup}
+                <option value={`g${d.target}`} disabled>Group {d.target + 1} (missing)</option>
+              {/if}
+            </optgroup>
+          {:else}
+            {#each targetOptionsFor(d) as o (o.v)}
+              <option value={String(o.v)}>{o.label}</option>
+            {/each}
+          {/if}
         </select>
         {#if showBandOf(d)}
           <span class="microlbl">BAND</span>
           <select class="sel" value={String(d.index)} aria-label="Filter band" disabled={busy || applying}
             onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); onEdit((dr) => { dr.index = v; }); }}>
-            {#each bandOptionsFor(d) as o (o.v)}
+            {#each (d.grouped ? groupBandOptionsFor(d) : bandOptionsFor(d)) as o (o.v)}
               <option value={String(o.v)}>{o.label}</option>
             {/each}
           </select>
@@ -390,6 +432,18 @@
         <ToggleSwitch size="sm" checked={d.repeat} disabled={busy || applying}
           ariaLabel="Auto-repeat while held"
           onChange={(v) => onEdit((dr) => { dr.repeat = v; if (v) dr.event = Domain.CsEvent.Press; })} />
+      {/if}
+      {#if d.grouped && showLinkAbsOf(d)}
+        <span class="microlbl" title="Off: the pot moves the group together while each member keeps its offset">SAME LEVEL FOR ALL</span>
+        <ToggleSwitch size="sm" checked={d.linkAbs} disabled={busy || applying}
+          ariaLabel="Drive every member to the same level"
+          onChange={(v) => onEdit((dr) => { dr.linkAbs = v; })} />
+      {/if}
+      {#if d.grouped && showGroupAllOf(d)}
+        <span class="microlbl" title="Off: lights when any member matches">ALL MEMBERS</span>
+        <ToggleSwitch size="sm" checked={d.groupAll} disabled={busy || applying}
+          ariaLabel="Require every member to match"
+          onChange={(v) => onEdit((dr) => { dr.groupAll = v; })} />
       {/if}
     </div>
 

@@ -1,8 +1,10 @@
 <script lang="ts">
   import ControlInterfacesPanel from '@/components/system/ControlInterfacesPanel.svelte';
   import ControlSurfacesPanel from '@/components/system/ControlSurfacesPanel.svelte';
+  import CsGroupsPanel from '@/components/system/CsGroupsPanel.svelte';
   import ControlGuidePanel from './control/ControlGuidePanel.svelte';
   import { getSession } from '@/components/sessionContext';
+  import * as CsField from '@/components/system/csFieldHelpers';
 
   const s = getSession();
   const features = $derived(s.device.capabilities.features);
@@ -18,6 +20,9 @@
   <div class="col">
     {#if features.controlSurfaces}
       <ControlSurfacesPanel />
+      {#if CsField.groupsAvailable(s.controlSurfaces.caps)}
+        <CsGroupsPanel />
+      {/if}
     {/if}
   </div>
 

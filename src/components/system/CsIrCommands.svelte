@@ -40,6 +40,8 @@
     protocol: number; code: number;
     value: number; step: number;
     wrap: boolean; repeat: boolean;
+    // Caps v10+: target is a group index instead of a channel.
+    grouped: boolean;
   }
   const drafts = $state<Record<number, IrDraft>>({});
   let applyingSub = $state<number | null>(null);
@@ -105,6 +107,18 @@
   }
   function defaultAction(noun: number): number { return actionOptions(noun)[0] ?? 0; }
 
+  // GROUP joins the allowed IR flag set at caps v10 (v9 firmware rejects it).
+  function irGroupsAvailable(): boolean {
+    return CsField.groupsAvailable(caps) && (caps?.capsVersion ?? 0) >= 10;
+  }
+  function groupOptionsFor(d: IrDraft): { v: number; label: string }[] {
+    return irGroupsAvailable() ? CsField.groupOptionsFor(cs.nouns, d.noun, cs.groups) : [];
+  }
+  function groupBandOptionsFor(d: IrDraft): { v: number; label: string }[] {
+    const g = cs.groups[d.target];
+    return snap && g ? CsField.groupBandOptionsFor(cs.nouns, d.noun, g, snap.channels) : [];
+  }
+
   function defaultIrOperands(d: IrDraft): void {
     const noun = cs.nouns[d.noun];
     const cont = noun?.kind === Domain.CsKind.Continuous;
@@ -125,6 +139,7 @@
     const d: IrDraft = {
       noun, action: defaultAction(noun), target: 0, index: 0,
       protocol: Domain.CsIrProto.None, code: 0, value: 0, step: 0, wrap: false, repeat: false,
+      grouped: false,
     };
     defaultIrOperands(d);
     return d;
@@ -141,6 +156,7 @@
       step: cont ? CsUnit.stepToDisplay(unit, c.step) : c.step,
       wrap: (c.flags & Domain.CS_FLAG_WRAP) !== 0,
       repeat: (c.flags & Domain.CS_FLAG_REPEAT) !== 0,
+      grouped: (c.flags & Domain.CS_FLAG_GROUP) !== 0,
     };
   }
 
@@ -164,11 +180,13 @@
     const cont = noun?.kind === Domain.CsKind.Continuous;
     const unit = noun?.unit ?? Domain.CS_UNIT_NONE;
     const repeatEligible = d.action === Domain.CsAction.Inc || d.action === Domain.CsAction.Dec;
+    const grouped = irGroupsAvailable() && CsField.showTargetOf(cs.nouns, d.noun) && d.grouped;
     return {
       noun: d.noun as Domain.CsNoun,
       action: d.action as Domain.CsAction,
       flags: (CsField.showWrapOf(cs.nouns, d.noun, d.action, IR_STEPPY) && d.wrap ? Domain.CS_FLAG_WRAP : 0)
-        | (repeatEligible && d.repeat ? Domain.CS_FLAG_REPEAT : 0),
+        | (repeatEligible && d.repeat ? Domain.CS_FLAG_REPEAT : 0)
+        | (grouped ? Domain.CS_FLAG_GROUP : 0),
       target: CsField.showTargetOf(cs.nouns, d.noun) ? d.target : 0,
       index: CsField.showBandOf(cs.nouns, d.noun) ? d.index : 0,
       protocol: d.protocol as Domain.CsIrProto,
@@ -196,7 +214,7 @@
   function canApply(sub: number): boolean {
     const d = draftOf(sub);
     if (!d || !caps || d.protocol === Domain.CsIrProto.None || !isDirty(sub)) return false;
-    return Domain.validateCsIrCommand(buildIrCommand(d), caps, cs.nouns) === 0;
+    return Domain.validateCsIrCommand(buildIrCommand(d), caps, cs.nouns, cs.groups) === 0;
   }
 
   // Row lifecycle: NOT LEARNED -> LEARNED (code captured, awaiting APPLY) ->
@@ -334,7 +352,7 @@
               onchange={(e) => {
                 const n = Number((e.currentTarget as HTMLSelectElement).value);
                 editDraft(sub, (dr) => {
-                  dr.noun = n; dr.target = 0; dr.index = 0;
+                  dr.noun = n; dr.target = 0; dr.index = 0; dr.grouped = false;
                   const legal = actionOptions(n);
                   if (!legal.includes(dr.action as Domain.CsAction)) dr.action = defaultAction(n);
                   defaultIrOperands(dr);
@@ -359,22 +377,48 @@
           </div>
 
           {#if CsField.showTargetOf(cs.nouns, d.noun)}
+            {@const showGroup = irGroupsAvailable() && CsField.showTargetOf(cs.nouns, d.noun)}
+            {@const groupOpts = groupOptionsFor(d)}
+            {@const missingGroup = showGroup && d.grouped && !groupOpts.some((o) => o.v === d.target)}
             <div class="row">
               <span class="microlbl">
                 {CsField.targetKindOf(cs.nouns, d.noun) === Domain.CS_TARGET_INPUT_CH ? 'INPUT'
                   : CsField.targetKindOf(cs.nouns, d.noun) === Domain.CS_TARGET_OUTPUT_CH ? 'OUTPUT' : 'CHANNEL'}
               </span>
-              <select class="sel" value={String(d.target)} aria-label="Target channel" disabled={busy || applyingSub != null}
-                onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editDraft(sub, (dr) => { dr.target = v; dr.index = 0; }); }}>
-                {#each (snap ? CsField.targetOptionsFor(cs.nouns, d.noun, snap.channels) : []) as o (o.v)}
-                  <option value={String(o.v)}>{o.label}</option>
-                {/each}
+              <select class="sel" value={d.grouped ? `g${d.target}` : String(d.target)} aria-label="Target channel" disabled={busy || applyingSub != null}
+                onchange={(e) => {
+                  const v = (e.currentTarget as HTMLSelectElement).value;
+                  editDraft(sub, (dr) => {
+                    if (v.startsWith('g')) { dr.grouped = true; dr.target = Number(v.slice(1)); }
+                    else { dr.grouped = false; dr.target = Number(v); }
+                    dr.index = 0;
+                  });
+                }}>
+                {#if showGroup && (groupOpts.length > 0 || missingGroup)}
+                  <optgroup label="CHANNELS">
+                    {#each (snap ? CsField.targetOptionsFor(cs.nouns, d.noun, snap.channels) : []) as o (o.v)}
+                      <option value={String(o.v)}>{o.label}</option>
+                    {/each}
+                  </optgroup>
+                  <optgroup label="GROUPS">
+                    {#each groupOpts as o (o.v)}
+                      <option value={`g${o.v}`}>{o.label}</option>
+                    {/each}
+                    {#if missingGroup}
+                      <option value={`g${d.target}`} disabled>Group {d.target + 1} (missing)</option>
+                    {/if}
+                  </optgroup>
+                {:else}
+                  {#each (snap ? CsField.targetOptionsFor(cs.nouns, d.noun, snap.channels) : []) as o (o.v)}
+                    <option value={String(o.v)}>{o.label}</option>
+                  {/each}
+                {/if}
               </select>
               {#if CsField.showBandOf(cs.nouns, d.noun)}
                 <span class="microlbl">BAND</span>
                 <select class="sel" value={String(d.index)} aria-label="Filter band" disabled={busy || applyingSub != null}
                   onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editDraft(sub, (dr) => { dr.index = v; }); }}>
-                  {#each (snap ? CsField.bandOptionsFor(d.noun, d.target, snap.channels) : []) as o (o.v)}
+                  {#each (d.grouped ? groupBandOptionsFor(d) : (snap ? CsField.bandOptionsFor(d.noun, d.target, snap.channels) : [])) as o (o.v)}
                     <option value={String(o.v)}>{o.label}</option>
                   {/each}
                 </select>

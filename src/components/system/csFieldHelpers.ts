@@ -135,3 +135,63 @@ export function bandOptionsFor(
   }
   return opts;
 }
+
+// Target groups exist from caps v9; a device also has to report a non-zero
+// ceiling for the panel/pickers to offer them.
+export function groupsAvailable(caps: Domain.CsCaps | null): boolean {
+  return (caps?.capsVersion ?? 0) >= 9 && (caps?.maxGroups ?? 0) > 0;
+}
+
+// Groups a binding/IR command may target instead of a single channel: only
+// non-empty groups whose kind matches the noun's own target space (see
+// Domain.csGroupKindForNoun).
+export function groupOptionsFor(
+  nouns: readonly Domain.CsNounCaps[], noun: number, groups: readonly (Domain.CsGroup | null)[],
+): { v: number; label: string }[] {
+  const wantKind = Domain.csGroupKindForNoun(nouns[noun]);
+  const opts: { v: number; label: string }[] = [];
+  groups.forEach((g, i) => {
+    if (g && g.targetKind === wantKind) opts.push({ v: i, label: `Group ${i + 1}${g.name ? ` · ${g.name}` : ''}` });
+  });
+  return opts;
+}
+
+// The member-picker chip list for a group of the given kind, same channel
+// ordering (and index space) as targetOptionsFor.
+export function groupMemberItems(
+  kind: number, channels: readonly Domain.ChannelModel[],
+): { key: number; index: number; label: string; title: string }[] {
+  let list: readonly Domain.ChannelModel[];
+  switch (kind) {
+    case Domain.CS_TARGET_INPUT_CH:  list = channels.filter((c) => !c.isOutput); break;
+    case Domain.CS_TARGET_OUTPUT_CH: list = channels.filter((c) => c.isOutput); break;
+    case Domain.CS_TARGET_DSP_CH:    list = channels; break;
+    default:                         list = [];
+  }
+  return list.map((c, i) => ({ key: i, index: i, label: String(i + 1), title: c.name }));
+}
+
+// A grouped DSP_BAND noun's band options: only bands valid on EVERY member
+// inside the noun's addressing range (mirrors fw's per-member band check
+// after its mask-and-limit). Empty group -> no bands.
+export function groupBandOptionsFor(
+  nouns: readonly Domain.CsNounCaps[], noun: number, group: Domain.CsGroup, channels: readonly Domain.ChannelModel[],
+): { v: number; label: string }[] {
+  const nounCaps = nouns[noun];
+  if (!nounCaps) return [];
+  const mask = Domain.csGroupMembers(group, nounCaps);
+  let result: { v: number; label: string }[] | null = null;
+  for (let m = 0; m < 32; m++) {
+    if (!(mask & (1 << m))) continue;
+    const opts = bandOptionsFor(noun, m, channels);
+    const values = new Set(opts.map((o) => o.v));
+    result = result === null ? opts : result.filter((o) => values.has(o.v));
+  }
+  return result ?? [];
+}
+
+// Live channel counts for validateCsGroup's client-side bounds check.
+export function csChannelCounts(channels: readonly Domain.ChannelModel[]): Domain.CsChannelCounts {
+  const outputs = channels.filter((c) => c.isOutput).length;
+  return { inputs: channels.length - outputs, outputs, dsp: channels.length };
+}

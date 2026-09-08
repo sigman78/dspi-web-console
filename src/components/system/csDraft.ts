@@ -24,6 +24,9 @@ export interface Draft {
   onDelay: number; offDelay: number;
   // Brightness ceiling, display percent 1-100; meaningful only when limitBright.
   limitBright: boolean; baseBright: number;
+  // Caps v9+: target is a group index instead of a channel. linkAbs/groupAll
+  // only take effect when grouped (see showLinkAbsOf/showGroupAllOf below).
+  grouped: boolean; linkAbs: boolean; groupAll: boolean;
   // Reserved wire bytes from the live binding (a future format's fields this
   // console can't author yet); carried so an edit round-trip preserves them.
   reserved2?: readonly number[];
@@ -110,6 +113,9 @@ export function draftFromLive(b: Domain.CsBinding, nouns: readonly Domain.CsNoun
     offDelay: b.offDelay / 10,
     limitBright: b.baseBright !== 0,
     baseBright: b.baseBright !== 0 ? b.baseBright : 100,
+    grouped: (b.flags & Domain.CS_FLAG_GROUP) !== 0,
+    linkAbs: (b.flags & Domain.CS_FLAG_LINK_ABS) !== 0,
+    groupAll: (b.flags & Domain.CS_FLAG_GROUP_ALL) !== 0,
     reserved2: b.reserved2,
   };
 }
@@ -138,6 +144,16 @@ export function showBaseBrightOf(d: Draft, caps: Domain.CsCaps | null): boolean 
   return (caps?.capsVersion ?? 0) >= 12 && d.type === Domain.CsType.LedPwm;
 }
 
+export function showGroupOf(d: Draft, caps: Domain.CsCaps | null, nouns: readonly Domain.CsNounCaps[]): boolean {
+  return CsField.groupsAvailable(caps) && CsField.showTargetOf(nouns, d.noun);
+}
+export function showLinkAbsOf(d: Draft, nouns: readonly Domain.CsNounCaps[]): boolean {
+  return d.action === Domain.CsAction.Adjust && CsField.contOf(nouns, d.noun);
+}
+export function showGroupAllOf(d: Draft): boolean {
+  return d.action === Domain.CsAction.IndEquals || d.action === Domain.CsAction.IndAbove;
+}
+
 export function buildBinding(d: Draft, nouns: readonly Domain.CsNounCaps[], caps: Domain.CsCaps | null): Domain.CsBinding {
   if (d.type === Domain.CsType.Ir) {
     return {
@@ -153,6 +169,7 @@ export function buildBinding(d: Draft, nouns: readonly Domain.CsNounCaps[], caps
   const unit = CsField.unitOf(nouns, d.noun);
   const forcedPress = d.action === Domain.CsAction.Momentary || d.repeat;
   const event = d.type === Domain.CsType.Button ? (forcedPress ? Domain.CsEvent.Press : (d.event as Domain.CsEvent)) : Domain.CsEvent.Press;
+  const grouped = showGroupOf(d, caps, nouns) && d.grouped;
   return {
     type: d.type as Domain.CsType,
     noun: d.noun as Domain.CsNoun,
@@ -161,7 +178,10 @@ export function buildBinding(d: Draft, nouns: readonly Domain.CsNounCaps[], caps
       | (showReverseOf(d) && d.reverse ? Domain.CS_FLAG_REVERSE : 0)
       | (CsField.showWrapOf(nouns, d.noun, d.action, STEPPY) && d.wrap ? Domain.CS_FLAG_WRAP : 0)
       | (showAccelOf(d) && d.accel ? Domain.CS_FLAG_ACCEL : 0)
-      | (showRepeatOf(d) && d.repeat ? Domain.CS_FLAG_REPEAT : 0),
+      | (showRepeatOf(d) && d.repeat ? Domain.CS_FLAG_REPEAT : 0)
+      | (grouped ? Domain.CS_FLAG_GROUP : 0)
+      | (grouped && showLinkAbsOf(d, nouns) && d.linkAbs ? Domain.CS_FLAG_LINK_ABS : 0)
+      | (grouped && showGroupAllOf(d) && d.groupAll ? Domain.CS_FLAG_GROUP_ALL : 0),
     gpio0: d.gpio0,
     gpio1: twoPins(d, caps) ? d.gpio1 : null,
     event,

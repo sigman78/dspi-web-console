@@ -2,11 +2,12 @@ import { describe, it, expect } from 'vitest';
 import {
   CsType, CsNoun, CsAction, CsKind, CsEvent, CsIrProto,
   CS_FLAG_REVERSE, CS_FLAG_REPEAT, CS_FLAG_ACCEL,
+  CS_FLAG_GROUP, CS_FLAG_LINK_ABS, CS_FLAG_GROUP_ALL,
   CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q,
-  CS_TARGET_NONE, CS_TARGET_INPUT_CH, CS_TARGET_DSP_BAND,
-  dbToQ8, q8ToDb, legalActions, validateCsBinding, validateCsIrCommand, liveCsPinConfigs,
-  EMPTY_CS_BINDING, EMPTY_CS_IR_COMMAND,
-  type CsBinding, type CsCaps, type CsNounCaps, type CsStatus, type CsIrCommand,
+  CS_TARGET_NONE, CS_TARGET_INPUT_CH, CS_TARGET_OUTPUT_CH, CS_TARGET_DSP_CH, CS_TARGET_DSP_BAND,
+  dbToQ8, q8ToDb, legalActions, validateCsBinding, validateCsIrCommand, validateCsGroup, liveCsPinConfigs,
+  EMPTY_CS_BINDING, EMPTY_CS_IR_COMMAND, EMPTY_CS_GROUP,
+  type CsBinding, type CsCaps, type CsNounCaps, type CsStatus, type CsIrCommand, type CsGroup,
 } from './controlSurfaces';
 
 // Firmware caps-v3 tables as TEST INPUTS (the console itself reads them from
@@ -58,7 +59,10 @@ const nouns: CsNounCaps[] = [
   ...Array(7).fill(disabledNoun),                                                    // 9..15 (unused here)
   { kind: CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: -6144, maxQ8: 6144,
     unit: CS_UNIT_DB, targetKind: CS_TARGET_INPUT_CH, targetCount: 2, dflags: 0 },   // 16 PREAMP
-  ...Array(3).fill(disabledNoun),                                                    // 17..19 (unused here)
+  disabledNoun,                                                                      // 17 (unused here)
+  { kind: CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
+    unit: CS_UNIT_NONE, targetKind: CS_TARGET_OUTPUT_CH, targetCount: 3, dflags: 0 }, // 18 OUTPUT_MUTE
+  disabledNoun,                                                                      // 19 (unused here)
   { kind: CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: 20, maxQ8: 20000,
     unit: CS_UNIT_HZ, targetKind: CS_TARGET_DSP_BAND, targetCount: 7, dflags: 0 },   // 20 FILTER_FREQ
   disabledNoun,                                                                      // 21 (unused here)
@@ -69,6 +73,21 @@ const nouns: CsNounCaps[] = [
 function binding(over: Partial<CsBinding>): CsBinding {
   return { ...EMPTY_CS_BINDING, ...over };
 }
+
+// Groups land at caps v9; IR commands may carry CS_FLAG_GROUP from v10.
+const capsV9: CsCaps = { ...caps, capsVersion: 9, maxGroups: 8 };
+const capsV10: CsCaps = { ...caps, capsVersion: 10, maxGroups: 8 };
+
+// Fixture groups: an input pair (matches PREAMP), an output pair (matches
+// OUTPUT_MUTE), an empty slot, a DSP-kind group (matches the DSP_BAND nouns),
+// and an input-kind group whose mask lies entirely above PREAMP's targetCount.
+const groups: (CsGroup | null)[] = [
+  { targetKind: CS_TARGET_INPUT_CH, memberMask: 0b11, name: 'Front Pair' },    // 0
+  { targetKind: CS_TARGET_OUTPUT_CH, memberMask: 0b101, name: 'Rear' },        // 1
+  null,                                                                        // 2 empty
+  { targetKind: CS_TARGET_DSP_CH, memberMask: 0b1000, name: 'Woofer Band' },   // 3
+  { targetKind: CS_TARGET_INPUT_CH, memberMask: 0b100, name: 'Out of Range' }, // 4
+];
 
 describe('q8.8 conversion', () => {
   it('converts dB to signed 8.8 fixed point per the spec examples', () => {
@@ -278,6 +297,120 @@ describe('validateCsBinding', () => {
   });
 });
 
+describe('validateCsGroup', () => {
+  const counts = { inputs: 2, outputs: 9, dsp: 11 };
+
+  it('accepts a cleared slot; rejects a non-empty mask or name on an empty slot', () => {
+    expect(validateCsGroup(EMPTY_CS_GROUP, counts)).toBe(0x00);
+    expect(validateCsGroup({ targetKind: CS_TARGET_NONE, memberMask: 1, name: '' }, counts)).toBe(0x14);
+    expect(validateCsGroup({ targetKind: CS_TARGET_NONE, memberMask: 0, name: 'x' }, counts)).toBe(0x14);
+  });
+
+  it('rejects an unrecognized kind', () => {
+    expect(validateCsGroup({ targetKind: 4, memberMask: 1, name: '' }, counts)).toBe(0x1F);
+  });
+
+  it('rejects an empty mask', () => {
+    expect(validateCsGroup({ targetKind: CS_TARGET_INPUT_CH, memberMask: 0, name: '' }, counts)).toBe(0x1F);
+  });
+
+  it('rejects a mask bit at/above the kind channel count', () => {
+    // inputs = 2: bit 2 is out of range.
+    expect(validateCsGroup({ targetKind: CS_TARGET_INPUT_CH, memberMask: 0b100, name: '' }, counts)).toBe(0x1F);
+  });
+
+  it('accepts a DSP-kind mask bit at the first output index', () => {
+    expect(validateCsGroup({
+      targetKind: CS_TARGET_DSP_CH, memberMask: 1 << counts.inputs, name: 'Outputs',
+    }, counts)).toBe(0x00);
+  });
+});
+
+describe('validateCsBinding — grouped targets (caps v9+)', () => {
+  function grouped(over: Partial<CsBinding>): CsBinding {
+    return binding({ flags: CS_FLAG_GROUP, ...over });
+  }
+
+  it('accepts a targeted noun bound to a matching-kind group', () => {
+    expect(validateCsBinding(grouped({
+      type: CsType.Button, noun: CsNoun.Preamp, action: CsAction.Set, gpio0: 20, target: 0, value: dbToQ8(0),
+    }), capsV9, nouns, groups)).toBe(0x00);
+  });
+
+  it('rejects a group of the wrong kind for the noun', () => {
+    expect(validateCsBinding(grouped({
+      type: CsType.Button, noun: CsNoun.Preamp, action: CsAction.Set, gpio0: 20, target: 1, value: dbToQ8(0),
+    }), capsV9, nouns, groups)).toBe(0x1F);
+  });
+
+  it('rejects an empty group slot', () => {
+    expect(validateCsBinding(grouped({
+      type: CsType.Button, noun: CsNoun.Preamp, action: CsAction.Set, gpio0: 20, target: 2, value: dbToQ8(0),
+    }), capsV9, nouns, groups)).toBe(0x1F);
+  });
+
+  it('rejects a group index at/above CS_MAX_GROUPS', () => {
+    expect(validateCsBinding(grouped({
+      type: CsType.Button, noun: CsNoun.Preamp, action: CsAction.Set, gpio0: 20, target: 8, value: dbToQ8(0),
+    }), capsV9, nouns, groups)).toBe(0x1F);
+  });
+
+  it("rejects a group whose mask lies wholly above the noun's targetCount", () => {
+    expect(validateCsBinding(grouped({
+      type: CsType.Button, noun: CsNoun.Preamp, action: CsAction.Set, gpio0: 20, target: 4, value: dbToQ8(0),
+    }), capsV9, nouns, groups)).toBe(0x1F);
+  });
+
+  it('rejects the group flags at a pre-v9 caps version', () => {
+    expect(validateCsBinding(grouped({
+      type: CsType.Button, noun: CsNoun.Preamp, action: CsAction.Set, gpio0: 20, target: 0, value: dbToQ8(0),
+    }), caps, nouns, groups)).toBe(0x14);
+  });
+
+  it('accepts a DSP_BAND noun grouped over a DSP-kind group, rejects an input-kind one', () => {
+    expect(validateCsBinding(grouped({
+      type: CsType.Button, noun: CsNoun.FilterFreq, action: CsAction.Set, gpio0: 20, target: 3, value: 1000,
+    }), capsV9, nouns, groups)).toBe(0x00);
+    expect(validateCsBinding(grouped({
+      type: CsType.Button, noun: CsNoun.FilterFreq, action: CsAction.Set, gpio0: 20, target: 0, value: 1000,
+    }), capsV9, nouns, groups)).toBe(0x1F);
+  });
+
+  it('rejects LINK_ABS without GROUP', () => {
+    expect(validateCsBinding(binding({
+      type: CsType.Pot, noun: CsNoun.Preamp, action: CsAction.Adjust, gpio0: 26, flags: CS_FLAG_LINK_ABS,
+    }), capsV9, nouns, groups)).toBe(0x14);
+  });
+
+  it('rejects LINK_ABS on an encoder STEP', () => {
+    expect(validateCsBinding(grouped({
+      type: CsType.Encoder, noun: CsNoun.MasterVolume, action: CsAction.Step, gpio0: 21, gpio1: 22, step: 256,
+      flags: CS_FLAG_GROUP | CS_FLAG_LINK_ABS, target: 0,
+    }), capsV9, nouns, groups)).toBe(0x14);
+  });
+
+  it('accepts LINK_ABS on a pot ADJUST', () => {
+    expect(validateCsBinding(grouped({
+      type: CsType.Pot, noun: CsNoun.Preamp, action: CsAction.Adjust, gpio0: 26,
+      flags: CS_FLAG_GROUP | CS_FLAG_LINK_ABS, target: 0,
+    }), capsV9, nouns, groups)).toBe(0x00);
+  });
+
+  it('rejects GROUP_ALL on a button TOGGLE', () => {
+    expect(validateCsBinding(grouped({
+      type: CsType.Button, noun: CsNoun.UserMute, action: CsAction.Toggle, gpio0: 20,
+      flags: CS_FLAG_GROUP | CS_FLAG_GROUP_ALL, target: 0,
+    }), capsV9, nouns, groups)).toBe(0x14);
+  });
+
+  it('accepts GROUP_ALL on an LED IND_EQUALS', () => {
+    expect(validateCsBinding(grouped({
+      type: CsType.Led, noun: CsNoun.OutputMute, action: CsAction.IndEquals, gpio0: 20, value: 1,
+      flags: CS_FLAG_GROUP | CS_FLAG_GROUP_ALL, target: 1,
+    }), capsV9, nouns, groups)).toBe(0x00);
+  });
+});
+
 describe('validateCsIrCommand', () => {
   function irCmd(over: Partial<CsIrCommand>): CsIrCommand {
     return { ...EMPTY_CS_IR_COMMAND, ...over };
@@ -333,6 +466,22 @@ describe('validateCsIrCommand', () => {
     expect(validateCsIrCommand(irCmd({
       noun: CsNoun.UserMute, action: CsAction.Toggle, protocol: 5 as CsIrProto, code: 1,
     }), caps, nouns)).toBe(0x14);
+  });
+
+  it('accepts a grouped target at caps v10, rejects the GROUP flag at caps v9', () => {
+    const cmd = irCmd({
+      noun: CsNoun.Preamp, action: CsAction.Inc, protocol: CsIrProto.Nec, code: 1,
+      flags: CS_FLAG_GROUP, target: 0,
+    });
+    expect(validateCsIrCommand(cmd, capsV10, nouns, groups)).toBe(0x00);
+    expect(validateCsIrCommand(cmd, capsV9, nouns, groups)).toBe(0x14);
+  });
+
+  it('rejects LINK_ABS at any version -- it never applies to an IR command', () => {
+    const cmd = irCmd({
+      noun: CsNoun.Preamp, action: CsAction.Inc, protocol: CsIrProto.Nec, code: 1, flags: CS_FLAG_LINK_ABS,
+    });
+    expect(validateCsIrCommand(cmd, capsV10, nouns, groups)).toBe(0x14);
   });
 });
 

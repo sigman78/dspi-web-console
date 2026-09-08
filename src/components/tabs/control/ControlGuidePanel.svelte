@@ -2,7 +2,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
 </script>
 
-<Panel code="CT.03" title="GUIDE">
+<Panel code="CT.06" title="GUIDE">
   <div class="body">
     <div class="sect">
       <div class="microlbl">CONTROL INTERFACES</div>
@@ -19,6 +19,17 @@
         Bind physical controls on spare GPIOs — no external MCU needed. Up to 16
         bindings, applied live as a preview: save to write them to the device,
         where they survive preset changes and factory reset.
+      </div>
+    </div>
+    <div class="sect">
+      <div class="microlbl">GROUPS</div>
+      <div class="hint">
+        A group is a named set of channels one control addresses at once —
+        pick it in a binding's channel picker. Encoders and buttons step every
+        member from its own value; pots move the group mean, or drive every
+        member to the same level with SAME LEVEL FOR ALL. Indicators light
+        when any member matches, or when every member matches with ALL
+        MEMBERS.
       </div>
     </div>
     <div class="sect">

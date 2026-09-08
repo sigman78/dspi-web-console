@@ -991,6 +991,34 @@ export function clearCsBinding(s: ReadySession, slot: number): Promise<boolean> 
   return applyCsBinding(s, slot, Domain.EMPTY_CS_BINDING);
 }
 
+// caps v9 — target group apply (0x20 + status poll, reported in
+// last_slot as 0x40 | group). Same shape as applyCsBinding, plus a fresh
+// ext-status read: the poll's status already carries the re-validated
+// activeMask/slotStatus of dependent bindings/IR commands.
+export async function applyCsGroup(s: ReadySession, idx: number, g: Domain.CsGroup): Promise<boolean> {
+  let ok = false;
+  await command(s, 'set control-surface group',
+    async () => {
+      const r = await s.device.setCsGroup(idx, g);
+      const live = await s.device.getCsGroup(idx);
+      const extStatus = await s.device.getCsExtStatus();
+      return { result: r.result, status: r.status, live, extStatus };
+    },
+    (r, s) => {
+      s.controlSurfaces.status = r.status;
+      s.controlSurfaces.groups[idx] = r.live.targetKind === Domain.CS_TARGET_NONE ? null : r.live;
+      s.controlSurfaces.extStatus = r.extStatus;
+      if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      ok = true;
+    },
+  );
+  return ok;
+}
+
+export function clearCsGroup(s: ReadySession, idx: number): Promise<boolean> {
+  return applyCsGroup(s, idx, Domain.EMPTY_CS_GROUP);
+}
+
 // V16 — Control Surfaces slot name (0x8B + status poll). Names are slot
 // metadata independent of the binding, so this is its own deferred apply on
 // the same shared status channel as the binding SET. Resolves true only when
@@ -1039,7 +1067,9 @@ export async function csRevertConfig(s: ReadySession): Promise<boolean> {
   await command(s, 'revert control-surface config',
     async () => {
       const r = await s.device.csRevert();
-      if (!r.result.ok) return { result: r.result, status: r.status, bindings: null, names: null, irCommands: null };
+      if (!r.result.ok) {
+        return { result: r.result, status: r.status, bindings: null, names: null, irCommands: null, groups: null, extStatus: null };
+      }
       const bindings: (Domain.CsBinding | null)[] = [];
       const names: string[] = [];
       for (let slot = 0; slot < r.status.maxBindings; slot++) {
@@ -1056,14 +1086,28 @@ export async function csRevertConfig(s: ReadySession): Promise<boolean> {
           irCommands.push(cmd.protocol === Domain.CsIrProto.None ? null : cmd);
         }
       }
-      return { result: r.result, status: r.status, bindings, names, irCommands };
+      const maxGroups = s.controlSurfaces.caps?.maxGroups ?? 0;
+      let groups: (Domain.CsGroup | null)[] | null = null;
+      let extStatus: Domain.CsExtStatus | null = null;
+      if (maxGroups > 0) {
+        groups = [];
+        for (let g = 0; g < Math.min(maxGroups, Domain.CS_MAX_GROUPS); g++) {
+          const grp = await s.device.getCsGroup(g);
+          groups.push(grp.targetKind === Domain.CS_TARGET_NONE ? null : grp);
+        }
+        extStatus = await s.device.getCsExtStatus();
+      }
+      return { result: r.result, status: r.status, bindings, names, irCommands, groups, extStatus };
     },
     (r, s) => {
       s.controlSurfaces.status = r.status;
       if (r.bindings) s.controlSurfaces.bindings = r.bindings;
       if (r.names) s.controlSurfaces.names = r.names;
       if (r.irCommands) s.controlSurfaces.irCommands = r.irCommands;
+      if (r.groups) s.controlSurfaces.groups = r.groups;
+      if (r.extStatus) s.controlSurfaces.extStatus = r.extStatus;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.revertEpoch++;
       ok = true;
     },
   );

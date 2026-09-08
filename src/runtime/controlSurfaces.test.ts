@@ -3,11 +3,13 @@ import { bootMock } from './boot';
 import {
   applyCsBinding, clearCsBinding, applyCsName, csSaveConfig, csRevertConfig,
   applyCsIrCommand, clearCsIrCommand, csIrLearnArm, csIrLearnCancel,
+  applyCsGroup, clearCsGroup,
 } from './actions';
 import { activeSession, clearNotices, resetAppState } from '@/state';
 import {
   CsType, CsNoun, CsAction, CsEvent, CS_MAX_BINDINGS, dbToQ8,
   CsIrProto, CS_MAX_IR_COMMANDS, CS_IR_LEARN_ARMED, CS_IR_LEARN_DONE,
+  CS_MAX_GROUPS, CS_TARGET_OUTPUT_CH, CS_FLAG_GROUP,
 } from '@/domain';
 
 const sess = () => activeSession()!;
@@ -51,6 +53,20 @@ describe('runtime/controlSurfaces', () => {
     expect(s.controlSurfaces.names).toHaveLength(CS_MAX_BINDINGS);
     expect(s.controlSurfaces.names.every((n) => n === '')).toBe(true);
     expect(s.controlSurfaces.lastFetchError).toBeNull();
+  });
+
+  it('connect also populates target groups (all empty) and ext status on the default mock', () => {
+    const s = sess();
+    expect(s.controlSurfaces.groups.every((g) => g === null)).toBe(true);
+    expect(s.controlSurfaces.extStatus?.maxGroups).toBe(CS_MAX_GROUPS);
+  });
+
+  it('a pre-v9 caps device leaves groups and ext status empty', async () => {
+    await bootMock('rp2350', { wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 }, csCapsVersion: 8 });
+    const s = sess();
+    expect(s.controlSurfaces.caps?.maxGroups).toBe(0);
+    expect(s.controlSurfaces.groups.every((g) => g === null)).toBe(true);
+    expect(s.controlSurfaces.extStatus).toBeNull();
   });
 
   it('a device reporting a pre-v2 caps format is rejected with an explanatory error', async () => {
@@ -159,6 +175,23 @@ describe('runtime/controlSurfaces', () => {
     expect(s.controlSurfaces.irCommands[3]).toEqual(necToggle);   // restored from the saved snapshot
   });
 
+  it('csRevertConfig restores the saved groups and bumps revertEpoch', async () => {
+    const s = sess();
+    const group = { targetKind: CS_TARGET_OUTPUT_CH, memberMask: 0b1, name: 'Sub' };
+    await applyCsGroup(s, 0, group);
+    await csSaveConfig(s);
+    const epochBefore = s.controlSurfaces.revertEpoch;
+
+    await clearCsGroup(s, 0);
+    expect(s.controlSurfaces.groups[0]).toBeNull();
+    expect(s.controlSurfaces.status?.dirty).toBe(true);
+
+    const ok = await csRevertConfig(s);
+    expect(ok).toBe(true);
+    expect(s.controlSurfaces.groups[0]).toEqual(group);   // restored from the saved snapshot
+    expect(s.controlSurfaces.revertEpoch).toBe(epochBefore + 1);
+  });
+
   it('connect also fetches every IR command sub-slot (all empty on a fresh device)', () => {
     const s = sess();
     expect(s.controlSurfaces.caps?.maxIrCommands).toBe(CS_MAX_IR_COMMANDS);
@@ -189,6 +222,38 @@ describe('runtime/controlSurfaces', () => {
     const ok = await clearCsIrCommand(s, 4);
     expect(ok).toBe(true);
     expect(s.controlSurfaces.irCommands[4]).toBeNull();
+  });
+
+  it('applyCsGroup lands the group, marks the config dirty, and refreshes ext status', async () => {
+    const s = sess();
+    const group = { targetKind: CS_TARGET_OUTPUT_CH, memberMask: 0b11, name: 'Mains' };
+    const ok = await applyCsGroup(s, 0, group);
+    expect(ok).toBe(true);
+    expect(s.controlSurfaces.groups[0]).toEqual(group);
+    expect(s.controlSurfaces.status?.dirty).toBe(true);
+    expect(s.controlSurfaces.extStatus?.groupStatus[0]).toBe(0);
+  });
+
+  it('a grouped binding goes INACTIVE (InvalidGroup) when its group is cleared, and ACTIVE again once reapplied', async () => {
+    const s = sess();
+    const group = { targetKind: CS_TARGET_OUTPUT_CH, memberMask: 0b1, name: 'Sub' };
+    await applyCsGroup(s, 0, group);
+    const grouped = {
+      type: CsType.Button, noun: CsNoun.OutputMute, action: CsAction.Toggle,
+      flags: CS_FLAG_GROUP, gpio0: 20, gpio1: null, event: CsEvent.Press, target: 0, index: 0,
+      value: 0, step: 0, rangeMin: 0, rangeMax: 0,
+      baseBright: 0, onDelay: 0, offDelay: 0, reserved2: [0, 0],
+    };
+    expect(await applyCsBinding(s, 4, grouped)).toBe(true);
+    expect(s.controlSurfaces.status?.activeMask).toBe(1 << 4);
+
+    await clearCsGroup(s, 0);
+    expect(s.controlSurfaces.status?.slotStatus[4]).toBe(0x1F);   // INVALID_GROUP
+    expect(s.controlSurfaces.status?.activeMask).toBe(0);
+
+    await applyCsGroup(s, 0, group);
+    expect(s.controlSurfaces.status?.slotStatus[4]).toBe(0);
+    expect(s.controlSurfaces.status?.activeMask).toBe(1 << 4);
   });
 
   it('csIrLearnArm moves the sub-state to ARMED with a live IR receiver, and a notify DONE lands the result', async () => {
