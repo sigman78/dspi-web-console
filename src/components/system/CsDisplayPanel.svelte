@@ -6,7 +6,7 @@
   // it watches cs.revertEpoch instead of a reset prop. Config/pages are live
   // whether or not a display is attached (fw accepts them in advance); the
   // status row/poll only make sense once a binding is actually running.
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { connection } from '@/state';
@@ -32,6 +32,12 @@
   let applying = $state(false);
 
   const maxPages = $derived(Math.min(cs.displayLimits?.maxPages ?? 0, Domain.CS_MAX_DISPLAY_PAGES));
+
+  // Which page the single editor below shows -- a view choice, not fw state.
+  let selPage = $state(0);
+  $effect(() => {
+    if (maxPages > 0 && selPage >= maxPages) selPage = maxPages - 1;
+  });
 
   $effect(() => {
     void cs.revertEpoch;   // the ONLY dependency -- cleanup must not track drafts
@@ -199,6 +205,23 @@
     return snap && g ? CsField.groupBandOptionsFor(cs.nouns, d.noun, g, snap.channels) : [];
   }
 
+  function pageChipTitle(i: number): string {
+    const d = pageDraftOf(i);
+    let t = d ? `Page ${i + 1} · ${Domain.csNounLabel(d.noun)}` : `Page ${i + 1} (empty)`;
+    if (cs.displayStatus?.currentPage === i) t += ' · showing';
+    if (isPageDirty(i)) t += ' · unapplied changes';
+    return t;
+  }
+
+  function pageStripKey(e: KeyboardEvent): void {
+    if (maxPages === 0 || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    e.preventDefault();
+    const delta = e.key === 'ArrowRight' ? 1 : -1;
+    selPage = (selPage + delta + maxPages) % maxPages;
+    const strip = e.currentTarget as HTMLElement;
+    void tick().then(() => strip.querySelector<HTMLElement>('[aria-selected="true"]')?.focus());
+  }
+
   async function saveConfig(): Promise<void> {
     applying = true;
     try { await csSaveConfig(s); } finally { applying = false; }
@@ -325,12 +348,25 @@
     </div>
 
     <div class="subhdr">PAGES</div>
-    <div class="rows pagesrows">
-      {#each Array.from({ length: maxPages }, (_, i) => i) as i (i)}
-        {@const live = cs.displayPages[i]}
-        {@const d = pageDraftOf(i)}
-        {@const showing = cs.displayStatus?.currentPage === i}
-        {@const staged = isPageDirty(i)}
+    {#if maxPages > 0}
+      {@const i = selPage}
+      {@const live = cs.displayPages[i]}
+      {@const d = pageDraftOf(i)}
+      {@const showing = cs.displayStatus?.currentPage === i}
+      {@const staged = isPageDirty(i)}
+      <div class="rows">
+        <!-- Strip selects which page the editor below shows; view-only, no fw effect -->
+        <div class="pagestrip" role="tablist" aria-label="Display pages" onkeydown={pageStripKey}>
+          {#each Array.from({ length: maxPages }, (_, i2) => i2) as i2 (i2)}
+            <button type="button" role="tab" class="pchip"
+              class:sel={i2 === selPage} class:set={pageDraftOf(i2) != null}
+              class:showing={cs.displayStatus?.currentPage === i2} class:staged={isPageDirty(i2)}
+              aria-selected={i2 === selPage} tabindex={i2 === selPage ? 0 : -1}
+              aria-label={`Page ${i2 + 1}`} title={pageChipTitle(i2)}
+              onclick={() => { selPage = i2; }}>{i2 + 1}</button>
+          {/each}
+        </div>
+
         <div class="slot">
           <div class="slothead">
             <span class="stitle" class:showing class:staged
@@ -346,7 +382,9 @@
             {/if}
           </div>
 
-          {#if d}
+          {#if !d}
+            <div class="hint">Page {i + 1} is empty.</div>
+          {:else}
             {@const showGroup = CsField.groupsAvailable(caps) && CsField.showTargetOf(cs.nouns, d.noun)}
             {@const groupOpts = groupOptionsFor(d)}
             {@const missingGroup = showGroup && d.grouped && !groupOpts.some((o) => o.v === d.target)}
@@ -428,8 +466,8 @@
             </div>
           {/if}
         </div>
-      {/each}
-    </div>
+      </div>
+    {/if}
   {:else if cs.lastFetchError}
     <div class="hint err pad">{cs.lastFetchError}</div>
   {:else}
@@ -483,10 +521,40 @@
     text-transform: uppercase;
   }
   .rows { padding: 4px 14px 10px; display: flex; flex-direction: column; gap: 8px; }
-  .pagesrows { padding-top: 0; gap: 0; }
   .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .slot { border-bottom: 1px solid var(--wash); padding: 8px 0; }
-  .slot:last-child { border-bottom: none; }
+  .slot { padding: 8px 0; }
+  .pagestrip { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 8px; }
+  .pchip {
+    min-width: 24px;
+    height: 24px;
+    padding: 0 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-faint);
+    background: transparent;
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    position: relative;
+  }
+  .pchip.set { color: var(--text-dim); background: var(--wash-faint); border-style: solid; }
+  .pchip:hover:not(.sel) { color: var(--text); background: var(--wash); }
+  .pchip.sel { color: var(--text); border-color: var(--accent); background: color-mix(in oklab, var(--accent) 12%, transparent); }
+  .pchip.showing { color: var(--ok); }
+  .pchip.showing.sel { border-color: var(--ok); background: color-mix(in oklab, var(--ok) 12%, transparent); }
+  .pchip.staged::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 4px var(--accent);
+  }
+  .pchip:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   .slothead {
     display: flex;
     align-items: center;

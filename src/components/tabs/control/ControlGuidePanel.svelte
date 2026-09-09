@@ -1,8 +1,15 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
+
+  let open = $state(false);
 </script>
 
 <Panel code="CT.06" title="GUIDE">
+  {#snippet right()}
+    <button type="button" class="chip" aria-expanded={open}
+      onclick={() => { open = !open; }}>{open ? 'HIDE' : 'SHOW'}</button>
+  {/snippet}
+  {#if open}
   <div class="body">
     <div class="sect">
       <div class="microlbl">CONTROL INTERFACES</div>
@@ -71,6 +78,7 @@
       </div>
     </div>
   </div>
+  {/if}
 </Panel>
 
 <style>
