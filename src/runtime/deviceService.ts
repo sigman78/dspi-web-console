@@ -73,11 +73,10 @@ export const MIN_CS_CAPS_VERSION = 2;
 // preset-reload nouns and the CS_UNIT_MS unit; v5 changed an upmix enum
 // signal, nothing this console models; v6 = CS_MAX_IR_COMMANDS 8->16 and the
 // 41-byte GetCsStatus layout; v7 = the loudness reference/intensity nouns;
-// v8 = indicator on/off delays and the INPUT_LEVEL_MAX noun; v12's
-// base_bright (byte 9) is modeled too; v9's target groups are modeled but
-// its macros are not, so this stays 8 until they land; displays (v10-v11)
-// are not; v14's subharm nouns are labelled).
-export const MAX_KNOWN_CS_CAPS_VERSION = 8;
+// v8 = indicator on/off delays and the INPUT_LEVEL_MAX noun; v9's target
+// groups and macros are both modeled; v10-v11's displays are not; v12's
+// base_bright (byte 9) is modeled too; v14's subharm nouns are labelled).
+export const MAX_KNOWN_CS_CAPS_VERSION = 9;
 
 // Control Surfaces mirror of fetchCtrlIfaceInfo: caps (host order: header,
 // then per-noun descriptors -- DspDevice owns that loop), live status, then
@@ -116,13 +115,24 @@ export async function fetchControlSurfaces(s: ReadySession): Promise<void> {
     }
     const groupCount = Math.min(caps.maxGroups, Domain.CS_MAX_GROUPS);
     let groups: (Domain.CsGroup | null)[] | null = null;
-    let extStatus: Domain.CsExtStatus | null = null;
     if (groupCount > 0) {
       groups = [];
       for (let g = 0; g < groupCount; g++) {
         const grp = await s.queue.run(() => d.getCsGroup(g));
         groups.push(grp.targetKind === Domain.CS_TARGET_NONE ? null : grp);
       }
+    }
+    const macroCount = Math.min(caps.maxMacros, Domain.CS_MAX_MACROS);
+    let macros: (Domain.CsMacro | null)[] | null = null;
+    if (macroCount > 0) {
+      macros = [];
+      for (let m = 0; m < macroCount; m++) {
+        const macro = await s.queue.run(() => d.getCsMacro(m));
+        macros.push(Domain.csMacroIsEmpty(macro) ? null : macro);
+      }
+    }
+    let extStatus: Domain.CsExtStatus | null = null;
+    if (groupCount > 0 || macroCount > 0) {
       extStatus = await s.queue.run(() => d.getCsExtStatus());
     }
     s.controlSurfaces.caps = caps;
@@ -132,6 +142,7 @@ export async function fetchControlSurfaces(s: ReadySession): Promise<void> {
     s.controlSurfaces.names = names;
     if (irCommands) s.controlSurfaces.irCommands = irCommands;
     if (groups) s.controlSurfaces.groups = groups;
+    if (macros) s.controlSurfaces.macros = macros;
     if (extStatus) s.controlSurfaces.extStatus = extStatus;
     s.controlSurfaces.lastFetchError = null;
   } catch (err) {

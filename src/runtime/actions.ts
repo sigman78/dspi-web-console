@@ -1019,6 +1019,77 @@ export function clearCsGroup(s: ReadySession, idx: number): Promise<boolean> {
   return applyCsGroup(s, idx, Domain.EMPTY_CS_GROUP);
 }
 
+// caps v9 — macro apply (0x22 header + 0x24 steps, then status poll, reported
+// in last_slot as 0x60 | macro). Same shape as applyCsGroup: the macro and
+// ext status are re-read regardless of outcome, so a step that failed
+// mid-write shows exactly what landed on the device.
+export async function applyCsMacro(s: ReadySession, idx: number, m: Domain.CsMacro): Promise<boolean> {
+  let ok = false;
+  await command(s, 'set control-surface macro',
+    async () => {
+      const r = await s.device.setCsMacro(idx, m);
+      const live = await s.device.getCsMacro(idx);
+      const extStatus = await s.device.getCsExtStatus();
+      return { result: r.result, status: r.status, live, extStatus };
+    },
+    (r, s) => {
+      s.controlSurfaces.status = r.status;
+      s.controlSurfaces.macros[idx] = Domain.csMacroIsEmpty(r.live) ? null : r.live;
+      s.controlSurfaces.extStatus = r.extStatus;
+      if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      ok = true;
+    },
+  );
+  return ok;
+}
+
+export function clearCsMacro(s: ReadySession, idx: number): Promise<boolean> {
+  return applyCsMacro(s, idx, Domain.EMPTY_CS_MACRO);
+}
+
+// caps v9 — fire a macro (0x25, GET-style action, no status poll), then
+// refresh ext status so the RUNNING pill and step hint land immediately.
+export async function fireCsMacro(s: ReadySession, idx: number): Promise<boolean> {
+  let ok = false;
+  await command(s, 'fire control-surface macro',
+    async () => {
+      const result = await s.device.csMacroFire(idx);
+      const extStatus = await s.device.getCsExtStatus();
+      return { result, extStatus };
+    },
+    (r, s) => {
+      s.controlSurfaces.extStatus = r.extStatus;
+      if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      ok = true;
+    },
+  );
+  return ok;
+}
+
+// Cancel the running macro (0x25, wValue 0xFFFF); always succeeds on a live
+// device, so there is nothing to report beyond the refreshed ext status.
+export async function cancelCsMacro(s: ReadySession): Promise<void> {
+  await command(s, 'cancel control-surface macro',
+    async () => {
+      await s.device.csMacroCancel();
+      return s.device.getCsExtStatus();
+    },
+    (extStatus, s) => { s.controlSurfaces.extStatus = extStatus; },
+  );
+}
+
+// Ext-status refresh for the MACROS panel's running-macro poll. A plain
+// queued read, deliberately outside `command`: a failed tick is dropped
+// without a toast or a link-health mark, the next tick simply reads again.
+export async function refreshCsExtStatus(s: ReadySession): Promise<void> {
+  try {
+    const extStatus = await s.queue.run(() => s.device.getCsExtStatus());
+    if (s.alive) s.controlSurfaces.extStatus = extStatus;
+  } catch {
+    // dropped: the poll retries on its next tick
+  }
+}
+
 // V16 — Control Surfaces slot name (0x8B + status poll). Names are slot
 // metadata independent of the binding, so this is its own deferred apply on
 // the same shared status channel as the binding SET. Resolves true only when
@@ -1068,7 +1139,10 @@ export async function csRevertConfig(s: ReadySession): Promise<boolean> {
     async () => {
       const r = await s.device.csRevert();
       if (!r.result.ok) {
-        return { result: r.result, status: r.status, bindings: null, names: null, irCommands: null, groups: null, extStatus: null };
+        return {
+          result: r.result, status: r.status,
+          bindings: null, names: null, irCommands: null, groups: null, macros: null, extStatus: null,
+        };
       }
       const bindings: (Domain.CsBinding | null)[] = [];
       const names: string[] = [];
@@ -1088,16 +1162,27 @@ export async function csRevertConfig(s: ReadySession): Promise<boolean> {
       }
       const maxGroups = s.controlSurfaces.caps?.maxGroups ?? 0;
       let groups: (Domain.CsGroup | null)[] | null = null;
-      let extStatus: Domain.CsExtStatus | null = null;
       if (maxGroups > 0) {
         groups = [];
         for (let g = 0; g < Math.min(maxGroups, Domain.CS_MAX_GROUPS); g++) {
           const grp = await s.device.getCsGroup(g);
           groups.push(grp.targetKind === Domain.CS_TARGET_NONE ? null : grp);
         }
+      }
+      const maxMacros = s.controlSurfaces.caps?.maxMacros ?? 0;
+      let macros: (Domain.CsMacro | null)[] | null = null;
+      if (maxMacros > 0) {
+        macros = [];
+        for (let m = 0; m < Math.min(maxMacros, Domain.CS_MAX_MACROS); m++) {
+          const macro = await s.device.getCsMacro(m);
+          macros.push(Domain.csMacroIsEmpty(macro) ? null : macro);
+        }
+      }
+      let extStatus: Domain.CsExtStatus | null = null;
+      if (maxGroups > 0 || maxMacros > 0) {
         extStatus = await s.device.getCsExtStatus();
       }
-      return { result: r.result, status: r.status, bindings, names, irCommands, groups, extStatus };
+      return { result: r.result, status: r.status, bindings, names, irCommands, groups, macros, extStatus };
     },
     (r, s) => {
       s.controlSurfaces.status = r.status;
@@ -1105,6 +1190,7 @@ export async function csRevertConfig(s: ReadySession): Promise<boolean> {
       if (r.names) s.controlSurfaces.names = r.names;
       if (r.irCommands) s.controlSurfaces.irCommands = r.irCommands;
       if (r.groups) s.controlSurfaces.groups = r.groups;
+      if (r.macros) s.controlSurfaces.macros = r.macros;
       if (r.extStatus) s.controlSurfaces.extStatus = r.extStatus;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
       s.controlSurfaces.revertEpoch++;

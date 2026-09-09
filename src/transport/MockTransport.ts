@@ -19,10 +19,12 @@ import {
   isValidUartPinPair, isValidI2cPinPair, isValidUartBaud, isValidI2cAddress,
   CsType, CsKind, CsAction, CsIrProto,
   CS_GPIO_UNUSED, CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_MAX_GROUPS, CS_FLAG_INVERT, CS_FLAG_GROUP, CS_NDF_DEFERRED,
+  CS_MAX_MACROS, CS_MAX_MACRO_STEPS,
   CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q, CS_UNIT_PERCENT, CS_UNIT_MS,
   CS_TARGET_NONE, CS_TARGET_INPUT_CH, CS_TARGET_OUTPUT_CH, CS_TARGET_DSP_CH, CS_TARGET_DSP_BAND,
   CS_IR_LEARN_IDLE, CS_IR_LEARN_ARMED, CS_IR_LEARN_DONE, CS_IR_LEARN_TIMEOUT,
   dbToQ8, percentToQ8, qToQ8, msToQ8, validateCsBinding, validateCsIrCommand, validateCsGroup,
+  validateCsMacroStep, validateCsMacro,
   PRESET_SLOT_COUNT, FilterType,
   SPDIF_RX_MAX_INSTANCES, I2S_RX_MAX_PAIRS,
   defaultInputName, Proc,
@@ -30,7 +32,7 @@ import {
   type FilterParams,
   type CrossPoint, type OutputState,
   type UartControlConfig, type I2cControlConfig,
-  type CsCaps, type CsNounCaps, type CsGroup,
+  type CsCaps, type CsNounCaps, type CsGroup, type CsMacroStep,
 } from '@/domain';
 
 export interface MockOptions {
@@ -263,6 +265,31 @@ interface MockCsGroup {
 
 const emptyCsGroup = (): MockCsGroup => ({ targetKind: CS_TARGET_NONE, memberMask: 0, name: '' });
 
+// Wire-shaped stored macro step / macro (0x22-0x25, caps v9+).
+interface MockCsMacroStep {
+  noun: number; action: number; flags: number; target: number; index: number;
+  value: number; step: number; preDelay: number;
+}
+
+const emptyCsMacroStep = (): MockCsMacroStep => ({
+  noun: 0, action: 0, flags: 0, target: 0, index: 0, value: 0, step: 0, preDelay: 0,
+});
+
+interface MockCsMacro {
+  name: string; stepCount: number; steps: MockCsMacroStep[];
+}
+
+const emptyCsMacro = (): MockCsMacro => ({
+  name: '', stepCount: 0, steps: Array.from({ length: CS_MAX_MACRO_STEPS }, emptyCsMacroStep),
+});
+
+function macroStepAsDomain(s: MockCsMacroStep): CsMacroStep {
+  return {
+    noun: s.noun as never, action: s.action as never, flags: s.flags,
+    target: s.target, index: s.index, value: s.value, step: s.step, preDelay: s.preDelay,
+  };
+}
+
 function concatChunks(chunks: Uint8Array[]): Uint8Array {
   const total = chunks.reduce((n, c) => n + c.length, 0);
   const out = new Uint8Array(total);
@@ -389,6 +416,19 @@ export class MockTransport implements DspTransport {
   #csGroups: MockCsGroup[] = Array.from({ length: CS_MAX_GROUPS }, emptyCsGroup);
   #csGroupStatus: number[] = Array.from({ length: CS_MAX_GROUPS }, () => 0);
   #csSavedGroups: MockCsGroup[] = Array.from({ length: CS_MAX_GROUPS }, emptyCsGroup);
+
+  // Macros (0x22-0x25, caps v9+): same live-preview / deferred-SET model as
+  // groups above. Header (0x22) and step (0x24) SETs are separate opcodes but
+  // report through the SAME cs_last_status/last_slot channel (0x60 | macro),
+  // so a real host must serialise them -- DspDevice.setCsMacro does, by
+  // running the whole sequence inside one transport.exclusive.
+  #csMacros: MockCsMacro[] = Array.from({ length: CS_MAX_MACROS }, emptyCsMacro);
+  #csMacroStatus: number[] = Array.from({ length: CS_MAX_MACROS }, () => 0);
+  #csSavedMacros: MockCsMacro[] = Array.from({ length: CS_MAX_MACROS }, emptyCsMacro);
+  // The mock never runs CS actions -- only the sequencer's observable state
+  // (running index/current step, going idle on completion) is simulated,
+  // computed lazily from Date.now() in GetCsExtStatus rather than a timer.
+  #csMacroRun: { idx: number; startedAt: number; stepStart: number[]; endAt: number } | null = null;
 
   // Selectable system clock (fw overclock branch, 0x40/0x41).
   #sysClockStoredMode = 0;
@@ -1237,12 +1277,53 @@ export class MockTransport implements DspTransport {
         }
         return Codec.encode(Wire.CsGroup, this.#csGroups[value]);
       }
+      case WireCmd.GetCsMacro.code: {
+        if (this.#csCapsVersion < 9 || value >= CS_MAX_MACROS) {
+          throw new Error('MockTransport: GetCsMacro unsupported or slot out of range (STALL)');
+        }
+        const m = this.#csMacros[value];
+        return Codec.encode(Wire.CsMacro, { name: m.name, stepCount: m.stepCount, steps: m.steps });
+      }
+      case WireCmd.CsMacroFire.code: {
+        if (this.#csCapsVersion < 9) throw new Error('MockTransport: CsMacroFire unsupported (STALL)');
+        if (value === 0xFFFF) {
+          this.#csMacroRun = null;
+          return new Uint8Array([1]);
+        }
+        if (value >= CS_MAX_MACROS) throw new Error('MockTransport: CsMacroFire slot out of range (STALL)');
+        const m = this.#csMacros[value];
+        const n = m.stepCount;
+        if (n === 0) {
+          this.#csMacroRun = null;
+          return new Uint8Array([1]);
+        }
+        const stepStart: number[] = [];
+        let acc = 0;
+        for (let k = 0; k < n; k++) {
+          stepStart.push(acc);
+          acc += m.steps[k].preDelay * 10;
+        }
+        this.#csMacroRun = { idx: value, startedAt: Date.now(), stepStart, endAt: acc };
+        return new Uint8Array([1]);
+      }
       case WireCmd.GetCsExtStatus.code: {
         if (this.#csCapsVersion < 9) throw new Error('MockTransport: GetCsExtStatus unsupported (STALL)');
+        let macroRunning = 0xFF;
+        let macroStep = 0;
+        const run = this.#csMacroRun;
+        if (run) {
+          const elapsed = Date.now() - run.startedAt;
+          if (elapsed >= run.endAt) {
+            this.#csMacroRun = null;
+          } else {
+            macroRunning = run.idx;
+            macroStep = run.stepStart.reduce((best, t, k) => (t <= elapsed ? k : best), 0);
+          }
+        }
         return Codec.encode(Wire.CsExtStatusPacket, {
-          maxGroups: CS_MAX_GROUPS, maxMacros: 8, maxMacroSteps: 8,
-          macroRunning: 0xFF, macroStep: 0,
-          groupStatus: this.#csGroupStatus.slice(), macroStatus: Array.from({ length: 8 }, () => 0),
+          maxGroups: CS_MAX_GROUPS, maxMacros: CS_MAX_MACROS, maxMacroSteps: CS_MAX_MACRO_STEPS,
+          macroRunning, macroStep,
+          groupStatus: this.#csGroupStatus.slice(), macroStatus: this.#csMacroStatus.slice(),
         });
       }
       case WireCmd.CsIrLearn.code: {
@@ -1283,6 +1364,7 @@ export class MockTransport implements DspTransport {
         this.#csSavedNames = this.#csNames.slice();
         this.#csSavedIrCommands = this.#csIrCommands.map((c) => ({ ...c }));
         this.#csSavedGroups = this.#csGroups.map((g) => ({ ...g }));
+        this.#csSavedMacros = this.#csMacros.map((m) => ({ ...m, steps: m.steps.map((st) => ({ ...st })) }));
         this.#csDirty = false;
         this.#csLastSlot = 0xFF;
         this.#csLastStatus = 0x00;
@@ -1296,9 +1378,12 @@ export class MockTransport implements DspTransport {
         this.#csNames = this.#csSavedNames.slice();
         this.#csIrCommands = this.#csSavedIrCommands.map((c) => ({ ...c }));
         this.#csGroups = this.#csSavedGroups.map((g) => ({ ...g }));
+        this.#csMacros = this.#csSavedMacros.map((m) => ({ ...m, steps: m.steps.map((st) => ({ ...st })) }));
+        this.#csMacroRun = null;
         this.#csIrCmdStatus = this.#csIrCmdStatus.map(() => 0);
         this.#csSlotStatus = this.#csSlotStatus.map(() => 0);
         this.#csGroupStatus = this.#csGroupStatus.map(() => 0);
+        this.#csMacroRecount();
         this.#csDirty = false;
         this.#csLastSlot = 0xFF;
         this.#csLastStatus = 0x00;
@@ -1695,6 +1780,42 @@ export class MockTransport implements DspTransport {
         this.#csLastSlot = 0x40 | value;
         this.#csPendingPolls = 1;
         this.#csLastStatus = this.#applyCsGroup(value, w);
+        return;
+      }
+
+      case WireCmd.SetCsMacro.code: {
+        if (this.#csCapsVersion < 9) throw new Error('MockTransport: SetCsMacro unsupported (STALL)');
+        if (value >= CS_MAX_MACROS) {
+          // Bad slot is rejected immediately, no PENDING window.
+          this.#csLastStatus = 0x20;                  // CS_STATUS_INVALID_MACRO
+          this.#csLastSlot = 0x60 | (value & 0xFF);
+          return;
+        }
+        const h = Codec.decode(Wire.CsMacroHeader, data);
+        this.#csLastSlot = 0x60 | value;
+        this.#csPendingPolls = 1;
+        this.#csLastStatus = this.#applyCsMacroHeader(value, h);
+        return;
+      }
+
+      case WireCmd.SetCsMacroStep.code: {
+        if (this.#csCapsVersion < 9) throw new Error('MockTransport: SetCsMacroStep unsupported (STALL)');
+        const idx = value & 0xFF;
+        const step = (value >> 8) & 0xFF;
+        if (idx >= CS_MAX_MACROS) {
+          this.#csLastStatus = 0x20;                  // CS_STATUS_INVALID_MACRO
+          this.#csLastSlot = 0x60 | idx;
+          return;
+        }
+        if (step >= CS_MAX_MACRO_STEPS) {
+          this.#csLastStatus = 0x21;                  // CS_STATUS_INVALID_STEP
+          this.#csLastSlot = 0x60 | idx;
+          return;
+        }
+        const w = Codec.decode(Wire.CsMacroStep, data);
+        this.#csLastSlot = 0x60 | idx;
+        this.#csPendingPolls = 1;
+        this.#csLastStatus = this.#applyCsMacroStep(idx, step, w);
         return;
       }
 
@@ -2099,7 +2220,43 @@ export class MockTransport implements DspTransport {
         caps, this.#csNouns, groups,
       );
     });
+    this.#csMacroRecount();
     return 0x00;
+  }
+
+  // Validate + apply one macro header (name + step_count), mirroring
+  // control_surfaces_apply_macro_header. Existing stored steps are untouched
+  // -- a running macro whose tail is cut off finishes at the new boundary.
+  #applyCsMacroHeader(idx: number, h: { name: string; stepCount: number }): number {
+    if (h.stepCount > CS_MAX_MACRO_STEPS) return 0x20;            // InvalidMacro
+    this.#csMacros[idx] = { ...this.#csMacros[idx], name: h.name, stepCount: h.stepCount };
+    this.#csDirty = true;
+    this.#csMacroRecount();
+    return 0x00;
+  }
+
+  // Validate + apply one macro step, mirroring
+  // control_surfaces_apply_macro_step: a rejected step leaves the previously
+  // stored one intact.
+  #applyCsMacroStep(idx: number, step: number, w: MockCsMacroStep): number {
+    const status = validateCsMacroStep(macroStepAsDomain(w), this.#csNouns, this.#csGroupsAsDomain());
+    if (status !== 0x00) return status;
+    this.#csMacros[idx].steps[step] = { ...w };
+    this.#csDirty = true;
+    this.#csMacroRecount();
+    return 0x00;
+  }
+
+  // Per-macro status recount, mirroring cs_macro_recount_status: the status
+  // of the highest-index failing step among [0, stepCount), 0 if none fail.
+  // Runs after every header/step apply, after a group apply (a cleared group
+  // can invalidate a dependent macro step), and after load/revert.
+  #csMacroRecount(): void {
+    const groups = this.#csGroupsAsDomain();
+    this.#csMacroStatus = this.#csMacros.map((m) => validateCsMacro(
+      { name: m.name, stepCount: m.stepCount, steps: m.steps.map(macroStepAsDomain) },
+      this.#csNouns, groups,
+    ));
   }
 
   #validateUartConfig(cfg: { txPin: number; rxPin: number; baud: number }): number {

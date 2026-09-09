@@ -279,6 +279,37 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(status.macroStatus[7]).toBe(0xAA);
   });
 
+  it('CsMacroStep encodes and decodes its 12-byte image', () => {
+    const step = { noun: 7, action: 5, flags: 0, target: 0, index: 0, value: 1, step: 0, preDelay: 150 };
+    const bytes = Codec.encode(Wire.CsMacroStep, step);
+    expect(bytes).toEqual(Uint8Array.from([
+      0x07, 0x05, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x96, 0x00,
+    ]));
+    expect(Codec.decode(Wire.CsMacroStep, bytes)).toEqual(step);
+  });
+
+  it('CsMacroHeader encodes name + step count into the 36-byte image with zeroed reserved bytes', () => {
+    const bytes = Codec.encode(Wire.CsMacroHeader, { name: 'Night', stepCount: 2 });
+    expect(bytes).toHaveLength(36);
+    expect(Array.from(bytes.subarray(0, 6))).toEqual([0x4E, 0x69, 0x67, 0x68, 0x74, 0x00]);
+    expect(Array.from(bytes.subarray(32))).toEqual([2, 0, 0, 0]);
+  });
+
+  it('CsMacro is 132 bytes and decodes steps[1].preDelay at its own offset', () => {
+    expect(Codec.sizeOf(Wire.CsMacro)).toBe(132);
+    const steps = Array.from({ length: 8 }, () => (
+      { noun: 0, action: 0, flags: 0, target: 0, index: 0, value: 0, step: 0, preDelay: 0 }
+    ));
+    const bytes = Codec.encode(Wire.CsMacro, { name: 'AB', stepCount: 2, steps });
+    // steps[1] starts at offset 36 + 12 = 48; preDelay is the last 2 bytes of
+    // a 12-byte step, so at 48 + 10 = 58.
+    bytes[58] = 0x34;
+    bytes[59] = 0x12;
+    const macro = Codec.decode(Wire.CsMacro, bytes);
+    expect(macro.steps).toHaveLength(8);
+    expect(macro.steps[1].preDelay).toBe(0x1234);
+  });
+
   it('SpdifRxStatus is 16 bytes and round-trips its fields', () => {
     expect(Codec.sizeOf(Wire.SpdifRxStatus)).toBe(16);
     const bytes = Codec.encode(Wire.SpdifRxStatus, {

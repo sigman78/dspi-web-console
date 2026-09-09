@@ -4,9 +4,9 @@
 // runtime/deviceService.ts), like ctrlIfaces.
 
 import {
-  CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_MAX_GROUPS,
+  CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_MAX_GROUPS, CS_MAX_MACROS,
   type CsBinding, type CsCaps, type CsNounCaps, type CsStatus, type CsIrCommand,
-  type CsGroup, type CsExtStatus,
+  type CsGroup, type CsExtStatus, type CsMacro,
 } from '@/domain';
 
 // Learn sub-state, mirroring GetCsStatus.irLearnState / the CsIrLearn(2)
@@ -29,8 +29,9 @@ export interface ControlSurfacesState {
   irCommands: (CsIrCommand | null)[];   // indexed by sub-slot; null = empty (protocol NONE)
   irLearn: CsIrLearnState | null;
   status: CsStatus | null;
-  // Target groups (caps v9+); stays all-null/null on older firmware.
+  // Target groups and macros (caps v9+); stay all-null on older firmware.
   groups: (CsGroup | null)[];   // indexed by group; null = empty slot
+  macros: (CsMacro | null)[];   // indexed by macro; null = empty slot
   extStatus: CsExtStatus | null;
   // Bumped after a successful csRevertConfig so every CS panel drops its
   // local drafts -- the GROUPS panel has no parent to receive a reset prop.
@@ -50,6 +51,7 @@ export function createControlSurfacesState(): ControlSurfacesState {
     irLearn: null,
     status: null,
     groups: Array.from({ length: CS_MAX_GROUPS }, () => null),
+    macros: Array.from({ length: CS_MAX_MACROS }, () => null),
     extStatus: null,
     revertEpoch: 0,
     busy: false,

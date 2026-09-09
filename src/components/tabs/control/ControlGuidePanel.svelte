@@ -33,6 +33,15 @@
       </div>
     </div>
     <div class="sect">
+      <div class="microlbl">MACROS</div>
+      <div class="hint">
+        A macro is a named list of up to 8 steps — set a value, toggle, step,
+        or trigger — each after an optional delay. Bind a button or remote key
+        to the Macro function to fire it, or use FIRE here. One macro runs at
+        a time; firing another cancels the first at its next step.
+      </div>
+    </div>
+    <div class="sect">
       <div class="microlbl">WIRING</div>
       <div class="hint">
         Buttons and switches wire between the GPIO and GND (internal pull-up).

@@ -81,12 +81,12 @@
     return 'Active-high wiring';
   }
 
-  function valueLabel(d: Draft): string { return CsField.valueLabel(d.action, contOf(d)); }
+  function valueLabel(d: Draft): string { return CsField.valueLabel(d.action, contOf(d), d.noun); }
 
   function boolValueOptions(d: Draft): { v: number; label: string }[] { return CsField.boolValueOptions(d.noun); }
 
   function enumValueOptions(d: Draft): { v: number; label: string }[] {
-    return CsField.enumValueOptions(cs.nouns, d.noun, s.presets.names);
+    return CsField.enumValueOptions(cs.nouns, d.noun, s.presets.names, cs.macros);
   }
 
   function targetOptionsFor(d: Draft): { v: number; label: string }[] {

@@ -87,6 +87,12 @@ export const CsNoun = {
   LoudnessIntensity:  50,
   // caps v8 addition. Read-only, IND actions only, untargeted.
   InputLevelMax:      51,
+  // caps v9 addition. SET fires the macro `value`; IND_EQUALS lights while it
+  // runs. INC/DEC are deliberately excluded (stepping would fire while browsing).
+  Macro:              52,
+  // caps v10 addition, listed only because a macro step must reject it (no
+  // nesting) -- the display panel itself is out of scope here.
+  PageValue:          56,
   // caps v14 additions. Both platforms -- unlike the upmix nouns above there
   // is no RP2350 gate on the subharmonic synthesizer.
   Subharm:            57,
@@ -164,6 +170,8 @@ export const CS_KNOWN_FLAGS  = CS_FLAG_INVERT | CS_FLAG_REVERSE | CS_FLAG_WRAP |
 
 export const CS_MAX_BINDINGS = 16;
 export const CS_MAX_GROUPS   = 8;
+export const CS_MAX_MACROS      = 8;
+export const CS_MAX_MACRO_STEPS = 8;
 export const CS_GPIO_UNUSED  = 0xFF;
 export const CS_NAME_MAX_LEN = 31;   // bytes, UTF-8 (32-byte NUL-terminated window)
 
@@ -290,9 +298,66 @@ export interface CsGroup {
 
 export const EMPTY_CS_GROUP: CsGroup = { targetKind: CS_TARGET_NONE, memberMask: 0, name: '' };
 
+// The action subset a macro step may carry (caps v9+): SET/TOGGLE/INC/DEC/
+// TRIGGER -- no pot/encoder/indicator actions, MOMENTARY, or FOLLOW. A step is
+// a scripted change, not a live control.
+export const CS_MACRO_STEP_ACTIONS =
+  (1 << CsAction.Set) | (1 << CsAction.Toggle) | (1 << CsAction.Inc) | (1 << CsAction.Dec) | (1 << CsAction.Trigger);
+
+export const CS_MACRO_STEP_FLAGS = CS_FLAG_WRAP | CS_FLAG_GROUP;
+
+// One macro step (caps v9+, element of CsMacro.steps / SET payload of
+// SetCsMacroStep). value/step follow the same raw wire encoding as
+// CsBinding's fields of the same names; preDelay is 10 ms units, elapsing
+// before the step runs. `target` is a group index instead of a channel when
+// CS_FLAG_GROUP is set, same as CsBinding.
+export interface CsMacroStep {
+  noun: CsNoun;
+  action: CsAction;
+  flags: number;
+  target: number;
+  index: number;
+  value: number;
+  step: number;
+  preDelay: number;
+}
+
+// An all-zero record: always valid, skipped at run time.
+export const EMPTY_CS_MACRO_STEP: CsMacroStep = {
+  noun: CsNoun.UserVolume, action: CsAction.Adjust, flags: 0, target: 0, index: 0,
+  value: 0, step: 0, preDelay: 0,
+};
+
+// One macro (caps v9+, GetCsMacro 0x23 response / target of SetCsMacro
+// 0x22 + SetCsMacroStep 0x24): a named list of up to CS_MAX_MACRO_STEPS
+// steps, fired in sequence by CS_NOUN_MACRO or CsMacroFire. `steps` is
+// always the full wire-length array; execution and validity only consider
+// `steps[0..stepCount)` -- a stale tail step beyond stepCount is inert.
+export interface CsMacro {
+  name: string;
+  stepCount: number;
+  steps: CsMacroStep[];
+}
+
+export const EMPTY_CS_MACRO: CsMacro = {
+  name: '', stepCount: 0,
+  steps: Array.from({ length: CS_MAX_MACRO_STEPS }, () => ({ ...EMPTY_CS_MACRO_STEP })),
+};
+
+export function csMacroStepIsEmpty(s: CsMacroStep): boolean {
+  return s.noun === CsNoun.UserVolume && s.action === CsAction.Adjust && s.flags === 0 &&
+    s.target === 0 && s.index === 0 && s.value === 0 && s.step === 0 && s.preDelay === 0;
+}
+
+// The panel's "slot free" test: a stale tail step beyond stepCount doesn't
+// count, so a macro with leftover step data from a shrunk header still reads
+// as empty here.
+export function csMacroIsEmpty(m: CsMacro): boolean {
+  return m.name === '' && m.stepCount === 0;
+}
+
 // GetCsExtStatus (0x26) packet: group/macro ceilings and per-slot validity.
-// Macro fields are decoded but not modeled beyond that -- 0x22-0x25 remain
-// unimplemented.
+// Macro fields (0x22-0x25) are modeled -- see CsMacro/CsMacroStep above.
 export interface CsExtStatus {
   maxGroups: number;
   maxMacros: number;
@@ -444,6 +509,8 @@ export const CS_NOUN_LABEL: Record<CsNoun, string> = {
   [CsNoun.LoudnessSpl]:       'Loudness Reference SPL',
   [CsNoun.LoudnessIntensity]: 'Loudness Intensity',
   [CsNoun.InputLevelMax]:     'Input Signal Level',
+  [CsNoun.Macro]:             'Macro',
+  [CsNoun.PageValue]:         'Display Page Value',
   [CsNoun.Subharm]:           'Subharmonic Synth',
   [CsNoun.SubharmLow]:        'Subharm 24–36 Hz',
   [CsNoun.SubharmHigh]:       'Subharm 36–56 Hz',
@@ -754,4 +821,63 @@ export function validateCsIrCommand(
     if (cmd.action === CsAction.Set && (cmd.value < 0 || cmd.value >= noun.enumCount)) return 0x14;
   }
   return 0x00;
+}
+
+// Client-side pre-validation for one macro step, mirroring fw
+// cs_validate_macro_step's order exactly: empty -> 0; noun bounds/MACRO/
+// PAGE_VALUE -> INVALID_STEP; action outside the step subset -> INVALID_STEP;
+// unknown flags -> INVALID_STEP; action not allowed by the noun's own mask ->
+// INVALID_ACTION; target (group ref or plain) -> INVALID_GROUP/INVALID_TARGET;
+// then value/step bounds as if the step were a BUTTON binding (no range
+// fields on a step). preDelay's 16-bit bound is a client-side guard fw
+// enforces structurally (the wire field is a u16).
+export function validateCsMacroStep(
+  s: CsMacroStep, nouns: readonly CsNounCaps[], groups: readonly (CsGroup | null)[] = [],
+): number {
+  if (csMacroStepIsEmpty(s)) return 0x00;
+  if (s.noun >= nouns.length || s.noun === CsNoun.Macro || s.noun === CsNoun.PageValue) return 0x21; // INVALID_STEP
+  if (s.action >= CS_ACTION_COUNT || !(CS_MACRO_STEP_ACTIONS & (1 << s.action))) return 0x21;         // INVALID_STEP
+  if (s.flags & ~CS_MACRO_STEP_FLAGS) return 0x21;                                                    // INVALID_STEP
+
+  const noun = nouns[s.noun];
+  if (!(noun.actions & (1 << s.action))) return 0x13;             // INVALID_ACTION
+
+  const targetStatus = (s.flags & CS_FLAG_GROUP)
+    ? validateCsGroupRef(s, noun, groups)
+    : validateCsTarget(s, noun);
+  if (targetStatus !== 0x00) return targetStatus;
+
+  if (noun.kind === CsKind.Continuous) {
+    if (s.action === CsAction.Set && (s.value < noun.minQ8 || s.value > noun.maxQ8)) return 0x14;
+    if (s.step < 0) return 0x14;
+  } else if (noun.kind === CsKind.Bool) {
+    if (s.action === CsAction.Set && s.value !== 0 && s.value !== 1) return 0x14;
+  } else if (noun.kind === CsKind.Enum) {
+    if (s.action === CsAction.Set && (s.value < 0 || s.value >= noun.enumCount)) return 0x14;
+  }
+  if (s.preDelay < 0 || s.preDelay > 0xFFFF) return 0x14;
+  return 0x00;
+}
+
+// fw control_surfaces_apply_macro_header: step_count above the ceiling ->
+// INVALID_MACRO.
+export function validateCsMacroHeader(m: { stepCount: number }): number {
+  return m.stepCount > CS_MAX_MACRO_STEPS ? 0x20 : 0x00;   // INVALID_MACRO
+}
+
+// Client-side pre-validation for a stored macro, mirroring
+// cs_macro_recount_status: header bounds first, then the status of the
+// highest-index failing step among [0, stepCount) -- 0 if none fail. A step
+// beyond stepCount is stale and never considered.
+export function validateCsMacro(
+  m: CsMacro, nouns: readonly CsNounCaps[], groups: readonly (CsGroup | null)[] = [],
+): number {
+  const headerStatus = validateCsMacroHeader(m);
+  if (headerStatus !== 0x00) return headerStatus;
+  let worst = 0x00;
+  for (let k = 0; k < m.stepCount; k++) {
+    const status = validateCsMacroStep(m.steps[k], nouns, groups);
+    if (status !== 0x00) worst = status;
+  }
+  return worst;
 }

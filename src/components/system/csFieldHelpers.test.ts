@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CsKind,
+  CsNoun, CsKind,
   CS_UNIT_NONE, CS_UNIT_HZ,
   CS_TARGET_NONE, CS_TARGET_INPUT_CH, CS_TARGET_OUTPUT_CH, CS_TARGET_DSP_CH, CS_TARGET_DSP_BAND,
-  type CsNounCaps, type CsGroup, type ChannelModel,
+  EMPTY_CS_MACRO,
+  type CsNounCaps, type CsGroup, type CsMacro, type ChannelModel,
 } from '@/domain';
-import { groupOptionsFor, groupBandOptionsFor } from './csFieldHelpers';
+import { groupOptionsFor, groupBandOptionsFor, enumValueOptions } from './csFieldHelpers';
 
 function channel(over: Partial<ChannelModel>): ChannelModel {
   return {
@@ -35,6 +36,28 @@ describe('groupOptionsFor', () => {
     ];
     expect(groupOptionsFor(nouns, 0, groups)).toEqual([{ v: 0, label: 'Group 1 · Fronts' }]);
     expect(groupOptionsFor(nouns, 1, groups)).toEqual([{ v: 3, label: 'Group 4 · Woofer' }]);
+  });
+});
+
+describe('enumValueOptions on the Macro noun', () => {
+  it('labels each slot with its name, or leaves it unnamed', () => {
+    const disabledNoun: CsNounCaps = {
+      kind: CsKind.Bool, enumCount: 0, actions: 0, minQ8: 0, maxQ8: 0,
+      unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
+    };
+    const macroNoun: CsNounCaps = {
+      kind: CsKind.Enum, enumCount: 8, actions: 0, minQ8: 0, maxQ8: 0,
+      unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
+    };
+    const macroNouns: CsNounCaps[] = [...Array(CsNoun.Macro).fill(disabledNoun), macroNoun];
+    const macros: (CsMacro | null)[] = [
+      { ...EMPTY_CS_MACRO, name: 'Night', stepCount: 1 },
+      null,
+    ];
+    const options = enumValueOptions(macroNouns, CsNoun.Macro, [], macros);
+    expect(options).toHaveLength(8);
+    expect(options[0]).toEqual({ v: 0, label: 'Macro 1 · Night' });
+    expect(options[1]).toEqual({ v: 1, label: 'Macro 2' });
   });
 });
 

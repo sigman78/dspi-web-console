@@ -6,8 +6,9 @@ import {
   CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q,
   CS_TARGET_NONE, CS_TARGET_INPUT_CH, CS_TARGET_OUTPUT_CH, CS_TARGET_DSP_CH, CS_TARGET_DSP_BAND,
   dbToQ8, q8ToDb, legalActions, validateCsBinding, validateCsIrCommand, validateCsGroup, liveCsPinConfigs,
-  EMPTY_CS_BINDING, EMPTY_CS_IR_COMMAND, EMPTY_CS_GROUP,
-  type CsBinding, type CsCaps, type CsNounCaps, type CsStatus, type CsIrCommand, type CsGroup,
+  validateCsMacroStep, validateCsMacro,
+  EMPTY_CS_BINDING, EMPTY_CS_IR_COMMAND, EMPTY_CS_GROUP, EMPTY_CS_MACRO_STEP,
+  type CsBinding, type CsCaps, type CsNounCaps, type CsStatus, type CsIrCommand, type CsGroup, type CsMacroStep,
 } from './controlSurfaces';
 
 // Firmware caps-v3 tables as TEST INPUTS (the console itself reads them from
@@ -88,6 +89,14 @@ const groups: (CsGroup | null)[] = [
   { targetKind: CS_TARGET_DSP_CH, memberMask: 0b1000, name: 'Woofer Band' },   // 3
   { targetKind: CS_TARGET_INPUT_CH, memberMask: 0b100, name: 'Out of Range' }, // 4
 ];
+
+// caps v9 noun table: the v3 fixture above (0..22) plus 29 disabled
+// placeholders (23..51) so CS_NOUN_MACRO lands at its real wire index, 52.
+const macroNoun: CsNounCaps = {
+  kind: CsKind.Enum, enumCount: 8, actions: (1 << CsAction.Set) | (1 << CsAction.IndEquals),
+  minQ8: 0, maxQ8: 0, unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
+};
+const nounsV9: CsNounCaps[] = [...nouns, ...Array(29).fill(disabledNoun), macroNoun];
 
 describe('q8.8 conversion', () => {
   it('converts dB to signed 8.8 fixed point per the spec examples', () => {
@@ -482,6 +491,98 @@ describe('validateCsIrCommand', () => {
       noun: CsNoun.Preamp, action: CsAction.Inc, protocol: CsIrProto.Nec, code: 1, flags: CS_FLAG_LINK_ABS,
     });
     expect(validateCsIrCommand(cmd, capsV10, nouns, groups)).toBe(0x14);
+  });
+});
+
+describe('validateCsMacroStep', () => {
+  function macroStep(over: Partial<CsMacroStep>): CsMacroStep {
+    return { ...EMPTY_CS_MACRO_STEP, ...over };
+  }
+
+  it('accepts the empty (all-zero) step', () => {
+    expect(validateCsMacroStep(EMPTY_CS_MACRO_STEP, nounsV9)).toBe(0x00);
+  });
+
+  it('rejects the MACRO noun itself with INVALID_STEP (no nesting)', () => {
+    expect(validateCsMacroStep(macroStep({ noun: CsNoun.Macro, action: CsAction.Set }), nounsV9)).toBe(0x21);
+  });
+
+  it('rejects an action outside the macro step subset with INVALID_STEP', () => {
+    expect(validateCsMacroStep(macroStep({
+      noun: CsNoun.MasterVolume, action: CsAction.Adjust,
+    }), nounsV9)).toBe(0x21);
+  });
+
+  it('rejects a flag outside WRAP|GROUP with INVALID_STEP', () => {
+    expect(validateCsMacroStep(macroStep({
+      noun: CsNoun.Preamp, action: CsAction.Set, flags: CS_FLAG_LINK_ABS, value: dbToQ8(0),
+    }), nounsV9)).toBe(0x21);
+  });
+
+  it('rejects an action outside the noun mask with INVALID_ACTION', () => {
+    // CLIP only takes TRIGGER/IND_EQUALS; SET is not in its mask.
+    expect(validateCsMacroStep(macroStep({ noun: CsNoun.Clip, action: CsAction.Set }), nounsV9)).toBe(0x13);
+  });
+
+  it('validates a grouped target the same as a binding: matching kind ok, wrong kind INVALID_GROUP', () => {
+    const grouped = macroStep({
+      noun: CsNoun.Preamp, action: CsAction.Set, flags: CS_FLAG_GROUP, value: dbToQ8(0),
+    });
+    expect(validateCsMacroStep({ ...grouped, target: 0 }, nounsV9, groups)).toBe(0x00);   // input pair
+    expect(validateCsMacroStep({ ...grouped, target: 1 }, nounsV9, groups)).toBe(0x1F);   // output-kind group
+  });
+
+  it('rejects a continuous SET value above the noun ceiling with INVALID_VALUE', () => {
+    expect(validateCsMacroStep(macroStep({
+      noun: CsNoun.Preamp, action: CsAction.Set, target: 0, value: 6145,
+    }), nounsV9)).toBe(0x14);
+  });
+
+  it('rejects a negative step size on a continuous INC with INVALID_VALUE', () => {
+    expect(validateCsMacroStep(macroStep({
+      noun: CsNoun.MasterVolume, action: CsAction.Inc, step: -1,
+    }), nounsV9)).toBe(0x14);
+  });
+
+  it('rejects an enum SET at/above enum_count, accepts the top legal value', () => {
+    expect(validateCsMacroStep(macroStep({
+      noun: CsNoun.Preset, action: CsAction.Set, value: 10,
+    }), nounsV9)).toBe(0x14);
+    expect(validateCsMacroStep(macroStep({
+      noun: CsNoun.Preset, action: CsAction.Set, value: 9,
+    }), nounsV9)).toBe(0x00);
+  });
+
+  it('rejects a target at/above the noun addressing with INVALID_TARGET', () => {
+    expect(validateCsMacroStep(macroStep({
+      noun: CsNoun.OutputMute, action: CsAction.Toggle, target: 2,
+    }), nounsV9)).toBe(0x00);
+    expect(validateCsMacroStep(macroStep({
+      noun: CsNoun.OutputMute, action: CsAction.Toggle, target: 3,
+    }), nounsV9)).toBe(0x17);
+  });
+});
+
+describe('validateCsMacro', () => {
+  const okStep: CsMacroStep = { ...EMPTY_CS_MACRO_STEP, noun: CsNoun.OutputMute, action: CsAction.Toggle, target: 0 };
+  const badStep: CsMacroStep = {
+    ...EMPTY_CS_MACRO_STEP, noun: CsNoun.Preamp, action: CsAction.Set, target: 0, value: 9999,
+  };
+  const filler = Array.from({ length: 5 }, () => EMPTY_CS_MACRO_STEP);
+
+  it('rejects a step_count above CS_MAX_MACRO_STEPS with INVALID_MACRO', () => {
+    const steps = Array.from({ length: 8 }, () => EMPTY_CS_MACRO_STEP);
+    expect(validateCsMacro({ name: '', stepCount: 9, steps }, nounsV9)).toBe(0x20);
+  });
+
+  it('reports the failing step status when it falls within stepCount', () => {
+    const steps = [okStep, badStep, okStep, ...filler];
+    expect(validateCsMacro({ name: '', stepCount: 3, steps }, nounsV9)).toBe(0x14);
+  });
+
+  it('ignores a bad step beyond stepCount', () => {
+    const steps = [okStep, badStep, okStep, ...filler];
+    expect(validateCsMacro({ name: '', stepCount: 1, steps }, nounsV9)).toBe(0x00);
   });
 });
 
