@@ -1,15 +1,14 @@
 <script lang="ts">
   // Macros (caps v9+): a named sequence of up to CS_MAX_MACRO_STEPS steps,
   // fired by CS_NOUN_MACRO or the FIRE chip here. Sibling of CsGroupsPanel --
-  // same fw dirty flag/save/revert, no parent of its own so it watches
-  // cs.revertEpoch instead of a reset prop.
+  // same fw dirty flag; save/discard live in the CHANGES panel. No parent of
+  // its own so it watches cs.revertEpoch instead of a reset prop.
   import { untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { connection } from '@/state';
   import {
     applyCsMacro, clearCsMacro, fireCsMacro, cancelCsMacro, refreshCsExtStatus,
-    csSaveConfig, csRevertConfig,
   } from '@/runtime';
   import * as Domain from '@/domain';
   import { csStatusFromByte } from '@/protocol';
@@ -36,6 +35,17 @@
       .filter((i) => cs.macros[i] != null || drafts[i] != null),
   );
   const allUsed = $derived(visibleSlots.length >= maxSlots);
+
+  // openSlot === -1 means "collapse all"; null means "no preference yet"
+  // (first render). expanded falls back to the first visible slot whenever
+  // openSlot points nowhere valid, so exactly one slot is open once any exist.
+  let openSlot = $state<number | null>(null);
+  const expanded = $derived(
+    openSlot === -1 ? null : (openSlot != null && visibleSlots.includes(openSlot) ? openSlot : (visibleSlots[0] ?? null)),
+  );
+  function toggleSlot(i: number): void {
+    openSlot = expanded === i ? -1 : i;
+  }
 
   $effect(() => {
     void cs.revertEpoch;   // the ONLY dependency -- cleanup must not track drafts
@@ -108,6 +118,7 @@
     const i = firstFreeSlot();
     if (i == null) return;
     drafts[i] = { name: '', steps: [] };
+    openSlot = i;
   }
 
   function addStep(i: number): void {
@@ -162,16 +173,8 @@
     try { await cancelCsMacro(s); } finally { applying = false; }
   }
 
-  async function saveConfig(): Promise<void> {
-    applying = true;
-    try { await csSaveConfig(s); } finally { applying = false; }
-  }
-
-  async function discardConfig(): Promise<void> {
-    applying = true;
-    // revertEpoch bumps on success and the $effect above drops local drafts.
-    try { await csRevertConfig(s); } finally { applying = false; }
-  }
+  const stagedCount = $derived(visibleSlots.filter((i) => isDirty(i)).length);
+  $effect(() => { s.controlSurfaces.staged.macros = stagedCount; });
 
   function nounOptions(): number[] { return CsMacroDraft.stepNounOptions(cs.nouns); }
   function actionOptions(noun: number): Domain.CsAction[] { return CsMacroDraft.stepActionOptions(cs.nouns, noun); }
@@ -191,14 +194,6 @@
 </script>
 
 <Panel code="CT.04" title="MACROS">
-  {#snippet right()}
-    {#if caps && cs.status?.dirty}
-      <span class="unsaved" title="Live preview — not yet written to flash">UNSAVED</span>
-      <button type="button" class="chip accent" disabled={applying} onclick={saveConfig}>SAVE</button>
-      <button type="button" class="chip hi" disabled={applying} onclick={discardConfig}>DISCARD</button>
-    {/if}
-  {/snippet}
-
   {#if visibleSlots.length === 0}
     <div class="hint pad empty">
       No macros. A macro fires a short sequence of changes from one button —
@@ -212,15 +207,24 @@
     {@const dirty = isDirty(i)}
     {@const live = cs.macros[i]}
     {@const running = isRunning(i)}
-    <div class="slot">
+    {@const open = expanded === i}
+    <div class="slot" class:open>
       <div class="slothead">
-        <span class="stitle" class:staged={dirty}
-          title={dirty ? 'Unapplied changes — APPLY to preview them live' : undefined}
-          >MACRO {i + 1}</span>
-        <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
-          value={d.name} aria-label={`Name for macro ${i + 1}`}
-          disabled={busy || applying}
-          onchange={(e) => editDraft(i, (dr) => { dr.name = (e.currentTarget as HTMLInputElement).value; })} />
+        <button type="button" class="hdrbtn" aria-expanded={open} onclick={() => toggleSlot(i)}>
+          <span class="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
+          <span class="stitle" class:staged={dirty}
+            title={dirty ? 'Unapplied changes — APPLY to preview them live' : undefined}
+            >MACRO {i + 1}</span>
+          {#if !open}
+            <span class="nametext" class:faint={!d.name}>{d.name || 'Unnamed'}</span>
+          {/if}
+        </button>
+        {#if open}
+          <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
+            value={d.name} aria-label={`Name for macro ${i + 1}`}
+            disabled={busy || applying}
+            onchange={(e) => editDraft(i, (dr) => { dr.name = (e.currentTarget as HTMLInputElement).value; })} />
+        {/if}
         <span class="pill {p.cls}">{p.text}</span>
         <span class="spacer"></span>
         {#if running}
@@ -235,11 +239,13 @@
           disabled={applying} onclick={() => remove(i)}>✕</button>
       </div>
 
-      {#if p.cls === 'warn'}
-        <div class="hint err srow">{invalidHint(i)}</div>
-      {/if}
       {#if running && live}
         <div class="hint srow">Running step {(cs.extStatus?.macroStep ?? 0) + 1} of {live.stepCount}</div>
+      {/if}
+
+      {#if open}
+      {#if p.cls === 'warn'}
+        <div class="hint err srow">{invalidHint(i)}</div>
       {/if}
 
       <div class="rows">
@@ -402,6 +408,7 @@
             disabled={applying || !live || !dirty}>REVERT</button>
         </div>
       </div>
+      {/if}
     </div>
   {/each}
 
@@ -414,13 +421,6 @@
 </Panel>
 
 <style>
-  .unsaved {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.2px;
-    color: var(--accent);
-    white-space: nowrap;
-  }
   .slot { border-bottom: 1px solid var(--wash); }
   .slothead {
     display: flex;
@@ -429,12 +429,38 @@
     padding: 8px 14px 0;
     font-family: var(--font-mono);
   }
+  .slot:not(.open) .slothead { padding-bottom: 8px; }
+  .hdrbtn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    min-width: 0;
+  }
+  .hdrbtn:hover .stitle { color: var(--text); }
+  .chev { font-size: 9px; color: var(--text-faint); width: 8px; }
   .stitle {
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 1.2px;
     color: var(--text-dim);
   }
+  .nametext {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 160px;
+  }
+  .nametext.faint { color: var(--text-faint); }
   .nameinput {
     font-family: var(--font-mono);
     font-size: 10px;

@@ -22,7 +22,7 @@
   const {
     slot, draft: d, dirty, pill: p, applying, typeOptions,
     onEdit, onTypeChange, onApply, onRevert, onRemove, onRename,
-    irResetSignal, onIrDirtyChange,
+    irResetSignal, onIrDirtyChange, open, onToggle,
   }: {
     slot: number;
     draft: Draft;
@@ -38,6 +38,8 @@
     onRename: (name: string) => void;
     irResetSignal: number;
     onIrDirtyChange: (dirty: boolean) => void;
+    open: boolean;
+    onToggle: () => void;
   } = $props();
 
   const s = getSession();
@@ -238,21 +240,30 @@
   }
 </script>
 
-<div class="slot">
+<div class="slot" class:open>
   <div class="slothead">
-    <span class="stitle" class:staged={dirty}
-      title={dirty ? 'Unapplied changes — APPLY to preview them live' : undefined}
-      >{Domain.csTypeLabel(d.type).toUpperCase()}</span>
-    <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
-      value={cs.names[slot] ?? ''} aria-label={`Name for control ${slot + 1}`}
-      disabled={busy || applying}
-      onchange={(e) => onRename((e.currentTarget as HTMLInputElement).value)} />
+    <button type="button" class="hdrbtn" aria-expanded={open} onclick={onToggle}>
+      <span class="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
+      <span class="stitle" class:staged={dirty}
+        title={dirty ? 'Unapplied changes — APPLY to preview them live' : undefined}
+        >{Domain.csTypeLabel(d.type).toUpperCase()}</span>
+      {#if !open}
+        <span class="nametext" class:faint={!cs.names[slot]}>{cs.names[slot] || 'Unnamed'}</span>
+      {/if}
+    </button>
+    {#if open}
+      <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
+        value={cs.names[slot] ?? ''} aria-label={`Name for control ${slot + 1}`}
+        disabled={busy || applying}
+        onchange={(e) => onRename((e.currentTarget as HTMLInputElement).value)} />
+    {/if}
     <span class="pill {p.cls}">{p.text}</span>
     <span class="spacer"></span>
     <button type="button" class="x" aria-label={`Remove control ${slot + 1}`}
       disabled={applying} onclick={() => onRemove()}>✕</button>
   </div>
 
+  {#if open}
   {#if p.cls === 'warn'}
     <div class="hint err srow">{inactiveHint()}</div>
   {/if}
@@ -589,6 +600,7 @@
   {#if cs.bindings[slot]?.type === Domain.CsType.Ir}
     <CsIrCommands resetSignal={irResetSignal} onDirtyChange={onIrDirtyChange} />
   {/if}
+  {/if}
 </div>
 
 <style>
@@ -600,12 +612,38 @@
     padding: 8px 14px 0;
     font-family: var(--font-mono);
   }
+  .slot:not(.open) .slothead { padding-bottom: 8px; }
+  .hdrbtn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    min-width: 0;
+  }
+  .hdrbtn:hover .stitle { color: var(--text); }
+  .chev { font-size: 9px; color: var(--text-faint); width: 8px; }
   .stitle {
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 1.2px;
     color: var(--text-dim);
   }
+  .nametext {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 160px;
+  }
+  .nametext.faint { color: var(--text-faint); }
   .nameinput {
     font-family: var(--font-mono);
     font-size: 10px;

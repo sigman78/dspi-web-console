@@ -1,13 +1,13 @@
 <script lang="ts">
   // Target groups (caps v9+): a named set of channels a binding, IR command,
   // or macro step can address at once via CS_FLAG_GROUP. Sibling of ControlSurfacesPanel,
-  // sharing the same fw dirty flag/save/revert, but with no parent of its own
-  // to hand it a reset prop -- it watches cs.revertEpoch instead.
+  // same fw dirty flag; save/discard live in the CHANGES panel. No parent of
+  // its own to hand it a reset prop -- it watches cs.revertEpoch instead.
   import { untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import MaskChipRow from '@/components/chrome/MaskChipRow.svelte';
   import { connection } from '@/state';
-  import { applyCsGroup, clearCsGroup, csSaveConfig, csRevertConfig } from '@/runtime';
+  import { applyCsGroup, clearCsGroup } from '@/runtime';
   import * as Domain from '@/domain';
   import { csStatusFromByte } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
@@ -154,27 +154,11 @@
     }
   }
 
-  async function saveConfig(): Promise<void> {
-    applying = true;
-    try { await csSaveConfig(s); } finally { applying = false; }
-  }
-
-  async function discardConfig(): Promise<void> {
-    applying = true;
-    // revertEpoch bumps on success and the $effect above drops local drafts.
-    try { await csRevertConfig(s); } finally { applying = false; }
-  }
+  const stagedCount = $derived(visibleSlots.filter((i) => isDirty(i)).length);
+  $effect(() => { s.controlSurfaces.staged.groups = stagedCount; });
 </script>
 
 <Panel code="CT.03" title="GROUPS">
-  {#snippet right()}
-    {#if caps && cs.status?.dirty}
-      <span class="unsaved" title="Live preview — not yet written to flash">UNSAVED</span>
-      <button type="button" class="chip accent" disabled={applying} onclick={saveConfig}>SAVE</button>
-      <button type="button" class="chip hi" disabled={applying} onclick={discardConfig}>DISCARD</button>
-    {/if}
-  {/snippet}
-
   {#if visibleSlots.length === 0}
     <div class="hint pad empty">
       No groups. A group lets one control address several channels at once —
@@ -254,13 +238,6 @@
 </Panel>
 
 <style>
-  .unsaved {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.2px;
-    color: var(--accent);
-    white-space: nowrap;
-  }
   .slot { border-bottom: 1px solid var(--wash); }
   .slothead {
     display: flex;

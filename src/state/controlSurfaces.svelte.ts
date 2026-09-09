@@ -42,8 +42,19 @@ export interface ControlSurfacesState {
   // Bumped after a successful csRevertConfig so every CS panel drops its
   // local drafts -- the GROUPS panel has no parent to receive a reset prop.
   revertEpoch: number;
+  // Unapplied local edits per CS editor panel (each panel publishes its own
+  // count). Read by the CONTROL tab's CHANGES panel: staged edits are not
+  // part of a device SAVE until applied.
+  staged: CsStagedCounts;
   busy: boolean;
   lastFetchError: string | null;
+}
+
+export interface CsStagedCounts {
+  bindings: number;
+  groups: number;
+  macros: number;
+  display: number;
 }
 
 export function createControlSurfacesState(): ControlSurfacesState {
@@ -64,6 +75,7 @@ export function createControlSurfacesState(): ControlSurfacesState {
     displayPages: Array.from({ length: CS_MAX_DISPLAY_PAGES }, () => null),
     displayStatus: null,
     revertEpoch: 0,
+    staged: { bindings: 0, groups: 0, macros: 0, display: 0 },
     busy: false,
     lastFetchError: null,
   });

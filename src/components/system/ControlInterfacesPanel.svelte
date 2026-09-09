@@ -1,6 +1,5 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
-  import KV from '@/components/chrome/KV.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import PinPicker from './PinPicker.svelte';
   import { connection } from '@/state';
@@ -98,18 +97,23 @@
 <Panel code="CT.01" title="CONTROL INTERFACES">
   {#if uart}
     <div class="subhdr">
-      UART
-      <ToggleSwitch
-        size="sm"
-        checked={uart.enabled}
-        disabled={!connected}
-        ariaLabel={uart.enabled ? 'Disable UART control interface' : 'Enable UART control interface'}
-        onChange={onToggleUartEnabled}
-      />
+      <span class="lhs">
+        UART
+        <ToggleSwitch
+          size="sm"
+          checked={uart.enabled}
+          disabled={!connected}
+          ariaLabel={uart.enabled ? 'Disable UART control interface' : 'Enable UART control interface'}
+          onChange={onToggleUartEnabled}
+        />
+      </span>
+      <span class="status" class:live={uart.enabled && status?.uartLive} class:down={uart.enabled && !status?.uartLive}>
+        {uart.enabled ? (status?.uartLive ? 'LIVE' : 'DOWN') : 'DISABLED'}
+      </span>
     </div>
     <div class="rows" class:dimmed={!uart.enabled}>
-      <div class="row">
-        <span class="microlbl">TX PIN</span>
+      <span class="pair">
+        <span class="microlbl">TX</span>
         <PinPicker
           value={uart.txPin}
           cells={uartTxCells}
@@ -117,17 +121,12 @@
           disabled={!connected || !uart.enabled}
           onChange={onUartTxPin}
         />
-        <span class="microlbl">RX PIN</span>
-        <PinPicker
-          value={uart.rxPin}
-          cells={[]}
-          ariaLabel="UART RX pin (follows TX)"
-          disabled
-          onChange={() => {}}
-        />
-      </div>
-
-      <div class="row">
+      </span>
+      <span class="pair">
+        <span class="microlbl">RX</span>
+        <span class="pinval" title="follows TX">GP{uart.rxPin}</span>
+      </span>
+      <span class="pair">
         <span class="microlbl">BAUD</span>
         <select
           class="sel"
@@ -140,6 +139,8 @@
             <option value={String(baud)}>{baud}</option>
           {/each}
         </select>
+      </span>
+      <span class="pair">
         <span class="microlbl">NOTIFY</span>
         <ToggleSwitch
           size="sm"
@@ -148,10 +149,7 @@
           disabled={!connected || !uart.enabled}
           onChange={(v) => patchUart({ notifyEnabled: v })}
         />
-      </div>
-
-      <KV label="STATUS" value={uart.enabled ? (status?.uartLive ? 'LIVE' : 'DOWN') : 'DISABLED'}
-        tone={uart.enabled ? (status?.uartLive ? 'ok' : undefined) : 'off'} />
+      </span>
       {#if uartDown || uartStatusMsg}
         <div class="hint err">{uartStatusMsg ?? 'configured but not live (pin collision at boot?)'}</div>
       {/if}
@@ -160,18 +158,23 @@
 
   {#if i2c}
     <div class="subhdr">
-      I2C
-      <ToggleSwitch
-        size="sm"
-        checked={i2c.enabled}
-        disabled={!connected}
-        ariaLabel={i2c.enabled ? 'Disable I2C control interface' : 'Enable I2C control interface'}
-        onChange={onToggleI2cEnabled}
-      />
+      <span class="lhs">
+        I2C
+        <ToggleSwitch
+          size="sm"
+          checked={i2c.enabled}
+          disabled={!connected}
+          ariaLabel={i2c.enabled ? 'Disable I2C control interface' : 'Enable I2C control interface'}
+          onChange={onToggleI2cEnabled}
+        />
+      </span>
+      <span class="status" class:live={i2c.enabled && status?.i2cLive} class:down={i2c.enabled && !status?.i2cLive}>
+        {i2c.enabled ? (status?.i2cLive ? 'LIVE' : 'DOWN') : 'DISABLED'}
+      </span>
     </div>
     <div class="rows" class:dimmed={!i2c.enabled}>
-      <div class="row">
-        <span class="microlbl">SDA PIN</span>
+      <span class="pair">
+        <span class="microlbl">SDA</span>
         <PinPicker
           value={i2c.sdaPin}
           cells={i2cSdaCells}
@@ -179,18 +182,13 @@
           disabled={!connected || !i2c.enabled}
           onChange={onI2cSdaPin}
         />
-        <span class="microlbl">SCL PIN</span>
-        <PinPicker
-          value={i2c.sclPin}
-          cells={[]}
-          ariaLabel="I2C SCL pin (follows SDA)"
-          disabled
-          onChange={() => {}}
-        />
-      </div>
-
-      <div class="row">
-        <span class="microlbl">ADDRESS</span>
+      </span>
+      <span class="pair">
+        <span class="microlbl">SCL</span>
+        <span class="pinval" title="follows SDA">GP{i2c.sclPin}</span>
+      </span>
+      <span class="pair">
+        <span class="microlbl">ADDR</span>
         <input
           class="numfield"
           type="text"
@@ -199,10 +197,7 @@
           disabled={!connected || !i2c.enabled}
           aria-label="I2C target address (hex)"
         />
-      </div>
-
-      <KV label="STATUS" value={i2c.enabled ? (status?.i2cLive ? 'LIVE' : 'DOWN') : 'DISABLED'}
-        tone={i2c.enabled ? (status?.i2cLive ? 'ok' : undefined) : 'off'} />
+      </span>
       {#if i2cDown || i2cStatusMsg}
         <div class="hint err">{i2cStatusMsg ?? 'configured but not live (pin collision at boot?)'}</div>
       {/if}
@@ -227,16 +222,22 @@
      separator; drop both on the first subheader so it sits right under the
      panel header, matching other System panels' first-row rhythm. */
   .subhdr:first-of-type { margin-top: 0; border-top: none; }
-  .rows {
-    padding: 4px 14px 12px;
-    display: grid;
-    grid-template-columns: max-content max-content max-content max-content;
-    gap: 8px 10px;
-    align-items: center;
-    justify-content: space-between;
+  .lhs { display: flex; align-items: center; gap: 8px; }
+  .status {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
   }
-  .row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; }
-  .rows > .hint, .rows > :global(.kv) { grid-column: 1 / -1; }
+  .status.live { color: var(--ok); }
+  .status.down { color: var(--warn); }
+  .rows {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 4px 14px 10px;
+  }
   .sel {
     font-family: var(--font-mono);
     font-size: 10px;
@@ -252,7 +253,13 @@
     font-family: var(--font-mono);
     font-size: 10px;
     padding: 3px 6px;
-    width: 70px;
+    width: 60px;
   }
-  .hint.err { color: var(--err); }
+  .pair { display: inline-flex; align-items: center; gap: 6px; }
+  .pinval {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .hint.err { color: var(--err); flex-basis: 100%; }
 </style>

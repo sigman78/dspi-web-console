@@ -4,7 +4,7 @@
   import CsGroupsPanel from '@/components/system/CsGroupsPanel.svelte';
   import CsMacrosPanel from '@/components/system/CsMacrosPanel.svelte';
   import CsDisplayPanel from '@/components/system/CsDisplayPanel.svelte';
-  import ControlGuidePanel from './control/ControlGuidePanel.svelte';
+  import CsChangesPanel from './control/CsChangesPanel.svelte';
   import { getSession } from '@/components/sessionContext';
   import * as CsField from '@/components/system/csFieldHelpers';
 
@@ -14,18 +14,23 @@
   const caps = $derived(s.controlSurfaces.caps);
 </script>
 
-<!-- Columns by role: shared definitions (interfaces, groups) | the bindings
-     editor | what bindings drive (macros, display). Natural height, page
+<!-- Bounded-height panels share the first column; the two list editors that
+     grow per item each get a column of their own. Natural height, page
      scrolls -- same as SYSTEM. -->
 <div class="grid">
   <div class="col">
+    {#if cs}
+      <CsChangesPanel />
+    {/if}
     {#if features.controlInterfaces}
       <ControlInterfacesPanel />
     {/if}
     {#if cs && CsField.groupsAvailable(caps)}
       <CsGroupsPanel />
     {/if}
-    <ControlGuidePanel />
+    {#if cs && CsField.displaysAvailable(caps)}
+      <CsDisplayPanel />
+    {/if}
   </div>
 
   <div class="col">
@@ -37,9 +42,6 @@
   <div class="col">
     {#if cs && CsField.macrosAvailable(caps)}
       <CsMacrosPanel />
-    {/if}
-    {#if cs && CsField.displaysAvailable(caps)}
-      <CsDisplayPanel />
     {/if}
   </div>
 </div>

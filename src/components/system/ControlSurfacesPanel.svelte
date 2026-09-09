@@ -3,7 +3,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import CsBindingRow from './CsBindingRow.svelte';
   import { connection } from '@/state';
-  import { applyCsBinding, clearCsBinding, applyCsName, csSaveConfig, csRevertConfig } from '@/runtime';
+  import { applyCsBinding, clearCsBinding, applyCsName } from '@/runtime';
   import * as Domain from '@/domain';
   import { getSession } from '@/components/sessionContext';
   import * as CsDraft from './csDraft';
@@ -26,6 +26,17 @@
       .filter((i) => cs.bindings[i] != null || drafts[i] != null),
   );
   const allUsed = $derived(visibleSlots.length >= maxSlots);
+
+  // openSlot === -1 means "collapse all"; null means "no preference yet"
+  // (first render). expanded falls back to the first visible slot whenever
+  // openSlot points nowhere valid, so exactly one slot is open once any exist.
+  let openSlot = $state<number | null>(null);
+  const expanded = $derived(
+    openSlot === -1 ? null : (openSlot != null && visibleSlots.includes(openSlot) ? openSlot : (visibleSlots[0] ?? null)),
+  );
+  function toggleSlot(slot: number): void {
+    openSlot = expanded === slot ? -1 : slot;
+  }
 
   // pinCount 0 filters NONE; the type ceiling filters components a newer caps
   // format publishes (v10's I2C display) whose bindings this console can't author.
@@ -185,6 +196,7 @@
     const slot = firstFreeSlot();
     if (slot == null) return;
     drafts[slot] = defaultDraft(typeIdx, slot);
+    openSlot = slot;
   }
 
   // Rejections surface via the runtime actions' warn toasts; the panel's only
@@ -228,25 +240,16 @@
     }
   }
 
-  async function saveConfig(): Promise<void> {
-    applying = true;
-    try {
-      await csSaveConfig(s);
-    } finally {
-      applying = false;
-    }
-  }
-
   let irResetTick = $state(0);
   // Written by CsIrCommands (bind): any IR sub-slot holds unapplied edits.
   // Lights the receiver slot's title dot -- the sub-panel shows no dots of
   // its own, dirtiness always surfaces on the owning control's title.
   let irDirty = $state(false);
 
-  // A revert (from this panel's DISCARD or the GROUPS panel's) rewinds every
-  // slot and IR sub-slot to its stored state, so local drafts no longer
-  // describe anything real; cs.revertEpoch bumps on success. irResetTick
-  // tells CsIrCommands to drop its own.
+  // A revert (the CHANGES panel's DISCARD) rewinds every slot and IR sub-slot
+  // to its stored state, so local drafts no longer describe anything real;
+  // cs.revertEpoch bumps on success. irResetTick tells CsIrCommands to drop
+  // its own.
   $effect(() => {
     void cs.revertEpoch;   // the ONLY dependency -- the wipe must not track drafts
     untrack(() => {
@@ -255,24 +258,13 @@
     });
   });
 
-  async function discardConfig(): Promise<void> {
-    applying = true;
-    try {
-      await csRevertConfig(s);
-    } finally {
-      applying = false;
-    }
-  }
+  const stagedCount = $derived(
+    visibleSlots.filter((i) => isDirty(i) || (draftOf(i).type === Domain.CsType.Ir && irDirty)).length,
+  );
+  $effect(() => { s.controlSurfaces.staged.bindings = stagedCount; });
 </script>
 
 <Panel code="CT.02" title="CONTROL SURFACES">
-  {#snippet right()}
-    {#if caps && cs.status?.dirty}
-      <span class="unsaved" title="Live preview — not yet written to flash">UNSAVED</span>
-      <button type="button" class="chip accent" disabled={applying} onclick={saveConfig}>SAVE</button>
-      <button type="button" class="chip hi" disabled={applying} onclick={discardConfig}>DISCARD</button>
-    {/if}
-  {/snippet}
   {#if caps}
     {#if visibleSlots.length === 0}
       <div class="hint pad empty">
@@ -291,6 +283,8 @@
         dirty={slotDirty}
         pill={p}
         {applying}
+        open={expanded === slot}
+        onToggle={() => toggleSlot(slot)}
         typeOptions={typeOptionsFor(slot)}
         onEdit={(fn) => editDraft(slot, fn)}
         onTypeChange={(t) => { drafts[slot] = defaultDraft(t, slot); }}
@@ -323,13 +317,6 @@
 </Panel>
 
 <style>
-  .unsaved {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.2px;
-    color: var(--accent);
-    white-space: nowrap;
-  }
   .sel {
     font-family: var(--font-mono);
     font-size: 10px;
