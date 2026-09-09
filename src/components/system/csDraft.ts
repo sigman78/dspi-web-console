@@ -90,7 +90,26 @@ export function defaultOperands(d: Draft, nouns: readonly Domain.CsNounCaps[]): 
   d.rangeMax = noun && cont ? CsUnit.valueToDisplay(unit, noun.maxQ8) : 0;
 }
 
+// A display's container binding carries model in `index` and a raw address
+// override in `value` -- no noun/unit, so no q8.8 conversion applies.
+export function isDisplay(d: Draft): boolean {
+  return d.type === Domain.CsType.Display;
+}
+
 export function draftFromLive(b: Domain.CsBinding, nouns: readonly Domain.CsNounCaps[]): Draft {
+  if (b.type === Domain.CsType.Display) {
+    return {
+      type: b.type, noun: 0, action: 0, event: Domain.CsEvent.Press,
+      gpio0: b.gpio0, gpio1: b.gpio1 ?? 0,
+      target: 0, index: b.index,
+      invert: false, reverse: false, wrap: false, accel: false, repeat: false,
+      value: b.value, step: 0,
+      limitRange: false, rangeMin: 0, rangeMax: 0,
+      onDelay: 0, offDelay: 0, limitBright: false, baseBright: 100,
+      grouped: false, linkAbs: false, groupAll: false,
+      reserved2: b.reserved2,
+    };
+  }
   const noun = nouns[b.noun];
   const cont = noun?.kind === Domain.CsKind.Continuous;
   const unit = noun?.unit ?? Domain.CS_UNIT_NONE;
@@ -165,11 +184,24 @@ export function buildBinding(d: Draft, nouns: readonly Domain.CsNounCaps[], caps
       reserved2: d.reserved2,
     };
   }
+  if (isDisplay(d)) {
+    return {
+      type: Domain.CsType.Display, noun: 0 as Domain.CsNoun, action: 0 as Domain.CsAction,
+      flags: 0,
+      gpio0: d.gpio0, gpio1: d.gpio1, event: Domain.CsEvent.Press,
+      target: 0, index: d.index, value: d.value, step: 0, rangeMin: 0, rangeMax: 0,
+      baseBright: 0, onDelay: 0, offDelay: 0,
+      reserved2: d.reserved2,
+    };
+  }
   const cont = CsField.contOf(nouns, d.noun);
   const unit = CsField.unitOf(nouns, d.noun);
   const forcedPress = d.action === Domain.CsAction.Momentary || d.repeat;
   const event = d.type === Domain.CsType.Button ? (forcedPress ? Domain.CsEvent.Press : (d.event as Domain.CsEvent)) : Domain.CsEvent.Press;
   const grouped = showGroupOf(d, caps, nouns) && d.grouped;
+  // PAGE_VALUE is the display's own "adjust whatever's focused" noun -- the
+  // firmware rejects any operand on it (it has no meaning of its own).
+  const pageValue = d.noun === Domain.CsNoun.PageValue;
   return {
     type: d.type as Domain.CsType,
     noun: d.noun as Domain.CsNoun,
@@ -187,10 +219,10 @@ export function buildBinding(d: Draft, nouns: readonly Domain.CsNounCaps[], caps
     event,
     target: CsField.showTargetOf(nouns, d.noun) ? d.target : 0,
     index: CsField.showBandOf(nouns, d.noun) ? d.index : 0,
-    value: CsField.showValueOf(d.action) ? (cont ? CsUnit.displayToValue(unit, d.value) : Math.round(d.value)) : 0,
-    step: CsField.showStepOf(d.action, STEPPY) ? (cont ? CsUnit.displayToStep(unit, d.step) : Math.round(d.step)) : 0,
-    rangeMin: showRangeOf(d, nouns) && d.limitRange ? CsUnit.displayToValue(unit, d.rangeMin) : 0,
-    rangeMax: showRangeOf(d, nouns) && d.limitRange ? CsUnit.displayToValue(unit, d.rangeMax) : 0,
+    value: pageValue ? 0 : CsField.showValueOf(d.action) ? (cont ? CsUnit.displayToValue(unit, d.value) : Math.round(d.value)) : 0,
+    step: pageValue ? 0 : CsField.showStepOf(d.action, STEPPY) ? (cont ? CsUnit.displayToStep(unit, d.step) : Math.round(d.step)) : 0,
+    rangeMin: pageValue ? 0 : showRangeOf(d, nouns) && d.limitRange ? CsUnit.displayToValue(unit, d.rangeMin) : 0,
+    rangeMax: pageValue ? 0 : showRangeOf(d, nouns) && d.limitRange ? CsUnit.displayToValue(unit, d.rangeMax) : 0,
     baseBright: showBaseBrightOf(d, caps) && d.limitBright ? Clamp.toRange(Math.round(d.baseBright), 1, 100) : 0,
     onDelay: showDelaysOf(d, caps) ? Clamp.toRange(Math.round(d.onDelay * 10), 0, 0xFFFF) : 0,
     offDelay: showDelaysOf(d, caps) ? Clamp.toRange(Math.round(d.offDelay * 10), 0, 0xFFFF) : 0,

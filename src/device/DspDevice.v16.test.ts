@@ -10,7 +10,7 @@ import { parseNotifyPacket, WireCmd, buildBulkParams, PinConfigResult, CsStatusC
 import {
   ChannelId, FilterType, CsType, CsNoun, CsAction, CsEvent, EMPTY_CS_BINDING, dbToQ8, ChannelFamily,
   CsIrProto, EMPTY_CS_IR_COMMAND, CS_IR_LEARN_DONE, CS_IR_LEARN_IDLE, CS_UNIT_MS,
-  CS_TARGET_OUTPUT_CH, EMPTY_CS_MACRO_STEP,
+  CS_TARGET_OUTPUT_CH, EMPTY_CS_MACRO_STEP, CsDisplayMode, EMPTY_CS_DISPLAY_PAGE,
 } from '@/domain';
 
 const FW_115 = { major: 1, minor: 1, patch: 5 };
@@ -737,6 +737,120 @@ describe('DspDevice — V16 Control Surfaces IR commands (0x8D-0x8F)', () => {
     const { result } = await d.setCsBinding(1, { ...irReceiver, gpio0: 21 });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(CsStatusCode.IrInUse);
+  });
+});
+
+describe('DspDevice — I2C displays (0x27-0x2B, caps v10+)', () => {
+  // 2/3: free of the mock's default reservations (outputs 6-10, S/PDIF RX 5,
+  // I2S RX pair 0 on GPIO 1).
+  const displayBinding = { ...EMPTY_CS_BINDING, type: CsType.Display, index: 6, gpio0: 2, gpio1: 3 };
+
+  it('binds a display and seeds its cfg/pages on first attach', async () => {
+    const d = await v16Device();
+    const { result } = await d.setCsBinding(0, displayBinding);
+    expect(result.ok).toBe(true);
+
+    const { limits, cfg } = await d.getCsDisplayCfg();
+    expect(limits).toEqual({ maxPages: 16, modelCount: 9 });
+    expect(cfg.dwell).toBe(30);
+    expect(cfg.overlayHold).toBe(20);
+    expect(cfg.editTimeout).toBe(100);
+    expect(cfg.flags & 0x02).toBe(0x02);   // EDIT_GATED
+
+    expect(await d.getCsDisplayPage(0)).toEqual({ noun: 0, target: 0, index: 0, flags: 0x05 });
+    expect(await d.getCsDisplayPage(3)).toEqual({ noun: 30, target: 0, index: 0, flags: 0x01 });
+    expect(await d.getCsDisplayPage(4)).toEqual({ noun: 0, target: 0, index: 0, flags: 0x00 });
+  });
+
+  it('reports LIVE status 200 ms after attach, showing the FIXED home page', async () => {
+    const d = await v16Device();
+    await d.setCsBinding(0, displayBinding);
+    vi.useFakeTimers();
+    try {
+      vi.advanceTimersByTime(250);
+      const status = await d.getCsDisplayStatus();
+      expect(status.initState).toBe(2);
+      expect(status.currentPage).toBe(0);
+      expect(status.model).toBe(6);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a second display binding in another slot is rejected with DisplayInUse', async () => {
+    const d = await v16Device();
+    await d.setCsBinding(0, displayBinding);
+    const { result } = await d.setCsBinding(1, { ...displayBinding, gpio0: 16, gpio1: 17 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(CsStatusCode.DisplayInUse);
+  });
+
+  it("rejects SDA/SCL on the I2C control interface's live instance with I2cInUse", async () => {
+    const d = await v16Device();
+    await d.setI2cControlConfig({ enabled: true, sdaPin: 18, sclPin: 19, address: 0x42 });
+    const { result } = await d.setCsBinding(0, { ...displayBinding, gpio0: 6, gpio1: 7 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(CsStatusCode.I2cInUse);
+  });
+
+  it('rejects an odd SDA pin with PinNotI2c', async () => {
+    const d = await v16Device();
+    const { result } = await d.setCsBinding(0, { ...displayBinding, gpio0: 5, gpio1: 4 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(CsStatusCode.PinNotI2c);
+  });
+
+  it('setCsDisplayCfg rejects dwell < 10 in CYCLE_SELECTED (slot 0x50)', async () => {
+    const d = await v16Device();
+    await d.setCsBinding(0, displayBinding);
+    const { cfg } = await d.getCsDisplayCfg();
+    const { result, status } = await d.setCsDisplayCfg({ ...cfg, mode: CsDisplayMode.CycleSelected, dwell: 5 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(CsStatusCode.InvalidValue);
+    expect(status.lastSlot).toBe(0x50);
+  });
+
+  it('setCsDisplayPage rejects BAR on an enum noun (slot 0x53), leaving the stored page unchanged', async () => {
+    const d = await v16Device();
+    await d.setCsBinding(0, displayBinding);
+    const before = await d.getCsDisplayPage(3);
+    const { result, status } = await d.setCsDisplayPage(3, { noun: CsNoun.Preset, target: 0, index: 0, flags: 0x09 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe(CsStatusCode.InvalidPage);
+    expect(status.lastSlot).toBe(0x53);
+    expect(await d.getCsDisplayPage(3)).toEqual(before);
+  });
+
+  it('getCsDisplayPage rejects a page index at/above 16 (STALL)', async () => {
+    const d = await v16Device();
+    await expect(d.getCsDisplayPage(16)).rejects.toThrow();
+  });
+
+  it('a caps v9 device rejects getCsDisplayCfg (STALL, pre-v10 firmware has no such opcode)', async () => {
+    const d = await DspDevice.create(new MockTransport({
+      platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 9,
+    }));
+    await expect(d.getCsDisplayCfg()).rejects.toThrow();
+  });
+
+  it('CYCLE_SELECTED advances currentPage across two active pages every dwell period', async () => {
+    const d = await v16Device();
+    await d.setCsBinding(0, displayBinding);
+    await d.setCsDisplayPage(2, EMPTY_CS_DISPLAY_PAGE);
+    await d.setCsDisplayPage(3, EMPTY_CS_DISPLAY_PAGE);
+    const { cfg } = await d.getCsDisplayCfg();
+    await d.setCsDisplayCfg({ ...cfg, mode: CsDisplayMode.CycleSelected, dwell: 10 });
+
+    vi.useFakeTimers();
+    try {
+      let status = await d.getCsDisplayStatus();
+      expect(status.currentPage).toBe(0);
+      vi.advanceTimersByTime(1000);
+      status = await d.getCsDisplayStatus();
+      expect(status.currentPage).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

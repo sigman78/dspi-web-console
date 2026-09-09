@@ -450,4 +450,30 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(Codec.decode(Wire.SubharmParams, bytes)).toMatchObject(value);
   });
 
+  it('CsDisplayCfg/CsDisplayCfgResponse/CsDisplayPage/CsDisplayStatus match the fw wire byte layout and sizes', () => {
+    expect(Codec.sizeOf(Wire.CsDisplayCfg)).toBe(12);
+    expect(Codec.sizeOf(Wire.CsDisplayCfgResponse)).toBe(16);
+    expect(Codec.sizeOf(Wire.CsDisplayPage)).toBe(4);
+    expect(Codec.sizeOf(Wire.CsDisplayStatus)).toBe(8);
+
+    const cfg = { mode: 1, homePage: 2, dwell: 30, overlayHold: 20, brightness: 128, flags: 0x16, editTimeout: 100 };
+    const cfgBytes = Uint8Array.from([0x01, 0x02, 0x1E, 0x00, 0x14, 0x00, 0x80, 0x16, 0x64, 0x00, 0x00, 0x00]);
+    expect(Codec.encode(Wire.CsDisplayCfg, cfg)).toEqual(cfgBytes);
+    expect(Codec.decode(Wire.CsDisplayCfg, cfgBytes)).toEqual(cfg);
+
+    const responseBytes = Uint8Array.from([
+      16, 9, 0, 0,                                              // maxPages, modelCount, reserved
+      0x00, 0x00, 0x1E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // cfg, dwell=30
+    ]);
+    const response = Codec.decode(Wire.CsDisplayCfgResponse, responseBytes);
+    expect(response.maxPages).toBe(16);
+    expect(response.modelCount).toBe(9);
+    expect(response.cfg.dwell).toBe(30);
+
+    const statusBytes = Uint8Array.from([0x02, 0xFF, 0x03, 0x06, 0x34, 0x12, 0x00, 0x00]);
+    expect(Codec.decode(Wire.CsDisplayStatus, statusBytes)).toEqual({
+      initState: 2, currentPage: 0xFF, flags: 3, model: 6, nakCount: 0x1234,
+    });
+  });
+
 });

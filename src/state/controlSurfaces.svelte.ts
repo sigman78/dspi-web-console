@@ -4,9 +4,10 @@
 // runtime/deviceService.ts), like ctrlIfaces.
 
 import {
-  CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_MAX_GROUPS, CS_MAX_MACROS,
+  CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_MAX_GROUPS, CS_MAX_MACROS, CS_MAX_DISPLAY_PAGES,
   type CsBinding, type CsCaps, type CsNounCaps, type CsStatus, type CsIrCommand,
   type CsGroup, type CsExtStatus, type CsMacro,
+  type CsDisplayLimits, type CsDisplayCfg, type CsDisplayPage, type CsDisplayStatus,
 } from '@/domain';
 
 // Learn sub-state, mirroring GetCsStatus.irLearnState / the CsIrLearn(2)
@@ -33,6 +34,11 @@ export interface ControlSurfacesState {
   groups: (CsGroup | null)[];   // indexed by group; null = empty slot
   macros: (CsMacro | null)[];   // indexed by macro; null = empty slot
   extStatus: CsExtStatus | null;
+  // display cfg/pages/status (caps v10+); null limits = no display support.
+  displayLimits: CsDisplayLimits | null;
+  displayCfg: CsDisplayCfg | null;
+  displayPages: (CsDisplayPage | null)[];
+  displayStatus: CsDisplayStatus | null;
   // Bumped after a successful csRevertConfig so every CS panel drops its
   // local drafts -- the GROUPS panel has no parent to receive a reset prop.
   revertEpoch: number;
@@ -53,6 +59,10 @@ export function createControlSurfacesState(): ControlSurfacesState {
     groups: Array.from({ length: CS_MAX_GROUPS }, () => null),
     macros: Array.from({ length: CS_MAX_MACROS }, () => null),
     extStatus: null,
+    displayLimits: null,
+    displayCfg: null,
+    displayPages: Array.from({ length: CS_MAX_DISPLAY_PAGES }, () => null),
+    displayStatus: null,
     revertEpoch: 0,
     busy: false,
     lastFetchError: null,

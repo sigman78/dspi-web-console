@@ -6,7 +6,7 @@
   import { connection } from '@/state';
   import { setUartControlConfig, setI2cControlConfig } from '@/runtime';
   import {
-    validUartTxPins, validI2cSdaPins, pickerCellsFrom, liveCsPinConfigs,
+    validUartTxPins, validI2cSdaPins, csDisplayI2cInstance, i2cInstance, pickerCellsFrom, liveCsPinConfigs,
     UART_COMMON_BAUDS, I2C_ADDRESS_MIN, I2C_ADDRESS_MAX,
     type UartControlConfig, type I2cControlConfig,
   } from '@/domain';
@@ -21,19 +21,22 @@
   const status = $derived(s.ctrlIfaces.status);
 
   const csPins = $derived(liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status));
+  const displayInstance = $derived(csDisplayI2cInstance(csPins));
 
   function uartTxReason(pin: number): string {
     return pin % 4 !== 0 ? 'UART TX must be GP0/4/8…' : `needs GP${pin + 1} free`;
   }
   function i2cSdaReason(pin: number): string {
-    return pin % 2 !== 0 ? 'SDA must be even' : `needs GP${pin + 1} free`;
+    if (pin % 2 !== 0) return 'SDA must be even';
+    if (i2cInstance(pin) === displayInstance) return 'That I2C bus is used by the display';
+    return `needs GP${pin + 1} free`;
   }
 
   const uartTxCells = $derived(
     snap ? pickerCellsFrom(snap.platform.type, snap, { i2c, cs: csPins }, validUartTxPins(snap.platform.type, snap, { i2c, cs: csPins }), uart?.txPin, uartTxReason) : [],
   );
   const i2cSdaCells = $derived(
-    snap ? pickerCellsFrom(snap.platform.type, snap, { uart, cs: csPins }, validI2cSdaPins(snap.platform.type, snap, { uart, cs: csPins }), i2c?.sdaPin, i2cSdaReason) : [],
+    snap ? pickerCellsFrom(snap.platform.type, snap, { uart, cs: csPins }, validI2cSdaPins(snap.platform.type, snap, { uart, cs: csPins }, displayInstance), i2c?.sdaPin, i2cSdaReason) : [],
   );
 
   function lastStatusMessage(byte: number | undefined): string | null {
@@ -67,7 +70,7 @@
   function onToggleI2cEnabled() {
     if (!i2c || !snap) return;
     if (i2c.enabled) { patchI2c({ enabled: false }); return; }
-    const candidates = validI2cSdaPins(snap.platform.type, snap, { uart });
+    const candidates = validI2cSdaPins(snap.platform.type, snap, { uart, cs: csPins }, displayInstance);
     const sdaPin = candidates.includes(i2c.sdaPin) ? i2c.sdaPin : (candidates[0] ?? i2c.sdaPin);
     patchI2c({ enabled: true, sdaPin, sclPin: sdaPin + 1 });
   }

@@ -76,7 +76,7 @@ const SAMPLE_RATE_LABEL: Record<number, string> = { 0: '44.1 kHz', 1: '48 kHz', 
 
 export function enumValueOptions(
   nouns: readonly Domain.CsNounCaps[], noun: number, presetNames: readonly (string | null)[],
-  macros: readonly (Domain.CsMacro | null)[] = [],
+  macros: readonly (Domain.CsMacro | null)[] = [], displayPages: readonly (Domain.CsDisplayPage | null)[] = [],
 ): { v: number; label: string }[] {
   const count = nouns[noun]?.enumCount ?? 0;
   const idx = Array.from({ length: count }, (_, i) => i);
@@ -90,6 +90,12 @@ export function enumValueOptions(
     return idx.map((i) => {
       const name = macros[i]?.name;
       return { v: i, label: `Macro ${i + 1}${name ? ` · ${name}` : ''}` };
+    });
+  }
+  if (noun === Domain.CsNoun.DisplayPage) {
+    return idx.map((i) => {
+      const p = displayPages[i];
+      return { v: i, label: `Page ${i + 1}${p ? ` · ${Domain.csNounLabel(p.noun)}` : ''}` };
     });
   }
   if (noun === Domain.CsNoun.InputSource) {
@@ -156,6 +162,31 @@ export function groupsAvailable(caps: Domain.CsCaps | null): boolean {
 // Macros exist from caps v9, same convention as groupsAvailable.
 export function macrosAvailable(caps: Domain.CsCaps | null): boolean {
   return (caps?.capsVersion ?? 0) >= 9 && (caps?.maxMacros ?? 0) > 0;
+}
+
+export function displaysAvailable(caps: Domain.CsCaps | null): boolean {
+  return Domain.csDisplaysAvailable(caps);
+}
+
+// The I2C control interface's live bus instance, if it's enabled -- a
+// display can't share that instance (fw I2C_IN_USE / the symmetric
+// PIN_IN_USE on the interface). Shared by the binding row and the panel's
+// own default-draft pin picks.
+export function liveI2cInstance(i2c: { enabled: boolean; sdaPin: number } | null | undefined): number | null {
+  return i2c?.enabled ? Domain.i2cInstance(i2c.sdaPin) : null;
+}
+
+// Nouns a display page may show: platform-available (a noun mask reading 0
+// is unavailable on this build) and a unit this console knows how to render,
+// minus the three display-only nouns a page can't recurse into.
+export function pageNounOptions(nouns: readonly Domain.CsNounCaps[]): { v: number; label: string }[] {
+  const out: { v: number; label: string }[] = [];
+  nouns.forEach((n, i) => {
+    if (n.actions === 0 || n.unit > Domain.CS_MAX_KNOWN_UNIT) return;
+    if (i === Domain.CsNoun.DisplayPage || i === Domain.CsNoun.DisplayEdit || i === Domain.CsNoun.PageValue) return;
+    out.push({ v: i, label: Domain.csNounLabel(i) });
+  });
+  return out;
 }
 
 // Groups a binding/IR command may target instead of a single channel: only

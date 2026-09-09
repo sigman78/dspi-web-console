@@ -74,9 +74,36 @@ export const MIN_CS_CAPS_VERSION = 2;
 // signal, nothing this console models; v6 = CS_MAX_IR_COMMANDS 8->16 and the
 // 41-byte GetCsStatus layout; v7 = the loudness reference/intensity nouns;
 // v8 = indicator on/off delays and the INPUT_LEVEL_MAX noun; v9's target
-// groups and macros are both modeled; v10-v11's displays are not; v12's
-// base_bright (byte 9) is modeled too; v14's subharm nouns are labelled).
-export const MAX_KNOWN_CS_CAPS_VERSION = 9;
+// groups and macros are both modeled; v10's displays and IR groups are
+// modeled; v11's alignment fields are modeled; v12's base_bright (byte 9) is
+// modeled too; v13's level bars are modeled; v14's subharm nouns are
+// labelled -- the nouns themselves need no further console changes).
+export const MAX_KNOWN_CS_CAPS_VERSION = 14;
+
+// Fetch the whole I2C display block (cfg, every page, status) in one go --
+// reused by fetchControlSurfaces (initial connect) and by actions.ts's
+// applyCsBinding/csRevertConfig (a binding apply or revert can silently
+// reseed the pages/cfg without marking anything dirty, so both re-read this
+// after touching a display-type slot). Plain device reads, no queuing of its
+// own: callers already hold the session queue slot they're running under
+// (either wrapping this whole call in one s.queue.run, or running it inside
+// an existing command() send closure).
+export async function readCsDisplayBlock(d: DspDevice): Promise<{
+  limits: Domain.CsDisplayLimits;
+  cfg: Domain.CsDisplayCfg;
+  pages: (Domain.CsDisplayPage | null)[];
+  status: Domain.CsDisplayStatus;
+}> {
+  const { limits, cfg } = await d.getCsDisplayCfg();
+  const pageCount = Math.min(limits.maxPages, Domain.CS_MAX_DISPLAY_PAGES);
+  const pages: (Domain.CsDisplayPage | null)[] = [];
+  for (let i = 0; i < pageCount; i++) {
+    const p = await d.getCsDisplayPage(i);
+    pages.push(Domain.csDisplayPageIsEmpty(p) ? null : p);
+  }
+  const status = await d.getCsDisplayStatus();
+  return { limits, cfg, pages, status };
+}
 
 // Control Surfaces mirror of fetchCtrlIfaceInfo: caps (host order: header,
 // then per-noun descriptors -- DspDevice owns that loop), live status, then
@@ -135,6 +162,10 @@ export async function fetchControlSurfaces(s: ReadySession): Promise<void> {
     if (groupCount > 0 || macroCount > 0) {
       extStatus = await s.queue.run(() => d.getCsExtStatus());
     }
+    let display: Awaited<ReturnType<typeof readCsDisplayBlock>> | null = null;
+    if (Domain.csDisplaysAvailable(caps)) {
+      display = await s.queue.run(() => readCsDisplayBlock(d));
+    }
     s.controlSurfaces.caps = caps;
     s.controlSurfaces.nouns = nouns;
     s.controlSurfaces.status = status;
@@ -144,6 +175,12 @@ export async function fetchControlSurfaces(s: ReadySession): Promise<void> {
     if (groups) s.controlSurfaces.groups = groups;
     if (macros) s.controlSurfaces.macros = macros;
     if (extStatus) s.controlSurfaces.extStatus = extStatus;
+    if (display) {
+      s.controlSurfaces.displayLimits = display.limits;
+      s.controlSurfaces.displayCfg = display.cfg;
+      s.controlSurfaces.displayPages = display.pages;
+      s.controlSurfaces.displayStatus = display.status;
+    }
     s.controlSurfaces.lastFetchError = null;
   } catch (err) {
     s.controlSurfaces.lastFetchError = errMessage(err);

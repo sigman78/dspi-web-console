@@ -1,7 +1,10 @@
 import { describe, test, expect } from 'vitest';
 import { PlatformType, ChannelFamily } from './platform';
 import type { DspSnapshot } from './snapshot';
-import { isAssignablePin, pinsInUse, pinUses, availablePinsFor, validBckPins, validBckPinsSlave, validUartTxPins, validI2cSdaPins, pickerCells, pickerCellsFrom } from './pins';
+import {
+  isAssignablePin, pinsInUse, pinUses, availablePinsFor, validBckPins, validBckPinsSlave,
+  validUartTxPins, validI2cSdaPins, csDisplayI2cInstance, validDisplaySdaPins, validDisplaySclPins, pickerCells, pickerCellsFrom,
+} from './pins';
 import { DEFAULT_UART_CONTROL_CONFIG } from './controlInterfaces';
 
 function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
@@ -216,6 +219,47 @@ describe('pins', () => {
 
     const uartEnabled = { uart: { enabled: true, txPin: 18, rxPin: 19, notifyEnabled: false, baud: 115200 } };
     expect(validI2cSdaPins(PlatformType.RP2350, s, uartEnabled)).not.toContain(18);
+  });
+
+  test('validI2cSdaPins drops the whole I2C instance a live display holds, not just its pins', () => {
+    const s = snapV16();
+    const ctrl = { cs: [{ gpio0: 12, gpio1: 13, display: true }] };
+    const without = validI2cSdaPins(PlatformType.RP2350, s, ctrl);
+    expect(without).toContain(16);                                       // i2c0, pins free
+    const withDisplay = validI2cSdaPins(PlatformType.RP2350, s, ctrl, csDisplayI2cInstance(ctrl.cs));
+    expect(withDisplay).not.toContain(16);
+    expect(withDisplay).toContain(18);                                   // i2c1 stays open
+    expect(csDisplayI2cInstance([{ gpio0: 4, gpio1: 5 }])).toBeNull();  // non-display slot
+  });
+
+  test('pinUses labels a display slot Display SDA/Display SCL, not CS slot N', () => {
+    const s = snapV16();
+    const ctrl = { cs: [{ gpio0: 4, gpio1: 5, display: true }] };
+    const uses = pinUses(s, ctrl);
+    expect(uses.get(4)).toEqual({ label: 'Display SDA', role: 'surface' });
+    expect(uses.get(5)).toEqual({ label: 'Display SCL', role: 'surface' });
+  });
+
+  test('validDisplaySdaPins excludes the live I2C instance and pins already in use', () => {
+    const s = snapV16();
+    const sdaNoLive = validDisplaySdaPins(PlatformType.RP2350, s, {}, null);
+    expect(sdaNoLive).toContain(0);    // instance 0
+    expect(sdaNoLive).toContain(2);    // instance 1
+
+    const sdaLive0 = validDisplaySdaPins(PlatformType.RP2350, s, {}, 0);
+    expect(sdaLive0).not.toContain(0); // instance 0 is live -- excluded
+    expect(sdaLive0).toContain(2);     // instance 1 still free
+
+    const ctrl = { cs: [{ gpio0: 2, gpio1: 3, display: true }] };
+    expect(validDisplaySdaPins(PlatformType.RP2350, s, ctrl, null)).not.toContain(2);      // claimed elsewhere
+  });
+
+  test('validDisplaySclPins only offers odd pins on the same I2C instance as SDA', () => {
+    const s = snapV16();
+    const scl = validDisplaySclPins(PlatformType.RP2350, s, {}, 0);   // sda=0, instance 0
+    expect(scl).toContain(1);      // odd, instance 0
+    expect(scl).not.toContain(3);  // odd, instance 1
+    expect(scl).not.toContain(0);  // even, never a valid SCL
   });
 
   test('pinsInUse and pinUses stay label-identical over a fully-populated snapshot (projection invariant)', () => {

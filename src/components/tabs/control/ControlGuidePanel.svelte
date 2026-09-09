@@ -42,6 +42,17 @@
       </div>
     </div>
     <div class="sect">
+      <div class="microlbl">DISPLAY</div>
+      <div class="hint">
+        An I2C character or OLED display on two spare GPIOs (SDA even, SCL
+        odd, on the I2C bus the control interface isn't using) shows what the
+        device is doing. Pages are items from the same list a control can
+        bind to; a change pops its page for a moment, then the home page or
+        rotation returns. Bind a button to Display Edit and an encoder to
+        Display Page Value for a browse / arm / adjust front panel.
+      </div>
+    </div>
+    <div class="sect">
       <div class="microlbl">WIRING</div>
       <div class="hint">
         Buttons and switches wire between the GPIO and GND (internal pull-up).

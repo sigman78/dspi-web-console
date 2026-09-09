@@ -8,6 +8,7 @@
   import { getSession } from '@/components/sessionContext';
   import * as CsDraft from './csDraft';
   import type { Draft } from './csDraft';
+  import * as CsField from './csFieldHelpers';
 
   const s = getSession();
   const connected = $derived(connection.connected);
@@ -44,8 +45,20 @@
       return null;
     })(),
   );
+  // Firmware allows only one live display slot too (CS_STATUS_DISPLAY_IN_USE
+  // on a second); same client-side nicety as irReceiverSlot above.
+  const displaySlot = $derived(
+    (() => {
+      for (let i = 0; i < maxSlots; i++) {
+        if (cs.bindings[i]?.type === Domain.CsType.Display || drafts[i]?.type === Domain.CsType.Display) return i;
+      }
+      return null;
+    })(),
+  );
   function typeOptionsFor(slot: number): number[] {
-    return typeOptions.filter((t) => t !== Domain.CsType.Ir || irReceiverSlot === null || irReceiverSlot === slot);
+    return typeOptions.filter((t) =>
+      (t !== Domain.CsType.Ir || irReceiverSlot === null || irReceiverSlot === slot)
+      && (t !== Domain.CsType.Display || displaySlot === null || displaySlot === slot));
   }
 
   function nounOptionsFor(typeIdx: number): number[] { return CsDraft.nounOptionsFor(typeIdx, caps, cs.nouns); }
@@ -58,7 +71,7 @@
 
   // Only LIVE sibling bindings reserve pins (fw control_surfaces_owns_pin);
   // the edited slot's own pins stay selectable.
-  function otherCsPins(slot: number): ({ gpio0: number; gpio1: number | null } | null)[] {
+  function otherCsPins(slot: number) {
     return Domain.liveCsPinConfigs(cs.bindings, cs.status).map((p, i) => (i === slot ? null : p));
   }
 
@@ -89,6 +102,28 @@
         grouped: false, linkAbs: false, groupAll: false,
       };
       d.gpio0 = firstFree(candidatesFor(slot, -1, false));
+      return d;
+    }
+    if (typeIdx === Domain.CsType.Display) {
+      const d: Draft = {
+        type: typeIdx, noun: 0, action: 0, event: Domain.CsEvent.Press,
+        gpio0: 0, gpio1: 0, target: 0, index: Domain.CsDisplayModel.Ssd1306_128x64,
+        invert: false, reverse: false, wrap: false, accel: false, repeat: false,
+        value: 0, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
+        onDelay: 0, offDelay: 0, limitBright: false, baseBright: 100,
+        grouped: false, linkAbs: false, groupAll: false,
+      };
+      if (snap) {
+        const ctrl = { uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: otherCsPins(slot) };
+        const sdaCands = Domain.validDisplaySdaPins(snap.platform.type, snap, ctrl, CsField.liveI2cInstance(s.ctrlIfaces.i2c));
+        // Prefer an SDA pin whose sda+1 is itself a legal SCL pin (the
+        // common wiring), falling back to any SDA with its first free SCL.
+        const withAdjacentScl = sdaCands.find((sda) =>
+          Domain.validDisplaySclPins(snap.platform.type, snap, ctrl, sda).includes(sda + 1));
+        d.gpio0 = withAdjacentScl ?? sdaCands[0] ?? 0;
+        const sclCands = Domain.validDisplaySclPins(snap.platform.type, snap, ctrl, d.gpio0);
+        d.gpio1 = sclCands.includes(d.gpio0 + 1) ? d.gpio0 + 1 : (sclCands[0] ?? 0);
+      }
       return d;
     }
     const noun = nounOptionsFor(typeIdx)[0] ?? Domain.CsNoun.MasterVolume;

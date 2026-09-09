@@ -3,6 +3,7 @@
   import ControlSurfacesPanel from '@/components/system/ControlSurfacesPanel.svelte';
   import CsGroupsPanel from '@/components/system/CsGroupsPanel.svelte';
   import CsMacrosPanel from '@/components/system/CsMacrosPanel.svelte';
+  import CsDisplayPanel from '@/components/system/CsDisplayPanel.svelte';
   import ControlGuidePanel from './control/ControlGuidePanel.svelte';
   import { getSession } from '@/components/sessionContext';
   import * as CsField from '@/components/system/csFieldHelpers';
@@ -30,6 +31,9 @@
   <div class="col">
     {#if features.controlSurfaces && CsField.macrosAvailable(s.controlSurfaces.caps)}
       <CsMacrosPanel />
+    {/if}
+    {#if features.controlSurfaces && CsField.displaysAvailable(s.controlSurfaces.caps)}
+      <CsDisplayPanel />
     {/if}
     <ControlGuidePanel />
   </div>

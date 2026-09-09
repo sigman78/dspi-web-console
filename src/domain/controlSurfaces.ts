@@ -13,6 +13,8 @@
 // commands (sub-slots of the single IR container binding) follow the same
 // preview/save/revert model.
 
+import { i2cInstance } from './controlInterfaces';
+
 export const CsType = {
   None:    0,
   Button:  1,
@@ -22,13 +24,12 @@ export const CsType = {
   Led:     5,
   LedPwm:  6,
   Ir:      7,
+  Display: 8,
 } as const;
 export type CsType = (typeof CsType)[keyof typeof CsType];
 
-// Component types this console can edit. A caps v10+ device may publish more
-// (CS_TYPE_DISPLAY = 8); those slots render read-only and the pickers skip
-// the type -- its bindings carry config this console can't author.
-export const CS_MAX_KNOWN_TYPE: number = CsType.Ir;
+// Component types this console can edit.
+export const CS_MAX_KNOWN_TYPE: number = CsType.Display;
 
 export const CsNoun = {
   UserVolume:         0,
@@ -90,8 +91,13 @@ export const CsNoun = {
   // caps v9 addition. SET fires the macro `value`; IND_EQUALS lights while it
   // runs. INC/DEC are deliberately excluded (stepping would fire while browsing).
   Macro:              52,
-  // caps v10 addition, listed only because a macro step must reject it (no
-  // nesting) -- the display panel itself is out of scope here.
+  // caps v10 additions: I2C display support. CpuLoad is untargeted, LED-only.
+  // DisplayPage/DisplayEdit browse and arm a display's front panel; PageValue
+  // steps/toggles whatever field the display currently has focused -- a
+  // macro step must reject it (no nesting).
+  CpuLoad:            53,
+  DisplayPage:        54,
+  DisplayEdit:        55,
   PageValue:          56,
   // caps v14 additions. Both platforms -- unlike the upmix nouns above there
   // is no RP2350 gate on the subharmonic synthesizer.
@@ -368,6 +374,174 @@ export interface CsExtStatus {
   macroStatus: number[];
 }
 
+export const CS_MAX_DISPLAY_PAGES = 16;
+
+// I2C displays (caps v10+): a CS_TYPE_DISPLAY binding's `index` selects one
+// of these modules, `value` an override 7-bit address (0 = the module's own
+// default). Character modules (1-5) render through CGRAM/HD44780 text
+// addressing; the graphic modules (6-8) also honor the LARGE page flag and
+// pixel-invert bars -- `graphic` marks that distinction for the panel.
+export const CsDisplayModel = {
+  None:            0,
+  Lcd1602:         1,
+  Lcd2004:         2,
+  CharOled16x2:    3,
+  CharOled20x2:    4,
+  CharOled20x4:    5,
+  Ssd1306_128x64:  6,
+  Ssd1306_128x32:  7,
+  Sh1106_128x64:   8,
+} as const;
+export type CsDisplayModel = (typeof CsDisplayModel)[keyof typeof CsDisplayModel];
+
+export interface CsDisplayModelInfo {
+  model: number;
+  label: string;
+  cols: number;
+  rows: number;
+  graphic: boolean;
+  defaultAddr: number;
+  khz: number;
+  fiveVolt: boolean;   // 5 V module bus -- needs a level shifter on 3.3 V GPIOs
+}
+
+export const CS_DISPLAY_MODELS: readonly CsDisplayModelInfo[] = [
+  { model: CsDisplayModel.Lcd1602,        label: 'LCD 16×2 (HD44780 + PCF8574)',            cols: 16, rows: 2, graphic: false, defaultAddr: 0x27, khz: 100, fiveVolt: true },
+  { model: CsDisplayModel.Lcd2004,        label: 'LCD 20×4 (HD44780 + PCF8574)',            cols: 20, rows: 4, graphic: false, defaultAddr: 0x27, khz: 100, fiveVolt: true },
+  { model: CsDisplayModel.CharOled16x2,   label: 'Character OLED 16×2 (US2066/RW1063)',     cols: 16, rows: 2, graphic: false, defaultAddr: 0x3C, khz: 400, fiveVolt: false },
+  { model: CsDisplayModel.CharOled20x2,   label: 'Character OLED 20×2 (US2066/RW1063)',     cols: 20, rows: 2, graphic: false, defaultAddr: 0x3C, khz: 400, fiveVolt: false },
+  { model: CsDisplayModel.CharOled20x4,   label: 'Character OLED 20×4 (US2066/RW1063)',     cols: 20, rows: 4, graphic: false, defaultAddr: 0x3C, khz: 400, fiveVolt: false },
+  { model: CsDisplayModel.Ssd1306_128x64, label: 'OLED 128×64 (SSD1306)',                   cols: 21, rows: 8, graphic: true,  defaultAddr: 0x3C, khz: 400, fiveVolt: false },
+  { model: CsDisplayModel.Ssd1306_128x32, label: 'OLED 128×32 (SSD1306)',                   cols: 21, rows: 4, graphic: true,  defaultAddr: 0x3C, khz: 400, fiveVolt: false },
+  { model: CsDisplayModel.Sh1106_128x64,  label: 'OLED 128×64 (SH1106)',                    cols: 21, rows: 8, graphic: true,  defaultAddr: 0x3C, khz: 400, fiveVolt: false },
+];
+
+// undefined for model 0 (none) or a model a newer firmware added beyond this
+// table -- the picker falls back to `Model N` for those.
+export function csDisplayModelInfo(model: number): CsDisplayModelInfo | undefined {
+  return CS_DISPLAY_MODELS.find((m) => m.model === model);
+}
+
+export const CS_DISPLAY_ADDR_MIN = 0x08;
+export const CS_DISPLAY_ADDR_MAX = 0x77;
+
+// Caps type row carries no model count of its own -- 1..CS_DISPLAY_MODEL_COUNT-1
+// is the fw's fixed model range (CS_DISP_MODEL_COUNT); a device-reported
+// `CsDisplayLimits.modelCount` is the authority for what the panel offers.
+export const CS_DISPLAY_MODEL_COUNT = 9;
+
+export const CsDisplayMode = { Fixed: 0, CycleSelected: 1, CycleAll: 2 } as const;
+export type CsDisplayMode = (typeof CsDisplayMode)[keyof typeof CsDisplayMode];
+
+export const CS_DISPLAY_MODE_LABEL: Record<CsDisplayMode, string> = {
+  [CsDisplayMode.Fixed]:         'Fixed page',
+  [CsDisplayMode.CycleSelected]: 'Cycle selected pages',
+  [CsDisplayMode.CycleAll]:      'Cycle everything',
+};
+
+export const CsDisplayAlign = { Left: 0, Centre: 1, Right: 2 } as const;
+export type CsDisplayAlign = (typeof CsDisplayAlign)[keyof typeof CsDisplayAlign];
+
+export const CS_DISPLAY_ALIGN_LABEL: Record<CsDisplayAlign, string> = {
+  [CsDisplayAlign.Left]:   'Left',
+  [CsDisplayAlign.Centre]: 'Centre',
+  [CsDisplayAlign.Right]:  'Right',
+};
+
+// CsDisplayCfg.flags (byte 7).
+export const CS_DCFG_OVERLAY_ANY      = 0x01;
+export const CS_DCFG_EDIT_GATED       = 0x02;
+export const CS_DCFG_LABEL_ALIGN_SHIFT = 2;
+export const CS_DCFG_VALUE_ALIGN_SHIFT = 4;
+export const CS_DCFG_ALIGN_MASK        = 0x03;
+export const CS_DCFG_KNOWN_FLAGS       = 0x3F;
+
+// CsDisplayPage.flags.
+export const CS_DPAGE_ACTIVE      = 0x01;
+export const CS_DPAGE_GROUP       = 0x02;
+export const CS_DPAGE_LARGE       = 0x04;
+export const CS_DPAGE_BAR         = 0x08;
+export const CS_DPAGE_KNOWN_FLAGS = 0x0F;
+
+// CsDisplayStatus.flags.
+export const CS_DSTATUS_OVERLAY = 0x01;
+export const CS_DSTATUS_EDIT    = 0x02;
+
+// The display's own settings blob (SET payload of 0x27, GET tail of 0x28).
+// Wire units throughout: dwell/overlayHold/editTimeout are 0.1 s ticks.
+export interface CsDisplayCfg {
+  mode: CsDisplayMode;
+  homePage: number;
+  dwell: number;
+  overlayHold: number;
+  brightness: number;
+  flags: number;
+  editTimeout: number;
+}
+
+export const EMPTY_CS_DISPLAY_CFG: CsDisplayCfg = {
+  mode: CsDisplayMode.Fixed, homePage: 0, dwell: 0, overlayHold: 0,
+  brightness: 0, flags: 0, editTimeout: 0,
+};
+
+// What firmware's disp_seed_pages produces on a zero cfg the first time a
+// display attaches with no ACTIVE page stored.
+export const SEEDED_CS_DISPLAY_CFG: CsDisplayCfg = {
+  mode: CsDisplayMode.Fixed, homePage: 0, dwell: 30, overlayHold: 20,
+  brightness: 0, flags: CS_DCFG_EDIT_GATED, editTimeout: 100,
+};
+
+export function csDisplayCfgIsEmpty(c: CsDisplayCfg): boolean {
+  return c.mode === CsDisplayMode.Fixed && c.homePage === 0 && c.dwell === 0 &&
+    c.overlayHold === 0 && c.brightness === 0 && c.flags === 0 && c.editTimeout === 0;
+}
+
+// GetCsDisplayCfg's (0x28) header: ceilings the panel sizes its editors from.
+export interface CsDisplayLimits {
+  maxPages: number;
+  modelCount: number;
+}
+
+// One display page slot (SET payload of 0x29, GET response of 0x2A).
+export interface CsDisplayPage {
+  noun: CsNoun;
+  target: number;
+  index: number;
+  flags: number;
+}
+
+export const EMPTY_CS_DISPLAY_PAGE: CsDisplayPage = { noun: CsNoun.UserVolume, target: 0, index: 0, flags: 0 };
+
+export function csDisplayPageIsEmpty(p: CsDisplayPage): boolean {
+  return !(p.flags & CS_DPAGE_ACTIVE);
+}
+
+export const CsDisplayInitState = { Down: 0, Init: 1, Live: 2, Error: 3 } as const;
+export type CsDisplayInitState = (typeof CsDisplayInitState)[keyof typeof CsDisplayInitState];
+
+export const CS_DISPLAY_INIT_STATE_LABEL: Record<CsDisplayInitState, string> = {
+  [CsDisplayInitState.Down]:  'NO DISPLAY',
+  [CsDisplayInitState.Init]:  'STARTING',
+  [CsDisplayInitState.Live]:  'LIVE',
+  [CsDisplayInitState.Error]: 'ERROR',
+};
+
+// GetCsDisplayStatus (0x2B), host shape. `model` is the live binding's index
+// while attached (0 when down); the I2C address is not reported -- resolve
+// it from `model` + the binding's `value` via csDisplayResolvedAddr.
+export interface CsDisplayStatus {
+  initState: CsDisplayInitState;
+  currentPage: number | null;   // null = wire 0xFF (no active page shown)
+  overlay: boolean;
+  editArmed: boolean;
+  model: number;
+  nakCount: number;
+}
+
+export function csDisplayResolvedAddr(model: number, value: number): number {
+  return value || csDisplayModelInfo(model)?.defaultAddr || 0;
+}
+
 // Device-served capability tables (GetCsCaps).
 export interface CsTypeCaps {
   actions: number;    // CS_ACT bit mask this component can drive
@@ -383,6 +557,12 @@ export interface CsCaps {
   maxGroups: number;
   maxMacros: number;
   maxMacroSteps: number;
+}
+
+// I2C displays exist from caps v10, told apart from the maxGroups/maxMacros
+// style ceiling by the presence of the DISPLAY row in the type table itself.
+export function csDisplaysAvailable(caps: CsCaps | null): boolean {
+  return caps != null && caps.capsVersion >= 10 && caps.types.length > CsType.Display;
 }
 
 export interface CsNounCaps {
@@ -454,6 +634,7 @@ export const CS_TYPE_LABEL: Record<CsType, string> = {
   [CsType.Led]:     'Indicator LED',
   [CsType.LedPwm]:  'PWM-Dimmed LED',
   [CsType.Ir]:      'IR Remote Receiver',
+  [CsType.Display]: 'I2C display',
 };
 
 export const CS_NOUN_LABEL: Record<CsNoun, string> = {
@@ -510,6 +691,9 @@ export const CS_NOUN_LABEL: Record<CsNoun, string> = {
   [CsNoun.LoudnessIntensity]: 'Loudness Intensity',
   [CsNoun.InputLevelMax]:     'Input Signal Level',
   [CsNoun.Macro]:             'Macro',
+  [CsNoun.CpuLoad]:           'CPU Load',
+  [CsNoun.DisplayPage]:       'Display Page',
+  [CsNoun.DisplayEdit]:       'Display Edit',
   [CsNoun.PageValue]:         'Display Page Value',
   [CsNoun.Subharm]:           'Subharmonic Synth',
   [CsNoun.SubharmLow]:        'Subharm 24–36 Hz',
@@ -524,8 +708,8 @@ export function csNounLabel(noun: number): string {
   return CS_NOUN_LABEL[noun as CsNoun] ?? `Function ${noun}`;
 }
 
-// Same fallback for component types a newer caps format publishes (v10's
-// I2C display is type 8) -- the raw Record lookup would render undefined.
+// Same fallback for component types a newer caps format publishes -- the
+// raw Record lookup would render undefined.
 export function csTypeLabel(type: number): string {
   return CS_TYPE_LABEL[type as CsType] ?? `Component ${type}`;
 }
@@ -577,10 +761,10 @@ export function csActionLabel(action: CsAction, isEnum: boolean): string {
 // (mirrors fw control_surfaces_owns_pin); a stored-but-down slot holds none.
 export function liveCsPinConfigs(
   bindings: readonly (CsBinding | null)[], status: CsStatus | null,
-): ({ gpio0: number; gpio1: number | null } | null)[] {
+): ({ gpio0: number; gpio1: number | null; display?: true } | null)[] {
   return bindings.map((b, i) =>
     b && status && (status.activeMask & (1 << i))
-      ? { gpio0: b.gpio0, gpio1: b.gpio1 }
+      ? { gpio0: b.gpio0, gpio1: b.gpio1, ...(b.type === CsType.Display ? { display: true as const } : {}) }
       : null);
 }
 
@@ -689,7 +873,7 @@ function validateCsGroupRef(
 // device truth, not table truth.
 export function validateCsBinding(
   b: CsBinding, caps: CsCaps, nouns: readonly CsNounCaps[],
-  groups: readonly (CsGroup | null)[] = [],
+  groups: readonly (CsGroup | null)[] = [], liveI2cInstance: number | null = null,
 ): number {
   if (b.type === CsType.None) return 0x00;                       // clear is always valid
   if (b.type >= caps.types.length) return 0x11;                  // INVALID_TYPE
@@ -729,6 +913,19 @@ export function validateCsBinding(
         b.value !== 0 || b.step !== 0 || b.rangeMin !== 0 || b.rangeMax !== 0)
       return 0x14;
     if (b.flags & ~CS_FLAG_INVERT) return 0x14;
+  } else if (b.type === CsType.Display) {
+    // Container slot: model (index) and an optional address override
+    // (value) are the only payload; everything else must read as empty.
+    if (b.noun !== 0 || b.action !== 0 || b.event !== CsEvent.Press || b.target !== 0 ||
+        b.step !== 0 || b.rangeMin !== 0 || b.rangeMax !== 0 || b.flags !== 0)
+      return 0x14;
+    if (b.index === 0 || b.index >= CS_DISPLAY_MODEL_COUNT) return 0x14;
+    if (b.value !== 0 && (b.value < CS_DISPLAY_ADDR_MIN || b.value > CS_DISPLAY_ADDR_MAX)) return 0x14;
+    if (b.gpio1 != null) {
+      if ((b.gpio0 & 1) !== 0 || (b.gpio1 & 1) !== 1 || i2cInstance(b.gpio0) !== i2cInstance(b.gpio1))
+        return 0x23;                                                  // PIN_NOT_I2C
+      if (liveI2cInstance === i2cInstance(b.gpio0)) return 0x24;      // I2C_IN_USE
+    }
   } else {
     if (!(type.actions & noun.actions & (1 << b.action))) return 0x13; // INVALID_ACTION
 
@@ -765,6 +962,9 @@ export function validateCsBinding(
       if ((b.action === CsAction.Set || b.action === CsAction.IndEquals) &&
           (b.value < 0 || b.value >= noun.enumCount)) return 0x14;
     }
+
+    if (b.noun === CsNoun.PageValue && (b.value !== 0 || b.step !== 0 || b.rangeMin !== 0 || b.rangeMax !== 0))
+      return 0x14;
   }
 
   if (type.pinClass === CS_PINCLASS_ADC && !CS_ADC_PINS.includes(b.gpio0)) return 0x15; // PIN_NOT_ADC
@@ -797,6 +997,8 @@ export function validateCsIrCommand(
   // unknown); LINK_ABS/GROUP_ALL never apply to an IR command.
   const allowedFlags = CS_FLAG_WRAP | CS_FLAG_REPEAT | (caps.capsVersion >= 10 ? CS_FLAG_GROUP : 0);
   if (cmd.flags & ~allowedFlags) return 0x14;                     // INVALID_VALUE (unknown flags)
+
+  if (cmd.noun === CsNoun.PageValue && (cmd.value !== 0 || cmd.step !== 0)) return 0x14;
 
   const irType = caps.types[CsType.Ir];
   const noun = nouns[cmd.noun];
@@ -880,4 +1082,49 @@ export function validateCsMacro(
     if (status !== 0x00) worst = status;
   }
   return worst;
+}
+
+// fw control_surfaces_apply_display_cfg's order. Wire fields are u8/u16 on
+// the device; the explicit range checks below are the client-side guard for
+// values a caller might hand in out of that band (the wire codec would
+// truncate them silently otherwise).
+export function validateCsDisplayCfg(c: CsDisplayCfg): number {
+  if (c.mode < 0 || c.mode > CsDisplayMode.CycleAll) return 0x14;         // INVALID_VALUE
+  if (c.homePage < 0 || c.homePage >= CS_MAX_DISPLAY_PAGES) return 0x25;  // INVALID_PAGE
+  if (c.dwell < 0 || c.dwell > 0xFFFF) return 0x14;
+  if (c.overlayHold < 0 || c.overlayHold > 0xFFFF) return 0x14;
+  if (c.brightness < 0 || c.brightness > 255) return 0x14;
+  if (c.flags & ~CS_DCFG_KNOWN_FLAGS) return 0x14;
+  const labelAlign = (c.flags >> CS_DCFG_LABEL_ALIGN_SHIFT) & CS_DCFG_ALIGN_MASK;
+  const valueAlign = (c.flags >> CS_DCFG_VALUE_ALIGN_SHIFT) & CS_DCFG_ALIGN_MASK;
+  if (labelAlign > CsDisplayAlign.Right || valueAlign > CsDisplayAlign.Right) return 0x14;
+  if (c.editTimeout < 0 || c.editTimeout > 0xFFFF) return 0x14;
+  if (c.mode !== CsDisplayMode.Fixed && c.dwell < 10) return 0x14;
+  return 0x00;
+}
+
+// A BAR page (and the panel's BAR toggle) only make sense on a continuous
+// noun with a real min..max span -- a degenerate 0..0 range has nothing to
+// draw a bar against.
+export function csNounHasSpan(noun: CsNounCaps): boolean {
+  return noun.kind === CsKind.Continuous && noun.maxQ8 > noun.minQ8;
+}
+
+// fw disp_validate_page's order exactly. A page is a no-op without a live
+// display, so this never checks anything device-state-dependent.
+export function validateCsDisplayPage(
+  p: CsDisplayPage, nouns: readonly CsNounCaps[], groups: readonly (CsGroup | null)[] = [],
+): number {
+  if (!(p.flags & CS_DPAGE_ACTIVE)) {
+    return (p.noun !== 0 || p.target !== 0 || p.index !== 0 || p.flags !== 0) ? 0x25 : 0x00;  // INVALID_PAGE
+  }
+  if (p.flags & ~CS_DPAGE_KNOWN_FLAGS) return 0x25;
+  if (p.noun >= nouns.length) return 0x12;                                                    // INVALID_NOUN
+
+  const noun = nouns[p.noun];
+  if ((p.flags & CS_DPAGE_BAR) && !csNounHasSpan(noun)) return 0x25;
+  if (p.noun === CsNoun.DisplayPage || p.noun === CsNoun.DisplayEdit || p.noun === CsNoun.PageValue) return 0x25;
+  if (noun.actions === 0) return 0x12;                                                        // platform-unavailable
+
+  return (p.flags & CS_DPAGE_GROUP) ? validateCsGroupRef(p, noun, groups) : validateCsTarget(p, noun);
 }

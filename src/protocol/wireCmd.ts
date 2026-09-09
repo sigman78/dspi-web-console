@@ -65,6 +65,15 @@ type CsExtStatusPayload = {
   macroRunning: number; macroStep: number;
   groupStatus: number[]; macroStatus: number[];
 };
+type CsDisplayCfgPayload = {
+  mode: number; homePage: number; dwell: number; overlayHold: number;
+  brightness: number; flags: number; editTimeout: number;
+};
+type CsDisplayCfgResponsePayload = { maxPages: number; modelCount: number; cfg: CsDisplayCfgPayload };
+type CsDisplayPagePayload = { noun: number; target: number; index: number; flags: number };
+type CsDisplayStatusPayload = {
+  initState: number; currentPage: number; flags: number; model: number; nakCount: number;
+};
 type LevellerMasksPayload = { detector: number; apply: number };
 type SysClockStatusPayload = {
   activeMode: number; storedMode: number; storedVregSel: number;
@@ -416,6 +425,17 @@ export const WireCmd = {
   // macro), in the mold of CsSave/CsRevert: 1-byte ack, no status poll.
   CsMacroFire:           { code: 0x25 } satisfies RawCmd,
   GetCsExtStatus:        { code: 0x26, codec: Wire.CsExtStatusPacket } satisfies ReadCmd<CsExtStatusPayload>,
+
+  // I2C displays (caps v10+, 0x27-0x2B). Cfg and page SETs are deferred,
+  // reported through the same GetCsStatus channel as bindings/groups/macros:
+  // cfg tagged slot 0x50, page N tagged slot 0x50 | N. wValue on the page
+  // GET is compared against all 16 bits (>= 16 STALLs); the SET's wValue is
+  // masked to the low byte like every other CS slot index.
+  SetCsDisplayCfg:       { code: 0x27, codec: Wire.CsDisplayCfg } satisfies WriteCmd<CsDisplayCfgPayload>,
+  GetCsDisplayCfg:       { code: 0x28, codec: Wire.CsDisplayCfgResponse } satisfies ReadCmd<CsDisplayCfgResponsePayload>,
+  SetCsDisplayPage:      { code: 0x29, codec: Wire.CsDisplayPage } satisfies WriteCmd<CsDisplayPagePayload>,
+  GetCsDisplayPage:      { code: 0x2A, codec: Wire.CsDisplayPage } satisfies ReadCmd<CsDisplayPagePayload>,
+  GetCsDisplayStatus:    { code: 0x2B, codec: Wire.CsDisplayStatus } satisfies ReadCmd<CsDisplayStatusPayload>,
 
   // --- Selectable system clock (fw overclock branch; no wire/version gate yet). ---
   // SET is deferred apply (firmware applies from the main loop around the PLL
