@@ -996,6 +996,7 @@ export async function applyCsBinding(s: ReadySession, slot: number, binding: Dom
         s.controlSurfaces.displayStatus = r.display.status;
       }
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed.bindings = true;
       ok = true;
     },
   );
@@ -1024,6 +1025,7 @@ export async function applyCsGroup(s: ReadySession, idx: number, g: Domain.CsGro
       s.controlSurfaces.groups[idx] = r.live.targetKind === Domain.CS_TARGET_NONE ? null : r.live;
       s.controlSurfaces.extStatus = r.extStatus;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed.groups = true;
       ok = true;
     },
   );
@@ -1052,6 +1054,7 @@ export async function applyCsMacro(s: ReadySession, idx: number, m: Domain.CsMac
       s.controlSurfaces.macros[idx] = Domain.csMacroIsEmpty(r.live) ? null : r.live;
       s.controlSurfaces.extStatus = r.extStatus;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed.macros = true;
       ok = true;
     },
   );
@@ -1123,6 +1126,7 @@ export async function applyCsDisplayCfg(s: ReadySession, cfg: Domain.CsDisplayCf
       s.controlSurfaces.displayCfg = r.live;
       s.controlSurfaces.displayStatus = r.displayStatus;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed.display = true;
       ok = true;
     },
   );
@@ -1145,6 +1149,7 @@ export async function applyCsDisplayPage(s: ReadySession, idx: number, p: Domain
       s.controlSurfaces.displayPages[idx] = Domain.csDisplayPageIsEmpty(r.live) ? null : r.live;
       s.controlSurfaces.displayStatus = r.displayStatus;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed.display = true;
       ok = true;
     },
   );
@@ -1182,6 +1187,7 @@ export async function applyCsName(s: ReadySession, slot: number, name: string): 
       s.controlSurfaces.status = r.status;
       s.controlSurfaces.names[slot] = r.live;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed.bindings = true;
       ok = true;
     },
   );
@@ -1198,6 +1204,7 @@ export async function csSaveConfig(s: ReadySession): Promise<boolean> {
     (r, s) => {
       s.controlSurfaces.status = r.status;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed = { bindings: false, groups: false, macros: false, display: false };
       ok = true;
     },
   );
@@ -1278,6 +1285,7 @@ export async function csRevertConfig(s: ReadySession): Promise<boolean> {
       }
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
       s.controlSurfaces.revertEpoch++;
+      s.controlSurfaces.changed = { bindings: false, groups: false, macros: false, display: false };
       ok = true;
     },
   );
@@ -1300,6 +1308,7 @@ export async function applyCsIrCommand(s: ReadySession, sub: number, cmd: Domain
       s.controlSurfaces.status = r.status;
       s.controlSurfaces.irCommands[sub] = r.live.protocol === Domain.CsIrProto.None ? null : r.live;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed.bindings = true;
       ok = true;
     },
   );

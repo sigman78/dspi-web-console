@@ -46,6 +46,10 @@ export interface ControlSurfacesState {
   // count). Read by the CONTROL tab's CHANGES panel: staged edits are not
   // part of a device SAVE until applied.
   staged: CsStagedCounts;
+  // Which editors applied something since the last SAVE/DISCARD. The fw's
+  // dirty flag is a single bit, so this is the console's own record of where
+  // the unsaved changes came from (blank when another host made them).
+  changed: CsChangedFlags;
   busy: boolean;
   lastFetchError: string | null;
 }
@@ -55,6 +59,13 @@ export interface CsStagedCounts {
   groups: number;
   macros: number;
   display: number;
+}
+
+export interface CsChangedFlags {
+  bindings: boolean;
+  groups: boolean;
+  macros: boolean;
+  display: boolean;
 }
 
 export function createControlSurfacesState(): ControlSurfacesState {
@@ -76,6 +87,7 @@ export function createControlSurfacesState(): ControlSurfacesState {
     displayStatus: null,
     revertEpoch: 0,
     staged: { bindings: 0, groups: 0, macros: 0, display: 0 },
+    changed: { bindings: false, groups: false, macros: false, display: false },
     busy: false,
     lastFetchError: null,
   });

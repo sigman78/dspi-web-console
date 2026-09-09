@@ -33,6 +33,17 @@
   );
   const allUsed = $derived(visibleSlots.length >= maxSlots);
 
+  // openSlot === -1 means "collapse all"; null means "no preference yet"
+  // (first render). expanded falls back to the first visible slot whenever
+  // openSlot points nowhere valid, so exactly one slot is open once any exist.
+  let openSlot = $state<number | null>(null);
+  const expanded = $derived(
+    openSlot === -1 ? null : (openSlot != null && visibleSlots.includes(openSlot) ? openSlot : (visibleSlots[0] ?? null)),
+  );
+  function toggleSlot(i: number): void {
+    openSlot = expanded === i ? -1 : i;
+  }
+
   $effect(() => {
     void cs.revertEpoch;   // the ONLY dependency -- cleanup must not track drafts
     untrack(() => {
@@ -119,6 +130,13 @@
     const i = firstFreeSlot();
     if (i == null) return;
     drafts[i] = { kind: Domain.CS_TARGET_OUTPUT_CH, mask: 0, name: '' };
+    openSlot = i;
+  }
+
+  function memberCount(mask: number): number {
+    let n = 0;
+    for (let m = mask; m !== 0; m >>>= 1) n += m & 1;
+    return n;
   }
 
   function canApply(i: number): boolean {
@@ -171,21 +189,33 @@
     {@const p = pill(i)}
     {@const dirty = isDirty(i)}
     {@const u = usage(i)}
-    <div class="slot">
-      <div class="slothead">
-        <span class="stitle" class:staged={dirty}
-          title={dirty ? 'Unapplied changes — APPLY to preview them live' : undefined}
-          >GROUP {i + 1}</span>
-        <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
-          value={d.name} aria-label={`Name for group ${i + 1}`}
-          disabled={busy || applying}
-          onchange={(e) => editDraft(i, (dr) => { dr.name = (e.currentTarget as HTMLInputElement).value; })} />
+    {@const open = expanded === i}
+    {@const n = memberCount(d.mask)}
+    <div class="slot" class:open>
+      <div class="slothead" onclick={(e) => { if (!open && !(e.target as HTMLElement).closest('button, input')) toggleSlot(i); }}>
+        <button type="button" class="hdrbtn" aria-expanded={open} onclick={() => toggleSlot(i)}>
+          <span class="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
+          <span class="stitle" class:staged={dirty}
+            title={dirty ? 'Unapplied changes — APPLY to preview them live' : undefined}
+            >GROUP {i + 1}</span>
+          {#if !open}
+            <span class="nametext" class:faint={!d.name}>{d.name || 'Unnamed'}</span>
+            <span class="meta">{Domain.csGroupKindLabel(d.kind)} · {n} member{n === 1 ? '' : 's'}</span>
+          {/if}
+        </button>
+        {#if open}
+          <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
+            value={d.name} aria-label={`Name for group ${i + 1}`}
+            disabled={busy || applying}
+            onchange={(e) => editDraft(i, (dr) => { dr.name = (e.currentTarget as HTMLInputElement).value; })} />
+        {/if}
         <span class="pill {p.cls}">{p.text}</span>
         <span class="spacer"></span>
         <button type="button" class="x" aria-label={`Remove group ${i + 1}`}
           disabled={applying} onclick={() => remove(i)}>✕</button>
       </div>
 
+      {#if open}
       {#if p.cls === 'warn'}
         <div class="hint err srow">{invalidHint(i)}</div>
       {/if}
@@ -226,6 +256,7 @@
             disabled={applying || !cs.groups[i] || !dirty}>REVERT</button>
         </div>
       </div>
+      {/if}
     </div>
   {/each}
 
@@ -239,6 +270,10 @@
 
 <style>
   .slot { border-bottom: 1px solid var(--wash); }
+  .slot.open {
+    background: color-mix(in oklab, var(--accent) 6%, transparent);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
   .slothead {
     display: flex;
     align-items: center;
@@ -246,11 +281,50 @@
     padding: 8px 14px 0;
     font-family: var(--font-mono);
   }
+  .slot:not(.open) .slothead { padding-bottom: 8px; cursor: pointer; }
+  .slot:not(.open):hover { background: var(--wash-faint); }
+  .slot.open .slothead {
+    padding-bottom: 6px;
+    border-bottom: 1px solid color-mix(in oklab, var(--accent) 25%, transparent);
+    margin-bottom: 4px;
+  }
+  .hdrbtn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    min-width: 0;
+  }
+  .hdrbtn:hover .stitle { color: var(--text); }
+  .chev { font-size: 9px; color: var(--text-faint); width: 8px; }
+  .slot.open .chev { color: var(--accent); }
   .stitle {
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 1.2px;
     color: var(--text-dim);
+  }
+  .slot.open .stitle { color: var(--text); }
+  .nametext {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 160px;
+  }
+  .nametext.faint { color: var(--text-faint); }
+  .meta {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-faint);
   }
   .nameinput {
     font-family: var(--font-mono);

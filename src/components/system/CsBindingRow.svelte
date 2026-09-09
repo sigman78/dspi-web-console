@@ -241,7 +241,7 @@
 </script>
 
 <div class="slot" class:open>
-  <div class="slothead">
+  <div class="slothead" onclick={(e) => { if (!open && !(e.target as HTMLElement).closest('button, input')) onToggle(); }}>
     <button type="button" class="hdrbtn" aria-expanded={open} onclick={onToggle}>
       <span class="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
       <span class="stitle" class:staged={dirty}
@@ -605,6 +605,10 @@
 
 <style>
   .slot { border-bottom: 1px solid var(--wash); }
+  .slot.open {
+    background: color-mix(in oklab, var(--accent) 6%, transparent);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
   .slothead {
     display: flex;
     align-items: center;
@@ -612,7 +616,13 @@
     padding: 8px 14px 0;
     font-family: var(--font-mono);
   }
-  .slot:not(.open) .slothead { padding-bottom: 8px; }
+  .slot:not(.open) .slothead { padding-bottom: 8px; cursor: pointer; }
+  .slot:not(.open):hover { background: var(--wash-faint); }
+  .slot.open .slothead {
+    padding-bottom: 6px;
+    border-bottom: 1px solid color-mix(in oklab, var(--accent) 25%, transparent);
+    margin-bottom: 4px;
+  }
   .hdrbtn {
     display: flex;
     align-items: center;
@@ -628,12 +638,14 @@
   }
   .hdrbtn:hover .stitle { color: var(--text); }
   .chev { font-size: 9px; color: var(--text-faint); width: 8px; }
+  .slot.open .chev { color: var(--accent); }
   .stitle {
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 1.2px;
     color: var(--text-dim);
   }
+  .slot.open .stitle { color: var(--text); }
   .nametext {
     font-family: var(--font-mono);
     font-size: 10px;
