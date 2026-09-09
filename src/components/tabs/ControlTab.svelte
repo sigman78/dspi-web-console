@@ -14,8 +14,8 @@
   const caps = $derived(s.controlSurfaces.caps);
 </script>
 
-<!-- Bounded-height panels share the first column; the two list editors that
-     grow per item each get a column of their own. Natural height, page
+<!-- Bounded-height panels share the first column; the bindings editor gets a
+     column of its own, macros + groups share the third. Natural height, page
      scrolls -- same as SYSTEM. -->
 <div class="grid">
   <div class="col">
@@ -24,9 +24,6 @@
     {/if}
     {#if features.controlInterfaces}
       <ControlInterfacesPanel />
-    {/if}
-    {#if cs && CsField.groupsAvailable(caps)}
-      <CsGroupsPanel />
     {/if}
     {#if cs && CsField.displaysAvailable(caps)}
       <CsDisplayPanel />
@@ -42,6 +39,9 @@
   <div class="col">
     {#if cs && CsField.macrosAvailable(caps)}
       <CsMacrosPanel />
+    {/if}
+    {#if cs && CsField.groupsAvailable(caps)}
+      <CsGroupsPanel />
     {/if}
   </div>
 </div>
