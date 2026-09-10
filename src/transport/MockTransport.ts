@@ -369,7 +369,8 @@ export class MockTransport implements DspTransport {
   #wireVersion: number;
   #payloadLength: number | undefined;
   #fwMajor: number;
-  #fwMinorPatch: number;
+  #fwMinor: number;
+  #fwPatch: number;
   #masterVolumeMode: MasterVolumeMode = MasterVolumeMode.Independent;
   #savedMasterVolumeDb = 0;
   #mockState: BulkParams;
@@ -483,7 +484,8 @@ export class MockTransport implements DspTransport {
     this.#payloadLength = opts.payloadLength;
     const fw = opts.fwVersion ?? { major: 1, minor: 1, patch: 4 };
     this.#fwMajor = fw.major;
-    this.#fwMinorPatch = ((fw.minor & 0xF) << 4) | (fw.patch & 0xF);
+    this.#fwMinor = fw.minor;
+    this.#fwPatch = fw.patch;
     this.#mockState = defaultMockBulkState(this.#platform, this.#wireVersion);
     this.#csNouns = buildMockCsNouns(this.#platform, this.#mockState.numIn, this.#mockState.numOut, this.#mockState.numCh);
     this.#csCapsVersion = opts.csCapsVersion ?? MOCK_CS_CAPS.capsVersion;
@@ -653,11 +655,15 @@ export class MockTransport implements DspTransport {
         return out;
       }
       case WireCmd.GetPlatform.code: {
-        // Wire shape: [platformId, fwMajor, (minor<<4)|patch, reserved].
-        const out = new Uint8Array(length);
+        // Wire shape: [platformId, fwMajor, (minor<<4)|patch, reserved] plus
+        // full-width [minor, patch] from fw 1.1.6 on; older fw clamps to 4 B.
+        const ext = this.#fwMajor > 1 || this.#fwMinor > 1 || (this.#fwMinor === 1 && this.#fwPatch >= 6);
+        const out = new Uint8Array(Math.min(length, ext ? 6 : 4));
         out[0] = this.#platform;
         if (length > 1) out[1] = this.#fwMajor;
-        if (length > 2) out[2] = this.#fwMinorPatch;
+        if (length > 2) out[2] = ((this.#fwMinor & 0xF) << 4) | (this.#fwPatch & 0xF);
+        if (length > 4) out[4] = this.#fwMinor;
+        if (length > 5) out[5] = this.#fwPatch;
         return out;
       }
       case WireCmd.GetAllParams.code: {
