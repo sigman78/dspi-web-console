@@ -22,6 +22,9 @@ export class StatusStore {
   i2sSlaveStatus = $state<I2sSlaveStatus | null>(null);
   adatStatus = $state<AdatOutputStatus | null>(null);
   adatInputStatus = $state<AdatInputStatus | null>(null);
+  // PR.06 headroom readout (fw V29+); 0 while subharm is disabled, null before
+  // the first read.
+  subharmHeadroomDb = $state<number | null>(null);
   info = $state<PartialSystemInfo | null>(null);
   // Live active input channel count (V16+; null = not reported / V10 device).
   activeInputChannels = $state<number | null>(null);
@@ -29,6 +32,9 @@ export class StatusStore {
   lastBufferMs = $state(0);
   lastInfoMs = $state(0);
   lastParamMs = $state(0);
+  // PR.06 headroom cadence clock, on the store (not poll-loop-local) so a
+  // scrub commit can force a re-read by zeroing it -- see setSubharm* actions.
+  lastSubharmMs = $state(0);
   errorCount = $state(0);
 
   reset(): void {
@@ -47,12 +53,14 @@ export class StatusStore {
     this.i2sSlaveStatus = null;
     this.adatStatus = null;
     this.adatInputStatus = null;
+    this.subharmHeadroomDb = null;
     this.info = null;
     this.activeInputChannels = null;
     this.lastStatusMs = 0;
     this.lastBufferMs = 0;
     this.lastInfoMs = 0;
     this.lastParamMs = 0;
+    this.lastSubharmMs = 0;
     this.errorCount = 0;
   }
 

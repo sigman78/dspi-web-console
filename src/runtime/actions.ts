@@ -317,7 +317,13 @@ export function togglePsybassOutputChannel(s: ReadySession, ch: number): void {
 export function setSubharmEnabled(s: ReadySession, enabled: boolean): void {
   void write(s,
     () => s.device.setSubharmEnabled(enabled),
-    () => { s.mirror.snapshot.subharm.enabled = enabled; },
+    () => {
+      s.mirror.snapshot.subharm.enabled = enabled;
+      // fw reports 0 while disabled; the poll stops. null = not read yet, so
+      // re-enabling shows -- instead of a stale/false 0.0 until the next read.
+      s.telemetry.subharmHeadroomDb = enabled ? null : 0;
+      s.telemetry.lastSubharmMs = 0;   // every subharm SET forces a headroom re-read
+    },
   );
 }
 
@@ -325,7 +331,10 @@ export function setSubharmLow(s: ReadySession, db: number): void {
   db = Clamp.subharmLevelDb(db);
   scrub(s,
     'subharmLow',
-    () => { s.mirror.snapshot.subharm.lowDb = db; },
+    () => {
+      s.mirror.snapshot.subharm.lowDb = db;
+      s.telemetry.lastSubharmMs = 0;
+    },
     () => s.device.setSubharmLow(db),
   );
 }
@@ -334,7 +343,10 @@ export function setSubharmHigh(s: ReadySession, db: number): void {
   db = Clamp.subharmLevelDb(db);
   scrub(s,
     'subharmHigh',
-    () => { s.mirror.snapshot.subharm.highDb = db; },
+    () => {
+      s.mirror.snapshot.subharm.highDb = db;
+      s.telemetry.lastSubharmMs = 0;
+    },
     () => s.device.setSubharmHigh(db),
   );
 }
@@ -343,7 +355,10 @@ export function setSubharmBoost(s: ReadySession, db: number): void {
   db = Clamp.subharmBoostDb(db);
   scrub(s,
     'subharmBoost',
-    () => { s.mirror.snapshot.subharm.boostDb = db; },
+    () => {
+      s.mirror.snapshot.subharm.boostDb = db;
+      s.telemetry.lastSubharmMs = 0;
+    },
     () => s.device.setSubharmBoost(db),
   );
 }
@@ -361,6 +376,15 @@ export function setSubharmOutputMask(s: ReadySession, mask: number): void {
 export function toggleSubharmOutputChannel(s: ReadySession, ch: number): void {
   const mask = s.mirror.snapshot.subharm.outputMask ^ (1 << ch);
   setSubharmOutputMask(s, mask);
+}
+
+// PR.06 RESERVE affordance: lowers each feeding input's preamp to exactly
+// -headroomDb so the subharm boost can't clip downstream. No-op when there's
+// nothing left to lower.
+export function reserveSubharmHeadroom(s: ReadySession): void {
+  const h = s.telemetry.subharmHeadroomDb ?? 0;
+  const plan = Domain.subharmReservePlan(s.mirror.snapshot, h);
+  for (const step of plan) setInputPreamp(s, step.slot, step.toDb);
 }
 
 // Stereo upmixer (fw V25+, RP2350 only). Discrete mode/enable edits use the

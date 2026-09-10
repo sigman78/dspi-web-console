@@ -398,6 +398,119 @@ describe('thin verbs: device call + mirror patch (parameterized)', () => {
   });
 });
 
+describe('setSubharmEnabled — headroom telemetry', () => {
+  function setup() {
+    const device = initializedDevice({
+      setSubharmEnabled: vi.fn(async () => {}),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(testHardware, parseBulkParams(makeBulk())));
+    return activeSession()!;
+  }
+
+  it('zeroes subharmHeadroomDb on disable (fw reports 0 while disabled; the poll stops)', async () => {
+    vi.useFakeTimers();
+    const s = setup();
+    s.telemetry.subharmHeadroomDb = 4.2;
+    s.telemetry.lastSubharmMs = 999;
+
+    actions.setSubharmEnabled(s, false);
+    await vi.runAllTimersAsync();
+
+    expect(s.telemetry.subharmHeadroomDb).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it('nulls subharmHeadroomDb on enable (not read yet) and forces a re-read', async () => {
+    vi.useFakeTimers();
+    const s = setup();
+    s.telemetry.subharmHeadroomDb = 0;
+    s.telemetry.lastSubharmMs = 999;
+
+    actions.setSubharmEnabled(s, true);
+    await vi.runAllTimersAsync();
+
+    expect(s.telemetry.subharmHeadroomDb).toBeNull();
+    expect(s.telemetry.lastSubharmMs).toBe(0);
+    vi.useRealTimers();
+  });
+});
+
+describe('reserveSubharmHeadroom', () => {
+  // Route input 0 into an enabled output slot 0 so it's a "feeding" input --
+  // subharmReservePlan no longer falls back to every input, so the plan is
+  // empty unless a real route qualifies.
+  function feedingSnapshot(inputPreampDb: [number, number]) {
+    const snap = fromBulkParams(testHardware, parseBulkParams(makeBulk()));
+    snap.inputPreampDb = inputPreampDb;
+    snap.outputs.find((o) => o.wireIndex === 0)!.enabled = true;
+    snap.routes.find((r) => r.inputIndex === 0 && r.outputWireIndex === 0)!.enabled = true;
+    return snap;
+  }
+
+  it('lowers only the input above the headroom line, to exactly -headroomDb', async () => {
+    vi.useFakeTimers();
+    const setInputPreamp = vi.fn(async () => {});
+    const device = initializedDevice({
+      setInputPreamp,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
+    liveMirror().replaceCurrent(feedingSnapshot([0, -6]));
+    const s = activeSession()!;
+    s.telemetry.subharmHeadroomDb = 4.2;
+
+    actions.reserveSubharmHeadroom(s);
+    await vi.runAllTimersAsync();
+
+    expect(setInputPreamp).toHaveBeenCalledTimes(1);
+    expect(setInputPreamp).toHaveBeenCalledWith(0, -4.2);
+    expect(liveMirror().current!.inputPreampDb).toEqual([-4.2, -6]);
+    vi.useRealTimers();
+  });
+
+  it('is a no-op when the feeding input is already at or below the line', async () => {
+    vi.useFakeTimers();
+    const setInputPreamp = vi.fn(async () => {});
+    const device = initializedDevice({
+      setInputPreamp,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
+    liveMirror().replaceCurrent(feedingSnapshot([-10, -10]));
+    const s = activeSession()!;
+    s.telemetry.subharmHeadroomDb = 4.2;
+
+    actions.reserveSubharmHeadroom(s);
+    await vi.runAllTimersAsync();
+
+    expect(setInputPreamp).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('is a no-op when nothing feeds a masked output (no all-inputs fallback)', async () => {
+    vi.useFakeTimers();
+    const setInputPreamp = vi.fn(async () => {});
+    const device = initializedDevice({
+      setInputPreamp,
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
+    const snap = fromBulkParams(testHardware, parseBulkParams(makeBulk()));
+    snap.inputPreampDb = [0, 0];   // both above any plausible line, but no route/output qualifies
+    liveMirror().replaceCurrent(snap);
+    const s = activeSession()!;
+    s.telemetry.subharmHeadroomDb = 4.2;
+
+    actions.reserveSubharmHeadroom(s);
+    await vi.runAllTimersAsync();
+
+    expect(setInputPreamp).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+});
+
 describe('leveller channel masks (toggle logic)', () => {
   let masksFn: ReturnType<typeof vi.fn<() => Promise<void>>>;
   beforeEach(() => {

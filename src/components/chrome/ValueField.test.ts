@@ -43,3 +43,19 @@ describe('ValueField pin-at-beginEdit', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe('ValueField floorLabel', () => {
+  it('shows the floor label instead of the number at the floor', () => {
+    const { container } = render(ValueField, {
+      value: -30, min: -30, max: 6, kind: 'dB-signed', precision: 1, floorLabel: 'Off', onChange: vi.fn(),
+    });
+    expect(container.querySelector('.num')!.textContent).toBe('Off');
+  });
+
+  it('shows the formatted number above the floor', () => {
+    const { container } = render(ValueField, {
+      value: 6, min: -30, max: 6, kind: 'dB-signed', precision: 1, floorLabel: 'Off', onChange: vi.fn(),
+    });
+    expect(container.querySelector('.num')!.textContent).toBe('+6.0');
+  });
+});
