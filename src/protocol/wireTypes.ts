@@ -841,6 +841,51 @@ export const CsExtStatusPacket = struct({
   macroStatus:    arr(u8, 8),
 });
 
+// I2C displays (caps v10+, 0x27-0x2B). 12-byte SET payload of
+// SetCsDisplayCfg (0x27); also the tail of GetCsDisplayCfg's (0x28) 16-byte
+// response.
+export const CsDisplayCfg = struct({
+  mode:        u8,
+  homePage:    u8,
+  dwell:       u16,
+  overlayHold: u16,
+  brightness:  u8,
+  flags:       u8,
+  editTimeout: u16,
+  _reserved:   reserved(2),
+});
+
+// 16-byte GetCsDisplayCfg (0x28) response: a 4-byte header (max page count,
+// selectable model count, 2 reserved) followed by CsDisplayCfg.
+export const CsDisplayCfgResponse = struct({
+  maxPages:   u8,
+  modelCount: u8,
+  _reserved:  reserved(2),
+  cfg:        CsDisplayCfg,
+});
+
+// 4-byte payload of SetCsDisplayPage (0x29, wValue = page) / response of
+// GetCsDisplayPage (0x2A, wValue = page). flags bit0 ACTIVE, bit1 GROUP,
+// bit2 LARGE, bit3 BAR; an all-zero record is an empty page slot.
+export const CsDisplayPage = struct({
+  noun:   u8,
+  target: u8,
+  index:  u8,
+  flags:  u8,
+});
+
+// 8-byte GetCsDisplayStatus (0x2B) response. initState: 0 DOWN/1 INIT/2
+// LIVE/3 ERROR; currentPage 0xFF when none is shown; flags bit0 overlay
+// showing, bit1 edit armed; model is the live binding's index, 0 when down.
+export const CsDisplayStatus = struct({
+  initState:   u8,
+  currentPage: u8,
+  flags:       u8,
+  model:       u8,
+  nakCount:    u16,
+  _reserved:   reserved(2),
+});
+
 // 32-byte `GetSerial` response: NUL-terminated UTF-8 inside a fixed
 // 32-byte window.
 export const Serial = nulStr(Const.SERIAL_LEN);

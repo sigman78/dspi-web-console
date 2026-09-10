@@ -142,6 +142,65 @@ describe('csDraft round-trip', () => {
     });
     expect(bindingsEqual(roundTrip(b, caps9), b)).toBe(true);
   });
+
+  // Display's container binding stores model in `index` and a raw address
+  // override in `value` -- neither is a noun-scaled quantity, so no q8.8
+  // conversion applies (unlike every other binding shape above).
+  it('reproduces a display binding with a raw model/address (no q8 conversion)', () => {
+    const b = live({
+      type: CsType.Display, gpio0: 4, gpio1: 5, index: 6, value: 0x3D,
+    });
+    expect(bindingsEqual(roundTrip(b), b)).toBe(true);
+  });
+});
+
+describe('display draft', () => {
+  it('draftFromLive zeroes everything but gpio/index/value/reserved', () => {
+    const b = live({
+      type: CsType.Display, gpio0: 4, gpio1: 5, index: 6, value: 0x3D, reserved2: [9],
+    });
+    expect(draftFromLive(b, nouns)).toEqual({
+      type: CsType.Display, noun: 0, action: 0, event: CsEvent.Press,
+      gpio0: 4, gpio1: 5, target: 0, index: 6,
+      invert: false, reverse: false, wrap: false, accel: false, repeat: false,
+      value: 0x3D, step: 0, limitRange: false, rangeMin: 0, rangeMax: 0,
+      onDelay: 0, offDelay: 0, limitBright: false, baseBright: 100,
+      grouped: false, linkAbs: false, groupAll: false,
+      reserved2: [9],
+    });
+  });
+
+  it('buildBinding ignores stale operands and forces flags 0 on a display draft', () => {
+    const d: Draft = {
+      type: CsType.Display, noun: 5, action: 3, event: CsEvent.Long,
+      gpio0: 4, gpio1: 5, target: 1, index: 6, value: 0x3D, step: 4,
+      limitRange: true, rangeMin: -10, rangeMax: 10,
+      invert: true, reverse: true, wrap: true, accel: true, repeat: true,
+      onDelay: 5, offDelay: 6, limitBright: true, baseBright: 40,
+      grouped: true, linkAbs: true, groupAll: true,
+      reserved2: [3],
+    };
+    expect(buildBinding(d, nouns, caps)).toEqual(live({
+      type: CsType.Display, gpio0: 4, gpio1: 5, index: 6, value: 0x3D,
+      reserved2: [3],
+    }));
+  });
+
+  it('forces value/step/range to 0 for a PAGE_VALUE binding regardless of action', () => {
+    const d: Draft = {
+      type: CsType.Button, noun: CsNoun.PageValue, action: CsAction.Inc,
+      event: CsEvent.Press, gpio0: 14, gpio1: 0, target: 0, index: 0,
+      invert: false, reverse: false, wrap: false, accel: false, repeat: false,
+      value: 5, step: 1, limitRange: true, rangeMin: -10, rangeMax: 10,
+      onDelay: 0, offDelay: 0, limitBright: false, baseBright: 100,
+      grouped: false, linkAbs: false, groupAll: false,
+    };
+    const built = buildBinding(d, nouns, caps);
+    expect(built.value).toBe(0);
+    expect(built.step).toBe(0);
+    expect(built.rangeMin).toBe(0);
+    expect(built.rangeMax).toBe(0);
+  });
 });
 
 describe('buildBinding conditional encoding', () => {

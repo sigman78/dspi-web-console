@@ -22,7 +22,7 @@
   const {
     slot, draft: d, dirty, pill: p, applying, typeOptions,
     onEdit, onTypeChange, onApply, onRevert, onRemove, onRename,
-    irResetSignal, onIrDirtyChange,
+    irResetSignal, onIrDirtyChange, open, onToggle,
   }: {
     slot: number;
     draft: Draft;
@@ -38,6 +38,8 @@
     onRename: (name: string) => void;
     irResetSignal: number;
     onIrDirtyChange: (dirty: boolean) => void;
+    open: boolean;
+    onToggle: () => void;
   } = $props();
 
   const s = getSession();
@@ -86,7 +88,7 @@
   function boolValueOptions(d: Draft): { v: number; label: string }[] { return CsField.boolValueOptions(d.noun); }
 
   function enumValueOptions(d: Draft): { v: number; label: string }[] {
-    return CsField.enumValueOptions(cs.nouns, d.noun, s.presets.names, cs.macros);
+    return CsField.enumValueOptions(cs.nouns, d.noun, s.presets.names, cs.macros, cs.displayPages);
   }
 
   function targetOptionsFor(d: Draft): { v: number; label: string }[] {
@@ -119,7 +121,7 @@
 
   // Only LIVE sibling bindings reserve pins (fw control_surfaces_owns_pin);
   // the edited slot's own pins stay selectable.
-  function otherCsPins(): ({ gpio0: number; gpio1: number | null } | null)[] {
+  function otherCsPins() {
     return Domain.liveCsPinConfigs(cs.bindings, cs.status).map((pin, i) => (i === slot ? null : pin));
   }
 
@@ -131,6 +133,94 @@
       if (adc && !Domain.CS_ADC_PINS.includes(c.pin)) c = { ...c, selectable: false, reason: 'not ADC-capable' };
       if (excludePin != null && c.pin === excludePin) c = { ...c, selectable: false, reason: 'assigned to the other encoder pin' };
       return c;
+    });
+  }
+
+  function modelOptions(): number[] {
+    const count = cs.displayLimits?.modelCount ?? Domain.CS_DISPLAY_MODEL_COUNT;
+    return Array.from({ length: Math.max(0, count - 1) }, (_, i) => i + 1);
+  }
+
+  // ADDRESS is free text so an in-progress, not-yet-valid entry (mid-typing,
+  // or a value out of range) stays visible with an error instead of being
+  // silently discarded or reverted -- only a valid parse writes d.value.
+  // The text resyncs from the draft's value whenever that changes for a
+  // reason other than this field's own edit (type switch, revert, a valid
+  // commit normalizing the format).
+  function formatAddr(v: number): string {
+    return v === 0 ? '' : `0x${v.toString(16).toUpperCase()}`;
+  }
+  let addrText = $derived(formatAddr(d.value));
+
+  const ADDR_TEXT_RE = /^(0x)?[0-9a-f]{1,2}$/i;
+  function addrTextValid(text: string): boolean {
+    const t = text.trim();
+    if (t === '') return true;                    // empty = 0 = model default
+    if (!ADDR_TEXT_RE.test(t)) return false;
+    const v = parseInt(t.replace(/^0x/i, ''), 16);
+    return v >= Domain.CS_DISPLAY_ADDR_MIN && v <= Domain.CS_DISPLAY_ADDR_MAX;
+  }
+  function addrTextValue(text: string): number {
+    const t = text.trim();
+    return t === '' ? 0 : parseInt(t.replace(/^0x/i, ''), 16);
+  }
+
+  function addressPlaceholder(d: Draft): string {
+    const info = Domain.csDisplayModelInfo(d.index);
+    return info ? `default 0x${info.defaultAddr.toString(16).toUpperCase()}` : 'default';
+  }
+
+  function displayHint(d: Draft): string {
+    const model = Domain.csDisplayModelInfo(d.index);
+    const parts: string[] = [];
+    if (model) parts.push(`${model.khz} kHz`);
+    if (model?.fiveVolt) parts.push('5 V module — use a level shifter or a 3.3 V-verified board');
+    parts.push('external 2.2–4.7 kΩ pull-ups assumed');
+    return parts.join(' · ');
+  }
+
+  // Full client-side pre-validation of the built binding, so a pin pair the
+  // pickers' own per-cell rules can't catch on their own (e.g. two otherwise-
+  // legal pins that still collide with a live sibling slot) still blocks
+  // APPLY rather than being sent to the device to be rejected there.
+  function displayBindingValid(d: Draft): boolean {
+    if (!caps) return false;
+    return Domain.validateCsBinding(
+      CsDraft.buildBinding(d, cs.nouns, caps), caps, cs.nouns, cs.groups, CsField.liveI2cInstance(s.ctrlIfaces.i2c),
+    ) === 0;
+  }
+
+  function canApplyDisplay(d: Draft): boolean {
+    return addrTextValid(addrText) && displayBindingValid(d);
+  }
+
+  function displaySdaCells(d: Draft): Domain.PinPickerCell[] {
+    if (!snap) return [];
+    const ctrl = { uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: otherCsPins() };
+    const cands = Domain.validDisplaySdaPins(snap.platform.type, snap, ctrl, CsField.liveI2cInstance(s.ctrlIfaces.i2c));
+    return Domain.pickerCellsFrom(snap.platform.type, snap, ctrl, cands, d.gpio0,
+      (pin) => (pin % 2 !== 0 ? 'Not an SDA pin (even GPIO)' : 'That I2C bus is used by the control interface'));
+  }
+  function displaySclCells(d: Draft): Domain.PinPickerCell[] {
+    if (!snap) return [];
+    const ctrl = { uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: otherCsPins() };
+    const cands = Domain.validDisplaySclPins(snap.platform.type, snap, ctrl, d.gpio0);
+    return Domain.pickerCellsFrom(snap.platform.type, snap, ctrl, cands, d.gpio1,
+      () => 'SCL must be on the same I2C bus as SDA');
+  }
+
+  // Re-picking SDA can strand the current SCL pin (different instance, or no
+  // longer free) -- re-snap it to sda+1 when that's legal, else the first
+  // remaining candidate, same preference order as the panel's defaultDraft.
+  function onDisplaySdaChange(pin: number): void {
+    onEdit((dr) => {
+      dr.gpio0 = pin;
+      if (!snap) return;
+      const ctrl = { uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: otherCsPins() };
+      const sclCands = Domain.validDisplaySclPins(snap.platform.type, snap, ctrl, pin);
+      if (!sclCands.includes(dr.gpio1)) {
+        dr.gpio1 = sclCands.includes(pin + 1) ? pin + 1 : (sclCands[0] ?? 0);
+      }
     });
   }
 
@@ -150,21 +240,30 @@
   }
 </script>
 
-<div class="slot">
-  <div class="slothead">
-    <span class="stitle" class:staged={dirty}
-      title={dirty ? 'Unapplied changes — APPLY to preview them live' : undefined}
-      >{Domain.csTypeLabel(d.type).toUpperCase()}</span>
-    <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
-      value={cs.names[slot] ?? ''} aria-label={`Name for control ${slot + 1}`}
-      disabled={busy || applying}
-      onchange={(e) => onRename((e.currentTarget as HTMLInputElement).value)} />
+<div class="slot" class:open>
+  <div class="slothead" onclick={(e) => { if (!open && !(e.target as HTMLElement).closest('button, input')) onToggle(); }}>
+    <button type="button" class="hdrbtn" aria-expanded={open} onclick={onToggle}>
+      <span class="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
+      <span class="stitle" class:staged={dirty}
+        title={dirty ? 'Unapplied changes — APPLY to preview them live' : undefined}
+        >{Domain.csTypeLabel(d.type).toUpperCase()}</span>
+      {#if !open}
+        <span class="nametext" class:faint={!cs.names[slot]}>{cs.names[slot] || 'Unnamed'}</span>
+      {/if}
+    </button>
+    {#if open}
+      <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
+        value={cs.names[slot] ?? ''} aria-label={`Name for control ${slot + 1}`}
+        disabled={busy || applying}
+        onchange={(e) => onRename((e.currentTarget as HTMLInputElement).value)} />
+    {/if}
     <span class="pill {p.cls}">{p.text}</span>
     <span class="spacer"></span>
     <button type="button" class="x" aria-label={`Remove control ${slot + 1}`}
       disabled={applying} onclick={() => onRemove()}>✕</button>
   </div>
 
+  {#if open}
   {#if p.cls === 'warn'}
     <div class="hint err srow">{inactiveHint()}</div>
   {/if}
@@ -187,7 +286,7 @@
           <option value={String(t)}>{Domain.csTypeLabel(t)}</option>
         {/each}
       </select>
-      {#if d.type !== Domain.CsType.Ir}
+      {#if !CsDraft.isDisplay(d) && d.type !== Domain.CsType.Ir}
         <span class="microlbl">CONTROLS</span>
         <select class="sel" value={String(d.noun)} aria-label="Controlled function" disabled={busy || applying}
           onchange={(e) => {
@@ -212,7 +311,32 @@
       {/if}
     </div>
 
-    {#if actions.length > 1 || showEventOf(d)}
+    {#if CsDraft.isDisplay(d)}
+      <div class="row">
+        <span class="microlbl">MODEL</span>
+        <select class="sel" value={String(d.index)} aria-label="Display model" disabled={busy || applying}
+          onchange={(e) => {
+            const m = Number((e.currentTarget as HTMLSelectElement).value);
+            onEdit((dr) => { dr.index = m; });
+          }}>
+          {#each modelOptions() as m (m)}
+            <option value={String(m)}>{Domain.csDisplayModelInfo(m)?.label ?? `Model ${m}`}</option>
+          {/each}
+        </select>
+        <span class="microlbl">ADDRESS</span>
+        <input class="numfield addrfield" type="text" value={addrText} placeholder={addressPlaceholder(d)}
+          aria-label="I2C address (hex)" disabled={busy || applying}
+          onchange={(e) => {
+            addrText = (e.currentTarget as HTMLInputElement).value;
+            if (addrTextValid(addrText)) onEdit((dr) => { dr.value = addrTextValue(addrText); });
+          }} />
+        {#if !addrTextValid(addrText)}
+          <span class="hint err">Address must be 0x08–0x77</span>
+        {/if}
+      </div>
+    {/if}
+
+    {#if !CsDraft.isDisplay(d) && (actions.length > 1 || showEventOf(d))}
       <div class="row">
         {#if actions.length > 1}
           <span class="microlbl">ON PRESS</span>
@@ -248,7 +372,16 @@
     {/if}
 
     <div class="row">
-      {#if twoPins(d)}
+      {#if CsDraft.isDisplay(d)}
+        <span class="microlbl">SDA</span>
+        <PinPicker value={d.gpio0} cells={displaySdaCells(d)}
+          ariaLabel="Display SDA pin" disabled={busy || applying}
+          onChange={onDisplaySdaChange} />
+        <span class="microlbl">SCL</span>
+        <PinPicker value={d.gpio1} cells={displaySclCells(d)}
+          ariaLabel="Display SCL pin" disabled={busy || applying}
+          onChange={(pin) => onEdit((dr) => { dr.gpio1 = pin; })} />
+      {:else if twoPins(d)}
         <span class="microlbl">GPIO A</span>
         <PinPicker value={d.gpio0} cells={cellsFor(d.gpio0, false, d.gpio1)}
           ariaLabel="Encoder GPIO A" disabled={busy || applying}
@@ -265,7 +398,13 @@
       {/if}
     </div>
 
-    {#if d.type !== Domain.CsType.Ir && showTargetOf(d)}
+    {#if CsDraft.isDisplay(d)}
+      <div class="row">
+        <span class="hint">{displayHint(d)}</span>
+      </div>
+    {/if}
+
+    {#if !CsDraft.isDisplay(d) && d.type !== Domain.CsType.Ir && showTargetOf(d)}
       {@const groupOpts = showGroupOf(d) ? groupOptionsFor(d) : []}
       {@const missingGroup = showGroupOf(d) && d.grouped && !groupOpts.some((o) => o.v === d.target)}
       <div class="row">
@@ -311,7 +450,7 @@
       </div>
     {/if}
 
-    {#if d.type !== Domain.CsType.Ir && (showValueOf(d) || showStepOf(d))}
+    {#if !CsDraft.isDisplay(d) && d.type !== Domain.CsType.Ir && d.noun !== Domain.CsNoun.PageValue && (showValueOf(d) || showStepOf(d))}
       <div class="row">
         {#if showValueOf(d)}
           <span class="microlbl">{valueLabel(d)}</span>
@@ -348,7 +487,7 @@
       </div>
     {/if}
 
-    {#if d.type !== Domain.CsType.Ir && showRangeOf(d)}
+    {#if !CsDraft.isDisplay(d) && d.type !== Domain.CsType.Ir && d.noun !== Domain.CsNoun.PageValue && showRangeOf(d)}
       <div class="row">
         <span class="microlbl">LIMIT RANGE</span>
         <ToggleSwitch size="sm" checked={d.limitRange} disabled={busy || applying}
@@ -404,52 +543,54 @@
       </div>
     {/if}
 
-    <div class="row">
-      <span class="microlbl">{invertLabel(d).toUpperCase()}</span>
-      <ToggleSwitch size="sm" checked={d.invert} disabled={busy || applying}
-        ariaLabel={invertLabel(d)}
-        onChange={(v) => onEdit((dr) => { dr.invert = v; })} />
-      {#if showReverseOf(d)}
-        <span class="microlbl">REVERSE DIRECTION</span>
-        <ToggleSwitch size="sm" checked={d.reverse} disabled={busy || applying}
-          ariaLabel="Reverse direction"
-          onChange={(v) => onEdit((dr) => { dr.reverse = v; })} />
-      {/if}
-      {#if showWrapOf(d)}
-        <span class="microlbl">WRAP AROUND</span>
-        <ToggleSwitch size="sm" checked={d.wrap} disabled={busy || applying}
-          ariaLabel="Wrap around"
-          onChange={(v) => onEdit((dr) => { dr.wrap = v; })} />
-      {/if}
-      {#if showAccelOf(d)}
-        <span class="microlbl">ACCELERATE FAST ROTATION</span>
-        <ToggleSwitch size="sm" checked={d.accel} disabled={busy || applying}
-          ariaLabel="Accelerate on fast rotation"
-          onChange={(v) => onEdit((dr) => { dr.accel = v; })} />
-      {/if}
-      {#if showRepeatOf(d)}
-        <span class="microlbl">AUTO-REPEAT WHILE HELD</span>
-        <ToggleSwitch size="sm" checked={d.repeat} disabled={busy || applying}
-          ariaLabel="Auto-repeat while held"
-          onChange={(v) => onEdit((dr) => { dr.repeat = v; if (v) dr.event = Domain.CsEvent.Press; })} />
-      {/if}
-      {#if d.grouped && showLinkAbsOf(d)}
-        <span class="microlbl" title="Off: the pot moves the group together while each member keeps its offset">SAME LEVEL FOR ALL</span>
-        <ToggleSwitch size="sm" checked={d.linkAbs} disabled={busy || applying}
-          ariaLabel="Drive every member to the same level"
-          onChange={(v) => onEdit((dr) => { dr.linkAbs = v; })} />
-      {/if}
-      {#if d.grouped && showGroupAllOf(d)}
-        <span class="microlbl" title="Off: lights when any member matches">ALL MEMBERS</span>
-        <ToggleSwitch size="sm" checked={d.groupAll} disabled={busy || applying}
-          ariaLabel="Require every member to match"
-          onChange={(v) => onEdit((dr) => { dr.groupAll = v; })} />
-      {/if}
-    </div>
+    {#if !CsDraft.isDisplay(d)}
+      <div class="row">
+        <span class="microlbl">{invertLabel(d).toUpperCase()}</span>
+        <ToggleSwitch size="sm" checked={d.invert} disabled={busy || applying}
+          ariaLabel={invertLabel(d)}
+          onChange={(v) => onEdit((dr) => { dr.invert = v; })} />
+        {#if showReverseOf(d)}
+          <span class="microlbl">REVERSE DIRECTION</span>
+          <ToggleSwitch size="sm" checked={d.reverse} disabled={busy || applying}
+            ariaLabel="Reverse direction"
+            onChange={(v) => onEdit((dr) => { dr.reverse = v; })} />
+        {/if}
+        {#if showWrapOf(d)}
+          <span class="microlbl">WRAP AROUND</span>
+          <ToggleSwitch size="sm" checked={d.wrap} disabled={busy || applying}
+            ariaLabel="Wrap around"
+            onChange={(v) => onEdit((dr) => { dr.wrap = v; })} />
+        {/if}
+        {#if showAccelOf(d)}
+          <span class="microlbl">ACCELERATE FAST ROTATION</span>
+          <ToggleSwitch size="sm" checked={d.accel} disabled={busy || applying}
+            ariaLabel="Accelerate on fast rotation"
+            onChange={(v) => onEdit((dr) => { dr.accel = v; })} />
+        {/if}
+        {#if showRepeatOf(d)}
+          <span class="microlbl">AUTO-REPEAT WHILE HELD</span>
+          <ToggleSwitch size="sm" checked={d.repeat} disabled={busy || applying}
+            ariaLabel="Auto-repeat while held"
+            onChange={(v) => onEdit((dr) => { dr.repeat = v; if (v) dr.event = Domain.CsEvent.Press; })} />
+        {/if}
+        {#if d.grouped && showLinkAbsOf(d)}
+          <span class="microlbl" title="Off: the pot moves the group together while each member keeps its offset">SAME LEVEL FOR ALL</span>
+          <ToggleSwitch size="sm" checked={d.linkAbs} disabled={busy || applying}
+            ariaLabel="Drive every member to the same level"
+            onChange={(v) => onEdit((dr) => { dr.linkAbs = v; })} />
+        {/if}
+        {#if d.grouped && showGroupAllOf(d)}
+          <span class="microlbl" title="Off: lights when any member matches">ALL MEMBERS</span>
+          <ToggleSwitch size="sm" checked={d.groupAll} disabled={busy || applying}
+            ariaLabel="Require every member to match"
+            onChange={(v) => onEdit((dr) => { dr.groupAll = v; })} />
+        {/if}
+      </div>
+    {/if}
 
     <div class="row">
       <button type="button" class="chip accent" onclick={() => onApply()}
-        disabled={busy || applying || !dirty}>APPLY</button>
+        disabled={busy || applying || !dirty || (CsDraft.isDisplay(d) && !canApplyDisplay(d))}>APPLY</button>
       <button type="button" class="chip hi" onclick={() => onRevert()}
         disabled={applying || !cs.bindings[slot] || !dirty}>REVERT</button>
     </div>
@@ -459,10 +600,15 @@
   {#if cs.bindings[slot]?.type === Domain.CsType.Ir}
     <CsIrCommands resetSignal={irResetSignal} onDirtyChange={onIrDirtyChange} />
   {/if}
+  {/if}
 </div>
 
 <style>
   .slot { border-bottom: 1px solid var(--wash); }
+  .slot.open {
+    background: color-mix(in oklab, var(--accent) 6%, transparent);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
   .slothead {
     display: flex;
     align-items: center;
@@ -470,12 +616,46 @@
     padding: 8px 14px 0;
     font-family: var(--font-mono);
   }
+  .slot:not(.open) .slothead { padding-bottom: 8px; cursor: pointer; }
+  .slot:not(.open):hover { background: var(--wash-faint); }
+  .slot.open .slothead {
+    padding-bottom: 6px;
+    border-bottom: 1px solid color-mix(in oklab, var(--accent) 25%, transparent);
+    margin-bottom: 4px;
+  }
+  .hdrbtn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    min-width: 0;
+  }
+  .hdrbtn:hover .stitle { color: var(--text); }
+  .chev { font-size: 9px; color: var(--text-faint); width: 8px; }
+  .slot.open .chev { color: var(--accent); }
   .stitle {
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 1.2px;
     color: var(--text-dim);
   }
+  .slot.open .stitle { color: var(--text); }
+  .nametext {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 160px;
+  }
+  .nametext.faint { color: var(--text-faint); }
   .nameinput {
     font-family: var(--font-mono);
     font-size: 10px;
@@ -530,6 +710,7 @@
     padding: 3px 6px;
     width: 64px;
   }
+  .addrfield { width: 96px; }
   .hint.err { color: var(--err); }
   .pad { padding: 10px 14px; }
 </style>

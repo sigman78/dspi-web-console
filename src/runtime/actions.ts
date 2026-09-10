@@ -8,6 +8,7 @@ import { Wire } from '@/protocol';
 import { errMessage } from '@/utils';
 import { write, scrub, writeChecked, command } from './writes.svelte';
 import { focusOutput, focusRoute } from './focus';
+import { readCsDisplayBlock } from './deviceService';
 
 // Linkwitz Transform reinterprets the gain slot as fp (Hz), not dB, and
 // carries its own f0/fp/Q0/Qp ranges (see eqLimits.ts) -- clamping it with
@@ -971,16 +972,31 @@ export function setI2cControlConfig(s: ReadySession, cfg: Domain.I2cControlConfi
 // Resolves true only when the device accepted the binding.
 export async function applyCsBinding(s: ReadySession, slot: number, binding: Domain.CsBinding): Promise<boolean> {
   let ok = false;
+  // Attaching or detaching a display silently reseeds its cfg/pages (fw
+  // disp_seed_pages runs without setting dirty), so the display block is
+  // re-read inside the same queued send whenever this binding touches type
+  // Display -- either as the new type or the one it's replacing.
+  const wasDisplay = s.controlSurfaces.bindings[slot]?.type === Domain.CsType.Display;
+  const touchesDisplay = (binding.type === Domain.CsType.Display || wasDisplay) &&
+    Domain.csDisplaysAvailable(s.controlSurfaces.caps);
   await command(s, 'set control-surface binding',
     async () => {
       const r = await s.device.setCsBinding(slot, binding);
       const live = await s.device.getCsBinding(slot);
-      return { result: r.result, status: r.status, live };
+      const display = touchesDisplay && r.result.ok ? await readCsDisplayBlock(s.device) : null;
+      return { result: r.result, status: r.status, live, display };
     },
     (r, s) => {
       s.controlSurfaces.status = r.status;
       s.controlSurfaces.bindings[slot] = r.live.type === Domain.CsType.None ? null : r.live;
+      if (r.display) {
+        s.controlSurfaces.displayLimits = r.display.limits;
+        s.controlSurfaces.displayCfg = r.display.cfg;
+        s.controlSurfaces.displayPages = r.display.pages;
+        s.controlSurfaces.displayStatus = r.display.status;
+      }
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed.bindings = true;
       ok = true;
     },
   );
@@ -1009,6 +1025,7 @@ export async function applyCsGroup(s: ReadySession, idx: number, g: Domain.CsGro
       s.controlSurfaces.groups[idx] = r.live.targetKind === Domain.CS_TARGET_NONE ? null : r.live;
       s.controlSurfaces.extStatus = r.extStatus;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed.groups = true;
       ok = true;
     },
   );
@@ -1037,6 +1054,7 @@ export async function applyCsMacro(s: ReadySession, idx: number, m: Domain.CsMac
       s.controlSurfaces.macros[idx] = Domain.csMacroIsEmpty(r.live) ? null : r.live;
       s.controlSurfaces.extStatus = r.extStatus;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed.macros = true;
       ok = true;
     },
   );
@@ -1090,6 +1108,69 @@ export async function refreshCsExtStatus(s: ReadySession): Promise<void> {
   }
 }
 
+// caps v10+ — I2C display settings apply (0x27 + status poll, reported in
+// last_slot 0x50). No display binding is required to configure this in
+// advance -- the blob is live whether or not a display is attached.
+export async function applyCsDisplayCfg(s: ReadySession, cfg: Domain.CsDisplayCfg): Promise<boolean> {
+  let ok = false;
+  await command(s, 'set control-surface display config',
+    async () => {
+      const r = await s.device.setCsDisplayCfg(cfg);
+      const { limits, cfg: live } = await s.device.getCsDisplayCfg();
+      const displayStatus = await s.device.getCsDisplayStatus();
+      return { result: r.result, status: r.status, limits, live, displayStatus };
+    },
+    (r, s) => {
+      s.controlSurfaces.status = r.status;
+      s.controlSurfaces.displayLimits = r.limits;
+      s.controlSurfaces.displayCfg = r.live;
+      s.controlSurfaces.displayStatus = r.displayStatus;
+      if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed.display = true;
+      ok = true;
+    },
+  );
+  return ok;
+}
+
+// caps v10+ — one display page apply (0x29 + status poll, reported in
+// last_slot 0x50 | page). Same no-binding-required rule as the cfg above.
+export async function applyCsDisplayPage(s: ReadySession, idx: number, p: Domain.CsDisplayPage): Promise<boolean> {
+  let ok = false;
+  await command(s, 'set control-surface display page',
+    async () => {
+      const r = await s.device.setCsDisplayPage(idx, p);
+      const live = await s.device.getCsDisplayPage(idx);
+      const displayStatus = await s.device.getCsDisplayStatus();
+      return { result: r.result, status: r.status, live, displayStatus };
+    },
+    (r, s) => {
+      s.controlSurfaces.status = r.status;
+      s.controlSurfaces.displayPages[idx] = Domain.csDisplayPageIsEmpty(r.live) ? null : r.live;
+      s.controlSurfaces.displayStatus = r.displayStatus;
+      if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed.display = true;
+      ok = true;
+    },
+  );
+  return ok;
+}
+
+export function clearCsDisplayPage(s: ReadySession, idx: number): Promise<boolean> {
+  return applyCsDisplayPage(s, idx, Domain.EMPTY_CS_DISPLAY_PAGE);
+}
+
+// Status refresh for the DISPLAY panel's live poll. A plain queued read,
+// deliberately outside `command`, mirroring refreshCsExtStatus.
+export async function refreshCsDisplayStatus(s: ReadySession): Promise<void> {
+  try {
+    const status = await s.queue.run(() => s.device.getCsDisplayStatus());
+    if (s.alive) s.controlSurfaces.displayStatus = status;
+  } catch {
+    // dropped: the poll retries on its next tick
+  }
+}
+
 // V16 — Control Surfaces slot name (0x8B + status poll). Names are slot
 // metadata independent of the binding, so this is its own deferred apply on
 // the same shared status channel as the binding SET. Resolves true only when
@@ -1106,6 +1187,7 @@ export async function applyCsName(s: ReadySession, slot: number, name: string): 
       s.controlSurfaces.status = r.status;
       s.controlSurfaces.names[slot] = r.live;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed.bindings = true;
       ok = true;
     },
   );
@@ -1122,6 +1204,7 @@ export async function csSaveConfig(s: ReadySession): Promise<boolean> {
     (r, s) => {
       s.controlSurfaces.status = r.status;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed = { bindings: false, groups: false, macros: false, display: false };
       ok = true;
     },
   );
@@ -1135,13 +1218,14 @@ export async function csSaveConfig(s: ReadySession): Promise<boolean> {
 // showing.
 export async function csRevertConfig(s: ReadySession): Promise<boolean> {
   let ok = false;
+  const displaysAvail = Domain.csDisplaysAvailable(s.controlSurfaces.caps);
   await command(s, 'revert control-surface config',
     async () => {
       const r = await s.device.csRevert();
       if (!r.result.ok) {
         return {
           result: r.result, status: r.status,
-          bindings: null, names: null, irCommands: null, groups: null, macros: null, extStatus: null,
+          bindings: null, names: null, irCommands: null, groups: null, macros: null, extStatus: null, display: null,
         };
       }
       const bindings: (Domain.CsBinding | null)[] = [];
@@ -1182,7 +1266,8 @@ export async function csRevertConfig(s: ReadySession): Promise<boolean> {
       if (maxGroups > 0 || maxMacros > 0) {
         extStatus = await s.device.getCsExtStatus();
       }
-      return { result: r.result, status: r.status, bindings, names, irCommands, groups, macros, extStatus };
+      const display = displaysAvail ? await readCsDisplayBlock(s.device) : null;
+      return { result: r.result, status: r.status, bindings, names, irCommands, groups, macros, extStatus, display };
     },
     (r, s) => {
       s.controlSurfaces.status = r.status;
@@ -1192,8 +1277,15 @@ export async function csRevertConfig(s: ReadySession): Promise<boolean> {
       if (r.groups) s.controlSurfaces.groups = r.groups;
       if (r.macros) s.controlSurfaces.macros = r.macros;
       if (r.extStatus) s.controlSurfaces.extStatus = r.extStatus;
+      if (r.display) {
+        s.controlSurfaces.displayLimits = r.display.limits;
+        s.controlSurfaces.displayCfg = r.display.cfg;
+        s.controlSurfaces.displayPages = r.display.pages;
+        s.controlSurfaces.displayStatus = r.display.status;
+      }
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
       s.controlSurfaces.revertEpoch++;
+      s.controlSurfaces.changed = { bindings: false, groups: false, macros: false, display: false };
       ok = true;
     },
   );
@@ -1216,6 +1308,7 @@ export async function applyCsIrCommand(s: ReadySession, sub: number, cmd: Domain
       s.controlSurfaces.status = r.status;
       s.controlSurfaces.irCommands[sub] = r.live.protocol === Domain.CsIrProto.None ? null : r.live;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
+      s.controlSurfaces.changed.bindings = true;
       ok = true;
     },
   );

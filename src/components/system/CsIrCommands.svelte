@@ -181,6 +181,9 @@
     const unit = noun?.unit ?? Domain.CS_UNIT_NONE;
     const repeatEligible = d.action === Domain.CsAction.Inc || d.action === Domain.CsAction.Dec;
     const grouped = irGroupsAvailable() && CsField.showTargetOf(cs.nouns, d.noun) && d.grouped;
+    // PAGE_VALUE carries no operand of its own -- the firmware rejects any
+    // value/step on it (same rule as the binding editor's buildBinding).
+    const pageValue = d.noun === Domain.CsNoun.PageValue;
     return {
       noun: d.noun as Domain.CsNoun,
       action: d.action as Domain.CsAction,
@@ -190,8 +193,8 @@
       target: CsField.showTargetOf(cs.nouns, d.noun) ? d.target : 0,
       index: CsField.showBandOf(cs.nouns, d.noun) ? d.index : 0,
       protocol: d.protocol as Domain.CsIrProto,
-      value: CsField.showValueOf(d.action) ? (cont ? CsUnit.displayToValue(unit, d.value) : Math.round(d.value)) : 0,
-      step: CsField.showStepOf(d.action, IR_STEPPY) ? (cont ? CsUnit.displayToStep(unit, d.step) : Math.round(d.step)) : 0,
+      value: pageValue ? 0 : CsField.showValueOf(d.action) ? (cont ? CsUnit.displayToValue(unit, d.value) : Math.round(d.value)) : 0,
+      step: pageValue ? 0 : CsField.showStepOf(d.action, IR_STEPPY) ? (cont ? CsUnit.displayToStep(unit, d.step) : Math.round(d.step)) : 0,
       code: d.code,
     };
   }
@@ -426,7 +429,7 @@
             </div>
           {/if}
 
-          {#if CsField.showValueOf(d.action) || CsField.showStepOf(d.action, IR_STEPPY)}
+          {#if d.noun !== Domain.CsNoun.PageValue && (CsField.showValueOf(d.action) || CsField.showStepOf(d.action, IR_STEPPY))}
             <div class="row">
               {#if CsField.showValueOf(d.action)}
                 <span class="microlbl">{CsField.valueLabel(d.action, CsField.contOf(cs.nouns, d.noun), d.noun)}</span>
@@ -440,7 +443,7 @@
                 {:else}
                   <select class="sel" value={String(d.value)} aria-label="Value" disabled={busy || applyingSub != null}
                     onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editDraft(sub, (dr) => { dr.value = v; }); }}>
-                    {#each (CsField.enumOf(cs.nouns, d.noun) ? CsField.enumValueOptions(cs.nouns, d.noun, s.presets.names, cs.macros) : CsField.boolValueOptions(d.noun)) as o (o.v)}
+                    {#each (CsField.enumOf(cs.nouns, d.noun) ? CsField.enumValueOptions(cs.nouns, d.noun, s.presets.names, cs.macros, cs.displayPages) : CsField.boolValueOptions(d.noun)) as o (o.v)}
                       <option value={String(o.v)}>{o.label}</option>
                     {/each}
                   </select>

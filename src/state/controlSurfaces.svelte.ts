@@ -4,9 +4,10 @@
 // runtime/deviceService.ts), like ctrlIfaces.
 
 import {
-  CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_MAX_GROUPS, CS_MAX_MACROS,
+  CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_MAX_GROUPS, CS_MAX_MACROS, CS_MAX_DISPLAY_PAGES,
   type CsBinding, type CsCaps, type CsNounCaps, type CsStatus, type CsIrCommand,
   type CsGroup, type CsExtStatus, type CsMacro,
+  type CsDisplayLimits, type CsDisplayCfg, type CsDisplayPage, type CsDisplayStatus,
 } from '@/domain';
 
 // Learn sub-state, mirroring GetCsStatus.irLearnState / the CsIrLearn(2)
@@ -33,11 +34,38 @@ export interface ControlSurfacesState {
   groups: (CsGroup | null)[];   // indexed by group; null = empty slot
   macros: (CsMacro | null)[];   // indexed by macro; null = empty slot
   extStatus: CsExtStatus | null;
+  // display cfg/pages/status (caps v10+); null limits = no display support.
+  displayLimits: CsDisplayLimits | null;
+  displayCfg: CsDisplayCfg | null;
+  displayPages: (CsDisplayPage | null)[];
+  displayStatus: CsDisplayStatus | null;
   // Bumped after a successful csRevertConfig so every CS panel drops its
   // local drafts -- the GROUPS panel has no parent to receive a reset prop.
   revertEpoch: number;
+  // Unapplied local edits per CS editor panel (each panel publishes its own
+  // count). Read by the CONTROL tab's CHANGES panel: staged edits are not
+  // part of a device SAVE until applied.
+  staged: CsStagedCounts;
+  // Which editors applied something since the last SAVE/DISCARD. The fw's
+  // dirty flag is a single bit, so this is the console's own record of where
+  // the unsaved changes came from (blank when another host made them).
+  changed: CsChangedFlags;
   busy: boolean;
   lastFetchError: string | null;
+}
+
+export interface CsStagedCounts {
+  bindings: number;
+  groups: number;
+  macros: number;
+  display: number;
+}
+
+export interface CsChangedFlags {
+  bindings: boolean;
+  groups: boolean;
+  macros: boolean;
+  display: boolean;
 }
 
 export function createControlSurfacesState(): ControlSurfacesState {
@@ -53,7 +81,13 @@ export function createControlSurfacesState(): ControlSurfacesState {
     groups: Array.from({ length: CS_MAX_GROUPS }, () => null),
     macros: Array.from({ length: CS_MAX_MACROS }, () => null),
     extStatus: null,
+    displayLimits: null,
+    displayCfg: null,
+    displayPages: Array.from({ length: CS_MAX_DISPLAY_PAGES }, () => null),
+    displayStatus: null,
     revertEpoch: 0,
+    staged: { bindings: 0, groups: 0, macros: 0, display: 0 },
+    changed: { bindings: false, groups: false, macros: false, display: false },
     busy: false,
     lastFetchError: null,
   });

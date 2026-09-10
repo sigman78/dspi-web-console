@@ -132,6 +132,17 @@ function csMacroFromWire(w: {
   };
 }
 
+function csDisplayStatusFromWire(w: {
+  initState: number; currentPage: number; flags: number; model: number; nakCount: number;
+}): Domain.CsDisplayStatus {
+  return {
+    initState: w.initState as Domain.CsDisplayInitState,
+    currentPage: w.currentPage === 0xFF ? null : w.currentPage,
+    overlay: (w.flags & Domain.CS_DSTATUS_OVERLAY) !== 0, editArmed: (w.flags & Domain.CS_DSTATUS_EDIT) !== 0,
+    model: w.model, nakCount: w.nakCount,
+  };
+}
+
 // Poll cadence/ceiling for a deferred CS apply (binding/name SET, save,
 // revert), matching the desktop app: up to 25 polls at 20 ms (~500 ms
 // budget) for what is normally a few-ms directory-sector flash write.
@@ -1620,6 +1631,58 @@ export class DspDevice {
 
   async csMacroCancel(): Promise<void> {
     await proto.actionCmd(this.transport, proto.WireCmd.CsMacroFire, 0xFFFF);
+  }
+
+  // I2C displays (0x27-0x2B, caps v10+ only -- callers gate on
+  // CsField.displaysAvailable). Cfg/page SETs share the deferred-apply model
+  // above, reported in last_slot as 0x50 (cfg) / 0x50 | page.
+  async getCsDisplayCfg(): Promise<{ limits: Domain.CsDisplayLimits; cfg: Domain.CsDisplayCfg }> {
+    const w = await proto.readCmd(this.transport, proto.WireCmd.GetCsDisplayCfg);
+    return {
+      limits: { maxPages: w.maxPages, modelCount: w.modelCount },
+      cfg: {
+        mode: w.cfg.mode as Domain.CsDisplayMode, homePage: w.cfg.homePage, dwell: w.cfg.dwell,
+        overlayHold: w.cfg.overlayHold, brightness: w.cfg.brightness, flags: w.cfg.flags,
+        editTimeout: w.cfg.editTimeout,
+      },
+    };
+  }
+
+  async setCsDisplayCfg(
+    cfg: Domain.CsDisplayCfg,
+  ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
+    return this.transport.exclusive(async (raw) => {
+      await proto.writeCmd(raw, proto.WireCmd.SetCsDisplayCfg, {
+        mode: cfg.mode, homePage: cfg.homePage, dwell: cfg.dwell, overlayHold: cfg.overlayHold,
+        brightness: cfg.brightness, flags: cfg.flags, editTimeout: cfg.editTimeout,
+      });
+      return pollCsStatus(raw, 0x50);
+    });
+  }
+
+  async getCsDisplayPage(idx: number): Promise<Domain.CsDisplayPage> {
+    const w = await proto.readCmd(this.transport, proto.WireCmd.GetCsDisplayPage, idx & 0xFF);
+    return { noun: w.noun as Domain.CsNoun, target: w.target, index: w.index, flags: w.flags };
+  }
+
+  async setCsDisplayPage(
+    idx: number, p: Domain.CsDisplayPage,
+  ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
+    return this.transport.exclusive(async (raw) => {
+      await proto.writeCmd(raw, proto.WireCmd.SetCsDisplayPage, {
+        noun: p.noun, target: p.target, index: p.index, flags: p.flags,
+      }, idx & 0xFF);
+      return pollCsStatus(raw, 0x50 | (idx & 0xFF));
+    });
+  }
+
+  // Clearing a page is a SET of the all-zero page (flags without ACTIVE).
+  async clearCsDisplayPage(idx: number): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
+    return this.setCsDisplayPage(idx, Domain.EMPTY_CS_DISPLAY_PAGE);
+  }
+
+  async getCsDisplayStatus(): Promise<Domain.CsDisplayStatus> {
+    return csDisplayStatusFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCsDisplayStatus));
   }
 
   // Crossover bands (V16+, output channels only) ride the EQ verbs at wire

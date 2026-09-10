@@ -9,7 +9,7 @@
 import { OutputSlotType } from './channels';
 import { PlatformType, ChannelFamily } from './platform';
 import type { DspSnapshot } from './snapshot';
-import { isValidUartPinPair, isValidI2cPinPair, type UartControlConfig, type I2cControlConfig } from './controlInterfaces';
+import { isValidUartPinPair, isValidI2cPinPair, i2cInstance, type UartControlConfig, type I2cControlConfig } from './controlInterfaces';
 import { CS_ADC_PINS } from './controlSurfaces';
 
 const PIN_LABEL = { bck: 'BCK', lrclk: 'LRCLK', mck: 'MCK', bckSlave: 'BCK (slave)', lrclkSlave: 'LRCLK (slave)' } as const;
@@ -42,8 +42,9 @@ export interface CtrlIfaceConfigs {
   // Live control-surface bindings, indexed by slot (null = slot empty or
   // down); their pins are reserved like any fixed peripheral's. A CS pin
   // picker passes the OTHER slots here so the edited slot's own pins stay
-  // selectable.
-  cs?: readonly ({ gpio0: number; gpio1: number | null } | null)[] | null;
+  // selectable. `display` marks a display binding's pins for pinUses's
+  // SDA/SCL labels below.
+  cs?: readonly ({ gpio0: number; gpio1: number | null; display?: boolean } | null)[] | null;
 }
 
 const NO_CTRL_IFACES: CtrlIfaceConfigs = {};
@@ -108,6 +109,11 @@ export function pinUses(snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_
   }
   ctrl.cs?.forEach((b, slot) => {
     if (!b) return;
+    if (b.display) {
+      m.set(b.gpio0, { label: 'Display SDA', role: 'surface' });
+      if (b.gpio1 != null) m.set(b.gpio1, { label: 'Display SCL', role: 'surface' });
+      return;
+    }
     m.set(b.gpio0, { label: `CS slot ${slot + 1}`, role: 'surface' });
     if (b.gpio1 != null) m.set(b.gpio1, { label: `CS slot ${slot + 1}`, role: 'surface' });
   });
@@ -186,9 +192,11 @@ export function validUartTxPins(
 }
 
 // I2C SDA candidates: SCL always rides sda+1 (same reasoning as above).
-// `ctrl` should omit `i2c` and carry `uart`.
+// `ctrl` should omit `i2c` and carry `uart`. A live CS display owns its
+// whole I2C instance (`blockedInstance`), not just its two pins.
 export function validI2cSdaPins(
   platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
+  blockedInstance: number | null = null,
 ): number[] {
   const channelModel = snapshot.platform.channelModel;
   const inUse = pinsInUse(snapshot, ctrl);
@@ -197,8 +205,46 @@ export function validI2cSdaPins(
     (p) => p % 2 === 0
       && isAssignablePin(platform, p + 1, channelModel)
       && isValidI2cPinPair(p, p + 1)
+      && i2cInstance(p) !== blockedInstance
       && free(p) && free(p + 1),
   );
+}
+
+// The I2C instance a live CS display holds, or null when none is attached.
+export function csDisplayI2cInstance(cs: CtrlIfaceConfigs['cs']): number | null {
+  const d = cs?.find((b) => b?.display);
+  return d ? i2cInstance(d.gpio0) : null;
+}
+
+// Display SDA/SCL candidates (caps v10+): unlike the fixed control
+// interfaces above, a display's two pins are picked independently -- fw
+// allows a non-adjacent pair as long as both land on the same I2C hardware
+// instance and neither collides with a live control-interface instance. The
+// edited slot's own pins are already excluded from `ctrl.cs` by the caller
+// (only OTHER live slots reserve pins), so there's no separate self-pin
+// carve-out here.
+function displayPinCandidates(
+  platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs, parity: 0 | 1, matchesInstance: (p: number) => boolean,
+): number[] {
+  const channelModel = snapshot.platform.channelModel;
+  const inUse = pinsInUse(snapshot, ctrl);
+  return assignablePins(platform, channelModel).filter(
+    (p) => p % 2 === parity && inUse.get(p) == null && matchesInstance(p),
+  );
+}
+
+export function validDisplaySdaPins(
+  platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
+  liveI2cInstance: number | null = null,
+): number[] {
+  return displayPinCandidates(platform, snapshot, ctrl, 0, (p) => i2cInstance(p) !== liveI2cInstance);
+}
+
+export function validDisplaySclPins(
+  platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
+  sdaPin: number,
+): number[] {
+  return displayPinCandidates(platform, snapshot, ctrl, 1, (p) => i2cInstance(p) === i2cInstance(sdaPin));
 }
 
 // Display-only decoration for the custom pin-picker grid (PinPicker v2): the

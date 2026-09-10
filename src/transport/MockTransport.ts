@@ -16,15 +16,16 @@ import {
   CrossfeedPreset, LevellerSpeed, MasterVolumeMode, OutputConfigMode,
   XOVER_BAND_BASE, MAX_XOVER_BANDS,
   DEFAULT_UART_CONTROL_CONFIG, DEFAULT_I2C_CONTROL_CONFIG,
-  isValidUartPinPair, isValidI2cPinPair, isValidUartBaud, isValidI2cAddress,
-  CsType, CsKind, CsAction, CsIrProto,
+  isValidUartPinPair, isValidI2cPinPair, isValidUartBaud, isValidI2cAddress, i2cInstance,
+  CsType, CsNoun, CsKind, CsAction, CsIrProto, CsDisplayMode,
   CS_GPIO_UNUSED, CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_MAX_GROUPS, CS_FLAG_INVERT, CS_FLAG_GROUP, CS_NDF_DEFERRED,
-  CS_MAX_MACROS, CS_MAX_MACRO_STEPS,
+  CS_MAX_MACROS, CS_MAX_MACRO_STEPS, CS_MAX_DISPLAY_PAGES,
   CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q, CS_UNIT_PERCENT, CS_UNIT_MS,
   CS_TARGET_NONE, CS_TARGET_INPUT_CH, CS_TARGET_OUTPUT_CH, CS_TARGET_DSP_CH, CS_TARGET_DSP_BAND,
   CS_IR_LEARN_IDLE, CS_IR_LEARN_ARMED, CS_IR_LEARN_DONE, CS_IR_LEARN_TIMEOUT,
+  CS_DPAGE_ACTIVE, CS_DPAGE_LARGE, CS_DCFG_EDIT_GATED, CS_DISPLAY_MODEL_COUNT,
   dbToQ8, percentToQ8, qToQ8, msToQ8, validateCsBinding, validateCsIrCommand, validateCsGroup,
-  validateCsMacroStep, validateCsMacro,
+  validateCsMacroStep, validateCsMacro, validateCsDisplayCfg, validateCsDisplayPage,
   PRESET_SLOT_COUNT, FilterType,
   SPDIF_RX_MAX_INSTANCES, I2S_RX_MAX_PAIRS,
   defaultInputName, Proc,
@@ -32,7 +33,7 @@ import {
   type FilterParams,
   type CrossPoint, type OutputState,
   type UartControlConfig, type I2cControlConfig,
-  type CsCaps, type CsNounCaps, type CsGroup, type CsMacroStep,
+  type CsCaps, type CsNounCaps, type CsGroup, type CsMacroStep, type CsDisplayCfg, type CsDisplayPage,
 } from '@/domain';
 
 export interface MockOptions {
@@ -290,6 +291,33 @@ function macroStepAsDomain(s: MockCsMacroStep): CsMacroStep {
   };
 }
 
+// Wire-shaped I2C display cfg/page (0x27-0x2B, caps v10+).
+interface MockCsDisplayCfg {
+  mode: number; homePage: number; dwell: number; overlayHold: number;
+  brightness: number; flags: number; editTimeout: number;
+}
+
+const emptyCsDisplayCfg = (): MockCsDisplayCfg => ({
+  mode: 0, homePage: 0, dwell: 0, overlayHold: 0, brightness: 0, flags: 0, editTimeout: 0,
+});
+
+interface MockCsDisplayPage {
+  noun: number; target: number; index: number; flags: number;
+}
+
+const emptyCsDisplayPage = (): MockCsDisplayPage => ({ noun: 0, target: 0, index: 0, flags: 0 });
+
+function displayCfgAsDomain(c: MockCsDisplayCfg): CsDisplayCfg {
+  return {
+    mode: c.mode as CsDisplayMode, homePage: c.homePage, dwell: c.dwell, overlayHold: c.overlayHold,
+    brightness: c.brightness, flags: c.flags, editTimeout: c.editTimeout,
+  };
+}
+
+function displayPageAsDomain(p: MockCsDisplayPage): CsDisplayPage {
+  return { noun: p.noun as CsNoun, target: p.target, index: p.index, flags: p.flags };
+}
+
 function concatChunks(chunks: Uint8Array[]): Uint8Array {
   const total = chunks.reduce((n, c) => n + c.length, 0);
   const out = new Uint8Array(total);
@@ -429,6 +457,18 @@ export class MockTransport implements DspTransport {
   // (running index/current step, going idle on completion) is simulated,
   // computed lazily from Date.now() in GetCsExtStatus rather than a timer.
   #csMacroRun: { idx: number; startedAt: number; stepStart: number[]; endAt: number } | null = null;
+
+  // I2C displays (0x27-0x2B, caps v10+). Cfg/pages are live-preview like
+  // bindings/groups/macros above (CsSave/CsRevert snapshot/restore them);
+  // `#csDisplay` tracks the live attach derived from the binding table, and
+  // `init_state`/`current_page` are computed lazily from Date.now() in
+  // GetCsDisplayStatus rather than a timer.
+  #csDisplayCfg: MockCsDisplayCfg = emptyCsDisplayCfg();
+  #csDisplayPages: MockCsDisplayPage[] = Array.from({ length: CS_MAX_DISPLAY_PAGES }, emptyCsDisplayPage);
+  #csSavedDisplayCfg: MockCsDisplayCfg = emptyCsDisplayCfg();
+  #csSavedDisplayPages: MockCsDisplayPage[] = Array.from({ length: CS_MAX_DISPLAY_PAGES }, emptyCsDisplayPage);
+  #csDisplay: { slot: number; model: number; attachedAt: number } | null = null;
+  #csDisplayNak = 0;
 
   // Selectable system clock (fw overclock branch, 0x40/0x41).
   #sysClockStoredMode = 0;
@@ -1326,6 +1366,22 @@ export class MockTransport implements DspTransport {
           groupStatus: this.#csGroupStatus.slice(), macroStatus: this.#csMacroStatus.slice(),
         });
       }
+      case WireCmd.GetCsDisplayCfg.code: {
+        if (this.#csCapsVersion < 10) throw new Error('MockTransport: GetCsDisplayCfg unsupported (STALL)');
+        return Codec.encode(Wire.CsDisplayCfgResponse, {
+          maxPages: CS_MAX_DISPLAY_PAGES, modelCount: CS_DISPLAY_MODEL_COUNT, cfg: this.#csDisplayCfg,
+        });
+      }
+      case WireCmd.GetCsDisplayPage.code: {
+        if (this.#csCapsVersion < 10 || value >= CS_MAX_DISPLAY_PAGES) {
+          throw new Error('MockTransport: GetCsDisplayPage unsupported or page out of range (STALL)');
+        }
+        return Codec.encode(Wire.CsDisplayPage, this.#csDisplayPages[value]);
+      }
+      case WireCmd.GetCsDisplayStatus.code: {
+        if (this.#csCapsVersion < 10) throw new Error('MockTransport: GetCsDisplayStatus unsupported (STALL)');
+        return Codec.encode(Wire.CsDisplayStatus, this.#csDisplayStatus());
+      }
       case WireCmd.CsIrLearn.code: {
         if (!this.#isV16) return new Uint8Array(length);
         if (value === 1) {
@@ -1365,6 +1421,8 @@ export class MockTransport implements DspTransport {
         this.#csSavedIrCommands = this.#csIrCommands.map((c) => ({ ...c }));
         this.#csSavedGroups = this.#csGroups.map((g) => ({ ...g }));
         this.#csSavedMacros = this.#csMacros.map((m) => ({ ...m, steps: m.steps.map((st) => ({ ...st })) }));
+        this.#csSavedDisplayCfg = { ...this.#csDisplayCfg };
+        this.#csSavedDisplayPages = this.#csDisplayPages.map((p) => ({ ...p }));
         this.#csDirty = false;
         this.#csLastSlot = 0xFF;
         this.#csLastStatus = 0x00;
@@ -1384,6 +1442,18 @@ export class MockTransport implements DspTransport {
         this.#csSlotStatus = this.#csSlotStatus.map(() => 0);
         this.#csGroupStatus = this.#csGroupStatus.map(() => 0);
         this.#csMacroRecount();
+        // Zero the live display blob, reload the stored one, then re-derive
+        // the attach from the restored bindings -- re-seeding only if the
+        // reloaded pages carry no ACTIVE page.
+        this.#csDisplayCfg = { ...this.#csSavedDisplayCfg };
+        this.#csDisplayPages = this.#csSavedDisplayPages.map((p) => ({ ...p }));
+        this.#csDisplay = null;
+        const displaySlot = this.#csBindings.findIndex((b) => b.type === CsType.Display);
+        if (displaySlot >= 0) {
+          this.#csDisplay = { slot: displaySlot, model: this.#csBindings[displaySlot].index, attachedAt: Date.now() };
+          this.#csDisplayNak = 0;
+          this.#csDisplaySeed();
+        }
         this.#csDirty = false;
         this.#csLastSlot = 0xFF;
         this.#csLastStatus = 0x00;
@@ -1819,6 +1889,40 @@ export class MockTransport implements DspTransport {
         return;
       }
 
+      case WireCmd.SetCsDisplayCfg.code: {
+        if (this.#csCapsVersion < 10) throw new Error('MockTransport: SetCsDisplayCfg unsupported (STALL)');
+        if (data.length < Codec.sizeOf(Wire.CsDisplayCfg)) {
+          this.#csLastStatus = 0x14;                  // CS_STATUS_INVALID_VALUE
+          this.#csLastSlot = 0x50;
+          return;
+        }
+        const c = Codec.decode(Wire.CsDisplayCfg, data);
+        this.#csLastSlot = 0x50;
+        this.#csPendingPolls = 1;
+        this.#csLastStatus = this.#applyCsDisplayCfg(c);
+        return;
+      }
+
+      case WireCmd.SetCsDisplayPage.code: {
+        if (this.#csCapsVersion < 10) throw new Error('MockTransport: SetCsDisplayPage unsupported (STALL)');
+        const page = value & 0xFF;
+        if (page >= CS_MAX_DISPLAY_PAGES) {
+          this.#csLastStatus = 0x25;                  // CS_STATUS_INVALID_PAGE
+          this.#csLastSlot = 0x50 | page;
+          return;
+        }
+        if (data.length < Codec.sizeOf(Wire.CsDisplayPage)) {
+          this.#csLastStatus = 0x14;                  // CS_STATUS_INVALID_VALUE
+          this.#csLastSlot = 0x50 | page;
+          return;
+        }
+        const w = Codec.decode(Wire.CsDisplayPage, data);
+        this.#csLastSlot = 0x50 | page;
+        this.#csPendingPolls = 1;
+        this.#csLastStatus = this.#applyCsDisplayPage(page, w);
+        return;
+      }
+
       case WireCmd.SetAllParams.code: {
         this.#applySetAllParams(data);
         return;
@@ -2093,6 +2197,20 @@ export class MockTransport implements DspTransport {
       i !== excludeSlot && b.type === CsType.Ir && this.#csSlotStatus[i] === 0);
   }
 
+  // Same one-per-device rule as the IR receiver, for the display (fw
+  // CS_STATUS_DISPLAY_IN_USE).
+  #hasLiveDisplayBinding(excludeSlot = -1): boolean {
+    return this.#csBindings.some((b, i) =>
+      i !== excludeSlot && b.type === CsType.Display && this.#csSlotStatus[i] === 0);
+  }
+
+  // The I2C hardware instance the control interface is actually driving, or
+  // null while it's disabled/down -- both instances are free for a display
+  // then (fw i2c_ctrl_live_instance()).
+  #liveI2cInstance(): number | null {
+    return this.#i2cCtrl.enabled ? i2cInstance(this.#i2cCtrl.sdaPin) : null;
+  }
+
   // Sharing probe for button pins (fw cs_check_button_share): every other
   // active binding on `pin` must be a button with the same INVERT sense and
   // a different event; anything else is a conflict.
@@ -2120,6 +2238,7 @@ export class MockTransport implements DspTransport {
       this.#csBindings[slot] = emptyCsBinding();
       this.#csSlotStatus[slot] = 0;
       this.#csDirty = true;
+      if (this.#csDisplay?.slot === slot) this.#csDisplay = null;
       return 0x00;
     }
     const tableStatus = validateCsBinding(
@@ -2130,12 +2249,16 @@ export class MockTransport implements DspTransport {
         value: w.value, step: w.step, rangeMin: w.rangeMin, rangeMax: w.rangeMax,
         baseBright: w.baseBright, onDelay: w.onDelay, offDelay: w.offDelay, reserved2: w.reserved2,
       },
-      { ...MOCK_CS_CAPS, capsVersion: this.#csCapsVersion }, this.#csNouns, this.#csGroupsAsDomain(),
+      // Types trimmed to the simulated caps version -- the type table a real
+      // device this old would report has no row 8 for DISPLAY to bind to.
+      { ...MOCK_CS_CAPS, capsVersion: this.#csCapsVersion, types: MOCK_CS_CAPS.types.slice(0, this.#csTypeCount()) },
+      this.#csNouns, this.#csGroupsAsDomain(), this.#liveI2cInstance(),
     );
     if (tableStatus !== 0x00) return tableStatus;
-    // One IR receiver per device: a second live CS_TYPE_IR binding is
-    // rejected outright, before any pin check.
+    // One IR receiver / display per device: a second live claim is rejected
+    // outright, before any pin check.
     if (w.type === CsType.Ir && this.#hasLiveIrBinding(slot)) return 0x1D;         // IrInUse
+    if (w.type === CsType.Display && this.#hasLiveDisplayBinding(slot)) return 0x22; // DisplayInUse
     const pins = MOCK_CS_CAPS.types[w.type].pinCount === 2 ? [w.gpio0, w.gpio1] : [w.gpio0];
     for (const pin of pins) {
       if (!this.#isValidGpio(pin)) return 0x01;                                  // InvalidPin
@@ -2154,7 +2277,77 @@ export class MockTransport implements DspTransport {
     this.#csBindings[slot] = { ...w };
     this.#csSlotStatus[slot] = 0;
     this.#csDirty = true;
+    // Releases the slot first (a re-bind of the same slot to new display
+    // pins detaches then reattaches), then attaches + seeds on success.
+    if (this.#csDisplay?.slot === slot) this.#csDisplay = null;
+    if (w.type === CsType.Display) {
+      this.#csDisplay = { slot, model: w.index, attachedAt: Date.now() };
+      this.#csDisplayNak = 0;
+      this.#csDisplaySeed();
+    }
     return 0x00;
+  }
+
+  // fw disp_seed_pages: runs on every successful attach, but only writes
+  // anything when no stored page carries ACTIVE (a first-ever attach, or one
+  // whose pages were never configured). Does not mark dirty.
+  #csDisplaySeed(): void {
+    const hasActive = this.#csDisplayPages.some((p) => (p.flags & CS_DPAGE_ACTIVE) !== 0);
+    if (!hasActive) {
+      this.#csDisplayPages[0] = { noun: CsNoun.UserVolume, target: 0, index: 0, flags: CS_DPAGE_ACTIVE | CS_DPAGE_LARGE };
+      this.#csDisplayPages[1] = { noun: CsNoun.Preset, target: 0, index: 0, flags: CS_DPAGE_ACTIVE };
+      this.#csDisplayPages[2] = { noun: CsNoun.InputSource, target: 0, index: 0, flags: CS_DPAGE_ACTIVE };
+      this.#csDisplayPages[3] = { noun: CsNoun.SampleRate, target: 0, index: 0, flags: CS_DPAGE_ACTIVE };
+    }
+    const c = this.#csDisplayCfg;
+    if (c.overlayHold === 0) c.overlayHold = 20;
+    if (c.dwell < 10) c.dwell = 30;
+    if (c.editTimeout === 0) c.editTimeout = 100;
+    c.flags |= CS_DCFG_EDIT_GATED;
+  }
+
+  // Validate + apply the display cfg blob, mirroring
+  // control_surfaces_apply_display_cfg. No display binding required -- the
+  // blob is live whether or not a display is attached.
+  #applyCsDisplayCfg(w: MockCsDisplayCfg): number {
+    const status = validateCsDisplayCfg(displayCfgAsDomain(w));
+    if (status !== 0x00) return status;
+    this.#csDisplayCfg = { ...w };
+    this.#csDirty = true;
+    return 0x00;
+  }
+
+  // Validate + apply one display page, mirroring disp_validate_page /
+  // control_surfaces_apply_display_page: a rejected page leaves the
+  // previously stored one intact.
+  #applyCsDisplayPage(idx: number, w: MockCsDisplayPage): number {
+    const status = validateCsDisplayPage(displayPageAsDomain(w), this.#csNouns, this.#csGroupsAsDomain());
+    if (status !== 0x00) return status;
+    this.#csDisplayPages[idx] = { ...w };
+    this.#csDirty = true;
+    return 0x00;
+  }
+
+  // GetCsDisplayStatus (0x2B), computed lazily from Date.now() rather than a
+  // timer so the mock stays deterministic under fake timers.
+  #csDisplayStatus(): { initState: number; currentPage: number; flags: number; model: number; nakCount: number } {
+    const live = this.#csDisplay;
+    if (!live) return { initState: 0, currentPage: 0xFF, flags: 0, model: 0, nakCount: this.#csDisplayNak };
+    const initState = Date.now() - live.attachedAt < 200 ? 1 : 2;
+    const cfg = this.#csDisplayCfg;
+    let currentPage = 0xFF;
+    if (cfg.mode === CsDisplayMode.CycleSelected) {
+      const activeIdx: number[] = [];
+      this.#csDisplayPages.forEach((p, i) => { if (p.flags & CS_DPAGE_ACTIVE) activeIdx.push(i); });
+      if (activeIdx.length > 0 && cfg.dwell > 0) {
+        const elapsed = Date.now() - live.attachedAt;
+        currentPage = activeIdx[Math.floor(elapsed / (cfg.dwell * 100)) % activeIdx.length];
+      }
+    } else {
+      const home = this.#csDisplayPages[cfg.homePage];
+      currentPage = home && (home.flags & CS_DPAGE_ACTIVE) ? cfg.homePage : 0xFF;
+    }
+    return { initState, currentPage, flags: 0, model: live.model, nakCount: this.#csDisplayNak };
   }
 
   // Validate + apply one IR command sub-slot, mirroring #applyCsBinding's
@@ -2277,6 +2470,12 @@ export class MockTransport implements DspTransport {
     if (!isValidI2cPinPair(cfg.sdaPin, cfg.sclPin)) return 0x01;
     if (this.#peripheralPinInUse(cfg.sdaPin, 0xFF) || this.#peripheralPinInUse(cfg.sclPin, 0xFF)) return 0x02; // PinInUse
     if (this.#csOwnsPin(cfg.sdaPin) || this.#csOwnsPin(cfg.sclPin)) return 0x02;
+    // Symmetric with the display's own I2C_IN_USE rule: enabling the control
+    // interface on the display's hardware instance is rejected too, even
+    // when the two never share a literal pin.
+    if (this.#csDisplay && i2cInstance(cfg.sdaPin) === i2cInstance(this.#csBindings[this.#csDisplay.slot].gpio0)) {
+      return 0x02;
+    }
     const uart = this.#uartCtrl;
     if (uart.enabled && [cfg.sdaPin, cfg.sclPin].includes(uart.txPin)) return 0x02;
     if (uart.enabled && [cfg.sdaPin, cfg.sclPin].includes(uart.rxPin)) return 0x02;

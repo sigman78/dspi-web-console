@@ -5,13 +5,15 @@ import {
   applyCsIrCommand, clearCsIrCommand, csIrLearnArm, csIrLearnCancel,
   applyCsGroup, clearCsGroup,
   applyCsMacro, clearCsMacro, fireCsMacro, cancelCsMacro,
+  applyCsDisplayCfg, applyCsDisplayPage, clearCsDisplayPage, setI2cControlConfig,
 } from './actions';
+import { flushAllWrites } from './writes.svelte';
 import { activeSession, clearNotices, resetAppState } from '@/state';
 import {
   CsType, CsNoun, CsAction, CsEvent, CS_MAX_BINDINGS, dbToQ8,
   CsIrProto, CS_MAX_IR_COMMANDS, CS_IR_LEARN_ARMED, CS_IR_LEARN_DONE,
   CS_MAX_GROUPS, CS_TARGET_OUTPUT_CH, CS_FLAG_GROUP, CS_MAX_MACROS,
-  EMPTY_CS_MACRO_STEP,
+  EMPTY_CS_MACRO_STEP, EMPTY_CS_DISPLAY_CFG, EMPTY_CS_BINDING, CsDisplayMode, CS_DCFG_EDIT_GATED,
 } from '@/domain';
 
 const sess = () => activeSession()!;
@@ -33,6 +35,14 @@ const irReceiver = {
 const necToggle = {
   noun: CsNoun.UserMute, action: CsAction.Toggle, flags: 0, target: 0, index: 0,
   protocol: CsIrProto.Nec, value: 0, step: 0, code: 0x12345678,
+};
+
+// gpio0/gpio1 2/3: free of the mock's default reservations (outputs 6-10,
+// S/PDIF RX 5, I2S RX pair 0 on GPIO 1). index 6 = CsDisplayModel.Ssd1306_128x64.
+// Spread EMPTY_CS_BINDING rather than naming noun/action -- the container
+// binding's noun/action must read 0, not "UserVolume"/"Adjust".
+const displayBinding = {
+  ...EMPTY_CS_BINDING, type: CsType.Display, gpio0: 2, gpio1: 3, index: 6,
 };
 
 describe('runtime/controlSurfaces', () => {
@@ -407,5 +417,79 @@ describe('runtime/controlSurfaces', () => {
     expect(s.device.capabilities.features.controlSurfaces).toBe(false);
     expect(s.controlSurfaces.caps).toBeNull();
     expect(s.controlSurfaces.bindings.every((b) => b === null)).toBe(true);
+  });
+
+  it('connect populates the display block (empty) on the default mock', () => {
+    const s = sess();
+    expect(s.controlSurfaces.displayLimits).toEqual({ maxPages: 16, modelCount: 9 });
+    expect(s.controlSurfaces.displayCfg).toEqual(EMPTY_CS_DISPLAY_CFG);
+    expect(s.controlSurfaces.displayPages.every((p) => p === null)).toBe(true);
+    expect(s.controlSurfaces.displayStatus).toEqual({
+      initState: 0, currentPage: null, overlay: false, editArmed: false, model: 0, nakCount: 0,
+    });
+  });
+
+  it('leaves the display block null at a pre-v10 caps version', async () => {
+    await bootMock('rp2350', {
+      wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 }, csCapsVersion: 9,
+    });
+    const s = sess();
+    expect(s.controlSurfaces.displayLimits).toBeNull();
+    expect(s.controlSurfaces.displayCfg).toBeNull();
+    expect(s.controlSurfaces.displayStatus).toBeNull();
+  });
+
+  it('applyCsBinding of a display slot silently reseeds the display cfg/pages', async () => {
+    const s = sess();
+    const ok = await applyCsBinding(s, 0, displayBinding);
+    expect(ok).toBe(true);
+    expect(s.controlSurfaces.displayPages[0]).not.toBeNull();
+    expect(s.controlSurfaces.displayPages[1]).not.toBeNull();
+    expect(s.controlSurfaces.displayPages[2]).not.toBeNull();
+    expect(s.controlSurfaces.displayPages[3]).not.toBeNull();
+    expect((s.controlSurfaces.displayCfg?.flags ?? 0) & CS_DCFG_EDIT_GATED).toBe(CS_DCFG_EDIT_GATED);
+  });
+
+  it('applyCsDisplayCfg lands the cfg and marks the config dirty', async () => {
+    const s = sess();
+    const cfg = { mode: CsDisplayMode.Fixed, homePage: 2, dwell: 0, overlayHold: 0, brightness: 0, flags: 0, editTimeout: 0 };
+    const ok = await applyCsDisplayCfg(s, cfg);
+    expect(ok).toBe(true);
+    expect(s.controlSurfaces.displayCfg).toEqual(cfg);
+    expect(s.controlSurfaces.status?.dirty).toBe(true);
+  });
+
+  it('applyCsDisplayPage lands a page; clearCsDisplayPage empties it', async () => {
+    const s = sess();
+    const page = { noun: CsNoun.Preamp, target: 0, index: 0, flags: 0x01 };
+    const ok = await applyCsDisplayPage(s, 5, page);
+    expect(ok).toBe(true);
+    expect(s.controlSurfaces.displayPages[5]).toEqual(page);
+
+    const cleared = await clearCsDisplayPage(s, 5);
+    expect(cleared).toBe(true);
+    expect(s.controlSurfaces.displayPages[5]).toBeNull();
+  });
+
+  it('csRevertConfig restores the saved display pages', async () => {
+    const s = sess();
+    const saved = { noun: CsNoun.Preamp, target: 0, index: 0, flags: 0x01 };
+    await applyCsDisplayPage(s, 5, saved);
+    await csSaveConfig(s);
+    await applyCsDisplayPage(s, 5, { noun: CsNoun.MasterVolume, target: 0, index: 0, flags: 0x01 });
+    expect(s.controlSurfaces.displayPages[5]?.noun).toBe(CsNoun.MasterVolume);
+
+    const ok = await csRevertConfig(s);
+    expect(ok).toBe(true);
+    expect(s.controlSurfaces.displayPages[5]).toEqual(saved);
+  });
+
+  it("enabling the I2C control interface on the display's bus is rejected", async () => {
+    const s = sess();
+    await applyCsBinding(s, 0, displayBinding);   // SDA/SCL 2/3, I2C instance 1
+    const before = s.ctrlIfaces.i2c;
+    setI2cControlConfig(s, { enabled: true, sdaPin: 14, sclPin: 15, address: 0x42 });   // also instance 1
+    await flushAllWrites(s);
+    expect(s.ctrlIfaces.i2c).toEqual(before);
   });
 });

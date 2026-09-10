@@ -1,14 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CsType, CsNoun, CsAction, CsKind, CsEvent, CsIrProto,
+  CsType, CsNoun, CsAction, CsKind, CsEvent, CsIrProto, CsDisplayMode,
   CS_FLAG_REVERSE, CS_FLAG_REPEAT, CS_FLAG_ACCEL,
   CS_FLAG_GROUP, CS_FLAG_LINK_ABS, CS_FLAG_GROUP_ALL,
-  CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q,
+  CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q, CS_UNIT_PERCENT,
   CS_TARGET_NONE, CS_TARGET_INPUT_CH, CS_TARGET_OUTPUT_CH, CS_TARGET_DSP_CH, CS_TARGET_DSP_BAND,
+  CS_DPAGE_ACTIVE, CS_DPAGE_GROUP, CS_DPAGE_LARGE, CS_DPAGE_BAR,
   dbToQ8, q8ToDb, legalActions, validateCsBinding, validateCsIrCommand, validateCsGroup, liveCsPinConfigs,
-  validateCsMacroStep, validateCsMacro,
-  EMPTY_CS_BINDING, EMPTY_CS_IR_COMMAND, EMPTY_CS_GROUP, EMPTY_CS_MACRO_STEP,
+  validateCsMacroStep, validateCsMacro, validateCsDisplayCfg, validateCsDisplayPage,
+  EMPTY_CS_BINDING, EMPTY_CS_IR_COMMAND, EMPTY_CS_GROUP, EMPTY_CS_MACRO_STEP, EMPTY_CS_DISPLAY_CFG,
   type CsBinding, type CsCaps, type CsNounCaps, type CsStatus, type CsIrCommand, type CsGroup, type CsMacroStep,
+  type CsDisplayCfg, type CsDisplayPage,
 } from './controlSurfaces';
 
 // Firmware caps-v3 tables as TEST INPUTS (the console itself reads them from
@@ -97,6 +99,31 @@ const macroNoun: CsNounCaps = {
   minQ8: 0, maxQ8: 0, unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
 };
 const nounsV9: CsNounCaps[] = [...nouns, ...Array(29).fill(disabledNoun), macroNoun];
+
+// caps v10 additions: nouns 53-56 (CPU_LOAD, DISPLAY_PAGE, DISPLAY_EDIT,
+// PAGE_VALUE) and a 9th type row for CS_TYPE_DISPLAY.
+const cpuLoadNoun: CsNounCaps = {
+  kind: CsKind.Continuous, enumCount: 0, actions: 0x0C00, minQ8: 0, maxQ8: 25600,
+  unit: CS_UNIT_PERCENT, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
+};
+const displayPageNoun: CsNounCaps = {
+  kind: CsKind.Enum, enumCount: 16, actions: 0x012E, minQ8: 0, maxQ8: 0,
+  unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
+};
+const displayEditNoun: CsNounCaps = {
+  kind: CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
+  unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
+};
+const pageValueNoun: CsNounCaps = {
+  kind: CsKind.Enum, enumCount: 1, actions: 0x001E, minQ8: 0, maxQ8: 0,
+  unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
+};
+const nounsV10: CsNounCaps[] = [...nounsV9, cpuLoadNoun, displayPageNoun, displayEditNoun, pageValueNoun];
+
+const capsV10Display: CsCaps = {
+  ...caps, capsVersion: 10, maxGroups: 8,
+  types: [...caps.types, { actions: 0, pinCount: 2, pinClass: 0 }],
+};
 
 describe('q8.8 conversion', () => {
   it('converts dB to signed 8.8 fixed point per the spec examples', () => {
@@ -609,5 +636,149 @@ describe('liveCsPinConfigs', () => {
 
   it('reserves nothing without a status packet', () => {
     expect(liveCsPinConfigs(bindings, null)).toEqual([null, null, null]);
+  });
+
+  it('marks a live display slot for the pin-label helper', () => {
+    const displayBindings: (CsBinding | null)[] = [
+      binding({ type: CsType.Display, index: 6, gpio0: 4, gpio1: 5 }),
+    ];
+    const status: CsStatus = {
+      lastStatus: 0, lastSlot: 0, maxBindings: 16, dirty: false, activeMask: 0b1,
+      slotStatus: [0], irActiveMask: 0, irLearnState: 0, irCmdStatus: [],
+    };
+    expect(liveCsPinConfigs(displayBindings, status)).toEqual([{ gpio0: 4, gpio1: 5, display: true }]);
+  });
+});
+
+describe('validateCsBinding — I2C display (caps v10+)', () => {
+  function display(over: Partial<CsBinding> = {}): CsBinding {
+    return binding({ type: CsType.Display, index: 6, value: 0, gpio0: 4, gpio1: 5, ...over });
+  }
+
+  it('accepts a well-formed display binding', () => {
+    expect(validateCsBinding(display(), capsV10Display, nounsV10)).toBe(0x00);
+  });
+
+  it('rejects model 0 or >= 9 with INVALID_VALUE', () => {
+    expect(validateCsBinding(display({ index: 0 }), capsV10Display, nounsV10)).toBe(0x14);
+    expect(validateCsBinding(display({ index: 9 }), capsV10Display, nounsV10)).toBe(0x14);
+  });
+
+  it('rejects an address override outside 0x08-0x77, accepts one inside it', () => {
+    expect(validateCsBinding(display({ value: 0x07 }), capsV10Display, nounsV10)).toBe(0x14);
+    expect(validateCsBinding(display({ value: 0x3C }), capsV10Display, nounsV10)).toBe(0x00);
+  });
+
+  it('rejects a non-zero noun -- the container payload is model/address only', () => {
+    expect(validateCsBinding(display({ noun: 1 }), capsV10Display, nounsV10)).toBe(0x14);
+  });
+
+  it('rejects an SDA/SCL pair failing parity or instance with PIN_NOT_I2C', () => {
+    expect(validateCsBinding(display({ gpio0: 5, gpio1: 4 }), capsV10Display, nounsV10)).toBe(0x23);
+    expect(validateCsBinding(display({ gpio0: 4, gpio1: 7 }), capsV10Display, nounsV10)).toBe(0x23);
+  });
+
+  it('accepts a non-adjacent SDA/SCL pair on the same I2C instance', () => {
+    expect(validateCsBinding(display({ gpio0: 0, gpio1: 5 }), capsV10Display, nounsV10)).toBe(0x00);
+  });
+
+  it("rejects the live control interface's I2C instance with I2C_IN_USE", () => {
+    expect(validateCsBinding(display({ gpio0: 4, gpio1: 5 }), capsV10Display, nounsV10, [], 0)).toBe(0x24);
+    expect(validateCsBinding(display({ gpio0: 6, gpio1: 7 }), capsV10Display, nounsV10, [], 0)).toBe(0x00);
+  });
+
+  it('rejects a missing second pin with INVALID_PIN', () => {
+    expect(validateCsBinding(display({ gpio1: null }), capsV10Display, nounsV10)).toBe(0x01);
+  });
+});
+
+describe('validateCsBinding / validateCsIrCommand — PAGE_VALUE noun (caps v10+)', () => {
+  function pageValueButton(over: Partial<CsBinding> = {}): CsBinding {
+    return binding({ type: CsType.Button, noun: CsNoun.PageValue, action: CsAction.Inc, gpio0: 20, ...over });
+  }
+
+  it('rejects a non-zero step on a binding, accepts a zero one', () => {
+    expect(validateCsBinding(pageValueButton({ step: 1 }), capsV10Display, nounsV10)).toBe(0x14);
+    expect(validateCsBinding(pageValueButton({ step: 0 }), capsV10Display, nounsV10)).toBe(0x00);
+  });
+
+  it('rejects a non-zero target -- PAGE_VALUE is untargeted', () => {
+    expect(validateCsBinding(pageValueButton({ target: 1 }), capsV10Display, nounsV10)).toBe(0x17);
+  });
+});
+
+describe('validateCsDisplayCfg', () => {
+  function cfg(over: Partial<CsDisplayCfg> = {}): CsDisplayCfg {
+    return { ...EMPTY_CS_DISPLAY_CFG, ...over };
+  }
+
+  it('accepts the all-zero cfg', () => {
+    expect(validateCsDisplayCfg(EMPTY_CS_DISPLAY_CFG)).toBe(0x00);
+  });
+
+  it('rejects a mode above CYCLE_ALL', () => {
+    expect(validateCsDisplayCfg(cfg({ mode: 3 as CsDisplayMode }))).toBe(0x14);
+  });
+
+  it('rejects a home page at/above CS_MAX_DISPLAY_PAGES with INVALID_PAGE', () => {
+    expect(validateCsDisplayCfg(cfg({ homePage: 16 }))).toBe(0x25);
+  });
+
+  it('rejects unknown flag bits', () => {
+    expect(validateCsDisplayCfg(cfg({ flags: 0x40 }))).toBe(0x14);
+  });
+
+  it('rejects an alignment field of 3 (reserved)', () => {
+    expect(validateCsDisplayCfg(cfg({ flags: 0x0C }))).toBe(0x14);   // label align bits = 3
+  });
+
+  it('requires dwell >= 10 outside FIXED mode, but not inside it', () => {
+    expect(validateCsDisplayCfg(cfg({ mode: CsDisplayMode.CycleSelected, dwell: 9 }))).toBe(0x14);
+    expect(validateCsDisplayCfg(cfg({ mode: CsDisplayMode.CycleSelected, dwell: 10 }))).toBe(0x00);
+    expect(validateCsDisplayCfg(cfg({ mode: CsDisplayMode.Fixed, dwell: 0 }))).toBe(0x00);
+  });
+});
+
+describe('validateCsDisplayPage', () => {
+  function page(over: Partial<CsDisplayPage> = {}): CsDisplayPage {
+    return { noun: CsNoun.UserVolume, target: 0, index: 0, flags: CS_DPAGE_ACTIVE, ...over };
+  }
+  // CLIP's actions read 0 here, standing in for a noun disabled on this
+  // platform build (mirrors the RP2040 ADAT_ACTIVE / upmix gating).
+  const nounsNoClip = nounsV10.map((n, i) => (i === CsNoun.Clip ? disabledNoun : n));
+
+  it('rejects a non-ACTIVE page carrying any other non-zero field', () => {
+    expect(validateCsDisplayPage({ noun: 0, target: 0, index: 0, flags: CS_DPAGE_LARGE }, nounsV10, groups)).toBe(0x25);
+    expect(validateCsDisplayPage({ noun: 0, target: 0, index: 0, flags: 0x10 }, nounsV10, groups)).toBe(0x25);
+  });
+
+  it('accepts the all-zero (empty) page', () => {
+    expect(validateCsDisplayPage({ noun: 0, target: 0, index: 0, flags: 0 }, nounsV10, groups)).toBe(0x00);
+  });
+
+  it('rejects BAR on an enum noun, accepts it on a continuous one', () => {
+    expect(validateCsDisplayPage(page({ noun: CsNoun.Preset, flags: CS_DPAGE_ACTIVE | CS_DPAGE_BAR }), nounsV10, groups)).toBe(0x25);
+    expect(validateCsDisplayPage(page({ noun: CsNoun.Preamp, flags: CS_DPAGE_ACTIVE | CS_DPAGE_BAR }), nounsV10, groups)).toBe(0x00);
+  });
+
+  it('rejects a display noun as a page (no recursing into the display from itself)', () => {
+    expect(validateCsDisplayPage(page({ noun: CsNoun.DisplayEdit }), nounsV10, groups)).toBe(0x25);
+  });
+
+  it('rejects a platform-unavailable noun (actions == 0) with INVALID_NOUN', () => {
+    expect(validateCsDisplayPage(page({ noun: CsNoun.Clip }), nounsNoClip, groups)).toBe(0x12);
+  });
+
+  it('rejects a group of the wrong kind for the noun with INVALID_GROUP', () => {
+    expect(validateCsDisplayPage(page({ noun: CsNoun.Preamp, flags: CS_DPAGE_ACTIVE | CS_DPAGE_GROUP, target: 1 }), nounsV10, groups)).toBe(0x1F);
+  });
+
+  it('rejects a non-zero target on an untargeted noun with INVALID_TARGET', () => {
+    expect(validateCsDisplayPage(page({ noun: CsNoun.MasterVolume, target: 1 }), nounsV10, groups)).toBe(0x17);
+  });
+
+  it('bounds a targeted noun against its own target count', () => {
+    expect(validateCsDisplayPage(page({ noun: CsNoun.OutputMute, target: 3 }), nounsV10, groups)).toBe(0x17);
+    expect(validateCsDisplayPage(page({ noun: CsNoun.OutputMute, target: 2 }), nounsV10, groups)).toBe(0x00);
   });
 });
