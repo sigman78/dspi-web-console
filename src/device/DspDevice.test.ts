@@ -80,6 +80,31 @@ describe('DspDevice facade', () => {
   });
 });
 
+describe('DspDevice — GetPlatform response length', () => {
+  it('takes full-width minor/patch from the 6-byte response (fw 1.1.6+)', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 16 } });
+    const d = await DspDevice.create(t);
+    expect(d.info.capabilities.fwLabel).toBe('1.1.16');
+  });
+
+  it('falls back to the nibble-packed byte when only 4 bytes come back', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 26, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    const seen: number[] = [];
+    const spy: DspTransport = {
+      open: () => t.open(), close: () => t.close(), isOpen: () => t.isOpen(), on: (e, l) => t.on(e, l),
+      ctrlIn: async (req, val, len) => {
+        const r = await t.ctrlIn(req, val, len);
+        if (req === WireCmd.GetPlatform.code) seen.push(r.length);
+        return r;
+      },
+      ctrlOut: (req, val, data) => t.ctrlOut(req, val, data),
+    };
+    const d = await DspDevice.create(spy);
+    expect(seen).toEqual([4]);
+    expect(d.info.capabilities.fwLabel).toBe('1.1.5');
+  });
+});
+
 describe('DspDevice — getSystemStatus hardware profile contract', () => {
   it('uses platform-correct channel count from factory hardware profile', async () => {
     const t = new MockTransport({ platform: 'rp2350' });

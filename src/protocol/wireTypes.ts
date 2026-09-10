@@ -906,6 +906,18 @@ export const DeviceInfo = struct({
   _reserved:    reserved(1),
 });
 
+// fw 1.1.6+ answers 6 bytes: the same 4-byte prefix plus full-width minor
+// and patch, lifting the nibble-packed byte's cap of 15. Older fw clamps the
+// response to 4 bytes, so the reader must branch on the length received.
+export const DeviceInfoExt = struct({
+  platformId:   u8,
+  fwMajor:      u8,
+  fwMinorPatch: u8,
+  _reserved:    reserved(1),
+  fwMinor:      u8,
+  fwPatch:      u8,
+});
+
 // Parametric `GetStatus` (0x50) wire schema: the peak count varies by
 // platform (7 on RP2040, 11 on RP2350). Other fields are fixed.
 // Returns a fresh struct codec for the requested channel count; use

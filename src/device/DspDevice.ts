@@ -83,12 +83,30 @@ function narrowSpdifInputState(n: number): Domain.SpdifInputState {
   }
 }
 
-// GetPlatform packs minor/patch into one byte: high nibble = minor, low = patch.
-function fwVersionParts(info: { fwMajor: number; fwMinorPatch: number }): FirmwareVersion {
+// GetPlatform (0x7F) has two on-wire lengths, told apart by the response
+// rather than a version gate (the version is what we are reading): fw
+// ≤ 1.1.5 answers 4 bytes with minor/patch nibble-packed into one byte,
+// fw 1.1.6+ answers 6 bytes with full-width minor/patch at bytes 4/5.
+async function readPlatform(
+  t: DspTransport,
+): Promise<{ platformId: number; fw: FirmwareVersion }> {
+  const size = Codec.sizeOf(proto.Wire.DeviceInfoExt);
+  const raw = await t.ctrlIn(proto.WireCmd.GetPlatform.code, 0, size);
+  if (raw.length >= size) {
+    const info = Codec.decode(proto.Wire.DeviceInfoExt, raw);
+    return {
+      platformId: info.platformId,
+      fw: { major: info.fwMajor, minor: info.fwMinor, patch: info.fwPatch },
+    };
+  }
+  const info = Codec.decodePadded(proto.Wire.DeviceInfo, raw);
   return {
-    major: info.fwMajor,
-    minor: (info.fwMinorPatch >> 4) & 0xF,
-    patch: info.fwMinorPatch & 0xF,
+    platformId: info.platformId,
+    fw: {
+      major: info.fwMajor,
+      minor: (info.fwMinorPatch >> 4) & 0xF,
+      patch: info.fwMinorPatch & 0xF,
+    },
   };
 }
 
@@ -216,7 +234,7 @@ export class DspDevice {
     await openTransport();
     const [serial, platform] = await Promise.all([
       proto.readCmd(transport, proto.WireCmd.GetSerial),
-      proto.readCmd(transport, proto.WireCmd.GetPlatform),
+      readPlatform(transport),
     ]);
 
     // Peek just the 16-byte header so capabilities reflect the observed wire
@@ -229,7 +247,7 @@ export class DspDevice {
     const header = proto.peekBulkHeader(headerBytes);
 
     const capabilities = deriveCapabilities({
-      fw:            fwVersionParts(platform),
+      fw:            platform.fw,
       wireVersion:   header.formatVersion,
       payloadLength: header.payloadLength,
       platformId:    platform.platformId,
