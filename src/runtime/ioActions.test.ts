@@ -152,6 +152,26 @@ describe('output config verbs', () => {
     await factoryResetDevice();
     expect(notices.list.some((n) => n.kind === 'info' && n.message.includes('Factory reset complete'))).toBe(true);
   });
+
+  it('saveOutputConfigBaseline warns on failure and stays silent on success', async () => {
+    clearNotices();
+    const failDevice = initializedDevice({
+      saveOutputConfig: async () => ({ ok: false as const, code: 4 as any, message: 'preset flash write error' }),
+    });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(failDevice) });
+    actions.saveOutputConfigBaseline(activeSession()!);
+    await flushAllWrites();
+    expect(notices.list.some((n) => n.kind === 'warn' && /output config/i.test(n.message))).toBe(true);
+
+    clearNotices();
+    const okDevice = initializedDevice({
+      saveOutputConfig: async () => ({ ok: true as const, value: undefined }),
+    });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(okDevice) });
+    actions.saveOutputConfigBaseline(activeSession()!);
+    await flushAllWrites();
+    expect(notices.list).toHaveLength(0);
+  });
 });
 
 describe('ADAT output verbs (fw V17+, RP2350)', () => {

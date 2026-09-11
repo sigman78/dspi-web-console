@@ -1,5 +1,5 @@
-// Connection & whole-device service operations, split out from actions.ts
-// (which holds the granular per-parameter verbs). Everything here touches the
+// Connection & whole-device service operations, kept apart from the
+// granular per-parameter verb modules (eqActions, mixerActions, ...). Everything here touches the
 // whole session or the whole snapshot: connect/sync/reconcile, transport-event
 // wiring, and the factory-reset command -- as opposed to a single mirror field.
 
@@ -81,7 +81,7 @@ export const MIN_CS_CAPS_VERSION = 2;
 export const MAX_KNOWN_CS_CAPS_VERSION = 14;
 
 // Fetch the whole I2C display block (cfg, every page, status) in one go --
-// reused by fetchControlSurfaces (initial connect) and by actions.ts's
+// reused by fetchControlSurfaces (initial connect) and by controlSurfaceActions'
 // applyCsBinding/csRevertConfig (a binding apply or revert can silently
 // reseed the pages/cfg without marking anything dirty, so both re-read this
 // after touching a display-type slot). Plain device reads, no queuing of its

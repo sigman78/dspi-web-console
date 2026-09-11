@@ -416,7 +416,7 @@ export async function deletePresetSlot(s: ReadySession, slot: PresetSlot): Promi
 
 // PresetSetName(N). Slot names live in the directory and persist through
 // PresetDelete, so the rename is independent of slot occupancy. Channel
-// names (which DO live in the payload) flow through actions.ts; this
+// names (which DO live in the payload) flow through mixerActions.ts; this
 // function is only for the slot-level name.
 export async function renamePresetSlot(
   s: ReadySession, slot: PresetSlot, name: string,
