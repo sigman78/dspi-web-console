@@ -2,7 +2,6 @@
   import ProcPanel from './ProcPanel.svelte';
   import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
   import MaskChipRow from '@/components/chrome/MaskChipRow.svelte';
-  import { connection } from '@/state';
   import { Proc, outputChannelsWithIndex, maskChipItems, subharmReservePlan } from '@/domain';
   import {
     setSubharmEnabled, setSubharmLow, setSubharmHigh, setSubharmBoost,
@@ -14,9 +13,8 @@
 
   const snapshot = $derived(s.mirror.current);
   const subharm = $derived(snapshot?.subharm);
-  const connected = $derived(connection.connected);
   const enabled = $derived(subharm?.enabled ?? false);
-  const editable = $derived(connected && enabled);
+  const editable = $derived(enabled);
 
   // Per-output subharm mask (fw V29+): same output-slot convention as the
   // loudness/crossfeed/psybass masks.
@@ -44,7 +42,6 @@
   title="SUBHARMONIC"
   subject="subharm"
   {enabled}
-  {connected}
   onToggle={() => subharm && setSubharmEnabled(s, !subharm.enabled)}
 >
   <div class="proc-grid">

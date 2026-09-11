@@ -3,7 +3,6 @@
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import PinPicker from './PinPicker.svelte';
-  import { connection } from '@/state';
   import { setAdatInputEnable, setAdatInputPin, setAdatInputClockMode } from '@/runtime';
   import { AudioInputSource, AdatInputLockState, pickerCells, liveCsPinConfigs } from '@/domain';
   import { Wire } from '@/protocol';
@@ -12,7 +11,6 @@
 
   const s = getSession();
 
-  const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
   const inputConfig = $derived(snap?.inputConfig);
   const status = $derived(s.telemetry.adatInputStatus);
@@ -70,7 +68,6 @@
     {#if features.pinResetDefault && !enabled && pin !== 0}
       <button
         class="chip"
-        disabled={!connected}
         title="Clear the stored pin"
         onclick={() => setAdatInputPin(s, Wire.Const.PIN_RESET_TO_DEFAULT)}
       >CLEAR</button>
@@ -79,7 +76,7 @@
       <ToggleSwitch
         size="sm"
         checked={enabled}
-        disabled={!connected || !inputConfig || enableBlocked || disableBlocked}
+        disabled={!inputConfig || enableBlocked || disableBlocked}
         ariaLabel={enabled ? 'Disable ADAT input' : 'Enable ADAT input'}
         onChange={(v) => setAdatInputEnable(s, v)}
       />
@@ -95,7 +92,6 @@
           cells={pinCells}
           placeholder="UNSET"
           ariaLabel="ADAT input GPIO pin"
-          disabled={!connected}
           onChange={(p) => setAdatInputPin(s, p)}
         />
       </div>
@@ -108,13 +104,13 @@
             class="chip"
             class:on={clockMode === 0}
             onclick={() => setAdatInputClockMode(s, 0)}
-            disabled={!connected || clockMode === 0}
+            disabled={clockMode === 0}
           >MASTER</button>
           <button
             class="chip"
             class:on={clockMode === 1}
             onclick={() => setAdatInputClockMode(s, 1)}
-            disabled={!connected || clockMode === 1}
+            disabled={clockMode === 1}
           >SLAVE</button>
         </div>
       </div>

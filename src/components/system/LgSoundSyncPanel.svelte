@@ -2,12 +2,10 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import { connection } from '@/state';
   import { setLgSoundSyncEnabled } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
-  const connected = $derived(connection.connected);
   const lgs = $derived(s.mirror.current?.lgSoundSync);
   const enabled = $derived(lgs?.enabled ?? false);
 </script>
@@ -17,7 +15,7 @@
     <ToggleSwitch
       size="sm"
       checked={enabled}
-      disabled={!connected || !lgs}
+      disabled={!lgs}
       ariaLabel={enabled ? 'Disable LG Sound Sync' : 'Enable LG Sound Sync'}
       onChange={(v) => setLgSoundSyncEnabled(s, v)}
     />

@@ -1,7 +1,7 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
-  import { connection, settings } from '@/state';
+  import { settings } from '@/state';
   import { debugPanelsForced } from '@/devOptions';
   import DevicePanel from '@/components/system/DevicePanel.svelte';
   import InputConfigPanel from '@/components/system/InputConfigPanel.svelte';
@@ -23,7 +23,6 @@
 
   const snap = $derived(s.mirror.current);
   const info = $derived(s.telemetry.info);
-  const connected = $derived(connection.connected);
   const features = $derived(s.device.capabilities.features);
   const debugPanels = $derived(settings.debugPanels || debugPanelsForced());
 
@@ -73,7 +72,7 @@
 
       <Panel code="SY.04" title="ERROR COUNTERS">
         {#snippet right()}
-          <button class="chip" onclick={() => clearClips(s)} disabled={!connected} title="Clear latched clip flags">CLEAR</button>
+          <button class="chip" onclick={() => clearClips(s)} title="Clear latched clip flags">CLEAR</button>
         {/snippet}
         <div class="kvgrid">
           <KV label="PDM RING OVR" value={fmtNum(info?.pdmRingOverruns)}       tone={isNonZero(info?.pdmRingOverruns)       ? undefined : 'off'} />

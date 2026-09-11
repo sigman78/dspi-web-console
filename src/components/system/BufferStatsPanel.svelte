@@ -1,11 +1,9 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
-  import { connection } from '@/state';
   import { resetBufferStats } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
-  const connected = $derived(connection.connected);
   const bs = $derived(s.telemetry.bufferStats);
 
   function pct(v: number | undefined): string {
@@ -27,7 +25,6 @@
     <button
       class="chip"
       onclick={() => resetBufferStats(s)}
-      disabled={!connected}
       title="Zero all buffer-stats counters on the device"
     >RESET</button>
   {/snippet}

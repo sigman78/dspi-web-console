@@ -6,10 +6,6 @@ vi.mock('@/runtime', () => ({
   setDacHwMute: vi.fn(), testDacHwMute: vi.fn(),
 }));
 
-vi.mock('@/state', () => ({
-  connection: { get connected() { return true; }, get phase() { return 'ready'; } },
-}));
-
 import { setDacHwMute } from '@/runtime';
 import DacHwMutePanel from './DacHwMutePanel.svelte';
 

@@ -4,12 +4,10 @@
   import PresetTile from '@/components/presets/PresetTile.svelte';
   import PresetControls from '@/components/presets/PresetControls.svelte';
   import { fetchPresetInfo, retryFetchPresetInfo, dismissPresetActionError } from '@/runtime';
-  import { connection } from '@/state';
   import { getSession } from '@/components/sessionContext';
   import { PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';
 
   const SLOTS: PresetSlot[] = Array.from({ length: PRESET_SLOT_COUNT }, (_, i) => i as PresetSlot);
-  const connected = $derived(connection.connected);
   const s = getSession();
 
   // Lets the controls pane trigger inline rename on the active tile.
@@ -30,9 +28,7 @@
 <div class="grid">
   <Panel code="PR.01" title="PRESETS">
     <div class="body-pad">
-      {#if !connected}
-        <div class="placeholder">Not connected.</div>
-      {:else if s.presets.directory == null && s.presets.lastFetchError}
+      {#if s.presets.directory == null && s.presets.lastFetchError}
         <div class="error">
           <div class="msg">{s.presets.lastFetchError}</div>
           <button class="chip accent" onclick={() => retryFetchPresetInfo(s)} disabled={s.presets.busy}>RETRY</button>

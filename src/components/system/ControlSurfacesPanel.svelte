@@ -2,7 +2,6 @@
   import { untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import CsBindingRow from './CsBindingRow.svelte';
-  import { connection } from '@/state';
   import { applyCsBinding, clearCsBinding, applyCsName } from '@/runtime';
   import * as Domain from '@/domain';
   import { getSession } from '@/components/sessionContext';
@@ -11,11 +10,9 @@
   import * as CsField from './csFieldHelpers';
 
   const s = getSession();
-  const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
   const cs = $derived(s.controlSurfaces);
   const caps = $derived(s.controlSurfaces.caps);
-  const busy = $derived(!connected);
 
   const drafts = $state<Record<number, Draft>>({});
   let applying = $state(false);
@@ -298,7 +295,7 @@
     {/each}
 
     <div class="addrow">
-      <select class="sel" value="" aria-label="Add control" disabled={busy || applying || allUsed} onchange={addControl}>
+      <select class="sel" value="" aria-label="Add control" disabled={applying || allUsed} onchange={addControl}>
         <option value="" disabled>ADD CONTROL…</option>
         {#each typeOptionsFor(-1) as t (t)}
           <option value={String(t)}>{Domain.csTypeLabel(t)}</option>

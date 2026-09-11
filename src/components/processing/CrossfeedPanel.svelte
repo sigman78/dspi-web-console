@@ -7,7 +7,6 @@
   import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
   import { crossfeedResponse } from '@/components/bode/crossfeedCurve';
   import { centeredDbDomain } from '@/components/bode/dbDomain';
-  import { connection } from '@/state';
   import {
     setCrossfeedEnabled, setCrossfeedPreset, setCrossfeedItd,
     setCrossfeedFreq, setCrossfeedFeedDb, toggleCrossfeedOutputPair,
@@ -17,10 +16,9 @@
 
   const s = getSession();
   const cf = $derived(s.mirror.current?.crossfeed);
-  const connected = $derived(connection.connected);
   const enabled = $derived(cf?.enabled ?? false);
   const isCustom = $derived((cf?.preset ?? CrossfeedPreset.Preset1) === CrossfeedPreset.Custom);
-  const editable = $derived(connected && enabled);
+  const editable = $derived(enabled);
   const slidersEditable = $derived(editable && isCustom);
 
   // Output-pair mask (fw V20+): which stereo output pairs get crossfeed.
@@ -76,7 +74,6 @@
   title="CROSSFEED"
   subject="crossfeed"
   {enabled}
-  {connected}
   onToggle={() => cf && setCrossfeedEnabled(s, !cf.enabled)}
 >
   <div class="graph" class:off={!enabled}>

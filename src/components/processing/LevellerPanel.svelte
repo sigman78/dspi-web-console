@@ -4,7 +4,6 @@
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import MaskChipRow from '@/components/chrome/MaskChipRow.svelte';
-  import { connection } from '@/state';
   import {
     setLevellerEnabled, setLevellerSpeed, setLevellerLookahead,
     setLevellerAmount, setLevellerMaxGain, setLevellerGate,
@@ -15,9 +14,8 @@
 
   const s = getSession();
   const lv = $derived(s.mirror.current?.leveller);
-  const connected = $derived(connection.connected);
   const enabled = $derived(lv?.enabled ?? false);
-  const editable = $derived(connected && enabled);
+  const editable = $derived(enabled);
 
   const SPEED_OPTIONS = [
     { value: LevellerSpeed.Slow,   label: 'SLOW' },
@@ -65,7 +63,6 @@
   title="LEVELLER"
   subject="leveller"
   {enabled}
-  {connected}
   onToggle={() => lv && setLevellerEnabled(s, !lv.enabled)}
 >
   <div class="proc-grid">

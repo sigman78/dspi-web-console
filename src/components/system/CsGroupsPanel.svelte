@@ -6,7 +6,6 @@
   import { untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import MaskChipRow from '@/components/chrome/MaskChipRow.svelte';
-  import { connection } from '@/state';
   import { applyCsGroup, clearCsGroup } from '@/runtime';
   import * as Domain from '@/domain';
   import { csStatusFromByte } from '@/protocol';
@@ -14,11 +13,9 @@
   import * as CsField from './csFieldHelpers';
 
   const s = getSession();
-  const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
   const cs = $derived(s.controlSurfaces);
   const caps = $derived(s.controlSurfaces.caps);
-  const busy = $derived(!connected);
 
   interface GroupDraft { kind: number; mask: number; name: string }
   const drafts = $state<Record<number, GroupDraft>>({});
@@ -206,7 +203,7 @@
         {#if open}
           <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
             value={d.name} aria-label={`Name for group ${i + 1}`}
-            disabled={busy || applying}
+            disabled={applying}
             onchange={(e) => editDraft(i, (dr) => { dr.name = (e.currentTarget as HTMLInputElement).value; })} />
         {/if}
         <span class="pill {p.cls}">{p.text}</span>
@@ -223,7 +220,7 @@
       <div class="rows">
         <div class="row">
           <span class="microlbl">KIND</span>
-          <select class="sel" value={String(d.kind)} aria-label="Group kind" disabled={busy || applying}
+          <select class="sel" value={String(d.kind)} aria-label="Group kind" disabled={applying}
             onchange={(e) => {
               const v = Number((e.currentTarget as HTMLSelectElement).value);
               editDraft(i, (dr) => { dr.kind = v; dr.mask = 0; });
@@ -236,7 +233,7 @@
 
         <div class="row">
           <MaskChipRow label="MEMBERS" items={snap ? CsField.groupMemberItems(d.kind, snap.channels) : []}
-            mask={d.mask} disabled={busy || applying}
+            mask={d.mask} disabled={applying}
             onToggle={(idx) => editDraft(i, (dr) => { dr.mask ^= (1 << idx); })} />
           {#if d.mask === 0}
             <span class="hint">Pick at least one channel</span>
@@ -251,7 +248,7 @@
 
         <div class="row">
           <button type="button" class="chip accent" onclick={() => apply(i)}
-            disabled={busy || applying || !canApply(i)}>APPLY</button>
+            disabled={applying || !canApply(i)}>APPLY</button>
           <button type="button" class="chip hi" onclick={() => revert(i)}
             disabled={applying || !cs.groups[i] || !dirty}>REVERT</button>
         </div>
@@ -261,7 +258,7 @@
   {/each}
 
   <div class="addrow">
-    <button type="button" class="chip" disabled={busy || applying || allUsed} onclick={addGroup}>ADD GROUP</button>
+    <button type="button" class="chip" disabled={applying || allUsed} onclick={addGroup}>ADD GROUP</button>
     {#if allUsed}
       <span class="hint">All {maxSlots} group slots are in use.</span>
     {/if}

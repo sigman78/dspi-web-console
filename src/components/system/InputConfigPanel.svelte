@@ -3,7 +3,6 @@
   import KV from '@/components/chrome/KV.svelte';
   import PinPicker from './PinPicker.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import { connection } from '@/state';
   import { stageInputSource, stageSpdifRxPin, stageSpdifRxPinExt, stageSpdifInputEnabled, stageInputRate, stageI2sRxPin, stageI2sInputChannels } from '@/runtime';
   import { AudioInputSource, isSpdifSource, SpdifInputState, I2sSlaveClockState, AdatInputLockState, pickerCells, I2S_INPUT_RATES_HZ, liveCsPinConfigs, type PinPickerCell } from '@/domain';
   import { Wire } from '@/protocol';
@@ -11,7 +10,6 @@
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
-  const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
   const inputConfig = $derived(snap?.inputConfig);
   const spdifStatus = $derived(s.telemetry.spdifRxStatus);
@@ -135,7 +133,7 @@
 <Panel code="SY.11" title="INPUT CONFIG">
   {#snippet right()}
     {#if features.pinResetDefault && (isSpdif || (isI2s && features.i2sInput))}
-      <button class="chip icon" disabled={!connected} title="Reset to defaults" aria-label="Reset input pins to defaults" onclick={stageSectionPinsToDefault}>↺</button>
+      <button class="chip icon" title="Reset to defaults" aria-label="Reset input pins to defaults" onclick={stageSectionPinsToDefault}>↺</button>
     {/if}
   {/snippet}
   {#if inputConfig && snap && overlaySnap}
@@ -147,14 +145,14 @@
           class:on={source === AudioInputSource.Usb}
           class:staged={s.staging.has('inputSource') && source === AudioInputSource.Usb}
           onclick={() => stageInputSource(s, AudioInputSource.Usb)}
-          disabled={!connected || source === AudioInputSource.Usb}
+          disabled={source === AudioInputSource.Usb}
         >USB</button>
         <button
           class="chip"
           class:on={source === AudioInputSource.Spdif}
           class:staged={s.staging.has('inputSource') && source === AudioInputSource.Spdif}
           onclick={() => stageInputSource(s, AudioInputSource.Spdif)}
-          disabled={!connected || source === AudioInputSource.Spdif}
+          disabled={source === AudioInputSource.Spdif}
         >{spdifInputCount > 1 ? 'S/P 1' : 'S/P'}</button>
         {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[0]}
           <button
@@ -162,7 +160,7 @@
             class:on={source === AudioInputSource.Spdif2}
             class:staged={s.staging.has('inputSource') && source === AudioInputSource.Spdif2}
             onclick={() => stageInputSource(s, AudioInputSource.Spdif2)}
-            disabled={!connected || source === AudioInputSource.Spdif2}
+            disabled={source === AudioInputSource.Spdif2}
           >S/P 2</button>
         {/if}
         {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[1]}
@@ -171,7 +169,7 @@
             class:on={source === AudioInputSource.Spdif3}
             class:staged={s.staging.has('inputSource') && source === AudioInputSource.Spdif3}
             onclick={() => stageInputSource(s, AudioInputSource.Spdif3)}
-            disabled={!connected || source === AudioInputSource.Spdif3}
+            disabled={source === AudioInputSource.Spdif3}
           >S/P 3</button>
         {/if}
         {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[2]}
@@ -180,7 +178,7 @@
             class:on={source === AudioInputSource.Spdif4}
             class:staged={s.staging.has('inputSource') && source === AudioInputSource.Spdif4}
             onclick={() => stageInputSource(s, AudioInputSource.Spdif4)}
-            disabled={!connected || source === AudioInputSource.Spdif4}
+            disabled={source === AudioInputSource.Spdif4}
           >S/P 4</button>
         {/if}
         {#if features.i2sInput}
@@ -189,7 +187,7 @@
             class:on={isI2s}
             class:staged={s.staging.has('inputSource') && isI2s}
             onclick={() => stageInputSource(s, AudioInputSource.I2s)}
-            disabled={!connected || isI2s}
+            disabled={isI2s}
           >I2S</button>
         {/if}
         {#if features.adatInput && inputConfig.adatInputEnabled && inputConfig.adatInputPin !== 0}
@@ -198,7 +196,7 @@
             class:on={source === AudioInputSource.Adat}
             class:staged={s.staging.has('inputSource') && source === AudioInputSource.Adat}
             onclick={() => stageInputSource(s, AudioInputSource.Adat)}
-            disabled={!connected || source === AudioInputSource.Adat}
+            disabled={source === AudioInputSource.Adat}
           >ADAT</button>
         {/if}
       </div>
@@ -229,7 +227,6 @@
                 <ToggleSwitch
                   size="sm"
                   checked={effSpdifExtEnabled(i - 1)}
-                  disabled={!connected}
                   ariaLabel={effSpdifExtEnabled(i - 1) ? `Disable ${spdifTitle(i)} input` : `Enable ${spdifTitle(i)} input`}
                   onChange={() => stageSpdifInputEnabled(s, i - 1, !effSpdifExtEnabled(i - 1))}
                 />
@@ -242,7 +239,6 @@
               cells={spdifPinCells(i)}
               placeholder={i === 0 ? undefined : 'UNSET'}
               ariaLabel={`${spdifTitle(i)} RX GPIO pin`}
-              disabled={!connected}
               onChange={(p) => onSpdifPin(i, p)}
             />
           </span>
@@ -288,7 +284,7 @@
                 class:on={effRate === hz}
                 class:staged={s.staging.has('inputRate') && effRate === hz}
                 onclick={() => stageInputRate(s, hz)}
-                disabled={!connected || effRate === hz}
+                disabled={effRate === hz}
               >{hz / 1000}k</button>
             {/each}
           </div>
@@ -302,7 +298,7 @@
                 class:on={i2sChannels === n}
                 class:staged={s.staging.has('i2sChannels') && i2sChannels === n}
                 onclick={() => stageI2sInputChannels(s, n)}
-                disabled={!connected || i2sChannels === n}
+                disabled={i2sChannels === n}
               >{n}</button>
             {/each}
           </div>
@@ -316,7 +312,6 @@
               value={effI2sRxPin(pair)}
               cells={pickerCells(snap.platform.type, overlaySnap, ctrlPins, effI2sRxPin(pair))}
               ariaLabel={`I2S RX data pin, stereo pair ${pair + 1}`}
-              disabled={!connected}
               onChange={(p) => stageI2sRxPin(s, pair, p)}
             />
           </span>
@@ -344,7 +339,7 @@
                 class:on={effRate === hz}
                 class:staged={s.staging.has('inputRate') && effRate === hz}
                 onclick={() => stageInputRate(s, hz)}
-                disabled={!connected || effRate === hz || hz > 48000}
+                disabled={effRate === hz || hz > 48000}
                 title={hz > 48000 ? 'ADAT runs at 44.1/48 kHz only — higher rates park the input' : undefined}
               >{hz / 1000}k</button>
             {/each}

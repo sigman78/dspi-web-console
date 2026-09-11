@@ -10,7 +10,6 @@
 
   const s = getSession();
   const snap = $derived(s.mirror.current);
-  const connected = $derived(connection.connected);
   const forced = $derived(debugPanelsForced());
   const debugEffective = $derived(settings.debugPanels || forced);
 
@@ -68,9 +67,7 @@
       toneAlways
       extraClass="md"
       onConfirm={onFactoryReset}
-      disabled={!connected}
       title="Wipes all presets and resets live audio to firmware defaults."
-      disabledReason="Connect a device to enable this action."
     />
     <ConfirmButton
       label="UPDATE FIRMWARE"
@@ -79,9 +76,7 @@
       toneAlways
       extraClass="md"
       onConfirm={onEnterBootloader}
-      disabled={!connected}
       title="Reboots into UF2 bootloader — device disconnects immediately."
-      disabledReason="Connect a device to enable this action."
     />
   </div>
 </Panel>

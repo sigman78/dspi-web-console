@@ -4,13 +4,11 @@
   // cs.changed names the editors that applied since the last save;
   // cs.staged counts edits not yet applied (and so not part of a SAVE).
   import Panel from '@/components/chrome/Panel.svelte';
-  import { connection } from '@/state';
   import { csSaveConfig, csRevertConfig } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import * as CsField from '@/components/system/csFieldHelpers';
 
   const s = getSession();
-  const connected = $derived(connection.connected);
   const cs = $derived(s.controlSurfaces);
   const caps = $derived(s.controlSurfaces.caps);
   const dirty = $derived(cs.status?.dirty === true);
@@ -60,9 +58,9 @@
       </div>
     {/if}
     <div class="actions">
-      <button type="button" class="chip accent" disabled={!connected || applying || !dirty} onclick={save}
+      <button type="button" class="chip accent" disabled={applying || !dirty} onclick={save}
         title="Write the applied controls to flash">SAVE</button>
-      <button type="button" class="chip hi" disabled={!connected || applying || (!dirty && stagedTotal === 0)} onclick={discard}
+      <button type="button" class="chip hi" disabled={applying || (!dirty && stagedTotal === 0)} onclick={discard}
         title="Rewind every control-surface setting to the saved set">DISCARD</button>
     </div>
   </div>

@@ -3,7 +3,6 @@
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import PinPicker from './PinPicker.svelte';
-  import { connection } from '@/state';
   import { setAdatEnable, setAdatPin } from '@/runtime';
   import { pickerCells, assignablePins, isAssignablePin, pinsInUse, liveCsPinConfigs } from '@/domain';
   import { Wire } from '@/protocol';
@@ -11,13 +10,12 @@
 
   const s = getSession();
 
-  const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
   const cfg = $derived(snap?.adat);
   const status = $derived(s.telemetry.adatStatus);
   const features = $derived(s.device.capabilities.features);
   const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
-  const editable = $derived(connected && cfg != null && cfg.enabled);
+  const editable = $derived(cfg != null && cfg.enabled);
 
   // pin 0 (never explicitly configured) means "platform default" (GPIO 12).
   const effPin = $derived(cfg ? (cfg.pin || 12) : 0);
@@ -64,7 +62,7 @@
     <ToggleSwitch
       size="sm"
       checked={cfg?.enabled ?? false}
-      disabled={!connected || !cfg}
+      disabled={!cfg}
       ariaLabel={cfg?.enabled ? 'Disable ADAT output' : 'Enable ADAT output'}
       onChange={() => onToggleEnabled()}
     />

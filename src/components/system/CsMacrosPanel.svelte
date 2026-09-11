@@ -6,7 +6,6 @@
   import { untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import { connection } from '@/state';
   import {
     applyCsMacro, clearCsMacro, fireCsMacro, cancelCsMacro, refreshCsExtStatus,
   } from '@/runtime';
@@ -19,11 +18,9 @@
   import type { MacroDraft, StepDraft } from './csMacroDraft';
 
   const s = getSession();
-  const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
   const cs = $derived(s.controlSurfaces);
   const caps = $derived(s.controlSurfaces.caps);
-  const busy = $derived(!connected);
 
   const drafts = $state<Record<number, MacroDraft>>({});
   let applying = $state(false);
@@ -61,7 +58,7 @@
   // macro that finished never starts this.
   const anyRunning = $derived(cs.extStatus?.macroRunning != null);
   $effect(() => {
-    if (busy || !anyRunning) return;
+    if (!anyRunning) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const tick = async (): Promise<void> => {
@@ -222,16 +219,16 @@
         {#if open}
           <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
             value={d.name} aria-label={`Name for macro ${i + 1}`}
-            disabled={busy || applying}
+            disabled={applying}
             onchange={(e) => editDraft(i, (dr) => { dr.name = (e.currentTarget as HTMLInputElement).value; })} />
         {/if}
         <span class="pill {p.cls}">{p.text}</span>
         <span class="spacer"></span>
         {#if running}
-          <button type="button" class="chip hi" disabled={busy || applying} onclick={cancel}>CANCEL</button>
+          <button type="button" class="chip hi" disabled={applying} onclick={cancel}>CANCEL</button>
         {:else}
           <button type="button" class="chip accent"
-            disabled={busy || applying || !live || live.stepCount === 0 || dirty}
+            disabled={applying || !live || live.stepCount === 0 || dirty}
             title={dirty ? 'Apply the changes first — FIRE runs the applied version' : undefined}
             onclick={() => fire(i)}>FIRE</button>
         {/if}
@@ -260,7 +257,7 @@
               <span class="microlbl">AFTER</span>
               <input class="numfield" type="number" step="0.01" min="0" max="655.35"
                 value={step.preDelay} aria-label={`Delay before step ${k + 1} (s)`}
-                title="Wait this long before the step runs" disabled={busy || applying}
+                title="Wait this long before the step runs" disabled={applying}
                 onchange={(e) => { const v = num(e); if (v != null) editStep(i, k, (dr) => { dr.preDelay = v; }); }} />
               <span class="hint">s</span>
               <span class="spacer"></span>
@@ -270,7 +267,7 @@
 
             <div class="row">
               <span class="microlbl">CONTROLS</span>
-              <select class="sel" value={String(step.noun)} aria-label={`Controlled function for step ${k + 1}`} disabled={busy || applying}
+              <select class="sel" value={String(step.noun)} aria-label={`Controlled function for step ${k + 1}`} disabled={applying}
                 onchange={(e) => {
                   const n = Number((e.currentTarget as HTMLSelectElement).value);
                   editStep(i, k, (dr) => {
@@ -286,7 +283,7 @@
               </select>
               {#if actions.length > 1}
                 <span class="microlbl">ACTION</span>
-                <select class="sel" value={String(step.action)} aria-label={`Action for step ${k + 1}`} disabled={busy || applying}
+                <select class="sel" value={String(step.action)} aria-label={`Action for step ${k + 1}`} disabled={applying}
                   onchange={(e) => {
                     const a = Number((e.currentTarget as HTMLSelectElement).value);
                     editStep(i, k, (dr) => { dr.action = a; CsMacroDraft.defaultStepOperands(dr, cs.nouns); });
@@ -304,7 +301,7 @@
                   {CsField.targetKindOf(cs.nouns, step.noun) === Domain.CS_TARGET_INPUT_CH ? 'INPUT'
                     : CsField.targetKindOf(cs.nouns, step.noun) === Domain.CS_TARGET_OUTPUT_CH ? 'OUTPUT' : 'CHANNEL'}
                 </span>
-                <select class="sel" value={step.grouped ? `g${step.target}` : String(step.target)} aria-label={`Target channel for step ${k + 1}`} disabled={busy || applying}
+                <select class="sel" value={step.grouped ? `g${step.target}` : String(step.target)} aria-label={`Target channel for step ${k + 1}`} disabled={applying}
                   onchange={(e) => {
                     const v = (e.currentTarget as HTMLSelectElement).value;
                     editStep(i, k, (dr) => {
@@ -335,7 +332,7 @@
                 </select>
                 {#if CsField.showBandOf(cs.nouns, step.noun)}
                   <span class="microlbl">BAND</span>
-                  <select class="sel" value={String(step.index)} aria-label={`Filter band for step ${k + 1}`} disabled={busy || applying}
+                  <select class="sel" value={String(step.index)} aria-label={`Filter band for step ${k + 1}`} disabled={applying}
                     onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editStep(i, k, (dr) => { dr.index = v; }); }}>
                     {#each (step.grouped ? groupBandOptionsFor(step) : (snap ? CsField.bandOptionsFor(step.noun, step.target, snap.channels) : [])) as o (o.v)}
                       <option value={String(o.v)}>{o.label}</option>
@@ -353,11 +350,11 @@
                     <input class="numfield" type="number" step="0.5"
                       min={cs.nouns[step.noun] ? CsUnit.valueToDisplay(CsField.unitOf(cs.nouns, step.noun), cs.nouns[step.noun].minQ8) : 0}
                       max={cs.nouns[step.noun] ? CsUnit.valueToDisplay(CsField.unitOf(cs.nouns, step.noun), cs.nouns[step.noun].maxQ8) : 0}
-                      value={step.value} aria-label={`Value for step ${k + 1}`} disabled={busy || applying}
+                      value={step.value} aria-label={`Value for step ${k + 1}`} disabled={applying}
                       onchange={(e) => { const v = num(e); if (v != null) editStep(i, k, (dr) => { dr.value = v; }); }} />
                     <span class="hint">{CsUnit.unitSuffix(CsField.unitOf(cs.nouns, step.noun))}</span>
                   {:else}
-                    <select class="sel" value={String(step.value)} aria-label={`Value for step ${k + 1}`} disabled={busy || applying}
+                    <select class="sel" value={String(step.value)} aria-label={`Value for step ${k + 1}`} disabled={applying}
                       onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editStep(i, k, (dr) => { dr.value = v; }); }}>
                       {#each (CsField.enumOf(cs.nouns, step.noun) ? CsField.enumValueOptions(cs.nouns, step.noun, s.presets.names, cs.macros) : CsField.boolValueOptions(step.noun)) as o (o.v)}
                         <option value={String(o.v)}>{o.label}</option>
@@ -370,11 +367,11 @@
                   {#if CsField.enumOf(cs.nouns, step.noun)}
                     <input class="numfield" type="number" step="1" min="1"
                       max={Math.max(1, (cs.nouns[step.noun]?.enumCount ?? 2) - 1)}
-                      value={step.step} aria-label={`Step size (positions) for step ${k + 1}`} disabled={busy || applying}
+                      value={step.step} aria-label={`Step size (positions) for step ${k + 1}`} disabled={applying}
                       onchange={(e) => { const v = num(e); if (v != null) editStep(i, k, (dr) => { dr.step = v; }); }} />
                   {:else}
                     <input class="numfield" type="number" step={CsUnit.isLogStep(CsField.unitOf(cs.nouns, step.noun)) ? '0.01' : '0.5'} min="0"
-                      value={step.step} aria-label={`Step size for step ${k + 1}`} disabled={busy || applying}
+                      value={step.step} aria-label={`Step size for step ${k + 1}`} disabled={applying}
                       onchange={(e) => { const v = num(e); if (v != null) editStep(i, k, (dr) => { dr.step = v; }); }} />
                     <span class="hint">{CsUnit.stepUnitSuffix(CsField.unitOf(cs.nouns, step.noun))}</span>
                   {/if}
@@ -385,7 +382,7 @@
             {#if CsField.showWrapOf(cs.nouns, step.noun, step.action, CsMacroDraft.MACRO_STEPPY)}
               <div class="row">
                 <span class="microlbl">WRAP AROUND</span>
-                <ToggleSwitch size="sm" checked={step.wrap} disabled={busy || applying}
+                <ToggleSwitch size="sm" checked={step.wrap} disabled={applying}
                   ariaLabel={`Wrap around for step ${k + 1}`} onChange={(v) => editStep(i, k, (dr) => { dr.wrap = v; })} />
               </div>
             {/if}
@@ -393,7 +390,7 @@
         {/each}
 
         <div class="row">
-          <button type="button" class="chip" disabled={busy || applying || d.steps.length >= maxSteps} onclick={() => addStep(i)}>ADD STEP</button>
+          <button type="button" class="chip" disabled={applying || d.steps.length >= maxSteps} onclick={() => addStep(i)}>ADD STEP</button>
           {#if d.steps.length === 0}
             <span class="hint">Add at least one step</span>
           {:else if d.steps.length >= maxSteps}
@@ -403,7 +400,7 @@
 
         <div class="row">
           <button type="button" class="chip accent" onclick={() => apply(i)}
-            disabled={busy || applying || !canApply(i)}>APPLY</button>
+            disabled={applying || !canApply(i)}>APPLY</button>
           <button type="button" class="chip hi" onclick={() => revert(i)}
             disabled={applying || !live || !dirty}>REVERT</button>
         </div>
@@ -413,7 +410,7 @@
   {/each}
 
   <div class="addrow">
-    <button type="button" class="chip" disabled={busy || applying || allUsed} onclick={addMacro}>ADD MACRO</button>
+    <button type="button" class="chip" disabled={applying || allUsed} onclick={addMacro}>ADD MACRO</button>
     {#if allUsed}
       <span class="hint">All {maxSlots} macro slots are in use.</span>
     {/if}

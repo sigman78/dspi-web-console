@@ -20,10 +20,6 @@ vi.mock('@/runtime', () => ({
   stageI2sInputChannels: vi.fn(),
 }));
 
-vi.mock('@/state', () => ({
-  connection: { get connected() { return true; }, get phase() { return 'ready'; } },
-}));
-
 import InputConfigPanel from './InputConfigPanel.svelte';
 
 const staging = {

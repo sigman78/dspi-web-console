@@ -2,7 +2,6 @@
   import ProcPanel from './ProcPanel.svelte';
   import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
-  import { connection } from '@/state';
   import { Proc, UpmixCenterMode, UpmixSurroundMode } from '@/domain';
   import {
     setUpmixEnabled, setUpmixCenterMode, setUpmixSurroundMode,
@@ -15,9 +14,8 @@
   const s = getSession();
 
   const upmix = $derived(s.mirror.current?.upmix);
-  const connected = $derived(connection.connected);
   const enabled = $derived(upmix?.enabled ?? false);
-  const editable = $derived(connected && enabled);
+  const editable = $derived(enabled);
   const showPresence = $derived(s.device.capabilities.features.upmixPresence);
   const showCenterOff = $derived(s.device.capabilities.features.upmixCenterOff);
 
@@ -61,7 +59,6 @@
   title="STEREO UPMIXER"
   subject="stereo upmixer"
   {enabled}
-  {connected}
   onToggle={() => upmix && setUpmixEnabled(s, !upmix.enabled)}
 >
   <p class="hint status" class:active={parkedReason === null}>{statusText}</p>

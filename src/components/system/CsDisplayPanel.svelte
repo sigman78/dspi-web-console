@@ -10,7 +10,6 @@
   import { tick, untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import { connection } from '@/state';
   import {
     applyCsDisplayCfg, applyCsDisplayPage, clearCsDisplayPage, refreshCsDisplayStatus,
   } from '@/runtime';
@@ -21,11 +20,9 @@
   import type { CfgDraft, PageDraft } from './csDisplayDraft';
 
   const s = getSession();
-  const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
   const cs = $derived(s.controlSurfaces);
   const caps = $derived(s.controlSurfaces.caps);
-  const busy = $derived(!connected);
 
   let cfgDraft = $state<CfgDraft | null>(null);
   const pageDrafts = $state<Record<number, PageDraft>>({});
@@ -65,7 +62,7 @@
   // tick armed only after the previous read settles), same as the macro
   // panel's running-macro poll.
   $effect(() => {
-    if (busy || !displaySlotActive) return;
+    if (!displaySlotActive) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const tick = async (): Promise<void> => {
@@ -257,7 +254,7 @@
       <div class="row">
         <span class="pair">
           <span class="microlbl">MODE</span>
-          <select class="sel" value={String(d.mode)} aria-label="Display mode" disabled={busy || applying}
+          <select class="sel" value={String(d.mode)} aria-label="Display mode" disabled={applying}
             onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editCfg((dr) => { dr.mode = v as Domain.CsDisplayMode; }); }}>
             {#each [Domain.CsDisplayMode.Fixed, Domain.CsDisplayMode.CycleSelected, Domain.CsDisplayMode.CycleAll] as m (m)}
               <option value={String(m)}>{Domain.CS_DISPLAY_MODE_LABEL[m as Domain.CsDisplayMode]}</option>
@@ -267,7 +264,7 @@
         {#if d.mode === Domain.CsDisplayMode.Fixed}
           <span class="pair">
             <span class="microlbl">HOME PAGE</span>
-            <select class="sel" value={String(d.homePage)} aria-label="Home page" disabled={busy || applying}
+            <select class="sel" value={String(d.homePage)} aria-label="Home page" disabled={applying}
               onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editCfg((dr) => { dr.homePage = v; }); }}>
               {#each homePageOptions() as o (o.v)}
                 <option value={String(o.v)}>{o.label}</option>
@@ -278,7 +275,7 @@
           <span class="pair">
             <span class="microlbl">DWELL</span>
             <input class="numfield" type="number" step="0.1" min="1"
-              value={d.dwell} aria-label="Dwell time (s)" disabled={busy || applying}
+              value={d.dwell} aria-label="Dwell time (s)" disabled={applying}
               onchange={(e) => { const v = num(e); if (v != null) editCfg((dr) => { dr.dwell = v; }); }} />
             <span class="hint">s</span>
           </span>
@@ -289,14 +286,14 @@
         <span class="pair">
           <span class="microlbl">POP-UP HOLD</span>
           <input class="numfield" type="number" step="0.1" min="0"
-            value={d.overlayHold} aria-label="Pop-up hold time (s, 0 = off)" disabled={busy || applying}
+            value={d.overlayHold} aria-label="Pop-up hold time (s, 0 = off)" disabled={applying}
             onchange={(e) => { const v = num(e); if (v != null) editCfg((dr) => { dr.overlayHold = v; }); }} />
           <span class="hint">s (0 = off)</span>
         </span>
         <span class="pair">
           <span class="microlbl">EDIT TIMEOUT</span>
           <input class="numfield" type="number" step="0.1" min="0"
-            value={d.editTimeout} aria-label="Edit auto-disarm timeout (s, 0 = manual)" disabled={busy || applying}
+            value={d.editTimeout} aria-label="Edit auto-disarm timeout (s, 0 = manual)" disabled={applying}
             onchange={(e) => { const v = num(e); if (v != null) editCfg((dr) => { dr.editTimeout = v; }); }} />
           <span class="hint">s (0 = manual)</span>
         </span>
@@ -306,7 +303,7 @@
         <span class="pair">
           <span class="microlbl">BRIGHTNESS</span>
           <input class="numfield" type="number" step="1" min="0" max="255"
-            value={d.brightness} aria-label="Brightness (0 = default)" disabled={busy || applying}
+            value={d.brightness} aria-label="Brightness (0 = default)" disabled={applying}
             title="OLED contrast — takes effect when the display restarts"
             onchange={(e) => { const v = num(e); if (v != null) editCfg((dr) => { dr.brightness = v; }); }} />
           <span class="hint">0 = default</span>
@@ -316,13 +313,13 @@
       <div class="row">
         <span class="pair">
           <span class="microlbl" title="Show items that have no page too">POP UP ANY CHANGE</span>
-          <ToggleSwitch size="sm" checked={d.overlayAny} disabled={busy || applying}
+          <ToggleSwitch size="sm" checked={d.overlayAny} disabled={applying}
             ariaLabel="Pop up on any change"
             onChange={(v) => editCfg((dr) => { dr.overlayAny = v; })} />
         </span>
         <span class="pair">
           <span class="microlbl" title="Off: the value control adjusts the shown item directly">ARM BEFORE EDIT</span>
-          <ToggleSwitch size="sm" checked={d.editGated} disabled={busy || applying}
+          <ToggleSwitch size="sm" checked={d.editGated} disabled={applying}
             ariaLabel="Require arming before edit"
             onChange={(v) => editCfg((dr) => { dr.editGated = v; })} />
         </span>
@@ -332,7 +329,7 @@
         <div class="row">
           <span class="pair">
             <span class="microlbl">LABEL ALIGN</span>
-            <select class="sel" value={String(d.labelAlign)} aria-label="Label alignment" disabled={busy || applying}
+            <select class="sel" value={String(d.labelAlign)} aria-label="Label alignment" disabled={applying}
               onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editCfg((dr) => { dr.labelAlign = v as Domain.CsDisplayAlign; }); }}>
               {#each [Domain.CsDisplayAlign.Left, Domain.CsDisplayAlign.Centre, Domain.CsDisplayAlign.Right] as a (a)}
                 <option value={String(a)}>{Domain.CS_DISPLAY_ALIGN_LABEL[a as Domain.CsDisplayAlign]}</option>
@@ -341,7 +338,7 @@
           </span>
           <span class="pair">
             <span class="microlbl">VALUE ALIGN</span>
-            <select class="sel" value={String(d.valueAlign)} aria-label="Value alignment" disabled={busy || applying}
+            <select class="sel" value={String(d.valueAlign)} aria-label="Value alignment" disabled={applying}
               onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editCfg((dr) => { dr.valueAlign = v as Domain.CsDisplayAlign; }); }}>
               {#each [Domain.CsDisplayAlign.Left, Domain.CsDisplayAlign.Centre, Domain.CsDisplayAlign.Right] as a (a)}
                 <option value={String(a)}>{Domain.CS_DISPLAY_ALIGN_LABEL[a as Domain.CsDisplayAlign]}</option>
@@ -353,7 +350,7 @@
 
       <div class="row">
         <button type="button" class="chip accent" onclick={applyCfg}
-          disabled={busy || applying || !canApplyCfg()}>APPLY</button>
+          disabled={applying || !canApplyCfg()}>APPLY</button>
         <button type="button" class="chip hi" onclick={revertCfg}
           disabled={applying || cfgDraft == null}>REVERT</button>
       </div>
@@ -387,7 +384,7 @@
             {#if showing}<span class="tag">SHOWING</span>{/if}
             <span class="spacer"></span>
             {#if !d}
-              <button type="button" class="chip" disabled={busy || applying} onclick={() => addPage(i)}>Set page {i + 1}</button>
+              <button type="button" class="chip" disabled={applying} onclick={() => addPage(i)}>Set page {i + 1}</button>
             {:else}
               <button type="button" class="x" aria-label={`Remove page ${i + 1}`}
                 disabled={applying} onclick={() => removePage(i)}>✕</button>
@@ -403,7 +400,7 @@
             <div class="row">
               <span class="pair">
                 <span class="microlbl">ITEM</span>
-                <select class="sel" value={String(d.noun)} aria-label={`Item for page ${i + 1}`} disabled={busy || applying}
+                <select class="sel" value={String(d.noun)} aria-label={`Item for page ${i + 1}`} disabled={applying}
                   onchange={(e) => {
                     const n = Number((e.currentTarget as HTMLSelectElement).value);
                     editPageDraft(i, (dr) => { dr.noun = n; dr.target = 0; dr.index = 0; dr.grouped = false; dr.bar = false; });
@@ -415,14 +412,14 @@
               </span>
               <span class="pair">
                 <span class="microlbl" title="Big value on graphic OLEDs">LARGE</span>
-                <ToggleSwitch size="sm" checked={d.large} disabled={busy || applying}
+                <ToggleSwitch size="sm" checked={d.large} disabled={applying}
                   ariaLabel="Big value on graphic OLEDs"
                   onChange={(v) => editPageDraft(i, (dr) => { dr.large = v; })} />
               </span>
               {#if (caps?.capsVersion ?? 0) >= 13 && cs.nouns[d.noun] && Domain.csNounHasSpan(cs.nouns[d.noun])}
                 <span class="pair">
                   <span class="microlbl" title="Level bar. Note: this fw build drops bars on reboot">BAR</span>
-                  <ToggleSwitch size="sm" checked={d.bar} disabled={busy || applying}
+                  <ToggleSwitch size="sm" checked={d.bar} disabled={applying}
                     ariaLabel="Level bar"
                     onChange={(v) => editPageDraft(i, (dr) => { dr.bar = v; })} />
                 </span>
@@ -436,7 +433,7 @@
                     {CsField.targetKindOf(cs.nouns, d.noun) === Domain.CS_TARGET_INPUT_CH ? 'INPUT'
                       : CsField.targetKindOf(cs.nouns, d.noun) === Domain.CS_TARGET_OUTPUT_CH ? 'OUTPUT' : 'CHANNEL'}
                   </span>
-                  <select class="sel" value={d.grouped ? `g${d.target}` : String(d.target)} aria-label={`Target for page ${i + 1}`} disabled={busy || applying}
+                  <select class="sel" value={d.grouped ? `g${d.target}` : String(d.target)} aria-label={`Target for page ${i + 1}`} disabled={applying}
                     onchange={(e) => {
                       const v = (e.currentTarget as HTMLSelectElement).value;
                       editPageDraft(i, (dr) => {
@@ -469,7 +466,7 @@
                 {#if CsField.showBandOf(cs.nouns, d.noun)}
                   <span class="pair">
                     <span class="microlbl">BAND</span>
-                    <select class="sel" value={String(d.index)} aria-label={`Band for page ${i + 1}`} disabled={busy || applying}
+                    <select class="sel" value={String(d.index)} aria-label={`Band for page ${i + 1}`} disabled={applying}
                       onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editPageDraft(i, (dr) => { dr.index = v; }); }}>
                       {#each (d.grouped ? groupBandOptionsFor(d) : (snap ? CsField.bandOptionsFor(d.noun, d.target, snap.channels) : [])) as o (o.v)}
                         <option value={String(o.v)}>{o.label}</option>
@@ -482,7 +479,7 @@
 
             <div class="row">
               <button type="button" class="chip accent" onclick={() => applyPage(i)}
-                disabled={busy || applying || !canApplyPage(i)}>APPLY</button>
+                disabled={applying || !canApplyPage(i)}>APPLY</button>
               <button type="button" class="chip hi" onclick={() => revertPage(i)}
                 disabled={applying || !live || !staged}>REVERT</button>
             </div>

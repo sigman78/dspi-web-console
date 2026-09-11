@@ -2,7 +2,6 @@
   import ProcPanel from './ProcPanel.svelte';
   import LabeledSlider from '@/components/chrome/LabeledSlider.svelte';
   import MaskChipRow from '@/components/chrome/MaskChipRow.svelte';
-  import { connection } from '@/state';
   import { Proc, outputChannelsWithIndex, maskChipItems } from '@/domain';
   import {
     setPsybassEnabled, setPsybassCutoff, setPsybassHarmonics,
@@ -14,9 +13,8 @@
   const s = getSession();
 
   const psybass = $derived(s.mirror.current?.psybass);
-  const connected = $derived(connection.connected);
   const enabled = $derived(psybass?.enabled ?? false);
-  const editable = $derived(connected && enabled);
+  const editable = $derived(enabled);
 
   // Per-output psybass mask (fw V23+): same output-slot convention as the
   // loudness/crossfeed masks. Meaningless with a single output; the feature
@@ -32,7 +30,6 @@
   title="PSYBASS"
   subject="psybass"
   {enabled}
-  {connected}
   onToggle={() => psybass && setPsybassEnabled(s, !psybass.enabled)}
 >
   <div class="proc-grid">

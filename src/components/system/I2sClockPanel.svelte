@@ -4,7 +4,6 @@
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import PinPicker from './PinPicker.svelte';
-  import { connection } from '@/state';
   import {
     stageI2sBckPin, stageMckEnabled, stageMckPin, stageMckMultiplier,
     stageI2sClockMode, stageI2sClockPinMode, stageI2sBckPinSlave,
@@ -18,7 +17,6 @@
 
   const snap = $derived(s.mirror.current);
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
-  const connected = $derived(connection.connected);
   const anyI2s = $derived(snap?.i2s?.outputSlotTypes.some((t) => t === OutputSlotType.I2s) ?? false);
   const rate = $derived(s.telemetry.info?.sampleRateHz ?? 0);
   const allow256 = $derived(rate < 96000);
@@ -85,7 +83,7 @@
 <Panel code="SY.08" title="I2S CLOCK">
   {#snippet right()}
     {#if features.pinResetDefault}
-      <button class="chip icon" disabled={!connected} title="Reset to defaults" aria-label="Reset clock pins to defaults" onclick={stageClockPinsToDefault}>↺</button>
+      <button class="chip icon" title="Reset to defaults" aria-label="Reset clock pins to defaults" onclick={stageClockPinsToDefault}>↺</button>
     {/if}
   {/snippet}
   {#if snap?.i2s && overlaySnap}
@@ -97,7 +95,7 @@
             value={effBckPin}
             cells={bckCells}
             ariaLabel="I2S BCK pin"
-            disabled={!connected || anyI2s}
+            disabled={anyI2s}
             onChange={(p) => stageI2sBckPin(s, p)}
           />
         </span>
@@ -114,7 +112,6 @@
             size="sm"
             checked={effMckEnabled}
             ariaLabel={effMckEnabled ? 'Disable MCK' : 'Enable MCK'}
-            disabled={!connected}
             onChange={(v) => stageMckEnabled(s, v)}
           />
         </span>
@@ -123,7 +120,7 @@
             value={effMckPin}
             cells={pickerCells(snap.platform.type, overlaySnap, ctrlPins, effMckPin)}
             ariaLabel="MCK pin"
-            disabled={!connected || effMckEnabled}
+            disabled={effMckEnabled}
             onChange={(p) => stageMckPin(s, p)}
           />
         </span>
@@ -140,7 +137,6 @@
             value={effMckMultiplier}
             options={multOpts}
             ariaLabel="MCK multiplier"
-            disabled={!connected}
             onChange={(v) => stageMckMultiplier(s, v)}
           />
         </span>
@@ -156,7 +152,6 @@
               value={effClockMode}
               options={clockModeOpts}
               ariaLabel="I2S clock mode"
-              disabled={!connected}
               onChange={(v) => stageI2sClockMode(s, v)}
             />
           </span>
@@ -173,7 +168,6 @@
               value={effClockPinMode}
               options={clockPinModeOpts}
               ariaLabel="I2S clock pin mode"
-              disabled={!connected}
               onChange={(v) => stageI2sClockPinMode(s, v)}
             />
           </span>
@@ -186,7 +180,6 @@
                 value={effBckPinSlave}
                 cells={slaveBckCells}
                 ariaLabel="I2S BCK pin (slave)"
-                disabled={!connected}
                 onChange={(p) => stageI2sBckPinSlave(s, p)}
               />
             </span>

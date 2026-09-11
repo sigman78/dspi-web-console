@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { activeSession } from '@/state';
+  import { getSession } from '@/components/sessionContext';
 
-  const s = $derived(activeSession());
-  const entries = $derived(s?.staging.entries ?? []);
-  const applying = $derived(s?.staging.applying ?? false);
-  const busy = $derived(s?.writes.busy ?? false);
+  const s = getSession();
+  const entries = $derived(s.staging.entries);
+  const applying = $derived(s.staging.applying);
+  const busy = $derived(s.writes.busy);
 
   const summary = $derived(entries.map((e) => `${e.label} ${e.from}→${e.to}`).join('\n'));
 
-  function applyAll() { void s?.staging.applyAll(); }
-  function discardAll() { s?.staging.discardAll(); }
+  function applyAll() { void s.staging.applyAll(); }
+  function discardAll() { s.staging.discardAll(); }
 </script>
 
 {#if entries.length > 0 || applying}

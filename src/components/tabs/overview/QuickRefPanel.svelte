@@ -2,14 +2,13 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import { TAB_SHORTCUTS } from '@/input/tabShortcuts';
   import { REPO_URL, reportIssueUrl } from '@/buildInfo';
-  import { connection, activeSession } from '@/state';
+  import { getSession } from '@/components/sessionContext';
 
-  const s = $derived(activeSession());
+  const s = getSession();
   const issueUrl = $derived(reportIssueUrl({
-    fwLabel: s?.device?.info.capabilities.fwLabel ?? null,
-    serial: s?.device?.info.serial ?? null,
-    connectionPhase: connection.phase,
-    error: connection.error,
+    fwLabel: s.device.info.capabilities.fwLabel,
+    serial: s.device.info.serial,
+    connectionPhase: 'ready',
   }));
 </script>
 

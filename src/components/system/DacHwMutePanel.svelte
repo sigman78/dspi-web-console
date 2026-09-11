@@ -2,17 +2,15 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import PinPicker from './PinPicker.svelte';
-  import { connection } from '@/state';
   import { setDacHwMute, testDacHwMute } from '@/runtime';
   import { pickerCells, assignablePins, isAssignablePin, pinsInUse, liveCsPinConfigs, type DacHwMute } from '@/domain';
   import { DAC_HW_MUTE_HOLD_MS_MIN, DAC_HW_MUTE_HOLD_MS_MAX, DAC_HW_MUTE_RELEASE_MS_MAX } from '@/domain/clamp';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
-  const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
   const cfg = $derived(snap?.dacHwMute);
-  const editable = $derived(connected && cfg != null && cfg.enabled);
+  const editable = $derived(cfg != null && cfg.enabled);
   const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
 
   let testBusy = $state(false);
@@ -79,7 +77,7 @@
     <ToggleSwitch
       size="sm"
       checked={cfg?.enabled ?? false}
-      disabled={!connected || !cfg}
+      disabled={!cfg}
       ariaLabel={cfg?.enabled ? 'Disable DAC HW mute' : 'Enable DAC HW mute'}
       onChange={() => onToggleEnabled()}
     />
@@ -143,7 +141,7 @@
         <button
           class="chip warn"
           onclick={onTest}
-          disabled={!connected || !cfg.enabled || testBusy}
+          disabled={!cfg.enabled || testBusy}
           title="Pulse the DAC mute pin for ~1 s to verify wiring"
         >{testBusy ? 'TESTING…' : 'TEST PULSE'}</button>
       </div>
