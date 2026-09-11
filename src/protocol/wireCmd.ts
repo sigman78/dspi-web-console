@@ -38,6 +38,7 @@ type MatrixRoutePayload = {
 type DeviceInfoPayload = {
   platformId: number; fwMajor: number; fwMinorPatch: number;
 };
+type BuildInfoPayload = { describe: string; date: string };
 type CsBindingPayload = {
   type: number; noun: number; action: number; flags: number;
   gpio0: number; gpio1: number; event: number; target: number; index: number; baseBright: number;
@@ -128,6 +129,8 @@ export const WireCmd = {
 
   GetSerial:            { code: 0x7E, codec: Wire.Serial }     satisfies ReadCmd<string>,
   GetPlatform:          { code: 0x7F, codec: Wire.DeviceInfo } satisfies ReadCmd<DeviceInfoPayload>,
+  // Firmware git build stamp (fw 1.1.6+). Provenance for humans only.
+  GetBuildInfo:         { code: 0x80, codec: Wire.BuildInfo } satisfies ReadCmd<BuildInfoPayload>,
   ClearClips:           { code: 0x83 } satisfies RawCmd,
 
   // Channel names (round-trip; bulk read covers the same field too).

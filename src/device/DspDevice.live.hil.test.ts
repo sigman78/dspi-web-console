@@ -43,6 +43,16 @@ describe('DspDevice — liveness & smoke (HIL)', () => {
     expect(info.capabilities.fwLabel).not.toContain('\0');
   });
 
+  it('build stamp is present and well-formed on fw 1.1.6+', async () => {
+    if (device.info.capabilities.wire < 29) return;
+    const build = device.info.build;
+    expect(build).not.toBeNull();
+    if (!build) return;
+    expect(build.describe.length).toBeGreaterThan(0);
+    expect(build.describe).toBe(build.describe.trim());
+    expect(build.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
   it('info getter is stable', async () => {
     const a = device.info;
     const b = device.info;

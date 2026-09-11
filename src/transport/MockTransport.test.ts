@@ -969,3 +969,29 @@ describe('MockTransport — subharmonic synthesizer (V29+, both platforms)', () 
     }
   });
 });
+
+describe('MockTransport — GetBuildInfo (0x80, fw 1.1.6+)', () => {
+  it('a fw 1.1.5 profile STALLs 0x80', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    await t.open();
+    await expect(t.ctrlIn(WireCmd.GetBuildInfo.code, 0, 64)).rejects.toThrow();
+  });
+
+  it('a fw 1.1.6 profile answers a 64-byte build stamp', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 29, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    await t.open();
+    const bytes = await t.ctrlIn(WireCmd.GetBuildInfo.code, 0, 64);
+    expect(bytes.byteLength).toBe(64);
+    expect(Codec.decode(Wire.BuildInfo, bytes)).toEqual({ describe: 'v1.1.6-mock', date: '2026-09-02' });
+  });
+
+  it('honors a custom buildInfo option on a fw 1.1.6 profile', async () => {
+    const t = new MockTransport({
+      platform: 'rp2350', wireVersion: 29, fwVersion: { major: 1, minor: 1, patch: 6 },
+      buildInfo: { describe: 'v9.9.9-custom', date: '2030-01-01' },
+    });
+    await t.open();
+    const bytes = await t.ctrlIn(WireCmd.GetBuildInfo.code, 0, 64);
+    expect(Codec.decode(Wire.BuildInfo, bytes)).toEqual({ describe: 'v9.9.9-custom', date: '2030-01-01' });
+  });
+});

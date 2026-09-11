@@ -59,11 +59,19 @@ function occupiedMaskToSet(mask: number): ReadonlySet<Domain.PresetSlot> {
   return s;
 }
 
+// Firmware git build stamp (fw 1.1.6+, GetBuildInfo 0x80). Provenance for
+// humans only -- compatibility decisions stay on `capabilities`.
+export interface BuildInfo {
+  readonly describe: string;
+  readonly date: string;
+}
+
 export interface DspDeviceInfo {
   readonly serial: string;
   readonly platformType: Domain.PlatformType;
   readonly hardware: Domain.HardwareProfile;
   readonly capabilities: DeviceCapabilities;
+  readonly build: BuildInfo | null;
 }
 
 function platformTypeFromId(platformId: number): Domain.PlatformType {
@@ -108,6 +116,18 @@ async function readPlatform(
       patch: info.fwMinorPatch & 0xF,
     },
   };
+}
+
+// GetBuildInfo (0x80) STALLs on pre-1.1.6 firmware (caller gates on
+// features.buildStamp); a short reply zero-pads to an empty describe, which
+// is as good as absent.
+async function readBuildInfo(t: DspTransport): Promise<BuildInfo | null> {
+  try {
+    const b = await proto.readCmd(t, proto.WireCmd.GetBuildInfo);
+    return b.describe ? b : null;
+  } catch {
+    return null;
+  }
 }
 
 function csBindingFromWire(w: {
@@ -273,11 +293,13 @@ export class DspDevice {
 
     const platformType = platformTypeFromId(platform.platformId);
     const hardware = Domain.createHardwareProfile(platformType, capabilities.channelModel);
+    const build = capabilities.features.buildStamp ? await readBuildInfo(transport) : null;
     return {
       serial: serial.trim(),
       platformType,
       hardware,
       capabilities,
+      build,
     };
   }
 

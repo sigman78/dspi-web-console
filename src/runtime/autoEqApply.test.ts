@@ -22,6 +22,7 @@ function initializedDevice(methods: Partial<DspDevice>, wireVersion: 10 | 16 = 1
       platformType: PlatformType.RP2350,
       hardware: testHardware,
       capabilities,
+      build: null,
     },
     capabilities,
     hardware: testHardware,
