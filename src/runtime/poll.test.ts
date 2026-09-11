@@ -655,6 +655,91 @@ describe('ADAT lightpipe input status cadence', () => {
   });
 });
 
+describe('Subharm headroom cadence', () => {
+  afterEach(() => { teardown(); });
+
+  function baseDevice(getSubharmHeadroom: () => Promise<unknown>) {
+    return {
+      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      hardware: hw,
+      capabilities: { features: { subharm: true } },
+      getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
+      getBufferStats: vi.fn(async () => null),
+      getSystemInfo: vi.fn(async () => ({})),
+      getSubharmHeadroom: vi.fn(getSubharmHeadroom),
+      getSnapshot: vi.fn(async () => fromBulkParams(hw, parseBulkParams(makeBulk()))),
+    } as unknown as DspDevice;
+  }
+
+  it('polls getSubharmHeadroom when the feature is present and subharm is enabled', async () => {
+    const device = baseDevice(async () => 4.2);
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    snap.subharm = { ...snap.subharm, enabled: true };
+    session.mirror.init(snap);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getSubharmHeadroom).toHaveBeenCalled();
+    expect(session.telemetry.subharmHeadroomDb).toBe(4.2);
+    stop();
+  });
+
+  it('does not poll getSubharmHeadroom when subharm is disabled', async () => {
+    const device = baseDevice(async () => 4.2);
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    snap.subharm = { ...snap.subharm, enabled: false };
+    session.mirror.init(snap);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getSubharmHeadroom).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('does not poll getSubharmHeadroom while the link is degraded, even while enabled', async () => {
+    const device = baseDevice(async () => 4.2);
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    snap.subharm = { ...snap.subharm, enabled: true };
+    session.mirror.init(snap);
+    session.health.degraded = true;
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getSubharmHeadroom).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('zeroing telemetry.lastSubharmMs forces a fresh read before the 1 s interval elapses', async () => {
+    const device = baseDevice(async () => 4.2);
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    snap.subharm = { ...snap.subharm, enabled: true };
+    session.mirror.init(snap);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+
+    clock.fire();
+    await settle();
+    expect(device.getSubharmHeadroom).toHaveBeenCalledTimes(1);
+
+    clock.fire();                                  // interval not elapsed -- skipped
+    await settle();
+    expect(device.getSubharmHeadroom).toHaveBeenCalledTimes(1);
+
+    session.telemetry.lastSubharmMs = 0;            // simulates a setSubharm* SET
+    clock.fire();
+    await settle();
+    expect(device.getSubharmHeadroom).toHaveBeenCalledTimes(2);
+    stop();
+  });
+});
+
 describe('startPolling — visibility resume', () => {
   it('requests an eager reconcile when the tab becomes visible', () => {
     const stub = makeReadySession({ info: {}, hardware: {} } as never);

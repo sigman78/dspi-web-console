@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matrixColumns, matrixRows, outputChannelsWithIndex } from './mixerView';
+import { matrixColumns, matrixRows, outputChannelsWithIndex, subharmReservePlan } from './mixerView';
 import { createHardwareProfile, PlatformType, ChannelFamily } from './platform';
 import { UpmixSurroundMode } from './processing';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
@@ -114,5 +114,76 @@ describe('outputChannelsWithIndex', () => {
 
     const result = outputChannelsWithIndex(snap);
     expect(result.find((c) => c.id === missing.id)?.index).toBe(0);
+  });
+});
+
+describe('subharmReservePlan', () => {
+  // V29 subharm section round-trips only at formatVersion 29+ (see
+  // bulkParser.v29.test.ts); each mutate callback bumps it before build.
+
+  it('reserves only inputs feeding a masked, enabled output when a qualifying route exists', () => {
+    const snap = makeSnapshot((b) => {
+      b.formatVersion = 29;
+      b.subharm = { ...b.subharm, outputMask: 0x0001 };            // output slot 0 only
+      b.outputs[0] = { ...b.outputs[0], enabled: true };
+      b.crosspoints[0][0] = { enabled: true, invert: false, gainDb: 0 }; // input 0 -> output 0
+      b.inputPreampsDb[0] = 0;
+      b.inputPreampsDb[1] = 0;                                     // not feeding a masked output
+    });
+    const steps = subharmReservePlan(snap, 6);
+    expect(steps).toEqual([{ slot: 0, fromDb: 0, toDb: -6 }]);
+  });
+
+  it('returns an empty plan when no input feeds a masked, enabled output', () => {
+    const snap = makeSnapshot((b) => {
+      b.formatVersion = 29;
+      b.subharm = { ...b.subharm, outputMask: 0x0001 };
+      b.inputPreampsDb[0] = 0;
+      b.inputPreampsDb[1] = 0;
+      // crosspoints stay all disabled -- no route qualifies, and there is no
+      // all-inputs fallback (an all-off mask must reserve nothing).
+    });
+    expect(subharmReservePlan(snap, 6)).toEqual([]);
+  });
+
+  it('ignores a route into a masked output that is itself disabled', () => {
+    const snap = makeSnapshot((b) => {
+      b.formatVersion = 29;
+      b.subharm = { ...b.subharm, outputMask: 0x0001 };
+      // output 0 stays disabled (the fixture default) even though the mask
+      // and the route both select it.
+      b.crosspoints[0][0] = { enabled: true, invert: false, gainDb: 0 };
+      b.inputPreampsDb[0] = 0;
+    });
+    expect(subharmReservePlan(snap, 6)).toEqual([]);
+  });
+
+  it('skips inputs already at or below the headroom line', () => {
+    const snap = makeSnapshot((b) => {
+      b.formatVersion = 29;
+      b.subharm = { ...b.subharm, outputMask: 0x0003 };            // output slots 0 and 1
+      b.outputs[0] = { ...b.outputs[0], enabled: true };
+      b.outputs[1] = { ...b.outputs[1], enabled: true };
+      b.crosspoints[0][0] = { enabled: true, invert: false, gainDb: 0 }; // input 0 -> output 0
+      b.crosspoints[1][1] = { enabled: true, invert: false, gainDb: 0 }; // input 1 -> output 1
+      b.inputPreampsDb[0] = 0;
+      b.inputPreampsDb[1] = -10;
+    });
+    const steps = subharmReservePlan(snap, 4);
+    expect(steps.map((s) => s.slot)).toEqual([0]);
+  });
+
+  it('returns nothing when headroom is zero, negative, or non-finite', () => {
+    const snap = makeSnapshot((b) => {
+      b.formatVersion = 29;
+      b.subharm = { ...b.subharm, outputMask: 0x0001 };
+      b.outputs[0] = { ...b.outputs[0], enabled: true };
+      b.crosspoints[0][0] = { enabled: true, invert: false, gainDb: 0 };
+      b.inputPreampsDb[0] = 0;
+    });
+    expect(subharmReservePlan(snap, 0)).toEqual([]);
+    expect(subharmReservePlan(snap, -3)).toEqual([]);
+    expect(subharmReservePlan(snap, NaN)).toEqual([]);
+    expect(subharmReservePlan(snap, Infinity)).toEqual([]);
   });
 });

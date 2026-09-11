@@ -15,6 +15,7 @@
     step,
     kind,
     precision,
+    floorLabel,
     disabled = false,
     onChange,
   }: {
@@ -26,6 +27,7 @@
     step: number;
     kind: ValueKind;
     precision?: number;
+    floorLabel?: string;
     disabled?: boolean;
     onChange: (v: number) => void;
   } = $props();
@@ -54,6 +56,7 @@
   {step}
   {kind}
   {precision}
+  {floorLabel}
   {disabled}
   {onChange}
 />

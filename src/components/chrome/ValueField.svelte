@@ -21,6 +21,7 @@
     size = 'md',
     disabled = false,
     clamp = true,
+    floorLabel,
     onChange,
   }: {
     value: number;
@@ -34,6 +35,9 @@
     align?: 'center' | 'right';
     size?: 'sm' | 'md';
     disabled?: boolean;
+    // Shown instead of the number when value is at the floor (e.g. "Off" for
+    // a -30 dB band level); editing still accepts numbers as usual.
+    floorLabel?: string;
     // When true (default), out-of-range values are clamped to [min,max]
     // and accepted. When false, out-of-range values are rejected just
     // like unparseable input -- Enter marks the cell red.
@@ -45,7 +49,8 @@
   const effectiveStep = $derived(step ?? Math.pow(10, -effectivePrecision));
   const effectiveUnit = $derived(unit ?? defaultUnitFor(kind));
 
-  const display = $derived(formatValue(kind, value, effectivePrecision));
+  const atFloor = $derived(floorLabel !== undefined && value <= min);
+  const display = $derived(atFloor ? floorLabel! : formatValue(kind, value, effectivePrecision));
 
   // Disabled overrides any tone tinting.
   const toneColor = $derived(
@@ -164,7 +169,7 @@
   {:else}
     <span class="display">
       <span class="num">{display}</span>
-      {#if effectiveUnit}<span class="unit">{effectiveUnit}</span>{/if}
+      {#if effectiveUnit && !atFloor}<span class="unit">{effectiveUnit}</span>{/if}
     </span>
   {/if}
 </div>

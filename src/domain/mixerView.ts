@@ -2,6 +2,7 @@
 // stays snapshot-free (avoids a cycle with snapshot.ts).
 
 import { ChannelId, OutputSlotType, inputIndexOf, slotForOutputChannel, type InputSlot, type OutputMode, type OutputSlot } from './channels';
+import * as Clamp from './clamp';
 import type { RouteModel } from './mixer';
 import { UpmixSurroundMode } from './processing';
 import type { ChannelModel, DspSnapshot } from './snapshot';
@@ -46,6 +47,35 @@ export function outputChannelsWithIndex(snapshot: DspSnapshot | null): OutputCha
     .filter((c) => c.isOutput)
     .map((c) => ({ id: c.id, name: c.name, index: outputSlotById.get(c.id) ?? 0 }))
     .sort((a, b) => a.index - b.index);
+}
+
+export interface SubharmReserveStep { slot: InputSlot; fromDb: number; toDb: number }
+
+// PR.06 headroom affordance: which input preamps a RESERVE click would pull
+// down, and to what. Feeding inputs are those with an enabled route into an
+// enabled output slot selected by subharm.outputMask (same enabled-output
+// filter as matrixColumns). Empty -- not every input -- when nothing feeds a
+// masked output: an all-off mask has no addressable inputs. Inputs already
+// at or below -headroomDb are left alone.
+export function subharmReservePlan(snapshot: DspSnapshot, headroomDb: number): SubharmReserveStep[] {
+  if (!Number.isFinite(headroomDb) || headroomDb <= 0) return [];
+  const mask = snapshot.subharm.outputMask;
+  const enabledOutputs = new Set(snapshot.outputs.filter((o) => o.enabled).map((o) => o.wireIndex));
+  const feeding = new Set<InputSlot>();
+  for (const r of snapshot.routes) {
+    if (r.enabled && enabledOutputs.has(r.outputWireIndex) && (mask & (1 << r.outputWireIndex)) !== 0) {
+      feeding.add(r.inputIndex);
+    }
+  }
+  if (feeding.size === 0) return [];
+  const target = Clamp.preampDb(-headroomDb);
+  const steps: SubharmReserveStep[] = [];
+  for (let slot = 0; slot < snapshot.inputPreampDb.length; slot++) {
+    if (!feeding.has(slot)) continue;
+    const fromDb = snapshot.inputPreampDb[slot];
+    if (fromDb > target) steps.push({ slot, fromDb, toDb: target });
+  }
+  return steps;
 }
 
 export interface MaskChipItem {
