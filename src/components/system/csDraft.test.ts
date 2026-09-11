@@ -1,53 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CsType, CsNoun, CsAction, CsKind, CsEvent,
+  CsType, CsNoun, CsAction, CsEvent,
   CS_FLAG_INVERT, CS_FLAG_REVERSE, CS_FLAG_ACCEL, CS_FLAG_REPEAT,
   CS_FLAG_GROUP, CS_FLAG_LINK_ABS, CS_FLAG_GROUP_ALL,
-  CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ,
-  CS_TARGET_NONE, CS_TARGET_OUTPUT_CH, CS_TARGET_DSP_BAND,
   EMPTY_CS_BINDING,
   type CsBinding, type CsCaps, type CsNounCaps,
 } from '@/domain';
 import { draftFromLive, buildBinding, bindingsEqual, type Draft } from './csDraft';
+import { csCapsV3, csNouns, disabledNoun } from '@test/fixtures/csCaps';
 
 // Minimal caps-v3 shaped tables (same real values as controlSurfaces.test.ts);
 // only the types/nouns exercised below are filled in.
-const caps: CsCaps = {
-  capsVersion: 3,
-  maxBindings: 16,
-  maxIrCommands: 8,
-  maxGroups: 0,
-  maxMacros: 0,
-  maxMacroSteps: 0,
-  types: [
-    { actions: 0x0000, pinCount: 0, pinClass: 0 },   // NONE
-    { actions: 0x02BC, pinCount: 1, pinClass: 0 },   // BUTTON
-    { actions: 0x0040, pinCount: 1, pinClass: 0 },   // SWITCH
-    { actions: 0x0001, pinCount: 1, pinClass: 1 },   // POT (ADC)
-    { actions: 0x0002, pinCount: 2, pinClass: 0 },   // ENCODER
-    { actions: 0x0500, pinCount: 1, pinClass: 0 },   // LED
-    { actions: 0x0D00, pinCount: 1, pinClass: 0 },   // LED_PWM
-    { actions: 0x02BC, pinCount: 1, pinClass: 0 },   // IR
-  ],
-};
-
-const disabledNoun: CsNounCaps = {
-  kind: CsKind.Bool, enumCount: 0, actions: 0, minQ8: 0, maxQ8: 0,
-  unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
-};
+const caps: CsCaps = csCapsV3;
 
 const nouns: CsNounCaps[] = [
-  { kind: CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: -15360, maxQ8: 0,
-    unit: CS_UNIT_DB, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0 },      // 0  USER_VOLUME
+  csNouns[CsNoun.UserVolume],                                                       // 0  USER_VOLUME
   disabledNoun,                                                                     // 1
-  { kind: CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
-    unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0 },    // 2  USER_MUTE
+  csNouns[CsNoun.UserMute],                                                         // 2  USER_MUTE
   ...Array(15).fill(disabledNoun),                                                  // 3..17
-  { kind: CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
-    unit: CS_UNIT_NONE, targetKind: CS_TARGET_OUTPUT_CH, targetCount: 3, dflags: 0 }, // 18 OUTPUT_MUTE
+  csNouns[CsNoun.OutputMute],                                                       // 18 OUTPUT_MUTE
   disabledNoun,                                                                     // 19
-  { kind: CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: 20, maxQ8: 20000,
-    unit: CS_UNIT_HZ, targetKind: CS_TARGET_DSP_BAND, targetCount: 7, dflags: 0 },  // 20 FILTER_FREQ
+  csNouns[CsNoun.FilterFreq],                                                       // 20 FILTER_FREQ
 ];
 
 // Caps v13: unlocks indicator delays (v8) and the brightness ceiling (v12) on

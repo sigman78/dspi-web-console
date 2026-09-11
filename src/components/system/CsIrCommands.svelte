@@ -31,9 +31,8 @@
   const caps = $derived(s.controlSurfaces.caps);
   const busy = $derived(!connected);
 
-  // Sub-slot local drafts, same shape/units convention as the binding editor's
-  // Draft (see ControlSurfacesPanel): display units in the draft, wire units
-  // only at the buildIrCommand() boundary.
+  // Sub-slot local drafts, same shape/units convention as csDraft.ts: display
+  // units in the draft, wire units only at the buildIrCommand() boundary.
   interface IrDraft {
     noun: number; action: number;
     target: number; index: number;

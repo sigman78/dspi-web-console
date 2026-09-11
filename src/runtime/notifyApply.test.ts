@@ -61,7 +61,7 @@ describe('applyParamChange', () => {
 
   it('returns false when there is no mirror.current', async () => {
     const { session, mir } = await setup();
-    mir.reset();   // clears current
+    mir.current = null;
     expect(applyParamChange(session, ev(BYPASS_OFFSET, [1]))).toBe(false);
   });
 

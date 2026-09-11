@@ -40,5 +40,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Lint comments
+        run: npm run lint:comments
+
       - name: Test (unit + integration, no hardware)
         run: npm test
+
+      - name: Build
+        run: npm run build

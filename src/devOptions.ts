@@ -1,7 +1,7 @@
 // Dev/debug URL options -- the single home for every ?param the console honors.
 //
 //   ?mock[=<profile>]   boot a synthesized device instead of USB:
-//       latest (default)  newest wire / fw 1.1.5
+//       latest (default)  newest wire / fw 1.1.6
 //       legacy            wire V10 / fw 1.1.4
 //       multi             latest + 8ch I2S input + 3 S/PDIF inputs
 //       v<N>              exact bulk/wire format N (v10, v16..vMAX)

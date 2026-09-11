@@ -1,5 +1,6 @@
-// Reactive store for the V16 Control Surfaces feature (0x84-0x87): caps
-// tables, per-slot bindings, and live status. Not part of the bulk packet --
+// Reactive store for the Control Surfaces feature (0x84-0x87 bindings/caps/
+// status, 0x20-0x2B groups, macros, displays): caps tables, per-slot
+// bindings, groups, macros, display config, and live/extended status. Not part of the bulk packet --
 // fetched once at connect via its own vendor commands (see
 // runtime/deviceService.ts), like ctrlIfaces.
 

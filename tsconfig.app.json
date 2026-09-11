@@ -15,6 +15,9 @@
     "allowJs": true,
     "checkJs": true,
     "moduleDetection": "force",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
     "paths": {
       "@/*": ["./src/*"],
       "@test/*": ["./test/*"]

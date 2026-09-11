@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CsNoun, CsAction, CsKind,
-  CS_UNIT_NONE, CS_UNIT_DB,
-  CS_TARGET_NONE, CS_TARGET_INPUT_CH,
+  CsNoun, CsAction,
   CS_FLAG_GROUP, CS_FLAG_WRAP,
   CS_MAX_MACRO_STEPS,
   EMPTY_CS_MACRO_STEP,
@@ -13,24 +11,17 @@ import {
   defaultStepDraft, macroDraftFromLive, buildMacro, buildMacroStep, macrosEqual,
   type StepDraft,
 } from './csMacroDraft';
+import { csNouns, disabledNoun } from '@test/fixtures/csCaps';
 
 // Minimal caps-v9 shaped noun table: only the nouns exercised below are
 // filled in, same convention as csDraft.test.ts.
-const disabledNoun: CsNounCaps = {
-  kind: CsKind.Bool, enumCount: 0, actions: 0, minQ8: 0, maxQ8: 0,
-  unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
-};
-
 const nouns: CsNounCaps[] = [
   ...Array(2).fill(disabledNoun),                                                  // 0..1
-  { kind: CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
-    unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0 },    // 2  USER_MUTE
+  csNouns[CsNoun.UserMute],                                                        // 2  USER_MUTE
   ...Array(3).fill(disabledNoun),                                                  // 3..5
-  { kind: CsKind.Enum, enumCount: 10, actions: 0x012E, minQ8: 0, maxQ8: 0,
-    unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0 },    // 6  PRESET
+  csNouns[CsNoun.Preset],                                                          // 6  PRESET
   ...Array(9).fill(disabledNoun),                                                  // 7..15
-  { kind: CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: -6144, maxQ8: 6144,
-    unit: CS_UNIT_DB, targetKind: CS_TARGET_INPUT_CH, targetCount: 2, dflags: 0 },  // 16 PREAMP
+  csNouns[CsNoun.Preamp],                                                          // 16 PREAMP
 ];
 
 const emptyStep = (): CsMacroStep => ({ ...EMPTY_CS_MACRO_STEP });

@@ -37,33 +37,6 @@ export class StatusStore {
   lastSubharmMs = $state(0);
   errorCount = $state(0);
 
-  reset(): void {
-    for (let i = 0; i < NUM_CHANNELS; i++) {
-      this.peaks[i] = 0;
-      this.peakHoldDb[i] = -90;
-      this.clipLatched[i] = false;
-    }
-    this.cpu0 = 0;
-    this.cpu1 = 0;
-    this.streaming = false;
-    this.pdmActive = false;
-    this.sequence = 0;
-    this.bufferStats = null;
-    this.spdifRxStatus = null;
-    this.i2sSlaveStatus = null;
-    this.adatStatus = null;
-    this.adatInputStatus = null;
-    this.subharmHeadroomDb = null;
-    this.info = null;
-    this.activeInputChannels = null;
-    this.lastStatusMs = 0;
-    this.lastBufferMs = 0;
-    this.lastInfoMs = 0;
-    this.lastParamMs = 0;
-    this.lastSubharmMs = 0;
-    this.errorCount = 0;
-  }
-
   // Peak normalization (0..1) with 30 dB/sec hold decay.
   applyPeaks(raw: ArrayLike<number>, nowMs: number): void {
     const dt = this.lastStatusMs > 0 ? (nowMs - this.lastStatusMs) / 1000 : 0;
