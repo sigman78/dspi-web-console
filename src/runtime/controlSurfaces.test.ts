@@ -6,7 +6,7 @@ import {
   applyCsGroup, clearCsGroup,
   applyCsMacro, clearCsMacro, fireCsMacro, cancelCsMacro,
   applyCsDisplayCfg, applyCsDisplayPage, clearCsDisplayPage, setI2cControlConfig,
-} from './actions';
+} from './controlSurfaceActions';
 import { flushAllWrites } from './writes.svelte';
 import { activeSession, clearNotices, resetAppState } from '@/state';
 import {

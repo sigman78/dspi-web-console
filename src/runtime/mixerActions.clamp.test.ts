@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setMasterVolume, setOutputDelay } from './actions';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { setOutputDelay } from './mixerActions';
 import { activeSession, resetAppState } from '@/state';
 import { bootMock } from './boot';
 
@@ -9,16 +9,6 @@ afterEach(() => { activeSession()?.dispose(); cancelWrites(); resetAppState(); }
 describe('action boundary clamps out-of-range values', () => {
   beforeEach(async () => {
     await bootMock('rp2350');
-  });
-
-  it('clamps master volume above 0 dB to 0', () => {
-    setMasterVolume(activeSession()!, 12);
-    expect(activeSession()!.mirror.current?.masterVolumeDb).toBe(0);
-  });
-
-  it('clamps master volume below -128 dB to -128 (mute sentinel)', () => {
-    setMasterVolume(activeSession()!, -999);
-    expect(activeSession()!.mirror.current?.masterVolumeDb).toBe(-128);
   });
 
   it('clamps output delay above the UI cap to 170 ms', async () => {

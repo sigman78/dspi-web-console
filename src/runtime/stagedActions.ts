@@ -16,7 +16,7 @@ import {
   setI2sRxPin, setI2sInputChannels,
   setI2sBckPin, setMckEnabled, setMckPin, setMckMultiplier, setOutputType, setOutputDataPin,
   setI2sClockMode, setI2sClockPinMode, setI2sBckPinSlave,
-} from './actions';
+} from './ioActions';
 
 const { PIN_RESET_TO_DEFAULT } = Wire.Const;
 

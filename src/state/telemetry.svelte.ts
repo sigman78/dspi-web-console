@@ -33,9 +33,13 @@ export class StatusStore {
   lastInfoMs = $state(0);
   lastParamMs = $state(0);
   // PR.06 headroom cadence clock, on the store (not poll-loop-local) so a
-  // scrub commit can force a re-read by zeroing it -- see setSubharm* actions.
+  // scrub commit can force a re-read via requestSubharmRead() below.
   lastSubharmMs = $state(0);
   errorCount = $state(0);
+
+  // Forces the next poll tick to re-read subharm headroom; called from every
+  // setSubharm* verb (processingActions.ts) instead of assigning lastSubharmMs directly.
+  requestSubharmRead(): void { this.lastSubharmMs = 0; }
 
   // Peak normalization (0..1) with 30 dB/sec hold decay.
   applyPeaks(raw: ArrayLike<number>, nowMs: number): void {
