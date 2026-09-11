@@ -73,6 +73,8 @@ export interface MockOptions {
   // that crash-rebooted into safe mode 0 after storedMode failed to boot --
   // the panel's fallback banner is otherwise unreachable without hardware.
   sysClockBoot?: { storedMode: number; storedVregSel?: number; fallback?: boolean };
+  // Build stamp answered by GetBuildInfo on fw 1.1.6+ profiles; default below.
+  buildInfo?: { describe: string; date: string };
 }
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
@@ -477,6 +479,9 @@ export class MockTransport implements DspTransport {
   #sysClockActiveMode = 0;
   #sysClockFallback = false;
 
+  // Firmware git build stamp (0x80, fw 1.1.6+); only ever served when #isFw116.
+  #buildInfo: { describe: string; date: string };
+
   constructor(opts: MockOptions) {
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
     this.#platform = opts.platform === 'rp2040' ? PlatformType.RP2040 : PlatformType.RP2350;
@@ -486,6 +491,7 @@ export class MockTransport implements DspTransport {
     this.#fwMajor = fw.major;
     this.#fwMinor = fw.minor;
     this.#fwPatch = fw.patch;
+    this.#buildInfo = opts.buildInfo ?? { describe: 'v1.1.6-mock', date: '2026-09-02' };
     this.#mockState = defaultMockBulkState(this.#platform, this.#wireVersion);
     this.#csNouns = buildMockCsNouns(this.#platform, this.#mockState.numIn, this.#mockState.numOut, this.#mockState.numCh);
     this.#csCapsVersion = opts.csCapsVersion ?? MOCK_CS_CAPS.capsVersion;
@@ -556,6 +562,11 @@ export class MockTransport implements DspTransport {
   }
 
   get #isV16(): boolean { return this.#wireVersion >= 16; }
+
+  // fw 1.1.6+: full-width GetPlatform reply and GetBuildInfo both gate on this.
+  get #isFw116(): boolean {
+    return this.#fwMajor > 1 || this.#fwMinor > 1 || (this.#fwMinor === 1 && this.#fwPatch >= 6);
+  }
 
   // Per-version GetCsCaps/GetCsStatus shape, mirroring firmware's caps table
   // growth (control_surfaces.h): noun_count grows in steps (v<=6 49, v7 51,
@@ -657,14 +668,18 @@ export class MockTransport implements DspTransport {
       case WireCmd.GetPlatform.code: {
         // Wire shape: [platformId, fwMajor, (minor<<4)|patch, reserved] plus
         // full-width [minor, patch] from fw 1.1.6 on; older fw clamps to 4 B.
-        const ext = this.#fwMajor > 1 || this.#fwMinor > 1 || (this.#fwMinor === 1 && this.#fwPatch >= 6);
-        const out = new Uint8Array(Math.min(length, ext ? 6 : 4));
+        const out = new Uint8Array(Math.min(length, this.#isFw116 ? 6 : 4));
         out[0] = this.#platform;
         if (length > 1) out[1] = this.#fwMajor;
         if (length > 2) out[2] = ((this.#fwMinor & 0xF) << 4) | (this.#fwPatch & 0xF);
         if (length > 4) out[4] = this.#fwMinor;
         if (length > 5) out[5] = this.#fwPatch;
         return out;
+      }
+      case WireCmd.GetBuildInfo.code: {
+        if (!this.#isFw116) throw new Error('MockTransport: GetBuildInfo unsupported (STALL)');
+        const out = Codec.encode(Wire.BuildInfo, this.#buildInfo);
+        return out.slice(0, Math.min(length, out.byteLength));
       }
       case WireCmd.GetAllParams.code: {
         const bulk = this.#synthBulkPacket();

@@ -47,6 +47,7 @@ function initializedDevice(methods: Partial<DspDevice>): DspDevice {
       capabilities: deriveCapabilities({
         fw: { major: 1, minor: 1, patch: 4 }, wireVersion: 10, payloadLength: 2960, platformId: 1,
       }),
+      build: null,
     },
     hardware: testHardware,
   };

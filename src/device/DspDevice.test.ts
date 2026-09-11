@@ -105,6 +105,55 @@ describe('DspDevice — GetPlatform response length', () => {
   });
 });
 
+describe('DspDevice — build stamp (GetBuildInfo 0x80, gated on features.buildStamp)', () => {
+  it('info.build is the mock default on a V29 / fw 1.1.6 device', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    const d = await DspDevice.create(t);
+    expect(d.info.build).toEqual({ describe: 'v1.1.6-mock', date: '2026-09-02' });
+  });
+
+  it('info.build is null on wire 28 and the device never sees request 0x80', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    const seen: number[] = [];
+    const spy: DspTransport = {
+      open: () => t.open(), close: () => t.close(), isOpen: () => t.isOpen(), on: (e, l) => t.on(e, l),
+      ctrlIn: (req, val, len) => { seen.push(req); return t.ctrlIn(req, val, len); },
+      ctrlOut: (req, val, data) => t.ctrlOut(req, val, data),
+    };
+    const d = await DspDevice.create(spy);
+    expect(d.info.build).toBeNull();
+    expect(seen).not.toContain(WireCmd.GetBuildInfo.code);
+  });
+
+  it('info.build is null and create still resolves when the 0x80 read throws', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    const spy: DspTransport = {
+      open: () => t.open(), close: () => t.close(), isOpen: () => t.isOpen(), on: (e, l) => t.on(e, l),
+      ctrlIn: (req, val, len) => {
+        if (req === WireCmd.GetBuildInfo.code) return Promise.reject(new Error('STALL'));
+        return t.ctrlIn(req, val, len);
+      },
+      ctrlOut: (req, val, data) => t.ctrlOut(req, val, data),
+    };
+    const d = await DspDevice.create(spy);
+    expect(d.info.build).toBeNull();
+  });
+
+  it('info.build is null when the 0x80 reply is too short to carry a describe', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    const spy: DspTransport = {
+      open: () => t.open(), close: () => t.close(), isOpen: () => t.isOpen(), on: (e, l) => t.on(e, l),
+      ctrlIn: async (req, val, len) => {
+        if (req === WireCmd.GetBuildInfo.code) return new Uint8Array(0);
+        return t.ctrlIn(req, val, len);
+      },
+      ctrlOut: (req, val, data) => t.ctrlOut(req, val, data),
+    };
+    const d = await DspDevice.create(spy);
+    expect(d.info.build).toBeNull();
+  });
+});
+
 describe('DspDevice — getSystemStatus hardware profile contract', () => {
   it('uses platform-correct channel count from factory hardware profile', async () => {
     const t = new MockTransport({ platform: 'rp2350' });

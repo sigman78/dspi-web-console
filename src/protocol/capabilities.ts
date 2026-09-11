@@ -111,6 +111,9 @@ export interface DeviceFeatures {
   // platforms -- the kernel runs in Q28 on RP2040, so no platform gate unlike
   // psybass/upmix.
   readonly subharm: boolean;
+  // GetBuildInfo 0x80 answers (wire V29+). Provenance for humans only -- the
+  // stamp itself never gates anything; this only says the read is worth trying.
+  readonly buildStamp: boolean;
 }
 
 export interface DeviceCapabilities {
@@ -202,6 +205,7 @@ export function deriveCapabilities(input: {
       firstOrderLpHp:     wireVersion >= 28,
       pinResetDefault:    wireVersion >= 25,
       subharm:            wireVersion >= 29,
+      buildStamp:         wireVersion >= 29,
     },
     // 3 selectable inputs through V27; V28 adds the fourth.
     spdifInputCount: multiSpdifInputs ? (wireVersion >= 28 ? SPDIF_RX_MAX_INSTANCES : 3) : 1,

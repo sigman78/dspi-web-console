@@ -11,7 +11,7 @@ export const LATEST_CHANGES = {
     'CONTROL tab regrouped into three columns; the new CHANGES panel (CT.06) is the single place to SAVE or DISCARD pending control-surface edits, and the slot editors fold into accordions',
     'Indicator bindings gain on/off delays and a per-LED brightness ceiling (fw 1.1.6)',
     'Firmware 1.1.6 wire V27–V29 supported end-to-end: upmix centre OFF, a fourth S/PDIF input (SY.11), first-order LP/HP EQ bands, and the subharmonic synthesizer',
-    'Firmware version is read in the 1.1.6 full-width form so future patch numbers above 15 report correctly; older firmware keeps the legacy read',
+    'Firmware version is read in the 1.1.6 full-width form so future patch numbers above 15 report correctly; older firmware keeps the legacy read; the DEVICE panel also shows the firmware git build stamp when the firmware reports one',
     'Pin map panel (SY.16): every GPIO at a glance — color-coded by role, reserved pins hatched, ADC-capable marked — with pop-up pin pickers that show who holds each pin and why one is unavailable',
     'SYSTEM tab decluttered: panels regrouped into device / inputs / outputs columns; telemetry, error counters, and buffer stats sit behind the DEBUG toggle (or ?debug in the URL)',
     'Multi-device: connect several DSPi units at once — the DEVICES list in the sidebar switches between them, with a full state resync on every switch',

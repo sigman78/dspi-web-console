@@ -918,6 +918,15 @@ export const DeviceInfoExt = struct({
   fwPatch:      u8,
 });
 
+// 64-byte `GetBuildInfo` (0x80, fw 1.1.6+) response: git describe + build
+// date, both NUL-terminated ASCII in fixed windows. Provenance for humans
+// only -- never a compatibility gate; that stays the GetPlatform version.
+export const BuildInfo = struct({
+  describe:  nulStr(48),
+  date:      nulStr(12),
+  _reserved: reserved(4),
+});
+
 // Parametric `GetStatus` (0x50) wire schema: the peak count varies by
 // platform (7 on RP2040, 11 on RP2350). Other fields are fixed.
 // Returns a fresh struct codec for the requested channel count; use

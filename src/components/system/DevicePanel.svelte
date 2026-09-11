@@ -21,6 +21,7 @@
   const csProto = $derived(cs.deviceCapsVersion == null ? '—' : `v${cs.deviceCapsVersion}`);
   const ctrlProto = $derived(
     s.ctrlIfaces.status ? `v${s.ctrlIfaces.status.protoVersion}` : '—');
+  const build = $derived(s.info.build);
 
   function onFactoryReset() {
     void factoryResetDevice();
@@ -47,6 +48,9 @@
     <KV label="FIRMWARE" value={s.info.capabilities.fwLabel}
         title={`Firmware releases this console supports: ${SUPPORT_WINDOW.fw}.`} />
     <KV label="PLATFORM" value={snap?.platform.name ?? '—'} />
+    <KV label="BUILD" wide value={build ? `${build.describe} · ${build.date}` : '—'}
+        tone={build ? undefined : 'off'}
+        title="Firmware git build stamp (fw 1.1.6+). Provenance only — compatibility is decided by the version above." />
     <KV label="FORMAT"   value={s.info.capabilities.wireLabel}
         title={`Wire formats this console supports: ${SUPPORT_WINDOW.wire}. Newer formats load with known sections only.`} />
     <KV label="OUTPUTS"  value={`${snap?.platform.outputCount ?? 0} / ${snap?.platform.totalChannelCount ?? 0}`} />

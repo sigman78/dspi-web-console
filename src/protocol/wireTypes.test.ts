@@ -476,4 +476,22 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     });
   });
 
+  it('BuildInfo is 64 bytes and trims each NUL-padded window on decode', () => {
+    expect(Codec.sizeOf(Wire.BuildInfo)).toBe(64);
+    const bytes = new Uint8Array(64);
+    bytes.set(new TextEncoder().encode('v1.1.6-beta2-4-g56b2ec8-dirty\0'), 0);
+    bytes.set(new TextEncoder().encode('2026-09-02\0'), 48);
+    expect(Codec.decode(Wire.BuildInfo, bytes)).toEqual({
+      describe: 'v1.1.6-beta2-4-g56b2ec8-dirty', date: '2026-09-02',
+    });
+  });
+
+  it('BuildInfo decodes a full 47-char describe with no NUL inside its window', () => {
+    const describe = 'v1.1.6-beta9999-999-g0123456789abcdef'.padEnd(47, '0');
+    const bytes = new Uint8Array(64);
+    bytes.set(new TextEncoder().encode(describe), 0);
+    bytes.set(new TextEncoder().encode('2026-09-02\0'), 48);
+    expect(Codec.decode(Wire.BuildInfo, bytes).describe).toBe(describe);
+  });
+
 });
