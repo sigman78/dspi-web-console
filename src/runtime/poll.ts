@@ -12,6 +12,7 @@ const I2S_SLAVE_INTERVAL_MS = 1000;  // ~1 Hz  -- I2S slave-clock status (slave 
 const ADAT_INTERVAL_MS = 1000;   // ~1 Hz  -- ADAT lightpipe output status (enabled only)
 const ADAT_INPUT_INTERVAL_MS = 1000;   // ~1 Hz  -- ADAT lightpipe input status (enabled only)
 const SUBHARM_INTERVAL_MS = 1000;   // ~1 Hz  -- subharm headroom readout (enabled only)
+const SUBHARM_METER_INTERVAL_MS = 200;   // ~5 Hz  -- subharm sub meter (PR.06 panel mounted only)
 const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile floor
 // Unconditional re-fetch floor, independent of any pending reconcile request.
 // Notify is the primary sync trigger, but firmware 1.1.4 has verified coverage
@@ -22,7 +23,7 @@ const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile
 const PARAM_SAFETY_NET_MS = 10_000;
 
 interface Cadence {
-  key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'i2sSlave' | 'adat' | 'adatInput' | 'subharm' | 'param';
+  key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'i2sSlave' | 'adat' | 'adatInput' | 'subharm' | 'subharmMeter' | 'param';
   intervalMs: number;
   runWhileHidden: boolean;          // today all false (pause everything when hidden)
   lastMs(): number;                 // cadence clock -- reads the STORE timestamp
@@ -42,7 +43,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   // Only the in-flight guards are loop-local. The cadence CLOCK stays on the
   // telemetry store (tele.applyPeaks sets lastStatusMs and reads it for peak
   // decay), so the gate must read the store, not a private copy.
-  const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false, spdifRx: false, i2sSlave: false, adat: false, adatInput: false, subharm: false, param: false };
+  const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false, spdifRx: false, i2sSlave: false, adat: false, adatInput: false, subharm: false, subharmMeter: false, param: false };
 
   async function pollStatus(d: DspDevice): Promise<void> {
     try {
@@ -230,6 +231,34 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     return tele.lastSubharmMs === 0 || now - tele.lastSubharmMs >= SUBHARM_INTERVAL_MS;
   }
 
+  // Subharm sub meter (fw V30+, PR.06 MONITOR row). Interest-gated: the panel
+  // holds interest only while mounted (tele.subharmMeterWanted, see
+  // telemetry.svelte.ts's wantSubharmMeter), so an unmounted panel doesn't pay
+  // for a live meter nobody is looking at. Unlike the headroom cadence above,
+  // NOT gated on writes.busy -- this is a cheap status-style read that should
+  // keep moving during a scrub, not queue up behind it.
+  async function pollSubharmMeter(d: DspDevice): Promise<void> {
+    try {
+      const meter = await session.queue.run(() => d.getSubharmMeter());
+      // Interest may have been released mid-read; a late write would linger.
+      if (tele.subharmMeterWanted > 0) tele.subharmMeter = meter;
+      health.noteOk();
+    } catch (e) {
+      health.noteFail('poll:subharmMeter', e);
+      Log.warn('poll', 'getSubharmMeter failed', e);
+    } finally {
+      tele.lastSubharmMeterMs = performance.now();
+    }
+  }
+
+  function shouldRunSubharmMeter(now: number): boolean {
+    if (!session.device.capabilities?.features.subharmExt) return false;
+    if (!mir.current?.subharm.enabled) return false;
+    if (tele.subharmMeterWanted <= 0) return false;
+    if (health.degraded) return false;
+    return tele.lastSubharmMeterMs === 0 || now - tele.lastSubharmMeterMs >= SUBHARM_METER_INTERVAL_MS;
+  }
+
   // Background param-mirror reconcile. shouldRunParam already decided this tick
   // is eligible; we fetch, then re-check before applying. The CommandQueue makes
   // the fetch atomic with respect to any write already registered when it was
@@ -293,6 +322,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     { key: 'adat',    intervalMs: ADAT_INTERVAL_MS,      runWhileHidden: false, lastMs: () => lastAdatMs,    run: pollAdat,    shouldRun: shouldRunAdat },
     { key: 'adatInput', intervalMs: ADAT_INPUT_INTERVAL_MS, runWhileHidden: false, lastMs: () => lastAdatInputMs, run: pollAdatInput, shouldRun: shouldRunAdatInput },
     { key: 'subharm', intervalMs: SUBHARM_INTERVAL_MS, runWhileHidden: false, lastMs: () => tele.lastSubharmMs, run: pollSubharm, shouldRun: shouldRunSubharm },
+    { key: 'subharmMeter', intervalMs: SUBHARM_METER_INTERVAL_MS, runWhileHidden: false, lastMs: () => tele.lastSubharmMeterMs, run: pollSubharmMeter, shouldRun: shouldRunSubharmMeter },
     { key: 'param',   intervalMs: PARAM_INTERVAL_MS,    runWhileHidden: false, lastMs: () => tele.lastParamMs,  run: pollParam, shouldRun: shouldRunParam },
   ];
   const anyRunWhileHidden = cadences.some((c) => c.runWhileHidden);

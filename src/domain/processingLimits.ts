@@ -111,3 +111,16 @@ export const SUBHARM_LEVEL_STEP_DB = 0.5;
 export const SUBHARM_BOOST_MIN_DB = 0;
 export const SUBHARM_BOOST_MAX_DB = 6;
 export const SUBHARM_BOOST_STEP_DB = 0.5;
+
+// V30 tail: selectivity depth/hold and sub ceiling.
+export const SUBHARM_DEPTH_MIN_PCT = 0;
+export const SUBHARM_DEPTH_MAX_PCT = 100;
+export const SUBHARM_DEPTH_STEP_PCT = 1;
+
+export const SUBHARM_HOLD_MIN_MS = 50;
+export const SUBHARM_HOLD_MAX_MS = 400;
+export const SUBHARM_HOLD_STEP_MS = 5;
+
+export const SUBHARM_CEILING_MIN_DB = -40;
+export const SUBHARM_CEILING_MAX_DB = 0;
+export const SUBHARM_CEILING_STEP_DB = 0.5;

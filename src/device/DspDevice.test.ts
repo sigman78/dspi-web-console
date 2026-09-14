@@ -311,6 +311,13 @@ describe('DspDevice — processing module setters', () => {
     { name: 'setSubharmLow(-6) -> 0x12',              invoke: (d) => d.setSubharmLow(-6), opcode: 0x12, payload: f32(-6) },
     { name: 'setSubharmHigh(0) -> 0x14',              invoke: (d) => d.setSubharmHigh(0), opcode: 0x14, payload: f32(0) },
     { name: 'setSubharmBoost(3) -> 0x16',             invoke: (d) => d.setSubharmBoost(3), opcode: 0x16, payload: f32(3) },
+    { name: 'setSubharmTop(-3) -> 0x1B',              invoke: (d) => d.setSubharmTop(-3), opcode: 0x1B, payload: f32(-3) },
+    { name: 'setSubharmSelect(1) -> 0x1D',            invoke: (d) => d.setSubharmSelect(1), opcode: 0x1D, payload: u8(1) },
+    { name: 'setSubharmSolo(true) -> 0x2C',           invoke: (d) => d.setSubharmSolo(true), opcode: 0x2C, payload: bool8(true) },
+    { name: 'setSubharmLink(false) -> 0x2E',          invoke: (d) => d.setSubharmLink(false), opcode: 0x2E, payload: bool8(false) },
+    { name: 'setSubharmDepth(60) -> 0xA9',            invoke: (d) => d.setSubharmDepth(60), opcode: 0xA9, payload: f32(60) },
+    { name: 'setSubharmHold(200) -> 0xAB',            invoke: (d) => d.setSubharmHold(200), opcode: 0xAB, payload: f32(200) },
+    { name: 'setSubharmCeiling(-12) -> 0xAD',         invoke: (d) => d.setSubharmCeiling(-12), opcode: 0xAD, payload: f32(-12) },
   ];
 
   it.each(setterCases)('$name writes the expected opcode + payload', async ({ invoke, opcode, payload, value }) => {

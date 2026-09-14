@@ -3,6 +3,17 @@ import type { DspTransport } from '@/transport/DspTransport';
 import { Codec } from '@/utils';
 import { WireCmd, readCmd, writeCmd, actionCmd } from './wireCmd';
 
+describe('WireCmd table', () => {
+  it('assigns every vendor request code to exactly one command', () => {
+    const seen = new Map<number, string>();
+    for (const [name, cmd] of Object.entries(WireCmd)) {
+      const prev = seen.get(cmd.code);
+      expect(prev, `0x${cmd.code.toString(16)} used by ${prev} and ${name}`).toBeUndefined();
+      seen.set(cmd.code, name);
+    }
+  });
+});
+
 // Minimal in-memory transport for unit tests.
 function fakeTransport(opts: {
   in?: (request: number, value: number, length: number) => Uint8Array;

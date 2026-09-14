@@ -34,6 +34,7 @@ import {
   type CrossPoint, type OutputState,
   type UartControlConfig, type I2cControlConfig,
   type CsCaps, type CsNounCaps, type CsGroup, type CsMacroStep, type CsDisplayCfg, type CsDisplayPage,
+  type SubharmSelect,
 } from '@/domain';
 
 export interface MockOptions {
@@ -94,6 +95,10 @@ const MIN_ADAT_INPUT_WIRE = 24;
 // Subharmonic synthesizer lands on the wire at V29 on both platforms; earlier
 // profiles must STALL the whole opcode range (0x10-0x1A).
 const MIN_SUBHARM_WIRE = 29;
+
+// V30 tail (third band, selectivity, ceiling, pair link, solo, meter) STALLs
+// the whole extension opcode range (0x1B-0x1F, 0x2C-0x2F, 0xA9-0xAE) below V30.
+const MIN_SUBHARM_EXT_WIRE = 30;
 
 // Control Surfaces caps tables, firmware capability format version 14
 // (control_surfaces.c s_caps / control_surfaces_nouns.c cs_noun_table). The
@@ -376,6 +381,9 @@ export class MockTransport implements DspTransport {
   #masterVolumeMode: MasterVolumeMode = MasterVolumeMode.Independent;
   #savedMasterVolumeDb = 0;
   #mockState: BulkParams;
+  // Runtime-only solo monitor (fw V30+, 0x2C/0x2D): never in the bulk state,
+  // never persisted.
+  #subharmSolo = false;
 
   // Preset directory + 10-slot snapshots. Directory metadata is its own wire
   // surface, not part of the bulk packet.
@@ -809,6 +817,36 @@ export class MockTransport implements DspTransport {
       case WireCmd.GetSubharmHeadroom.code:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: GetSubharmHeadroom unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#subharmHeadroom());
+
+      // V30 tail: third band, selectivity, ceiling, pair link, solo, meter.
+      // Below V30 the whole extension opcode range STALLs.
+      case WireCmd.GetSubharmTop.code:
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmTop unsupported (STALL)');
+        return Codec.encode(Codec.f32, this.#mockState.subharm!.topDb);
+      case WireCmd.GetSubharmSelect.code:
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmSelect unsupported (STALL)');
+        return Codec.encode(Codec.u8, this.#mockState.subharm!.selectMode);
+      case WireCmd.GetSubharmMeter.code: {
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmMeter unsupported (STALL)');
+        const numOut = this.#mockState.numOut;
+        const out = Codec.encode(Codec.arr(Codec.u16, numOut), this.#subharmMeterLevels(numOut));
+        return out.slice(0, Math.min(length, out.byteLength));
+      }
+      case WireCmd.GetSubharmSolo.code:
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmSolo unsupported (STALL)');
+        return Codec.encode(Codec.bool8, this.#subharmSolo);
+      case WireCmd.GetSubharmLink.code:
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmLink unsupported (STALL)');
+        return Codec.encode(Codec.bool8, this.#mockState.subharm!.linkPairs);
+      case WireCmd.GetSubharmDepth.code:
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmDepth unsupported (STALL)');
+        return Codec.encode(Codec.f32, this.#mockState.subharm!.selectDepth);
+      case WireCmd.GetSubharmHold.code:
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmHold unsupported (STALL)');
+        return Codec.encode(Codec.f32, this.#mockState.subharm!.selectHoldMs);
+      case WireCmd.GetSubharmCeiling.code:
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmCeiling unsupported (STALL)');
+        return Codec.encode(Codec.f32, this.#mockState.subharm!.ceilingDb);
 
       // Upmixer
       case WireCmd.UpmixGetParam.code:
@@ -1699,6 +1737,38 @@ export class MockTransport implements DspTransport {
       case WireCmd.SetSubharmMask.code:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmMask unsupported (STALL)');
         this.#mockState.subharm!.outputMask = Codec.decode(Codec.u16, data);
+        return;
+
+      // V30 tail: third band, selectivity, ceiling, pair link, solo. Below
+      // V30 the whole extension opcode range STALLs.
+      case WireCmd.SetSubharmTop.code:
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmTop unsupported (STALL)');
+        this.#mockState.subharm!.topDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data));
+        return;
+      case WireCmd.SetSubharmSelect.code:
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmSelect unsupported (STALL)');
+        this.#mockState.subharm!.selectMode =
+          Math.max(0, Math.min(2, Math.round(Codec.decode(Codec.u8, data)))) as SubharmSelect;
+        return;
+      case WireCmd.SetSubharmSolo.code:
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmSolo unsupported (STALL)');
+        this.#subharmSolo = Codec.decode(Codec.bool8, data);
+        return;
+      case WireCmd.SetSubharmLink.code:
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmLink unsupported (STALL)');
+        this.#mockState.subharm!.linkPairs = Codec.decode(Codec.bool8, data);
+        return;
+      case WireCmd.SetSubharmDepth.code:
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmDepth unsupported (STALL)');
+        this.#mockState.subharm!.selectDepth = Clamp.subharmDepthPct(Codec.decode(Codec.f32, data));
+        return;
+      case WireCmd.SetSubharmHold.code:
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmHold unsupported (STALL)');
+        this.#mockState.subharm!.selectHoldMs = Clamp.subharmHoldMs(Codec.decode(Codec.f32, data));
+        return;
+      case WireCmd.SetSubharmCeiling.code:
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmCeiling unsupported (STALL)');
+        this.#mockState.subharm!.ceilingDb = Clamp.subharmCeilingDb(Codec.decode(Codec.f32, data));
         return;
 
       // Upmixer
@@ -2599,16 +2669,38 @@ export class MockTransport implements DspTransport {
 
   // GetSubharmHeadroom (0x1A) stand-in: a documented approximation of the
   // firmware's live worst-case-gain scan, not the scan itself. 0 while
-  // disabled; otherwise the boost bell plus a band-sum term, each band
-  // contributing 0 at the -30 dB floor. Monotone in the same inputs as
-  // firmware, which is all a host needs to reserve headroom against.
+  // disabled; otherwise the boost bell plus a band-sum term (now including the
+  // V30 third band), each band contributing 0 at the -30 dB floor, capped at
+  // the ceiling's linear gain when the ceiling is on. Monotone in the same
+  // inputs as firmware, which is all a host needs to reserve headroom against.
   #subharmHeadroom(): number {
     const s = this.#mockState.subharm!;
     if (!s.enabled) return 0;
     const bandGain = (db: number) => (db <= Proc.SUBHARM_LEVEL_MIN_DB ? 0 : 10 ** (db / 20));
     const gLow = bandGain(s.lowDb);
     const gHigh = bandGain(s.highDb);
-    return s.boostDb + 20 * Math.log10(1 + 0.85 * gLow + 0.85 * gHigh);
+    const gTop = bandGain(s.topDb);
+    let bandSum = 0.85 * gLow + 0.85 * gHigh + 0.85 * gTop;
+    if (s.ceilingDb < 0) bandSum = Math.min(bandSum, 10 ** (s.ceilingDb / 20));
+    return s.boostDb + 20 * Math.log10(1 + bandSum);
+  }
+
+  // GetSubharmMeter (0x1F) stand-in, 0..32767 counts per output: 0 while
+  // disabled or a mask bit is off, otherwise the mean linear band gain
+  // (capped at 1) modulating the shared fake peak animation so the bars move.
+  // Documented approximation, not a real synthesis level.
+  #subharmMeterLevels(numOut: number): number[] {
+    const s = this.#mockState.subharm!;
+    const out = Array(numOut).fill(0);
+    if (!s.enabled) return out;
+    const bandGain = (db: number) => (db <= Proc.SUBHARM_LEVEL_MIN_DB ? 0 : 10 ** (db / 20));
+    const bandSum = Math.min(1, (bandGain(s.lowDb) + bandGain(s.highDb) + bandGain(s.topDb)) / 3);
+    const animated = this.#animatedPeaks(numOut);
+    for (let k = 0; k < numOut; k++) {
+      if ((s.outputMask & (1 << k)) === 0) continue;
+      out[k] = Math.round(32767 * Math.min(1, bandSum * animated[k]));
+    }
+    return out;
   }
 
   // Time-driven fake meter levels so the sidebar VU meters animate in mock/demo

@@ -41,6 +41,29 @@ export class StatusStore {
   // setSubharm* verb (processingActions.ts) instead of assigning lastSubharmMs directly.
   requestSubharmRead(): void { this.lastSubharmMs = 0; }
 
+  // PR.06 runtime-only solo monitor mirror (fw V30+ GET 0x2D); never part of
+  // the snapshot/presets/dirty tracking.
+  subharmSolo = $state(false);
+  // PR.06 live per-output sub meter (fw V30+ GET 0x1F), 0..1 per wire output;
+  // null when not polled / subharm disabled.
+  subharmMeter = $state<number[] | null>(null);
+  subharmMeterWanted = $state(0);
+  lastSubharmMeterMs = $state(0);
+
+  // Panel-mount interest for the subharm meter cadence (poll.ts): the panel
+  // holds interest while mounted; the returned release decrements it and, once
+  // interest reaches 0, nulls the meter so a stale reading doesn't linger.
+  wantSubharmMeter(): () => void {
+    this.subharmMeterWanted++;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.subharmMeterWanted--;
+      if (this.subharmMeterWanted <= 0) this.subharmMeter = null;
+    };
+  }
+
   // Peak normalization (0..1) with 30 dB/sec hold decay.
   applyPeaks(raw: ArrayLike<number>, nowMs: number): void {
     const dt = this.lastStatusMs > 0 ? (nowMs - this.lastStatusMs) / 1000 : 0;
