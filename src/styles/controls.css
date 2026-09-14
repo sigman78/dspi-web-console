@@ -23,7 +23,9 @@
      width is the only per-caller variance, set via a local override.
    .proc-grid — the label/control/unit grid shared by the processing panels
      (Crossfeed/Loudness/Leveller/Psybass/Upmix); .rule is a full-width
-     divider row, .span2 lets a control skip the label column. */
+     divider row, .span2 lets a control skip the label column.
+   .cs-pill — status pill in the control-surface slot headers (NEW / OK /
+     INACTIVE ...); tone via .new / .ok / .warn / .run / .off. */
 
 .chip {
   font-family: var(--font-mono);
@@ -186,3 +188,17 @@
   border-top: 1px solid var(--wash);
   margin-top: 6px;
 }
+
+.cs-pill {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-hi);
+}
+.cs-pill.new, .cs-pill.run { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 50%, transparent); }
+.cs-pill.ok   { color: var(--ok);   border-color: color-mix(in oklab, var(--ok) 50%, transparent); }
+.cs-pill.warn { color: var(--warn); border-color: color-mix(in oklab, var(--warn) 50%, transparent); }
+.cs-pill.off  { color: var(--text-faint); border-color: var(--border); }

@@ -228,7 +228,7 @@
 
 <Panel code="CT.05" title="DISPLAY">
   {#snippet right()}
-    <span class="pill {pill().cls}">{pill().text}</span>
+    <span class="cs-pill {pill().cls}">{pill().text}</span>
   {/snippet}
 
   {#if cs.displayLimits}
@@ -365,7 +365,7 @@
       {@const staged = isPageDirty(i)}
       <div class="rows">
         <!-- Strip selects which page the editor below shows; view-only, no fw effect -->
-        <div class="pagestrip" role="tablist" aria-label="Display pages" onkeydown={pageStripKey}>
+        <div class="pagestrip" role="tablist" aria-label="Display pages" tabindex="-1" onkeydown={pageStripKey}>
           {#each Array.from({ length: maxPages }, (_, i2) => i2) as i2 (i2)}
             <button type="button" role="tab" class="pchip"
               class:sel={i2 === selPage} class:set={pageDraftOf(i2) != null}
@@ -495,18 +495,6 @@
 </Panel>
 
 <style>
-  .pill {
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding: 1px 6px;
-    border-radius: 999px;
-    border: 1px solid var(--border-hi);
-  }
-  .pill.new  { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 50%, transparent); }
-  .pill.ok   { color: var(--ok);     border-color: color-mix(in oklab, var(--ok) 50%, transparent); }
-  .pill.warn { color: var(--warn);   border-color: color-mix(in oklab, var(--warn) 50%, transparent); }
-  .pill.off  { color: var(--text-faint); border-color: var(--border); }
   .statusrow {
     display: flex;
     align-items: center;
