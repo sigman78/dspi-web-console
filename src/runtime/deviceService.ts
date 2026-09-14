@@ -65,6 +65,18 @@ export async function fetchSysClock(s: ReadySession): Promise<void> {
   }
 }
 
+// Best-effort read of the solo monitor flag (fw V30+, PR.06): runtime-only,
+// never persisted or notified, so it isn't covered by the normal snapshot
+// sync -- read once on panel mount instead.
+export async function fetchSubharmSolo(s: ReadySession): Promise<void> {
+  if (!s.device.capabilities.features.subharmExt) return;
+  try {
+    s.telemetry.subharmSolo = await s.queue.run(() => s.device.getSubharmSolo());
+  } catch (err) {
+    Log.warn('subharm', 'getSubharmSolo failed', err);
+  }
+}
+
 // Minimum GetCsCaps format version this console understands (section 11.1 of
 // the spec adds the v3 IR/preview tail, but the v2 preview model -- event/
 // target/index, units, dirty/save/revert -- is the floor this panel needs).

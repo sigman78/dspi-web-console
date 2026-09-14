@@ -1007,6 +1007,53 @@ describe('MockTransport — subharmonic synthesizer (V29+, both platforms)', () 
   });
 });
 
+describe('MockTransport — subharm V30 ops (0x1B-0x1F, 0x2C-0x2F, 0xA9-0xAE)', () => {
+  async function v30Mock(platform: 'rp2040' | 'rp2350' = 'rp2350'): Promise<MockTransport> {
+    const t = new MockTransport({ platform, wireVersion: 30, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    await t.open();
+    return t;
+  }
+
+  it('ext SETs land in the bulk tail (top/ceiling/link)', async () => {
+    const t = await v30Mock();
+    await t.ctrlOut(WireCmd.SetSubharmTop.code, 0, Codec.encode(Codec.f32, -3));
+    await t.ctrlOut(WireCmd.SetSubharmCeiling.code, 0, Codec.encode(Codec.f32, -12));
+    await t.ctrlOut(WireCmd.SetSubharmLink.code, 0, Codec.encode(Codec.bool8, false));
+
+    const bulk = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    expect(bulk.subharm.topDb).toBeCloseTo(-3, 4);
+    expect(bulk.subharm.ceilingDb).toBeCloseTo(-12, 4);
+    expect(bulk.subharm.linkPairs).toBe(false);
+  });
+
+  it('solo never reaches the bulk packet, but round-trips via GET 0x2D', async () => {
+    const t = await v30Mock();
+    const before = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+
+    await t.ctrlOut(WireCmd.SetSubharmSolo.code, 0, Codec.encode(Codec.bool8, true));
+    expect(Codec.decode(Codec.bool8, await t.ctrlIn(WireCmd.GetSubharmSolo.code, 0, 1))).toBe(true);
+
+    const after = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    expect(after.subharm).toEqual(before.subharm);
+  });
+
+  it('STALLs SetSubharmTop below wire 30', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 29, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    await t.open();
+    await expect(
+      t.ctrlOut(WireCmd.SetSubharmTop.code, 0, Codec.encode(Codec.f32, -3)),
+    ).rejects.toThrow();
+  });
+
+  it('meter length equals the platform output count', async () => {
+    for (const [platform, numOut] of [['rp2350', 9], ['rp2040', 5]] as const) {
+      const t = await v30Mock(platform);
+      const bytes = await t.ctrlIn(WireCmd.GetSubharmMeter.code, 0, numOut * 2);
+      expect(bytes.byteLength).toBe(numOut * 2);
+    }
+  });
+});
+
 describe('MockTransport — GetBuildInfo (0x80, fw 1.1.6+)', () => {
   it('a fw 1.1.5 profile STALLs 0x80', async () => {
     const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });

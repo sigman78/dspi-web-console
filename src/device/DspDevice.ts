@@ -1047,6 +1047,52 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetSubharmHeadroom);
   }
 
+  // V30 tail: third band, selectivity, sub ceiling, pair link.
+  async setSubharmTop(db: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmTop, db);
+  }
+
+  async setSubharmSelect(mode: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmSelect, mode);
+  }
+
+  async setSubharmDepth(pct: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmDepth, pct);
+  }
+
+  async setSubharmHold(ms: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmHold, ms);
+  }
+
+  async setSubharmCeiling(db: number): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmCeiling, db);
+  }
+
+  async setSubharmLink(on: boolean): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmLink, on);
+  }
+
+  // Runtime-only monitor (fw V30+): solos the synthesized sub on masked
+  // outputs. Never on the wire's bulk section, never persisted, no notify --
+  // read back via getSubharmSolo, not the snapshot.
+  async setSubharmSolo(on: boolean): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmSolo, on);
+  }
+
+  async getSubharmSolo(): Promise<boolean> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetSubharmSolo);
+  }
+
+  // Live per-output sub meter (fw V30+, PR.06): NUM_OUTPUT_CHANNELS x u16 LE,
+  // wire-output indexed like status peaks, normalized to 0..1. A short reply
+  // yields a shorter array rather than throwing.
+  async getSubharmMeter(): Promise<number[]> {
+    const numOut = this.hardware.outputCount;
+    const raw = await this.transport.ctrlIn(proto.WireCmd.GetSubharmMeter.code, 0, numOut * 2);
+    const n = Math.min(numOut, raw.length >> 1);
+    return Codec.decode(Codec.arr(Codec.u16, n), raw.subarray(0, n * 2)).map((v) => v / 32767);
+  }
+
   // v1.1.4 granular surface (unconditional: the V10 floor guarantees support).
 
   // Per-band EQ bypass. wValue = (wireChannel<<8)|band, mirroring getFilter's

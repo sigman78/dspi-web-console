@@ -59,3 +59,19 @@ describe('ValueField floorLabel', () => {
     expect(container.querySelector('.num')!.textContent).toBe('+6.0');
   });
 });
+
+describe('ValueField ceilLabel', () => {
+  it('shows the ceiling label instead of the number at the max', () => {
+    const { container } = render(ValueField, {
+      value: 0, min: -40, max: 0, kind: 'dB-signed', precision: 1, ceilLabel: 'Off', onChange: vi.fn(),
+    });
+    expect(container.querySelector('.num')!.textContent).toBe('Off');
+  });
+
+  it('shows the formatted number below the max', () => {
+    const { container } = render(ValueField, {
+      value: -12, min: -40, max: 0, kind: 'dB-signed', precision: 1, ceilLabel: 'Off', onChange: vi.fn(),
+    });
+    expect(container.querySelector('.num')!.textContent).toBe('−12.0');
+  });
+});

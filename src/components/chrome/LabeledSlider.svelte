@@ -16,6 +16,7 @@
     kind,
     precision,
     floorLabel,
+    ceilLabel,
     disabled = false,
     onChange,
   }: {
@@ -28,6 +29,7 @@
     kind: ValueKind;
     precision?: number;
     floorLabel?: string;
+    ceilLabel?: string;
     disabled?: boolean;
     onChange: (v: number) => void;
   } = $props();
@@ -57,6 +59,7 @@
   {kind}
   {precision}
   {floorLabel}
+  {ceilLabel}
   {disabled}
   {onChange}
 />
