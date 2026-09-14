@@ -150,16 +150,30 @@ export interface UpmixStatus {
   rsGainQ15: number;
 }
 
-// Subharmonic synthesizer (fw V29+, both platforms). Wire-1:1 like Psybass --
-// lowDb/highDb of -30 dB mean the band is off; boostDb of 0 skips the LF
-// boost bell. outputMask follows the same per-output convention as Psybass,
-// default all-on (0xFFFF); never send it as 0.
+// Subharm selectivity gate (fw V30+): All passes every band; Percussive opens
+// on an attack and closes after the hold time; Sustained opens after the hold
+// and shuts on an attack. Mirrors fw SUBHARM_SELECT_*.
+export const SubharmSelect = { All: 0, Percussive: 1, Sustained: 2 } as const;
+export type SubharmSelect = (typeof SubharmSelect)[keyof typeof SubharmSelect];
+
+// Subharmonic synthesizer (fw V29+, both platforms; V30 adds the third band,
+// selectivity, ceiling, and pair link). Wire-1:1 like Psybass -- lowDb/highDb/
+// topDb of -30 dB mean that band is off; boostDb of 0 skips the LF boost
+// bell; ceilingDb of 0 means the sub ceiling is off. outputMask follows the
+// same per-output convention as Psybass, default all-on (0xFFFF); never send
+// it as 0.
 export interface Subharm {
   enabled: boolean;
   outputMask: number;
   lowDb: number;
   highDb: number;
   boostDb: number;
+  topDb: number;
+  selectMode: SubharmSelect;   // 0 all / 1 percussive / 2 sustained
+  selectDepth: number;         // %
+  selectHoldMs: number;
+  ceilingDb: number;           // 0 = off
+  linkPairs: boolean;
 }
 
 // Master volume persistence: 0 = global (persisted via SaveMasterVolume);

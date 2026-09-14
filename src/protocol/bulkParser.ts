@@ -10,7 +10,7 @@
 import { BinReader, BinWriter, Codec } from '@/utils';
 import * as Wire from './wireTypes';
 import type {
-  Loudness, Psybass, Upmix, Subharm,
+  Loudness, Psybass, Upmix, Subharm, SubharmSelect,
   CrossPoint, OutputState,
 } from '@/domain';
 
@@ -165,6 +165,18 @@ export interface BulkParams {
   psybass: WirePsybass;               // V23+
   upmix: WireUpmix;                   // V25+
   subharm: WireSubharm;               // V29+
+}
+
+// V30 tail-of-section-23 defaults (fw factory values): third band off, full
+// selectivity depth, 150 ms hold, sub ceiling off, mode All, pairs linked.
+const SUBHARM_EXT_DEFAULTS = {
+  topDb: -30, selectMode: 0, selectDepth: 100, selectHoldMs: 150, ceilingDb: 0, linkPairs: true,
+} as const;
+
+// Selectivity mode is a 3-value wire enum; clamp mirrors fw's
+// bulk_params_apply so an out-of-range stored value can't corrupt the byte.
+function clampSubharmSelectMode(mode: number): number {
+  return Math.max(0, Math.min(2, Math.round(mode)));
 }
 
 function defaultWireFilter(): WireFilter {
@@ -462,9 +474,15 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
   const subharm = layout.subharm
     ? (() => {
         const w = Wire.SubharmParams.read(r);
+        // A V29 packet carries no ext bytes -- the reader must not advance
+        // past the packet, so fall back to the tail defaults instead.
+        const ext = layout.subharmExt ? Wire.SubharmParamsExt.read(r) : SUBHARM_EXT_DEFAULTS;
         return {
           enabled: w.enabled, outputMask: w.outputMask,
           lowDb: w.lowDb, highDb: w.highDb, boostDb: w.boostDb,
+          ...ext,
+          // Clamp a garbled/future byte the same way the write side does.
+          selectMode: clampSubharmSelectMode(ext.selectMode) as SubharmSelect,
         };
       })()
     : def.subharm;
@@ -595,7 +613,7 @@ export function defaultBulkParams(opts: {
       surroundDelayMs: 12, surroundHpfHz: 300, surroundLpfHz: 7000,
       decorrPct: 90, presenceDb: 0,
     },
-    subharm: { enabled: false, outputMask: 0xFFFF, lowDb: 0, highDb: 0, boostDb: 0 },
+    subharm: { enabled: false, outputMask: 0xFFFF, lowDb: 0, highDb: 0, boostDb: 0, ...SUBHARM_EXT_DEFAULTS },
   };
 }
 
@@ -800,6 +818,16 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
     Wire.SubharmParams.write(w, {
       enabled: bulk.subharm.enabled, outputMask: bulk.subharm.outputMask,
       lowDb: bulk.subharm.lowDb, highDb: bulk.subharm.highDb, boostDb: bulk.subharm.boostDb,
+    });
+  }
+  if (writeVersion >= 30) {
+    Wire.SubharmParamsExt.write(w, {
+      topDb: bulk.subharm.topDb,
+      selectDepth: bulk.subharm.selectDepth,
+      selectHoldMs: bulk.subharm.selectHoldMs,
+      ceilingDb: bulk.subharm.ceilingDb,
+      selectMode: clampSubharmSelectMode(bulk.subharm.selectMode),
+      linkPairs: bulk.subharm.linkPairs,
     });
   }
 

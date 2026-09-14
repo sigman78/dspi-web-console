@@ -5,7 +5,7 @@ import {
   synthesizeBufferStats,
 } from '@/protocol/syn';
 import {
-  buildBulkParams, defaultBulkParams, parseBulkParams,
+  buildBulkParams, defaultBulkParams, parseBulkParams, peekBulkHeader,
   encodePresenceQ1, decodePresenceQ1,
   type BulkParams, type WireFilter,
 } from '@/protocol/bulkParser';
@@ -1951,8 +1951,16 @@ export class MockTransport implements DspTransport {
 
       case WireCmd.SetAllParamsChunk.code: {
         if (!this.#isV16) return;
+        const target = Wire.bulkSizeForVersion(this.#wireVersion);
         if (value === 0) {
-          this.#setChunkSession = { chunks: [], length: 0, target: this.#synthBulkPacket().length };
+          // fw rejects a session whose declared packet is shorter than its
+          // own wire size (WIRE_BULK_PARAMS_MIN_SIZE); STALL on the first chunk.
+          const declared = peekBulkHeader(data).payloadLength;
+          if (declared < target) {
+            this.#setChunkSession = null;
+            throw new Error(`MockTransport: SetAllParamsChunk payload too short (${declared}, need ${target})`);
+          }
+          this.#setChunkSession = { chunks: [], length: 0, target };
         }
         const session = this.#setChunkSession;
         if (!session || value !== session.length) {
@@ -1973,7 +1981,17 @@ export class MockTransport implements DspTransport {
     }
   }
 
+  // Mirrors fw's WIRE_BULK_PARAMS_MIN_SIZE: V16+ firmware rejects anything
+  // shorter than its own wire version's size (compat deliberately broken at
+  // V16 -- see BULK_SIZE_V16's banner comment). Pre-V16 firmware merges
+  // shorter packets, so the check doesn't apply there.
   #applySetAllParams(data: Uint8Array): void {
+    if (this.#isV16) {
+      const min = Wire.bulkSizeForVersion(this.#wireVersion);
+      if (data.length < min) {
+        throw new Error(`MockTransport: SetAllParams payload too short (${data.length}, need ${min})`);
+      }
+    }
     this.#applyBulkState(parseBulkParams(data));
   }
 

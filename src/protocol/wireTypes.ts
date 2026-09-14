@@ -424,6 +424,17 @@ export const SubharmParams = struct({
   boostDb:    f32,
 });
 
+// V30 tail of section 23 (20 B): third band, selectivity, ceiling, pair link.
+export const SubharmParamsExt = struct({
+  topDb:        f32,
+  selectDepth:  f32,
+  selectHoldMs: f32,
+  ceilingDb:    f32,
+  selectMode:   u8,
+  linkPairs:    bool8,
+  _reserved1:   reserved(2),
+});
+
 // Standalone control-transfer payloads (not part of the bulk transfer).
 
 // 8-byte payload of `SetMatrixRoute` / response of `GetMatrixRoute`
@@ -1077,15 +1088,19 @@ export const BULK_SIZE_V27 = BULK_SIZE_V26;
 export const BULK_SIZE_V28 = BULK_SIZE_V27;
 // V29 appends the 16-byte subharmonic synthesizer section after UpmixParams.
 export const BULK_SIZE_V29 = BULK_SIZE_V28 + sizeOf(SubharmParams);
+// V30 grows the subharm section with a third band, selectivity, ceiling, and
+// pair link (+20 B).
+export const BULK_SIZE_V30 = BULK_SIZE_V29 + sizeOf(SubharmParamsExt);
 
 // Newest wire version the console knows how to decode and write.
-export const MAX_WIRE_VERSION = 29;
+export const MAX_WIRE_VERSION = 30;
 
 // Packet size to allocate/write for a given target wire version (clamped to
 // the V6 floor and the MAX_WIRE_VERSION ceiling). Versions 11..15 were
 // in-development intermediates the console never supported; they collapse to
 // the V10 size (writes to such devices are rejected at connect anyway).
 export function bulkSizeForVersion(v: number): number {
+  if (v >= 30) return BULK_SIZE_V30;
   if (v >= 29) return BULK_SIZE_V29;
   if (v >= 25) return BULK_SIZE_V28;
   if (v >= 23) return BULK_SIZE_V24;
@@ -1106,9 +1121,9 @@ export const BulkLimits = {
   MinPacketSize:  BulkSizes.V2,
   // Size we WRITE: version-aware buildBulkParams emits at the device's own wire
   // version, up to MAX_WIRE_VERSION. This is the largest buffer it may allocate.
-  MaxRequestSize: BULK_SIZE_V29,
-  // Size we READ: the largest packet we tolerate receiving (V29).
-  MaxReadSize:    BULK_SIZE_V29,  // 5960
+  MaxRequestSize: BULK_SIZE_V30,
+  // Size we READ: the largest packet we tolerate receiving (V30).
+  MaxReadSize:    BULK_SIZE_V30,  // 5980
   // WinUSB caps a control transfer's data stage at 4 KB; the largest single
   // EP0 transfer any host backend can rely on. Above this, DspDevice chunks
   // via 0xA2/0xA3 (fw 1.1.5+).
@@ -1156,6 +1171,8 @@ export interface BulkLayout {
   spdifInput4: boolean;
   // V29: subharmonic synthesizer section, appended after UpmixParams.
   subharm: boolean;
+  // V30: subharm section tail (third band, selectivity, ceiling, pair link).
+  subharmExt: boolean;
 }
 
 // Determine which optional sections are present based on the header.
@@ -1187,6 +1204,7 @@ export function bulkLayout(h: { formatVersion: number; payloadLength: number }):
     upmixPresence:     v >= 26 && len >= BULK_SIZE_V26,
     spdifInput4:       v >= 28 && len >= BULK_SIZE_V28,
     subharm:           v >= 29 && len >= BULK_SIZE_V29,
+    subharmExt:        v >= 30 && len >= BULK_SIZE_V30,
   };
 }
 

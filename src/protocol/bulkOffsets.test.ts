@@ -59,6 +59,18 @@ describe('describeBulkOffset — V29 subharm section', () => {
   });
 });
 
+describe('describeBulkOffset — V30 subharm section tail', () => {
+  it('resolves the tail start as subharm.topDb', () => {
+    const hit = describeBulkOffset(5960, 30);
+    expect(hit?.path).toBe('subharm.topDb');
+  });
+
+  it('resolves the link_pairs field offset', () => {
+    const hit = describeBulkOffset(5977, 30);
+    expect(hit?.path).toBe('subharm.linkPairs');
+  });
+});
+
 describe('describeBulkOffset — edges', () => {
   it('rejects a negative offset', () => {
     expect(describeBulkOffset(-1, 26)).toBeNull();
