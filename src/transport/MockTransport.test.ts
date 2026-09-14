@@ -415,6 +415,43 @@ describe('MockTransport — chunked bulk sessions (V16)', () => {
   });
 });
 
+describe('MockTransport — bulk SET minimum size (V16+)', () => {
+  const chunk = Wire.BulkLimits.ChunkSize;
+
+  async function v30Mock() {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 30, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    await t.open();
+    return t;
+  }
+
+  it('STALLs the first chunk of a V29-sized packet sent to a V30 device', async () => {
+    const t = await v30Mock();
+    const state = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    const short = buildBulkParams(state, 29);
+    expect(short.byteLength).toBe(Wire.BULK_SIZE_V29);
+    await expect(t.ctrlOut(WireCmd.SetAllParamsChunk.code, 0, short.subarray(0, chunk))).rejects.toThrow();
+  });
+
+  it('applies a full-size V30 packet delivered in chunks', async () => {
+    const t = await v30Mock();
+    const state = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    state.subharm = { ...state.subharm, topDb: -3, linkPairs: false };
+    const bytes = buildBulkParams(state);
+    for (let off = 0; off < bytes.byteLength; off += chunk) {
+      await t.ctrlOut(WireCmd.SetAllParamsChunk.code, off, bytes.subarray(off, Math.min(off + chunk, bytes.byteLength)));
+    }
+    const after = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    expect(after.subharm.topDb).toBeCloseTo(-3, 5);
+    expect(after.subharm.linkPairs).toBe(false);
+  });
+
+  it('rejects a short direct SetAllParams payload', async () => {
+    const t = await v30Mock();
+    const full = await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize);
+    await expect(t.ctrlOut(WireCmd.SetAllParams.code, 0, full.subarray(0, full.byteLength - 1))).rejects.toThrow();
+  });
+});
+
 describe('MockTransport — source-aware input channel names', () => {
   async function v16Device(): Promise<DspDevice> {
     const t = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } });

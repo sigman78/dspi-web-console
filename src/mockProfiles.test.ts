@@ -38,6 +38,12 @@ describe('resolveMockProfile', () => {
     expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6 });
   });
 
+  it('parses v30 (subharm third band/selectivity/ceiling/pair link) with fw 1.1.6', () => {
+    const p = resolveMockProfile('v30');
+    expect(p.opts.wireVersion).toBe(30);
+    expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6 });
+  });
+
   it('latest boots at MAX_WIRE_VERSION with fw 1.1.6', () => {
     const p = resolveMockProfile('latest');
     expect(p.opts.wireVersion).toBe(Wire.MAX_WIRE_VERSION);

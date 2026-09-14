@@ -33,18 +33,22 @@ describe('bulkParser — V29 packet sizes', () => {
 describe('bulkParser — V29 (subharmonic synthesizer) packet', () => {
   it('roundtrips a non-default subharm section', () => {
     const bulk = v29Base();
-    bulk.subharm = { enabled: true, outputMask: 0x0103, lowDb: -6, highDb: 2, boostDb: 3 };
+    bulk.subharm = { ...bulk.subharm, enabled: true, outputMask: 0x0103, lowDb: -6, highDb: 2, boostDb: 3 };
 
     const bytes = buildBulkParams(bulk);
     expect(bytes.byteLength).toBe(Wire.BULK_SIZE_V29);
 
     const p = parseBulkParams(bytes);
-    expect(p.subharm).toEqual({ enabled: true, outputMask: 0x0103, lowDb: -6, highDb: 2, boostDb: 3 });
+    // V29 carries no tail bytes -- the tail decodes at its factory defaults.
+    expect(p.subharm).toEqual({
+      enabled: true, outputMask: 0x0103, lowDb: -6, highDb: 2, boostDb: 3,
+      topDb: -30, selectMode: 0, selectDepth: 100, selectHoldMs: 150, ceilingDb: 0, linkPairs: true,
+    });
   });
 
   it('sits at byte offset 5944: enabled at 5944, mask LE at 5946-5947, low_db f32 at 5948', () => {
     const bulk = v29Base();
-    bulk.subharm = { enabled: true, outputMask: 0x0103, lowDb: -6, highDb: 0, boostDb: 0 };
+    bulk.subharm = { ...bulk.subharm, enabled: true, outputMask: 0x0103, lowDb: -6, highDb: 0, boostDb: 0 };
 
     const bytes = buildBulkParams(bulk);
     expect(bytes[5944]).toBe(1);
@@ -56,7 +60,10 @@ describe('bulkParser — V29 (subharmonic synthesizer) packet', () => {
   it('a pre-V29 packet defaults subharm to disabled / all-outputs / zeroed levels', () => {
     const bulk = v28Base();
     const p = parseBulkParams(buildBulkParams(bulk));
-    expect(p.subharm).toEqual({ enabled: false, outputMask: 0xFFFF, lowDb: 0, highDb: 0, boostDb: 0 });
+    expect(p.subharm).toEqual({
+      enabled: false, outputMask: 0xFFFF, lowDb: 0, highDb: 0, boostDb: 0,
+      topDb: -30, selectMode: 0, selectDepth: 100, selectHoldMs: 150, ceilingDb: 0, linkPairs: true,
+    });
   });
 
   it('down-converts a V29 snapshot to V28 (subharm dropped, 5944 bytes)', () => {

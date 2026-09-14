@@ -76,15 +76,17 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(Wire.bulkSizeForVersion(26)).toBe(5944);
     expect(Wire.bulkSizeForVersion(27)).toBe(5944);
     expect(Wire.bulkSizeForVersion(28)).toBe(5944);
-    // V29 appends the subharmonic synthesizer section (+16 B).
+    // V29 appends the subharmonic synthesizer section (+16 B); V30 grows it
+    // by another 20 B (third band, selectivity, ceiling, pair link).
     expect(Wire.bulkSizeForVersion(29)).toBe(5960);
-    expect(Wire.bulkSizeForVersion(99)).toBe(5960);
+    expect(Wire.bulkSizeForVersion(30)).toBe(5980);
+    expect(Wire.bulkSizeForVersion(99)).toBe(5980);
     expect(Wire.bulkSizeForVersion(5)).toBe(2896);
   });
 
   it('BULK_SIZE_V21 equals BULK_SIZE_V20 (no packet-size change)', () => {
     expect(Wire.BULK_SIZE_V21).toBe(Wire.BULK_SIZE_V20);
-    expect(Wire.MAX_WIRE_VERSION).toBe(29);
+    expect(Wire.MAX_WIRE_VERSION).toBe(30);
   });
 
   it('bulkLayout gates i2sClockMode on wire V21 AND payloadLength', () => {

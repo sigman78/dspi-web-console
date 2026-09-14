@@ -20,7 +20,7 @@ export const DIFF_TOLERANCE = {
   // loudness intensity step is 0.5, leveller amount step is 1. Using literal.
   gain: 0.005,
   q:    Q_STEP / 2,             // 0.01 / 2 = 0.005
-  // NOT step/2: f32 round-trip jitter bound. Delay diffs must not mask
+  // NOT step/2: f32 round-trip jitter bound. Delay/hold diffs must not mask
   // sub-step external changes; f32 ulp at max delay is ~1.5e-5 < this.
   ms:   5e-5,
   // Half the Linkwitz Transform qp wire step (1/512).
@@ -134,9 +134,15 @@ function upmixDiffers(a: Upmix, b: Upmix): boolean {
 function subharmDiffers(a: Subharm, b: Subharm): boolean {
   return a.enabled !== b.enabled
       || a.outputMask !== b.outputMask
-      || neq(a.lowDb,   b.lowDb,   DIFF_TOLERANCE.db)
-      || neq(a.highDb,  b.highDb,  DIFF_TOLERANCE.db)
-      || neq(a.boostDb, b.boostDb, DIFF_TOLERANCE.db);
+      || a.selectMode !== b.selectMode
+      || a.linkPairs  !== b.linkPairs
+      || neq(a.lowDb,        b.lowDb,        DIFF_TOLERANCE.db)
+      || neq(a.highDb,       b.highDb,       DIFF_TOLERANCE.db)
+      || neq(a.boostDb,      b.boostDb,      DIFF_TOLERANCE.db)
+      || neq(a.topDb,        b.topDb,        DIFF_TOLERANCE.db)
+      || neq(a.ceilingDb,    b.ceilingDb,    DIFF_TOLERANCE.db)
+      || neq(a.selectDepth,  b.selectDepth,  DIFF_TOLERANCE.gain)
+      || neq(a.selectHoldMs, b.selectHoldMs, DIFF_TOLERANCE.ms);
 }
 
 function levellerDiffers(a: Leveller, b: Leveller): boolean {

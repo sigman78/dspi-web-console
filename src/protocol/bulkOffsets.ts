@@ -189,6 +189,12 @@ export function describeBulkOffset(offset: number, version: number): BulkOffsetH
   if (version >= 29) {
     const size = Codec.sizeOf(Wire.SubharmParams);
     if (offset < cursor + size) return resolveField('subharm', Wire.SubharmParams, cursor, offset);
+    cursor += size;
+  }
+
+  if (version >= 30) {
+    const size = Codec.sizeOf(Wire.SubharmParamsExt);
+    if (offset < cursor + size) return resolveField('subharm', Wire.SubharmParamsExt, cursor, offset);
   }
 
   return null;
