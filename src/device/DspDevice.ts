@@ -714,32 +714,12 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetOutputEnable, on, output);
   }
 
-  // unused: no production, HIL, or unit-test caller remains.
-  async getOutputEnable(output: Domain.OutputSlot): Promise<boolean> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetOutputEnable, output);
-  }
-
-  // unused: no production, HIL, or unit-test caller remains.
-  async getOutputGain(output: Domain.OutputSlot): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetOutputGain, output);
-  }
-
   async setOutputMute(output: Domain.OutputSlot, mute: boolean): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetOutputMute, mute, output);
   }
 
-  // unused: no production, HIL, or unit-test caller remains.
-  async getOutputMute(output: Domain.OutputSlot): Promise<boolean> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetOutputMute, output);
-  }
-
   async setOutputDelay(output: Domain.OutputSlot, ms: number): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetOutputDelay, ms, output);
-  }
-
-  // unused: no production, HIL, or unit-test caller remains.
-  async getOutputDelay(output: Domain.OutputSlot): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetOutputDelay, output);
   }
 
   async setOutputType(slot: Domain.I2sPairSlot, type: number): Promise<Result<void, proto.PinConfigResult>> {

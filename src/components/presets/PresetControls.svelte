@@ -1,7 +1,7 @@
 <script lang="ts">
   import {
     presetsDirty,
-    settings, connection,
+    settings,
   } from '@/state';
   import {
     saveActivePreset, revertActivePreset,
@@ -19,7 +19,6 @@
   const active = $derived(s.presets.active);
   const dir = $derived(s.presets.directory);
   const dirty = $derived(presetsDirty(s));
-  const connected = $derived(connection.connected);
   const activeOccupied = $derived.by(() => {
     if (active == null || !dir) return false;
     return dir.occupiedSlotsSet.has(active);
@@ -90,7 +89,7 @@
 
 </script>
 
-<div class="ctrl" class:disabled={!connected || dir == null}>
+<div class="ctrl" class:disabled={dir == null}>
   <div class="group">
     <h4>ACTIONS</h4>
     <button class="chip md accent" onclick={onSave} disabled={!canSave}>SAVE</button>
@@ -126,7 +125,7 @@
 
   <div class="divider"></div>
 
-  <fieldset class="group" disabled={!connected || dir == null}>
+  <fieldset class="group" disabled={dir == null}>
     <h4>INCLUDES IN PRESET</h4>
     <ToggleSwitch
       size="sm"
@@ -146,7 +145,7 @@
 
   <div class="divider"></div>
 
-  <fieldset class="group" disabled={!connected || dir == null}>
+  <fieldset class="group" disabled={dir == null}>
     <h4>STARTUP MODE</h4>
     <ToggleSwitch
       size="sm"

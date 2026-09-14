@@ -8,7 +8,6 @@
     title,
     subject,
     enabled,
-    connected,
     onToggle,
     children,
   }: {
@@ -16,7 +15,6 @@
     title: string;
     subject: string;
     enabled: boolean;
-    connected: boolean;
     onToggle: () => void;
     children: Snippet;
   } = $props();
@@ -27,7 +25,6 @@
     <ToggleSwitch
       size="sm"
       checked={enabled}
-      disabled={!connected}
       ariaLabel={enabled ? `Disable ${subject}` : `Enable ${subject}`}
       onChange={onToggle}
     />

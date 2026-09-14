@@ -13,11 +13,6 @@ vi.mock('@/runtime', () => ({
   setAdatInputClockMode: (...a: unknown[]) => setAdatInputClockMode(...a),
 }));
 
-let connected = true;
-vi.mock('@/state', () => ({
-  connection: { get connected() { return connected; }, get phase() { return connected ? 'ready' : 'idle'; } },
-}));
-
 import AdatInputPanel from './AdatInputPanel.svelte';
 
 // channelModel: Unified matches every real device that can carry ADAT (V17+,
@@ -63,7 +58,6 @@ function renderPanel(session: unknown) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  connected = true;
 });
 
 describe('AdatInputPanel', () => {

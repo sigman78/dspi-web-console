@@ -37,13 +37,6 @@ export class MirrorState {
     if (!this.current) return;
     this.baseline = $state.snapshot(this.current) as DspSnapshot;
   }
-  reset(): void {
-    this.current = null;
-    this.reconcileWanted = false;
-    this.reconcileEager = false;
-    this.presetGuardDepth = 0;
-    this.presetGuardUntilMs = 0;
-  }
   requestReconcile(eager: boolean): void {
     this.reconcileWanted = true;
     if (eager) this.reconcileEager = true;

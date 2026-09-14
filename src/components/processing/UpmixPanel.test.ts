@@ -34,11 +34,6 @@ vi.mock('@/runtime', () => ({
   setUpmixDecorr: (...a: unknown[]) => setUpmixDecorr(...a),
 }));
 
-const connectionState = vi.hoisted(() => ({ connected: true, phase: 'ready' }));
-vi.mock('@/state', () => ({
-  connection: connectionState,
-}));
-
 import UpmixPanel from './UpmixPanel.svelte';
 
 function makeSession(o: {
@@ -93,15 +88,6 @@ describe('UpmixPanel', () => {
     expect(screen.getByRole('slider', { name: 'Upmix center width' })).toBeDisabled();
   });
 
-  test('sliders are disabled when disconnected', () => {
-    connectionState.connected = false;
-    try {
-      renderPanel(makeSession({}));
-      expect(screen.getByRole('slider', { name: 'Upmix center strength' })).toBeDisabled();
-    } finally {
-      connectionState.connected = true;
-    }
-  });
 
   test('PASSIVE center mode greys the steering sliders but not strength/width', () => {
     renderPanel(makeSession({ centerMode: 0 }));

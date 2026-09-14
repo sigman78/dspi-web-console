@@ -7,7 +7,7 @@ export type { ChannelKey, ShadeName } from './palette-colors';
 // Lockstep check: PinRole (src/domain/pins.ts) and ROLE_COLORS' PinRoleKey
 // (./palette-colors) must name the same set of roles -- a mismatch fails here
 // at typecheck rather than at render time.
-const _roleColorLockstep: Record<PinRole, Lch> = ROLE_COLORS;
+void (ROLE_COLORS satisfies Record<PinRole, Lch>);
 
 const KEY_BY_ID: Record<number, ChannelKey> = {
   [ChannelId.In1L]: 'In1L',

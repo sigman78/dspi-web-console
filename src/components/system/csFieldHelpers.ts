@@ -1,9 +1,8 @@
-// Noun-shape lookups and option lists shared between the binding editor
-// (ControlSurfacesPanel) and the IR command editor (CsIrCommands): both edit
-// a (noun, action, target/index, value/step) tuple against the same
-// CsNounDesc caps table, just wrapped in a different container (a GPIO
-// binding vs. a learned IR command). Explicit-arg so both callers can pass
-// their own draft shape instead of sharing one.
+// Noun-shape lookups and option lists shared by every CS editor (bindings,
+// IR commands, macro steps, display pages, groups): each edits a
+// (noun, action, target/index, value/step) tuple against the same CsNounDesc
+// caps table, wrapped in a different container. Explicit-arg so each caller
+// passes its own draft shape instead of sharing one.
 import * as Domain from '@/domain';
 
 export function kindOf(nouns: readonly Domain.CsNounCaps[], noun: number): number {

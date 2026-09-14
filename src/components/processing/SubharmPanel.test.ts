@@ -19,11 +19,6 @@ vi.mock('@/runtime', () => ({
   reserveSubharmHeadroom: (...a: unknown[]) => reserveSubharmHeadroom(...a),
 }));
 
-const connectionState = vi.hoisted(() => ({ connected: true, phase: 'ready' }));
-vi.mock('@/state', () => ({
-  connection: connectionState,
-}));
-
 import SubharmPanel from './SubharmPanel.svelte';
 
 // 8 output channels + PDM, RP2350-shaped (9 total, 4 stereo pairs) -- same

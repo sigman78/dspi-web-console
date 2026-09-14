@@ -5,15 +5,10 @@ import { SysClockMode, SYS_CLOCK_VREG_DEFAULT, PlatformType } from '@/domain';
 
 const applySysClock = vi.fn();
 const refreshSysClock = vi.fn();
-let mockConnected = true;
 
 vi.mock('@/runtime', () => ({
   applySysClock: (...a: unknown[]) => applySysClock(...a),
   refreshSysClock: (...a: unknown[]) => refreshSysClock(...a),
-}));
-
-vi.mock('@/state', () => ({
-  connection: { get connected() { return mockConnected; }, get phase() { return 'ready'; } },
 }));
 
 import SysClockPanel from './SysClockPanel.svelte';
@@ -42,7 +37,7 @@ function renderPanel(session: unknown) {
   return render(SysClockPanel, { context: new Map([[SESSION_KEY, session]]) });
 }
 
-beforeEach(() => { vi.clearAllMocks(); mockConnected = true; });
+beforeEach(() => { vi.clearAllMocks(); });
 
 describe('SysClockPanel', () => {
   test('renders nothing when the status probe found no support (or has not landed yet)', () => {
@@ -121,16 +116,6 @@ describe('SysClockPanel', () => {
     const status = makeStatus({ activeMode: SysClockMode.Mhz307p2, storedMode: SysClockMode.Mhz384, fallbackActive: false });
     renderPanel(makeSession({ status }));
     expect(screen.getByText(/hasn't taken effect yet/)).toBeTruthy();
-  });
-
-  test('disconnected: APPLY carries the connect reason and mode/voltage/REFRESH are disabled', () => {
-    mockConnected = false;
-    renderPanel(makeSession());
-    expect(screen.getByRole('button', { name: 'APPLY' }).getAttribute('aria-disabled')).toBe('true');
-    expect(screen.getByText('Connect a device to enable this action.')).toBeTruthy();
-    expect((screen.getByRole('radio', { name: '384' }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole('combobox', { name: 'Core voltage' }) as HTMLSelectElement).disabled).toBe(true);
-    expect((screen.getByRole('button', { name: 'REFRESH' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   test('busy apply disables every control including the fallback actions', () => {

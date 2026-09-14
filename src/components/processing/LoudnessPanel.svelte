@@ -5,7 +5,6 @@
   import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
   import { loudnessResponse } from '@/components/bode/loudnessCurve';
   import { centeredDbDomain } from '@/components/bode/dbDomain';
-  import { connection } from '@/state';
   import { Proc, outputChannelsWithIndex, maskChipItems } from '@/domain';
   import { setLoudnessEnabled, setLoudnessRefSpl, setLoudnessIntensityPct, toggleLoudnessOutputChannel } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
@@ -13,9 +12,8 @@
   const s = getSession();
 
   const loudness = $derived(s.mirror.current?.loudness);
-  const connected = $derived(connection.connected);
   const enabled = $derived(loudness?.enabled ?? false);
-  const editable = $derived(connected && enabled);
+  const editable = $derived(enabled);
 
   const loudCurve = $derived<BodeCurve[]>([
     { id: 'loudness', points: loudnessResponse(loudness?.refSpl ?? 85, loudness?.intensityPct ?? 0) },
@@ -39,7 +37,6 @@
   title="LOUDNESS"
   subject="loudness"
   {enabled}
-  {connected}
   onToggle={() => loudness && setLoudnessEnabled(s, !loudness.enabled)}
 >
   <div class="graph" class:off={!enabled}>

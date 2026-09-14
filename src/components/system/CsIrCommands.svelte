@@ -6,7 +6,7 @@
   // CS_TYPE_IR binding (see ControlSurfacesPanel).
   import { untrack } from 'svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import { connection, pushNotice } from '@/state';
+  import { pushNotice } from '@/state';
   import { applyCsIrCommand, clearCsIrCommand, csIrLearnArm, csIrLearnCancel } from '@/runtime';
   import * as Domain from '@/domain';
   import { csStatusFromByte } from '@/protocol';
@@ -25,15 +25,12 @@
   } = $props();
 
   const s = getSession();
-  const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
   const cs = $derived(s.controlSurfaces);
   const caps = $derived(s.controlSurfaces.caps);
-  const busy = $derived(!connected);
 
-  // Sub-slot local drafts, same shape/units convention as the binding editor's
-  // Draft (see ControlSurfacesPanel): display units in the draft, wire units
-  // only at the buildIrCommand() boundary.
+  // Sub-slot local drafts, same shape/units convention as csDraft.ts: display
+  // units in the draft, wire units only at the buildIrCommand() boundary.
   interface IrDraft {
     noun: number; action: number;
     target: number; index: number;
@@ -334,11 +331,11 @@
             <button type="button" class="chip hi" onclick={cancelLearn}>CANCEL</button>
           {:else}
             <button type="button" class="chip"
-              disabled={busy || applyingSub != null || (armedSub != null && armedSub !== sub)}
+              disabled={applyingSub != null || (armedSub != null && armedSub !== sub)}
               onclick={() => learn(sub)}>{d && d.protocol !== Domain.CsIrProto.None ? 'RE-LEARN' : 'LEARN'}</button>
           {/if}
           {#if d}
-            <button type="button" class="chip hi" disabled={busy || applyingSub != null || listening}
+            <button type="button" class="chip hi" disabled={applyingSub != null || listening}
               onclick={() => clear(sub)}>CLEAR</button>
           {/if}
         </div>
@@ -351,7 +348,7 @@
 
           <div class="row">
             <span class="microlbl">CONTROLS</span>
-            <select class="sel" value={String(d.noun)} aria-label="Controlled function" disabled={busy || applyingSub != null}
+            <select class="sel" value={String(d.noun)} aria-label="Controlled function" disabled={applyingSub != null}
               onchange={(e) => {
                 const n = Number((e.currentTarget as HTMLSelectElement).value);
                 editDraft(sub, (dr) => {
@@ -367,7 +364,7 @@
             </select>
             {#if actions.length > 1}
               <span class="microlbl">ACTION</span>
-              <select class="sel" value={String(d.action)} aria-label="Action" disabled={busy || applyingSub != null}
+              <select class="sel" value={String(d.action)} aria-label="Action" disabled={applyingSub != null}
                 onchange={(e) => {
                   const a = Number((e.currentTarget as HTMLSelectElement).value);
                   editDraft(sub, (dr) => { dr.action = a; defaultIrOperands(dr); });
@@ -388,7 +385,7 @@
                 {CsField.targetKindOf(cs.nouns, d.noun) === Domain.CS_TARGET_INPUT_CH ? 'INPUT'
                   : CsField.targetKindOf(cs.nouns, d.noun) === Domain.CS_TARGET_OUTPUT_CH ? 'OUTPUT' : 'CHANNEL'}
               </span>
-              <select class="sel" value={d.grouped ? `g${d.target}` : String(d.target)} aria-label="Target channel" disabled={busy || applyingSub != null}
+              <select class="sel" value={d.grouped ? `g${d.target}` : String(d.target)} aria-label="Target channel" disabled={applyingSub != null}
                 onchange={(e) => {
                   const v = (e.currentTarget as HTMLSelectElement).value;
                   editDraft(sub, (dr) => {
@@ -419,7 +416,7 @@
               </select>
               {#if CsField.showBandOf(cs.nouns, d.noun)}
                 <span class="microlbl">BAND</span>
-                <select class="sel" value={String(d.index)} aria-label="Filter band" disabled={busy || applyingSub != null}
+                <select class="sel" value={String(d.index)} aria-label="Filter band" disabled={applyingSub != null}
                   onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editDraft(sub, (dr) => { dr.index = v; }); }}>
                   {#each (d.grouped ? groupBandOptionsFor(d) : (snap ? CsField.bandOptionsFor(d.noun, d.target, snap.channels) : [])) as o (o.v)}
                     <option value={String(o.v)}>{o.label}</option>
@@ -437,11 +434,11 @@
                   <input class="numfield" type="number" step="0.5"
                     min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(CsField.unitOf(cs.nouns, d.noun), cs.nouns[d.noun].minQ8) : 0}
                     max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(CsField.unitOf(cs.nouns, d.noun), cs.nouns[d.noun].maxQ8) : 0}
-                    value={d.value} aria-label="Value" disabled={busy || applyingSub != null}
+                    value={d.value} aria-label="Value" disabled={applyingSub != null}
                     onchange={(e) => { const v = num(e); if (v != null) editDraft(sub, (dr) => { dr.value = v; }); }} />
                   <span class="hint">{CsUnit.unitSuffix(CsField.unitOf(cs.nouns, d.noun))}</span>
                 {:else}
-                  <select class="sel" value={String(d.value)} aria-label="Value" disabled={busy || applyingSub != null}
+                  <select class="sel" value={String(d.value)} aria-label="Value" disabled={applyingSub != null}
                     onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editDraft(sub, (dr) => { dr.value = v; }); }}>
                     {#each (CsField.enumOf(cs.nouns, d.noun) ? CsField.enumValueOptions(cs.nouns, d.noun, s.presets.names, cs.macros, cs.displayPages) : CsField.boolValueOptions(d.noun)) as o (o.v)}
                       <option value={String(o.v)}>{o.label}</option>
@@ -454,11 +451,11 @@
                 {#if CsField.enumOf(cs.nouns, d.noun)}
                   <input class="numfield" type="number" step="1" min="1"
                     max={Math.max(1, (cs.nouns[d.noun]?.enumCount ?? 2) - 1)}
-                    value={d.step} aria-label="Step size (positions)" disabled={busy || applyingSub != null}
+                    value={d.step} aria-label="Step size (positions)" disabled={applyingSub != null}
                     onchange={(e) => { const v = num(e); if (v != null) editDraft(sub, (dr) => { dr.step = v; }); }} />
                 {:else}
                   <input class="numfield" type="number" step={CsUnit.isLogStep(CsField.unitOf(cs.nouns, d.noun)) ? '0.01' : '0.5'} min="0"
-                    value={d.step} aria-label="Step size" disabled={busy || applyingSub != null}
+                    value={d.step} aria-label="Step size" disabled={applyingSub != null}
                     onchange={(e) => { const v = num(e); if (v != null) editDraft(sub, (dr) => { dr.step = v; }); }} />
                   <span class="hint">{CsUnit.stepUnitSuffix(CsField.unitOf(cs.nouns, d.noun))}</span>
                 {/if}
@@ -470,12 +467,12 @@
             <div class="row">
               {#if CsField.showWrapOf(cs.nouns, d.noun, d.action, IR_STEPPY)}
                 <span class="microlbl">WRAP AROUND</span>
-                <ToggleSwitch size="sm" checked={d.wrap} disabled={busy || applyingSub != null}
+                <ToggleSwitch size="sm" checked={d.wrap} disabled={applyingSub != null}
                   ariaLabel="Wrap around" onChange={(v) => editDraft(sub, (dr) => { dr.wrap = v; })} />
               {/if}
               {#if d.action === Domain.CsAction.Inc || d.action === Domain.CsAction.Dec}
                 <span class="microlbl">AUTO-REPEAT WHILE HELD</span>
-                <ToggleSwitch size="sm" checked={d.repeat} disabled={busy || applyingSub != null}
+                <ToggleSwitch size="sm" checked={d.repeat} disabled={applyingSub != null}
                   ariaLabel="Auto-repeat while held" onChange={(v) => editDraft(sub, (dr) => { dr.repeat = v; })} />
               {/if}
             </div>
@@ -483,7 +480,7 @@
 
           <div class="row">
             <button type="button" class="chip accent" onclick={() => apply(sub)}
-              disabled={busy || applyingSub != null || !canApply(sub)}>APPLY</button>
+              disabled={applyingSub != null || !canApply(sub)}>APPLY</button>
           </div>
         {/if}
       </div>

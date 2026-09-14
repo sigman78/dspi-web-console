@@ -11,10 +11,6 @@ const verbs = vi.hoisted(() => ({
 }));
 vi.mock('@/runtime', () => verbs);
 
-vi.mock('@/state', () => ({
-  connection: { get connected() { return true; }, get phase() { return 'ready'; } },
-}));
-
 import OutputsPanel from './OutputsPanel.svelte';
 
 function makeSnap(enabledSlots: number[] = []) {

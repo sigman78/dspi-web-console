@@ -32,3 +32,23 @@ _base*/
 # /fw-watch skill — local-only firmware-tracking output (see .claude/skills/fw-watch)
 docs/FW-TODO.md
 docs/.fw-watch-state.json
+fw-out
+
+# Local firmware checkout used for fw-watch / HIL builds, and local-only tooling state.
+DSPi/
+.playwright-mcp/
+.superpowers/
+
+# Local working notes and verify-pass screenshots. Tracked docs are listed explicitly;
+# everything else under docs/ and every root-level note/screenshot stays local.
+docs/*
+!docs/ARCH.md
+!docs/HW-DSPUSB.md
+!docs/HW-NOTIFICATIONS.md
+!docs/MULTIDEVICE.md
+!docs/web_to_uart.md
+/*.png
+/*.md
+!/README.md
+!/CHANGELOG.md
+!/CONTRIBUTING.md

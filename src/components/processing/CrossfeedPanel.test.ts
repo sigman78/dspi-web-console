@@ -28,11 +28,6 @@ vi.mock('@/runtime', () => ({
   toggleCrossfeedOutputPair: (...a: unknown[]) => toggleCrossfeedOutputPair(...a),
 }));
 
-const connectionState = vi.hoisted(() => ({ connected: true, phase: 'ready' }));
-vi.mock('@/state', () => ({
-  connection: connectionState,
-}));
-
 import CrossfeedPanel from './CrossfeedPanel.svelte';
 
 // RP2350-shaped: 8 stereo outputs + PDM = 4 pairs.
@@ -127,15 +122,5 @@ describe('CrossfeedPanel — output-pair mask', () => {
     expect(chip).toBeDisabled();
     await fireEvent.click(chip);
     expect(toggleCrossfeedOutputPair).not.toHaveBeenCalled();
-  });
-
-  test('chips are disabled when disconnected', () => {
-    connectionState.connected = false;
-    try {
-      renderPanel(makeSession({}));
-      expect(screen.getByRole('button', { name: 'PAIRS Out 1 / Out 2' })).toBeDisabled();
-    } finally {
-      connectionState.connected = true;
-    }
   });
 });

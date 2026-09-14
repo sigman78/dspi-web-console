@@ -3,7 +3,14 @@
 //
 // Intentionally NOT re-exported: `commands`, `focus`, `resync` -- internal
 // coordination primitives used only within this directory.
-export * from './actions';
+export * from './eqActions';
+export * from './mixerActions';
+export * from './volumeActions';
+export * from './processingActions';
+export * from './upmixActions';
+export * from './ioActions';
+export * from './controlSurfaceActions';
+export * from './systemActions';
 export * from './stagedActions';
 export * from './deviceService';
 export * from './presets';

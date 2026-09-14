@@ -6,7 +6,8 @@ import {
   groupIntoPairs, groupInputSlotPairs, inputIndexOf, autoEqFiltersToBands, isFirstOrderType, defaultFilter,
 } from '@/domain';
 import type { ReadySession } from '@/state';
-import { setEqFilter, setInputPreamp, setOutputGain } from './actions';
+import { setEqFilter } from './eqActions';
+import { setInputPreamp, setOutputGain } from './mixerActions';
 
 export function preampTargetLabel(channel: { isOutput: boolean }): 'INPUT PREAMP' | 'OUTPUT TRIM' {
   return channel.isOutput ? 'OUTPUT TRIM' : 'INPUT PREAMP';

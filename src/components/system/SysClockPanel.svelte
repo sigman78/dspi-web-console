@@ -3,7 +3,6 @@
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
-  import { connection } from '@/state';
   import { applySysClock, refreshSysClock } from '@/runtime';
   import * as Domain from '@/domain';
   import { getSession } from '@/components/sessionContext';
@@ -11,7 +10,6 @@
   const s = getSession();
 
   const st = $derived(s.sysClock.status);
-  const connected = $derived(connection.connected);
   // Restrictive default: a not-yet-landed mirror must not offer RP2350-only
   // bench voltages on what may be an RP2040.
   const platform = $derived(s.mirror.current?.platform.type ?? Domain.PlatformType.RP2040);
@@ -55,8 +53,7 @@
 
   const isOverclock = $derived(pendingMode > Domain.SysClockMode.Mhz307p2);
   const disabledReason = $derived(
-    !connected ? 'Connect a device to enable this action.'
-    : s.sysClock.busy ? 'A system clock change is already applying.'
+    s.sysClock.busy ? 'A system clock change is already applying.'
     : st && pendingMode === st.storedMode && pendingVreg === st.storedVregSel ? 'Select a different clock mode or voltage first.'
     : undefined,
   );
@@ -102,7 +99,7 @@
       <button
         class="chip"
         onclick={() => void refreshSysClock(s)}
-        disabled={!connected || s.sysClock.busy}
+        disabled={s.sysClock.busy}
         title="Re-read the system clock status from the device"
       >REFRESH</button>
     {/snippet}
@@ -111,8 +108,8 @@
         <div class="fallback-banner__header">CRASH FALLBACK</div>
         <p>Configured {Domain.SYS_CLOCK_MODE_MHZ[st.storedMode]} MHz failed to boot — running safe {Domain.SYS_CLOCK_MODE_MHZ[Domain.SysClockMode.Mhz307p2]} MHz.</p>
         <div class="fallback-actions">
-          <button class="chip warn" onclick={onRetry} disabled={!connected || s.sysClock.busy}>RETRY</button>
-          <button class="chip" onclick={onRevert} disabled={!connected || s.sysClock.busy}>REVERT</button>
+          <button class="chip warn" onclick={onRetry} disabled={s.sysClock.busy}>RETRY</button>
+          <button class="chip" onclick={onRevert} disabled={s.sysClock.busy}>REVERT</button>
         </div>
       </div>
     {/if}
@@ -125,7 +122,7 @@
           value={pendingMode}
           options={modeOptions}
           ariaLabel="System clock mode"
-          disabled={!connected || s.sysClock.busy}
+          disabled={s.sysClock.busy}
           onChange={onModeChange}
         />
       </div>
@@ -134,7 +131,7 @@
         <span class="microlbl">VOLTAGE</span>
         <select
           class="voltsel"
-          disabled={!connected || s.sysClock.busy}
+          disabled={s.sysClock.busy}
           aria-label="Core voltage"
           value={String(pendingVreg)}
           onchange={onVregChange}

@@ -15,10 +15,6 @@ vi.mock('@/runtime', () => ({
   toggleLevellerApplyChannel: (...a: unknown[]) => toggleLevellerApplyChannel(...a),
 }));
 
-vi.mock('@/state', () => ({
-  connection: { get connected() { return true; }, get phase() { return 'ready'; } },
-}));
-
 import LevellerPanel from './LevellerPanel.svelte';
 
 const INPUT_IDS = [

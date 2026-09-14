@@ -4,7 +4,6 @@
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import PinPicker from './PinPicker.svelte';
   import SaveOutputConfigButton from './SaveOutputConfigButton.svelte';
-  import { connection } from '@/state';
   import { stageOutputType, stageOutputDataPin, setOutputPairEnabled, setOutputEnabled } from '@/runtime';
   import { pickerCells, channelLayoutById, ChannelId, OutputSlotType, liveCsPinConfigs, type I2sPairSlot, type OutputSlot } from '@/domain';
   import { Wire } from '@/protocol';
@@ -14,7 +13,6 @@
 
   const snap = $derived(s.mirror.current);
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
-  const connected = $derived(connection.connected);
   const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
   const canResetPins = $derived(s.device.capabilities.features.pinResetDefault);
 
@@ -89,7 +87,7 @@
 <Panel code="SY.07" title="OUTPUTS">
   {#snippet right()}
     {#if canResetPins}
-      <button class="chip icon" disabled={!connected} title="Reset to defaults" aria-label="Reset output pins to defaults" onclick={stageOutputPinsToDefault}>↺</button>
+      <button class="chip icon" title="Reset to defaults" aria-label="Reset output pins to defaults" onclick={stageOutputPinsToDefault}>↺</button>
     {/if}
     <SaveOutputConfigButton />
   {/snippet}
@@ -105,7 +103,7 @@
             <ToggleSwitch
               size="sm"
               checked={pairEnabled(slot)}
-              disabled={!connected || pairLockedByPdm(slot)}
+              disabled={pairLockedByPdm(slot)}
               ariaLabel={`Out ${slot + 1} enable`}
               onChange={(v) => onPairToggle(slot, v)}
             />
@@ -116,7 +114,6 @@
               value={effOutputType(slot)}
               options={TYPE_OPTS}
               ariaLabel={`Out ${slot + 1} output type`}
-              disabled={!connected}
               onChange={(t) => stageOutputType(s, slot as I2sPairSlot, t)}
             />
           </span>
@@ -125,7 +122,6 @@
               value={effOutputPin(slot)}
               cells={overlaySnap ? pickerCells(snap.platform.type, overlaySnap, ctrlPins, effOutputPin(slot)) : []}
               ariaLabel={`Out ${slot + 1} data pin`}
-              disabled={!connected}
               onChange={(p) => stageOutputDataPin(s, slot, p)}
             />
           </span>
@@ -138,7 +134,7 @@
           <ToggleSwitch
             size="sm"
             checked={pdmEnabled}
-            disabled={!connected || pdmLockedByOutputs}
+            disabled={pdmLockedByOutputs}
             ariaLabel="PDM sub enable"
             onChange={onPdmToggle}
           />
@@ -149,7 +145,7 @@
             value={effOutputPin(pdmIndex)}
             cells={overlaySnap ? pickerCells(snap.platform.type, overlaySnap, ctrlPins, effOutputPin(pdmIndex)) : []}
             ariaLabel="PDM sub data pin"
-            disabled={!connected || pdmEnabled}
+            disabled={pdmEnabled}
             onChange={(p) => stageOutputDataPin(s, pdmIndex, p)}
           />
         </span>

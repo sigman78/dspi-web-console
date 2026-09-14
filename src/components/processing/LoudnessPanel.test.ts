@@ -24,11 +24,6 @@ vi.mock('@/runtime', () => ({
   toggleLoudnessOutputChannel: (...a: unknown[]) => toggleLoudnessOutputChannel(...a),
 }));
 
-const connectionState = vi.hoisted(() => ({ connected: true, phase: 'ready' }));
-vi.mock('@/state', () => ({
-  connection: connectionState,
-}));
-
 import LoudnessPanel from './LoudnessPanel.svelte';
 
 // 8 output channels + PDM, RP2350-shaped (9 total, 4 stereo pairs).
@@ -112,15 +107,5 @@ describe('LoudnessPanel — output mask', () => {
     expect(chip).toBeDisabled();
     await fireEvent.click(chip);
     expect(toggleLoudnessOutputChannel).not.toHaveBeenCalled();
-  });
-
-  test('chips are disabled when disconnected', () => {
-    connectionState.connected = false;
-    try {
-      renderPanel(makeSession({}));
-      expect(screen.getByRole('button', { name: 'OUTPUTS Out 1' })).toBeDisabled();
-    } finally {
-      connectionState.connected = true;
-    }
   });
 });

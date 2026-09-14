@@ -1,5 +1,5 @@
-// Connection & whole-device service operations, split out from actions.ts
-// (which holds the granular per-parameter verbs). Everything here touches the
+// Connection & whole-device service operations, kept apart from the
+// granular per-parameter verb modules (eqActions, mixerActions, ...). Everything here touches the
 // whole session or the whole snapshot: connect/sync/reconcile, transport-event
 // wiring, and the factory-reset command -- as opposed to a single mirror field.
 
@@ -81,7 +81,7 @@ export const MIN_CS_CAPS_VERSION = 2;
 export const MAX_KNOWN_CS_CAPS_VERSION = 14;
 
 // Fetch the whole I2C display block (cfg, every page, status) in one go --
-// reused by fetchControlSurfaces (initial connect) and by actions.ts's
+// reused by fetchControlSurfaces (initial connect) and by controlSurfaceActions'
 // applyCsBinding/csRevertConfig (a binding apply or revert can silently
 // reseed the pages/cfg without marking anything dirty, so both re-read this
 // after touching a display-type slot). Plain device reads, no queuing of its
@@ -105,6 +105,70 @@ export async function readCsDisplayBlock(d: DspDevice): Promise<{
   return { limits, cfg, pages, status };
 }
 
+// One pass of every slotted/bounded Control Surfaces read: bindings+names,
+// IR commands, groups, macros, ext status, and the display block -- shared by
+// fetchControlSurfaces (initial connect) and controlSurfaceActions.ts's
+// csRevertConfig (a discard re-fetches everything the device just rewound).
+// `run` lets each caller pick its own queuing: fetchControlSurfaces queues
+// each read individually (`(f) => s.queue.run(f)`), csRevertConfig calls
+// straight through (`(f) => f()`) since it already runs inside one queued
+// command() send. Bounds always come from `caps`, never a status readback.
+export interface CsReadAll {
+  bindings: (Domain.CsBinding | null)[];
+  names: string[];
+  irCommands: (Domain.CsIrCommand | null)[] | null;
+  groups: (Domain.CsGroup | null)[] | null;
+  macros: (Domain.CsMacro | null)[] | null;
+  extStatus: Domain.CsExtStatus | null;
+  display: Awaited<ReturnType<typeof readCsDisplayBlock>> | null;
+}
+
+export async function readCsAll(
+  d: DspDevice,
+  caps: Domain.CsCaps,
+  run: <T>(f: () => Promise<T>) => Promise<T>,
+): Promise<CsReadAll> {
+  const bindings: (Domain.CsBinding | null)[] = [];
+  const names: string[] = [];
+  for (let slot = 0; slot < caps.maxBindings; slot++) {
+    const b = await run(() => d.getCsBinding(slot));
+    bindings.push(b.type === Domain.CsType.None ? null : b);
+    names.push(await run(() => d.getCsName(slot)));
+  }
+  let irCommands: (Domain.CsIrCommand | null)[] | null = null;
+  if (caps.maxIrCommands > 0) {
+    irCommands = [];
+    for (let sub = 0; sub < caps.maxIrCommands; sub++) {
+      const cmd = await run(() => d.getCsIrCmd(sub));
+      irCommands.push(cmd.protocol === Domain.CsIrProto.None ? null : cmd);
+    }
+  }
+  const groupCount = Math.min(caps.maxGroups, Domain.CS_MAX_GROUPS);
+  let groups: (Domain.CsGroup | null)[] | null = null;
+  if (groupCount > 0) {
+    groups = [];
+    for (let g = 0; g < groupCount; g++) {
+      const grp = await run(() => d.getCsGroup(g));
+      groups.push(grp.targetKind === Domain.CS_TARGET_NONE ? null : grp);
+    }
+  }
+  const macroCount = Math.min(caps.maxMacros, Domain.CS_MAX_MACROS);
+  let macros: (Domain.CsMacro | null)[] | null = null;
+  if (macroCount > 0) {
+    macros = [];
+    for (let m = 0; m < macroCount; m++) {
+      const macro = await run(() => d.getCsMacro(m));
+      macros.push(Domain.csMacroIsEmpty(macro) ? null : macro);
+    }
+  }
+  let extStatus: Domain.CsExtStatus | null = null;
+  if (groupCount > 0 || macroCount > 0) {
+    extStatus = await run(() => d.getCsExtStatus());
+  }
+  const display = Domain.csDisplaysAvailable(caps) ? await run(() => readCsDisplayBlock(d)) : null;
+  return { bindings, names, irCommands, groups, macros, extStatus, display };
+}
+
 // Control Surfaces mirror of fetchCtrlIfaceInfo: caps (host order: header,
 // then per-noun descriptors -- DspDevice owns that loop), live status, then
 // every slot's binding and name. Idempotent once caps are populated; never
@@ -125,61 +189,21 @@ export async function fetchControlSurfaces(s: ReadySession): Promise<void> {
       return;
     }
     const status = await s.queue.run(() => d.getCsStatus());
-    const bindings: (Domain.CsBinding | null)[] = [];
-    const names: string[] = [];
-    for (let slot = 0; slot < caps.maxBindings; slot++) {
-      const b = await s.queue.run(() => d.getCsBinding(slot));
-      bindings.push(b.type === Domain.CsType.None ? null : b);
-      names.push(await s.queue.run(() => d.getCsName(slot)));
-    }
-    let irCommands: (Domain.CsIrCommand | null)[] | null = null;
-    if (caps.maxIrCommands > 0) {
-      irCommands = [];
-      for (let sub = 0; sub < caps.maxIrCommands; sub++) {
-        const cmd = await s.queue.run(() => d.getCsIrCmd(sub));
-        irCommands.push(cmd.protocol === Domain.CsIrProto.None ? null : cmd);
-      }
-    }
-    const groupCount = Math.min(caps.maxGroups, Domain.CS_MAX_GROUPS);
-    let groups: (Domain.CsGroup | null)[] | null = null;
-    if (groupCount > 0) {
-      groups = [];
-      for (let g = 0; g < groupCount; g++) {
-        const grp = await s.queue.run(() => d.getCsGroup(g));
-        groups.push(grp.targetKind === Domain.CS_TARGET_NONE ? null : grp);
-      }
-    }
-    const macroCount = Math.min(caps.maxMacros, Domain.CS_MAX_MACROS);
-    let macros: (Domain.CsMacro | null)[] | null = null;
-    if (macroCount > 0) {
-      macros = [];
-      for (let m = 0; m < macroCount; m++) {
-        const macro = await s.queue.run(() => d.getCsMacro(m));
-        macros.push(Domain.csMacroIsEmpty(macro) ? null : macro);
-      }
-    }
-    let extStatus: Domain.CsExtStatus | null = null;
-    if (groupCount > 0 || macroCount > 0) {
-      extStatus = await s.queue.run(() => d.getCsExtStatus());
-    }
-    let display: Awaited<ReturnType<typeof readCsDisplayBlock>> | null = null;
-    if (Domain.csDisplaysAvailable(caps)) {
-      display = await s.queue.run(() => readCsDisplayBlock(d));
-    }
+    const all = await readCsAll(d, caps, (f) => s.queue.run(f));
     s.controlSurfaces.caps = caps;
     s.controlSurfaces.nouns = nouns;
     s.controlSurfaces.status = status;
-    s.controlSurfaces.bindings = bindings;
-    s.controlSurfaces.names = names;
-    if (irCommands) s.controlSurfaces.irCommands = irCommands;
-    if (groups) s.controlSurfaces.groups = groups;
-    if (macros) s.controlSurfaces.macros = macros;
-    if (extStatus) s.controlSurfaces.extStatus = extStatus;
-    if (display) {
-      s.controlSurfaces.displayLimits = display.limits;
-      s.controlSurfaces.displayCfg = display.cfg;
-      s.controlSurfaces.displayPages = display.pages;
-      s.controlSurfaces.displayStatus = display.status;
+    s.controlSurfaces.bindings = all.bindings;
+    s.controlSurfaces.names = all.names;
+    if (all.irCommands) s.controlSurfaces.irCommands = all.irCommands;
+    if (all.groups) s.controlSurfaces.groups = all.groups;
+    if (all.macros) s.controlSurfaces.macros = all.macros;
+    if (all.extStatus) s.controlSurfaces.extStatus = all.extStatus;
+    if (all.display) {
+      s.controlSurfaces.displayLimits = all.display.limits;
+      s.controlSurfaces.displayCfg = all.display.cfg;
+      s.controlSurfaces.displayPages = all.display.pages;
+      s.controlSurfaces.displayStatus = all.display.status;
     }
     s.controlSurfaces.lastFetchError = null;
   } catch (err) {

@@ -22,10 +22,6 @@ vi.mock('@/runtime', () => ({
   stageI2sBckPinSlave: (...a: unknown[]) => stageI2sBckPinSlave(...a),
 }));
 
-vi.mock('@/state', () => ({
-  connection: { get connected() { return true; }, get phase() { return 'ready'; } },
-}));
-
 import I2sClockPanel from './I2sClockPanel.svelte';
 
 function makeSnap(over: {

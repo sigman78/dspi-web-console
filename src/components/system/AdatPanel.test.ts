@@ -11,11 +11,6 @@ vi.mock('@/runtime', () => ({
   setAdatPin: (...a: unknown[]) => setAdatPin(...a),
 }));
 
-let connected = true;
-vi.mock('@/state', () => ({
-  connection: { get connected() { return connected; }, get phase() { return connected ? 'ready' : 'idle'; } },
-}));
-
 import AdatPanel from './AdatPanel.svelte';
 
 // channelModel: Unified matches every real device that can carry ADAT (V17+,
@@ -51,7 +46,6 @@ function renderPanel(session: unknown) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  connected = true;
 });
 
 describe('AdatPanel', () => {
@@ -149,13 +143,5 @@ describe('AdatPanel', () => {
   test('shows a waiting hint while enabled but status has not arrived yet', () => {
     renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }), adatStatus: null }));
     expect(screen.getByText(/Waiting for ADAT status/)).toBeTruthy();
-  });
-
-  test('controls are disabled when disconnected', () => {
-    connected = false;
-    renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }) }));
-    expect(screen.getByRole('switch', { name: 'Disable ADAT output' }).hasAttribute('disabled')).toBe(true);
-    expect(screen.getByRole('button', { name: 'ADAT output GPIO pin' }).hasAttribute('disabled')).toBe(true);
-    expect(screen.getByRole('button', { name: 'Reset ADAT output pin to default' }).hasAttribute('disabled')).toBe(true);
   });
 });

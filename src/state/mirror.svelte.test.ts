@@ -74,19 +74,7 @@ describe('MirrorState', () => {
 
     it('no-op when current is null', () => {
       const m = new MirrorState();
-      m.reset();
       expect(() => m.captureBaseline()).not.toThrow();
-    });
-  });
-
-  describe('reset', () => {
-    it('clears current but preserves baseline', () => {
-      const m = new MirrorState();
-      m.init(fakeSnap());
-      const baselineBefore = m.baseline;
-      m.reset();
-      expect(m.current).toBeNull();
-      expect(m.baseline).toBe(baselineBefore);
     });
   });
 
@@ -140,15 +128,6 @@ describe('MirrorState', () => {
       // Still pending after a peek.
       expect(m.consumeReconcile()).toEqual({ wanted: true, eager: true });
     });
-
-    it('reset clears pending reconcile flags', () => {
-      const m = new MirrorState();
-      m.requestReconcile(true);
-      m.reset();
-      const { wanted, eager } = m.consumeReconcile();
-      expect(wanted).toBe(false);
-      expect(eager).toBe(false);
-    });
   });
 
   describe('preset-op notify guard', () => {
@@ -167,14 +146,6 @@ describe('MirrorState', () => {
       expect(m.presetGuardActive(1400)).toBe(true);    // inside grace
       expect(m.presetGuardActive(1500)).toBe(false);   // grace elapsed
       expect(m.presetGuardActive(9999)).toBe(false);
-    });
-
-    it('reset() clears a held guard', () => {
-      const m = new MirrorState();
-      m.beginPresetGuard();
-      m.beginPresetGuard();
-      m.reset();
-      expect(m.presetGuardActive(0)).toBe(false);
     });
   });
 });

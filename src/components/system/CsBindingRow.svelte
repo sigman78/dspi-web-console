@@ -10,7 +10,6 @@
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import PinPicker from './PinPicker.svelte';
   import CsIrCommands from './CsIrCommands.svelte';
-  import { connection } from '@/state';
   import * as Domain from '@/domain';
   import { csStatusFromByte, CsStatusCode } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
@@ -43,11 +42,9 @@
   } = $props();
 
   const s = getSession();
-  const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
   const cs = $derived(s.controlSurfaces);
   const caps = $derived(s.controlSurfaces.caps);
-  const busy = $derived(!connected);
 
   const STEPPY = CsDraft.STEPPY;
 
@@ -254,7 +251,7 @@
     {#if open}
       <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
         value={cs.names[slot] ?? ''} aria-label={`Name for control ${slot + 1}`}
-        disabled={busy || applying}
+        disabled={applying}
         onchange={(e) => onRename((e.currentTarget as HTMLInputElement).value)} />
     {/if}
     <span class="pill {p.cls}">{p.text}</span>
@@ -277,7 +274,7 @@
   <div class="rows">
     <div class="row">
       <span class="microlbl">TYPE</span>
-      <select class="sel" value={String(d.type)} aria-label="Component type" disabled={busy || applying}
+      <select class="sel" value={String(d.type)} aria-label="Component type" disabled={applying}
         onchange={(e) => {
           const t = Number((e.currentTarget as HTMLSelectElement).value);
           onTypeChange(t);
@@ -288,7 +285,7 @@
       </select>
       {#if !CsDraft.isDisplay(d) && d.type !== Domain.CsType.Ir}
         <span class="microlbl">CONTROLS</span>
-        <select class="sel" value={String(d.noun)} aria-label="Controlled function" disabled={busy || applying}
+        <select class="sel" value={String(d.noun)} aria-label="Controlled function" disabled={applying}
           onchange={(e) => {
             const n = Number((e.currentTarget as HTMLSelectElement).value);
             onEdit((dr) => {
@@ -314,7 +311,7 @@
     {#if CsDraft.isDisplay(d)}
       <div class="row">
         <span class="microlbl">MODEL</span>
-        <select class="sel" value={String(d.index)} aria-label="Display model" disabled={busy || applying}
+        <select class="sel" value={String(d.index)} aria-label="Display model" disabled={applying}
           onchange={(e) => {
             const m = Number((e.currentTarget as HTMLSelectElement).value);
             onEdit((dr) => { dr.index = m; });
@@ -325,7 +322,7 @@
         </select>
         <span class="microlbl">ADDRESS</span>
         <input class="numfield addrfield" type="text" value={addrText} placeholder={addressPlaceholder(d)}
-          aria-label="I2C address (hex)" disabled={busy || applying}
+          aria-label="I2C address (hex)" disabled={applying}
           onchange={(e) => {
             addrText = (e.currentTarget as HTMLInputElement).value;
             if (addrTextValid(addrText)) onEdit((dr) => { dr.value = addrTextValue(addrText); });
@@ -340,7 +337,7 @@
       <div class="row">
         {#if actions.length > 1}
           <span class="microlbl">ON PRESS</span>
-          <select class="sel" value={String(d.action)} aria-label="Action" disabled={busy || applying}
+          <select class="sel" value={String(d.action)} aria-label="Action" disabled={applying}
             onchange={(e) => {
               const a = Number((e.currentTarget as HTMLSelectElement).value);
               onEdit((dr) => {
@@ -358,7 +355,7 @@
         {#if showEventOf(d)}
           <span class="microlbl">GESTURE</span>
           <select class="sel" value={String(d.event)} aria-label="Button gesture"
-            disabled={busy || applying || eventLocked(d)}
+            disabled={applying || eventLocked(d)}
             onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); onEdit((dr) => { dr.event = v; }); }}>
             {#each [Domain.CsEvent.Press, Domain.CsEvent.Long, Domain.CsEvent.Double] as ev (ev)}
               <option value={String(ev)}>{Domain.CS_EVENT_LABEL[ev as Domain.CsEvent]}</option>
@@ -375,25 +372,25 @@
       {#if CsDraft.isDisplay(d)}
         <span class="microlbl">SDA</span>
         <PinPicker value={d.gpio0} cells={displaySdaCells(d)}
-          ariaLabel="Display SDA pin" disabled={busy || applying}
+          ariaLabel="Display SDA pin" disabled={applying}
           onChange={onDisplaySdaChange} />
         <span class="microlbl">SCL</span>
         <PinPicker value={d.gpio1} cells={displaySclCells(d)}
-          ariaLabel="Display SCL pin" disabled={busy || applying}
+          ariaLabel="Display SCL pin" disabled={applying}
           onChange={(pin) => onEdit((dr) => { dr.gpio1 = pin; })} />
       {:else if twoPins(d)}
         <span class="microlbl">GPIO A</span>
         <PinPicker value={d.gpio0} cells={cellsFor(d.gpio0, false, d.gpio1)}
-          ariaLabel="Encoder GPIO A" disabled={busy || applying}
+          ariaLabel="Encoder GPIO A" disabled={applying}
           onChange={(pin) => onEdit((dr) => { dr.gpio0 = pin; })} />
         <span class="microlbl">GPIO B</span>
         <PinPicker value={d.gpio1} cells={cellsFor(d.gpio1, false, d.gpio0)}
-          ariaLabel="Encoder GPIO B" disabled={busy || applying}
+          ariaLabel="Encoder GPIO B" disabled={applying}
           onChange={(pin) => onEdit((dr) => { dr.gpio1 = pin; })} />
       {:else}
         <span class="microlbl">GPIO</span>
         <PinPicker value={d.gpio0} cells={cellsFor(d.gpio0, adcOnly(d))}
-          ariaLabel="Control GPIO" disabled={busy || applying}
+          ariaLabel="Control GPIO" disabled={applying}
           onChange={(pin) => onEdit((dr) => { dr.gpio0 = pin; })} />
       {/if}
     </div>
@@ -409,7 +406,7 @@
       {@const missingGroup = showGroupOf(d) && d.grouped && !groupOpts.some((o) => o.v === d.target)}
       <div class="row">
         <span class="microlbl">{targetKindOf(d) === Domain.CS_TARGET_INPUT_CH ? 'INPUT' : targetKindOf(d) === Domain.CS_TARGET_OUTPUT_CH ? 'OUTPUT' : 'CHANNEL'}</span>
-        <select class="sel" value={d.grouped ? `g${d.target}` : String(d.target)} aria-label="Target channel" disabled={busy || applying}
+        <select class="sel" value={d.grouped ? `g${d.target}` : String(d.target)} aria-label="Target channel" disabled={applying}
           onchange={(e) => {
             const v = (e.currentTarget as HTMLSelectElement).value;
             onEdit((dr) => {
@@ -440,7 +437,7 @@
         </select>
         {#if showBandOf(d)}
           <span class="microlbl">BAND</span>
-          <select class="sel" value={String(d.index)} aria-label="Filter band" disabled={busy || applying}
+          <select class="sel" value={String(d.index)} aria-label="Filter band" disabled={applying}
             onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); onEdit((dr) => { dr.index = v; }); }}>
             {#each (d.grouped ? groupBandOptionsFor(d) : bandOptionsFor(d)) as o (o.v)}
               <option value={String(o.v)}>{o.label}</option>
@@ -458,11 +455,11 @@
             <input class="numfield" type="number" step="0.5"
               min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
               max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
-              value={d.value} aria-label={`${valueLabel(d)} (${CsUnit.unitSuffix(unitOf(d))})`} disabled={busy || applying}
+              value={d.value} aria-label={`${valueLabel(d)} (${CsUnit.unitSuffix(unitOf(d))})`} disabled={applying}
               onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.value = v; }); }} />
             <span class="hint">{CsUnit.unitSuffix(unitOf(d))}</span>
           {:else}
-            <select class="sel" value={String(d.value)} aria-label={valueLabel(d)} disabled={busy || applying}
+            <select class="sel" value={String(d.value)} aria-label={valueLabel(d)} disabled={applying}
               onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); onEdit((dr) => { dr.value = v; }); }}>
               {#each (enumOf(d) ? enumValueOptions(d) : boolValueOptions(d)) as o (o.v)}
                 <option value={String(o.v)}>{o.label}</option>
@@ -475,11 +472,11 @@
           {#if enumOf(d)}
             <input class="numfield" type="number" step="1" min="1"
               max={Math.max(1, (cs.nouns[d.noun]?.enumCount ?? 2) - 1)}
-              value={d.step} aria-label="Step size (positions)" disabled={busy || applying}
+              value={d.step} aria-label="Step size (positions)" disabled={applying}
               onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.step = v; }); }} />
           {:else}
             <input class="numfield" type="number" step={CsUnit.isLogStep(unitOf(d)) ? '0.01' : '0.5'} min="0"
-              value={d.step} aria-label={`Step size (${CsUnit.stepUnitSuffix(unitOf(d))})`} disabled={busy || applying}
+              value={d.step} aria-label={`Step size (${CsUnit.stepUnitSuffix(unitOf(d))})`} disabled={applying}
               onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.step = v; }); }} />
             <span class="hint">{CsUnit.stepUnitSuffix(unitOf(d))}</span>
           {/if}
@@ -490,7 +487,7 @@
     {#if !CsDraft.isDisplay(d) && d.type !== Domain.CsType.Ir && d.noun !== Domain.CsNoun.PageValue && showRangeOf(d)}
       <div class="row">
         <span class="microlbl">LIMIT RANGE</span>
-        <ToggleSwitch size="sm" checked={d.limitRange} disabled={busy || applying}
+        <ToggleSwitch size="sm" checked={d.limitRange} disabled={applying}
           ariaLabel="Limit the range"
           onChange={(v) => onEdit((dr) => { dr.limitRange = v; })} />
         {#if d.limitRange}
@@ -498,13 +495,13 @@
           <input class="numfield" type="number" step="0.5"
             min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
             max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
-            value={d.rangeMin} aria-label={`Range minimum (${CsUnit.unitSuffix(unitOf(d))})`} disabled={busy || applying}
+            value={d.rangeMin} aria-label={`Range minimum (${CsUnit.unitSuffix(unitOf(d))})`} disabled={applying}
             onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.rangeMin = v; }); }} />
           <span class="microlbl">MAXIMUM</span>
           <input class="numfield" type="number" step="0.5"
             min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
             max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
-            value={d.rangeMax} aria-label={`Range maximum (${CsUnit.unitSuffix(unitOf(d))})`} disabled={busy || applying}
+            value={d.rangeMax} aria-label={`Range maximum (${CsUnit.unitSuffix(unitOf(d))})`} disabled={applying}
             onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.rangeMax = v; }); }} />
           <span class="hint">{CsUnit.unitSuffix(unitOf(d))}</span>
         {/if}
@@ -517,25 +514,25 @@
           <span class="microlbl">ON DELAY</span>
           <input class="numfield" type="number" step="0.1" min="0" max="6553.5"
             value={d.onDelay} aria-label="On delay (s)"
-            title="Condition must hold this long before the LED lights" disabled={busy || applying}
+            title="Condition must hold this long before the LED lights" disabled={applying}
             onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.onDelay = v; }); }} />
           <span class="hint">s</span>
           <span class="microlbl">OFF DELAY</span>
           <input class="numfield" type="number" step="0.1" min="0" max="6553.5"
             value={d.offDelay} aria-label="Off delay (s)"
-            title="Condition must hold this long before the LED goes out" disabled={busy || applying}
+            title="Condition must hold this long before the LED goes out" disabled={applying}
             onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.offDelay = v; }); }} />
           <span class="hint">s</span>
         {/if}
         {#if showBaseBrightOf(d)}
           <span class="microlbl">LIMIT BRIGHTNESS</span>
-          <ToggleSwitch size="sm" checked={d.limitBright} disabled={busy || applying}
+          <ToggleSwitch size="sm" checked={d.limitBright} disabled={applying}
             ariaLabel="Limit brightness"
             onChange={(v) => onEdit((dr) => { dr.limitBright = v; })} />
           {#if d.limitBright}
             <span class="microlbl">CEILING</span>
             <input class="numfield" type="number" step="1" min="1" max="100"
-              value={d.baseBright} aria-label="Brightness ceiling (%)" disabled={busy || applying}
+              value={d.baseBright} aria-label="Brightness ceiling (%)" disabled={applying}
               onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.baseBright = v; }); }} />
             <span class="hint">%</span>
           {/if}
@@ -546,42 +543,42 @@
     {#if !CsDraft.isDisplay(d)}
       <div class="row">
         <span class="microlbl">{invertLabel(d).toUpperCase()}</span>
-        <ToggleSwitch size="sm" checked={d.invert} disabled={busy || applying}
+        <ToggleSwitch size="sm" checked={d.invert} disabled={applying}
           ariaLabel={invertLabel(d)}
           onChange={(v) => onEdit((dr) => { dr.invert = v; })} />
         {#if showReverseOf(d)}
           <span class="microlbl">REVERSE DIRECTION</span>
-          <ToggleSwitch size="sm" checked={d.reverse} disabled={busy || applying}
+          <ToggleSwitch size="sm" checked={d.reverse} disabled={applying}
             ariaLabel="Reverse direction"
             onChange={(v) => onEdit((dr) => { dr.reverse = v; })} />
         {/if}
         {#if showWrapOf(d)}
           <span class="microlbl">WRAP AROUND</span>
-          <ToggleSwitch size="sm" checked={d.wrap} disabled={busy || applying}
+          <ToggleSwitch size="sm" checked={d.wrap} disabled={applying}
             ariaLabel="Wrap around"
             onChange={(v) => onEdit((dr) => { dr.wrap = v; })} />
         {/if}
         {#if showAccelOf(d)}
           <span class="microlbl">ACCELERATE FAST ROTATION</span>
-          <ToggleSwitch size="sm" checked={d.accel} disabled={busy || applying}
+          <ToggleSwitch size="sm" checked={d.accel} disabled={applying}
             ariaLabel="Accelerate on fast rotation"
             onChange={(v) => onEdit((dr) => { dr.accel = v; })} />
         {/if}
         {#if showRepeatOf(d)}
           <span class="microlbl">AUTO-REPEAT WHILE HELD</span>
-          <ToggleSwitch size="sm" checked={d.repeat} disabled={busy || applying}
+          <ToggleSwitch size="sm" checked={d.repeat} disabled={applying}
             ariaLabel="Auto-repeat while held"
             onChange={(v) => onEdit((dr) => { dr.repeat = v; if (v) dr.event = Domain.CsEvent.Press; })} />
         {/if}
         {#if d.grouped && showLinkAbsOf(d)}
           <span class="microlbl" title="Off: the pot moves the group together while each member keeps its offset">SAME LEVEL FOR ALL</span>
-          <ToggleSwitch size="sm" checked={d.linkAbs} disabled={busy || applying}
+          <ToggleSwitch size="sm" checked={d.linkAbs} disabled={applying}
             ariaLabel="Drive every member to the same level"
             onChange={(v) => onEdit((dr) => { dr.linkAbs = v; })} />
         {/if}
         {#if d.grouped && showGroupAllOf(d)}
           <span class="microlbl" title="Off: lights when any member matches">ALL MEMBERS</span>
-          <ToggleSwitch size="sm" checked={d.groupAll} disabled={busy || applying}
+          <ToggleSwitch size="sm" checked={d.groupAll} disabled={applying}
             ariaLabel="Require every member to match"
             onChange={(v) => onEdit((dr) => { dr.groupAll = v; })} />
         {/if}
@@ -590,7 +587,7 @@
 
     <div class="row">
       <button type="button" class="chip accent" onclick={() => onApply()}
-        disabled={busy || applying || !dirty || (CsDraft.isDisplay(d) && !canApplyDisplay(d))}>APPLY</button>
+        disabled={applying || !dirty || (CsDraft.isDisplay(d) && !canApplyDisplay(d))}>APPLY</button>
       <button type="button" class="chip hi" onclick={() => onRevert()}
         disabled={applying || !cs.bindings[slot] || !dirty}>REVERT</button>
     </div>

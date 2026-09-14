@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CsKind, CsDisplayMode, CsDisplayAlign,
-  CS_UNIT_NONE, CS_UNIT_DB, CS_TARGET_NONE, CS_TARGET_INPUT_CH,
+  CsNoun, CsDisplayMode, CsDisplayAlign,
   CS_DCFG_OVERLAY_ANY, CS_DCFG_EDIT_GATED, CS_DCFG_LABEL_ALIGN_SHIFT, CS_DCFG_VALUE_ALIGN_SHIFT,
   CS_DPAGE_ACTIVE, CS_DPAGE_GROUP, CS_DPAGE_LARGE, CS_DPAGE_BAR,
   type CsDisplayCfg, type CsDisplayPage, type CsNounCaps,
@@ -9,22 +8,15 @@ import {
 import {
   cfgDraftFromLive, buildCfg, pageDraftFromLive, buildPage, pagesEqual, type CfgDraft, type PageDraft,
 } from './csDisplayDraft';
+import { csNouns } from '@test/fixtures/csCaps';
 
 // Minimal noun table for the page-draft tests -- indices here are local to
 // this fixture, not real wire noun numbers.
-const userVolumeNoun: CsNounCaps = {          // 0: continuous, untargeted
-  kind: CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: -15360, maxQ8: 0,
-  unit: CS_UNIT_DB, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
-};
-const presetNoun: CsNounCaps = {              // 1: enum, untargeted
-  kind: CsKind.Enum, enumCount: 10, actions: 0x012E, minQ8: 0, maxQ8: 0,
-  unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
-};
-const preampNoun: CsNounCaps = {              // 2: continuous, input-channel targeted
-  kind: CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: -6144, maxQ8: 6144,
-  unit: CS_UNIT_DB, targetKind: CS_TARGET_INPUT_CH, targetCount: 2, dflags: 0,
-};
-const nouns: CsNounCaps[] = [userVolumeNoun, presetNoun, preampNoun];
+const nouns: CsNounCaps[] = [
+  csNouns[CsNoun.UserVolume],  // 0: continuous, untargeted
+  csNouns[CsNoun.Preset],      // 1: enum, untargeted
+  csNouns[CsNoun.Preamp],      // 2: continuous, input-channel targeted
+];
 
 describe('cfg draft round-trip', () => {
   it('round-trips through seconds/tenths with both alignments and both bool flags', () => {

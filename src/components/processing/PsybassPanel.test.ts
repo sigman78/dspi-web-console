@@ -21,11 +21,6 @@ vi.mock('@/runtime', () => ({
   togglePsybassOutputChannel: (...a: unknown[]) => togglePsybassOutputChannel(...a),
 }));
 
-const connectionState = vi.hoisted(() => ({ connected: true, phase: 'ready' }));
-vi.mock('@/state', () => ({
-  connection: connectionState,
-}));
-
 import PsybassPanel from './PsybassPanel.svelte';
 
 // 8 output channels + PDM, RP2350-shaped (9 total, 4 stereo pairs).
@@ -84,15 +79,6 @@ describe('PsybassPanel', () => {
     expect(screen.getByRole('slider', { name: 'Psybass cutoff frequency' })).toBeDisabled();
   });
 
-  test('sliders are disabled when disconnected', () => {
-    connectionState.connected = false;
-    try {
-      renderPanel(makeSession({}));
-      expect(screen.getByRole('slider', { name: 'Psybass cutoff frequency' })).toBeDisabled();
-    } finally {
-      connectionState.connected = true;
-    }
-  });
 
   test('dragging the cutoff slider calls setPsybassCutoff', async () => {
     renderPanel(makeSession({}));

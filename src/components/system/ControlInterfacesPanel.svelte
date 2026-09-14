@@ -2,7 +2,6 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import PinPicker from './PinPicker.svelte';
-  import { connection } from '@/state';
   import { setUartControlConfig, setI2cControlConfig } from '@/runtime';
   import {
     validUartTxPins, validI2cSdaPins, csDisplayI2cInstance, i2cInstance, pickerCellsFrom, liveCsPinConfigs,
@@ -13,7 +12,6 @@
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
-  const connected = $derived(connection.connected);
   const snap = $derived(s.mirror.current);
   const uart = $derived(s.ctrlIfaces.uart);
   const i2c = $derived(s.ctrlIfaces.i2c);
@@ -102,7 +100,6 @@
         <ToggleSwitch
           size="sm"
           checked={uart.enabled}
-          disabled={!connected}
           ariaLabel={uart.enabled ? 'Disable UART control interface' : 'Enable UART control interface'}
           onChange={onToggleUartEnabled}
         />
@@ -118,7 +115,7 @@
           value={uart.txPin}
           cells={uartTxCells}
           ariaLabel="UART TX pin"
-          disabled={!connected || !uart.enabled}
+          disabled={!uart.enabled}
           onChange={onUartTxPin}
         />
       </span>
@@ -132,7 +129,7 @@
           class="sel"
           value={String(uart.baud)}
           aria-label="UART baud rate"
-          disabled={!connected || !uart.enabled}
+          disabled={!uart.enabled}
           onchange={(e) => patchUart({ baud: Number((e.currentTarget as HTMLSelectElement).value) })}
         >
           {#each UART_COMMON_BAUDS as baud (baud)}
@@ -146,7 +143,7 @@
           size="sm"
           ariaLabel="Push async notifications over UART"
           checked={uart.notifyEnabled}
-          disabled={!connected || !uart.enabled}
+          disabled={!uart.enabled}
           onChange={(v) => patchUart({ notifyEnabled: v })}
         />
       </span>
@@ -163,7 +160,6 @@
         <ToggleSwitch
           size="sm"
           checked={i2c.enabled}
-          disabled={!connected}
           ariaLabel={i2c.enabled ? 'Disable I2C control interface' : 'Enable I2C control interface'}
           onChange={onToggleI2cEnabled}
         />
@@ -179,7 +175,7 @@
           value={i2c.sdaPin}
           cells={i2cSdaCells}
           ariaLabel="I2C SDA pin"
-          disabled={!connected || !i2c.enabled}
+          disabled={!i2c.enabled}
           onChange={onI2cSdaPin}
         />
       </span>
@@ -194,7 +190,7 @@
           type="text"
           value={fmtAddress(i2c.address)}
           onchange={onAddressInput}
-          disabled={!connected || !i2c.enabled}
+          disabled={!i2c.enabled}
           aria-label="I2C target address (hex)"
         />
       </span>

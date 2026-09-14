@@ -1,6 +1,6 @@
 import type {
-  RouteModel, OutputModel,
-  InputSlot, OutputSlot,
+  RouteModel, OutputModel, ChannelModel, FilterParams,
+  InputSlot, OutputSlot, ChannelId,
 } from '@/domain';
 import type { ReadySession } from '@/state';
 
@@ -55,6 +55,52 @@ export function focusOutput(s: ReadySession, slot: OutputSlot): Focus<OutputMode
     modify(f) {
       const { outputs, index } = find();
       outputs[index] = f(outputs[index]);
+    },
+  };
+}
+
+// Locate a channel in s.mirror.snapshot.channels by id.
+export function focusChannel(s: ReadySession, id: ChannelId): Focus<ChannelModel> {
+  const find = (): { channels: ChannelModel[]; index: number } => {
+    const channels = s.mirror.snapshot.channels;
+    const index = channels.findIndex((c) => c.id === id);
+    if (index < 0) throw new Error(`channel not found: id=${id}`);
+    return { channels, index };
+  };
+  return {
+    read() {
+      const { channels, index } = find();
+      return channels[index];
+    },
+    modify(f) {
+      const { channels, index } = find();
+      channels[index] = f(channels[index]);
+    },
+  };
+}
+
+// Locate one filter band on a channel: the PEQ array or the crossover array
+// (V16+, output channels only -- see setXoverBand). Throws when the band
+// index is out of range for that array, same missing-entity policy as the
+// channel lookup above.
+export function focusBand(s: ReadySession, id: ChannelId, band: number, kind: 'peq' | 'xover'): Focus<FilterParams> {
+  const ch = focusChannel(s, id);
+  const bandsOf = (c: ChannelModel): FilterParams[] => (kind === 'peq' ? c.filters : c.xoverBands);
+  const checked = (c: ChannelModel): FilterParams[] => {
+    const bands = bandsOf(c);
+    if (band < 0 || band >= bands.length) throw new Error(`band ${band} out of range for channel ${id}`);
+    return bands;
+  };
+  return {
+    read() {
+      return checked(ch.read())[band];
+    },
+    modify(f) {
+      ch.modify((c) => {
+        const bands = checked(c).slice();
+        bands[band] = f(bands[band]);
+        return kind === 'peq' ? { ...c, filters: bands } : { ...c, xoverBands: bands };
+      });
     },
   };
 }

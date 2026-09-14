@@ -69,8 +69,8 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
       return;
     }
     // IR learn completion (done or timeout); arm/cancel already set the
-    // ARMED/idle sub-state locally (runtime/actions.ts), this is the one
-    // event that reports how an armed learn ended.
+    // ARMED/idle sub-state locally (runtime/controlSurfaceActions.ts), this is
+    // the one event that reports how an armed learn ended.
     if (event.kind === 'csIrLearn') {
       session.controlSurfaces.irLearn = { state: event.state, protocol: event.protocol, code: event.code };
       return;

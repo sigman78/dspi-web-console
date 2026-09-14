@@ -7,6 +7,7 @@ import {
   type CsNounCaps, type CsGroup, type CsMacro, type CsCaps, type CsDisplayPage, type ChannelModel,
 } from '@/domain';
 import { groupOptionsFor, groupBandOptionsFor, enumValueOptions, pageNounOptions, displaysAvailable } from './csFieldHelpers';
+import { disabledNoun } from '@test/fixtures/csCaps';
 
 function channel(over: Partial<ChannelModel>): ChannelModel {
   return {
@@ -41,10 +42,6 @@ describe('groupOptionsFor', () => {
 
 describe('enumValueOptions on the Macro noun', () => {
   it('labels each slot with its name, or leaves it unnamed', () => {
-    const disabledNoun: CsNounCaps = {
-      kind: CsKind.Bool, enumCount: 0, actions: 0, minQ8: 0, maxQ8: 0,
-      unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
-    };
     const macroNoun: CsNounCaps = {
       kind: CsKind.Enum, enumCount: 8, actions: 0, minQ8: 0, maxQ8: 0,
       unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
@@ -63,10 +60,6 @@ describe('enumValueOptions on the Macro noun', () => {
 
 describe('enumValueOptions on the DisplayPage noun', () => {
   it('labels each page with its bound item, or leaves it unlabeled', () => {
-    const disabledNoun: CsNounCaps = {
-      kind: CsKind.Bool, enumCount: 0, actions: 0, minQ8: 0, maxQ8: 0,
-      unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
-    };
     const displayPageNoun: CsNounCaps = {
       kind: CsKind.Enum, enumCount: 16, actions: 0, minQ8: 0, maxQ8: 0,
       unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
