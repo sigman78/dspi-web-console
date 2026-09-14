@@ -321,7 +321,7 @@
           {#if d}
             <span class="code" class:learned={d.protocol !== Domain.CsIrProto.None}>{codeText(d)}</span>
             {@const p = pill(sub, d)}
-            <span class="pill {p.cls}">{p.text}</span>
+            <span class="cs-pill {p.cls}">{p.text}</span>
           {:else}
             <span class="code">Not learned</span>
           {/if}
@@ -532,17 +532,6 @@
   }
   .code.learned { color: var(--text-dim); }
   .spacer { flex: 1; }
-  .pill {
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding: 1px 6px;
-    border-radius: 999px;
-    border: 1px solid var(--border-hi);
-  }
-  .pill.new  { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 50%, transparent); }
-  .pill.ok   { color: var(--ok);     border-color: color-mix(in oklab, var(--ok) 50%, transparent); }
-  .pill.warn { color: var(--warn);   border-color: color-mix(in oklab, var(--warn) 50%, transparent); }
   .sel {
     font-family: var(--font-mono);
     font-size: 10px;

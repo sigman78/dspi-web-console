@@ -6,6 +6,7 @@
   import { untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import CsSlotCard from './CsSlotCard.svelte';
   import {
     applyCsMacro, clearCsMacro, fireCsMacro, cancelCsMacro, refreshCsExtStatus,
   } from '@/runtime';
@@ -205,25 +206,13 @@
     {@const live = cs.macros[i]}
     {@const running = isRunning(i)}
     {@const open = expanded === i}
-    <div class="slot" class:open>
-      <div class="slothead" onclick={(e) => { if (!open && !(e.target as HTMLElement).closest('button, input')) toggleSlot(i); }}>
-        <button type="button" class="hdrbtn" aria-expanded={open} onclick={() => toggleSlot(i)}>
-          <span class="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
-          <span class="stitle" class:staged={dirty}
-            title={dirty ? 'Unapplied changes — APPLY to preview them live' : undefined}
-            >MACRO {i + 1}</span>
-          {#if !open}
-            <span class="nametext" class:faint={!d.name}>{d.name || 'Unnamed'}</span>
-          {/if}
-        </button>
-        {#if open}
-          <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
-            value={d.name} aria-label={`Name for macro ${i + 1}`}
-            disabled={applying}
-            onchange={(e) => editDraft(i, (dr) => { dr.name = (e.currentTarget as HTMLInputElement).value; })} />
-        {/if}
-        <span class="pill {p.cls}">{p.text}</span>
-        <span class="spacer"></span>
+    <CsSlotCard title={`MACRO ${i + 1}`} name={d.name}
+      nameLabel={`Name for macro ${i + 1}`} removeLabel={`Remove macro ${i + 1}`}
+      pill={p} {dirty} {open} disabled={applying}
+      onToggle={() => toggleSlot(i)}
+      onRename={(v) => editDraft(i, (dr) => { dr.name = v; })}
+      onRemove={() => remove(i)}>
+      {#snippet actions()}
         {#if running}
           <button type="button" class="chip hi" disabled={applying} onclick={cancel}>CANCEL</button>
         {:else}
@@ -232,22 +221,19 @@
             title={dirty ? 'Apply the changes first — FIRE runs the applied version' : undefined}
             onclick={() => fire(i)}>FIRE</button>
         {/if}
-        <button type="button" class="x" aria-label={`Remove macro ${i + 1}`}
-          disabled={applying} onclick={() => remove(i)}>✕</button>
-      </div>
-
-      {#if running && live}
-        <div class="hint srow">Running step {(cs.extStatus?.macroStep ?? 0) + 1} of {live.stepCount}</div>
-      {/if}
-
-      {#if open}
+      {/snippet}
+      {#snippet note()}
+        {#if running && live}
+          <div class="hint srow">Running step {(cs.extStatus?.macroStep ?? 0) + 1} of {live.stepCount}</div>
+        {/if}
+      {/snippet}
       {#if p.cls === 'warn'}
         <div class="hint err srow">{invalidHint(i)}</div>
       {/if}
 
       <div class="rows">
         {#each d.steps as step, k (k)}
-          {@const actions = actionOptions(step.noun)}
+          {@const stepActions = actionOptions(step.noun)}
           {@const showGroup = CsField.groupsAvailable(caps) && CsField.showTargetOf(cs.nouns, step.noun)}
           {@const groupOpts = groupOptionsFor(step)}
           {@const missingGroup = showGroup && step.grouped && !groupOpts.some((o) => o.v === step.target)}
@@ -281,14 +267,14 @@
                   <option value={String(n)}>{Domain.csNounLabel(n)}</option>
                 {/each}
               </select>
-              {#if actions.length > 1}
+              {#if stepActions.length > 1}
                 <span class="microlbl">ACTION</span>
                 <select class="sel" value={String(step.action)} aria-label={`Action for step ${k + 1}`} disabled={applying}
                   onchange={(e) => {
                     const a = Number((e.currentTarget as HTMLSelectElement).value);
                     editStep(i, k, (dr) => { dr.action = a; CsMacroDraft.defaultStepOperands(dr, cs.nouns); });
                   }}>
-                  {#each actions as a (a)}
+                  {#each stepActions as a (a)}
                     <option value={String(a)}>{Domain.csActionLabel(a, CsField.enumOf(cs.nouns, step.noun))}</option>
                   {/each}
                 </select>
@@ -405,8 +391,7 @@
             disabled={applying || !live || !dirty}>REVERT</button>
         </div>
       </div>
-      {/if}
-    </div>
+    </CsSlotCard>
   {/each}
 
   <div class="addrow">
@@ -418,81 +403,6 @@
 </Panel>
 
 <style>
-  .slot { border-bottom: 1px solid var(--wash); }
-  .slot.open {
-    background: color-mix(in oklab, var(--accent) 6%, transparent);
-    box-shadow: inset 2px 0 0 var(--accent);
-  }
-  .slothead {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 14px 0;
-    font-family: var(--font-mono);
-  }
-  .slot:not(.open) .slothead { padding-bottom: 8px; cursor: pointer; }
-  .slot:not(.open):hover { background: var(--wash-faint); }
-  .slot.open .slothead {
-    padding-bottom: 6px;
-    border-bottom: 1px solid color-mix(in oklab, var(--accent) 25%, transparent);
-    margin-bottom: 4px;
-  }
-  .hdrbtn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    color: inherit;
-    font: inherit;
-    text-align: left;
-    min-width: 0;
-  }
-  .hdrbtn:hover .stitle { color: var(--text); }
-  .chev { font-size: 9px; color: var(--text-faint); width: 8px; }
-  .slot.open .chev { color: var(--accent); }
-  .stitle {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.2px;
-    color: var(--text-dim);
-  }
-  .slot.open .stitle { color: var(--text); }
-  .nametext {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 160px;
-  }
-  .nametext.faint { color: var(--text-faint); }
-  .nameinput {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    padding: 2px 6px;
-    width: 130px;
-    background: var(--panel-solid);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-  }
-  .nameinput:disabled { opacity: var(--dim-disabled); }
-  .pill {
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding: 1px 6px;
-    border-radius: 999px;
-    border: 1px solid var(--border-hi);
-  }
-  .pill.new  { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 50%, transparent); }
-  .pill.run  { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 50%, transparent); }
-  .pill.ok   { color: var(--ok);     border-color: color-mix(in oklab, var(--ok) 50%, transparent); }
-  .pill.warn { color: var(--warn);   border-color: color-mix(in oklab, var(--warn) 50%, transparent); }
   .spacer { flex: 1; }
   .x {
     background: none;
