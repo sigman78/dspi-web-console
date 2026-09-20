@@ -1037,6 +1037,19 @@ describe('MockTransport — subharm V30 ops (0x1B-0x1F, 0x2C-0x2F, 0xA9-0xAE)', 
     expect(after.subharm).toEqual(before.subharm);
   });
 
+  it('band levels clamp to +12 dB, not the V29 +6, and the boost ceiling is unmoved', async () => {
+    const t = await v30Mock();
+    await t.ctrlOut(WireCmd.SetSubharmHigh.code, 0, Codec.encode(Codec.f32, 20));
+    expect(Codec.decode(Codec.f32, await t.ctrlIn(WireCmd.GetSubharmHigh.code, 0, 4))).toBeCloseTo(12, 4);
+
+    // +10 sits above the V29 ceiling and must survive untouched here.
+    await t.ctrlOut(WireCmd.SetSubharmTop.code, 0, Codec.encode(Codec.f32, 10));
+    expect(Codec.decode(Codec.f32, await t.ctrlIn(WireCmd.GetSubharmTop.code, 0, 4))).toBeCloseTo(10, 4);
+
+    await t.ctrlOut(WireCmd.SetSubharmBoost.code, 0, Codec.encode(Codec.f32, 9));
+    expect(Codec.decode(Codec.f32, await t.ctrlIn(WireCmd.GetSubharmBoost.code, 0, 4))).toBeCloseTo(6, 4);
+  });
+
   it('STALLs SetSubharmTop below wire 30', async () => {
     const t = new MockTransport({ platform: 'rp2350', wireVersion: 29, fwVersion: { major: 1, minor: 1, patch: 6 } });
     await t.open();
