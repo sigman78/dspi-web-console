@@ -14,16 +14,18 @@ const testHardware = createHardwareProfile(PlatformType.RP2350);
 
 // Builds a DspDevice stub with identity defaults. Any method can be overridden.
 function initializedDevice(methods: Partial<DspDevice>): DspDevice {
+  const capabilities = deriveCapabilities({
+    fw: { major: 1, minor: 1, patch: 4 }, wireVersion: 10, payloadLength: 2960, platformId: 1,
+  });
   const base: Partial<DspDevice> = {
     info: {
       serial: 'TEST-RP2350',
       platformType: PlatformType.RP2350,
       hardware: testHardware,
-      capabilities: deriveCapabilities({
-        fw: { major: 1, minor: 1, patch: 4 }, wireVersion: 10, payloadLength: 2960, platformId: 1,
-      }),
+      capabilities,
       build: null,
     },
+    capabilities,
     hardware: testHardware,
   };
   return { ...base, ...methods } as DspDevice;

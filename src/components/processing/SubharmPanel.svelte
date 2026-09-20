@@ -87,7 +87,7 @@
       label="24–36 HZ"
       ariaLabel="Subharmonic 24 to 36 hertz band level"
       value={subharm?.lowDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
-      min={Proc.SUBHARM_LEVEL_MIN_DB} max={Proc.SUBHARM_LEVEL_MAX_DB} step={Proc.SUBHARM_LEVEL_STEP_DB}
+      min={Proc.SUBHARM_LEVEL_MIN_DB} max={Proc.subharmLevelMaxDb(ext)} step={Proc.SUBHARM_LEVEL_STEP_DB}
       kind="dB-signed"
       precision={1}
       floorLabel="Off"
@@ -99,7 +99,7 @@
       label="36–56 HZ"
       ariaLabel="Subharmonic 36 to 56 hertz band level"
       value={subharm?.highDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
-      min={Proc.SUBHARM_LEVEL_MIN_DB} max={Proc.SUBHARM_LEVEL_MAX_DB} step={Proc.SUBHARM_LEVEL_STEP_DB}
+      min={Proc.SUBHARM_LEVEL_MIN_DB} max={Proc.subharmLevelMaxDb(ext)} step={Proc.SUBHARM_LEVEL_STEP_DB}
       kind="dB-signed"
       precision={1}
       floorLabel="Off"
@@ -112,7 +112,7 @@
         label="56–80 HZ"
         ariaLabel="Subharmonic 56 to 80 hertz band level"
         value={subharm?.topDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
-        min={Proc.SUBHARM_LEVEL_MIN_DB} max={Proc.SUBHARM_LEVEL_MAX_DB} step={Proc.SUBHARM_LEVEL_STEP_DB}
+        min={Proc.SUBHARM_LEVEL_MIN_DB} max={Proc.subharmLevelMaxDb(ext)} step={Proc.SUBHARM_LEVEL_STEP_DB}
         kind="dB-signed"
         precision={1}
         floorLabel="Off"

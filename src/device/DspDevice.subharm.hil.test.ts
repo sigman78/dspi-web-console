@@ -160,6 +160,24 @@ describe('DspDevice — subharmonic synthesizer V30 extension (HIL, V30+)', () =
     expect(restored.linkPairs).toBe(saved.linkPairs);
   });
 
+  // caps v16 widened SUBHARM_LEVEL_MAX from +6 to +12 dB. A V29 device would
+  // clamp both writes below to +6, so this pins the range to the firmware
+  // rather than to our own constant.
+  it('band level: +10 dB survives and an over-range write clamps to +12, not +6', async () => {
+    if (!supported) return;
+    const saved = (await device.getAllParams()).subharm;
+    try {
+      await device.setSubharmHigh(10);
+      expect((await device.getAllParams()).subharm.highDb).toBeCloseTo(10, F32_TOL);
+
+      await device.setSubharmHigh(20);
+      expect((await device.getAllParams()).subharm.highDb).toBeCloseTo(12, F32_TOL);
+    } finally {
+      await device.setSubharmHigh(saved.highDb);
+    }
+    expect((await device.getAllParams()).subharm.highDb).toBeCloseTo(saved.highDb, F32_TOL);
+  });
+
   it('solo: SET true -> GET true -> restored false, bulk.subharm unaffected', async () => {
     if (!supported) return;
     const bulkBefore = (await device.getAllParams()).subharm;
