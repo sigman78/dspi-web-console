@@ -15,7 +15,7 @@ Built on WebUSB. Runs entirely client-side as a static SPA (Svelte 5 + TypeScrip
 
 - **Minimal fw 1.1.4 (V10)** — S/PDIF input, LG Sound Sync, user volume, DAC hardware mute, EQ with per-band bypass, presets, notifications, firmware update from the app. Fully supported; it just doesn't show the newer features below.
 - **Current 1.1.5 / 1.1.6 (V16–V30)** adds: up to 8-in / 9-out on RP2350, multichannel I2S input, up to four selectable S/PDIF inputs, per-output crossover filters, first-order (shelves, all-pass, 6 dB/oct low/high pass) and Linkwitz Transform EQ, UART/I2C external control interfaces, Control Surfaces (physical controls/LEDs on spare GPIOs) with IR remote learn, I2S slave-clock mode, channel masks for the volume leveller / loudness / crossfeed, psychoacoustic bass enhancement, a stereo upmixer (Centre/Ls/Rs derived from a stereo source, with a surrounds-only mode; RP2350), a subharmonic synthesizer (both platforms), and pin reset-to-default. Every surface is gated per feature on the device's capabilities and the exact wire version that carries it, so older firmware simply doesn't show what it can't do.
-- Released **fw 1.1.5** is wire V28. **fw 1.1.6** builds from 2026-09-02 report wire V29, adding the subharmonic synthesizer (bulk read/write, presets, and the PR.06 panel). **fw 1.1.6-beta3** (2026-09-12) reports wire V30, growing the subharm section with a third band, selectivity, a ceiling, and pair link; the PR.06 panel carries all of it, plus a solo monitor and a live per-output sub meter. Its expanded Control Surfaces catalog (indicator delays, target groups, macros, I2C displays — caps v8–v14) connects and degrades gracefully in the CONTROL tab; indicator delays, brightness ceilings, target groups (a CT.03 GROUPS editor plus grouped binding targets), macros (a CT.04 MACROS editor, fireable from any button or remote key), and I2C displays (a CT.05 DISPLAY editor for the settings/pages, plus a display binding slot in CONTROL SURFACES) all have editors.
+- Released **fw 1.1.5** is wire V28. **fw 1.1.6** builds from 2026-09-02 report wire V29, adding the subharmonic synthesizer (bulk read/write, presets, and the PR.06 panel). **fw 1.1.6-beta3** (2026-09-12) reports wire V30, growing the subharm section with a third band, selectivity, a ceiling, and pair link; the PR.06 panel carries all of it, plus a solo monitor and a live per-output sub meter. beta3 reports Control Surfaces **caps v18**; the console has editors through **caps v14** — indicator delays and brightness ceilings, target groups (a CT.03 GROUPS editor plus grouped binding targets), macros (a CT.04 MACROS editor, fireable from any button or remote key), and I2C displays (a CT.05 DISPLAY editor for the settings/pages, plus a display binding slot in CONTROL SURFACES). Anything the catalog adds above that (caps v15–v18: the subharmonic nouns and the auxiliary GPIO outputs) connects and degrades gracefully — an unrecognized slot is flagged as configured by a newer host and is never rewritten, so a device configured elsewhere survives a visit from this console intact.
 - Firmware newer than the console knows (wire > V30) connects best-effort, reading only the sections it recognizes.
 
 ## Requirements
@@ -41,7 +41,7 @@ Then open the URL in Chrome/Edge, click **Connect**, and pick your DSPi.
 Append a `?mock` flag to boot against a wire-faithful synthesized device — useful for trying out the UI. It takes one or more comma-separated profile tokens, plus an optional `&chip=` hardware flavor:
 
 ```
-http://localhost:5173/?mock                     # newest wire / fw 1.1.6 (8-in/9-out, crossover, control interfaces + surfaces)
+http://localhost:5173/?mock                     # newest wire (V30) / fw 1.1.6 (8-in/9-out, crossover, control interfaces + surfaces)
 http://localhost:5173/?mock=legacy              # legacy 1.1.4 / V10 surface
 http://localhost:5173/?mock=multi               # newest surface + 8ch I2S input + 3 S/PDIF inputs (multichannel demo)
 http://localhost:5173/?mock=v18                 # exact wire version 18, for testing per-version feature gates
@@ -78,6 +78,7 @@ The mock transport (`?mock=*`, also used in tests) synthesises a wire-faithful b
 
 - **Debug panels** — the SYSTEM tab hides TELEMETRY, ERROR COUNTERS, and BUFFER STATS by default (their buffer-stats poll is skipped too). Toggle the **DEBUG** chip in the DEVICE panel header (persists per browser), or append `?debug` to force them on — handy for support links.
 - **Wire monitoring** — append `?log=wire` to log every wire message to the browser console; high-volume telemetry polls go to the **Verbose** level (hidden by default).
+- **Firmware provenance** — on fw 1.1.6+ the DEVICE panel shows the firmware's own git build stamp (`GetBuildInfo`), so a bench build is identifiable without guesswork. Worth quoting in any bug report; the **Report an issue** link fills it in for you.
 
 ## Contributing & releases
 
