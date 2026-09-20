@@ -230,7 +230,7 @@ export function setSubharmEnabled(s: ReadySession, enabled: boolean): void {
 }
 
 export function setSubharmLow(s: ReadySession, db: number): void {
-  db = Clamp.subharmLevelDb(db);
+  db = Clamp.subharmLevelDb(db, s.device.capabilities.features.subharmExt);
   scrub(s,
     'subharmLow',
     () => {
@@ -242,7 +242,7 @@ export function setSubharmLow(s: ReadySession, db: number): void {
 }
 
 export function setSubharmHigh(s: ReadySession, db: number): void {
-  db = Clamp.subharmLevelDb(db);
+  db = Clamp.subharmLevelDb(db, s.device.capabilities.features.subharmExt);
   scrub(s,
     'subharmHigh',
     () => {
@@ -282,7 +282,7 @@ export function toggleSubharmOutputChannel(s: ReadySession, ch: number): void {
 
 // V30 tail: third band, selectivity, sub ceiling, pair link, solo monitor.
 export function setSubharmTop(s: ReadySession, db: number): void {
-  db = Clamp.subharmLevelDb(db);
+  db = Clamp.subharmLevelDb(db, s.device.capabilities.features.subharmExt);
   scrub(s,
     'subharmTop',
     () => {

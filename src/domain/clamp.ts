@@ -76,7 +76,7 @@ export const upmixSurroundLpfHz = (hz: number) => toRange(hz, Proc.UPMIX_SURROUN
 export const upmixDecorrPct = (p: number) => toRange(p, Proc.UPMIX_DECORR_MIN_PCT, Proc.UPMIX_DECORR_MAX_PCT);
 export const upmixPresenceDb = (db: number) => toRange(db, Proc.UPMIX_PRESENCE_MIN_DB, Proc.UPMIX_PRESENCE_MAX_DB);
 
-export const subharmLevelDb = (db: number) => toRange(db, Proc.SUBHARM_LEVEL_MIN_DB, Proc.SUBHARM_LEVEL_MAX_DB);
+export const subharmLevelDb = (db: number, ext: boolean) => toRange(db, Proc.SUBHARM_LEVEL_MIN_DB, Proc.subharmLevelMaxDb(ext));
 export const subharmBoostDb = (db: number) => toRange(db, Proc.SUBHARM_BOOST_MIN_DB, Proc.SUBHARM_BOOST_MAX_DB);
 export const subharmDepthPct = (p: number) => toRange(p, Proc.SUBHARM_DEPTH_MIN_PCT, Proc.SUBHARM_DEPTH_MAX_PCT);
 export const subharmHoldMs = (ms: number) => toRange(ms, Proc.SUBHARM_HOLD_MIN_MS, Proc.SUBHARM_HOLD_MAX_MS);

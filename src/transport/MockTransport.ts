@@ -1732,11 +1732,11 @@ export class MockTransport implements DspTransport {
         return;
       case WireCmd.SetSubharmLow.code:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmLow unsupported (STALL)');
-        this.#mockState.subharm!.lowDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data));
+        this.#mockState.subharm!.lowDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data), this.#wireVersion >= MIN_SUBHARM_EXT_WIRE);
         return;
       case WireCmd.SetSubharmHigh.code:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmHigh unsupported (STALL)');
-        this.#mockState.subharm!.highDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data));
+        this.#mockState.subharm!.highDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data), this.#wireVersion >= MIN_SUBHARM_EXT_WIRE);
         return;
       case WireCmd.SetSubharmBoost.code:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmBoost unsupported (STALL)');
@@ -1751,7 +1751,7 @@ export class MockTransport implements DspTransport {
       // V30 the whole extension opcode range STALLs.
       case WireCmd.SetSubharmTop.code:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmTop unsupported (STALL)');
-        this.#mockState.subharm!.topDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data));
+        this.#mockState.subharm!.topDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data), this.#wireVersion >= MIN_SUBHARM_EXT_WIRE);
         return;
       case WireCmd.SetSubharmSelect.code:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmSelect unsupported (STALL)');
