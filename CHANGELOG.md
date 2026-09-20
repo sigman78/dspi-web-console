@@ -6,6 +6,26 @@ from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
 this project follows [Semantic Versioning](https://semver.org/) (currently in the
 `0.x` pre-1.0 line — minor versions may include breaking changes).
 
+## [0.11.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.10.0...dspi-console-web-v0.11.0) (2026-09-20)
+
+
+### Features
+
+* **cs:** caps v5-v7, v9+ caps, length-aware CS status packet, caps-shaped mock catalog ([#118](https://github.com/sigman78/dspi-web-console/issues/118)) ([0176005](https://github.com/sigman78/dspi-web-console/commit/0176005f1059a3857dfcfc8d5bf025269d60aea3))
+* **cs:** I2C displays - CsDisplayCfg/Page/Status codecs, opcodes 0x27-0x2B, CT.05 DISPLAY editor ([#123](https://github.com/sigman78/dspi-web-console/issues/123)) ([2bb3b2e](https://github.com/sigman78/dspi-web-console/commit/2bb3b2e0e65a353ff75ea4326fda4b09a4d875f9))
+* **cs:** indicator on/off delays and brightness ceiling ([#119](https://github.com/sigman78/dspi-web-console/issues/119)) ([daa14e4](https://github.com/sigman78/dspi-web-console/commit/daa14e4bbe4e3aa9a3a67344f1b7f4408cf25f2c))
+* **cs:** macros - CsMacro codecs, opcodes 0x22-0x25, MACROS editor ([#122](https://github.com/sigman78/dspi-web-console/issues/122)) ([e3d83c9](https://github.com/sigman78/dspi-web-console/commit/e3d83c93d212e9cd43dfd6e1522da3607297cedb))
+* **cs:** target groups - CsGroup codec, opcodes 0x20/0x21/0x26, CT.03 GROUPS editor ([#121](https://github.com/sigman78/dspi-web-console/issues/121)) ([c8c483e](https://github.com/sigman78/dspi-web-console/commit/c8c483ea54004413cd4e1f856b8955d955cba23f))
+* **processing:** subharm band levels to +12 dB on wire V30 (fw 1.1.6-beta3) ([#134](https://github.com/sigman78/dspi-web-console/issues/134)) ([81eea57](https://github.com/sigman78/dspi-web-console/commit/81eea574799cef3328a0d60c0deb8e7c1a5bf7ff))
+* **processing:** subharm V30 controls - third band, selectivity, ceiling, pair link, solo, sub meter (fw 1.1.6-beta3) ([#133](https://github.com/sigman78/dspi-web-console/issues/133)) ([d41d6d6](https://github.com/sigman78/dspi-web-console/commit/d41d6d69d735263fd537fa9d557d2d760e1e5bac))
+* **protocol:** length-aware 6-byte GET_PLATFORM read (fw 1.1.6) ([#124](https://github.com/sigman78/dspi-web-console/issues/124)) ([712f6bb](https://github.com/sigman78/dspi-web-console/commit/712f6bb80b2c009c7904a1355a4d56cf6d38f960))
+* **system:** firmware git build stamp line in the DEVICE panel via GET_BUILD_INFO 0x80 (fw 1.1.6) ([#126](https://github.com/sigman78/dspi-web-console/issues/126)) ([0d8ae24](https://github.com/sigman78/dspi-web-console/commit/0d8ae24a50f56554a255613c7644042bf127a430))
+* **system:** report the firmware pre-release ordinal and drop the stale BAR warning (fw 1.1.6-beta3) ([#135](https://github.com/sigman78/dspi-web-console/issues/135)) ([ddc1925](https://github.com/sigman78/dspi-web-console/commit/ddc1925ab50298d93ed18099ec3d974fd4d2a356))
+* **ui:** subharmonic synthesizer panel (PR.06) with live headroom readout and RESERVE (fw 1.1.6) ([#125](https://github.com/sigman78/dspi-web-console/issues/125)) ([01df6e6](https://github.com/sigman78/dspi-web-console/commit/01df6e6ce7acb95322df5aca27669bd47a6443a4))
+* **wire:** V27/V28 support - upmix centre OFF, fourth S/PDIF input, first-order LP/HP ([#117](https://github.com/sigman78/dspi-web-console/issues/117)) ([2c98c24](https://github.com/sigman78/dspi-web-console/commit/2c98c248f7be686aa002ca10b499be5c0336d343))
+* **wire:** V29 support - subharmonic synthesizer section, opcodes 0x10-0x1A, caps v14 nouns ([#120](https://github.com/sigman78/dspi-web-console/issues/120)) ([4c9d55b](https://github.com/sigman78/dspi-web-console/commit/4c9d55bdd3fb9bce92eb26afdc9372183cf54034))
+* **wire:** wire V30 subharm section tail (fw 1.1.6-beta3) ([#132](https://github.com/sigman78/dspi-web-console/issues/132)) ([aaa3623](https://github.com/sigman78/dspi-web-console/commit/aaa36230f83b2f9eb29d8026f726c97c855fc79b))
+
 ## [0.10.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.9.0...dspi-console-web-v0.10.0) (2026-09-02)
 
 
