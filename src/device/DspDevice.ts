@@ -91,20 +91,29 @@ function narrowSpdifInputState(n: number): Domain.SpdifInputState {
   }
 }
 
-// GetPlatform (0x7F) has two on-wire lengths, told apart by the response
+// GetPlatform (0x7F) has three on-wire lengths, told apart by the response
 // rather than a version gate (the version is what we are reading): fw
 // ≤ 1.1.5 answers 4 bytes with minor/patch nibble-packed into one byte,
-// fw 1.1.6+ answers 6 bytes with full-width minor/patch at bytes 4/5.
+// fw 1.1.6+ answers 6 bytes with full-width minor/patch at bytes 4/5, and
+// fw 1.1.6-beta3+ appends the pre-release ordinal at byte 6. The device
+// clamps its reply to wLength, so asking for the longest form is safe on
+// every generation -- a shorter reply simply carries no beta byte, which
+// reads as a final release.
 async function readPlatform(
   t: DspTransport,
 ): Promise<{ platformId: number; fw: FirmwareVersion }> {
   const size = Codec.sizeOf(proto.Wire.DeviceInfoExt);
-  const raw = await t.ctrlIn(proto.WireCmd.GetPlatform.code, 0, size);
+  const raw = await t.ctrlIn(proto.WireCmd.GetPlatform.code, 0, size + 1);
   if (raw.length >= size) {
     const info = Codec.decode(proto.Wire.DeviceInfoExt, raw);
     return {
       platformId: info.platformId,
-      fw: { major: info.fwMajor, minor: info.fwMinor, patch: info.fwPatch },
+      fw: {
+        major: info.fwMajor,
+        minor: info.fwMinor,
+        patch: info.fwPatch,
+        beta: raw.length > size ? raw[size] : 0,
+      },
     };
   }
   const info = Codec.decodePadded(proto.Wire.DeviceInfo, raw);

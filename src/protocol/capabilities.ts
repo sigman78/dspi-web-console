@@ -34,6 +34,11 @@ export interface FirmwareVersion {
   major: number;
   minor: number;
   patch: number;
+  // Pre-release ordinal from GetPlatform byte 6 (FW_VERSION_BETA, fw
+  // 1.1.6-beta3+): 1..255 on a beta build. Absent or 0 means a final release,
+  // which is also how firmware predating the byte reads. Display only --
+  // nothing gates on it, and `support` stays a wire-version decision.
+  beta?: number;
 }
 
 // Feature flags for surfaces the V10 floor lacks. UI gates on these, never on
@@ -155,7 +160,8 @@ export interface DeviceCapabilities {
 // The single firmware-version string formatter. Display reads this projection
 // off the frozen authority -- never re-derives the version itself.
 function formatFirmwareVersion(fw: FirmwareVersion): string {
-  return `${fw.major}.${fw.minor}.${fw.patch}`;
+  const release = `${fw.major}.${fw.minor}.${fw.patch}`;
+  return fw.beta ? `${release} beta ${fw.beta}` : release;
 }
 
 export function deriveCapabilities(input: {

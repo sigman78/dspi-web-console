@@ -24,6 +24,12 @@
   const cs = $derived(s.controlSurfaces);
   const caps = $derived(s.controlSurfaces.caps);
 
+  // Firmware dropped every saved level-bar page at boot until the caps v17
+  // sanitizer fix, so the warning only applies to caps 13-16 devices.
+  const barTitle = $derived((caps?.capsVersion ?? 0) >= 17
+    ? 'Level bar'
+    : 'Level bar. Note: this fw build drops bars on reboot');
+
   let cfgDraft = $state<CfgDraft | null>(null);
   const pageDrafts = $state<Record<number, PageDraft>>({});
   let applying = $state(false);
@@ -418,7 +424,7 @@
               </span>
               {#if (caps?.capsVersion ?? 0) >= 13 && cs.nouns[d.noun] && Domain.csNounHasSpan(cs.nouns[d.noun])}
                 <span class="pair">
-                  <span class="microlbl" title="Level bar. Note: this fw build drops bars on reboot">BAR</span>
+                  <span class="microlbl" title={barTitle}>BAR</span>
                   <ToggleSwitch size="sm" checked={d.bar} disabled={applying}
                     ariaLabel="Level bar"
                     onChange={(v) => editPageDraft(i, (dr) => { dr.bar = v; })} />
