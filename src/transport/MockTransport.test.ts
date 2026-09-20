@@ -68,6 +68,22 @@ describe('MockTransport — wire version knob', () => {
     expect(dev.info.capabilities.fwLabel).toBe('1.1.4');
   });
 
+  it('reads the pre-release ordinal from the 7-byte GetPlatform, and a shorter reply reads as a final release', async () => {
+    const beta = await createDevice(new MockTransport({
+      platform: 'rp2350', wireVersion: 30, fwVersion: { major: 1, minor: 1, patch: 6, beta: 3 },
+    }));
+    expect(beta.info.capabilities.fwLabel).toBe('1.1.6 beta 3');
+    expect(beta.info.capabilities.fw.beta).toBe(3);
+
+    // Same firmware version, but a build that predates the beta byte: the
+    // reply stops at 6 B and must not read as a beta.
+    const final = await createDevice(new MockTransport({
+      platform: 'rp2350', wireVersion: 30, fwVersion: { major: 1, minor: 1, patch: 6 },
+    }));
+    expect(final.info.capabilities.fwLabel).toBe('1.1.6');
+    expect(final.info.capabilities.fw.beta).toBeFalsy();
+  });
+
   it('merges a V6 write into a V10 device: V6 fields update, the packet stays V10', async () => {
     const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
     const dev = await createDevice(t);

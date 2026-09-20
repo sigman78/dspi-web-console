@@ -56,7 +56,7 @@ Codecs: scalars in `binCodec.ts` (`u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `f32`,
 | Code | Name | Direction | Codec | Use |
 |---|---|---|---|---|
 | `0x7E` | `GetSerial` | IN | UTF-8 string | Device serial; once per connect |
-| `0x7F` | `GetPlatform` | IN | `DeviceInfo` struct | `{ platformId, fwMajor, fwMinorPatch }` |
+| `0x7F` | `GetPlatform` | IN | `DeviceInfo` struct | `{ platformId, fwMajor, fwMinorPatch }`; 6 B on fw 1.1.6+, 7 B with the pre-release ordinal on 1.1.6-beta3+ |
 | `0xA0` | `GetAllParams` | IN | (raw bytes → `parseBulkParams`) | The bulk packet — see §Bulk packet |
 
 ### Status & telemetry
@@ -275,7 +275,7 @@ These are hardware/browser-environment quirks that bite during deployment.
 
 DSPi firmware reports two version axes:
 
-- **`FW_VERSION_PACKED`** (named `FW_VERSION_BCD` before 1.1.6; it was always nibble packing, not BCD) — semantic firmware revision (e.g. `0x113` = `1.1.3`). Exposed via `GetPlatform 0x7F`; fw 1.1.6 widens that response from 4 to 6 bytes (full-width minor/patch as plain u8 at bytes 4–5, lifting the nibble cap of 15 — bytes 0–3 unchanged, so 4-byte readers are unaffected) and adds `GetBuildInfo 0x80`, a 64-byte git-describe/date provenance blob that is explicitly for humans only — no software may gate on it.
+- **`FW_VERSION_PACKED`** (named `FW_VERSION_BCD` before 1.1.6; it was always nibble packing, not BCD) — semantic firmware revision (e.g. `0x113` = `1.1.3`). Exposed via `GetPlatform 0x7F`; fw 1.1.6 widens that response from 4 to 6 bytes (full-width minor/patch as plain u8 at bytes 4–5, lifting the nibble cap of 15 — bytes 0–3 unchanged, so 4-byte readers are unaffected) and adds `GetBuildInfo 0x80`, a 64-byte git-describe/date provenance blob that is explicitly for humans only — no software may gate on it. fw 1.1.6-beta3 appends a 7th byte, `FW_VERSION_BETA` (0 = final, 1..255 = beta N), which the console renders as `1.1.6 beta 3`. The device clamps its reply to `wLength`, so `readPlatform` asks for 7 on every generation and treats a shorter reply as a final release; like the build stamp, the ordinal is display-only — `support` stays a wire-version decision.
 - **`WIRE_FORMAT_VERSION`** — bulk-packet schema version, bumped only when `WireBulkParams` changes. Exposed in the bulk packet header byte 0.
 
 The two move independently: a firmware bump can change wire behavior without bumping `WIRE_FORMAT_VERSION` (e.g. new vendor commands, deferred-execution refactors, encoding tweaks on existing fields). The version table below is the **wire/protocol** history. The console parser gates each optional bulk section on **both** `formatVersion` AND `payloadLength` (see `bulkLayout()` in `src/protocol/wireTypes.ts`); a wire-version axis isn't enough — older firmware can ship an in-development build that lies about its version.

@@ -14,6 +14,10 @@ export interface MockProfile {
 const FW_1_1_4 = { major: 1, minor: 1, patch: 4 } as const;
 const FW_1_1_5 = { major: 1, minor: 1, patch: 5 } as const;
 const FW_1_1_6 = { major: 1, minor: 1, patch: 6 } as const;
+// Wire V30 exists only in the 1.1.6-beta3 line, and that tag is also what
+// carries the pre-release ordinal, so a V30 mock reports "1.1.6 beta 3" the
+// way a real V30 device does.
+const FW_1_1_6_BETA3 = { major: 1, minor: 1, patch: 6, beta: 3 } as const;
 
 // Every profile sets irLearnAutoComplete: an armed IR learn self-completes
 // with a fresh NEC code, so the remote-pairing flow is demoable without an IR
@@ -23,14 +27,15 @@ function latest(platform: MockOptions['platform']): MockProfile {
   return {
     name: 'latest',
     platform,
-    opts: { wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: FW_1_1_6, irLearnAutoComplete: true },
+    opts: { wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: fwForWire(Wire.MAX_WIRE_VERSION), irLearnAutoComplete: true },
   };
 }
 
 // Firmware version that shipped a given wire version: 1.1.4 for V10, 1.1.5
-// for V16-V26, 1.1.6 for V27+.
-function fwForWire(n: number): typeof FW_1_1_4 | typeof FW_1_1_5 | typeof FW_1_1_6 {
-  return n === 10 ? FW_1_1_4 : n >= 27 ? FW_1_1_6 : FW_1_1_5;
+// for V16-V26, 1.1.6 for V27-V29, and 1.1.6-beta3 for V30 -- the only line
+// that carries V30, and the first to report a pre-release ordinal.
+function fwForWire(n: number): typeof FW_1_1_4 | typeof FW_1_1_5 | typeof FW_1_1_6 | typeof FW_1_1_6_BETA3 {
+  return n === 10 ? FW_1_1_4 : n >= 30 ? FW_1_1_6_BETA3 : n >= 27 ? FW_1_1_6 : FW_1_1_5;
 }
 
 // Resolves a raw ?mock token (+ optional &chip flavor) to a profile. Profiles
@@ -58,7 +63,7 @@ export function resolveMockProfile(token: string, chip?: 'rp2040' | 'rp2350' | n
         platform,
         opts: {
           wireVersion: Wire.MAX_WIRE_VERSION,
-          fwVersion: FW_1_1_6,
+          fwVersion: fwForWire(Wire.MAX_WIRE_VERSION),
           i2sInputChannels: 8,
           spdifInputsEnabled: 3,
           irLearnAutoComplete: true,
