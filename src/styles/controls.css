@@ -23,7 +23,8 @@
      width is the only per-caller variance, set via a local override.
    .proc-grid — the label/control/unit grid shared by the processing panels
      (Crossfeed/Loudness/Leveller/Psybass/Upmix); .rule is a full-width
-     divider row, .span2 lets a control skip the label column.
+     divider row, .span2 lets a control skip the label column, .section a
+     full-width group heading (Upmix/Subharm).
    .cs-pill — status pill in the control-surface slot headers (NEW / OK /
      INACTIVE ...); tone via .new / .ok / .warn / .run / .off. */
 
@@ -176,6 +177,14 @@
   margin: 2px 0;
 }
 .proc-grid > .span2 { grid-column: 2 / span 2; }
+.proc-grid > .section {
+  grid-column: 1 / -1;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--text-faint);
+}
 
 /* Section sub-header inside a panel body (border-separated). */
 .subhdr {

@@ -108,3 +108,79 @@ describe('DspDevice — subharmonic synthesizer (HIL, V29+)', () => {
     }
   });
 });
+
+describe('DspDevice — subharmonic synthesizer V30 extension (HIL, V30+)', () => {
+  let device: DspDevice;
+  let close: () => Promise<void>;
+  let supported = false;
+
+  beforeAll(async () => {
+    const opened = await openSingleDevice();
+    device = opened.device;
+    close = opened.close;
+    supported = device.info.capabilities.features.subharmExt;
+  });
+
+  afterAll(async () => {
+    if (close) await close();
+  });
+
+  it('ext SETs: write -> bulk.subharm readback, restored afterwards', async () => {
+    if (!supported) return;
+    const saved = (await device.getAllParams()).subharm;
+    try {
+      await device.setSubharmTop(-3);
+      await device.setSubharmSelect(1);
+      await device.setSubharmDepth(60);
+      await device.setSubharmHold(200);
+      await device.setSubharmCeiling(-12);
+      await device.setSubharmLink(false);
+
+      const bulk = (await device.getAllParams()).subharm;
+      expect(bulk.topDb).toBeCloseTo(-3, F32_TOL);
+      expect(bulk.selectMode).toBe(1);
+      expect(bulk.selectDepth).toBeCloseTo(60, F32_TOL);
+      expect(bulk.selectHoldMs).toBeCloseTo(200, F32_TOL);
+      expect(bulk.ceilingDb).toBeCloseTo(-12, F32_TOL);
+      expect(bulk.linkPairs).toBe(false);
+    } finally {
+      await device.setSubharmTop(saved.topDb);
+      await device.setSubharmSelect(saved.selectMode);
+      await device.setSubharmDepth(saved.selectDepth);
+      await device.setSubharmHold(saved.selectHoldMs);
+      await device.setSubharmCeiling(saved.ceilingDb);
+      await device.setSubharmLink(saved.linkPairs);
+    }
+    const restored = (await device.getAllParams()).subharm;
+    expect(restored.topDb).toBeCloseTo(saved.topDb, F32_TOL);
+    expect(restored.selectMode).toBe(saved.selectMode);
+    expect(restored.selectDepth).toBeCloseTo(saved.selectDepth, F32_TOL);
+    expect(restored.selectHoldMs).toBeCloseTo(saved.selectHoldMs, F32_TOL);
+    expect(restored.ceilingDb).toBeCloseTo(saved.ceilingDb, F32_TOL);
+    expect(restored.linkPairs).toBe(saved.linkPairs);
+  });
+
+  it('solo: SET true -> GET true -> restored false, bulk.subharm unaffected', async () => {
+    if (!supported) return;
+    const bulkBefore = (await device.getAllParams()).subharm;
+    try {
+      await device.setSubharmSolo(true);
+      expect(await device.getSubharmSolo()).toBe(true);
+      const bulkDuring = (await device.getAllParams()).subharm;
+      expect(bulkDuring).toEqual(bulkBefore);
+    } finally {
+      await device.setSubharmSolo(false);
+    }
+    expect(await device.getSubharmSolo()).toBe(false);
+  });
+
+  it('meter: returns numOutputs entries in 0..1', async () => {
+    if (!supported) return;
+    const meter = await device.getSubharmMeter();
+    expect(meter.length).toBe(device.hardware.outputChannels.length);
+    for (const v of meter) {
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+});

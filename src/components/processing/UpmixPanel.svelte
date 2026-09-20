@@ -221,12 +221,4 @@
     padding: 8px 14px 0;
   }
   .status.active { color: var(--ok); }
-  .section {
-    grid-column: 1 / -1;
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    color: var(--text-faint);
-  }
 </style>

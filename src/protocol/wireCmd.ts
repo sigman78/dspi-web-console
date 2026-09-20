@@ -91,7 +91,7 @@ type UpmixConfigPayload = {
 // Command table
 
 export const WireCmd = {
-  // --- V29 subharmonic synthesizer (fw 1.1.6, both platforms). ---
+  // --- V29/V30 subharmonic synthesizer (fw 1.1.6, both platforms). ---
   SetSubharmEnabled:    { code: 0x10, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
   GetSubharmEnabled:    { code: 0x11, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
   SetSubharmLow:        { code: 0x12, codec: Codec.f32 }   satisfies WriteCmd<number>,
@@ -104,6 +104,25 @@ export const WireCmd = {
   GetSubharmMask:       { code: 0x19, codec: Codec.u16 }   satisfies ReadCmd<number>,
   // Live worst-case gain (dB) of the current config; read-only.
   GetSubharmHeadroom:   { code: 0x1A, codec: Codec.f32 }   satisfies ReadCmd<number>,
+  // V30 tail: third band, selectivity gate, sub ceiling, pair link.
+  SetSubharmTop:        { code: 0x1B, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  GetSubharmTop:        { code: 0x1C, codec: Codec.f32 }   satisfies ReadCmd<number>,
+  SetSubharmSelect:     { code: 0x1D, codec: Codec.u8 }    satisfies WriteCmd<number>,
+  GetSubharmSelect:     { code: 0x1E, codec: Codec.u8 }    satisfies ReadCmd<number>,
+  // Live per-output sub meter: NUM_OUTPUT_CHANNELS x u16 LE, variable length.
+  GetSubharmMeter:      { code: 0x1F } satisfies RawCmd,
+  // Runtime-only solo monitor: never on the wire's bulk section, not persisted,
+  // no notify.
+  SetSubharmSolo:       { code: 0x2C, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
+  GetSubharmSolo:       { code: 0x2D, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
+  SetSubharmLink:       { code: 0x2E, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
+  GetSubharmLink:       { code: 0x2F, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
+  SetSubharmDepth:      { code: 0xA9, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  GetSubharmDepth:      { code: 0xAA, codec: Codec.f32 }   satisfies ReadCmd<number>,
+  SetSubharmHold:       { code: 0xAB, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  GetSubharmHold:       { code: 0xAC, codec: Codec.f32 }   satisfies ReadCmd<number>,
+  SetSubharmCeiling:    { code: 0xAD, codec: Codec.f32 }   satisfies WriteCmd<number>,
+  GetSubharmCeiling:    { code: 0xAE, codec: Codec.f32 }   satisfies ReadCmd<number>,
 
   // EQ: Set carries the 16-byte filter struct as payload (wValue=0).
   //     Get uses bit-packed wValue (channel<<8 | band<<4 | param); see DspDevice.getFilter.

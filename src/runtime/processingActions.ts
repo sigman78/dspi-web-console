@@ -1,7 +1,7 @@
 import * as Domain from '@/domain';
 import * as Clamp from '@/domain/clamp';
 import type { ReadySession } from '@/state';
-import { write, scrub } from './writes.svelte';
+import { write, scrub, command } from './writes.svelte';
 import { setInputPreamp } from './mixerActions';
 
 export function setLoudnessEnabled(s: ReadySession, enabled: boolean): void {
@@ -222,6 +222,8 @@ export function setSubharmEnabled(s: ReadySession, enabled: boolean): void {
       // fw reports 0 while disabled; the poll stops. null = not read yet, so
       // re-enabling shows -- instead of a stale/false 0.0 until the next read.
       s.telemetry.subharmHeadroomDb = enabled ? null : 0;
+      // The meter poll also stops while disabled; drop the stale reading.
+      if (!enabled) s.telemetry.subharmMeter = null;
       s.telemetry.requestSubharmRead();   // every subharm SET forces a headroom re-read
     },
   );
@@ -276,6 +278,78 @@ export function setSubharmOutputMask(s: ReadySession, mask: number): void {
 export function toggleSubharmOutputChannel(s: ReadySession, ch: number): void {
   const mask = s.mirror.snapshot.subharm.outputMask ^ (1 << ch);
   setSubharmOutputMask(s, mask);
+}
+
+// V30 tail: third band, selectivity, sub ceiling, pair link, solo monitor.
+export function setSubharmTop(s: ReadySession, db: number): void {
+  db = Clamp.subharmLevelDb(db);
+  scrub(s,
+    'subharmTop',
+    () => {
+      s.mirror.snapshot.subharm.topDb = db;
+      s.telemetry.requestSubharmRead();
+    },
+    () => s.device.setSubharmTop(db),
+  );
+}
+
+export function setSubharmSelectMode(s: ReadySession, mode: Domain.SubharmSelect): void {
+  void write(s,
+    () => s.device.setSubharmSelect(mode),
+    () => { s.mirror.snapshot.subharm.selectMode = mode; },
+  );
+}
+
+export function setSubharmDepth(s: ReadySession, pct: number): void {
+  pct = Clamp.subharmDepthPct(pct);
+  scrub(s,
+    'subharmDepth',
+    () => { s.mirror.snapshot.subharm.selectDepth = pct; },
+    () => s.device.setSubharmDepth(pct),
+  );
+}
+
+export function setSubharmHold(s: ReadySession, ms: number): void {
+  ms = Clamp.subharmHoldMs(ms);
+  scrub(s,
+    'subharmHold',
+    () => { s.mirror.snapshot.subharm.selectHoldMs = ms; },
+    () => s.device.setSubharmHold(ms),
+  );
+}
+
+export function setSubharmCeiling(s: ReadySession, db: number): void {
+  db = Clamp.subharmCeilingDb(db);
+  scrub(s,
+    'subharmCeiling',
+    () => {
+      s.mirror.snapshot.subharm.ceilingDb = db;
+      s.telemetry.requestSubharmRead();
+    },
+    () => s.device.setSubharmCeiling(db),
+  );
+}
+
+export function setSubharmLinkPairs(s: ReadySession, on: boolean): void {
+  void write(s,
+    () => s.device.setSubharmLink(on),
+    () => {
+      s.mirror.snapshot.subharm.linkPairs = on;
+      s.telemetry.requestSubharmRead();
+    },
+  );
+}
+
+// Runtime-only monitor toggle (fw V30+): solos the synthesized sub on masked
+// outputs. Mutates telemetry, not the mirror snapshot -- never persisted, no
+// notify, not part of dirty tracking.
+// Runtime-only monitor flag: lives on the telemetry store, never the snapshot,
+// and command() (not write()) so no bulk reconcile follows it.
+export function setSubharmSolo(s: ReadySession, on: boolean): void {
+  void command(s, 'subharmSolo',
+    () => s.device.setSubharmSolo(on),
+    (_r, s) => { s.telemetry.subharmSolo = on; },
+  );
 }
 
 // PR.06 RESERVE affordance: lowers each feeding input's preamp to exactly

@@ -740,6 +740,120 @@ describe('Subharm headroom cadence', () => {
   });
 });
 
+describe('Subharm meter cadence', () => {
+  afterEach(() => { teardown(); });
+
+  function baseDevice(getSubharmMeter: () => Promise<unknown>) {
+    return {
+      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      hardware: hw,
+      capabilities: { features: { subharmExt: true } },
+      getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
+      getBufferStats: vi.fn(async () => null),
+      getSystemInfo: vi.fn(async () => ({})),
+      getSubharmMeter: vi.fn(getSubharmMeter),
+      getSnapshot: vi.fn(async () => fromBulkParams(hw, parseBulkParams(makeBulk()))),
+    } as unknown as DspDevice;
+  }
+
+  function enabledSession(device: DspDevice): ReadySession {
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    snap.subharm = { ...snap.subharm, enabled: true };
+    session.mirror.init(snap);
+    return session;
+  }
+
+  it('does not poll while nothing wants the meter', async () => {
+    const device = baseDevice(async () => [0.1, 0.2]);
+    const session = enabledSession(device);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getSubharmMeter).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('polls while a caller holds interest, and stops (releasing nulls the meter) once released', async () => {
+    const device = baseDevice(async () => [0.1, 0.2]);
+    const session = enabledSession(device);
+    const release = session.telemetry.wantSubharmMeter();
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+
+    clock.fire();
+    await settle();
+    expect(device.getSubharmMeter).toHaveBeenCalledTimes(1);
+    expect(session.telemetry.subharmMeter).toEqual([0.1, 0.2]);
+
+    release();
+    expect(session.telemetry.subharmMeter).toBeNull();
+    session.telemetry.lastSubharmMeterMs = 0;
+    clock.fire();
+    await settle();
+    expect(device.getSubharmMeter).toHaveBeenCalledTimes(1);   // no longer wanted
+    stop();
+  });
+
+  it('does not poll when subharm is disabled, even with interest held', async () => {
+    const device = baseDevice(async () => [0.1, 0.2]);
+    const session = connect(device);
+    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
+    snap.subharm = { ...snap.subharm, enabled: false };
+    session.mirror.init(snap);
+    session.telemetry.wantSubharmMeter();
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getSubharmMeter).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('waits out the interval between reads and never polls a device without the V30 tail', async () => {
+    const device = baseDevice(async () => [0.1, 0.2]);
+    const session = enabledSession(device);
+    session.telemetry.wantSubharmMeter();
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    clock.fire();
+    await settle();
+    expect(device.getSubharmMeter).toHaveBeenCalledTimes(1);   // second tick inside the 200 ms window
+    stop();
+
+    const legacy = baseDevice(async () => [0.1, 0.2]);
+    (legacy as unknown as { capabilities: { features: { subharmExt: boolean } } }).capabilities.features.subharmExt = false;
+    const s2 = enabledSession(legacy);
+    s2.telemetry.wantSubharmMeter();
+    const c2 = manualClock();
+    const stop2 = startPolling(s2, c2);
+    c2.fire();
+    await settle();
+    expect(legacy.getSubharmMeter).not.toHaveBeenCalled();
+    stop2();
+  });
+
+  it('drops a read that lands after interest was released', async () => {
+    let resolveRead: (v: number[]) => void = () => {};
+    const device = baseDevice(() => new Promise<number[]>((r) => { resolveRead = r; }));
+    const session = enabledSession(device);
+    const release = session.telemetry.wantSubharmMeter();
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getSubharmMeter).toHaveBeenCalledTimes(1);
+    release();
+    resolveRead([0.9]);
+    await settle();
+    expect(session.telemetry.subharmMeter).toBeNull();
+    stop();
+  });
+});
+
 describe('startPolling — visibility resume', () => {
   it('requests an eager reconcile when the tab becomes visible', () => {
     const stub = makeReadySession({ info: {}, hardware: {} } as never);

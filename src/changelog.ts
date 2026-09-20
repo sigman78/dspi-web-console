@@ -7,6 +7,7 @@ export const LATEST_CHANGES = {
   version: APP_VERSION,
   highlights: [
     'Subharmonic synthesizer panel (PR.06): dbx-style octave divider with 24–36 Hz and 36–56 Hz sub bands, LF boost, per-output selection, and a live headroom readout with a one-click RESERVE that lowers the feeding input preamps (fw 1.1.6)',
+    'Subharmonic synthesizer panel gains a third 56–80 Hz band, selectivity (mode/depth/hold), a sub ceiling, pair-linked synthesis, and a solo monitor with a live per-output meter (fw 1.1.6-beta3)',
     'Control surfaces for firmware 1.1.6: target GROUPS (CT.03) so one control drives several outputs, MACROS (CT.04) with a step sequencer and FIRE, and an I2C DISPLAY (CT.05) with 16 configurable pages',
     'CONTROL tab regrouped into three columns; the new CHANGES panel (CT.06) is the single place to SAVE or DISCARD pending control-surface edits, and the slot editors fold into accordions',
     'Indicator bindings gain on/off delays and a per-LED brightness ceiling (fw 1.1.6)',

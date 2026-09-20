@@ -22,6 +22,7 @@
     disabled = false,
     clamp = true,
     floorLabel,
+    ceilLabel,
     onChange,
   }: {
     value: number;
@@ -38,6 +39,8 @@
     // Shown instead of the number when value is at the floor (e.g. "Off" for
     // a -30 dB band level); editing still accepts numbers as usual.
     floorLabel?: string;
+    // Same idea at the max end (e.g. "Off" for a 0 dBFS sub ceiling).
+    ceilLabel?: string;
     // When true (default), out-of-range values are clamped to [min,max]
     // and accepted. When false, out-of-range values are rejected just
     // like unparseable input -- Enter marks the cell red.
@@ -50,7 +53,10 @@
   const effectiveUnit = $derived(unit ?? defaultUnitFor(kind));
 
   const atFloor = $derived(floorLabel !== undefined && value <= min);
-  const display = $derived(atFloor ? floorLabel! : formatValue(kind, value, effectivePrecision));
+  const atCeil = $derived(ceilLabel !== undefined && value >= max);
+  const display = $derived(
+    atFloor ? floorLabel! : atCeil ? ceilLabel! : formatValue(kind, value, effectivePrecision),
+  );
 
   // Disabled overrides any tone tinting.
   const toneColor = $derived(
@@ -169,7 +175,7 @@
   {:else}
     <span class="display">
       <span class="num">{display}</span>
-      {#if effectiveUnit && !atFloor}<span class="unit">{effectiveUnit}</span>{/if}
+      {#if effectiveUnit && !atFloor && !atCeil}<span class="unit">{effectiveUnit}</span>{/if}
     </span>
   {/if}
 </div>
