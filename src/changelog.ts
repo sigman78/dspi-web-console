@@ -7,11 +7,11 @@ export const LATEST_CHANGES = {
   version: APP_VERSION,
   highlights: [
     'Subharmonic synthesizer panel (PR.06): dbx-style octave divider with 24–36 Hz and 36–56 Hz sub bands, LF boost, per-output selection, and a live headroom readout with a one-click RESERVE that lowers the feeding input preamps (fw 1.1.6)',
-    'Subharmonic synthesizer panel gains a third 56–80 Hz band, selectivity (mode/depth/hold), a sub ceiling, pair-linked synthesis, and a solo monitor with a live per-output meter (fw 1.1.6-beta3)',
+    'Subharmonic synthesizer panel gains a third 56–80 Hz band, selectivity (mode/depth/hold), a sub ceiling, pair-linked synthesis, and a solo monitor with a live per-output meter; the sub bands now reach +12 dB on firmware that supports it (fw 1.1.6-beta3)',
     'Control surfaces for firmware 1.1.6: target GROUPS (CT.03) so one control drives several outputs, MACROS (CT.04) with a step sequencer and FIRE, and an I2C DISPLAY (CT.05) with 16 configurable pages',
     'CONTROL tab regrouped into three columns; the new CHANGES panel (CT.06) is the single place to SAVE or DISCARD pending control-surface edits, and the slot editors fold into accordions',
     'Indicator bindings gain on/off delays and a per-LED brightness ceiling (fw 1.1.6)',
-    'Firmware 1.1.6 wire V27–V29 supported end-to-end: upmix centre OFF, a fourth S/PDIF input (SY.11), first-order LP/HP EQ bands, and the subharmonic synthesizer',
+    'Firmware 1.1.6 wire V27–V30 supported end-to-end: upmix centre OFF, a fourth S/PDIF input (SY.11), first-order LP/HP EQ bands, and the subharmonic synthesizer; beta firmware now identifies itself as e.g. “1.1.6 beta 3” in the DEVICE panel and in issue reports',
     'Firmware version is read in the 1.1.6 full-width form so future patch numbers above 15 report correctly; older firmware keeps the legacy read; the DEVICE panel also shows the firmware git build stamp when the firmware reports one',
     'Control surfaces configured by a newer firmware than this console knows are left alone: an unrecognized slot is flagged rather than rewritten, so a device set up elsewhere survives a visit here intact',
     'Multi-device: connect several DSPi units at once — the DEVICES list in the sidebar switches between them, with a full state resync on every switch',

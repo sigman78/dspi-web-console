@@ -131,6 +131,16 @@ describe('SubharmPanel', () => {
     expect(setSubharmLow).toHaveBeenCalledWith(expect.anything(), -12);
   });
 
+  test('band sliders reach +12 dB on V30 and stop at +6 dB on V29', () => {
+    const lowBand = 'Subharmonic 24 to 36 hertz band level';
+    const { unmount } = renderPanel(makeSession({ subharmExt: true }));
+    expect(screen.getByRole('slider', { name: lowBand })).toHaveAttribute('max', '12');
+    unmount();
+
+    renderPanel(makeSession({ subharmExt: false }));
+    expect(screen.getByRole('slider', { name: lowBand })).toHaveAttribute('max', '6');
+  });
+
   test('the low band value field shows "Off" at the floor', () => {
     // ext off so the ceiling slider (also labelled "Off" at its own extreme,
     // by default) doesn't render alongside it.

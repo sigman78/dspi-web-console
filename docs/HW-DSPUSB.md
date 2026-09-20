@@ -56,7 +56,7 @@ Codecs: scalars in `binCodec.ts` (`u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `f32`,
 | Code | Name | Direction | Codec | Use |
 |---|---|---|---|---|
 | `0x7E` | `GetSerial` | IN | UTF-8 string | Device serial; once per connect |
-| `0x7F` | `GetPlatform` | IN | `DeviceInfo` struct | `{ platformId, fwMajor, fwMinorPatch }` |
+| `0x7F` | `GetPlatform` | IN | `DeviceInfo` struct | `{ platformId, fwMajor, fwMinorPatch }`; 6 B on fw 1.1.6+, 7 B with the pre-release ordinal on 1.1.6-beta3+ |
 | `0xA0` | `GetAllParams` | IN | (raw bytes → `parseBulkParams`) | The bulk packet — see §Bulk packet |
 
 ### Status & telemetry
@@ -275,7 +275,7 @@ These are hardware/browser-environment quirks that bite during deployment.
 
 DSPi firmware reports two version axes:
 
-- **`FW_VERSION_PACKED`** (named `FW_VERSION_BCD` before 1.1.6; it was always nibble packing, not BCD) — semantic firmware revision (e.g. `0x113` = `1.1.3`). Exposed via `GetPlatform 0x7F`; fw 1.1.6 widens that response from 4 to 6 bytes (full-width minor/patch as plain u8 at bytes 4–5, lifting the nibble cap of 15 — bytes 0–3 unchanged, so 4-byte readers are unaffected) and adds `GetBuildInfo 0x80`, a 64-byte git-describe/date provenance blob that is explicitly for humans only — no software may gate on it.
+- **`FW_VERSION_PACKED`** (named `FW_VERSION_BCD` before 1.1.6; it was always nibble packing, not BCD) — semantic firmware revision (e.g. `0x113` = `1.1.3`). Exposed via `GetPlatform 0x7F`; fw 1.1.6 widens that response from 4 to 6 bytes (full-width minor/patch as plain u8 at bytes 4–5, lifting the nibble cap of 15 — bytes 0–3 unchanged, so 4-byte readers are unaffected) and adds `GetBuildInfo 0x80`, a 64-byte git-describe/date provenance blob that is explicitly for humans only — no software may gate on it. fw 1.1.6-beta3 appends a 7th byte, `FW_VERSION_BETA` (0 = final, 1..255 = beta N), which the console renders as `1.1.6 beta 3`. The device clamps its reply to `wLength`, so `readPlatform` asks for 7 on every generation and treats a shorter reply as a final release; like the build stamp, the ordinal is display-only — `support` stays a wire-version decision.
 - **`WIRE_FORMAT_VERSION`** — bulk-packet schema version, bumped only when `WireBulkParams` changes. Exposed in the bulk packet header byte 0.
 
 The two move independently: a firmware bump can change wire behavior without bumping `WIRE_FORMAT_VERSION` (e.g. new vendor commands, deferred-execution refactors, encoding tweaks on existing fields). The version table below is the **wire/protocol** history. The console parser gates each optional bulk section on **both** `formatVersion` AND `payloadLength` (see `bulkLayout()` in `src/protocol/wireTypes.ts`); a wire-version axis isn't enough — older firmware can ship an in-development build that lies about its version.
@@ -311,7 +311,7 @@ Today's connect-time floor is V10: `deriveCapabilities` (`src/protocol/capabilit
 | **V27** | 5944 B | Upmix centre-mode enum gains OFF (2) — surrounds-only upmixing, L/R bit-exact. Enum widening only, no struct change | Full read/write |
 | **V28** | 5944 B | Input-config **interior relayout**: `spdif_rx_pin_ext` grows 2 → 3 entries (fourth selectable S/PDIF input, `INPUT_SOURCE_SPDIF4 = 6`), shifting the enable mask / clock mode / ADAT fields one byte later; section stays 16 B, now full. `GetSpdifInputConfig 0xEF` response grows 5 → 6 B. **Released with fw 1.1.5 (`main`)** | Full read/write |
 | **V29** | 5960 B | Appends the 16-byte subharmonic synthesizer section (section 23) after the upmixer; both platforms — unlike psybass/upmix there is no RP2350 gate. Vendor opcodes `0x10`–`0x1A` (SET/GET per field + a read-only headroom GET). **fw 1.1.6, from the 2026-09-02 build** | Full read/write |
-| **V30** | 5980 B | Subharm section grows 16 → 36 B: appends `top_db` (third band), `select_depth`, `select_hold_ms`, `ceiling_db` (f32 each), `select_mode`, `link_pairs` (u8) + 2 reserved. Solo is runtime-only and stays off the wire. Vendor opcodes `0x1B`–`0x1F`, `0x2C`–`0x2F`, `0xA9`–`0xAE`. **fw 1.1.6-beta3 (2026-09-12)** | Full read/write — the current ceiling (`MAX_WIRE_VERSION`) |
+| **V30** | 5980 B | Subharm section grows 16 → 36 B: appends `top_db` (third band), `select_depth`, `select_hold_ms`, `ceiling_db` (f32 each), `select_mode`, `link_pairs` (u8) + 2 reserved. Solo is runtime-only and stays off the wire. Vendor opcodes `0x1B`–`0x1F`, `0x2C`–`0x2F`, `0xA9`–`0xAE`. The same firmware lifts the per-band level ceiling from +6 to +12 dB (`SUBHARM_LEVEL_MAX`, caps v16) — range-only, no layout effect, so the console gates the wider range on wire ≥ 30 and keeps clamping V29 devices at +6. **fw 1.1.6-beta3 (2026-09-12)** | Full read/write — the current ceiling (`MAX_WIRE_VERSION`) |
 
 fw 1.1.6's other new surface is Control Surfaces capability formats v8–v14 (indicator delays, target groups, macros, I2C displays, and the v14 subharm nouns; vendor opcodes `0x20`–`0x2B`) plus the versioning provenance above (`0x7F` widening, `0x80` build info) — tracked in the firmware's `control_surfaces_*` specs, outside this doc's bulk-packet scope.
 

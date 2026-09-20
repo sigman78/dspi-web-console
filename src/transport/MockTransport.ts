@@ -46,7 +46,10 @@ export interface MockOptions {
   wireVersion?: number;
   // Firmware version reported by GetPlatform (default 1.1.4). Set alongside
   // wireVersion for a coherent device (e.g. 1.1.3 + V6).
-  fwVersion?: { major: number; minor: number; patch: number };
+  // `beta` (1..255) makes GetPlatform answer the 7-byte fw 1.1.6-beta3+ form
+  // with the pre-release ordinal in byte 6; without it the reply stops at the
+  // 6-byte form, which is what 1.1.6 builds before that byte report.
+  fwVersion?: { major: number; minor: number; patch: number; beta?: number };
   // Override the header's payloadLength to simulate a malformed device that
   // reports a truncated payload, exercising the connect truncation guard.
   payloadLength?: number;
@@ -378,6 +381,7 @@ export class MockTransport implements DspTransport {
   #fwMajor: number;
   #fwMinor: number;
   #fwPatch: number;
+  #fwBeta: number;
   #masterVolumeMode: MasterVolumeMode = MasterVolumeMode.Independent;
   #savedMasterVolumeDb = 0;
   #mockState: BulkParams;
@@ -499,6 +503,7 @@ export class MockTransport implements DspTransport {
     this.#fwMajor = fw.major;
     this.#fwMinor = fw.minor;
     this.#fwPatch = fw.patch;
+    this.#fwBeta = fw.beta ?? 0;
     this.#buildInfo = opts.buildInfo ?? { describe: 'v1.1.6-mock', date: '2026-09-02' };
     this.#mockState = defaultMockBulkState(this.#platform, this.#wireVersion);
     this.#csNouns = buildMockCsNouns(this.#platform, this.#mockState.numIn, this.#mockState.numOut, this.#mockState.numCh);
@@ -675,13 +680,16 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.GetPlatform.code: {
         // Wire shape: [platformId, fwMajor, (minor<<4)|patch, reserved] plus
-        // full-width [minor, patch] from fw 1.1.6 on; older fw clamps to 4 B.
-        const out = new Uint8Array(Math.min(length, this.#isFw116 ? 6 : 4));
+        // full-width [minor, patch] from fw 1.1.6 on, then the pre-release
+        // ordinal at byte 6 on a beta build; older fw clamps to 4 B.
+        const full = !this.#isFw116 ? 4 : this.#fwBeta > 0 ? 7 : 6;
+        const out = new Uint8Array(Math.min(length, full));
         out[0] = this.#platform;
         if (length > 1) out[1] = this.#fwMajor;
         if (length > 2) out[2] = ((this.#fwMinor & 0xF) << 4) | (this.#fwPatch & 0xF);
         if (length > 4) out[4] = this.#fwMinor;
         if (length > 5) out[5] = this.#fwPatch;
+        if (length > 6) out[6] = this.#fwBeta;
         return out;
       }
       case WireCmd.GetBuildInfo.code: {
@@ -1724,11 +1732,11 @@ export class MockTransport implements DspTransport {
         return;
       case WireCmd.SetSubharmLow.code:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmLow unsupported (STALL)');
-        this.#mockState.subharm!.lowDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data));
+        this.#mockState.subharm!.lowDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data), this.#wireVersion >= MIN_SUBHARM_EXT_WIRE);
         return;
       case WireCmd.SetSubharmHigh.code:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmHigh unsupported (STALL)');
-        this.#mockState.subharm!.highDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data));
+        this.#mockState.subharm!.highDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data), this.#wireVersion >= MIN_SUBHARM_EXT_WIRE);
         return;
       case WireCmd.SetSubharmBoost.code:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmBoost unsupported (STALL)');
@@ -1743,7 +1751,7 @@ export class MockTransport implements DspTransport {
       // V30 the whole extension opcode range STALLs.
       case WireCmd.SetSubharmTop.code:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmTop unsupported (STALL)');
-        this.#mockState.subharm!.topDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data));
+        this.#mockState.subharm!.topDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data), this.#wireVersion >= MIN_SUBHARM_EXT_WIRE);
         return;
       case WireCmd.SetSubharmSelect.code:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmSelect unsupported (STALL)');

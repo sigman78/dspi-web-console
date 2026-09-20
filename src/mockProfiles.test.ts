@@ -38,16 +38,17 @@ describe('resolveMockProfile', () => {
     expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6 });
   });
 
-  it('parses v30 (subharm third band/selectivity/ceiling/pair link) with fw 1.1.6', () => {
+  it('parses v30 (subharm third band/selectivity/ceiling/pair link) as fw 1.1.6-beta3', () => {
     const p = resolveMockProfile('v30');
     expect(p.opts.wireVersion).toBe(30);
-    expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6 });
+    // V30 ships only in the beta3 line, so the mock reports its ordinal too.
+    expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6, beta: 3 });
   });
 
-  it('latest boots at MAX_WIRE_VERSION with fw 1.1.6', () => {
+  it('latest boots at MAX_WIRE_VERSION on the firmware line that carries it', () => {
     const p = resolveMockProfile('latest');
     expect(p.opts.wireVersion).toBe(Wire.MAX_WIRE_VERSION);
-    expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6 });
+    expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6, beta: 3 });
   });
 
   it('falls back to latest for wire versions the console never supported (11..15)', () => {

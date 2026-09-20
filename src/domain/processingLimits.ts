@@ -106,7 +106,14 @@ export const UPMIX_PRESENCE_STEP_DB = 0.5;
 // Subharmonic synthesizer.
 export const SUBHARM_LEVEL_MIN_DB = -30;
 export const SUBHARM_LEVEL_MAX_DB = 6;
+// Firmware widened SUBHARM_LEVEL_MAX from +6 to +12 dB alongside the V30 tail
+// (caps v16). The ceiling is the only thing that moved -- the floor stays the
+// band-off sentinel -- so V29 devices keep clamping at +6.
+export const SUBHARM_LEVEL_MAX_EXT_DB = 12;
 export const SUBHARM_LEVEL_STEP_DB = 0.5;
+
+export const subharmLevelMaxDb = (ext: boolean) =>
+  ext ? SUBHARM_LEVEL_MAX_EXT_DB : SUBHARM_LEVEL_MAX_DB;
 
 export const SUBHARM_BOOST_MIN_DB = 0;
 export const SUBHARM_BOOST_MAX_DB = 6;

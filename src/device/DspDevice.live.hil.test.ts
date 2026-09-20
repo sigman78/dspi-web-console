@@ -53,6 +53,23 @@ describe('DspDevice — liveness & smoke (HIL)', () => {
     expect(build.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
+  // Cross-checks two independent firmware self-reports: the git describe
+  // string from GetBuildInfo (0x80) and the pre-release ordinal byte from
+  // GetPlatform (0x7F). They are produced by different code paths, so a
+  // disagreement means one of the two reads is wrong.
+  it('pre-release ordinal agrees with the git build stamp', async () => {
+    const { build, capabilities } = device.info;
+    if (!build) return;
+    const tagged = /-beta(\d+)/.exec(build.describe);
+    if (tagged) {
+      expect(capabilities.fw.beta).toBe(Number(tagged[1]));
+      expect(capabilities.fwLabel).toContain(`beta ${tagged[1]}`);
+    } else {
+      expect(capabilities.fw.beta ?? 0).toBe(0);
+      expect(capabilities.fwLabel).not.toContain('beta');
+    }
+  });
+
   it('info getter is stable', async () => {
     const a = device.info;
     const b = device.info;

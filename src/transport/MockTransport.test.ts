@@ -68,6 +68,22 @@ describe('MockTransport — wire version knob', () => {
     expect(dev.info.capabilities.fwLabel).toBe('1.1.4');
   });
 
+  it('reads the pre-release ordinal from the 7-byte GetPlatform, and a shorter reply reads as a final release', async () => {
+    const beta = await createDevice(new MockTransport({
+      platform: 'rp2350', wireVersion: 30, fwVersion: { major: 1, minor: 1, patch: 6, beta: 3 },
+    }));
+    expect(beta.info.capabilities.fwLabel).toBe('1.1.6 beta 3');
+    expect(beta.info.capabilities.fw.beta).toBe(3);
+
+    // Same firmware version, but a build that predates the beta byte: the
+    // reply stops at 6 B and must not read as a beta.
+    const final = await createDevice(new MockTransport({
+      platform: 'rp2350', wireVersion: 30, fwVersion: { major: 1, minor: 1, patch: 6 },
+    }));
+    expect(final.info.capabilities.fwLabel).toBe('1.1.6');
+    expect(final.info.capabilities.fw.beta).toBeFalsy();
+  });
+
   it('merges a V6 write into a V10 device: V6 fields update, the packet stays V10', async () => {
     const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
     const dev = await createDevice(t);
@@ -1035,6 +1051,19 @@ describe('MockTransport — subharm V30 ops (0x1B-0x1F, 0x2C-0x2F, 0xA9-0xAE)', 
 
     const after = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
     expect(after.subharm).toEqual(before.subharm);
+  });
+
+  it('band levels clamp to +12 dB, not the V29 +6, and the boost ceiling is unmoved', async () => {
+    const t = await v30Mock();
+    await t.ctrlOut(WireCmd.SetSubharmHigh.code, 0, Codec.encode(Codec.f32, 20));
+    expect(Codec.decode(Codec.f32, await t.ctrlIn(WireCmd.GetSubharmHigh.code, 0, 4))).toBeCloseTo(12, 4);
+
+    // +10 sits above the V29 ceiling and must survive untouched here.
+    await t.ctrlOut(WireCmd.SetSubharmTop.code, 0, Codec.encode(Codec.f32, 10));
+    expect(Codec.decode(Codec.f32, await t.ctrlIn(WireCmd.GetSubharmTop.code, 0, 4))).toBeCloseTo(10, 4);
+
+    await t.ctrlOut(WireCmd.SetSubharmBoost.code, 0, Codec.encode(Codec.f32, 9));
+    expect(Codec.decode(Codec.f32, await t.ctrlIn(WireCmd.GetSubharmBoost.code, 0, 4))).toBeCloseTo(6, 4);
   });
 
   it('STALLs SetSubharmTop below wire 30', async () => {
