@@ -3,7 +3,7 @@ import { MockTransport } from './MockTransport';
 import { DspDevice } from '@/device/DspDevice';
 import { WireCmd, Wire, parseBufferStats, parseSystemStatus, parseBulkParams, buildBulkParams, NotifyEventId, PinConfigResult } from '@/protocol';
 import { Codec } from '@/utils';
-import { FilterType, MasterVolumeMode, AudioInputSource, ChannelId } from '@/domain';
+import { FilterType, MasterVolumeMode, AudioInputSource, ChannelId, OutputConfigMode } from '@/domain';
 
 async function createDevice(t: MockTransport): Promise<DspDevice> {
   const openTransport = t.isOpen() ? async () => {} : () => t.open();
@@ -499,6 +499,48 @@ describe('MockTransport — V32 bulk size and tube/limiter state', () => {
     const after = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
     expect(after.tube).toMatchObject({ enabled: true, tubeType: 12, driveDb: 6 });
     expect(after.limiter[2]).toEqual({ enabled: true, linkGroup: 3, thresholdDb: -6, releaseMs: 250 });
+  });
+
+  async function readState(t: MockTransport) {
+    return parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+  }
+  async function writeState(t: MockTransport, state: ReturnType<typeof parseBulkParams>) {
+    const bytes = buildBulkParams(state);
+    for (let off = 0; off < bytes.byteLength; off += chunk) {
+      await t.ctrlOut(WireCmd.SetAllParamsChunk.code, off, bytes.subarray(off, Math.min(off + chunk, bytes.byteLength)));
+    }
+  }
+
+  it('ignores the limiter section of a bulk SET in Independent output-config mode, like the pins', async () => {
+    const t = await v32Mock();
+    await t.ctrlOut(WireCmd.SetOutputConfigMode.code, 0, Codec.encode(Codec.u8, OutputConfigMode.Independent));
+    const state = await readState(t);
+    state.limiter[0] = { enabled: true, linkGroup: 0, thresholdDb: -3, releaseMs: 50 };
+    state.tube = { ...state.tube, enabled: true };
+    await writeState(t, state);
+    const after = await readState(t);
+    expect(after.limiter[0]).toEqual({ enabled: false, linkGroup: 0, thresholdDb: -1, releaseMs: 100 });
+    expect(after.tube.enabled).toBe(true);
+  });
+
+  it('settles a pasted limiter section the way firmware does: clamps, zeros past the output count, re-converges link groups', async () => {
+    const t = new MockTransport({ platform: 'rp2040', wireVersion: 32, fwVersion: { major: 1, minor: 1, patch: 6, beta: 4 } });
+    await t.open();
+    const state = await readState(t);
+    expect(state.numOut).toBe(5);
+    state.limiter[0] = { enabled: true, linkGroup: 2, thresholdDb: -40, releaseMs: 1 };
+    state.limiter[3] = { enabled: false, linkGroup: 2, thresholdDb: -12, releaseMs: 500 };
+    state.limiter[4] = { enabled: true, linkGroup: 0, thresholdDb: NaN, releaseMs: 5000 };
+    state.limiter[6] = { enabled: true, linkGroup: 1, thresholdDb: -6, releaseMs: 200 };
+    await writeState(t, state);
+    const after = await readState(t);
+    // Output 0 clamps; output 3 copies its group's lowest member; output 4 takes
+    // the default threshold for NaN and clamps the release; output 6 is past the
+    // platform's five outputs and reads back as zeros.
+    expect(after.limiter[0]).toEqual({ enabled: true, linkGroup: 2, thresholdDb: -30, releaseMs: 10 });
+    expect(after.limiter[3]).toEqual({ enabled: true, linkGroup: 2, thresholdDb: -30, releaseMs: 10 });
+    expect(after.limiter[4]).toEqual({ enabled: true, linkGroup: 0, thresholdDb: -1, releaseMs: 1000 });
+    expect(after.limiter[6]).toEqual({ enabled: false, linkGroup: 0, thresholdDb: 0, releaseMs: 0 });
   });
 });
 
