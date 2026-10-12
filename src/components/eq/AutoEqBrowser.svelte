@@ -9,6 +9,7 @@
     saveAutoEqUserEntry, deleteAutoEqUserEntry, searchAutoEq,
   } from '@/state';
   import { applyAutoEqEntry, preampTargetLabel } from '@/runtime';
+  import { eqLinkView } from '@/components/eq/eqLinkView';
   import { getSession } from '@/components/sessionContext';
 
   const {
@@ -24,10 +25,10 @@
   const s = getSession();
 
   const linkedSuffix = $derived.by(() => {
-    if (!s.eqLink.isLocked(channel.id)) return '';
-    const chans = s.mirror.current?.channels ?? [];
-    const names = s.eqLink.membersOf(channel.id).map((id) => chans.find((c) => c.id === id)?.shortName ?? '');
-    return ` · LINKED → ${names.join('+')}`;
+    const snap = s.mirror.current;
+    if (!snap) return '';
+    const view = eqLinkView(s.eqLink, snap.channels, channel);
+    return view.locked ? ` · LINKED → ${view.members.map((c) => c.shortName).join('+')}` : '';
   });
 
   onMount(() => {

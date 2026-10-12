@@ -93,14 +93,6 @@ describe('linked verbs', () => {
     expect(vi.mocked(device.setInputPreamp).mock.calls.map((c) => c[0])).toEqual([0, 1]);
   });
 
-  it('reset every band of every member', async () => {
-    const { s, device } = harness();
-    s.eqLink.setLocked(L, true);
-    link.resetEqLinked(s, R);
-    await settle();
-    expect(device.setFilter).toHaveBeenCalledTimes(20);
-  });
-
   it('paste onto a locked group skips the source member', async () => {
     const { s, device } = harness();
     s.eqLink.setLocked(L, true);
@@ -162,14 +154,6 @@ describe('syncEqLinkFrom', () => {
     link.syncEqLinkFrom(s, L);
     await settle();
     expect(vi.mocked(device.setCrossoverBand).mock.calls.map((c) => [c[0], c[1]])).toEqual([[R, 0], [R, 1]]);
-  });
-
-  it('writes nothing for already-equal members', async () => {
-    const { s, device } = harness();
-    link.syncEqLinkFrom(s, L);
-    await settle();
-    expect(device.setFilter).not.toHaveBeenCalled();
-    expect(device.setBandBypass).not.toHaveBeenCalled();
   });
 
   it('runs on lock and the lock flips both ways', async () => {

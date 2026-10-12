@@ -59,7 +59,7 @@ export type SnapshotChange =
   | { kind: 'i2s';           value: I2sConfig }
   | { kind: 'outputPins';    value: number[] };
 
-export function neq(a: number, b: number, tol: number): boolean {
+function neq(a: number, b: number, tol: number): boolean {
   return Math.abs(a - b) > tol;
 }
 

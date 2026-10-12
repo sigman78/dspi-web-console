@@ -7,13 +7,14 @@
   import PreampPanel from '@/components/eq/PreampPanel.svelte';
   import OutputTrim from '@/components/eq/OutputTrim.svelte';
   import AutoEqBrowser from '@/components/eq/AutoEqBrowser.svelte';
+  import { eqLinkView } from '@/components/eq/eqLinkView';
   import { mockEqCurve } from '@/components/bode/bodeMock';
   import { filterCurve, filterCurveAt } from '@/components/bode/filterCurve';
   import { settings, eqUi, setEqCopySource, clearEqCopySource } from '@/state';
-  import { FilterType, seedTypeChange, eqLinkDiverged, type ChannelModel, type FilterParams, inputIndexOf } from '@/domain';
+  import { FilterType, seedTypeChange, type ChannelModel, type FilterParams, inputIndexOf } from '@/domain';
   import {
     setEqFilterLinked, setBandBypassLinked, resetEqLinked, pasteEqLinked, setInputPreampLinked,
-    setEqLinkLocked, syncEqLinkFrom,
+    setEqLinkLocked,
   } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
 
@@ -37,22 +38,7 @@
   let libOpen = $state(false);
   const bandTypes = $derived(offeredTypes(s.device.capabilities.features));
 
-  const group = $derived(channel ? s.eqLink.groupOf(channel.id) : null);
-  const locked = $derived(channel ? s.eqLink.isLocked(channel.id) : false);
-  const members = $derived(channel ? s.eqLink.membersOf(channel.id) : []);
-  // Members genuinely differ between the first and last acked member write.
-  const groupDiverged = $derived(group && snap && !s.writes.busy ? eqLinkDiverged(snap, group) : false);
-  const diverged = $derived(locked && groupDiverged);
-  const unlockedDiverged = $derived(!locked && groupDiverged);
-  const peerLabel = $derived(
-    channel && group
-      ? group
-          .filter((id) => id !== channel.id)
-          .map((id) => snap?.channels.find((c) => c.id === id)?.shortName ?? '')
-          .filter((n) => n !== '')
-          .join('+')
-      : '',
-  );
+  const link = $derived(channel && snap ? eqLinkView(s.eqLink, snap.channels, channel) : null);
 
   function curveOf(ch: ChannelModel): BodeCurve {
     const slot = inputIndexOf(ch.id);
@@ -67,12 +53,8 @@
 
   // While locked: one curve per member, the selected channel last (on top).
   const curves = $derived.by<BodeCurve[]>(() => {
-    if (!channel) return [mockEqCurve()];
-    if (!locked) return [curveOf(channel)];
-    const others = members
-      .filter((id) => id !== channel.id)
-      .map((id) => snap?.channels.find((c) => c.id === id))
-      .filter((c): c is ChannelModel => c !== undefined);
+    if (!channel || !link) return [mockEqCurve()];
+    const others = link.members.filter((c) => c.id !== channel.id);
     return [...others, channel].map(curveOf);
   });
 
@@ -180,7 +162,7 @@
   </div>
 
   <div class="rightcol">
-    {#if channel}
+    {#if channel && link}
       <BandsPanel
         bands={channel.filters}
         onPatch={patchBand}
@@ -192,10 +174,8 @@
         onExit={exitCopy}
         types={bandTypes}
         onLibrary={() => (libOpen = true)}
-        link={{ grouped: group !== null, locked, diverged, peerLabel, selectedShort: channel.shortName }}
-        needsSyncConfirm={unlockedDiverged}
-        onToggleLink={() => setEqLinkLocked(s, channel.id, !locked)}
-        onSyncLink={() => syncEqLinkFrom(s, channel.id)}
+        link={{ grouped: link.grouped, locked: link.locked, peerLabel: link.label, selectedShort: channel.shortName }}
+        onToggleLink={() => setEqLinkLocked(s, channel.id, !link.locked)}
       />
       {#if inputIndex !== null}
         <PreampPanel preampDb={preampDb} accentChannelId={channel.id} onChange={setPreamp} onReset={resetPreamp} />

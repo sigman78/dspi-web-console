@@ -1,5 +1,4 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
   // Two-step arm/confirm mechanics shared by every "dangerous or persisting
   // action" button (DevicePanel factory-reset/firmware, preset/volume save).
   // The primitive owns only the state machine and a11y wiring; tone/size and
@@ -14,7 +13,6 @@
     extraClass = '',
     title,
     disabledReason,
-    icon,
   }: {
     label: string;
     confirmLabel: string;
@@ -30,8 +28,6 @@
     // Reason surfaced only via aria-describedby (below), for readers/keyboard
     // users when `title`-only was the previous, unreliable channel (A4).
     disabledReason?: string;
-    // Optional glyph rendered before the label in both states.
-    icon?: Snippet;
   } = $props();
 
   const uid = $props.id();
@@ -64,7 +60,6 @@
   type="button"
   class="chip {extraClass}"
   class:armed
-  class:has-icon={icon !== undefined}
   class:danger={tone === 'danger' && (toneAlways || armed)}
   class:warn={tone === 'warn' && (toneAlways || armed)}
   onclick={onClick}
@@ -73,17 +68,12 @@
   aria-disabled={disabled}
   aria-describedby={disabled && disabledReason ? reasonId : undefined}
   {title}
->{@render icon?.()}{armed ? confirmLabel : label}</button>
+>{armed ? confirmLabel : label}</button>
 {#if disabled && disabledReason}
   <span id={reasonId} class="sr-only">{disabledReason}</span>
 {/if}
 
 <style>
-  .chip.has-icon {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-  }
   .chip[aria-disabled="true"] {
     opacity: var(--dim-disabled);
     cursor: default;

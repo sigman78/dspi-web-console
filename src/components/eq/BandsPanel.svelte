@@ -1,7 +1,6 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
   import BandRow, { BAND_ROW_COLS } from './BandRow.svelte';
-  import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
   import type { FilterParams, FilterType, ChannelId } from '@/domain';
 
   const {
@@ -17,8 +16,6 @@
     onLibrary,
     link,
     onToggleLink,
-    onSyncLink,
-    needsSyncConfirm,
   }: {
     bands: FilterParams[];
     onPatch: (index: number, patch: Partial<FilterParams>) => void;
@@ -30,10 +27,8 @@
     onExit: () => void;
     types?: FilterType[];
     onLibrary?: () => void;
-    link: { grouped: boolean; locked: boolean; diverged: boolean; peerLabel: string; selectedShort: string };
+    link: { grouped: boolean; locked: boolean; peerLabel: string; selectedShort: string };
     onToggleLink: () => void;
-    onSyncLink: () => void;
-    needsSyncConfirm: boolean;
   } = $props();
 
   const inSelection = $derived(copySource != null);
@@ -54,7 +49,7 @@
   const linkTitle = $derived(
     link.locked
       ? `Unlink from ${link.peerLabel}`
-      : `Link with ${link.peerLabel}: edits mirror to it, copying this channel's EQ first`,
+      : `Link with ${link.peerLabel}: edits mirror to them, copying this channel's EQ first`,
   );
   const title = $derived(
     `BANDS · 10 BIQUAD${link.locked ? ` · ${link.selectedShort}+${link.peerLabel}` : ''}`,
@@ -68,41 +63,16 @@
   </svg>
 {/snippet}
 
-{#snippet openLock()}{@render lockGlyph(false)}{/snippet}
-
 <Panel code="EQ.02" {title}>
   {#snippet right()}
     {#if link.grouped}
-      {#if needsSyncConfirm && !link.locked}
-        <ConfirmButton
-          label="LINK"
-          confirmLabel={`COPY → ${link.peerLabel}`}
-          tone="warn"
-          extraClass="hi act"
-          title={linkTitle}
-          icon={openLock}
-          onConfirm={onToggleLink}
-        />
-      {:else}
-        <button
-          class="chip hi act link"
-          class:on={link.locked}
-          class:diverged={link.diverged}
-          title={linkTitle}
-          aria-pressed={link.locked}
-          onclick={onToggleLink}
-        >{@render lockGlyph(link.locked)}LINK</button>
-      {/if}
-      {#if link.diverged && !inSelection}
-        <ConfirmButton
-          label="SYNC"
-          confirmLabel={`COPY → ${link.peerLabel}`}
-          tone="warn"
-          extraClass="hi act"
-          title={`Copy this channel's EQ onto ${link.peerLabel}`}
-          onConfirm={onSyncLink}
-        />
-      {/if}
+      <button
+        class="chip hi act link"
+        class:on={link.locked}
+        title={linkTitle}
+        aria-pressed={link.locked}
+        onclick={onToggleLink}
+      >{@render lockGlyph(link.locked)}LINK</button>
     {/if}
     {#if onLibrary && !inSelection}
       <button class="chip hi act" onclick={onLibrary} title="Browse the AutoEQ profile library">AUTOEQ</button>
@@ -126,9 +96,8 @@
 </Panel>
 
 <style>
-  .act + :global(.act), :global(.act) + .act { margin-left: 6px; }
+  .act + .act { margin-left: 6px; }
   .link { display: inline-flex; align-items: center; gap: 5px; }
-  .link.diverged { color: var(--warn); }
 
   .head {
     display: grid;
