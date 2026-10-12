@@ -220,6 +220,47 @@ export interface LimiterOutput {
   releaseMs: number;
 }
 
+// Live limiter status block (REQ_LIMITER GET index 0x81). engaged = the
+// 32-sample lookahead delay is in the signal path for every output.
+export interface LimiterStatus {
+  engaged: boolean;
+  lookaheadSamples: number;
+  blockSamples: number;
+  numOutputs: number;
+}
+
+// Restore / 0xFF link-group rule (firmware lm_gang_groups): every member of a
+// group copies its lowest-numbered member. Not the join rule, see
+// joinLimiterGroup. Entries at or past numOut are untouched.
+export function settleLimiterGroups(list: LimiterOutput[], numOut: number): LimiterOutput[] {
+  const out = list.map((o) => ({ ...o }));
+  for (let k = 1; k < Math.min(numOut, out.length); k++) {
+    const g = out[k].linkGroup;
+    if (g === 0) continue;
+    const lead = out.findIndex((o) => o.linkGroup === g);
+    if (lead < k) out[k] = { ...out[lead] };
+  }
+  return out;
+}
+
+// Per-output link-group SET (firmware limiter_set_param): the output takes the
+// group, and a non-zero group hands it the lowest-numbered OTHER member's
+// enable/threshold/release; existing members never change. Leaving (group 0)
+// or joining an empty group keeps the output's own settings.
+export function joinLimiterGroup(list: LimiterOutput[], output: number, group: number, numOut: number): LimiterOutput[] {
+  const out = list.map((o) => ({ ...o }));
+  if (!out[output]) return out;
+  out[output].linkGroup = group;
+  if (group === 0) return out;
+  for (let k = 0; k < Math.min(numOut, out.length); k++) {
+    if (k === output || out[k].linkGroup !== group) continue;
+    const { enabled, thresholdDb, releaseMs } = out[k];
+    Object.assign(out[output], { enabled, thresholdDb, releaseMs });
+    break;
+  }
+  return out;
+}
+
 // Master volume persistence: 0 = global (persisted via SaveMasterVolume);
 // 1 = travels with each preset.
 export const MasterVolumeMode = {

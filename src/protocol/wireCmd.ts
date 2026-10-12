@@ -387,6 +387,14 @@ export const WireCmd = {
   // Live status (no bulk equivalent).
   UpmixGetStatus:        { code: 0x4E, codec: Wire.UpmixStatus },
 
+  // --- V32 per-output limiter (fw 1.1.6-beta4, both platforms). ---
+  // One opcode, both directions. SET: wValue = limiterWValue(output, index),
+  // payload = one float32 for every parameter (bool/enum included). GET: same
+  // wValue -> one float32, or a read-only block selected by the index byte
+  // (Wire.LIMITER_GET_METER / LIMITER_GET_STATUS). Direction-split helpers
+  // live on DspDevice.
+  Limiter:               { code: 0x81 } satisfies RawCmd,
+
   // --- V16 / fw 1.1.5 external control interfaces (UART + I2C) ---
   // SETs are plain control-OUT with the struct payload; the firmware refuses
   // them over UART/I2C itself (USB-only), which is moot here since the

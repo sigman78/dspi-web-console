@@ -1,6 +1,7 @@
 import * as Domain from '@/domain';
 import * as Clamp from '@/domain/clamp';
 import type { ReadySession } from '@/state';
+import { Wire } from '@/protocol';
 import { write, scrub, command } from './writes.svelte';
 import { setInputPreamp } from './mixerActions';
 
@@ -384,4 +385,78 @@ export function toggleLevellerDetectorChannel(s: ReadySession, ch: number): void
 export function toggleLevellerApplyChannel(s: ReadySession, ch: number): void {
   const apply = s.mirror.snapshot.leveller.applyMask ^ (1 << ch);
   setLevellerMasks(s, s.mirror.snapshot.leveller.detectorMask, apply);
+}
+
+// Per-output limiter (fw V32+). Firmware gangs link-group members: a SET of
+// enable/threshold/release on one member writes every member. A link-group SET
+// is the join rule (joinLimiterGroup). The patch settles the groups so the
+// mirror shows what firmware reports.
+function patchLimiter(s: ReadySession, output: number, patch: Partial<Domain.LimiterOutput>): void {
+  const cur = s.mirror.snapshot.limiter;
+  const numOut = s.device.hardware.outputCount;
+  if ('linkGroup' in patch) {
+    s.mirror.snapshot.limiter = Domain.joinLimiterGroup(cur, output, patch.linkGroup ?? 0, numOut);
+    return;
+  }
+  const group = cur[output]?.linkGroup ?? 0;
+  const list = cur.map((o, k) => (k === output || (group !== 0 && o.linkGroup === group) ? { ...o, ...patch } : o));
+  s.mirror.snapshot.limiter = Domain.settleLimiterGroups(list, numOut);
+}
+
+// Members of a group share one scrub lane so two of them never race.
+function limiterLane(s: ReadySession, kind: string, output: number): string {
+  const g = s.mirror.snapshot.limiter[output]?.linkGroup ?? 0;
+  return g !== 0 ? `${kind}:g${g}` : `${kind}:${output}`;
+}
+
+// An enable change can flip the lookahead delay; firmware engages it after a
+// fade, so the status re-read may be early and the next 1 Hz refresh catches it.
+export function setLimiterEnabled(s: ReadySession, output: number, on: boolean): void {
+  void write(s,
+    () => s.device.setLimiterEnabled(output, on),
+    () => {
+      patchLimiter(s, output, { enabled: on });
+      s.telemetry.requestLimiterStatusRead();
+    },
+  );
+}
+
+// 0xFF fans the SET out to every output in firmware; the patch mirrors that
+// over the platform's real outputs.
+export function setLimiterAllEnabled(s: ReadySession, on: boolean): void {
+  void write(s,
+    () => s.device.setLimiterEnabled(Wire.LIMITER_ALL_OUTPUTS, on),
+    () => {
+      const count = s.device.hardware.outputCount;
+      const list = s.mirror.snapshot.limiter.map((o, k) => (k < count ? { ...o, enabled: on } : o));
+      s.mirror.snapshot.limiter = Domain.settleLimiterGroups(list, count);
+      s.telemetry.requestLimiterStatusRead();
+    },
+  );
+}
+
+export function setLimiterThreshold(s: ReadySession, output: number, db: number): void {
+  db = Clamp.limiterThresholdDb(db);
+  scrub(s,
+    limiterLane(s, 'limiterThreshold', output),
+    () => patchLimiter(s, output, { thresholdDb: db }),
+    () => s.device.setLimiterThreshold(output, db),
+  );
+}
+
+export function setLimiterRelease(s: ReadySession, output: number, ms: number): void {
+  ms = Clamp.limiterReleaseMs(ms);
+  scrub(s,
+    limiterLane(s, 'limiterRelease', output),
+    () => patchLimiter(s, output, { releaseMs: ms }),
+    () => s.device.setLimiterRelease(output, ms),
+  );
+}
+
+export function setLimiterLinkGroup(s: ReadySession, output: number, group: number): void {
+  group = Clamp.limiterLinkGroup(group);
+  void write(s,
+    () => s.device.setLimiterLinkGroup(output, group),
+    () => patchLimiter(s, output, { linkGroup: group }),
+  );
 }

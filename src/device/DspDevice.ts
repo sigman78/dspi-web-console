@@ -1102,6 +1102,56 @@ export class DspDevice {
     return Codec.decode(Codec.arr(Codec.u16, n), raw.subarray(0, n * 2)).map((v) => v / 32767);
   }
 
+  // Per-output limiter (fw V32+, REQ_LIMITER 0x81). SET wValue =
+  // (output << 8) | index with one float32 payload for every parameter
+  // (bool/enum included); output 0xFF addresses every output. Firmware
+  // clamps, gangs linked members and silently ignores a bad output/index.
+  // #setLimiterParam is shared plumbing; the typed setters are the per-verb
+  // surface the runtime actions call.
+  #setLimiterParam(output: number, index: proto.Wire.LimiterParam, value: number): Promise<void> {
+    return this.transport.ctrlOut(proto.WireCmd.Limiter.code, proto.Wire.limiterWValue(output, index), Codec.encode(Codec.f32, value));
+  }
+
+  async setLimiterEnabled(output: number, on: boolean): Promise<void> {
+    return this.#setLimiterParam(output, proto.Wire.LimiterParam.Enabled, on ? 1 : 0);
+  }
+
+  async setLimiterThreshold(output: number, db: number): Promise<void> {
+    return this.#setLimiterParam(output, proto.Wire.LimiterParam.ThresholdDb, db);
+  }
+
+  async setLimiterRelease(output: number, ms: number): Promise<void> {
+    return this.#setLimiterParam(output, proto.Wire.LimiterParam.ReleaseMs, ms);
+  }
+
+  async setLimiterLinkGroup(output: number, group: number): Promise<void> {
+    return this.#setLimiterParam(output, proto.Wire.LimiterParam.LinkGroup, group);
+  }
+
+  // GET of one parameter as its raw float (enabled 0/1, link group 0..4); a
+  // bad output/index STALLs.
+  async getLimiterParam(output: number, index: proto.Wire.LimiterParam): Promise<number> {
+    const raw = await this.transport.ctrlIn(proto.WireCmd.Limiter.code, proto.Wire.limiterWValue(output, index), 4);
+    return Codec.decode(Codec.f32, raw);
+  }
+
+  // Live per-output gain reduction in dB (0 = none), wire-output indexed:
+  // NUM_OUTPUT_CHANNELS x u16 LE in 0.01 dB. A short reply yields a shorter
+  // array rather than throwing.
+  async getLimiterMeter(): Promise<number[]> {
+    const numOut = this.hardware.outputCount;
+    const raw = await this.transport.ctrlIn(proto.WireCmd.Limiter.code, proto.Wire.limiterWValue(0, proto.Wire.LIMITER_GET_METER), numOut * 2);
+    const n = Math.min(numOut, raw.length >> 1);
+    return Codec.decode(Codec.arr(Codec.u16, n), raw.subarray(0, n * 2)).map((v) => v / 100);
+  }
+
+  // Status block; also the feature probe (a bad index STALLs on older firmware).
+  async getLimiterStatus(): Promise<Domain.LimiterStatus> {
+    const raw = await this.transport.ctrlIn(proto.WireCmd.Limiter.code, proto.Wire.limiterWValue(0, proto.Wire.LIMITER_GET_STATUS), 4);
+    const st = Codec.decode(proto.Wire.LimiterStatus, raw);
+    return { engaged: st.engaged !== 0, lookaheadSamples: st.lookaheadSamples, blockSamples: st.blockSamples, numOutputs: st.numOutputs };
+  }
+
   // v1.1.4 granular surface (unconditional: the V10 floor guarantees support).
 
   // Per-band EQ bypass. wValue = (wireChannel<<8)|band, mirroring getFilter's

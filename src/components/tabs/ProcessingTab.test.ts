@@ -28,6 +28,8 @@ vi.mock('@/runtime', () => ({
   setPsybassDrive: vi.fn(), setPsybassCharacter: vi.fn(), setPsybassOriginal: vi.fn(), togglePsybassOutputChannel: vi.fn(),
   setSubharmEnabled: vi.fn(), setSubharmLow: vi.fn(), setSubharmHigh: vi.fn(), setSubharmBoost: vi.fn(),
   toggleSubharmOutputChannel: vi.fn(), reserveSubharmHeadroom: vi.fn(),
+  setLimiterAllEnabled: vi.fn(), setLimiterEnabled: vi.fn(), setLimiterThreshold: vi.fn(),
+  setLimiterRelease: vi.fn(), setLimiterLinkGroup: vi.fn(),
   setUpmixEnabled: vi.fn(), setUpmixCenterMode: vi.fn(), setUpmixSurroundMode: vi.fn(),
   setUpmixStrength: vi.fn(), setUpmixCenterWidth: vi.fn(), setUpmixPresence: vi.fn(),
   setUpmixCorrThreshold: vi.fn(), setUpmixAttack: vi.fn(), setUpmixRelease: vi.fn(), setUpmixDetectorHpf: vi.fn(),
@@ -51,8 +53,12 @@ const ALL_FEATURES = deriveCapabilities({
 function makeSession(featureOverrides: Partial<DeviceFeatures> = {}) {
   return {
     device: { capabilities: { features: { ...ALL_FEATURES, ...featureOverrides } } },
-    telemetry: { activeInputChannels: null, subharmHeadroomDb: null, info: null },
+    telemetry: {
+      activeInputChannels: null, subharmHeadroomDb: null, info: null,
+      limiterMeterDb: null, limiterStatus: null, wantLimiterMeter: vi.fn(() => vi.fn()),
+    },
     mirror: { current: makeSnapshot() },
+    presets: { directory: null },
   } as unknown;
 }
 
@@ -61,11 +67,25 @@ function renderTab(session: unknown) {
 }
 
 describe('ProcessingTab', () => {
-  test('pins STEREO UPMIXER as the last panel in the grid', () => {
-    const { container } = renderTab(makeSession());
-    const panels = container.querySelectorAll('.panel');
-    expect(panels.length).toBeGreaterThan(0);
-    expect(panels[panels.length - 1].querySelector('.title')?.textContent).toBe('STEREO UPMIXER');
+  const columnTitles = (container: HTMLElement) =>
+    [...container.querySelectorAll('.col')].map((col) => [...col.querySelectorAll('.panel .title')].map((e) => e.textContent));
+
+  test('balances the columns: CROSSFEED + LEVELLER + PSYBASS | LOUDNESS + SUBHARMONIC | STEREO UPMIXER + LIMITER', () => {
+    const { container } = renderTab(makeSession({ limiter: true }));
+    expect(columnTitles(container)).toEqual([
+      ['CROSSFEED', 'LEVELLER', 'PSYBASS'],
+      ['LOUDNESS', 'SUBHARMONIC'],
+      ['STEREO UPMIXER', 'LIMITER'],
+    ]);
+  });
+
+  test('gated panels drop out of their columns on an RP2040-shaped profile', () => {
+    const { container } = renderTab(makeSession({ upmix: false, psybass: false, limiter: true }));
+    expect(columnTitles(container)).toEqual([
+      ['CROSSFEED', 'LEVELLER'],
+      ['LOUDNESS', 'SUBHARMONIC'],
+      ['LIMITER'],
+    ]);
   });
 
   test('renders SUBHARMONIC (PR.06) when features.subharm is true', () => {
@@ -76,5 +96,14 @@ describe('ProcessingTab', () => {
   test('does not render SUBHARMONIC (PR.06) when features.subharm is false', () => {
     const { queryByText } = renderTab(makeSession({ subharm: false }));
     expect(queryByText('SUBHARMONIC')).toBeNull();
+  });
+
+  test('renders LIMITER (PR.07) only when features.limiter is true', () => {
+    const on = renderTab(makeSession({ limiter: true }));
+    expect(on.getByText('LIMITER')).toBeTruthy();
+    on.unmount();
+
+    const off = renderTab(makeSession({ limiter: false }));
+    expect(off.queryByText('LIMITER')).toBeNull();
   });
 });

@@ -1184,3 +1184,113 @@ describe('MockTransport — GetBuildInfo (0x80, fw 1.1.6+)', () => {
     expect(Codec.decode(Wire.BuildInfo, bytes)).toEqual({ describe: 'v9.9.9-custom', date: '2030-01-01' });
   });
 });
+
+describe('MockTransport — output limiter (REQ_LIMITER 0x81, fw V32+)', () => {
+  const wv = (output: number, index: number) => (output << 8) | index;
+  const f32 = (v: number) => Codec.encode(Codec.f32, v);
+
+  async function mock(wireVersion = 32, platform: 'rp2040' | 'rp2350' = 'rp2350') {
+    const t = new MockTransport({ platform, wireVersion, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    await t.open();
+    return t;
+  }
+  const get = async (t: MockTransport, output: number, index: number) =>
+    Codec.decode(Codec.f32, await t.ctrlIn(WireCmd.Limiter.code, wv(output, index), 4));
+  const bulkLimiter = async (t: MockTransport) =>
+    parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize)).limiter;
+
+  it('STALLs both directions below wire 32', async () => {
+    const t = await mock(31);
+    await expect(t.ctrlOut(WireCmd.Limiter.code, wv(0, 0), f32(1))).rejects.toThrow();
+    await expect(t.ctrlIn(WireCmd.Limiter.code, wv(0, 0x81), 4)).rejects.toThrow();
+  });
+
+  it('clamps like firmware and round-trips each parameter', async () => {
+    const t = await mock();
+    await t.ctrlOut(WireCmd.Limiter.code, wv(1, Wire.LimiterParam.ThresholdDb), f32(-99));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(1, Wire.LimiterParam.ReleaseMs), f32(5000));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(1, Wire.LimiterParam.Enabled), f32(1));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(1, Wire.LimiterParam.LinkGroup), f32(9));
+    expect(await get(t, 1, Wire.LimiterParam.ThresholdDb)).toBe(-30);
+    expect(await get(t, 1, Wire.LimiterParam.ReleaseMs)).toBe(1000);
+    expect(await get(t, 1, Wire.LimiterParam.Enabled)).toBe(1);
+    expect(await get(t, 1, Wire.LimiterParam.LinkGroup)).toBe(4);
+  });
+
+  it('output 0xFF fans out to every real output only', async () => {
+    const t = await mock(32, 'rp2040');
+    await t.ctrlOut(WireCmd.Limiter.code, wv(0xFF, Wire.LimiterParam.ThresholdDb), f32(-12));
+    for (let k = 0; k < 5; k++) expect(await get(t, k, Wire.LimiterParam.ThresholdDb)).toBe(-12);
+    expect((await bulkLimiter(t))[5].thresholdDb).toBe(0);
+  });
+
+  it('gangs link-group members on SET, and a joiner adopts the lowest member', async () => {
+    const t = await mock();
+    await t.ctrlOut(WireCmd.Limiter.code, wv(2, Wire.LimiterParam.ThresholdDb), f32(-8));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(2, Wire.LimiterParam.LinkGroup), f32(1));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(5, Wire.LimiterParam.LinkGroup), f32(1));
+    expect(await get(t, 5, Wire.LimiterParam.ThresholdDb)).toBe(-8);
+
+    await t.ctrlOut(WireCmd.Limiter.code, wv(5, Wire.LimiterParam.ReleaseMs), f32(300));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(5, Wire.LimiterParam.Enabled), f32(1));
+    expect(await get(t, 2, Wire.LimiterParam.ReleaseMs)).toBe(300);
+    expect(await get(t, 2, Wire.LimiterParam.Enabled)).toBe(1);
+    expect(await get(t, 3, Wire.LimiterParam.Enabled)).toBe(0);
+  });
+
+  it('a lower-indexed joiner adopts the existing member and leaving a group keeps the settings', async () => {
+    const t = await mock();
+    await t.ctrlOut(WireCmd.Limiter.code, wv(3, Wire.LimiterParam.LinkGroup), f32(2));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(3, Wire.LimiterParam.ThresholdDb), f32(-6));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(0, Wire.LimiterParam.ThresholdDb), f32(-20));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(0, Wire.LimiterParam.LinkGroup), f32(2));
+    expect(await get(t, 0, Wire.LimiterParam.ThresholdDb)).toBe(-6);
+    expect(await get(t, 3, Wire.LimiterParam.ThresholdDb)).toBe(-6);
+
+    await t.ctrlOut(WireCmd.Limiter.code, wv(3, Wire.LimiterParam.LinkGroup), f32(0));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(3, Wire.LimiterParam.ThresholdDb), f32(-10));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(3, Wire.LimiterParam.LinkGroup), f32(0));
+    expect(await get(t, 3, Wire.LimiterParam.ThresholdDb)).toBe(-10);
+    expect(await get(t, 0, Wire.LimiterParam.ThresholdDb)).toBe(-6);
+  });
+
+  it('enable is value != 0 and a NaN SET is a silent no-op', async () => {
+    const t = await mock();
+    await t.ctrlOut(WireCmd.Limiter.code, wv(1, Wire.LimiterParam.Enabled), f32(0.25));
+    expect(await get(t, 1, Wire.LimiterParam.Enabled)).toBe(1);
+    await t.ctrlOut(WireCmd.Limiter.code, wv(1, Wire.LimiterParam.ThresholdDb), f32(-12));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(1, Wire.LimiterParam.ThresholdDb), f32(NaN));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(1, Wire.LimiterParam.Enabled), f32(NaN));
+    expect(await get(t, 1, Wire.LimiterParam.ThresholdDb)).toBe(-12);
+    expect(await get(t, 1, Wire.LimiterParam.Enabled)).toBe(1);
+  });
+
+  it('a bad output, bad index or short payload is a silent SET no-op; a bad GET STALLs', async () => {
+    const t = await mock();
+    const before = await bulkLimiter(t);
+    await t.ctrlOut(WireCmd.Limiter.code, wv(9, Wire.LimiterParam.Enabled), f32(1));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(0, 7), f32(1));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(0, Wire.LimiterParam.Enabled), new Uint8Array(2));
+    expect(await bulkLimiter(t)).toEqual(before);
+    await expect(t.ctrlIn(WireCmd.Limiter.code, wv(9, 0), 4)).rejects.toThrow();
+    await expect(t.ctrlIn(WireCmd.Limiter.code, wv(0, 7), 4)).rejects.toThrow();
+  });
+
+  it('status reports engaged only while some output is enabled; meter is 0 with nothing enabled', async () => {
+    const t = await mock();
+    const status = async () => Codec.decode(Wire.LimiterStatus, await t.ctrlIn(WireCmd.Limiter.code, wv(0, Wire.LIMITER_GET_STATUS), 4));
+    expect(await status()).toEqual({ engaged: 0, lookaheadSamples: 32, blockSamples: 16, numOutputs: 9 });
+    const idle = await t.ctrlIn(WireCmd.Limiter.code, wv(0, Wire.LIMITER_GET_METER), 18);
+    expect(idle).toEqual(new Uint8Array(18));
+
+    await t.ctrlOut(WireCmd.Limiter.code, wv(3, Wire.LimiterParam.Enabled), f32(1));
+    await t.ctrlOut(WireCmd.Limiter.code, wv(3, Wire.LimiterParam.ThresholdDb), f32(-30));
+    expect((await status()).engaged).toBe(1);
+    // Pin the fake-peak clock to a swell so output 3 sits well above -30 dBFS.
+    const now = vi.spyOn(performance, 'now').mockReturnValue(3720);
+    const meter = Codec.decode(Codec.arr(Codec.u16, 9), await t.ctrlIn(WireCmd.Limiter.code, wv(0, Wire.LIMITER_GET_METER), 18));
+    now.mockRestore();
+    expect(meter[3]).toBeGreaterThan(0);
+    expect(meter.filter((_, k) => k !== 3).every((v) => v === 0)).toBe(true);
+  });
+});

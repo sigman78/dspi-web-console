@@ -82,6 +82,10 @@ export const subharmDepthPct = (p: number) => toRange(p, Proc.SUBHARM_DEPTH_MIN_
 export const subharmHoldMs = (ms: number) => toRange(ms, Proc.SUBHARM_HOLD_MIN_MS, Proc.SUBHARM_HOLD_MAX_MS);
 export const subharmCeilingDb = (db: number) => toRange(db, Proc.SUBHARM_CEILING_MIN_DB, Proc.SUBHARM_CEILING_MAX_DB);
 
+export const limiterThresholdDb = (db: number) => toRange(db, Proc.LIMITER_THRESHOLD_MIN_DB, Proc.LIMITER_THRESHOLD_MAX_DB);
+export const limiterReleaseMs = (ms: number) => toRange(ms, Proc.LIMITER_RELEASE_MIN_MS, Proc.LIMITER_RELEASE_MAX_MS);
+export const limiterLinkGroup = (g: number) => Math.round(toRange(g, 0, Proc.LIMITER_LINK_GROUP_MAX));
+
 // Names are encoded into a fixed NUL-terminated wire buffer. Delegates to the
 // wire-layer truncator so host and wire agree on the byte budget.
 export function nameToByteBudget(name: string, maxBytes: number): string {
