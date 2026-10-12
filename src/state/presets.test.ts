@@ -24,6 +24,12 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
       enabled: false, outputMask: 0xFFFF, lowDb: 0, highDb: 0, boostDb: 0,
       topDb: -30, selectMode: 0, selectDepth: 100, selectHoldMs: 150, ceilingDb: 0, linkPairs: true,
     },
+    tube: {
+      enabled: false, tubeType: 1, rectifier: 1, xfmrEnabled: true, outputMask: 0xFFFF,
+      driveDb: -12, biasPct: 10, asymDb: 3, hardnessPct: 40, sagPct: 15,
+      xfmrDamping: 2, xfmrResHz: 95, mixPct: 100, trimDb: 0,
+    },
+    limiter: Array.from({ length: 9 }, () => ({ enabled: false, linkGroup: 0, thresholdDb: -1, releaseMs: 100 })),
     upmix: {
       enabled: false, centerMode: 1, surroundMode: 2,
       strengthPct: 100, centerWidthPct: 25, corrThresholdPct: 30,
@@ -162,6 +168,20 @@ describe('presets store', () => {
     ps().directory = dir(OutputConfigMode.Independent) as any;
     expect(dirty()).toBe(false);
     // WithPreset → pins ride the preset → dirty
+    ps().directory = dir(OutputConfigMode.WithPreset) as any;
+    expect(dirty()).toBe(true);
+  });
+
+  it('presetsDirty counts a limiter change only in WithPreset mode, like the pins', () => {
+    const dir = (mode: OutputConfigMode) => ({
+      occupiedSlotsSet: new Set<number>(),
+      startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
+      outputConfigMode: mode, masterVolumeMode: 0 as any,
+    });
+    seed(mkSnap());
+    liveMirror().snapshot.limiter[0] = { ...liveMirror().snapshot.limiter[0], enabled: true, thresholdDb: -6 };
+    ps().directory = dir(OutputConfigMode.Independent) as any;
+    expect(dirty()).toBe(false);
     ps().directory = dir(OutputConfigMode.WithPreset) as any;
     expect(dirty()).toBe(true);
   });

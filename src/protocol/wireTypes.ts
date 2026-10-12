@@ -435,6 +435,37 @@ export const SubharmParamsExt = struct({
   _reserved1:   reserved(2),
 });
 
+// Section 24: tube preamp emulation (48 B, V31+; both platforms).
+export const TubeParams = struct({
+  enabled:      bool8,
+  tubeType:     u8,
+  rectifier:    u8,
+  xfmrEnabled:  bool8,
+  outputMask:   u16,
+  _reserved0:   reserved(2),
+  driveDb:      f32,
+  biasPct:      f32,
+  asymDb:       f32,
+  hardnessPct:  f32,
+  sagPct:       f32,
+  xfmrDamping:  f32,
+  xfmrResHz:    f32,
+  mixPct:       f32,
+  trimDb:       f32,
+  _reservedF:   reserved(4),   // reserved float, zero
+});
+
+// Section 25: per-output limiter (108 B, V32+; both platforms). Entries past
+// the platform's output count are zero on GET and ignored on SET.
+export const LimiterOutput = struct({
+  enabled:     bool8,
+  linkGroup:   u8,
+  _reserved0:  reserved(2),
+  thresholdDb: f32,
+  releaseMs:   f32,
+});
+export const LimiterParams = arr(LimiterOutput, Const.NUM_OUTPUTS);
+
 // Standalone control-transfer payloads (not part of the bulk transfer).
 
 // 8-byte payload of `SetMatrixRoute` / response of `GetMatrixRoute`
@@ -1091,15 +1122,21 @@ export const BULK_SIZE_V29 = BULK_SIZE_V28 + sizeOf(SubharmParams);
 // V30 grows the subharm section with a third band, selectivity, ceiling, and
 // pair link (+20 B).
 export const BULK_SIZE_V30 = BULK_SIZE_V29 + sizeOf(SubharmParamsExt);
+// V31 appends the 48-byte tube preamp section after the subharm section.
+export const BULK_SIZE_V31 = BULK_SIZE_V30 + sizeOf(TubeParams);
+// V32 appends the 108-byte per-output limiter section (9 x 12 B) after it.
+export const BULK_SIZE_V32 = BULK_SIZE_V31 + sizeOf(LimiterParams);
 
 // Newest wire version the console knows how to decode and write.
-export const MAX_WIRE_VERSION = 30;
+export const MAX_WIRE_VERSION = 32;
 
 // Packet size to allocate/write for a given target wire version (clamped to
 // the V6 floor and the MAX_WIRE_VERSION ceiling). Versions 11..15 were
 // in-development intermediates the console never supported; they collapse to
 // the V10 size (writes to such devices are rejected at connect anyway).
 export function bulkSizeForVersion(v: number): number {
+  if (v >= 32) return BULK_SIZE_V32;
+  if (v >= 31) return BULK_SIZE_V31;
   if (v >= 30) return BULK_SIZE_V30;
   if (v >= 29) return BULK_SIZE_V29;
   if (v >= 25) return BULK_SIZE_V28;
@@ -1121,9 +1158,9 @@ export const BulkLimits = {
   MinPacketSize:  BulkSizes.V2,
   // Size we WRITE: version-aware buildBulkParams emits at the device's own wire
   // version, up to MAX_WIRE_VERSION. This is the largest buffer it may allocate.
-  MaxRequestSize: BULK_SIZE_V30,
-  // Size we READ: the largest packet we tolerate receiving (V30).
-  MaxReadSize:    BULK_SIZE_V30,  // 5980
+  MaxRequestSize: BULK_SIZE_V32,
+  // Size we READ: the largest packet we tolerate receiving (V32).
+  MaxReadSize:    BULK_SIZE_V32,  // 6136
   // WinUSB caps a control transfer's data stage at 4 KB; the largest single
   // EP0 transfer any host backend can rely on. Above this, DspDevice chunks
   // via 0xA2/0xA3 (fw 1.1.5+).
@@ -1173,6 +1210,10 @@ export interface BulkLayout {
   subharm: boolean;
   // V30: subharm section tail (third band, selectivity, ceiling, pair link).
   subharmExt: boolean;
+  // V31: tube preamp section, appended after the subharm section.
+  tube: boolean;
+  // V32: per-output limiter section, appended after the tube section.
+  limiter: boolean;
 }
 
 // Determine which optional sections are present based on the header.
@@ -1205,6 +1246,8 @@ export function bulkLayout(h: { formatVersion: number; payloadLength: number }):
     spdifInput4:       v >= 28 && len >= BULK_SIZE_V28,
     subharm:           v >= 29 && len >= BULK_SIZE_V29,
     subharmExt:        v >= 30 && len >= BULK_SIZE_V30,
+    tube:              v >= 31 && len >= BULK_SIZE_V31,
+    limiter:           v >= 32 && len >= BULK_SIZE_V32,
   };
 }
 

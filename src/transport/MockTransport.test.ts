@@ -468,6 +468,40 @@ describe('MockTransport — bulk SET minimum size (V16+)', () => {
   });
 });
 
+describe('MockTransport — V32 bulk size and tube/limiter state', () => {
+  const chunk = Wire.BulkLimits.ChunkSize;
+
+  async function v32Mock() {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 32, fwVersion: { major: 1, minor: 1, patch: 6, beta: 4 } });
+    await t.open();
+    return t;
+  }
+
+  it('STALLs the first chunk of a V30-sized packet sent to a V32 device', async () => {
+    const t = await v32Mock();
+    const state = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    const short = buildBulkParams(state, 30);
+    expect(short.byteLength).toBe(Wire.BULK_SIZE_V30);
+    await expect(t.ctrlOut(WireCmd.SetAllParamsChunk.code, 0, short.subarray(0, chunk))).rejects.toThrow();
+  });
+
+  it('serves a 6136-byte packet and round-trips tube and limiter edits delivered in chunks', async () => {
+    const t = await v32Mock();
+    const raw = await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize);
+    expect(raw.byteLength).toBe(Wire.BULK_SIZE_V32);
+    const state = parseBulkParams(raw);
+    state.tube = { ...state.tube, enabled: true, tubeType: 12, driveDb: 6 };
+    state.limiter[2] = { enabled: true, linkGroup: 3, thresholdDb: -6, releaseMs: 250 };
+    const bytes = buildBulkParams(state);
+    for (let off = 0; off < bytes.byteLength; off += chunk) {
+      await t.ctrlOut(WireCmd.SetAllParamsChunk.code, off, bytes.subarray(off, Math.min(off + chunk, bytes.byteLength)));
+    }
+    const after = parseBulkParams(await t.ctrlIn(WireCmd.GetAllParams.code, 0, Wire.BulkLimits.MaxReadSize));
+    expect(after.tube).toMatchObject({ enabled: true, tubeType: 12, driveDb: 6 });
+    expect(after.limiter[2]).toEqual({ enabled: true, linkGroup: 3, thresholdDb: -6, releaseMs: 250 });
+  });
+});
+
 describe('MockTransport — source-aware input channel names', () => {
   async function v16Device(): Promise<DspDevice> {
     const t = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } });

@@ -374,10 +374,13 @@ export async function pastePresetTo(s: ReadySession, blob: DeviceState): Promise
       await settleAfterSave();
       await fetchAndApplyAsBaseline(s);
       await reconcileAfterSync(s);
-      // 1.1.4 bulk SET skips the physical-IO sections in Independent mode --
-      // the pasted pins/types/I2S clock/RX pin were kept, not applied.
+      // Bulk SET skips the physical-IO sections in Independent mode (and the
+      // limiter section from V32) -- the pasted values were kept, not applied.
       if (s.presets.directory?.outputConfigMode === OutputConfigMode.Independent) {
-        pushNotice('info', 'IO config not applied (independent mode): pins, output types, I2S clock and S/PDIF RX pin kept their device values.');
+        const kept = s.device.capabilities.features.limiter
+          ? 'pins, output types, I2S clock, S/PDIF RX pin and output limiter'
+          : 'pins, output types, I2S clock and S/PDIF RX pin';
+        pushNotice('info', `IO config not applied (independent mode): ${kept} kept their device values.`);
       }
       return r5;
     });

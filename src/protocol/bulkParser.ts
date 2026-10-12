@@ -10,7 +10,7 @@
 import { BinReader, BinWriter, Codec } from '@/utils';
 import * as Wire from './wireTypes';
 import type {
-  Loudness, Psybass, Upmix, Subharm, SubharmSelect,
+  Loudness, Psybass, Upmix, Subharm, SubharmSelect, Tube, TubeType, TubeRectifier, LimiterOutput,
   CrossPoint, OutputState,
 } from '@/domain';
 
@@ -124,6 +124,13 @@ export type WireUpmix = Upmix;
 // domain.Subharm -- no narrowing needed in snapshotCodec.ts.
 export type WireSubharm = Subharm;
 
+// Section 24: tube preamp (V31+). Wire-shaped 1:1 with domain.Tube.
+export type WireTube = Tube;
+
+// Section 25: per-output limiter entry (V32+). Wire-shaped 1:1 with
+// domain.LimiterOutput; the parsed shape always carries all 9 wire entries.
+export type WireLimiterOutput = LimiterOutput;
+
 export interface BulkParams {
   formatVersion: number;
   payloadLength: number;
@@ -165,6 +172,8 @@ export interface BulkParams {
   psybass: WirePsybass;               // V23+
   upmix: WireUpmix;                   // V25+
   subharm: WireSubharm;               // V29+
+  tube: WireTube;                     // V31+
+  limiter: WireLimiterOutput[];       // V32+, always NUM_OUTPUTS entries
 }
 
 // V30 tail-of-section-23 defaults (fw factory values): third band off, full
@@ -177,6 +186,31 @@ const SUBHARM_EXT_DEFAULTS = {
 // bulk_params_apply so an out-of-range stored value can't corrupt the byte.
 function clampSubharmSelectMode(mode: number): number {
   return Math.max(0, Math.min(2, Math.round(mode)));
+}
+
+// V31/V32 section defaults (fw factory values): tube off on a 12AX7 row with
+// a GZ34 rectifier and the output stage on; every limiter off at -1 dBFS /
+// 100 ms, unlinked. Entries past the platform's output count read back as
+// zeros from fw, so defaultBulkParams zeroes them too.
+const TUBE_DEFAULTS = {
+  enabled: false, tubeType: 1, rectifier: 1, xfmrEnabled: true, outputMask: 0xFFFF,
+  driveDb: -12, biasPct: 10, asymDb: 3, hardnessPct: 40, sagPct: 15,
+  xfmrDamping: 2, xfmrResHz: 95, mixPct: 100, trimDb: 0,
+} as const;
+const LIMITER_OUTPUT_DEFAULTS = { enabled: false, linkGroup: 0, thresholdDb: -1, releaseMs: 100 } as const;
+const LIMITER_OUTPUT_UNUSED = { enabled: false, linkGroup: 0, thresholdDb: 0, releaseMs: 0 } as const;
+
+// Enum bytes are clamped on read and write like fw's bulk_params_apply: tube
+// type 0..16, rectifier 0..3, and a limiter link group above 4 falls back to 0.
+function clampTubeType(t: number): TubeType {
+  return Math.max(0, Math.min(16, Math.round(t))) as TubeType;
+}
+function clampTubeRectifier(r: number): TubeRectifier {
+  return Math.max(0, Math.min(3, Math.round(r))) as TubeRectifier;
+}
+function clampLimiterLinkGroup(g: number): number {
+  const r = Math.round(g);
+  return r >= 0 && r <= 4 ? r : 0;
 }
 
 function defaultWireFilter(): WireFilter {
@@ -487,6 +521,28 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
       })()
     : def.subharm;
 
+  const tube = layout.tube
+    ? (() => {
+        const w = Wire.TubeParams.read(r);
+        return {
+          enabled: w.enabled,
+          tubeType: clampTubeType(w.tubeType), rectifier: clampTubeRectifier(w.rectifier),
+          xfmrEnabled: w.xfmrEnabled, outputMask: w.outputMask,
+          driveDb: w.driveDb, biasPct: w.biasPct, asymDb: w.asymDb,
+          hardnessPct: w.hardnessPct, sagPct: w.sagPct,
+          xfmrDamping: w.xfmrDamping, xfmrResHz: w.xfmrResHz,
+          mixPct: w.mixPct, trimDb: w.trimDb,
+        };
+      })()
+    : def.tube;
+
+  const limiter = layout.limiter
+    ? Wire.LimiterParams.read(r).map((o) => ({
+        enabled: o.enabled, linkGroup: clampLimiterLinkGroup(o.linkGroup),
+        thresholdDb: o.thresholdDb, releaseMs: o.releaseMs,
+      }))
+    : def.limiter;
+
   return {
     formatVersion: h.formatVersion,
     payloadLength: h.payloadLength,
@@ -533,6 +589,8 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
     psybass,
     upmix,
     subharm,
+    tube,
+    limiter,
   };
 }
 
@@ -614,6 +672,9 @@ export function defaultBulkParams(opts: {
       decorrPct: 90, presenceDb: 0,
     },
     subharm: { enabled: false, outputMask: 0xFFFF, lowDb: 0, highDb: 0, boostDb: 0, ...SUBHARM_EXT_DEFAULTS },
+    tube: { ...TUBE_DEFAULTS },
+    limiter: Array.from({ length: Wire.Const.NUM_OUTPUTS }, (_, k) =>
+      ({ ...(k < opts.numOut ? LIMITER_OUTPUT_DEFAULTS : LIMITER_OUTPUT_UNUSED) })),
   };
 }
 
@@ -829,6 +890,24 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
       selectMode: clampSubharmSelectMode(bulk.subharm.selectMode),
       linkPairs: bulk.subharm.linkPairs,
     });
+  }
+  if (writeVersion >= 31) {
+    const t = bulk.tube;
+    Wire.TubeParams.write(w, {
+      enabled: t.enabled,
+      tubeType: clampTubeType(t.tubeType), rectifier: clampTubeRectifier(t.rectifier),
+      xfmrEnabled: t.xfmrEnabled, outputMask: t.outputMask,
+      driveDb: t.driveDb, biasPct: t.biasPct, asymDb: t.asymDb,
+      hardnessPct: t.hardnessPct, sagPct: t.sagPct,
+      xfmrDamping: t.xfmrDamping, xfmrResHz: t.xfmrResHz,
+      mixPct: t.mixPct, trimDb: t.trimDb,
+    });
+  }
+  if (writeVersion >= 32) {
+    Wire.LimiterParams.write(w, bulk.limiter.map((o) => ({
+      enabled: o.enabled, linkGroup: clampLimiterLinkGroup(o.linkGroup),
+      thresholdDb: o.thresholdDb, releaseMs: o.releaseMs,
+    })));
   }
 
   return w.toUint8Array();

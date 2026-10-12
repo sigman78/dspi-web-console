@@ -7,7 +7,7 @@ import type { DspSnapshot } from './snapshot';
 import type { I2sConfig } from './platform';
 import type { OutputModel, RouteModel } from './mixer';
 import type { FilterParams } from './filter';
-import type { Loudness, Crossfeed, Leveller, Psybass, Upmix, Subharm } from './processing';
+import type { Loudness, Crossfeed, Leveller, Psybass, Upmix, Subharm, Tube, LimiterOutput } from './processing';
 import type { InputConfig, LgSoundSync, UserVolume, DacHwMute, AdatOutputConfig } from './deviceSections';
 import { BAND_GAIN_STEP_DB, FREQ_STEP_HZ, Q_STEP } from './eqLimits';
 
@@ -46,6 +46,8 @@ export type SnapshotChange =
   | { kind: 'psybass';       value: Psybass }
   | { kind: 'upmix';         value: Upmix }
   | { kind: 'subharm';       value: Subharm }
+  | { kind: 'tube';          value: Tube }
+  | { kind: 'limiter';       value: LimiterOutput[] }
   | { kind: 'inputConfig';   value: InputConfig }
   | { kind: 'spdifRxPin';    value: number }
   | { kind: 'spdifExt';      value: { spdifRxPinExt: number[]; spdifExtEnabled: boolean[] } }
@@ -145,6 +147,31 @@ function subharmDiffers(a: Subharm, b: Subharm): boolean {
       || neq(a.selectHoldMs, b.selectHoldMs, DIFF_TOLERANCE.ms);
 }
 
+function tubeDiffers(a: Tube, b: Tube): boolean {
+  return a.enabled     !== b.enabled
+      || a.tubeType    !== b.tubeType
+      || a.rectifier   !== b.rectifier
+      || a.xfmrEnabled !== b.xfmrEnabled
+      || a.outputMask  !== b.outputMask
+      || neq(a.driveDb,     b.driveDb,     DIFF_TOLERANCE.db)
+      || neq(a.biasPct,     b.biasPct,     DIFF_TOLERANCE.gain)
+      || neq(a.asymDb,      b.asymDb,      DIFF_TOLERANCE.db)
+      || neq(a.hardnessPct, b.hardnessPct, DIFF_TOLERANCE.gain)
+      || neq(a.sagPct,      b.sagPct,      DIFF_TOLERANCE.gain)
+      || neq(a.xfmrDamping, b.xfmrDamping, DIFF_TOLERANCE.gain)
+      || neq(a.xfmrResHz,   b.xfmrResHz,   DIFF_TOLERANCE.freq)
+      || neq(a.mixPct,      b.mixPct,      DIFF_TOLERANCE.gain)
+      || neq(a.trimDb,      b.trimDb,      DIFF_TOLERANCE.db);
+}
+
+function limiterDiffers(a: LimiterOutput[], b: LimiterOutput[]): boolean {
+  if (a.length !== b.length) return true;
+  return a.some((x, i) => x.enabled !== b[i].enabled
+      || x.linkGroup !== b[i].linkGroup
+      || neq(x.thresholdDb, b[i].thresholdDb, DIFF_TOLERANCE.db)
+      || neq(x.releaseMs,   b[i].releaseMs,   DIFF_TOLERANCE.ms));
+}
+
 function levellerDiffers(a: Leveller, b: Leveller): boolean {
   return a.enabled   !== b.enabled
       || a.speed     !== b.speed
@@ -238,6 +265,8 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
   if (psybassDiffers(a.psybass, b.psybass)) out.push({ kind: 'psybass', value: b.psybass });
   if (upmixDiffers(a.upmix, b.upmix)) out.push({ kind: 'upmix', value: b.upmix });
   if (subharmDiffers(a.subharm, b.subharm)) out.push({ kind: 'subharm', value: b.subharm });
+  if (tubeDiffers(a.tube, b.tube)) out.push({ kind: 'tube', value: b.tube });
+  if (limiterDiffers(a.limiter, b.limiter)) out.push({ kind: 'limiter', value: b.limiter });
 
   for (let i = 0; i < b.channels.length; i++) {
     const ca = a.channels[i], cb = b.channels[i];
@@ -295,6 +324,8 @@ type _Covered =
   | 'psybass'
   | 'upmix'
   | 'subharm'
+  | 'tube'
+  | 'limiter'
   | 'inputConfig'
   | 'userVolume'
   | 'dacHwMute'

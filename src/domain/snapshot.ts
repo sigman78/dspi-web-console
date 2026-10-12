@@ -5,7 +5,7 @@
 import type { ChannelId } from './channels';
 import type { HardwareProfile, I2sConfig, PlatformType, ChannelFamily } from './platform';
 import type { FilterParams } from './filter';
-import type { Loudness, Crossfeed, Leveller, Psybass, Upmix, Subharm } from './processing';
+import type { Loudness, Crossfeed, Leveller, Psybass, Upmix, Subharm, Tube, LimiterOutput } from './processing';
 import type { OutputModel, RouteModel } from './mixer';
 import type { InputConfig, LgSoundSync, UserVolume, DacHwMute, AdatOutputConfig } from './deviceSections';
 
@@ -71,6 +71,11 @@ export interface DspSnapshot {
   // Subharmonic synthesizer (fw V29+); bulkParser defaults it on older
   // packets, so this is always populated.
   subharm: Subharm;
+  // Tube preamp (fw V31+) and per-output limiter (fw V32+, always the full
+  // 9 wire entries); bulkParser defaults both on older packets, so these are
+  // always populated.
+  tube: Tube;
+  limiter: LimiterOutput[];
   i2s: I2sConfig;
   // GPIO pin per pin-output index, in hardware output order; the last entry is the PDM sub.
   outputPins: number[];

@@ -176,6 +176,50 @@ export interface Subharm {
   linkPairs: boolean;
 }
 
+// Tube preamp valve model (fw V31+). 0 = Custom: bias/asym/hardness/sag are
+// user values; 1..16 load those four from the named tube's row, and editing
+// any of them flips the type back to Custom fw-side. Keys carry the full
+// designation; a `V` (valve) prefix only where the name starts with a digit.
+export const TubeType = {
+  Custom: 0, V12ax7: 1, V5751: 2, V12at7: 3, V12ay7: 4, V12au7: 5, V6sn7: 6, V6sl7: 7,
+  V6dj8: 8, Ef86: 9, V6sj7: 10, El84: 11, El34: 12, V6l6: 13, V6v6: 14, Kt88: 15, V300b: 16,
+} as const;
+export type TubeType = (typeof TubeType)[keyof typeof TubeType];
+
+// Power-supply rectifier model: drives the sag character.
+export const TubeRectifier = { SolidState: 0, Gz34: 1, V5u4: 2, V5y3: 3 } as const;
+export type TubeRectifier = (typeof TubeRectifier)[keyof typeof TubeRectifier];
+
+// Tube preamp emulation (fw V31+, both platforms). Wire-1:1 like Subharm.
+// outputMask follows the per-output convention of Psybass (bit k = output k),
+// default all-on (0xFFFF). xfmrEnabled switches the output-transformer stage.
+export interface Tube {
+  enabled: boolean;
+  tubeType: TubeType;
+  rectifier: TubeRectifier;
+  xfmrEnabled: boolean;
+  outputMask: number;
+  driveDb: number;
+  biasPct: number;
+  asymDb: number;
+  hardnessPct: number;
+  sagPct: number;
+  xfmrDamping: number;
+  xfmrResHz: number;
+  mixPct: number;
+  trimDb: number;
+}
+
+// Per-output lookahead limiter (fw V32+, both platforms). linkGroup 0 =
+// unlinked; 1..4 gang the group's outputs: fw keeps enable/threshold/release
+// identical across members and applies one gain reduction to all of them.
+export interface LimiterOutput {
+  enabled: boolean;
+  linkGroup: number;
+  thresholdDb: number;
+  releaseMs: number;
+}
+
 // Master volume persistence: 0 = global (persisted via SaveMasterVolume);
 // 1 = travels with each preset.
 export const MasterVolumeMode = {
