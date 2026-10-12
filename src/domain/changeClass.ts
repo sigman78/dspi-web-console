@@ -4,7 +4,7 @@ export type ChangeClass = 'preset-content' | 'runtime-status' | 'volume' | 'outp
 
 // Drives presetsDirty masking: runtime-status never dirties; volume dirties
 // only in WithPreset mode; output-config (the physical-IO block: pins, output
-// types, I2S clock, S/PDIF RX pin) dirties only when the directory's
+// types, I2S clock, S/PDIF RX pin, and the V32+ output limiter) dirties only when the directory's
 // output-config mode is WithPreset. Record over the kind union: a new kind
 // cannot be added without classifying it.
 export const CHANGE_CLASS: Record<SnapshotChange['kind'], ChangeClass> = {
@@ -23,6 +23,10 @@ export const CHANGE_CLASS: Record<SnapshotChange['kind'], ChangeClass> = {
   psybass:            'preset-content',
   upmix:              'preset-content',
   subharm:            'preset-content',
+  tube:               'preset-content',
+  // Firmware persists/applies the limiter like the pin block (bulk SET honours
+  // it only in WithPreset mode), so it takes the pins' class.
+  limiter:            'output-config',
   inputConfig:        'preset-content',
   spdifRxPin:         'output-config',
   spdifExt:           'output-config',

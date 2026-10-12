@@ -6,6 +6,7 @@ import { APP_VERSION } from './buildInfo';
 export const LATEST_CHANGES = {
   version: APP_VERSION,
   highlights: [
+    'Wire V31–V32 support (fw 1.1.6-beta4): the bulk packet now carries the tube preamp and per-output limiter sections, read and written end-to-end so presets stay intact; their panels follow',
     'Subharmonic synthesizer panel (PR.06): dbx-style octave divider with 24–36 Hz and 36–56 Hz sub bands, LF boost, per-output selection, and a live headroom readout with a one-click RESERVE that lowers the feeding input preamps (fw 1.1.6)',
     'Subharmonic synthesizer panel gains a third 56–80 Hz band, selectivity (mode/depth/hold), a sub ceiling, pair-linked synthesis, and a solo monitor with a live per-output meter; the sub bands now reach +12 dB on firmware that supports it (fw 1.1.6-beta3)',
     'Control surfaces for firmware 1.1.6: target GROUPS (CT.03) so one control drives several outputs, MACROS (CT.04) with a step sequencer and FIRE, and an I2C DISPLAY (CT.05) with 16 configurable pages',

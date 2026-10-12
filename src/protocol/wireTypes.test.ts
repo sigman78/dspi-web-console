@@ -80,13 +80,16 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     // by another 20 B (third band, selectivity, ceiling, pair link).
     expect(Wire.bulkSizeForVersion(29)).toBe(5960);
     expect(Wire.bulkSizeForVersion(30)).toBe(5980);
-    expect(Wire.bulkSizeForVersion(99)).toBe(5980);
+    // V31 appends the tube preamp (+48 B); V32 the per-output limiter (+108 B).
+    expect(Wire.bulkSizeForVersion(31)).toBe(6028);
+    expect(Wire.bulkSizeForVersion(32)).toBe(6136);
+    expect(Wire.bulkSizeForVersion(99)).toBe(6136);
     expect(Wire.bulkSizeForVersion(5)).toBe(2896);
   });
 
   it('BULK_SIZE_V21 equals BULK_SIZE_V20 (no packet-size change)', () => {
     expect(Wire.BULK_SIZE_V21).toBe(Wire.BULK_SIZE_V20);
-    expect(Wire.MAX_WIRE_VERSION).toBe(30);
+    expect(Wire.MAX_WIRE_VERSION).toBe(32);
   });
 
   it('bulkLayout gates i2sClockMode on wire V21 AND payloadLength', () => {

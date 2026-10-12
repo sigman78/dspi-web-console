@@ -37,6 +37,8 @@ export function applyChange(c: SnapshotChange, t: DspSnapshot): void {
     case 'psybass':           t.psybass = c.value; break;
     case 'upmix':             t.upmix = c.value; break;
     case 'subharm':           t.subharm = c.value; break;
+    case 'tube':              t.tube = c.value; break;
+    case 'limiter':           t.limiter = c.value; break;
     case 'inputConfig':       t.inputConfig = c.value; refreshInputDefaults(t, c.value.source); break;
     case 'spdifRxPin':        t.inputConfig = { ...t.inputConfig, spdifRxPin: c.value }; break;
     case 'spdifExt':          t.inputConfig = { ...t.inputConfig, spdifRxPinExt: c.value.spdifRxPinExt, spdifExtEnabled: c.value.spdifExtEnabled }; break;

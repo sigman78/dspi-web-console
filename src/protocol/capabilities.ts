@@ -9,7 +9,7 @@
 import * as Wire from './wireTypes';
 import { ChannelFamily, SPDIF_RX_MAX_INSTANCES } from '@/domain';
 
-// Support window: V10 (released fw 1.1.4) and V16-V30 (fw 1.1.5/1.1.6,
+// Support window: V10 (released fw 1.1.4) and V16-V32 (fw 1.1.5/1.1.6,
 // unified channel model; V17 adds ADAT config, V18 adds leveller channel
 // masks, V19 adds the per-output loudness mask, V20 adds the crossfeed
 // output-pair mask, V21 adds I2S slave-clock mode, V22 adds the Linkwitz
@@ -17,17 +17,18 @@ import { ChannelFamily, SPDIF_RX_MAX_INSTANCES } from '@/domain';
 // config, V25 adds the stereo upmixer, V26 adds the upmixer presence bell,
 // V27 adds the upmix centre OFF mode, V28 adds the fourth S/PDIF input,
 // V29 adds the subharmonic synthesizer, V30 grows the subharm section:
-// third band, selectivity, ceiling, pair link). Wire versions 11..15 were
+// third band, selectivity, ceiling, pair link; V31 adds the tube preamp;
+// V32 adds the per-output limiter). Wire versions 11..15 were
 // in-development intermediates with shifting layouts the console never
 // shipped against -- rejected like pre-V10 firmware.
-export const MAX_KNOWN_WIRE = 30;
-const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30];
+export const MAX_KNOWN_WIRE = 32;
+const SUPPORTED_WIRE_VERSIONS: readonly number[] = [10, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32];
 
 // UI-facing description of the support window (device-panel tooltips). Keep
 // in step with SUPPORTED_WIRE_VERSIONS and the fw releases that carry them.
 export const SUPPORT_WINDOW = {
   fw: '1.1.4–1.1.6',
-  wire: 'V10 and V16–V30',
+  wire: 'V10 and V16–V32',
 } as const;
 
 export interface FirmwareVersion {
@@ -120,6 +121,10 @@ export interface DeviceFeatures {
   // Subharm section tail (wire V30+): third band, selectivity, ceiling, pair
   // link.
   readonly subharmExt: boolean;
+  // Tube preamp emulation (wire V31+, both platforms).
+  readonly tube: boolean;
+  // Per-output limiter (wire V32+, both platforms).
+  readonly limiter: boolean;
   // GetBuildInfo 0x80 answers (wire V29+). Provenance for humans only -- the
   // stamp itself never gates anything; this only says the read is worth trying.
   readonly buildStamp: boolean;
@@ -136,7 +141,7 @@ export interface DeviceCapabilities {
 
   // Support classification, keyed on the observed wire version:
   //   unsupported -- below the V10 floor, or an 11..15 in-dev intermediate.
-  //   supported   -- V10 (1.1.4) or V16-V30 (1.1.5/1.1.6).
+  //   supported   -- V10 (1.1.4) or V16-V32 (1.1.5/1.1.6).
   //   future      -- newer than the console knows; read known sections only.
   readonly support: 'unsupported' | 'supported' | 'future';
 
@@ -216,6 +221,8 @@ export function deriveCapabilities(input: {
       pinResetDefault:    wireVersion >= 25,
       subharm:            wireVersion >= 29,
       subharmExt:         wireVersion >= 30,
+      tube:               wireVersion >= 31,
+      limiter:            wireVersion >= 32,
       buildStamp:         wireVersion >= 29,
     },
     // 3 selectable inputs through V27; V28 adds the fourth.

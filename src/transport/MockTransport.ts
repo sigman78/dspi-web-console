@@ -31,7 +31,7 @@ import {
   defaultInputName, Proc,
   SYS_CLOCK_MODE_DEFAULT_VREG, SYS_CLOCK_VREG_CEILING_RP2040, SYS_CLOCK_VREG_CEILING_RP2350,
   type FilterParams,
-  type CrossPoint, type OutputState,
+  type CrossPoint, type OutputState, type LimiterOutput,
   type UartControlConfig, type I2cControlConfig,
   type CsCaps, type CsNounCaps, type CsGroup, type CsMacroStep, type CsDisplayCfg, type CsDisplayPage,
   type SubharmSelect,
@@ -2070,7 +2070,35 @@ export class MockTransport implements DspTransport {
         throw new Error(`MockTransport: SetAllParams payload too short (${data.length}, need ${min})`);
       }
     }
-    this.#applyBulkState(parseBulkParams(data));
+    const bulk = parseBulkParams(data);
+    bulk.limiter = this.#settleLimiter(bulk.limiter, this.#mockState.limiter);
+    this.#applyBulkState(bulk);
+  }
+
+  // Mirrors bulk_params_apply + limiter_apply_config for the V32 limiter
+  // section. Independent output-config mode ignores the section (the live
+  // settings stay, like the pin block). Otherwise entries past the output
+  // count read back as zeros, NaN takes the default, values clamp, and every
+  // member of a link group copies its lowest-numbered member.
+  #settleLimiter(incoming: LimiterOutput[], live: LimiterOutput[]): LimiterOutput[] {
+    if (this.#outputConfigMode === OutputConfigMode.Independent) return live;
+    const numOut = this.#mockState.numOut;
+    const sane = (v: number, lo: number, hi: number, dflt: number) =>
+      Number.isNaN(v) ? dflt : Math.min(hi, Math.max(lo, v));
+    const out = incoming.map((o, k) => k >= numOut
+      ? { enabled: false, linkGroup: 0, thresholdDb: 0, releaseMs: 0 }
+      : {
+          enabled: o.enabled, linkGroup: o.linkGroup,
+          thresholdDb: sane(o.thresholdDb, Proc.LIMITER_THRESHOLD_MIN_DB, Proc.LIMITER_THRESHOLD_MAX_DB, -1),
+          releaseMs: sane(o.releaseMs, Proc.LIMITER_RELEASE_MIN_MS, Proc.LIMITER_RELEASE_MAX_MS, 100),
+        });
+    for (let k = 1; k < numOut; k++) {
+      const g = out[k].linkGroup;
+      if (g === 0) continue;
+      const lead = out.findIndex((o) => o.linkGroup === g);
+      if (lead < k) out[k] = { ...out[lead] };
+    }
+    return out;
   }
 
   #captureSnapshot(): MockSnapshot {
@@ -2119,7 +2147,10 @@ export class MockTransport implements DspTransport {
 
   #restoreSnapshot(s: MockSnapshot): void {
     const liveMv = this.#mockState.masterVolumeDb;       // live value before restore
+    const liveLimiter = this.#mockState.limiter;
     this.#mockState = JSON.parse(JSON.stringify(s.bulk)) as BulkParams;
+    // The limiter follows the output-config mode on a preset load too.
+    this.#mockState.limiter = this.#settleLimiter(this.#mockState.limiter, liveLimiter);
     // Master volume value rides the preset payload only in Mode 1 (with-preset).
     // In Mode 0 (independent) LoadPreset leaves it alone (directory-owned). The
     // mock checks the live mode, matching firmware; mode itself is global and

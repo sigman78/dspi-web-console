@@ -41,7 +41,7 @@ describe('deriveCapabilities — support classification', () => {
     }
   });
 
-  it('classifies V19..V30 as supported; V31 reports future', () => {
+  it('classifies V19..V32 as supported; V33 reports future', () => {
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 19, payloadLength: Wire.BULK_SIZE_V19, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 20, payloadLength: Wire.BULK_SIZE_V20, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 1, 5), wireVersion: 21, payloadLength: Wire.BULK_SIZE_V21, platformId: 1 }).support).toBe('supported');
@@ -54,7 +54,9 @@ describe('deriveCapabilities — support classification', () => {
     expect(deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: 28, payloadLength: Wire.BULK_SIZE_V28, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: 29, payloadLength: Wire.BULK_SIZE_V29, platformId: 1 }).support).toBe('supported');
     expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 30, payloadLength: Wire.BULK_SIZE_V30, platformId: 1 }).support).toBe('supported');
-    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 31, payloadLength: Wire.BULK_SIZE_V30, platformId: 1 }).support).toBe('future');
+    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 31, payloadLength: Wire.BULK_SIZE_V31, platformId: 1 }).support).toBe('supported');
+    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 32, payloadLength: Wire.BULK_SIZE_V32, platformId: 1 }).support).toBe('supported');
+    expect(deriveCapabilities({ fw: fw(1, 2, 0), wireVersion: 33, payloadLength: Wire.BULK_SIZE_V32, platformId: 1 }).support).toBe('future');
   });
 });
 
@@ -215,6 +217,15 @@ describe('deriveCapabilities — V16 feature flags', () => {
       deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: v, payloadLength: len, platformId: 1 }).features.subharmExt;
     expect(at(29, Wire.BULK_SIZE_V29)).toBe(false);
     expect(at(30, Wire.BULK_SIZE_V30)).toBe(true);
+  });
+
+  it('gates the tube preamp on wire V31 and the limiter on V32, ungated on platform', () => {
+    const at = (v: number, len: number, platformId: number) =>
+      deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: v, payloadLength: len, platformId }).features;
+    expect(at(30, Wire.BULK_SIZE_V30, 1)).toMatchObject({ tube: false, limiter: false });
+    expect(at(31, Wire.BULK_SIZE_V31, 0)).toMatchObject({ tube: true, limiter: false });
+    expect(at(32, Wire.BULK_SIZE_V32, 0)).toMatchObject({ tube: true, limiter: true });
+    expect(at(32, Wire.BULK_SIZE_V32, 1)).toMatchObject({ tube: true, limiter: true });
   });
 
   it('spdifInputCount is 3 through V27 and 4 at V28+ on the multi-SPDIF platform', () => {

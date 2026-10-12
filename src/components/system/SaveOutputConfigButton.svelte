@@ -24,6 +24,6 @@
     confirmLabel="CONFIRM"
     tone="warn"
     {onConfirm}
-    title="Persist the current IO config (pins, output types, I2S clock, S/PDIF RX pin) as the device boot config"
+    title="Persist the current IO config (pins, output types, I2S clock, S/PDIF RX pin, output limiter on fw 1.1.6-beta4+) as the device boot config"
   />
 {/if}

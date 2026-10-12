@@ -131,3 +131,29 @@ export const SUBHARM_HOLD_STEP_MS = 5;
 export const SUBHARM_CEILING_MIN_DB = -40;
 export const SUBHARM_CEILING_MAX_DB = 0;
 export const SUBHARM_CEILING_STEP_DB = 0.5;
+
+// Tube preamp (V31).
+export const TUBE_DRIVE_MIN_DB = -30;
+export const TUBE_DRIVE_MAX_DB = 24;
+export const TUBE_BIAS_MIN_PCT = -100;
+export const TUBE_BIAS_MAX_PCT = 100;
+export const TUBE_ASYM_MIN_DB = -12;
+export const TUBE_ASYM_MAX_DB = 12;
+export const TUBE_HARDNESS_MIN_PCT = 0;
+export const TUBE_HARDNESS_MAX_PCT = 100;
+export const TUBE_SAG_MIN_PCT = 0;
+export const TUBE_SAG_MAX_PCT = 100;
+export const TUBE_XFMR_DAMPING_MIN = 1;
+export const TUBE_XFMR_DAMPING_MAX = 20;
+export const TUBE_XFMR_RES_MIN_HZ = 30;
+export const TUBE_XFMR_RES_MAX_HZ = 150;
+export const TUBE_MIX_MIN_PCT = 0;
+export const TUBE_MIX_MAX_PCT = 100;
+export const TUBE_TRIM_MIN_DB = -12;
+export const TUBE_TRIM_MAX_DB = 12;
+
+// Per-output limiter (V32).
+export const LIMITER_THRESHOLD_MIN_DB = -30;
+export const LIMITER_THRESHOLD_MAX_DB = 0;
+export const LIMITER_RELEASE_MIN_MS = 10;
+export const LIMITER_RELEASE_MAX_MS = 1000;

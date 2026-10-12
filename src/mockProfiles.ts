@@ -18,6 +18,8 @@ const FW_1_1_6 = { major: 1, minor: 1, patch: 6 } as const;
 // carries the pre-release ordinal, so a V30 mock reports "1.1.6 beta 3" the
 // way a real V30 device does.
 const FW_1_1_6_BETA3 = { major: 1, minor: 1, patch: 6, beta: 3 } as const;
+// V31/V32 ship in 1.1.6-beta4.
+const FW_1_1_6_BETA4 = { major: 1, minor: 1, patch: 6, beta: 4 } as const;
 
 // Every profile sets irLearnAutoComplete: an armed IR learn self-completes
 // with a fresh NEC code, so the remote-pairing flow is demoable without an IR
@@ -32,10 +34,11 @@ function latest(platform: MockOptions['platform']): MockProfile {
 }
 
 // Firmware version that shipped a given wire version: 1.1.4 for V10, 1.1.5
-// for V16-V26, 1.1.6 for V27-V29, and 1.1.6-beta3 for V30 -- the only line
-// that carries V30, and the first to report a pre-release ordinal.
-function fwForWire(n: number): typeof FW_1_1_4 | typeof FW_1_1_5 | typeof FW_1_1_6 | typeof FW_1_1_6_BETA3 {
-  return n === 10 ? FW_1_1_4 : n >= 30 ? FW_1_1_6_BETA3 : n >= 27 ? FW_1_1_6 : FW_1_1_5;
+// for V16-V26, 1.1.6 for V27-V29, 1.1.6-beta3 for V30 (the first to report
+// a pre-release ordinal), and 1.1.6-beta4 for V31-V32 (V31 is an untagged
+// intermediate; it borrows the beta4 stamp for lack of a real one).
+function fwForWire(n: number): typeof FW_1_1_4 | typeof FW_1_1_5 | typeof FW_1_1_6 | typeof FW_1_1_6_BETA3 | typeof FW_1_1_6_BETA4 {
+  return n === 10 ? FW_1_1_4 : n >= 31 ? FW_1_1_6_BETA4 : n >= 30 ? FW_1_1_6_BETA3 : n >= 27 ? FW_1_1_6 : FW_1_1_5;
 }
 
 // Resolves a raw ?mock token (+ optional &chip flavor) to a profile. Profiles

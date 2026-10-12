@@ -45,10 +45,18 @@ describe('resolveMockProfile', () => {
     expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6, beta: 3 });
   });
 
+  it('parses v31 and v32 (tube preamp, per-output limiter) as fw 1.1.6-beta4', () => {
+    for (const n of [31, 32]) {
+      const p = resolveMockProfile(`v${n}`);
+      expect(p.opts.wireVersion).toBe(n);
+      expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6, beta: 4 });
+    }
+  });
+
   it('latest boots at MAX_WIRE_VERSION on the firmware line that carries it', () => {
     const p = resolveMockProfile('latest');
     expect(p.opts.wireVersion).toBe(Wire.MAX_WIRE_VERSION);
-    expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6, beta: 3 });
+    expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6, beta: 4 });
   });
 
   it('falls back to latest for wire versions the console never supported (11..15)', () => {

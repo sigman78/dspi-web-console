@@ -6,7 +6,7 @@ import * as Wire from './wireTypes';
 describe('describeBulkOffset — total-size cross-check', () => {
   // Independently walks the same sections bulkSizeForVersion sums up; a drift
   // in either place shows up as a boundary mismatch here.
-  it.each([10, 16, 17, 18, 21, 24, 26, 29])('resolves the last byte and rejects the next one (v%i)', (version) => {
+  it.each([10, 16, 17, 18, 21, 24, 26, 29, 31, 32])('resolves the last byte and rejects the next one (v%i)', (version) => {
     const total = Wire.bulkSizeForVersion(version);
     expect(describeBulkOffset(total - 1, version)).not.toBeNull();
     expect(describeBulkOffset(total, version)).toBeNull();
@@ -68,6 +68,21 @@ describe('describeBulkOffset — V30 subharm section tail', () => {
   it('resolves the link_pairs field offset', () => {
     const hit = describeBulkOffset(5977, 30);
     expect(hit?.path).toBe('subharm.linkPairs');
+  });
+});
+
+describe('describeBulkOffset — V31 tube / V32 limiter sections', () => {
+  it('resolves the tube section start', () => {
+    expect(describeBulkOffset(5980, 31)?.path).toBe('tube.enabled');
+  });
+
+  it('resolves per-output limiter entries', () => {
+    expect(describeBulkOffset(6028, 32)?.path).toBe('limiter[0].enabled');
+    expect(describeBulkOffset(6028 + 12 * 8 + 4, 32)?.path).toBe('limiter[8].thresholdDb');
+  });
+
+  it('does not resolve the limiter on a V31 packet', () => {
+    expect(describeBulkOffset(6028, 31)).toBeNull();
   });
 });
 

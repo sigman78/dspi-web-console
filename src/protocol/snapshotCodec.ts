@@ -216,6 +216,11 @@ export function fromBulkParams(hardware: Domain.HardwareProfile, bulk: BulkParam
     // defaults it (disabled, all-outputs mask) on pre-V29 packets, so this is
     // always populated.
     subharm: { ...bulk.subharm },
+    // Tube preamp (V31) and per-output limiter (V32) come from their bulk
+    // sections; the parser defaults both on older packets, so these are
+    // always populated.
+    tube: { ...bulk.tube },
+    limiter: bulk.limiter.map((o) => ({ ...o })),
     lgSoundSync: { enabled: bulk.lgSoundSync.enabled, present: bulk.lgSoundSync.present, volume: bulk.lgSoundSync.volume, muted: bulk.lgSoundSync.muted },
     userVolume:  { volumeDb: bulk.userVolume.volumeDb, mute: bulk.userVolume.mute },
     dacHwMute:   { enabled: bulk.dacHwMute.enabled, activeLow: bulk.dacHwMute.activeLow, pin: bulk.dacHwMute.pin, holdMs: bulk.dacHwMute.holdMs, releaseMs: bulk.dacHwMute.releaseMs },

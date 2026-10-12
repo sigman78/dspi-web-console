@@ -195,6 +195,21 @@ export function describeBulkOffset(offset: number, version: number): BulkOffsetH
   if (version >= 30) {
     const size = Codec.sizeOf(Wire.SubharmParamsExt);
     if (offset < cursor + size) return resolveField('subharm', Wire.SubharmParamsExt, cursor, offset);
+    cursor += size;
+  }
+
+  if (version >= 31) {
+    const size = Codec.sizeOf(Wire.TubeParams);
+    if (offset < cursor + size) return resolveField('tube', Wire.TubeParams, cursor, offset);
+    cursor += size;
+  }
+
+  if (version >= 32) {
+    const entrySize = Codec.sizeOf(Wire.LimiterEntry);
+    if (offset < cursor + entrySize * Wire.Const.NUM_OUTPUTS) {
+      const idx = Math.floor((offset - cursor) / entrySize);
+      return resolveField(`limiter[${idx}]`, Wire.LimiterEntry, cursor + idx * entrySize, offset);
+    }
   }
 
   return null;

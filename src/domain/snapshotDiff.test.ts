@@ -258,6 +258,26 @@ describe('diffSnapshots — subharm', () => {
   });
 });
 
+describe('diffSnapshots — tube + limiter', () => {
+  it('emits one tube change for an edited field and none under tolerance', () => {
+    const a = makeSnapshot();
+    const b = structuredClone(a);
+    b.tube = { ...b.tube, driveDb: b.tube.driveDb + DIFF_TOLERANCE.db / 2 };
+    expect(diffSnapshots(a, b)).toEqual([]);
+    b.tube = { ...b.tube, tubeType: 5 };
+    expect(diffSnapshots(a, b)).toEqual([{ kind: 'tube', value: b.tube }]);
+  });
+
+  it('emits one limiter change for a single edited output and none under tolerance', () => {
+    const a = makeSnapshot();
+    const b = structuredClone(a);
+    b.limiter[3] = { ...b.limiter[3], releaseMs: b.limiter[3].releaseMs + DIFF_TOLERANCE.ms / 2 };
+    expect(diffSnapshots(a, b)).toEqual([]);
+    b.limiter[3] = { ...b.limiter[3], enabled: true, linkGroup: 2 };
+    expect(diffSnapshots(a, b)).toEqual([{ kind: 'limiter', value: b.limiter }]);
+  });
+});
+
 describe('diffSnapshots — i2s + output pins', () => {
   it('emits no i2s/pins change for identical snapshots', () => {
     const a = makeSnapshot((b) => { b.numPinOutputs = 2; b.pins[0] = 6; b.pins[1] = 7; });
