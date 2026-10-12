@@ -7,11 +7,15 @@
   import PreampPanel from '@/components/eq/PreampPanel.svelte';
   import OutputTrim from '@/components/eq/OutputTrim.svelte';
   import AutoEqBrowser from '@/components/eq/AutoEqBrowser.svelte';
+  import { eqLinkView } from '@/components/eq/eqLinkView';
   import { mockEqCurve } from '@/components/bode/bodeMock';
   import { filterCurve, filterCurveAt } from '@/components/bode/filterCurve';
   import { settings, eqUi, setEqCopySource, clearEqCopySource } from '@/state';
-  import { FilterType, defaultFilter, seedTypeChange, type FilterParams, inputIndexOf } from '@/domain';
-  import { setEqFilter, setInputPreamp, copyEqBands, setBandBypass } from '@/runtime';
+  import { FilterType, seedTypeChange, type ChannelModel, type FilterParams, inputIndexOf } from '@/domain';
+  import {
+    setEqFilterLinked, setBandBypassLinked, resetEqLinked, pasteEqLinked, setInputPreampLinked,
+    setEqLinkLocked,
+  } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -34,16 +38,24 @@
   let libOpen = $state(false);
   const bandTypes = $derived(offeredTypes(s.device.capabilities.features));
 
-  const curve = $derived.by<BodeCurve>(() => {
-    if (!channel) {
-      return mockEqCurve();
-    }
+  const link = $derived(channel && snap ? eqLinkView(s.eqLink, snap.channels, channel) : null);
+
+  function curveOf(ch: ChannelModel): BodeCurve {
+    const slot = inputIndexOf(ch.id);
+    const pre = slot !== null ? (snap?.inputPreampDb[slot] ?? 0) : 0;
     return {
-      id: `eq-${channel.id}`,
-      channelId: channel.id,
-      points: filterCurve(bands, preampDb, channel.xoverBands),
-      label: channel.shortName,
+      id: `eq-${ch.id}`,
+      channelId: ch.id,
+      points: filterCurve(ch.filters, pre, ch.xoverBands),
+      label: ch.shortName,
     };
+  }
+
+  // While locked: one curve per member, the selected channel last (on top).
+  const curves = $derived.by<BodeCurve[]>(() => {
+    if (!channel || !link) return [mockEqCurve()];
+    const others = link.members.filter((c) => c.id !== channel.id);
+    return [...others, channel].map(curveOf);
   });
 
   const markers = $derived.by<BodeMarker[]>(() => {
@@ -75,7 +87,7 @@
   function patchBand(i: number, patch: Partial<FilterParams>) {
     if (!channel) return;
     if ('bypass' in patch && patch.bypass !== undefined) {
-      setBandBypass(s, channel.id, i, patch.bypass);
+      setBandBypassLinked(s, channel.id, i, patch.bypass);
     }
     // Send the non-bypass fields if there are any (type/freq/q/gain changes).
     const { bypass: _bypass, ...rest } = patch;
@@ -84,14 +96,12 @@
     // A type switch may need to seed fields (see seedTypeChange's doc comment
     // -- Linkwitz Transform reinterprets the gain slot as fp).
     const seed = rest.type !== undefined ? seedTypeChange(current, rest.type) : {};
-    setEqFilter(s, channel.id, i, { ...current, ...rest, ...seed });
+    setEqFilterLinked(s, channel.id, i, { ...current, ...rest, ...seed });
   }
 
   function reset() {
     if (!channel) return;
-    for (let i = 0; i < channel.filters.length; i++) {
-      setEqFilter(s, channel.id, i, defaultFilter());
-    }
+    resetEqLinked(s, channel.id);
     // Preamp has its own reset action via PreampPanel's reset button.
   }
 
@@ -102,7 +112,7 @@
 
   function paste() {
     if (!channel || eqUi.copySource == null) return;
-    copyEqBands(s, eqUi.copySource, channel.id);
+    pasteEqLinked(s, eqUi.copySource, channel.id);
   }
 
   function exitCopy() {
@@ -125,12 +135,12 @@
   });
 
   function setPreamp(v: number) {
-    if (inputIndex === null) return;
-    setInputPreamp(s, inputIndex, v);
+    if (channel === null || inputIndex === null) return;
+    setInputPreampLinked(s, channel.id, v);
   }
   function resetPreamp() {
-    if (inputIndex === null) return;
-    setInputPreamp(s, inputIndex, 0);
+    if (channel === null || inputIndex === null) return;
+    setInputPreampLinked(s, channel.id, 0);
   }
 </script>
 
@@ -146,13 +156,13 @@
         {/if}
       {/snippet}
       <div class="bode-host">
-        <BodePlot curves={[curve]} markers={markers} height={260} />
+        <BodePlot {curves} markers={markers} height={260} />
       </div>
     </Panel>
   </div>
 
   <div class="rightcol">
-    {#if channel}
+    {#if channel && link}
       <BandsPanel
         bands={channel.filters}
         onPatch={patchBand}
@@ -164,6 +174,8 @@
         onExit={exitCopy}
         types={bandTypes}
         onLibrary={() => (libOpen = true)}
+        link={{ grouped: link.grouped, locked: link.locked, peerLabel: link.label, selectedShort: channel.shortName }}
+        onToggleLink={() => setEqLinkLocked(s, channel.id, !link.locked)}
       />
       {#if inputIndex !== null}
         <PreampPanel preampDb={preampDb} accentChannelId={channel.id} onChange={setPreamp} onReset={resetPreamp} />

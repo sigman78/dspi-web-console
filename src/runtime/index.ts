@@ -18,3 +18,4 @@ export * from './boot';
 export * from './poll';
 export * from './notifyChannel';
 export * from './autoEqApply';
+export * from './eqLinkActions';

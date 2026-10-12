@@ -14,6 +14,8 @@
     onExit,
     types,
     onLibrary,
+    link,
+    onToggleLink,
   }: {
     bands: FilterParams[];
     onPatch: (index: number, patch: Partial<FilterParams>) => void;
@@ -25,6 +27,8 @@
     onExit: () => void;
     types?: FilterType[];
     onLibrary?: () => void;
+    link: { grouped: boolean; locked: boolean; peerLabel: string; selectedShort: string };
+    onToggleLink: () => void;
   } = $props();
 
   const inSelection = $derived(copySource != null);
@@ -41,10 +45,35 @@
   const rightTitle = $derived(
     inSelection ? 'Exit copy mode' : 'Reset all bands and preamp',
   );
+
+  const linkTitle = $derived(
+    link.locked
+      ? `Unlink from ${link.peerLabel}`
+      : `Link with ${link.peerLabel}: edits mirror to them, copying this channel's EQ first`,
+  );
+  const title = $derived(
+    `BANDS · 10 BIQUAD${link.locked ? ` · ${link.selectedShort}+${link.peerLabel}` : ''}`,
+  );
 </script>
 
-<Panel code="EQ.02" title="BANDS · 10 BIQUAD">
+{#snippet lockGlyph(closed: boolean)}
+  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <rect x="3" y="7" width="10" height="7" rx="1.5" />
+    <path d={closed ? 'M5 7V5a3 3 0 0 1 6 0v2' : 'M5 7V5a3 3 0 0 1 5.6-1.5'} />
+  </svg>
+{/snippet}
+
+<Panel code="EQ.02" {title}>
   {#snippet right()}
+    {#if link.grouped}
+      <button
+        class="chip hi act link"
+        class:on={link.locked}
+        title={linkTitle}
+        aria-pressed={link.locked}
+        onclick={onToggleLink}
+      >{@render lockGlyph(link.locked)}LINK</button>
+    {/if}
     {#if onLibrary && !inSelection}
       <button class="chip hi act" onclick={onLibrary} title="Browse the AutoEQ profile library">AUTOEQ</button>
     {/if}
@@ -68,6 +97,7 @@
 
 <style>
   .act + .act { margin-left: 6px; }
+  .link { display: inline-flex; align-items: center; gap: 5px; }
 
   .head {
     display: grid;

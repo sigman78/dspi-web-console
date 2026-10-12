@@ -14,6 +14,7 @@ export * from './presetLimits';
 export * from './mixer';
 export * from './mixerView';
 export * from './snapshot';
+export * from './eqLink';
 export * from './snapshotDiff';
 export * from './changeClass';
 export * from './applyChange';

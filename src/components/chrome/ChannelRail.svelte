@@ -10,6 +10,13 @@
   const snap = $derived(activeSession()?.mirror.current ?? null);
   const tele = $derived(activeSession()?.telemetry ?? null);
   const disabled = $derived(!connection.connected);
+  // Locked-group peers of the selected channel (excluding the channel itself).
+  const linkedIds = $derived.by<ReadonlySet<ChannelId>>(() => {
+    const sel = settings.selectedChannel;
+    const s = activeSession();
+    if (settings.tab !== 'eq' || sel == null || !s) return new Set();
+    return new Set(s.eqLink.peersOf(sel));
+  });
 
   // Inline rename: one row editable at a time. The row component owns the
   // pending text and its own commit-once guard; the rail tracks which row is
@@ -84,6 +91,7 @@
                   defaultName={ch.defaultName}
                   selected={settings.selectedChannel === ch.id}
                   pulsate={eqUi.copySource === ch.id}
+                  linked={linkedIds.has(ch.id)}
                   disabled={disabled}
                   editing={editingId === ch.id}
                   onclick={() => selectChannel(ch.id)}

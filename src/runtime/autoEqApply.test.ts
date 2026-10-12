@@ -68,7 +68,7 @@ describe('applyAutoEqEntry', () => {
       ...flatEntry(-4),
       filters: [{ type: 'peaking', freq: 1000, q: 1, gain: 3 }],
     };
-    applyAutoEqEntry(activeSession()!, inputId, entry, false);
+    applyAutoEqEntry(activeSession()!, inputId, entry);
     await vi.runAllTimersAsync();
     expect(device.setFilter).toHaveBeenCalledTimes(10);
     expect(device.setInputPreamp).toHaveBeenCalledWith(0, -4);
@@ -78,25 +78,38 @@ describe('applyAutoEqEntry', () => {
   it('routes preamp to setOutputGain (output trim) for an output channel', async () => {
     const device = harness();
     const out = liveMirror().current!.outputs[0];
-    applyAutoEqEntry(activeSession()!, out.id, flatEntry(-2), false);
+    applyAutoEqEntry(activeSession()!, out.id, flatEntry(-2));
     await vi.runAllTimersAsync();
     expect(device.setOutputGain).toHaveBeenCalledWith(out.wireIndex, -2);
     expect(device.setInputPreamp).not.toHaveBeenCalled();
   });
 
-  it('applies to the stereo twin too when includePairTwin is true', async () => {
+  it('applies to every member of a locked group', async () => {
     const device = harness();
-    const inputId = liveMirror().current!.channels.find((c) => !c.isOutput)!.id;
-    applyAutoEqEntry(activeSession()!, inputId, flatEntry(0), true);
+    const out = liveMirror().current!.outputs[0];
+    const s = activeSession()!;
+    s.eqLink.setLocked(out.id, true);
+    applyAutoEqEntry(s, out.id, flatEntry(-3));
     await vi.runAllTimersAsync();
     expect(device.setFilter).toHaveBeenCalledTimes(20);
-    expect(device.setInputPreamp).toHaveBeenCalledTimes(2);
+    expect(device.setOutputGain).toHaveBeenCalledTimes(2);
   });
 
-  it('does not touch a channel with no stereo twin beyond the target itself', async () => {
+  it('touches only the target while its group is unlocked', async () => {
+    const device = harness();
+    const out = liveMirror().current!.outputs[0];
+    applyAutoEqEntry(activeSession()!, out.id, flatEntry(0));
+    await vi.runAllTimersAsync();
+    expect(device.setFilter).toHaveBeenCalledTimes(10);
+    expect(device.setOutputGain).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not touch a channel with no group beyond the target itself', async () => {
     const device = harness();
     const pdmId = liveMirror().current!.channels.find((c) => c.shortName === 'PDM')!.id;
-    applyAutoEqEntry(activeSession()!, pdmId, flatEntry(0), true);
+    const s = activeSession()!;
+    s.eqLink.setLocked(pdmId, true);
+    applyAutoEqEntry(s, pdmId, flatEntry(0));
     await vi.runAllTimersAsync();
     expect(device.setFilter).toHaveBeenCalledTimes(10);
   });
@@ -112,7 +125,7 @@ describe('applyAutoEqEntry', () => {
   it('flattens first-order bands when the device lacks the firstOrderEq capability', async () => {
     const device = harness({}, 10);
     const inputId = liveMirror().current!.channels.find((c) => !c.isOutput)!.id;
-    applyAutoEqEntry(activeSession()!, inputId, firstOrderEntry(), false);
+    applyAutoEqEntry(activeSession()!, inputId, firstOrderEntry());
     await vi.runAllTimersAsync();
     const calls = vi.mocked(device.setFilter).mock.calls;
     expect(calls.find((c) => c[1] === 0)![2].type).toBe(FilterType.Flat);
@@ -122,7 +135,7 @@ describe('applyAutoEqEntry', () => {
   it('passes first-order bands through on a firstOrderEq-capable device', async () => {
     const device = harness({}, 16);
     const inputId = liveMirror().current!.channels.find((c) => !c.isOutput)!.id;
-    applyAutoEqEntry(activeSession()!, inputId, firstOrderEntry(), false);
+    applyAutoEqEntry(activeSession()!, inputId, firstOrderEntry());
     await vi.runAllTimersAsync();
     const calls = vi.mocked(device.setFilter).mock.calls;
     expect(calls.find((c) => c[1] === 0)![2].type).toBe(FilterType.LowShelf1);

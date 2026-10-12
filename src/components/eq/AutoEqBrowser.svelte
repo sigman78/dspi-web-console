@@ -8,7 +8,8 @@
     autoEqDb, autoEqEntries, ensureAutoEqDb, isAutoEqFavorite, toggleAutoEqFavorite,
     saveAutoEqUserEntry, deleteAutoEqUserEntry, searchAutoEq,
   } from '@/state';
-  import { applyAutoEqEntry, preampTargetLabel, hasStereoTwin } from '@/runtime';
+  import { applyAutoEqEntry, preampTargetLabel } from '@/runtime';
+  import { eqLinkView } from '@/components/eq/eqLinkView';
   import { getSession } from '@/components/sessionContext';
 
   const {
@@ -22,6 +23,13 @@
   } = $props();
 
   const s = getSession();
+
+  const linkedSuffix = $derived.by(() => {
+    const snap = s.mirror.current;
+    if (!snap) return '';
+    const view = eqLinkView(s.eqLink, snap.channels, channel);
+    return view.locked ? ` · LINKED → ${view.members.map((c) => c.shortName).join('+')}` : '';
+  });
 
   onMount(() => {
     ensureAutoEqDb();
@@ -47,11 +55,6 @@
   const selectedEntry = $derived(allEntries.find((e) => e.id === selectedId) ?? null);
 
   const generatedDate = $derived(autoEqDb.generatedAt?.split('T')[0] ?? '');
-
-  const hasTwin = $derived.by(() => {
-    const chans = s.mirror.current?.channels;
-    return chans ? hasStereoTwin(chans, channel.id) : false;
-  });
 
   const selectedBandCount = $derived(
     selectedEntry
@@ -94,9 +97,9 @@
     if (selectedId === id) selectedId = null;
   }
 
-  function applyTo(includePairTwin: boolean) {
+  function applyTo() {
     if (!selectedEntry) return;
-    applyAutoEqEntry(s, channel.id, selectedEntry, includePairTwin);
+    applyAutoEqEntry(s, channel.id, selectedEntry);
     onClose();
   }
 
@@ -180,13 +183,10 @@
     {#if selectedEntry}
       <div class="footer">
         <span class="hint">
-          PREAMP {selectedEntry.preamp} dB &middot; {selectedBandCount} BANDS &middot; &rarr; {preampTargetLabel(channel)}
+          PREAMP {selectedEntry.preamp} dB &middot; {selectedBandCount} BANDS &middot; &rarr; {preampTargetLabel(channel)}{linkedSuffix}
         </span>
         <div class="actions">
-          <button class="chip accent" onclick={() => applyTo(false)}>APPLY &rarr; {shortName(selectedEntry)}</button>
-          {#if hasTwin}
-            <button class="chip accent" onclick={() => applyTo(true)}>APPLY PAIR</button>
-          {/if}
+          <button class="chip accent" onclick={() => applyTo()}>APPLY &rarr; {shortName(selectedEntry)}</button>
         </div>
       </div>
     {/if}

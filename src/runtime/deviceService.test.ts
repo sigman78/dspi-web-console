@@ -259,7 +259,7 @@ describe('resetAppState', () => {
     const rec = activeRecord()!;
     // A raw synced dispatch over a running session (a common test pattern)
     // re-points active without deactivating it -- its loops keep running.
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession({ info: {}, hardware: {} } as never) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession({ info: { serial: 'TEST' }, hardware: {} } as never) });
     expect(activeRecord()?.id).not.toBe(rec.id);
     expect(rec.loops).not.toBeNull();
 
