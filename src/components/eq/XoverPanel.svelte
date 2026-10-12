@@ -3,7 +3,7 @@
   import ValueField from '@/components/chrome/ValueField.svelte';
   import BandTypeSelect, { XOVER_TYPE_ORDER } from './BandTypeSelect.svelte';
   import { FilterType, Eq, type ChannelModel, type FilterParams } from '@/domain';
-  import { setXoverBand, setXoverBypass } from '@/runtime';
+  import { setXoverBandLinked, setXoverBypassLinked } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
@@ -12,11 +12,11 @@
 
   function patch(i: number, p: Partial<FilterParams>) {
     if ('bypass' in p && p.bypass !== undefined) {
-      setXoverBypass(s, channel.id, i, p.bypass);
+      setXoverBypassLinked(s, channel.id, i, p.bypass);
     }
     const { bypass: _bypass, ...rest } = p;
     if (Object.keys(rest).length > 0) {
-      setXoverBand(s, channel.id, i, { ...channel.xoverBands[i], ...rest });
+      setXoverBandLinked(s, channel.id, i, { ...channel.xoverBands[i], ...rest });
     }
   }
 </script>

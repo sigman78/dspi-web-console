@@ -71,6 +71,7 @@
     selected = false,
     dim = false,
     pulsate = false,
+    linked = false,
     disabled = false,
     editing = false,
     onclick,
@@ -85,6 +86,7 @@
     selected?: boolean;
     dim?: boolean;
     pulsate?: boolean;
+    linked?: boolean;
     disabled?: boolean;
     editing?: boolean;
     onclick?: () => void;
@@ -197,6 +199,7 @@
   class:selected
   class:dim
   class:pulsate
+  class:linked
   class:editing
   class:is-disabled={disabled}
 >
@@ -229,7 +232,15 @@
       onclick={handleClick}
       ondblclick={startEdit}
     >
-      <span class="chip"><span class="nm">{name}</span></span>
+      <span class="chip">
+        <span class="nm">{name}</span>
+        {#if linked}
+          <svg class="lock" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="7" width="10" height="7" rx="1.5" />
+            <path d="M5 7V5a3 3 0 0 1 6 0v2" />
+          </svg>
+        {/if}
+      </span>
       {@render meter()}
     </button>
   {/if}
@@ -300,7 +311,10 @@
      (see ChannelRail's .rail-body.is-disabled); this is the single dim layer
      on the control itself. */
   .body:disabled { opacity: var(--dim-disabled); cursor: default; }
+  .chip:has(.lock) { display: flex; align-items: center; gap: 4px; }
+  .lock { flex: none; margin-left: auto; color: var(--text-dim); }
   .nm {
+    min-width: 0;
     font-size: 10px;
     white-space: nowrap;
     overflow: hidden;
@@ -362,6 +376,12 @@
   .row.selected .chip {
     background: var(--ch-base);
     border-color: var(--ch-base);
+    box-shadow: none;
+  }
+  /* Linked peer of the selected channel: the selected fill at reduced strength. */
+  .row.linked:not(.selected) .chip {
+    background: color-mix(in oklab, var(--ch-base) 28%, var(--wash));
+    border-color: color-mix(in oklab, var(--ch-base) 55%, var(--border));
     box-shadow: none;
   }
   /* Hover on the selected row brightens the accent rather than letting the

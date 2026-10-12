@@ -197,7 +197,7 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession({} as never) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession({ info: { serial: 'TEST' } } as never) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => { vi.useRealTimers(); });

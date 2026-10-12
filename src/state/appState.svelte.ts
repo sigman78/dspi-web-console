@@ -7,6 +7,7 @@ import type { CtrlIfacesState } from './ctrlIfaces.svelte';
 import type { ControlSurfacesState } from './controlSurfaces.svelte';
 import type { SysClockState } from './sysClock.svelte';
 import type { StagingState } from './staging.svelte';
+import type { EqLinkState } from './eqLink.svelte';
 import type { MirrorState } from './mirror.svelte';
 import type { LinkHealth } from './linkHealth.svelte';
 import type { WriteCoordinator } from '@/runtime/writes.svelte';
@@ -48,6 +49,8 @@ export interface ReadySession {
   // Pending heavy device-config edits (input source, I2S/S/PDIF pins, MCK/BCK,
   // output type), staged here until PendingChangesBar's APPLY commits them.
   readonly staging: StagingState;
+  // Console-only EQ link groups and their lock flags.
+  readonly eqLink: EqLinkState;
   readonly mirror: MirrorState;
   readonly health: LinkHealth;
   readonly writes: WriteCoordinator;

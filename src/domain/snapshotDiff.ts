@@ -6,7 +6,7 @@
 import type { DspSnapshot } from './snapshot';
 import type { I2sConfig } from './platform';
 import type { OutputModel, RouteModel } from './mixer';
-import type { FilterParams } from './filter';
+import { FilterType, type FilterParams } from './filter';
 import type { Loudness, Crossfeed, Leveller, Psybass, Upmix, Subharm, Tube, LimiterOutput } from './processing';
 import type { InputConfig, LgSoundSync, UserVolume, DacHwMute, AdatOutputConfig } from './deviceSections';
 import { BAND_GAIN_STEP_DB, FREQ_STEP_HZ, Q_STEP } from './eqLimits';
@@ -59,7 +59,7 @@ export type SnapshotChange =
   | { kind: 'i2s';           value: I2sConfig }
   | { kind: 'outputPins';    value: number[] };
 
-function neq(a: number, b: number, tol: number): boolean {
+export function neq(a: number, b: number, tol: number): boolean {
   return Math.abs(a - b) > tol;
 }
 
@@ -68,13 +68,19 @@ function qpDiffers(a: number | undefined, b: number | undefined): boolean {
   return neq(a, b, DIFF_TOLERANCE.qp);
 }
 
+// qp is only meaningful for Linkwitz Transform: the bulk parser leaves qp: 0
+// on other bands while UI-created bands leave it undefined.
+export function filterParamsEqual(a: FilterParams, b: FilterParams, opts: { bypass: boolean }): boolean {
+  return a.type === b.type
+      && (!opts.bypass || a.bypass === b.bypass)
+      && !neq(a.frequency, b.frequency, DIFF_TOLERANCE.freq)
+      && !neq(a.q,         b.q,         DIFF_TOLERANCE.q)
+      && !neq(a.gain,      b.gain,      DIFF_TOLERANCE.db)
+      && (a.type !== FilterType.LinkwitzTransform || !qpDiffers(a.qp, b.qp));
+}
+
 function bandDiffers(a: FilterParams, b: FilterParams): boolean {
-  return a.type !== b.type
-      || a.bypass !== b.bypass
-      || neq(a.frequency, b.frequency, DIFF_TOLERANCE.freq)
-      || neq(a.q,         b.q,         DIFF_TOLERANCE.q)
-      || neq(a.gain,      b.gain,      DIFF_TOLERANCE.db)
-      || qpDiffers(a.qp, b.qp);
+  return !filterParamsEqual(a, b, { bypass: true });
 }
 
 function outputDiffers(a: OutputModel, b: OutputModel): boolean {

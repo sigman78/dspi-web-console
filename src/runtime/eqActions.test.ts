@@ -41,7 +41,7 @@ describe('copyEqBands', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk({ masterVolumeDb: 0 }));
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession({} as never) });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession({ info: { serial: 'TEST' } } as never) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
   afterEach(() => { vi.useRealTimers(); });

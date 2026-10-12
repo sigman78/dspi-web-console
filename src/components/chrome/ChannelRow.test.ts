@@ -18,6 +18,12 @@ describe('ChannelRow', () => {
     expect(screen.getByRole('button', { name: 'Front L' }).getAttribute('aria-pressed')).toBe('true');
   });
 
+  test('a linked row shows the lock glyph and is not marked selected', () => {
+    const { container } = render(ChannelRow, { props: { ...base, linked: true } });
+    expect(container.querySelector('svg.lock')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Front L' }).getAttribute('aria-pressed')).toBe('false');
+  });
+
   test('clicking fires onclick', async () => {
     const onclick = vi.fn();
     render(ChannelRow, { props: { ...base, onclick } });

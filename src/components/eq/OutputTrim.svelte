@@ -1,7 +1,7 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
   import ValueField from '@/components/chrome/ValueField.svelte';
-  import { setOutputGain, setOutputDelay } from '@/runtime';
+  import { setOutputGainLinked, setOutputDelayLinked } from '@/runtime';
   import { Mix, type OutputModel } from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
@@ -26,7 +26,7 @@
         step={Mix.OUTPUT_GAIN_STEP_DB}
         align="right"
         value={output.gainDb}
-        onChange={(v) => setOutputGain(s, output.wireIndex, v)}
+        onChange={(v) => setOutputGainLinked(s, output.id, v)}
       />
     </div>
     <div class="cell">
@@ -38,7 +38,7 @@
         step={Mix.OUTPUT_DELAY_STEP_MS}
         align="right"
         value={output.delayMs}
-        onChange={(v) => setOutputDelay(s, output.wireIndex, v)}
+        onChange={(v) => setOutputDelayLinked(s, output.id, v)}
       />
     </div>
   </div>
