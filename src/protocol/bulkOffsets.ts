@@ -205,10 +205,10 @@ export function describeBulkOffset(offset: number, version: number): BulkOffsetH
   }
 
   if (version >= 32) {
-    const entrySize = Codec.sizeOf(Wire.LimiterOutput);
+    const entrySize = Codec.sizeOf(Wire.LimiterEntry);
     if (offset < cursor + entrySize * Wire.Const.NUM_OUTPUTS) {
       const idx = Math.floor((offset - cursor) / entrySize);
-      return resolveField(`limiter[${idx}]`, Wire.LimiterOutput, cursor + idx * entrySize, offset);
+      return resolveField(`limiter[${idx}]`, Wire.LimiterEntry, cursor + idx * entrySize, offset);
     }
   }
 

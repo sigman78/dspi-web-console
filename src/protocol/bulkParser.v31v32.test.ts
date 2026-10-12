@@ -92,6 +92,32 @@ describe('bulkParser — older packets parse with firmware defaults', () => {
     expect(p.limiter.every((o) => !o.enabled && o.linkGroup === 0 && o.thresholdDb === -1 && o.releaseMs === 100)).toBe(true);
   });
 
+  it('a V30 state built at V32 (paste from a beta3 device) carries firmware defaults for both sections', () => {
+    const fromV30 = parseBulkParams(buildBulkParams(base(30)));
+    const bytes = buildBulkParams(fromV30, 32);
+    expect(bytes.byteLength).toBe(Wire.BULK_SIZE_V32);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset);
+    expect([bytes[5980], bytes[5981], bytes[5982], bytes[5983]]).toEqual([0, 1, 1, 1]);
+    expect(dv.getUint16(5984, true)).toBe(0xFFFF);
+    expect(dv.getFloat32(5988, true)).toBe(-12);
+    expect([bytes[6028], bytes[6029]]).toEqual([0, 0]);
+    expect(dv.getFloat32(6032, true)).toBe(-1);
+    expect(dv.getFloat32(6036, true)).toBe(100);
+  });
+
+  it('a V32 header whose payload stops after the tube section reads the tube and defaults the limiter', () => {
+    const bulk = base(32);
+    bulk.tube = { ...bulk.tube, enabled: true, mixPct: 40 };
+    bulk.limiter[0] = { enabled: true, linkGroup: 1, thresholdDb: -9, releaseMs: 300 };
+    const full = buildBulkParams(bulk);
+    const short = full.slice(0, Wire.BULK_SIZE_V31);
+    new DataView(short.buffer, short.byteOffset).setUint16(6, Wire.BULK_SIZE_V31, true);  // header payloadLength
+    const p = parseBulkParams(short);
+    expect(p.tube.enabled).toBe(true);
+    expect(p.tube.mixPct).toBe(40);
+    expect(p.limiter[0]).toEqual({ enabled: false, linkGroup: 0, thresholdDb: -1, releaseMs: 100 });
+  });
+
   it('building at V31 from a state carrying limiter data drops it and emits 6028 bytes', () => {
     const bulk = base(32);
     bulk.limiter[0] = { enabled: true, linkGroup: 1, thresholdDb: -12, releaseMs: 500 };

@@ -17,8 +17,8 @@ import { ChannelFamily, SPDIF_RX_MAX_INSTANCES } from '@/domain';
 // config, V25 adds the stereo upmixer, V26 adds the upmixer presence bell,
 // V27 adds the upmix centre OFF mode, V28 adds the fourth S/PDIF input,
 // V29 adds the subharmonic synthesizer, V30 grows the subharm section:
-// third band, selectivity, ceiling, pair link, V31 adds the tube
-// preamp, V32 adds the per-output limiter). Wire versions 11..15 were
+// third band, selectivity, ceiling, pair link; V31 adds the tube preamp;
+// V32 adds the per-output limiter). Wire versions 11..15 were
 // in-development intermediates with shifting layouts the console never
 // shipped against -- rejected like pre-V10 firmware.
 export const MAX_KNOWN_WIRE = 32;

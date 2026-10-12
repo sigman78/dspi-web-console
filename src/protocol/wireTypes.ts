@@ -457,14 +457,14 @@ export const TubeParams = struct({
 
 // Section 25: per-output limiter (108 B, V32+; both platforms). Entries past
 // the platform's output count are zero on GET and ignored on SET.
-export const LimiterOutput = struct({
+export const LimiterEntry = struct({
   enabled:     bool8,
   linkGroup:   u8,
   _reserved0:  reserved(2),
   thresholdDb: f32,
   releaseMs:   f32,
 });
-export const LimiterParams = arr(LimiterOutput, Const.NUM_OUTPUTS);
+export const LimiterParams = arr(LimiterEntry, Const.NUM_OUTPUTS);
 
 // Standalone control-transfer payloads (not part of the bulk transfer).
 

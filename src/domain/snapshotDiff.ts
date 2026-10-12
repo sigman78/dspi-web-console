@@ -164,8 +164,8 @@ function tubeDiffers(a: Tube, b: Tube): boolean {
       || neq(a.trimDb,      b.trimDb,      DIFF_TOLERANCE.db);
 }
 
+// Both sides always carry NUM_OUTPUTS entries (parser/defaultBulkParams).
 function limiterDiffers(a: LimiterOutput[], b: LimiterOutput[]): boolean {
-  if (a.length !== b.length) return true;
   return a.some((x, i) => x.enabled !== b[i].enabled
       || x.linkGroup !== b[i].linkGroup
       || neq(x.thresholdDb, b[i].thresholdDb, DIFF_TOLERANCE.db)

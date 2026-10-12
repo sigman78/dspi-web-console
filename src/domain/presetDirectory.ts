@@ -6,7 +6,8 @@ import type { PresetStartupMode } from '@/protocol';
 import type { MasterVolumeMode } from './processing';
 
 // Output-config persistence mode (0x98/0x99). Governs whether the physical-IO
-// block (output pins, output types, I2S BCK/MCK, S/PDIF RX pin) rides preset
+// block (output pins, output types, I2S BCK/MCK, S/PDIF RX pin, and from fw
+// V32 the output limiter) rides preset
 // save/load (WithPreset) or is device-global (Independent; persisted only via
 // SaveOutputConfig 0x52, never touched by preset load / factory reset / bulk
 // SET). On pre-1.1.4 firmware the same wire bit is the legacy "include pins

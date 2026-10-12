@@ -156,40 +156,30 @@ describe('presets store', () => {
     expect(dirty()).toBe(false);
   });
 
-  it('presetsDirty counts an outputPins change only in WithPreset mode', () => {
-    const dir = (mode: OutputConfigMode) => ({
-      occupiedSlotsSet: new Set<number>(),
-      startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      outputConfigMode: mode, masterVolumeMode: 0 as any,
-    });
-    seed(mkSnap({ outputPins: [6, 7] }));
-    liveMirror().snapshot.outputPins[1] = 8;
-    // Independent → pins are not part of the preset → not dirty
-    ps().directory = dir(OutputConfigMode.Independent) as any;
-    expect(dirty()).toBe(false);
-    // WithPreset → pins ride the preset → dirty
-    ps().directory = dir(OutputConfigMode.WithPreset) as any;
-    expect(dirty()).toBe(true);
-  });
-
-  it('presetsDirty counts a limiter change only in WithPreset mode, like the pins', () => {
-    const dir = (mode: OutputConfigMode) => ({
-      occupiedSlotsSet: new Set<number>(),
-      startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
-      outputConfigMode: mode, masterVolumeMode: 0 as any,
-    });
-    seed(mkSnap());
-    liveMirror().snapshot.limiter[0] = { ...liveMirror().snapshot.limiter[0], enabled: true, thresholdDb: -6 };
-    ps().directory = dir(OutputConfigMode.Independent) as any;
-    expect(dirty()).toBe(false);
-    ps().directory = dir(OutputConfigMode.WithPreset) as any;
-    expect(dirty()).toBe(true);
-  });
-
   const dirWithMode = (outputConfigMode: OutputConfigMode) => ({
     occupiedSlotsSet: new Set<number>(),
     startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
     outputConfigMode, masterVolumeMode: 0 as any,
+  });
+
+  it('presetsDirty counts an outputPins change only in WithPreset mode', () => {
+    seed(mkSnap({ outputPins: [6, 7] }));
+    liveMirror().snapshot.outputPins[1] = 8;
+    // Independent → pins are not part of the preset → not dirty
+    ps().directory = dirWithMode(OutputConfigMode.Independent) as any;
+    expect(dirty()).toBe(false);
+    // WithPreset → pins ride the preset → dirty
+    ps().directory = dirWithMode(OutputConfigMode.WithPreset) as any;
+    expect(dirty()).toBe(true);
+  });
+
+  it('presetsDirty counts a limiter change only in WithPreset mode, like the pins', () => {
+    seed(mkSnap());
+    liveMirror().snapshot.limiter[0] = { ...liveMirror().snapshot.limiter[0], enabled: true, thresholdDb: -6 };
+    ps().directory = dirWithMode(OutputConfigMode.Independent) as any;
+    expect(dirty()).toBe(false);
+    ps().directory = dirWithMode(OutputConfigMode.WithPreset) as any;
+    expect(dirty()).toBe(true);
   });
 
   it('masks an i2s change by output-config mode', () => {

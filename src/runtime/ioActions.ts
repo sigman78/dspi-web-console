@@ -4,7 +4,8 @@ import { Wire } from '@/protocol';
 import { write, writeChecked, command } from './writes.svelte';
 
 // 0x52 SaveOutputConfig -- persists the live physical-IO block (output pins,
-// output types, I2S BCK/MCK, S/PDIF RX pin) to the directory's device-global
+// output types, I2S BCK/MCK, S/PDIF RX pin, and from fw V32 the output
+// limiter) to the directory's device-global
 // block. Meaningful in Independent mode (the block is the boot source);
 // firmware accepts it in WithPreset mode but it stays dormant. Fire-and-forget:
 // only failure surfaces; success is silent (there is no saved-readback opcode,

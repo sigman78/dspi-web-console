@@ -35,7 +35,8 @@ function latest(platform: MockOptions['platform']): MockProfile {
 
 // Firmware version that shipped a given wire version: 1.1.4 for V10, 1.1.5
 // for V16-V26, 1.1.6 for V27-V29, 1.1.6-beta3 for V30 (the first to report
-// a pre-release ordinal), and 1.1.6-beta4 for V31-V32.
+// a pre-release ordinal), and 1.1.6-beta4 for V31-V32 (V31 is an untagged
+// intermediate; it borrows the beta4 stamp for lack of a real one).
 function fwForWire(n: number): typeof FW_1_1_4 | typeof FW_1_1_5 | typeof FW_1_1_6 | typeof FW_1_1_6_BETA3 | typeof FW_1_1_6_BETA4 {
   return n === 10 ? FW_1_1_4 : n >= 31 ? FW_1_1_6_BETA4 : n >= 30 ? FW_1_1_6_BETA3 : n >= 27 ? FW_1_1_6 : FW_1_1_5;
 }
