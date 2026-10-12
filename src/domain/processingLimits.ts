@@ -157,3 +157,6 @@ export const LIMITER_THRESHOLD_MIN_DB = -30;
 export const LIMITER_THRESHOLD_MAX_DB = 0;
 export const LIMITER_RELEASE_MIN_MS = 10;
 export const LIMITER_RELEASE_MAX_MS = 1000;
+export const LIMITER_THRESHOLD_STEP_DB = 0.5;
+export const LIMITER_RELEASE_STEP_MS = 10;
+export const LIMITER_LINK_GROUP_MAX = 4;

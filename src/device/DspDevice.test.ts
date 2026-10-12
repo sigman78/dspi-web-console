@@ -318,6 +318,11 @@ describe('DspDevice — processing module setters', () => {
     { name: 'setSubharmDepth(60) -> 0xA9',            invoke: (d) => d.setSubharmDepth(60), opcode: 0xA9, payload: f32(60) },
     { name: 'setSubharmHold(200) -> 0xAB',            invoke: (d) => d.setSubharmHold(200), opcode: 0xAB, payload: f32(200) },
     { name: 'setSubharmCeiling(-12) -> 0xAD',         invoke: (d) => d.setSubharmCeiling(-12), opcode: 0xAD, payload: f32(-12) },
+    // Output limiter: single opcode 0x81, wValue = (output << 8) | index, float payload for every param.
+    { name: 'setLimiterEnabled(2, true) -> 0x81',     invoke: (d) => d.setLimiterEnabled(2, true), opcode: 0x81, value: 0x0200, payload: f32(1) },
+    { name: 'setLimiterThreshold(5, -6) -> 0x81',     invoke: (d) => d.setLimiterThreshold(5, -6), opcode: 0x81, value: 0x0501, payload: f32(-6) },
+    { name: 'setLimiterRelease(0xFF, 250) -> 0x81',   invoke: (d) => d.setLimiterRelease(0xFF, 250), opcode: 0x81, value: 0xFF02, payload: f32(250) },
+    { name: 'setLimiterLinkGroup(8, 3) -> 0x81',      invoke: (d) => d.setLimiterLinkGroup(8, 3), opcode: 0x81, value: 0x0803, payload: f32(3) },
   ];
 
   it.each(setterCases)('$name writes the expected opcode + payload', async ({ invoke, opcode, payload, value }) => {
@@ -387,6 +392,60 @@ describe('DspDevice — subharmonic synthesizer (fw V29+, both platforms)', () =
     await d.setSubharmEnabled(true);
     await d.setSubharmLow(3);
     expect(await d.getSubharmHeadroom()).toBeGreaterThan(0);
+  });
+});
+
+describe('DspDevice — output limiter reads (fw V32+)', () => {
+  // Transport whose 0x81 GET replies are canned, so decode is checked
+  // independently of the mock's own stand-in.
+  async function withReply(reply: Uint8Array) {
+    const inner = new MockTransport({ platform: 'rp2350', wireVersion: 32 });
+    await inner.open();
+    const seen: Array<{ value: number; length: number }> = [];
+    const t: DspTransport = {
+      open: () => inner.open(), close: () => inner.close(), isOpen: () => inner.isOpen(),
+      on: (e: TransportEvent, l: () => void) => inner.on(e, l),
+      ctrlIn: (request, value, length) => {
+        if (request !== WireCmd.Limiter.code) return inner.ctrlIn(request, value, length);
+        seen.push({ value, length });
+        return Promise.resolve(reply);
+      },
+      ctrlOut: (request, value, data) => inner.ctrlOut(request, value, data),
+    };
+    return { d: await createDevice(t), seen };
+  }
+
+  test('getLimiterMeter reads one u16 per hardware output and converts 0.01 dB to dB', async () => {
+    const raw = new Uint8Array(18);
+    const dv = new DataView(raw.buffer);
+    dv.setUint16(0, 350, true);
+    dv.setUint16(4, 12, true);
+    const { d, seen } = await withReply(raw);
+    const meter = await d.getLimiterMeter();
+    expect(seen).toEqual([{ value: 0x0080, length: 18 }]);
+    expect(meter).toHaveLength(9);
+    expect(meter[0]).toBeCloseTo(3.5, 6);
+    expect(meter[1]).toBe(0);
+    expect(meter[2]).toBeCloseTo(0.12, 6);
+  });
+
+  test('getLimiterMeter tolerates a short reply', async () => {
+    const { d } = await withReply(new Uint8Array([100, 0, 200, 0, 7]));
+    expect(await d.getLimiterMeter()).toEqual([1, 2]);
+  });
+
+  test('getLimiterStatus decodes the 4-byte block from index 0x81', async () => {
+    const { d, seen } = await withReply(new Uint8Array([1, 32, 16, 9]));
+    expect(await d.getLimiterStatus()).toEqual({ engaged: true, lookaheadSamples: 32, blockSamples: 16, numOutputs: 9 });
+    expect(seen[0].value).toBe(0x0081);
+  });
+
+  test('getLimiterParam sends the packed wValue and decodes the float', async () => {
+    const f = new Uint8Array(4);
+    new DataView(f.buffer).setFloat32(0, -12.5, true);
+    const { d, seen } = await withReply(f);
+    expect(await d.getLimiterParam(4, Wire.LimiterParam.ThresholdDb)).toBeCloseTo(-12.5, 4);
+    expect(seen[0].value).toBe(0x0401);
   });
 });
 

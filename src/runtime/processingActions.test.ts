@@ -364,3 +364,111 @@ describe('thin verbs: device call + mirror patch (parameterized)', () => {
     expect(fn).toHaveBeenCalledWith(...c.expectedArgs());
   });
 });
+
+describe('output limiter actions', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  function setup() {
+    const device = initializedDevice({
+      setLimiterEnabled: vi.fn(async () => {}),
+      setLimiterThreshold: vi.fn(async () => {}),
+      setLimiterRelease: vi.fn(async () => {}),
+      setLimiterLinkGroup: vi.fn(async () => {}),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(testHardware, parseBulkParams(makeBulk())));
+    const lim = liveMirror().current!.limiter;
+    lim[1] = { ...lim[1], linkGroup: 1 };
+    lim[4] = { ...lim[4], linkGroup: 1 };
+    lim[6] = { ...lim[6], linkGroup: 2 };
+    return { device, s: activeSession()!, limiter: () => liveMirror().current!.limiter };
+  }
+
+  it('a threshold scrub on a grouped output moves every member at once, other groups untouched', () => {
+    const { device, s, limiter } = setup();
+    actions.setLimiterThreshold(s, 4, -9);
+    expect(limiter()[1].thresholdDb).toBe(-9);
+    expect(limiter()[4].thresholdDb).toBe(-9);
+    expect(limiter()[6].thresholdDb).not.toBe(-9);
+    expect(device.setLimiterThreshold).toHaveBeenCalledWith(4, -9);
+  });
+
+  it('clamps release before the optimistic patch and the send', async () => {
+    const { device, s, limiter } = setup();
+    actions.setLimiterRelease(s, 0, 5000);
+    expect(limiter()[0].releaseMs).toBe(1000);
+    await vi.runAllTimersAsync();
+    expect(device.setLimiterRelease).toHaveBeenCalledWith(0, 1000);
+  });
+
+  it('enable is a write-lane edit that gangs the group and requests a status re-read', async () => {
+    const { device, s, limiter } = setup();
+    s.telemetry.lastLimiterStatusMs = 999;
+    actions.setLimiterEnabled(s, 1, true);
+    expect(limiter()[1].enabled).toBe(false);   // unchanged until ack
+    await vi.runAllTimersAsync();
+    expect(limiter()[1].enabled).toBe(true);
+    expect(limiter()[4].enabled).toBe(true);
+    expect(s.telemetry.lastLimiterStatusMs).toBe(0);
+    expect(device.setLimiterEnabled).toHaveBeenCalledWith(1, true);
+  });
+
+  it('enable-all fans out over the real outputs only and requests a status re-read', async () => {
+    const { device, s, limiter } = setup();
+    s.telemetry.lastLimiterStatusMs = 999;
+    actions.setLimiterAllEnabled(s, true);
+    expect(limiter().some((o) => o.enabled)).toBe(false);   // unchanged until ack
+    await vi.runAllTimersAsync();
+    const count = s.device.hardware.outputCount;
+    expect(limiter().slice(0, count).every((o) => o.enabled)).toBe(true);
+    expect(limiter().slice(count).some((o) => o.enabled)).toBe(false);
+    expect(s.telemetry.lastLimiterStatusMs).toBe(0);
+    expect(device.setLimiterEnabled).toHaveBeenCalledWith(0xFF, true);
+  });
+
+  it('joining a group adopts the lowest member settings', async () => {
+    const { device, s, limiter } = setup();
+    const lim = liveMirror().current!.limiter;
+    lim[1] = { ...lim[1], thresholdDb: -14, releaseMs: 222, enabled: true };
+    lim[4] = { ...lim[4], thresholdDb: -14, releaseMs: 222, enabled: true };
+    actions.setLimiterLinkGroup(s, 7, 1);
+    await vi.runAllTimersAsync();
+    expect(limiter()[7]).toEqual({ enabled: true, linkGroup: 1, thresholdDb: -14, releaseMs: 222 });
+    expect(device.setLimiterLinkGroup).toHaveBeenCalledWith(7, 1);
+  });
+
+  it('a lower-numbered joiner adopts the existing members; they never change', async () => {
+    const { s, limiter } = setup();
+    const lim = liveMirror().current!.limiter;
+    lim[0] = { ...lim[0], thresholdDb: -20 };
+    lim[1] = { ...lim[1], thresholdDb: -5 };
+    lim[4] = { ...lim[4], thresholdDb: -5 };
+    actions.setLimiterLinkGroup(s, 0, 1);
+    await vi.runAllTimersAsync();
+    expect(limiter()[0].thresholdDb).toBe(-5);
+    expect(limiter()[1].thresholdDb).toBe(-5);
+    expect(limiter()[4].thresholdDb).toBe(-5);
+  });
+
+  it('leaving a group keeps the output settings and touches no one', async () => {
+    const { s, limiter } = setup();
+    const lim = liveMirror().current!.limiter;
+    lim[1] = { ...lim[1], thresholdDb: -14, enabled: true };
+    lim[4] = { ...lim[4], thresholdDb: -14, enabled: true };
+    actions.setLimiterLinkGroup(s, 4, 0);
+    await vi.runAllTimersAsync();
+    expect(limiter()[4]).toEqual({ enabled: true, linkGroup: 0, thresholdDb: -14, releaseMs: lim[4].releaseMs });
+    expect(limiter()[1].linkGroup).toBe(1);
+  });
+
+  it('grouped members scrub on one shared lane, unlinked outputs on their own', async () => {
+    const { s } = setup();
+    actions.setLimiterThreshold(s, 1, -5);
+    actions.setLimiterThreshold(s, 4, -9);
+    actions.setLimiterThreshold(s, 0, -3);
+    await vi.runAllTimersAsync();
+    expect([...s.writes.lanes.keys()].sort()).toEqual(['limiterThreshold:0', 'limiterThreshold:g1']);
+  });
+});

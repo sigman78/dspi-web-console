@@ -28,7 +28,7 @@ import {
   validateCsMacroStep, validateCsMacro, validateCsDisplayCfg, validateCsDisplayPage,
   PRESET_SLOT_COUNT, FilterType,
   SPDIF_RX_MAX_INSTANCES, I2S_RX_MAX_PAIRS,
-  defaultInputName, Proc,
+  defaultInputName, Proc, settleLimiterGroups, joinLimiterGroup,
   SYS_CLOCK_MODE_DEFAULT_VREG, SYS_CLOCK_VREG_CEILING_RP2040, SYS_CLOCK_VREG_CEILING_RP2350,
   type FilterParams,
   type CrossPoint, type OutputState, type LimiterOutput,
@@ -102,6 +102,10 @@ const MIN_SUBHARM_WIRE = 29;
 // V30 tail (third band, selectivity, ceiling, pair link, solo, meter) STALLs
 // the whole extension opcode range (0x1B-0x1F, 0x2C-0x2F, 0xA9-0xAE) below V30.
 const MIN_SUBHARM_EXT_WIRE = 30;
+
+// Per-output limiter (REQ_LIMITER 0x81) lands on the wire at V32 on both
+// platforms; earlier profiles STALL it in both directions.
+const MIN_LIMITER_WIRE = 32;
 
 // Control Surfaces caps tables, firmware capability format version 14
 // (control_surfaces.c s_caps / control_surfaces_nouns.c cs_noun_table). The
@@ -855,6 +859,27 @@ export class MockTransport implements DspTransport {
       case WireCmd.GetSubharmCeiling.code:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmCeiling unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.ceilingDb);
+
+      // Per-output limiter (fw V32+): parameter float, GR meter or status block
+      // by index byte. A bad output/index STALLs.
+      case WireCmd.Limiter.code: {
+        if (this.#wireVersion < MIN_LIMITER_WIRE) throw new Error('MockTransport: Limiter unsupported (STALL)');
+        const output = value >> 8;
+        const index = value & 0xFF;
+        const numOut = this.#mockState.numOut;
+        if (index === Wire.LIMITER_GET_METER) {
+          const out = Codec.encode(Codec.arr(Codec.u16, numOut), this.#limiterMeterCentiDb(numOut));
+          return out.slice(0, Math.min(length, out.byteLength));
+        }
+        if (index === Wire.LIMITER_GET_STATUS) {
+          const engaged = this.#mockState.limiter.slice(0, numOut).some((o) => o.enabled);
+          return Codec.encode(Wire.LimiterStatus, { engaged: engaged ? 1 : 0, lookaheadSamples: 32, blockSamples: 16, numOutputs: numOut });
+        }
+        if (output >= numOut || index > Wire.LimiterParam.LinkGroup) throw new Error('MockTransport: Limiter bad output/index (STALL)');
+        const o = this.#mockState.limiter[output];
+        const v = [Number(o.enabled), o.thresholdDb, o.releaseMs, o.linkGroup][index];
+        return Codec.encode(Codec.f32, v);
+      }
 
       // Upmixer
       case WireCmd.UpmixGetParam.code:
@@ -1779,6 +1804,13 @@ export class MockTransport implements DspTransport {
         this.#mockState.subharm!.ceilingDb = Clamp.subharmCeilingDb(Codec.decode(Codec.f32, data));
         return;
 
+      // Per-output limiter (fw V32+). Firmware clamps; 0xFF fans out to every
+      // output; a bad output/index or a short payload is a silent no-op.
+      case WireCmd.Limiter.code:
+        if (this.#wireVersion < MIN_LIMITER_WIRE) throw new Error('MockTransport: Limiter unsupported (STALL)');
+        if (data.length >= 4) this.#setLimiterParam(value >> 8, value & 0xFF, Codec.decode(Codec.f32, data));
+        return;
+
       // Upmixer
       case WireCmd.UpmixSetParam.code:
         this.#setUpmixParam(value, Codec.decode(Codec.f32, data));
@@ -2092,13 +2124,7 @@ export class MockTransport implements DspTransport {
           thresholdDb: sane(o.thresholdDb, Proc.LIMITER_THRESHOLD_MIN_DB, Proc.LIMITER_THRESHOLD_MAX_DB, -1),
           releaseMs: sane(o.releaseMs, Proc.LIMITER_RELEASE_MIN_MS, Proc.LIMITER_RELEASE_MAX_MS, 100),
         });
-    for (let k = 1; k < numOut; k++) {
-      const g = out[k].linkGroup;
-      if (g === 0) continue;
-      const lead = out.findIndex((o) => o.linkGroup === g);
-      if (lead < k) out[k] = { ...out[lead] };
-    }
-    return out;
+    return settleLimiterGroups(out, numOut);
   }
 
   #captureSnapshot(): MockSnapshot {
@@ -2722,6 +2748,59 @@ export class MockTransport implements DspTransport {
     let bandSum = 0.85 * gLow + 0.85 * gHigh + 0.85 * gTop;
     if (s.ceilingDb < 0) bandSum = Math.min(bandSum, 10 ** (s.ceilingDb / 20));
     return s.boostDb + 20 * Math.log10(1 + bandSum);
+  }
+
+  #setLimiterParam(output: number, index: number, v: number): void {
+    if (Number.isNaN(v) || index > Wire.LimiterParam.LinkGroup) return;
+    const numOut = this.#mockState.numOut;
+    const all = output === Wire.LIMITER_ALL_OUTPUTS;
+    const targets = all
+      ? Array.from({ length: numOut }, (_, k) => k)
+      : output < numOut ? [output] : [];
+    if (index === Wire.LimiterParam.LinkGroup) {
+      const group = Clamp.limiterLinkGroup(v);
+      if (all) {
+        for (const k of targets) this.#mockState.limiter[k].linkGroup = group;
+        this.#mockState.limiter = settleLimiterGroups(this.#mockState.limiter, numOut);
+      } else if (targets.length) {
+        this.#mockState.limiter = joinLimiterGroup(this.#mockState.limiter, output, group, numOut);
+      }
+      return;
+    }
+    for (const k of targets) {
+      const o = this.#mockState.limiter[k];
+      switch (index) {
+        case Wire.LimiterParam.Enabled:     o.enabled = v !== 0; break;
+        case Wire.LimiterParam.ThresholdDb: o.thresholdDb = Clamp.limiterThresholdDb(v); break;
+        case Wire.LimiterParam.ReleaseMs:   o.releaseMs = Clamp.limiterReleaseMs(v); break;
+      }
+    }
+    // Write-through: every member of a written output's group takes its values.
+    for (const k of targets) {
+      const g = this.#mockState.limiter[k].linkGroup;
+      if (g === 0) continue;
+      const src = this.#mockState.limiter[k];
+      this.#mockState.limiter = this.#mockState.limiter.map((o, j) =>
+        j < numOut && o.linkGroup === g
+          ? { ...o, enabled: src.enabled, thresholdDb: src.thresholdDb, releaseMs: src.releaseMs }
+          : o);
+    }
+  }
+
+  // GetLimiter GR meter (0x81 index 0x80) stand-in, 0.01 dB per output: the
+  // fake peak animation's dBFS above the threshold for enabled outputs, 0
+  // otherwise. Linked members share their group's deepest reduction.
+  // Documented approximation, not a real gain computer.
+  #limiterMeterCentiDb(numOut: number): number[] {
+    const lim = this.#mockState.limiter;
+    const peaks = this.#animatedPeaks(numOut);
+    const own = peaks.map((p, k) => lim[k].enabled
+      ? Math.max(0, 20 * Math.log10(p) - lim[k].thresholdDb) : 0);
+    return own.map((_, k) => {
+      const g = lim[k].linkGroup;
+      const gr = g === 0 ? own[k] : Math.max(...own.filter((_v, j) => lim[j].linkGroup === g));
+      return lim[k].enabled ? Math.round(gr * 100) : 0;
+    });
   }
 
   // GetSubharmMeter (0x1F) stand-in, 0..32767 counts per output: 0 while

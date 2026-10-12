@@ -466,6 +466,36 @@ export const LimiterEntry = struct({
 });
 export const LimiterParams = arr(LimiterEntry, Const.NUM_OUTPUTS);
 
+// REQ_LIMITER (0x81) wValue = (output << 8) | index. Index ids for the
+// per-parameter SET/GET; ids 0x80+ are read-only GET blocks.
+export const LimiterParam = {
+  Enabled:     0,
+  ThresholdDb: 1,
+  ReleaseMs:   2,
+  LinkGroup:   3,
+} as const;
+export type LimiterParam = (typeof LimiterParam)[keyof typeof LimiterParam];
+
+// Index 0x80: NUM_OUTPUT_CHANNELS x u16 LE gain reduction in 0.01 dB.
+export const LIMITER_GET_METER = 0x80;
+// Index 0x81: LimiterStatus block; a bad index STALLs, so this feature-detects.
+export const LIMITER_GET_STATUS = 0x81;
+// Output byte that applies a SET to every output.
+export const LIMITER_ALL_OUTPUTS = 0xFF;
+
+export function limiterWValue(output: number, index: number): number {
+  return ((output & 0xFF) << 8) | (index & 0xFF);
+}
+
+// 4-byte live limiter status (REQ_LIMITER GET index 0x81). engaged = the
+// lookahead delay is in the signal path (every output 32 samples later).
+export const LimiterStatus = struct({
+  engaged:          u8,
+  lookaheadSamples: u8,
+  blockSamples:     u8,
+  numOutputs:       u8,
+});
+
 // Standalone control-transfer payloads (not part of the bulk transfer).
 
 // 8-byte payload of `SetMatrixRoute` / response of `GetMatrixRoute`

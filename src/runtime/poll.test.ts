@@ -870,3 +870,122 @@ describe('startPolling — visibility resume', () => {
     Object.defineProperty(document, 'hidden', { value: false, configurable: true });
   });
 });
+
+describe('Limiter meter cadence', () => {
+  afterEach(() => { teardown(); });
+
+  function limiterDevice(limiter = true) {
+    return {
+      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      hardware: hw,
+      capabilities: { features: { limiter } },
+      getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
+      getBufferStats: vi.fn(async () => null),
+      getSystemInfo: vi.fn(async () => ({})),
+      getLimiterMeter: vi.fn(async () => [0, 1.5]),
+      getLimiterStatus: vi.fn(async () => ({ engaged: false, lookaheadSamples: 32, blockSamples: 16, numOutputs: 9 })),
+      getSnapshot: vi.fn(async () => fromBulkParams(hw, parseBulkParams(makeBulk()))),
+    } as unknown as DspDevice;
+  }
+
+  function mirrored(device: DspDevice): ReadySession {
+    const session = connect(device);
+    session.mirror.init(fromBulkParams(hw, parseBulkParams(makeBulk())));
+    return session;
+  }
+
+  it('polls only while interest is held, even with every output off, and releasing nulls both readings', async () => {
+    const device = limiterDevice();
+    const session = mirrored(device);
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+
+    clock.fire();
+    await settle();
+    expect(device.getLimiterMeter).not.toHaveBeenCalled();
+
+    const release = session.telemetry.wantLimiterMeter();
+    clock.fire();
+    await settle();
+    expect(device.getLimiterMeter).toHaveBeenCalledTimes(1);
+    expect(session.telemetry.limiterMeterDb).toEqual([0, 1.5]);
+    expect(session.telemetry.limiterStatus?.lookaheadSamples).toBe(32);
+
+    release();
+    expect(session.telemetry.limiterMeterDb).toBeNull();
+    expect(session.telemetry.limiterStatus).toBeNull();
+    session.telemetry.lastLimiterMeterMs = 0;
+    clock.fire();
+    await settle();
+    expect(device.getLimiterMeter).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('reads the status block once, then again only after a status re-read request', async () => {
+    const device = limiterDevice();
+    const session = mirrored(device);
+    session.telemetry.wantLimiterMeter();
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+
+    clock.fire();
+    await settle();
+    session.telemetry.lastLimiterMeterMs = 0;   // meter due again, status still fresh
+    clock.fire();
+    await settle();
+    expect(device.getLimiterMeter).toHaveBeenCalledTimes(2);
+    expect(device.getLimiterStatus).toHaveBeenCalledTimes(1);
+
+    session.telemetry.lastLimiterMeterMs = 0;
+    session.telemetry.requestLimiterStatusRead();
+    clock.fire();
+    await settle();
+    expect(device.getLimiterStatus).toHaveBeenCalledTimes(2);
+    stop();
+  });
+
+  it('stands down while the link is degraded', async () => {
+    const device = limiterDevice();
+    const session = mirrored(device);
+    session.telemetry.wantLimiterMeter();
+    session.health.degraded = true;
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getLimiterMeter).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('drops a read that lands after the interest was released', async () => {
+    const device = limiterDevice();
+    let land!: (v: number[]) => void;
+    (device.getLimiterMeter as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise<number[]>((r) => { land = r; }),
+    );
+    const session = mirrored(device);
+    const release = session.telemetry.wantLimiterMeter();
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    release();
+    land([0, 9]);
+    await settle();
+    expect(session.telemetry.limiterMeterDb).toBeNull();
+    expect(session.telemetry.limiterStatus).toBeNull();
+    stop();
+  });
+
+  it('never polls a device without the limiter wire', async () => {
+    const device = limiterDevice(false);
+    const session = mirrored(device);
+    session.telemetry.wantLimiterMeter();
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getLimiterMeter).not.toHaveBeenCalled();
+    stop();
+  });
+});

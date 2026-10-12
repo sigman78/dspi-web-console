@@ -13,6 +13,8 @@ const ADAT_INTERVAL_MS = 1000;   // ~1 Hz  -- ADAT lightpipe output status (enab
 const ADAT_INPUT_INTERVAL_MS = 1000;   // ~1 Hz  -- ADAT lightpipe input status (enabled only)
 const SUBHARM_INTERVAL_MS = 1000;   // ~1 Hz  -- subharm headroom readout (enabled only)
 const SUBHARM_METER_INTERVAL_MS = 200;   // ~5 Hz  -- subharm sub meter (PR.06 panel mounted only)
+const LIMITER_METER_INTERVAL_MS = 100;   // 100 ms cadence, ~7 Hz effective -- limiter GR meter (PR.07 panel mounted only)
+const LIMITER_STATUS_INTERVAL_MS = 1000;   // ~1 Hz  -- limiter status block, piggybacks the meter tick
 const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile floor
 // Unconditional re-fetch floor, independent of any pending reconcile request.
 // Notify is the primary sync trigger, but firmware 1.1.4 has verified coverage
@@ -23,7 +25,7 @@ const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile
 const PARAM_SAFETY_NET_MS = 10_000;
 
 interface Cadence {
-  key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'i2sSlave' | 'adat' | 'adatInput' | 'subharm' | 'subharmMeter' | 'param';
+  key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'i2sSlave' | 'adat' | 'adatInput' | 'subharm' | 'subharmMeter' | 'limiterMeter' | 'param';
   intervalMs: number;
   runWhileHidden: boolean;          // today all false (pause everything when hidden)
   lastMs(): number;                 // cadence clock -- reads the STORE timestamp
@@ -43,7 +45,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   // Only the in-flight guards are loop-local. The cadence CLOCK stays on the
   // telemetry store (tele.applyPeaks sets lastStatusMs and reads it for peak
   // decay), so the gate must read the store, not a private copy.
-  const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false, spdifRx: false, i2sSlave: false, adat: false, adatInput: false, subharm: false, subharmMeter: false, param: false };
+  const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false, spdifRx: false, i2sSlave: false, adat: false, adatInput: false, subharm: false, subharmMeter: false, limiterMeter: false, param: false };
 
   async function pollStatus(d: DspDevice): Promise<void> {
     try {
@@ -259,6 +261,41 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     return tele.lastSubharmMeterMs === 0 || now - tele.lastSubharmMeterMs >= SUBHARM_METER_INTERVAL_MS;
   }
 
+  // Limiter GR meter (fw V32+, PR.07). Interest-gated like the subharm meter,
+  // but not on any output being enabled: the meter reads 0 when nothing limits
+  // and the panel wants the status block even with every output off. The
+  // status block rides the same tick at ~1 Hz or when an action zeroed its
+  // clock.
+  async function pollLimiterMeter(d: DspDevice): Promise<void> {
+    try {
+      const now = performance.now();
+      const wantStatus = tele.lastLimiterStatusMs === 0 || now - tele.lastLimiterStatusMs >= LIMITER_STATUS_INTERVAL_MS;
+      const meter = await session.queue.run(() => d.getLimiterMeter());
+      const status = wantStatus ? await session.queue.run(() => d.getLimiterStatus()) : null;
+      // Interest may have been released mid-read; a late write would linger.
+      if (tele.limiterMeterWanted > 0) {
+        tele.limiterMeterDb = meter;
+        if (status) {
+          tele.limiterStatus = status;
+          tele.lastLimiterStatusMs = performance.now();
+        }
+      }
+      health.noteOk();
+    } catch (e) {
+      health.noteFail('poll:limiterMeter', e);
+      Log.warn('poll', 'getLimiterMeter failed', e);
+    } finally {
+      tele.lastLimiterMeterMs = performance.now();
+    }
+  }
+
+  function shouldRunLimiterMeter(now: number): boolean {
+    if (!session.device.capabilities?.features.limiter) return false;
+    if (tele.limiterMeterWanted <= 0) return false;
+    if (health.degraded) return false;
+    return tele.lastLimiterMeterMs === 0 || now - tele.lastLimiterMeterMs >= LIMITER_METER_INTERVAL_MS;
+  }
+
   // Background param-mirror reconcile. shouldRunParam already decided this tick
   // is eligible; we fetch, then re-check before applying. The CommandQueue makes
   // the fetch atomic with respect to any write already registered when it was
@@ -323,6 +360,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     { key: 'adatInput', intervalMs: ADAT_INPUT_INTERVAL_MS, runWhileHidden: false, lastMs: () => lastAdatInputMs, run: pollAdatInput, shouldRun: shouldRunAdatInput },
     { key: 'subharm', intervalMs: SUBHARM_INTERVAL_MS, runWhileHidden: false, lastMs: () => tele.lastSubharmMs, run: pollSubharm, shouldRun: shouldRunSubharm },
     { key: 'subharmMeter', intervalMs: SUBHARM_METER_INTERVAL_MS, runWhileHidden: false, lastMs: () => tele.lastSubharmMeterMs, run: pollSubharmMeter, shouldRun: shouldRunSubharmMeter },
+    { key: 'limiterMeter', intervalMs: LIMITER_METER_INTERVAL_MS, runWhileHidden: false, lastMs: () => tele.lastLimiterMeterMs, run: pollLimiterMeter, shouldRun: shouldRunLimiterMeter },
     { key: 'param',   intervalMs: PARAM_INTERVAL_MS,    runWhileHidden: false, lastMs: () => tele.lastParamMs,  run: pollParam, shouldRun: shouldRunParam },
   ];
   const anyRunWhileHidden = cadences.some((c) => c.runWhileHidden);

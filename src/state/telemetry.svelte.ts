@@ -1,5 +1,5 @@
 import type { BufferStats, PartialSystemInfo } from '@/protocol';
-import { ALL_CHANNELS, type SpdifRxStatus, type I2sSlaveStatus, type AdatOutputStatus, type AdatInputStatus } from '@/domain';
+import { ALL_CHANNELS, type SpdifRxStatus, type I2sSlaveStatus, type AdatOutputStatus, type AdatInputStatus, type LimiterStatus } from '@/domain';
 
 // Peaks/holds/clips are DOMAIN-ChannelId indexed (the poll loop remaps from
 // the device's wire index space); sized to the full domain id range.
@@ -63,6 +63,36 @@ export class StatusStore {
       if (this.subharmMeterWanted <= 0) this.subharmMeter = null;
     };
   }
+
+  // PR.07 live limiter telemetry (fw V32+ REQ_LIMITER 0x81): gain reduction in
+  // dB per wire output (0 = none) and the lookahead status block. Both null
+  // when not polled.
+  limiterMeterDb = $state<number[] | null>(null);
+  limiterStatus = $state<LimiterStatus | null>(null);
+  limiterMeterWanted = $state(0);
+  lastLimiterMeterMs = $state(0);
+  lastLimiterStatusMs = $state(0);
+
+  // Panel-mount interest for the limiter cadence (poll.ts), same contract as
+  // wantSubharmMeter: the release nulls the readings once interest hits 0.
+  wantLimiterMeter(): () => void {
+    this.limiterMeterWanted++;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.limiterMeterWanted--;
+      if (this.limiterMeterWanted <= 0) {
+        this.limiterMeterDb = null;
+        this.limiterStatus = null;
+      }
+    };
+  }
+
+  // Ask the next limiter poll tick to re-read the status block after an enable
+  // change. Firmware engages the lookahead after a fade, so this may still read
+  // the old state; the next 1 Hz refresh catches it.
+  requestLimiterStatusRead(): void { this.lastLimiterStatusMs = 0; }
 
   // Peak normalization (0..1) with 30 dB/sec hold decay.
   applyPeaks(raw: ArrayLike<number>, nowMs: number): void {
