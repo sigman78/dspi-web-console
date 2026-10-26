@@ -18,6 +18,7 @@ export * from './snapshotDiff';
 export * from './changeClass';
 export * from './applyChange';
 export * from './presetDirectory';
+export * from './presetTransfer';
 export * from './pins';
 export * from './controlInterfaces';
 export * from './controlSurfaces';

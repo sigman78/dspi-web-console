@@ -8,6 +8,7 @@
   import RailHead from './RailHead.svelte';
   import RailFoot from './RailFoot.svelte';
   import StatusLine from './StatusLine.svelte';
+  import LibrarySheet from './library/LibrarySheet.svelte';
   import TuneView from './tune/TuneView.svelte';
   import ProgramView from './program/ProgramView.svelte';
   import SetupView from './setup/SetupView.svelte';
@@ -27,6 +28,8 @@
     { includeDisabledOutputs: true },
   ));
   noveauUi.healthOpen = false;
+  noveauUi.libraryOpen = false;
+  noveauUi.librarySlot = null;
   noveauUi.selectedBand = null;
   $effect(() => {
     reconcileSelectedChannel(session.mirror.current?.channels, channelVisibility);
@@ -51,6 +54,7 @@
       <div class="soon">{noveauUi.destination.toUpperCase()} — not in this slice</div>
     {/if}
   </section>
+  {#if noveauUi.libraryOpen}<LibrarySheet />{/if}
   <StatusLine />
 </div>
 
@@ -73,7 +77,7 @@
     border-right: 1px solid var(--border);
     background: color-mix(in oklab, var(--bg) 80%, var(--text) 2%);
   }
-  .ws { display: flex; padding: 12px 16px; }
+  .ws { grid-column: 3; grid-row: 1; display: flex; padding: 12px 16px; }
   .soon {
     flex: 1;
     display: grid;

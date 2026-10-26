@@ -1,7 +1,7 @@
 <script lang="ts">
   import { noveauUi, type NoveauDestination } from './noveauUi.svelte';
 
-  const items: { key: NoveauDestination; label: string }[] = [
+  const items: { key: NoveauDestination | 'library'; label: string }[] = [
     { key: 'tune', label: 'TUNE' },
     { key: 'program', label: 'PROGRAM' },
     { key: 'setup', label: 'SETUP' },
@@ -15,10 +15,18 @@
     <button
       type="button"
       class="ib"
-      class:on={noveauUi.destination === it.key}
+      class:on={it.key === 'library' ? noveauUi.libraryOpen : noveauUi.destination === it.key}
       class:push={it.key === 'device'}
-      aria-current={noveauUi.destination === it.key ? 'page' : undefined}
-      onclick={() => { noveauUi.destination = it.key; }}
+      data-library-toggle={it.key === 'library' ? '' : undefined}
+      aria-pressed={it.key === 'library' ? noveauUi.libraryOpen : undefined}
+      aria-current={it.key !== 'library' && noveauUi.destination === it.key ? 'page' : undefined}
+      onclick={() => {
+        if (it.key === 'library') noveauUi.libraryOpen = !noveauUi.libraryOpen;
+        else {
+          noveauUi.destination = it.key;
+          noveauUi.libraryOpen = false;
+        }
+      }}
     >
       <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
         {#if it.key === 'tune'}

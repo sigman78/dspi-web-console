@@ -22,6 +22,8 @@ import {
   setOutputConfigMode,
   pastePresetTo,
   dismissPresetActionError,
+  exportHeldPreset,
+  decodeImportedPreset,
 } from './presets';
 
 const liveMirror = () => activeSession()!.mirror;
@@ -629,6 +631,56 @@ describe('runtime/presets', () => {
       r = await pastePresetTo(sess(), blob);
       expect('ok' in r && r.ok).toBe(true);
       expect(notices.list.some((n) => /not applied/i.test(n.message))).toBe(false);
+    });
+  });
+
+  describe('preset transfer', () => {
+    async function holdActive() {
+      await fetchPresetInfo(sess());
+      await savePresetSlot(sess(), 1 as PresetSlot);
+      await copyActivePreset(sess());
+      return sess();
+    }
+    function withCaps(s: ReadySession, patch: Record<string, unknown>) {
+      (s.info as any).capabilities = { ...s.info.capabilities, ...patch };
+    }
+
+    it('returns null when nothing is held', () => {
+      expect(exportHeldPreset(sess())).toBeNull();
+    });
+
+    it('round-trips the held preset through export and decode', async () => {
+      const s = await holdActive();
+      const held = s.copySource.held!;
+      const out = exportHeldPreset(s)!;
+      expect(out.filename.endsWith('.dspi-preset.json')).toBe(true);
+      const r = decodeImportedPreset(s, out.text);
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.name).toBe(held.name);
+        expect(r.state.formatVersion).toBe(held.blob.formatVersion);
+        expect(r.state.platformId).toBe(held.blob.platformId);
+      }
+    });
+
+    it('refuses a preset from a different hardware platform', async () => {
+      const s = await holdActive();
+      const text = exportHeldPreset(s)!.text;
+      withCaps(s, { platformId: s.info.capabilities.platformId + 1 });
+      const r = decodeImportedPreset(s, text);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toContain('different hardware platform');
+    });
+
+    it('refuses a blob whose own formatVersion differs from the device wire', async () => {
+      const s = await holdActive();
+      const file = JSON.parse(exportHeldPreset(s)!.text) as Record<string, unknown>;
+      const claimed = s.info.capabilities.wire + 6;
+      file.wire = claimed;                          // envelope agrees with the device; the blob does not
+      withCaps(s, { wire: claimed });
+      const r = decodeImportedPreset(s, JSON.stringify(file));
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toContain(`wire ${claimed}`);
     });
   });
 });

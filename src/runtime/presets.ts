@@ -8,8 +8,10 @@ import {
 import { reconcileAfterSync } from './deviceService';
 import { fetchAndApplyAsBaseline } from './resync';
 import { flushAllWrites as flushWrites } from './writes.svelte';
+import * as Domain from '@/domain';
 import { type PresetSlot, PRESET_SLOT_COUNT, OutputConfigMode } from '@/domain';
-import { type PresetResult, PresetStartupMode } from '@/protocol';
+import { type PresetResult, PresetStartupMode, buildBulkParams, parseBulkParams } from '@/protocol';
+import type { FirmwareVersion } from '@/protocol/capabilities';
 import type { DeviceState } from '@/protocol/snapshotCodec';
 import { Log, Result, errMessage } from '@/utils';
 
@@ -496,4 +498,46 @@ export async function setOutputConfigMode(
   } catch (e) {
     return recordToResult(s.presets, 'Set output config mode', e);
   }
+}
+
+function fwTag(fw: FirmwareVersion): string {
+  const release = `${fw.major}.${fw.minor}.${fw.patch}`;
+  return fw.beta ? `${release}-beta${fw.beta}` : release;
+}
+
+export function exportHeldPreset(s: ReadySession): { filename: string; text: string } | null {
+  const held = s.copySource.held;
+  if (held == null) return null;
+  const caps = s.info.capabilities;
+  const text = Domain.serializePresetTransfer({
+    name: held.name,
+    fwVersion: fwTag(caps.fw),
+    wire: caps.wire,
+    blob: buildBulkParams(held.blob),
+  });
+  const base = (held.name.trim() || `preset-${held.slot}`).replace(/[\\/:*?"<>|]/g, '_');
+  return { filename: `${base}.dspi-preset.json`, text };
+}
+
+export type DecodedPreset =
+  | { ok: true; name: string; state: DeviceState }
+  | { ok: false; reason: string };
+
+export function decodeImportedPreset(s: ReadySession, text: string): DecodedPreset {
+  const caps = s.info.capabilities;
+  const parsed = Domain.parsePresetTransfer(text, { fwVersion: fwTag(caps.fw), wire: caps.wire });
+  if (!parsed.ok) return parsed;
+  let state: DeviceState;
+  try {
+    state = parseBulkParams(parsed.blob) as DeviceState;
+  } catch {
+    return { ok: false, reason: 'Preset data is corrupt.' };
+  }
+  if (state.formatVersion !== caps.wire) {
+    return { ok: false, reason: `Preset data is wire ${state.formatVersion}; this device runs wire ${caps.wire}.` };
+  }
+  if (state.platformId !== caps.platformId) {
+    return { ok: false, reason: 'Preset was exported from a different hardware platform.' };
+  }
+  return { ok: true, name: parsed.name, state };
 }

@@ -50,6 +50,7 @@
   }
   function onKeydown(e: KeyboardEvent): void {
     if (e.key === 'Escape') {
+      if (armed) e.preventDefault();
       armed = false;
       (e.currentTarget as HTMLElement).blur();
     }

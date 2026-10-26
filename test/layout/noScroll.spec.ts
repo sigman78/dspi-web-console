@@ -161,6 +161,33 @@ test('no scroll 1440x790 SETUP every page', async ({ page }) => {
   }
 });
 
+test('no scroll 1440x790 LIBRARY sheet on TUNE and SETUP', async ({ page }) => {
+  await open(page, [1440, 790], FULL);
+  const lib = page.locator('nav.irail .ib', { hasText: 'LIBRARY' });
+  const sheet = page.getByRole('dialog', { name: 'Library' });
+  await lib.click();
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator('.slots .row').first()).toBeVisible();
+  await assertNoScroll(page);
+  await sheet.locator('.slots .row:not(.sel)').first().click();
+  await assertNoScroll(page);
+  await sheet.getByRole('button', { name: 'ABOUT', exact: true }).click();
+  await expect(sheet.locator('section.panel').first()).toBeVisible();
+  await assertNoScroll(page);
+  await sheet.getByRole('button', { name: 'QUICK REF', exact: true }).click();
+  await expect(sheet.getByText('QUICK REFERENCE')).toBeVisible();
+  await assertNoScroll(page);
+  await page.keyboard.press('Escape');
+  await expect(sheet).toBeHidden();
+  await page.locator('nav.irail .ib', { hasText: 'SETUP' }).click();
+  await lib.click();
+  await expect(sheet).toBeVisible();
+  await assertNoScroll(page);
+  await sheet.getByRole('button', { name: 'PRESETS', exact: true }).click();
+  await expect(sheet.locator('.slots .row').first()).toBeVisible();
+  await assertNoScroll(page);
+});
+
 test('no scroll 1440x790 last output selected', async ({ page }) => {
   await open(page, [1440, 790], FULL);
   await railRows(page, 'OUTPUTS').last().click();
