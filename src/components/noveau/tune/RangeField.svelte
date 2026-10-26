@@ -162,7 +162,7 @@
     color: var(--text-dim);
     white-space: nowrap;
   }
-  input[type='range'] { flex: 1; min-width: 40px; margin: 0; }
+  input[type='range'] { flex: var(--rf-track-flex, 1); width: var(--rf-track, auto); min-width: 40px; margin: 0; }
   .val { flex: 0 0 var(--rf-value, 84px); }
   .none {
     display: block;

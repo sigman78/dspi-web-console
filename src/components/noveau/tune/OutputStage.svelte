@@ -48,105 +48,107 @@
 </script>
 
 <div class="stage">
-  <div class="col" class:wide={!showLimiter}>
-    <InspectorSection title="Output">
-      <div class="r">
-        <RangeField
-          label="TRIM"
-          value={output.gainDb}
-          min={Mix.OUTPUT_GAIN_MIN_DB}
-          max={Mix.OUTPUT_GAIN_MAX_DB}
-          step={Mix.OUTPUT_GAIN_STEP_DB}
-          kind="dB-signed"
-          tone="signed"
-          onCommit={(v) => Runtime.setOutputGain(s, slot, v)}
-        />
-      </div>
-      <div class="r">
-        <span class="lbl">DELAY</span>
-        <span class="fld">
-          <ValueField
-            kind="ms"
-            min={Mix.OUTPUT_DELAY_MIN_MS}
-            max={Mix.OUTPUT_DELAY_MAX_MS}
-            step={Mix.OUTPUT_DELAY_STEP_MS}
-            value={output.delayMs}
-            onChange={(v) => Runtime.setOutputDelay(s, slot, v)}
-          />
-        </span>
-      </div>
-      <div class="r">
-        <span class="lbl">MUTE</span>
-        <ToggleSwitch size="sm" checked={output.muted} ariaLabel="Mute output" onChange={(v) => Runtime.setOutputMuted(s, slot, v)} />
-      </div>
-      <div class="r">
-        <span class="lbl">ENABLED</span>
-        <ToggleSwitch size="sm" checked={output.enabled} ariaLabel="Output enabled" onChange={(v) => Runtime.setOutputEnabled(s, slot, v)} />
-      </div>
-      <div class="r">
-        <span class="lbl">TYPE</span>
-        <span class="mono">{typeLabel}</span>
-      </div>
-    </InspectorSection>
-  </div>
-
-  {#if showLimiter && lim}
+  <div class="cols">
     <div class="col">
-      <InspectorSection title="Limiter">
+      <InspectorSection title="Output">
         <div class="r">
-          <span class="lbl">ENABLED</span>
-          <ToggleSwitch size="sm" checked={lim.enabled} ariaLabel="Limiter" onChange={(v) => Runtime.setLimiterEnabled(s, slot, v)} />
+          <RangeField
+            label="TRIM"
+            value={output.gainDb}
+            min={Mix.OUTPUT_GAIN_MIN_DB}
+            max={Mix.OUTPUT_GAIN_MAX_DB}
+            step={Mix.OUTPUT_GAIN_STEP_DB}
+            kind="dB-signed"
+            tone="signed"
+            onCommit={(v) => Runtime.setOutputGain(s, slot, v)}
+          />
         </div>
         <div class="r">
-          <span class="lbl">THRESHOLD</span>
-          <span class="fld">
-            <ValueField
-              kind="dB-signed"
-              precision={1}
-              min={Proc.LIMITER_THRESHOLD_MIN_DB}
-              max={Proc.LIMITER_THRESHOLD_MAX_DB}
-              step={Proc.LIMITER_THRESHOLD_STEP_DB}
-              value={lim.thresholdDb}
-              disabled={!lim.enabled}
-              onChange={(v) => Runtime.setLimiterThreshold(s, slot, v)}
-            />
-          </span>
-        </div>
-        <div class="r">
-          <span class="lbl">RELEASE</span>
-          <span class="fld">
+          <span class="lbl">DELAY</span>
+          <span class="ctl fld">
             <ValueField
               kind="ms"
-              precision={0}
-              min={Proc.LIMITER_RELEASE_MIN_MS}
-              max={Proc.LIMITER_RELEASE_MAX_MS}
-              step={Proc.LIMITER_RELEASE_STEP_MS}
-              value={lim.releaseMs}
-              disabled={!lim.enabled}
-              onChange={(v) => Runtime.setLimiterRelease(s, slot, v)}
+              min={Mix.OUTPUT_DELAY_MIN_MS}
+              max={Mix.OUTPUT_DELAY_MAX_MS}
+              step={Mix.OUTPUT_DELAY_STEP_MS}
+              value={output.delayMs}
+              onChange={(v) => Runtime.setOutputDelay(s, slot, v)}
             />
           </span>
         </div>
         <div class="r">
-          <span class="lbl">LINK</span>
-          <SegmentedSelect
-            size="sm"
-            value={lim.linkGroup}
-            options={LINK_OPTIONS}
-            ariaLabel="Limiter link group"
-            onChange={(v) => Runtime.setLimiterLinkGroup(s, slot, v)}
-          />
+          <span class="lbl">MUTE</span>
+          <span class="ctl"><ToggleSwitch size="sm" checked={output.muted} ariaLabel="Mute output" onChange={(v) => Runtime.setOutputMuted(s, slot, v)} /></span>
         </div>
         <div class="r">
-          <span class="lbl" title="Gain reduction">GR</span>
-          <span class="gr">
-            <span class="bar" aria-hidden="true">{#if s.telemetry.limiterMeterDb}<span class="fill" style:width="{grPct}%"></span>{/if}</span>
-            <span class="mono grv">{grText(gr)}</span>
-          </span>
+          <span class="lbl">ENABLED</span>
+          <span class="ctl"><ToggleSwitch size="sm" checked={output.enabled} ariaLabel="Output enabled" onChange={(v) => Runtime.setOutputEnabled(s, slot, v)} /></span>
+        </div>
+        <div class="r">
+          <span class="lbl">TYPE</span>
+          <span class="ctl"><span class="mono">{typeLabel}</span></span>
         </div>
       </InspectorSection>
     </div>
-  {/if}
+
+    {#if showLimiter && lim}
+      <div class="col">
+        <InspectorSection title="Limiter">
+          <div class="r">
+            <span class="lbl">ENABLED</span>
+            <span class="ctl"><ToggleSwitch size="sm" checked={lim.enabled} ariaLabel="Limiter" onChange={(v) => Runtime.setLimiterEnabled(s, slot, v)} /></span>
+          </div>
+          <div class="r">
+            <span class="lbl">THRESHOLD</span>
+            <span class="ctl fld">
+              <ValueField
+                kind="dB-signed"
+                precision={1}
+                min={Proc.LIMITER_THRESHOLD_MIN_DB}
+                max={Proc.LIMITER_THRESHOLD_MAX_DB}
+                step={Proc.LIMITER_THRESHOLD_STEP_DB}
+                value={lim.thresholdDb}
+                disabled={!lim.enabled}
+                onChange={(v) => Runtime.setLimiterThreshold(s, slot, v)}
+              />
+            </span>
+          </div>
+          <div class="r">
+            <span class="lbl">RELEASE</span>
+            <span class="ctl fld">
+              <ValueField
+                kind="ms"
+                precision={0}
+                min={Proc.LIMITER_RELEASE_MIN_MS}
+                max={Proc.LIMITER_RELEASE_MAX_MS}
+                step={Proc.LIMITER_RELEASE_STEP_MS}
+                value={lim.releaseMs}
+                disabled={!lim.enabled}
+                onChange={(v) => Runtime.setLimiterRelease(s, slot, v)}
+              />
+            </span>
+          </div>
+          <div class="r">
+            <span class="lbl">LINK</span>
+            <span class="ctl"><SegmentedSelect
+              size="sm"
+              value={lim.linkGroup}
+              options={LINK_OPTIONS}
+              ariaLabel="Limiter link group"
+              onChange={(v) => Runtime.setLimiterLinkGroup(s, slot, v)}
+            /></span>
+          </div>
+          <div class="r">
+            <span class="lbl" title="Gain reduction">GR</span>
+            <span class="gr">
+              <span class="bar" aria-hidden="true">{#if s.telemetry.limiterMeterDb}<span class="fill" style:width="{grPct}%"></span>{/if}</span>
+              <span class="mono grv">{grText(gr)}</span>
+            </span>
+          </div>
+        </InspectorSection>
+      </div>
+    {/if}
+  </div>
 
   {#if showProcs}
     <div class="procs">
@@ -175,42 +177,41 @@
 
 <style>
   .stage {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto;
-    column-gap: 24px;
-    align-content: start;
+    display: flex;
+    flex-direction: column;
     border-top: 1px solid var(--border);
     min-width: 0;
     min-height: 0;
     overflow: hidden;
   }
-  .col { min-width: 0; }
-  .col.wide { grid-column: 1 / -1; }
+  .cols { display: flex; align-items: flex-start; min-width: 0; }
+  .col { flex: 0 0 320px; min-width: 0; }
+  .col + .col { border-left: 1px solid var(--border); padding-left: 16px; margin-left: 16px; }
   .stage :global(.sec) { border-top: none; }
   .r {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 12px;
     height: 24px;
     border-top: 1px solid var(--border);
-    --rf-label: 96px;
-    --rf-value: 84px;
+    --rf-label: 84px;
+    --rf-value: 72px;
+    --rf-track: 140px;
+    --rf-track-flex: 0 0 auto;
   }
-  .r :global(.rf) { flex: 1; min-width: 0; height: 22px; }
+  .r :global(.rf) { flex: 0 0 auto; gap: 12px; height: 22px; }
   .r :global(.opt) { font-size: 11px; }
-  .lbl { flex: 0 0 96px; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
-  .fld { width: 84px; }
+  .lbl { flex: 0 0 84px; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+  .ctl { display: flex; align-items: center; gap: 6px; }
+  .fld { width: 72px; }
   .mono { font-family: var(--font-mono); font-size: 12px; color: var(--text); }
   .stage :global(.vf[data-size='md']) { height: 22px; font-size: 12px; }
   .gr { display: inline-flex; align-items: center; gap: 8px; }
-  .bar { width: 90px; height: 6px; border-radius: 2px; background: var(--wash-strong); overflow: hidden; }
+  .bar { width: 120px; height: 6px; border-radius: 2px; background: var(--wash-strong); overflow: hidden; }
   .fill { display: block; height: 100%; background: var(--warn); transition: width 100ms; }
   .grv { min-width: 64px; text-align: right; }
   .procs {
     height: 32px;
-    grid-column: 1 / -1;
     display: flex;
     align-items: center;
     gap: 12px;
