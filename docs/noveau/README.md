@@ -422,24 +422,66 @@ Cut: LISTEN as a page, the 200 px nav sidebar, horizontal channel chips,
 "6 more…" truncation, tall faders, the canvas as an editor, the "Recent"
 list, SETUP as a scrolling page, the matrix as an overlay.
 
-### 6.6 Open forks for the owner
+### 6.6 Forks, decided by the owner (2026-10-25)
 
-1. **Floor.** Is 1536×740 (Windows laptop at 125 %) a must-fit, or is
-   1440×790 the floor? About 50 px of vertical budget hangs on it, and it
-   decides whether the band table and sources can share the inspector.
-2. **Stereo pair as the unit.** Should the rail and TUNE treat 1L / 1R as one
-   channel with an L / R sub-selector? Halves the lists and the matrix;
-   interacts with the #138 default-unlocked decision.
-3. **Matrix thinking.** Do users think in the matrix (permanent panel on
-   PROGRAM) or only in per-output sources (TUNE)? Decides whether PROGRAM
-   and routing are one page.
-4. **Chrome weight.** Accept a 44 px top bar carrying scenes, toggles and
-   volume on every screen, at the cost of graph height? The alternative is
-   a collapsible bar that hides while dragging on the graph.
+1. **Floor: 1440 × 790.** The easier budget first; tighten later if a
+   1536×740 case matters (it pans until then). Workspace height at the
+   floor is 762 px (790 minus the 28 px status line).
+2. **Stereo pair as the unit: no.** Channels stay individual; pair
+   behaviour stays the #138 link mechanism, which is already configurable.
+3. **Matrix: keep the capability, not the grid.** The 8×9 grid was
+   convenient but simplistic. Any routing view is fine as long as no
+   function is lost: per-crosspoint enable / gain / phase, per-output
+   gain / delay / mute. See 6.2 PROGRAM for the replacement.
+4. **No permanent top bar.** The always-on volume strip was an early
+   decision and is removed. Daily controls move into the channel rail head,
+   which is always visible anyway. The shell has no chrome row above the
+   workspace.
 
-### 6.7 First slice
+### 6.7 Shell, revised for 6.6
 
-TUNE for one output in `?mock=multi` behind `?ui=noveau`, with the new
-shell (icon rail, 44 px chrome, status line), the 1400×740 budget, the
-density rules and the Playwright no-scroll check from day one. Then
-PROGRAM, then SETUP page by page.
+Left to right, full height:
+
+1. **Icon rail, 56 px**: TUNE · PROGRAM · SETUP · LIBRARY (sheet) · DEVICE.
+2. **Channel rail, ~200 px**, the console's always-on column:
+   - head: device chip; preset **scene row** (10 small slots, active
+     highlighted, dirty dot, startup star; Save / Revert appear on the active
+     one when dirty); **volume** (user / master axis toggle, slider, mono
+     readout, mute); **bypass**;
+   - body: inputs and outputs with LED meters, as today; disabled outputs
+     as 24 px stubs;
+   - foot: health dot + one-line status ("nominal" or the first fault),
+     opening the health popover.
+3. **Workspace**: the active destination, 762 px tall at the floor.
+4. **Status line, 28 px**, bottom, full width: fw · wire · rate · link,
+   and the staged-commit dock ("nothing staged" / "2 changes · Apply ·
+   Discard", expanding upward).
+
+Quick toggles for the program processors are no longer chrome: PROGRAM's
+chain strip carries them, and the rail's scene row covers the daily
+"switch preset" case.
+
+### 6.8 Routing without the grid (decision 3)
+
+Two views, both editing the same crosspoints:
+
+- **TUNE › Sources** (per output): the full column for the selected output,
+  8 rows × 24 px, each row: input name · enable · gain field · phase. This
+  is where routing is *edited* while tuning.
+- **PROGRAM › Routing map**: a compact map, outputs as rows, inputs as
+  columns, one dot per crosspoint (lit = routed, with gain tint; ⌽ glyph
+  for inverted). It is the overview that the grid gave, at a quarter of the
+  height. Clicking a dot opens the crosspoint popover (enable, gain, phase);
+  clicking a row header jumps to that output in TUNE. Per-output gain /
+  delay / mute sit in TUNE's output stage, not in the map.
+
+Nothing is lost: every crosspoint field is editable in two places, and the
+whole-device picture stays on screen.
+
+### 6.9 First slice
+
+A v2 mockup (`v2-shell.html`: TUNE and PROGRAM at 1440×790, zero scroll
+regions, verified by script), then TUNE for one output in `?mock=multi`
+behind `?ui=noveau` with the shell from 6.7, the budget, the density rules
+and the Playwright no-scroll check from day one. Then PROGRAM, then SETUP
+page by page.
