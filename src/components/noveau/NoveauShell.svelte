@@ -8,7 +8,6 @@
   import RailHead from './RailHead.svelte';
   import RailFoot from './RailFoot.svelte';
   import StatusLine from './StatusLine.svelte';
-  import LibrarySheet from './library/LibrarySheet.svelte';
   import TuneView from './tune/TuneView.svelte';
   import ProgramView from './program/ProgramView.svelte';
   import SetupView from './setup/SetupView.svelte';
@@ -28,8 +27,7 @@
     { includeDisabledOutputs: true },
   ));
   noveauUi.healthOpen = false;
-  noveauUi.libraryOpen = false;
-  noveauUi.librarySlot = null;
+  noveauUi.presetsOpen = false;
   noveauUi.selectedBand = null;
   $effect(() => {
     reconcileSelectedChannel(session.mirror.current?.channels, channelVisibility);
@@ -54,7 +52,6 @@
       <div class="soon">{noveauUi.destination.toUpperCase()} — not in this slice</div>
     {/if}
   </section>
-  {#if noveauUi.libraryOpen}<LibrarySheet />{/if}
   <StatusLine />
 </div>
 

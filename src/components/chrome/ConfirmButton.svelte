@@ -12,6 +12,7 @@
     toneAlways = false,
     extraClass = '',
     title,
+    ariaLabel,
     disabledReason,
   }: {
     label: string;
@@ -25,6 +26,7 @@
     toneAlways?: boolean;
     extraClass?: string;
     title?: string;
+    ariaLabel?: string;
     // Reason surfaced only via aria-describedby (below), for readers/keyboard
     // users when `title`-only was the previous, unreliable channel (A4).
     disabledReason?: string;
@@ -69,6 +71,7 @@
   aria-disabled={disabled}
   aria-describedby={disabled && disabledReason ? reasonId : undefined}
   {title}
+  aria-label={ariaLabel}
 >{armed ? confirmLabel : label}</button>
 {#if disabled && disabledReason}
   <span id={reasonId} class="sr-only">{disabledReason}</span>

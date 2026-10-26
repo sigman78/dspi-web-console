@@ -6,8 +6,9 @@ const FLEET = '/?mock=rp2040,rp2350&ui=noveau';
 /**
  * Containers whose height/width is budgeted by the layout. They are
  * `overflow: hidden`, so overflow is clipped silently; the scrollHeight check
- * catches that. `[data-budget]` is the preferred marker once components carry
- * it; the class selectors are the interim list.
+ * catches that. A box with `overflow-x: visible` clips nothing sideways, so
+ * a deliberate flyout escaping it (the rail's PRESETS flyout) is not flagged.
+ * `[data-budget]` is the preferred marker once components carry it; the class selectors are the interim list.
  */
 const BUDGET_SELECTORS = [
   '[data-budget]',
@@ -51,7 +52,8 @@ function scanLayout(budgetSelectors: string[]): LayoutReport {
     const cs = getComputedStyle(el);
     const clipped =
       el.matches(budget) &&
-      (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
+      (el.scrollHeight > el.clientHeight + 1 ||
+        (cs.overflowX !== 'visible' && el.scrollWidth > el.clientWidth + 1));
     const scrolling =
       (scrolls(cs.overflowY) && el.scrollHeight > el.clientHeight + 1) ||
       (scrolls(cs.overflowX) && el.scrollWidth > el.clientWidth + 1);
@@ -161,30 +163,39 @@ test('no scroll 1440x790 SETUP every page', async ({ page }) => {
   }
 });
 
-test('no scroll 1440x790 LIBRARY sheet on TUNE and SETUP', async ({ page }) => {
+test('no scroll 1440x790 PRESETS flyout and SETUP presets panel', async ({ page }) => {
   await open(page, [1440, 790], FULL);
-  const lib = page.locator('nav.irail .ib', { hasText: 'LIBRARY' });
-  const sheet = page.getByRole('dialog', { name: 'Library' });
-  await lib.click();
-  await expect(sheet).toBeVisible();
-  await expect(sheet.locator('.slots .row').first()).toBeVisible();
+  const toggle = page.locator('[data-presets-toggle]');
+  const flyout = page.getByRole('dialog', { name: 'Presets' });
+  await toggle.click();
+  await expect(flyout).toBeVisible();
+  await expect(flyout.locator('.row')).toHaveCount(10);
   await assertNoScroll(page);
-  await sheet.locator('.slots .row:not(.sel)').first().click();
-  await assertNoScroll(page);
-  await sheet.getByRole('button', { name: 'ABOUT', exact: true }).click();
-  await expect(sheet.locator('section.panel').first()).toBeVisible();
-  await assertNoScroll(page);
-  await sheet.getByRole('button', { name: 'QUICK REF', exact: true }).click();
-  await expect(sheet.getByText('QUICK REFERENCE')).toBeVisible();
+  const firstRow = flyout.locator('.row').first();
+  const quiet = firstRow.locator('.q');
+  expect(await quiet.count()).toBeGreaterThan(0);
+  await page.mouse.move(0, 0);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await expect(quiet.first()).toHaveCSS('visibility', 'hidden');
+  await firstRow.hover();
+  await expect(quiet.first()).toHaveCSS('visibility', 'visible');
+  const name = firstRow.locator('.nm');
+  await name.focus();
+  await page.keyboard.press('F2');
+  await expect(flyout.getByRole('textbox', { name: 'Preset name' })).toBeVisible();
   await assertNoScroll(page);
   await page.keyboard.press('Escape');
-  await expect(sheet).toBeHidden();
+  await expect(flyout.getByRole('textbox', { name: 'Preset name' })).toBeHidden();
+  await expect(flyout).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(flyout).toBeHidden();
   await page.locator('nav.irail .ib', { hasText: 'SETUP' }).click();
-  await lib.click();
-  await expect(sheet).toBeVisible();
+  await toggle.click();
+  await expect(flyout).toBeVisible();
   await assertNoScroll(page);
-  await sheet.getByRole('button', { name: 'PRESETS', exact: true }).click();
-  await expect(sheet.locator('.slots .row').first()).toBeVisible();
+  await flyout.getByRole('button', { name: 'Close presets' }).click();
+  await expect(flyout).toBeHidden();
+  await expect(page.locator('section.panel header .title', { hasText: /^PRESETS$/ })).toBeVisible();
   await assertNoScroll(page);
 });
 

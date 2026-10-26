@@ -1,11 +1,10 @@
 <script lang="ts">
   import { noveauUi, type NoveauDestination } from './noveauUi.svelte';
 
-  const items: { key: NoveauDestination | 'library'; label: string }[] = [
+  const items: { key: NoveauDestination; label: string }[] = [
     { key: 'tune', label: 'TUNE' },
     { key: 'program', label: 'PROGRAM' },
     { key: 'setup', label: 'SETUP' },
-    { key: 'library', label: 'LIBRARY' },
     { key: 'device', label: 'DEVICE' },
   ];
 </script>
@@ -15,17 +14,12 @@
     <button
       type="button"
       class="ib"
-      class:on={it.key === 'library' ? noveauUi.libraryOpen : noveauUi.destination === it.key}
+      class:on={noveauUi.destination === it.key}
       class:push={it.key === 'device'}
-      data-library-toggle={it.key === 'library' ? '' : undefined}
-      aria-pressed={it.key === 'library' ? noveauUi.libraryOpen : undefined}
-      aria-current={it.key !== 'library' && noveauUi.destination === it.key ? 'page' : undefined}
+      aria-current={noveauUi.destination === it.key ? 'page' : undefined}
       onclick={() => {
-        if (it.key === 'library') noveauUi.libraryOpen = !noveauUi.libraryOpen;
-        else {
-          noveauUi.destination = it.key;
-          noveauUi.libraryOpen = false;
-        }
+        noveauUi.destination = it.key;
+        noveauUi.presetsOpen = false;
       }}
     >
       <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
@@ -35,8 +29,6 @@
           <rect x="2" y="7" width="4" height="6" rx="1" /><rect x="8" y="7" width="4" height="6" rx="1" /><rect x="14" y="7" width="4" height="6" rx="1" /><path d="M6 10h2M12 10h2" />
         {:else if it.key === 'setup'}
           <rect x="5" y="5" width="10" height="10" rx="1.5" /><path d="M8 2.5v2.5M12 2.5v2.5M8 15v2.5M12 15v2.5M2.5 8H5M2.5 12H5M15 8h2.5M15 12h2.5" />
-        {:else if it.key === 'library'}
-          <rect x="3" y="4" width="3.5" height="12" rx=".8" /><rect x="8" y="4" width="3.5" height="12" rx=".8" /><path d="M13.5 5.5l3-.8 2.4 10.6-3 .8z" />
         {:else}
           <path d="M10 3v9" /><path d="M7 12h6v2.5a3 3 0 01-6 0z" /><path d="M8 3h4" /><path d="M10 17.5v-1" />
         {/if}

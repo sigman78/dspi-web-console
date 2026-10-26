@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { tick } from 'svelte';
   import { presetsDirty } from '@/state';
   import { getSession } from '@/components/sessionContext';
-  import { loadPresetSlot, renamePresetSlot, revertActivePreset } from '@/runtime';
+  import { loadPresetSlot, revertActivePreset } from '@/runtime';
   import { saveActivePresetNamed } from '@/components/presets/saveActivePresetNamed';
+  import PresetIcon from './presets/PresetIcon.svelte';
+  import { noveauUi } from './noveauUi.svelte';
   import { PresetStartupMode } from '@/protocol';
-  import { PRESET_NAME_MAX_LEN, PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';
+  import { PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';
 
   const s = getSession();
 
@@ -32,63 +33,6 @@
     if (busy) return;
     void saveActivePresetNamed(s);
   }
-  let editing = $state(false);
-  let editSlot: PresetSlot | null = null;
-  let editBase = '';
-  let nameEl = $state<HTMLSpanElement>();
-  // Each edit session ends with exactly one terminal action; Enter and Escape
-  // unmount the input, whose trailing blur would otherwise fire a second one.
-  let finished = false;
-
-  function startEdit(): void {
-    if (busy || active == null) return;
-    window.getSelection()?.removeAllRanges();
-    editSlot = active;
-    editBase = rawName;
-    editing = true;
-  }
-  function initInput(node: HTMLInputElement): void {
-    finished = false;
-    node.value = editBase;
-    node.focus();
-    node.select();
-  }
-  function finishEdit(node: HTMLInputElement, commit: boolean): void {
-    if (finished) return;
-    finished = true;
-    editing = false;
-    const next = node.value.trim();
-    if (commit && editSlot != null && next.length > 0 && next !== editBase) void renamePresetSlot(s, editSlot, next);
-  }
-  function refocusName(): void {
-    void tick().then(() => nameEl?.focus());
-  }
-  function onInputKey(e: KeyboardEvent): void {
-    const node = e.currentTarget as HTMLInputElement;
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      e.stopPropagation();
-      finishEdit(node, true);
-      refocusName();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      finishEdit(node, false);
-      refocusName();
-    }
-  }
-  function onNameKey(e: KeyboardEvent): void {
-    if (e.key === 'F2' || e.key === 'Enter') {
-      e.preventDefault();
-      startEdit();
-    }
-  }
-  $effect(() => {
-    if (editing && active !== editSlot) {
-      finished = true;
-      editing = false;
-    }
-  });
   function onRevert(): void {
     if (busy) return;
     void revertActivePreset(s);
@@ -115,31 +59,21 @@
   {/each}
 </div>
 <div class="sname">
-  {#if editing}
-    <input
-      class="nm-edit"
-      type="text"
-      maxlength={PRESET_NAME_MAX_LEN}
-      aria-label="Preset name"
-      use:initInput
-      onkeydown={onInputKey}
-      onblur={(e) => finishEdit(e.currentTarget, true)}
-    />
-  {:else}
-    <span
-      class="nm"
-      class:unnamed={rawName.length === 0}
-      role="button"
-      tabindex="0"
-      bind:this={nameEl}
-      aria-keyshortcuts="F2"
-      title="Double-click or F2 to rename"
-      ondblclick={startEdit}
-      onkeydown={onNameKey}
-    >{name}</span>
-    {#if canSave}<button type="button" class="chip accent" onclick={onSave}>Save</button>{/if}
-    {#if canRevert}<button type="button" class="chip hi" onclick={onRevert}>Revert</button>{/if}
-  {/if}
+  <button
+    type="button"
+    class="field"
+    class:open={noveauUi.presetsOpen}
+    data-presets-toggle
+    aria-label="Manage presets"
+    aria-expanded={noveauUi.presetsOpen}
+    aria-haspopup="dialog"
+    onclick={() => { noveauUi.presetsOpen = !noveauUi.presetsOpen; }}
+  >
+    <span class="nm" class:unnamed={rawName.length === 0}>{name}</span>
+    <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2 4l4 4 4-4" /></svg>
+  </button>
+  {#if canSave}<button type="button" class="icon-toggle accent" aria-label="Save preset" title="Save preset" onclick={onSave}><PresetIcon icon="save" /></button>{/if}
+  {#if canRevert}<button type="button" class="icon-toggle" aria-label="Revert preset" title="Revert preset" onclick={onRevert}><PresetIcon icon="revert" /></button>{/if}
 </div>
 
 <style>
@@ -191,18 +125,29 @@
     font-size: 12px;
     font-weight: 600;
   }
-  .nm.unnamed { color: var(--text-dim); }
-  .nm-edit {
+  .field {
     flex: 1;
     min-width: 0;
     height: 22px;
-    padding: 0 4px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 6px 0 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    background: var(--wash-faint);
+    color: var(--text-dim);
     font: inherit;
-    color: var(--text);
-    background: var(--bg);
-    border: 1px solid var(--accent);
-    border-radius: 3px;
+    text-align: left;
+    cursor: pointer;
   }
-  .nm { cursor: default; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sname .chip { flex: none; height: 20px; padding: 0 8px; font-size: 11px; letter-spacing: 0; font-family: var(--font-sans); font-weight: 600; }
+  .field:hover { border-color: var(--border-hi); color: var(--text); }
+  .field.open { border-color: var(--accent); }
+  .field svg { flex: none; margin-left: auto; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .field.open svg { transform: rotate(180deg); }
+  .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nm.unnamed { color: var(--text-dim); }
+  .sname .icon-toggle { flex: none; width: 20px; height: 20px; }
+  .sname .icon-toggle.accent { color: var(--accent); }
 </style>

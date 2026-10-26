@@ -17,6 +17,7 @@
   import CsGroupsPanel from '@/components/system/CsGroupsPanel.svelte';
   import CsMacrosPanel from '@/components/system/CsMacrosPanel.svelte';
   import CsDisplayPanel from '@/components/system/CsDisplayPanel.svelte';
+  import PresetOptionsPanel from './PresetOptionsPanel.svelte';
   import CsChangesStrip from './CsChangesStrip.svelte';
   import TelemetryPanel from './TelemetryPanel.svelte';
   import ErrorCountersPanel from './ErrorCountersPanel.svelte';
@@ -92,7 +93,7 @@
       <div class="cols">
         <div class="col" data-budget><DevicePanel /></div>
         <div class="col" data-budget><LgSoundSyncPanel /><DacHwMutePanel /></div>
-        <div class="col" data-budget></div>
+        <div class="col" data-budget><PresetOptionsPanel /></div>
       </div>
     {:else if page === 'io'}
       <div class="cols">
