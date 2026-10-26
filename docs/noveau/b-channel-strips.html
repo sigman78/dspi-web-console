@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1600">
+<title>DSPi · Channel Strips (mockup B)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<style>
+  :root {
+    --label: color-mix(in oklab, var(--text) 46%, transparent);
+    --hair: var(--border);
+    --h: var(--accent);
+    --glow: 0 0 6px color-mix(in oklab, var(--h) 55%, transparent);
+  }
+  html, body { overflow: hidden; }
+  body { min-width: 1600px; }
+  .app { height: 100vh; display: grid; grid-template-rows: 44px 1fr 24px; }
+
+  /* ---------- top bar ---------- */
+  .top { display: flex; align-items: center; gap: 16px; padding: 0 12px 0 16px; border-bottom: 1px solid var(--hair); background: color-mix(in oklab, var(--panel-solid) 80%, transparent); }
+  .brand { font: 600 14px var(--font-sans); letter-spacing: .14em; }
+  .brand b { color: var(--accent); font-weight: 600; }
+  .chip { font: 500 11px var(--font-mono); padding: 4px 10px; border: 1px solid var(--border-hi); border-radius: var(--radius-m); color: var(--text-dim); }
+  .chip em { font-style: normal; color: var(--accent); }
+  .scenes { display: flex; align-items: center; gap: 4px; margin-left: 8px; }
+  .scenes .cap { font: 500 10px var(--font-sans); letter-spacing: .1em; color: var(--label); margin-right: 8px; }
+  .sc { position: relative; height: 28px; min-width: 34px; padding: 0 8px; display: flex; align-items: center; justify-content: center; gap: 8px; font: 500 11px var(--font-mono); color: var(--text-dim); border: 1px solid var(--border-hi); border-radius: var(--radius-m); background: var(--wash); white-space: nowrap; }
+  .sc:hover { background: var(--wash-strong); color: var(--text); }
+  .sc.empty { color: var(--text-faint); border-color: var(--hair); background: none; border-style: dashed; }
+  .sc.filled::after { content: ""; position: absolute; bottom: 3px; left: 50%; width: 8px; margin-left: -4px; height: 2px; border-radius: 1px; background: var(--text-faint); }
+  .sc.active { color: var(--text); border-color: color-mix(in oklab, var(--accent) 70%, transparent); background: color-mix(in oklab, var(--accent) 16%, transparent); box-shadow: 0 0 10px color-mix(in oklab, var(--accent) 30%, transparent); padding: 0 12px; }
+  .sc.active .nm { font: 500 12px var(--font-sans); }
+  .dirty { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+  .star { position: absolute; top: -5px; right: -3px; font-size: 10px; line-height: 1; color: var(--warn); text-shadow: 0 0 5px var(--warn); }
+  .sp { flex: 1; }
+  .health { display: flex; align-items: center; gap: 8px; font: 500 11px var(--font-mono); color: var(--ok); padding: 4px 10px; border-radius: 12px; border: 1px solid color-mix(in oklab, var(--ok) 30%, transparent); background: color-mix(in oklab, var(--ok) 8%, transparent); }
+  .health i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .setup { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid var(--border-hi); border-radius: var(--radius-m); font: 500 11px var(--font-sans); letter-spacing: .1em; color: var(--text-dim); }
+  .setup:hover { color: var(--text); background: var(--wash-strong); }
+
+  /* ---------- desk ---------- */
+  .desk { display: flex; gap: 16px; padding: 12px 12px 8px; min-height: 0; }
+  .region { display: flex; flex-direction: column; min-height: 0; }
+  .region > header { height: 28px; display: flex; align-items: baseline; gap: 8px; padding: 0 2px 6px; }
+  .region h2 { margin: 0; font: 600 13px var(--font-sans); letter-spacing: .12em; }
+  .region h2 + span { font: 400 10px var(--font-mono); color: var(--text-faint); }
+  .row { flex: 1; min-height: 0; display: flex; border: 1px solid var(--hair); border-radius: var(--radius-m); background: color-mix(in oklab, var(--panel-solid) 70%, transparent); }
+  #inputs { flex: 0 0 auto; } #outputs { flex: 0 0 auto; } #master { flex: 1; min-width: 232px; }
+
+  /* strip */
+  .strip { flex: 0 0 auto; display: flex; flex-direction: column; padding: 0 8px 8px; border-right: 1px solid var(--hair); position: relative; }
+  .strip:last-child { border-right: none; }
+  .strip:hover { background: var(--wash-faint); }
+  .strip.in { width: 64px; padding: 0 6px 8px; } .strip.out { width: 102px; } .strip.dis { width: 36px; padding: 0; }
+  .hb { height: 3px; margin: 0 -8px; background: var(--h); box-shadow: 0 2px 10px color-mix(in oklab, var(--h) 45%, transparent); }
+  .in .hb { margin: 0 -6px; }
+  .nm { font: 500 12px var(--font-sans); height: 30px; display: flex; align-items: center; white-space: nowrap; }
+  .sec { border-top: 1px solid var(--hair); padding: 8px 0; }
+  .sl { font: 500 10px var(--font-sans); text-transform: uppercase; letter-spacing: .09em; color: var(--label); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .sl b { font: 400 10px var(--font-mono); color: var(--text-faint); letter-spacing: 0; text-transform: none; }
+  .cap2 { font: 400 9px var(--font-mono); color: var(--text-dim); margin-top: 4px; white-space: nowrap; }
+  .vf { height: 20px; display: flex; align-items: center; justify-content: center; font: 500 11px var(--font-mono); background: var(--panel-solid); border: 1px solid var(--hair); border-radius: var(--radius-s); color: var(--text); }
+  .vf:hover { border-color: var(--border-hi); }
+  .vf.off { color: var(--text-faint); }
+  .src { display: flex; justify-content: space-between; font: 400 10px var(--font-mono); height: 16px; align-items: center; color: var(--text-dim); white-space: nowrap; }
+  .src b { font-weight: 700; color: var(--hc); } .src.none { color: var(--text-faint); font-family: var(--font-sans); font-style: italic; }
+  .inv { color: var(--warn); }
+  .kv { display: flex; justify-content: space-between; align-items: center; height: 20px; font: 400 10px var(--font-mono); color: var(--text-dim); }
+  .kv span:first-child { font: 500 10px var(--font-sans); letter-spacing: .09em; color: var(--label); }
+  .btns { display: flex; gap: 4px; margin-top: 4px; }
+  .btn { flex: 1; height: 22px; font: 500 10px var(--font-mono); letter-spacing: .04em; color: var(--text-dim); border: 1px solid var(--border-hi); border-radius: var(--radius-s); display: flex; align-items: center; justify-content: center; background: var(--wash-faint); }
+  .btn:hover { background: var(--wash-strong); color: var(--text); }
+  .btn.on { color: var(--text); border-color: color-mix(in oklab, var(--h) 65%, transparent); background: color-mix(in oklab, var(--h) 20%, transparent); box-shadow: var(--glow); }
+  .btn.mute.on { color: var(--err); border-color: var(--err); background: color-mix(in oklab, var(--err) 22%, transparent); box-shadow: 0 0 8px color-mix(in oklab, var(--err) 50%, transparent); font-weight: 700; }
+  .tgl { display: flex; justify-content: space-between; align-items: center; height: 16px; font: 500 10px var(--font-sans); letter-spacing: .08em; color: var(--text-dim); }
+  .tgl.off { color: var(--text-faint); }
+  .tg { width: 18px; height: 10px; border-radius: 5px; background: var(--wash-strong); border: 1px solid var(--border-hi); position: relative; flex: none; }
+  .tg::after { content: ""; position: absolute; top: 1px; left: 1px; width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); }
+  .tg.on { background: color-mix(in oklab, var(--h) 55%, transparent); border-color: color-mix(in oklab, var(--h) 80%, transparent); box-shadow: var(--glow); }
+  .tg.on::after { left: 9px; background: var(--text); }
+  .foot { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--hair); font: 400 9px var(--font-mono); color: var(--text-faint); white-space: nowrap; }
+  .grow { flex: 1; min-height: 80px; display: flex; flex-direction: column; border-top: 1px solid var(--hair); padding-top: 8px; }
+  .metrow { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 0; }
+  .clip { width: 14px; height: 6px; border-radius: 1px; background: color-mix(in oklab, var(--err) 14%, var(--bg)); flex: none; }
+  .clip.on { background: var(--err); box-shadow: 0 0 8px var(--err); }
+  .meter { flex: 1; width: 14px; min-height: 0; display: flex; flex-direction: column; gap: 2px; }
+  .meter i { flex: 1; border-radius: 1px; --c: var(--ok); background: color-mix(in oklab, var(--c) 13%, var(--bg)); }
+  .meter i.a { --c: var(--warn); } .meter i.r { --c: var(--err); }
+  .meter i.l { background: var(--c); box-shadow: 0 0 5px color-mix(in oklab, var(--c) 55%, transparent); }
+  .out .meter { width: 18px; } .out .clip { width: 18px; }
+  .gr { display: flex; gap: 2px; direction: rtl; margin-top: 4px; }
+  .gr i { flex: 1; height: 6px; border-radius: 1px; background: color-mix(in oklab, var(--warn) 13%, var(--bg)); }
+  .gr i.l { background: var(--warn); box-shadow: 0 0 5px color-mix(in oklab, var(--warn) 55%, transparent); }
+  svg { display: block; }
+  .thumb { background: var(--panel-solid); border: 1px solid var(--hair); border-radius: var(--radius-s); }
+  .thumb:hover { border-color: var(--border-hi); }
+  .f-track { fill: var(--wash-strong); } .f-fill { fill: color-mix(in oklab, var(--h) 40%, transparent); }
+  .f-tick { stroke: var(--border-hi); stroke-width: 1; } .f-lbl { font: 400 9px var(--font-mono); fill: var(--text-faint); text-anchor: end; }
+  .f-cap { fill: var(--panel-hi); stroke: var(--border-hi); } .f-capl { stroke: var(--h); stroke-width: 2; }
+  .off .f-fill { fill: var(--wash-strong); }
+
+  /* hardware-disabled strip */
+  .dis { background: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in oklab, var(--text) 5%, transparent) 5px 6px); align-items: center; }
+  .dis .hb { width: 100%; margin: 0; background: var(--text-faint); box-shadow: none; }
+  .dis .vn { writing-mode: vertical-rl; transform: rotate(180deg); margin-top: 16px; font: 500 12px var(--font-sans); color: var(--text-faint); letter-spacing: .04em; white-space: nowrap; }
+  .dis .vs { writing-mode: vertical-rl; transform: rotate(180deg); margin-top: auto; margin-bottom: 12px; font: 400 9px var(--font-mono); color: var(--text-faint); letter-spacing: .06em; }
+
+  /* callout annotation */
+  .callout { position: relative; }
+  .callout::before { content: ""; position: absolute; inset: 4px -4px; border: 1px dashed color-mix(in oklab, var(--accent) 70%, transparent); border-radius: var(--radius-m); pointer-events: none; }
+  .note { position: absolute; z-index: 20; left: calc(100% + 10px); top: 60%; width: 196px; padding: 8px 10px; background: var(--panel-solid); border: 1px dashed color-mix(in oklab, var(--accent) 70%, transparent); border-radius: var(--radius-m); font: 400 11px/1.4 var(--font-sans); color: var(--text-dim); box-shadow: 0 8px 24px #0009; }
+  .note b { display: block; font: 600 10px var(--font-sans); letter-spacing: .1em; color: var(--accent); margin-bottom: 4px; }
+  .note svg { margin-top: 6px; }
+
+  /* ---------- master / program ---------- */
+  .prog { padding: 0 12px; }
+  .blk { position: relative; padding: 8px 0 8px 20px; border-bottom: 1px solid var(--hair); }
+  .blk::before { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; width: 1px; background: var(--border-hi); }
+  .blk::after { content: ""; position: absolute; left: 1px; top: 14px; width: 7px; height: 7px; border-radius: 50%; background: var(--bg); border: 1px solid var(--border-hi); }
+  .blk.on::after { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .blk .hd { display: flex; align-items: center; gap: 8px; min-height: 20px; }
+  .blk .t { font: 600 12px var(--font-sans); letter-spacing: .08em; flex: 1; }
+  .blk.offb .t { color: var(--text-faint); font-weight: 500; }
+  .blk .s { font: 400 10px var(--font-mono); color: var(--text-dim); margin-top: 2px; padding-left: 26px; }
+  .blk.offb .s { color: var(--text-faint); }
+  .blk .tg { --h: var(--accent); }
+  .lnk { font: 500 9px var(--font-mono); padding: 2px 6px; border-radius: 8px; border: 1px solid color-mix(in oklab, var(--accent) 60%, transparent); color: var(--accent); background: color-mix(in oklab, var(--accent) 12%, transparent); }
+  .sld { display: grid; grid-template-columns: 48px 1fr 52px; align-items: center; gap: 8px; height: 22px; padding-left: 26px; font: 400 10px var(--font-mono); }
+  .sld span:first-child { font: 500 10px var(--font-sans); letter-spacing: .09em; color: var(--label); }
+  .sld em { font-style: normal; text-align: right; color: var(--text); }
+  .trk { position: relative; height: 4px; border-radius: 2px; background: var(--wash-strong); }
+  .trk b { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: color-mix(in oklab, var(--accent) 60%, transparent); }
+  .trk u { position: absolute; top: -4px; width: 8px; height: 12px; margin-left: -4px; border-radius: 2px; background: var(--text); box-shadow: 0 0 6px color-mix(in oklab, var(--accent) 60%, transparent); }
+  .vols { flex: 1; display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 12px; border-top: 1px solid var(--hair); margin-top: 8px; min-height: 0; }
+  .vcol { display: flex; flex-direction: column; min-height: 0; align-items: stretch; }
+  .big { height: 32px; font-size: 18px; font-weight: 500; color: var(--text); }
+  .mcol { width: 112px; display: flex; flex-direction: column; border-left: 1px solid var(--hair); padding-left: 12px; }
+  .mm { display: flex; gap: 6px; flex: 1; min-height: 0; }
+  .mm .meter { width: 14px; }
+
+  /* ---------- status ---------- */
+  .status { display: flex; align-items: center; gap: 16px; padding: 0 16px; border-top: 1px solid var(--hair); font: 400 10px var(--font-mono); color: var(--text-faint); background: color-mix(in oklab, var(--panel-solid) 80%, transparent); }
+  .status i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); display: inline-block; margin-right: 6px; box-shadow: 0 0 5px var(--ok); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== TOP BAR: brand, device, scene bank, health, setup ===== -->
+  <div class="top">
+    <div class="brand">DSPI <b>·</b> CTRL</div>
+    <div class="chip">MOCK-RP2350-0001 · <em>RP2350</em></div>
+    <div class="scenes" id="scenes"><span class="cap">SCENES</span></div>
+    <div class="sp"></div>
+    <div class="health" title="Link, clip, buffer, temperature nominal"><i></i>OK</div>
+    <div class="setup"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>SETUP</div>
+  </div>
+
+  <!-- ===== DESK: inputs | outputs | program master ===== -->
+  <div class="desk">
+    <section class="region" id="inputs"><header><h2>INPUTS</h2><span>8 · I2S 1–4</span></header><div class="row" id="inRow"></div></section>
+    <section class="region" id="outputs"><header><h2>OUTPUTS</h2><span>7 of 9 active · matrix per strip</span></header><div class="row" id="outRow"></div></section>
+    <section class="region" id="master"><header><h2>PROGRAM</h2><span>stereo · inputs &rarr; matrix</span></header>
+      <div class="row" style="flex-direction:column">
+        <div class="prog" id="prog"></div>
+        <div class="vols" id="vols"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ===== STATUS STRIP ===== -->
+  <div class="status"><span><i></i>fw 1.1.6 beta 4 · V32 · 48 kHz · link OK</span><span class="sp"></span><span>nothing staged</span></div>
+</div>
+
+<script>
+/* ---------- helpers (static mock; strips rendered from data) ---------- */
+const $ = (id) => document.getElementById(id);
+const L10 = Math.log10;
+
+/* response thumbnail: sum of dB functions, log 20 Hz-20 kHz, +-12 dB */
+function curve(fns, w, h, hue) {
+  const pts = [];
+  for (let i = 0; i <= 56; i++) {
+    const f = 20 * Math.pow(1000, i / 56);
+    const db = Math.max(-12, Math.min(12, fns.reduce((a, fn) => a + fn(f), 0)));
+    pts.push([(i / 56) * w, h / 2 - (db / 12) * (h / 2 - 3)]);
+  }
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
+  const gx = [100, 1000, 10000].map((f) => ((L10(f / 20) / 3) * w).toFixed(1));
+  const flat = fns.length === 0;
+  return `<svg class="thumb" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    ${gx.map((x) => `<line x1="${x}" x2="${x}" y1="0" y2="${h}" stroke="var(--hair)"/>`).join('')}
+    <line x1="0" x2="${w}" y1="${h / 2}" y2="${h / 2}" stroke="var(--border-hi)" stroke-dasharray="2 2"/>
+    <path d="${d}L${w} ${h / 2}L0 ${h / 2}Z" fill="${hue}" opacity="${flat ? 0 : 0.14}"/>
+    <path d="${d}" fill="none" stroke="${flat ? 'var(--text-faint)' : hue}" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+}
+const hp = (f0) => (f) => -10 * L10(1 + Math.pow(f0 / f, 4));
+const lp = (f0) => (f) => -10 * L10(1 + Math.pow(f / f0, 4));
+const bump = (f0, g, w) => (f) => g / (1 + Math.pow(L10(f / f0) / w, 2));
+const hshelf = (f0, g) => (f) => g / (1 + Math.pow(f0 / f, 2.5));
+const lshelf = (f0, g) => (f) => g / (1 + Math.pow(f / f0, 2.5));
+
+/* vertical fader (svg); STOPS map dB -> position 0..1 (top..bottom) */
+const STOPS = [[12, 0], [0, .2], [-12, .4], [-24, .58], [-48, .8], [-60, 1]];
+function pos(db) {
+  for (let i = 0; i < STOPS.length - 1; i++) {
+    const [a, pa] = STOPS[i], [b, pb] = STOPS[i + 1];
+    if (db <= a && db >= b) return pa + ((a - db) / (a - b)) * (pb - pa);
+  }
+  return db > 12 ? 0 : 1;
+}
+function fader(w, h, db, labels, hue, off) {
+  const cx = w - 18, t = 8, b = h - 8, y = t + pos(db) * (b - t);
+  const ticks = labels.map((l) => {
+    const ty = t + pos(l === '-∞' ? -60 : l) * (b - t);
+    return `<line class="f-tick" x1="${cx - 12}" x2="${cx - 7}" y1="${ty}" y2="${ty}"/><text class="f-lbl" x="${cx - 15}" y="${ty + 3}">${l === '-∞' ? '-∞' : (l > 0 ? '+' + l : l)}</text>`;
+  }).join('');
+  return `<svg class="${off ? 'off' : ''}" style="--h:${hue}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    ${ticks}<rect class="f-track" x="${cx - 2}" y="${t}" width="4" height="${b - t}" rx="2"/>
+    <rect class="f-fill" x="${cx - 2}" y="${y}" width="4" height="${b - y}" rx="2"/>
+    <rect class="f-cap" x="${cx - 13}" y="${y - 7}" width="26" height="14" rx="3"/><line class="f-capl" x1="${cx - 9}" x2="${cx + 9}" y1="${y}" y2="${y}"/></svg>`;
+}
+
+/* 12-segment LED ladder, top -> bottom, clip latch above */
+function meter(level, clip) {
+  let s = '';
+  for (let n = 12; n >= 1; n--) s += `<i class="${n >= 11 ? 'r' : n >= 9 ? 'a' : ''}${n <= level ? ' l' : ''}"></i>`;
+  return `<div class="metrow"><div class="clip${clip ? ' on' : ''}" title="clip latch"></div><div class="meter">${s}</div></div>`;
+}
+const tg = (on) => `<span class="tg${on ? ' on' : ''}"></span>`;
+
+/* ---------- scene bank ---------- */
+const sceneState = ['star', 'filled', 'filled', 'active', 'empty', 'filled', 'empty', 'empty', 'empty', 'empty'];
+$('scenes').insertAdjacentHTML('beforeend', sceneState.map((s, i) => {
+  const n = String(i).padStart(2, '0');
+  if (s === 'active') return `<div class="sc active">${n}<span class="nm">Living room</span><span class="dirty" title="unsaved changes"></span></div>`;
+  return `<div class="sc ${s === 'empty' ? 'empty' : 'filled'}">${n}${s === 'star' ? '<span class="star" title="startup scene">★</span>' : ''}</div>`;
+}).join(''));
+
+/* ---------- input strips ---------- */
+const hueI = ['--ch-i1', '--ch-i2', '--ch-i3', '--ch-i4'];
+const inCurves = { 0: [bump(1800, 5, .25), hshelf(8000, 3)], 3: [lshelf(120, -5)], 6: [bump(300, -6, .2), bump(4000, 3, .3)] };
+const inLevels = [7, 7, 6, 6, 9, 9, 4, 3];
+$('inRow').innerHTML = [...Array(8)].map((_, i) => {
+  const hue = `var(${hueI[i >> 1]})`, name = `I2S ${(i >> 1) + 1} ${i % 2 ? 'R' : 'L'}`;
+  return `<div class="strip in" style="--h:${hue}"><div class="hb"></div><div class="nm">${name}</div>
+    <div class="sec"><div class="sl">Preamp</div>${fader(52, 92, -1.5, [0, -12, '-∞'], hue)}<div class="vf" style="margin-top:6px">-1.5 dB</div></div>
+    <div class="sec"><div class="sl">EQ</div>${curve(inCurves[i] || [], 50, 32, hue)}<div class="cap2">4 bands</div></div>
+    <div class="grow">${meter(inLevels[i], false)}</div></div>`;
+}).join('');
+
+/* ---------- output strips ---------- */
+const hueO = ['--ch-o1', '--ch-o1', '--ch-o2', '--ch-o2', 'x', 'x', '--ch-o4', '--ch-o4', '--ch-sub'];
+const hs = [hp(80), hshelf(6000, 2.5), bump(250, -2.5, .25)];
+const outs = [
+  { n: 'Out 1 Left',  src: [['1L', '0.0', 0]], c: hs, cap: 'HP 80 · 6 bands', trim: 0, dly: '1.2', ph: 0, mu: 0, lim: ['-1.0', 2], mem: [1,1,0,0], lv: 8, type: 'I2S · GP6', note: 1 },
+  { n: 'Out 1 Right', src: [['1R', '-6.0', 1]], c: hs, cap: 'HP 80 · 6 bands', trim: 0, dly: '1.2', ph: 0, mu: 0, lim: ['-1.0', 0], mem: [1,1,0,0], lv: 8, type: 'I2S · GP6' },
+  { n: 'Out 2 Left',  src: [['2L', '0.0', 0]], c: [], cap: 'flat · 6 bands', trim: -3, dly: '0.0', ph: 0, mu: 0, lim: ['-1.0', 0], mem: [1,0,0,0], lv: 6, type: 'I2S · GP7' },
+  { n: 'Out 2 Right', src: [['2R', '0.0', 0]], c: [], cap: 'flat · 6 bands', trim: -3, dly: '0.0', ph: 0, mu: 0, lim: ['-1.0', 0], mem: [1,0,0,0], lv: 10, clip: 1, type: 'I2S · GP7' },
+  { dis: 1, n: 'Out 3 Left',  hue: '--ch-o3' }, { dis: 1, n: 'Out 3 Right', hue: '--ch-o3' },
+  { n: 'Out 4 Left',  src: [], c: [], cap: 'flat · 6 bands', trim: 0, dly: '0.0', ph: 0, mu: 0, lim: ['-3.0', 0], mem: [1,0,1,0], lv: 0, type: 'I2S · GP9' },
+  { n: 'Out 4 Right', src: [], c: [], cap: 'flat · 6 bands', trim: 0, dly: '0.0', ph: 0, mu: 1, lim: ['-3.0', 0], mem: [0,0,0,0], lv: 0, type: 'I2S · GP9' },
+  { n: 'PDM Sub',     src: [['1L', '-6.0', 0], ['1R', '-6.0', 0]], c: [lp(80)], cap: 'LP 80 · 6 bands', trim: -2, dly: '3.8', ph: 1, mu: 0, lim: [null, 0], mem: [0,0,1,1], lv: 5, type: 'PDM · GP10' },
+];
+const hueInput = { '1L': '--ch-i1', '1R': '--ch-i1', '2L': '--ch-i2', '2R': '--ch-i2' };
+$('outRow').innerHTML = outs.map((o, i) => {
+  const hn = o.hue || hueO[i], hue = `var(${hn})`;
+  if (o.dis) return `<div class="strip dis" style="--h:${hue}" title="Disabled in SYSTEM · outputs"><div class="hb"></div><div class="vn">${o.n}</div><div class="vs">HW OFF</div></div>`;
+  const src = o.src.length
+    ? o.src.map((s) => `<div class="src" style="--hc:var(${hueInput[s[0]]})"><b>${s[0]}</b><span>${s[1]} dB${s[2] ? ' <span class="inv" title="phase inverted">⌽</span>' : ''}</span></div>`).join('')
+    : '<div class="src none">no source</div>';
+  const [lt, gr] = o.lim, limOff = lt === null;
+  const x = `<div class="sec"><div class="sl">XOVER / EQ</div>${curve(o.c, 84, 40, hue)}<div class="cap2">${o.cap}</div></div>`;
+  const note = `<div class="note"><b>FOCUS PANE</b>click &rarr; full graph editor; strips collapse to a meter bridge
+      <svg width="170" height="34" viewBox="0 0 170 34"><rect x=".5" y=".5" width="120" height="33" rx="3" fill="none" stroke="var(--border-hi)"/><path d="M6 24C30 24 36 10 56 10S84 20 114 14" fill="none" stroke="var(--accent)" stroke-width="1.5"/><circle cx="56" cy="10" r="3" fill="var(--accent)"/>${[0,1,2,3,4,5].map((k) => `<rect x="${128 + k * 7}" y="${8 + (k % 3) * 3}" width="4" height="${24 - (k % 3) * 3}" fill="var(--ok)" opacity=".7"/>`).join('')}</svg></div>`;
+  return `<div class="strip out" style="--h:${hue}"><div class="hb"></div><div class="nm">${o.n}</div>
+    <div class="sec" style="height:70px"><div class="sl">Source</div>${src}</div>
+    ${o.note ? `<div class="callout">${x}${note}</div>` : x}
+    <div class="sec"><div class="sl">Trim</div>${fader(84, 118, o.trim, [12, 0, -12, -24, -48, '-∞'], hue, o.mu)}
+      <div class="vf${o.mu ? ' off' : ''}" style="margin-top:6px">${o.trim >= 0 ? '+' : ''}${o.trim.toFixed(1)} dB</div>
+      <div class="kv" style="margin-top:4px"><span>DELAY</span><span>${o.dly} ms</span></div>
+      <div class="btns"><div class="btn${o.ph ? ' on' : ''}" title="Phase invert">⌽ PH</div><div class="btn mute${o.mu ? ' on' : ''}">MUTE</div></div></div>
+    <div class="sec"><div class="sl">Limiter<b>${limOff ? 'off' : 'GR ' + gr.toFixed(1)}</b></div>
+      <div class="vf${limOff ? ' off' : ''}">${limOff ? 'off' : lt + ' dB'}</div>
+      <div class="gr">${[...Array(8)].map((_, k) => `<i${!limOff && k < gr ? ' class="l"' : ''}></i>`).join('')}</div></div>
+    <div class="sec"><div class="sl">Member of</div>${['LEV', 'LOUD', 'PSY', 'SUB'].map((l, k) => `<div class="tgl${o.mem[k] ? '' : ' off'}">${l}${tg(o.mem[k])}</div>`).join('')}</div>
+    <div class="grow">${meter(o.lv, o.clip)}</div>
+    <div class="foot">${o.type}</div></div>`;
+}).join('');
+
+/* ---------- program (master section), in firmware chain order ---------- */
+const sld = (l, pct, v) => `<div class="sld"><span>${l}</span><div class="trk"><b style="width:${pct}%"></b><u style="left:${pct}%"></u></div><em>${v}</em></div>`;
+const blocks = [
+  { t: 'PREAMP', on: 1, s: '-1.5 dB', extra: '<span class="lnk">LINK L/R</span>' },
+  { t: 'LEVELLER', on: 0, s: 'off' },
+  { t: 'CROSSFEED', on: 1, s: 'Preset 1 · 700 Hz · 4.5 dB', body: sld('CUTOFF', 46, '700 Hz') + sld('FEED', 38, '4.5 dB') },
+  { t: 'LOUDNESS', on: 1, s: 'ref 85 dB · 40 %' },
+  { t: 'UPMIX', on: 0, s: 'off' },
+  { t: 'SUBHARM', on: 0, s: 'off' },
+];
+$('prog').innerHTML = blocks.map((b) => `<div class="blk ${b.on ? 'on' : 'offb'}"><div class="hd">${tg(b.on)}<span class="t">${b.t}</span>${b.extra || ''}</div><div class="s">${b.s}</div>${b.body || ''}</div>`).join('');
+
+$('vols').innerHTML = `
+  <div class="vcol" style="--h:var(--accent)"><div class="sl">User volume</div>
+    <div style="flex:1;min-height:0;display:flex;justify-content:center">${fader(100, 330, -12, [12, 0, -12, -24, -48, '-∞'], 'var(--accent)')}</div>
+    <div class="vf big" style="margin-top:8px">-12.0 dB</div><div class="btns"><div class="btn mute">MUTE</div></div></div>
+  <div class="mcol" style="--h:var(--accent)"><div class="sl">Master</div>
+    <div style="display:flex;gap:8px;flex:1;min-height:0"><div style="width:44px">${fader(44, 150, 0, [], 'var(--accent)')}</div>
+    <div class="mm">${meter(8, false)}${meter(7, false)}</div></div>
+    <div class="vf" style="margin-top:8px">0.0 dB</div><div class="btns"><div class="btn">BYPASS</div></div></div>`;
+</script>
+</body>
+</html>

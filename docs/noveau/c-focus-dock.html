@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1600">
+<title>DSPi Console — C · Focus + Dock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<style>
+  body { min-width: 1600px; background: oklch(7% 0.008 250); font-size: 12px; -webkit-font-smoothing: antialiased; }
+  .mono { font-feature-settings: "tnum"; }
+  .divider { height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 24px; color: var(--text-dim); font-size: 11px; font-weight: 600; letter-spacing: .04em; border-top: 1px solid var(--border-hi); border-bottom: 1px solid var(--border); background: oklch(9% 0.008 250); }
+  .divider small { font-weight: 400; color: var(--text-faint); letter-spacing: 0; font-family: var(--font-mono); }
+
+  /* ---------- screen frame ---------- */
+  .screen { position: relative; width: 1600px; height: 1000px; display: grid; grid-template-columns: 200px 1fr; grid-template-rows: 1000px; overflow: hidden; background: var(--bg-glow); }
+  h2 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -.005em; }
+  .cap { font-size: 10px; color: var(--text-faint); }
+
+  /* ---------- sidebar ---------- */
+  .sb { display: flex; flex-direction: column; padding: 16px 12px; border-right: 1px solid var(--border); background: oklch(12% 0.008 250 / .8); }
+  .brand { display: flex; align-items: center; gap: 8px; padding: 0 8px; height: 32px; font-size: 14px; font-weight: 600; letter-spacing: .02em; }
+  .logo { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; font-size: 11px; font-weight: 600; background: color-mix(in oklab, var(--accent) 28%, transparent); color: var(--accent); }
+  .dev { display: flex; gap: 8px; align-items: flex-start; margin: 16px 0 24px; padding: 8px; border-radius: var(--radius); background: var(--wash); }
+  .dev b { display: block; font-size: 11px; font-weight: 500; }
+  .dev span { font-size: 10px; color: var(--text-faint); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); flex: none; margin-top: 4px; }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 6px color-mix(in oklab, var(--ok) 60%, transparent); }
+  .sb nav { display: flex; flex-direction: column; gap: 2px; }
+  .nav { position: relative; display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 8px; border-radius: 6px; color: var(--text-dim); font-size: 12px; font-weight: 500; }
+  .nav svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+  .nav kbd { margin-left: auto; font: 400 10px var(--font-mono); color: var(--text-faint); }
+  .nav.on { background: var(--wash-strong); color: var(--text); }
+  .nav.on::before { content: ""; position: absolute; left: -12px; top: 6px; bottom: 6px; width: 2px; border-radius: 0 2px 2px 0; background: var(--accent); }
+  .sb-foot { margin-top: auto; display: flex; flex-direction: column; gap: 4px; }
+  .cmdk { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-faint); font-size: 11px; }
+  .cmdk kbd { font: 500 10px var(--font-mono); color: var(--text-dim); padding: 1px 5px; border-radius: 4px; background: var(--wash); }
+  .nom { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; color: var(--text-faint); font-size: 11px; }
+  .nom .dot { margin: 0; background: var(--text-faint); opacity: .6; }
+
+  /* ---------- shared controls ---------- */
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border-hi); font-size: 11px; font-weight: 500; color: var(--text-dim); white-space: nowrap; }
+  .btn:hover { color: var(--text); background: var(--wash); }
+  .btn.ghost { border-color: transparent; }
+  .btn.pri { background: var(--accent); border-color: transparent; color: oklch(16% 0.03 265); font-weight: 600; }
+  .btn.sm { height: 24px; padding: 0 8px; font-size: 11px; }
+  .sw { position: relative; width: 28px; height: 16px; border-radius: 8px; background: var(--wash-strong); flex: none; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-dim); transition: left .15s; }
+  .sw.on { background: var(--accent); }
+  .sw.on::after { left: 14px; background: oklch(98% 0 0); }
+  .seg { display: flex; padding: 2px; gap: 2px; border-radius: 6px; background: var(--wash); }
+  .seg span { flex: 1; display: grid; place-items: center; height: 24px; padding: 0 8px; border-radius: 4px; font-size: 11px; font-weight: 500; color: var(--text-faint); white-space: nowrap; }
+  .seg span.on { background: var(--wash-strong); color: var(--text); box-shadow: 0 0 0 1px var(--border-hi) inset; }
+  .link { font-size: 11px; font-weight: 500; color: var(--accent); }
+
+  /* LED meters (horizontal .led, vertical .led.v): gradient + segment mask, overlay hides unlit part */
+  .led { --unlit: oklch(22% 0.006 250); position: relative; overflow: hidden; background: linear-gradient(90deg, var(--ok) 0 68%, var(--warn) 68% 86%, var(--err) 86%);
+    -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 3px, transparent 3px 4px); mask-image: repeating-linear-gradient(90deg, #000 0 3px, transparent 3px 4px); }
+  .led i { position: absolute; top: 0; bottom: 0; right: 0; width: calc(100% - var(--l)); background: var(--unlit); }
+  .led.v { background: linear-gradient(0deg, var(--ok) 0 62%, var(--warn) 62% 80%, var(--err) 80%);
+    -webkit-mask-image: repeating-linear-gradient(0deg, #000 0 4px, transparent 4px 6px); mask-image: repeating-linear-gradient(0deg, #000 0 4px, transparent 4px 6px); }
+  .led.v i { left: 0; right: 0; top: 0; bottom: auto; width: auto; height: calc(100% - var(--l)); }
+
+  /* ---------- TUNE ---------- */
+  .tune { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .top { padding: 16px 24px 0; }
+  .body { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 340px; }
+  .work { display: flex; flex-direction: column; padding: 0 24px; min-width: 0; min-height: 0; }
+  .chain { display: flex; align-items: center; gap: 6px; height: 14px; margin-bottom: 8px; font-size: 10px; color: var(--text-faint); white-space: nowrap; }
+  .chain .hl { padding: 1px 8px; border-radius: 8px; color: color-mix(in oklab, var(--ch-o1) 80%, var(--text)); background: color-mix(in oklab, var(--ch-o1) 12%, transparent); box-shadow: 0 0 0 1px color-mix(in oklab, var(--ch-o1) 30%, transparent) inset; }
+  .strip { display: flex; align-items: stretch; gap: 4px; height: 48px; margin-bottom: 8px; }
+  .strip .div { flex: none; width: 1px; margin: 4px 10px; background: var(--border-hi); }
+  .chip { --c: var(--text-faint); position: relative; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 0 12px; flex: 1 1 0; min-width: 0; border-radius: 6px; background: var(--wash); font-size: 11px; font-weight: 500; color: var(--text-dim); }
+  .chip b { display: flex; align-items: center; gap: 6px; font-weight: 500; white-space: nowrap; }
+  .chip b::before { flex: none; content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+  .chip .led { height: 4px; border-radius: 1px; }
+  .chip:hover { background: var(--wash-strong); color: var(--text); }
+  .chip.sel { background: var(--c); color: oklch(15% 0.03 150); }
+  .chip.sel b::before { background: oklch(15% 0.03 150); }
+  .chip.sel .led { --unlit: oklch(58% 0.12 150); background: oklch(15% 0.03 150); }
+  .chip.off { background: repeating-linear-gradient(135deg, var(--wash-strong) 0 3px, transparent 3px 7px); color: var(--text-faint); }
+  .chip.off .led { background: var(--wash); }
+  .chip.off .led i { display: none; }
+  .chip .clip { position: absolute; top: 4px; right: 5px; width: 5px; height: 5px; border-radius: 50%; background: var(--err); box-shadow: 0 0 6px var(--err); }
+  .ghead { display: flex; align-items: center; justify-content: space-between; height: 32px; }
+  .ghead h2 { display: inline-flex; align-items: center; gap: 8px; margin-right: 12px; }
+  .ghead h2::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--ch-o1); }
+  .ghead .seg span { padding: 0 12px; }
+  .graph { flex: 1; min-height: 0; border-top: 1px solid var(--border); }
+  .graph svg { display: block; width: 100%; height: 100%; }
+  .graph text { font-family: var(--font-mono); font-size: 10px; fill: var(--text-faint); }
+  .graph .rd { font-size: 11px; fill: var(--text); font-weight: 500; }
+  .tools { display: flex; align-items: center; gap: 4px; height: 40px; border-top: 1px solid var(--border); }
+  .tools .sp { flex: 1; }
+  .tools .lk { display: flex; align-items: center; gap: 8px; margin-right: 12px; font-size: 11px; font-weight: 500; color: var(--text-dim); }
+  .tools .lk svg { width: 14px; height: 14px; stroke: var(--text-dim); fill: none; stroke-width: 1.4; stroke-linecap: round; }
+  .tools kbd { font: 400 10px var(--font-mono); color: var(--text-faint); }
+  .space { height: 64px; flex: none; }
+
+  /* inspector */
+  .insp { position: relative; overflow: hidden; border-left: 1px solid var(--border); background: oklch(11.5% 0.008 250 / .6); }
+  .insp::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 72px; pointer-events: none; background: linear-gradient(transparent, oklch(11% 0.008 250)); }
+  .insp .scrollbar { position: absolute; right: 2px; top: 8px; width: 3px; height: 340px; border-radius: 2px; background: var(--wash-strong); }
+  .sec { padding: 16px 20px 12px; border-bottom: 1px solid var(--border); }
+  .sec > header { display: flex; align-items: baseline; justify-content: space-between; height: 24px; }
+  .sec > p { margin: 0 0 4px; font-size: 10px; color: var(--text-faint); }
+  .row { display: grid; grid-template-columns: 120px 1fr; align-items: center; height: 32px; border-bottom: 1px solid var(--border); }
+  .row:last-child { border-bottom: 0; }
+  .row > label { font-size: 11px; font-weight: 500; color: var(--text-dim); }
+  .row .ctl { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+  .val { font: 400 12px var(--font-mono); text-align: right; min-width: 62px; color: var(--text); }
+  .val u { text-decoration: none; color: var(--text-faint); margin-left: 2px; font-size: 10px; }
+  .val.dim { color: var(--text-faint); }
+  .sl { --p: 50%; --a: 0%; --w: 50%; position: relative; flex: 1; height: 32px; }
+  .sl::before { content: ""; position: absolute; left: 0; right: 0; top: 15px; height: 2px; border-radius: 1px; background: var(--wash-strong); }
+  .sl b { position: absolute; left: var(--a); width: var(--w); top: 15px; height: 2px; background: var(--text-dim); }
+  .sl i { position: absolute; left: var(--p); top: 11px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 2px oklch(14% 0.008 250); }
+  .sl.hue b { background: var(--ch-o1); }
+  .row .sel { display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 8px; border-radius: 5px; background: var(--wash); font-size: 11px; color: var(--text); }
+  .row .sel::after { content: ""; width: 5px; height: 5px; border-right: 1px solid var(--text-faint); border-bottom: 1px solid var(--text-faint); transform: rotate(45deg) translate(-1px, -1px); margin-left: 4px; }
+  .typeseg { margin: 4px 0 8px; }
+  .bands { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 12px; }
+  .bands div { display: flex; flex-direction: column; gap: 1px; padding: 4px 6px; white-space: nowrap; height: 34px; border-radius: 5px; background: var(--wash-faint); font: 400 10px var(--font-mono); color: var(--text-dim); }
+  .bands div span { display: flex; justify-content: space-between; }
+  .bands div em { font-style: normal; color: var(--text-faint); }
+  .bands .used { background: var(--wash); }
+  .bands .cur { box-shadow: 0 0 0 1px var(--ch-o1) inset; color: var(--text); }
+  .bands .empty { color: var(--text-faint); opacity: .6; }
+  .grm { width: 96px; height: 6px; border-radius: 2px; }
+  .grm.led { background: var(--warn); }
+  .src-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 8px; }
+  .morelinks { display: flex; justify-content: space-between; padding-top: 8px; }
+
+  /* dock */
+  .dock { position: absolute; left: 900px; bottom: 20px; transform: translateX(-50%); display: flex; align-items: center; gap: 16px; padding: 8px 8px 8px 16px; border-radius: 12px; background: oklch(19% 0.008 250 / .92); backdrop-filter: blur(12px); border: 1px solid var(--border-hi); box-shadow: 0 12px 32px oklch(0% 0 0 / .5); font-size: 12px; color: var(--text); }
+  .dock .dot { background: var(--warn); margin: 0 -8px 0 0; }
+  .dock .ghost { margin-left: -8px; }
+
+  /* ---------- LISTEN ---------- */
+  .listen { display: flex; flex-direction: column; padding: 24px 32px 0; min-width: 0; }
+  .lhead { display: flex; align-items: baseline; justify-content: space-between; height: 32px; }
+  .cols { display: grid; grid-template-columns: 2fr 1fr; gap: 40px; margin-top: 16px; flex: 1; min-height: 0; }
+  .lblock { padding-bottom: 32px; margin-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .lblock:last-child { border-bottom: 0; margin-bottom: 0; }
+  .sech { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
+  .vol { display: flex; align-items: flex-end; justify-content: space-between; }
+  .vol .big { font: 500 72px/1 var(--font-mono); letter-spacing: -.03em; }
+  .vol .big u { text-decoration: none; font-size: 20px; letter-spacing: 0; color: var(--text-faint); margin-left: 8px; font-weight: 400; }
+  .vol .ctrls { display: flex; align-items: center; gap: 16px; padding-bottom: 8px; }
+  .vol .ctrls .seg span { padding: 0 12px; }
+  .vsl { position: relative; height: 18px; margin-top: 40px; }
+  .vsl::before { content: ""; position: absolute; left: 0; right: 0; top: 6px; height: 6px; border-radius: 3px; background: var(--wash-strong); }
+  .vsl b { position: absolute; left: 0; width: 80%; top: 6px; height: 6px; border-radius: 3px; background: var(--accent); }
+  .vsl i { position: absolute; left: 80%; top: 0; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; background: oklch(98% 0 0); box-shadow: 0 2px 8px oklch(0% 0 0 / .5), 0 0 0 4px color-mix(in oklab, var(--accent) 25%, transparent); }
+  .ticks { position: relative; height: 14px; margin-top: 8px; font: 400 10px var(--font-mono); color: var(--text-faint); }
+  .ticks span { position: absolute; transform: translateX(-50%); }
+  .ticks span:first-child { transform: none; }
+  .ticks span:last-child { transform: translateX(-100%); }
+  .presets { display: flex; gap: 8px; height: 96px; }
+  .tile { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 8px; border-radius: 8px; background: var(--wash); }
+  .tile .n { display: flex; justify-content: space-between; font: 400 10px var(--font-mono); color: var(--text-faint); }
+  .tile .t { font-size: 11px; font-weight: 500; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile.empty { background: none; box-shadow: 0 0 0 1px var(--border) inset; }
+  .tile.empty .t { color: var(--text-faint); opacity: .6; }
+  .tile.act { flex: 0 0 216px; background: color-mix(in oklab, var(--accent) 12%, transparent); box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 50%, transparent) inset; }
+  .tile.act .n { color: var(--accent); }
+  .tile.act .t { color: var(--text); font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .tile.act .t::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); flex: none; }
+  .tile.act .acts { display: flex; gap: 4px; }
+  .star { color: var(--warn); font-size: 11px; }
+  .pills { display: flex; gap: 8px; }
+  .pill { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 4px; height: 76px; padding: 0 12px; border-radius: 12px; background: var(--wash); box-shadow: 0 0 0 1px var(--border) inset; position: relative; }
+  .pill b { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+  .pill span { font-size: 10px; color: var(--text-faint); white-space: nowrap; }
+  .pill::after { content: ""; position: absolute; top: 10px; right: 10px; width: 6px; height: 6px; border-radius: 50%; background: var(--wash-strong); }
+  .pill.on { background: color-mix(in oklab, var(--accent) 14%, transparent); box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 45%, transparent) inset; }
+  .pill.on b { color: var(--text); }
+  .pill.on span { color: var(--text-dim); }
+  .pill.on::after { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .bridge { display: flex; gap: 8px; align-items: flex-start; padding-left: 4px; }
+  .scale { position: relative; width: 28px; height: 336px; margin-top: 22px; font: 400 10px var(--font-mono); color: var(--text-faint); text-align: right; }
+  .scale span { position: absolute; right: 0; transform: translateY(-50%); }
+  .grp { position: relative; display: flex; gap: 8px; }
+  .grp + .grp { margin-left: 16px; }
+  .gcap { position: absolute; top: 0; left: 0; font-size: 10px; color: var(--text-faint); }
+  .m { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; width: 24px; padding-top: 18px; }
+  .m .led { width: 24px; height: 336px; border-radius: 2px; margin-top: 4px; }
+  .m.off .led { background: repeating-linear-gradient(135deg, var(--wash-strong) 0 3px, transparent 3px 7px); -webkit-mask-image: none; mask-image: none; }
+  .m.off .led i { display: none; }
+  .m.off em { opacity: .5; }
+  .m em { font: 400 11px var(--font-mono); font-style: normal; color: var(--text-dim); }
+  .m .cl { position: absolute; top: 18px; left: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--wash-strong); }
+  .m .cl.hit { background: var(--err); box-shadow: 0 0 8px var(--err); }
+  .health { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .ht { display: flex; flex-direction: column; justify-content: space-between; height: 64px; padding: 8px 10px; border-radius: 8px; background: var(--wash-faint); box-shadow: 0 0 0 1px var(--border) inset; }
+  .ht span { font-size: 10px; font-weight: 500; color: var(--text-faint); }
+  .ht b { font: 400 12px var(--font-mono); color: var(--text-dim); }
+  .ht small { font-size: 10px; color: var(--text-faint); }
+  .ht.bad { background: color-mix(in oklab, var(--err) 14%, transparent); box-shadow: 0 0 0 1px color-mix(in oklab, var(--err) 50%, transparent) inset; }
+  .ht.bad span { color: color-mix(in oklab, var(--err) 70%, var(--text)); }
+  .ht.bad b { color: var(--text); }
+  .ht.bad small { display: flex; justify-content: space-between; color: var(--text-dim); }
+  .ht.bad small a { color: var(--err); font-weight: 600; }
+  .recent { margin: 0 -32px; padding: 12px 32px 0; border-top: 1px solid var(--border); height: 112px; display: grid; grid-template-columns: 80px 1fr; align-content: start; }
+  .recent h2 { grid-column: 1 / -1; font-size: 11px; font-weight: 500; color: var(--text-dim); margin-bottom: 4px; }
+  .recent time, .recent p { height: 24px; line-height: 24px; margin: 0; }
+  .recent time { font: 400 11px/24px var(--font-mono); color: var(--text-faint); }
+  .recent p { font-size: 12px; color: var(--text-dim); }
+  .recent p.warn { color: color-mix(in oklab, var(--err) 60%, var(--text)); }
+</style>
+</head>
+<body>
+
+<!-- ============================ SCREEN 1 — TUNE ============================ -->
+<div class="divider">TUNE <small>1600 × 1000</small></div>
+<div class="screen" id="tune">
+
+  <!-- sidebar -->
+  <aside class="sb">
+    <div class="brand"><span class="logo">D</span>DSPI · CTRL</div>
+    <div class="dev"><span class="dot ok"></span><div><b class="mono">MOCK-RP2350-0001</b><span>RP2350 · fw 1.1.6 b4</span></div></div>
+    <nav>
+      <a class="nav"><svg viewBox="0 0 16 16"><path d="M2 6v4M5 4v8M8 2v12M11 5v6M14 7v2"/></svg>Listen<kbd>1</kbd></a>
+      <a class="nav on"><svg viewBox="0 0 16 16"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="5" cy="4" r="1.6" fill="oklch(12% .008 250)"/><circle cx="10.5" cy="8" r="1.6" fill="oklch(12% .008 250)"/><circle cx="6.5" cy="12" r="1.6" fill="oklch(12% .008 250)"/></svg>Tune<kbd>2</kbd></a>
+      <a class="nav"><svg viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M6.5 2v2M9.5 2v2M6.5 12v2M9.5 12v2M2 6.5h2M2 9.5h2M12 6.5h2M12 9.5h2"/></svg>Setup<kbd>3</kbd></a>
+      <a class="nav"><svg viewBox="0 0 16 16"><rect x="2.5" y="3" width="2.5" height="10" rx=".5"/><rect x="6.5" y="3" width="2.5" height="10" rx=".5"/><path d="M11 4.3l2.3-.6 2 8.6-2.3.6z"/></svg>Library<kbd>4</kbd></a>
+    </nav>
+    <div class="sb-foot">
+      <div class="cmdk"><kbd>⌘K</kbd>Jump to…</div>
+      <div class="nom"><i class="dot"></i>All systems nominal</div>
+    </div>
+  </aside>
+
+  <main class="tune">
+    <div class="top">
+      <!-- chain position caption -->
+      <div class="chain">in → preamp → input EQ → program → matrix → <span class="hl">output EQ → trim → delay → limiter</span> → out</div>
+      <!-- channel selector strip (built by script below) -->
+      <div class="strip" id="strip"></div>
+    </div>
+    <div class="body">
+    <section class="work">
+
+      <!-- graph header -->
+      <div class="ghead">
+        <div><h2 style="display:inline-flex">Out 1 Left</h2><span class="cap">Combined response · 48 kHz · crossover + 3 bands</span></div>
+        <div class="seg"><span class="on">Combined</span><span>Bands</span><span>Phase</span></div>
+      </div>
+      <!-- EQ graph (built by script below) -->
+      <div class="graph"><svg id="eq"></svg></div>
+
+      <!-- graph toolbar -->
+      <div class="tools">
+        <a class="btn sm">+ Add band</a><a class="btn sm ghost">AutoEQ…</a><a class="btn sm ghost">Copy</a><a class="btn sm ghost">Paste</a><a class="btn sm ghost">Reset</a>
+        <span class="sp"></span>
+        <div class="lk"><svg viewBox="0 0 16 16"><path d="M6.5 9.5l3-3M5 8L3.5 9.5a2.1 2.1 0 003 3L8 11M11 8l1.5-1.5a2.1 2.1 0 00-3-3L8 5"/></svg>Link with Out 1 Right<span class="sw on"></span></div>
+        <a class="btn sm">Matrix… <kbd>M</kbd></a>
+      </div>
+      <div class="space"></div>
+    </section>
+
+    <!-- inspector -->
+    <aside class="insp">
+      <div class="scrollbar"></div>
+
+      <!-- band -->
+      <div class="sec">
+        <header><h2>Band 2</h2><span class="cap">Peaking · selected</span></header>
+        <div class="seg typeseg"><span class="on">Peak</span><span>Low shelf</span><span>High shelf</span><span>…</span></div>
+        <div class="row"><label>Frequency</label><div class="ctl"><div class="sl hue" style="--p:63%;--w:63%"><b></b><i></i></div><span class="val">3.20<u>kHz</u></span></div></div>
+        <div class="row"><label>Gain</label><div class="ctl"><div class="sl hue" style="--p:55%;--a:50%;--w:5%"><b></b><i></i></div><span class="val">+2.0<u>dB</u></span></div></div>
+        <div class="row"><label>Q</label><div class="ctl"><div class="sl hue" style="--p:34%;--w:34%"><b></b><i></i></div><span class="val">2.00</span></div></div>
+        <div class="row"><label>Bypass</label><div class="ctl"><span class="sw"></span></div></div>
+        <div class="bands">
+          <div class="used"><span>1<b style="font-weight:400">250</b></span><em>−3.5 dB</em></div>
+          <div class="used cur"><span>2<b style="font-weight:400">3.2k</b></span><em>+2.0 dB</em></div>
+          <div class="used"><span>3<b style="font-weight:400">10k</b></span><em>−1.5 dB</em></div>
+          <div class="empty"><span>4</span><em>—</em></div><div class="empty"><span>5</span><em>—</em></div>
+          <div class="empty"><span>6</span><em>—</em></div><div class="empty"><span>7</span><em>—</em></div><div class="empty"><span>8</span><em>—</em></div><div class="empty"><span>9</span><em>—</em></div><div class="empty"><span>10</span><em>—</em></div>
+        </div>
+      </div>
+
+      <!-- sources -->
+      <div class="sec">
+        <header><h2>Sources</h2><span class="cap">Matrix row</span></header>
+        <div class="row"><label><i class="src-dot" style="background:var(--ch-i1)"></i>I2S 1 L</label><div class="ctl"><span class="val">0.0<u>dB</u></span><span class="sw on"></span></div></div>
+        <div class="row"><label><i class="src-dot" style="background:var(--ch-i1)"></i>I2S 1 R</label><div class="ctl"><span class="val dim">—</span><span class="sw"></span></div></div>
+        <div class="morelinks"><a class="link">6 more…</a><a class="link">Full matrix…</a></div>
+      </div>
+
+      <!-- output -->
+      <div class="sec">
+        <header><h2>Output</h2><span class="cap">Trim · delay · polarity</span></header>
+        <div class="row"><label>Trim</label><div class="ctl"><div class="sl" style="--p:50%;--a:50%;--w:0%"><b></b><i></i></div><span class="val">+0.0<u>dB</u></span></div></div>
+        <div class="row"><label>Delay</label><div class="ctl"><div class="sl" style="--p:12%;--w:12%"><b></b><i></i></div><span class="val">1.20<u>ms</u></span></div></div>
+        <div class="row"><label>Phase</label><div class="ctl"><span class="cap" style="margin-right:4px">Normal</span><span class="sw"></span></div></div>
+        <div class="row"><label>Mute</label><div class="ctl"><span class="sw"></span></div></div>
+        <div class="row"><label>Type</label><div class="ctl"><span class="val">I2S · GP6</span><a class="link" style="margin-left:4px">Setup →</a></div></div>
+      </div>
+
+      <!-- limiter -->
+      <div class="sec">
+        <header><h2>Limiter</h2><span class="cap">Last in chain</span></header>
+        <div class="row"><label>Enabled</label><div class="ctl"><span class="sw on"></span></div></div>
+        <div class="row"><label>Threshold</label><div class="ctl"><div class="sl" style="--p:90%;--w:90%"><b></b><i></i></div><span class="val">−1.0<u>dB</u></span></div></div>
+        <div class="row"><label>Release</label><div class="ctl"><div class="sl" style="--p:28%;--w:28%"><b></b><i></i></div><span class="val">80<u>ms</u></span></div></div>
+        <div class="row"><label>Link</label><div class="ctl"><span class="sel">Out 1 L+R</span></div></div>
+        <div class="row"><label>Gain reduction</label><div class="ctl"><div class="led grm" style="--l:21%"><i></i></div><span class="val">2.1<u>dB</u></span></div></div>
+      </div>
+
+      <!-- processors -->
+      <div class="sec">
+        <header><h2>Processors</h2></header>
+        <p>Which program processors include this output</p>
+        <div class="row"><label>Leveller</label><div class="ctl"><span class="sw on"></span></div></div>
+        <div class="row"><label>Loudness</label><div class="ctl"><span class="sw on"></span></div></div>
+        <div class="row"><label>Psybass</label><div class="ctl"><span class="sw"></span></div></div>
+        <div class="row"><label>Subharm</label><div class="ctl"><span class="sw"></span></div></div>
+      </div>
+    </aside>
+    </div>
+  </main>
+
+  <!-- staged-changes dock -->
+  <div class="dock"><i class="dot"></i><span>2 changes pending</span><a class="btn pri">Apply</a><a class="btn ghost">Discard</a></div>
+</div>
+
+<!-- ============================ SCREEN 2 — LISTEN ============================ -->
+<div class="divider">LISTEN <small>1600 × 1000</small></div>
+<div class="screen" id="listen">
+
+  <aside class="sb">
+    <div class="brand"><span class="logo">D</span>DSPI · CTRL</div>
+    <div class="dev"><span class="dot ok"></span><div><b class="mono">MOCK-RP2350-0001</b><span>RP2350 · fw 1.1.6 b4</span></div></div>
+    <nav>
+      <a class="nav on"><svg viewBox="0 0 16 16"><path d="M2 6v4M5 4v8M8 2v12M11 5v6M14 7v2"/></svg>Listen<kbd>1</kbd></a>
+      <a class="nav"><svg viewBox="0 0 16 16"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="5" cy="4" r="1.6" fill="oklch(12% .008 250)"/><circle cx="10.5" cy="8" r="1.6" fill="oklch(12% .008 250)"/><circle cx="6.5" cy="12" r="1.6" fill="oklch(12% .008 250)"/></svg>Tune<kbd>2</kbd></a>
+      <a class="nav"><svg viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M6.5 2v2M9.5 2v2M6.5 12v2M9.5 12v2M2 6.5h2M2 9.5h2M12 6.5h2M12 9.5h2"/></svg>Setup<kbd>3</kbd></a>
+      <a class="nav"><svg viewBox="0 0 16 16"><rect x="2.5" y="3" width="2.5" height="10" rx=".5"/><rect x="6.5" y="3" width="2.5" height="10" rx=".5"/><path d="M11 4.3l2.3-.6 2 8.6-2.3.6z"/></svg>Library<kbd>4</kbd></a>
+    </nav>
+    <div class="sb-foot">
+      <div class="cmdk"><kbd>⌘K</kbd>Jump to…</div>
+      <div class="nom"><i class="dot"></i>All systems nominal</div>
+    </div>
+  </aside>
+
+  <main class="listen">
+    <div class="lhead"><h2>Listen</h2><span class="cap">48 kHz · USB audio · Living room</span></div>
+
+    <div class="cols">
+      <!-- left column -->
+      <div>
+        <!-- volume -->
+        <section class="lblock">
+          <div class="sech"><h2>Volume</h2><span class="cap">User volume · −60 to 0 dB</span></div>
+          <div class="vol">
+            <div class="big">−12.0<u>dB</u></div>
+            <div class="ctrls">
+              <div class="seg"><span class="on">User</span><span>Master</span></div>
+              <a class="btn">Mute</a>
+            </div>
+          </div>
+          <div class="vsl"><b></b><i></i></div>
+          <div class="ticks"><span style="left:0">−60</span><span style="left:20%">−48</span><span style="left:40%">−36</span><span style="left:60%">−24</span><span style="left:80%;color:var(--text-dim)">−12</span><span style="left:100%">0</span></div>
+        </section>
+
+        <!-- presets -->
+        <section class="lblock">
+          <div class="sech"><h2>Presets</h2><span class="cap"><span class="star">★</span> startup 00 · 10 slots</span></div>
+          <div class="presets">
+            <div class="tile"><div class="n"><span>00</span><span class="star">★</span></div><div class="t">Default</div></div>
+            <div class="tile"><div class="n"><span>01</span></div><div class="t">Desk</div></div>
+            <div class="tile"><div class="n"><span>02</span></div><div class="t">Movies</div></div>
+            <div class="tile act"><div class="n"><span>03</span><span>Active · modified</span></div><div><div class="t">Living room</div><div class="acts" style="margin-top:6px"><a class="btn sm">Revert</a><a class="btn sm pri">Save</a></div></div></div>
+            <div class="tile"><div class="n"><span>04</span></div><div class="t">Night</div></div>
+            <div class="tile"><div class="n"><span>05</span></div><div class="t">Headphones</div></div>
+            <div class="tile empty"><div class="n"><span>06</span></div><div class="t">Empty</div></div>
+            <div class="tile empty"><div class="n"><span>07</span></div><div class="t">Empty</div></div>
+            <div class="tile empty"><div class="n"><span>08</span></div><div class="t">Empty</div></div>
+            <div class="tile empty"><div class="n"><span>09</span></div><div class="t">Empty</div></div>
+          </div>
+        </section>
+
+        <!-- quick toggles -->
+        <section class="lblock">
+          <div class="sech"><h2>Quick toggles</h2><span class="cap">Program processors</span></div>
+          <div class="pills">
+            <div class="pill"><b>Bypass</b><span>off</span></div>
+            <div class="pill on"><b>Crossfeed</b><span>on · Preset 1</span></div>
+            <div class="pill on"><b>Loudness</b><span>on · 85 dB</span></div>
+            <div class="pill"><b>Leveller</b><span>off</span></div>
+            <div class="pill"><b>Upmix</b><span>off</span></div>
+            <div class="pill"><b>Subharm</b><span>off</span></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- right column -->
+      <div>
+        <section class="lblock">
+          <div class="sech"><h2>Meter bridge</h2><span class="cap">Peak · dBFS</span></div>
+          <div class="bridge">
+            <div class="scale">
+              <span style="top:0">0</span><span style="top:10%">−6</span><span style="top:25%">−12</span><span style="top:50%">−24</span><span style="top:75%">−36</span><span style="top:100%">−48</span>
+            </div>
+            <div class="grp"><span class="gcap">Inputs</span>
+              <div class="m"><i class="cl"></i><div class="led v" style="--l:64%"><i></i></div><em>1L</em></div>
+              <div class="m"><i class="cl"></i><div class="led v" style="--l:52%"><i></i></div><em>1R</em></div>
+            </div>
+            <div class="grp"><span class="gcap">Outputs</span>
+              <div class="m"><i class="cl"></i><div class="led v" style="--l:58%"><i></i></div><em>1L</em></div>
+              <div class="m"><i class="cl"></i><div class="led v" style="--l:55%"><i></i></div><em>1R</em></div>
+              <div class="m"><i class="cl"></i><div class="led v" style="--l:41%"><i></i></div><em>2L</em></div>
+              <div class="m"><i class="cl"></i><div class="led v" style="--l:67%"><i></i></div><em>2R</em></div>
+              <div class="m"><i class="cl hit"></i><div class="led v" style="--l:97%"><i></i></div><em>3L</em></div>
+              <div class="m off"><i class="cl"></i><div class="led v"><i></i></div><em>3R</em></div>
+              <div class="m"><i class="cl"></i><div class="led v" style="--l:36%"><i></i></div><em>4L</em></div>
+              <div class="m"><i class="cl"></i><div class="led v" style="--l:39%"><i></i></div><em>4R</em></div>
+              <div class="m"><i class="cl"></i><div class="led v" style="--l:22%"><i></i></div><em>SUB</em></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="lblock">
+          <div class="sech"><h2>Health</h2><span class="cap">Dark when nominal</span></div>
+          <div class="health">
+            <div class="ht"><span>Link</span><b>OK</b><small>USB · 0 errors</small></div>
+            <div class="ht bad"><span>Clip</span><b>1 channel</b><small>3L latched <a>Clear</a></small></div>
+            <div class="ht"><span>Buffer</span><b>62 %</b><small>No underruns</small></div>
+            <div class="ht"><span>Temp</span><b>42.1 °C</b><small>Core</small></div>
+            <div class="ht"><span>CPU</span><b>25 · 12 %</b><small>Core 0 · core 1</small></div>
+            <div class="ht"><span>Clock</span><b>125 MHz</b><small>Locked · 48 kHz</small></div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- recent events -->
+    <section class="recent">
+      <h2>Recent</h2>
+      <time>14:02</time><p>Preset 03 loaded</p>
+      <time>14:05</time><p>Out 1 Left band 2 +2.0 dB</p>
+      <time>14:06</time><p class="warn">Clip latched on Out 3 Left</p>
+    </section>
+  </main>
+</div>
+
+<script>
+/* Channel strip chips: [name, hue, level%, state] */
+(function () {
+  const ins = [['I2S 1 L','--ch-i1',62],['I2S 1 R','--ch-i1',48],['I2S 2 L','--ch-i2',30],['I2S 2 R','--ch-i2',34],
+               ['I2S 3 L','--ch-i3',55],['I2S 3 R','--ch-i3',41],['I2S 4 L','--ch-i4',20],['I2S 4 R','--ch-i4',25]];
+  const outs = [['Out 1 Left','--ch-o1',58,'sel'],['Out 1 Right','--ch-o1',54],['Out 2 Left','--ch-o2',40],['Out 2 Right','--ch-o2',66],
+                ['Out 3 Left','--ch-o3',92,'clip'],['Out 3 Right','--ch-o3',0,'off'],['Out 4 Left','--ch-o4',36],['Out 4 Right','--ch-o4',38],['PDM','--ch-sub',12]];
+  const chip = ([n, h, l, s]) =>
+    `<div class="chip ${s === 'sel' ? 'sel' : s === 'off' ? 'off' : ''}" style="--c:var(${h})"><b>${n}</b>` +
+    `<div class="led" style="--l:${l}%"><i></i></div>${s === 'clip' ? '<span class="clip"></span>' : ''}</div>`;
+  document.getElementById('strip').innerHTML = ins.map(chip).join('') + '<span class="div"></span>' + outs.map(chip).join('');
+})();
+
+/* EQ graph: real RBJ biquads so the curve matches the node values */
+(function () {
+  const svg = document.getElementById('eq'), W = svg.clientWidth, H = svg.clientHeight;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const fs = 48000, L = 48, R = W - 16, T = 20, B = H - 32;
+  const fx = f => L + (Math.log10(f) - Math.log10(20)) / 3 * (R - L);
+  const gy = g => T + (20 - g) / 40 * (B - T);
+  function bq(type, f0, g, q) {
+    const A = Math.pow(10, g / 40), w = 2 * Math.PI * f0 / fs, c = Math.cos(w), s = Math.sin(w), al = s / (2 * q);
+    let b0, b1, b2, a0, a1, a2;
+    if (type === 'pk') { b0 = 1 + al * A; b1 = -2 * c; b2 = 1 - al * A; a0 = 1 + al / A; a1 = -2 * c; a2 = 1 - al / A; }
+    else if (type === 'hs') { const sq = 2 * Math.sqrt(A) * al;
+      b0 = A * ((A + 1) + (A - 1) * c + sq); b1 = -2 * A * ((A - 1) + (A + 1) * c); b2 = A * ((A + 1) + (A - 1) * c - sq);
+      a0 = (A + 1) - (A - 1) * c + sq; a1 = 2 * ((A - 1) - (A + 1) * c); a2 = (A + 1) - (A - 1) * c - sq; }
+    else { b0 = (1 + c) / 2; b1 = -(1 + c); b2 = (1 + c) / 2; a0 = 1 + al; a1 = -2 * c; a2 = 1 - al; }
+    return [b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0];
+  }
+  function mag(k, f) {
+    const w = 2 * Math.PI * f / fs, cw = Math.cos(w), sw = Math.sin(w), c2 = Math.cos(2 * w), s2 = Math.sin(2 * w);
+    const nr = k[0] + k[1] * cw + k[2] * c2, ni = -(k[1] * sw + k[2] * s2);
+    const dr = 1 + k[3] * cw + k[4] * c2, di = -(k[3] * sw + k[4] * s2);
+    return 10 * Math.log10((nr * nr + ni * ni) / (dr * dr + di * di));
+  }
+  const hp = bq('hp', 80, 0, 0.707), b1 = bq('pk', 250, -3.5, 1.4), b2 = bq('pk', 3200, 2, 2), b3 = bq('hs', 10000, -1.5, 0.707);
+  const total = f => mag(hp, f) + mag(b1, f) + mag(b2, f) + mag(b3, f);
+  const pts = [], ghost = [];
+  for (let i = 0; i <= 300; i++) { const f = 20 * Math.pow(1000, i / 300); pts.push([fx(f), gy(total(f))]); ghost.push([fx(f), gy(mag(b2, f))]); }
+  const d = a => a.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
+  const curve = d(pts), fill = curve + `L${R} ${gy(0)}L${L} ${gy(0)}Z`;
+
+  let g = '';
+  const maj = [[20,'20'],[50,'50'],[100,'100'],[200,'200'],[500,'500'],[1000,'1k'],[2000,'2k'],[5000,'5k'],[10000,'10k'],[20000,'20k']];
+  const minor = [30,40,60,70,80,90,300,400,600,700,800,900,3000,4000,6000,7000,8000,9000,15000];
+  minor.forEach(f => g += `<line x1="${fx(f)}" x2="${fx(f)}" y1="${T}" y2="${B}" stroke="var(--border)" opacity=".45"/>`);
+  maj.forEach(([f, t]) => g += `<line x1="${fx(f)}" x2="${fx(f)}" y1="${T}" y2="${B}" stroke="var(--border-hi)" opacity=".7"/><text x="${fx(f)}" y="${B + 20}" text-anchor="middle">${t}</text>`);
+  for (let v = -20; v <= 20; v += 5) {
+    const major = v % 10 === 0;
+    g += `<line x1="${L}" x2="${R}" y1="${gy(v)}" y2="${gy(v)}" stroke="${v === 0 ? 'var(--text-faint)' : 'var(--border)'}" ${major || v === 0 ? '' : 'opacity=".5"'}/>`;
+    if (major) g += `<text x="${L - 10}" y="${gy(v) + 3.5}" text-anchor="end">${v > 0 ? '+' + v : v < 0 ? '−' + (-v) : '0'}</text>`;
+  }
+
+  const node = (n, f, sel) => {
+    const x = fx(f), y = gy(total(f));
+    if (sel) return `<circle cx="${x}" cy="${y}" r="20" fill="var(--ch-o1)" opacity=".14"/><circle cx="${x}" cy="${y}" r="15" fill="none" stroke="var(--ch-o1)" stroke-width="1.5"/>` +
+      `<circle cx="${x}" cy="${y}" r="11" fill="var(--ch-o1)" stroke="oklch(98% 0 0)" stroke-width="2"/><text x="${x}" y="${y + 4}" text-anchor="middle" style="fill:oklch(15% .03 150);font-weight:700;font-size:11px">${n}</text>`;
+    return `<circle cx="${x}" cy="${y}" r="9" fill="oklch(16% .02 150)" stroke="var(--ch-o1)" stroke-width="1.5"/><text x="${x}" y="${y + 3.5}" text-anchor="middle" style="fill:var(--ch-o1);font-weight:700">${n}</text>`;
+  };
+  const x2 = fx(3200), y2 = gy(total(3200)), x1 = fx(80), y1 = gy(total(80));
+  const chip = (x, y, w, t, st) => `<rect x="${x - w / 2}" y="${y - 12}" width="${w}" height="24" rx="6" fill="oklch(19% .008 250)" stroke="${st || 'var(--border-hi)'}"/><text class="rd" x="${x}" y="${y + 4}" text-anchor="middle">${t}</text>`;
+  const cx = fx(1200), cy = gy(-0.3);
+
+  document.getElementById('eq').innerHTML =
+    `<defs><linearGradient id="fg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--ch-o1)" stop-opacity=".30"/><stop offset="1" style="stop-color:var(--ch-o1)" stop-opacity=".05"/></linearGradient>` +
+    `<clipPath id="pc"><rect x="${L}" y="${T}" width="${R - L}" height="${B - T}"/></clipPath></defs>` + g +
+    `<g clip-path="url(#pc)">` +
+      `<path d="${fill}" fill="url(#fg)" opacity=".85"/>` +
+      `<path d="${d(ghost)}" fill="none" stroke="var(--text-dim)" stroke-width="1" stroke-dasharray="3 4" opacity=".6"/>` +
+      `<path d="${curve}" fill="none" stroke="var(--ch-o1)" stroke-width="2.25" stroke-linejoin="round"/>` +
+      `<line x1="${x1}" x2="${x1}" y1="${T}" y2="${B}" stroke="var(--ch-o1)" stroke-dasharray="2 4" opacity=".55"/>` +
+    `</g>` +
+    chip(x1 + 56, T + 22, 96, 'X1 · HP 80 Hz', 'color-mix(in oklab, var(--ch-o1) 40%, transparent)') +
+    `<rect x="${x1 - 5}" y="${y1 - 5}" width="10" height="10" rx="2" transform="rotate(45 ${x1} ${y1})" fill="oklch(16% .02 150)" stroke="var(--ch-o1)" stroke-width="1.5"/>` +
+    `<g opacity=".55"><line x1="${cx}" x2="${cx}" y1="${T}" y2="${B}" stroke="var(--text-dim)" stroke-dasharray="3 3"/><line x1="${L}" x2="${R}" y1="${cy}" y2="${cy}" stroke="var(--text-dim)" stroke-dasharray="3 3"/>` +
+      `<circle cx="${cx}" cy="${cy}" r="3" fill="none" stroke="var(--text)"/>` + chip(cx + 74, cy + 28, 124, '1.2 kHz · −0.3 dB') + `</g>` +
+    node(1, 250) + node(3, 10000) + node(2, 3200, true) +
+    chip(x2, y2 - 46, 196, '3.20 kHz · +2.0 dB · Q 2.0', 'var(--ch-o1)');
+})();
+</script>
+</body>
+</html>
