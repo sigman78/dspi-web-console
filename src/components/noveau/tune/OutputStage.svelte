@@ -200,7 +200,8 @@
     --rf-track-flex: 0 0 auto;
   }
   .r :global(.rf) { flex: 0 0 auto; gap: 12px; height: 22px; }
-  .r :global(.opt) { font-size: 11px; }
+  .r .ctl :global(.seg.sm) { height: 18px; align-items: stretch; }
+  .r .ctl :global(.seg.sm .opt) { display: flex; align-items: center; justify-content: center; font-size: 11px; padding-top: 0; padding-bottom: 0; }
   .lbl { flex: 0 0 84px; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
   .ctl { display: flex; align-items: center; gap: 6px; }
   .fld { width: 72px; }

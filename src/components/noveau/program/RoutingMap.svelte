@@ -50,14 +50,14 @@
   let host = $state<HTMLElement | null>(null);
   let hostW = $state(0);
   let hostH = $state(0);
-  let pick = $state<{ input: InputSlot; output: OutputSlot; x: number; y: number; anchor: HTMLElement } | null>(null);
+  let pick = $state<{ input: InputSlot; output: OutputSlot; x: number; anchorX: number; y: number; anchor: HTMLElement } | null>(null);
 
   function open(e: MouseEvent, input: InputSlot, output: OutputSlot) {
     if (!host) return;
     const anchor = e.currentTarget as HTMLElement;
     const dot = anchor.getBoundingClientRect();
     const box = host.getBoundingClientRect();
-    pick = { input, output, x: dot.left - box.left + dot.width / 2 - 150, y: dot.bottom - box.top + 6, anchor };
+    pick = { input, output, x: dot.left - box.left + dot.width / 2 - 150, anchorX: dot.left - box.left + dot.width / 2, y: dot.bottom - box.top + 6, anchor };
   }
 
   function closePick() {
@@ -89,20 +89,22 @@
     {#each cols as c (c.input)}
       <span class="ch" title={c.label}><i style:background={chShade(c.id, 'bright')}></i>{c.short}</span>
     {/each}
-    {#each rows as r (r.slot)}
+    {#each rows as r, ri (r.slot)}
+      {#if !r.enabled}<span class="band" style:grid-row={ri + 2} aria-hidden="true"></span>{/if}
       <button
         type="button"
         class="rh"
-        class:hatch={!r.enabled}
+        class:off={!r.enabled}
+        style:grid-row={ri + 2}
         class:sel={settings.selectedChannel === r.id}
         title={r.enabled ? `Open ${r.name} in TUNE` : `${r.name} (disabled) — open in TUNE`}
         onclick={() => openOutput(r.id)}
       ><i style:background={chShade(r.id, 'bright')}></i><span>{r.name}</span></button>
-      {#each cols as c (c.input)}
+      {#each cols as c, ci (c.input)}
         {@const rt = routeAt(c.input, r.slot)}
         {@const on = rt?.enabled === true}
         {@const anchored = pick?.input === c.input && pick?.output === r.slot}
-        <span class="cell" class:hatch={!r.enabled}>
+        <span class="cell" class:off={!r.enabled} style:grid-row={ri + 2} style:grid-column={ci + 2}>
           <button
             type="button"
             class="dotbtn"
@@ -132,6 +134,7 @@
       output={pick.output}
       title={`${pickCol.label} → ${pickRow.name}`}
       x={pick.x}
+      anchorX={pick.anchorX}
       y={pick.y}
       boundsW={hostW}
       boundsH={hostH}
@@ -183,12 +186,18 @@
     font-weight: 500;
     cursor: pointer;
     text-align: left;
+    grid-column: 1;
   }
   .rh i { width: 8px; height: 8px; border-radius: 2px; flex: none; }
   .rh span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rh:hover, .rh.sel { color: var(--text); }
-  .rh.hatch { color: var(--text-faint); }
-  .hatch { background: repeating-linear-gradient(135deg, var(--wash-strong) 0 3px, transparent 3px 7px); }
+  .rh.off { color: var(--text-faint); }
+  /* One continuous hatch per disabled row, behind the transparent header and cells. */
+  .band {
+    grid-column: 1 / -1;
+    pointer-events: none;
+    background: repeating-linear-gradient(135deg, var(--wash-strong) 0 3px, transparent 3px 7px);
+  }
   .cell { border-top: 1px solid var(--border); }
   .dotbtn {
     width: 100%;

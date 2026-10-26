@@ -19,7 +19,6 @@
   title="Psybass"
   pass="program processor"
   {enabled}
-  onToggle={(v) => Runtime.setPsybassEnabled(s, v)}
 >
   {#if showMask}
     <MaskChips label="OUTPUTS" items={outputItems} mask={pb?.outputMask ?? 0xFFFF} disabled={!enabled}

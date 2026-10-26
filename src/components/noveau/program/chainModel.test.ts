@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Proc } from '@/domain';
+import { FilterType, Proc } from '@/domain';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
 import { chainBlocks, fmtSigned, liveRouteCount } from './chainModel';
 
@@ -52,6 +52,18 @@ describe('chainBlocks', () => {
     snap.masterPreampDb = 0;
     snap.inputPreampDb = [0, -1.5];
     expect(chainBlocks(snap, ALL)[0].values).toEqual(['+0.0 dB', '−1.5/+0.0']);
+  });
+});
+
+describe('input EQ value', () => {
+  it('counts inputs having a non-Flat band', () => {
+    const snap = makeSnapshot();
+    const inputs = snap.channels.filter((c) => !c.isOutput);
+    const value = () => chainBlocks(snap, ALL).find((b) => b.key === 'inputEq')!.values;
+    for (const c of inputs) c.filters = c.filters.map((f) => ({ ...f, type: FilterType.Flat }));
+    expect(value()).toEqual([`0 of ${inputs.length} inputs`]);
+    inputs[0].filters[0] = { ...inputs[0].filters[0], type: FilterType.Peaking };
+    expect(value()).toEqual([`1 of ${inputs.length} inputs`]);
   });
 });
 

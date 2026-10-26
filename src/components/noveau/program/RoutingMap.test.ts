@@ -27,7 +27,7 @@ const features = deriveCapabilities({
 }).features;
 
 const unroutedDot = (c: HTMLElement) =>
-  [...c.querySelectorAll<HTMLButtonElement>('.cell.hatch .dotbtn')].find((b) => b.getAttribute('aria-label')!.endsWith('unrouted'))!;
+  [...c.querySelectorAll<HTMLButtonElement>('.cell.off .dotbtn')].find((b) => b.getAttribute('aria-label')!.endsWith('unrouted'))!;
 
 function mount() {
   const snapshot = makeSnapshot();
@@ -51,9 +51,9 @@ describe('RoutingMap', () => {
 
   test('a disabled output keeps a hatched row with its real route pill', () => {
     const { container } = mount();
-    const hatched = container.querySelectorAll('.rh.hatch');
+    const hatched = container.querySelectorAll('.band');
     expect(hatched).toHaveLength(1);
-    const pills = container.querySelectorAll('.cell.hatch .pill');
+    const pills = container.querySelectorAll('.cell.off .pill');
     expect(pills).toHaveLength(1);
     expect(pills[0].textContent).toContain('−4.5');
   });

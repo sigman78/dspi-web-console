@@ -18,6 +18,13 @@ vi.mock('@/runtime', () => ({
   fetchSubharmSolo: (...a: unknown[]) => fetchSubharmSolo(...a),
 }));
 
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+
 import ModulePanel from './ModulePanel.svelte';
 
 const baseFeatures = deriveCapabilities({

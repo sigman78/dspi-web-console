@@ -52,7 +52,6 @@
   title="Subharmonic"
   pass="program processor"
   {enabled}
-  onToggle={(v) => Runtime.setSubharmEnabled(s, v)}
 >
   {#if showMask}
     <MaskChips label="OUTPUTS" items={outputItems} mask={outputMask} disabled={!enabled}

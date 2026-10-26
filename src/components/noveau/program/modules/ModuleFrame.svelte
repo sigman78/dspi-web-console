@@ -1,19 +1,16 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
 
   const {
     title,
     pass,
     enabled,
-    onToggle,
     children,
   }: {
     title: string;
     pass: string;
-    /** Omitted for modules without an enable switch. */
+    /** Omitted for modules without an enable state; false shows an "off" tag. */
     enabled?: boolean;
-    onToggle?: (v: boolean) => void;
     children: Snippet;
   } = $props();
 </script>
@@ -22,12 +19,7 @@
   <header>
     <h3>{title}</h3>
     <span class="pass" title={pass}>{pass}</span>
-    {#if enabled !== undefined && onToggle}
-      <span class="en">
-        <span class="enl">ENABLED</span>
-        <ToggleSwitch size="sm" checked={enabled} ariaLabel={`${title} enabled`} onChange={onToggle} />
-      </span>
-    {/if}
+    {#if enabled === false}<span class="off">off</span>{/if}
   </header>
   <div class="body">{@render children()}</div>
 </section>
@@ -54,8 +46,7 @@
     font-size: 11px;
     color: var(--text-dim);
   }
-  .en { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; }
-  .enl { font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }
+  .off { flex: 0 0 auto; font-family: var(--font-sans); font-size: 11px; color: var(--text-faint); }
   .body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 
   .mf :global(.r) {
@@ -84,5 +75,13 @@
   .mf :global(.note) { font-family: var(--font-sans); font-size: 11px; color: var(--text-faint); white-space: nowrap; }
   .mf :global(.vf[data-size='md']) { height: 22px; font-size: 12px; }
   .mf :global(.chip) { height: 20px; font-size: 11px; padding: 0 8px; }
-  .mf :global(.opt) { font-size: 11px; }
+  .mf :global(.r .seg) { height: 18px; align-items: stretch; }
+  .mf :global(.r .seg.sm .opt) { display: flex; align-items: center; justify-content: center; font-size: 11px; padding-top: 0; padding-bottom: 0; }
+  .mf :global(.jump) {
+    width: 20px; height: 20px; padding: 0; flex: 0 0 auto;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: none; border-radius: 3px; cursor: pointer;
+    font-family: var(--font-sans); font-size: 14px; line-height: 1; color: var(--text-dim);
+  }
+  .mf :global(.jump:hover), .mf :global(.jump:focus-visible) { color: var(--accent); }
 </style>

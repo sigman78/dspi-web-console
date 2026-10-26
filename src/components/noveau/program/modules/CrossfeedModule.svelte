@@ -4,6 +4,9 @@
   import { CrossfeedPreset, Proc, outputChannelsWithIndex } from '@/domain';
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
+  import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
+  import { crossfeedResponse } from '@/components/bode/crossfeedCurve';
+  import { centeredDbDomain } from '@/components/bode/dbDomain';
   import ModuleFrame from './ModuleFrame.svelte';
   import ModuleSlider from './ModuleSlider.svelte';
   import MaskChips from './MaskChips.svelte';
@@ -32,6 +35,13 @@
     }),
   );
 
+  const resp = $derived(crossfeedResponse(cf?.freq ?? 700, cf?.feedDb ?? 4.5));
+  const curves = $derived<BodeCurve[]>([
+    { id: 'xfeed-direct', points: resp.direct, color: 'color-mix(in oklab, var(--text) 45%, transparent)', label: 'Direct' },
+    { id: 'xfeed-cross', points: resp.crossfeed, color: 'var(--accent)', label: 'Crossfeed' },
+  ]);
+  const yRange = $derived(centeredDbDomain([resp.crossfeed, resp.direct]));
+
   const PRESET_OPTIONS = [
     { value: CrossfeedPreset.Preset1, label: 'PRESET 1' },
     { value: CrossfeedPreset.Preset2, label: 'PRESET 2' },
@@ -44,8 +54,8 @@
   title="Crossfeed"
   pass="stereo program · before loudness"
   {enabled}
-  onToggle={(v) => Runtime.setCrossfeedEnabled(s, v)}
 >
+  <div class:dim={!enabled}><BodePlot {curves} height={96} crosshair={false} {yRange} /></div>
   {#if showPairs}
     <MaskChips label="PAIRS" items={pairItems} mask={cf?.outputPairMask ?? 0x01} disabled={!enabled}
       onToggle={(i) => Runtime.toggleCrossfeedOutputPair(s, i)} />
@@ -67,3 +77,7 @@
       ariaLabel="Crossfeed ITD" onChange={(v) => Runtime.setCrossfeedItd(s, v)} /></span>
   </div>
 </ModuleFrame>
+
+<style>
+  .dim { opacity: 0.4; }
+</style>

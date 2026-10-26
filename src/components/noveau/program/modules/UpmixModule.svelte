@@ -36,7 +36,6 @@
   title="Stereo upmixer"
   pass="program processor"
   {enabled}
-  onToggle={(v) => Runtime.setUpmixEnabled(s, v)}
 >
   <div class="r">
     <span class="lbl">STATUS</span>

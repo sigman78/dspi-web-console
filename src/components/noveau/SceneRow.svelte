@@ -105,12 +105,12 @@
       class:empty={!occupied && slot !== active}
       aria-pressed={slot === active}
       class:startup={slot === startup}
-      title={`${slot} ${s.presets.names[slot] || `Preset ${slot}`}${slot === startup ? ' (startup)' : ''}`}
-      aria-label={`${slot}${s.presets.names[slot] ? ' ' + s.presets.names[slot] : ''}${slot === startup ? ' (startup)' : ''}`}
+      class:unsaved={slot === active && dirty}
+      title={`${slot} ${s.presets.names[slot] || `Preset ${slot}`}${slot === startup ? ' (startup)' : ''}${slot === active && dirty ? ' · unsaved changes' : ''}`}
+      aria-label={`${slot}${s.presets.names[slot] ? ' ' + s.presets.names[slot] : ''}${slot === startup ? ' (startup)' : ''}${slot === active && dirty ? ' · unsaved changes' : ''}`}
       onclick={() => onSlot(slot)}
     >
       {slot}
-      {#if slot === active && dirty}<span class="dd" aria-label="unsaved changes"></span>{/if}
     </button>
   {/each}
 </div>
@@ -175,13 +175,13 @@
     border: 1px solid var(--warn);
     box-shadow: 0 0 6px color-mix(in oklab, var(--warn) 55%, transparent);
   }
-  .dd {
+  .sc.unsaved::after {
+    content: '';
     position: absolute;
-    top: 1px; right: 1px;
-    width: 5px; height: 5px;
-    border-radius: 50%;
+    left: 3px; right: 3px; bottom: 1px;
+    height: 2px;
+    border-radius: 1px;
     background: var(--warn);
-    box-shadow: 0 0 0 1px var(--bg);
   }
   .sname {
     display: flex;

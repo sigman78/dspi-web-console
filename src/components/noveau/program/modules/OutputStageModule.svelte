@@ -48,7 +48,7 @@
         <span class="mono">{row.lim?.enabled ? 'ON' : '—'}</span>
         <span class="num mono">{row.lim?.enabled ? grText(row.gr) : '—'}</span>
       {/if}
-      <button type="button" class="chip hi" aria-label={`Edit ${row.name} in TUNE`} onclick={() => edit(row.out.id)}>Edit</button>
+      <button type="button" class="jump" aria-label={`Open ${row.name} in TUNE`} title={`Open ${row.name} in TUNE`} onclick={() => edit(row.out.id)}>»</button>
     </div>
   {/each}
 </ModuleFrame>
@@ -66,5 +66,5 @@
   div.r.tbl.off { opacity: var(--dim-disabled); }
   .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
   .num { text-align: right; }
-  div.r.tbl > .chip { justify-self: end; }
+  .tbl :global(.jump) { justify-self: end; }
 </style>

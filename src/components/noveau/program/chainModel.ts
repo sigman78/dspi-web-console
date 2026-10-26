@@ -68,7 +68,7 @@ export function chainBlocks(
       key: 'inputEq',
       title: 'Input EQ',
       enabled: null,
-      values: [`${withBands} w/ bands`],
+      values: [`${withBands} of ${inputs.length} inputs`],
     },
     {
       key: 'leveller',

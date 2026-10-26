@@ -41,7 +41,6 @@
   title="Leveller"
   pass="program · after input EQ"
   {enabled}
-  onToggle={(v) => Runtime.setLevellerEnabled(s, v)}
 >
   {#if showMasks}
     <div class="r">
