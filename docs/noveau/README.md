@@ -240,7 +240,7 @@ the matrix as an overlay demotes a view some users think in.
 
 ---
 
-## 4. Recommendation
+## 4. Recommendation (v1, superseded by section 6)
 
 Build **C** as the skeleton and borrow from the other two where they are
 stronger:
@@ -273,3 +273,173 @@ LISTEN.
 - Capability gating: every control still appears only when the device has it.
 - The staged-commit model: hardware writes stage; DSP writes apply live.
 - Mobile: still out of scope; the splash stays.
+
+---
+
+## 6. Solidified direction (v2, after review)
+
+An independent critique (`REVIEW-2026-10-25.md`) was run against the three
+directions with the owner's primary constraint as its lens:
+
+> The interface must stay fully usable in an almost-fullscreen desktop
+> browser window with no scrolling anywhere. No page scroll, no per-panel
+> scrollbars, unless the screen is genuinely small. It should feel like a
+> native app, not a web page.
+
+The review stands. Its main findings, accepted here:
+
+- **C fails its own constraint as mocked.** The TUNE inspector scrolls
+  (five stacked sections, ~1050 px against ~680 px available), LISTEN
+  scrolls, SETUP was specified as a scrolling page.
+- **Height is the binding axis, not width.** A 1440×900 laptop gives about
+  790 px of viewport; a 1920×1080 Windows laptop at 125 % scaling gives about
+  740. 1600×1000 is a best case, not a reference.
+- **LISTEN as a destination is wrong.** The daily controls must stay
+  reachable while tuning, so they belong in the chrome; once they are there,
+  LISTEN has nothing left.
+- **A's drawer and B's strips are both summary-only** for the core task;
+  B's focus pane *is* C's TUNE, and A's canvas cannot hold a 10-band editor.
+- **Program processors were homeless in C** (toggles on one page,
+  parameters in an input inspector, although crossfeed, upmix, leveller are
+  stereo or global, not per input). Psybass parameters and the V32 tube
+  preamp appeared in no direction.
+
+### 6.1 Floor and shell
+
+| | |
+| --- | --- |
+| Design floor | **1400 × 740** logical (fits 1440×900 Mac and 1536×864 scaled Windows) |
+| Reference | 1600 × 880 |
+| Page | `html, body { overflow: hidden }`; app is a `100dvw × 100dvh` grid with `min-width: 1400px; min-height: 740px` |
+| Below the floor | single page-level pan of the 1400×740 canvas, as today. No reflow, no compact mode. Below ~1000 px wide the existing splash. |
+
+Fixed rows: **top bar 44 px**, **status line 28 px**. The workspace gets
+668 px at the floor. Only the EQ graph, the meters and the chain strip
+absorb leftover space; everything else has an intrinsic height sized for
+the worst case (8-in / 9-out, every feature gate open).
+
+Shell regions, left to right:
+
+1. **Icon rail, 56 px** (from A): TUNE · PROGRAM · SETUP, plus LIBRARY (opens
+   a sheet) and DEVICE. Replaces C's 200 px sidebar.
+2. **Channel rail** (today's, kept): devices, channel list with LED meters,
+   inline rename. It is the selector *and* the meter bridge. Disabled
+   outputs collapse to a 24 px stub (from B).
+3. **Workspace** for the active destination.
+
+**Top bar, 44 px, on every screen** (from B's scene bank and C's LISTEN):
+preset scene bank (10 slots, dirty dot, startup star, inline Save / Revert
+on the active one) · quick toggles for the program processors (name + one
+value) · user / master volume with mute · bypass · health dot with a
+popover (CPU, rate, clock, voltage, temp, clip, buffer; tiles dark when
+nominal).
+
+**Status line, 28 px**: fw · wire · rate · link · "nothing staged" or
+"2 changes · Apply · Discard", expanding upward as a popover. The
+pending-changes dock stops floating over content, and it is the *only*
+staged-commit idiom (CONTROL's CHANGES panel, sys-clock APPLY and display
+APPLY/REVERT all fold into it).
+
+### 6.2 Destinations
+
+**TUNE** — the selected channel, from the rail. Budget at the floor (668 px):
+
+| Area | Content | Height |
+| --- | --- | --- |
+| Graph | editable EQ graph: drag nodes (freq / gain), wheel Q, double-click add, right-click type / bypass, value callout, cursor readout | ~430, elastic |
+| Under graph | output stage in two rows: trim · delay · phase · mute · limiter thr / rel / GR · link; membership chips LEV · LOUD · PSY · SUB (replaces the five mask rows). For an input: preamp, link L/R. | 72 |
+| Under graph | toolbar: Add band · AutoEQ… · Copy · Paste · Reset · Link with pair | 32 |
+| Right inspector, 300 px | selected band (type, freq, gain, Q, bypass) | 120 |
+| | 10-row band table, 24 px rows (kept: the graph alone is too imprecise) | 260 |
+| | sources: the full matrix column for this output, 8 × 24, gain + phase inline | 220 |
+
+Inspector total ~600 px inside 668. Nothing hides behind "6 more…".
+
+**PROGRAM** — the stereo program and routing, in firmware order:
+
+- Chain strip across the top, 72 px (from A): PREAMP · INPUT EQ · LEVELLER ·
+  CROSSFEED · LOUDNESS · PSYBASS · SUBHARM · UPMIX · TUBE (V31) · MATRIX ·
+  OUTPUT STAGE, each lit / dim / hatched with on-off and two key values.
+  Clicking a block selects it.
+- Left: the **full matrix**, permanently visible: 8 × 9 cells at 32 px
+  (~340 × 320); cell gain and phase edit in a popover. The matrix is not
+  "one click away", it is on screen.
+- Right: the selected module's parameters in a fixed area sized to the
+  worst case (upmix, 13 rows × 24 = 312 px). Limiter link groups live here;
+  per-output GR shows on the rail meters.
+
+**SETUP** — SYSTEM + CONTROL, paged by a segmented control, one commit idiom:
+Device · Clocks & I/O · Pins · Interfaces · Surfaces · Display · Diagnostics.
+Every page is designed against the 668 px budget. Surfaces, macros, groups
+and display pages use master–detail lists sized to the firmware maxima,
+which are all fixed: 16 bindings, 8 groups, 8 macros, 16 IR commands,
+16 display pages (`src/domain/controlSurfaces.ts`). No page scrolls.
+
+**LIBRARY** — a sheet, not a destination: preset detail per slot (included
+sections, startup), copy / paste, import / export, A/B against the
+clipboard snapshot, changelog and quick reference under "About".
+
+### 6.3 Density rules
+
+| Element | Size |
+| --- | --- |
+| Inspector / table rows | 24 px |
+| Section headers | 28 px |
+| Labels | 11 px sans, minimum |
+| Values | 12 px mono, tabular |
+| Axis ticks only | 10 px |
+| Gutters | 12 / 16 px |
+
+Nothing at 9 px. Surfaces separate by spacing and hairlines; at most one
+level of card.
+
+Overlays that are allowed: AutoEQ browser, matrix cell popover, health
+popover, LIBRARY sheet, command palette (Ctrl+K).
+
+Whitelisted scroll regions, and only these: the event log, the changelog
+in About, AutoEQ results.
+
+### 6.4 Enforcement
+
+A Playwright check runs every destination (and every SETUP page) at
+1400×740 and 1600×880 in `?mock=multi` and asserts:
+
+- `document.scrollHeight <= innerHeight` and `scrollWidth <= innerWidth`;
+- no element has `scrollHeight > clientHeight` except the whitelist above.
+
+A new scrollbar in a PR is a design defect, not a layout detail.
+
+### 6.5 Kept from each direction, and cut
+
+Kept — from **A**: icon rail, PASS-order chain strip, always-visible matrix
+map, lit / dim / hatched legend, clip badges on the owning node. From
+**B**: scene bank in the chrome, per-output membership toggles, disabled
+outputs as stubs, persistent status line. From **C**: inspector rows and
+type scale, draggable graph with value callout, link-with-pair toggle,
+dark-when-nominal health tiles, Ctrl+K.
+
+Cut: LISTEN as a page, the 200 px nav sidebar, horizontal channel chips,
+"6 more…" truncation, tall faders, the canvas as an editor, the "Recent"
+list, SETUP as a scrolling page, the matrix as an overlay.
+
+### 6.6 Open forks for the owner
+
+1. **Floor.** Is 1536×740 (Windows laptop at 125 %) a must-fit, or is
+   1440×790 the floor? About 50 px of vertical budget hangs on it, and it
+   decides whether the band table and sources can share the inspector.
+2. **Stereo pair as the unit.** Should the rail and TUNE treat 1L / 1R as one
+   channel with an L / R sub-selector? Halves the lists and the matrix;
+   interacts with the #138 default-unlocked decision.
+3. **Matrix thinking.** Do users think in the matrix (permanent panel on
+   PROGRAM) or only in per-output sources (TUNE)? Decides whether PROGRAM
+   and routing are one page.
+4. **Chrome weight.** Accept a 44 px top bar carrying scenes, toggles and
+   volume on every screen, at the cost of graph height? The alternative is
+   a collapsible bar that hides while dragging on the graph.
+
+### 6.7 First slice
+
+TUNE for one output in `?mock=multi` behind `?ui=noveau`, with the new
+shell (icon rail, 44 px chrome, status line), the 1400×740 budget, the
+density rules and the Playwright no-scroll check from day one. Then
+PROGRAM, then SETUP page by page.
