@@ -10,6 +10,7 @@
   import StatusLine from './StatusLine.svelte';
   import TuneView from './tune/TuneView.svelte';
   import ProgramView from './program/ProgramView.svelte';
+  import SetupView from './setup/SetupView.svelte';
   import { noveauUi } from './noveauUi.svelte';
 
   const { session }: { session: ReadySession } = $props();
@@ -44,6 +45,8 @@
       <TuneView />
     {:else if noveauUi.destination === 'program'}
       <ProgramView />
+    {:else if noveauUi.destination === 'setup'}
+      <SetupView />
     {:else}
       <div class="soon">{noveauUi.destination.toUpperCase()} — not in this slice</div>
     {/if}

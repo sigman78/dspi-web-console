@@ -127,6 +127,20 @@ test('no scroll 1440x790 PROGRAM every module', async ({ page }) => {
   await page.keyboard.press('Escape');
 });
 
+test('no scroll 1440x790 SETUP every page', async ({ page }) => {
+  await open(page, [1440, 790], FULL);
+  await page.locator('nav.irail .ib', { hasText: 'SETUP' }).click();
+  const pages = page.getByRole('group', { name: 'Setup pages' }).getByRole('button');
+  await expect(pages.first()).toBeVisible();
+  const n = await pages.count();
+  expect(n).toBe(6);
+  for (let i = 0; i < n; i++) {
+    await pages.nth(i).click();
+    await expect(pages.nth(i)).toHaveAttribute('aria-pressed', 'true');
+    await assertNoScroll(page);
+  }
+});
+
 test('no scroll 1440x790 last output selected', async ({ page }) => {
   await open(page, [1440, 790], FULL);
   await railRows(page, 'OUTPUTS').last().click();
