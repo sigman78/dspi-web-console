@@ -6,22 +6,14 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import { csSaveConfig, csRevertConfig } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
-  import * as CsField from '@/components/system/csFieldHelpers';
+  import { csChangesModel } from '@/components/system/csChangesModel';
 
   const s = getSession();
-  const cs = $derived(s.controlSurfaces);
-  const caps = $derived(s.controlSurfaces.caps);
-  const dirty = $derived(cs.status?.dirty === true);
-
-  const areas = $derived([
-    { key: 'bindings' as const, label: 'controls', show: true },
-    { key: 'groups' as const, label: 'groups', show: CsField.groupsAvailable(caps) },
-    { key: 'macros' as const, label: 'macros', show: CsField.macrosAvailable(caps) },
-    { key: 'display' as const, label: 'display', show: CsField.displaysAvailable(caps) },
-  ].filter((a) => a.show));
-  const changedText = $derived(areas.filter((a) => cs.changed[a.key]).map((a) => a.label).join(', '));
-  const stagedTotal = $derived(areas.reduce((n, a) => n + cs.staged[a.key], 0));
-  const stagedText = $derived(areas.filter((a) => cs.staged[a.key] > 0).map((a) => `${a.label} ${cs.staged[a.key]}`).join(', '));
+  const m = $derived(csChangesModel(s));
+  const dirty = $derived(m.dirty);
+  const changedText = $derived(m.changedText);
+  const stagedTotal = $derived(m.stagedTotal);
+  const stagedText = $derived(m.stagedText);
 
   let applying = $state(false);
 

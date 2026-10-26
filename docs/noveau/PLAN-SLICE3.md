@@ -40,9 +40,10 @@ Noveau chrome trims each header from ~37 px to 28 px.
 | --- | --- | --- | --- |
 | Device | DEVICE | LG SOUND SYNC · DAC HW MUTE | — |
 | I/O | SYSTEM CLOCK · I2S CLOCK (495) | INPUT CONFIG · ADAT INPUT* (599) | OUTPUTS · ADAT OUTPUT* · PIN MAP (604) |
-| Interfaces | CONTROL INTERFACES* | CHANGES* | — |
-| Surfaces | CHANGES* · CONTROL SURFACES* | MACROS* | GROUPS* |
-| Display | CHANGES* · DISPLAY* | — | — |
+| Interfaces | CONTROL INTERFACES* | — | — |
+| Surfaces | CONTROL SURFACES* (list) | BINDING (detail host) | IR COMMANDS (detail host) |
+| Macros & Groups | MACROS* over GROUPS* (lists) | MACRO (detail host) | GROUP (detail host) |
+| Display | DISPLAY* | DISPLAY PAGE (detail host) | — |
 | Diagnostics | TELEMETRY | ERROR COUNTERS | BUFFER STATS |
 
 `*` = gated exactly as the classic tabs gate it (`features.adatInput`, `adatOutput`,
@@ -51,8 +52,7 @@ groupsAvailable(caps)`). A page whose every panel is gated off is not offered in
 selector. Diagnostics is a regular page in noveau (classic hides it behind `?debug`).
 Pins are not a separate page: PIN MAP lives on I/O.
 
-Surfaces and Display are known to exceed the budget once bindings exist; stage 1 ships
-them with the classic panels and records the overflow, stage 2 replaces them.
+Surfaces and Display exceeded the budget with the classic stacked cards; stage 2 splits them.
 
 ## Chrome adaptation
 
@@ -65,3 +65,22 @@ them with the classic panels and records the overflow, stage 2 replaces them.
 `noveauUi.setupPage: SetupPageKey` (default 'device'). Layout spec case "SETUP every
 page": click SETUP, click each selector option, scan. Unit test: the page list is
 derived from features/caps (pages drop out when gated off).
+
+## Stage 2 — split layout
+
+The control-surface editors keep their classic components; only where their open slot
+renders changes. Each list panel receives `detailTarget` and portals the open item's
+editor into a `.detail` host in another column (28 px header, hint hidden once content
+arrives, `data-budget`, `overflow: hidden`). Surfaces: list, BINDING host, IR COMMANDS
+host (`irDetailTarget`, empty with a hint unless the open control is an IR receiver).
+Macros & Groups: both lists stacked in column 1, hosts in columns 2 and 3. Display:
+config plus page strip in column 1, DISPLAY PAGE host in column 2.
+
+Detached modes: a macro shows one open step at a time, an IR receiver shows one open
+command at a time, so the hosts stay inside the budget at full occupancy.
+
+The CHANGES panel is gone from the columns. `CsChangesStrip` sits right-aligned in the
+page-selector row on Surfaces, Macros & Groups and Display (only with
+`features.controlSurfaces`): UNSAVED pill when dirty, `changed: ...` or `nothing changed`,
+`unapplied: ...` in warn, SAVE and DISCARD with the same disabled rules as the classic panel.
+Layout spec also adds one control on Surfaces and re-scans.

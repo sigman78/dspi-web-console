@@ -13,6 +13,8 @@
   import { getSession } from '@/components/sessionContext';
   import * as CsField from './csFieldHelpers';
 
+  const { detailTarget = null }: { detailTarget?: HTMLElement | null } = $props();
+
   const s = getSession();
   const snap = $derived(s.mirror.current);
   const cs = $derived(s.controlSurfaces);
@@ -171,7 +173,10 @@
   }
 
   const stagedCount = $derived(visibleSlots.filter((i) => isDirty(i)).length);
-  $effect(() => { s.controlSurfaces.staged.groups = stagedCount; });
+  $effect(() => {
+    s.controlSurfaces.staged.groups = stagedCount;
+    return () => { s.controlSurfaces.staged.groups = 0; };
+  });
 </script>
 
 <Panel code="CT.03" title="GROUPS">
@@ -191,7 +196,7 @@
     {@const n = memberCount(d.mask)}
     <CsSlotCard title={`GROUP ${i + 1}`} name={d.name}
       nameLabel={`Name for group ${i + 1}`} removeLabel={`Remove group ${i + 1}`}
-      pill={p} {dirty} {open} disabled={applying}
+      pill={p} {dirty} {open} {detailTarget} disabled={applying}
       onToggle={() => toggleSlot(i)}
       onRename={(v) => editDraft(i, (dr) => { dr.name = v; })}
       onRemove={() => remove(i)}>

@@ -5,7 +5,7 @@ import { setupPages } from './setupPages';
 const keys = (f: { controlInterfaces: boolean; controlSurfaces: boolean }, caps: Domain.CsCaps | null) =>
   setupPages(f, caps).map((p) => p.key);
 
-const displayCaps = { capsVersion: 10, types: new Array(32).fill(null) } as unknown as Domain.CsCaps;
+const displayCaps = { capsVersion: 10, maxMacros: 8, maxGroups: 8, types: new Array(32).fill(null) } as unknown as Domain.CsCaps;
 
 describe('setupPages', () => {
   test('without control features only the always-on pages remain, in order', () => {
@@ -20,8 +20,16 @@ describe('setupPages', () => {
     expect(keys({ controlInterfaces: false, controlSurfaces: true }, null)).toEqual(['device', 'io', 'interfaces', 'surfaces', 'diagnostics']);
   });
 
+  test('macros or groups capability adds Macros & Groups after Surfaces', () => {
+    const macroCaps = { capsVersion: 9, maxMacros: 8, maxGroups: 0 } as unknown as Domain.CsCaps;
+    const groupCaps = { capsVersion: 9, maxMacros: 0, maxGroups: 8 } as unknown as Domain.CsCaps;
+    const f = { controlInterfaces: false, controlSurfaces: true };
+    expect(keys(f, macroCaps)).toContain('macros');
+    expect(keys(f, groupCaps)).toContain('macros');
+  });
+
   test('display capability adds Display between Surfaces and Diagnostics', () => {
     const k = keys({ controlInterfaces: true, controlSurfaces: true }, displayCaps);
-    expect(k).toEqual(['device', 'io', 'interfaces', 'surfaces', 'display', 'diagnostics']);
+    expect(k).toEqual(['device', 'io', 'interfaces', 'surfaces', 'macros', 'display', 'diagnostics']);
   });
 });

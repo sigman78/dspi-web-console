@@ -18,6 +18,8 @@
   import * as CsMacroDraft from './csMacroDraft';
   import type { MacroDraft, StepDraft } from './csMacroDraft';
 
+  const { detailTarget = null }: { detailTarget?: HTMLElement | null } = $props();
+
   const s = getSession();
   const snap = $derived(s.mirror.current);
   const cs = $derived(s.controlSurfaces);
@@ -119,12 +121,36 @@
     openSlot = i;
   }
 
+  // Detached (noveau column) mode: steps collapse to summary rows, one open
+  // at a time. Keyed by slot so it never leaks across macros; unset or stale
+  // falls back to the last step.
+  const detached = $derived(detailTarget != null);
+  let stepOpen = $state<{ slot: number; k: number } | null>(null);
+  $effect(() => {
+    void expanded;
+    stepOpen = null;
+  });
+  function openStepOf(i: number, count: number): number {
+    return stepOpen && stepOpen.slot === i && stepOpen.k < count ? stepOpen.k : count - 1;
+  }
+
   function addStep(i: number): void {
     editDraft(i, (d) => { d.steps.push(CsMacroDraft.defaultStepDraft(cs.nouns)); });
+    stepOpen = { slot: i, k: draftOf(i).steps.length - 1 };
   }
 
   function removeStep(i: number, k: number): void {
     editDraft(i, (d) => { d.steps.splice(k, 1); });
+    stepOpen = null;
+  }
+
+  function targetLabelOf(d: StepDraft): string {
+    if (!CsField.showTargetOf(cs.nouns, d.noun)) return '—';
+    if (d.grouped) {
+      return groupOptionsFor(d).find((o) => o.v === d.target)?.label ?? `Group ${d.target + 1}`;
+    }
+    const opts = snap ? CsField.targetOptionsFor(cs.nouns, d.noun, snap.channels) : [];
+    return opts.find((o) => o.v === d.target)?.label ?? '—';
   }
 
   // An empty step list never applies: on a new slot it would write the
@@ -172,7 +198,10 @@
   }
 
   const stagedCount = $derived(visibleSlots.filter((i) => isDirty(i)).length);
-  $effect(() => { s.controlSurfaces.staged.macros = stagedCount; });
+  $effect(() => {
+    s.controlSurfaces.staged.macros = stagedCount;
+    return () => { s.controlSurfaces.staged.macros = 0; };
+  });
 
   function nounOptions(): number[] { return CsMacroDraft.stepNounOptions(cs.nouns); }
   function actionOptions(noun: number): Domain.CsAction[] { return CsMacroDraft.stepActionOptions(cs.nouns, noun); }
@@ -208,7 +237,7 @@
     {@const open = expanded === i}
     <CsSlotCard title={`MACRO ${i + 1}`} name={d.name}
       nameLabel={`Name for macro ${i + 1}`} removeLabel={`Remove macro ${i + 1}`}
-      pill={p} {dirty} {open} disabled={applying}
+      pill={p} {dirty} {open} {detailTarget} disabled={applying}
       onToggle={() => toggleSlot(i)}
       onRename={(v) => editDraft(i, (dr) => { dr.name = v; })}
       onRemove={() => remove(i)}>
@@ -231,13 +260,30 @@
         <div class="hint err srow">{invalidHint(i)}</div>
       {/if}
 
-      <div class="rows">
+      <div class="rows" class:detached>
         {#each d.steps as step, k (k)}
+          {@const isOpen = !detached || openStepOf(i, d.steps.length) === k}
           {@const stepActions = actionOptions(step.noun)}
           {@const showGroup = CsField.groupsAvailable(caps) && CsField.showTargetOf(cs.nouns, step.noun)}
           {@const groupOpts = groupOptionsFor(step)}
           {@const missingGroup = showGroup && step.grouped && !groupOpts.some((o) => o.v === step.target)}
-          <div class="step">
+          <div class="step" class:collapsed={!isOpen}>
+            {#if detached}
+              <div class="sum">
+                <button type="button" class="sumbtn" aria-expanded={isOpen}
+                  aria-label={`Step ${k + 1}`}
+                  onclick={() => { stepOpen = { slot: i, k: isOpen ? -1 : k }; }}>
+                  <span class="sn">{k + 1}</span>
+                  <span class="sl">{Domain.csNounLabel(step.noun)}</span>
+                  <span class="sl">{Domain.csActionLabel(step.action as Domain.CsAction, CsField.enumOf(cs.nouns, step.noun))}</span>
+                  <span class="sv">{targetLabelOf(step)}</span>
+                  <span class="chev" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
+                </button>
+                <button type="button" class="x" aria-label={`Remove step ${k + 1}`}
+                  disabled={applying} onclick={() => removeStep(i, k)}>✕</button>
+              </div>
+            {/if}
+            {#if isOpen}
             <div class="row">
               <span class="microlbl">STEP {k + 1}</span>
               <span class="microlbl">AFTER</span>
@@ -246,9 +292,11 @@
                 title="Wait this long before the step runs" disabled={applying}
                 onchange={(e) => { const v = num(e); if (v != null) editStep(i, k, (dr) => { dr.preDelay = v; }); }} />
               <span class="hint">s</span>
-              <span class="spacer"></span>
-              <button type="button" class="x" aria-label={`Remove step ${k + 1}`}
-                disabled={applying} onclick={() => removeStep(i, k)}>✕</button>
+              {#if !detached}
+                <span class="spacer"></span>
+                <button type="button" class="x" aria-label={`Remove step ${k + 1}`}
+                  disabled={applying} onclick={() => removeStep(i, k)}>✕</button>
+              {/if}
             </div>
 
             <div class="row">
@@ -372,6 +420,7 @@
                   ariaLabel={`Wrap around for step ${k + 1}`} onChange={(v) => editStep(i, k, (dr) => { dr.wrap = v; })} />
               </div>
             {/if}
+            {/if}
           </div>
         {/each}
 
@@ -425,6 +474,32 @@
     gap: 8px;
   }
   .step + .step { border-top: 1px solid var(--wash); }
+  .rows.detached { gap: 0; padding-top: 4px; }
+  .rows.detached .step { padding: 0; gap: 6px; }
+  .rows.detached .step:not(.collapsed) { padding-bottom: 8px; }
+  .rows.detached > .row { padding-top: 8px; }
+  .sum { display: flex; align-items: center; gap: 6px; height: 24px; }
+  .sumbtn {
+    flex: 1;
+    min-width: 0;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 4px;
+    background: none;
+    border: none;
+    border-radius: 3px;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+  }
+  .sumbtn:hover { background: var(--wash); }
+  .sumbtn[aria-expanded='true'] { background: var(--wash); }
+  .sn { font-family: var(--font-mono); font-size: 12px; color: var(--text-faint); width: 14px; flex: none; }
+  .sl { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
+  .sv { font-family: var(--font-mono); font-size: 12px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chev { flex: none; font-size: 10px; color: var(--text-faint); }
   .sel {
     font-family: var(--font-mono);
     font-size: 10px;

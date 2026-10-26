@@ -15,9 +15,13 @@
   } from '@/runtime';
   import * as Domain from '@/domain';
   import { getSession } from '@/components/sessionContext';
+  import { portal } from './portal';
   import * as CsField from './csFieldHelpers';
   import * as CsDisplayDraft from './csDisplayDraft';
   import type { CfgDraft, PageDraft } from './csDisplayDraft';
+
+  // Split layout: the selected page's editor renders in this element instead of below the strip.
+  const { detailTarget = null }: { detailTarget?: HTMLElement | null } = $props();
 
   const s = getSession();
   const snap = $derived(s.mirror.current);
@@ -229,7 +233,10 @@
   const stagedCount = $derived(
     (cfgDraft != null && cfgDirty ? 1 : 0) + Array.from({ length: maxPages }, (_, i) => i).filter((i) => isPageDirty(i)).length,
   );
-  $effect(() => { s.controlSurfaces.staged.display = stagedCount; });
+  $effect(() => {
+    s.controlSurfaces.staged.display = stagedCount;
+    return () => { s.controlSurfaces.staged.display = 0; };
+  });
 </script>
 
 <Panel code="CT.05" title="DISPLAY">
@@ -373,16 +380,17 @@
         <!-- Strip selects which page the editor below shows; view-only, no fw effect -->
         <div class="pagestrip" role="tablist" aria-label="Display pages" tabindex="-1" onkeydown={pageStripKey}>
           {#each Array.from({ length: maxPages }, (_, i2) => i2) as i2 (i2)}
-            <button type="button" role="tab" class="pchip"
+            <button type="button" role="tab" class="pchip" id={`cs-display-page-tab-${i2}`}
               class:sel={i2 === selPage} class:set={pageDraftOf(i2) != null}
               class:showing={cs.displayStatus?.currentPage === i2} class:staged={isPageDirty(i2)}
-              aria-selected={i2 === selPage} tabindex={i2 === selPage ? 0 : -1}
+              aria-selected={i2 === selPage} aria-controls="cs-display-page-panel" tabindex={i2 === selPage ? 0 : -1}
               aria-label={`Page ${i2 + 1}`} title={pageChipTitle(i2)}
               onclick={() => { selPage = i2; }}>{i2 + 1}</button>
           {/each}
         </div>
 
-        <div class="slot">
+        <div class="slot" class:detached={detailTarget != null} id="cs-display-page-panel" role="tabpanel"
+          aria-labelledby={`cs-display-page-tab-${i}`} use:portal={detailTarget}>
           <div class="slothead">
             <span class="stitle" class:showing class:staged
               title={staged ? 'Unapplied changes — APPLY to preview them live' : undefined}
@@ -530,6 +538,7 @@
   .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .pair { display: inline-flex; align-items: center; gap: 8px; }
   .slot { padding: 8px 0; }
+  .slot.detached { padding: 8px 14px 10px; }
   .pagestrip { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 8px; }
   .pchip {
     min-width: 24px;

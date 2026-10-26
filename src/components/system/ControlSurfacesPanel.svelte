@@ -9,6 +9,11 @@
   import type { Draft } from './csDraft';
   import * as CsField from './csFieldHelpers';
 
+  const { detailTarget = null, irDetailTarget = null }: {
+    detailTarget?: HTMLElement | null;
+    irDetailTarget?: HTMLElement | null;
+  } = $props();
+
   const s = getSession();
   const snap = $derived(s.mirror.current);
   const cs = $derived(s.controlSurfaces);
@@ -258,7 +263,10 @@
   const stagedCount = $derived(
     visibleSlots.filter((i) => isDirty(i) || (draftOf(i).type === Domain.CsType.Ir && irDirty)).length,
   );
-  $effect(() => { s.controlSurfaces.staged.bindings = stagedCount; });
+  $effect(() => {
+    s.controlSurfaces.staged.bindings = stagedCount;
+    return () => { s.controlSurfaces.staged.bindings = 0; };
+  });
 </script>
 
 <Panel code="CT.02" title="CONTROL SURFACES">
@@ -280,6 +288,8 @@
         dirty={slotDirty}
         pill={p}
         {applying}
+        {detailTarget}
+        {irDetailTarget}
         open={expanded === slot}
         onToggle={() => toggleSlot(slot)}
         typeOptions={typeOptionsFor(slot)}

@@ -133,11 +133,31 @@ test('no scroll 1440x790 SETUP every page', async ({ page }) => {
   const pages = page.getByRole('group', { name: 'Setup pages' }).getByRole('button');
   await expect(pages.first()).toBeVisible();
   const n = await pages.count();
-  expect(n).toBe(6);
+  expect(n).toBe(7);
   for (let i = 0; i < n; i++) {
     await pages.nth(i).click();
     await expect(pages.nth(i)).toHaveAttribute('aria-pressed', 'true');
     await assertNoScroll(page);
+    if ((await pages.nth(i).innerText()).trim() === 'SURFACES') {
+      const add = page.locator('select[aria-label="Add control"]').first();
+      await expect(add).toBeEnabled();
+      const opts = await add.locator('option:not([disabled])').evaluateAll(
+        (os) => (os as HTMLOptionElement[]).filter((o) => o.value !== '').map((o) => ({ v: o.value, label: o.textContent ?? '' })),
+      );
+      expect(opts.length).toBeGreaterThan(0);
+      await add.selectOption(opts[0].v);
+      await assertNoScroll(page);
+      const ir = opts.find((o) => o.label.includes('IR Remote Receiver'));
+      if (ir) {
+        await add.selectOption(ir.v);
+        const binding = page.locator('.detail', { hasText: 'BINDING' });
+        const apply = binding.getByRole('button', { name: 'APPLY', exact: true });
+        if ((await apply.count()) > 0 && (await apply.first().isEnabled())) await apply.first().click();
+        const commands = page.locator('.detail', { hasText: 'IR COMMANDS' });
+        await expect(commands.locator('.irrow').first()).toBeVisible();
+        await assertNoScroll(page);
+      }
+    }
   }
 });
 

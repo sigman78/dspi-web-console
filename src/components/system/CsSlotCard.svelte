@@ -3,9 +3,10 @@
   // + title + name (text when collapsed, input when open) + status pill + ✕.
   // Body renders only while open; the parent owns open/expanded state.
   import type { Snippet } from 'svelte';
+  import { portal } from './portal';
   const {
     title, name, nameLabel, removeLabel, pill, dirty, open, disabled,
-    onToggle, onRename, onRemove, summary, note, actions, children,
+    onToggle, onRename, onRemove, summary, note, actions, children, detailTarget = null,
   }: {
     title: string;
     name: string;
@@ -22,6 +23,7 @@
     note?: Snippet;      // between header and body, shown even while collapsed (macros: running step)
     actions?: Snippet;   // header buttons before ✕ (macros: FIRE/CANCEL)
     children: Snippet;
+    detailTarget?: HTMLElement | null; // split layout: the open body renders here instead of inline
   } = $props();
 </script>
 
@@ -48,7 +50,13 @@
   </div>
   {#if note}{@render note()}{/if}
   {#if open}
-    {@render children()}
+    {#if detailTarget}
+      <div class="detail" use:portal={detailTarget}>
+        {@render children()}
+      </div>
+    {:else}
+      {@render children()}
+    {/if}
   {/if}
 </div>
 

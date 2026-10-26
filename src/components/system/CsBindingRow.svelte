@@ -22,7 +22,7 @@
   const {
     slot, draft: d, dirty, pill: p, applying, typeOptions,
     onEdit, onTypeChange, onApply, onRevert, onRemove, onRename,
-    irResetSignal, onIrDirtyChange, open, onToggle,
+    irResetSignal, onIrDirtyChange, open, onToggle, detailTarget = null, irDetailTarget = null,
   }: {
     slot: number;
     draft: Draft;
@@ -40,6 +40,8 @@
     onIrDirtyChange: (dirty: boolean) => void;
     open: boolean;
     onToggle: () => void;
+    detailTarget?: HTMLElement | null;
+    irDetailTarget?: HTMLElement | null;
   } = $props();
 
   const s = getSession();
@@ -241,7 +243,7 @@
 <CsSlotCard title={Domain.csTypeLabel(d.type).toUpperCase()} name={cs.names[slot] ?? ''}
   nameLabel={`Name for control ${slot + 1}`} removeLabel={`Remove control ${slot + 1}`}
   pill={p} {dirty} {open} disabled={applying}
-  {onToggle} {onRename} {onRemove}>
+  {onToggle} {onRename} {onRemove} {detailTarget}>
   {#if p.cls === 'warn'}
     <div class="hint err srow">{inactiveHint()}</div>
   {/if}
@@ -576,7 +578,7 @@
   {/if}
 
   {#if cs.bindings[slot]?.type === Domain.CsType.Ir}
-    <CsIrCommands resetSignal={irResetSignal} onDirtyChange={onIrDirtyChange} />
+    <CsIrCommands resetSignal={irResetSignal} onDirtyChange={onIrDirtyChange} {irDetailTarget} />
   {/if}
 </CsSlotCard>
 
