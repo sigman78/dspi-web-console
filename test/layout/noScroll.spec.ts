@@ -109,6 +109,24 @@ test('no scroll 1440x790 every destination', async ({ page }) => {
   }
 });
 
+test('no scroll 1440x790 PROGRAM every module', async ({ page }) => {
+  await open(page, [1440, 790], FULL);
+  await page.locator('nav.irail .ib', { hasText: 'PROGRAM' }).click();
+  await expect(page.locator('.routing')).toBeVisible();
+  const hits = page.locator('.chain .hit');
+  const n = await hits.count();
+  expect(n).toBeGreaterThan(0);
+  for (let i = 0; i < n; i++) {
+    await hits.nth(i).click();
+    await expect(hits.nth(i)).toHaveAttribute('aria-pressed', 'true');
+    await assertNoScroll(page);
+  }
+  await page.locator('.routing .dotbtn').last().click();
+  await expect(page.getByRole('dialog', { name: /^Crosspoint/ })).toBeVisible();
+  await assertNoScroll(page);
+  await page.keyboard.press('Escape');
+});
+
 test('no scroll 1440x790 last output selected', async ({ page }) => {
   await open(page, [1440, 790], FULL);
   await railRows(page, 'OUTPUTS').last().click();

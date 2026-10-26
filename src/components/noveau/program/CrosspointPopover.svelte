@@ -1,0 +1,117 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import { Mix, type InputSlot, type OutputSlot } from '@/domain';
+  import * as Runtime from '@/runtime';
+  import { getSession } from '@/components/sessionContext';
+  import RangeField from '../tune/RangeField.svelte';
+
+  const {
+    input,
+    output,
+    title,
+    x,
+    y,
+    boundsW,
+    boundsH,
+    onClose,
+  }: {
+    input: InputSlot;
+    output: OutputSlot;
+    title: string;
+    /** Anchor point and the box it must stay inside, in the routing container's coordinates. */
+    x: number;
+    y: number;
+    boundsW: number;
+    boundsH: number;
+    onClose: () => void;
+  } = $props();
+
+  const s = getSession();
+  const route = $derived(
+    s.mirror.current?.routes.find((r) => r.inputIndex === input && r.outputWireIndex === output),
+  );
+  const enabled = $derived(route?.enabled ?? false);
+  const invert = $derived(route?.invert ?? false);
+
+  let el = $state<HTMLDivElement | null>(null);
+  let w = $state(0);
+  let h = $state(0);
+  const left = $derived(Math.max(0, Math.min(x, boundsW - w)));
+  const top = $derived(Math.max(0, Math.min(y, boundsH - h)));
+
+  onMount(() => {
+    const down = (e: PointerEvent) => {
+      const t = e.target as Element;
+      if (el && !el.contains(t) && !t.closest?.('.dotbtn')) onClose();
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if ((e.target as Element | null)?.closest?.('input, textarea, .vf')) return;
+      onClose();
+    };
+    el?.querySelector<HTMLElement>('button, input')?.focus();
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('keydown', key);
+    return () => {
+      window.removeEventListener('pointerdown', down, true);
+      window.removeEventListener('keydown', key);
+    };
+  });
+</script>
+
+<div class="pop" bind:this={el} bind:offsetWidth={w} bind:offsetHeight={h} role="dialog" aria-label={`Crosspoint ${title}`} style:left="{left}px" style:top="{top}px">
+  <div class="ph"><h3>{title}</h3><span class="cap">crosspoint</span></div>
+  <div class="r">
+    <span class="lbl">ENABLE</span>
+    <ToggleSwitch size="sm" checked={enabled} ariaLabel="Route enabled" onChange={(v) => Runtime.setCrosspointEnabled(s, input, output, v)} />
+  </div>
+  <div class="r">
+    <RangeField
+      label="GAIN"
+      value={route?.gainDb ?? 0}
+      min={Mix.CROSSPOINT_GAIN_MIN_DB}
+      max={Mix.CROSSPOINT_GAIN_MAX_DB}
+      step={0.1}
+      kind="dB-signed"
+      tone="signed"
+      disabled={!enabled}
+      onCommit={(v) => Runtime.setCrosspointGain(s, input, output, v)}
+    />
+  </div>
+  <div class="r">
+    <span class="lbl">PHASE</span>
+    <ToggleSwitch size="sm" checked={invert} disabled={!enabled} ariaLabel="Invert phase" onChange={(v) => Runtime.setCrosspointInvert(s, input, output, v)} />
+    <span class="cap">{invert ? 'inverted' : 'normal'}</span>
+  </div>
+</div>
+
+<style>
+  .pop {
+    position: absolute;
+    z-index: 5;
+    width: 300px;
+    padding: 0 12px 4px;
+    box-sizing: border-box;
+    background: var(--panel-solid);
+    border: 1px solid var(--border-hi);
+    border-radius: var(--radius-s);
+    box-shadow: 0 4px 14px oklch(0% 0 0 / 0.4);
+  }
+  .ph { display: flex; align-items: center; justify-content: space-between; height: 28px; }
+  h3 { margin: 0; font-family: var(--font-sans); font-size: 12px; font-weight: 600; color: var(--text); }
+  .cap { font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }
+  .r {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 24px;
+    border-top: 1px solid var(--border);
+    --rf-label: 52px;
+    --rf-value: 72px;
+    --rf-track: 100px;
+    --rf-track-flex: 0 0 auto;
+  }
+  .r :global(.rf) { gap: 12px; height: 22px; }
+  .lbl { flex: 0 0 52px; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }
+</style>
