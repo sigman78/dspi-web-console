@@ -31,12 +31,26 @@
   />
   <button
     type="button"
-    class="chip hi"
+    class="icon-toggle mute"
     class:on={muted}
-    disabled={!connected}
-    aria-pressed={muted}
     onclick={() => toggleMute(s)}
-  >MUTE</button>
+    disabled={!connected}
+    title={muted ? 'Unmute' : 'Mute'}
+    aria-label={muted ? 'Unmute' : 'Mute'}
+  >
+    {#if muted}
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6h2l3-3v10l-3-3H3z" fill="currentColor" />
+        <line x1="11" y1="6" x2="14" y2="9" />
+        <line x1="14" y1="6" x2="11" y2="9" />
+      </svg>
+    {:else}
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6h2l3-3v10l-3-3H3z" fill="currentColor" />
+        <path d="M11 5.5a3 3 0 0 1 0 5" />
+      </svg>
+    {/if}
+  </button>
 </div>
 <div class="vrow">
   <input
@@ -60,7 +74,7 @@
   .vtop { display: flex; align-items: stretch; gap: 4px; height: 24px; }
   .vtop :global(.seg) { flex: 1; }
   .vtop :global(.opt) { padding: 3px 4px; font-size: 11px; font-family: var(--font-sans); letter-spacing: 0; }
-  .vtop .chip { padding: 0 8px; font-size: 11px; letter-spacing: 0; font-family: var(--font-sans); font-weight: 600; }
+  .vtop .icon-toggle { flex: none; width: 22px; height: 22px; align-self: center; }
   .vrow { display: flex; align-items: center; gap: 6px; height: 22px; }
   input[type="range"] {
     flex: 1;

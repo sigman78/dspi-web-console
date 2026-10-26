@@ -87,7 +87,7 @@
     min-width: 0;
     min-height: 0;
     display: grid;
-    grid-template-rows: 1fr 72px 32px;
+    grid-template-rows: minmax(300px, 440px) 1fr 32px;
     overflow: hidden;
     padding-right: 12px;
   }

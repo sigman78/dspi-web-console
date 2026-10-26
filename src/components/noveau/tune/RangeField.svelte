@@ -13,6 +13,7 @@
     log = false,
     disabled = false,
     placeholder,
+    onPreview,
     onCommit,
   }: {
     label: string;
@@ -27,6 +28,8 @@
     disabled?: boolean;
     /** Shown in place of the field when set (e.g. a dash for a parameter the type lacks). */
     placeholder?: string;
+    /** Fires with the live value on every slider move; most fields leave it unset. */
+    onPreview?: (v: number) => void;
     onCommit: (v: number) => void;
   } = $props();
 
@@ -97,6 +100,7 @@
   function onInput(e: Event) {
     begin();
     live = fromPos(parseFloat((e.target as HTMLInputElement).value));
+    onPreview?.(live);
   }
 
   const KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];

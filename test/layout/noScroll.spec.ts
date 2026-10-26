@@ -18,7 +18,7 @@ const BUDGET_SELECTORS = [
   '.tune',
   '.inspector',
   '.graph',
-  '.line',
+  '.stage',
   '.dense',
 ];
 
@@ -119,7 +119,7 @@ test('no scroll 1440x790 last output selected', async ({ page }) => {
 test('no scroll 1440x790 first input selected', async ({ page }) => {
   await open(page, [1440, 790], FULL);
   await railRows(page, 'INPUTS').first().click();
-  await expect(page.getByLabel('Input preamp')).toBeVisible();
+  await expect(page.getByLabel('PREAMP', { exact: true })).toBeVisible();
   await assertNoScroll(page);
 });
 

@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { presetsDirty } from '@/state';
   import { getSession } from '@/components/sessionContext';
-  import { loadPresetSlot, revertActivePreset } from '@/runtime';
+  import { loadPresetSlot, renamePresetSlot, revertActivePreset } from '@/runtime';
   import { saveActivePresetNamed } from '@/components/presets/saveActivePresetNamed';
   import { PresetStartupMode } from '@/protocol';
-  import { PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';
+  import { PRESET_NAME_MAX_LEN, PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';
 
   const s = getSession();
 
@@ -18,11 +19,8 @@
   const startup = $derived(
     dir != null && dir.startupMode === PresetStartupMode.Specified ? dir.defaultSlot : null,
   );
-  const name = $derived.by(() => {
-    if (active == null) return '—';
-    const n = s.presets.names[active] ?? '';
-    return n.length ? n : '[unnamed]';
-  });
+  const rawName = $derived(active == null ? '' : (s.presets.names[active] ?? ''));
+  const name = $derived(active == null ? '—' : rawName.length ? rawName : '[unnamed]');
 
   const slots = Array.from({ length: PRESET_SLOT_COUNT }, (_, i) => i as PresetSlot);
 
@@ -34,6 +32,63 @@
     if (busy) return;
     void saveActivePresetNamed(s);
   }
+  let editing = $state(false);
+  let editSlot: PresetSlot | null = null;
+  let editBase = '';
+  let nameEl = $state<HTMLSpanElement>();
+  // Each edit session ends with exactly one terminal action; Enter and Escape
+  // unmount the input, whose trailing blur would otherwise fire a second one.
+  let finished = false;
+
+  function startEdit(): void {
+    if (busy || active == null) return;
+    window.getSelection()?.removeAllRanges();
+    editSlot = active;
+    editBase = rawName;
+    editing = true;
+  }
+  function initInput(node: HTMLInputElement): void {
+    finished = false;
+    node.value = editBase;
+    node.focus();
+    node.select();
+  }
+  function finishEdit(node: HTMLInputElement, commit: boolean): void {
+    if (finished) return;
+    finished = true;
+    editing = false;
+    const next = node.value.trim();
+    if (commit && editSlot != null && next.length > 0 && next !== editBase) void renamePresetSlot(s, editSlot, next);
+  }
+  function refocusName(): void {
+    void tick().then(() => nameEl?.focus());
+  }
+  function onInputKey(e: KeyboardEvent): void {
+    const node = e.currentTarget as HTMLInputElement;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      finishEdit(node, true);
+      refocusName();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      finishEdit(node, false);
+      refocusName();
+    }
+  }
+  function onNameKey(e: KeyboardEvent): void {
+    if (e.key === 'F2' || e.key === 'Enter') {
+      e.preventDefault();
+      startEdit();
+    }
+  }
+  $effect(() => {
+    if (editing && active !== editSlot) {
+      finished = true;
+      editing = false;
+    }
+  });
   function onRevert(): void {
     if (busy) return;
     void revertActivePreset(s);
@@ -49,23 +104,46 @@
       class:act={slot === active}
       class:empty={!occupied && slot !== active}
       aria-pressed={slot === active}
-      title={s.presets.names[slot] || `Preset ${slot}`}
+      class:startup={slot === startup}
+      title={`${slot} ${s.presets.names[slot] || `Preset ${slot}`}${slot === startup ? ' (startup)' : ''}`}
+      aria-label={`${slot}${s.presets.names[slot] ? ' ' + s.presets.names[slot] : ''}${slot === startup ? ' (startup)' : ''}`}
       onclick={() => onSlot(slot)}
     >
-      {String(slot).padStart(2, '0')}
-      {#if slot === startup}<span class="st" aria-label="startup slot">★</span>{/if}
+      {slot}
       {#if slot === active && dirty}<span class="dd" aria-label="unsaved changes"></span>{/if}
     </button>
   {/each}
 </div>
 <div class="sname">
-  <span class="nm" title={name}>{name}</span>
-  {#if canSave}<button type="button" class="chip accent" onclick={onSave}>Save</button>{/if}
-  {#if canRevert}<button type="button" class="chip hi" onclick={onRevert}>Revert</button>{/if}
+  {#if editing}
+    <input
+      class="nm-edit"
+      type="text"
+      maxlength={PRESET_NAME_MAX_LEN}
+      aria-label="Preset name"
+      use:initInput
+      onkeydown={onInputKey}
+      onblur={(e) => finishEdit(e.currentTarget, true)}
+    />
+  {:else}
+    <span
+      class="nm"
+      class:unnamed={rawName.length === 0}
+      role="button"
+      tabindex="0"
+      bind:this={nameEl}
+      aria-keyshortcuts="F2"
+      title="Double-click or F2 to rename"
+      ondblclick={startEdit}
+      onkeydown={onNameKey}
+    >{name}</span>
+    {#if canSave}<button type="button" class="chip accent" onclick={onSave}>Save</button>{/if}
+    {#if canRevert}<button type="button" class="chip hi" onclick={onRevert}>Revert</button>{/if}
+  {/if}
 </div>
 
 <style>
-  .scenes { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; height: 20px; }
+  .scenes { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; height: 22px; }
   .sc {
     position: relative;
     display: grid;
@@ -76,7 +154,7 @@
     background: var(--wash-strong);
     color: var(--text-dim);
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
   }
@@ -92,17 +170,14 @@
     font-weight: 700;
     cursor: default;
   }
-  .st {
-    position: absolute;
-    top: 0; right: 1px;
-    font-size: 10px;
-    line-height: 1;
-    color: var(--warn);
+  .sc.startup:hover { border-color: var(--warn); }
+  .sc.startup {
+    border: 1px solid var(--warn);
+    box-shadow: 0 0 6px color-mix(in oklab, var(--warn) 55%, transparent);
   }
-  .sc.act .st { color: var(--bg); }
   .dd {
     position: absolute;
-    bottom: 1px; right: 1px;
+    top: 1px; right: 1px;
     width: 5px; height: 5px;
     border-radius: 50%;
     background: var(--warn);
@@ -116,6 +191,18 @@
     font-size: 12px;
     font-weight: 600;
   }
-  .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nm.unnamed { color: var(--text-dim); }
+  .nm-edit {
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    padding: 0 4px;
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+  }
+  .nm { cursor: default; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sname .chip { flex: none; height: 20px; padding: 0 8px; font-size: 11px; letter-spacing: 0; font-family: var(--font-sans); font-weight: 600; }
 </style>
