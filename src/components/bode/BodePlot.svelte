@@ -1,6 +1,10 @@
 <script lang="ts" module>
   import type { ChannelId } from '@/domain';
 
+  /** Plot margins in px (left axis labels, bottom frequency labels). */
+  export const PAD_L = 30;
+  export const PAD_B = 16;
+
   // Curve-only API. Callers provide pre-sampled magnitude points on the
   // canonical 201-bin grid (see bodeFreqs.ts). The plot is dumb about EQ
   // semantics -- it only draws.
@@ -85,8 +89,6 @@
   // Internal coordinate system. W tracks the wrapper's measured pixel width
   // (via bind:clientWidth) so the viewBox matches the rendered size 1:1 --
   // no x-stretch of strokes or text on wide containers.
-  const PAD_L = 30;
-  const PAD_B = 16;
   let containerW = $state(720);
   const W = $derived(Math.max(120, containerW));
 
