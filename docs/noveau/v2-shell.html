@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>DSPi Console — v2 shell</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<style>
+  html, body { height: auto; } html { scrollbar-width: none; } ::-webkit-scrollbar { display: none; }
+  body { min-width: 1440px; background: oklch(7% 0.008 250); font-size: 12px; -webkit-font-smoothing: antialiased; }
+  .mono, .val { font-family: var(--font-mono); font-feature-settings: "tnum"; }
+  .divider { height: 28px; display: flex; align-items: center; gap: 12px; padding: 0 16px; color: var(--text-dim); font: 600 11px var(--font-mono); letter-spacing: .06em; border-top: 1px solid var(--border-hi); border-bottom: 1px solid var(--border-hi); background: oklch(9% 0.008 250); }
+
+  /* ---------- screen frame ---------- */
+  .screen { position: relative; width: 1440px; height: 790px; overflow: hidden; display: grid;
+    grid-template-columns: 56px 200px 1184px; grid-template-rows: 762px 28px; background: var(--bg-glow); }
+  .screen > * { min-width: 0; min-height: 0; }
+  h2 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -.005em; white-space: nowrap; }
+  .cap { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+  .dim { color: var(--text-faint); }
+
+  /* ---------- icon rail ---------- */
+  .irail { display: flex; flex-direction: column; padding: 8px 0; border-right: 1px solid var(--border); background: oklch(11% 0.008 250 / .9); overflow: hidden; }
+  .ib { position: relative; height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text-faint); }
+  .ib svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+  .ib span { font: 500 9px var(--font-mono); letter-spacing: .04em; }
+  .ib.on { color: var(--text); background: color-mix(in oklab, var(--accent) 14%, transparent); }
+  .ib.on::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; border-radius: 0 2px 2px 0; background: var(--accent); }
+  .ib.on svg { stroke: var(--accent); }
+  .ib.push { margin-top: auto; }
+
+  /* ---------- channel rail ---------- */
+  .crail { display: grid; grid-template-rows: auto 1fr 30px; border-right: 1px solid var(--border); background: oklch(12% 0.008 250 / .8); overflow: hidden; }
+  .rhead { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px 8px; border-bottom: 1px solid var(--border); }
+  .dev { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: 5px; background: var(--wash); }
+  .dev b { font: 500 10px var(--font-mono); white-space: nowrap; letter-spacing: -.02em; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); flex: none; }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 6px color-mix(in oklab, var(--ok) 60%, transparent); }
+  .dot.warn { background: var(--warn); }
+  .scenes { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; height: 20px; }
+  .sc { position: relative; display: grid; place-items: center; border-radius: 3px; font: 500 10px var(--font-mono); background: var(--wash-strong); color: var(--text-dim); }
+  .sc.empty { background: none; box-shadow: 0 0 0 1px var(--border-hi) inset; border-radius: 3px; color: var(--text-faint); opacity: .55; }
+  .sc.empty { outline: 0; box-shadow: none; border: 1px dashed var(--border-hi); }
+  .sc.act { background: var(--accent); color: oklch(16% .03 265); font-weight: 700; }
+  .sc .st { position: absolute; top: 0; right: 1px; font-size: 8px; line-height: 1; color: var(--warn); }
+  .sc .dd { position: absolute; bottom: 1px; right: 1px; width: 5px; height: 5px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 1px oklch(16% .03 265); }
+  .sname { display: flex; align-items: center; justify-content: space-between; height: 16px; font-size: 11px; font-weight: 600; }
+  .sname span { font: 400 10px var(--font-mono); color: var(--warn); }
+  .sbtn { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 22px; padding: 0 10px; border-radius: 5px; border: 1px solid var(--border-hi); font-size: 11px; font-weight: 500; color: var(--text-dim); white-space: nowrap; }
+  .btn.pri { background: var(--accent); border-color: transparent; color: oklch(16% 0.03 265); font-weight: 600; }
+  .btn.ghost { border-color: transparent; }
+  .btn.sm { height: 22px; }
+  .btn.on { background: var(--wash-strong); color: var(--text); }
+  .vrow { display: flex; align-items: center; gap: 6px; height: 22px; }
+  .vrow .val { font-size: 12px; color: var(--text); min-width: 64px; text-align: right; }
+  .vrow .val u, .val u { text-decoration: none; color: var(--text-faint); margin-left: 2px; font-size: 10px; }
+  .brow { display: flex; align-items: center; justify-content: space-between; height: 22px; font-size: 11px; font-weight: 500; color: var(--text-dim); }
+  .rbody { display: flex; flex-direction: column; padding: 4px 10px 0; min-height: 0; overflow: hidden; }
+  .mlab { height: 16px; display: flex; align-items: center; font: 500 10px var(--font-mono); letter-spacing: .08em; color: var(--text-faint); }
+  .mlab.gap { margin-top: 4px; }
+  .grp { display: flex; flex-direction: column; border-left: 3px solid var(--c); padding-left: 5px; margin-bottom: 2px; }
+  .ch { --c: var(--text-faint); height: 27px; flex: none; display: flex; flex-direction: column; gap: 1px; }
+  .chip { height: 20px; display: flex; align-items: center; padding: 0 7px; border-radius: 4px; background: var(--wash); font-size: 11px; font-weight: 500; color: var(--text-dim); white-space: nowrap; }
+  .ch.sel .chip { background: var(--c); color: oklch(15% 0.03 150); font-weight: 600; }
+  .mrow { display: flex; align-items: center; gap: 4px; height: 6px; }
+  .led { --unlit: oklch(22% 0.006 250); flex: 1; height: 6px; position: relative; overflow: hidden; background: linear-gradient(90deg, var(--ok) 0 68%, var(--warn) 68% 86%, var(--err) 86%);
+    -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 3px, transparent 3px 4px); mask-image: repeating-linear-gradient(90deg, #000 0 3px, transparent 3px 4px); }
+  .led i { position: absolute; top: 0; bottom: 0; right: 0; width: calc(100% - var(--l)); background: var(--unlit); }
+  .clip { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--err); box-shadow: 0 0 6px var(--err); }
+  .stub { height: 24px; flex: none; display: flex; align-items: center; padding: 0 7px; border-radius: 4px; margin-bottom: 1px; font-size: 11px; color: var(--text-faint); background: repeating-linear-gradient(135deg, var(--wash-strong) 0 3px, transparent 3px 7px); }
+  .rfoot { display: flex; align-items: center; gap: 8px; padding: 0 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-dim); }
+  .rfoot small { margin-left: auto; font-size: 10px; color: var(--text-faint); }
+
+  /* ---------- status ---------- */
+  .status { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-top: 1px solid var(--border-hi); background: oklch(9% 0.008 250); font: 400 11px var(--font-mono); color: var(--text-faint); }
+  .status .dk { display: flex; align-items: center; gap: 12px; color: var(--text-dim); font-family: var(--font-sans); }
+  .status .dk b { font-weight: 500; }
+  .status .btn { height: 20px; padding: 0 10px; }
+
+  /* ---------- shared controls ---------- */
+  .sw { position: relative; width: 28px; height: 16px; border-radius: 8px; background: var(--wash-strong); flex: none; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-dim); }
+  .sw.on { background: var(--accent); }
+  .sw.on::after { left: 14px; background: oklch(98% 0 0); }
+  .sw.s { width: 22px; height: 12px; border-radius: 6px; }
+  .sw.s::after { top: 2px; left: 2px; width: 8px; height: 8px; }
+  .sw.s.on::after { left: 12px; }
+  .seg { display: flex; padding: 2px; gap: 2px; border-radius: 6px; background: var(--wash); height: 28px; }
+  .seg span { flex: 1; display: grid; place-items: center; padding: 0 8px; border-radius: 4px; font-size: 11px; font-weight: 500; color: var(--text-faint); white-space: nowrap; }
+  .seg span.on { background: var(--wash-strong); color: var(--text); box-shadow: 0 0 0 1px var(--border-hi) inset; }
+  .seg.s { height: 22px; flex: 1; }
+  .link { font-size: 11px; font-weight: 500; color: var(--accent); white-space: nowrap; }
+  .sl { --p: 50%; --a: 0%; --w: 50%; position: relative; flex: 1; height: 24px; min-width: 24px; }
+  .sl::before { content: ""; position: absolute; left: 0; right: 0; top: 11px; height: 2px; border-radius: 1px; background: var(--wash-strong); }
+  .sl b { position: absolute; left: var(--a); width: var(--w); top: 11px; height: 2px; background: var(--text-dim); }
+  .sl i { position: absolute; left: var(--p); top: 7px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 2px oklch(14% 0.008 250); }
+  .sl.hue b { background: var(--ch-o1); }
+  .sl.acc b { background: var(--accent); }
+  .val { font-size: 12px; color: var(--text); text-align: right; white-space: nowrap; }
+  .row { display: grid; grid-template-columns: 96px 1fr; align-items: center; height: 24px; }
+  .row > label { font-size: 11px; font-weight: 500; color: var(--text-dim); }
+  .row .ctl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .row .ctl .val { min-width: 62px; }
+  .sec-h { display: flex; align-items: center; justify-content: space-between; height: 28px; border-top: 1px solid var(--border); }
+  .sec-h h2 { font-size: 12px; }
+
+  /* ---------- TUNE ---------- */
+  .ws { display: grid; min-width: 0; min-height: 0; overflow: hidden; }
+  .ws.tune { grid-template-columns: 1fr 300px; }
+  .tl { display: grid; grid-template-rows: 1fr 72px 32px; padding: 0 16px; min-width: 0; min-height: 0; }
+  .gwrap { display: grid; grid-template-rows: 40px 1fr; min-height: 0; }
+  .ghead { display: flex; align-items: center; justify-content: space-between; }
+  .ghead .l { display: flex; align-items: baseline; gap: 12px; }
+  .ghead h2 { display: inline-flex; align-items: center; gap: 8px; }
+  .ghead h2::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--ch-o1); }
+  .ghead .seg { width: 216px; }
+  .graph { position: relative; min-height: 0; border-top: 1px solid var(--border); }
+  .graph svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .graph text { font-family: var(--font-mono); font-size: 10px; fill: var(--text-faint); }
+  .graph .rd { font-size: 11px; fill: var(--text); font-weight: 500; }
+  .stage { display: grid; grid-template-rows: 36px 36px; border-top: 1px solid var(--border); }
+  .stage > div { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .f { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .f > label, .lbl { font-size: 11px; font-weight: 500; color: var(--text-dim); }
+  .f .sl { flex: none; width: 56px; }
+  .f .val { min-width: 0; }
+  .grm { flex: none; width: 64px; height: 6px; }
+  .grm.led { background: var(--warn); }
+  .mem { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+  .tg { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; font: 500 10px var(--font-mono); letter-spacing: .04em; color: var(--text-faint); box-shadow: 0 0 0 1px var(--border-hi) inset; }
+  .tg.on { color: var(--text); background: color-mix(in oklab, var(--ch-o1) 18%, transparent); box-shadow: 0 0 0 1px color-mix(in oklab, var(--ch-o1) 55%, transparent) inset; }
+  .tools { display: flex; align-items: center; gap: 4px; border-top: 1px solid var(--border); }
+  .tools .sp { flex: 1; }
+  .tools .lk { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 500; color: var(--text-dim); }
+
+  .insp { display: flex; flex-direction: column; padding: 0 12px; border-left: 1px solid var(--border); background: oklch(11.5% 0.008 250 / .6); overflow: hidden; }
+  .insp .sec-h:first-child { border-top: 0; }
+  .typeseg { height: 24px; padding: 1px; margin-bottom: 0; }
+  .typeseg span { padding: 0 4px; }
+  .bt { font: 400 11px var(--font-mono); font-feature-settings: "tnum"; }
+  .bt .r { display: grid; grid-template-columns: 20px 52px 68px 62px 1fr; align-items: center; height: 24px; padding: 0 4px; border-radius: 4px; color: var(--text-dim); }
+  .bt .r span:nth-child(n+3) { text-align: right; }
+  .bt .r.cur { background: color-mix(in oklab, var(--ch-o1) 14%, transparent); box-shadow: 0 0 0 1px color-mix(in oklab, var(--ch-o1) 45%, transparent) inset; color: var(--text); }
+  .bt .r.off { color: var(--text-faint); opacity: .6; }
+  .src { display: grid; grid-template-columns: 1fr 28px 54px 24px; align-items: center; gap: 8px; height: 24px; padding: 0 4px; font-size: 11px; color: var(--text-dim); }
+  .src .nm { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .src .nm i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+  .src .val { font-size: 12px; }
+  .src.off { color: var(--text-faint); }
+  .src.off .val { color: var(--text-faint); }
+  .src .ph { text-align: center; font: 400 12px var(--font-mono); color: var(--text-faint); }
+  .ph.inv { color: var(--warn); }
+
+  /* ---------- PROGRAM ---------- */
+  .ws.prog { grid-template-rows: 72px 1fr; }
+  .chain { display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid var(--border); background: oklch(11% 0.008 250 / .5); }
+  .wire { flex: none; width: 6px; height: 2px; background: var(--border-hi); }
+  .wire.hot { background: color-mix(in oklab, var(--accent) 60%, transparent); }
+  .cdiv { flex: none; width: 1px; height: 44px; margin: 0 4px; background: var(--border-hi); }
+  .blk { position: relative; flex: 1 1 0; min-width: 0; height: 52px; padding: 7px 8px 0; border-radius: 6px; background: var(--wash); box-shadow: 0 0 0 1px var(--border) inset; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+  .blk .bh { display: flex; align-items: center; justify-content: space-between; height: 14px; }
+  .blk .bh b { font-size: 11px; font-weight: 600; white-space: nowrap; color: var(--text); }
+  .blk .bv { font: 400 11px var(--font-mono); font-feature-settings: "tnum"; color: var(--text-dim); white-space: nowrap; }
+  .blk.on { background: color-mix(in oklab, var(--accent) 9%, var(--wash)); box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 22%, transparent) inset; }
+  .blk.sel { box-shadow: 0 0 0 2px var(--accent) inset; background: color-mix(in oklab, var(--accent) 16%, transparent); }
+  .blk.offb .bh b, .blk.offb .bv { color: var(--text-faint); }
+  .blk.hatch { background: repeating-linear-gradient(135deg, var(--wash-strong) 0 3px, transparent 3px 7px); box-shadow: 0 0 0 1px var(--border) inset; }
+  .blk.hatch .bh b, .blk.hatch .bv { color: var(--text-faint); }
+  .blk .ic { width: 14px; height: 14px; stroke: var(--text-dim); fill: none; stroke-width: 1.4; stroke-linecap: round; }
+  .pbody { display: grid; grid-template-columns: 520px 1fr; min-height: 0; }
+  .routing { position: relative; padding: 12px 16px 0; border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .rt-h { display: flex; flex-direction: column; gap: 2px; height: 40px; }
+  .map { position: relative; margin-top: 4px; display: grid; grid-template-columns: 126px repeat(8, 44px); grid-template-rows: 28px repeat(9, 28px); font-size: 11px; }
+  .map > * { display: flex; align-items: center; justify-content: center; }
+  .map .ch-h { gap: 4px; font: 500 11px var(--font-mono); color: var(--text-dim); }
+  .map .ch-h i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+  .map .rh { justify-content: flex-start; gap: 8px; color: var(--text-dim); font-weight: 500; border-top: 1px solid var(--border); }
+  .map .rh i { width: 8px; height: 8px; border-radius: 2px; background: var(--c); }
+  .map .rh.hatch { color: var(--text-faint); background: repeating-linear-gradient(135deg, var(--wash-strong) 0 3px, transparent 3px 7px); }
+  .map .rh.sel { color: var(--text); }
+  .map .cell { border-top: 1px solid var(--border); position: relative; }
+  .map .cell.hatch { background: repeating-linear-gradient(135deg, var(--wash-strong) 0 3px, transparent 3px 7px); opacity: .6; }
+  .ring { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--border-hi); opacity: .8; }
+  .pill { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 18px; padding: 0 4px; border-radius: 9px; font: 700 10px var(--font-mono); letter-spacing: -.02em; color: oklch(15% .03 250); background: var(--c); white-space: nowrap; }
+  .pill.anchor { box-shadow: 0 0 0 2px oklch(12% .008 250), 0 0 0 3.5px var(--accent); }
+  .pop { position: absolute; left: 16px; width: 300px; padding: 0 12px 4px; border-radius: 8px; background: oklch(19% .008 250); border: 1px solid var(--border-hi); box-shadow: 0 12px 32px oklch(0% 0 0 / .5); }
+  .pop::before { content: ""; position: absolute; top: -5px; left: 144px; width: 8px; height: 8px; background: oklch(19% .008 250); border-left: 1px solid var(--border-hi); border-top: 1px solid var(--border-hi); transform: rotate(45deg); }
+  .pop .ph-h { display: flex; align-items: center; justify-content: space-between; height: 32px; }
+  .pop .row { grid-template-columns: 64px 1fr; }
+  .legend { display: flex; align-items: center; gap: 14px; margin-top: auto; height: 32px; font-size: 11px; color: var(--text-faint); border-top: 1px solid var(--border); }
+  .legend span { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .mod { display: flex; flex-direction: column; padding: 12px 16px 0; min-width: 0; min-height: 0; overflow: hidden; }
+  .mod-h { display: flex; align-items: center; justify-content: space-between; height: 40px; }
+  .mod-h .l { display: flex; flex-direction: column; gap: 2px; }
+  .curve { position: relative; flex: 1; min-height: 0; border-top: 1px solid var(--border); }
+  .curve svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .curve text { font-family: var(--font-mono); font-size: 10px; fill: var(--text-faint); }
+  .params { height: 340px; flex: none; display: flex; flex-direction: column; }
+  .params .row { grid-template-columns: 120px 1fr; }
+  .params .seg { height: 24px; padding: 1px; max-width: 360px; }
+  .params .empty { flex: 1; margin: 8px 0; border: 1px dashed var(--border-hi); border-radius: 6px; display: grid; place-items: center; font-size: 11px; color: var(--text-faint); }
+</style>
+</head>
+<body>
+
+<div class="divider">TUNE · 1440×790</div>
+<section class="screen" id="tune">
+  <nav class="irail" data-active="tune"></nav>
+  <aside class="crail"></aside>
+  <main class="ws tune">
+    <div class="tl">
+      <div class="gwrap">
+        <div class="ghead">
+          <div class="l"><h2>Out 1 Left</h2><span class="cap">output EQ → trim → delay → limiter</span></div>
+          <div class="seg"><span class="on">Combined</span><span>Bands</span><span>Phase</span></div>
+        </div>
+        <div class="graph"><svg id="eq"></svg></div>
+      </div>
+      <div class="stage">
+        <div>
+          <div class="f"><label>TRIM</label><div class="sl" style="--p:50%;--a:50%;--w:0%"><b></b><i></i></div><span class="val">+0.0<u>dB</u></span></div>
+          <div class="f"><label>DELAY</label><span class="val">1.20<u>ms</u></span></div>
+          <div class="f"><label>PHASE</label><span class="sw"></span></div>
+          <div class="f"><label>MUTE</label><span class="sw"></span></div>
+          <div class="f" style="margin-left:auto"><label>TYPE</label><span class="val">I2S · GP6</span><span class="link">Setup →</span></div>
+        </div>
+        <div>
+          <div class="f"><label>LIMITER</label><span class="sw on"></span></div>
+          <div class="f"><label>THRESH</label><span class="val">−1.0<u>dB</u></span></div>
+          <div class="f"><label>RELEASE</label><span class="val">80<u>ms</u></span></div>
+          <div class="f"><label>LINK</label><span class="val" style="font-size:11px">Out 1 L+R</span></div>
+          <div class="f"><label>GR</label><div class="led grm" style="--l:21%"><i></i></div><span class="val">2.1<u>dB</u></span></div>
+          <div class="mem"><span class="lbl" style="margin-right:4px">in</span><span class="tg on">LEV</span><span class="tg on">LOUD</span><span class="tg">PSY</span><span class="tg">SUB</span></div>
+        </div>
+      </div>
+      <div class="tools">
+        <span class="btn sm">+ Add band</span><span class="btn sm ghost">AutoEQ…</span><span class="btn sm ghost">Copy</span><span class="btn sm ghost">Paste</span><span class="btn sm ghost">Reset</span>
+        <span class="sp"></span>
+        <div class="lk">Link with Out 1 Right<span class="sw on"></span></div>
+      </div>
+    </div>
+
+    <aside class="insp">
+      <div class="sec-h"><h2>Band 2</h2><span class="cap">Peaking · selected</span></div>
+      <div style="height:120px">
+        <div class="seg typeseg"><span class="on">Peak</span><span>LShelf</span><span>HShelf</span><span>LP</span><span>HP</span><span>…</span></div>
+        <div class="row"><label>FREQUENCY</label><div class="ctl"><div class="sl hue" style="--p:63%;--w:63%"><b></b><i></i></div><span class="val">3.20<u>kHz</u></span></div></div>
+        <div class="row"><label>GAIN</label><div class="ctl"><div class="sl hue" style="--p:55%;--a:50%;--w:5%"><b></b><i></i></div><span class="val">+2.0<u>dB</u></span></div></div>
+        <div class="row"><label>Q</label><div class="ctl"><div class="sl hue" style="--p:34%;--w:34%"><b></b><i></i></div><span class="val">2.00</span></div></div>
+        <div class="row"><label>BYPASS</label><div class="ctl"><span class="sw"></span></div></div>
+      </div>
+      <div class="sec-h"><h2>Bands</h2><span class="cap">10 slots</span></div>
+      <div class="bt" id="bands"></div>
+      <div class="sec-h" style="margin-top:8px"><h2>Sources</h2><span class="cap">matrix column</span></div>
+      <div id="srcs"></div>
+    </aside>
+  </main>
+  <div class="status"><span>fw 1.1.6 beta 4 · V32 · 48 kHz · link OK</span><span class="dk"><span class="dot" style="background:var(--text-faint);opacity:.5"></span>nothing staged</span></div>
+</section>
+
+<div class="divider">PROGRAM · 1440×790</div>
+<section class="screen" id="program">
+  <nav class="irail" data-active="program"></nav>
+  <aside class="crail"></aside>
+  <main class="ws prog">
+    <div class="chain" id="chain"></div>
+    <div class="pbody">
+      <section class="routing">
+        <div class="rt-h"><h2>Routing</h2><span class="cap">outputs as rows · inputs as columns · click a dot to edit</span></div>
+        <div class="map" id="map"></div>
+        <div class="pop" id="pop" style="top:354px">
+          <div class="ph-h"><h2 style="font-size:12px">1L → PDM Sub</h2><span class="cap">crosspoint</span></div>
+          <div class="row"><label>ENABLE</label><div class="ctl"><span class="sw on"></span></div></div>
+          <div class="row"><label>GAIN</label><div class="ctl"><div class="sl acc" style="--p:66%;--w:66%"><b></b><i></i></div><span class="val">−6.0<u>dB</u></span></div></div>
+          <div class="row"><label>PHASE</label><div class="ctl"><span class="sw"></span><span class="cap">normal</span></div></div>
+        </div>
+        <div class="legend">
+          <span><i class="pill" style="--c:var(--ch-i1);min-width:30px">0.0</i>routed · gain</span>
+          <span><i class="pill" style="--c:var(--ch-i2);min-width:30px">⌽−3</i>inverted</span>
+          <span><i class="ring"></i>unrouted</span>
+          <span><i style="width:12px;height:10px;background:repeating-linear-gradient(135deg,var(--wash-strong) 0 3px,transparent 3px 7px)"></i>disabled</span>
+        </div>
+      </section>
+      <section class="mod">
+        <div class="mod-h">
+          <div class="l"><h2>Crossfeed</h2><span class="cap">PASS 3 · stereo program · before matrix</span></div>
+          <div class="f"><label>ENABLED</label><span class="sw on"></span></div>
+        </div>
+        <div class="curve"><svg id="cf"></svg></div>
+        <div class="params">
+          <div class="sec-h"><h2>Parameters</h2><span class="cap">Preset 1</span></div>
+          <div class="row"><label>PAIRS</label><div class="ctl"><div class="seg"><span class="on">1·2</span><span>3·4</span><span>5·6</span><span>7·8</span></div></div></div>
+          <div class="row"><label>PRESET</label><div class="ctl"><div class="seg"><span class="on">Preset 1</span><span>Preset 2</span><span>Preset 3</span><span>Custom</span></div></div></div>
+          <div class="row"><label>CUTOFF</label><div class="ctl"><div class="sl acc" style="--p:48%;--w:48%"><b></b><i></i></div><span class="val">700<u>Hz</u></span></div></div>
+          <div class="row"><label>FEED</label><div class="ctl"><div class="sl acc" style="--p:45%;--w:45%"><b></b><i></i></div><span class="val">4.5<u>dB</u></span></div></div>
+          <div class="row"><label>ITD</label><div class="ctl"><span class="sw on"></span></div></div>
+          <div class="empty">Fixed area sized to the largest module (Upmix, 13 rows)</div>
+        </div>
+      </section>
+    </div>
+  </main>
+  <div class="status"><span>fw 1.1.6 beta 4 · V32 · 48 kHz · link OK</span><span class="dk"><span class="dot warn"></span><b>2 changes</b><span class="btn pri">Apply</span><span class="btn ghost">Discard</span></span></div>
+</section>
+
+<script>
+/* ---------- shell: icon rail + channel rail ---------- */
+(function () {
+  const ic = {
+    tune: '<path d="M3 5h14M3 10h14M3 15h14"/><circle cx="7" cy="5" r="1.8" fill="oklch(11% .008 250)"/><circle cx="13" cy="10" r="1.8" fill="oklch(11% .008 250)"/><circle cx="8" cy="15" r="1.8" fill="oklch(11% .008 250)"/>',
+    program: '<rect x="2" y="7" width="4" height="6" rx="1"/><rect x="8" y="7" width="4" height="6" rx="1"/><rect x="14" y="7" width="4" height="6" rx="1"/><path d="M6 10h2M12 10h2"/>',
+    setup: '<rect x="5" y="5" width="10" height="10" rx="1.5"/><path d="M8 2.5v2.5M12 2.5v2.5M8 15v2.5M12 15v2.5M2.5 8H5M2.5 12H5M15 8h2.5M15 12h2.5"/>',
+    library: '<rect x="3" y="4" width="3.5" height="12" rx=".8"/><rect x="8" y="4" width="3.5" height="12" rx=".8"/><path d="M13.5 5.5l3-.8 2.4 10.6-3 .8z"/>',
+    device: '<path d="M10 3v9"/><path d="M7 12h6v2.5a3 3 0 01-6 0z"/><path d="M8 3h4"/><path d="M10 17.5v-1"/>'
+  };
+  const items = [['tune', 'TUNE'], ['program', 'PROGRAM'], ['setup', 'SETUP'], ['library', 'LIBRARY'], ['device', 'DEVICE']];
+  document.querySelectorAll('.irail').forEach(n => {
+    const a = n.dataset.active;
+    n.innerHTML = items.map(([k, t]) => `<div class="ib ${k === a ? 'on' : ''} ${k === 'device' ? 'push' : ''}"><svg viewBox="0 0 20 20">${ic[k]}</svg><span>${t}</span></div>`).join('');
+  });
+
+  const ins = [['I2S 1 L', 62, 1], ['I2S 1 R', 48, 1], ['I2S 2 L', 30, 2], ['I2S 2 R', 34, 2], ['I2S 3 L', 55, 3], ['I2S 3 R', 41, 3], ['I2S 4 L', 20, 4], ['I2S 4 R', 25, 4]];
+  const grp = (c, rows) => `<div class="grp" style="--c:var(${c})">${rows}</div>`;
+  const row = (n, c, l, o = {}) => `<div class="ch ${o.sel ? 'sel' : ''}" style="--c:var(${c})"><div class="chip">${n}</div><div class="mrow"><div class="led" style="--l:${l}%"><i></i></div>${o.clip ? '<span class="clip"></span>' : ''}</div></div>`;
+  const stub = n => `<div class="stub">${n}</div>`;
+  let inH = '';
+  for (let p = 1; p <= 4; p++) inH += grp('--ch-i' + p, ins.filter(x => x[2] === p).map(x => row(x[0], '--ch-i' + p, x[1])).join(''));
+  const outH =
+    grp('--ch-o1', row('Out 1 Left', '--ch-o1', 58, { sel: 1 }) + row('Out 1 Right', '--ch-o1', 54)) +
+    grp('--ch-o2', row('Out 2 Left', '--ch-o2', 40) + row('Out 2 Right', '--ch-o2', 96, { clip: 1 })) +
+    grp('--ch-o3', stub('Out 3 Left') + stub('Out 3 Right')) +
+    grp('--ch-o4', row('Out 4 Left', '--ch-o4', 36) + row('Out 4 Right', '--ch-o4', 38)) +
+    grp('--ch-sub', row('PDM Sub', '--ch-sub', 22));
+  const scenes = Array.from({ length: 10 }, (_, i) => {
+    const filled = [0, 1, 2, 3, 5].includes(i);
+    return `<div class="sc ${i === 3 ? 'act' : filled ? '' : 'empty'}">0${i}${i === 0 ? '<span class="st">★</span>' : ''}${i === 3 ? '<span class="dd"></span>' : ''}</div>`;
+  }).join('');
+  const html = `
+    <div class="rhead">
+      <div class="dev"><span class="dot ok"></span><b>MOCK-RP2350-0001 · RP2350</b></div>
+      <div class="scenes">${scenes}</div>
+      <div class="sname">Living room<span>● modified</span></div>
+      <div class="sbtn"><span class="btn sm pri">Save</span><span class="btn sm">Revert</span></div>
+      <div class="vrow"><div class="seg s"><span class="on">User</span><span>Master</span></div><span class="btn sm">MUTE</span></div>
+      <div class="vrow"><div class="sl acc" style="--p:80%;--w:80%"><b></b><i></i></div><span class="val">−12.0<u>dB</u></span></div>
+      <div class="brow">BYPASS<span class="sw"></span></div>
+    </div>
+    <div class="rbody"><div class="mlab">INPUTS</div>${inH}<div class="mlab gap">OUTPUTS</div>${outH}</div>
+    <div class="rfoot"><span class="dot ok"></span>Nominal<small>▴</small></div>`;
+  document.querySelectorAll('.crail').forEach(n => n.innerHTML = html);
+})();
+
+/* ---------- TUNE: inspector tables ---------- */
+(function () {
+  const B = [['1', 'Peak', '250 Hz', '−3.5 dB', 'Q 1.4'], ['2', 'Peak', '3.20 kHz', '+2.0 dB', 'Q 2.0', 1], ['3', 'HShelf', '10.0 kHz', '−1.5 dB', '']];
+  let h = B.map(b => `<div class="r ${b[5] ? 'cur' : ''}">${b.slice(0, 5).map(x => `<span>${x}</span>`).join('')}</div>`).join('');
+  for (let i = 4; i <= 10; i++) h += `<div class="r off"><span>${i}</span><span>—</span><span>Off</span><span></span><span></span></div>`;
+  document.getElementById('bands').innerHTML = h;
+  const S = [['I2S 1 L', '--ch-i1', 1], ['I2S 1 R', '--ch-i1'], ['I2S 2 L', '--ch-i2'], ['I2S 2 R', '--ch-i2'], ['I2S 3 L', '--ch-i3'], ['I2S 3 R', '--ch-i3'], ['I2S 4 L', '--ch-i4'], ['I2S 4 R', '--ch-i4']];
+  document.getElementById('srcs').innerHTML = S.map(s => `<div class="src ${s[2] ? '' : 'off'}" style="--c:var(${s[1]})"><span class="nm"><i></i>${s[0]}</span><span class="sw s ${s[2] ? 'on' : ''}"></span><span class="val">${s[2] ? '0.0<u>dB</u>' : '—'}</span><span class="ph">${s[2] ? '+' : '·'}</span></div>`).join('');
+})();
+
+/* ---------- TUNE: EQ graph from biquad math ---------- */
+(function () {
+  const svg = document.getElementById('eq'), W = svg.clientWidth, H = svg.clientHeight;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const fs = 48000, L = 40, R = W - 12, T = 16, B = H - 26;
+  const fx = f => L + (Math.log10(f) - Math.log10(20)) / 3 * (R - L);
+  const gy = g => T + (20 - g) / 40 * (B - T);
+  function bq(type, f0, g, q) {
+    const A = Math.pow(10, g / 40), w = 2 * Math.PI * f0 / fs, c = Math.cos(w), s = Math.sin(w), al = s / (2 * q);
+    let b0, b1, b2, a0, a1, a2;
+    if (type === 'pk') { b0 = 1 + al * A; b1 = -2 * c; b2 = 1 - al * A; a0 = 1 + al / A; a1 = -2 * c; a2 = 1 - al / A; }
+    else if (type === 'hs') { const sq = 2 * Math.sqrt(A) * al;
+      b0 = A * ((A + 1) + (A - 1) * c + sq); b1 = -2 * A * ((A - 1) + (A + 1) * c); b2 = A * ((A + 1) + (A - 1) * c - sq);
+      a0 = (A + 1) - (A - 1) * c + sq; a1 = 2 * ((A - 1) - (A + 1) * c); a2 = (A + 1) - (A - 1) * c - sq; }
+    else { b0 = (1 + c) / 2; b1 = -(1 + c); b2 = (1 + c) / 2; a0 = 1 + al; a1 = -2 * c; a2 = 1 - al; }
+    return [b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0];
+  }
+  function mag(k, f) {
+    const w = 2 * Math.PI * f / fs, cw = Math.cos(w), sw = Math.sin(w), c2 = Math.cos(2 * w), s2 = Math.sin(2 * w);
+    const nr = k[0] + k[1] * cw + k[2] * c2, ni = -(k[1] * sw + k[2] * s2);
+    const dr = 1 + k[3] * cw + k[4] * c2, di = -(k[3] * sw + k[4] * s2);
+    return 10 * Math.log10((nr * nr + ni * ni) / (dr * dr + di * di));
+  }
+  const hp = bq('hp', 80, 0, 0.707), b1 = bq('pk', 250, -3.5, 1.4), b2 = bq('pk', 3200, 2, 2), b3 = bq('hs', 10000, -1.5, 0.707);
+  const b2r = bq('pk', 3200, 1.6, 2), b1r = bq('pk', 250, -3.0, 1.4);
+  const total = f => mag(hp, f) + mag(b1, f) + mag(b2, f) + mag(b3, f);
+  const totalR = f => mag(hp, f) + mag(b1r, f) + mag(b2r, f) + mag(b3, f);
+  const pts = [], pr = [];
+  for (let i = 0; i <= 300; i++) { const f = 20 * Math.pow(1000, i / 300); pts.push([fx(f), gy(total(f))]); pr.push([fx(f), gy(totalR(f))]); }
+  const d = a => a.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
+  const curve = d(pts), fill = curve + `L${R} ${gy(0)}L${L} ${gy(0)}Z`;
+  let g = '';
+  const maj = [[20, '20'], [50, '50'], [100, '100'], [200, '200'], [500, '500'], [1000, '1k'], [2000, '2k'], [5000, '5k'], [10000, '10k'], [20000, '20k']];
+  [30, 40, 60, 70, 80, 90, 300, 400, 600, 700, 800, 900, 3000, 4000, 6000, 7000, 8000, 9000, 15000].forEach(f => g += `<line x1="${fx(f)}" x2="${fx(f)}" y1="${T}" y2="${B}" stroke="var(--border)" opacity=".45"/>`);
+  maj.forEach(([f, t]) => g += `<line x1="${fx(f)}" x2="${fx(f)}" y1="${T}" y2="${B}" stroke="var(--border-hi)" opacity=".7"/><text x="${fx(f)}" y="${B + 16}" text-anchor="middle">${t}</text>`);
+  for (let v = -20; v <= 20; v += 5) {
+    const major = v % 10 === 0;
+    g += `<line x1="${L}" x2="${R}" y1="${gy(v)}" y2="${gy(v)}" stroke="${v === 0 ? 'var(--text-faint)' : 'var(--border)'}" ${major || v === 0 ? '' : 'opacity=".5"'}/>`;
+    if (major) g += `<text x="${L - 8}" y="${gy(v) + 3.5}" text-anchor="end">${v > 0 ? '+' + v : v < 0 ? '−' + (-v) : '0'}</text>`;
+  }
+  const node = (n, f, sel) => {
+    const x = fx(f), y = gy(total(f));
+    if (sel) return `<circle cx="${x}" cy="${y}" r="20" fill="var(--ch-o1)" opacity=".14"/><circle cx="${x}" cy="${y}" r="15" fill="none" stroke="var(--ch-o1)" stroke-width="1.5"/>` +
+      `<circle cx="${x}" cy="${y}" r="11" fill="var(--ch-o1)" stroke="oklch(98% 0 0)" stroke-width="2"/><text x="${x}" y="${y + 4}" text-anchor="middle" style="fill:oklch(15% .03 150);font-weight:700;font-size:11px">${n}</text>`;
+    return `<circle cx="${x}" cy="${y}" r="9" fill="oklch(16% .02 150)" stroke="var(--ch-o1)" stroke-width="1.5"/><text x="${x}" y="${y + 3.5}" text-anchor="middle" style="fill:var(--ch-o1);font-weight:700">${n}</text>`;
+  };
+  const chip = (x, y, w, t, st) => `<rect x="${x - w / 2}" y="${y - 12}" width="${w}" height="24" rx="6" fill="oklch(19% .008 250)" stroke="${st || 'var(--border-hi)'}"/><text class="rd" x="${x}" y="${y + 4}" text-anchor="middle">${t}</text>`;
+  const x2 = fx(3200), y2 = gy(total(3200)), x1 = fx(80), y1 = gy(total(80));
+  const cx = fx(1200), cy = gy(total(1200));
+  svg.innerHTML =
+    `<defs><linearGradient id="fg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--ch-o1)" stop-opacity=".30"/><stop offset="1" style="stop-color:var(--ch-o1)" stop-opacity=".05"/></linearGradient>` +
+    `<clipPath id="pc"><rect x="${L}" y="${T}" width="${R - L}" height="${B - T}"/></clipPath></defs>` + g +
+    `<g clip-path="url(#pc)">` +
+      `<path d="${fill}" fill="url(#fg)" opacity=".85"/>` +
+      `<path d="${d(pr)}" fill="none" stroke="var(--ch-o1)" stroke-width="1.25" stroke-dasharray="4 4" opacity=".4"/>` +
+      `<path d="${curve}" fill="none" stroke="var(--ch-o1)" stroke-width="2.25" stroke-linejoin="round"/>` +
+      `<line x1="${x1}" x2="${x1}" y1="${T}" y2="${B}" stroke="var(--ch-o1)" stroke-dasharray="2 4" opacity=".55"/>` +
+    `</g>` +
+    chip(x1 + 60, T + 20, 104, 'X1 · HP 80 Hz', 'color-mix(in oklab, var(--ch-o1) 40%, transparent)') +
+    `<text x="${R - 8}" y="${T + 14}" text-anchor="end" style="fill:var(--text-faint)">- - Out 1 Right (linked)</text>` +
+    `<rect x="${x1 - 5}" y="${y1 - 5}" width="10" height="10" rx="2" transform="rotate(45 ${x1} ${y1})" fill="oklch(16% .02 150)" stroke="var(--ch-o1)" stroke-width="1.5"/>` +
+    `<g opacity=".55"><line x1="${cx}" x2="${cx}" y1="${T}" y2="${B}" stroke="var(--text-dim)" stroke-dasharray="3 3"/><line x1="${L}" x2="${R}" y1="${cy}" y2="${cy}" stroke="var(--text-dim)" stroke-dasharray="3 3"/>` +
+      `<circle cx="${cx}" cy="${cy}" r="3" fill="none" stroke="var(--text)"/>` + chip(cx + 74, cy + 28, 130, '1.2 kHz · −0.3 dB') + `</g>` +
+    node(1, 250) + node(3, 10000) + node(2, 3200, true) +
+    chip(x2, y2 - 44, 200, '3.20 kHz · +2.0 dB · Q 2.0', 'var(--ch-o1)');
+})();
+
+/* ---------- PROGRAM: chain strip ---------- */
+(function () {
+  const blk = (t, v, st, tog) => `<div class="blk ${st}"><div class="bh"><b>${t}</b>${tog === undefined ? '' : `<span class="sw s ${tog ? 'on' : ''}"></span>`}</div><div class="bv">${v}</div></div>`;
+  const wire = on => `<span class="wire ${on ? 'hot' : ''}"></span>`;
+  const mapIc = '<svg class="ic" viewBox="0 0 14 14"><circle cx="3" cy="3" r="1.2"/><circle cx="7" cy="3" r="1.2"/><circle cx="11" cy="3" r="1.2"/><circle cx="3" cy="7" r="1.2"/><circle cx="7" cy="7" r="1.2" fill="currentColor"/><circle cx="11" cy="7" r="1.2"/><circle cx="3" cy="11" r="1.2"/><circle cx="7" cy="11" r="1.2"/><circle cx="11" cy="11" r="1.2" fill="currentColor"/></svg>';
+  const bl = [
+    blk('Preamp', '+0.0/−1.5 dB', 'on', 1), blk('Input EQ', '4 bands', 'on', 1), blk('Leveller', 'off', 'offb', 0),
+    blk('Crossfeed', 'P1 · 700 Hz', 'on sel', 1), blk('Loudness', '85 dB · 40 %', 'on', 1), blk('Psybass', 'off', 'offb', 0),
+    blk('Subharm', 'off', 'offb', 0), blk('Upmix', 'off', 'offb', 0), blk('Tube', 'V31', 'hatch')
+  ];
+  const tail = [
+    `<div class="blk on"><div class="bh"><b>Matrix</b>${mapIc}</div><div class="bv">7 routes</div></div>`,
+    `<div class="blk on"><div class="bh"><b>Output stage</b></div><div class="bv">per output →</div></div>`
+  ];
+  document.getElementById('chain').innerHTML = bl.join(wire(1)) + wire(1) + '<span class="cdiv"></span>' + tail.join(wire(1));
+})();
+
+/* ---------- PROGRAM: routing map ---------- */
+(function () {
+  const cols = [['1L', 1], ['1R', 1], ['2L', 2], ['2R', 2], ['3L', 3], ['3R', 3], ['4L', 4], ['4R', 4]];
+  const rows = [['Out 1 Left', '--ch-o1'], ['Out 1 Right', '--ch-o1'], ['Out 2 Left', '--ch-o2'], ['Out 2 Right', '--ch-o2'],
+    ['Out 3 Left', '--ch-o3', 'hatch'], ['Out 3 Right', '--ch-o3', 'hatch'], ['Out 4 Left', '--ch-o4'], ['Out 4 Right', '--ch-o4'], ['PDM Sub', '--ch-sub']];
+  const routes = { '0,0': '0.0', '1,1': '0.0', '2,2': '0.0', '3,3': '0.0', '8,0': '−6.0', '8,1': '−6.0', '6,2': '⌽−3.0' };
+  let h = '<span></span>' + cols.map(c => `<span class="ch-h" style="--c:var(--ch-i${c[1]})"><i></i>${c[0]}</span>`).join('');
+  rows.forEach((r, ri) => {
+    h += `<span class="rh ${r[2] || ''} ${ri === 0 ? 'sel' : ''}" style="--c:var(${r[1]})"><i></i>${r[0]}</span>`;
+    cols.forEach((c, ci) => {
+      const g = routes[ri + ',' + ci];
+      h += `<span class="cell ${r[2] || ''}">${g ? `<i class="pill ${ri === 8 && ci === 0 ? 'anchor' : ''}" style="--c:var(--ch-i${c[1]})">${g}</i>` : r[2] ? '' : '<i class="ring"></i>'}</span>`;
+    });
+  });
+  document.getElementById('map').innerHTML = h;
+})();
+
+/* ---------- PROGRAM: crossfeed response ---------- */
+(function () {
+  const svg = document.getElementById('cf'), W = svg.clientWidth, H = svg.clientHeight;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const L = 40, R = W - 12, T = 14, B = H - 26, lo = -24, hi = 3;
+  const fx = f => L + (Math.log10(f) - Math.log10(20)) / 3 * (R - L);
+  const gy = v => T + (hi - v) / (hi - lo) * (B - T);
+  const direct = f => -1.6 / (1 + Math.pow(f / 700, 2));
+  const cross = f => -4.5 - 10 * Math.log10(1 + Math.pow(f / 700, 2));
+  const path = fn => { let s = ''; for (let i = 0; i <= 200; i++) { const f = 20 * Math.pow(1000, i / 200); s += (i ? 'L' : 'M') + fx(f).toFixed(1) + ' ' + gy(fn(f)).toFixed(1); } return s; };
+  let g = '';
+  [[20, '20'], [100, '100'], [1000, '1k'], [10000, '10k'], [20000, '20k']].forEach(([f, t]) => g += `<line x1="${fx(f)}" x2="${fx(f)}" y1="${T}" y2="${B}" stroke="var(--border-hi)" opacity=".7"/><text x="${fx(f)}" y="${B + 16}" text-anchor="middle">${t}</text>`);
+  [-20, -15, -10, -5, 0].forEach(v => g += `<line x1="${L}" x2="${R}" y1="${gy(v)}" y2="${gy(v)}" stroke="${v === 0 ? 'var(--text-faint)' : 'var(--border)'}"/><text x="${L - 8}" y="${gy(v) + 3.5}" text-anchor="end">${v === 0 ? '0' : '−' + (-v)}</text>`);
+  const fc = fx(700);
+  svg.innerHTML = g +
+    `<line x1="${fc}" x2="${fc}" y1="${T}" y2="${B}" stroke="var(--accent)" stroke-dasharray="2 4" opacity=".6"/>` +
+    `<text x="${fc + 6}" y="${T + 12}" style="fill:var(--accent)">fc 700 Hz</text>` +
+    `<path d="${path(direct)}" fill="none" stroke="var(--ch-i1)" stroke-width="2.25"/>` +
+    `<path d="${path(cross)}" fill="none" stroke="var(--ch-o4)" stroke-width="2.25" stroke-dasharray="5 3"/>` +
+    `<line x1="${R - 190}" x2="${R - 170}" y1="${T + 12}" y2="${T + 12}" stroke="var(--ch-i1)" stroke-width="2.25"/><text x="${R - 164}" y="${T + 15}">direct</text>` +
+    `<line x1="${R - 110}" x2="${R - 90}" y1="${T + 12}" y2="${T + 12}" stroke="var(--ch-o4)" stroke-width="2.25" stroke-dasharray="5 3"/><text x="${R - 84}" y="${T + 15}">cross-feed</text>`;
+})();
+</script>
+</body>
+</html>
