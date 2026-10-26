@@ -70,6 +70,7 @@
     defaultName,
     selected = false,
     dim = false,
+    dense = false,
     pulsate = false,
     disabled = false,
     editing = false,
@@ -84,6 +85,7 @@
     defaultName: string;
     selected?: boolean;
     dim?: boolean;
+    dense?: boolean;
     pulsate?: boolean;
     disabled?: boolean;
     editing?: boolean;
@@ -196,6 +198,7 @@
   class="row ch-{chKey(channelId)}"
   class:selected
   class:dim
+  class:dense
   class:pulsate
   class:editing
   class:is-disabled={disabled}
@@ -415,6 +418,16 @@
     0%, 100% { background: var(--wash); }
     50%      { background: color-mix(in oklab, var(--ch-base) 45%, transparent); }
   }
+  /* Dense variant (noveau rail): 20px chip + 1px gap + 6px meter. */
+  .row.dense, .row.dense .body { gap: 1px; }
+  .row.dense .chip {
+    display: flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 7px;
+  }
+  .row.dense .nm { font-family: var(--font-sans); font-size: 11px; font-weight: 500; }
+  .row.dense .nm-input { padding: 0 8px; height: 20px; font-family: var(--font-sans); font-size: 11px; }
   @media (prefers-reduced-motion: reduce) {
     .row.pulsate .chip { animation: none; background: color-mix(in oklab, var(--ch-base) 35%, transparent); }
     .chip::before { transition: none; }

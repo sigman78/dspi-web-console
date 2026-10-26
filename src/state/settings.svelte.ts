@@ -166,20 +166,32 @@ export function selectChannel(id: ChannelId): void {
 // status poll lands).
 export interface SelectionVisibility {
   enabledOutputIds: readonly ChannelId[];
+  // Outputs that stay selectable without being enabled (stub rows).
+  disabledSelectableIds?: readonly ChannelId[];
   activeInputs: number | null;
 }
 
 // Shared shape-builder for reconcileSelectedChannel's callers (connect-time
 // sync and the live-visibility effect alike).
-export function selectionVisibilityOf(outputs: readonly OutputModel[], activeInputs: number | null): SelectionVisibility {
+// includeDisabledOutputs is for shells that list disabled outputs as
+// selectable stubs; the fallback stays the first enabled output.
+export function selectionVisibilityOf(
+  outputs: readonly OutputModel[],
+  activeInputs: number | null,
+  { includeDisabledOutputs = false }: { includeDisabledOutputs?: boolean } = {},
+): SelectionVisibility {
   return {
     enabledOutputIds: outputs.filter((o) => o.enabled).map((o) => o.id),
+    disabledSelectableIds: includeDisabledOutputs ? outputs.filter((o) => !o.enabled).map((o) => o.id) : undefined,
     activeInputs,
   };
 }
 
 function isChannelVisible(channel: ChannelModel, visibility: SelectionVisibility): boolean {
-  if (channel.isOutput) return visibility.enabledOutputIds.includes(channel.id);
+  if (channel.isOutput) {
+    return visibility.enabledOutputIds.includes(channel.id)
+      || (visibility.disabledSelectableIds?.includes(channel.id) ?? false);
+  }
   if (visibility.activeInputs == null) return true;
   const slot = inputIndexOf(channel.id);
   return slot !== null && slot < Math.max(2, visibility.activeInputs);

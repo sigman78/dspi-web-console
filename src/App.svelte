@@ -3,12 +3,13 @@
   import ChannelRail from '@/components/chrome/ChannelRail.svelte';
   import ConnectingHero from '@/components/chrome/ConnectingHero.svelte';
   import ConnectedApp from '@/components/chrome/ConnectedApp.svelte';
+  import NoveauShell from '@/components/noveau/NoveauShell.svelte';
   import EqSpectrum from '@/components/chrome/EqSpectrum.svelte';
   import PresetBoundaryModal from '@/components/presets/PresetBoundaryModal.svelte';
   import Toaster from '@/components/chrome/Toaster.svelte';
   import { app, settings, initialBoot } from '@/state';
   import { handleTabShortcut } from '@/input/tabShortcuts';
-  import { heroOverride } from '@/devOptions';
+  import { heroOverride, uiVariant } from '@/devOptions';
 
   // Visual-test override: ?hero forces the connecting hero to render even
   // when a (real or mock) device would otherwise be connected. Read once at
@@ -30,17 +31,26 @@
     appState.kind !== 'errored'
   );
 
+  const noveau = uiVariant() === 'noveau';
+  const noveauReady = $derived(noveau && !showSplash && !hero && appState.kind === 'ready');
+
+  $effect(() => {
+    if (!noveauReady) return;
+    document.body.classList.add('noveau-mode');
+    return () => document.body.classList.remove('noveau-mode');
+  });
+
   $effect(() => {
     function onKey(e: KeyboardEvent) {
-      if (app.current.kind === 'ready' && handleTabShortcut(e)) e.preventDefault();
+      if (!noveau && app.current.kind === 'ready' && handleTabShortcut(e)) e.preventDefault();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
 </script>
 
-<div class="shell">
-  <TopBar />
+<div class="shell" class:noveau={noveauReady}>
+  {#if !noveauReady}<TopBar />{/if}
   <PresetBoundaryModal />
   <main>
     {#if showSplash}
@@ -48,6 +58,10 @@
         <EqSpectrum />
         <div class="boot-status">CONNECTING…</div>
       </div>
+    {:else if noveauReady && appState.kind === 'ready'}
+      {#key appState.session}
+        <NoveauShell session={appState.session} />
+      {/key}
     {:else if !hero && appState.kind === 'ready'}
       <div class="work">
         <ChannelRail />
@@ -73,6 +87,7 @@
     height: 100%;
     overflow: hidden;
   }
+  .shell.noveau { grid-template-rows: 1fr; }
   main {
     overflow: hidden;
     min-height: 0;

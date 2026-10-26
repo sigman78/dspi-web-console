@@ -4,13 +4,14 @@
     settings,
   } from '@/state';
   import {
-    saveActivePreset, revertActivePreset,
-    setStartupDefault, setStartupMode, copyActivePreset, pastePresetTo, renamePresetSlot,
+    revertActivePreset,
+    setStartupDefault, setStartupMode, copyActivePreset, pastePresetTo,
     setMasterVolumeMode, setOutputConfigMode,
   } from '@/runtime';
   import { MasterVolumeMode, OutputConfigMode } from '@/domain';
   import { PresetStartupMode } from '@/protocol';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import { saveActivePresetNamed } from './saveActivePresetNamed';
   import { getSession } from '@/components/sessionContext';
 
   const { onRequestRename }: { onRequestRename: () => void } = $props();
@@ -40,17 +41,7 @@
   const mvMode = $derived(dir?.masterVolumeMode ?? MasterVolumeMode.Independent);
   const ocMode = $derived(dir?.outputConfigMode ?? OutputConfigMode.Independent);
 
-  async function onSave() {
-    if (s.presets.busy || active == null) return;
-    if (!activeOccupied) {
-      const fallback = `Preset ${active + 1}`;
-      const currentName = s.presets.names[active] ?? '';
-      if (currentName.length === 0) {
-        await renamePresetSlot(s, active, fallback);
-      }
-    }
-    await saveActivePreset(s);
-  }
+  const onSave = () => saveActivePresetNamed(s);
 
   async function onRevert() {
     if (s.presets.busy) return;

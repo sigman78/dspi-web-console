@@ -28,12 +28,27 @@
     channelId?: ChannelId;
     label?: string;
   };
+
+  // Draggable EQ-band node drawn above curves and markers.
+  export type BodeNode = {
+    id: string;
+    f: number;
+    db: number;
+    label?: string;
+    channelId?: ChannelId;
+    shape?: 'circle' | 'diamond';
+    selected?: boolean;
+    bypassed?: boolean;
+    /** Node moves in frequency only. */
+    lockDb?: boolean;
+  };
 </script>
 
 <script lang="ts">
   import { BODE_BINS, fForXNorm } from './bodeFreqs';
   import { Eq } from '@/domain';
   import { chShade } from '@/styles/palette';
+  import * as math from './eqGraphMath';
 
   const {
     curves,
@@ -41,12 +56,30 @@
     yRange = [Eq.BODE_DB_RANGE[0], Eq.BODE_DB_RANGE[1]] as [number, number],
     height = 220,
     crosshair = true,
+    nodes = [],
+    onNodeSelect,
+    onNodeDrag,
+    onNodeDragEnd,
+    onNodeWheel,
+    onNodeContext,
+    onPlotDblClick,
   }: {
     curves: BodeCurve[];
     markers?: BodeMarker[];
     yRange?: [number, number];
     height?: number;
     crosshair?: boolean;
+    nodes?: BodeNode[];
+    onNodeSelect?: (id: string) => void;
+    /** Live values while dragging or nudging. The parent should render `nodes`
+     *  from its own drag draft during a drag so the node tracks the pointer. */
+    onNodeDrag?: (id: string, f: number, db: number) => void;
+    /** Fires once at the end of a drag that moved, or once per keyboard nudge
+     *  burst (on arrow keyup / blur). Not fired for a plain click. */
+    onNodeDragEnd?: (id: string, f: number, db: number) => void;
+    onNodeWheel?: (id: string, deltaY: number) => void;
+    onNodeContext?: (id: string, clientX: number, clientY: number) => void;
+    onPlotDblClick?: (f: number, db: number) => void;
   } = $props();
 
   // Internal coordinate system. W tracks the wrapper's measured pixel width
@@ -71,14 +104,12 @@
     return out;
   });
 
+  const geom = $derived<math.PlotGeometry>({ padL: PAD_L, plotW, plotH, yMin, yMax });
   function yForDb(db: number): number {
-    return plotH - ((db - yMin) / (yMax - yMin)) * plotH;
-  }
-  function xNormForFLocal(f: number): number {
-    return Math.log(f / Eq.FREQ_MIN_HZ) / Math.log(Eq.FREQ_MAX_HZ / Eq.FREQ_MIN_HZ);
+    return math.yForDb(db, geom);
   }
   function xForF(f: number): number {
-    return PAD_L + xNormForFLocal(f) * plotW;
+    return math.xForF(f, geom);
   }
 
   // Catmull-Rom -> cubic Bezier path. Input is 201 sampled points already
@@ -182,8 +213,103 @@
   let cy = $state<number | null>(null);
   let svgEl = $state<SVGSVGElement | null>(null);
 
+  // Pointer position in viewBox coordinates, or null while unmeasured.
+  function toPlotXY(e: { clientX: number; clientY: number }): { x: number; y: number } | null {
+    if (!svgEl) return null;
+    const r = svgEl.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return null;
+    return {
+      x: ((e.clientX - r.left) / r.width) * W,
+      y: ((e.clientY - r.top) / r.height) * height,
+    };
+  }
+
+  let dragId = $state<string | null>(null);
+  let lastDrag: { f: number; db: number } | null = null;
+  // Keyboard nudge accumulator: advanced on each (auto-repeat) keydown,
+  // committed once on keyup/blur.
+  let kbDraft: { id: string; f: number; db: number } | null = null;
+
+  // A dragged node that disappears must not leave the plot stuck in drag mode.
+  $effect(() => {
+    if (dragId != null && !nodes.some((n) => n.id === dragId)) {
+      dragId = null;
+      lastDrag = null;
+    }
+  });
+
+  function nodeColor(n: BodeNode): string {
+    return n.channelId != null ? chShade(n.channelId, 'bright') : 'var(--accent)';
+  }
+  function nodeX(n: BodeNode): number {
+    return xForF(Math.max(Eq.FREQ_MIN_HZ, Math.min(Eq.FREQ_MAX_HZ, n.f)));
+  }
+  function nodeY(n: BodeNode): number {
+    return yForDb(Math.max(yMin, Math.min(yMax, n.db)));
+  }
+
+  function onNodeDown(e: PointerEvent, n: BodeNode) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    dragId = n.id;
+    lastDrag = null;
+    cx = null;
+    cy = null;
+    onNodeSelect?.(n.id);
+  }
+  function onNodeMove(e: PointerEvent, n: BodeNode) {
+    if (dragId !== n.id) return;
+    const p = toPlotXY(e);
+    if (!p) return;
+    lastDrag = math.dragToParams(n, p.x, p.y, geom);
+    onNodeDrag?.(n.id, lastDrag.f, lastDrag.db);
+  }
+  function endDrag(e: PointerEvent, n: BodeNode) {
+    if (dragId !== n.id) return;
+    (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
+    const last = lastDrag;
+    dragId = null;
+    lastDrag = null;
+    if (last) onNodeDragEnd?.(n.id, last.f, last.db);
+  }
+  function onNodeWheelEvt(e: WheelEvent, n: BodeNode) {
+    if (!onNodeWheel) return;
+    e.preventDefault();
+    onNodeWheel(n.id, e.deltaY);
+  }
+  function onNodeCtx(e: MouseEvent, n: BodeNode) {
+    e.preventDefault();
+    onNodeContext?.(n.id, e.clientX, e.clientY);
+  }
+  function onNodeKey(e: KeyboardEvent, n: BodeNode) {
+    const base = kbDraft && kbDraft.id === n.id ? kbDraft : { id: n.id, f: n.f, db: n.db };
+    const next = math.nudgeParams({ ...base, lockDb: n.lockDb }, e.key, e.shiftKey, geom);
+    if (!next) return;
+    e.preventDefault();
+    kbDraft = { id: n.id, ...next };
+    onNodeDrag?.(n.id, next.f, next.db);
+  }
+  function flushNudge() {
+    const d = kbDraft;
+    kbDraft = null;
+    if (d) onNodeDragEnd?.(d.id, d.f, d.db);
+  }
+  function onNodeKeyUp(e: KeyboardEvent) {
+    if (e.key.startsWith('Arrow')) flushNudge();
+  }
+  function onSvgDblClick(e: MouseEvent) {
+    if (!onPlotDblClick) return;
+    const p = toPlotXY(e);
+    if (!p || p.x < PAD_L || p.y < 0 || p.y > plotH) return;
+    onPlotDblClick(math.fForX(p.x, geom), math.dbForY(p.y, geom));
+  }
+  function nodeAria(n: BodeNode): string {
+    return `${n.label ?? ''} ${Math.round(n.f)} Hz ${n.db.toFixed(1)} dB`.trim();
+  }
+
   function onMove(e: PointerEvent) {
-    if (!crosshair || !svgEl) return;
+    if (!crosshair || !svgEl || dragId != null) return;
     const r = svgEl.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) return;
     const sx = (e.clientX - r.left) / r.width;
@@ -235,10 +361,11 @@
   viewBox={`0 0 ${W} ${height}`}
   width="100%"
   {height}
-  role="img"
+  role={nodes.length ? 'group' : 'img'}
   aria-label="Frequency response plot"
   onpointermove={onMove}
   onpointerleave={onLeave}
+  ondblclick={onSvgDblClick}
 >
   <defs>
     <clipPath id={clipId}>
@@ -354,6 +481,67 @@
     {/each}
   </g>
 
+  {#each nodes as n (n.id)}
+    {@const nx = nodeX(n)}
+    {@const ny = nodeY(n)}
+    {@const nc = nodeColor(n)}
+    {@const r = n.selected ? 9 : 7}
+    <g
+      class="bode-node"
+      class:dragging={dragId === n.id}
+      role="slider"
+      tabindex="0"
+      aria-label={n.label ? `Band ${n.label}` : 'Band'}
+      aria-valuemin={Eq.FREQ_MIN_HZ}
+      aria-valuemax={Eq.FREQ_MAX_HZ}
+      aria-valuenow={n.f}
+      aria-valuetext={nodeAria(n)}
+      onpointerdown={(e) => onNodeDown(e, n)}
+      onpointermove={(e) => onNodeMove(e, n)}
+      onpointerup={(e) => endDrag(e, n)}
+      onpointercancel={(e) => endDrag(e, n)}
+      onlostpointercapture={(e) => endDrag(e, n)}
+      onwheel={(e) => onNodeWheelEvt(e, n)}
+      oncontextmenu={(e) => onNodeCtx(e, n)}
+      ondblclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => onNodeKey(e, n)}
+      onkeyup={onNodeKeyUp}
+      onblur={flushNudge}
+    >
+      {#if n.selected}
+        {#if n.shape === 'diamond'}
+          <rect
+            x={nx - 9} y={ny - 9} width="18" height="18"
+            transform={`rotate(45 ${nx} ${ny})`}
+            fill="none" stroke={nc} stroke-opacity="0.4" stroke-width="2" pointer-events="none"
+          />
+        {:else}
+          <circle cx={nx} cy={ny} r={r + 1} fill="none" stroke={nc} stroke-opacity="0.4" stroke-width="2" pointer-events="none" />
+        {/if}
+      {/if}
+      {#if n.shape === 'diamond'}
+        <rect
+          x={nx - 6} y={ny - 6} width="12" height="12"
+          transform={`rotate(45 ${nx} ${ny})`}
+          fill={n.bypassed ? 'var(--bg)' : nc} stroke={nc} stroke-width="1.5"
+        />
+      {:else}
+        <circle
+          cx={nx} cy={ny} r={r}
+          fill={n.bypassed ? 'var(--bg)' : nc} stroke={n.bypassed ? nc : 'var(--bg)'} stroke-width="1.5"
+        />
+      {/if}
+      {#if n.label}
+        <text
+          x={nx} y={ny + 3} text-anchor="middle" font-size="9" font-family="var(--font-mono)"
+          fill={n.bypassed ? nc : 'var(--bg)'} pointer-events="none"
+        >
+          {n.label}
+        </text>
+      {/if}
+    </g>
+  {/each}
+
   {#if crosshair && cx != null && cy != null && cFreq != null && cDb != null}
     <line
       x1={cx} x2={cx} y1={0} y2={plotH}
@@ -387,6 +575,17 @@
 <style>
   .bode-wrap {
     width: 100%;
+  }
+  .bode-node {
+    cursor: grab;
+    outline: none;
+  }
+  .bode-node.dragging {
+    cursor: grabbing;
+  }
+  .bode-node:focus-visible circle,
+  .bode-node:focus-visible rect {
+    stroke: var(--text);
   }
   .bode {
     display: block;

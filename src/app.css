@@ -60,6 +60,12 @@ html, body, #app { height: 100%; margin: 0; }
 body { min-width: 1160px; }
 /* The mobile splash (main.ts) is the one phone-sized page; it opts out. */
 body.mobile-splash-mode { min-width: 0; }
+/* Noveau shell: fixed instrument floor. At or above it nothing overflows, so
+   no scrollbar appears; below it the whole page pans as one unit. */
+body.noveau-mode { overflow: auto; min-width: 1440px; min-height: 790px; }
+/* Percent heights resolve against the body's specified height, not its
+   min-height, so the app root carries the floor itself. */
+body.noveau-mode #app { height: max(100dvh, 790px); }
 button { font: inherit; color: inherit; }
 
 input[type="number"], select, input[type="range"] {

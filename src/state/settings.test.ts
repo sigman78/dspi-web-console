@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from 'vitest';
-import { loadSettings, settings, selectChannel, reconcileSelectedChannel, type SelectionVisibility } from './settings.svelte';
-import { ChannelId, type ChannelModel } from '@/domain';
+import { loadSettings, settings, selectChannel, reconcileSelectedChannel, selectionVisibilityOf, type SelectionVisibility } from './settings.svelte';
+import { ChannelId, type ChannelModel, type OutputModel } from '@/domain';
 
 function ch(id: ChannelId, isOutput: boolean): ChannelModel {
   return { id, name: '', defaultName: '', shortName: '', bandCount: 10, isOutput, filters: [], xoverBands: [] };
@@ -252,6 +252,18 @@ describe('reconcileSelectedChannel', () => {
     settings.selectedChannel = ChannelId.In1R;
     reconcileSelectedChannel(channels, visibility([ChannelId.Out1L, ChannelId.Out1R], 2));
     expect(settings.selectedChannel).toBe(ChannelId.In1R);
+  });
+
+  test('a disabled output survives only when the stub-selectable option is on', () => {
+    const outputs = [
+      { id: ChannelId.Out1L, enabled: true },
+      { id: ChannelId.Out1R, enabled: false },
+    ] as unknown as OutputModel[];
+    settings.selectedChannel = ChannelId.Out1R;
+    reconcileSelectedChannel(channels, selectionVisibilityOf(outputs, null, { includeDisabledOutputs: true }));
+    expect(settings.selectedChannel).toBe(ChannelId.Out1R);
+    reconcileSelectedChannel(channels, selectionVisibilityOf(outputs, null));
+    expect(settings.selectedChannel).toBe(ChannelId.Out1L);
   });
 
   test('an input selection is preserved while activeInputs is null (count not yet known)', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mockToken, mockChip, heroOverride, logSilenced, wireLogEnabled, mockSysClockFallback, debugPanelsForced } from './devOptions';
+import { mockToken, mockChip, heroOverride, logSilenced, wireLogEnabled, mockSysClockFallback, debugPanelsForced, uiVariant } from './devOptions';
 
 afterEach(() => window.history.replaceState({}, '', '/'));
 
@@ -99,5 +99,21 @@ describe('debugPanelsForced', () => {
   it('is false when ?debug is absent', () => {
     window.history.replaceState({}, '', '/');
     expect(debugPanelsForced()).toBe(false);
+  });
+});
+
+describe('uiVariant', () => {
+  it('is noveau only for ?ui=noveau', () => {
+    window.history.replaceState({}, '', '/?ui=noveau');
+    expect(uiVariant()).toBe('noveau');
+  });
+
+  it('falls back to classic when absent or unrecognized', () => {
+    window.history.replaceState({}, '', '/');
+    expect(uiVariant()).toBe('classic');
+    window.history.replaceState({}, '', '/?ui=other');
+    expect(uiVariant()).toBe('classic');
+    window.history.replaceState({}, '', '/?ui');
+    expect(uiVariant()).toBe('classic');
   });
 });
