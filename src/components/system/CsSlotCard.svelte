@@ -46,7 +46,7 @@
     <span class="cs-pill {pill.cls}">{pill.text}</span>
     <span class="spacer"></span>
     {#if actions}{@render actions()}{/if}
-    <button type="button" class="x" aria-label={removeLabel} {disabled} onclick={onRemove}>✕</button>
+    <button type="button" class="x-btn" aria-label={removeLabel} {disabled} onclick={onRemove}>✕</button>
   </div>
   {#if note}{@render note()}{/if}
   {#if open}
@@ -63,7 +63,7 @@
 <style>
   .slot { border-bottom: 1px solid var(--wash); }
   .slot.open {
-    background: color-mix(in oklab, var(--accent) 6%, transparent);
+    background: color-mix(in oklab, var(--accent) var(--tint-weak), transparent);
     box-shadow: inset 2px 0 0 var(--accent);
   }
   .slothead {
@@ -81,7 +81,7 @@
   .slot:not(.open):hover { background: var(--wash-faint); }
   .slot.open .slothead {
     padding-bottom: 6px;
-    border-bottom: 1px solid color-mix(in oklab, var(--accent) 25%, transparent);
+    border-bottom: 1px solid color-mix(in oklab, var(--accent) var(--tint-strong), transparent);
     margin-bottom: 4px;
   }
   .hdrbtn {
@@ -125,19 +125,8 @@
     background: var(--panel-solid);
     color: var(--text);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
   }
   .nameinput:disabled { opacity: var(--dim-disabled); }
   .spacer { flex: 1; }
-  .x {
-    background: none;
-    border: none;
-    color: var(--text-faint);
-    cursor: pointer;
-    padding: 0;
-    font-size: 9px;
-    line-height: 1;
-  }
-  .x:hover:not(:disabled) { color: var(--err); }
-  .x:disabled { opacity: var(--dim-disabled); cursor: default; }
 </style>

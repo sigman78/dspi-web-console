@@ -202,7 +202,7 @@
 <style>
   .scrim {
     position: fixed; inset: 0;
-    background: color-mix(in oklab, var(--bg) 70%, transparent);
+    background: var(--scrim);
     backdrop-filter: blur(6px);
     display: grid; place-items: center;
     z-index: var(--z-modal);
@@ -221,7 +221,7 @@
     z-index: var(--z-raise);
     background: var(--panel-solid);
     border: 1px solid var(--border-hi);
-    border-radius: 6px;
+    border-radius: var(--radius-m);
     width: 640px;
     max-width: 92vw;
     max-height: 80vh;
@@ -262,14 +262,13 @@
     flex: 1;
     background: var(--wash);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     color: var(--text);
     font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: 0.5px;
     padding: 5px 8px;
   }
-  .search:focus { outline: none; border-color: var(--border-hi); }
   .scopes { display: flex; gap: 6px; }
 
   .list {
@@ -285,19 +284,19 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     margin-bottom: 2px;
   }
   .row.selected {
-    background: color-mix(in oklab, var(--accent) 12%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 45%, transparent) inset;
+    background: color-mix(in oklab, var(--accent) var(--tint), transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) var(--tint-edge), transparent) inset;
   }
 
   .fav {
     flex: none;
     width: 24px;
     height: 24px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     border: 1px solid transparent;
     background: transparent;
     color: var(--text-faint);
@@ -338,7 +337,7 @@
     font-weight: 700;
     letter-spacing: 0.6px;
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     text-transform: uppercase;
     --hue: var(--text-faint);
     color: var(--hue);

@@ -183,7 +183,7 @@
     border: none;
     border-radius: 0;
     background: transparent;
-    box-shadow: inset 0 -1px 0 0 color-mix(in oklab, var(--text) 14%, transparent);
+    box-shadow: inset 0 -1px 0 0 var(--border-hi);
     color: var(--text);
     font-family: var(--font-mono);
     cursor: pointer;
@@ -194,7 +194,7 @@
   .vf:focus-visible {
     box-shadow:
       inset 0 -1px 0 0 var(--accent),
-      0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
+      var(--focus-ring);
   }
   .vf[data-align="center"] { justify-content: center; }
   .vf[data-align="right"]  { justify-content: flex-end; }
@@ -202,18 +202,18 @@
   .vf.hover:not(.editing):not(.disabled) {
     background: var(--wash);
     box-shadow:
-      inset 0 -1px 0 0 color-mix(in oklab, var(--text) 32%, transparent),
-      0 -2px 6px -2px color-mix(in oklab, var(--text) 18%, transparent) inset;
+      inset 0 -1px 0 0 var(--text-faint),
+      0 -2px 6px -2px var(--border-hi) inset;
   }
   .vf.editing {
-    background: color-mix(in oklab, var(--accent) 6%, transparent);
+    background: color-mix(in oklab, var(--accent) var(--tint-weak), transparent);
     box-shadow:
       inset 0 -1px 0 0 var(--accent),
       0 0 0 1px var(--accent);
     cursor: text;
   }
   .vf.editing.invalid {
-    background: color-mix(in oklab, var(--err) 10%, transparent);
+    background: color-mix(in oklab, var(--err) var(--tint), transparent);
     box-shadow:
       inset 0 -1px 0 0 var(--err),
       0 0 0 1px var(--err);

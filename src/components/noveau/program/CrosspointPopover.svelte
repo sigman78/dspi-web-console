@@ -72,7 +72,7 @@
       if ((e.target as Element | null)?.closest?.('input:not([type=range]), textarea, .vf')) return;
       onClose();
     };
-    el?.querySelector<HTMLElement>('button:not(.x), input')?.focus();
+    el?.querySelector<HTMLElement>('button:not(.x-btn), input')?.focus();
     window.addEventListener('pointerdown', down, true);
     window.addEventListener('keydown', key);
     return () => {
@@ -89,7 +89,7 @@
     {#if proposal}
       <span class="tag">NEW</span>
     {:else}
-      <button type="button" class="x" aria-label="Close" onclick={onClose}>×</button>
+      <button type="button" class="x-btn close" aria-label="Close" onclick={onClose}>✕</button>
     {/if}
   </div>
   <div class="r">
@@ -130,7 +130,7 @@
     background: var(--panel-solid);
     border: 1px solid var(--border-hi);
     border-radius: var(--radius-s);
-    box-shadow: 0 4px 14px oklch(0% 0 0 / 0.4);
+    box-shadow: var(--shadow-pop);
   }
   .caret {
     position: absolute;
@@ -146,21 +146,6 @@
   }
   .ph { display: flex; align-items: center; gap: 8px; height: 28px; }
   .ph h3 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .x {
-    flex: none;
-    width: 20px; height: 20px;
-    padding: 0;
-    display: grid; place-items: center;
-    border: none;
-    border-radius: var(--radius-s);
-    background: none;
-    color: var(--text-dim);
-    font-size: 16px;
-    line-height: 1;
-    cursor: pointer;
-  }
-  .x:hover { color: var(--text); background: var(--wash-strong); }
-  .x:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   h3 { margin: 0; font-family: var(--font-sans); font-size: 12px; font-weight: 600; color: var(--text); }
   .cap { flex: none; white-space: nowrap; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }
   .r {
@@ -182,17 +167,17 @@
     padding: 0 6px;
     height: 18px;
     line-height: 18px;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     font-family: var(--font-mono);
     font-size: 11px;
     letter-spacing: 0.04em;
     color: var(--accent);
-    background: color-mix(in oklab, var(--accent) 14%, transparent);
+    background: color-mix(in oklab, var(--accent) var(--tint), transparent);
   }
   .danger:hover:not(:disabled) {
     color: var(--err);
-    border-color: color-mix(in oklab, var(--err) 45%, transparent);
-    background: color-mix(in oklab, var(--err) 12%, transparent);
+    border-color: color-mix(in oklab, var(--err) var(--tint-edge), transparent);
+    background: color-mix(in oklab, var(--err) var(--tint), transparent);
   }
   .act { height: 20px; padding: 0 8px; font-size: 11px; }
   .chip:not(.accent).act { color: var(--text-dim); }

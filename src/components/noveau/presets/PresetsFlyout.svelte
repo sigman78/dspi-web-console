@@ -177,7 +177,7 @@
 <div class="fly" role="dialog" aria-modal="false" aria-label="Presets" data-budget>
   <header>
     <span class="title">{active != null ? `PRESET ${active}` : 'PRESETS'}</span>
-    <button type="button" class="x" aria-label="Close presets" onclick={close}>×</button>
+    <button type="button" class="x-btn close" aria-label="Close presets" onclick={close}>✕</button>
   </header>
 
   {#if dir == null}
@@ -309,7 +309,7 @@
     background: var(--panel-solid);
     border: 1px solid var(--border-hi);
     border-radius: var(--radius-m);
-    box-shadow: 0 12px 32px oklch(0% 0 0 / 0.5);
+    box-shadow: var(--shadow-flyout);
   }
   header {
     flex: none;
@@ -321,20 +321,7 @@
     border-bottom: 1px solid var(--border);
   }
   .title { font-family: var(--font-sans); font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
-  .x {
-    margin-left: auto;
-    width: 20px;
-    height: 20px;
-    padding: 0;
-    background: none;
-    border: none;
-    border-radius: var(--radius-s);
-    color: var(--text-dim);
-    font-size: 16px;
-    line-height: 1;
-    cursor: pointer;
-  }
-  .x:hover { color: var(--text); background: var(--wash); }
+  .x-btn { margin-left: auto; }
   .state {
     display: flex;
     align-items: center;
@@ -365,8 +352,6 @@
   }
   .state .bad { color: var(--err); }
   .state .chip { height: 20px; padding: 0 8px; font-family: var(--font-sans); font-size: 11px; font-weight: 600; letter-spacing: 0; }
-  .chips :global(.icon-toggle) { flex: none; width: 22px; height: 22px; }
-  .chips :global(.icon-toggle.accent) { color: var(--accent); }
   .dim { color: var(--text-dim); }
   .hint { color: var(--text-faint); }
   .name {
@@ -382,7 +367,6 @@
     border: 1px solid var(--border-hi);
     border-radius: var(--radius-s);
   }
-  .name:focus { border-color: var(--accent); outline: none; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chips .chip {
     height: 22px;
@@ -418,7 +402,7 @@
     box-sizing: border-box;
     padding: 2px 8px 2px 12px;
     border-top: 1px solid color-mix(in oklab, var(--err) 45%, var(--border));
-    background: color-mix(in oklab, var(--err) 14%, transparent);
+    background: color-mix(in oklab, var(--err) var(--tint), transparent);
     font-size: 11px;
     color: var(--err);
   }

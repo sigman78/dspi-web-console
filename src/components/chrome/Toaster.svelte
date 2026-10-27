@@ -32,13 +32,13 @@
     gap: 8px;
     padding: 8px 10px;
     background: var(--panel-solid);
-    border: 1px solid color-mix(in oklab, var(--text) 12%, transparent);
+    border: 1px solid var(--border-hi);
     border-left-width: 3px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text);
-    box-shadow: 0 4px 14px oklch(0% 0 0 / 0.4);
+    box-shadow: var(--shadow-pop);
   }
   .toast.error { border-left-color: var(--err); }
   .toast.warn  { border-left-color: var(--warn); }

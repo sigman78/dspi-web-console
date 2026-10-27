@@ -124,7 +124,7 @@
     background: var(--panel-solid);
     color: var(--text);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     cursor: pointer;
   }
   .trigger:hover:not(:disabled) { border-color: var(--border-hi); }
@@ -144,7 +144,7 @@
   .trigger.open {
     border-color: var(--accent);
     color: var(--text);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 45%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) var(--tint-edge), transparent);
   }
   .trigger.open::after { content: '▴'; color: var(--accent); }
 
@@ -158,9 +158,8 @@
     border: 1px solid var(--border-hi);
     border-radius: var(--radius-s);
     box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--accent) 22%, transparent),
-      0 10px 30px oklch(0% 0 0 / 0.55),
-      0 2px 8px oklch(0% 0 0 / 0.35);
+      0 0 0 1px color-mix(in oklab, var(--accent) var(--tint-strong), transparent),
+      var(--shadow-flyout);
   }
 
   .grid {

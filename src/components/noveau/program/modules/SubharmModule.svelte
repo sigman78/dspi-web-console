@@ -141,7 +141,7 @@
   .meters { display: inline-flex; gap: 6px; min-width: 0; }
   .m { display: inline-flex; align-items: center; gap: 3px; }
   .mn { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
-  .bar { width: 20px; height: 5px; border-radius: 2px; background: var(--wash-strong); overflow: hidden; }
+  .bar { width: 20px; height: 5px; border-radius: var(--radius-xs); background: var(--wash-strong); overflow: hidden; }
   .fill { display: block; height: 100%; background: var(--accent); transition: width 200ms; }
   .note.ok { color: var(--ok); font-weight: 700; }
 </style>

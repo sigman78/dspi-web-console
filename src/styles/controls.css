@@ -13,13 +13,14 @@
 
    .microlbl — control row label (KV stays the canon for label+value pairs).
    .hint — faint mono helper/idle text; padding stays component-local.
-   .dimmed — semantic marker (no opacity) for feature-off panel bodies; the
-     body's labels/readouts stay full-contrast, the controls disabled by the
-     feature-off state carry the one dim layer themselves (U-P3 policy B).
+     .hint.err — error tone.
+   .sel — compact mono <select> used across the system panels.
+   .x-btn — bare ✕ glyph button: remove-row by default (hover turns --err);
+     .x-btn.close is the 20px header close (hover washes).
    .kvgrid — the 2-col label/value grid shared by DevicePanel and
      other SETUP panels; panels with a different padding/gap keep a local variant.
-   .icon-toggle — small square icon button (rail mute / bypass);
-     width is the only per-caller variance, set via a local override.
+   .icon-toggle — 22px square icon button (rail mute / bypass / preset
+     save); .accent tints the glyph, .on is the active (err) state.
    .cs-pill — status pill in the control-surface slot headers (NEW / OK /
      INACTIVE ...); tone via .new / .ok / .warn / .run / .off. */
 
@@ -44,7 +45,7 @@
   font-size: 10px;
   letter-spacing: 1.5px;
   padding: 6px 12px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
 }
 
 /* Icon-only chip: a single glyph header action (e.g. the ↺ reset-to-defaults). */
@@ -69,7 +70,7 @@
 .chip.warn   { --tone: var(--warn); }
 .chip.danger { --tone: var(--err); }
 .chip.accent, .chip.warn, .chip.danger {
-  background: color-mix(in oklab, var(--tone) 10%, transparent);
+  background: color-mix(in oklab, var(--tone) var(--tint), transparent);
   border-color: color-mix(in oklab, var(--tone) 50%, var(--border));
   color: var(--tone);
 }
@@ -77,20 +78,20 @@
 .chip.warn:hover:not(:disabled),
 .chip.danger:hover:not(:disabled) {
   color: var(--tone);
-  background: color-mix(in oklab, var(--tone) 16%, transparent);
+  background: color-mix(in oklab, var(--tone) var(--tint-strong), transparent);
   border-color: var(--tone);
 }
 
 .chip.on {
   --tone: var(--accent);
-  background: color-mix(in oklab, var(--tone) 14%, transparent);
+  background: color-mix(in oklab, var(--tone) var(--tint), transparent);
   border-color: color-mix(in oklab, var(--tone) 50%, var(--border));
   color: var(--tone);
   opacity: 1;
 }
 
 .chip.armed {
-  background: color-mix(in oklab, var(--tone) 26%, transparent);
+  background: color-mix(in oklab, var(--tone) var(--tint-strong), transparent);
   border-color: var(--tone);
 }
 
@@ -111,18 +112,51 @@
   margin: 0;
 }
 
-/* Semantic marker only (U-P3 policy B) -- no opacity here. Feature-off panel
-   bodies keep full-contrast labels/readouts; the controls disabled by the
-   feature-off state carry the single dim layer (var(--dim-disabled))
-   themselves via their own :disabled rule. */
-.dimmed { }
+.hint.err { color: var(--err); }
+
+select.sel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 6px;
+  background: var(--panel-solid);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+select.sel:disabled { opacity: var(--dim-disabled); cursor: default; }
+
+.x-btn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 0;
+  font-size: 9px;
+  line-height: 1;
+}
+.x-btn:hover:not(:disabled) { color: var(--err); }
+.x-btn:disabled { opacity: var(--dim-disabled); cursor: default; }
+.x-btn.close {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-s);
+  color: var(--text-dim);
+  font-size: 16px;
+}
+.x-btn.close:hover:not(:disabled) { color: var(--text); background: var(--wash-strong); }
 
 .kvgrid { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 .icon-toggle {
+  flex: none;
+  width: 22px;
   height: 22px;
   padding: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   background: var(--wash);
   border: 1px solid var(--border);
   color: var(--text-dim);
@@ -132,10 +166,11 @@
   justify-content: center;
 }
 .icon-toggle:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
+.icon-toggle.accent { color: var(--accent); }
 .icon-toggle:disabled { cursor: default; opacity: var(--dim-disabled); }
 .icon-toggle.on {
-  background: color-mix(in oklab, var(--err) 15%, transparent);
-  border-color: color-mix(in oklab, var(--err) 45%, transparent);
+  background: color-mix(in oklab, var(--err) var(--tint), transparent);
+  border-color: color-mix(in oklab, var(--err) var(--tint-edge), transparent);
   color: var(--err);
 }
 
@@ -154,7 +189,7 @@
   height: 6px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 4px color-mix(in oklab, var(--accent) 70%, transparent);
+  box-shadow: 0 0 4px color-mix(in oklab, var(--accent) var(--tint-glow), transparent);
 }
 .stage-wrap { display: inline-block; }
 
@@ -179,7 +214,7 @@
   border-radius: 999px;
   border: 1px solid var(--border-hi);
 }
-.cs-pill.new, .cs-pill.run { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 50%, transparent); }
-.cs-pill.ok   { color: var(--ok);   border-color: color-mix(in oklab, var(--ok) 50%, transparent); }
-.cs-pill.warn { color: var(--warn); border-color: color-mix(in oklab, var(--warn) 50%, transparent); }
+.cs-pill.new, .cs-pill.run { color: var(--accent); border-color: color-mix(in oklab, var(--accent) var(--tint-edge), transparent); }
+.cs-pill.ok   { color: var(--ok);   border-color: color-mix(in oklab, var(--ok) var(--tint-edge), transparent); }
+.cs-pill.warn { color: var(--warn); border-color: color-mix(in oklab, var(--warn) var(--tint-edge), transparent); }
 .cs-pill.off  { color: var(--text-faint); border-color: var(--border); }

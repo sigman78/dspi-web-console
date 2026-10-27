@@ -213,7 +213,7 @@
     {@render meter()}
   {:else}
     <!-- The whole row body is the select target (click → select, double-click →
-         rename), so the meter area stays clickable. Only the .chip carries the
+         rename), so the meter area stays clickable. Only the .ch-face carries the
          button chrome; the meter sits below it, outside the visible face. The
          editor input can't live inside a <button>, so it replaces this body
          when editing. -->
@@ -226,7 +226,7 @@
       onclick={handleClick}
       ondblclick={startEdit}
     >
-      <span class="chip"><span class="nm">{name}</span></span>
+      <span class="ch-face"><span class="nm">{name}</span></span>
       {@render meter()}
     </button>
   {/if}
@@ -246,7 +246,7 @@
     text-align: left;
   }
   /* The clickable row body: a button so the whole row (chip + meter) selects.
-     Bare of chrome -- the visible face is the .chip inside it. */
+     Bare of chrome -- the visible face is the .ch-face inside it. */
   .body {
     display: flex;
     flex-direction: column;
@@ -263,13 +263,13 @@
   }
   /* The visible button face: name only; the meter lives below it. 20px chip +
      1px gap + 6px meter. */
-  .chip {
+  .ch-face {
     display: flex;
     align-items: center;
     height: 20px;
     padding: 0 7px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     /* Per-channel button fill: the channel's own hue tints a left-anchored
        gradient (base at the left edge, fading right so it reads off the coloured
        spine beside it) over the neutral wash, plus a soft inset glow bleeding in
@@ -283,7 +283,7 @@
     box-shadow: inset 12px 0 20px -14px color-mix(in oklab, var(--ch-glow) 45%, transparent);
     transition: background 100ms, border-color 100ms, box-shadow 100ms;
   }
-  .row:not(.selected) .body:hover:not(:disabled) .chip {
+  .row:not(.selected) .body:hover:not(:disabled) .ch-face {
     border-color: var(--border-hi);
     background:
       linear-gradient(to right,
@@ -304,7 +304,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  /* Inline editor: replaces the .chip, so it takes the chip's height. A solid
+  /* Inline editor: replaces the .ch-face, so it takes the chip's height. A solid
      --bg backdrop keeps the text legible on a selected row (accent fill)
      instead of inheriting it. */
   .nm-input {
@@ -314,7 +314,7 @@
     color: var(--text);
     background: var(--bg);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     height: 20px;
     padding: 0 8px;
     margin: 0;
@@ -331,7 +331,7 @@
     gap: 1px;
     height: 6px;
     padding: 1px;
-    border-radius: 2px;
+    border-radius: var(--radius-xs);
     background: oklch(0% 0 0 / 0.5);
   }
   /* Each LED is flat -- no bevel/outline. Lit/off and the peak glow are derived
@@ -348,7 +348,7 @@
     --show: max(var(--on), var(--is-peak));
     background-color: color-mix(in oklab,
       var(--seg-c) calc(var(--show) * 100%),
-      color-mix(in oklab, var(--text) 9%, transparent));
+      var(--wash-strong));
     /* Held peak LED lifts with an outer glow; zero-width/transparent otherwise. */
     box-shadow: 0 0 calc(var(--is-peak) * 5px)
       color-mix(in oklab, var(--seg-c) calc(var(--is-peak) * 100%), transparent);
@@ -358,25 +358,25 @@
   /* Selected: the channel's hue fills the button face; text flips to bg
      contrast. Drop the idle inner glow -- the solid fill already carries the
      colour. */
-  .row.selected .chip {
+  .row.selected .ch-face {
     background: var(--ch-base);
     border-color: var(--ch-base);
     box-shadow: none;
   }
   /* Hover on the selected row brightens the accent rather than letting the
      generic hover paint a dark bg under the (dark) selected text. */
-  .row.selected .body:hover:not(:disabled) .chip {
+  .row.selected .body:hover:not(:disabled) .ch-face {
     background: color-mix(in oklab, var(--ch-base) 85%, var(--text));
     border-color: color-mix(in oklab, var(--ch-base) 85%, var(--text));
   }
   .row.selected .nm { color: var(--bg); font-weight: 600; }
 
-  .row.pulsate .chip { animation: row-pulse 2s ease-in-out infinite; }
+  .row.pulsate .ch-face { animation: row-pulse 2s ease-in-out infinite; }
   @keyframes row-pulse {
     0%, 100% { background: var(--wash); }
     50%      { background: color-mix(in oklab, var(--ch-base) 45%, transparent); }
   }
   @media (prefers-reduced-motion: reduce) {
-    .row.pulsate .chip { animation: none; background: color-mix(in oklab, var(--ch-base) 35%, transparent); }
+    .row.pulsate .ch-face { animation: none; background: color-mix(in oklab, var(--ch-base) 35%, transparent); }
   }
 </style>

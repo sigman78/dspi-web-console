@@ -192,7 +192,7 @@
     text-align: left;
     grid-column: 1;
   }
-  .rh i { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+  .rh i { width: 8px; height: 8px; border-radius: var(--radius-xs); flex: none; }
   .rh span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rh:hover, .rh.sel { color: var(--text); }
   .rh.off { color: var(--text-faint); }
@@ -215,7 +215,6 @@
     cursor: pointer;
   }
   .dotbtn:hover .ring { opacity: 1; border-color: var(--accent); }
-  .dotbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   .ring { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--border-hi); opacity: 0.8; box-sizing: border-box; }
   .pill {
     display: inline-flex;
@@ -224,7 +223,7 @@
     min-width: 36px;
     height: 18px;
     padding: 0 4px;
-    border-radius: 9px;
+    border-radius: 999px;
     font-family: var(--font-mono);
     font-size: 11px;
     font-weight: 700;

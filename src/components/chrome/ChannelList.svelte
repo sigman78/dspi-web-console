@@ -126,7 +126,7 @@
   .spine {
     width: 3px;
     flex: none;
-    border-radius: 2px;
+    border-radius: var(--radius-xs);
     background: var(--ch-base);
     opacity: 0.85;
   }
@@ -140,7 +140,7 @@
     align-items: center;
     padding: 0 7px;
     border: 1px solid transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     color: var(--text-faint);
     font-family: var(--font-sans);
     font-size: 11px;

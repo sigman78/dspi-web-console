@@ -22,7 +22,7 @@
   {/snippet}
 
   {#if lgs}
-    <div class="lgkvgrid" class:dimmed={!enabled}>
+    <div class="lgkvgrid">
       <KV label="PRESENT" value={lgs.present ? 'YES' : 'NO'} tone={lgs.present ? 'ok' : 'off'} />
       <KV label="VOLUME"  value={`${lgs.volume}`} />
       <KV label="MUTED"   value={lgs.muted ? 'YES' : 'NO'} tone={lgs.muted ? undefined : 'off'} />

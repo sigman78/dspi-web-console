@@ -85,7 +85,7 @@
     place-items: center;
     padding: 0;
     border: 1px solid transparent;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     background: var(--wash-strong);
     color: var(--text-dim);
     font-family: var(--font-mono);
@@ -108,14 +108,14 @@
   .sc.startup:hover { border-color: var(--warn); }
   .sc.startup {
     border: 1px solid var(--warn);
-    box-shadow: 0 0 6px color-mix(in oklab, var(--warn) 55%, transparent);
+    box-shadow: 0 0 6px color-mix(in oklab, var(--warn) var(--tint-glow), transparent);
   }
   .sc.unsaved::after {
     content: '';
     position: absolute;
     left: 3px; right: 3px; bottom: 1px;
     height: 2px;
-    border-radius: 1px;
+    border-radius: var(--radius-xs);
     background: var(--warn);
   }
   .sname {
@@ -148,6 +148,4 @@
   .field :global(svg) { flex: none; margin-left: auto; }
   .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .nm.unnamed { color: var(--text-dim); }
-  .sname .icon-toggle { flex: none; }
-  .sname .icon-toggle.accent { color: var(--accent); }
 </style>

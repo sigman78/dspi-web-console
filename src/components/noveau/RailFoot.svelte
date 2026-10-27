@@ -86,7 +86,7 @@
   .foot:hover { color: var(--text); }
   .foot small { margin-left: auto; font-size: 11px; color: var(--text-faint); }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); flex: none; }
-  .dot.ok { background: var(--ok); box-shadow: 0 0 6px color-mix(in oklab, var(--ok) 60%, transparent); }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 6px color-mix(in oklab, var(--ok) var(--tint-glow), transparent); }
   .dot.warn { background: var(--warn); }
   .dot.err { background: var(--err); }
   .pop {
@@ -99,10 +99,10 @@
     flex-direction: column;
     gap: 8px;
     padding: 10px;
-    border-radius: 8px;
+    border-radius: var(--radius);
     background: var(--panel-solid);
     border: 1px solid var(--border-hi);
-    box-shadow: 0 12px 32px oklch(0% 0 0 / 0.5);
+    box-shadow: var(--shadow-flyout);
   }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
 </style>

@@ -74,8 +74,8 @@
     transition: transform 150ms cubic-bezier(0.34, 1.2, 0.64, 1);
   }
   .sw.on .track {
-    background: color-mix(in oklab, var(--ok) 28%, transparent);
-    border-color: color-mix(in oklab, var(--ok) 50%, transparent);
+    background: color-mix(in oklab, var(--ok) var(--tint-strong), transparent);
+    border-color: color-mix(in oklab, var(--ok) var(--tint-edge), transparent);
   }
   .sw.on .knob {
     transform: translateX(calc(var(--w) - var(--h)));

@@ -53,7 +53,7 @@
     justify-content: space-between;
     padding: 0 16px;
     border-top: 1px solid var(--border-hi);
-    background: color-mix(in oklab, var(--bg) 85%, oklch(0% 0 0));
+    background: color-mix(in oklab, var(--surface-chrome), oklch(0% 0 0) 15%);
     overflow: hidden;
     font-family: var(--font-mono);
     font-size: 11px;
@@ -66,7 +66,7 @@
     place-items: center;
     width: 22px;
     height: 22px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     color: var(--text-faint);
   }
   .links a:hover, .links a:focus-visible { color: var(--text); background: var(--wash); }

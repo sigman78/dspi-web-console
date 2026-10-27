@@ -64,7 +64,7 @@
     grid-auto-flow: column;
     grid-auto-columns: 1fr;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     overflow: hidden;
     background: var(--wash-faint);
   }
@@ -87,7 +87,7 @@
   }
   .opt:disabled { cursor: default; opacity: var(--dim-disabled); }
   .opt.on {
-    background: color-mix(in oklab, var(--ok) 10%, transparent);
+    background: color-mix(in oklab, var(--ok) var(--tint), transparent);
     color: var(--ok);
     font-weight: 600;
   }

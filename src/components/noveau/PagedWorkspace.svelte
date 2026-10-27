@@ -71,10 +71,9 @@
   }
   .pg:last-child { border-right: none; }
   .pg:hover:not([aria-pressed='true']) { color: var(--text); background: var(--wash); }
-  .pg:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   .pg[aria-pressed='true'] {
     color: var(--text);
-    background: color-mix(in oklab, var(--accent) 14%, transparent);
+    background: color-mix(in oklab, var(--accent) var(--tint), transparent);
   }
   .body {
     min-width: 0;
@@ -115,7 +114,7 @@
     content: 'REFERENCE';
     margin-left: 8px;
     padding: 0 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     font-family: var(--font-mono);
     font-size: 11px;
     font-weight: 500;

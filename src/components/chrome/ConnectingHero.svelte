@@ -200,14 +200,12 @@
     font-size: 10px;
     letter-spacing: 2px;
     color: var(--tone);
-    background: color-mix(in oklab, var(--tone) 10%, transparent);
+    background: color-mix(in oklab, var(--tone) var(--tint), transparent);
     border-bottom: 1px solid color-mix(in oklab, var(--tone) 35%, var(--border));
   }
   .alert-panel__body {
     margin: 0;
     padding: 10px 12px;
-    max-height: 240px;
-    overflow: auto;
     font-family: var(--font-mono);
     font-size: 11px;
     line-height: 1.5;
@@ -218,6 +216,14 @@
   /* Structured body (paragraphs + list) opts out of the raw-text pre-wrap so the
      template's own indentation/newlines don't render as stray whitespace. */
   .alert-panel__body--rich { white-space: normal; }
+  /* Raw error text is clamped, never scrolled. */
+  .alert-panel__body:not(.alert-panel__body--rich) {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 12;
+    line-clamp: 12;
+    overflow: hidden;
+  }
   .alert-panel__body p { margin: 0; }
   .causes {
     margin: 6px 0;
@@ -278,11 +284,12 @@
     font-family: var(--font-mono);
     font-size: 14px;
     color: var(--text);
-    background: color-mix(in oklab, var(--accent) 6%, transparent);
+    background: color-mix(in oklab, var(--accent) var(--tint-weak), transparent);
     border: 1px solid var(--border);
-    border-radius: 3px;
-    overflow-x: auto;
-    white-space: nowrap;
+    border-radius: var(--radius-s);
+    min-width: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   code.inline {
     font-family: var(--font-mono);
@@ -297,24 +304,24 @@
     color: var(--text-dim);
     background: transparent;
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     cursor: pointer;
   }
   .copy:hover { color: var(--text); border-color: var(--border-hi); }
 
   .connect {
     padding: 10px 26px;
-    background: color-mix(in oklab, var(--accent) 12%, transparent);
+    background: color-mix(in oklab, var(--accent) var(--tint), transparent);
     border: 1px solid var(--accent);
     color: var(--accent);
     font-family: inherit;
     font-size: 12px;
     letter-spacing: 2px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     cursor: pointer;
   }
   .connect:hover:not(:disabled) {
-    background: color-mix(in oklab, var(--accent) 20%, transparent);
+    background: color-mix(in oklab, var(--accent) var(--tint-strong), transparent);
   }
   .connect:disabled {
     cursor: default;

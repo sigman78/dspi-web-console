@@ -84,7 +84,7 @@
   {/snippet}
 
   {#if cfg && snap}
-    <div class="rows" class:dimmed={!cfg.enabled}>
+    <div class="rows">
       <div class="row">
         <ToggleSwitch
           size="sm"

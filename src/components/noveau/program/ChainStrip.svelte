@@ -106,12 +106,12 @@
   .grp {
     min-width: 0;
     padding: 2px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     display: flex;
     flex-direction: column;
-    background: color-mix(in oklab, var(--text) 3%, transparent);
+    background: var(--wash);
   }
-  .grp.g-routing { background: color-mix(in oklab, var(--accent) 5%, transparent); }
+  .grp.g-routing { background: color-mix(in oklab, var(--accent) var(--tint-weak), transparent); }
   .gl {
     flex: none;
     height: 14px;
@@ -131,7 +131,7 @@
     min-width: 0;
     height: 52px;
     padding: 0 6px;
-    border-radius: 6px;
+    border-radius: var(--radius-m);
     background: var(--wash);
     box-shadow: 0 0 0 1px var(--border) inset;
     display: flex;
@@ -182,11 +182,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .blk.on { background: color-mix(in oklab, var(--accent) 9%, var(--wash)); box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 22%, transparent) inset; }
-  .blk.sel { box-shadow: 0 0 0 2px var(--accent) inset; background: color-mix(in oklab, var(--accent) 16%, transparent); }
+  .blk.on { background: color-mix(in oklab, var(--accent) 9%, var(--wash)); box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) var(--tint-strong), transparent) inset; }
+  .blk.sel { box-shadow: 0 0 0 2px var(--accent) inset; background: color-mix(in oklab, var(--accent) var(--tint), transparent); }
   .blk.offb .bh b, .blk.offb .bv { color: var(--text-faint); }
   .blk.anchor { background: none; box-shadow: 0 0 0 1px var(--border) inset; }
   .go { flex: none; font-family: var(--font-sans); font-size: 14px; line-height: 1; color: var(--text-faint); }
   .blk:hover:not(.sel) { background: var(--wash-strong); }
-  .hit:focus-visible, .jump-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 </style>

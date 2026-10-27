@@ -53,7 +53,7 @@
     flex-direction: column;
     padding: 8px 0;
     border-right: 1px solid var(--border);
-    background: color-mix(in oklab, var(--bg) 85%, var(--text) 3%);
+    background: var(--surface-chrome);
     overflow: hidden;
   }
   .ib {
@@ -80,14 +80,14 @@
     stroke-linejoin: round;
   }
   .ib span { font-family: var(--font-mono); font-size: 9px; font-weight: 500; letter-spacing: 0.04em; }
-  .ib.on { color: var(--text); background: color-mix(in oklab, var(--accent) 14%, transparent); }
+  .ib.on { color: var(--text); background: color-mix(in oklab, var(--accent) var(--tint), transparent); }
   .ib.on svg { stroke: var(--accent); }
   .ib.on::before {
     content: "";
     position: absolute;
     left: 0; top: 6px; bottom: 6px;
     width: 3px;
-    border-radius: 0 2px 2px 0;
+    border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
     background: var(--accent);
   }
   .ib.push { margin-top: auto; }

@@ -395,7 +395,7 @@
             {#if !d}
               <button type="button" class="chip" disabled={applying} onclick={() => addPage(i)}>Set page {i + 1}</button>
             {:else}
-              <button type="button" class="x" aria-label={`Remove page ${i + 1}`}
+              <button type="button" class="x-btn" aria-label={`Remove page ${i + 1}`}
                 disabled={applying} onclick={() => removePage(i)}>✕</button>
             {/if}
           </div>
@@ -518,7 +518,7 @@
     padding: 1px 6px;
     border-radius: 999px;
     color: var(--accent);
-    border: 1px solid color-mix(in oklab, var(--accent) 50%, transparent);
+    border: 1px solid color-mix(in oklab, var(--accent) var(--tint-edge), transparent);
   }
   .subhdr {
     padding: 10px 14px 4px;
@@ -545,15 +545,15 @@
     color: var(--text-faint);
     background: transparent;
     border: 1px dashed var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     cursor: pointer;
     position: relative;
   }
   .pchip.set { color: var(--text-dim); background: var(--wash-faint); border-style: solid; }
   .pchip:hover:not(.sel) { color: var(--text); background: var(--wash); }
-  .pchip.sel { color: var(--text); border-color: var(--accent); background: color-mix(in oklab, var(--accent) 12%, transparent); }
+  .pchip.sel { color: var(--text); border-color: var(--accent); background: color-mix(in oklab, var(--accent) var(--tint), transparent); }
   .pchip.showing { color: var(--ok); }
-  .pchip.showing.sel { border-color: var(--ok); background: color-mix(in oklab, var(--ok) 12%, transparent); }
+  .pchip.showing.sel { border-color: var(--ok); background: color-mix(in oklab, var(--ok) var(--tint), transparent); }
   .pchip.staged::after {
     content: '';
     position: absolute;
@@ -565,7 +565,6 @@
     background: var(--accent);
     box-shadow: 0 0 4px var(--accent);
   }
-  .pchip:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   .slothead {
     display: flex;
     align-items: center;
@@ -581,34 +580,11 @@
   }
   .stitle.showing { color: var(--ok); }
   .spacer { flex: 1; }
-  .x {
-    background: none;
-    border: none;
-    color: var(--text-faint);
-    cursor: pointer;
-    padding: 0;
-    font-size: 9px;
-    line-height: 1;
-  }
-  .x:hover:not(:disabled) { color: var(--err); }
-  .x:disabled { opacity: var(--dim-disabled); cursor: default; }
-  .sel {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    padding: 3px 6px;
-    background: var(--panel-solid);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .sel:disabled { opacity: var(--dim-disabled); cursor: default; }
   .numfield {
     font-family: var(--font-mono);
     font-size: 10px;
     padding: 3px 6px;
     width: 64px;
   }
-  .hint.err { color: var(--err); }
   .pad { padding: 10px 14px; }
 </style>

@@ -633,24 +633,12 @@
   }
   .code.learned { color: var(--text-dim); }
   .spacer { flex: 1; }
-  .sel {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    padding: 3px 6px;
-    background: var(--panel-solid);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .sel:disabled { opacity: var(--dim-disabled); cursor: default; }
   .numfield {
     font-family: var(--font-mono);
     font-size: 10px;
     padding: 3px 6px;
     width: 64px;
   }
-  .hint.err { color: var(--err); }
   .hint.listen { color: var(--text-dim); }
   .count {
     font-family: var(--font-mono);

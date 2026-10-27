@@ -84,7 +84,7 @@
   .mf :global(.jump) {
     width: 20px; height: 20px; padding: 0; flex: 0 0 auto;
     display: inline-flex; align-items: center; justify-content: center;
-    background: transparent; border: none; border-radius: 3px; cursor: pointer;
+    background: transparent; border: none; border-radius: var(--radius-s); cursor: pointer;
     font-family: var(--font-sans); font-size: 14px; line-height: 1; color: var(--text-dim);
   }
   .mf :global(.jump:hover), .mf :global(.jump:focus-visible) { color: var(--accent); }

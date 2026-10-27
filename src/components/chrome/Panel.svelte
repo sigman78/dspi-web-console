@@ -51,5 +51,5 @@
     flex: 1;
   }
   .right { display: flex; align-items: center; gap: 6px; }
-  .body { flex: 1; min-height: 0; overflow: auto; }
+  .body { flex: 1; min-height: 0; overflow: hidden; }
 </style>

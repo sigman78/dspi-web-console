@@ -79,7 +79,7 @@
     background: var(--panel-solid);
     border: 1px solid var(--border-hi);
     border-radius: var(--radius-s);
-    box-shadow: 0 4px 14px oklch(0% 0 0 / 0.4);
+    box-shadow: var(--shadow-pop);
     font-family: var(--font-sans);
     font-size: 12px;
   }
@@ -89,7 +89,7 @@
     text-align: left;
     background: none;
     border: none;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     color: var(--text);
     font: inherit;
     cursor: pointer;

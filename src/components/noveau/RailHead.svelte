@@ -23,5 +23,4 @@
     padding: 8px 10px;
     border-bottom: 1px solid var(--border);
   }
-  .rhead :global(.icon-toggle) { flex: none; width: 22px; height: 22px; }
 </style>

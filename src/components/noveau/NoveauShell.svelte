@@ -82,7 +82,7 @@
     display: flex;
     flex-direction: column;
     border-right: 1px solid var(--border);
-    background: color-mix(in oklab, var(--bg) 80%, var(--text) 2%);
+    background: var(--surface-chrome);
   }
   .ws { grid-column: 3; grid-row: 1; display: flex; padding: 12px 16px; }
 </style>

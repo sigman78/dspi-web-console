@@ -274,7 +274,7 @@
                   <span class="sv">{targetLabelOf(step)}</span>
                   <span class="chev" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
                 </button>
-                <button type="button" class="x" aria-label={`Remove step ${k + 1}`}
+                <button type="button" class="x-btn" aria-label={`Remove step ${k + 1}`}
                   disabled={applying} onclick={() => removeStep(i, k)}>✕</button>
               </div>
             {/if}
@@ -289,7 +289,7 @@
               <span class="hint">s</span>
               {#if !detached}
                 <span class="spacer"></span>
-                <button type="button" class="x" aria-label={`Remove step ${k + 1}`}
+                <button type="button" class="x-btn" aria-label={`Remove step ${k + 1}`}
                   disabled={applying} onclick={() => removeStep(i, k)}>✕</button>
               {/if}
             </div>
@@ -448,17 +448,6 @@
 
 <style>
   .spacer { flex: 1; }
-  .x {
-    background: none;
-    border: none;
-    color: var(--text-faint);
-    cursor: pointer;
-    padding: 0;
-    font-size: 9px;
-    line-height: 1;
-  }
-  .x:hover:not(:disabled) { color: var(--err); }
-  .x:disabled { opacity: var(--dim-disabled); cursor: default; }
   .rows { padding: 6px 14px 10px; display: flex; flex-direction: column; gap: 8px; }
   .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .srow { padding: 4px 14px 0; }
@@ -484,7 +473,7 @@
     padding: 0 4px;
     background: none;
     border: none;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     color: var(--text);
     cursor: pointer;
     text-align: left;
@@ -495,24 +484,12 @@
   .sl { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
   .sv { font-family: var(--font-mono); font-size: 12px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chev { flex: none; font-size: 10px; color: var(--text-faint); }
-  .sel {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    padding: 3px 6px;
-    background: var(--panel-solid);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .sel:disabled { opacity: var(--dim-disabled); cursor: default; }
   .numfield {
     font-family: var(--font-mono);
     font-size: 10px;
     padding: 3px 6px;
     width: 64px;
   }
-  .hint.err { color: var(--err); }
   .addrow { display: flex; align-items: center; gap: 10px; padding: 10px 14px 12px; }
   .empty { text-align: center; padding-top: 14px; }
   .pad { padding: 10px 14px; }

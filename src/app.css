@@ -42,9 +42,24 @@
   --z-raise: 1; --z-pop: 10; --z-flyout: 30; --z-modal: 1000; --z-toast: 1100;
 
   --pad: 16px;
-  --radius-s: 3px;
-  --radius-m: 5px;
+  --radius-xs: 2px;
+  --radius-s: 4px;
+  --radius-m: 6px;
   --radius: 8px;
+
+  --focus-ring: 0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
+  --shadow-pop: 0 4px 14px oklch(0% 0 0 / 0.4);
+  --shadow-flyout: 0 12px 32px oklch(0% 0 0 / 0.5);
+  --scrim: color-mix(in oklab, var(--bg) 70%, transparent);
+  /* Chrome strips (rail, shell, status line): bg lifted a hair toward text. */
+  --surface-chrome: color-mix(in oklab, var(--bg), var(--text) 3%);
+
+  /* Accent/status tint strengths for fills (weak/normal/strong) and edges. */
+  --tint-weak: 6%;
+  --tint: 12%;
+  --tint-strong: 24%;
+  --tint-edge: 45%;
+  --tint-glow: 60%;
 
   --font-sans: 'IBM Plex Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
@@ -68,13 +83,15 @@ body { overflow: auto; min-width: 1440px; min-height: 790px; }
 body.mobile-splash-mode { min-width: 0; min-height: 0; }
 body.mobile-splash-mode #app { height: 100%; }
 button { font: inherit; color: inherit; }
+/* One keyboard-focus indicator; components with clipped edges use --focus-ring instead. */
+:where(button, select, input, [tabindex]:not([tabindex="-1"])):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 input[type="number"], select, input[type="range"] {
   background: var(--panel-solid);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.25rem 0.4rem;
+  border-radius: var(--radius-s);
+  padding: 4px 6px;
 }
 input[type="number"]:disabled, select:disabled { opacity: var(--dim-disabled); }
 

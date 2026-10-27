@@ -136,10 +136,10 @@
     padding-right: 16px;
   }
   .bts:hover { background-color: var(--wash-strong); }
-  .bts:focus { outline: none; }
   .bts:focus-visible {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
+    box-shadow: var(--focus-ring);
+    outline: none;
   }
   .bts.off { color: var(--text-faint); }
   .bts option { background: var(--panel-solid); color: var(--text); }

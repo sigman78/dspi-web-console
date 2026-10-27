@@ -21,7 +21,7 @@
   {#each items as item (item.key)}
     <button
       type="button"
-      class="chip"
+      class="mask-chip"
       class:on={isSet(item.index)}
       {disabled}
       title={item.title}
@@ -42,7 +42,7 @@
     flex-wrap: wrap;
     gap: 4px;
   }
-  .chip {
+  .mask-chip {
     min-width: 24px;
     height: 24px;
     padding: 0 4px;
@@ -52,17 +52,17 @@
     color: var(--text-dim);
     background: var(--wash-faint);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     cursor: pointer;
   }
-  .chip:hover:not(:disabled):not(.on) {
+  .mask-chip:hover:not(:disabled):not(.on) {
     color: var(--text);
     background: var(--wash);
   }
-  .chip.on {
+  .mask-chip.on {
     color: var(--ok);
-    background: color-mix(in oklab, var(--ok) 12%, transparent);
+    background: color-mix(in oklab, var(--ok) var(--tint), transparent);
     border-color: color-mix(in oklab, var(--ok) 40%, var(--border));
   }
-  .chip:disabled { cursor: default; opacity: var(--dim-disabled); }
+  .mask-chip:disabled { cursor: default; opacity: var(--dim-disabled); }
 </style>

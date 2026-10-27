@@ -156,7 +156,7 @@
 
   .row.device.active {
     --tone: var(--accent);
-    background: color-mix(in oklab, var(--tone) 14%, transparent);
+    background: color-mix(in oklab, var(--tone) var(--tint), transparent);
     border-color: color-mix(in oklab, var(--tone) 50%, var(--border));
     color: var(--tone);
   }
@@ -164,14 +164,14 @@
 
   .row.badge {
     --tone: var(--err);
-    background: color-mix(in oklab, var(--tone) 10%, transparent);
+    background: color-mix(in oklab, var(--tone) var(--tint), transparent);
     border-color: color-mix(in oklab, var(--tone) 50%, var(--border));
     color: var(--tone);
   }
   .row.badge .hw { color: color-mix(in oklab, var(--tone) 70%, var(--text-faint)); }
   .row.badge:hover:not(:disabled) {
     color: var(--tone);
-    background: color-mix(in oklab, var(--tone) 18%, transparent);
+    background: color-mix(in oklab, var(--tone) var(--tint-strong), transparent);
     border-color: var(--tone);
   }
 </style>

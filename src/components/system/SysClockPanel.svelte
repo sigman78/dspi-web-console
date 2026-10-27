@@ -182,7 +182,7 @@
     background: var(--panel-solid);
     color: var(--text);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     cursor: pointer;
   }
   .voltsel:disabled { opacity: var(--dim-disabled); cursor: default; }
@@ -201,7 +201,7 @@
     font-size: 10px;
     letter-spacing: 2px;
     color: var(--warn);
-    background: color-mix(in oklab, var(--warn) 10%, transparent);
+    background: color-mix(in oklab, var(--warn) var(--tint), transparent);
     border-bottom: 1px solid color-mix(in oklab, var(--warn) 35%, var(--border));
   }
   .fallback-banner p {

@@ -55,8 +55,8 @@
   }
   .clipsq.on {
     color: var(--err);
-    background: color-mix(in oklab, var(--err) 12%, transparent);
-    border-color: color-mix(in oklab, var(--err) 50%, transparent);
-    box-shadow: 0 0 6px color-mix(in oklab, var(--err) 40%, transparent);
+    background: color-mix(in oklab, var(--err) var(--tint), transparent);
+    border-color: color-mix(in oklab, var(--err) var(--tint-edge), transparent);
+    box-shadow: 0 0 6px color-mix(in oklab, var(--err) var(--tint-edge), transparent);
   }
 </style>

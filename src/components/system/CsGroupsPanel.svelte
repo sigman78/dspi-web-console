@@ -263,18 +263,6 @@
   .rows { padding: 6px 14px 10px; display: flex; flex-direction: column; gap: 8px; }
   .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .srow { padding: 4px 14px 0; }
-  .sel {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    padding: 3px 6px;
-    background: var(--panel-solid);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .sel:disabled { opacity: var(--dim-disabled); cursor: default; }
-  .hint.err { color: var(--err); }
   .addrow { display: flex; align-items: center; gap: 10px; padding: 10px 14px 12px; }
   .empty { text-align: center; padding-top: 14px; }
   .pad { padding: 10px 14px; }

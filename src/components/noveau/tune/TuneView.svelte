@@ -103,7 +103,7 @@
     align-items: center;
     gap: 10px;
   }
-  .dot { width: 8px; height: 8px; border-radius: 2px; }
+  .dot { width: 8px; height: 8px; border-radius: var(--radius-xs); }
   h2 { margin: 0; font-family: var(--font-sans); font-size: 14px; font-weight: 600; color: var(--text); }
   .chain { font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }
   .view { margin-left: auto; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }

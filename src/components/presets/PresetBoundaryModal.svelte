@@ -51,7 +51,7 @@
 <style>
   .scrim {
     position: fixed; inset: 0;
-    background: color-mix(in oklab, var(--bg) 70%, transparent);
+    background: var(--scrim);
     backdrop-filter: blur(6px);
     display: grid; place-items: center;
     z-index: var(--z-modal);
@@ -60,7 +60,7 @@
   .panel {
     background: var(--panel-solid);
     border: 1px solid var(--border-hi);
-    border-radius: 6px;
+    border-radius: var(--radius-m);
     padding: 18px 20px;
     min-width: 360px;
     max-width: 480px;

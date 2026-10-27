@@ -108,7 +108,7 @@
         {uart.enabled ? (status?.uartLive ? 'LIVE' : 'DOWN') : 'DISABLED'}
       </span>
     </div>
-    <div class="rows" class:dimmed={!uart.enabled}>
+    <div class="rows">
       <span class="pair">
         <span class="microlbl">TX</span>
         <PinPicker
@@ -168,7 +168,7 @@
         {i2c.enabled ? (status?.i2cLive ? 'LIVE' : 'DOWN') : 'DISABLED'}
       </span>
     </div>
-    <div class="rows" class:dimmed={!i2c.enabled}>
+    <div class="rows">
       <span class="pair">
         <span class="microlbl">SDA</span>
         <PinPicker
@@ -234,17 +234,6 @@
     gap: 6px 10px;
     padding: 4px 14px 10px;
   }
-  .sel {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    padding: 3px 6px;
-    background: var(--panel-solid);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .sel:disabled { opacity: var(--dim-disabled); cursor: default; }
   .numfield {
     font-family: var(--font-mono);
     font-size: 10px;

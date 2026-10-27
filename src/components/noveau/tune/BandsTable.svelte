@@ -50,7 +50,7 @@
   }
   .head .r { text-align: right; padding-right: 4px; }
   .rw { border-radius: var(--radius-s); }
-  .rw.sel { background: color-mix(in oklab, var(--accent) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 45%, transparent); }
+  .rw.sel { background: color-mix(in oklab, var(--accent) var(--tint), transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) var(--tint-edge), transparent); }
   .dense :global(.rw .row) { gap: 2px; padding: 0 2px; min-height: 26px; border-top: none; }
   .dense :global(.vf) { padding: 0 3px; }
   .dense :global(.vf .unit) { display: none; }

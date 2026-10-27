@@ -50,6 +50,6 @@
   :global(.mv-save.armed) {
     color: var(--warn);
     border-color: color-mix(in oklab, var(--warn) 50%, var(--border));
-    background: color-mix(in oklab, var(--warn) 14%, transparent);
+    background: color-mix(in oklab, var(--warn) var(--tint), transparent);
   }
 </style>

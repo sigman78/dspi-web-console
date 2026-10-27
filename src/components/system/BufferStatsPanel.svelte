@@ -85,10 +85,11 @@
 </Panel>
 
 <style>
-  .tblwrap { padding: 10px 14px 14px; overflow-x: auto; }
+  .tblwrap { padding: 10px 14px 14px; }
   /* Typography mirrors KV: 9px faint labels (header + SRC), 12px/600 values. */
   .tbl {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-family: var(--font-mono);
     font-size: 9px;
