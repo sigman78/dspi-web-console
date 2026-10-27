@@ -10,7 +10,6 @@ const NUM_CHANNELS = ALL_CHANNELS.length;
 // 20x/sec from RAF callbacks.
 export class StatusStore {
   peaks = $state<number[]>(Array(NUM_CHANNELS).fill(0));
-  peakHoldDb = $state<number[]>(Array(NUM_CHANNELS).fill(-90));
   clipLatched = $state<boolean[]>(Array(NUM_CHANNELS).fill(false));
   cpu0 = $state(0);
   cpu1 = $state(0);
@@ -108,19 +107,9 @@ export class StatusStore {
   // the old state; the next 1 Hz refresh catches it.
   requestLimiterStatusRead(): void { this.lastLimiterStatusMs = 0; }
 
-  // Peak normalization (0..1) with 30 dB/sec hold decay.
+  // Peak levels (0..1).
   applyPeaks(raw: ArrayLike<number>, nowMs: number): void {
-    const dt = this.lastStatusMs > 0 ? (nowMs - this.lastStatusMs) / 1000 : 0;
-    const decayDb = 30 * dt;
-    for (let i = 0; i < NUM_CHANNELS; i++) {
-      const v = raw[i] ?? 0;
-      this.peaks[i] = v;
-      const peakDb = v > 0 ? 20 * Math.log10(v) : -90;
-      const decayed = this.peakHoldDb[i] - decayDb;
-      let hold = peakDb > decayed ? peakDb : decayed;
-      if (hold < -90) hold = -90;
-      this.peakHoldDb[i] = hold;
-    }
+    for (let i = 0; i < NUM_CHANNELS; i++) this.peaks[i] = raw[i] ?? 0;
     this.lastStatusMs = nowMs;
   }
 

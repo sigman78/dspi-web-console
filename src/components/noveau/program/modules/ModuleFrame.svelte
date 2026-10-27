@@ -77,7 +77,7 @@
   .mf :global(.fld) { flex: 0 0 72px; }
   .mf :global(.mono) { font-family: var(--font-mono); font-size: 12px; color: var(--text); }
   .mf :global(.note) { font-family: var(--font-sans); font-size: 11px; color: var(--text-faint); white-space: nowrap; }
-  .mf :global(.vf[data-size='md']) { height: 22px; font-size: 12px; }
+  .mf :global(.vf) { height: 22px; font-size: 12px; }
   .mf :global(.chip) { height: 20px; font-size: 11px; padding: 0 8px; }
   .mf :global(.r .seg) { height: 18px; align-items: stretch; }
   .mf :global(.r .seg.sm .opt) { display: flex; align-items: center; justify-content: center; font-size: 11px; padding-top: 0; padding-bottom: 0; }

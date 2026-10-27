@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getSession } from '@/components/sessionContext';
-  import { noveauUi } from '../../noveauUi.svelte';
+  import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import { resolveModule } from '../programModel';
   import PreampModule from './PreampModule.svelte';
   import InputEqModule from './InputEqModule.svelte';

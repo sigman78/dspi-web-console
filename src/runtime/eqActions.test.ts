@@ -202,6 +202,3 @@ describe('setBandBypass', () => {
     expect(setBandBypassFn).not.toHaveBeenCalled();
   });
 });
-
-// setXoverBand / setXoverBypass have no dedicated unit coverage: XoverPanel.svelte
-// only ever calls them with an in-range band from the live channel it renders.

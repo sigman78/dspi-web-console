@@ -15,12 +15,9 @@
     step,
     kind,
     precision,
-    unit,
     tone,
     align = 'right',
-    size = 'md',
     disabled = false,
-    clamp = true,
     floorLabel,
     ceilLabel,
     onChange,
@@ -31,26 +28,20 @@
     step?: number;
     kind: ValueKind;
     precision?: number;
-    unit?: string;
     tone?: 'signed';
     align?: 'center' | 'right';
-    size?: 'sm' | 'md';
     disabled?: boolean;
     // Shown instead of the number when value is at the floor (e.g. "Off" for
     // a -30 dB band level); editing still accepts numbers as usual.
     floorLabel?: string;
     // Same idea at the max end (e.g. "Off" for a 0 dBFS sub ceiling).
     ceilLabel?: string;
-    // When true (default), out-of-range values are clamped to [min,max]
-    // and accepted. When false, out-of-range values are rejected just
-    // like unparseable input -- Enter marks the cell red.
-    clamp?: boolean;
     onChange: (v: number) => void;
   } = $props();
 
   const effectivePrecision = $derived(precision ?? defaultPrecisionFor(kind));
   const effectiveStep = $derived(step ?? Math.pow(10, -effectivePrecision));
-  const effectiveUnit = $derived(unit ?? defaultUnitFor(kind));
+  const effectiveUnit = $derived(defaultUnitFor(kind));
 
   const atFloor = $derived(floorLabel !== undefined && value <= min);
   const atCeil = $derived(ceilLabel !== undefined && value >= max);
@@ -103,7 +94,7 @@
       suppressBlur = false;
       return;
     }
-    const next = parseAndClamp(draft, min, max, effectiveStep, clamp);
+    const next = parseAndClamp(draft, min, max, effectiveStep);
     if (next === null) {
       if (fromEnter) {
         // Mark red + stay editing so the user sees their input was rejected.
@@ -150,7 +141,6 @@
   class:hover
   class:disabled
   data-align={align}
-  data-size={size}
   style:--toneColor={toneColor}
   onclick={beginEdit}
   onmouseenter={() => (hover = true)}
@@ -187,6 +177,9 @@
     align-items: center;
     box-sizing: border-box;
     width: 100%;
+    height: 24px;
+    padding: 0 8px;
+    font-size: 11px;
     border: none;
     border-radius: 0;
     background: transparent;
@@ -203,8 +196,6 @@
       inset 0 -1px 0 0 var(--accent),
       0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
   }
-  .vf[data-size="sm"] { height: 20px; padding: 0 6px; font-size: 10px; }
-  .vf[data-size="md"] { height: 24px; padding: 0 8px; font-size: 11px; }
   .vf[data-align="center"] { justify-content: center; }
   .vf[data-align="right"]  { justify-content: flex-end; }
 
@@ -250,7 +241,6 @@
     color: var(--text-faint);
     font-size: 9px;
   }
-  .vf[data-size="sm"] .unit { font-size: 8px; }
 
   input {
     position: absolute;
@@ -268,7 +258,6 @@
     box-sizing: border-box;
     font-variant-numeric: tabular-nums;
   }
-  .vf[data-size="sm"] input { padding: 0 6px; }
   .vf[data-align="center"] input { text-align: center; }
   .vf[data-align="right"]  input { text-align: right; }
 </style>

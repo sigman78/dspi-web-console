@@ -5,7 +5,7 @@
   import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
   import { filterCurve } from '@/components/bode/filterCurve';
   import { chShade } from '@/styles/palette';
-  import { noveauUi } from '../../noveauUi.svelte';
+  import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import { fmtSigned } from '../chainModel';
   import ModuleFrame from './ModuleFrame.svelte';
 

@@ -24,16 +24,7 @@
     color?: string;
   };
 
-  // Optional EQ-style band markers drawn on top of the curves.
-  export type BodeMarker = {
-    id?: string;
-    f: number;
-    db: number;
-    channelId?: ChannelId;
-    label?: string;
-  };
-
-  // Draggable EQ-band node drawn above curves and markers.
+  // Draggable EQ-band node drawn above the curves.
   export type BodeNode = {
     id: string;
     f: number;
@@ -56,7 +47,6 @@
 
   const {
     curves,
-    markers = [],
     yRange = [Eq.BODE_DB_RANGE[0], Eq.BODE_DB_RANGE[1]] as [number, number],
     height = 220,
     crosshair = true,
@@ -69,7 +59,6 @@
     onPlotDblClick,
   }: {
     curves: BodeCurve[];
-    markers?: BodeMarker[];
     yRange?: [number, number];
     height?: number;
     crosshair?: boolean;
@@ -435,9 +424,9 @@
     </text>
   {/each}
 
-  <!-- Curve stroke/fill and band markers can extend past yRange (e.g. an
+  <!-- Curve stroke/fill can extend past yRange (e.g. an
        LR8 crossover skirt well below the axis, or a big LT/shelf boost
-       above it) -- clip to the plot rect so they never paint over the
+       above it) -- clip to the plot rect so it never paints over the
        axis label margins instead of distorting the shape by clamping
        every point. -->
   <g clip-path="url(#{clipId})">
@@ -458,28 +447,6 @@
         stroke-linecap="round"
         vector-effect="non-scaling-stroke"
       />
-    {/each}
-
-    {#each markers as m, i (m.id ?? i)}
-      {@const mx = xForF(Math.max(Eq.FREQ_MIN_HZ, Math.min(Eq.FREQ_MAX_HZ, m.f)))}
-      {@const my = yForDb(Math.max(yMin, Math.min(yMax, m.db)))}
-      {@const mc = m.channelId != null
-        ? chShade(m.channelId, 'bright')
-        : 'color-mix(in oklab, var(--text) 85%, transparent)'}
-      <line
-        x1={mx} x2={mx} y1={my} y2={plotH}
-        stroke={mc} stroke-opacity="0.25" stroke-dasharray="2 3"
-        vector-effect="non-scaling-stroke" pointer-events="none"
-      />
-      <circle cx={mx} cy={my} r="3.5" fill={mc} stroke="var(--bg)" stroke-width="1.2" pointer-events="none" />
-      {#if m.label}
-        <text
-          x={mx} y={my - 6} text-anchor="middle" font-size="9"
-          fill="color-mix(in oklab, var(--text) 70%, transparent)" font-family="var(--font-mono)" pointer-events="none"
-        >
-          {m.label}
-        </text>
-      {/if}
     {/each}
   </g>
 

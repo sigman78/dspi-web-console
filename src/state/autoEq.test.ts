@@ -1,18 +1,26 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  autoEqDb, autoEqEntries, setAutoEqEntries, ensureAutoEqDb, hydrateAutoEqLibrary,
+  autoEqDb, autoEqEntries, ensureAutoEqDb, hydrateAutoEqLibrary,
   isAutoEqFavorite, toggleAutoEqFavorite,
   saveAutoEqUserEntry, deleteAutoEqUserEntry,
   searchAutoEq,
 } from './autoEq.svelte';
-import { FilterType, defaultFilter, type FilterParams } from '@/domain';
+import { FilterType, defaultFilter, type AutoEqEntry, type FilterParams } from '@/domain';
 
 const FAVS_KEY = 'dspi-console-web/autoeq-favs/v1';
 const USER_KEY = 'dspi-console-web/autoeq-user/v1';
 
-function resetDbState() {
+async function seedAutoEqEntries(entries: AutoEqEntry[]) {
   autoEqDb.status = 'idle';
-  setAutoEqEntries([]);
+  const payload = { version: 1, generatedAt: '2026-01-18T05:41:39.649194+00:00', entryCount: entries.length, entries };
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => payload })));
+  ensureAutoEqDb();
+  await vi.waitFor(() => expect(autoEqDb.status).toBe('ready'));
+}
+
+async function resetDbState() {
+  await seedAutoEqEntries([]);
+  autoEqDb.status = 'idle';
   autoEqDb.generatedAt = null;
   autoEqDb.error = null;
 }
@@ -20,14 +28,14 @@ function resetDbState() {
 const band = (freq: number): FilterParams => ({ type: FilterType.Peaking, bypass: false, frequency: freq, q: 1, gain: 3 });
 const bands10 = (freq: number): FilterParams[] => [band(freq), ...Array.from({ length: 9 }, () => defaultFilter())];
 
-beforeEach(() => {
+beforeEach(async () => {
   localStorage.clear();
   hydrateAutoEqLibrary();
-  resetDbState();
+  await resetDbState();
 });
-afterEach(() => {
+afterEach(async () => {
   localStorage.clear();
-  resetDbState();
+  await resetDbState();
   vi.unstubAllGlobals();
 });
 
@@ -87,8 +95,8 @@ describe('favorites', () => {
 });
 
 describe('searchAutoEq scoping', () => {
-  beforeEach(() => {
-    setAutoEqEntries([
+  beforeEach(async () => {
+    await seedAutoEqEntries([
       { id: 'oratory1990/Sony WH-1000XM4', manufacturer: 'Sony', model: 'WH-1000XM4', source: 'oratory1990', formFactor: 'over-ear', preamp: -6, filters: [] },
       { id: 'crinacle/Foo Bar', manufacturer: 'Foo', model: 'Bar', source: 'crinacle', formFactor: 'in-ear', preamp: -3, filters: [] },
     ]);

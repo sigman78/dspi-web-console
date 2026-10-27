@@ -1,7 +1,7 @@
 // Per-session staging area for heavy device-config settings (input source,
 // I2S/S/PDIF pins, MCK/BCK, output type) that each trigger an audible
 // firmware pipeline restart. Panels stage a pending value here instead of
-// writing it straight to the device; PendingChangesBar's APPLY commits every
+// writing it straight to the device; the StatusLine APPLY commits every
 // staged entry in order as one batch, so the device restarts once instead of
 // once per control.
 

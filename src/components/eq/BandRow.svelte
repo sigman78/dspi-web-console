@@ -1,8 +1,3 @@
-<script lang="ts" module>
-  // Shared with BandsPanel's header so the grid columns always line up.
-  export const BAND_ROW_COLS = '28px 24px 100px 84px 64px 72px';
-</script>
-
 <script lang="ts">
   import { FilterType, bandHasGain, bandHasQ, type FilterParams, Eq } from '@/domain';
   import ValueField from '@/components/chrome/ValueField.svelte';
@@ -13,11 +8,14 @@
     band,
     onPatch,
     types,
+    columns = '28px 24px 100px 84px 64px 72px',
   }: {
     index: number;
     band: FilterParams;
     onPatch: (patch: Partial<FilterParams>) => void;
     types?: FilterType[];
+    /** grid-template-columns; a header row above must use the same value. */
+    columns?: string;
   } = $props();
 
   const off = $derived(band.type === FilterType.Flat);
@@ -29,7 +27,7 @@
   const isLt = $derived(band.type === FilterType.LinkwitzTransform);
 </script>
 
-<div class="row" class:bypassed style:grid-template-columns={BAND_ROW_COLS}>
+<div class="row" class:bypassed style:grid-template-columns={columns}>
   <div class="num">{String(index + 1).padStart(2, '0')}</div>
   <button
     class="byp"
@@ -91,7 +89,7 @@
 <style>
   .row {
     display: grid;
-    /* grid-template-columns set inline (BAND_ROW_COLS). */
+    /* grid-template-columns set inline (columns prop). */
     gap: 6px;
     padding: 5px 14px;
     align-items: center;

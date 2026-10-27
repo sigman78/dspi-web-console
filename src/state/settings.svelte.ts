@@ -114,15 +114,12 @@ export function restoreSettings(): void {
   settings.volumeAxis = loaded.volumeAxis;
 }
 
-export function setSelectedChannel(id: ChannelId | null): void {
-  settings.selectedChannel = id;
-}
 export function setVolumeAxis(axis: VolumeAxis): void {
   settings.volumeAxis = axis;
 }
 // Rail selection: pick a channel globally.
 export function selectChannel(id: ChannelId): void {
-  setSelectedChannel(id);
+  settings.selectedChannel = id;
 }
 
 // What the rail/mixer actually render: an output is visible iff enabled; an

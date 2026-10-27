@@ -3,16 +3,14 @@
     label,
     value,
     bar,
-    priority = 'static',
   }: {
     label: string;
     value: string;
     bar?: number;
-    priority?: 'health' | 'static';
   } = $props();
 </script>
 
-<div class="telem prio-{priority}">
+<div class="telem">
   <div class="microlbl">{label}</div>
   <div class="val">{value}</div>
   {#if bar !== undefined}

@@ -63,13 +63,6 @@
     FilterType.HighPass1,
   ];
 
-  // Crossover editor's offering: Off + the full 32..63 range, LP/HP
-  // interleaved in family/order sequence (matches the wire value order).
-  export const XOVER_TYPE_ORDER: FilterType[] = [
-    FilterType.Flat,
-    ...Array.from({ length: 32 }, (_, i) => (FilterType.Lr2Lp + i) as FilterType),
-  ];
-
   // Single source of truth for which PEQ types the EQ editor offers, given the
   // device's feature flags. Linkwitz Transform is display-only (see the
   // component below): it's never offered here, even on a capable device --

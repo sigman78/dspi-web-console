@@ -92,6 +92,6 @@
   .r :global(.rf) { flex: 0 0 auto; gap: 12px; height: 22px; }
   .lbl { flex: 0 0 84px; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
   .ctl { display: flex; align-items: center; gap: 6px; }
-  .stage :global(.vf[data-size='md']) { height: 22px; font-size: 12px; }
+  .stage :global(.vf) { height: 22px; font-size: 12px; }
   .chip { height: 20px; font-size: 11px; padding: 0 8px; }
 </style>

@@ -9,8 +9,7 @@
      the selected chip is disabled to make the group radio-like).
      .armed — two-step confirm emphasis; combine with a tone class.
      .hi — outlined variant (transparent fill, --border-hi edge) shared by
-     the small "outline button" recipes (BandsPanel copy/paste/reset/exit,
-     PreampPanel reset) that predate .chip.
+     the small "outline button" recipes that predate .chip.
 
    .microlbl — control row label (KV stays the canon for label+value pairs).
    .hint — faint mono helper/idle text; padding stays component-local.

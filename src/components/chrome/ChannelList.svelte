@@ -5,14 +5,6 @@
   import { chKey } from '@/styles/palette';
   import { groupIntoPairs, groupInputSlotPairs, inputIndexOf, type ChannelGroup, type ChannelId, type ChannelModel } from '@/domain';
 
-  const {
-    disabledOutputs = 'hide',
-    dense = false,
-  }: {
-    disabledOutputs?: 'hide' | 'stub';
-    dense?: boolean;
-  } = $props();
-
   const snap = $derived(activeSession()?.mirror.current ?? null);
   const tele = $derived(activeSession()?.telemetry ?? null);
   const disabled = $derived(!connection.connected);
@@ -52,7 +44,7 @@
     }) ?? [],
   ));
   const outputGroups = $derived(groupIntoPairs(
-    snap?.channels.filter((c) => c.isOutput && (disabledOutputs === 'stub' || !isDisabledOutput(c))) ?? [],
+    snap?.channels.filter((c) => c.isOutput) ?? [],
   ));
 
   function levelDb(ch: ChannelModel): number {
@@ -67,7 +59,7 @@
   }
 </script>
 
-<div class="rail-body" class:is-disabled={disabled} class:dense>
+<div class="rail-body" class:is-disabled={disabled}>
   {#snippet section(label: string, groups: ChannelGroup<ChannelModel>[])}
     {#if groups.length}
       <div class="microlbl">{label}</div>
@@ -76,7 +68,7 @@
           <span class="spine"></span>
           <div class="stack">
             {#each g.members as ch (ch.id)}
-              {#if disabledOutputs === 'stub' && isDisabledOutput(ch)}
+              {#if isDisabledOutput(ch)}
                 <button
                   type="button"
                   class="stub"
@@ -95,7 +87,6 @@
                   selected={settings.selectedChannel === ch.id}
                   pulsate={eqUi.copySource === ch.id}
                   {disabled}
-                  {dense}
                   editing={editingId === ch.id}
                   onclick={() => selectChannel(ch.id)}
                   onStartEdit={() => startEdit(ch)}
@@ -118,29 +109,20 @@
   .rail-body {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
-    padding: 12px 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
-  .rail-body.dense {
     overflow: hidden;
     padding: 4px 10px 0;
+    display: flex;
+    flex-direction: column;
     gap: 2px;
   }
   /* U-P3 policy B: no whole-rail dim when disconnected (names/meters are
      structure, stay full-contrast). pointer-events still blocks interaction;
      each ChannelRow's clickable body carries the single dim layer itself. */
   .rail-body.is-disabled { pointer-events: none; }
-  .microlbl { margin-top: 4px; }
-  .dense .microlbl { margin-top: 2px; }
-  .pair { display: flex; gap: 6px; }
-  .dense .pair { gap: 5px; }
+  .microlbl { margin-top: 2px; }
+  .pair { display: flex; gap: 5px; }
   /* Selected-channel spine: 3px var(--ch-base) bar at 0.85 opacity, 2px
-     radius. Same recipe as MatrixHeader's .header.selected::after (column)
-     and MixerTab's .row-head.selected::after (row) — a real element here
-     since it sits beside stacked rows rather than overlaying a single one. */
+     radius, beside the stacked rows. */
   .spine {
     width: 3px;
     flex: none;
@@ -148,8 +130,7 @@
     background: var(--ch-base);
     opacity: 0.85;
   }
-  .stack { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .dense .stack { gap: 0; }
+  .stack { flex: 1; display: flex; flex-direction: column; gap: 0; min-width: 0; }
 
   /* Hardware-disabled output: a flat hatched 24px row, still selectable. */
   .stub {

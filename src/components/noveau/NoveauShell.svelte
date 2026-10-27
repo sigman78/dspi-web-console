@@ -46,7 +46,7 @@
   <IconRail />
   <aside class="crail">
     <RailHead />
-    <ChannelList disabledOutputs="stub" dense />
+    <ChannelList />
     <RailFoot />
   </aside>
   <section class="ws" aria-label="Workspace">

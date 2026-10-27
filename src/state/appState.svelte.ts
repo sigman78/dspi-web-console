@@ -46,7 +46,7 @@ export interface ReadySession {
   // null status after the connect-time probe IS the unsupported signal.
   readonly sysClock: SysClockState;
   // Pending heavy device-config edits (input source, I2S/S/PDIF pins, MCK/BCK,
-  // output type), staged here until PendingChangesBar's APPLY commits them.
+  // output type), staged here until the StatusLine APPLY commits them.
   readonly staging: StagingState;
   readonly mirror: MirrorState;
   readonly health: LinkHealth;

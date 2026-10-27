@@ -18,11 +18,6 @@ export const BODE_FREQS: readonly number[] = (() => {
   return out;
 })();
 
-// Map a frequency in Hz to a normalized x in [0, 1] across the log axis.
-export function xNormForF(f: number): number {
-  return Math.log(f / BODE_FMIN) / Math.log(BODE_FMAX / BODE_FMIN);
-}
-
 // Inverse: pixel/normalized x in [0, 1] -> Hz on the log axis.
 export function fForXNorm(x: number): number {
   return BODE_FMIN * Math.pow(BODE_FMAX / BODE_FMIN, x);

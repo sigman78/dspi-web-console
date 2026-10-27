@@ -415,19 +415,6 @@ describe('output limiter actions', () => {
     expect(device.setLimiterEnabled).toHaveBeenCalledWith(1, true);
   });
 
-  it('enable-all fans out over the real outputs only and requests a status re-read', async () => {
-    const { device, s, limiter } = setup();
-    s.telemetry.lastLimiterStatusMs = 999;
-    actions.setLimiterAllEnabled(s, true);
-    expect(limiter().some((o) => o.enabled)).toBe(false);   // unchanged until ack
-    await vi.runAllTimersAsync();
-    const count = s.device.hardware.outputCount;
-    expect(limiter().slice(0, count).every((o) => o.enabled)).toBe(true);
-    expect(limiter().slice(count).some((o) => o.enabled)).toBe(false);
-    expect(s.telemetry.lastLimiterStatusMs).toBe(0);
-    expect(device.setLimiterEnabled).toHaveBeenCalledWith(0xFF, true);
-  });
-
   it('joining a group adopts the lowest member settings', async () => {
     const { device, s, limiter } = setup();
     const lim = liveMirror().current!.limiter;

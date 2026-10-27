@@ -29,10 +29,6 @@ export function autoEqEntries(): AutoEqEntry[] {
   return dbEntries;
 }
 
-export function setAutoEqEntries(entries: AutoEqEntry[]): void {
-  dbEntries = entries;
-}
-
 function isAutoEqDatabase(v: unknown): v is AutoEqDatabase {
   if (typeof v !== 'object' || v === null) return false;
   const d = v as Record<string, unknown>;

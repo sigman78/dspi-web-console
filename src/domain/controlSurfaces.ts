@@ -519,13 +519,6 @@ export function csDisplayPageIsEmpty(p: CsDisplayPage): boolean {
 export const CsDisplayInitState = { Down: 0, Init: 1, Live: 2, Error: 3 } as const;
 export type CsDisplayInitState = (typeof CsDisplayInitState)[keyof typeof CsDisplayInitState];
 
-export const CS_DISPLAY_INIT_STATE_LABEL: Record<CsDisplayInitState, string> = {
-  [CsDisplayInitState.Down]:  'NO DISPLAY',
-  [CsDisplayInitState.Init]:  'STARTING',
-  [CsDisplayInitState.Live]:  'LIVE',
-  [CsDisplayInitState.Error]: 'ERROR',
-};
-
 // GetCsDisplayStatus (0x2B), host shape. `model` is the live binding's index
 // while attached (0 when down); the I2C address is not reported -- resolve
 // it from `model` + the binding's `value` via csDisplayResolvedAddr.

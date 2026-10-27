@@ -42,8 +42,8 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   let stopped = false;
   const isHidden = () => typeof document !== 'undefined' && document.hidden;
   // Only the in-flight guards are loop-local. The cadence CLOCK stays on the
-  // telemetry store (tele.applyPeaks sets lastStatusMs and reads it for peak
-  // decay), so the gate must read the store, not a private copy.
+  // telemetry store (tele.applyPeaks sets lastStatusMs), so the gate must read
+  // the store, not a private copy.
   const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false, spdifRx: false, i2sSlave: false, adat: false, adatInput: false, subharm: false, subharmMeter: false, limiterMeter: false, param: false };
 
   async function pollStatus(d: DspDevice): Promise<void> {

@@ -206,7 +206,7 @@
   .ctl { display: flex; align-items: center; gap: 6px; }
   .fld { width: 72px; }
   .mono { font-family: var(--font-mono); font-size: 12px; color: var(--text); }
-  .stage :global(.vf[data-size='md']) { height: 22px; font-size: 12px; }
+  .stage :global(.vf) { height: 22px; font-size: 12px; }
   .gr { display: inline-flex; align-items: center; gap: 8px; }
   .bar { width: 120px; height: 6px; border-radius: 2px; background: var(--wash-strong); overflow: hidden; }
   .fill { display: block; height: 100%; background: var(--warn); transition: width 100ms; }

@@ -74,13 +74,6 @@ export function isFirstOrderType(t: FilterType): boolean {
   return t === FilterType.Allpass1 || t === FilterType.LowShelf1 || t === FilterType.HighShelf1;
 }
 
-// First-order low/high pass types require the firstOrderLpHp capability
-// (V28+ proxy) -- kept distinct from isFirstOrderType so V16-era call sites
-// gating on firstOrderEq don't silently pick these up too.
-export function isFirstOrderLpHp(t: FilterType): boolean {
-  return t === FilterType.LowPass1 || t === FilterType.HighPass1;
-}
-
 const NO_GAIN_TYPES: ReadonlySet<FilterType> = new Set([
   FilterType.LowPass,
   FilterType.HighPass,

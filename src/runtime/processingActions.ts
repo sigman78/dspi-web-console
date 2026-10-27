@@ -1,7 +1,6 @@
 import * as Domain from '@/domain';
 import * as Clamp from '@/domain/clamp';
 import type { ReadySession } from '@/state';
-import { Wire } from '@/protocol';
 import { write, scrub, command } from './writes.svelte';
 import { setInputPreamp } from './mixerActions';
 
@@ -416,20 +415,6 @@ export function setLimiterEnabled(s: ReadySession, output: number, on: boolean):
     () => s.device.setLimiterEnabled(output, on),
     () => {
       patchLimiter(s, output, { enabled: on });
-      s.telemetry.requestLimiterStatusRead();
-    },
-  );
-}
-
-// 0xFF fans the SET out to every output in firmware; the patch mirrors that
-// over the platform's real outputs.
-export function setLimiterAllEnabled(s: ReadySession, on: boolean): void {
-  void write(s,
-    () => s.device.setLimiterEnabled(Wire.LIMITER_ALL_OUTPUTS, on),
-    () => {
-      const count = s.device.hardware.outputCount;
-      const list = s.mirror.snapshot.limiter.map((o, k) => (k < count ? { ...o, enabled: on } : o));
-      s.mirror.snapshot.limiter = Domain.settleLimiterGroups(list, count);
       s.telemetry.requestLimiterStatusRead();
     },
   );

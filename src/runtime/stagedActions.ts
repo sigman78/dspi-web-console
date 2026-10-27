@@ -4,7 +4,7 @@
 // straight to the device. Same call signature as the underlying action;
 // staging a value that already matches the live device value discards any
 // pending entry for that key instead (the control snaps back to device
-// truth). PendingChangesBar's APPLY runs the staged `apply` closures in
+// truth). The StatusLine APPLY runs the staged `apply` closures in
 // `order` as one batch.
 
 import * as Domain from '@/domain';

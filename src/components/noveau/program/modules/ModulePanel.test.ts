@@ -6,7 +6,7 @@ import { deriveCapabilities } from '@/protocol/capabilities';
 import { Wire } from '@/protocol';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
 import { ChannelFamily, PlatformType, createHardwareProfile, type HardwareProfile } from '@/domain';
-import { noveauUi } from '../../noveauUi.svelte';
+import { noveauUi } from '@/components/noveau/noveauUi.svelte';
 
 const toggleLoudnessOutputChannel = vi.fn();
 const toggleLevellerDetectorChannel = vi.fn();
