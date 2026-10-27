@@ -17,7 +17,7 @@ import {
   XOVER_BAND_BASE, MAX_XOVER_BANDS,
   DEFAULT_UART_CONTROL_CONFIG, DEFAULT_I2C_CONTROL_CONFIG,
   isValidUartPinPair, isValidI2cPinPair, isValidUartBaud, isValidI2cAddress, i2cInstance,
-  CsType, CsNoun, CsKind, CsAction, CsIrProto, CsDisplayMode,
+  CsType, CsNoun, CsKind, CsAction, CsEvent, CsIrProto, CsDisplayMode, CsDisplayModel,
   CS_GPIO_UNUSED, CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_MAX_GROUPS, CS_FLAG_INVERT, CS_FLAG_GROUP, CS_NDF_DEFERRED,
   CS_MAX_MACROS, CS_MAX_MACRO_STEPS, CS_MAX_DISPLAY_PAGES,
   CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q, CS_UNIT_PERCENT, CS_UNIT_MS,
@@ -79,6 +79,11 @@ export interface MockOptions {
   sysClockBoot?: { storedMode: number; storedVregSel?: number; fallback?: boolean };
   // Build stamp answered by GetBuildInfo on fw 1.1.6+ profiles; default below.
   buildInfo?: { describe: string; date: string };
+  // Fill every control-surface table to its capacity (all binding slots incl.
+  // one IR receiver and one display, all macros with full steps, all groups,
+  // all IR commands, all display pages) so the CONTROL pages can be measured
+  // at their worst case. Needs wire V16+ and caps v10+.
+  csFull?: boolean;
 }
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
@@ -576,6 +581,58 @@ export class MockTransport implements DspTransport {
         this.#sysClockActiveMode = opts.sysClockBoot.storedMode;
       }
     }
+    if (opts.csFull && this.#isV16 && this.#csCapsVersion >= 10) this.#seedCsFull();
+  }
+
+  #seedCsFull(): void {
+    const bind = (slot: number, b: Partial<MockCsBinding>, name: string): void => {
+      this.#csBindings[slot] = { ...emptyCsBinding(), gpio1: CS_GPIO_UNUSED, ...b };
+      this.#csNames[slot] = name;
+    };
+    bind(0, { type: CsType.Ir, gpio0: 11 }, 'Living room IR receiver');
+    bind(1, { type: CsType.Display, gpio0: 12, gpio1: 13, index: CsDisplayModel.Ssd1306_128x64 }, 'Front OLED display');
+    bind(2, { type: CsType.Pot, noun: CsNoun.UserVolume, action: CsAction.Adjust, gpio0: 26 }, 'Volume knob potentiometer');
+    bind(3, { type: CsType.Pot, noun: CsNoun.MasterVolume, action: CsAction.Adjust, gpio0: 27 }, 'Master trim potentiometer');
+    bind(4, { type: CsType.Encoder, noun: CsNoun.UserVolume, action: CsAction.Step, gpio0: 14, gpio1: 15, step: 128 }, 'Rotary encoder with push');
+    bind(5, { type: CsType.Led, noun: CsNoun.UserMute, action: CsAction.IndEquals, gpio0: 16, value: 1 }, 'Mute indicator LED');
+    bind(6, { type: CsType.LedPwm, noun: CsNoun.UserVolume, action: CsAction.IndLevel, gpio0: 17, baseBright: 32 }, 'Level indicator PWM LED');
+    bind(7, { type: CsType.Switch, noun: CsNoun.Loudness, action: CsAction.Follow, gpio0: 18 }, 'Loudness toggle switch');
+    const buttonNouns = [CsNoun.UserMute, CsNoun.Loudness, CsNoun.Crossfeed, CsNoun.EqBypass];
+    const buttonPins = [19, 23, 24, 25];
+    for (let i = 0; i < 8; i++) {
+      bind(8 + i, {
+        type: CsType.Button, noun: buttonNouns[i % 4], action: CsAction.Toggle,
+        gpio0: buttonPins[i % 4], event: i < 4 ? CsEvent.Press : CsEvent.Long,
+      }, `Front panel button ${String(i + 1).padStart(2, '0')}`);
+    }
+    for (let i = 0; i < CS_MAX_GROUPS; i++) {
+      this.#csGroups[i] = {
+        targetKind: CS_TARGET_OUTPUT_CH, memberMask: 0b11 << (i % 3), name: `Output group ${i + 1} (stereo pair)`,
+      };
+    }
+    for (let i = 0; i < CS_MAX_MACROS; i++) {
+      const steps = Array.from({ length: CS_MAX_MACRO_STEPS }, (_, k) => ({
+        ...emptyCsMacroStep(), noun: CsNoun.Loudness, action: CsAction.Set, value: k % 2, preDelay: 5,
+      }));
+      this.#csMacros[i] = { name: `Late night macro ${i + 1}`, stepCount: CS_MAX_MACRO_STEPS, steps };
+    }
+    for (let i = 0; i < CS_MAX_IR_COMMANDS; i++) {
+      this.#csIrCommands[i] = {
+        ...emptyCsIrCommand(), noun: CsNoun.UserMute, action: CsAction.Toggle, protocol: CsIrProto.Nec, code: 0x1000 + i,
+      };
+    }
+    this.#csDisplayCfg = { ...emptyCsDisplayCfg(), mode: CsDisplayMode.CycleSelected, dwell: 30, brightness: 128, editTimeout: 100 };
+    for (let i = 0; i < CS_MAX_DISPLAY_PAGES; i++) {
+      this.#csDisplayPages[i] = { noun: CsNoun.UserVolume, target: 0, index: 0, flags: CS_DPAGE_ACTIVE };
+    }
+    this.#csDisplay = { slot: 1, model: CsDisplayModel.Ssd1306_128x64, attachedAt: Date.now() };
+    this.#csSavedBindings = this.#csBindings.map((b) => ({ ...b }));
+    this.#csSavedNames = this.#csNames.slice();
+    this.#csSavedGroups = this.#csGroups.map((g) => ({ ...g }));
+    this.#csSavedMacros = this.#csMacros.map((m) => ({ ...m, steps: m.steps.map((st) => ({ ...st })) }));
+    this.#csSavedIrCommands = this.#csIrCommands.map((c) => ({ ...c }));
+    this.#csSavedDisplayCfg = { ...this.#csDisplayCfg };
+    this.#csSavedDisplayPages = this.#csDisplayPages.map((p) => ({ ...p }));
   }
 
   get #isV16(): boolean { return this.#wireVersion >= 16; }

@@ -1,12 +1,10 @@
 <script lang="ts">
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import { CrossfeedPreset, Proc, outputChannelsWithIndex } from '@/domain';
+  import { CrossfeedPreset, Proc, outputChannelsWithIndex, crossfeedResponse, centeredDbDomain } from '@/domain';
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
-  import { crossfeedResponse } from '@/components/bode/crossfeedCurve';
-  import { centeredDbDomain } from '@/components/bode/dbDomain';
   import ModuleFrame from './ModuleFrame.svelte';
   import SliderField from '@/components/chrome/SliderField.svelte';
   import MaskChips from '@/components/chrome/MaskChips.svelte';

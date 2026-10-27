@@ -1,4 +1,4 @@
-import { FilterType, QP_DEFAULT, type FilterParams } from '@/domain';
+import { FilterType, QP_DEFAULT, type FilterParams } from '../filter';
 import { BODE_BINS, BODE_FREQS } from './bodeFreqs';
 import { xoverSectionCoeffs } from './xoverCurve';
 

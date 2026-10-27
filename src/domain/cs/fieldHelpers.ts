@@ -4,6 +4,7 @@
 // caps table, wrapped in a different container. Explicit-arg so each caller
 // passes its own draft shape instead of sharing one.
 import * as Domain from '@/domain';
+import * as CsUnit from './unitDisplay';
 
 export function kindOf(nouns: readonly Domain.CsNounCaps[], noun: number): number {
   return nouns[noun]?.kind ?? Domain.CsKind.Bool;
@@ -47,6 +48,14 @@ export function valueLabel(action: number, cont: boolean, noun: number): string 
   if (action === Domain.CsAction.IndAbove) return 'LIGHT WHEN ≥';
   if (action === Domain.CsAction.Momentary) return 'WHILE HELD';
   return cont ? 'TARGET LEVEL' : 'SET TO';
+}
+
+/** The noun's allowed range in display units. */
+export function valueBounds(nouns: readonly Domain.CsNounCaps[], noun: number): { min: number; max: number } {
+  const n = nouns[noun];
+  if (!n) return { min: 0, max: 0 };
+  const unit = n.unit;
+  return { min: CsUnit.valueToDisplay(unit, n.minQ8), max: CsUnit.valueToDisplay(unit, n.maxQ8) };
 }
 
 export function boolValueOptions(noun: number): { v: number; label: string }[] {
@@ -242,10 +251,7 @@ export function csChannelCounts(channels: readonly Domain.ChannelModel[]): Domai
   return { inputs: channels.length - outputs, outputs, dsp: channels.length };
 }
 
-/** Numeric value of a number input; null when blank or not a number. */
-export function parseNumInput(e: Event): number | null {
-  const raw = (e.currentTarget as HTMLInputElement).value.trim();
-  if (raw === '') return null;
-  const v = Number(raw);
-  return Number.isNaN(v) ? null : v;
+/** Wire step is i16. */
+export function clampStep(step: number): number {
+  return Math.max(-32768, Math.min(32767, step));
 }

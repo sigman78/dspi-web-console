@@ -10,11 +10,11 @@ import {
 import {
   defaultStepDraft, macroDraftFromLive, buildMacro, buildMacroStep, macrosEqual,
   type StepDraft,
-} from './csMacroDraft';
+} from './macroDraft';
 import { csNouns, disabledNoun } from '@test/fixtures/csCaps';
 
 // Minimal caps-v9 shaped noun table: only the nouns exercised below are
-// filled in, same convention as csDraft.test.ts.
+// filled in, same convention as draft.test.ts.
 const nouns: CsNounCaps[] = [
   ...Array(2).fill(disabledNoun),                                                  // 0..1
   csNouns[CsNoun.UserMute],                                                        // 2  USER_MUTE
@@ -71,6 +71,15 @@ describe('buildMacroStep conditional encoding', () => {
     };
     const built = buildMacroStep(d, nouns);
     expect(built.flags & CS_FLAG_WRAP).toBe(CS_FLAG_WRAP);
+  });
+
+  it('clamps an out-of-range step to the i16 wire range', () => {
+    const d: StepDraft = {
+      noun: CsNoun.Preset, action: CsAction.Inc, target: 0, index: 0,
+      grouped: false, wrap: false, value: 0, step: 70000, preDelay: 0,
+    };
+    expect(buildMacroStep(d, nouns).step).toBe(32767);
+    expect(buildMacroStep({ ...d, step: -70000 }, nouns).step).toBe(-32768);
   });
 });
 

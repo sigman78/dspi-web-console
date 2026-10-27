@@ -1,5 +1,5 @@
 import type { ReadySession } from '@/state';
-import * as CsField from './csFieldHelpers';
+import * as CsField from '@/domain/cs/fieldHelpers';
 
 export function csChangesModel(s: ReadySession) {
   const cs = s.controlSurfaces;

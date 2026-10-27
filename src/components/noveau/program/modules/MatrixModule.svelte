@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getSession } from '@/components/sessionContext';
   import { liveRouteCount } from '../chainModel';
-  import { upmixStatus, upmixStatusText } from '../upmixStatus';
+  import { upmixParkingStatus, upmixParkingText } from '@/domain';
   import ModuleFrame from './ModuleFrame.svelte';
 
   const s = getSession();
@@ -15,7 +15,7 @@
   const inverted = $derived(routed.filter((r) => r.invert).length);
 
   const status = $derived(
-    upmixStatus(snap?.upmix.enabled ?? false, s.telemetry.activeInputChannels, s.telemetry.info?.sampleRateHz ?? null),
+    upmixParkingStatus(snap?.upmix.enabled ?? false, s.telemetry.activeInputChannels, s.telemetry.info?.sampleRateHz ?? null),
   );
 </script>
 
@@ -35,7 +35,7 @@
   {#if features.upmix}
     <div class="prow">
       <span class="prow-lbl">UPMIX</span>
-      <span class="prow-ctl"><span class="t-value" class:ok={status === 'active'}>{upmixStatusText(status)}</span></span>
+      <span class="prow-ctl"><span class="t-value" class:ok={status === 'active'}>{upmixParkingText(status)}</span></span>
     </div>
   {/if}
 </ModuleFrame>

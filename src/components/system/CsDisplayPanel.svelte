@@ -10,18 +10,22 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import {
-    applyCsDisplayCfg, applyCsDisplayPage, clearCsDisplayPage, refreshCsDisplayStatus,
+    applyCsDisplayCfg, applyCsDisplayPage, clearCsDisplayPage, wantCsDisplayPoll,
   } from '@/runtime';
   import * as Domain from '@/domain';
   import { getSession } from '@/components/sessionContext';
   import { formatI2cAddr } from '@/components/chrome/format';
   import { portal } from './portal';
-  import * as CsField from './csFieldHelpers';
-  import * as CsDisplayDraft from './csDisplayDraft';
-  import type { CfgDraft, PageDraft } from './csDisplayDraft';
+  import NumField from '@/components/chrome/NumField.svelte';
+  import CsTargetRow from './CsTargetRow.svelte';
+  import * as SlotOps from './csSlotOps';
+  import * as CsField from '@/domain/cs/fieldHelpers';
+  import * as CsDisplayDraft from '@/domain/cs/displayDraft';
+  import type { CfgDraft, PageDraft } from '@/domain/cs/displayDraft';
 
   // Split layout: the selected page's editor renders in this element instead of below the strip.
-  const { detailTarget = null }: { detailTarget?: HTMLElement | null } = $props();
+  // `visible`: only the page on screen holds the poll interest.
+  const { detailTarget = null, visible }: { detailTarget?: HTMLElement | null; visible: boolean } = $props();
 
   const s = getSession();
   const snap = $derived(s.mirror.current);
@@ -40,43 +44,20 @@
   const pageDrafts = s.drafts.of<PageDraft>('display');
   const cfgDraft = $derived(cfgDrafts.draftOf(CFG) ?? null);
   let applying = $state(false);
+  function setApplying(busy: boolean): void { applying = busy; }
 
   const maxPages = $derived(Math.min(cs.displayLimits?.maxPages ?? 0, Domain.CS_MAX_DISPLAY_PAGES));
 
   // Which page the single editor below shows -- a view choice, not fw state.
-  let selPage = $state(0);
-  $effect(() => {
-    if (maxPages > 0 && selPage >= maxPages) selPage = maxPages - 1;
-  });
+  let pickedPage = $state(0);
+  const selPage = $derived(maxPages > 0 ? Math.min(pickedPage, maxPages - 1) : pickedPage);
 
-  // A live, active Display binding slot -- from cs.bindings + the activeMask,
-  // not displayStatus.initState (which can still read INIT/DOWN in the first
-  // 200 ms after attach; the binding itself is already running by then).
-  const displaySlotActive = $derived(
-    (() => {
-      for (let i = 0; i < cs.bindings.length; i++) {
-        if (cs.bindings[i]?.type === Domain.CsType.Display && cs.status && (cs.status.activeMask & (1 << i))) return true;
-      }
-      return false;
-    })(),
-  );
+  const displaySlotActive = $derived(Domain.csDisplaySlotActive(cs.bindings, cs.status));
   const displayBinding = $derived(cs.bindings.find((b) => b?.type === Domain.CsType.Display) ?? null);
 
-  // Live-status poll: while a display binding is active, re-read status every
-  // 1 s so the pill/showing line track the front panel. Timeout chain (next
-  // tick armed only after the previous read settles), same as the macro
-  // panel's running-macro poll.
-  $effect(() => {
-    if (!displaySlotActive) return;
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const tick = async (): Promise<void> => {
-      await refreshCsDisplayStatus(s);
-      if (!stopped) timer = setTimeout(() => { void tick(); }, 1000);
-    };
-    timer = setTimeout(() => { void tick(); }, 1000);
-    return () => { stopped = true; if (timer != null) clearTimeout(timer); };
-  });
+  // The display-status cadence (poll.ts) keeps the pill and showing line
+  // tracking the front panel; this panel holds its interest.
+  $effect(() => (visible ? untrack(() => wantCsDisplayPoll(s)) : undefined));
 
   function pill(): { text: string; cls: string } {
     const st = cs.displayStatus;
@@ -123,12 +104,7 @@
   function revertCfg(): void { cfgDrafts.revert(CFG); }
 
   async function applyCfg(): Promise<void> {
-    applying = true;
-    try {
-      if (await applyCsDisplayCfg(s, CsDisplayDraft.buildCfg(cfgOf()))) cfgDrafts.remove(CFG);
-    } finally {
-      applying = false;
-    }
+    await SlotOps.applySlot(CFG, cfgDrafts, setApplying, () => applyCsDisplayCfg(s, CsDisplayDraft.buildCfg(cfgOf())));
   }
 
   function homePageOptions(): { v: number; label: string }[] {
@@ -176,30 +152,11 @@
   async function applyPage(i: number): Promise<void> {
     const d = pageDrafts.draftOf(i);
     if (!d) return;
-    applying = true;
-    try {
-      if (await applyCsDisplayPage(s, i, CsDisplayDraft.buildPage(d, cs.nouns))) pageDrafts.remove(i);
-    } finally {
-      applying = false;
-    }
+    await SlotOps.applySlot(i, pageDrafts, setApplying, () => applyCsDisplayPage(s, i, CsDisplayDraft.buildPage(d, cs.nouns)));
   }
 
   async function removePage(i: number): Promise<void> {
-    if (!cs.displayPages[i]) { pageDrafts.remove(i); return; }
-    applying = true;
-    try {
-      if (await clearCsDisplayPage(s, i)) pageDrafts.remove(i);
-    } finally {
-      applying = false;
-    }
-  }
-
-  function groupOptionsFor(d: PageDraft): { v: number; label: string }[] {
-    return CsField.groupsAvailable(caps) ? CsField.groupOptionsFor(cs.nouns, d.noun, cs.groups) : [];
-  }
-  function groupBandOptionsFor(d: PageDraft): { v: number; label: string }[] {
-    const g = cs.groups[d.target];
-    return snap && g ? CsField.groupBandOptionsFor(cs.nouns, d.noun, g, snap.channels) : [];
+    await SlotOps.removeSlot(i, cs.displayPages[i] != null, pageDrafts, setApplying, () => clearCsDisplayPage(s, i));
   }
 
   function pageChipTitle(i: number): string {
@@ -214,7 +171,7 @@
     if (maxPages === 0 || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
     e.preventDefault();
     const delta = e.key === 'ArrowRight' ? 1 : -1;
-    selPage = (selPage + delta + maxPages) % maxPages;
+    pickedPage = (selPage + delta + maxPages) % maxPages;
     const strip = e.currentTarget as HTMLElement;
     void tick().then(() => strip.querySelector<HTMLElement>('[aria-selected="true"]')?.focus());
   }
@@ -278,10 +235,9 @@
         {:else}
           <span class="pair">
             <span class="microlbl">DWELL</span>
-            <input class="numfield" type="number" step="0.1" min="1"
-              value={d.dwell} aria-label="Dwell time (s)" disabled={applying}
-              onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editCfg((dr) => { dr.dwell = v; }); }} />
-            <span class="hint">s</span>
+            <NumField value={d.dwell} min={1} max={6553.5} step={0.1} kind="s" precision={1}
+              ariaLabel="Dwell time (s)" disabled={applying}
+              onChange={(v) => editCfg((dr) => { dr.dwell = v; })} />
           </span>
         {/if}
       </div>
@@ -289,28 +245,24 @@
       <div class="row">
         <span class="pair">
           <span class="microlbl">POP-UP HOLD</span>
-          <input class="numfield" type="number" step="0.1" min="0"
-            value={d.overlayHold} aria-label="Pop-up hold time (s, 0 = off)" disabled={applying}
-            onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editCfg((dr) => { dr.overlayHold = v; }); }} />
-          <span class="hint">s (0 = off)</span>
+          <NumField value={d.overlayHold} min={0} max={6553.5} step={0.1} kind="s" precision={1} hint="(0 = off)"
+            ariaLabel="Pop-up hold time (s, 0 = off)" disabled={applying}
+            onChange={(v) => editCfg((dr) => { dr.overlayHold = v; })} />
         </span>
         <span class="pair">
           <span class="microlbl">EDIT TIMEOUT</span>
-          <input class="numfield" type="number" step="0.1" min="0"
-            value={d.editTimeout} aria-label="Edit auto-disarm timeout (s, 0 = manual)" disabled={applying}
-            onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editCfg((dr) => { dr.editTimeout = v; }); }} />
-          <span class="hint">s (0 = manual)</span>
+          <NumField value={d.editTimeout} min={0} max={6553.5} step={0.1} kind="s" precision={1} hint="(0 = manual)"
+            ariaLabel="Edit auto-disarm timeout (s, 0 = manual)" disabled={applying}
+            onChange={(v) => editCfg((dr) => { dr.editTimeout = v; })} />
         </span>
       </div>
 
       <div class="row">
         <span class="pair">
           <span class="microlbl">BRIGHTNESS</span>
-          <input class="numfield" type="number" step="1" min="0" max="255"
-            value={d.brightness} aria-label="Brightness (0 = default)" disabled={applying}
-            title="OLED contrast — takes effect when the display restarts"
-            onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editCfg((dr) => { dr.brightness = v; }); }} />
-          <span class="hint">0 = default</span>
+          <NumField value={d.brightness} min={0} max={255} step={1} kind="int" precision={0} hint="0 = default"
+            ariaLabel="Brightness (0 = default)" title="OLED contrast — takes effect when the display restarts" disabled={applying}
+            onChange={(v) => editCfg((dr) => { dr.brightness = v; })} />
         </span>
       </div>
 
@@ -376,7 +328,7 @@
               class:showing={cs.displayStatus?.currentPage === i2} class:draft={isPageDirty(i2)}
               aria-selected={i2 === selPage} aria-controls="cs-display-page-panel" tabindex={i2 === selPage ? 0 : -1}
               aria-label={`Page ${i2 + 1}`} title={pageChipTitle(i2)}
-              onclick={() => { selPage = i2; }}>{i2 + 1}</button>
+              onclick={() => { pickedPage = i2; }}>{i2 + 1}</button>
           {/each}
         </div>
 
@@ -399,9 +351,6 @@
           {#if !d}
             <div class="hint">Page {i + 1} is empty.</div>
           {:else}
-            {@const showGroup = CsField.groupsAvailable(caps) && CsField.showTargetOf(cs.nouns, d.noun)}
-            {@const groupOpts = groupOptionsFor(d)}
-            {@const missingGroup = showGroup && d.grouped && !groupOpts.some((o) => o.v === d.target)}
             <div class="row">
               <span class="pair">
                 <span class="microlbl">ITEM</span>
@@ -433,52 +382,11 @@
 
             {#if CsField.showTargetOf(cs.nouns, d.noun)}
               <div class="row">
-                <span class="pair">
-                  <span class="microlbl">
-                    {CsField.targetKindOf(cs.nouns, d.noun) === Domain.CS_TARGET_INPUT_CH ? 'INPUT'
-                      : CsField.targetKindOf(cs.nouns, d.noun) === Domain.CS_TARGET_OUTPUT_CH ? 'OUTPUT' : 'CHANNEL'}
-                  </span>
-                  <select class="sel" value={d.grouped ? `g${d.target}` : String(d.target)} aria-label={`Target for page ${i + 1}`} disabled={applying}
-                    onchange={(e) => {
-                      const v = (e.currentTarget as HTMLSelectElement).value;
-                      editPageDraft(i, (dr) => {
-                        if (v.startsWith('g')) { dr.grouped = true; dr.target = Number(v.slice(1)); }
-                        else { dr.grouped = false; dr.target = Number(v); }
-                        dr.index = 0;
-                      });
-                    }}>
-                    {#if showGroup && (groupOpts.length > 0 || missingGroup)}
-                      <optgroup label="CHANNELS">
-                        {#each (snap ? CsField.targetOptionsFor(cs.nouns, d.noun, snap.channels) : []) as o (o.v)}
-                          <option value={String(o.v)}>{o.label}</option>
-                        {/each}
-                      </optgroup>
-                      <optgroup label="GROUPS">
-                        {#each groupOpts as o (o.v)}
-                          <option value={`g${o.v}`}>{o.label}</option>
-                        {/each}
-                        {#if missingGroup}
-                          <option value={`g${d.target}`} disabled>Group {d.target + 1} (missing)</option>
-                        {/if}
-                      </optgroup>
-                    {:else}
-                      {#each (snap ? CsField.targetOptionsFor(cs.nouns, d.noun, snap.channels) : []) as o (o.v)}
-                        <option value={String(o.v)}>{o.label}</option>
-                      {/each}
-                    {/if}
-                  </select>
-                </span>
-                {#if CsField.showBandOf(cs.nouns, d.noun)}
-                  <span class="pair">
-                    <span class="microlbl">BAND</span>
-                    <select class="sel" value={String(d.index)} aria-label={`Band for page ${i + 1}`} disabled={applying}
-                      onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editPageDraft(i, (dr) => { dr.index = v; }); }}>
-                      {#each (d.grouped ? groupBandOptionsFor(d) : (snap ? CsField.bandOptionsFor(d.noun, d.target, snap.channels) : [])) as o (o.v)}
-                        <option value={String(o.v)}>{o.label}</option>
-                      {/each}
-                    </select>
-                  </span>
-                {/if}
+                <CsTargetRow nouns={cs.nouns} noun={d.noun} target={d.target} index={d.index} grouped={d.grouped}
+                  channels={snap?.channels ?? []} groups={cs.groups} groupsEnabled={CsField.groupsAvailable(caps)}
+                  disabled={applying} ariaSuffix={` for page ${i + 1}`}
+                  onTarget={(pick) => editPageDraft(i, (dr) => { dr.grouped = pick.grouped; dr.target = pick.target; dr.index = 0; })}
+                  onBand={(v) => editPageDraft(i, (dr) => { dr.index = v; })} />
               </div>
             {/if}
 
@@ -560,11 +468,5 @@
   }
   .stitle.showing { color: var(--ok); }
   .spacer { flex: 1; }
-  .numfield {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    padding: 3px 6px;
-    width: 64px;
-  }
   .pad { padding: 10px 14px; }
 </style>

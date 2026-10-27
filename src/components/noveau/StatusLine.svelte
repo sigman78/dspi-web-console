@@ -24,7 +24,7 @@
   const open = $derived(listOpen && entries.length > 0);
 </script>
 
-<div class="status">
+<div class="status" data-budget>
   <span class="l">{caps.fwLabel} · {caps.wireLabel} · {rate} · link {s.health.degraded ? 'degraded' : 'OK'}</span>
   {#if s.health.degraded}
     <span class="degraded" role="alert">changes not sent</span>

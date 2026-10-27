@@ -5,7 +5,8 @@
   import SaveMasterVolumeButton from '@/components/presets/SaveMasterVolumeButton.svelte';
   import PresetIcon from './presets/PresetIcon.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
-  import { MASTER_VOLUME_MAX_POS, masterDbToPos, posToMasterDb, formatMasterDb } from '@/components/chrome/masterVolumeTaper';
+  import { MASTER_VOLUME_MAX_POS, masterDbToPos, posToMasterDb } from '@/domain';
+  import { formatMasterDb } from '@/components/chrome/format';
 
   const s = getSession();
   const connected = $derived(connection.connected);

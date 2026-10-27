@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getSession } from '@/components/sessionContext';
-  import * as CsField from '@/components/system/csFieldHelpers';
+  import * as CsField from '@/domain/cs/fieldHelpers';
   import ControlInterfacesPanel from '@/components/system/ControlInterfacesPanel.svelte';
   import ControlSurfacesPanel from '@/components/system/ControlSurfacesPanel.svelte';
   import CsGroupsPanel from '@/components/system/CsGroupsPanel.svelte';
@@ -24,6 +24,8 @@
   let irDetail = $state<HTMLElement | null>(null);
   // NoveauShell only mounts this view while pages is non-empty.
   const page = $derived(pages.some((p) => p.key === noveauUi.controlPage) ? noveauUi.controlPage : pages[0].key);
+  const macrosOn = $derived(CsField.macrosAvailable(caps));
+  const groupsOn = $derived(CsField.groupsAvailable(caps));
   const showStrip = $derived(cs && (page === 'surfaces' || page === 'macros' || page === 'display'));
 </script>
 
@@ -57,15 +59,22 @@
             <div class="pw-col" data-budget>{@render host('BINDING', 'Select a control on the left', (el) => (surfacesDetail = el))}</div>
             <div class="pw-col" data-budget>{@render host('IR COMMANDS', 'Commands appear here for an IR receiver', (el) => (irDetail = el))}</div>
           {:else if k === 'macros'}
-            <div class="pw-col" data-budget>
-              {#if CsField.macrosAvailable(caps)}<CsMacrosPanel detailTarget={macrosDetail} />{/if}
-              {#if CsField.groupsAvailable(caps)}<CsGroupsPanel detailTarget={groupsDetail} />{/if}
-            </div>
-            <div class="pw-col" data-budget>{@render host('MACRO', 'Select a macro on the left', (el) => (macrosDetail = el))}</div>
-            <div class="pw-col" data-budget>{@render host('GROUP', 'Select a group on the left', (el) => (groupsDetail = el))}</div>
+            {#if macrosOn}
+              <div class="pw-col" data-budget><CsMacrosPanel detailTarget={macrosDetail} visible={page === 'macros'} /></div>
+              <div class="pw-col" data-budget>{@render host('MACRO', 'Select a macro on the left', (el) => (macrosDetail = el))}</div>
+            {/if}
+            {#if groupsOn && macrosOn}
+              <div class="pw-col" data-budget>
+                <CsGroupsPanel detailTarget={groupsDetail} />
+                {@render host('GROUP', 'Select a group above', (el) => (groupsDetail = el))}
+              </div>
+            {:else if groupsOn}
+              <div class="pw-col" data-budget><CsGroupsPanel detailTarget={groupsDetail} /></div>
+              <div class="pw-col" data-budget>{@render host('GROUP', 'Select a group on the left', (el) => (groupsDetail = el))}</div>
+            {/if}
           {:else}
             <div class="pw-col" data-budget>
-              <CsDisplayPanel detailTarget={displayDetail} />
+              <CsDisplayPanel detailTarget={displayDetail} visible={page === 'display'} />
             </div>
             <div class="pw-col" data-budget>{@render host('DISPLAY PAGE', 'Select a page on the left', (el) => (displayDetail = el))}</div>
             <div class="pw-col" data-budget><div class="pw-ref"><PinMapPanel /></div></div>

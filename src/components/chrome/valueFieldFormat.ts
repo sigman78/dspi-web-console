@@ -6,6 +6,7 @@ export type ValueKind =
   | 'ms'
   | 'hz'
   | 'q'
+  | 's'
   | 'pct'
   | 'int';
 
@@ -44,6 +45,11 @@ export const formatters: Record<ValueKind, FormatterEntry> = {
   'q': {
     defaultPrecision: 2,
     defaultUnit: '',
+    format: (v, p) => v.toFixed(p),
+  },
+  's': {
+    defaultPrecision: 1,
+    defaultUnit: 's',
     format: (v, p) => v.toFixed(p),
   },
   'pct': {
@@ -103,8 +109,13 @@ export function parseAndClamp(
     return null;
   }
   if (step > 0) {
-    v = Math.round(v / step) * step;
-    v = +v.toFixed(stepDecimals(step));
+    const decimals = stepDecimals(step);
+    // Bounds off the step grid snap inward so a snapped value stays in range.
+    let lo = +(Math.ceil(min / step - 1e-9) * step).toFixed(decimals);
+    let hi = +(Math.floor(max / step + 1e-9) * step).toFixed(decimals);
+    if (lo > hi) { lo = min; hi = max; }
+    v = +(Math.round(v / step) * step).toFixed(decimals);
+    v = Math.min(hi, Math.max(lo, v));
   }
   return v;
 }

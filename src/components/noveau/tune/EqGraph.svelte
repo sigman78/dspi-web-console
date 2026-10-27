@@ -1,10 +1,10 @@
 <script lang="ts">
     import BodePlot, { PAD_B, PAD_L, type BodeCurve, type BodeNode } from '@/components/bode/BodePlot.svelte';
-  import { filterCurve, filterCurveAt } from '@/components/bode/filterCurve';
-  import { xForF, yForDb, type PlotGeometry } from '@/components/bode/eqGraphMath';
   import { formatValue } from '@/components/chrome/valueFieldFormat';
-  import { offeredTypes } from '@/components/eq/BandTypeSelect.svelte';
-  import { Eq, FilterType, bandHasGain, bandHasQ, type ChannelModel, type FilterParams } from '@/domain';
+  import {
+    Eq, FilterType, bandHasGain, bandHasQ, offeredTypes, filterCurve, filterCurveAt, xForF, yForDb,
+    type ChannelModel, type FilterParams, type PlotGeometry,
+  } from '@/domain';
   import { setEqFilter, setXoverBand } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '../noveauUi.svelte';

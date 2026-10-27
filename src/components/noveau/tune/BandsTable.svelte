@@ -1,7 +1,6 @@
 <script lang="ts">
   import BandRow from '@/components/eq/BandRow.svelte';
-  import { offeredTypes } from '@/components/eq/BandTypeSelect.svelte';
-  import { FilterType, type ChannelModel } from '@/domain';
+  import { FilterType, offeredTypes, type ChannelModel } from '@/domain';
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '../noveauUi.svelte';
   import InspectorSection from './InspectorSection.svelte';

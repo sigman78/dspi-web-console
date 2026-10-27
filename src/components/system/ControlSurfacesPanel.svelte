@@ -5,9 +5,10 @@
   import { applyCsBinding, clearCsBinding, applyCsName } from '@/runtime';
   import * as Domain from '@/domain';
   import { getSession } from '@/components/sessionContext';
-  import * as CsDraft from './csDraft';
-  import type { Draft } from './csDraft';
-  import * as CsField from './csFieldHelpers';
+  import * as CsDraft from '@/domain/cs/draft';
+  import type { Draft } from '@/domain/cs/draft';
+  import * as CsField from '@/domain/cs/fieldHelpers';
+  import * as SlotOps from './csSlotOps';
 
   const { detailTarget = null, irDetailTarget = null }: {
     detailTarget?: HTMLElement | null;
@@ -21,6 +22,7 @@
 
   const drafts = s.drafts.of<Draft>('cs');
   let applying = $state(false);
+  function setApplying(busy: boolean): void { applying = busy; }
 
   const maxSlots = $derived(caps?.maxBindings ?? Domain.CS_MAX_BINDINGS);
   const visibleSlots = $derived(
@@ -187,19 +189,12 @@
     return { text: 'INACTIVE', cls: 'warn' };
   }
 
-  function firstFreeSlot(): number | null {
-    for (let i = 0; i < maxSlots; i++) {
-      if (!cs.bindings[i] && !drafts.draftOf(i)) return i;
-    }
-    return null;
-  }
-
   function addControl(e: Event): void {
     const sel = e.currentTarget as HTMLSelectElement;
     const typeIdx = Number(sel.value);
     sel.value = '';
     if (Number.isNaN(typeIdx)) return;
-    const slot = firstFreeSlot();
+    const slot = SlotOps.firstFreeSlot(maxSlots, (i) => cs.bindings[i] != null || drafts.draftOf(i) != null);
     if (slot == null) return;
     drafts.editDraft(slot, defaultDraft(typeIdx, slot));
     openSlot = slot;
@@ -211,17 +206,12 @@
     const live = cs.bindings[slot];
     const d = drafts.draftOf(slot) ?? (live ? draftFromLive(live) : null);
     if (!d) return;
-    applying = true;
-    try {
-      const binding = buildBinding(d);
-      const nameOnly = live != null && nameChanged(slot, d) && CsDraft.bindingsEqual(binding, live);
+    const binding = buildBinding(d);
+    const nameOnly = live != null && nameChanged(slot, d) && CsDraft.bindingsEqual(binding, live);
+    await SlotOps.applySlot(slot, drafts, setApplying, async () => {
       const bindingOk = nameOnly || await applyCsBinding(s, slot, binding);
-      if (bindingOk && (!nameChanged(slot, d) || await applyCsName(s, slot, d.name!))) {
-        drafts.remove(slot);                       // device truth takes over
-      }
-    } finally {
-      applying = false;
-    }
+      return bindingOk && (!nameChanged(slot, d) || await applyCsName(s, slot, d.name!));
+    });
   }
 
   function isIrSlot(slot: number): boolean {
@@ -249,35 +239,17 @@
   // device (the all-zero binding).
   async function remove(slot: number): Promise<void> {
     const wasIr = isIrSlot(slot);
-    if (!cs.bindings[slot]) { drafts.remove(slot); if (wasIr) dropIrDrafts(); return; }
-    applying = true;
-    try {
-      if (await clearCsBinding(s, slot)) { drafts.remove(slot); if (wasIr) dropIrDrafts(); }
-    } finally {
-      applying = false;
-    }
+    const removed = await SlotOps.removeSlot(slot, cs.bindings[slot] != null, drafts, setApplying, () => clearCsBinding(s, slot));
+    if (removed && wasIr) dropIrDrafts();
   }
 
   function renameSlot(slot: number, name: string): void {
     editDraft(slot, (d) => { d.name = name === (cs.names[slot] ?? '') ? undefined : name; });
   }
 
-  let irResetTick = $state(0);
-  // Written by CsIrCommands (bind): any IR sub-slot holds unapplied edits.
-  // Lights the receiver slot's title dot -- the sub-panel shows no dots of
-  // its own, dirtiness always surfaces on the owning control's title.
-  let irDirty = $state(false);
-
-  // A revert (the CHANGES panel's DISCARD) rewinds every slot and IR sub-slot
-  // to its stored state, so local drafts no longer describe anything real;
-  // cs.revertEpoch bumps on success. irResetTick tells CsIrCommands to drop
-  // its own.
-  $effect(() => {
-    void cs.revertEpoch;   // the ONLY dependency -- the wipe must not track drafts
-    untrack(() => {
-      irResetTick++;
-    });
-  });
+  // Any IR sub-slot holding unapplied edits lights the receiver slot's title
+  // dot -- the sub-panel shows no dots of its own.
+  const irDirty = $derived(s.drafts.dirtyCount('ir') > 0);
 
   $effect(() => {
     for (const slot of drafts.keys()) {
@@ -317,8 +289,6 @@
         onRevert={() => revert(slot)}
         onRemove={() => remove(slot)}
         onRename={(name) => renameSlot(slot, name)}
-        irResetSignal={irResetTick}
-        onIrDirtyChange={(v) => { irDirty = v; }}
       />
     {/each}
 

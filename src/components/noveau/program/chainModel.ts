@@ -1,8 +1,7 @@
 import { formatSignedDb } from '@/components/chrome/format';
-import { FilterType, Proc, type DspSnapshot } from '@/domain';
+import { FilterType, Proc, upmixParkingStatus, type DspSnapshot } from '@/domain';
 import type { DeviceFeatures } from '@/protocol/capabilities';
 import type { ChainAnchorKey, ProgramModuleKey } from './programModel';
-import { upmixStatus } from './upmixStatus';
 
 interface ChainBlockBase {
   title: string;
@@ -49,7 +48,7 @@ export function chainBlocks(
   const outs = snap.outputs;
   const limOn = snap.limiter.filter((l, i) => l.enabled && outs.some((o) => o.wireIndex === i)).length;
   const { leveller: lv, crossfeed: cf, loudness: ld, psybass: pb, subharm: sh, upmix: up } = snap;
-  const upStatus = upmixStatus(up.enabled, telemetry?.activeInputChannels ?? null, telemetry?.sampleRateHz ?? null);
+  const upStatus = upmixParkingStatus(up.enabled, telemetry?.activeInputChannels ?? null, telemetry?.sampleRateHz ?? null);
 
   const mod = (b: Omit<ChainModuleBlock, 'kind'>): ChainBlock => ({ ...b, kind: 'module' });
   const blocks: ChainBlock[] = [

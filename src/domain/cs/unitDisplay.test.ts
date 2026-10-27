@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import * as CsUnit from './csUnitDisplay';
+import * as CsUnit from './unitDisplay';
 import * as Domain from '@/domain';
 
-describe('csUnitDisplay — CS_UNIT_MS (caps v4)', () => {
+describe('unitDisplay — CS_UNIT_MS (caps v4)', () => {
   // Guards the silent-mis-scale trap: an unlisted unit falls into the
   // plain-integer default branch, off by 256x in both directions.
   it('routes ms through the 8.8 encoding with linear stepping', () => {

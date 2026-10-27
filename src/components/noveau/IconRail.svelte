@@ -16,7 +16,7 @@
   const items = $derived(all.filter((it) => it.key !== 'control' || showControl));
 </script>
 
-<nav class="irail" aria-label="Destinations">
+<nav class="irail" aria-label="Destinations" data-budget>
   {#each items as it (it.key)}
     <button
       type="button"

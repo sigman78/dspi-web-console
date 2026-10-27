@@ -169,7 +169,28 @@ export async function cancelCsMacro(s: ReadySession): Promise<void> {
   );
 }
 
-// Ext-status refresh for the MACROS panel's running-macro poll. A plain
+// Panel-mount interest for the CS status cadences in poll.ts: the MACROS panel
+// holds the ext-status interest while mounted, the DISPLAY panel the display
+// one. The cadence still waits for a running macro / active display.
+export function wantCsExtPoll(s: ReadySession): () => void {
+  return holdInterest(() => s.controlSurfaces.extPollWanted++, () => s.controlSurfaces.extPollWanted--);
+}
+
+export function wantCsDisplayPoll(s: ReadySession): () => void {
+  return holdInterest(() => s.controlSurfaces.displayPollWanted++, () => s.controlSurfaces.displayPollWanted--);
+}
+
+function holdInterest(acquire: () => void, release: () => void): () => void {
+  acquire();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    release();
+  };
+}
+
+// Ext-status refresh for the running-macro cadence (poll.ts). A plain
 // queued read, deliberately outside `command`: a failed tick is dropped
 // without a toast or a link-health mark, the next tick simply reads again.
 export async function refreshCsExtStatus(s: ReadySession): Promise<void> {
@@ -233,7 +254,7 @@ export function clearCsDisplayPage(s: ReadySession, idx: number): Promise<boolea
   return applyCsDisplayPage(s, idx, Domain.EMPTY_CS_DISPLAY_PAGE);
 }
 
-// Status refresh for the DISPLAY panel's live poll. A plain queued read,
+// Status refresh for the display-status cadence (poll.ts). A plain queued read,
 // deliberately outside `command`, mirroring refreshCsExtStatus.
 export async function refreshCsDisplayStatus(s: ReadySession): Promise<void> {
   try {

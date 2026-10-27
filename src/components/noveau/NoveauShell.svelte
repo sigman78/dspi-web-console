@@ -72,7 +72,7 @@
     height: 100%;
     display: grid;
     grid-template-columns: 56px 200px 1fr;
-    grid-template-rows: 1fr 28px;
+    grid-template-rows: 1fr var(--h-status);
     overflow: hidden;
     background: var(--bg-glow);
   }

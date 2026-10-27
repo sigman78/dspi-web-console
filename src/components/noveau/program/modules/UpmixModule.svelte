@@ -1,9 +1,8 @@
 <script lang="ts">
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
-  import { Proc, UpmixCenterMode, UpmixSurroundMode } from '@/domain';
+  import { Proc, UpmixCenterMode, UpmixSurroundMode, upmixParkingStatus, upmixParkingText } from '@/domain';
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
-  import { upmixStatus, upmixStatusText } from '../upmixStatus';
   import ModuleFrame from './ModuleFrame.svelte';
   import SliderField from '@/components/chrome/SliderField.svelte';
 
@@ -20,7 +19,7 @@
   const steeringReason = $derived(enabled && !steeringEditable ? 'Adaptive steering needs centre mode LOGIC.' : undefined);
   const surroundReason = $derived(enabled && !surroundEditable ? 'Surround mode is OFF.' : undefined);
 
-  const status = $derived(upmixStatus(enabled, s.telemetry.activeInputChannels, s.telemetry.info?.sampleRateHz ?? null));
+  const status = $derived(upmixParkingStatus(enabled, s.telemetry.activeInputChannels, s.telemetry.info?.sampleRateHz ?? null));
 
   const CENTER_MODE_OPTIONS = $derived([
     ...(features.upmixCenterOff ? [{ value: UpmixCenterMode.Off, label: 'OFF' }] : []),
@@ -45,7 +44,7 @@
 >
   <div class="prow">
     <span class="prow-lbl">STATUS</span>
-    <span class="prow-ctl"><span class="t-value" class:ok={status === 'active'}>{upmixStatusText(status)}</span></span>
+    <span class="prow-ctl"><span class="t-value" class:ok={status === 'active'}>{upmixParkingText(status)}</span></span>
   </div>
 
   <div class="prow sub"><span>CENTRE</span></div>

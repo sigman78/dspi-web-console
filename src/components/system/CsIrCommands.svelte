@@ -11,39 +11,25 @@
   import * as Domain from '@/domain';
   import { csStatusFromByte } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
-  import * as CsUnit from './csUnitDisplay';
-  import * as CsField from './csFieldHelpers';
+  import CsTargetRow from './CsTargetRow.svelte';
+  import CsValueStepRow from './CsValueStepRow.svelte';
+  import * as CsField from '@/domain/cs/fieldHelpers';
+  import * as CsDraft from '@/domain/cs/draft';
+  import * as CsIr from '@/domain/cs/irDraft';
+  import type { IrDraft } from '@/domain/cs/irDraft';
+  import * as SlotOps from './csSlotOps';
   import { portal } from './portal';
 
-  // resetSignal: bumped by the parent after csRevertConfig() re-fetches
-  // cs.irCommands, so a local draft or in-flight learn message from before
-  // the revert doesn't linger over the restored device truth.
-  // onDirtyChange: reports "some sub-slot has unapplied edits" upward -- the
-  // parent lights the receiver slot's title dot; no dots render here.
   // irDetailTarget: when set, the commands section portals into that host and
   // shows one command at a time instead of all sub-slots inline.
-  const { resetSignal = 0, onDirtyChange, irDetailTarget = null }: {
-    resetSignal?: number;
-    onDirtyChange?: (dirty: boolean) => void;
-    irDetailTarget?: HTMLElement | null;
-  } = $props();
+  const { irDetailTarget = null }: { irDetailTarget?: HTMLElement | null } = $props();
 
   const s = getSession();
   const snap = $derived(s.mirror.current);
   const cs = $derived(s.controlSurfaces);
   const caps = $derived(s.controlSurfaces.caps);
 
-  // Sub-slot local drafts, same shape/units convention as csDraft.ts: display
-  // units in the draft, wire units only at the buildIrCommand() boundary.
-  interface IrDraft {
-    noun: number; action: number;
-    target: number; index: number;
-    protocol: number; code: number;
-    value: number; step: number;
-    wrap: boolean; repeat: boolean;
-    // Caps v10+: target is a group index instead of a channel.
-    grouped: boolean;
-  }
+  // Display units in the draft; wire units only at the buildIrCommand boundary.
   const drafts = s.drafts.of<IrDraft>('ir');
   let applyingSub = $state<number | null>(null);
   // The sub-slot that armed the current learn window; only one may be armed
@@ -73,9 +59,11 @@
     return () => clearInterval(t);
   });
 
+  // A config revert rewinds the stored commands, so a learn window or picked
+  // row from before it no longer describes anything.
   $effect(() => {
-    void resetSignal;   // the ONLY dependency -- the cleanup must not track
-    untrack(() => {     // drafts, or any draft edit re-runs the wipe
+    void cs.revertEpoch;   // the ONLY dependency -- the cleanup must not track drafts
+    untrack(() => {
       armedSub = null;
       pickedSub = null;
     });
@@ -97,7 +85,6 @@
   );
   const configured = $derived(cs.irCommands.filter((c) => c != null).length);
 
-  $effect(() => { onDirtyChange?.(subs.some((sub) => isDirty(sub))); });
   $effect(() => {
     for (const sub of drafts.keys()) {
       const dirty = isDirty(sub);
@@ -105,75 +92,8 @@
     }
   });
 
-  // The button-shaped action subset IR commands may carry (same nouns as the
-  // main panel, but scoped to the CS_TYPE_IR type descriptor's action mask).
-  const IR_STEPPY: readonly number[] = [Domain.CsAction.Inc, Domain.CsAction.Dec];
-
-  function nounOptions(): number[] {
-    if (!caps) return [];
-    const mask = caps.types[Domain.CsType.Ir]?.actions ?? 0;
-    // Same newer-caps unit guard as ControlSurfacesPanel.nounOptionsFor.
-    return cs.nouns.map((_, i) => i).filter((i) =>
-      (cs.nouns[i].actions & mask) !== 0 && cs.nouns[i].unit <= Domain.CS_MAX_KNOWN_UNIT);
-  }
-  function actionOptions(noun: number): Domain.CsAction[] {
-    if (!caps) return [];
-    return Domain.legalActions(caps.types[Domain.CsType.Ir]?.actions ?? 0, cs.nouns[noun]?.actions ?? 0);
-  }
-  function defaultAction(noun: number): number { return actionOptions(noun)[0] ?? 0; }
-
-  // GROUP joins the allowed IR flag set at caps v10 (v9 firmware rejects it).
-  function irGroupsAvailable(): boolean {
-    return CsField.groupsAvailable(caps) && (caps?.capsVersion ?? 0) >= 10;
-  }
-  function groupOptionsFor(d: IrDraft): { v: number; label: string }[] {
-    return irGroupsAvailable() ? CsField.groupOptionsFor(cs.nouns, d.noun, cs.groups) : [];
-  }
-  function groupBandOptionsFor(d: IrDraft): { v: number; label: string }[] {
-    const g = cs.groups[d.target];
-    return snap && g ? CsField.groupBandOptionsFor(cs.nouns, d.noun, g, snap.channels) : [];
-  }
-
-  function defaultIrOperands(d: IrDraft): void {
-    const noun = cs.nouns[d.noun];
-    const cont = noun?.kind === Domain.CsKind.Continuous;
-    const bool = noun?.kind === Domain.CsKind.Bool;
-    const unit = noun?.unit ?? Domain.CS_UNIT_NONE;
-    d.step = !IR_STEPPY.includes(d.action) ? 0 : CsUnit.isLogStep(unit) ? 0 : 1;
-    if (d.action === Domain.CsAction.Set || d.action === Domain.CsAction.Momentary) {
-      d.value = noun && cont ? CsUnit.valueToDisplay(unit, noun.maxQ8) : bool ? 1 : 0;
-    } else {
-      d.value = 0;
-    }
-    d.wrap = false;
-    d.repeat = false;
-  }
-
-  function defaultIrDraft(): IrDraft {
-    const noun = nounOptions()[0] ?? Domain.CsNoun.UserVolume;
-    const d: IrDraft = {
-      noun, action: defaultAction(noun), target: 0, index: 0,
-      protocol: Domain.CsIrProto.None, code: 0, value: 0, step: 0, wrap: false, repeat: false,
-      grouped: false,
-    };
-    defaultIrOperands(d);
-    return d;
-  }
-
-  function irDraftFromLive(c: Domain.CsIrCommand): IrDraft {
-    const noun = cs.nouns[c.noun];
-    const cont = noun?.kind === Domain.CsKind.Continuous;
-    const unit = noun?.unit ?? Domain.CS_UNIT_NONE;
-    return {
-      noun: c.noun, action: c.action, target: c.target, index: c.index,
-      protocol: c.protocol, code: c.code,
-      value: cont ? CsUnit.valueToDisplay(unit, c.value) : c.value,
-      step: cont ? CsUnit.stepToDisplay(unit, c.step) : c.step,
-      wrap: (c.flags & Domain.CS_FLAG_WRAP) !== 0,
-      repeat: (c.flags & Domain.CS_FLAG_REPEAT) !== 0,
-      grouped: (c.flags & Domain.CS_FLAG_GROUP) !== 0,
-    };
-  }
+  function nounOptions(): number[] { return CsIr.irNounOptions(caps, cs.nouns); }
+  function actionOptions(noun: number): Domain.CsAction[] { return CsIr.irActionOptions(caps, cs.nouns, noun); }
 
   // null = never touched: no live command, no local draft. Rendered as the
   // bare "not learned" row with only a LEARN button.
@@ -181,50 +101,22 @@
     const d = drafts.draftOf(sub);
     if (d) return d;
     const live = cs.irCommands[sub];
-    return live ? irDraftFromLive(live) : null;
+    return live ? CsIr.irDraftFromLive(live, cs.nouns) : null;
   }
 
   function editDraft(sub: number, fn: (d: IrDraft) => void): void {
-    const d = drafts.draftOf(sub) ?? draftOf(sub) ?? defaultIrDraft();
+    const d = drafts.draftOf(sub) ?? draftOf(sub) ?? CsIr.defaultIrDraft(caps, cs.nouns);
     fn(d);
     drafts.editDraft(sub, d);
   }
 
-  function buildIrCommand(d: IrDraft): Domain.CsIrCommand {
-    const noun = cs.nouns[d.noun];
-    const cont = noun?.kind === Domain.CsKind.Continuous;
-    const unit = noun?.unit ?? Domain.CS_UNIT_NONE;
-    const repeatEligible = d.action === Domain.CsAction.Inc || d.action === Domain.CsAction.Dec;
-    const grouped = irGroupsAvailable() && CsField.showTargetOf(cs.nouns, d.noun) && d.grouped;
-    // PAGE_VALUE carries no operand of its own -- the firmware rejects any
-    // value/step on it (same rule as the binding editor's buildBinding).
-    const pageValue = d.noun === Domain.CsNoun.PageValue;
-    return {
-      noun: d.noun as Domain.CsNoun,
-      action: d.action as Domain.CsAction,
-      flags: (CsField.showWrapOf(cs.nouns, d.noun, d.action, IR_STEPPY) && d.wrap ? Domain.CS_FLAG_WRAP : 0)
-        | (repeatEligible && d.repeat ? Domain.CS_FLAG_REPEAT : 0)
-        | (grouped ? Domain.CS_FLAG_GROUP : 0),
-      target: CsField.showTargetOf(cs.nouns, d.noun) ? d.target : 0,
-      index: CsField.showBandOf(cs.nouns, d.noun) ? d.index : 0,
-      protocol: d.protocol as Domain.CsIrProto,
-      value: pageValue ? 0 : CsField.showValueOf(d.action) ? (cont ? CsUnit.displayToValue(unit, d.value) : Math.round(d.value)) : 0,
-      step: pageValue ? 0 : CsField.showStepOf(d.action, IR_STEPPY) ? (cont ? CsUnit.displayToStep(unit, d.step) : Math.round(d.step)) : 0,
-      code: d.code,
-    };
-  }
-
-  function irCommandsEqual(a: Domain.CsIrCommand, b: Domain.CsIrCommand): boolean {
-    return a.noun === b.noun && a.action === b.action && a.flags === b.flags
-      && a.target === b.target && a.index === b.index && a.protocol === b.protocol
-      && a.value === b.value && a.step === b.step && a.code === b.code;
-  }
+  function buildCommand(d: IrDraft): Domain.CsIrCommand { return CsIr.buildIrCommand(d, cs.nouns, caps); }
 
   function isDirty(sub: number): boolean {
     const d = draftOf(sub);
     if (!d) return false;
     const live = cs.irCommands[sub] ?? Domain.EMPTY_CS_IR_COMMAND;
-    return !irCommandsEqual(buildIrCommand(d), live);
+    return !CsIr.irCommandsEqual(buildCommand(d), live);
   }
 
   // APPLY stays disabled on an unlearned code even if the rest of the row
@@ -232,7 +124,7 @@
   function canApply(sub: number): boolean {
     const d = draftOf(sub);
     if (!d || !caps || d.protocol === Domain.CsIrProto.None || !isDirty(sub)) return false;
-    return Domain.validateCsIrCommand(buildIrCommand(d), caps, cs.nouns, cs.groups) === 0;
+    return Domain.validateCsIrCommand(buildCommand(d), caps, cs.nouns, cs.groups) === 0;
   }
 
   // Row lifecycle: NOT LEARNED -> LEARNED (code captured, awaiting APPLY) ->
@@ -258,39 +150,28 @@
     return `${proto} · 0x${(d.code >>> 0).toString(16).toUpperCase().padStart(8, '0')}`;
   }
 
+  function setBusy(busy: boolean, sub: number): void { applyingSub = busy ? sub : null; }
+
   async function apply(sub: number): Promise<void> {
     const d = draftOf(sub);
     if (!d) return;
-    applyingSub = sub;
-    try {
-      if (await applyCsIrCommand(s, sub, buildIrCommand(d))) {
-        drafts.remove(sub);                       // device truth takes over
-      }
-    } finally {
-      applyingSub = null;
-    }
+    await SlotOps.applySlot(sub, drafts, (b) => setBusy(b, sub), () => applyCsIrCommand(s, sub, buildCommand(d)));
   }
 
   // Clear = drop a never-applied draft locally, or clear a live sub-slot on
   // the device (the all-zero command). Rejections surface via the runtime
   // actions' warn toasts.
   async function clear(sub: number): Promise<void> {
-    if (!cs.irCommands[sub]) { drafts.remove(sub); return; }
-    applyingSub = sub;
-    try {
-      if (await clearCsIrCommand(s, sub)) drafts.remove(sub);
-    } finally {
-      applyingSub = null;
-    }
+    await SlotOps.removeSlot(sub, cs.irCommands[sub] != null, drafts, (b) => setBusy(b, sub), () => clearCsIrCommand(s, sub));
   }
 
-  // Arming always ensures a draft exists first, so "the armed row's draft"
-  // (see finishLearn below) is never null, and the user can pick noun/action
-  // while the 10 s listening window is still open.
+  // Arming always ensures a draft exists first, so the armed row always has
+  // one to receive the learned code, and the user can pick noun/action while
+  // the 10 s listening window is still open.
   async function learn(sub: number): Promise<void> {
     if (armedSub != null) return;
     pickedSub = sub;
-    if (!drafts.draftOf(sub)) drafts.editDraft(sub, draftOf(sub) ?? defaultIrDraft());
+    if (!drafts.draftOf(sub)) drafts.editDraft(sub, draftOf(sub) ?? CsIr.defaultIrDraft(caps, cs.nouns));
     armedSub = sub;
     const ok = await csIrLearnArm(s);
     if (!ok) armedSub = null;   // failure (no live receiver) already surfaced via pushNotice
@@ -331,8 +212,8 @@
                 editDraft(sub, (dr) => {
                   dr.noun = n; dr.target = 0; dr.index = 0; dr.grouped = false;
                   const legal = actionOptions(n);
-                  if (!legal.includes(dr.action as Domain.CsAction)) dr.action = defaultAction(n);
-                  defaultIrOperands(dr);
+                  if (!legal.includes(dr.action as Domain.CsAction)) dr.action = CsDraft.defaultAction(Domain.CsType.Ir, n, caps, cs.nouns);
+                  CsIr.defaultIrOperands(dr, cs.nouns);
                 });
               }}>
               {#each nounOptions() as n (n)}
@@ -344,7 +225,7 @@
               <select class="sel" value={String(d.action)} aria-label="Action" disabled={applyingSub != null}
                 onchange={(e) => {
                   const a = Number((e.currentTarget as HTMLSelectElement).value);
-                  editDraft(sub, (dr) => { dr.action = a; defaultIrOperands(dr); });
+                  editDraft(sub, (dr) => { dr.action = a; CsIr.defaultIrOperands(dr, cs.nouns); });
                 }}>
                 {#each actions as a (a)}
                   <option value={String(a)}>{Domain.csActionLabel(a, CsField.enumOf(cs.nouns, d.noun))}</option>
@@ -354,95 +235,27 @@
           </div>
 
           {#if CsField.showTargetOf(cs.nouns, d.noun)}
-            {@const showGroup = irGroupsAvailable() && CsField.showTargetOf(cs.nouns, d.noun)}
-            {@const groupOpts = groupOptionsFor(d)}
-            {@const missingGroup = showGroup && d.grouped && !groupOpts.some((o) => o.v === d.target)}
             <div class="row">
-              <span class="microlbl">
-                {CsField.targetKindOf(cs.nouns, d.noun) === Domain.CS_TARGET_INPUT_CH ? 'INPUT'
-                  : CsField.targetKindOf(cs.nouns, d.noun) === Domain.CS_TARGET_OUTPUT_CH ? 'OUTPUT' : 'CHANNEL'}
-              </span>
-              <select class="sel" value={d.grouped ? `g${d.target}` : String(d.target)} aria-label="Target channel" disabled={applyingSub != null}
-                onchange={(e) => {
-                  const v = (e.currentTarget as HTMLSelectElement).value;
-                  editDraft(sub, (dr) => {
-                    if (v.startsWith('g')) { dr.grouped = true; dr.target = Number(v.slice(1)); }
-                    else { dr.grouped = false; dr.target = Number(v); }
-                    dr.index = 0;
-                  });
-                }}>
-                {#if showGroup && (groupOpts.length > 0 || missingGroup)}
-                  <optgroup label="CHANNELS">
-                    {#each (snap ? CsField.targetOptionsFor(cs.nouns, d.noun, snap.channels) : []) as o (o.v)}
-                      <option value={String(o.v)}>{o.label}</option>
-                    {/each}
-                  </optgroup>
-                  <optgroup label="GROUPS">
-                    {#each groupOpts as o (o.v)}
-                      <option value={`g${o.v}`}>{o.label}</option>
-                    {/each}
-                    {#if missingGroup}
-                      <option value={`g${d.target}`} disabled>Group {d.target + 1} (missing)</option>
-                    {/if}
-                  </optgroup>
-                {:else}
-                  {#each (snap ? CsField.targetOptionsFor(cs.nouns, d.noun, snap.channels) : []) as o (o.v)}
-                    <option value={String(o.v)}>{o.label}</option>
-                  {/each}
-                {/if}
-              </select>
-              {#if CsField.showBandOf(cs.nouns, d.noun)}
-                <span class="microlbl">BAND</span>
-                <select class="sel" value={String(d.index)} aria-label="Filter band" disabled={applyingSub != null}
-                  onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editDraft(sub, (dr) => { dr.index = v; }); }}>
-                  {#each (d.grouped ? groupBandOptionsFor(d) : (snap ? CsField.bandOptionsFor(d.noun, d.target, snap.channels) : [])) as o (o.v)}
-                    <option value={String(o.v)}>{o.label}</option>
-                  {/each}
-                </select>
-              {/if}
+              <CsTargetRow nouns={cs.nouns} noun={d.noun} target={d.target} index={d.index} grouped={d.grouped}
+                channels={snap?.channels ?? []} groups={cs.groups} groupsEnabled={CsIr.irGroupsAvailable(caps)}
+                disabled={applyingSub != null}
+                onTarget={(pick) => editDraft(sub, (dr) => { dr.grouped = pick.grouped; dr.target = pick.target; dr.index = 0; })}
+                onBand={(v) => editDraft(sub, (dr) => { dr.index = v; })} />
             </div>
           {/if}
 
-          {#if d.noun !== Domain.CsNoun.PageValue && (CsField.showValueOf(d.action) || CsField.showStepOf(d.action, IR_STEPPY))}
+          {#if d.noun !== Domain.CsNoun.PageValue && (CsField.showValueOf(d.action) || CsField.showStepOf(d.action, CsIr.IR_STEPPY))}
             <div class="row">
-              {#if CsField.showValueOf(d.action)}
-                <span class="microlbl">{CsField.valueLabel(d.action, CsField.contOf(cs.nouns, d.noun), d.noun)}</span>
-                {#if CsField.contOf(cs.nouns, d.noun)}
-                  <input class="numfield" type="number" step="0.5"
-                    min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(CsField.unitOf(cs.nouns, d.noun), cs.nouns[d.noun].minQ8) : 0}
-                    max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(CsField.unitOf(cs.nouns, d.noun), cs.nouns[d.noun].maxQ8) : 0}
-                    value={d.value} aria-label="Value" disabled={applyingSub != null}
-                    onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editDraft(sub, (dr) => { dr.value = v; }); }} />
-                  <span class="hint">{CsUnit.unitSuffix(CsField.unitOf(cs.nouns, d.noun))}</span>
-                {:else}
-                  <select class="sel" value={String(d.value)} aria-label="Value" disabled={applyingSub != null}
-                    onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editDraft(sub, (dr) => { dr.value = v; }); }}>
-                    {#each (CsField.enumOf(cs.nouns, d.noun) ? CsField.enumValueOptions(cs.nouns, d.noun, s.presets.names, cs.macros, cs.displayPages) : CsField.boolValueOptions(d.noun)) as o (o.v)}
-                      <option value={String(o.v)}>{o.label}</option>
-                    {/each}
-                  </select>
-                {/if}
-              {/if}
-              {#if CsField.showStepOf(d.action, IR_STEPPY)}
-                <span class="microlbl">STEP SIZE</span>
-                {#if CsField.enumOf(cs.nouns, d.noun)}
-                  <input class="numfield" type="number" step="1" min="1"
-                    max={Math.max(1, (cs.nouns[d.noun]?.enumCount ?? 2) - 1)}
-                    value={d.step} aria-label="Step size (positions)" disabled={applyingSub != null}
-                    onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editDraft(sub, (dr) => { dr.step = v; }); }} />
-                {:else}
-                  <input class="numfield" type="number" step={CsUnit.isLogStep(CsField.unitOf(cs.nouns, d.noun)) ? '0.01' : '0.5'} min="0"
-                    value={d.step} aria-label="Step size" disabled={applyingSub != null}
-                    onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editDraft(sub, (dr) => { dr.step = v; }); }} />
-                  <span class="hint">{CsUnit.stepUnitSuffix(CsField.unitOf(cs.nouns, d.noun))}</span>
-                {/if}
-              {/if}
+              <CsValueStepRow nouns={cs.nouns} noun={d.noun} action={d.action} steppy={CsIr.IR_STEPPY} presetNames={s.presets.names} macros={cs.macros} displayPages={cs.displayPages}
+                value={d.value} step={d.step} disabled={applyingSub != null}
+                onValue={(v) => editDraft(sub, (dr) => { dr.value = v; })}
+                onStep={(v) => editDraft(sub, (dr) => { dr.step = v; })} />
             </div>
           {/if}
 
-          {#if CsField.showWrapOf(cs.nouns, d.noun, d.action, IR_STEPPY) || d.action === Domain.CsAction.Inc || d.action === Domain.CsAction.Dec}
+          {#if CsField.showWrapOf(cs.nouns, d.noun, d.action, CsIr.IR_STEPPY) || d.action === Domain.CsAction.Inc || d.action === Domain.CsAction.Dec}
             <div class="row">
-              {#if CsField.showWrapOf(cs.nouns, d.noun, d.action, IR_STEPPY)}
+              {#if CsField.showWrapOf(cs.nouns, d.noun, d.action, CsIr.IR_STEPPY)}
                 <span class="microlbl">WRAP AROUND</span>
                 <ToggleSwitch checked={d.wrap} disabled={applyingSub != null}
                   ariaLabel="Wrap around" onChange={(v) => editDraft(sub, (dr) => { dr.wrap = v; })} />
@@ -638,12 +451,6 @@
   }
   .code.learned { color: var(--text-dim); }
   .spacer { flex: 1; }
-  .numfield {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    padding: 3px 6px;
-    width: 64px;
-  }
   .hint.listen { color: var(--text-dim); }
   .count {
     font-family: var(--font-mono);

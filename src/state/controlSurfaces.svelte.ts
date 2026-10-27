@@ -47,6 +47,10 @@ export interface ControlSurfacesState {
   // dirty flag is a single bit, so this is the console's own record of where
   // the unsaved changes came from (blank when another host made them).
   changed: CsChangedFlags;
+  // Mounted-panel interest for the CS status cadences (runtime/poll.ts); see
+  // wantCsExtPoll/wantCsDisplayPoll.
+  extPollWanted: number;
+  displayPollWanted: number;
   busy: boolean;
   lastFetchError: string | null;
 }
@@ -77,6 +81,8 @@ export function createControlSurfacesState(): ControlSurfacesState {
     displayStatus: null,
     revertEpoch: 0,
     changed: { bindings: false, groups: false, macros: false, display: false },
+    extPollWanted: 0,
+    displayPollWanted: 0,
     busy: false,
     lastFetchError: null,
   });

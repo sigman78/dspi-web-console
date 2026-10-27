@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatI2cAddr, formatSignedDb } from './format';
+import { formatI2cAddr, formatMasterDb, formatSignedDb } from './format';
 
 describe('formatSignedDb', () => {
   it('signs with U+2212 and an explicit plus', () => {
@@ -22,5 +22,18 @@ describe('formatI2cAddr', () => {
   it('zero-pads to two uppercase hex digits', () => {
     expect(formatI2cAddr(0x0a)).toBe('0x0A');
     expect(formatI2cAddr(0x3c)).toBe('0x3C');
+  });
+});
+
+describe('formatMasterDb', () => {
+  it('shows the mute glyph at and below the -127.5 threshold', () => {
+    expect(formatMasterDb(-128)).toBe('−∞');
+    expect(formatMasterDb(-127.5)).toBe('−∞');
+  });
+
+  it('shows a one-decimal dB value above the threshold', () => {
+    expect(formatMasterDb(-127.4)).toBe('−127.4');
+    expect(formatMasterDb(-6)).toBe('−6.0');
+    expect(formatMasterDb(0)).toBe('0.0');
   });
 });

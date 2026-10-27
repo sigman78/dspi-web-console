@@ -2,7 +2,7 @@
 // boot config. Split out of devOptions.ts because it needs Wire.MAX_WIRE_VERSION,
 // and devOptions.ts must stay import-free (src/utils/log.ts depends on it).
 import * as Wire from './protocol/wireTypes';
-import { mockToken, mockChip, mockSysClockFallback } from './devOptions';
+import { mockToken, mockChip, mockSysClockFallback, mockCsFull } from './devOptions';
 import type { MockOptions } from '@/transport/MockTransport';
 
 export interface MockProfile {
@@ -100,9 +100,15 @@ export function activeMockProfiles(): MockProfile[] | null {
   const token = mockToken();
   if (token === null) return null;
   const profiles = resolveMockProfiles(token, mockChip());
-  if (!mockSysClockFallback()) return profiles;
+  const fallback = mockSysClockFallback();
+  const csFull = mockCsFull();
+  if (!fallback && !csFull) return profiles;
   return profiles.map((p) => ({
     ...p,
-    opts: { ...p.opts, sysClockBoot: { storedMode: 2, fallback: true } },
+    opts: {
+      ...p.opts,
+      ...(fallback ? { sysClockBoot: { storedMode: 2, fallback: true } } : {}),
+      ...(csFull ? { csFull: true } : {}),
+    },
   }));
 }

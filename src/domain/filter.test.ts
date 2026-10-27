@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { FilterType, QP_DEFAULT, seedTypeChange, type FilterParams } from './filter';
+import {
+  FilterType, QP_DEFAULT, seedTypeChange, offeredTypes, TYPE_ORDER, FIRST_ORDER_TYPES, FIRST_ORDER_LP_HP_TYPES,
+  type FilterParams,
+} from './filter';
 
 const band = (over: Partial<FilterParams> = {}): FilterParams => ({
   type: FilterType.Peaking,
@@ -29,5 +32,33 @@ describe('seedTypeChange', () => {
   it('an ordinary type-to-type switch (neither side LT) seeds nothing', () => {
     const b = band({ type: FilterType.Peaking });
     expect(seedTypeChange(b, FilterType.HighPass)).toEqual({});
+  });
+});
+
+describe('offeredTypes', () => {
+  it('offers only the base PEQ types when firstOrderEq is off', () => {
+    expect(offeredTypes({ firstOrderEq: false })).toEqual(TYPE_ORDER);
+  });
+
+  it('appends the first-order types when firstOrderEq is on', () => {
+    expect(offeredTypes({ firstOrderEq: true })).toEqual([...TYPE_ORDER, ...FIRST_ORDER_TYPES]);
+  });
+
+  it('never offers Linkwitz Transform, even with every feature on', () => {
+    expect(offeredTypes({ firstOrderEq: true, firstOrderLpHp: true })).not.toContain(FilterType.LinkwitzTransform);
+  });
+
+  it('withholds the first-order low/high pass types until firstOrderLpHp is on', () => {
+    expect(offeredTypes({ firstOrderEq: true })).not.toEqual(expect.arrayContaining(FIRST_ORDER_LP_HP_TYPES));
+    expect(offeredTypes({ firstOrderEq: true, firstOrderLpHp: false })).not.toEqual(expect.arrayContaining(FIRST_ORDER_LP_HP_TYPES));
+  });
+
+  it('appends the first-order low/high pass types when firstOrderLpHp is on, independent of firstOrderEq', () => {
+    expect(offeredTypes({ firstOrderEq: true, firstOrderLpHp: true }))
+      .toEqual([...TYPE_ORDER, ...FIRST_ORDER_TYPES, ...FIRST_ORDER_LP_HP_TYPES]);
+    // A device could in principle report firstOrderLpHp without firstOrderEq
+    // (they're independent capability gates) -- the LP/HP types still show up.
+    expect(offeredTypes({ firstOrderEq: false, firstOrderLpHp: true }))
+      .toEqual([...TYPE_ORDER, ...FIRST_ORDER_LP_HP_TYPES]);
   });
 });

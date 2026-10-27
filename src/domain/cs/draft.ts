@@ -2,12 +2,12 @@
 // (ControlSurfacesPanel, which owns `drafts`/`applying` and the apply/revert/
 // remove/rename/save/discard actions) and the per-slot row it renders
 // (CsBindingRow, a controlled component with no draft state of its own).
-// Explicit-arg, like csFieldHelpers.ts: callers pass their own local caps/
+// Explicit-arg, like fieldHelpers.ts: callers pass their own local caps/
 // nouns rather than this module reaching into session state.
 import * as Domain from '@/domain';
 import * as Clamp from '@/domain/clamp';
-import * as CsUnit from './csUnitDisplay';
-import * as CsField from './csFieldHelpers';
+import * as CsUnit from './unitDisplay';
+import * as CsField from './fieldHelpers';
 
 // Per-slot local drafts (display units: unit-converted per noun -- dB/%/Q,
 // plain Hz, or ints for bool/enum; conversion happens once, in buildBinding).
@@ -141,7 +141,7 @@ export function draftFromLive(b: Domain.CsBinding, nouns: readonly Domain.CsNoun
   };
 }
 
-// Draft predicates that don't already live in csFieldHelpers.ts -- these are
+// Draft predicates that don't already live in fieldHelpers.ts -- these are
 // specific to the GPIO binding shape (pins, reverse/accel/repeat flags), not
 // shared with the IR command editor.
 export function showRangeOf(d: Draft, nouns: readonly Domain.CsNounCaps[]): boolean {
@@ -222,7 +222,7 @@ export function buildBinding(d: Draft, nouns: readonly Domain.CsNounCaps[], caps
     target: CsField.showTargetOf(nouns, d.noun) ? d.target : 0,
     index: CsField.showBandOf(nouns, d.noun) ? d.index : 0,
     value: pageValue ? 0 : CsField.showValueOf(d.action) ? (cont ? CsUnit.displayToValue(unit, d.value) : Math.round(d.value)) : 0,
-    step: pageValue ? 0 : CsField.showStepOf(d.action, STEPPY) ? (cont ? CsUnit.displayToStep(unit, d.step) : Math.round(d.step)) : 0,
+    step: pageValue ? 0 : CsField.showStepOf(d.action, STEPPY) ? CsField.clampStep(cont ? CsUnit.displayToStep(unit, d.step) : Math.round(d.step)) : 0,
     rangeMin: pageValue ? 0 : showRangeOf(d, nouns) && d.limitRange ? CsUnit.displayToValue(unit, d.rangeMin) : 0,
     rangeMax: pageValue ? 0 : showRangeOf(d, nouns) && d.limitRange ? CsUnit.displayToValue(unit, d.rangeMax) : 0,
     baseBright: showBaseBrightOf(d, caps) && d.limitBright ? Clamp.toRange(Math.round(d.baseBright), 1, 100) : 0,

@@ -1,11 +1,11 @@
 // Draft logic for the DISPLAY panel's two editors (caps v10+): the display's
 // own settings blob (CfgDraft) and one page slot (PageDraft). Modeled on
-// csDraft.ts/csMacroDraft.ts -- explicit-arg, display units in the draft
+// draft.ts/macroDraft.ts -- explicit-arg, display units in the draft
 // (seconds where the wire carries 0.1 s ticks), wire units only at the
 // buildCfg/buildPage boundary.
 import * as Domain from '@/domain';
 import * as Clamp from '@/domain/clamp';
-import * as CsField from './csFieldHelpers';
+import * as CsField from './fieldHelpers';
 
 export interface CfgDraft {
   mode: Domain.CsDisplayMode;

@@ -32,7 +32,7 @@
 <div class="shell">
   <PresetBoundaryModal />
   <ConfirmHost />
-  <main>
+  <main data-budget>
     {#if showSplash}
       <div class="boot-splash" role="status" aria-label="Connecting to device">
         <EqSpectrum />

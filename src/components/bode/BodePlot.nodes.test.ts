@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
-import { BODE_BINS } from './bodeFreqs';
+import { BODE_BINS } from '@/domain';
 import BodePlot from './BodePlot.svelte';
 
 const curve = { id: 'c', points: new Array<number>(BODE_BINS).fill(0) };

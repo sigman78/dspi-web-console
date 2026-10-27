@@ -1,8 +1,8 @@
 <script lang="ts">
-  import BandTypeSelect, { TYPE_LABELS, offeredTypes } from '@/components/eq/BandTypeSelect.svelte';
+  import BandTypeSelect from '@/components/eq/BandTypeSelect.svelte';
   import SliderField from '@/components/chrome/SliderField.svelte';
   import BypassButton from '@/components/eq/BypassButton.svelte';
-  import { Eq, FilterType, type ChannelModel, type FilterParams } from '@/domain';
+  import { Eq, FilterType, TYPE_LABELS, offeredTypes, type ChannelModel, type FilterParams } from '@/domain';
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '../noveauUi.svelte';
   import InspectorSection from './InspectorSection.svelte';

@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { matrixRows, type InputSlot, type OutputSlot, type RouteModel } from '@/domain';
+  import { matrixRows, upmixParkingStatus, type InputSlot, type OutputSlot, type RouteModel } from '@/domain';
   import { selectChannel, settings } from '@/state';
   import { chShade } from '@/styles/palette';
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '../noveauUi.svelte';
   import { formatSignedDb } from '@/components/chrome/format';
-  import { upmixStatus } from './upmixStatus';
   import CrosspointPopover from './CrosspointPopover.svelte';
 
   const s = getSession();
@@ -43,7 +42,7 @@
 
   const caption = $derived.by(() => {
     if (!upmixOn) return 'outputs as rows · inputs as columns · click a dot to edit';
-    const st = upmixStatus(upmixOn.enabled, s.telemetry.activeInputChannels, s.telemetry.info?.sampleRateHz ?? null);
+    const st = upmixParkingStatus(upmixOn.enabled, s.telemetry.activeInputChannels, s.telemetry.info?.sampleRateHz ?? null);
     return `upmix ${st === 'active' ? 'active' : `parked — ${st}`} · click a dot to edit`;
   });
 

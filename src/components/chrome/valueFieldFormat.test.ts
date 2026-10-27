@@ -41,6 +41,13 @@ describe('valueFieldFormat — format', () => {
 });
 
 describe('valueFieldFormat — parseAndClamp', () => {
+  it('snaps off-grid bounds inward instead of past them', () => {
+    // -32767 Q8 = -127.996 dB; snapping to 0.5 must not reach -128.
+    expect(parseAndClamp('-200', -127.996, 0, 0.5)).toBe(-127.5);
+    // Q8 max 0x7FFF = 127.996 with a 0.01 grid.
+    expect(parseAndClamp('500', 0, 127.996, 0.01)).toBe(127.99);
+  });
+
   it('parses decimals and snaps to step', () => {
     expect(parseAndClamp('3.7', 0, 10, 0.5)).toBe(3.5);
     expect(parseAndClamp('3.8', 0, 10, 0.5)).toBe(4);

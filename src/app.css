@@ -46,7 +46,7 @@
   /* Type scale: tag / meta / label / value / title. */
   --fs-xs: 9px; --fs-s: 10px; --fs-m: 11px; --fs-l: 12px; --fs-xl: 14px;
   /* Control and row heights: small control / control / row / section head. */
-  --h-ctl-s: 20px; --h-ctl: 22px; --h-row: 24px; --h-head: 28px;
+  --h-ctl-s: 20px; --h-ctl: 22px; --h-row: 24px; --h-head: 28px; --h-status: 28px;
   --radius-xs: 2px;
   --radius-s: 4px;
   --radius-m: 6px;

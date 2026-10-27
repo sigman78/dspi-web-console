@@ -297,6 +297,8 @@
     top: 0;
     z-index: var(--z-flyout);
     width: 400px;
+    /* The rail head sits at the top of the shell: leave the status line row. */
+    max-height: calc(100vh - var(--h-status));
     box-sizing: border-box;
     display: flex;
     flex-direction: column;

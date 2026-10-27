@@ -4,7 +4,6 @@ import {
   MASTER_VOLUME_MAX_POS,
   masterDbToPos,
   posToMasterDb,
-  formatMasterDb,
 } from './masterVolumeTaper';
 
 describe('masterVolumeTaper — pos <-> db', () => {
@@ -45,18 +44,5 @@ describe('masterVolumeTaper — nearest-position mapping for off-grid db', () =>
     expect(masterDbToPos(5)).toBe(MASTER_VOLUME_MAX_POS);
     expect(masterDbToPos(-Infinity)).toBe(0);
     expect(masterDbToPos(Infinity)).toBe(MASTER_VOLUME_MAX_POS);
-  });
-});
-
-describe('masterVolumeTaper — formatMasterDb', () => {
-  it('shows the mute glyph at and below the -127.5 threshold', () => {
-    expect(formatMasterDb(-128)).toBe('−∞');
-    expect(formatMasterDb(-127.5)).toBe('−∞');
-  });
-
-  it('shows a one-decimal dB value above the threshold', () => {
-    expect(formatMasterDb(-127.4)).toBe('−127.4');
-    expect(formatMasterDb(-6)).toBe('−6.0');
-    expect(formatMasterDb(0)).toBe('0.0');
   });
 });

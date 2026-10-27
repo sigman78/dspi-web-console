@@ -12,19 +12,24 @@
   import PinPicker from './PinPicker.svelte';
   import CsIrCommands from './CsIrCommands.svelte';
   import CsSlotCard from './CsSlotCard.svelte';
+  import { defaultUnitFor } from '@/components/chrome/valueFieldFormat';
+  import NumField from '@/components/chrome/NumField.svelte';
+  import CsTargetRow from './CsTargetRow.svelte';
+  import CsValueStepRow from './CsValueStepRow.svelte';
   import * as Domain from '@/domain';
   import * as Staged from '@/runtime/stagedActions';
   import { csStatusFromByte, CsStatusCode } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
-  import * as CsUnit from './csUnitDisplay';
-  import * as CsField from './csFieldHelpers';
-  import * as CsDraft from './csDraft';
-  import type { Draft } from './csDraft';
+  import * as CsUnit from '@/domain/cs/unitDisplay';
+  import * as CsField from '@/domain/cs/fieldHelpers';
+  import { unitField } from './csFieldFormat';
+  import * as CsDraft from '@/domain/cs/draft';
+  import type { Draft } from '@/domain/cs/draft';
 
   const {
     slot, draft: d, dirty, pill: p, applying, typeOptions,
     onEdit, onTypeChange, onApply, onRevert, onRemove, onRename,
-    irResetSignal, onIrDirtyChange, open, onToggle, detailTarget = null, irDetailTarget = null,
+    open, onToggle, detailTarget = null, irDetailTarget = null,
   }: {
     slot: number;
     draft: Draft;
@@ -38,8 +43,6 @@
     onRevert: () => void;
     onRemove: () => void;
     onRename: (name: string) => void;
-    irResetSignal: number;
-    onIrDirtyChange: (dirty: boolean) => void;
     open: boolean;
     onToggle: () => void;
     detailTarget?: HTMLElement | null;
@@ -58,10 +61,8 @@
 
   const actions = $derived(d.type === Domain.CsType.Ir ? [] : actionOptionsFor(d.type, d.noun));
 
-  function contOf(d: Draft): boolean { return CsField.contOf(cs.nouns, d.noun); }
   function enumOf(d: Draft): boolean { return CsField.enumOf(cs.nouns, d.noun); }
   function unitOf(d: Draft): number { return CsField.unitOf(cs.nouns, d.noun); }
-  function targetKindOf(d: Draft): number { return CsField.targetKindOf(cs.nouns, d.noun); }
 
   function showValueOf(d: Draft): boolean { return CsField.showValueOf(d.action); }
   function showStepOf(d: Draft): boolean { return CsField.showStepOf(d.action, STEPPY); }
@@ -75,7 +76,6 @@
   // there rather than let the user build an invalid combination.
   function eventLocked(d: Draft): boolean { return d.action === Domain.CsAction.Momentary || d.repeat; }
   function showTargetOf(d: Draft): boolean { return CsField.showTargetOf(cs.nouns, d.noun); }
-  function showBandOf(d: Draft): boolean { return CsField.showBandOf(cs.nouns, d.noun); }
   function twoPins(d: Draft): boolean { return CsDraft.twoPins(d, caps); }
   function adcOnly(d: Draft): boolean { return CsDraft.adcOnly(d, caps); }
   function showDelaysOf(d: Draft): boolean { return CsDraft.showDelaysOf(d, caps); }
@@ -88,30 +88,7 @@
     return 'Active-high wiring';
   }
 
-  function valueLabel(d: Draft): string { return CsField.valueLabel(d.action, contOf(d), d.noun); }
-
-  function boolValueOptions(d: Draft): { v: number; label: string }[] { return CsField.boolValueOptions(d.noun); }
-
-  function enumValueOptions(d: Draft): { v: number; label: string }[] {
-    return CsField.enumValueOptions(cs.nouns, d.noun, s.presets.names, cs.macros, cs.displayPages);
-  }
-
-  function targetOptionsFor(d: Draft): { v: number; label: string }[] {
-    return snap ? CsField.targetOptionsFor(cs.nouns, d.noun, snap.channels) : [];
-  }
-
-  function bandOptionsFor(d: Draft): { v: number; label: string }[] {
-    return snap ? CsField.bandOptionsFor(d.noun, d.target, snap.channels) : [];
-  }
-
   function showGroupOf(d: Draft): boolean { return CsDraft.showGroupOf(d, caps, cs.nouns); }
-  function groupOptionsFor(d: Draft): { v: number; label: string }[] {
-    return CsField.groupOptionsFor(cs.nouns, d.noun, cs.groups);
-  }
-  function groupBandOptionsFor(d: Draft): { v: number; label: string }[] {
-    const g = cs.groups[d.target];
-    return snap && g ? CsField.groupBandOptionsFor(cs.nouns, d.noun, g, snap.channels) : [];
-  }
   function showLinkAbsOf(d: Draft): boolean { return CsDraft.showLinkAbsOf(d, cs.nouns); }
   function showGroupAllOf(d: Draft): boolean { return CsDraft.showGroupAllOf(d); }
 
@@ -386,85 +363,26 @@
     {/if}
 
     {#if !CsDraft.isDisplay(d) && d.type !== Domain.CsType.Ir && showTargetOf(d)}
-      {@const groupOpts = showGroupOf(d) ? groupOptionsFor(d) : []}
-      {@const missingGroup = showGroupOf(d) && d.grouped && !groupOpts.some((o) => o.v === d.target)}
       <div class="row">
-        <span class="microlbl">{targetKindOf(d) === Domain.CS_TARGET_INPUT_CH ? 'INPUT' : targetKindOf(d) === Domain.CS_TARGET_OUTPUT_CH ? 'OUTPUT' : 'CHANNEL'}</span>
-        <select class="sel" value={d.grouped ? `g${d.target}` : String(d.target)} aria-label="Target channel" disabled={applying}
-          onchange={(e) => {
-            const v = (e.currentTarget as HTMLSelectElement).value;
-            onEdit((dr) => {
-              if (v.startsWith('g')) { dr.grouped = true; dr.target = Number(v.slice(1)); }
-              else { dr.grouped = false; dr.target = Number(v); dr.linkAbs = false; dr.groupAll = false; }
-              dr.index = 0;
-            });
-          }}>
-          {#if showGroupOf(d) && (groupOpts.length > 0 || missingGroup)}
-            <optgroup label="CHANNELS">
-              {#each targetOptionsFor(d) as o (o.v)}
-                <option value={String(o.v)}>{o.label}</option>
-              {/each}
-            </optgroup>
-            <optgroup label="GROUPS">
-              {#each groupOpts as o (o.v)}
-                <option value={`g${o.v}`}>{o.label}</option>
-              {/each}
-              {#if missingGroup}
-                <option value={`g${d.target}`} disabled>Group {d.target + 1} (missing)</option>
-              {/if}
-            </optgroup>
-          {:else}
-            {#each targetOptionsFor(d) as o (o.v)}
-              <option value={String(o.v)}>{o.label}</option>
-            {/each}
-          {/if}
-        </select>
-        {#if showBandOf(d)}
-          <span class="microlbl">BAND</span>
-          <select class="sel" value={String(d.index)} aria-label="Filter band" disabled={applying}
-            onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); onEdit((dr) => { dr.index = v; }); }}>
-            {#each (d.grouped ? groupBandOptionsFor(d) : bandOptionsFor(d)) as o (o.v)}
-              <option value={String(o.v)}>{o.label}</option>
-            {/each}
-          </select>
-        {/if}
+        <CsTargetRow nouns={cs.nouns} noun={d.noun} target={d.target} index={d.index} grouped={d.grouped}
+          channels={snap?.channels ?? []} groups={cs.groups} groupsEnabled={showGroupOf(d)}
+          disabled={applying}
+          onTarget={(pick) => onEdit((dr) => {
+            dr.grouped = pick.grouped;
+            dr.target = pick.target;
+            if (!pick.grouped) { dr.linkAbs = false; dr.groupAll = false; }
+            dr.index = 0;
+          })}
+          onBand={(v) => onEdit((dr) => { dr.index = v; })} />
       </div>
     {/if}
 
     {#if !CsDraft.isDisplay(d) && d.type !== Domain.CsType.Ir && d.noun !== Domain.CsNoun.PageValue && (showValueOf(d) || showStepOf(d))}
       <div class="row">
-        {#if showValueOf(d)}
-          <span class="microlbl">{valueLabel(d)}</span>
-          {#if contOf(d)}
-            <input class="numfield" type="number" step="0.5"
-              min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
-              max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
-              value={d.value} aria-label={`${valueLabel(d)} (${CsUnit.unitSuffix(unitOf(d))})`} disabled={applying}
-              onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.value = v; }); }} />
-            <span class="hint">{CsUnit.unitSuffix(unitOf(d))}</span>
-          {:else}
-            <select class="sel" value={String(d.value)} aria-label={valueLabel(d)} disabled={applying}
-              onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); onEdit((dr) => { dr.value = v; }); }}>
-              {#each (enumOf(d) ? enumValueOptions(d) : boolValueOptions(d)) as o (o.v)}
-                <option value={String(o.v)}>{o.label}</option>
-              {/each}
-            </select>
-          {/if}
-        {/if}
-        {#if showStepOf(d)}
-          <span class="microlbl">STEP SIZE</span>
-          {#if enumOf(d)}
-            <input class="numfield" type="number" step="1" min="1"
-              max={Math.max(1, (cs.nouns[d.noun]?.enumCount ?? 2) - 1)}
-              value={d.step} aria-label="Step size (positions)" disabled={applying}
-              onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.step = v; }); }} />
-          {:else}
-            <input class="numfield" type="number" step={CsUnit.isLogStep(unitOf(d)) ? '0.01' : '0.5'} min="0"
-              value={d.step} aria-label={`Step size (${CsUnit.stepUnitSuffix(unitOf(d))})`} disabled={applying}
-              onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.step = v; }); }} />
-            <span class="hint">{CsUnit.stepUnitSuffix(unitOf(d))}</span>
-          {/if}
-        {/if}
+        <CsValueStepRow nouns={cs.nouns} noun={d.noun} action={d.action} steppy={STEPPY} presetNames={s.presets.names} macros={cs.macros} displayPages={cs.displayPages}
+          value={d.value} step={d.step} disabled={applying}
+          onValue={(v) => onEdit((dr) => { dr.value = v; })}
+          onStep={(v) => onEdit((dr) => { dr.step = v; })} />
       </div>
     {/if}
 
@@ -475,19 +393,19 @@
           ariaLabel="Limit the range"
           onChange={(v) => onEdit((dr) => { dr.limitRange = v; })} />
         {#if d.limitRange}
+          {@const bounds = CsField.valueBounds(cs.nouns, d.noun)}
+          {@const uf = unitField(unitOf(d))}
           <span class="microlbl">MINIMUM</span>
-          <input class="numfield" type="number" step="0.5"
-            min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
-            max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
-            value={d.rangeMin} aria-label={`Range minimum (${CsUnit.unitSuffix(unitOf(d))})`} disabled={applying}
-            onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.rangeMin = v; }); }} />
+          <NumField value={d.rangeMin} min={bounds.min} max={bounds.max} step={uf.step}
+            kind={uf.kind} precision={uf.precision} disabled={applying}
+            ariaLabel={`Range minimum (${CsUnit.unitSuffix(unitOf(d))})`}
+            onChange={(v) => onEdit((dr) => { dr.rangeMin = v; })} />
           <span class="microlbl">MAXIMUM</span>
-          <input class="numfield" type="number" step="0.5"
-            min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
-            max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
-            value={d.rangeMax} aria-label={`Range maximum (${CsUnit.unitSuffix(unitOf(d))})`} disabled={applying}
-            onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.rangeMax = v; }); }} />
-          <span class="hint">{CsUnit.unitSuffix(unitOf(d))}</span>
+          <NumField value={d.rangeMax} min={bounds.min} max={bounds.max} step={uf.step}
+            kind={uf.kind} precision={uf.precision} disabled={applying}
+            ariaLabel={`Range maximum (${CsUnit.unitSuffix(unitOf(d))})`}
+            hint={defaultUnitFor(uf.kind) === '' ? CsUnit.unitSuffix(unitOf(d)) : undefined}
+            onChange={(v) => onEdit((dr) => { dr.rangeMax = v; })} />
         {/if}
       </div>
     {/if}
@@ -496,17 +414,13 @@
       <div class="row">
         {#if showDelaysOf(d)}
           <span class="microlbl">ON DELAY</span>
-          <input class="numfield" type="number" step="0.1" min="0" max="6553.5"
-            value={d.onDelay} aria-label="On delay (s)"
-            title="Condition must hold this long before the LED lights" disabled={applying}
-            onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.onDelay = v; }); }} />
-          <span class="hint">s</span>
+          <NumField value={d.onDelay} min={0} max={6553.5} step={0.1} kind="s" precision={1}
+            ariaLabel="On delay (s)" title="Condition must hold this long before the LED lights" disabled={applying}
+            onChange={(v) => onEdit((dr) => { dr.onDelay = v; })} />
           <span class="microlbl">OFF DELAY</span>
-          <input class="numfield" type="number" step="0.1" min="0" max="6553.5"
-            value={d.offDelay} aria-label="Off delay (s)"
-            title="Condition must hold this long before the LED goes out" disabled={applying}
-            onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.offDelay = v; }); }} />
-          <span class="hint">s</span>
+          <NumField value={d.offDelay} min={0} max={6553.5} step={0.1} kind="s" precision={1}
+            ariaLabel="Off delay (s)" title="Condition must hold this long before the LED goes out" disabled={applying}
+            onChange={(v) => onEdit((dr) => { dr.offDelay = v; })} />
         {/if}
         {#if showBaseBrightOf(d)}
           <span class="microlbl">LIMIT BRIGHTNESS</span>
@@ -515,10 +429,9 @@
             onChange={(v) => onEdit((dr) => { dr.limitBright = v; })} />
           {#if d.limitBright}
             <span class="microlbl">CEILING</span>
-            <input class="numfield" type="number" step="1" min="1" max="100"
-              value={d.baseBright} aria-label="Brightness ceiling (%)" disabled={applying}
-              onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.baseBright = v; }); }} />
-            <span class="hint">%</span>
+            <NumField value={d.baseBright} min={1} max={100} step={1} kind="pct" precision={0}
+              ariaLabel="Brightness ceiling (%)" disabled={applying}
+              onChange={(v) => onEdit((dr) => { dr.baseBright = v; })} />
           {/if}
         {/if}
       </div>
@@ -579,7 +492,7 @@
   {/if}
 
   {#if cs.bindings[slot]?.type === Domain.CsType.Ir}
-    <CsIrCommands resetSignal={irResetSignal} onDirtyChange={onIrDirtyChange} {irDetailTarget} />
+    <CsIrCommands {irDetailTarget} />
   {/if}
 </CsSlotCard>
 

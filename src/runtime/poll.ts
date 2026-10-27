@@ -1,7 +1,11 @@
 import type { ReadySession } from '@/state';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
-import { ALL_CHANNELS, isSpdifSource, wireChannelFor } from '@/domain';
+import type { DeviceFeatures } from '@/protocol/capabilities';
+import {
+  ALL_CHANNELS, isSpdifSource, wireChannelFor, csDisplaySlotActive, type DspSnapshot,
+} from '@/domain';
+import { refreshCsDisplayStatus, refreshCsExtStatus } from './controlSurfaceActions';
 
 const STATUS_INTERVAL_MS = 50;   // ~20 Hz -- peaks + cpu
 const BUFFER_INTERVAL_MS = 250;  // ~4 Hz  -- buffer stats
@@ -14,6 +18,8 @@ const SUBHARM_INTERVAL_MS = 1000;   // ~1 Hz  -- subharm headroom readout (enabl
 const SUBHARM_METER_INTERVAL_MS = 200;   // ~5 Hz  -- subharm sub meter (PR.06 panel mounted only)
 const LIMITER_METER_INTERVAL_MS = 100;   // 100 ms cadence, ~7 Hz effective -- limiter GR meter (PR.07 panel mounted only)
 const LIMITER_STATUS_INTERVAL_MS = 1000;   // ~1 Hz  -- limiter status block, piggybacks the meter tick
+const CS_EXT_INTERVAL_MS = 500;   // ~2 Hz  -- CS ext status while a macro runs (MACROS panel mounted only)
+const CS_DISPLAY_INTERVAL_MS = 1000;   // ~1 Hz  -- CS display status while a display runs (DISPLAY panel mounted only)
 const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile floor
 // Unconditional re-fetch floor, independent of any pending reconcile request.
 // Notify is the primary sync trigger, but firmware 1.1.4 has verified coverage
@@ -23,15 +29,33 @@ const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile
 // notify coverage improves without re-checking those holes.
 const PARAM_SAFETY_NET_MS = 10_000;
 
+// Conditions that must all hold for a cadence to be eligible on a tick. Absent
+// keys impose nothing.
+interface Gates {
+  // The device exposes this feature.
+  feature?: keyof DeviceFeatures;
+  // Persisted intent in the mirror; a missing snapshot keeps the gate shut.
+  enabled?: (snap: DspSnapshot) => boolean;
+  // Interest or live state held outside the mirror (a mounted panel, a running
+  // macro).
+  wanted?: () => boolean;
+  // Stand down while the link is degraded.
+  healthy?: true;
+  // Stand down while a write is registered-unsettled.
+  idle?: true;
+}
+
 interface Cadence {
-  key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'i2sSlave' | 'adat' | 'adatInput' | 'subharm' | 'subharmMeter' | 'limiterMeter' | 'param';
+  key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'i2sSlave' | 'adat' | 'adatInput' | 'subharm' | 'subharmMeter' | 'limiterMeter' | 'csExt' | 'csDisplay' | 'param';
   intervalMs: number;
   runWhileHidden: boolean;          // today all false (pause everything when hidden)
-  lastMs(): number;                 // cadence clock -- reads the STORE timestamp
-  run(d: DspDevice): Promise<void>; // owns its own timestamp update
-  // Optional override of the default interval gate. Returns true when the
-  // cadence should run this tick. Used by the param reconcile cadence, which
-  // gates on in-flight writes and a pending reconcile request, not just time.
+  gates: Gates;
+  // Clock owned by the telemetry store, so actions can zero it to force a
+  // re-read. Absent: a loop-local clock stamped after every run.
+  lastMs?(): number;
+  run(d: DspDevice): Promise<void>;
+  // Replaces the whole gate-and-interval decision. Only the param reconcile
+  // cadence needs it: it gates on pending requests and the preset guard.
   shouldRun?(now: number): boolean;
 }
 
@@ -39,12 +63,24 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
   const tele = session.telemetry;
   const mir = session.mirror;
   const health = session.health;
+  const cs = session.controlSurfaces;
   let stopped = false;
   const isHidden = () => typeof document !== 'undefined' && document.hidden;
-  // Only the in-flight guards are loop-local. The cadence CLOCK stays on the
-  // telemetry store (tele.applyPeaks sets lastStatusMs), so the gate must read
-  // the store, not a private copy.
-  const inFlight: Record<Cadence['key'], boolean> = { status: false, buffer: false, info: false, spdifRx: false, i2sSlave: false, adat: false, adatInput: false, subharm: false, subharmMeter: false, limiterMeter: false, param: false };
+  const inFlight = new Set<Cadence['key']>();
+  const localLast: Partial<Record<Cadence['key'], number>> = {};
+
+  // Link-health convention for telemetry reads: a failure counts against the
+  // link (the probe owns recovery) and is logged. The control-surface panel
+  // polls instead drop a failed tick silently (refreshCsExtStatus).
+  async function guardedRead(key: string, what: string, read: () => Promise<void>): Promise<void> {
+    try {
+      await read();
+      health.noteOk();
+    } catch (e) {
+      health.noteFail(`poll:${key}`, e);
+      Log.warn('poll', `${what} failed`, e);
+    }
+  }
 
   async function pollStatus(d: DspDevice): Promise<void> {
     try {
@@ -75,17 +111,8 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     }
   }
 
-  // Buffer stats feed only the SETUP > DEVICE diagnostics panels -- skip the
-  // 4 Hz fetch unless one is mounted (wantBufferStats). lastBufferMs stays put
-  // while idle, so mounting polls on the next tick and the panels populate
-  // immediately.
-  function shouldRunBuffer(now: number): boolean {
-    if (tele.bufferStatsWanted <= 0) return false;
-    return tele.lastBufferMs === 0 || now - tele.lastBufferMs >= BUFFER_INTERVAL_MS;
-  }
-
   async function pollBuffer(d: DspDevice): Promise<void> {
-    try {
+    await guardedRead('buffer', 'getBufferStats', async () => {
       const b = await session.queue.run(() => d.getBufferStats());
       if (b) {
         tele.bufferStats = b;
@@ -93,180 +120,56 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
         tele.pdmActive = b.pdmActive;
         tele.sequence = b.sequence;
       }
-      health.noteOk();
-      tele.lastBufferMs = performance.now();
-    } catch (e) {
-      health.noteFail('poll:buffer', e);
-      Log.warn('poll', 'getBufferStats failed', e);
-      tele.lastBufferMs = performance.now();
-    }
+    });
+    tele.lastBufferMs = performance.now();
   }
 
   async function pollInfo(d: DspDevice): Promise<void> {
-    try {
-      tele.applyPartialInfo(await session.queue.run(() => d.getSystemInfo()));   // sets tele.lastInfoMs
-      health.noteOk();
-    } catch (e) {
-      health.noteFail('poll:info', e);
-      Log.warn('poll', 'getSystemInfo failed', e);
-      tele.lastInfoMs = performance.now();
-    }
+    await guardedRead('info', 'getSystemInfo', async () => {
+      tele.applyPartialInfo(await session.queue.run(() => d.getSystemInfo()));
+    });
+    tele.lastInfoMs = performance.now();
   }
 
-  // S/PDIF RX live status. Only runs when the snapshot shows SPDIF input source
-  // (the opcode is valid on USB input too, but the data is stale/zeroed there).
-  // lastSpdifRxMs is tracked locally (not on the telemetry store) because no
-  // other subsystem needs to read it.
-  let lastSpdifRxMs = 0;
-  async function pollSpdifRx(d: DspDevice): Promise<void> {
-    try {
-      tele.spdifRxStatus = await session.queue.run(() => d.getSpdifRxStatus());
-      health.noteOk();
-    } catch (e) {
-      health.noteFail('poll:spdifRx', e);
-      Log.warn('poll', 'getSpdifRxStatus failed', e);
-    } finally {
-      lastSpdifRxMs = performance.now();
-    }
-  }
+  const pollSpdifRx = (d: DspDevice) => guardedRead('spdifRx', 'getSpdifRxStatus', async () => {
+    tele.spdifRxStatus = await session.queue.run(() => d.getSpdifRxStatus());
+  });
 
-  function shouldRunSpdifRx(now: number): boolean {
-    const source = mir.current?.inputConfig.source;
-    if (source === undefined || !isSpdifSource(source)) return false;
-    // lastSpdifRxMs === 0 means never polled this session: eligible immediately,
-    // not a full interval after the performance.now() epoch.
-    return lastSpdifRxMs === 0 || now - lastSpdifRxMs >= SPDIF_RX_INTERVAL_MS;
-  }
+  const pollI2sSlave = (d: DspDevice) => guardedRead('i2sSlave', 'getI2sSlaveStatus', async () => {
+    tele.i2sSlaveStatus = await session.queue.run(() => d.getI2sSlaveStatus());
+  });
 
-  // I2S slave-clock live status. Only runs when the device supports the
-  // feature and the live clock mode is slave -- the opcode is valid on
-  // master-mode firmware too, but the data is meaningless there.
-  let lastI2sSlaveMs = 0;
-  async function pollI2sSlave(d: DspDevice): Promise<void> {
-    try {
-      tele.i2sSlaveStatus = await session.queue.run(() => d.getI2sSlaveStatus());
-      health.noteOk();
-    } catch (e) {
-      health.noteFail('poll:i2sSlave', e);
-      Log.warn('poll', 'getI2sSlaveStatus failed', e);
-    } finally {
-      lastI2sSlaveMs = performance.now();
-    }
-  }
+  const pollAdat = (d: DspDevice) => guardedRead('adat', 'getAdatStatus', async () => {
+    tele.adatStatus = await session.queue.run(() => d.getAdatStatus());
+  });
 
-  function shouldRunI2sSlave(now: number): boolean {
-    if (!session.device.capabilities?.features.i2sSlaveClock) return false;
-    if (mir.current?.inputConfig.i2sClockMode !== 1) return false;
-    return lastI2sSlaveMs === 0 || now - lastI2sSlaveMs >= I2S_SLAVE_INTERVAL_MS;
-  }
+  const pollAdatInput = (d: DspDevice) => guardedRead('adatInput', 'getAdatInputStatus', async () => {
+    tele.adatInputStatus = await session.queue.run(() => d.getAdatInputStatus());
+  });
 
-  // ADAT lightpipe output live status. Only runs when the device supports the
-  // feature and the persisted intent is enabled -- the opcode is valid
-  // regardless, but the data is meaningless while disabled.
-  let lastAdatMs = 0;
-  async function pollAdat(d: DspDevice): Promise<void> {
-    try {
-      tele.adatStatus = await session.queue.run(() => d.getAdatStatus());
-      health.noteOk();
-    } catch (e) {
-      health.noteFail('poll:adat', e);
-      Log.warn('poll', 'getAdatStatus failed', e);
-    } finally {
-      lastAdatMs = performance.now();
-    }
-  }
-
-  function shouldRunAdat(now: number): boolean {
-    if (!session.device.capabilities?.features.adatOutput) return false;
-    if (!mir.current?.adat.enabled) return false;
-    return lastAdatMs === 0 || now - lastAdatMs >= ADAT_INTERVAL_MS;
-  }
-
-  // ADAT lightpipe input live status. Only runs when the device supports the
-  // feature and the persisted intent is enabled -- the opcode is valid
-  // regardless, but the data is meaningless while disabled.
-  let lastAdatInputMs = 0;
-  async function pollAdatInput(d: DspDevice): Promise<void> {
-    try {
-      tele.adatInputStatus = await session.queue.run(() => d.getAdatInputStatus());
-      health.noteOk();
-    } catch (e) {
-      health.noteFail('poll:adatInput', e);
-      Log.warn('poll', 'getAdatInputStatus failed', e);
-    } finally {
-      lastAdatInputMs = performance.now();
-    }
-  }
-
-  function shouldRunAdatInput(now: number): boolean {
-    if (!session.device.capabilities?.features.adatInput) return false;
-    if (!mir.current?.inputConfig.adatInputEnabled) return false;
-    return lastAdatInputMs === 0 || now - lastAdatInputMs >= ADAT_INPUT_INTERVAL_MS;
-  }
-
-  // Subharm headroom (fw V29+, PR.06). Only runs while subharm is enabled --
-  // the fw reports 0 (meaningless) otherwise. Also gated on link health and
-  // writes.busy, unlike the other feature-status cadences: this is a real GET
-  // the device computes fresh, not a cheap status read, so it shouldn't pile
-  // up against a degraded link or race an in-flight scrub. The clock lives on
-  // the telemetry store (not a loop-local, unlike the other lastXMs above) so
-  // setSubharmEnabled/Low/High/Boost can zero it to force a fresh re-read
-  // (fw spec Sec.6: re-read after every SET) once the scrub settles.
+  // The headroom clock lives on the telemetry store so setSubharmEnabled/Low/
+  // High/Boost can zero it to force a fresh re-read (fw spec Sec.6: re-read
+  // after every SET) once the scrub settles.
   async function pollSubharm(d: DspDevice): Promise<void> {
-    try {
+    await guardedRead('subharm', 'getSubharmHeadroom', async () => {
       tele.subharmHeadroomDb = await session.queue.run(() => d.getSubharmHeadroom());
-      health.noteOk();
-    } catch (e) {
-      health.noteFail('poll:subharm', e);
-      Log.warn('poll', 'getSubharmHeadroom failed', e);
-    } finally {
-      tele.lastSubharmMs = performance.now();
-    }
+    });
+    tele.lastSubharmMs = performance.now();
   }
 
-  function shouldRunSubharm(now: number): boolean {
-    if (!session.device.capabilities?.features.subharm) return false;
-    if (!mir.current?.subharm.enabled) return false;
-    if (health.degraded) return false;
-    if (session.writes.busy) return false;
-    return tele.lastSubharmMs === 0 || now - tele.lastSubharmMs >= SUBHARM_INTERVAL_MS;
-  }
-
-  // Subharm sub meter (fw V30+, PR.06 MONITOR row). Interest-gated: the panel
-  // holds interest only while mounted (tele.subharmMeterWanted, see
-  // telemetry.svelte.ts's wantSubharmMeter), so an unmounted panel doesn't pay
-  // for a live meter nobody is looking at. Unlike the headroom cadence above,
-  // NOT gated on writes.busy -- this is a cheap status-style read that should
-  // keep moving during a scrub, not queue up behind it.
   async function pollSubharmMeter(d: DspDevice): Promise<void> {
-    try {
+    await guardedRead('subharmMeter', 'getSubharmMeter', async () => {
       const meter = await session.queue.run(() => d.getSubharmMeter());
       // Interest may have been released mid-read; a late write would linger.
       if (tele.subharmMeterWanted > 0) tele.subharmMeter = meter;
-      health.noteOk();
-    } catch (e) {
-      health.noteFail('poll:subharmMeter', e);
-      Log.warn('poll', 'getSubharmMeter failed', e);
-    } finally {
-      tele.lastSubharmMeterMs = performance.now();
-    }
+    });
+    tele.lastSubharmMeterMs = performance.now();
   }
 
-  function shouldRunSubharmMeter(now: number): boolean {
-    if (!session.device.capabilities?.features.subharmExt) return false;
-    if (!mir.current?.subharm.enabled) return false;
-    if (tele.subharmMeterWanted <= 0) return false;
-    if (health.degraded) return false;
-    return tele.lastSubharmMeterMs === 0 || now - tele.lastSubharmMeterMs >= SUBHARM_METER_INTERVAL_MS;
-  }
-
-  // Limiter GR meter (fw V32+, PR.07). Interest-gated like the subharm meter,
-  // but not on any output being enabled: the meter reads 0 when nothing limits
-  // and the panel wants the status block even with every output off. The
-  // status block rides the same tick at ~1 Hz or when an action zeroed its
-  // clock.
+  // The status block rides the meter tick at ~1 Hz, or sooner when an action
+  // zeroed its clock.
   async function pollLimiterMeter(d: DspDevice): Promise<void> {
-    try {
+    await guardedRead('limiterMeter', 'getLimiterMeter', async () => {
       const now = performance.now();
       const wantStatus = tele.lastLimiterStatusMs === 0 || now - tele.lastLimiterStatusMs >= LIMITER_STATUS_INTERVAL_MS;
       const meter = await session.queue.run(() => d.getLimiterMeter());
@@ -279,20 +182,8 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
           tele.lastLimiterStatusMs = performance.now();
         }
       }
-      health.noteOk();
-    } catch (e) {
-      health.noteFail('poll:limiterMeter', e);
-      Log.warn('poll', 'getLimiterMeter failed', e);
-    } finally {
-      tele.lastLimiterMeterMs = performance.now();
-    }
-  }
-
-  function shouldRunLimiterMeter(now: number): boolean {
-    if (!session.device.capabilities?.features.limiter) return false;
-    if (tele.limiterMeterWanted <= 0) return false;
-    if (health.degraded) return false;
-    return tele.lastLimiterMeterMs === 0 || now - tele.lastLimiterMeterMs >= LIMITER_METER_INTERVAL_MS;
+    });
+    tele.lastLimiterMeterMs = performance.now();
   }
 
   // Background param-mirror reconcile. shouldRunParam already decided this tick
@@ -349,20 +240,81 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     return now - tele.lastParamMs >= PARAM_SAFETY_NET_MS;
   }
 
+  function gatesOpen(g: Gates): boolean {
+    if (g.feature && !session.device.capabilities?.features[g.feature]) return false;
+    if (g.enabled) {
+      const snap = mir.current;
+      if (!snap || !g.enabled(snap)) return false;
+    }
+    if (g.wanted && !g.wanted()) return false;
+    if (g.healthy && health.degraded) return false;
+    if (g.idle && session.writes.busy) return false;
+    return true;
+  }
+
+  // Interest-gated cadences read only while something is looking: buffer
+  // stats (diagnostics panels), the subharm and limiter meters, and the CS
+  // macro/display status. Headroom and the meters stand down on a degraded
+  // link; headroom is a real GET the device computes fresh, so it also waits
+  // out in-flight writes, while the meters keep moving through a scrub. The
+  // CS polls take no link gates: their reads are dropped silently on failure.
   const cadences: Cadence[] = [
-    { key: 'status',  intervalMs: STATUS_INTERVAL_MS,   runWhileHidden: false, lastMs: () => tele.lastStatusMs, run: pollStatus },
-    { key: 'buffer',  intervalMs: BUFFER_INTERVAL_MS,   runWhileHidden: false, lastMs: () => tele.lastBufferMs, run: pollBuffer, shouldRun: shouldRunBuffer },
-    { key: 'info',    intervalMs: INFO_INTERVAL_MS,     runWhileHidden: false, lastMs: () => tele.lastInfoMs,   run: pollInfo },
-    { key: 'spdifRx', intervalMs: SPDIF_RX_INTERVAL_MS, runWhileHidden: false, lastMs: () => lastSpdifRxMs,     run: pollSpdifRx, shouldRun: shouldRunSpdifRx },
-    { key: 'i2sSlave', intervalMs: I2S_SLAVE_INTERVAL_MS, runWhileHidden: false, lastMs: () => lastI2sSlaveMs, run: pollI2sSlave, shouldRun: shouldRunI2sSlave },
-    { key: 'adat',    intervalMs: ADAT_INTERVAL_MS,      runWhileHidden: false, lastMs: () => lastAdatMs,    run: pollAdat,    shouldRun: shouldRunAdat },
-    { key: 'adatInput', intervalMs: ADAT_INPUT_INTERVAL_MS, runWhileHidden: false, lastMs: () => lastAdatInputMs, run: pollAdatInput, shouldRun: shouldRunAdatInput },
-    { key: 'subharm', intervalMs: SUBHARM_INTERVAL_MS, runWhileHidden: false, lastMs: () => tele.lastSubharmMs, run: pollSubharm, shouldRun: shouldRunSubharm },
-    { key: 'subharmMeter', intervalMs: SUBHARM_METER_INTERVAL_MS, runWhileHidden: false, lastMs: () => tele.lastSubharmMeterMs, run: pollSubharmMeter, shouldRun: shouldRunSubharmMeter },
-    { key: 'limiterMeter', intervalMs: LIMITER_METER_INTERVAL_MS, runWhileHidden: false, lastMs: () => tele.lastLimiterMeterMs, run: pollLimiterMeter, shouldRun: shouldRunLimiterMeter },
-    { key: 'param',   intervalMs: PARAM_INTERVAL_MS,    runWhileHidden: false, lastMs: () => tele.lastParamMs,  run: pollParam, shouldRun: shouldRunParam },
+    { key: 'status', intervalMs: STATUS_INTERVAL_MS, runWhileHidden: false, gates: {},
+      lastMs: () => tele.lastStatusMs, run: pollStatus },
+    { key: 'buffer', intervalMs: BUFFER_INTERVAL_MS, runWhileHidden: false,
+      gates: { wanted: () => tele.bufferStatsWanted > 0 },
+      lastMs: () => tele.lastBufferMs, run: pollBuffer },
+    { key: 'info', intervalMs: INFO_INTERVAL_MS, runWhileHidden: false, gates: {},
+      lastMs: () => tele.lastInfoMs, run: pollInfo },
+    { key: 'spdifRx', intervalMs: SPDIF_RX_INTERVAL_MS, runWhileHidden: false,
+      gates: { enabled: (m) => isSpdifSource(m.inputConfig.source) },
+      run: pollSpdifRx },
+    { key: 'i2sSlave', intervalMs: I2S_SLAVE_INTERVAL_MS, runWhileHidden: false,
+      gates: { feature: 'i2sSlaveClock', enabled: (m) => m.inputConfig.i2sClockMode === 1 },
+      run: pollI2sSlave },
+    { key: 'adat', intervalMs: ADAT_INTERVAL_MS, runWhileHidden: false,
+      gates: { feature: 'adatOutput', enabled: (m) => m.adat.enabled },
+      run: pollAdat },
+    { key: 'adatInput', intervalMs: ADAT_INPUT_INTERVAL_MS, runWhileHidden: false,
+      gates: { feature: 'adatInput', enabled: (m) => m.inputConfig.adatInputEnabled },
+      run: pollAdatInput },
+    { key: 'subharm', intervalMs: SUBHARM_INTERVAL_MS, runWhileHidden: false,
+      gates: { feature: 'subharm', enabled: (m) => m.subharm.enabled, healthy: true, idle: true },
+      lastMs: () => tele.lastSubharmMs, run: pollSubharm },
+    { key: 'subharmMeter', intervalMs: SUBHARM_METER_INTERVAL_MS, runWhileHidden: false,
+      gates: {
+        feature: 'subharmExt', enabled: (m) => m.subharm.enabled,
+        wanted: () => tele.subharmMeterWanted > 0, healthy: true,
+      },
+      lastMs: () => tele.lastSubharmMeterMs, run: pollSubharmMeter },
+    { key: 'limiterMeter', intervalMs: LIMITER_METER_INTERVAL_MS, runWhileHidden: false,
+      gates: { feature: 'limiter', wanted: () => tele.limiterMeterWanted > 0, healthy: true },
+      lastMs: () => tele.lastLimiterMeterMs, run: pollLimiterMeter },
+    { key: 'csExt', intervalMs: CS_EXT_INTERVAL_MS, runWhileHidden: false,
+      gates: {
+        feature: 'controlSurfaces',
+        wanted: () => cs.extPollWanted > 0 && cs.extStatus?.macroRunning != null,
+      },
+      run: () => refreshCsExtStatus(session) },
+    { key: 'csDisplay', intervalMs: CS_DISPLAY_INTERVAL_MS, runWhileHidden: false,
+      gates: {
+        feature: 'controlSurfaces',
+        wanted: () => cs.displayPollWanted > 0 && csDisplaySlotActive(cs.bindings, cs.status),
+      },
+      run: () => refreshCsDisplayStatus(session) },
+    { key: 'param', intervalMs: PARAM_INTERVAL_MS, runWhileHidden: false, gates: {},
+      lastMs: () => tele.lastParamMs, run: pollParam, shouldRun: shouldRunParam },
   ];
   const anyRunWhileHidden = cadences.some((c) => c.runWhileHidden);
+
+  function due(c: Cadence, now: number): boolean {
+    if (c.shouldRun) return c.shouldRun(now);
+    if (!gatesOpen(c.gates)) return false;
+    // A zero clock means never run this session: eligible immediately, not a
+    // full interval after the performance.now() epoch.
+    const last = c.lastMs ? c.lastMs() : (localLast[c.key] ?? 0);
+    return last === 0 || now - last >= c.intervalMs;
+  }
 
   async function doPoll(): Promise<void> {
     if (stopped || !session.alive) return;
@@ -370,10 +322,14 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     const now = performance.now();
     for (const c of cadences) {
       if (isHidden() && !c.runWhileHidden) continue;
-      const blocked = c.shouldRun ? !c.shouldRun(now) : (now - c.lastMs() < c.intervalMs);
-      if (inFlight[c.key] || blocked) continue;
-      inFlight[c.key] = true;
-      try { await c.run(d); } finally { inFlight[c.key] = false; }
+      if (inFlight.has(c.key) || !due(c, now)) continue;
+      inFlight.add(c.key);
+      try {
+        await c.run(d);
+      } finally {
+        inFlight.delete(c.key);
+        if (!c.lastMs) localLast[c.key] = performance.now();
+      }
     }
   }
 

@@ -6,7 +6,7 @@ import {
   EMPTY_CS_BINDING,
   type CsBinding, type CsCaps, type CsNounCaps,
 } from '@/domain';
-import { draftFromLive, buildBinding, bindingsEqual, type Draft } from './csDraft';
+import { draftFromLive, buildBinding, bindingsEqual, type Draft } from './draft';
 import { csCapsV3, csNouns, disabledNoun } from '@test/fixtures/csCaps';
 
 // Minimal caps-v3 shaped tables (same real values as controlSurfaces.test.ts);
@@ -41,7 +41,7 @@ function roundTrip(b: CsBinding, c: CsCaps = caps): CsBinding {
 // The no-op-APPLY invariant: a live binding turned into a display-unit draft
 // and rebuilt must equal the original wire binding, or every untouched slot
 // would read as dirty. Exercises Q8<->display conversion both ways.
-describe('csDraft round-trip', () => {
+describe('draft round-trip', () => {
   it('reproduces a button Set binding with a dB value and gestures', () => {
     const b = live({
       type: CsType.Button, noun: CsNoun.UserVolume, action: CsAction.Set,

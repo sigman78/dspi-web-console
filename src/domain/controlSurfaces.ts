@@ -558,6 +558,14 @@ export function csDisplaysAvailable(caps: CsCaps | null): boolean {
   return caps != null && caps.capsVersion >= 10 && caps.types.length > CsType.Display;
 }
 
+// A live, running Display binding -- read from the bindings plus the active
+// mask, not the display status (whose init state can still read INIT/DOWN in
+// the first 200 ms after attach while the binding itself is already running).
+export function csDisplaySlotActive(bindings: readonly (CsBinding | null)[], status: CsStatus | null): boolean {
+  if (!status) return false;
+  return bindings.some((b, i) => b?.type === CsType.Display && (status.activeMask & (1 << i)) !== 0);
+}
+
 export interface CsNounCaps {
   kind: CsKind;
   enumCount: number;

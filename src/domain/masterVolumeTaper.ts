@@ -1,5 +1,3 @@
-import { formatSignedDb } from './format';
-
 // Master volume's firmware range (-128..0 dB, -128 = mute sentinel) is too wide
 // for a linear slider: 1 dB steps would need 129 positions, most of them in a
 // deep-attenuation tail nobody dials by ear. Instead the slider walks a fixed
@@ -41,8 +39,4 @@ export function masterDbToPos(db: number): number {
 export function posToMasterDb(pos: number): number {
   const clamped = Math.min(MASTER_VOLUME_MAX_POS, Math.max(0, Math.round(pos)));
   return MASTER_VOLUME_STEPS[clamped];
-}
-
-export function formatMasterDb(db: number): string {
-  return formatSignedDb(db <= -127.5 ? -Infinity : db);
 }

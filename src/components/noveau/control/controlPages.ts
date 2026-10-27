@@ -1,5 +1,5 @@
 import type * as Domain from '@/domain';
-import * as CsField from '@/components/system/csFieldHelpers';
+import * as CsField from '@/domain/cs/fieldHelpers';
 
 export type ControlPageKey = 'interfaces' | 'surfaces' | 'macros' | 'display';
 

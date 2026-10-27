@@ -1,10 +1,8 @@
 <script lang="ts">
-  import { Proc, outputChannelsWithIndex, maskChipItems } from '@/domain';
+  import { Proc, outputChannelsWithIndex, maskChipItems, loudnessResponse, centeredDbDomain } from '@/domain';
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
-  import { loudnessResponse } from '@/components/bode/loudnessCurve';
-  import { centeredDbDomain } from '@/components/bode/dbDomain';
   import ModuleFrame from './ModuleFrame.svelte';
   import SliderField from '@/components/chrome/SliderField.svelte';
   import MaskChips from '@/components/chrome/MaskChips.svelte';

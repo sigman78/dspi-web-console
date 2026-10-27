@@ -10,7 +10,8 @@
   import * as Domain from '@/domain';
   import { csStatusFromByte } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
-  import * as CsField from './csFieldHelpers';
+  import * as CsField from '@/domain/cs/fieldHelpers';
+  import * as SlotOps from './csSlotOps';
 
   const { detailTarget = null }: { detailTarget?: HTMLElement | null } = $props();
 
@@ -22,6 +23,7 @@
   interface GroupDraft { kind: number; mask: number; name: string }
   const drafts = s.drafts.of<GroupDraft>('groups');
   let applying = $state(false);
+  function setApplying(busy: boolean): void { applying = busy; }
 
   // The device's ceiling, capped at what the wire (group index 0-7) and
   // validateCsGroupRef can address.
@@ -113,13 +115,8 @@
     return `Used by ${parts.join(', ')}`;
   }
 
-  function firstFreeSlot(): number | null {
-    for (let i = 0; i < maxSlots; i++) if (!cs.groups[i] && !drafts.draftOf(i)) return i;
-    return null;
-  }
-
   function addGroup(): void {
-    const i = firstFreeSlot();
+    const i = SlotOps.firstFreeSlot(maxSlots, (n) => cs.groups[n] != null || drafts.draftOf(n) != null);
     if (i == null) return;
     drafts.editDraft(i, { kind: Domain.CS_TARGET_OUTPUT_CH, mask: 0, name: '' });
     openSlot = i;
@@ -140,12 +137,7 @@
   async function apply(i: number): Promise<void> {
     const d = drafts.draftOf(i);
     if (!d) return;
-    applying = true;
-    try {
-      if (await applyCsGroup(s, i, buildGroup(d))) drafts.remove(i);
-    } finally {
-      applying = false;
-    }
+    await SlotOps.applySlot(i, drafts, setApplying, () => applyCsGroup(s, i, buildGroup(d)));
   }
 
   function revert(i: number): void {
@@ -155,13 +147,7 @@
   // Remove = drop a never-applied draft locally; clear a live slot via the
   // all-zero group (dependents go INACTIVE, not refused).
   async function remove(i: number): Promise<void> {
-    if (!cs.groups[i]) { drafts.remove(i); return; }
-    applying = true;
-    try {
-      if (await clearCsGroup(s, i)) drafts.remove(i);
-    } finally {
-      applying = false;
-    }
+    await SlotOps.removeSlot(i, cs.groups[i] != null, drafts, setApplying, () => clearCsGroup(s, i));
   }
 
   $effect(() => {

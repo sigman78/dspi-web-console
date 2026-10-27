@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { PlatformType, createHardwareProfile, AudioInputSource, SpdifInputState } from '@/domain';
+import {
+  PlatformType, createHardwareProfile, AudioInputSource, SpdifInputState, CsType,
+  type CsBinding, type CsStatus,
+} from '@/domain';
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
 import { dispatch, mintConnId, makeReadySession, resetAppState, type ReadySession } from '@/state';
 import { startPolling } from './poll';
+import { wantCsExtPoll, wantCsDisplayPoll } from './controlSurfaceActions';
 import type { LoopClock } from '@/utils';
 
 const hw = createHardwareProfile(PlatformType.RP2350);
@@ -976,5 +980,96 @@ describe('Limiter meter cadence', () => {
     await settle();
     expect(device.getLimiterMeter).not.toHaveBeenCalled();
     stop();
+  });
+});
+
+describe('control-surface status cadences', () => {
+  afterEach(() => { teardown(); });
+
+  function csDevice() {
+    return {
+      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      hardware: hw,
+      capabilities: { features: { controlSurfaces: true } },
+      getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
+      getBufferStats: vi.fn(async () => null),
+      getSystemInfo: vi.fn(async () => ({})),
+      getCsExtStatus: vi.fn(async () => ({ macroRunning: 0 })),
+      getCsDisplayStatus: vi.fn(async () => ({ initState: 2 })),
+    } as unknown as DspDevice;
+  }
+
+  async function tickOnce(session: ReadySession): Promise<void> {
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    stop();
+  }
+
+  const runningMacro = { macroRunning: 0, macroStep: 0, macroStatus: [] } as unknown as ReadySession['controlSurfaces']['extStatus'];
+
+  it('reads ext status only while the panel is mounted and a macro is running', async () => {
+    const device = csDevice();
+    const session = connect(device);
+    session.controlSurfaces.extStatus = runningMacro;
+
+    await tickOnce(session);                              // running, but nobody is looking
+    expect(device.getCsExtStatus).not.toHaveBeenCalled();
+
+    const release = wantCsExtPoll(session);
+    session.controlSurfaces.extStatus = { ...runningMacro!, macroRunning: null };
+    await tickOnce(session);                              // looking, but nothing running
+    expect(device.getCsExtStatus).not.toHaveBeenCalled();
+
+    session.controlSurfaces.extStatus = runningMacro;
+    await tickOnce(session);
+    expect(device.getCsExtStatus).toHaveBeenCalledTimes(1);
+
+    release();
+    await tickOnce(session);
+    expect(device.getCsExtStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads display status only while the panel is mounted and a display binding is active', async () => {
+    const device = csDevice();
+    const session = connect(device);
+    const release = wantCsDisplayPoll(session);
+
+    await tickOnce(session);                              // looking, but no display binding
+    expect(device.getCsDisplayStatus).not.toHaveBeenCalled();
+
+    session.controlSurfaces.bindings[0] = { type: CsType.Display } as unknown as CsBinding;
+    session.controlSurfaces.status = { activeMask: 0 } as unknown as CsStatus;
+    await tickOnce(session);                              // bound but not running
+    expect(device.getCsDisplayStatus).not.toHaveBeenCalled();
+
+    session.controlSurfaces.status = { activeMask: 1 } as unknown as CsStatus;
+    await tickOnce(session);
+    expect(device.getCsDisplayStatus).toHaveBeenCalledTimes(1);
+    release();
+  });
+
+  it('never polls a device without control surfaces', async () => {
+    const device = csDevice();
+    (device as unknown as { capabilities: { features: { controlSurfaces: boolean } } }).capabilities.features.controlSurfaces = false;
+    const session = connect(device);
+    session.controlSurfaces.extStatus = runningMacro;
+    wantCsExtPoll(session);
+    await tickOnce(session);
+    expect(device.getCsExtStatus).not.toHaveBeenCalled();
+  });
+
+  it('drops a failed read silently without touching link health', async () => {
+    const device = csDevice();
+    (device.getCsExtStatus as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('stall'));
+    const session = connect(device);
+    session.controlSurfaces.extStatus = runningMacro;
+    wantCsExtPoll(session);
+    await tickOnce(session);
+    expect(device.getCsExtStatus).toHaveBeenCalledTimes(1);
+    // The csDevice stub fails other polls on its own; only the ext read's error matters here.
+    expect(session.health.lastErrorMsg).not.toBe('stall');
+    expect(session.controlSurfaces.extStatus).toEqual(runningMacro);
   });
 });

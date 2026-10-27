@@ -1,12 +1,12 @@
 // Per-macro/per-step draft logic for the MACROS panel (caps v9+), modeled on
-// csDraft.ts (bindings) and the IrDraft logic inside CsIrCommands.svelte: a
+// draft.ts (bindings) and irDraft.ts: a
 // macro step is a stripped IR command (no protocol/code) plus a pre-delay.
-// Explicit-arg, like csDraft.ts -- the panel owns drafts/applying and passes
+// Explicit-arg, like draft.ts -- the panel owns drafts/applying and passes
 // its own caps/nouns rather than this module reaching into session state.
 import * as Domain from '@/domain';
 import * as Clamp from '@/domain/clamp';
-import * as CsUnit from './csUnitDisplay';
-import * as CsField from './csFieldHelpers';
+import * as CsUnit from './unitDisplay';
+import * as CsField from './fieldHelpers';
 
 // Display units in the draft (see Draft/IrDraft); wire units only at
 // buildMacroStep's boundary. preDelay is seconds; wire is 10 ms units.
@@ -100,7 +100,7 @@ export function buildMacroStep(d: StepDraft, nouns: readonly Domain.CsNounCaps[]
     target: CsField.showTargetOf(nouns, d.noun) ? d.target : 0,
     index: CsField.showBandOf(nouns, d.noun) ? d.index : 0,
     value: CsField.showValueOf(d.action) ? (cont ? CsUnit.displayToValue(unit, d.value) : Math.round(d.value)) : 0,
-    step: CsField.showStepOf(d.action, MACRO_STEPPY) ? (cont ? CsUnit.displayToStep(unit, d.step) : Math.round(d.step)) : 0,
+    step: CsField.showStepOf(d.action, MACRO_STEPPY) ? CsField.clampStep(cont ? CsUnit.displayToStep(unit, d.step) : Math.round(d.step)) : 0,
     preDelay: Clamp.toRange(Math.round(d.preDelay * 100), 0, 0xFFFF),
   };
 }

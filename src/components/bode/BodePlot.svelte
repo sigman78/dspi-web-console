@@ -41,14 +41,12 @@
 
 <script lang="ts">
   import { formatSignedDb } from '@/components/chrome/format';
-  import { BODE_BINS, fForXNorm } from './bodeFreqs';
-  import { Eq } from '@/domain';
   import { chShade } from '@/styles/palette';
-  import * as math from './eqGraphMath';
+  import * as Domain from '@/domain';
 
   const {
     curves,
-    yRange = [Eq.BODE_DB_RANGE[0], Eq.BODE_DB_RANGE[1]] as [number, number],
+    yRange = [Domain.Eq.BODE_DB_RANGE[0], Domain.Eq.BODE_DB_RANGE[1]] as [number, number],
     height = 220,
     crosshair = true,
     nodes = [],
@@ -89,19 +87,19 @@
 
   // Pre-mapped x-coords for the 201 bins (constant once W/PAD_L are fixed).
   const binsX = $derived.by(() => {
-    const out = new Array<number>(BODE_BINS);
-    for (let i = 0; i < BODE_BINS; i++) {
-      out[i] = PAD_L + (i / (BODE_BINS - 1)) * plotW;
+    const out = new Array<number>(Domain.BODE_BINS);
+    for (let i = 0; i < Domain.BODE_BINS; i++) {
+      out[i] = PAD_L + (i / (Domain.BODE_BINS - 1)) * plotW;
     }
     return out;
   });
 
-  const geom = $derived<math.PlotGeometry>({ padL: PAD_L, plotW, plotH, yMin, yMax });
+  const geom = $derived<Domain.PlotGeometry>({ padL: PAD_L, plotW, plotH, yMin, yMax });
   function yForDb(db: number): number {
-    return math.yForDb(db, geom);
+    return Domain.yForDb(db, geom);
   }
   function xForF(f: number): number {
-    return math.xForF(f, geom);
+    return Domain.xForF(f, geom);
   }
 
   // Catmull-Rom -> cubic Bezier path. Input is 201 sampled points already
@@ -140,8 +138,8 @@
 
   const built = $derived.by(() => {
     return curves.map((c) => {
-      const pts: Array<[number, number]> = new Array(BODE_BINS);
-      for (let i = 0; i < BODE_BINS; i++) {
+      const pts: Array<[number, number]> = new Array(Domain.BODE_BINS);
+      for (let i = 0; i < Domain.BODE_BINS; i++) {
         pts[i] = [binsX[i], yForDb(c.points[i] ?? 0)];
       }
       return { c, d: catmullRomPath(pts), pts };
@@ -157,7 +155,7 @@
     for (const dec of [10, 100, 1000, 10000]) {
       for (let m = 2; m <= 9; m++) {
         const f = dec * m;
-        if (f >= Eq.FREQ_MIN_HZ && f <= Eq.FREQ_MAX_HZ && !set.has(f)) out.push(f);
+        if (f >= Domain.Eq.FREQ_MIN_HZ && f <= Domain.Eq.FREQ_MAX_HZ && !set.has(f)) out.push(f);
       }
     }
     return out;
@@ -231,7 +229,7 @@
     return n.channelId != null ? chShade(n.channelId, 'bright') : 'var(--accent)';
   }
   function nodeX(n: BodeNode): number {
-    return xForF(Math.max(Eq.FREQ_MIN_HZ, Math.min(Eq.FREQ_MAX_HZ, n.f)));
+    return xForF(Math.max(Domain.Eq.FREQ_MIN_HZ, Math.min(Domain.Eq.FREQ_MAX_HZ, n.f)));
   }
   function nodeY(n: BodeNode): number {
     return yForDb(Math.max(yMin, Math.min(yMax, n.db)));
@@ -251,7 +249,7 @@
     if (dragId !== n.id) return;
     const p = toPlotXY(e);
     if (!p) return;
-    lastDrag = math.dragToParams(n, p.x, p.y, geom);
+    lastDrag = Domain.dragToParams(n, p.x, p.y, geom);
     onNodeDrag?.(n.id, lastDrag.f, lastDrag.db);
   }
   function endDrag(e: PointerEvent, n: BodeNode) {
@@ -273,7 +271,7 @@
   }
   function onNodeKey(e: KeyboardEvent, n: BodeNode) {
     const base = kbDraft && kbDraft.id === n.id ? kbDraft : { id: n.id, f: n.f, db: n.db };
-    const next = math.nudgeParams({ ...base, lockDb: n.lockDb }, e.key, e.shiftKey, geom);
+    const next = Domain.nudgeParams({ ...base, lockDb: n.lockDb }, e.key, e.shiftKey, geom);
     if (!next) return;
     e.preventDefault();
     kbDraft = { id: n.id, ...next };
@@ -291,7 +289,7 @@
     if (!onPlotDblClick) return;
     const p = toPlotXY(e);
     if (!p || p.x < PAD_L || p.y < 0 || p.y > plotH) return;
-    onPlotDblClick(math.fForX(p.x, geom), math.dbForY(p.y, geom));
+    onPlotDblClick(Domain.fForX(p.x, geom), Domain.dbForY(p.y, geom));
   }
   function nodeAria(n: BodeNode): string {
     return `${n.label ?? ''} ${Math.round(n.f)} Hz ${formatSignedDb(n.db)} dB`.trim();
@@ -312,7 +310,7 @@
     }
     // Snap x to nearest of the 201 bins.
     const xn = (ix - PAD_L) / plotW;
-    const bin = Math.max(0, Math.min(BODE_BINS - 1, Math.round(xn * (BODE_BINS - 1))));
+    const bin = Math.max(0, Math.min(Domain.BODE_BINS - 1, Math.round(xn * (Domain.BODE_BINS - 1))));
     ix = binsX[bin];
     cx = ix;
     cy = iy;
@@ -326,7 +324,7 @@
   const cFreq = $derived.by(() => {
     if (cx == null) return null;
     const xn = (cx - PAD_L) / plotW;
-    return fForXNorm(Math.max(0, Math.min(1, xn)));
+    return Domain.fForXNorm(Math.max(0, Math.min(1, xn)));
   });
   const cDb = $derived.by(() => {
     if (cy == null) return null;
@@ -459,8 +457,8 @@
       role="slider"
       tabindex="0"
       aria-label={n.label ? `Band ${n.label}` : 'Band'}
-      aria-valuemin={Eq.FREQ_MIN_HZ}
-      aria-valuemax={Eq.FREQ_MAX_HZ}
+      aria-valuemin={Domain.Eq.FREQ_MIN_HZ}
+      aria-valuemax={Domain.Eq.FREQ_MAX_HZ}
       aria-valuenow={n.f}
       aria-valuetext={nodeAria(n)}
       onpointerdown={(e) => onNodeDown(e, n)}

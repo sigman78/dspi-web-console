@@ -6,18 +6,22 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import CsSlotCard from './CsSlotCard.svelte';
+  import NumField from '@/components/chrome/NumField.svelte';
+  import CsTargetRow from './CsTargetRow.svelte';
+  import CsValueStepRow from './CsValueStepRow.svelte';
   import {
-    applyCsMacro, clearCsMacro, fireCsMacro, cancelCsMacro, refreshCsExtStatus,
+    applyCsMacro, clearCsMacro, fireCsMacro, cancelCsMacro, wantCsExtPoll,
   } from '@/runtime';
   import * as Domain from '@/domain';
   import { csStatusFromByte } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
-  import * as CsUnit from './csUnitDisplay';
-  import * as CsField from './csFieldHelpers';
-  import * as CsMacroDraft from './csMacroDraft';
-  import type { MacroDraft, StepDraft } from './csMacroDraft';
+  import * as CsField from '@/domain/cs/fieldHelpers';
+  import * as CsMacroDraft from '@/domain/cs/macroDraft';
+  import * as SlotOps from './csSlotOps';
+  import type { MacroDraft, StepDraft } from '@/domain/cs/macroDraft';
 
-  const { detailTarget = null }: { detailTarget?: HTMLElement | null } = $props();
+  // `visible`: only the page on screen holds the poll interest.
+  const { detailTarget = null, visible }: { detailTarget?: HTMLElement | null; visible: boolean } = $props();
 
   const s = getSession();
   const snap = $derived(s.mirror.current);
@@ -26,6 +30,7 @@
 
   const drafts = s.drafts.of<MacroDraft>('macros');
   let applying = $state(false);
+  function setApplying(busy: boolean): void { applying = busy; }
 
   const maxSlots = $derived(Math.min(caps?.maxMacros ?? 0, Domain.CS_MAX_MACROS));
   const maxSteps = $derived(Math.min(caps?.maxMacroSteps ?? 0, Domain.CS_MAX_MACRO_STEPS));
@@ -46,23 +51,9 @@
     openSlot = expanded === i ? -1 : i;
   }
 
-  // Running-macro poll: while a macro is running, re-read ext status every
-  // 500 ms so the pill/step hint track the sequencer. A timeout chain (next
-  // tick armed only after the previous read settles) so reads never stack
-  // behind a slow queue. fireCsMacro already refreshes once, so a zero-delay
-  // macro that finished never starts this.
-  const anyRunning = $derived(cs.extStatus?.macroRunning != null);
-  $effect(() => {
-    if (!anyRunning) return;
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const tick = async (): Promise<void> => {
-      await refreshCsExtStatus(s);
-      if (!stopped) timer = setTimeout(() => { void tick(); }, 500);
-    };
-    timer = setTimeout(() => { void tick(); }, 500);
-    return () => { stopped = true; if (timer != null) clearTimeout(timer); };
-  });
+  // While a macro runs, the ext-status cadence (poll.ts) keeps the pill and
+  // step hint tracking the sequencer; this panel holds its interest.
+  $effect(() => (visible ? untrack(() => wantCsExtPoll(s)) : undefined));
 
   function draftOf(i: number): MacroDraft {
     return drafts.draftOf(i) ?? CsMacroDraft.macroDraftFromLive(cs.macros[i]!, cs.nouns);
@@ -101,13 +92,8 @@
     return `${msg} Fix that step, then apply.`;
   }
 
-  function firstFreeSlot(): number | null {
-    for (let i = 0; i < maxSlots; i++) if (!cs.macros[i] && !drafts.draftOf(i)) return i;
-    return null;
-  }
-
   function addMacro(): void {
-    const i = firstFreeSlot();
+    const i = SlotOps.firstFreeSlot(maxSlots, (n) => cs.macros[n] != null || drafts.draftOf(n) != null);
     if (i == null) return;
     drafts.editDraft(i, { name: '', steps: [] });
     openSlot = i;
@@ -139,7 +125,8 @@
   function targetLabelOf(d: StepDraft): string {
     if (!CsField.showTargetOf(cs.nouns, d.noun)) return '—';
     if (d.grouped) {
-      return groupOptionsFor(d).find((o) => o.v === d.target)?.label ?? `Group ${d.target + 1}`;
+      const opts = CsField.groupsAvailable(caps) ? CsField.groupOptionsFor(cs.nouns, d.noun, cs.groups) : [];
+      return opts.find((o) => o.v === d.target)?.label ?? `Group ${d.target + 1}`;
     }
     const opts = snap ? CsField.targetOptionsFor(cs.nouns, d.noun, snap.channels) : [];
     return opts.find((o) => o.v === d.target)?.label ?? '—';
@@ -157,12 +144,7 @@
   async function apply(i: number): Promise<void> {
     const d = drafts.draftOf(i);
     if (!d) return;
-    applying = true;
-    try {
-      if (await applyCsMacro(s, i, CsMacroDraft.buildMacro(d, cs.nouns))) drafts.remove(i);
-    } finally {
-      applying = false;
-    }
+    await SlotOps.applySlot(i, drafts, setApplying, () => applyCsMacro(s, i, CsMacroDraft.buildMacro(d, cs.nouns)));
   }
 
   function revert(i: number): void {
@@ -170,23 +152,15 @@
   }
 
   async function remove(i: number): Promise<void> {
-    if (!cs.macros[i]) { drafts.remove(i); return; }
-    applying = true;
-    try {
-      if (await clearCsMacro(s, i)) drafts.remove(i);
-    } finally {
-      applying = false;
-    }
+    await SlotOps.removeSlot(i, cs.macros[i] != null, drafts, setApplying, () => clearCsMacro(s, i));
   }
 
   async function fire(i: number): Promise<void> {
-    applying = true;
-    try { await fireCsMacro(s, i); } finally { applying = false; }
+    await SlotOps.whileBusy(setApplying, () => fireCsMacro(s, i));
   }
 
   async function cancel(): Promise<void> {
-    applying = true;
-    try { await cancelCsMacro(s); } finally { applying = false; }
+    await SlotOps.whileBusy(setApplying, () => cancelCsMacro(s));
   }
 
   $effect(() => {
@@ -198,14 +172,6 @@
 
   function nounOptions(): number[] { return CsMacroDraft.stepNounOptions(cs.nouns); }
   function actionOptions(noun: number): Domain.CsAction[] { return CsMacroDraft.stepActionOptions(cs.nouns, noun); }
-
-  function groupOptionsFor(d: StepDraft): { v: number; label: string }[] {
-    return CsField.groupsAvailable(caps) ? CsField.groupOptionsFor(cs.nouns, d.noun, cs.groups) : [];
-  }
-  function groupBandOptionsFor(d: StepDraft): { v: number; label: string }[] {
-    const g = cs.groups[d.target];
-    return snap && g ? CsField.groupBandOptionsFor(cs.nouns, d.noun, g, snap.channels) : [];
-  }
 </script>
 
 <Panel title="MACROS">
@@ -252,9 +218,6 @@
         {#each d.steps as step, k (k)}
           {@const isOpen = !detached || openStepOf(i, d.steps.length) === k}
           {@const stepActions = actionOptions(step.noun)}
-          {@const showGroup = CsField.groupsAvailable(caps) && CsField.showTargetOf(cs.nouns, step.noun)}
-          {@const groupOpts = groupOptionsFor(step)}
-          {@const missingGroup = showGroup && step.grouped && !groupOpts.some((o) => o.v === step.target)}
           <div class="step" class:collapsed={!isOpen}>
             {#if detached}
               <div class="sum">
@@ -275,11 +238,9 @@
             <div class="row">
               <span class="microlbl">STEP {k + 1}</span>
               <span class="microlbl">AFTER</span>
-              <input class="numfield" type="number" step="0.01" min="0" max="655.35"
-                value={step.preDelay} aria-label={`Delay before step ${k + 1} (s)`}
-                title="Wait this long before the step runs" disabled={applying}
-                onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editStep(i, k, (dr) => { dr.preDelay = v; }); }} />
-              <span class="hint">s</span>
+              <NumField value={step.preDelay} min={0} max={655.35} step={0.01} kind="s" precision={2}
+                ariaLabel={`Delay before step ${k + 1} (s)`} title="Wait this long before the step runs" disabled={applying}
+                onChange={(v) => editStep(i, k, (dr) => { dr.preDelay = v; })} />
               {#if !detached}
                 <span class="spacer"></span>
                 <button type="button" class="x-btn" aria-label={`Remove step ${k + 1}`}
@@ -319,85 +280,20 @@
 
             {#if CsField.showTargetOf(cs.nouns, step.noun)}
               <div class="row">
-                <span class="microlbl">
-                  {CsField.targetKindOf(cs.nouns, step.noun) === Domain.CS_TARGET_INPUT_CH ? 'INPUT'
-                    : CsField.targetKindOf(cs.nouns, step.noun) === Domain.CS_TARGET_OUTPUT_CH ? 'OUTPUT' : 'CHANNEL'}
-                </span>
-                <select class="sel" value={step.grouped ? `g${step.target}` : String(step.target)} aria-label={`Target channel for step ${k + 1}`} disabled={applying}
-                  onchange={(e) => {
-                    const v = (e.currentTarget as HTMLSelectElement).value;
-                    editStep(i, k, (dr) => {
-                      if (v.startsWith('g')) { dr.grouped = true; dr.target = Number(v.slice(1)); }
-                      else { dr.grouped = false; dr.target = Number(v); }
-                      dr.index = 0;
-                    });
-                  }}>
-                  {#if showGroup && (groupOpts.length > 0 || missingGroup)}
-                    <optgroup label="CHANNELS">
-                      {#each (snap ? CsField.targetOptionsFor(cs.nouns, step.noun, snap.channels) : []) as o (o.v)}
-                        <option value={String(o.v)}>{o.label}</option>
-                      {/each}
-                    </optgroup>
-                    <optgroup label="GROUPS">
-                      {#each groupOpts as o (o.v)}
-                        <option value={`g${o.v}`}>{o.label}</option>
-                      {/each}
-                      {#if missingGroup}
-                        <option value={`g${step.target}`} disabled>Group {step.target + 1} (missing)</option>
-                      {/if}
-                    </optgroup>
-                  {:else}
-                    {#each (snap ? CsField.targetOptionsFor(cs.nouns, step.noun, snap.channels) : []) as o (o.v)}
-                      <option value={String(o.v)}>{o.label}</option>
-                    {/each}
-                  {/if}
-                </select>
-                {#if CsField.showBandOf(cs.nouns, step.noun)}
-                  <span class="microlbl">BAND</span>
-                  <select class="sel" value={String(step.index)} aria-label={`Filter band for step ${k + 1}`} disabled={applying}
-                    onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editStep(i, k, (dr) => { dr.index = v; }); }}>
-                    {#each (step.grouped ? groupBandOptionsFor(step) : (snap ? CsField.bandOptionsFor(step.noun, step.target, snap.channels) : [])) as o (o.v)}
-                      <option value={String(o.v)}>{o.label}</option>
-                    {/each}
-                  </select>
-                {/if}
+                <CsTargetRow nouns={cs.nouns} noun={step.noun} target={step.target} index={step.index} grouped={step.grouped}
+                  channels={snap?.channels ?? []} groups={cs.groups} groupsEnabled={CsField.groupsAvailable(caps)}
+                  disabled={applying} ariaSuffix={` for step ${k + 1}`}
+                  onTarget={(pick) => editStep(i, k, (dr) => { dr.grouped = pick.grouped; dr.target = pick.target; dr.index = 0; })}
+                  onBand={(v) => editStep(i, k, (dr) => { dr.index = v; })} />
               </div>
             {/if}
 
             {#if CsField.showValueOf(step.action) || CsField.showStepOf(step.action, CsMacroDraft.MACRO_STEPPY)}
               <div class="row">
-                {#if CsField.showValueOf(step.action)}
-                  <span class="microlbl">{CsField.valueLabel(step.action, CsField.contOf(cs.nouns, step.noun), step.noun)}</span>
-                  {#if CsField.contOf(cs.nouns, step.noun)}
-                    <input class="numfield" type="number" step="0.5"
-                      min={cs.nouns[step.noun] ? CsUnit.valueToDisplay(CsField.unitOf(cs.nouns, step.noun), cs.nouns[step.noun].minQ8) : 0}
-                      max={cs.nouns[step.noun] ? CsUnit.valueToDisplay(CsField.unitOf(cs.nouns, step.noun), cs.nouns[step.noun].maxQ8) : 0}
-                      value={step.value} aria-label={`Value for step ${k + 1}`} disabled={applying}
-                      onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editStep(i, k, (dr) => { dr.value = v; }); }} />
-                    <span class="hint">{CsUnit.unitSuffix(CsField.unitOf(cs.nouns, step.noun))}</span>
-                  {:else}
-                    <select class="sel" value={String(step.value)} aria-label={`Value for step ${k + 1}`} disabled={applying}
-                      onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editStep(i, k, (dr) => { dr.value = v; }); }}>
-                      {#each (CsField.enumOf(cs.nouns, step.noun) ? CsField.enumValueOptions(cs.nouns, step.noun, s.presets.names, cs.macros) : CsField.boolValueOptions(step.noun)) as o (o.v)}
-                        <option value={String(o.v)}>{o.label}</option>
-                      {/each}
-                    </select>
-                  {/if}
-                {/if}
-                {#if CsField.showStepOf(step.action, CsMacroDraft.MACRO_STEPPY)}
-                  <span class="microlbl">STEP SIZE</span>
-                  {#if CsField.enumOf(cs.nouns, step.noun)}
-                    <input class="numfield" type="number" step="1" min="1"
-                      max={Math.max(1, (cs.nouns[step.noun]?.enumCount ?? 2) - 1)}
-                      value={step.step} aria-label={`Step size (positions) for step ${k + 1}`} disabled={applying}
-                      onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editStep(i, k, (dr) => { dr.step = v; }); }} />
-                  {:else}
-                    <input class="numfield" type="number" step={CsUnit.isLogStep(CsField.unitOf(cs.nouns, step.noun)) ? '0.01' : '0.5'} min="0"
-                      value={step.step} aria-label={`Step size for step ${k + 1}`} disabled={applying}
-                      onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editStep(i, k, (dr) => { dr.step = v; }); }} />
-                    <span class="hint">{CsUnit.stepUnitSuffix(CsField.unitOf(cs.nouns, step.noun))}</span>
-                  {/if}
-                {/if}
+                <CsValueStepRow nouns={cs.nouns} noun={step.noun} action={step.action} steppy={CsMacroDraft.MACRO_STEPPY} presetNames={s.presets.names} macros={cs.macros} displayPages={cs.displayPages}
+                  value={step.value} step={step.step} disabled={applying} ariaSuffix={` for step ${k + 1}`}
+                  onValue={(v) => editStep(i, k, (dr) => { dr.value = v; })}
+                  onStep={(v) => editStep(i, k, (dr) => { dr.step = v; })} />
               </div>
             {/if}
 
@@ -477,12 +373,6 @@
   .sl { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
   .sv { font-family: var(--font-mono); font-size: 12px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chev { flex: none; font-size: 10px; color: var(--text-faint); }
-  .numfield {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    padding: 3px 6px;
-    width: 64px;
-  }
   .addrow { display: flex; align-items: center; gap: 10px; padding: 10px 14px 12px; }
   .empty { text-align: center; padding-top: 14px; }
   .pad { padding: 10px 14px; }

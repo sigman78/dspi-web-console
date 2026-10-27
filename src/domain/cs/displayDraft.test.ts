@@ -7,7 +7,7 @@ import {
 } from '@/domain';
 import {
   cfgDraftFromLive, buildCfg, pageDraftFromLive, buildPage, pagesEqual, type CfgDraft, type PageDraft,
-} from './csDisplayDraft';
+} from './displayDraft';
 import { csNouns } from '@test/fixtures/csCaps';
 
 // Minimal noun table for the page-draft tests -- indices here are local to

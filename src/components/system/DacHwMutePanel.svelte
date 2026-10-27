@@ -2,6 +2,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import PinPicker from './PinPicker.svelte';
+  import NumField from '@/components/chrome/NumField.svelte';
   import { stageDacMute, stageDacMuteEnabled, stagedCtrlPins, testDacHwMute } from '@/runtime';
   import { pickerCells } from '@/domain';
   import { DAC_HW_MUTE_HOLD_MS_MIN, DAC_HW_MUTE_HOLD_MS_MAX, DAC_HW_MUTE_RELEASE_MS_MAX } from '@/domain/clamp';
@@ -24,16 +25,6 @@
       if (testTimer != null) clearTimeout(testTimer);
     };
   });
-
-  function onHoldMs(e: Event) {
-    const v = parseInt((e.target as HTMLInputElement).value, 10);
-    if (!Number.isNaN(v)) stageDacMute(s, 'holdMs', v);
-  }
-
-  function onReleaseMs(e: Event) {
-    const v = parseInt((e.target as HTMLInputElement).value, 10);
-    if (!Number.isNaN(v)) stageDacMute(s, 'releaseMs', v);
-  }
 
   function onTest() {
     if (testBusy) return;
@@ -84,32 +75,34 @@
 
       <div class="row">
         <span class="microlbl">HOLD MS</span>
-        <span class="stage-wrap" class:staged={s.staging.has('dacMute:holdMs')}><input
-          class="numfield"
-          type="number"
-          min={DAC_HW_MUTE_HOLD_MS_MIN}
-          max={DAC_HW_MUTE_HOLD_MS_MAX}
-          step="1"
-          value={cfg.holdMs}
-          onchange={onHoldMs}
-          disabled={!editable}
-          aria-label="DAC mute hold time ms"
-        /></span>
+        <span class="stage-wrap" class:staged={s.staging.has('dacMute:holdMs')}>
+          <NumField
+            value={cfg.holdMs}
+            min={DAC_HW_MUTE_HOLD_MS_MIN}
+            max={DAC_HW_MUTE_HOLD_MS_MAX}
+            step={1}
+            kind="int"
+            disabled={!editable}
+            ariaLabel="DAC mute hold time ms"
+            onChange={(v) => stageDacMute(s, 'holdMs', v)}
+          />
+        </span>
       </div>
 
       <div class="row">
         <span class="microlbl">RELEASE MS</span>
-        <span class="stage-wrap" class:staged={s.staging.has('dacMute:releaseMs')}><input
-          class="numfield"
-          type="number"
-          min="0"
-          max={DAC_HW_MUTE_RELEASE_MS_MAX}
-          step="1"
-          value={cfg.releaseMs}
-          onchange={onReleaseMs}
-          disabled={!editable}
-          aria-label="DAC mute release time ms"
-        /></span>
+        <span class="stage-wrap" class:staged={s.staging.has('dacMute:releaseMs')}>
+          <NumField
+            value={cfg.releaseMs}
+            min={0}
+            max={DAC_HW_MUTE_RELEASE_MS_MAX}
+            step={1}
+            kind="int"
+            disabled={!editable}
+            ariaLabel="DAC mute release time ms"
+            onChange={(v) => stageDacMute(s, 'releaseMs', v)}
+          />
+        </span>
       </div>
 
       <div class="row test-row">
@@ -128,12 +121,4 @@
   .rows { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .test-row { justify-content: flex-start; margin-top: 4px; }
-  /* Base input styling comes from the global input[type="number"] rule. */
-  .numfield {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    padding: 3px 6px;
-    width: 80px;
-    text-align: right;
-  }
 </style>

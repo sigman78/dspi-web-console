@@ -35,22 +35,24 @@ function renderPanel(snap: object) {
 const rowControls = () => [
   screen.getByRole('switch', { name: 'DAC mute active low' }),
   screen.getByRole('button', { name: 'DAC HW mute GPIO pin' }),
-  screen.getByRole('spinbutton', { name: 'DAC mute hold time ms' }),
-  screen.getByRole('spinbutton', { name: 'DAC mute release time ms' }),
+  screen.getByRole('button', { name: 'DAC mute hold time ms' }),
+  screen.getByRole('button', { name: 'DAC mute release time ms' }),
 ];
+
+const isDisabled = (el: HTMLElement) => el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true';
 
 beforeEach(() => { vi.clearAllMocks(); });
 
 describe('DacHwMutePanel', () => {
   test('row controls are disabled while the feature is off', () => {
     renderPanel(makeSnap({ enabled: false, activeLow: false, pin: 0, holdMs: 0, releaseMs: 0 }));
-    for (const el of rowControls()) expect(el.hasAttribute('disabled')).toBe(true);
+    for (const el of rowControls()) expect(isDisabled(el)).toBe(true);
     expect(screen.getByRole('switch', { name: 'Enable DAC HW mute' }).hasAttribute('disabled')).toBe(false);
   });
 
   test('row controls are editable while the feature is on', () => {
     renderPanel(makeSnap({ enabled: true, activeLow: true, pin: 11, holdMs: 5, releaseMs: 0 }));
-    for (const el of rowControls()) expect(el.hasAttribute('disabled')).toBe(false);
+    for (const el of rowControls()) expect(isDisabled(el)).toBe(false);
   });
 
   test('toggling stages the enable state instead of writing it', async () => {

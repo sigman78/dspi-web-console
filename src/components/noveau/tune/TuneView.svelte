@@ -51,8 +51,8 @@
 
 {#if channel}
   <div class="tune">
-    <div class="left">
-      <div class="graphArea">
+    <div class="left" data-budget>
+      <div class="graphArea" data-budget>
         <header>
           <span class="dot" style:background={chShade(channel.id, 'bright')}></span>
           <h2>{channel.name}</h2>

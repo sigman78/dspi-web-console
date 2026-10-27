@@ -1,9 +1,8 @@
 <script lang="ts">
-  import { FilterType, inputIndexOf } from '@/domain';
+  import { FilterType, inputIndexOf, filterCurve } from '@/domain';
   import { selectChannel } from '@/state';
   import { getSession } from '@/components/sessionContext';
   import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
-  import { filterCurve } from '@/components/bode/filterCurve';
   import { chShade } from '@/styles/palette';
   import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import { formatSignedDb } from '@/components/chrome/format';

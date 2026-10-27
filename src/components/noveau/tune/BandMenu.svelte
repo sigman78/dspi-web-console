@@ -1,8 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { FilterType } from '@/domain';
+  import { FilterType, TYPE_LABELS } from '@/domain';
   import { clampToBounds, dismiss } from '@/components/chrome/dismiss';
-  import { TYPE_LABELS } from '@/components/eq/BandTypeSelect.svelte';
 
   const {
     x,

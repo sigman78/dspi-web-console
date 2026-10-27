@@ -6,7 +6,7 @@ import {
   EMPTY_CS_MACRO,
   type CsNounCaps, type CsGroup, type CsMacro, type CsCaps, type CsDisplayPage, type ChannelModel,
 } from '@/domain';
-import { groupOptionsFor, groupBandOptionsFor, enumValueOptions, pageNounOptions, displaysAvailable, parseNumInput } from './csFieldHelpers';
+import { groupOptionsFor, groupBandOptionsFor, enumValueOptions, pageNounOptions, displaysAvailable } from './fieldHelpers';
 import { disabledNoun } from '@test/fixtures/csCaps';
 
 function channel(over: Partial<ChannelModel>): ChannelModel {
@@ -130,17 +130,5 @@ describe('groupBandOptionsFor', () => {
     const channels = [channel({ id: 0, bandCount: 3 })];
     const group: CsGroup = { targetKind: CS_TARGET_NONE, memberMask: 0, name: '' };
     expect(groupBandOptionsFor(nouns, 1, group, channels)).toEqual([]);
-  });
-});
-
-describe('parseNumInput', () => {
-  it('treats a cleared input as no value, not zero', () => {
-    const input = document.createElement('input');
-    input.type = 'number';
-    let got: number | null | undefined;
-    input.addEventListener('change', (e) => { got = parseNumInput(e); });
-    input.value = '';
-    input.dispatchEvent(new Event('change'));
-    expect(got).toBeNull();
   });
 });

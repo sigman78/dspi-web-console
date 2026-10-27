@@ -1,6 +1,5 @@
-import { FilterType, bandHasGain, bandHasQ, defaultFilter, type FilterParams } from '@/domain';
+import { FilterType, bandHasGain, bandHasQ, defaultFilter, snapQFromWheel, type FilterParams } from '@/domain';
 import * as Clamp from '@/domain/clamp';
-import { snapQFromWheel } from '@/components/bode/eqGraphMath';
 
 const round = (v: number, step: number): number => Math.round(v / step) * step;
 

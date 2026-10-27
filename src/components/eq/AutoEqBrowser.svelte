@@ -34,11 +34,31 @@
   let selectedId = $state<string | null>(null);
   let saveName = $state('');
 
-  const LIST_MAX = 250;
+  const PAGE_SIZE = 12;
 
   const results = $derived(searchAutoEq(query, scope));
-  const visible = $derived(results.slice(0, LIST_MAX));
-  const overflow = $derived(Math.max(0, results.length - LIST_MAX));
+  let page = $state(0);
+  const pageCount = $derived(Math.max(1, Math.ceil(results.length / PAGE_SIZE)));
+  const pageIdx = $derived(Math.min(page, pageCount - 1));
+  const visible = $derived(results.slice(pageIdx * PAGE_SIZE, (pageIdx + 1) * PAGE_SIZE));
+  const rangeFrom = $derived(results.length === 0 ? 0 : pageIdx * PAGE_SIZE + 1);
+  const rangeTo = $derived(pageIdx * PAGE_SIZE + visible.length);
+
+  function goPage(delta: number) {
+    page = Math.min(pageCount - 1, Math.max(0, pageIdx + delta));
+  }
+
+  function setScope(next: 'all' | 'favs' | 'user') {
+    scope = next;
+    page = 0;
+  }
+
+  function onKeydown(e: KeyboardEvent) {
+    if (e.key !== 'PageDown' && e.key !== 'PageUp') return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    e.preventDefault();
+    goPage(e.key === 'PageDown' ? 1 : -1);
+  }
 
   const allEntries = $derived(searchAutoEq('', 'all'));
   const selectedEntry = $derived(allEntries.find((e) => e.id === selectedId) ?? null);
@@ -97,12 +117,13 @@
     if (!trimmed) return;
     saveAutoEqUserEntry(trimmed, preampDb, channel.filters);
     saveName = '';
-    scope = 'user';
+    setScope('user');
   }
 </script>
 
 <Modal ariaLabel="AutoEQ library" initialFocus=".search" onCancel={onClose}>
-  <div class="panel">
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="panel" data-budget style:--page-size={PAGE_SIZE} onkeydown={onKeydown}>
     <header>
       <span class="title">AUTOEQ LIBRARY</span>
       <span class="meta">{autoEqEntries().length} PROFILES &middot; {generatedDate}</span>
@@ -115,11 +136,12 @@
         type="text"
         placeholder="SEARCH&hellip;"
         bind:value={query}
+        oninput={() => { page = 0; }}
       />
       <div class="scopes">
-        <button type="button" class="chip" class:accent={scope === 'all'} class:hi={scope !== 'all'} onclick={() => (scope = 'all')}>ALL</button>
-        <button type="button" class="chip" class:accent={scope === 'favs'} class:hi={scope !== 'favs'} onclick={() => (scope = 'favs')}>&#9733; FAVS</button>
-        <button type="button" class="chip" class:accent={scope === 'user'} class:hi={scope !== 'user'} onclick={() => (scope = 'user')}>USER</button>
+        <button type="button" class="chip" class:accent={scope === 'all'} class:hi={scope !== 'all'} onclick={() => setScope('all')}>ALL</button>
+        <button type="button" class="chip" class:accent={scope === 'favs'} class:hi={scope !== 'favs'} onclick={() => setScope('favs')}>&#9733; FAVS</button>
+        <button type="button" class="chip" class:accent={scope === 'user'} class:hi={scope !== 'user'} onclick={() => setScope('user')}>USER</button>
       </div>
     </div>
 
@@ -150,10 +172,17 @@
             {/if}
           </div>
         {/each}
-        {#if overflow > 0}
-          <p class="hint overflow">&hellip; {overflow} MORE &mdash; REFINE SEARCH</p>
-        {/if}
       {/if}
+    </div>
+
+    <div class="pager">
+      <button type="button" class="pgbtn" aria-label="Previous page" title="Previous page (PageUp)" disabled={pageIdx === 0} onclick={() => goPage(-1)}>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5" /></svg>
+      </button>
+      <span class="range" aria-live="polite">{rangeFrom}&ndash;{rangeTo} of {results.length}</span>
+      <button type="button" class="pgbtn" aria-label="Next page" title="Next page (PageDown)" disabled={pageIdx >= pageCount - 1} onclick={() => goPage(1)}>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3l5 5-5 5" /></svg>
+      </button>
     </div>
 
     {#if selectedEntry}
@@ -190,9 +219,12 @@
     width: 640px;
     max-width: 92vw;
     max-height: 80vh;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     color: var(--text);
+    --row-h: 26px;
+    --row-gap: 2px;
   }
 
   header {
@@ -236,20 +268,49 @@
   .scopes { display: flex; gap: 6px; }
 
   .list {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
+    flex: none;
+    box-sizing: content-box;
+    height: calc(var(--page-size) * (var(--row-h) + var(--row-gap)) - var(--row-gap));
+    overflow: hidden;
     padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--row-gap);
   }
   .hint.pad { padding: 14px; }
-  .hint.overflow { padding: 8px 14px; text-align: center; }
+  .pager {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: var(--fs-s);
+    color: var(--text-dim);
+  }
+  .range { min-width: 84px; text-align: center; }
+  .pgbtn {
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border-radius: var(--radius-s);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .pgbtn:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
+  .pgbtn:disabled { opacity: var(--dim-disabled); cursor: default; }
 
   .row {
+    flex: none;
+    height: var(--row-h);
     display: flex;
     align-items: center;
     gap: 6px;
     border-radius: var(--radius-s);
-    margin-bottom: 2px;
   }
   .row.selected {
     background: color-mix(in oklab, var(--accent) var(--tint), transparent);
@@ -277,7 +338,8 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 6px;
+    height: 100%;
+    padding: 0 6px;
     border: none;
     background: transparent;
     color: inherit;
