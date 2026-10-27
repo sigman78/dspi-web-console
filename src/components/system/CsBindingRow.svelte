@@ -8,6 +8,7 @@
   // pin candidates, status) come from the session context, same as
   // CsIrCommands does for its own sub-slots.
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import { formatI2cAddr } from '@/components/chrome/format';
   import PinPicker from './PinPicker.svelte';
   import CsIrCommands from './CsIrCommands.svelte';
   import CsSlotCard from './CsSlotCard.svelte';
@@ -148,7 +149,7 @@
   // reason other than this field's own edit (type switch, revert, a valid
   // commit normalizing the format).
   function formatAddr(v: number): string {
-    return v === 0 ? '' : `0x${v.toString(16).toUpperCase()}`;
+    return v === 0 ? '' : formatI2cAddr(v);
   }
   let addrText = $derived(formatAddr(d.value));
 
@@ -167,7 +168,7 @@
 
   function addressPlaceholder(d: Draft): string {
     const info = Domain.csDisplayModelInfo(d.index);
-    return info ? `default 0x${info.defaultAddr.toString(16).toUpperCase()}` : 'default';
+    return info ? `default ${formatI2cAddr(info.defaultAddr)}` : 'default';
   }
 
   function displayHint(d: Draft): string {

@@ -85,7 +85,7 @@ export interface MaskChipItem {
   title: string;
 }
 
-// MaskChipRow item mapping shared by the per-channel mask rows (loudness/
+// MaskChips item mapping shared by the per-channel mask rows (loudness/
 // psybass output masks, leveller detector/apply masks): chip label is the
 // 1-based slot number, title falls back to "<noun> <slot>" when the channel
 // carries no name.

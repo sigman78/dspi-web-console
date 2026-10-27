@@ -1,18 +1,18 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
-  import BodePlot, { PAD_B, PAD_L, type BodeCurve, type BodeNode } from '@/components/bode/BodePlot.svelte';
+    import BodePlot, { PAD_B, PAD_L, type BodeCurve, type BodeNode } from '@/components/bode/BodePlot.svelte';
   import { filterCurve, filterCurveAt } from '@/components/bode/filterCurve';
   import { xForF, yForDb, type PlotGeometry } from '@/components/bode/eqGraphMath';
   import { formatValue } from '@/components/chrome/valueFieldFormat';
   import { offeredTypes } from '@/components/eq/BandTypeSelect.svelte';
-  import { Eq, FilterType, bandHasGain, bandHasQ, type ChannelId, type ChannelModel, type FilterParams } from '@/domain';
+  import { Eq, FilterType, bandHasGain, bandHasQ, type ChannelModel, type FilterParams } from '@/domain';
   import { setEqFilter, setXoverBand } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '../noveauUi.svelte';
   import BandMenu from './BandMenu.svelte';
+  import { bandDraft, bandHold, holdBand } from './bandDraft.svelte';
   import { patchBand, clearBand } from './bandOps';
   import {
-    applyBandDrag, applyXoverDrag, applyWheelQ, planAddBand, trailingDebounce,
+    applyBandDrag, applyXoverDrag, applyWheelQ, planAddBand, sameBand, trailingDebounce,
     type DragAnchor,
   } from './eqDraft';
 
@@ -21,13 +21,13 @@
   const s = getSession();
   const types = $derived(offeredTypes(s.device.capabilities.features));
 
-  type Draft = { channelId: ChannelId; kind: 'peq' | 'xover'; index: number; band: FilterParams; committed: boolean };
-  let draft = $state<Draft | null>(null);
   // A draft only shows on the channel it was made on.
-  const live = $derived(draft?.channelId === channel.id ? draft : null);
+  const live = $derived.by(() => {
+    const d = bandDraft.current ?? bandHold.value;
+    return d?.channelId === channel.id ? d : null;
+  });
   // Set at the first move of a drag or nudge burst, cleared when it ends.
   let gesture: { id: string; anchor: DragAnchor } | null = null;
-  let settleTimer: ReturnType<typeof setTimeout> | null = null;
 
   const bands = $derived(
     live?.kind === 'peq' ? channel.filters.map((b, i) => (i === live.index ? live.band : b)) : channel.filters,
@@ -83,35 +83,24 @@
   const baseBand = (kind: 'peq' | 'xover', i: number): FilterParams =>
     live && live.kind === kind && live.index === i ? live.band : mirrorBand(kind, i)!;
 
-  function sameBand(a: FilterParams, b: FilterParams): boolean {
-    return a.type === b.type && a.frequency === b.frequency && a.gain === b.gain && a.q === b.q;
-  }
-
-  // The mirror updates after the device acks; the draft stays on screen until
-  // it catches up so the node does not snap back in between.
+  // A draft that matches the mirror has nothing left to show.
   $effect(() => {
-    if (!live?.committed) return;
-    const cur = mirrorBand(live.kind, live.index);
-    if (cur && sameBand(cur, live.band)) draft = null;
+    const d = bandDraft.current;
+    if (!d || d.channelId !== channel.id) return;
+    const cur = mirrorBand(d.kind, d.index);
+    if (cur && sameBand(cur, d.band)) bandDraft.current = null;
   });
 
   function commitDraft() {
-    const d = draft;
-    if (!d || d.committed) return;
+    const d = bandDraft.current;
+    if (!d) return;
+    bandDraft.current = null;
     const owner = s.mirror.current?.channels.find((c) => c.id === d.channelId);
     const origin = (d.kind === 'peq' ? owner?.filters : owner?.xoverBands)?.[d.index];
-    if (origin && sameBand(origin, d.band)) {
-      draft = null;
-      return;
-    }
+    if (origin && sameBand(origin, d.band)) return;
     if (d.kind === 'peq') setEqFilter(s, d.channelId, d.index, { ...d.band });
     else setXoverBand(s, d.channelId, d.index, { ...d.band });
-    d.committed = true;
-    if (settleTimer !== null) clearTimeout(settleTimer);
-    settleTimer = setTimeout(() => {
-      settleTimer = null;
-      if (draft?.committed) draft = null;
-    }, 1500);
+    holdBand(s, d);
   }
 
   const qCommit = trailingDebounce(commitDraft, 150);
@@ -123,20 +112,18 @@
     return () => {
       qCommit.cancel();
       gesture = null;
-      const d = draft;
-      if (d && !d.committed && s.mirror.current?.channels.some((c) => c.id === d.channelId)) commitDraft();
-      draft = null;
+      const d = bandDraft.current;
+      if (d && s.mirror.current?.channels.some((c) => c.id === d.channelId)) commitDraft();
+      bandDraft.current = null;
+      bandHold.release();
     };
-  });
-  onDestroy(() => {
-    if (settleTimer !== null) clearTimeout(settleTimer);
   });
 
   // Another node's uncommitted draft (e.g. a debounced wheel-Q) is written
   // before a new gesture takes the single draft slot.
   function settleOtherDraft(kind: 'peq' | 'xover', index: number) {
     const d = live;
-    if (d && !d.committed && (d.kind !== kind || d.index !== index)) {
+    if (d && d === bandDraft.current && (d.kind !== kind || d.index !== index)) {
       qCommit.cancel();
       commitDraft();
     }
@@ -156,7 +143,7 @@
       gesture = { id, anchor: { gain: base.gain, db: node?.db ?? db } };
     }
     const band = kind === 'peq' ? applyBandDrag(base, f, db, gesture.anchor) : applyXoverDrag(base, f);
-    draft = { channelId: channel.id, kind, index, band, committed: false };
+    bandDraft.current = { channelId: channel.id, kind, index, band };
   }
   function onNodeDragEnd(id: string, f: number, db: number) {
     onNodeDrag(id, f, db);
@@ -171,7 +158,7 @@
     const base = baseBand(kind, index);
     const band = applyWheelQ(base, deltaY);
     if (band === base) return;
-    draft = { channelId: channel.id, kind, index, band, committed: false };
+    bandDraft.current = { channelId: channel.id, kind, index, band };
     qCommit.call();
   }
   function onPlotDblClick(f: number, db: number) {

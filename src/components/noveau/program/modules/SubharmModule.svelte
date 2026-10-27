@@ -6,8 +6,9 @@
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import ModuleFrame from './ModuleFrame.svelte';
-  import ModuleSlider from './ModuleSlider.svelte';
-  import MaskChips from './MaskChips.svelte';
+  import { formatSignedDb } from '@/components/chrome/format';
+  import SliderField from '@/components/chrome/SliderField.svelte';
+  import MaskChips from '@/components/chrome/MaskChips.svelte';
 
   const s = getSession();
   const snapshot = $derived(s.mirror.current);
@@ -44,7 +45,7 @@
   const headroomDb = $derived(rawHeadroomDb !== null && Number.isFinite(rawHeadroomDb) ? rawHeadroomDb : null);
   const plan = $derived(snapshot ? subharmReservePlan(snapshot, headroomDb ?? 0) : []);
   const reserved = $derived(enabled && (headroomDb ?? 0) > 0 && plan.length === 0);
-  const headroomText = $derived(headroomDb === null ? '—' : `${headroomDb.toFixed(1)} dB`);
+  const headroomText = $derived(headroomDb === null ? '—' : `${formatSignedDb(headroomDb)} dB`);
   const levelMax = $derived(Proc.subharmLevelMaxDb(ext));
 </script>
 
@@ -59,18 +60,18 @@
       onToggle={(i) => Runtime.toggleSubharmOutputChannel(s, i)} />
   {/if}
 
-  <ModuleSlider label="24–36 HZ" ariaLabel="Subharmonic 24 to 36 hertz band level" value={sh?.lowDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
+  <SliderField lane="scrub" label="24–36 HZ" ariaLabel="Subharmonic 24 to 36 hertz band level" value={sh?.lowDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
     min={Proc.SUBHARM_LEVEL_MIN_DB} max={levelMax} step={Proc.SUBHARM_LEVEL_STEP_DB}
     kind="dB-signed" precision={1} floorLabel="Off" disabled={!enabled} onChange={(v) => Runtime.setSubharmLow(s, v)} />
-  <ModuleSlider label="36–56 HZ" ariaLabel="Subharmonic 36 to 56 hertz band level" value={sh?.highDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
+  <SliderField lane="scrub" label="36–56 HZ" ariaLabel="Subharmonic 36 to 56 hertz band level" value={sh?.highDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
     min={Proc.SUBHARM_LEVEL_MIN_DB} max={levelMax} step={Proc.SUBHARM_LEVEL_STEP_DB}
     kind="dB-signed" precision={1} floorLabel="Off" disabled={!enabled} onChange={(v) => Runtime.setSubharmHigh(s, v)} />
   {#if ext}
-    <ModuleSlider label="56–80 HZ" ariaLabel="Subharmonic 56 to 80 hertz band level" value={sh?.topDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
+    <SliderField lane="scrub" label="56–80 HZ" ariaLabel="Subharmonic 56 to 80 hertz band level" value={sh?.topDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
       min={Proc.SUBHARM_LEVEL_MIN_DB} max={levelMax} step={Proc.SUBHARM_LEVEL_STEP_DB}
       kind="dB-signed" precision={1} floorLabel="Off" disabled={!enabled} onChange={(v) => Runtime.setSubharmTop(s, v)} />
   {/if}
-  <ModuleSlider label="LF BOOST" ariaLabel="Subharmonic LF boost" value={sh?.boostDb ?? 0}
+  <SliderField lane="scrub" label="LF BOOST" ariaLabel="Subharmonic LF boost" value={sh?.boostDb ?? 0}
     min={Proc.SUBHARM_BOOST_MIN_DB} max={Proc.SUBHARM_BOOST_MAX_DB} step={Proc.SUBHARM_BOOST_STEP_DB}
     kind="dB" precision={1} disabled={!enabled} onChange={(v) => Runtime.setSubharmBoost(s, v)} />
 
@@ -81,13 +82,13 @@
       <span class="prow-ctl"><SegmentedSelect value={selectMode} options={SELECT_MODE_OPTIONS} disabled={!enabled}
         ariaLabel="Subharmonic selectivity mode" onChange={(v) => Runtime.setSubharmSelectMode(s, v)} /></span>
     </div>
-    <ModuleSlider label="DEPTH" ariaLabel="Subharmonic selectivity depth" value={sh?.selectDepth ?? 100}
+    <SliderField lane="scrub" label="DEPTH" ariaLabel="Subharmonic selectivity depth" value={sh?.selectDepth ?? 100}
       min={Proc.SUBHARM_DEPTH_MIN_PCT} max={Proc.SUBHARM_DEPTH_MAX_PCT} step={Proc.SUBHARM_DEPTH_STEP_PCT}
       kind="pct" precision={0} disabled={!selectivityEditable} onChange={(v) => Runtime.setSubharmDepth(s, v)} />
-    <ModuleSlider label="HOLD" ariaLabel="Subharmonic selectivity hold time" value={sh?.selectHoldMs ?? 150}
+    <SliderField lane="scrub" label="HOLD" ariaLabel="Subharmonic selectivity hold time" value={sh?.selectHoldMs ?? 150}
       min={Proc.SUBHARM_HOLD_MIN_MS} max={Proc.SUBHARM_HOLD_MAX_MS} step={Proc.SUBHARM_HOLD_STEP_MS}
       kind="ms" precision={0} disabled={!selectivityEditable} onChange={(v) => Runtime.setSubharmHold(s, v)} />
-    <ModuleSlider label="CEILING" ariaLabel="Subharmonic sub ceiling" value={sh?.ceilingDb ?? 0}
+    <SliderField lane="scrub" label="CEILING" ariaLabel="Subharmonic sub ceiling" value={sh?.ceilingDb ?? 0}
       min={Proc.SUBHARM_CEILING_MIN_DB} max={Proc.SUBHARM_CEILING_MAX_DB} step={Proc.SUBHARM_CEILING_STEP_DB}
       kind="dB-signed" precision={1} ceilLabel="Off" disabled={!enabled} onChange={(v) => Runtime.setSubharmCeiling(s, v)} />
     <div class="prow">
@@ -132,7 +133,7 @@
         <button type="button" class="chip accent" aria-label="Lower input preamps to reserve the subharmonic headroom"
           disabled={!enabled || plan.length === 0} onclick={() => Runtime.reserveSubharmHeadroom(s)}>RESERVE</button>
       {/if}
-      {#if headroomDb !== null && headroomDb > 0}<span class="prow-note">input preamps ≤ −{headroomDb.toFixed(1)} dB</span>{/if}
+      {#if headroomDb !== null && headroomDb > 0}<span class="prow-note">input preamps ≤ {formatSignedDb(-headroomDb)} dB</span>{/if}
     </span>
   </div>
 </ModuleFrame>

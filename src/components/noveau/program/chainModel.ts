@@ -1,3 +1,4 @@
+import { formatSignedDb } from '@/components/chrome/format';
 import { FilterType, Proc, type DspSnapshot } from '@/domain';
 import type { DeviceFeatures } from '@/protocol/capabilities';
 import type { ChainAnchorKey, ProgramModuleKey } from './programModel';
@@ -22,12 +23,6 @@ export interface ChainTelemetry {
 
 type ChainFeatures = Pick<DeviceFeatures, 'psybass' | 'subharm' | 'upmix' | 'limiter'>;
 
-export function fmtSigned(db: number, digits = 1): string {
-  const v = Math.abs(db).toFixed(digits);
-  if (Number(v) === 0) return `+${v}`;
-  return `${db < 0 ? '−' : '+'}${v}`;
-}
-
 /** Routes that reach sound: enabled, and their output is enabled. */
 export function liveRouteCount(snap: DspSnapshot): number {
   const live = new Set(snap.outputs.filter((o) => o.enabled).map((o) => o.wireIndex));
@@ -37,7 +32,7 @@ export function liveRouteCount(snap: DspSnapshot): number {
 const SPEED = ['slow', 'medium', 'fast'];
 const PRESET = ['P1', 'P2', 'P3', 'Custom'];
 
-const fmtBand = (db: number) => (db <= Proc.SUBHARM_LEVEL_MIN_DB ? 'Off' : fmtSigned(db));
+const fmtBand = (db: number) => (db <= Proc.SUBHARM_LEVEL_MIN_DB ? 'Off' : formatSignedDb(db));
 const pct = (n: number) => `${Math.round(n)} %`;
 
 export function chainBlocks(
@@ -63,9 +58,9 @@ export function chainBlocks(
       title: 'Preamp',
       enabled: null,
       values: [
-        `${fmtSigned(snap.masterPreampDb)} dB`,
+        `${formatSignedDb(snap.masterPreampDb)} dB`,
         ...(preamps.length && Math.min(...preamps) !== Math.max(...preamps)
-          ? [`${fmtSigned(Math.min(...preamps))}/${fmtSigned(Math.max(...preamps))}`]
+          ? [`${formatSignedDb(Math.min(...preamps))}/${formatSignedDb(Math.max(...preamps))}`]
           : []),
       ],
     }),
@@ -112,7 +107,7 @@ export function chainBlocks(
         key: 'psybass',
         title: 'Psybass',
         enabled: pb.enabled,
-        values: off(pb.enabled, [`${Math.round(pb.cutoffHz)} Hz`, `${fmtSigned(pb.harmonicsDb)} dB`]),
+        values: off(pb.enabled, [`${Math.round(pb.cutoffHz)} Hz`, `${formatSignedDb(pb.harmonicsDb)} dB`]),
       }),
     );
   }

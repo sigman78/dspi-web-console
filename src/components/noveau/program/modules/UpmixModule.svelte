@@ -5,7 +5,7 @@
   import { getSession } from '@/components/sessionContext';
   import { upmixStatus, upmixStatusText } from '../upmixStatus';
   import ModuleFrame from './ModuleFrame.svelte';
-  import ModuleSlider from './ModuleSlider.svelte';
+  import SliderField from '@/components/chrome/SliderField.svelte';
 
   const s = getSession();
   const upmix = $derived(s.mirror.current?.upmix);
@@ -49,27 +49,27 @@
     <span class="prow-ctl"><SegmentedSelect value={centerMode} options={CENTER_MODE_OPTIONS} disabled={!enabled}
       ariaLabel="Upmix center mode" onChange={(v) => Runtime.setUpmixCenterMode(s, v)} /></span>
   </div>
-  <ModuleSlider label="STRENGTH" ariaLabel="Upmix center strength" value={upmix?.strengthPct ?? 100}
+  <SliderField lane="scrub" label="STRENGTH" ariaLabel="Upmix center strength" value={upmix?.strengthPct ?? 100}
     min={Proc.UPMIX_STRENGTH_MIN_PCT} max={Proc.UPMIX_STRENGTH_MAX_PCT} step={Proc.UPMIX_STRENGTH_STEP_PCT}
     kind="pct" precision={0} disabled={!enabled} onChange={(v) => Runtime.setUpmixStrength(s, v)} />
-  <ModuleSlider label="WIDTH" ariaLabel="Upmix center width" value={upmix?.centerWidthPct ?? 25}
+  <SliderField lane="scrub" label="WIDTH" ariaLabel="Upmix center width" value={upmix?.centerWidthPct ?? 25}
     min={Proc.UPMIX_CENTER_WIDTH_MIN_PCT} max={Proc.UPMIX_CENTER_WIDTH_MAX_PCT} step={Proc.UPMIX_CENTER_WIDTH_STEP_PCT}
     kind="pct" precision={0} disabled={!enabled} onChange={(v) => Runtime.setUpmixCenterWidth(s, v)} />
   {#if features.upmixPresence}
-    <ModuleSlider label="PRESENCE" ariaLabel="Upmix center presence" value={upmix?.presenceDb ?? 0}
+    <SliderField lane="scrub" label="PRESENCE" ariaLabel="Upmix center presence" value={upmix?.presenceDb ?? 0}
       min={Proc.UPMIX_PRESENCE_MIN_DB} max={Proc.UPMIX_PRESENCE_MAX_DB} step={Proc.UPMIX_PRESENCE_STEP_DB}
       kind="dB-signed" precision={1} disabled={!enabled} onChange={(v) => Runtime.setUpmixPresence(s, v)} />
   {/if}
-  <ModuleSlider label="THRESHOLD" ariaLabel="Upmix adaptive-steering threshold" value={upmix?.corrThresholdPct ?? 30}
+  <SliderField lane="scrub" label="THRESHOLD" ariaLabel="Upmix adaptive-steering threshold" value={upmix?.corrThresholdPct ?? 30}
     min={Proc.UPMIX_CORR_THRESHOLD_MIN_PCT} max={Proc.UPMIX_CORR_THRESHOLD_MAX_PCT} step={Proc.UPMIX_CORR_THRESHOLD_STEP_PCT}
     kind="pct" precision={0} disabled={!steeringEditable} onChange={(v) => Runtime.setUpmixCorrThreshold(s, v)} />
-  <ModuleSlider label="ATTACK" ariaLabel="Upmix adaptive-steering attack time" value={upmix?.attackMs ?? 10}
+  <SliderField lane="scrub" label="ATTACK" ariaLabel="Upmix adaptive-steering attack time" value={upmix?.attackMs ?? 10}
     min={Proc.UPMIX_ATTACK_MIN_MS} max={Proc.UPMIX_ATTACK_MAX_MS} step={Proc.UPMIX_ATTACK_STEP_MS}
     kind="ms" precision={0} disabled={!steeringEditable} onChange={(v) => Runtime.setUpmixAttack(s, v)} />
-  <ModuleSlider label="RELEASE" ariaLabel="Upmix adaptive-steering release time" value={upmix?.releaseMs ?? 100}
+  <SliderField lane="scrub" label="RELEASE" ariaLabel="Upmix adaptive-steering release time" value={upmix?.releaseMs ?? 100}
     min={Proc.UPMIX_RELEASE_MIN_MS} max={Proc.UPMIX_RELEASE_MAX_MS} step={Proc.UPMIX_RELEASE_STEP_MS}
     kind="ms" precision={0} disabled={!steeringEditable} onChange={(v) => Runtime.setUpmixRelease(s, v)} />
-  <ModuleSlider label="DET HPF" ariaLabel="Upmix adaptive-steering detector high-pass frequency" value={upmix?.detectorHpfHz ?? 200}
+  <SliderField lane="scrub" label="DET HPF" ariaLabel="Upmix adaptive-steering detector high-pass frequency" value={upmix?.detectorHpfHz ?? 200}
     min={Proc.UPMIX_DETECTOR_HPF_MIN_HZ} max={Proc.UPMIX_DETECTOR_HPF_MAX_HZ} step={Proc.UPMIX_DETECTOR_HPF_STEP_HZ}
     kind="hz" precision={0} disabled={!steeringEditable} onChange={(v) => Runtime.setUpmixDetectorHpf(s, v)} />
 
@@ -79,16 +79,16 @@
     <span class="prow-ctl"><SegmentedSelect value={surroundMode} options={SURROUND_MODE_OPTIONS} disabled={!enabled}
       ariaLabel="Upmix surround mode" onChange={(v) => Runtime.setUpmixSurroundMode(s, v)} /></span>
   </div>
-  <ModuleSlider label="DELAY" ariaLabel="Upmix surround delay" value={upmix?.surroundDelayMs ?? 12}
+  <SliderField lane="scrub" label="DELAY" ariaLabel="Upmix surround delay" value={upmix?.surroundDelayMs ?? 12}
     min={Proc.UPMIX_SURROUND_DELAY_MIN_MS} max={Proc.UPMIX_SURROUND_DELAY_MAX_MS} step={Proc.UPMIX_SURROUND_DELAY_STEP_MS}
     kind="ms" precision={1} disabled={!surroundEditable} onChange={(v) => Runtime.setUpmixSurroundDelay(s, v)} />
-  <ModuleSlider label="HPF" ariaLabel="Upmix surround high-pass frequency" value={upmix?.surroundHpfHz ?? 300}
+  <SliderField lane="scrub" label="HPF" ariaLabel="Upmix surround high-pass frequency" value={upmix?.surroundHpfHz ?? 300}
     min={Proc.UPMIX_SURROUND_HPF_MIN_HZ} max={Proc.UPMIX_SURROUND_HPF_MAX_HZ} step={Proc.UPMIX_SURROUND_HPF_STEP_HZ}
     kind="hz" precision={0} disabled={!surroundEditable} onChange={(v) => Runtime.setUpmixSurroundHpf(s, v)} />
-  <ModuleSlider label="LPF" ariaLabel="Upmix surround low-pass frequency" value={upmix?.surroundLpfHz ?? 7000}
+  <SliderField lane="scrub" label="LPF" ariaLabel="Upmix surround low-pass frequency" value={upmix?.surroundLpfHz ?? 7000}
     min={Proc.UPMIX_SURROUND_LPF_MIN_HZ} max={Proc.UPMIX_SURROUND_LPF_MAX_HZ} step={Proc.UPMIX_SURROUND_LPF_STEP_HZ}
     kind="hz" precision={0} disabled={!surroundEditable} onChange={(v) => Runtime.setUpmixSurroundLpf(s, v)} />
-  <ModuleSlider label="DECORR" ariaLabel="Upmix surround decorrelation" value={upmix?.decorrPct ?? 90}
+  <SliderField lane="scrub" label="DECORR" ariaLabel="Upmix surround decorrelation" value={upmix?.decorrPct ?? 90}
     min={Proc.UPMIX_DECORR_MIN_PCT} max={Proc.UPMIX_DECORR_MAX_PCT} step={Proc.UPMIX_DECORR_STEP_PCT}
     kind="pct" precision={0} disabled={!surroundEditable} onChange={(v) => Runtime.setUpmixDecorr(s, v)} />
 </ModuleFrame>

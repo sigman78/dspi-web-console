@@ -4,7 +4,7 @@
   import { chShade } from '@/styles/palette';
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '../noveauUi.svelte';
-  import { fmtSigned } from './chainModel';
+  import { formatSignedDb } from '@/components/chrome/format';
   import { upmixStatus } from './upmixStatus';
   import CrosspointPopover from './CrosspointPopover.svelte';
 
@@ -109,11 +109,11 @@
             type="button"
             class="dotbtn"
             class:proposed={anchored && pick?.proposal}
-            aria-label={`${c.label} to ${r.name}${on ? `, ${fmtSigned(rt!.gainDb)} dB${rt!.invert ? ', inverted' : ''}` : ', unrouted'}`}
+            aria-label={`${c.label} to ${r.name}${on ? `, ${formatSignedDb(rt!.gainDb)} dB${rt!.invert ? ', inverted' : ''}` : ', unrouted'}`}
             onclick={(e) => open(e, c.input, r.slot)}
           >
             {#if on}
-              <i class="pill" class:anchor={anchored} style:background={chShade(c.id, 'bright')}>{rt!.invert ? '⌽' : ''}{fmtSigned(rt!.gainDb)}</i>
+              <i class="pill" class:anchor={anchored} style:background={chShade(c.id, 'bright')}>{rt!.invert ? '⌽' : ''}{formatSignedDb(rt!.gainDb)}</i>
             {:else}
               <i class="ring" class:anchor={anchored}></i>
             {/if}

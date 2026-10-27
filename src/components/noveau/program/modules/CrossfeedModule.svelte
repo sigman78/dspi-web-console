@@ -8,8 +8,8 @@
   import { crossfeedResponse } from '@/components/bode/crossfeedCurve';
   import { centeredDbDomain } from '@/components/bode/dbDomain';
   import ModuleFrame from './ModuleFrame.svelte';
-  import ModuleSlider from './ModuleSlider.svelte';
-  import MaskChips from './MaskChips.svelte';
+  import SliderField from '@/components/chrome/SliderField.svelte';
+  import MaskChips from '@/components/chrome/MaskChips.svelte';
 
   const s = getSession();
   const cf = $derived(s.mirror.current?.crossfeed);
@@ -66,10 +66,10 @@
     <span class="prow-ctl"><SegmentedSelect value={cf?.preset ?? 0} options={PRESET_OPTIONS} disabled={!enabled}
       ariaLabel="Crossfeed preset" onChange={(v) => Runtime.setCrossfeedPreset(s, v)} /></span>
   </div>
-  <ModuleSlider label="CUTOFF" ariaLabel="Crossfeed cutoff frequency" value={cf?.freq ?? 700}
+  <SliderField lane="scrub" label="CUTOFF" ariaLabel="Crossfeed cutoff frequency" value={cf?.freq ?? 700}
     min={Proc.CROSSFEED_FREQ_MIN_HZ} max={Proc.CROSSFEED_FREQ_MAX_HZ} step={Proc.CROSSFEED_FREQ_STEP_HZ}
     kind="hz" precision={0} disabled={!slidersEditable} onChange={(v) => Runtime.setCrossfeedFreq(s, v)} />
-  <ModuleSlider label="FEED" ariaLabel="Crossfeed feed level" value={cf?.feedDb ?? 4.5}
+  <SliderField lane="scrub" label="FEED" ariaLabel="Crossfeed feed level" value={cf?.feedDb ?? 4.5}
     min={Proc.CROSSFEED_FEED_MIN_DB} max={Proc.CROSSFEED_FEED_MAX_DB} step={Proc.CROSSFEED_FEED_STEP_DB}
     kind="dB" precision={1} disabled={!slidersEditable} onChange={(v) => Runtime.setCrossfeedFeedDb(s, v)} />
   <div class="prow">

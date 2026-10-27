@@ -1,12 +1,13 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import SliderField from '@/components/chrome/SliderField.svelte';
+  import { formatSignedDb } from '@/components/chrome/format';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import ValueField from '@/components/chrome/ValueField.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import { ChannelId, Mix, OutputSlotType, Proc, slotForOutputChannel, type OutputModel } from '@/domain';
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
-  import RangeField from './RangeField.svelte';
   import InspectorSection from './InspectorSection.svelte';
 
   const { output }: { output: OutputModel } = $props();
@@ -44,25 +45,25 @@
   // A missing mask means every output is set.
   const inMask = (mask: number | undefined): boolean => (((mask ?? 0xFFFF) >> slot) & 1) === 1;
   // Gain-reduction readout.
-  const grText = (v: number | undefined): string => (v === undefined ? '—' : v >= 0.05 ? `−${v.toFixed(1)} dB` : '0.0 dB');
+  const grText = (v: number | undefined): string => (v === undefined ? '—' : v >= 0.05 ? `${formatSignedDb(-v)} dB` : '0.0 dB');
 </script>
 
 <div class="stage">
   <div class="cols">
     <div class="col">
       <InspectorSection title="Output">
-        <div class="prow">
-          <RangeField
-            label="TRIM"
-            value={output.gainDb}
-            min={Mix.OUTPUT_GAIN_MIN_DB}
-            max={Mix.OUTPUT_GAIN_MAX_DB}
-            step={Mix.OUTPUT_GAIN_STEP_DB}
-            kind="dB-signed"
-            tone="signed"
-            onCommit={(v) => Runtime.setOutputGain(s, slot, v)}
-          />
-        </div>
+        <SliderField
+          lane="gesture"
+          holdKey={output.id}
+          label="TRIM"
+          value={output.gainDb}
+          min={Mix.OUTPUT_GAIN_MIN_DB}
+          max={Mix.OUTPUT_GAIN_MAX_DB}
+          step={Mix.OUTPUT_GAIN_STEP_DB}
+          kind="dB-signed"
+          tone="signed"
+          onChange={(v) => Runtime.setOutputGain(s, slot, v)}
+        />
         <div class="prow">
           <span class="prow-lbl">DELAY</span>
           <span class="prow-ctl prow-fld">
@@ -187,6 +188,7 @@
   .col { flex: 0 0 320px; min-width: 0; }
   .col + .col { border-left: 1px solid var(--border); padding-left: 16px; margin-left: 16px; }
   .stage :global(.sec) { border-top: none; }
+  .stage :global(.prow) { --rf-track: auto; --rf-track-flex: 1; }
   .gr { display: inline-flex; align-items: center; gap: 8px; }
   .bar { width: 120px; height: 6px; border-radius: var(--radius-xs); background: var(--wash-strong); overflow: hidden; }
   .fill { display: block; height: 100%; background: var(--warn); transition: width 100ms; }

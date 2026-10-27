@@ -3,7 +3,7 @@
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import ModuleFrame from './ModuleFrame.svelte';
-  import ModuleSlider from './ModuleSlider.svelte';
+  import SliderField from '@/components/chrome/SliderField.svelte';
 
   const s = getSession();
   const snap = $derived(s.mirror.current);
@@ -20,25 +20,25 @@
 
 <ModuleFrame title="Preamp" pass="inputs · PASS 1"
   blurb="Per-input gain ahead of everything else. Trim hot sources or balance channels before EQ sees them.">
-  <ModuleSlider
+  <SliderField lane="scrub"
     label="MASTER"
     ariaLabel="Master preamp"
     value={snap?.masterPreampDb ?? 0}
     min={Eq.PREAMP_MIN_DB} max={Eq.PREAMP_MAX_DB} step={Eq.PREAMP_STEP_DB}
     kind="dB-signed"
     precision={1}
-    reset={{ value: 0, label: '0 dB' }}
+    resetTo={0}
     onChange={(v) => Runtime.setMasterPreamp(s, v)}
   />
   {#each inputs as inp (inp.id)}
-    <ModuleSlider
+    <SliderField lane="scrub"
       label={inp.name}
       ariaLabel={`${inp.name} preamp`}
       value={snap?.inputPreampDb[inp.slot] ?? 0}
       min={Eq.PREAMP_MIN_DB} max={Eq.PREAMP_MAX_DB} step={Eq.PREAMP_STEP_DB}
       kind="dB-signed"
       precision={1}
-      reset={{ value: 0, label: '0 dB' }}
+      resetTo={0}
       onChange={(v) => Runtime.setInputPreamp(s, inp.slot, v)}
     />
   {/each}

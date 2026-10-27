@@ -6,8 +6,8 @@
   import { loudnessResponse } from '@/components/bode/loudnessCurve';
   import { centeredDbDomain } from '@/components/bode/dbDomain';
   import ModuleFrame from './ModuleFrame.svelte';
-  import ModuleSlider from './ModuleSlider.svelte';
-  import MaskChips from './MaskChips.svelte';
+  import SliderField from '@/components/chrome/SliderField.svelte';
+  import MaskChips from '@/components/chrome/MaskChips.svelte';
 
   const s = getSession();
   const loudness = $derived(s.mirror.current?.loudness);
@@ -35,10 +35,10 @@
     <MaskChips label="OUTPUTS" items={outputItems} mask={loudness?.outputMask ?? 0xFFFF} disabled={!enabled}
       onToggle={(i) => Runtime.toggleLoudnessOutputChannel(s, i)} />
   {/if}
-  <ModuleSlider label="REF SPL" ariaLabel="Loudness reference SPL" value={loudness?.refSpl ?? 85}
+  <SliderField lane="scrub" label="REF SPL" ariaLabel="Loudness reference SPL" value={loudness?.refSpl ?? 85}
     min={Proc.LOUDNESS_REF_SPL_MIN_DB} max={Proc.LOUDNESS_REF_SPL_MAX_DB} step={Proc.LOUDNESS_REF_SPL_STEP_DB}
     kind="dB" precision={0} disabled={!enabled} onChange={(v) => Runtime.setLoudnessRefSpl(s, v)} />
-  <ModuleSlider label="INTENSITY" ariaLabel="Loudness intensity" value={loudness?.intensityPct ?? 0}
+  <SliderField lane="scrub" label="INTENSITY" ariaLabel="Loudness intensity" value={loudness?.intensityPct ?? 0}
     min={Proc.LOUDNESS_INTENSITY_MIN_PCT} max={Proc.LOUDNESS_INTENSITY_MAX_PCT} step={Proc.LOUDNESS_INTENSITY_STEP_PCT}
     kind="pct" precision={1} disabled={!enabled} onChange={(v) => Runtime.setLoudnessIntensityPct(s, v)} />
 </ModuleFrame>

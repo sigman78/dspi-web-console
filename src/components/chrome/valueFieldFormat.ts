@@ -1,3 +1,5 @@
+import { formatSignedDb } from './format';
+
 export type ValueKind =
   | 'dB'
   | 'dB-signed'
@@ -13,14 +15,6 @@ interface FormatterEntry {
   format: (v: number, precision: number) => string;
 }
 
-// Uses U+2212 (true minus) so the glyph aligns visually with `+` and the
-// leading space placeholder.
-function signOf(v: number): string {
-  if (v > 0) return '+';
-  if (v < 0) return '−';
-  return ' ';
-}
-
 export const formatters: Record<ValueKind, FormatterEntry> = {
   'dB': {
     defaultPrecision: 2,
@@ -30,7 +24,7 @@ export const formatters: Record<ValueKind, FormatterEntry> = {
   'dB-signed': {
     defaultPrecision: 2,
     defaultUnit: 'dB',
-    format: (v, p) => signOf(v) + Math.abs(v).toFixed(p),
+    format: (v, p) => formatSignedDb(v, p),
   },
   'ms': {
     defaultPrecision: 1,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FilterType, Proc } from '@/domain';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
-import { chainBlocks, fmtSigned, liveRouteCount } from './chainModel';
+import { chainBlocks, liveRouteCount } from './chainModel';
 
 const ALL = { psybass: true, subharm: true, upmix: true, limiter: true };
 const keys = (f: typeof ALL) => chainBlocks(makeSnapshot(), f).map((b) => b.key);
@@ -59,7 +59,7 @@ describe('chainBlocks', () => {
     const snap = makeSnapshot();
     snap.masterPreampDb = 0;
     snap.inputPreampDb = [0, -1.5];
-    expect(chainBlocks(snap, ALL)[0].values).toEqual(['+0.0 dB', '−1.5/+0.0']);
+    expect(chainBlocks(snap, ALL)[0].values).toEqual(['0.0 dB', '−1.5/0.0']);
   });
 });
 
@@ -72,14 +72,6 @@ describe('input EQ value', () => {
     expect(value()).toEqual([`0 of ${inputs.length} inputs`]);
     inputs[0].filters[0] = { ...inputs[0].filters[0], type: FilterType.Peaking };
     expect(value()).toEqual([`1 of ${inputs.length} inputs`]);
-  });
-});
-
-describe('fmtSigned', () => {
-  it('uses a true minus and never shows -0.0', () => {
-    expect(fmtSigned(-6)).toBe('−6.0');
-    expect(fmtSigned(3.25, 1)).toBe('+3.3');
-    expect(fmtSigned(-0.02)).toBe('+0.0');
   });
 });
 

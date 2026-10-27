@@ -55,8 +55,8 @@ describe('masterVolumeTaper — formatMasterDb', () => {
   });
 
   it('shows a one-decimal dB value above the threshold', () => {
-    expect(formatMasterDb(-127.4)).toBe('-127.4');
-    expect(formatMasterDb(-6)).toBe('-6.0');
+    expect(formatMasterDb(-127.4)).toBe('−127.4');
+    expect(formatMasterDb(-6)).toBe('−6.0');
     expect(formatMasterDb(0)).toBe('0.0');
   });
 });

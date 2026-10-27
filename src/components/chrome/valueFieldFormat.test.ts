@@ -14,7 +14,7 @@ describe('valueFieldFormat — format', () => {
   it('formats dB-signed with proper sign glyphs', () => {
     expect(formatValue('dB-signed',  2.5,  2)).toBe('+2.50');
     expect(formatValue('dB-signed', -2.5,  2)).toBe('−2.50');  // U+2212
-    expect(formatValue('dB-signed',  0,    2)).toBe(' 0.00');  // leading space keeps width
+    expect(formatValue('dB-signed',  0,    2)).toBe('0.00');
   });
 
   it('formats ms at default precision 1', () => {

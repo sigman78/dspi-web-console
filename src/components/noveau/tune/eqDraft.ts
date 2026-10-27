@@ -75,3 +75,7 @@ export function trailingDebounce<A extends unknown[]>(fn: (...args: A) => void, 
     },
   };
 }
+
+export function sameBand(a: FilterParams, b: FilterParams): boolean {
+  return a.type === b.type && a.frequency === b.frequency && a.gain === b.gain && a.q === b.q;
+}

@@ -40,6 +40,7 @@
 </script>
 
 <script lang="ts">
+  import { formatSignedDb } from '@/components/chrome/format';
   import { BODE_BINS, fForXNorm } from './bodeFreqs';
   import { Eq } from '@/domain';
   import { chShade } from '@/styles/palette';
@@ -190,10 +191,7 @@
     if (f >= 1000) return `${(f / 1000).toFixed(2)} kHz`;
     return `${Math.round(f)} Hz`;
   }
-  function fmtDbReadout(db: number): string {
-    const s = db >= 0 ? '+' : '';
-    return `${s}${db.toFixed(1)} dB`;
-  }
+  const fmtDbReadout = (db: number): string => `${formatSignedDb(db)} dB`;
 
   // Unique per mounted instance so multiple plots on one page (TUNE graph,
   // PROGRAM previews, ...) don't collide on the clipPath id.
@@ -296,7 +294,7 @@
     onPlotDblClick(math.fForX(p.x, geom), math.dbForY(p.y, geom));
   }
   function nodeAria(n: BodeNode): string {
-    return `${n.label ?? ''} ${Math.round(n.f)} Hz ${n.db.toFixed(1)} dB`.trim();
+    return `${n.label ?? ''} ${Math.round(n.f)} Hz ${formatSignedDb(n.db)} dB`.trim();
   }
 
   function onMove(e: PointerEvent) {
@@ -405,7 +403,7 @@
       x={PAD_L - 4} y={y + 3} text-anchor="end" font-size="9"
       fill="color-mix(in oklab, var(--text) 40%, transparent)" font-family="var(--font-mono)"
     >
-      {db > 0 ? '+' : ''}{db}
+      {formatSignedDb(db, 0)}
     </text>
   {/each}
 

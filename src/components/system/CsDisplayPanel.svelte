@@ -15,6 +15,7 @@
   } from '@/runtime';
   import * as Domain from '@/domain';
   import { getSession } from '@/components/sessionContext';
+  import { formatI2cAddr } from '@/components/chrome/format';
   import { portal } from './portal';
   import * as CsField from './csFieldHelpers';
   import * as CsDisplayDraft from './csDisplayDraft';
@@ -97,7 +98,7 @@
     if (!st || !displayBinding) return '';
     const model = Domain.csDisplayModelInfo(st.model)?.label ?? `Model ${st.model}`;
     const addr = Domain.csDisplayResolvedAddr(st.model, displayBinding.value);
-    return `${model} · addr 0x${addr.toString(16).toUpperCase()}`;
+    return `${model} · addr ${formatI2cAddr(addr)}`;
   }
 
   function showingText(): string {

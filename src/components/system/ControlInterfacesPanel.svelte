@@ -1,6 +1,7 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import { formatI2cAddr } from '@/components/chrome/format';
   import PinPicker from './PinPicker.svelte';
   import { setUartControlConfig, setI2cControlConfig } from '@/runtime';
   import {
@@ -87,9 +88,6 @@
     patchI2c({ address: parsed });
   }
 
-  function fmtAddress(addr: number): string {
-    return `0x${addr.toString(16).padStart(2, '0').toUpperCase()}`;
-  }
 </script>
 
 <Panel title="CONTROL INTERFACES">
@@ -185,7 +183,7 @@
         <input
           class="numfield"
           type="text"
-          value={fmtAddress(i2c.address)}
+          value={formatI2cAddr(i2c.address)}
           onchange={onAddressInput}
           disabled={!i2c.enabled}
           aria-label="I2C target address (hex)"

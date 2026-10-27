@@ -1,9 +1,9 @@
 <script lang="ts">
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import SliderField from '@/components/chrome/SliderField.svelte';
   import { Eq, inputIndexOf, type ChannelId } from '@/domain';
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
-  import RangeField from './RangeField.svelte';
   import InspectorSection from './InspectorSection.svelte';
 
   const { channelId }: { channelId: ChannelId } = $props();
@@ -14,7 +14,6 @@
   const slot = $derived(inputIndexOf(channelId));
   const preampDb = $derived(slot !== null ? (snap?.inputPreampDb[slot] ?? 0) : 0);
   const showLeveller = $derived(features.levellerMasks && slot !== null);
-
   const inMask = (mask: number | undefined): boolean => slot !== null && (((mask ?? 0xFF) >> slot) & 1) === 1;
 </script>
 
@@ -23,26 +22,19 @@
     <div class="col">
       <InspectorSection title="Input">
         {#if slot !== null}
-          <div class="prow">
-            <RangeField
-              label="PREAMP"
-              value={preampDb}
-              min={Eq.PREAMP_MIN_DB}
-              max={Eq.PREAMP_MAX_DB}
-              step={Eq.PREAMP_STEP_DB}
-              kind="dB-signed"
-              tone="signed"
-              onPreview={(v) => Runtime.setInputPreamp(s, slot, v)}
-              onCommit={(v) => Runtime.setInputPreamp(s, slot, v)}
-            />
-          </div>
-          <div class="prow">
-            <span class="prow-lbl">RESET</span>
-            <span class="prow-ctl">
-              <button type="button" class="chip hi" aria-label="Reset preamp to 0 dB" disabled={preampDb === 0}
-                onclick={() => Runtime.setInputPreamp(s, slot, 0)}>0 dB</button>
-            </span>
-          </div>
+          <SliderField
+            lane="scrub"
+            label="PREAMP"
+            value={preampDb}
+            min={Eq.PREAMP_MIN_DB}
+            max={Eq.PREAMP_MAX_DB}
+            step={Eq.PREAMP_STEP_DB}
+            kind="dB-signed"
+            tone="signed"
+            resetTo={0}
+            holdKey={channelId}
+            onChange={(v) => Runtime.setInputPreamp(s, slot, v)}
+          />
         {/if}
       </InspectorSection>
     </div>
@@ -78,4 +70,5 @@
   .col { flex: 0 0 320px; min-width: 0; }
   .col + .col { border-left: 1px solid var(--border); padding-left: 16px; margin-left: 16px; }
   .stage :global(.sec) { border-top: none; }
+  .stage :global(.prow) { --rf-track: auto; --rf-track-flex: 1; }
 </style>

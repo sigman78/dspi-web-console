@@ -5,7 +5,7 @@
   // its own to hand it a reset prop -- it watches cs.revertEpoch instead.
   import { untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
-  import MaskChipRow from '@/components/chrome/MaskChipRow.svelte';
+  import MaskChips from '@/components/chrome/MaskChips.svelte';
   import CsSlotCard from './CsSlotCard.svelte';
   import { applyCsGroup, clearCsGroup } from '@/runtime';
   import * as Domain from '@/domain';
@@ -222,8 +222,8 @@
         </div>
 
         <div class="row">
-          <MaskChipRow label="MEMBERS" items={snap ? CsField.groupMemberItems(d.kind, snap.channels) : []}
-            mask={d.mask} disabled={applying}
+          <MaskChips label="MEMBERS" items={snap ? CsField.groupMemberItems(d.kind, snap.channels) : []}
+            mask={d.mask} disabled={applying} wrap
             onToggle={(idx) => editDraft(i, (dr) => { dr.mask ^= (1 << idx); })} />
           {#if d.mask === 0}
             <span class="hint">Pick at least one channel</span>
@@ -262,6 +262,7 @@
   }
   .rows { padding: 6px 14px 10px; display: flex; flex-direction: column; gap: 8px; }
   .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .row :global(.prow) { border-top: none; height: auto; }
   .srow { padding: 4px 14px 0; }
   .addrow { display: flex; align-items: center; gap: 10px; padding: 10px 14px 12px; }
   .empty { text-align: center; padding-top: 14px; }

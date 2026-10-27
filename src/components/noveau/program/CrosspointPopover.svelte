@@ -4,7 +4,7 @@
   import { Mix, type InputSlot, type OutputSlot } from '@/domain';
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
-  import RangeField from '../tune/RangeField.svelte';
+  import SliderField from '@/components/chrome/SliderField.svelte';
 
   const {
     input,
@@ -92,19 +92,19 @@
       <button type="button" class="x-btn close" aria-label="Close" onclick={onClose}>✕</button>
     {/if}
   </div>
-  <div class="prow">
-    <RangeField
-      label="GAIN"
-      value={gain}
-      min={Mix.CROSSPOINT_GAIN_MIN_DB}
-      max={Mix.CROSSPOINT_GAIN_MAX_DB}
-      step={0.1}
-      kind="dB-signed"
-      tone="signed"
-      disabled={!proposal && !enabled}
-      onCommit={(v) => (proposal ? (draftGain = v) : Runtime.setCrosspointGain(s, input, output, v))}
-    />
-  </div>
+  <SliderField
+    lane="gesture"
+    holdKey={`${input}:${output}`}
+    label="GAIN"
+    value={gain}
+    min={Mix.CROSSPOINT_GAIN_MIN_DB}
+    max={Mix.CROSSPOINT_GAIN_MAX_DB}
+    step={0.1}
+    kind="dB-signed"
+    tone="signed"
+    disabled={!proposal && !enabled}
+    onChange={(v) => (proposal ? (draftGain = v) : Runtime.setCrosspointGain(s, input, output, v))}
+  />
   <div class="prow">
     <span class="prow-lbl">PHASE</span>
     <ToggleSwitch checked={invert} disabled={!proposal && !enabled} ariaLabel="Invert phase" onChange={(v) => (proposal ? (draftInvert = v) : Runtime.setCrosspointInvert(s, input, output, v))} />
@@ -146,7 +146,7 @@
   }
   .ph { padding: 0; gap: 8px; }
   .ph h3 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .prow { --rf-label: 52px; --rf-track: 100px; }
+  .pop :global(.prow) { --rf-label: 52px; --rf-track: 100px; }
   .foot { gap: 6px; }
   .foot.live { justify-content: flex-end; }
   .tag {
