@@ -72,7 +72,7 @@
   }
 </script>
 
-<Panel code="SY.10" title="DAC HW MUTE">
+<Panel title="DAC HW MUTE">
   {#snippet right()}
     <ToggleSwitch
       size="sm"

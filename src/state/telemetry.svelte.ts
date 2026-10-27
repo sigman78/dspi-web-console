@@ -89,6 +89,20 @@ export class StatusStore {
     };
   }
 
+  bufferStatsWanted = $state(0);
+
+  // Panel-mount interest for the buffer-stats cadence (poll.ts): the 4 Hz fetch
+  // runs only while a diagnostics panel is mounted.
+  wantBufferStats(): () => void {
+    this.bufferStatsWanted++;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.bufferStatsWanted--;
+    };
+  }
+
   // Ask the next limiter poll tick to re-read the status block after an enable
   // change. Firmware engages the lookahead after a fade, so this may still read
   // the old state; the next 1 Hz refresh catches it.

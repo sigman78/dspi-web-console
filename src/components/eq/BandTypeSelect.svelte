@@ -37,7 +37,7 @@
   };
 
   // PEQ types this select offers. First-order types (V16+) are appended by
-  // the EQ tab when the device reports the firstOrderEq capability;
+  // the EQ editor when the device reports the firstOrderEq capability;
   // crossover types never appear here (they live in the crossover editor).
   export const TYPE_ORDER: FilterType[] = [
     FilterType.Flat,
@@ -70,7 +70,7 @@
     ...Array.from({ length: 32 }, (_, i) => (FilterType.Lr2Lp + i) as FilterType),
   ];
 
-  // Single source of truth for which PEQ types the EQ tab offers, given the
+  // Single source of truth for which PEQ types the EQ editor offers, given the
   // device's feature flags. Linkwitz Transform is display-only (see the
   // component below): it's never offered here, even on a capable device --
   // a band already set to it still renders correctly, just not selectable.

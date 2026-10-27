@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import { resetBufferStats } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
   const bs = $derived(s.telemetry.bufferStats);
+
+  $effect(() => untrack(() => s.telemetry.wantBufferStats()));
 
   function pct(v: number | undefined): string {
     return v != null ? `${v}%` : '—';
@@ -17,7 +20,7 @@
   }
 </script>
 
-<Panel code="SY.12" title="BUFFER STATS">
+<Panel title="BUFFER STATS">
   {#snippet right()}
     {#if bs}
       <span class="seq">SEQ {bs.sequence}</span>

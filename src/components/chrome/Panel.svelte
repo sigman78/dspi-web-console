@@ -2,12 +2,10 @@
   import type { Snippet } from 'svelte';
 
   const {
-    code,
     title,
     right,
     children,
   }: {
-    code?: string;
     title: string;
     right?: Snippet;
     children: Snippet;
@@ -16,7 +14,6 @@
 
 <section class="panel">
   <header>
-    {#if code}<span class="code">{code}</span>{/if}
     <span class="title">{title}</span>
     <span class="right">{#if right}{@render right()}{/if}</span>
   </header>
@@ -44,11 +41,6 @@
     gap: 10px;
     border-bottom: 1px solid var(--border);
     font-family: var(--font-mono);
-  }
-  .code {
-    font-size: 9px;
-    color: var(--text-faint);
-    letter-spacing: 1px;
   }
   .title {
     font-size: 10px;

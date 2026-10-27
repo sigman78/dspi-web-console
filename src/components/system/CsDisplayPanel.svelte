@@ -239,7 +239,7 @@
   });
 </script>
 
-<Panel code="CT.05" title="DISPLAY">
+<Panel title="DISPLAY">
   {#snippet right()}
     <span class="cs-pill {pill().cls}">{pill().text}</span>
   {/snippet}

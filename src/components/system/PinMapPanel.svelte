@@ -58,7 +58,7 @@
   }
 </script>
 
-<Panel code="SY.16" title="PIN MAP">
+<Panel title="PIN MAP">
   {#if snap}
     <div class="grid">
       {#each cells as cell (cell.pin)}

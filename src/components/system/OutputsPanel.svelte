@@ -84,7 +84,7 @@
 
 </script>
 
-<Panel code="SY.07" title="OUTPUTS">
+<Panel title="OUTPUTS">
   {#snippet right()}
     {#if canResetPins}
       <button class="chip icon" title="Reset to defaults" aria-label="Reset output pins to defaults" onclick={stageOutputPinsToDefault}>↺</button>

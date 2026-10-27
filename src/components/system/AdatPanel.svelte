@@ -48,7 +48,7 @@
   }
 </script>
 
-<Panel code="SY.14" title="ADAT OUTPUT">
+<Panel title="ADAT OUTPUT">
   {#snippet right()}
     {#if features.pinResetDefault}
       <button

@@ -269,7 +269,7 @@
   });
 </script>
 
-<Panel code="CT.02" title="CONTROL SURFACES">
+<Panel title="CONTROL SURFACES">
   {#if caps}
     {#if visibleSlots.length === 0}
       <div class="hint pad empty">

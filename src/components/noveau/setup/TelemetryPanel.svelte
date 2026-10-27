@@ -8,7 +8,7 @@
   const info = $derived(s.telemetry.info);
 </script>
 
-<Panel code="SY.02" title="TELEMETRY">
+<Panel title="TELEMETRY">
   <div class="kvgrid">
     <KV label="CLOCK"     value={info?.clockHz       != null ? `${(info.clockHz / 1_000_000).toFixed(0)} MHz` : '—'} />
     <KV label="SAMPLE"    value={info?.sampleRateHz  != null ? formatRateKHz(info.sampleRateHz) : '—'} />

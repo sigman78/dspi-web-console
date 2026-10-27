@@ -44,7 +44,7 @@ export interface ControlSurfacesState {
   // local drafts -- the GROUPS panel has no parent to receive a reset prop.
   revertEpoch: number;
   // Unapplied local edits per CS editor panel (each panel publishes its own
-  // count). Read by the CONTROL tab's CHANGES panel: staged edits are not
+  // count). Read by the CONTROL changes strip: staged edits are not
   // part of a device SAVE until applied.
   staged: CsStagedCounts;
   // Which editors applied something since the last SAVE/DISCARD. The fw's

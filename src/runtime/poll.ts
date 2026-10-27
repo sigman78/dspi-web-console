@@ -1,5 +1,4 @@
-import { settings, type ReadySession } from '@/state';
-import { debugPanelsForced } from '@/devOptions';
+import type { ReadySession } from '@/state';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
 import { ALL_CHANNELS, isSpdifSource, wireChannelFor } from '@/domain';
@@ -76,12 +75,12 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     }
   }
 
-  // Buffer stats feed only the debug-gated diagnostics panels (SY.02's
-  // STREAMING/PDM rows and SY.12) -- skip the 4 Hz fetch while they're hidden.
-  // lastBufferMs stays put while gated, so enabling DEBUG polls on the next
-  // tick and the panels populate immediately.
+  // Buffer stats feed only the SETUP > DEVICE diagnostics panels -- skip the
+  // 4 Hz fetch unless one is mounted (wantBufferStats). lastBufferMs stays put
+  // while idle, so mounting polls on the next tick and the panels populate
+  // immediately.
   function shouldRunBuffer(now: number): boolean {
-    if (!settings.debugPanels && !debugPanelsForced()) return false;
+    if (tele.bufferStatsWanted <= 0) return false;
     return tele.lastBufferMs === 0 || now - tele.lastBufferMs >= BUFFER_INTERVAL_MS;
   }
 

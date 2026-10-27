@@ -13,7 +13,7 @@
   function isNonZero(v: number | null | undefined): boolean { return v != null && v > 0; }
 </script>
 
-<Panel code="SY.04" title="ERROR COUNTERS">
+<Panel title="ERROR COUNTERS">
   {#snippet right()}
     <button class="chip" onclick={() => clearClips(s)} title="Clear latched clip flags">CLEAR</button>
   {/snippet}

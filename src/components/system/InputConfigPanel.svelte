@@ -130,7 +130,7 @@
   );
 </script>
 
-<Panel code="SY.11" title="INPUT CONFIG">
+<Panel title="INPUT CONFIG">
   {#snippet right()}
     {#if features.pinResetDefault && (isSpdif || (isI2s && features.i2sInput))}
       <button class="chip icon" title="Reset to defaults" aria-label="Reset input pins to defaults" onclick={stageSectionPinsToDefault}>↺</button>

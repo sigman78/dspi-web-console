@@ -220,7 +220,7 @@
   }
 </script>
 
-<Panel code="CT.04" title="MACROS">
+<Panel title="MACROS">
   {#if visibleSlots.length === 0}
     <div class="hint pad empty">
       No macros. A macro fires a short sequence of changes from one button —

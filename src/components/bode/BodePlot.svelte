@@ -206,8 +206,8 @@
     return `${s}${db.toFixed(1)} dB`;
   }
 
-  // Unique per mounted instance so multiple plots on one page (Overview,
-  // per-channel EQ tabs, ...) don't collide on the clipPath id.
+  // Unique per mounted instance so multiple plots on one page (TUNE graph,
+  // PROGRAM previews, ...) don't collide on the clipPath id.
   const clipId = `bode-plot-clip-${Math.random().toString(36).slice(2)}`;
 
   // Crosshair state (in internal coords). Hidden when null.

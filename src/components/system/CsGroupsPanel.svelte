@@ -179,7 +179,7 @@
   });
 </script>
 
-<Panel code="CT.03" title="GROUPS">
+<Panel title="GROUPS">
   {#if visibleSlots.length === 0}
     <div class="hint pad empty">
       No groups. A group lets one control address several channels at once —

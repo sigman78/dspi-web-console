@@ -32,7 +32,7 @@
     value: i,
     label: i === 0 ? '—' : String(i),
   }));
-  // GR bar full scale, matching LimiterPanel.
+  // GR bar full scale,.
   const GR_FULL_DB = 30;
   const grPct = $derived(Math.round(Math.min(1, Math.max(0, (gr ?? 0) / GR_FULL_DB)) * 100));
 
@@ -41,9 +41,9 @@
     return untrack(() => s.telemetry.wantLimiterMeter());
   });
 
-  // A missing mask means every output is set, as in the classic panels.
+  // A missing mask means every output is set.
   const inMask = (mask: number | undefined): boolean => (((mask ?? 0xFFFF) >> slot) & 1) === 1;
-  // Same readout as LimiterPanel.
+  // Gain-reduction readout.
   const grText = (v: number | undefined): string => (v === undefined ? '—' : v >= 0.05 ? `−${v.toFixed(1)} dB` : '0.0 dB');
 </script>
 

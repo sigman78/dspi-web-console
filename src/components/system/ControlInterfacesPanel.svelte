@@ -92,7 +92,7 @@
   }
 </script>
 
-<Panel code="CT.01" title="CONTROL INTERFACES">
+<Panel title="CONTROL INTERFACES">
   {#if uart}
     <div class="subhdr">
       <span class="lhs">

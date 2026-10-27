@@ -94,7 +94,7 @@
 </script>
 
 {#if st}
-  <Panel code="SY.13" title="SYSTEM CLOCK">
+  <Panel title="SYSTEM CLOCK">
     {#snippet right()}
       <button
         class="chip"

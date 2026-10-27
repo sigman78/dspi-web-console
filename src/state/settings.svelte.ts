@@ -10,7 +10,6 @@ export interface Settings {
   lastSerial: string | null;
   warnOnPresetSwitchDirty: boolean;
   volumeAxis: VolumeAxis;
-  debugPanels: boolean;
 }
 
 const STORAGE_KEY = 'dspi-console-web/settings/v1';
@@ -22,7 +21,6 @@ function defaults(): Settings {
     lastSerial: null,
     warnOnPresetSwitchDirty: true,
     volumeAxis: 'user',
-    debugPanels: false,
   };
 }
 
@@ -57,12 +55,11 @@ function parseV1(raw: string, fallback: Settings): Settings {
   return {
     version: 1,
     // Legacy fallback: the field was persisted as `eqTarget` before the rail
-    // generalized selection beyond the EQ tab. Read it when the new key is absent.
+    // generalized selection beyond EQ. Read it when the new key is absent.
     selectedChannel: channelIdOrNull(obj.selectedChannel ?? obj.eqTarget),
     lastSerial: stringOrNull(obj.lastSerial),
     warnOnPresetSwitchDirty: bool(obj.warnOnPresetSwitchDirty, true),
     volumeAxis: volumeAxis(obj.volumeAxis, fallback.volumeAxis),
-    debugPanels: bool(obj.debugPanels, fallback.debugPanels),
   };
 }
 
@@ -115,7 +112,6 @@ export function restoreSettings(): void {
   settings.lastSerial = loaded.lastSerial;
   settings.warnOnPresetSwitchDirty = loaded.warnOnPresetSwitchDirty;
   settings.volumeAxis = loaded.volumeAxis;
-  settings.debugPanels = loaded.debugPanels;
 }
 
 export function setSelectedChannel(id: ChannelId | null): void {
@@ -123,9 +119,6 @@ export function setSelectedChannel(id: ChannelId | null): void {
 }
 export function setVolumeAxis(axis: VolumeAxis): void {
   settings.volumeAxis = axis;
-}
-export function setDebugPanels(v: boolean): void {
-  settings.debugPanels = v;
 }
 // Rail selection: pick a channel globally.
 export function selectChannel(id: ChannelId): void {
@@ -173,9 +166,8 @@ function isChannelVisible(channel: ChannelModel, visibility: SelectionVisibility
 // set AND current visibility (the rail/mixer hide disabled outputs and input
 // channels beyond the live count): if the stored ID isn't present, isn't
 // visible, or there was no selection yet, fall back to the first ENABLED
-// output (null if none are enabled). Absorbs the EQ tab's former "auto-pick a
-// channel on first visit" effect -- runs at connect and again whenever
-// visibility changes, so it also covers tabs other than EQ.
+// output (null if none are enabled). Runs at connect and again whenever
+// visibility changes.
 export function reconcileSelectedChannel(
   channels: readonly ChannelModel[] | undefined,
   visibility: SelectionVisibility,
@@ -198,7 +190,6 @@ export function startSettingsPersistence(): void {
         lastSerial: settings.lastSerial,
         warnOnPresetSwitchDirty: settings.warnOnPresetSwitchDirty,
         volumeAxis: settings.volumeAxis,
-        debugPanels: settings.debugPanels,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
     });

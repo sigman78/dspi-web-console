@@ -2,7 +2,7 @@ import { defaultFilter, seedTypeChange, type ChannelModel, type FilterParams } f
 import { setBandBypass, setEqFilter } from '@/runtime';
 import type { ReadySession } from '@/state';
 
-/** Same field-by-field edit path as the classic EQ tab: bypass has its own verb, a type switch seeds fields. */
+/** Same field-by-field edit path as the former tabbed EQ: bypass has its own verb, a type switch seeds fields. */
 export function patchBand(s: ReadySession, channel: ChannelModel, i: number, patch: Partial<FilterParams>): void {
   if (patch.bypass !== undefined) setBandBypass(s, channel.id, i, patch.bypass);
   const { bypass: _bypass, ...rest } = patch;

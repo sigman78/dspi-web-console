@@ -10,7 +10,7 @@
   const enabled = $derived(lgs?.enabled ?? false);
 </script>
 
-<Panel code="SY.09" title="LG SOUND SYNC">
+<Panel title="LG SOUND SYNC">
   {#snippet right()}
     <ToggleSwitch
       size="sm"

@@ -278,7 +278,7 @@
     /* Per-channel button fill: the channel's own hue tints a left-anchored
        gradient (base at the left edge, fading right so it reads off the coloured
        spine beside it) over the neutral wash, plus a soft inset glow bleeding in
-       from that same edge -- the TabBar active-tab treatment, per channel. */
+       from that same edge -- the active-item treatment, per channel. */
     background:
       linear-gradient(to right,
         color-mix(in oklab, var(--ch-base) 20%, transparent),

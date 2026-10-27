@@ -80,7 +80,7 @@
 
 </script>
 
-<Panel code="SY.08" title="I2S CLOCK">
+<Panel title="I2S CLOCK">
   {#snippet right()}
     {#if features.pinResetDefault}
       <button class="chip icon" title="Reset to defaults" aria-label="Reset clock pins to defaults" onclick={stageClockPinsToDefault}>↺</button>

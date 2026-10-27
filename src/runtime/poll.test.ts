@@ -4,7 +4,7 @@ import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
-import { dispatch, mintConnId, makeReadySession, resetAppState, settings, type ReadySession } from '@/state';
+import { dispatch, mintConnId, makeReadySession, resetAppState, type ReadySession } from '@/state';
 import { startPolling } from './poll';
 import type { LoopClock } from '@/utils';
 
@@ -123,16 +123,12 @@ describe('startPolling', () => {
   });
 });
 
-// Buffer stats feed only the debug-gated diagnostics panels, so the 4 Hz
-// fetch is skipped entirely while they're hidden.
-describe('buffer cadence debug gate', () => {
-  afterEach(() => {
-    teardown();
-    settings.debugPanels = false;
-    window.history.replaceState({}, '', '/');
-  });
+// Buffer stats feed only the SETUP > DEVICE diagnostics panels, so the 4 Hz
+// fetch runs only while one is mounted (wantBufferStats).
+describe('buffer cadence subscription', () => {
+  afterEach(() => { teardown(); });
 
-  it('skips getBufferStats while the debug panels are hidden', async () => {
+  it('skips getBufferStats while nothing wants it', async () => {
     const { device, calls } = pollDevice();
     const session = connect(device);
     const clock = manualClock();
@@ -144,24 +140,17 @@ describe('buffer cadence debug gate', () => {
     stop();
   });
 
-  it('polls getBufferStats when the persisted debug setting is on', async () => {
-    settings.debugPanels = true;
+  it('polls getBufferStats while subscribed and stops after release', async () => {
     const { device, calls } = pollDevice();
     const session = connect(device);
+    const release = session.telemetry.wantBufferStats();
     const clock = manualClock();
     const stop = startPolling(session, clock);
     clock.fire();
     await settle();
     expect(calls.buffer).toBe(1);
-    stop();
-  });
-
-  it('polls getBufferStats when ?debug forces the panels on', async () => {
-    window.history.replaceState({}, '', '/?debug');
-    const { device, calls } = pollDevice();
-    const session = connect(device);
-    const clock = manualClock();
-    const stop = startPolling(session, clock);
+    release();
+    session.telemetry.lastBufferMs = 0;
     clock.fire();
     await settle();
     expect(calls.buffer).toBe(1);

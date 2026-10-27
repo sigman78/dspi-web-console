@@ -63,7 +63,7 @@
   }
 </script>
 
-<Panel code="SY.15" title="ADAT INPUT">
+<Panel title="ADAT INPUT">
   {#snippet right()}
     {#if features.pinResetDefault && !enabled && pin !== 0}
       <button

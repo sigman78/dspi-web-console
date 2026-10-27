@@ -134,7 +134,6 @@
     box-sizing: border-box;
     padding: 0 12px;
   }
-  .paged :global(section.panel > header .code) { display: none; }
   .paged :global(section.panel > header .title) {
     font-family: var(--font-sans);
     font-size: 11px;
