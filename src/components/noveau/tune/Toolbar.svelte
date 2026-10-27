@@ -69,5 +69,4 @@
     gap: 8px;
     border-top: 1px solid var(--border);
   }
-  .chip { height: 22px; font-size: 11px; padding: 0 10px; font-family: var(--font-sans); font-weight: 500; letter-spacing: 0; }
 </style>

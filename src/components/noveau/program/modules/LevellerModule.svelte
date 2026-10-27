@@ -44,9 +44,9 @@
   {enabled}
 >
   {#if showMasks}
-    <div class="r">
-      <span class="lbl">CHANNELS</span>
-      <span class="ctl">
+    <div class="prow">
+      <span class="prow-lbl">CHANNELS</span>
+      <span class="prow-ctl">
         {#each MASK_PRESETS as p (p.label)}
           <button type="button" class="chip hi" disabled={!enabled} title={p.title}
             onclick={() => Runtime.setLevellerMasks(s, p.detector, p.apply)}>{p.label}</button>
@@ -59,9 +59,9 @@
       onToggle={(i) => Runtime.toggleLevellerApplyChannel(s, i)} />
   {/if}
 
-  <div class="r">
-    <span class="lbl">SPEED</span>
-    <span class="ctl"><SegmentedSelect size="sm" value={lv?.speed ?? LevellerSpeed.Medium} options={SPEED_OPTIONS}
+  <div class="prow">
+    <span class="prow-lbl">SPEED</span>
+    <span class="prow-ctl"><SegmentedSelect value={lv?.speed ?? LevellerSpeed.Medium} options={SPEED_OPTIONS}
       disabled={!enabled} ariaLabel="Leveller speed" onChange={(v) => Runtime.setLevellerSpeed(s, v)} /></span>
   </div>
   <ModuleSlider label="AMOUNT" ariaLabel="Leveller amount" value={lv?.amount ?? 0}
@@ -73,9 +73,9 @@
   <ModuleSlider label="GATE" ariaLabel="Leveller gate threshold" value={lv?.gateDb ?? -40}
     min={Proc.LEVELLER_GATE_MIN_DB} max={Proc.LEVELLER_GATE_MAX_DB} step={Proc.LEVELLER_GATE_STEP_DB}
     kind="dB" precision={0} disabled={!enabled} onChange={(v) => Runtime.setLevellerGate(s, v)} />
-  <div class="r">
-    <span class="lbl">LOOKAHEAD</span>
-    <span class="ctl"><ToggleSwitch size="sm" checked={lv?.lookahead ?? false} disabled={!enabled}
+  <div class="prow">
+    <span class="prow-lbl">LOOKAHEAD</span>
+    <span class="prow-ctl"><ToggleSwitch checked={lv?.lookahead ?? false} disabled={!enabled}
       ariaLabel="Leveller lookahead" onChange={(v) => Runtime.setLevellerLookahead(s, v)} /></span>
   </div>
 </ModuleFrame>

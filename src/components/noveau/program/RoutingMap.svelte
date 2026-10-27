@@ -80,7 +80,7 @@
 </script>
 
 <section class="routing" data-budget bind:this={host} bind:clientWidth={hostW} bind:clientHeight={hostH} aria-label="Routing">
-  <header>
+  <header class="sec-h">
     <h2>Routing</h2>
     <span class="cap">{caption}</span>
   </header>
@@ -156,16 +156,8 @@
     min-height: 0;
     overflow: hidden;
   }
-  header {
-    height: 28px;
-    flex: none;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  h2 { margin: 0; font-family: var(--font-sans); font-size: 12px; font-weight: 600; color: var(--text); }
-  .cap { font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header { flex: none; }
+  .cap { flex: 0 1 auto; margin-left: auto; }
   .map {
     display: grid;
     grid-template-columns: 150px repeat(var(--n), minmax(36px, 1fr));

@@ -118,7 +118,6 @@
       <div class="row">
         <span class="microlbl">MODE</span>
         <SegmentedSelect
-          size="sm"
           value={pendingMode}
           options={modeOptions}
           ariaLabel="System clock mode"
@@ -197,9 +196,9 @@
   }
   .fallback-banner__header {
     padding: 6px 12px;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 2px;
+    font-family: var(--font-sans);
+    font-size: var(--fs-m);
+    font-weight: 600;
     color: var(--warn);
     background: color-mix(in oklab, var(--warn) var(--tint), transparent);
     border-bottom: 1px solid color-mix(in oklab, var(--warn) 35%, var(--border));

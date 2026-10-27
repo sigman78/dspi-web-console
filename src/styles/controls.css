@@ -2,7 +2,7 @@
    were copy-pasted (and drifting) across panel <style> blocks; components
    keep only their layout and semantic-state styles.
 
-   .chip — small mono action button.
+   .chip — small action button (20px; .md is 22px).
      Tone via modifier: .accent / .warn / .danger set --tone and switch to the
      tinted recipe. .md is the larger tier (modal / device actions).
      .on — selected state for chip groups (wins over :disabled dimming, since
@@ -12,7 +12,7 @@
      the small "outline button" recipes that predate .chip.
 
    .microlbl — control row label (KV stays the canon for label+value pairs).
-   .hint — faint mono helper/idle text; padding stays component-local.
+   .hint — faint mono meta/idle text; padding stays component-local.
      .hint.err — error tone.
    .sel — compact mono <select> used across the system panels.
    .x-btn — bare ✕ glyph button: remove-row by default (hover turns --err);
@@ -22,14 +22,23 @@
    .icon-toggle — 22px square icon button (rail mute / bypass / preset
      save); .accent tints the glyph, .on is the active (err) state.
    .cs-pill — status pill in the control-surface slot headers (NEW / OK /
-     INACTIVE ...); tone via .new / .ok / .warn / .run / .off. */
+     INACTIVE ...); tone via .new / .ok / .warn / .run / .off.
+
+   Text roles (.t-*) and row/section recipes (.prow, .sec-h) live in
+   noveau.css; labels are sans, mono is for values, ids and tags. */
 
 .chip {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  padding: 3px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  height: var(--h-ctl-s);
+  font-family: var(--font-sans);
+  font-size: var(--fs-m);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  padding: 0 8px;
   border-radius: var(--radius-s);
   background: var(--wash);
   border: 1px solid var(--border);
@@ -42,24 +51,21 @@
 .chip:disabled { opacity: var(--dim-disabled); cursor: default; }
 
 .chip.md {
-  font-size: 10px;
-  letter-spacing: 1.5px;
-  padding: 6px 12px;
-  border-radius: var(--radius-s);
+  height: var(--h-ctl);
+  font-size: var(--fs-l);
+  padding: 0 12px;
 }
 
 /* Icon-only chip: a single glyph header action (e.g. the ↺ reset-to-defaults). */
 .chip.icon {
-  font-size: 12px;
+  font-size: var(--fs-l);
   line-height: 1;
-  padding: 2px 7px;
-  letter-spacing: 0;
+  padding: 0 7px;
 }
 
 .chip.hi {
   background: transparent;
   border-color: var(--border-hi);
-  padding: 3px 8px;
   font-weight: 400;
 }
 .chip.hi:hover:not(:disabled) {
@@ -96,17 +102,16 @@
 }
 
 .microlbl {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: var(--text-faint);
+  font-family: var(--font-sans);
+  font-size: var(--fs-m);
+  font-weight: 400;
+  color: var(--text-dim);
   white-space: nowrap;
 }
 
 .hint {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--fs-s);
   line-height: 1.4;
   color: var(--text-faint);
   margin: 0;
@@ -195,11 +200,10 @@ select.sel:disabled { opacity: var(--dim-disabled); cursor: default; }
 
 /* Section sub-header inside a panel body (border-separated). */
 .subhdr {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  color: var(--text-faint);
+  font-family: var(--font-sans);
+  font-size: var(--fs-m);
+  font-weight: 600;
+  color: var(--text-dim);
   padding: 8px 14px 0;
   border-top: 1px solid var(--wash);
   margin-top: 6px;
@@ -207,9 +211,10 @@ select.sel:disabled { opacity: var(--dim-disabled); cursor: default; }
 
 .cs-pill {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 1px;
+  text-transform: uppercase;
   padding: 1px 6px;
   border-radius: 999px;
   border: 1px solid var(--border-hi);

@@ -98,7 +98,6 @@
       <span class="lhs">
         UART
         <ToggleSwitch
-          size="sm"
           checked={uart.enabled}
           ariaLabel={uart.enabled ? 'Disable UART control interface' : 'Enable UART control interface'}
           onChange={onToggleUartEnabled}
@@ -140,7 +139,6 @@
       <span class="pair">
         <span class="microlbl">NOTIFY</span>
         <ToggleSwitch
-          size="sm"
           ariaLabel="Push async notifications over UART"
           checked={uart.notifyEnabled}
           disabled={!uart.enabled}
@@ -158,7 +156,6 @@
       <span class="lhs">
         I2C
         <ToggleSwitch
-          size="sm"
           checked={i2c.enabled}
           ariaLabel={i2c.enabled ? 'Disable I2C control interface' : 'Enable I2C control interface'}
           onChange={onToggleI2cEnabled}
@@ -207,12 +204,6 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.2px;
-    color: var(--text-faint);
-    text-transform: uppercase;
   }
   /* The global .subhdr (controls.css) adds a border-top + margin-top section
      separator; drop both on the first subheader so it sits right under the

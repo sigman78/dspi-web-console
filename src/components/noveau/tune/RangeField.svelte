@@ -124,7 +124,7 @@
 </script>
 
 <div class="rf">
-  <span class="lbl">{label}</span>
+  <span class="prow-lbl">{label}</span>
   <input
     type="range"
     min={log ? 0 : min}
@@ -141,7 +141,7 @@
   />
   <div class="val">
     {#if placeholder !== undefined}
-      <span class="none">{placeholder}</span>
+      <span class="t-value none">{placeholder}</span>
     {:else}
       <ValueField value={shown} {min} {max} {step} {kind} {tone} {disabled} align="right" onChange={onCommit} />
     {/if}
@@ -152,15 +152,9 @@
   .rf {
     display: flex;
     align-items: center;
-    gap: 10px;
-    height: 24px;
-  }
-  .lbl {
-    flex: 0 0 var(--rf-label, 64px);
-    font-family: var(--font-sans);
-    font-size: 11px;
-    color: var(--text-dim);
-    white-space: nowrap;
+    gap: 12px;
+    flex: 0 0 auto;
+    height: var(--h-ctl);
   }
   input[type='range'] { flex: var(--rf-track-flex, 1); width: var(--rf-track, auto); min-width: 40px; margin: 0; }
   .val { flex: 0 0 var(--rf-value, 84px); }
@@ -168,8 +162,6 @@
     display: block;
     text-align: right;
     padding-right: 8px;
-    font-family: var(--font-mono);
-    font-size: 12px;
     color: var(--text-faint);
   }
 </style>

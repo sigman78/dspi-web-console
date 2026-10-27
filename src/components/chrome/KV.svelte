@@ -21,18 +21,17 @@
 </div>
 
 <style>
-  .kv { font-family: var(--font-mono); }
   .kv.help { cursor: help; }
   .kv.wide { grid-column: 1 / -1; min-width: 0; }
   .kv.wide .val { overflow-wrap: anywhere; }
   .lbl {
-    font-size: 9px;
-    color: var(--text-faint);
-    letter-spacing: 1.2px;
-    text-transform: uppercase;
+    font-family: var(--font-sans);
+    font-size: var(--fs-m);
+    color: var(--text-dim);
   }
   .val {
-    font-size: 12px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-l);
     font-weight: 600;
     color: var(--text);
     margin-top: 2px;

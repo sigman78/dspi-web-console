@@ -23,7 +23,7 @@
     <div class="col">
       <InspectorSection title="Input">
         {#if slot !== null}
-          <div class="r">
+          <div class="prow">
             <RangeField
               label="PREAMP"
               value={preampDb}
@@ -36,9 +36,9 @@
               onCommit={(v) => Runtime.setInputPreamp(s, slot, v)}
             />
           </div>
-          <div class="r">
-            <span class="lbl">RESET</span>
-            <span class="ctl">
+          <div class="prow">
+            <span class="prow-lbl">RESET</span>
+            <span class="prow-ctl">
               <button type="button" class="chip hi" aria-label="Reset preamp to 0 dB" disabled={preampDb === 0}
                 onclick={() => Runtime.setInputPreamp(s, slot, 0)}>0 dB</button>
             </span>
@@ -49,14 +49,14 @@
     {#if showLeveller && slot !== null}
       <div class="col">
         <InspectorSection title="Leveller">
-          <div class="r">
-            <span class="lbl">DETECTOR</span>
-            <span class="ctl"><ToggleSwitch size="sm" checked={inMask(snap?.leveller.detectorMask)} disabled={!snap?.leveller.enabled}
+          <div class="prow">
+            <span class="prow-lbl">DETECTOR</span>
+            <span class="prow-ctl"><ToggleSwitch checked={inMask(snap?.leveller.detectorMask)} disabled={!snap?.leveller.enabled}
               ariaLabel="Leveller detector" onChange={() => Runtime.toggleLevellerDetectorChannel(s, slot)} /></span>
           </div>
-          <div class="r">
-            <span class="lbl">APPLY</span>
-            <span class="ctl"><ToggleSwitch size="sm" checked={inMask(snap?.leveller.applyMask)} disabled={!snap?.leveller.enabled}
+          <div class="prow">
+            <span class="prow-lbl">APPLY</span>
+            <span class="prow-ctl"><ToggleSwitch checked={inMask(snap?.leveller.applyMask)} disabled={!snap?.leveller.enabled}
               ariaLabel="Leveller apply" onChange={() => Runtime.toggleLevellerApplyChannel(s, slot)} /></span>
           </div>
         </InspectorSection>
@@ -78,20 +78,4 @@
   .col { flex: 0 0 320px; min-width: 0; }
   .col + .col { border-left: 1px solid var(--border); padding-left: 16px; margin-left: 16px; }
   .stage :global(.sec) { border-top: none; }
-  .r {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    height: 24px;
-    border-top: 1px solid var(--border);
-    --rf-label: 84px;
-    --rf-value: 72px;
-    --rf-track: 140px;
-    --rf-track-flex: 0 0 auto;
-  }
-  .r :global(.rf) { flex: 0 0 auto; gap: 12px; height: 22px; }
-  .lbl { flex: 0 0 84px; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
-  .ctl { display: flex; align-items: center; gap: 6px; }
-  .stage :global(.vf) { height: 22px; font-size: 12px; }
-  .chip { height: 20px; font-size: 11px; padding: 0 8px; }
 </style>

@@ -16,8 +16,8 @@
   const isSet = (i: number): boolean => (mask & (1 << i)) !== 0;
 </script>
 
-<div class="r">
-  <span class="lbl">{label}</span>
+<div class="prow">
+  <span class="prow-lbl">{label}</span>
   <span class="chips">
     {#each items as item (item.key)}
       <button

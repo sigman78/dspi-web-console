@@ -51,7 +51,7 @@
   <div class="cols">
     <div class="col">
       <InspectorSection title="Output">
-        <div class="r">
+        <div class="prow">
           <RangeField
             label="TRIM"
             value={output.gainDb}
@@ -63,9 +63,9 @@
             onCommit={(v) => Runtime.setOutputGain(s, slot, v)}
           />
         </div>
-        <div class="r">
-          <span class="lbl">DELAY</span>
-          <span class="ctl fld">
+        <div class="prow">
+          <span class="prow-lbl">DELAY</span>
+          <span class="prow-ctl prow-fld">
             <ValueField
               kind="ms"
               min={Mix.OUTPUT_DELAY_MIN_MS}
@@ -76,17 +76,17 @@
             />
           </span>
         </div>
-        <div class="r">
-          <span class="lbl">MUTE</span>
-          <span class="ctl"><ToggleSwitch size="sm" checked={output.muted} ariaLabel="Mute output" onChange={(v) => Runtime.setOutputMuted(s, slot, v)} /></span>
+        <div class="prow">
+          <span class="prow-lbl">MUTE</span>
+          <span class="prow-ctl"><ToggleSwitch checked={output.muted} ariaLabel="Mute output" onChange={(v) => Runtime.setOutputMuted(s, slot, v)} /></span>
         </div>
-        <div class="r">
-          <span class="lbl">ENABLED</span>
-          <span class="ctl"><ToggleSwitch size="sm" checked={output.enabled} ariaLabel="Output enabled" onChange={(v) => Runtime.setOutputEnabled(s, slot, v)} /></span>
+        <div class="prow">
+          <span class="prow-lbl">ENABLED</span>
+          <span class="prow-ctl"><ToggleSwitch checked={output.enabled} ariaLabel="Output enabled" onChange={(v) => Runtime.setOutputEnabled(s, slot, v)} /></span>
         </div>
-        <div class="r">
-          <span class="lbl">TYPE</span>
-          <span class="ctl"><span class="mono">{typeLabel}</span></span>
+        <div class="prow">
+          <span class="prow-lbl">TYPE</span>
+          <span class="prow-ctl"><span class="t-value">{typeLabel}</span></span>
         </div>
       </InspectorSection>
     </div>
@@ -94,13 +94,13 @@
     {#if showLimiter && lim}
       <div class="col">
         <InspectorSection title="Limiter">
-          <div class="r">
-            <span class="lbl">ENABLED</span>
-            <span class="ctl"><ToggleSwitch size="sm" checked={lim.enabled} ariaLabel="Limiter" onChange={(v) => Runtime.setLimiterEnabled(s, slot, v)} /></span>
+          <div class="prow">
+            <span class="prow-lbl">ENABLED</span>
+            <span class="prow-ctl"><ToggleSwitch checked={lim.enabled} ariaLabel="Limiter" onChange={(v) => Runtime.setLimiterEnabled(s, slot, v)} /></span>
           </div>
-          <div class="r">
-            <span class="lbl">THRESHOLD</span>
-            <span class="ctl fld">
+          <div class="prow">
+            <span class="prow-lbl">THRESHOLD</span>
+            <span class="prow-ctl prow-fld">
               <ValueField
                 kind="dB-signed"
                 precision={1}
@@ -113,9 +113,9 @@
               />
             </span>
           </div>
-          <div class="r">
-            <span class="lbl">RELEASE</span>
-            <span class="ctl fld">
+          <div class="prow">
+            <span class="prow-lbl">RELEASE</span>
+            <span class="prow-ctl prow-fld">
               <ValueField
                 kind="ms"
                 precision={0}
@@ -128,21 +128,20 @@
               />
             </span>
           </div>
-          <div class="r">
-            <span class="lbl">LINK</span>
-            <span class="ctl"><SegmentedSelect
-              size="sm"
+          <div class="prow">
+            <span class="prow-lbl">LINK</span>
+            <span class="prow-ctl"><SegmentedSelect
               value={lim.linkGroup}
               options={LINK_OPTIONS}
               ariaLabel="Limiter link group"
               onChange={(v) => Runtime.setLimiterLinkGroup(s, slot, v)}
             /></span>
           </div>
-          <div class="r">
-            <span class="lbl" title="Gain reduction">GR</span>
+          <div class="prow">
+            <span class="prow-lbl" title="Gain reduction">GR</span>
             <span class="gr">
               <span class="bar" aria-hidden="true">{#if s.telemetry.limiterMeterDb}<span class="fill" style:width="{grPct}%"></span>{/if}</span>
-              <span class="mono grv">{grText(gr)}</span>
+              <span class="t-value grv">{grText(gr)}</span>
             </span>
           </div>
         </InspectorSection>
@@ -152,7 +151,7 @@
 
   {#if showProcs}
     <div class="procs">
-      <span class="lbl">Processors</span>
+      <span class="prow-lbl">Processors</span>
       <span class="chips">
         {#if features.loudnessOutputMask}
           <button type="button" class="chip hi" class:on={inMask(snap?.loudness.outputMask)} aria-pressed={inMask(snap?.loudness.outputMask)}
@@ -170,7 +169,7 @@
             onclick={() => Runtime.toggleSubharmOutputChannel(s, slot)}>SUB</button>
         {/if}
       </span>
-      <span class="cap">program processors that include this output</span>
+      <span class="t-cap">program processors that include this output</span>
     </div>
   {/if}
 </div>
@@ -188,25 +187,6 @@
   .col { flex: 0 0 320px; min-width: 0; }
   .col + .col { border-left: 1px solid var(--border); padding-left: 16px; margin-left: 16px; }
   .stage :global(.sec) { border-top: none; }
-  .r {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    height: 24px;
-    border-top: 1px solid var(--border);
-    --rf-label: 84px;
-    --rf-value: 72px;
-    --rf-track: 140px;
-    --rf-track-flex: 0 0 auto;
-  }
-  .r :global(.rf) { flex: 0 0 auto; gap: 12px; height: 22px; }
-  .r .ctl :global(.seg.sm) { height: 18px; align-items: stretch; }
-  .r .ctl :global(.seg.sm .opt) { display: flex; align-items: center; justify-content: center; font-size: 11px; padding-top: 0; padding-bottom: 0; }
-  .lbl { flex: 0 0 84px; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
-  .ctl { display: flex; align-items: center; gap: 6px; }
-  .fld { width: 72px; }
-  .mono { font-family: var(--font-mono); font-size: 12px; color: var(--text); }
-  .stage :global(.vf) { height: 22px; font-size: 12px; }
   .gr { display: inline-flex; align-items: center; gap: 8px; }
   .bar { width: 120px; height: 6px; border-radius: var(--radius-xs); background: var(--wash-strong); overflow: hidden; }
   .fill { display: block; height: 100%; background: var(--warn); transition: width 100ms; }
@@ -219,8 +199,7 @@
     border-top: 1px solid var(--border);
     min-width: 0;
   }
-  .procs .lbl { flex: 0 0 auto; }
-  .cap { font-family: var(--font-sans); font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+  .procs .prow-lbl { flex: 0 0 auto; }
+  .procs .t-cap { white-space: nowrap; }
   .chips { display: inline-flex; gap: 6px; }
-  .chip { height: 20px; font-size: 11px; padding: 0 8px; }
 </style>

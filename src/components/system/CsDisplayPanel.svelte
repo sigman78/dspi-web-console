@@ -321,13 +321,13 @@
       <div class="row">
         <span class="pair">
           <span class="microlbl" title="Show items that have no page too">POP UP ANY CHANGE</span>
-          <ToggleSwitch size="sm" checked={d.overlayAny} disabled={applying}
+          <ToggleSwitch checked={d.overlayAny} disabled={applying}
             ariaLabel="Pop up on any change"
             onChange={(v) => editCfg((dr) => { dr.overlayAny = v; })} />
         </span>
         <span class="pair">
           <span class="microlbl" title="Off: the value control adjusts the shown item directly">ARM BEFORE EDIT</span>
-          <ToggleSwitch size="sm" checked={d.editGated} disabled={applying}
+          <ToggleSwitch checked={d.editGated} disabled={applying}
             ariaLabel="Require arming before edit"
             onChange={(v) => editCfg((dr) => { dr.editGated = v; })} />
         </span>
@@ -421,14 +421,14 @@
               </span>
               <span class="pair">
                 <span class="microlbl" title="Big value on graphic OLEDs">LARGE</span>
-                <ToggleSwitch size="sm" checked={d.large} disabled={applying}
+                <ToggleSwitch checked={d.large} disabled={applying}
                   ariaLabel="Big value on graphic OLEDs"
                   onChange={(v) => editPageDraft(i, (dr) => { dr.large = v; })} />
               </span>
               {#if (caps?.capsVersion ?? 0) >= 13 && cs.nouns[d.noun] && Domain.csNounHasSpan(cs.nouns[d.noun])}
                 <span class="pair">
                   <span class="microlbl" title={barTitle}>BAR</span>
-                  <ToggleSwitch size="sm" checked={d.bar} disabled={applying}
+                  <ToggleSwitch checked={d.bar} disabled={applying}
                     ariaLabel="Level bar"
                     onChange={(v) => editPageDraft(i, (dr) => { dr.bar = v; })} />
                 </span>
@@ -512,7 +512,7 @@
     flex-wrap: wrap;
   }
   .tag {
-    font-size: 8px;
+    font-size: var(--fs-xs);
     font-weight: 700;
     letter-spacing: 1px;
     padding: 1px 6px;
@@ -522,12 +522,6 @@
   }
   .subhdr {
     padding: 10px 14px 4px;
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.2px;
-    color: var(--text-faint);
-    text-transform: uppercase;
   }
   .rows { padding: 4px 14px 10px; display: flex; flex-direction: column; gap: 8px; }
   .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -537,7 +531,7 @@
   .pagestrip { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 8px; }
   .pchip {
     min-width: 24px;
-    height: 24px;
+    height: var(--h-row);
     padding: 0 4px;
     font-family: var(--font-mono);
     font-size: 11px;
@@ -573,9 +567,9 @@
     font-family: var(--font-mono);
   }
   .stitle {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.2px;
+    font-family: var(--font-sans);
+    font-size: var(--fs-m);
+    font-weight: 600;
     color: var(--text-dim);
   }
   .stitle.showing { color: var(--ok); }

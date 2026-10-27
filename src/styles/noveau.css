@@ -1,0 +1,77 @@
+/* Text roles and row/section recipes shared across panels.
+   Sans carries labels and prose; mono is reserved for numbers, units,
+   identifiers and tags. */
+
+.t-title { font-family: var(--font-sans); font-size: var(--fs-xl); font-weight: 600; color: var(--text); }
+.t-head { font-family: var(--font-sans); font-size: var(--fs-l); font-weight: 600; color: var(--text); }
+.t-label { font-family: var(--font-sans); font-size: var(--fs-m); font-weight: 400; color: var(--text-dim); }
+.t-cap { font-family: var(--font-sans); font-size: var(--fs-m); color: var(--text-faint); }
+.t-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-l);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.t-meta { font-family: var(--font-mono); font-size: var(--fs-s); color: var(--text-faint); }
+.t-tag {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* Parameter row: label, controls, optional field and note. */
+.prow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--h-row);
+  border-top: 1px solid var(--border);
+  min-width: 0;
+  --rf-value: 72px;
+  --rf-track: 140px;
+  --rf-track-flex: 0 0 auto;
+}
+.prow.sub { font-family: var(--font-sans); font-size: var(--fs-m); font-weight: 600; color: var(--text); }
+.prow-lbl {
+  flex: 0 0 var(--rf-label, 84px);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: var(--fs-m);
+  color: var(--text-dim);
+}
+.prow-ctl { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.prow-fld { flex: 0 0 72px; }
+.prow-note { font-family: var(--font-sans); font-size: var(--fs-m); color: var(--text-faint); white-space: nowrap; }
+
+/* Section head: title with an optional caption. */
+.sec-h {
+  height: var(--h-head);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 4px;
+  min-width: 0;
+}
+.sec-h > h2, .sec-h > h3 {
+  margin: 0;
+  flex: 0 0 auto;
+  font-family: var(--font-sans);
+  font-size: var(--fs-l);
+  font-weight: 600;
+  color: var(--text);
+}
+.sec-h > .cap {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: var(--fs-m);
+  color: var(--text-dim);
+}

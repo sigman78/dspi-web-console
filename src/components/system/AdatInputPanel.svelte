@@ -74,7 +74,6 @@
     {/if}
     <span title={toggleTitle}>
       <ToggleSwitch
-        size="sm"
         checked={enabled}
         disabled={!inputConfig || enableBlocked || disableBlocked}
         ariaLabel={enabled ? 'Disable ADAT input' : 'Enable ADAT input'}

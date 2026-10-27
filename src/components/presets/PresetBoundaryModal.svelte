@@ -66,7 +66,7 @@
     max-width: 480px;
     color: var(--text);
   }
-  h2 { font-size: 12px; letter-spacing: 1.5px; margin: 0 0 8px; color: var(--text); }
+  h2 { font-size: var(--fs-l); font-weight: 600; margin: 0 0 8px; color: var(--text); }
   p  { font-size: 11px; color: var(--text-dim); margin: 0 0 16px; line-height: 1.4; }
   .actions { display: flex; gap: 8px; justify-content: flex-end; }
 </style>

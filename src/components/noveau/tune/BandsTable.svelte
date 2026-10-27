@@ -52,6 +52,6 @@
   .rw { border-radius: var(--radius-s); }
   .rw.sel { background: color-mix(in oklab, var(--accent) var(--tint), transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) var(--tint-edge), transparent); }
   .dense :global(.rw .row) { gap: 2px; padding: 0 2px; min-height: 26px; border-top: none; }
-  .dense :global(.vf) { padding: 0 3px; }
+  .dense :global(.vf) { padding: 0 3px; font-size: var(--fs-m); }
   .dense :global(.vf .unit) { display: none; }
 </style>

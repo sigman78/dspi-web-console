@@ -177,9 +177,9 @@
     align-items: center;
     box-sizing: border-box;
     width: 100%;
-    height: 24px;
+    height: var(--h-ctl);
     padding: 0 8px;
-    font-size: 11px;
+    font-size: var(--fs-l);
     border: none;
     border-radius: 0;
     background: transparent;
@@ -239,7 +239,7 @@
   }
   .vf .unit {
     color: var(--text-faint);
-    font-size: 9px;
+    font-size: var(--fs-xs);
   }
 
   input {

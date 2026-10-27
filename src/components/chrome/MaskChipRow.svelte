@@ -44,7 +44,7 @@
   }
   .mask-chip {
     min-width: 24px;
-    height: 24px;
+    height: var(--h-row);
     padding: 0 4px;
     font-family: var(--font-mono);
     font-size: 11px;

@@ -63,14 +63,14 @@
 
 {#snippet kv(r: Row)}
   <div class="kv" title={r.title}>
-    <span class="lbl">{r.label}</span>
-    <span class="val" class:ok={r.tone === 'ok'} class:off={r.tone === 'off'} class:warn={r.tone === 'warn'}>{r.value}</span>
+    <span class="t-cap">{r.label}</span>
+    <span class="t-value val" class:ok={r.tone === 'ok'} class:off={r.tone === 'off'} class:warn={r.tone === 'warn'}>{r.value}</span>
   </div>
 {/snippet}
 
 <div class="about">
   <section class="band">
-    <header>
+    <header class="sec-h">
       <h3>CONSOLE</h3>
       <span class="links">
         <a class="chip" href={REPO_URL} target="_blank" rel="noopener">GITHUB</a>
@@ -84,14 +84,14 @@
   </section>
 
   <section class="band">
-    <header><h3>DEVICE</h3></header>
+    <header class="sec-h"><h3>DEVICE</h3></header>
     <div class="rows">
       {#each deviceRows as r (r.label)}{@render kv(r)}{/each}
     </div>
   </section>
 
   <section class="band changes">
-    <header><h3>LATEST CHANGES</h3><span class="ver">v{LATEST_CHANGES.version}</span></header>
+    <header class="sec-h"><h3>LATEST CHANGES</h3><span class="t-meta ver">v{LATEST_CHANGES.version}</span></header>
     <div class="fade">
       <ul>
         {#each LATEST_CHANGES.highlights as h (h)}<li>{h}</li>{/each}
@@ -123,27 +123,18 @@
     overflow: hidden;
   }
   header {
-    height: 28px;
     flex: none;
-    box-sizing: border-box;
     padding: 0 12px;
-    display: flex;
-    align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--border);
   }
-  h3 { margin: 0; font-family: var(--font-sans); font-size: 12px; font-weight: 600; color: var(--text); }
-  .ver { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+  .ver { color: var(--text-dim); }
   .rows { padding: 8px 12px 10px; display: flex; flex-wrap: wrap; gap: 6px 32px; }
   .kv {
     display: inline-flex;
     gap: 8px;
     align-items: baseline;
-    font-family: var(--font-mono);
-    font-size: 12px;
   }
-  .lbl { font-size: 11px; letter-spacing: 0.06em; color: var(--text-faint); }
-  .val { color: var(--text); }
   .val.ok { color: var(--ok); }
   .val.off { color: var(--text-faint); }
   .val.warn { color: var(--warn); }

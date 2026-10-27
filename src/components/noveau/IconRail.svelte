@@ -79,7 +79,7 @@
     stroke-linecap: round;
     stroke-linejoin: round;
   }
-  .ib span { font-family: var(--font-mono); font-size: 9px; font-weight: 500; letter-spacing: 0.04em; }
+  .ib span { font-family: var(--font-sans); font-size: var(--fs-xs); font-weight: 500; }
   .ib.on { color: var(--text); background: color-mix(in oklab, var(--accent) var(--tint), transparent); }
   .ib.on svg { stroke: var(--accent); }
   .ib.on::before {

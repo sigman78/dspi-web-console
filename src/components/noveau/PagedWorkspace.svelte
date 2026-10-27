@@ -116,7 +116,7 @@
     padding: 0 6px;
     border-radius: var(--radius-s);
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--fs-m);
     font-weight: 500;
     letter-spacing: 0.04em;
     color: var(--text-faint);
@@ -127,16 +127,5 @@
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     border-radius: var(--radius-m);
-  }
-  .paged :global(section.panel > header) {
-    height: 28px;
-    box-sizing: border-box;
-    padding: 0 12px;
-  }
-  .paged :global(section.panel > header .title) {
-    font-family: var(--font-sans);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
   }
 </style>

@@ -85,10 +85,7 @@
 </div>
 
 <style>
-  .vtop { display: flex; align-items: stretch; gap: 4px; height: 24px; }
-  .vtop :global(.seg) { flex: 1; }
-  .vtop :global(.opt) { padding: 3px 4px; font-size: 11px; font-family: var(--font-sans); letter-spacing: 0; }
-  .vtop .icon-toggle { align-self: center; }
+  .vtop { display: flex; align-items: center; gap: 4px; height: var(--h-row); }
   .vrow { display: flex; align-items: center; gap: 6px; height: 22px; }
   input[type="range"] {
     flex: 1;

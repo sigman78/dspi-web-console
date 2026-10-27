@@ -238,15 +238,14 @@
     border-bottom: 1px solid var(--border);
   }
   .title {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 1.5px;
+    font-family: var(--font-sans);
+    font-size: var(--fs-l);
+    font-weight: 600;
     color: var(--text);
   }
   .meta {
     flex: 1;
-    font-size: 9px;
-    letter-spacing: 1px;
+    font-size: var(--fs-s);
     color: var(--text-faint);
     text-align: right;
   }

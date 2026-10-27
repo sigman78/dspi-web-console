@@ -24,19 +24,19 @@
 <div class="rows" role="group" aria-label="Device-wide preset options">
   <div class="trow">
     <span>Master volume stored with preset</span>
-    <ToggleSwitch size="sm" ariaLabel="Master volume stored with preset" disabled={unknown}
+    <ToggleSwitch ariaLabel="Master volume stored with preset" disabled={unknown}
       checked={dir?.masterVolumeMode === MasterVolumeMode.WithPreset}
       onChange={(v) => void setMasterVolumeMode(s, v ? MasterVolumeMode.WithPreset : MasterVolumeMode.Independent)} />
   </div>
   <div class="trow">
     <span>Output config stored with preset</span>
-    <ToggleSwitch size="sm" ariaLabel="Output config stored with preset" disabled={unknown}
+    <ToggleSwitch ariaLabel="Output config stored with preset" disabled={unknown}
       checked={dir?.outputConfigMode === OutputConfigMode.WithPreset}
       onChange={(v) => void setOutputConfigMode(s, v ? OutputConfigMode.WithPreset : OutputConfigMode.Independent)} />
   </div>
   <div class="trow">
     <span>Warn when switching with unsaved changes</span>
-    <ToggleSwitch size="sm" ariaLabel="Warn when switching with unsaved changes"
+    <ToggleSwitch ariaLabel="Warn when switching with unsaved changes"
       checked={settings.warnOnPresetSwitchDirty}
       onChange={(v) => { settings.warnOnPresetSwitchDirty = v; }} />
   </div>
@@ -51,7 +51,6 @@
     font-size: 11px;
     color: var(--err);
   }
-  .fail .chip { height: 20px; padding: 0 8px; font-family: var(--font-sans); font-size: 11px; font-weight: 600; letter-spacing: 0; }
   .trow {
     display: flex;
     align-items: center;

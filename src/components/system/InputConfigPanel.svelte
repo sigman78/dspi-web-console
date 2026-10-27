@@ -225,7 +225,6 @@
             {:else}
               <span class="stage-wrap" class:staged={s.staging.has(`spdifEnable:${i - 1}`)} title={s.staging.has(`spdifEnable:${i - 1}`) ? `device: ${inputConfig.spdifExtEnabled[i - 1] ? 'ON' : 'OFF'}` : undefined}>
                 <ToggleSwitch
-                  size="sm"
                   checked={effSpdifExtEnabled(i - 1)}
                   ariaLabel={effSpdifExtEnabled(i - 1) ? `Disable ${spdifTitle(i)} input` : `Enable ${spdifTitle(i)} input`}
                   onChange={() => stageSpdifInputEnabled(s, i - 1, !effSpdifExtEnabled(i - 1))}
@@ -365,7 +364,7 @@
   /* S/PDIF inputs: one row per selectable input -- title | toggle | pin --
      spread across the panel width (title at left, pin at the right edge). */
   .spdif-grid { padding: 8px 14px 4px; display: grid; grid-template-columns: auto auto auto; justify-content: space-between; row-gap: 12px; column-gap: 12px; align-items: center; }
-  .spdif-title { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--text-dim); white-space: nowrap; }
+  .spdif-title { font-family: var(--font-sans); font-size: var(--fs-m); font-weight: 600; color: var(--text-dim); white-space: nowrap; }
   .spdif-toggle { display: flex; align-items: center; justify-content: center; min-width: 34px; }
   .dash { color: var(--text-faint); }
 </style>

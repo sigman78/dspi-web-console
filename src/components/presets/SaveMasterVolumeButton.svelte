@@ -38,12 +38,11 @@
 {/if}
 
 <style>
-  /* Narrower than the shared .chip padding and a step dimmer at rest; this
-     predates .chip.warn and doesn't match its recipe -- kept as-is rather
-     than unified, to avoid an unrelated visual change here. :global()
-     because ConfirmButton renders the actual <button>. */
+  /* A step dimmer at rest than the shared .chip; predates .chip.warn and
+     doesn't match its recipe. :global() because ConfirmButton renders the
+     actual <button>. */
   :global(.mv-save) {
-    padding: 3px 8px;
+    padding: 0 8px;
     color: var(--text-faint);
   }
   :global(.mv-save:hover:not([aria-disabled="true"])) { color: var(--text-dim); }

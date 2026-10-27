@@ -465,7 +465,7 @@
     {#if !CsDraft.isDisplay(d) && d.type !== Domain.CsType.Ir && d.noun !== Domain.CsNoun.PageValue && showRangeOf(d)}
       <div class="row">
         <span class="microlbl">LIMIT RANGE</span>
-        <ToggleSwitch size="sm" checked={d.limitRange} disabled={applying}
+        <ToggleSwitch checked={d.limitRange} disabled={applying}
           ariaLabel="Limit the range"
           onChange={(v) => onEdit((dr) => { dr.limitRange = v; })} />
         {#if d.limitRange}
@@ -504,7 +504,7 @@
         {/if}
         {#if showBaseBrightOf(d)}
           <span class="microlbl">LIMIT BRIGHTNESS</span>
-          <ToggleSwitch size="sm" checked={d.limitBright} disabled={applying}
+          <ToggleSwitch checked={d.limitBright} disabled={applying}
             ariaLabel="Limit brightness"
             onChange={(v) => onEdit((dr) => { dr.limitBright = v; })} />
           {#if d.limitBright}
@@ -521,42 +521,42 @@
     {#if !CsDraft.isDisplay(d)}
       <div class="row">
         <span class="microlbl">{invertLabel(d).toUpperCase()}</span>
-        <ToggleSwitch size="sm" checked={d.invert} disabled={applying}
+        <ToggleSwitch checked={d.invert} disabled={applying}
           ariaLabel={invertLabel(d)}
           onChange={(v) => onEdit((dr) => { dr.invert = v; })} />
         {#if showReverseOf(d)}
           <span class="microlbl">REVERSE DIRECTION</span>
-          <ToggleSwitch size="sm" checked={d.reverse} disabled={applying}
+          <ToggleSwitch checked={d.reverse} disabled={applying}
             ariaLabel="Reverse direction"
             onChange={(v) => onEdit((dr) => { dr.reverse = v; })} />
         {/if}
         {#if showWrapOf(d)}
           <span class="microlbl">WRAP AROUND</span>
-          <ToggleSwitch size="sm" checked={d.wrap} disabled={applying}
+          <ToggleSwitch checked={d.wrap} disabled={applying}
             ariaLabel="Wrap around"
             onChange={(v) => onEdit((dr) => { dr.wrap = v; })} />
         {/if}
         {#if showAccelOf(d)}
           <span class="microlbl">ACCELERATE FAST ROTATION</span>
-          <ToggleSwitch size="sm" checked={d.accel} disabled={applying}
+          <ToggleSwitch checked={d.accel} disabled={applying}
             ariaLabel="Accelerate on fast rotation"
             onChange={(v) => onEdit((dr) => { dr.accel = v; })} />
         {/if}
         {#if showRepeatOf(d)}
           <span class="microlbl">AUTO-REPEAT WHILE HELD</span>
-          <ToggleSwitch size="sm" checked={d.repeat} disabled={applying}
+          <ToggleSwitch checked={d.repeat} disabled={applying}
             ariaLabel="Auto-repeat while held"
             onChange={(v) => onEdit((dr) => { dr.repeat = v; if (v) dr.event = Domain.CsEvent.Press; })} />
         {/if}
         {#if d.grouped && showLinkAbsOf(d)}
           <span class="microlbl" title="Off: the pot moves the group together while each member keeps its offset">SAME LEVEL FOR ALL</span>
-          <ToggleSwitch size="sm" checked={d.linkAbs} disabled={applying}
+          <ToggleSwitch checked={d.linkAbs} disabled={applying}
             ariaLabel="Drive every member to the same level"
             onChange={(v) => onEdit((dr) => { dr.linkAbs = v; })} />
         {/if}
         {#if d.grouped && showGroupAllOf(d)}
           <span class="microlbl" title="Off: lights when any member matches">ALL MEMBERS</span>
-          <ToggleSwitch size="sm" checked={d.groupAll} disabled={applying}
+          <ToggleSwitch checked={d.groupAll} disabled={applying}
             ariaLabel="Require every member to match"
             onChange={(v) => onEdit((dr) => { dr.groupAll = v; })} />
         {/if}

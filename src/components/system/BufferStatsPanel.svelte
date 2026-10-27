@@ -86,7 +86,7 @@
 
 <style>
   .tblwrap { padding: 10px 14px 14px; }
-  /* Typography mirrors KV: 9px faint labels (header + SRC), 12px/600 values. */
+  /* Typography mirrors KV: sans dim labels (header + SRC), mono 12px/600 values. */
   .tbl {
     width: 100%;
     table-layout: fixed;
@@ -95,9 +95,10 @@
     font-size: 9px;
   }
   .tbl thead th {
-    color: var(--text-faint);
-    font-weight: 700;
-    letter-spacing: 1.2px;
+    font-family: var(--font-sans);
+    font-size: var(--fs-m);
+    color: var(--text-dim);
+    font-weight: 400;
     text-align: right;
     padding: 2px 6px 4px;
     border-bottom: 1px solid var(--wash);
@@ -112,12 +113,11 @@
     border-bottom: 1px solid var(--wash);
   }
   .tbl tbody td.src {
-    font-size: 9px;
+    font-family: var(--font-sans);
+    font-size: var(--fs-m);
     font-weight: 400;
-    color: var(--text-faint);
+    color: var(--text-dim);
     text-align: left;
-    letter-spacing: 1.2px;
-    text-transform: uppercase;
   }
   .tbl tbody tr:last-child td { border-bottom: none; }
 

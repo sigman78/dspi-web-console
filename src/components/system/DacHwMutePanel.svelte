@@ -75,7 +75,6 @@
 <Panel title="DAC HW MUTE">
   {#snippet right()}
     <ToggleSwitch
-      size="sm"
       checked={cfg?.enabled ?? false}
       disabled={!cfg}
       ariaLabel={cfg?.enabled ? 'Disable DAC HW mute' : 'Enable DAC HW mute'}
@@ -87,7 +86,6 @@
     <div class="rows">
       <div class="row">
         <ToggleSwitch
-          size="sm"
           label="ACTIVE LOW"
           ariaLabel="DAC mute active low"
           checked={cfg.activeLow}

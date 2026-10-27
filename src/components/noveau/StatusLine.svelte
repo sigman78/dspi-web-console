@@ -77,5 +77,4 @@
   .r.idle { color: var(--text-faint); font-family: var(--font-mono); gap: 8px; }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
   .idle .dot { background: var(--text-faint); opacity: var(--dim-off); }
-  .chip { height: 20px; padding: 0 10px; font-size: 11px; }
 </style>

@@ -84,7 +84,7 @@
 
 <div class="pop" bind:this={el} bind:offsetWidth={w} bind:offsetHeight={h} role="dialog" aria-label={`Crosspoint ${title}`} style:left="{left}px" style:top="{top}px">
   {#if !clamped}<span class="caret" style:left="{caretX}px" aria-hidden="true"></span>{/if}
-  <div class="ph">
+  <div class="ph sec-h">
     <h3>{title}</h3>
     {#if proposal}
       <span class="tag">NEW</span>
@@ -92,7 +92,7 @@
       <button type="button" class="x-btn close" aria-label="Close" onclick={onClose}>✕</button>
     {/if}
   </div>
-  <div class="r">
+  <div class="prow">
     <RangeField
       label="GAIN"
       value={gain}
@@ -105,12 +105,12 @@
       onCommit={(v) => (proposal ? (draftGain = v) : Runtime.setCrosspointGain(s, input, output, v))}
     />
   </div>
-  <div class="r">
-    <span class="lbl">PHASE</span>
-    <ToggleSwitch size="sm" checked={invert} disabled={!proposal && !enabled} ariaLabel="Invert phase" onChange={(v) => (proposal ? (draftInvert = v) : Runtime.setCrosspointInvert(s, input, output, v))} />
-    <span class="cap">{invert ? 'inverted' : 'normal'}</span>
+  <div class="prow">
+    <span class="prow-lbl">PHASE</span>
+    <ToggleSwitch checked={invert} disabled={!proposal && !enabled} ariaLabel="Invert phase" onChange={(v) => (proposal ? (draftInvert = v) : Runtime.setCrosspointInvert(s, input, output, v))} />
+    <span class="t-cap">{invert ? 'inverted' : 'normal'}</span>
   </div>
-  <div class="r foot" class:live={!proposal}>
+  <div class="prow foot" class:live={!proposal}>
     {#if proposal}
       <button type="button" class="chip accent act" onclick={commitRoute}>ROUTE</button>
       <button type="button" class="chip act" onclick={onClose}>CANCEL</button>
@@ -144,22 +144,9 @@
     transform: rotate(45deg);
     pointer-events: none;
   }
-  .ph { display: flex; align-items: center; gap: 8px; height: 28px; }
+  .ph { padding: 0; gap: 8px; }
   .ph h3 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  h3 { margin: 0; font-family: var(--font-sans); font-size: 12px; font-weight: 600; color: var(--text); }
-  .cap { flex: none; white-space: nowrap; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }
-  .r {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    height: 24px;
-    border-top: 1px solid var(--border);
-    --rf-label: 52px;
-    --rf-value: 72px;
-    --rf-track: 100px;
-    --rf-track-flex: 0 0 auto;
-  }
-  .r :global(.rf) { gap: 12px; height: 22px; }
+  .prow { --rf-label: 52px; --rf-track: 100px; }
   .foot { gap: 6px; }
   .foot.live { justify-content: flex-end; }
   .tag {
@@ -179,7 +166,5 @@
     border-color: color-mix(in oklab, var(--err) var(--tint-edge), transparent);
     background: color-mix(in oklab, var(--err) var(--tint), transparent);
   }
-  .act { height: 20px; padding: 0 8px; font-size: 11px; }
   .chip:not(.accent).act { color: var(--text-dim); }
-  .lbl { flex: 0 0 52px; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }
 </style>

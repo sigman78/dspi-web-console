@@ -101,7 +101,6 @@
           </span>
           <span title={pairLockedByPdm(slot) ? 'unavailable while PDM subwoofer is active' : undefined}>
             <ToggleSwitch
-              size="sm"
               checked={pairEnabled(slot)}
               disabled={pairLockedByPdm(slot)}
               ariaLabel={`Out ${slot + 1} enable`}
@@ -110,7 +109,6 @@
           </span>
           <span class="stage-wrap" class:staged={s.staging.has(`outputType:${slot}`)}>
             <SegmentedSelect
-              size="sm"
               value={effOutputType(slot)}
               options={TYPE_OPTS}
               ariaLabel={`Out ${slot + 1} output type`}
@@ -132,7 +130,6 @@
         <span class="lbl"><span class="microlbl">PDM SUB</span></span>
         <span title={pdmLockedByOutputs ? pdmLockTitle : undefined}>
           <ToggleSwitch
-            size="sm"
             checked={pdmEnabled}
             disabled={pdmLockedByOutputs}
             ariaLabel="PDM sub enable"

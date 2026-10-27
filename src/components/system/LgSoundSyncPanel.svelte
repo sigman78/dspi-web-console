@@ -13,7 +13,6 @@
 <Panel title="LG SOUND SYNC">
   {#snippet right()}
     <ToggleSwitch
-      size="sm"
       checked={enabled}
       disabled={!lgs}
       ariaLabel={enabled ? 'Disable LG Sound Sync' : 'Enable LG Sound Sync'}

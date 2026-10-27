@@ -57,7 +57,6 @@
       <span class="dot" style:background={chShade(e.id, 'bright')}></span>
       <span class="name">{e.name}</span>
       <ToggleSwitch
-        size="sm"
         checked={on}
         ariaLabel={`Route ${e.name}`}
         onChange={(v) => Runtime.setCrosspointEnabled(s, e.input, e.output, v)}
@@ -104,7 +103,6 @@
   }
   .dot { width: 6px; height: 6px; border-radius: 50%; }
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-  .gain :global(.vf) { font-size: 12px; }
-  .none { display: block; text-align: right; padding-right: 8px; font-family: var(--font-mono); font-size: 12px; color: var(--text-faint); }
-  .chip { height: 20px; padding: 0; font-size: 12px; letter-spacing: 0; }
+  .none { display: block; text-align: right; padding-right: 8px; font-family: var(--font-mono); font-size: var(--fs-l); color: var(--text-faint); }
+  .chip { padding: 0; }
 </style>

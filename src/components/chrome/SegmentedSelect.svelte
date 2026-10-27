@@ -3,14 +3,12 @@
     value,
     options,
     disabled = false,
-    size = 'md',
     ariaLabel,
     onChange,
   }: {
     value: T;
     options: ReadonlyArray<{ value: T; label: string; disabled?: boolean }>;
     disabled?: boolean;
-    size?: 'sm' | 'md';
     ariaLabel: string;
     onChange: (v: T) => void;
   } = $props();
@@ -36,7 +34,6 @@
 
 <div
   class="seg"
-  class:sm={size === 'sm'}
   role="radiogroup"
   aria-label={ariaLabel}
   tabindex="-1"
@@ -69,11 +66,13 @@
     background: var(--wash-faint);
   }
   .opt {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 1px;
-    padding: 4px 10px;
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: var(--h-ctl-s);
+    font-family: var(--font-sans);
+    font-size: var(--fs-m);
+    padding: 0 8px;
     background: transparent;
     border: none;
     color: var(--text-dim);
@@ -91,5 +90,4 @@
     color: var(--ok);
     font-weight: 600;
   }
-  .sm .opt { font-size: 9px; padding: 3px 8px; }
 </style>

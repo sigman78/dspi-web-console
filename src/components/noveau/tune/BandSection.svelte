@@ -28,7 +28,7 @@
 >
   <div class="body">
     <div class="row">
-      <span class="lbl">TYPE</span>
+      <span class="prow-lbl">TYPE</span>
       <div class="type">
         {#if band && index !== null}
           <BandTypeSelect value={band.type} {types} onChange={(t) => patchBand(s, channel, index, { type: t })} />
@@ -74,9 +74,8 @@
       onCommit={(v) => index !== null && patchBand(s, channel, index, { q: v })}
     />
     <div class="row">
-      <span class="lbl">BYPASS</span>
+      <span class="prow-lbl">BYPASS</span>
       <ToggleSwitch
-        size="sm"
         checked={band?.bypass ?? false}
         disabled={off}
         ariaLabel="Bypass band"
@@ -88,9 +87,7 @@
 
 <style>
   .body { height: 120px; padding: 0 4px; --rf-label: 76px; --rf-value: 78px; }
-  .body :global(.vf) { font-size: 12px; }
-  .row { display: flex; align-items: center; gap: 10px; height: 24px; }
-  .lbl { flex: 0 0 76px; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }
+  .row { display: flex; align-items: center; gap: 12px; height: var(--h-row); }
   .type { flex: 1; min-width: 0; }
-  .none { padding-left: 4px; color: var(--text-faint); font-family: var(--font-mono); font-size: 12px; }
+  .none { padding-left: 4px; color: var(--text-faint); font-family: var(--font-mono); font-size: var(--fs-l); }
 </style>

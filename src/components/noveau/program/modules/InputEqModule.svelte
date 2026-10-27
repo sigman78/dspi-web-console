@@ -41,11 +41,11 @@
   blurb="Up to 10 parametric bands per input, applied before routing. Edit bands in TUNE with an input selected.">
   <BodePlot {curves} height={180} />
   {#each inputs as inp (inp.id)}
-    <div class="r">
+    <div class="prow">
       <span class="dot" style:background={chShade(inp.id, 'bright')}></span>
-      <span class="lbl" title={inp.name}>{inp.name}</span>
-      <span class="note">{inp.bands} {inp.bands === 1 ? 'band' : 'bands'}</span>
-      <span class="mono pre">{fmtSigned(inp.preampDb)} dB</span>
+      <span class="prow-lbl" title={inp.name}>{inp.name}</span>
+      <span class="prow-note">{inp.bands} {inp.bands === 1 ? 'band' : 'bands'}</span>
+      <span class="t-value pre">{fmtSigned(inp.preampDb)} dB</span>
       <button type="button" class="jump" aria-label={`Open ${inp.name} in TUNE`} title={`Open ${inp.name} in TUNE`} onclick={() => edit(inp.id)}>»</button>
     </div>
   {/each}

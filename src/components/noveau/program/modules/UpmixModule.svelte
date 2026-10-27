@@ -38,15 +38,15 @@
   blurb="Derives centre and surround feeds from a stereo input and offers them as extra matrix sources. Parks on multichannel input or above 48 kHz."
   {enabled}
 >
-  <div class="r">
-    <span class="lbl">STATUS</span>
-    <span class="ctl"><span class="mono" class:ok={status === 'active'}>{upmixStatusText(status)}</span></span>
+  <div class="prow">
+    <span class="prow-lbl">STATUS</span>
+    <span class="prow-ctl"><span class="t-value" class:ok={status === 'active'}>{upmixStatusText(status)}</span></span>
   </div>
 
-  <div class="r sub"><span>CENTRE</span></div>
-  <div class="r">
-    <span class="lbl">MODE</span>
-    <span class="ctl"><SegmentedSelect size="sm" value={centerMode} options={CENTER_MODE_OPTIONS} disabled={!enabled}
+  <div class="prow sub"><span>CENTRE</span></div>
+  <div class="prow">
+    <span class="prow-lbl">MODE</span>
+    <span class="prow-ctl"><SegmentedSelect value={centerMode} options={CENTER_MODE_OPTIONS} disabled={!enabled}
       ariaLabel="Upmix center mode" onChange={(v) => Runtime.setUpmixCenterMode(s, v)} /></span>
   </div>
   <ModuleSlider label="STRENGTH" ariaLabel="Upmix center strength" value={upmix?.strengthPct ?? 100}
@@ -73,10 +73,10 @@
     min={Proc.UPMIX_DETECTOR_HPF_MIN_HZ} max={Proc.UPMIX_DETECTOR_HPF_MAX_HZ} step={Proc.UPMIX_DETECTOR_HPF_STEP_HZ}
     kind="hz" precision={0} disabled={!steeringEditable} onChange={(v) => Runtime.setUpmixDetectorHpf(s, v)} />
 
-  <div class="r sub"><span>SURROUND</span></div>
-  <div class="r">
-    <span class="lbl">MODE</span>
-    <span class="ctl"><SegmentedSelect size="sm" value={surroundMode} options={SURROUND_MODE_OPTIONS} disabled={!enabled}
+  <div class="prow sub"><span>SURROUND</span></div>
+  <div class="prow">
+    <span class="prow-lbl">MODE</span>
+    <span class="prow-ctl"><SegmentedSelect value={surroundMode} options={SURROUND_MODE_OPTIONS} disabled={!enabled}
       ariaLabel="Upmix surround mode" onChange={(v) => Runtime.setUpmixSurroundMode(s, v)} /></span>
   </div>
   <ModuleSlider label="DELAY" ariaLabel="Upmix surround delay" value={upmix?.surroundDelayMs ?? 12}
@@ -94,5 +94,5 @@
 </ModuleFrame>
 
 <style>
-  .mono.ok { color: var(--ok); }
+  .t-value.ok { color: var(--ok); }
 </style>

@@ -103,11 +103,9 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-family: var(--font-mono);
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
+    font-family: var(--font-sans);
+    font-size: var(--fs-s);
+    font-weight: 500;
     color: var(--text-faint);
   }
   .legend-chip.dim { opacity: var(--dim-disabled); }

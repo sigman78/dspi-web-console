@@ -109,7 +109,6 @@
         <span class="microlbl">MCK</span>
         <span class="stage-wrap" class:staged={s.staging.has('mckEnabled')}>
           <ToggleSwitch
-            size="sm"
             checked={effMckEnabled}
             ariaLabel={effMckEnabled ? 'Disable MCK' : 'Enable MCK'}
             onChange={(v) => stageMckEnabled(s, v)}
@@ -133,7 +132,6 @@
         <span class="microlbl">MULT</span>
         <span class="stage-wrap" class:staged={s.staging.has('mckMultiplier')}>
           <SegmentedSelect
-            size="sm"
             value={effMckMultiplier}
             options={multOpts}
             ariaLabel="MCK multiplier"
@@ -148,7 +146,6 @@
           <span class="microlbl">MODE</span>
           <span class="stage-wrap" class:staged={s.staging.has('i2sClockMode')} title={s.staging.has('i2sClockMode') ? `device: ${snap.inputConfig.i2sClockMode === 1 ? 'SLAVE' : 'MASTER'}` : undefined}>
             <SegmentedSelect
-              size="sm"
               value={effClockMode}
               options={clockModeOpts}
               ariaLabel="I2S clock mode"
@@ -164,7 +161,6 @@
                of whether an output slot happens to run I2S. -->
           <span class="stage-wrap" class:staged={s.staging.has('i2sClockPinMode')} title={s.staging.has('i2sClockPinMode') ? `device: ${snap.i2s.clockPinMode === 1 ? 'SPLIT' : 'UNIFIED'}` : undefined}>
             <SegmentedSelect
-              size="sm"
               value={effClockPinMode}
               options={clockPinModeOpts}
               ariaLabel="I2S clock pin mode"

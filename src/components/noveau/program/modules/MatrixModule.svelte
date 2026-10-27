@@ -24,22 +24,22 @@
   pass="routing · inputs → outputs"
   blurb="Routes every input to any output, with gain and phase per crosspoint. Click a dot on the routing map to route it; the popover sets gain and phase, UNROUTE removes it."
 >
-  <div class="r">
-    <span class="lbl">ROUTES</span>
-    <span class="ctl"><span class="mono">{routeCount}</span><span class="note">of {live.length} crosspoints on enabled outputs</span></span>
+  <div class="prow">
+    <span class="prow-lbl">ROUTES</span>
+    <span class="prow-ctl"><span class="t-value">{routeCount}</span><span class="prow-note">of {live.length} crosspoints on enabled outputs</span></span>
   </div>
-  <div class="r">
-    <span class="lbl">INVERTED</span>
-    <span class="ctl"><span class="mono">{inverted}</span></span>
+  <div class="prow">
+    <span class="prow-lbl">INVERTED</span>
+    <span class="prow-ctl"><span class="t-value">{inverted}</span></span>
   </div>
   {#if features.upmix}
-    <div class="r">
-      <span class="lbl">UPMIX</span>
-      <span class="ctl"><span class="mono" class:ok={status === 'active'}>{upmixStatusText(status)}</span></span>
+    <div class="prow">
+      <span class="prow-lbl">UPMIX</span>
+      <span class="prow-ctl"><span class="t-value" class:ok={status === 'active'}>{upmixStatusText(status)}</span></span>
     </div>
   {/if}
 </ModuleFrame>
 
 <style>
-  .mono.ok { color: var(--ok); }
+  .t-value.ok { color: var(--ok); }
 </style>

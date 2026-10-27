@@ -75,10 +75,10 @@
     kind="dB" precision={1} disabled={!enabled} onChange={(v) => Runtime.setSubharmBoost(s, v)} />
 
   {#if ext}
-    <div class="r sub"><span>SELECTIVITY</span></div>
-    <div class="r">
-      <span class="lbl">MODE</span>
-      <span class="ctl"><SegmentedSelect size="sm" value={selectMode} options={SELECT_MODE_OPTIONS} disabled={!enabled}
+    <div class="prow sub"><span>SELECTIVITY</span></div>
+    <div class="prow">
+      <span class="prow-lbl">MODE</span>
+      <span class="prow-ctl"><SegmentedSelect value={selectMode} options={SELECT_MODE_OPTIONS} disabled={!enabled}
         ariaLabel="Subharmonic selectivity mode" onChange={(v) => Runtime.setSubharmSelectMode(s, v)} /></span>
     </div>
     <ModuleSlider label="DEPTH" ariaLabel="Subharmonic selectivity depth" value={sh?.selectDepth ?? 100}
@@ -90,26 +90,26 @@
     <ModuleSlider label="CEILING" ariaLabel="Subharmonic sub ceiling" value={sh?.ceilingDb ?? 0}
       min={Proc.SUBHARM_CEILING_MIN_DB} max={Proc.SUBHARM_CEILING_MAX_DB} step={Proc.SUBHARM_CEILING_STEP_DB}
       kind="dB-signed" precision={1} ceilLabel="Off" disabled={!enabled} onChange={(v) => Runtime.setSubharmCeiling(s, v)} />
-    <div class="r">
-      <span class="lbl">LINK PAIRS</span>
-      <span class="ctl">
-        <ToggleSwitch size="sm" checked={sh?.linkPairs ?? true} disabled={!enabled}
+    <div class="prow">
+      <span class="prow-lbl">LINK PAIRS</span>
+      <span class="prow-ctl">
+        <ToggleSwitch checked={sh?.linkPairs ?? true} disabled={!enabled}
           ariaLabel="Link subharm pairs" onChange={(v) => Runtime.setSubharmLinkPairs(s, v)} />
-        <span class="note">one sub per stereo pair, from the mono sum</span>
+        <span class="prow-note">one sub per stereo pair, from the mono sum</span>
       </span>
     </div>
-    <div class="r">
-      <span class="lbl">MONITOR</span>
-      <span class="ctl">
+    <div class="prow">
+      <span class="prow-lbl">MONITOR</span>
+      <span class="prow-ctl">
         <button type="button" class="chip warn" class:on={solo} aria-pressed={solo}
           aria-label="Monitor the synthesized sub only" disabled={!enabled}
           onclick={() => Runtime.setSubharmSolo(s, !solo)}>SOLO</button>
-        <span class="note">monitor only, never saved</span>
+        <span class="prow-note">monitor only, never saved</span>
       </span>
     </div>
     {#if meter}
-      <div class="r" aria-hidden="true">
-        <span class="lbl">SUB LEVEL</span>
+      <div class="prow" aria-hidden="true">
+        <span class="prow-lbl">SUB LEVEL</span>
         <span class="meters">
           {#each maskedOutputs as ch (ch.id)}
             <span class="m" title={ch.name}>
@@ -122,17 +122,17 @@
     {/if}
   {/if}
 
-  <div class="r">
-    <span class="lbl">HEADROOM</span>
-    <span class="ctl">
-      <span class="mono">{headroomText}</span>
+  <div class="prow">
+    <span class="prow-lbl">HEADROOM</span>
+    <span class="prow-ctl">
+      <span class="t-value">{headroomText}</span>
       {#if reserved}
-        <span class="note ok">RESERVED</span>
+        <span class="prow-note ok">RESERVED</span>
       {:else}
         <button type="button" class="chip accent" aria-label="Lower input preamps to reserve the subharmonic headroom"
           disabled={!enabled || plan.length === 0} onclick={() => Runtime.reserveSubharmHeadroom(s)}>RESERVE</button>
       {/if}
-      {#if headroomDb !== null && headroomDb > 0}<span class="note">input preamps ≤ −{headroomDb.toFixed(1)} dB</span>{/if}
+      {#if headroomDb !== null && headroomDb > 0}<span class="prow-note">input preamps ≤ −{headroomDb.toFixed(1)} dB</span>{/if}
     </span>
   </div>
 </ModuleFrame>
@@ -143,5 +143,5 @@
   .mn { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
   .bar { width: 20px; height: 5px; border-radius: var(--radius-xs); background: var(--wash-strong); overflow: hidden; }
   .fill { display: block; height: 100%; background: var(--accent); transition: width 200ms; }
-  .note.ok { color: var(--ok); font-weight: 700; }
+  .prow-note.ok { color: var(--ok); font-weight: 700; }
 </style>

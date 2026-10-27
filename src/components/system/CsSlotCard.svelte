@@ -101,9 +101,9 @@
   .chev { font-size: 9px; color: var(--text-faint); width: 8px; }
   .slot.open .chev { color: var(--accent); }
   .stitle {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.2px;
+    font-family: var(--font-sans);
+    font-size: var(--fs-m);
+    font-weight: 600;
     color: var(--text-dim);
   }
   .slot.open .stitle { color: var(--text); }

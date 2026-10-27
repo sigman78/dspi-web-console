@@ -58,7 +58,7 @@
   {#each groups as g, gi (g.id)}
     {#if gi > 0}<span class="cdiv"></span>{/if}
     <div class="grp g-{g.id}" style:flex="{g.blocks.length} 1 0">
-      <span class="gl">{g.label}</span>
+      <span class="t-cap gl">{g.label}</span>
       <div class="row">
         {#each g.blocks as b, i (b.key)}
           {#if b.key === 'outputs' && i > 0}<span class="cdiv"></span>{:else if i > 0}<span class="wire" class:hot={lit(b)}></span>{/if}
@@ -79,7 +79,7 @@
               {#if b.kind === 'anchor'}
                 <span class="go" aria-hidden="true">›</span>
               {:else if b.enabled !== null && SETTERS[b.key]}
-                <span class="sw"><ToggleSwitch size="sm" checked={b.enabled} ariaLabel={`${b.title} enabled`} onChange={SETTERS[b.key]!} /></span>
+                <span class="sw"><ToggleSwitch checked={b.enabled} ariaLabel={`${b.title} enabled`} onChange={SETTERS[b.key]!} /></span>
               {/if}
             </div>
             <div class="bv" title={b.values.join(' · ')}>{b.values.join(' · ')}</div>
@@ -116,11 +116,7 @@
     flex: none;
     height: 14px;
     padding: 0 2px;
-    font-family: var(--font-mono);
-    font-size: 11px;
     line-height: 14px;
-    letter-spacing: 0.04em;
-    color: var(--text-faint);
     white-space: nowrap;
     overflow: hidden;
   }

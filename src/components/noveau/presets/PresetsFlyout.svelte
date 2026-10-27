@@ -194,7 +194,7 @@
   {:else}
     <div class="body">
       <div class="row">
-        <span class="lbl">NAME</span>
+        <span class="t-label lbl">NAME</span>
         <input
           class="name"
           bind:this={nameEl}
@@ -211,9 +211,8 @@
       </div>
 
       <div class="row">
-        <span class="lbl">STARTUP</span>
+        <span class="t-label lbl">STARTUP</span>
         <SegmentedSelect
-          size="sm"
           ariaLabel="Startup preset"
           value={startupChoice}
           disabled={busy || dir == null}
@@ -224,7 +223,7 @@
       </div>
 
       <div class="row">
-        <span class="lbl"></span>
+        <span class="t-label lbl"></span>
         <div class="chips">
           {#each actions as id (id)}
             {#if id === 'save' || id === 'revert'}
@@ -255,13 +254,13 @@
       </div>
 
       <div class="row top">
-        <span class="lbl">OPTIONS</span>
+        <span class="t-label lbl">OPTIONS</span>
         <div class="opts"><PresetOptionsRows /></div>
       </div>
 
       {#if others.length > 0 && deleteSlot != null}
         <div class="row">
-          <span class="lbl">MANAGE</span>
+          <span class="t-label lbl">MANAGE</span>
           <span class="dim">Delete slot</span>
           <select
             class="sel"
@@ -341,17 +340,8 @@
   }
   .row.top { align-items: flex-start; }
   .row.top .lbl { line-height: 24px; }
-  .lbl {
-    flex: none;
-    width: 72px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: var(--text-dim);
-  }
+  .lbl { flex: none; width: 72px; }
   .state .bad { color: var(--err); }
-  .state .chip { height: 20px; padding: 0 8px; font-family: var(--font-sans); font-size: 11px; font-weight: 600; letter-spacing: 0; }
   .dim { color: var(--text-dim); }
   .hint { color: var(--text-faint); }
   .name {
@@ -368,20 +358,7 @@
     border-radius: var(--radius-s);
   }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chips .chip {
-    height: 22px;
-    box-sizing: border-box;
-    padding: 0 8px;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-family: var(--font-sans);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0;
-    line-height: 1;
-    white-space: nowrap;
-  }
+  .chips .chip { gap: 4px; line-height: 1; white-space: nowrap; }
   .opts { flex: 1; min-width: 0; }
   .sel {
     height: 24px;

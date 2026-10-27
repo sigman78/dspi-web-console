@@ -39,10 +39,10 @@
   }
 </script>
 
-<div class="r">
-  <span class="lbl" title={label}>{label}</span>
+<div class="prow">
+  <span class="prow-lbl" title={label}>{label}</span>
   <input type="range" {min} {max} {step} {value} {disabled} aria-label={ariaLabel} oninput={onInput} />
-  <span class="fld">
+  <span class="prow-fld">
     <ValueField {value} {min} {max} {step} {kind} {precision} {floorLabel} {ceilLabel} {disabled} {onChange} />
   </span>
   {#if reset}

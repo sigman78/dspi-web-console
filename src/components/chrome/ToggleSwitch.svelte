@@ -2,14 +2,12 @@
   const {
     checked,
     disabled = false,
-    size = 'md',
     label,
     ariaLabel,
     onChange,
   }: {
     checked: boolean;
     disabled?: boolean;
-    size?: 'sm' | 'md';
     label?: string;
     ariaLabel: string;
     onChange: (v: boolean) => void;
@@ -19,7 +17,6 @@
 <button
   type="button"
   class="sw"
-  class:sm={size === 'sm'}
   class:on={checked}
   role="switch"
   aria-checked={checked}
@@ -41,8 +38,8 @@
     padding: 3px 0;
     margin: 0;
     cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 10px;
+    font-family: var(--font-sans);
+    font-size: var(--fs-m);
     line-height: 1.4;
     color: var(--text-dim);
   }
@@ -50,7 +47,7 @@
   .sw:disabled { cursor: default; opacity: var(--dim-disabled); }
 
   .track {
-    --w: 34px; --h: 20px; --pad: 2.5px;
+    --w: 26px; --h: 15px; --pad: 2px;
     position: relative;
     flex: 0 0 auto;
     width: var(--w);
@@ -60,7 +57,6 @@
     border: 1px solid var(--border);
     transition: background-color 120ms ease, border-color 120ms ease;
   }
-  .sm .track { --w: 26px; --h: 15px; --pad: 2px; }
 
   .knob {
     position: absolute;

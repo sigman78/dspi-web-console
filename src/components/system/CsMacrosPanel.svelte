@@ -411,7 +411,7 @@
             {#if CsField.showWrapOf(cs.nouns, step.noun, step.action, CsMacroDraft.MACRO_STEPPY)}
               <div class="row">
                 <span class="microlbl">WRAP AROUND</span>
-                <ToggleSwitch size="sm" checked={step.wrap} disabled={applying}
+                <ToggleSwitch checked={step.wrap} disabled={applying}
                   ariaLabel={`Wrap around for step ${k + 1}`} onChange={(v) => editStep(i, k, (dr) => { dr.wrap = v; })} />
               </div>
             {/if}
@@ -462,11 +462,11 @@
   .rows.detached .step { padding: 0; gap: 6px; }
   .rows.detached .step:not(.collapsed) { padding-bottom: 8px; }
   .rows.detached > .row { padding-top: 8px; }
-  .sum { display: flex; align-items: center; gap: 6px; height: 24px; }
+  .sum { display: flex; align-items: center; gap: 6px; height: var(--h-row); }
   .sumbtn {
     flex: 1;
     min-width: 0;
-    height: 24px;
+    height: var(--h-row);
     display: flex;
     align-items: center;
     gap: 8px;

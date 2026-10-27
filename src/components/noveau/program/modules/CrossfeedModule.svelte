@@ -61,9 +61,9 @@
     <MaskChips label="PAIRS" items={pairItems} mask={cf?.outputPairMask ?? 0x01} disabled={!enabled}
       onToggle={(i) => Runtime.toggleCrossfeedOutputPair(s, i)} />
   {/if}
-  <div class="r">
-    <span class="lbl">PRESET</span>
-    <span class="ctl"><SegmentedSelect size="sm" value={cf?.preset ?? 0} options={PRESET_OPTIONS} disabled={!enabled}
+  <div class="prow">
+    <span class="prow-lbl">PRESET</span>
+    <span class="prow-ctl"><SegmentedSelect value={cf?.preset ?? 0} options={PRESET_OPTIONS} disabled={!enabled}
       ariaLabel="Crossfeed preset" onChange={(v) => Runtime.setCrossfeedPreset(s, v)} /></span>
   </div>
   <ModuleSlider label="CUTOFF" ariaLabel="Crossfeed cutoff frequency" value={cf?.freq ?? 700}
@@ -72,9 +72,9 @@
   <ModuleSlider label="FEED" ariaLabel="Crossfeed feed level" value={cf?.feedDb ?? 4.5}
     min={Proc.CROSSFEED_FEED_MIN_DB} max={Proc.CROSSFEED_FEED_MAX_DB} step={Proc.CROSSFEED_FEED_STEP_DB}
     kind="dB" precision={1} disabled={!slidersEditable} onChange={(v) => Runtime.setCrossfeedFeedDb(s, v)} />
-  <div class="r">
-    <span class="lbl">ITD</span>
-    <span class="ctl"><ToggleSwitch size="sm" checked={cf?.itd ?? false} disabled={!enabled}
+  <div class="prow">
+    <span class="prow-lbl">ITD</span>
+    <span class="prow-ctl"><ToggleSwitch checked={cf?.itd ?? false} disabled={!enabled}
       ariaLabel="Crossfeed ITD" onChange={(v) => Runtime.setCrossfeedItd(s, v)} /></span>
   </div>
 </ModuleFrame>

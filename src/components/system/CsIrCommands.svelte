@@ -439,12 +439,12 @@
             <div class="row">
               {#if CsField.showWrapOf(cs.nouns, d.noun, d.action, IR_STEPPY)}
                 <span class="microlbl">WRAP AROUND</span>
-                <ToggleSwitch size="sm" checked={d.wrap} disabled={applyingSub != null}
+                <ToggleSwitch checked={d.wrap} disabled={applyingSub != null}
                   ariaLabel="Wrap around" onChange={(v) => editDraft(sub, (dr) => { dr.wrap = v; })} />
               {/if}
               {#if d.action === Domain.CsAction.Inc || d.action === Domain.CsAction.Dec}
                 <span class="microlbl">AUTO-REPEAT WHILE HELD</span>
-                <ToggleSwitch size="sm" checked={d.repeat} disabled={applyingSub != null}
+                <ToggleSwitch checked={d.repeat} disabled={applyingSub != null}
                   ariaLabel="Auto-repeat while held" onChange={(v) => editDraft(sub, (dr) => { dr.repeat = v; })} />
               {/if}
             </div>
@@ -577,9 +577,9 @@
   .irtoggle:not(.static):hover .irtitle { color: var(--text); }
   .arrow { font-size: 9px; color: var(--text-faint); }
   .irtitle {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.2px;
+    font-family: var(--font-sans);
+    font-size: var(--fs-m);
+    font-weight: 600;
     color: var(--text-dim);
   }
   .ircnt {
@@ -598,11 +598,11 @@
   .irrow.compact.openrow { padding-bottom: 6px; }
   .detached .irbody { gap: 0; }
   .irrow.compact:not(.openrow) { border-bottom: none; }
-  .sumrow { display: flex; align-items: center; gap: 6px; height: 24px; }
+  .sumrow { display: flex; align-items: center; gap: 6px; height: var(--h-row); }
   .sumbtn {
     flex: 1;
     min-width: 0;
-    height: 24px;
+    height: var(--h-row);
     display: flex;
     align-items: center;
     gap: 6px;

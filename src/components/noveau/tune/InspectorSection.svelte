@@ -5,7 +5,7 @@
 </script>
 
 <section class="sec">
-  <header>
+  <header class="sec-h">
     <h3>{title}</h3>
     {#if caption}<span class="cap">{caption}</span>{/if}
   </header>
@@ -15,19 +15,5 @@
 <style>
   .sec { border-top: 1px solid var(--border); min-width: 0; }
   .sec:first-child { border-top: none; }
-  header {
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 4px;
-  }
-  h3 {
-    margin: 0;
-    font-family: var(--font-sans);
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text);
-  }
-  .cap { font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }
+  .cap { flex: 0 1 auto; margin-left: auto; }
 </style>

@@ -60,7 +60,6 @@
       >↺</button>
     {/if}
     <ToggleSwitch
-      size="sm"
       checked={cfg?.enabled ?? false}
       disabled={!cfg}
       ariaLabel={cfg?.enabled ? 'Disable ADAT output' : 'Enable ADAT output'}

@@ -79,5 +79,5 @@
     grid-template-columns: 1fr 1fr;
     gap: 8px;
   }
-  .fwlink { grid-column: 1 / -1; justify-self: start; height: 22px; padding: 0 8px; font-size: 11px; text-decoration: none; }
+  .fwlink { grid-column: 1 / -1; justify-self: start; text-decoration: none; }
 </style>
