@@ -26,6 +26,9 @@
 
 <div class="status">
   <span class="l">{caps.fwLabel} · {caps.wireLabel} · {rate} · link {s.health.degraded ? 'degraded' : 'OK'}</span>
+  {#if s.health.degraded}
+    <span class="degraded" role="alert">changes not sent</span>
+  {/if}
   <span class="links" aria-label="Project links">
     <a href={REPO_URL} target="_blank" rel="noopener" title="Console source on GitHub" aria-label="Console source on GitHub">
       <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 0 0-2.06 12.67c.33.06.45-.14.45-.31v-1.2c-1.81.4-2.2-.77-2.2-.77-.3-.75-.72-.95-.72-.95-.6-.4.04-.4.04-.4.65.05 1 .68 1 .68.58 1 1.53.71 1.9.54.06-.42.23-.71.41-.87-1.44-.16-2.96-.72-2.96-3.21 0-.71.25-1.29.67-1.74-.07-.17-.29-.83.06-1.72 0 0 .55-.17 1.79.66a6.2 6.2 0 0 1 3.26 0c1.24-.83 1.79-.66 1.79-.66.35.89.13 1.55.06 1.72.42.45.67 1.03.67 1.74 0 2.5-1.52 3.05-2.97 3.21.23.2.44.6.44 1.2v1.78c0 .17.12.37.46.31A6.5 6.5 0 0 0 8 1.5z" /></svg>
@@ -68,7 +71,15 @@
       {:else}
         <button type="button" class="chip accent" title="Applies together — brief audio mute" disabled={applying || busy} onclick={() => void s.staging.applyAll()}>APPLY</button>
       {/if}
-      <button type="button" class="chip hi" disabled={applying} onclick={() => s.staging.discardAll()}>DISCARD</button>
+      <ConfirmButton
+        label="DISCARD"
+        confirmLabel="DISCARD?"
+        extraClass="hi"
+        tone="warn"
+        disabled={applying}
+        title="Drop every staged change"
+        onConfirm={() => s.staging.discardAll()}
+      />
     </span>
   {:else}
     <span class="r idle"><span class="dot"></span>nothing staged</span>
@@ -90,6 +101,7 @@
     color: var(--text-faint);
   }
   .l { white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .degraded { flex: none; margin-left: 16px; color: var(--warn); white-space: nowrap; font-weight: 500; }
   .links { display: flex; align-items: center; gap: 2px; margin-left: auto; margin-right: 16px; }
   .links a {
     display: grid;

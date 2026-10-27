@@ -14,7 +14,7 @@ import {
 } from '@/state';
 import { Log, errMessage } from '@/utils';
 import * as Domain from '@/domain';
-import { flushAllWrites } from './writes.svelte';
+import { flushAllWrites, refuseWhileDegraded } from './writes.svelte';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
 import { startLinkProbe } from './linkProbe';
@@ -54,13 +54,14 @@ export async function fetchCtrlIfaceInfo(s: ReadySession): Promise<void> {
 // Best-effort probe for the selectable system clock (fw overclock branch).
 // There is no capability flag for this feature -- support is discovered by
 // attempting GetSysClock itself, so an unsupported device (STALL/error) is
-// expected and left quiet: status stays null, which IS the unsupported
-// signal the panel gates on.
+// expected and left quiet: it records supported=false and the panel hides.
 export async function fetchSysClock(s: ReadySession): Promise<void> {
   try {
     s.sysClock.status = await s.queue.run(() => s.device.getSysClock());
+    s.sysClock.supported = true;
   } catch (err) {
     s.sysClock.status = null;
+    s.sysClock.supported = false;
     Log.info('sysClock', 'probe failed (unsupported firmware)', err);
   }
 }
@@ -434,7 +435,7 @@ export function attachTransportListeners(transport: DspTransport, id: ConnId, sc
 
 export async function factoryResetDevice(): Promise<void> {
   const s = activeSession();
-  if (!s) return;
+  if (!s || refuseWhileDegraded(s)) return;
   const d = s.device;
   try {
     // Drain any parked optimistic write so a pre-reset bulk send can't settle

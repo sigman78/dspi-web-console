@@ -17,6 +17,7 @@
     ceilLabel,
     log = false,
     disabled = false,
+    disabledReason,
     placeholder,
     lane,
     onChange,
@@ -38,6 +39,8 @@
     /** Logarithmic slider travel (frequency, Q). */
     log?: boolean;
     disabled?: boolean;
+    /** Why the slider is disabled; described and shown as a tooltip. */
+    disabledReason?: string;
     /** Shown in place of the field when set (e.g. a dash for a parameter the type lacks). */
     placeholder?: string;
     /** `scrub` writes on every move; `gesture` previews on every move and writes once per gesture. */
@@ -72,6 +75,9 @@
 
   const shown = $derived(live ?? hold.value ?? value);
   const name = $derived(ariaLabel ?? label);
+  const uid = $props.id();
+  const reasonId = `${uid}-reason`;
+  const explained = $derived(disabled && !!disabledReason);
 
   function commit(v: number): void {
     if (lane === 'gesture') {
@@ -118,12 +124,19 @@
     window.removeEventListener('pointercancel', finish);
   });
 
+  let inputEl = $state<HTMLInputElement>();
+
   function onPointerDown(): void {
+    if (disabled) return;
     begin();
     window.addEventListener('pointerup', finish);
     window.addEventListener('pointercancel', finish);
   }
   function onInput(e: Event): void {
+    if (disabled) {
+      if (inputEl) inputEl.value = String(toPos(shown));
+      return;
+    }
     const p = parseFloat((e.target as HTMLInputElement).value);
     if (Number.isNaN(p)) return;
     begin();
@@ -134,6 +147,7 @@
   function onKeyDown(e: KeyboardEvent): void {
     if (!KEYS.includes(e.key)) return;
     e.preventDefault();
+    if (disabled) return;
     begin();
     const cur = live ?? value;
     const dir = e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'PageDown' ? -1 : 1;
@@ -160,8 +174,12 @@
     max={log ? SPAN : max}
     step={log ? 1 : step}
     value={toPos(shown)}
-    {disabled}
+    bind:this={inputEl}
+    disabled={disabled && !explained}
+    aria-disabled={explained ? true : undefined}
     aria-label={name}
+    aria-describedby={explained ? reasonId : undefined}
+    title={explained ? disabledReason : undefined}
     onpointerdown={onPointerDown}
     oninput={onInput}
     onkeydown={onKeyDown}
@@ -175,6 +193,7 @@
       <ValueField value={shown} {min} {max} {step} {kind} {tone} {precision} {floorLabel} {ceilLabel} {disabled} ariaLabel={name ? `${name} value` : undefined} align="right" onChange={commit} />
     {/if}
   </div>
+  {#if explained}<span id={reasonId} class="sr-only">{disabledReason}</span>{/if}
   {#if resetTo !== undefined}
     <button type="button" class="chip icon" disabled={disabled || shown === resetTo}
       aria-label={`Reset ${name ?? ''} to ${formatValue(kind, resetTo, precision ?? defaultPrecisionFor(kind)).trim()}`}
@@ -184,7 +203,7 @@
 
 <style>
   input[type='range'] { flex: var(--rf-track-flex, 1); width: var(--rf-track, auto); min-width: 40px; margin: 0; accent-color: var(--accent); }
-  input[type='range']:disabled { opacity: var(--dim-disabled); cursor: default; }
+  input[type='range']:disabled, input[type='range'][aria-disabled='true'] { opacity: var(--dim-disabled); cursor: default; }
   .val { flex: 0 0 var(--rf-value, 84px); }
   .none {
     display: block;

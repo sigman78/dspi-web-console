@@ -134,6 +134,16 @@
     if (!disabled) onclick?.();
   }
 
+  // F2 renames from the keyboard; Enter does too once the row is already
+  // selected (Enter on an unselected row stays "select").
+  function onKeydown(e: KeyboardEvent) {
+    if (disabled || editing || e.defaultPrevented) return;
+    if (e.key === 'F2' || (e.key === 'Enter' && selected)) {
+      e.preventDefault();
+      startEdit();
+    }
+  }
+
   function startEdit() {
     if (disabled) return;
     // Clear the native word-selection a double-click leaves on the label so it
@@ -189,6 +199,7 @@
       title={name}
       onclick={handleClick}
       ondblclick={startEdit}
+      onkeydown={onKeydown}
     >
       <span class="ch-face"><span class="nm">{name}</span></span>
       {@render meter()}

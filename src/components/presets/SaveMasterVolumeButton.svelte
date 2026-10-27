@@ -1,9 +1,10 @@
 <script lang="ts">
-  import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
   import { connection, activeSession } from '@/state';
   import { saveMasterVolumeBaseline } from '@/runtime';
   import { MasterVolumeMode, DIFF_TOLERANCE } from '@/domain';
 
+  const uid = $props.id();
+  const reasonId = uid + '-reason';
   const s = $derived(activeSession());
   const connected = $derived(connection.connected);
   const mode = $derived(s?.presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent);
@@ -26,29 +27,19 @@
 </script>
 
 {#if visible}
-  <ConfirmButton
-    label="SAVE"
-    confirmLabel="CONFIRM"
-    extraClass="mv-save"
-    {onConfirm}
-    {disabled}
-    title="Save the current master volume as the boot-baseline volume"
-    {disabledReason}
-  />
+  <button
+    type="button"
+    class="chip mv-save"
+    onclick={() => { if (!disabled) onConfirm(); }}
+    aria-disabled={disabled}
+    aria-describedby={disabled ? reasonId : undefined}
+    title={disabled ? disabledReason : 'Save the current master volume as the boot-baseline volume'}
+  >SAVE</button>
+  {#if disabled}<span id={reasonId} class="sr-only">{disabledReason}</span>{/if}
 {/if}
 
 <style>
-  /* A step dimmer at rest than the shared .chip; predates .chip.warn and
-     doesn't match its recipe. :global() because ConfirmButton renders the
-     actual <button>. */
-  :global(.mv-save) {
-    padding: 0 8px;
-    color: var(--text-faint);
-  }
-  :global(.mv-save:hover:not([aria-disabled="true"])) { color: var(--text-dim); }
-  :global(.mv-save.armed) {
-    color: var(--warn);
-    border-color: color-mix(in oklab, var(--warn) 50%, var(--border));
-    background: color-mix(in oklab, var(--warn) var(--tint), transparent);
-  }
+  .mv-save { padding: 0 8px; color: var(--text-faint); }
+  .mv-save:hover:not([aria-disabled="true"]) { color: var(--text-dim); }
+  .mv-save[aria-disabled="true"] { opacity: var(--dim-disabled); cursor: default; }
 </style>

@@ -12,6 +12,7 @@
   const s = getSession();
   const loudness = $derived(s.mirror.current?.loudness);
   const enabled = $derived(loudness?.enabled ?? false);
+  const offReason = $derived(enabled ? undefined : 'Loudness is off — enable it to edit these controls.');
 
   const curves = $derived<BodeCurve[]>([
     { id: 'loudness', points: loudnessResponse(loudness?.refSpl ?? 85, loudness?.intensityPct ?? 0) },
@@ -29,6 +30,8 @@
   pass="per output · after trim, before delay"
   blurb="Equal-loudness compensation (ISO 226): boosts bass and treble as the volume goes down. The graph is the correction at the current volume relative to the reference level."
   {enabled}
+  onEnable={(v) => Runtime.setLoudnessEnabled(s, v)}
+  reason={offReason}
 >
   <div class:dim={!enabled}><BodePlot {curves} height={96} crosshair={false} {yRange} /></div>
   {#if showMask}
@@ -37,10 +40,10 @@
   {/if}
   <SliderField lane="scrub" label="REF SPL" ariaLabel="Loudness reference SPL" value={loudness?.refSpl ?? 85}
     min={Proc.LOUDNESS_REF_SPL_MIN_DB} max={Proc.LOUDNESS_REF_SPL_MAX_DB} step={Proc.LOUDNESS_REF_SPL_STEP_DB}
-    kind="dB" precision={0} disabled={!enabled} onChange={(v) => Runtime.setLoudnessRefSpl(s, v)} />
+    kind="dB" precision={0} disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setLoudnessRefSpl(s, v)} />
   <SliderField lane="scrub" label="INTENSITY" ariaLabel="Loudness intensity" value={loudness?.intensityPct ?? 0}
     min={Proc.LOUDNESS_INTENSITY_MIN_PCT} max={Proc.LOUDNESS_INTENSITY_MAX_PCT} step={Proc.LOUDNESS_INTENSITY_STEP_PCT}
-    kind="pct" precision={1} disabled={!enabled} onChange={(v) => Runtime.setLoudnessIntensityPct(s, v)} />
+    kind="pct" precision={1} disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setLoudnessIntensityPct(s, v)} />
 </ModuleFrame>
 
 <style>

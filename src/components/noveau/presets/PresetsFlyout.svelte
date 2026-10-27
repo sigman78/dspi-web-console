@@ -1,8 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
-  import { boundary, presetsDirty } from '@/state';
+  import { boundary, confirmState, askConfirm, presetsDirty } from '@/state';
   import { getSession } from '@/components/sessionContext';
-  import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import { saveActivePresetNamed } from '@/components/presets/saveActivePresetNamed';
   import * as Runtime from '@/runtime';
@@ -13,7 +12,7 @@
   import { dismiss } from '@/components/chrome/dismiss';
   import PresetIcon from './PresetIcon.svelte';
   import PresetOptionsRows from './PresetOptionsRows.svelte';
-  import { editorActions, type EditorActionId } from './editorActions';
+  import { editorActions, replaceNeedsConfirm, type EditorActionId } from './editorActions';
 
   const s = getSession();
 
@@ -45,6 +44,15 @@
   const deleteSlot = $derived(
     deleteTarget != null && others.includes(deleteTarget) ? deleteTarget : (others[0] ?? null),
   );
+  async function onDelete(slot: PresetSlot): Promise<void> {
+    const ok = await askConfirm({
+      title: `Delete preset ${slot}`,
+      body: `Erases ${slotLabel(slot)} from the device. This cannot be undone.`,
+      confirmLabel: 'DELETE',
+      tone: 'danger',
+    });
+    if (ok) await Runtime.deletePresetSlot(s, slot);
+  }
   function slotLabel(n: PresetSlot): string {
     const name = s.presets.names[n] ?? '';
     return name.length ? `${n} · ${name}` : `${n}`;
@@ -84,7 +92,7 @@
   }
 
   function onDismiss(): void {
-    if (boundary.pending == null) close();
+    if (boundary.pending == null && confirmState.pending == null) close();
   }
 
   async function onStartup(choice: StartupChoice): Promise<void> {
@@ -107,6 +115,16 @@
     setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
+  function confirmReplace(verb: string): Promise<boolean> {
+    if (active == null || !replaceNeedsConfirm(occupied, dirty)) return Promise.resolve(true);
+    return askConfirm({
+      title: `${verb} over preset ${active}`,
+      body: `Preset ${active} already holds a saved preset. ${verb} replaces it on the device and saves it.`,
+      confirmLabel: verb.toUpperCase(),
+      tone: 'warn',
+    });
+  }
+
   async function onFile(e: Event): Promise<void> {
     const input = e.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
@@ -116,6 +134,7 @@
     Runtime.dismissPresetActionError(s);
     const decoded = Runtime.decodeImportedPreset(s, await file.text());
     if (!decoded.ok) { localError = decoded.reason; return; }
+    if (!(await confirmReplace('Import'))) return;
     const slot = active;
     const r = await Runtime.pastePresetTo(s, decoded.state);
     if (!r.ok) {
@@ -136,7 +155,9 @@
       case 'save': await saveActivePresetNamed(s); break;
       case 'revert': await Runtime.revertActivePreset(s); break;
       case 'copy': await Runtime.copyActivePreset(s); break;
-      case 'paste': if (held != null) await Runtime.pastePresetTo(s, held.blob); break;
+      case 'paste':
+        if (held != null && await confirmReplace('Paste')) await Runtime.pastePresetTo(s, held.blob);
+        break;
       case 'export': {
         localError = null;
         const slot = active;
@@ -247,15 +268,14 @@
           >
             {#each others as n (n)}<option value={n}>{slotLabel(n)}</option>{/each}
           </select>
-          <ConfirmButton
-            label="DELETE"
-            confirmLabel="CONFIRM"
-            tone="danger"
+          <button
+            type="button"
+            class="chip danger"
             disabled={busy}
-            ariaLabel={`Delete slot ${deleteSlot}`}
+            aria-label={`Delete slot ${deleteSlot}`}
             title="Erase this slot from the device"
-            onConfirm={() => void Runtime.deletePresetSlot(s, deleteSlot)}
-          />
+            onclick={() => void onDelete(deleteSlot)}
+          >DELETE</button>
         </div>
       {/if}
     </div>

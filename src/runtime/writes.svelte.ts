@@ -21,6 +21,12 @@ import { pushNotice, type ReadySession } from '@/state';
 import type { MirrorState } from '@/state/mirror.svelte';
 import { Log, errMessage, type Result } from '@/utils';
 
+// While the link is degraded the probe owns recovery: new writes are refused
+// (nothing sent, nothing mutated); the status line carries the message.
+export function refuseWhileDegraded(s: ReadySession): boolean {
+  return s.health.degraded;
+}
+
 // Click-paced write. Awaits the wire ack, mutates the mirror on success. On
 // throw: reports link health, toasts, and requests an eager reconcile to
 // recover ground truth on the next param-cadence tick (see
@@ -34,6 +40,7 @@ export async function write(
   send: () => Promise<unknown>,
   mutate: () => void,
 ): Promise<boolean> {
+  if (refuseWhileDegraded(s)) return Promise.resolve(false);
   s.writes.claim();
   const settled = (async (): Promise<boolean> => {
     try {
@@ -75,6 +82,7 @@ export function command<T>(
   onSettled: (result: T, s: ReadySession) => void,
   opts: { queued?: boolean } = {},
 ): Promise<void> {
+  if (refuseWhileDegraded(s)) return Promise.resolve();
   s.writes.claim();
   const settled = (async () => {
     try {
@@ -241,6 +249,7 @@ export function scrub(
   mutate: () => void,
   send: () => Promise<void>,
 ): void {
+  if (refuseWhileDegraded(s)) return;
   mutate();
   s.writes.laneFor(key).schedule(s, send);
 }

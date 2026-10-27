@@ -123,24 +123,28 @@ describe('createStagingState', () => {
       expect(staging.has('later')).toBe(true);       // stays staged
     });
 
-    it('pushes exactly one summary notice after a full success of 2+ entries', async () => {
-      staging.stage(entry({ key: 'k1', order: 10 }));
-      staging.stage(entry({ key: 'k2', order: 20 }));
-      await staging.applyAll();
-      expect(notices.list.filter((n) => n.kind === 'info')).toHaveLength(1);
-    });
-
-    it('does not push a summary notice for a single-entry apply', async () => {
+    it('pushes exactly one summary notice after a full success, singular or plural', async () => {
       staging.stage(entry({ key: 'k1', order: 10 }));
       await staging.applyAll();
-      expect(notices.list.filter((n) => n.kind === 'info')).toHaveLength(0);
+      expect(notices.list.filter((n) => n.kind === 'info').map((n) => n.message)).toEqual(['Applied 1 change']);
+
+      clearNotices();
+      staging.stage(entry({ key: 'k2', order: 10 }));
+      staging.stage(entry({ key: 'k3', order: 20 }));
+      await staging.applyAll();
+      expect(notices.list.filter((n) => n.kind === 'info').map((n) => n.message)).toEqual(['Applied 2 changes']);
     });
 
-    it('does not push a summary notice when the run fails partway', async () => {
+    it('warns where a run stopped after partial success, and stays quiet when nothing applied', async () => {
       staging.stage(entry({ key: 'ok', order: 10 }));
-      staging.stage(entry({ key: 'bad', order: 20, apply: async () => false }));
+      staging.stage(entry({ key: 'bad', label: 'Clock', order: 20, apply: async () => false }));
       await staging.applyAll();
       expect(notices.list.filter((n) => n.kind === 'info')).toHaveLength(0);
+      expect(notices.list.filter((n) => n.kind === 'warn').map((n) => n.message)).toEqual(['Applied 1 of 2 — stopped at Clock']);
+
+      clearNotices();
+      await staging.applyAll();
+      expect(notices.list).toHaveLength(0);
     });
 
     it('reentry guard: a concurrent applyAll() call is a no-op while one is in flight', async () => {

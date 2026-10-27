@@ -44,7 +44,7 @@ export interface ReadySession {
   // V16-only (capabilities.features.controlSurfaces); stays all-null on V10.
   readonly controlSurfaces: ControlSurfacesState;
   // Selectable system clock (fw overclock branch). No capability flag -- a
-  // null status after the connect-time probe IS the unsupported signal.
+  // `supported` stays null until the connect-time probe lands.
   readonly sysClock: SysClockState;
   // Pending heavy device-config edits (input source, I2S/S/PDIF pins, MCK/BCK,
   // output type), staged here until the StatusLine APPLY commits them.

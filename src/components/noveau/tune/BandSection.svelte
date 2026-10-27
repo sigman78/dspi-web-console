@@ -1,7 +1,7 @@
 <script lang="ts">
   import BandTypeSelect, { TYPE_LABELS, offeredTypes } from '@/components/eq/BandTypeSelect.svelte';
   import SliderField from '@/components/chrome/SliderField.svelte';
-  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import BypassButton from '@/components/eq/BypassButton.svelte';
   import { Eq, FilterType, type ChannelModel, type FilterParams } from '@/domain';
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '../noveauUi.svelte';
@@ -102,12 +102,7 @@
     />
     <div class="row">
       <span class="prow-lbl">BYPASS</span>
-      <ToggleSwitch
-        checked={band?.bypass ?? false}
-        disabled={off}
-        ariaLabel="Bypass band"
-        onChange={(v) => index !== null && patchBand(s, channel, index, { bypass: v })}
-      />
+      <BypassButton bypassed={band?.bypass ?? false} disabled={off} onToggle={() => index !== null && patchBand(s, channel, index, { bypass: !band?.bypass })} />
     </div>
   </div>
 </InspectorSection>

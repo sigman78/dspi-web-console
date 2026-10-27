@@ -9,7 +9,8 @@ import { noveauUi } from '../noveauUi.svelte';
 import { bandDraft, bandHold, holdBand } from './bandDraft.svelte';
 
 const setEqFilter = vi.hoisted(() => vi.fn());
-vi.mock('@/runtime', async (orig) => ({ ...(await orig<typeof import('@/runtime')>()), setEqFilter }));
+const setBandBypass = vi.hoisted(() => vi.fn());
+vi.mock('@/runtime', async (orig) => ({ ...(await orig<typeof import('@/runtime')>()), setEqFilter, setBandBypass }));
 
 import BandSection from './BandSection.svelte';
 
@@ -20,6 +21,7 @@ const features = deriveCapabilities({
 describe('BandSection', () => {
   beforeEach(() => {
     setEqFilter.mockClear();
+    setBandBypass.mockClear();
     bandDraft.current = null;
     bandHold.release();
   });
@@ -46,5 +48,21 @@ describe('BandSection', () => {
 
     expect(setEqFilter).toHaveBeenCalledTimes(1);
     expect(setEqFilter.mock.calls[0][3]).toMatchObject({ frequency: 2000, gain: 3 });
+  });
+
+  it('the inspector bypass is one pressed icon button that writes the toggled flag', async () => {
+    const snap = makeSnapshot();
+    const channel = snap.channels.find((c) => !c.isOutput)!;
+    channel.filters[0] = { ...channel.filters[0], type: FilterType.Peaking, bypass: false };
+    const session = { device: { capabilities: { features } }, mirror: { current: snap } } as never;
+    noveauUi.selectedBand = 0;
+
+    const { getByRole, queryByRole } = render(BandSection, { props: { channel }, context: new Map([[SESSION_KEY, session]]) });
+    expect(queryByRole('switch')).toBeNull();
+    const btn = getByRole('button', { name: 'Bypass band' });
+    expect(btn.getAttribute('aria-pressed')).toBe('false');
+    await fireEvent.click(btn);
+
+    expect(setBandBypass).toHaveBeenCalledWith(session, channel.id, 0, true);
   });
 });

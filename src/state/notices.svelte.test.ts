@@ -17,14 +17,18 @@ describe('notices', () => {
     expect(notices.list.map((n) => n.message)).toEqual(['b']);
   });
 
-  it('auto-expires a notice after its TTL elapses', () => {
+  it('auto-expires warn and info notices but keeps errors until dismissed', () => {
     vi.useFakeTimers();
     try {
-      pushNotice('error', 'boom');
+      pushNotice('warn', 'w');
+      pushNotice('info', 'i');
+      const e = pushNotice('error', 'boom');
       vi.advanceTimersByTime(1000);
-      expect(notices.list).toHaveLength(1);   // still within the window
+      expect(notices.list).toHaveLength(3);   // still within the window
       vi.advanceTimersByTime(60_000);
-      expect(notices.list).toHaveLength(0);   // expired
+      expect(notices.list.map((n) => n.message)).toEqual(['boom']);
+      dismissNotice(e);
+      expect(notices.list).toHaveLength(0);
     } finally {
       vi.useRealTimers();
     }

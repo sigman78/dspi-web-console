@@ -4,6 +4,7 @@
   import EqSpectrum from '@/components/chrome/EqSpectrum.svelte';
   import PresetBoundaryModal from '@/components/presets/PresetBoundaryModal.svelte';
   import Toaster from '@/components/chrome/Toaster.svelte';
+  import ConfirmHost from '@/components/chrome/ConfirmHost.svelte';
   import { app, settings, initialBoot } from '@/state';
   import { heroOverride } from '@/devOptions';
 
@@ -30,6 +31,7 @@
 
 <div class="shell">
   <PresetBoundaryModal />
+  <ConfirmHost />
   <main>
     {#if showSplash}
       <div class="boot-splash" role="status" aria-label="Connecting to device">

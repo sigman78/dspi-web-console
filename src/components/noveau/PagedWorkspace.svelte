@@ -1,5 +1,5 @@
 <script lang="ts" generics="K extends string">
-  import type { Snippet } from 'svelte';
+  import { tick, type Snippet } from 'svelte';
 
   const { label, pages, page, onselect, staged, right, children }: {
     label: string;
@@ -10,17 +10,41 @@
     right?: Snippet;
     children: Snippet;
   } = $props();
+
+  const uid = $props.id();
+  let strip = $state<HTMLElement>();
+
+  // Selection follows focus; the strip wraps at both ends.
+  async function onKey(e: KeyboardEvent) {
+    const idx = pages.findIndex((p) => p.key === page);
+    let next: number;
+    if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = pages.length - 1;
+    else if (e.key === 'ArrowRight') next = (idx + 1) % pages.length;
+    else if (e.key === 'ArrowLeft') next = (idx - 1 + pages.length) % pages.length;
+    else return;
+    e.preventDefault();
+    if (next === idx) return;
+    onselect(pages[next].key);
+    await tick();
+    strip?.querySelectorAll<HTMLElement>('[role=tab]')[next]?.focus();
+  }
 </script>
 
 <div class="paged">
   <div class="toprow">
-    <div class="pages" role="group" aria-label={label}>
+    <!-- svelte-ignore a11y_interactive_supports_focus -->
+    <div class="pages" role="tablist" aria-label={label} bind:this={strip} onkeydown={onKey}>
       {#each pages as p (p.key)}
         <button
           type="button"
           class="pg"
           class:staged={staged?.(p.key)}
-          aria-pressed={p.key === page}
+          role="tab"
+          id="{uid}-tab-{p.key}"
+          aria-selected={p.key === page}
+          aria-controls="{uid}-panel"
+          tabindex={p.key === page ? 0 : -1}
           onclick={() => onselect(p.key)}
         >{p.label}</button>
       {/each}
@@ -28,7 +52,7 @@
     {@render right?.()}
   </div>
 
-  <div class="body" data-budget="paged-page">{@render children()}</div>
+  <div class="body" id="{uid}-panel" role="tabpanel" aria-labelledby="{uid}-tab-{page}" data-budget="paged-page">{@render children()}</div>
 </div>
 
 <style>
@@ -73,8 +97,8 @@
   }
   .pg:last-child { border-right: none; }
   .pg.staged::after { top: 6px; right: 6px; }
-  .pg:hover:not([aria-pressed='true']) { color: var(--text); background: var(--wash); }
-  .pg[aria-pressed='true'] {
+  .pg:hover:not([aria-selected='true']) { color: var(--text); background: var(--wash); }
+  .pg[aria-selected='true'] {
     color: var(--text);
     background: color-mix(in oklab, var(--accent) var(--tint), transparent);
   }

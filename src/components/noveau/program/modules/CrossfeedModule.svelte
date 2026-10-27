@@ -16,6 +16,9 @@
   const enabled = $derived(cf?.enabled ?? false);
   const isCustom = $derived((cf?.preset ?? CrossfeedPreset.Preset1) === CrossfeedPreset.Custom);
   const slidersEditable = $derived(enabled && isCustom);
+  const offReason = $derived(enabled ? undefined : 'Crossfeed is off — enable it to edit these controls.');
+  const presetReason = $derived(enabled && !isCustom ? 'The preset fixes cutoff and feed — choose CUSTOM to edit them.' : undefined);
+  const reason = $derived(offReason ?? presetReason);
 
   // Pair p covers output slots 2p and 2p+1; the mono PDM sub never forms a pair.
   const outputChannels = $derived(outputChannelsWithIndex(s.mirror.current));
@@ -55,6 +58,8 @@
   pass="per output pair · after matrix"
   blurb="Headphone crossfeed (BS2B): bleeds a filtered, delayed part of each channel into the other to soften hard stereo. Per output pair."
   {enabled}
+  onEnable={(v) => Runtime.setCrossfeedEnabled(s, v)}
+  reason={offReason}
 >
   <div class:dim={!enabled}><BodePlot {curves} height={96} crosshair={false} {yRange} /></div>
   {#if showPairs}
@@ -63,18 +68,18 @@
   {/if}
   <div class="prow">
     <span class="prow-lbl">PRESET</span>
-    <span class="prow-ctl"><SegmentedSelect value={cf?.preset ?? 0} options={PRESET_OPTIONS} disabled={!enabled}
+    <span class="prow-ctl"><SegmentedSelect value={cf?.preset ?? 0} options={PRESET_OPTIONS} disabled={!enabled} disabledReason={offReason}
       ariaLabel="Crossfeed preset" onChange={(v) => Runtime.setCrossfeedPreset(s, v)} /></span>
   </div>
   <SliderField lane="scrub" label="CUTOFF" ariaLabel="Crossfeed cutoff frequency" value={cf?.freq ?? 700}
     min={Proc.CROSSFEED_FREQ_MIN_HZ} max={Proc.CROSSFEED_FREQ_MAX_HZ} step={Proc.CROSSFEED_FREQ_STEP_HZ}
-    kind="hz" precision={0} disabled={!slidersEditable} onChange={(v) => Runtime.setCrossfeedFreq(s, v)} />
+    kind="hz" precision={0} disabled={!slidersEditable} disabledReason={reason} onChange={(v) => Runtime.setCrossfeedFreq(s, v)} />
   <SliderField lane="scrub" label="FEED" ariaLabel="Crossfeed feed level" value={cf?.feedDb ?? 4.5}
     min={Proc.CROSSFEED_FEED_MIN_DB} max={Proc.CROSSFEED_FEED_MAX_DB} step={Proc.CROSSFEED_FEED_STEP_DB}
-    kind="dB" precision={1} disabled={!slidersEditable} onChange={(v) => Runtime.setCrossfeedFeedDb(s, v)} />
+    kind="dB" precision={1} disabled={!slidersEditable} disabledReason={reason} onChange={(v) => Runtime.setCrossfeedFeedDb(s, v)} />
   <div class="prow">
     <span class="prow-lbl">ITD</span>
-    <span class="prow-ctl"><ToggleSwitch checked={cf?.itd ?? false} disabled={!enabled}
+    <span class="prow-ctl"><ToggleSwitch checked={cf?.itd ?? false} disabled={!enabled} disabledReason={offReason}
       ariaLabel="Crossfeed ITD" onChange={(v) => Runtime.setCrossfeedItd(s, v)} /></span>
   </div>
 </ModuleFrame>

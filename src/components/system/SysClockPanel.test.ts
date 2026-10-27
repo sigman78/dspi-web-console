@@ -32,9 +32,10 @@ function makeStatus(over: {
   };
 }
 
-function makeSession(o: { status?: object | null; platform?: number; busy?: boolean } = {}) {
+function makeSession(o: { status?: object | null; supported?: boolean | null; platform?: number; busy?: boolean } = {}) {
+  const status = 'status' in o ? o.status : makeStatus();
   return {
-    sysClock: { status: 'status' in o ? o.status : makeStatus(), busy: o.busy ?? false },
+    sysClock: { status, supported: 'supported' in o ? o.supported : status ? true : null, busy: o.busy ?? false },
     mirror: { current: { platform: { type: o.platform ?? PlatformType.RP2350 } } },
     staging: createStagingState(),
   } as any;
@@ -47,9 +48,19 @@ function renderPanel(session: unknown) {
 beforeEach(() => { vi.clearAllMocks(); });
 
 describe('SysClockPanel', () => {
-  test('renders nothing when the status probe found no support (or has not landed yet)', () => {
-    renderPanel(makeSession({ status: null }));
+  test('an unsupported device renders no panel at all', () => {
+    renderPanel(makeSession({ status: null, supported: false }));
     expect(screen.queryByText('SYSTEM CLOCK')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'RETRY' })).toBeNull();
+  });
+
+  test('without a status the panel waits and RETRY re-reads it', async () => {
+    renderPanel(makeSession({ status: null }));
+    expect(screen.getByText('SYSTEM CLOCK')).toBeTruthy();
+    expect(screen.getByText('Waiting for clock status…')).toBeTruthy();
+    expect(screen.queryByRole('radiogroup', { name: 'System clock mode' })).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'RETRY' }));
+    expect(refreshSysClock).toHaveBeenCalledTimes(1);
   });
 
   test('renders the mode radiogroup and voltage select once a status is present', () => {

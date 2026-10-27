@@ -11,13 +11,13 @@ function entry(key: string, over: Partial<StagedEntry> = {}): StagedEntry {
   };
 }
 
-function renderLine(entries: StagedEntry[]) {
+function renderLine(entries: StagedEntry[], degraded = false) {
   const staging = createStagingState();
   entries.forEach((e) => staging.stage(e));
   const session = {
     info: { serial: 'S', capabilities: { fwLabel: 'fw', wireLabel: 'wire' } },
     telemetry: { info: null },
-    health: { degraded: false },
+    health: { degraded },
     writes: { busy: false },
     staging,
   } as any;
@@ -57,5 +57,18 @@ describe('StatusLine staged list', () => {
   test('the disruptive reason is shown beside the count', () => {
     renderLine([entry('a', { disruptive: { reason: 'reboots the clock', tone: 'danger' } })]);
     expect(screen.getByText('reboots the clock')).toBeTruthy();
+  });
+
+  test('DISCARD needs a second confirming click', async () => {
+    const session = renderLine([entry('a')]);
+    await fireEvent.click(screen.getByRole('button', { name: /^DISCARD/ }));
+    expect(session.staging.has('a')).toBe(true);
+    await fireEvent.click(screen.getByRole('button', { name: /^DISCARD/ }));
+    expect(session.staging.has('a')).toBe(false);
+  });
+
+  test('a degraded link shows the not-sent banner', () => {
+    renderLine([], true);
+    expect(screen.getByRole('alert').textContent).toContain('changes not sent');
   });
 });

@@ -14,6 +14,8 @@ import * as CsField from './csFieldHelpers';
 // A slot is "configured" when it has a live binding or a local draft; only
 // those render. Controls edit the draft; APPLY sends it.
 export interface Draft {
+  // Slot name edit; undefined leaves the device's stored name untouched.
+  name?: string;
   type: number; noun: number; action: number; event: number;
   gpio0: number; gpio1: number;
   target: number; index: number;

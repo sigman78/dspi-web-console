@@ -56,16 +56,28 @@
   }
 </script>
 
-{#if st}
-  <Panel title="SYSTEM CLOCK">
+{#if s.sysClock.supported !== false}
+<Panel title="SYSTEM CLOCK">
     {#snippet right()}
-      <button
+      {#if st}<button
         class="chip"
         onclick={() => void refreshSysClock(s)}
         disabled={s.sysClock.busy}
         title="Re-read the system clock status from the device"
-      >REFRESH</button>
+      >REFRESH</button>{/if}
     {/snippet}
+    {#if !st}
+      <div class="waiting">
+        <p class="hint idle">Waiting for clock status…</p>
+        <button
+          type="button"
+          class="chip"
+          onclick={() => void refreshSysClock(s)}
+          disabled={s.sysClock.busy}
+          title="Re-read the system clock status from the device"
+        >RETRY</button>
+      </div>
+    {:else}
     {#if st.fallbackActive}
       <div class="fallback-banner" role="alert" aria-label="System clock fallback">
         <div class="fallback-banner__header">CRASH FALLBACK</div>
@@ -121,6 +133,7 @@
       384/480 MHz overclocks the RP2 core — stability isn't guaranteed on every unit. Raising core voltage increases heat.
       {#if platform === Domain.PlatformType.RP2350} 1.35–1.50 V is bench-only.{/if}
     </p>
+    {/if}
   </Panel>
 {/if}
 
@@ -139,6 +152,8 @@
   }
   .voltsel:disabled { opacity: var(--dim-disabled); cursor: default; }
   .hint { padding: 0 14px 12px; }
+  .waiting { display: flex; align-items: center; gap: 8px; padding-right: 14px; }
+  .waiting .hint { padding-bottom: 0; flex: 1; }
   .hint.pending { color: var(--warn); padding-top: 4px; }
   .fallback-banner {
     margin: 12px 14px 0;

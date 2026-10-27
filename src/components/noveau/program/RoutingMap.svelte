@@ -60,10 +60,10 @@
     pick = { proposal: routeAt(input, output)?.enabled !== true, input, output, x: dot.left - box.left + dot.width / 2 - 150, anchorX: dot.left - box.left + dot.width / 2, y: dot.bottom - box.top + 6, anchor };
   }
 
-  function closePick() {
+  function closePick(refocus = true) {
     const anchor = pick?.anchor;
     pick = null;
-    anchor?.focus();
+    if (refocus) anchor?.focus();
   }
 
   const pickCol = $derived(pick ? cols.find((c) => c.input === pick!.input) : undefined);

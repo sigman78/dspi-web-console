@@ -4,6 +4,7 @@
   import { csSaveConfig, csRevertConfig } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import { csChangesModel } from '@/components/system/csChangesModel';
+  import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
   import PresetIcon from '@/components/noveau/presets/PresetIcon.svelte';
 
   const s = getSession();
@@ -33,8 +34,15 @@
   {/if}
   <button type="button" class="chip accent" disabled={applying || !m.dirty} onclick={save}
     title="Write the applied controls to flash">SAVE</button>
-  <button type="button" class="chip hi" disabled={applying || (!m.dirty && m.draftTotal === 0)} onclick={discard}
-    title="Rewind every control-surface setting to the saved set">DISCARD</button>
+  <ConfirmButton
+    label="DISCARD"
+    confirmLabel="DISCARD?"
+    extraClass="hi"
+    tone="warn"
+    disabled={applying || (!m.dirty && m.draftTotal === 0)}
+    title="Rewind every control-surface setting to the saved set"
+    onConfirm={() => void discard()}
+  />
 </div>
 
 <style>

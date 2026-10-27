@@ -5,6 +5,7 @@ export * from './makeSession.svelte';
 export * from './mirror.svelte';
 export * from './linkHealth.svelte';
 export * from './presets.svelte';
+export * from './confirm.svelte';
 export * from './settings.svelte';
 export * from './eqUi.svelte';
 export * from './telemetry.svelte';

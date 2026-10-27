@@ -2,7 +2,7 @@ import * as Domain from '@/domain';
 import * as Clamp from '@/domain/clamp';
 import { type ReadySession, pushNotice } from '@/state';
 import { errMessage } from '@/utils';
-import { write, command } from './writes.svelte';
+import { write, command, refuseWhileDegraded } from './writes.svelte';
 
 // Clears firmware-side latched clip flags (0x83) and the host-side OR-latch.
 // Not routed through write/scrub: clip state lives in telemetry, not the DSP
@@ -35,6 +35,7 @@ export function setLgSoundSyncEnabled(s: ReadySession, enabled: boolean): void {
 const DAC_HW_MUTE_APPLY_MS = 200;
 
 export async function setDacHwMute(s: ReadySession, patch: Partial<Domain.DacHwMute>): Promise<boolean> {
+  if (refuseWhileDegraded(s)) return false;
   const merged = { ...s.mirror.snapshot.dacHwMute, ...patch };
   const next: Domain.DacHwMute = merged.enabled
     ? { ...merged, holdMs: Clamp.dacHwMuteHoldMs(merged.holdMs), releaseMs: Clamp.dacHwMuteReleaseMs(merged.releaseMs) }
@@ -90,7 +91,7 @@ export async function applySysClock(s: ReadySession, mode: Domain.SysClockMode, 
       for (let i = 0; i < SYS_CLOCK_CONFIRM_ATTEMPTS; i++) {
         await new Promise((r) => setTimeout(r, SYS_CLOCK_APPLY_MS));
         status = await s.queue.run(() => d.getSysClock());
-        if (s.alive) s.sysClock.status = status;
+        if (s.alive) { s.sysClock.status = status; s.sysClock.supported = true; }
         // A fresh SET clears the fallback latch, so a readback that still
         // carries it predates the apply -- keep polling.
         if (status.activeMode === mode && !status.fallbackActive) break;
@@ -114,8 +115,9 @@ export async function applySysClock(s: ReadySession, mode: Domain.SysClockMode, 
 export async function refreshSysClock(s: ReadySession): Promise<void> {
   try {
     const status = await s.queue.run(() => s.device.getSysClock());
-    if (s.alive) s.sysClock.status = status;
+    if (s.alive) { s.sysClock.status = status; s.sysClock.supported = true; }
   } catch (e) {
+    if (s.sysClock.supported === false) return;
     pushNotice('error', `System clock read failed: ${errMessage(e)}`);
   }
 }
@@ -134,6 +136,7 @@ export function resetBufferStats(s: ReadySession): void {
 // in firmware before reset_usb_boot). The transfer may throw as the device
 // drops mid-response; that is expected and is treated as a normal disconnect.
 export async function enterBootloader(s: ReadySession): Promise<void> {
+  if (refuseWhileDegraded(s)) return;
   try {
     await s.queue.run(() => s.device.enterBootloader());
   } catch {

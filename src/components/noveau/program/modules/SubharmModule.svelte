@@ -18,6 +18,9 @@
   const ext = $derived(s.device.capabilities.features.subharmExt);
   const selectMode = $derived(sh?.selectMode ?? SubharmSelect.All);
   const selectivityEditable = $derived(enabled && selectMode !== SubharmSelect.All);
+  const offReason = $derived(enabled ? undefined : 'Subharmonic is off — enable it to edit these controls.');
+  const selectivityReason = $derived(enabled && selectMode === SubharmSelect.All ? 'Selectivity mode is ALL — pick PERCUSSIVE or SUSTAINED to use depth and hold.' : undefined);
+  const reason = $derived(offReason ?? selectivityReason);
   const solo = $derived(s.telemetry.subharmSolo);
   const meter = $derived(s.telemetry.subharmMeter);
 
@@ -54,6 +57,8 @@
   pass="per output · after matrix, before crossover"
   blurb="Octave divider: generates sub-bass one octave below the selected bands. Runs per output, before the crossover and Psybass."
   {enabled}
+  onEnable={(v) => Runtime.setSubharmEnabled(s, v)}
+  reason={offReason}
 >
   {#if showMask}
     <MaskChips label="OUTPUTS" items={outputItems} mask={outputMask} disabled={!enabled}
@@ -62,39 +67,39 @@
 
   <SliderField lane="scrub" label="24–36 HZ" ariaLabel="Subharmonic 24 to 36 hertz band level" value={sh?.lowDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
     min={Proc.SUBHARM_LEVEL_MIN_DB} max={levelMax} step={Proc.SUBHARM_LEVEL_STEP_DB}
-    kind="dB-signed" precision={1} floorLabel="Off" disabled={!enabled} onChange={(v) => Runtime.setSubharmLow(s, v)} />
+    kind="dB-signed" precision={1} floorLabel="Off" disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setSubharmLow(s, v)} />
   <SliderField lane="scrub" label="36–56 HZ" ariaLabel="Subharmonic 36 to 56 hertz band level" value={sh?.highDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
     min={Proc.SUBHARM_LEVEL_MIN_DB} max={levelMax} step={Proc.SUBHARM_LEVEL_STEP_DB}
-    kind="dB-signed" precision={1} floorLabel="Off" disabled={!enabled} onChange={(v) => Runtime.setSubharmHigh(s, v)} />
+    kind="dB-signed" precision={1} floorLabel="Off" disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setSubharmHigh(s, v)} />
   {#if ext}
     <SliderField lane="scrub" label="56–80 HZ" ariaLabel="Subharmonic 56 to 80 hertz band level" value={sh?.topDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
       min={Proc.SUBHARM_LEVEL_MIN_DB} max={levelMax} step={Proc.SUBHARM_LEVEL_STEP_DB}
-      kind="dB-signed" precision={1} floorLabel="Off" disabled={!enabled} onChange={(v) => Runtime.setSubharmTop(s, v)} />
+      kind="dB-signed" precision={1} floorLabel="Off" disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setSubharmTop(s, v)} />
   {/if}
   <SliderField lane="scrub" label="LF BOOST" ariaLabel="Subharmonic LF boost" value={sh?.boostDb ?? 0}
     min={Proc.SUBHARM_BOOST_MIN_DB} max={Proc.SUBHARM_BOOST_MAX_DB} step={Proc.SUBHARM_BOOST_STEP_DB}
-    kind="dB" precision={1} disabled={!enabled} onChange={(v) => Runtime.setSubharmBoost(s, v)} />
+    kind="dB" precision={1} disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setSubharmBoost(s, v)} />
 
   {#if ext}
     <div class="prow sub"><span>SELECTIVITY</span></div>
     <div class="prow">
       <span class="prow-lbl">MODE</span>
-      <span class="prow-ctl"><SegmentedSelect value={selectMode} options={SELECT_MODE_OPTIONS} disabled={!enabled}
+      <span class="prow-ctl"><SegmentedSelect value={selectMode} options={SELECT_MODE_OPTIONS} disabled={!enabled} disabledReason={offReason}
         ariaLabel="Subharmonic selectivity mode" onChange={(v) => Runtime.setSubharmSelectMode(s, v)} /></span>
     </div>
     <SliderField lane="scrub" label="DEPTH" ariaLabel="Subharmonic selectivity depth" value={sh?.selectDepth ?? 100}
       min={Proc.SUBHARM_DEPTH_MIN_PCT} max={Proc.SUBHARM_DEPTH_MAX_PCT} step={Proc.SUBHARM_DEPTH_STEP_PCT}
-      kind="pct" precision={0} disabled={!selectivityEditable} onChange={(v) => Runtime.setSubharmDepth(s, v)} />
+      kind="pct" precision={0} disabled={!selectivityEditable} disabledReason={reason} onChange={(v) => Runtime.setSubharmDepth(s, v)} />
     <SliderField lane="scrub" label="HOLD" ariaLabel="Subharmonic selectivity hold time" value={sh?.selectHoldMs ?? 150}
       min={Proc.SUBHARM_HOLD_MIN_MS} max={Proc.SUBHARM_HOLD_MAX_MS} step={Proc.SUBHARM_HOLD_STEP_MS}
-      kind="ms" precision={0} disabled={!selectivityEditable} onChange={(v) => Runtime.setSubharmHold(s, v)} />
+      kind="ms" precision={0} disabled={!selectivityEditable} disabledReason={reason} onChange={(v) => Runtime.setSubharmHold(s, v)} />
     <SliderField lane="scrub" label="CEILING" ariaLabel="Subharmonic sub ceiling" value={sh?.ceilingDb ?? 0}
       min={Proc.SUBHARM_CEILING_MIN_DB} max={Proc.SUBHARM_CEILING_MAX_DB} step={Proc.SUBHARM_CEILING_STEP_DB}
-      kind="dB-signed" precision={1} ceilLabel="Off" disabled={!enabled} onChange={(v) => Runtime.setSubharmCeiling(s, v)} />
+      kind="dB-signed" precision={1} ceilLabel="Off" disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setSubharmCeiling(s, v)} />
     <div class="prow">
       <span class="prow-lbl">LINK PAIRS</span>
       <span class="prow-ctl">
-        <ToggleSwitch checked={sh?.linkPairs ?? true} disabled={!enabled}
+        <ToggleSwitch checked={sh?.linkPairs ?? true} disabled={!enabled} disabledReason={offReason}
           ariaLabel="Link subharm pairs" onChange={(v) => Runtime.setSubharmLinkPairs(s, v)} />
         <span class="prow-note">one sub per stereo pair, from the mono sum</span>
       </span>

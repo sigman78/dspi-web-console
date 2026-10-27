@@ -93,11 +93,14 @@ export function createStagingState(): StagingState {
         let applied = 0;
         for (const entry of ordered) {
           const ok = await entry.apply();
-          if (!ok) return;
+          if (!ok) {
+            if (applied > 0) pushNotice('warn', `Applied ${applied} of ${ordered.length} — stopped at ${entry.label}`);
+            return;
+          }
           remove(entry.key);
           applied += 1;
         }
-        if (applied >= 2) pushNotice('info', `Applied ${applied} pending changes.`);
+        if (applied > 0) pushNotice('info', `Applied ${applied} ${applied === 1 ? 'change' : 'changes'}`);
       } finally {
         state.applying = false;
       }

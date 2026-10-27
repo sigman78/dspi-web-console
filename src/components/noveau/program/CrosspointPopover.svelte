@@ -5,7 +5,7 @@
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import SliderField from '@/components/chrome/SliderField.svelte';
-  import { clampToBounds, dismiss } from '@/components/chrome/dismiss';
+  import { clampToBounds, dismiss, registerLayer } from '@/components/chrome/dismiss';
 
   const {
     input,
@@ -15,6 +15,7 @@
     x,
     anchorX,
     y,
+    yAbove,
     boundsW,
     boundsH,
     onClose,
@@ -28,10 +29,14 @@
     x: number;
     /** Centre of the anchor dot, for the caret. */
     anchorX: number;
+    /** Top edge when placed below the anchor. */
     y: number;
+    /** Bottom edge when there is no room below; the popover flips above it if that fits. */
+    yAbove?: number;
     boundsW: number;
     boundsH: number;
-    onClose: () => void;
+    /** `refocus` is false for an outside click, which should leave focus where the user put it. */
+    onClose: (refocus: boolean) => void;
   } = $props();
 
   const s = getSession();
@@ -48,32 +53,37 @@
   let el = $state<HTMLDivElement | null>(null);
   let w = $state(0);
   let h = $state(0);
-  const pos = $derived(clampToBounds(x, y, w, h, boundsW, boundsH));
+  const above = $derived(yAbove !== undefined && h > 0 && y + h > boundsH && yAbove - h >= 0);
+  const pos = $derived(clampToBounds(x, above ? yAbove! - h : y, w, h, boundsW, boundsH));
   const caretX = $derived(Math.max(10, Math.min(w - 10, anchorX - pos.left)));
 
   function commitRoute() {
     Runtime.routeCrosspoint(s, input, output, { gainDb: draftGain, invert: draftInvert });
-    onClose();
+    onClose(true);
   }
 
   function unroute() {
     Runtime.setCrosspointEnabled(s, input, output, false);
-    onClose();
+    onClose(true);
   }
 
   onMount(() => {
     el?.querySelector<HTMLElement>('button:not(.x-btn), input')?.focus();
+    return registerLayer((e) => {
+      onClose(true);
+      e.preventDefault();
+    });
   });
 </script>
 
-<div class="pop" bind:this={el} bind:offsetWidth={w} bind:offsetHeight={h} role="dialog" aria-label={`Crosspoint ${title}`} style:left="{pos.left}px" style:top="{pos.top}px" use:dismiss={{ onDismiss: onClose, ignore: '.dotbtn' }}>
-  {#if !pos.clamped}<span class="caret" style:left="{caretX}px" aria-hidden="true"></span>{/if}
+<div class="pop" bind:this={el} bind:offsetWidth={w} bind:offsetHeight={h} role="dialog" aria-label={`Crosspoint ${title}`} style:left="{pos.left}px" style:top="{pos.top}px" use:dismiss={{ onDismiss: () => onClose(false), escape: false, ignore: '.dotbtn' }}>
+  {#if !pos.clamped}<span class="caret" class:below={above} style:left="{caretX}px" aria-hidden="true"></span>{/if}
   <div class="ph sec-h">
     <h3>{title}</h3>
     {#if proposal}
       <span class="tag">NEW</span>
     {:else}
-      <button type="button" class="x-btn close" aria-label="Close" onclick={onClose}>✕</button>
+      <button type="button" class="x-btn close" aria-label="Close" onclick={() => onClose(true)}>✕</button>
     {/if}
   </div>
   <SliderField
@@ -97,7 +107,7 @@
   <div class="prow foot" class:live={!proposal}>
     {#if proposal}
       <button type="button" class="chip accent act" onclick={commitRoute}>ROUTE</button>
-      <button type="button" class="chip act" onclick={onClose}>CANCEL</button>
+      <button type="button" class="chip act" onclick={() => onClose(true)}>CANCEL</button>
     {:else}
       <button type="button" class="chip act danger" title="Remove this route" onclick={unroute}>UNROUTE</button>
     {/if}
@@ -127,6 +137,14 @@
     border-left: 1px solid var(--border-hi);
     transform: rotate(45deg);
     pointer-events: none;
+  }
+  .caret.below {
+    top: auto;
+    bottom: -5px;
+    border-top: none;
+    border-left: none;
+    border-bottom: 1px solid var(--border-hi);
+    border-right: 1px solid var(--border-hi);
   }
   .ph { padding: 0; gap: 8px; }
   .ph h3 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

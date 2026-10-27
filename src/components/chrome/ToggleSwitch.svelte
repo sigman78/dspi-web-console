@@ -4,14 +4,21 @@
     disabled = false,
     label,
     ariaLabel,
+    disabledReason,
     onChange,
   }: {
     checked: boolean;
     disabled?: boolean;
     label?: string;
     ariaLabel: string;
+    /** Why the switch is disabled; keeps it focusable and describes it. */
+    disabledReason?: string;
     onChange: (v: boolean) => void;
   } = $props();
+
+  const uid = $props.id();
+  const reasonId = `${uid}-reason`;
+  const explained = $derived(disabled && !!disabledReason);
 </script>
 
 <button
@@ -21,12 +28,16 @@
   role="switch"
   aria-checked={checked}
   aria-label={ariaLabel}
-  {disabled}
+  disabled={disabled && !explained}
+  aria-disabled={explained ? true : undefined}
+  aria-describedby={explained ? reasonId : undefined}
+  title={explained ? disabledReason : undefined}
   onclick={() => { if (!disabled) onChange(!checked); }}
 >
   <span class="track"><span class="knob"></span></span>
   {#if label}<span class="label">{label}</span>{/if}
 </button>
+{#if explained}<span id={reasonId} class="sr-only">{disabledReason}</span>{/if}
 
 <style>
   .sw {
@@ -43,8 +54,8 @@
     line-height: 1.4;
     color: var(--text-dim);
   }
-  .sw:hover:not(:disabled) { color: var(--text); }
-  .sw:disabled { cursor: default; opacity: var(--dim-disabled); }
+  .sw:hover:not(:disabled):not([aria-disabled='true']) { color: var(--text); }
+  .sw:disabled, .sw[aria-disabled='true'] { cursor: default; opacity: var(--dim-disabled); }
 
   .track {
     --w: 26px; --h: 15px; --pad: 2px;
@@ -76,8 +87,8 @@
   .sw.on .knob {
     transform: translateX(calc(var(--w) - var(--h)));
   }
-  .sw:active:not(:disabled) .knob { transform: scale(0.92); }
-  .sw.on:active:not(:disabled) .knob {
+  .sw:active:not(:disabled):not([aria-disabled='true']) .knob { transform: scale(0.92); }
+  .sw.on:active:not(:disabled):not([aria-disabled='true']) .knob {
     transform: translateX(calc(var(--w) - var(--h))) scale(0.92);
   }
 

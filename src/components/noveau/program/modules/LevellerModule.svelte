@@ -11,6 +11,7 @@
   const s = getSession();
   const lv = $derived(s.mirror.current?.leveller);
   const enabled = $derived(lv?.enabled ?? false);
+  const offReason = $derived(enabled ? undefined : 'Leveller is off — enable it to edit these controls.');
 
   const SPEED_OPTIONS = [
     { value: LevellerSpeed.Slow, label: 'SLOW' },
@@ -42,6 +43,8 @@
   pass="inputs · before matrix"
   blurb="Upward RMS compressor: lifts quiet passages toward a target without touching loud ones. Speed sets how fast gain follows the music."
   {enabled}
+  onEnable={(v) => Runtime.setLevellerEnabled(s, v)}
+  reason={offReason}
 >
   {#if showMasks}
     <div class="prow">
@@ -62,20 +65,20 @@
   <div class="prow">
     <span class="prow-lbl">SPEED</span>
     <span class="prow-ctl"><SegmentedSelect value={lv?.speed ?? LevellerSpeed.Medium} options={SPEED_OPTIONS}
-      disabled={!enabled} ariaLabel="Leveller speed" onChange={(v) => Runtime.setLevellerSpeed(s, v)} /></span>
+      disabled={!enabled} disabledReason={offReason} ariaLabel="Leveller speed" onChange={(v) => Runtime.setLevellerSpeed(s, v)} /></span>
   </div>
   <SliderField lane="scrub" label="AMOUNT" ariaLabel="Leveller amount" value={lv?.amount ?? 0}
     min={Proc.LEVELLER_AMOUNT_MIN_PCT} max={Proc.LEVELLER_AMOUNT_MAX_PCT} step={Proc.LEVELLER_AMOUNT_STEP_PCT}
-    kind="pct" precision={0} disabled={!enabled} onChange={(v) => Runtime.setLevellerAmount(s, v)} />
+    kind="pct" precision={0} disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setLevellerAmount(s, v)} />
   <SliderField lane="scrub" label="MAX GAIN" ariaLabel="Leveller max gain" value={lv?.maxGainDb ?? 0}
     min={Proc.LEVELLER_MAX_GAIN_MIN_DB} max={Proc.LEVELLER_MAX_GAIN_MAX_DB} step={Proc.LEVELLER_MAX_GAIN_STEP_DB}
-    kind="dB" precision={1} disabled={!enabled} onChange={(v) => Runtime.setLevellerMaxGain(s, v)} />
+    kind="dB" precision={1} disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setLevellerMaxGain(s, v)} />
   <SliderField lane="scrub" label="GATE" ariaLabel="Leveller gate threshold" value={lv?.gateDb ?? -40}
     min={Proc.LEVELLER_GATE_MIN_DB} max={Proc.LEVELLER_GATE_MAX_DB} step={Proc.LEVELLER_GATE_STEP_DB}
-    kind="dB" precision={0} disabled={!enabled} onChange={(v) => Runtime.setLevellerGate(s, v)} />
+    kind="dB" precision={0} disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setLevellerGate(s, v)} />
   <div class="prow">
     <span class="prow-lbl">LOOKAHEAD</span>
-    <span class="prow-ctl"><ToggleSwitch checked={lv?.lookahead ?? false} disabled={!enabled}
+    <span class="prow-ctl"><ToggleSwitch checked={lv?.lookahead ?? false} disabled={!enabled} disabledReason={offReason}
       ariaLabel="Leveller lookahead" onChange={(v) => Runtime.setLevellerLookahead(s, v)} /></span>
   </div>
 </ModuleFrame>

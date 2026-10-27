@@ -112,12 +112,31 @@ describe('write() failure policy', () => {
     expect(session.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
   });
 
-  it('while degraded, a failed write neither toasts nor requests a reconcile', async () => {
-    session.health.degraded = true;
+  it('a write that fails into degraded neither toasts nor requests a reconcile', async () => {
+    session.health.noteFail('write', new Error('x'));
+    session.health.noteFail('write', new Error('x'));
     session.mirror.consumeReconcile();
     await write(session, async () => { throw new Error('boom'); }, () => {});
+    expect(session.health.degraded).toBe(true);
     expect(notices.list.length).toBe(0);
     expect(session.mirror.peekReconcile().wanted).toBe(false);
+  });
+
+  it('while degraded, writes are refused unsent and silently', async () => {
+    clearNotices();
+    session.health.degraded = true;
+    const send = vi.fn(async () => {});
+    const mutate = vi.fn();
+    expect(await write(session, send, mutate)).toBe(false);
+    expect(await write(session, send, mutate)).toBe(false);
+    scrub(session, 'k', mutate, send);
+    expect(await writeChecked(session, 'op', async () => Result.ok(undefined), mutate)).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+    expect(mutate).not.toHaveBeenCalled();
+    expect(notices.list).toHaveLength(0);
+
+    session.health.noteRecovered();
+    expect(await write(session, send, mutate)).toBe(true);
   });
 
   it('a failed command reports health and stays connected', async () => {

@@ -168,12 +168,16 @@
 
   function buildBinding(d: Draft): Domain.CsBinding { return CsDraft.buildBinding(d, cs.nouns, caps); }
 
+  function nameChanged(slot: number, d: Draft | undefined): boolean {
+    return d?.name !== undefined && d.name !== (cs.names[slot] ?? '');
+  }
+
   function isDirty(slot: number): boolean {
     const live = cs.bindings[slot];
     if (!live) return true;                        // NEW: never applied
     const d = drafts.draftOf(slot);
     if (!d) return false;
-    return !CsDraft.bindingsEqual(buildBinding(d), live);
+    return nameChanged(slot, d) || !CsDraft.bindingsEqual(buildBinding(d), live);
   }
 
   function pill(slot: number): { text: string; cls: string } {
@@ -209,7 +213,10 @@
     if (!d) return;
     applying = true;
     try {
-      if (await applyCsBinding(s, slot, buildBinding(d))) {
+      const binding = buildBinding(d);
+      const nameOnly = live != null && nameChanged(slot, d) && CsDraft.bindingsEqual(binding, live);
+      const bindingOk = nameOnly || await applyCsBinding(s, slot, binding);
+      if (bindingOk && (!nameChanged(slot, d) || await applyCsName(s, slot, d.name!))) {
         drafts.remove(slot);                       // device truth takes over
       }
     } finally {
@@ -228,7 +235,9 @@
 
   function changeType(slot: number, type: number): void {
     const wasIr = isIrSlot(slot);
-    drafts.editDraft(slot, defaultDraft(type, slot));
+    const next = defaultDraft(type, slot);
+    next.name = drafts.draftOf(slot)?.name;
+    drafts.editDraft(slot, next);
     if (wasIr && type !== Domain.CsType.Ir) dropIrDrafts();
   }
 
@@ -249,13 +258,8 @@
     }
   }
 
-  async function renameSlot(slot: number, name: string): Promise<void> {
-    applying = true;
-    try {
-      await applyCsName(s, slot, name);
-    } finally {
-      applying = false;
-    }
+  function renameSlot(slot: number, name: string): void {
+    editDraft(slot, (d) => { d.name = name === (cs.names[slot] ?? '') ? undefined : name; });
   }
 
   let irResetTick = $state(0);

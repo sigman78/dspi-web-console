@@ -241,7 +241,7 @@
   }
 </script>
 
-<CsSlotCard title={Domain.csTypeLabel(d.type).toUpperCase()} name={cs.names[slot] ?? ''}
+<CsSlotCard title={Domain.csTypeLabel(d.type).toUpperCase()} name={d.name ?? cs.names[slot] ?? ''}
   nameLabel={`Name for control ${slot + 1}`} removeLabel={`Remove control ${slot + 1}`}
   pill={p} {dirty} {open} disabled={applying}
   {onToggle} {onRename} {onRemove} {detailTarget}>

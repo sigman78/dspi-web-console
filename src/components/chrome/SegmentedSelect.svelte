@@ -6,14 +6,21 @@
     options,
     disabled = false,
     ariaLabel,
+    disabledReason,
     onChange,
   }: {
     value: T;
     options: ReadonlyArray<{ value: T; label: string; disabled?: boolean }>;
     disabled?: boolean;
     ariaLabel: string;
+    /** Why the group is disabled; keeps it focusable and describes it. */
+    disabledReason?: string;
     onChange: (v: T) => void;
   } = $props();
+
+  const uid = $props.id();
+  const reasonId = `${uid}-reason`;
+  const explained = $derived(disabled && !!disabledReason);
 
   // With no matching value (e.g. an unset choice) the first option stays reachable.
   const anyOn = $derived(options.some((o) => o.value === value));
@@ -51,6 +58,9 @@
   bind:this={root}
   role="radiogroup"
   aria-label={ariaLabel}
+  aria-disabled={explained ? true : undefined}
+  aria-describedby={explained ? reasonId : undefined}
+  title={explained ? disabledReason : undefined}
   tabindex="-1"
   onkeydown={onKey}
 >
@@ -62,13 +72,16 @@
       role="radio"
       aria-checked={opt.value === value}
       tabindex={opt.value === value || (!anyOn && i === 0) ? 0 : -1}
-      disabled={disabled || opt.disabled}
+      disabled={(disabled && !explained) || opt.disabled}
+      class:soft={explained}
+      aria-disabled={explained ? true : undefined}
       onclick={() => { if (!disabled && !opt.disabled) onChange(opt.value); }}
     >
       {opt.label}
     </button>
   {/each}
 </div>
+{#if explained}<span id={reasonId} class="sr-only">{disabledReason}</span>{/if}
 
 <style>
   .seg {
@@ -95,11 +108,11 @@
     border-right: 1px solid var(--border);
   }
   .opt:last-child { border-right: none; }
-  .opt:hover:not(:disabled):not(.on) {
+  .opt:hover:not(:disabled):not(.soft):not(.on) {
     color: var(--text);
     background: var(--wash);
   }
-  .opt:disabled { cursor: default; opacity: var(--dim-disabled); }
+  .opt:disabled, .opt.soft { cursor: default; opacity: var(--dim-disabled); }
   .opt.on {
     background: color-mix(in oklab, var(--ok) var(--tint), transparent);
     color: var(--ok);

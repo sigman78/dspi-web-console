@@ -19,3 +19,9 @@ export function editorActions({ active, occupied, dirty, held }: EditorActionsIn
   ids.push('import');
   return ids;
 }
+
+// Replacing an occupied slot asks first, except when unsaved changes are
+// pending: the boundary modal already covers that case.
+export function replaceNeedsConfirm(occupied: boolean, dirty: boolean): boolean {
+  return occupied && !dirty;
+}

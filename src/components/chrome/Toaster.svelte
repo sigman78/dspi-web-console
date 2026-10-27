@@ -7,7 +7,7 @@
     {#each notices.list as n (n.id)}
       <div class="toast {n.kind}" role="alert">
         <span class="msg">{n.message}</span>
-        <button class="dismiss" aria-label="Dismiss notification" onclick={() => dismissNotice(n.id)}>✕</button>
+        <button class="x-btn dismiss" aria-label="Dismiss notification" onclick={() => dismissNotice(n.id)}>✕</button>
       </div>
     {/each}
   </div>
@@ -43,16 +43,6 @@
   .toast.error { border-left-color: var(--err); }
   .toast.warn  { border-left-color: var(--warn); }
   .toast.info  { border-left-color: var(--accent); }
+  .dismiss { flex: none; font-size: 11px; margin-top: 1px; }
   .msg { flex: 1; line-height: 1.4; word-break: break-word; }
-  .dismiss {
-    flex: none;
-    background: none;
-    border: none;
-    color: var(--text-faint);
-    cursor: pointer;
-    font-size: 11px;
-    line-height: 1;
-    padding: 0;
-  }
-  .dismiss:hover { color: var(--text); }
 </style>

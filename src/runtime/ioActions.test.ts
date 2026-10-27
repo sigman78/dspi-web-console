@@ -1,11 +1,12 @@
 import { describe, it, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as actions from './ioActions';
 import { factoryResetDevice } from './deviceService';
+import { renamePresetSlot } from './presets';
 import { notices, clearNotices, dispatch, mintConnId, makeReadySession, activeSession, resetAppState } from '@/state';
 import { bootMock } from './boot';
 import type { DspDevice } from '@/device/DspDevice';
 import { parseBulkParams, Wire } from '@/protocol';
-import { PlatformType, createHardwareProfile, AudioInputSource } from '@/domain';
+import { type PresetSlot, PlatformType, createHardwareProfile, AudioInputSource } from '@/domain';
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { deriveCapabilities } from '@/protocol/capabilities';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
@@ -151,6 +152,20 @@ describe('output config verbs', () => {
   it('factoryResetDevice toasts completion on success', async () => {
     await factoryResetDevice();
     expect(notices.list.some((n) => n.kind === 'info' && n.message.includes('Factory reset complete'))).toBe(true);
+  });
+
+  it('while the link is degraded, factory reset and preset operations send nothing', async () => {
+    const s = activeSession()!;
+    s.health.degraded = true;
+    const reset = vi.spyOn(s.device, 'factoryReset');
+    const rename = vi.spyOn(s.device, 'setPresetName');
+    clearNotices();
+    await factoryResetDevice();
+    const r = await renamePresetSlot(s, 1 as PresetSlot, 'x');
+    expect(r.ok).toBe(false);
+    expect(reset).not.toHaveBeenCalled();
+    expect(rename).not.toHaveBeenCalled();
+    expect(notices.list).toHaveLength(0);
   });
 
   it('saveOutputConfigBaseline warns on failure and stays silent on success', async () => {

@@ -39,6 +39,20 @@ describe('ChannelRow', () => {
     expect(onStartEdit).toHaveBeenCalledOnce();
   });
 
+  test('F2 starts editing; Enter does only on an already-selected row', async () => {
+    const onStartEdit = vi.fn();
+    const onclick = vi.fn();
+    const { rerender } = render(ChannelRow, { props: { ...base, onStartEdit, onclick } });
+    const btn = screen.getByRole('button', { name: 'Front L' });
+    await fireEvent.keyDown(btn, { key: 'F2' });
+    expect(onStartEdit).toHaveBeenCalledOnce();
+    await fireEvent.keyDown(btn, { key: 'Enter' });
+    expect(onStartEdit).toHaveBeenCalledOnce();
+    await rerender({ ...base, onStartEdit, onclick, selected: true });
+    await fireEvent.keyDown(btn, { key: 'Enter' });
+    expect(onStartEdit).toHaveBeenCalledTimes(2);
+  });
+
   test('double-click on a disabled row does not start editing', async () => {
     const onStartEdit = vi.fn();
     render(ChannelRow, { props: { ...base, disabled: true, onStartEdit } });

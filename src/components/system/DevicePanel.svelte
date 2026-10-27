@@ -2,7 +2,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
-  import { connection } from '@/state';
+  import { connection, askConfirm } from '@/state';
   import { factoryResetDevice, enterBootloader, MIN_CS_CAPS_VERSION, MAX_KNOWN_CS_CAPS_VERSION } from '@/runtime';
   import { SUPPORT_WINDOW } from '@/protocol/capabilities';
   import { getSession } from '@/components/sessionContext';
@@ -20,8 +20,14 @@
     s.ctrlIfaces.status ? `v${s.ctrlIfaces.status.protoVersion}` : '—');
   const build = $derived(s.info.build);
 
-  function onFactoryReset() {
-    void factoryResetDevice();
+  async function onFactoryReset() {
+    const ok = await askConfirm({
+      title: 'Factory reset',
+      body: 'Wipes all presets and resets live audio to firmware defaults. This cannot be undone.',
+      confirmLabel: 'RESET DEVICE',
+      tone: 'danger',
+    });
+    if (ok) await factoryResetDevice();
   }
 
   function onEnterBootloader() {
@@ -49,15 +55,12 @@
   </div>
   <div class="divider"></div>
   <div class="actions">
-    <ConfirmButton
-      label="FACTORY RESET"
-      confirmLabel="CONFIRM RESET"
-      tone="danger"
-      toneAlways
-      extraClass="md"
-      onConfirm={onFactoryReset}
+    <button
+      type="button"
+      class="chip md danger"
+      onclick={() => void onFactoryReset()}
       title="Wipes all presets and resets live audio to firmware defaults."
-    />
+    >FACTORY RESET</button>
     <ConfirmButton
       label="UPDATE FIRMWARE"
       confirmLabel="CONFIRM REBOOT"

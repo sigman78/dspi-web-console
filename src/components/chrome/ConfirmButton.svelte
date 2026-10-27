@@ -1,6 +1,7 @@
 <script lang="ts">
   // Two-step arm/confirm mechanics shared by every "dangerous or persisting
-  // action" button (DevicePanel factory-reset/firmware, preset/volume save).
+  // action" button (firmware update, staged apply, output-config save,
+  // band reset, AutoEQ delete).
   // The primitive owns only the state machine and a11y wiring; tone/size and
   // the confirm action itself stay with the caller.
   const {
