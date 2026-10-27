@@ -1,46 +1,28 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { bootMock } from './boot';
-import {
-  resetBoundary, boundary, resolveBoundary, settings, activeSession,
-  makeReadySession, dispatch, mintConnId, resetAppState, notices, clearNotices, type ReadySession,
-} from '@/state';
+import * as State from '@/state';
+import type { ReadySession } from '@/state';
 import { PresetStartupMode, parseBulkParams, Wire } from '@/protocol';
 import type { DeviceState } from '@/protocol/snapshotCodec';
 import { type PresetSlot, OutputConfigMode } from '@/domain';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
-import {
-  fetchPresetInfo,
-  copyActivePreset,
-  saveActivePreset,
-  savePresetSlot,
-  loadPresetSlot,
-  deletePresetSlot,
-  revertActivePreset,
-  renamePresetSlot,
-  setStartupDefault,
-  setStartupMode,
-  setOutputConfigMode,
-  pastePresetTo,
-  dismissPresetActionError,
-  exportHeldPreset,
-  decodeImportedPreset,
-} from './presets';
+import * as Presets from './presets';
 
-const liveMirror = () => activeSession()!.mirror;
-const sess = () => activeSession()!;
-const ps = () => activeSession()!.presets;
+const liveMirror = () => State.activeSession()!.mirror;
+const sess = () => State.activeSession()!;
+const ps = () => State.activeSession()!.presets;
 
 describe('runtime/presets', () => {
   beforeEach(async () => {
-    resetBoundary();
+    State.resetBoundary();
     await bootMock('rp2350');
   });
 
-  afterEach(() => { activeSession()?.dispose(); resetAppState(); });
+  afterEach(() => { State.activeSession()?.dispose(); State.resetAppState(); });
 
   describe('fetchPresetInfo', () => {
     it('populates directory, names, active, and saved master volume', async () => {
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       expect(ps().directory).not.toBe(null);
       expect(ps().names.every((n) => n !== null)).toBe(true);
       expect(ps().active === null || (ps().active! >= 0 && ps().active! < 10)).toBe(true);
@@ -48,22 +30,22 @@ describe('runtime/presets', () => {
     });
 
     it('is idempotent when cache is populated', async () => {
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       const before = ps().directory;
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       expect(ps().directory).toBe(before);
     });
 
     it('continues populating directory when an individual getPresetName fails', async () => {
       // Replace the device.getPresetName to fail for slot 7 only.
-      const realDevice = activeSession()!.device;
+      const realDevice = State.activeSession()!.device;
       const origGetName = realDevice.getPresetName.bind(realDevice);
       (realDevice as any).getPresetName = async (slot: number) => {
         if (slot === 7) throw new Error('simulated slot-7 failure');
         return origGetName(slot as PresetSlot);
       };
       try {
-        await fetchPresetInfo(sess());
+        await Presets.fetchPresetInfo(sess());
         expect(ps().directory).not.toBe(null);
         expect(ps().names[7]).toBe(''); // failed slot becomes empty
         expect(ps().lastFetchError).toBe(null); // names failures don't set the directory-level error
@@ -73,7 +55,7 @@ describe('runtime/presets', () => {
     });
 
     it('sets lastFetchError when directory fetch fails', async () => {
-      const realDevice = activeSession()!.device;
+      const realDevice = State.activeSession()!.device;
       const origGetDir = realDevice.getPresetDirectory.bind(realDevice);
       (realDevice as any).getPresetDirectory = async () => {
         throw new Error('simulated directory failure');
@@ -82,7 +64,7 @@ describe('runtime/presets', () => {
         // need to clear cache first since previous tests populated it
         ps().directory = null;
         ps().lastFetchError = null;
-        await fetchPresetInfo(sess());
+        await Presets.fetchPresetInfo(sess());
         expect(ps().directory).toBe(null);
         expect(ps().lastFetchError).toContain('Directory fetch failed');
       } finally {
@@ -93,12 +75,12 @@ describe('runtime/presets', () => {
 
   describe('saveActivePreset', () => {
     it('saves to the active slot and advances the baseline', async () => {
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
       const before = liveMirror().baseline?.bypass;
       const after  = liveMirror().current?.bypass;
       expect(before).not.toBe(after);
-      const r = await saveActivePreset(sess());
+      const r = await Presets.saveActivePreset(sess());
       expect(r.ok).toBe(true);
       expect(liveMirror().baseline?.bypass).toBe(after);
     });
@@ -106,18 +88,18 @@ describe('runtime/presets', () => {
 
   describe('loadPresetSlot', () => {
     it('updates active and refreshes baseline (via fullSync)', async () => {
-      await fetchPresetInfo(sess());
-      await saveActivePreset(sess());
-      const r = await loadPresetSlot(sess(), 0 as PresetSlot);
+      await Presets.fetchPresetInfo(sess());
+      await Presets.saveActivePreset(sess());
+      const r = await Presets.loadPresetSlot(sess(), 0 as PresetSlot);
       expect(r.ok).toBe(true);
       expect(ps().active).toBe(0);
     });
 
     it('issues loadPreset on the wire and re-baselines saved from a fresh getAllParams', async () => {
-      settings.warnOnPresetSwitchDirty = false; // not under test here
-      await fetchPresetInfo(sess());
-      await saveActivePreset(sess());
-      const d = activeSession()!.device;
+      State.settings.warnOnPresetSwitchDirty = false; // not under test here
+      await Presets.fetchPresetInfo(sess());
+      await Presets.saveActivePreset(sess());
+      const d = State.activeSession()!.device;
       const origLoad = d.loadPreset.bind(d);
       const origGetAll = d.getAllParams.bind(d);
       let loadCalls = 0;
@@ -137,7 +119,7 @@ describe('runtime/presets', () => {
         // observable: after success, saved must match the freshly fetched
         // device state (i.e. draft === saved per field).
         liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
-        const r = await loadPresetSlot(sess(), 0 as PresetSlot);
+        const r = await Presets.loadPresetSlot(sess(), 0 as PresetSlot);
         expect(r.ok).toBe(true);
         expect(loadCalls).toBe(1);
         // fetchAndApplyAsBaseline runs exactly one getAllParams after loadPreset.
@@ -156,11 +138,11 @@ describe('runtime/presets', () => {
     // the slot; a CRC/layout-invalid slot is silently not applied (RAM and
     // last_active untouched). The console must not trust the notify alone.
     it('surfaces an error and keeps device truth when the device silently rejects the load', async () => {
-      settings.warnOnPresetSwitchDirty = false;
-      await fetchPresetInfo(sess());
-      await savePresetSlot(sess(), 1 as PresetSlot);
+      State.settings.warnOnPresetSwitchDirty = false;
+      await Presets.fetchPresetInfo(sess());
+      await Presets.savePresetSlot(sess(), 1 as PresetSlot);
       expect(ps().active).toBe(1);
-      const d = activeSession()!.device as any;
+      const d = State.activeSession()!.device as any;
       const origLoad = d.loadPreset;
       const origGetActive = d.getActivePreset;
       d.loadPreset = async (slot: number) => {
@@ -169,7 +151,7 @@ describe('runtime/presets', () => {
       };
       d.getActivePreset = async () => 1; // device never switched
       try {
-        const r = await loadPresetSlot(sess(), 3 as PresetSlot);
+        const r = await Presets.loadPresetSlot(sess(), 3 as PresetSlot);
         expect(r.ok).toBe(false);
         expect(ps().active).toBe(1);
         expect(ps().lastActionError).toMatch(/^Load:/);
@@ -183,21 +165,21 @@ describe('runtime/presets', () => {
 
   describe('deletePresetSlot', () => {
     it('clears the occupied bit', async () => {
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       const prevActive = ps().active;
       if (prevActive == null) {
-        await loadPresetSlot(sess(), 0 as PresetSlot);
+        await Presets.loadPresetSlot(sess(), 0 as PresetSlot);
       }
-      await renamePresetSlot(sess(), 5 as PresetSlot, 'Test');
-      const r = await deletePresetSlot(sess(), 5 as PresetSlot);
+      await Presets.renamePresetSlot(sess(), 5 as PresetSlot, 'Test');
+      const r = await Presets.deletePresetSlot(sess(), 5 as PresetSlot);
       expect(r.ok).toBe(true);
       expect(ps().directory!.occupiedSlotsSet.has(5 as PresetSlot)).toBe(false);
     });
 
     it('rejects deleting the active slot', async () => {
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       const active = ps().active ?? 0 as PresetSlot;
-      const r = await deletePresetSlot(sess(), active);
+      const r = await Presets.deletePresetSlot(sess(), active);
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.code).toBe('active');
     });
@@ -205,18 +187,18 @@ describe('runtime/presets', () => {
 
   describe('revertActivePreset', () => {
     it('reloads the active slot', async () => {
-      await fetchPresetInfo(sess());
-      await saveActivePreset(sess());
+      await Presets.fetchPresetInfo(sess());
+      await Presets.saveActivePreset(sess());
       liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
-      const r = await revertActivePreset(sess());
+      const r = await Presets.revertActivePreset(sess());
       expect(r.ok).toBe(true);
     });
   });
 
   describe('renamePresetSlot', () => {
     it('calls device.setPresetName with the slot/name and mirrors into the cache', async () => {
-      await fetchPresetInfo(sess());
-      const d = activeSession()!.device;
+      await Presets.fetchPresetInfo(sess());
+      const d = State.activeSession()!.device;
       const orig = d.setPresetName.bind(d);
       const calls: Array<{ slot: number; name: string }> = [];
       (d as any).setPresetName = async (slot: number, name: string) => {
@@ -224,7 +206,7 @@ describe('runtime/presets', () => {
         return orig(slot as PresetSlot, name);
       };
       try {
-        await renamePresetSlot(sess(), 2 as PresetSlot, 'Cinema');
+        await Presets.renamePresetSlot(sess(), 2 as PresetSlot, 'Cinema');
         expect(calls).toEqual([{ slot: 2, name: 'Cinema' }]);
         expect(ps().names[2]).toBe('Cinema');
       } finally {
@@ -235,17 +217,17 @@ describe('runtime/presets', () => {
 
   describe('setStartupDefault / setStartupMode', () => {
     it('writes startup config and updates the directory cache', async () => {
-      await fetchPresetInfo(sess());
-      const r = await setStartupDefault(sess(), 4 as PresetSlot);
+      await Presets.fetchPresetInfo(sess());
+      const r = await Presets.setStartupDefault(sess(), 4 as PresetSlot);
       expect('ok' in r && r.ok).toBe(true);
       expect(ps().directory!.startupMode).toBe(PresetStartupMode.Specified);
       expect(ps().directory!.defaultSlot).toBe(4);
     });
 
     it('sets the startup mode without losing defaultSlot', async () => {
-      await fetchPresetInfo(sess());
-      await setStartupDefault(sess(), 4 as PresetSlot);
-      const r = await setStartupMode(sess(), PresetStartupMode.LastActive);
+      await Presets.fetchPresetInfo(sess());
+      await Presets.setStartupDefault(sess(), 4 as PresetSlot);
+      const r = await Presets.setStartupMode(sess(), PresetStartupMode.LastActive);
       expect('ok' in r && r.ok).toBe(true);
       expect(ps().directory!.startupMode).toBe(PresetStartupMode.LastActive);
       expect(ps().directory!.defaultSlot).toBe(4);
@@ -254,21 +236,21 @@ describe('runtime/presets', () => {
 
   describe('setOutputConfigMode', () => {
     it('writes the mode through to the device and mirrors it in the directory cache', async () => {
-      await fetchPresetInfo(sess());
-      const r = await setOutputConfigMode(sess(), OutputConfigMode.WithPreset);
+      await Presets.fetchPresetInfo(sess());
+      const r = await Presets.setOutputConfigMode(sess(), OutputConfigMode.WithPreset);
       expect('ok' in r && r.ok).toBe(true);
       expect(ps().directory!.outputConfigMode).toBe(OutputConfigMode.WithPreset);
-      await setOutputConfigMode(sess(), OutputConfigMode.Independent);
+      await Presets.setOutputConfigMode(sess(), OutputConfigMode.Independent);
       expect(ps().directory!.outputConfigMode).toBe(OutputConfigMode.Independent);
     });
 
     it('records an action error (record-only, no rethrow) when the device write fails', async () => {
-      await fetchPresetInfo(sess());
-      const d = activeSession()!.device as any;
+      await Presets.fetchPresetInfo(sess());
+      const d = State.activeSession()!.device as any;
       const orig = d.setOutputConfigMode;
       d.setOutputConfigMode = async () => { throw new Error('wire fail'); };
       try {
-        const r = await setOutputConfigMode(sess(), OutputConfigMode.WithPreset);
+        const r = await Presets.setOutputConfigMode(sess(), OutputConfigMode.WithPreset);
         expect('ok' in r && r.ok).toBe(false);
         expect(ps().lastActionError).toContain('Set output config mode');
         expect(ps().lastActionError).toContain('wire fail');
@@ -280,11 +262,11 @@ describe('runtime/presets', () => {
 
   describe('savePresetSlot', () => {
     it('saves current RAM into a slot and makes it active (mirrors firmware)', async () => {
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       const initialActive = ps().active;
       // Pick a slot that is not the active one
       const target = (initialActive === 5 ? 6 : 5) as PresetSlot;
-      const r = await savePresetSlot(sess(), target);
+      const r = await Presets.savePresetSlot(sess(), target);
       expect(r.ok).toBe(true);
       expect(ps().directory!.occupiedSlotsSet.has(target)).toBe(true);
       // Per HW-PROFILES §1b, PresetSave sets lastActive=slot. Host mirrors.
@@ -292,15 +274,15 @@ describe('runtime/presets', () => {
     });
 
     it('saving into the active slot advances the baseline', async () => {
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       // Ensure there is an active slot for the baseline check.
       if (ps().active == null) {
-        await loadPresetSlot(sess(), 0 as PresetSlot);
+        await Presets.loadPresetSlot(sess(), 0 as PresetSlot);
       }
       const active = ps().active!;
       liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
       expect(liveMirror().baseline?.bypass).not.toBe(liveMirror().current?.bypass);
-      const r = await savePresetSlot(sess(), active);
+      const r = await Presets.savePresetSlot(sess(), active);
       expect(r.ok).toBe(true);
       expect(liveMirror().baseline?.bypass).toBe(liveMirror().current?.bypass);
     });
@@ -308,7 +290,7 @@ describe('runtime/presets', () => {
 
   describe('dirty baseline survives resync', () => {
     it('saved is not overwritten when a background reconcile refreshes draft', async () => {
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       // Sanity: bootMock+fullSync populated both draft and saved.
       expect(liveMirror().current).not.toBe(null);
       expect(liveMirror().baseline).not.toBe(null);
@@ -317,7 +299,7 @@ describe('runtime/presets', () => {
       // SetLoudnessEnabled mutates #mockState which is what
       // synthesizeBulkParams reads from, so the next resync's bulk packet
       // will reflect the change.
-      const d = activeSession()!.device;
+      const d = State.activeSession()!.device;
       await d.setLoudnessEnabled(!savedLoudnessBefore);
       // Failure-path recovery and the background param cadence both resync via
       // replaceCurrent (current only); liveMirror().baseline stays pinned at
@@ -331,12 +313,12 @@ describe('runtime/presets', () => {
 
   describe('action error surfacing', () => {
     it('records an error message when setPresetName throws', async () => {
-      await fetchPresetInfo(sess());
-      const d = activeSession()!.device;
+      await Presets.fetchPresetInfo(sess());
+      const d = State.activeSession()!.device;
       const orig = d.setPresetName.bind(d);
       (d as any).setPresetName = async () => { throw new Error('boom'); };
       try {
-        const r = await renamePresetSlot(sess(), 2 as PresetSlot, 'X');
+        const r = await Presets.renamePresetSlot(sess(), 2 as PresetSlot, 'X');
         expect('ok' in r && r.ok).toBe(false);
         expect(ps().lastActionError).toContain('Rename');
         expect(ps().lastActionError).toContain('boom');
@@ -346,32 +328,32 @@ describe('runtime/presets', () => {
     });
 
     it('renamePresetSlot returns ok on success', async () => {
-      await fetchPresetInfo(sess());
-      const r = await renamePresetSlot(sess(), 1 as PresetSlot, 'X');
+      await Presets.fetchPresetInfo(sess());
+      const r = await Presets.renamePresetSlot(sess(), 1 as PresetSlot, 'X');
       expect('ok' in r && r.ok).toBe(true);
     });
 
     it('clears lastActionError at the start of a successful subsequent call', async () => {
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       ps().lastActionError = 'stale';
-      await renamePresetSlot(sess(), 3 as PresetSlot, 'Cinema');
+      await Presets.renamePresetSlot(sess(), 3 as PresetSlot, 'Cinema');
       expect(ps().lastActionError).toBe(null);
     });
 
     it('dismissPresetActionError clears the error banner state', () => {
       ps().lastActionError = 'Save: boom';
-      dismissPresetActionError(sess());
+      Presets.dismissPresetActionError(sess());
       expect(ps().lastActionError).toBe(null);
     });
   });
 
   describe('copyActivePreset', () => {
     it('captures slot, name and blob at copy time', async () => {
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       const active = 2 as PresetSlot;
-      await savePresetSlot(sess(), active);
-      await renamePresetSlot(sess(), active, 'Src');
-      const r = await copyActivePreset(sess());
+      await Presets.savePresetSlot(sess(), active);
+      await Presets.renamePresetSlot(sess(), active, 'Src');
+      const r = await Presets.copyActivePreset(sess());
       expect('ok' in r && r.ok).toBe(true);
       const held = sess().copySource.held;
       expect(held).not.toBe(null);
@@ -381,13 +363,13 @@ describe('runtime/presets', () => {
     });
 
     it('records an action error and holds nothing when capture fails', async () => {
-      await fetchPresetInfo(sess());
-      await savePresetSlot(sess(), 2 as PresetSlot);
-      const d = activeSession()!.device as any;
+      await Presets.fetchPresetInfo(sess());
+      await Presets.savePresetSlot(sess(), 2 as PresetSlot);
+      const d = State.activeSession()!.device as any;
       const orig = d.captureState;
       d.captureState = async () => { throw new Error('wire fail'); };
       try {
-        const r = await copyActivePreset(sess());
+        const r = await Presets.copyActivePreset(sess());
         expect('ok' in r && r.ok).toBe(false);
         expect(sess().copySource.held).toBe(null);
         expect(ps().lastActionError).toMatch(/^Copy:/);
@@ -399,13 +381,13 @@ describe('runtime/presets', () => {
 
   describe('pastePresetTo', () => {
     it('runs setAll(blob)→save(active) only — no preset loads', async () => {
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       const active = 1 as PresetSlot;
-      await savePresetSlot(sess(), active);
+      await Presets.savePresetSlot(sess(), active);
       expect(ps().active).toBe(active);
 
       const sourceBlob = parseBulkParams(makeBulk({ formatVersion: 10, payloadLength: Wire.BulkSizes.V10 })) as DeviceState;
-      const realDevice = activeSession()!.device;
+      const realDevice = State.activeSession()!.device;
       const calls: string[] = [];
       const origLoad   = realDevice.loadPreset.bind(realDevice);
       const origSave   = realDevice.savePreset.bind(realDevice);
@@ -415,12 +397,12 @@ describe('runtime/presets', () => {
       let setAllArg: any;
       (realDevice as any).setAllParams = async (blob: any) => { calls.push('setAll'); setAllArg = blob; };
       try {
-        const r = await pastePresetTo(sess(), sourceBlob);
+        const r = await Presets.pastePresetTo(sess(), sourceBlob);
         expect(calls).toEqual(['setAll', `save:${active}`]);
         expect(setAllArg).toBe(sourceBlob);
         expect('ok' in r && r.ok).toBe(true);
         expect(ps().active).toBe(active);
-        expect(boundary.pending).toBe(null); // clean RAM: no modal
+        expect(State.boundary.pending).toBe(null); // clean RAM: no modal
       } finally {
         (realDevice as any).loadPreset  = origLoad;
         (realDevice as any).savePreset  = origSave;
@@ -429,21 +411,21 @@ describe('runtime/presets', () => {
     });
 
     it('asks the boundary modal when RAM is dirty; cancel aborts before any wire write', async () => {
-      await fetchPresetInfo(sess());
-      await savePresetSlot(sess(), 1 as PresetSlot);
-      await copyActivePreset(sess());
+      await Presets.fetchPresetInfo(sess());
+      await Presets.savePresetSlot(sess(), 1 as PresetSlot);
+      await Presets.copyActivePreset(sess());
       const blob = sess().copySource.held!.blob;
       liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
 
-      const d = activeSession()!.device as any;
+      const d = State.activeSession()!.device as any;
       const origSetAll = d.setAllParams;
       let setAllCalls = 0;
       d.setAllParams = async () => { setAllCalls++; };
       try {
-        const pending = pastePresetTo(sess(), blob);
+        const pending = Presets.pastePresetTo(sess(), blob);
         await Promise.resolve();
-        expect(boundary.pending).not.toBe(null);
-        resolveBoundary('cancel');
+        expect(State.boundary.pending).not.toBe(null);
+        State.resolveBoundary('cancel');
         const r = await pending;
         expect(r.ok).toBe(false);
         expect(setAllCalls).toBe(0);
@@ -453,33 +435,33 @@ describe('runtime/presets', () => {
     });
 
     it('proceeds with the paste when the dirty modal resolves with discard', async () => {
-      await fetchPresetInfo(sess());
-      await savePresetSlot(sess(), 1 as PresetSlot);
-      await copyActivePreset(sess());
+      await Presets.fetchPresetInfo(sess());
+      await Presets.savePresetSlot(sess(), 1 as PresetSlot);
+      await Presets.copyActivePreset(sess());
       const blob = sess().copySource.held!.blob;
       liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
 
-      const pending = pastePresetTo(sess(), blob);
+      const pending = Presets.pastePresetTo(sess(), blob);
       await Promise.resolve();
-      expect(boundary.pending).not.toBe(null);
-      resolveBoundary('discard');
+      expect(State.boundary.pending).not.toBe(null);
+      State.resolveBoundary('discard');
       const r = await pending;
       expect('ok' in r && r.ok).toBe(true);
     });
 
     it('records the error and rethrows when restoreState fails; no save issued', async () => {
-      await fetchPresetInfo(sess());
-      await savePresetSlot(sess(), 5 as PresetSlot);
-      await copyActivePreset(sess());
+      await Presets.fetchPresetInfo(sess());
+      await Presets.savePresetSlot(sess(), 5 as PresetSlot);
+      await Presets.copyActivePreset(sess());
       const blob = sess().copySource.held!.blob;
-      const d = activeSession()!.device as any;
+      const d = State.activeSession()!.device as any;
       const origSetAll = d.setAllParams;
       const origSave = d.savePreset;
       let saveCalls = 0;
       d.setAllParams = async () => { throw new Error('simulated'); };
       d.savePreset = async (slot: number) => { saveCalls++; return origSave.call(d, slot); };
       try {
-        await expect(pastePresetTo(sess(), blob)).rejects.toThrow('simulated');
+        await expect(Presets.pastePresetTo(sess(), blob)).rejects.toThrow('simulated');
         expect(saveCalls).toBe(0);
         expect(ps().lastActionError).toMatch(/^Paste:/);
       } finally {
@@ -489,31 +471,31 @@ describe('runtime/presets', () => {
     });
 
     it('pastes a blob whose source slot was deleted while held', async () => {
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       const src = 3 as PresetSlot;
-      await savePresetSlot(sess(), src);
-      await copyActivePreset(sess());
+      await Presets.savePresetSlot(sess(), src);
+      await Presets.copyActivePreset(sess());
       const held = sess().copySource.held!;
-      await loadPresetSlot(sess(), 0 as PresetSlot);
-      await saveActivePreset(sess());
-      await deletePresetSlot(sess(), src);
-      const r = await pastePresetTo(sess(), held.blob);
+      await Presets.loadPresetSlot(sess(), 0 as PresetSlot);
+      await Presets.saveActivePreset(sess());
+      await Presets.deletePresetSlot(sess(), src);
+      const r = await Presets.pastePresetTo(sess(), held.blob);
       expect('ok' in r && r.ok).toBe(true);
       expect(ps().directory!.occupiedSlotsSet.has(0 as PresetSlot)).toBe(true);
     });
 
     it('stamps the same held blob into multiple slots', async () => {
-      await fetchPresetInfo(sess());
-      await savePresetSlot(sess(), 4 as PresetSlot);
-      await copyActivePreset(sess());
+      await Presets.fetchPresetInfo(sess());
+      await Presets.savePresetSlot(sess(), 4 as PresetSlot);
+      await Presets.copyActivePreset(sess());
       const held = sess().copySource.held!;
 
-      await loadPresetSlot(sess(), 0 as PresetSlot);
-      const r1 = await pastePresetTo(sess(), held.blob);
+      await Presets.loadPresetSlot(sess(), 0 as PresetSlot);
+      const r1 = await Presets.pastePresetTo(sess(), held.blob);
       expect('ok' in r1 && r1.ok).toBe(true);
 
-      await loadPresetSlot(sess(), 1 as PresetSlot);
-      const r2 = await pastePresetTo(sess(), held.blob);
+      await Presets.loadPresetSlot(sess(), 1 as PresetSlot);
+      const r2 = await Presets.pastePresetTo(sess(), held.blob);
       expect('ok' in r2 && r2.ok).toBe(true);
       expect(ps().directory!.occupiedSlotsSet.has(1 as PresetSlot)).toBe(true);
     });
@@ -521,56 +503,56 @@ describe('runtime/presets', () => {
 
   describe('loadPresetSlot dirty gating', () => {
     beforeEach(async () => {
-      settings.warnOnPresetSwitchDirty = true;
+      State.settings.warnOnPresetSwitchDirty = true;
     });
 
     it('does not call askBoundary when RAM is clean', async () => {
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       // Ensure clean: save current state to flush dirty if any.
-      await saveActivePreset(sess());
-      const r = await loadPresetSlot(sess(), 0 as PresetSlot);
+      await Presets.saveActivePreset(sess());
+      const r = await Presets.loadPresetSlot(sess(), 0 as PresetSlot);
       expect(r.ok).toBe(true);
-      expect(boundary.pending).toBe(null);
+      expect(State.boundary.pending).toBe(null);
     });
 
     it('calls askBoundary when RAM is dirty AND warnOnPresetSwitchDirty is true; "discard" proceeds', async () => {
-      await fetchPresetInfo(sess());
-      await saveActivePreset(sess());
+      await Presets.fetchPresetInfo(sess());
+      await Presets.saveActivePreset(sess());
       // Make dirty.
       liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
 
-      const pending = loadPresetSlot(sess(), 0 as PresetSlot);
+      const pending = Presets.loadPresetSlot(sess(), 0 as PresetSlot);
       // Yield so the runtime can call askBoundary.
       await Promise.resolve();
-      expect(boundary.pending).not.toBe(null);
-      resolveBoundary('discard');
+      expect(State.boundary.pending).not.toBe(null);
+      State.resolveBoundary('discard');
       const r = await pending;
       expect(r.ok).toBe(true);
-      expect(boundary.pending).toBe(null);
+      expect(State.boundary.pending).toBe(null);
     });
 
     it('skips askBoundary and proceeds when warnOnPresetSwitchDirty is false', async () => {
-      settings.warnOnPresetSwitchDirty = false;
-      await fetchPresetInfo(sess());
-      await saveActivePreset(sess());
+      State.settings.warnOnPresetSwitchDirty = false;
+      await Presets.fetchPresetInfo(sess());
+      await Presets.saveActivePreset(sess());
       liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
-      const r = await loadPresetSlot(sess(), 0 as PresetSlot);
+      const r = await Presets.loadPresetSlot(sess(), 0 as PresetSlot);
       expect(r.ok).toBe(true);
-      expect(boundary.pending).toBe(null);
+      expect(State.boundary.pending).toBe(null);
     });
 
     it('aborts (no wire load op) when boundary resolves with cancel', async () => {
-      await fetchPresetInfo(sess());
-      await saveActivePreset(sess());
+      await Presets.fetchPresetInfo(sess());
+      await Presets.saveActivePreset(sess());
       liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
-      const realDevice = activeSession()!.device;
+      const realDevice = State.activeSession()!.device;
       const origLoad = realDevice.loadPreset.bind(realDevice);
       let loadCalls = 0;
       (realDevice as any).loadPreset = async (slot: number) => { loadCalls++; return origLoad(slot as PresetSlot); };
       try {
-        const pending = loadPresetSlot(sess(), 0 as PresetSlot);
+        const pending = Presets.loadPresetSlot(sess(), 0 as PresetSlot);
         await Promise.resolve();
-        resolveBoundary('cancel');
+        State.resolveBoundary('cancel');
         const r = await pending;
         expect(r.ok).toBe(false);
         expect(loadCalls).toBe(0);
@@ -580,20 +562,20 @@ describe('runtime/presets', () => {
     });
 
     it('saves first when boundary resolves with save', async () => {
-      await fetchPresetInfo(sess());
+      await Presets.fetchPresetInfo(sess());
       const activeBefore = ps().active!;
-      await saveActivePreset(sess());
+      await Presets.saveActivePreset(sess());
       liveMirror().snapshot.bypass = !liveMirror().snapshot.bypass;
-      const realDevice = activeSession()!.device;
+      const realDevice = State.activeSession()!.device;
       const origLoad = realDevice.loadPreset.bind(realDevice);
       const origSave = realDevice.savePreset.bind(realDevice);
       const calls: string[] = [];
       (realDevice as any).loadPreset = async (slot: number) => { calls.push(`load(${slot})`); return origLoad(slot as PresetSlot); };
       (realDevice as any).savePreset = async (slot: number) => { calls.push(`save(${slot})`); return origSave(slot as PresetSlot); };
       try {
-        const pending = loadPresetSlot(sess(), 0 as PresetSlot);
+        const pending = Presets.loadPresetSlot(sess(), 0 as PresetSlot);
         await Promise.resolve();
-        resolveBoundary('save');
+        State.resolveBoundary('save');
         const r = await pending;
         expect(r.ok).toBe(true);
         // save(active) precedes load(0).
@@ -610,35 +592,35 @@ describe('runtime/presets', () => {
 
   describe('paste under output-config mode (V10 device)', () => {
     it('toasts that IO config was not applied in Independent mode, stays silent in WithPreset', async () => {
-      activeSession()?.dispose();
-      resetAppState();
+      State.activeSession()?.dispose();
+      State.resetAppState();
       await bootMock('rp2350', { wireVersion: 10 });
-      await fetchPresetInfo(sess());
-      await savePresetSlot(sess(), 1 as PresetSlot);
-      await copyActivePreset(sess());
+      await Presets.fetchPresetInfo(sess());
+      await Presets.savePresetSlot(sess(), 1 as PresetSlot);
+      await Presets.copyActivePreset(sess());
       const blob = sess().copySource.held!.blob;
-      await loadPresetSlot(sess(), 0 as PresetSlot);
-      await saveActivePreset(sess());
+      await Presets.loadPresetSlot(sess(), 0 as PresetSlot);
+      await Presets.saveActivePreset(sess());
 
-      clearNotices();
-      await setOutputConfigMode(sess(), OutputConfigMode.Independent);
-      let r = await pastePresetTo(sess(), blob);
+      State.clearNotices();
+      await Presets.setOutputConfigMode(sess(), OutputConfigMode.Independent);
+      let r = await Presets.pastePresetTo(sess(), blob);
       expect('ok' in r && r.ok).toBe(true);
-      expect(notices.list.some((n) => n.kind === 'info' && /not applied/i.test(n.message))).toBe(true);
+      expect(State.notices.list.some((n) => n.kind === 'info' && /not applied/i.test(n.message))).toBe(true);
 
-      clearNotices();
-      await setOutputConfigMode(sess(), OutputConfigMode.WithPreset);
-      r = await pastePresetTo(sess(), blob);
+      State.clearNotices();
+      await Presets.setOutputConfigMode(sess(), OutputConfigMode.WithPreset);
+      r = await Presets.pastePresetTo(sess(), blob);
       expect('ok' in r && r.ok).toBe(true);
-      expect(notices.list.some((n) => /not applied/i.test(n.message))).toBe(false);
+      expect(State.notices.list.some((n) => /not applied/i.test(n.message))).toBe(false);
     });
   });
 
   describe('preset transfer', () => {
     async function holdActive() {
-      await fetchPresetInfo(sess());
-      await savePresetSlot(sess(), 1 as PresetSlot);
-      await copyActivePreset(sess());
+      await Presets.fetchPresetInfo(sess());
+      await Presets.savePresetSlot(sess(), 1 as PresetSlot);
+      await Presets.copyActivePreset(sess());
       return sess();
     }
     function withCaps(s: ReadySession, patch: Record<string, unknown>) {
@@ -646,15 +628,15 @@ describe('runtime/presets', () => {
     }
 
     it('returns null when nothing is held', () => {
-      expect(exportHeldPreset(sess())).toBeNull();
+      expect(Presets.exportHeldPreset(sess())).toBeNull();
     });
 
     it('round-trips the held preset through export and decode', async () => {
       const s = await holdActive();
       const held = s.copySource.held!;
-      const out = exportHeldPreset(s)!;
+      const out = Presets.exportHeldPreset(s)!;
       expect(out.filename.endsWith('.dspi-preset.json')).toBe(true);
-      const r = decodeImportedPreset(s, out.text);
+      const r = Presets.decodeImportedPreset(s, out.text);
       expect(r.ok).toBe(true);
       if (r.ok) {
         expect(r.name).toBe(held.name);
@@ -665,20 +647,20 @@ describe('runtime/presets', () => {
 
     it('refuses a preset from a different hardware platform', async () => {
       const s = await holdActive();
-      const text = exportHeldPreset(s)!.text;
+      const text = Presets.exportHeldPreset(s)!.text;
       withCaps(s, { platformId: s.info.capabilities.platformId + 1 });
-      const r = decodeImportedPreset(s, text);
+      const r = Presets.decodeImportedPreset(s, text);
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.reason).toContain('different hardware platform');
     });
 
     it('refuses a blob whose own formatVersion differs from the device wire', async () => {
       const s = await holdActive();
-      const file = JSON.parse(exportHeldPreset(s)!.text) as Record<string, unknown>;
+      const file = JSON.parse(Presets.exportHeldPreset(s)!.text) as Record<string, unknown>;
       const claimed = s.info.capabilities.wire + 6;
       file.wire = claimed;                          // envelope agrees with the device; the blob does not
       withCaps(s, { wire: claimed });
-      const r = decodeImportedPreset(s, JSON.stringify(file));
+      const r = Presets.decodeImportedPreset(s, JSON.stringify(file));
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.reason).toContain(`wire ${claimed}`);
     });
@@ -693,17 +675,17 @@ describe('notify-driven load settle', () => {
   }
 
   function installSessionWith(device: unknown): ReadySession {
-    const s = makeReadySession(device as never);
-    dispatch({ t: 'synced', id: mintConnId(), session: s });
+    const s = State.makeReadySession(device as never);
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: s });
     return s;
   }
 
   beforeEach(() => {
-    settings.warnOnPresetSwitchDirty = false;
+    State.settings.warnOnPresetSwitchDirty = false;
   });
 
   afterEach(() => {
-    resetAppState();
+    State.resetAppState();
     vi.useRealTimers();
   });
 
@@ -716,7 +698,7 @@ describe('notify-driven load settle', () => {
       setMasterVolume: vi.fn(async () => {}),
     };
     const s = installSessionWith(device);
-    const p = loadPresetSlot(s, 2 as PresetSlot);
+    const p = Presets.loadPresetSlot(s, 2 as PresetSlot);
     // Re-read must be gated on the device's own event, not on elapsed time.
     await vi.advanceTimersByTimeAsync(150);
     expect(device.loadPreset).toHaveBeenCalled();
@@ -736,7 +718,7 @@ describe('notify-driven load settle', () => {
       setMasterVolume: vi.fn(async () => {}),
     };
     const s = installSessionWith(device);
-    const p = loadPresetSlot(s, 2 as PresetSlot);
+    const p = Presets.loadPresetSlot(s, 2 as PresetSlot);
     await vi.advanceTimersByTimeAsync(1000);       // PRESET_LOADED_TIMEOUT_MS
     const r = await p;
     expect('ok' in r && r.ok).toBe(true);
@@ -754,7 +736,7 @@ describe('notify-driven load settle', () => {
     const s = installSessionWith(device);
     s.presets.active = 1 as PresetSlot;
 
-    const p = loadPresetSlot(s, 2 as PresetSlot);
+    const p = Presets.loadPresetSlot(s, 2 as PresetSlot);
     await vi.advanceTimersByTimeAsync(150);
     s.notifyWaiters.notify({ kind: 'presetLoaded', seq: 1, slot: 2 });
     const r = await p;

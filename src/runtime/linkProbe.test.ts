@@ -1,10 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { startLinkProbe } from './linkProbe';
 import { ConnectionScope } from './connectionScope';
-import {
-  dispatch, mintConnId, makeReadySession, connection, resetAppState, notices, clearNotices,
-  type ConnId, type ReadySession,
-} from '@/state';
+import * as State from '@/state';
+import type { ConnId, ReadySession } from '@/state';
 import type { LoopClock } from '@/utils';
 
 // Manual clock: collects the latest callback; step() fires it. armed() reports
@@ -27,17 +25,17 @@ function manualClock(): LoopClock & { step(): void; armed(): boolean } {
 // (wireUpConnection passes the same scope into makeReadySession) -- killing
 // the session only tears it down via that shared scope.
 function installSession(device: unknown, opts?: { activate?: false }): { id: ConnId; s: ReadySession } {
-  const id = mintConnId();
+  const id = State.mintConnId();
   const scope = new ConnectionScope();
-  const s = makeReadySession(device as never, scope);
-  dispatch({ t: 'synced', id, session: s, activate: opts?.activate });
+  const s = State.makeReadySession(device as never, scope);
+  State.dispatch({ t: 'synced', id, session: s, activate: opts?.activate });
   return { id, s };
 }
 
 describe('startLinkProbe', () => {
   beforeEach(() => {
-    resetAppState();
-    clearNotices();
+    State.resetAppState();
+    State.clearNotices();
     vi.clearAllMocks();
   });
 
@@ -89,11 +87,11 @@ describe('startLinkProbe', () => {
     clock.step();
     await vi.waitFor(() => expect(close).toHaveBeenCalled());
     expect(getBypass).toHaveBeenCalledTimes(5);
-    expect(connection.phase).toBe('errored');
+    expect(State.connection.phase).toBe('errored');
     expect(s.alive).toBe(false);
     // No survivor was left active, so this is today's plain errored-hero path
     // -- no extra notice on top of it.
-    expect(notices.list.length).toBe(0);
+    expect(State.notices.list.length).toBe(0);
     stop();
   });
 
@@ -111,7 +109,7 @@ describe('startLinkProbe', () => {
     }
     clock.step();
     await vi.waitFor(() => expect(onKilled).toHaveBeenCalledTimes(1));
-    expect(connection.phase).toBe('errored');   // teardown had already landed
+    expect(State.connection.phase).toBe('errored');   // teardown had already landed
     stop();
   });
 
@@ -133,10 +131,10 @@ describe('startLinkProbe', () => {
     clock.step();
     await vi.waitFor(() => expect(close).toHaveBeenCalled());
 
-    expect(connection.phase).toBe('ready');   // the survivor's UI, not the error hero
-    expect(notices.list).toHaveLength(1);
-    expect(notices.list[0]).toMatchObject({ kind: 'error' });
-    expect(notices.list[0].message).toContain('DYING');
+    expect(State.connection.phase).toBe('ready');   // the survivor's UI, not the error hero
+    expect(State.notices.list).toHaveLength(1);
+    expect(State.notices.list[0]).toMatchObject({ kind: 'error' });
+    expect(State.notices.list[0].message).toContain('DYING');
     stop();
   });
 });

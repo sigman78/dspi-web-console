@@ -2,8 +2,8 @@
   import { boundary, presetsDirty } from '@/state';
   import { getSession } from '@/components/sessionContext';
   import { loadPresetSlot, revertActivePreset } from '@/runtime';
-  import { saveActivePresetNamed } from '@/components/presets/saveActivePresetNamed';
-  import PresetIcon from './presets/PresetIcon.svelte';
+  import { saveActivePresetNamed } from '@/components/noveau/presets/saveActivePresetNamed';
+  import PresetIcon from '@/components/noveau/presets/PresetIcon.svelte';
   import { noveauUi } from './noveauUi.svelte';
   import { PresetStartupMode } from '@/protocol';
   import { PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';

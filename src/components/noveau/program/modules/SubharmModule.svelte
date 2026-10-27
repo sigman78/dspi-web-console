@@ -2,7 +2,7 @@
   import { untrack } from 'svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import { Proc, SubharmSelect, outputChannelsWithIndex, maskChipItems, subharmReservePlan } from '@/domain';
+  import * as Domain from '@/domain';
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import ModuleFrame from './ModuleFrame.svelte';
@@ -16,23 +16,23 @@
   const enabled = $derived(sh?.enabled ?? false);
 
   const ext = $derived(s.device.capabilities.features.subharmExt);
-  const selectMode = $derived(sh?.selectMode ?? SubharmSelect.All);
-  const selectivityEditable = $derived(enabled && selectMode !== SubharmSelect.All);
+  const selectMode = $derived(sh?.selectMode ?? Domain.SubharmSelect.All);
+  const selectivityEditable = $derived(enabled && selectMode !== Domain.SubharmSelect.All);
   const offReason = $derived(enabled ? undefined : 'Subharmonic is off — enable it to edit these controls.');
-  const selectivityReason = $derived(enabled && selectMode === SubharmSelect.All ? 'Selectivity mode is ALL — pick PERCUSSIVE or SUSTAINED to use depth and hold.' : undefined);
+  const selectivityReason = $derived(enabled && selectMode === Domain.SubharmSelect.All ? 'Selectivity mode is ALL — pick PERCUSSIVE or SUSTAINED to use depth and hold.' : undefined);
   const reason = $derived(offReason ?? selectivityReason);
   const solo = $derived(s.telemetry.subharmSolo);
   const meter = $derived(s.telemetry.subharmMeter);
 
   const SELECT_MODE_OPTIONS = [
-    { value: SubharmSelect.All, label: 'ALL' },
-    { value: SubharmSelect.Percussive, label: 'PERCUSSIVE' },
-    { value: SubharmSelect.Sustained, label: 'SUSTAINED' },
-  ] as const satisfies ReadonlyArray<{ value: SubharmSelect; label: string }>;
+    { value: Domain.SubharmSelect.All, label: 'ALL' },
+    { value: Domain.SubharmSelect.Percussive, label: 'PERCUSSIVE' },
+    { value: Domain.SubharmSelect.Sustained, label: 'SUSTAINED' },
+  ] as const satisfies ReadonlyArray<{ value: Domain.SubharmSelect; label: string }>;
 
-  const outputChannels = $derived(outputChannelsWithIndex(snapshot));
+  const outputChannels = $derived(Domain.outputChannelsWithIndex(snapshot));
   const showMask = $derived(outputChannels.length > 1);
-  const outputItems = $derived(maskChipItems(outputChannels, 'Output'));
+  const outputItems = $derived(Domain.maskChipItems(outputChannels, 'Output'));
   const outputMask = $derived(sh?.outputMask ?? 0xFFFF);
   const maskedOutputs = $derived(outputChannels.filter((ch) => (outputMask & (1 << ch.index)) !== 0));
 
@@ -46,10 +46,10 @@
 
   const rawHeadroomDb = $derived(s.telemetry.subharmHeadroomDb);
   const headroomDb = $derived(rawHeadroomDb !== null && Number.isFinite(rawHeadroomDb) ? rawHeadroomDb : null);
-  const plan = $derived(snapshot ? subharmReservePlan(snapshot, headroomDb ?? 0) : []);
+  const plan = $derived(snapshot ? Domain.subharmReservePlan(snapshot, headroomDb ?? 0) : []);
   const reserved = $derived(enabled && (headroomDb ?? 0) > 0 && plan.length === 0);
   const headroomText = $derived(headroomDb === null ? '—' : `${formatSignedDb(headroomDb)} dB`);
-  const levelMax = $derived(Proc.subharmLevelMaxDb(ext));
+  const levelMax = $derived(Domain.Proc.subharmLevelMaxDb(ext));
 </script>
 
 <ModuleFrame
@@ -65,19 +65,19 @@
       onToggle={(i) => Runtime.toggleSubharmOutputChannel(s, i)} />
   {/if}
 
-  <SliderField lane="scrub" label="24–36 HZ" ariaLabel="Subharmonic 24 to 36 hertz band level" value={sh?.lowDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
-    min={Proc.SUBHARM_LEVEL_MIN_DB} max={levelMax} step={Proc.SUBHARM_LEVEL_STEP_DB}
+  <SliderField lane="scrub" label="24–36 HZ" ariaLabel="Subharmonic 24 to 36 hertz band level" value={sh?.lowDb ?? Domain.Proc.SUBHARM_LEVEL_MIN_DB}
+    min={Domain.Proc.SUBHARM_LEVEL_MIN_DB} max={levelMax} step={Domain.Proc.SUBHARM_LEVEL_STEP_DB}
     kind="dB-signed" precision={1} floorLabel="Off" disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setSubharmLow(s, v)} />
-  <SliderField lane="scrub" label="36–56 HZ" ariaLabel="Subharmonic 36 to 56 hertz band level" value={sh?.highDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
-    min={Proc.SUBHARM_LEVEL_MIN_DB} max={levelMax} step={Proc.SUBHARM_LEVEL_STEP_DB}
+  <SliderField lane="scrub" label="36–56 HZ" ariaLabel="Subharmonic 36 to 56 hertz band level" value={sh?.highDb ?? Domain.Proc.SUBHARM_LEVEL_MIN_DB}
+    min={Domain.Proc.SUBHARM_LEVEL_MIN_DB} max={levelMax} step={Domain.Proc.SUBHARM_LEVEL_STEP_DB}
     kind="dB-signed" precision={1} floorLabel="Off" disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setSubharmHigh(s, v)} />
   {#if ext}
-    <SliderField lane="scrub" label="56–80 HZ" ariaLabel="Subharmonic 56 to 80 hertz band level" value={sh?.topDb ?? Proc.SUBHARM_LEVEL_MIN_DB}
-      min={Proc.SUBHARM_LEVEL_MIN_DB} max={levelMax} step={Proc.SUBHARM_LEVEL_STEP_DB}
+    <SliderField lane="scrub" label="56–80 HZ" ariaLabel="Subharmonic 56 to 80 hertz band level" value={sh?.topDb ?? Domain.Proc.SUBHARM_LEVEL_MIN_DB}
+      min={Domain.Proc.SUBHARM_LEVEL_MIN_DB} max={levelMax} step={Domain.Proc.SUBHARM_LEVEL_STEP_DB}
       kind="dB-signed" precision={1} floorLabel="Off" disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setSubharmTop(s, v)} />
   {/if}
   <SliderField lane="scrub" label="LF BOOST" ariaLabel="Subharmonic LF boost" value={sh?.boostDb ?? 0}
-    min={Proc.SUBHARM_BOOST_MIN_DB} max={Proc.SUBHARM_BOOST_MAX_DB} step={Proc.SUBHARM_BOOST_STEP_DB}
+    min={Domain.Proc.SUBHARM_BOOST_MIN_DB} max={Domain.Proc.SUBHARM_BOOST_MAX_DB} step={Domain.Proc.SUBHARM_BOOST_STEP_DB}
     kind="dB" precision={1} disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setSubharmBoost(s, v)} />
 
   {#if ext}
@@ -88,13 +88,13 @@
         ariaLabel="Subharmonic selectivity mode" onChange={(v) => Runtime.setSubharmSelectMode(s, v)} /></span>
     </div>
     <SliderField lane="scrub" label="DEPTH" ariaLabel="Subharmonic selectivity depth" value={sh?.selectDepth ?? 100}
-      min={Proc.SUBHARM_DEPTH_MIN_PCT} max={Proc.SUBHARM_DEPTH_MAX_PCT} step={Proc.SUBHARM_DEPTH_STEP_PCT}
+      min={Domain.Proc.SUBHARM_DEPTH_MIN_PCT} max={Domain.Proc.SUBHARM_DEPTH_MAX_PCT} step={Domain.Proc.SUBHARM_DEPTH_STEP_PCT}
       kind="pct" precision={0} disabled={!selectivityEditable} disabledReason={reason} onChange={(v) => Runtime.setSubharmDepth(s, v)} />
     <SliderField lane="scrub" label="HOLD" ariaLabel="Subharmonic selectivity hold time" value={sh?.selectHoldMs ?? 150}
-      min={Proc.SUBHARM_HOLD_MIN_MS} max={Proc.SUBHARM_HOLD_MAX_MS} step={Proc.SUBHARM_HOLD_STEP_MS}
+      min={Domain.Proc.SUBHARM_HOLD_MIN_MS} max={Domain.Proc.SUBHARM_HOLD_MAX_MS} step={Domain.Proc.SUBHARM_HOLD_STEP_MS}
       kind="ms" precision={0} disabled={!selectivityEditable} disabledReason={reason} onChange={(v) => Runtime.setSubharmHold(s, v)} />
     <SliderField lane="scrub" label="CEILING" ariaLabel="Subharmonic sub ceiling" value={sh?.ceilingDb ?? 0}
-      min={Proc.SUBHARM_CEILING_MIN_DB} max={Proc.SUBHARM_CEILING_MAX_DB} step={Proc.SUBHARM_CEILING_STEP_DB}
+      min={Domain.Proc.SUBHARM_CEILING_MIN_DB} max={Domain.Proc.SUBHARM_CEILING_MAX_DB} step={Domain.Proc.SUBHARM_CEILING_STEP_DB}
       kind="dB-signed" precision={1} ceilLabel="Off" disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setSubharmCeiling(s, v)} />
     <div class="prow">
       <span class="prow-lbl">LINK PAIRS</span>

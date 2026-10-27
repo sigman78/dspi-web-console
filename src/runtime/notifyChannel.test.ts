@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { startNotifyChannel } from './notifyChannel';
-import { notices, clearNotices, dispatch, mintConnId, makeReadySession, resetAppState, type ReadySession } from '@/state';
+import * as State from '@/state';
+import type { ReadySession } from '@/state';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice } from '@/device/DspDevice';
 
@@ -43,8 +44,8 @@ function fakeNotifyingDevice(read: () => Promise<Uint8Array | null>): DspDevice 
 // Install a ready session for `dev` and return it (so the channel reads
 // session.device/session.mirror).
 function connect(dev: DspDevice): ReadySession {
-  const session = makeReadySession(dev);
-  dispatch({ t: 'synced', id: mintConnId(), session });
+  const session = State.makeReadySession(dev);
+  State.dispatch({ t: 'synced', id: State.mintConnId(), session });
   return session;
 }
 
@@ -66,8 +67,8 @@ function primeLive(mock: MockTransport): void {
   mock.pushNotify(new Uint8Array([0]));
 }
 
-beforeEach(() => { clearNotices(); });
-afterEach(() => { resetAppState(); });
+beforeEach(() => { State.clearNotices(); });
+afterEach(() => { State.resetAppState(); });
 
 describe('startNotifyChannel', () => {
   it('requests a reconcile on a BULK_INVALIDATED event', async () => {
@@ -90,7 +91,7 @@ describe('startNotifyChannel', () => {
     const stop = startNotifyChannel(session, m.clock);
     await m.tick();   // idle: crosses the backlog boundary
     await m.tick();   // live presetLoaded -- regression pin: live events still toast/reconcile
-    expect(notices.list.some((n) => n.kind === 'info' && n.message.includes('03'))).toBe(true);
+    expect(State.notices.list.some((n) => n.kind === 'info' && n.message.includes('03'))).toBe(true);
     expect(mir.peekReconcile().wanted).toBe(true);
     stop();
   });
@@ -500,7 +501,7 @@ describe('startNotifyChannel backlog drain', () => {
     const stop = startNotifyChannel(session, m.clock);
     await m.tick();   // backlog event 1: dropped
     await m.tick();   // backlog event 2: dropped
-    expect(notices.list.length).toBe(0);
+    expect(State.notices.list.length).toBe(0);
     expect(mir.peekReconcile().wanted).toBe(false);
     stop();
   });
@@ -557,10 +558,10 @@ describe('startNotifyChannel backlog drain', () => {
     const m = manualClock();
     const stop = startNotifyChannel(session, m.clock);
     for (let i = 0; i < 64; i++) await m.tick();   // drain the cap: all 64 dropped
-    expect(notices.list.length).toBe(0);
+    expect(State.notices.list.length).toBe(0);
     expect(mir.peekReconcile().wanted).toBe(false);
     await m.tick();   // 65th read: cap exceeded on the previous read -> this one is live
-    expect(notices.list.some((n) => n.kind === 'info')).toBe(true);
+    expect(State.notices.list.some((n) => n.kind === 'info')).toBe(true);
     expect(mir.peekReconcile().wanted).toBe(true);
     stop();
   });

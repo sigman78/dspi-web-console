@@ -2,7 +2,7 @@
   import { FilterType, inputIndexOf, filterCurve } from '@/domain';
   import { selectChannel } from '@/state';
   import { getSession } from '@/components/sessionContext';
-  import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
+  import BodePlot, { type BodeCurve } from '@/components/noveau/tune/BodePlot.svelte';
   import { chShade } from '@/styles/palette';
   import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import { formatSignedDb } from '@/components/chrome/format';

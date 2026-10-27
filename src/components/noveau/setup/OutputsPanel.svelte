@@ -2,9 +2,9 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import PinPicker from './PinPicker.svelte';
+  import PinPicker from '@/components/chrome/PinPicker.svelte';
   import SaveOutputConfigButton from './SaveOutputConfigButton.svelte';
-  import { stageOutputType, stageOutputDataPin, stageOutputPairEnabled, stagePdmEnabled, stagedCtrlPins } from '@/runtime';
+  import * as Runtime from '@/runtime';
   import { pickerCells, channelLayoutById, ChannelId, OutputSlotType, type I2sPairSlot } from '@/domain';
   import { Wire } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
@@ -13,7 +13,7 @@
 
   const snap = $derived(s.mirror.current);
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
-  const ctrlPins = $derived(stagedCtrlPins(s));
+  const ctrlPins = $derived(Runtime.stagedCtrlPins(s));
   const canResetPins = $derived(s.device.capabilities.features.pinResetDefault);
 
   function effOutputType(slot: number): number {
@@ -70,8 +70,8 @@
   // PDM's data pin can't be reassigned while the PDM output is active, so
   // resetting it there would only draw a firmware refusal -- skip it.
   function stageOutputPinsToDefault(): void {
-    for (let slot = 0; slot < numSpdif; slot++) stageOutputDataPin(s, slot, Wire.Const.PIN_RESET_TO_DEFAULT);
-    if (!pdmEnabled) stageOutputDataPin(s, pdmIndex, Wire.Const.PIN_RESET_TO_DEFAULT);
+    for (let slot = 0; slot < numSpdif; slot++) Runtime.stageOutputDataPin(s, slot, Wire.Const.PIN_RESET_TO_DEFAULT);
+    if (!pdmEnabled) Runtime.stageOutputDataPin(s, pdmIndex, Wire.Const.PIN_RESET_TO_DEFAULT);
   }
 
 </script>
@@ -96,7 +96,7 @@
               checked={pairEnabled(slot)}
               disabled={pairLockedByPdm(slot)}
               ariaLabel={`Out ${slot + 1} enable`}
-              onChange={(v) => stageOutputPairEnabled(s, slot as I2sPairSlot, v)}
+              onChange={(v) => Runtime.stageOutputPairEnabled(s, slot as I2sPairSlot, v)}
             />
           </span>
           <span class="stage-wrap" class:staged={s.staging.has(`outputType:${slot}`)}>
@@ -104,7 +104,7 @@
               value={effOutputType(slot)}
               options={TYPE_OPTS}
               ariaLabel={`Out ${slot + 1} output type`}
-              onChange={(t) => stageOutputType(s, slot as I2sPairSlot, t)}
+              onChange={(t) => Runtime.stageOutputType(s, slot as I2sPairSlot, t)}
             />
           </span>
           <span class="stage-wrap" class:staged={s.staging.has(`outputPin:${slot}`)} title={s.staging.has(`outputPin:${slot}`) ? `device: GP${snap.outputPins[slot]}` : undefined}>
@@ -112,7 +112,7 @@
               value={effOutputPin(slot)}
               cells={overlaySnap ? pickerCells(snap.platform.type, overlaySnap, ctrlPins, effOutputPin(slot)) : []}
               ariaLabel={`Out ${slot + 1} data pin`}
-              onChange={(p) => stageOutputDataPin(s, slot, p)}
+              onChange={(p) => Runtime.stageOutputDataPin(s, slot, p)}
             />
           </span>
         </div>
@@ -125,7 +125,7 @@
             checked={pdmEnabled}
             disabled={pdmLockedByOutputs}
             ariaLabel="PDM sub enable"
-            onChange={(v) => stagePdmEnabled(s, v)}
+            onChange={(v) => Runtime.stagePdmEnabled(s, v)}
           />
         </span>
         <span class="fixed">PDM</span>
@@ -135,7 +135,7 @@
             cells={overlaySnap ? pickerCells(snap.platform.type, overlaySnap, ctrlPins, effOutputPin(pdmIndex)) : []}
             ariaLabel="PDM sub data pin"
             disabled={pdmEnabled}
-            onChange={(p) => stageOutputDataPin(s, pdmIndex, p)}
+            onChange={(p) => Runtime.stageOutputDataPin(s, pdmIndex, p)}
           />
         </span>
       </div>

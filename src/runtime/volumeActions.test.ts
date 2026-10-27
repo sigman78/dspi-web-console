@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as actions from './volumeActions';
 import { attachTransportListeners } from './deviceService';
-import { connection, notices, clearNotices, dispatch, mintConnId, makeReadySession, activeSession, resetAppState } from '@/state';
+import * as State from '@/state';
 import { bootMock } from './boot';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
@@ -13,8 +13,8 @@ import { makeBulk } from '@test/fixtures/bulkFixtures';
 import { flushAllWrites as flushAllWritesFor } from './writes.svelte';
 import { ConnectionScope } from './connectionScope';
 
-const cancelWrites = () => { const s = activeSession(); if (s) s.writes.cancel(); };
-const flushAllWrites = () => flushAllWritesFor(activeSession()!);
+const cancelWrites = () => { const s = State.activeSession(); if (s) s.writes.cancel(); };
+const flushAllWrites = () => flushAllWritesFor(State.activeSession()!);
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 
@@ -77,17 +77,17 @@ function makeFakeDevice() {
 //     active session aborts its scope, which stops the loop.
 //   - device/writes scrub-lane registry + inflight counter.
 //     cancelWrites() (calls s.writes.cancel()) clears lanes and drops tokens.
-afterEach(() => { activeSession()?.dispose(); cancelWrites(); resetAppState(); });
+afterEach(() => { State.activeSession()?.dispose(); cancelWrites(); State.resetAppState(); });
 
 // Each beforeEach/test installs a ready session (dispatch synced) BEFORE touching
 // the mirror, so this resolves the active session's MirrorState.
-const liveMirror = () => activeSession()!.mirror;
+const liveMirror = () => State.activeSession()!.mirror;
 
 describe('actions wiring', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk({ masterVolumeDb: 0 }));
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession({} as never) });
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession({} as never) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
 
@@ -103,12 +103,12 @@ describe('actions wiring', () => {
       setMasterVolume: setMasterVolumeFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
     const snap = fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: -12 })));
     if (snap.userVolume) snap.userVolume.mute = false;
     liveMirror().replaceCurrent(snap);
 
-    actions.toggleMute(activeSession()!);
+    actions.toggleMute(State.activeSession()!);
     await vi.runAllTimersAsync();
 
     expect(setUserMuteFn).toHaveBeenCalledWith(true);
@@ -117,7 +117,7 @@ describe('actions wiring', () => {
     expect(liveMirror().current?.masterVolumeDb).toBe(-12);
 
     // toggle back
-    actions.toggleMute(activeSession()!);
+    actions.toggleMute(State.activeSession()!);
     await vi.runAllTimersAsync();
     expect(setUserMuteFn).toHaveBeenCalledWith(false);
     expect(liveMirror().current?.userVolume?.mute).toBe(false);
@@ -136,23 +136,23 @@ describe('actions wiring', () => {
     // one record in the registry, so a disconnect has no dormant record to
     // promote (the outer beforeEach's stub session has no live device behind
     // it, and promoting it would start real loops against it).
-    resetAppState();
-    const id = mintConnId();
+    State.resetAppState();
+    const id = State.mintConnId();
     const scope = new ConnectionScope();
-    dispatch({ t: 'synced', id, session: makeReadySession(device, scope) });
+    State.dispatch({ t: 'synced', id, session: State.makeReadySession(device, scope) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk({ masterVolumeDb: 0 }))));
     scope.onTeardown(attachTransportListeners(transport, id, scope));
 
-    actions.setMasterVolume(activeSession()!, -9);    // sends immediately
-    actions.setMasterVolume(activeSession()!, -6);    // parks behind the in-flight send
+    actions.setMasterVolume(State.activeSession()!, -9);    // sends immediately
+    actions.setMasterVolume(State.activeSession()!, -6);    // parks behind the in-flight send
     transport.emit('disconnect');             // should drop the parked send
 
     await vi.advanceTimersByTimeAsync(100);
     await vi.runAllTimersAsync();
 
     expect(calls).toEqual([-9]);              // parked -6 dropped
-    expect(connection.phase).toBe('noDevice');
-    expect(activeSession()).toBeNull();       // session (and its telemetry) dropped
+    expect(State.connection.phase).toBe('noDevice');
+    expect(State.activeSession()).toBeNull();       // session (and its telemetry) dropped
   });
 });
 
@@ -162,35 +162,35 @@ describe('actions — master volume mode', () => {
   });
 
   it('setMasterVolumeMode flips the directory cache value', async () => {
-    activeSession()!.presets.directory = {
+    State.activeSession()!.presets.directory = {
       occupiedSlotsSet: new Set(),
       startupMode: 0, defaultSlot: 0 as any, lastActiveSlot: null,
       outputConfigMode: 0 as any,
       masterVolumeMode: MasterVolumeMode.Independent,
     };
-    actions.setMasterVolumeMode(activeSession()!, MasterVolumeMode.WithPreset);
-    await vi.waitFor(() => expect(activeSession()!.presets.directory!.masterVolumeMode).toBe(MasterVolumeMode.WithPreset));
+    actions.setMasterVolumeMode(State.activeSession()!, MasterVolumeMode.WithPreset);
+    await vi.waitFor(() => expect(State.activeSession()!.presets.directory!.masterVolumeMode).toBe(MasterVolumeMode.WithPreset));
   });
 
   it('saveMasterVolumeBaseline warns with the device message on failure, and stays silent on success', async () => {
-    clearNotices();
+    State.clearNotices();
     const failDevice = initializedDevice({
       saveMasterVolume: async () => ({ ok: false as const, code: 3 as any, message: 'preset CRC failure' }),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(failDevice) });
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(failDevice) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
-    actions.saveMasterVolumeBaseline(activeSession()!);
+    actions.saveMasterVolumeBaseline(State.activeSession()!);
     await flushAllWrites();
-    expect(notices.list.some((n) => n.kind === 'warn' && /master volume/i.test(n.message) && /preset CRC failure/.test(n.message))).toBe(true);
+    expect(State.notices.list.some((n) => n.kind === 'warn' && /master volume/i.test(n.message) && /preset CRC failure/.test(n.message))).toBe(true);
 
-    clearNotices();
+    State.clearNotices();
     const okDevice = initializedDevice({ saveMasterVolume: async () => ({ ok: true as const, value: undefined }) });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(okDevice) });
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(okDevice) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
-    actions.saveMasterVolumeBaseline(activeSession()!);
+    actions.saveMasterVolumeBaseline(State.activeSession()!);
     await flushAllWrites();
-    expect(notices.list).toHaveLength(0);
-    expect(activeSession()!.presets.savedMasterVolumeDb).toBe(liveMirror().current!.masterVolumeDb);
+    expect(State.notices.list).toHaveLength(0);
+    expect(State.activeSession()!.presets.savedMasterVolumeDb).toBe(liveMirror().current!.masterVolumeDb);
   });
 });
 
@@ -211,8 +211,8 @@ interface ThinVerbCase {
 }
 
 const thinVerbCases: ThinVerbCase[] = [
-  { name: 'setBypass', method: 'setBypass', mirrorPath: 'bypass', lane: 'write', makeStub: (fn) => ({ setBypass: fn }), invoke: () => actions.setBypass(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.bypass, expected: true },
-  { name: 'setUserMute', method: 'setUserMute', mirrorPath: 'userVolume.mute', lane: 'write', makeStub: (fn) => ({ setUserMute: fn }), invoke: () => actions.setUserMute(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.userVolume?.mute, expected: true },
+  { name: 'setBypass', method: 'setBypass', mirrorPath: 'bypass', lane: 'write', makeStub: (fn) => ({ setBypass: fn }), invoke: () => actions.setBypass(State.activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.bypass, expected: true },
+  { name: 'setUserMute', method: 'setUserMute', mirrorPath: 'userVolume.mute', lane: 'write', makeStub: (fn) => ({ setUserMute: fn }), invoke: () => actions.setUserMute(State.activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.userVolume?.mute, expected: true },
 ];
 
 describe('thin verbs: device call + mirror patch (parameterized)', () => {
@@ -225,7 +225,7 @@ describe('thin verbs: device call + mirror patch (parameterized)', () => {
       ...c.makeStub(fn),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
 
     const before = c.read();

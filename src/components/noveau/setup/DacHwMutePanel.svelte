@@ -1,7 +1,7 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import PinPicker from './PinPicker.svelte';
+  import PinPicker from '@/components/chrome/PinPicker.svelte';
   import NumField from '@/components/chrome/NumField.svelte';
   import { stageDacMute, stageDacMuteEnabled, stagedCtrlPins, testDacHwMute } from '@/runtime';
   import { pickerCells } from '@/domain';

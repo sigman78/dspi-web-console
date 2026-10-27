@@ -5,7 +5,7 @@ import { deriveCapabilities } from '@/protocol/capabilities';
 import { Wire } from '@/protocol';
 import { tick } from 'svelte';
 import { ChannelId } from '@/domain';
-import { noveauUi } from '../noveauUi.svelte';
+import { noveauUi } from '@/components/noveau/noveauUi.svelte';
 import { settings } from '@/state';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
 

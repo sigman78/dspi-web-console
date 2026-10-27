@@ -1,12 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import {
-    type ValueKind,
-    defaultPrecisionFor,
-    defaultUnitFor,
-    formatValue,
-    parseAndClamp,
-  } from './valueFieldFormat';
+  import * as ValueFormat from './valueFieldFormat';
+  import type { ValueKind } from './valueFieldFormat';
 
   const {
     value,
@@ -41,14 +36,14 @@
     onChange: (v: number) => void;
   } = $props();
 
-  const effectivePrecision = $derived(precision ?? defaultPrecisionFor(kind));
+  const effectivePrecision = $derived(precision ?? ValueFormat.defaultPrecisionFor(kind));
   const effectiveStep = $derived(step ?? Math.pow(10, -effectivePrecision));
-  const effectiveUnit = $derived(defaultUnitFor(kind));
+  const effectiveUnit = $derived(ValueFormat.defaultUnitFor(kind));
 
   const atFloor = $derived(floorLabel !== undefined && value <= min);
   const atCeil = $derived(ceilLabel !== undefined && value >= max);
   const display = $derived(
-    atFloor ? floorLabel! : atCeil ? ceilLabel! : formatValue(kind, value, effectivePrecision),
+    atFloor ? floorLabel! : atCeil ? ceilLabel! : ValueFormat.formatValue(kind, value, effectivePrecision),
   );
 
   // Disabled overrides any tone tinting.
@@ -95,7 +90,7 @@
       suppressBlur = false;
       return;
     }
-    const next = parseAndClamp(draft, min, max, effectiveStep);
+    const next = ValueFormat.parseAndClamp(draft, min, max, effectiveStep);
     if (next === null) {
       if (fromEnter) {
         // Mark red + stay editing so the user sees their input was rejected.
@@ -113,7 +108,7 @@
 
   // Arrow keys on the focused field step the value through the normal commit.
   function step1(dir: 1 | -1, shift: boolean): void {
-    const next = parseAndClamp(String(value + dir * effectiveStep * (shift ? 10 : 1)), min, max, effectiveStep);
+    const next = ValueFormat.parseAndClamp(String(value + dir * effectiveStep * (shift ? 10 : 1)), min, max, effectiveStep);
     if (next !== null && next !== value) onChange(next);
   }
 

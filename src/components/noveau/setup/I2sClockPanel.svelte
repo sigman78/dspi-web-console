@@ -3,12 +3,9 @@
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import KV from '@/components/chrome/KV.svelte';
-  import PinPicker from './PinPicker.svelte';
-  import {
-    stageI2sBckPin, stageMckEnabled, stageMckPin, stageMckMultiplier,
-    stageI2sClockMode, stageI2sClockPinMode, stageI2sBckPinSlave,
-  } from '@/runtime';
-  import { validBckPins, validBckPinsSlave, pickerCells, pickerCellsFrom, OutputSlotType, liveCsPinConfigs, AudioInputSource, I2sSlaveClockState } from '@/domain';
+  import PinPicker from '@/components/chrome/PinPicker.svelte';
+  import * as Runtime from '@/runtime';
+  import * as Domain from '@/domain';
   import { Wire } from '@/protocol';
   import { formatRateKHz } from '@/utils';
   import { getSession } from '@/components/sessionContext';
@@ -17,13 +14,13 @@
 
   const snap = $derived(s.mirror.current);
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
-  const anyI2s = $derived(snap?.i2s?.outputSlotTypes.some((t) => t === OutputSlotType.I2s) ?? false);
+  const anyI2s = $derived(snap?.i2s?.outputSlotTypes.some((t) => t === Domain.OutputSlotType.I2s) ?? false);
   const rate = $derived(s.telemetry.info?.sampleRateHz ?? 0);
   const allow256 = $derived(rate < 96000);
-  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
+  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: Domain.liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
   const features = $derived(s.device.capabilities.features);
   const slaveStatus = $derived(s.telemetry.i2sSlaveStatus);
-  const isI2sSource = $derived((snap?.inputConfig.source ?? AudioInputSource.Usb) === AudioInputSource.I2s);
+  const isI2sSource = $derived((snap?.inputConfig.source ?? Domain.AudioInputSource.Usb) === Domain.AudioInputSource.I2s);
 
   const effBckPin = $derived(snap ? s.staging.valueOf('bckPin', snap.i2s.bckPin) : 0);
   const effMckEnabled = $derived(snap ? s.staging.valueOf('mckEnabled', snap.i2s.mckEnabled) : false);
@@ -35,12 +32,12 @@
 
   const bckCells = $derived(
     overlaySnap
-      ? pickerCellsFrom(overlaySnap.platform.type, overlaySnap, ctrlPins, validBckPins(overlaySnap.platform.type, overlaySnap, ctrlPins), effBckPin, (p) => `needs GP${p + 1} free`)
+      ? Domain.pickerCellsFrom(overlaySnap.platform.type, overlaySnap, ctrlPins, Domain.validBckPins(overlaySnap.platform.type, overlaySnap, ctrlPins), effBckPin, (p) => `needs GP${p + 1} free`)
       : [],
   );
   const slaveBckCells = $derived(
     overlaySnap
-      ? pickerCellsFrom(overlaySnap.platform.type, overlaySnap, ctrlPins, validBckPinsSlave(overlaySnap.platform.type, overlaySnap, ctrlPins), effBckPinSlave, (p) => `needs GP${p + 1} free`)
+      ? Domain.pickerCellsFrom(overlaySnap.platform.type, overlaySnap, ctrlPins, Domain.validBckPinsSlave(overlaySnap.platform.type, overlaySnap, ctrlPins), effBckPinSlave, (p) => `needs GP${p + 1} free`)
       : [],
   );
   const multOpts = $derived([
@@ -57,15 +54,15 @@
   ];
 
   const SLAVE_STATE_LABELS: Record<number, string> = {
-    [I2sSlaveClockState.Inactive]:  'INACTIVE',
-    [I2sSlaveClockState.Acquiring]: 'ACQUIRING',
-    [I2sSlaveClockState.Relocking]: 'RELOCKING',
-    [I2sSlaveClockState.Locked]:    'LOCKED',
+    [Domain.I2sSlaveClockState.Inactive]:  'INACTIVE',
+    [Domain.I2sSlaveClockState.Acquiring]: 'ACQUIRING',
+    [Domain.I2sSlaveClockState.Relocking]: 'RELOCKING',
+    [Domain.I2sSlaveClockState.Locked]:    'LOCKED',
   };
 
   function slaveStateTone(state: number): 'ok' | 'off' | undefined {
-    if (state === I2sSlaveClockState.Locked) return 'ok';
-    if (state === I2sSlaveClockState.Acquiring || state === I2sSlaveClockState.Relocking) return undefined;
+    if (state === Domain.I2sSlaveClockState.Locked) return 'ok';
+    if (state === Domain.I2sSlaveClockState.Acquiring || state === Domain.I2sSlaveClockState.Relocking) return undefined;
     return 'off';
   }
 
@@ -73,9 +70,9 @@
   // mode) -- staging a reset there would only draw a firmware OUTPUT_ACTIVE
   // refusal on APPLY.
   function stageClockPinsToDefault(): void {
-    if (!anyI2s) stageI2sBckPin(s, Wire.Const.PIN_RESET_TO_DEFAULT);
-    if (!effMckEnabled) stageMckPin(s, Wire.Const.PIN_RESET_TO_DEFAULT);
-    if (features.i2sSlaveClock && effClockPinMode === 1) stageI2sBckPinSlave(s, Wire.Const.PIN_RESET_TO_DEFAULT);
+    if (!anyI2s) Runtime.stageI2sBckPin(s, Wire.Const.PIN_RESET_TO_DEFAULT);
+    if (!effMckEnabled) Runtime.stageMckPin(s, Wire.Const.PIN_RESET_TO_DEFAULT);
+    if (features.i2sSlaveClock && effClockPinMode === 1) Runtime.stageI2sBckPinSlave(s, Wire.Const.PIN_RESET_TO_DEFAULT);
   }
 
 </script>
@@ -96,7 +93,7 @@
             cells={bckCells}
             ariaLabel="I2S BCK pin"
             disabled={anyI2s}
-            onChange={(p) => stageI2sBckPin(s, p)}
+            onChange={(p) => Runtime.stageI2sBckPin(s, p)}
           />
         </span>
         <span class="hint">{effBckPin === Wire.Const.PIN_RESET_TO_DEFAULT ? 'LRCLK —' : `LRCLK GP${effBckPin + 1}`}</span>
@@ -111,16 +108,16 @@
           <ToggleSwitch
             checked={effMckEnabled}
             ariaLabel={effMckEnabled ? 'Disable MCK' : 'Enable MCK'}
-            onChange={(v) => stageMckEnabled(s, v)}
+            onChange={(v) => Runtime.stageMckEnabled(s, v)}
           />
         </span>
         <span class="stage-wrap" class:staged={s.staging.has('mckPin')} title={s.staging.has('mckPin') ? `device: GP${snap.i2s.mckPin}` : undefined}>
           <PinPicker
             value={effMckPin}
-            cells={pickerCells(snap.platform.type, overlaySnap, ctrlPins, effMckPin)}
+            cells={Domain.pickerCells(snap.platform.type, overlaySnap, ctrlPins, effMckPin)}
             ariaLabel="MCK pin"
             disabled={effMckEnabled}
-            onChange={(p) => stageMckPin(s, p)}
+            onChange={(p) => Runtime.stageMckPin(s, p)}
           />
         </span>
       </div>
@@ -135,7 +132,7 @@
             value={effMckMultiplier}
             options={multOpts}
             ariaLabel="MCK multiplier"
-            onChange={(v) => stageMckMultiplier(s, v)}
+            onChange={(v) => Runtime.stageMckMultiplier(s, v)}
           />
         </span>
         {#if !allow256}<span class="hint">256× unavailable ≥96 kHz</span>{/if}
@@ -149,7 +146,7 @@
               value={effClockMode}
               options={clockModeOpts}
               ariaLabel="I2S clock mode"
-              onChange={(v) => stageI2sClockMode(s, v)}
+              onChange={(v) => Runtime.stageI2sClockMode(s, v)}
             />
           </span>
         </div>
@@ -164,7 +161,7 @@
               value={effClockPinMode}
               options={clockPinModeOpts}
               ariaLabel="I2S clock pin mode"
-              onChange={(v) => stageI2sClockPinMode(s, v)}
+              onChange={(v) => Runtime.stageI2sClockPinMode(s, v)}
             />
           </span>
         </div>
@@ -176,7 +173,7 @@
                 value={effBckPinSlave}
                 cells={slaveBckCells}
                 ariaLabel="I2S BCK pin (slave)"
-                onChange={(p) => stageI2sBckPinSlave(s, p)}
+                onChange={(p) => Runtime.stageI2sBckPinSlave(s, p)}
               />
             </span>
             <span class="hint">{effBckPinSlave === Wire.Const.PIN_RESET_TO_DEFAULT ? 'LRCLK —' : `LRCLK GP${effBckPinSlave + 1}`}</span>

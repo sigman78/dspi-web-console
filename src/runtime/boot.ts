@@ -8,11 +8,8 @@ import { withWireMonitor } from '@/transport/withWireMonitor';
 import { formatDeviceInfo, wireMonitorEnabled } from '@/protocol/wireMonitor';
 import { attachTransportListeners, wireUpConnection, activateSession } from './deviceService';
 import { ConnectionScope } from './connectionScope';
-import {
-  settings, dispatch, mintConnId, activeRecord, recordBySerial, adoptionInProgress,
-  noteAdoptFailure, pushNotice,
-  type ConnId, type SessionErrorKind,
-} from '@/state';
+import * as State from '@/state';
+import type { ConnId, SessionErrorKind } from '@/state';
 import { Log, errMessage } from '@/utils';
 
 // Per-call ceiling on USB control transfers. Without it, a frozen firmware leaves
@@ -44,7 +41,7 @@ export function classifyConnectError(err: unknown): { message: string; errorKind
 
 export function reportConnectError(id: ConnId, err: unknown): void {
   const { message, errorKind } = classifyConnectError(err);
-  dispatch({ t: 'failed', id, message, errorKind });
+  State.dispatch({ t: 'failed', id, message, errorKind });
 }
 
 async function createBoundDevice(
@@ -88,8 +85,8 @@ async function createBoundDevice(
 // the right connection.
 
 export async function connectRequested(): Promise<void> {
-  if (adoptionInProgress() || inflightBoot) return;
-  const id = mintConnId();
+  if (State.adoptionInProgress() || inflightBoot) return;
+  const id = State.mintConnId();
   const scope = new ConnectionScope();
   // Set once the picker resolves: distinguishes a post-picker adoption
   // failure (badge- or notice-worthy while a device is live) from a picker
@@ -97,18 +94,18 @@ export async function connectRequested(): Promise<void> {
   let devicePicked = false;
   let pickedSerial: string | null = null;
   try {
-    dispatch({ t: 'requested', id });
+    State.dispatch({ t: 'requested', id });
     const transport = new WebUsbTransport();
     const picked = await transport.requestDevice();
     devicePicked = true;
     pickedSerial = picked.serialNumber ?? null;
-    const existing = picked.serialNumber ? recordBySerial(picked.serialNumber) : null;
+    const existing = picked.serialNumber ? State.recordBySerial(picked.serialNumber) : null;
     if (existing) {
       // We already hold this device's session -- switch to it instead of
       // claiming its interface a second time. This attempt never got past the
       // picker, so drop it back to idle rather than leaving it stuck
       // 'connecting'.
-      dispatch({ t: 'removed', id });
+      State.dispatch({ t: 'removed', id });
       scope.abort();
       await activateSession(existing.id);
       return;
@@ -122,10 +119,10 @@ export async function connectRequested(): Promise<void> {
       // While another device stays live the failed dispatch above is
       // invisible by design; give the failure a badge, or a notice when the
       // picked device carried no serial to key a badge by.
-      if (devicePicked && activeRecord() !== null) {
+      if (devicePicked && State.activeRecord() !== null) {
         const classified = classifyConnectError(err);
-        if (pickedSerial !== null) noteAdoptFailure({ serial: pickedSerial, ...classified });
-        else pushNotice('error', `Couldn't connect the picked device: ${classified.message}`);
+        if (pickedSerial !== null) State.noteAdoptFailure({ serial: pickedSerial, ...classified });
+        else State.pushNotice('error', `Couldn't connect the picked device: ${classified.message}`);
       }
       scope.abort();
     }
@@ -138,7 +135,7 @@ export async function bootMock(
   opts: Omit<MockOptions, 'platform'> = {},
   connectOpts?: { activate?: false },
 ): Promise<void> {
-  const id = mintConnId();
+  const id = State.mintConnId();
   const scope = new ConnectionScope();
   try {
     const transport = new MockTransport({ platform, ...opts });
@@ -178,11 +175,11 @@ async function adoptGrantedDevices(granted: readonly USBDevice[]): Promise<void>
   // Captured before adopting: the first device's own adoption already
   // overwrites settings.lastSerial (it becomes active by default), so reading
   // it after the loop would always name whichever device came up first.
-  const wantSerial = settings.lastSerial;
+  const wantSerial = State.settings.lastSerial;
   let adopted = 0;
   const failures: { id: ConnId; serial: string | null; err: unknown }[] = [];
   for (const [i, usbDevice] of granted.entries()) {
-    const id = mintConnId();
+    const id = State.mintConnId();
     const scope = new ConnectionScope();
     try {
       const transport = new WebUsbTransport(usbDevice);
@@ -200,12 +197,12 @@ async function adoptGrantedDevices(granted: readonly USBDevice[]): Promise<void>
     if (last) reportConnectError(last.id, last.err);
   } else {
     for (const f of failures) {
-      if (f.serial !== null) noteAdoptFailure({ serial: f.serial, ...classifyConnectError(f.err) });
-      else pushNotice('error', `A granted device failed to connect: ${errMessage(f.err)}`);
+      if (f.serial !== null) State.noteAdoptFailure({ serial: f.serial, ...classifyConnectError(f.err) });
+      else State.pushNotice('error', `A granted device failed to connect: ${errMessage(f.err)}`);
     }
   }
-  const target = wantSerial ? recordBySerial(wantSerial) : null;
-  if (target && activeRecord()?.id !== target.id) await activateSession(target.id);
+  const target = wantSerial ? State.recordBySerial(wantSerial) : null;
+  if (target && State.activeRecord()?.id !== target.id) await activateSession(target.id);
 }
 
 export async function bootReal(): Promise<void> {
@@ -229,7 +226,7 @@ export async function bootReal(): Promise<void> {
 // `activate: false`: the reducer activates it only if nothing else is active,
 // so a live device never loses focus to a background replug.
 async function adoptReconnectedDevice(usbDevice: USBDevice): Promise<void> {
-  const id = mintConnId();
+  const id = State.mintConnId();
   const scope = new ConnectionScope();
   try {
     const transport = new WebUsbTransport(usbDevice);
@@ -237,15 +234,15 @@ async function adoptReconnectedDevice(usbDevice: USBDevice): Promise<void> {
     await wireUpConnection(device, scope, id, { activate: false });
   } catch (err) {
     if (!scope.aborted) scope.abort();
-    if (activeRecord() === null) {
+    if (State.activeRecord() === null) {
       // With nothing else live, wireUpConnection's own failed dispatch has
       // already painted the hero -- unclassified. Re-report so the tailored
       // advice (device in use, unsupported firmware) isn't lost on this path.
       reportConnectError(id, err);
     } else if (usbDevice.serialNumber) {
-      noteAdoptFailure({ serial: usbDevice.serialNumber, ...classifyConnectError(err) });
+      State.noteAdoptFailure({ serial: usbDevice.serialNumber, ...classifyConnectError(err) });
     } else {
-      pushNotice('error', `Couldn't reconnect a device: ${errMessage(err)}`);
+      State.pushNotice('error', `Couldn't reconnect a device: ${errMessage(err)}`);
     }
     throw err;
   }
@@ -255,8 +252,8 @@ export function registerNavigatorReconnect(): void {
   if (typeof navigator === 'undefined' || !('usb' in navigator)) return;
   navigator.usb.addEventListener('connect', (event: USBConnectionEvent) => {
     if (!matchesDspi(event.device)) return;
-    if (event.device.serialNumber && recordBySerial(event.device.serialNumber)) return;   // already adopted
-    if (inflightBoot || adoptionInProgress()) return;
+    if (event.device.serialNumber && State.recordBySerial(event.device.serialNumber)) return;   // already adopted
+    if (inflightBoot || State.adoptionInProgress()) return;
     Log.info('reconnect', 'granted device re-enumerated, adopting in the background');
     // Failures never paint over a live device (the reducer's active-session
     // rule hides the failed dispatch); when idle, adoptReconnectedDevice

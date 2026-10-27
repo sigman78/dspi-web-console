@@ -1,8 +1,8 @@
 <script lang="ts">
-  import BandRow from '@/components/eq/BandRow.svelte';
+  import BandRow from '@/components/noveau/tune/BandRow.svelte';
   import { FilterType, offeredTypes, type ChannelModel } from '@/domain';
   import { getSession } from '@/components/sessionContext';
-  import { noveauUi } from '../noveauUi.svelte';
+  import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import InspectorSection from './InspectorSection.svelte';
   import { patchBand } from './bandOps';
 

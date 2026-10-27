@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { applyAutoEqEntry, preampTargetLabel } from './autoEqApply';
-import { dispatch, mintConnId, makeReadySession, activeSession, resetAppState } from '@/state';
+import * as State from '@/state';
 import { parseBulkParams } from '@/protocol';
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { createHardwareProfile, FilterType, PlatformType, type AutoEqEntry } from '@/domain';
@@ -30,17 +30,17 @@ function initializedDevice(methods: Partial<DspDevice>, wireVersion: 10 | 16 = 1
   return { ...base, ...methods } as DspDevice;
 }
 
-const liveMirror = () => activeSession()!.mirror;
-const cancelWrites = () => { const s = activeSession(); if (s) s.writes.cancel(); };
+const liveMirror = () => State.activeSession()!.mirror;
+const cancelWrites = () => { const s = State.activeSession(); if (s) s.writes.cancel(); };
 
 const flatEntry = (preamp: number): AutoEqEntry => ({
   id: 'x', manufacturer: 'X', model: '', source: 'user', formFactor: 'custom', preamp, filters: [],
 });
 
 afterEach(() => {
-  activeSession()?.dispose();
+  State.activeSession()?.dispose();
   cancelWrites();
-  resetAppState();
+  State.resetAppState();
   vi.useRealTimers();
 });
 
@@ -53,7 +53,7 @@ function harness(methods: Partial<DspDevice> = {}, wireVersion: 10 | 16 = 10) {
     getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     ...methods,
   }, wireVersion);
-  dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
+  State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
   liveMirror().replaceCurrent(fromBulkParams(testHardware, bulk));
   return device;
 }
@@ -68,7 +68,7 @@ describe('applyAutoEqEntry', () => {
       ...flatEntry(-4),
       filters: [{ type: 'peaking', freq: 1000, q: 1, gain: 3 }],
     };
-    applyAutoEqEntry(activeSession()!, inputId, entry, false);
+    applyAutoEqEntry(State.activeSession()!, inputId, entry, false);
     await vi.runAllTimersAsync();
     expect(device.setFilter).toHaveBeenCalledTimes(10);
     expect(device.setInputPreamp).toHaveBeenCalledWith(0, -4);
@@ -78,7 +78,7 @@ describe('applyAutoEqEntry', () => {
   it('routes preamp to setOutputGain (output trim) for an output channel', async () => {
     const device = harness();
     const out = liveMirror().current!.outputs[0];
-    applyAutoEqEntry(activeSession()!, out.id, flatEntry(-2), false);
+    applyAutoEqEntry(State.activeSession()!, out.id, flatEntry(-2), false);
     await vi.runAllTimersAsync();
     expect(device.setOutputGain).toHaveBeenCalledWith(out.wireIndex, -2);
     expect(device.setInputPreamp).not.toHaveBeenCalled();
@@ -87,7 +87,7 @@ describe('applyAutoEqEntry', () => {
   it('applies to the stereo twin too when includePairTwin is true', async () => {
     const device = harness();
     const inputId = liveMirror().current!.channels.find((c) => !c.isOutput)!.id;
-    applyAutoEqEntry(activeSession()!, inputId, flatEntry(0), true);
+    applyAutoEqEntry(State.activeSession()!, inputId, flatEntry(0), true);
     await vi.runAllTimersAsync();
     expect(device.setFilter).toHaveBeenCalledTimes(20);
     expect(device.setInputPreamp).toHaveBeenCalledTimes(2);
@@ -96,7 +96,7 @@ describe('applyAutoEqEntry', () => {
   it('does not touch a channel with no stereo twin beyond the target itself', async () => {
     const device = harness();
     const pdmId = liveMirror().current!.channels.find((c) => c.shortName === 'PDM')!.id;
-    applyAutoEqEntry(activeSession()!, pdmId, flatEntry(0), true);
+    applyAutoEqEntry(State.activeSession()!, pdmId, flatEntry(0), true);
     await vi.runAllTimersAsync();
     expect(device.setFilter).toHaveBeenCalledTimes(10);
   });
@@ -112,7 +112,7 @@ describe('applyAutoEqEntry', () => {
   it('flattens first-order bands when the device lacks the firstOrderEq capability', async () => {
     const device = harness({}, 10);
     const inputId = liveMirror().current!.channels.find((c) => !c.isOutput)!.id;
-    applyAutoEqEntry(activeSession()!, inputId, firstOrderEntry(), false);
+    applyAutoEqEntry(State.activeSession()!, inputId, firstOrderEntry(), false);
     await vi.runAllTimersAsync();
     const calls = vi.mocked(device.setFilter).mock.calls;
     expect(calls.find((c) => c[1] === 0)![2].type).toBe(FilterType.Flat);
@@ -122,7 +122,7 @@ describe('applyAutoEqEntry', () => {
   it('passes first-order bands through on a firstOrderEq-capable device', async () => {
     const device = harness({}, 16);
     const inputId = liveMirror().current!.channels.find((c) => !c.isOutput)!.id;
-    applyAutoEqEntry(activeSession()!, inputId, firstOrderEntry(), false);
+    applyAutoEqEntry(State.activeSession()!, inputId, firstOrderEntry(), false);
     await vi.runAllTimersAsync();
     const calls = vi.mocked(device.setFilter).mock.calls;
     expect(calls.find((c) => c[1] === 0)![2].type).toBe(FilterType.LowShelf1);

@@ -1,7 +1,7 @@
 // Resolves the raw ?mock token (see src/devOptions.ts) into a concrete mock
 // boot config. Split out of devOptions.ts because it needs Wire.MAX_WIRE_VERSION,
 // and devOptions.ts must stay import-free (src/utils/log.ts depends on it).
-import * as Wire from './protocol/wireTypes';
+import * as Wire from '@/protocol/wireTypes';
 import { mockToken, mockChip, mockSysClockFallback, mockCsFull } from './devOptions';
 import type { MockOptions } from '@/transport/MockTransport';
 

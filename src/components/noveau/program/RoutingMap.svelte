@@ -3,7 +3,7 @@
   import { selectChannel, settings } from '@/state';
   import { chShade } from '@/styles/palette';
   import { getSession } from '@/components/sessionContext';
-  import { noveauUi } from '../noveauUi.svelte';
+  import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import { formatSignedDb } from '@/components/chrome/format';
   import CrosspointPopover from './CrosspointPopover.svelte';
 

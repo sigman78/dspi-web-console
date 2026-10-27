@@ -9,7 +9,7 @@
   // CsIrCommands does for its own sub-slots.
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { formatI2cAddr } from '@/components/chrome/format';
-  import PinPicker from './PinPicker.svelte';
+  import PinPicker from '@/components/chrome/PinPicker.svelte';
   import CsIrCommands from './CsIrCommands.svelte';
   import CsSlotCard from './CsSlotCard.svelte';
   import { defaultUnitFor } from '@/components/chrome/valueFieldFormat';

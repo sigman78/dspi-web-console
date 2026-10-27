@@ -5,7 +5,8 @@
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import ValueField from '@/components/chrome/ValueField.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
-  import { ChannelId, Mix, OutputSlotType, Proc, slotForOutputChannel, type OutputModel } from '@/domain';
+  import * as Domain from '@/domain';
+  import type { OutputModel } from '@/domain';
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import InspectorSection from './InspectorSection.svelte';
@@ -19,17 +20,17 @@
 
   // Same projection the matrix header uses, but available for disabled outputs too.
   const typeLabel = $derived.by(() => {
-    if (output.id === ChannelId.Pdm) return 'PDM';
-    const pair = slotForOutputChannel(output.id);
+    if (output.id === Domain.ChannelId.Pdm) return 'PDM';
+    const pair = Domain.slotForOutputChannel(output.id);
     if (pair === null || !snap) return output.shortName;
-    return snap.i2s.outputSlotTypes[pair] === OutputSlotType.I2s ? 'I2S' : 'SPDIF';
+    return snap.i2s.outputSlotTypes[pair] === Domain.OutputSlotType.I2s ? 'I2S' : 'SPDIF';
   });
   const lim = $derived(snap?.limiter[slot]);
   const gr = $derived(s.telemetry.limiterMeterDb?.[slot]);
   const showProcs = $derived(features.loudnessOutputMask || features.psybass || features.subharm);
   const showLimiter = $derived(features.limiter && lim !== undefined);
 
-  const LINK_OPTIONS = Array.from({ length: Proc.LIMITER_LINK_GROUP_MAX + 1 }, (_, i) => ({
+  const LINK_OPTIONS = Array.from({ length: Domain.Proc.LIMITER_LINK_GROUP_MAX + 1 }, (_, i) => ({
     value: i,
     label: i === 0 ? '—' : String(i),
   }));
@@ -57,9 +58,9 @@
           holdKey={output.id}
           label="TRIM"
           value={output.gainDb}
-          min={Mix.OUTPUT_GAIN_MIN_DB}
-          max={Mix.OUTPUT_GAIN_MAX_DB}
-          step={Mix.OUTPUT_GAIN_STEP_DB}
+          min={Domain.Mix.OUTPUT_GAIN_MIN_DB}
+          max={Domain.Mix.OUTPUT_GAIN_MAX_DB}
+          step={Domain.Mix.OUTPUT_GAIN_STEP_DB}
           kind="dB-signed"
           tone="signed"
           onChange={(v) => Runtime.setOutputGain(s, slot, v)}
@@ -69,9 +70,9 @@
           <span class="prow-ctl prow-fld">
             <ValueField
               kind="ms"
-              min={Mix.OUTPUT_DELAY_MIN_MS}
-              max={Mix.OUTPUT_DELAY_MAX_MS}
-              step={Mix.OUTPUT_DELAY_STEP_MS}
+              min={Domain.Mix.OUTPUT_DELAY_MIN_MS}
+              max={Domain.Mix.OUTPUT_DELAY_MAX_MS}
+              step={Domain.Mix.OUTPUT_DELAY_STEP_MS}
               value={output.delayMs}
               onChange={(v) => Runtime.setOutputDelay(s, slot, v)}
             />
@@ -105,9 +106,9 @@
               <ValueField
                 kind="dB-signed"
                 precision={1}
-                min={Proc.LIMITER_THRESHOLD_MIN_DB}
-                max={Proc.LIMITER_THRESHOLD_MAX_DB}
-                step={Proc.LIMITER_THRESHOLD_STEP_DB}
+                min={Domain.Proc.LIMITER_THRESHOLD_MIN_DB}
+                max={Domain.Proc.LIMITER_THRESHOLD_MAX_DB}
+                step={Domain.Proc.LIMITER_THRESHOLD_STEP_DB}
                 value={lim.thresholdDb}
                 disabled={!lim.enabled}
                 onChange={(v) => Runtime.setLimiterThreshold(s, slot, v)}
@@ -120,9 +121,9 @@
               <ValueField
                 kind="ms"
                 precision={0}
-                min={Proc.LIMITER_RELEASE_MIN_MS}
-                max={Proc.LIMITER_RELEASE_MAX_MS}
-                step={Proc.LIMITER_RELEASE_STEP_MS}
+                min={Domain.Proc.LIMITER_RELEASE_MIN_MS}
+                max={Domain.Proc.LIMITER_RELEASE_MAX_MS}
+                step={Domain.Proc.LIMITER_RELEASE_STEP_MS}
                 value={lim.releaseMs}
                 disabled={!lim.enabled}
                 onChange={(v) => Runtime.setLimiterRelease(s, slot, v)}

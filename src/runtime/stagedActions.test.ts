@@ -3,13 +3,7 @@ import { bootMock } from './boot';
 import { activeSession, clearNotices, resetAppState } from '@/state';
 import { AudioInputSource, SysClockMode, SYS_CLOCK_VREG_DEFAULT, type SysClockStatus } from '@/domain';
 import { Wire } from '@/protocol';
-import {
-  stageInputSource, stageI2sRxPin, stageI2sInputChannels, stageMckEnabled,
-  stageI2sClockMode, stageI2sClockPinMode, stageI2sBckPinSlave,
-  stageOutputDataPin, stageMckPin,
-  stageAdatEnabled, stageAdatInputEnabled, stageAdatInputPin, stageDacMute, stageDacMuteEnabled, stageOutputPairEnabled, stagePdmEnabled,
-  stageUart, stageUartEnabled, stageSysClockMode, stageSysClockVreg,
-} from './stagedActions';
+import * as Staged from './stagedActions';
 import * as SystemActions from './systemActions';
 
 const { PIN_RESET_TO_DEFAULT } = Wire.Const;
@@ -31,7 +25,7 @@ describe('runtime/stagedActions', () => {
       const target = live === AudioInputSource.Spdif ? AudioInputSource.Usb : AudioInputSource.Spdif;
       const spy = vi.spyOn(s.device, 'setInputSource');
 
-      stageInputSource(s, target);
+      Staged.stageInputSource(s, target);
       expect(s.staging.has('inputSource')).toBe(true);
       expect(spy).not.toHaveBeenCalled();
 
@@ -46,9 +40,9 @@ describe('runtime/stagedActions', () => {
       const live = s.mirror.snapshot.inputConfig.source;
       const other = live === AudioInputSource.Spdif ? AudioInputSource.Usb : AudioInputSource.Spdif;
 
-      stageInputSource(s, other);
+      Staged.stageInputSource(s, other);
       expect(s.staging.has('inputSource')).toBe(true);
-      stageInputSource(s, live);
+      Staged.stageInputSource(s, live);
       expect(s.staging.has('inputSource')).toBe(false);
     });
 
@@ -61,7 +55,7 @@ describe('runtime/stagedActions', () => {
       const live = s.mirror.snapshot.inputConfig.source;
       const target = live === AudioInputSource.Spdif ? AudioInputSource.Usb : AudioInputSource.Spdif;
 
-      stageInputSource(s, target);
+      Staged.stageInputSource(s, target);
       expect(s.mirror.peekReconcile()).toEqual({ wanted: false, eager: false });
 
       await s.staging.applyAll();
@@ -80,7 +74,7 @@ describe('runtime/stagedActions', () => {
       const target = 21; // unused GPIO on the default RP2350 V16 mock layout
       const spy = vi.spyOn(s.device, 'setI2sRxPin');
 
-      stageI2sRxPin(s, 0, target);
+      Staged.stageI2sRxPin(s, 0, target);
       expect(s.staging.has('i2sRxPin:0')).toBe(true);
 
       await s.staging.applyAll();
@@ -92,18 +86,18 @@ describe('runtime/stagedActions', () => {
     it('staging the live pin discards the pending entry', () => {
       const s = sess();
       const live = s.mirror.snapshot.inputConfig.i2sRxPins[0] ?? 0;
-      stageI2sRxPin(s, 0, live);
+      Staged.stageI2sRxPin(s, 0, live);
       expect(s.staging.has('i2sRxPin:0')).toBe(false);
     });
 
     it('staging a channel count that drops a pair discards its orphaned rx-pin entry, keeping the rest', () => {
       const s = sess();
-      stageI2sRxPin(s, 0, 21);
-      stageI2sRxPin(s, 1, 22);
-      stageI2sRxPin(s, 3, 23);
+      Staged.stageI2sRxPin(s, 0, 21);
+      Staged.stageI2sRxPin(s, 1, 22);
+      Staged.stageI2sRxPin(s, 3, 23);
       expect(s.staging.has('i2sRxPin:3')).toBe(true);
 
-      stageI2sInputChannels(s, 4);
+      Staged.stageI2sInputChannels(s, 4);
 
       expect(s.staging.has('i2sRxPin:3')).toBe(false);
       expect(s.staging.has('i2sRxPin:0')).toBe(true);
@@ -123,7 +117,7 @@ describe('runtime/stagedActions', () => {
       const target = live === 1 ? 0 : 1;
       const spy = vi.spyOn(s.device, 'setI2sClockMode');
 
-      stageI2sClockMode(s, target);
+      Staged.stageI2sClockMode(s, target);
       expect(s.staging.has('i2sClockMode')).toBe(true);
       expect(spy).not.toHaveBeenCalled();
 
@@ -136,9 +130,9 @@ describe('runtime/stagedActions', () => {
     it('staging the live value discards a pending entry instead of creating one', () => {
       const s = sess();
       const live = s.mirror.snapshot.inputConfig.i2sClockMode;
-      stageI2sClockMode(s, live === 1 ? 0 : 1);
+      Staged.stageI2sClockMode(s, live === 1 ? 0 : 1);
       expect(s.staging.has('i2sClockMode')).toBe(true);
-      stageI2sClockMode(s, live);
+      Staged.stageI2sClockMode(s, live);
       expect(s.staging.has('i2sClockMode')).toBe(false);
     });
   });
@@ -155,7 +149,7 @@ describe('runtime/stagedActions', () => {
       const target = live === 1 ? 0 : 1;
       const spy = vi.spyOn(s.device, 'setI2sClockPinMode');
 
-      stageI2sClockPinMode(s, target);
+      Staged.stageI2sClockPinMode(s, target);
       expect(s.staging.has('i2sClockPinMode')).toBe(true);
 
       await s.staging.applyAll();
@@ -176,7 +170,7 @@ describe('runtime/stagedActions', () => {
       const target = 21;   // distinct from the mock's default slave BCK pin (26 on rp2350)
       const spy = vi.spyOn(s.device, 'setI2sBckPin');
 
-      stageI2sBckPinSlave(s, target);
+      Staged.stageI2sBckPinSlave(s, target);
       expect(s.staging.has('bckPinSlave')).toBe(true);
 
       await s.staging.applyAll();
@@ -188,7 +182,7 @@ describe('runtime/stagedActions', () => {
     it('staging the live pin discards the pending entry', () => {
       const s = sess();
       const live = s.mirror.snapshot.i2s.bckPinSlave;
-      stageI2sBckPinSlave(s, live);
+      Staged.stageI2sBckPinSlave(s, live);
       expect(s.staging.has('bckPinSlave')).toBe(false);
     });
   });
@@ -204,7 +198,7 @@ describe('runtime/stagedActions', () => {
       const live = s.mirror.snapshot.i2s.mckEnabled;
       const spy = vi.spyOn(s.device, 'setMckEnable');
 
-      stageMckEnabled(s, !live);
+      Staged.stageMckEnabled(s, !live);
       expect(s.staging.has('mckEnabled')).toBe(true);
 
       await s.staging.applyAll();
@@ -216,8 +210,8 @@ describe('runtime/stagedActions', () => {
     it('staging the live value discards the pending entry', () => {
       const s = sess();
       const live = s.mirror.snapshot.i2s.mckEnabled;
-      stageMckEnabled(s, !live);
-      stageMckEnabled(s, live);
+      Staged.stageMckEnabled(s, !live);
+      Staged.stageMckEnabled(s, live);
       expect(s.staging.has('mckEnabled')).toBe(false);
     });
   });
@@ -234,7 +228,7 @@ describe('runtime/stagedActions', () => {
 
     it('labels the staged change "default" instead of "GP255"', () => {
       const s = sess();
-      stageOutputDataPin(s, 0, PIN_RESET_TO_DEFAULT);
+      Staged.stageOutputDataPin(s, 0, PIN_RESET_TO_DEFAULT);
       const entry = s.staging.get('outputPin:0')!;
       expect(entry.to).toBe('default');
       expect(entry.from).toBe(`GP${s.mirror.snapshot.outputPins[0]}`);
@@ -243,7 +237,7 @@ describe('runtime/stagedActions', () => {
     it('applying sends the raw 0xFF sentinel to the device', async () => {
       const s = sess();
       const spy = vi.spyOn(s.device, 'setOutputPin');
-      stageOutputDataPin(s, 0, PIN_RESET_TO_DEFAULT);
+      Staged.stageOutputDataPin(s, 0, PIN_RESET_TO_DEFAULT);
       await s.staging.applyAll();
       expect(spy).toHaveBeenCalledWith(0, PIN_RESET_TO_DEFAULT);
     });
@@ -251,7 +245,7 @@ describe('runtime/stagedActions', () => {
     it('overlay keeps the live pin instead of writing 0xFF into it', () => {
       const s = sess();
       const live = s.mirror.snapshot.outputPins[0];
-      stageOutputDataPin(s, 0, PIN_RESET_TO_DEFAULT);
+      Staged.stageOutputDataPin(s, 0, PIN_RESET_TO_DEFAULT);
       const overlay = s.staging.overlaySnapshot(s.mirror.snapshot);
       expect(overlay.outputPins[0]).toBe(live);
       expect(overlay.outputPins).not.toContain(PIN_RESET_TO_DEFAULT);
@@ -259,11 +253,11 @@ describe('runtime/stagedActions', () => {
 
     it('requests an eager reconcile once the reset apply succeeds, unlike a plain pin move', async () => {
       const s = sess();
-      stageMckPin(s, 20);   // plain move: an ordinary pin, not the sentinel
+      Staged.stageMckPin(s, 20);   // plain move: an ordinary pin, not the sentinel
       await s.staging.applyAll();
       expect(s.mirror.peekReconcile()).toEqual({ wanted: true, eager: false });
 
-      stageOutputDataPin(s, 0, PIN_RESET_TO_DEFAULT);
+      Staged.stageOutputDataPin(s, 0, PIN_RESET_TO_DEFAULT);
       await s.staging.applyAll();
       expect(s.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
     });
@@ -282,7 +276,7 @@ describe('runtime/stagedActions', () => {
       const pinSpy = vi.spyOn(s.device, 'setAdatPin').mockResolvedValue({ ok: true, value: undefined });
       const enableSpy = vi.spyOn(s.device, 'setAdatEnable').mockResolvedValue({ ok: true, value: undefined });
 
-      stageAdatEnabled(s, true);
+      Staged.stageAdatEnabled(s, true);
       const pinEntry = s.staging.get('adatPin');
       expect(pinEntry?.from).toBe('GP12');
       expect(pinEntry?.to).not.toBe('GP12');
@@ -300,8 +294,8 @@ describe('runtime/stagedActions', () => {
       s.mirror.snapshot.dacHwMute = { enabled: false, activeLow: false, pin: 11, holdMs: 10, releaseMs: 0 };
       const spy = vi.spyOn(s.device, 'setDacHwMute');
 
-      stageDacMuteEnabled(s, true);
-      stageDacMute(s, 'activeLow', true);
+      Staged.stageDacMuteEnabled(s, true);
+      Staged.stageDacMute(s, 'activeLow', true);
       expect(s.staging.entries.map((e) => e.key).sort()).toEqual(['dacMute:activeLow', 'dacMute:enabled']);
 
       await s.staging.applyAll();
@@ -316,9 +310,9 @@ describe('runtime/stagedActions', () => {
       const uartSpy = vi.spyOn(s.device, 'setUartControlConfig');
       const muteSpy = vi.spyOn(s.device, 'setDacHwMute');
 
-      stageUartEnabled(s, false);
-      stageDacMute(s, 'pin', 16);
-      stageDacMuteEnabled(s, true);
+      Staged.stageUartEnabled(s, false);
+      Staged.stageDacMute(s, 'pin', 16);
+      Staged.stageDacMuteEnabled(s, true);
       expect(s.staging.get('dacMute:pin')?.to).toBe('GP16');
 
       await s.staging.applyAll();
@@ -334,8 +328,8 @@ describe('runtime/stagedActions', () => {
       const muteSpy = vi.spyOn(s.device, 'setDacHwMute');
       const adatSpy = vi.spyOn(s.device, 'setAdatEnable').mockResolvedValue({ ok: true, value: undefined });
 
-      stageDacMuteEnabled(s, false);
-      stageAdatEnabled(s, true);
+      Staged.stageDacMuteEnabled(s, false);
+      Staged.stageAdatEnabled(s, true);
       expect(s.staging.has('adatPin')).toBe(false);
 
       await s.staging.applyAll();
@@ -348,8 +342,8 @@ describe('runtime/stagedActions', () => {
       const enableSpy = vi.spyOn(s.device, 'setAdatInputEnable').mockResolvedValue({ ok: true, value: undefined });
       const pinSpy = vi.spyOn(s.device, 'setAdatInputPin').mockResolvedValue({ ok: true, value: undefined });
 
-      stageAdatInputPin(s, 0);
-      stageAdatInputEnabled(s, false);
+      Staged.stageAdatInputPin(s, 0);
+      Staged.stageAdatInputEnabled(s, false);
 
       await s.staging.applyAll();
       expect(enableSpy.mock.invocationCallOrder[0]).toBeLessThan(pinSpy.mock.invocationCallOrder[0]);
@@ -359,13 +353,13 @@ describe('runtime/stagedActions', () => {
       const s = sess();
       s.mirror.snapshot.dacHwMute = { enabled: true, activeLow: false, pin: 12, holdMs: 10, releaseMs: 0 };
       s.mirror.snapshot.adat = { ...s.mirror.snapshot.adat, enabled: false, pin: 0 };
-      stageAdatEnabled(s, true);
+      Staged.stageAdatEnabled(s, true);
       expect(s.staging.has('adatPin')).toBe(true);
 
-      stageAdatEnabled(s, false);
+      Staged.stageAdatEnabled(s, false);
       expect(s.staging.entries).toHaveLength(0);
 
-      stageAdatEnabled(s, true);
+      Staged.stageAdatEnabled(s, true);
       s.staging.discard('adatEnable');
       expect(s.staging.entries).toHaveLength(0);
     });
@@ -376,8 +370,8 @@ describe('runtime/stagedActions', () => {
       const spy = vi.spyOn(s.device, 'setOutputEnable');
       s.mirror.snapshot.outputs = s.mirror.snapshot.outputs.map((o) => ({ ...o, enabled: o.wireIndex === 2 || o.wireIndex === 3 }));
 
-      stagePdmEnabled(s, true);
-      stageOutputPairEnabled(s, 1, false);
+      Staged.stagePdmEnabled(s, true);
+      Staged.stageOutputPairEnabled(s, 1, false);
       const overlay = s.staging.overlaySnapshot(s.mirror.snapshot);
       expect(overlay.outputs.find((o) => o.wireIndex === pdm)?.enabled).toBe(true);
       expect(overlay.outputs.find((o) => o.wireIndex === 2)?.enabled).toBe(false);
@@ -393,8 +387,8 @@ describe('runtime/stagedActions', () => {
       const live = s.ctrlIfaces.uart;
       const spy = vi.spyOn(s.device, 'setUartControlConfig');
 
-      stageUartEnabled(s, !live.enabled);
-      stageUart(s, 'baud', live.baud === 115200 ? 57600 : 115200);
+      Staged.stageUartEnabled(s, !live.enabled);
+      Staged.stageUart(s, 'baud', live.baud === 115200 ? 57600 : 115200);
       expect(s.staging.entries.every((e) => e.page === 'interfaces')).toBe(true);
 
       await s.staging.applyAll();
@@ -422,7 +416,7 @@ describe('runtime/stagedActions', () => {
         return true;
       });
 
-      stageSysClockMode(s, SysClockMode.Mhz384);
+      Staged.stageSysClockMode(s, SysClockMode.Mhz384);
       expect(s.staging.get('sysClock:vreg')?.to).toBe('default');
       expect(s.staging.disruptive).toEqual({ reason: 'reboots the clock', tone: 'danger' });
 
@@ -434,18 +428,18 @@ describe('runtime/stagedActions', () => {
     it('the DEFAULT voltage reset goes away with the mode change that caused it', () => {
       const s = sess();
       s.sysClock.status = sysClockStatus({ storedMode: SysClockMode.Mhz307p2, storedVregSel: 12 });
-      stageSysClockMode(s, SysClockMode.Mhz384);
+      Staged.stageSysClockMode(s, SysClockMode.Mhz384);
       expect(s.staging.has('sysClock:vreg')).toBe(true);
-      stageSysClockMode(s, SysClockMode.Mhz307p2);
+      Staged.stageSysClockMode(s, SysClockMode.Mhz307p2);
       expect(s.staging.entries).toHaveLength(0);
     });
 
     it('staging back to the stored value discards the entry', () => {
       const s = sess();
       s.sysClock.status = sysClockStatus({ storedVregSel: SYS_CLOCK_VREG_DEFAULT });
-      stageSysClockVreg(s, 14);
+      Staged.stageSysClockVreg(s, 14);
       expect(s.staging.has('sysClock:vreg')).toBe(true);
-      stageSysClockVreg(s, SYS_CLOCK_VREG_DEFAULT);
+      Staged.stageSysClockVreg(s, SYS_CLOCK_VREG_DEFAULT);
       expect(s.staging.has('sysClock:vreg')).toBe(false);
     });
   });

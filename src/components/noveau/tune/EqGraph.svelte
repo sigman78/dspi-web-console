@@ -1,25 +1,21 @@
 <script lang="ts">
-    import BodePlot, { PAD_B, PAD_L, type BodeCurve, type BodeNode } from '@/components/bode/BodePlot.svelte';
+    import BodePlot, { PAD_B, PAD_L, type BodeCurve, type BodeNode } from '@/components/noveau/tune/BodePlot.svelte';
   import { formatValue } from '@/components/chrome/valueFieldFormat';
-  import {
-    Eq, FilterType, bandHasGain, bandHasQ, offeredTypes, filterCurve, filterCurveAt, xForF, yForDb,
-    type ChannelModel, type FilterParams, type PlotGeometry,
-  } from '@/domain';
+  import * as Domain from '@/domain';
+  import type { ChannelModel, FilterParams, PlotGeometry } from '@/domain';
   import { setEqFilter, setXoverBand } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
-  import { noveauUi } from '../noveauUi.svelte';
+  import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import BandMenu from './BandMenu.svelte';
   import { bandDraft, bandHold, holdBand } from './bandDraft.svelte';
   import { patchBand, clearBand } from './bandOps';
-  import {
-    applyBandDrag, applyXoverDrag, applyWheelQ, planAddBand, sameBand, trailingDebounce,
-    type DragAnchor,
-  } from './eqDraft';
+  import * as EqDraft from './eqDraft';
+  import type { DragAnchor } from './eqDraft';
 
   const { channel, preampDb }: { channel: ChannelModel; preampDb: number } = $props();
 
   const s = getSession();
-  const types = $derived(offeredTypes(s.device.capabilities.features));
+  const types = $derived(Domain.offeredTypes(s.device.capabilities.features));
 
   // A draft only shows on the channel it was made on.
   const live = $derived.by(() => {
@@ -39,32 +35,32 @@
   const curve = $derived<BodeCurve>({
     id: `eq-${channel.id}`,
     channelId: channel.id,
-    points: filterCurve(bands, preampDb, xover),
+    points: Domain.filterCurve(bands, preampDb, xover),
     label: channel.shortName,
   });
 
   const nodes = $derived.by<BodeNode[]>(() => {
     const out: BodeNode[] = [];
     bands.forEach((b, i) => {
-      if (b.type === FilterType.Flat) return;
+      if (b.type === Domain.FilterType.Flat) return;
       out.push({
         id: `b${i}`,
         f: b.frequency,
-        db: filterCurveAt(bands, preampDb, b.frequency, xover),
+        db: Domain.filterCurveAt(bands, preampDb, b.frequency, xover),
         channelId: channel.id,
         label: String(i + 1),
         shape: 'circle',
         selected: noveauUi.selectedBand === i,
         bypassed: b.bypass,
-        lockDb: !bandHasGain(b.type),
+        lockDb: !Domain.bandHasGain(b.type),
       });
     });
     xover.forEach((b, i) => {
-      if (b.type === FilterType.Flat) return;
+      if (b.type === Domain.FilterType.Flat) return;
       out.push({
         id: `x${i}`,
         f: b.frequency,
-        db: filterCurveAt(bands, preampDb, b.frequency, xover),
+        db: Domain.filterCurveAt(bands, preampDb, b.frequency, xover),
         channelId: channel.id,
         label: `X${i + 1}`,
         shape: 'diamond',
@@ -88,7 +84,7 @@
     const d = bandDraft.current;
     if (!d || d.channelId !== channel.id) return;
     const cur = mirrorBand(d.kind, d.index);
-    if (cur && sameBand(cur, d.band)) bandDraft.current = null;
+    if (cur && EqDraft.sameBand(cur, d.band)) bandDraft.current = null;
   });
 
   function commitDraft() {
@@ -97,13 +93,13 @@
     bandDraft.current = null;
     const owner = s.mirror.current?.channels.find((c) => c.id === d.channelId);
     const origin = (d.kind === 'peq' ? owner?.filters : owner?.xoverBands)?.[d.index];
-    if (origin && sameBand(origin, d.band)) return;
+    if (origin && EqDraft.sameBand(origin, d.band)) return;
     if (d.kind === 'peq') setEqFilter(s, d.channelId, d.index, { ...d.band });
     else setXoverBand(s, d.channelId, d.index, { ...d.band });
     holdBand(s, d);
   }
 
-  const qCommit = trailingDebounce(commitDraft, 150);
+  const qCommit = EqDraft.trailingDebounce(commitDraft, 150);
 
   // A pending draft is written, not dropped, when its channel changes or the
   // view goes away (unless the channel itself is gone).
@@ -137,12 +133,12 @@
     const { kind, index } = parseId(id);
     settleOtherDraft(kind, index);
     const base = baseBand(kind, index);
-    if (base.type === FilterType.LinkwitzTransform) return;
+    if (base.type === Domain.FilterType.LinkwitzTransform) return;
     if (gesture?.id !== id) {
       const node = nodes.find((n) => n.id === id);
       gesture = { id, anchor: { gain: base.gain, db: node?.db ?? db } };
     }
-    const band = kind === 'peq' ? applyBandDrag(base, f, db, gesture.anchor) : applyXoverDrag(base, f);
+    const band = kind === 'peq' ? EqDraft.applyBandDrag(base, f, db, gesture.anchor) : EqDraft.applyXoverDrag(base, f);
     bandDraft.current = { channelId: channel.id, kind, index, band };
   }
   function onNodeDragEnd(id: string, f: number, db: number) {
@@ -156,14 +152,14 @@
     if (kind !== 'peq') return;
     settleOtherDraft(kind, index);
     const base = baseBand(kind, index);
-    const band = applyWheelQ(base, deltaY);
+    const band = EqDraft.applyWheelQ(base, deltaY);
     if (band === base) return;
     bandDraft.current = { channelId: channel.id, kind, index, band };
     qCommit.call();
   }
   function onPlotDblClick(f: number, db: number) {
-    const baseline = filterCurveAt(bands, preampDb, f, xover);
-    const plan = planAddBand(channel.filters, f, db - baseline);
+    const baseline = Domain.filterCurveAt(bands, preampDb, f, xover);
+    const plan = EqDraft.planAddBand(channel.filters, f, db - baseline);
     if (!plan) return;
     setEqFilter(s, channel.id, plan.index, plan.band);
     noveauUi.selectedBand = plan.index;
@@ -179,22 +175,22 @@
     padL: PAD_L,
     plotW: plotW - PAD_L,
     plotH: plotH - PAD_B,
-    yMin: Eq.BODE_DB_RANGE[0],
-    yMax: Eq.BODE_DB_RANGE[1],
+    yMin: Domain.Eq.BODE_DB_RANGE[0],
+    yMax: Domain.Eq.BODE_DB_RANGE[1],
   });
 
   const callout = $derived.by(() => {
     const i = noveauUi.selectedBand;
     if (i === null) return null;
     const b = bands[i];
-    if (!b || b.type === FilterType.Flat) return null;
+    if (!b || b.type === Domain.FilterType.Flat) return null;
     const f = b.frequency;
-    const db = filterCurveAt(bands, preampDb, f, xover);
-    const x = xForF(Math.min(Eq.FREQ_MAX_HZ, Math.max(Eq.FREQ_MIN_HZ, f)), geom);
-    const y = yForDb(Math.min(geom.yMax, Math.max(geom.yMin, db)), geom);
+    const db = Domain.filterCurveAt(bands, preampDb, f, xover);
+    const x = Domain.xForF(Math.min(Domain.Eq.FREQ_MAX_HZ, Math.max(Domain.Eq.FREQ_MIN_HZ, f)), geom);
+    const y = Domain.yForDb(Math.min(geom.yMax, Math.max(geom.yMin, db)), geom);
     const parts = [f >= 1000 ? `${(f / 1000).toFixed(2)} kHz` : `${Math.round(f)} Hz`];
-    if (bandHasGain(b.type)) parts.push(`${formatValue('dB-signed', b.gain, 1)} dB`);
-    if (bandHasQ(b.type)) parts.push(`Q ${b.q.toFixed(1)}`);
+    if (Domain.bandHasGain(b.type)) parts.push(`${formatValue('dB-signed', b.gain, 1)} dB`);
+    if (Domain.bandHasQ(b.type)) parts.push(`Q ${b.q.toFixed(1)}`);
     return {
       text: parts.join(' · '),
       left: Math.min(Math.max(x - 70, PAD_L + 4), Math.max(PAD_L + 4, plotW - 190)),

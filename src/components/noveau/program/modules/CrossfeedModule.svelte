@@ -1,10 +1,10 @@
 <script lang="ts">
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import { CrossfeedPreset, Proc, outputChannelsWithIndex, crossfeedResponse, centeredDbDomain } from '@/domain';
+  import * as Domain from '@/domain';
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
-  import BodePlot, { type BodeCurve } from '@/components/bode/BodePlot.svelte';
+  import BodePlot, { type BodeCurve } from '@/components/noveau/tune/BodePlot.svelte';
   import ModuleFrame from './ModuleFrame.svelte';
   import SliderField from '@/components/chrome/SliderField.svelte';
   import MaskChips from '@/components/chrome/MaskChips.svelte';
@@ -12,14 +12,14 @@
   const s = getSession();
   const cf = $derived(s.mirror.current?.crossfeed);
   const enabled = $derived(cf?.enabled ?? false);
-  const isCustom = $derived((cf?.preset ?? CrossfeedPreset.Preset1) === CrossfeedPreset.Custom);
+  const isCustom = $derived((cf?.preset ?? Domain.CrossfeedPreset.Preset1) === Domain.CrossfeedPreset.Custom);
   const slidersEditable = $derived(enabled && isCustom);
   const offReason = $derived(enabled ? undefined : 'Crossfeed is off — enable it to edit these controls.');
   const presetReason = $derived(enabled && !isCustom ? 'The preset fixes cutoff and feed — choose CUSTOM to edit them.' : undefined);
   const reason = $derived(offReason ?? presetReason);
 
   // Pair p covers output slots 2p and 2p+1; the mono PDM sub never forms a pair.
-  const outputChannels = $derived(outputChannelsWithIndex(s.mirror.current));
+  const outputChannels = $derived(Domain.outputChannelsWithIndex(s.mirror.current));
   const nameByIndex = $derived(new Map<number, string>(outputChannels.map((ch) => [ch.index, ch.name])));
   const pairCount = $derived(Math.min(4, Math.floor(outputChannels.length / 2)));
   const showPairs = $derived(s.device.capabilities.features.crossfeedPairMask && pairCount > 1);
@@ -36,19 +36,19 @@
     }),
   );
 
-  const resp = $derived(crossfeedResponse(cf?.freq ?? 700, cf?.feedDb ?? 4.5));
+  const resp = $derived(Domain.crossfeedResponse(cf?.freq ?? 700, cf?.feedDb ?? 4.5));
   const curves = $derived<BodeCurve[]>([
     { id: 'xfeed-direct', points: resp.direct, color: 'color-mix(in oklab, var(--text) 45%, transparent)', label: 'Direct' },
     { id: 'xfeed-cross', points: resp.crossfeed, color: 'var(--accent)', label: 'Crossfeed' },
   ]);
-  const yRange = $derived(centeredDbDomain([resp.crossfeed, resp.direct]));
+  const yRange = $derived(Domain.centeredDbDomain([resp.crossfeed, resp.direct]));
 
   const PRESET_OPTIONS = [
-    { value: CrossfeedPreset.Preset1, label: 'PRESET 1' },
-    { value: CrossfeedPreset.Preset2, label: 'PRESET 2' },
-    { value: CrossfeedPreset.Preset3, label: 'PRESET 3' },
-    { value: CrossfeedPreset.Custom, label: 'CUSTOM' },
-  ] as const satisfies ReadonlyArray<{ value: CrossfeedPreset; label: string }>;
+    { value: Domain.CrossfeedPreset.Preset1, label: 'PRESET 1' },
+    { value: Domain.CrossfeedPreset.Preset2, label: 'PRESET 2' },
+    { value: Domain.CrossfeedPreset.Preset3, label: 'PRESET 3' },
+    { value: Domain.CrossfeedPreset.Custom, label: 'CUSTOM' },
+  ] as const satisfies ReadonlyArray<{ value: Domain.CrossfeedPreset; label: string }>;
 </script>
 
 <ModuleFrame
@@ -70,10 +70,10 @@
       ariaLabel="Crossfeed preset" onChange={(v) => Runtime.setCrossfeedPreset(s, v)} /></span>
   </div>
   <SliderField lane="scrub" label="CUTOFF" ariaLabel="Crossfeed cutoff frequency" value={cf?.freq ?? 700}
-    min={Proc.CROSSFEED_FREQ_MIN_HZ} max={Proc.CROSSFEED_FREQ_MAX_HZ} step={Proc.CROSSFEED_FREQ_STEP_HZ}
+    min={Domain.Proc.CROSSFEED_FREQ_MIN_HZ} max={Domain.Proc.CROSSFEED_FREQ_MAX_HZ} step={Domain.Proc.CROSSFEED_FREQ_STEP_HZ}
     kind="hz" precision={0} disabled={!slidersEditable} disabledReason={reason} onChange={(v) => Runtime.setCrossfeedFreq(s, v)} />
   <SliderField lane="scrub" label="FEED" ariaLabel="Crossfeed feed level" value={cf?.feedDb ?? 4.5}
-    min={Proc.CROSSFEED_FEED_MIN_DB} max={Proc.CROSSFEED_FEED_MAX_DB} step={Proc.CROSSFEED_FEED_STEP_DB}
+    min={Domain.Proc.CROSSFEED_FEED_MIN_DB} max={Domain.Proc.CROSSFEED_FEED_MAX_DB} step={Domain.Proc.CROSSFEED_FEED_STEP_DB}
     kind="dB" precision={1} disabled={!slidersEditable} disabledReason={reason} onChange={(v) => Runtime.setCrossfeedFeedDb(s, v)} />
   <div class="prow">
     <span class="prow-lbl">ITD</span>

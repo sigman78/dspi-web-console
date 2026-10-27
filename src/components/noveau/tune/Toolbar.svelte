@@ -1,11 +1,11 @@
 <script lang="ts">
   import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
-  import AutoEqBrowser from '@/components/eq/AutoEqBrowser.svelte';
+  import AutoEqBrowser from '@/components/noveau/tune/AutoEqBrowser.svelte';
   import { eqUi, setEqCopySource, clearEqCopySource } from '@/state';
   import { copyEqBands, setEqFilter } from '@/runtime';
   import type { ChannelModel } from '@/domain';
   import { getSession } from '@/components/sessionContext';
-  import { noveauUi } from '../noveauUi.svelte';
+  import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import { resetBands } from './bandOps';
   import { firstFlatIndex, planAddBand } from './eqDraft';
 

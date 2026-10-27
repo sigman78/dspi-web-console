@@ -18,7 +18,7 @@
   import * as CsIr from '@/domain/cs/irDraft';
   import type { IrDraft } from '@/domain/cs/irDraft';
   import * as SlotOps from './csSlotOps';
-  import { portal } from './portal';
+  import { portal } from '@/components/chrome/portal';
 
   // irDetailTarget: when set, the commands section portals into that host and
   // shows one command at a time instead of all sub-slots inline.

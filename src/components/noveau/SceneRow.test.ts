@@ -10,7 +10,7 @@ vi.mock('@/runtime', () => ({
   loadPresetSlot: (...a: unknown[]) => loadPresetSlot(...a),
   revertActivePreset: (...a: unknown[]) => revertActivePreset(...a),
 }));
-vi.mock('@/components/presets/saveActivePresetNamed', () => ({
+vi.mock('@/components/noveau/presets/saveActivePresetNamed', () => ({
   saveActivePresetNamed: (...a: unknown[]) => saveActivePresetNamed(...a),
 }));
 

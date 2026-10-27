@@ -9,13 +9,11 @@
   import { tick, untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import {
-    applyCsDisplayCfg, applyCsDisplayPage, clearCsDisplayPage, wantCsDisplayPoll,
-  } from '@/runtime';
+  import * as Runtime from '@/runtime';
   import * as Domain from '@/domain';
   import { getSession } from '@/components/sessionContext';
   import { formatI2cAddr } from '@/components/chrome/format';
-  import { portal } from './portal';
+  import { portal } from '@/components/chrome/portal';
   import NumField from '@/components/chrome/NumField.svelte';
   import CsTargetRow from './CsTargetRow.svelte';
   import * as SlotOps from './csSlotOps';
@@ -57,7 +55,7 @@
 
   // The display-status cadence (poll.ts) keeps the pill and showing line
   // tracking the front panel; this panel holds its interest.
-  $effect(() => (visible ? untrack(() => wantCsDisplayPoll(s)) : undefined));
+  $effect(() => (visible ? untrack(() => Runtime.wantCsDisplayPoll(s)) : undefined));
 
   function pill(): { text: string; cls: string } {
     const st = cs.displayStatus;
@@ -104,7 +102,7 @@
   function revertCfg(): void { cfgDrafts.revert(CFG); }
 
   async function applyCfg(): Promise<void> {
-    await SlotOps.applySlot(CFG, cfgDrafts, setApplying, () => applyCsDisplayCfg(s, CsDisplayDraft.buildCfg(cfgOf())));
+    await SlotOps.applySlot(CFG, cfgDrafts, setApplying, () => Runtime.applyCsDisplayCfg(s, CsDisplayDraft.buildCfg(cfgOf())));
   }
 
   function homePageOptions(): { v: number; label: string }[] {
@@ -152,11 +150,11 @@
   async function applyPage(i: number): Promise<void> {
     const d = pageDrafts.draftOf(i);
     if (!d) return;
-    await SlotOps.applySlot(i, pageDrafts, setApplying, () => applyCsDisplayPage(s, i, CsDisplayDraft.buildPage(d, cs.nouns)));
+    await SlotOps.applySlot(i, pageDrafts, setApplying, () => Runtime.applyCsDisplayPage(s, i, CsDisplayDraft.buildPage(d, cs.nouns)));
   }
 
   async function removePage(i: number): Promise<void> {
-    await SlotOps.removeSlot(i, cs.displayPages[i] != null, pageDrafts, setApplying, () => clearCsDisplayPage(s, i));
+    await SlotOps.removeSlot(i, cs.displayPages[i] != null, pageDrafts, setApplying, () => Runtime.clearCsDisplayPage(s, i));
   }
 
   function pageChipTitle(i: number): string {

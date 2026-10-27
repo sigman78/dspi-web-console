@@ -1,10 +1,10 @@
 <script lang="ts">
-  import BandTypeSelect from '@/components/eq/BandTypeSelect.svelte';
+  import BandTypeSelect from '@/components/noveau/tune/BandTypeSelect.svelte';
   import SliderField from '@/components/chrome/SliderField.svelte';
-  import BypassButton from '@/components/eq/BypassButton.svelte';
+  import BypassButton from '@/components/noveau/tune/BypassButton.svelte';
   import { Eq, FilterType, TYPE_LABELS, offeredTypes, type ChannelModel, type FilterParams } from '@/domain';
   import { getSession } from '@/components/sessionContext';
-  import { noveauUi } from '../noveauUi.svelte';
+  import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import InspectorSection from './InspectorSection.svelte';
   import { bandDraft, bandHold, holdBand } from './bandDraft.svelte';
   import { patchBand } from './bandOps';

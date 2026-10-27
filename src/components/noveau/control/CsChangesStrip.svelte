@@ -3,7 +3,7 @@
   // device-wide SAVE/DISCARD lifecycle, same disabled rules.
   import { csSaveConfig, csRevertConfig } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
-  import { csChangesModel } from '@/components/system/csChangesModel';
+  import { csChangesModel } from '@/components/noveau/control/csChangesModel';
   import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
   import PresetIcon from '@/components/noveau/presets/PresetIcon.svelte';
 

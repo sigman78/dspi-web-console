@@ -2,12 +2,8 @@ import { mount } from 'svelte';
 import './app.css';
 import 'virtual:palette.css';
 import App from './App.svelte';
-import MobileSplash from './components/chrome/MobileSplash.svelte';
-import {
-  sessionRecords,
-  restoreSettings, startSettingsPersistence,
-  endInitialBoot,
-} from './state';
+import MobileSplash from '@/components/chrome/MobileSplash.svelte';
+import * as State from './state';
 import { bootMockFleet, bootReal, registerNavigatorReconnect, hasPendingWork } from './runtime';
 import { Log, isMobileDevice } from './utils';
 import { activeMockProfiles } from './mockProfiles';
@@ -22,8 +18,8 @@ if (isMobileDevice()) {
   document.body.classList.add('mobile-splash-mode');
   mount(MobileSplash, { target });
 } else {
-  restoreSettings();
-  startSettingsPersistence();
+  State.restoreSettings();
+  State.startSettingsPersistence();
 
   // See src/devOptions.ts for the full ?mock/?hero/?log convention.
   const mockProfiles = activeMockProfiles();
@@ -36,13 +32,13 @@ if (isMobileDevice()) {
     : bootReal();
   void bootAttempt
     .catch((e) => Log.error('boot', 'boot failed', e))
-    .finally(endInitialBoot);
+    .finally(State.endInitialBoot);
 
   registerNavigatorReconnect();
 
   // Warn before unload while any adopted device holds pending work.
   window.addEventListener('beforeunload', (e) => {
-    if ([...sessionRecords().values()].some((r) => hasPendingWork(r.session))) {
+    if ([...State.sessionRecords().values()].some((r) => hasPendingWork(r.session))) {
       e.preventDefault();
       e.returnValue = '';
     }

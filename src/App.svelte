@@ -2,7 +2,7 @@
   import ConnectingHero from '@/components/chrome/ConnectingHero.svelte';
   import NoveauShell from '@/components/noveau/NoveauShell.svelte';
   import EqSpectrum from '@/components/chrome/EqSpectrum.svelte';
-  import PresetBoundaryModal from '@/components/presets/PresetBoundaryModal.svelte';
+  import PresetBoundaryModal from '@/components/noveau/presets/PresetBoundaryModal.svelte';
   import Toaster from '@/components/chrome/Toaster.svelte';
   import ConfirmHost from '@/components/chrome/ConfirmHost.svelte';
   import { app, settings, initialBoot } from '@/state';

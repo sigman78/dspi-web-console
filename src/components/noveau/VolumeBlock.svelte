@@ -2,8 +2,8 @@
   import { connection, settings, setVolumeAxis } from '@/state';
   import { getSession } from '@/components/sessionContext';
   import * as Runtime from '@/runtime';
-  import SaveMasterVolumeButton from '@/components/presets/SaveMasterVolumeButton.svelte';
-  import PresetIcon from './presets/PresetIcon.svelte';
+  import SaveMasterVolumeButton from '@/components/noveau/presets/SaveMasterVolumeButton.svelte';
+  import PresetIcon from '@/components/noveau/presets/PresetIcon.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import { MASTER_VOLUME_MAX_POS, masterDbToPos, posToMasterDb } from '@/domain';
   import { formatMasterDb } from '@/components/chrome/format';

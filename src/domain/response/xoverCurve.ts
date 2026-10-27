@@ -4,7 +4,7 @@
 // Magnitude is composition-invariant, so matching the pole placement matches
 // the device response regardless of its SVF/TDF2 realization choice.
 
-import { FilterType, XOVER_TYPE_FIRST, isCrossoverType } from '../filter';
+import { FilterType, XOVER_TYPE_FIRST, isCrossoverType } from '@/domain/filter';
 import type { BiquadCoeffs } from './filterCurve';
 
 interface PolePair { sigma: number; omega: number; }

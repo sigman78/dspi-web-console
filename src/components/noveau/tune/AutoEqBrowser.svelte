@@ -1,13 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import {
-    type ChannelModel, type AutoEqEntry,
-    FilterType, autoEqDisplayName, autoEqSourceLabel, autoEqFiltersToBands,
-  } from '@/domain';
-  import {
-    autoEqDb, autoEqEntries, ensureAutoEqDb, isAutoEqFavorite, toggleAutoEqFavorite,
-    saveAutoEqUserEntry, deleteAutoEqUserEntry, searchAutoEq,
-  } from '@/state';
+  import * as Domain from '@/domain';
+  import type { ChannelModel, AutoEqEntry } from '@/domain';
+  import * as State from '@/state';
   import { applyAutoEqEntry, preampTargetLabel, hasStereoTwin } from '@/runtime';
   import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
   import Modal from '@/components/chrome/Modal.svelte';
@@ -26,7 +21,7 @@
   const s = getSession();
 
   onMount(() => {
-    ensureAutoEqDb();
+    State.ensureAutoEqDb();
   });
 
   let query = $state('');
@@ -36,7 +31,7 @@
 
   const PAGE_SIZE = 12;
 
-  const results = $derived(searchAutoEq(query, scope));
+  const results = $derived(State.searchAutoEq(query, scope));
   let page = $state(0);
   const pageCount = $derived(Math.max(1, Math.ceil(results.length / PAGE_SIZE)));
   const pageIdx = $derived(Math.min(page, pageCount - 1));
@@ -60,10 +55,10 @@
     goPage(e.key === 'PageDown' ? 1 : -1);
   }
 
-  const allEntries = $derived(searchAutoEq('', 'all'));
+  const allEntries = $derived(State.searchAutoEq('', 'all'));
   const selectedEntry = $derived(allEntries.find((e) => e.id === selectedId) ?? null);
 
-  const generatedDate = $derived(autoEqDb.generatedAt?.split('T')[0] ?? '');
+  const generatedDate = $derived(State.autoEqDb.generatedAt?.split('T')[0] ?? '');
 
   const hasTwin = $derived.by(() => {
     const chans = s.mirror.current?.channels;
@@ -72,12 +67,12 @@
 
   const selectedBandCount = $derived(
     selectedEntry
-      ? autoEqFiltersToBands(selectedEntry.filters).filter((b) => b.type !== FilterType.Flat).length
+      ? Domain.autoEqFiltersToBands(selectedEntry.filters).filter((b) => b.type !== Domain.FilterType.Flat).length
       : 0,
   );
 
   function shortName(e: AutoEqEntry): string {
-    const name = autoEqDisplayName(e);
+    const name = Domain.autoEqDisplayName(e);
     return name.length > 22 ? `${name.slice(0, 21)}…` : name;
   }
 
@@ -98,11 +93,11 @@
 
   function onFav(e: MouseEvent, id: string) {
     e.stopPropagation();
-    toggleAutoEqFavorite(id);
+    State.toggleAutoEqFavorite(id);
   }
 
   function onDelete(id: string) {
-    deleteAutoEqUserEntry(id);
+    State.deleteAutoEqUserEntry(id);
     if (selectedId === id) selectedId = null;
   }
 
@@ -115,7 +110,7 @@
   function onSave() {
     const trimmed = saveName.trim();
     if (!trimmed) return;
-    saveAutoEqUserEntry(trimmed, preampDb, channel.filters);
+    State.saveAutoEqUserEntry(trimmed, preampDb, channel.filters);
     saveName = '';
     setScope('user');
   }
@@ -126,7 +121,7 @@
   <div class="panel" data-budget style:--page-size={PAGE_SIZE} onkeydown={onKeydown}>
     <header>
       <span class="title">AUTOEQ LIBRARY</span>
-      <span class="meta">{autoEqEntries().length} PROFILES &middot; {generatedDate}</span>
+      <span class="meta">{State.autoEqEntries().length} PROFILES &middot; {generatedDate}</span>
       <button class="chip hi" onclick={onClose} title="Close" aria-label="Close">&times;</button>
     </header>
 
@@ -146,24 +141,24 @@
     </div>
 
     <div class="list">
-      {#if autoEqDb.status === 'loading'}
+      {#if State.autoEqDb.status === 'loading'}
         <p class="hint pad">LOADING&hellip;</p>
-      {:else if autoEqDb.status === 'error'}
-        <p class="hint pad">{autoEqDb.error ?? 'FAILED TO LOAD'}</p>
-        <button class="chip" onclick={() => ensureAutoEqDb()}>RETRY</button>
+      {:else if State.autoEqDb.status === 'error'}
+        <p class="hint pad">{State.autoEqDb.error ?? 'FAILED TO LOAD'}</p>
+        <button class="chip" onclick={() => State.ensureAutoEqDb()}>RETRY</button>
       {:else}
         {#each visible as e (e.id)}
           <div class="row" class:selected={selectedId === e.id}>
             <button
               type="button"
               class="fav"
-              class:on={isAutoEqFavorite(e.id)}
+              class:on={State.isAutoEqFavorite(e.id)}
               title="Toggle favorite"
               onclick={(ev) => onFav(ev, e.id)}
-            >{isAutoEqFavorite(e.id) ? '★' : '☆'}</button>
+            >{State.isAutoEqFavorite(e.id) ? '★' : '☆'}</button>
             <button type="button" class="row-main" onclick={() => selectRow(e.id)}>
-              <span class="name">{autoEqDisplayName(e)}</span>
-              <span class="pill" data-src={sourceHue(e.source)}>{autoEqSourceLabel(e.source)}</span>
+              <span class="name">{Domain.autoEqDisplayName(e)}</span>
+              <span class="pill" data-src={sourceHue(e.source)}>{Domain.autoEqSourceLabel(e.source)}</span>
               <span class="fftag">{e.formFactor}</span>
             </button>
             {#if e.source === 'user'}

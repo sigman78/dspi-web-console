@@ -1,8 +1,6 @@
 <script lang="ts">
-  import {
-    sessionRecords, activeRecord, adoptFailures, adoptionInProgress, clearAdoptFailure,
-    type ConnId, type DeviceRecord, type AdoptFailure,
-  } from '@/state';
+  import * as State from '@/state';
+  import type { ConnId, DeviceRecord, AdoptFailure } from '@/state';
   import { switchSession, connectRequested, webUsbUnsupportedReason } from '@/runtime';
   import { dismiss } from './dismiss';
 
@@ -18,9 +16,9 @@
   // awaiting.
   let switching = $state(false);
 
-  const records = $derived(sessionRecords());
-  const failures = $derived(adoptFailures());
-  const activeId = $derived(activeRecord()?.id ?? null);
+  const records = $derived(State.sessionRecords());
+  const failures = $derived(State.adoptFailures());
+  const activeId = $derived(State.activeRecord()?.id ?? null);
   const unsupported = $derived(webUsbUnsupportedReason() !== null);
   const empty = $derived(records.size === 0 && failures.size === 0);
   let moreOpen = $state(false);
@@ -49,7 +47,7 @@
   }
 
   async function onRowClick(id: ConnId, active: boolean): Promise<void> {
-    if (active || switching || adoptionInProgress()) return;
+    if (active || switching || State.adoptionInProgress()) return;
     switching = true;
     try {
       await switchSession(id);
@@ -59,7 +57,7 @@
   }
 
   async function onAdd(): Promise<void> {
-    if (switching || adoptionInProgress()) return;
+    if (switching || State.adoptionInProgress()) return;
     try {
       await connectRequested();
     } catch {
@@ -75,7 +73,7 @@
       class="row device"
       class:active
       aria-pressed={active}
-      disabled={!active && (switching || adoptionInProgress())}
+      disabled={!active && (switching || State.adoptionInProgress())}
       title={rowTitle(entry.rec)}
       onclick={() => { moreOpen = false; void onRowClick(entry.id, active); }}
     >
@@ -87,7 +85,7 @@
       class="row badge"
       title={badgeTitle(entry.failure)}
       aria-label={`Adoption failed: ${entry.failure.serial} — dismiss`}
-      onclick={() => clearAdoptFailure(entry.failure.serial)}
+      onclick={() => State.clearAdoptFailure(entry.failure.serial)}
     >
       <span class="serial">{entry.failure.serial}</span>
       <span class="hw">FAILED</span>
@@ -115,7 +113,7 @@
             class="add"
             title="Add device…"
             aria-label="Add device"
-            disabled={switching || adoptionInProgress()}
+            disabled={switching || State.adoptionInProgress()}
             onclick={onAdd}
           >+</button>
         {/if}

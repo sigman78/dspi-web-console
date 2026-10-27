@@ -9,9 +9,7 @@
   import NumField from '@/components/chrome/NumField.svelte';
   import CsTargetRow from './CsTargetRow.svelte';
   import CsValueStepRow from './CsValueStepRow.svelte';
-  import {
-    applyCsMacro, clearCsMacro, fireCsMacro, cancelCsMacro, wantCsExtPoll,
-  } from '@/runtime';
+  import * as Runtime from '@/runtime';
   import * as Domain from '@/domain';
   import { csStatusFromByte } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
@@ -53,7 +51,7 @@
 
   // While a macro runs, the ext-status cadence (poll.ts) keeps the pill and
   // step hint tracking the sequencer; this panel holds its interest.
-  $effect(() => (visible ? untrack(() => wantCsExtPoll(s)) : undefined));
+  $effect(() => (visible ? untrack(() => Runtime.wantCsExtPoll(s)) : undefined));
 
   function draftOf(i: number): MacroDraft {
     return drafts.draftOf(i) ?? CsMacroDraft.macroDraftFromLive(cs.macros[i]!, cs.nouns);
@@ -144,7 +142,7 @@
   async function apply(i: number): Promise<void> {
     const d = drafts.draftOf(i);
     if (!d) return;
-    await SlotOps.applySlot(i, drafts, setApplying, () => applyCsMacro(s, i, CsMacroDraft.buildMacro(d, cs.nouns)));
+    await SlotOps.applySlot(i, drafts, setApplying, () => Runtime.applyCsMacro(s, i, CsMacroDraft.buildMacro(d, cs.nouns)));
   }
 
   function revert(i: number): void {
@@ -152,15 +150,15 @@
   }
 
   async function remove(i: number): Promise<void> {
-    await SlotOps.removeSlot(i, cs.macros[i] != null, drafts, setApplying, () => clearCsMacro(s, i));
+    await SlotOps.removeSlot(i, cs.macros[i] != null, drafts, setApplying, () => Runtime.clearCsMacro(s, i));
   }
 
   async function fire(i: number): Promise<void> {
-    await SlotOps.whileBusy(setApplying, () => fireCsMacro(s, i));
+    await SlotOps.whileBusy(setApplying, () => Runtime.fireCsMacro(s, i));
   }
 
   async function cancel(): Promise<void> {
-    await SlotOps.whileBusy(setApplying, () => cancelCsMacro(s));
+    await SlotOps.whileBusy(setApplying, () => Runtime.cancelCsMacro(s));
   }
 
   $effect(() => {

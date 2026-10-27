@@ -1,4 +1,5 @@
-import { FilterType, bandHasGain, bandHasQ, defaultFilter, snapQFromWheel, type FilterParams } from '@/domain';
+import * as Domain from '@/domain';
+import type { FilterParams } from '@/domain';
 import * as Clamp from '@/domain/clamp';
 
 const round = (v: number, step: number): number => Math.round(v / step) * step;
@@ -16,25 +17,25 @@ export interface DragAnchor {
  * returned unchanged.
  */
 export function applyBandDrag(band: FilterParams, f: number, db: number, anchor: DragAnchor): FilterParams {
-  if (band.type === FilterType.LinkwitzTransform) return band;
+  if (band.type === Domain.FilterType.LinkwitzTransform) return band;
   const next: FilterParams = { ...band, frequency: Clamp.bandFrequencyHz(Math.round(f)) };
-  if (bandHasGain(band.type)) next.gain = Clamp.bandGainDb(Math.round((anchor.gain + db - anchor.db) * 10) / 10);
+  if (Domain.bandHasGain(band.type)) next.gain = Clamp.bandGainDb(Math.round((anchor.gain + db - anchor.db) * 10) / 10);
   return next;
 }
 
 export function applyXoverDrag(band: FilterParams, f: number): FilterParams {
-  if (band.type === FilterType.LinkwitzTransform) return band;
+  if (band.type === Domain.FilterType.LinkwitzTransform) return band;
   return { ...band, frequency: Clamp.bandFrequencyHz(Math.round(f)) };
 }
 
 /** Wheel over a node: Q follows the wheel; types without Q are returned unchanged. */
 export function applyWheelQ(band: FilterParams, deltaY: number): FilterParams {
-  if (!bandHasQ(band.type)) return band;
-  return { ...band, q: Clamp.bandQ(round(snapQFromWheel(band.q, deltaY), 0.01)) };
+  if (!Domain.bandHasQ(band.type)) return band;
+  return { ...band, q: Clamp.bandQ(round(Domain.snapQFromWheel(band.q, deltaY), 0.01)) };
 }
 
 export function firstFlatIndex(bands: readonly FilterParams[]): number {
-  return bands.findIndex((b) => b.type === FilterType.Flat);
+  return bands.findIndex((b) => b.type === Domain.FilterType.Flat);
 }
 
 /** Plan for adding a Peaking band of the given gain in the first free slot; null when all bands are in use. */
@@ -48,8 +49,8 @@ export function planAddBand(
   return {
     index,
     band: {
-      ...defaultFilter(),
-      type: FilterType.Peaking,
+      ...Domain.defaultFilter(),
+      type: Domain.FilterType.Peaking,
       frequency: Clamp.bandFrequencyHz(Math.round(f)),
       gain: Clamp.bandGainDb(Math.round(gain * 10) / 10),
       q: 1,

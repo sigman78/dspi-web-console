@@ -2,9 +2,8 @@ import type { ReadySession } from '@/state';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 import type { DspDevice } from '@/device/DspDevice';
 import type { DeviceFeatures } from '@/protocol/capabilities';
-import {
-  ALL_CHANNELS, isSpdifSource, wireChannelFor, csDisplaySlotActive, type DspSnapshot,
-} from '@/domain';
+import * as Domain from '@/domain';
+import type { DspSnapshot } from '@/domain';
 import { refreshCsDisplayStatus, refreshCsExtStatus } from './controlSurfaceActions';
 
 const STATUS_INTERVAL_MS = 50;   // ~20 Hz -- peaks + cpu
@@ -90,10 +89,10 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       // Status peaks/clip bits are wire-channel indexed; the telemetry store is
       // domain-ChannelId indexed. Identity on V10, shifted on V16 RP2350.
       const hw = d.hardware;
-      const peaks: number[] = Array(ALL_CHANNELS.length).fill(0);
+      const peaks: number[] = Array(Domain.ALL_CHANNELS.length).fill(0);
       let clipFlags = 0;
       for (const ch of hw.channels) {
-        const wire = wireChannelFor(hw, ch.id);
+        const wire = Domain.wireChannelFor(hw, ch.id);
         peaks[ch.id] = s.peaks[wire] ?? 0;
         if (s.isClipping(wire)) clipFlags |= 1 << ch.id;
       }
@@ -267,7 +266,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     { key: 'info', intervalMs: INFO_INTERVAL_MS, runWhileHidden: false, gates: {},
       lastMs: () => tele.lastInfoMs, run: pollInfo },
     { key: 'spdifRx', intervalMs: SPDIF_RX_INTERVAL_MS, runWhileHidden: false,
-      gates: { enabled: (m) => isSpdifSource(m.inputConfig.source) },
+      gates: { enabled: (m) => Domain.isSpdifSource(m.inputConfig.source) },
       run: pollSpdifRx },
     { key: 'i2sSlave', intervalMs: I2S_SLAVE_INTERVAL_MS, runWhileHidden: false,
       gates: { feature: 'i2sSlaveClock', enabled: (m) => m.inputConfig.i2sClockMode === 1 },
@@ -299,7 +298,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     { key: 'csDisplay', intervalMs: CS_DISPLAY_INTERVAL_MS, runWhileHidden: false,
       gates: {
         feature: 'controlSurfaces',
-        wanted: () => cs.displayPollWanted > 0 && csDisplaySlotActive(cs.bindings, cs.status),
+        wanted: () => cs.displayPollWanted > 0 && Domain.csDisplaySlotActive(cs.bindings, cs.status),
       },
       run: () => refreshCsDisplayStatus(session) },
     { key: 'param', intervalMs: PARAM_INTERVAL_MS, runWhileHidden: false, gates: {},

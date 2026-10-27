@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { write, scrub, writeChecked, command, flushAllWrites } from './writes.svelte';
-import { connection, notices, clearNotices, dispatch, mintConnId, makeReadySession, activeSession, type ReadySession } from '@/state';
+import * as Writes from './writes.svelte';
+import * as State from '@/state';
+import type { ReadySession } from '@/state';
 import { Result } from '@/utils';
 
 // Install a ready session so writes resolve activeSession() and its
@@ -8,8 +9,8 @@ import { Result } from '@/utils';
 // simulates a disconnect mid-flight.
 let session: ReadySession;
 function installSession(): void {
-  session = makeReadySession({ info: {}, hardware: {} } as never);
-  dispatch({ t: 'synced', id: mintConnId(), session });
+  session = State.makeReadySession({ info: {}, hardware: {} } as never);
+  State.dispatch({ t: 'synced', id: State.mintConnId(), session });
 }
 
 describe('write() helper', () => {
@@ -22,42 +23,42 @@ describe('write() helper', () => {
     const order: string[] = [];
     const send = vi.fn(async () => { order.push('send'); });
     const mutate = vi.fn(() => { order.push('mutate'); });
-    await write(session, send, mutate);
+    await Writes.write(session, send, mutate);
     expect(order).toEqual(['send', 'mutate']);
     expect(send).toHaveBeenCalledTimes(1);
     expect(mutate).toHaveBeenCalledTimes(1);
   });
 
   it('requests a non-eager reconcile on success', async () => {
-    activeSession()!.mirror.consumeReconcile();  // clear any prior pending
-    await write(session, async () => {}, () => {});
-    const { wanted, eager } = activeSession()!.mirror.consumeReconcile();
+    State.activeSession()!.mirror.consumeReconcile();  // clear any prior pending
+    await Writes.write(session, async () => {}, () => {});
+    const { wanted, eager } = State.activeSession()!.mirror.consumeReconcile();
     expect(wanted).toBe(true);
     expect(eager).toBe(false);
   });
 
   it('requests an eager reconcile when send fails (failure-path recovery)', async () => {
-    const s = activeSession()!;
+    const s = State.activeSession()!;
     s.mirror.consumeReconcile();
-    await write(session, async () => { throw new Error('boom'); }, () => {});
+    await Writes.write(session, async () => { throw new Error('boom'); }, () => {});
     expect(s.mirror.consumeReconcile()).toEqual({ wanted: true, eager: true });
   });
 
   it('claims writes.busy during send and releases it after settle', async () => {
     let busyDuringSend = false;
     const send = vi.fn(async () => {
-      busyDuringSend = activeSession()!.writes.busy;
+      busyDuringSend = State.activeSession()!.writes.busy;
     });
-    await write(session, send, () => {});
+    await Writes.write(session, send, () => {});
     expect(busyDuringSend).toBe(true);
-    expect(activeSession()!.writes.busy).toBe(false);
+    expect(State.activeSession()!.writes.busy).toBe(false);
   });
 
   it('does not mutate when send rejects', async () => {
-    const s = activeSession()!;
+    const s = State.activeSession()!;
     const mutate = vi.fn();
     const send = vi.fn(async () => { throw new Error('boom'); });
-    await write(session, send, mutate);
+    await Writes.write(session, send, mutate);
     expect(mutate).not.toHaveBeenCalled();
     expect(s.writes.busy).toBe(false);
   });
@@ -66,8 +67,8 @@ describe('write() helper', () => {
     const mutate = vi.fn();
     let resolveSend!: () => void;
     const send = vi.fn(() => new Promise<void>((resolve) => { resolveSend = resolve; }));
-    const s = activeSession()!;
-    const p = write(session, send, mutate);
+    const s = State.activeSession()!;
+    const p = Writes.write(session, send, mutate);
     s.dispose();  // simulate disconnect mid-flight
     resolveSend!();
     await p;
@@ -76,22 +77,22 @@ describe('write() helper', () => {
   });
 
   it('does not request a reconcile on failure if generation changed', async () => {
-    const s = activeSession()!;
+    const s = State.activeSession()!;
     s.mirror.consumeReconcile();
     let resolveSend!: (err: Error) => void;
     const send = vi.fn(() => new Promise<void>((_, reject) => { resolveSend = (e) => reject(e); }));
-    const p = write(session, send, () => {});
-    activeSession()?.dispose();
+    const p = Writes.write(session, send, () => {});
+    State.activeSession()?.dispose();
     resolveSend!(new Error('boom'));
     await p;
     expect(s.mirror.peekReconcile().wanted).toBe(false);
   });
 
   it('requests an eager reconcile on failure when generation unchanged', async () => {
-    const s = activeSession()!;
+    const s = State.activeSession()!;
     s.mirror.consumeReconcile();
     const send = vi.fn(async () => { throw new Error('boom'); });
-    await write(session, send, () => {});
+    await Writes.write(session, send, () => {});
     expect(s.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
   });
 });
@@ -99,16 +100,16 @@ describe('write() helper', () => {
 describe('write() failure policy', () => {
   beforeEach(() => {
     installSession();
-    clearNotices();
+    State.clearNotices();
     vi.clearAllMocks();
   });
 
   it('a failed write stays connected, reports health, toasts, and requests an eager reconcile', async () => {
     session.mirror.consumeReconcile();
-    await write(session, async () => { throw new Error('boom'); }, () => {});
-    expect(connection.connected).toBe(true);
+    await Writes.write(session, async () => { throw new Error('boom'); }, () => {});
+    expect(State.connection.connected).toBe(true);
     expect(session.health.failTotal).toBe(1);
-    expect(notices.list.some((n) => n.kind === 'error')).toBe(true);
+    expect(State.notices.list.some((n) => n.kind === 'error')).toBe(true);
     expect(session.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
   });
 
@@ -116,80 +117,80 @@ describe('write() failure policy', () => {
     session.health.noteFail('write', new Error('x'));
     session.health.noteFail('write', new Error('x'));
     session.mirror.consumeReconcile();
-    await write(session, async () => { throw new Error('boom'); }, () => {});
+    await Writes.write(session, async () => { throw new Error('boom'); }, () => {});
     expect(session.health.degraded).toBe(true);
-    expect(notices.list.length).toBe(0);
+    expect(State.notices.list.length).toBe(0);
     expect(session.mirror.peekReconcile().wanted).toBe(false);
   });
 
   it('while degraded, writes are refused unsent and silently', async () => {
-    clearNotices();
+    State.clearNotices();
     session.health.degraded = true;
     const send = vi.fn(async () => {});
     const mutate = vi.fn();
-    expect(await write(session, send, mutate)).toBe(false);
-    expect(await write(session, send, mutate)).toBe(false);
-    scrub(session, 'k', mutate, send);
-    expect(await writeChecked(session, 'op', async () => Result.ok(undefined), mutate)).toBe(false);
+    expect(await Writes.write(session, send, mutate)).toBe(false);
+    expect(await Writes.write(session, send, mutate)).toBe(false);
+    Writes.scrub(session, 'k', mutate, send);
+    expect(await Writes.writeChecked(session, 'op', async () => Result.ok(undefined), mutate)).toBe(false);
     expect(send).not.toHaveBeenCalled();
     expect(mutate).not.toHaveBeenCalled();
-    expect(notices.list).toHaveLength(0);
+    expect(State.notices.list).toHaveLength(0);
 
     session.health.noteRecovered();
-    expect(await write(session, send, mutate)).toBe(true);
+    expect(await Writes.write(session, send, mutate)).toBe(true);
   });
 
   it('a failed command reports health and stays connected', async () => {
-    await command(session, 'set thing', async () => { throw new Error('boom'); }, () => {});
+    await Writes.command(session, 'set thing', async () => { throw new Error('boom'); }, () => {});
     expect(session.health.failTotal).toBe(1);
-    expect(connection.connected).toBe(true);
+    expect(State.connection.connected).toBe(true);
   });
 });
 
 describe('writeChecked() helper', () => {
   beforeEach(() => {
     installSession();
-    activeSession()!.mirror.consumeReconcile();
-    clearNotices();
+    State.activeSession()!.mirror.consumeReconcile();
+    State.clearNotices();
     vi.clearAllMocks();
   });
 
   it('patches and requests a non-eager reconcile on an ok Result', async () => {
     const patch = vi.fn();
-    await writeChecked(session, 'op', async () => Result.ok(), patch);
+    await Writes.writeChecked(session, 'op', async () => Result.ok(), patch);
     expect(patch).toHaveBeenCalledTimes(1);
-    expect(activeSession()!.mirror.consumeReconcile()).toEqual({ wanted: true, eager: false });
+    expect(State.activeSession()!.mirror.consumeReconcile()).toEqual({ wanted: true, eager: false });
   });
 
   it('warns with the device message and skips the patch on a non-ok Result', async () => {
     const patch = vi.fn();
-    await writeChecked(session, 'set pin', async () => Result.fail('x', 'GPIO pin already in use'), patch);
+    await Writes.writeChecked(session, 'set pin', async () => Result.fail('x', 'GPIO pin already in use'), patch);
     expect(patch).not.toHaveBeenCalled();
-    expect(notices.list).toHaveLength(1);
-    expect(notices.list[0].kind).toBe('warn');
-    expect(notices.list[0].message).toContain('in use');
+    expect(State.notices.list).toHaveLength(1);
+    expect(State.notices.list[0].kind).toBe('warn');
+    expect(State.notices.list[0].message).toContain('in use');
   });
 
   it('treats a rejection as local — no reconcile request, no status change', async () => {
-    await writeChecked(session, 'set pin', async () => Result.fail('x', 'rejected'), () => {});
-    expect(activeSession()!.mirror.peekReconcile().wanted).toBe(false);
-    expect(connection.connected).toBe(true);
+    await Writes.writeChecked(session, 'set pin', async () => Result.fail('x', 'rejected'), () => {});
+    expect(State.activeSession()!.mirror.peekReconcile().wanted).toBe(false);
+    expect(State.connection.connected).toBe(true);
   });
 
   it('error-toasts a transport throw without requesting a reconcile', async () => {
-    await writeChecked(session, 'set pin', async () => { throw new Error('stall'); }, () => {});
-    expect(notices.list).toHaveLength(1);
-    expect(notices.list[0].kind).toBe('error');
-    expect(activeSession()!.mirror.peekReconcile().wanted).toBe(false);
-    expect(connection.connected).toBe(true);
+    await Writes.writeChecked(session, 'set pin', async () => { throw new Error('stall'); }, () => {});
+    expect(State.notices.list).toHaveLength(1);
+    expect(State.notices.list[0].kind).toBe('error');
+    expect(State.activeSession()!.mirror.peekReconcile().wanted).toBe(false);
+    expect(State.connection.connected).toBe(true);
   });
 
   it('does not patch when generation changes mid-flight', async () => {
     const patch = vi.fn();
     let resolveSend!: (r: Result<void, string>) => void;
     const send = vi.fn(() => new Promise<Result<void, string>>((res) => { resolveSend = res; }));
-    const p = writeChecked(session, 'op', send, patch);
-    activeSession()?.dispose();  // simulate disconnect mid-flight
+    const p = Writes.writeChecked(session, 'op', send, patch);
+    State.activeSession()?.dispose();  // simulate disconnect mid-flight
     resolveSend!(Result.ok());
     await p;
     expect(patch).not.toHaveBeenCalled();
@@ -199,8 +200,8 @@ describe('writeChecked() helper', () => {
     const patch = vi.fn();
     let resolveSend!: (r: Result<void, string>) => void;
     const send = vi.fn(() => new Promise<Result<void, string>>((res) => { resolveSend = res; }));
-    void writeChecked(session, 'op', send, patch);
-    const flushed = flushAllWrites(session);
+    void Writes.writeChecked(session, 'op', send, patch);
+    const flushed = Writes.flushAllWrites(session);
     resolveSend!(Result.ok());
     await flushed;
     expect(patch).toHaveBeenCalledTimes(1);
@@ -210,42 +211,42 @@ describe('writeChecked() helper', () => {
 describe('command() helper', () => {
   beforeEach(() => {
     installSession();
-    clearNotices();
+    State.clearNotices();
     vi.clearAllMocks();
   });
 
   it('runs onSettled with the resolved value on success', async () => {
     const onSettled = vi.fn();
-    await command(session, 'op', async () => 42, onSettled);
-    expect(onSettled).toHaveBeenCalledWith(42, activeSession()!);
+    await Writes.command(session, 'op', async () => 42, onSettled);
+    expect(onSettled).toHaveBeenCalledWith(42, State.activeSession()!);
   });
 
   it('drops onSettled and emits no toast when generation changes mid-flight', async () => {
     const onSettled = vi.fn();
     let resolve!: (v: number) => void;
-    const p = command(session, 'op', () => new Promise<number>((r) => { resolve = r; }), onSettled);
-    activeSession()?.dispose();  // simulate disconnect+reconnect mid-flight
+    const p = Writes.command(session, 'op', () => new Promise<number>((r) => { resolve = r; }), onSettled);
+    State.activeSession()?.dispose();  // simulate disconnect+reconnect mid-flight
     resolve!(1);
     await p;
     expect(onSettled).not.toHaveBeenCalled();
-    expect(notices.list).toHaveLength(0);
+    expect(State.notices.list).toHaveLength(0);
   });
 
   it('error-toasts a throw without flipping connection status', async () => {
-    await command(session, 'save', async () => { throw new Error('boom'); }, () => {});
-    expect(notices.list).toHaveLength(1);
-    expect(notices.list[0].kind).toBe('error');
-    expect(connection.connected).toBe(true);
+    await Writes.command(session, 'save', async () => { throw new Error('boom'); }, () => {});
+    expect(State.notices.list).toHaveLength(1);
+    expect(State.notices.list[0].kind).toBe('error');
+    expect(State.connection.connected).toBe(true);
   });
 
   it('is drained by flushAllWrites', async () => {
     const onSettled = vi.fn();
     let resolve!: (v: number) => void;
-    void command(session, 'op', () => new Promise<number>((r) => { resolve = r; }), onSettled);
-    const flushed = flushAllWrites(session);
+    void Writes.command(session, 'op', () => new Promise<number>((r) => { resolve = r; }), onSettled);
+    const flushed = Writes.flushAllWrites(session);
     resolve!(7);
     await flushed;
-    expect(onSettled).toHaveBeenCalledWith(7, activeSession()!);
+    expect(onSettled).toHaveBeenCalledWith(7, State.activeSession()!);
   });
 });
 
@@ -259,14 +260,14 @@ describe('scrub() helper', () => {
   it('mutates immediately (optimistic)', async () => {
     const mutate = vi.fn();
     const send = vi.fn(async () => {});
-    scrub(session, 'k1', mutate, send);
+    Writes.scrub(session, 'k1', mutate, send);
     expect(mutate).toHaveBeenCalledTimes(1);   // synchronous, before any send settles
-    await flushAllWrites(session);
+    await Writes.flushAllWrites(session);
   });
 
   it('sends immediately when the lane is idle', () => {
     const send = vi.fn(async () => {});
-    scrub(session, 'k1', () => {}, send);
+    Writes.scrub(session, 'k1', () => {}, send);
     expect(send).toHaveBeenCalledTimes(1);     // no coalesce timer in front
   });
 
@@ -274,20 +275,20 @@ describe('scrub() helper', () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
     const sends: number[] = [];
-    scrub(session, 'k1', () => {}, async () => { sends.push(1); await gate; });
-    scrub(session, 'k1', () => {}, async () => { sends.push(2); });
-    scrub(session, 'k1', () => {}, async () => { sends.push(3); });
+    Writes.scrub(session, 'k1', () => {}, async () => { sends.push(1); await gate; });
+    Writes.scrub(session, 'k1', () => {}, async () => { sends.push(2); });
+    Writes.scrub(session, 'k1', () => {}, async () => { sends.push(3); });
     release();
-    await flushAllWrites(session);
+    await Writes.flushAllWrites(session);
     expect(sends).toEqual([1, 3]);             // 2 was replaced before the wire freed up
   });
 
   it('different keys do not coalesce', async () => {
     const sendA = vi.fn(async () => {});
     const sendB = vi.fn(async () => {});
-    scrub(session, 'keyA', () => {}, sendA);
-    scrub(session, 'keyB', () => {}, sendB);
-    await flushAllWrites(session);
+    Writes.scrub(session, 'keyA', () => {}, sendA);
+    Writes.scrub(session, 'keyB', () => {}, sendB);
+    await Writes.flushAllWrites(session);
     expect(sendA).toHaveBeenCalledTimes(1);
     expect(sendB).toHaveBeenCalledTimes(1);
   });
@@ -296,8 +297,8 @@ describe('scrub() helper', () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
     const parked = vi.fn(async () => {});
-    scrub(session, 'k1', () => {}, async () => { await gate; });
-    scrub(session, 'k1', () => {}, parked);    // parked behind the in-flight send
+    Writes.scrub(session, 'k1', () => {}, async () => { await gate; });
+    Writes.scrub(session, 'k1', () => {}, parked);    // parked behind the in-flight send
     session.writes.cancel();
     release();
     await new Promise((r) => setTimeout(r, 10));
@@ -308,66 +309,66 @@ describe('scrub() helper', () => {
   it('claims writes.busy once for a burst and releases it when the lane drains', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
-    scrub(session, 'k1', () => {}, async () => { await gate; });
-    scrub(session, 'k1', () => {}, async () => {});
+    Writes.scrub(session, 'k1', () => {}, async () => { await gate; });
+    Writes.scrub(session, 'k1', () => {}, async () => {});
     expect(session.writes.busy).toBe(true);
     release();
-    await flushAllWrites(session);
+    await Writes.flushAllWrites(session);
     expect(session.writes.busy).toBe(false);
   });
 
   it('cancel clears writes.busy', () => {
-    scrub(session, 'k1', () => {}, async () => {});
-    scrub(session, 'k2', () => {}, async () => {});
-    expect(activeSession()!.writes.busy).toBe(true);
+    Writes.scrub(session, 'k1', () => {}, async () => {});
+    Writes.scrub(session, 'k2', () => {}, async () => {});
+    expect(State.activeSession()!.writes.busy).toBe(true);
     session.writes.cancel();
-    expect(activeSession()!.writes.busy).toBe(false);
+    expect(State.activeSession()!.writes.busy).toBe(false);
   });
 
   it('on send failure: requests an eager reconcile, lane recovers', async () => {
-    activeSession()!.mirror.consumeReconcile();
+    State.activeSession()!.mirror.consumeReconcile();
     const send = vi.fn(async () => { throw new Error('boom'); });
-    scrub(session, 'k1', () => {}, send);
-    await flushAllWrites(session);
-    expect(activeSession()!.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
+    Writes.scrub(session, 'k1', () => {}, send);
+    await Writes.flushAllWrites(session);
+    expect(State.activeSession()!.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
   });
 
   it('on send success: does not request an eager reconcile (case A — mirror already holds sent value)', async () => {
-    activeSession()!.mirror.consumeReconcile();
+    State.activeSession()!.mirror.consumeReconcile();
     const send = vi.fn(async () => {});
-    scrub(session, 'k1', () => {}, send);
-    await flushAllWrites(session);
-    expect(activeSession()!.mirror.peekReconcile().eager).toBe(false);
+    Writes.scrub(session, 'k1', () => {}, send);
+    await Writes.flushAllWrites(session);
+    expect(State.activeSession()!.mirror.peekReconcile().eager).toBe(false);
   });
 
   it('on send success: requests a non-eager reconcile', async () => {
-    activeSession()!.mirror.consumeReconcile();
-    scrub(session, 'k1', () => {}, async () => {});
-    await flushAllWrites(session);
-    const { wanted, eager } = activeSession()!.mirror.consumeReconcile();
+    State.activeSession()!.mirror.consumeReconcile();
+    Writes.scrub(session, 'k1', () => {}, async () => {});
+    await Writes.flushAllWrites(session);
+    const { wanted, eager } = State.activeSession()!.mirror.consumeReconcile();
     expect(wanted).toBe(true);
     expect(eager).toBe(false);
   });
 
   it('on send failure: requests an eager reconcile (not merely non-eager)', async () => {
-    const s = activeSession()!;
+    const s = State.activeSession()!;
     s.mirror.consumeReconcile();
-    scrub(session, 'k1', () => {}, async () => { throw new Error('boom'); });
-    await flushAllWrites(session);
+    Writes.scrub(session, 'k1', () => {}, async () => { throw new Error('boom'); });
+    await Writes.flushAllWrites(session);
     expect(s.mirror.consumeReconcile()).toEqual({ wanted: true, eager: true });
   });
 
   it('stale-gen settle does not request a reconcile', async () => {
     let resolveSend!: () => void;
     const send = vi.fn(() => new Promise<void>((r) => { resolveSend = r; }));
-    scrub(session, 'k1', () => {}, send);
+    Writes.scrub(session, 'k1', () => {}, send);
     // Wait for timer to fire (coalesce window) so send starts
     await new Promise((r) => setTimeout(r, 25));
-    const s = activeSession()!;
+    const s = State.activeSession()!;
     s.mirror.consumeReconcile();
     s.dispose();  // simulate disconnect mid-send
     resolveSend!();
-    await flushAllWrites(session);
+    await Writes.flushAllWrites(session);
     expect(s.mirror.peekReconcile().wanted).toBe(false);
   });
 });
@@ -383,10 +384,10 @@ describe('flushAllWrites covers write() calls', () => {
     let mutated = false;
     const send = vi.fn(() => new Promise<void>((r) => { resolveSend = r; }));
     const mutate = vi.fn(() => { mutated = true; });
-    void write(session, send, mutate);
+    void Writes.write(session, send, mutate);
     // The write is in flight. flushAllWrites must wait for it.
     let flushed = false;
-    const flushP = flushAllWrites(session).then(() => { flushed = true; });
+    const flushP = Writes.flushAllWrites(session).then(() => { flushed = true; });
     // Yield once: flush should NOT have resolved yet
     await Promise.resolve();
     expect(flushed).toBe(false);
@@ -400,11 +401,11 @@ describe('flushAllWrites covers write() calls', () => {
   it('writes.busy is true during a write() in flight', async () => {
     let resolveSend!: () => void;
     const send = vi.fn(() => new Promise<void>((r) => { resolveSend = r; }));
-    void write(session, send, () => {});
-    expect(activeSession()!.writes.busy).toBe(true);
+    void Writes.write(session, send, () => {});
+    expect(State.activeSession()!.writes.busy).toBe(true);
     resolveSend!();
-    await flushAllWrites(session);
-    expect(activeSession()!.writes.busy).toBe(false);
+    await Writes.flushAllWrites(session);
+    expect(State.activeSession()!.writes.busy).toBe(false);
   });
 });
 
@@ -420,22 +421,22 @@ describe('write lanes are scoped to the passed session, not the active one', () 
   });
 
   it('write() claims writes.busy and requests reconcile on the passed session', async () => {
-    const a = makeReadySession({ info: {}, hardware: {} } as never);  // not active
+    const a = State.makeReadySession({ info: {}, hardware: {} } as never);  // not active
     a.mirror.consumeReconcile();
     session.mirror.consumeReconcile();
     let busyDuringSend = false;
-    await write(a, async () => { busyDuringSend = a.writes.busy; }, () => {});
+    await Writes.write(a, async () => { busyDuringSend = a.writes.busy; }, () => {});
     expect(busyDuringSend).toBe(true);                        // A's coordinator, not B's
     expect(a.mirror.consumeReconcile().wanted).toBe(true);    // A got the reconcile
     expect(session.mirror.consumeReconcile().wanted).toBe(false);  // B untouched
   });
 
   it('scrub() schedules on the passed session lane and reconciles it', async () => {
-    const a = makeReadySession({ info: {}, hardware: {} } as never);
+    const a = State.makeReadySession({ info: {}, hardware: {} } as never);
     a.mirror.consumeReconcile();
     session.mirror.consumeReconcile();
-    scrub(a, 'k1', () => {}, async () => {});
-    await flushAllWrites(a);                                  // drains A's lane
+    Writes.scrub(a, 'k1', () => {}, async () => {});
+    await Writes.flushAllWrites(a);                                  // drains A's lane
     expect(a.mirror.consumeReconcile().wanted).toBe(true);
     expect(session.mirror.consumeReconcile().wanted).toBe(false);
   });

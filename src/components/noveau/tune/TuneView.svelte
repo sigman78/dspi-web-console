@@ -3,7 +3,7 @@
   import { FilterType, inputIndexOf, type ChannelId } from '@/domain';
   import { chShade } from '@/styles/palette';
   import { getSession } from '@/components/sessionContext';
-  import { noveauUi } from '../noveauUi.svelte';
+  import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import EqGraph from './EqGraph.svelte';
   import Inspector from './Inspector.svelte';
   import InputStage from './InputStage.svelte';

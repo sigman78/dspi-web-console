@@ -1,7 +1,7 @@
 // Pure plot-geometry helpers shared by BodePlot and the interactive EQ graph.
 // Pixel coordinates are in the plot's SVG viewBox space.
 
-import * as Eq from '../eqLimits';
+import * as Eq from '@/domain/eqLimits';
 
 export type PlotGeometry = {
   padL: number;

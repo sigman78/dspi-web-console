@@ -1,15 +1,15 @@
 <script lang="ts">
   import { getSession } from '@/components/sessionContext';
   import * as CsField from '@/domain/cs/fieldHelpers';
-  import ControlInterfacesPanel from '@/components/system/ControlInterfacesPanel.svelte';
-  import ControlSurfacesPanel from '@/components/system/ControlSurfacesPanel.svelte';
-  import CsGroupsPanel from '@/components/system/CsGroupsPanel.svelte';
-  import CsMacrosPanel from '@/components/system/CsMacrosPanel.svelte';
-  import CsDisplayPanel from '@/components/system/CsDisplayPanel.svelte';
-  import PinMapPanel from '@/components/system/PinMapPanel.svelte';
-  import PagedWorkspace from '../PagedWorkspace.svelte';
+  import ControlInterfacesPanel from '@/components/noveau/control/ControlInterfacesPanel.svelte';
+  import ControlSurfacesPanel from '@/components/noveau/control/ControlSurfacesPanel.svelte';
+  import CsGroupsPanel from '@/components/noveau/control/CsGroupsPanel.svelte';
+  import CsMacrosPanel from '@/components/noveau/control/CsMacrosPanel.svelte';
+  import CsDisplayPanel from '@/components/noveau/control/CsDisplayPanel.svelte';
+  import PinMapPanel from '@/components/chrome/PinMapPanel.svelte';
+  import PagedWorkspace from '@/components/noveau/PagedWorkspace.svelte';
   import CsChangesStrip from './CsChangesStrip.svelte';
-  import { noveauUi } from '../noveauUi.svelte';
+  import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import { controlPages } from './controlPages';
 
   const s = getSession();

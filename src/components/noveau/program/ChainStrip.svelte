@@ -2,7 +2,7 @@
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
-  import { noveauUi } from '../noveauUi.svelte';
+  import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import { selectChannel, settings } from '@/state';
   import { chainBlocks, type ChainBlock } from './chainModel';
   import { resolveModule, type ProgramModuleKey } from './programModel';

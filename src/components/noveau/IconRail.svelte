@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getSession } from '@/components/sessionContext';
-  import { controlAvailable } from './control/controlPages';
+  import { controlAvailable } from '@/components/noveau/control/controlPages';
   import { noveauUi, type NoveauDestination } from './noveauUi.svelte';
 
   const s = getSession();

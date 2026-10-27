@@ -1,24 +1,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as actions from './mixerActions';
-import { dispatch, mintConnId, makeReadySession, activeSession, resetAppState } from '@/state';
+import * as State from '@/state';
 import { parseBulkParams } from '@/protocol';
-import {
-  PlatformType, createHardwareProfile, type ChannelId, matrixColumns,
-} from '@/domain';
+import * as Domain from '@/domain';
+import type { ChannelId } from '@/domain';
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { deriveCapabilities } from '@/protocol/capabilities';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
 import { bootMock } from './boot';
 
-const testHardware = createHardwareProfile(PlatformType.RP2350);
+const testHardware = Domain.createHardwareProfile(Domain.PlatformType.RP2350);
 
 // Builds a DspDevice stub with identity defaults. Any method can be overridden.
 function initializedDevice(methods: Partial<DspDevice>): DspDevice {
   const base: Partial<DspDevice> = {
     info: {
       serial: 'TEST-RP2350',
-      platformType: PlatformType.RP2350,
+      platformType: Domain.PlatformType.RP2350,
       hardware: testHardware,
       capabilities: deriveCapabilities({
         fw: { major: 1, minor: 1, patch: 4 }, wireVersion: 10, payloadLength: 2960, platformId: 1,
@@ -30,17 +29,17 @@ function initializedDevice(methods: Partial<DspDevice>): DspDevice {
   return { ...base, ...methods } as DspDevice;
 }
 
-function makeSnapshot(platform: PlatformType = PlatformType.RP2350) {
+function makeSnapshot(platform: Domain.PlatformType = Domain.PlatformType.RP2350) {
   const bulk = parseBulkParams(makeBulk(
-    { platformId: platform === PlatformType.RP2350 ? 1 : 0 },
+    { platformId: platform === Domain.PlatformType.RP2350 ? 1 : 0 },
   ));
-  return fromBulkParams(createHardwareProfile(platform), bulk);
+  return fromBulkParams(Domain.createHardwareProfile(platform), bulk);
 }
 
-const cancelWrites = () => { const s = activeSession(); if (s) s.writes.cancel(); };
-afterEach(() => { activeSession()?.dispose(); cancelWrites(); resetAppState(); });
+const cancelWrites = () => { const s = State.activeSession(); if (s) s.writes.cancel(); };
+afterEach(() => { State.activeSession()?.dispose(); cancelWrites(); State.resetAppState(); });
 
-const liveMirror = () => activeSession()!.mirror;
+const liveMirror = () => State.activeSession()!.mirror;
 
 describe('setChannelName', () => {
   beforeEach(() => {
@@ -50,8 +49,8 @@ describe('setChannelName', () => {
       setChannelName: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(Domain.createHardwareProfile(Domain.PlatformType.RP2350), bulk));
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -59,27 +58,27 @@ describe('setChannelName', () => {
 
   it('patches the snapshot channels[i].name after send acks', async () => {
     // setChannelName awaits the wire send, then mutates draft (await-then-mutate).
-    actions.setChannelName(activeSession()!, 0 satisfies ChannelId, 'Studio Left');
+    actions.setChannelName(State.activeSession()!, 0 satisfies ChannelId, 'Studio Left');
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.channels[0].name).toBe('Studio Left');
   });
 
   it('treats empty input as a clear: snapshot falls back to defaultName', async () => {
     const defaultName = liveMirror().current!.channels[0].defaultName;
-    actions.setChannelName(activeSession()!, 0 satisfies ChannelId, '');
+    actions.setChannelName(State.activeSession()!, 0 satisfies ChannelId, '');
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.channels[0].name).toBe(defaultName);
   });
 
   it('trims whitespace-only input the same as empty', async () => {
     const defaultName = liveMirror().current!.channels[0].defaultName;
-    actions.setChannelName(activeSession()!, 0 satisfies ChannelId, '   ');
+    actions.setChannelName(State.activeSession()!, 0 satisfies ChannelId, '   ');
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.channels[0].name).toBe(defaultName);
   });
 
   it('trims whitespace and stores the resolved value in the snapshot', async () => {
-    actions.setChannelName(activeSession()!, 0 satisfies ChannelId, '  padded  ');
+    actions.setChannelName(State.activeSession()!, 0 satisfies ChannelId, '  padded  ');
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.channels[0].name).toBe('padded'); // resolved (trimmed)
   });
@@ -89,11 +88,11 @@ describe('setChannelName', () => {
     // matrixColumns only surfaces enabled outputs, and the fixture default
     // is disabled, so enable the slot to join it.
     liveMirror().current!.outputs.find((o) => o.wireIndex === 0)!.enabled = true;
-    actions.setChannelName(activeSession()!, 2 satisfies ChannelId, 'Front Left');
+    actions.setChannelName(State.activeSession()!, 2 satisfies ChannelId, 'Front Left');
     await vi.runAllTimersAsync();
 
     const channel = liveMirror().current!.channels.find((c) => c.id === 2);
-    const column = matrixColumns(liveMirror().current).find((c) => c.wireIdx === 0);
+    const column = Domain.matrixColumns(liveMirror().current).find((c) => c.wireIdx === 0);
     expect(channel?.name).toBe('Front Left');
     expect(column?.name).toBe('Front Left');
   });
@@ -103,28 +102,28 @@ describe('setChannelName', () => {
       setChannelName: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(rp2040Device) });
-    liveMirror().replaceCurrent(makeSnapshot(PlatformType.RP2040));
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(rp2040Device) });
+    liveMirror().replaceCurrent(makeSnapshot(Domain.PlatformType.RP2040));
     liveMirror().current!.outputs.find((o) => o.wireIndex === 4)!.enabled = true;
 
-    actions.setChannelName(activeSession()!, 10 satisfies ChannelId, 'Sub');
+    actions.setChannelName(State.activeSession()!, 10 satisfies ChannelId, 'Sub');
     await vi.runAllTimersAsync();
 
     const channel = liveMirror().current!.channels.find((c) => c.id === 10);
-    const column = matrixColumns(liveMirror().current).find((c) => c.wireIdx === 4);
+    const column = Domain.matrixColumns(liveMirror().current).find((c) => c.wireIdx === 4);
     expect(channel?.name).toBe('Sub');
     expect(column?.name).toBe('Sub');
     expect(liveMirror().current!.outputs.some((o) => o.wireIndex === 8)).toBe(false);
   });
 
   it('does not change output column names when renaming an input channel', async () => {
-    const namesBefore = matrixColumns(liveMirror().current).map((c) => c.name);
+    const namesBefore = Domain.matrixColumns(liveMirror().current).map((c) => c.name);
 
     // ChannelId.In1L = 0 — no entry in outputs[].
-    actions.setChannelName(activeSession()!, 0 satisfies ChannelId, 'Mic 1');
+    actions.setChannelName(State.activeSession()!, 0 satisfies ChannelId, 'Mic 1');
     await vi.runAllTimersAsync();
 
-    const namesAfter = matrixColumns(liveMirror().current).map((c) => c.name);
+    const namesAfter = Domain.matrixColumns(liveMirror().current).map((c) => c.name);
     expect(namesAfter).toEqual(namesBefore);
   });
 });
@@ -143,11 +142,11 @@ describe('bulk writes: toggles', () => {
       setOutputMute: setOutputMuteFn,
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(Domain.createHardwareProfile(Domain.PlatformType.RP2350), parseBulkParams(makeBulk())));
     const slot = liveMirror().current!.outputs[0].wireIndex;
     const before = liveMirror().current!.outputs[0].muted;
-    actions.setOutputMuted(activeSession()!, slot, !before);
+    actions.setOutputMuted(State.activeSession()!, slot, !before);
     await vi.runAllTimersAsync();
     expect(liveMirror().current?.outputs.find((o) => o.wireIndex === slot)?.muted).toBe(!before);
     expect(setOutputMuteFn).toHaveBeenCalledWith(slot, !before);
@@ -161,10 +160,10 @@ describe('bulk writes: toggles', () => {
       setOutputEnable: vi.fn(async (slot: number, enabled: boolean) => { calls.push([slot, enabled]); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(Domain.createHardwareProfile(Domain.PlatformType.RP2350), parseBulkParams(makeBulk())));
 
-    actions.setOutputPairEnabled(activeSession()!, 0, true);
+    actions.setOutputPairEnabled(State.activeSession()!, 0, true);
     await vi.runAllTimersAsync();
 
     expect(calls).toEqual(expect.arrayContaining([[0, true], [1, true]]));
@@ -179,12 +178,12 @@ describe('bulk writes: toggles', () => {
       setOutputEnable: vi.fn(async () => {}),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(Domain.createHardwareProfile(Domain.PlatformType.RP2350), parseBulkParams(makeBulk())));
     liveMirror().current!.outputs.find((o) => o.wireIndex === 2)!.enabled = true;
     liveMirror().current!.outputs.find((o) => o.wireIndex === 3)!.enabled = false;
 
-    actions.setOutputPairEnabled(activeSession()!, 1, false);
+    actions.setOutputPairEnabled(State.activeSession()!, 1, false);
     await vi.runAllTimersAsync();
 
     expect(liveMirror().current?.outputs.find((o) => o.wireIndex === 2)?.enabled).toBe(false);
@@ -197,8 +196,8 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession({} as never) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession({} as never) });
+    liveMirror().replaceCurrent(fromBulkParams(Domain.createHardwareProfile(Domain.PlatformType.RP2350), bulk));
   });
   afterEach(() => { vi.useRealTimers(); });
 
@@ -208,11 +207,11 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(Domain.createHardwareProfile(Domain.PlatformType.RP2350), parseBulkParams(makeBulk())));
     const route = liveMirror().current!.routes[0];
     const before = route.enabled;
-    actions.setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, !before);
+    actions.setCrosspointEnabled(State.activeSession()!, route.inputIndex, route.outputWireIndex, !before);
     expect(liveMirror().current!.routes[0].enabled).toBe(before);    // not optimistic — unchanged until ack
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.routes[0].enabled).toBe(!before);   // patched after ack
@@ -220,7 +219,7 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
     expect(calls[0].enabled).toBe(!before);
 
     // Explicit value, not a toggle: calling again with the same value must not flip it back.
-    actions.setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, !before);
+    actions.setCrosspointEnabled(State.activeSession()!, route.inputIndex, route.outputWireIndex, !before);
     await vi.runAllTimersAsync();
     expect(liveMirror().current!.routes[0].enabled).toBe(!before);
   });
@@ -231,13 +230,13 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(Domain.createHardwareProfile(Domain.PlatformType.RP2350), parseBulkParams(makeBulk())));
     const route = liveMirror().current!.routes[0];
     const beforeEnabled = route.enabled;
-    actions.setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, !beforeEnabled);
+    actions.setCrosspointEnabled(State.activeSession()!, route.inputIndex, route.outputWireIndex, !beforeEnabled);
     await vi.runAllTimersAsync();
-    actions.setCrosspointGain(activeSession()!, route.inputIndex, route.outputWireIndex, -6);
+    actions.setCrosspointGain(State.activeSession()!, route.inputIndex, route.outputWireIndex, -6);
     await vi.runAllTimersAsync();
     expect(calls).toHaveLength(2);                 // one send per edit
     // The gain send merges with the committed mirror: the enable edit (now
@@ -252,14 +251,14 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(Domain.createHardwareProfile(Domain.PlatformType.RP2350), parseBulkParams(makeBulk())));
     const route = liveMirror().current!.routes[0];
-    actions.setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, false);
+    actions.setCrosspointEnabled(State.activeSession()!, route.inputIndex, route.outputWireIndex, false);
     await vi.runAllTimersAsync();
     calls.length = 0;
     const gainDb = route.gainDb === -6 ? -7 : -6;
-    actions.routeCrosspoint(activeSession()!, route.inputIndex, route.outputWireIndex, { gainDb, invert: !route.invert });
+    actions.routeCrosspoint(State.activeSession()!, route.inputIndex, route.outputWireIndex, { gainDb, invert: !route.invert });
     await vi.runAllTimersAsync();
     expect(calls).toEqual([{ enabled: true, invert: !route.invert, gainDb }]);
   });
@@ -270,11 +269,11 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
       setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(Domain.createHardwareProfile(Domain.PlatformType.RP2350), parseBulkParams(makeBulk())));
     const route = liveMirror().current!.routes[0];
     const before = route.invert;
-    actions.setCrosspointInvert(activeSession()!, route.inputIndex, route.outputWireIndex, !before);
+    actions.setCrosspointInvert(State.activeSession()!, route.inputIndex, route.outputWireIndex, !before);
     await vi.runAllTimersAsync();
     expect(calls).toHaveLength(1);
     expect(calls[0].invert).toBe(!before);
@@ -300,11 +299,11 @@ interface ThinVerbCase {
 const out0 = () => liveMirror().current!.outputs[0];
 
 const thinVerbCases: ThinVerbCase[] = [
-  { name: 'setMasterPreamp', method: 'setMasterPreamp', mirrorPath: 'masterPreampDb', lane: 'scrub', makeStub: (fn) => ({ setMasterPreamp: fn }), invoke: () => actions.setMasterPreamp(activeSession()!, -3), expectedArgs: () => [-3], read: () => liveMirror().current!.masterPreampDb, expected: -3 },
-  { name: 'setOutputDelay', method: 'setOutputDelay', mirrorPath: 'outputs[0].delayMs', lane: 'write', makeStub: (fn) => ({ setOutputDelay: fn }), invoke: () => actions.setOutputDelay(activeSession()!, out0().wireIndex, 5), expectedArgs: () => [out0().wireIndex, 5], read: () => out0().delayMs, expected: 5 },
-  { name: 'setOutputGain', method: 'setOutputGain', mirrorPath: 'outputs[0].gainDb', lane: 'write', makeStub: (fn) => ({ setOutputGain: fn }), invoke: () => actions.setOutputGain(activeSession()!, out0().wireIndex, -6), expectedArgs: () => [out0().wireIndex, -6], read: () => out0().gainDb, expected: -6 },
-  { name: 'setInputPreamp', method: 'setInputPreamp', mirrorPath: 'inputPreampDb[1]', lane: 'scrub', makeStub: (fn) => ({ setInputPreamp: fn }), invoke: () => actions.setInputPreamp(activeSession()!, 1, -4), expectedArgs: () => [1, -4], read: () => liveMirror().current!.inputPreampDb[1], expected: -4 },
-  { name: 'setOutputEnabled', method: 'setOutputEnable', mirrorPath: 'outputs[0].enabled', lane: 'write', makeStub: (fn) => ({ setOutputEnable: fn }), invoke: () => actions.setOutputEnabled(activeSession()!, out0().wireIndex, false), expectedArgs: () => [out0().wireIndex, false], read: () => out0().enabled, expected: false },
+  { name: 'setMasterPreamp', method: 'setMasterPreamp', mirrorPath: 'masterPreampDb', lane: 'scrub', makeStub: (fn) => ({ setMasterPreamp: fn }), invoke: () => actions.setMasterPreamp(State.activeSession()!, -3), expectedArgs: () => [-3], read: () => liveMirror().current!.masterPreampDb, expected: -3 },
+  { name: 'setOutputDelay', method: 'setOutputDelay', mirrorPath: 'outputs[0].delayMs', lane: 'write', makeStub: (fn) => ({ setOutputDelay: fn }), invoke: () => actions.setOutputDelay(State.activeSession()!, out0().wireIndex, 5), expectedArgs: () => [out0().wireIndex, 5], read: () => out0().delayMs, expected: 5 },
+  { name: 'setOutputGain', method: 'setOutputGain', mirrorPath: 'outputs[0].gainDb', lane: 'write', makeStub: (fn) => ({ setOutputGain: fn }), invoke: () => actions.setOutputGain(State.activeSession()!, out0().wireIndex, -6), expectedArgs: () => [out0().wireIndex, -6], read: () => out0().gainDb, expected: -6 },
+  { name: 'setInputPreamp', method: 'setInputPreamp', mirrorPath: 'inputPreampDb[1]', lane: 'scrub', makeStub: (fn) => ({ setInputPreamp: fn }), invoke: () => actions.setInputPreamp(State.activeSession()!, 1, -4), expectedArgs: () => [1, -4], read: () => liveMirror().current!.inputPreampDb[1], expected: -4 },
+  { name: 'setOutputEnabled', method: 'setOutputEnable', mirrorPath: 'outputs[0].enabled', lane: 'write', makeStub: (fn) => ({ setOutputEnable: fn }), invoke: () => actions.setOutputEnabled(State.activeSession()!, out0().wireIndex, false), expectedArgs: () => [out0().wireIndex, false], read: () => out0().enabled, expected: false },
 ];
 
 describe('thin verbs: device call + mirror patch (parameterized)', () => {
@@ -317,8 +316,8 @@ describe('thin verbs: device call + mirror patch (parameterized)', () => {
       ...c.makeStub(fn),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
-    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(Domain.createHardwareProfile(Domain.PlatformType.RP2350), parseBulkParams(makeBulk())));
 
     const before = c.read();
     c.invoke();

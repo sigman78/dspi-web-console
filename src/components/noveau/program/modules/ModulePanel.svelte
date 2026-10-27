@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '@/components/noveau/noveauUi.svelte';
-  import { resolveModule } from '../programModel';
+  import { resolveModule } from '@/components/noveau/program/programModel';
   import PreampModule from './PreampModule.svelte';
   import InputEqModule from './InputEqModule.svelte';
   import LevellerModule from './LevellerModule.svelte';

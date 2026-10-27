@@ -2,7 +2,7 @@
 // of 20 Hz and 20 kHz. Plot and filter-response converter sample at these
 // exact frequencies, so a curve produced anywhere renders without resampling.
 
-import * as Eq from '../eqLimits';
+import * as Eq from '@/domain/eqLimits';
 
 export const BODE_BINS = 201;
 export const BODE_FMIN = Eq.FREQ_MIN_HZ;

@@ -2,7 +2,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import KV from '@/components/chrome/KV.svelte';
-  import PinPicker from './PinPicker.svelte';
+  import PinPicker from '@/components/chrome/PinPicker.svelte';
   import { stageAdatInputEnabled, stageAdatInputPin, stageAdatInputClockMode, stagedCtrlPins } from '@/runtime';
   import { AudioInputSource, AdatInputLockState, pickerCells } from '@/domain';
   import { Wire } from '@/protocol';

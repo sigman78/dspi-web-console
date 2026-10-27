@@ -1,10 +1,7 @@
 // Action surface for preset operations.
 
-import {
-  presetsDirty, askBoundary,
-  settings, pushNotice,
-  type ReadySession, type PresetsState,
-} from '@/state';
+import * as State from '@/state';
+import type { ReadySession, PresetsState } from '@/state';
 import { reconcileAfterSync } from './deviceService';
 import { fetchAndApplyAsBaseline } from './resync';
 import { flushAllWrites as flushWrites, refuseWhileDegraded } from './writes.svelte';
@@ -84,7 +81,7 @@ function recordActionError(ps: PresetsState, label: string, e: unknown): string 
   const msg = errMessage(e);
   const formatted = `${label}: ${msg}`;
   ps.lastActionError = formatted;
-  pushNotice('error', formatted);
+  State.pushNotice('error', formatted);
   Log.warn('presets', `${label} failed`, e);
   return formatted;
 }
@@ -291,8 +288,8 @@ export async function loadPresetSlot(s: ReadySession, slot: PresetSlot): Promise
   if (refuseWhileDegraded(s)) return degradedError();
   // Dirty-RAM gating. Modal fires only when RAM is dirty, warnOnPresetSwitchDirty
   // is on, and an active slot exists (else there's nowhere to save into).
-  if (settings.warnOnPresetSwitchDirty && presetsDirty(s) && s.presets.active != null) {
-    const choice = await askBoundary({
+  if (State.settings.warnOnPresetSwitchDirty && State.presetsDirty(s) && s.presets.active != null) {
+    const choice = await State.askBoundary({
       title: 'Unsaved changes',
       message: 'You have unsaved changes in the active preset. Switching to another preset will discard them.',
       saveLabel: 'Save & switch',
@@ -352,8 +349,8 @@ export async function pastePresetTo(s: ReadySession, blob: DeviceState): Promise
   const d = s.device;
   const active = s.presets.active;
   if (active == null) return activeSlotError('no active slot');
-  if (presetsDirty(s)) {
-    const choice = await askBoundary({
+  if (State.presetsDirty(s)) {
+    const choice = await State.askBoundary({
       title: 'Unsaved changes',
       message: 'Pasting will overwrite the unsaved changes in the active preset.',
       discardLabel: 'Paste anyway',
@@ -392,7 +389,7 @@ export async function pastePresetTo(s: ReadySession, blob: DeviceState): Promise
         const kept = s.device.capabilities.features.limiter
           ? 'pins, output types, I2S clock, S/PDIF RX pin and output limiter'
           : 'pins, output types, I2S clock and S/PDIF RX pin';
-        pushNotice('info', `IO config not applied (independent mode): ${kept} kept their device values.`);
+        State.pushNotice('info', `IO config not applied (independent mode): ${kept} kept their device values.`);
       }
       return r5;
     });

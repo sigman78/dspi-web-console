@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getSession } from '@/components/sessionContext';
-  import { liveRouteCount } from '../chainModel';
+  import { liveRouteCount } from '@/components/noveau/program/chainModel';
   import { upmixParkingStatus, upmixParkingText } from '@/domain';
   import ModuleFrame from './ModuleFrame.svelte';
 

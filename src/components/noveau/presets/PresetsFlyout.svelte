@@ -3,11 +3,11 @@
   import { boundary, confirmState, askConfirm, presetsDirty } from '@/state';
   import { getSession } from '@/components/sessionContext';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
-  import { saveActivePresetNamed } from '@/components/presets/saveActivePresetNamed';
+  import { saveActivePresetNamed } from '@/components/noveau/presets/saveActivePresetNamed';
   import * as Runtime from '@/runtime';
   import { PresetStartupMode } from '@/protocol';
   import { PRESET_NAME_MAX_LEN, type PresetSlot } from '@/domain';
-  import { noveauUi } from '../noveauUi.svelte';
+  import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import NameField from '@/components/chrome/NameField.svelte';
   import { dismiss } from '@/components/chrome/dismiss';
   import PresetIcon from './PresetIcon.svelte';

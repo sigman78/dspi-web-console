@@ -4,7 +4,7 @@ import { SESSION_KEY } from '@/components/sessionContext';
 import { bootMock } from '@/runtime/boot';
 import { activeSession, resetAppState } from '@/state';
 import { stageMckEnabled } from '@/runtime/stagedActions';
-import { noveauUi } from '../noveauUi.svelte';
+import { noveauUi } from '@/components/noveau/noveauUi.svelte';
 import SetupView from './SetupView.svelte';
 
 afterEach(() => { activeSession()?.dispose(); resetAppState(); });

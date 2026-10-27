@@ -8,12 +8,12 @@
   import RailHead from './RailHead.svelte';
   import RailFoot from './RailFoot.svelte';
   import StatusLine from './StatusLine.svelte';
-  import TuneView from './tune/TuneView.svelte';
-  import ProgramView from './program/ProgramView.svelte';
-  import SetupView from './setup/SetupView.svelte';
-  import ControlView from './control/ControlView.svelte';
-  import { controlAvailable } from './control/controlPages';
-  import AboutView from './about/AboutView.svelte';
+  import TuneView from '@/components/noveau/tune/TuneView.svelte';
+  import ProgramView from '@/components/noveau/program/ProgramView.svelte';
+  import SetupView from '@/components/noveau/setup/SetupView.svelte';
+  import ControlView from '@/components/noveau/control/ControlView.svelte';
+  import { controlAvailable } from '@/components/noveau/control/controlPages';
+  import AboutView from '@/components/noveau/about/AboutView.svelte';
   import { noveauUi } from './noveauUi.svelte';
 
   const { session }: { session: ReadySession } = $props();

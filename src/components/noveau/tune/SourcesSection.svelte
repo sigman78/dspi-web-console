@@ -5,7 +5,7 @@
   import * as Runtime from '@/runtime';
   import { chShade } from '@/styles/palette';
   import { getSession } from '@/components/sessionContext';
-  import CrosspointPopover from '../program/CrosspointPopover.svelte';
+  import CrosspointPopover from '@/components/noveau/program/CrosspointPopover.svelte';
   import InspectorSection from './InspectorSection.svelte';
 
   const { channel, output }: { channel: ChannelModel; output: OutputModel | null } = $props();

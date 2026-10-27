@@ -3,30 +3,28 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import type { DspDevice } from '@/device/DspDevice';
 import DeviceSwitcher from './DeviceSwitcher.svelte';
 
-vi.mock('../../runtime/boot', () => ({
+vi.mock('@/runtime/boot', () => ({
   connectRequested: vi.fn().mockResolvedValue(undefined),
   webUsbUnsupportedReason: vi.fn(() => null),
 }));
 
-vi.mock('../../runtime/deviceService', () => ({
+vi.mock('@/runtime/deviceService', () => ({
   switchSession: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { switchSession, connectRequested, webUsbUnsupportedReason } from '@/runtime';
-import {
-  dispatch, mintConnId, resetAppState, makeReadySession, noteAdoptFailure, adoptFailures,
-  type ConnId,
-} from '@/state';
+import * as State from '@/state';
+import type { ConnId } from '@/state';
 
 function synced(serial: string, hwName = 'RP2350'): ConnId {
-  const id = mintConnId();
+  const id = State.mintConnId();
   const device = { info: { serial }, hardware: { name: hwName } } as unknown as DspDevice;
-  dispatch({ t: 'synced', id, session: makeReadySession(device) });
+  State.dispatch({ t: 'synced', id, session: State.makeReadySession(device) });
   return id;
 }
 
 beforeEach(() => {
-  resetAppState();
+  State.resetAppState();
   vi.mocked(webUsbUnsupportedReason).mockReturnValue(null);
   vi.mocked(switchSession).mockClear();
   vi.mocked(connectRequested).mockClear();
@@ -90,13 +88,13 @@ describe('DeviceSwitcher — add device', () => {
 describe('DeviceSwitcher — adopt-failure badges', () => {
   test('renders a badge for a noted failure and dismisses it on click', async () => {
     synced('AAA');
-    noteAdoptFailure({ serial: 'CCC', message: 'boot adoption failed', errorKind: null });
+    State.noteAdoptFailure({ serial: 'CCC', message: 'boot adoption failed', errorKind: null });
 
     render(DeviceSwitcher);
     const badge = screen.getByRole('button', { name: /CCC.*dismiss/i });
     await fireEvent.click(badge);
 
-    expect(adoptFailures().has('CCC')).toBe(false);
+    expect(State.adoptFailures().has('CCC')).toBe(false);
   });
 });
 
@@ -105,7 +103,7 @@ describe('DeviceSwitcher — failure ordering', () => {
     synced('AAA');
     synced('BBB');
     synced('CCC');   // active
-    noteAdoptFailure({ serial: 'ZZZ', message: 'boot adoption failed', errorKind: null });
+    State.noteAdoptFailure({ serial: 'ZZZ', message: 'boot adoption failed', errorKind: null });
 
     render(DeviceSwitcher);
 
@@ -116,8 +114,8 @@ describe('DeviceSwitcher — failure ordering', () => {
 
   test('the overflow button flags a failure hidden behind it', () => {
     synced('AAA');
-    noteAdoptFailure({ serial: 'Y1', message: 'a', errorKind: null });
-    noteAdoptFailure({ serial: 'Y2', message: 'b', errorKind: null });
+    State.noteAdoptFailure({ serial: 'Y1', message: 'a', errorKind: null });
+    State.noteAdoptFailure({ serial: 'Y2', message: 'b', errorKind: null });
 
     render(DeviceSwitcher);
 

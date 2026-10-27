@@ -4,12 +4,8 @@
 // fetched once at connect via its own vendor commands (see
 // runtime/deviceService.ts), like ctrlIfaces.
 
-import {
-  CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_MAX_GROUPS, CS_MAX_MACROS, CS_MAX_DISPLAY_PAGES,
-  type CsBinding, type CsCaps, type CsNounCaps, type CsStatus, type CsIrCommand,
-  type CsGroup, type CsExtStatus, type CsMacro,
-  type CsDisplayLimits, type CsDisplayCfg, type CsDisplayPage, type CsDisplayStatus,
-} from '@/domain';
+import * as Domain from '@/domain';
+import type { CsBinding, CsCaps, CsNounCaps, CsStatus, CsIrCommand, CsGroup, CsExtStatus, CsMacro, CsDisplayLimits, CsDisplayCfg, CsDisplayPage, CsDisplayStatus } from '@/domain';
 
 // Learn sub-state, mirroring GetCsStatus.irLearnState / the CsIrLearn(2)
 // result read: null while idle (nothing armed yet, or after a cancel).
@@ -67,17 +63,17 @@ export function createControlSurfacesState(): ControlSurfacesState {
     deviceCapsVersion: null,
     caps: null,
     nouns: [],
-    bindings: Array.from({ length: CS_MAX_BINDINGS }, () => null),
-    names: Array.from({ length: CS_MAX_BINDINGS }, () => ''),
-    irCommands: Array.from({ length: CS_MAX_IR_COMMANDS }, () => null),
+    bindings: Array.from({ length: Domain.CS_MAX_BINDINGS }, () => null),
+    names: Array.from({ length: Domain.CS_MAX_BINDINGS }, () => ''),
+    irCommands: Array.from({ length: Domain.CS_MAX_IR_COMMANDS }, () => null),
     irLearn: null,
     status: null,
-    groups: Array.from({ length: CS_MAX_GROUPS }, () => null),
-    macros: Array.from({ length: CS_MAX_MACROS }, () => null),
+    groups: Array.from({ length: Domain.CS_MAX_GROUPS }, () => null),
+    macros: Array.from({ length: Domain.CS_MAX_MACROS }, () => null),
     extStatus: null,
     displayLimits: null,
     displayCfg: null,
-    displayPages: Array.from({ length: CS_MAX_DISPLAY_PAGES }, () => null),
+    displayPages: Array.from({ length: Domain.CS_MAX_DISPLAY_PAGES }, () => null),
     displayStatus: null,
     revertEpoch: 0,
     changed: { bindings: false, groups: false, macros: false, display: false },

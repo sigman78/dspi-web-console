@@ -1,20 +1,20 @@
 <script lang="ts">
   import { getSession } from '@/components/sessionContext';
-  import DevicePanel from '@/components/system/DevicePanel.svelte';
-  import InputConfigPanel from '@/components/system/InputConfigPanel.svelte';
-  import OutputsPanel from '@/components/system/OutputsPanel.svelte';
-  import AdatPanel from '@/components/system/AdatPanel.svelte';
-  import AdatInputPanel from '@/components/system/AdatInputPanel.svelte';
-  import PinMapPanel from '@/components/system/PinMapPanel.svelte';
-  import I2sClockPanel from '@/components/system/I2sClockPanel.svelte';
-  import LgSoundSyncPanel from '@/components/system/LgSoundSyncPanel.svelte';
-  import DacHwMutePanel from '@/components/system/DacHwMutePanel.svelte';
-  import SysClockPanel from '@/components/system/SysClockPanel.svelte';
-  import BufferStatsPanel from '@/components/system/BufferStatsPanel.svelte';
+  import DevicePanel from '@/components/noveau/setup/DevicePanel.svelte';
+  import InputConfigPanel from '@/components/noveau/setup/InputConfigPanel.svelte';
+  import OutputsPanel from '@/components/noveau/setup/OutputsPanel.svelte';
+  import AdatPanel from '@/components/noveau/setup/AdatPanel.svelte';
+  import AdatInputPanel from '@/components/noveau/setup/AdatInputPanel.svelte';
+  import PinMapPanel from '@/components/chrome/PinMapPanel.svelte';
+  import I2sClockPanel from '@/components/noveau/setup/I2sClockPanel.svelte';
+  import LgSoundSyncPanel from '@/components/noveau/setup/LgSoundSyncPanel.svelte';
+  import DacHwMutePanel from '@/components/noveau/setup/DacHwMutePanel.svelte';
+  import SysClockPanel from '@/components/noveau/setup/SysClockPanel.svelte';
+  import BufferStatsPanel from '@/components/noveau/setup/BufferStatsPanel.svelte';
   import TelemetryPanel from './TelemetryPanel.svelte';
   import ErrorCountersPanel from './ErrorCountersPanel.svelte';
-  import PagedWorkspace from '../PagedWorkspace.svelte';
-  import { noveauUi } from '../noveauUi.svelte';
+  import PagedWorkspace from '@/components/noveau/PagedWorkspace.svelte';
+  import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import { SETUP_PAGES } from './setupPages';
 
   const s = getSession();

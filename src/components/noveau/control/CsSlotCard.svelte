@@ -4,7 +4,7 @@
   // Body renders only while open; the parent owns open/expanded state.
   import type { Snippet } from 'svelte';
   import NameField from '@/components/chrome/NameField.svelte';
-  import { portal } from './portal';
+  import { portal } from '@/components/chrome/portal';
   const {
     title, name, nameLabel, removeLabel, pill, dirty, open, disabled,
     onToggle, onRename, onRemove, summary, note, actions, children, detailTarget = null,

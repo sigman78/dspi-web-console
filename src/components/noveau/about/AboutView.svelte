@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { APP_VERSION, GIT_SHA, BUILD_DATE, REPO_URL, FIRMWARE_URL, reportIssueUrl } from '@/buildInfo';
+  import * as BuildInfo from '@/buildInfo';
   import { LATEST_CHANGES } from '@/changelog';
   import { activeMockProfiles } from '@/mockProfiles';
   import { connection } from '@/state';
@@ -11,7 +11,7 @@
   const snap = $derived(s.mirror.current);
   const mock = activeMockProfiles();
   const usbReason = Runtime.webUsbUnsupportedReason();
-  const issueUrl = $derived(reportIssueUrl({
+  const issueUrl = $derived(BuildInfo.reportIssueUrl({
     fwLabel: s.info.capabilities.fwLabel,
     serial: s.info.serial,
     connectionPhase: connection.phase,
@@ -25,8 +25,8 @@
 
   type Row = { label: string; value: string; tone?: 'ok' | 'off' | 'warn'; title?: string };
   const consoleRows = $derived<Row[]>([
-    { label: 'VERSION', value: `v${APP_VERSION}` },
-    { label: 'BUILD', value: `${GIT_SHA} · ${BUILD_DATE}` },
+    { label: 'VERSION', value: `v${BuildInfo.APP_VERSION}` },
+    { label: 'BUILD', value: `${BuildInfo.GIT_SHA} · ${BuildInfo.BUILD_DATE}` },
     ...(mock ? [{ label: 'MOCK', value: mock.map((p) => p.name).join(', ') }] : []),
     { label: 'WEBUSB', value: usbReason ?? 'supported', tone: usbReason ? 'warn' : undefined },
   ]);
@@ -73,9 +73,9 @@
     <header class="sec-h">
       <h3>CONSOLE</h3>
       <span class="links">
-        <a class="chip" href={REPO_URL} target="_blank" rel="noopener">GITHUB</a>
+        <a class="chip" href={BuildInfo.REPO_URL} target="_blank" rel="noopener">GITHUB</a>
         <a class="chip" href={issueUrl} target="_blank" rel="noopener">REPORT ISSUE</a>
-        <a class="chip" href={FIRMWARE_URL} target="_blank" rel="noopener">FIRMWARE</a>
+        <a class="chip" href={BuildInfo.FIRMWARE_URL} target="_blank" rel="noopener">FIRMWARE</a>
       </span>
     </header>
     <div class="rows">

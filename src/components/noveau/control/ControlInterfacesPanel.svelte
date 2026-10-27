@@ -2,7 +2,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { formatI2cAddr } from '@/components/chrome/format';
-  import PinPicker from './PinPicker.svelte';
+  import PinPicker from '@/components/chrome/PinPicker.svelte';
   import * as Staged from '@/runtime/stagedActions';
   import * as Domain from '@/domain';
   import { pinConfigResultFromByte } from '@/protocol';

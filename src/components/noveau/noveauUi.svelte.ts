@@ -1,6 +1,6 @@
-import type { ProgramModuleKey } from './program/programModel';
-import type { SetupPageKey } from './setup/setupPages';
-import type { ControlPageKey } from './control/controlPages';
+import type { ProgramModuleKey } from '@/components/noveau/program/programModel';
+import type { SetupPageKey } from '@/components/noveau/setup/setupPages';
+import type { ControlPageKey } from '@/components/noveau/control/controlPages';
 
 export type NoveauDestination = 'tune' | 'program' | 'setup' | 'control' | 'about';
 

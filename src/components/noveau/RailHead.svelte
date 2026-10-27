@@ -1,7 +1,7 @@
 <script lang="ts">
   import DeviceSwitcher from '@/components/chrome/DeviceSwitcher.svelte';
   import SceneRow from './SceneRow.svelte';
-  import PresetsFlyout from './presets/PresetsFlyout.svelte';
+  import PresetsFlyout from '@/components/noveau/presets/PresetsFlyout.svelte';
   import { noveauUi } from './noveauUi.svelte';
   import VolumeBlock from './VolumeBlock.svelte';
 </script>

@@ -1,7 +1,7 @@
 <script lang="ts">
   import ChainStrip from './ChainStrip.svelte';
   import RoutingMap from './RoutingMap.svelte';
-  import ModulePanel from './modules/ModulePanel.svelte';
+  import ModulePanel from '@/components/noveau/program/modules/ModulePanel.svelte';
 </script>
 
 <div class="program">

@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { activeSession, connection, settings, eqUi, selectChannel } from '@/state';
+  import * as State from '@/state';
   import ChannelRow from './ChannelRow.svelte';
   import { setChannelName } from '@/runtime';
   import { chKey } from '@/styles/palette';
   import { groupIntoPairs, groupInputSlotPairs, inputIndexOf, type ChannelGroup, type ChannelId, type ChannelModel } from '@/domain';
 
-  const snap = $derived(activeSession()?.mirror.current ?? null);
-  const tele = $derived(activeSession()?.telemetry ?? null);
-  const disabled = $derived(!connection.connected);
+  const snap = $derived(State.activeSession()?.mirror.current ?? null);
+  const tele = $derived(State.activeSession()?.telemetry ?? null);
+  const disabled = $derived(!State.connection.connected);
 
   // Inline rename: one row editable at a time. The row component owns the
   // pending text and its own commit-once guard; the list tracks which row is
@@ -16,7 +16,7 @@
   let originalValue = '';
 
   function startEdit(ch: ChannelModel): void {
-    if (!connection.connected) return;
+    if (!State.connection.connected) return;
     editingId = ch.id;
     originalValue = ch.name;
   }
@@ -24,7 +24,7 @@
   function commitName(id: ChannelId, value: string): void {
     if (editingId !== id) return; // re-entry guard (defense in depth)
     editingId = null;
-    const s = activeSession();
+    const s = State.activeSession();
     if (!s) return; // disconnected mid-edit: no-op rather than throw
     if (value !== originalValue) setChannelName(s, id, value);
   }
@@ -72,11 +72,11 @@
                 <button
                   type="button"
                   class="stub"
-                  class:selected={settings.selectedChannel === ch.id}
+                  class:selected={State.settings.selectedChannel === ch.id}
                   {disabled}
-                  aria-pressed={settings.selectedChannel === ch.id}
+                  aria-pressed={State.settings.selectedChannel === ch.id}
                   title={ch.name}
-                  onclick={() => selectChannel(ch.id)}
+                  onclick={() => State.selectChannel(ch.id)}
                 ><span class="nm">{ch.name}</span></button>
               {:else}
                 <ChannelRow
@@ -84,11 +84,11 @@
                   channelId={ch.id}
                   levelDb={levelDb(ch)}
                   defaultName={ch.defaultName}
-                  selected={settings.selectedChannel === ch.id}
-                  pulsate={eqUi.copySource === ch.id}
+                  selected={State.settings.selectedChannel === ch.id}
+                  pulsate={State.eqUi.copySource === ch.id}
                   {disabled}
                   editing={editingId === ch.id}
-                  onclick={() => selectChannel(ch.id)}
+                  onclick={() => State.selectChannel(ch.id)}
                   onStartEdit={() => startEdit(ch)}
                   onCommitName={(value) => commitName(ch.id, value)}
                   onCancelEdit={cancelEdit}

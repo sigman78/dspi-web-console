@@ -5,7 +5,7 @@ import { deriveCapabilities } from '@/protocol/capabilities';
 import { Wire } from '@/protocol';
 import { FilterType, type FilterParams } from '@/domain';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
-import { noveauUi } from '../noveauUi.svelte';
+import { noveauUi } from '@/components/noveau/noveauUi.svelte';
 import { bandDraft, bandHold, holdBand } from './bandDraft.svelte';
 
 const setEqFilter = vi.hoisted(() => vi.fn());
