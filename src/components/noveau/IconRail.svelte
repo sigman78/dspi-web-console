@@ -1,12 +1,19 @@
 <script lang="ts">
+  import { getSession } from '@/components/sessionContext';
+  import { controlAvailable } from './control/controlPages';
   import { noveauUi, type NoveauDestination } from './noveauUi.svelte';
 
-  const items: { key: NoveauDestination; label: string }[] = [
+  const s = getSession();
+  const showControl = $derived(controlAvailable(s.device.capabilities.features));
+
+  const all: { key: NoveauDestination; label: string }[] = [
     { key: 'tune', label: 'TUNE' },
     { key: 'program', label: 'PROGRAM' },
     { key: 'setup', label: 'SETUP' },
+    { key: 'control', label: 'CONTROL' },
     { key: 'about', label: 'ABOUT' },
   ];
+  const items = $derived(all.filter((it) => it.key !== 'control' || showControl));
 </script>
 
 <nav class="irail" aria-label="Destinations">
@@ -29,6 +36,8 @@
           <rect x="2" y="7" width="4" height="6" rx="1" /><rect x="8" y="7" width="4" height="6" rx="1" /><rect x="14" y="7" width="4" height="6" rx="1" /><path d="M6 10h2M12 10h2" />
         {:else if it.key === 'setup'}
           <rect x="5" y="5" width="10" height="10" rx="1.5" /><path d="M8 2.5v2.5M12 2.5v2.5M8 15v2.5M12 15v2.5M2.5 8H5M2.5 12H5M15 8h2.5M15 12h2.5" />
+        {:else if it.key === 'control'}
+          <circle cx="10" cy="10" r="6" /><path d="M10 10 6.5 5.8" />
         {:else}
           <circle cx="10" cy="10" r="7.5" /><path d="M10 6.5h.01" /><path d="M10 9v5" />
         {/if}

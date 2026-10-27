@@ -71,6 +71,18 @@ export function setCrosspointInvert(s: ReadySession, input: Domain.InputSlot, ou
   scheduleCrosspointWrite(s, input, output, (r) => ({ ...r, invert }));
 }
 
+// Route a proposed crosspoint in one whole-tuple send. Separate setters would
+// each read the pre-ack mirror and the last one would carry stale fields.
+export function routeCrosspoint(
+  s: ReadySession,
+  input: Domain.InputSlot,
+  output: Domain.OutputSlot,
+  { gainDb, invert }: { gainDb: number; invert: boolean },
+): void {
+  gainDb = Clamp.crosspointGainDb(gainDb);
+  scheduleCrosspointWrite(s, input, output, (r) => ({ ...r, enabled: true, gainDb, invert }));
+}
+
 // Click/commit-paced ValueField (no drag): plain write(), patch on ack. Scalar
 // verb, no tuple to merge.
 export function setOutputGain(s: ReadySession, slot: Domain.OutputSlot, gainDb: number): void {

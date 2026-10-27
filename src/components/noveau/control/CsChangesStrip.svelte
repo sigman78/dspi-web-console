@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Compact form of the CHANGES panel for the SETUP page-selector row: same
+  // Compact form of the CHANGES panel for the CONTROL page-selector row: same
   // device-wide SAVE/DISCARD lifecycle, same disabled rules.
   import { csSaveConfig, csRevertConfig } from '@/runtime';
   import { getSession } from '@/components/sessionContext';

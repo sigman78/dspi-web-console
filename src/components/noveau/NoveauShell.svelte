@@ -11,6 +11,8 @@
   import TuneView from './tune/TuneView.svelte';
   import ProgramView from './program/ProgramView.svelte';
   import SetupView from './setup/SetupView.svelte';
+  import ControlView from './control/ControlView.svelte';
+  import { controlAvailable } from './control/controlPages';
   import AboutView from './about/AboutView.svelte';
   import { noveauUi } from './noveauUi.svelte';
 
@@ -31,6 +33,11 @@
   noveauUi.presetsOpen = false;
   noveauUi.selectedBand = null;
   $effect(() => {
+    if (noveauUi.destination === 'control' && !controlAvailable(session.device.capabilities.features)) {
+      noveauUi.destination = 'setup';
+    }
+  });
+  $effect(() => {
     reconcileSelectedChannel(session.mirror.current?.channels, channelVisibility);
   });
 </script>
@@ -49,6 +56,8 @@
       <ProgramView />
     {:else if noveauUi.destination === 'setup'}
       <SetupView />
+    {:else if noveauUi.destination === 'control' && controlAvailable(session.device.capabilities.features)}
+      <ControlView />
     {:else}
       <AboutView />
     {/if}

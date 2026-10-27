@@ -246,6 +246,24 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
     expect(calls[1].gainDb).toBe(-6);
   });
 
+  it('routeCrosspoint sends one tuple with enabled, the new gain and invert', async () => {
+    const calls: Array<{ enabled: boolean; invert: boolean; gainDb: number }> = [];
+    const device = initializedDevice({
+      setMatrixRoute: vi.fn(async (_i: number, _o: number, cp) => { calls.push(cp); }),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
+    const route = liveMirror().current!.routes[0];
+    actions.setCrosspointEnabled(activeSession()!, route.inputIndex, route.outputWireIndex, false);
+    await vi.runAllTimersAsync();
+    calls.length = 0;
+    const gainDb = route.gainDb === -6 ? -7 : -6;
+    actions.routeCrosspoint(activeSession()!, route.inputIndex, route.outputWireIndex, { gainDb, invert: !route.invert });
+    await vi.runAllTimersAsync();
+    expect(calls).toEqual([{ enabled: true, invert: !route.invert, gainDb }]);
+  });
+
   it('setCrosspointInvert flips invert and the wire tuple reflects it', async () => {
     const calls: Array<{ enabled: boolean; invert: boolean; gainDb: number }> = [];
     const device = initializedDevice({

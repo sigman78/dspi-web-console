@@ -5,6 +5,8 @@ export const GIT_SHA = __GIT_SHA__;
 export const BUILD_DATE = __BUILD_DATE__;
 
 export const REPO_URL = 'https://github.com/sigman78/dspi-web-console';
+export const FIRMWARE_URL = 'https://github.com/WeebLabs/DSPi';
+export const FIRMWARE_RELEASES_URL = `${FIRMWARE_URL}/releases`;
 
 export interface IssueContext {
   fwLabel?: string | null;

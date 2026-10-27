@@ -13,11 +13,15 @@ class ResizeObserverStub {
 vi.stubGlobal('ResizeObserver', ResizeObserverStub);
 
 const setCrosspointEnabled = vi.fn();
+const setCrosspointGain = vi.fn();
+const setCrosspointInvert = vi.fn();
+const routeCrosspoint = vi.fn();
 
 vi.mock('@/runtime', () => ({
   setCrosspointEnabled: (...a: unknown[]) => setCrosspointEnabled(...a),
-  setCrosspointGain: vi.fn(),
-  setCrosspointInvert: vi.fn(),
+  setCrosspointGain: (...a: unknown[]) => setCrosspointGain(...a),
+  setCrosspointInvert: (...a: unknown[]) => setCrosspointInvert(...a),
+  routeCrosspoint: (...a: unknown[]) => routeCrosspoint(...a),
 }));
 
 import RoutingMap from './RoutingMap.svelte';
@@ -47,7 +51,12 @@ function mount() {
 }
 
 describe('RoutingMap', () => {
-  beforeEach(() => setCrosspointEnabled.mockClear());
+  beforeEach(() => {
+    setCrosspointEnabled.mockClear();
+    setCrosspointGain.mockClear();
+    setCrosspointInvert.mockClear();
+    routeCrosspoint.mockClear();
+  });
 
   test('a disabled output keeps a hatched row with its real route pill', () => {
     const { container } = mount();
@@ -58,25 +67,64 @@ describe('RoutingMap', () => {
     expect(pills[0].textContent).toContain('−4.5');
   });
 
-  test('clicking an unrouted dot routes it and opens the popover', async () => {
-    const { container, getByRole, session, off } = mount();
+  test('an unrouted dot opens a proposal and writes nothing until ROUTE', async () => {
+    const { container, getByRole, getByText, queryByRole, session, off } = mount();
     await fireEvent.click(unroutedDot(container));
-    expect(setCrosspointEnabled).toHaveBeenCalledTimes(1);
-    const [sess, input, output, on] = setCrosspointEnabled.mock.calls[0];
-    expect(sess).toBe(session);
-    expect(output).toBe(off.wireIndex);
-    expect(typeof input).toBe('number');
-    expect(on).toBe(true);
     expect(getByRole('dialog')).toBeTruthy();
+    expect(container.querySelector('.dotbtn.proposed')).toBeTruthy();
+    expect(setCrosspointEnabled).not.toHaveBeenCalled();
+
+    await fireEvent.click(getByRole('switch', { name: 'Invert phase' }));
+    expect(setCrosspointInvert).not.toHaveBeenCalled();
+    await fireEvent.click(getByText('ROUTE'));
+
+    expect(routeCrosspoint).toHaveBeenCalledTimes(1);
+    const [sess, input, output, draft] = routeCrosspoint.mock.calls[0];
+    expect(sess).toBe(session);
+    expect(typeof input).toBe('number');
+    expect(output).toBe(off.wireIndex);
+    expect(draft).toEqual({ gainDb: 0, invert: true });
+    expect(setCrosspointGain).not.toHaveBeenCalled();
+    expect(setCrosspointInvert).not.toHaveBeenCalled();
+    expect(setCrosspointEnabled).not.toHaveBeenCalled();
+    expect(queryByRole('dialog')).toBeNull();
+  });
+
+  test('Escape and CANCEL close a proposal without any write', async () => {
+    const { container, getByText, queryByRole } = mount();
+    await fireEvent.click(unroutedDot(container));
+    await fireEvent.keyDown(window, { key: 'Escape' });
+    expect(queryByRole('dialog')).toBeNull();
+    await fireEvent.click(unroutedDot(container));
+    await fireEvent.click(getByText('CANCEL'));
+    expect(queryByRole('dialog')).toBeNull();
+    expect(setCrosspointEnabled).not.toHaveBeenCalled();
+    expect(setCrosspointInvert).not.toHaveBeenCalled();
+    expect(setCrosspointGain).not.toHaveBeenCalled();
   });
 
   test('UNROUTE disables the route and closes the popover', async () => {
     const { container, getByText, queryByRole, off } = mount();
     const dot = [...container.querySelectorAll<HTMLButtonElement>('.cell.off .dotbtn')].find((b) => !b.getAttribute('aria-label')!.endsWith('unrouted'))!;
     await fireEvent.click(dot);
+    expect(container.querySelector('.dotbtn.proposed')).toBeNull();
     expect(setCrosspointEnabled).not.toHaveBeenCalled();
     await fireEvent.click(getByText('UNROUTE'));
     expect(setCrosspointEnabled.mock.calls[0].slice(2)).toEqual([off.wireIndex, false]);
     expect(queryByRole('dialog')).toBeNull();
+  });
+
+  test('opening another dot resets the popover to that dot', async () => {
+    const { container, getByRole } = mount();
+    const live = [...container.querySelectorAll<HTMLButtonElement>('.cell.off .dotbtn')].find((b) => !b.getAttribute('aria-label')!.endsWith('unrouted'))!;
+    await fireEvent.click(live);
+    const titleA = getByRole('dialog').getAttribute('aria-label');
+    await fireEvent.click(unroutedDot(container));
+    const dlg = getByRole('dialog');
+    expect(dlg.getAttribute('aria-label')).not.toBe(titleA);
+    expect(dlg.querySelector('.cap')!.textContent).toContain('new route');
+    expect(getByRole('switch', { name: 'Invert phase' }).getAttribute('aria-checked')).toBe('false');
+    expect(dlg.textContent).toContain('0.0');
+    expect(dlg.textContent).not.toContain('4.5');
   });
 });

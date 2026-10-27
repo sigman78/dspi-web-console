@@ -7,6 +7,7 @@
   import { SUPPORT_WINDOW } from '@/protocol/capabilities';
   import { getSession } from '@/components/sessionContext';
   import { debugPanelsForced } from '@/devOptions';
+  import { FIRMWARE_RELEASES_URL } from '@/buildInfo';
 
   const s = getSession();
   const snap = $derived(s.mirror.current);
@@ -78,6 +79,7 @@
       onConfirm={onEnterBootloader}
       title="Reboots into UF2 bootloader — device disconnects immediately."
     />
+    <a class="chip fwlink" href={FIRMWARE_RELEASES_URL} target="_blank" rel="noopener" title="Firmware releases (UF2) on GitHub">FIRMWARE RELEASES ↗</a>
   </div>
 </Panel>
 
@@ -89,4 +91,5 @@
     grid-template-columns: 1fr 1fr;
     gap: 8px;
   }
+  .fwlink { grid-column: 1 / -1; justify-self: start; height: 22px; padding: 0 8px; font-size: 11px; text-decoration: none; }
 </style>

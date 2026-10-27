@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { APP_VERSION, GIT_SHA, BUILD_DATE, REPO_URL, reportIssueUrl } from '@/buildInfo';
+  import { APP_VERSION, GIT_SHA, BUILD_DATE, REPO_URL, FIRMWARE_URL, reportIssueUrl } from '@/buildInfo';
   import { LATEST_CHANGES } from '@/changelog';
   import { activeMockProfiles } from '@/mockProfiles';
   import { connection } from '@/state';
@@ -75,7 +75,7 @@
       <span class="links">
         <a class="chip" href={REPO_URL} target="_blank" rel="noopener">GITHUB</a>
         <a class="chip" href={issueUrl} target="_blank" rel="noopener">REPORT ISSUE</a>
-        <a class="chip" href="https://github.com/WeebLabs/DSPi" target="_blank" rel="noopener">FIRMWARE</a>
+        <a class="chip" href={FIRMWARE_URL} target="_blank" rel="noopener">FIRMWARE</a>
       </span>
     </header>
     <div class="rows">

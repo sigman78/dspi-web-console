@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { Mix, type InputSlot, type OutputSlot } from '@/domain';
   import * as Runtime from '@/runtime';
@@ -10,6 +10,7 @@
     input,
     output,
     title,
+    proposal,
     x,
     anchorX,
     y,
@@ -20,6 +21,8 @@
     input: InputSlot;
     output: OutputSlot;
     title: string;
+    /** Decided at open: edits stay in a local draft until ROUTE applies them. */
+    proposal: boolean;
     /** Anchor point and the box it must stay inside, in the routing container's coordinates. */
     x: number;
     /** Centre of the anchor dot, for the caret. */
@@ -35,7 +38,11 @@
     s.mirror.current?.routes.find((r) => r.inputIndex === input && r.outputWireIndex === output),
   );
   const enabled = $derived(route?.enabled ?? false);
-  const invert = $derived(route?.invert ?? false);
+  // Draft defaults come from the stored route at open time.
+  let draftGain = $state(untrack(() => route?.gainDb ?? 0));
+  let draftInvert = $state(untrack(() => route?.invert ?? false));
+  const gain = $derived(proposal ? draftGain : (route?.gainDb ?? 0));
+  const invert = $derived(proposal ? draftInvert : (route?.invert ?? false));
 
   let el = $state<HTMLDivElement | null>(null);
   let w = $state(0);
@@ -44,6 +51,11 @@
   const top = $derived(Math.max(0, Math.min(y, boundsH - h)));
   const caretX = $derived(Math.max(10, Math.min(w - 10, anchorX - left)));
   const clamped = $derived(top !== y);
+
+  function commitRoute() {
+    Runtime.routeCrosspoint(s, input, output, { gainDb: draftGain, invert: draftInvert });
+    onClose();
+  }
 
   function unroute() {
     Runtime.setCrosspointEnabled(s, input, output, false);
@@ -57,7 +69,7 @@
     };
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
-      if ((e.target as Element | null)?.closest?.('input, textarea, .vf')) return;
+      if ((e.target as Element | null)?.closest?.('input:not([type=range]), textarea, .vf')) return;
       onClose();
     };
     el?.querySelector<HTMLElement>('button:not(.x), input')?.focus();
@@ -74,29 +86,34 @@
   {#if !clamped}<span class="caret" style:left="{caretX}px" aria-hidden="true"></span>{/if}
   <div class="ph">
     <h3>{title}</h3>
-    <span class="cap">crosspoint · Esc closes</span>
+    <span class="cap">{proposal ? 'new route · Esc cancels' : 'crosspoint · Esc closes'}</span>
     <button type="button" class="x" aria-label="Close" onclick={onClose}>×</button>
   </div>
   <div class="r">
     <RangeField
       label="GAIN"
-      value={route?.gainDb ?? 0}
+      value={gain}
       min={Mix.CROSSPOINT_GAIN_MIN_DB}
       max={Mix.CROSSPOINT_GAIN_MAX_DB}
       step={0.1}
       kind="dB-signed"
       tone="signed"
-      disabled={!enabled}
-      onCommit={(v) => Runtime.setCrosspointGain(s, input, output, v)}
+      disabled={!proposal && !enabled}
+      onCommit={(v) => (proposal ? (draftGain = v) : Runtime.setCrosspointGain(s, input, output, v))}
     />
   </div>
   <div class="r">
     <span class="lbl">PHASE</span>
-    <ToggleSwitch size="sm" checked={invert} disabled={!enabled} ariaLabel="Invert phase" onChange={(v) => Runtime.setCrosspointInvert(s, input, output, v)} />
+    <ToggleSwitch size="sm" checked={invert} disabled={!proposal && !enabled} ariaLabel="Invert phase" onChange={(v) => (proposal ? (draftInvert = v) : Runtime.setCrosspointInvert(s, input, output, v))} />
     <span class="cap">{invert ? 'inverted' : 'normal'}</span>
   </div>
   <div class="r foot">
-    <button type="button" class="chip unroute" disabled={!enabled} onclick={unroute}>UNROUTE</button>
+    {#if proposal}
+      <button type="button" class="chip accent act" onclick={commitRoute}>ROUTE</button>
+      <button type="button" class="chip act" onclick={onClose}>CANCEL</button>
+    {:else}
+      <button type="button" class="chip act" disabled={!enabled} onclick={unroute}>UNROUTE</button>
+    {/if}
   </div>
 </div>
 
@@ -155,6 +172,8 @@
     --rf-track-flex: 0 0 auto;
   }
   .r :global(.rf) { gap: 12px; height: 22px; }
-  .unroute { height: 20px; padding: 0 8px; font-size: 11px; color: var(--text-dim); }
+  .foot { gap: 6px; }
+  .act { height: 20px; padding: 0 8px; font-size: 11px; }
+  .chip:not(.accent).act { color: var(--text-dim); }
   .lbl { flex: 0 0 52px; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }
 </style>

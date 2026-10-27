@@ -2,7 +2,6 @@
   import { matrixRows, type InputSlot, type OutputSlot, type RouteModel } from '@/domain';
   import { selectChannel, settings } from '@/state';
   import { chShade } from '@/styles/palette';
-  import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '../noveauUi.svelte';
   import { fmtSigned } from './chainModel';
@@ -51,15 +50,14 @@
   let host = $state<HTMLElement | null>(null);
   let hostW = $state(0);
   let hostH = $state(0);
-  let pick = $state<{ input: InputSlot; output: OutputSlot; x: number; anchorX: number; y: number; anchor: HTMLElement } | null>(null);
+  let pick = $state<{ proposal: boolean; input: InputSlot; output: OutputSlot; x: number; anchorX: number; y: number; anchor: HTMLElement } | null>(null);
 
   function open(e: MouseEvent, input: InputSlot, output: OutputSlot) {
     if (!host) return;
-    if (routeAt(input, output)?.enabled !== true) Runtime.setCrosspointEnabled(s, input, output, true);
     const anchor = e.currentTarget as HTMLElement;
     const dot = anchor.getBoundingClientRect();
     const box = host.getBoundingClientRect();
-    pick = { input, output, x: dot.left - box.left + dot.width / 2 - 150, anchorX: dot.left - box.left + dot.width / 2, y: dot.bottom - box.top + 6, anchor };
+    pick = { proposal: routeAt(input, output)?.enabled !== true, input, output, x: dot.left - box.left + dot.width / 2 - 150, anchorX: dot.left - box.left + dot.width / 2, y: dot.bottom - box.top + 6, anchor };
   }
 
   function closePick() {
@@ -110,6 +108,7 @@
           <button
             type="button"
             class="dotbtn"
+            class:proposed={anchored && pick?.proposal}
             aria-label={`${c.label} to ${r.name}${on ? `, ${fmtSigned(rt!.gainDb)} dB${rt!.invert ? ', inverted' : ''}` : ', unrouted'}`}
             onclick={(e) => open(e, c.input, r.slot)}
           >
@@ -131,7 +130,9 @@
   </footer>
 
   {#if pick && pickCol && pickRow}
+    {#key `${pick.input}:${pick.output}`}
     <CrosspointPopover
+      proposal={pick.proposal}
       input={pick.input}
       output={pick.output}
       title={`${pickCol.label} → ${pickRow.name}`}
@@ -142,6 +143,7 @@
       boundsH={hostH}
       onClose={closePick}
     />
+    {/key}
   {/if}
 </section>
 
@@ -231,6 +233,7 @@
     white-space: nowrap;
   }
   .pill.sample { background: var(--text-dim); min-width: 30px; }
+  .dotbtn.proposed .ring { border-style: dashed; border-color: var(--accent); opacity: 1; box-shadow: none; }
   .pill.anchor, .ring.anchor { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--accent); }
   .legend {
     flex: none;
