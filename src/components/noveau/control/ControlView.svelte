@@ -6,6 +6,7 @@
   import CsGroupsPanel from '@/components/system/CsGroupsPanel.svelte';
   import CsMacrosPanel from '@/components/system/CsMacrosPanel.svelte';
   import CsDisplayPanel from '@/components/system/CsDisplayPanel.svelte';
+  import PinMapPanel from '@/components/system/PinMapPanel.svelte';
   import PagedWorkspace from '../PagedWorkspace.svelte';
   import CsChangesStrip from './CsChangesStrip.svelte';
   import { noveauUi } from '../noveauUi.svelte';
@@ -66,7 +67,7 @@
               <CsDisplayPanel detailTarget={displayDetail} />
             </div>
             <div class="pw-col" data-budget>{@render host('DISPLAY PAGE', 'Select a page on the left', (el) => (displayDetail = el))}</div>
-            <div class="pw-col" data-budget></div>
+            <div class="pw-col" data-budget><PinMapPanel /></div>
           {/if}
         </div>
       {/if}
@@ -78,7 +79,7 @@
         {#if features.controlInterfaces}<ControlInterfacesPanel />{/if}
       </div>
       <div class="pw-col" data-budget></div>
-      <div class="pw-col" data-budget></div>
+      <div class="pw-col" data-budget><PinMapPanel /></div>
     </div>
   {/if}
 </PagedWorkspace>
