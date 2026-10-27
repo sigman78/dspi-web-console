@@ -40,7 +40,7 @@
         {#if features.adatInput}<AdatInputPanel />{/if}
         <LgSoundSyncPanel />
       </div>
-      <div class="pw-col" data-budget><PinMapPanel /></div>
+      <div class="pw-col" data-budget><div class="pw-ref"><PinMapPanel /></div></div>
     </div>
   {:else}
     <div class="pw-cols">
@@ -49,7 +49,7 @@
         {#if features.adatOutput}<AdatPanel />{/if}
       </div>
       <div class="pw-col" data-budget><I2sClockPanel /><DacHwMutePanel /></div>
-      <div class="pw-col" data-budget><PinMapPanel /></div>
+      <div class="pw-col" data-budget><div class="pw-ref"><PinMapPanel /></div></div>
     </div>
   {/if}
 </PagedWorkspace>

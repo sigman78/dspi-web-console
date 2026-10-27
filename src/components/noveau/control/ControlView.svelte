@@ -67,7 +67,7 @@
               <CsDisplayPanel detailTarget={displayDetail} />
             </div>
             <div class="pw-col" data-budget>{@render host('DISPLAY PAGE', 'Select a page on the left', (el) => (displayDetail = el))}</div>
-            <div class="pw-col" data-budget><PinMapPanel /></div>
+            <div class="pw-col" data-budget><div class="pw-ref"><PinMapPanel /></div></div>
           {/if}
         </div>
       {/if}
@@ -79,7 +79,7 @@
         {#if features.controlInterfaces}<ControlInterfacesPanel />{/if}
       </div>
       <div class="pw-col" data-budget></div>
-      <div class="pw-col" data-budget><PinMapPanel /></div>
+      <div class="pw-col" data-budget><div class="pw-ref"><PinMapPanel /></div></div>
     </div>
   {/if}
 </PagedWorkspace>
