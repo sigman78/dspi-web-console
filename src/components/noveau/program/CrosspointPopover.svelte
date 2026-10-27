@@ -45,6 +45,11 @@
   const caretX = $derived(Math.max(10, Math.min(w - 10, anchorX - left)));
   const clamped = $derived(top !== y);
 
+  function unroute() {
+    Runtime.setCrosspointEnabled(s, input, output, false);
+    onClose();
+  }
+
   onMount(() => {
     const down = (e: PointerEvent) => {
       const t = e.target as Element;
@@ -73,10 +78,6 @@
     <button type="button" class="x" aria-label="Close" onclick={onClose}>×</button>
   </div>
   <div class="r">
-    <span class="lbl">ENABLE</span>
-    <ToggleSwitch size="sm" checked={enabled} ariaLabel="Route enabled" onChange={(v) => Runtime.setCrosspointEnabled(s, input, output, v)} />
-  </div>
-  <div class="r">
     <RangeField
       label="GAIN"
       value={route?.gainDb ?? 0}
@@ -93,6 +94,9 @@
     <span class="lbl">PHASE</span>
     <ToggleSwitch size="sm" checked={invert} disabled={!enabled} ariaLabel="Invert phase" onChange={(v) => Runtime.setCrosspointInvert(s, input, output, v)} />
     <span class="cap">{invert ? 'inverted' : 'normal'}</span>
+  </div>
+  <div class="r foot">
+    <button type="button" class="chip unroute" disabled={!enabled} onclick={unroute}>UNROUTE</button>
   </div>
 </div>
 
@@ -151,5 +155,6 @@
     --rf-track-flex: 0 0 auto;
   }
   .r :global(.rf) { gap: 12px; height: 22px; }
+  .unroute { height: 20px; padding: 0 8px; font-size: 11px; color: var(--text-dim); }
   .lbl { flex: 0 0 52px; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }
 </style>

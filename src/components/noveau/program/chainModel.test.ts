@@ -17,9 +17,12 @@ describe('chainBlocks', () => {
     expect(k).toContain('subharm');
   });
 
-  it('marks only matrix and outputs as anchors', () => {
+  it('marks only outputs as an anchor; matrix is a switchless module', () => {
     const anchors = chainBlocks(makeSnapshot(), ALL).filter((b) => b.kind === 'anchor').map((b) => b.key);
-    expect(anchors).toEqual(['matrix', 'outputs']);
+    expect(anchors).toEqual(['outputs']);
+    const matrix = chainBlocks(makeSnapshot(), ALL).find((b) => b.key === 'matrix')!;
+    expect(matrix.kind).toBe('module');
+    expect(matrix.enabled).toBeNull();
   });
 
   it('counts routes and outputs from the snapshot', () => {

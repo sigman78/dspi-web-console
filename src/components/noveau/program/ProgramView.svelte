@@ -18,7 +18,7 @@
     min-width: 0;
     min-height: 0;
     display: grid;
-    grid-template-rows: 72px minmax(0, 1fr);
+    grid-template-rows: 88px minmax(0, 1fr);
     row-gap: 12px;
     overflow: hidden;
   }

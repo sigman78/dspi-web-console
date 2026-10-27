@@ -91,6 +91,17 @@ describe('ModulePanel', () => {
     expect(gated.container.querySelectorAll('[aria-label="Upmix center mode"] [role="radio"]').length).toBe(2);
   });
 
+  test('the matrix module summarises routes and hides UPMIX without the feature', () => {
+    noveauUi.programModule = 'matrix';
+    const full = mount();
+    expect(full.getByText('ROUTES')).toBeTruthy();
+    expect(full.getByText('UPMIX')).toBeTruthy();
+    full.unmount();
+    const gated = mount({ upmix: false });
+    expect(gated.getByText('INVERTED')).toBeTruthy();
+    expect(gated.queryByText('UPMIX')).toBeNull();
+  });
+
   test('subharm shows the extended rows only with the V30 flag', () => {
     noveauUi.programModule = 'subharm';
     const ext = mount();

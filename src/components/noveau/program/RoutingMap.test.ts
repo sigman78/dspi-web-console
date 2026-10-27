@@ -58,24 +58,25 @@ describe('RoutingMap', () => {
     expect(pills[0].textContent).toContain('−4.5');
   });
 
-  test('a disabled route offers ENABLE but locks GAIN and PHASE', async () => {
-    const { container, getByRole, getByLabelText } = mount();
+  test('clicking an unrouted dot routes it and opens the popover', async () => {
+    const { container, getByRole, session, off } = mount();
     await fireEvent.click(unroutedDot(container));
-    const dialog = getByRole('dialog');
-    expect(dialog).toBeTruthy();
-    expect(getByLabelText('Invert phase').hasAttribute('disabled')).toBe(true);
-    expect(dialog.querySelector('input[type="range"]')?.hasAttribute('disabled')).toBe(true);
-  });
-
-  test('ENABLE routes the clicked input to the clicked output slot', async () => {
-    const { container, getByLabelText, session, off } = mount();
-    await fireEvent.click(unroutedDot(container));
-    await fireEvent.click(getByLabelText('Route enabled'));
     expect(setCrosspointEnabled).toHaveBeenCalledTimes(1);
     const [sess, input, output, on] = setCrosspointEnabled.mock.calls[0];
     expect(sess).toBe(session);
     expect(output).toBe(off.wireIndex);
     expect(typeof input).toBe('number');
     expect(on).toBe(true);
+    expect(getByRole('dialog')).toBeTruthy();
+  });
+
+  test('UNROUTE disables the route and closes the popover', async () => {
+    const { container, getByText, queryByRole, off } = mount();
+    const dot = [...container.querySelectorAll<HTMLButtonElement>('.cell.off .dotbtn')].find((b) => !b.getAttribute('aria-label')!.endsWith('unrouted'))!;
+    await fireEvent.click(dot);
+    expect(setCrosspointEnabled).not.toHaveBeenCalled();
+    await fireEvent.click(getByText('UNROUTE'));
+    expect(setCrosspointEnabled.mock.calls[0].slice(2)).toEqual([off.wireIndex, false]);
+    expect(queryByRole('dialog')).toBeNull();
   });
 });

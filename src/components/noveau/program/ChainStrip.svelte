@@ -37,32 +37,55 @@
   }
 
   const lit = (b: ChainBlock) => b.enabled !== false;
+
+  const STAGE: Record<string, 'inputs' | 'routing' | undefined> = {
+    preamp: 'inputs', inputEq: 'inputs', leveller: 'inputs', upmix: 'inputs', matrix: 'routing',
+  };
+  const LABEL = { inputs: 'INPUTS', routing: 'ROUTING', outputs: 'PER OUTPUT' } as const;
+  const groups = $derived.by(() => {
+    const out: { id: keyof typeof LABEL; label: string; blocks: ChainBlock[] }[] = [];
+    for (const b of blocks) {
+      const id = STAGE[b.key] ?? 'outputs';
+      const last = out[out.length - 1];
+      if (last && last.id === id) last.blocks.push(b);
+      else out.push({ id, label: LABEL[id], blocks: [b] });
+    }
+    return out;
+  });
 </script>
 
 <div class="chain" role="group" aria-label="Processing chain">
-  {#each blocks as b, i (b.key)}
-    {#if i > 0}
-      {#if b.key === 'matrix' || b.key === 'outputs'}<span class="cdiv"></span>{:else}<span class="wire" class:hot={lit(b)}></span>{/if}
-    {/if}
-    <div class="blk" class:anchor={b.kind === 'anchor'} class:on={b.kind === 'module' && lit(b)} class:offb={b.kind === 'module' && !lit(b)} class:sel={b.kind === 'module' && active === b.key}>
-      {#if b.kind === 'module'}
-        <button
-          type="button"
-          class="hit"
-          aria-pressed={active === b.key}
-          aria-label={`${b.title}: ${b.values.join(', ')}`}
-          onclick={() => { noveauUi.programModule = b.key; }}
-        ></button>
-      {/if}
-      <div class="bh">
-        <b>{b.title}</b>
-        {#if b.key === 'outputs'}
-          <button type="button" class="jump" aria-label="Open selected output in TUNE" title="Open selected output in TUNE" onclick={openOutputInTune}>»</button>
-        {:else if b.kind === 'module' && b.enabled !== null && SETTERS[b.key]}
-          <span class="sw"><ToggleSwitch size="sm" checked={b.enabled} ariaLabel={`${b.title} enabled`} onChange={SETTERS[b.key]!} /></span>
-        {/if}
+  {#each groups as g, gi (g.id)}
+    {#if gi > 0}<span class="cdiv"></span>{/if}
+    <div class="grp g-{g.id}" style:flex="{g.blocks.length} 1 0">
+      <span class="gl">{g.label}</span>
+      <div class="row">
+        {#each g.blocks as b, i (b.key)}
+          {#if b.key === 'outputs' && i > 0}<span class="cdiv"></span>{:else if i > 0}<span class="wire" class:hot={lit(b)}></span>{/if}
+          <div class="blk" class:anchor={b.kind === 'anchor'} class:on={b.kind === 'module' && lit(b)} class:offb={b.kind === 'module' && !lit(b)} class:sel={b.kind === 'module' && active === b.key}>
+            {#if b.kind === 'module'}
+              <button
+                type="button"
+                class="hit"
+                aria-pressed={active === b.key}
+                aria-label={`${b.title}: ${b.values.join(', ')}`}
+                onclick={() => { noveauUi.programModule = b.key; }}
+              ></button>
+            {:else}
+              <button type="button" class="jump-hit" aria-label="Open outputs in TUNE" onclick={openOutputInTune}></button>
+            {/if}
+            <div class="bh">
+              <b>{b.title}</b>
+              {#if b.kind === 'anchor'}
+                <span class="go" aria-hidden="true">›</span>
+              {:else if b.enabled !== null && SETTERS[b.key]}
+                <span class="sw"><ToggleSwitch size="sm" checked={b.enabled} ariaLabel={`${b.title} enabled`} onChange={SETTERS[b.key]!} /></span>
+              {/if}
+            </div>
+            <div class="bv" title={b.values.join(' · ')}>{b.values.join(' · ')}</div>
+          </div>
+        {/each}
       </div>
-      <div class="bv" title={b.values.join(' · ')}>{b.values.join(' · ')}</div>
     </div>
   {/each}
 </div>
@@ -80,6 +103,28 @@
   .wire { flex: none; width: 6px; height: 2px; background: var(--border-hi); }
   .wire.hot { background: color-mix(in oklab, var(--accent) 60%, transparent); }
   .cdiv { flex: none; width: 1px; height: 44px; margin: 0 4px; background: var(--border-hi); }
+  .grp {
+    min-width: 0;
+    padding: 2px;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    background: color-mix(in oklab, var(--text) 3%, transparent);
+  }
+  .grp.g-routing { background: color-mix(in oklab, var(--accent) 5%, transparent); }
+  .gl {
+    flex: none;
+    height: 14px;
+    padding: 0 2px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 14px;
+    letter-spacing: 0.04em;
+    color: var(--text-faint);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .row { display: flex; align-items: center; min-width: 0; }
   .blk {
     position: relative;
     flex: 1 1 0;
@@ -94,7 +139,7 @@
     justify-content: center;
     overflow: hidden;
   }
-  .hit {
+  .hit, .jump-hit {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -141,13 +186,7 @@
   .blk.sel { box-shadow: 0 0 0 2px var(--accent) inset; background: color-mix(in oklab, var(--accent) 16%, transparent); }
   .blk.offb .bh b, .blk.offb .bv { color: var(--text-faint); }
   .blk.anchor { background: none; box-shadow: 0 0 0 1px var(--border) inset; }
-  .jump {
-    pointer-events: auto;
-    width: 20px; height: 20px; padding: 0; flex: none;
-    display: inline-flex; align-items: center; justify-content: center;
-    background: transparent; border: none; border-radius: 3px; cursor: pointer;
-    font-family: var(--font-sans); font-size: 14px; line-height: 1; color: var(--text-dim);
-  }
-  .jump:hover, .jump:focus-visible { color: var(--accent); }
-  .hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .go { flex: none; font-family: var(--font-sans); font-size: 14px; line-height: 1; color: var(--text-faint); }
+  .blk:hover:not(.sel) { background: var(--wash-strong); }
+  .hit:focus-visible, .jump-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 </style>

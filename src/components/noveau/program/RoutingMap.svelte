@@ -2,6 +2,7 @@
   import { matrixRows, type InputSlot, type OutputSlot, type RouteModel } from '@/domain';
   import { selectChannel, settings } from '@/state';
   import { chShade } from '@/styles/palette';
+  import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '../noveauUi.svelte';
   import { fmtSigned } from './chainModel';
@@ -54,6 +55,7 @@
 
   function open(e: MouseEvent, input: InputSlot, output: OutputSlot) {
     if (!host) return;
+    if (routeAt(input, output)?.enabled !== true) Runtime.setCrosspointEnabled(s, input, output, true);
     const anchor = e.currentTarget as HTMLElement;
     const dot = anchor.getBoundingClientRect();
     const box = host.getBoundingClientRect();

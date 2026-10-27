@@ -10,7 +10,7 @@ interface ChainBlockBase {
   values: string[];
 }
 
-/** Modules are selectable; anchors (matrix, outputs) only mark the chain. */
+/** Modules are selectable; the outputs anchor jumps to TUNE instead. */
 export type ChainModuleBlock = ChainBlockBase & { kind: 'module'; key: ProgramModuleKey };
 export type ChainAnchorBlock = ChainBlockBase & { kind: 'anchor'; key: ChainAnchorKey };
 export type ChainBlock = ChainModuleBlock | ChainAnchorBlock;
@@ -88,7 +88,7 @@ export function chainBlocks(
     );
   }
   blocks.push(
-    { key: 'matrix', kind: 'anchor', title: 'Matrix', enabled: null, values: [`${routes} ${routes === 1 ? 'route' : 'routes'}`] },
+    mod({ key: 'matrix', title: 'Matrix', enabled: null, values: [`${routes} ${routes === 1 ? 'route' : 'routes'}`] }),
     mod({
       key: 'crossfeed',
       title: 'Crossfeed',

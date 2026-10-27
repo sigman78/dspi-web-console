@@ -6,10 +6,11 @@ export type ProgramModuleKey =
   | 'loudness'
   | 'psybass'
   | 'subharm'
-  | 'upmix';
+  | 'upmix'
+  | 'matrix';
 
 /** Strip anchors: shown in the chain but not selectable modules. */
-export type ChainAnchorKey = 'matrix' | 'outputs';
+export type ChainAnchorKey = 'outputs';
 
 const GATED: Partial<Record<ProgramModuleKey, 'psybass' | 'subharm' | 'upmix'>> = {
   psybass: 'psybass',

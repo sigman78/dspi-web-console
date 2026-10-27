@@ -69,34 +69,33 @@
 {/snippet}
 
 <div class="about">
-  <section class="col">
-    <header><h3>CONSOLE</h3></header>
+  <section class="band">
+    <header>
+      <h3>CONSOLE</h3>
+      <span class="links">
+        <a class="chip" href={REPO_URL} target="_blank" rel="noopener">GITHUB</a>
+        <a class="chip" href={issueUrl} target="_blank" rel="noopener">REPORT ISSUE</a>
+        <a class="chip" href="https://github.com/WeebLabs/DSPi" target="_blank" rel="noopener">FIRMWARE</a>
+      </span>
+    </header>
     <div class="rows">
       {#each consoleRows as r (r.label)}{@render kv(r)}{/each}
-      <div class="kv">
-        <span class="lbl">LINKS</span>
-        <span class="links">
-          <a class="chip" href={REPO_URL} target="_blank" rel="noopener">GITHUB</a>
-          <a class="chip" href={issueUrl} target="_blank" rel="noopener">REPORT ISSUE</a>
-          <a class="chip" href="https://github.com/WeebLabs/DSPi" target="_blank" rel="noopener">FIRMWARE</a>
-        </span>
-      </div>
     </div>
   </section>
 
-  <section class="col">
+  <section class="band">
+    <header><h3>DEVICE</h3></header>
+    <div class="rows">
+      {#each deviceRows as r (r.label)}{@render kv(r)}{/each}
+    </div>
+  </section>
+
+  <section class="band changes">
     <header><h3>LATEST CHANGES</h3><span class="ver">v{LATEST_CHANGES.version}</span></header>
     <div class="fade">
       <ul>
         {#each LATEST_CHANGES.highlights as h (h)}<li>{h}</li>{/each}
       </ul>
-    </div>
-  </section>
-
-  <section class="col">
-    <header><h3>DEVICE</h3></header>
-    <div class="rows">
-      {#each deviceRows as r (r.label)}{@render kv(r)}{/each}
     </div>
   </section>
 </div>
@@ -105,16 +104,17 @@
   .about {
     flex: 1;
     min-width: 0;
+    height: 100%;
     min-height: 0;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    row-gap: 12px;
     overflow: hidden;
   }
-  .col {
+  .band {
     min-width: 0;
+    min-height: 0;
     box-sizing: border-box;
-    max-height: 100%;
     display: flex;
     flex-direction: column;
     background: var(--panel);
@@ -134,40 +134,39 @@
   }
   h3 { margin: 0; font-family: var(--font-sans); font-size: 12px; font-weight: 600; color: var(--text); }
   .ver { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
-  .rows { padding: 6px 12px 10px; display: flex; flex-direction: column; gap: 2px; }
+  .rows { padding: 8px 12px 10px; display: flex; flex-wrap: wrap; gap: 6px 32px; }
   .kv {
-    display: grid;
-    grid-template-columns: 88px 1fr;
+    display: inline-flex;
     gap: 8px;
     align-items: baseline;
-    min-height: 22px;
     font-family: var(--font-mono);
     font-size: 12px;
   }
-  .lbl { font-size: 11px; letter-spacing: 0.06em; color: var(--text-dim); }
-  .val { color: var(--text); overflow-wrap: anywhere; }
+  .lbl { font-size: 11px; letter-spacing: 0.06em; color: var(--text-faint); }
+  .val { color: var(--text); }
   .val.ok { color: var(--ok); }
   .val.off { color: var(--text-faint); }
   .val.warn { color: var(--warn); }
-  .links { display: flex; flex-wrap: wrap; gap: 6px; }
+  .links { display: flex; gap: 6px; }
   .links .chip { text-decoration: none; }
-  .fade { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 8px 12px; }
+  .changes { min-height: 0; }
+  .fade { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 10px 12px; }
   .fade::after {
     content: "";
     position: absolute;
     left: 0; right: 0; bottom: 0;
-    height: 48px;
+    height: 24px;
     pointer-events: none;
     background: linear-gradient(to bottom, transparent, var(--panel));
   }
   ul {
     margin: 0;
     padding: 0 0 0 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
+    columns: 2;
+    column-gap: 32px;
     font-family: var(--font-sans);
     font-size: 12px;
     color: var(--text-dim);
   }
+  li { break-inside: avoid; margin-bottom: 5px; }
 </style>

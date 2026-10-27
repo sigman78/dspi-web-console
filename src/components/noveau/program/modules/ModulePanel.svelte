@@ -10,6 +10,7 @@
   import PsybassModule from './PsybassModule.svelte';
   import SubharmModule from './SubharmModule.svelte';
   import UpmixModule from './UpmixModule.svelte';
+  import MatrixModule from './MatrixModule.svelte';
 
   const s = getSession();
   const features = $derived(s.device.capabilities.features);
@@ -33,6 +34,8 @@
     <SubharmModule />
   {:else if m === 'upmix'}
     <UpmixModule />
+  {:else if m === 'matrix'}
+    <MatrixModule />
   {/if}
 </div>
 
