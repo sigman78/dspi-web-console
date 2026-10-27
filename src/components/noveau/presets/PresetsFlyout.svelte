@@ -235,7 +235,7 @@
                 class:accent={id === 'save'}
                 aria-label={text}
                 title={text}
-                disabled={busy}
+                disabled={busy || boundary.pending != null}
                 onmousedown={(e) => e.preventDefault()}
                 onclick={() => void run(id)}
               ><PresetIcon icon={id} /></button>
@@ -243,7 +243,7 @@
               <button
                 type="button"
                 class="chip"
-                disabled={busy}
+                disabled={busy || boundary.pending != null}
                 title={id === 'import' ? 'Import a JSON preset into this slot (replaces and saves it)' : undefined}
                 onclick={() => void run(id)}
               >
@@ -300,7 +300,7 @@
     position: absolute;
     left: calc(100% + 6px);
     top: 0;
-    z-index: 30;
+    z-index: var(--z-flyout);
     width: 400px;
     box-sizing: border-box;
     display: flex;

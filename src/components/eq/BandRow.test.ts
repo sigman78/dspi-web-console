@@ -54,6 +54,13 @@ describe('BandRow — Linkwitz Transform is display-only', () => {
     expect(container.querySelector('.gainDash')).toBeNull();
   });
 
+  it('a HighPass band has no gain, so its gain field is disabled', () => {
+    const { container } = render(BandRow, { index: 0, band: { ...peakBand, type: FilterType.HighPass }, onPatch: vi.fn() });
+    const fields = container.querySelectorAll('.vf');
+    expect(fields[2].classList.contains('disabled')).toBe(true);
+    expect(fields[0].classList.contains('disabled')).toBe(false);
+  });
+
   it('switching an LT band away to another type still calls onPatch with the new type', async () => {
     const onPatch = vi.fn();
     const { container } = render(BandRow, { index: 0, band: ltBand(), onPatch });

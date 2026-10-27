@@ -36,6 +36,10 @@
      bodies) stay full-contrast; exactly ONE dim layer, this token, applies
      to the interactive control itself (input/button/select). */
   --dim-disabled: 0.5;
+  /* Wash for non-interactive content whose feature is off (muted slider, curve of a disabled module); controls use --dim-disabled. */
+  --dim-off: 0.45;
+  /* Stacking layers. */
+  --z-raise: 1; --z-pop: 10; --z-flyout: 30; --z-modal: 1000; --z-toast: 1100;
 
   --pad: 16px;
   --radius-s: 3px;

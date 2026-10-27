@@ -143,11 +143,6 @@
     });
   }
 
-  function num(e: Event): number | null {
-    const v = Number((e.currentTarget as HTMLInputElement).value);
-    return Number.isNaN(v) ? null : v;
-  }
-
   // --- Pages (PageDraft[]) ---
 
   function pageDraftOf(i: number): PageDraft | null {
@@ -289,7 +284,7 @@
             <span class="microlbl">DWELL</span>
             <input class="numfield" type="number" step="0.1" min="1"
               value={d.dwell} aria-label="Dwell time (s)" disabled={applying}
-              onchange={(e) => { const v = num(e); if (v != null) editCfg((dr) => { dr.dwell = v; }); }} />
+              onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editCfg((dr) => { dr.dwell = v; }); }} />
             <span class="hint">s</span>
           </span>
         {/if}
@@ -300,14 +295,14 @@
           <span class="microlbl">POP-UP HOLD</span>
           <input class="numfield" type="number" step="0.1" min="0"
             value={d.overlayHold} aria-label="Pop-up hold time (s, 0 = off)" disabled={applying}
-            onchange={(e) => { const v = num(e); if (v != null) editCfg((dr) => { dr.overlayHold = v; }); }} />
+            onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editCfg((dr) => { dr.overlayHold = v; }); }} />
           <span class="hint">s (0 = off)</span>
         </span>
         <span class="pair">
           <span class="microlbl">EDIT TIMEOUT</span>
           <input class="numfield" type="number" step="0.1" min="0"
             value={d.editTimeout} aria-label="Edit auto-disarm timeout (s, 0 = manual)" disabled={applying}
-            onchange={(e) => { const v = num(e); if (v != null) editCfg((dr) => { dr.editTimeout = v; }); }} />
+            onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editCfg((dr) => { dr.editTimeout = v; }); }} />
           <span class="hint">s (0 = manual)</span>
         </span>
       </div>
@@ -318,7 +313,7 @@
           <input class="numfield" type="number" step="1" min="0" max="255"
             value={d.brightness} aria-label="Brightness (0 = default)" disabled={applying}
             title="OLED contrast — takes effect when the display restarts"
-            onchange={(e) => { const v = num(e); if (v != null) editCfg((dr) => { dr.brightness = v; }); }} />
+            onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editCfg((dr) => { dr.brightness = v; }); }} />
           <span class="hint">0 = default</span>
         </span>
       </div>

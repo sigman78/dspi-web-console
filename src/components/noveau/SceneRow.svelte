@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { presetsDirty } from '@/state';
+  import { boundary, presetsDirty } from '@/state';
   import { getSession } from '@/components/sessionContext';
   import { loadPresetSlot, revertActivePreset } from '@/runtime';
   import { saveActivePresetNamed } from '@/components/presets/saveActivePresetNamed';
@@ -52,6 +52,7 @@
       class:unsaved={slot === active && dirty}
       title={`${slot} ${s.presets.names[slot] || `Preset ${slot}`}${slot === startup ? ' (startup)' : ''}${slot === active && dirty ? ' · unsaved changes' : ''}`}
       aria-label={`${slot}${s.presets.names[slot] ? ' ' + s.presets.names[slot] : ''}${slot === startup ? ' (startup)' : ''}${slot === active && dirty ? ' · unsaved changes' : ''}`}
+      disabled={boundary.pending != null}
       onclick={() => onSlot(slot)}
     >
       {slot}

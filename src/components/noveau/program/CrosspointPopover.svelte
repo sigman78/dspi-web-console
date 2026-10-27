@@ -123,7 +123,7 @@
 <style>
   .pop {
     position: absolute;
-    z-index: 5;
+    z-index: var(--z-pop);
     width: 300px;
     padding: 0 12px 4px;
     box-sizing: border-box;

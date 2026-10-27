@@ -71,7 +71,7 @@
 <style>
   .menu {
     position: absolute;
-    z-index: 5;
+    z-index: var(--z-pop);
     min-width: 132px;
     padding: 4px;
     display: flex;

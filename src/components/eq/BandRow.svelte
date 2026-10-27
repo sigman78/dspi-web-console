@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { FilterType, type FilterParams, Eq } from '@/domain';
+  import { FilterType, bandHasGain, bandHasQ, type FilterParams, Eq } from '@/domain';
   import ValueField from '@/components/chrome/ValueField.svelte';
   import BandTypeSelect from './BandTypeSelect.svelte';
 
@@ -22,16 +22,6 @@
 
   const off = $derived(band.type === FilterType.Flat);
   const bypassed = $derived(band.bypass);
-  // First-order sections (V16+) are single-parameter: no Q, and the 1st-order
-  // all-pass and the first-order low/high pass (V28+) have no gain either.
-  const firstOrder = $derived(
-    band.type === FilterType.Allpass1 || band.type === FilterType.LowShelf1 || band.type === FilterType.HighShelf1
-      || band.type === FilterType.LowPass1 || band.type === FilterType.HighPass1,
-  );
-  const noGain = $derived(
-    band.type === FilterType.Allpass1 || band.type === FilterType.LowPass1 || band.type === FilterType.HighPass1,
-  );
-
   // Linkwitz Transform is display-only in this UI (see BandTypeSelect): a
   // band already set to it renders read-only -- freq/Q show f0/Q0 but can't
   // be edited, and gain has no dB meaning here (it's fp in Hz on the wire),
@@ -78,7 +68,7 @@
     max={Eq.Q_MAX}
     step={Eq.Q_STEP}
     align="right"
-    disabled={off || bypassed || firstOrder || isLt}
+    disabled={off || bypassed || !bandHasQ(band.type) || isLt}
     onChange={(v) => onPatch({ q: v })}
   />
   {#if isLt}
@@ -92,7 +82,7 @@
       step={Eq.BAND_GAIN_STEP_DB}
       tone="signed"
       align="right"
-      disabled={off || bypassed || noGain}
+      disabled={off || bypassed || !bandHasGain(band.type)}
       onChange={(v) => onPatch({ gain: v })}
     />
   {/if}
@@ -120,14 +110,6 @@
     color: var(--text-faint);
     font-variant-numeric: tabular-nums;
   }
-  /* U-P3 policy B: no whole-row dim when the band is off (type = Flat). The
-     row's structure and the FLAT type stay full-contrast; the freq/Q/gain
-     ValueFields below are disabled in that state and carry the single dim
-     layer alone. */
-  /* Deliberately kept: bypass is a user toggle whose controls stay ENABLED
-     (not disabled), so this dim is the one and only layer for that state --
-     a real, single-layer visual distinction, not a stack. Do not touch. */
-  .row.bypassed { opacity: 0.45; }
   .num { color: var(--text-faint); }
   .byp {
     display: inline-flex;

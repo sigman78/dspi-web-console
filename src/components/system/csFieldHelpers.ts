@@ -241,3 +241,11 @@ export function csChannelCounts(channels: readonly Domain.ChannelModel[]): Domai
   const outputs = channels.filter((c) => c.isOutput).length;
   return { inputs: channels.length - outputs, outputs, dsp: channels.length };
 }
+
+/** Numeric value of a number input; null when blank or not a number. */
+export function parseNumInput(e: Event): number | null {
+  const raw = (e.currentTarget as HTMLInputElement).value.trim();
+  if (raw === '') return null;
+  const v = Number(raw);
+  return Number.isNaN(v) ? null : v;
+}

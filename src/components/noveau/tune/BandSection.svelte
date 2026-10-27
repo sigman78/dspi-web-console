@@ -7,7 +7,7 @@
   import InspectorSection from './InspectorSection.svelte';
   import RangeField from './RangeField.svelte';
   import { patchBand } from './bandOps';
-  import { bandHasGain, bandHasQ } from './eqDraft';
+  import { bandHasGain, bandHasQ } from '@/domain';
 
   const { channel }: { channel: ChannelModel } = $props();
 

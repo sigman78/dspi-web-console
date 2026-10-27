@@ -152,7 +152,7 @@
   }
   .bh {
     position: relative;
-    z-index: 1;
+    z-index: var(--z-raise);
     pointer-events: none;
     display: flex;
     align-items: center;

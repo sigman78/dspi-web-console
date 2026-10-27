@@ -66,6 +66,7 @@ export function resetBoundary(): void {
 
 // Boundary modal, one-promise-at-a-time: a component awaits askBoundary(); the
 // modal renders while pending != null; the user's choice resolves the promise.
+// An ask while one is pending resolves 'cancel' without disturbing it.
 export type BoundaryChoice = 'save' | 'discard' | 'cancel';
 
 export interface BoundaryPrompt {
@@ -84,9 +85,7 @@ export const boundary = $state<BoundaryState>({ pending: null });
 let pendingResolve: ((choice: BoundaryChoice) => void) | null = null;
 
 export function askBoundary(prompt: BoundaryPrompt): Promise<BoundaryChoice> {
-  if (boundary.pending !== null) {
-    return Promise.reject(new Error('a boundary modal is already pending'));
-  }
+  if (boundary.pending !== null) return Promise.resolve('cancel');
   boundary.pending = prompt;
   return new Promise<BoundaryChoice>((resolve) => {
     pendingResolve = resolve;

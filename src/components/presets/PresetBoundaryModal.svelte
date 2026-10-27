@@ -1,9 +1,32 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { boundary, resolveBoundary } from '@/state';
+
+  let panel = $state<HTMLElement>();
+  let cancelBtn = $state<HTMLButtonElement>();
+  let opener: Element | null = null;
+
+  $effect(() => {
+    if (boundary.pending == null) return;
+    opener = document.activeElement;
+    void tick().then(() => cancelBtn?.focus());
+    return () => {
+      if (opener instanceof HTMLElement) opener.focus();
+      opener = null;
+    };
+  });
 
   function onKey(e: KeyboardEvent) {
     if (boundary.pending == null) return;
-    if (e.key === 'Escape') { e.preventDefault(); resolveBoundary('cancel'); }
+    if (e.key === 'Escape') { e.preventDefault(); resolveBoundary('cancel'); return; }
+    if (e.key !== 'Tab' || !panel) return;
+    const btns = panel.querySelectorAll<HTMLButtonElement>('button');
+    if (btns.length === 0) return;
+    const first = btns[0];
+    const last = btns[btns.length - 1];
+    const cur = document.activeElement;
+    if (e.shiftKey && (cur === first || !panel.contains(cur))) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && (cur === last || !panel.contains(cur))) { e.preventDefault(); first.focus(); }
   }
 </script>
 
@@ -11,11 +34,11 @@
 
 {#if boundary.pending}
   <div class="scrim" role="dialog" aria-modal="true" aria-labelledby="bdry-title">
-    <div class="panel">
+    <div class="panel" bind:this={panel}>
       <h2 id="bdry-title">{boundary.pending.title}</h2>
       <p>{boundary.pending.message}</p>
       <div class="actions">
-        <button class="chip md" onclick={() => resolveBoundary('cancel')}>Cancel</button>
+        <button class="chip md" bind:this={cancelBtn} onclick={() => resolveBoundary('cancel')}>Cancel</button>
         <button class="chip md warn" onclick={() => resolveBoundary('discard')}>{boundary.pending.discardLabel ?? 'Switch anyway'}</button>
         {#if boundary.pending.saveLabel}
           <button class="chip md accent" onclick={() => resolveBoundary('save')}>{boundary.pending.saveLabel}</button>
@@ -31,7 +54,7 @@
     background: color-mix(in oklab, var(--bg) 70%, transparent);
     backdrop-filter: blur(6px);
     display: grid; place-items: center;
-    z-index: 1000;
+    z-index: var(--z-modal);
     font-family: var(--font-mono);
   }
   .panel {

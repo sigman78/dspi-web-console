@@ -9,6 +9,7 @@
     saveAutoEqUserEntry, deleteAutoEqUserEntry, searchAutoEq,
   } from '@/state';
   import { applyAutoEqEntry, preampTargetLabel, hasStereoTwin } from '@/runtime';
+  import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
   import { getSession } from '@/components/sessionContext';
 
   const {
@@ -76,7 +77,7 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+    if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); onClose(); }
   }
 
   function selectRow(id: string) {
@@ -88,8 +89,7 @@
     toggleAutoEqFavorite(id);
   }
 
-  function onDelete(e: MouseEvent, id: string) {
-    e.stopPropagation();
+  function onDelete(id: string) {
     deleteAutoEqUserEntry(id);
     if (selectedId === id) selectedId = null;
   }
@@ -162,12 +162,8 @@
               <span class="fftag">{e.formFactor}</span>
             </button>
             {#if e.source === 'user'}
-              <button
-                type="button"
-                class="chip hi danger del"
-                title="Delete this saved entry"
-                onclick={(ev) => onDelete(ev, e.id)}
-              >DEL</button>
+              <ConfirmButton label="DEL" confirmLabel="DEL?" tone="danger" extraClass="hi del"
+                title="Delete this saved entry" onConfirm={() => onDelete(e.id)} />
             {/if}
           </div>
         {/each}
@@ -209,7 +205,7 @@
     background: color-mix(in oklab, var(--bg) 70%, transparent);
     backdrop-filter: blur(6px);
     display: grid; place-items: center;
-    z-index: 1000;
+    z-index: var(--z-modal);
     font-family: var(--font-mono);
   }
   .scrim-close {
@@ -222,7 +218,7 @@
   }
   .panel {
     position: relative;
-    z-index: 1;
+    z-index: var(--z-raise);
     background: var(--panel-solid);
     border: 1px solid var(--border-hi);
     border-radius: 6px;
@@ -364,7 +360,7 @@
     text-transform: uppercase;
   }
 
-  .del { flex: none; }
+  .list :global(.del) { flex: none; }
 
   .footer {
     padding: 10px 14px;

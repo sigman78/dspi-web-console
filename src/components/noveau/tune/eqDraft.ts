@@ -1,28 +1,6 @@
-import { FilterType, defaultFilter, type FilterParams } from '@/domain';
+import { FilterType, bandHasGain, bandHasQ, defaultFilter, type FilterParams } from '@/domain';
 import * as Clamp from '@/domain/clamp';
 import { snapQFromWheel } from '@/components/bode/eqGraphMath';
-
-const NO_GAIN_TYPES: ReadonlySet<FilterType> = new Set([
-  FilterType.LowPass,
-  FilterType.HighPass,
-  FilterType.Notch,
-  FilterType.Allpass,
-  FilterType.Allpass1,
-  FilterType.LowPass1,
-  FilterType.HighPass1,
-  FilterType.LinkwitzTransform,
-]);
-
-const NO_Q_TYPES: ReadonlySet<FilterType> = new Set([
-  FilterType.Allpass1,
-  FilterType.LowShelf1,
-  FilterType.HighShelf1,
-  FilterType.LowPass1,
-  FilterType.HighPass1,
-  FilterType.LinkwitzTransform,
-]);
-
-export const bandHasGain = (type: FilterType): boolean => !NO_GAIN_TYPES.has(type);
 
 const round = (v: number, step: number): number => Math.round(v / step) * step;
 
@@ -97,5 +75,3 @@ export function trailingDebounce<A extends unknown[]>(fn: (...args: A) => void, 
     },
   };
 }
-
-export const bandHasQ = (type: FilterType): boolean => !NO_Q_TYPES.has(type);

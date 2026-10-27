@@ -310,11 +310,6 @@
       }
     });
   });
-
-  function num(e: Event): number | null {
-    const v = Number((e.currentTarget as HTMLInputElement).value);
-    return Number.isNaN(v) ? null : v;
-  }
 </script>
 
 {#snippet editor(sub: number, d: IrDraft)}
@@ -412,7 +407,7 @@
                     min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(CsField.unitOf(cs.nouns, d.noun), cs.nouns[d.noun].minQ8) : 0}
                     max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(CsField.unitOf(cs.nouns, d.noun), cs.nouns[d.noun].maxQ8) : 0}
                     value={d.value} aria-label="Value" disabled={applyingSub != null}
-                    onchange={(e) => { const v = num(e); if (v != null) editDraft(sub, (dr) => { dr.value = v; }); }} />
+                    onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editDraft(sub, (dr) => { dr.value = v; }); }} />
                   <span class="hint">{CsUnit.unitSuffix(CsField.unitOf(cs.nouns, d.noun))}</span>
                 {:else}
                   <select class="sel" value={String(d.value)} aria-label="Value" disabled={applyingSub != null}
@@ -429,11 +424,11 @@
                   <input class="numfield" type="number" step="1" min="1"
                     max={Math.max(1, (cs.nouns[d.noun]?.enumCount ?? 2) - 1)}
                     value={d.step} aria-label="Step size (positions)" disabled={applyingSub != null}
-                    onchange={(e) => { const v = num(e); if (v != null) editDraft(sub, (dr) => { dr.step = v; }); }} />
+                    onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editDraft(sub, (dr) => { dr.step = v; }); }} />
                 {:else}
                   <input class="numfield" type="number" step={CsUnit.isLogStep(CsField.unitOf(cs.nouns, d.noun)) ? '0.01' : '0.5'} min="0"
                     value={d.step} aria-label="Step size" disabled={applyingSub != null}
-                    onchange={(e) => { const v = num(e); if (v != null) editDraft(sub, (dr) => { dr.step = v; }); }} />
+                    onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editDraft(sub, (dr) => { dr.step = v; }); }} />
                   <span class="hint">{CsUnit.stepUnitSuffix(CsField.unitOf(cs.nouns, d.noun))}</span>
                 {/if}
               {/if}

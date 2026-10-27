@@ -98,7 +98,7 @@
     accent-color: var(--accent);
   }
   input[type="range"].master { accent-color: var(--err); }
-  input[type="range"].muted { accent-color: var(--text-faint); opacity: 0.45; }
+  input[type="range"].muted { accent-color: var(--text-faint); opacity: var(--dim-off); }
   input[type="range"]:disabled { opacity: var(--dim-disabled); }
   .val {
     font-family: var(--font-mono);

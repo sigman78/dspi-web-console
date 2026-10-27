@@ -5,14 +5,14 @@
   import { xForF, yForDb, type PlotGeometry } from '@/components/bode/eqGraphMath';
   import { formatValue } from '@/components/chrome/valueFieldFormat';
   import { offeredTypes } from '@/components/eq/BandTypeSelect.svelte';
-  import { Eq, FilterType, type ChannelId, type ChannelModel, type FilterParams } from '@/domain';
+  import { Eq, FilterType, bandHasGain, bandHasQ, type ChannelId, type ChannelModel, type FilterParams } from '@/domain';
   import { setEqFilter, setXoverBand } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '../noveauUi.svelte';
   import BandMenu from './BandMenu.svelte';
   import { patchBand, clearBand } from './bandOps';
   import {
-    applyBandDrag, applyXoverDrag, applyWheelQ, bandHasGain, bandHasQ, planAddBand, trailingDebounce,
+    applyBandDrag, applyXoverDrag, applyWheelQ, planAddBand, trailingDebounce,
     type DragAnchor,
   } from './eqDraft';
 

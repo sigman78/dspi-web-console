@@ -72,7 +72,7 @@ async function withBusy<T>(ps: PresetsState, fn: () => Promise<T>): Promise<T> {
 //
 // Contract split: Result-returning actions (load/save/paste/delete) report
 // failures through their typed Result. The void actions (rename, startup
-// default/mode, include-pins) surface failures solely via lastActionError and do
+// default/mode, include-pins) surface failures via lastActionError plus an error notice and do
 // NOT rethrow -- their callers await without a catch, so a rethrow would leak an
 // unhandled rejection.
 
@@ -80,6 +80,7 @@ function recordActionError(ps: PresetsState, label: string, e: unknown): string 
   const msg = errMessage(e);
   const formatted = `${label}: ${msg}`;
   ps.lastActionError = formatted;
+  pushNotice('error', formatted);
   Log.warn('presets', `${label} failed`, e);
   return formatted;
 }

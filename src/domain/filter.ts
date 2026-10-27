@@ -81,6 +81,30 @@ export function isFirstOrderLpHp(t: FilterType): boolean {
   return t === FilterType.LowPass1 || t === FilterType.HighPass1;
 }
 
+const NO_GAIN_TYPES: ReadonlySet<FilterType> = new Set([
+  FilterType.LowPass,
+  FilterType.HighPass,
+  FilterType.Notch,
+  FilterType.Allpass,
+  FilterType.Allpass1,
+  FilterType.LowPass1,
+  FilterType.HighPass1,
+  FilterType.LinkwitzTransform,
+]);
+
+const NO_Q_TYPES: ReadonlySet<FilterType> = new Set([
+  FilterType.Allpass1,
+  FilterType.LowShelf1,
+  FilterType.HighShelf1,
+  FilterType.LowPass1,
+  FilterType.HighPass1,
+  FilterType.LinkwitzTransform,
+]);
+
+export const bandHasGain = (type: FilterType): boolean => !NO_GAIN_TYPES.has(type);
+
+export const bandHasQ = (type: FilterType): boolean => !NO_Q_TYPES.has(type);
+
 export interface FilterParams {
   type: FilterType;
   bypass: boolean;

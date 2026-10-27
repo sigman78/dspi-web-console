@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
   import AutoEqBrowser from '@/components/eq/AutoEqBrowser.svelte';
   import { eqUi, setEqCopySource, clearEqCopySource } from '@/state';
   import { copyEqBands, setEqFilter } from '@/runtime';
@@ -53,7 +54,7 @@
   {#if inSelection}
     <button type="button" class="chip hi" title="Exit copy mode" onclick={clearEqCopySource}>Exit</button>
   {:else}
-    <button type="button" class="chip hi" title="Reset all bands" onclick={reset}>Reset</button>
+    <ConfirmButton label="Reset" confirmLabel="Reset all?" tone="danger" extraClass="hi" title="Reset all bands" onConfirm={reset} />
   {/if}
 </div>
 

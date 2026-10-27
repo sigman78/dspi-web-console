@@ -133,7 +133,7 @@
   justify-content: center;
 }
 .icon-toggle:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
-.icon-toggle:disabled { cursor: default; opacity: 0.5; }
+.icon-toggle:disabled { cursor: default; opacity: var(--dim-disabled); }
 .icon-toggle.on {
   background: color-mix(in oklab, var(--err) 15%, transparent);
   border-color: color-mix(in oklab, var(--err) 45%, transparent);

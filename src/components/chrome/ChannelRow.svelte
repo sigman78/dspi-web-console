@@ -289,7 +289,7 @@
     transition: background 100ms, border-color 100ms, box-shadow 100ms;
   }
   /* Keep the name above the hatch overlay (::before, see below). */
-  .chip > * { position: relative; z-index: 1; }
+  .chip > * { position: relative; z-index: var(--z-raise); }
   .row:not(.selected) .body:hover:not(:disabled) .chip {
     border-color: var(--border-hi);
     background:

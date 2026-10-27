@@ -18,7 +18,7 @@
     position: fixed;
     right: 12px;
     bottom: 12px;
-    z-index: 100;
+    z-index: var(--z-toast);
     display: flex;
     flex-direction: column;
     gap: 6px;

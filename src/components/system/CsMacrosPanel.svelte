@@ -213,11 +213,6 @@
     const g = cs.groups[d.target];
     return snap && g ? CsField.groupBandOptionsFor(cs.nouns, d.noun, g, snap.channels) : [];
   }
-
-  function num(e: Event): number | null {
-    const v = Number((e.currentTarget as HTMLInputElement).value);
-    return Number.isNaN(v) ? null : v;
-  }
 </script>
 
 <Panel title="MACROS">
@@ -290,7 +285,7 @@
               <input class="numfield" type="number" step="0.01" min="0" max="655.35"
                 value={step.preDelay} aria-label={`Delay before step ${k + 1} (s)`}
                 title="Wait this long before the step runs" disabled={applying}
-                onchange={(e) => { const v = num(e); if (v != null) editStep(i, k, (dr) => { dr.preDelay = v; }); }} />
+                onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editStep(i, k, (dr) => { dr.preDelay = v; }); }} />
               <span class="hint">s</span>
               {#if !detached}
                 <span class="spacer"></span>
@@ -385,7 +380,7 @@
                       min={cs.nouns[step.noun] ? CsUnit.valueToDisplay(CsField.unitOf(cs.nouns, step.noun), cs.nouns[step.noun].minQ8) : 0}
                       max={cs.nouns[step.noun] ? CsUnit.valueToDisplay(CsField.unitOf(cs.nouns, step.noun), cs.nouns[step.noun].maxQ8) : 0}
                       value={step.value} aria-label={`Value for step ${k + 1}`} disabled={applying}
-                      onchange={(e) => { const v = num(e); if (v != null) editStep(i, k, (dr) => { dr.value = v; }); }} />
+                      onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editStep(i, k, (dr) => { dr.value = v; }); }} />
                     <span class="hint">{CsUnit.unitSuffix(CsField.unitOf(cs.nouns, step.noun))}</span>
                   {:else}
                     <select class="sel" value={String(step.value)} aria-label={`Value for step ${k + 1}`} disabled={applying}
@@ -402,11 +397,11 @@
                     <input class="numfield" type="number" step="1" min="1"
                       max={Math.max(1, (cs.nouns[step.noun]?.enumCount ?? 2) - 1)}
                       value={step.step} aria-label={`Step size (positions) for step ${k + 1}`} disabled={applying}
-                      onchange={(e) => { const v = num(e); if (v != null) editStep(i, k, (dr) => { dr.step = v; }); }} />
+                      onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editStep(i, k, (dr) => { dr.step = v; }); }} />
                   {:else}
                     <input class="numfield" type="number" step={CsUnit.isLogStep(CsField.unitOf(cs.nouns, step.noun)) ? '0.01' : '0.5'} min="0"
                       value={step.step} aria-label={`Step size for step ${k + 1}`} disabled={applying}
-                      onchange={(e) => { const v = num(e); if (v != null) editStep(i, k, (dr) => { dr.step = v; }); }} />
+                      onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) editStep(i, k, (dr) => { dr.step = v; }); }} />
                     <span class="hint">{CsUnit.stepUnitSuffix(CsField.unitOf(cs.nouns, step.noun))}</span>
                   {/if}
                 {/if}

@@ -44,5 +44,5 @@
 </ModuleFrame>
 
 <style>
-  .dim { opacity: 0.4; }
+  .dim { opacity: var(--dim-off); }
 </style>

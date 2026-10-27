@@ -233,11 +233,6 @@
       : 'Reassign the conflicting pin, then apply.';
     return `Not running: ${why}. ${advice}`;
   }
-
-  function num(e: Event): number | null {
-    const v = Number((e.currentTarget as HTMLInputElement).value);
-    return Number.isNaN(v) ? null : v;
-  }
 </script>
 
 <CsSlotCard title={Domain.csTypeLabel(d.type).toUpperCase()} name={cs.names[slot] ?? ''}
@@ -439,7 +434,7 @@
               min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
               max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
               value={d.value} aria-label={`${valueLabel(d)} (${CsUnit.unitSuffix(unitOf(d))})`} disabled={applying}
-              onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.value = v; }); }} />
+              onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.value = v; }); }} />
             <span class="hint">{CsUnit.unitSuffix(unitOf(d))}</span>
           {:else}
             <select class="sel" value={String(d.value)} aria-label={valueLabel(d)} disabled={applying}
@@ -456,11 +451,11 @@
             <input class="numfield" type="number" step="1" min="1"
               max={Math.max(1, (cs.nouns[d.noun]?.enumCount ?? 2) - 1)}
               value={d.step} aria-label="Step size (positions)" disabled={applying}
-              onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.step = v; }); }} />
+              onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.step = v; }); }} />
           {:else}
             <input class="numfield" type="number" step={CsUnit.isLogStep(unitOf(d)) ? '0.01' : '0.5'} min="0"
               value={d.step} aria-label={`Step size (${CsUnit.stepUnitSuffix(unitOf(d))})`} disabled={applying}
-              onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.step = v; }); }} />
+              onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.step = v; }); }} />
             <span class="hint">{CsUnit.stepUnitSuffix(unitOf(d))}</span>
           {/if}
         {/if}
@@ -479,13 +474,13 @@
             min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
             max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
             value={d.rangeMin} aria-label={`Range minimum (${CsUnit.unitSuffix(unitOf(d))})`} disabled={applying}
-            onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.rangeMin = v; }); }} />
+            onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.rangeMin = v; }); }} />
           <span class="microlbl">MAXIMUM</span>
           <input class="numfield" type="number" step="0.5"
             min={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].minQ8) : 0}
             max={cs.nouns[d.noun] ? CsUnit.valueToDisplay(unitOf(d), cs.nouns[d.noun].maxQ8) : 0}
             value={d.rangeMax} aria-label={`Range maximum (${CsUnit.unitSuffix(unitOf(d))})`} disabled={applying}
-            onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.rangeMax = v; }); }} />
+            onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.rangeMax = v; }); }} />
           <span class="hint">{CsUnit.unitSuffix(unitOf(d))}</span>
         {/if}
       </div>
@@ -498,13 +493,13 @@
           <input class="numfield" type="number" step="0.1" min="0" max="6553.5"
             value={d.onDelay} aria-label="On delay (s)"
             title="Condition must hold this long before the LED lights" disabled={applying}
-            onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.onDelay = v; }); }} />
+            onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.onDelay = v; }); }} />
           <span class="hint">s</span>
           <span class="microlbl">OFF DELAY</span>
           <input class="numfield" type="number" step="0.1" min="0" max="6553.5"
             value={d.offDelay} aria-label="Off delay (s)"
             title="Condition must hold this long before the LED goes out" disabled={applying}
-            onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.offDelay = v; }); }} />
+            onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.offDelay = v; }); }} />
           <span class="hint">s</span>
         {/if}
         {#if showBaseBrightOf(d)}
@@ -516,7 +511,7 @@
             <span class="microlbl">CEILING</span>
             <input class="numfield" type="number" step="1" min="1" max="100"
               value={d.baseBright} aria-label="Brightness ceiling (%)" disabled={applying}
-              onchange={(e) => { const v = num(e); if (v != null) onEdit((dr) => { dr.baseBright = v; }); }} />
+              onchange={(e) => { const v = CsField.parseNumInput(e); if (v != null) onEdit((dr) => { dr.baseBright = v; }); }} />
             <span class="hint">%</span>
           {/if}
         {/if}

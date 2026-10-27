@@ -94,7 +94,7 @@
     left: 8px;
     right: 8px;
     bottom: calc(100% + 4px);
-    z-index: 20;
+    z-index: var(--z-flyout);
     display: flex;
     flex-direction: column;
     gap: 8px;
