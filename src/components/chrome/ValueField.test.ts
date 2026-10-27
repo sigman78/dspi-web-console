@@ -75,3 +75,29 @@ describe('ValueField ceilLabel', () => {
     expect(container.querySelector('.num')!.textContent).toBe('−12.0');
   });
 });
+
+describe('ValueField keyboard stepping', () => {
+  const props = { value: 10, min: 0, max: 12, step: 0.5, kind: 'dB-signed' as const };
+
+  it('ArrowUp/ArrowDown step by one step and Shift by ten, clamped to range', async () => {
+    const onChange = vi.fn();
+    const { container } = render(ValueField, { ...props, onChange });
+    const field = container.querySelector('.vf')!;
+    await fireEvent.keyDown(field, { key: 'ArrowUp' });
+    expect(onChange).toHaveBeenLastCalledWith(10.5);
+    await fireEvent.keyDown(field, { key: 'ArrowDown' });
+    expect(onChange).toHaveBeenLastCalledWith(9.5);
+    await fireEvent.keyDown(field, { key: 'ArrowUp', shiftKey: true });
+    expect(onChange).toHaveBeenLastCalledWith(12);
+  });
+
+  it('does not step at the limit or while disabled', async () => {
+    const onChange = vi.fn();
+    const { container } = render(ValueField, { ...props, value: 12, onChange });
+    await fireEvent.keyDown(container.querySelector('.vf')!, { key: 'ArrowUp' });
+    expect(onChange).not.toHaveBeenCalled();
+    const off = render(ValueField, { ...props, disabled: true, onChange });
+    await fireEvent.keyDown(off.container.querySelector('.vf')!, { key: 'ArrowDown' });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});

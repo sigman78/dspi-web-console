@@ -62,6 +62,7 @@
   import { untrack } from 'svelte';
   import { chKey } from '@/styles/palette';
   import { CHANNEL_NAME_MAX_LEN } from '@/domain';
+  import NameField from '@/components/chrome/NameField.svelte';
 
   const {
     name,
@@ -116,10 +117,6 @@
 
   let selectBtn = $state<HTMLButtonElement>();
 
-  // Each edit session ends with exactly one terminal callback. Enter/Escape and
-  // the blur that follows the input's unmount would otherwise both fire; this
-  // flag (re-armed in initInput on mount) makes the trailing event a no-op.
-  let committed = false;
   // Return focus to the select button only on a keyboard exit (Enter/Escape) —
   // a click-away blur should leave focus where the user clicked.
   let restoreFocus = false;
@@ -144,39 +141,6 @@
     window.getSelection()?.removeAllRanges();
     onStartEdit?.();
   }
-
-  // The editor input is uncontrolled: seeded once on mount, then read straight
-  // from the DOM on commit. With no reactive binding, the rail's telemetry-driven
-  // re-renders can't clobber in-progress typing.
-  function initInput(node: HTMLInputElement) {
-    committed = false;
-    node.value = name;
-    node.focus();
-    node.select();
-  }
-
-  function commitOnce(node: HTMLInputElement) {
-    if (committed) return;
-    committed = true;
-    onCommitName?.(node.value);
-  }
-
-  function onInputKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      restoreFocus = true;
-      commitOnce(e.currentTarget as HTMLInputElement);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      committed = true; // swallow the unmount blur that follows
-      restoreFocus = true;
-      onCancelEdit?.();
-    }
-  }
-
-  function onInputBlur(e: FocusEvent) {
-    commitOnce(e.currentTarget as HTMLInputElement);
-  }
 </script>
 
 {#snippet meter()}
@@ -198,17 +162,17 @@
   class:is-disabled={disabled}
 >
   {#if editing}
-    <input
+    <NameField
       class="nm-input"
-      type="text"
-      use:initInput
+      editing
+      allowEmpty
+      value={name}
       maxlength={CHANNEL_NAME_MAX_LEN}
       placeholder={defaultName}
-      spellcheck="false"
-      autocomplete="off"
-      aria-label={`Rename ${name}`}
-      onkeydown={onInputKeydown}
-      onblur={onInputBlur}
+      ariaLabel={`Rename ${name}`}
+      onCommit={(v) => onCommitName?.(v)}
+      onCancel={() => onCancelEdit?.()}
+      onKeyExit={() => { restoreFocus = true; }}
     />
     {@render meter()}
   {:else}
@@ -307,7 +271,7 @@
   /* Inline editor: replaces the .ch-face, so it takes the chip's height. A solid
      --bg backdrop keeps the text legible on a selected row (accent fill)
      instead of inheriting it. */
-  .nm-input {
+  .row :global(.nm-input) {
     display: block;
     width: 100%;
     box-sizing: border-box;

@@ -172,7 +172,7 @@
     {#if placeholder !== undefined}
       <span class="t-value none">{placeholder}</span>
     {:else}
-      <ValueField value={shown} {min} {max} {step} {kind} {tone} {precision} {floorLabel} {ceilLabel} {disabled} align="right" onChange={commit} />
+      <ValueField value={shown} {min} {max} {step} {kind} {tone} {precision} {floorLabel} {ceilLabel} {disabled} ariaLabel={name ? `${name} value` : undefined} align="right" onChange={commit} />
     {/if}
   </div>
   {#if resetTo !== undefined}

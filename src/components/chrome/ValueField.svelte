@@ -18,6 +18,7 @@
     tone,
     align = 'right',
     disabled = false,
+    ariaLabel,
     floorLabel,
     ceilLabel,
     onChange,
@@ -31,6 +32,7 @@
     tone?: 'signed';
     align?: 'center' | 'right';
     disabled?: boolean;
+    ariaLabel?: string;
     // Shown instead of the number when value is at the floor (e.g. "Off" for
     // a -30 dB band level); editing still accepts numbers as usual.
     floorLabel?: string;
@@ -59,7 +61,6 @@
 
   let editing = $state(false);
   let draft = $state('');
-  let hover = $state(false);
   let invalid = $state(false);
   let inputEl = $state<HTMLInputElement | null>(null);
   // Pinned at beginEdit so the no-op check compares against the value the
@@ -110,6 +111,23 @@
     onChange(next);
   }
 
+  // Arrow keys on the focused field step the value through the normal commit.
+  function step1(dir: 1 | -1, shift: boolean): void {
+    const next = parseAndClamp(String(value + dir * effectiveStep * (shift ? 10 : 1)), min, max, effectiveStep);
+    if (next !== null && next !== value) onChange(next);
+  }
+
+  function onFieldKey(e: KeyboardEvent): void {
+    if (editing) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      beginEdit();
+    } else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !disabled) {
+      e.preventDefault();
+      step1(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey);
+    }
+  }
+
   function cancel(): void {
     suppressBlur = true;
     invalid = false;
@@ -138,15 +156,13 @@
   class="vf"
   class:editing
   class:invalid
-  class:hover
   class:disabled
   data-align={align}
   style:--toneColor={toneColor}
   onclick={beginEdit}
-  onmouseenter={() => (hover = true)}
-  onmouseleave={() => (hover = false)}
-  onkeydown={(e) => { if (!editing && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); beginEdit(); } }}
+  onkeydown={onFieldKey}
   role="button"
+  aria-label={ariaLabel}
   tabindex={disabled ? -1 : 0}
   aria-disabled={disabled}
 >
@@ -157,6 +173,7 @@
       oninput={onInput}
       onblur={() => commit(false)}
       onkeydown={onKey}
+      aria-label={ariaLabel}
       type="text"
       inputmode="decimal"
       spellcheck="false"
@@ -199,7 +216,7 @@
   .vf[data-align="center"] { justify-content: center; }
   .vf[data-align="right"]  { justify-content: flex-end; }
 
-  .vf.hover:not(.editing):not(.disabled) {
+  .vf:hover:not(.editing):not(.disabled) {
     background: var(--wash);
     box-shadow:
       inset 0 -1px 0 0 var(--text-faint),

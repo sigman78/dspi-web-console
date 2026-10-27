@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { FilterType } from '@/domain';
+  import { clampToBounds, dismiss } from '@/components/chrome/dismiss';
   import { TYPE_LABELS } from '@/components/eq/BandTypeSelect.svelte';
 
   const {
@@ -33,23 +34,33 @@
   let el = $state<HTMLDivElement | null>(null);
   let w = $state(0);
   let h = $state(0);
-  const left = $derived(Math.max(0, Math.min(x, boundsW - w)));
-  const top = $derived(Math.max(0, Math.min(y, boundsH - h)));
+  const pos = $derived(clampToBounds(x, y, w, h, boundsW, boundsH));
+
+  const opener = document.activeElement;
 
   onMount(() => {
-    const down = (e: PointerEvent) => {
-      if (el && !el.contains(e.target as Node)) onClose();
-    };
-    const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('pointerdown', down, true);
-    window.addEventListener('keydown', key);
+    items()[0]?.focus();
     return () => {
-      window.removeEventListener('pointerdown', down, true);
-      window.removeEventListener('keydown', key);
+      const active = document.activeElement;
+      const lost = !active || active === document.body || el?.contains(active);
+      if (lost && opener instanceof HTMLElement) opener.focus();
     };
   });
+
+  const items = (): HTMLButtonElement[] => Array.from(el?.querySelectorAll('button') ?? []);
+
+  function onKey(e: KeyboardEvent) {
+    const list = items();
+    const at = list.indexOf(document.activeElement as HTMLButtonElement);
+    let next: number;
+    if (e.key === 'ArrowDown') next = (at + 1) % list.length;
+    else if (e.key === 'ArrowUp') next = (at <= 0 ? list.length : at) - 1;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = list.length - 1;
+    else return;
+    e.preventDefault();
+    list[next]?.focus();
+  }
 
   function pick(fn: () => void) {
     fn();
@@ -57,15 +68,26 @@
   }
 </script>
 
-<div class="menu" bind:this={el} bind:offsetWidth={w} bind:offsetHeight={h} role="menu" style:left="{left}px" style:top="{top}px">
+<div
+  class="menu"
+  bind:this={el}
+  bind:offsetWidth={w}
+  bind:offsetHeight={h}
+  role="menu"
+  tabindex="-1"
+  style:left="{pos.left}px"
+  style:top="{pos.top}px"
+  use:dismiss={{ onDismiss: onClose }}
+  onkeydown={onKey}
+>
   {#each types.filter((t) => t !== FilterType.Flat) as t (t)}
-    <button type="button" role="menuitemradio" aria-checked={t === type} class:cur={t === type} onclick={() => pick(() => onType(t))}>
+    <button type="button" role="menuitemradio" tabindex="-1" aria-checked={t === type} class:cur={t === type} onclick={() => pick(() => onType(t))}>
       {TYPE_LABELS[t]}
     </button>
   {/each}
   <hr />
-  <button type="button" role="menuitem" onclick={() => pick(onBypass)}>{bypassed ? 'Unbypass' : 'Bypass'}</button>
-  <button type="button" role="menuitem" onclick={() => pick(onClear)}>Clear band</button>
+  <button type="button" role="menuitem" tabindex="-1" onclick={() => pick(onBypass)}>{bypassed ? 'Unbypass' : 'Bypass'}</button>
+  <button type="button" role="menuitem" tabindex="-1" onclick={() => pick(onClear)}>Clear band</button>
 </div>
 
 <style>

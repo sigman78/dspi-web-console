@@ -5,6 +5,7 @@
   import { formatRateKHz } from '@/utils';
   import Telem from '@/components/chrome/Telem.svelte';
   import { chromeConnectionStatus } from '@/components/chrome/connectionStatus';
+  import { dismiss } from '@/components/chrome/dismiss';
   import { noveauUi } from './noveauUi.svelte';
 
   const s = getSession();
@@ -27,22 +28,11 @@
   const clock = $derived(info?.clockHz != null ? `${Math.round(info.clockHz / 1_000_000)} MHz` : '—');
   const voltage = $derived(info?.coreVoltageMv != null ? `${(info.coreVoltageMv / 1000).toFixed(2)} V` : '—');
   const temp = $derived(info?.tempCDegC != null ? `${(info.tempCDegC / 100).toFixed(1)} °C` : '—');
-
-  function onWindowPointerDown(e: PointerEvent): void {
-    if (!noveauUi.healthOpen) return;
-    if ((e.target as Element | null)?.closest('.foot-wrap')) return;
-    noveauUi.healthOpen = false;
-  }
-  function onWindowKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Escape' && noveauUi.healthOpen) noveauUi.healthOpen = false;
-  }
 </script>
-
-<svelte:window onpointerdown={onWindowPointerDown} onkeydown={onWindowKeydown} />
 
 <div class="foot-wrap">
   {#if noveauUi.healthOpen}
-    <div class="pop" role="dialog" aria-label="Device health">
+    <div class="pop" role="dialog" aria-label="Device health" use:dismiss={{ onDismiss: () => { noveauUi.healthOpen = false; }, ignore: '.foot-wrap' }}>
       <div class="grid">
         <Telem label="CPU0" value={connected ? `${cpu0}%` : '—'} bar={connected ? cpu0 / 100 : undefined} />
         <Telem label="CPU1" value={connected ? `${cpu1}%` : '—'} bar={connected ? cpu1 / 100 : undefined} />

@@ -3,6 +3,7 @@
   // + title + name (text when collapsed, input when open) + status pill + ✕.
   // Body renders only while open; the parent owns open/expanded state.
   import type { Snippet } from 'svelte';
+  import NameField from '@/components/chrome/NameField.svelte';
   import { portal } from './portal';
   const {
     title, name, nameLabel, removeLabel, pill, dirty, open, disabled,
@@ -39,9 +40,8 @@
       {/if}
     </button>
     {#if open}
-      <input class="nameinput" type="text" maxlength="31" placeholder="Unnamed"
-        value={name} aria-label={nameLabel} {disabled}
-        onchange={(e) => onRename((e.currentTarget as HTMLInputElement).value)} />
+      <NameField class="nameinput" allowEmpty maxlength={31} placeholder="Unnamed"
+        value={name} ariaLabel={nameLabel} {disabled} onCommit={onRename} />
     {/if}
     <span class="cs-pill {pill.cls}">{pill.text}</span>
     <span class="spacer"></span>
@@ -117,7 +117,7 @@
     max-width: 160px;
   }
   .nametext.faint { color: var(--text-faint); }
-  .nameinput {
+  .slothead :global(.nameinput) {
     font-family: var(--font-mono);
     font-size: 10px;
     padding: 2px 6px;
@@ -127,6 +127,6 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-s);
   }
-  .nameinput:disabled { opacity: var(--dim-disabled); }
+  .slothead :global(.nameinput:disabled) { opacity: var(--dim-disabled); }
   .spacer { flex: 1; }
 </style>

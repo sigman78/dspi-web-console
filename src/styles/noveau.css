@@ -2,9 +2,9 @@
    Sans carries labels and prose; mono is reserved for numbers, units,
    identifiers and tags. */
 
-.t-title { font-family: var(--font-sans); font-size: var(--fs-xl); font-weight: 600; color: var(--text); }
-.t-head { font-family: var(--font-sans); font-size: var(--fs-l); font-weight: 600; color: var(--text); }
-.t-label { font-family: var(--font-sans); font-size: var(--fs-m); font-weight: 400; color: var(--text-dim); }
+.t-label,
+.microlbl { font-family: var(--font-sans); font-size: var(--fs-m); font-weight: 400; color: var(--text-dim); }
+.microlbl { white-space: nowrap; }
 .t-cap { font-family: var(--font-sans); font-size: var(--fs-m); color: var(--text-faint); }
 .t-value {
   font-family: var(--font-mono);

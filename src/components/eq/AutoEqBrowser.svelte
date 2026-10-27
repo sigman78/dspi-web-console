@@ -10,6 +10,7 @@
   } from '@/state';
   import { applyAutoEqEntry, preampTargetLabel, hasStereoTwin } from '@/runtime';
   import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
+  import Modal from '@/components/chrome/Modal.svelte';
   import { getSession } from '@/components/sessionContext';
 
   const {
@@ -32,11 +33,6 @@
   let scope = $state<'all' | 'favs' | 'user'>('all');
   let selectedId = $state<string | null>(null);
   let saveName = $state('');
-  let searchInput: HTMLInputElement | null = $state(null);
-
-  $effect(() => {
-    searchInput?.focus();
-  });
 
   const LIST_MAX = 250;
 
@@ -76,10 +72,6 @@
     }
   }
 
-  function onKey(e: KeyboardEvent) {
-    if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); onClose(); }
-  }
-
   function selectRow(id: string) {
     selectedId = id;
   }
@@ -109,16 +101,8 @@
   }
 </script>
 
-<svelte:window onkeydown={onKey} />
-
-<div class="scrim">
-  <button class="scrim-close" aria-label="Close AutoEQ library" onclick={onClose}></button>
-  <div
-    class="panel"
-    role="dialog"
-    aria-modal="true"
-    aria-label="AutoEQ library"
-  >
+<Modal ariaLabel="AutoEQ library" initialFocus=".search" onCancel={onClose}>
+  <div class="panel">
     <header>
       <span class="title">AUTOEQ LIBRARY</span>
       <span class="meta">{autoEqEntries().length} PROFILES &middot; {generatedDate}</span>
@@ -131,7 +115,6 @@
         type="text"
         placeholder="SEARCH&hellip;"
         bind:value={query}
-        bind:this={searchInput}
       />
       <div class="scopes">
         <button type="button" class="chip" class:accent={scope === 'all'} class:hi={scope !== 'all'} onclick={() => (scope = 'all')}>ALL</button>
@@ -197,28 +180,10 @@
       <button class="chip" disabled={saveName.trim().length === 0} onclick={onSave}>SAVE</button>
     </div>
   </div>
-</div>
+</Modal>
 
 <style>
-  .scrim {
-    position: fixed; inset: 0;
-    background: var(--scrim);
-    backdrop-filter: blur(6px);
-    display: grid; place-items: center;
-    z-index: var(--z-modal);
-    font-family: var(--font-mono);
-  }
-  .scrim-close {
-    position: absolute;
-    inset: 0;
-    border: none;
-    background: transparent;
-    padding: 0;
-    cursor: default;
-  }
   .panel {
-    position: relative;
-    z-index: var(--z-raise);
     background: var(--panel-solid);
     border: 1px solid var(--border-hi);
     border-radius: var(--radius-m);

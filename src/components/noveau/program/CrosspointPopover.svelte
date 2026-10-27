@@ -5,6 +5,7 @@
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import SliderField from '@/components/chrome/SliderField.svelte';
+  import { clampToBounds, dismiss } from '@/components/chrome/dismiss';
 
   const {
     input,
@@ -47,10 +48,8 @@
   let el = $state<HTMLDivElement | null>(null);
   let w = $state(0);
   let h = $state(0);
-  const left = $derived(Math.max(0, Math.min(x, boundsW - w)));
-  const top = $derived(Math.max(0, Math.min(y, boundsH - h)));
-  const caretX = $derived(Math.max(10, Math.min(w - 10, anchorX - left)));
-  const clamped = $derived(top !== y);
+  const pos = $derived(clampToBounds(x, y, w, h, boundsW, boundsH));
+  const caretX = $derived(Math.max(10, Math.min(w - 10, anchorX - pos.left)));
 
   function commitRoute() {
     Runtime.routeCrosspoint(s, input, output, { gainDb: draftGain, invert: draftInvert });
@@ -63,27 +62,12 @@
   }
 
   onMount(() => {
-    const down = (e: PointerEvent) => {
-      const t = e.target as Element;
-      if (el && !el.contains(t) && !t.closest?.('.dotbtn')) onClose();
-    };
-    const key = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
-      if ((e.target as Element | null)?.closest?.('input:not([type=range]), textarea, .vf')) return;
-      onClose();
-    };
     el?.querySelector<HTMLElement>('button:not(.x-btn), input')?.focus();
-    window.addEventListener('pointerdown', down, true);
-    window.addEventListener('keydown', key);
-    return () => {
-      window.removeEventListener('pointerdown', down, true);
-      window.removeEventListener('keydown', key);
-    };
   });
 </script>
 
-<div class="pop" bind:this={el} bind:offsetWidth={w} bind:offsetHeight={h} role="dialog" aria-label={`Crosspoint ${title}`} style:left="{left}px" style:top="{top}px">
-  {#if !clamped}<span class="caret" style:left="{caretX}px" aria-hidden="true"></span>{/if}
+<div class="pop" bind:this={el} bind:offsetWidth={w} bind:offsetHeight={h} role="dialog" aria-label={`Crosspoint ${title}`} style:left="{pos.left}px" style:top="{pos.top}px" use:dismiss={{ onDismiss: onClose, ignore: '.dotbtn' }}>
+  {#if !pos.clamped}<span class="caret" style:left="{caretX}px" aria-hidden="true"></span>{/if}
   <div class="ph sec-h">
     <h3>{title}</h3>
     {#if proposal}

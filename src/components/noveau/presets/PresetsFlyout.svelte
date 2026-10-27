@@ -9,6 +9,8 @@
   import { PresetStartupMode } from '@/protocol';
   import { PRESET_NAME_MAX_LEN, type PresetSlot } from '@/domain';
   import { noveauUi } from '../noveauUi.svelte';
+  import NameField from '@/components/chrome/NameField.svelte';
+  import { dismiss } from '@/components/chrome/dismiss';
   import PresetIcon from './PresetIcon.svelte';
   import PresetOptionsRows from './PresetOptionsRows.svelte';
   import { editorActions, type EditorActionId } from './editorActions';
@@ -52,7 +54,6 @@
   const errorText = $derived(localError ?? s.presets.lastActionError);
 
   let fileEl: HTMLInputElement | undefined = $state();
-  let nameEl: HTMLInputElement | undefined = $state();
 
   function close(): void {
     noveauUi.presetsOpen = false;
@@ -69,41 +70,21 @@
   $effect(() => {
     if (active == null || focused) return;
     focused = true;
-    void tick().then(() => nameEl?.focus());
+    void tick().then(() => nameField?.focus());
   });
   onDestroy(() => {
     document.querySelector<HTMLElement>('[data-presets-toggle]')?.focus();
   });
 
-  function onWindowKeydown(e: KeyboardEvent): void {
-    if (e.key !== 'Escape' || e.defaultPrevented || boundary.pending != null) return;
-    close();
-  }
-  function onWindowPointerDown(e: PointerEvent): void {
-    if (boundary.pending != null) return;
-    if ((e.target as Element | null)?.closest('.rhead')) return;
-    close();
+  // Name edits ride the field's own commit; Save flushes a pending one first.
+  let nameField: NameField | undefined = $state();
+  async function commitName(next: string): Promise<void> {
+    const slot = active;
+    if (slot != null && next !== savedName) await Runtime.renamePresetSlot(s, slot, next);
   }
 
-  // Name draft: null shows the stored name. Enter/blur commit, Escape drops.
-  let draft = $state<string | null>(null);
-  async function commitName(): Promise<void> {
-    const slot = active;
-    const next = (draft ?? '').trim();
-    draft = null;
-    if (slot != null && next.length > 0 && next !== savedName) await Runtime.renamePresetSlot(s, slot, next);
-  }
-  function onNameKey(e: KeyboardEvent): void {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      (e.currentTarget as HTMLInputElement).blur();
-    } else if (e.key === 'Escape' && draft != null) {
-      // An untouched field lets Escape reach the window handler and close.
-      e.preventDefault();
-      e.stopPropagation();
-      draft = null;
-      (e.currentTarget as HTMLInputElement).blur();
-    }
+  function onDismiss(): void {
+    if (boundary.pending == null) close();
   }
 
   async function onStartup(choice: StartupChoice): Promise<void> {
@@ -149,7 +130,7 @@
 
   async function run(id: EditorActionId): Promise<void> {
     if (active == null) return;
-    if (id === 'save') await commitName();
+    if (id === 'save') await nameField?.commit();
     if (s.presets.busy) return;
     switch (id) {
       case 'save': await saveActivePresetNamed(s); break;
@@ -172,9 +153,7 @@
   }
 </script>
 
-<svelte:window onkeydown={onWindowKeydown} onpointerdown={onWindowPointerDown} />
-
-<div class="fly" role="dialog" aria-modal="false" aria-label="Presets" data-budget>
+<div class="fly" role="dialog" aria-modal="false" aria-label="Presets" data-budget use:dismiss={{ onDismiss, ignore: '.rhead' }}>
   <header>
     <span class="title">{active != null ? `PRESET ${active}` : 'PRESETS'}</span>
     <button type="button" class="x-btn close" aria-label="Close presets" onclick={close}>✕</button>
@@ -195,18 +174,15 @@
     <div class="body">
       <div class="row">
         <span class="t-label lbl">NAME</span>
-        <input
+        <NameField
           class="name"
-          bind:this={nameEl}
-          type="text"
+          bind:this={nameField}
+          value={savedName}
           maxlength={PRESET_NAME_MAX_LEN}
-          aria-label="Preset name"
+          ariaLabel="Preset name"
           placeholder="[unnamed]"
           disabled={busy}
-          value={draft ?? savedName}
-          oninput={(e) => { draft = e.currentTarget.value; }}
-          onkeydown={onNameKey}
-          onblur={() => void commitName()}
+          onCommit={commitName}
         />
       </div>
 
@@ -344,7 +320,7 @@
   .state .bad { color: var(--err); }
   .dim { color: var(--text-dim); }
   .hint { color: var(--text-faint); }
-  .name {
+  .row :global(.name) {
     flex: 1;
     min-width: 0;
     height: 24px;
