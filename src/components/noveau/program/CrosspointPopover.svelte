@@ -86,8 +86,11 @@
   {#if !clamped}<span class="caret" style:left="{caretX}px" aria-hidden="true"></span>{/if}
   <div class="ph">
     <h3>{title}</h3>
-    <span class="cap">{proposal ? 'new route · Esc cancels' : 'crosspoint · Esc closes'}</span>
-    <button type="button" class="x" aria-label="Close" onclick={onClose}>×</button>
+    {#if proposal}
+      <span class="tag">NEW</span>
+    {:else}
+      <button type="button" class="x" aria-label="Close" onclick={onClose}>×</button>
+    {/if}
   </div>
   <div class="r">
     <RangeField
@@ -107,12 +110,12 @@
     <ToggleSwitch size="sm" checked={invert} disabled={!proposal && !enabled} ariaLabel="Invert phase" onChange={(v) => (proposal ? (draftInvert = v) : Runtime.setCrosspointInvert(s, input, output, v))} />
     <span class="cap">{invert ? 'inverted' : 'normal'}</span>
   </div>
-  <div class="r foot">
+  <div class="r foot" class:live={!proposal}>
     {#if proposal}
       <button type="button" class="chip accent act" onclick={commitRoute}>ROUTE</button>
       <button type="button" class="chip act" onclick={onClose}>CANCEL</button>
     {:else}
-      <button type="button" class="chip act" disabled={!enabled} onclick={unroute}>UNROUTE</button>
+      <button type="button" class="chip act danger" title="Remove this route" onclick={unroute}>UNROUTE</button>
     {/if}
   </div>
 </div>
@@ -173,6 +176,24 @@
   }
   .r :global(.rf) { gap: 12px; height: 22px; }
   .foot { gap: 6px; }
+  .foot.live { justify-content: flex-end; }
+  .tag {
+    flex: none;
+    padding: 0 6px;
+    height: 18px;
+    line-height: 18px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    background: color-mix(in oklab, var(--accent) 14%, transparent);
+  }
+  .danger:hover:not(:disabled) {
+    color: var(--err);
+    border-color: color-mix(in oklab, var(--err) 45%, transparent);
+    background: color-mix(in oklab, var(--err) 12%, transparent);
+  }
   .act { height: 20px; padding: 0 8px; font-size: 11px; }
   .chip:not(.accent).act { color: var(--text-dim); }
   .lbl { flex: 0 0 52px; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }

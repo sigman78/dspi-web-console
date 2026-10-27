@@ -122,7 +122,7 @@ describe('RoutingMap', () => {
     await fireEvent.click(unroutedDot(container));
     const dlg = getByRole('dialog');
     expect(dlg.getAttribute('aria-label')).not.toBe(titleA);
-    expect(dlg.querySelector('.cap')!.textContent).toContain('new route');
+    expect(dlg.querySelector('.tag')!.textContent).toBe('NEW');
     expect(getByRole('switch', { name: 'Invert phase' }).getAttribute('aria-checked')).toBe('false');
     expect(dlg.textContent).toContain('0.0');
     expect(dlg.textContent).not.toContain('4.5');
