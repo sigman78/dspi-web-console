@@ -26,7 +26,6 @@ describe('loadSettings', () => {
   test('returns defaults when no keys are present', () => {
     const s = loadSettings();
     expect(s.version).toBe(1);
-    expect(s.tab).toBe('overview');
     expect(s.selectedChannel).toBeNull();
     expect(s.lastSerial).toBeNull();
   });
@@ -34,12 +33,10 @@ describe('loadSettings', () => {
   test('loads valid v1 directly', () => {
     localStorage.setItem(V1_KEY, JSON.stringify({
       version: 1,
-      tab: 'eq',
       selectedChannel: ChannelId.Out2L,
       lastSerial: 'ABC123',
     }));
     const s = loadSettings();
-    expect(s.tab).toBe('eq');
     expect(s.selectedChannel).toBe(ChannelId.Out2L);
     expect(s.lastSerial).toBe('ABC123');
   });
@@ -47,7 +44,6 @@ describe('loadSettings', () => {
   test('falls back to the legacy eqTarget key when selectedChannel is absent', () => {
     localStorage.setItem(V1_KEY, JSON.stringify({
       version: 1,
-      tab: 'eq',
       eqTarget: ChannelId.Out3R,
       lastSerial: null,
     }));
@@ -58,19 +54,15 @@ describe('loadSettings', () => {
   test('falls back to defaults on corrupted v1 JSON', () => {
     localStorage.setItem(V1_KEY, '{not json');
     const s = loadSettings();
-    expect(s.tab).toBe('overview');
     expect(s.lastSerial).toBeNull();
   });
 });
 
 describe('legacy migration', () => {
   test('migrates ui/v2 only', () => {
-    localStorage.setItem(LEGACY_UI_KEY, JSON.stringify({
-      tab: 'mixer',
-      eqTarget: null,
-    }));
+    localStorage.setItem(LEGACY_UI_KEY, JSON.stringify({ eqTarget: ChannelId.Out2L }));
     const s = loadSettings();
-    expect(s.tab).toBe('mixer');
+    expect(s.selectedChannel).toBe(ChannelId.Out2L);
     expect(s.lastSerial).toBeNull();
     expect(localStorage.getItem(LEGACY_UI_KEY)).toBeNull();
     expect(localStorage.getItem(V1_KEY)).not.toBeNull();
@@ -80,15 +72,14 @@ describe('legacy migration', () => {
     localStorage.setItem(LEGACY_CONN_KEY, JSON.stringify({ lastSerial: 'XYZ789' }));
     const s = loadSettings();
     expect(s.lastSerial).toBe('XYZ789');
-    expect(s.tab).toBe('overview');
     expect(localStorage.getItem(LEGACY_CONN_KEY)).toBeNull();
   });
 
   test('migrates both legacy keys together', () => {
-    localStorage.setItem(LEGACY_UI_KEY, JSON.stringify({ tab: 'system' }));
+    localStorage.setItem(LEGACY_UI_KEY, JSON.stringify({ eqTarget: ChannelId.Out2L }));
     localStorage.setItem(LEGACY_CONN_KEY, JSON.stringify({ lastSerial: 'BOTH' }));
     const s = loadSettings();
-    expect(s.tab).toBe('system');
+    expect(s.selectedChannel).toBe(ChannelId.Out2L);
     expect(s.lastSerial).toBe('BOTH');
     expect(localStorage.getItem(LEGACY_UI_KEY)).toBeNull();
     expect(localStorage.getItem(LEGACY_CONN_KEY)).toBeNull();
@@ -97,14 +88,13 @@ describe('legacy migration', () => {
   test('v1 takes precedence over legacy keys (no migration runs)', () => {
     localStorage.setItem(V1_KEY, JSON.stringify({
       version: 1,
-      tab: 'processing',
       eqTarget: null,
       lastSerial: 'V1WINS',
     }));
-    localStorage.setItem(LEGACY_UI_KEY, JSON.stringify({ tab: 'system' }));
+    localStorage.setItem(LEGACY_UI_KEY, JSON.stringify({ eqTarget: ChannelId.Out2L }));
     localStorage.setItem(LEGACY_CONN_KEY, JSON.stringify({ lastSerial: 'LEGACY' }));
     const s = loadSettings();
-    expect(s.tab).toBe('processing');
+    expect(s.selectedChannel).toBeNull();
     expect(s.lastSerial).toBe('V1WINS');
     expect(localStorage.getItem(LEGACY_UI_KEY)).not.toBeNull();
     expect(localStorage.getItem(LEGACY_CONN_KEY)).not.toBeNull();
@@ -115,7 +105,6 @@ describe('legacy migration', () => {
     localStorage.setItem(LEGACY_CONN_KEY, '{broken');
     expect(() => loadSettings()).not.toThrow();
     const s = loadSettings();
-    expect(s.tab).toBe('overview');
     expect(s.lastSerial).toBeNull();
   });
 });
@@ -137,7 +126,6 @@ describe('warnOnPresetSwitchDirty', () => {
   test('round-trips warnOnPresetSwitchDirty=false through localStorage', () => {
     const payload = {
       version: 1,
-      tab: 'overview',
       eqTarget: null,
       lastSerial: null,
       warnOnPresetSwitchDirty: false,
@@ -171,7 +159,6 @@ describe('debugPanels', () => {
   test('round-trips debugPanels=true through localStorage', () => {
     const payload = {
       version: 1,
-      tab: 'overview',
       eqTarget: null,
       lastSerial: null,
       debugPanels: true,
@@ -189,12 +176,10 @@ describe('debugPanels', () => {
 });
 
 describe('selectChannel', () => {
-  test('sets the selected channel and switches to the EQ tab', () => {
-    settings.tab = 'overview';
+  test('sets the selected channel', () => {
     settings.selectedChannel = null;
     selectChannel(ChannelId.Out1L);
     expect(settings.selectedChannel).toBe(ChannelId.Out1L);
-    expect(settings.tab).toBe('eq');
   });
 });
 

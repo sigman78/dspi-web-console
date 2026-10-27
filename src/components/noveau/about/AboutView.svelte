@@ -4,7 +4,6 @@
   import { activeMockProfiles } from '@/mockProfiles';
   import { connection } from '@/state';
   import * as Runtime from '@/runtime';
-  import { uiVariant } from '@/devOptions';
   import { SUPPORT_WINDOW } from '@/protocol/capabilities';
   import { getSession } from '@/components/sessionContext';
 
@@ -28,7 +27,6 @@
   const consoleRows = $derived<Row[]>([
     { label: 'VERSION', value: `v${APP_VERSION}` },
     { label: 'BUILD', value: `${GIT_SHA} · ${BUILD_DATE}` },
-    { label: 'UI', value: uiVariant() },
     ...(mock ? [{ label: 'MOCK', value: mock.map((p) => p.name).join(', ') }] : []),
     { label: 'WEBUSB', value: usbReason ?? 'supported', tone: usbReason ? 'warn' : undefined },
   ]);

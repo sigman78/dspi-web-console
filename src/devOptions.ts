@@ -17,7 +17,6 @@
 //   ?log=0              silence the diagnostic logger (errors still log)
 //   ?log=wire           additionally trace every wire message
 //   ?debug              force the SYSTEM tab diagnostics panels visible
-//   ?ui=noveau          render the redesigned shell instead of the classic one
 //
 // Profile -> MockOptions resolution lives in src/mockProfiles.ts (it needs
 // Wire.MAX_WIRE_VERSION, which this module cannot import -- see below).
@@ -63,8 +62,4 @@ export function wireLogEnabled(): boolean {
 
 export function debugPanelsForced(): boolean {
   return params()?.has('debug') ?? false;
-}
-
-export function uiVariant(): 'classic' | 'noveau' {
-  return params()?.get('ui') === 'noveau' ? 'noveau' : 'classic';
 }

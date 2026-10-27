@@ -53,19 +53,16 @@
 
 * { box-sizing: border-box; }
 html, body, #app { height: 100%; margin: 0; }
-/* Desktop-instrument responsive contract: the layout has a hard floor.
-   Below it the whole page pans as one unit (a single page-level scrollbar)
-   and panels never squeeze into per-panel scrollbars or wrapped titles.
-   The TopBar/TabBar shedding tiers bottom out just above this width. */
-body { min-width: 1160px; }
+/* Desktop-instrument responsive contract: the layout has a hard floor. At or
+   above it nothing overflows, so no scrollbar appears; below it the whole page
+   pans as one unit (a single page-level scrollbar). Percent heights resolve
+   against the body's specified height, not its min-height, so the app root
+   carries the floor itself. */
+body { overflow: auto; min-width: 1440px; min-height: 790px; }
+#app { height: max(100dvh, 790px); }
 /* The mobile splash (main.ts) is the one phone-sized page; it opts out. */
-body.mobile-splash-mode { min-width: 0; }
-/* Noveau shell: fixed instrument floor. At or above it nothing overflows, so
-   no scrollbar appears; below it the whole page pans as one unit. */
-body.noveau-mode { overflow: auto; min-width: 1440px; min-height: 790px; }
-/* Percent heights resolve against the body's specified height, not its
-   min-height, so the app root carries the floor itself. */
-body.noveau-mode #app { height: max(100dvh, 790px); }
+body.mobile-splash-mode { min-width: 0; min-height: 0; }
+body.mobile-splash-mode #app { height: 100%; }
 button { font: inherit; color: inherit; }
 
 input[type="number"], select, input[type="range"] {

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const FULL = '/?mock=multi&ui=noveau';
-const FLEET = '/?mock=rp2040,rp2350&ui=noveau';
+const FULL = '/?mock=multi';
+const FLEET = '/?mock=rp2040,rp2350';
 
 /**
  * Containers whose height/width is budgeted by the layout. They are

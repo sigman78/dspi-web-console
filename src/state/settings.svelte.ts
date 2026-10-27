@@ -1,28 +1,11 @@
 import { inputIndexOf, type ChannelId, type ChannelModel, type OutputModel } from '@/domain';
 
-export type TabId = 'overview' | 'eq' | 'mixer' | 'processing' | 'presets' | 'system' | 'control';
-
-export const TAB_ORDER: readonly TabId[] = ['overview', 'eq', 'mixer', 'processing', 'presets', 'system', 'control'];
-
-export const TAB_META: Record<TabId, { label: string; code: string }> = {
-  overview:   { label: 'OVERVIEW',   code: '01' },
-  eq:         { label: 'EQUALIZER',  code: '02' },
-  mixer:      { label: 'MIXER',      code: '03' },
-  processing: { label: 'PROCESSING', code: '04' },
-  presets:    { label: 'PRESETS',    code: '05' },
-  system:     { label: 'SYSTEM',     code: '06' },
-  control:    { label: 'CONTROL',    code: '07' },
-};
-
-const TAB_IDS: ReadonlySet<TabId> = new Set(TAB_ORDER);
-
 // Header volume slider axis: which of the two independent firmware volume
-// stages the top-bar slider currently drives (see MasterVolumeMini.svelte).
+// stages the top-bar slider currently drives (see VolumeBlock.svelte).
 export type VolumeAxis = 'user' | 'master';
 
 export interface Settings {
   version: 1;
-  tab: TabId;
   selectedChannel: ChannelId | null;
   lastSerial: string | null;
   warnOnPresetSwitchDirty: boolean;
@@ -35,7 +18,6 @@ const STORAGE_KEY = 'dspi-console-web/settings/v1';
 function defaults(): Settings {
   return {
     version: 1,
-    tab: 'overview',
     selectedChannel: null,
     lastSerial: null,
     warnOnPresetSwitchDirty: true,
@@ -48,9 +30,6 @@ function defaults(): Settings {
 // Per-field validators: accept unknown input, fall back to a default not throw.
 function bool(v: unknown, fallback: boolean): boolean {
   return typeof v === 'boolean' ? v : fallback;
-}
-function tabId(v: unknown, fallback: TabId): TabId {
-  return typeof v === 'string' && TAB_IDS.has(v as TabId) ? (v as TabId) : fallback;
 }
 function channelIdOrNull(v: unknown): ChannelId | null {
   return typeof v === 'number' ? (v as ChannelId) : null;
@@ -77,7 +56,6 @@ function parseV1(raw: string, fallback: Settings): Settings {
   if (!obj) return fallback;
   return {
     version: 1,
-    tab: tabId(obj.tab, fallback.tab),
     // Legacy fallback: the field was persisted as `eqTarget` before the rail
     // generalized selection beyond the EQ tab. Read it when the new key is absent.
     selectedChannel: channelIdOrNull(obj.selectedChannel ?? obj.eqTarget),
@@ -99,7 +77,6 @@ function migrateLegacyKeys(): Settings | null {
 
   const merged: Settings = {
     ...defaults(),
-    tab: tabId(ui?.tab, 'overview'),
     selectedChannel: channelIdOrNull(ui?.eqTarget),
     lastSerial: stringOrNull(conn?.lastSerial),
   };
@@ -134,7 +111,6 @@ export const settings = $state<Settings>(defaults());
 export function restoreSettings(): void {
   const loaded = loadSettings();
   settings.version = loaded.version;
-  settings.tab = loaded.tab;
   settings.selectedChannel = loaded.selectedChannel;
   settings.lastSerial = loaded.lastSerial;
   settings.warnOnPresetSwitchDirty = loaded.warnOnPresetSwitchDirty;
@@ -142,9 +118,6 @@ export function restoreSettings(): void {
   settings.debugPanels = loaded.debugPanels;
 }
 
-export function setTab(t: TabId): void {
-  settings.tab = t;
-}
 export function setSelectedChannel(id: ChannelId | null): void {
   settings.selectedChannel = id;
 }
@@ -154,10 +127,9 @@ export function setVolumeAxis(axis: VolumeAxis): void {
 export function setDebugPanels(v: boolean): void {
   settings.debugPanels = v;
 }
-// Rail selection: pick a channel globally and land on the EQ tab to edit it.
+// Rail selection: pick a channel globally.
 export function selectChannel(id: ChannelId): void {
   setSelectedChannel(id);
-  setTab('eq');
 }
 
 // What the rail/mixer actually render: an output is visible iff enabled; an
@@ -222,7 +194,6 @@ export function startSettingsPersistence(): void {
     $effect(() => {
       const snap: Settings = {
         version: 1,
-        tab: settings.tab,
         selectedChannel: settings.selectedChannel,
         lastSerial: settings.lastSerial,
         warnOnPresetSwitchDirty: settings.warnOnPresetSwitchDirty,
