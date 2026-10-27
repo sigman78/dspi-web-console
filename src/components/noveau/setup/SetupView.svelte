@@ -26,6 +26,7 @@
   pages={SETUP_PAGES}
   page={noveauUi.setupPage}
   onselect={(k) => { noveauUi.setupPage = k; }}
+  staged={(k) => s.staging.countOn(k) > 0}
 >
   {#if noveauUi.setupPage === 'device'}
     <div class="pw-cols">

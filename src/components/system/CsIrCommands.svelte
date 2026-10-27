@@ -44,7 +44,7 @@
     // Caps v10+: target is a group index instead of a channel.
     grouped: boolean;
   }
-  const drafts = $state<Record<number, IrDraft>>({});
+  const drafts = s.drafts.of<IrDraft>('ir');
   let applyingSub = $state<number | null>(null);
   // The sub-slot that armed the current learn window; only one may be armed
   // (control_surfaces_spec.md 3.6.1).
@@ -76,7 +76,6 @@
   $effect(() => {
     void resetSignal;   // the ONLY dependency -- the cleanup must not track
     untrack(() => {     // drafts, or any draft edit re-runs the wipe
-      for (const k of Object.keys(drafts)) delete drafts[Number(k)];
       armedSub = null;
       pickedSub = null;
     });
@@ -99,6 +98,12 @@
   const configured = $derived(cs.irCommands.filter((c) => c != null).length);
 
   $effect(() => { onDirtyChange?.(subs.some((sub) => isDirty(sub))); });
+  $effect(() => {
+    for (const sub of drafts.keys()) {
+      const dirty = isDirty(sub);
+      untrack(() => drafts.setDirty(sub, dirty));
+    }
+  });
 
   // The button-shaped action subset IR commands may carry (same nouns as the
   // main panel, but scoped to the CS_TYPE_IR type descriptor's action mask).
@@ -173,16 +178,16 @@
   // null = never touched: no live command, no local draft. Rendered as the
   // bare "not learned" row with only a LEARN button.
   function draftOf(sub: number): IrDraft | null {
-    const d = drafts[sub];
+    const d = drafts.draftOf(sub);
     if (d) return d;
     const live = cs.irCommands[sub];
     return live ? irDraftFromLive(live) : null;
   }
 
   function editDraft(sub: number, fn: (d: IrDraft) => void): void {
-    const d = drafts[sub] ?? draftOf(sub) ?? defaultIrDraft();
+    const d = drafts.draftOf(sub) ?? draftOf(sub) ?? defaultIrDraft();
     fn(d);
-    drafts[sub] = d;
+    drafts.editDraft(sub, d);
   }
 
   function buildIrCommand(d: IrDraft): Domain.CsIrCommand {
@@ -259,7 +264,7 @@
     applyingSub = sub;
     try {
       if (await applyCsIrCommand(s, sub, buildIrCommand(d))) {
-        delete drafts[sub];                       // device truth takes over
+        drafts.remove(sub);                       // device truth takes over
       }
     } finally {
       applyingSub = null;
@@ -270,10 +275,10 @@
   // the device (the all-zero command). Rejections surface via the runtime
   // actions' warn toasts.
   async function clear(sub: number): Promise<void> {
-    if (!cs.irCommands[sub]) { delete drafts[sub]; return; }
+    if (!cs.irCommands[sub]) { drafts.remove(sub); return; }
     applyingSub = sub;
     try {
-      if (await clearCsIrCommand(s, sub)) delete drafts[sub];
+      if (await clearCsIrCommand(s, sub)) drafts.remove(sub);
     } finally {
       applyingSub = null;
     }
@@ -285,7 +290,7 @@
   async function learn(sub: number): Promise<void> {
     if (armedSub != null) return;
     pickedSub = sub;
-    if (!drafts[sub]) drafts[sub] = draftOf(sub) ?? defaultIrDraft();
+    if (!drafts.draftOf(sub)) drafts.editDraft(sub, draftOf(sub) ?? defaultIrDraft());
     armedSub = sub;
     const ok = await csIrLearnArm(s);
     if (!ok) armedSub = null;   // failure (no live receiver) already surfaced via pushNotice

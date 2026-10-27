@@ -3,19 +3,20 @@
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import PinPicker from './PinPicker.svelte';
-  import { setAdatInputEnable, setAdatInputPin, setAdatInputClockMode } from '@/runtime';
-  import { AudioInputSource, AdatInputLockState, pickerCells, liveCsPinConfigs } from '@/domain';
+  import { stageAdatInputEnabled, stageAdatInputPin, stageAdatInputClockMode, stagedCtrlPins } from '@/runtime';
+  import { AudioInputSource, AdatInputLockState, pickerCells } from '@/domain';
   import { Wire } from '@/protocol';
   import { formatRateKHz } from '@/utils';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
 
-  const snap = $derived(s.mirror.current);
+  const live = $derived(s.mirror.current);
+  const snap = $derived(live ? s.staging.overlaySnapshot(live) : null);
   const inputConfig = $derived(snap?.inputConfig);
   const status = $derived(s.telemetry.adatInputStatus);
   const features = $derived(s.device.capabilities.features);
-  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
+  const ctrlPins = $derived(stagedCtrlPins(s));
 
   const enabled = $derived(inputConfig?.adatInputEnabled ?? false);
   const pin = $derived(inputConfig?.adatInputPin ?? 0);
@@ -25,8 +26,7 @@
   // rejects an enable write carrying pin 0, so the toggle stays blocked until
   // a pin is assigned. Disable is separately refused while ADAT is the live
   // or staged input source (source switch has to move off it first).
-  const stagedSource = $derived(inputConfig ? s.staging.valueOf('inputSource', inputConfig.source) : AudioInputSource.Usb);
-  const isAdatSource = $derived(inputConfig?.source === AudioInputSource.Adat || stagedSource === AudioInputSource.Adat);
+  const isAdatSource = $derived(live?.inputConfig.source === AudioInputSource.Adat || inputConfig?.source === AudioInputSource.Adat);
   const enableBlocked = $derived(!enabled && pin === 0);
   const disableBlocked = $derived(enabled && isAdatSource);
   const toggleTitle = $derived(
@@ -37,10 +37,9 @@
   // straight back into IN is a supported zero-hardware self test, so a pin
   // the output claims stays selectable here. Pin 0 (the wire's "unset"
   // sentinel for this target) is never a real candidate.
-  const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
   const pinCells = $derived(
-    snap && overlaySnap
-      ? pickerCells(snap.platform.type, overlaySnap, ctrlPins, pin).map((c) => {
+    snap
+      ? pickerCells(snap.platform.type, snap, ctrlPins, pin).map((c) => {
           if (c.use?.label === 'ADAT') return { ...c, use: null, selectable: true, reason: null };
           if (c.pin === 0) return { ...c, selectable: false, reason: 'reserved as the UNSET sentinel' };
           return c;
@@ -67,17 +66,18 @@
   {#snippet right()}
     {#if features.pinResetDefault && !enabled && pin !== 0}
       <button
-        class="chip"
+        class="chip icon"
         title="Clear the stored pin"
-        onclick={() => setAdatInputPin(s, Wire.Const.PIN_RESET_TO_DEFAULT)}
-      >CLEAR</button>
+        aria-label="Clear ADAT input pin"
+        onclick={() => stageAdatInputPin(s, Wire.Const.PIN_RESET_TO_DEFAULT)}
+      >↺</button>
     {/if}
-    <span title={toggleTitle}>
+    <span title={toggleTitle} class="stage-wrap" class:staged={s.staging.has('adatInputEnable')}>
       <ToggleSwitch
         checked={enabled}
         disabled={!inputConfig || enableBlocked || disableBlocked}
         ariaLabel={enabled ? 'Disable ADAT input' : 'Enable ADAT input'}
-        onChange={(v) => setAdatInputEnable(s, v)}
+        onChange={(v) => stageAdatInputEnabled(s, v)}
       />
     </span>
   {/snippet}
@@ -86,36 +86,40 @@
     <div class="rows">
       <div class="row">
         <span class="microlbl">GPIO PIN</span>
-        <PinPicker
-          value={pin}
-          cells={pinCells}
-          placeholder="UNSET"
-          ariaLabel="ADAT input GPIO pin"
-          onChange={(p) => setAdatInputPin(s, p)}
-        />
+        <span class="stage-wrap" class:staged={s.staging.has('adatInputPin')}>
+          <PinPicker
+            value={pin}
+            cells={pinCells}
+            placeholder="UNSET"
+            ariaLabel="ADAT input GPIO pin"
+            onChange={(p) => stageAdatInputPin(s, p)}
+          />
+        </span>
       </div>
       <p class="hint">May share the ADAT output's pin — wiring OUT back into IN is a supported loopback self-test.</p>
 
       <div class="row">
         <span class="microlbl">CLOCK</span>
-        <div class="src-btns">
-          <button
-            class="chip"
-            class:on={clockMode === 0}
-            onclick={() => setAdatInputClockMode(s, 0)}
-            disabled={clockMode === 0}
-          >MASTER</button>
-          <button
-            class="chip"
-            class:on={clockMode === 1}
-            onclick={() => setAdatInputClockMode(s, 1)}
-            disabled={clockMode === 1}
-          >SLAVE</button>
-        </div>
+        <span class="stage-wrap" class:staged={s.staging.has('adatInputClock')}>
+          <div class="src-btns">
+            <button
+              class="chip"
+              class:on={clockMode === 0}
+              onclick={() => stageAdatInputClockMode(s, 0)}
+              disabled={clockMode === 0}
+            >MASTER</button>
+            <button
+              class="chip"
+              class:on={clockMode === 1}
+              onclick={() => stageAdatInputClockMode(s, 1)}
+              disabled={clockMode === 1}
+            >SLAVE</button>
+          </div>
+        </span>
       </div>
     </div>
 
-    {#if enabled}
+    {#if live?.inputConfig.adatInputEnabled}
       <div class="subhdr">ADAT INPUT STATUS</div>
       {#if status}
         <div class="kvgrid">

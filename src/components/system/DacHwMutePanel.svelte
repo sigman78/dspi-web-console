@@ -2,16 +2,17 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import PinPicker from './PinPicker.svelte';
-  import { setDacHwMute, testDacHwMute } from '@/runtime';
-  import { pickerCells, assignablePins, isAssignablePin, pinsInUse, liveCsPinConfigs, type DacHwMute } from '@/domain';
+  import { stageDacMute, stageDacMuteEnabled, stagedCtrlPins, testDacHwMute } from '@/runtime';
+  import { pickerCells } from '@/domain';
   import { DAC_HW_MUTE_HOLD_MS_MIN, DAC_HW_MUTE_HOLD_MS_MAX, DAC_HW_MUTE_RELEASE_MS_MAX } from '@/domain/clamp';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
-  const snap = $derived(s.mirror.current);
+  const live = $derived(s.mirror.current);
+  const snap = $derived(live ? s.staging.overlaySnapshot(live) : null);
   const cfg = $derived(snap?.dacHwMute);
   const editable = $derived(cfg != null && cfg.enabled);
-  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
+  const ctrlPins = $derived(stagedCtrlPins(s));
 
   let testBusy = $state(false);
   let testTimer: ReturnType<typeof setTimeout> | null = null;
@@ -24,44 +25,14 @@
     };
   });
 
-  function patch(p: Partial<DacHwMute>) {
-    if (editable) setDacHwMute(s, p);
-  }
-
-  // The firmware zeroes the whole struct on disable and silently rejects an
-  // enabled write whose pin is invalid or taken, so the enable write must
-  // ship a usable pin up front: the stored one when free, else the first
-  // free assignable pin. Timings are clamped into range by the runtime verb.
-  function onToggleEnabled() {
-    if (!cfg || !snap) return;
-    if (cfg.enabled) {
-      setDacHwMute(s, { enabled: false });
-      return;
-    }
-    const inUse = pinsInUse(snap, ctrlPins);
-    const free = (p: number) => isAssignablePin(snap.platform.type, p, snap.platform.channelModel) && !inUse.has(p);
-    const pin = free(cfg.pin) ? cfg.pin : (assignablePins(snap.platform.type, snap.platform.channelModel).find(free) ?? cfg.pin);
-    setDacHwMute(s, { enabled: true, pin });
-  }
-
-  function onToggleActiveLow(v: boolean) {
-    patch({ activeLow: v });
-  }
-
-  function onPin(pin: number) {
-    patch({ pin });
-  }
-
-  // No clamping here: Clamp.* in the setDacHwMute verb is the sole authority;
-  // the input min/max attributes are a UI affordance over the same bounds.
   function onHoldMs(e: Event) {
     const v = parseInt((e.target as HTMLInputElement).value, 10);
-    if (!Number.isNaN(v)) patch({ holdMs: v });
+    if (!Number.isNaN(v)) stageDacMute(s, 'holdMs', v);
   }
 
   function onReleaseMs(e: Event) {
     const v = parseInt((e.target as HTMLInputElement).value, 10);
-    if (!Number.isNaN(v)) patch({ releaseMs: v });
+    if (!Number.isNaN(v)) stageDacMute(s, 'releaseMs', v);
   }
 
   function onTest() {
@@ -74,40 +45,46 @@
 
 <Panel title="DAC HW MUTE">
   {#snippet right()}
-    <ToggleSwitch
-      checked={cfg?.enabled ?? false}
-      disabled={!cfg}
-      ariaLabel={cfg?.enabled ? 'Disable DAC HW mute' : 'Enable DAC HW mute'}
-      onChange={() => onToggleEnabled()}
-    />
+    <span class="stage-wrap" class:staged={s.staging.has('dacMute:enabled')}>
+      <ToggleSwitch
+        checked={cfg?.enabled ?? false}
+        disabled={!cfg}
+        ariaLabel={cfg?.enabled ? 'Disable DAC HW mute' : 'Enable DAC HW mute'}
+        onChange={(v) => stageDacMuteEnabled(s, v)}
+      />
+    </span>
   {/snippet}
 
   {#if cfg && snap}
     <div class="rows">
       <div class="row">
-        <ToggleSwitch
-          label="ACTIVE LOW"
-          ariaLabel="DAC mute active low"
-          checked={cfg.activeLow}
-          disabled={!editable}
-          onChange={onToggleActiveLow}
-        />
+        <span class="stage-wrap" class:staged={s.staging.has('dacMute:activeLow')}>
+          <ToggleSwitch
+            label="ACTIVE LOW"
+            ariaLabel="DAC mute active low"
+            checked={cfg.activeLow}
+            disabled={!editable}
+            onChange={(v) => stageDacMute(s, 'activeLow', v)}
+          />
+        </span>
       </div>
 
       <div class="row">
         <span class="microlbl">GPIO PIN</span>
-        <PinPicker
-          value={cfg.pin}
-          cells={pickerCells(snap.platform.type, snap, ctrlPins, cfg.pin)}
-          ariaLabel="DAC HW mute GPIO pin"
-          disabled={!editable}
-          onChange={onPin}
-        />
+        <span class="stage-wrap" class:staged={s.staging.has('dacMute:pin')}>
+          <PinPicker
+            value={cfg.pin}
+            cells={pickerCells(snap.platform.type, snap, ctrlPins, cfg.pin)}
+            ariaLabel="DAC HW mute GPIO pin"
+            disabled={!editable}
+            onChange={(p) => stageDacMute(s, 'pin', p)}
+          />
+        </span>
       </div>
 
       <div class="row">
         <span class="microlbl">HOLD MS</span>
-        <input
+        <span class="stage-wrap" class:staged={s.staging.has('dacMute:holdMs')}><input
           class="numfield"
           type="number"
           min={DAC_HW_MUTE_HOLD_MS_MIN}
@@ -117,12 +94,12 @@
           onchange={onHoldMs}
           disabled={!editable}
           aria-label="DAC mute hold time ms"
-        />
+        /></span>
       </div>
 
       <div class="row">
         <span class="microlbl">RELEASE MS</span>
-        <input
+        <span class="stage-wrap" class:staged={s.staging.has('dacMute:releaseMs')}><input
           class="numfield"
           type="number"
           min="0"
@@ -132,14 +109,14 @@
           onchange={onReleaseMs}
           disabled={!editable}
           aria-label="DAC mute release time ms"
-        />
+        /></span>
       </div>
 
       <div class="row test-row">
         <button
           class="chip warn"
           onclick={onTest}
-          disabled={!cfg.enabled || testBusy}
+          disabled={!live?.dacHwMute.enabled || testBusy}
           title="Pulse the DAC mute pin for ~1 s to verify wiring"
         >{testBusy ? 'TESTING…' : 'TEST PULSE'}</button>
       </div>

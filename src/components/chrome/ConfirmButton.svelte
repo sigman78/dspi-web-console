@@ -72,12 +72,16 @@
   aria-describedby={disabled && disabledReason ? reasonId : undefined}
   {title}
   aria-label={ariaLabel}
->{armed ? confirmLabel : label}</button>
+><span class="faces"><span class="face" class:hide={armed} aria-hidden={armed}>{label}</span><span class="face" class:hide={!armed} aria-hidden={!armed}>{confirmLabel}</span></span></button>
 {#if disabled && disabledReason}
   <span id={reasonId} class="sr-only">{disabledReason}</span>
 {/if}
 
 <style>
+  /* Both labels occupy the same cell so arming never changes the width. */
+  .faces { display: inline-grid; }
+  .face { grid-area: 1 / 1; white-space: nowrap; }
+  .face.hide { visibility: hidden; }
   .chip[aria-disabled="true"] {
     opacity: var(--dim-disabled);
     cursor: default;

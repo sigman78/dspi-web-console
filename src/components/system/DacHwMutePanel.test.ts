@@ -3,10 +3,11 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
 
 vi.mock('@/runtime', () => ({
-  setDacHwMute: vi.fn(), testDacHwMute: vi.fn(),
+  stageDacMute: vi.fn(), stageDacMuteEnabled: vi.fn(), testDacHwMute: vi.fn(),
+  stagedCtrlPins: () => ({ uart: null, i2c: null, cs: [] }),
 }));
 
-import { setDacHwMute } from '@/runtime';
+import { stageDacMute, stageDacMuteEnabled } from '@/runtime';
 import DacHwMutePanel from './DacHwMutePanel.svelte';
 
 function makeSnap(dacHwMute: object, outputPins = [6, 7, 8, 9, 10]) {
@@ -25,6 +26,7 @@ function renderPanel(snap: object) {
     mirror: { current: snap },
     ctrlIfaces: { uart: null, i2c: null, status: null },
     controlSurfaces: { caps: null, nouns: [], bindings: [], status: null },
+    staging: { has: () => false, overlaySnapshot: (s: unknown) => s },
   } as any;
   render(DacHwMutePanel, { context: new Map([[SESSION_KEY, session]]) });
   return session;
@@ -51,26 +53,15 @@ describe('DacHwMutePanel', () => {
     for (const el of rowControls()) expect(el.hasAttribute('disabled')).toBe(false);
   });
 
-  test('enabling keeps the stored pin when it is free', async () => {
+  test('toggling stages the enable state instead of writing it', async () => {
     const session = renderPanel(makeSnap({ enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 }));
     await fireEvent.click(screen.getByRole('switch', { name: 'Enable DAC HW mute' }));
-    expect(setDacHwMute).toHaveBeenCalledWith(session, { enabled: true, pin: 11 });
+    expect(stageDacMuteEnabled).toHaveBeenCalledWith(session, true);
   });
 
-  test('enabling from a zeroed config skips occupied pins', async () => {
-    // Pins 0-3 are I2S outputs and 5 is SPDIF RX; the zeroed pin 0 is
-    // unusable, so the enable write must pick the first free pin instead.
-    const session = renderPanel(makeSnap(
-      { enabled: false, activeLow: false, pin: 0, holdMs: 0, releaseMs: 0 },
-      [0, 1, 2, 3],
-    ));
-    await fireEvent.click(screen.getByRole('switch', { name: 'Enable DAC HW mute' }));
-    expect(setDacHwMute).toHaveBeenCalledWith(session, { enabled: true, pin: 4 });
-  });
-
-  test('disabling sends only the enabled flag', async () => {
+  test('editing a field stages that field', async () => {
     const session = renderPanel(makeSnap({ enabled: true, activeLow: false, pin: 11, holdMs: 5, releaseMs: 0 }));
-    await fireEvent.click(screen.getByRole('switch', { name: 'Disable DAC HW mute' }));
-    expect(setDacHwMute).toHaveBeenCalledWith(session, { enabled: false });
+    await fireEvent.click(screen.getByRole('switch', { name: 'DAC mute active low' }));
+    expect(stageDacMute).toHaveBeenCalledWith(session, 'activeLow', true);
   });
 });

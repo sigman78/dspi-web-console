@@ -7,6 +7,7 @@ import type { CtrlIfacesState } from './ctrlIfaces.svelte';
 import type { ControlSurfacesState } from './controlSurfaces.svelte';
 import type { SysClockState } from './sysClock.svelte';
 import type { StagingState } from './staging.svelte';
+import type { DraftsState } from './drafts.svelte';
 import type { MirrorState } from './mirror.svelte';
 import type { LinkHealth } from './linkHealth.svelte';
 import type { WriteCoordinator } from '@/runtime/writes.svelte';
@@ -48,6 +49,8 @@ export interface ReadySession {
   // Pending heavy device-config edits (input source, I2S/S/PDIF pins, MCK/BCK,
   // output type), staged here until the StatusLine APPLY commits them.
   readonly staging: StagingState;
+  // Console-local control-surface edits not yet sent to the device.
+  readonly drafts: DraftsState;
   readonly mirror: MirrorState;
   readonly health: LinkHealth;
   readonly writes: WriteCoordinator;

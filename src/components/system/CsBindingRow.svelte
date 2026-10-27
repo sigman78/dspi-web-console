@@ -13,6 +13,7 @@
   import CsIrCommands from './CsIrCommands.svelte';
   import CsSlotCard from './CsSlotCard.svelte';
   import * as Domain from '@/domain';
+  import * as Staged from '@/runtime/stagedActions';
   import { csStatusFromByte, CsStatusCode } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
   import * as CsUnit from './csUnitDisplay';
@@ -47,6 +48,9 @@
 
   const s = getSession();
   const snap = $derived(s.mirror.current);
+  // Pin context includes staged claims, so a binding can't take a pin an
+  // unapplied change is about to occupy.
+  const pinSnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
   const cs = $derived(s.controlSurfaces);
   const caps = $derived(s.controlSurfaces.caps);
 
@@ -126,11 +130,13 @@
     return Domain.liveCsPinConfigs(cs.bindings, cs.status).map((pin, i) => (i === slot ? null : pin));
   }
 
+  function pinCtrl() {
+    return { uart: Staged.stagedUart(s), i2c: Staged.stagedI2c(s), cs: otherCsPins() };
+  }
+
   function cellsFor(selfPin: number, adc: boolean, excludePin?: number): Domain.PinPickerCell[] {
-    if (!snap) return [];
-    return Domain.pickerCells(snap.platform.type, snap, {
-      uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: otherCsPins(),
-    }, selfPin).map((c) => {
+    if (!pinSnap) return [];
+    return Domain.pickerCells(pinSnap.platform.type, pinSnap, pinCtrl(), selfPin).map((c) => {
       if (adc && !Domain.CS_ADC_PINS.includes(c.pin)) c = { ...c, selectable: false, reason: 'not ADC-capable' };
       if (excludePin != null && c.pin === excludePin) c = { ...c, selectable: false, reason: 'assigned to the other encoder pin' };
       return c;
@@ -187,7 +193,7 @@
   function displayBindingValid(d: Draft): boolean {
     if (!caps) return false;
     return Domain.validateCsBinding(
-      CsDraft.buildBinding(d, cs.nouns, caps), caps, cs.nouns, cs.groups, CsField.liveI2cInstance(s.ctrlIfaces.i2c),
+      CsDraft.buildBinding(d, cs.nouns, caps), caps, cs.nouns, cs.groups, CsField.liveI2cInstance(Staged.stagedI2c(s)),
     ) === 0;
   }
 
@@ -196,17 +202,17 @@
   }
 
   function displaySdaCells(d: Draft): Domain.PinPickerCell[] {
-    if (!snap) return [];
-    const ctrl = { uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: otherCsPins() };
-    const cands = Domain.validDisplaySdaPins(snap.platform.type, snap, ctrl, CsField.liveI2cInstance(s.ctrlIfaces.i2c));
-    return Domain.pickerCellsFrom(snap.platform.type, snap, ctrl, cands, d.gpio0,
+    if (!pinSnap) return [];
+    const ctrl = pinCtrl();
+    const cands = Domain.validDisplaySdaPins(pinSnap.platform.type, pinSnap, ctrl, CsField.liveI2cInstance(Staged.stagedI2c(s)));
+    return Domain.pickerCellsFrom(pinSnap.platform.type, pinSnap, ctrl, cands, d.gpio0,
       (pin) => (pin % 2 !== 0 ? 'Not an SDA pin (even GPIO)' : 'That I2C bus is used by the control interface'));
   }
   function displaySclCells(d: Draft): Domain.PinPickerCell[] {
-    if (!snap) return [];
-    const ctrl = { uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: otherCsPins() };
-    const cands = Domain.validDisplaySclPins(snap.platform.type, snap, ctrl, d.gpio0);
-    return Domain.pickerCellsFrom(snap.platform.type, snap, ctrl, cands, d.gpio1,
+    if (!pinSnap) return [];
+    const ctrl = pinCtrl();
+    const cands = Domain.validDisplaySclPins(pinSnap.platform.type, pinSnap, ctrl, d.gpio0);
+    return Domain.pickerCellsFrom(pinSnap.platform.type, pinSnap, ctrl, cands, d.gpio1,
       () => 'SCL must be on the same I2C bus as SDA');
   }
 
@@ -216,9 +222,8 @@
   function onDisplaySdaChange(pin: number): void {
     onEdit((dr) => {
       dr.gpio0 = pin;
-      if (!snap) return;
-      const ctrl = { uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: otherCsPins() };
-      const sclCands = Domain.validDisplaySclPins(snap.platform.type, snap, ctrl, pin);
+      if (!pinSnap) return;
+      const sclCands = Domain.validDisplaySclPins(pinSnap.platform.type, pinSnap, pinCtrl(), pin);
       if (!sclCands.includes(dr.gpio1)) {
         dr.gpio1 = sclCands.includes(pin + 1) ? pin + 1 : (sclCands[0] ?? 0);
       }

@@ -4,8 +4,8 @@
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import PinPicker from './PinPicker.svelte';
   import SaveOutputConfigButton from './SaveOutputConfigButton.svelte';
-  import { stageOutputType, stageOutputDataPin, setOutputPairEnabled, setOutputEnabled } from '@/runtime';
-  import { pickerCells, channelLayoutById, ChannelId, OutputSlotType, liveCsPinConfigs, type I2sPairSlot, type OutputSlot } from '@/domain';
+  import { stageOutputType, stageOutputDataPin, stageOutputPairEnabled, stagePdmEnabled, stagedCtrlPins } from '@/runtime';
+  import { pickerCells, channelLayoutById, ChannelId, OutputSlotType, type I2sPairSlot } from '@/domain';
   import { Wire } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
 
@@ -13,7 +13,7 @@
 
   const snap = $derived(s.mirror.current);
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
-  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
+  const ctrlPins = $derived(stagedCtrlPins(s));
   const canResetPins = $derived(s.device.capabilities.features.pinResetDefault);
 
   function effOutputType(slot: number): number {
@@ -39,12 +39,12 @@
   const numSpdif = $derived(snap ? snap.outputPins.length - 1 : 0);
   const pdmIndex = $derived(snap ? snap.outputPins.length - 1 : -1);
   const pdmEnabled = $derived(
-    snap?.outputs.find((o) => o.wireIndex === snap.platform.pdmOutputIndex)?.enabled ?? false,
+    overlaySnap?.outputs.find((o) => o.wireIndex === overlaySnap.platform.pdmOutputIndex)?.enabled ?? false,
   );
 
   function pairEnabled(pair: number): boolean {
-    if (!snap) return false;
-    return snap.outputs.some((o) => (o.wireIndex === pair * 2 || o.wireIndex === pair * 2 + 1) && o.enabled);
+    if (!overlaySnap) return false;
+    return overlaySnap.outputs.some((o) => (o.wireIndex === pair * 2 || o.wireIndex === pair * 2 + 1) && o.enabled);
   }
 
   // PDM and the "Core-1 EQ" outputs (every slot except pair 0 and PDM itself)
@@ -54,26 +54,18 @@
   // Firmware only blocks ENABLING across the interlock; switching off always
   // works, so an already-on toggle stays operable.
   function pairLockedByPdm(pair: number): boolean {
-    if (!snap || !pdmEnabled || pairEnabled(pair)) return false;
+    if (!overlaySnap || !pdmEnabled || pairEnabled(pair)) return false;
     const wireL = pair * 2;
-    return wireL >= 2 && wireL <= snap.platform.pdmOutputIndex - 1;
+    return wireL >= 2 && wireL <= overlaySnap.platform.pdmOutputIndex - 1;
   }
   const pdmLockedByOutputs = $derived(
-    snap && !pdmEnabled
-      ? snap.outputs.some((o) => o.wireIndex >= 2 && o.wireIndex <= snap.platform.pdmOutputIndex - 1 && o.enabled)
+    overlaySnap && !pdmEnabled
+      ? overlaySnap.outputs.some((o) => o.wireIndex >= 2 && o.wireIndex <= overlaySnap.platform.pdmOutputIndex - 1 && o.enabled)
       : false,
   );
   const pdmLockTitle = $derived(
     numSpdif > 2 ? `unavailable while outputs 2–${numSpdif} are active` : 'unavailable while output 2 is active',
   );
-
-  function onPairToggle(pair: number, next: boolean): void {
-    setOutputPairEnabled(s, pair as I2sPairSlot, next);
-  }
-  function onPdmToggle(next: boolean): void {
-    if (!snap) return;
-    setOutputEnabled(s, snap.platform.pdmOutputIndex as OutputSlot, next);
-  }
 
   // PDM's data pin can't be reassigned while the PDM output is active, so
   // resetting it there would only draw a firmware refusal -- skip it.
@@ -99,12 +91,12 @@
             <span class="microlbl">OUT {slot + 1}</span>
             <span class="pair">{pairShort(slot)}</span>
           </span>
-          <span title={pairLockedByPdm(slot) ? 'unavailable while PDM subwoofer is active' : undefined}>
+          <span class="stage-wrap" class:staged={s.staging.has(`pairEnable:${slot}`)} title={pairLockedByPdm(slot) ? 'unavailable while PDM subwoofer is active' : undefined}>
             <ToggleSwitch
               checked={pairEnabled(slot)}
               disabled={pairLockedByPdm(slot)}
               ariaLabel={`Out ${slot + 1} enable`}
-              onChange={(v) => onPairToggle(slot, v)}
+              onChange={(v) => stageOutputPairEnabled(s, slot as I2sPairSlot, v)}
             />
           </span>
           <span class="stage-wrap" class:staged={s.staging.has(`outputType:${slot}`)}>
@@ -128,12 +120,12 @@
 
       <div class="row">
         <span class="lbl"><span class="microlbl">PDM SUB</span></span>
-        <span title={pdmLockedByOutputs ? pdmLockTitle : undefined}>
+        <span class="stage-wrap" class:staged={s.staging.has('pdmEnable')} title={pdmLockedByOutputs ? pdmLockTitle : undefined}>
           <ToggleSwitch
             checked={pdmEnabled}
             disabled={pdmLockedByOutputs}
             ariaLabel="PDM sub enable"
-            onChange={onPdmToggle}
+            onChange={(v) => stagePdmEnabled(s, v)}
           />
         </span>
         <span class="fixed">PDM</span>

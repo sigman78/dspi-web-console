@@ -1,13 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { bootMock } from './boot';
 import { activeSession, clearNotices, resetAppState } from '@/state';
-import { AudioInputSource } from '@/domain';
+import { AudioInputSource, SysClockMode, SYS_CLOCK_VREG_DEFAULT, type SysClockStatus } from '@/domain';
 import { Wire } from '@/protocol';
 import {
   stageInputSource, stageI2sRxPin, stageI2sInputChannels, stageMckEnabled,
   stageI2sClockMode, stageI2sClockPinMode, stageI2sBckPinSlave,
   stageOutputDataPin, stageMckPin,
+  stageAdatEnabled, stageAdatInputEnabled, stageAdatInputPin, stageDacMute, stageDacMuteEnabled, stageOutputPairEnabled, stagePdmEnabled,
+  stageUart, stageUartEnabled, stageSysClockMode, stageSysClockVreg,
 } from './stagedActions';
+import * as SystemActions from './systemActions';
 
 const { PIN_RESET_TO_DEFAULT } = Wire.Const;
 
@@ -263,6 +266,187 @@ describe('runtime/stagedActions', () => {
       stageOutputDataPin(s, 0, PIN_RESET_TO_DEFAULT);
       await s.staging.applyAll();
       expect(s.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
+    });
+  });
+
+  describe('hardware enables and relocations', () => {
+    beforeEach(async () => {
+      await bootMock('rp2350');
+      clearNotices();
+    });
+
+    it('enabling ADAT on a taken pin stages a visible pin entry that applies before the enable', async () => {
+      const s = sess();
+      s.mirror.snapshot.dacHwMute = { enabled: true, activeLow: false, pin: 12, holdMs: 10, releaseMs: 0 };
+      s.mirror.snapshot.adat = { ...s.mirror.snapshot.adat, enabled: false, pin: 0 };
+      const pinSpy = vi.spyOn(s.device, 'setAdatPin').mockResolvedValue({ ok: true, value: undefined });
+      const enableSpy = vi.spyOn(s.device, 'setAdatEnable').mockResolvedValue({ ok: true, value: undefined });
+
+      stageAdatEnabled(s, true);
+      const pinEntry = s.staging.get('adatPin');
+      expect(pinEntry?.from).toBe('GP12');
+      expect(pinEntry?.to).not.toBe('GP12');
+      expect(s.staging.has('adatEnable')).toBe(true);
+      expect(pinSpy).not.toHaveBeenCalled();
+
+      await s.staging.applyAll();
+      expect(enableSpy).toHaveBeenCalledWith(true);
+      expect(pinSpy.mock.invocationCallOrder[0]).toBeLessThan(enableSpy.mock.invocationCallOrder[0]);
+      expect(s.staging.entries).toHaveLength(0);
+    });
+
+    it('DAC mute edits stage separately but apply as one merged device write', async () => {
+      const s = sess();
+      s.mirror.snapshot.dacHwMute = { enabled: false, activeLow: false, pin: 11, holdMs: 10, releaseMs: 0 };
+      const spy = vi.spyOn(s.device, 'setDacHwMute');
+
+      stageDacMuteEnabled(s, true);
+      stageDacMute(s, 'activeLow', true);
+      expect(s.staging.entries.map((e) => e.key).sort()).toEqual(['dacMute:activeLow', 'dacMute:enabled']);
+
+      await s.staging.applyAll();
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0][0]).toMatchObject({ enabled: true, activeLow: true, pin: 11 });
+    });
+
+    it('a UART disable applies before a DAC mute claims its pin', async () => {
+      const s = sess();
+      s.ctrlIfaces.uart = { enabled: true, txPin: 16, rxPin: 17, notifyEnabled: false, baud: 115200 };
+      s.mirror.snapshot.dacHwMute = { enabled: false, activeLow: false, pin: 11, holdMs: 10, releaseMs: 0 };
+      const uartSpy = vi.spyOn(s.device, 'setUartControlConfig');
+      const muteSpy = vi.spyOn(s.device, 'setDacHwMute');
+
+      stageUartEnabled(s, false);
+      stageDacMute(s, 'pin', 16);
+      stageDacMuteEnabled(s, true);
+      expect(s.staging.get('dacMute:pin')?.to).toBe('GP16');
+
+      await s.staging.applyAll();
+      expect(uartSpy).toHaveBeenCalledTimes(1);
+      expect(muteSpy).toHaveBeenCalledTimes(1);
+      expect(uartSpy.mock.invocationCallOrder[0]).toBeLessThan(muteSpy.mock.invocationCallOrder[0]);
+    });
+
+    it('a DAC mute disable applies before ADAT output claims its pin', async () => {
+      const s = sess();
+      s.mirror.snapshot.dacHwMute = { enabled: true, activeLow: false, pin: 21, holdMs: 10, releaseMs: 0 };
+      s.mirror.snapshot.adat = { ...s.mirror.snapshot.adat, enabled: false, pin: 21 };
+      const muteSpy = vi.spyOn(s.device, 'setDacHwMute');
+      const adatSpy = vi.spyOn(s.device, 'setAdatEnable').mockResolvedValue({ ok: true, value: undefined });
+
+      stageDacMuteEnabled(s, false);
+      stageAdatEnabled(s, true);
+      expect(s.staging.has('adatPin')).toBe(false);
+
+      await s.staging.applyAll();
+      expect(muteSpy.mock.invocationCallOrder[0]).toBeLessThan(adatSpy.mock.invocationCallOrder[0]);
+    });
+
+    it('an ADAT input disable applies before its pin is cleared', async () => {
+      const s = sess();
+      s.mirror.snapshot.inputConfig = { ...s.mirror.snapshot.inputConfig, adatInputEnabled: true, adatInputPin: 20 };
+      const enableSpy = vi.spyOn(s.device, 'setAdatInputEnable').mockResolvedValue({ ok: true, value: undefined });
+      const pinSpy = vi.spyOn(s.device, 'setAdatInputPin').mockResolvedValue({ ok: true, value: undefined });
+
+      stageAdatInputPin(s, 0);
+      stageAdatInputEnabled(s, false);
+
+      await s.staging.applyAll();
+      expect(enableSpy.mock.invocationCallOrder[0]).toBeLessThan(pinSpy.mock.invocationCallOrder[0]);
+    });
+
+    it('discarding a parent drops the pin or voltage entries it staged on its own', () => {
+      const s = sess();
+      s.mirror.snapshot.dacHwMute = { enabled: true, activeLow: false, pin: 12, holdMs: 10, releaseMs: 0 };
+      s.mirror.snapshot.adat = { ...s.mirror.snapshot.adat, enabled: false, pin: 0 };
+      stageAdatEnabled(s, true);
+      expect(s.staging.has('adatPin')).toBe(true);
+
+      stageAdatEnabled(s, false);
+      expect(s.staging.entries).toHaveLength(0);
+
+      stageAdatEnabled(s, true);
+      s.staging.discard('adatEnable');
+      expect(s.staging.entries).toHaveLength(0);
+    });
+
+    it('pair and PDM enables overlay the snapshot at stage time and disables apply before enables', async () => {
+      const s = sess();
+      const pdm = s.mirror.snapshot.platform.pdmOutputIndex;
+      const spy = vi.spyOn(s.device, 'setOutputEnable');
+      s.mirror.snapshot.outputs = s.mirror.snapshot.outputs.map((o) => ({ ...o, enabled: o.wireIndex === 2 || o.wireIndex === 3 }));
+
+      stagePdmEnabled(s, true);
+      stageOutputPairEnabled(s, 1, false);
+      const overlay = s.staging.overlaySnapshot(s.mirror.snapshot);
+      expect(overlay.outputs.find((o) => o.wireIndex === pdm)?.enabled).toBe(true);
+      expect(overlay.outputs.find((o) => o.wireIndex === 2)?.enabled).toBe(false);
+
+      await s.staging.applyAll();
+      const calls = spy.mock.calls.map((c) => [c[0], c[1]]);
+      expect(calls.findIndex((c) => c[0] === 2 && c[1] === false)).toBeLessThan(calls.findIndex((c) => c[0] === pdm && c[1] === true));
+    });
+
+    it('UART fields stage individually and apply as one config write', async () => {
+      const s = sess();
+      s.ctrlIfaces.uart = { enabled: false, txPin: 16, rxPin: 17, notifyEnabled: false, baud: 115200 };
+      const live = s.ctrlIfaces.uart;
+      const spy = vi.spyOn(s.device, 'setUartControlConfig');
+
+      stageUartEnabled(s, !live.enabled);
+      stageUart(s, 'baud', live.baud === 115200 ? 57600 : 115200);
+      expect(s.staging.entries.every((e) => e.page === 'interfaces')).toBe(true);
+
+      await s.staging.applyAll();
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(s.staging.entries).toHaveLength(0);
+    });
+  });
+
+  describe('system clock', () => {
+    const sysClockStatus = (over: Partial<SysClockStatus>): SysClockStatus => ({
+      activeMode: SysClockMode.Mhz307p2, storedMode: SysClockMode.Mhz307p2, storedVregSel: SYS_CLOCK_VREG_DEFAULT,
+      liveVreg: 12, fallbackActive: false, ...over,
+    });
+
+    beforeEach(async () => {
+      await bootMock('rp2350');
+      clearNotices();
+    });
+
+    it('a mode change under an explicit lower voltage stages a visible DEFAULT reset and applies once, flagged disruptive', async () => {
+      const s = sess();
+      s.sysClock.status = sysClockStatus({ storedMode: SysClockMode.Mhz307p2, storedVregSel: 12 });
+      const apply = vi.spyOn(SystemActions, 'applySysClock').mockImplementation(async (sess, mode, vregSel) => {
+        sess.sysClock.status = sysClockStatus({ storedMode: mode, storedVregSel: vregSel });
+        return true;
+      });
+
+      stageSysClockMode(s, SysClockMode.Mhz384);
+      expect(s.staging.get('sysClock:vreg')?.to).toBe('default');
+      expect(s.staging.disruptive).toEqual({ reason: 'reboots the clock', tone: 'danger' });
+
+      await s.staging.applyAll();
+      expect(apply).toHaveBeenCalledTimes(1);
+      expect(apply.mock.calls[0].slice(1)).toEqual([SysClockMode.Mhz384, SYS_CLOCK_VREG_DEFAULT]);
+    });
+
+    it('the DEFAULT voltage reset goes away with the mode change that caused it', () => {
+      const s = sess();
+      s.sysClock.status = sysClockStatus({ storedMode: SysClockMode.Mhz307p2, storedVregSel: 12 });
+      stageSysClockMode(s, SysClockMode.Mhz384);
+      expect(s.staging.has('sysClock:vreg')).toBe(true);
+      stageSysClockMode(s, SysClockMode.Mhz307p2);
+      expect(s.staging.entries).toHaveLength(0);
+    });
+
+    it('staging back to the stored value discards the entry', () => {
+      const s = sess();
+      s.sysClock.status = sysClockStatus({ storedVregSel: SYS_CLOCK_VREG_DEFAULT });
+      stageSysClockVreg(s, 14);
+      expect(s.staging.has('sysClock:vreg')).toBe(true);
+      stageSysClockVreg(s, SYS_CLOCK_VREG_DEFAULT);
+      expect(s.staging.has('sysClock:vreg')).toBe(false);
     });
   });
 });

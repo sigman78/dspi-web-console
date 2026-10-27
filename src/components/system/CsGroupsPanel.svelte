@@ -1,8 +1,7 @@
 <script lang="ts">
   // Target groups (caps v9+): a named set of channels a binding, IR command,
   // or macro step can address at once via CS_FLAG_GROUP. Sibling of ControlSurfacesPanel,
-  // same fw dirty flag; save/discard live in the CHANGES panel. No parent of
-  // its own to hand it a reset prop -- it watches cs.revertEpoch instead.
+  // same fw dirty flag; save/discard live in the CHANGES panel.
   import { untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import MaskChips from '@/components/chrome/MaskChips.svelte';
@@ -21,7 +20,7 @@
   const caps = $derived(s.controlSurfaces.caps);
 
   interface GroupDraft { kind: number; mask: number; name: string }
-  const drafts = $state<Record<number, GroupDraft>>({});
+  const drafts = s.drafts.of<GroupDraft>('groups');
   let applying = $state(false);
 
   // The device's ceiling, capped at what the wire (group index 0-7) and
@@ -29,7 +28,7 @@
   const maxSlots = $derived(Math.min(caps?.maxGroups ?? 0, Domain.CS_MAX_GROUPS));
   const visibleSlots = $derived(
     Array.from({ length: maxSlots }, (_, i) => i)
-      .filter((i) => cs.groups[i] != null || drafts[i] != null),
+      .filter((i) => cs.groups[i] != null || drafts.draftOf(i) != null),
   );
   const allUsed = $derived(visibleSlots.length >= maxSlots);
 
@@ -44,13 +43,6 @@
     openSlot = expanded === i ? -1 : i;
   }
 
-  $effect(() => {
-    void cs.revertEpoch;   // the ONLY dependency -- cleanup must not track drafts
-    untrack(() => {
-      for (const k of Object.keys(drafts)) delete drafts[Number(k)];
-    });
-  });
-
   function channelCounts(): Domain.CsChannelCounts {
     return snap ? CsField.csChannelCounts(snap.channels) : { inputs: 0, outputs: 0, dsp: 0 };
   }
@@ -60,13 +52,13 @@
   }
 
   function draftOf(i: number): GroupDraft {
-    return drafts[i] ?? draftFromLive(cs.groups[i]!);
+    return drafts.draftOf(i) ?? draftFromLive(cs.groups[i]!);
   }
 
   function editDraft(i: number, fn: (d: GroupDraft) => void): void {
-    const d = drafts[i] ?? draftFromLive(cs.groups[i]!);
+    const d = drafts.draftOf(i) ?? draftFromLive(cs.groups[i]!);
     fn(d);
-    drafts[i] = d;
+    drafts.editDraft(i, d);
   }
 
   function buildGroup(d: GroupDraft): Domain.CsGroup {
@@ -80,7 +72,7 @@
   function isDirty(i: number): boolean {
     const live = cs.groups[i];
     if (!live) return true;                        // NEW: never applied
-    const d = drafts[i];
+    const d = drafts.draftOf(i);
     if (!d) return false;
     return !groupsEqual(buildGroup(d), live);
   }
@@ -122,14 +114,14 @@
   }
 
   function firstFreeSlot(): number | null {
-    for (let i = 0; i < maxSlots; i++) if (!cs.groups[i] && !drafts[i]) return i;
+    for (let i = 0; i < maxSlots; i++) if (!cs.groups[i] && !drafts.draftOf(i)) return i;
     return null;
   }
 
   function addGroup(): void {
     const i = firstFreeSlot();
     if (i == null) return;
-    drafts[i] = { kind: Domain.CS_TARGET_OUTPUT_CH, mask: 0, name: '' };
+    drafts.editDraft(i, { kind: Domain.CS_TARGET_OUTPUT_CH, mask: 0, name: '' });
     openSlot = i;
   }
 
@@ -140,42 +132,43 @@
   }
 
   function canApply(i: number): boolean {
-    const d = drafts[i];
+    const d = drafts.draftOf(i);
     if (!d || !isDirty(i)) return false;
     return Domain.validateCsGroup(buildGroup(d), channelCounts()) === 0;
   }
 
   async function apply(i: number): Promise<void> {
-    const d = drafts[i];
+    const d = drafts.draftOf(i);
     if (!d) return;
     applying = true;
     try {
-      if (await applyCsGroup(s, i, buildGroup(d))) delete drafts[i];
+      if (await applyCsGroup(s, i, buildGroup(d))) drafts.remove(i);
     } finally {
       applying = false;
     }
   }
 
   function revert(i: number): void {
-    delete drafts[i];
+    drafts.revert(i);
   }
 
   // Remove = drop a never-applied draft locally; clear a live slot via the
   // all-zero group (dependents go INACTIVE, not refused).
   async function remove(i: number): Promise<void> {
-    if (!cs.groups[i]) { delete drafts[i]; return; }
+    if (!cs.groups[i]) { drafts.remove(i); return; }
     applying = true;
     try {
-      if (await clearCsGroup(s, i)) delete drafts[i];
+      if (await clearCsGroup(s, i)) drafts.remove(i);
     } finally {
       applying = false;
     }
   }
 
-  const stagedCount = $derived(visibleSlots.filter((i) => isDirty(i)).length);
   $effect(() => {
-    s.controlSurfaces.staged.groups = stagedCount;
-    return () => { s.controlSurfaces.staged.groups = 0; };
+    for (const i of drafts.keys()) {
+      const dirty = isDirty(i);
+      untrack(() => drafts.setDirty(i, dirty));
+    }
   });
 </script>
 

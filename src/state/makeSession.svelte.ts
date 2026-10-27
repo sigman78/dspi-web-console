@@ -6,6 +6,7 @@ import { createCtrlIfacesState } from './ctrlIfaces.svelte';
 import { createControlSurfacesState } from './controlSurfaces.svelte';
 import { createSysClockState } from './sysClock.svelte';
 import { createStagingState } from './staging.svelte';
+import { createDraftsState } from './drafts.svelte';
 import { MirrorState } from './mirror.svelte';
 import { LinkHealth } from './linkHealth.svelte';
 import { WriteCoordinator } from '@/runtime/writes.svelte';
@@ -30,6 +31,7 @@ export function makeReadySession(device: DspDevice, scope: ConnectionScope = new
   const controlSurfaces = createControlSurfacesState();
   const sysClock = createSysClockState();
   const staging = createStagingState();
+  const drafts = createDraftsState();
   const mirror = new MirrorState();
   const health = new LinkHealth();
   const writes = new WriteCoordinator(mirror);
@@ -45,7 +47,7 @@ export function makeReadySession(device: DspDevice, scope: ConnectionScope = new
   });
   const session: ReadySession = {
     device, info: device.info, hardware: device.hardware, signal,
-    copySource, telemetry, presets, ctrlIfaces, controlSurfaces, sysClock, staging, mirror, health, writes, notifyWaiters, queue, wireMirror,
+    copySource, telemetry, presets, ctrlIfaces, controlSurfaces, sysClock, staging, drafts, mirror, health, writes, notifyWaiters, queue, wireMirror,
     get alive() { return !scope.aborted; },
     dispose() { scope.abort(); },
   };

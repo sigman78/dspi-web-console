@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createStagingState, type StagedEntry, type StagingState } from './staging.svelte';
 import { notices, clearNotices } from './notices.svelte';
 import type { DspSnapshot } from '@/domain';
@@ -49,6 +49,33 @@ describe('createStagingState', () => {
     staging.stage(entry({ key: 'k2' }));
     staging.discardAll();
     expect(staging.entries).toHaveLength(0);
+  });
+
+  it('countOn() counts per page, and disruptive reports the reason of any disruptive entry', () => {
+    staging.stage(entry({ key: 'a', page: 'outputs' }));
+    staging.stage(entry({ key: 'b', page: 'outputs' }));
+    staging.stage(entry({ key: 'c', page: 'device', disruptive: { reason: 'reboots the clock', tone: 'warn' } }));
+    expect(staging.countOn('outputs')).toBe(2);
+    expect(staging.countOn('inputs')).toBe(0);
+    expect(staging.disruptive).toEqual({ reason: 'reboots the clock', tone: 'warn' });
+    staging.discard('c');
+    expect(staging.disruptive).toBeUndefined();
+  });
+
+  it('discarding an entry also drops the entries it auto-staged, but applying keeps them until their turn', async () => {
+    staging.stage(entry({ key: 'parent', order: 2 }));
+    staging.stage(entry({ key: 'dep', order: 1, autoFor: 'parent' }));
+    staging.stage(entry({ key: 'other', order: 3 }));
+    staging.discard('parent');
+    expect(staging.entries.map((e) => e.key)).toEqual(['other']);
+
+    const dep = vi.fn().mockResolvedValue(true);
+    const parent = vi.fn().mockResolvedValue(true);
+    staging.stage(entry({ key: 'parent', order: 1, apply: parent }));
+    staging.stage(entry({ key: 'dep', order: 2, autoFor: 'parent', apply: dep }));
+    await staging.applyAll();
+    expect(parent).toHaveBeenCalledTimes(1);
+    expect(dep).toHaveBeenCalledTimes(1);
   });
 
   it('valueOf() returns the staged value when present, else the live value passed in', () => {

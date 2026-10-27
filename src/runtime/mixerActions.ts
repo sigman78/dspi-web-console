@@ -103,9 +103,9 @@ export function setOutputDelay(s: ReadySession, slot: Domain.OutputSlot, delayMs
   );
 }
 
-export function setOutputEnabled(s: ReadySession, slot: Domain.OutputSlot, enabled: boolean): void {
+export function setOutputEnabled(s: ReadySession, slot: Domain.OutputSlot, enabled: boolean): Promise<boolean> {
   const out = focusOutput(s, slot);
-  void write(s,
+  return write(s,
     () => s.device.setOutputEnable(slot, enabled),
     () => out.modify((o) => ({ ...o, enabled })),
   );
@@ -113,9 +113,12 @@ export function setOutputEnabled(s: ReadySession, slot: Domain.OutputSlot, enabl
 
 // Both channels of a stereo pair, normalizing a half-enabled pair to a single
 // state. Two independent write()s -- no tuple to merge, same as setOutputEnabled.
-export function setOutputPairEnabled(s: ReadySession, pair: Domain.I2sPairSlot, enabled: boolean): void {
-  setOutputEnabled(s, (pair * 2) as Domain.OutputSlot, enabled);
-  setOutputEnabled(s, (pair * 2 + 1) as Domain.OutputSlot, enabled);
+export async function setOutputPairEnabled(s: ReadySession, pair: Domain.I2sPairSlot, enabled: boolean): Promise<boolean> {
+  const results = await Promise.all([
+    setOutputEnabled(s, (pair * 2) as Domain.OutputSlot, enabled),
+    setOutputEnabled(s, (pair * 2 + 1) as Domain.OutputSlot, enabled),
+  ]);
+  return results.every(Boolean);
 }
 
 export function setOutputMuted(s: ReadySession, slot: Domain.OutputSlot, muted: boolean): void {

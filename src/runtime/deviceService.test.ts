@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { DspDevice } from '@/device/DspDevice';
-import { wireUpConnection, activateSession } from './deviceService';
+import { wireUpConnection, activateSession, switchSession, hasPendingWork } from './deviceService';
 import { bootMock } from './boot';
 import { ConnectionScope } from './connectionScope';
 import { write } from './writes.svelte';
 import {
   connection, mintConnId, activeSession, activeRecord, recordOf, recordBySerial, sessionRecords,
   resetAppState, settings, notices, clearNotices, dispatch, makeReadySession,
+  boundary, resolveBoundary, resetBoundary,
 } from '@/state';
 
 // Exercises the scope-guard invariant: a connection superseded mid-flight
@@ -174,6 +175,55 @@ describe('registry: adoption, dormancy, and the switch protocol', () => {
     await activateSession(recordBySerial('A')!.id);
 
     expect(settings.lastSerial).toBe('A');
+  });
+});
+
+describe('switchSession: pending-work guard', () => {
+  afterEach(() => resetBoundary());
+
+  it('switches straight away when the active device holds nothing pending', async () => {
+    await bootMock('rp2350');
+    const a = activeRecord()!;
+    await bootMock('rp2350');
+    expect(await switchSession(a.id)).toBe(true);
+    expect(activeRecord()?.id).toBe(a.id);
+    expect(boundary.pending).toBeNull();
+  });
+
+  it('asks first when console-local drafts are pending, and Cancel stays on the device', async () => {
+    await bootMock('rp2350');
+    const a = activeRecord()!;
+    await bootMock('rp2350');
+    const b = activeRecord()!;
+    b.session.drafts.of('macros').editDraft(0, {});
+    expect(hasPendingWork(b.session)).toBe(true);
+
+    const switched = switchSession(a.id);
+    await Promise.resolve();
+    expect(boundary.pending?.saveLabel).toBeUndefined();
+    resolveBoundary('cancel');
+
+    expect(await switched).toBe(false);
+    expect(activeRecord()?.id).toBe(b.id);
+  });
+
+  it('Switch anyway proceeds and leaves the pending work on the dormant device', async () => {
+    await bootMock('rp2350');
+    const a = activeRecord()!;
+    await bootMock('rp2350');
+    const b = activeRecord()!;
+    b.session.staging.stage({
+      key: 'k', label: 'k', from: 'a', to: 'b', value: 1, order: 1,
+      apply: async () => true, overlay: (snap) => snap,
+    });
+
+    const switched = switchSession(a.id);
+    await Promise.resolve();
+    resolveBoundary('discard');
+
+    expect(await switched).toBe(true);
+    expect(activeRecord()?.id).toBe(a.id);
+    expect(b.session.staging.entries).toHaveLength(1);
   });
 });
 

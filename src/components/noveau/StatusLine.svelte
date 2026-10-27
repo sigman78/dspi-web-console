@@ -3,6 +3,8 @@
   import { getSession } from '@/components/sessionContext';
   import { formatRateKHz } from '@/utils';
   import { REPO_URL, FIRMWARE_RELEASES_URL, reportIssueUrl } from '@/buildInfo';
+  import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
+  import { dismiss } from '@/components/chrome/dismiss';
 
   const s = getSession();
   const issueUrl = $derived(reportIssueUrl({
@@ -16,8 +18,10 @@
   const entries = $derived(s.staging.entries);
   const applying = $derived(s.staging.applying);
   const busy = $derived(s.writes.busy);
-  const summary = $derived(entries.map((e) => `${e.label} ${e.from}→${e.to}`).join('\n'));
   const staged = $derived(entries.length > 0 || applying);
+  const disruptive = $derived(s.staging.disruptive);
+  let listOpen = $state(false);
+  const open = $derived(listOpen && entries.length > 0);
 </script>
 
 <div class="status">
@@ -36,8 +40,34 @@
   {#if staged}
     <span class="r">
       <span class="dot"></span>
-      <b title={summary}>{entries.length} {entries.length === 1 ? 'change' : 'changes'}</b>
-      <button type="button" class="chip accent" title="Applies together — brief audio mute" disabled={applying || busy} onclick={() => void s.staging.applyAll()}>APPLY</button>
+      <span class="list-wrap">
+        {#if open}
+          <div class="pop" role="dialog" aria-label="Staged changes" use:dismiss={{ onDismiss: () => { listOpen = false; }, ignore: '.count' }}>
+            {#each entries as e (e.key)}
+              <div class="item">
+                <span class="lbl">{e.label}</span>
+                <span class="chg">{e.from}→{e.to}</span>
+                <button type="button" class="x-btn" title="Discard this change" aria-label={`Discard ${e.label}`} disabled={applying} onclick={() => s.staging.discard(e.key)}>✕</button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+        <button type="button" class="count" aria-expanded={open} onclick={() => { listOpen = !open; }}>{entries.length} {entries.length === 1 ? 'change' : 'changes'}</button>
+      </span>
+      {#if disruptive}
+        <span class="why" class:danger={disruptive.tone === 'danger'}>{disruptive.reason}</span>
+        <ConfirmButton
+          label="APPLY"
+          confirmLabel="CONFIRM"
+          extraClass="accent"
+          tone={disruptive.tone}
+          disabled={applying || busy}
+          title="Applies together — brief audio mute"
+          onConfirm={() => void s.staging.applyAll()}
+        />
+      {:else}
+        <button type="button" class="chip accent" title="Applies together — brief audio mute" disabled={applying || busy} onclick={() => void s.staging.applyAll()}>APPLY</button>
+      {/if}
       <button type="button" class="chip hi" disabled={applying} onclick={() => s.staging.discardAll()}>DISCARD</button>
     </span>
   {:else}
@@ -54,12 +84,12 @@
     padding: 0 16px;
     border-top: 1px solid var(--border-hi);
     background: color-mix(in oklab, var(--surface-chrome), oklch(0% 0 0) 15%);
-    overflow: hidden;
+    position: relative;
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text-faint);
   }
-  .l { white-space: nowrap; }
+  .l { white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .links { display: flex; align-items: center; gap: 2px; margin-left: auto; margin-right: 16px; }
   .links a {
     display: grid;
@@ -72,8 +102,39 @@
   .links a:hover, .links a:focus-visible { color: var(--text); background: var(--wash); }
   .links svg { fill: currentColor; }
   .links svg.ln { fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
-  .r { display: flex; align-items: center; gap: 12px; color: var(--text-dim); font-family: var(--font-sans); }
-  .r b { font-weight: 500; }
+  .r { flex: none; display: flex; align-items: center; gap: 12px; color: var(--text-dim); font-family: var(--font-sans); }
+  .list-wrap { position: relative; }
+  .count {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 500;
+    color: inherit;
+    cursor: pointer;
+  }
+  .count:hover { color: var(--text); }
+  .pop {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    z-index: var(--z-flyout);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 260px;
+    padding: 10px;
+    border-radius: var(--radius);
+    background: var(--panel-solid);
+    border: 1px solid var(--border-hi);
+    box-shadow: var(--shadow-flyout);
+    font-size: 11px;
+  }
+  .item { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px; }
+  .lbl { color: var(--text); white-space: nowrap; }
+  .chg { font-family: var(--font-mono); color: var(--text-dim); white-space: nowrap; }
+  .why { color: var(--warn); white-space: nowrap; }
+  .why.danger { color: var(--err); }
   .r.idle { color: var(--text-faint); font-family: var(--font-mono); gap: 8px; }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
   .idle .dot { background: var(--text-faint); opacity: var(--dim-off); }

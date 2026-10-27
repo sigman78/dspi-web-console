@@ -3,38 +3,34 @@
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { formatI2cAddr } from '@/components/chrome/format';
   import PinPicker from './PinPicker.svelte';
-  import { setUartControlConfig, setI2cControlConfig } from '@/runtime';
-  import {
-    validUartTxPins, validI2cSdaPins, csDisplayI2cInstance, i2cInstance, pickerCellsFrom, liveCsPinConfigs,
-    UART_COMMON_BAUDS, I2C_ADDRESS_MIN, I2C_ADDRESS_MAX,
-    type UartControlConfig, type I2cControlConfig,
-  } from '@/domain';
+  import * as Staged from '@/runtime/stagedActions';
+  import * as Domain from '@/domain';
   import { pinConfigResultFromByte } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
-  const snap = $derived(s.mirror.current);
-  const uart = $derived(s.ctrlIfaces.uart);
-  const i2c = $derived(s.ctrlIfaces.i2c);
+  const snap = $derived(s.mirror.current ? s.staging.overlaySnapshot(s.mirror.current) : null);
+  const uart = $derived(Staged.stagedUart(s));
+  const i2c = $derived(Staged.stagedI2c(s));
   const status = $derived(s.ctrlIfaces.status);
 
-  const csPins = $derived(liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status));
-  const displayInstance = $derived(csDisplayI2cInstance(csPins));
+  const csPins = $derived(Domain.liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status));
+  const displayInstance = $derived(Domain.csDisplayI2cInstance(csPins));
 
   function uartTxReason(pin: number): string {
     return pin % 4 !== 0 ? 'UART TX must be GP0/4/8…' : `needs GP${pin + 1} free`;
   }
   function i2cSdaReason(pin: number): string {
     if (pin % 2 !== 0) return 'SDA must be even';
-    if (i2cInstance(pin) === displayInstance) return 'That I2C bus is used by the display';
+    if (Domain.i2cInstance(pin) === displayInstance) return 'That I2C bus is used by the display';
     return `needs GP${pin + 1} free`;
   }
 
   const uartTxCells = $derived(
-    snap ? pickerCellsFrom(snap.platform.type, snap, { i2c, cs: csPins }, validUartTxPins(snap.platform.type, snap, { i2c, cs: csPins }), uart?.txPin, uartTxReason) : [],
+    snap ? Domain.pickerCellsFrom(snap.platform.type, snap, { i2c, cs: csPins }, Domain.validUartTxPins(snap.platform.type, snap, { i2c, cs: csPins }), uart?.txPin, uartTxReason) : [],
   );
   const i2cSdaCells = $derived(
-    snap ? pickerCellsFrom(snap.platform.type, snap, { uart, cs: csPins }, validI2cSdaPins(snap.platform.type, snap, { uart, cs: csPins }, displayInstance), i2c?.sdaPin, i2cSdaReason) : [],
+    snap ? Domain.pickerCellsFrom(snap.platform.type, snap, { uart, cs: csPins }, Domain.validI2cSdaPins(snap.platform.type, snap, { uart, cs: csPins }, displayInstance), i2c?.sdaPin, i2cSdaReason) : [],
   );
 
   function lastStatusMessage(byte: number | undefined): string | null {
@@ -44,48 +40,16 @@
   }
   const uartStatusMsg = $derived(lastStatusMessage(status?.uartLastStatus));
   const i2cStatusMsg = $derived(lastStatusMessage(status?.i2cLastStatus));
-  const uartDown = $derived(uart?.enabled === true && status != null && !status.uartLive);
-  const i2cDown = $derived(i2c?.enabled === true && status != null && !status.i2cLive);
-
-  function patchUart(p: Partial<UartControlConfig>) {
-    if (!uart) return;
-    setUartControlConfig(s, { ...uart, ...p });
-  }
-
-  function patchI2c(p: Partial<I2cControlConfig>) {
-    if (!i2c) return;
-    setI2cControlConfig(s, { ...i2c, ...p });
-  }
-
-  function onToggleUartEnabled() {
-    if (!uart || !snap) return;
-    if (uart.enabled) { patchUart({ enabled: false }); return; }
-    const candidates = validUartTxPins(snap.platform.type, snap, { i2c });
-    const txPin = candidates.includes(uart.txPin) ? uart.txPin : (candidates[0] ?? uart.txPin);
-    patchUart({ enabled: true, txPin, rxPin: txPin + 1 });
-  }
-
-  function onToggleI2cEnabled() {
-    if (!i2c || !snap) return;
-    if (i2c.enabled) { patchI2c({ enabled: false }); return; }
-    const candidates = validI2cSdaPins(snap.platform.type, snap, { uart, cs: csPins }, displayInstance);
-    const sdaPin = candidates.includes(i2c.sdaPin) ? i2c.sdaPin : (candidates[0] ?? i2c.sdaPin);
-    patchI2c({ enabled: true, sdaPin, sclPin: sdaPin + 1 });
-  }
-
-  function onUartTxPin(pin: number) {
-    patchUart({ txPin: pin, rxPin: pin + 1 });
-  }
-
-  function onI2cSdaPin(pin: number) {
-    patchI2c({ sdaPin: pin, sclPin: pin + 1 });
-  }
+  const liveUart = $derived(s.ctrlIfaces.uart);
+  const liveI2c = $derived(s.ctrlIfaces.i2c);
+  const uartDown = $derived(liveUart?.enabled === true && status != null && !status.uartLive);
+  const i2cDown = $derived(liveI2c?.enabled === true && status != null && !status.i2cLive);
 
   function onAddressInput(e: Event) {
     const raw = (e.target as HTMLInputElement).value.trim();
     const parsed = parseInt(raw, 16);
-    if (Number.isNaN(parsed) || parsed < I2C_ADDRESS_MIN || parsed > I2C_ADDRESS_MAX) return;
-    patchI2c({ address: parsed });
+    if (Number.isNaN(parsed) || parsed < Domain.I2C_ADDRESS_MIN || parsed > Domain.I2C_ADDRESS_MAX) return;
+    Staged.stageI2c(s, 'address', parsed);
   }
 
 </script>
@@ -95,26 +59,26 @@
     <div class="subhdr">
       <span class="lhs">
         UART
-        <ToggleSwitch
+        <span class="stage-wrap" class:staged={s.staging.has('uart:enabled')}><ToggleSwitch
           checked={uart.enabled}
           ariaLabel={uart.enabled ? 'Disable UART control interface' : 'Enable UART control interface'}
-          onChange={onToggleUartEnabled}
-        />
+          onChange={(v) => Staged.stageUartEnabled(s, v)}
+        /></span>
       </span>
-      <span class="status" class:live={uart.enabled && status?.uartLive} class:down={uart.enabled && !status?.uartLive}>
-        {uart.enabled ? (status?.uartLive ? 'LIVE' : 'DOWN') : 'DISABLED'}
+      <span class="status" class:live={liveUart?.enabled && status?.uartLive} class:down={liveUart?.enabled && !status?.uartLive}>
+        {liveUart?.enabled ? (status?.uartLive ? 'LIVE' : 'DOWN') : 'DISABLED'}
       </span>
     </div>
     <div class="rows">
       <span class="pair">
         <span class="microlbl">TX</span>
-        <PinPicker
+        <span class="stage-wrap" class:staged={s.staging.has('uart:txPin')}><PinPicker
           value={uart.txPin}
           cells={uartTxCells}
           ariaLabel="UART TX pin"
           disabled={!uart.enabled}
-          onChange={onUartTxPin}
-        />
+          onChange={(p) => Staged.stageUart(s, 'txPin', p)}
+        /></span>
       </span>
       <span class="pair">
         <span class="microlbl">RX</span>
@@ -122,26 +86,26 @@
       </span>
       <span class="pair">
         <span class="microlbl">BAUD</span>
-        <select
+        <span class="stage-wrap" class:staged={s.staging.has('uart:baud')}><select
           class="sel"
           value={String(uart.baud)}
           aria-label="UART baud rate"
           disabled={!uart.enabled}
-          onchange={(e) => patchUart({ baud: Number((e.currentTarget as HTMLSelectElement).value) })}
+          onchange={(e) => Staged.stageUart(s, 'baud', Number((e.currentTarget as HTMLSelectElement).value))}
         >
-          {#each UART_COMMON_BAUDS as baud (baud)}
+          {#each Domain.UART_COMMON_BAUDS as baud (baud)}
             <option value={String(baud)}>{baud}</option>
           {/each}
-        </select>
+        </select></span>
       </span>
       <span class="pair">
         <span class="microlbl">NOTIFY</span>
-        <ToggleSwitch
+        <span class="stage-wrap" class:staged={s.staging.has('uart:notifyEnabled')}><ToggleSwitch
           ariaLabel="Push async notifications over UART"
           checked={uart.notifyEnabled}
           disabled={!uart.enabled}
-          onChange={(v) => patchUart({ notifyEnabled: v })}
-        />
+          onChange={(v) => Staged.stageUart(s, 'notifyEnabled', v)}
+        /></span>
       </span>
       {#if uartDown || uartStatusMsg}
         <div class="hint err">{uartStatusMsg ?? 'configured but not live (pin collision at boot?)'}</div>
@@ -153,26 +117,26 @@
     <div class="subhdr">
       <span class="lhs">
         I2C
-        <ToggleSwitch
+        <span class="stage-wrap" class:staged={s.staging.has('i2c:enabled')}><ToggleSwitch
           checked={i2c.enabled}
           ariaLabel={i2c.enabled ? 'Disable I2C control interface' : 'Enable I2C control interface'}
-          onChange={onToggleI2cEnabled}
-        />
+          onChange={(v) => Staged.stageI2cEnabled(s, v)}
+        /></span>
       </span>
-      <span class="status" class:live={i2c.enabled && status?.i2cLive} class:down={i2c.enabled && !status?.i2cLive}>
-        {i2c.enabled ? (status?.i2cLive ? 'LIVE' : 'DOWN') : 'DISABLED'}
+      <span class="status" class:live={liveI2c?.enabled && status?.i2cLive} class:down={liveI2c?.enabled && !status?.i2cLive}>
+        {liveI2c?.enabled ? (status?.i2cLive ? 'LIVE' : 'DOWN') : 'DISABLED'}
       </span>
     </div>
     <div class="rows">
       <span class="pair">
         <span class="microlbl">SDA</span>
-        <PinPicker
+        <span class="stage-wrap" class:staged={s.staging.has('i2c:sdaPin')}><PinPicker
           value={i2c.sdaPin}
           cells={i2cSdaCells}
           ariaLabel="I2C SDA pin"
           disabled={!i2c.enabled}
-          onChange={onI2cSdaPin}
-        />
+          onChange={(p) => Staged.stageI2c(s, 'sdaPin', p)}
+        /></span>
       </span>
       <span class="pair">
         <span class="microlbl">SCL</span>
@@ -180,14 +144,14 @@
       </span>
       <span class="pair">
         <span class="microlbl">ADDR</span>
-        <input
+        <span class="stage-wrap" class:staged={s.staging.has('i2c:address')}><input
           class="numfield"
           type="text"
           value={formatI2cAddr(i2c.address)}
           onchange={onAddressInput}
           disabled={!i2c.enabled}
           aria-label="I2C target address (hex)"
-        />
+        /></span>
       </span>
       {#if i2cDown || i2cStatusMsg}
         <div class="hint err">{i2cStatusMsg ?? 'configured but not live (pin collision at boot?)'}</div>

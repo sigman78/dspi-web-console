@@ -4,11 +4,11 @@ import 'virtual:palette.css';
 import App from './App.svelte';
 import MobileSplash from './components/chrome/MobileSplash.svelte';
 import {
-  activeSession,
+  sessionRecords,
   restoreSettings, startSettingsPersistence,
-  presetsDirty, endInitialBoot,
+  endInitialBoot,
 } from './state';
-import { bootMockFleet, bootReal, registerNavigatorReconnect } from './runtime';
+import { bootMockFleet, bootReal, registerNavigatorReconnect, hasPendingWork } from './runtime';
 import { Log, isMobileDevice } from './utils';
 import { activeMockProfiles } from './mockProfiles';
 
@@ -40,10 +40,9 @@ if (isMobileDevice()) {
 
   registerNavigatorReconnect();
 
-  // Warn on unsaved preset changes or unapplied staged edits before unload.
+  // Warn before unload while any adopted device holds pending work.
   window.addEventListener('beforeunload', (e) => {
-    const s = activeSession();
-    if (s && (presetsDirty(s) || s.staging.entries.length > 0)) {
+    if ([...sessionRecords().values()].some((r) => hasPendingWork(r.session))) {
       e.preventDefault();
       e.returnValue = '';
     }

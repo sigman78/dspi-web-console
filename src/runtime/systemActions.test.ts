@@ -141,6 +141,22 @@ describe('setDacHwMute', () => {
     await vi.runAllTimersAsync();
   });
 
+  it('restores the previous value and reports failure when the send throws', async () => {
+    const device = initializedDevice({
+      setDacHwMute: vi.fn(async () => { throw new Error('stall'); }),
+      getDacHwMute: vi.fn(),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    const bulk = parseBulkParams(makeBulk());
+    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    const before = { ...liveMirror().current!.dacHwMute };
+    const pending = actions.setDacHwMute(activeSession()!, { enabled: true, pin: 6 });
+    await vi.runAllTimersAsync();
+    expect(await pending).toBe(false);
+    expect(liveMirror().current?.dacHwMute).toEqual(before);
+  });
+
   it('warns and reverts when the device swallows an enable', async () => {
     const rejected: DacHwMute = { enabled: false, activeLow: false, pin: 0, holdMs: 0, releaseMs: 0 };
     const device = initializedDevice({

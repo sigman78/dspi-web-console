@@ -78,6 +78,7 @@
   }
   .noveau-shell > :global(*) { min-width: 0; min-height: 0; overflow: hidden; }
   .noveau-shell > :global(.crail) { overflow: visible; }
+  .noveau-shell > :global(.status) { overflow: visible; }
   .crail {
     display: flex;
     flex-direction: column;

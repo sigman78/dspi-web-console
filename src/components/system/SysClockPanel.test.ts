@@ -1,15 +1,21 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
+import { createStagingState } from '@/state';
 import { SysClockMode, SYS_CLOCK_VREG_DEFAULT, PlatformType } from '@/domain';
 
 const applySysClock = vi.fn();
 const refreshSysClock = vi.fn();
 
-vi.mock('@/runtime', () => ({
-  applySysClock: (...a: unknown[]) => applySysClock(...a),
-  refreshSysClock: (...a: unknown[]) => refreshSysClock(...a),
-}));
+vi.mock('@/runtime', async () => {
+  const staged = await vi.importActual<typeof import('@/runtime/stagedActions')>('@/runtime/stagedActions');
+  return {
+    stageSysClockMode: staged.stageSysClockMode,
+    stageSysClockVreg: staged.stageSysClockVreg,
+    applySysClock: (...a: unknown[]) => applySysClock(...a),
+    refreshSysClock: (...a: unknown[]) => refreshSysClock(...a),
+  };
+});
 
 import SysClockPanel from './SysClockPanel.svelte';
 
@@ -30,7 +36,8 @@ function makeSession(o: { status?: object | null; platform?: number; busy?: bool
   return {
     sysClock: { status: 'status' in o ? o.status : makeStatus(), busy: o.busy ?? false },
     mirror: { current: { platform: { type: o.platform ?? PlatformType.RP2350 } } },
-  } as unknown;
+    staging: createStagingState(),
+  } as any;
 }
 
 function renderPanel(session: unknown) {
@@ -77,27 +84,22 @@ describe('SysClockPanel', () => {
     expect(labels).toContain('1.30 V');
   });
 
-  test('switching to a mode whose default exceeds an explicit voltage resets voltage to DEFAULT', async () => {
-    renderPanel(makeSession());
-    const volt = screen.getByRole('combobox', { name: 'Core voltage' }) as HTMLSelectElement;
-    await fireEvent.change(volt, { target: { value: '12' } });
+  test('switching to a mode whose default exceeds an explicit voltage stages a visible DEFAULT voltage', async () => {
+    const session = makeSession({ status: makeStatus({ storedVregSel: 12 }) });
+    renderPanel(session);
     await fireEvent.click(screen.getByRole('radio', { name: '384' }));
     expect((screen.getByRole('combobox', { name: 'Core voltage' }) as HTMLSelectElement).value).toBe(String(SYS_CLOCK_VREG_DEFAULT));
+    expect(session.staging.get('sysClock:vreg')?.to).toBe('default');
+    expect(session.staging.get('sysClock:mode')?.disruptive).toBeTruthy();
   });
 
-  test('APPLY is disabled while pending matches stored, and enables after a mode change', async () => {
-    renderPanel(makeSession());
-    expect(screen.getByRole('button', { name: 'APPLY' }).getAttribute('aria-disabled')).toBe('true');
+  test('picking a mode stages it without writing, and the panel has no APPLY of its own', async () => {
+    const session = makeSession();
+    renderPanel(session);
     await fireEvent.click(screen.getByRole('radio', { name: '384' }));
-    expect(screen.getByRole('button', { name: 'APPLY' }).getAttribute('aria-disabled')).toBe('false');
-  });
-
-  test('confirming APPLY sends the pending mode and voltage', async () => {
-    renderPanel(makeSession());
-    await fireEvent.click(screen.getByRole('radio', { name: '384' }));
-    await fireEvent.click(screen.getByRole('button', { name: 'APPLY' }));
-    await fireEvent.click(screen.getByRole('button', { name: /CONFIRM/ }));
-    expect(applySysClock).toHaveBeenCalledWith(expect.anything(), SysClockMode.Mhz384, SYS_CLOCK_VREG_DEFAULT);
+    expect(session.staging.has('sysClock:mode')).toBe(true);
+    expect(applySysClock).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'APPLY' })).toBeNull();
   });
 
   test('fallback banner appears with RETRY (stored) and REVERT (safe default) actions', async () => {
@@ -121,21 +123,11 @@ describe('SysClockPanel', () => {
   test('busy apply disables every control including the fallback actions', () => {
     const status = makeStatus({ storedMode: SysClockMode.Mhz480, fallbackActive: true });
     renderPanel(makeSession({ status, busy: true }));
-    expect(screen.getByRole('button', { name: 'APPLY' }).getAttribute('aria-disabled')).toBe('true');
     expect((screen.getByRole('radio', { name: '384' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('combobox', { name: 'Core voltage' }) as HTMLSelectElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'RETRY' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'REVERT' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'REFRESH' }) as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  test('the selection survives an apply that the device did not accept', async () => {
-    renderPanel(makeSession());
-    await fireEvent.click(screen.getByRole('radio', { name: '384' }));
-    await fireEvent.click(screen.getByRole('button', { name: 'APPLY' }));
-    await fireEvent.click(screen.getByRole('button', { name: /CONFIRM/ }));
-    await Promise.resolve();
-    expect((screen.getByRole('radio', { name: '384' }) as HTMLButtonElement).getAttribute('aria-checked')).toBe('true');
   });
 
   test('REFRESH re-reads the status through the runtime verb', async () => {

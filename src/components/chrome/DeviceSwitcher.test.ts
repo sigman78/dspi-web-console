@@ -9,10 +9,10 @@ vi.mock('../../runtime/boot', () => ({
 }));
 
 vi.mock('../../runtime/deviceService', () => ({
-  activateSession: vi.fn().mockResolvedValue(undefined),
+  switchSession: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { activateSession, connectRequested, webUsbUnsupportedReason } from '@/runtime';
+import { switchSession, connectRequested, webUsbUnsupportedReason } from '@/runtime';
 import {
   dispatch, mintConnId, resetAppState, makeReadySession, noteAdoptFailure, adoptFailures,
   type ConnId,
@@ -28,7 +28,7 @@ function synced(serial: string, hwName = 'RP2350'): ConnId {
 beforeEach(() => {
   resetAppState();
   vi.mocked(webUsbUnsupportedReason).mockReturnValue(null);
-  vi.mocked(activateSession).mockClear();
+  vi.mocked(switchSession).mockClear();
   vi.mocked(connectRequested).mockClear();
 });
 
@@ -52,18 +52,18 @@ describe('DeviceSwitcher — device chips', () => {
     render(DeviceSwitcher);
     await fireEvent.click(screen.getByRole('button', { name: /^AAA/ }));
 
-    expect(activateSession).toHaveBeenCalledTimes(1);
-    expect(activateSession).toHaveBeenCalledWith(idA);
+    expect(switchSession).toHaveBeenCalledTimes(1);
+    expect(switchSession).toHaveBeenCalledWith(idA);
   });
 
-  test('clicking the active chip does not call activateSession', async () => {
+  test('clicking the active chip does not call switchSession', async () => {
     synced('AAA');
     synced('BBB');
 
     render(DeviceSwitcher);
     await fireEvent.click(screen.getByRole('button', { name: /^BBB/ }));
 
-    expect(activateSession).not.toHaveBeenCalled();
+    expect(switchSession).not.toHaveBeenCalled();
   });
 });
 

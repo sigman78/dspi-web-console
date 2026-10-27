@@ -172,13 +172,18 @@ select.sel:disabled { opacity: var(--dim-disabled); cursor: default; }
   color: var(--err);
 }
 
-/* .staged — small accent dot marking a control holding a pending (unapplied)
-   staged-apply value (see state/staging.svelte.ts). Apply directly to a chip/
-   toggle/segmented-option; wrap a control with no class prop of its own
-   (PinPicker, SegmentedSelect) in a `.stage-wrap` span instead so the dot has
-   something to anchor to. */
-.staged { position: relative; }
-.staged::after {
+/* Pending-state vocabulary (one dot recipe, tone by class):
+   .draft  — accent dot: console-local edit, not yet sent to the device
+             (control-surface drafts).
+   .staged — warn dot: value awaiting the status-line APPLY
+             (see state/staging.svelte.ts).
+   Unsaved (device RAM differs from flash) is a warn underline plus a save
+   icon, not a dot. Apply a dot class directly to a chip/toggle/segmented
+   option; wrap a control with no class prop of its own (PinPicker,
+   SegmentedSelect) in a `.stage-wrap` span so the dot has something to
+   anchor to. */
+.draft, .staged { position: relative; }
+.draft::after, .staged::after {
   content: '';
   position: absolute;
   top: -3px;
@@ -186,9 +191,11 @@ select.sel:disabled { opacity: var(--dim-disabled); cursor: default; }
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 4px color-mix(in oklab, var(--accent) var(--tint-glow), transparent);
+  background: var(--pending);
+  box-shadow: 0 0 4px color-mix(in oklab, var(--pending) var(--tint-glow), transparent);
 }
+.draft { --pending: var(--accent); }
+.staged { --pending: var(--warn); }
 .stage-wrap { display: inline-block; }
 
 /* Section sub-header inside a panel body (border-separated). */

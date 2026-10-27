@@ -3,8 +3,7 @@
   // display's own settings blob (mode/dwell/overlay/alignment) and up to 16
   // PageDraft rows, one per display page slot. Sibling of CsGroupsPanel/
   // CsMacrosPanel -- same fw dirty flag; save/discard live in the CHANGES
-  // panel. No parent of its own so it watches cs.revertEpoch instead of a
-  // reset prop. Config/pages are live whether or not a display is attached
+  // panel. Config/pages are live whether or not a display is attached
   // (fw accepts them in advance); the status row/poll only make sense once a
   // binding is actually running.
   import { tick, untrack } from 'svelte';
@@ -35,8 +34,11 @@
     ? 'Level bar'
     : 'Level bar. Note: this fw build drops bars on reboot');
 
-  let cfgDraft = $state<CfgDraft | null>(null);
-  const pageDrafts = $state<Record<number, PageDraft>>({});
+  // One 'display' draft family: the settings blob under CFG, pages under their index.
+  const CFG = -1;
+  const cfgDrafts = s.drafts.of<CfgDraft>('display');
+  const pageDrafts = s.drafts.of<PageDraft>('display');
+  const cfgDraft = $derived(cfgDrafts.draftOf(CFG) ?? null);
   let applying = $state(false);
 
   const maxPages = $derived(Math.min(cs.displayLimits?.maxPages ?? 0, Domain.CS_MAX_DISPLAY_PAGES));
@@ -45,14 +47,6 @@
   let selPage = $state(0);
   $effect(() => {
     if (maxPages > 0 && selPage >= maxPages) selPage = maxPages - 1;
-  });
-
-  $effect(() => {
-    void cs.revertEpoch;   // the ONLY dependency -- cleanup must not track drafts
-    untrack(() => {
-      cfgDraft = null;
-      for (const k of Object.keys(pageDrafts)) delete pageDrafts[Number(k)];
-    });
   });
 
   // A live, active Display binding slot -- from cs.bindings + the activeMask,
@@ -120,18 +114,18 @@
   function editCfg(fn: (d: CfgDraft) => void): void {
     const d = cfgDraft ?? CsDisplayDraft.cfgDraftFromLive(cfgSource);
     fn(d);
-    cfgDraft = d;
+    cfgDrafts.editDraft(CFG, d);
   }
   const cfgDirty = $derived(!CsDisplayDraft.cfgsEqual(CsDisplayDraft.buildCfg(cfgOf()), liveCfg));
   function canApplyCfg(): boolean {
     return cfgDirty && Domain.validateCsDisplayCfg(CsDisplayDraft.buildCfg(cfgOf())) === 0;
   }
-  function revertCfg(): void { cfgDraft = null; }
+  function revertCfg(): void { cfgDrafts.revert(CFG); }
 
   async function applyCfg(): Promise<void> {
     applying = true;
     try {
-      if (await applyCsDisplayCfg(s, CsDisplayDraft.buildCfg(cfgOf()))) cfgDraft = null;
+      if (await applyCsDisplayCfg(s, CsDisplayDraft.buildCfg(cfgOf()))) cfgDrafts.remove(CFG);
     } finally {
       applying = false;
     }
@@ -147,20 +141,20 @@
   // --- Pages (PageDraft[]) ---
 
   function pageDraftOf(i: number): PageDraft | null {
-    const d = pageDrafts[i];
+    const d = pageDrafts.draftOf(i);
     if (d) return d;
     const live = cs.displayPages[i];
     return live ? CsDisplayDraft.pageDraftFromLive(live) : null;
   }
 
   function editPageDraft(i: number, fn: (d: PageDraft) => void): void {
-    const d = pageDrafts[i] ?? pageDraftOf(i) ?? CsDisplayDraft.defaultPageDraft(cs.nouns);
+    const d = pageDrafts.draftOf(i) ?? pageDraftOf(i) ?? CsDisplayDraft.defaultPageDraft(cs.nouns);
     fn(d);
-    pageDrafts[i] = d;
+    pageDrafts.editDraft(i, d);
   }
 
   function isPageDirty(i: number): boolean {
-    const d = pageDrafts[i];
+    const d = pageDrafts.draftOf(i);
     if (!d) return false;
     const live = cs.displayPages[i];
     if (!live) return true;
@@ -168,33 +162,33 @@
   }
 
   function canApplyPage(i: number): boolean {
-    const d = pageDrafts[i];
+    const d = pageDrafts.draftOf(i);
     if (!d || !isPageDirty(i)) return false;
     return Domain.validateCsDisplayPage(CsDisplayDraft.buildPage(d, cs.nouns), cs.nouns, cs.groups) === 0;
   }
 
   function addPage(i: number): void {
-    pageDrafts[i] = CsDisplayDraft.defaultPageDraft(cs.nouns);
+    pageDrafts.editDraft(i, CsDisplayDraft.defaultPageDraft(cs.nouns));
   }
 
-  function revertPage(i: number): void { delete pageDrafts[i]; }
+  function revertPage(i: number): void { pageDrafts.revert(i); }
 
   async function applyPage(i: number): Promise<void> {
-    const d = pageDrafts[i];
+    const d = pageDrafts.draftOf(i);
     if (!d) return;
     applying = true;
     try {
-      if (await applyCsDisplayPage(s, i, CsDisplayDraft.buildPage(d, cs.nouns))) delete pageDrafts[i];
+      if (await applyCsDisplayPage(s, i, CsDisplayDraft.buildPage(d, cs.nouns))) pageDrafts.remove(i);
     } finally {
       applying = false;
     }
   }
 
   async function removePage(i: number): Promise<void> {
-    if (!cs.displayPages[i]) { delete pageDrafts[i]; return; }
+    if (!cs.displayPages[i]) { pageDrafts.remove(i); return; }
     applying = true;
     try {
-      if (await clearCsDisplayPage(s, i)) delete pageDrafts[i];
+      if (await clearCsDisplayPage(s, i)) pageDrafts.remove(i);
     } finally {
       applying = false;
     }
@@ -226,12 +220,13 @@
   }
 
   // Seeded fw defaults are not a user edit: only an actual cfg draft counts.
-  const stagedCount = $derived(
-    (cfgDraft != null && cfgDirty ? 1 : 0) + Array.from({ length: maxPages }, (_, i) => i).filter((i) => isPageDirty(i)).length,
-  );
   $effect(() => {
-    s.controlSurfaces.staged.display = stagedCount;
-    return () => { s.controlSurfaces.staged.display = 0; };
+    const cfg = cfgDraft != null ? cfgDirty : null;
+    const pages = pageDrafts.keys().filter((i) => i >= 0).map((i) => [i, isPageDirty(i)] as const);
+    untrack(() => {
+      if (cfg != null) cfgDrafts.setDirty(CFG, cfg);
+      for (const [i, dirty] of pages) pageDrafts.setDirty(i, dirty);
+    });
   });
 </script>
 
@@ -378,7 +373,7 @@
           {#each Array.from({ length: maxPages }, (_, i2) => i2) as i2 (i2)}
             <button type="button" role="tab" class="pchip" id={`cs-display-page-tab-${i2}`}
               class:sel={i2 === selPage} class:set={pageDraftOf(i2) != null}
-              class:showing={cs.displayStatus?.currentPage === i2} class:staged={isPageDirty(i2)}
+              class:showing={cs.displayStatus?.currentPage === i2} class:draft={isPageDirty(i2)}
               aria-selected={i2 === selPage} aria-controls="cs-display-page-panel" tabindex={i2 === selPage ? 0 : -1}
               aria-label={`Page ${i2 + 1}`} title={pageChipTitle(i2)}
               onclick={() => { selPage = i2; }}>{i2 + 1}</button>
@@ -388,7 +383,7 @@
         <div class="slot" class:detached={detailTarget != null} id="cs-display-page-panel" role="tabpanel"
           aria-labelledby={`cs-display-page-tab-${i}`} use:portal={detailTarget}>
           <div class="slothead">
-            <span class="stitle" class:showing class:staged
+            <span class="stitle" class:showing class:draft={staged}
               title={staged ? 'Unapplied changes — APPLY to preview them live' : undefined}
               >PAGE {i + 1}</span>
             {#if showing}<span class="tag">SHOWING</span>{/if}
@@ -549,17 +544,7 @@
   .pchip.sel { color: var(--text); border-color: var(--accent); background: color-mix(in oklab, var(--accent) var(--tint), transparent); }
   .pchip.showing { color: var(--ok); }
   .pchip.showing.sel { border-color: var(--ok); background: color-mix(in oklab, var(--ok) var(--tint), transparent); }
-  .pchip.staged::after {
-    content: '';
-    position: absolute;
-    top: -2px;
-    right: -2px;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 4px var(--accent);
-  }
+  .pchip.draft::after { top: -2px; right: -2px; }
   .slothead {
     display: flex;
     align-items: center;

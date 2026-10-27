@@ -2,8 +2,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import KV from '@/components/chrome/KV.svelte';
-  import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
-  import { applySysClock, refreshSysClock } from '@/runtime';
+  import { applySysClock, refreshSysClock, stageSysClockMode, stageSysClockVreg } from '@/runtime';
   import * as Domain from '@/domain';
   import { getSession } from '@/components/sessionContext';
 
@@ -17,16 +16,8 @@
     platform === Domain.PlatformType.RP2350 ? Domain.SYS_CLOCK_VREG_CEILING_RP2350 : Domain.SYS_CLOCK_VREG_CEILING_RP2040,
   );
 
-  // Local edits override the device-derived selection. They are held through
-  // the whole apply (so the controls keep showing the user's intent, not the
-  // mid-apply device state) and cleared only once the device confirms the
-  // stored setting matches -- after a rejected SET the selection survives for
-  // the user to adjust.
-  let modeOverride = $state<Domain.SysClockMode | null>(null);
-  let vregOverride = $state<number | null>(null);
-
-  const pendingMode = $derived(modeOverride ?? st?.storedMode ?? Domain.SysClockMode.Mhz307p2);
-  const pendingVreg = $derived(vregOverride ?? st?.storedVregSel ?? Domain.SYS_CLOCK_VREG_DEFAULT);
+  const pendingMode = $derived(s.staging.valueOf<Domain.SysClockMode>('sysClock:mode', st?.storedMode ?? Domain.SysClockMode.Mhz307p2));
+  const pendingVreg = $derived(s.staging.valueOf('sysClock:vreg', st?.storedVregSel ?? Domain.SYS_CLOCK_VREG_DEFAULT));
 
   const modeOptions = Domain.SYS_CLOCK_MODE_MHZ.map((mhz, mode) => ({
     value: mode as Domain.SysClockMode,
@@ -51,45 +42,17 @@
     : '—');
   const pendingApply = $derived(st != null && st.activeMode !== st.storedMode && !st.fallbackActive);
 
-  const isOverclock = $derived(pendingMode > Domain.SysClockMode.Mhz307p2);
-  const disabledReason = $derived(
-    s.sysClock.busy ? 'A system clock change is already applying.'
-    : st && pendingMode === st.storedMode && pendingVreg === st.storedVregSel ? 'Select a different clock mode or voltage first.'
-    : undefined,
-  );
-
-  function onModeChange(mode: Domain.SysClockMode) {
-    const defaultVreg = Domain.SYS_CLOCK_MODE_DEFAULT_VREG[mode];
-    if (pendingVreg !== Domain.SYS_CLOCK_VREG_DEFAULT && pendingVreg < defaultVreg) {
-      vregOverride = Domain.SYS_CLOCK_VREG_DEFAULT;
-    }
-    modeOverride = mode;
-  }
-
   function onVregChange(e: Event) {
-    vregOverride = Number((e.currentTarget as HTMLSelectElement).value);
-  }
-
-  async function sendAndSettle(mode: Domain.SysClockMode, vreg: number) {
-    await applySysClock(s, mode, vreg);
-    const now = s.sysClock.status;
-    if (now && now.storedMode === mode && now.storedVregSel === vreg) {
-      modeOverride = null;
-      vregOverride = null;
-    }
-  }
-
-  function onApply() {
-    void sendAndSettle(pendingMode, pendingVreg);
+    stageSysClockVreg(s, Number((e.currentTarget as HTMLSelectElement).value));
   }
 
   function onRetry() {
     if (!st) return;
-    void sendAndSettle(st.storedMode, st.storedVregSel);
+    void applySysClock(s, st.storedMode, st.storedVregSel);
   }
 
   function onRevert() {
-    void sendAndSettle(Domain.SysClockMode.Mhz307p2, Domain.SYS_CLOCK_VREG_DEFAULT);
+    void applySysClock(s, Domain.SysClockMode.Mhz307p2, Domain.SYS_CLOCK_VREG_DEFAULT);
   }
 </script>
 
@@ -117,41 +80,32 @@
     <div class="rows">
       <div class="row">
         <span class="microlbl">MODE</span>
-        <SegmentedSelect
-          value={pendingMode}
-          options={modeOptions}
-          ariaLabel="System clock mode"
-          disabled={s.sysClock.busy}
-          onChange={onModeChange}
-        />
+        <span class="stage-wrap" class:staged={s.staging.has('sysClock:mode')}>
+          <SegmentedSelect
+            value={pendingMode}
+            options={modeOptions}
+            ariaLabel="System clock mode"
+            disabled={s.sysClock.busy}
+            onChange={(m) => stageSysClockMode(s, m)}
+          />
+        </span>
       </div>
 
       <div class="row">
         <span class="microlbl">VOLTAGE</span>
-        <select
-          class="voltsel"
-          disabled={s.sysClock.busy}
-          aria-label="Core voltage"
-          value={String(pendingVreg)}
-          onchange={onVregChange}
-        >
-          {#each voltageOptions as opt (opt.value)}
-            <option value={String(opt.value)}>{opt.label}</option>
-          {/each}
-        </select>
-      </div>
-
-      <div class="row apply-row">
-        <ConfirmButton
-          label="APPLY"
-          confirmLabel="CONFIRM — AUDIO MUTES BRIEFLY"
-          tone={isOverclock ? 'danger' : 'warn'}
-          toneAlways
-          onConfirm={onApply}
-          disabled={disabledReason != null}
-          disabledReason={disabledReason}
-          title="Applies the selected system clock. Audio mutes briefly while the device reboots the clock."
-        />
+        <span class="stage-wrap" class:staged={s.staging.has('sysClock:vreg')}>
+          <select
+            class="voltsel"
+            disabled={s.sysClock.busy}
+            aria-label="Core voltage"
+            value={String(pendingVreg)}
+            onchange={onVregChange}
+          >
+            {#each voltageOptions as opt (opt.value)}
+              <option value={String(opt.value)}>{opt.label}</option>
+            {/each}
+          </select>
+        </span>
       </div>
     </div>
 
@@ -173,7 +127,6 @@
 <style>
   .rows { padding: 14px; display: grid; grid-template-columns: 4.5rem max-content; gap: 10px 10px; align-items: center; }
   .row { display: contents; }
-  .apply-row { display: flex; grid-column: 1 / -1; justify-content: flex-end; margin-top: 2px; }
   .voltsel {
     font-family: var(--font-mono);
     font-size: 10px;

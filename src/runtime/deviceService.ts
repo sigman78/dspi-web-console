@@ -9,7 +9,7 @@ import {
   settings, reconcileSelectedChannel, selectionVisibilityOf,
   pushNotice,
   dispatch, makeReadySession, activeSession, activeRecord, recordOf, mintConnId,
-  clearAdoptFailure,
+  clearAdoptFailure, presetsDirty, askBoundary,
   type ReadySession, type ConnId, type DeviceRecord,
 } from '@/state';
 import { Log, errMessage } from '@/utils';
@@ -293,6 +293,27 @@ export async function activateSession(id: ConnId): Promise<void> {
   // lastSerial now means "which adopted device to activate at boot", so every
   // successful switch -- not just a fresh adoption -- updates it.
   settings.lastSerial = rec.session.info.serial;
+}
+
+// Anything on this session that a switch-away or unload would strand: edits
+// not yet applied (staged), console-local drafts, or RAM that differs from flash.
+export function hasPendingWork(s: ReadySession): boolean {
+  return presetsDirty(s) || s.staging.entries.length > 0 || s.drafts.dirtyCount() > 0;
+}
+
+// User-initiated switch: asks first when the active device holds pending work.
+// Resolves false when the user cancels.
+export async function switchSession(id: ConnId): Promise<boolean> {
+  const prev = activeSession();
+  if (prev && activeRecord()?.id !== id && hasPendingWork(prev)) {
+    const choice = await askBoundary({
+      title: 'Pending changes',
+      message: 'This device has changes that are not applied or not saved. They stay with it, but nothing is sent while another device is active.',
+    });
+    if (choice === 'cancel') return false;
+  }
+  await activateSession(id);
+  return true;
 }
 
 export async function wireUpConnection(

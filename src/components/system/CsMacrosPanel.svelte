@@ -1,8 +1,7 @@
 <script lang="ts">
   // Macros (caps v9+): a named sequence of up to CS_MAX_MACRO_STEPS steps,
   // fired by CS_NOUN_MACRO or the FIRE chip here. Sibling of CsGroupsPanel --
-  // same fw dirty flag; save/discard live in the CHANGES panel. No parent of
-  // its own so it watches cs.revertEpoch instead of a reset prop.
+  // same fw dirty flag; save/discard live in the CHANGES panel.
   import { untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
@@ -25,14 +24,14 @@
   const cs = $derived(s.controlSurfaces);
   const caps = $derived(s.controlSurfaces.caps);
 
-  const drafts = $state<Record<number, MacroDraft>>({});
+  const drafts = s.drafts.of<MacroDraft>('macros');
   let applying = $state(false);
 
   const maxSlots = $derived(Math.min(caps?.maxMacros ?? 0, Domain.CS_MAX_MACROS));
   const maxSteps = $derived(Math.min(caps?.maxMacroSteps ?? 0, Domain.CS_MAX_MACRO_STEPS));
   const visibleSlots = $derived(
     Array.from({ length: maxSlots }, (_, i) => i)
-      .filter((i) => cs.macros[i] != null || drafts[i] != null),
+      .filter((i) => cs.macros[i] != null || drafts.draftOf(i) != null),
   );
   const allUsed = $derived(visibleSlots.length >= maxSlots);
 
@@ -46,13 +45,6 @@
   function toggleSlot(i: number): void {
     openSlot = expanded === i ? -1 : i;
   }
-
-  $effect(() => {
-    void cs.revertEpoch;   // the ONLY dependency -- cleanup must not track drafts
-    untrack(() => {
-      for (const k of Object.keys(drafts)) delete drafts[Number(k)];
-    });
-  });
 
   // Running-macro poll: while a macro is running, re-read ext status every
   // 500 ms so the pill/step hint track the sequencer. A timeout chain (next
@@ -73,13 +65,13 @@
   });
 
   function draftOf(i: number): MacroDraft {
-    return drafts[i] ?? CsMacroDraft.macroDraftFromLive(cs.macros[i]!, cs.nouns);
+    return drafts.draftOf(i) ?? CsMacroDraft.macroDraftFromLive(cs.macros[i]!, cs.nouns);
   }
 
   function editDraft(i: number, fn: (d: MacroDraft) => void): void {
-    const d = drafts[i] ?? CsMacroDraft.macroDraftFromLive(cs.macros[i]!, cs.nouns);
+    const d = drafts.draftOf(i) ?? CsMacroDraft.macroDraftFromLive(cs.macros[i]!, cs.nouns);
     fn(d);
-    drafts[i] = d;
+    drafts.editDraft(i, d);
   }
 
   function editStep(i: number, k: number, fn: (d: StepDraft) => void): void {
@@ -91,7 +83,7 @@
   function isDirty(i: number): boolean {
     const live = cs.macros[i];
     if (!live) return true;                        // NEW: never applied
-    const d = drafts[i];
+    const d = drafts.draftOf(i);
     if (!d) return false;
     return !CsMacroDraft.macrosEqual(CsMacroDraft.buildMacro(d, cs.nouns), live);
   }
@@ -110,14 +102,14 @@
   }
 
   function firstFreeSlot(): number | null {
-    for (let i = 0; i < maxSlots; i++) if (!cs.macros[i] && !drafts[i]) return i;
+    for (let i = 0; i < maxSlots; i++) if (!cs.macros[i] && !drafts.draftOf(i)) return i;
     return null;
   }
 
   function addMacro(): void {
     const i = firstFreeSlot();
     if (i == null) return;
-    drafts[i] = { name: '', steps: [] };
+    drafts.editDraft(i, { name: '', steps: [] });
     openSlot = i;
   }
 
@@ -157,31 +149,31 @@
   // all-zero macro and the card would silently vanish (same guard as the
   // GROUPS panel's empty member mask).
   function canApply(i: number): boolean {
-    const d = drafts[i];
+    const d = drafts.draftOf(i);
     if (!d || !isDirty(i) || d.steps.length === 0) return false;
     return Domain.validateCsMacro(CsMacroDraft.buildMacro(d, cs.nouns), cs.nouns, cs.groups) === 0;
   }
 
   async function apply(i: number): Promise<void> {
-    const d = drafts[i];
+    const d = drafts.draftOf(i);
     if (!d) return;
     applying = true;
     try {
-      if (await applyCsMacro(s, i, CsMacroDraft.buildMacro(d, cs.nouns))) delete drafts[i];
+      if (await applyCsMacro(s, i, CsMacroDraft.buildMacro(d, cs.nouns))) drafts.remove(i);
     } finally {
       applying = false;
     }
   }
 
   function revert(i: number): void {
-    delete drafts[i];
+    drafts.revert(i);
   }
 
   async function remove(i: number): Promise<void> {
-    if (!cs.macros[i]) { delete drafts[i]; return; }
+    if (!cs.macros[i]) { drafts.remove(i); return; }
     applying = true;
     try {
-      if (await clearCsMacro(s, i)) delete drafts[i];
+      if (await clearCsMacro(s, i)) drafts.remove(i);
     } finally {
       applying = false;
     }
@@ -197,10 +189,11 @@
     try { await cancelCsMacro(s); } finally { applying = false; }
   }
 
-  const stagedCount = $derived(visibleSlots.filter((i) => isDirty(i)).length);
   $effect(() => {
-    s.controlSurfaces.staged.macros = stagedCount;
-    return () => { s.controlSurfaces.staged.macros = 0; };
+    for (const i of drafts.keys()) {
+      const dirty = isDirty(i);
+      untrack(() => drafts.setDirty(i, dirty));
+    }
   });
 
   function nounOptions(): number[] { return CsMacroDraft.stepNounOptions(cs.nouns); }

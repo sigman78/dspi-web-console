@@ -43,6 +43,7 @@
   {pages}
   {page}
   onselect={(k) => { noveauUi.controlPage = k; }}
+  staged={(k) => s.staging.countOn(k) > 0}
   right={strip}
 >
   {#if cs}

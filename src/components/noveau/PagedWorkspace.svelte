@@ -1,11 +1,12 @@
 <script lang="ts" generics="K extends string">
   import type { Snippet } from 'svelte';
 
-  const { label, pages, page, onselect, right, children }: {
+  const { label, pages, page, onselect, staged, right, children }: {
     label: string;
     pages: { key: K; label: string }[];
     page: K;
     onselect: (key: K) => void;
+    staged?: (key: K) => boolean;
     right?: Snippet;
     children: Snippet;
   } = $props();
@@ -18,6 +19,7 @@
         <button
           type="button"
           class="pg"
+          class:staged={staged?.(p.key)}
           aria-pressed={p.key === page}
           onclick={() => onselect(p.key)}
         >{p.label}</button>
@@ -70,6 +72,7 @@
     white-space: nowrap;
   }
   .pg:last-child { border-right: none; }
+  .pg.staged::after { top: 6px; right: 6px; }
   .pg:hover:not([aria-pressed='true']) { color: var(--text); background: var(--wash); }
   .pg[aria-pressed='true'] {
     color: var(--text);

@@ -3,49 +3,25 @@
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import KV from '@/components/chrome/KV.svelte';
   import PinPicker from './PinPicker.svelte';
-  import { setAdatEnable, setAdatPin } from '@/runtime';
-  import { pickerCells, assignablePins, isAssignablePin, pinsInUse, liveCsPinConfigs } from '@/domain';
+  import { stageAdatEnabled, stageAdatPin, stagedCtrlPins } from '@/runtime';
+  import { pickerCells } from '@/domain';
   import { Wire } from '@/protocol';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
 
-  const snap = $derived(s.mirror.current);
+  const live = $derived(s.mirror.current);
+  const snap = $derived(live ? s.staging.overlaySnapshot(live) : null);
   const cfg = $derived(snap?.adat);
   const status = $derived(s.telemetry.adatStatus);
   const features = $derived(s.device.capabilities.features);
-  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
+  const ctrlPins = $derived(stagedCtrlPins(s));
   const editable = $derived(cfg != null && cfg.enabled);
 
   // pin 0 (never explicitly configured) means "platform default" (GPIO 12).
   const effPin = $derived(cfg ? (cfg.pin || 12) : 0);
 
   function fmtRate(ok: boolean): string { return ok ? '44.1/48 OK' : 'PARKED — RATE > 48 KHZ'; }
-
-  // The firmware refuses to enable ADAT on a pin another peripheral already
-  // holds, so the enable write must ship a usable pin up front: the stored
-  // one when free, else the first free assignable pin (mirrors
-  // DacHwMutePanel.onToggleEnabled). Failure of either step surfaces via the
-  // writeChecked toasts already wired into setAdatPin/setAdatEnable.
-  async function onToggleEnabled() {
-    if (!cfg || !snap) return;
-    if (cfg.enabled) {
-      setAdatEnable(s, false);
-      return;
-    }
-    const wantPin = cfg.pin || 12;
-    const inUse = pinsInUse(snap, ctrlPins);
-    const free = (p: number) => isAssignablePin(snap.platform.type, p, snap.platform.channelModel) && !inUse.has(p);
-    // When the ADAT input borrowed our pin (loopback), relocating would break
-    // the loopback silently -- ship the enable as-is and let the device's
-    // PIN_IN_USE refusal explain (the input must be disabled first).
-    if (!free(wantPin) && inUse.get(wantPin) !== 'ADAT IN') {
-      const pin = assignablePins(snap.platform.type, snap.platform.channelModel).find(free) ?? wantPin;
-      const ok = await setAdatPin(s, pin);
-      if (!ok) return;
-    }
-    setAdatEnable(s, true);
-  }
 </script>
 
 <Panel title="ADAT OUTPUT">
@@ -56,32 +32,36 @@
         disabled={!editable}
         title="Reset to defaults"
         aria-label="Reset ADAT output pin to default"
-        onclick={() => setAdatPin(s, Wire.Const.PIN_RESET_TO_DEFAULT)}
+        onclick={() => stageAdatPin(s, Wire.Const.PIN_RESET_TO_DEFAULT)}
       >↺</button>
     {/if}
-    <ToggleSwitch
-      checked={cfg?.enabled ?? false}
-      disabled={!cfg}
-      ariaLabel={cfg?.enabled ? 'Disable ADAT output' : 'Enable ADAT output'}
-      onChange={() => onToggleEnabled()}
-    />
+    <span class="stage-wrap" class:staged={s.staging.has('adatEnable')}>
+      <ToggleSwitch
+        checked={cfg?.enabled ?? false}
+        disabled={!cfg}
+        ariaLabel={cfg?.enabled ? 'Disable ADAT output' : 'Enable ADAT output'}
+        onChange={(v) => stageAdatEnabled(s, v)}
+      />
+    </span>
   {/snippet}
 
   {#if cfg && snap}
     <div class="rows">
       <div class="row">
         <span class="microlbl">GPIO PIN</span>
-        <PinPicker
-          value={effPin}
-          cells={pickerCells(snap.platform.type, snap, ctrlPins, effPin)}
-          ariaLabel="ADAT output GPIO pin"
-          disabled={!editable}
-          onChange={(p) => setAdatPin(s, p)}
-        />
+        <span class="stage-wrap" class:staged={s.staging.has('adatPin')}>
+          <PinPicker
+            value={effPin}
+            cells={pickerCells(snap.platform.type, snap, ctrlPins, effPin)}
+            ariaLabel="ADAT output GPIO pin"
+            disabled={!editable}
+            onChange={(p) => stageAdatPin(s, p)}
+          />
+        </span>
       </div>
     </div>
 
-    {#if cfg.enabled}
+    {#if live?.adat.enabled}
       <div class="subhdr">ADAT STATUS</div>
       {#if status}
         <div class="kvgrid">

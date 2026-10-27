@@ -8,26 +8,32 @@ import { readCsDisplayBlock, readCsAll } from './deviceService';
 // so this can't be a plain writeChecked: the status must land in ctrlIfaces
 // on BOTH branches (a rejected pin/baud is still useful to show as
 // last-status text), whereas writeChecked's patch only runs on ok.
-export function setUartControlConfig(s: ReadySession, cfg: Domain.UartControlConfig): void {
-  void command(s, 'set UART control config',
+export async function setUartControlConfig(s: ReadySession, cfg: Domain.UartControlConfig): Promise<boolean> {
+  let ok = false;
+  await command(s, 'set UART control config',
     () => s.device.setUartControlConfig(cfg),
     (r, s) => {
       s.ctrlIfaces.status = r.status;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
       s.ctrlIfaces.uart = cfg;
+      ok = true;
     },
   );
+  return ok;
 }
 
-export function setI2cControlConfig(s: ReadySession, cfg: Domain.I2cControlConfig): void {
-  void command(s, 'set I2C control config',
+export async function setI2cControlConfig(s: ReadySession, cfg: Domain.I2cControlConfig): Promise<boolean> {
+  let ok = false;
+  await command(s, 'set I2C control config',
     () => s.device.setI2cControlConfig(cfg),
     (r, s) => {
       s.ctrlIfaces.status = r.status;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
       s.ctrlIfaces.i2c = cfg;
+      ok = true;
     },
   );
+  return ok;
 }
 
 // V16 — Control Surfaces binding apply (0x84 + status poll). Immediate lane
@@ -311,6 +317,7 @@ export async function csRevertConfig(s: ReadySession): Promise<boolean> {
       }
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
       s.controlSurfaces.revertEpoch++;
+      s.drafts.clearAll();
       s.controlSurfaces.changed = { bindings: false, groups: false, macros: false, display: false };
       ok = true;
     },

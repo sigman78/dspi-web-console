@@ -6,8 +6,9 @@ import { Wire } from '@/protocol';
 const verbs = vi.hoisted(() => ({
   stageOutputType: vi.fn(),
   stageOutputDataPin: vi.fn(),
-  setOutputPairEnabled: vi.fn(),
-  setOutputEnabled: vi.fn(),
+  stageOutputPairEnabled: vi.fn(),
+  stagePdmEnabled: vi.fn(),
+  stagedCtrlPins: () => ({ uart: null, i2c: null, cs: [] }),
 }));
 vi.mock('@/runtime', () => verbs);
 
@@ -52,8 +53,8 @@ function makeSession(snap: ReturnType<typeof makeSnap>) {
 beforeEach(() => {
   verbs.stageOutputType.mockClear();
   verbs.stageOutputDataPin.mockClear();
-  verbs.setOutputPairEnabled.mockClear();
-  verbs.setOutputEnabled.mockClear();
+  verbs.stageOutputPairEnabled.mockClear();
+  verbs.stagePdmEnabled.mockClear();
 });
 
 describe('OutputsPanel', () => {
@@ -65,18 +66,18 @@ describe('OutputsPanel', () => {
     expect(verbs.stageOutputType).toHaveBeenCalledWith(session, 0, 1);
   });
 
-  test('toggling OUT 1 calls setOutputPairEnabled(s, 0, true)', async () => {
+  test('toggling OUT 1 stages the pair enable', async () => {
     const session = makeSession(makeSnap());
     render(OutputsPanel, { context: new Map([[SESSION_KEY, session]]) });
     await fireEvent.click(screen.getByRole('switch', { name: 'Out 1 enable' }));
-    expect(verbs.setOutputPairEnabled).toHaveBeenCalledWith(session, 0, true);
+    expect(verbs.stageOutputPairEnabled).toHaveBeenCalledWith(session, 0, true);
   });
 
-  test('toggling the PDM sub calls setOutputEnabled(s, 8, true)', async () => {
+  test('toggling the PDM sub stages the PDM enable', async () => {
     const session = makeSession(makeSnap());
     render(OutputsPanel, { context: new Map([[SESSION_KEY, session]]) });
     await fireEvent.click(screen.getByRole('switch', { name: 'PDM sub enable' }));
-    expect(verbs.setOutputEnabled).toHaveBeenCalledWith(session, 8, true);
+    expect(verbs.stagePdmEnabled).toHaveBeenCalledWith(session, true);
   });
 
   test('while PDM is active, OUT 2-4 toggles are locked but OUT 1 stays available', () => {

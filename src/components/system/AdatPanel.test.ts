@@ -3,12 +3,13 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
 import { ChannelFamily } from '@/domain';
 
-const setAdatEnable = vi.fn();
-const setAdatPin = vi.fn();
+const stageAdatEnabled = vi.fn();
+const stageAdatPin = vi.fn();
 
 vi.mock('@/runtime', () => ({
-  setAdatEnable: (...a: unknown[]) => setAdatEnable(...a),
-  setAdatPin: (...a: unknown[]) => setAdatPin(...a),
+  stageAdatEnabled: (...a: unknown[]) => stageAdatEnabled(...a),
+  stageAdatPin: (...a: unknown[]) => stageAdatPin(...a),
+  stagedCtrlPins: () => ({ uart: null, i2c: null, cs: [] }),
 }));
 
 import AdatPanel from './AdatPanel.svelte';
@@ -27,6 +28,11 @@ function makeSnap(over: { adat?: object; dacHwMute?: object; outputPins?: number
   };
 }
 
+const staging = {
+  has: () => false,
+  overlaySnapshot: (s: unknown) => s,
+};
+
 function makeSession(o: {
   snap?: ReturnType<typeof makeSnap>;
   adatStatus?: object | null;
@@ -37,6 +43,7 @@ function makeSession(o: {
     mirror: { current: o.snap ?? makeSnap() },
     ctrlIfaces: { uart: null, i2c: null, status: null },
     controlSurfaces: { caps: null, nouns: [], bindings: [], status: null },
+    staging,
   } as any;
 }
 
@@ -49,35 +56,18 @@ beforeEach(() => {
 });
 
 describe('AdatPanel', () => {
-  test('the header toggle calls setAdatEnable when the effective pin is already free', async () => {
-    renderPanel(makeSession());
-    const toggle = screen.getByRole('switch', { name: 'Enable ADAT output' });
-    await fireEvent.click(toggle);
-    expect(setAdatEnable).toHaveBeenCalledWith(expect.anything(), true);
-    expect(setAdatPin).not.toHaveBeenCalled();
-  });
-
-  test('disabling calls setAdatEnable(false)', async () => {
-    renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }) }));
-    const toggle = screen.getByRole('switch', { name: 'Disable ADAT output' });
-    await fireEvent.click(toggle);
-    expect(setAdatEnable).toHaveBeenCalledWith(expect.anything(), false);
-  });
-
-  test('enabling with a conflicting effective pin picks the first free pin: setAdatPin, then setAdatEnable', async () => {
-    setAdatPin.mockResolvedValueOnce(true);
-    // pin 0 resolves to the platform default (12), which DAC HW mute already holds.
-    const session = makeSession({
-      snap: makeSnap({ adat: { enabled: false, pin: 0 }, dacHwMute: { enabled: true, activeLow: false, pin: 12, holdMs: 0, releaseMs: 0 } }),
-    });
+  test('the header toggle stages the enable instead of writing it', async () => {
+    const session = makeSession();
     renderPanel(session);
     await fireEvent.click(screen.getByRole('switch', { name: 'Enable ADAT output' }));
-    // onToggleEnabled awaits setAdatPin before sending setAdatEnable; give that
-    // extra microtask hop room to settle beyond Svelte's own tick flush.
-    await vi.waitFor(() => expect(setAdatEnable).toHaveBeenCalled());
-    expect(setAdatPin).toHaveBeenCalledWith(session, 0);   // first free assignable pin
-    expect(setAdatEnable).toHaveBeenCalledWith(session, true);
-    expect(setAdatPin.mock.invocationCallOrder[0]).toBeLessThan(setAdatEnable.mock.invocationCallOrder[0]);
+    expect(stageAdatEnabled).toHaveBeenCalledWith(session, true);
+  });
+
+  test('the header toggle stages a disable while enabled', async () => {
+    const session = makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }) });
+    renderPanel(session);
+    await fireEvent.click(screen.getByRole('switch', { name: 'Disable ADAT output' }));
+    expect(stageAdatEnabled).toHaveBeenCalledWith(session, false);
   });
 
   test('the pin picker is enabled only while ADAT itself is enabled', () => {
@@ -96,7 +86,7 @@ describe('AdatPanel', () => {
   test('the DEFAULT chip sends the 0xFF reset sentinel', async () => {
     renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }) }));
     await fireEvent.click(screen.getByRole('button', { name: 'Reset ADAT output pin to default' }));
-    expect(setAdatPin).toHaveBeenCalledWith(expect.anything(), 0xFF);
+    expect(stageAdatPin).toHaveBeenCalledWith(expect.anything(), 0xFF);
   });
 
   test('the DEFAULT chip is absent when the device lacks pin-reset support', () => {

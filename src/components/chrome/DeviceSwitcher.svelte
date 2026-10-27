@@ -3,7 +3,7 @@
     sessionRecords, activeRecord, adoptFailures, adoptionInProgress, clearAdoptFailure,
     type ConnId, type DeviceRecord, type AdoptFailure,
   } from '@/state';
-  import { activateSession, connectRequested, webUsbUnsupportedReason } from '@/runtime';
+  import { switchSession, connectRequested, webUsbUnsupportedReason } from '@/runtime';
 
   // Guards a switch in flight so a second click can't re-enter activateSession
   // for a different target while the first switch's flush/reconcile is still
@@ -31,7 +31,7 @@
     if (active || switching || adoptionInProgress()) return;
     switching = true;
     try {
-      await activateSession(id);
+      await switchSession(id);
     } finally {
       switching = false;
     }

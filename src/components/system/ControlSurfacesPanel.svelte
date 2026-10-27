@@ -19,13 +19,13 @@
   const cs = $derived(s.controlSurfaces);
   const caps = $derived(s.controlSurfaces.caps);
 
-  const drafts = $state<Record<number, Draft>>({});
+  const drafts = s.drafts.of<Draft>('cs');
   let applying = $state(false);
 
   const maxSlots = $derived(caps?.maxBindings ?? Domain.CS_MAX_BINDINGS);
   const visibleSlots = $derived(
     Array.from({ length: maxSlots }, (_, i) => i)
-      .filter((i) => cs.bindings[i] != null || drafts[i] != null),
+      .filter((i) => cs.bindings[i] != null || drafts.draftOf(i) != null),
   );
   const allUsed = $derived(visibleSlots.length >= maxSlots);
 
@@ -53,7 +53,7 @@
   const irReceiverSlot = $derived(
     (() => {
       for (let i = 0; i < maxSlots; i++) {
-        if (cs.bindings[i]?.type === Domain.CsType.Ir || drafts[i]?.type === Domain.CsType.Ir) return i;
+        if (cs.bindings[i]?.type === Domain.CsType.Ir || drafts.draftOf(i)?.type === Domain.CsType.Ir) return i;
       }
       return null;
     })(),
@@ -63,7 +63,7 @@
   const displaySlot = $derived(
     (() => {
       for (let i = 0; i < maxSlots; i++) {
-        if (cs.bindings[i]?.type === Domain.CsType.Display || drafts[i]?.type === Domain.CsType.Display) return i;
+        if (cs.bindings[i]?.type === Domain.CsType.Display || drafts.draftOf(i)?.type === Domain.CsType.Display) return i;
       }
       return null;
     })(),
@@ -157,13 +157,13 @@
   function draftFromLive(b: Domain.CsBinding): Draft { return CsDraft.draftFromLive(b, cs.nouns); }
 
   function draftOf(slot: number): Draft {
-    return drafts[slot] ?? draftFromLive(cs.bindings[slot]!);
+    return drafts.draftOf(slot) ?? draftFromLive(cs.bindings[slot]!);
   }
 
   function editDraft(slot: number, fn: (d: Draft) => void): void {
-    const d = drafts[slot] ?? draftFromLive(cs.bindings[slot]!);
+    const d = drafts.draftOf(slot) ?? draftFromLive(cs.bindings[slot]!);
     fn(d);
-    drafts[slot] = d;
+    drafts.editDraft(slot, d);
   }
 
   function buildBinding(d: Draft): Domain.CsBinding { return CsDraft.buildBinding(d, cs.nouns, caps); }
@@ -171,7 +171,7 @@
   function isDirty(slot: number): boolean {
     const live = cs.bindings[slot];
     if (!live) return true;                        // NEW: never applied
-    const d = drafts[slot];
+    const d = drafts.draftOf(slot);
     if (!d) return false;
     return !CsDraft.bindingsEqual(buildBinding(d), live);
   }
@@ -185,7 +185,7 @@
 
   function firstFreeSlot(): number | null {
     for (let i = 0; i < maxSlots; i++) {
-      if (!cs.bindings[i] && !drafts[i]) return i;
+      if (!cs.bindings[i] && !drafts.draftOf(i)) return i;
     }
     return null;
   }
@@ -197,7 +197,7 @@
     if (Number.isNaN(typeIdx)) return;
     const slot = firstFreeSlot();
     if (slot == null) return;
-    drafts[slot] = defaultDraft(typeIdx, slot);
+    drafts.editDraft(slot, defaultDraft(typeIdx, slot));
     openSlot = slot;
   }
 
@@ -205,29 +205,45 @@
   // success feedback is the pill/staged-dot state flip.
   async function apply(slot: number): Promise<void> {
     const live = cs.bindings[slot];
-    const d = drafts[slot] ?? (live ? draftFromLive(live) : null);
+    const d = drafts.draftOf(slot) ?? (live ? draftFromLive(live) : null);
     if (!d) return;
     applying = true;
     try {
       if (await applyCsBinding(s, slot, buildBinding(d))) {
-        delete drafts[slot];                       // device truth takes over
+        drafts.remove(slot);                       // device truth takes over
       }
     } finally {
       applying = false;
     }
   }
 
+  function isIrSlot(slot: number): boolean {
+    const d = drafts.draftOf(slot);
+    return (d ? d.type : cs.bindings[slot]?.type) === Domain.CsType.Ir;
+  }
+
+  // IR sub-slot drafts belong to the receiver binding; once it goes away or
+  // changes type they describe nothing and must stop counting as unapplied.
+  function dropIrDrafts(): void { s.drafts.of('ir').clear(); }
+
+  function changeType(slot: number, type: number): void {
+    const wasIr = isIrSlot(slot);
+    drafts.editDraft(slot, defaultDraft(type, slot));
+    if (wasIr && type !== Domain.CsType.Ir) dropIrDrafts();
+  }
+
   function revert(slot: number): void {
-    delete drafts[slot];
+    drafts.revert(slot);
   }
 
   // Remove = drop a never-applied draft locally; clear a live slot on the
   // device (the all-zero binding).
   async function remove(slot: number): Promise<void> {
-    if (!cs.bindings[slot]) { delete drafts[slot]; return; }
+    const wasIr = isIrSlot(slot);
+    if (!cs.bindings[slot]) { drafts.remove(slot); if (wasIr) dropIrDrafts(); return; }
     applying = true;
     try {
-      if (await clearCsBinding(s, slot)) delete drafts[slot];
+      if (await clearCsBinding(s, slot)) { drafts.remove(slot); if (wasIr) dropIrDrafts(); }
     } finally {
       applying = false;
     }
@@ -255,17 +271,15 @@
   $effect(() => {
     void cs.revertEpoch;   // the ONLY dependency -- the wipe must not track drafts
     untrack(() => {
-      for (const key of Object.keys(drafts)) delete drafts[Number(key)];
       irResetTick++;
     });
   });
 
-  const stagedCount = $derived(
-    visibleSlots.filter((i) => isDirty(i) || (draftOf(i).type === Domain.CsType.Ir && irDirty)).length,
-  );
   $effect(() => {
-    s.controlSurfaces.staged.bindings = stagedCount;
-    return () => { s.controlSurfaces.staged.bindings = 0; };
+    for (const slot of drafts.keys()) {
+      const dirty = isDirty(slot);
+      untrack(() => drafts.setDirty(slot, dirty));
+    }
   });
 </script>
 
@@ -294,7 +308,7 @@
         onToggle={() => toggleSlot(slot)}
         typeOptions={typeOptionsFor(slot)}
         onEdit={(fn) => editDraft(slot, fn)}
-        onTypeChange={(t) => { drafts[slot] = defaultDraft(t, slot); }}
+        onTypeChange={(t) => changeType(slot, t)}
         onApply={() => apply(slot)}
         onRevert={() => revert(slot)}
         onRemove={() => remove(slot)}

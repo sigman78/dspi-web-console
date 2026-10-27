@@ -3,14 +3,15 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
 import { ChannelFamily, AudioInputSource, AdatInputLockState } from '@/domain';
 
-const setAdatInputEnable = vi.fn();
-const setAdatInputPin = vi.fn();
-const setAdatInputClockMode = vi.fn();
+const stageAdatInputEnabled = vi.fn();
+const stageAdatInputPin = vi.fn();
+const stageAdatInputClockMode = vi.fn();
 
 vi.mock('@/runtime', () => ({
-  setAdatInputEnable: (...a: unknown[]) => setAdatInputEnable(...a),
-  setAdatInputPin: (...a: unknown[]) => setAdatInputPin(...a),
-  setAdatInputClockMode: (...a: unknown[]) => setAdatInputClockMode(...a),
+  stageAdatInputEnabled: (...a: unknown[]) => stageAdatInputEnabled(...a),
+  stageAdatInputPin: (...a: unknown[]) => stageAdatInputPin(...a),
+  stageAdatInputClockMode: (...a: unknown[]) => stageAdatInputClockMode(...a),
+  stagedCtrlPins: () => ({ uart: null, i2c: null, cs: [] }),
 }));
 
 import AdatInputPanel from './AdatInputPanel.svelte';
@@ -46,8 +47,8 @@ function makeSession(o: {
     ctrlIfaces: { uart: null, i2c: null, status: null },
     controlSurfaces: { caps: null, nouns: [], bindings: [], status: null },
     staging: {
-      valueOf: (_key: string, live: unknown) => o.stagedSource ?? live,
-      overlaySnapshot: (snap: unknown) => snap,
+      has: () => false,
+      overlaySnapshot: (snap: any) => (o.stagedSource == null ? snap : { ...snap, inputConfig: { ...snap.inputConfig, source: o.stagedSource } }),
     },
   } as any;
 }
@@ -61,7 +62,7 @@ beforeEach(() => {
 });
 
 describe('AdatInputPanel', () => {
-  test('enabling is blocked without an assigned pin, and fires once one is set', async () => {
+  test('enabling is blocked without an assigned pin, and stages once one is set', async () => {
     const { unmount } = renderPanel(makeSession({ snap: makeSnap() }));
     const blocked = screen.getByRole('switch', { name: 'Enable ADAT input' });
     expect(blocked.hasAttribute('disabled')).toBe(true);
@@ -73,7 +74,7 @@ describe('AdatInputPanel', () => {
     const toggle = screen.getByRole('switch', { name: 'Enable ADAT input' });
     expect(toggle.hasAttribute('disabled')).toBe(false);
     await fireEvent.click(toggle);
-    expect(setAdatInputEnable).toHaveBeenCalledWith(expect.anything(), true);
+    expect(stageAdatInputEnabled).toHaveBeenCalledWith(expect.anything(), true);
   });
 
   test('disabling is blocked while ADAT is the (staged) input source', () => {
@@ -86,18 +87,18 @@ describe('AdatInputPanel', () => {
     expect(screen.getByTitle('Switch the input source away first')).toBeTruthy();
   });
 
-  test('the CLEAR chip only appears while disabled with an assigned pin, and sends the 0xFF sentinel', async () => {
+  test('the clear-pin reset only appears while disabled with an assigned pin, and stages the 0xFF sentinel', async () => {
     const { unmount } = renderPanel(makeSession({ snap: makeSnap({ inputConfig: { adatInputEnabled: true, adatInputPin: 20 } }) }));
-    expect(screen.queryByRole('button', { name: 'CLEAR' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Clear ADAT input pin' })).toBeNull();
     unmount();
 
     const { unmount: unmount2 } = renderPanel(makeSession({ snap: makeSnap({ inputConfig: { adatInputEnabled: false, adatInputPin: 0 } }) }));
-    expect(screen.queryByRole('button', { name: 'CLEAR' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Clear ADAT input pin' })).toBeNull();
     unmount2();
 
     renderPanel(makeSession({ snap: makeSnap({ inputConfig: { adatInputEnabled: false, adatInputPin: 20 } }) }));
-    await fireEvent.click(screen.getByRole('button', { name: 'CLEAR' }));
-    expect(setAdatInputPin).toHaveBeenCalledWith(expect.anything(), 0xFF);
+    await fireEvent.click(screen.getByRole('button', { name: 'Clear ADAT input pin' }));
+    expect(stageAdatInputPin).toHaveBeenCalledWith(expect.anything(), 0xFF);
   });
 
   test('the ADAT output pin stays selectable for loopback while another claimed pin does not', () => {
@@ -111,10 +112,10 @@ describe('AdatInputPanel', () => {
     expect(opt11.disabled).toBe(true);
   });
 
-  test('the SLAVE clock chip calls setAdatInputClockMode(1)', async () => {
+  test('the SLAVE clock chip stages clock mode 1', async () => {
     renderPanel(makeSession({ snap: makeSnap({ inputConfig: { adatInputClockMode: 0 } }) }));
     await fireEvent.click(screen.getByRole('button', { name: 'SLAVE' }));
-    expect(setAdatInputClockMode).toHaveBeenCalledWith(expect.anything(), 1);
+    expect(stageAdatInputClockMode).toHaveBeenCalledWith(expect.anything(), 1);
   });
 
   test('a locked status renders rate and counters, with the slip warn presentation', () => {

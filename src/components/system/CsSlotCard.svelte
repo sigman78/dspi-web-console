@@ -32,7 +32,7 @@
   <div class="slothead">
     <button type="button" class="hdrbtn" aria-expanded={open} onclick={onToggle}>
       <span class="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
-      <span class="stitle" class:staged={dirty}
+      <span class="stitle" class:draft={dirty}
         title={dirty ? 'Unapplied changes — APPLY to preview them live' : undefined}>{title}</span>
       {#if !open}
         <span class="nametext" class:faint={!name}>{name || 'Unnamed'}</span>
