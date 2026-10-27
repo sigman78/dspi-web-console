@@ -5,7 +5,7 @@
     { key: 'tune', label: 'TUNE' },
     { key: 'program', label: 'PROGRAM' },
     { key: 'setup', label: 'SETUP' },
-    { key: 'device', label: 'DEVICE' },
+    { key: 'about', label: 'ABOUT' },
   ];
 </script>
 
@@ -15,7 +15,7 @@
       type="button"
       class="ib"
       class:on={noveauUi.destination === it.key}
-      class:push={it.key === 'device'}
+      class:push={it.key === 'about'}
       aria-current={noveauUi.destination === it.key ? 'page' : undefined}
       onclick={() => {
         noveauUi.destination = it.key;
@@ -30,7 +30,7 @@
         {:else if it.key === 'setup'}
           <rect x="5" y="5" width="10" height="10" rx="1.5" /><path d="M8 2.5v2.5M12 2.5v2.5M8 15v2.5M12 15v2.5M2.5 8H5M2.5 12H5M15 8h2.5M15 12h2.5" />
         {:else}
-          <path d="M10 3v9" /><path d="M7 12h6v2.5a3 3 0 01-6 0z" /><path d="M8 3h4" /><path d="M10 17.5v-1" />
+          <circle cx="10" cy="10" r="7.5" /><path d="M10 6.5h.01" /><path d="M10 9v5" />
         {/if}
       </svg>
       <span>{it.label}</span>

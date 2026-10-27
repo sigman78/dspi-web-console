@@ -1,14 +1,16 @@
 <script lang="ts">
   import { connection, settings, setVolumeAxis } from '@/state';
   import { getSession } from '@/components/sessionContext';
-  import { setMasterVolume, setUserVolume, toggleMute } from '@/runtime';
+  import * as Runtime from '@/runtime';
   import SaveMasterVolumeButton from '@/components/presets/SaveMasterVolumeButton.svelte';
+  import PresetIcon from './presets/PresetIcon.svelte';
   import SegmentedSelect from '@/components/chrome/SegmentedSelect.svelte';
   import { MASTER_VOLUME_MAX_POS, masterDbToPos, posToMasterDb, formatMasterDb } from '@/components/chrome/masterVolumeTaper';
 
   const s = getSession();
   const connected = $derived(connection.connected);
   const muted = $derived(s.mirror.current?.userVolume.mute ?? false);
+  const bypassed = $derived(s.mirror.current?.bypass ?? false);
   const isMaster = $derived(settings.volumeAxis === 'master');
   const masterDb = $derived(s.mirror.current?.masterVolumeDb ?? 0);
   const userDb = $derived(s.mirror.current?.userVolume.volumeDb ?? 0);
@@ -17,8 +19,8 @@
   function onInput(e: Event) {
     const raw = parseFloat((e.target as HTMLInputElement).value);
     if (Number.isNaN(raw)) return;
-    if (isMaster) setMasterVolume(s, posToMasterDb(raw));
-    else setUserVolume(s, raw);
+    if (isMaster) Runtime.setMasterVolume(s, posToMasterDb(raw));
+    else Runtime.setUserVolume(s, raw);
   }
 </script>
 
@@ -33,23 +35,35 @@
     type="button"
     class="icon-toggle mute"
     class:on={muted}
-    onclick={() => toggleMute(s)}
+    onclick={() => Runtime.toggleMute(s)}
     disabled={!connected}
     title={muted ? 'Unmute' : 'Mute'}
     aria-label={muted ? 'Unmute' : 'Mute'}
   >
     {#if muted}
-      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 6h2l3-3v10l-3-3H3z" fill="currentColor" />
         <line x1="11" y1="6" x2="14" y2="9" />
         <line x1="14" y1="6" x2="11" y2="9" />
       </svg>
     {:else}
-      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 6h2l3-3v10l-3-3H3z" fill="currentColor" />
         <path d="M11 5.5a3 3 0 0 1 0 5" />
       </svg>
     {/if}
+  </button>
+  <button
+    type="button"
+    class="icon-toggle bypass"
+    class:on={bypassed}
+    onclick={() => Runtime.setBypass(s, !bypassed)}
+    disabled={!connected}
+    title={bypassed ? 'EQ bypass on (signal passes through)' : 'EQ active'}
+    aria-label={bypassed ? 'Disable EQ bypass' : 'Enable EQ bypass'}
+    aria-pressed={bypassed}
+  >
+    <PresetIcon icon="bypass" />
   </button>
 </div>
 <div class="vrow">
@@ -74,7 +88,7 @@
   .vtop { display: flex; align-items: stretch; gap: 4px; height: 24px; }
   .vtop :global(.seg) { flex: 1; }
   .vtop :global(.opt) { padding: 3px 4px; font-size: 11px; font-family: var(--font-sans); letter-spacing: 0; }
-  .vtop .icon-toggle { flex: none; width: 22px; height: 22px; align-self: center; }
+  .vtop .icon-toggle { align-self: center; }
   .vrow { display: flex; align-items: center; gap: 6px; height: 22px; }
   input[type="range"] {
     flex: 1;

@@ -11,6 +11,7 @@
   import TuneView from './tune/TuneView.svelte';
   import ProgramView from './program/ProgramView.svelte';
   import SetupView from './setup/SetupView.svelte';
+  import AboutView from './about/AboutView.svelte';
   import { noveauUi } from './noveauUi.svelte';
 
   const { session }: { session: ReadySession } = $props();
@@ -49,7 +50,7 @@
     {:else if noveauUi.destination === 'setup'}
       <SetupView />
     {:else}
-      <div class="soon">{noveauUi.destination.toUpperCase()} — not in this slice</div>
+      <AboutView />
     {/if}
   </section>
   <StatusLine />
@@ -75,12 +76,4 @@
     background: color-mix(in oklab, var(--bg) 80%, var(--text) 2%);
   }
   .ws { grid-column: 3; grid-row: 1; display: flex; padding: 12px 16px; }
-  .soon {
-    flex: 1;
-    display: grid;
-    place-items: center;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--text-faint);
-  }
 </style>

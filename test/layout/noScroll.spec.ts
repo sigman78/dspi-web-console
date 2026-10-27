@@ -135,7 +135,7 @@ test('no scroll 1440x790 SETUP every page', async ({ page }) => {
   const pages = page.getByRole('group', { name: 'Setup pages' }).getByRole('button');
   await expect(pages.first()).toBeVisible();
   const n = await pages.count();
-  expect(n).toBe(7);
+  expect(n).toBe(6);
   for (let i = 0; i < n; i++) {
     await pages.nth(i).click();
     await expect(pages.nth(i)).toHaveAttribute('aria-pressed', 'true');
@@ -163,29 +163,20 @@ test('no scroll 1440x790 SETUP every page', async ({ page }) => {
   }
 });
 
-test('no scroll 1440x790 PRESETS flyout and SETUP presets panel', async ({ page }) => {
+test('no scroll 1440x790 PRESETS editor flyout', async ({ page }) => {
   await open(page, [1440, 790], FULL);
   const toggle = page.locator('[data-presets-toggle]');
   const flyout = page.getByRole('dialog', { name: 'Presets' });
   await toggle.click();
   await expect(flyout).toBeVisible();
-  await expect(flyout.locator('.row')).toHaveCount(10);
+  const name = flyout.getByRole('textbox', { name: 'Preset name' });
+  await expect(name).toBeVisible();
+  await expect(flyout.getByRole('radiogroup', { name: 'Startup preset' })).toBeVisible();
+  expect(await flyout.locator('.chips .chip').count()).toBeGreaterThan(0);
   await assertNoScroll(page);
-  const firstRow = flyout.locator('.row').first();
-  const quiet = firstRow.locator('.q');
-  expect(await quiet.count()).toBeGreaterThan(0);
-  await page.mouse.move(0, 0);
-  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  await expect(quiet.first()).toHaveCSS('visibility', 'hidden');
-  await firstRow.hover();
-  await expect(quiet.first()).toHaveCSS('visibility', 'visible');
-  const name = firstRow.locator('.nm');
   await name.focus();
-  await page.keyboard.press('F2');
-  await expect(flyout.getByRole('textbox', { name: 'Preset name' })).toBeVisible();
-  await assertNoScroll(page);
+  await page.keyboard.type('x');
   await page.keyboard.press('Escape');
-  await expect(flyout.getByRole('textbox', { name: 'Preset name' })).toBeHidden();
   await expect(flyout).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(flyout).toBeHidden();
@@ -193,10 +184,8 @@ test('no scroll 1440x790 PRESETS flyout and SETUP presets panel', async ({ page 
   await toggle.click();
   await expect(flyout).toBeVisible();
   await assertNoScroll(page);
-  await flyout.getByRole('button', { name: 'Close presets' }).click();
+  await page.keyboard.press('Escape');
   await expect(flyout).toBeHidden();
-  await expect(page.locator('section.panel header .title', { hasText: /^PRESETS$/ })).toBeVisible();
-  await assertNoScroll(page);
 });
 
 test('no scroll 1440x790 last output selected', async ({ page }) => {

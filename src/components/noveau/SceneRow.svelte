@@ -70,14 +70,14 @@
     onclick={() => { noveauUi.presetsOpen = !noveauUi.presetsOpen; }}
   >
     <span class="nm" class:unnamed={rawName.length === 0}>{name}</span>
-    <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2 4l4 4 4-4" /></svg>
+    <PresetIcon icon="edit" />
   </button>
   {#if canSave}<button type="button" class="icon-toggle accent" aria-label="Save preset" title="Save preset" onclick={onSave}><PresetIcon icon="save" /></button>{/if}
   {#if canRevert}<button type="button" class="icon-toggle" aria-label="Revert preset" title="Revert preset" onclick={onRevert}><PresetIcon icon="revert" /></button>{/if}
 </div>
 
 <style>
-  .scenes { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; height: 22px; }
+  .scenes { display: grid; grid-template-columns: repeat(5, 1fr); grid-auto-rows: 22px; gap: 2px; }
   .sc {
     position: relative;
     display: grid;
@@ -143,11 +143,10 @@
     cursor: pointer;
   }
   .field:hover { border-color: var(--border-hi); color: var(--text); }
-  .field.open { border-color: var(--accent); }
-  .field svg { flex: none; margin-left: auto; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-  .field.open svg { transform: rotate(180deg); }
+  .field.open { border-color: var(--accent); color: var(--text); }
+  .field :global(svg) { flex: none; margin-left: auto; }
   .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .nm.unnamed { color: var(--text-dim); }
-  .sname .icon-toggle { flex: none; width: 20px; height: 20px; }
+  .sname .icon-toggle { flex: none; }
   .sname .icon-toggle.accent { color: var(--accent); }
 </style>

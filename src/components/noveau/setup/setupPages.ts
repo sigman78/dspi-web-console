@@ -1,7 +1,7 @@
 import type * as Domain from '@/domain';
 import * as CsField from '@/components/system/csFieldHelpers';
 
-export type SetupPageKey = 'device' | 'io' | 'interfaces' | 'surfaces' | 'macros' | 'display' | 'diagnostics';
+export type SetupPageKey = 'device' | 'io' | 'interfaces' | 'surfaces' | 'macros' | 'display';
 
 export interface SetupPage {
   key: SetupPageKey;
@@ -23,7 +23,6 @@ export function setupPages(features: SetupFeatures, caps: Domain.CsCaps | null):
     { key: 'surfaces', label: 'SURFACES', available: cs },
     { key: 'macros', label: 'MACROS & GROUPS', available: cs && (CsField.macrosAvailable(caps) || CsField.groupsAvailable(caps)) },
     { key: 'display', label: 'DISPLAY', available: cs && CsField.displaysAvailable(caps) },
-    { key: 'diagnostics', label: 'DIAGNOSTICS', available: true },
   ];
   return all.filter((p) => p.available).map(({ key, label }) => ({ key, label }));
 }

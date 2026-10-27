@@ -9,15 +9,15 @@ const displayCaps = { capsVersion: 10, maxMacros: 8, maxGroups: 8, types: new Ar
 
 describe('setupPages', () => {
   test('without control features only the always-on pages remain, in order', () => {
-    expect(keys({ controlInterfaces: false, controlSurfaces: false }, null)).toEqual(['device', 'io', 'diagnostics']);
+    expect(keys({ controlInterfaces: false, controlSurfaces: false }, null)).toEqual(['device', 'io']);
   });
 
   test('interfaces alone offers Interfaces but not Surfaces or Display', () => {
-    expect(keys({ controlInterfaces: true, controlSurfaces: false }, null)).toEqual(['device', 'io', 'interfaces', 'diagnostics']);
+    expect(keys({ controlInterfaces: true, controlSurfaces: false }, null)).toEqual(['device', 'io', 'interfaces']);
   });
 
   test('control surfaces without display caps drops Display only', () => {
-    expect(keys({ controlInterfaces: false, controlSurfaces: true }, null)).toEqual(['device', 'io', 'interfaces', 'surfaces', 'diagnostics']);
+    expect(keys({ controlInterfaces: false, controlSurfaces: true }, null)).toEqual(['device', 'io', 'interfaces', 'surfaces']);
   });
 
   test('macros or groups capability adds Macros & Groups after Surfaces', () => {
@@ -28,8 +28,8 @@ describe('setupPages', () => {
     expect(keys(f, groupCaps)).toContain('macros');
   });
 
-  test('display capability adds Display between Surfaces and Diagnostics', () => {
+  test('display capability appends Display after Macros', () => {
     const k = keys({ controlInterfaces: true, controlSurfaces: true }, displayCaps);
-    expect(k).toEqual(['device', 'io', 'interfaces', 'surfaces', 'macros', 'display', 'diagnostics']);
+    expect(k).toEqual(['device', 'io', 'interfaces', 'surfaces', 'macros', 'display']);
   });
 });

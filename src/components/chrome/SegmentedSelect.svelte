@@ -15,6 +15,9 @@
     onChange: (v: T) => void;
   } = $props();
 
+  // With no matching value (e.g. an unset choice) the first option stays reachable.
+  const anyOn = $derived(options.some((o) => o.value === value));
+
   function onKey(e: KeyboardEvent) {
     if (disabled) return;
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
@@ -39,14 +42,14 @@
   tabindex="-1"
   onkeydown={onKey}
 >
-  {#each options as opt (opt.value)}
+  {#each options as opt, i (opt.value)}
     <button
       type="button"
       class="opt"
       class:on={opt.value === value}
       role="radio"
       aria-checked={opt.value === value}
-      tabindex={opt.value === value ? 0 : -1}
+      tabindex={opt.value === value || (!anyOn && i === 0) ? 0 : -1}
       disabled={disabled || opt.disabled}
       onclick={() => { if (!disabled && !opt.disabled) onChange(opt.value); }}
     >

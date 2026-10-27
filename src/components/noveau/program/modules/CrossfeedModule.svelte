@@ -52,7 +52,8 @@
 
 <ModuleFrame
   title="Crossfeed"
-  pass="stereo program · before loudness"
+  pass="per output pair · after matrix"
+  blurb="Headphone crossfeed (BS2B): bleeds a filtered, delayed part of each channel into the other to soften hard stereo. Per output pair."
   {enabled}
 >
   <div class:dim={!enabled}><BodePlot {curves} height={96} crosshair={false} {yRange} /></div>

@@ -17,7 +17,8 @@
 
 <ModuleFrame
   title="Psybass"
-  pass="program processor"
+  pass="per output · after matrix, before crossover"
+  blurb="Synthesises harmonics of bass the speaker cannot reproduce, so the ear infers the fundamental. Runs before the output crossover."
   {enabled}
 >
   {#if showMask}

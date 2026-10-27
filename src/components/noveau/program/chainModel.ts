@@ -1,15 +1,19 @@
 import { FilterType, Proc, type DspSnapshot } from '@/domain';
 import type { DeviceFeatures } from '@/protocol/capabilities';
-import type { ProgramModuleKey } from './programModel';
+import type { ChainAnchorKey, ProgramModuleKey } from './programModel';
 import { upmixStatus } from './upmixStatus';
 
-export interface ChainBlock {
-  key: ProgramModuleKey;
+interface ChainBlockBase {
   title: string;
   /** null: the block has no enable switch. */
   enabled: boolean | null;
   values: string[];
 }
+
+/** Modules are selectable; anchors (matrix, outputs) only mark the chain. */
+export type ChainModuleBlock = ChainBlockBase & { kind: 'module'; key: ProgramModuleKey };
+export type ChainAnchorBlock = ChainBlockBase & { kind: 'anchor'; key: ChainAnchorKey };
+export type ChainBlock = ChainModuleBlock | ChainAnchorBlock;
 
 export interface ChainTelemetry {
   activeInputChannels: number | null;
@@ -52,8 +56,9 @@ export function chainBlocks(
   const { leveller: lv, crossfeed: cf, loudness: ld, psybass: pb, subharm: sh, upmix: up } = snap;
   const upStatus = upmixStatus(up.enabled, telemetry?.activeInputChannels ?? null, telemetry?.sampleRateHz ?? null);
 
+  const mod = (b: Omit<ChainModuleBlock, 'kind'>): ChainBlock => ({ ...b, kind: 'module' });
   const blocks: ChainBlock[] = [
-    {
+    mod({
       key: 'preamp',
       title: 'Preamp',
       enabled: null,
@@ -63,68 +68,72 @@ export function chainBlocks(
           ? [`${fmtSigned(Math.min(...preamps))}/${fmtSigned(Math.max(...preamps))}`]
           : []),
       ],
-    },
-    {
-      key: 'inputEq',
-      title: 'Input EQ',
-      enabled: null,
-      values: [`${withBands} of ${inputs.length} inputs`],
-    },
-    {
+    }),
+    mod({ key: 'inputEq', title: 'Input EQ', enabled: null, values: [`${withBands} of ${inputs.length} inputs`] }),
+    mod({
       key: 'leveller',
       title: 'Leveller',
       enabled: lv.enabled,
       values: off(lv.enabled, [SPEED[lv.speed] ?? String(lv.speed), pct(lv.amount)]),
-    },
-    {
+    }),
+  ];
+  if (features.upmix) {
+    blocks.push(
+      mod({
+        key: 'upmix',
+        title: 'Upmix',
+        enabled: up.enabled,
+        values: up.enabled ? [upStatus === 'active' ? 'active' : 'parked', pct(up.strengthPct)] : ['off'],
+      }),
+    );
+  }
+  blocks.push(
+    { key: 'matrix', kind: 'anchor', title: 'Matrix', enabled: null, values: [`${routes} ${routes === 1 ? 'route' : 'routes'}`] },
+    mod({
       key: 'crossfeed',
       title: 'Crossfeed',
       enabled: cf.enabled,
       values: off(cf.enabled, [PRESET[cf.preset] ?? String(cf.preset), `${Math.round(cf.freq)} Hz`]),
-    },
-    {
+    }),
+  );
+  if (features.subharm) {
+    blocks.push(
+      mod({
+        key: 'subharm',
+        title: 'Subharm',
+        enabled: sh.enabled,
+        values: off(sh.enabled, [fmtBand(sh.lowDb), fmtBand(sh.highDb)]),
+      }),
+    );
+  }
+  if (features.psybass) {
+    blocks.push(
+      mod({
+        key: 'psybass',
+        title: 'Psybass',
+        enabled: pb.enabled,
+        values: off(pb.enabled, [`${Math.round(pb.cutoffHz)} Hz`, `${fmtSigned(pb.harmonicsDb)} dB`]),
+      }),
+    );
+  }
+  blocks.push(
+    mod({
       key: 'loudness',
       title: 'Loudness',
       enabled: ld.enabled,
       values: off(ld.enabled, [`${Math.round(ld.refSpl)} dB`, pct(ld.intensityPct)]),
-    },
-  ];
-  if (features.psybass) {
-    blocks.push({
-      key: 'psybass',
-      title: 'Psybass',
-      enabled: pb.enabled,
-      values: off(pb.enabled, [`${Math.round(pb.cutoffHz)} Hz`, `${fmtSigned(pb.harmonicsDb)} dB`]),
-    });
-  }
-  if (features.subharm) {
-    blocks.push({
-      key: 'subharm',
-      title: 'Subharm',
-      enabled: sh.enabled,
-      values: off(sh.enabled, [fmtBand(sh.lowDb), fmtBand(sh.highDb)]),
-    });
-  }
-  if (features.upmix) {
-    blocks.push({
-      key: 'upmix',
-      title: 'Upmix',
-      enabled: up.enabled,
-      values: up.enabled ? [upStatus === 'active' ? 'active' : 'parked', pct(up.strengthPct)] : ['off'],
-    });
-  }
-  blocks.push(
-    { key: 'matrix', title: 'Matrix', enabled: null, values: [`${routes} ${routes === 1 ? 'route' : 'routes'}`] },
-    {
-      key: 'outputStage',
-      title: 'Output stage',
-      enabled: null,
-      values: [
-        `${outs.filter((o) => o.enabled).length} on`,
-        ...(outs.some((o) => o.muted) ? [`${outs.filter((o) => o.muted).length} muted`] : []),
-        ...(features.limiter ? [`lim ${limOn}`] : []),
-      ],
-    },
+    }),
   );
+  blocks.push({
+    key: 'outputs',
+    kind: 'anchor',
+    title: 'Outputs',
+    enabled: null,
+    values: [
+      `${outs.filter((o) => o.enabled).length} on`,
+      ...(outs.some((o) => o.muted) ? [`${outs.filter((o) => o.muted).length} muted`] : []),
+      ...(features.limiter ? [`lim ${limOn}`] : []),
+    ],
+  });
   return blocks;
 }

@@ -17,7 +17,6 @@
   import CsGroupsPanel from '@/components/system/CsGroupsPanel.svelte';
   import CsMacrosPanel from '@/components/system/CsMacrosPanel.svelte';
   import CsDisplayPanel from '@/components/system/CsDisplayPanel.svelte';
-  import PresetOptionsPanel from './PresetOptionsPanel.svelte';
   import CsChangesStrip from './CsChangesStrip.svelte';
   import TelemetryPanel from './TelemetryPanel.svelte';
   import ErrorCountersPanel from './ErrorCountersPanel.svelte';
@@ -92,18 +91,16 @@
     {#if page === 'device'}
       <div class="cols">
         <div class="col" data-budget><DevicePanel /></div>
-        <div class="col" data-budget><LgSoundSyncPanel /><DacHwMutePanel /></div>
-        <div class="col" data-budget><PresetOptionsPanel /></div>
+        <div class="col" data-budget><TelemetryPanel /></div>
+        <div class="col" data-budget><ErrorCountersPanel /><BufferStatsPanel /></div>
       </div>
     {:else if page === 'io'}
       <div class="cols">
-        <div class="col" data-budget><SysClockPanel /><I2sClockPanel /></div>
+        <div class="col" data-budget><InputConfigPanel /><OutputsPanel /></div>
+        <div class="col" data-budget><SysClockPanel /><I2sClockPanel /><DacHwMutePanel /></div>
         <div class="col" data-budget>
-          <InputConfigPanel />
+          <LgSoundSyncPanel />
           {#if features.adatInput}<AdatInputPanel />{/if}
-        </div>
-        <div class="col" data-budget>
-          <OutputsPanel />
           {#if features.adatOutput}<AdatPanel />{/if}
           <PinMapPanel />
         </div>
@@ -115,12 +112,6 @@
         </div>
         <div class="col" data-budget></div>
         <div class="col" data-budget></div>
-      </div>
-    {:else if page === 'diagnostics'}
-      <div class="cols">
-        <div class="col" data-budget><TelemetryPanel /></div>
-        <div class="col" data-budget><ErrorCountersPanel /></div>
-        <div class="col" data-budget><BufferStatsPanel /></div>
       </div>
     {/if}
   </div>

@@ -34,7 +34,8 @@
 
 <ModuleFrame
   title="Stereo upmixer"
-  pass="program processor"
+  pass="inputs · feeds the matrix"
+  blurb="Derives centre and surround feeds from a stereo input and offers them as extra matrix sources. Parks on multichannel input or above 48 kHz."
   {enabled}
 >
   <div class="r">

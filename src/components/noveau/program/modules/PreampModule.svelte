@@ -18,7 +18,8 @@
   );
 </script>
 
-<ModuleFrame title="Preamp" pass="input gain · first in chain">
+<ModuleFrame title="Preamp" pass="inputs · PASS 1"
+  blurb="Per-input gain ahead of everything else. Trim hot sources or balance channels before EQ sees them.">
   <ModuleSlider
     label="MASTER"
     ariaLabel="Master preamp"

@@ -505,18 +505,26 @@ function fwTag(fw: FirmwareVersion): string {
   return fw.beta ? `${release}-beta${fw.beta}` : release;
 }
 
-export function exportHeldPreset(s: ReadySession): { filename: string; text: string } | null {
-  const held = s.copySource.held;
-  if (held == null) return null;
+export function presetExportFile(
+  s: ReadySession,
+  name: string,
+  slot: PresetSlot,
+  blob: DeviceState,
+): { filename: string; text: string } {
   const caps = s.info.capabilities;
   const text = Domain.serializePresetTransfer({
-    name: held.name,
+    name,
     fwVersion: fwTag(caps.fw),
     wire: caps.wire,
-    blob: buildBulkParams(held.blob),
+    blob: buildBulkParams(blob),
   });
-  const base = (held.name.trim() || `preset-${held.slot}`).replace(/[\\/:*?"<>|]/g, '_');
+  const base = (name.trim() || `preset-${slot}`).replace(/[\\/:*?"<>|]/g, '_');
   return { filename: `${base}.dspi-preset.json`, text };
+}
+
+export function exportHeldPreset(s: ReadySession): { filename: string; text: string } | null {
+  const held = s.copySource.held;
+  return held == null ? null : presetExportFile(s, held.name, held.slot, held.blob);
 }
 
 export type DecodedPreset =

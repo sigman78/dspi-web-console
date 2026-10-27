@@ -50,7 +50,8 @@
 
 <ModuleFrame
   title="Subharmonic"
-  pass="program processor"
+  pass="per output · after matrix, before crossover"
+  blurb="Octave divider: generates sub-bass one octave below the selected bands. Runs per output, before the crossover and Psybass."
   {enabled}
 >
   {#if showMask}

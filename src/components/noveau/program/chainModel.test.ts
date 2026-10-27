@@ -9,12 +9,17 @@ const keys = (f: typeof ALL) => chainBlocks(makeSnapshot(), f).map((b) => b.key)
 describe('chainBlocks', () => {
   it('omits blocks whose feature flag is false and keeps firmware order', () => {
     expect(keys(ALL)).toEqual([
-      'preamp', 'inputEq', 'leveller', 'crossfeed', 'loudness', 'psybass', 'subharm', 'upmix', 'matrix', 'outputStage',
+      'preamp', 'inputEq', 'leveller', 'upmix', 'matrix', 'crossfeed', 'subharm', 'psybass', 'loudness', 'outputs',
     ]);
     const k = keys({ ...ALL, psybass: false, upmix: false });
     expect(k).not.toContain('psybass');
     expect(k).not.toContain('upmix');
     expect(k).toContain('subharm');
+  });
+
+  it('marks only matrix and outputs as anchors', () => {
+    const anchors = chainBlocks(makeSnapshot(), ALL).filter((b) => b.kind === 'anchor').map((b) => b.key);
+    expect(anchors).toEqual(['matrix', 'outputs']);
   });
 
   it('counts routes and outputs from the snapshot', () => {
@@ -23,15 +28,15 @@ describe('chainBlocks', () => {
     snap.outputs = snap.outputs.map((o, i) => ({ ...o, enabled: i < 4, muted: i === 1 }));
     const blocks = chainBlocks(snap, ALL);
     expect(blocks.find((b) => b.key === 'matrix')!.values).toEqual(['3 routes']);
-    const out = blocks.find((b) => b.key === 'outputStage')!.values;
+    const out = blocks.find((b) => b.key === 'outputs')!.values;
     expect(out.slice(0, 2)).toEqual(['4 on', '1 muted']);
     snap.outputs = snap.outputs.map((o) => ({ ...o, muted: false }));
-    const quiet = chainBlocks(snap, ALL).find((b) => b.key === 'outputStage')!.values;
+    const quiet = chainBlocks(snap, ALL).find((b) => b.key === 'outputs')!.values;
     expect(quiet.some((v) => v.includes('muted'))).toBe(false);
   });
 
   it('drops the limiter count without the limiter feature', () => {
-    const out = chainBlocks(makeSnapshot(), { ...ALL, limiter: false }).find((b) => b.key === 'outputStage')!;
+    const out = chainBlocks(makeSnapshot(), { ...ALL, limiter: false }).find((b) => b.key === 'outputs')!;
     expect(out.values.some((v) => v.startsWith('lim'))).toBe(false);
   });
 

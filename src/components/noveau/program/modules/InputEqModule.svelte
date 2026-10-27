@@ -37,7 +37,8 @@
   }
 </script>
 
-<ModuleFrame title="Input EQ" pass="input EQ · all inputs overlaid · click » to edit">
+<ModuleFrame title="Input EQ" pass="inputs · PASS 2"
+  blurb="Up to 10 parametric bands per input, applied before routing. Edit bands in TUNE with an input selected.">
   <BodePlot {curves} height={180} />
   {#each inputs as inp (inp.id)}
     <div class="r">

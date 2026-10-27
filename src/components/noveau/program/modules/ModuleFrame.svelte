@@ -4,11 +4,13 @@
   const {
     title,
     pass,
+    blurb,
     enabled,
     children,
   }: {
     title: string;
     pass: string;
+    blurb: string;
     /** Omitted for modules without an enable state; false shows an "off" tag. */
     enabled?: boolean;
     children: Snippet;
@@ -21,6 +23,7 @@
     <span class="pass" title={pass}>{pass}</span>
     {#if enabled === false}<span class="off">off</span>{/if}
   </header>
+  <p class="blurb">{blurb}</p>
   <div class="body">{@render children()}</div>
 </section>
 
@@ -46,6 +49,7 @@
     font-size: 11px;
     color: var(--text-dim);
   }
+  .blurb { margin: 0 0 8px; padding: 0 4px; font-family: var(--font-sans); font-size: 11px; line-height: 1.35; color: var(--text-dim); }
   .off { flex: 0 0 auto; font-family: var(--font-sans); font-size: 11px; color: var(--text-faint); }
   .body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 

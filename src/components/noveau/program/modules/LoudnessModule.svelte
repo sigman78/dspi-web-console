@@ -26,7 +26,8 @@
 
 <ModuleFrame
   title="Loudness"
-  pass="program · before matrix"
+  pass="per output · after trim, before delay"
+  blurb="Equal-loudness compensation (ISO 226): boosts bass and treble as the volume goes down. The graph is the correction at the current volume relative to the reference level."
   {enabled}
 >
   <div class:dim={!enabled}><BodePlot {curves} height={96} crosshair={false} {yRange} /></div>

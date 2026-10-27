@@ -39,7 +39,8 @@
 
 <ModuleFrame
   title="Leveller"
-  pass="program · after input EQ"
+  pass="inputs · before matrix"
+  blurb="Upward RMS compressor: lifts quiet passages toward a target without touching loud ones. Speed sets how fast gain follows the music."
   {enabled}
 >
   {#if showMasks}

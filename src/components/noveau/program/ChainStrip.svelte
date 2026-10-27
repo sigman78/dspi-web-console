@@ -3,8 +3,9 @@
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '../noveauUi.svelte';
+  import { selectChannel, settings } from '@/state';
   import { chainBlocks, type ChainBlock } from './chainModel';
-  import type { ProgramModuleKey } from './programModel';
+  import { resolveModule, type ProgramModuleKey } from './programModel';
 
   const s = getSession();
   const blocks = $derived(
@@ -23,25 +24,41 @@
     upmix: (v) => Runtime.setUpmixEnabled(s, v),
   };
 
+  const active = $derived(resolveModule(noveauUi.programModule, s.device.capabilities.features));
+
+  function openOutputInTune(): void {
+    const snap = s.mirror.current;
+    const sel = settings.selectedChannel;
+    if (snap && !snap.outputs.some((o) => o.id === sel)) {
+      const first = snap.outputs.find((o) => o.enabled) ?? snap.outputs[0];
+      if (first) selectChannel(first.id);
+    }
+    noveauUi.destination = 'tune';
+  }
+
   const lit = (b: ChainBlock) => b.enabled !== false;
 </script>
 
 <div class="chain" role="group" aria-label="Processing chain">
   {#each blocks as b, i (b.key)}
     {#if i > 0}
-      {#if b.key === 'matrix'}<span class="cdiv"></span>{:else}<span class="wire" class:hot={lit(b)}></span>{/if}
+      {#if b.key === 'matrix' || b.key === 'outputs'}<span class="cdiv"></span>{:else}<span class="wire" class:hot={lit(b)}></span>{/if}
     {/if}
-    <div class="blk" class:on={lit(b)} class:offb={!lit(b)} class:sel={noveauUi.programModule === b.key}>
-      <button
-        type="button"
-        class="hit"
-        aria-pressed={noveauUi.programModule === b.key}
-        aria-label={`${b.title}: ${b.values.join(', ')}`}
-        onclick={() => { noveauUi.programModule = b.key; }}
-      ></button>
+    <div class="blk" class:anchor={b.kind === 'anchor'} class:on={b.kind === 'module' && lit(b)} class:offb={b.kind === 'module' && !lit(b)} class:sel={b.kind === 'module' && active === b.key}>
+      {#if b.kind === 'module'}
+        <button
+          type="button"
+          class="hit"
+          aria-pressed={active === b.key}
+          aria-label={`${b.title}: ${b.values.join(', ')}`}
+          onclick={() => { noveauUi.programModule = b.key; }}
+        ></button>
+      {/if}
       <div class="bh">
         <b>{b.title}</b>
-        {#if b.enabled !== null && SETTERS[b.key]}
+        {#if b.key === 'outputs'}
+          <button type="button" class="jump" aria-label="Open selected output in TUNE" title="Open selected output in TUNE" onclick={openOutputInTune}>»</button>
+        {:else if b.kind === 'module' && b.enabled !== null && SETTERS[b.key]}
           <span class="sw"><ToggleSwitch size="sm" checked={b.enabled} ariaLabel={`${b.title} enabled`} onChange={SETTERS[b.key]!} /></span>
         {/if}
       </div>
@@ -123,5 +140,14 @@
   .blk.on { background: color-mix(in oklab, var(--accent) 9%, var(--wash)); box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 22%, transparent) inset; }
   .blk.sel { box-shadow: 0 0 0 2px var(--accent) inset; background: color-mix(in oklab, var(--accent) 16%, transparent); }
   .blk.offb .bh b, .blk.offb .bv { color: var(--text-faint); }
+  .blk.anchor { background: none; box-shadow: 0 0 0 1px var(--border) inset; }
+  .jump {
+    pointer-events: auto;
+    width: 20px; height: 20px; padding: 0; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: none; border-radius: 3px; cursor: pointer;
+    font-family: var(--font-sans); font-size: 14px; line-height: 1; color: var(--text-dim);
+  }
+  .jump:hover, .jump:focus-visible { color: var(--accent); }
   .hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 </style>

@@ -41,7 +41,7 @@ function mount(overrides: Partial<typeof baseFeatures> = {}, activeInputChannels
     telemetry: {
       activeInputChannels, info: { sampleRateHz: 48000 }, limiterMeterDb: null,
       subharmSolo: false, subharmMeter: null, subharmHeadroomDb: null,
-      wantSubharmMeter: vi.fn(() => vi.fn()), wantLimiterMeter: vi.fn(() => vi.fn()),
+      wantSubharmMeter: vi.fn(() => vi.fn()),
     },
     mirror: { current: snapshot },
   } as unknown;
@@ -105,10 +105,9 @@ describe('ModulePanel', () => {
     expect(base.queryByLabelText('Subharmonic 24 to 36 hertz band level')).toBeTruthy();
   });
 
-  test('a module the firmware lacks renders a notice instead of controls', () => {
+  test('a stored module the firmware lacks falls back to the first module', () => {
     noveauUi.programModule = 'psybass';
-    const { container, getByText } = mount({ psybass: false });
-    expect(getByText('Not available on this firmware')).toBeTruthy();
-    expect(sliders(container)).toBe(0);
+    const { container } = mount({ psybass: false });
+    expect(container.querySelector('[aria-label="Master preamp"]')).toBeTruthy();
   });
 });
