@@ -2,7 +2,7 @@ import * as Clamp from '@/domain/clamp';
 import type { ReadySession } from '@/state';
 import { write, scrub } from './writes.svelte';
 
-// Stereo upmixer (fw V25+, RP2350 only). Discrete mode/enable edits use the
+// Stereo upmixer (RP2350 only). Discrete mode/enable edits use the
 // write lane; continuous knobs scrub, one lane key each.
 export function setUpmixEnabled(s: ReadySession, enabled: boolean): void {
   void write(s,

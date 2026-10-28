@@ -1,20 +1,15 @@
-import { controlAvailable } from './control/controlPages';
 import type { NoveauDestination } from './noveauUi.svelte';
 
 export interface Destination { key: NoveauDestination; label: string }
 
-const ALL: readonly Destination[] = [
+// Rail order.
+export const DESTINATIONS: readonly Destination[] = [
   { key: 'tune', label: 'TUNE' },
   { key: 'program', label: 'PROGRAM' },
   { key: 'setup', label: 'SETUP' },
   { key: 'control', label: 'CONTROL' },
   { key: 'about', label: 'ABOUT' },
 ];
-
-// Rail order; CONTROL drops out on firmware without control surfaces.
-export function destinations(features: Parameters<typeof controlAvailable>[0]): Destination[] {
-  return ALL.filter((d) => d.key !== 'control' || controlAvailable(features));
-}
 
 export const DESTINATION_SHORTCUTS: ReadonlyArray<{ keys: readonly string[]; action: string }> = [
   { keys: ['Alt+1 … 5'], action: 'destination by rail position' },

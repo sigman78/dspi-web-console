@@ -9,7 +9,7 @@ function band(o: Partial<FilterParams> = {}): FilterParams {
 
 // V10 factory: all optional sections present and non-null.
 function makeV10() {
-  return makeSnapshot((b) => { b.formatVersion = 10; });
+  return makeSnapshot();
 }
 
 describe('diffSnapshots — existing coverage', () => {

@@ -8,29 +8,27 @@ import { deriveCapabilities, type DeviceCapabilities, type FirmwareVersion } fro
 
 // Semver face of the wire-version floor that lives in capabilities.ts; shown in
 // the reject message.
-const MIN_SUPPORTED_FW = '1.1.4';
+const MIN_SUPPORTED_FW = '1.1.5';
 
-// Thrown at connect when firmware predates the supported floor, or reports
-// an in-development wire format the console doesn't speak (11..15 -- e.g. a
-// mid-branch 1.1.5 beta whose semver still reads 1.1.4). Carries the versions
-// so the connect UI can render an upgrade prompt.
+// Thrown at connect when firmware reports a wire format below the supported
+// floor. Names the wire format as well as the semver, since pre-release
+// builds can share a semver with a released one. Carries the versions so the
+// connect UI can render an upgrade prompt.
 export class UnsupportedFirmware extends Error {
   constructor(
     readonly firmwareVersion: string,
+    wireLabel: string,
     readonly minimum: string = MIN_SUPPORTED_FW,
-    wireLabel?: string,
   ) {
-    super(wireLabel
-      ? `DSPi firmware ${firmwareVersion} uses the unreleased wire format ${wireLabel}, which this console does not support. Flash the released ${minimum} firmware or a current development build.`
-      : `DSPi firmware ${firmwareVersion} is older than the minimum supported ${minimum}.`);
+    super(`DSPi firmware ${firmwareVersion} (wire ${wireLabel}) is older than the minimum supported ${minimum} (wire V${proto.Wire.MIN_WIRE_VERSION}). Flash the released ${minimum} firmware or newer.`);
     this.name = 'UnsupportedFirmware';
   }
 }
 
 // Thrown at connect when a wire-supported device reports a parameter packet
-// shorter than the V10 floor (malformed/truncated firmware). The console treats
-// V10 sections as guaranteed, so such a device is rejected rather than silently
-// defaulting them.
+// shorter than its wire version's full size (malformed/truncated firmware).
+// The console treats every section as guaranteed, so such a device is
+// rejected rather than silently defaulting them.
 export class UnsupportedDevicePacket extends Error {
   constructor(readonly fwLabel: string, readonly got: number, readonly need: number) {
     super(`DSPi firmware ${fwLabel} sent an incomplete parameter packet (${got} bytes, need at least ${need}). Update the firmware.`);
@@ -268,7 +266,7 @@ export class DspDevice {
 
     // Peek just the 16-byte header so capabilities reflect the observed wire
     // structure, not just the (potentially misreported) semver -- a full
-    // V16 packet is too large for a single control transfer on some hosts
+    // packet is too large for a single control transfer on some hosts
     // (WinUSB's 4 KB cap), but the header alone always fits.
     const headerBytes = await transport.ctrlIn(
       proto.WireCmd.GetAllParams.code, 0, Codec.sizeOf(proto.Wire.Header),
@@ -282,26 +280,18 @@ export class DspDevice {
       platformId:    platform.platformId,
     });
     if (capabilities.support === 'unsupported') {
-      // Wire above the V10 floor but still unsupported = an 11..15 in-dev
-      // intermediate; name the wire format, since the semver alone reads
-      // like a supported release.
-      const intermediate = capabilities.wire > 10;
-      throw new UnsupportedFirmware(
-        capabilities.fwLabel, undefined,
-        intermediate ? capabilities.wireLabel : undefined,
-      );
+      throw new UnsupportedFirmware(capabilities.fwLabel, capabilities.wireLabel);
     }
     // A supported device must carry the full packet for its exact wire
-    // version (V10: 2960 B; V16: 5864; V17: 5872; V18: 5876). A shorter
-    // packet means the device omits sections the console treats as
-    // guaranteed -- reject rather than silently defaulting them.
+    // version (V28: 5944 B). A shorter packet means the device omits sections
+    // the console treats as guaranteed -- reject rather than silently defaulting them.
     const minPayload = proto.Wire.bulkSizeForVersion(capabilities.wire);
     if (header.payloadLength < minPayload) {
       throw new UnsupportedDevicePacket(capabilities.fwLabel, header.payloadLength, minPayload);
     }
 
     const platformType = platformTypeFromId(platform.platformId);
-    const hardware = Domain.createHardwareProfile(platformType, capabilities.channelModel);
+    const hardware = Domain.createHardwareProfile(platformType);
     const build = capabilities.features.buildStamp ? await readBuildInfo(transport) : null;
     return {
       serial: serial.trim(),
@@ -360,15 +350,12 @@ export class DspDevice {
   }
 
   async getAllParams(): Promise<proto.BulkParams> {
-    const chunked = proto.Wire.bulkSizeForVersion(this.capabilities.wire) > proto.Wire.BulkLimits.MaxControlTransfer;
-    const bytes = chunked
-      ? await this.#readAllParamsChunked()
-      : await this.transport.ctrlIn(proto.WireCmd.GetAllParams.code, 0, proto.Wire.BulkLimits.MaxReadSize);
+    const bytes = await this.#readAllParamsChunked();
     this.#lastRawBulk = bytes;
     return proto.parseBulkParams(bytes);
   }
 
-  // Read the bulk packet via the chunked 0xA2 session (V16: the 5864 B packet
+  // Read the bulk packet via the chunked 0xA2 session (the 5944 B packet
   // exceeds the 4096 B WinUSB control-transfer cap). Runs as one exclusive
   // unit so no other vendor request can land between chunks and tear the
   // firmware's session down; a STALL anywhere retries the whole transfer
@@ -410,17 +397,13 @@ export class DspDevice {
 
   // Push a complete DSP state in one control-OUT. Firmware applies it in its
   // main loop (~5 ms); callers needing the change visible should re-fetch.
-  // Always emits at THIS device's exact wire version: V16+ firmware accepts
-  // only the exact full-size packet for its own version, and a state captured
-  // from a device of another generation/version converts through the
+  // Always emits at THIS device's exact wire version: firmware accepts only
+  // the exact full-size packet for its own version, and a state captured
+  // from a device of another version converts through the
   // max-shaped DTO (missing rows default, extra rows drop).
   async setAllParams(bulk: proto.BulkParams): Promise<void> {
     const bytes = proto.buildBulkParams(bulk, this.capabilities.wire);
-    if (bytes.length > proto.Wire.BulkLimits.MaxControlTransfer) {
-      await this.#writeAllParamsChunked(bytes);
-    } else {
-      await this.transport.ctrlOut(proto.WireCmd.SetAllParams.code, 0, bytes);
-    }
+    await this.#writeAllParamsChunked(bytes);
   }
 
   // Write the bulk packet via the chunked 0xA3 session (mirrors
@@ -442,19 +425,12 @@ export class DspDevice {
     }
   }
 
-  // V16 devices use the wide combined-status layout (u32 clip flags + live
-  // active-input-count byte) and the 5-bit band field in GetEqParam wValues.
-  private get isWideWire(): boolean {
-    return this.capabilities.channelModel === Domain.ChannelFamily.Unified;
-  }
-
   async getSystemStatus(): Promise<proto.SystemStatus> {
     const numCh = this.hardware.totalChannelCount;
-    const wide = this.isWideWire;
     const bytes = await this.transport.ctrlIn(
-      proto.WireCmd.GetStatus.code, 9, proto.systemStatusSize(numCh, wide),
+      proto.WireCmd.GetStatus.code, 9, proto.systemStatusSize(numCh),
     );
-    return proto.parseSystemStatus(bytes, numCh, wide);
+    return proto.parseSystemStatus(bytes, numCh);
   }
 
   // Slow-poll telemetry (env scalars + cumulative error counters). Each wValue
@@ -558,9 +534,7 @@ export class DspDevice {
     const bytes = await this.transport.ctrlIn(
       proto.WireCmd.PresetGetDir.code, 0, proto.PresetDirRequestSize,
     );
-    // decodePadded zero-extends a legacy 6-byte response to the 7-byte schema;
-    // masterVolumeMode then reads 0 (= Independent), the correct legacy semantic.
-    const r = Codec.decodePadded(proto.PresetDirectory, bytes);
+    const r = Codec.decode(proto.PresetDirectory, bytes);
     return {
       occupiedSlotsSet: occupiedMaskToSet(r.occupiedMask),
       startupMode:      r.startupMode,
@@ -617,9 +591,8 @@ export class DspDevice {
   // The all-params packet is read-only here (getSnapshot) plus the paste-only
   // restoreState write; the edit path is entirely per-field.
 
-  // Linkwitz Transform bands (V22+) send the 18-byte form (qp sidecar
-  // appended); every other type sends the plain 16-byte SetFilterPacket so
-  // older firmware never sees the extra bytes.
+  // Linkwitz Transform bands send the 18-byte form (qp sidecar appended);
+  // every other type sends the plain 16-byte SetFilterPacket.
   async setFilter(channel: Domain.ChannelId, band: number, p: Domain.FilterParams): Promise<void> {
     const wireChannel = this.deviceChannel(channel);
     if (p.type === Domain.FilterType.LinkwitzTransform) {
@@ -647,15 +620,12 @@ export class DspDevice {
   // One ctrlIn per parameter with a bit-packed wValue. Not atomic against
   // concurrent writers; use getAllParams() for an atomic snapshot. `decode`
   // (not `decodePadded`) makes a truncated read throw rather than zero-pad.
-  // V16 widened the band field to 5 bits -- (band << 3) | param -- so
-  // crossover bands at 20..23 stay addressable; V10 packs (band << 4) | param.
+  // The band field is 5 bits -- (band << 3) | param -- so crossover bands at
+  // 20..23 stay addressable.
   async getFilter(channel: Domain.ChannelId, band: number): Promise<Domain.FilterParams> {
     const wireChannel = this.deviceChannel(channel);
     const code = proto.WireCmd.GetEqParam.code;
-    const wide = this.isWideWire;
-    const wValue = wide
-      ? (param: number) => ((wireChannel & 0xFF) << 8) | ((band & 0x1F) << 3) | (param & 0x7)
-      : (param: number) => ((wireChannel & 0xFF) << 8) | ((band & 0xF) << 4) | (param & 0xF);
+    const wValue = (param: number) => ((wireChannel & 0xFF) << 8) | ((band & 0x1F) << 3) | (param & 0x7);
     const t = this.transport;
     const [typeBytes, freqBytes, qBytes, gainBytes] = await Promise.all([
       t.ctrlIn(code, wValue(0), 4),
@@ -671,9 +641,8 @@ export class DspDevice {
       q:         Codec.decode(Codec.f32, qBytes),
       gain:      Codec.decode(Codec.f32, gainBytes),
     };
-    // Linkwitz Transform qp sidecar (V22+, param 5; only addressable via the
-    // wide 3-bit param field).
-    if (type === Domain.FilterType.LinkwitzTransform && wide) {
+    // Linkwitz Transform qp sidecar (param 5).
+    if (type === Domain.FilterType.LinkwitzTransform) {
       const qpBytes = await t.ctrlIn(code, wValue(5), 4);
       result.qp = Domain.decodeQp(Codec.decode(Codec.u32, qpBytes) & 0xFFFF);
     }
@@ -750,8 +719,7 @@ export class DspDevice {
     return proto.actionCmd(this.transport, proto.WireCmd.GetOutputPin, pinOutputIndex);
   }
 
-  // role 0 = master/unified pair (default; legacy encoding, byte-identical to
-  // pre-V21 firmware), role 1 = slave pair (fw V21+).
+  // role 0 = master/unified pair (default), role 1 = slave pair.
   async setI2sBckPin(pin: number, role = 0): Promise<Result<void, proto.PinConfigResult>> {
     const wValue = ((role & 0xFF) << 8) | (pin & 0xFF);
     return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetI2sBckPin, wValue));
@@ -836,7 +804,7 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLoudnessIntensity, pct);
   }
 
-  // Per-output loudness mask (fw V19+). Bit k = output channel k.
+  // Per-output loudness mask. Bit k = output channel k.
   async setLoudnessOutputMask(mask: number): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLoudnessMask, mask & 0xFFFF);
   }
@@ -865,7 +833,7 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedFeedDb, db);
   }
 
-  // Crossfeed output-pair mask (fw V20+). Bit p = output pair p (outputs
+  // Crossfeed output-pair mask. Bit p = output pair p (outputs
   // 2p/2p+1; the mono PDM sub is excluded).
   async setCrossfeedOutputPairs(mask: number): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedOutputs, mask & 0xFF);
@@ -899,7 +867,7 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerGate, db);
   }
 
-  // Multichannel leveller masks (fw V18+). detector = inputs feeding the shared
+  // Multichannel leveller masks. detector = inputs feeding the shared
   // detector; apply = inputs receiving the gain. Bit k = input channel k.
   async setLevellerMasks(detector: number, apply: number): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerMasks,
@@ -910,7 +878,7 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetLevellerMasks);
   }
 
-  // Psychoacoustic bass enhancement (fw V23+, RP2350 only).
+  // Psychoacoustic bass enhancement (RP2350 only).
   async setPsybassEnabled(enabled: boolean): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassEnabled, enabled);
   }
@@ -935,7 +903,7 @@ export class DspDevice {
     return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassOriginal, db);
   }
 
-  // Per-output psybass mask (fw V23+). Bit k = output channel k.
+  // Per-output psybass mask. Bit k = output channel k.
   async setPsybassMask(mask: number): Promise<void> {
     return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassMask, mask & 0xFFFF);
   }
@@ -944,7 +912,7 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetPsybassMask);
   }
 
-  // Stereo upmixer (fw V25+, RP2350 only). Per-param SET (0x4C): wValue =
+  // Stereo upmixer (RP2350 only). Per-param SET (0x4C): wValue =
   // UPMIX_PARAM_* id, payload = one float (firmware rounds mode/enable ids
   // to integer). #setUpmixParam is shared plumbing, not a public verb --
   // the named setters below are the grep-able per-verb surface the runtime
@@ -1152,8 +1120,6 @@ export class DspDevice {
     return { engaged: st.engaged !== 0, lookaheadSamples: st.lookaheadSamples, blockSamples: st.blockSamples, numOutputs: st.numOutputs };
   }
 
-  // v1.1.4 granular surface (unconditional: the V10 floor guarantees support).
-
   // Per-band EQ bypass. wValue = (wireChannel<<8)|band, mirroring getFilter's
   // channel remap (e.g. RP2040 PDM -> wire channel 6).
   async setBandBypass(channel: Domain.ChannelId, band: number, bypassed: boolean): Promise<void> {
@@ -1213,8 +1179,8 @@ export class DspDevice {
     );
   }
 
-  // S/PDIF RX GPIO pin (fw 1.1.5+: up to 4 selectable instances, 0..3 at
-  // wire V28+ (0..2 below); instance 0 is the always-present default).
+  // S/PDIF RX GPIO pin (up to 4 selectable instances, 0..3; instance 0 is
+  // the always-present default).
   // Action-style IN: wValue = (instance<<8)|GPIO, returns a PinConfigResult
   // status byte (mirrors setI2sRxPin).
   async setSpdifRxPin(gpio: number, instance = 0): Promise<Result<void, proto.PinConfigResult>> {
@@ -1226,16 +1192,13 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetSpdifRxPin, instance & 0xFF);
   }
 
-  // Enable/disable a selectable S/PDIF input (instance 1..3 at wire V28+,
-  // 1..2 below; instance 0 is always on). wValue = (instance<<8)|enable.
+  // Enable/disable a selectable S/PDIF input (instance 1..3; instance 0 is always on). wValue = (instance<<8)|enable.
   async setSpdifInputEnabled(instance: number, on: boolean): Promise<Result<void, proto.PinConfigResult>> {
     const wValue = ((instance & 0xFF) << 8) | (on ? 1 : 0);
     return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetSpdifInputEnable, wValue));
   }
 
-  // { count, enableMask, pins } for every selectable S/PDIF input slot (3
-  // below wire V28, 4 at V28+ -- readCmd's decodePadded zero-fills pin 4 on
-  // a legacy 5-byte response).
+  // { count, enableMask, pins } for every selectable S/PDIF input slot.
   async getSpdifInputConfig(): Promise<{ count: number; enableMask: number; pins: number[] }> {
     return proto.readCmd(this.transport, proto.WireCmd.GetSpdifInputConfig);
   }
@@ -1270,8 +1233,8 @@ export class DspDevice {
     await proto.actionCmd(this.transport, proto.WireCmd.TestDacHwMute);
   }
 
-  // V16 / fw 1.1.5 I2S-input surface. Gate on capabilities.features.i2sInput
-  // (multichannel variants on .multichannelInput) before calling.
+  // I2S-input surface. Multichannel variants: gate on
+  // capabilities.features.multichannelInput.
 
   // The device is the rate authority while I2S input is active; the rate is
   // commanded, not detected. Accepted: 44100 / 48000 / 96000.
@@ -1309,7 +1272,7 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.WireCmd.GetI2sInputChannels);
   }
 
-  // I2S slave-clock mode (fw V21+, gate on capabilities.features.i2sSlaveClock).
+  // I2S slave-clock mode.
   // SET is deferred apply (firmware applies from the main loop), so a GET
   // right after a SET may still report the old mode.
   async setI2sClockMode(mode: number): Promise<void> {
@@ -1364,7 +1327,7 @@ export class DspDevice {
     return proto.actionCmd(this.transport, proto.WireCmd.GetI2sClockPinMode, 0);
   }
 
-  // ADAT lightpipe bulk output (fw V17+, RP2350 only; gate on
+  // ADAT lightpipe bulk output (RP2350 only; gate on
   // capabilities.features.adatOutput). Action-style: wValue carries the
   // value, response is a PinConfigResult status byte. Enabling requires a
   // valid pin.
@@ -1397,7 +1360,7 @@ export class DspDevice {
     };
   }
 
-  // ADAT lightpipe bulk input (fw V24+, RP2350 only; gate on
+  // ADAT lightpipe bulk input (RP2350 only; gate on
   // capabilities.features.adatInput). Action-style like the ADAT output block
   // above: wValue carries the value, response is a PinConfigResult status
   // byte. Enabling requires a valid stored pin; disabling is refused while
@@ -1446,8 +1409,7 @@ export class DspDevice {
     };
   }
 
-  // External control interfaces (V16+, gate on capabilities.features.controlInterfaces):
-  // a UART control transport and an I2C target, configured over 0xF5-0xF9.
+  // External control interfaces: a UART control transport and an I2C target, configured over 0xF5-0xF9.
 
   async getUartControlConfig(): Promise<Domain.UartControlConfig> {
     const w = await proto.readCmd(this.transport, proto.WireCmd.GetUartConfig);
@@ -1493,8 +1455,7 @@ export class DspDevice {
     return ctrlIfaceStatusFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCtrlIfaceStatus));
   }
 
-  // Control Surfaces (V16+, gate on capabilities.features.controlSurfaces):
-  // physical controls/indicators on user GPIOs, configured over 0x84-0x87,
+  // Control Surfaces: physical controls/indicators on user GPIOs, configured over 0x84-0x87,
   // 0x8B-0x8C, 0x9D-0x9E.
 
   // Capability enumeration, host order per spec: header+types (wValue
@@ -1810,7 +1771,7 @@ export class DspDevice {
     return csDisplayStatusFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCsDisplayStatus));
   }
 
-  // Crossover bands (V16+, output channels only) ride the EQ verbs at wire
+  // Crossover bands (output channels only) ride the EQ verbs at wire
   // band indices XOVER_BAND_BASE..+3; these wrappers own that offset.
   async setCrossoverBand(channel: Domain.ChannelId, xoverIndex: number, p: Domain.FilterParams): Promise<void> {
     return this.setFilter(channel, Domain.XOVER_BAND_BASE + xoverIndex, p);
@@ -1826,8 +1787,7 @@ export class DspDevice {
 
   // Persist the live physical-IO block (output pins, output types, I2S
   // BCK/MCK, S/PDIF RX pin) to the directory's device-global block. Accepted
-  // in both output-config modes, dormant in WITH_PRESET. (0x52 was the removed
-  // pre-V10 sync LoadParams; the V10 connect floor keeps it unreachable there.)
+  // in both output-config modes, dormant in WITH_PRESET.
   async saveOutputConfig(): Promise<Result<void, proto.PresetResult>> {
     return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SaveOutputConfig));
   }

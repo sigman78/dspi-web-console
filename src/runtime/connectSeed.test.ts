@@ -13,18 +13,11 @@ beforeEach(() => { resetAppState(); });
 afterEach(() => { activeSession()?.dispose(); resetAppState(); });
 
 describe('wireUpConnection — channel-width seed', () => {
-  it('V16: seeds the live input count and mirror before the UI first renders', async () => {
-    await bootMock('rp2350', { wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } });
+  it('seeds the live input count and mirror before the UI first renders', async () => {
+    await bootMock('rp2350');
     const s = activeSession()!;
     // Would be null under the old dispatch-then-init order (no poll has run).
     expect(s.telemetry.activeInputChannels).toBe(2);
-    expect(s.mirror.current).not.toBeNull();
-  });
-
-  it('V10: reports no live count, staying null (= show all, its true fixed width)', async () => {
-    await bootMock('rp2040');
-    const s = activeSession()!;
-    expect(s.telemetry.activeInputChannels).toBeNull();
     expect(s.mirror.current).not.toBeNull();
   });
 });

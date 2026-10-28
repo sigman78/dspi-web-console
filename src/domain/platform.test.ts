@@ -10,10 +10,10 @@ describe('hardware profiles', () => {
     expect(hardware.uiChannelByWireChannel[ChannelId.Out3L]).toBe(ChannelId.Pdm);
   });
 
-  it('puts PDM at slot 8 on RP2350 with no wire-channel override', () => {
+  it('puts PDM at slot 8 on RP2350 and routes it to the last wire channel (16)', () => {
     const hardware = createHardwareProfile(PlatformType.RP2350);
     expect(hardware.outputSlotByChannel[ChannelId.Pdm]).toBe(8);
-    expect(hardware.wireChannelByUiChannel[ChannelId.Pdm]).toBe(ChannelId.Pdm);
-    expect(hardware.uiChannelByWireChannel[ChannelId.Pdm]).toBe(ChannelId.Pdm);
+    expect(hardware.wireChannelByUiChannel[ChannelId.Pdm]).toBe(16);
+    expect(hardware.uiChannelByWireChannel[16 as ChannelId]).toBe(ChannelId.Pdm);
   });
 });

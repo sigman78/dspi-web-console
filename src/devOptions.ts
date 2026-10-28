@@ -2,28 +2,27 @@
 //
 //   ?mock[=<profile>]   boot a synthesized device instead of USB:
 //       latest (default)  newest wire / fw 1.1.6
-//       legacy            wire V10 / fw 1.1.4
 //       multi             latest + 8ch I2S input + 3 S/PDIF inputs
-//       v<N>              exact bulk/wire format N (v10, v16..vMAX)
-//     a comma list (?mock=latest,legacy) boots one device per token: the
+//       v<N>              exact bulk/wire format N (v28..vMAX)
+//     a comma list (?mock=latest,v28) boots one device per token: the
 //     first is active, the rest adopt dormant -- the multi-device fleet
 //     harness, no hardware needed
 //     &chip=rp2040|rp2350  hardware flavor, combinable with any profile
 //                          (default rp2350; rp2040 = 5 outputs, fewer pairs)
 //     &cs=full           fill every control-surface table to capacity (16
 //                        bindings incl. IR receiver + display, 8 macros of 8
-//                        steps, 8 groups, 16 IR commands, 16 display pages);
-//                        wire V16+ only
+//                        steps, 8 groups, 16 IR commands, 16 display pages)
 //   ?debug              show diagnostics panels (SETUP > DEVICE buffer stats)
 //   ?hero               force the connecting hero even while connected
 //   ?sysclock=fallback  boot the mock system clock crash-fallen-back (stored
-//                       mode 2, active safe mode 0) to demo the fallback banner;
-//                       no-op below wire V26 (the mock STALLs the opcodes there)
+//                       mode 2, active safe mode 0) to demo the fallback banner
+//   ?sysclock=off       boot the mock without the system-clock opcodes, as released
+//                       1.1.5/1.1.6 firmware answers (the panel stays hidden)
 //   ?log=0              silence the diagnostic logger (errors still log)
 //   ?log=wire           additionally trace every wire message
 //
 // Profile -> MockOptions resolution lives in src/mockProfiles.ts (it needs
-// Wire.MAX_WIRE_VERSION, which this module cannot import -- see below).
+// the Wire version bounds, which this module cannot import -- see below).
 //
 // Every reader below pulls from `location.search` at call time (not cached at
 // module load) so tests can `history.replaceState` and re-read. No imports:
@@ -58,6 +57,10 @@ export function heroOverride(): boolean {
 
 export function debugPanels(): boolean {
   return params()?.has('debug') ?? false;
+}
+
+export function mockSysClockOff(): boolean {
+  return params()?.get('sysclock') === 'off';
 }
 
 export function mockSysClockFallback(): boolean {

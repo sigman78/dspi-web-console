@@ -10,10 +10,9 @@
 
   const s = getSession();
   const snap = $derived(s.mirror.current);
-  const features = $derived(s.device.capabilities.features);
   const slot = $derived(inputIndexOf(channelId));
   const preampDb = $derived(slot !== null ? (snap?.inputPreampDb[slot] ?? 0) : 0);
-  const showLeveller = $derived(features.levellerMasks && slot !== null);
+  const showLeveller = $derived(slot !== null);
   const inMask = (mask: number | undefined): boolean => slot !== null && (((mask ?? 0xFF) >> slot) & 1) === 1;
 </script>
 

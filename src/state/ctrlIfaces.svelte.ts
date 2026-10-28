@@ -1,4 +1,4 @@
-// Reactive store for the V16 external control interfaces (UART + I2C).
+// Reactive store for the external control interfaces (UART + I2C).
 // Unlike presets/telemetry these aren't part of the bulk packet -- they're
 // fetched once via their own vendor commands (see runtime/deviceService.ts).
 

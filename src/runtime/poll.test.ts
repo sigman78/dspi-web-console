@@ -467,7 +467,7 @@ describe('I2S slave-clock status cadence', () => {
     return {
       info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
       hardware: hw,
-      capabilities: { features: { i2sSlaveClock: true } },
+      capabilities: { features: {} },
       getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
       getBufferStats: vi.fn(async () => null),
       getSystemInfo: vi.fn(async () => ({})),
@@ -476,7 +476,7 @@ describe('I2S slave-clock status cadence', () => {
     } as unknown as DspDevice;
   }
 
-  it('polls getI2sSlaveStatus when the feature is present and clock mode is slave', async () => {
+  it('polls getI2sSlaveStatus when clock mode is slave', async () => {
     const status = { state: 3, clockMode: 1, lockCount: 1, lossCount: 0, detectedRateHz: 48000, measuredHz: 48000, slipCount: 0 };
     const device = baseDevice(async () => status);
     const session = connect(device);
@@ -506,20 +506,6 @@ describe('I2S slave-clock status cadence', () => {
     stop();
   });
 
-  it('does not poll getI2sSlaveStatus when the device lacks the feature, even in slave mode', async () => {
-    const device = baseDevice(async () => ({ state: 3, clockMode: 1, lockCount: 1, lossCount: 0, detectedRateHz: 48000, measuredHz: 48000, slipCount: 0 }));
-    (device as unknown as { capabilities: { features: { i2sSlaveClock: boolean } } }).capabilities.features.i2sSlaveClock = false;
-    const session = connect(device);
-    const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
-    snap.inputConfig = { ...snap.inputConfig, i2sClockMode: 1 };
-    session.mirror.init(snap);
-    const clock = manualClock();
-    const stop = startPolling(session, clock);
-    clock.fire();
-    await settle();
-    expect(device.getI2sSlaveStatus).not.toHaveBeenCalled();
-    stop();
-  });
 });
 
 describe('ADAT lightpipe output status cadence', () => {
@@ -988,7 +974,7 @@ describe('control-surface status cadences', () => {
     return {
       info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
       hardware: hw,
-      capabilities: { features: { controlSurfaces: true } },
+      capabilities: { features: {} },
       getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
       getBufferStats: vi.fn(async () => null),
       getSystemInfo: vi.fn(async () => ({})),
@@ -1046,16 +1032,6 @@ describe('control-surface status cadences', () => {
     await tickOnce(session);
     expect(device.getCsDisplayStatus).toHaveBeenCalledTimes(1);
     release();
-  });
-
-  it('never polls a device without control surfaces', async () => {
-    const device = csDevice();
-    (device as unknown as { capabilities: { features: { controlSurfaces: boolean } } }).capabilities.features.controlSurfaces = false;
-    const session = connect(device);
-    session.controlSurfaces.extStatus = runningMacro;
-    wantCsExtPoll(session);
-    await tickOnce(session);
-    expect(device.getCsExtStatus).not.toHaveBeenCalled();
   });
 
   it('drops a failed read silently without touching link health', async () => {

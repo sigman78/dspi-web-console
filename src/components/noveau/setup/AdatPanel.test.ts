@@ -1,7 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
-import { ChannelFamily } from '@/domain';
 
 const stageAdatEnabled = vi.fn();
 const stageAdatPin = vi.fn();
@@ -14,12 +13,9 @@ vi.mock('@/runtime', () => ({
 
 import AdatPanel from './AdatPanel.svelte';
 
-// channelModel: Unified matches every real device that can carry ADAT (V17+,
-// RP2350) -- a Legacy/V10 fixture would incorrectly block GPIO 12 (the debug
-// UART pin pre-V16) and mask the platform-default assertions below.
 function makeSnap(over: { adat?: object; dacHwMute?: object; outputPins?: number[] } = {}) {
   return {
-    platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8, channelModel: ChannelFamily.Unified },
+    platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
     outputPins: over.outputPins ?? [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 0 },
     inputConfig: { source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false] },
@@ -38,7 +34,6 @@ function makeSession(o: {
   adatStatus?: object | null;
 } = {}) {
   return {
-    device: { capabilities: { features: { pinResetDefault: true } } },
     telemetry: { adatStatus: o.adatStatus ?? null },
     mirror: { current: o.snap ?? makeSnap() },
     ctrlIfaces: { uart: null, i2c: null, status: null },
@@ -87,13 +82,6 @@ describe('AdatPanel', () => {
     renderPanel(makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }) }));
     await fireEvent.click(screen.getByRole('button', { name: 'Reset ADAT output pin to default' }));
     expect(stageAdatPin).toHaveBeenCalledWith(expect.anything(), 0xFF);
-  });
-
-  test('the DEFAULT chip is absent when the device lacks pin-reset support', () => {
-    const session = makeSession({ snap: makeSnap({ adat: { enabled: true, pin: 20 } }) });
-    session.device.capabilities.features.pinResetDefault = false;
-    renderPanel(session);
-    expect(screen.queryByRole('button', { name: 'Reset ADAT output pin to default' })).toBeNull();
   });
 
   test('status section is absent while ADAT is disabled', () => {

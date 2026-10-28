@@ -111,7 +111,7 @@ export interface UpmixRowContext {
   surroundMode: number;
 }
 
-// One row per hardware input channel (2 on V10, up to 8 on V16 RP2350).
+// One row per hardware input channel (2 on RP2040, up to 8 on RP2350).
 // activeInputs limits the rows to the LIVE input count (USB alt / I2S channel
 // count); null/undefined shows every hardware input. When upmix is active
 // over a stereo pair, the row count is bumped so its derived-channel rows

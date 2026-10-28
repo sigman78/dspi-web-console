@@ -14,7 +14,6 @@
   const snap = $derived(live ? s.staging.overlaySnapshot(live) : null);
   const cfg = $derived(snap?.adat);
   const status = $derived(s.telemetry.adatStatus);
-  const features = $derived(s.device.capabilities.features);
   const ctrlPins = $derived(stagedCtrlPins(s));
   const editable = $derived(cfg != null && cfg.enabled);
 
@@ -26,15 +25,13 @@
 
 <Panel title="ADAT OUTPUT">
   {#snippet right()}
-    {#if features.pinResetDefault}
-      <button
-        class="chip icon"
-        disabled={!editable}
-        title="Reset to defaults"
-        aria-label="Reset ADAT output pin to default"
-        onclick={() => stageAdatPin(s, Wire.Const.PIN_RESET_TO_DEFAULT)}
-      >↺</button>
-    {/if}
+    <button
+      class="chip icon"
+      disabled={!editable}
+      title="Reset to defaults"
+      aria-label="Reset ADAT output pin to default"
+      onclick={() => stageAdatPin(s, Wire.Const.PIN_RESET_TO_DEFAULT)}
+    >↺</button>
     <span class="stage-wrap" class:staged={s.staging.has('adatEnable')}>
       <ToggleSwitch
         checked={cfg?.enabled ?? false}

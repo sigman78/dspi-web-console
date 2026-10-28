@@ -3,7 +3,7 @@
 
   const { label, pages, page, onselect, staged, draft, right, children }: {
     label: string;
-    pages: { key: K; label: string }[];
+    pages: readonly { key: K; label: string }[];
     page: K;
     onselect: (key: K) => void;
     staged?: (key: K) => boolean;

@@ -316,3 +316,12 @@ describe('resetAppState', () => {
     expect(State.sessionRecords().size).toBe(0);
   });
 });
+
+describe('fetchSysClock', () => {
+  it('leaves the status unsupported when the firmware STALLs the system-clock opcodes', async () => {
+    await bootMock('rp2350', { sysClock: false });
+    const { sysClock } = State.activeSession()!;
+    expect(sysClock.supported).toBe(false);
+    expect(sysClock.status).toBeNull();
+  });
+});

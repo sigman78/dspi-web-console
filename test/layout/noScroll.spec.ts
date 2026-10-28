@@ -4,11 +4,11 @@ type Size = [number, number];
 const SMALL: Size = [1440, 790];
 const LARGE: Size = [1600, 880];
 
-/** Mock profiles whose whole surface is swept: newest fw, small chip, oldest wire, crash-fallen-back clock. */
+/** Mock profiles whose whole surface is swept: newest fw, small chip, released-floor wire (V28), crash-fallen-back clock. */
 const PROFILES = [
   { name: 'multi', query: 'multi' },
   { name: 'multi rp2040', query: 'multi&chip=rp2040' },
-  { name: 'legacy', query: 'legacy' },
+  { name: 'v28', query: 'v28' },
   { name: 'multi sysclock fallback', query: 'multi&sysclock=fallback' },
 ];
 const mockUrl = (query: string) => `/?mock=${query}`;

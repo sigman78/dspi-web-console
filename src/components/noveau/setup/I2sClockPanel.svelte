@@ -18,7 +18,6 @@
   const rate = $derived(s.telemetry.info?.sampleRateHz ?? 0);
   const allow256 = $derived(rate < 96000);
   const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: Domain.liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
-  const features = $derived(s.device.capabilities.features);
   const slaveStatus = $derived(s.telemetry.i2sSlaveStatus);
   const isI2sSource = $derived((snap?.inputConfig.source ?? Domain.AudioInputSource.Usb) === Domain.AudioInputSource.I2s);
 
@@ -72,16 +71,14 @@
   function stageClockPinsToDefault(): void {
     if (!anyI2s) Runtime.stageI2sBckPin(s, Wire.Const.PIN_RESET_TO_DEFAULT);
     if (!effMckEnabled) Runtime.stageMckPin(s, Wire.Const.PIN_RESET_TO_DEFAULT);
-    if (features.i2sSlaveClock && effClockPinMode === 1) Runtime.stageI2sBckPinSlave(s, Wire.Const.PIN_RESET_TO_DEFAULT);
+    if (effClockPinMode === 1) Runtime.stageI2sBckPinSlave(s, Wire.Const.PIN_RESET_TO_DEFAULT);
   }
 
 </script>
 
 <Panel title="I2S CLOCK">
   {#snippet right()}
-    {#if features.pinResetDefault}
-      <button class="chip icon" title="Reset to defaults" aria-label="Reset clock pins to defaults" onclick={stageClockPinsToDefault}>↺</button>
-    {/if}
+    <button class="chip icon" title="Reset to defaults" aria-label="Reset clock pins to defaults" onclick={stageClockPinsToDefault}>↺</button>
   {/snippet}
   {#if snap?.i2s && overlaySnap}
     <div class="rows">
@@ -138,51 +135,49 @@
         {#if !allow256}<span class="hint">256× unavailable ≥96 kHz</span>{/if}
       </div>
 
-      {#if features.i2sSlaveClock}
-        <div class="row">
-          <span class="microlbl">MODE</span>
-          <span class="stage-wrap" class:staged={s.staging.has('i2sClockMode')} title={s.staging.has('i2sClockMode') ? `device: ${snap.inputConfig.i2sClockMode === 1 ? 'SLAVE' : 'MASTER'}` : undefined}>
-            <SegmentedSelect
-              value={effClockMode}
-              options={clockModeOpts}
-              ariaLabel="I2S clock mode"
-              onChange={(v) => Runtime.stageI2sClockMode(s, v)}
-            />
-          </span>
-        </div>
+      <div class="row">
+        <span class="microlbl">MODE</span>
+        <span class="stage-wrap" class:staged={s.staging.has('i2sClockMode')} title={s.staging.has('i2sClockMode') ? `device: ${snap.inputConfig.i2sClockMode === 1 ? 'SLAVE' : 'MASTER'}` : undefined}>
+          <SegmentedSelect
+            value={effClockMode}
+            options={clockModeOpts}
+            ariaLabel="I2S clock mode"
+            onChange={(v) => Runtime.stageI2sClockMode(s, v)}
+          />
+        </span>
+      </div>
 
+      <div class="row">
+        <span class="microlbl">PINS</span>
+        <!-- Unlike the master BCK row above, clock-role/pin-mode config isn't
+             gated on anyI2s: it configures the input-side clock, independent
+             of whether an output slot happens to run I2S. -->
+        <span class="stage-wrap" class:staged={s.staging.has('i2sClockPinMode')} title={s.staging.has('i2sClockPinMode') ? `device: ${snap.i2s.clockPinMode === 1 ? 'SPLIT' : 'UNIFIED'}` : undefined}>
+          <SegmentedSelect
+            value={effClockPinMode}
+            options={clockPinModeOpts}
+            ariaLabel="I2S clock pin mode"
+            onChange={(v) => Runtime.stageI2sClockPinMode(s, v)}
+          />
+        </span>
+      </div>
+      {#if effClockPinMode === 1}
         <div class="row">
-          <span class="microlbl">PINS</span>
-          <!-- Unlike the master BCK row above, clock-role/pin-mode config isn't
-               gated on anyI2s: it configures the input-side clock, independent
-               of whether an output slot happens to run I2S. -->
-          <span class="stage-wrap" class:staged={s.staging.has('i2sClockPinMode')} title={s.staging.has('i2sClockPinMode') ? `device: ${snap.i2s.clockPinMode === 1 ? 'SPLIT' : 'UNIFIED'}` : undefined}>
-            <SegmentedSelect
-              value={effClockPinMode}
-              options={clockPinModeOpts}
-              ariaLabel="I2S clock pin mode"
-              onChange={(v) => Runtime.stageI2sClockPinMode(s, v)}
+          <span class="microlbl">SLAVE</span>
+          <span class="stage-wrap" class:staged={s.staging.has('bckPinSlave')} title={s.staging.has('bckPinSlave') ? `device: GP${snap.i2s.bckPinSlave}` : undefined}>
+            <PinPicker
+              value={effBckPinSlave}
+              cells={slaveBckCells}
+              ariaLabel="I2S BCK pin (slave)"
+              onChange={(p) => Runtime.stageI2sBckPinSlave(s, p)}
             />
           </span>
+          <span class="hint">{effBckPinSlave === Wire.Const.PIN_RESET_TO_DEFAULT ? 'LRCLK —' : `LRCLK GP${effBckPinSlave + 1}`}</span>
         </div>
-        {#if effClockPinMode === 1}
-          <div class="row">
-            <span class="microlbl">SLAVE</span>
-            <span class="stage-wrap" class:staged={s.staging.has('bckPinSlave')} title={s.staging.has('bckPinSlave') ? `device: GP${snap.i2s.bckPinSlave}` : undefined}>
-              <PinPicker
-                value={effBckPinSlave}
-                cells={slaveBckCells}
-                ariaLabel="I2S BCK pin (slave)"
-                onChange={(p) => Runtime.stageI2sBckPinSlave(s, p)}
-              />
-            </span>
-            <span class="hint">{effBckPinSlave === Wire.Const.PIN_RESET_TO_DEFAULT ? 'LRCLK —' : `LRCLK GP${effBckPinSlave + 1}`}</span>
-          </div>
-        {/if}
       {/if}
     </div>
 
-    {#if features.i2sSlaveClock && effClockMode === 1}
+    {#if effClockMode === 1}
       <div class="subhdr">I2S SLAVE STATUS</div>
       {#if !isI2sSource}
         <p class="hint idle">Source is not I2S — clock stays inactive.</p>

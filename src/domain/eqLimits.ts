@@ -16,7 +16,7 @@ export const BAND_GAIN_MIN_DB = -24;
 export const BAND_GAIN_MAX_DB = 24;
 export const BAND_GAIN_STEP_DB = 0.1;
 
-// Linkwitz Transform (V22+): f0/fp and Q0/Qp each have their own range --
+// Linkwitz Transform: f0/fp and Q0/Qp each have their own range --
 // wider on the low end for frequency (sealed-box tuning reaches down to
 // 10 Hz) and narrower on Q than the general PEQ band.
 export const LT_FREQ_MIN_HZ = 10;

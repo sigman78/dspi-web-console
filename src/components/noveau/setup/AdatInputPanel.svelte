@@ -15,7 +15,6 @@
   const snap = $derived(live ? s.staging.overlaySnapshot(live) : null);
   const inputConfig = $derived(snap?.inputConfig);
   const status = $derived(s.telemetry.adatInputStatus);
-  const features = $derived(s.device.capabilities.features);
   const ctrlPins = $derived(stagedCtrlPins(s));
 
   const enabled = $derived(inputConfig?.adatInputEnabled ?? false);
@@ -64,7 +63,7 @@
 
 <Panel title="ADAT INPUT">
   {#snippet right()}
-    {#if features.pinResetDefault && !enabled && pin !== 0}
+    {#if !enabled && pin !== 0}
       <button
         class="chip icon"
         title="Clear the stored pin"

@@ -43,7 +43,7 @@
     editingId = null;
   }
 
-  // Only the LIVE input channels (USB alt / I2S count, V16); null = all.
+  // Only the LIVE input channels (USB alt / I2S count); null = all.
   const activeInputs = $derived(tele?.activeInputChannels ?? null);
   const inputGroups = $derived(groupInputSlotPairs(
     snap?.channels.filter((c) => {

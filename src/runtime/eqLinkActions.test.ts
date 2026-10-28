@@ -15,7 +15,7 @@ const R = ChannelId.Out1R;
 function harness() {
   const bulk = parseBulkParams(makeBulk());
   const capabilities = deriveCapabilities({
-    fw: { major: 1, minor: 1, patch: 4 }, wireVersion: 10, payloadLength: 2960, platformId: 1,
+    fw: { major: 1, minor: 1, patch: 5 }, wireVersion: 28, payloadLength: 5944, platformId: 1,
   });
   const device = {
     info: { serial: 'TEST-LINK', platformType: PlatformType.RP2350, hardware, capabilities, build: null },

@@ -19,7 +19,7 @@
     { value: LevellerSpeed.Fast, label: 'FAST' },
   ] as const satisfies ReadonlyArray<{ value: LevellerSpeed; label: string }>;
 
-  // Mask bytes exist on wire V18 only, and are meaningless with a stereo-only input.
+  // Mask bytes are meaningless with a stereo-only input.
   const inputChannels = $derived(
     (s.mirror.current?.channels ?? [])
       .filter((c) => !c.isOutput)
@@ -28,7 +28,7 @@
   );
   const activeCount = $derived(s.telemetry.activeInputChannels ?? inputChannels.length);
   const channelCount = $derived(Math.min(Math.max(activeCount, 2), inputChannels.length || 2));
-  const showMasks = $derived(s.device.capabilities.features.levellerMasks && inputChannels.length > 2 && channelCount > 2);
+  const showMasks = $derived(inputChannels.length > 2 && channelCount > 2);
   const channelItems = $derived(maskChipItems(inputChannels.slice(0, channelCount), 'Input'));
 
   const MASK_PRESETS = [

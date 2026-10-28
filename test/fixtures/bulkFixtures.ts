@@ -8,16 +8,18 @@ export interface MakeBulkOpts {
   platformId?: number;
   numCh?: number;
   numOut?: number;
+  numIn?: number;
 }
 
 // Build a wire-format bulk packet from partial BulkParams overrides.
-// Default platform is RP2350 (11 ch, 9 out) -- most existing tests
+// Default platform is RP2350 (17 ch, 9 out) -- most existing tests
 // were synthesized against this shape.
 export function makeBulk(overrides: Partial<BulkParams> = {}, opts: MakeBulkOpts = {}): Uint8Array {
   const base = defaultBulkParams({
     platformId: opts.platformId ?? 1,
-    numCh:      opts.numCh      ?? 11,
+    numCh:      opts.numCh      ?? 17,
     numOut:     opts.numOut     ?? 9,
+    numIn:      opts.numIn,
   });
   return buildBulkParams({ ...base, ...overrides });
 }
@@ -28,8 +30,9 @@ export function makeBulk(overrides: Partial<BulkParams> = {}, opts: MakeBulkOpts
 export function makeBulkObject(overrides: Partial<BulkParams> = {}, opts: MakeBulkOpts = {}): BulkParams {
   const base = defaultBulkParams({
     platformId: opts.platformId ?? 1,
-    numCh:      opts.numCh      ?? 11,
+    numCh:      opts.numCh      ?? 17,
     numOut:     opts.numOut     ?? 9,
+    numIn:      opts.numIn,
   });
   return { ...base, ...overrides };
 }

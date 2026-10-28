@@ -1,17 +1,16 @@
 import { describe, test, expect } from 'vitest';
-import { destinationShortcut, destinations } from './destinations';
+import { destinationShortcut, DESTINATIONS } from './destinations';
 
-const full = destinations({ controlSurfaces: true }).map((d) => d.key);
-const noCs = destinations({ controlSurfaces: false }).map((d) => d.key);
+const full = DESTINATIONS.map((d) => d.key);
 const alt = (code: string, mods: Partial<Record<'ctrlKey' | 'metaKey' | 'shiftKey', boolean>> = {}) =>
   ({ altKey: true, ctrlKey: false, metaKey: false, shiftKey: false, code, ...mods });
 
 describe('destinationShortcut', () => {
-  test('Alt+digit picks by rail position, so CONTROL shifts the later keys', () => {
+  test('Alt+digit picks by rail position', () => {
     expect(destinationShortcut(alt('Digit2'), full, 'tune')).toBe('program');
     expect(destinationShortcut(alt('Digit4'), full, 'tune')).toBe('control');
-    expect(destinationShortcut(alt('Digit4'), noCs, 'tune')).toBe('about');
-    expect(destinationShortcut(alt('Digit5'), noCs, 'tune')).toBeNull();
+    expect(destinationShortcut(alt('Digit5'), full, 'tune')).toBe('about');
+    expect(destinationShortcut(alt('Digit6'), full, 'tune')).toBeNull();
   });
 
   test('brackets cycle and wrap', () => {

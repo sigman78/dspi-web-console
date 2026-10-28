@@ -3,7 +3,7 @@
 // packet plus the detected hardware profile.
 
 import type { ChannelId } from './channels';
-import type { HardwareProfile, I2sConfig, PlatformType, ChannelFamily } from './platform';
+import type { HardwareProfile, I2sConfig, PlatformType } from './platform';
 import type { FilterParams } from './filter';
 import type { Loudness, Crossfeed, Leveller, Psybass, Upmix, Subharm, Tube, LimiterOutput } from './processing';
 import type { OutputModel, RouteModel } from './mixer';
@@ -17,8 +17,8 @@ export interface ChannelModel {
   bandCount: number;
   isOutput: boolean;
   filters: FilterParams[];
-  // Crossover bands (V16+, output channels only; addressed at wire band
-  // indices XOVER_BAND_BASE..+3). Empty on inputs and on V10 devices.
+  // Crossover bands (output channels only; addressed at wire band
+  // indices XOVER_BAND_BASE..+3). Empty on inputs.
   xoverBands: FilterParams[];
 }
 
@@ -33,7 +33,6 @@ export interface PlatformSummary {
   outputCount: number;
   totalChannelCount: number;
   pdmOutputIndex: number;
-  channelModel: ChannelFamily;
 }
 
 export function pickSummary(hw: HardwareProfile): PlatformSummary {
@@ -43,7 +42,6 @@ export function pickSummary(hw: HardwareProfile): PlatformSummary {
     outputCount: hw.outputCount,
     totalChannelCount: hw.totalChannelCount,
     pdmOutputIndex: hw.pdmOutputIndex,
-    channelModel: hw.channelModel,
   };
 }
 
@@ -59,14 +57,11 @@ export interface DspSnapshot {
   routes: RouteModel[];
   loudness: Loudness;
   crossfeed: Crossfeed;
-  // Non-null: floor sections always present on a supported device (connect
-  // rejects firmware below the V6 floor).
+  // Always present on a supported device.
   leveller: Leveller;
-  // Psychoacoustic bass (fw V23+); bulkParser defaults it on older packets,
-  // so this is always populated.
+  // Psychoacoustic bass.
   psybass: Psybass;
-  // Stereo upmixer (fw V25+; presenceDb fw V26+); bulkParser defaults it on
-  // older packets, so this is always populated.
+  // Stereo upmixer.
   upmix: Upmix;
   // Subharmonic synthesizer (fw V29+); bulkParser defaults it on older
   // packets, so this is always populated.
@@ -79,13 +74,10 @@ export interface DspSnapshot {
   i2s: I2sConfig;
   // GPIO pin per pin-output index, in hardware output order; the last entry is the PDM sub.
   outputPins: number[];
-  // 1.1.4 sections -- the V10 connect floor guarantees every supported
-  // device's packet carries them.
   inputConfig: InputConfig;
   lgSoundSync: LgSoundSync;
   userVolume: UserVolume;
   dacHwMute: DacHwMute;
-  // ADAT lightpipe output config (fw V17+, RP2350); bulkParser defaults it
-  // (disabled, pin 0) on pre-V17 packets, so this is always populated.
+  // ADAT lightpipe output config (RP2350).
   adat: AdatOutputConfig;
 }

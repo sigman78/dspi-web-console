@@ -1,6 +1,6 @@
 # DSPi USB Interface
 
-All communication is **vendor-class control transfers** on a claimed interface, plus (firmware ≥ 1.1.4) a bulk-IN notify endpoint `0x83` on the same interface — see `HW-NOTIFICATIONS.md`. No streaming.
+All communication is **vendor-class control transfers** on a claimed interface, plus (firmware ≥ 1.1.5) a bulk-IN notify endpoint `0x83` on the same interface — see `HW-NOTIFICATIONS.md`. No streaming.
 
 ### Identity
 
@@ -39,7 +39,7 @@ The transport surface only exposes `wValue` (no `wIndex`). Commands that need tw
 
 ### MockTransport behavior
 
-- Returns a bulk packet built from `defaultBulkParams` (`src/protocol/bulkParser.ts`), defaulting to wire V10 — configurable via `MockOptions.wireVersion` (e.g. V16).
+- Returns a bulk packet built from `defaultBulkParams` (`src/protocol/bulkParser.ts`), defaulting to wire V28 (the floor) — configurable via `MockOptions.wireVersion` (V28–V32; below V28 the constructor throws).
 - Returns a deterministic status packet (peak sweep across channels).
 - Returns a 44-byte buffer-stats packet with `streaming=1, pdmActive=1`.
 - Echoes master-volume / preamp / input-preamp writes back to readers.
@@ -86,9 +86,9 @@ The "core mixer" surface — every settable field has a matching dedicated gette
 
 | Codes (set/get) | Group | Per-target indexing | Bulk field |
 |---|---|---|---|
-| `0xD2 / 0xD3` | Master volume | — | `masterVolumeDb` (V6+) |
+| `0xD2 / 0xD3` | Master volume | — | `masterVolumeDb` |
 | `0x44 / 0x45` | Master preamp | — | `preampDb` |
-| `0xD0 / 0xD1` | Input preamp | `wValue = channel ∈ {0,1}` | `preampLDb`, `preampRDb` (V6+) |
+| `0xD0 / 0xD1` | Input preamp | `wValue = input ∈ 0..7` | `preamp.preampDb[input]` |
 | `0x70 / 0x71` | Matrix route | `wValue = (input << 8) \| output` | `crosspoints[in][out]` |
 | `0x72 / 0x73` | Output enable | `wValue = output` | `outputs[out].enabled` |
 | `0x76 / 0x77` | Output mute | `wValue = output` | `outputs[out].muted` |
@@ -107,7 +107,7 @@ These groups have setters but no per-field getters. Reads come from the bulk pac
 | `0x5E, 0x60, 0x62, 0x64, 0x66` | Crossfeed | enabled, preset, freq, feedDb, itd |
 | `0xB4, 0xB6, 0xB8, 0xBA, 0xBC, 0xBE` | Volume Leveller | enabled, amount, speed, maxGainDb, lookahead, gateDb |
 
-The Leveller block in the bulk packet is V4+ optional — `null` on older firmware. The other two groups are present from V2.
+The Leveller, Loudness and Crossfeed blocks are unconditional sections of the bulk packet.
 
 ### Persistence and presets
 
@@ -116,7 +116,7 @@ The Leveller block in the bulk packet is V4+ optional — `null` on older firmwa
 | Codes | Group | Method | Returns |
 |---|---|---|---|
 | `0x51 / 0x53` | `SaveParams` / `FactoryReset` | `saveParams` / `factoryReset` | `Result<void, FlashResult>` |
-| `0x52` | `SaveOutputConfig` (1.1.4+; was `LoadParams` ≤ 1.1.3 — removed) | `saveOutputConfig` (V10-gated) | `Result<void, PresetResult>` |
+| `0x52` | `SaveOutputConfig` (1.1.4+; was `LoadParams` ≤ 1.1.3 — removed) | `saveOutputConfig` | `Result<void, PresetResult>` |
 | `0x83` | `ClearClips` | `clearClips` | `void` |
 | `0xB1` | `ResetBufferStats` | `resetBufferStats` | `boolean` |
 | `0x9B / 0x9C` | `SetChannelName` / `GetChannelName` | `setChannelName` / `getChannelName` | UTF-8 string |
@@ -177,32 +177,9 @@ Firmware-defined commands with no `DspDevice` method yet.
 
 ## Bulk packet layout — `GetAllParams 0xA0`
 
-The largest packet on the wire and the structure most likely to drift between firmware revisions. Layout mirrors `DSPiConsole.Usb/BulkParamsParser.cs`. **Min size 2832 B (V2); 2960 B (V10) on 1.1.4; 5864 B (V16) at the 1.1.5 base, grown by the V17–V25 appends and interior growth to 5944 B (V25–V28) on released 1.1.5, to 5960 B (V29) by the subharmonic synthesizer section on 1.1.6, and to 5980 B (V30) by that section's tail on 1.1.6-beta3, to 6028 B (V31) by the tube preamp section, and to 6136 B (V32) by the per-output limiter section on 1.1.6-beta4 — the current max.** V16+ packets exceed `Wire.BulkLimits.MaxControlTransfer` (4096 B, the WinUSB control-transfer ceiling), so they're read/written via the chunked `0xA2`/`0xA3` session instead of a single control transfer; V10 and below fit one transfer. See `bulkSizeForVersion` in `src/protocol/wireTypes.ts` and the read/write paths in `src/device/DspDevice.ts`.
+The largest packet on the wire and the structure most likely to drift between firmware revisions. Layout mirrors `DSPiConsole.Usb/BulkParamsParser.cs`. **The baseline is V28 at 5944 B (released 1.1.5)**, grown by the V29–V32 sections to 5960 B (V29) by the subharmonic synthesizer section on 1.1.6, to 5980 B (V30) by that section's tail on 1.1.6-beta3, to 6028 B (V31) by the tube preamp section, and to 6136 B (V32) by the per-output limiter section on 1.1.6-beta4 — the current max.** Every supported packet exceeds `Wire.BulkLimits.MaxControlTransfer` (4096 B, the WinUSB control-transfer ceiling), so it's read/written via the chunked `0xA2`/`0xA3` session instead of a single control transfer. See `bulkSizeForVersion` in `src/protocol/wireTypes.ts` and the read/write paths in `src/device/DspDevice.ts`.
 
-| Offset | Size | Section | Contents |
-|---|---|---|---|
-| 0 | 16 | Header | `u8 version, u8 platformId, u8 numCh, u8 numOut, u8 numIn, u8 maxBands` (rest reserved) |
-| 16 | 16 | Global | `f32 preampDb, u8 bypass, u8 loudnessEnabled, u16 _, f32 loudnessRefSpl, f32 loudnessIntensityPct` |
-| 32 | 16 | Crossfeed | `u8 enabled, u8 preset, u8 itd, u8 _, f32 freq, f32 feedDb, u32 _` |
-| 48 | 16 | (legacy channels) | Ignored |
-| 64 | 44 | Per-channel delay | `f32 delaysMs[11]` |
-| 108 | 144 | Crosspoints | `[2 inputs × 9 outputs] × { u8 enabled, u8 invert, u16 _, f32 gain }` (input-major) |
-| 252 | 108 | Outputs | `9 × { u8 enabled, u8 muted, u16 _, f32 gain, f32 delay }` |
-| 360 | 8 | Pin config | `u8 numPinOutputs, u8 pins[5], u16 _` |
-| 368 | 2112 | EQ | `[11 channels × 12 bands] × { u8 type, u8 bypass, u16 _, f32 freq, f32 Q, f32 gain }` (channel-major; `bypass` is always-zero on V2-V6, `1`=user-bypassed on V10+) |
-| 2480 | 352 | Channel names | `11 × 32-byte UTF-8 NUL-terminated` |
-| 2832 | 16 | I2S config (opt) | Present when packet ≥ 2848: `u8 outputSlotTypes[4], u8 bckPin, u8 mckPin, u8 mckEnabled, u8 mckMultiplierEncoded` |
-| 2848 | 16 | Leveller (opt) | Present when packet ≥ 2864: `u8 enabled, u8 speed, u8 lookahead, u8 _, f32 amount, f32 maxGainDb, f32 gateDb` |
-| 2864 | 16 | Per-channel preamp (V6+) | `f32 preampL, f32 preampR` |
-| 2880 | 16 | Master volume (V6+) | `f32 masterVolDb` |
-| 2896 | 16 | Input config (V7+) | `u8 inputSource, u8 spdifRxPin` — InputSource enum (0=USB, 1=SPDIF) |
-| 2912 | 16 | LG Sound Sync (V8+) | `u8 enabled, u8 present, u8 volume, u8 muted` — only `enabled` honored on SET |
-| 2928 | 16 | User volume (V9+) | `f32 userVolumeDb, u8 userMute` |
-| 2944 | 16 | DAC HW mute (V10+) | `u8 enabled, u8 activeLow, u8 pin, u8 _, u16 holdMs, u16 releaseMs` |
-
-Optional trailing sections are gated on **packet length** AND (where noted) **format version**. The 9-output crosspoint and output arrays are always present in full — the platform's actual output count comes from the header (`numOut`); RP2040's matrix view hides unused columns.
-
-**V16 layout.** The table above is the V10-and-earlier fixed-offset layout (unchanged back through V2). V16 restructures around a unified channel model: 8 inputs + 9 outputs share one 17-wide EQ/delay/name/preamp array (vs V10's 2-input/9-output split riding an 11-wide legacy array), crosspoints widen to `8 × 9`, and a new crossover section is appended — `17 channels × 4 bands`, same `WireBandParams` shape as the main EQ section but with `FilterType` 32–63. V17–V32 evolve this layout further (appended ADAT/psybass/upmix/subharm/tube/limiter sections, reserved-byte claims, and one interior relayout — see the schema table below); the authoritative sizes and per-version structs are `BULK_SIZE_V16`…`BULK_SIZE_V32` and `InputConfig`/`InputConfig21`/`InputConfig24`/`InputConfig28` in `src/protocol/wireTypes.ts` — this doc doesn't re-derive V16+ byte offsets.
+The V28 field offsets are defined by the section codecs in `src/protocol/wireTypes.ts` (`BULK_SIZE_V28` is their sum); this doc doesn't re-derive byte offsets.
 
 `defaultBulkParams(opts)` in `src/protocol/bulkParser.ts` produces a wire-faithful factory-default packet of any allowed shape; used by `MockTransport` and parser tests.
 
@@ -253,7 +230,7 @@ These are properties the rest of the stack relies on; if firmware ever violates 
 2. **Float fields are IEEE-754 single precision (4 B).** No float64 anywhere on the wire.
 3. **`SetMatrixRoute` writes the full crosspoint tuple.** The firmware uses the entire `{enabled, invert, gainDb}` packet; partial writes are not supported.
 4. **`SetEqParam` writes the full filter tuple.** Same as matrix route — no per-field band update.
-5. **Bulk packet offsets are absolute, not relative.** V6+ trailing sections (per-channel preamp, master volume) live at fixed offsets with reserved padding between them; the parser seeks explicitly rather than relying on cursor position.
+5. **Bulk packet offsets are absolute, not relative.** Every section lives at a fixed offset (see the layout table in `src/protocol/wireTypes.ts`); the parser seeks explicitly rather than relying on cursor position.
 6. **Concurrent control transfers are serialized per-endpoint.** WebUSB does this implicitly. Within the app, `poll.ts` uses `inFlightStatus` / `inFlightBuffer` flags to avoid overlapping reads on `0x50` or `0xB0`.
 7. **Sequence number monotonicity.** `BufferStats.sequence` increments monotonically; a gap > 1 means the app missed a poll.
 
@@ -282,34 +259,13 @@ The two move independently: a firmware bump can change wire behavior without bum
 
 ### Bulk packet schema
 
-Today's connect-time floor is V10: `deriveCapabilities` (`src/protocol/capabilities.ts`) classifies any wire version outside `{10, 16–32}` as `'unsupported'` — including every V2-V9 row below and the V11-V15 in-dev intermediates — and `DspDevice.resolveInfo` throws `UnsupportedFirmware` before any further reads. The V2-V9 rows are kept for schema-history context; a device actually reporting one of them can no longer connect at all. Versions above V32 classify as `'future'`: the console connects best-effort, parses the sections it recognizes, and refuses bulk writes (firmware's bulk SET is version-and-size exact from V16 on, so a stale-version payload would be rejected anyway).
+Connect-time floor is V28 (fw 1.1.5): `deriveCapabilities` (`src/protocol/capabilities.ts`) classifies any wire version below 28 as `'unsupported'`, and `DspDevice.resolveInfo` throws `UnsupportedFirmware` before any further reads. Versions above V32 classify as `'future'`: the console connects best-effort, parses the sections it recognizes, and refuses bulk writes (firmware's bulk SET is version-and-size exact from V16 on, so a stale-version payload would be rejected anyway).
+
+Schema rows before V28 were dropped with the V28 floor.
 
 | WIRE | Packet size | Sections added | Console support |
 |---|---|---|---|
-| **V2** | 2832 B | Baseline (header, global, crossfeed, legacy channels, delays, crosspoints, outputs, pin config, EQ, channel names) | Read-only fallback |
-| **V3** | 2848 B | `WireI2SConfig` (16 B) — output slot types, BCK/MCK pins, MCK enable, MCK multiplier as **raw byte** (128, or 0 meaning 256) | Full read; writes version-matched, not pinned to V6 (see below) |
-| **V4** | 2864 B | `WireLevellerConfig` (16 B) — enabled, speed, lookahead, amount, max gain, gate threshold | Full read; writes version-matched, not pinned to V6 (see below) |
-| **V5** | 2864 B | Same size as V4. MCK multiplier encoding switched to `0=128×, 1=256×`. Pre-V5 firmware reads/writes the raw form. Console always assumes V5+ encoding | Read-OK for V5+ firmware; V3-V4 firmware's mck byte is misread as encoded |
-| **V6** | 2896 B | `WirePreampConfig` (16 B, V6Preamp = 2880 B) — per-input-channel preamp; `WireMasterVolume` (16 B, V6Full = 2896 B) — `f32 masterVolumeDb` with `-128` mute sentinel. **Last version on v1.1.3.** Also the write floor: `buildBulkParams` throws below this | Full read; writes version-matched, not pinned to V6 (see below) |
-| **V7** | 2912 B | `WireInputConfig` (16 B) — `u8 inputSource` (`0=USB`, `1=SPDIF`), `u8 spdifRxPin` | Folded into the V10 packet on released 1.1.4; no standalone UI |
-| **V8** | 2928 B | `WireLgSoundSync` (16 B) — `u8 enabled, u8 present, u8 volume, u8 muted`. Only `enabled` is honored on bulk SET; the rest are observation-only | Folded into the V10 packet on released 1.1.4; no standalone UI |
-| **V9** | 2944 B | `WireUserVolume` (16 B) — `f32 userVolumeDb` (`[-60, 0]` dB), `u8 userMute`. Vendor-channel mirror of UAC1 host volume but always honored regardless of input source | Folded into the V10 packet on released 1.1.4; no standalone UI |
-| **V10** | 2960 B | `WireDacHwMute` (16 B) — `u8 enabled, u8 activeLow, u8 pin, u16 holdMs, u16 releaseMs`. Board-level external DAC mute pin config. **Released with fw 1.1.4** | Full read/write — the legacy supported generation |
-| **V10 EQ change** | (same 2960 B) | `WireBandParams.bypass` at offset 1 (was `reserved`) — `1`=user-bypassed. Cooperates with the new `SetBandBypass 0xD8` opcode and the new `bypass` byte at offset 3 of `SetEqParam 0x42` (was `reserved`). Old console always writes `0` there, preserving "active" semantics | Console decodes `bypass` per band; no UI toggle yet |
-| **V11-V15** | — | In-development intermediates with shifting layouts the console never shipped against | Rejected at connect, same as pre-V10 firmware (`UnsupportedFirmware`) |
-| **V16** | 5864 B | Unified channel model — 8 inputs + 9 outputs share one 17-wide EQ/delay/name/preamp array (`Const16` in `wireTypes.ts`), crosspoints widen to `8 × 9`, and a new crossover section is appended (`17 channels × 4 bands`, `FilterType` 32-63). **The 1.1.5 base generation**; from here on, firmware's bulk SET accepts only an exact version + size match | Full read/write; V16+ exceeds the 4 KB control-transfer cap, so it's read/written via the chunked `0xA2`/`0xA3` session |
-| **V17** | 5872 B | Appends `WireAdatConfig` (8 B) — ADAT lightpipe output enable/pin (RP2350; zeroed on RP2040) | Full read/write |
-| **V18** | 5876 B | `WireLevellerConfig` grows 16 → 20 B (per-input detector/apply masks) — an **interior** grow, every later section shifts +4 | Full read/write |
-| **V19** | 5876 B | Global reserved bytes become `loudness_output_mask` (u16) | Full read/write |
-| **V20** | 5876 B | Crossfeed reserved byte becomes `output_pair_mask` (u8) | Full read/write |
-| **V21** | 5876 B | Input-config reserved byte becomes `i2s_clock_mode` (master/slave) | Full read/write |
-| **V22** | 5876 B | EQ `WireBandParams.reserved[2]` becomes the Linkwitz Transform target-Qp sidecar (u16, Q×512; zero for non-LT types) | Full read/write |
-| **V23** | 5900 B | Appends `WirePsybassParams` (24 B) — psychoacoustic bass | Full read/write |
-| **V24** | 5900 B | Input-config reserved bytes become the ADAT input pin/enable/clock fields (RP2350) | Full read/write |
-| **V25** | 5944 B | Appends `WireUpmixParams` (44 B) — stereo upmixer (RP2350; zeroed on RP2040) | Full read/write |
-| **V26** | 5944 B | Upmix reserved byte becomes `presence_q1` (centre presence bell, dB×2) | Full read/write |
-| **V27** | 5944 B | Upmix centre-mode enum gains OFF (2) — surrounds-only upmixing, L/R bit-exact. Enum widening only, no struct change | Full read/write |
-| **V28** | 5944 B | Input-config **interior relayout**: `spdif_rx_pin_ext` grows 2 → 3 entries (fourth selectable S/PDIF input, `INPUT_SOURCE_SPDIF4 = 6`), shifting the enable mask / clock mode / ADAT fields one byte later; section stays 16 B, now full. `GetSpdifInputConfig 0xEF` response grows 5 → 6 B. **Released with fw 1.1.5 (`main`)** | Full read/write |
+| **V28** | 5944 B | Input-config **interior relayout**: `spdif_rx_pin_ext` grows 2 → 3 entries (fourth selectable S/PDIF input, `INPUT_SOURCE_SPDIF4 = 6`), shifting the enable mask / clock mode / ADAT fields one byte later; section stays 16 B, now full. `GetSpdifInputConfig 0xEF` response is 6 B. **Released with fw 1.1.5 (`main`)** | Full read/write |
 | **V29** | 5960 B | Appends the 16-byte subharmonic synthesizer section (section 23) after the upmixer; both platforms — unlike psybass/upmix there is no RP2350 gate. Vendor opcodes `0x10`–`0x1A` (SET/GET per field + a read-only headroom GET). **fw 1.1.6, from the 2026-09-02 build** | Full read/write |
 | **V30** | 5980 B | Subharm section grows 16 → 36 B: appends `top_db` (third band), `select_depth`, `select_hold_ms`, `ceiling_db` (f32 each), `select_mode`, `link_pairs` (u8) + 2 reserved. Solo is runtime-only and stays off the wire. Vendor opcodes `0x1B`–`0x1F`, `0x2C`–`0x2F`, `0xA9`–`0xAE`. The same firmware lifts the per-band level ceiling from +6 to +12 dB (`SUBHARM_LEVEL_MAX`, caps v16) — range-only, no layout effect, so the console gates the wider range on wire ≥ 30 and keeps clamping V29 devices at +6. **fw 1.1.6-beta3 (2026-09-12)** | Full read/write |
 | **V31** | 6028 B | Appends the 48-byte tube preamp section (section 24) after the subharm section: `enabled`, `tube_type` (0 custom, 1–16), `rectifier` (0–3), `xfmr_enabled`, `output_mask` (u16), 2 reserved, then nine f32 (`drive_db`, `bias_pct`, `asym_db`, `hardness_pct`, `sag_pct`, `xfmr_damping`, `xfmr_res_hz`, `mix_pct`, `trim_db`) and a reserved f32. Both platforms. Bulk apply copies the fields verbatim (no tube-type row lookup) and clamps the enums. Vendor opcodes `0x3E`/`0x3F` (indexed SET/GET, float32 for every parameter; not yet wired). **fw 1.1.6-beta4 (2026-09-28)** | Full read/write (wire only; no panel yet) |
@@ -317,7 +273,7 @@ Today's connect-time floor is V10: `deriveCapabilities` (`src/protocol/capabilit
 
 fw 1.1.6's other new surface is Control Surfaces capability formats v8–v14 (indicator delays, target groups, macros, I2C displays, and the v14 subharm nouns; vendor opcodes `0x20`–`0x2B`) plus the versioning provenance above (`0x7F` widening, `0x80` build info) — tracked in the firmware's `control_surfaces_*` specs, outside this doc's bulk-packet scope.
 
-Writes are version-matched, not pinned to V6: `buildBulkParams` (`src/protocol/bulkParser.ts`) only enforces a V6 floor — it throws if the snapshot's `formatVersion` is below 6 — then emits the target version's exact layout (an 11-15 request collapses to V10; requests above the ceiling clamp to `MAX_WIRE_VERSION`). In practice `DspDevice.setAllParams` always requests the connected device's own wire version, which from V16 on is also the only payload firmware will accept (version-and-size-exact apply). The console parses all sections up to and including V32 (`bulkLayout` gates on version + length) and retains the full raw image. Note: in INDEPENDENT output-config mode the firmware skips the pin section and RX-pin hot-swap of a bulk SET entirely, and from V32 the limiter section too.
+Writes are version-matched: `buildBulkParams` (`src/protocol/bulkParser.ts`) throws if the requested version is below the V28 floor (`MIN_WIRE_VERSION`), then emits the target version's exact layout; requests above the ceiling clamp to `MAX_WIRE_VERSION`. In practice `DspDevice.setAllParams` always requests the connected device's own wire version, which is also the only payload firmware will accept (version-and-size-exact apply). The console parses all sections up to and including V32 (`bulkLayout` gates the V29–V32 sections on version + length) and retains the full raw image. Note: in INDEPENDENT output-config mode the firmware skips the pin section and RX-pin hot-swap of a bulk SET entirely, and from V32 the limiter section too.
 
 ### Vendor commands added since v1.1.3 (WIRE = V3)
 
@@ -343,9 +299,9 @@ These opcodes pre-date v1.1.3 but behave differently on current firmware. Anythi
 | `0x51` | `SaveParams` | **Deferred to main loop.** Always returns `FLASH_OK` immediately; the actual flash write happens asynchronously. The host can no longer detect a save failure synchronously. | Console treats the response as "accepted," not "committed." |
 | `0x53` | `FactoryReset` | **Deferred to main loop**, brackets reset with pipeline mute / Core-1 sync / delay-line zero. Always returns `FLASH_OK`. | Same — fire-and-forget. |
 | `0x92` | `PresetDelete` | Switched from single-slot pending flag to a 16-bit pending mask — multiple deletes queue back-to-back without dropping. | No host change. |
-| `0x95` | `PresetGetDir` | Response grew from **6 → 7 bytes**; byte 5 is `output_config_mode` (was `include_pins`; values 1:1: 0=independent, 1=with-preset), byte 6 is `master_volume_mode` (0=independent, 1=with-preset). Older firmware truncates to 6 bytes. | Console always requests 7 B; `decodePadded` zero-extends legacy 6-B responses (treating mv mode as `independent`, the correct legacy semantic). |
+| `0x95` | `PresetGetDir` | Response is **7 bytes**; byte 5 is `output_config_mode` (was `include_pins`; values 1:1: 0=independent, 1=with-preset), byte 6 is `master_volume_mode` (0=independent, 1=with-preset). | Console always requests 7 B. |
 | `0xC0` | `SetOutputType` | Switched from single pending slot to a per-slot pending bitmask. Tear-down/setup of pools is gated by `output_type_switch_in_progress`; buffer-stats reads return safe zeroes during the window. | No host change. |
-| `0xC8` | `SetMckMultiplier` | `wValue` encoding **changed**: was raw `128` or `256`; now `0=128×`, `1=256×`. Also rejects `256×` at sample rates ≥ 96 kHz (`PIN_CONFIG_INVALID_PIN`) and auto-clamps to `128×` on rate changes. | Console sends `0`/`1` already — moot in practice, since V3/V4 firmware (below the V10 connect floor) can no longer connect at all. |
+| `0xC8` | `SetMckMultiplier` | `wValue` encoding **changed**: was raw `128` or `256`; now `0=128×`, `1=256×`. Also rejects `256×` at sample rates ≥ 96 kHz (`PIN_CONFIG_INVALID_PIN`) and auto-clamps to `128×` on rate changes. | Console sends `0`/`1` already — moot in practice, since pre-V28 firmware can no longer connect at all. |
 | `0xC9` | `GetMckMultiplier` | Returns the encoded byte (`0`/`1`) instead of the raw `128`/`256`. Also runs the 96 kHz clamp before answering. | Console reads the encoded form. |
 
 ### Hardware / DSP changes worth flagging

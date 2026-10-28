@@ -65,13 +65,13 @@ describe('runtime/stagedActions', () => {
 
   describe('stageI2sRxPin', () => {
     beforeEach(async () => {
-      await bootMock('rp2350', { wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } });
+      await bootMock('rp2350');
       clearNotices();
     });
 
     it('stages a per-pair pending entry; applying it calls device.setI2sRxPin(pair, gpio)', async () => {
       const s = sess();
-      const target = 21; // unused GPIO on the default RP2350 V16 mock layout
+      const target = 21; // unused GPIO on the default RP2350 mock layout
       const spy = vi.spyOn(s.device, 'setI2sRxPin');
 
       Staged.stageI2sRxPin(s, 0, target);
@@ -216,7 +216,7 @@ describe('runtime/stagedActions', () => {
     });
   });
 
-  // Universal pin-reset escape hatch (fw 0xFF sentinel, V25+): staging DEFAULT
+  // Universal pin-reset escape hatch (fw 0xFF sentinel): staging DEFAULT
   // on any pin picker. stageOutputDataPin stands in for the whole family --
   // every stage*Pin function routes the sentinel through the same fmtPinTo /
   // overlayPin / applyPin helpers.

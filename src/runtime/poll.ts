@@ -87,7 +87,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       // snapshot fetch.
       const s = await session.queue.run(() => d.getSystemStatus(), { priority: true });
       // Status peaks/clip bits are wire-channel indexed; the telemetry store is
-      // domain-ChannelId indexed. Identity on V10, shifted on V16 RP2350.
+      // domain-ChannelId indexed. Shifted on RP2350.
       const hw = d.hardware;
       const peaks: number[] = Array(Domain.ALL_CHANNELS.length).fill(0);
       let clipFlags = 0;
@@ -269,7 +269,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       gates: { enabled: (m) => Domain.isSpdifSource(m.inputConfig.source) },
       run: pollSpdifRx },
     { key: 'i2sSlave', intervalMs: I2S_SLAVE_INTERVAL_MS, runWhileHidden: false,
-      gates: { feature: 'i2sSlaveClock', enabled: (m) => m.inputConfig.i2sClockMode === 1 },
+      gates: { enabled: (m) => m.inputConfig.i2sClockMode === 1 },
       run: pollI2sSlave },
     { key: 'adat', intervalMs: ADAT_INTERVAL_MS, runWhileHidden: false,
       gates: { feature: 'adatOutput', enabled: (m) => m.adat.enabled },
@@ -290,16 +290,10 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       gates: { feature: 'limiter', wanted: () => tele.limiterMeterWanted > 0, healthy: true },
       lastMs: () => tele.lastLimiterMeterMs, run: pollLimiterMeter },
     { key: 'csExt', intervalMs: CS_EXT_INTERVAL_MS, runWhileHidden: false,
-      gates: {
-        feature: 'controlSurfaces',
-        wanted: () => cs.extPollWanted > 0 && cs.extStatus?.macroRunning != null,
-      },
+      gates: { wanted: () => cs.extPollWanted > 0 && cs.extStatus?.macroRunning != null },
       run: () => refreshCsExtStatus(session) },
     { key: 'csDisplay', intervalMs: CS_DISPLAY_INTERVAL_MS, runWhileHidden: false,
-      gates: {
-        feature: 'controlSurfaces',
-        wanted: () => cs.displayPollWanted > 0 && Domain.csDisplaySlotActive(cs.bindings, cs.status),
-      },
+      gates: { wanted: () => cs.displayPollWanted > 0 && Domain.csDisplaySlotActive(cs.bindings, cs.status) },
       run: () => refreshCsDisplayStatus(session) },
     { key: 'param', intervalMs: PARAM_INTERVAL_MS, runWhileHidden: false, gates: {},
       lastMs: () => tele.lastParamMs, run: pollParam, shouldRun: shouldRunParam },

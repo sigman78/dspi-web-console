@@ -19,7 +19,7 @@
 
   // Bit k addresses output slot k (PDM included), not the raw ChannelId.
   const outputChannels = $derived(Domain.outputChannelsWithIndex(s.mirror.current));
-  const showMask = $derived(s.device.capabilities.features.loudnessOutputMask && outputChannels.length > 1);
+  const showMask = $derived(outputChannels.length > 1);
   const outputItems = $derived(Domain.maskChipItems(outputChannels, 'Output'));
 </script>
 

@@ -28,10 +28,9 @@
   });
   const lim = $derived(snap?.limiter[slot]);
   const gr = $derived(s.telemetry.limiterMeterDb?.[slot]);
-  const showProcs = $derived(features.loudnessOutputMask || features.psybass || features.subharm);
   const showLimiter = $derived(features.limiter && lim !== undefined);
   const channel = $derived(snap?.channels.find((c) => c.id === output.id) ?? null);
-  const xover = $derived(features.crossover && channel ? channel.xoverBands : []);
+  const xover = $derived(channel ? channel.xoverBands : []);
   const XOVER_TYPES: Domain.FilterType[] = [
     Domain.FilterType.Flat,
     ...Array.from({ length: Domain.XOVER_TYPE_LAST - Domain.XOVER_TYPE_FIRST + 1 }, (_, i) => (Domain.XOVER_TYPE_FIRST + i) as Domain.FilterType),
@@ -191,29 +190,25 @@
     {/if}
   </div>
 
-  {#if showProcs}
-    <div class="procs">
-      <span class="prow-lbl">Processors</span>
-      <span class="chips">
-        {#if features.loudnessOutputMask}
-          <button type="button" class="chip hi" class:on={inMask(snap?.loudness.outputMask)} aria-pressed={inMask(snap?.loudness.outputMask)}
-            disabled={!snap?.loudness.enabled}
-            onclick={() => Runtime.toggleLoudnessOutputChannel(s, slot)}>LOUD</button>
-        {/if}
-        {#if features.psybass}
-          <button type="button" class="chip hi" class:on={inMask(snap?.psybass.outputMask)} aria-pressed={inMask(snap?.psybass.outputMask)}
-            disabled={!snap?.psybass.enabled}
-            onclick={() => Runtime.togglePsybassOutputChannel(s, slot)}>PSY</button>
-        {/if}
-        {#if features.subharm}
-          <button type="button" class="chip hi" class:on={inMask(snap?.subharm.outputMask)} aria-pressed={inMask(snap?.subharm.outputMask)}
-            disabled={!snap?.subharm.enabled}
-            onclick={() => Runtime.toggleSubharmOutputChannel(s, slot)}>SUB</button>
-        {/if}
-      </span>
-      <span class="t-cap">program processors that include this output</span>
-    </div>
-  {/if}
+  <div class="procs">
+    <span class="prow-lbl">Processors</span>
+    <span class="chips">
+      <button type="button" class="chip hi" class:on={inMask(snap?.loudness.outputMask)} aria-pressed={inMask(snap?.loudness.outputMask)}
+        disabled={!snap?.loudness.enabled}
+        onclick={() => Runtime.toggleLoudnessOutputChannel(s, slot)}>LOUD</button>
+      {#if features.psybass}
+        <button type="button" class="chip hi" class:on={inMask(snap?.psybass.outputMask)} aria-pressed={inMask(snap?.psybass.outputMask)}
+          disabled={!snap?.psybass.enabled}
+          onclick={() => Runtime.togglePsybassOutputChannel(s, slot)}>PSY</button>
+      {/if}
+      {#if features.subharm}
+        <button type="button" class="chip hi" class:on={inMask(snap?.subharm.outputMask)} aria-pressed={inMask(snap?.subharm.outputMask)}
+          disabled={!snap?.subharm.enabled}
+          onclick={() => Runtime.toggleSubharmOutputChannel(s, slot)}>SUB</button>
+      {/if}
+    </span>
+    <span class="t-cap">program processors that include this output</span>
+  </div>
 </div>
 
 <style>

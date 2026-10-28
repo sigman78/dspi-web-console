@@ -21,7 +21,7 @@ function initializedDevice(methods: Partial<DspDevice>): DspDevice {
       platformType: PlatformType.RP2350,
       hardware: testHardware,
       capabilities: deriveCapabilities({
-        fw: { major: 1, minor: 1, patch: 4 }, wireVersion: 10, payloadLength: 2960, platformId: 1,
+        fw: { major: 1, minor: 1, patch: 5 }, wireVersion: 28, payloadLength: 5944, platformId: 1,
       }),
       build: null,
     },
@@ -32,7 +32,7 @@ function initializedDevice(methods: Partial<DspDevice>): DspDevice {
 
 afterEach(() => { State.activeSession()?.dispose(); cancelWrites(); State.resetAppState(); });
 
-// ── V16 — external control interfaces ────────────────────────────────────────
+// ── external control interfaces ────────────────────────────────────────
 
 describe('setUartControlConfig', () => {
   const cfg: UartControlConfig = { enabled: true, txPin: 12, rxPin: 13, notifyEnabled: false, baud: 115200 };

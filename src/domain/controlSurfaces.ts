@@ -1,4 +1,4 @@
-// Control Surfaces (fw 1.1.5+, wire V16+, caps v2-v14 modeled: bindings, IR,
+// Control Surfaces (fw 1.1.5+, caps v2-v14 modeled: bindings, IR,
 // groups, macros, I2C displays): user-wired physical controls and indicators (buttons,
 // switches, pots, encoders, LEDs, PWM LEDs, an IR remote receiver) on spare
 // GPIOs, configured over vendor commands 0x84-0x8F, 0x9D-0x9E. Which (type,

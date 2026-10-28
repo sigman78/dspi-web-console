@@ -46,7 +46,6 @@ function makeSession(snap: ReturnType<typeof makeSnap>) {
     ctrlIfaces: { uart: null, i2c: null, status: null },
     controlSurfaces: { caps: null, nouns: [], bindings: [], status: null },
     staging,
-    device: { capabilities: { features: { pinResetDefault: false } } },
   } as any;
 }
 
@@ -103,15 +102,8 @@ describe('OutputsPanel', () => {
     expect(screen.getByRole('switch', { name: 'PDM sub enable' })).not.toBeDisabled();
   });
 
-  test('DEFAULTS chip is hidden without pin-reset firmware support', () => {
-    const session = makeSession(makeSnap());
-    render(OutputsPanel, { context: new Map([[SESSION_KEY, session]]) });
-    expect(screen.queryByRole('button', { name: 'Reset output pins to defaults' })).toBeNull();
-  });
-
   test('DEFAULTS chip stages a pin reset for every SPDIF slot plus PDM when PDM is idle', async () => {
     const session = makeSession(makeSnap());
-    session.device.capabilities.features.pinResetDefault = true;
     render(OutputsPanel, { context: new Map([[SESSION_KEY, session]]) });
     await fireEvent.click(screen.getByRole('button', { name: 'Reset output pins to defaults' }));
     for (let slot = 0; slot < 4; slot++) {
@@ -122,7 +114,6 @@ describe('OutputsPanel', () => {
 
   test('DEFAULTS chip skips the PDM pin while PDM is active', async () => {
     const session = makeSession(makeSnap([8]));
-    session.device.capabilities.features.pinResetDefault = true;
     render(OutputsPanel, { context: new Map([[SESSION_KEY, session]]) });
     await fireEvent.click(screen.getByRole('button', { name: 'Reset output pins to defaults' }));
     expect(verbs.stageOutputDataPin).not.toHaveBeenCalledWith(session, 4, Wire.Const.PIN_RESET_TO_DEFAULT);

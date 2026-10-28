@@ -10,8 +10,7 @@ import type { MasterVolumeMode } from './processing';
 // V32 the output limiter) rides preset
 // save/load (WithPreset) or is device-global (Independent; persisted only via
 // SaveOutputConfig 0x52, never touched by preset load / factory reset / bulk
-// SET). On pre-1.1.4 firmware the same wire bit is the legacy "include pins
-// in preset" bool — values 1:1, but it gates only output pins there.
+// SET).
 export const OutputConfigMode = {
   Independent: 0,
   WithPreset:  1,
@@ -33,10 +32,9 @@ export interface PresetDirectoryInfo {
   // 0..9, or `null` when firmware reports 0xFF ("no slot ever active").
   lastActiveSlot: PresetSlot | null;
 
-  // See OutputConfigMode above. Legacy firmware reports the include-pins bool
-  // here; values are 1:1.
+  // See OutputConfigMode above.
   outputConfigMode: OutputConfigMode;
 
-  // V12+: 0=Independent, 1=WithPreset. Legacy firmware -> 0 (Independent).
+  // 0=Independent, 1=WithPreset.
   masterVolumeMode: MasterVolumeMode;
 }

@@ -7,7 +7,7 @@ import { DspDevice } from '@/device/DspDevice';
 const BYPASS_OFFSET = 20;
 
 async function v10Device() {
-  const mock = new MockTransport({ platform: 'rp2350', wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } });
+  const mock = new MockTransport({ platform: 'rp2350' });
   const dev = await DspDevice.create(mock);
   await dev.getSnapshot();   // populates dev.lastRawBulk (bypass byte = 0)
   return dev;
@@ -30,7 +30,7 @@ describe('WireMirror.splice', () => {
   });
 
   it('returns null when the device has no buffer yet', async () => {
-    const mock = new MockTransport({ platform: 'rp2350', wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } });
+    const mock = new MockTransport({ platform: 'rp2350' });
     const dev = await DspDevice.create(mock);   // no getSnapshot → lastRawBulk null
     const mirror = new WireMirror();
     expect(mirror.splice(dev, BYPASS_OFFSET, new Uint8Array([1]))).toBeNull();

@@ -1,4 +1,4 @@
-// External control interfaces (fw 1.1.5, wire V16+): a UART control transport
+// External control interfaces (fw 1.1.5+): a UART control transport
 // and an I2C target, configured over five vendor commands (0xF5-0xF9). Mirrors
 // the firmware's own pin/parity/instance rules client-side; last_status stays
 // the backstop for conflicts the host can't see (live control-surface bindings).

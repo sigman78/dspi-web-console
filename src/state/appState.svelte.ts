@@ -40,9 +40,7 @@ export interface ReadySession {
   readonly copySource: { held: PresetClipboard | null };
   readonly telemetry: StatusStore;
   readonly presets: PresetsState;
-  // V16-only (capabilities.features.controlInterfaces); stays all-null on V10.
   readonly ctrlIfaces: CtrlIfacesState;
-  // V16-only (capabilities.features.controlSurfaces); stays all-null on V10.
   readonly controlSurfaces: ControlSurfacesState;
   // Selectable system clock (fw overclock branch). No capability flag -- a
   // `supported` stays null until the connect-time probe lands.

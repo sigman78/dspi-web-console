@@ -10,11 +10,9 @@ import type { DspDevice } from '@/device/DspDevice';
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 
-function initializedDevice(methods: Partial<DspDevice>, wireVersion: 10 | 16 = 10): DspDevice {
+function initializedDevice(methods: Partial<DspDevice>): DspDevice {
   const capabilities = deriveCapabilities(
-    wireVersion === 16
-      ? { fw: { major: 1, minor: 1, patch: 5 }, wireVersion: 16, payloadLength: 5864, platformId: 1 }
-      : { fw: { major: 1, minor: 1, patch: 4 }, wireVersion: 10, payloadLength: 2960, platformId: 1 },
+    { fw: { major: 1, minor: 1, patch: 5 }, wireVersion: 28, payloadLength: 5944, platformId: 1 },
   );
   const base: Partial<DspDevice> = {
     info: {
@@ -44,7 +42,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function harness(methods: Partial<DspDevice> = {}, wireVersion: 10 | 16 = 10) {
+function harness(methods: Partial<DspDevice> = {}) {
   const bulk = parseBulkParams(makeBulk());
   const device = initializedDevice({
     setFilter: vi.fn(async () => {}),
@@ -52,7 +50,7 @@ function harness(methods: Partial<DspDevice> = {}, wireVersion: 10 | 16 = 10) {
     setOutputGain: vi.fn(async () => {}),
     getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     ...methods,
-  }, wireVersion);
+  });
   State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
   liveMirror().replaceCurrent(fromBulkParams(testHardware, bulk));
   return device;
@@ -122,18 +120,8 @@ describe('applyAutoEqEntry', () => {
     ],
   });
 
-  it('flattens first-order bands when the device lacks the firstOrderEq capability', async () => {
-    const device = harness({}, 10);
-    const inputId = liveMirror().current!.channels.find((c) => !c.isOutput)!.id;
-    applyAutoEqEntry(State.activeSession()!, inputId, firstOrderEntry());
-    await vi.runAllTimersAsync();
-    const calls = vi.mocked(device.setFilter).mock.calls;
-    expect(calls.find((c) => c[1] === 0)![2].type).toBe(FilterType.Flat);
-    expect(calls.find((c) => c[1] === 1)![2].type).toBe(FilterType.Peaking);
-  });
-
-  it('passes first-order bands through on a firstOrderEq-capable device', async () => {
-    const device = harness({}, 16);
+  it('passes first-order bands through to the wire', async () => {
+    const device = harness();
     const inputId = liveMirror().current!.channels.find((c) => !c.isOutput)!.id;
     applyAutoEqEntry(State.activeSession()!, inputId, firstOrderEntry());
     await vi.runAllTimersAsync();

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { bootMock } from './boot';
 import * as State from '@/state';
 import type { ReadySession } from '@/state';
-import { PresetStartupMode, parseBulkParams, Wire } from '@/protocol';
+import { PresetStartupMode, parseBulkParams } from '@/protocol';
 import type { DeviceState } from '@/protocol/snapshotCodec';
 import { type PresetSlot, OutputConfigMode } from '@/domain';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
@@ -386,7 +386,7 @@ describe('runtime/presets', () => {
       await Presets.savePresetSlot(sess(), active);
       expect(ps().active).toBe(active);
 
-      const sourceBlob = parseBulkParams(makeBulk({ formatVersion: 10, payloadLength: Wire.BulkSizes.V10 })) as DeviceState;
+      const sourceBlob = parseBulkParams(makeBulk()) as DeviceState;
       const realDevice = State.activeSession()!.device;
       const calls: string[] = [];
       const origLoad   = realDevice.loadPreset.bind(realDevice);
@@ -590,11 +590,11 @@ describe('runtime/presets', () => {
     });
   });
 
-  describe('paste under output-config mode (V10 device)', () => {
+  describe('paste under output-config mode', () => {
     it('toasts that IO config was not applied in Independent mode, stays silent in WithPreset', async () => {
       State.activeSession()?.dispose();
       State.resetAppState();
-      await bootMock('rp2350', { wireVersion: 10 });
+      await bootMock('rp2350');
       await Presets.fetchPresetInfo(sess());
       await Presets.savePresetSlot(sess(), 1 as PresetSlot);
       await Presets.copyActivePreset(sess());

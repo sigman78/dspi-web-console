@@ -1,14 +1,11 @@
 <script lang="ts">
-  import { getSession } from '@/components/sessionContext';
-  import { destinations } from './destinations';
+  import { DESTINATIONS } from './destinations';
   import { noveauUi } from './noveauUi.svelte';
 
-  const s = getSession();
-  const items = $derived(destinations(s.device.capabilities.features));
 </script>
 
 <nav class="irail" aria-label="Destinations" data-budget>
-  {#each items as it (it.key)}
+  {#each DESTINATIONS as it (it.key)}
     <button
       type="button"
       class="ib"

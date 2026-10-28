@@ -62,14 +62,12 @@ function makeSnap(over: {
 
 function makeSession(o: {
   snap?: ReturnType<typeof makeSnap>;
-  i2sSlaveClock?: boolean;
   i2sSlaveStatus?: object | null;
   adatInputStatus?: object | null;
-  pinResetDefault?: boolean;
   spdifInputCount?: number;
 } = {}) {
   return {
-    device: { capabilities: { features: { i2sInput: true, i2sSlaveClock: o.i2sSlaveClock ?? false, adatInput: true, pinResetDefault: o.pinResetDefault ?? false }, spdifInputCount: o.spdifInputCount ?? 1 } },
+    device: { capabilities: { features: { adatInput: true }, spdifInputCount: o.spdifInputCount ?? 1 } },
     telemetry: { spdifRxStatus: null, i2sSlaveStatus: o.i2sSlaveStatus ?? null, activeInputChannels: null, adatInputStatus: o.adatInputStatus ?? null },
     mirror: { current: o.snap ?? makeSnap() },
     ctrlIfaces: { uart: null, i2c: null, status: null },
@@ -85,20 +83,14 @@ function renderPanel(session: unknown) {
 beforeEach(() => { vi.clearAllMocks(); });
 
 describe('InputConfigPanel — I2S rate row', () => {
-  test('pre-V21 firmware keeps the interactive rate selector regardless of i2sClockMode', () => {
-    renderPanel(makeSession({ snap: makeSnap({ i2sClockMode: 1 }), i2sSlaveClock: false }));
+  test('MASTER clock mode keeps the interactive rate selector', () => {
+    renderPanel(makeSession({ snap: makeSnap({ i2sClockMode: 0 }) }));
     expect(screen.getByRole('button', { name: '48k' })).toBeTruthy();
     expect(screen.queryByText(/auto-detected/)).toBeNull();
   });
 
-  test('MASTER clock mode on V21+ firmware keeps the interactive rate selector', () => {
-    renderPanel(makeSession({ snap: makeSnap({ i2sClockMode: 0 }), i2sSlaveClock: true }));
-    expect(screen.getByRole('button', { name: '48k' })).toBeTruthy();
-    expect(screen.queryByText(/auto-detected/)).toBeNull();
-  });
-
-  test('SLAVE clock mode on V21+ firmware replaces the rate selector with a read-only value', () => {
-    renderPanel(makeSession({ snap: makeSnap({ i2sClockMode: 1 }), i2sSlaveClock: true }));
+  test('SLAVE clock mode replaces the rate selector with a read-only value', () => {
+    renderPanel(makeSession({ snap: makeSnap({ i2sClockMode: 1 }) }));
     expect(screen.queryByRole('button', { name: '48k' })).toBeNull();
     expect(screen.getByText(/auto-detected/)).toBeTruthy();
   });
@@ -106,7 +98,6 @@ describe('InputConfigPanel — I2S rate row', () => {
   test('SLAVE clock mode shows the detected rate once telemetry reports lock', () => {
     renderPanel(makeSession({
       snap: makeSnap({ i2sClockMode: 1 }),
-      i2sSlaveClock: true,
       i2sSlaveStatus: { state: I2sSlaveClockState.Locked, detectedRateHz: 96000, clockMode: 1, lockCount: 1, lossCount: 0, measuredHz: 96000, slipCount: 0 },
     }));
     expect(screen.getByText('96.0 kHz')).toBeTruthy();
@@ -115,7 +106,6 @@ describe('InputConfigPanel — I2S rate row', () => {
   test('SLAVE clock mode shows a dash while not yet locked', () => {
     renderPanel(makeSession({
       snap: makeSnap({ i2sClockMode: 1 }),
-      i2sSlaveClock: true,
       i2sSlaveStatus: { state: I2sSlaveClockState.Acquiring, detectedRateHz: 0, clockMode: 1, lockCount: 0, lossCount: 0, measuredHz: 0, slipCount: 0 },
     }));
     expect(screen.getByText('—')).toBeTruthy();
@@ -184,20 +174,15 @@ describe('InputConfigPanel — S/PDIF pin pickers', () => {
 });
 
 describe('InputConfigPanel — DEFAULTS chip', () => {
-  test('is hidden without pin-reset firmware support', () => {
-    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Spdif }) }));
-    expect(screen.queryByRole('button', { name: 'Reset input pins to defaults' })).toBeNull();
-  });
-
   test('is hidden on the USB source, which has no pin pickers', () => {
-    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }), pinResetDefault: true }));
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }) }));
     expect(screen.queryByRole('button', { name: 'Reset input pins to defaults' })).toBeNull();
   });
 
   test('SPDIF view stages a reset for configured pins but skips ext inputs still at the UNSET sentinel', async () => {
     const snap = makeSnap({ source: AudioInputSource.Spdif });
     snap.inputConfig.spdifRxPinExt = [20, 0];
-    renderPanel(makeSession({ snap, pinResetDefault: true, spdifInputCount: 3 }));
+    renderPanel(makeSession({ snap, spdifInputCount: 3 }));
     await fireEvent.click(screen.getByRole('button', { name: 'Reset input pins to defaults' }));
     expect(stageSpdifRxPin).toHaveBeenCalledWith(expect.anything(), Wire.Const.PIN_RESET_TO_DEFAULT);
     expect(stageSpdifRxPinExt).toHaveBeenCalledWith(expect.anything(), 0, Wire.Const.PIN_RESET_TO_DEFAULT);
@@ -206,7 +191,7 @@ describe('InputConfigPanel — DEFAULTS chip', () => {
   });
 
   test('I2S view stages a reset for every active RX pair, and never touches S/PDIF', async () => {
-    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.I2s }), pinResetDefault: true }));
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.I2s }) }));
     await fireEvent.click(screen.getByRole('button', { name: 'Reset input pins to defaults' }));
     expect(stageI2sRxPin).toHaveBeenCalledWith(expect.anything(), 0, Wire.Const.PIN_RESET_TO_DEFAULT);
     expect(stageSpdifRxPin).not.toHaveBeenCalled();

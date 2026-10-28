@@ -48,7 +48,7 @@ function narrowLevellerSpeed(s: number): Domain.LevellerSpeed {
 }
 
 // p1 = enable mask + 1 (0 = absent -> all off; else bit0 = input2, bit1 =
-// input3, bit2 = input4 [V28+; unset on older packets]).
+// input3, bit2 = input4).
 function decodeSpdifExtEnabled(p1: number): boolean[] {
   if (p1 === 0) return [false, false, false];
   const mask = p1 - 1;
@@ -84,7 +84,6 @@ function narrowFilter(filter: { type: number; bypass: boolean; frequency: number
 
 export function fromBulkParams(hardware: Domain.HardwareProfile, bulk: BulkParams): Domain.DspSnapshot {
   const channelNames = bulk.channelNames;
-  const hasCrossover = bulk.formatVersion >= 16;
   const inputSource = narrowInputSource(bulk.inputConfig.source);
 
   const channels = hardware.channels.map((channel) => {
@@ -100,7 +99,7 @@ export function fromBulkParams(hardware: Domain.HardwareProfile, bulk: BulkParam
       bandCount: channel.bandCount,
       isOutput: channel.isOutput,
       filters: (bulk.filters[wireChannel]?.slice(0, channel.bandCount) ?? []).map(narrowFilter),
-      xoverBands: hasCrossover && channel.isOutput
+      xoverBands: channel.isOutput
         ? (bulk.crossover[wireChannel] ?? []).map(narrowFilter)
         : [],
     };
@@ -154,12 +153,10 @@ export function fromBulkParams(hardware: Domain.HardwareProfile, bulk: BulkParam
       itd: bulk.crossfeed.itd,
       freq: bulk.crossfeed.freq,
       feedDb: bulk.crossfeed.feedDb,
-      // Output-pair mask comes from the V20 bulk section; the parser defaults
-      // it to 0x01 (legacy stereo) on pre-V20 packets, so this is always populated.
       outputPairMask: bulk.crossfeed.outputPairMask,
     },
-    // Floor sections -- bulkParser always populates these (defaults when the
-    // wire omits them), so the domain carries them unconditionally.
+    // Floor sections -- present on every supported packet, so the domain
+    // carries them unconditionally.
     leveller: {
       enabled: bulk.leveller.enabled,
       speed: narrowLevellerSpeed(bulk.leveller.speed),
@@ -167,8 +164,6 @@ export function fromBulkParams(hardware: Domain.HardwareProfile, bulk: BulkParam
       amount: bulk.leveller.amount,
       maxGainDb: bulk.leveller.maxGainDb,
       gateDb: bulk.leveller.gateDb,
-      // Channel masks come from the V18 bulk section; the parser defaults them
-      // to all-on (0xFF) on pre-V18 packets, so this is always populated.
       detectorMask: bulk.leveller.detectorMask,
       applyMask: bulk.leveller.applyMask,
     },
@@ -178,15 +173,10 @@ export function fromBulkParams(hardware: Domain.HardwareProfile, bulk: BulkParam
       mckPin: bulk.i2s.mckPin,
       mckEnabled: bulk.i2s.mckEnabled,
       mckMultiplierEncoded: bulk.i2s.mckMultiplierEncoded,
-      // clockPinMode comes from the V16-gen I2S section's clockPinModeP1 byte;
-      // the parser defaults it to 0 (absent) on packets that predate the
-      // slave-clock feature, so this is always populated.
       clockPinMode: decodeClockPinMode(bulk.i2s.clockPinModeP1),
       bckPinSlave: bulk.i2s.bckPinSlave,
     },
     outputPins: bulk.pins.slice(0, bulk.numPinOutputs),
-    // V7-V10 sections -- same unconditional carry: the parser substitutes
-    // factory defaults when a packet omits them (test-only under the V10 floor).
     inputConfig: {
       source: inputSource,
       spdifRxPin: bulk.inputConfig.spdifRxPin,
@@ -195,38 +185,23 @@ export function fromBulkParams(hardware: Domain.HardwareProfile, bulk: BulkParam
       i2sInputChannels: bulk.inputConfig.i2sInputChannels,
       spdifRxPinExt: [...bulk.inputConfig.spdifRxPinExt],
       spdifExtEnabled: decodeSpdifExtEnabled(bulk.inputConfig.spdifRxEnabledExtP1),
-      // I2S clock role comes from the V21 bulk section; the parser defaults
-      // it to 0 (master) on pre-V21 packets, so this is always populated.
       i2sClockMode: bulk.inputConfig.i2sClockMode,
-      // ADAT input comes from the V24 bulk section; the parser defaults its
-      // p1-encoded fields to 0 (absent) on pre-V24 packets, decoded below.
+      // p1-encoded fields (0 = absent) are decoded below.
       adatInputPin: bulk.inputConfig.adatInputPin,
       adatInputEnabled: decodeAdatInputEnabled(bulk.inputConfig.adatInputEnabledP1),
       adatInputClockMode: decodeAdatInputClockMode(bulk.inputConfig.adatInputClockModeP1),
     },
-    // Psychoacoustic bass comes from the V23 bulk section; the parser
-    // defaults it (disabled, all-outputs mask) on pre-V23 packets, so this is
-    // always populated.
     psybass: { ...bulk.psybass },
-    // Stereo upmixer comes from the V25 bulk section; the parser defaults it
-    // (disabled, firmware defaults) on pre-V25 packets, and presenceDb to 0 on
-    // pre-V26 packets, so this is always populated.
     upmix: { ...bulk.upmix },
-    // Subharmonic synthesizer comes from the V29 bulk section; the parser
-    // defaults it (disabled, all-outputs mask) on pre-V29 packets, so this is
-    // always populated.
+    // Subharm (V29), tube (V31) and limiter (V32) come from their bulk
+    // sections; the parser defaults them on older packets, so they are always
+    // populated.
     subharm: { ...bulk.subharm },
-    // Tube preamp (V31) and per-output limiter (V32) come from their bulk
-    // sections; the parser defaults both on older packets, so these are
-    // always populated.
     tube: { ...bulk.tube },
     limiter: bulk.limiter.map((o) => ({ ...o })),
     lgSoundSync: { enabled: bulk.lgSoundSync.enabled, present: bulk.lgSoundSync.present, volume: bulk.lgSoundSync.volume, muted: bulk.lgSoundSync.muted },
     userVolume:  { volumeDb: bulk.userVolume.volumeDb, mute: bulk.userVolume.mute },
     dacHwMute:   { enabled: bulk.dacHwMute.enabled, activeLow: bulk.dacHwMute.activeLow, pin: bulk.dacHwMute.pin, holdMs: bulk.dacHwMute.holdMs, releaseMs: bulk.dacHwMute.releaseMs },
-    // ADAT lightpipe output comes from the V17 bulk section; the parser
-    // defaults it (disabled, pin 0) on pre-V17 packets, so this is always
-    // populated.
     adat: { enabled: bulk.adat.enabled, pin: bulk.adat.pin },
   };
 }

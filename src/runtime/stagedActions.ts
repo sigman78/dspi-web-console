@@ -420,9 +420,9 @@ export function stagedCtrlPins(s: ReadySession) {
 
 function firstFreePin(snap: Domain.DspSnapshot, ctrl: ReturnType<typeof stagedCtrlPins>, wanted: number): number {
   const inUse = Domain.pinsInUse(snap, ctrl);
-  const free = (p: number) => Domain.isAssignablePin(snap.platform.type, p, snap.platform.channelModel) && !inUse.has(p);
+  const free = (p: number) => Domain.isAssignablePin(snap.platform.type, p) && !inUse.has(p);
   if (free(wanted)) return wanted;
-  return Domain.assignablePins(snap.platform.type, snap.platform.channelModel).find(free) ?? wanted;
+  return Domain.assignablePins(snap.platform.type).find(free) ?? wanted;
 }
 
 function overlayOf(s: ReadySession): Domain.DspSnapshot {

@@ -2,103 +2,39 @@ import { describe, it, expect } from 'vitest';
 import { Codec } from '@/utils';
 import * as Wire from './wireTypes';
 
-describe('wireTypes — V7–V10 tail codecs', () => {
-  it('each new tail section is exactly 16 bytes', () => {
-    expect(Codec.sizeOf(Wire.InputConfig)).toBe(16);
-    expect(Codec.sizeOf(Wire.LgSoundSync)).toBe(16);
-    expect(Codec.sizeOf(Wire.UserVolume)).toBe(16);
-    expect(Codec.sizeOf(Wire.DacHwMute)).toBe(16);
-  });
-
-  it('BulkSizes climb by 16 per version to 2960 at V10', () => {
-    expect(Wire.BulkSizes.V6Full).toBe(2896);
-    expect(Wire.BulkSizes.V7).toBe(2912);
-    expect(Wire.BulkSizes.V8).toBe(2928);
-    expect(Wire.BulkSizes.V9).toBe(2944);
-    expect(Wire.BulkSizes.V10).toBe(2960);
-  });
-
-  it('bulkLayout gates each tail section on version AND payloadLength', () => {
-    const v6 = Wire.bulkLayout({ formatVersion: 6, payloadLength: 2896 });
-    expect(v6.inputSource).toBe(false);
-    expect(v6.lgSoundSync).toBe(false);
-    expect(v6.userVolume).toBe(false);
-    expect(v6.dacHwMute).toBe(false);
-
-    // Exactly V7: only the first new section is present.
-    const v7 = Wire.bulkLayout({ formatVersion: 7, payloadLength: 2912 });
-    expect(v7.inputSource).toBe(true);
-    expect(v7.lgSoundSync).toBe(false);
-
-    const v10 = Wire.bulkLayout({ formatVersion: 10, payloadLength: 2960 });
-    expect(v10.inputSource).toBe(true);
-    expect(v10.lgSoundSync).toBe(true);
-    expect(v10.userVolume).toBe(true);
-    expect(v10.dacHwMute).toBe(true);
-
-    const truncated = Wire.bulkLayout({ formatVersion: 10, payloadLength: 2928 });
-    expect(truncated.inputSource).toBe(true);
-    expect(truncated.lgSoundSync).toBe(true);
-    expect(truncated.userVolume).toBe(false);
-    expect(truncated.dacHwMute).toBe(false);
-  });
-
-  it('BandParams carries a bypass byte at offset 1 and round-trips', () => {
-    expect(Codec.sizeOf(Wire.BandParams)).toBe(16);
-    const bytes = Codec.encode(Wire.BandParams, {
-      type: 1, bypass: 1, frequency: 1000, q: 1, gain: 3,
-    });
-    expect(bytes[1]).toBe(1);
-    const back = Codec.decode(Wire.BandParams, bytes);
-    expect(back.bypass).toBe(1);
-    expect(back.type).toBe(1);
-  });
-
-  it('bulkSizeForVersion maps version to packet size', () => {
-    expect(Wire.bulkSizeForVersion(6)).toBe(2896);
-    expect(Wire.bulkSizeForVersion(7)).toBe(2912);
-    expect(Wire.bulkSizeForVersion(10)).toBe(2960);
-    expect(Wire.bulkSizeForVersion(12)).toBe(2960);
-    expect(Wire.bulkSizeForVersion(16)).toBe(5864);
-    expect(Wire.bulkSizeForVersion(17)).toBe(5872);
-    expect(Wire.bulkSizeForVersion(18)).toBe(5876);
-    // V19/V20/V21/V22 claim reserved bytes already inside the V18 layout --
-    // size unchanged. V23 appends the psybass section (+24 B); V24 claims
-    // more reserved bytes -- size unchanged from V23. V25 appends the
-    // upmixer section (+44 B); V26 claims its presence byte -- unchanged.
-    expect(Wire.bulkSizeForVersion(19)).toBe(5876);
-    expect(Wire.bulkSizeForVersion(20)).toBe(5876);
-    expect(Wire.bulkSizeForVersion(21)).toBe(5876);
-    expect(Wire.bulkSizeForVersion(22)).toBe(5876);
-    expect(Wire.bulkSizeForVersion(23)).toBe(5900);
-    expect(Wire.bulkSizeForVersion(24)).toBe(5900);
-    expect(Wire.bulkSizeForVersion(25)).toBe(5944);
-    expect(Wire.bulkSizeForVersion(26)).toBe(5944);
-    expect(Wire.bulkSizeForVersion(27)).toBe(5944);
+describe('wireTypes — V28 packet layout', () => {
+  it('the section codecs sum to the 5944-byte V28 packet; later versions append sections', () => {
+    expect(Wire.BULK_SIZE_V28).toBe(5944);
     expect(Wire.bulkSizeForVersion(28)).toBe(5944);
-    // V29 appends the subharmonic synthesizer section (+16 B); V30 grows it
-    // by another 20 B (third band, selectivity, ceiling, pair link).
+    // V29 subharm (+16), V30 subharm tail (+20), V31 tube (+48), V32 limiter (+108).
     expect(Wire.bulkSizeForVersion(29)).toBe(5960);
     expect(Wire.bulkSizeForVersion(30)).toBe(5980);
-    // V31 appends the tube preamp (+48 B); V32 the per-output limiter (+108 B).
     expect(Wire.bulkSizeForVersion(31)).toBe(6028);
     expect(Wire.bulkSizeForVersion(32)).toBe(6136);
     expect(Wire.bulkSizeForVersion(99)).toBe(6136);
-    expect(Wire.bulkSizeForVersion(5)).toBe(2896);
   });
 
-  it('BULK_SIZE_V21 equals BULK_SIZE_V20 (no packet-size change)', () => {
-    expect(Wire.BULK_SIZE_V21).toBe(Wire.BULK_SIZE_V20);
-    expect(Wire.MAX_WIRE_VERSION).toBe(32);
+  it('bulkLayout gates each trailing section on version AND payloadLength', () => {
+    const v28 = Wire.bulkLayout({ formatVersion: 28, payloadLength: Wire.BULK_SIZE_V28 });
+    expect(v28).toEqual({ subharm: false, subharmExt: false, tube: false, limiter: false });
+
+    const v30 = Wire.bulkLayout({ formatVersion: 30, payloadLength: Wire.BULK_SIZE_V30 });
+    expect(v30).toEqual({ subharm: true, subharmExt: true, tube: false, limiter: false });
+
+    // Header claims V32 but the buffer is cut short: the limiter is not read.
+    const truncated = Wire.bulkLayout({ formatVersion: 32, payloadLength: Wire.BULK_SIZE_V31 });
+    expect(truncated).toEqual({ subharm: true, subharmExt: true, tube: true, limiter: false });
   });
 
-  it('bulkLayout gates i2sClockMode on wire V21 AND payloadLength', () => {
-    const v20 = Wire.bulkLayout({ formatVersion: 20, payloadLength: Wire.BULK_SIZE_V20 });
-    expect(v20.i2sClockMode).toBe(false);
-    const v21 = Wire.bulkLayout({ formatVersion: 21, payloadLength: Wire.BULK_SIZE_V21 });
-    expect(v21.i2sClockMode).toBe(true);
-    const truncated = Wire.bulkLayout({ formatVersion: 21, payloadLength: Wire.BULK_SIZE_V20 - 1 });
-    expect(truncated.i2sClockMode).toBe(false);
+  it('BandParams carries bypass at byte 1 and the Linkwitz qp sidecar at bytes 2-3', () => {
+    expect(Codec.sizeOf(Wire.BandParams)).toBe(16);
+    const bytes = Codec.encode(Wire.BandParams, {
+      type: 11, bypass: 1, qp: 0x0123, frequency: 1000, q: 1, gain: 3,
+    });
+    expect(bytes[1]).toBe(1);
+    expect(bytes[2]).toBe(0x23);
+    expect(bytes[3]).toBe(0x01);
+    expect(Codec.decode(Wire.BandParams, bytes)).toMatchObject({ type: 11, bypass: 1, qp: 0x0123 });
   });
 
   it('CsBinding encodes the spec worked examples byte-for-byte and round-trips', () => {
@@ -328,21 +264,6 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     });
   });
 
-  it('InputConfig round-trips the multi-SPDIF fields at bytes 8-10', () => {
-    const bytes = Codec.encode(Wire.InputConfig, {
-      inputSource: 1, spdifRxPin: 5, i2sRxPin: 0, i2sInputRate: 1, i2sInputChannels: 0,
-      i2sRxPinExt: [0, 0, 0],
-      spdifRxPinExt: [16, 17],
-      spdifRxEnabledExtP1: 2, // mask+1 -> mask 1 (SPDIF2 enabled)
-    });
-    expect(bytes[8]).toBe(16);
-    expect(bytes[9]).toBe(17);
-    expect(bytes[10]).toBe(2);
-    const back = Codec.decode(Wire.InputConfig, bytes);
-    expect(back.spdifRxPinExt).toEqual([16, 17]);
-    expect(back.spdifRxEnabledExtP1).toBe(2);
-  });
-
   it('GetSpdifInputConfig (0xEF) decodes [count, enableMask, pin0, pin1, pin2, pin3]', () => {
     expect(Codec.sizeOf(Wire.SpdifInputConfig)).toBe(6);
     const bytes = Uint8Array.from([4, 0b0111, 5, 16, 17, 22]);
@@ -350,28 +271,7 @@ describe('wireTypes — V7–V10 tail codecs', () => {
     expect(cfg).toEqual({ count: 4, enableMask: 0b0111, pins: [5, 16, 17, 22] });
   });
 
-  it('a legacy 5-byte GetSpdifInputConfig response zero-fills pin 4 via decodePadded', () => {
-    const bytes = Uint8Array.from([3, 0b011, 5, 16, 17]);
-    const cfg = Codec.decodePadded(Wire.SpdifInputConfig, bytes);
-    expect(cfg).toEqual({ count: 3, enableMask: 0b011, pins: [5, 16, 17, 0] });
-  });
-
-  it('InputConfig21 is 16 bytes and carries i2sClockMode at byte 11', () => {
-    expect(Codec.sizeOf(Wire.InputConfig21)).toBe(16);
-    const bytes = Codec.encode(Wire.InputConfig21, {
-      inputSource: 2, spdifRxPin: 5, i2sRxPin: 1, i2sInputRate: 1, i2sInputChannels: 8,
-      i2sRxPinExt: [2, 3, 4],
-      spdifRxPinExt: [0, 0],
-      spdifRxEnabledExtP1: 0,
-      i2sClockMode: 1,
-    });
-    expect(bytes[11]).toBe(1);
-    const back = Codec.decode(Wire.InputConfig21, bytes);
-    expect(back.i2sClockMode).toBe(1);
-    expect(back.i2sRxPin).toBe(1);
-  });
-
-  it('I2SConfig round-trips the V21 slave-clock pins at bytes 8-9', () => {
+  it('I2SConfig round-trips the slave-clock pins at bytes 8-9', () => {
     expect(Codec.sizeOf(Wire.I2SConfig)).toBe(16);
     const bytes = Codec.encode(Wire.I2SConfig, {
       outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0,

@@ -50,22 +50,22 @@ describe('MockTransport', () => {
 });
 
 describe('MockTransport — wire version knob', () => {
-  it('synthesizes a bulk packet at the configured wire version (V10 = 2960 B)', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
+  it('synthesizes a bulk packet at the configured wire version (V28 = 5944 B)', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28 });
     await t.open();
     const bytes = await t.ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize);
-    expect(bytes.byteLength).toBe(2960);
+    expect(bytes.byteLength).toBe(5944);
     const p = Protocol.parseBulkParams(bytes);
-    expect(p.formatVersion).toBe(10);
-    expect(p.payloadLength).toBe(2960);
+    expect(p.formatVersion).toBe(28);
+    expect(p.payloadLength).toBe(5944);
   });
 
-  it('connects as a supported V10 device with a coherent firmware version', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } });
+  it('connects as a supported V28 device with a coherent firmware version', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     const dev = await createDevice(t);
     expect(dev.capabilities.support).toBe('supported');
-    expect(dev.capabilities.wire).toBe(10);
-    expect(dev.info.capabilities.fwLabel).toBe('1.1.4');
+    expect(dev.capabilities.wire).toBe(28);
+    expect(dev.info.capabilities.fwLabel).toBe('1.1.5');
   });
 
   it('reads the pre-release ordinal from the 7-byte GetPlatform, and a shorter reply reads as a final release', async () => {
@@ -84,34 +84,20 @@ describe('MockTransport — wire version knob', () => {
     expect(final.info.capabilities.fw.beta).toBeFalsy();
   });
 
-  it('merges a V6 write into a V10 device: V6 fields update, the packet stays V10', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
-    const dev = await createDevice(t);
-    const snap = await dev.getAllParams();
-    snap.masterVolumeDb = -11;
-    await dev.setAllParams(snap);
-    const back = await dev.getAllParams();
-    expect(back.formatVersion).toBe(10);
-    expect(back.masterVolumeDb).toBeCloseTo(-11);
-  });
-
-  it('defaults to V10 when no wire version is given', async () => {
+  it('defaults to the V28 floor when no wire version is given', async () => {
     const t = new MockTransport({ platform: 'rp2350' });
     await t.open();
     const bytes = await t.ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize);
-    expect(bytes.byteLength).toBe(Protocol.Wire.BulkSizes.V10);
-    expect(Protocol.parseBulkParams(bytes).formatVersion).toBe(10);
+    expect(bytes.byteLength).toBe(Protocol.Wire.BULK_SIZE_V28);
+    expect(Protocol.parseBulkParams(bytes).formatVersion).toBe(28);
   });
 
-  it('reports a sub-floor wire version so the connect-reject path is testable', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 5 });
-    await t.open();
-    const bytes = await t.ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize);
-    expect(Protocol.parseBulkParams(bytes).formatVersion).toBe(5);
+  it('rejects a wire version below the floor at construction', () => {
+    expect(() => new MockTransport({ platform: 'rp2350', wireVersion: 27 })).toThrow(/below the V28 floor/);
   });
 });
 
-describe('MockTransport — stereo upmixer (V25/V26)', () => {
+describe('MockTransport — stereo upmixer', () => {
   it('roundtrips a per-param SET/GET (0x4C/0x4D) by UPMIX_PARAM_* id', async () => {
     const t = new MockTransport({ platform: 'rp2350' });
     await t.open();
@@ -141,24 +127,14 @@ describe('MockTransport — stereo upmixer (V25/V26)', () => {
     expect(got.surroundLpfHz).toBeCloseTo(8000, 4);
   });
 
-  it('centre-mode OFF (2) is accepted on V27+ and round-trips per-param', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 27, fwVersion: { major: 1, minor: 1, patch: 6 } });
+  it('centre-mode OFF (2) round-trips per-param', async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
     await t.open();
     const payload = new Uint8Array(4);
     new DataView(payload.buffer).setFloat32(0, 2, true);
     await t.ctrlOut(Protocol.WireCmd.UpmixSetParam.code, Protocol.Wire.UpmixParam.CenterMode, payload);
     const got = await t.ctrlIn(Protocol.WireCmd.UpmixGetParam.code, Protocol.Wire.UpmixParam.CenterMode, 4);
     expect(new DataView(got.buffer).getFloat32(0, true)).toBe(2);
-  });
-
-  it('centre-mode OFF (2) clamps to Adaptive (1) below V27, mirroring firmware', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 26 });
-    await t.open();
-    const payload = new Uint8Array(4);
-    new DataView(payload.buffer).setFloat32(0, 2, true);
-    await t.ctrlOut(Protocol.WireCmd.UpmixSetParam.code, Protocol.Wire.UpmixParam.CenterMode, payload);
-    const got = await t.ctrlIn(Protocol.WireCmd.UpmixGetParam.code, Protocol.Wire.UpmixParam.CenterMode, 4);
-    expect(new DataView(got.buffer).getFloat32(0, true)).toBe(1);
   });
 
   it('GetUpmixStatus is only active while enabled AND the live input is stereo', async () => {
@@ -178,7 +154,7 @@ describe('MockTransport — stereo upmixer (V25/V26)', () => {
     expect(disabled.parkedReason).toBe(1); // Disabled
 
     await t.ctrlOut(Protocol.WireCmd.UpmixSetParam.code, Protocol.Wire.UpmixParam.Enabled, one);
-    const t8ch = new MockTransport({ platform: 'rp2350', wireVersion: 16, i2sInputChannels: 8 });
+    const t8ch = new MockTransport({ platform: 'rp2350', i2sInputChannels: 8 });
     await t8ch.open();
     await t8ch.ctrlOut(Protocol.WireCmd.UpmixSetParam.code, Protocol.Wire.UpmixParam.Enabled, one);
     const parked = Codec.decode(Protocol.Wire.UpmixStatus, await t8ch.ctrlIn(Protocol.WireCmd.UpmixGetStatus.code, 0, 16));
@@ -191,7 +167,7 @@ describe('MockTransport — status + buffer stats', () => {
   it('returns a parseable status packet', async () => {
     const t = new MockTransport({ platform: 'rp2350' });
     await t.open();
-    const bytes = await t.ctrlIn(Protocol.WireCmd.GetStatus.code, 9, 11 * 2 + 4);
+    const bytes = await t.ctrlIn(Protocol.WireCmd.GetStatus.code, 9, 11 * 2 + 7);
     const s = Protocol.parseSystemStatus(bytes, 11);
     expect(s.peaks.length).toBeGreaterThanOrEqual(11);
     // Levels are animated (time-driven) rather than a fixed staircase; the
@@ -336,9 +312,9 @@ describe('MockTransport — GetEqParam multi-read', () => {
   });
 });
 
-describe('MockTransport — Linkwitz Transform qp sidecar (V22+, raw wire level)', () => {
+describe('MockTransport — Linkwitz Transform qp sidecar (raw wire level)', () => {
   it('the 18-byte SetEqParam form stores qp; GetEqParam param 5 returns qp_x512', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 22, fwVersion: { major: 1, minor: 2, patch: 0 } });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
     const payload = Codec.encode(Protocol.Wire.SetFilterPacketQp, {
       channel: 2, band: 1, type: Domain.FilterType.LinkwitzTransform, frequency: 45, q: 0.6, gain: 90, qp: 768,
@@ -351,7 +327,7 @@ describe('MockTransport — Linkwitz Transform qp sidecar (V22+, raw wire level)
   });
 
   it('the 16-byte SetEqParam form preserves a previously-stored qp', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 22, fwVersion: { major: 1, minor: 2, patch: 0 } });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
     await t.ctrlOut(Protocol.WireCmd.SetEqParam.code, 0, Codec.encode(Protocol.Wire.SetFilterPacketQp, {
       channel: 2, band: 1, type: Domain.FilterType.LinkwitzTransform, frequency: 45, q: 0.6, gain: 90, qp: 768,
@@ -367,7 +343,7 @@ describe('MockTransport — Linkwitz Transform qp sidecar (V22+, raw wire level)
   });
 
   it('latches qp from the 18-byte form even for a non-LT type (only the bulk path zeroes it)', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 22, fwVersion: { major: 1, minor: 2, patch: 0 } });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
     await t.ctrlOut(Protocol.WireCmd.SetEqParam.code, 0, Codec.encode(Protocol.Wire.SetFilterPacketQp, {
       channel: 2, band: 1, type: Domain.FilterType.Peaking, frequency: 1000, q: 1, gain: 3, qp: 999,
@@ -381,14 +357,14 @@ describe('MockTransport — Linkwitz Transform qp sidecar (V22+, raw wire level)
 
 describe('MockTransport — notify queue', () => {
   it('returns a 1-byte idle when the notify queue is empty', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
+    const t = new MockTransport({ platform: 'rp2350' });
     await t.open();
     const bytes = await t.notifyIn(64);
     expect(Array.from(bytes)).toEqual([0]);
   });
 
   it('drains pushed packets FIFO, then returns to idle', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
+    const t = new MockTransport({ platform: 'rp2350' });
     await t.open();
     t.pushNotify(new Uint8Array([2, 3, 0, 1, 3, 0, 0, 0]));  // BULK_INVALIDATED
     const first = await t.notifyIn(64);
@@ -398,15 +374,15 @@ describe('MockTransport — notify queue', () => {
   });
 });
 
-describe('MockTransport — chunked bulk sessions (V16)', () => {
-  async function v16Mock(): Promise<MockTransport> {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } });
+describe('MockTransport — chunked bulk sessions ', () => {
+  async function chunkMock(): Promise<MockTransport> {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
     return t;
   }
 
   it('rejects a SET chunk whose offset does not match the bytes accumulated so far', async () => {
-    const t = await v16Mock();
+    const t = await chunkMock();
     const chunkSize = Protocol.Wire.BulkLimits.ChunkSize;
     const full = await t.ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize);
 
@@ -417,7 +393,7 @@ describe('MockTransport — chunked bulk sessions (V16)', () => {
   });
 
   it('invalidates an open GET session when a non-chunk vendor request is interleaved', async () => {
-    const t = await v16Mock();
+    const t = await chunkMock();
     const chunkSize = Protocol.Wire.BulkLimits.ChunkSize;
 
     await t.ctrlIn(Protocol.WireCmd.GetAllParamsChunk.code, 0, chunkSize);
@@ -431,7 +407,7 @@ describe('MockTransport — chunked bulk sessions (V16)', () => {
   });
 });
 
-describe('MockTransport — bulk SET minimum size (V16+)', () => {
+describe('MockTransport — bulk SET minimum size ', () => {
   const chunk = Protocol.Wire.BulkLimits.ChunkSize;
 
   async function v30Mock() {
@@ -545,19 +521,19 @@ describe('MockTransport — V32 bulk size and tube/limiter state', () => {
 });
 
 describe('MockTransport — source-aware input channel names', () => {
-  async function v16Device(): Promise<DspDevice> {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } });
+  async function device(): Promise<DspDevice> {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     return createDevice(t);
   }
 
   it('seeds default input names for the default (USB) source at boot', async () => {
-    const d = await v16Device();
+    const d = await device();
     const bulk = await d.getAllParams();
     expect(bulk.channelNames.slice(0, 8)).toEqual(['USB 1', 'USB 2', 'USB 3', 'USB 4', 'USB 5', 'USB 6', 'USB 7', 'USB 8']);
   });
 
   it('regenerates default input names on a source switch, preserving a custom name', async () => {
-    const d = await v16Device();
+    const d = await device();
     // Slot 2 (In2L) gets a real custom name; it must survive the switch.
     await d.setChannelName(Domain.ChannelId.In2L, 'Turntable');
 
@@ -570,7 +546,7 @@ describe('MockTransport — source-aware input channel names', () => {
   });
 
   it('does not regenerate names on an I2S channel-count change (names key on source, not count)', async () => {
-    const d = await v16Device();
+    const d = await device();
     await d.setInputSource(Domain.AudioInputSource.I2s);
     const before = (await d.getAllParams()).channelNames.slice(0, 8);
 
@@ -581,34 +557,9 @@ describe('MockTransport — source-aware input channel names', () => {
   });
 });
 
-describe('MockTransport — V10 device fidelity', () => {
-  it('GetAllParams from a V10 mock returns a 2960 B packet with a real tail', async () => {
-    const mock = new MockTransport({ platform: 'rp2350', wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } });
-    await mock.open();
-    const bytes = await mock.ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize);
-    expect(bytes.byteLength).toBe(Protocol.Wire.BulkSizes.V10);
-    const p = Protocol.parseBulkParams(bytes);
-    expect(p.formatVersion).toBe(10);
-    expect(p.dacHwMute.pin).toBe(11);
-    expect(p.inputConfig.spdifRxPin).toBe(5);
-  });
-
-  it('a V10 SetAllParams round-trips the tail through the mock', async () => {
-    const mock = new MockTransport({ platform: 'rp2350', wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } });
-    await mock.open();
-    const read = await mock.ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize);
-    const bulk = Protocol.parseBulkParams(read);
-    bulk.userVolume = { volumeDb: -9, mute: true };
-    await mock.ctrlOut(Protocol.WireCmd.SetAllParams.code, 0, Protocol.buildBulkParams(bulk));
-    const back = Protocol.parseBulkParams(await mock.ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize));
-    expect(back.userVolume.mute).toBe(true);
-    expect(back.userVolume.volumeDb).toBeCloseTo(-9, 4);
-  });
-});
-
 describe('MockTransport — imaginary I2S multichannel demo mode', () => {
-  it('boots a V16 mock with an I2S multichannel input', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 16, i2sInputChannels: 8 });
+  it('boots a mock with an I2S multichannel input', async () => {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, i2sInputChannels: 8 });
     await t.open();
     const p = Protocol.parseBulkParams(await t.ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize));
     expect(p.inputConfig.source).toBe(Domain.AudioInputSource.I2s);
@@ -616,41 +567,35 @@ describe('MockTransport — imaginary I2S multichannel demo mode', () => {
   });
 
   it('reports the multichannel count via system status (what the UI reads)', async () => {
-    const dev = await DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 16, i2sInputChannels: 6 }));
+    const dev = await DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 28, i2sInputChannels: 6 }));
     const status = await dev.getSystemStatus();
     expect(status.activeInputChannels).toBe(6);
   });
 
   it('clamps an odd count down to the nearest even value', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 16, i2sInputChannels: 5 });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, i2sInputChannels: 5 });
     await t.open();
     const p = Protocol.parseBulkParams(await t.ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize));
     expect(p.inputConfig.i2sInputChannels).toBe(4);
   });
 
-  it('ignores the knob on a V10 mock (stays USB stereo)', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10, i2sInputChannels: 8 });
-    await t.open();
-    const p = Protocol.parseBulkParams(await t.ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize));
-    expect(p.inputConfig.source).toBe(Domain.AudioInputSource.Usb);
-  });
 });
 
-describe('MockTransport — loudness/crossfeed output masks (V19/V20)', () => {
-  async function v20Mock(): Promise<MockTransport> {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 20, fwVersion: { major: 1, minor: 1, patch: 5 } });
+describe('MockTransport — loudness/crossfeed output masks', () => {
+  async function maskMock(): Promise<MockTransport> {
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
     return t;
   }
 
   it('GetLoudnessMask/GetCrossfeedOutputs default to 0xFFFF / 0x01', async () => {
-    const t = await v20Mock();
+    const t = await maskMock();
     expect(Codec.decode(Codec.u16, await t.ctrlIn(Protocol.WireCmd.GetLoudnessMask.code, 0, 2))).toBe(0xFFFF);
     expect(Codec.decode(Codec.u8, await t.ctrlIn(Protocol.WireCmd.GetCrossfeedOutputs.code, 0, 1))).toBe(0x01);
   });
 
   it('SetLoudnessMask/SetCrossfeedOutputs round-trip through Get', async () => {
-    const t = await v20Mock();
+    const t = await maskMock();
     await t.ctrlOut(Protocol.WireCmd.SetLoudnessMask.code, 0, Codec.encode(Codec.u16, 0x00F0));
     expect(Codec.decode(Codec.u16, await t.ctrlIn(Protocol.WireCmd.GetLoudnessMask.code, 0, 2))).toBe(0x00F0);
 
@@ -658,22 +603,20 @@ describe('MockTransport — loudness/crossfeed output masks (V19/V20)', () => {
     expect(Codec.decode(Codec.u8, await t.ctrlIn(Protocol.WireCmd.GetCrossfeedOutputs.code, 0, 1))).toBe(0x0D);
   });
 
-  it('carries both masks in the synthesized V20 bulk packet', async () => {
-    const t = await v20Mock();
+  it('carries both masks in the synthesized bulk packet', async () => {
+    const t = await maskMock();
     await t.ctrlOut(Protocol.WireCmd.SetLoudnessMask.code, 0, Codec.encode(Codec.u16, 0x0F0F));
     await t.ctrlOut(Protocol.WireCmd.SetCrossfeedOutputs.code, 0, Codec.encode(Codec.u8, 0x03));
 
     const p = Protocol.parseBulkParams(await t.ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize));
-    expect(p.formatVersion).toBe(20);
-    expect(p.payloadLength).toBe(Protocol.Wire.BULK_SIZE_V20);
     expect(p.loudness.outputMask).toBe(0x0F0F);
     expect(p.crossfeed.outputPairMask).toBe(0x03);
   });
 });
 
-describe('MockTransport — I2S slave clock (V21)', () => {
+describe('MockTransport — I2S slave clock', () => {
   async function v21Mock(): Promise<MockTransport> {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 21, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
     return t;
   }
@@ -725,15 +668,13 @@ describe('MockTransport — I2S slave clock (V21)', () => {
     expect((await t.ctrlIn(Protocol.WireCmd.GetI2sBckPin.code, 1, 1))[0]).toBe(21);
   });
 
-  it('carries the slave-clock fields in the synthesized V21 bulk packet', async () => {
+  it('carries the slave-clock fields in the synthesized bulk packet', async () => {
     const t = await v21Mock();
     await t.ctrlOut(Protocol.WireCmd.SetI2sClockMode.code, 0, Codec.encode(Codec.u8, 1));
     await t.ctrlIn(Protocol.WireCmd.SetI2sClockPinMode.code, 1, 1);
     await t.ctrlIn(Protocol.WireCmd.SetI2sBckPin.code, (1 << 8) | 21, 1);
 
     const p = Protocol.parseBulkParams(await t.ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize));
-    expect(p.formatVersion).toBe(21);
-    expect(p.payloadLength).toBe(Protocol.Wire.BULK_SIZE_V21);
     expect(p.inputConfig.i2sClockMode).toBe(1);
     expect(p.i2s.clockPinModeP1).toBe(2);   // split
     expect(p.i2s.bckPinSlave).toBe(21);
@@ -746,20 +687,6 @@ describe('MockTransport — selectable system clock (fw overclock branch)', () =
     await t.open();
     return t;
   }
-
-  it('GetSysClock STALLs on a pre-V26 mock (the console\'s probe-failure path)', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
-    await t.open();
-    await expect(t.ctrlIn(Protocol.WireCmd.GetSysClock.code, 0, 8)).rejects.toThrow();
-  });
-
-  it('SetSysClock STALLs on a pre-V26 mock', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
-    await t.open();
-    await expect(
-      t.ctrlOut(Protocol.WireCmd.SetSysClock.code, 0, Codec.encode(Protocol.Wire.SysClockRequest, { mode: 1, vregSel: 0xFF })),
-    ).rejects.toThrow();
-  });
 
   it('sysClockBoot seeds a crash-fallback boot (stored mode kept, safe mode active)', async () => {
     const t = new MockTransport({
@@ -837,9 +764,9 @@ describe('MockTransport — selectable system clock (fw overclock branch)', () =
 });
 
 describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
-  async function v18Mock(platform: 'rp2040' | 'rp2350' = 'rp2350', spdifInputsEnabled?: number): Promise<MockTransport> {
+  async function spdifMock(platform: 'rp2040' | 'rp2350' = 'rp2350', spdifInputsEnabled?: number): Promise<MockTransport> {
     const t = new MockTransport({
-      platform, wireVersion: 18, fwVersion: { major: 1, minor: 1, patch: 5 },
+      platform, wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 },
       ...(spdifInputsEnabled != null ? { spdifInputsEnabled } : {}),
     });
     await t.open();
@@ -847,28 +774,23 @@ describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
   }
 
   it('seeds inputs 2/3 present-but-disabled on RP2350; stays absent on RP2040', async () => {
-    // Pre-V28 wire has no SPDIF4 slot -- the parser pads the third
-    // (SPDIF4) entry to 0 even though the mock's internal state seeds a
-    // real GPIO for it (it never reaches the wire below V28).
-    const rp2350 = Protocol.parseBulkParams(await (await v18Mock('rp2350')).ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize));
-    expect(rp2350.inputConfig.spdifRxPinExt).toEqual([20, 21, 0]);
+    const rp2350 = Protocol.parseBulkParams(await (await spdifMock('rp2350')).ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize));
+    expect(rp2350.inputConfig.spdifRxPinExt).toEqual([20, 21, 22]);
     expect(rp2350.inputConfig.spdifRxEnabledExtP1).toBe(1);  // mask 0: both disabled but present
 
-    const rp2040 = Protocol.parseBulkParams(await (await v18Mock('rp2040')).ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize));
+    const rp2040 = Protocol.parseBulkParams(await (await spdifMock('rp2040')).ctrlIn(Protocol.WireCmd.GetAllParams.code, 0, Protocol.Wire.BulkLimits.MaxReadSize));
     expect(rp2040.inputConfig.spdifRxPinExt).toEqual([0, 0, 0]);
     expect(rp2040.inputConfig.spdifRxEnabledExtP1).toBe(0);
   });
 
   it('spdifInputsEnabled pre-enables inputs 2 and 3', async () => {
-    const t = await v18Mock('rp2350', 3);
-    // Pre-V28: the mock answers the legacy 5-byte layout; decodePadded
-    // zero-fills pin 4 the same way readCmd does in production.
-    const cfg = Codec.decodePadded(Protocol.Wire.SpdifInputConfig, await t.ctrlIn(Protocol.WireCmd.GetSpdifInputConfig.code, 0, 5));
+    const t = await spdifMock('rp2350', 3);
+    const cfg = Codec.decode(Protocol.Wire.SpdifInputConfig, await t.ctrlIn(Protocol.WireCmd.GetSpdifInputConfig.code, 0, 6));
     expect(cfg.enableMask).toBe(0b111);
   });
 
   it('SetSpdifRxPin / GetSpdifRxPin round-trip per instance', async () => {
-    const t = await v18Mock();
+    const t = await spdifMock();
     for (const [index, gpio] of [[0, 15], [1, 22], [2, 26]] as const) {
       const status = await t.ctrlIn(Protocol.WireCmd.SetSpdifRxPin.code, (index << 8) | gpio, 1);
       expect(status[0]).toBe(Protocol.PinConfigResult.Success);
@@ -877,37 +799,31 @@ describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
     }
   });
 
-  it('rejects an out-of-range instance with InvalidOutput', async () => {
-    const t = await v18Mock();
-    const status = await t.ctrlIn(Protocol.WireCmd.SetSpdifRxPin.code, (3 << 8) | 15, 1);  // only instances 0..2 exist
-    expect(status[0]).toBe(Protocol.PinConfigResult.InvalidOutput);
-  });
-
   it('rejects the extended instances on a single-input platform (RP2040)', async () => {
-    const t = await v18Mock('rp2040');
+    const t = await spdifMock('rp2040');
     const status = await t.ctrlIn(Protocol.WireCmd.SetSpdifRxPin.code, (1 << 8) | 15, 1);
     expect(status[0]).toBe(Protocol.PinConfigResult.InvalidOutput);
   });
 
   it('SetSpdifInputEnable flips the enable bit; GetSpdifInputConfig reflects count/mask/pins', async () => {
-    const t = await v18Mock();
+    const t = await spdifMock();
     const status = await t.ctrlIn(Protocol.WireCmd.SetSpdifInputEnable.code, (1 << 8) | 1, 1);  // enable input 2
     expect(status[0]).toBe(Protocol.PinConfigResult.Success);
 
-    const cfg = Codec.decodePadded(Protocol.Wire.SpdifInputConfig, await t.ctrlIn(Protocol.WireCmd.GetSpdifInputConfig.code, 0, 5));
-    expect(cfg.count).toBe(3);
+    const cfg = Codec.decode(Protocol.Wire.SpdifInputConfig, await t.ctrlIn(Protocol.WireCmd.GetSpdifInputConfig.code, 0, 6));
+    expect(cfg.count).toBe(4);
     expect(cfg.enableMask).toBe(0b011);   // bit0 (input1, always set) + bit1 (input2)
-    expect(cfg.pins).toEqual([5, 20, 21, 0]);
+    expect(cfg.pins).toEqual([5, 20, 21, 22]);
   });
 
   it('disabling instance 0 (the always-on input) is InvalidOutput', async () => {
-    const t = await v18Mock();
+    const t = await spdifMock();
     const status = await t.ctrlIn(Protocol.WireCmd.SetSpdifInputEnable.code, (0 << 8) | 0, 1);
     expect(status[0]).toBe(Protocol.PinConfigResult.InvalidOutput);
   });
 
   it('enabling an input whose pin collides with a reserved pin is PinInUse', async () => {
-    const t = await v18Mock();
+    const t = await spdifMock();
     // Claim GPIO 20 (input 2's default pin) for an output pin first.
     await t.ctrlIn(Protocol.WireCmd.SetOutputPin.code, (20 << 8) | 0, 1);
     const status = await t.ctrlIn(Protocol.WireCmd.SetSpdifInputEnable.code, (1 << 8) | 1, 1);
@@ -915,7 +831,7 @@ describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
   });
 });
 
-describe('MockTransport — fourth S/PDIF input (wire V28+, RP2350)', () => {
+describe('MockTransport — fourth S/PDIF input (RP2350)', () => {
   async function v28Mock(spdifInputsEnabled?: number): Promise<MockTransport> {
     const t = new MockTransport({
       platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 6 },
@@ -943,21 +859,12 @@ describe('MockTransport — fourth S/PDIF input (wire V28+, RP2350)', () => {
     expect(cfg.enableMask & 0b1000).toBe(0b1000);
   });
 
-  it('rejects instance 4 (out of range even at V28) with InvalidOutput', async () => {
+  it('rejects instance 4 (out of range) with InvalidOutput', async () => {
     const t = await v28Mock();
     const status = await t.ctrlIn(Protocol.WireCmd.SetSpdifRxPin.code, (4 << 8) | 15, 1);
     expect(status[0]).toBe(Protocol.PinConfigResult.InvalidOutput);
   });
 
-  it('a V27 device still exposes only 3 selectable inputs (legacy layout)', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 27, fwVersion: { major: 1, minor: 1, patch: 6 } });
-    await t.open();
-    const status = await t.ctrlIn(Protocol.WireCmd.SetSpdifRxPin.code, (3 << 8) | 15, 1);
-    expect(status[0]).toBe(Protocol.PinConfigResult.InvalidOutput);
-    const cfg = Codec.decodePadded(Protocol.Wire.SpdifInputConfig, await t.ctrlIn(Protocol.WireCmd.GetSpdifInputConfig.code, 0, 5));
-    expect(cfg.count).toBe(3);
-    expect(cfg.pins[3]).toBe(0);
-  });
 });
 
 // Universal pin-reset escape hatch (fw config.h PIN_RESET_TO_DEFAULT = 0xFF):
@@ -987,7 +894,7 @@ describe('MockTransport — pin-reset-to-default (0xFF sentinel)', () => {
   });
 
   it('SetI2sBckPin: role-aware default (master 14, slave 26 on RP2350)', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 21, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
     await t.ctrlIn(Protocol.WireCmd.SetI2sBckPin.code, 19, 1);                  // role 0 -> off default
     await t.ctrlIn(Protocol.WireCmd.SetI2sBckPin.code, (1 << 8) | 21, 1);       // role 1 -> off default
@@ -1013,7 +920,7 @@ describe('MockTransport — pin-reset-to-default (0xFF sentinel)', () => {
   });
 
   it('SetSpdifRxPin: per-instance default (5 / 20 / 21)', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 18, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
     for (const [index, expected] of [[0, 5], [1, 20], [2, 21]] as const) {
       await t.ctrlIn(Protocol.WireCmd.SetSpdifRxPin.code, (index << 8) | 16, 1);   // off default first
@@ -1024,7 +931,7 @@ describe('MockTransport — pin-reset-to-default (0xFF sentinel)', () => {
   });
 
   it('SetI2sRxPin: per-pair default (contiguous block from GPIO 1)', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
     await t.ctrlIn(Protocol.WireCmd.SetI2sRxPin.code, (2 << 8) | 19, 1);
     const status = await t.ctrlIn(Protocol.WireCmd.SetI2sRxPin.code, (2 << 8) | RESET, 1);
@@ -1042,9 +949,9 @@ describe('MockTransport — pin-reset-to-default (0xFF sentinel)', () => {
   });
 });
 
-describe('MockTransport — ADAT lightpipe output (V17+, RP2350)', () => {
+describe('MockTransport — ADAT lightpipe output (RP2350)', () => {
   it('the 0xFF sentinel resets the pin to the platform default (GPIO 12)', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 17, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
     await t.ctrlIn(Protocol.WireCmd.SetAdatPin.code, 20, 1);
     const status = await t.ctrlIn(Protocol.WireCmd.SetAdatPin.code, Protocol.Wire.Const.PIN_RESET_TO_DEFAULT, 1);

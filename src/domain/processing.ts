@@ -5,9 +5,8 @@ export interface Loudness {
   enabled: boolean;
   refSpl: number;
   intensityPct: number;
-  // Per-output mask (fw V19+): bit k selects output channel k. Default all-on
-  // (0xFFFF) matches the firmware factory value and is the effective behaviour
-  // on pre-V19 firmware. Firmware does no zero-to-default remap, so this must
+  // Per-output mask: bit k selects output channel k. Default all-on
+  // (0xFFFF) matches the firmware factory value. Firmware does no zero-to-default remap, so this must
   // never be sent as 0.
   outputMask: number;
 }
@@ -28,7 +27,7 @@ export interface Crossfeed {
   itd: boolean;
   freq: number;
   feedDb: number;
-  // Output-pair mask (fw V20+): bit p selects output pair p (outputs 2p/2p+1;
+  // Output-pair mask: bit p selects output pair p (outputs 2p/2p+1;
   // the mono PDM sub is not a pair and is excluded). Default 0x01 (pair 1 only)
   // matches the firmware factory value -- legacy stereo behaviour. Firmware
   // does no zero-to-default remap, so this must never be sent as 0.
@@ -51,15 +50,14 @@ export interface Leveller {
   amount: number;
   maxGainDb: number;
   gateDb: number;
-  // Multichannel masks (fw V18+): bit k selects input channel k. detectorMask =
+  // Multichannel masks: bit k selects input channel k. detectorMask =
   // inputs that feed the shared RMS detector; applyMask = inputs that receive
-  // the computed gain. Default all-on (0xFF) matches the firmware factory value
-  // and is the effective behaviour on pre-V18 firmware (single-instance leveller).
+  // the computed gain. Default all-on (0xFF) matches the firmware factory value.
   detectorMask: number;
   applyMask: number;
 }
 
-// Psychoacoustic bass enhancement (fw V23+, RP2350 only). outputMask mirrors
+// Psychoacoustic bass enhancement (RP2350 only). outputMask mirrors
 // the loudness/crossfeed per-output mask convention: bit k selects output
 // channel k, default all-on (0xFFFF) matches the firmware factory value.
 // Firmware does no zero-to-default remap, so this must never be sent as 0.
@@ -78,9 +76,7 @@ export interface Psybass {
 export const UpmixCenterMode = {
   Passive:  0,
   Adaptive: 1,
-  // V27+: surrounds-only upmixing, L/R bit-exact. Appended value -- older
-  // firmware clamps an out-of-range centre-mode byte to Adaptive, so this
-  // option must stay hidden below the upmixCenterOff capability.
+  // Surrounds-only upmixing, L/R bit-exact.
   Off:      2,
 } as const;
 export type UpmixCenterMode = (typeof UpmixCenterMode)[keyof typeof UpmixCenterMode];
@@ -92,11 +88,10 @@ export const UpmixSurroundMode = {
 } as const;
 export type UpmixSurroundMode = (typeof UpmixSurroundMode)[keyof typeof UpmixSurroundMode];
 
-// Stereo upmixer (fw V25+, RP2350 only). Wire-1:1 like Psybass -- centerMode/
+// Stereo upmixer (RP2350 only). Wire-1:1 like Psybass -- centerMode/
 // surroundMode are raw wire values (map via UpmixCenterMode/UpmixSurroundMode)
-// rather than narrowed enum types. presenceDb is fw V26+; bulkParser decodes
-// it from the wire's presenceQ1 int8 (dB x2), defaulting to 0 on V25 packets
-// (byte was reserved).
+// rather than narrowed enum types. presenceDb is decoded from the wire's
+// presenceQ1 int8 (dB x2).
 export interface Upmix {
   enabled: boolean;
   centerMode: number;
@@ -136,7 +131,7 @@ export function narrowUpmixParkedReason(n: number): UpmixParkedReason {
   }
 }
 
-// Live upmixer status (fw V25+, RP2350 only), reported by GetUpmixStatus
+// Live upmixer status (RP2350 only), reported by GetUpmixStatus
 // (0x4E). Pure status (not host-configurable); the bulk packet has no
 // equivalent. corr/balance are Q14 signed fixed point, gains are Q15
 // unsigned -- kept raw here, matching SpdifRxStatus/I2sSlaveStatus.

@@ -5,7 +5,7 @@
 
 import { DspDevice } from '@/device/DspDevice';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
-import { WireCmd, Wire } from '@/protocol';
+import { WireCmd } from '@/protocol';
 import { PlatformType } from '@/domain';
 import type { DspTransport } from '@/transport/DspTransport';
 
@@ -44,10 +44,9 @@ export function withIdentity(base: DspTransport, platform: TestPlatform = 'rp235
       if (identity) return Promise.resolve(identity);
       if (request === WireCmd.GetAllParams.code && !bulkInjected) {
         bulkInjected = true;
-        return Promise.resolve(makeBulk(
-          { formatVersion: 10, payloadLength: Wire.BulkSizes.V10 },
-          { platformId: platform === 'rp2350' ? 1 : 0 },
-        ));
+        return Promise.resolve(makeBulk({}, platform === 'rp2350'
+          ? { platformId: 1 }
+          : { platformId: 0, numCh: 7, numIn: 2, numOut: 5 }));
       }
       return base.ctrlIn(request, value, length);
     },

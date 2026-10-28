@@ -22,7 +22,7 @@
   const outputChannels = $derived(Domain.outputChannelsWithIndex(s.mirror.current));
   const nameByIndex = $derived(new Map<number, string>(outputChannels.map((ch) => [ch.index, ch.name])));
   const pairCount = $derived(Math.min(4, Math.floor(outputChannels.length / 2)));
-  const showPairs = $derived(s.device.capabilities.features.crossfeedPairMask && pairCount > 1);
+  const showPairs = $derived(pairCount > 1);
   const pairItems = $derived(
     Array.from({ length: pairCount }, (_, p) => {
       const n0 = nameByIndex.get(2 * p);

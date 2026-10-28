@@ -36,7 +36,7 @@ export type SnapshotChange =
   // position 6 on RP2040 but has ChannelId 10).
   | { kind: 'channelName';   channelIndex: number; value: string }
   | { kind: 'band';          channelIndex: number; band: number; value: FilterParams }
-  // Crossover band (V16+): band is the LOCAL crossover index 0..3.
+  // Crossover band: band is the LOCAL crossover index 0..3.
   | { kind: 'xoverBand';     channelIndex: number; band: number; value: FilterParams }
   | { kind: 'output';        index: number; value: OutputModel }
   | { kind: 'route';         index: number; value: RouteModel }
@@ -195,8 +195,8 @@ function arrayDiffers<T>(a: T[], b: T[]): boolean {
 
 // inputConfig splits: `source` is preset content; `spdifRxPin`/spdifExt belong
 // to the output-config block (rides the 0x98 persistence mode, not the
-// preset, on 1.1.4). A source change carries the whole section; so does any
-// change to the V16 I2S fields (pins/rate/channel count).
+// preset). A source change carries the whole section; so does any
+// change to the I2S fields (pins/rate/channel count).
 function diffInputConfig(a: InputConfig, b: InputConfig, out: SnapshotChange[]): void {
   const i2sChanged =
     a.i2sInputRateHz !== b.i2sInputRateHz ||

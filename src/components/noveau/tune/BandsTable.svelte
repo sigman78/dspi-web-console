@@ -11,7 +11,7 @@
   const { channel }: { channel: ChannelModel } = $props();
 
   const s = getSession();
-  const types = $derived(offeredTypes(s.device.capabilities.features));
+  const types = offeredTypes();
   const used = $derived(channel.filters.filter((b) => b.type !== FilterType.Flat).length);
 </script>
 
