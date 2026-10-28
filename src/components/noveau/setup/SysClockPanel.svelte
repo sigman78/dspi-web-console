@@ -57,7 +57,7 @@
 </script>
 
 {#if s.sysClock.supported !== false}
-<Panel title="SYSTEM CLOCK">
+<Panel title="OVERCLOCK">
     {#snippet right()}
       {#if st}<button
         class="chip"
@@ -121,9 +121,9 @@
       </div>
     </div>
 
-    <div class="kvgrid">
-      <KV label="ACTIVE" value={activeLabel} />
-      <KV label="STORED" value={storedLabel} tone={pendingApply ? 'warn' : undefined} />
+    <div class="kvrows">
+      <KV inline label="ACTIVE" value={activeLabel} />
+      <KV inline label="STORED" value={storedLabel} tone={pendingApply ? 'warn' : undefined} />
     </div>
     {#if pendingApply}
       <p class="hint pending">Stored setting hasn't taken effect yet — the device may still be applying it.</p>

@@ -10,10 +10,9 @@
   import DacHwMutePanel from '@/components/noveau/setup/DacHwMutePanel.svelte';
   import SysClockPanel from '@/components/noveau/setup/SysClockPanel.svelte';
   import BufferStatsPanel from '@/components/noveau/setup/BufferStatsPanel.svelte';
-  import TelemetryPanel from './TelemetryPanel.svelte';
-  import ErrorCountersPanel from './ErrorCountersPanel.svelte';
+  import FirmwarePanel from '@/components/noveau/setup/FirmwarePanel.svelte';
+  import StatsPanel from '@/components/noveau/setup/StatsPanel.svelte';
   import PagedWorkspace from '@/components/noveau/PagedWorkspace.svelte';
-  import PinMapToggle from '@/components/noveau/PinMapToggle.svelte';
   import PinMapPanel from '@/components/chrome/PinMapPanel.svelte';
   import StagedStrip from '@/components/noveau/StagedStrip.svelte';
   import { noveauUi } from '@/components/noveau/noveauUi.svelte';
@@ -25,7 +24,6 @@
 
 {#snippet strip()}
   <div class="tools">
-    {#if noveauUi.setupPage !== 'device'}<PinMapToggle />{/if}
     <StagedStrip />
   </div>
 {/snippet}
@@ -40,9 +38,9 @@
 >
   {#if noveauUi.setupPage === 'device'}
     <div class="pw-cols">
-      <div class="pw-col" data-budget><DevicePanel /></div>
-      <div class="pw-col" data-budget><TelemetryPanel /><SysClockPanel /></div>
-      <div class="pw-col" data-budget><ErrorCountersPanel /><BufferStatsPanel /></div>
+      <div class="pw-col" data-budget><DevicePanel /><SysClockPanel /></div>
+      <div class="pw-col" data-budget><FirmwarePanel /></div>
+      <div class="pw-col" data-budget><StatsPanel /><BufferStatsPanel /></div>
     </div>
   {:else if noveauUi.setupPage === 'inputs'}
     <div class="pw-cols">
@@ -51,7 +49,7 @@
         {#if features.adatInput}<AdatInputPanel />{/if}
         <LgSoundSyncPanel />
       </div>
-      {#if noveauUi.pinMapOpen}<div class="pw-col pw-ref" data-budget><PinMapPanel /></div>{/if}
+      <div class="pw-col pw-ref" data-budget><PinMapPanel /></div>
     </div>
   {:else}
     <div class="pw-cols">
@@ -60,7 +58,7 @@
         {#if features.adatOutput}<AdatPanel />{/if}
       </div>
       <div class="pw-col" data-budget><I2sClockPanel /><DacHwMutePanel /></div>
-      {#if noveauUi.pinMapOpen}<div class="pw-col pw-ref" data-budget><PinMapPanel /></div>{/if}
+      <div class="pw-col pw-ref" data-budget><PinMapPanel /></div>
     </div>
   {/if}
 </PagedWorkspace>

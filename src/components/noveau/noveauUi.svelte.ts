@@ -12,7 +12,6 @@ export const noveauUi = $state<{
   controlPage: ControlPageKey;
   healthOpen: boolean;
   presetsOpen: boolean;
-  pinMapOpen: boolean;
 }>({
   destination: 'tune',
   selectedBand: null,
@@ -21,7 +20,6 @@ export const noveauUi = $state<{
   controlPage: 'interfaces',
   healthOpen: false,
   presetsOpen: false,
-  pinMapOpen: false,
 });
 
 /** Destination holding the page that a staged entry belongs to, or null when the entry names no page. */

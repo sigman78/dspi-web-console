@@ -50,13 +50,13 @@ beforeEach(() => { vi.clearAllMocks(); });
 describe('SysClockPanel', () => {
   test('an unsupported device renders no panel at all', () => {
     renderPanel(makeSession({ status: null, supported: false }));
-    expect(screen.queryByText('SYSTEM CLOCK')).toBeNull();
+    expect(screen.queryByText('OVERCLOCK')).toBeNull();
     expect(screen.queryByRole('button', { name: 'RETRY' })).toBeNull();
   });
 
   test('without a status the panel waits and RETRY re-reads it', async () => {
     renderPanel(makeSession({ status: null }));
-    expect(screen.getByText('SYSTEM CLOCK')).toBeTruthy();
+    expect(screen.getByText('OVERCLOCK')).toBeTruthy();
     expect(screen.getByText('Waiting for clock status…')).toBeTruthy();
     expect(screen.queryByRole('radiogroup', { name: 'System clock mode' })).toBeNull();
     await fireEvent.click(screen.getByRole('button', { name: 'RETRY' }));

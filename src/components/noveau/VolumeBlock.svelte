@@ -87,6 +87,7 @@
 
 <style>
   .vtop { display: flex; align-items: center; gap: 4px; height: var(--h-row); }
+  .vtop .mute { margin-left: auto; }
   .vrow { display: flex; align-items: center; gap: 6px; height: 22px; }
   input[type="range"] {
     flex: 1;

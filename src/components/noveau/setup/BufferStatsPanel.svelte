@@ -103,7 +103,8 @@
     padding: 2px 6px 4px;
     border-bottom: 1px solid var(--wash);
   }
-  .tbl thead th.src { text-align: left; }
+  .tbl thead th.src { text-align: left; width: 64px; }
+  .tbl td.src, .tbl th.src { white-space: nowrap; }
   .tbl tbody td {
     font-size: 12px;
     font-weight: 600;

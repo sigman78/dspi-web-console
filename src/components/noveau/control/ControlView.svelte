@@ -7,7 +7,6 @@
   import CsMacrosPanel from '@/components/noveau/control/CsMacrosPanel.svelte';
   import CsDisplayPanel from '@/components/noveau/control/CsDisplayPanel.svelte';
   import PagedWorkspace from '@/components/noveau/PagedWorkspace.svelte';
-  import PinMapToggle from '@/components/noveau/PinMapToggle.svelte';
   import PinMapPanel from '@/components/chrome/PinMapPanel.svelte';
   import StagedStrip from '@/components/noveau/StagedStrip.svelte';
   import CsChangesStrip from './CsChangesStrip.svelte';
@@ -40,7 +39,6 @@
 
 {#snippet strip()}
   <div class="tools">
-    {#if page === 'interfaces' || page === 'display'}<PinMapToggle />{/if}
     <StagedStrip rule={showStrip} />
     {#if showStrip}<CsChangesStrip />{/if}
   </div>
@@ -83,7 +81,7 @@
               <CsDisplayPanel detailTarget={displayDetail} visible={page === 'display'} />
             </div>
             <div class="pw-col" data-budget>{@render host('DISPLAY PAGE', 'Select a page on the left', (el) => (displayDetail = el))}</div>
-            {#if noveauUi.pinMapOpen && page === 'display'}<div class="pw-col pw-ref" data-budget><PinMapPanel /></div>{/if}
+            <div class="pw-col pw-ref" data-budget><PinMapPanel /></div>
           {/if}
         </div>
       {/if}
@@ -94,7 +92,7 @@
       <div class="pw-col" data-budget>
         {#if features.controlInterfaces}<ControlInterfacesPanel />{/if}
       </div>
-      {#if noveauUi.pinMapOpen}<div class="pw-col pw-ref" data-budget><PinMapPanel /></div>{/if}
+      <div class="pw-col pw-ref" data-budget><PinMapPanel /></div>
     </div>
   {/if}
 </PagedWorkspace>

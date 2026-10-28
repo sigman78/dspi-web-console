@@ -160,6 +160,7 @@ select.sel:disabled { opacity: var(--dim-disabled); cursor: default; }
 .x-btn.close:hover:not(:disabled) { color: var(--text); background: var(--wash-strong); }
 
 .kvgrid { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.kvrows { display: flex; flex-direction: column; padding: 6px 0; }
 
 .icon-toggle {
   flex: none;

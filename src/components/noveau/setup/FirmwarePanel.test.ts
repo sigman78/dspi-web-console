@@ -11,7 +11,7 @@ vi.mock('@/runtime', () => ({
 }));
 
 import { factoryResetDevice } from '@/runtime';
-import DevicePanel from './DevicePanel.svelte';
+import FirmwarePanel from './FirmwarePanel.svelte';
 
 const session = {
   mirror: { current: null },
@@ -22,9 +22,9 @@ const session = {
 
 afterEach(() => { resolveConfirm(false); vi.clearAllMocks(); });
 
-describe('DevicePanel factory reset', () => {
+describe('FirmwarePanel factory reset', () => {
   test('goes through the confirm modal and only resets on confirmation', async () => {
-    render(DevicePanel, { context: new Map([[SESSION_KEY, session]]) });
+    render(FirmwarePanel, { context: new Map([[SESSION_KEY, session]]) });
     await fireEvent.click(screen.getByRole('button', { name: 'FACTORY RESET' }));
     expect(confirmState.pending?.confirmLabel).toBe('RESET DEVICE');
     expect(factoryResetDevice).not.toHaveBeenCalled();
@@ -34,7 +34,7 @@ describe('DevicePanel factory reset', () => {
   });
 
   test('cancelling leaves the device alone', async () => {
-    render(DevicePanel, { context: new Map([[SESSION_KEY, session]]) });
+    render(FirmwarePanel, { context: new Map([[SESSION_KEY, session]]) });
     await fireEvent.click(screen.getByRole('button', { name: 'FACTORY RESET' }));
     resolveConfirm(false);
     await new Promise((r) => setTimeout(r, 0));

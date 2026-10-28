@@ -253,19 +253,17 @@ test('no scroll 1440x790 SETUP with staged changes and the list open', async ({ 
 for (const size of [SMALL, LARGE]) {
   test(`no scroll ${size.join('x')} pin map docked on SETUP and CONTROL`, async ({ page }) => {
     await open(page, size, CS_FULL);
-    const toggle = page.getByRole('button', { name: 'Pin map', exact: true });
     const ref = page.locator('.pw-cols:not([hidden]) .pw-ref');
     const docked = async (where: string) => {
       await expect(ref, `${where} pin map column`).toBeVisible();
       const box = await ref.boundingBox();
       expect(box!.x + box!.width, `${where} pin map leaves the viewport`).toBeLessThanOrEqual(size[0]);
-      await assertNoScroll(page, `${where} pin map open`);
+      await assertNoScroll(page, `${where} pin map`);
     };
     await destination(page, 'SETUP').click();
     await page.getByRole('tab', { name: 'DEVICE' }).click();
-    await expect(toggle).toHaveCount(0);
+    await expect(ref).toHaveCount(0);
     await page.getByRole('tab', { name: 'INPUTS' }).click();
-    await toggle.click();
     await docked('INPUTS');
     await page.getByRole('tab', { name: 'OUTPUTS' }).click();
     await docked('OUTPUTS');
@@ -275,9 +273,6 @@ for (const size of [SMALL, LARGE]) {
     await page.getByRole('tab', { name: 'DISPLAY' }).click();
     await docked('DISPLAY');
     await page.getByRole('tab', { name: 'SURFACES' }).click();
-    await expect(toggle).toHaveCount(0);
-    await page.getByRole('tab', { name: 'DISPLAY' }).click();
-    await toggle.click();
     await expect(ref).toHaveCount(0);
   });
 }

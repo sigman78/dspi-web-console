@@ -325,7 +325,7 @@
       var(--seg-c) calc(var(--show) * 100%),
       var(--wash-strong));
     /* Held peak LED lifts with an outer glow; zero-width/transparent otherwise. */
-    box-shadow: 0 0 calc(var(--is-peak) * 5px)
+    box-shadow: 0 0 calc(var(--is-peak) * 2px)
       color-mix(in oklab, var(--seg-c) calc(var(--is-peak) * 100%), transparent);
     transition: background-color 45ms linear;
   }
