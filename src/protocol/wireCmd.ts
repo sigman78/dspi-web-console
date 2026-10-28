@@ -129,7 +129,7 @@ export const WireCmd = {
   SetEqParam:           { code: 0x42, codec: tighten<SetEqParamPayload>(Wire.SetFilterPacket) } satisfies WriteCmd<SetEqParamPayload>,
   GetEqParam:           { code: 0x43 } satisfies RawCmd,
 
-  // Global preamp (legacy, pre-V6)
+  // Global preamp (legacy)
   SetPreamp:            { code: 0x44, codec: Codec.f32 } satisfies WriteCmd<number>,
   GetPreamp:            { code: 0x45, codec: Codec.f32 } satisfies ReadCmd<number>,
 
@@ -156,12 +156,12 @@ export const WireCmd = {
   SetChannelName:       { code: 0x9B, codec: Wire.ChannelName } satisfies WriteCmd<string>,
   GetChannelName:       { code: 0x9C, codec: Wire.ChannelName } satisfies ReadCmd<string>,
 
-  // Per-channel preamp + master volume (V6+)
+  // Per-channel preamp + master volume
   SetInputPreamp:       { code: 0xD0, codec: Codec.f32 } satisfies WriteCmd<number>,
   GetInputPreamp:       { code: 0xD1, codec: Codec.f32 } satisfies ReadCmd<number>,
   SetMasterVolume:      { code: 0xD2, codec: Codec.f32 } satisfies WriteCmd<number>,
   GetMasterVolume:      { code: 0xD3, codec: Codec.f32 } satisfies ReadCmd<number>,
-  // Master volume mode (V6+): 0 = independent/global, 1 = with-preset.
+  // Master volume mode: 0 = independent/global, 1 = with-preset.
   SetMasterVolumeMode:  { code: 0xD4, codec: tighten<MasterVolumeMode>(Codec.u8) } satisfies WriteCmd<MasterVolumeMode>,
   GetMasterVolumeMode:  { code: 0xD5, codec: tighten<MasterVolumeMode>(Codec.u8) } satisfies ReadCmd<MasterVolumeMode>,
   // Action-style IN: persists current live master volume to flash, returns 1-byte status.
@@ -187,7 +187,7 @@ export const WireCmd = {
   // Bulk
   GetAllParams:         { code: 0xA0 } satisfies RawCmd,
   SetAllParams:         { code: 0xA1 } satisfies RawCmd,
-  // Chunked bulk access (fw 1.1.5+, V16 only): wValue = byte offset, chunks
+  // Chunked bulk access (fw 1.1.5+): wValue = byte offset, chunks
   // <= 4096 B. A session is torn down by any interleaved non-chunk vendor
   // request; see DspDevice.getAllParams/setAllParams.
   GetAllParamsChunk:    { code: 0xA2 } satisfies RawCmd,
@@ -200,9 +200,8 @@ export const WireCmd = {
   GetOutputPin:         { code: 0x7D } satisfies RawCmd,
   SetOutputType:        { code: 0xC0 } satisfies RawCmd,
   GetOutputType:        { code: 0xC1 } satisfies RawCmd,
-  // Role-indexed (fw V21+): SET wValue = (role<<8)|GPIO, GET wValue = role.
-  // role 0 = master/unified pair (legacy encoding, byte-identical to pre-V21);
-  // role 1 = slave pair. See DspDevice.setI2sBckPin/getI2sBckPin.
+  // Role-indexed: SET wValue = (role<<8)|GPIO, GET wValue = role.
+  // role 0 = master/unified pair; role 1 = slave pair. See DspDevice.setI2sBckPin/getI2sBckPin.
   SetI2sBckPin:         { code: 0xC2 } satisfies RawCmd,
   GetI2sBckPin:         { code: 0xC3 } satisfies RawCmd,
   SetMckEnable:         { code: 0xC4 } satisfies RawCmd,
@@ -215,9 +214,8 @@ export const WireCmd = {
   GetBufferStats:       { code: 0xB0 } satisfies RawCmd,
   ResetBufferStats:     { code: 0xB1 } satisfies RawCmd,
 
-  // --- V17 ADAT lightpipe bulk output (fw 1.1.5+, RP2350). Opcodes 0xCA-0xCE
-  // were I2S-DIN opcodes on a deleted fw branch; on fw >= 1.1.5 (wire >= 17)
-  // they are ADAT. Action-style: SETs carry the value in wValue and return a
+  // --- ADAT lightpipe bulk output (RP2350). Opcodes 0xCA-0xCE were I2S-DIN
+  // opcodes on a deleted fw branch; on fw >= 1.1.5 they are ADAT. Action-style: SETs carry the value in wValue and return a
   // 1-byte PinConfigResult status (same convention as SetSpdifRxPin/
   // SetI2sBckPin below).
   SetAdatEnable:        { code: 0xCA } satisfies RawCmd,
@@ -237,9 +235,8 @@ export const WireCmd = {
   PresetGetDir:         { code: 0x95 } satisfies RawCmd,
   PresetSetStartup:     { code: 0x96, codec: Wire.PresetStartupConfig } satisfies WriteCmd<{ mode: number; slot: number }>,
   PresetGetStartup:     { code: 0x97, codec: Wire.PresetStartupConfig } satisfies ReadCmd<{ mode: number; slot: number }>,
-  // Output-config persistence mode (1.1.4 semantics; legacy include-pins bool
-  // on older firmware, values 1:1). Deliberately ungated: the opcode exists
-  // and is value-compatible across the whole support window.
+  // Output-config persistence mode (1.1.4 semantics). Deliberately
+  // ungated: the opcode exists across the whole support window.
   SetOutputConfigMode:  { code: 0x98, codec: tighten<OutputConfigMode>(Codec.u8) } satisfies WriteCmd<OutputConfigMode>,
   GetOutputConfigMode:  { code: 0x99, codec: tighten<OutputConfigMode>(Codec.u8) } satisfies ReadCmd<OutputConfigMode>,
   PresetGetActive:      { code: 0x9A } satisfies RawCmd,
@@ -248,7 +245,7 @@ export const WireCmd = {
   SetLoudnessEnabled:    { code: 0x58, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
   SetLoudnessRefSpl:     { code: 0x5A, codec: Codec.f32 }   satisfies WriteCmd<number>,
   SetLoudnessIntensity:  { code: 0x5C, codec: Codec.f32 }   satisfies WriteCmd<number>,
-  // Per-output loudness mask (V19+): payload = u16 LE, bit k = output channel k.
+  // Per-output loudness mask: payload = u16 LE, bit k = output channel k.
   SetLoudnessMask:       { code: 0xFA, codec: Codec.u16 }   satisfies WriteCmd<number>,
   GetLoudnessMask:       { code: 0xFB, codec: Codec.u16 }   satisfies ReadCmd<number>,
 
@@ -259,7 +256,7 @@ export const WireCmd = {
   SetCrossfeedFreq:      { code: 0x62, codec: Codec.f32 }   satisfies WriteCmd<number>,
   SetCrossfeedFeedDb:    { code: 0x64, codec: Codec.f32 }   satisfies WriteCmd<number>,
   SetCrossfeedItd:       { code: 0x66, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
-  // Crossfeed output-pair mask (V20+): payload = u8, bit p = output pair p
+  // Crossfeed output-pair mask: payload = u8, bit p = output pair p
   // (outputs 2p/2p+1; the mono PDM sub is excluded).
   SetCrossfeedOutputs:   { code: 0xFC, codec: Codec.u8 }    satisfies WriteCmd<number>,
   GetCrossfeedOutputs:   { code: 0xFD, codec: Codec.u8 }    satisfies ReadCmd<number>,
@@ -272,11 +269,11 @@ export const WireCmd = {
   SetLevellerMaxGain:    { code: 0xBA, codec: Codec.f32 }   satisfies WriteCmd<number>,
   SetLevellerLookahead:  { code: 0xBC, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
   SetLevellerGate:       { code: 0xBE, codec: Codec.f32 }   satisfies WriteCmd<number>,
-  // Multichannel leveller masks (V18+): payload = [detector_mask, apply_mask].
+  // Multichannel leveller masks: payload = [detector_mask, apply_mask].
   SetLevellerMasks:      { code: 0xDE, codec: Wire.LevellerMasks } satisfies WriteCmd<LevellerMasksPayload>,
   GetLevellerMasks:      { code: 0xDF, codec: Wire.LevellerMasks } satisfies ReadCmd<LevellerMasksPayload>,
 
-  // --- v1.1.4 / working_spdif_input granular surface (docs/HW-DSPUSB.md) ---
+  // --- Granular surface (docs/HW-DSPUSB.md) ---
   // Per-band EQ bypass: wValue = (channel<<8)|band, 1-byte body.
   SetBandBypass:         { code: 0xD8, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
   GetBandBypass:         { code: 0xD9, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
@@ -293,10 +290,9 @@ export const WireCmd = {
   SetSpdifRxPin:         { code: 0xE4 } satisfies RawCmd,
   GetSpdifRxPin:         { code: 0xE5, codec: Codec.u8 } satisfies ReadCmd<number>,
   // Multi-SPDIF input enable (fw 1.1.5+): one physical receiver fanned out
-  // over up to 4 selectable GPIOs (V28+; 3 below). Set is action-IN with
+  // over up to 4 selectable GPIOs. Set is action-IN with
   // wValue = (index<<8)|enable (index 1..3), 1-byte PinConfigResult; Get
-  // returns [count, enableMask, pin0..pin3] (enableMask unshifted; a pre-V28
-  // response is the legacy 5-byte [count, enableMask, pin0..pin2]).
+  // returns [count, enableMask, pin0..pin3] (enableMask unshifted).
   SetSpdifInputEnable:   { code: 0xE9 } satisfies RawCmd,
   GetSpdifInputConfig:   { code: 0xEF, codec: Wire.SpdifInputConfig } satisfies ReadCmd<{ count: number; enableMask: number; pins: number[] }>,
   SetLgSoundSyncEnabled: { code: 0xE6, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
@@ -308,7 +304,6 @@ export const WireCmd = {
   // Persist live output config (pins, output types, I2S BCK/MCK, S/PDIF RX
   // pin) to the preset directory's device-global block. Action-IN, 1-byte
   // PresetResult. Repurposes legacy 0x52 (the removed sync LoadParams);
-  // V10+ only — on older firmware the opcode is a synchronous revert-to-saved.
   SaveOutputConfig:      { code: 0x52 } satisfies RawCmd,
 
   // M8 — System command: reboot into UF2 bootloader (BOOTSEL).
@@ -317,7 +312,7 @@ export const WireCmd = {
   // throw. Callers must treat both a clean return and a throw as expected.
   EnterBootloader:       { code: 0xF0 } satisfies RawCmd,
 
-  // --- V16 / fw 1.1.5 I2S-input surface ---
+  // --- I2S-input surface ---
   // The device is the rate authority while I2S input is active, so the rate
   // is a command, not a detection. Set: u32 Hz payload (44100/48000/96000).
   // Get: 8-byte response {current pipeline Hz, selected I2S Hz}.
@@ -333,7 +328,7 @@ export const WireCmd = {
   SetI2sInputChannels:   { code: 0xF3 } satisfies RawCmd,
   GetI2sInputChannels:   { code: 0xF4, codec: Codec.u8 } satisfies ReadCmd<number>,
 
-  // --- V21 / fw 1.1.5 I2S slave-clock mode ---
+  // --- I2S slave-clock mode ---
   // Clock role: payload u8, 0 = master, 1 = slave. Deferred apply -- firmware
   // applies from the main loop, so GET doesn't reflect a just-sent SET
   // immediately.
@@ -346,7 +341,7 @@ export const WireCmd = {
   SetI2sClockPinMode:    { code: 0xFE } satisfies RawCmd,
   GetI2sClockPinMode:    { code: 0xFF } satisfies RawCmd,
 
-  // --- V23 psychoacoustic bass (fw 1.1.5+, RP2350). ---
+  // --- Psychoacoustic bass (RP2350). ---
   SetPsybassEnabled:     { code: 0x30, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
   GetPsybassEnabled:     { code: 0x31, codec: Codec.bool8 } satisfies ReadCmd<boolean>,
   SetPsybassCutoff:      { code: 0x32, codec: Codec.f32 }   satisfies WriteCmd<number>,
@@ -362,7 +357,7 @@ export const WireCmd = {
   SetPsybassMask:        { code: 0x3C, codec: Codec.u16 }   satisfies WriteCmd<number>,
   GetPsybassMask:        { code: 0x3D, codec: Codec.u16 }   satisfies ReadCmd<number>,
 
-  // --- V24 ADAT input config (fw 1.1.5+, RP2350). Action-style, same
+  // --- ADAT input config (RP2350). Action-style, same
   // convention as SetAdatEnable/SetAdatPin above: SETs carry the value in
   // wValue and return a 1-byte PinConfigResult status.
   SetAdatInputEnable:    { code: 0x68 } satisfies RawCmd,
@@ -373,7 +368,7 @@ export const WireCmd = {
   GetAdatInputClockMode: { code: 0x6D, codec: Codec.u8 }    satisfies ReadCmd<number>,
   GetAdatInputStatus:    { code: 0x6E, codec: Wire.AdatInputStatus },
 
-  // --- V25/V26 stereo upmixer (fw 1.1.5+, RP2350 only). ---
+  // --- Stereo upmixer (RP2350 only). ---
   // Config pair carries the 44-byte struct shared with the bulk section
   // (Wire.UpmixParams); no DspDevice methods yet -- values arrive via the
   // bulk section like the ADAT input config above. Registered for
@@ -395,7 +390,7 @@ export const WireCmd = {
   // live on DspDevice.
   Limiter:               { code: 0x81 } satisfies RawCmd,
 
-  // --- V16 / fw 1.1.5 external control interfaces (UART + I2C) ---
+  // --- External control interfaces (UART + I2C) ---
   // SETs are plain control-OUT with the struct payload; the firmware refuses
   // them over UART/I2C itself (USB-only), which is moot here since the
   // console always speaks USB. The result of a SET is read back from
@@ -406,7 +401,7 @@ export const WireCmd = {
   GetI2cConfig:          { code: 0xF8, codec: Wire.I2cCtrlConfig } satisfies ReadCmd<{ enabled: boolean; sdaPin: number; sclPin: number; address: number }>,
   GetCtrlIfaceStatus:    { code: 0xF9, codec: Wire.CtrlIfaceStatus } satisfies ReadCmd<{ uartLastStatus: number; uartLive: boolean; i2cLastStatus: number; i2cLive: boolean; protoVersion: number }>,
 
-  // --- V16 / fw 1.1.5 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E) ---
+  // --- Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E) ---
   // SetCsBinding is a control-OUT (wValue = slot) with NO response: firmware
   // latches the binding and applies it from the main loop, so the outcome is
   // learned by polling GetCsStatus until last_status leaves PENDING (see

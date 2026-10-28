@@ -10,7 +10,7 @@ export const FlashResult = {
 export type FlashResult = (typeof FlashResult)[keyof typeof FlashResult];
 
 // PresetResult -- returned by every Preset* command (0x90-0x9A) plus
-// SaveMasterVolume (0xD6) and SaveOutputConfig (0x52, V10+).
+// SaveMasterVolume (0xD6) and SaveOutputConfig (0x52).
 export const PresetResult = {
   Ok:              0x00,
   InvalidSlot:     0x01,

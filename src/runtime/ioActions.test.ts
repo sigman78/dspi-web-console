@@ -25,7 +25,7 @@ function initializedDevice(methods: Partial<DspDevice>): DspDevice {
       platformType: PlatformType.RP2350,
       hardware: testHardware,
       capabilities: deriveCapabilities({
-        fw: { major: 1, minor: 1, patch: 4 }, wireVersion: 10, payloadLength: 2960, platformId: 1,
+        fw: { major: 1, minor: 1, patch: 5 }, wireVersion: 28, payloadLength: 5944, platformId: 1,
       }),
       build: null,
     },
@@ -190,9 +190,9 @@ describe('output config verbs', () => {
   });
 });
 
-describe('ADAT output verbs (fw V17+, RP2350)', () => {
+describe('ADAT output verbs (RP2350)', () => {
   beforeEach(async () => {
-    await bootMock('rp2350', { wireVersion: 17, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    await bootMock('rp2350');
     State.clearNotices();
   });
 
@@ -229,7 +229,7 @@ describe('ADAT output verbs (fw V17+, RP2350)', () => {
 
 describe('ADAT output verbs — device rejection (RP2040 has no ADAT hardware)', () => {
   it('both verbs leave the mirror untouched and toast the device message', async () => {
-    await bootMock('rp2040', { wireVersion: 17, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    await bootMock('rp2040');
     State.clearNotices();
     const pinBefore = liveMirror().current!.adat.pin;
     expect(await actions.setAdatEnable(State.activeSession()!, true)).toBe(false);
@@ -240,9 +240,9 @@ describe('ADAT output verbs — device rejection (RP2040 has no ADAT hardware)',
   });
 });
 
-describe('ADAT input verbs (fw V24+, RP2350)', () => {
+describe('ADAT input verbs (RP2350)', () => {
   beforeEach(async () => {
-    await bootMock('rp2350', { wireVersion: 24, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    await bootMock('rp2350');
     State.clearNotices();
   });
 
@@ -281,7 +281,7 @@ describe('ADAT input verbs (fw V24+, RP2350)', () => {
 
 describe('ADAT input verbs — device rejection (RP2040 has no ADAT hardware)', () => {
   it('both verbs leave the mirror untouched and toast the device message', async () => {
-    await bootMock('rp2040', { wireVersion: 24, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    await bootMock('rp2040');
     State.clearNotices();
     const pinBefore = liveMirror().current!.inputConfig.adatInputPin;
     expect(await actions.setAdatInputEnable(State.activeSession()!, true)).toBe(false);

@@ -1,8 +1,8 @@
 // Resolves the raw ?mock token (see src/devOptions.ts) into a concrete mock
-// boot config. Split out of devOptions.ts because it needs Wire.MAX_WIRE_VERSION,
+// boot config. Split out of devOptions.ts because it needs the Wire version bounds,
 // and devOptions.ts must stay import-free (src/utils/log.ts depends on it).
 import * as Wire from '@/protocol/wireTypes';
-import { mockToken, mockChip, mockSysClockFallback, mockCsFull } from './devOptions';
+import { mockToken, mockChip, mockSysClockFallback, mockSysClockOff, mockCsFull } from './devOptions';
 import type { MockOptions } from '@/transport/MockTransport';
 
 export interface MockProfile {
@@ -11,7 +11,6 @@ export interface MockProfile {
   opts: Omit<MockOptions, 'platform'>;
 }
 
-const FW_1_1_4 = { major: 1, minor: 1, patch: 4 } as const;
 const FW_1_1_5 = { major: 1, minor: 1, patch: 5 } as const;
 const FW_1_1_6 = { major: 1, minor: 1, patch: 6 } as const;
 // Wire V30 exists only in the 1.1.6-beta3 line, and that tag is also what
@@ -33,12 +32,12 @@ function latest(platform: MockOptions['platform']): MockProfile {
   };
 }
 
-// Firmware version that shipped a given wire version: 1.1.4 for V10, 1.1.5
-// for V16-V26, 1.1.6 for V27-V29, 1.1.6-beta3 for V30 (the first to report
-// a pre-release ordinal), and 1.1.6-beta4 for V31-V32 (V31 is an untagged
-// intermediate; it borrows the beta4 stamp for lack of a real one).
-function fwForWire(n: number): typeof FW_1_1_4 | typeof FW_1_1_5 | typeof FW_1_1_6 | typeof FW_1_1_6_BETA3 | typeof FW_1_1_6_BETA4 {
-  return n === 10 ? FW_1_1_4 : n >= 31 ? FW_1_1_6_BETA4 : n >= 30 ? FW_1_1_6_BETA3 : n >= 27 ? FW_1_1_6 : FW_1_1_5;
+// Firmware version that shipped a given wire version: 1.1.5 for V28, 1.1.6
+// for V29, 1.1.6-beta3 for V30 (the first to report a pre-release ordinal),
+// and 1.1.6-beta4 for V31-V32 (V31 is an untagged intermediate; it borrows the
+// beta4 stamp for lack of a real one).
+function fwForWire(n: number): typeof FW_1_1_5 | typeof FW_1_1_6 | typeof FW_1_1_6_BETA3 | typeof FW_1_1_6_BETA4 {
+  return n >= 31 ? FW_1_1_6_BETA4 : n >= 30 ? FW_1_1_6_BETA3 : n >= 29 ? FW_1_1_6 : FW_1_1_5;
 }
 
 // Resolves a raw ?mock token (+ optional &chip flavor) to a profile. Profiles
@@ -54,12 +53,6 @@ export function resolveMockProfile(token: string, chip?: 'rp2040' | 'rp2350' | n
     case 'rp2040':
     case 'rp2350':
       return latest(platform);
-    case 'legacy':
-      return {
-        name: 'legacy',
-        platform,
-        opts: { wireVersion: 10, fwVersion: FW_1_1_4, irLearnAutoComplete: true },
-      };
     case 'multi':
       return {
         name: 'multi',
@@ -76,7 +69,7 @@ export function resolveMockProfile(token: string, chip?: 'rp2040' | 'rp2350' | n
       const m = /^v(\d+)$/.exec(token);
       if (m) {
         const n = Number(m[1]);
-        if (n === 10 || (n >= 16 && n <= Wire.MAX_WIRE_VERSION)) {
+        if (n >= Wire.MIN_WIRE_VERSION && n <= Wire.MAX_WIRE_VERSION) {
           return {
             name: `v${n}`,
             platform,
@@ -90,7 +83,7 @@ export function resolveMockProfile(token: string, chip?: 'rp2040' | 'rp2350' | n
 }
 
 // A comma-separated ?mock token yields one profile per entry (an empty entry
-// resolves to `latest`, so `?mock=,legacy` works the way it reads). Pure and
+// resolves to `latest`, so `?mock=,v28` works the way it reads). Pure and
 // exported for tests.
 export function resolveMockProfiles(token: string, chip?: 'rp2040' | 'rp2350' | null): MockProfile[] {
   return token.split(',').map((t) => resolveMockProfile(t.trim(), chip));
@@ -101,13 +94,15 @@ export function activeMockProfiles(): MockProfile[] | null {
   if (token === null) return null;
   const profiles = resolveMockProfiles(token, mockChip());
   const fallback = mockSysClockFallback();
+  const sysClockOff = mockSysClockOff();
   const csFull = mockCsFull();
-  if (!fallback && !csFull) return profiles;
+  if (!fallback && !sysClockOff && !csFull) return profiles;
   return profiles.map((p) => ({
     ...p,
     opts: {
       ...p.opts,
       ...(fallback ? { sysClockBoot: { storedMode: 2, fallback: true } } : {}),
+      ...(sysClockOff ? { sysClock: false } : {}),
       ...(csFull ? { csFull: true } : {}),
     },
   }));

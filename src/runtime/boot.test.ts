@@ -381,7 +381,7 @@ describe('bootMockFleet', () => {
   it('boots one device per profile: first active, rest dormant, distinct serials', async () => {
     await Boot.bootMockFleet([
       { name: 'latest', platform: 'rp2350', opts: {} },
-      { name: 'legacy', platform: 'rp2040', opts: { wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } } },
+      { name: 'floor', platform: 'rp2040', opts: { wireVersion: 28 } },
     ]);
 
     expect(State.sessionRecords().size).toBe(2);

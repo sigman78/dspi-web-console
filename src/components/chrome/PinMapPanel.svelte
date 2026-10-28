@@ -27,14 +27,13 @@
   const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: Domain.liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
 
   const platformType = $derived(snap?.platform.type ?? Domain.PlatformType.RP2350);
-  const channelModel = $derived(snap?.platform.channelModel ?? Domain.ChannelFamily.Legacy);
   const uses = $derived(snap ? Domain.pinUses(snap, ctrlPins) : null);
 
   const cells = $derived<Cell[]>(
     snap
       ? Array.from({ length: Domain.maxGpio(platformType) + 1 }, (_, pin) => ({
           pin,
-          assignable: Domain.isAssignablePin(platformType, pin, channelModel),
+          assignable: Domain.isAssignablePin(platformType, pin),
           adc: Domain.CS_ADC_PINS.includes(pin),
           use: uses?.get(pin) ?? null,
         }))
@@ -43,10 +42,8 @@
 
   const rolesPresent = $derived(new Set(uses ? Array.from(uses.values(), (u) => u.role) : []));
 
-  // Pin 12 is only the legacy debug UART pre-V16; the 23-25 range is a fixed
-  // board reservation on every generation.
+  // The 23-25 range is a fixed board reservation.
   function reservedTooltip(pin: number): string {
-    if (pin === 12 && channelModel === Domain.ChannelFamily.Legacy) return 'GP12 · debug UART (fw 1.1.4)';
     if (pin >= 23 && pin <= 25) return `GP${pin} · reserved (board)`;
     return `GP${pin} · reserved`;
   }

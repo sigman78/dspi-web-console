@@ -15,10 +15,9 @@ function decode(b: BulkParams): DspSnapshot {
   return fromBulkParams(hw, parseBulkParams(buildBulkParams(b)));
 }
 
-// V10 base so the optional tail sections (inputConfig/lgSoundSync/userVolume/
-// dacHwMute) are present and diffable. Pins populated so outputPins is non-empty.
+// Pins populated so outputPins is non-empty.
 function makeBase(): BulkParams {
-  return makeBulkObject({ formatVersion: 10, numPinOutputs: 5, pins: [6, 7, 8, 9, 10] });
+  return makeBulkObject({ numPinOutputs: 5, pins: [6, 7, 8, 9, 10] });
 }
 
 const MUTATORS: Array<{ name: string; mutate: (b: BulkParams) => void }> = [

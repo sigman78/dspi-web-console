@@ -1,13 +1,13 @@
 // EQ filter taxonomy and per-band parameters. FilterType numeric values are
 // firmware-pinned; the enum is a domain concept used across the EQ stack.
 //
-// The value space is partitioned (fw config.h contract, wire V16+):
+// The value space is partitioned (fw config.h contract):
 //   0..7    second-order PEQ types (all firmware)
-//   8..10   first-order PEQ types (V16+)
-//   11      Linkwitz Transform (V22+)
-//   12..13  first-order low/high pass (proxy-gated on V28, see firstOrderLpHp)
+//   8..10   first-order PEQ types
+//   11      Linkwitz Transform
+//   12..13  first-order low/high pass
 //   14..31  reserved for future PEQ types
-//   32..63  crossover types, contiguous from XoverFirst (V16+)
+//   32..63  crossover types, contiguous from XoverFirst
 
 export const FilterType = {
   Flat: 0,
@@ -19,24 +19,23 @@ export const FilterType = {
   Notch: 6,
   Allpass: 7,
 
-  // First-order sections (V16+). Allpass1: freq only (Q/gain unused).
+  // First-order sections. Allpass1: freq only (Q/gain unused).
   // Shelf1: freq + gain, gentle 6 dB/oct (Q unused).
   Allpass1: 8,
   LowShelf1: 9,
   HighShelf1: 10,
 
-  // Linkwitz Transform (V22+). freq/q hold the driver's resonant f0/Q0; the
+  // Linkwitz Transform. freq/q hold the driver's resonant f0/Q0; the
   // gain slot is reinterpreted to carry the target fp in Hz (not dB); the
   // target Qp travels in the separate FilterParams.qp sidecar.
   LinkwitzTransform: 11,
 
-  // First-order low/high pass (proxy-gated on the firstOrderLpHp capability,
-  // V28+): single-pole 6 dB/oct, -3 dB at the corner, no resonance. freq
+  // First-order low/high pass: single-pole 6 dB/oct, -3 dB at the corner, no resonance. freq
   // only -- Q and gain are unused, same treatment as Allpass1.
   LowPass1: 12,
   HighPass1: 13,
 
-  // Crossover types (V16+): (family, order, LP/HP) per value.
+  // Crossover types: (family, order, LP/HP) per value.
   Lr2Lp: 32,  Lr2Hp: 33,
   Lr4Lp: 34,  Lr4Hp: 35,
   Lr6Lp: 36,  Lr6Hp: 37,
@@ -69,7 +68,6 @@ export function isCrossoverType(t: number): boolean {
   return t >= XOVER_TYPE_FIRST && t <= XOVER_TYPE_LAST;
 }
 
-// First-order sections require the firstOrderEq capability (wire V16+).
 export function isFirstOrderType(t: FilterType): boolean {
   return t === FilterType.Allpass1 || t === FilterType.LowShelf1 || t === FilterType.HighShelf1;
 }
@@ -104,7 +102,7 @@ export interface FilterParams {
   frequency: number; // Hz
   q: number;
   gain: number;     // dB (Linkwitz Transform: fp in Hz -- see FilterType.LinkwitzTransform)
-  // Linkwitz Transform target Qp (V22+ only; absent for every other type).
+  // Linkwitz Transform target Qp (absent for every other type).
   qp?: number;
 }
 
@@ -182,9 +180,8 @@ export const TYPE_LABELS: Record<FilterType, string> = {
   [FilterType.Bes8Lp]: 'BES8 LP', [FilterType.Bes8Hp]: 'BES8 HP',
 };
 
-// PEQ types this select offers. First-order types (V16+) are appended by
-// the EQ editor when the device reports the firstOrderEq capability;
-// crossover types never appear here (they live in the crossover editor).
+// PEQ types this select offers. Crossover types never appear here (they
+// live in the crossover editor).
 export const TYPE_ORDER: FilterType[] = [
   FilterType.Flat,
   FilterType.Peaking,
@@ -202,20 +199,16 @@ export const FIRST_ORDER_TYPES: FilterType[] = [
   FilterType.Allpass1,
 ];
 
-// First-order low/high pass (V28+ proxy capability); offered separately
-// from FIRST_ORDER_TYPES since it needs firstOrderLpHp, not firstOrderEq.
+// First-order low/high pass, kept apart from FIRST_ORDER_TYPES.
 export const FIRST_ORDER_LP_HP_TYPES: FilterType[] = [
   FilterType.LowPass1,
   FilterType.HighPass1,
 ];
 
-// Single source of truth for which PEQ types the EQ editor offers, given the
-// device's feature flags. Linkwitz Transform is display-only (see the
-// component below): it's never offered here, even on a capable device --
-// a band already set to it still renders correctly, just not selectable.
-export function offeredTypes(features: { firstOrderEq: boolean; firstOrderLpHp?: boolean }): FilterType[] {
-  let types = TYPE_ORDER;
-  if (features.firstOrderEq) types = [...types, ...FIRST_ORDER_TYPES];
-  if (features.firstOrderLpHp) types = [...types, ...FIRST_ORDER_LP_HP_TYPES];
-  return types;
+// Single source of truth for which PEQ types the EQ editor offers. Linkwitz
+// Transform is display-only (see the component below): it's never offered
+// here -- a band already set to it still renders correctly, just not
+// selectable.
+export function offeredTypes(): FilterType[] {
+  return [...TYPE_ORDER, ...FIRST_ORDER_TYPES, ...FIRST_ORDER_LP_HP_TYPES];
 }

@@ -26,7 +26,7 @@ export const COLORS: Record<ChannelKey, Lch> = {
   Out4L: { l: 73, c: 0.115, h:   5 },
   Out4R: { l: 67, c: 0.135, h:  25 },
   Pdm:   { l: 70, c: 0.010, h: 250 },
-  // Extra input pairs (V16 multichannel input). Cool hues distinct from the
+  // Extra input pairs (multichannel input). Cool hues distinct from the
   // In1 blues and clear of the output families.
   In2L:  { l: 73, c: 0.115, h: 190 },
   In2R:  { l: 67, c: 0.135, h: 200 },

@@ -13,7 +13,7 @@ const testHardware = Domain.createHardwareProfile(Domain.PlatformType.RP2350);
 // Builds a DspDevice stub with identity defaults. Any method can be overridden.
 function initializedDevice(methods: Partial<DspDevice>): DspDevice {
   const capabilities = deriveCapabilities({
-    fw: { major: 1, minor: 1, patch: 4 }, wireVersion: 10, payloadLength: 2960, platformId: 1,
+    fw: { major: 1, minor: 1, patch: 5 }, wireVersion: 28, payloadLength: 5944, platformId: 1,
   });
   const base: Partial<DspDevice> = {
     info: {

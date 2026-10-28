@@ -18,12 +18,7 @@ export function applyAutoEqEntry(
 ): void {
   const targets = s.eqLink.membersOf(channelId);
 
-  // Saved user entries may carry first-order sections the target device
-  // cannot express; those bands flatten instead of going to the wire.
-  const firstOrderOk = s.device.capabilities.features.firstOrderEq;
-  const bands = Domain.autoEqFiltersToBands(entry.filters).map((b) =>
-    !firstOrderOk && Domain.isFirstOrderType(b.type) ? Domain.defaultFilter() : b,
-  );
+  const bands = Domain.autoEqFiltersToBands(entry.filters);
   for (const id of targets) {
     const ch = s.mirror.snapshot.channels.find((c) => c.id === id);
     if (!ch) continue;

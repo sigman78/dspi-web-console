@@ -130,7 +130,7 @@ function formatParamChangedTail(e: ParamChangedEvent, bulkVersion: number | null
           return `${base} ${hit.path}=${fmtValue(Codec.decode(hit.leaf, e.value))}`;
         }
         if (e.size === 16 && e.offset === hit.leafOffset && hit.path.endsWith('.type')) {
-          const bandCodec = bulkVersion >= 22 ? Wire.BandParamsQp : Wire.BandParams;
+          const bandCodec = Wire.BandParams;
           const decoded = Codec.decode(bandCodec, e.value);
           const bandPath = hit.path.slice(0, hit.path.lastIndexOf('.'));
           return `${base} ${bandPath} ${fmtValue(decoded)}`;

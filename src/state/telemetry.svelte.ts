@@ -25,7 +25,7 @@ export class StatusStore {
   // the first read.
   subharmHeadroomDb = $state<number | null>(null);
   info = $state<PartialSystemInfo | null>(null);
-  // Live active input channel count (V16+; null = not reported / V10 device).
+  // Live active input channel count (null = not reported yet).
   activeInputChannels = $state<number | null>(null);
   lastStatusMs = $state(0);
   lastBufferMs = $state(0);

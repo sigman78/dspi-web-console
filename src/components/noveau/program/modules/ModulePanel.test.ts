@@ -1,11 +1,10 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
-import { tick } from 'svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
 import { deriveCapabilities } from '@/protocol/capabilities';
 import { Wire } from '@/protocol';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
-import { ChannelFamily, PlatformType, createHardwareProfile, type HardwareProfile } from '@/domain';
+import { PlatformType, createHardwareProfile, type HardwareProfile } from '@/domain';
 import { noveauUi } from '@/components/noveau/noveauUi.svelte';
 
 const toggleLoudnessOutputChannel = vi.fn();
@@ -48,8 +47,6 @@ function mount(overrides: Partial<typeof baseFeatures> = {}, activeInputChannels
   return render(ModulePanel, { context: new Map([[SESSION_KEY, session]]) });
 }
 
-const sliders = (c: HTMLElement) => c.querySelectorAll('input[type="range"]').length;
-
 describe('ModulePanel', () => {
   beforeEach(() => {
     toggleLoudnessOutputChannel.mockClear();
@@ -68,27 +65,12 @@ describe('ModulePanel', () => {
 
   test('a leveller detector chip toggles that input slot', async () => {
     noveauUi.programModule = 'leveller';
-    const { container } = mount({ levellerMasks: true }, 8, createHardwareProfile(PlatformType.RP2350, ChannelFamily.Unified));
+    const { container } = mount({}, 8, createHardwareProfile(PlatformType.RP2350));
     const chips = container.querySelectorAll<HTMLButtonElement>('button[aria-label^="DETECTOR "]');
     expect(chips.length).toBeGreaterThan(2);
     await fireEvent.click(chips[2]);
     expect(toggleLevellerDetectorChannel).toHaveBeenCalledTimes(1);
     expect(toggleLevellerDetectorChannel.mock.calls[0][1]).toBe(2);
-  });
-
-  test('feature-gated upmix rows disappear with the flags', async () => {
-    noveauUi.programModule = 'upmix';
-    const full = mount();
-    const withAll = sliders(full.container);
-    expect(full.queryByLabelText('Upmix center presence')).toBeTruthy();
-    expect(full.container.querySelectorAll('[aria-label="Upmix center mode"] [role="radio"]').length).toBe(3);
-    full.unmount();
-
-    const gated = mount({ upmixPresence: false, upmixCenterOff: false });
-    await tick();
-    expect(gated.queryByLabelText('Upmix center presence')).toBeNull();
-    expect(sliders(gated.container)).toBe(withAll - 1);
-    expect(gated.container.querySelectorAll('[aria-label="Upmix center mode"] [role="radio"]').length).toBe(2);
   });
 
   test('the matrix module summarises routes and hides UPMIX without the feature', () => {

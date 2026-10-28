@@ -16,7 +16,7 @@
   const { channel, preampDb }: { channel: ChannelModel; preampDb: number } = $props();
 
   const s = getSession();
-  const types = $derived(Domain.offeredTypes(s.device.capabilities.features));
+  const types = Domain.offeredTypes();
 
   // A draft only shows on the channel it was made on.
   const live = $derived.by(() => {

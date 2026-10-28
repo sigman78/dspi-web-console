@@ -11,12 +11,12 @@ import type { FilterParams, CrossPoint, OutputState, LimiterOutput, UartControlC
 export interface MockOptions {
   platform: 'rp2040' | 'rp2350';
   serial?: string;
-  // Wire version the mock reports/synthesizes (default 10 = released 1.1.4).
-  // V7-V10 tail sections are built faithfully; pass an older version to
-  // simulate a legacy device (e.g. for connect-reject tests).
+  // Wire version the mock reports/synthesizes (default MIN_WIRE_VERSION =
+  // released 1.1.5). Values below the floor throw; newer profiles gate the
+  // sections added after it (subharm V29, subharmExt V30, tube V31, limiter V32).
   wireVersion?: number;
-  // Firmware version reported by GetPlatform (default 1.1.4). Set alongside
-  // wireVersion for a coherent device (e.g. 1.1.3 + V6).
+  // Firmware version reported by GetPlatform (default 1.1.5). Set alongside
+  // wireVersion for a coherent device (e.g. 1.1.6 + V29).
   // `beta` (1..255) makes GetPlatform answer the 7-byte fw 1.1.6-beta3+ form
   // with the pre-release ordinal in byte 6; without it the reply stops at the
   // 6-byte form, which is what 1.1.6 builds before that byte report.
@@ -24,7 +24,7 @@ export interface MockOptions {
   // Override the header's payloadLength to simulate a malformed device that
   // reports a truncated payload, exercising the connect truncation guard.
   payloadLength?: number;
-  // Imaginary I2S multichannel input for the demo (V16+ only): boot with the
+  // Imaginary I2S multichannel input for the demo (RP2350 demo): boot with the
   // source set to I2S and this many active input channels (2/4/6/8) instead of
   // the default USB stereo, so the multichannel UI has more than a pair to show.
   i2sInputChannels?: number;
@@ -48,28 +48,19 @@ export interface MockOptions {
   // that crash-rebooted into safe mode 0 after storedMode failed to boot --
   // the panel's fallback banner is otherwise unreachable without hardware.
   sysClockBoot?: { storedMode: number; storedVregSel?: number; fallback?: boolean };
+  // Answer 0x40/0x41 with a STALL, as released 1.1.5/1.1.6 firmware does (the
+  // system clock opcodes exist only on the overclock branch). Default true.
+  sysClock?: boolean;
   // Build stamp answered by GetBuildInfo on fw 1.1.6+ profiles; default below.
   buildInfo?: { describe: string; date: string };
   // Fill every control-surface table to its capacity (all binding slots incl.
   // one IR receiver and one display, all macros with full steps, all groups,
   // all IR commands, all display pages) so the CONTROL pages can be measured
-  // at their worst case. Needs wire V16+ and caps v10+.
+  // at their worst case. Needs caps v10+.
   csFull?: boolean;
 }
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
-
-// Selectable system clock lands on the wire at V26; earlier profiles must
-// STALL both opcodes so the console's probe-failure path is exercisable.
-const MIN_SYS_CLOCK_WIRE = 26;
-
-// ADAT lightpipe bulk output lands on the wire at V17; earlier profiles must
-// STALL the whole opcode range (0xCA-0xCE) -- a V16 device has no ADAT surface.
-const MIN_ADAT_WIRE = 17;
-
-// ADAT lightpipe input lands on the wire at V24; earlier profiles must STALL
-// the whole opcode range (0x68-0x6E).
-const MIN_ADAT_INPUT_WIRE = 24;
 
 // Subharmonic synthesizer lands on the wire at V29 on both platforms; earlier
 // profiles must STALL the whole opcode range (0x10-0x1A).
@@ -145,7 +136,7 @@ function enumNoun(enumCount: number, actions = CS_ENUM_RW, targetKind = Domain.C
 }
 
 // The 49-entry caps-v4 noun catalog (control_surfaces_nouns.c cs_noun_table),
-// keyed on CsNoun's index order. Target counts follow the mock's own V16
+// keyed on CsNoun's index order. Target counts follow the mock's own
 // channel layout (numIn/numOut/numCh already vary by platform); the
 // ADAT_ACTIVE and upmix action masks are RP2350-only, exactly like the
 // firmware's #if PICO_RP2350 gates.
@@ -318,16 +309,14 @@ function concatChunks(chunks: Uint8Array[]): Uint8Array {
 
 // Seeds #mockState at construction and resets live state on empty-slot
 // LoadPreset (firmware applies factory defaults rather than returning SlotEmpty).
-// V16 grows the RP2350 to the unified 17-channel space (8 inputs); RP2040
-// stays 7-wide on both generations.
+// The RP2350 has the unified 17-channel space (8 inputs); RP2040 stays 7-wide.
 function defaultMockBulkState(platform: Domain.PlatformType, wireVersion: number): BulkParams {
-  const v16 = wireVersion >= 16;
-  const numIn  = v16 && platform === Domain.PlatformType.RP2350 ? 8 : 2;
+  const numIn  = platform === Domain.PlatformType.RP2350 ? 8 : 2;
   const numOut = platform === Domain.PlatformType.RP2350 ? 9 : 5;
   const numCh  = numIn + numOut;
   const state = BulkParser.defaultBulkParams({
     platformId: platform, numCh, numOut, numIn,
-    formatVersion: Math.max(wireVersion, 6),
+    formatVersion: wireVersion,
   });
   // A fresh packet has every output disabled; the mock stands in for a
   // configured device, so enable the stereo outputs (PDM, the last slot, stays
@@ -388,13 +377,13 @@ export class MockTransport implements DspTransport {
   // Stays asserted across polls until ClearClips (0x83), mirroring firmware.
   #clipFlags = 0b0001_0010;
 
-  // Chunked bulk-params (0xA2/0xA3) session state, V16-only. Mirrors the
+  // Chunked bulk-params (0xA2/0xA3) session state. Mirrors the
   // firmware contract: chunks must be sequential from offset 0, and any
   // non-chunk vendor request tears down whichever session is open.
   #getChunkSession: { buf: Uint8Array; offset: number } | null = null;
   #setChunkSession: { chunks: Uint8Array[]; length: number; target: number } | null = null;
 
-  // External control interfaces (V16+, 0xF5-0xF9). Shipped-disabled defaults;
+  // External control interfaces (0xF5-0xF9). Shipped-disabled defaults;
   // last_status/live start at "no attempt yet" / down.
   #uartCtrl: UartControlConfig = { ...Domain.DEFAULT_UART_CONTROL_CONFIG };
   #i2cCtrl: I2cControlConfig = { ...Domain.DEFAULT_I2C_CONTROL_CONFIG };
@@ -403,7 +392,7 @@ export class MockTransport implements DspTransport {
   #uartLive = false;
   #i2cLive = false;
 
-  // Control surfaces (V16+, 0x84-0x8C, 0x9D-0x9E). The mock applies a SET
+  // Control surfaces (0x84-0x8C, 0x9D-0x9E). The mock applies a SET
   // immediately, but reports PENDING on the first status read after an
   // accepted SET so the device-side poll loop's deferred-apply handling gets
   // exercised. Bindings/names are a live preview: CsSave copies them into the
@@ -466,6 +455,7 @@ export class MockTransport implements DspTransport {
   #csDisplayNak = 0;
 
   // Selectable system clock (fw overclock branch, 0x40/0x41).
+  #sysClockSupported = true;
   #sysClockStoredMode = 0;
   #sysClockStoredVreg = 0xFF;
   #sysClockActiveMode = 0;
@@ -475,11 +465,15 @@ export class MockTransport implements DspTransport {
   #buildInfo: { describe: string; date: string };
 
   constructor(opts: MockOptions) {
+    this.#sysClockSupported = opts.sysClock ?? true;
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
     this.#platform = opts.platform === 'rp2040' ? Domain.PlatformType.RP2040 : Domain.PlatformType.RP2350;
-    this.#wireVersion = opts.wireVersion ?? 10;
+    this.#wireVersion = opts.wireVersion ?? Wire.MIN_WIRE_VERSION;
+    if (this.#wireVersion < Wire.MIN_WIRE_VERSION) {
+      throw new Error(`MockTransport: wireVersion ${this.#wireVersion} is below the V${Wire.MIN_WIRE_VERSION} floor`);
+    }
     this.#payloadLength = opts.payloadLength;
-    const fw = opts.fwVersion ?? { major: 1, minor: 1, patch: 4 };
+    const fw = opts.fwVersion ?? { major: 1, minor: 1, patch: 5 };
     this.#fwMajor = fw.major;
     this.#fwMinor = fw.minor;
     this.#fwPatch = fw.patch;
@@ -503,43 +497,38 @@ export class MockTransport implements DspTransport {
       clockPinModeP1: 0,
       bckPinSlave: this.#defaultBckPin(1),
     };
-    if (this.#isV16) {
-      // Firmware V16 defaults: RX data pins on the collision-free GPIO 1..4
-      // block, stereo, 48 kHz.
-      this.#mockState.inputConfig.i2sRxPins = [0, 1, 2, 3].map((p) => this.#defaultI2sRxPin(p));
-      this.#mockState.inputConfig.i2sInputChannels = 2;
-      this.#mockState.inputConfig.i2sInputRateEnc = 1;
+    // Firmware defaults: RX data pins on the collision-free GPIO 1..4
+    // block, stereo, 48 kHz.
+    this.#mockState.inputConfig.i2sRxPins = [0, 1, 2, 3].map((p) => this.#defaultI2sRxPin(p));
+    this.#mockState.inputConfig.i2sInputChannels = 2;
+    this.#mockState.inputConfig.i2sInputRateEnc = 1;
 
-      // Imaginary I2S multichannel input for the demo: switch the source to I2S
-      // with the requested channel count (clamped even, 2..8) and re-derive the
-      // source-aware input names, so the multichannel UI has more than a stereo
-      // pair to display.
-      if (opts.i2sInputChannels && opts.i2sInputChannels > 2) {
-        const n = Math.min(8, Math.max(2, opts.i2sInputChannels - (opts.i2sInputChannels % 2)));
-        this.#mockState.inputConfig.source = Domain.AudioInputSource.I2s;
-        this.#mockState.inputConfig.i2sInputChannels = n;
-        for (let slot = 0; slot < n; slot++) {
-          this.#mockState.channelNames[slot] = Domain.defaultInputName(Domain.AudioInputSource.I2s, slot);
-        }
+    // Imaginary I2S multichannel input for the demo: switch the source to I2S
+    // with the requested channel count (clamped even, 2..8) and re-derive the
+    // source-aware input names, so the multichannel UI has more than a stereo
+    // pair to display.
+    if (opts.i2sInputChannels && opts.i2sInputChannels > 2) {
+      const n = Math.min(8, Math.max(2, opts.i2sInputChannels - (opts.i2sInputChannels % 2)));
+      this.#mockState.inputConfig.source = Domain.AudioInputSource.I2s;
+      this.#mockState.inputConfig.i2sInputChannels = n;
+      for (let slot = 0; slot < n; slot++) {
+        this.#mockState.channelNames[slot] = Domain.defaultInputName(Domain.AudioInputSource.I2s, slot);
       }
+    }
 
-      // Multi-SPDIF (fw 1.1.5+) is RP2350-only, mirroring capabilities'
-      // multiSpdifInputs gate. Seed inputs 2/3/4 on collision-free GPIOs,
-      // "present but disabled" by default so the picker has real pins to
-      // offer; RP2040 stays single-input (fields stay at the all-zero
-      // "absent" default from defaultBulkParams). Input 4 only actually
-      // reaches the wire at V28+ -- #spdifInputCount()/buildBulkParams gate
-      // it structurally, so seeding it unconditionally here is harmless.
-      if (this.#platform === Domain.PlatformType.RP2350) {
-        this.#mockState.inputConfig.spdifRxPinExt = [20, 21, 22];
-        this.#mockState.inputConfig.spdifRxEnabledExtP1 = 1;   // mask 0: all disabled
-        if (opts.spdifInputsEnabled && opts.spdifInputsEnabled > 1) {
-          const maxN = this.#wireVersion >= 28 ? 4 : 3;
-          const n = Math.min(maxN, Math.max(1, opts.spdifInputsEnabled | 0));
-          let mask = 0;
-          for (let i = 2; i <= n; i++) mask |= 1 << (i - 2);
-          this.#mockState.inputConfig.spdifRxEnabledExtP1 = mask + 1;
-        }
+    // Multi-SPDIF (fw 1.1.5+) is RP2350-only, mirroring capabilities'
+    // multiSpdifInputs gate. Seed inputs 2/3/4 on collision-free GPIOs,
+    // "present but disabled" by default so the picker has real pins to
+    // offer; RP2040 stays single-input (fields stay at the all-zero
+    // "absent" default from defaultBulkParams).
+    if (this.#platform === Domain.PlatformType.RP2350) {
+      this.#mockState.inputConfig.spdifRxPinExt = [20, 21, 22];
+      this.#mockState.inputConfig.spdifRxEnabledExtP1 = 1;   // mask 0: all disabled
+      if (opts.spdifInputsEnabled && opts.spdifInputsEnabled > 1) {
+        const n = Math.min(4, Math.max(1, opts.spdifInputsEnabled | 0));
+        let mask = 0;
+        for (let i = 2; i <= n; i++) mask |= 1 << (i - 2);
+        this.#mockState.inputConfig.spdifRxEnabledExtP1 = mask + 1;
       }
     }
     if (opts.sysClockBoot) {
@@ -552,7 +541,7 @@ export class MockTransport implements DspTransport {
         this.#sysClockActiveMode = opts.sysClockBoot.storedMode;
       }
     }
-    if (opts.csFull && this.#isV16 && this.#csCapsVersion >= 10) this.#seedCsFull();
+    if (opts.csFull && this.#csCapsVersion >= 10) this.#seedCsFull();
   }
 
   #seedCsFull(): void {
@@ -605,8 +594,6 @@ export class MockTransport implements DspTransport {
     this.#csSavedDisplayCfg = { ...this.#csDisplayCfg };
     this.#csSavedDisplayPages = this.#csDisplayPages.map((p) => ({ ...p }));
   }
-
-  get #isV16(): boolean { return this.#wireVersion >= 16; }
 
   // fw 1.1.6+: full-width GetPlatform reply and GetBuildInfo both gate on this.
   get #isFw116(): boolean {
@@ -734,7 +721,6 @@ export class MockTransport implements DspTransport {
         return bulk.slice(0, Math.min(length, bulk.byteLength));
       }
       case WireCmd.GetAllParamsChunk.code: {
-        if (!this.#isV16) return new Uint8Array(length);
         if (value === 0) {
           this.#getChunkSession = { buf: this.#synthBulkPacket(), offset: 0 };
         }
@@ -799,11 +785,10 @@ export class MockTransport implements DspTransport {
       case WireCmd.SaveOutputConfig.code:
         return new Uint8Array([0]); // PresetResult.Ok
       case WireCmd.GetEqParam.code: {
-        // Bit-packed wValue. V10: (channel << 8) | (band << 4) | param.
-        // V16: band widens to 5 bits, (channel << 8) | (band << 3) | param.
+        // Bit-packed wValue: (channel << 8) | (band << 3) | param.
         const channel = (value >> 8) & 0xFF;
-        const band  = this.#isV16 ? (value >> 3) & 0x1F : (value >> 4) & 0xF;
-        const param = this.#isV16 ? value & 0x7 : value & 0xF;
+        const band  = (value >> 3) & 0x1F;
+        const param = value & 0x7;
         const f = this.#bandAt(channel, band);
         if (!f) return new Uint8Array(length);
         switch (param) {
@@ -1003,14 +988,6 @@ export class MockTransport implements DspTransport {
         const cfg = this.#mockState.inputConfig;
         const mask = cfg.spdifRxEnabledExtP1 === 0 ? 0 : cfg.spdifRxEnabledExtP1 - 1;
         const enableMask = 1 | (mask << 1);
-        // fw-faithful: a pre-V28 device answers the legacy 5-byte layout
-        // (no pin 4); V28+ answers the full 6-byte layout.
-        if (this.#wireVersion < 28) {
-          return Uint8Array.from([
-            this.#spdifInputCount(), enableMask,
-            cfg.spdifRxPin, cfg.spdifRxPinExt[0] ?? 0, cfg.spdifRxPinExt[1] ?? 0,
-          ]);
-        }
         return Codec.encode(Wire.SpdifInputConfig, {
           count: this.#spdifInputCount(),
           enableMask,
@@ -1207,18 +1184,15 @@ export class MockTransport implements DspTransport {
         this.#mockState.i2s.mckMultiplierEncoded = raw;
         return new Uint8Array([0x00]);
       }
-      // ADAT lightpipe bulk output (fw V17+, RP2350 only). 0xCA-0xCE were
-      // I2S-DIN opcodes on a deleted fw branch; on wire >= 17 they are ADAT.
-      // Below V17 the surface doesn't exist at all (STALL); on RP2040 (V17+)
-      // SETs return INVALID_OUTPUT and GETs read as zeros, matching firmware's
+      // ADAT lightpipe bulk output (RP2350 only). 0xCA-0xCE were I2S-DIN
+      // opcodes on a deleted fw branch; they are ADAT here. On RP2040 SETs
+      // return INVALID_OUTPUT and GETs read as zeros, matching firmware's
       // platform gate on the lightpipe hardware.
       case WireCmd.GetAdatEnable.code: {
-        if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: GetAdatEnable unsupported (STALL)');
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array(length);
         return Codec.encode(Codec.bool8, this.#mockState.adat.enabled);
       }
       case WireCmd.SetAdatEnable.code: {
-        if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: SetAdatEnable unsupported (STALL)');
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
         const enable = (value & 0xFF) !== 0;
         if (enable === this.#mockState.adat.enabled) return new Uint8Array([0x00]);   // same-state no-op
@@ -1234,12 +1208,10 @@ export class MockTransport implements DspTransport {
         return new Uint8Array([0x00]);
       }
       case WireCmd.GetAdatPin.code: {
-        if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: GetAdatPin unsupported (STALL)');
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array(length);
         return Codec.encode(Codec.u8, this.#mockState.adat.pin);
       }
       case WireCmd.SetAdatPin.code: {
-        if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: SetAdatPin unsupported (STALL)');
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
         let pin = value & 0xFF;
         if (pin === Wire.Const.PIN_RESET_TO_DEFAULT) pin = this.#defaultAdatPin();
@@ -1250,7 +1222,6 @@ export class MockTransport implements DspTransport {
         return new Uint8Array([0x00]);
       }
       case WireCmd.GetAdatStatus.code: {
-        if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: GetAdatStatus unsupported (STALL)');
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array(length);
         const enabled = this.#mockState.adat.enabled;
         // Mock always runs at 48 kHz -- rateOk (and thus active) is always true while enabled.
@@ -1259,19 +1230,17 @@ export class MockTransport implements DspTransport {
           rateOk: true, resyncCount: 0, slipCount: 0,
         });
       }
-      // ADAT lightpipe bulk input (fw V24+, RP2350 only for the enable/pin
+      // ADAT lightpipe bulk input (RP2350 only for the enable/pin
       // hardware surface). Action-style, same convention as the ADAT output
-      // block above. Backed directly by the InputConfig24 bulk fields
-      // (adatInputPin/adatInputEnabledP1/adatInputClockModeP1) so V24 bulk
+      // block above. Backed directly by the InputConfig bulk fields
+      // (adatInputPin/adatInputEnabledP1/adatInputClockModeP1) so bulk
       // packets round-trip automatically. Unlike GetAdatInputStatus, the
       // granular enable/pin/clock-mode GETs round-trip stored config on both
       // platforms -- only the SETs and the live status are RP2350-gated.
       case WireCmd.GetAdatInputEnable.code: {
-        if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: GetAdatInputEnable unsupported (STALL)');
         return Codec.encode(Codec.bool8, this.#adatInputEnabled());
       }
       case WireCmd.SetAdatInputEnable.code: {
-        if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: SetAdatInputEnable unsupported (STALL)');
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
         if (value > 1) return new Uint8Array([0x05]);                                // InvalidParam
         const enable = value !== 0;
@@ -1291,12 +1260,10 @@ export class MockTransport implements DspTransport {
         return new Uint8Array([0x00]);
       }
       case WireCmd.GetAdatInputPin.code: {
-        if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: GetAdatInputPin unsupported (STALL)');
         const pin = this.#mockState.inputConfig.adatInputPin;
         return Codec.encode(Codec.u8, pin === 0 ? 0xFF : pin);
       }
       case WireCmd.SetAdatInputPin.code: {
-        if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: SetAdatInputPin unsupported (STALL)');
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
         const raw = value & 0xFF;
         if (raw === Wire.Const.PIN_RESET_TO_DEFAULT) {
@@ -1315,35 +1282,29 @@ export class MockTransport implements DspTransport {
       // Clock mode is accepted on both platforms (unlike enable/pin, which are
       // RP2350-only) so presets round-trip.
       case WireCmd.GetAdatInputClockMode.code: {
-        if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: GetAdatInputClockMode unsupported (STALL)');
         return Codec.encode(Codec.u8, this.#adatInputClockMode());
       }
       case WireCmd.SetAdatInputClockMode.code: {
-        if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: SetAdatInputClockMode unsupported (STALL)');
         // Deferred apply device-side (mock applies immediately).
         if (value > 1) return new Uint8Array([0x05]);                                // InvalidParam
         this.#mockState.inputConfig.adatInputClockModeP1 = value === 1 ? 2 : 1;
         return new Uint8Array([0x00]);
       }
       case WireCmd.GetAdatInputStatus.code: {
-        if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: GetAdatInputStatus unsupported (STALL)');
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array(length);
         return Codec.encode(Wire.AdatInputStatus, this.#adatInputStatus());
       }
       case WireCmd.GetUartConfig.code: {
-        if (!this.#isV16) return new Uint8Array(length);
         const c = this.#uartCtrl;
         return Codec.encode(Wire.UartCtrlConfig, {
           enabled: c.enabled, txPin: c.txPin, rxPin: c.rxPin, notifyEnable: c.notifyEnabled, baud: c.baud,
         });
       }
       case WireCmd.GetI2cConfig.code: {
-        if (!this.#isV16) return new Uint8Array(length);
         const c = this.#i2cCtrl;
         return Codec.encode(Wire.I2cCtrlConfig, { enabled: c.enabled, sdaPin: c.sdaPin, sclPin: c.sclPin, address: c.address });
       }
       case WireCmd.GetCtrlIfaceStatus.code: {
-        if (!this.#isV16) return new Uint8Array(length);
         return Codec.encode(Wire.CtrlIfaceStatus, {
           uartLastStatus: this.#uartLastStatus, uartLive: this.#uartLive,
           i2cLastStatus: this.#i2cLastStatus, i2cLive: this.#i2cLive,
@@ -1351,18 +1312,15 @@ export class MockTransport implements DspTransport {
         });
       }
       case WireCmd.GetCsBinding.code: {
-        if (!this.#isV16) return new Uint8Array(length);
         if (value >= Domain.CS_MAX_BINDINGS) throw new Error('MockTransport: GetCsBinding slot out of range (STALL)');
         const b = this.#csBindings[value];
         return Codec.encode(Wire.CsBinding, b);
       }
       case WireCmd.GetCsIrCmd.code: {
-        if (!this.#isV16) return new Uint8Array(length);
         if (value >= this.#csMaxIr()) throw new Error('MockTransport: GetCsIrCmd sub-slot out of range (STALL)');
         return Codec.encode(Wire.CsIrCommand, this.#csIrCommands[value]);
       }
       case WireCmd.GetCsCaps.code: {
-        if (!this.#isV16) return new Uint8Array(length);
         if (value === 0xFFFF) {
           const typeCount = this.#csTypeCount();
           const types = MOCK_CS_CAPS.types.slice(0, typeCount)
@@ -1393,7 +1351,6 @@ export class MockTransport implements DspTransport {
         throw new Error('MockTransport: GetCsCaps noun index out of range (STALL)');
       }
       case WireCmd.GetCsStatus.code: {
-        if (!this.#isV16) return new Uint8Array(length);
         let lastStatus = this.#csLastStatus;
         if (this.#csPendingPolls > 0) {
           this.#csPendingPolls -= 1;
@@ -1427,7 +1384,6 @@ export class MockTransport implements DspTransport {
         });
       }
       case WireCmd.GetCsName.code: {
-        if (!this.#isV16) return new Uint8Array(length);
         if (value >= Domain.CS_MAX_BINDINGS) throw new Error('MockTransport: GetCsName slot out of range (STALL)');
         return Codec.encode(Wire.CsName, this.#csNames[value] ?? '');
       }
@@ -1503,7 +1459,6 @@ export class MockTransport implements DspTransport {
         return Codec.encode(Wire.CsDisplayStatus, this.#csDisplayStatus());
       }
       case WireCmd.CsIrLearn.code: {
-        if (!this.#isV16) return new Uint8Array(length);
         if (value === 1) {
           if (!this.#hasLiveIrBinding()) {
             this.#csLastStatus = 0x1E;               // CS_STATUS_NO_IR
@@ -1532,7 +1487,6 @@ export class MockTransport implements DspTransport {
         });
       }
       case WireCmd.CsSave.code: {
-        if (!this.#isV16) return new Uint8Array(length);
         // Firmware STALLs a save/revert whose predecessor is still pending;
         // it never answers the busy case with a byte.
         if (this.#csPendingPolls > 0) throw new Error('MockTransport: CsSave while pending (STALL)');
@@ -1550,7 +1504,6 @@ export class MockTransport implements DspTransport {
         return new Uint8Array([1]);
       }
       case WireCmd.CsRevert.code: {
-        if (!this.#isV16) return new Uint8Array(length);
         if (this.#csPendingPolls > 0) throw new Error('MockTransport: CsRevert while pending (STALL)');
         this.#csBindings = this.#csSavedBindings.map((b) => ({ ...b }));
         this.#csNames = this.#csSavedNames.slice();
@@ -1596,9 +1549,7 @@ export class MockTransport implements DspTransport {
           },
         });
       case WireCmd.GetSysClock.code:
-        if (this.#wireVersion < MIN_SYS_CLOCK_WIRE) {
-          throw new Error('MockTransport: GetSysClock unsupported (STALL)');
-        }
+        if (!this.#sysClockSupported) throw new Error('MockTransport: GetSysClock unsupported (STALL)');
         return Codec.encode(Wire.SysClockStatus, {
           activeMode: this.#sysClockActiveMode,
           storedMode: this.#sysClockStoredMode,
@@ -1682,9 +1633,7 @@ export class MockTransport implements DspTransport {
         this.#mockState.inputConfig.i2sClockMode = Codec.decode(Codec.u8, data);
         return;
       case WireCmd.SetSysClock.code: {
-        if (this.#wireVersion < MIN_SYS_CLOCK_WIRE) {
-          throw new Error('MockTransport: SetSysClock unsupported (STALL)');
-        }
+        if (!this.#sysClockSupported) throw new Error('MockTransport: SetSysClock unsupported (STALL)');
         const req = Codec.decode(Wire.SysClockRequest, data);
         if (req.mode >= Domain.SYS_CLOCK_MODE_DEFAULT_VREG.length) {
           throw new Error('MockTransport: SetSysClock invalid mode (STALL)');
@@ -1850,7 +1799,7 @@ export class MockTransport implements DspTransport {
       case WireCmd.UpmixSetConfig.code: {
         const p = Codec.decode(WireCmd.UpmixSetConfig.codec, data);
         this.#mockState.upmix = {
-          enabled: p.enabled, centerMode: this.#clampCenterMode(p.centerMode), surroundMode: p.surroundMode,
+          enabled: p.enabled, centerMode: p.centerMode, surroundMode: p.surroundMode,
           strengthPct: p.strengthPct, centerWidthPct: p.centerWidthPct, corrThresholdPct: p.corrThresholdPct,
           attackMs: p.attackMs, releaseMs: p.releaseMs, detectorHpfHz: p.detectorHpfHz,
           surroundDelayMs: p.surroundDelayMs, surroundHpfHz: p.surroundHpfHz, surroundLpfHz: p.surroundLpfHz,
@@ -1936,7 +1885,6 @@ export class MockTransport implements DspTransport {
         return;
 
       case WireCmd.SetUartConfig.code: {
-        if (!this.#isV16) return;
         const cfg = Codec.decode(Wire.UartCtrlConfig, data);
         this.#uartLastStatus = this.#validateUartConfig(cfg);
         if (this.#uartLastStatus === 0x00) {
@@ -1946,7 +1894,6 @@ export class MockTransport implements DspTransport {
         return;
       }
       case WireCmd.SetI2cConfig.code: {
-        if (!this.#isV16) return;
         const cfg = Codec.decode(Wire.I2cCtrlConfig, data);
         this.#i2cLastStatus = this.#validateI2cConfig(cfg);
         if (this.#i2cLastStatus === 0x00) {
@@ -1957,7 +1904,6 @@ export class MockTransport implements DspTransport {
       }
 
       case WireCmd.SetCsBinding.code: {
-        if (!this.#isV16) return;
         if (value >= Domain.CS_MAX_BINDINGS) {
           // Bad slot is rejected by the handler itself -- immediate, no
           // PENDING window.
@@ -1973,7 +1919,6 @@ export class MockTransport implements DspTransport {
       }
 
       case WireCmd.SetCsName.code: {
-        if (!this.#isV16) return;
         if (value >= Domain.CS_MAX_BINDINGS) {
           this.#csLastStatus = 0x10;                  // CS_STATUS_INVALID_SLOT
           this.#csLastSlot = value & 0xFF;
@@ -1988,7 +1933,6 @@ export class MockTransport implements DspTransport {
       }
 
       case WireCmd.SetCsIrCmd.code: {
-        if (!this.#isV16) return;
         if (value >= this.#csMaxIr()) {
           this.#csLastStatus = 0x10;                  // CS_STATUS_INVALID_SLOT
           this.#csLastSlot = 0x80 | (value & 0xFF);
@@ -2092,7 +2036,6 @@ export class MockTransport implements DspTransport {
       }
 
       case WireCmd.SetAllParamsChunk.code: {
-        if (!this.#isV16) return;
         const target = Wire.bulkSizeForVersion(this.#wireVersion);
         if (value === 0) {
           // fw rejects a session whose declared packet is shorter than its
@@ -2123,16 +2066,12 @@ export class MockTransport implements DspTransport {
     }
   }
 
-  // Mirrors fw's WIRE_BULK_PARAMS_MIN_SIZE: V16+ firmware rejects anything
-  // shorter than its own wire version's size (compat deliberately broken at
-  // V16 -- see BULK_SIZE_V16's banner comment). Pre-V16 firmware merges
-  // shorter packets, so the check doesn't apply there.
+  // Mirrors fw's WIRE_BULK_PARAMS_MIN_SIZE: firmware rejects anything shorter
+  // than its own wire version's size.
   #applySetAllParams(data: Uint8Array): void {
-    if (this.#isV16) {
-      const min = Wire.bulkSizeForVersion(this.#wireVersion);
-      if (data.length < min) {
-        throw new Error(`MockTransport: SetAllParams payload too short (${data.length}, need ${min})`);
-      }
+    const min = Wire.bulkSizeForVersion(this.#wireVersion);
+    if (data.length < min) {
+      throw new Error(`MockTransport: SetAllParams payload too short (${data.length}, need ${min})`);
     }
     const bulk = BulkParser.parseBulkParams(data);
     bulk.limiter = this.#settleLimiter(bulk.limiter, this.#mockState.limiter);
@@ -2166,14 +2105,12 @@ export class MockTransport implements DspTransport {
     };
   }
 
-  // Build the bulk packet at the configured wire version from #mockState. A
-  // sub-V6 reject-path mock builds a V6 body but reports the true (sub-V6)
-  // version in the header so the connect-reject path is exercised.
+  // Build the bulk packet at the configured wire version from #mockState.
   #synthBulkPacket(): Uint8Array {
-    const buildVer = Math.min(Math.max(this.#wireVersion, 6), Wire.MAX_WIRE_VERSION);
+    const buildVer = Math.min(this.#wireVersion, Wire.MAX_WIRE_VERSION);
     const out = BulkParser.buildBulkParams(this.#mockState, buildVer);
     const dv = new DataView(out.buffer);
-    dv.setUint8(0, this.#wireVersion);        // report true version (may be < 6)
+    dv.setUint8(0, this.#wireVersion);        // report the configured version
     dv.setUint16(6, this.#payloadLength ?? out.byteLength, true);  // payloadLength (overridable)
     return out;
   }
@@ -2225,14 +2162,14 @@ export class MockTransport implements DspTransport {
   }
 
   // Resolves a wire (channel, band) address to its storage slot: PEQ bands in
-  // filters[], crossover bands (V16, wire indices 20..23) in crossover[].
+  // filters[], crossover bands (wire indices 20..23) in crossover[].
   #bandSlot(ch: number, band: number): { row: WireFilter[]; idx: number } | null {
     if (ch >= this.#numChannels()) return null;
     if (band < Wire.Const.BANDS_MAX) {
       const row = this.#mockState.filters?.[ch];
       return row?.[band] ? { row, idx: band } : null;
     }
-    if (this.#isV16 && band >= Domain.XOVER_BAND_BASE && band < Domain.XOVER_BAND_BASE + Domain.MAX_XOVER_BANDS) {
+    if (band >= Domain.XOVER_BAND_BASE && band < Domain.XOVER_BAND_BASE + Domain.MAX_XOVER_BANDS) {
       const row = this.#mockState.crossover?.[ch];
       const idx = band - Domain.XOVER_BAND_BASE;
       return row?.[idx] ? { row, idx } : null;
@@ -2250,11 +2187,9 @@ export class MockTransport implements DspTransport {
   }
 
   // Selectable S/PDIF RX inputs sharing the one receiver (fw 1.1.5+ RP2350
-  // only). Mirrors capabilities.ts's multiSpdifInputs gate; the fourth input
-  // additionally needs wire V28 (InputConfig's relayout).
+  // only). Mirrors capabilities.ts's multiSpdifInputs gate.
   #spdifInputCount(): number {
-    if (!this.#isV16 || this.#platform !== Domain.PlatformType.RP2350) return 1;
-    return this.#wireVersion >= 28 ? Domain.SPDIF_RX_MAX_INSTANCES : 3;
+    return this.#platform === Domain.PlatformType.RP2350 ? Domain.SPDIF_RX_MAX_INSTANCES : 1;
   }
 
   // Platform-default GPIOs for the 0xFF pin-reset sentinel
@@ -2338,9 +2273,6 @@ export class MockTransport implements DspTransport {
   }
 
   #isValidGpio(pin: number): boolean {
-    // Debug UART pin: GPIO 12 through V10 only. Fw 1.1.5 (V16) removed the
-    // dedicated debug UART, freeing 16/17 for general use.
-    if (!this.#isV16 && pin === 12) return false;
     if (pin >= 23 && pin <= 25) return false;
     return pin >= 0 && pin <= (this.#platform === Domain.PlatformType.RP2350 ? 47 : 28);
   }
@@ -2357,15 +2289,13 @@ export class MockTransport implements DspTransport {
     const i2s = this.#mockState.i2s;
     if (i2s.outputSlotTypes.some((type) => type === Domain.OutputSlotType.I2s) && (pin === i2s.bckPin || pin === i2s.bckPin + 1)) return true;
     if (i2s.mckEnabled && pin === i2s.mckPin) return true;
-    // fw V21+: the slave BCK/LRCLK pair is only reserved in split clock-pin
+    // The slave BCK/LRCLK pair is only reserved in split clock-pin
     // mode (unified mode shares the master pair above).
     if (i2s.clockPinModeP1 === 2 && (pin === i2s.bckPinSlave || pin === i2s.bckPinSlave + 1)) return true;
-    if (this.#isV16) {
-      // Active I2S RX pairs reserve their data pins (fw is_pin_in_use).
-      const activePairs = (this.#mockState.inputConfig.i2sInputChannels || 2) / 2;
-      const rxPins = this.#mockState.inputConfig.i2sRxPins;
-      for (let p = 0; p < activePairs; p++) if (rxPins[p] === pin) return true;
-    }
+    // Active I2S RX pairs reserve their data pins (fw is_pin_in_use).
+    const activePairs = (this.#mockState.inputConfig.i2sInputChannels || 2) / 2;
+    const rxPins = this.#mockState.inputConfig.i2sRxPins;
+    for (let p = 0; p < activePairs; p++) if (rxPins[p] === pin) return true;
     // S/PDIF RX: input 1 is always claimed; inputs 2/3/4 only while enabled
     // (mirrors the I2S RX loop above).
     const spdif = this.#mockState.inputConfig;
@@ -2723,17 +2653,12 @@ export class MockTransport implements DspTransport {
     }
   }
 
-  // Firmware clamps an out-of-range centre-mode byte to Adaptive; OFF (2)
-  // only became a valid enum member at V27.
-  #clampCenterMode(mode: number): number {
-    return mode === 2 && this.#wireVersion < 27 ? 1 : mode;
-  }
 
   #setUpmixParam(id: number, value: number): void {
     const u = this.#mockState.upmix!;
     switch (id) {
       case Wire.UpmixParam.Enabled:          u.enabled = Math.round(value) !== 0; return;
-      case Wire.UpmixParam.CenterMode:       u.centerMode = this.#clampCenterMode(Math.round(value)); return;
+      case Wire.UpmixParam.CenterMode:       u.centerMode = Math.round(value); return;
       case Wire.UpmixParam.SurroundMode:     u.surroundMode = Math.round(value); return;
       case Wire.UpmixParam.StrengthPct:      u.strengthPct = value; return;
       case Wire.UpmixParam.CenterWidthPct:   u.centerWidthPct = value; return;
@@ -2880,18 +2805,17 @@ export class MockTransport implements DspTransport {
   #synthStatus(wValue: number, length: number): Uint8Array {
     switch (wValue) {
       case SystemStatusValue.CombinedPeaks: {
-        // Caller sizes the request: numCh = (length - tail) / 2, where the
-        // tail is 4 B on V10 and 7 B on V16 (u32 clip + input-count byte).
-        const tail = this.#isV16 ? 7 : 4;
-        const numCh = Math.max(0, (length - tail) >> 1);
+        // Caller sizes the request: numCh = (length - 7) / 2, the 7 B tail
+        // being the u32 clip flags + input-count byte.
+        const numCh = Math.max(0, (length - 7) >> 1);
         const peaks = this.#animatedPeaks(numCh);
         return Syn.synthesizeSystemStatus({
           numCh, peaks, cpu0: 25, cpu1: 12, clipFlags: this.#clipFlags,
-          ...(this.#isV16 ? { activeInputChannels: this.#activeInputChannels() } : {}),
+          activeInputChannels: this.#activeInputChannels(),
         });
       }
       case SystemStatusValue.ActiveInputChannels:
-        return Syn.synthesizeU32(this.#isV16 ? this.#activeInputChannels() : 0);
+        return Syn.synthesizeU32(this.#activeInputChannels());
       // Environment scalars
       case SystemStatusValue.ClockHz:        return Syn.synthesizeU32(125_000_000);
       case SystemStatusValue.CoreVoltageMv:  return Syn.synthesizeU32(3300);

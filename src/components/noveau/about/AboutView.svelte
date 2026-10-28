@@ -25,7 +25,7 @@
   ]);
   const hints: Row[] = [
     { label: 'KEYS', value: DESTINATION_SHORTCUTS.map((sc) => `${sc.keys.join(' / ')} ${sc.action}`).join(' · ') },
-    { label: 'URL', value: '?mock · ?mock=legacy · ?mock=multi · ?mock=v<N> · &chip=rp2040 · &debug' },
+    { label: 'URL', value: '?mock · ?mock=multi · ?mock=v<N> · &chip=rp2040 · &debug' },
     { label: 'REPORTING', value: 'Mention the page and panel when reporting an issue' },
   ];
 </script>

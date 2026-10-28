@@ -1,17 +1,16 @@
-// Domain shapes for the bulk sections firmware 1.1.4 appended (wire V7-V10).
-// Each is surfaced on DspSnapshot as nullable -- present only when the device's
-// packet carries the section (see protocol/snapshotCodec.ts gating on bulkLayout).
+// Domain shapes for the bulk sections beyond the core DSP params: input
+// routing, ADAT, LG sound sync, user volume, DAC mute, I2S status.
 
 export const AudioInputSource = {
   Usb:    0,
   Spdif:  1,
-  I2s:    2,   // V16+
-  // Structurally valid on both platforms (V24+ wire) so presets round-trip;
+  I2s:    2,
+  // Structurally valid on both platforms so presets round-trip;
   // selectability is gated separately and not yet exposed in the UI.
   Adat:   3,
-  Spdif2: 4,   // fw 1.1.5+ selectable S/PDIF input 2
-  Spdif3: 5,   // fw 1.1.5+ selectable S/PDIF input 3
-  Spdif4: 6,   // fw 1.1.5+/V28 selectable S/PDIF input 4
+  Spdif2: 4,   // selectable S/PDIF input 2
+  Spdif3: 5,   // selectable S/PDIF input 3
+  Spdif4: 6,   // selectable S/PDIF input 4
 } as const;
 export type AudioInputSource = (typeof AudioInputSource)[keyof typeof AudioInputSource];
 
@@ -21,7 +20,7 @@ export function isSpdifSource(s: AudioInputSource): boolean {
 }
 
 // One S/PDIF receiver, up to 4 selectable input GPIOs (input 1 + three
-// optional). Platform max at V28; pre-V28 devices expose 3 via capabilities.
+// optional). Platform max.
 export const SPDIF_RX_MAX_INSTANCES = 4;
 
 // Maximum I2S RX stereo pairs on the largest platform (RP2350; RP2040 has 1).
@@ -35,9 +34,7 @@ export function i2sRateDecode(enc: number): number {
   return enc === 0 ? 44100 : enc === 2 ? 96000 : 48000;
 }
 
-// V7 -- input routing. spdifRxPin is the GPIO the S/PDIF receiver listens on.
-// The i2s* fields are V16+; on a V10 device they read as zeros ("absent")
-// and are surfaced only behind the i2sInput capability.
+// Input routing. spdifRxPin is the GPIO the S/PDIF receiver listens on.
 export interface InputConfig {
   source: AudioInputSource;
   spdifRxPin: number;
@@ -47,24 +44,20 @@ export interface InputConfig {
   i2sInputRateHz: number;
   // Active I2S input channel count: 2/4/6/8 (0 = firmware default / absent).
   i2sInputChannels: number;
-  // fw 1.1.5+ optional S/PDIF inputs 2/3/4 (index 0 = input 2, index 1 =
-  // input 3, index 2 = input 4). Always length 3 -- on pre-V28 packets the
-  // third (input 4) entry is padded 0/unset. GPIO per input; 0 = unset.
+  // Optional S/PDIF inputs 2/3/4 (index 0 = input 2, index 1 = input 3,
+  // index 2 = input 4). Always length 3. GPIO per input; 0 = unset.
   spdifRxPinExt: number[];
-  // Whether inputs 2/3/4 are enabled. Always length 3, same padding as above.
+  // Whether inputs 2/3/4 are enabled. Always length 3.
   spdifExtEnabled: boolean[];
-  // I2S clock role (fw V21+): 0 = master (legacy default), 1 = slave.
+  // I2S clock role: 0 = master, 1 = slave.
   i2sClockMode: number;
-  // ADAT input (fw V24+, RP2350). pin: GPIO, 0 = absent/keep-live. enabled/
-  // clockMode collapse the wire's "absent" sentinel to the same default as
-  // i2sClockMode (false / master) -- gated devices (features.adatInput)
-  // always report a real value, so the collapse only matters pre-V24.
+  // ADAT input (RP2350). pin: GPIO, 0 = absent/keep-live.
   adatInputPin: number;
   adatInputEnabled: boolean;
   adatInputClockMode: number;  // 0 = master, 1 = slave
 }
 
-// V17 -- ADAT lightpipe bulk output config (RP2350 only). Persisted intent;
+// ADAT lightpipe bulk output config (RP2350 only). Persisted intent;
 // pin 0 means platform default (GPIO 12).
 export interface AdatOutputConfig {
   enabled: boolean;
@@ -86,7 +79,7 @@ export interface UserVolume {
   mute: boolean;
 }
 
-// V10 -- DAC hardware-mute pin configuration.
+// DAC hardware-mute pin configuration.
 export interface DacHwMute {
   enabled: boolean;
   activeLow: boolean;
@@ -116,7 +109,7 @@ export interface SpdifRxStatus {
   fifoFillPct: number;
 }
 
-// V21 -- live I2S slave-clock lock state, reported by GetI2sSlaveStatus
+// Live I2S slave-clock lock state, reported by GetI2sSlaveStatus
 // (0x8A). Note the state ordering differs from SpdifInputState (Relocking
 // precedes Locked here) -- this mirrors the firmware enum, not a typo.
 export const I2sSlaveClockState = {
@@ -152,7 +145,7 @@ export interface I2sSlaveStatus {
   slipCount: number;
 }
 
-// Live ADAT lightpipe output telemetry (GetAdatStatus 0xCE, fw V17+, RP2350
+// Live ADAT lightpipe output telemetry (GetAdatStatus 0xCE, RP2350
 // only). `enabled` is persisted intent, `active` is running now. `rateOk`
 // reflects whether the device rate is 44.1/48 kHz -- the stream auto-suspends
 // outside that range and resumes when the rate returns.
@@ -165,7 +158,7 @@ export interface AdatOutputStatus {
   slipCount: number;
 }
 
-// V24 -- live ADAT lightpipe input lock state, reported by GetAdatInputStatus
+// Live ADAT lightpipe input lock state, reported by GetAdatInputStatus
 // (0x6E, RP2350 only).
 export const AdatInputLockState = {
   Inactive:  0,
@@ -190,7 +183,7 @@ export function narrowAdatInputLockState(n: number): AdatInputLockState {
   }
 }
 
-// Live ADAT lightpipe input telemetry (GetAdatInputStatus 0x6E, fw V24+,
+// Live ADAT lightpipe input telemetry (GetAdatInputStatus 0x6E,
 // RP2350 only). clockMode/pin are live values (not persisted config). rateOk
 // parks master-mode acquisition when the device rate exceeds 48 kHz -- always
 // true in slave mode.

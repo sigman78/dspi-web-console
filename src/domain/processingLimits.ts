@@ -97,8 +97,7 @@ export const UPMIX_DECORR_MIN_PCT = 0;
 export const UPMIX_DECORR_MAX_PCT = 100;
 export const UPMIX_DECORR_STEP_PCT = 1;
 
-// Presence bell (fw V26+; V25 devices ignore/zero it -- no console guard
-// needed at the device layer).
+// Presence bell.
 export const UPMIX_PRESENCE_MIN_DB = -12;
 export const UPMIX_PRESENCE_MAX_DB = 12;
 export const UPMIX_PRESENCE_STEP_DB = 0.5;

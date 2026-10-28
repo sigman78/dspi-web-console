@@ -52,7 +52,7 @@ function connect(dev: DspDevice): ReadySession {
 // Returns the MockTransport (caller pushes packets to it), a v10 device, and an
 // installed session (with its mirror).
 async function v10Setup() {
-  const mock = new MockTransport({ platform: 'rp2350', wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } });
+  const mock = new MockTransport({ platform: 'rp2350' });
   const dev = await DspDevice.create(mock);
   const session = connect(dev);
   return { mock, dev, session, mir: session.mirror };

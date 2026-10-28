@@ -1,13 +1,11 @@
 // Client-side mirror of the firmware GPIO rules (vendor_commands.c
 // is_valid_gpio_pin / is_pin_in_use); the firmware status byte stays the
 // backstop. Feeds the pin dropdowns and BCK/MCK guard states.
-// Generation-dependent: the debug UART sits on GPIO 12 through V10; fw 1.1.5
-// (V16) removed the debug UART, freeing GPIO 16/17 for general use there.
-// V16 also reserves the active I2S RX data pins and (dynamically, since it's
+// Also reserves the active I2S RX data pins and (dynamically, since it's
 // runtime config rather than a wire section) any enabled external
 // control-interface pins -- see CtrlIfaceConfigs below.
 import { OutputSlotType } from './channels';
-import { PlatformType, ChannelFamily } from './platform';
+import { PlatformType } from './platform';
 import type { DspSnapshot } from './snapshot';
 import { isValidUartPinPair, isValidI2cPinPair, i2cInstance, type UartControlConfig, type I2cControlConfig } from './controlInterfaces';
 import { CS_ADC_PINS } from './controlSurfaces';
@@ -25,9 +23,8 @@ export function maxGpio(platform: PlatformType): number {
   return platform === PlatformType.RP2350 ? 47 : 28;
 }
 
-export function isAssignablePin(platform: PlatformType, pin: number, channelModel: ChannelFamily = ChannelFamily.Legacy): boolean {
+export function isAssignablePin(platform: PlatformType, pin: number): boolean {
   if (pin < 0 || pin > maxGpio(platform)) return false;
-  if (channelModel === ChannelFamily.Legacy && pin === 12) return false;   // debug UART (V10 only)
   if (pin >= 23 && pin <= 25) return false;
   return true;
 }
@@ -35,7 +32,7 @@ export function isAssignablePin(platform: PlatformType, pin: number, channelMode
 // Fetched control-interface configs, threaded through to the pin-picker
 // helpers below so their GPIOs are excluded when enabled. Optional and
 // defaults to none: callers that haven't fetched the ctrl-iface state yet
-// (or are on a V10 device, where it's absent) get the pre-existing behavior.
+// get the pre-existing behavior.
 export interface CtrlIfaceConfigs {
   uart?: UartControlConfig | null;
   i2c?: I2cControlConfig | null;
@@ -49,9 +46,9 @@ export interface CtrlIfaceConfigs {
 
 const NO_CTRL_IFACES: CtrlIfaceConfigs = {};
 
-export function assignablePins(platform: PlatformType, channelModel: ChannelFamily = ChannelFamily.Legacy): number[] {
+export function assignablePins(platform: PlatformType): number[] {
   const out: number[] = [];
-  for (let p = 0; p <= maxGpio(platform); p++) if (isAssignablePin(platform, p, channelModel)) out.push(p);
+  for (let p = 0; p <= maxGpio(platform); p++) if (isAssignablePin(platform, p)) out.push(p);
   return out;
 }
 
@@ -68,7 +65,7 @@ export function pinUses(snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_
       m.set(i2s.bckPin + 1, { label: PIN_LABEL.lrclk, role: 'clock' });
     }
     if (i2s.mckEnabled) m.set(i2s.mckPin, { label: PIN_LABEL.mck, role: 'clock' });
-    // fw V21+: the slave BCK/LRCLK pair is only reserved in split clock-pin
+    // The slave BCK/LRCLK pair is only reserved in split clock-pin
     // mode (unified mode shares the master pair above).
     if (i2s.clockPinMode === 1 && i2s.bckPinSlave > 0) {
       m.set(i2s.bckPinSlave, { label: PIN_LABEL.bckSlave, role: 'clock' });
@@ -84,16 +81,15 @@ export function pinUses(snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_
     }
   }
   if (snapshot.dacHwMute.enabled) m.set(snapshot.dacHwMute.pin, { label: 'DAC MUTE', role: 'system' });
-  // ADAT lightpipe output (fw V17+, RP2350): pin 0 means platform default (GPIO 12).
+  // ADAT lightpipe output (RP2350): pin 0 means platform default (GPIO 12).
   if (snapshot.adat.enabled) m.set(snapshot.adat.pin || 12, { label: 'ADAT', role: 'audio-out' });
-  // ADAT lightpipe input (fw V24+, RP2350): reserved only while enabled, no
+  // ADAT lightpipe input (RP2350): reserved only while enabled, no
   // platform default (pin 0 = unset). Loopback onto the ADAT output's own pin
   // is a supported exception -- don't overwrite that claim's label.
   if (snapshot.inputConfig.adatInputEnabled && snapshot.inputConfig.adatInputPin !== 0 && !m.has(snapshot.inputConfig.adatInputPin)) {
     m.set(snapshot.inputConfig.adatInputPin, { label: 'ADAT IN', role: 'audio-in' });
   }
-  // V16: the active I2S RX stereo pairs reserve their data pins (i2sInputChannels
-  // is 0 on V10 packets, so this block is inert there).
+  // The active I2S RX stereo pairs reserve their data pins.
   const cfg = snapshot.inputConfig;
   const activePairs = Math.floor((cfg.i2sInputChannels || 0) / 2);
   for (let p = 0; p < activePairs && p < cfg.i2sRxPins.length; p++) {
@@ -135,7 +131,7 @@ export function availablePinsFor(
   platform: PlatformType, snapshot: DspSnapshot, selfPin: number, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
 ): PinCandidate[] {
   const uses = pinUses(snapshot, ctrl);
-  return assignablePins(platform, snapshot.platform.channelModel).map((pin) => {
+  return assignablePins(platform).map((pin) => {
     const use = pin === selfPin ? undefined : uses.get(pin);
     return { pin, usedBy: use?.label ?? null, role: use?.role ?? null, adc: CS_ADC_PINS.includes(pin) };
   });
@@ -144,31 +140,29 @@ export function availablePinsFor(
 export function validBckPins(
   platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
 ): number[] {
-  const channelModel = snapshot.platform.channelModel;
   const inUse = pinsInUse(snapshot, ctrl);
   const free = (p: number) => {
     const u = inUse.get(p);
     return u == null || u === PIN_LABEL.bck || u === PIN_LABEL.lrclk;
   };
-  return assignablePins(platform, channelModel).filter(
-    (p) => isAssignablePin(platform, p + 1, channelModel) && free(p) && free(p + 1),
+  return assignablePins(platform).filter(
+    (p) => isAssignablePin(platform, p + 1) && free(p) && free(p + 1),
   );
 }
 
-// Slave-mode BCK candidates (fw V21+, split clock-pin mode): same adjacency
+// Slave-mode BCK candidates (split clock-pin mode): same adjacency
 // rule as validBckPins, but a pin currently holding the slave pair is free
 // for re-selection (not the master pair -- that's still reserved).
 export function validBckPinsSlave(
   platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
 ): number[] {
-  const channelModel = snapshot.platform.channelModel;
   const inUse = pinsInUse(snapshot, ctrl);
   const free = (p: number) => {
     const u = inUse.get(p);
     return u == null || u === PIN_LABEL.bckSlave || u === PIN_LABEL.lrclkSlave;
   };
-  return assignablePins(platform, channelModel).filter(
-    (p) => isAssignablePin(platform, p + 1, channelModel) && free(p) && free(p + 1),
+  return assignablePins(platform).filter(
+    (p) => isAssignablePin(platform, p + 1) && free(p) && free(p + 1),
   );
 }
 
@@ -180,12 +174,11 @@ export function validBckPinsSlave(
 export function validUartTxPins(
   platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
 ): number[] {
-  const channelModel = snapshot.platform.channelModel;
   const inUse = pinsInUse(snapshot, ctrl);
   const free = (p: number) => inUse.get(p) == null;
-  return assignablePins(platform, channelModel).filter(
+  return assignablePins(platform).filter(
     (p) => p % 4 === 0
-      && isAssignablePin(platform, p + 1, channelModel)
+      && isAssignablePin(platform, p + 1)
       && isValidUartPinPair(p, p + 1)
       && free(p) && free(p + 1),
   );
@@ -198,12 +191,11 @@ export function validI2cSdaPins(
   platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
   blockedInstance: number | null = null,
 ): number[] {
-  const channelModel = snapshot.platform.channelModel;
   const inUse = pinsInUse(snapshot, ctrl);
   const free = (p: number) => inUse.get(p) == null;
-  return assignablePins(platform, channelModel).filter(
+  return assignablePins(platform).filter(
     (p) => p % 2 === 0
-      && isAssignablePin(platform, p + 1, channelModel)
+      && isAssignablePin(platform, p + 1)
       && isValidI2cPinPair(p, p + 1)
       && i2cInstance(p) !== blockedInstance
       && free(p) && free(p + 1),
@@ -226,9 +218,8 @@ export function csDisplayI2cInstance(cs: CtrlIfaceConfigs['cs']): number | null 
 function displayPinCandidates(
   platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs, parity: 0 | 1, matchesInstance: (p: number) => boolean,
 ): number[] {
-  const channelModel = snapshot.platform.channelModel;
   const inUse = pinsInUse(snapshot, ctrl);
-  return assignablePins(platform, channelModel).filter(
+  return assignablePins(platform).filter(
     (p) => p % 2 === parity && inUse.get(p) == null && matchesInstance(p),
   );
 }
@@ -262,12 +253,11 @@ export interface PinPickerCell {
 export function pickerCells(
   platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES, selfPin?: number,
 ): PinPickerCell[] {
-  const channelModel = snapshot.platform.channelModel;
   const uses = pinUses(snapshot, ctrl);
   const cells: PinPickerCell[] = [];
   for (let pin = 0; pin <= maxGpio(platform); pin++) {
     const adc = CS_ADC_PINS.includes(pin);
-    if (!isAssignablePin(platform, pin, channelModel)) {
+    if (!isAssignablePin(platform, pin)) {
       cells.push({ pin, adc, use: null, reserved: true, selectable: false, reason: 'reserved' });
       continue;
     }
@@ -288,13 +278,12 @@ export function pickerCellsFrom(
   platform: PlatformType, snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES,
   selectablePins: readonly number[], selfPin?: number, blockedReason?: (pin: number) => string,
 ): PinPickerCell[] {
-  const channelModel = snapshot.platform.channelModel;
   const uses = pinUses(snapshot, ctrl);
   const selectableSet = new Set(selectablePins);
   const cells: PinPickerCell[] = [];
   for (let pin = 0; pin <= maxGpio(platform); pin++) {
     const adc = CS_ADC_PINS.includes(pin);
-    if (!isAssignablePin(platform, pin, channelModel)) {
+    if (!isAssignablePin(platform, pin)) {
       cells.push({ pin, adc, use: null, reserved: true, selectable: false, reason: 'reserved' });
       continue;
     }

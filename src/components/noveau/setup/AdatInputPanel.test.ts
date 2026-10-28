@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
-import { ChannelFamily, AudioInputSource, AdatInputLockState } from '@/domain';
+import { AudioInputSource, AdatInputLockState } from '@/domain';
 
 const stageAdatInputEnabled = vi.fn();
 const stageAdatInputPin = vi.fn();
@@ -16,11 +16,9 @@ vi.mock('@/runtime', () => ({
 
 import AdatInputPanel from './AdatInputPanel.svelte';
 
-// channelModel: Unified matches every real device that can carry ADAT (V17+,
-// RP2350) -- a Legacy/V10 fixture would incorrectly block GPIO 12.
 function makeSnap(over: { inputConfig?: object; adat?: object; dacHwMute?: object } = {}) {
   return {
-    platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8, channelModel: ChannelFamily.Unified },
+    platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
     outputPins: [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 0 },
     inputConfig: {
@@ -41,7 +39,7 @@ function makeSession(o: {
   stagedSource?: number;
 } = {}) {
   return {
-    device: { capabilities: { features: { pinResetDefault: true, adatInput: true } } },
+    device: { capabilities: { features: { adatInput: true } } },
     telemetry: { adatInputStatus: o.adatInputStatus ?? null },
     mirror: { current: o.snap ?? makeSnap() },
     ctrlIfaces: { uart: null, i2c: null, status: null },

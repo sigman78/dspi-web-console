@@ -34,29 +34,9 @@ describe('seedTypeChange', () => {
 });
 
 describe('offeredTypes', () => {
-  it('offers only the base PEQ types when firstOrderEq is off', () => {
-    expect(Filter.offeredTypes({ firstOrderEq: false })).toEqual(Filter.TYPE_ORDER);
-  });
-
-  it('appends the first-order types when firstOrderEq is on', () => {
-    expect(Filter.offeredTypes({ firstOrderEq: true })).toEqual([...Filter.TYPE_ORDER, ...Filter.FIRST_ORDER_TYPES]);
-  });
-
-  it('never offers Linkwitz Transform, even with every feature on', () => {
-    expect(Filter.offeredTypes({ firstOrderEq: true, firstOrderLpHp: true })).not.toContain(Filter.FilterType.LinkwitzTransform);
-  });
-
-  it('withholds the first-order low/high pass types until firstOrderLpHp is on', () => {
-    expect(Filter.offeredTypes({ firstOrderEq: true })).not.toEqual(expect.arrayContaining(Filter.FIRST_ORDER_LP_HP_TYPES));
-    expect(Filter.offeredTypes({ firstOrderEq: true, firstOrderLpHp: false })).not.toEqual(expect.arrayContaining(Filter.FIRST_ORDER_LP_HP_TYPES));
-  });
-
-  it('appends the first-order low/high pass types when firstOrderLpHp is on, independent of firstOrderEq', () => {
-    expect(Filter.offeredTypes({ firstOrderEq: true, firstOrderLpHp: true }))
-      .toEqual([...Filter.TYPE_ORDER, ...Filter.FIRST_ORDER_TYPES, ...Filter.FIRST_ORDER_LP_HP_TYPES]);
-    // A device could in principle report firstOrderLpHp without firstOrderEq
-    // (they're independent capability gates) -- the LP/HP types still show up.
-    expect(Filter.offeredTypes({ firstOrderEq: false, firstOrderLpHp: true }))
-      .toEqual([...Filter.TYPE_ORDER, ...Filter.FIRST_ORDER_LP_HP_TYPES]);
+  it('offers the base, first-order and first-order LP/HP types, never Linkwitz Transform', () => {
+    const types = Filter.offeredTypes();
+    expect(types).toEqual([...Filter.TYPE_ORDER, ...Filter.FIRST_ORDER_TYPES, ...Filter.FIRST_ORDER_LP_HP_TYPES]);
+    expect(types).not.toContain(Filter.FilterType.LinkwitzTransform);
   });
 });

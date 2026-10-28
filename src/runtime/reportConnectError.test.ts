@@ -8,14 +8,14 @@ beforeEach(() => resetAppState());
 
 describe('reportConnectError', () => {
   it('flags an UnsupportedFirmware error so the UI can show the upgrade prompt', () => {
-    reportConnectError(mintConnId(), new UnsupportedFirmware('1.1.2'));
+    reportConnectError(mintConnId(), new UnsupportedFirmware('1.1.2', '10'));
     expect(connection.phase).toBe('errored');
     expect(connection.errorKind).toBe('unsupported-firmware');
     expect(connection.error).toContain('1.1.2');
   });
 
   it('flags an UnsupportedDevicePacket (truncated payload) for the same upgrade prompt', () => {
-    reportConnectError(mintConnId(), new UnsupportedDevicePacket('1.1.4', 2848, 2960));
+    reportConnectError(mintConnId(), new UnsupportedDevicePacket('1.1.5', 5800, 5944));
     expect(connection.phase).toBe('errored');
     expect(connection.errorKind).toBe('unsupported-firmware');
     expect(connection.error).toContain('incomplete parameter packet');

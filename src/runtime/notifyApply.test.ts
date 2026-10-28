@@ -15,7 +15,7 @@ function ev(offset: number, value: number[]): ParamChangedEvent {
 // Install a ready session and hydrate its MirrorState, which applyParamChange
 // reads via the session.
 async function setup(): Promise<{ session: ReadySession; mir: ReadySession['mirror'] }> {
-  const mock = new MockTransport({ platform: 'rp2350', wireVersion: 10, fwVersion: { major: 1, minor: 1, patch: 4 } });
+  const mock = new MockTransport({ platform: 'rp2350' });
   const dev = await DspDevice.create(mock);
   const session = makeReadySession(dev);
   dispatch({ t: 'synced', id: mintConnId(), session });

@@ -81,7 +81,7 @@ describe('DspDevice — liveness & smoke (HIL)', () => {
     const numCh = device.hardware.totalChannelCount;
 
     const s = await device.getSystemStatus();
-    // parseSystemStatus always allocates a V16-max-width (17) peaks array,
+    // parseSystemStatus always allocates a max-width (17) peaks array,
     // zero-filled past the device's own channel count -- fixed regardless
     // of the connected generation.
     expect(s.peaks.length).toBe(17);

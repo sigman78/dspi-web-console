@@ -14,7 +14,6 @@
   const snap = $derived(s.mirror.current);
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
   const ctrlPins = $derived(Runtime.stagedCtrlPins(s));
-  const canResetPins = $derived(s.device.capabilities.features.pinResetDefault);
 
   function effOutputType(slot: number): number {
     return s.staging.valueOf(`outputType:${slot}`, snap?.i2s?.outputSlotTypes[slot] ?? OutputSlotType.Spdif);
@@ -78,9 +77,7 @@
 
 <Panel title="OUTPUTS">
   {#snippet right()}
-    {#if canResetPins}
-      <button class="chip icon" title="Reset to defaults" aria-label="Reset output pins to defaults" onclick={stageOutputPinsToDefault}>↺</button>
-    {/if}
+    <button class="chip icon" title="Reset to defaults" aria-label="Reset output pins to defaults" onclick={stageOutputPinsToDefault}>↺</button>
     <SaveOutputConfigButton />
   {/snippet}
   {#if snap}

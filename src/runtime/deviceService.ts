@@ -20,11 +20,10 @@ import { fetchPresetInfo, invalidatePresetCache } from './presets';
 // sessions (one active, one dormant) must be able to sync concurrently.
 const inflightSync = new WeakMap<ReadySession, Promise<void>>();
 
-// Eager + lazy entry point for the V16 external control interfaces, mirroring
+// Eager + lazy entry point for the external control interfaces, mirroring
 // fetchPresetInfo: idempotent once populated, never throws (errors land in
-// lastFetchError). No-ops on a device that lacks the feature (V10).
+// lastFetchError).
 export async function fetchCtrlIfaceInfo(s: ReadySession): Promise<void> {
-  if (!s.device.capabilities.features.controlInterfaces) return;
   if (s.ctrlIfaces.uart != null) return;
   const d = s.device;
   s.ctrlIfaces.busy = true;
@@ -184,7 +183,6 @@ export async function readCsAll(
 // panel stays gated) with an explanatory lastFetchError instead of trying to
 // render a v1 device against v2+ assumptions.
 export async function fetchControlSurfaces(s: ReadySession): Promise<void> {
-  if (!s.device.capabilities.features.controlSurfaces) return;
   if (s.controlSurfaces.caps != null) return;
   const d = s.device;
   s.controlSurfaces.busy = true;
@@ -337,8 +335,7 @@ export async function wireUpConnection(
     // sources list) treat a null count as "show every possible input", so
     // without this they'd paint full-width and then snap to the real width when
     // the first status poll lands a frame later -- the visible "all channels ->
-    // actual config" flash. V10 reports null here, which is correctly "show all"
-    // (its true fixed width). Best-effort: on failure the first poll fills it in
+    // actual config" flash. Best-effort: on failure the first poll fills it in
     // shortly, i.e. the prior behaviour, so a failed seed never blocks connect.
     try {
       const status = await session.queue.run(() => device.getSystemStatus());

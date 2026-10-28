@@ -97,7 +97,7 @@ function coeffsFor(type: FilterType, f: number, q: number, gainDb: number, fs: n
     // filterCurve to contribute 0 dB from this band, which is correct.
     return null;
   }
-  // First-order shelves (V16+), firmware-exact forms (dsp_pipeline.c):
+  // First-order shelves, firmware-exact forms (dsp_pipeline.c):
   // LowShelf1 has DC gain A^2 and unity at Nyquist; HighShelf1 the mirror.
   if (type === FilterType.LowShelf1) {
     const A = Math.pow(10, gainDb / 40);
@@ -204,7 +204,7 @@ function sectionsFor(
 }
 
 // Sum the dB response of every (non-Flat) band, plus the preamp. Crossover
-// bands (output channels, V16+) contribute their full section cascade.
+// bands (output channels) contribute their full section cascade.
 // Pure function: same input -> same output. Length is always BODE_BINS.
 export function filterCurve(
   bands: ReadonlyArray<FilterParams>,

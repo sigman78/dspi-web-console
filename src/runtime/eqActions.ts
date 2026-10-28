@@ -72,7 +72,7 @@ export function setBandBypass(s: ReadySession, channel: Domain.ChannelId, band: 
   );
 }
 
-// Crossover bands (V16+, output channels only). Same lane as the PEQ verbs;
+// Crossover bands (output channels only). Same lane as the PEQ verbs;
 // the device wrapper owns the 20..23 wire band-index offset. Q and gain are
 // unused by crossover types but ride the packet for wire parity.
 export function setXoverBand(s: ReadySession, channel: Domain.ChannelId, band: number, filter: Domain.FilterParams): void {

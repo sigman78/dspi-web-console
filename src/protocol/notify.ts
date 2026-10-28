@@ -22,12 +22,12 @@ export const NotifyEventId = {
   ParamChanged:    0x02,
   BulkInvalidated: 0x03,
   PresetLoaded:    0x04,
-  InputFormat:     0x05,   // V16+: active input channel count changed
-  SiggenState:     0x07,   // V16+: test signal generator start/stop/completion
-  AdatState:       0x08,   // V17+: ADAT bulk-output stream state changed (RP2350)
-  CsIrLearn:       0x0A,   // V16+ (fw 1.1.5 caps v3): IR learn armed -> done/timeout
-  I2sSlaveState:   0x09,   // V21+: I2S slave-clock lock state changed
-  AdatInputState:  0x0B,   // V24+: ADAT input lock state changed
+  InputFormat:     0x05,   // active input channel count changed
+  SiggenState:     0x07,   // test signal generator start/stop/completion
+  AdatState:       0x08,   // ADAT bulk-output stream state changed (RP2350)
+  CsIrLearn:       0x0A,   // (CS caps v3): IR learn armed -> done/timeout
+  I2sSlaveState:   0x09,   // I2S slave-clock lock state changed
+  AdatInputState:  0x0B,   // ADAT input lock state changed
 } as const;
 
 export const ParamSource = {
@@ -66,10 +66,10 @@ export type NotifyEvent =
   // completed arm, none on cancel. state 2 = done (protocol/code valid), 3 =
   // timeout (protocol/code 0).
   | { kind: 'csIrLearn';       seq: number; state: number; protocol: number; code: number }
-  // I2S slave-clock lock state changed (V21+). rateHz is the detected input
+  // I2S slave-clock lock state changed. rateHz is the detected input
   // rate, 0 until state is LOCKED.
   | { kind: 'i2sSlaveState';   seq: number; state: number; rateHz: number }
-  // ADAT input lock state changed (V24+). rateHz is the detected input rate,
+  // ADAT input lock state changed. rateHz is the detected input rate,
   // 0 unless locked. Silent no-op for now -- telemetry wiring lands with the
   // ADAT input UI branch.
   | { kind: 'adatInputState';  seq: number; state: number; rateHz: number; clockMode: number };

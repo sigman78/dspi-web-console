@@ -1,4 +1,4 @@
-// V22 (Linkwitz Transform qp sidecar) device-facade coverage: the 18-byte
+// Linkwitz Transform (qp sidecar) device-facade coverage: the 18-byte
 // SetEqParam write for LT bands, the param-5 GetEqParam qp read, and the
 // setFilter/getFilter round trip against the MockTransport synthesis.
 
@@ -10,10 +10,8 @@ import { WireCmd } from '@/protocol';
 import { ChannelId, FilterType } from '@/domain';
 import type { DspTransport } from '@/transport/DspTransport';
 
-const FW_115 = { major: 1, minor: 1, patch: 5 };
-
-async function v22Device(): Promise<DspDevice> {
-  return DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: 22, fwVersion: FW_115 }));
+async function ltDevice(): Promise<DspDevice> {
+  return DspDevice.create(new MockTransport({ platform: 'rp2350' }));
 }
 
 describe('DspDevice — setFilter LT write shape', () => {
@@ -64,9 +62,9 @@ describe('DspDevice — setFilter LT write shape', () => {
   });
 });
 
-describe('DspDevice — LT round trip against MockTransport (V22+)', () => {
+describe('DspDevice — LT round trip against MockTransport', () => {
   it('setFilter -> getFilter cross-validates qp through the granular multi-read protocol', async () => {
-    const d = await v22Device();
+    const d = await ltDevice();
     await d.setFilter(ChannelId.In1L, 2, {
       type: FilterType.LinkwitzTransform, bypass: false, frequency: 42, q: 0.65, gain: 55, qp: 2,
     });
@@ -79,24 +77,19 @@ describe('DspDevice — LT round trip against MockTransport (V22+)', () => {
   });
 
   it('omits qp from getFilter for a non-LT band', async () => {
-    const d = await v22Device();
+    const d = await ltDevice();
     await d.setFilter(ChannelId.In1L, 2, { type: FilterType.Peaking, bypass: false, frequency: 1000, q: 1, gain: 3 });
     const got = await d.getFilter(ChannelId.In1L, 2);
     expect(got.qp).toBeUndefined();
   });
 
   it('re-typing a band away from LT forces its stored qp to 0', async () => {
-    const d = await v22Device();
+    const d = await ltDevice();
     await d.setFilter(ChannelId.In1L, 2, {
       type: FilterType.LinkwitzTransform, bypass: false, frequency: 42, q: 0.65, gain: 55, qp: 3,
     });
     await d.setFilter(ChannelId.In1L, 2, { type: FilterType.Peaking, bypass: false, frequency: 500, q: 1, gain: 0 });
     const bulk = await d.getAllParams();
     expect(bulk.filters[0][2].qpRaw).toBe(0);
-  });
-
-  it('exposes linkwitzTransform as a V22+ capability', async () => {
-    const d = await v22Device();
-    expect(d.capabilities.features.linkwitzTransform).toBe(true);
   });
 });

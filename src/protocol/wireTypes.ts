@@ -2,40 +2,44 @@
 // C struct names are mirrored minus the redundant `Wire` prefix (the namespace
 // supplies it): firmware `WireBandParams` <-> `Wire.BandParams`.
 //
-// Layout summary (V10, total 2960 bytes):
-//   off    bytes  C struct                    section
-//     0      16   WireHeader                  required
-//    16      16   WireGlobalParams            required
-//    32      16   WireCrossfeedParams         required
-//    48      16   WireLegacyChannels          required (ignored)
-//    64      44   WireChannelDelays           required
-//   108     144   WireCrosspoint  x 2 x 9     required
-//   252     108   WireOutputChannel x 9       required
-//   360       8   WirePinConfig               required
-//   368    2112   WireBandParams x 11 x 12    required
-//  2480     352   WireChannelNames            required
-//  2832      16   WireI2SConfig               V3+, optional
-//  2848      16   WireLevellerConfig          V4+, optional
-//  2864      16   WirePreampConfig            V6+, optional
-//  2880      16   WireMasterVolume            V6+, optional
-//  2896      16   WireInputConfig             V7+, optional
-//  2912      16   WireLgSoundSync             V8+, optional
-//  2928      16   WireUserVolume              V9+, optional
-//  2944      16   WireDacHwMute               V10+, optional
+// Layout summary (V28 floor, total 5944 bytes; V29+ appends sections at the end):
+//   off    bytes  C struct
+//     0      16   WireHeader
+//    16      16   WireGlobalParams
+//    32      16   WireCrossfeedParams
+//    48      16   WireLegacyChannels          (ignored)
+//    64      68   WireChannelDelays           x 17
+//   132     576   WireCrosspoint  x 8 x 9
+//   708     108   WireOutputChannel x 9
+//   816       8   WirePinConfig
+//   824    3264   WireBandParams x 17 x 12
+//  4088     544   WireChannelNames            x 17 x 32
+//  4632      16   WireI2SConfig
+//  4648      20   WireLevellerConfig
+//  4668      32   WirePreampConfig            x 8
+//  4700      16   WireMasterVolume
+//  4716      16   WireInputConfig
+//  4732      16   WireLgSoundSync
+//  4748      16   WireUserVolume
+//  4764      16   WireDacHwMute
+//  4780    1088   WireBandParams x 17 x 4     crossover
+//  5868       8   WireAdatConfig
+//  5876      24   WirePsybassParams
+//  5900      44   WireUpmixParams
+//  5944                                       end of V28
+// V29 SubharmParams (16), V30 SubharmParamsExt (20), V31 TubeParams (48) and
+// V32 LimiterParams (108) follow, in that order.
 
 import { Codec, type BinCodec } from '@/utils';
 
 const { u8, i8, u16, u32, i16, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
 
-// Wire-format dimensions, sized to the largest platform (RP2350), per
-// channel-model generation. V10 (fw 1.1.4): 2 fixed inputs, 11 channels.
-// V16 (fw 1.1.5, unified channel model): 8 inputs, 17 channels, plus the
-// crossover section. `Const` keeps the V10 values (it also names the
-// generation-invariant dimensions); `Const16` overrides the ones that grew.
+// Wire-format dimensions, sized to the largest platform (RP2350).
 export const Const = {
-  NUM_CHANNELS:        11,  // WIRE_MAX_CHANNELS (V10)
+  NUM_CHANNELS:        17,  // WIRE_MAX_CHANNELS (8 in + 9 out)
   NUM_OUTPUTS:          9,  // WIRE_MAX_OUTPUT_CHANNELS
-  NUM_INPUTS:           2,  // WIRE_MAX_INPUT_CHANNELS (V10)
+  NUM_INPUTS:           8,  // WIRE_MAX_INPUT_CHANNELS
+  XOVER_BANDS:          4,  // WIRE_MAX_XOVER_BANDS
   BANDS_MAX:           12,  // WIRE_MAX_BANDS
   NUM_PIN_OUTPUTS:      5,  // WIRE_MAX_PIN_OUTPUTS
   CHANNEL_NAME_LEN:    32,  // WIRE_NAME_LEN
@@ -43,24 +47,12 @@ export const Const = {
   SERIAL_LEN:          32,  // GetSerial response length
   // Sentinel pin byte accepted by every single-pin SET command (output data,
   // I2S BCK/MCK, S/PDIF RX, I2S RX): "restore this target's platform default"
-  // (index/pair/role-aware). fw config.h PIN_RESET_TO_DEFAULT; V25+ only, see
-  // capabilities.ts's pinResetDefault.
+  // (index/pair/role-aware). fw config.h PIN_RESET_TO_DEFAULT.
   PIN_RESET_TO_DEFAULT: 0xFF,
 } as const;
 
-export const Const16 = {
-  NUM_CHANNELS:        17,  // WIRE_MAX_CHANNELS (V16: 8 in + 9 out)
-  NUM_INPUTS:           8,  // WIRE_MAX_INPUT_CHANNELS (V16)
-  XOVER_BANDS:          4,  // WIRE_MAX_XOVER_BANDS
-} as const;
-
-// Wire array dimensions for a given format version. Versions above the
-// known ceiling parse with the newest known shape.
-export function dimsForVersion(v: number): { numCh: number; numIn: number } {
-  return v >= 16
-    ? { numCh: Const16.NUM_CHANNELS, numIn: Const16.NUM_INPUTS }
-    : { numCh: Const.NUM_CHANNELS,   numIn: Const.NUM_INPUTS };
-}
+// Oldest wire version the console talks to (fw 1.1.5 release).
+export const MIN_WIRE_VERSION = 28;
 
 // Section 1: header (16 B)
 export const Header = struct({
@@ -76,19 +68,9 @@ export const Header = struct({
   _reserved:        reserved(4),
 });
 
-// Section 2: global params (16 B)
+// Section 2: global params (16 B). Bit k of the loudness mask = loudness
+// processes output channel k.
 export const GlobalParams = struct({
-  preampDb:             f32,
-  bypass:               bool8,
-  loudnessEnabled:      bool8,
-  _pad:                 reserved(2),
-  loudnessRefSpl:       f32,
-  loudnessIntensityPct: f32,
-});
-
-// Section 2, V19 shape: the reserved pad becomes the per-output loudness mask.
-// Bit k = loudness processes output channel k. Same 16-byte size as GlobalParams.
-export const GlobalParams19 = struct({
   preampDb:             f32,
   bypass:               bool8,
   loudnessEnabled:      bool8,
@@ -97,21 +79,9 @@ export const GlobalParams19 = struct({
   loudnessIntensityPct: f32,
 });
 
-// Section 3: crossfeed (16 B)
+// Section 3: crossfeed (16 B). Bit p of the pair mask = crossfeed runs on
+// output pair p (outputs 2p/2p+1); the mono PDM sub is excluded.
 export const CrossfeedParams = struct({
-  enabled:    bool8,
-  preset:     u8,
-  itd:        bool8,
-  _pad:       reserved(1),
-  freq:       f32,
-  feedDb:     f32,
-  _reserved2: reserved(4),
-});
-
-// Section 3, V20 shape: the reserved byte becomes the output-pair mask. Bit p =
-// crossfeed runs on output pair p (outputs 2p/2p+1); the mono PDM sub is
-// excluded. Same 16-byte size as CrossfeedParams.
-export const CrossfeedParams20 = struct({
   enabled:         bool8,
   preset:          u8,
   itd:             bool8,
@@ -124,7 +94,7 @@ export const CrossfeedParams20 = struct({
 // Section 4: legacy gain/mute (16 B, ignored on read; zero on write)
 export const LegacyChannels: BinCodec<undefined> = reserved(16);
 
-// Section 5: per-channel delays (44 B)
+// Section 5: per-channel delays (68 B)
 export const ChannelDelays = arr(f32, Const.NUM_CHANNELS);
 
 // Section 6: matrix crosspoint (8 B)
@@ -151,23 +121,11 @@ export const PinConfig = struct({
   _pad:          reserved(2),
 });
 
-// Section 9: EQ band parameters (16 B). Byte 1 was `reserved` through V9;
-// V10 firmware reinterprets it as `bypass` (1 = band excluded from the
-// response). Decoding it on older firmware is harmless -- it reads 0.
+// Section 9: EQ band parameters (16 B). bypass = 1 excludes the band from the
+// response. qp is the Linkwitz Transform sidecar (u16 LE, round(Qp*512);
+// 0 = 0.707 default), meaningful only for type == 11 (LINKWITZ_TRANSFORM);
+// firmware forces it to 0 for every other type.
 export const BandParams = struct({
-  type:      u8,
-  bypass:    u8,
-  _pad:      reserved(2),
-  frequency: f32,
-  q:         f32,
-  gain:      f32,
-});
-
-// Section 9, V22 shape: bytes 2-3 (previously reserved) carry the Linkwitz
-// Transform qp sidecar (u16 LE, round(Qp*512); 0 = 0.707 default) when
-// type == 11 (LINKWITZ_TRANSFORM); firmware forces it to 0 for every other
-// type. Same 16-byte size as BandParams.
-export const BandParamsQp = struct({
   type:      u8,
   bypass:    u8,
   qp:        u16,
@@ -176,13 +134,11 @@ export const BandParamsQp = struct({
   gain:      f32,
 });
 
-// Section 10: channel names (352 B)
+// Section 10: channel names (544 B)
 export const ChannelNames = arr(nulStr(Const.CHANNEL_NAME_LEN), Const.NUM_CHANNELS);
 
-// Section 11: I2S config (16 B, V3+, optional). clockPinModeP1/bckPinSlave
-// (fw V21+ i2s slave-clock pins) claim two of the reserved bytes; NOT
-// version-gated -- 0 is the safe absent value on every pre-V21 packet, so one
-// codec serves every generation.
+// Section 11: I2S config (16 B). clockPinModeP1/bckPinSlave carry the I2S
+// slave-clock pins; 0 is the absent value.
 export const I2SConfig = struct({
   outputSlotTypes:      arr(u8, Const.NUM_SPDIF_INSTANCES),
   bckPin:               u8,
@@ -194,21 +150,8 @@ export const I2SConfig = struct({
   _reserved:            reserved(6),
 });
 
-// Section 12: leveller (16 B, V4+, optional)
+// Section 12: leveller (20 B). detectorMask/applyMask: bit k = input channel k.
 export const LevellerConfig = struct({
-  enabled:   bool8,
-  speed:     u8,
-  lookahead: bool8,
-  _pad:      reserved(1),
-  amount:    f32,
-  maxGainDb: f32,
-  gateDb:    f32,
-});
-
-// Section 12, V18 shape: the 16-byte V4 leveller + detector/apply channel masks
-// (+4 B). detectorMask/applyMask: bit k = input channel k. Interior grow, so a
-// V18 packet shifts every following section by +4 bytes.
-export const LevellerConfig18 = struct({
   enabled:      bool8,
   speed:        u8,
   lookahead:    bool8,
@@ -221,7 +164,7 @@ export const LevellerConfig18 = struct({
   _pad2:        reserved(2),
 });
 
-// Live leveller channel masks (fw V18+): payload of REQ_SET/GET_LEVELLER_MASKS
+// Live leveller channel masks: payload of REQ_SET/GET_LEVELLER_MASKS
 // (0xDE/0xDF), 2 bytes [detector_mask, apply_mask]. Distinct from the bulk
 // section above; carried as a standalone command so masks can be edited live.
 export const LevellerMasks = struct({
@@ -229,30 +172,23 @@ export const LevellerMasks = struct({
   apply:    u8,
 });
 
-// Section 13: per-channel preamp (V6+, optional). Full 16-byte on-wire
-// footprint: 8 B data + 8 B reserved. Models the full section size so
-// sequential reads/writes don't require absolute seeks.
+// Section 13: per-input preamp (32 B), one f32 per input.
 export const PreampConfig = struct({
-  preampDb:  arr(f32, Const.NUM_INPUTS),
-  _reserved: reserved(8),
+  preampDb: arr(f32, Const.NUM_INPUTS),
 });
 
-// Section 13, V16 shape: 8 input preamps, 32 bytes, no reserved pad.
-export const PreampConfig16 = struct({
-  preampDb: arr(f32, Const16.NUM_INPUTS),
-});
-
-// Section 14: master volume (V6+, optional). Full 16-byte on-wire
-// footprint: 4 B data + 12 B reserved.
+// Section 14: master volume. Full 16-byte on-wire footprint: 4 B data +
+// 12 B reserved.
 export const MasterVolume = struct({
   masterVolumeDb: f32,
   _reserved:      reserved(12),
 });
 
-// Section 15: input config (16 B, V7+, optional). input_source: 0=USB,
-// 1=S/PDIF, 2=I2S (V16+). Bytes 2..10 are claimed from the reserved pad with
-// a "0 = absent" convention; on an older packet they read as zeros and
-// round-trip unchanged, so one codec serves every generation.
+// Section 15: input config (16 B). input_source: 0=USB, 1=S/PDIF, 2=I2S.
+// The fw 1.1.5 release relaid the interior out for the fourth selectable
+// S/PDIF input: spdifRxPinExt holds the SPDIF 2/3/4 GPIOs (0 = absent/
+// keep-live), spdifRxEnabledExtP1 is mask+1 (0 = absent, else bit0=SPDIF2,
+// bit1=SPDIF3, bit2=SPDIF4), and no reserved byte remains.
 export const InputConfig = struct({
   inputSource:          u8,
   spdifRxPin:           u8,
@@ -260,68 +196,15 @@ export const InputConfig = struct({
   i2sInputRate:         u8,            // enum: 0=44100, 1=48000, 2=96000
   i2sInputChannels:     u8,            // active I2S input channels 2/4/6/8 (0 = absent)
   i2sRxPinExt:          arr(u8, 3),    // RX data GPIOs for stereo pairs 1..3 (0 = unset)
-  spdifRxPinExt:        arr(u8, 2),    // GPIOs for SPDIF2/3 (fw 1.1.5+; 0 = absent/keep-live)
-  spdifRxEnabledExtP1:  u8,            // enable mask + 1; 0 = absent, else (byte-1): bit0=SPDIF2, bit1=SPDIF3
-  _reserved:            reserved(5),
-});
-
-// Section 15, V21 shape: the first reserved byte becomes the I2S clock role.
-// 0 = master (legacy default), 1 = slave. Same 16-byte size as InputConfig.
-export const InputConfig21 = struct({
-  inputSource:          u8,
-  spdifRxPin:           u8,
-  i2sRxPin:             u8,
-  i2sInputRate:         u8,
-  i2sInputChannels:     u8,
-  i2sRxPinExt:          arr(u8, 3),
-  spdifRxPinExt:        arr(u8, 2),
-  spdifRxEnabledExtP1:  u8,
-  i2sClockMode:         u8,
-  _reserved:            reserved(4),
-});
-
-// Section 15, V24 shape: bytes 12-14 (previously reserved) carry the ADAT
-// input config -- adat_input_pin (GPIO, 0 = absent/keep-live),
-// adat_input_enabled_p1 (0 absent / 1 disabled / 2 enabled), and
-// adat_input_clock_mode_p1 (0 absent / 1 master / 2 slave). Same 16-byte
-// size as InputConfig21.
-export const InputConfig24 = struct({
-  inputSource:          u8,
-  spdifRxPin:           u8,
-  i2sRxPin:             u8,
-  i2sInputRate:         u8,
-  i2sInputChannels:     u8,
-  i2sRxPinExt:          arr(u8, 3),
-  spdifRxPinExt:        arr(u8, 2),
-  spdifRxEnabledExtP1:  u8,
-  i2sClockMode:         u8,
-  adatInputPin:         u8,
-  adatInputEnabledP1:   u8,
-  adatInputClockModeP1: u8,
-  _reserved:            reserved(1),
-});
-
-// Section 15, V28 shape: a full interior relayout to fit the fourth
-// selectable S/PDIF input. spdifRxPinExt grows from 2 to 3 entries (SPDIF
-// 2/3/4 GPIOs, 0 = absent/keep-live), pushing every following field one byte
-// later; spdifRxEnabledExtP1's mask gains bit2 = SPDIF4. No reserved byte
-// remains. Same 16-byte size as InputConfig24.
-export const InputConfig28 = struct({
-  inputSource:          u8,
-  spdifRxPin:           u8,
-  i2sRxPin:             u8,
-  i2sInputRate:         u8,
-  i2sInputChannels:     u8,
-  i2sRxPinExt:          arr(u8, 3),
   spdifRxPinExt:        arr(u8, 3),
   spdifRxEnabledExtP1:  u8,
-  i2sClockMode:         u8,
-  adatInputPin:         u8,
-  adatInputEnabledP1:   u8,
-  adatInputClockModeP1: u8,
+  i2sClockMode:         u8,            // 0 = master, 1 = slave
+  adatInputPin:         u8,            // GPIO, 0 = absent/keep-live
+  adatInputEnabledP1:   u8,            // 0 absent / 1 disabled / 2 enabled
+  adatInputClockModeP1: u8,            // 0 absent / 1 master / 2 slave
 });
 
-// Section 16: LG Sound Sync (16 B, V8+, optional). Only `enabled` is host-
+// Section 16: LG Sound Sync (16 B). Only `enabled` is host-
 // configurable through bulk apply; present/volume/muted are runtime state.
 export const LgSoundSync = struct({
   enabled:   bool8,
@@ -331,14 +214,14 @@ export const LgSoundSync = struct({
   _reserved: reserved(12),
 });
 
-// Section 17: user volume (16 B, V9+, optional). Separate from master-volume.
+// Section 17: user volume (16 B). Separate from master-volume.
 export const UserVolume = struct({
   volumeDb:  f32,
   mute:      bool8,
   _reserved: reserved(11),
 });
 
-// Section 18: DAC hardware mute config (16 B, V10+, optional).
+// Section 18: DAC hardware mute config (16 B).
 export const DacHwMute = struct({
   enabled:    bool8,
   activeLow:  bool8,
@@ -349,7 +232,7 @@ export const DacHwMute = struct({
   _reserved:  reserved(8),
 });
 
-// Section 20: ADAT lightpipe output config (8 B, V17+; RP2350 only). enabled/pin
+// Section 20: ADAT lightpipe output config (8 B; RP2350 only). enabled/pin
 // are persisted intent; pin == 0 means the platform default. Zeroed/ignored on
 // RP2040. Appended at the very end of the packet, after the crossover section.
 export const AdatConfig = struct({
@@ -358,8 +241,8 @@ export const AdatConfig = struct({
   _reserved: reserved(6),
 });
 
-// Section 21: psychoacoustic bass config (24 B, V23+; RP2350 only, but
-// structurally present on every V23+ packet). Appended after AdatConfig.
+// Section 21: psychoacoustic bass config (24 B; RP2350 only, but
+// structurally present on every packet). Appended after AdatConfig.
 export const PsybassParams = struct({
   enabled:      bool8,
   _reserved0:   reserved(1),
@@ -371,9 +254,8 @@ export const PsybassParams = struct({
   originalDb:   f32,
 });
 
-// Section 22: stereo upmixer config (44 B, V25+; RP2350 only, but
-// structurally present on every V25+ packet). Appended after PsybassParams.
-// Byte 3 (reserved through V25) becomes `presenceQ1` on V26+: int8,
+// Section 22: stereo upmixer config (44 B; RP2350 only, but structurally
+// present on every packet). Appended after PsybassParams. presenceQ1 is int8,
 // round(clamp(presenceDb, -12, 12) * 2).
 export const UpmixParams = struct({
   enabled:          bool8,
@@ -394,7 +276,7 @@ export const UpmixParams = struct({
 
 // REQ_UPMIX_SET_PARAM/GET_PARAM (0x4C/0x4D) wValue dispatch: UPMIX_PARAM_*
 // ids from upmix.h. Mode/enable ids (0-2) are rounded to integer by firmware
-// on SET; presence (13) is fw V26+ (ignored/zeroed on a V25 device).
+// on SET.
 export const UpmixParam = {
   Enabled:          0,
   CenterMode:       1,
@@ -520,7 +402,7 @@ export const SetFilterPacket = struct({
 });
 
 // 18-byte payload of `SetEqParam` (vendor request 0x42) for a Linkwitz
-// Transform band (fw V22+): the 16-byte SetFilterPacket plus a trailing
+// Transform band: the 16-byte SetFilterPacket plus a trailing
 // qp u16 LE sidecar. Sending the 16-byte SetFilterPacket alone preserves
 // the band's currently-stored qp instead of replacing it.
 export const SetFilterPacketQp = struct({
@@ -583,7 +465,7 @@ export const SpdifRxStatus = struct({
   _reserved:    reserved(2),
 });
 
-// 16-byte live I2S slave-clock status (GetI2sSlaveStatus 0x8A, fw V21+).
+// 16-byte live I2S slave-clock status (GetI2sSlaveStatus 0x8A).
 // `state` is narrowed to a domain enum in DspDevice. detectedRate is
 // 44100/48000/96000, 0 unless state is LOCKED.
 export const I2sSlaveStatus = struct({
@@ -617,7 +499,7 @@ export const SysClockStatus = struct({
   _reserved:      reserved(3),
 });
 
-// 16-byte live stereo-upmixer status (GetUpmixStatus 0x4E, fw V25+, RP2350
+// 16-byte live stereo-upmixer status (GetUpmixStatus 0x4E, RP2350
 // only). parkedReason: 0 active / 1 disabled / 2 input not stereo / 3 rate
 // > 48 kHz -- narrowed to a domain enum in DspDevice. corr/balance are Q14
 // signed fixed point; gains are Q15 unsigned.
@@ -632,7 +514,7 @@ export const UpmixStatus = struct({
   _reserved:     reserved(4),
 });
 
-// 8-byte live ADAT lightpipe output status (GetAdatStatus 0xCE, fw V17+,
+// 8-byte live ADAT lightpipe output status (GetAdatStatus 0xCE,
 // RP2350 only). `enabled` is persisted intent, `active` is running now.
 // `rateOk` reflects whether the device rate is 44.1/48 kHz -- the stream
 // auto-suspends outside that range and resumes when the rate returns.
@@ -645,7 +527,7 @@ export const AdatStatus = struct({
   slipCount:   u16,
 });
 
-// 20-byte live ADAT lightpipe input status (GetAdatInputStatus 0x6E, fw V24+,
+// 20-byte live ADAT lightpipe input status (GetAdatInputStatus 0x6E,
 // RP2350 only; RP2040 reports 20 zero bytes). state/clockMode are live values,
 // not persisted config. rateOk parks master-mode acquisition when the device
 // rate exceeds 48 kHz -- always 1 in slave mode. detectedRate is the snapped
@@ -670,12 +552,9 @@ export const AdatInputStatus = struct({
 // No semantic codec -- surfaced verbatim as bytes.
 export const SPDIF_RX_CH_STATUS_LEN = 24;
 
-// 6-byte GetSpdifInputConfig response (0xEF, fw 1.1.6+/V28; 5 bytes on older
-// fw). enableMask here is unshifted: bit0 = input 1 (always set), bit1 =
-// input 2, bit2 = input 3, bit3 = input 4. Distinct from
-// spdifRxEnabledExtP1's mask+1 encoding in the bulk section. A pre-V28
-// device answers the legacy 5-byte layout (no pin 4) -- `decodePadded`
-// zero-fills pin 4 as absent.
+// 6-byte GetSpdifInputConfig response (0xEF). enableMask here is unshifted:
+// bit0 = input 1 (always set), bit1 = input 2, bit2 = input 3, bit3 = input 4.
+// Distinct from spdifRxEnabledExtP1's mask+1 encoding in the bulk section.
 export const SpdifInputConfig = struct({
   count:      u8,
   enableMask: u8,
@@ -714,7 +593,7 @@ export const CtrlIfaceStatus = struct({
   _reserved:      reserved(3),
 });
 
-// Control Surfaces (V16 / fw 1.1.5, caps v3, 0x84-0x87 + 0x8B-0x8C + 0x9D-0x9E).
+// Control Surfaces (fw 1.1.5, caps v3, 0x84-0x87 + 0x8B-0x8C + 0x9D-0x9E).
 // Continuous dB/percent/Q fields are signed 8.8 fixed point; Hz fields are
 // plain integers; bool/enum values are plain ints. Binding/name SETs are
 // live-only previews -- CsSave/CsRevert persist or discard them.
@@ -999,23 +878,12 @@ export const BuildInfo = struct({
   _reserved: reserved(4),
 });
 
-// Parametric `GetStatus` (0x50) wire schema: the peak count varies by
-// platform (7 on RP2040, 11 on RP2350). Other fields are fixed.
-// Returns a fresh struct codec for the requested channel count; use
+// Parametric `GetStatus` (0x50, wValue 9) combined-status schema: the peak
+// count varies by platform (7 on RP2040, 17 on RP2350); clip flags are u32
+// (17 channels exceed 16 bits) and a live active-input-channel count byte
+// trails. Returns a fresh struct codec for the requested channel count; use
 // through `encode` / `decode` like any other codec.
 export function SystemStatus(numCh: number) {
-  return struct({
-    peaks:     arr(u16, numCh),
-    cpu0:      u8,
-    cpu1:      u8,
-    clipFlags: u16,
-  });
-}
-
-// V16 combined-status shape: clip flags widen to u32 (17 channels exceed 16
-// bits) and a trailing live active-input-channel count byte is appended.
-// Peak count is 7 (RP2040) or 17 (RP2350).
-export function SystemStatus16(numCh: number) {
   return struct({
     peaks:               arr(u16, numCh),
     cpu0:                u8,
@@ -1052,7 +920,7 @@ export const SystemStatusValue = {
   // SPDIF DMA starvations
   SpdifStarvationsTotal: 17, // u32
 
-  // Live active input channel count, source-aware (V16+; u32)
+  // Live active input channel count, source-aware (u32)
   ActiveInputChannels:   23,
 
   // TODO(system-info-extra): not yet wired
@@ -1062,7 +930,9 @@ export const SystemStatusValue = {
 } as const;
 export type SystemStatusValue = (typeof SystemStatusValue)[keyof typeof SystemStatusValue];
 
-const V2_PREFIX_SIZE =
+// V28 packet total (5944 bytes), summed from the section codecs so a layout
+// drift fails loudly. Firmware accepts only exact-size packets.
+export const BULK_SIZE_V28 =
   sizeOf(Header) +
   sizeOf(GlobalParams) +
   sizeOf(CrossfeedParams) +
@@ -1072,170 +942,56 @@ const V2_PREFIX_SIZE =
   sizeOf(OutputChannel) * Const.NUM_OUTPUTS +
   sizeOf(PinConfig) +
   sizeOf(BandParams) * (Const.NUM_CHANNELS * Const.BANDS_MAX) +
-  sizeOf(ChannelNames);  // 2832
-
-const V6_FULL_SIZE =
-  V2_PREFIX_SIZE + sizeOf(I2SConfig) + sizeOf(LevellerConfig) + sizeOf(PreampConfig) + sizeOf(MasterVolume);
-
-// Cumulative payload sizes at each format-version boundary. Used by
-// bulkLayout() to gate optional sections on header.payload_length.
-export const BulkSizes = {
-  V2:       V2_PREFIX_SIZE,                                              // 2832
-  V3:       V2_PREFIX_SIZE + sizeOf(I2SConfig),                          // 2848
-  V4:       V2_PREFIX_SIZE + sizeOf(I2SConfig) + sizeOf(LevellerConfig), // 2864
-  V6Preamp: V6_FULL_SIZE - sizeOf(MasterVolume),                         // 2880
-  V6Full:   V6_FULL_SIZE,                                                // 2896
-  V7:       V6_FULL_SIZE + sizeOf(InputConfig),                          // 2912
-  V8:       V6_FULL_SIZE + sizeOf(InputConfig) + sizeOf(LgSoundSync),    // 2928
-  V9:       V6_FULL_SIZE + sizeOf(InputConfig) + sizeOf(LgSoundSync) + sizeOf(UserVolume), // 2944
-  V10:      V6_FULL_SIZE + sizeOf(InputConfig) + sizeOf(LgSoundSync) + sizeOf(UserVolume) + sizeOf(DacHwMute), // 2960
-} as const;
-
-// V16 packet total (5864 bytes). The V16 layout is not size-negotiable:
-// firmware accepts only the exact full-size packet (compat deliberately
-// broken at V16; WIRE_BULK_PARAMS_MIN_SIZE == sizeof(WireBulkParams)).
-export const BULK_SIZE_V16 =
-  sizeOf(Header) +
-  sizeOf(GlobalParams) +
-  sizeOf(CrossfeedParams) +
-  sizeOf(LegacyChannels) +
-  4 * Const16.NUM_CHANNELS +                                            // delays (17 f32)
-  sizeOf(Crosspoint) * (Const16.NUM_INPUTS * Const.NUM_OUTPUTS) +       // 8 x 9
-  sizeOf(OutputChannel) * Const.NUM_OUTPUTS +
-  sizeOf(PinConfig) +
-  sizeOf(BandParams) * (Const16.NUM_CHANNELS * Const.BANDS_MAX) +       // 17 x 12
-  Const.CHANNEL_NAME_LEN * Const16.NUM_CHANNELS +                       // names (17 x 32)
+  sizeOf(ChannelNames) +
   sizeOf(I2SConfig) +
   sizeOf(LevellerConfig) +
-  sizeOf(PreampConfig16) +
+  sizeOf(PreampConfig) +
   sizeOf(MasterVolume) +
   sizeOf(InputConfig) +
   sizeOf(LgSoundSync) +
   sizeOf(UserVolume) +
   sizeOf(DacHwMute) +
-  sizeOf(BandParams) * (Const16.NUM_CHANNELS * Const16.XOVER_BANDS);    // crossover (17 x 4)
-
-// V17 appends the 8-byte ADAT config; V18 additionally grows the leveller
-// section 16->20 in place. Firmware still accepts only exact-size packets.
-export const BULK_SIZE_V17 = BULK_SIZE_V16 + sizeOf(AdatConfig);                                  // 5872
-export const BULK_SIZE_V18 = BULK_SIZE_V17 + sizeOf(LevellerConfig18) - sizeOf(LevellerConfig);   // 5876
-
-// V19/V20 claim reserved bytes already inside the V18 layout (loudness output
-// mask in GlobalParams, crossfeed output-pair mask in CrossfeedParams) --
-// total packet size is unchanged from V18.
-export const BULK_SIZE_V19 = BULK_SIZE_V18;
-export const BULK_SIZE_V20 = BULK_SIZE_V18;
-// V21 claims the InputConfig's first reserved byte (i2s_clock_mode) -- also
-// no packet-size change.
-export const BULK_SIZE_V21 = BULK_SIZE_V20;
-// V22 claims the PEQ band section's reserved bytes (Linkwitz Transform qp) --
-// also no packet-size change.
-export const BULK_SIZE_V22 = BULK_SIZE_V21;
-// V23 appends the 24-byte psychoacoustic bass section after AdatConfig.
-export const BULK_SIZE_V23 = BULK_SIZE_V22 + sizeOf(PsybassParams);
-// V24 claims InputConfig's remaining reserved bytes (ADAT input config) --
-// also no packet-size change.
-export const BULK_SIZE_V24 = BULK_SIZE_V23;
-// V25 appends the 44-byte stereo upmixer section after PsybassParams.
-export const BULK_SIZE_V25 = BULK_SIZE_V24 + sizeOf(UpmixParams);
-// V26 claims UpmixParams' reserved byte 3 (presence_q1) -- also no
-// packet-size change.
-export const BULK_SIZE_V26 = BULK_SIZE_V25;
-// V27 widens the upmix centre-mode enum (adds OFF) -- enum-only, no struct
-// change, so no packet-size change.
-export const BULK_SIZE_V27 = BULK_SIZE_V26;
-// V28 relayouts InputConfig's interior for the fourth S/PDIF input --
-// same 16-byte section size, so no packet-size change.
-export const BULK_SIZE_V28 = BULK_SIZE_V27;
-// V29 appends the 16-byte subharmonic synthesizer section after UpmixParams.
+  sizeOf(BandParams) * (Const.NUM_CHANNELS * Const.XOVER_BANDS) +  // crossover
+  sizeOf(AdatConfig) +
+  sizeOf(PsybassParams) +
+  sizeOf(UpmixParams);
+// V29 appends the 16-byte subharmonic synthesizer section.
 export const BULK_SIZE_V29 = BULK_SIZE_V28 + sizeOf(SubharmParams);
 // V30 grows the subharm section with a third band, selectivity, ceiling, and
 // pair link (+20 B).
 export const BULK_SIZE_V30 = BULK_SIZE_V29 + sizeOf(SubharmParamsExt);
-// V31 appends the 48-byte tube preamp section after the subharm section.
+// V31 appends the 48-byte tube preamp section.
 export const BULK_SIZE_V31 = BULK_SIZE_V30 + sizeOf(TubeParams);
-// V32 appends the 108-byte per-output limiter section (9 x 12 B) after it.
+// V32 appends the 108-byte per-output limiter section (9 x 12 B).
 export const BULK_SIZE_V32 = BULK_SIZE_V31 + sizeOf(LimiterParams);
 
 // Newest wire version the console knows how to decode and write.
 export const MAX_WIRE_VERSION = 32;
 
-// Packet size to allocate/write for a given target wire version (clamped to
-// the V6 floor and the MAX_WIRE_VERSION ceiling). Versions 11..15 were
-// in-development intermediates the console never supported; they collapse to
-// the V10 size (writes to such devices are rejected at connect anyway).
+// Packet size to allocate/write for a given target wire version (versions
+// above the ceiling use the newest known size).
 export function bulkSizeForVersion(v: number): number {
   if (v >= 32) return BULK_SIZE_V32;
   if (v >= 31) return BULK_SIZE_V31;
   if (v >= 30) return BULK_SIZE_V30;
   if (v >= 29) return BULK_SIZE_V29;
-  if (v >= 25) return BULK_SIZE_V28;
-  if (v >= 23) return BULK_SIZE_V24;
-  if (v >= 21) return BULK_SIZE_V21;
-  if (v >= 20) return BULK_SIZE_V20;
-  if (v >= 19) return BULK_SIZE_V19;
-  if (v >= 18) return BULK_SIZE_V18;
-  if (v >= 17) return BULK_SIZE_V17;
-  if (v >= 16) return BULK_SIZE_V16;
-  if (v >= 10) return BulkSizes.V10;
-  if (v === 9) return BulkSizes.V9;
-  if (v === 8) return BulkSizes.V8;
-  if (v === 7) return BulkSizes.V7;
-  return BulkSizes.V6Full;
+  return BULK_SIZE_V28;
 }
 
 export const BulkLimits = {
-  MinPacketSize:  BulkSizes.V2,
+  MinPacketSize:  BULK_SIZE_V28,
   // Size we WRITE: version-aware buildBulkParams emits at the device's own wire
   // version, up to MAX_WIRE_VERSION. This is the largest buffer it may allocate.
   MaxRequestSize: BULK_SIZE_V32,
   // Size we READ: the largest packet we tolerate receiving (V32).
-  MaxReadSize:    BULK_SIZE_V32,  // 6136
-  // WinUSB caps a control transfer's data stage at 4 KB; the largest single
-  // EP0 transfer any host backend can rely on. Above this, DspDevice chunks
-  // via 0xA2/0xA3 (fw 1.1.5+).
-  MaxControlTransfer: 4096,
+  MaxReadSize:    BULK_SIZE_V32,
   // Firmware-recommended chunk size for the chunked bulk-params commands.
   ChunkSize: 2048,
 } as const;
 
+// Sections that vary among supported firmware (V29+); everything older is
+// unconditional.
 export interface BulkLayout {
-  i2s: boolean;
-  leveller: boolean;
-  preamp: boolean;
-  masterVolume: boolean;
-  inputSource: boolean;
-  lgSoundSync: boolean;
-  userVolume: boolean;
-  dacHwMute: boolean;
-  // V16 additions: the crossover section and the unified channel model's
-  // wide arrays (17 channels / 8 inputs) arrive together.
-  crossover: boolean;
-  // V17: ADAT lightpipe config, appended at the very end of the packet.
-  adat: boolean;
-  // V18: leveller detector/apply channel masks (interior section grow).
-  levellerMasks: boolean;
-  // V19: per-output loudness mask (GlobalParams reserved-byte claim).
-  loudnessMask: boolean;
-  // V20: crossfeed output-pair mask (CrossfeedParams reserved-byte claim).
-  crossfeedPairMask: boolean;
-  // V21: I2S clock-mode byte (InputConfig reserved-byte claim).
-  i2sClockMode: boolean;
-  // V22: PEQ/crossover band reserved bytes are the Linkwitz Transform qp
-  // sidecar (BandParamsQp shape). Not type-gated here -- fw forces qp to 0
-  // for every non-LT band, so decoding it unconditionally is harmless.
-  bandQp: boolean;
-  // V23: psychoacoustic bass section, appended after AdatConfig.
-  psybass: boolean;
-  // V24: ADAT input config bytes (InputConfig reserved-byte claim).
-  adatInput: boolean;
-  // V25: stereo upmixer section, appended after PsybassParams.
-  upmix: boolean;
-  // V26: upmixer presence-bell byte (UpmixParams reserved-byte claim).
-  upmixPresence: boolean;
-  // V28: InputConfig's interior relayout for the fourth S/PDIF input
-  // (3-entry spdifRxPinExt, mask bit2 = SPDIF4). Same section size as V24.
-  spdifInput4: boolean;
   // V29: subharmonic synthesizer section, appended after UpmixParams.
   subharm: boolean;
   // V30: subharm section tail (third band, selectivity, ceiling, pair link).
@@ -1246,38 +1002,17 @@ export interface BulkLayout {
   limiter: boolean;
 }
 
-// Determine which optional sections are present based on the header.
+// Determine which trailing sections are present based on the header.
 // Both formatVersion and payloadLength must satisfy the threshold --
 // matches firmware's bulk_params_apply gating in bulk_params.c.
-// A V16 packet trivially satisfies every V10-era size threshold.
 export function bulkLayout(h: { formatVersion: number; payloadLength: number }): BulkLayout {
   const v = h.formatVersion;
   const len = h.payloadLength;
   return {
-    i2s:          v >= 3  && len >= BulkSizes.V3,
-    leveller:     v >= 4  && len >= BulkSizes.V4,
-    preamp:       v >= 6  && len >= BulkSizes.V6Preamp,
-    masterVolume: v >= 6  && len >= BulkSizes.V6Full,
-    inputSource:  v >= 7  && len >= BulkSizes.V7,
-    lgSoundSync:  v >= 8  && len >= BulkSizes.V8,
-    userVolume:   v >= 9  && len >= BulkSizes.V9,
-    dacHwMute:    v >= 10 && len >= BulkSizes.V10,
-    crossover:         v >= 16 && len >= BULK_SIZE_V16,
-    adat:              v >= 17 && len >= BULK_SIZE_V17,
-    levellerMasks:     v >= 18 && len >= BULK_SIZE_V18,
-    loudnessMask:      v >= 19 && len >= BULK_SIZE_V19,
-    crossfeedPairMask: v >= 20 && len >= BULK_SIZE_V20,
-    i2sClockMode:      v >= 21 && len >= BULK_SIZE_V21,
-    bandQp:            v >= 22 && len >= BULK_SIZE_V22,
-    psybass:           v >= 23 && len >= BULK_SIZE_V23,
-    adatInput:         v >= 24 && len >= BULK_SIZE_V24,
-    upmix:             v >= 25 && len >= BULK_SIZE_V25,
-    upmixPresence:     v >= 26 && len >= BULK_SIZE_V26,
-    spdifInput4:       v >= 28 && len >= BULK_SIZE_V28,
-    subharm:           v >= 29 && len >= BULK_SIZE_V29,
-    subharmExt:        v >= 30 && len >= BULK_SIZE_V30,
-    tube:              v >= 31 && len >= BULK_SIZE_V31,
-    limiter:           v >= 32 && len >= BULK_SIZE_V32,
+    subharm:    v >= 29 && len >= BULK_SIZE_V29,
+    subharmExt: v >= 30 && len >= BULK_SIZE_V30,
+    tube:       v >= 31 && len >= BULK_SIZE_V31,
+    limiter:    v >= 32 && len >= BULK_SIZE_V32,
   };
 }
 
@@ -1293,12 +1028,9 @@ export const PresetStartupMode = {
 } as const;
 export type PresetStartupMode = (typeof PresetStartupMode)[keyof typeof PresetStartupMode];
 
-// Preset directory packet (response to GetPresetDir 0x95). Schema is the
-// V12+ 7-byte shape; legacy firmware truncates to 6 bytes (no trailing
-// masterVolumeMode byte) and `decodePadded` zero-extends -- masterVolumeMode
-// reads as 0, the correct legacy semantic ("independent" mode), not a
-// sentinel. Always request 7 bytes from the device: WinUSB treats
-// device-overrun as a babble error and fails the transfer.
+// Preset directory packet (response to GetPresetDir 0x95), 7 bytes. Always
+// request exactly 7 bytes from the device: WinUSB treats device-overrun as a
+// babble error and fails the transfer.
 //
 // The consumer-facing shape lives in `domain/presetDirectory.ts`; this
 // codec stays raw (u8/u16/bool8) and is only consumed by DspDevice.
@@ -1307,7 +1039,7 @@ export const PresetDirectory = struct({
   startupMode:      u8,
   defaultSlot:      u8,
   lastActiveSlot:   u8,
-  outputConfigMode: u8,    // byte 5: output-config mode (1.1.4); legacy include-pins bool, values 1:1
+  outputConfigMode: u8,    // byte 5: output-config persistence mode
   masterVolumeMode: u8,
 });
 

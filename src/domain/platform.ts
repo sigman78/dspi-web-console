@@ -16,7 +16,7 @@ export interface I2sConfig {
   mckPin: number;
   mckEnabled: boolean;
   mckMultiplierEncoded: number;
-  // I2S slave-clock pins (fw V21+; decoded from clockPinModeP1, "0 = absent"
+  // I2S slave-clock pins (decoded from clockPinModeP1, "0 = absent"
   // wire convention). 0 = unified (legacy: master+slave share one BCK/LRCLK
   // pair), 1 = split (master drives bckPin, slave listens on bckPinSlave;
   // LRCLK = BCK+1 in both).
@@ -28,16 +28,14 @@ export interface I2sConfig {
 // The full per-platform layout and the single source of truth for platform
 // identity. The small identity/summary fields at the top are what the snapshot
 // copies out (via `pickSummary` in snapshot.ts) so pure-domain helpers (pin
-// rules) can follow the firmware generation without dragging the channel/slot/
-// pin maps below through the mirror.
+// rules) can read them without dragging the channel/slot/pin maps below
+// through the mirror.
 export interface HardwareProfile {
   type: PlatformType;
   name: string;
   outputCount: number;
   totalChannelCount: number;
   pdmOutputIndex: number;
-  // Channel-model family of the connected device (see ChannelFamily below).
-  channelModel: ChannelFamily;
 
   inputChannels: readonly ChannelIdValue[];
   outputChannels: readonly ChannelIdValue[];
@@ -52,23 +50,9 @@ export interface HardwareProfile {
   defaultPinByChannel: Partial<Record<ChannelIdValue, number>>;
 }
 
-// Channel-model family of a device: V10 = legacy 2-input fixed stereo + master
-// channels; V16+ = unified 8-input multichannel with crossover. The value is
-// the family's base wire version, so it feeds the version-keyed profile/pin
-// helpers directly. V17/V18 share the Unified model.
-// Named ChannelFamily, not ChannelModel: snapshot.ts already exports a
-// ChannelModel interface (the per-channel view model), and `export *`-ing
-// both from the same name out of the domain barrel would make that name
-// ambiguous everywhere it's imported.
-export const ChannelFamily = {
-  Legacy:  10,
-  Unified: 16,
-} as const;
-export type ChannelFamily = (typeof ChannelFamily)[keyof typeof ChannelFamily];
-
 const STEREO_INPUT_CHANNELS = [ChannelId.In1L, ChannelId.In1R] as const;
 
-const V16_RP2350_INPUT_CHANNELS = [
+const RP2350_INPUT_CHANNELS = [
   ChannelId.In1L, ChannelId.In1R,
   ChannelId.In2L, ChannelId.In2R,
   ChannelId.In3L, ChannelId.In3R,
@@ -78,7 +62,6 @@ const V16_RP2350_INPUT_CHANNELS = [
 interface HardwareProfileConfig {
   type: PlatformType;
   name: string;
-  channelModel: ChannelFamily;
   inputChannels: readonly ChannelIdValue[];
   outputChannels: readonly ChannelIdValue[];
   wireChannelOverrides?: Partial<Record<ChannelIdValue, ChannelIdValue>>;
@@ -111,7 +94,6 @@ function buildHardwareProfile(config: HardwareProfileConfig): HardwareProfile {
     outputCount: outputs.length,
     totalChannelCount: channels.length,
     pdmOutputIndex: outputChannels.indexOf(ChannelId.Pdm),
-    channelModel: config.channelModel,
     inputChannels,
     outputChannels,
     inputs,
@@ -152,9 +134,9 @@ const RP2350_DEFAULT_PINS = {
   [ChannelId.Pdm]: 10,
 } as const;
 
-// V16 RP2350 wire index space: inputs 0..7, outputs 8..16. Domain ids keep
-// their V10 values; this table is the whole difference.
-const V16_RP2350_WIRE_OVERRIDES: Partial<Record<ChannelIdValue, ChannelIdValue>> = {
+// RP2350 wire index space: inputs 0..7, outputs 8..16. Domain ids are the
+// compact UI ids; this table maps them onto the wire.
+const RP2350_WIRE_OVERRIDES: Partial<Record<ChannelIdValue, ChannelIdValue>> = {
   [ChannelId.In2L]: 2 as ChannelIdValue,
   [ChannelId.In2R]: 3 as ChannelIdValue,
   [ChannelId.In3L]: 4 as ChannelIdValue,
@@ -172,12 +154,12 @@ const V16_RP2350_WIRE_OVERRIDES: Partial<Record<ChannelIdValue, ChannelIdValue>>
   [ChannelId.Pdm]: 16 as ChannelIdValue,
 };
 
-// V10 profiles (fw 1.1.4). RP2040 keeps its PDM remap; RP2350 is identity.
-export const HARDWARE_PROFILES: Record<PlatformType, HardwareProfile> = {
+// RP2040 has a 7-wide index space (2 inputs, outputs from 2, PDM at 6); RP2350
+// has 8 inputs with outputs at 8..16.
+const HARDWARE_PROFILES: Record<PlatformType, HardwareProfile> = {
   [PlatformType.RP2040]: buildHardwareProfile({
     type: PlatformType.RP2040,
     name: 'RP2040',
-    channelModel: ChannelFamily.Legacy,
     inputChannels: STEREO_INPUT_CHANNELS,
     outputChannels: RP2040_OUTPUT_CHANNELS,
     wireChannelOverrides: {
@@ -188,41 +170,15 @@ export const HARDWARE_PROFILES: Record<PlatformType, HardwareProfile> = {
   [PlatformType.RP2350]: buildHardwareProfile({
     type: PlatformType.RP2350,
     name: 'RP2350',
-    channelModel: ChannelFamily.Legacy,
-    inputChannels: STEREO_INPUT_CHANNELS,
+    inputChannels: RP2350_INPUT_CHANNELS,
     outputChannels: RP2350_OUTPUT_CHANNELS,
+    wireChannelOverrides: RP2350_WIRE_OVERRIDES,
     defaultPins: RP2350_DEFAULT_PINS,
   }),
 };
 
-// V16 profiles (fw 1.1.5, unified channel model). RP2040 has the same 7-wide
-// index space as V10 (2 inputs, outputs from 2, PDM at 6); RP2350 grows to
-// 8 inputs with outputs shifted to 8..16.
-const V16_HARDWARE_PROFILES: Record<PlatformType, HardwareProfile> = {
-  [PlatformType.RP2040]: buildHardwareProfile({
-    type: PlatformType.RP2040,
-    name: 'RP2040',
-    channelModel: ChannelFamily.Unified,
-    inputChannels: STEREO_INPUT_CHANNELS,
-    outputChannels: RP2040_OUTPUT_CHANNELS,
-    wireChannelOverrides: {
-      [ChannelId.Pdm]: ChannelId.Out3L,
-    },
-    defaultPins: RP2040_DEFAULT_PINS,
-  }),
-  [PlatformType.RP2350]: buildHardwareProfile({
-    type: PlatformType.RP2350,
-    name: 'RP2350',
-    channelModel: ChannelFamily.Unified,
-    inputChannels: V16_RP2350_INPUT_CHANNELS,
-    outputChannels: RP2350_OUTPUT_CHANNELS,
-    wireChannelOverrides: V16_RP2350_WIRE_OVERRIDES,
-    defaultPins: RP2350_DEFAULT_PINS,
-  }),
-};
-
-export function createHardwareProfile(type: PlatformType, channelModel: ChannelFamily = ChannelFamily.Legacy): HardwareProfile {
-  return channelModel === ChannelFamily.Unified ? V16_HARDWARE_PROFILES[type] : HARDWARE_PROFILES[type];
+export function createHardwareProfile(type: PlatformType): HardwareProfile {
+  return HARDWARE_PROFILES[type];
 }
 
 export function wireChannelFor(profile: HardwareProfile, channel: ChannelIdValue): ChannelIdValue {

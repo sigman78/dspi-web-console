@@ -16,11 +16,6 @@ export const CONTROL_PAGE_DRAFTS: Record<ControlPageKey, readonly DraftFamily[]>
   display: ['display'],
 };
 
-/** CONTROL exists exactly when the firmware has control surfaces. */
-export function controlAvailable(features: { controlSurfaces: boolean }): boolean {
-  return features.controlSurfaces;
-}
-
 /** Pages with at least one available panel, in selector order. */
 export function controlPages(caps: Domain.CsCaps | null): ControlPage[] {
   const all: Array<ControlPage & { available: boolean }> = [

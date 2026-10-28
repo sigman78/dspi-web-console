@@ -12,10 +12,9 @@
   import ProgramView from '@/components/noveau/program/ProgramView.svelte';
   import SetupView from '@/components/noveau/setup/SetupView.svelte';
   import ControlView from '@/components/noveau/control/ControlView.svelte';
-  import { controlAvailable } from '@/components/noveau/control/controlPages';
   import AboutView from '@/components/noveau/about/AboutView.svelte';
   import { noveauUi } from './noveauUi.svelte';
-  import { destinations, destinationShortcut } from './destinations';
+  import { DESTINATIONS, destinationShortcut } from './destinations';
 
   const { session }: { session: ReadySession } = $props();
   // The session is stable while this component is mounted: App keys this
@@ -41,15 +40,10 @@
     lastChannel = id;
   });
   $effect(() => {
-    if (noveauUi.destination === 'control' && !controlAvailable(session.device.capabilities.features)) {
-      noveauUi.destination = 'setup';
-    }
-  });
-  $effect(() => {
     reconcileSelectedChannel(session.mirror.current?.channels, channelVisibility);
   });
   function onKey(e: KeyboardEvent) {
-    const order = destinations(session.device.capabilities.features).map((d) => d.key);
+    const order = DESTINATIONS.map((d) => d.key);
     const next = destinationShortcut(e, order, noveauUi.destination);
     if (next === null) return;
     e.preventDefault();
@@ -74,7 +68,7 @@
       <ProgramView />
     {:else if noveauUi.destination === 'setup'}
       <SetupView />
-    {:else if noveauUi.destination === 'control' && controlAvailable(session.device.capabilities.features)}
+    {:else if noveauUi.destination === 'control'}
       <ControlView />
     {:else}
       <AboutView />

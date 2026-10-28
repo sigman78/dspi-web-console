@@ -24,9 +24,8 @@ Stop-Process -Id <ids> -Force -Confirm:$false
 ## Mock device modes (no hardware)
 
 - `?mock` — newest surface (fw 1.1.5 / newest wire version — see `src/mockProfiles.ts`)
-- `?mock=legacy` — legacy V10 / fw 1.1.4 surface (1.1.5-only UI must hide)
 - `?mock=multi` — multichannel demo: 8-channel I2S input + 3 selectable S/PDIF inputs
-- `?mock=v<N>` — exact bulk/wire format N, for testing per-wire-version feature gates
+- `?mock=v<N>` — exact bulk/wire format N (`v28`..`v32`), for testing per-wire-version feature gates
 - `&chip=rp2040` — RP2040 flavor (5 outputs, fewer pairs), combinable with any profile
 
 Mock state is in-memory: it survives tab switches (mirror round-trip — good for
@@ -36,10 +35,10 @@ navigation (`#processing`) does NOT reload.
 ## Drive
 
 Playwright MCP tools work well. Tabs: 01 OVERVIEW / 02 EQUALIZER / 03 MIXER /
-04 PROCESSING / 05 PRESETS / 06 SYSTEM / 07 CONTROL (07 hidden on V10).
+04 PROCESSING / 05 PRESETS / 06 SYSTEM / 07 CONTROL .
 Processing panels: PR.01 CROSSFEED, PR.02 LOUDNESS, PR.03 LEVELLER,
 PR.04 PSYBASS, PR.05 STEREO UPMIXER (PR.04/PR.05 are newest-wire + RP2350
-gated — hidden on legacy and rp2040 profiles).
+gated — hidden on rp2040 profiles).
 System panels include SY.08 I2S CLOCK, SY.11 INPUT CONFIG, SY.12 BUFFER STATS.
 
 Gotchas:

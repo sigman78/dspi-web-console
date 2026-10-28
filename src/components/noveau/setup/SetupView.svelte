@@ -18,12 +18,11 @@
   import StagedStrip from '@/components/noveau/StagedStrip.svelte';
   import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import { debugPanels } from '@/devOptions';
-  import { setupPages } from './setupPages';
+  import { SETUP_PAGES } from './setupPages';
 
   const s = getSession();
   const features = $derived(s.device.capabilities.features);
-  const pages = $derived(setupPages(features));
-  const page = $derived(pages.some((p) => p.key === noveauUi.setupPage) ? noveauUi.setupPage : pages[0].key);
+  const page = $derived(SETUP_PAGES.some((p) => p.key === noveauUi.setupPage) ? noveauUi.setupPage : SETUP_PAGES[0].key);
 </script>
 
 {#snippet strip()}
@@ -34,7 +33,7 @@
 
 <PagedWorkspace
   label="Setup pages"
-  {pages}
+  pages={SETUP_PAGES}
   {page}
   onselect={(k) => { noveauUi.setupPage = k; }}
   staged={(k) => s.staging.countOn(k) > 0}

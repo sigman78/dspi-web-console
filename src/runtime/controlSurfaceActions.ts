@@ -3,7 +3,7 @@ import { type ReadySession, pushNotice } from '@/state';
 import { command } from './writes.svelte';
 import { readCsDisplayBlock, readCsAll } from './deviceService';
 
-// V16 — external control interfaces (UART / I2C). The SET's result is only
+// External control interfaces (UART / I2C). The SET's result is only
 // known from the device's read-back status (see DspDevice.setUartControlConfig),
 // so this can't be a plain writeChecked: the status must land in ctrlIfaces
 // on BOTH branches (a rejected pin/baud is still useful to show as
@@ -36,7 +36,7 @@ export async function setI2cControlConfig(s: ReadySession, cfg: Domain.I2cContro
   return ok;
 }
 
-// V16 — Control Surfaces binding apply (0x84 + status poll). Immediate lane
+// Control Surfaces binding apply (0x84 + status poll). Immediate lane
 // like the UART/I2C config above: a binding apply never restarts the audio
 // path, so it bypasses the staged-apply gate. The polled status read-back
 // must land in state on BOTH branches (a rejection is exactly what the panel
@@ -265,7 +265,7 @@ export async function refreshCsDisplayStatus(s: ReadySession): Promise<void> {
   }
 }
 
-// V16 — Control Surfaces slot name (0x8B + status poll). Names are slot
+// Control Surfaces slot name (0x8B + status poll). Names are slot
 // metadata independent of the binding, so this is its own deferred apply on
 // the same shared status channel as the binding SET. Resolves true only when
 // the device accepted the name.
@@ -288,7 +288,7 @@ export async function applyCsName(s: ReadySession, slot: number, name: string): 
   return ok;
 }
 
-// V16 — persist the whole live Control Surfaces preview (bindings + names) to
+// Persist the whole live Control Surfaces preview (bindings + names) to
 // flash and clear `dirty`. Resolves true only on success; failure (BUSY, a
 // flash write error) surfaces as a warn toast and leaves the preview live.
 export async function csSaveConfig(s: ReadySession): Promise<boolean> {
@@ -305,7 +305,7 @@ export async function csSaveConfig(s: ReadySession): Promise<boolean> {
   return ok;
 }
 
-// V16 — discard the live Control Surfaces preview and re-apply the stored
+// Discard the live Control Surfaces preview and re-apply the stored
 // config. The device rewinds every slot's binding and name, and every IR
 // command sub-slot, to what was last saved, so this re-fetches all of them
 // (plus status) rather than trusting whatever the panel's local drafts were
@@ -346,7 +346,7 @@ export async function csRevertConfig(s: ReadySession): Promise<boolean> {
   return ok;
 }
 
-// V16 — Control Surfaces IR command apply (0x8D + status poll, sub-slot
+// Control Surfaces IR command apply (0x8D + status poll, sub-slot
 // encoded as 0x80 | sub in last_slot). Same shape as applyCsBinding: the
 // polled status and the slot's live command land in state on both branches,
 // resolving true only when the device accepted the command.
@@ -373,7 +373,7 @@ export function clearCsIrCommand(s: ReadySession, sub: number): Promise<boolean>
   return applyCsIrCommand(s, sub, Domain.EMPTY_CS_IR_COMMAND);
 }
 
-// V16 — arm the IR learn window (0x8F, wValue=1). Fails immediately (no
+// Arm the IR learn window (0x8F, wValue=1). Fails immediately (no
 // status poll, no queued apply) with NO_IR when there is no live IR
 // receiver; on success the sub-state moves to ARMED so the panel can show
 // "listening" until the notify channel reports completion (see
@@ -395,7 +395,7 @@ export async function csIrLearnArm(s: ReadySession): Promise<boolean> {
   return ok;
 }
 
-// V16 — cancel an armed IR learn (0x8F, wValue=0); pushes no notification,
+// Cancel an armed IR learn (0x8F, wValue=0); pushes no notification,
 // so the sub-state returns to idle locally rather than waiting on one.
 export async function csIrLearnCancel(s: ReadySession): Promise<void> {
   await command(s, 'cancel IR learn',

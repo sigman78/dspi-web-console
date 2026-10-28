@@ -80,7 +80,7 @@ export function focusChannel(s: ReadySession, id: ChannelId): Focus<ChannelModel
 }
 
 // Locate one filter band on a channel: the PEQ array or the crossover array
-// (V16+, output channels only -- see setXoverBand). Throws when the band
+// (output channels only -- see setXoverBand). Throws when the band
 // index is out of range for that array, same missing-entity policy as the
 // channel lookup above.
 export function focusBand(s: ReadySession, id: ChannelId, band: number, kind: 'peq' | 'xover'): Focus<FilterParams> {

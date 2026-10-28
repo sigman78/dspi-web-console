@@ -23,15 +23,15 @@
   const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: Domain.liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
   const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
   const effSpdifRxPin = $derived(inputConfig ? s.staging.valueOf('spdifRxPin', inputConfig.spdifRxPin) : 0);
-  // Selectable S/PDIF inputs (1 unless the platform has the multi-SPDIF receiver, then 3).
+  // Selectable S/PDIF inputs (1 unless the platform has the multi-SPDIF receiver, then 4).
   const spdifInputCount = $derived(s.device.capabilities.spdifInputCount);
   const effRate = $derived(inputConfig ? s.staging.valueOf('inputRate', inputConfig.i2sInputRateHz) : 0);
-  // fw V21+: while the clock role is SLAVE, the external master owns the
+  // While the clock role is SLAVE, the external master owns the
   // rate -- the RATE row goes read-only (auto-detected) instead of the
   // firmware-applied selector below.
   const clockMode = $derived(inputConfig ? s.staging.valueOf('i2sClockMode', inputConfig.i2sClockMode) : 0);
   const slaveStatus = $derived(s.telemetry.i2sSlaveStatus);
-  const showSlaveRate = $derived(Boolean(features.i2sSlaveClock) && clockMode === 1);
+  const showSlaveRate = $derived(clockMode === 1);
   const slaveRateLocked = $derived(slaveStatus?.state === Domain.I2sSlaveClockState.Locked);
   // ADAT input's clock mode/status are read live here (SY.15 owns the write
   // path -- it applies immediately, so there's nothing to stage).
@@ -126,14 +126,12 @@
     const n = s.telemetry.activeInputChannels;
     return n == null ? '—' : `${n} CH`;
   });
-  const showUsbDetected = $derived(
-    features.activeInputCount && liveSource === Domain.AudioInputSource.Usb,
-  );
+  const showUsbDetected = $derived(liveSource === Domain.AudioInputSource.Usb);
 </script>
 
 <Panel title="INPUT CONFIG">
   {#snippet right()}
-    {#if features.pinResetDefault && (isSpdif || (isI2s && features.i2sInput))}
+    {#if isSpdif || isI2s}
       <button class="chip icon" title="Reset to defaults" aria-label="Reset input pins to defaults" onclick={stageSectionPinsToDefault}>↺</button>
     {/if}
   {/snippet}
@@ -182,15 +180,13 @@
             disabled={source === Domain.AudioInputSource.Spdif4}
           >S/P 4</button>
         {/if}
-        {#if features.i2sInput}
-          <button
-            class="chip"
-            class:on={isI2s}
-            class:staged={s.staging.has('inputSource') && isI2s}
-            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.I2s)}
-            disabled={isI2s}
-          >I2S</button>
-        {/if}
+        <button
+          class="chip"
+          class:on={isI2s}
+          class:staged={s.staging.has('inputSource') && isI2s}
+          onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.I2s)}
+          disabled={isI2s}
+        >I2S</button>
         {#if features.adatInput && inputConfig.adatInputEnabled && inputConfig.adatInputPin !== 0}
           <button
             class="chip"
@@ -212,7 +208,7 @@
           <KV label="DETECTED" value={usbDetected} tone={s.telemetry.activeInputChannels == null ? 'off' : undefined} />
         </div>
       {/if}
-      <p class="hint idle">USB input needs no configuration{features.activeInputCount ? ' — channel count follows the host' : ''}.</p>
+      <p class="hint idle">USB input needs no configuration — channel count follows the host.</p>
     {/if}
 
     {#if isSpdif}
@@ -264,7 +260,7 @@
       {/if}
     {/if}
 
-    {#if isI2s && features.i2sInput}
+    {#if isI2s}
       <div class="subhdr">I2S INPUT</div>
       <div class="cfgkvgrid">
         {#if showSlaveRate}

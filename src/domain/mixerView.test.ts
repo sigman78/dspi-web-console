@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { matrixColumns, matrixRows, outputChannelsWithIndex, subharmReservePlan } from './mixerView';
-import { createHardwareProfile, PlatformType, ChannelFamily } from './platform';
+import { createHardwareProfile, PlatformType } from './platform';
 import { UpmixSurroundMode } from './processing';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
 
-// V16 Unified RP2350: the only profile with the extra input slots (In2*/In3*)
-// the upmixer repurposes as derived-channel busses.
-const RP2350_UNIFIED = createHardwareProfile(PlatformType.RP2350, ChannelFamily.Unified);
+// RP2350 has the extra input slots (In2*/In3*) the upmixer repurposes as
+// derived-channel busses.
+const RP2350_UNIFIED = createHardwareProfile(PlatformType.RP2350);
 
 describe('matrixColumns / matrixRows — enabled-output filtering', () => {
   it('hides disabled outputs, keeping a half-enabled pair\'s enabled slot only', () => {

@@ -8,7 +8,7 @@
   }: {
     value: FilterType;
     onChange: (v: FilterType) => void;
-    // Offered types; callers append FIRST_ORDER_TYPES on firstOrderEq-capable devices.
+    // Offered types.
     types?: FilterType[];
   } = $props();
 

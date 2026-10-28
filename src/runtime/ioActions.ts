@@ -76,7 +76,7 @@ export function setMckMultiplier(s: ReadySession, encoded: number): Promise<bool
   return writeChecked(s,'set MCK multiplier', () => s.device.setMckMultiplier(encoded), () => patchI2s(s, (i) => ({ ...i, mckMultiplierEncoded: encoded })));
 }
 
-// I2S slave-clock role (fw V21+). Deferred apply on the device: patch the
+// I2S slave-clock role. Deferred apply on the device: patch the
 // mirror optimistically once the SET acks, matching setInputSource's lane
 // (no status byte to check).
 export function setI2sClockMode(s: ReadySession, mode: number): Promise<boolean> {
@@ -86,17 +86,17 @@ export function setI2sClockMode(s: ReadySession, mode: number): Promise<boolean>
   );
 }
 
-// BCK/LRCLK pin-sharing mode (fw V21+): 0 = unified, 1 = split.
+// BCK/LRCLK pin-sharing mode: 0 = unified, 1 = split.
 export function setI2sClockPinMode(s: ReadySession, mode: number): Promise<boolean> {
   return writeChecked(s, 'set I2S clock pin mode', () => s.device.setI2sClockPinMode(mode), () => patchI2s(s, (i) => ({ ...i, clockPinMode: mode })));
 }
 
-// Slave-mode BCK pin (fw V21+, role 1). LRCLK rides pin+1 on the device side.
+// Slave-mode BCK pin (role 1). LRCLK rides pin+1 on the device side.
 export function setI2sBckPinSlave(s: ReadySession, pin: number): Promise<boolean> {
   return writeChecked(s, 'set I2S BCK pin (slave)', () => s.device.setI2sBckPin(pin, 1), unlessPinReset(pin, () => patchI2s(s, (i) => ({ ...i, bckPinSlave: pin }))));
 }
 
-// ADAT lightpipe output (fw V17+, RP2350). Not one of the heavy staged
+// ADAT lightpipe output (RP2350). Not one of the heavy staged
 // actions -- enabling/disabling the stream doesn't reset the audio pipeline
 // -- so it writes straight through writeChecked like setI2sClockPinMode above.
 export function setAdatEnable(s: ReadySession, enabled: boolean): Promise<boolean> {
@@ -124,7 +124,7 @@ export function setAdatPin(s: ReadySession, pin: number): Promise<boolean> {
   });
 }
 
-// ADAT lightpipe input (fw V24+, RP2350). Same writeChecked lane as the
+// ADAT lightpipe input (RP2350). Same writeChecked lane as the
 // output pair above.
 export function setAdatInputEnable(s: ReadySession, enabled: boolean): Promise<boolean> {
   return writeChecked(s, 'set ADAT input enable', () => s.device.setAdatInputEnable(enabled), () => {
@@ -196,7 +196,7 @@ export function setSpdifInputEnabled(s: ReadySession, extIndex: number, on: bool
   );
 }
 
-// V16 — stored input rate, shared by I2S master and ADAT master mode (the
+// Stored input rate, shared by I2S master and ADAT master mode (the
 // device is the rate authority in both). While one of them is the active
 // source firmware applies the change deferred (audible pipeline reset),
 // otherwise it just stores the selection.
@@ -213,7 +213,7 @@ export function setInputRate(s: ReadySession, hz: number): Promise<boolean> {
   );
 }
 
-// V16 — I2S RX data pin per stereo pair. Action-style status byte covers
+// I2S RX data pin per stereo pair. Action-style status byte covers
 // invalid GPIO, clock/peripheral clash, or a pin already on another pair.
 export function setI2sRxPin(s: ReadySession, pair: number, gpio: number): Promise<boolean> {
   return writeChecked(s,
@@ -227,7 +227,7 @@ export function setI2sRxPin(s: ReadySession, pair: number, gpio: number): Promis
   );
 }
 
-// V16 — active I2S input channel count (2/4/6/8, RP2350). The live count in
+// Active I2S input channel count (2/4/6/8, RP2350). The live count in
 // telemetry updates via the INPUT_FORMAT notify when I2S is active.
 export function setI2sInputChannels(s: ReadySession, count: number): Promise<boolean> {
   return writeChecked(s,

@@ -53,12 +53,9 @@ const staging = {
 
 function makeSession(o: {
   snap?: ReturnType<typeof makeSnap>;
-  i2sSlaveClock?: boolean;
   i2sSlaveStatus?: object | null;
-  pinResetDefault?: boolean;
 } = {}) {
   return {
-    device: { capabilities: { features: { i2sSlaveClock: o.i2sSlaveClock ?? false, pinResetDefault: o.pinResetDefault ?? false } } },
     telemetry: { info: { sampleRateHz: 96000 }, i2sSlaveStatus: o.i2sSlaveStatus ?? null },
     mirror: { current: o.snap ?? makeSnap() },
     ctrlIfaces: { uart: null, i2c: null, status: null },
@@ -85,18 +82,13 @@ describe('I2sClockPanel', () => {
     expect(screen.getByText('LRCLK GP15')).toBeTruthy();
   });
 
-  test('hides the MODE row on firmware without slave-clock support (pre-V21)', () => {
-    renderPanel(makeSession({ i2sSlaveClock: false }));
-    expect(screen.queryByRole('radiogroup', { name: 'I2S clock mode' })).toBeNull();
-  });
-
-  test('shows the MODE row on V21+ firmware', () => {
-    renderPanel(makeSession({ i2sSlaveClock: true }));
+  test('shows the MODE row', () => {
+    renderPanel(makeSession());
     expect(screen.getByRole('radiogroup', { name: 'I2S clock mode' })).toBeTruthy();
   });
 
   test('MASTER is selected by default and switching to SLAVE stages the mode', async () => {
-    renderPanel(makeSession({ i2sSlaveClock: true }));
+    renderPanel(makeSession());
     const slaveOpt = screen.getByRole('radio', { name: 'SLAVE' });
     expect(screen.getByRole('radio', { name: 'MASTER' }).getAttribute('aria-checked')).toBe('true');
     await fireEvent.click(slaveOpt);
@@ -106,7 +98,7 @@ describe('I2sClockPanel', () => {
   test('SLAVE mode status line shows LOCKED and the detected rate once telemetry reports lock', () => {
     const snap = makeSnap({ inputConfig: { source: AudioInputSource.I2s, i2sClockMode: 1 } });
     renderPanel(makeSession({
-      snap, i2sSlaveClock: true,
+      snap,
       i2sSlaveStatus: { state: I2sSlaveClockState.Locked, detectedRateHz: 48000, clockMode: 1, lockCount: 1, lossCount: 0, measuredHz: 48000, slipCount: 0 },
     }));
     expect(screen.getByText('LOCKED')).toBeTruthy();
@@ -115,20 +107,20 @@ describe('I2sClockPanel', () => {
 
   test('SLAVE mode with a non-I2S source shows a minimal hint instead of status', () => {
     const snap = makeSnap({ inputConfig: { source: AudioInputSource.Usb, i2sClockMode: 1 } });
-    renderPanel(makeSession({ snap, i2sSlaveClock: true }));
+    renderPanel(makeSession({ snap }));
     expect(screen.getByText(/Source is not I2S/)).toBeTruthy();
     expect(screen.queryByText('LOCKED')).toBeNull();
   });
 
   test('CLK PINS defaults to UNIFIED and hides the slave BCK pin select', () => {
-    renderPanel(makeSession({ i2sSlaveClock: true }));
+    renderPanel(makeSession());
     expect(screen.getByRole('radio', { name: 'UNIFIED' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.queryByRole('button', { name: 'I2S BCK pin (slave)' })).toBeNull();
   });
 
   test('SPLIT clock-pin mode reveals the slave BCK pin select and its LRCLK hint', () => {
     const snap = makeSnap({ i2s: { clockPinMode: 1, bckPinSlave: 26 } });
-    renderPanel(makeSession({ snap, i2sSlaveClock: true }));
+    renderPanel(makeSession({ snap }));
     expect(screen.getByRole('radio', { name: 'SPLIT' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('button', { name: 'I2S BCK pin (slave)' }).textContent).toBe('GP26');
     expect(screen.getByText('LRCLK GP27')).toBeTruthy();
@@ -142,13 +134,8 @@ describe('I2sClockPanel', () => {
     expect(screen.getByText('LRCLK —')).toBeTruthy();
   });
 
-  test('DEFAULTS chip is hidden without pin-reset firmware support', () => {
-    renderPanel(makeSession());
-    expect(screen.queryByRole('button', { name: 'Reset clock pins to defaults' })).toBeNull();
-  });
-
   test('DEFAULTS chip stages a BCK and MCK pin reset when both are free to change', async () => {
-    renderPanel(makeSession({ pinResetDefault: true, i2sSlaveClock: true }));
+    renderPanel(makeSession());
     await fireEvent.click(screen.getByRole('button', { name: 'Reset clock pins to defaults' }));
     expect(stageI2sBckPin).toHaveBeenCalledWith(expect.anything(), Wire.Const.PIN_RESET_TO_DEFAULT);
     expect(stageMckPin).toHaveBeenCalledWith(expect.anything(), Wire.Const.PIN_RESET_TO_DEFAULT);
@@ -157,21 +144,21 @@ describe('I2sClockPanel', () => {
 
   test('DEFAULTS chip skips the BCK reset while an output slot runs I2S', async () => {
     const snap = makeSnap({ i2s: { outputSlotTypes: [1, 0, 0, 0] } });
-    renderPanel(makeSession({ snap, pinResetDefault: true }));
+    renderPanel(makeSession({ snap }));
     await fireEvent.click(screen.getByRole('button', { name: 'Reset clock pins to defaults' }));
     expect(stageI2sBckPin).not.toHaveBeenCalled();
   });
 
   test('DEFAULTS chip skips the MCK reset while MCK is enabled', async () => {
     const snap = makeSnap({ i2s: { mckEnabled: true } });
-    renderPanel(makeSession({ snap, pinResetDefault: true }));
+    renderPanel(makeSession({ snap }));
     await fireEvent.click(screen.getByRole('button', { name: 'Reset clock pins to defaults' }));
     expect(stageMckPin).not.toHaveBeenCalled();
   });
 
   test('DEFAULTS chip also resets the slave BCK pin in SPLIT clock-pin mode', async () => {
     const snap = makeSnap({ i2s: { clockPinMode: 1 } });
-    renderPanel(makeSession({ snap, pinResetDefault: true, i2sSlaveClock: true }));
+    renderPanel(makeSession({ snap }));
     await fireEvent.click(screen.getByRole('button', { name: 'Reset clock pins to defaults' }));
     expect(stageI2sBckPinSlave).toHaveBeenCalledWith(expect.anything(), Wire.Const.PIN_RESET_TO_DEFAULT);
   });

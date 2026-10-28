@@ -27,7 +27,7 @@ describe('mockChip', () => {
   });
 
   it('reads a recognized chip value', () => {
-    window.history.replaceState({}, '', '/?mock=legacy&chip=rp2040');
+    window.history.replaceState({}, '', '/?mock=multi&chip=rp2040');
     expect(DevOptions.mockChip()).toBe('rp2040');
   });
 

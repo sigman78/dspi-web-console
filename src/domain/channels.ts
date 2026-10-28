@@ -15,9 +15,9 @@ export const ChannelId = {
   Out4L: 8,
   Out4R: 9,
   Pdm: 10,
-  // Extra input pairs (RP2350 multichannel input, wire V16+). Ids continue
-  // past the V10 block so existing ids stay stable; the hardware profile's
-  // wire mapping places them at their on-wire indices.
+  // Extra input pairs (RP2350 multichannel input). Ids continue
+  // past the base block; the hardware profile's wire mapping places them at
+  // their on-wire indices.
   In2L: 11,
   In2R: 12,
   In3L: 13,

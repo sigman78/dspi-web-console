@@ -156,7 +156,7 @@
   <div class="footer-links">
     <a href={REPO_URL} target="_blank" rel="noreferrer">OPEN SOURCE · GITHUB ↗</a>
     <span class="sep">·</span>
-    <span>FIRMWARE 1.1.4+</span>
+    <span>FIRMWARE 1.1.5+</span>
     <span class="sep">·</span>
     <span>CHROME / EDGE</span>
   </div>

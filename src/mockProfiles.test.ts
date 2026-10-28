@@ -14,22 +14,10 @@ describe('resolveMockProfile', () => {
     expect(p.name).toBe('latest');
   });
 
-  it('parses v<N> to an exact wire version, fw 1.1.5 for V16+', () => {
-    const p = resolveMockProfile('v18');
-    expect(p.opts.wireVersion).toBe(18);
+  it('parses v28 as the released fw 1.1.5', () => {
+    const p = resolveMockProfile('v28');
+    expect(p.opts.wireVersion).toBe(28);
     expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 5 });
-  });
-
-  it('parses v10 with fw 1.1.4', () => {
-    const p = resolveMockProfile('v10');
-    expect(p.opts.wireVersion).toBe(10);
-    expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 4 });
-  });
-
-  it('parses v27/v28 with fw 1.1.6, while v26 stays on 1.1.5', () => {
-    expect(resolveMockProfile('v26').opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 5 });
-    expect(resolveMockProfile('v27').opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6 });
-    expect(resolveMockProfile('v28').opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6 });
   });
 
   it('parses v29 (subharmonic synthesizer) with fw 1.1.6', () => {
@@ -59,12 +47,10 @@ describe('resolveMockProfile', () => {
     expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6, beta: 4 });
   });
 
-  it('falls back to latest for wire versions the console never supported (11..15)', () => {
-    expect(resolveMockProfile('v12').name).toBe('latest');
-  });
-
-  it('falls back to latest below the connect floor', () => {
-    expect(resolveMockProfile('v9').name).toBe('latest');
+  it('falls back to latest below the wire floor, including the retired legacy token', () => {
+    expect(resolveMockProfile('v27').name).toBe('latest');
+    expect(resolveMockProfile('v10').name).toBe('latest');
+    expect(resolveMockProfile('legacy').name).toBe('latest');
   });
 
   it('falls back to latest above MAX_WIRE_VERSION', () => {
@@ -78,10 +64,10 @@ describe('resolveMockProfile', () => {
   });
 
   it('combines the chip axis with any profile', () => {
-    const p = resolveMockProfile('legacy', 'rp2040');
-    expect(p.name).toBe('legacy');
+    const p = resolveMockProfile('v29', 'rp2040');
+    expect(p.name).toBe('v29');
     expect(p.platform).toBe('rp2040');
-    expect(p.opts.wireVersion).toBe(10);
+    expect(p.opts.wireVersion).toBe(29);
   });
 
   it('treats the rp2040 token as a chip shorthand for latest', () => {
@@ -101,11 +87,11 @@ describe('resolveMockProfile', () => {
 
 describe('resolveMockProfiles', () => {
   it('splits a comma list into one profile per token', () => {
-    const list = resolveMockProfiles('latest,legacy');
+    const list = resolveMockProfiles('latest,v28');
     expect(list).toHaveLength(2);
     expect(list[0].name).toBe('latest');
-    expect(list[1].name).toBe('legacy');
-    expect(list[1].opts.wireVersion).toBe(10);
+    expect(list[1].name).toBe('v28');
+    expect(list[1].opts.wireVersion).toBe(28);
   });
 
   it('a single token yields the same profile as resolveMockProfile', () => {
@@ -113,7 +99,7 @@ describe('resolveMockProfiles', () => {
   });
 
   it('empty entries resolve to latest, and chip applies to every entry', () => {
-    const list = resolveMockProfiles(',legacy', 'rp2040');
+    const list = resolveMockProfiles(',v28', 'rp2040');
     expect(list[0].name).toBe('latest');
     expect(list.every((p) => p.platform === 'rp2040')).toBe(true);
   });
@@ -128,9 +114,14 @@ describe('activeMockProfiles', () => {
   });
 
   it('seeds every profile with a crash-fallback boot on ?sysclock=fallback', () => {
-    window.history.replaceState({}, '', '/?mock=latest,legacy&sysclock=fallback');
+    window.history.replaceState({}, '', '/?mock=latest,v28&sysclock=fallback');
     const profiles = activeMockProfiles();
     expect(profiles).toHaveLength(2);
     expect(profiles?.every((p) => p.opts.sysClockBoot?.storedMode === 2 && p.opts.sysClockBoot?.fallback === true)).toBe(true);
+  });
+
+  it('boots every profile without the system-clock opcodes on ?sysclock=off', () => {
+    window.history.replaceState({}, '', '/?mock=latest,v28&sysclock=off');
+    expect(activeMockProfiles()?.every((p) => p.opts.sysClock === false)).toBe(true);
   });
 });

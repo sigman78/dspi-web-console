@@ -1,5 +1,5 @@
 // Standalone tests for the bulk parser.  Covers parse/build
-// roundtrip across header, sections, and the V6 optional tail.
+// roundtrip across header and sections.
 
 import { describe, it, expect } from 'vitest';
 
@@ -15,14 +15,14 @@ const { NUM_CHANNELS, NUM_OUTPUTS, BANDS_MAX } = Wire.Const;
 describe('bulkParser — header + global', () => {
   it('parses header fields', () => {
     const buf = makeBulk({
-      formatVersion: 6, numCh: 11, numOut: 9, numIn: 2, maxBands: 12,
+      numCh: 17, numOut: 9, numIn: 8, maxBands: 12,
     });
     const p = parseBulkParams(buf);
-    expect(p.formatVersion).toBe(6);
+    expect(p.formatVersion).toBe(Wire.MIN_WIRE_VERSION);
     expect(p.platformId).toBe(1);
-    expect(p.numCh).toBe(11);
+    expect(p.numCh).toBe(17);
     expect(p.numOut).toBe(9);
-    expect(p.numIn).toBe(2);
+    expect(p.numIn).toBe(8);
     expect(p.maxBands).toBe(12);
   });
 
@@ -51,14 +51,14 @@ describe('bulkParser — header + global', () => {
 // Per-channel + matrix
 
 describe('bulkParser — per-channel + matrix', () => {
-  it('parses 11 delays', () => {
+  it('parses 17 delays', () => {
     const delaysMs = Array.from({ length: NUM_CHANNELS }, (_, i) => i * 0.25);
     const p = parseBulkParams(makeBulk({ delaysMs }));
     delaysMs.forEach((v, i) => expect(p.delaysMs[i]).toBeCloseTo(v, 5));
   });
 
-  it('parses 2x9 crosspoints', () => {
-    const cps = Array.from({ length: 2 }, (_, inp) =>
+  it('parses 8x9 crosspoints', () => {
+    const cps = Array.from({ length: Wire.Const.NUM_INPUTS }, (_, inp) =>
       Array.from({ length: NUM_OUTPUTS }, (_, outp) => ({
         enabled: (inp + outp) % 2 === 0,
         invert: outp === 3,
@@ -66,7 +66,7 @@ describe('bulkParser — per-channel + matrix', () => {
       })),
     );
     const p = parseBulkParams(makeBulk({ crosspoints: cps }));
-    for (let inp = 0; inp < 2; inp++) {
+    for (let inp = 0; inp < Wire.Const.NUM_INPUTS; inp++) {
       for (let outp = 0; outp < NUM_OUTPUTS; outp++) {
         expect(p.crosspoints[inp][outp].enabled).toBe(cps[inp][outp].enabled);
         expect(p.crosspoints[inp][outp].invert).toBe(cps[inp][outp].invert);
@@ -103,27 +103,27 @@ describe('bulkParser — per-channel + matrix', () => {
   });
 
   it('parses NUL-terminated UTF-8 channel names', () => {
-    const names = ['Input 1 L', 'Input 1 R', '', 'OUT3', '', '', '', '', '', '', 'PDM'];
+    const names = Array.from({ length: NUM_CHANNELS }, (_, i) => (i % 3 === 2 ? '' : `Ch ${i} \u00e9`));
     const p = parseBulkParams(makeBulk({ channelNames: names }));
-    expect(p.channelNames.slice(0, 11)).toEqual(names);
-    expect(p.channelNames.slice(11).every((n) => n === '')).toBe(true);
+    expect(p.channelNames).toEqual(names);
   });
 });
 
-// V6 trailing sections
+// Trailing sections
 
-describe('bulkParser — V6 trailing sections', () => {
-  it('parses per-channel preamp + master volume on V6', () => {
+describe('bulkParser — trailing sections', () => {
+  it('parses per-input preamp + master volume', () => {
     const p = parseBulkParams(makeBulk({
-      inputPreampsDb: [-1, -2, 0, 0, 0, 0, 0, 0],
+      inputPreampsDb: [-1, -2, 0, 0, 0, 0, 0, -7],
       masterVolumeDb: -12.5,
     }));
     expect(p.inputPreampsDb[0]).toBeCloseTo(-1, 5);
     expect(p.inputPreampsDb[1]).toBeCloseTo(-2, 5);
+    expect(p.inputPreampsDb[7]).toBeCloseTo(-7, 5);
     expect(p.masterVolumeDb).toBeCloseTo(-12.5, 5);
   });
 
-  it('parses optional I2S + leveller blocks when present', () => {
+  it('parses I2S + leveller blocks', () => {
     const p = parseBulkParams(makeBulk({
       i2s: {
         outputSlotTypes: [0, 1, 0, 1],
@@ -149,61 +149,18 @@ describe('bulkParser — short buffers', () => {
   it('rejects below minimum size', () => {
     expect(() => parseBulkParams(new Uint8Array(100))).toThrow();
   });
-
-  // Buffers sized inside the V6 tail must parse correctly.  V6 fields are
-  // non-nullable -- absent sections fall back to factory defaults (0), not null.
-  // The parser gates sections on header.payloadLength, so we build a full V6
-  // packet, slice to the target size, then patch bytes 6-7 (payloadLength u16
-  // little-endian) to match the slice -- simulating a firmware response that
-  // only emits sections up to `sz`.
-  it('parses partial V6 tail consistently across the preamp/master gap', () => {
-    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    const full = buildBulkParams({
-      ...base,
-      inputPreampsDb: [-1.5, -2.5, 0, 0, 0, 0, 0, 0], masterVolumeDb: -7.25,
-    });
-
-    for (const sz of [2864, 2868, 2872, 2876, 2880, 2884, 2888, 2892, 2896]) {
-      // Slice to sz bytes and patch payloadLength header field (bytes 6-7, LE).
-      const buf = full.slice(0, sz);
-      buf[6] = sz & 0xff;
-      buf[7] = (sz >>> 8) & 0xff;
-      const p = parseBulkParams(buf);
-
-      // preamp section starts at 2864; it requires 16 bytes (8 data + 8 reserved).
-      const hasPreamp = sz >= 2880;
-      // master vol at 2880; requires 16 bytes (4 data + 12 reserved).
-      const hasMaster = sz >= 2896;
-
-      if (hasPreamp) {
-        expect(p.inputPreampsDb[0]).toBeCloseTo(-1.5, 5);
-        expect(p.inputPreampsDb[1]).toBeCloseTo(-2.5, 5);
-      } else {
-        // Section absent -- parser returns factory default (0).
-        expect(p.inputPreampsDb[0]).toBe(0);
-        expect(p.inputPreampsDb[1]).toBe(0);
-      }
-      if (hasMaster) {
-        expect(p.masterVolumeDb).toBeCloseTo(-7.25, 5);
-      } else {
-        // Section absent -- parser returns factory default (0).
-        expect(p.masterVolumeDb).toBe(0);
-      }
-    }
-  });
 });
 
 describe('buildBulkParams + defaultBulkParams', () => {
   it('default bulk roundtrips through build+parse cleanly', () => {
-    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
+    const base = defaultBulkParams({ platformId: 1, numCh: 17, numOut: 9 });
     const bytes = buildBulkParams(base);
-    expect(bytes.byteLength).toBe(Wire.BulkSizes.V10);
-    const parsed = parseBulkParams(bytes);
-    expect(parsed).toEqual(base);
+    expect(bytes.byteLength).toBe(Wire.BULK_SIZE_V28);
+    expect(parseBulkParams(bytes)).toEqual(base);
   });
 
   it('non-default fields survive roundtrip', () => {
-    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
+    const base = defaultBulkParams({ platformId: 1, numCh: 17, numOut: 9 });
     const bulk: BulkParams = {
       ...base,
       bypass: true,
@@ -215,27 +172,18 @@ describe('buildBulkParams + defaultBulkParams', () => {
     expect(parsed.bypass).toBe(true);
     expect(parsed.preampDb).toBeCloseTo(-3.5);
     expect(parsed.masterVolumeDb).toBeCloseTo(-12);
-    expect(parsed.channelNames.slice(0, 11)).toEqual(bulk.channelNames.slice(0, 11));
-    expect(parsed.channelNames.slice(11).every((n) => n === '')).toBe(true);
+    expect(parsed.channelNames).toEqual(bulk.channelNames);
   });
 
-  it('builder throws on sub-V6 (pre-floor) input', () => {
-    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    expect(() => buildBulkParams({ ...base, formatVersion: 5 }))
-      .toThrow(/V6|formatVersion/);
-  });
-});
-
-describe('bulkParser — forward-compat with newer wire versions', () => {
-  it('surfaces payloadLength from the header', () => {
-    const p = parseBulkParams(makeBulk());
-    expect(p.payloadLength).toBe(Wire.BulkSizes.V10);
+  it('builder throws below the wire floor, for the snapshot or an explicit version', () => {
+    const base = defaultBulkParams({ platformId: 1, numCh: 17, numOut: 9 });
+    expect(() => buildBulkParams({ ...base, formatVersion: 27 })).toThrow(/floor/);
+    expect(() => buildBulkParams(base, 10)).toThrow(/floor/);
   });
 
-  // 1.1.4 firmware rejects a SetAllParams whose platform_id (-2) or channel
-  // counts (-3) don't match the device. The writer must echo the values it
-  // parsed from the device, never hardcode them, or writes to 1.1.4 stall.
   it('echoes the device platformId and channel counts into the written header', () => {
+    // Firmware rejects a SetAllParams whose platform_id or channel counts
+    // don't match the device, so the writer must echo what it parsed.
     const bulk: BulkParams = {
       ...defaultBulkParams({ platformId: 0, numCh: 7, numOut: 5 }),
       numCh: 7, numOut: 5,
@@ -245,16 +193,18 @@ describe('bulkParser — forward-compat with newer wire versions', () => {
     expect(header.numCh).toBe(7);
     expect(header.numOut).toBe(5);
   });
+
+  it('surfaces payloadLength from the header', () => {
+    expect(parseBulkParams(makeBulk()).payloadLength).toBe(Wire.BULK_SIZE_V28);
+  });
 });
 
-describe('bulkParser — V7-V10 tail decode', () => {
-  it('parses the four V10 tail sections', () => {
+describe('bulkParser — V28 floor sections', () => {
+  it('decodes tail sections', () => {
     const obj = makeBulkObject({
-      formatVersion: 10,
-      payloadLength: Wire.BulkSizes.V10,
       inputConfig: {
         source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
-        spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
+        spdifRxPinExt: [0, 0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
         adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
       },
       lgSoundSync: { enabled: true, present: true, volume: 40, muted: false },
@@ -262,33 +212,37 @@ describe('bulkParser — V7-V10 tail decode', () => {
       dacHwMute:   { enabled: true, activeLow: true, pin: 11, holdMs: 20, releaseMs: 50 },
     });
     const p = parseBulkParams(buildBulkParams(obj));
-    expect(p.formatVersion).toBe(10);
-    expect(p.payloadLength).toBe(Wire.BulkSizes.V10);
-    expect(p.inputConfig).toEqual({
-      source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
-      // Old (pre-V28) wire only carries SPDIF2/3 -- the DTO pads a third
-      // (SPDIF4) entry to 0 so the shape is uniform across versions.
-      spdifRxPinExt: [0, 0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
-      adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
-    });
+    expect(p.inputConfig).toEqual(obj.inputConfig);
     expect(p.lgSoundSync).toEqual({ enabled: true, present: true, volume: 40, muted: false });
     expect(p.userVolume.volumeDb).toBeCloseTo(-6.5, 4);
     expect(p.userVolume.mute).toBe(true);
     expect(p.dacHwMute).toEqual({ enabled: true, activeLow: true, pin: 11, holdMs: 20, releaseMs: 50 });
   });
 
-  it('falls back to factory defaults for the tail on a V6 packet', () => {
-    const p = parseBulkParams(makeBulk({
-      formatVersion: 6, payloadLength: Wire.BulkSizes.V6Full,
-    }));
-    expect(p.inputConfig).toEqual({
-      source: 0, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
-      spdifRxPinExt: [0, 0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
-      adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
-    });
-    expect(p.lgSoundSync.enabled).toBe(false);
-    expect(p.userVolume.mute).toBe(false);
-    expect(p.dacHwMute.pin).toBe(11);
+  it('round-trips the output masks, crossover bands and ADAT/psybass/upmix sections', () => {
+    const base = makeBulkObject();
+    const obj: BulkParams = {
+      ...base,
+      loudness: { ...base.loudness, outputMask: 0x0155 },
+      crossfeed: { ...base.crossfeed, outputPairMask: 0x06 },
+      leveller: { ...base.leveller, detectorMask: 0x0F, applyMask: 0xF0 },
+      adat: { enabled: true, pin: 14 },
+      psybass: { ...base.psybass, enabled: true, cutoffHz: 95, outputMask: 0x00F0 },
+      upmix: { ...base.upmix, enabled: true, centerMode: 2, presenceDb: -3 },
+    };
+    obj.crossover = obj.crossover.map((bands) => bands.map((f) => ({ ...f })));
+    obj.crossover[9][2] = { type: FilterType.Peaking, bypass: false, frequency: 3000, q: 2, gain: 3, qpRaw: 0 };
+
+    const p = parseBulkParams(buildBulkParams(obj));
+    expect(p.loudness.outputMask).toBe(0x0155);
+    expect(p.crossfeed.outputPairMask).toBe(0x06);
+    expect(p.leveller.detectorMask).toBe(0x0F);
+    expect(p.leveller.applyMask).toBe(0xF0);
+    expect(p.adat).toEqual({ enabled: true, pin: 14 });
+    expect(p.psybass).toEqual(obj.psybass);
+    expect(p.upmix).toEqual(obj.upmix);
+    expect(p.crossover[9][2].frequency).toBeCloseTo(3000, 3);
+    expect(p.crossover[9][2].gain).toBeCloseTo(3, 4);
   });
 
   it('decodes per-band bypass', () => {
@@ -298,68 +252,18 @@ describe('bulkParser — V7-V10 tail decode', () => {
       })),
     );
     filters[2][4] = { type: FilterType.Peaking, bypass: true, frequency: 800, q: 1, gain: 2, qpRaw: 0 };
-    const obj = makeBulkObject({ filters });
-    const p = parseBulkParams(buildBulkParams(obj));
+    const p = parseBulkParams(buildBulkParams(makeBulkObject({ filters })));
     expect(p.filters[2][4].bypass).toBe(true);
     expect(p.filters[0][0].bypass).toBe(false);
   });
-});
 
-describe('buildBulkParams — version-aware', () => {
-  it('emits V10 (2960 B) for a V10 snapshot, preserving the tail', () => {
-    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    const v10 = {
-      ...base,
-      inputConfig: {
-        source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
-        spdifRxPinExt: [0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
-        adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
-      },
-      userVolume: { volumeDb: -3, mute: true },
-    };
-    const bytes = buildBulkParams(v10);
-    expect(bytes.byteLength).toBe(Wire.BulkSizes.V10);
-    const p = parseBulkParams(bytes);
-    expect(p.formatVersion).toBe(10);
-    expect(p.inputConfig).toEqual({
-      source: 1, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateEnc: 1, i2sInputChannels: 0,
-      spdifRxPinExt: [0, 0, 0], spdifRxEnabledExtP1: 0, i2sClockMode: 0,
-      adatInputPin: 0, adatInputEnabledP1: 0, adatInputClockModeP1: 0,
-    });
-    expect(p.userVolume.mute).toBe(true);
-  });
-
-  it('round-trips the multi-SPDIF fields (spdifRxPinExt, spdifRxEnabledExtP1)', () => {
-    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    const bulk = {
-      ...base,
-      inputConfig: { ...base.inputConfig, spdifRxPinExt: [16, 17, 0], spdifRxEnabledExtP1: 3 },
-    };
-    const p = parseBulkParams(buildBulkParams(bulk));
-    // Pre-V28 wire only carries SPDIF2/3 -- the SPDIF4 (third) slot is
-    // dropped on write and comes back padded to 0.
-    expect(p.inputConfig.spdifRxPinExt).toEqual([16, 17, 0]);
-    expect(p.inputConfig.spdifRxEnabledExtP1).toBe(3);
-  });
-
-  it('changing a legacy field on a V10 snapshot leaves the tail intact', () => {
-    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    const v10 = { ...base, dacHwMute: { enabled: true, activeLow: false, pin: 11, holdMs: 5, releaseMs: 7 } };
-    const edited = { ...v10, bypass: true };
-    const p = parseBulkParams(buildBulkParams(edited));
-    expect(p.bypass).toBe(true);
-    expect(p.dacHwMute).toEqual({ enabled: true, activeLow: false, pin: 11, holdMs: 5, releaseMs: 7 });
-  });
-
-  it('an explicit lower write version down-converts (firmware-merge path)', () => {
-    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    const bytes = buildBulkParams(base, 6);
-    expect(bytes.byteLength).toBe(Wire.BulkSizes.V6Full);
-    expect(parseBulkParams(bytes).formatVersion).toBe(6);
-  });
-
-  it('still throws on sub-V6 input', () => {
-    const base = defaultBulkParams({ platformId: 1, numCh: 11, numOut: 9 });
-    expect(() => buildBulkParams({ ...base, formatVersion: 5 })).toThrow(/V6|formatVersion/);
+  it('keeps the Linkwitz qp sidecar only on Linkwitz Transform bands', () => {
+    const base = makeBulkObject();
+    const filters = base.filters.map((bands) => bands.map((f) => ({ ...f })));
+    filters[1][0] = { type: FilterType.LinkwitzTransform, bypass: false, frequency: 30, q: 0.5, gain: 0, qpRaw: 400 };
+    filters[1][1] = { type: FilterType.Peaking, bypass: false, frequency: 800, q: 1, gain: 2, qpRaw: 400 };
+    const p = parseBulkParams(buildBulkParams({ ...base, filters }));
+    expect(p.filters[1][0].qpRaw).toBe(400);
+    expect(p.filters[1][1].qpRaw).toBe(0);
   });
 });

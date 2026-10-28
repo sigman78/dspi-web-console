@@ -1,60 +1,52 @@
-// V16 (fw 1.1.5, unified channel model) device-facade coverage against the
-// MockTransport's V16 synthesis: connect classification, the RP2350 wire
-// index shift, crossover band addressing, the wide status layout, and the
-// I2S-input command surface.
+// Device-facade coverage against the MockTransport at the wire floor (V28):
+// connect classification, the RP2350 wire index shift, crossover band
+// addressing, the status layout, the I2S-input and control-interface command
+// surfaces, and Control Surfaces.
 
 import { describe, it, expect, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
-import { DspDevice, UnsupportedFirmware } from './DspDevice';
+import { DspDevice } from './DspDevice';
 import * as Protocol from '@/protocol';
 import * as Domain from '@/domain';
 
-const FW_115 = { major: 1, minor: 1, patch: 5 };
-
-async function v16Device(platform: 'rp2040' | 'rp2350' = 'rp2350'): Promise<DspDevice> {
-  return DspDevice.create(new MockTransport({ platform, wireVersion: 16, fwVersion: FW_115 }));
+async function makeDevice(platform: 'rp2040' | 'rp2350' = 'rp2350'): Promise<DspDevice> {
+  return DspDevice.create(new MockTransport({ platform }));
 }
 
-describe('DspDevice — V16 connect + profile', () => {
-  it('classifies a V16 RP2350 as supported with the 17-channel profile', async () => {
-    const d = await v16Device();
+describe('DspDevice — connect + profile', () => {
+  it('classifies an RP2350 as supported with the 17-channel profile', async () => {
+    const d = await makeDevice();
     expect(d.capabilities.support).toBe('supported');
-    expect(d.capabilities.channelModel).toBe(Domain.ChannelFamily.Unified);
     expect(d.hardware.totalChannelCount).toBe(17);
     expect(d.hardware.inputs.length).toBe(8);
     expect(d.capabilities.features.multichannelInput).toBe(true);
   });
 
-  it('keeps the RP2040 at the 7-channel space on V16', async () => {
-    const d = await v16Device('rp2040');
+  it('keeps the RP2040 at the 7-channel space', async () => {
+    const d = await makeDevice('rp2040');
     expect(d.hardware.totalChannelCount).toBe(7);
     expect(d.hardware.inputs.length).toBe(2);
-    expect(d.capabilities.features.i2sInput).toBe(true);
     expect(d.capabilities.features.multichannelInput).toBe(false);
   });
 
-  it('rejects the 11..15 in-development intermediates at connect', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: 12 });
-    await expect(DspDevice.create(t)).rejects.toBeInstanceOf(UnsupportedFirmware);
-  });
 });
 
-describe('DspDevice — V16 wire index shift (RP2350 outputs at 8..16)', () => {
+describe('DspDevice — wire index shift (RP2350 outputs at 8..16)', () => {
   it('routes channel names through the shifted wire index', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setChannelName(Domain.ChannelId.Out1L, 'Front L');
     // The name must land on WIRE channel 8, not the domain id 2.
     const bulk = await d.getAllParams();
     expect(bulk.channelNames[8]).toBe('Front L');
-    // Wire channel 2 is In2L (input slot 2) on V16 RP2350, not Out1L -- it
+    // Wire channel 2 is In2L (input slot 2) on RP2350, not Out1L -- it
     // must keep its own USB default, not the rename.
     expect(bulk.channelNames[2]).toBe('USB 3');
     const snap = await d.getSnapshot();
     expect(snap.channels.find((c) => c.id === Domain.ChannelId.Out1L)?.name).toBe('Front L');
   });
 
-  it('reads EQ through the V16 5-bit-band wValue encoding', async () => {
-    const d = await v16Device();
+  it('reads EQ through the 5-bit-band wValue encoding', async () => {
+    const d = await makeDevice();
     await d.setFilter(Domain.ChannelId.Out1L, 4, {
       type: Domain.FilterType.Peaking, bypass: false, frequency: 880, q: 1.5, gain: -2,
     });
@@ -66,9 +58,9 @@ describe('DspDevice — V16 wire index shift (RP2350 outputs at 8..16)', () => {
   });
 });
 
-describe('DspDevice — V16 crossover bands', () => {
+describe('DspDevice — crossover bands', () => {
   it('round-trips a crossover band through the 20..23 band window', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCrossoverBand(Domain.ChannelId.Out2L, 1, {
       type: Domain.FilterType.Lr4Hp, bypass: false, frequency: 2400, q: 0.707, gain: 0,
     });
@@ -83,39 +75,34 @@ describe('DspDevice — V16 crossover bands', () => {
   });
 
   it('crossover bypass rides SetBandBypass at the offset band index', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCrossoverBypass(Domain.ChannelId.Out1L, 0, true);
     const snap = await d.getSnapshot();
     expect(snap.channels.find((c) => c.id === Domain.ChannelId.Out1L)?.xoverBands[0].bypass).toBe(true);
   });
 
   it('input channels carry no crossover bands', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const snap = await d.getSnapshot();
     expect(snap.channels.find((c) => c.id === Domain.ChannelId.In1L)?.xoverBands).toEqual([]);
     expect(snap.inputPreampDb).toHaveLength(8);
   });
 });
 
-describe('DspDevice — V16 wide status', () => {
+describe('DspDevice — status', () => {
   it('parses 17 peaks, u32 clip flags, and the live input count', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const s = await d.getSystemStatus();
     expect(s.peaks.length).toBe(17);
     expect(s.peaks[16]).toBeGreaterThan(0);   // last channel's peak arrived
     expect(s.activeInputChannels).toBe(2);
   });
 
-  it('V10 devices report no active input count', async () => {
-    const d = await DspDevice.create(new MockTransport({ platform: 'rp2350' }));
-    const s = await d.getSystemStatus();
-    expect(s.activeInputChannels).toBeNull();
-  });
 });
 
-describe('DspDevice — V16 I2S input surface', () => {
+describe('DspDevice — I2S input surface', () => {
   it('commands the input rate and reads back {current, selected}', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setInputRate(96000);
     const r = await d.getInputRate();
     expect(r.selectedHz).toBe(96000);
@@ -123,7 +110,7 @@ describe('DspDevice — V16 I2S input surface', () => {
   });
 
   it('sets and reads a pair-addressed I2S RX data pin', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const res = await d.setI2sRxPin(1, 20);
     expect(res.ok).toBe(true);
     expect(await d.getI2sRxPin(1)).toBe(20);
@@ -131,40 +118,40 @@ describe('DspDevice — V16 I2S input surface', () => {
   });
 
   it('rejects an out-of-range stereo pair', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const res = await d.setI2sRxPin(4, 20);
     expect(res.ok).toBe(false);
   });
 
   it('switches the I2S channel count and rejects invalid counts', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     expect((await d.setI2sInputChannels(6)).ok).toBe(true);
     expect(await d.getI2sInputChannels()).toBe(6);
     expect((await d.setI2sInputChannels(3)).ok).toBe(false);
     // RP2040 has a single pair: counts above 2 must be rejected.
-    const d40 = await v16Device('rp2040');
+    const d40 = await makeDevice('rp2040');
     expect((await d40.setI2sInputChannels(4)).ok).toBe(false);
   });
 });
 
-describe('DspDevice — cross-generation state conversion', () => {
-  it('restores a V10-captured state onto a V16 device (up-convert at write)', async () => {
-    const v10 = await DspDevice.create(new MockTransport({ platform: 'rp2350' }));
-    await v10.setMasterVolume(-18);
-    const state = await v10.captureState();
+describe('DspDevice — cross-version state conversion', () => {
+  it('restores a floor-captured state onto a newer-wire device (up-convert at write)', async () => {
+    const floor = await makeDevice();
+    await floor.setMasterVolume(-18);
+    const state = await floor.captureState();
 
-    const v16 = await v16Device();
-    await v16.restoreState(state);
-    expect(await v16.getMasterVolume()).toBeCloseTo(-18, 4);
-    // The mock accepted the packet, i.e. it arrived at the exact V16 size.
-    const bulk = await v16.getAllParams();
-    expect(bulk.formatVersion).toBe(16);
+    const newest = await DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: Protocol.Wire.MAX_WIRE_VERSION }));
+    await newest.restoreState(state);
+    expect(await newest.getMasterVolume()).toBeCloseTo(-18, 4);
+    // The mock accepted the packet, i.e. it arrived at the exact newest-wire size.
+    const bulk = await newest.getAllParams();
+    expect(bulk.formatVersion).toBe(Protocol.Wire.MAX_WIRE_VERSION);
   });
 });
 
-describe('DspDevice — V16 chunked bulk-params (WinUSB 4 KB control-transfer cap)', () => {
+describe('DspDevice — chunked bulk-params (WinUSB 4 KB control-transfer cap)', () => {
   it('getAllParams never requests more than 4096 B per transfer and uses 0xA2', async () => {
-    const mock = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: FW_115 });
+    const mock = new MockTransport({ platform: 'rp2350', });
     const ctrlInSpy = vi.spyOn(mock, 'ctrlIn');
     const d = await DspDevice.create(mock);
     ctrlInSpy.mockClear();   // drop the connect-time 16-byte header peek
@@ -177,8 +164,8 @@ describe('DspDevice — V16 chunked bulk-params (WinUSB 4 KB control-transfer ca
     expect(calls.some((c) => c[0] === Protocol.WireCmd.GetAllParams.code)).toBe(false);
   });
 
-  it('setAllParams emits sequential 0xA3 chunks that concatenate to the exact V16 packet; the write round-trips', async () => {
-    const mock = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: FW_115 });
+  it('setAllParams emits sequential 0xA3 chunks that concatenate to the exact packet; the write round-trips', async () => {
+    const mock = new MockTransport({ platform: 'rp2350', });
     const d = await DspDevice.create(mock);
     const bulk = await d.getAllParams();
     bulk.masterVolumeDb = -21;
@@ -201,35 +188,17 @@ describe('DspDevice — V16 chunked bulk-params (WinUSB 4 KB control-transfer ca
     const concatenated = new Uint8Array(expectedOffset);
     let off = 0;
     for (const p of pieces) { concatenated.set(p, off); off += p.length; }
-    expect(concatenated).toEqual(Protocol.buildBulkParams(bulk, 16));
+    expect(concatenated).toEqual(Protocol.buildBulkParams(bulk, d.capabilities.wire));
 
     const back = await d.getAllParams();
     expect(back.masterVolumeDb).toBeCloseTo(-21, 4);
   });
 
-  it('a V10 device stays single-shot: never issues 0xA2/0xA3', async () => {
-    const mock = new MockTransport({ platform: 'rp2350', wireVersion: 10 });
-    const ctrlInSpy = vi.spyOn(mock, 'ctrlIn');
-    const ctrlOutSpy = vi.spyOn(mock, 'ctrlOut');
-    const d = await DspDevice.create(mock);
-    const bulk = await d.getAllParams();
-    await d.setAllParams(bulk);
-
-    expect(ctrlInSpy.mock.calls.some((c) => c[0] === Protocol.WireCmd.GetAllParamsChunk.code)).toBe(false);
-    expect(ctrlOutSpy.mock.calls.some((c) => c[0] === Protocol.WireCmd.SetAllParamsChunk.code)).toBe(false);
-  });
 });
 
-describe('DspDevice — V16 external control interfaces', () => {
-  it('reports the controlInterfaces feature on V16 only', async () => {
-    const v16 = await v16Device();
-    expect(v16.capabilities.features.controlInterfaces).toBe(true);
-    const v10 = await DspDevice.create(new MockTransport({ platform: 'rp2350' }));
-    expect(v10.capabilities.features.controlInterfaces).toBe(false);
-  });
-
+describe('DspDevice — external control interfaces', () => {
   it('sets a valid UART config; GET reflects it and status reports it live', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     // 12/13: collision-free against the mock's default output pins (6-10),
     // I2S clock (13/14) is idle (MCK disabled), and I2S RX pair 0 (GPIO 1).
     const { result, status } = await d.setUartControlConfig({
@@ -243,7 +212,7 @@ describe('DspDevice — V16 external control interfaces', () => {
   });
 
   it('rejects an out-of-range baud with InvalidParam and leaves the config unchanged', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const before = await d.getUartControlConfig();
     const { result, status } = await d.setUartControlConfig({
       enabled: true, txPin: 12, rxPin: 13, notifyEnabled: false, baud: 1_000_001,
@@ -255,7 +224,7 @@ describe('DspDevice — V16 external control interfaces', () => {
   });
 
   it('rejects an I2C pin pair with wrong parity or a cross-instance pair', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const wrongParity = await d.setI2cControlConfig({ enabled: true, sdaPin: 19, sclPin: 18, address: 0x42 });
     expect(wrongParity.result.ok).toBe(false);
     const crossInstance = await d.setI2cControlConfig({ enabled: true, sdaPin: 18, sclPin: 17, address: 0x42 });
@@ -263,7 +232,7 @@ describe('DspDevice — V16 external control interfaces', () => {
   });
 
   it('sets a valid I2C config and reads it back via GetCtrlIfaceStatus', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const { result, status } = await d.setI2cControlConfig({ enabled: true, sdaPin: 2, sclPin: 3, address: 0x50 });
     expect(result.ok).toBe(true);
     expect(status.i2cLive).toBe(true);
@@ -272,7 +241,7 @@ describe('DspDevice — V16 external control interfaces', () => {
   });
 
   it('reserves its pins against output-pin assignment once enabled', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const { result } = await d.setUartControlConfig({ enabled: true, txPin: 12, rxPin: 13, notifyEnabled: false, baud: 115200 });
     expect(result.ok).toBe(true);
     const clash = await d.setOutputPin(0, 12);
@@ -280,15 +249,9 @@ describe('DspDevice — V16 external control interfaces', () => {
     if (!clash.ok) expect(clash.code).toBe(Protocol.PinConfigResult.PinInUse);
   });
 
-  it('a V10 device has no control-interface state to corrupt (feature-gated, GETs read disabled defaults)', async () => {
-    const d = await DspDevice.create(new MockTransport({ platform: 'rp2350' }));
-    expect(d.capabilities.features.controlInterfaces).toBe(false);
-    const cfg = await d.getUartControlConfig();
-    expect(cfg.enabled).toBe(false);
-  });
 });
 
-describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)', () => {
+describe('DspDevice — Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)', () => {
   const encoderBinding = {
     type: Domain.CsType.Encoder, noun: Domain.CsNoun.MasterVolume, action: Domain.CsAction.Step,
     flags: 0, gpio0: 21, gpio1: 22, event: Domain.CsEvent.Press, target: 0, index: 0,
@@ -296,16 +259,9 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
     baseBright: 0, onDelay: 0, offDelay: 0, reserved2: [0, 0],
   };
 
-  it('reports the controlSurfaces feature on V16 only', async () => {
-    const v16 = await v16Device();
-    expect(v16.capabilities.features.controlSurfaces).toBe(true);
-    const v10 = await DspDevice.create(new MockTransport({ platform: 'rp2350' }));
-    expect(v10.capabilities.features.controlSurfaces).toBe(false);
-  });
-
   it('enumerates caps v4: dynamic type/tail parsing and one descriptor per noun', async () => {
     const d = await DspDevice.create(new MockTransport({
-      platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 4,
+      platform: 'rp2350', csCapsVersion: 4,
     }));
     const { caps, nouns } = await d.getCsCaps();
     expect(caps.capsVersion).toBe(4);
@@ -331,7 +287,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
   });
 
   it('applies an encoder binding through the deferred poll, dirties the live config, and round-trips it', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     // GP21/22 are collision-free on the default mock layout (outputs 6-10,
     // I2S RX pair 0 on GPIO 1, clocks idle).
     const { result, status } = await d.setCsBinding(2, encoderBinding);
@@ -344,7 +300,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
   });
 
   it('sets and reads back an LED_PWM binding carrying a brightness ceiling and indicator delays', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const ledPwmBinding = {
       type: Domain.CsType.LedPwm, noun: Domain.CsNoun.MasterVolume, action: Domain.CsAction.IndAbove,
       flags: 0, gpio0: 20, gpio1: null, event: Domain.CsEvent.Press, target: 0, index: 0,
@@ -357,7 +313,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
   });
 
   it('rejects an action outside the type∩noun mask with INVALID_ACTION', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const { result } = await d.setCsBinding(0, {
       ...encoderBinding, noun: Domain.CsNoun.UserMute,   // bool noun takes no STEP
     });
@@ -367,7 +323,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
   });
 
   it('rejects a bad button event with INVALID_EVENT', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const { result } = await d.setCsBinding(0, {
       type: Domain.CsType.Button, noun: Domain.CsNoun.UserMute, action: Domain.CsAction.Toggle,
       flags: 0, gpio0: 20, gpio1: null, event: 3 as Domain.CsEvent, target: 0, index: 0,
@@ -379,7 +335,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
   });
 
   it('rejects a pot on a non-ADC pin with PIN_NOT_ADC; accepts it on GP26', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const pot = {
       type: Domain.CsType.Pot, noun: Domain.CsNoun.UserVolume, action: Domain.CsAction.Adjust,
       flags: 0, gpio0: 20, gpio1: null, event: Domain.CsEvent.Press, target: 0, index: 0,
@@ -395,14 +351,14 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
   });
 
   it('rejects a pin already claimed by an output with PIN_IN_USE', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const { result } = await d.setCsBinding(0, { ...encoderBinding, gpio0: 6 });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(Protocol.PinConfigResult.PinInUse);
   });
 
   it('two button bindings share one GPIO on distinct events, but not the same event twice', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const press = {
       type: Domain.CsType.Button, noun: Domain.CsNoun.UserMute, action: Domain.CsAction.Toggle,
       flags: 0, gpio0: 20, gpio1: null, event: Domain.CsEvent.Press, target: 0, index: 0,
@@ -419,7 +375,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
   });
 
   it('a configured single-pin binding rides the 0xFF second-pin sentinel; clear stores the zero blob', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const led = {
       type: Domain.CsType.Led, noun: Domain.CsNoun.Loudness, action: Domain.CsAction.IndEquals,
       flags: 0, gpio0: 20, gpio1: null, event: Domain.CsEvent.Press, target: 0, index: 0,
@@ -437,7 +393,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
   });
 
   it('clearCsBinding releases the slot and its pins', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCsBinding(3, encoderBinding);
     const { result, status } = await d.clearCsBinding(3);
     expect(result.ok).toBe(true);
@@ -448,7 +404,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
   });
 
   it('sets and reads back a slot name through the deferred poll', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     expect(await d.getCsName(5)).toBe('');
     const { result, status } = await d.setCsName(5, 'Sub Level');
     expect(result.ok).toBe(true);
@@ -458,7 +414,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
   });
 
   it('csSave persists the live preview (last_slot 0xFF) and clears dirty', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCsBinding(2, encoderBinding);
     const before = await d.getCsStatus();
     expect(before.dirty).toBe(true);
@@ -470,7 +426,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
   });
 
   it('csRevert restores the last-saved bindings and discards a un-saved preview', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCsBinding(2, encoderBinding);
     await d.csSave();
     await d.clearCsBinding(2);   // live-only preview: clears the slot without saving
@@ -484,7 +440,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
   });
 
   it('surfaces a concurrent csSave as the BUSY result (firmware STALLs, not a byte)', async () => {
-    const raw = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: FW_115 });
+    const raw = new MockTransport({ platform: 'rp2350', });
     const d = await DspDevice.create(raw);
     // Arm a pending save behind the device's back so the next csSave hits
     // the firmware's stall path instead of the poll-drained happy path.
@@ -498,7 +454,7 @@ describe('DspDevice — V16 Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)',
 
 describe('DspDevice — Control Surfaces caps-version branching (32 vs 41-byte status, 8 vs 16 IR ceiling)', () => {
   it('a caps v5 device (pre-v6) reports the 8-entry status layout and IR ceiling', async () => {
-    const raw = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 5 });
+    const raw = new MockTransport({ platform: 'rp2350', csCapsVersion: 5 });
     const d = await DspDevice.create(raw);
     const { caps, nouns } = await d.getCsCaps();
     expect(caps.maxIrCommands).toBe(8);
@@ -512,7 +468,7 @@ describe('DspDevice — Control Surfaces caps-version branching (32 vs 41-byte s
   });
 
   it('the default (caps v14) device reports the 16-entry v6+ status layout and IR ceiling', async () => {
-    const raw = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: FW_115 });
+    const raw = new MockTransport({ platform: 'rp2350', });
     const d = await DspDevice.create(raw);
     const { caps, nouns } = await d.getCsCaps();
     expect(caps.maxIrCommands).toBe(16);
@@ -534,14 +490,14 @@ describe('DspDevice — Control Surfaces caps-version branching (32 vs 41-byte s
     };
 
     const v7 = await DspDevice.create(new MockTransport({
-      platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 7,
+      platform: 'rp2350', csCapsVersion: 7,
     }));
     const rejected = await v7.setCsBinding(0, delayedLed);
     expect(rejected.result.ok).toBe(false);
     if (!rejected.result.ok) expect(rejected.result.code).toBe(Protocol.CsStatusCode.InvalidValue);
 
     const v8 = await DspDevice.create(new MockTransport({
-      platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 8,
+      platform: 'rp2350', csCapsVersion: 8,
     }));
     const accepted = await v8.setCsBinding(0, delayedLed);
     expect(accepted.result.ok).toBe(true);
@@ -550,7 +506,7 @@ describe('DspDevice — Control Surfaces caps-version branching (32 vs 41-byte s
 
 describe('DspDevice — Control Surfaces target groups (0x20/0x21/0x26, caps v9+)', () => {
   it('setCsGroup/getCsGroup round-trip an output group through the deferred poll', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const group = { targetKind: Domain.CS_TARGET_OUTPUT_CH, memberMask: 0b11, name: 'Mains' };
     const { result, status } = await d.setCsGroup(1, group);
     expect(result.ok).toBe(true);
@@ -559,7 +515,7 @@ describe('DspDevice — Control Surfaces target groups (0x20/0x21/0x26, caps v9+
   });
 
   it('rejects a mask bit above the output count with InvalidGroup, keeping the previous record', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const group = { targetKind: Domain.CS_TARGET_OUTPUT_CH, memberMask: 0b11, name: 'Mains' };
     await d.setCsGroup(2, group);
     const bad = await d.setCsGroup(2, { ...group, memberMask: 0xFFFFFFFF });
@@ -569,14 +525,14 @@ describe('DspDevice — Control Surfaces target groups (0x20/0x21/0x26, caps v9+
   });
 
   it('getCsExtStatus maps the idle macro sentinel (0xFF) to null', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const ext = await d.getCsExtStatus();
     expect(ext.macroRunning).toBeNull();
   });
 
   it('a caps v8 device rejects getCsGroup (STALL, pre-v9 firmware has no such opcode)', async () => {
     const d = await DspDevice.create(new MockTransport({
-      platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 8,
+      platform: 'rp2350', csCapsVersion: 8,
     }));
     await expect(d.getCsGroup(0)).rejects.toThrow();
   });
@@ -594,7 +550,7 @@ describe('DspDevice — Control Surfaces macros (0x22-0x25, caps v9+)', () => {
   };
 
   it('setCsMacro/getCsMacro round-trip a named 2-step macro through the deferred poll', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const { result, status } = await d.setCsMacro(1, macro);
     expect(result.ok).toBe(true);
     expect(status.lastSlot).toBe(0x61);
@@ -604,7 +560,7 @@ describe('DspDevice — Control Surfaces macros (0x22-0x25, caps v9+)', () => {
   });
 
   it("re-applying with step 1's value out of range fails with InvalidValue, leaving stepCount and step 1 unchanged", async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCsMacro(1, macro);
     const bad = { ...macro, steps: macro.steps.map((s, i) => (i === 1 ? { ...s, value: 32767 } : s)) };
     const { result } = await d.setCsMacro(1, bad);
@@ -616,7 +572,7 @@ describe('DspDevice — Control Surfaces macros (0x22-0x25, caps v9+)', () => {
   });
 
   it('csMacroFire reports the running macro/step through GetCsExtStatus, then goes idle once it finishes', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCsMacro(1, macro);
 
     vi.useFakeTimers();
@@ -637,7 +593,7 @@ describe('DspDevice — Control Surfaces macros (0x22-0x25, caps v9+)', () => {
   });
 
   it('firing an empty macro slot succeeds and stays idle', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const fire = await d.csMacroFire(2);
     expect(fire.ok).toBe(true);
     const ext = await d.getCsExtStatus();
@@ -645,7 +601,7 @@ describe('DspDevice — Control Surfaces macros (0x22-0x25, caps v9+)', () => {
   });
 
   it('csMacroCancel returns a running macro to idle', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCsMacro(1, macro);
     const fire = await d.csMacroFire(1);
     expect(fire.ok).toBe(true);
@@ -657,13 +613,13 @@ describe('DspDevice — Control Surfaces macros (0x22-0x25, caps v9+)', () => {
 
   it('a caps v8 device rejects getCsMacro (STALL, pre-v9 firmware has no such opcode)', async () => {
     const d = await DspDevice.create(new MockTransport({
-      platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 8,
+      platform: 'rp2350', csCapsVersion: 8,
     }));
     await expect(d.getCsMacro(0)).rejects.toThrow();
   });
 });
 
-describe('DspDevice — V16 Control Surfaces IR commands (0x8D-0x8F)', () => {
+describe('DspDevice — Control Surfaces IR commands (0x8D-0x8F)', () => {
   const irReceiver = {
     type: Domain.CsType.Ir, noun: Domain.CsNoun.UserVolume, action: Domain.CsAction.Adjust,
     flags: 0, gpio0: 20, gpio1: null, event: Domain.CsEvent.Press, target: 0, index: 0,
@@ -676,7 +632,7 @@ describe('DspDevice — V16 Control Surfaces IR commands (0x8D-0x8F)', () => {
   };
 
   it('setCsIrCmd/getCsIrCmd round-trip an accepted command (last_slot 0x80|sub)', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const { result, status } = await d.setCsIrCmd(2, necToggle);
     expect(result.ok).toBe(true);
     expect(status.lastSlot).toBe(0x80 | 2);
@@ -684,7 +640,7 @@ describe('DspDevice — V16 Control Surfaces IR commands (0x8D-0x8F)', () => {
   });
 
   it('a rejected IR command leaves the sub-slot empty and surfaces the failure status', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     // ADJUST isn't in the IR button subset (INC/DEC/TOGGLE/SET/TRIGGER/MOMENTARY).
     const { result } = await d.setCsIrCmd(0, { ...necToggle, action: Domain.CsAction.Adjust });
     expect(result.ok).toBe(false);
@@ -693,7 +649,7 @@ describe('DspDevice — V16 Control Surfaces IR commands (0x8D-0x8F)', () => {
   });
 
   it('clearing a sub-slot is a SET of the all-zero command', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCsIrCmd(3, necToggle);
     const { result } = await d.setCsIrCmd(3, Domain.EMPTY_CS_IR_COMMAND);
     expect(result.ok).toBe(true);
@@ -701,7 +657,7 @@ describe('DspDevice — V16 Control Surfaces IR commands (0x8D-0x8F)', () => {
   });
 
   it('csIrLearnArm succeeds with a live IR receiver binding; csIrLearnResult reads back a completed learn', async () => {
-    const raw = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: FW_115 });
+    const raw = new MockTransport({ platform: 'rp2350', });
     const d = await DspDevice.create(raw);
     await d.setCsBinding(0, irReceiver);
     const arm = await d.csIrLearnArm();
@@ -712,14 +668,14 @@ describe('DspDevice — V16 Control Surfaces IR commands (0x8D-0x8F)', () => {
   });
 
   it('csIrLearnArm fails with NO_IR when no live IR receiver exists', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const arm = await d.csIrLearnArm();
     expect(arm.ok).toBe(false);
     if (!arm.ok) expect(arm.code).toBe(Protocol.CsStatusCode.NoIr);
   });
 
   it('csIrLearnCancel returns learn state to idle', async () => {
-    const raw = new MockTransport({ platform: 'rp2350', wireVersion: 16, fwVersion: FW_115 });
+    const raw = new MockTransport({ platform: 'rp2350', });
     const d = await DspDevice.create(raw);
     await d.setCsBinding(0, irReceiver);
     await d.csIrLearnArm();
@@ -728,7 +684,7 @@ describe('DspDevice — V16 Control Surfaces IR commands (0x8D-0x8F)', () => {
   });
 
   it('a second live IR receiver binding is rejected with IR_IN_USE', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCsBinding(0, irReceiver);
     const { result } = await d.setCsBinding(1, { ...irReceiver, gpio0: 21 });
     expect(result.ok).toBe(false);
@@ -742,7 +698,7 @@ describe('DspDevice — I2C displays (0x27-0x2B, caps v10+)', () => {
   const displayBinding = { ...Domain.EMPTY_CS_BINDING, type: Domain.CsType.Display, index: 6, gpio0: 2, gpio1: 3 };
 
   it('binds a display and seeds its cfg/pages on first attach', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const { result } = await d.setCsBinding(0, displayBinding);
     expect(result.ok).toBe(true);
 
@@ -759,7 +715,7 @@ describe('DspDevice — I2C displays (0x27-0x2B, caps v10+)', () => {
   });
 
   it('reports LIVE status 200 ms after attach, showing the FIXED home page', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCsBinding(0, displayBinding);
     vi.useFakeTimers();
     try {
@@ -774,7 +730,7 @@ describe('DspDevice — I2C displays (0x27-0x2B, caps v10+)', () => {
   });
 
   it('a second display binding in another slot is rejected with DisplayInUse', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCsBinding(0, displayBinding);
     const { result } = await d.setCsBinding(1, { ...displayBinding, gpio0: 16, gpio1: 17 });
     expect(result.ok).toBe(false);
@@ -782,7 +738,7 @@ describe('DspDevice — I2C displays (0x27-0x2B, caps v10+)', () => {
   });
 
   it("rejects SDA/SCL on the I2C control interface's live instance with I2cInUse", async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setI2cControlConfig({ enabled: true, sdaPin: 18, sclPin: 19, address: 0x42 });
     const { result } = await d.setCsBinding(0, { ...displayBinding, gpio0: 6, gpio1: 7 });
     expect(result.ok).toBe(false);
@@ -790,14 +746,14 @@ describe('DspDevice — I2C displays (0x27-0x2B, caps v10+)', () => {
   });
 
   it('rejects an odd SDA pin with PinNotI2c', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     const { result } = await d.setCsBinding(0, { ...displayBinding, gpio0: 5, gpio1: 4 });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe(Protocol.CsStatusCode.PinNotI2c);
   });
 
   it('setCsDisplayCfg rejects dwell < 10 in CYCLE_SELECTED (slot 0x50)', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCsBinding(0, displayBinding);
     const { cfg } = await d.getCsDisplayCfg();
     const { result, status } = await d.setCsDisplayCfg({ ...cfg, mode: Domain.CsDisplayMode.CycleSelected, dwell: 5 });
@@ -807,7 +763,7 @@ describe('DspDevice — I2C displays (0x27-0x2B, caps v10+)', () => {
   });
 
   it('setCsDisplayPage rejects BAR on an enum noun (slot 0x53), leaving the stored page unchanged', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCsBinding(0, displayBinding);
     const before = await d.getCsDisplayPage(3);
     const { result, status } = await d.setCsDisplayPage(3, { noun: Domain.CsNoun.Preset, target: 0, index: 0, flags: 0x09 });
@@ -818,19 +774,19 @@ describe('DspDevice — I2C displays (0x27-0x2B, caps v10+)', () => {
   });
 
   it('getCsDisplayPage rejects a page index at/above 16 (STALL)', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await expect(d.getCsDisplayPage(16)).rejects.toThrow();
   });
 
   it('a caps v9 device rejects getCsDisplayCfg (STALL, pre-v10 firmware has no such opcode)', async () => {
     const d = await DspDevice.create(new MockTransport({
-      platform: 'rp2350', wireVersion: 16, fwVersion: FW_115, csCapsVersion: 9,
+      platform: 'rp2350', csCapsVersion: 9,
     }));
     await expect(d.getCsDisplayCfg()).rejects.toThrow();
   });
 
   it('CYCLE_SELECTED advances currentPage across two active pages every dwell period', async () => {
-    const d = await v16Device();
+    const d = await makeDevice();
     await d.setCsBinding(0, displayBinding);
     await d.setCsDisplayPage(2, Domain.EMPTY_CS_DISPLAY_PAGE);
     await d.setCsDisplayPage(3, Domain.EMPTY_CS_DISPLAY_PAGE);

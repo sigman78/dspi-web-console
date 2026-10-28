@@ -29,7 +29,7 @@ export function setLoudnessIntensityPct(s: ReadySession, pct: number): void {
   );
 }
 
-// Per-output loudness mask (fw V19+): a single-channel toggle reads the
+// Per-output loudness mask: a single-channel toggle reads the
 // current mask from the mirror, flips one bit, and re-sends the whole mask.
 // Discrete edit -> write lane.
 export function setLoudnessOutputMask(s: ReadySession, mask: number): void {
@@ -84,7 +84,7 @@ export function setCrossfeedFeedDb(s: ReadySession, db: number): void {
   );
 }
 
-// Crossfeed output-pair mask (fw V20+): same single-command toggle pattern as
+// Crossfeed output-pair mask: same single-command toggle pattern as
 // the loudness output mask above. Discrete edit -> write lane.
 export function setCrossfeedOutputPairs(s: ReadySession, mask: number): void {
   mask &= 0xFF;
@@ -199,7 +199,7 @@ export function setPsybassOriginal(s: ReadySession, db: number): void {
   );
 }
 
-// Per-output psybass mask (fw V23+): same single-command toggle pattern as
+// Per-output psybass mask: same single-command toggle pattern as
 // the loudness/crossfeed masks above. Discrete edit -> write lane.
 export function setPsybassOutputMask(s: ReadySession, mask: number): void {
   mask &= 0xFFFF;
@@ -361,7 +361,7 @@ export function reserveSubharmHeadroom(s: ReadySession): void {
   for (const step of plan) setInputPreamp(s, step.slot, step.toDb);
 }
 
-// Multichannel leveller masks (fw V18+): both masks travel together in one
+// Multichannel leveller masks: both masks travel together in one
 // command, so a single-channel toggle reads the current pair from the mirror,
 // flips one bit, and re-sends both. Discrete edit -> write lane.
 export function setLevellerMasks(s: ReadySession, detector: number, apply: number): void {

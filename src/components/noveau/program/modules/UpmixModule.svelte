@@ -9,7 +9,6 @@
   const s = getSession();
   const upmix = $derived(s.mirror.current?.upmix);
   const enabled = $derived(upmix?.enabled ?? false);
-  const features = $derived(s.device.capabilities.features);
 
   const centerMode = $derived(upmix?.centerMode ?? Domain.UpmixCenterMode.Adaptive);
   const surroundMode = $derived(upmix?.surroundMode ?? Domain.UpmixSurroundMode.Adaptive);
@@ -21,11 +20,11 @@
 
   const status = $derived(Domain.upmixParkingStatus(enabled, s.telemetry.activeInputChannels, s.telemetry.info?.sampleRateHz ?? null));
 
-  const CENTER_MODE_OPTIONS = $derived([
-    ...(features.upmixCenterOff ? [{ value: Domain.UpmixCenterMode.Off, label: 'OFF' }] : []),
+  const CENTER_MODE_OPTIONS = [
+    { value: Domain.UpmixCenterMode.Off, label: 'OFF' },
     { value: Domain.UpmixCenterMode.Passive, label: 'PASSIVE' },
     { value: Domain.UpmixCenterMode.Adaptive, label: 'LOGIC' },
-  ] as ReadonlyArray<{ value: Domain.UpmixCenterMode; label: string }>);
+  ] as const satisfies ReadonlyArray<{ value: Domain.UpmixCenterMode; label: string }>;
 
   const SURROUND_MODE_OPTIONS = [
     { value: Domain.UpmixSurroundMode.Off, label: 'OFF' },
@@ -57,11 +56,9 @@
   <SliderField lane="scrub" label="WIDTH" ariaLabel="Upmix center width" value={upmix?.centerWidthPct ?? 25}
     min={Domain.Proc.UPMIX_CENTER_WIDTH_MIN_PCT} max={Domain.Proc.UPMIX_CENTER_WIDTH_MAX_PCT} step={Domain.Proc.UPMIX_CENTER_WIDTH_STEP_PCT}
     kind="pct" precision={0} disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setUpmixCenterWidth(s, v)} />
-  {#if features.upmixPresence}
-    <SliderField lane="scrub" label="PRESENCE" ariaLabel="Upmix center presence" value={upmix?.presenceDb ?? 0}
-      min={Domain.Proc.UPMIX_PRESENCE_MIN_DB} max={Domain.Proc.UPMIX_PRESENCE_MAX_DB} step={Domain.Proc.UPMIX_PRESENCE_STEP_DB}
-      kind="dB-signed" precision={1} disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setUpmixPresence(s, v)} />
-  {/if}
+  <SliderField lane="scrub" label="PRESENCE" ariaLabel="Upmix center presence" value={upmix?.presenceDb ?? 0}
+    min={Domain.Proc.UPMIX_PRESENCE_MIN_DB} max={Domain.Proc.UPMIX_PRESENCE_MAX_DB} step={Domain.Proc.UPMIX_PRESENCE_STEP_DB}
+    kind="dB-signed" precision={1} disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setUpmixPresence(s, v)} />
   <SliderField lane="scrub" label="THRESHOLD" ariaLabel="Upmix adaptive-steering threshold" value={upmix?.corrThresholdPct ?? 30}
     min={Domain.Proc.UPMIX_CORR_THRESHOLD_MIN_PCT} max={Domain.Proc.UPMIX_CORR_THRESHOLD_MAX_PCT} step={Domain.Proc.UPMIX_CORR_THRESHOLD_STEP_PCT}
     kind="pct" precision={0} disabled={!steeringEditable} disabledReason={offReason ?? steeringReason} onChange={(v) => Runtime.setUpmixCorrThreshold(s, v)} />

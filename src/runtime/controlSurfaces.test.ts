@@ -36,7 +36,7 @@ const displayBinding = {
 
 describe('runtime/controlSurfaces', () => {
   beforeEach(async () => {
-    await bootMock('rp2350', { wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    await bootMock('rp2350');
     clearNotices();
   });
 
@@ -69,7 +69,7 @@ describe('runtime/controlSurfaces', () => {
   });
 
   it('a pre-v9 caps device leaves groups, macros, and ext status empty', async () => {
-    await bootMock('rp2350', { wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 }, csCapsVersion: 8 });
+    await bootMock('rp2350', { csCapsVersion: 8 });
     const s = sess();
     expect(s.controlSurfaces.caps?.maxGroups).toBe(0);
     expect(s.controlSurfaces.caps?.maxMacros).toBe(0);
@@ -78,7 +78,7 @@ describe('runtime/controlSurfaces', () => {
   });
 
   it('a device reporting a pre-v2 caps format is rejected with an explanatory error', async () => {
-    await bootMock('rp2350', { wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 }, csCapsVersion: 1 });
+    await bootMock('rp2350', { csCapsVersion: 1 });
     const s = sess();
     expect(s.controlSurfaces.caps).toBeNull();
     expect(s.controlSurfaces.deviceCapsVersion).toBe(1);   // still recorded for display
@@ -90,7 +90,7 @@ describe('runtime/controlSurfaces', () => {
     // Pins an older-than-current caps version (fw 1.1.6 now defaults to v14);
     // the format is append-only, so a newer-than-modeled version must degrade
     // (unknown nouns/units filtered in the pickers), never refuse the whole surface.
-    await bootMock('rp2350', { wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 }, csCapsVersion: 13 });
+    await bootMock('rp2350', { csCapsVersion: 13 });
     const s = sess();
     expect(s.controlSurfaces.caps?.capsVersion).toBe(13);
     expect(s.controlSurfaces.nouns).toHaveLength(57);
@@ -400,14 +400,6 @@ describe('runtime/controlSurfaces', () => {
     expect(s.controlSurfaces.irLearn).toBeNull();
   });
 
-  it('a V10 device skips the fetch entirely', async () => {
-    await bootMock('rp2350');
-    const s = sess();
-    expect(s.device.capabilities.features.controlSurfaces).toBe(false);
-    expect(s.controlSurfaces.caps).toBeNull();
-    expect(s.controlSurfaces.bindings.every((b) => b === null)).toBe(true);
-  });
-
   it('connect populates the display block (empty) on the default mock', () => {
     const s = sess();
     expect(s.controlSurfaces.displayLimits).toEqual({ maxPages: 16, modelCount: 9 });
@@ -419,9 +411,7 @@ describe('runtime/controlSurfaces', () => {
   });
 
   it('leaves the display block null at a pre-v10 caps version', async () => {
-    await bootMock('rp2350', {
-      wireVersion: 16, fwVersion: { major: 1, minor: 1, patch: 5 }, csCapsVersion: 9,
-    });
+    await bootMock('rp2350', { csCapsVersion: 9 });
     const s = sess();
     expect(s.controlSurfaces.displayLimits).toBeNull();
     expect(s.controlSurfaces.displayCfg).toBeNull();

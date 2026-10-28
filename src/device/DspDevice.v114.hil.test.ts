@@ -23,7 +23,7 @@ describe('DspDevice — 1.1.4 surface roundtrips (HIL)', () => {
     const opened = await openSingleDevice();
     device = opened.device;
     close = opened.close;
-    expect(opened.device.capabilities.wire).toBeGreaterThanOrEqual(10);
+    expect(opened.device.capabilities.wire).toBeGreaterThanOrEqual(28);
   });
 
   afterAll(async () => {

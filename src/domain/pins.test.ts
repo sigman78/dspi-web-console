@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { PlatformType, ChannelFamily } from './platform';
+import { PlatformType } from './platform';
 import type { DspSnapshot } from './snapshot';
 import * as Pins from './pins';
 import { DEFAULT_UART_CONTROL_CONFIG } from './controlInterfaces';
@@ -21,14 +21,9 @@ function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
   } as DspSnapshot;
 }
 
-function snapV16(over: Partial<DspSnapshot> = {}): DspSnapshot {
-  const base = snap(over);
-  return { ...base, platform: { ...base.platform, channelModel: ChannelFamily.Unified } } as DspSnapshot;
-}
-
 describe('pins', () => {
   test('reserved/range pins are not assignable; normal pins are', () => {
-    expect(Pins.isAssignablePin(PlatformType.RP2350, 12)).toBe(false);
+    expect(Pins.isAssignablePin(PlatformType.RP2350, 12)).toBe(true);
     expect(Pins.isAssignablePin(PlatformType.RP2350, 24)).toBe(false);
     expect(Pins.isAssignablePin(PlatformType.RP2040, 29)).toBe(false);
     expect(Pins.isAssignablePin(PlatformType.RP2350, 29)).toBe(true);
@@ -47,12 +42,11 @@ describe('pins', () => {
     const list = Pins.availablePinsFor(PlatformType.RP2350, snap(), 6);
     expect(list.find((c) => c.pin === 6)?.usedBy).toBeNull();
     expect(list.find((c) => c.pin === 7)?.usedBy).not.toBeNull();
-    expect(list.some((c) => c.pin === 12)).toBe(false);
   });
 
   test('validBckPins excludes a pin whose N+1 is reserved and includes a clear pair', () => {
     const valid = Pins.validBckPins(PlatformType.RP2350, snap());
-    expect(valid).not.toContain(11);
+    expect(valid).not.toContain(22);
     expect(valid).toContain(16);
     expect(valid).not.toContain(6);
   });
@@ -160,19 +154,14 @@ describe('pins', () => {
     expect(list.find((c) => c.pin === 8)?.usedBy).not.toBeNull();   // still a real output pin
   });
 
-  test('a V10 snapshot still reserves GPIO 12', () => {
-    const list = Pins.availablePinsFor(PlatformType.RP2350, snap(), 6);   // default fixture channelModel = Legacy
-    expect(list.some((c) => c.pin === 12)).toBe(false);
-  });
-
-  test('on a V16 snapshot GPIO 16/17 are assignable when no control interface is enabled', () => {
-    const list = Pins.availablePinsFor(PlatformType.RP2350, snapV16(), 6);
+  test('GPIO 16/17 are assignable when no control interface is enabled', () => {
+    const list = Pins.availablePinsFor(PlatformType.RP2350, snap(), 6);
     expect(list.find((c) => c.pin === 16)?.usedBy).toBeNull();
     expect(list.find((c) => c.pin === 17)?.usedBy).toBeNull();
   });
 
   test('enabling UART removes its TX/RX pins from availablePinsFor and validBckPins', () => {
-    const s = snapV16();
+    const s = snap();
     const ctrl = { uart: { ...DEFAULT_UART_CONTROL_CONFIG, enabled: true } };   // tx 16 / rx 17
 
     const withoutUart = Pins.availablePinsFor(PlatformType.RP2350, s, 6);
@@ -187,7 +176,7 @@ describe('pins', () => {
   });
 
   test('live control-surface bindings reserve their pins as CS slot N; empty slots reserve nothing', () => {
-    const s = snapV16();
+    const s = snap();
     const ctrl = { cs: [null, { gpio0: 21, gpio1: 22 }, null, { gpio0: 26, gpio1: null }] };
 
     const m = Pins.pinsInUse(s, ctrl);
@@ -201,7 +190,7 @@ describe('pins', () => {
   });
 
   test('validUartTxPins only offers parity/instance-valid TX pins, and excludes the I2C pins when enabled', () => {
-    const s = snapV16();
+    const s = snap();
     expect(Pins.validUartTxPins(PlatformType.RP2350, s)).toContain(16);
     expect(Pins.validUartTxPins(PlatformType.RP2350, s)).not.toContain(17);   // fails tx%4==0
 
@@ -210,7 +199,7 @@ describe('pins', () => {
   });
 
   test('validI2cSdaPins only offers parity/instance-valid SDA pins, and excludes the UART pins when enabled', () => {
-    const s = snapV16();
+    const s = snap();
     expect(Pins.validI2cSdaPins(PlatformType.RP2350, s)).toContain(18);
     expect(Pins.validI2cSdaPins(PlatformType.RP2350, s)).not.toContain(19);   // fails sda%2==0
 
@@ -219,7 +208,7 @@ describe('pins', () => {
   });
 
   test('validI2cSdaPins drops the whole I2C instance a live display holds, not just its pins', () => {
-    const s = snapV16();
+    const s = snap();
     const ctrl = { cs: [{ gpio0: 12, gpio1: 13, display: true }] };
     const without = Pins.validI2cSdaPins(PlatformType.RP2350, s, ctrl);
     expect(without).toContain(16);                                       // i2c0, pins free
@@ -230,7 +219,7 @@ describe('pins', () => {
   });
 
   test('pinUses labels a display slot Display SDA/Display SCL, not CS slot N', () => {
-    const s = snapV16();
+    const s = snap();
     const ctrl = { cs: [{ gpio0: 4, gpio1: 5, display: true }] };
     const uses = Pins.pinUses(s, ctrl);
     expect(uses.get(4)).toEqual({ label: 'Display SDA', role: 'surface' });
@@ -238,7 +227,7 @@ describe('pins', () => {
   });
 
   test('validDisplaySdaPins excludes the live I2C instance and pins already in use', () => {
-    const s = snapV16();
+    const s = snap();
     const sdaNoLive = Pins.validDisplaySdaPins(PlatformType.RP2350, s, {}, null);
     expect(sdaNoLive).toContain(0);    // instance 0
     expect(sdaNoLive).toContain(2);    // instance 1
@@ -252,7 +241,7 @@ describe('pins', () => {
   });
 
   test('validDisplaySclPins only offers odd pins on the same I2C instance as SDA', () => {
-    const s = snapV16();
+    const s = snap();
     const scl = Pins.validDisplaySclPins(PlatformType.RP2350, s, {}, 0);   // sda=0, instance 0
     expect(scl).toContain(1);      // odd, instance 0
     expect(scl).not.toContain(3);  // odd, instance 1
@@ -260,7 +249,7 @@ describe('pins', () => {
   });
 
   test('pinsInUse and pinUses stay label-identical over a fully-populated snapshot (projection invariant)', () => {
-    const s = snapV16({
+    const s = snap({
       outputPins: [6, 7, 8, 9, 10],
       i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: true, mckMultiplierEncoded: 0, clockPinMode: 1, bckPinSlave: 26 },
       inputConfig: {
@@ -314,23 +303,19 @@ describe('pins', () => {
   });
 
   test('pickerCells covers the full GPIO range for the platform', () => {
-    const rp2040 = snap({ platform: { type: PlatformType.RP2040, name: 'RP2040', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8, channelModel: ChannelFamily.Legacy } });
+    const rp2040 = snap({ platform: { type: PlatformType.RP2040, name: 'RP2040', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 } });
     expect(Pins.pickerCells(PlatformType.RP2040, rp2040)).toHaveLength(29);
     expect(Pins.pickerCells(PlatformType.RP2350, snap())).toHaveLength(48);
   });
 
-  test('pickerCells marks 23-25 reserved always, and 12 only under the Legacy channel model', () => {
-    const legacy = Pins.pickerCells(PlatformType.RP2350, snap());
-    expect(legacy.filter((c) => c.pin >= 23 && c.pin <= 25).every((c) => c.reserved && !c.selectable)).toBe(true);
-    expect(legacy.find((c) => c.pin === 12)?.reserved).toBe(true);
-
-    const unified = Pins.pickerCells(PlatformType.RP2350, snapV16());
-    expect(unified.find((c) => c.pin === 12)?.reserved).toBe(false);
-    expect(unified.filter((c) => c.pin >= 23 && c.pin <= 25).every((c) => c.reserved)).toBe(true);
+  test('pickerCells marks 23-25 reserved and leaves 12 selectable', () => {
+    const cells = Pins.pickerCells(PlatformType.RP2350, snap());
+    expect(cells.filter((c) => c.pin >= 23 && c.pin <= 25).every((c) => c.reserved && !c.selectable)).toBe(true);
+    expect(cells.find((c) => c.pin === 12)?.reserved).toBe(false);
   });
 
   test('pickerCells selectable set matches availablePinsFor free set over a broadly-claimed snapshot', () => {
-    const s = snapV16({
+    const s = snap({
       i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: true, mckMultiplierEncoded: 0, clockPinMode: 1, bckPinSlave: 26 },
       dacHwMute: { enabled: true, activeLow: false, pin: 20, holdMs: 0, releaseMs: 0 },
       adat: { enabled: true, pin: 21 },
