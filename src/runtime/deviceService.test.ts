@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { DspDevice } from '@/device/DspDevice';
-import { wireUpConnection, activateSession, switchSession, hasPendingWork } from './deviceService';
+import { wireUpConnection, activateSession, switchSession, hasPendingWork, fetchOutputLatency } from './deviceService';
 import { bootMock } from './boot';
 import { ConnectionScope } from './connectionScope';
 import { write } from './writes.svelte';
@@ -334,6 +334,16 @@ describe('fetchOutputLatency', () => {
     expect(outputLatency.supported).toBe(true);
     expect(outputLatency.status?.requestedId).toBeGreaterThan(0);
     expect(outputLatency.options?.length).toBe(outputLatency.status?.optionCount);
+  });
+
+  it('keeps support confirmed when only the options read fails', async () => {
+    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION, fwHead: true });
+    const s = State.activeSession()!;
+    vi.spyOn(s.device, 'getOutputLatencyOptions').mockRejectedValueOnce(new Error('transfer failed'));
+    await fetchOutputLatency(s);
+    expect(s.outputLatency.supported).toBe(true);
+    expect(s.outputLatency.status).not.toBeNull();
+    expect(s.outputLatency.options).toBeNull();
   });
 
   it('marks the feature unsupported when the firmware STALLs the request', async () => {

@@ -62,19 +62,25 @@ export async function fetchSysClock(s: ReadySession): Promise<void> {
 
 // Probe for the selectable output latency (fw 1.1.6 branch). No capability
 // flag and the fw version can't be trusted, so support is discovered by
-// reading the status: older firmware STALLs and the row stays hidden.
+// reading the status: older firmware STALLs and the row stays hidden. Only
+// the status read decides support; a failed options read leaves support
+// confirmed and the slow poll retries it.
 export async function fetchOutputLatency(s: ReadySession): Promise<void> {
   try {
-    const status = await s.queue.run(() => s.device.getOutputLatencyStatus());
-    const options = await s.queue.run(() => s.device.getOutputLatencyOptions());
-    s.outputLatency.status = status;
-    s.outputLatency.options = options;
+    s.outputLatency.status = await s.queue.run(() => s.device.getOutputLatencyStatus());
     s.outputLatency.supported = true;
   } catch (err) {
     s.outputLatency.status = null;
     s.outputLatency.options = null;
     s.outputLatency.supported = false;
     Log.info('outputLatency', 'probe failed (unsupported firmware)', err);
+    return;
+  }
+  try {
+    s.outputLatency.options = await s.queue.run(() => s.device.getOutputLatencyOptions());
+  } catch (err) {
+    s.outputLatency.options = null;
+    Log.warn('outputLatency', 'options read failed; the slow poll retries it', err);
   }
 }
 

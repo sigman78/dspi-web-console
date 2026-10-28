@@ -1709,9 +1709,10 @@ export class MockTransport implements DspTransport {
       case WireCmd.OutputLatency.code: {
         if (!this.#fwHead) throw new Error('MockTransport: REQ_OUTPUT_LATENCY unsupported (STALL)');
         const id = data[0];
-        // Unknown ids STALL (handled=false); a valid SET only stages the id,
-        // the main loop applies it later (status keeps reporting the applied option).
-        if (!MOCK_OUTPUT_LATENCY_OPTIONS.some((o) => o.id === id)) throw new Error('MockTransport: REQ_OUTPUT_LATENCY unknown id (STALL)');
+        // USB ACKs and ignores an unknown id (the data stage discards the
+        // handler result). A valid SET only stages the id; the main loop
+        // applies it later, so status keeps reporting the applied option.
+        if (!MOCK_OUTPUT_LATENCY_OPTIONS.some((o) => o.id === id)) return;
         if (id === this.#outputLatencyId && this.#outputLatencyPendingReads === 0) return;
         this.#outputLatencyStagedId = id;
         this.#outputLatencyPendingReads = MOCK_OUTPUT_LATENCY_PENDING_READS;

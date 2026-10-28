@@ -34,9 +34,10 @@ describe('output latency (0x03)', () => {
     expect(st).toMatchObject({ requestedId: 4, effectiveId: 4, effectiveUs: 3000, pending: false });
   });
 
-  it('STALLs unknown ids and treats re-sending the stored id as a no-op', async () => {
+  it('ignores unknown ids and treats re-sending the stored id as a no-op', async () => {
     const d = await head();
-    await expect(d.setOutputLatency(99)).rejects.toThrow();
+    await d.setOutputLatency(99);
+    expect(await d.getOutputLatencyStatus()).toMatchObject({ pending: false, requestedId: 5 });
     await d.setOutputLatency(5);
     expect((await d.getOutputLatencyStatus()).pending).toBe(false);
     expect((await d.getOutputLatencyStatus()).requestedId).toBe(5);

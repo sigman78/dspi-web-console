@@ -1359,8 +1359,8 @@ export class DspDevice {
     return out;
   }
 
-  // Deferred apply (flash write + muted output restart); an unknown id STALLs
-  // and re-sending the stored id is a no-op.
+  // Deferred apply (flash write + muted output restart). Over USB an unknown
+  // id is ACKed and ignored; re-sending the stored id is a no-op.
   async setOutputLatency(id: number): Promise<void> {
     return this.transport.ctrlOut(proto.WireCmd.OutputLatency.code, 0, Codec.encode(Codec.u8, id & 0xFF));
   }

@@ -136,11 +136,11 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       if (!session.outputLatency.busy) {
         await guardedRead('outputLatency', 'getOutputLatencyStatus', async () => {
           const status = await session.queue.run(() => d.getOutputLatencyStatus());
+          if (session.alive) session.outputLatency.status = status;
+        });
+        await guardedRead('outputLatencyOptions', 'getOutputLatencyOptions', async () => {
           const options = await session.queue.run(() => d.getOutputLatencyOptions());
-          if (session.alive) {
-            session.outputLatency.status = status;
-            session.outputLatency.options = options;
-          }
+          if (session.alive) session.outputLatency.options = options;
         });
       }
     }
