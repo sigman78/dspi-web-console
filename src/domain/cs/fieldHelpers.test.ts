@@ -144,6 +144,16 @@ describe('known-noun gating', () => {
     expect(CsField.pageNounOptions(list).map((o) => o.v)).toEqual([0]);
   });
 
+  it('holds tube nouns back unless the row already uses one', () => {
+    const list = Array.from({ length: Domain.CsNoun.TubeMix + 1 }, () => noun({}));
+    const offered = CsField.pageNounOptions(list).map((o) => o.v);
+    expect(offered).not.toContain(Domain.CsNoun.TubeDrive);
+    expect(offered).toContain(Domain.CsNoun.SubharmSolo);
+    const kept = CsField.pageNounOptions(list, Domain.CsNoun.TubeDrive).map((o) => o.v);
+    expect(kept).toContain(Domain.CsNoun.TubeDrive);
+    expect(kept).not.toContain(Domain.CsNoun.TubeMix);
+  });
+
   it('offers a log-ms noun and skips a unit beyond the known maximum', () => {
     expect(CsField.isKnownNoun(noun({ unit: Domain.CS_UNIT_MS_LOG }))).toBe(true);
     expect(CsField.isKnownNoun(noun({ unit: Domain.CS_MAX_KNOWN_UNIT + 1 }))).toBe(false);

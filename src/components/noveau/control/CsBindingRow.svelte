@@ -96,7 +96,7 @@
   function showLinkAbsOf(d: Draft): boolean { return CsDraft.showLinkAbsOf(d, cs.nouns); }
   function showGroupAllOf(d: Draft): boolean { return CsDraft.showGroupAllOf(d); }
 
-  function nounOptionsFor(typeIdx: number): number[] { return CsDraft.nounOptionsFor(typeIdx, caps, cs.nouns); }
+  function nounOptionsFor(typeIdx: number, current?: number): number[] { return CsDraft.nounOptionsFor(typeIdx, caps, cs.nouns, current); }
   function actionOptionsFor(typeIdx: number, nounIdx: number): Domain.CsAction[] {
     return CsDraft.actionOptionsFor(typeIdx, nounIdx, caps, cs.nouns);
   }
@@ -259,7 +259,7 @@
               if (dr.action === Domain.CsAction.Momentary) dr.event = Domain.CsEvent.Press;
             });
           }}>
-          {#each nounOptionsFor(d.type) as n (n)}
+          {#each nounOptionsFor(d.type, d.noun) as n (n)}
             <option value={String(n)}>{Domain.csNounLabel(n)}</option>
           {/each}
         </select>

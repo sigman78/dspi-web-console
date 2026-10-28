@@ -64,6 +64,12 @@ export function isKnownNoun(n: Domain.CsNounCaps): boolean {
   return n.unit <= Domain.CS_MAX_KNOWN_UNIT && n.targetKind <= Domain.CS_MAX_KNOWN_TARGET_KIND;
 }
 
+// Known, and not held back by CS_UNOFFERED_NOUNS. `current` is the noun the
+// row already uses: it stays offered so an existing binding still renders.
+export function isOfferedNoun(i: number, n: Domain.CsNounCaps, current?: number): boolean {
+  return isKnownNoun(n) && (i === current || !Domain.CS_UNOFFERED_NOUNS.has(i));
+}
+
 export function boolValueOptions(noun: number): { v: number; label: string }[] {
   const clip = noun === Domain.CsNoun.Clip;
   return [
@@ -196,10 +202,10 @@ export function liveI2cInstance(i2c: { enabled: boolean; sdaPin: number } | null
 // Nouns a display page may show: platform-available (a noun mask reading 0
 // is unavailable on this build) and a unit this console knows how to render,
 // minus the three display-only nouns a page can't recurse into.
-export function pageNounOptions(nouns: readonly Domain.CsNounCaps[]): { v: number; label: string }[] {
+export function pageNounOptions(nouns: readonly Domain.CsNounCaps[], current?: number): { v: number; label: string }[] {
   const out: { v: number; label: string }[] = [];
   nouns.forEach((n, i) => {
-    if (n.actions === 0 || !isKnownNoun(n)) return;
+    if (n.actions === 0 || !isOfferedNoun(i, n, current)) return;
     if (i === Domain.CsNoun.DisplayPage || i === Domain.CsNoun.DisplayEdit || i === Domain.CsNoun.PageValue) return;
     out.push({ v: i, label: Domain.csNounLabel(i) });
   });

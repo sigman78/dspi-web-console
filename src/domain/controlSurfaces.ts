@@ -242,6 +242,12 @@ export const CS_TARGET_AUX       = 5;   // target = binding slot (aux nouns)
 // firmware's aux-slot target) is skipped by the pickers.
 export const CS_MAX_KNOWN_TARGET_KIND = CS_TARGET_DSP_BAND;
 
+// Nouns kept out of the pickers until the console has a panel for the
+// feature they drive (the tube preamp).
+export const CS_UNOFFERED_NOUNS: ReadonlySet<number> = new Set([
+  CsNoun.Tube, CsNoun.TubeDrive, CsNoun.TubeType, CsNoun.TubeMix,
+]);
+
 // Noun descriptor flags (CsNounDesc.dflags)
 export const CS_NDF_DEFERRED = 0x01;   // apply is deferred; engine steps from a target shadow
 

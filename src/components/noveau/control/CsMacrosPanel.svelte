@@ -174,7 +174,7 @@
     }
   });
 
-  function nounOptions(): number[] { return CsMacroDraft.stepNounOptions(cs.nouns); }
+  function nounOptions(current?: number): number[] { return CsMacroDraft.stepNounOptions(cs.nouns, current); }
   function actionOptions(noun: number): Domain.CsAction[] { return CsMacroDraft.stepActionOptions(cs.nouns, noun); }
 </script>
 
@@ -271,7 +271,7 @@
                     CsMacroDraft.defaultStepOperands(dr, cs.nouns);
                   });
                 }}>
-                {#each nounOptions() as n (n)}
+                {#each nounOptions(step.noun) as n (n)}
                   <option value={String(n)}>{Domain.csNounLabel(n)}</option>
                 {/each}
               </select>

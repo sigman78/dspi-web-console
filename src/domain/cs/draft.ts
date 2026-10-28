@@ -46,11 +46,13 @@ export const ACTION_PREF: Partial<Record<number, readonly Domain.CsAction[]>> = 
   [Domain.CsType.Button]:  [Domain.CsAction.Toggle, Domain.CsAction.Trigger, Domain.CsAction.Inc, Domain.CsAction.Set, Domain.CsAction.Dec],
 };
 
-export function nounOptionsFor(typeIdx: number, caps: Domain.CsCaps | null, nouns: readonly Domain.CsNounCaps[]): number[] {
+export function nounOptionsFor(
+  typeIdx: number, caps: Domain.CsCaps | null, nouns: readonly Domain.CsNounCaps[], current?: number,
+): number[] {
   if (!caps) return [];
   const mask = caps.types[typeIdx]?.actions ?? 0;
   return nouns.map((_, i) => i).filter((i) =>
-    (nouns[i].actions & mask) !== 0 && CsField.isKnownNoun(nouns[i]));
+    (nouns[i].actions & mask) !== 0 && CsField.isOfferedNoun(i, nouns[i], current));
 }
 
 export function actionOptionsFor(
