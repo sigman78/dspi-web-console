@@ -34,7 +34,7 @@ const STEP_ACTION_PREF: readonly Domain.CsAction[] = [
 export function stepNounOptions(nouns: readonly Domain.CsNounCaps[]): number[] {
   return nouns.map((_, i) => i).filter((i) =>
     (nouns[i].actions & Domain.CS_MACRO_STEP_ACTIONS) !== 0 &&
-    nouns[i].unit <= Domain.CS_MAX_KNOWN_UNIT &&
+    CsField.isKnownNoun(nouns[i]) &&
     i !== Domain.CsNoun.Macro && i !== Domain.CsNoun.PageValue);
 }
 

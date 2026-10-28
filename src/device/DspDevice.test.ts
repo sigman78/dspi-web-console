@@ -60,7 +60,25 @@ describe('DspDevice facade', () => {
     expect(info.spdifStarvationsTotal).toBeNull();
     expect(info.clockHz).toBe(125_000_000);
     expect(info.tempCDegC).toBe(4210);
-    expect(info.spdifOverruns).toBe(0);
+    expect(info.spdifUnderruns).toBe(0);
+  });
+
+  it('reads the SPDIF overrun counter from status index 7', async () => {
+    const inner = new MockTransport({ platform: 'rp2350' });
+    await inner.open();
+    const live: DspTransport = {
+      open:    () => inner.open(),
+      close:   () => inner.close(),
+      isOpen:  () => inner.isOpen(),
+      on:      (e: TransportEvent, l: () => void) => inner.on(e, l),
+      ctrlIn:  (request, value, length) =>
+        request === Protocol.WireCmd.GetStatus.code && value === Protocol.SystemStatusValue.SpdifOverruns
+          ? Promise.resolve(new Uint8Array([5, 0, 0, 0]))
+          : inner.ctrlIn(request, value, length),
+      ctrlOut: (request, value, data) => inner.ctrlOut(request, value, data),
+    };
+    const info = await (await createDevice(live)).getSystemInfo();
+    expect(info.spdifOverruns).toBe(5);
   });
 
   it('roundtrips per-input preamp', async () => {

@@ -5,6 +5,7 @@ import { bootMock } from './boot';
 import { ConnectionScope } from './connectionScope';
 import { write } from './writes.svelte';
 import * as State from '@/state';
+import { Wire } from '@/protocol';
 
 // Exercises the scope-guard invariant: a connection superseded mid-flight
 // (its scope aborted directly by whoever decided to abandon it) must not
@@ -323,5 +324,23 @@ describe('fetchSysClock', () => {
     const { sysClock } = State.activeSession()!;
     expect(sysClock.supported).toBe(false);
     expect(sysClock.status).toBeNull();
+  });
+});
+
+describe('fetchOutputLatency', () => {
+  it('reads status and options when the firmware answers the latency request', async () => {
+    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION, fwHead: true });
+    const { outputLatency } = State.activeSession()!;
+    expect(outputLatency.supported).toBe(true);
+    expect(outputLatency.status?.requestedId).toBeGreaterThan(0);
+    expect(outputLatency.options?.length).toBe(outputLatency.status?.optionCount);
+  });
+
+  it('marks the feature unsupported when the firmware STALLs the request', async () => {
+    await bootMock('rp2350', { wireVersion: 32 });
+    const { outputLatency } = State.activeSession()!;
+    expect(outputLatency.supported).toBe(false);
+    expect(outputLatency.status).toBeNull();
+    expect(outputLatency.options).toBeNull();
   });
 });

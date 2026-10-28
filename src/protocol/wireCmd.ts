@@ -91,6 +91,13 @@ type UpmixConfigPayload = {
 // Command table
 
 export const WireCmd = {
+  // --- Selectable output latency (fw 1.1.6 release head). ---
+  // OUT: 1-byte option id (unknown ids ignored; deferred apply). IN is
+  // wValue-multiplexed: GET_STATUS -> OutputLatencyStatus, GET_OPTIONS ->
+  // optionCount x OutputLatencyOption (parsed by DspDevice). Older firmware
+  // STALLs the opcode, which is the feature probe.
+  OutputLatency:        { code: 0x03 } satisfies RawCmd,
+
   // --- V29/V30 subharmonic synthesizer (fw 1.1.6, both platforms). ---
   SetSubharmEnabled:    { code: 0x10, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
   GetSubharmEnabled:    { code: 0x11, codec: Codec.bool8 } satisfies ReadCmd<boolean>,

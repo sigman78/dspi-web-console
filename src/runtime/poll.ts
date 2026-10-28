@@ -127,6 +127,23 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     await guardedRead('info', 'getSystemInfo', async () => {
       tele.applyPartialInfo(await session.queue.run(() => d.getSystemInfo()));
     });
+    if (session.outputLatency.supported === true) {
+      // The effective option follows the input source, with no notification.
+      await guardedRead('ringHealth', 'getRingHealth', async () => {
+        tele.applyRingHealth(await session.queue.run(() => d.getRingHealth()));
+      });
+      // Skip while an apply is confirming itself; it owns the store then.
+      if (!session.outputLatency.busy) {
+        await guardedRead('outputLatency', 'getOutputLatencyStatus', async () => {
+          const status = await session.queue.run(() => d.getOutputLatencyStatus());
+          const options = await session.queue.run(() => d.getOutputLatencyOptions());
+          if (session.alive) {
+            session.outputLatency.status = status;
+            session.outputLatency.options = options;
+          }
+        });
+      }
+    }
     tele.lastInfoMs = performance.now();
   }
 

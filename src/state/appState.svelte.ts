@@ -6,6 +6,7 @@ import type { PresetsState } from './presets.svelte';
 import type { CtrlIfacesState } from './ctrlIfaces.svelte';
 import type { ControlSurfacesState } from './controlSurfaces.svelte';
 import type { SysClockState } from './sysClock.svelte';
+import type { OutputLatencyState } from './outputLatency.svelte';
 import type { StagingState } from './staging.svelte';
 import type { EqLinkState } from './eqLink.svelte';
 import type { DraftsState } from './drafts.svelte';
@@ -45,6 +46,7 @@ export interface ReadySession {
   // Selectable system clock (fw overclock branch). No capability flag -- a
   // `supported` stays null until the connect-time probe lands.
   readonly sysClock: SysClockState;
+  readonly outputLatency: OutputLatencyState;
   // Pending heavy device-config edits (input source, I2S/S/PDIF pins, MCK/BCK,
   // output type), staged here until StagedStrip (SETUP and CONTROL page bar) applies them.
   readonly staging: StagingState;

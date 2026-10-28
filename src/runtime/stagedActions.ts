@@ -48,6 +48,7 @@ const ORDER = {
   adatInputEnable: 26,
   dacMute: 60,
   controlIface: 70,
+  outputLatency: 85,  // after the output pins and enables; the apply restarts output
   sysClock: 90,       // last: the apply reboots the clock
 } as const;
 
@@ -728,6 +729,30 @@ export function stageI2cEnabled(s: ReadySession, on: boolean): void {
     if (!candidates.includes(eff.sdaPin) && candidates[0] != null) stageI2c(s, 'sdaPin', candidates[0], 'i2c:enabled');
   }
   stageI2c(s, 'enabled', on);
+}
+
+// --- Output latency ---------------------------------------------------------
+
+function latencyOptionUs(s: ReadySession, id: number): number {
+  const o = s.outputLatency.options?.find((x) => x.id === id);
+  return o ? o.latencyUs : 0;
+}
+
+export function stageOutputLatency(s: ReadySession, id: number): void {
+  const st = s.outputLatency.status;
+  if (!st) return;
+  stageOrDiscard(s, 'outputLatency', st.requestedId, id, () => ({
+    key: 'outputLatency',
+    label: 'Output latency',
+    from: Domain.formatLatencyMs(latencyOptionUs(s, st.requestedId)),
+    to: Domain.formatLatencyMs(latencyOptionUs(s, id)),
+    value: id,
+    order: ORDER.outputLatency,
+    page: 'outputs',
+    disruptive: { reason: 'briefly mutes the output', tone: 'warn' },
+    apply: () => System.applyOutputLatency(s, id),
+    overlay: (snap) => snap,
+  }));
 }
 
 // --- System clock ----------------------------------------------------------

@@ -179,3 +179,55 @@ describe('setDacHwMute', () => {
 
 // applySysClock/refreshSysClock/testDacHwMute/resetBufferStats/enterBootloader/
 // clearClips have no dedicated unit coverage (none did in actions.test.ts either).
+
+describe('applyOutputLatency', () => {
+  beforeEach(() => { vi.useFakeTimers(); State.clearNotices(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  const baseStatus = {
+    requestedId: 3, effectiveId: 3, effectiveUs: 4000, targetFrames: 192, batchFrames: 48, pending: false, optionCount: 1,
+  };
+
+  function connectWith(methods: Partial<DspDevice>) {
+    const device = initializedDevice({ getOutputLatencyOptions: vi.fn(async () => []), ...methods });
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
+    return State.activeSession()!;
+  }
+
+  it('resolves true once the device stops reporting pending', async () => {
+    const reads = [{ ...baseStatus, pending: true }, baseStatus];
+    const s = connectWith({
+      setOutputLatency: vi.fn(async () => {}),
+      getOutputLatencyStatus: vi.fn(async () => reads.shift() ?? baseStatus),
+    });
+    const done = actions.applyOutputLatency(s, 3);
+    await vi.runAllTimersAsync();
+    expect(await done).toBe(true);
+    expect(State.notices.list.some((n) => n.kind === 'warn')).toBe(false);
+    expect(s.outputLatency.busy).toBe(false);
+  });
+
+  it('still resolves true, with a warning, when the device stays pending past the wait', async () => {
+    const getStatus = vi.fn(async () => ({ ...baseStatus, pending: true }));
+    const s = connectWith({ setOutputLatency: vi.fn(async () => {}), getOutputLatencyStatus: getStatus });
+    const done = actions.applyOutputLatency(s, 3);
+    await vi.advanceTimersByTimeAsync(2500);   // past the confirm budget, short of the notice's own dismissal
+    expect(await done).toBe(true);
+    expect(getStatus.mock.calls.length).toBeGreaterThan(1);
+    expect(State.notices.list.some((n) => n.kind === 'warn')).toBe(true);
+    expect(s.outputLatency.busy).toBe(false);
+  });
+
+  it('resolves false and never polls when the SET itself fails', async () => {
+    const getStatus = vi.fn(async () => baseStatus);
+    const s = connectWith({
+      setOutputLatency: vi.fn(async () => { throw new Error('STALL'); }),
+      getOutputLatencyStatus: getStatus,
+    });
+    const done = actions.applyOutputLatency(s, 3);
+    await vi.runAllTimersAsync();
+    expect(await done).toBe(false);
+    expect(getStatus).not.toHaveBeenCalled();
+    expect(s.outputLatency.busy).toBe(false);
+  });
+});

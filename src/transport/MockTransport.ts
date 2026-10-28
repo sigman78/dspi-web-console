@@ -58,6 +58,12 @@ export interface MockOptions {
   // all IR commands, all display pages) so the CONTROL pages can be measured
   // at their worst case. Needs caps v10+.
   csFull?: boolean;
+  // Model the firmware release-branch head (still reporting 1.1.6 beta 5):
+  // REQ_OUTPUT_LATENCY (0x03), live ring-health counters 26-31, Control
+  // Surfaces caps v21 by default, and a revert that runs as a background job
+  // (PENDING for a few status reads, macro fire / IR learn STALL meanwhile).
+  // Off, 0x03 STALLs like older firmware and counters 26-31 read 0.
+  fwHead?: boolean;
 }
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
@@ -74,12 +80,29 @@ const MIN_SUBHARM_EXT_WIRE = 30;
 // platforms; earlier profiles STALL it in both directions.
 const MIN_LIMITER_WIRE = 32;
 
-// Control Surfaces caps tables, firmware capability format version 14
-// (control_surfaces.c s_caps / control_surfaces_nouns.c cs_noun_table). The
-// per-version handlers below (see #csTypeCount etc.) slice/zero this full
-// v14 catalog down to what an older simulated capsVersion would report.
+// Output latency option table (output_latency.c): wire id, nominal latency,
+// input batch, and whether it needs a stream input.
+const MOCK_OUTPUT_LATENCY_OPTIONS = [
+  { id: 1, latencyUs: 667,  batchUs: 333,  streamOnly: true },
+  { id: 2, latencyUs: 1000, batchUs: 333,  streamOnly: true },
+  { id: 3, latencyUs: 2000, batchUs: 1000, streamOnly: false },
+  { id: 4, latencyUs: 3000, batchUs: 1000, streamOnly: false },
+  { id: 5, latencyUs: 4000, batchUs: 1000, streamOnly: false },
+  { id: 6, latencyUs: 6000, batchUs: 1000, streamOnly: false },
+  { id: 7, latencyUs: 8000, batchUs: 1000, streamOnly: false },
+];
+// A SET reads pending for this many status reads before settling.
+const MOCK_OUTPUT_LATENCY_PENDING_READS = 3;
+const MOCK_SAMPLE_RATE_HZ = 48_000;
+
+// Control Surfaces caps tables. The type table and the noun catalog builder
+// follow firmware capability format version 21 (control_surfaces.c s_caps /
+// control_surfaces_nouns.c cs_noun_table). The per-version handlers (see #csTypeCount
+// etc.) slice/zero this down to what an older simulated capsVersion reports.
+const MOCK_CS_CAPS_DEFAULT_VERSION = 14;
+const MOCK_CS_CAPS_HEAD_VERSION = 21;
 const MOCK_CS_CAPS: CsCaps = {
-  capsVersion: 14,
+  capsVersion: MOCK_CS_CAPS_DEFAULT_VERSION,
   maxBindings: Domain.CS_MAX_BINDINGS,
   maxIrCommands: Domain.CS_MAX_IR_COMMANDS,
   maxGroups: 8,
@@ -95,6 +118,8 @@ const MOCK_CS_CAPS: CsCaps = {
     { actions: 0x0D00, pinCount: 1, pinClass: 0 },  // LED_PWM: IND_EQUALS/IND_ABOVE/IND_LEVEL
     { actions: 0x02BC, pinCount: 1, pinClass: 0 },  // IR: same command actions as BUTTON
     { actions: 0x0000, pinCount: 2, pinClass: 0 },  // DISPLAY (caps v10+): I2C pin pair, no direct actions
+    { actions: 0x0000, pinCount: 1, pinClass: 0 },  // AUX_OUT (caps v18+): driven through the AUX nouns
+    { actions: 0x0000, pinCount: 1, pinClass: 0 },  // AUX_PWM (caps v18+)
   ],
 };
 
@@ -135,13 +160,17 @@ function enumNoun(enumCount: number, actions = CS_ENUM_RW, targetKind = Domain.C
   return { kind: Domain.CsKind.Enum, enumCount, actions, minQ8: 0, maxQ8: 0, unit: Domain.CS_UNIT_NONE, targetKind, targetCount, dflags };
 }
 
-// The 49-entry caps-v4 noun catalog (control_surfaces_nouns.c cs_noun_table),
+// The caps-v21 noun catalog (control_surfaces_nouns.c cs_noun_table),
 // keyed on CsNoun's index order. Target counts follow the mock's own
 // channel layout (numIn/numOut/numCh already vary by platform); the
 // ADAT_ACTIVE and upmix action masks are RP2350-only, exactly like the
 // firmware's #if PICO_RP2350 gates.
-function buildMockCsNouns(platform: Domain.PlatformType, numIn: number, numOut: number, numCh: number): CsNounCaps[] {
+function buildMockCsNouns(
+  platform: Domain.PlatformType, numIn: number, numOut: number, numCh: number, capsVersion: number,
+): CsNounCaps[] {
   const rp2350 = platform === Domain.PlatformType.RP2350;
+  // caps v16 widened the subharm band-level nouns from +6 to +12 dB.
+  const subLevelMax = Domain.dbToQ8(capsVersion >= 16 ? 12 : 6);
   const adatActions = rp2350 ? CS_BOOL_RO : 0;
   return [
     contNoun(-15360, 0, Domain.CS_UNIT_DB),                                                           // 0  USER_VOLUME
@@ -210,9 +239,33 @@ function buildMockCsNouns(platform: Domain.PlatformType, numIn: number, numOut: 
     // caps v14 additions. Both platforms -- unlike psybass/upmix there is no
     // RP2350 gate on the subharmonic synthesizer.
     boolNoun(),                                                                                   // 57 SUBHARM
-    contNoun(Domain.dbToQ8(-30), Domain.dbToQ8(6), Domain.CS_UNIT_DB),                                                 // 58 SUBHARM_LOW
-    contNoun(Domain.dbToQ8(-30), Domain.dbToQ8(6), Domain.CS_UNIT_DB),                                                 // 59 SUBHARM_HIGH
+    contNoun(Domain.dbToQ8(-30), subLevelMax, Domain.CS_UNIT_DB),                                                  // 58 SUBHARM_LOW
+    contNoun(Domain.dbToQ8(-30), subLevelMax, Domain.CS_UNIT_DB),                                                  // 59 SUBHARM_HIGH
     contNoun(0, Domain.dbToQ8(6), Domain.CS_UNIT_DB),                                                           // 60 SUBHARM_BOOST
+    // caps v15 additions.
+    contNoun(Domain.dbToQ8(-30), subLevelMax, Domain.CS_UNIT_DB),                                                  // 61 SUBHARM_TOP
+    enumNoun(3),                                                                                  // 62 SUBHARM_SELECT
+    contNoun(0, Domain.percentToQ8(100), Domain.CS_UNIT_PERCENT),                                                  // 63 SUBHARM_DEPTH
+    contNoun(Domain.msToQ8(50), Domain.msToQ8(127), Domain.CS_UNIT_MS),                                             // 64 SUBHARM_HOLD
+    contNoun(Domain.dbToQ8(-40), 0, Domain.CS_UNIT_DB),                                                             // 65 SUBHARM_CEILING
+    boolNoun(),                                                                                   // 66 SUBHARM_LINK
+    boolNoun(),                                                                                   // 67 SUBHARM_SOLO
+    // caps v18 additions: target = binding slot holding an aux output.
+    boolNoun(CS_BOOL_RW, Domain.CS_TARGET_AUX, Domain.CS_MAX_BINDINGS),                                         // 68 AUX
+    contNoun(0, Domain.percentToQ8(100), Domain.CS_UNIT_PERCENT, Domain.CS_TARGET_AUX, Domain.CS_MAX_BINDINGS),           // 69 AUX_LEVEL
+    // caps v19 additions.
+    boolNoun(),                                                                                   // 70 TUBE
+    contNoun(Domain.dbToQ8(-30), Domain.dbToQ8(24), Domain.CS_UNIT_DB),                                             // 71 TUBE_DRIVE
+    enumNoun(Domain.TubeType.V300b + 1),                                                          // 72 TUBE_TYPE
+    contNoun(0, Domain.percentToQ8(100), Domain.CS_UNIT_PERCENT),                                                  // 73 TUBE_MIX
+    // caps v20 additions: targeted at an output channel.
+    boolNoun(CS_BOOL_RW, Domain.CS_TARGET_OUTPUT_CH, numOut),                                            // 74 LIMITER
+    contNoun(Domain.dbToQ8(-30), 0, Domain.CS_UNIT_DB, Domain.CS_TARGET_OUTPUT_CH, numOut),                         // 75 LIMITER_THRESHOLD
+    contNoun(10, 1000, Domain.CS_UNIT_MS_LOG, Domain.CS_TARGET_OUTPUT_CH, numOut),                                       // 76 LIMITER_RELEASE
+    enumNoun(Domain.Proc.LIMITER_LINK_GROUP_MAX + 1, CS_ENUM_RW, Domain.CS_TARGET_OUTPUT_CH, numOut),        // 77 LIMITER_LINK
+    contNoun(0, Domain.dbToQ8(30), Domain.CS_UNIT_DB, Domain.CS_TARGET_OUTPUT_CH, numOut, 0, CS_CONT_RO),            // 78 LIMITER_GR
+    // caps v21 addition.
+    boolNoun(CS_TRIGGER_ONLY),                                                                    // 79 PRESET_SAVE
   ];
 }
 
@@ -407,7 +460,16 @@ export class MockTransport implements DspTransport {
   #csLastStatus = 0x00;
   #csLastSlot = 0;
   #csPendingPolls = 0;
+  // fwHead revert in flight: status reads PENDING / slot 0xFF and macro fire
+  // and IR learn STALL without touching status.
+  #csRevertBusy = false;
   #csCapsVersion: number;
+  #fwHead = false;
+
+  // Output latency (0x03, fwHead only).
+  #outputLatencyId = Domain.OUTPUT_LATENCY_DEFAULT_ID;
+  #outputLatencyStagedId = Domain.OUTPUT_LATENCY_DEFAULT_ID;
+  #outputLatencyPendingReads = 0;
 
   // IR command sub-slots (0x8D/0x8E/0x8F, caps v3): same live-preview /
   // deferred-SET model as the bindings above, plus the learn state machine
@@ -480,8 +542,9 @@ export class MockTransport implements DspTransport {
     this.#fwBeta = fw.beta ?? 0;
     this.#buildInfo = opts.buildInfo ?? { describe: 'v1.1.6-mock', date: '2026-09-02' };
     this.#mockState = defaultMockBulkState(this.#platform, this.#wireVersion);
-    this.#csNouns = buildMockCsNouns(this.#platform, this.#mockState.numIn, this.#mockState.numOut, this.#mockState.numCh);
-    this.#csCapsVersion = opts.csCapsVersion ?? MOCK_CS_CAPS.capsVersion;
+    this.#fwHead = opts.fwHead ?? false;
+    this.#csCapsVersion = opts.csCapsVersion ?? (this.#fwHead ? MOCK_CS_CAPS_HEAD_VERSION : MOCK_CS_CAPS_DEFAULT_VERSION);
+    this.#csNouns = buildMockCsNouns(this.#platform, this.#mockState.numIn, this.#mockState.numOut, this.#mockState.numCh, this.#csCapsVersion);
     this.#irLearnAutoComplete = opts.irLearnAutoComplete ?? false;
     // Override the all-zero defaults with realistic pin/I2S values so granular
     // pin/type tests start from a valid hardware state. Sourced from the same
@@ -602,11 +665,16 @@ export class MockTransport implements DspTransport {
 
   // Per-version GetCsCaps/GetCsStatus shape, mirroring firmware's caps table
   // growth (control_surfaces.h): noun_count grows in steps (v<=6 49, v7 51,
-  // v8 52, v9 53, v10-13 57, v14+ 61); the DISPLAY type row lands at v10; the
+  // v8 52, v9 53, v10-13 57, v14 61, v15-16 68, v17-18 70, v19 74, v20 79, v21 80); the DISPLAY type row lands at v10; the
   // IR-command ceiling doubles at v6; the max_groups/max_macros/max_macro_steps
   // tail is carved from reserved bytes at v9 (zero before that).
   #csNounCount(): number {
     const v = this.#csCapsVersion;
+    if (v >= 21) return 80;
+    if (v === 20) return 79;
+    if (v === 19) return 74;
+    if (v >= 17) return 70;
+    if (v >= 15) return 68;
     if (v >= 14) return 61;
     if (v >= 10) return 57;
     if (v === 9) return 53;
@@ -616,7 +684,7 @@ export class MockTransport implements DspTransport {
   }
 
   #csTypeCount(): number {
-    return this.#csCapsVersion >= 10 ? 9 : 8;
+    return this.#csCapsVersion >= 18 ? 11 : this.#csCapsVersion >= 10 ? 9 : 8;
   }
 
   #csMaxIr(): number {
@@ -1354,6 +1422,7 @@ export class MockTransport implements DspTransport {
         let lastStatus = this.#csLastStatus;
         if (this.#csPendingPolls > 0) {
           this.#csPendingPolls -= 1;
+          if (this.#csPendingPolls === 0) this.#csRevertBusy = false;
           lastStatus = 0x16;                          // CS_STATUS_PENDING
         }
         let activeMask = 0;
@@ -1402,6 +1471,7 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.CsMacroFire.code: {
         if (this.#csCapsVersion < 9) throw new Error('MockTransport: CsMacroFire unsupported (STALL)');
+        if (this.#csRevertBusy) throw new Error('MockTransport: CsMacroFire during revert (STALL)');
         if (value === 0xFFFF) {
           this.#csMacroRun = null;
           return new Uint8Array([1]);
@@ -1459,6 +1529,7 @@ export class MockTransport implements DspTransport {
         return Codec.encode(Wire.CsDisplayStatus, this.#csDisplayStatus());
       }
       case WireCmd.CsIrLearn.code: {
+        if (this.#csRevertBusy && value <= 1) throw new Error('MockTransport: CsIrLearn during revert (STALL)');
         if (value === 1) {
           if (!this.#hasLiveIrBinding()) {
             this.#csLastStatus = 0x1E;               // CS_STATUS_NO_IR
@@ -1530,9 +1601,12 @@ export class MockTransport implements DspTransport {
         this.#csDirty = false;
         this.#csLastSlot = 0xFF;
         this.#csLastStatus = 0x00;
-        this.#csPendingPolls = 1;
+        this.#csPendingPolls = this.#fwHead ? 4 : 1;
+        this.#csRevertBusy = this.#fwHead;
         return new Uint8Array([1]);
       }
+      case WireCmd.OutputLatency.code:
+        return this.#outputLatencyIn(value);
       case WireCmd.GetBufferStats.code:
         return Syn.synthesizeBufferStats({
           numSpdif: this.#numSpdif(),
@@ -1632,6 +1706,17 @@ export class MockTransport implements DspTransport {
         // Mock applies immediately (no deferred main-loop apply to emulate).
         this.#mockState.inputConfig.i2sClockMode = Codec.decode(Codec.u8, data);
         return;
+      case WireCmd.OutputLatency.code: {
+        if (!this.#fwHead) throw new Error('MockTransport: REQ_OUTPUT_LATENCY unsupported (STALL)');
+        const id = data[0];
+        // Unknown ids STALL (handled=false); a valid SET only stages the id,
+        // the main loop applies it later (status keeps reporting the applied option).
+        if (!MOCK_OUTPUT_LATENCY_OPTIONS.some((o) => o.id === id)) throw new Error('MockTransport: REQ_OUTPUT_LATENCY unknown id (STALL)');
+        if (id === this.#outputLatencyId && this.#outputLatencyPendingReads === 0) return;
+        this.#outputLatencyStagedId = id;
+        this.#outputLatencyPendingReads = MOCK_OUTPUT_LATENCY_PENDING_READS;
+        return;
+      }
       case WireCmd.SetSysClock.code: {
         if (!this.#sysClockSupported) throw new Error('MockTransport: SetSysClock unsupported (STALL)');
         const req = Codec.decode(Wire.SysClockRequest, data);
@@ -2801,6 +2886,49 @@ export class MockTransport implements DspTransport {
     });
   }
 
+  // The option the active source runs for a request: a stream-only option on
+  // a USB source runs as the first standard option.
+  #outputLatencyResolve(id: number): (typeof MOCK_OUTPUT_LATENCY_OPTIONS)[number] {
+    const usb = this.#mockState.inputConfig.source === Domain.AudioInputSource.Usb;
+    const opt = MOCK_OUTPUT_LATENCY_OPTIONS.find((o) => o.id === id) ?? MOCK_OUTPUT_LATENCY_OPTIONS[4];
+    return opt.streamOnly && usb ? MOCK_OUTPUT_LATENCY_OPTIONS.find((o) => !o.streamOnly)! : opt;
+  }
+
+  #outputLatencyTargetFrames(id = this.#outputLatencyId): number {
+    return Math.round(this.#outputLatencyResolve(id).latencyUs * MOCK_SAMPLE_RATE_HZ / 1e6);
+  }
+
+  #outputLatencyIn(wValue: number): Uint8Array {
+    if (!this.#fwHead) throw new Error('MockTransport: REQ_OUTPUT_LATENCY unsupported (STALL)');
+    const toUs = (frames: number) => Math.round(frames * 1e6 / MOCK_SAMPLE_RATE_HZ);
+    if (wValue === Wire.OUTPUT_LATENCY_GET_STATUS) {
+      const run = this.#outputLatencyResolve(this.#outputLatencyId);
+      const pending = this.#outputLatencyPendingReads > 0;
+      const target = this.#outputLatencyTargetFrames();
+      // The staged id lands once the countdown ends; this read still shows the old one.
+      if (pending && --this.#outputLatencyPendingReads === 0) this.#outputLatencyId = this.#outputLatencyStagedId;
+      return Codec.encode(Wire.OutputLatencyStatus, {
+        requestedId: this.#outputLatencyId, effectiveId: run.id, effectiveUs: toUs(target),
+        targetFrames: target, batchFrames: Math.ceil(run.batchUs * MOCK_SAMPLE_RATE_HZ / 1e6),
+        pending: pending ? 1 : 0, optionCount: MOCK_OUTPUT_LATENCY_OPTIONS.length,
+      });
+    }
+    if (wValue === Wire.OUTPUT_LATENCY_GET_OPTIONS) {
+      const OPTION_SIZE = Codec.sizeOf(Wire.OutputLatencyOption);
+      const out = new Uint8Array(MOCK_OUTPUT_LATENCY_OPTIONS.length * OPTION_SIZE);
+      MOCK_OUTPUT_LATENCY_OPTIONS.forEach((o, i) => {
+        const runsAsItself = this.#outputLatencyResolve(o.id) === o;
+        out.set(Codec.encode(Wire.OutputLatencyOption, {
+          id: o.id,
+          flags: (o.streamOnly ? Wire.OUTPUT_LATENCY_FLAG_STREAM_ONLY : 0) | (runsAsItself ? Wire.OUTPUT_LATENCY_FLAG_AVAILABLE : 0),
+          latencyUs: o.latencyUs, batchUs: o.batchUs, effectiveUs: toUs(this.#outputLatencyTargetFrames(o.id)),
+        }), i * OPTION_SIZE);
+      });
+      return out;
+    }
+    throw new Error('MockTransport: REQ_OUTPUT_LATENCY bad wValue (STALL)');
+  }
+
   // Dispatch GetStatus by wValue, returning a fresh buffer sized to the request.
   #synthStatus(wValue: number, length: number): Uint8Array {
     switch (wValue) {
@@ -2832,6 +2960,16 @@ export class MockTransport implements DspTransport {
       case SystemStatusValue.SpdifUnderruns:
       case SystemStatusValue.SpdifStarvationsTotal:
         return Syn.synthesizeU32(0);
+
+      // Ring health: healthy-looking numbers on the release-head profile, 0
+      // elsewhere (older firmware answers unknown indices with 0).
+      case SystemStatusValue.RingUnderrunEpisodes:
+      case SystemStatusValue.RingBlocksRefused:
+      case SystemStatusValue.BackgroundOverBudget:
+        return Syn.synthesizeU32(0);
+      case SystemStatusValue.RingLowestFill:        return Syn.synthesizeU32(this.#fwHead ? this.#outputLatencyTargetFrames() - 6 : 0);
+      case SystemStatusValue.InputGapWorstUs:       return Syn.synthesizeU32(this.#fwHead ? 1180 : 0);
+      case SystemStatusValue.UsbPacketGapWorstUs:   return Syn.synthesizeU32(this.#fwHead ? 1040 : 0);
 
       // Unknown / unwired wValue: return a zeroed buffer of requested size.
       default:

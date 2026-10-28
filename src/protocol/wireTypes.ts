@@ -499,6 +499,37 @@ export const SysClockStatus = struct({
   _reserved:      reserved(3),
 });
 
+// REQ_OUTPUT_LATENCY (0x03) GET wValues. Any other wValue STALLs.
+export const OUTPUT_LATENCY_GET_STATUS = 0;
+export const OUTPUT_LATENCY_GET_OPTIONS = 1;
+// Option flags: STREAM_ONLY needs an S/PDIF/I2S/ADAT input (runs as the 2 ms
+// option on USB); AVAILABLE is set when the option runs as itself on the
+// active source.
+export const OUTPUT_LATENCY_FLAG_STREAM_ONLY = 0x01;
+export const OUTPUT_LATENCY_FLAG_AVAILABLE = 0x80;
+
+// 12-byte status (wValue 0). effectiveUs is the live ring fill target at the
+// current rate; pending stays 1 until a SET has fully applied.
+export const OutputLatencyStatus = struct({
+  requestedId:  u8,
+  effectiveId:  u8,
+  effectiveUs:  u16,
+  targetFrames: u16,
+  batchFrames:  u16,
+  pending:      u8,
+  optionCount:  u8,
+  _reserved:    reserved(2),
+});
+
+// One 8-byte entry of the option table (wValue 1, optionCount entries).
+export const OutputLatencyOption = struct({
+  id:          u8,
+  flags:       u8,
+  latencyUs:   u16,
+  batchUs:     u16,
+  effectiveUs: u16,
+});
+
 // 16-byte live stereo-upmixer status (GetUpmixStatus 0x4E, RP2350
 // only). parkedReason: 0 active / 1 disabled / 2 input not stereo / 3 rate
 // > 48 kHz -- narrowed to a domain enum in DspDevice. corr/balance are Q14
@@ -907,7 +938,8 @@ export const SystemStatusValue = {
   PdmDmaOverruns:       5,
   PdmDmaUnderruns:      6,
 
-  // SPDIF error counters (u32 each)
+  // Live on tagged firmware through 1.1.6-beta4; always 0 on the release-branch
+  // head that added the ring counters.
   SpdifOverruns:        7,
   SpdifUnderruns:       8,
 
@@ -922,6 +954,15 @@ export const SystemStatusValue = {
 
   // Live active input channel count, source-aware (u32)
   ActiveInputChannels:   23,
+
+  // Ring health (u32 each; firmware answers unknown indices with 0, so
+  // support cannot be probed here).
+  RingUnderrunEpisodes:  26,  // output-ring underrun episodes
+  RingBlocksRefused:     27,  // blocks refused by ring admission
+  RingLowestFill:        28,  // lowest pre-write ring fill (frames)
+  InputGapWorstUs:       29,  // worst input delivery gap
+  UsbPacketGapWorstUs:   30,  // worst USB audio packet gap
+  BackgroundOverBudget:  31,  // background steps over budget
 
   // TODO(system-info-extra): not yet wired
   // 10..12 (USB packets / alt setting / mounted),

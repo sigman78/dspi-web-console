@@ -2,7 +2,7 @@
 // draft's display units (see domain/controlSurfaces.ts's q8 helpers). Shared
 // between the binding editor (ControlSurfacesPanel) and the IR command editor
 // (CsIrCommands) -- both edit value/step fields for the same CsNounDesc units.
-// Hz is a plain integer on the wire; step on a Hz/Q noun is an 8.8-octave
+// Hz and log ms are plain integers on the wire; step on a Hz/Q noun is an 8.8-octave
 // size, not the unit itself.
 import * as Domain from '@/domain';
 
@@ -26,7 +26,7 @@ export function displayToValue(unit: number, display: number): number {
   }
 }
 
-export function isLogStep(unit: number): boolean { return unit === Domain.CS_UNIT_HZ || unit === Domain.CS_UNIT_Q; }
+export function isLogStep(unit: number): boolean { return unit === Domain.CS_UNIT_HZ || unit === Domain.CS_UNIT_Q || unit === Domain.CS_UNIT_MS_LOG; }
 
 export function stepToDisplay(unit: number, q8: number): number {
   return isLogStep(unit) ? Domain.q8StepToOctaves(q8) : valueToDisplay(unit, q8);
@@ -42,7 +42,8 @@ export function unitSuffix(unit: number): string {
     case Domain.CS_UNIT_PERCENT: return '%';
     case Domain.CS_UNIT_HZ:      return 'Hz';
     case Domain.CS_UNIT_Q:       return 'Q';
-    case Domain.CS_UNIT_MS:      return 'ms';
+    case Domain.CS_UNIT_MS:
+    case Domain.CS_UNIT_MS_LOG:  return 'ms';
     default:                     return '';
   }
 }

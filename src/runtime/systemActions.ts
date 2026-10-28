@@ -109,6 +109,43 @@ export async function applySysClock(s: ReadySession, mode: Domain.SysClockMode, 
   return now != null && now.storedMode === mode && now.storedVregSel === vregSel;
 }
 
+// A SET is deferred on the device (flash write, brief muted restart);
+// status.pending stays true until it lands.
+const OUTPUT_LATENCY_CONFIRM_ATTEMPTS = 10;
+const OUTPUT_LATENCY_CONFIRM_MS = 200;
+
+// True once the device accepted the SET, even if it is still applying it;
+// false only when the SET itself failed.
+export async function applyOutputLatency(s: ReadySession, id: number): Promise<boolean> {
+  s.outputLatency.busy = true;
+  let accepted = false;
+  try {
+    await command(s, 'set output latency', async () => {
+      const d = s.device;
+      await s.queue.run(() => d.setOutputLatency(id));
+      accepted = true;
+      let status: Domain.OutputLatencyStatus | null = null;
+      for (let i = 0; i < OUTPUT_LATENCY_CONFIRM_ATTEMPTS; i++) {
+        await new Promise((r) => setTimeout(r, OUTPUT_LATENCY_CONFIRM_MS));
+        status = await s.queue.run(() => d.getOutputLatencyStatus());
+        if (s.alive) s.outputLatency.status = status;
+        if (!status.pending) break;
+      }
+      // Effective values depend on the stored option, so refresh the table too.
+      const options = await s.queue.run(() => d.getOutputLatencyOptions());
+      if (s.alive) s.outputLatency.options = options;
+      return status;
+    }, (status) => {
+      if (status?.pending) {
+        pushNotice('warn', 'Output latency change has not been confirmed yet — the device may still be applying it.');
+      }
+    }, { queued: false });
+  } finally {
+    s.outputLatency.busy = false;
+  }
+  return accepted;
+}
+
 // Manual re-read for the panel's REFRESH affordance -- the escape hatch when
 // a deferred apply outlasted the confirm loop and the stored status went
 // stale (there is no notify event or poll cadence for the system clock).

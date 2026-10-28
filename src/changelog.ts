@@ -6,6 +6,7 @@ import { APP_VERSION } from './buildInfo';
 export const LATEST_CHANGES = {
   version: APP_VERSION,
   highlights: [
+    'Output latency is now selectable in SETUP › OUTPUTS, and STATS shows output-buffer health, on DSPi firmware newer than the 1.1.6 beta 5 tag. Control Surfaces name every newer function (incl. Save Preset) and can bind the limiter release',
     'Console v2: an icon rail with TUNE / PROGRAM / SETUP / CONTROL / ABOUT, a channel rail with presets and volume, an editable EQ graph, the processing chain laid out in firmware order, and a routing map — no tabs',
     'Firmware 1.1.5 (wire V28) is now the minimum: older devices are asked to upgrade as soon as they connect, and every 1.1.5 feature — ADAT in/out, system clock control, the stereo upmixer, psychoacoustic bass, Linkwitz Transform bands, I2S slave clock mode, IR remote learning — are no longer version-gated',
     'Per-output limiter in the TUNE output inspector: lookahead limiter with threshold, release, link groups that gang outputs together, and a live gain-reduction meter; the status line shows the added lookahead latency while it is engaged (fw 1.1.6-beta4)',

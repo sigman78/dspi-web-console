@@ -41,10 +41,9 @@ describe('resolveMockProfile', () => {
     }
   });
 
-  it('latest boots at MAX_WIRE_VERSION on the firmware line that carries it', () => {
-    const p = resolveMockProfile('latest');
-    expect(p.opts.wireVersion).toBe(Wire.MAX_WIRE_VERSION);
-    expect(p.opts.fwVersion).toEqual({ major: 1, minor: 1, patch: 6, beta: 4 });
+  it('only latest models the release-branch head', () => {
+    expect(resolveMockProfile('latest').opts.fwHead).toBe(true);
+    expect(resolveMockProfile('v32').opts.fwHead).toBeUndefined();
   });
 
   it('falls back to latest below the wire floor, including the retired legacy token', () => {

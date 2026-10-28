@@ -1047,3 +1047,68 @@ describe('control-surface status cadences', () => {
     expect(session.controlSurfaces.extStatus).toEqual(runningMacro);
   });
 });
+
+describe('output latency cadence', () => {
+  afterEach(() => { teardown(); });
+
+  const ring: Domain.RingHealth = {
+    underrunEpisodes: 1, blocksRefused: 0, lowestFillFrames: 7,
+    inputGapWorstUs: 900, usbPacketGapWorstUs: 1000, backgroundOverBudget: 0,
+  };
+  const status: Domain.OutputLatencyStatus = {
+    requestedId: 3, effectiveId: 3, effectiveUs: 4000, targetFrames: 192, batchFrames: 48, pending: false, optionCount: 1,
+  };
+
+  function latencyDevice() {
+    return {
+      info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
+      hardware: hw,
+      getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
+      getBufferStats: vi.fn(async () => null),
+      getSystemInfo: vi.fn(async () => ({})),
+      getRingHealth: vi.fn(async () => ring),
+      getOutputLatencyStatus: vi.fn(async () => status),
+      getOutputLatencyOptions: vi.fn(async () => []),
+    } as unknown as DspDevice;
+  }
+
+  async function tickOnce(session: ReadySession): Promise<void> {
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    stop();
+  }
+
+  it.each([null, false] as const)('never reads latency or ring health while supported is %s', async (supported) => {
+    const device = latencyDevice();
+    const session = connect(device);
+    session.outputLatency.supported = supported;
+    await tickOnce(session);
+    expect(device.getSystemInfo).toHaveBeenCalled();
+    expect(device.getRingHealth).not.toHaveBeenCalled();
+    expect(device.getOutputLatencyStatus).not.toHaveBeenCalled();
+    expect(session.telemetry.ringHealth).toBeNull();
+  });
+
+  it('refreshes ring health and latency status once supported', async () => {
+    const device = latencyDevice();
+    const session = connect(device);
+    session.outputLatency.supported = true;
+    await tickOnce(session);
+    expect(session.telemetry.ringHealth).toEqual(ring);
+    expect(session.outputLatency.status).toEqual(status);
+    expect(session.outputLatency.options).toEqual([]);
+  });
+
+  it('leaves the latency store alone while an apply is confirming, but still reads ring health', async () => {
+    const device = latencyDevice();
+    const session = connect(device);
+    session.outputLatency.supported = true;
+    session.outputLatency.busy = true;
+    await tickOnce(session);
+    expect(device.getOutputLatencyStatus).not.toHaveBeenCalled();
+    expect(session.outputLatency.status).toBeNull();
+    expect(session.telemetry.ringHealth).toEqual(ring);
+  });
+});

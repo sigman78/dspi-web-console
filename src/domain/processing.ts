@@ -150,6 +150,11 @@ export interface UpmixStatus {
 // and shuts on an attack. Mirrors fw SUBHARM_SELECT_*.
 export const SubharmSelect = { All: 0, Percussive: 1, Sustained: 2 } as const;
 export type SubharmSelect = (typeof SubharmSelect)[keyof typeof SubharmSelect];
+export const SUBHARM_SELECT_LABEL: Record<SubharmSelect, string> = {
+  [SubharmSelect.All]: 'ALL',
+  [SubharmSelect.Percussive]: 'PERCUSSIVE',
+  [SubharmSelect.Sustained]: 'SUSTAINED',
+};
 
 // Subharmonic synthesizer (fw V29+, both platforms; V30 adds the third band,
 // selectivity, ceiling, and pair link). Wire-1:1 like Psybass -- lowDb/highDb/
@@ -180,6 +185,13 @@ export const TubeType = {
   V6dj8: 8, Ef86: 9, V6sj7: 10, El84: 11, El34: 12, V6l6: 13, V6v6: 14, Kt88: 15, V300b: 16,
 } as const;
 export type TubeType = (typeof TubeType)[keyof typeof TubeType];
+export const TUBE_TYPE_LABEL: Record<TubeType, string> = {
+  [TubeType.Custom]: 'Custom', [TubeType.V12ax7]: '12AX7', [TubeType.V5751]: '5751', [TubeType.V12at7]: '12AT7',
+  [TubeType.V12ay7]: '12AY7', [TubeType.V12au7]: '12AU7', [TubeType.V6sn7]: '6SN7', [TubeType.V6sl7]: '6SL7',
+  [TubeType.V6dj8]: '6DJ8', [TubeType.Ef86]: 'EF86', [TubeType.V6sj7]: '6SJ7', [TubeType.El84]: 'EL84',
+  [TubeType.El34]: 'EL34', [TubeType.V6l6]: '6L6', [TubeType.V6v6]: '6V6', [TubeType.Kt88]: 'KT88',
+  [TubeType.V300b]: '300B',
+};
 
 // Power-supply rectifier model: drives the sag character.
 export const TubeRectifier = { SolidState: 0, Gz34: 1, V5u4: 2, V5y3: 3 } as const;

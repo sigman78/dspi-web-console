@@ -105,6 +105,28 @@ export const CsNoun = {
   SubharmLow:         58,
   SubharmHigh:        59,
   SubharmBoost:       60,
+  // caps v15-v21 additions.
+  SubharmTop:         61,
+  SubharmSelect:      62,
+  SubharmDepth:       63,
+  SubharmHold:        64,
+  SubharmCeiling:     65,
+  SubharmLink:        66,
+  SubharmSolo:        67,
+  // Aux nouns target a binding slot (CS_TARGET_AUX), which this console does
+  // not model; the pickers skip them.
+  Aux:                68,
+  AuxLevel:           69,
+  Tube:               70,
+  TubeDrive:          71,
+  TubeType:           72,
+  TubeMix:            73,
+  Limiter:            74,
+  LimiterThreshold:   75,
+  LimiterRelease:     76,
+  LimiterLink:        77,
+  LimiterGr:          78,
+  PresetSave:         79,
 } as const;
 export type CsNoun = (typeof CsNoun)[keyof typeof CsNoun];
 
@@ -201,11 +223,12 @@ export const CS_UNIT_HZ      = 2;   // plain integer Hz; log stepping (8.8-octav
 export const CS_UNIT_Q       = 3;   // 8.8 Q; log stepping (8.8-octave step)
 export const CS_UNIT_PERCENT = 4;   // 8.8 percent; linear stepping
 export const CS_UNIT_MS      = 5;   // 8.8 milliseconds; linear stepping, 0.1 ms default step (caps v4+)
+export const CS_UNIT_MS_LOG  = 6;   // plain integer ms; log stepping (8.8-octave step)
 
 // Units this console can encode/decode. A noun carrying a unit above this is
 // from a newer caps format -- offering it in the editor would write mis-scaled
 // values to the device, so the pickers skip it.
-export const CS_MAX_KNOWN_UNIT = CS_UNIT_MS;
+export const CS_MAX_KNOWN_UNIT = CS_UNIT_MS_LOG;
 
 // Target kinds (CsNounDesc.targetKind); what CsBinding.target addresses.
 export const CS_TARGET_NONE      = 0;   // target/index ignored
@@ -213,6 +236,11 @@ export const CS_TARGET_INPUT_CH  = 1;   // target = input channel (0..targetCoun
 export const CS_TARGET_OUTPUT_CH = 2;   // target = output channel (0..targetCount-1)
 export const CS_TARGET_DSP_CH    = 3;   // target = DSP channel (inputs then outputs)
 export const CS_TARGET_DSP_BAND  = 4;   // target = DSP channel, index = filter band
+export const CS_TARGET_AUX       = 5;   // target = binding slot (aux nouns)
+
+// Target kinds this console can address. A noun with a higher kind (e.g. the
+// firmware's aux-slot target) is skipped by the pickers.
+export const CS_MAX_KNOWN_TARGET_KIND = CS_TARGET_DSP_BAND;
 
 // Noun descriptor flags (CsNounDesc.dflags)
 export const CS_NDF_DEFERRED = 0x01;   // apply is deferred; engine steps from a target shadow
@@ -609,7 +637,7 @@ export const q8ToQ = q8Decode;
 export const msToQ8 = q8Encode;
 export const q8ToMs = q8Decode;
 
-// CsBinding.step on a CS_UNIT_HZ/CS_UNIT_Q binding encodes an 8.8-octave
+// CsBinding.step on a CS_UNIT_HZ/CS_UNIT_Q/CS_UNIT_MS_LOG binding encodes an 8.8-octave
 // step size: 256 is one octave per detent; 0 selects the firmware's default
 // (1/12 octave).
 export const octavesToQ8Step = q8Encode;
@@ -700,6 +728,25 @@ export const CS_NOUN_LABEL: Record<CsNoun, string> = {
   [CsNoun.SubharmLow]:        'Subharm 24–36 Hz',
   [CsNoun.SubharmHigh]:       'Subharm 36–56 Hz',
   [CsNoun.SubharmBoost]:      'Subharm LF Boost',
+  [CsNoun.SubharmTop]:        'Subharm 56–80 Hz',
+  [CsNoun.SubharmSelect]:     'Subharm Selectivity',
+  [CsNoun.SubharmDepth]:      'Subharm Selectivity Depth',
+  [CsNoun.SubharmHold]:       'Subharm Selectivity Hold',
+  [CsNoun.SubharmCeiling]:    'Subharm Ceiling',
+  [CsNoun.SubharmLink]:       'Subharm Pair Link',
+  [CsNoun.SubharmSolo]:       'Subharm Solo',
+  [CsNoun.Aux]:               'Aux Output',
+  [CsNoun.AuxLevel]:          'Aux Level',
+  [CsNoun.Tube]:              'Tube Preamp',
+  [CsNoun.TubeDrive]:         'Tube Drive',
+  [CsNoun.TubeType]:          'Tube Type',
+  [CsNoun.TubeMix]:           'Tube Mix',
+  [CsNoun.Limiter]:           'Limiter',
+  [CsNoun.LimiterThreshold]:  'Limiter Threshold',
+  [CsNoun.LimiterRelease]:    'Limiter Release',
+  [CsNoun.LimiterLink]:       'Limiter Link Group',
+  [CsNoun.LimiterGr]:         'Limiter GR',
+  [CsNoun.PresetSave]:        'Save Preset',
 };
 
 // A device with a newer caps format may publish nouns this console has no

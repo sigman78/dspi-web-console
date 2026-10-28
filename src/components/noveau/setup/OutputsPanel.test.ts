@@ -8,6 +8,7 @@ const verbs = vi.hoisted(() => ({
   stageOutputDataPin: vi.fn(),
   stageOutputPairEnabled: vi.fn(),
   stagePdmEnabled: vi.fn(),
+  stageOutputLatency: vi.fn(),
   stagedCtrlPins: () => ({ uart: null, i2c: null, cs: [] }),
 }));
 vi.mock('@/runtime', () => verbs);
@@ -39,8 +40,21 @@ const staging = {
   applyAll: async () => {},
 };
 
-function makeSession(snap: ReturnType<typeof makeSnap>) {
+const LATENCY_OPTIONS = [
+  { id: 1, latencyUs: 667, batchUs: 333, effectiveUs: 2000, streamOnly: true, available: false },
+  { id: 5, latencyUs: 4000, batchUs: 1000, effectiveUs: 4000, streamOnly: false, available: true },
+  // 44.1 kHz: the firmware's frame round trip reads 4000 us back as 3991.
+  { id: 6, latencyUs: 4000, batchUs: 1000, effectiveUs: 3991, streamOnly: false, available: true },
+];
+
+function makeSession(snap: ReturnType<typeof makeSnap>, latency: { supported: boolean | null; requestedId?: number } = { supported: null }) {
   return {
+    outputLatency: {
+      supported: latency.supported,
+      busy: false,
+      status: latency.supported ? { requestedId: latency.requestedId ?? 5 } : null,
+      options: latency.supported ? LATENCY_OPTIONS : null,
+    },
     mirror: { current: snap },
     presets: { directory: null },
     ctrlIfaces: { uart: null, i2c: null, status: null },
@@ -117,5 +131,30 @@ describe('OutputsPanel', () => {
     render(OutputsPanel, { context: new Map([[SESSION_KEY, session]]) });
     await fireEvent.click(screen.getByRole('button', { name: 'Reset output pins to defaults' }));
     expect(verbs.stageOutputDataPin).not.toHaveBeenCalledWith(session, 4, Wire.Const.PIN_RESET_TO_DEFAULT);
+  });
+
+  test('the latency row is hidden until the device is known to support it', () => {
+    render(OutputsPanel, { context: new Map([[SESSION_KEY, makeSession(makeSnap(), { supported: false })]]) });
+    expect(screen.queryByRole('combobox', { name: 'Output latency' })).toBeNull();
+  });
+
+  test('a stream-only option on USB keeps a plain label, dims, and shows what it runs as', async () => {
+    const session = makeSession(makeSnap(), { supported: true, requestedId: 1 });
+    render(OutputsPanel, { context: new Map([[SESSION_KEY, session]]) });
+    const select = screen.getByRole('combobox', { name: 'Output latency' }) as HTMLSelectElement;
+    expect(select.value).toBe('1');
+    const opt = screen.getByRole('option', { name: '0.67 ms' });
+    expect(opt.classList.contains('dim')).toBe(true);
+    expect(screen.getAllByRole('option', { name: '4 ms' }).some((o) => o.classList.contains('dim'))).toBe(false);
+    expect(screen.getByText('runs 2 ms on USB')).toBeTruthy();
+
+    await fireEvent.change(select, { target: { value: '5' } });
+    expect(verbs.stageOutputLatency).toHaveBeenCalledWith(session, 5);
+  });
+
+  test('frame rounding of the effective time does not draw a runs note', () => {
+    render(OutputsPanel, { context: new Map([[SESSION_KEY, makeSession(makeSnap(), { supported: true, requestedId: 6 })]]) });
+    expect(screen.getByRole('combobox', { name: 'Output latency' })).toBeTruthy();
+    expect(screen.queryByText(/^runs /)).toBeNull();
   });
 });

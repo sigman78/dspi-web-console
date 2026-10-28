@@ -58,6 +58,12 @@ export function valueBounds(nouns: readonly Domain.CsNounCaps[], noun: number): 
   return { min: CsUnit.valueToDisplay(unit, n.minQ8), max: CsUnit.valueToDisplay(unit, n.maxQ8) };
 }
 
+// Units and target kinds above the known maxima come from a newer caps format;
+// offering such a noun would mis-scale values or address an unmodeled target.
+export function isKnownNoun(n: Domain.CsNounCaps): boolean {
+  return n.unit <= Domain.CS_MAX_KNOWN_UNIT && n.targetKind <= Domain.CS_MAX_KNOWN_TARGET_KIND;
+}
+
 export function boolValueOptions(noun: number): { v: number; label: string }[] {
   const clip = noun === Domain.CsNoun.Clip;
   return [
@@ -113,6 +119,9 @@ export function enumValueOptions(
   if (noun === Domain.CsNoun.CrossfeedPreset) return idx.map((i) => ({ v: i, label: CROSSFEED_PRESET_LABEL[i] ?? String(i) }));
   if (noun === Domain.CsNoun.LevellerSpeed) return idx.map((i) => ({ v: i, label: LEVELLER_SPEED_LABEL[i] ?? String(i) }));
   if (noun === Domain.CsNoun.SampleRate) return idx.map((i) => ({ v: i, label: SAMPLE_RATE_LABEL[i] ?? String(i) }));
+  if (noun === Domain.CsNoun.SubharmSelect) return idx.map((i) => ({ v: i, label: Domain.SUBHARM_SELECT_LABEL[i as Domain.SubharmSelect] ?? String(i) }));
+  if (noun === Domain.CsNoun.TubeType) return idx.map((i) => ({ v: i, label: Domain.TUBE_TYPE_LABEL[i as Domain.TubeType] ?? String(i) }));
+  if (noun === Domain.CsNoun.LimiterLink) return idx.map((i) => ({ v: i, label: Domain.Proc.limiterLinkLabel(i) }));
   if (noun === Domain.CsNoun.UpmixCenterMode) return idx.map((i) => ({ v: i, label: ['Passive', 'Logic', 'Off'][i] ?? String(i) }));
   if (noun === Domain.CsNoun.UpmixSurroundMode) return idx.map((i) => ({ v: i, label: ['Off', 'Passive', 'Logic'][i] ?? String(i) }));
   return idx.map((i) => ({ v: i, label: String(i) }));
@@ -190,7 +199,7 @@ export function liveI2cInstance(i2c: { enabled: boolean; sdaPin: number } | null
 export function pageNounOptions(nouns: readonly Domain.CsNounCaps[]): { v: number; label: string }[] {
   const out: { v: number; label: string }[] = [];
   nouns.forEach((n, i) => {
-    if (n.actions === 0 || n.unit > Domain.CS_MAX_KNOWN_UNIT) return;
+    if (n.actions === 0 || !isKnownNoun(n)) return;
     if (i === Domain.CsNoun.DisplayPage || i === Domain.CsNoun.DisplayEdit || i === Domain.CsNoun.PageValue) return;
     out.push({ v: i, label: Domain.csNounLabel(i) });
   });

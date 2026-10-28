@@ -444,3 +444,44 @@ describe('runtime/stagedActions', () => {
     });
   });
 });
+
+describe('runtime/stagedActions: output latency', () => {
+  beforeEach(async () => {
+    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION, fwHead: true });
+    clearNotices();
+  });
+
+  it('applying the staged option sets it and waits out the deferred restart', async () => {
+    const s = sess();
+    const live = s.outputLatency.status!.requestedId;
+    const target = live === 7 ? 6 : 7;
+    const set = vi.spyOn(s.device, 'setOutputLatency');
+
+    Staged.stageOutputLatency(s, target);
+    const entry = s.staging.get('outputLatency')!;
+    expect(entry.page).toBe('outputs');
+    expect(entry.disruptive).toBeTruthy();
+    expect(set).not.toHaveBeenCalled();
+
+    vi.useFakeTimers();
+    try {
+      const applied = s.staging.applyAll();
+      await vi.runAllTimersAsync();
+      await applied;
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(set).toHaveBeenCalledWith(target);
+    expect(s.outputLatency.status?.requestedId).toBe(target);
+    expect(s.outputLatency.status?.pending).toBe(false);
+    expect(s.staging.has('outputLatency')).toBe(false);
+  });
+
+  it('staging the live option discards the pending entry', () => {
+    const s = sess();
+    const live = s.outputLatency.status!.requestedId;
+    Staged.stageOutputLatency(s, live === 7 ? 6 : 7);
+    Staged.stageOutputLatency(s, live);
+    expect(s.staging.has('outputLatency')).toBe(false);
+  });
+});
