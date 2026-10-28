@@ -39,7 +39,7 @@
 </section>
 
 <style>
-  .mf { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
+  .mf { display: flex; flex-direction: column; min-width: 0; max-width: 720px; min-height: 0; height: 100%; overflow: hidden; }
   .sec-h { flex: none; }
   .blurb { margin: 0 0 8px; padding: 0 4px; line-height: 1.35; }
   .off { flex: none; }

@@ -6,8 +6,10 @@
   import CsGroupsPanel from '@/components/noveau/control/CsGroupsPanel.svelte';
   import CsMacrosPanel from '@/components/noveau/control/CsMacrosPanel.svelte';
   import CsDisplayPanel from '@/components/noveau/control/CsDisplayPanel.svelte';
-  import PinMapPanel from '@/components/chrome/PinMapPanel.svelte';
   import PagedWorkspace from '@/components/noveau/PagedWorkspace.svelte';
+  import PinMapToggle from '@/components/noveau/PinMapToggle.svelte';
+  import PinMapPanel from '@/components/chrome/PinMapPanel.svelte';
+  import StagedStrip from '@/components/noveau/StagedStrip.svelte';
   import CsChangesStrip from './CsChangesStrip.svelte';
   import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import { controlPages } from './controlPages';
@@ -37,7 +39,11 @@
 {/snippet}
 
 {#snippet strip()}
-  {#if showStrip}<CsChangesStrip />{/if}
+  <div class="tools">
+    {#if page === 'interfaces' || page === 'display'}<PinMapToggle />{/if}
+    <StagedStrip rule={showStrip} />
+    {#if showStrip}<CsChangesStrip />{/if}
+  </div>
 {/snippet}
 
 <PagedWorkspace
@@ -77,7 +83,7 @@
               <CsDisplayPanel detailTarget={displayDetail} visible={page === 'display'} />
             </div>
             <div class="pw-col" data-budget>{@render host('DISPLAY PAGE', 'Select a page on the left', (el) => (displayDetail = el))}</div>
-            <div class="pw-col" data-budget><div class="pw-ref"><PinMapPanel /></div></div>
+            {#if noveauUi.pinMapOpen && page === 'display'}<div class="pw-col pw-ref" data-budget><PinMapPanel /></div>{/if}
           {/if}
         </div>
       {/if}
@@ -88,13 +94,13 @@
       <div class="pw-col" data-budget>
         {#if features.controlInterfaces}<ControlInterfacesPanel />{/if}
       </div>
-      <div class="pw-col" data-budget></div>
-      <div class="pw-col" data-budget><div class="pw-ref"><PinMapPanel /></div></div>
+      {#if noveauUi.pinMapOpen}<div class="pw-col pw-ref" data-budget><PinMapPanel /></div>{/if}
     </div>
   {/if}
 </PagedWorkspace>
 
 <style>
+  .tools { display: flex; align-items: center; gap: 10px; min-width: 0; }
   .detail {
     min-width: 0;
     box-sizing: border-box;

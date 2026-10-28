@@ -84,7 +84,7 @@
     <span class="cap">{caption}</span>
   </header>
   <div class="map" style:--n={cols.length}>
-    <span></span>
+    <span style:grid-column="1"></span>
     {#each cols as c (c.input)}
       <span class="ch" title={c.label}><i style:background={chShade(c.id, 'bright')}></i>{c.short}</span>
     {/each}
@@ -119,6 +119,7 @@
           </button>
         </span>
       {/each}
+      <span class="cell fill" class:off={!r.enabled} style:grid-row={ri + 2} style:grid-column={cols.length + 2}></span>
     {/each}
   </div>
   <footer class="legend">
@@ -159,7 +160,7 @@
   .cap { flex: 0 1 auto; margin-left: auto; }
   .map {
     display: grid;
-    grid-template-columns: 150px repeat(var(--n), minmax(36px, 1fr));
+    grid-template-columns: 150px repeat(var(--n), 48px) minmax(0, 1fr);
     grid-template-rows: 24px;
     grid-auto-rows: 28px;
     min-height: 0;

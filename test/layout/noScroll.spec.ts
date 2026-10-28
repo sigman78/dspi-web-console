@@ -231,6 +231,80 @@ test('no scroll 1440x790 CONTROL surfaces add control and IR receiver', async ({
   }
 });
 
+test('no scroll 1440x790 SETUP with staged changes and the list open', async ({ page }) => {
+  await open(page, SMALL, FULL);
+  await destination(page, 'SETUP').click();
+  await page.getByRole('tab', { name: 'INPUTS' }).click();
+  await page.getByRole('button', { name: 'Reset input pins to defaults' }).click();
+  await page.locator('.src-btns .chip:not(:disabled)').first().click();
+  await page.getByRole('tab', { name: 'OUTPUTS' }).click();
+  await page.getByRole('button', { name: 'Reset clock pins to defaults' }).click();
+  const strip = page.getByRole('group', { name: 'Staged changes' });
+  await expect(strip).toBeVisible();
+  await strip.getByRole('button', { name: /^\d+ changes?$/ }).click();
+  const list = page.getByRole('dialog', { name: 'Staged changes' });
+  await expect(list).toBeVisible();
+  expect(await list.locator('.item').count()).toBeGreaterThanOrEqual(2);
+  await assertNoScroll(page, 'SETUP staged list open');
+  await page.keyboard.press('Escape');
+  await expect(list).toBeHidden();
+});
+
+for (const size of [SMALL, LARGE]) {
+  test(`no scroll ${size.join('x')} pin map docked on SETUP and CONTROL`, async ({ page }) => {
+    await open(page, size, CS_FULL);
+    const toggle = page.getByRole('button', { name: 'Pin map', exact: true });
+    const ref = page.locator('.pw-cols:not([hidden]) .pw-ref');
+    const docked = async (where: string) => {
+      await expect(ref, `${where} pin map column`).toBeVisible();
+      const box = await ref.boundingBox();
+      expect(box!.x + box!.width, `${where} pin map leaves the viewport`).toBeLessThanOrEqual(size[0]);
+      await assertNoScroll(page, `${where} pin map open`);
+    };
+    await destination(page, 'SETUP').click();
+    await page.getByRole('tab', { name: 'DEVICE' }).click();
+    await expect(toggle).toHaveCount(0);
+    await page.getByRole('tab', { name: 'INPUTS' }).click();
+    await toggle.click();
+    await docked('INPUTS');
+    await page.getByRole('tab', { name: 'OUTPUTS' }).click();
+    await docked('OUTPUTS');
+    await destination(page, 'CONTROL').click();
+    await page.getByRole('tab', { name: 'INTERFACES' }).click();
+    await docked('INTERFACES');
+    await page.getByRole('tab', { name: 'DISPLAY' }).click();
+    await docked('DISPLAY');
+    await page.getByRole('tab', { name: 'SURFACES' }).click();
+    await expect(toggle).toHaveCount(0);
+    await page.getByRole('tab', { name: 'DISPLAY' }).click();
+    await toggle.click();
+    await expect(ref).toHaveCount(0);
+  });
+}
+
+for (const size of [SMALL, LARGE]) {
+  test(`no scroll ${size.join('x')} CONTROL surfaces strip with a disruptive staged change and unapplied drafts`, async ({ page }) => {
+    await open(page, size, CS_FULL);
+    await destination(page, 'SETUP').click();
+    await page.getByRole('tab', { name: 'DEVICE' }).click();
+    await page.getByRole('radiogroup', { name: 'System clock mode' }).getByRole('radio', { checked: false }).first().click();
+    await destination(page, 'CONTROL').click();
+    await page.getByRole('tab', { name: 'SURFACES' }).click();
+    const slot = page.locator('.pw-cols:not([hidden]) section.panel').first();
+    await slot.getByRole('button', { name: /^POTENTIOMETER/ }).first().click();
+    const editor = page.getByRole('combobox', { name: 'Controlled function' }).first();
+    await editor.selectOption({ index: (await editor.evaluate((el: HTMLSelectElement) => el.selectedIndex)) === 0 ? 1 : 0 });
+    const staged = page.getByRole('group', { name: 'Staged changes' });
+    const cs = page.getByRole('group', { name: 'Control-surface changes' });
+    await expect(staged).toBeVisible();
+    await expect(cs).toContainText('unapplied');
+    const discard = cs.getByRole('button', { name: /^DISCARD/ });
+    const box = await discard.boundingBox();
+    expect(box!.x + box!.width, 'DISCARD chip leaves the viewport').toBeLessThanOrEqual(size[0]);
+    await assertNoScroll(page, 'CONTROL SURFACES strip with staged and drafts');
+  });
+}
+
 for (const size of [SMALL, LARGE]) {
   test(`no scroll ${size.join('x')} CONTROL at capacity with a slot editor open`, async ({ page }) => {
     test.setTimeout(120_000);

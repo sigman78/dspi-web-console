@@ -1,5 +1,5 @@
 export interface DismissOptions {
-  onDismiss: () => void;
+  onDismiss: (e: PointerEvent | KeyboardEvent) => void;
   /** Selector for an anchor whose clicks must not dismiss (it toggles the surface itself). */
   ignore?: string;
   /** Set false to leave Escape to the caller. */
@@ -42,11 +42,11 @@ export function dismiss(node: HTMLElement, options: DismissOptions) {
     const target = e.target;
     if (!(target instanceof Node) || node.contains(target)) return;
     if (opts.ignore && target instanceof Element && target.closest(opts.ignore)) return;
-    opts.onDismiss();
+    opts.onDismiss(e);
   };
   const unregister = registerLayer((e) => {
     if (opts.escape === false) return;
-    opts.onDismiss();
+    opts.onDismiss(e);
     e.preventDefault();
   });
 

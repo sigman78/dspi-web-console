@@ -2,8 +2,9 @@
 // DAC mute, output enables, control interfaces, system clock): panels stage a
 // pending value here instead of writing it straight to the device. Staging a
 // value that already matches the live device value discards any pending entry
-// for that key instead (the control snaps back to device truth). The
-// StatusLine APPLY runs the staged `apply` closures in `order` as one batch.
+// for that key instead (the control snaps back to device truth). StagedStrip
+// (SETUP and CONTROL page bar) runs the staged `apply` closures in `order` as
+// one batch.
 
 import * as Domain from '@/domain';
 import * as Clamp from '@/domain/clamp';

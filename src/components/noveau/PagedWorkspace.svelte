@@ -118,6 +118,7 @@
     overflow: hidden;
   }
   .body :global(.pw-cols[hidden]) { display: none; }
+  .body :global(.pw-ref) { grid-column: 3; }
   .body :global(.pw-col) {
     min-width: 0;
     display: flex;
@@ -126,30 +127,6 @@
     overflow: hidden;
   }
   .body :global(.pw-col .addrow) { padding: 3px 12px; }
-  /* Read-only reference material (pin map): flat, dashed, tagged, so it
-     does not read as another configuration panel. */
-  .body :global(.pw-ref .panel) {
-    background: transparent;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    border-style: dashed;
-    border-color: var(--border);
-  }
-  .body :global(.pw-ref .panel > header) { background: transparent; }
-  .body :global(.pw-ref .panel > header .title) { color: var(--text-dim); }
-  .body :global(.pw-ref .panel > header .title)::after {
-    content: 'REFERENCE';
-    margin-left: 8px;
-    padding: 0 6px;
-    border-radius: var(--radius-s);
-    font-family: var(--font-mono);
-    font-size: var(--fs-m);
-    font-weight: 500;
-    letter-spacing: 0.04em;
-    color: var(--text-faint);
-    background: var(--wash);
-  }
-
   .paged :global(section.panel) {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;

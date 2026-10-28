@@ -1,7 +1,8 @@
-import { describe, test, expect, vi } from 'vitest';
+import { describe, test, expect, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
 import { createStagingState, type StagedEntry } from '@/state';
+import { noveauUi } from '@/components/noveau/noveauUi.svelte';
 import StatusLine from './StatusLine.svelte';
 
 function entry(key: string, over: Partial<StagedEntry> = {}): StagedEntry {
@@ -25,46 +26,22 @@ function renderLine(entries: StagedEntry[], degraded = false) {
   return session;
 }
 
-describe('StatusLine staged list', () => {
-  test('the change count opens a list whose per-row ✕ discards just that entry', async () => {
-    const session = renderLine([entry('a'), entry('b')]);
-    await fireEvent.click(screen.getByRole('button', { name: '2 changes' }));
-    expect(screen.getByText('Label a')).toBeTruthy();
-    expect(screen.getAllByText('off→on')).toHaveLength(2);
-
-    await fireEvent.click(screen.getByRole('button', { name: 'Discard Label a' }));
-    expect(session.staging.has('a')).toBe(false);
-    expect(session.staging.has('b')).toBe(true);
+describe('StatusLine', () => {
+  afterEach(() => {
+    noveauUi.destination = 'tune';
+    noveauUi.setupPage = 'inputs';
   });
 
-  test('APPLY is a single click when nothing is disruptive', async () => {
-    const apply = vi.fn().mockResolvedValue(true);
-    renderLine([entry('a', { apply })]);
-    await fireEvent.click(screen.getByRole('button', { name: 'APPLY' }));
-    expect(apply).toHaveBeenCalledTimes(1);
+  test('the staged reminder names the destination and navigates to the change', async () => {
+    renderLine([entry('a', { page: 'outputs' }), entry('b', { page: 'outputs' })]);
+    await fireEvent.click(screen.getByRole('button', { name: '2 staged · SETUP' }));
+    expect(noveauUi.destination).toBe('setup');
+    expect(noveauUi.setupPage).toBe('outputs');
   });
 
-  test('APPLY needs a second confirming click when an entry is disruptive', async () => {
-    const apply = vi.fn().mockResolvedValue(true);
-    renderLine([entry('a', { apply, disruptive: { reason: 'reboots the clock', tone: 'warn' } })]);
-    await fireEvent.click(screen.getByRole('button', { name: 'APPLY' }));
-    expect(apply).not.toHaveBeenCalled();
-
-    await fireEvent.click(screen.getByRole('button', { name: 'CONFIRM' }));
-    expect(apply).toHaveBeenCalledTimes(1);
-  });
-
-  test('the disruptive reason is shown beside the count', () => {
-    renderLine([entry('a', { disruptive: { reason: 'reboots the clock', tone: 'danger' } })]);
-    expect(screen.getByText('reboots the clock')).toBeTruthy();
-  });
-
-  test('DISCARD needs a second confirming click', async () => {
-    const session = renderLine([entry('a')]);
-    await fireEvent.click(screen.getByRole('button', { name: /^DISCARD/ }));
-    expect(session.staging.has('a')).toBe(true);
-    await fireEvent.click(screen.getByRole('button', { name: /^DISCARD/ }));
-    expect(session.staging.has('a')).toBe(false);
+  test('a reminder with changes on both destinations carries no destination', () => {
+    renderLine([entry('a', { page: 'inputs' }), entry('b', { page: 'surfaces' })]);
+    expect(screen.getByRole('button', { name: '2 staged' })).toBeTruthy();
   });
 
   test('a degraded link shows the not-sent banner', () => {

@@ -27,8 +27,8 @@
     min-width: 0;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(440px, 1fr) 480px;
-    column-gap: 16px;
+    grid-template-columns: fit-content(620px) minmax(480px, 1fr);
+    column-gap: 24px;
     overflow: hidden;
   }
   .module { min-width: 0; min-height: 0; overflow: hidden; }

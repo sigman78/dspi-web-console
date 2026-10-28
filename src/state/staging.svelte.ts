@@ -1,8 +1,8 @@
 // Per-session staging area for hardware/IO configuration (input source, pins,
 // clocks, ADAT, DAC mute, outputs, control interfaces, system clock). Panels
 // stage a pending value here instead of writing it straight to the device;
-// the StatusLine APPLY commits every staged entry in order as one batch, so
-// the device restarts once instead of once per control.
+// StagedStrip (SETUP and CONTROL page bar) applies every staged entry in order
+// as one batch, so the device restarts once instead of once per control.
 
 import type { DspSnapshot } from '@/domain';
 import { pushNotice } from './notices.svelte';

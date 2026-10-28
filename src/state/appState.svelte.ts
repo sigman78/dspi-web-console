@@ -47,7 +47,7 @@ export interface ReadySession {
   // `supported` stays null until the connect-time probe lands.
   readonly sysClock: SysClockState;
   // Pending heavy device-config edits (input source, I2S/S/PDIF pins, MCK/BCK,
-  // output type), staged here until the StatusLine APPLY commits them.
+  // output type), staged here until StagedStrip (SETUP and CONTROL page bar) applies them.
   readonly staging: StagingState;
   // Console-local control-surface edits not yet sent to the device.
   readonly drafts: DraftsState;

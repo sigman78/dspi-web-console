@@ -3,6 +3,8 @@ import * as CsField from '@/domain/cs/fieldHelpers';
 
 export type ControlPageKey = 'interfaces' | 'surfaces' | 'macros' | 'display';
 
+export const CONTROL_PAGE_KEYS: readonly ControlPageKey[] = ['interfaces', 'surfaces', 'macros', 'display'];
+
 export interface ControlPage {
   key: ControlPageKey;
   label: string;

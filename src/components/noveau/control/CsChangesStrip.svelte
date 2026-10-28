@@ -32,12 +32,12 @@
   {#if m.draftTotal > 0}
     <span class="draft count" title={m.draftText}>unapplied {m.draftTotal}</span>
   {/if}
-  <button type="button" class="chip accent" disabled={applying || !m.dirty} onclick={save}
+  <button type="button" class="chip md accent" disabled={applying || !m.dirty} onclick={save}
     title="Write the applied controls to flash">SAVE</button>
   <ConfirmButton
     label="DISCARD"
     confirmLabel="DISCARD?"
-    extraClass="hi"
+    extraClass="hi md"
     tone="warn"
     disabled={applying || (!m.dirty && m.draftTotal === 0)}
     title="Rewind every control-surface setting to the saved set"

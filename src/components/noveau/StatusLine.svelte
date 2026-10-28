@@ -3,8 +3,7 @@
   import { getSession } from '@/components/sessionContext';
   import { formatRateKHz } from '@/utils';
   import { REPO_URL, FIRMWARE_RELEASES_URL, reportIssueUrl } from '@/buildInfo';
-  import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
-  import { dismiss } from '@/components/chrome/dismiss';
+  import { destinationOfPage, revealStaged } from '@/components/noveau/noveauUi.svelte';
 
   const s = getSession();
   const issueUrl = $derived(reportIssueUrl({
@@ -17,11 +16,11 @@
   const rate = $derived(rateHz != null ? formatRateKHz(rateHz) : '—');
   const entries = $derived(s.staging.entries);
   const applying = $derived(s.staging.applying);
-  const busy = $derived(s.writes.busy);
-  const staged = $derived(entries.length > 0 || applying);
-  const disruptive = $derived(s.staging.disruptive);
-  let listOpen = $state(false);
-  const open = $derived(listOpen && entries.length > 0);
+  const where = $derived.by(() => {
+    const dests = new Set(entries.map((e) => destinationOfPage(e.page)).filter((d) => d !== null));
+    return dests.size === 1 ? [...dests][0] : null;
+  });
+  const reminder = $derived(`${entries.length} staged${where ? ` · ${where.toUpperCase()}` : ''}`);
 </script>
 
 <div class="status" data-budget>
@@ -40,47 +39,12 @@
       <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" class="ln"><rect x="4.5" y="4.5" width="7" height="7" rx="1" /><path d="M6.5 1.5v3M9.5 1.5v3M6.5 11.5v3M9.5 11.5v3M1.5 6.5h3M1.5 9.5h3M11.5 6.5h3M11.5 9.5h3" /></svg>
     </a>
   </span>
-  {#if staged}
-    <span class="r">
-      <span class="dot"></span>
-      <span class="list-wrap">
-        {#if open}
-          <div class="pop" role="dialog" aria-label="Staged changes" use:dismiss={{ onDismiss: () => { listOpen = false; }, ignore: '.count' }}>
-            {#each entries as e (e.key)}
-              <div class="item">
-                <span class="lbl">{e.label}</span>
-                <span class="chg">{e.from}→{e.to}</span>
-                <button type="button" class="x-btn" title="Discard this change" aria-label={`Discard ${e.label}`} disabled={applying} onclick={() => s.staging.discard(e.key)}>✕</button>
-              </div>
-            {/each}
-          </div>
-        {/if}
-        <button type="button" class="count" aria-expanded={open} onclick={() => { listOpen = !open; }}>{entries.length} {entries.length === 1 ? 'change' : 'changes'}</button>
-      </span>
-      {#if disruptive}
-        <span class="why" class:danger={disruptive.tone === 'danger'}>{disruptive.reason}</span>
-        <ConfirmButton
-          label="APPLY"
-          confirmLabel="CONFIRM"
-          extraClass="accent"
-          tone={disruptive.tone}
-          disabled={applying || busy}
-          title="Applies together — brief audio mute"
-          onConfirm={() => void s.staging.applyAll()}
-        />
-      {:else}
-        <button type="button" class="chip accent" title="Applies together — brief audio mute" disabled={applying || busy} onclick={() => void s.staging.applyAll()}>APPLY</button>
-      {/if}
-      <ConfirmButton
-        label="DISCARD"
-        confirmLabel="DISCARD?"
-        extraClass="hi"
-        tone="warn"
-        disabled={applying}
-        title="Drop every staged change"
-        onConfirm={() => s.staging.discardAll()}
-      />
-    </span>
+  {#if entries.length > 0}
+    <button type="button" class="r remind" title="Go to the staged changes" onclick={() => revealStaged(entries[0].page)}>
+      <span class="dot"></span>{reminder}
+    </button>
+  {:else if applying}
+    <span class="r"><span class="dot"></span>applying…</span>
   {:else}
     <span class="r idle"><span class="dot"></span>nothing staged</span>
   {/if}
@@ -115,38 +79,8 @@
   .links svg { fill: currentColor; }
   .links svg.ln { fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
   .r { flex: none; display: flex; align-items: center; gap: 12px; color: var(--text-dim); font-family: var(--font-sans); }
-  .list-wrap { position: relative; }
-  .count {
-    background: none;
-    border: none;
-    padding: 0;
-    font: inherit;
-    font-weight: 500;
-    color: inherit;
-    cursor: pointer;
-  }
-  .count:hover { color: var(--text); }
-  .pop {
-    position: absolute;
-    right: 0;
-    bottom: calc(100% + 8px);
-    z-index: var(--z-flyout);
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 260px;
-    padding: 10px;
-    border-radius: var(--radius);
-    background: var(--panel-solid);
-    border: 1px solid var(--border-hi);
-    box-shadow: var(--shadow-flyout);
-    font-size: 11px;
-  }
-  .item { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px; }
-  .lbl { color: var(--text); white-space: nowrap; }
-  .chg { font-family: var(--font-mono); color: var(--text-dim); white-space: nowrap; }
-  .why { color: var(--warn); white-space: nowrap; }
-  .why.danger { color: var(--err); }
+  .remind { background: none; border: none; padding: 0; font-size: inherit; cursor: pointer; }
+  .remind:hover { color: var(--text); }
   .r.idle { color: var(--text-faint); font-family: var(--font-mono); gap: 8px; }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
   .idle .dot { background: var(--text-faint); opacity: var(--dim-off); }
