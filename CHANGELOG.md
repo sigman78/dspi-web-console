@@ -6,6 +6,15 @@ from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
 this project follows [Semantic Versioning](https://semver.org/) (currently in the
 `0.x` pre-1.0 line — minor versions may include breaking changes).
 
+## [0.12.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.11.0...dspi-console-web-v0.12.0) (2026-10-13)
+
+
+### Features
+
+* **eq:** link channel pairs so EQ edits mirror across members ([#141](https://github.com/sigman78/dspi-web-console/issues/141)) ([6fdba42](https://github.com/sigman78/dspi-web-console/commit/6fdba4239ce872632a41feb29c934ea2d4e0b7b4))
+* **processing:** per-output limiter - REQ_LIMITER 0x81, link groups, GR meter, PR.07 LIMITER panel (fw 1.1.6-beta4) ([#140](https://github.com/sigman78/dspi-web-console/issues/140)) ([a072356](https://github.com/sigman78/dspi-web-console/commit/a072356ff5aa72f1339aae2762a9a4e4f5aa9cc7))
+* **wire:** wire V32 tube preamp and output limiter sections (fw 1.1.6-beta4) ([#139](https://github.com/sigman78/dspi-web-console/issues/139)) ([86197ef](https://github.com/sigman78/dspi-web-console/commit/86197ef87998be45869b4c37b2e66814d250c391))
+
 ## [0.11.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.10.0...dspi-console-web-v0.11.0) (2026-09-20)
 
 
