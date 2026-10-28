@@ -43,8 +43,6 @@
   pass="inputs · before matrix"
   blurb="Upward RMS compressor: lifts quiet passages toward a target without touching loud ones. Speed sets how fast gain follows the music."
   {enabled}
-  onEnable={(v) => Runtime.setLevellerEnabled(s, v)}
-  reason={offReason}
 >
   {#if showMasks}
     <div class="prow">

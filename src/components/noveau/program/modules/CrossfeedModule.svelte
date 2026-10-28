@@ -44,9 +44,9 @@
   const yRange = $derived(Domain.centeredDbDomain([resp.crossfeed, resp.direct]));
 
   const PRESET_OPTIONS = [
-    { value: Domain.CrossfeedPreset.Preset1, label: 'PRESET 1' },
-    { value: Domain.CrossfeedPreset.Preset2, label: 'PRESET 2' },
-    { value: Domain.CrossfeedPreset.Preset3, label: 'PRESET 3' },
+    { value: Domain.CrossfeedPreset.Preset1, label: '1' },
+    { value: Domain.CrossfeedPreset.Preset2, label: '2' },
+    { value: Domain.CrossfeedPreset.Preset3, label: '3' },
     { value: Domain.CrossfeedPreset.Custom, label: 'CUSTOM' },
   ] as const satisfies ReadonlyArray<{ value: Domain.CrossfeedPreset; label: string }>;
 </script>
@@ -56,10 +56,8 @@
   pass="per output pair · after matrix"
   blurb="Headphone crossfeed (BS2B): bleeds a filtered, delayed part of each channel into the other to soften hard stereo. Per output pair."
   {enabled}
-  onEnable={(v) => Runtime.setCrossfeedEnabled(s, v)}
-  reason={offReason}
 >
-  <div class:dim={!enabled}><BodePlot {curves} height={96} crosshair={false} {yRange} /></div>
+  <BodePlot {curves} height={96} crosshair={false} {yRange} />
   {#if showPairs}
     <MaskChips label="PAIRS" items={pairItems} mask={cf?.outputPairMask ?? 0x01} disabled={!enabled}
       onToggle={(i) => Runtime.toggleCrossfeedOutputPair(s, i)} />
@@ -81,7 +79,3 @@
       ariaLabel="Crossfeed ITD" onChange={(v) => Runtime.setCrossfeedItd(s, v)} /></span>
   </div>
 </ModuleFrame>
-
-<style>
-  .dim { opacity: var(--dim-off); }
-</style>

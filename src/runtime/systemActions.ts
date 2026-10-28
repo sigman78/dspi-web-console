@@ -136,7 +136,7 @@ export function resetBufferStats(s: ReadySession): void {
 // in firmware before reset_usb_boot). The transfer may throw as the device
 // drops mid-response; that is expected and is treated as a normal disconnect.
 export async function enterBootloader(s: ReadySession): Promise<void> {
-  if (refuseWhileDegraded(s)) return;
+  if (refuseWhileDegraded(s)) { pushNotice('warn', 'Link degraded — bootloader request not sent'); return; }
   try {
     await s.queue.run(() => s.device.enterBootloader());
   } catch {

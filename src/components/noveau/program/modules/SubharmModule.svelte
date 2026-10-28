@@ -57,8 +57,6 @@
   pass="per output · after matrix, before crossover"
   blurb="Octave divider: generates sub-bass one octave below the selected bands. Runs per output, before the crossover and Psybass."
   {enabled}
-  onEnable={(v) => Runtime.setSubharmEnabled(s, v)}
-  reason={offReason}
 >
   {#if showMask}
     <MaskChips label="OUTPUTS" items={outputItems} mask={outputMask} disabled={!enabled}
@@ -97,20 +95,18 @@
       min={Domain.Proc.SUBHARM_CEILING_MIN_DB} max={Domain.Proc.SUBHARM_CEILING_MAX_DB} step={Domain.Proc.SUBHARM_CEILING_STEP_DB}
       kind="dB-signed" precision={1} ceilLabel="Off" disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setSubharmCeiling(s, v)} />
     <div class="prow">
-      <span class="prow-lbl">LINK PAIRS</span>
+      <span class="prow-lbl" title="One sub per stereo pair, from the mono sum">LINK PAIRS</span>
       <span class="prow-ctl">
         <ToggleSwitch checked={sh?.linkPairs ?? true} disabled={!enabled} disabledReason={offReason}
           ariaLabel="Link subharm pairs" onChange={(v) => Runtime.setSubharmLinkPairs(s, v)} />
-        <span class="prow-note">one sub per stereo pair, from the mono sum</span>
       </span>
     </div>
     <div class="prow">
-      <span class="prow-lbl">MONITOR</span>
+      <span class="prow-lbl" title="Monitor only, never saved">MONITOR</span>
       <span class="prow-ctl">
         <button type="button" class="chip warn" class:on={solo} aria-pressed={solo}
           aria-label="Monitor the synthesized sub only" disabled={!enabled}
           onclick={() => Runtime.setSubharmSolo(s, !solo)}>SOLO</button>
-        <span class="prow-note">monitor only, never saved</span>
       </span>
     </div>
     {#if meter}
@@ -129,7 +125,7 @@
   {/if}
 
   <div class="prow">
-    <span class="prow-lbl">HEADROOM</span>
+    <span class="prow-lbl" title={headroomDb !== null && headroomDb > 0 ? `Input preamps ≤ ${formatSignedDb(-headroomDb)} dB` : undefined}>HEADROOM</span>
     <span class="prow-ctl">
       <span class="t-value">{headroomText}</span>
       {#if reserved}
@@ -138,16 +134,15 @@
         <button type="button" class="chip accent" aria-label="Lower input preamps to reserve the subharmonic headroom"
           disabled={!enabled || plan.length === 0} onclick={() => Runtime.reserveSubharmHeadroom(s)}>RESERVE</button>
       {/if}
-      {#if headroomDb !== null && headroomDb > 0}<span class="prow-note">input preamps ≤ {formatSignedDb(-headroomDb)} dB</span>{/if}
     </span>
   </div>
 </ModuleFrame>
 
 <style>
-  .meters { display: inline-flex; gap: 6px; min-width: 0; }
+  .meters { display: inline-flex; gap: 4px; min-width: 0; }
   .m { display: inline-flex; align-items: center; gap: 3px; }
-  .mn { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
-  .bar { width: 20px; height: 5px; border-radius: var(--radius-xs); background: var(--wash-strong); overflow: hidden; }
+  .mn { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+  .bar { width: 12px; height: 5px; border-radius: var(--radius-xs); background: var(--wash-strong); overflow: hidden; }
   .fill { display: block; height: 100%; background: var(--accent); transition: width 200ms; }
   .prow-note.ok { color: var(--ok); font-weight: 700; }
 </style>

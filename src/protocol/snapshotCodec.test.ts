@@ -31,8 +31,6 @@ describe('fromBulkParams', () => {
     expect(snapshot.masterVolumeDb).toBeCloseTo(-12.5);
     const columns = Domain.matrixColumns(snapshot);
     expect(columns[0].name).toBe('Left Woofer');
-    expect(columns[0].outputMode).toBe('I2S');
-    expect(columns[8].outputMode).toBe('PDM');
     expect(snapshot.outputs[8].wireIndex).toBe(8);
     expect(snapshot.routes).toHaveLength(18);
   });

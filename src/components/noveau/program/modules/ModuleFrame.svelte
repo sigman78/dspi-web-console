@@ -1,51 +1,38 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
 
   const {
     title,
     pass,
     blurb,
     enabled,
-    onEnable,
-    reason,
     children,
   }: {
     title: string;
     pass: string;
+    /** Shown as the title tooltip. */
     blurb: string;
-    /** Omitted for modules without an enable state; false shows an "off" tag. */
+    /** Omitted for modules without an enable state; false washes the body and makes it inert. The strip tile owns the switch. */
     enabled?: boolean;
-    /** Header enable switch; needs `enabled`. */
-    onEnable?: (v: boolean) => void;
-    /** Why the module is off; shown as one line above the body. Sub-gated controls explain themselves. */
-    reason?: string;
     children: Snippet;
   } = $props();
 </script>
 
 <section class="mf">
   <header class="sec-h">
-    <h3>{title}</h3>
+    <h3 title={blurb}>{title}</h3>
     <span class="cap" title={pass}>{pass}</span>
-    {#if enabled === false && !onEnable}<span class="t-cap off">off</span>{/if}
-    {#if onEnable && enabled !== undefined}
-      <span class="en"><ToggleSwitch checked={enabled} ariaLabel={`Enable ${title}`} onChange={onEnable} /></span>
-    {/if}
   </header>
-  <p class="t-cap blurb">{blurb}</p>
-  {#if reason}<p class="hint reason" title={reason}>{reason}</p>{/if}
-  <div class="body">{@render children()}</div>
+  <div class="body" class:off={enabled === false}>{@render children()}</div>
 </section>
 
 <style>
-  .mf { display: flex; flex-direction: column; min-width: 0; max-width: 720px; min-height: 0; height: 100%; overflow: hidden; }
+  .mf { display: flex; flex-direction: column; width: var(--module-col); max-width: 100%; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
   .sec-h { flex: none; }
-  .blurb { margin: 0 0 8px; padding: 0 4px; line-height: 1.35; }
-  .off { flex: none; }
-  .en { flex: none; margin-left: 8px; }
-  .reason { flex: none; padding: 0 4px; margin: 0 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+  /* Off: one wash on the whole body; controls inside keep full contrast so it does not compound with their own disabled dim. */
+  .body.off { opacity: var(--dim-off); pointer-events: none; }
+  .body.off :global(:disabled), .body.off :global([aria-disabled='true']) { opacity: 1; }
   .mf :global(.jump) {
     width: 20px; height: 20px; padding: 0; flex: 0 0 auto;
     display: inline-flex; align-items: center; justify-content: center;

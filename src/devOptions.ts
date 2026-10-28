@@ -14,6 +14,7 @@
 //                        bindings incl. IR receiver + display, 8 macros of 8
 //                        steps, 8 groups, 16 IR commands, 16 display pages);
 //                        wire V16+ only
+//   ?debug              show diagnostics panels (SETUP > DEVICE buffer stats)
 //   ?hero               force the connecting hero even while connected
 //   ?sysclock=fallback  boot the mock system clock crash-fallen-back (stored
 //                       mode 2, active safe mode 0) to demo the fallback banner;
@@ -53,6 +54,10 @@ export function mockCsFull(): boolean {
 
 export function heroOverride(): boolean {
   return params()?.has('hero') ?? false;
+}
+
+export function debugPanels(): boolean {
+  return params()?.has('debug') ?? false;
 }
 
 export function mockSysClockFallback(): boolean {

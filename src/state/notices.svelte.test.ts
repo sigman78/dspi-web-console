@@ -34,6 +34,14 @@ describe('notices', () => {
     }
   });
 
+  it('an identical notice collapses into the existing row', () => {
+    const a = pushNotice('error', 'Write failed');
+    const b = pushNotice('error', 'Write failed');
+    pushNotice('warn', 'Write failed');
+    expect(b).toBe(a);
+    expect(notices.list.map((n) => n.kind)).toEqual(['error', 'warn']);
+  });
+
   it('clearNotices empties the list', () => {
     pushNotice('warn', 'x');
     pushNotice('error', 'y');

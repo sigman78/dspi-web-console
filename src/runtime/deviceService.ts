@@ -294,7 +294,7 @@ export async function activateSession(id: ConnId): Promise<void> {
 // Anything on this session that a switch-away or unload would strand: edits
 // not yet applied (staged), console-local drafts, or RAM that differs from flash.
 export function hasPendingWork(s: ReadySession): boolean {
-  return State.presetsDirty(s) || s.staging.entries.length > 0 || s.drafts.dirtyCount() > 0;
+  return State.presetsDirty(s) || s.staging.entries.length > 0 || s.drafts.dirtyCount() > 0 || s.controlSurfaces.status?.dirty === true;
 }
 
 // User-initiated switch: asks first when the active device holds pending work.
@@ -333,8 +333,8 @@ export async function wireUpConnection(
     const session = State.makeReadySession(device, scope);
     session.mirror.init(snap);
     // Seed the live input-channel count from one status read BEFORE the UI first
-    // renders as `ready`. Channel-dependent views (the channel rail, mixer matrix,
-    // overview response) treat a null count as "show every possible input", so
+    // renders as `ready`. Channel-dependent views (the channel rail, the TUNE
+    // sources list) treat a null count as "show every possible input", so
     // without this they'd paint full-width and then snap to the real width when
     // the first status poll lands a frame later -- the visible "all channels ->
     // actual config" flash. V10 reports null here, which is correctly "show all"
@@ -430,7 +430,8 @@ export function attachTransportListeners(transport: DspTransport, id: ConnId, sc
 
 export async function factoryResetDevice(): Promise<void> {
   const s = State.activeSession();
-  if (!s || refuseWhileDegraded(s)) return;
+  if (!s) return;
+  if (refuseWhileDegraded(s)) { State.pushNotice('warn', 'Link degraded — factory reset not sent'); return; }
   const d = s.device;
   try {
     // Drain any parked optimistic write so a pre-reset bulk send can't settle

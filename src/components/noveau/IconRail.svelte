@@ -1,19 +1,10 @@
 <script lang="ts">
   import { getSession } from '@/components/sessionContext';
-  import { controlAvailable } from '@/components/noveau/control/controlPages';
-  import { noveauUi, type NoveauDestination } from './noveauUi.svelte';
+  import { destinations } from './destinations';
+  import { noveauUi } from './noveauUi.svelte';
 
   const s = getSession();
-  const showControl = $derived(controlAvailable(s.device.capabilities.features));
-
-  const all: { key: NoveauDestination; label: string }[] = [
-    { key: 'tune', label: 'TUNE' },
-    { key: 'program', label: 'PROGRAM' },
-    { key: 'setup', label: 'SETUP' },
-    { key: 'control', label: 'CONTROL' },
-    { key: 'about', label: 'ABOUT' },
-  ];
-  const items = $derived(all.filter((it) => it.key !== 'control' || showControl));
+  const items = $derived(destinations(s.device.capabilities.features));
 </script>
 
 <nav class="irail" aria-label="Destinations" data-budget>

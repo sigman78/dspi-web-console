@@ -5,7 +5,6 @@
   import { getSession } from '@/components/sessionContext';
   import { csChangesModel } from '@/components/noveau/control/csChangesModel';
   import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
-  import PresetIcon from '@/components/noveau/presets/PresetIcon.svelte';
 
   const s = getSession();
   const m = $derived(csChangesModel(s));
@@ -23,17 +22,11 @@
 </script>
 
 <div class="strip" role="group" aria-label="Control-surface changes">
-  {#if m.dirty}
-    <span class="unsaved" title="Live preview — not yet written to flash">
-      <PresetIcon icon="save" />
-      <span class="changed" title={m.changedText || 'on device'}>changed</span>
-    </span>
-  {/if}
   {#if m.draftTotal > 0}
     <span class="draft count" title={m.draftText}>unapplied {m.draftTotal}</span>
   {/if}
   <button type="button" class="chip md accent" disabled={applying || !m.dirty} onclick={save}
-    title="Write the applied controls to flash">SAVE</button>
+    title={m.dirty ? `Write to flash: ${m.changedText || 'applied controls'}` : 'Nothing to write to flash'}>SAVE</button>
   <ConfirmButton
     label="DISCARD"
     confirmLabel="DISCARD?"
@@ -47,17 +40,6 @@
 
 <style>
   .strip { display: flex; align-items: center; gap: 10px; height: 28px; min-width: 0; }
-  .unsaved {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    color: var(--warn);
-    padding-bottom: 1px;
-    border-bottom: 1px solid var(--warn);
-    white-space: nowrap;
-  }
-  .changed, .count { font-size: 11px; white-space: nowrap; }
-  .changed { color: var(--text-dim); }
-  .count { color: var(--text-dim); padding-right: 10px; }
+  .count { font-size: 11px; white-space: nowrap; color: var(--text-dim); padding-right: 10px; }
   .count.draft::after { top: 50%; right: 0; margin-top: -3px; }
 </style>

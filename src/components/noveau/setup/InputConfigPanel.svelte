@@ -356,7 +356,7 @@
 
 <style>
   .cfgkvgrid { padding: 10px 14px 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; }
-  .src-btns { display: flex; gap: 4px; }
+  .src-btns { display: flex; flex-wrap: wrap; gap: 4px; }
   .src-btns button { white-space: nowrap; }
   .pinrow { padding: 6px 14px 6px; }
   .idle { padding: 10px 14px; }

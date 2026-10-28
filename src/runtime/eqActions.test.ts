@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as actions from './eqActions';
 import * as State from '@/state';
-import { parseBulkParams } from '@/protocol';
+import { parseBulkParams, Wire } from '@/protocol';
 import * as Domain from '@/domain';
 import type { FilterParams } from '@/domain';
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { deriveCapabilities } from '@/protocol/capabilities';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
+import { bootMock } from './boot';
+import { flushAllWrites } from './writes.svelte';
 
 const testHardware = Domain.createHardwareProfile(Domain.PlatformType.RP2350);
 
@@ -40,7 +42,7 @@ describe('copyEqBands', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk({ masterVolumeDb: 0 }));
-    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession({} as never) });
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession({ info: { serial: 'TEST' } } as never) });
     liveMirror().replaceCurrent(fromBulkParams(Domain.createHardwareProfile(Domain.PlatformType.RP2350), bulk));
   });
   afterEach(() => { vi.useRealTimers(); });
@@ -199,5 +201,32 @@ describe('setBandBypass', () => {
     expect(() => actions.setBandBypass(State.activeSession()!, ch, n + 5, true)).toThrow();
     await vi.runAllTimersAsync();
     expect(setBandBypassFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('setXoverBypass', () => {
+
+  it('sends the crossover bypass and flips only that band in the mirror', async () => {
+    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION });
+    const s = State.activeSession()!;
+    const spy = vi.spyOn(s.device, 'setCrossoverBypass');
+    const out = s.mirror.current!.channels.find((c) => c.isOutput && c.xoverBands.length > 1)!;
+    const before = out.xoverBands.map((b) => b.bypass);
+    actions.setXoverBypass(s, out.id, 1, !before[1]);
+    await vi.waitFor(() => expect(spy).toHaveBeenCalledWith(out.id, 1, !before[1]));
+    await vi.waitFor(() => expect(s.mirror.current!.channels.find((c) => c.id === out.id)!.xoverBands[1].bypass).toBe(!before[1]));
+    const after = s.mirror.current!.channels.find((c) => c.id === out.id)!.xoverBands.map((b) => b.bypass);
+    expect(after[1]).toBe(!before[1]);
+    expect(after.filter((_, i) => i !== 1)).toEqual(before.filter((_, i) => i !== 1));
+  });
+
+  it('throws on an out-of-range crossover band before sending anything', async () => {
+    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION });
+    const s = State.activeSession()!;
+    const spy = vi.spyOn(s.device, 'setCrossoverBypass');
+    const out = s.mirror.current!.channels.find((c) => c.isOutput)!;
+    expect(() => actions.setXoverBypass(s, out.id, out.xoverBands.length + 1, true)).toThrow();
+    await flushAllWrites(s);
+    expect(spy).not.toHaveBeenCalled();
   });
 });

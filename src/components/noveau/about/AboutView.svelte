@@ -4,11 +4,10 @@
   import { activeMockProfiles } from '@/mockProfiles';
   import { connection } from '@/state';
   import * as Runtime from '@/runtime';
-  import { SUPPORT_WINDOW } from '@/protocol/capabilities';
   import { getSession } from '@/components/sessionContext';
+  import { DESTINATION_SHORTCUTS } from '@/components/noveau/destinations';
 
   const s = getSession();
-  const snap = $derived(s.mirror.current);
   const mock = activeMockProfiles();
   const usbReason = Runtime.webUsbUnsupportedReason();
   const issueUrl = $derived(BuildInfo.reportIssueUrl({
@@ -17,61 +16,31 @@
     connectionPhase: connection.phase,
   }));
 
-  const cs = $derived(s.controlSurfaces);
-  const csTooOld = $derived(cs.deviceCapsVersion != null && cs.caps == null && !cs.busy);
-  const csProto = $derived(cs.deviceCapsVersion == null ? '—' : `v${cs.deviceCapsVersion}`);
-  const ctrlProto = $derived(s.ctrlIfaces.status ? `v${s.ctrlIfaces.status.protoVersion}` : '—');
-  const build = $derived(s.info.build);
-
-  type Row = { label: string; value: string; tone?: 'ok' | 'off' | 'warn'; title?: string };
+  type Row = { label: string; value: string; tone?: 'warn' };
   const consoleRows = $derived<Row[]>([
     { label: 'VERSION', value: `v${BuildInfo.APP_VERSION}` },
     { label: 'BUILD', value: `${BuildInfo.GIT_SHA} · ${BuildInfo.BUILD_DATE}` },
     ...(mock ? [{ label: 'MOCK', value: mock.map((p) => p.name).join(', ') }] : []),
     { label: 'WEBUSB', value: usbReason ?? 'supported', tone: usbReason ? 'warn' : undefined },
   ]);
-  const deviceRows = $derived<Row[]>([
-    { label: 'STATUS', value: connection.label, tone: connection.connected ? 'ok' : 'off' },
-    { label: 'SERIAL', value: s.info.serial },
-    {
-      label: 'FIRMWARE',
-      value: s.info.capabilities.fwLabel,
-      title: `Firmware releases this console supports: ${SUPPORT_WINDOW.fw}.`,
-    },
-    { label: 'PLATFORM', value: snap?.platform.name ?? '—' },
-    { label: 'BUILD', value: build ? `${build.describe} · ${build.date}` : '—', tone: build ? undefined : 'off' },
-    {
-      label: 'FORMAT',
-      value: s.info.capabilities.wireLabel,
-      title: `Wire formats this console supports: ${SUPPORT_WINDOW.wire}.`,
-    },
-    { label: 'OUTPUTS', value: `${snap?.platform.outputCount ?? 0} / ${snap?.platform.totalChannelCount ?? 0}` },
-    {
-      label: 'CS PROTO',
-      value: csProto,
-      tone: csTooOld ? 'warn' : cs.deviceCapsVersion == null ? 'off' : undefined,
-      title: `Control Surfaces protocol versions this console supports: v${Runtime.MIN_CS_CAPS_VERSION}–v${Runtime.MAX_KNOWN_CS_CAPS_VERSION}.`,
-    },
-    {
-      label: 'CTRL PROTO',
-      value: ctrlProto,
-      tone: s.ctrlIfaces.status ? undefined : 'off',
-      title: 'External control interface (UART/I2C) protocol this console knows: v1.',
-    },
-  ]);
+  const hints: Row[] = [
+    { label: 'KEYS', value: DESTINATION_SHORTCUTS.map((sc) => `${sc.keys.join(' / ')} ${sc.action}`).join(' · ') },
+    { label: 'URL', value: '?mock · ?mock=legacy · ?mock=multi · ?mock=v<N> · &chip=rp2040 · &debug' },
+    { label: 'REPORTING', value: 'Mention the page and panel when reporting an issue' },
+  ];
 </script>
 
 {#snippet kv(r: Row)}
-  <div class="kv" title={r.title}>
+  <div class="kv">
     <span class="t-cap">{r.label}</span>
-    <span class="t-value val" class:ok={r.tone === 'ok'} class:off={r.tone === 'off'} class:warn={r.tone === 'warn'}>{r.value}</span>
+    <span class="t-value val" class:warn={r.tone === 'warn'}>{r.value}</span>
   </div>
 {/snippet}
 
 <div class="about">
   <section class="band">
     <header class="sec-h">
-      <h3>CONSOLE</h3>
+      <h3>DSPi CONSOLE</h3>
       <span class="links">
         <a class="chip" href={BuildInfo.REPO_URL} target="_blank" rel="noopener">GITHUB</a>
         <a class="chip" href={issueUrl} target="_blank" rel="noopener">REPORT ISSUE</a>
@@ -83,19 +52,19 @@
     </div>
   </section>
 
-  <section class="band">
-    <header class="sec-h"><h3>DEVICE</h3></header>
-    <div class="rows">
-      {#each deviceRows as r (r.label)}{@render kv(r)}{/each}
-    </div>
-  </section>
-
   <section class="band changes">
     <header class="sec-h"><h3>LATEST CHANGES</h3><span class="t-meta ver">v{LATEST_CHANGES.version}</span></header>
     <div class="fade">
       <ul>
         {#each LATEST_CHANGES.highlights as h (h)}<li>{h}</li>{/each}
       </ul>
+    </div>
+  </section>
+
+  <section class="band">
+    <header class="sec-h"><h3>HINTS</h3></header>
+    <div class="hints">
+      {#each hints as r (r.label)}{@render kv(r)}{/each}
     </div>
   </section>
 </div>
@@ -107,7 +76,7 @@
     height: 100%;
     min-height: 0;
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
     row-gap: 12px;
     overflow: hidden;
   }
@@ -130,13 +99,12 @@
   }
   .ver { color: var(--text-dim); }
   .rows { padding: 8px 12px 10px; display: flex; flex-wrap: wrap; gap: 6px 32px; }
+  .hints { padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 4px; }
   .kv {
     display: inline-flex;
     gap: 8px;
     align-items: baseline;
   }
-  .val.ok { color: var(--ok); }
-  .val.off { color: var(--text-faint); }
   .val.warn { color: var(--warn); }
   .links { display: flex; gap: 6px; }
   .links .chip { text-decoration: none; }

@@ -27,6 +27,7 @@ describe('loadSettings', () => {
   test('returns defaults when no keys are present', () => {
     const s = Settings.loadSettings();
     expect(s.version).toBe(1);
+    expect(s.seenVersion).toBeNull();
     expect(s.selectedChannel).toBeNull();
     expect(s.lastSerial).toBeNull();
   });
@@ -207,16 +208,14 @@ describe('reconcileSelectedChannel', () => {
     expect(Settings.settings.selectedChannel).toBe(ChannelId.In1R);
   });
 
-  test('a disabled output survives only when the stub-selectable option is on', () => {
+  test('a selected disabled output stays selected', () => {
     const outputs = [
       { id: ChannelId.Out1L, enabled: true },
       { id: ChannelId.Out1R, enabled: false },
     ] as unknown as OutputModel[];
     Settings.settings.selectedChannel = ChannelId.Out1R;
-    Settings.reconcileSelectedChannel(channels, Settings.selectionVisibilityOf(outputs, null, { includeDisabledOutputs: true }));
-    expect(Settings.settings.selectedChannel).toBe(ChannelId.Out1R);
     Settings.reconcileSelectedChannel(channels, Settings.selectionVisibilityOf(outputs, null));
-    expect(Settings.settings.selectedChannel).toBe(ChannelId.Out1L);
+    expect(Settings.settings.selectedChannel).toBe(ChannelId.Out1R);
   });
 
   test('an input selection is preserved while activeInputs is null (count not yet known)', () => {

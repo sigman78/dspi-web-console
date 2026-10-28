@@ -41,4 +41,22 @@ describe('SetupView', () => {
     expect(document.activeElement).toBe(tabs[0]);
     expect(noveauUi.setupPage).toBe('inputs');
   });
+
+  test('buffer stats panel appears only with the debug token', async () => {
+    await bootMock('rp2350');
+    const s = activeSession()!;
+    noveauUi.setupPage = 'device';
+    const ctx = new Map([[SESSION_KEY, s]]);
+    const { unmount } = render(SetupView, { context: ctx });
+    expect(screen.queryByText('BUFFER STATS')).toBeNull();
+    unmount();
+
+    history.replaceState(null, '', '/?debug');
+    try {
+      render(SetupView, { context: ctx });
+      expect(screen.getByText('BUFFER STATS')).toBeTruthy();
+    } finally {
+      history.replaceState(null, '', '/');
+    }
+  });
 });

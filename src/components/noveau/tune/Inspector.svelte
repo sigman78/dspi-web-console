@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { ChannelModel, OutputModel } from '@/domain';
-  import BandSection from './BandSection.svelte';
   import BandsTable from './BandsTable.svelte';
   import SourcesSection from './SourcesSection.svelte';
 
@@ -8,7 +7,6 @@
 </script>
 
 <aside class="inspector" aria-label="Inspector">
-  <BandSection {channel} />
   <BandsTable {channel} />
   <SourcesSection {channel} {output} />
 </aside>

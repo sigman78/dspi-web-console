@@ -675,7 +675,7 @@ describe('notify-driven load settle', () => {
   }
 
   function installSessionWith(device: unknown): ReadySession {
-    const s = State.makeReadySession(device as never);
+    const s = State.makeReadySession({ info: { serial: 'TEST' }, ...(device as object) } as never);
     State.dispatch({ t: 'synced', id: State.mintConnId(), session: s });
     return s;
   }

@@ -14,7 +14,6 @@
     extraClass = '',
     title,
     ariaLabel,
-    disabledReason,
   }: {
     label: string;
     confirmLabel: string;
@@ -28,20 +27,13 @@
     extraClass?: string;
     title?: string;
     ariaLabel?: string;
-    // Reason surfaced only via aria-describedby (below), for readers/keyboard
-    // users when `title`-only was the previous, unreliable channel (A4).
-    disabledReason?: string;
   } = $props();
-
-  const uid = $props.id();
-  const reasonId = uid + '-reason';
 
   let armed = $state(false);
 
-  // Native `disabled` removes the button from the a11y/keyboard tree, which
-  // is exactly what made the disabled reason unreachable before (A4). Use
+  // Native `disabled` removes the button from the a11y/keyboard tree. Use
   // aria-disabled instead and gate the handlers by hand, so the button stays
-  // focusable and its description reads.
+  // focusable.
   function onClick(): void {
     if (disabled) return;
     if (!armed) { armed = true; return; }
@@ -70,13 +62,9 @@
   onblur={disarm}
   onkeydown={onKeydown}
   aria-disabled={disabled}
-  aria-describedby={disabled && disabledReason ? reasonId : undefined}
   {title}
   aria-label={ariaLabel}
 ><span class="faces"><span class="face" class:hide={armed} aria-hidden={armed}>{label}</span><span class="face" class:hide={!armed} aria-hidden={!armed}>{confirmLabel}</span></span></button>
-{#if disabled && disabledReason}
-  <span id={reasonId} class="sr-only">{disabledReason}</span>
-{/if}
 
 <style>
   /* Both labels occupy the same cell so arming never changes the width. */
@@ -87,16 +75,5 @@
     opacity: var(--dim-disabled);
     cursor: default;
     pointer-events: none;
-  }
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
 </style>

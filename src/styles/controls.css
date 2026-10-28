@@ -11,8 +11,8 @@
      .hi — outlined variant (transparent fill, --border-hi edge) shared by
      the small "outline button" recipes that predate .chip.
 
-   .microlbl — control row label; shares the .t-label recipe in noveau.css
-     (KV stays the canon for label+value pairs).
+   .microlbl — control row label, defined in noveau.css (KV stays the canon
+     for label+value pairs).
    .hint — faint mono meta/idle text; padding stays component-local.
      .hint.err — error tone.
    .sel — compact mono <select> used across the system panels.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatI2cAddr, formatMasterDb, formatSignedDb } from './format';
+import { formatI2cAddr, parseI2cAddr, formatMasterDb, formatSignedDb } from './format';
 
 describe('formatSignedDb', () => {
   it('signs with U+2212 and an explicit plus', () => {
@@ -22,6 +22,23 @@ describe('formatI2cAddr', () => {
   it('zero-pads to two uppercase hex digits', () => {
     expect(formatI2cAddr(0x0a)).toBe('0x0A');
     expect(formatI2cAddr(0x3c)).toBe('0x3C');
+  });
+});
+
+describe('parseI2cAddr', () => {
+  it('accepts bare hex and an optional 0x prefix, case-insensitive', () => {
+    expect(parseI2cAddr('3c')).toBe(0x3c);
+    expect(parseI2cAddr(' 0x3C ')).toBe(0x3c);
+  });
+  it('rejects addresses outside 0x08-0x77', () => {
+    expect(parseI2cAddr('07')).toBeNull();
+    expect(parseI2cAddr('0x78')).toBeNull();
+  });
+  it('rejects garbage and empty input', () => {
+    expect(parseI2cAddr('zz')).toBeNull();
+    expect(parseI2cAddr('0x')).toBeNull();
+    expect(parseI2cAddr('123')).toBeNull();
+    expect(parseI2cAddr('')).toBeNull();
   });
 });
 

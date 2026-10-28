@@ -2,6 +2,7 @@
   import { untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import CsBindingRow from './CsBindingRow.svelte';
+  import CsNamePopover from './CsNamePopover.svelte';
   import { applyCsBinding, clearCsBinding, applyCsName } from '@/runtime';
   import * as Domain from '@/domain';
   import { getSession } from '@/components/sessionContext';
@@ -189,14 +190,25 @@
     return { text: 'INACTIVE', cls: 'warn' };
   }
 
+  let pendingAdd = $state<number | null>(null);
+  let renamingRaw = $state<number | null>(null);
+  const renaming = $derived(renamingRaw != null && visibleSlots.includes(renamingRaw) ? renamingRaw : null);
+
   function addControl(e: Event): void {
     const sel = e.currentTarget as HTMLSelectElement;
     const typeIdx = Number(sel.value);
     sel.value = '';
     if (Number.isNaN(typeIdx)) return;
+    pendingAdd = typeIdx;
+  }
+
+  function commitAdd(typeIdx: number, name: string): void {
+    pendingAdd = null;
     const slot = SlotOps.firstFreeSlot(maxSlots, (i) => cs.bindings[i] != null || drafts.draftOf(i) != null);
     if (slot == null) return;
-    drafts.editDraft(slot, defaultDraft(typeIdx, slot));
+    const d = defaultDraft(typeIdx, slot);
+    d.name = name;
+    drafts.editDraft(slot, d);
     openSlot = slot;
   }
 
@@ -219,17 +231,9 @@
     return (d ? d.type : cs.bindings[slot]?.type) === Domain.CsType.Ir;
   }
 
-  // IR sub-slot drafts belong to the receiver binding; once it goes away or
-  // changes type they describe nothing and must stop counting as unapplied.
+  // IR sub-slot drafts belong to the receiver binding; once it goes away
+  // they describe nothing and must stop counting as unapplied.
   function dropIrDrafts(): void { s.drafts.of('ir').clear(); }
-
-  function changeType(slot: number, type: number): void {
-    const wasIr = isIrSlot(slot);
-    const next = defaultDraft(type, slot);
-    next.name = drafts.draftOf(slot)?.name;
-    drafts.editDraft(slot, next);
-    if (wasIr && type !== Domain.CsType.Ir) dropIrDrafts();
-  }
 
   function revert(slot: number): void {
     drafts.revert(slot);
@@ -262,7 +266,7 @@
 <Panel title="CONTROL SURFACES">
   {#if caps}
     {#if visibleSlots.length === 0}
-      <div class="hint pad empty">
+      <div class="hint cs-pad cs-empty">
         No controls configured. Wire a button, switch, knob, encoder, or LED to a
         spare GPIO and bind it to a device function.
       </div>
@@ -276,43 +280,46 @@
         {slot}
         draft={d}
         dirty={slotDirty}
+        live={cs.bindings[slot] != null}
         pill={p}
         {applying}
         {detailTarget}
         {irDetailTarget}
         open={expanded === slot}
         onToggle={() => toggleSlot(slot)}
-        typeOptions={typeOptionsFor(slot)}
         onEdit={(fn) => editDraft(slot, fn)}
-        onTypeChange={(t) => changeType(slot, t)}
         onApply={() => apply(slot)}
         onRevert={() => revert(slot)}
         onRemove={() => remove(slot)}
-        onRename={(name) => renameSlot(slot, name)}
+        onRenameRequest={() => { renamingRaw = slot; }}
+        renaming={renaming === slot}
+        onRenameCommit={(name) => { renameSlot(slot, name); renamingRaw = null; }}
+        onRenameCancel={() => { renamingRaw = null; }}
       />
     {/each}
 
-    <div class="addrow">
-      <select class="sel" value="" aria-label="Add control" disabled={applying || allUsed} onchange={addControl}>
-        <option value="" disabled>ADD CONTROL…</option>
-        {#each typeOptionsFor(-1) as t (t)}
-          <option value={String(t)}>{Domain.csTypeLabel(t)}</option>
-        {/each}
-      </select>
-      {#if allUsed}
-        <span class="hint">All {maxSlots} control slots are in use.</span>
+    <div class="cs-addhost">
+      <div class="cs-addrow">
+        <select class="sel" value="" aria-label="Add control" disabled={applying || allUsed} onchange={addControl}>
+          <option value="" disabled>ADD CONTROL…</option>
+          {#each typeOptionsFor(-1) as t (t)}
+            <option value={String(t)}>{Domain.csTypeLabel(t)}</option>
+          {/each}
+        </select>
+        {#if allUsed}
+          <span class="hint">All {maxSlots} control slots are in use.</span>
+        {/if}
+      </div>
+      {#if pendingAdd != null}
+        {@const typeIdx = pendingAdd}
+        <CsNamePopover title={`NEW ${Domain.csTypeLabel(typeIdx).toUpperCase()}`} value=""
+          onCommit={(name) => commitAdd(typeIdx, name)} onCancel={() => { pendingAdd = null; }} />
       {/if}
     </div>
 
   {:else if cs.lastFetchError}
-    <div class="hint err pad">{cs.lastFetchError}</div>
+    <div class="hint err cs-pad">{cs.lastFetchError}</div>
   {:else}
-    <div class="hint pad">Reading control-surface capabilities…</div>
+    <div class="hint cs-pad">Reading control-surface capabilities…</div>
   {/if}
 </Panel>
-
-<style>
-  .addrow { display: flex; align-items: center; gap: 10px; padding: 10px 14px 12px; }
-  .empty { text-align: center; padding-top: 14px; }
-  .pad { padding: 10px 14px; }
-</style>

@@ -93,6 +93,8 @@ async function open(page: Page, size: Size, url: string): Promise<void> {
   if (await hero.isVisible()) await hero.click();
   await expect(shell).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('.rail-body .row').first()).toBeVisible({ timeout: 20_000 });
+  // A fresh profile lands on ABOUT; every sweep starts from TUNE.
+  await destination(page, 'TUNE').click();
   await expect(page.locator('.tune')).toBeVisible();
   // Short settle so the mock's first telemetry frames land before measuring.
   await page.waitForTimeout(500);
@@ -217,15 +219,30 @@ test('no scroll 1440x790 CONTROL surfaces add control and IR receiver', async ({
     (os) => (os as HTMLOptionElement[]).filter((o) => o.value !== '').map((o) => ({ v: o.value, label: o.textContent ?? '' })),
   );
   expect(opts.length).toBeGreaterThan(0);
+  // Picking a type opens the name popover; OK creates the draft.
+  const nameIt = async () => {
+    const pop = page.getByRole('dialog');
+    await expect(pop).toBeVisible();
+    await assertNoScroll(page, 'name popover');
+    await pop.getByRole('button', { name: 'OK', exact: true }).click();
+    await expect(pop).toHaveCount(0);
+  };
   await add.selectOption(opts[0].v);
+  await nameIt();
   await assertNoScroll(page, 'new binding');
   const ir = opts.find((o) => o.label.includes('IR Remote Receiver'));
   if (ir) {
     await add.selectOption(ir.v);
+    await nameIt();
     const binding = page.locator('.detail', { hasText: 'BINDING' });
     const apply = binding.getByRole('button', { name: 'APPLY', exact: true });
-    if ((await apply.count()) > 0 && (await apply.first().isEnabled())) await apply.first().click();
+    await expect(apply.first()).toBeEnabled();
+    await apply.first().click();
     const commands = page.locator('.detail', { hasText: 'IR COMMANDS' });
+    // A fresh receiver lists no commands; arming LEARN adds the listening row.
+    const learn = commands.getByRole('button', { name: 'LEARN', exact: true });
+    await expect(learn).toBeEnabled();
+    await learn.click();
     await expect(commands.locator('.irrow').first()).toBeVisible();
     await assertNoScroll(page, 'new IR receiver');
   }
@@ -267,9 +284,9 @@ for (const size of [SMALL, LARGE]) {
     await docked('INPUTS');
     await page.getByRole('tab', { name: 'OUTPUTS' }).click();
     await docked('OUTPUTS');
-    await destination(page, 'CONTROL').click();
     await page.getByRole('tab', { name: 'INTERFACES' }).click();
     await docked('INTERFACES');
+    await destination(page, 'CONTROL').click();
     await page.getByRole('tab', { name: 'DISPLAY' }).click();
     await docked('DISPLAY');
     await page.getByRole('tab', { name: 'SURFACES' }).click();
@@ -330,7 +347,7 @@ for (const size of [SMALL, LARGE]) {
         await expect(chip).toHaveAttribute('aria-selected', 'true');
         opened++;
       }
-      if (label !== 'INTERFACES') expect(opened, `${label}: no slot editor opened`).toBeGreaterThan(0);
+      expect(opened, `${label}: no slot editor opened`).toBeGreaterThan(0);
       await assertNoScroll(page, `cs=full ${label} editor open (${opened} panels)`);
     }
   });

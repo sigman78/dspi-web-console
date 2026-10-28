@@ -3,13 +3,14 @@
   import { formatValue } from '@/components/chrome/valueFieldFormat';
   import * as Domain from '@/domain';
   import type { ChannelModel, FilterParams, PlotGeometry } from '@/domain';
-  import { setEqFilter, setXoverBand } from '@/runtime';
+  import { setEqFilterLinked, setXoverBandLinked } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import BandMenu from './BandMenu.svelte';
   import { bandDraft, bandHold, holdBand } from './bandDraft.svelte';
   import { patchBand, clearBand } from './bandOps';
   import * as EqDraft from './eqDraft';
+  import { eqLinkView } from './eqLinkView';
   import type { DragAnchor } from './eqDraft';
 
   const { channel, preampDb }: { channel: ChannelModel; preampDb: number } = $props();
@@ -37,6 +38,21 @@
     channelId: channel.id,
     points: Domain.filterCurve(bands, preampDb, xover),
     label: channel.shortName,
+    fill: true,
+  });
+  // Locked peers draw underneath the selected channel from their own mirror state.
+  const curves = $derived.by<BodeCurve[]>(() => {
+    const snap = s.mirror.current;
+    if (!snap) return [curve];
+    const peers = eqLinkView(s.eqLink, snap.channels, channel).members.filter((c) => c.id !== channel.id);
+    return [
+      ...peers.map((c) => {
+        const slot = Domain.inputIndexOf(c.id);
+        const pre = slot !== null ? (snap.inputPreampDb[slot] ?? 0) : 0;
+        return { id: `eq-${c.id}`, channelId: c.id, points: Domain.filterCurve(c.filters, pre, c.xoverBands), label: c.shortName };
+      }),
+      curve,
+    ];
   });
 
   const nodes = $derived.by<BodeNode[]>(() => {
@@ -94,8 +110,8 @@
     const owner = s.mirror.current?.channels.find((c) => c.id === d.channelId);
     const origin = (d.kind === 'peq' ? owner?.filters : owner?.xoverBands)?.[d.index];
     if (origin && EqDraft.sameBand(origin, d.band)) return;
-    if (d.kind === 'peq') setEqFilter(s, d.channelId, d.index, { ...d.band });
-    else setXoverBand(s, d.channelId, d.index, { ...d.band });
+    if (d.kind === 'peq') setEqFilterLinked(s, d.channelId, d.index, { ...d.band });
+    else setXoverBandLinked(s, d.channelId, d.index, { ...d.band });
     holdBand(s, d);
   }
 
@@ -161,7 +177,7 @@
     const baseline = Domain.filterCurveAt(bands, preampDb, f, xover);
     const plan = EqDraft.planAddBand(channel.filters, f, db - baseline);
     if (!plan) return;
-    setEqFilter(s, channel.id, plan.index, plan.band);
+    setEqFilterLinked(s, channel.id, plan.index, plan.band);
     noveauUi.selectedBand = plan.index;
   }
 
@@ -211,7 +227,7 @@
 
 <div class="graph" bind:this={wrap} bind:clientWidth={wrapW} bind:clientHeight={wrapH}>
   <BodePlot
-    curves={[curve]}
+    {curves}
     height={plotH}
     {nodes}
     {onNodeSelect}

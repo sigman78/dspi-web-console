@@ -6,6 +6,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import CsSlotCard from './CsSlotCard.svelte';
+  import CsNamePopover from './CsNamePopover.svelte';
   import NumField from '@/components/chrome/NumField.svelte';
   import CsTargetRow from './CsTargetRow.svelte';
   import CsValueStepRow from './CsValueStepRow.svelte';
@@ -90,10 +91,15 @@
     return `${msg} Fix that step, then apply.`;
   }
 
-  function addMacro(): void {
+  let adding = $state(false);
+  let renamingRaw = $state<number | null>(null);
+  const renaming = $derived(renamingRaw != null && visibleSlots.includes(renamingRaw) ? renamingRaw : null);
+
+  function addMacro(name: string): void {
+    adding = false;
     const i = SlotOps.firstFreeSlot(maxSlots, (n) => cs.macros[n] != null || drafts.draftOf(n) != null);
     if (i == null) return;
-    drafts.editDraft(i, { name: '', steps: [] });
+    drafts.editDraft(i, { name, steps: [] });
     openSlot = i;
   }
 
@@ -174,7 +180,7 @@
 
 <Panel title="MACROS">
   {#if visibleSlots.length === 0}
-    <div class="hint pad empty">
+    <div class="hint cs-pad cs-empty">
       No macros. A macro fires a short sequence of changes from one button —
       switch input and load a preset, or run a timed mute.
     </div>
@@ -188,11 +194,18 @@
     {@const running = isRunning(i)}
     {@const open = expanded === i}
     <CsSlotCard title={`MACRO ${i + 1}`} name={d.name}
-      nameLabel={`Name for macro ${i + 1}`} removeLabel={`Remove macro ${i + 1}`}
-      pill={p} {dirty} {open} {detailTarget} disabled={applying}
+      nameLabel={`Rename macro ${i + 1}`} removeLabel={`Remove macro ${i + 1}`}
+      pill={p} {dirty} live={live != null} {open} {detailTarget} disabled={applying}
       onToggle={() => toggleSlot(i)}
-      onRename={(v) => editDraft(i, (dr) => { dr.name = v; })}
+      onRenameRequest={() => { renamingRaw = i; }}
       onRemove={() => remove(i)}>
+      {#snippet rename()}
+        {#if renaming === i}
+          <CsNamePopover title="RENAME" value={d.name}
+            onCommit={(v) => { editDraft(i, (dr) => { dr.name = v; }); renamingRaw = null; }}
+            onCancel={() => { renamingRaw = null; }} />
+        {/if}
+      {/snippet}
       {#snippet actions()}
         {#if running}
           <button type="button" class="chip hi" disabled={applying} onclick={cancel}>CANCEL</button>
@@ -205,21 +218,21 @@
       {/snippet}
       {#snippet note()}
         {#if running && live}
-          <div class="hint srow">Running step {(cs.extStatus?.macroStep ?? 0) + 1} of {live.stepCount}</div>
+          <div class="hint cs-srow">Running step {(cs.extStatus?.macroStep ?? 0) + 1} of {live.stepCount}</div>
         {/if}
       {/snippet}
       {#if p.cls === 'warn'}
-        <div class="hint err srow">{invalidHint(i)}</div>
+        <div class="hint err cs-srow">{invalidHint(i)}</div>
       {/if}
 
-      <div class="rows" class:detached>
+      <div class="cs-rows" class:detached>
         {#each d.steps as step, k (k)}
           {@const isOpen = !detached || openStepOf(i, d.steps.length) === k}
           {@const stepActions = actionOptions(step.noun)}
           <div class="step" class:collapsed={!isOpen}>
             {#if detached}
               <div class="sum">
-                <button type="button" class="sumbtn" aria-expanded={isOpen}
+                <button type="button" class="cs-sumbtn" aria-expanded={isOpen}
                   aria-label={`Step ${k + 1}`}
                   onclick={() => { stepOpen = { slot: i, k: isOpen ? -1 : k }; }}>
                   <span class="sn">{k + 1}</span>
@@ -233,20 +246,20 @@
               </div>
             {/if}
             {#if isOpen}
-            <div class="row">
+            <div class="cs-row">
               <span class="microlbl">STEP {k + 1}</span>
               <span class="microlbl">AFTER</span>
               <NumField value={step.preDelay} min={0} max={655.35} step={0.01} kind="s" precision={2}
                 ariaLabel={`Delay before step ${k + 1} (s)`} title="Wait this long before the step runs" disabled={applying}
                 onChange={(v) => editStep(i, k, (dr) => { dr.preDelay = v; })} />
               {#if !detached}
-                <span class="spacer"></span>
+                <span class="cs-spacer"></span>
                 <button type="button" class="x-btn" aria-label={`Remove step ${k + 1}`}
                   disabled={applying} onclick={() => removeStep(i, k)}>✕</button>
               {/if}
             </div>
 
-            <div class="row">
+            <div class="cs-row">
               <span class="microlbl">CONTROLS</span>
               <select class="sel" value={String(step.noun)} aria-label={`Controlled function for step ${k + 1}`} disabled={applying}
                 onchange={(e) => {
@@ -277,7 +290,7 @@
             </div>
 
             {#if CsField.showTargetOf(cs.nouns, step.noun)}
-              <div class="row">
+              <div class="cs-row">
                 <CsTargetRow nouns={cs.nouns} noun={step.noun} target={step.target} index={step.index} grouped={step.grouped}
                   channels={snap?.channels ?? []} groups={cs.groups} groupsEnabled={CsField.groupsAvailable(caps)}
                   disabled={applying} ariaSuffix={` for step ${k + 1}`}
@@ -287,7 +300,7 @@
             {/if}
 
             {#if CsField.showValueOf(step.action) || CsField.showStepOf(step.action, CsMacroDraft.MACRO_STEPPY)}
-              <div class="row">
+              <div class="cs-row">
                 <CsValueStepRow nouns={cs.nouns} noun={step.noun} action={step.action} steppy={CsMacroDraft.MACRO_STEPPY} presetNames={s.presets.names} macros={cs.macros} displayPages={cs.displayPages}
                   value={step.value} step={step.step} disabled={applying} ariaSuffix={` for step ${k + 1}`}
                   onValue={(v) => editStep(i, k, (dr) => { dr.value = v; })}
@@ -296,7 +309,7 @@
             {/if}
 
             {#if CsField.showWrapOf(cs.nouns, step.noun, step.action, CsMacroDraft.MACRO_STEPPY)}
-              <div class="row">
+              <div class="cs-row">
                 <span class="microlbl">WRAP AROUND</span>
                 <ToggleSwitch checked={step.wrap} disabled={applying}
                   ariaLabel={`Wrap around for step ${k + 1}`} onChange={(v) => editStep(i, k, (dr) => { dr.wrap = v; })} />
@@ -306,7 +319,7 @@
           </div>
         {/each}
 
-        <div class="row">
+        <div class="cs-row">
           <button type="button" class="chip" disabled={applying || d.steps.length >= maxSteps} onclick={() => addStep(i)}>ADD STEP</button>
           {#if d.steps.length === 0}
             <span class="hint">Add at least one step</span>
@@ -315,7 +328,7 @@
           {/if}
         </div>
 
-        <div class="row">
+        <div class="cs-row">
           <button type="button" class="chip accent" onclick={() => apply(i)}
             disabled={applying || !canApply(i)}>APPLY</button>
           <button type="button" class="chip hi" onclick={() => revert(i)}
@@ -325,19 +338,20 @@
     </CsSlotCard>
   {/each}
 
-  <div class="addrow">
-    <button type="button" class="chip" disabled={applying || allUsed} onclick={addMacro}>ADD MACRO</button>
-    {#if allUsed}
-      <span class="hint">All {maxSlots} macro slots are in use.</span>
+  <div class="cs-addhost">
+    <div class="cs-addrow">
+      <button type="button" class="chip" disabled={applying || allUsed} onclick={() => { adding = true; }}>ADD MACRO</button>
+      {#if allUsed}
+        <span class="hint">All {maxSlots} macro slots are in use.</span>
+      {/if}
+    </div>
+    {#if adding}
+      <CsNamePopover title="NEW MACRO" value="" onCommit={addMacro} onCancel={() => { adding = false; }} />
     {/if}
   </div>
 </Panel>
 
 <style>
-  .spacer { flex: 1; }
-  .rows { padding: 6px 14px 10px; display: flex; flex-direction: column; gap: 8px; }
-  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .srow { padding: 4px 14px 0; }
   .step {
     padding: 6px 0;
     display: flex;
@@ -345,33 +359,16 @@
     gap: 8px;
   }
   .step + .step { border-top: 1px solid var(--wash); }
-  .rows.detached { gap: 0; padding-top: 4px; }
-  .rows.detached .step { padding: 0; gap: 6px; }
-  .rows.detached .step:not(.collapsed) { padding-bottom: 8px; }
-  .rows.detached > .row { padding-top: 8px; }
+  .cs-rows.detached { gap: 0; padding-top: 4px; }
+  .cs-rows.detached .step { padding: 0; gap: 6px; }
+  .cs-rows.detached .step:not(.collapsed) { padding-bottom: 8px; }
+  .cs-rows.detached > .cs-row { padding-top: 8px; }
   .sum { display: flex; align-items: center; gap: 6px; height: var(--h-row); }
-  .sumbtn {
-    flex: 1;
-    min-width: 0;
-    height: var(--h-row);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 4px;
-    background: none;
-    border: none;
-    border-radius: var(--radius-s);
-    color: var(--text);
-    cursor: pointer;
-    text-align: left;
-  }
-  .sumbtn:hover { background: var(--wash); }
-  .sumbtn[aria-expanded='true'] { background: var(--wash); }
+  .cs-sumbtn { padding: 0 4px; border-radius: var(--radius-s); color: var(--text); }
+  .cs-sumbtn:hover { background: var(--wash); }
+  .cs-sumbtn[aria-expanded='true'] { background: var(--wash); }
   .sn { font-family: var(--font-mono); font-size: 12px; color: var(--text-faint); width: 14px; flex: none; }
   .sl { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
   .sv { font-family: var(--font-mono); font-size: 12px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chev { flex: none; font-size: 10px; color: var(--text-faint); }
-  .addrow { display: flex; align-items: center; gap: 10px; padding: 10px 14px 12px; }
-  .empty { text-align: center; padding-top: 14px; }
-  .pad { padding: 10px 14px; }
 </style>

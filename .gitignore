@@ -47,8 +47,7 @@ docs/*
 !docs/HW-NOTIFICATIONS.md
 !docs/MULTIDEVICE.md
 !docs/web_to_uart.md
-# exp/noveau: UI redesign proposal + static mockups live on this branch only.
-!docs/noveau/
+!docs/UI.md
 /*.png
 /*.md
 !/README.md

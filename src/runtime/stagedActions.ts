@@ -82,7 +82,6 @@ function fmtSource(source: Domain.AudioInputSource): string {
     default:                             return 'USB';
   }
 }
-function fmtOutputType(type: number): string { return type === Domain.OutputSlotType.I2s ? 'I2S' : 'SPDIF'; }
 function fmtClockMode(mode: number): string { return mode === 1 ? 'slave' : 'master'; }
 function fmtClockPinMode(mode: number): string { return mode === 1 ? 'split' : 'unified'; }
 
@@ -346,8 +345,8 @@ export function stageOutputType(s: ReadySession, slot: Domain.I2sPairSlot, type:
   stageOrDiscard(s, key, live, type, () => ({
     key,
     label: `Out ${slot + 1} type`,
-    from: fmtOutputType(live),
-    to: fmtOutputType(type),
+    from: Domain.outputSlotTypeLabel(live),
+    to: Domain.outputSlotTypeLabel(type),
     value: type,
     order: ORDER.outputPin,
     page: 'outputs',
@@ -651,7 +650,7 @@ const I2C_LABEL: Record<I2cField, string> = {
 
 function fmtCtrl(field: string, v: number | boolean): string {
   if (field === 'txPin' || field === 'sdaPin') return fmtPin(v as number);
-  if (field === 'address') return `0x${(v as number).toString(16).padStart(2, '0').toUpperCase()}`;
+  if (field === 'address') return Domain.formatI2cAddr(v as number);
   if (typeof v === 'boolean') return fmtOnOff(v);
   return String(v);
 }

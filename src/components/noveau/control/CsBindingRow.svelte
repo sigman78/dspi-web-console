@@ -2,16 +2,17 @@
   // One CS binding slot's editor row, extracted from ControlSurfacesPanel
   // (mirrors how CsIrCommands was previously extracted from the same panel).
   // Controlled component: the parent owns `drafts`/`applying` and the apply/
-  // revert/remove/rename/type-change actions; this component holds no draft
-  // state of its own -- every edit flows up through onEdit/onTypeChange and
+  // revert/remove/rename actions; this component holds no draft
+  // state of its own -- every edit flows up through onEdit and
   // mutates the parent's record. Read-only derivations (caps, nouns, snap,
   // pin candidates, status) come from the session context, same as
   // CsIrCommands does for its own sub-slots.
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import { formatI2cAddr } from '@/components/chrome/format';
+  import { formatI2cAddr, parseI2cAddr } from '@/components/chrome/format';
   import PinPicker from '@/components/chrome/PinPicker.svelte';
   import CsIrCommands from './CsIrCommands.svelte';
   import CsSlotCard from './CsSlotCard.svelte';
+  import CsNamePopover from './CsNamePopover.svelte';
   import { defaultUnitFor } from '@/components/chrome/valueFieldFormat';
   import NumField from '@/components/chrome/NumField.svelte';
   import CsTargetRow from './CsTargetRow.svelte';
@@ -27,22 +28,25 @@
   import type { Draft } from '@/domain/cs/draft';
 
   const {
-    slot, draft: d, dirty, pill: p, applying, typeOptions,
-    onEdit, onTypeChange, onApply, onRevert, onRemove, onRename,
+    slot, draft: d, dirty, live, pill: p, applying,
+    onEdit, onApply, onRevert, onRemove, onRenameRequest,
+    renaming, onRenameCommit, onRenameCancel,
     open, onToggle, detailTarget = null, irDetailTarget = null,
   }: {
     slot: number;
     draft: Draft;
     dirty: boolean;
+    live: boolean;
     pill: { text: string; cls: string };
     applying: boolean;
-    typeOptions: number[];
     onEdit: (fn: (d: Draft) => void) => void;
-    onTypeChange: (typeIdx: number) => void;
     onApply: () => void;
     onRevert: () => void;
     onRemove: () => void;
-    onRename: (name: string) => void;
+    onRenameRequest: () => void;
+    renaming: boolean;
+    onRenameCommit: (name: string) => void;
+    onRenameCancel: () => void;
     open: boolean;
     onToggle: () => void;
     detailTarget?: HTMLElement | null;
@@ -136,17 +140,12 @@
   }
   let addrText = $derived(formatAddr(d.value));
 
-  const ADDR_TEXT_RE = /^(0x)?[0-9a-f]{1,2}$/i;
+  // Empty = 0 = model default.
   function addrTextValid(text: string): boolean {
-    const t = text.trim();
-    if (t === '') return true;                    // empty = 0 = model default
-    if (!ADDR_TEXT_RE.test(t)) return false;
-    const v = parseInt(t.replace(/^0x/i, ''), 16);
-    return v >= Domain.CS_DISPLAY_ADDR_MIN && v <= Domain.CS_DISPLAY_ADDR_MAX;
+    return text.trim() === '' || parseI2cAddr(text) !== null;
   }
   function addrTextValue(text: string): number {
-    const t = text.trim();
-    return t === '' ? 0 : parseInt(t.replace(/^0x/i, ''), 16);
+    return parseI2cAddr(text) ?? 0;
   }
 
   function addressPlaceholder(d: Draft): string {
@@ -219,31 +218,29 @@
 </script>
 
 <CsSlotCard title={Domain.csTypeLabel(d.type).toUpperCase()} name={d.name ?? cs.names[slot] ?? ''}
-  nameLabel={`Name for control ${slot + 1}`} removeLabel={`Remove control ${slot + 1}`}
-  pill={p} {dirty} {open} disabled={applying}
-  {onToggle} {onRename} {onRemove} {detailTarget}>
+  nameLabel={`Rename control ${slot + 1}`} removeLabel={`Remove control ${slot + 1}`}
+  pill={p} {dirty} {live} {open} disabled={applying}
+  {onToggle} {onRenameRequest} {onRemove} {detailTarget}>
+  {#snippet rename()}
+    {#if renaming}
+      <CsNamePopover title="RENAME" value={d.name ?? cs.names[slot] ?? ''}
+        onCommit={onRenameCommit} onCancel={onRenameCancel} />
+    {/if}
+  {/snippet}
   {#if p.cls === 'warn'}
-    <div class="hint err srow">{inactiveHint()}</div>
+    <div class="hint err cs-srow">{inactiveHint()}</div>
   {/if}
 
   {#if d.type > Domain.CS_MAX_KNOWN_TYPE}
-    <div class="hint pad">
+    <div class="hint cs-pad">
       Configured by a newer host (component type {d.type}) — this console
       can't edit it. Removing the control clears the slot.
     </div>
   {:else}
-  <div class="rows">
-    <div class="row">
+  <div class="cs-rows">
+    <div class="cs-row">
       <span class="microlbl">TYPE</span>
-      <select class="sel" value={String(d.type)} aria-label="Component type" disabled={applying}
-        onchange={(e) => {
-          const t = Number((e.currentTarget as HTMLSelectElement).value);
-          onTypeChange(t);
-        }}>
-        {#each typeOptions as t (t)}
-          <option value={String(t)}>{Domain.csTypeLabel(t)}</option>
-        {/each}
-      </select>
+      <span class="typeval">{Domain.csTypeLabel(d.type)}</span>
       {#if !CsDraft.isDisplay(d) && d.type !== Domain.CsType.Ir}
         <span class="microlbl">CONTROLS</span>
         <select class="sel" value={String(d.noun)} aria-label="Controlled function" disabled={applying}
@@ -270,7 +267,7 @@
     </div>
 
     {#if CsDraft.isDisplay(d)}
-      <div class="row">
+      <div class="cs-row">
         <span class="microlbl">MODEL</span>
         <select class="sel" value={String(d.index)} aria-label="Display model" disabled={applying}
           onchange={(e) => {
@@ -295,7 +292,7 @@
     {/if}
 
     {#if !CsDraft.isDisplay(d) && (actions.length > 1 || showEventOf(d))}
-      <div class="row">
+      <div class="cs-row">
         {#if actions.length > 1}
           <span class="microlbl">ON PRESS</span>
           <select class="sel" value={String(d.action)} aria-label="Action" disabled={applying}
@@ -329,7 +326,7 @@
       </div>
     {/if}
 
-    <div class="row">
+    <div class="cs-row">
       {#if CsDraft.isDisplay(d)}
         <span class="microlbl">SDA</span>
         <PinPicker value={d.gpio0} cells={displaySdaCells(d)}
@@ -357,13 +354,13 @@
     </div>
 
     {#if CsDraft.isDisplay(d)}
-      <div class="row">
+      <div class="cs-row">
         <span class="hint">{displayHint(d)}</span>
       </div>
     {/if}
 
     {#if !CsDraft.isDisplay(d) && d.type !== Domain.CsType.Ir && showTargetOf(d)}
-      <div class="row">
+      <div class="cs-row">
         <CsTargetRow nouns={cs.nouns} noun={d.noun} target={d.target} index={d.index} grouped={d.grouped}
           channels={snap?.channels ?? []} groups={cs.groups} groupsEnabled={showGroupOf(d)}
           disabled={applying}
@@ -378,7 +375,7 @@
     {/if}
 
     {#if !CsDraft.isDisplay(d) && d.type !== Domain.CsType.Ir && d.noun !== Domain.CsNoun.PageValue && (showValueOf(d) || showStepOf(d))}
-      <div class="row">
+      <div class="cs-row">
         <CsValueStepRow nouns={cs.nouns} noun={d.noun} action={d.action} steppy={STEPPY} presetNames={s.presets.names} macros={cs.macros} displayPages={cs.displayPages}
           value={d.value} step={d.step} disabled={applying}
           onValue={(v) => onEdit((dr) => { dr.value = v; })}
@@ -387,7 +384,7 @@
     {/if}
 
     {#if !CsDraft.isDisplay(d) && d.type !== Domain.CsType.Ir && d.noun !== Domain.CsNoun.PageValue && showRangeOf(d)}
-      <div class="row">
+      <div class="cs-row">
         <span class="microlbl">LIMIT RANGE</span>
         <ToggleSwitch checked={d.limitRange} disabled={applying}
           ariaLabel="Limit the range"
@@ -411,7 +408,7 @@
     {/if}
 
     {#if showDelaysOf(d) || showBaseBrightOf(d)}
-      <div class="row">
+      <div class="cs-row">
         {#if showDelaysOf(d)}
           <span class="microlbl">ON DELAY</span>
           <NumField value={d.onDelay} min={0} max={6553.5} step={0.1} kind="s" precision={1}
@@ -438,7 +435,7 @@
     {/if}
 
     {#if !CsDraft.isDisplay(d)}
-      <div class="row">
+      <div class="cs-row">
         <span class="microlbl">{invertLabel(d).toUpperCase()}</span>
         <ToggleSwitch checked={d.invert} disabled={applying}
           ariaLabel={invertLabel(d)}
@@ -482,7 +479,7 @@
       </div>
     {/if}
 
-    <div class="row">
+    <div class="cs-row">
       <button type="button" class="chip accent" onclick={() => onApply()}
         disabled={applying || !dirty || (CsDraft.isDisplay(d) && !canApplyDisplay(d))}>APPLY</button>
       <button type="button" class="chip hi" onclick={() => onRevert()}
@@ -497,9 +494,7 @@
 </CsSlotCard>
 
 <style>
-  .rows { padding: 6px 14px 10px; display: flex; flex-direction: column; gap: 8px; }
-  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .srow { padding: 4px 14px 0; }
+  .typeval { font-family: var(--font-mono); font-size: 11px; color: var(--text); }
   .numfield {
     font-family: var(--font-mono);
     font-size: 10px;
@@ -507,5 +502,4 @@
     width: 64px;
   }
   .addrfield { width: 96px; }
-  .pad { padding: 10px 14px; }
 </style>

@@ -31,7 +31,7 @@
   });
 </script>
 
-<span class="pair">
+<span class="cs-pair">
   <span class="microlbl">{CsTarget.targetKindLabel(CsField.targetKindOf(nouns, noun))}</span>
   <select class="sel" value={CsTarget.encodeTarget(grouped, target)} aria-label={`Target channel${ariaSuffix}`} {disabled}
     onchange={(e) => onTarget(CsTarget.decodeTarget((e.currentTarget as HTMLSelectElement).value))}>
@@ -57,7 +57,7 @@
   </select>
 </span>
 {#if CsField.showBandOf(nouns, noun)}
-  <span class="pair">
+  <span class="cs-pair">
     <span class="microlbl">BAND</span>
     <select class="sel" value={String(index)} aria-label={`Filter band${ariaSuffix}`} {disabled}
       onchange={(e) => onBand(Number((e.currentTarget as HTMLSelectElement).value))}>
@@ -69,5 +69,4 @@
 {/if}
 
 <style>
-  .pair { display: inline-flex; align-items: center; gap: 8px; }
 </style>

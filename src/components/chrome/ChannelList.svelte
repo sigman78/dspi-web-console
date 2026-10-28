@@ -5,9 +5,19 @@
   import { chKey } from '@/styles/palette';
   import { groupIntoPairs, groupInputSlotPairs, inputIndexOf, type ChannelGroup, type ChannelId, type ChannelModel } from '@/domain';
 
+  // linkPeers: tint the selected channel's locked EQ-link peers (TUNE only).
+  const { linkPeers = false }: { linkPeers?: boolean } = $props();
+
   const snap = $derived(State.activeSession()?.mirror.current ?? null);
   const tele = $derived(State.activeSession()?.telemetry ?? null);
   const disabled = $derived(!State.connection.connected);
+  // Locked-group peers of the selected channel (excluding the channel itself).
+  const linkedIds = $derived.by<ReadonlySet<ChannelId>>(() => {
+    const sel = State.settings.selectedChannel;
+    const s = State.activeSession();
+    if (!linkPeers || sel == null || !s) return new Set();
+    return new Set(s.eqLink.peersOf(sel));
+  });
 
   // Inline rename: one row editable at a time. The row component owns the
   // pending text and its own commit-once guard; the list tracks which row is
@@ -86,6 +96,7 @@
                   defaultName={ch.defaultName}
                   selected={State.settings.selectedChannel === ch.id}
                   pulsate={State.eqUi.copySource === ch.id}
+                  linked={linkedIds.has(ch.id)}
                   {disabled}
                   editing={editingId === ch.id}
                   onclick={() => State.selectChannel(ch.id)}

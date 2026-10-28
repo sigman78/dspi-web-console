@@ -35,6 +35,8 @@
   // The sub-slot that armed the current learn window; only one may be armed
   // (control_surfaces_spec.md 3.6.1).
   let armedSub = $state<number | null>(null);
+  // Sub-slot whose draft the current learn created (discarded if no code arrives).
+  let learnDraftSub: number | null = null;
 
   // Countdown mirror of the firmware's 10 s listen window, for display only --
   // completion truth is the notify event. The 2 s grace past zero is a lost-
@@ -51,7 +53,7 @@
         untrack(() => {
           if (armedSub != null) {
             pushNotice('warn', 'IR learn: no remote button was detected — try again.');
-            armedSub = null;   // triggers this effect's cleanup
+            stopLearn();   // clears armedSub, triggering this effect's cleanup
           }
         });
       }
@@ -72,6 +74,12 @@
   const maxSubs = $derived(caps?.maxIrCommands ?? Domain.CS_MAX_IR_COMMANDS);
   const subs = $derived(Array.from({ length: maxSubs }, (_, i) => i));
 
+  // Only learned or drafted sub-slots (plus the armed one) are listed; LEARN
+  // arms the first free index.
+  const listedSubs = $derived(subs.filter((i) =>
+    (cs.irCommands[i] != null && (cs.irCommands[i]!.protocol !== Domain.CsIrProto.None))
+    || drafts.draftOf(i) != null || armedSub === i));
+  const freeSub = $derived(subs.find((i) => !listedSubs.includes(i)) ?? null);
   // Collapsed by default -- eight rows dominate the slot card otherwise. The
   // header keeps the configured count and a staged dot visible either way.
   let open = $state(false);
@@ -81,7 +89,7 @@
   const openSub = $derived(
     pickedSub === -1 ? null
       : pickedSub != null ? pickedSub
-        : (subs.find((i) => (draftOf(i)?.protocol ?? Domain.CsIrProto.None) !== Domain.CsIrProto.None) ?? 0),
+        : (listedSubs.find((i) => (draftOf(i)?.protocol ?? Domain.CsIrProto.None) !== Domain.CsIrProto.None) ?? listedSubs[0] ?? null),
   );
   const configured = $derived(cs.irCommands.filter((c) => c != null).length);
 
@@ -171,14 +179,30 @@
   async function learn(sub: number): Promise<void> {
     if (armedSub != null) return;
     pickedSub = sub;
-    if (!drafts.draftOf(sub)) drafts.editDraft(sub, draftOf(sub) ?? CsIr.defaultIrDraft(caps, cs.nouns));
+    learnDraftSub = null;
+    if (!drafts.draftOf(sub)) {
+      drafts.editDraft(sub, draftOf(sub) ?? CsIr.defaultIrDraft(caps, cs.nouns));
+      if (cs.irCommands[sub] == null) learnDraftSub = sub;
+    }
     armedSub = sub;
     const ok = await csIrLearnArm(s);
-    if (!ok) armedSub = null;   // failure (no live receiver) already surfaced via pushNotice
+    if (!ok) stopLearn();   // failure (no live receiver) already surfaced via pushNotice
+  }
+
+  // A learn that ends without a code must not leave the draft it created
+  // behind as a "Not learned" row.
+  function stopLearn(): void {
+    const sub = armedSub;
+    armedSub = null;
+    if (sub != null && learnDraftSub === sub && cs.irCommands[sub] == null
+      && drafts.draftOf(sub)?.protocol === Domain.CsIrProto.None) {
+      drafts.revert(sub);
+    }
+    learnDraftSub = null;
   }
 
   async function cancelLearn(): Promise<void> {
-    armedSub = null;
+    stopLearn();
     await csIrLearnCancel(s);
   }
 
@@ -192,7 +216,7 @@
         armedSub = null;   // the pill flips to LEARNED; APPLY is the next step
       } else if (learn.state === Domain.CS_IR_LEARN_TIMEOUT) {
         pushNotice('warn', 'IR learn: no remote button was detected — try again.');
-        armedSub = null;
+        stopLearn();
       }
     });
   });
@@ -204,7 +228,7 @@
             <div class="hint err">{inactiveHint(sub)}</div>
           {/if}
 
-          <div class="row">
+          <div class="cs-row">
             <span class="microlbl">CONTROLS</span>
             <select class="sel" value={String(d.noun)} aria-label="Controlled function" disabled={applyingSub != null}
               onchange={(e) => {
@@ -235,7 +259,7 @@
           </div>
 
           {#if CsField.showTargetOf(cs.nouns, d.noun)}
-            <div class="row">
+            <div class="cs-row">
               <CsTargetRow nouns={cs.nouns} noun={d.noun} target={d.target} index={d.index} grouped={d.grouped}
                 channels={snap?.channels ?? []} groups={cs.groups} groupsEnabled={CsIr.irGroupsAvailable(caps)}
                 disabled={applyingSub != null}
@@ -245,7 +269,7 @@
           {/if}
 
           {#if d.noun !== Domain.CsNoun.PageValue && (CsField.showValueOf(d.action) || CsField.showStepOf(d.action, CsIr.IR_STEPPY))}
-            <div class="row">
+            <div class="cs-row">
               <CsValueStepRow nouns={cs.nouns} noun={d.noun} action={d.action} steppy={CsIr.IR_STEPPY} presetNames={s.presets.names} macros={cs.macros} displayPages={cs.displayPages}
                 value={d.value} step={d.step} disabled={applyingSub != null}
                 onValue={(v) => editDraft(sub, (dr) => { dr.value = v; })}
@@ -254,7 +278,7 @@
           {/if}
 
           {#if CsField.showWrapOf(cs.nouns, d.noun, d.action, CsIr.IR_STEPPY) || d.action === Domain.CsAction.Inc || d.action === Domain.CsAction.Dec}
-            <div class="row">
+            <div class="cs-row">
               {#if CsField.showWrapOf(cs.nouns, d.noun, d.action, CsIr.IR_STEPPY)}
                 <span class="microlbl">WRAP AROUND</span>
                 <ToggleSwitch checked={d.wrap} disabled={applyingSub != null}
@@ -268,7 +292,7 @@
             </div>
           {/if}
 
-          <div class="row">
+          <div class="cs-row">
             <button type="button" class="chip accent" onclick={() => apply(sub)}
               disabled={applyingSub != null || !canApply(sub)}>APPLY</button>
           </div>
@@ -276,7 +300,7 @@
 
 {#snippet commandsBody()}
   <div class="irbody">
-    {#each subs as sub (sub)}
+    {#each listedSubs as sub (sub)}
       {@const d = draftOf(sub)}
       {@const listening = armedSub === sub}
       {#if irDetailTarget}
@@ -285,7 +309,7 @@
         {@const p = pill(sub, d)}
         <div class="irrow compact" class:openrow={isOpen}>
           <div class="sumrow">
-            <button type="button" class="sumbtn" aria-expanded={isOpen} aria-label={`IR command ${sub + 1}`}
+            <button type="button" class="cs-sumbtn" aria-expanded={isOpen} aria-label={`IR command ${sub + 1}`}
               onclick={() => { pickedSub = isOpen ? -1 : sub; }}>
               <span class="arrow">{isOpen ? '▾' : '▸'}</span>
               <span class="idx">{sub + 1}</span>
@@ -309,9 +333,9 @@
             {/if}
           </div>
           {#if isOpen && d}
-            <div class="row">
+            <div class="cs-row">
               <span class="code" class:learned>{codeText(d)}</span>
-              <span class="spacer"></span>
+              <span class="cs-spacer"></span>
               <button type="button" class="chip hi" disabled={applyingSub != null || listening}
                 onclick={() => clear(sub)}>CLEAR</button>
             </div>
@@ -320,7 +344,7 @@
         </div>
       {:else}
       <div class="irrow">
-        <div class="row">
+        <div class="cs-row">
           {#if d}
             <span class="code" class:learned={d.protocol !== Domain.CsIrProto.None}>{codeText(d)}</span>
             {@const p = pill(sub, d)}
@@ -328,7 +352,7 @@
           {:else}
             <span class="code">Not learned</span>
           {/if}
-          <span class="spacer"></span>
+          <span class="cs-spacer"></span>
           {#if listening}
             <span class="hint listen">Press a button on the remote… <span class="count">{Math.max(0, learnRemaining)}s</span></span>
             <button type="button" class="chip hi" onclick={cancelLearn}>CANCEL</button>
@@ -349,6 +373,14 @@
       </div>
       {/if}
     {/each}
+    {#if listedSubs.length === 0}
+      <div class="hint">No IR commands learned.</div>
+    {/if}
+    <div class="cs-addrow learnrow">
+      <button type="button" class="chip"
+        disabled={freeSub == null || armedSub != null || applyingSub != null}
+        onclick={() => { if (freeSub != null) void learn(freeSub); }}>LEARN</button>
+    </div>
   </div>
 {/snippet}
 
@@ -415,22 +447,10 @@
   .irrow.compact { padding: 0 4px; gap: 4px; }
   .irrow.compact.openrow { padding-bottom: 6px; }
   .detached .irbody { gap: 0; }
+  .learnrow { padding: 6px 0 0; }
   .irrow.compact:not(.openrow) { border-bottom: none; }
   .sumrow { display: flex; align-items: center; gap: 6px; height: var(--h-row); }
-  .sumbtn {
-    flex: 1;
-    min-width: 0;
-    height: var(--h-row);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    font-family: var(--font-mono);
-    text-align: left;
-  }
+  .cs-sumbtn { padding: 0; font-family: var(--font-mono); }
   .idx { font-size: 11px; color: var(--text-faint); min-width: 14px; }
   .sumtxt {
     font-family: var(--font-mono);
@@ -443,14 +463,12 @@
   .sumtxt.dim { color: var(--text-faint); }
   .detached { display: flex; flex-direction: column; }
   .irrow:not(:last-child) { border-bottom: 1px solid var(--wash); }
-  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .code {
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-faint);
   }
   .code.learned { color: var(--text-dim); }
-  .spacer { flex: 1; }
   .hint.listen { color: var(--text-dim); }
   .count {
     font-family: var(--font-mono);

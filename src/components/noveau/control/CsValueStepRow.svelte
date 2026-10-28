@@ -67,7 +67,7 @@
 </script>
 
 {#if CsField.showValueOf(action)}
-  <span class="pair">
+  <span class="cs-pair">
     <span class="microlbl">{label}</span>
     {#if cont}
       <NumField {value} min={bounds.min} max={bounds.max} step={valueField.step}
@@ -86,7 +86,7 @@
   </span>
 {/if}
 {#if CsField.showStepOf(action, steppy)}
-  <span class="pair">
+  <span class="cs-pair">
     <span class="microlbl">STEP SIZE</span>
     <NumField value={step} min={stepField.min} max={stepField.max} step={stepField.step}
       kind={stepField.kind} precision={stepField.precision} {disabled}
@@ -95,5 +95,4 @@
 {/if}
 
 <style>
-  .pair { display: inline-flex; align-items: center; gap: 8px; }
 </style>

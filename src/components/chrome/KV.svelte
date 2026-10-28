@@ -4,28 +4,23 @@
     value,
     tone,
     title,
-    wide = false,
     inline = false,
   }: {
     label: string;
     value: string;
     tone?: 'ok' | 'off' | 'warn';
     title?: string;
-    // Span every column of the parent grid and wrap long tokens (build stamps).
-    wide?: boolean;
     inline?: boolean;
   } = $props();
 </script>
 
-<div class="kv" {title} class:help={title != null} class:wide={wide && !inline} class:inline>
+<div class="kv" {title} class:help={title != null} class:inline>
   <div class="lbl">{label}</div>
   <div class="val" class:ok={tone === 'ok'} class:off={tone === 'off'} class:warn={tone === 'warn'}>{value}</div>
 </div>
 
 <style>
   .kv.help { cursor: help; }
-  .kv.wide { grid-column: 1 / -1; min-width: 0; }
-  .kv.wide .val { overflow-wrap: anywhere; }
   .kv.inline {
     display: flex;
     align-items: center;

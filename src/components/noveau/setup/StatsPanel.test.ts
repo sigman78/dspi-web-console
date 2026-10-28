@@ -25,4 +25,12 @@ describe('StatsPanel', () => {
     await fireEvent.click(clear);
     expect(clearClips).toHaveBeenCalledWith(session);
   });
+
+  test('overrun and underrun counters share one row and warn when non-zero', async () => {
+    const { telemetry } = renderStats();
+    telemetry.info = { pdmRingOverruns: 0, pdmRingUnderruns: 3 } as any;
+    const row = (await screen.findByText('PDM RING OVR / UNR')).parentElement!;
+    await vi.waitFor(() => expect(row.textContent).toContain('0 / 3'));
+    expect(row.querySelector('.val')!.classList.contains('warn')).toBe(true);
+  });
 });

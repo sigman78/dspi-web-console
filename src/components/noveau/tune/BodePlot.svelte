@@ -22,6 +22,8 @@
     gradientChannelIds?: [ChannelId, ChannelId];
     /** Explicit stroke/fill color, wins over channelId/gradientChannelIds/default. */
     color?: string;
+    /** Draw the under-curve fill for this curve; a lone curve is filled regardless. */
+    fill?: boolean;
   };
 
   // Draggable EQ-band node drawn above the curves.
@@ -146,7 +148,10 @@
     });
   });
 
-  const single = $derived(curves.length === 1);
+  const filled = $derived.by(() => {
+    const marked = built.filter((b) => b.c.fill);
+    return marked.length ? marked[marked.length - 1] : (built.length === 1 ? built[0] : null);
+  });
 
   const F_MAJOR = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
   const F_MINOR: number[] = (() => {
@@ -358,10 +363,10 @@
     <clipPath id={clipId}>
       <rect x={PAD_L} y="0" width={plotW} height={plotH} />
     </clipPath>
-    {#if single && curves[0]}
-      <linearGradient id="bodeFill-{curves[0].id}" x1="0" x2="0" y1="0" y2="1">
-        <stop offset="0%" stop-color={fillStopFor(curves[0])} stop-opacity="0.25" />
-        <stop offset="100%" stop-color={fillStopFor(curves[0])} stop-opacity="0" />
+    {#if filled}
+      <linearGradient id="bodeFill-{filled.c.id}" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color={fillStopFor(filled.c)} stop-opacity="0.25" />
+        <stop offset="100%" stop-color={fillStopFor(filled.c)} stop-opacity="0" />
       </linearGradient>
     {/if}
     {#each curves as c (c.id)}
@@ -426,10 +431,10 @@
        axis label margins instead of distorting the shape by clamping
        every point. -->
   <g clip-path="url(#{clipId})">
-    {#if single && built[0]}
+    {#if filled}
       <path
-        d={built[0].d + ` L ${W} ${plotH} L ${PAD_L} ${plotH} Z`}
-        fill="url(#bodeFill-{curves[0].id})"
+        d={filled.d + ` L ${W} ${plotH} L ${PAD_L} ${plotH} Z`}
+        fill="url(#bodeFill-{filled.c.id})"
         vector-effect="non-scaling-stroke"
       />
     {/if}

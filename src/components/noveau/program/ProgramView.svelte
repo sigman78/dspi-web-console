@@ -14,6 +14,8 @@
 
 <style>
   .program {
+    /* Shared column width: routing map (8 inputs) and every module panel; a slider row with reset is 356 px. */
+    --module-col: 360px;
     flex: 1;
     min-width: 0;
     min-height: 0;
@@ -27,7 +29,8 @@
     min-width: 0;
     min-height: 0;
     display: grid;
-    grid-template-columns: fit-content(620px) minmax(480px, 1fr);
+    grid-template-columns: var(--module-col) var(--module-col);
+    justify-content: start;
     column-gap: 24px;
     overflow: hidden;
   }

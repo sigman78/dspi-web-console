@@ -1,12 +1,13 @@
 <script lang="ts" generics="K extends string">
   import { tick, type Snippet } from 'svelte';
 
-  const { label, pages, page, onselect, staged, right, children }: {
+  const { label, pages, page, onselect, staged, draft, right, children }: {
     label: string;
     pages: { key: K; label: string }[];
     page: K;
     onselect: (key: K) => void;
     staged?: (key: K) => boolean;
+    draft?: (key: K) => boolean;
     right?: Snippet;
     children: Snippet;
   } = $props();
@@ -40,6 +41,7 @@
           type="button"
           class="pg"
           class:staged={staged?.(p.key)}
+          class:draft={draft?.(p.key)}
           role="tab"
           id="{uid}-tab-{p.key}"
           aria-selected={p.key === page}
@@ -96,7 +98,7 @@
     white-space: nowrap;
   }
   .pg:last-child { border-right: none; }
-  .pg.staged::after { top: 6px; right: 6px; }
+  .pg.staged::after, .pg.draft::after { top: 6px; right: 6px; }
   .pg:hover:not([aria-selected='true']) { color: var(--text); background: var(--wash); }
   .pg[aria-selected='true'] {
     color: var(--text);
@@ -126,7 +128,7 @@
     gap: 16px;
     overflow: hidden;
   }
-  .body :global(.pw-col .addrow) { padding: 3px 12px; }
+  .body :global(.pw-col .cs-addrow) { padding: 3px 12px; }
   .paged :global(section.panel) {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;

@@ -39,12 +39,10 @@
   pass="inputs · feeds the matrix"
   blurb="Derives centre and surround feeds from a stereo input and offers them as extra matrix sources. Parks on multichannel input or above 48 kHz."
   {enabled}
-  onEnable={(v) => Runtime.setUpmixEnabled(s, v)}
-  reason={offReason}
 >
   <div class="prow">
     <span class="prow-lbl">STATUS</span>
-    <span class="prow-ctl"><span class="t-value" class:ok={status === 'active'}>{Domain.upmixParkingText(status)}</span></span>
+    <span class="prow-ctl"><span class="t-value status" class:ok={status === 'active'} title={Domain.upmixParkingText(status)}>{Domain.upmixParkingText(status)}</span></span>
   </div>
 
   <div class="prow sub"><span>CENTRE</span></div>
@@ -99,4 +97,5 @@
 
 <style>
   .t-value.ok { color: var(--ok); }
+  .status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

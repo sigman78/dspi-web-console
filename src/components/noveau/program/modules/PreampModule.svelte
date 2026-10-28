@@ -21,8 +21,8 @@
 <ModuleFrame title="Preamp" pass="inputs · PASS 1"
   blurb="Per-input gain ahead of everything else. Trim hot sources or balance channels before EQ sees them.">
   <SliderField lane="scrub"
-    label="MASTER"
-    ariaLabel="Master preamp"
+    label="ALL INPUTS"
+    ariaLabel="All inputs preamp"
     value={snap?.masterPreampDb ?? 0}
     min={Eq.PREAMP_MIN_DB} max={Eq.PREAMP_MAX_DB} step={Eq.PREAMP_STEP_DB}
     kind="dB-signed"

@@ -165,7 +165,8 @@ describe('output config verbs', () => {
     expect(r.ok).toBe(false);
     expect(reset).not.toHaveBeenCalled();
     expect(rename).not.toHaveBeenCalled();
-    expect(State.notices.list).toHaveLength(0);
+    // A confirmed reset that goes nowhere says so; preset verbs report through their result.
+    expect(State.notices.list.map((n) => n.kind)).toEqual(['warn']);
   });
 
   it('saveOutputConfigBaseline warns on failure and stays silent on success', async () => {
@@ -235,7 +236,7 @@ describe('ADAT output verbs — device rejection (RP2040 has no ADAT hardware)',
     expect(await actions.setAdatPin(State.activeSession()!, 20)).toBe(false);
     expect(liveMirror().current!.adat.enabled).toBe(false);
     expect(liveMirror().current!.adat.pin).toBe(pinBefore);
-    expect(State.notices.list).toHaveLength(2);
+    expect(State.notices.list).toHaveLength(1);   // identical device messages collapse into one toast
   });
 });
 
@@ -287,6 +288,6 @@ describe('ADAT input verbs — device rejection (RP2040 has no ADAT hardware)', 
     expect(await actions.setAdatInputPin(State.activeSession()!, 20)).toBe(false);
     expect(liveMirror().current!.inputConfig.adatInputEnabled).toBe(false);
     expect(liveMirror().current!.inputConfig.adatInputPin).toBe(pinBefore);
-    expect(State.notices.list).toHaveLength(2);
+    expect(State.notices.list).toHaveLength(1);   // identical device messages collapse into one toast
   });
 });

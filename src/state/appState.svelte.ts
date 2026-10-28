@@ -7,6 +7,7 @@ import type { CtrlIfacesState } from './ctrlIfaces.svelte';
 import type { ControlSurfacesState } from './controlSurfaces.svelte';
 import type { SysClockState } from './sysClock.svelte';
 import type { StagingState } from './staging.svelte';
+import type { EqLinkState } from './eqLink.svelte';
 import type { DraftsState } from './drafts.svelte';
 import type { MirrorState } from './mirror.svelte';
 import type { LinkHealth } from './linkHealth.svelte';
@@ -49,6 +50,8 @@ export interface ReadySession {
   // Pending heavy device-config edits (input source, I2S/S/PDIF pins, MCK/BCK,
   // output type), staged here until StagedStrip (SETUP and CONTROL page bar) applies them.
   readonly staging: StagingState;
+  // Console-only EQ link groups and their lock flags.
+  readonly eqLink: EqLinkState;
   // Console-local control-surface edits not yet sent to the device.
   readonly drafts: DraftsState;
   readonly mirror: MirrorState;

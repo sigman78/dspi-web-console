@@ -1,8 +1,8 @@
-// Applies an AutoEQ library entry's bands + preamp onto a channel (and
-// optionally its stereo twin).
+// Applies an AutoEQ library entry's bands + preamp onto a channel and, while
+// its EQ link group is locked, every other group member.
 
 import * as Domain from '@/domain';
-import type { ChannelId, ChannelModel, AutoEqEntry } from '@/domain';
+import type { ChannelId, AutoEqEntry } from '@/domain';
 import type { ReadySession } from '@/state';
 import { setEqFilter } from './eqActions';
 import { setInputPreamp, setOutputGain } from './mixerActions';
@@ -11,38 +11,12 @@ export function preampTargetLabel(channel: { isOutput: boolean }): 'INPUT PREAMP
   return channel.isOutput ? 'OUTPUT TRIM' : 'INPUT PREAMP';
 }
 
-// Stereo-twin lookup for "apply to pair": output names are always true L/R,
-// so suffix pairing (groupIntoPairs) still works; USB input defaults drop
-// L/R (defaultInputName), so inputs pair by slot position instead
-// (groupInputSlotPairs) -- same structural pairing the rail uses.
-function twinGroup(channels: readonly ChannelModel[], channelId: ChannelId): ChannelModel[] | null {
-  const target = channels.find((c) => c.id === channelId);
-  if (!target) return null;
-  const groups = target.isOutput
-    ? Domain.groupIntoPairs(channels.filter((c) => c.isOutput))
-    : Domain.groupInputSlotPairs(channels.filter((c) => !c.isOutput));
-  return groups.find((g) => g.members.length === 2 && g.members.some((c) => c.id === channelId))?.members ?? null;
-}
-
-export function hasStereoTwin(channels: readonly ChannelModel[], channelId: ChannelId): boolean {
-  return twinGroup(channels, channelId) !== null;
-}
-
-function twinOf(s: ReadySession, channelId: ChannelId): ChannelId | null {
-  return twinGroup(s.mirror.snapshot.channels, channelId)?.find((c) => c.id !== channelId)?.id ?? null;
-}
-
 export function applyAutoEqEntry(
   s: ReadySession,
   channelId: ChannelId,
   entry: AutoEqEntry,
-  includePairTwin: boolean,
 ): void {
-  const targets: ChannelId[] = [channelId];
-  if (includePairTwin) {
-    const twin = twinOf(s, channelId);
-    if (twin != null) targets.push(twin);
-  }
+  const targets = s.eqLink.membersOf(channelId);
 
   // Saved user entries may carry first-order sections the target device
   // cannot express; those bands flatten instead of going to the wire.

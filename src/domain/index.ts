@@ -16,6 +16,7 @@ export * from './mixerView';
 export * from './masterVolumeTaper';
 export * from './upmix';
 export * from './snapshot';
+export * from './eqLink';
 export * from './snapshotDiff';
 export * from './changeClass';
 export * from './applyChange';

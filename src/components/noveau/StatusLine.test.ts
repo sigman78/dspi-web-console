@@ -39,8 +39,8 @@ describe('StatusLine', () => {
     expect(noveauUi.setupPage).toBe('outputs');
   });
 
-  test('a reminder with changes on both destinations carries no destination', () => {
-    renderLine([entry('a', { page: 'inputs' }), entry('b', { page: 'surfaces' })]);
+  test('a reminder with a change that names no page carries no destination', () => {
+    renderLine([entry('a', { page: 'inputs' }), entry('b', { page: undefined })]);
     expect(screen.getByRole('button', { name: '2 staged' })).toBeTruthy();
   });
 

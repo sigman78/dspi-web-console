@@ -28,7 +28,7 @@
     {#each channel.filters as band, i (i)}
       <!-- The row's own controls are the keyboard path; the wrapper only mirrors focus into the selection. -->
       <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <div class="rw" class:sel={noveauUi.selectedBand === i} onclick={() => (noveauUi.selectedBand = i)}>
+      <div class="rw" class:sel={noveauUi.selectedBand === i} onclick={() => (noveauUi.selectedBand = i)} onfocusin={() => (noveauUi.selectedBand = i)}>
         <BandRow index={i} {band} {types} columns={COLUMNS} onPatch={(p) => patchBand(s, channel, i, p)} />
       </div>
     {/each}

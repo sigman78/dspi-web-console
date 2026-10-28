@@ -7,6 +7,7 @@ import * as State from './state';
 import { bootMockFleet, bootReal, registerNavigatorReconnect, hasPendingWork } from './runtime';
 import { Log, isMobileDevice } from './utils';
 import { activeMockProfiles } from './mockProfiles';
+import { applyLanding } from '@/components/noveau/landing';
 
 const target = document.getElementById('app')!;
 
@@ -19,6 +20,7 @@ if (isMobileDevice()) {
   mount(MobileSplash, { target });
 } else {
   State.restoreSettings();
+  applyLanding();
   State.startSettingsPersistence();
 
   // See src/devOptions.ts for the full ?mock/?hero/?log convention.

@@ -1,33 +1,32 @@
 import type * as Domain from '@/domain';
+import type { DraftFamily } from '@/state';
 import * as CsField from '@/domain/cs/fieldHelpers';
 
-export type ControlPageKey = 'interfaces' | 'surfaces' | 'macros' | 'display';
-
-export const CONTROL_PAGE_KEYS: readonly ControlPageKey[] = ['interfaces', 'surfaces', 'macros', 'display'];
+export type ControlPageKey = 'surfaces' | 'macros' | 'display';
 
 export interface ControlPage {
   key: ControlPageKey;
   label: string;
 }
 
-interface ControlFeatures {
-  controlInterfaces: boolean;
-  controlSurfaces: boolean;
-}
+/** Draft families whose unapplied edits a CONTROL page holds. */
+export const CONTROL_PAGE_DRAFTS: Record<ControlPageKey, readonly DraftFamily[]> = {
+  surfaces: ['cs', 'ir'],
+  macros: ['macros', 'groups'],
+  display: ['display'],
+};
 
-/** CONTROL has at least one page exactly when the interfaces page is available. */
-export function controlAvailable(features: ControlFeatures): boolean {
-  return features.controlInterfaces || features.controlSurfaces;
+/** CONTROL exists exactly when the firmware has control surfaces. */
+export function controlAvailable(features: { controlSurfaces: boolean }): boolean {
+  return features.controlSurfaces;
 }
 
 /** Pages with at least one available panel, in selector order. */
-export function controlPages(features: ControlFeatures, caps: Domain.CsCaps | null): ControlPage[] {
-  const cs = features.controlSurfaces;
+export function controlPages(caps: Domain.CsCaps | null): ControlPage[] {
   const all: Array<ControlPage & { available: boolean }> = [
-    { key: 'interfaces', label: 'INTERFACES', available: features.controlInterfaces || cs },
-    { key: 'surfaces', label: 'SURFACES', available: cs },
-    { key: 'macros', label: 'MACROS & GROUPS', available: cs && (CsField.macrosAvailable(caps) || CsField.groupsAvailable(caps)) },
-    { key: 'display', label: 'DISPLAY', available: cs && CsField.displaysAvailable(caps) },
+    { key: 'surfaces', label: 'SURFACES', available: true },
+    { key: 'macros', label: 'MACROS & GROUPS', available: CsField.macrosAvailable(caps) || CsField.groupsAvailable(caps) },
+    { key: 'display', label: 'DISPLAY', available: CsField.displaysAvailable(caps) },
   ];
   return all.filter((p) => p.available).map(({ key, label }) => ({ key, label }));
 }

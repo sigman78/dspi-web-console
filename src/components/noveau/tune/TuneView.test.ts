@@ -3,10 +3,9 @@ import { render } from '@testing-library/svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
 import { deriveCapabilities } from '@/protocol/capabilities';
 import { Wire } from '@/protocol';
-import { tick } from 'svelte';
-import { ChannelId } from '@/domain';
 import { noveauUi } from '@/components/noveau/noveauUi.svelte';
-import { settings } from '@/state';
+import { settings, createEqLinkState } from '@/state';
+import { defaultEqLinkGroups } from '@/domain';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
 
 class ResizeObserverStub {
@@ -30,6 +29,7 @@ function mount(snapshot = makeSnapshot()) {
       wantLimiterMeter: vi.fn(() => vi.fn()),
     },
     mirror: { current: snapshot },
+    eqLink: createEqLinkState('TEST', () => defaultEqLinkGroups(snapshot.channels, snapshot.inputConfig.source, null)),
     presets: { directory: null },
   } as unknown;
   return render(TuneView, { context: new Map([[SESSION_KEY, session]]) });
@@ -39,17 +39,6 @@ describe('TuneView', () => {
   beforeEach(() => {
     settings.selectedChannel = null;
     noveauUi.selectedBand = null;
-  });
-
-  test('the selected band is dropped when the channel changes', async () => {
-    settings.selectedChannel = ChannelId.Out1L;
-    mount();
-    noveauUi.selectedBand = 2;
-    await tick();
-    expect(noveauUi.selectedBand).toBe(2);
-    settings.selectedChannel = ChannelId.In1L;
-    await tick();
-    expect(noveauUi.selectedBand).toBeNull();
   });
 
   test('a disabled output still shows its real crosspoints', () => {

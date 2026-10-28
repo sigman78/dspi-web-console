@@ -1,7 +1,7 @@
 <script lang="ts">
   import { setContext } from 'svelte';
   import type { ReadySession } from '@/state';
-  import { reconcileSelectedChannel, selectionVisibilityOf } from '@/state';
+  import { reconcileSelectedChannel, selectionVisibilityOf, settings } from '@/state';
   import { SESSION_KEY } from '@/components/sessionContext';
   import ChannelList from '@/components/chrome/ChannelList.svelte';
   import IconRail from './IconRail.svelte';
@@ -15,6 +15,7 @@
   import { controlAvailable } from '@/components/noveau/control/controlPages';
   import AboutView from '@/components/noveau/about/AboutView.svelte';
   import { noveauUi } from './noveauUi.svelte';
+  import { destinations, destinationShortcut } from './destinations';
 
   const { session }: { session: ReadySession } = $props();
   // The session is stable while this component is mounted: App keys this
@@ -27,11 +28,18 @@
   const channelVisibility = $derived(selectionVisibilityOf(
     session.mirror.current?.outputs ?? [],
     session.telemetry.activeInputChannels,
-    { includeDisabledOutputs: true },
   ));
   noveauUi.healthOpen = false;
   noveauUi.presetsOpen = false;
   noveauUi.selectedBand = null;
+  // The selected band belongs to one channel: drop it on a switch, whichever
+  // destination the switch happens on.
+  let lastChannel = settings.selectedChannel;
+  $effect(() => {
+    const id = settings.selectedChannel;
+    if (id !== lastChannel) noveauUi.selectedBand = null;
+    lastChannel = id;
+  });
   $effect(() => {
     if (noveauUi.destination === 'control' && !controlAvailable(session.device.capabilities.features)) {
       noveauUi.destination = 'setup';
@@ -40,13 +48,23 @@
   $effect(() => {
     reconcileSelectedChannel(session.mirror.current?.channels, channelVisibility);
   });
+  function onKey(e: KeyboardEvent) {
+    const order = destinations(session.device.capabilities.features).map((d) => d.key);
+    const next = destinationShortcut(e, order, noveauUi.destination);
+    if (next === null) return;
+    e.preventDefault();
+    noveauUi.destination = next;
+    noveauUi.presetsOpen = false;
+  }
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <div class="noveau-shell">
   <IconRail />
   <aside class="crail">
     <RailHead />
-    <ChannelList />
+    <ChannelList linkPeers={noveauUi.destination === 'tune'} />
     <RailFoot />
   </aside>
   <section class="ws" aria-label="Workspace">

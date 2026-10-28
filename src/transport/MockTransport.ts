@@ -1623,9 +1623,13 @@ export class MockTransport implements DspTransport {
       case WireCmd.SetMasterVolume.code:
         this.#mockState.masterVolumeDb = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetPreamp.code:
-        this.#mockState.preampDb = Codec.decode(Codec.f32, data);
+      case WireCmd.SetPreamp.code: {
+        // Firmware applies the legacy preamp to every input channel.
+        const db = Codec.decode(Codec.f32, data);
+        this.#mockState.preampDb = db;
+        this.#mockState.inputPreampsDb.fill(db);
         return;
+      }
       case WireCmd.SetInputPreamp.code: {
         const idx = value & 0xFF;
         if (idx < this.#mockState.inputPreampsDb.length) {

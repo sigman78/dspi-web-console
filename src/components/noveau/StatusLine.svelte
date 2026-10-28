@@ -2,7 +2,7 @@
   import { connection } from '@/state';
   import { getSession } from '@/components/sessionContext';
   import { formatRateKHz } from '@/utils';
-  import { REPO_URL, FIRMWARE_RELEASES_URL, reportIssueUrl } from '@/buildInfo';
+  import { REPO_URL, FIRMWARE_RELEASES_URL, CONTACT_EMAIL, reportIssueUrl } from '@/buildInfo';
   import { destinationOfPage, revealStaged } from '@/components/noveau/noveauUi.svelte';
 
   const s = getSession();
@@ -16,11 +16,8 @@
   const rate = $derived(rateHz != null ? formatRateKHz(rateHz) : '—');
   const entries = $derived(s.staging.entries);
   const applying = $derived(s.staging.applying);
-  const where = $derived.by(() => {
-    const dests = new Set(entries.map((e) => destinationOfPage(e.page)).filter((d) => d !== null));
-    return dests.size === 1 ? [...dests][0] : null;
-  });
-  const reminder = $derived(`${entries.length} staged${where ? ` · ${where.toUpperCase()}` : ''}`);
+  const allInSetup = $derived(entries.length > 0 && entries.every((e) => destinationOfPage(e.page) === 'setup'));
+  const reminder = $derived(`${entries.length} staged${allInSetup ? ' · SETUP' : ''}`);
 </script>
 
 <div class="status" data-budget>
@@ -37,6 +34,9 @@
     </a>
     <a href={FIRMWARE_RELEASES_URL} target="_blank" rel="noopener" title="DSPi firmware releases on GitHub" aria-label="Firmware releases">
       <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" class="ln"><rect x="4.5" y="4.5" width="7" height="7" rx="1" /><path d="M6.5 1.5v3M9.5 1.5v3M6.5 11.5v3M9.5 11.5v3M1.5 6.5h3M1.5 9.5h3M11.5 6.5h3M11.5 9.5h3" /></svg>
+    </a>
+    <a href="mailto:{CONTACT_EMAIL}" title="Email the maintainer ({CONTACT_EMAIL})" aria-label="Email the maintainer">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" class="ln"><rect x="1.5" y="3.5" width="13" height="9" rx="1.2" /><path d="M2 4.5l6 4.5 6-4.5" /></svg>
     </a>
   </span>
   {#if entries.length > 0}

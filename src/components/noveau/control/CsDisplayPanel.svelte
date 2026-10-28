@@ -192,7 +192,7 @@
 
   {#if cs.displayLimits}
     {#if !displaySlotActive}
-      <div class="hint pad">
+      <div class="hint cs-pad">
         No display attached. Add an I2C display in CONTROL SURFACES; the
         settings and pages below apply as soon as it starts.
       </div>
@@ -206,12 +206,12 @@
 
     <div class="subhdr">SETTINGS</div>
     {@const d = cfgOf()}
-    <div class="rows">
+    <div class="cs-rows">
       {#if cfgSeeded}
         <div class="hint">Firmware defaults shown — apply them, or attach a display and the firmware seeds the same values.</div>
       {/if}
-      <div class="row">
-        <span class="pair">
+      <div class="cs-row">
+        <span class="cs-pair">
           <span class="microlbl">MODE</span>
           <select class="sel" value={String(d.mode)} aria-label="Display mode" disabled={applying}
             onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editCfg((dr) => { dr.mode = v as Domain.CsDisplayMode; }); }}>
@@ -221,7 +221,7 @@
           </select>
         </span>
         {#if d.mode === Domain.CsDisplayMode.Fixed}
-          <span class="pair">
+          <span class="cs-pair">
             <span class="microlbl">HOME PAGE</span>
             <select class="sel" value={String(d.homePage)} aria-label="Home page" disabled={applying}
               onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editCfg((dr) => { dr.homePage = v; }); }}>
@@ -231,7 +231,7 @@
             </select>
           </span>
         {:else}
-          <span class="pair">
+          <span class="cs-pair">
             <span class="microlbl">DWELL</span>
             <NumField value={d.dwell} min={1} max={6553.5} step={0.1} kind="s" precision={1}
               ariaLabel="Dwell time (s)" disabled={applying}
@@ -240,14 +240,14 @@
         {/if}
       </div>
 
-      <div class="row">
-        <span class="pair">
+      <div class="cs-row">
+        <span class="cs-pair">
           <span class="microlbl">POP-UP HOLD</span>
           <NumField value={d.overlayHold} min={0} max={6553.5} step={0.1} kind="s" precision={1} hint="(0 = off)"
             ariaLabel="Pop-up hold time (s, 0 = off)" disabled={applying}
             onChange={(v) => editCfg((dr) => { dr.overlayHold = v; })} />
         </span>
-        <span class="pair">
+        <span class="cs-pair">
           <span class="microlbl">EDIT TIMEOUT</span>
           <NumField value={d.editTimeout} min={0} max={6553.5} step={0.1} kind="s" precision={1} hint="(0 = manual)"
             ariaLabel="Edit auto-disarm timeout (s, 0 = manual)" disabled={applying}
@@ -255,8 +255,8 @@
         </span>
       </div>
 
-      <div class="row">
-        <span class="pair">
+      <div class="cs-row">
+        <span class="cs-pair">
           <span class="microlbl">BRIGHTNESS</span>
           <NumField value={d.brightness} min={0} max={255} step={1} kind="int" precision={0} hint="0 = default"
             ariaLabel="Brightness (0 = default)" title="OLED contrast — takes effect when the display restarts" disabled={applying}
@@ -264,14 +264,14 @@
         </span>
       </div>
 
-      <div class="row">
-        <span class="pair">
+      <div class="cs-row">
+        <span class="cs-pair">
           <span class="microlbl" title="Show items that have no page too">POP UP ANY CHANGE</span>
           <ToggleSwitch checked={d.overlayAny} disabled={applying}
             ariaLabel="Pop up on any change"
             onChange={(v) => editCfg((dr) => { dr.overlayAny = v; })} />
         </span>
-        <span class="pair">
+        <span class="cs-pair">
           <span class="microlbl" title="Off: the value control adjusts the shown item directly">ARM BEFORE EDIT</span>
           <ToggleSwitch checked={d.editGated} disabled={applying}
             ariaLabel="Require arming before edit"
@@ -280,8 +280,8 @@
       </div>
 
       {#if (caps?.capsVersion ?? 0) >= 11}
-        <div class="row">
-          <span class="pair">
+        <div class="cs-row">
+          <span class="cs-pair">
             <span class="microlbl">LABEL ALIGN</span>
             <select class="sel" value={String(d.labelAlign)} aria-label="Label alignment" disabled={applying}
               onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editCfg((dr) => { dr.labelAlign = v as Domain.CsDisplayAlign; }); }}>
@@ -290,7 +290,7 @@
               {/each}
             </select>
           </span>
-          <span class="pair">
+          <span class="cs-pair">
             <span class="microlbl">VALUE ALIGN</span>
             <select class="sel" value={String(d.valueAlign)} aria-label="Value alignment" disabled={applying}
               onchange={(e) => { const v = Number((e.currentTarget as HTMLSelectElement).value); editCfg((dr) => { dr.valueAlign = v as Domain.CsDisplayAlign; }); }}>
@@ -302,7 +302,7 @@
         </div>
       {/if}
 
-      <div class="row">
+      <div class="cs-row">
         <button type="button" class="chip accent" onclick={applyCfg}
           disabled={applying || !canApplyCfg()}>APPLY</button>
         <button type="button" class="chip hi" onclick={revertCfg}
@@ -317,7 +317,7 @@
       {@const d = pageDraftOf(i)}
       {@const showing = cs.displayStatus?.currentPage === i}
       {@const staged = isPageDirty(i)}
-      <div class="rows">
+      <div class="cs-rows">
         <!-- Strip selects which page the editor below shows; view-only, no fw effect -->
         <div class="pagestrip" role="tablist" aria-label="Display pages" tabindex="-1" onkeydown={pageStripKey}>
           {#each Array.from({ length: maxPages }, (_, i2) => i2) as i2 (i2)}
@@ -333,11 +333,11 @@
         <div class="slot" class:detached={detailTarget != null} id="cs-display-page-panel" role="tabpanel"
           aria-labelledby={`cs-display-page-tab-${i}`} use:portal={detailTarget}>
           <div class="slothead">
-            <span class="stitle" class:showing class:draft={staged}
+            <span class="cs-stitle" class:showing class:draft={staged}
               title={staged ? 'Unapplied changes — APPLY to preview them live' : undefined}
               >PAGE {i + 1}</span>
             {#if showing}<span class="tag">SHOWING</span>{/if}
-            <span class="spacer"></span>
+            <span class="cs-spacer"></span>
             {#if !d}
               <button type="button" class="chip" disabled={applying} onclick={() => addPage(i)}>Set page {i + 1}</button>
             {:else}
@@ -349,8 +349,8 @@
           {#if !d}
             <div class="hint">Page {i + 1} is empty.</div>
           {:else}
-            <div class="row">
-              <span class="pair">
+            <div class="cs-row">
+              <span class="cs-pair">
                 <span class="microlbl">ITEM</span>
                 <select class="sel" value={String(d.noun)} aria-label={`Item for page ${i + 1}`} disabled={applying}
                   onchange={(e) => {
@@ -362,14 +362,14 @@
                   {/each}
                 </select>
               </span>
-              <span class="pair">
+              <span class="cs-pair">
                 <span class="microlbl" title="Big value on graphic OLEDs">LARGE</span>
                 <ToggleSwitch checked={d.large} disabled={applying}
                   ariaLabel="Big value on graphic OLEDs"
                   onChange={(v) => editPageDraft(i, (dr) => { dr.large = v; })} />
               </span>
               {#if (caps?.capsVersion ?? 0) >= 13 && cs.nouns[d.noun] && Domain.csNounHasSpan(cs.nouns[d.noun])}
-                <span class="pair">
+                <span class="cs-pair">
                   <span class="microlbl" title={barTitle}>BAR</span>
                   <ToggleSwitch checked={d.bar} disabled={applying}
                     ariaLabel="Level bar"
@@ -379,7 +379,7 @@
             </div>
 
             {#if CsField.showTargetOf(cs.nouns, d.noun)}
-              <div class="row">
+              <div class="cs-row">
                 <CsTargetRow nouns={cs.nouns} noun={d.noun} target={d.target} index={d.index} grouped={d.grouped}
                   channels={snap?.channels ?? []} groups={cs.groups} groupsEnabled={CsField.groupsAvailable(caps)}
                   disabled={applying} ariaSuffix={` for page ${i + 1}`}
@@ -388,7 +388,7 @@
               </div>
             {/if}
 
-            <div class="row">
+            <div class="cs-row">
               <button type="button" class="chip accent" onclick={() => applyPage(i)}
                 disabled={applying || !canApplyPage(i)}>APPLY</button>
               <button type="button" class="chip hi" onclick={() => revertPage(i)}
@@ -399,9 +399,9 @@
       </div>
     {/if}
   {:else if cs.lastFetchError}
-    <div class="hint err pad">{cs.lastFetchError}</div>
+    <div class="hint err cs-pad">{cs.lastFetchError}</div>
   {:else}
-    <div class="hint pad">Reading display capabilities…</div>
+    <div class="hint cs-pad">Reading display capabilities…</div>
   {/if}
 </Panel>
 
@@ -425,9 +425,6 @@
   .subhdr {
     padding: 10px 14px 4px;
   }
-  .rows { padding: 4px 14px 10px; display: flex; flex-direction: column; gap: 8px; }
-  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .pair { display: inline-flex; align-items: center; gap: 8px; }
   .slot { padding: 8px 0; }
   .slot.detached { padding: 8px 14px 10px; }
   .pagestrip { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 8px; }
@@ -458,13 +455,5 @@
     padding-bottom: 6px;
     font-family: var(--font-mono);
   }
-  .stitle {
-    font-family: var(--font-sans);
-    font-size: var(--fs-m);
-    font-weight: 600;
-    color: var(--text-dim);
-  }
-  .stitle.showing { color: var(--ok); }
-  .spacer { flex: 1; }
-  .pad { padding: 10px 14px; }
+  .cs-stitle.showing { color: var(--ok); }
 </style>

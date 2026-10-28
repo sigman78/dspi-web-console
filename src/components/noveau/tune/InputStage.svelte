@@ -33,7 +33,7 @@
             tone="signed"
             resetTo={0}
             holdKey={channelId}
-            onChange={(v) => Runtime.setInputPreamp(s, slot, v)}
+            onChange={(v) => Runtime.setInputPreampLinked(s, channelId, v)}
           />
         {/if}
       </InspectorSection>

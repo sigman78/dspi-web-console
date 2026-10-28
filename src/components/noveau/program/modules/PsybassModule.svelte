@@ -21,8 +21,6 @@
   pass="per output · after matrix, before crossover"
   blurb="Synthesises harmonics of bass the speaker cannot reproduce, so the ear infers the fundamental. Runs before the output crossover."
   {enabled}
-  onEnable={(v) => Runtime.setPsybassEnabled(s, v)}
-  reason={offReason}
 >
   {#if showMask}
     <MaskChips label="OUTPUTS" items={outputItems} mask={pb?.outputMask ?? 0xFFFF} disabled={!enabled}

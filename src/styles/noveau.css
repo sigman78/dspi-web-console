@@ -2,9 +2,7 @@
    Sans carries labels and prose; mono is reserved for numbers, units,
    identifiers and tags. */
 
-.t-label,
-.microlbl { font-family: var(--font-sans); font-size: var(--fs-m); font-weight: 400; color: var(--text-dim); }
-.microlbl { white-space: nowrap; }
+.microlbl { font-family: var(--font-sans); font-size: var(--fs-m); font-weight: 400; color: var(--text-dim); white-space: nowrap; }
 .t-cap { font-family: var(--font-sans); font-size: var(--fs-m); color: var(--text-faint); }
 .t-value {
   font-family: var(--font-mono);
@@ -13,13 +11,6 @@
   font-variant-numeric: tabular-nums;
 }
 .t-meta { font-family: var(--font-mono); font-size: var(--fs-s); color: var(--text-faint); }
-.t-tag {
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
 
 /* Parameter row: label, controls, optional field and note. */
 .prow {
@@ -73,5 +64,34 @@
   white-space: nowrap;
   font-family: var(--font-sans);
   font-size: var(--fs-m);
+  color: var(--text-dim);
+}
+
+/* CONTROL editors */
+.cs-rows { padding: 6px 14px 10px; display: flex; flex-direction: column; gap: 8px; }
+.cs-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cs-srow { padding: 4px 14px 0; }
+.cs-pad { padding: 10px 14px; }
+.cs-addhost { position: relative; }
+.cs-addrow { display: flex; align-items: center; gap: 10px; padding: 10px 14px 12px; }
+.cs-empty { text-align: center; padding-top: 14px; }
+.cs-spacer { flex: 1; }
+.cs-pair { display: inline-flex; align-items: center; gap: 8px; }
+.cs-sumbtn {
+  flex: 1;
+  min-width: 0;
+  height: var(--h-row);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.cs-stitle {
+  font-family: var(--font-sans);
+  font-size: var(--fs-m);
+  font-weight: 600;
   color: var(--text-dim);
 }

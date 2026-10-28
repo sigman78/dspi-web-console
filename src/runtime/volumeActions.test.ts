@@ -87,7 +87,7 @@ describe('actions wiring', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk({ masterVolumeDb: 0 }));
-    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession({} as never) });
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession({ info: { serial: 'TEST' } } as never) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
   });
 

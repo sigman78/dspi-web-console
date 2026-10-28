@@ -119,6 +119,6 @@ describe('ModulePanel', () => {
   test('a stored module the firmware lacks falls back to the first module', () => {
     noveauUi.programModule = 'psybass';
     const { container } = mount({ psybass: false });
-    expect(container.querySelector('[aria-label="Master preamp"]')).toBeTruthy();
+    expect(container.querySelector('[aria-label="All inputs preamp"]')).toBeTruthy();
   });
 });

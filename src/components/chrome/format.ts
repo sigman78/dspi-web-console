@@ -14,7 +14,4 @@ export function formatMasterDb(db: number): string {
   return formatSignedDb(db <= -127.5 ? -Infinity : db);
 }
 
-/** I²C address as zero-padded hex, e.g. `0x0A`. */
-export function formatI2cAddr(addr: number): string {
-  return `0x${addr.toString(16).padStart(2, '0').toUpperCase()}`;
-}
+export { formatI2cAddr, parseI2cAddr } from '@/domain/controlInterfaces';

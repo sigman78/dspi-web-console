@@ -1,15 +1,12 @@
 import { describe, test, expect, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/svelte';
+import { render } from '@testing-library/svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
 import { deriveCapabilities } from '@/protocol/capabilities';
 import { Wire } from '@/protocol';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
 import { noveauUi } from '@/components/noveau/noveauUi.svelte';
 
-const setCrossfeedEnabled = vi.fn();
-
 vi.mock('@/runtime', () => ({
-  setCrossfeedEnabled: (...a: unknown[]) => setCrossfeedEnabled(...a),
   fetchSubharmSolo: vi.fn(),
 }));
 
@@ -46,14 +43,14 @@ function mount(module: Gate, enabled: boolean) {
 }
 
 describe('module gate reasons', () => {
-  test.each(GATES)('%s off: a reason row is shown and a gated control is described by it', (module) => {
+  test.each(GATES)('%s off: the body is inert and a gated control is described by the reason', (module) => {
     const { container } = mount(module, false);
-    const row = container.querySelector('.reason');
-    expect(row).toBeTruthy();
+    expect(container.querySelector('.body.off')).toBeTruthy();
+    expect(container.querySelector('.reason')).toBeNull();
     const gated = container.querySelector<HTMLElement>('input[type="range"][aria-describedby], [role="radiogroup"][aria-describedby]')!;
     expect(gated).toBeTruthy();
     const described = container.ownerDocument.getElementById(gated.getAttribute('aria-describedby')!);
-    expect(described?.textContent).toBe(row!.textContent);
+    expect(described?.textContent).toMatch(/is off/);
   });
 
   test.each([
@@ -66,19 +63,11 @@ describe('module gate reasons', () => {
     expect(container.querySelector(`[aria-label="${freeLabel}"]`)!.getAttribute('aria-describedby')).toBeNull();
   });
 
-  test('a gated switch stays focusable and inert, described by the reason', async () => {
+  test('a gated switch stays focusable and inert, described by the reason', () => {
     const { container } = mount('crossfeed', false);
     const itd = container.querySelector<HTMLButtonElement>('button[aria-label="Crossfeed ITD"]')!;
     expect(itd.disabled).toBe(false);
     expect(itd.getAttribute('aria-disabled')).toBe('true');
-    expect(container.ownerDocument.getElementById(itd.getAttribute('aria-describedby')!)?.textContent).toBe(
-      container.querySelector('.reason')!.textContent,
-    );
-  });
-
-  test('the frame header switch enables the module', async () => {
-    const { getByRole } = mount('crossfeed', false);
-    await fireEvent.click(getByRole('switch', { name: 'Enable Crossfeed' }));
-    expect(setCrossfeedEnabled.mock.calls[0][1]).toBe(true);
+    expect(container.ownerDocument.getElementById(itd.getAttribute('aria-describedby')!)?.textContent).toMatch(/is off/);
   });
 });

@@ -19,6 +19,9 @@ export const notices = {
 };
 
 export function pushNotice(kind: NoticeKind, message: string): number {
+  // A flaky link repeats the same failure; one row per distinct message.
+  const dup = _notices.find((n) => n.kind === kind && n.message === message);
+  if (dup) return dup.id;
   const id = ++_seq;
   _notices.push({ id, kind, message });
   if (kind !== 'error') setTimeout(() => dismissNotice(id), NOTICE_TTL_MS);

@@ -19,15 +19,15 @@ function renderStrip(o: { dirty?: boolean; drafts?: number } = {}) {
 }
 
 describe('CsChangesStrip', () => {
-  test('a clean device shows no "changed" label and no unapplied count', () => {
+  test('a clean device disables SAVE and shows no unapplied count', () => {
     renderStrip();
-    expect(screen.queryByText('changed')).toBeNull();
+    expect((screen.getByRole('button', { name: 'SAVE' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByText(/unapplied/)).toBeNull();
   });
 
-  test('unsaved device changes and console drafts surface separately', () => {
+  test('unsaved device changes enable SAVE; console drafts count separately', () => {
     renderStrip({ dirty: true, drafts: 2 });
-    expect(screen.getByText('changed')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'SAVE' }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByText('unapplied 2')).toBeTruthy();
   });
 });

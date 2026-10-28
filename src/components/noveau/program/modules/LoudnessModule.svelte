@@ -28,10 +28,8 @@
   pass="per output · after trim, before delay"
   blurb="Equal-loudness compensation (ISO 226): boosts bass and treble as the volume goes down. The graph is the correction at the current volume relative to the reference level."
   {enabled}
-  onEnable={(v) => Runtime.setLoudnessEnabled(s, v)}
-  reason={offReason}
 >
-  <div class:dim={!enabled}><BodePlot {curves} height={96} crosshair={false} {yRange} /></div>
+  <BodePlot {curves} height={96} crosshair={false} {yRange} />
   {#if showMask}
     <MaskChips label="OUTPUTS" items={outputItems} mask={loudness?.outputMask ?? 0xFFFF} disabled={!enabled}
       onToggle={(i) => Runtime.toggleLoudnessOutputChannel(s, i)} />
@@ -43,7 +41,3 @@
     min={Domain.Proc.LOUDNESS_INTENSITY_MIN_PCT} max={Domain.Proc.LOUDNESS_INTENSITY_MAX_PCT} step={Domain.Proc.LOUDNESS_INTENSITY_STEP_PCT}
     kind="pct" precision={1} disabled={!enabled} disabledReason={offReason} onChange={(v) => Runtime.setLoudnessIntensityPct(s, v)} />
 </ModuleFrame>
-
-<style>
-  .dim { opacity: var(--dim-off); }
-</style>

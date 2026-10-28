@@ -1,7 +1,7 @@
 import { inputIndexOf, type ChannelId, type ChannelModel, type OutputModel } from '@/domain';
 
-// Header volume slider axis: which of the two independent firmware volume
-// stages the top-bar slider currently drives (see VolumeBlock.svelte).
+// Volume axis: which of the two independent firmware volume
+// stages the channel-rail volume control currently drives (see VolumeBlock.svelte).
 export type VolumeAxis = 'user' | 'master';
 
 export interface Settings {
@@ -10,6 +10,9 @@ export interface Settings {
   lastSerial: string | null;
   warnOnPresetSwitchDirty: boolean;
   volumeAxis: VolumeAxis;
+  // Console version the user last opened; null on first run. Drives the
+  // landing destination (ABOUT after an update).
+  seenVersion: string | null;
 }
 
 const STORAGE_KEY = 'dspi-console-web/settings/v1';
@@ -21,6 +24,7 @@ function defaults(): Settings {
     lastSerial: null,
     warnOnPresetSwitchDirty: true,
     volumeAxis: 'user',
+    seenVersion: null,
   };
 }
 
@@ -60,6 +64,7 @@ function parseV1(raw: string, fallback: Settings): Settings {
     lastSerial: stringOrNull(obj.lastSerial),
     warnOnPresetSwitchDirty: bool(obj.warnOnPresetSwitchDirty, true),
     volumeAxis: volumeAxis(obj.volumeAxis, fallback.volumeAxis),
+    seenVersion: stringOrNull(obj.seenVersion),
   };
 }
 
@@ -112,6 +117,7 @@ export function restoreSettings(): void {
   settings.lastSerial = loaded.lastSerial;
   settings.warnOnPresetSwitchDirty = loaded.warnOnPresetSwitchDirty;
   settings.volumeAxis = loaded.volumeAxis;
+  settings.seenVersion = loaded.seenVersion;
 }
 
 export function setVolumeAxis(axis: VolumeAxis): void {
@@ -134,17 +140,15 @@ export interface SelectionVisibility {
 }
 
 // Shared shape-builder for reconcileSelectedChannel's callers (connect-time
-// sync and the live-visibility effect alike).
-// includeDisabledOutputs is for shells that list disabled outputs as
-// selectable stubs; the fallback stays the first enabled output.
+// sync and the live-visibility effect alike). Disabled outputs stay selectable
+// as stub rows; the fallback stays the first enabled output.
 export function selectionVisibilityOf(
   outputs: readonly OutputModel[],
   activeInputs: number | null,
-  { includeDisabledOutputs = false }: { includeDisabledOutputs?: boolean } = {},
 ): SelectionVisibility {
   return {
     enabledOutputIds: outputs.filter((o) => o.enabled).map((o) => o.id),
-    disabledSelectableIds: includeDisabledOutputs ? outputs.filter((o) => !o.enabled).map((o) => o.id) : undefined,
+    disabledSelectableIds: outputs.filter((o) => !o.enabled).map((o) => o.id),
     activeInputs,
   };
 }
@@ -187,6 +191,7 @@ export function startSettingsPersistence(): void {
         lastSerial: settings.lastSerial,
         warnOnPresetSwitchDirty: settings.warnOnPresetSwitchDirty,
         volumeAxis: settings.volumeAxis,
+        seenVersion: settings.seenVersion,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
     });

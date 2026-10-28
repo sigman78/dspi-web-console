@@ -6,6 +6,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import MaskChips from '@/components/chrome/MaskChips.svelte';
   import CsSlotCard from './CsSlotCard.svelte';
+  import CsNamePopover from './CsNamePopover.svelte';
   import { applyCsGroup, clearCsGroup } from '@/runtime';
   import * as Domain from '@/domain';
   import { csStatusFromByte } from '@/protocol';
@@ -115,10 +116,15 @@
     return `Used by ${parts.join(', ')}`;
   }
 
-  function addGroup(): void {
+  let adding = $state(false);
+  let renamingRaw = $state<number | null>(null);
+  const renaming = $derived(renamingRaw != null && visibleSlots.includes(renamingRaw) ? renamingRaw : null);
+
+  function addGroup(name: string): void {
+    adding = false;
     const i = SlotOps.firstFreeSlot(maxSlots, (n) => cs.groups[n] != null || drafts.draftOf(n) != null);
     if (i == null) return;
-    drafts.editDraft(i, { kind: Domain.CS_TARGET_OUTPUT_CH, mask: 0, name: '' });
+    drafts.editDraft(i, { kind: Domain.CS_TARGET_OUTPUT_CH, mask: 0, name });
     openSlot = i;
   }
 
@@ -160,7 +166,7 @@
 
 <Panel title="GROUPS">
   {#if visibleSlots.length === 0}
-    <div class="hint pad empty">
+    <div class="hint cs-pad cs-empty">
       No groups. A group lets one control address several channels at once —
       mute a speaker pair, or trim a stereo pair together.
     </div>
@@ -174,20 +180,27 @@
     {@const open = expanded === i}
     {@const n = memberCount(d.mask)}
     <CsSlotCard title={`GROUP ${i + 1}`} name={d.name}
-      nameLabel={`Name for group ${i + 1}`} removeLabel={`Remove group ${i + 1}`}
-      pill={p} {dirty} {open} {detailTarget} disabled={applying}
+      nameLabel={`Rename group ${i + 1}`} removeLabel={`Remove group ${i + 1}`}
+      pill={p} {dirty} live={cs.groups[i] != null} {open} {detailTarget} disabled={applying}
       onToggle={() => toggleSlot(i)}
-      onRename={(v) => editDraft(i, (dr) => { dr.name = v; })}
+      onRenameRequest={() => { renamingRaw = i; }}
       onRemove={() => remove(i)}>
+      {#snippet rename()}
+        {#if renaming === i}
+          <CsNamePopover title="RENAME" value={d.name}
+            onCommit={(v) => { editDraft(i, (dr) => { dr.name = v; }); renamingRaw = null; }}
+            onCancel={() => { renamingRaw = null; }} />
+        {/if}
+      {/snippet}
       {#snippet summary()}
         <span class="meta">{Domain.csGroupKindLabel(d.kind)} · {n} member{n === 1 ? '' : 's'}</span>
       {/snippet}
       {#if p.cls === 'warn'}
-        <div class="hint err srow">{invalidHint(i)}</div>
+        <div class="hint err cs-srow">{invalidHint(i)}</div>
       {/if}
 
-      <div class="rows">
-        <div class="row">
+      <div class="cs-rows">
+        <div class="cs-row">
           <span class="microlbl">KIND</span>
           <select class="sel" value={String(d.kind)} aria-label="Group kind" disabled={applying}
             onchange={(e) => {
@@ -200,7 +213,7 @@
           </select>
         </div>
 
-        <div class="row">
+        <div class="cs-row">
           <MaskChips label="MEMBERS" items={snap ? CsField.groupMemberItems(d.kind, snap.channels) : []}
             mask={d.mask} disabled={applying} wrap
             onToggle={(idx) => editDraft(i, (dr) => { dr.mask ^= (1 << idx); })} />
@@ -210,12 +223,12 @@
         </div>
 
         {#if u.controls + u.steps > 0}
-          <div class="row">
+          <div class="cs-row">
             <span class="hint">{usageText(u)}</span>
           </div>
         {/if}
 
-        <div class="row">
+        <div class="cs-row">
           <button type="button" class="chip accent" onclick={() => apply(i)}
             disabled={applying || !canApply(i)}>APPLY</button>
           <button type="button" class="chip hi" onclick={() => revert(i)}
@@ -225,10 +238,15 @@
     </CsSlotCard>
   {/each}
 
-  <div class="addrow">
-    <button type="button" class="chip" disabled={applying || allUsed} onclick={addGroup}>ADD GROUP</button>
-    {#if allUsed}
-      <span class="hint">All {maxSlots} group slots are in use.</span>
+  <div class="cs-addhost">
+    <div class="cs-addrow">
+      <button type="button" class="chip" disabled={applying || allUsed} onclick={() => { adding = true; }}>ADD GROUP</button>
+      {#if allUsed}
+        <span class="hint">All {maxSlots} group slots are in use.</span>
+      {/if}
+    </div>
+    {#if adding}
+      <CsNamePopover title="NEW GROUP" value="" onCommit={addGroup} onCancel={() => { adding = false; }} />
     {/if}
   </div>
 </Panel>
@@ -239,11 +257,5 @@
     font-size: 9px;
     color: var(--text-faint);
   }
-  .rows { padding: 6px 14px 10px; display: flex; flex-direction: column; gap: 8px; }
-  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .row :global(.prow) { border-top: none; height: auto; }
-  .srow { padding: 4px 14px 0; }
-  .addrow { display: flex; align-items: center; gap: 10px; padding: 10px 14px 12px; }
-  .empty { text-align: center; padding-top: 14px; }
-  .pad { padding: 10px 14px; }
+  .cs-row :global(.prow) { border-top: none; height: auto; }
 </style>

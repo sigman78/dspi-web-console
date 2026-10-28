@@ -196,7 +196,7 @@ describe('crosspoint — granular per-cell write (whole-tuple merge)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     const bulk = parseBulkParams(makeBulk());
-    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession({} as never) });
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession({ info: { serial: 'TEST' } } as never) });
     liveMirror().replaceCurrent(fromBulkParams(Domain.createHardwareProfile(Domain.PlatformType.RP2350), bulk));
   });
   afterEach(() => { vi.useRealTimers(); });
@@ -305,6 +305,27 @@ const thinVerbCases: ThinVerbCase[] = [
   { name: 'setInputPreamp', method: 'setInputPreamp', mirrorPath: 'inputPreampDb[1]', lane: 'scrub', makeStub: (fn) => ({ setInputPreamp: fn }), invoke: () => actions.setInputPreamp(State.activeSession()!, 1, -4), expectedArgs: () => [1, -4], read: () => liveMirror().current!.inputPreampDb[1], expected: -4 },
   { name: 'setOutputEnabled', method: 'setOutputEnable', mirrorPath: 'outputs[0].enabled', lane: 'write', makeStub: (fn) => ({ setOutputEnable: fn }), invoke: () => actions.setOutputEnabled(State.activeSession()!, out0().wireIndex, false), expectedArgs: () => [out0().wireIndex, false], read: () => out0().enabled, expected: false },
 ];
+
+describe('setMasterPreamp', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('moves every input preamp with it, as the firmware does', async () => {
+    const device = initializedDevice({
+      setMasterPreamp: vi.fn(async () => {}),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(Domain.createHardwareProfile(Domain.PlatformType.RP2350), parseBulkParams(makeBulk())));
+    actions.setInputPreamp(State.activeSession()!, 1, -4);
+    await vi.runAllTimersAsync();
+    actions.setMasterPreamp(State.activeSession()!, -7);
+    await vi.runAllTimersAsync();
+    const snap = liveMirror().current!;
+    expect(snap.masterPreampDb).toBe(-7);
+    expect(snap.inputPreampDb.every((db) => db === -7)).toBe(true);
+  });
+});
 
 describe('thin verbs: device call + mirror patch (parameterized)', () => {
   beforeEach(() => { vi.useFakeTimers(); });

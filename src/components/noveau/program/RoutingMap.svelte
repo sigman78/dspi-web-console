@@ -150,6 +150,7 @@
 <style>
   .routing {
     position: relative;
+    width: var(--module-col);
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -160,7 +161,7 @@
   .cap { flex: 0 1 auto; margin-left: auto; }
   .map {
     display: grid;
-    grid-template-columns: 150px repeat(var(--n), 48px) minmax(0, 1fr);
+    grid-template-columns: 80px repeat(var(--n), minmax(0, 1fr)) 0;
     grid-template-rows: 24px;
     grid-auto-rows: 28px;
     min-height: 0;
@@ -212,9 +213,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 36px;
+    min-width: 30px;
     height: 18px;
-    padding: 0 4px;
+    padding: 0 3px;
     border-radius: 999px;
     font-family: var(--font-mono);
     font-size: 11px;
@@ -229,10 +230,11 @@
   .legend {
     flex: none;
     margin-top: auto;
-    height: 24px;
+    min-height: 24px;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 14px;
+    gap: 0 10px;
     border-top: 1px solid var(--border);
     font-size: 11px;
     color: var(--text-faint);

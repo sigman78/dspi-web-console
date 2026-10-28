@@ -1,6 +1,6 @@
 <script lang="ts">
   import { settings } from '@/state';
-  import { FilterType, inputIndexOf, type ChannelId } from '@/domain';
+  import { FilterType, inputIndexOf } from '@/domain';
   import { chShade } from '@/styles/palette';
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '@/components/noveau/noveauUi.svelte';
@@ -26,14 +26,8 @@
     channel?.isOutput ? 'output EQ → trim → delay → limiter' : 'preamp → input EQ → program → matrix',
   );
 
-  // The selected band belongs to one channel: drop it on a switch, and when
-  // the band is cleared (reset, paste) after having been in use.
-  let lastChannelId: ChannelId | null = null;
-  $effect(() => {
-    const id = channel?.id ?? null;
-    if (lastChannelId !== null && id !== lastChannelId) noveauUi.selectedBand = null;
-    lastChannelId = id;
-  });
+  // Drop the selected band when it is cleared (reset, paste) after having
+  // been in use; the shell drops it on a channel switch.
   let seenIndex: number | null = null;
   let seenInUse = false;
   $effect(() => {

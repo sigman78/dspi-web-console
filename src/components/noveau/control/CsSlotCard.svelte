@@ -1,13 +1,12 @@
 <script lang="ts">
   // Collapsible slot card shared by the CS binding/group/macro editors: chevron
-  // + title + name (text when collapsed, input when open) + status pill + ✕.
+  // + title + name text (pencil when open requests a rename) + status pill + ✕.
   // Body renders only while open; the parent owns open/expanded state.
   import type { Snippet } from 'svelte';
-  import NameField from '@/components/chrome/NameField.svelte';
   import { portal } from '@/components/chrome/portal';
   const {
-    title, name, nameLabel, removeLabel, pill, dirty, open, disabled,
-    onToggle, onRename, onRemove, summary, note, actions, children, detailTarget = null,
+    title, name, nameLabel, removeLabel, pill, dirty, live, open, disabled,
+    onToggle, onRenameRequest, onRemove, summary, rename, note, actions, children, detailTarget = null,
   }: {
     title: string;
     name: string;
@@ -15,12 +14,14 @@
     removeLabel: string;
     pill: { text: string; cls: string };
     dirty: boolean;
+    live: boolean;       // applied on the device; the dirty dot only marks edits to live slots
     open: boolean;
     disabled: boolean;
     onToggle: () => void;
-    onRename: (name: string) => void;
+    onRenameRequest: () => void;
     onRemove: () => void;
     summary?: Snippet;   // collapsed-header text after the name (groups: kind · members)
+    rename?: Snippet;    // anchored name popover, shown under the header
     note?: Snippet;      // between header and body, shown even while collapsed (macros: running step)
     actions?: Snippet;   // header buttons before ✕ (macros: FIRE/CANCEL)
     children: Snippet;
@@ -32,22 +33,20 @@
   <div class="slothead">
     <button type="button" class="hdrbtn" aria-expanded={open} onclick={onToggle}>
       <span class="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
-      <span class="stitle" class:draft={dirty}
-        title={dirty ? 'Unapplied changes — APPLY to preview them live' : undefined}>{title}</span>
-      {#if !open}
-        <span class="nametext" class:faint={!name}>{name || 'Unnamed'}</span>
-        {#if summary}{@render summary()}{/if}
-      {/if}
+      <span class="cs-stitle" class:draft={dirty && live}
+        title={dirty && live ? 'Unapplied changes — APPLY to preview them live' : undefined}>{title}</span>
+      <span class="nametext" class:faint={!name}>{name || 'Unnamed'}</span>
+      {#if !open && summary}{@render summary()}{/if}
     </button>
     {#if open}
-      <NameField class="nameinput" allowEmpty maxlength={31} placeholder="Unnamed"
-        value={name} ariaLabel={nameLabel} {disabled} onCommit={onRename} />
+      <button type="button" class="x-btn" aria-label={nameLabel} {disabled} onclick={onRenameRequest}>✎</button>
     {/if}
     <span class="cs-pill {pill.cls}">{pill.text}</span>
-    <span class="spacer"></span>
+    <span class="cs-spacer"></span>
     {#if actions}{@render actions()}{/if}
     <button type="button" class="x-btn" aria-label={removeLabel} {disabled} onclick={onRemove}>✕</button>
   </div>
+  {#if rename}<div class="renamehost">{@render rename()}</div>{/if}
   {#if note}{@render note()}{/if}
   {#if open}
     {#if detailTarget}
@@ -61,29 +60,28 @@
 </div>
 
 <style>
-  .slot { border-bottom: 1px solid var(--wash); }
+  .slot { position: relative; border-bottom: 1px solid var(--wash); }
+  .renamehost { position: absolute; top: var(--h-row); left: 0; right: 0; height: 0; }
   .slot.open {
     background: color-mix(in oklab, var(--accent) var(--tint-weak), transparent);
-    box-shadow: inset 2px 0 0 var(--accent);
+    box-shadow: inset 3px 0 0 var(--accent);
   }
   .slothead {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 14px 0;
+    box-sizing: border-box;
+    height: var(--h-row);
+    padding: 0 14px;
     font-family: var(--font-mono);
   }
   /* Collapsed: the button's overlay makes the whole padded row the toggle
      target; siblings (pill, actions, ✕) stack above it. */
-  .slot:not(.open) .slothead { padding-bottom: 8px; position: relative; }
+  .slot:not(.open) .slothead { position: relative; }
   .slot:not(.open) .hdrbtn::after { content: ''; position: absolute; inset: 0; }
   .slot:not(.open) .slothead > :global(:not(.hdrbtn)) { position: relative; }
   .slot:not(.open):hover { background: var(--wash-faint); }
-  .slot.open .slothead {
-    padding-bottom: 6px;
-    border-bottom: 1px solid color-mix(in oklab, var(--accent) var(--tint-strong), transparent);
-    margin-bottom: 4px;
-  }
+  .slot.open .slothead { margin-bottom: 4px; }
   .hdrbtn {
     display: flex;
     align-items: center;
@@ -97,16 +95,10 @@
     text-align: left;
     min-width: 0;
   }
-  .hdrbtn:hover .stitle { color: var(--text); }
+  .hdrbtn:hover .cs-stitle { color: var(--text); }
   .chev { font-size: 9px; color: var(--text-faint); width: 8px; }
   .slot.open .chev { color: var(--accent); }
-  .stitle {
-    font-family: var(--font-sans);
-    font-size: var(--fs-m);
-    font-weight: 600;
-    color: var(--text-dim);
-  }
-  .slot.open .stitle { color: var(--text); }
+  .slot.open .cs-stitle { color: var(--text); }
   .nametext {
     font-family: var(--font-mono);
     font-size: 10px;
@@ -117,16 +109,4 @@
     max-width: 160px;
   }
   .nametext.faint { color: var(--text-faint); }
-  .slothead :global(.nameinput) {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    padding: 2px 6px;
-    width: 130px;
-    background: var(--panel-solid);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-s);
-  }
-  .slothead :global(.nameinput:disabled) { opacity: var(--dim-disabled); }
-  .spacer { flex: 1; }
 </style>

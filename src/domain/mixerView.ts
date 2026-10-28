@@ -1,7 +1,7 @@
 // Snapshot joins and routing-matrix projections over DspSnapshot. Separate from mixer.ts so that
 // stays snapshot-free (avoids a cycle with snapshot.ts).
 
-import { ChannelId, OutputSlotType, inputIndexOf, slotForOutputChannel, type InputSlot, type OutputMode, type OutputSlot } from './channels';
+import { type ChannelId, inputIndexOf, type InputSlot, type OutputSlot } from './channels';
 import * as Clamp from './clamp';
 import type { RouteModel } from './mixer';
 import { UpmixSurroundMode } from './processing';
@@ -10,13 +10,7 @@ import type { ChannelModel, DspSnapshot } from './snapshot';
 export interface MatrixColumn {
   id: ChannelId;
   wireIdx: OutputSlot;
-  shortName: string;
   name: string;
-  outputMode: OutputMode;
-  enabled: boolean;
-  muted: boolean;
-  gainDb: number;
-  delayMs: number;
 }
 
 export interface MatrixRow {
@@ -98,30 +92,13 @@ export function maskChipItems(
   }));
 }
 
-// Output mode is a projection of i2s.outputSlotTypes (one type per stereo
-// pair); the PDM sub is fixed-mode. Throws on input channels -- they have
-// no output mode and no caller should ask.
-function outputModeForChannel(s: DspSnapshot, id: ChannelId): OutputMode {
-  if (id === ChannelId.Pdm) return 'PDM';
-  const slot = slotForOutputChannel(id);
-  if (slot === null) throw new Error(`Channel ${id} has no output mode`);
-  return s.i2s.outputSlotTypes[slot] === OutputSlotType.I2s ? 'I2S' : 'SPDIF';
-}
-
-// Disabled outputs are hidden entirely -- the mixer only shows what can
-// actually carry signal (SYSTEM > OUTPUTS is where enable/disable lives).
+// Disabled outputs are omitted: columns are only what can carry signal.
 export function matrixColumns(snapshot: DspSnapshot | null): MatrixColumn[] {
   if (!snapshot) return [];
   return snapshot.outputs.filter((o) => o.enabled).map((output) => ({
     id: output.id,
     wireIdx: output.wireIndex,
-    shortName: output.shortName,
     name: channelById(snapshot, output.id)?.name ?? '',
-    outputMode: outputModeForChannel(snapshot, output.id),
-    enabled: output.enabled,
-    muted: output.muted,
-    gainDb: output.gainDb,
-    delayMs: output.delayMs,
   }));
 }
 

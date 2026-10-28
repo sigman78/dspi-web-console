@@ -1,5 +1,5 @@
 import { defaultFilter, seedTypeChange, type ChannelModel, type FilterParams } from '@/domain';
-import { setBandBypass, setEqFilter } from '@/runtime';
+import { setBandBypassLinked, setEqFilterLinked, resetEqLinked } from '@/runtime';
 import type { ReadySession } from '@/state';
 
 /**
@@ -14,18 +14,18 @@ export function patchBand(
   patch: Partial<FilterParams>,
   base: FilterParams = channel.filters[i],
 ): void {
-  if (patch.bypass !== undefined) setBandBypass(s, channel.id, i, patch.bypass);
+  if (patch.bypass !== undefined) setBandBypassLinked(s, channel.id, i, patch.bypass);
   const { bypass: _bypass, ...rest } = patch;
   if (Object.keys(rest).length === 0) return;
   const current = base;
   const seed = rest.type !== undefined ? seedTypeChange(current, rest.type) : {};
-  setEqFilter(s, channel.id, i, { ...current, ...rest, ...seed });
+  setEqFilterLinked(s, channel.id, i, { ...current, ...rest, ...seed });
 }
 
 export function clearBand(s: ReadySession, channel: ChannelModel, i: number): void {
-  setEqFilter(s, channel.id, i, defaultFilter());
+  setEqFilterLinked(s, channel.id, i, defaultFilter());
 }
 
 export function resetBands(s: ReadySession, channel: ChannelModel): void {
-  for (let i = 0; i < channel.filters.length; i++) clearBand(s, channel, i);
+  resetEqLinked(s, channel.id);
 }

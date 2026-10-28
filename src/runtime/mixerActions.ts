@@ -17,11 +17,16 @@ export function setChannelName(s: ReadySession, id: Domain.ChannelId, name: stri
   );
 }
 
+// SET_PREAMP is the firmware's legacy set-every-input command, so the mirror
+// moves all per-input values with it.
 export function setMasterPreamp(s: ReadySession, db: number): void {
   db = Clamp.preampDb(db);
   scrub(s,
     'masterPreamp',
-    () => { s.mirror.snapshot.masterPreampDb = db; },
+    () => {
+      s.mirror.snapshot.masterPreampDb = db;
+      s.mirror.snapshot.inputPreampDb = s.mirror.snapshot.inputPreampDb.map(() => db);
+    },
     () => s.device.setMasterPreamp(db),
   );
 }

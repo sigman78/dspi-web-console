@@ -73,7 +73,7 @@
     <span class="nm" class:unnamed={rawName.length === 0}>{name}</span>
     <PresetIcon icon="edit" />
   </button>
-  {#if canSave}<button type="button" class="icon-toggle accent" aria-label="Save preset" title="Save preset" onclick={onSave}><PresetIcon icon="save" /></button>{/if}
+  {#if canSave}<button type="button" class="icon-toggle accent" class:unsaved={dirty} aria-label="Save preset" title="Save preset" onclick={onSave}><PresetIcon icon="save" /></button>{/if}
   {#if canRevert}<button type="button" class="icon-toggle" aria-label="Revert preset" title="Revert preset" onclick={onRevert}><PresetIcon icon="revert" /></button>{/if}
 </div>
 
@@ -105,19 +105,30 @@
     font-weight: 700;
     cursor: default;
   }
-  .sc.startup:hover { border-color: var(--warn); }
-  .sc.startup {
-    border: 1px solid var(--warn);
-    box-shadow: 0 0 6px color-mix(in oklab, var(--warn) var(--tint-glow), transparent);
-  }
-  .sc.unsaved::after {
+  .sc.startup::before {
     content: '';
     position: absolute;
-    left: 3px; right: 3px; bottom: 1px;
-    height: 2px;
-    border-radius: var(--radius-xs);
-    background: var(--warn);
+    top: 0; right: 0;
+    border-style: solid;
+    border-width: 0 9px 9px 0;
+    border-color: transparent var(--text-dim) transparent transparent;
+    border-top-right-radius: var(--radius-s);
   }
+  .sc.startup.empty::before { border-right-color: var(--text-faint); }
+  .sc.startup:hover:not(.act)::before { border-right-color: var(--text); }
+  .sc.startup.act::before { border-right-color: color-mix(in oklab, var(--bg) 70%, white); }
+  .sc.act.unsaved {
+    background: color-mix(in oklab, var(--accent) 70%, white);
+    animation: sc-pulse 2.4s ease-in-out infinite alternate;
+  }
+  @keyframes sc-pulse {
+    from { background: var(--accent); }
+    to { background: color-mix(in oklab, var(--accent) 70%, white); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sc.act.unsaved { animation: none; }
+  }
+  .icon-toggle.unsaved { color: var(--warn); }
   .sname {
     display: flex;
     align-items: center;

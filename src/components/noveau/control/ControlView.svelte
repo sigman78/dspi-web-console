@@ -1,23 +1,21 @@
 <script lang="ts">
   import { getSession } from '@/components/sessionContext';
   import * as CsField from '@/domain/cs/fieldHelpers';
-  import ControlInterfacesPanel from '@/components/noveau/control/ControlInterfacesPanel.svelte';
   import ControlSurfacesPanel from '@/components/noveau/control/ControlSurfacesPanel.svelte';
   import CsGroupsPanel from '@/components/noveau/control/CsGroupsPanel.svelte';
   import CsMacrosPanel from '@/components/noveau/control/CsMacrosPanel.svelte';
   import CsDisplayPanel from '@/components/noveau/control/CsDisplayPanel.svelte';
   import PagedWorkspace from '@/components/noveau/PagedWorkspace.svelte';
+  import Panel from '@/components/chrome/Panel.svelte';
   import PinMapPanel from '@/components/chrome/PinMapPanel.svelte';
   import StagedStrip from '@/components/noveau/StagedStrip.svelte';
   import CsChangesStrip from './CsChangesStrip.svelte';
   import { noveauUi } from '@/components/noveau/noveauUi.svelte';
-  import { controlPages } from './controlPages';
+  import { controlPages, CONTROL_PAGE_DRAFTS } from './controlPages';
 
   const s = getSession();
-  const features = $derived(s.device.capabilities.features);
   const caps = $derived(s.controlSurfaces.caps);
-  const cs = $derived(features.controlSurfaces);
-  const pages = $derived(controlPages(features, caps));
+  const pages = $derived(controlPages(caps));
   let surfacesDetail = $state<HTMLElement | null>(null);
   let macrosDetail = $state<HTMLElement | null>(null);
   let displayDetail = $state<HTMLElement | null>(null);
@@ -27,20 +25,22 @@
   const page = $derived(pages.some((p) => p.key === noveauUi.controlPage) ? noveauUi.controlPage : pages[0].key);
   const macrosOn = $derived(CsField.macrosAvailable(caps));
   const groupsOn = $derived(CsField.groupsAvailable(caps));
-  const showStrip = $derived(cs && (page === 'surfaces' || page === 'macros' || page === 'display'));
 </script>
 
 {#snippet host(title: string, hint: string, bind: (el: HTMLElement | null) => void)}
-  <div class="detail" data-budget {@attach (el: HTMLElement) => { bind(el); return () => bind(null); }}>
-    <header><span class="title">{title}</span></header>
-    <div class="hint-empty">{hint}</div>
+  <div class="detail" data-budget>
+    <Panel {title}>
+      <div {@attach (el: HTMLElement) => { bind(el); return () => bind(null); }}>
+        <div class="hint-empty">{hint}</div>
+      </div>
+    </Panel>
   </div>
 {/snippet}
 
 {#snippet strip()}
   <div class="tools">
-    <StagedStrip rule={showStrip} />
-    {#if showStrip}<CsChangesStrip />{/if}
+    <StagedStrip rule />
+    <CsChangesStrip />
   </div>
 {/snippet}
 
@@ -49,78 +49,47 @@
   {pages}
   {page}
   onselect={(k) => { noveauUi.controlPage = k; }}
-  staged={(k) => s.staging.countOn(k) > 0}
+  draft={(k) => CONTROL_PAGE_DRAFTS[k].some((f) => s.drafts.dirtyCount(f) > 0)}
   right={strip}
 >
-  {#if cs}
-    {#each ['surfaces', 'macros', 'display'] as k (k)}
-      {#if pages.some((p) => p.key === k)}
-        <div class="pw-cols" hidden={page !== k}>
-          {#if k === 'surfaces'}
-            <div class="pw-col" data-budget>
-              <ControlSurfacesPanel detailTarget={surfacesDetail} irDetailTarget={irDetail} />
-            </div>
-            <div class="pw-col" data-budget>{@render host('BINDING', 'Select a control on the left', (el) => (surfacesDetail = el))}</div>
-            <div class="pw-col" data-budget>{@render host('IR COMMANDS', 'Commands appear here for an IR receiver', (el) => (irDetail = el))}</div>
-          {:else if k === 'macros'}
-            {#if macrosOn}
-              <div class="pw-col" data-budget><CsMacrosPanel detailTarget={macrosDetail} visible={page === 'macros'} /></div>
-              <div class="pw-col" data-budget>{@render host('MACRO', 'Select a macro on the left', (el) => (macrosDetail = el))}</div>
-            {/if}
-            {#if groupsOn && macrosOn}
-              <div class="pw-col" data-budget>
-                <CsGroupsPanel detailTarget={groupsDetail} />
-                {@render host('GROUP', 'Select a group above', (el) => (groupsDetail = el))}
-              </div>
-            {:else if groupsOn}
-              <div class="pw-col" data-budget><CsGroupsPanel detailTarget={groupsDetail} /></div>
-              <div class="pw-col" data-budget>{@render host('GROUP', 'Select a group on the left', (el) => (groupsDetail = el))}</div>
-            {/if}
-          {:else}
-            <div class="pw-col" data-budget>
-              <CsDisplayPanel detailTarget={displayDetail} visible={page === 'display'} />
-            </div>
-            <div class="pw-col" data-budget>{@render host('DISPLAY PAGE', 'Select a page on the left', (el) => (displayDetail = el))}</div>
-            <div class="pw-col pw-ref" data-budget><PinMapPanel /></div>
+  {#each ['surfaces', 'macros', 'display'] as k (k)}
+    {#if pages.some((p) => p.key === k)}
+      <div class="pw-cols" hidden={page !== k}>
+        {#if k === 'surfaces'}
+          <div class="pw-col" data-budget>
+            <ControlSurfacesPanel detailTarget={surfacesDetail} irDetailTarget={irDetail} />
+          </div>
+          <div class="pw-col" data-budget>{@render host('BINDING', 'Select a control on the left', (el) => (surfacesDetail = el))}</div>
+          <div class="pw-col" data-budget>{@render host('IR COMMANDS', 'Commands appear here for an IR receiver', (el) => (irDetail = el))}</div>
+        {:else if k === 'macros'}
+          {#if macrosOn}
+            <div class="pw-col" data-budget><CsMacrosPanel detailTarget={macrosDetail} visible={page === 'macros'} /></div>
+            <div class="pw-col" data-budget>{@render host('MACRO', 'Select a macro on the left', (el) => (macrosDetail = el))}</div>
           {/if}
-        </div>
-      {/if}
-    {/each}
-  {/if}
-  {#if page === 'interfaces'}
-    <div class="pw-cols">
-      <div class="pw-col" data-budget>
-        {#if features.controlInterfaces}<ControlInterfacesPanel />{/if}
+          {#if groupsOn && macrosOn}
+            <div class="pw-col" data-budget>
+              <CsGroupsPanel detailTarget={groupsDetail} />
+              {@render host('GROUP', 'Select a group above', (el) => (groupsDetail = el))}
+            </div>
+          {:else if groupsOn}
+            <div class="pw-col" data-budget><CsGroupsPanel detailTarget={groupsDetail} /></div>
+            <div class="pw-col" data-budget>{@render host('GROUP', 'Select a group on the left', (el) => (groupsDetail = el))}</div>
+          {/if}
+        {:else}
+          <div class="pw-col" data-budget>
+            <CsDisplayPanel detailTarget={displayDetail} visible={page === 'display'} />
+          </div>
+          <div class="pw-col" data-budget>{@render host('DISPLAY PAGE', 'Select a page on the left', (el) => (displayDetail = el))}</div>
+          <div class="pw-col pw-ref" data-budget><PinMapPanel /></div>
+        {/if}
       </div>
-      <div class="pw-col pw-ref" data-budget><PinMapPanel /></div>
-    </div>
-  {/if}
+    {/if}
+  {/each}
 </PagedWorkspace>
 
 <style>
   .tools { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .detail {
-    min-width: 0;
-    box-sizing: border-box;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-m);
-    overflow: hidden;
-  }
-  .detail > header {
-    height: 28px;
-    box-sizing: border-box;
-    padding: 0 12px;
-    display: flex;
-    align-items: center;
-    border-bottom: 1px solid var(--border);
-  }
-  .detail > header .title {
-    font-family: var(--font-sans);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-  }
+  .detail { min-width: 0; }
   .hint-empty {
     padding: 10px 12px;
     font-size: 11px;

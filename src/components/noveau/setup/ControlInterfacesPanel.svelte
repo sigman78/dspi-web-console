@@ -1,7 +1,7 @@
 <script lang="ts">
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
-  import { formatI2cAddr } from '@/components/chrome/format';
+  import { formatI2cAddr, parseI2cAddr } from '@/components/chrome/format';
   import PinPicker from '@/components/chrome/PinPicker.svelte';
   import * as Staged from '@/runtime/stagedActions';
   import * as Domain from '@/domain';
@@ -45,10 +45,13 @@
   const uartDown = $derived(liveUart?.enabled === true && status != null && !status.uartLive);
   const i2cDown = $derived(liveI2c?.enabled === true && status != null && !status.i2cLive);
 
+  let addrText = $state<string | null>(null);
+  const addrInvalid = $derived(addrText !== null && parseI2cAddr(addrText) === null);
   function onAddressInput(e: Event) {
-    const raw = (e.target as HTMLInputElement).value.trim();
-    const parsed = parseInt(raw, 16);
-    if (Number.isNaN(parsed) || parsed < Domain.I2C_ADDRESS_MIN || parsed > Domain.I2C_ADDRESS_MAX) return;
+    addrText = (e.target as HTMLInputElement).value;
+    const parsed = parseI2cAddr(addrText);
+    if (parsed === null) return;
+    addrText = null;
     Staged.stageI2c(s, 'address', parsed);
   }
 
@@ -147,16 +150,27 @@
         <span class="stage-wrap" class:staged={s.staging.has('i2c:address')}><input
           class="numfield"
           type="text"
-          value={formatI2cAddr(i2c.address)}
+          value={addrText ?? formatI2cAddr(i2c.address)}
           onchange={onAddressInput}
           disabled={!i2c.enabled}
           aria-label="I2C target address (hex)"
         /></span>
       </span>
+      {#if addrInvalid}
+        <div class="hint err">Address must be {formatI2cAddr(Domain.I2C_ADDRESS_MIN)}–{formatI2cAddr(Domain.I2C_ADDRESS_MAX)}</div>
+      {/if}
       {#if i2cDown || i2cStatusMsg}
         <div class="hint err">{i2cStatusMsg ?? 'configured but not live (pin collision at boot?)'}</div>
       {/if}
     </div>
+  {/if}
+
+  {#if !uart && !i2c}
+    {#if s.ctrlIfaces.lastFetchError}
+      <div class="hint err pad">{s.ctrlIfaces.lastFetchError}</div>
+    {:else}
+      <div class="hint pad">Reading control interfaces…</div>
+    {/if}
   {/if}
 </Panel>
 
@@ -168,8 +182,8 @@
     justify-content: space-between;
   }
   /* The global .subhdr (controls.css) adds a border-top + margin-top section
-     separator; drop both on the first subheader so it sits right under the
-     panel header, matching other System panels' first-row rhythm. */
+     separator; drop both on the first subheader so it sits flush under the
+     panel header. */
   .subhdr:first-of-type { margin-top: 0; border-top: none; }
   .lhs { display: flex; align-items: center; gap: 8px; }
   .status {
@@ -199,5 +213,6 @@
     font-size: 10px;
     color: var(--text-dim);
   }
-  .hint.err { color: var(--err); flex-basis: 100%; }
+  .hint.err { flex-basis: 100%; }
+  .pad { padding: 10px 14px; }
 </style>

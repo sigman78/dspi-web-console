@@ -138,7 +138,7 @@
     const slot = active;
     const r = await Runtime.pastePresetTo(s, decoded.state);
     if (!r.ok) {
-      if (s.presets.lastActionError == null) localError = 'Import did not apply';
+      if (r.message !== 'cancelled' && s.presets.lastActionError == null) localError = 'Import did not apply';
       return;
     }
     const name = decoded.name.trim();
@@ -194,7 +194,7 @@
   {:else}
     <div class="body">
       <div class="row">
-        <span class="t-label lbl">NAME</span>
+        <span class="microlbl lbl">NAME</span>
         <NameField
           class="name"
           bind:this={nameField}
@@ -208,7 +208,7 @@
       </div>
 
       <div class="row">
-        <span class="t-label lbl">STARTUP</span>
+        <span class="microlbl lbl">STARTUP</span>
         <SegmentedSelect
           ariaLabel="Startup preset"
           value={startupChoice}
@@ -220,7 +220,7 @@
       </div>
 
       <div class="row">
-        <span class="t-label lbl"></span>
+        <span class="microlbl lbl"></span>
         <div class="chips">
           {#each actions as id (id)}
             {#if id === 'save' || id === 'revert'}
@@ -251,13 +251,13 @@
       </div>
 
       <div class="row top">
-        <span class="t-label lbl">OPTIONS</span>
+        <span class="microlbl lbl">OPTIONS</span>
         <div class="opts"><PresetOptionsRows /></div>
       </div>
 
       {#if others.length > 0 && deleteSlot != null}
         <div class="row">
-          <span class="t-label lbl">MANAGE</span>
+          <span class="microlbl lbl">MANAGE</span>
           <span class="dim">Delete slot</span>
           <select
             class="sel"
