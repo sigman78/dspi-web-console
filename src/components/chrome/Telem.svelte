@@ -3,16 +3,14 @@
     label,
     value,
     bar,
-    priority = 'static',
   }: {
     label: string;
     value: string;
     bar?: number;
-    priority?: 'health' | 'static';
   } = $props();
 </script>
 
-<div class="telem prio-{priority}">
+<div class="telem">
   <div class="microlbl">{label}</div>
   <div class="val">{value}</div>
   {#if bar !== undefined}
@@ -34,13 +32,13 @@
   .track {
     height: 2px;
     background: var(--wash-strong);
-    border-radius: 1px;
+    border-radius: var(--radius-xs);
     overflow: hidden;
   }
   .fill {
     height: 100%;
     background: var(--accent);
-    border-radius: 1px;
+    border-radius: var(--radius-xs);
     transition: width 200ms;
   }
   .fill.hot { background: var(--err); }

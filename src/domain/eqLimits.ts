@@ -28,7 +28,6 @@ export const LT_Q_MAX = 20;
 export const PREAMP_MIN_DB = -60;
 export const PREAMP_MAX_DB = 10;
 export const PREAMP_STEP_DB = 0.1;
-export const PREAMP_TICKS_DB: readonly number[] = [-60, -40, -20, 0, 10];
 
 // Default vertical (dB) range the Bode plot uses for EQ curves.
 export const BODE_DB_RANGE: readonly [number, number] = [-25, 25];

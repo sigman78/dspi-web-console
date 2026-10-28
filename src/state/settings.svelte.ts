@@ -1,33 +1,18 @@
 import { inputIndexOf, type ChannelId, type ChannelModel, type OutputModel } from '@/domain';
 
-export type TabId = 'overview' | 'eq' | 'mixer' | 'processing' | 'presets' | 'system' | 'control';
-
-export const TAB_ORDER: readonly TabId[] = ['overview', 'eq', 'mixer', 'processing', 'presets', 'system', 'control'];
-
-export const TAB_META: Record<TabId, { label: string; code: string }> = {
-  overview:   { label: 'OVERVIEW',   code: '01' },
-  eq:         { label: 'EQUALIZER',  code: '02' },
-  mixer:      { label: 'MIXER',      code: '03' },
-  processing: { label: 'PROCESSING', code: '04' },
-  presets:    { label: 'PRESETS',    code: '05' },
-  system:     { label: 'SYSTEM',     code: '06' },
-  control:    { label: 'CONTROL',    code: '07' },
-};
-
-const TAB_IDS: ReadonlySet<TabId> = new Set(TAB_ORDER);
-
-// Header volume slider axis: which of the two independent firmware volume
-// stages the top-bar slider currently drives (see MasterVolumeMini.svelte).
+// Volume axis: which of the two independent firmware volume
+// stages the channel-rail volume control currently drives (see VolumeBlock.svelte).
 export type VolumeAxis = 'user' | 'master';
 
 export interface Settings {
   version: 1;
-  tab: TabId;
   selectedChannel: ChannelId | null;
   lastSerial: string | null;
   warnOnPresetSwitchDirty: boolean;
   volumeAxis: VolumeAxis;
-  debugPanels: boolean;
+  // Console version the user last opened; null on first run. Drives the
+  // landing destination (ABOUT after an update).
+  seenVersion: string | null;
 }
 
 const STORAGE_KEY = 'dspi-console-web/settings/v1';
@@ -35,12 +20,11 @@ const STORAGE_KEY = 'dspi-console-web/settings/v1';
 function defaults(): Settings {
   return {
     version: 1,
-    tab: 'overview',
     selectedChannel: null,
     lastSerial: null,
     warnOnPresetSwitchDirty: true,
     volumeAxis: 'user',
-    debugPanels: false,
+    seenVersion: null,
   };
 }
 
@@ -48,9 +32,6 @@ function defaults(): Settings {
 // Per-field validators: accept unknown input, fall back to a default not throw.
 function bool(v: unknown, fallback: boolean): boolean {
   return typeof v === 'boolean' ? v : fallback;
-}
-function tabId(v: unknown, fallback: TabId): TabId {
-  return typeof v === 'string' && TAB_IDS.has(v as TabId) ? (v as TabId) : fallback;
 }
 function channelIdOrNull(v: unknown): ChannelId | null {
   return typeof v === 'number' ? (v as ChannelId) : null;
@@ -77,14 +58,13 @@ function parseV1(raw: string, fallback: Settings): Settings {
   if (!obj) return fallback;
   return {
     version: 1,
-    tab: tabId(obj.tab, fallback.tab),
     // Legacy fallback: the field was persisted as `eqTarget` before the rail
-    // generalized selection beyond the EQ tab. Read it when the new key is absent.
+    // generalized selection beyond EQ. Read it when the new key is absent.
     selectedChannel: channelIdOrNull(obj.selectedChannel ?? obj.eqTarget),
     lastSerial: stringOrNull(obj.lastSerial),
     warnOnPresetSwitchDirty: bool(obj.warnOnPresetSwitchDirty, true),
     volumeAxis: volumeAxis(obj.volumeAxis, fallback.volumeAxis),
-    debugPanels: bool(obj.debugPanels, fallback.debugPanels),
+    seenVersion: stringOrNull(obj.seenVersion),
   };
 }
 
@@ -99,7 +79,6 @@ function migrateLegacyKeys(): Settings | null {
 
   const merged: Settings = {
     ...defaults(),
-    tab: tabId(ui?.tab, 'overview'),
     selectedChannel: channelIdOrNull(ui?.eqTarget),
     lastSerial: stringOrNull(conn?.lastSerial),
   };
@@ -134,30 +113,19 @@ export const settings = $state<Settings>(defaults());
 export function restoreSettings(): void {
   const loaded = loadSettings();
   settings.version = loaded.version;
-  settings.tab = loaded.tab;
   settings.selectedChannel = loaded.selectedChannel;
   settings.lastSerial = loaded.lastSerial;
   settings.warnOnPresetSwitchDirty = loaded.warnOnPresetSwitchDirty;
   settings.volumeAxis = loaded.volumeAxis;
-  settings.debugPanels = loaded.debugPanels;
+  settings.seenVersion = loaded.seenVersion;
 }
 
-export function setTab(t: TabId): void {
-  settings.tab = t;
-}
-export function setSelectedChannel(id: ChannelId | null): void {
-  settings.selectedChannel = id;
-}
 export function setVolumeAxis(axis: VolumeAxis): void {
   settings.volumeAxis = axis;
 }
-export function setDebugPanels(v: boolean): void {
-  settings.debugPanels = v;
-}
-// Rail selection: pick a channel globally and land on the EQ tab to edit it.
+// Rail selection: pick a channel globally.
 export function selectChannel(id: ChannelId): void {
-  setSelectedChannel(id);
-  setTab('eq');
+  settings.selectedChannel = id;
 }
 
 // What the rail/mixer actually render: an output is visible iff enabled; an
@@ -166,20 +134,30 @@ export function selectChannel(id: ChannelId): void {
 // status poll lands).
 export interface SelectionVisibility {
   enabledOutputIds: readonly ChannelId[];
+  // Outputs that stay selectable without being enabled (stub rows).
+  disabledSelectableIds?: readonly ChannelId[];
   activeInputs: number | null;
 }
 
 // Shared shape-builder for reconcileSelectedChannel's callers (connect-time
-// sync and the live-visibility effect alike).
-export function selectionVisibilityOf(outputs: readonly OutputModel[], activeInputs: number | null): SelectionVisibility {
+// sync and the live-visibility effect alike). Disabled outputs stay selectable
+// as stub rows; the fallback stays the first enabled output.
+export function selectionVisibilityOf(
+  outputs: readonly OutputModel[],
+  activeInputs: number | null,
+): SelectionVisibility {
   return {
     enabledOutputIds: outputs.filter((o) => o.enabled).map((o) => o.id),
+    disabledSelectableIds: outputs.filter((o) => !o.enabled).map((o) => o.id),
     activeInputs,
   };
 }
 
 function isChannelVisible(channel: ChannelModel, visibility: SelectionVisibility): boolean {
-  if (channel.isOutput) return visibility.enabledOutputIds.includes(channel.id);
+  if (channel.isOutput) {
+    return visibility.enabledOutputIds.includes(channel.id)
+      || (visibility.disabledSelectableIds?.includes(channel.id) ?? false);
+  }
   if (visibility.activeInputs == null) return true;
   const slot = inputIndexOf(channel.id);
   return slot !== null && slot < Math.max(2, visibility.activeInputs);
@@ -189,9 +167,8 @@ function isChannelVisible(channel: ChannelModel, visibility: SelectionVisibility
 // set AND current visibility (the rail/mixer hide disabled outputs and input
 // channels beyond the live count): if the stored ID isn't present, isn't
 // visible, or there was no selection yet, fall back to the first ENABLED
-// output (null if none are enabled). Absorbs the EQ tab's former "auto-pick a
-// channel on first visit" effect -- runs at connect and again whenever
-// visibility changes, so it also covers tabs other than EQ.
+// output (null if none are enabled). Runs at connect and again whenever
+// visibility changes.
 export function reconcileSelectedChannel(
   channels: readonly ChannelModel[] | undefined,
   visibility: SelectionVisibility,
@@ -210,12 +187,11 @@ export function startSettingsPersistence(): void {
     $effect(() => {
       const snap: Settings = {
         version: 1,
-        tab: settings.tab,
         selectedChannel: settings.selectedChannel,
         lastSerial: settings.lastSerial,
         warnOnPresetSwitchDirty: settings.warnOnPresetSwitchDirty,
         volumeAxis: settings.volumeAxis,
-        debugPanels: settings.debugPanels,
+        seenVersion: settings.seenVersion,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
     });

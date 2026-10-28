@@ -7,7 +7,7 @@
     {#each notices.list as n (n.id)}
       <div class="toast {n.kind}" role="alert">
         <span class="msg">{n.message}</span>
-        <button class="dismiss" aria-label="Dismiss notification" onclick={() => dismissNotice(n.id)}>✕</button>
+        <button class="x-btn dismiss" aria-label="Dismiss notification" onclick={() => dismissNotice(n.id)}>✕</button>
       </div>
     {/each}
   </div>
@@ -18,7 +18,7 @@
     position: fixed;
     right: 12px;
     bottom: 12px;
-    z-index: 100;
+    z-index: var(--z-toast);
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -32,27 +32,17 @@
     gap: 8px;
     padding: 8px 10px;
     background: var(--panel-solid);
-    border: 1px solid color-mix(in oklab, var(--text) 12%, transparent);
+    border: 1px solid var(--border-hi);
     border-left-width: 3px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text);
-    box-shadow: 0 4px 14px oklch(0% 0 0 / 0.4);
+    box-shadow: var(--shadow-pop);
   }
   .toast.error { border-left-color: var(--err); }
   .toast.warn  { border-left-color: var(--warn); }
   .toast.info  { border-left-color: var(--accent); }
+  .dismiss { flex: none; font-size: 11px; margin-top: 1px; }
   .msg { flex: 1; line-height: 1.4; word-break: break-word; }
-  .dismiss {
-    flex: none;
-    background: none;
-    border: none;
-    color: var(--text-faint);
-    cursor: pointer;
-    font-size: 11px;
-    line-height: 1;
-    padding: 0;
-  }
-  .dismiss:hover { color: var(--text); }
 </style>

@@ -37,6 +37,21 @@ export const UART_COMMON_BAUDS = [9600, 19200, 38400, 57600, 115200, 230400, 460
 export const I2C_ADDRESS_MIN = 0x08;
 export const I2C_ADDRESS_MAX = 0x77;
 
+/** I²C address as zero-padded hex, e.g. `0x0A`. */
+export function formatI2cAddr(addr: number): string {
+  return `0x${addr.toString(16).padStart(2, '0').toUpperCase()}`;
+}
+
+const I2C_ADDR_TEXT_RE = /^(0x)?[0-9a-f]{1,2}$/i;
+
+/** Parses 1-2 hex digits with an optional `0x` prefix; null when malformed or outside the 7-bit usable range. */
+export function parseI2cAddr(raw: string): number | null {
+  const t = raw.trim();
+  if (!I2C_ADDR_TEXT_RE.test(t)) return null;
+  const v = parseInt(t.replace(/^0x/i, ''), 16);
+  return v >= I2C_ADDRESS_MIN && v <= I2C_ADDRESS_MAX ? v : null;
+}
+
 export const DEFAULT_UART_CONTROL_CONFIG: UartControlConfig = {
   enabled: false, txPin: 16, rxPin: 17, notifyEnabled: false, baud: 115200,
 };

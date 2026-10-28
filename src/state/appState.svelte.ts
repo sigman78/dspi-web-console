@@ -8,6 +8,7 @@ import type { ControlSurfacesState } from './controlSurfaces.svelte';
 import type { SysClockState } from './sysClock.svelte';
 import type { StagingState } from './staging.svelte';
 import type { EqLinkState } from './eqLink.svelte';
+import type { DraftsState } from './drafts.svelte';
 import type { MirrorState } from './mirror.svelte';
 import type { LinkHealth } from './linkHealth.svelte';
 import type { WriteCoordinator } from '@/runtime/writes.svelte';
@@ -44,13 +45,15 @@ export interface ReadySession {
   // V16-only (capabilities.features.controlSurfaces); stays all-null on V10.
   readonly controlSurfaces: ControlSurfacesState;
   // Selectable system clock (fw overclock branch). No capability flag -- a
-  // null status after the connect-time probe IS the unsupported signal.
+  // `supported` stays null until the connect-time probe lands.
   readonly sysClock: SysClockState;
   // Pending heavy device-config edits (input source, I2S/S/PDIF pins, MCK/BCK,
-  // output type), staged here until PendingChangesBar's APPLY commits them.
+  // output type), staged here until StagedStrip (SETUP and CONTROL page bar) applies them.
   readonly staging: StagingState;
   // Console-only EQ link groups and their lock flags.
   readonly eqLink: EqLinkState;
+  // Console-local control-surface edits not yet sent to the device.
+  readonly drafts: DraftsState;
   readonly mirror: MirrorState;
   readonly health: LinkHealth;
   readonly writes: WriteCoordinator;

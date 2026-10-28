@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BinReader, BinWriter, bytesPreview } from './binStream';
+import { BinReader, BinWriter } from './binStream';
 
 describe('BinReader / BinWriter primitives', () => {
   it('roundtrips every numeric primitive', () => {
@@ -122,16 +122,5 @@ describe('signed primitives sign-extend correctly', () => {
   it('i16 negative roundtrip', () => {
     const w = new BinWriter(2); w.i16(-32000);
     expect(new BinReader(w.toUint8Array()).i16()).toBe(-32000);
-  });
-});
-
-describe('bytesPreview', () => {
-  it('formats hex with length and ellipsis', () => {
-    expect(bytesPreview(new Uint8Array([1, 2, 3]), 16)).toBe('len=3 head=01 02 03');
-    expect(bytesPreview(new Uint8Array([1, 2, 3, 4, 5]), 2)).toBe('len=5 head=01 02 …');
-  });
-
-  it('zero-pads hex bytes to width 2', () => {
-    expect(bytesPreview(new Uint8Array([0x00, 0x0f, 0xa0]))).toBe('len=3 head=00 0f a0');
   });
 });

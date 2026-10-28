@@ -10,13 +10,17 @@
 //     harness, no hardware needed
 //     &chip=rp2040|rp2350  hardware flavor, combinable with any profile
 //                          (default rp2350; rp2040 = 5 outputs, fewer pairs)
+//     &cs=full           fill every control-surface table to capacity (16
+//                        bindings incl. IR receiver + display, 8 macros of 8
+//                        steps, 8 groups, 16 IR commands, 16 display pages);
+//                        wire V16+ only
+//   ?debug              show diagnostics panels (SETUP > DEVICE buffer stats)
 //   ?hero               force the connecting hero even while connected
 //   ?sysclock=fallback  boot the mock system clock crash-fallen-back (stored
 //                       mode 2, active safe mode 0) to demo the fallback banner;
 //                       no-op below wire V26 (the mock STALLs the opcodes there)
 //   ?log=0              silence the diagnostic logger (errors still log)
 //   ?log=wire           additionally trace every wire message
-//   ?debug              force the SYSTEM tab diagnostics panels visible
 //
 // Profile -> MockOptions resolution lives in src/mockProfiles.ts (it needs
 // Wire.MAX_WIRE_VERSION, which this module cannot import -- see below).
@@ -44,8 +48,16 @@ export function mockChip(): 'rp2040' | 'rp2350' | null {
   return chip === 'rp2040' || chip === 'rp2350' ? chip : null;
 }
 
+export function mockCsFull(): boolean {
+  return params()?.get('cs') === 'full';
+}
+
 export function heroOverride(): boolean {
   return params()?.has('hero') ?? false;
+}
+
+export function debugPanels(): boolean {
+  return params()?.has('debug') ?? false;
 }
 
 export function mockSysClockFallback(): boolean {
@@ -58,8 +70,4 @@ export function logSilenced(): boolean {
 
 export function wireLogEnabled(): boolean {
   return params()?.get('log') === 'wire';
-}
-
-export function debugPanelsForced(): boolean {
-  return params()?.has('debug') ?? false;
 }

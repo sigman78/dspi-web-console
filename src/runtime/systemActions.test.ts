@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as actions from './systemActions';
-import { notices, clearNotices, dispatch, mintConnId, makeReadySession, activeSession, resetAppState } from '@/state';
+import * as State from '@/state';
 import type { DspDevice } from '@/device/DspDevice';
 import { parseBulkParams } from '@/protocol';
 import { PlatformType, createHardwareProfile, type DacHwMute } from '@/domain';
@@ -27,10 +27,10 @@ function initializedDevice(methods: Partial<DspDevice>): DspDevice {
   return { ...base, ...methods } as DspDevice;
 }
 
-const cancelWrites = () => { const s = activeSession(); if (s) s.writes.cancel(); };
-afterEach(() => { activeSession()?.dispose(); cancelWrites(); resetAppState(); });
+const cancelWrites = () => { const s = State.activeSession(); if (s) s.writes.cancel(); };
+afterEach(() => { State.activeSession()?.dispose(); cancelWrites(); State.resetAppState(); });
 
-const liveMirror = () => activeSession()!.mirror;
+const liveMirror = () => State.activeSession()!.mirror;
 
 // Thin verb: sends one value to one device method and patches one mirror
 // field once the send settles. Same table shape as the other split action
@@ -48,7 +48,7 @@ interface ThinVerbCase {
 }
 
 const thinVerbCases: ThinVerbCase[] = [
-  { name: 'setLgSoundSyncEnabled', method: 'setLgSoundSyncEnabled', mirrorPath: 'lgSoundSync.enabled', lane: 'write', makeStub: (fn) => ({ setLgSoundSyncEnabled: fn }), invoke: () => actions.setLgSoundSyncEnabled(activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.lgSoundSync?.enabled, expected: true },
+  { name: 'setLgSoundSyncEnabled', method: 'setLgSoundSyncEnabled', mirrorPath: 'lgSoundSync.enabled', lane: 'write', makeStub: (fn) => ({ setLgSoundSyncEnabled: fn }), invoke: () => actions.setLgSoundSyncEnabled(State.activeSession()!, true), expectedArgs: () => [true], read: () => liveMirror().current!.lgSoundSync?.enabled, expected: true },
 ];
 
 describe('thin verbs: device call + mirror patch (parameterized)', () => {
@@ -61,7 +61,7 @@ describe('thin verbs: device call + mirror patch (parameterized)', () => {
       ...c.makeStub(fn),
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), parseBulkParams(makeBulk())));
 
     const before = c.read();
@@ -94,7 +94,7 @@ describe('setDacHwMute', () => {
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
     const bulk = parseBulkParams(makeBulk());
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
     return { sent, setDacHwMuteFn };
   }
@@ -102,7 +102,7 @@ describe('setDacHwMute', () => {
   it('patches dacHwMute optimistically and settles on the device echo', async () => {
     const { setDacHwMuteFn } = dacHarness();
     const cfg: DacHwMute = { enabled: true, activeLow: true, pin: 20, holdMs: 50, releaseMs: 10 };
-    actions.setDacHwMute(activeSession()!, cfg);
+    actions.setDacHwMute(State.activeSession()!, cfg);
     expect(liveMirror().current?.dacHwMute).toEqual(cfg);   // optimistic
     await vi.runAllTimersAsync();
     expect(liveMirror().current?.dacHwMute).toEqual(cfg);   // echo agrees
@@ -111,8 +111,8 @@ describe('setDacHwMute', () => {
 
   it('merges a second quick edit over the first optimistic patch (no stale-struct revert)', async () => {
     const { sent } = dacHarness();
-    actions.setDacHwMute(activeSession()!, { activeLow: true });
-    actions.setDacHwMute(activeSession()!, { holdMs: 50 });   // inside the first ack window
+    actions.setDacHwMute(State.activeSession()!, { activeLow: true });
+    actions.setDacHwMute(State.activeSession()!, { holdMs: 50 });   // inside the first ack window
     await vi.runAllTimersAsync();
     expect(sent[1]).toMatchObject({ activeLow: true, holdMs: 50 });
     expect(liveMirror().current?.dacHwMute).toMatchObject({ activeLow: true, holdMs: 50 });
@@ -120,14 +120,14 @@ describe('setDacHwMute', () => {
 
   it('clamps holdMs into the firmware range when enabling', async () => {
     const { sent } = dacHarness();
-    actions.setDacHwMute(activeSession()!, { enabled: true });   // virgin device: holdMs 0
+    actions.setDacHwMute(State.activeSession()!, { enabled: true });   // virgin device: holdMs 0
     await vi.runAllTimersAsync();
     expect(sent[0].holdMs).toBeGreaterThanOrEqual(1);
   });
 
   it('does not hold the session queue across the deferred-apply wait', async () => {
     const { setDacHwMuteFn } = dacHarness();
-    const s = activeSession()!;
+    const s = State.activeSession()!;
     actions.setDacHwMute(s, { enabled: true, pin: 6 });
     // Let the SET transfer settle but stay inside the 200 ms apply window.
     await vi.advanceTimersByTimeAsync(50);
@@ -141,6 +141,22 @@ describe('setDacHwMute', () => {
     await vi.runAllTimersAsync();
   });
 
+  it('restores the previous value and reports failure when the send throws', async () => {
+    const device = initializedDevice({
+      setDacHwMute: vi.fn(async () => { throw new Error('stall'); }),
+      getDacHwMute: vi.fn(),
+      getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
+    });
+    const bulk = parseBulkParams(makeBulk());
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
+    liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
+    const before = { ...liveMirror().current!.dacHwMute };
+    const pending = actions.setDacHwMute(State.activeSession()!, { enabled: true, pin: 6 });
+    await vi.runAllTimersAsync();
+    expect(await pending).toBe(false);
+    expect(liveMirror().current?.dacHwMute).toEqual(before);
+  });
+
   it('warns and reverts when the device swallows an enable', async () => {
     const rejected: DacHwMute = { enabled: false, activeLow: false, pin: 0, holdMs: 0, releaseMs: 0 };
     const device = initializedDevice({
@@ -149,15 +165,15 @@ describe('setDacHwMute', () => {
       getAllParams: vi.fn(async () => parseBulkParams(makeBulk())),
     });
     const bulk = parseBulkParams(makeBulk());
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
     liveMirror().replaceCurrent(fromBulkParams(createHardwareProfile(PlatformType.RP2350), bulk));
-    clearNotices();
-    actions.setDacHwMute(activeSession()!, { enabled: true, pin: 6 });
+    State.clearNotices();
+    actions.setDacHwMute(State.activeSession()!, { enabled: true, pin: 6 });
     // Step just past the deferred-apply wait; running ALL timers would also
     // expire the warn notice's TTL before it can be observed.
     await vi.advanceTimersByTimeAsync(250);
     expect(liveMirror().current?.dacHwMute).toEqual(rejected);
-    expect(notices.list.some((n) => n.kind === 'warn' && /DAC HW mute/i.test(n.message))).toBe(true);
+    expect(State.notices.list.some((n) => n.kind === 'warn' && /DAC HW mute/i.test(n.message))).toBe(true);
   });
 });
 

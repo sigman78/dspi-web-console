@@ -10,16 +10,19 @@
   const setupCmd = `curl -fsSL ${location.origin}${import.meta.env.BASE_URL}setup-linux.sh | sh`;
   let linuxOpen = $state(false);
   let copied = $state(false);
+  let errCopied = $state(false);
 
-  async function copySetupCmd() {
+  async function copyText(text: string, flag: (v: boolean) => void) {
     try {
-      await navigator.clipboard.writeText(setupCmd);
-      copied = true;
-      setTimeout(() => { copied = false; }, 1500);
+      await navigator.clipboard.writeText(text);
+      flag(true);
+      setTimeout(() => { flag(false); }, 1500);
     } catch {
-      // clipboard unavailable (permissions/insecure context); command stays selectable
+      // clipboard unavailable (permissions/insecure context); text stays selectable
     }
   }
+  const copySetupCmd = () => copyText(setupCmd, (v) => { copied = v; });
+  const copyError = () => copyText(connection.error ?? '', (v) => { errCopied = v; });
 
   // Mirrors StatusPill.svelte's text/disabled derivation. Kept duplicated
   // (six lines of switch) rather than extracted; the two presentations may
@@ -108,7 +111,22 @@
     </button>
     {#if showErrorPanel}
       <div class="alert-panel" role="alert" aria-label="Connection error details">
-        <div class="alert-panel__header">DIAGNOSTICS</div>
+        <div class="alert-panel__header">
+          <span>DIAGNOSTICS</span>
+          <button
+            type="button"
+            class="copy-icon"
+            title={errCopied ? 'Copied' : 'Copy the full diagnostics'}
+            aria-label="Copy diagnostics"
+            onclick={copyError}
+          >
+            {#if errCopied}
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8" /></svg>
+            {:else}
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.2" /><path d="M10.5 5.5V3.7a1.2 1.2 0 0 0-1.2-1.2H3.7a1.2 1.2 0 0 0-1.2 1.2v5.6a1.2 1.2 0 0 0 1.2 1.2h1.8" /></svg>
+            {/if}
+          </button>
+        </div>
         <pre class="alert-panel__body">{connection.error}</pre>
       </div>
     {/if}
@@ -196,18 +214,21 @@
   }
   .alert-panel.warn { --tone: var(--warn); }
   .alert-panel__header {
-    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 26px;
+    box-sizing: border-box;
+    padding: 2px 8px 2px 12px;
     font-size: 10px;
     letter-spacing: 2px;
     color: var(--tone);
-    background: color-mix(in oklab, var(--tone) 10%, transparent);
+    background: color-mix(in oklab, var(--tone) var(--tint), transparent);
     border-bottom: 1px solid color-mix(in oklab, var(--tone) 35%, var(--border));
   }
   .alert-panel__body {
     margin: 0;
     padding: 10px 12px;
-    max-height: 240px;
-    overflow: auto;
     font-family: var(--font-mono);
     font-size: 11px;
     line-height: 1.5;
@@ -218,6 +239,28 @@
   /* Structured body (paragraphs + list) opts out of the raw-text pre-wrap so the
      template's own indentation/newlines don't render as stray whitespace. */
   .alert-panel__body--rich { white-space: normal; }
+  .copy-icon {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-s);
+    background: transparent;
+    color: var(--tone);
+    cursor: pointer;
+  }
+  .copy-icon:hover { background: color-mix(in oklab, var(--tone) var(--tint), transparent); }
+  /* Raw error text is clamped, never scrolled; the header's copy button
+     carries the full text. */
+  .alert-panel__body:not(.alert-panel__body--rich) {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 6;
+    line-clamp: 6;
+    overflow: hidden;
+  }
   .alert-panel__body p { margin: 0; }
   .causes {
     margin: 6px 0;
@@ -278,11 +321,12 @@
     font-family: var(--font-mono);
     font-size: 14px;
     color: var(--text);
-    background: color-mix(in oklab, var(--accent) 6%, transparent);
+    background: color-mix(in oklab, var(--accent) var(--tint-weak), transparent);
     border: 1px solid var(--border);
-    border-radius: 3px;
-    overflow-x: auto;
-    white-space: nowrap;
+    border-radius: var(--radius-s);
+    min-width: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   code.inline {
     font-family: var(--font-mono);
@@ -297,24 +341,24 @@
     color: var(--text-dim);
     background: transparent;
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     cursor: pointer;
   }
   .copy:hover { color: var(--text); border-color: var(--border-hi); }
 
   .connect {
     padding: 10px 26px;
-    background: color-mix(in oklab, var(--accent) 12%, transparent);
+    background: color-mix(in oklab, var(--accent) var(--tint), transparent);
     border: 1px solid var(--accent);
     color: var(--accent);
     font-family: inherit;
     font-size: 12px;
     letter-spacing: 2px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     cursor: pointer;
   }
   .connect:hover:not(:disabled) {
-    background: color-mix(in oklab, var(--accent) 20%, transparent);
+    background: color-mix(in oklab, var(--accent) var(--tint-strong), transparent);
   }
   .connect:disabled {
     cursor: default;

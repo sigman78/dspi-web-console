@@ -76,7 +76,7 @@ The mock transport (`?mock=*`, also used in tests) synthesises a wire-faithful b
 
 ## Diagnostics
 
-- **Debug panels** — the SYSTEM tab hides TELEMETRY, ERROR COUNTERS, and BUFFER STATS by default (their buffer-stats poll is skipped too). Toggle the **DEBUG** chip in the DEVICE panel header (persists per browser), or append `?debug` to force them on — handy for support links.
+- **Diagnostics panels** — telemetry, error counters, and buffer stats live on SETUP › DEVICE; buffer stats are polled only while that page is open.
 - **Wire monitoring** — append `?log=wire` to log every wire message to the browser console; high-volume telemetry polls go to the **Verbose** level (hidden by default).
 - **Firmware provenance** — on fw 1.1.6+ the DEVICE panel shows the firmware's own git build stamp (`GetBuildInfo`), so a bench build is identifiable without guesswork. Worth quoting in any bug report; the **Report an issue** link fills it in for you.
 

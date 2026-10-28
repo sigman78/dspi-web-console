@@ -2,15 +2,12 @@ import { mount } from 'svelte';
 import './app.css';
 import 'virtual:palette.css';
 import App from './App.svelte';
-import MobileSplash from './components/chrome/MobileSplash.svelte';
-import {
-  activeSession,
-  restoreSettings, startSettingsPersistence,
-  presetsDirty, endInitialBoot,
-} from './state';
-import { bootMockFleet, bootReal, registerNavigatorReconnect } from './runtime';
+import MobileSplash from '@/components/chrome/MobileSplash.svelte';
+import * as State from './state';
+import { bootMockFleet, bootReal, registerNavigatorReconnect, hasPendingWork } from './runtime';
 import { Log, isMobileDevice } from './utils';
 import { activeMockProfiles } from './mockProfiles';
+import { applyLanding } from '@/components/noveau/landing';
 
 const target = document.getElementById('app')!;
 
@@ -22,8 +19,9 @@ if (isMobileDevice()) {
   document.body.classList.add('mobile-splash-mode');
   mount(MobileSplash, { target });
 } else {
-  restoreSettings();
-  startSettingsPersistence();
+  State.restoreSettings();
+  applyLanding();
+  State.startSettingsPersistence();
 
   // See src/devOptions.ts for the full ?mock/?hero/?log convention.
   const mockProfiles = activeMockProfiles();
@@ -36,14 +34,13 @@ if (isMobileDevice()) {
     : bootReal();
   void bootAttempt
     .catch((e) => Log.error('boot', 'boot failed', e))
-    .finally(endInitialBoot);
+    .finally(State.endInitialBoot);
 
   registerNavigatorReconnect();
 
-  // Warn on unsaved preset changes or unapplied staged edits before unload.
+  // Warn before unload while any adopted device holds pending work.
   window.addEventListener('beforeunload', (e) => {
-    const s = activeSession();
-    if (s && (presetsDirty(s) || s.staging.entries.length > 0)) {
+    if ([...State.sessionRecords().values()].some((r) => hasPendingWork(r.session))) {
       e.preventDefault();
       e.returnValue = '';
     }

@@ -1,5 +1,6 @@
 @import './styles/fonts.css';
 @import './styles/controls.css';
+@import './styles/noveau.css';
 
 :root {
   color-scheme: dark;
@@ -36,11 +37,34 @@
      bodies) stay full-contrast; exactly ONE dim layer, this token, applies
      to the interactive control itself (input/button/select). */
   --dim-disabled: 0.5;
+  /* Wash for non-interactive content whose feature is off (muted slider, curve of a disabled module); controls use --dim-disabled. */
+  --dim-off: 0.45;
+  /* Stacking layers. */
+  --z-raise: 1; --z-pop: 10; --z-flyout: 30; --z-modal: 1000; --z-toast: 1100;
 
   --pad: 16px;
-  --radius-s: 3px;
-  --radius-m: 5px;
+  /* Type scale: tag / meta / label / value / title. */
+  --fs-xs: 9px; --fs-s: 10px; --fs-m: 11px; --fs-l: 12px; --fs-xl: 14px;
+  /* Control and row heights: small control / control / row / section head. */
+  --h-ctl-s: 20px; --h-ctl: 22px; --h-row: 24px; --h-head: 28px; --h-status: 28px;
+  --radius-xs: 2px;
+  --radius-s: 4px;
+  --radius-m: 6px;
   --radius: 8px;
+
+  --focus-ring: 0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
+  --shadow-pop: 0 4px 14px oklch(0% 0 0 / 0.4);
+  --shadow-flyout: 0 12px 32px oklch(0% 0 0 / 0.5);
+  --scrim: color-mix(in oklab, var(--bg) 70%, transparent);
+  /* Chrome strips (rail, shell, status line): bg lifted a hair toward text. */
+  --surface-chrome: color-mix(in oklab, var(--bg), var(--text) 3%);
+
+  /* Accent/status tint strengths for fills (weak/normal/strong) and edges. */
+  --tint-weak: 6%;
+  --tint: 12%;
+  --tint-strong: 24%;
+  --tint-edge: 45%;
+  --tint-glow: 60%;
 
   --font-sans: 'IBM Plex Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
@@ -53,21 +77,26 @@
 
 * { box-sizing: border-box; }
 html, body, #app { height: 100%; margin: 0; }
-/* Desktop-instrument responsive contract: the layout has a hard floor.
-   Below it the whole page pans as one unit (a single page-level scrollbar)
-   and panels never squeeze into per-panel scrollbars or wrapped titles.
-   The TopBar/TabBar shedding tiers bottom out just above this width. */
-body { min-width: 1160px; }
+/* Desktop-instrument responsive contract: the layout has a hard floor. At or
+   above it nothing overflows, so no scrollbar appears; below it the whole page
+   pans as one unit (a single page-level scrollbar). Percent heights resolve
+   against the body's specified height, not its min-height, so the app root
+   carries the floor itself. */
+body { overflow: auto; min-width: 1440px; min-height: 790px; }
+#app { height: max(100dvh, 790px); }
 /* The mobile splash (main.ts) is the one phone-sized page; it opts out. */
-body.mobile-splash-mode { min-width: 0; }
+body.mobile-splash-mode { min-width: 0; min-height: 0; }
+body.mobile-splash-mode #app { height: 100%; }
 button { font: inherit; color: inherit; }
+/* One keyboard-focus indicator; components with clipped edges use --focus-ring instead. */
+:where(button, select, input, [tabindex]:not([tabindex="-1"])):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 input[type="number"], select, input[type="range"] {
   background: var(--panel-solid);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.25rem 0.4rem;
+  border-radius: var(--radius-s);
+  padding: 4px 6px;
 }
 input[type="number"]:disabled, select:disabled { opacity: var(--dim-disabled); }
 

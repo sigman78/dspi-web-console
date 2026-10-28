@@ -3,32 +3,30 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import type { DspDevice } from '@/device/DspDevice';
 import DeviceSwitcher from './DeviceSwitcher.svelte';
 
-vi.mock('../../runtime/boot', () => ({
+vi.mock('@/runtime/boot', () => ({
   connectRequested: vi.fn().mockResolvedValue(undefined),
   webUsbUnsupportedReason: vi.fn(() => null),
 }));
 
-vi.mock('../../runtime/deviceService', () => ({
-  activateSession: vi.fn().mockResolvedValue(undefined),
+vi.mock('@/runtime/deviceService', () => ({
+  switchSession: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { activateSession, connectRequested, webUsbUnsupportedReason } from '@/runtime';
-import {
-  dispatch, mintConnId, resetAppState, makeReadySession, noteAdoptFailure, adoptFailures,
-  type ConnId,
-} from '@/state';
+import { switchSession, connectRequested, webUsbUnsupportedReason } from '@/runtime';
+import * as State from '@/state';
+import type { ConnId } from '@/state';
 
 function synced(serial: string, hwName = 'RP2350'): ConnId {
-  const id = mintConnId();
+  const id = State.mintConnId();
   const device = { info: { serial }, hardware: { name: hwName } } as unknown as DspDevice;
-  dispatch({ t: 'synced', id, session: makeReadySession(device) });
+  State.dispatch({ t: 'synced', id, session: State.makeReadySession(device) });
   return id;
 }
 
 beforeEach(() => {
-  resetAppState();
+  State.resetAppState();
   vi.mocked(webUsbUnsupportedReason).mockReturnValue(null);
-  vi.mocked(activateSession).mockClear();
+  vi.mocked(switchSession).mockClear();
   vi.mocked(connectRequested).mockClear();
 });
 
@@ -52,18 +50,18 @@ describe('DeviceSwitcher — device chips', () => {
     render(DeviceSwitcher);
     await fireEvent.click(screen.getByRole('button', { name: /^AAA/ }));
 
-    expect(activateSession).toHaveBeenCalledTimes(1);
-    expect(activateSession).toHaveBeenCalledWith(idA);
+    expect(switchSession).toHaveBeenCalledTimes(1);
+    expect(switchSession).toHaveBeenCalledWith(idA);
   });
 
-  test('clicking the active chip does not call activateSession', async () => {
+  test('clicking the active chip does not call switchSession', async () => {
     synced('AAA');
     synced('BBB');
 
     render(DeviceSwitcher);
     await fireEvent.click(screen.getByRole('button', { name: /^BBB/ }));
 
-    expect(activateSession).not.toHaveBeenCalled();
+    expect(switchSession).not.toHaveBeenCalled();
   });
 });
 
@@ -90,13 +88,38 @@ describe('DeviceSwitcher — add device', () => {
 describe('DeviceSwitcher — adopt-failure badges', () => {
   test('renders a badge for a noted failure and dismisses it on click', async () => {
     synced('AAA');
-    noteAdoptFailure({ serial: 'CCC', message: 'boot adoption failed', errorKind: null });
+    State.noteAdoptFailure({ serial: 'CCC', message: 'boot adoption failed', errorKind: null });
 
     render(DeviceSwitcher);
     const badge = screen.getByRole('button', { name: /CCC.*dismiss/i });
     await fireEvent.click(badge);
 
-    expect(adoptFailures().has('CCC')).toBe(false);
+    expect(State.adoptFailures().has('CCC')).toBe(false);
+  });
+});
+
+describe('DeviceSwitcher — failure ordering', () => {
+  test('a failure badge stays visible beside the active device with several devices', () => {
+    synced('AAA');
+    synced('BBB');
+    synced('CCC');   // active
+    State.noteAdoptFailure({ serial: 'ZZZ', message: 'boot adoption failed', errorKind: null });
+
+    render(DeviceSwitcher);
+
+    expect(screen.getByRole('button', { name: /^CCC/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /ZZZ.*dismiss/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '2 more devices' })).toBeInTheDocument();
+  });
+
+  test('the overflow button flags a failure hidden behind it', () => {
+    synced('AAA');
+    State.noteAdoptFailure({ serial: 'Y1', message: 'a', errorKind: null });
+    State.noteAdoptFailure({ serial: 'Y2', message: 'b', errorKind: null });
+
+    render(DeviceSwitcher);
+
+    expect(screen.getByRole('button', { name: /1 more devices, including failed/ })).toBeInTheDocument();
   });
 });
 
@@ -105,5 +128,33 @@ describe('DeviceSwitcher — empty fleet', () => {
     render(DeviceSwitcher);
     expect(screen.queryByRole('group', { name: 'Devices' })).not.toBeInTheDocument();
     expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+});
+
+describe('DeviceSwitcher — row cap', () => {
+  test('shows two rows, the rest behind a popover that switches sessions', async () => {
+    synced('AAA');
+    synced('BBB');
+    const hiddenId = synced('CCC');
+    synced('DDD');
+    synced('EEE');
+
+    render(DeviceSwitcher);
+    expect(screen.getAllByRole('button', { name: /^(AAA|BBB|CCC|DDD|EEE)/ })).toHaveLength(2);
+
+    await fireEvent.click(screen.getByRole('button', { name: '3 more devices' }));
+    const pop = screen.getByRole('dialog', { name: 'More devices' });
+    expect(pop.querySelectorAll('button')).toHaveLength(3);
+
+    await fireEvent.click(screen.getByRole('button', { name: /^CCC/ }));
+    expect(switchSession).toHaveBeenCalledWith(hiddenId);
+  });
+
+  test('the active device keeps a visible row when it is past the cap', () => {
+    for (const s of ['AAA', 'BBB', 'CCC']) synced(s);   // CCC is active
+
+    render(DeviceSwitcher);
+    expect(screen.getByRole('button', { name: /^CCC/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: /^BBB/ })).not.toBeInTheDocument();
   });
 });

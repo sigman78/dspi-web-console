@@ -17,11 +17,16 @@ export function setChannelName(s: ReadySession, id: Domain.ChannelId, name: stri
   );
 }
 
+// SET_PREAMP is the firmware's legacy set-every-input command, so the mirror
+// moves all per-input values with it.
 export function setMasterPreamp(s: ReadySession, db: number): void {
   db = Clamp.preampDb(db);
   scrub(s,
     'masterPreamp',
-    () => { s.mirror.snapshot.masterPreampDb = db; },
+    () => {
+      s.mirror.snapshot.masterPreampDb = db;
+      s.mirror.snapshot.inputPreampDb = s.mirror.snapshot.inputPreampDb.map(() => db);
+    },
     () => s.device.setMasterPreamp(db),
   );
 }
@@ -71,6 +76,18 @@ export function setCrosspointInvert(s: ReadySession, input: Domain.InputSlot, ou
   scheduleCrosspointWrite(s, input, output, (r) => ({ ...r, invert }));
 }
 
+// Route a proposed crosspoint in one whole-tuple send. Separate setters would
+// each read the pre-ack mirror and the last one would carry stale fields.
+export function routeCrosspoint(
+  s: ReadySession,
+  input: Domain.InputSlot,
+  output: Domain.OutputSlot,
+  { gainDb, invert }: { gainDb: number; invert: boolean },
+): void {
+  gainDb = Clamp.crosspointGainDb(gainDb);
+  scheduleCrosspointWrite(s, input, output, (r) => ({ ...r, enabled: true, gainDb, invert }));
+}
+
 // Click/commit-paced ValueField (no drag): plain write(), patch on ack. Scalar
 // verb, no tuple to merge.
 export function setOutputGain(s: ReadySession, slot: Domain.OutputSlot, gainDb: number): void {
@@ -91,9 +108,9 @@ export function setOutputDelay(s: ReadySession, slot: Domain.OutputSlot, delayMs
   );
 }
 
-export function setOutputEnabled(s: ReadySession, slot: Domain.OutputSlot, enabled: boolean): void {
+export function setOutputEnabled(s: ReadySession, slot: Domain.OutputSlot, enabled: boolean): Promise<boolean> {
   const out = focusOutput(s, slot);
-  void write(s,
+  return write(s,
     () => s.device.setOutputEnable(slot, enabled),
     () => out.modify((o) => ({ ...o, enabled })),
   );
@@ -101,9 +118,12 @@ export function setOutputEnabled(s: ReadySession, slot: Domain.OutputSlot, enabl
 
 // Both channels of a stereo pair, normalizing a half-enabled pair to a single
 // state. Two independent write()s -- no tuple to merge, same as setOutputEnabled.
-export function setOutputPairEnabled(s: ReadySession, pair: Domain.I2sPairSlot, enabled: boolean): void {
-  setOutputEnabled(s, (pair * 2) as Domain.OutputSlot, enabled);
-  setOutputEnabled(s, (pair * 2 + 1) as Domain.OutputSlot, enabled);
+export async function setOutputPairEnabled(s: ReadySession, pair: Domain.I2sPairSlot, enabled: boolean): Promise<boolean> {
+  const results = await Promise.all([
+    setOutputEnabled(s, (pair * 2) as Domain.OutputSlot, enabled),
+    setOutputEnabled(s, (pair * 2 + 1) as Domain.OutputSlot, enabled),
+  ]);
+  return results.every(Boolean);
 }
 
 export function setOutputMuted(s: ReadySession, slot: Domain.OutputSlot, muted: boolean): void {

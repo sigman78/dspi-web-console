@@ -87,9 +87,10 @@ export function setXoverBand(s: ReadySession, channel: Domain.ChannelId, band: n
 
 export function setXoverBypass(s: ReadySession, channel: Domain.ChannelId, band: number, bypassed: boolean): void {
   const focus = focusBand(s, channel, band, 'xover');
-  focus.read();   // throws on a missing channel or an out-of-range band, before scheduling the write
+  focus.read();
   void write(s,
     () => s.device.setCrossoverBypass(channel, band, bypassed),
     () => focus.modify((cur) => ({ ...cur, bypass: bypassed })),
   );
 }
+

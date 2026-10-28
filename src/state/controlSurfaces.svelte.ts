@@ -4,12 +4,8 @@
 // fetched once at connect via its own vendor commands (see
 // runtime/deviceService.ts), like ctrlIfaces.
 
-import {
-  CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_MAX_GROUPS, CS_MAX_MACROS, CS_MAX_DISPLAY_PAGES,
-  type CsBinding, type CsCaps, type CsNounCaps, type CsStatus, type CsIrCommand,
-  type CsGroup, type CsExtStatus, type CsMacro,
-  type CsDisplayLimits, type CsDisplayCfg, type CsDisplayPage, type CsDisplayStatus,
-} from '@/domain';
+import * as Domain from '@/domain';
+import type { CsBinding, CsCaps, CsNounCaps, CsStatus, CsIrCommand, CsGroup, CsExtStatus, CsMacro, CsDisplayLimits, CsDisplayCfg, CsDisplayPage, CsDisplayStatus } from '@/domain';
 
 // Learn sub-state, mirroring GetCsStatus.irLearnState / the CsIrLearn(2)
 // result read: null while idle (nothing armed yet, or after a cancel).
@@ -40,26 +36,19 @@ export interface ControlSurfacesState {
   displayCfg: CsDisplayCfg | null;
   displayPages: (CsDisplayPage | null)[];
   displayStatus: CsDisplayStatus | null;
-  // Bumped after a successful csRevertConfig so every CS panel drops its
-  // local drafts -- the GROUPS panel has no parent to receive a reset prop.
+  // Bumped after a successful csRevertConfig so every CS panel resets its
+  // transient view state (the drafts themselves are wiped in s.drafts).
   revertEpoch: number;
-  // Unapplied local edits per CS editor panel (each panel publishes its own
-  // count). Read by the CONTROL tab's CHANGES panel: staged edits are not
-  // part of a device SAVE until applied.
-  staged: CsStagedCounts;
   // Which editors applied something since the last SAVE/DISCARD. The fw's
   // dirty flag is a single bit, so this is the console's own record of where
   // the unsaved changes came from (blank when another host made them).
   changed: CsChangedFlags;
+  // Mounted-panel interest for the CS status cadences (runtime/poll.ts); see
+  // wantCsExtPoll/wantCsDisplayPoll.
+  extPollWanted: number;
+  displayPollWanted: number;
   busy: boolean;
   lastFetchError: string | null;
-}
-
-export interface CsStagedCounts {
-  bindings: number;
-  groups: number;
-  macros: number;
-  display: number;
 }
 
 export interface CsChangedFlags {
@@ -74,21 +63,22 @@ export function createControlSurfacesState(): ControlSurfacesState {
     deviceCapsVersion: null,
     caps: null,
     nouns: [],
-    bindings: Array.from({ length: CS_MAX_BINDINGS }, () => null),
-    names: Array.from({ length: CS_MAX_BINDINGS }, () => ''),
-    irCommands: Array.from({ length: CS_MAX_IR_COMMANDS }, () => null),
+    bindings: Array.from({ length: Domain.CS_MAX_BINDINGS }, () => null),
+    names: Array.from({ length: Domain.CS_MAX_BINDINGS }, () => ''),
+    irCommands: Array.from({ length: Domain.CS_MAX_IR_COMMANDS }, () => null),
     irLearn: null,
     status: null,
-    groups: Array.from({ length: CS_MAX_GROUPS }, () => null),
-    macros: Array.from({ length: CS_MAX_MACROS }, () => null),
+    groups: Array.from({ length: Domain.CS_MAX_GROUPS }, () => null),
+    macros: Array.from({ length: Domain.CS_MAX_MACROS }, () => null),
     extStatus: null,
     displayLimits: null,
     displayCfg: null,
-    displayPages: Array.from({ length: CS_MAX_DISPLAY_PAGES }, () => null),
+    displayPages: Array.from({ length: Domain.CS_MAX_DISPLAY_PAGES }, () => null),
     displayStatus: null,
     revertEpoch: 0,
-    staged: { bindings: 0, groups: 0, macros: 0, display: 0 },
     changed: { bindings: false, groups: false, macros: false, display: false },
+    extPollWanted: 0,
+    displayPollWanted: 0,
     busy: false,
     lastFetchError: null,
   });

@@ -47,6 +47,38 @@ describe('SegmentedSelect', () => {
     expect(onChange).toHaveBeenCalledWith(0);
   });
 
+  test('Home and End jump to the first and last option', async () => {
+    const onChange = vi.fn();
+    const { container } = render(SegmentedSelect, {
+      props: { value: 1, options: OPTIONS, ariaLabel: 'Speed', onChange },
+    });
+    const group = container.querySelector('[role="radiogroup"]')!;
+    await fireEvent.keyDown(group, { key: 'End' });
+    expect(onChange).toHaveBeenLastCalledWith(2);
+    await fireEvent.keyDown(group, { key: 'Home' });
+    expect(onChange).toHaveBeenLastCalledWith(0);
+  });
+
+  test('an arrow-key change moves focus to the new option once applied', async () => {
+    const props = { value: 0, options: OPTIONS, ariaLabel: 'Speed' };
+    const { container, rerender } = render(SegmentedSelect, {
+      props: { ...props, onChange: (v: string | number) => void rerender({ ...props, value: v as number, onChange: vi.fn() }) },
+    });
+    screen.getByRole('radio', { name: 'SLOW' }).focus();
+    await fireEvent.keyDown(container.querySelector('[role="radiogroup"]')!, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'MED' }));
+  });
+
+  test('focus stays put when the parent does not apply the change', async () => {
+    const { container } = render(SegmentedSelect, {
+      props: { value: 0, options: OPTIONS, ariaLabel: 'Speed', onChange: vi.fn() },
+    });
+    const slow = screen.getByRole('radio', { name: 'SLOW' });
+    slow.focus();
+    await fireEvent.keyDown(container.querySelector('[role="radiogroup"]')!, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(slow);
+  });
+
   test('disabled prevents interaction', async () => {
     const onChange = vi.fn();
     render(SegmentedSelect, {

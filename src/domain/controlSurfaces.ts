@@ -519,13 +519,6 @@ export function csDisplayPageIsEmpty(p: CsDisplayPage): boolean {
 export const CsDisplayInitState = { Down: 0, Init: 1, Live: 2, Error: 3 } as const;
 export type CsDisplayInitState = (typeof CsDisplayInitState)[keyof typeof CsDisplayInitState];
 
-export const CS_DISPLAY_INIT_STATE_LABEL: Record<CsDisplayInitState, string> = {
-  [CsDisplayInitState.Down]:  'NO DISPLAY',
-  [CsDisplayInitState.Init]:  'STARTING',
-  [CsDisplayInitState.Live]:  'LIVE',
-  [CsDisplayInitState.Error]: 'ERROR',
-};
-
 // GetCsDisplayStatus (0x2B), host shape. `model` is the live binding's index
 // while attached (0 when down); the I2C address is not reported -- resolve
 // it from `model` + the binding's `value` via csDisplayResolvedAddr.
@@ -563,6 +556,14 @@ export interface CsCaps {
 // style ceiling by the presence of the DISPLAY row in the type table itself.
 export function csDisplaysAvailable(caps: CsCaps | null): boolean {
   return caps != null && caps.capsVersion >= 10 && caps.types.length > CsType.Display;
+}
+
+// A live, running Display binding -- read from the bindings plus the active
+// mask, not the display status (whose init state can still read INIT/DOWN in
+// the first 200 ms after attach while the binding itself is already running).
+export function csDisplaySlotActive(bindings: readonly (CsBinding | null)[], status: CsStatus | null): boolean {
+  if (!status) return false;
+  return bindings.some((b, i) => b?.type === CsType.Display && (status.activeMask & (1 << i)) !== 0);
 }
 
 export interface CsNounCaps {

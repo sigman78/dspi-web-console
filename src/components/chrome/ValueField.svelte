@@ -1,12 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import {
-    type ValueKind,
-    defaultPrecisionFor,
-    defaultUnitFor,
-    formatValue,
-    parseAndClamp,
-  } from './valueFieldFormat';
+  import * as ValueFormat from './valueFieldFormat';
+  import type { ValueKind } from './valueFieldFormat';
 
   const {
     value,
@@ -15,12 +10,10 @@
     step,
     kind,
     precision,
-    unit,
     tone,
     align = 'right',
-    size = 'md',
     disabled = false,
-    clamp = true,
+    ariaLabel,
     floorLabel,
     ceilLabel,
     onChange,
@@ -31,31 +24,26 @@
     step?: number;
     kind: ValueKind;
     precision?: number;
-    unit?: string;
     tone?: 'signed';
     align?: 'center' | 'right';
-    size?: 'sm' | 'md';
     disabled?: boolean;
+    ariaLabel?: string;
     // Shown instead of the number when value is at the floor (e.g. "Off" for
     // a -30 dB band level); editing still accepts numbers as usual.
     floorLabel?: string;
     // Same idea at the max end (e.g. "Off" for a 0 dBFS sub ceiling).
     ceilLabel?: string;
-    // When true (default), out-of-range values are clamped to [min,max]
-    // and accepted. When false, out-of-range values are rejected just
-    // like unparseable input -- Enter marks the cell red.
-    clamp?: boolean;
     onChange: (v: number) => void;
   } = $props();
 
-  const effectivePrecision = $derived(precision ?? defaultPrecisionFor(kind));
+  const effectivePrecision = $derived(precision ?? ValueFormat.defaultPrecisionFor(kind));
   const effectiveStep = $derived(step ?? Math.pow(10, -effectivePrecision));
-  const effectiveUnit = $derived(unit ?? defaultUnitFor(kind));
+  const effectiveUnit = $derived(ValueFormat.defaultUnitFor(kind));
 
   const atFloor = $derived(floorLabel !== undefined && value <= min);
   const atCeil = $derived(ceilLabel !== undefined && value >= max);
   const display = $derived(
-    atFloor ? floorLabel! : atCeil ? ceilLabel! : formatValue(kind, value, effectivePrecision),
+    atFloor ? floorLabel! : atCeil ? ceilLabel! : ValueFormat.formatValue(kind, value, effectivePrecision),
   );
 
   // Disabled overrides any tone tinting.
@@ -68,7 +56,6 @@
 
   let editing = $state(false);
   let draft = $state('');
-  let hover = $state(false);
   let invalid = $state(false);
   let inputEl = $state<HTMLInputElement | null>(null);
   // Pinned at beginEdit so the no-op check compares against the value the
@@ -103,7 +90,7 @@
       suppressBlur = false;
       return;
     }
-    const next = parseAndClamp(draft, min, max, effectiveStep, clamp);
+    const next = ValueFormat.parseAndClamp(draft, min, max, effectiveStep);
     if (next === null) {
       if (fromEnter) {
         // Mark red + stay editing so the user sees their input was rejected.
@@ -117,6 +104,23 @@
     editing = false;
     if (next === pinnedValue) return;   // user typed back what they started with -- no-op
     onChange(next);
+  }
+
+  // Arrow keys on the focused field step the value through the normal commit.
+  function step1(dir: 1 | -1, shift: boolean): void {
+    const next = ValueFormat.parseAndClamp(String(value + dir * effectiveStep * (shift ? 10 : 1)), min, max, effectiveStep);
+    if (next !== null && next !== value) onChange(next);
+  }
+
+  function onFieldKey(e: KeyboardEvent): void {
+    if (editing) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      beginEdit();
+    } else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !disabled) {
+      e.preventDefault();
+      step1(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey);
+    }
   }
 
   function cancel(): void {
@@ -147,16 +151,13 @@
   class="vf"
   class:editing
   class:invalid
-  class:hover
   class:disabled
   data-align={align}
-  data-size={size}
   style:--toneColor={toneColor}
   onclick={beginEdit}
-  onmouseenter={() => (hover = true)}
-  onmouseleave={() => (hover = false)}
-  onkeydown={(e) => { if (!editing && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); beginEdit(); } }}
+  onkeydown={onFieldKey}
   role="button"
+  aria-label={ariaLabel}
   tabindex={disabled ? -1 : 0}
   aria-disabled={disabled}
 >
@@ -167,6 +168,7 @@
       oninput={onInput}
       onblur={() => commit(false)}
       onkeydown={onKey}
+      aria-label={ariaLabel}
       type="text"
       inputmode="decimal"
       spellcheck="false"
@@ -187,10 +189,13 @@
     align-items: center;
     box-sizing: border-box;
     width: 100%;
+    height: var(--h-ctl);
+    padding: 0 8px;
+    font-size: var(--fs-l);
     border: none;
     border-radius: 0;
     background: transparent;
-    box-shadow: inset 0 -1px 0 0 color-mix(in oklab, var(--text) 14%, transparent);
+    box-shadow: inset 0 -1px 0 0 var(--border-hi);
     color: var(--text);
     font-family: var(--font-mono);
     cursor: pointer;
@@ -201,28 +206,26 @@
   .vf:focus-visible {
     box-shadow:
       inset 0 -1px 0 0 var(--accent),
-      0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
+      var(--focus-ring);
   }
-  .vf[data-size="sm"] { height: 20px; padding: 0 6px; font-size: 10px; }
-  .vf[data-size="md"] { height: 24px; padding: 0 8px; font-size: 11px; }
   .vf[data-align="center"] { justify-content: center; }
   .vf[data-align="right"]  { justify-content: flex-end; }
 
-  .vf.hover:not(.editing):not(.disabled) {
+  .vf:hover:not(.editing):not(.disabled) {
     background: var(--wash);
     box-shadow:
-      inset 0 -1px 0 0 color-mix(in oklab, var(--text) 32%, transparent),
-      0 -2px 6px -2px color-mix(in oklab, var(--text) 18%, transparent) inset;
+      inset 0 -1px 0 0 var(--text-faint),
+      0 -2px 6px -2px var(--border-hi) inset;
   }
   .vf.editing {
-    background: color-mix(in oklab, var(--accent) 6%, transparent);
+    background: color-mix(in oklab, var(--accent) var(--tint-weak), transparent);
     box-shadow:
       inset 0 -1px 0 0 var(--accent),
       0 0 0 1px var(--accent);
     cursor: text;
   }
   .vf.editing.invalid {
-    background: color-mix(in oklab, var(--err) 10%, transparent);
+    background: color-mix(in oklab, var(--err) var(--tint), transparent);
     box-shadow:
       inset 0 -1px 0 0 var(--err),
       0 0 0 1px var(--err);
@@ -248,9 +251,8 @@
   }
   .vf .unit {
     color: var(--text-faint);
-    font-size: 9px;
+    font-size: var(--fs-xs);
   }
-  .vf[data-size="sm"] .unit { font-size: 8px; }
 
   input {
     position: absolute;
@@ -268,7 +270,6 @@
     box-sizing: border-box;
     font-variant-numeric: tabular-nums;
   }
-  .vf[data-size="sm"] input { padding: 0 6px; }
   .vf[data-align="center"] input { text-align: center; }
   .vf[data-align="right"]  input { text-align: right; }
 </style>

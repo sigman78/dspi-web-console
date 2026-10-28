@@ -1,14 +1,16 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { PlatformType, createHardwareProfile, AudioInputSource, SpdifInputState } from '@/domain';
+import * as Domain from '@/domain';
+import type { CsBinding, CsStatus } from '@/domain';
 import { fromBulkParams } from '@/protocol/snapshotCodec';
 import { parseBulkParams } from '@/protocol';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
 import type { DspDevice } from '@/device/DspDevice';
-import { dispatch, mintConnId, makeReadySession, resetAppState, settings, type ReadySession } from '@/state';
+import { dispatch, mintConnId, makeReadySession, resetAppState, type ReadySession } from '@/state';
 import { startPolling } from './poll';
+import { wantCsExtPoll, wantCsDisplayPoll } from './controlSurfaceActions';
 import type { LoopClock } from '@/utils';
 
-const hw = createHardwareProfile(PlatformType.RP2350);
+const hw = Domain.createHardwareProfile(Domain.PlatformType.RP2350);
 
 // A clock we drive by hand — no real timers, fully deterministic.
 function manualClock(): LoopClock & { fire(): void; armed(): boolean } {
@@ -35,7 +37,7 @@ function teardown(): void {
 function pollDevice(status = { peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 }) {
   const calls = { status: 0, buffer: 0, info: 0 };
   const device = {
-    info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+    info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
     hardware: hw,
     getSystemStatus: vi.fn(async () => { calls.status++; return status; }),
     getBufferStats: vi.fn(async () => { calls.buffer++; return null; }),
@@ -49,7 +51,7 @@ function paramDevice() {
   const calls = { status: 0, snapshot: 0 };
   const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
   const device = {
-    info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+    info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
     hardware: hw,
     getSystemStatus: vi.fn(async () => { calls.status++; return { peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 }; }),
     getBufferStats: vi.fn(async () => null),
@@ -68,7 +70,7 @@ const settle = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(
 // Fake device with a caller-supplied getSnapshot, for reconcile timing tests.
 function deviceWithSnapshot(getSnapshot: () => Promise<unknown>) {
   return {
-    info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+    info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
     hardware: hw,
     getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 })),
     getBufferStats: vi.fn(async () => null),
@@ -123,16 +125,12 @@ describe('startPolling', () => {
   });
 });
 
-// Buffer stats feed only the debug-gated diagnostics panels, so the 4 Hz
-// fetch is skipped entirely while they're hidden.
-describe('buffer cadence debug gate', () => {
-  afterEach(() => {
-    teardown();
-    settings.debugPanels = false;
-    window.history.replaceState({}, '', '/');
-  });
+// Buffer stats feed only the SETUP > DEVICE diagnostics panels, so the 4 Hz
+// fetch runs only while one is mounted (wantBufferStats).
+describe('buffer cadence subscription', () => {
+  afterEach(() => { teardown(); });
 
-  it('skips getBufferStats while the debug panels are hidden', async () => {
+  it('skips getBufferStats while nothing wants it', async () => {
     const { device, calls } = pollDevice();
     const session = connect(device);
     const clock = manualClock();
@@ -144,24 +142,17 @@ describe('buffer cadence debug gate', () => {
     stop();
   });
 
-  it('polls getBufferStats when the persisted debug setting is on', async () => {
-    settings.debugPanels = true;
+  it('polls getBufferStats while subscribed and stops after release', async () => {
     const { device, calls } = pollDevice();
     const session = connect(device);
+    const release = session.telemetry.wantBufferStats();
     const clock = manualClock();
     const stop = startPolling(session, clock);
     clock.fire();
     await settle();
     expect(calls.buffer).toBe(1);
-    stop();
-  });
-
-  it('polls getBufferStats when ?debug forces the panels on', async () => {
-    window.history.replaceState({}, '', '/?debug');
-    const { device, calls } = pollDevice();
-    const session = connect(device);
-    const clock = manualClock();
-    const stop = startPolling(session, clock);
+    release();
+    session.telemetry.lastBufferMs = 0;
     clock.fire();
     await settle();
     expect(calls.buffer).toBe(1);
@@ -218,7 +209,7 @@ describe('param reconcile cadence', () => {
     const reconciled = fromBulkParams(hw, parseBulkParams(makeBulk()));
     reconciled.masterVolumeDb = -33;
     const device = {
-      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
       hardware: hw,
       getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 1, cpu1: 2 })),
       getBufferStats: vi.fn(async () => null),
@@ -393,11 +384,11 @@ describe('S/PDIF RX status cadence', () => {
 
   it('polls getSpdifRxStatus when input source is SPDIF', async () => {
     const spdifStatus = {
-      state: SpdifInputState.Locked, inputSource: AudioInputSource.Spdif,
+      state: Domain.SpdifInputState.Locked, inputSource: Domain.AudioInputSource.Spdif,
       lockCount: 1, lossCount: 0, sampleRate: 44100, parityErrors: 0, fifoFillPct: 50,
     };
     const device = {
-      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
       hardware: hw,
       getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
       getBufferStats: vi.fn(async () => null),
@@ -408,7 +399,7 @@ describe('S/PDIF RX status cadence', () => {
     const session = connect(device);
     const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
     // Set input source to SPDIF so the cadence gate passes.
-    snap.inputConfig = { source: AudioInputSource.Spdif, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0, adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0 };
+    snap.inputConfig = { source: Domain.AudioInputSource.Spdif, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0, adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0 };
     session.mirror.init(snap);
     const clock = manualClock();
     const stop = startPolling(session, clock);
@@ -424,17 +415,17 @@ describe('S/PDIF RX status cadence', () => {
     // younger than SPDIF_RX_INTERVAL_MS never passed the gate (CI flake).
     const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(10);
     const device = {
-      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
       hardware: hw,
       getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
       getBufferStats: vi.fn(async () => null),
       getSystemInfo: vi.fn(async () => ({})),
-      getSpdifRxStatus: vi.fn(async () => ({ state: SpdifInputState.Locked, inputSource: AudioInputSource.Spdif, lockCount: 1, lossCount: 0, sampleRate: 44100, parityErrors: 0, fifoFillPct: 50 })),
+      getSpdifRxStatus: vi.fn(async () => ({ state: Domain.SpdifInputState.Locked, inputSource: Domain.AudioInputSource.Spdif, lockCount: 1, lossCount: 0, sampleRate: 44100, parityErrors: 0, fifoFillPct: 50 })),
       getSnapshot: vi.fn(async () => fromBulkParams(hw, parseBulkParams(makeBulk()))),
     } as unknown as DspDevice;
     const session = connect(device);
     const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
-    snap.inputConfig = { source: AudioInputSource.Spdif, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0, adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0 };
+    snap.inputConfig = { source: Domain.AudioInputSource.Spdif, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0, adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0 };
     session.mirror.init(snap);
     const clock = manualClock();
     const stop = startPolling(session, clock);
@@ -447,7 +438,7 @@ describe('S/PDIF RX status cadence', () => {
 
   it('does not poll getSpdifRxStatus when input source is USB', async () => {
     const device = {
-      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
       hardware: hw,
       getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
       getBufferStats: vi.fn(async () => null),
@@ -458,7 +449,7 @@ describe('S/PDIF RX status cadence', () => {
     const session = connect(device);
     const snap = fromBulkParams(hw, parseBulkParams(makeBulk()));
     // USB input (default in bulkFixtures): cadence should not fire.
-    snap.inputConfig = { source: AudioInputSource.Usb, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0, adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0 };
+    snap.inputConfig = { source: Domain.AudioInputSource.Usb, spdifRxPin: 15, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0, adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0 };
     session.mirror.init(snap);
     const clock = manualClock();
     const stop = startPolling(session, clock);
@@ -474,7 +465,7 @@ describe('I2S slave-clock status cadence', () => {
 
   function baseDevice(getI2sSlaveStatus: () => Promise<unknown>) {
     return {
-      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
       hardware: hw,
       capabilities: { features: { i2sSlaveClock: true } },
       getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
@@ -536,7 +527,7 @@ describe('ADAT lightpipe output status cadence', () => {
 
   function baseDevice(getAdatStatus: () => Promise<unknown>) {
     return {
-      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
       hardware: hw,
       capabilities: { features: { adatOutput: true } },
       getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
@@ -598,7 +589,7 @@ describe('ADAT lightpipe input status cadence', () => {
 
   function baseDevice(getAdatInputStatus: () => Promise<unknown>) {
     return {
-      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
       hardware: hw,
       capabilities: { features: { adatInput: true } },
       getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
@@ -660,7 +651,7 @@ describe('Subharm headroom cadence', () => {
 
   function baseDevice(getSubharmHeadroom: () => Promise<unknown>) {
     return {
-      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
       hardware: hw,
       capabilities: { features: { subharm: true } },
       getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
@@ -745,7 +736,7 @@ describe('Subharm meter cadence', () => {
 
   function baseDevice(getSubharmMeter: () => Promise<unknown>) {
     return {
-      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
       hardware: hw,
       capabilities: { features: { subharmExt: true } },
       getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
@@ -876,7 +867,7 @@ describe('Limiter meter cadence', () => {
 
   function limiterDevice(limiter = true) {
     return {
-      info: { serial: 'T', platformType: PlatformType.RP2350, hardware: hw },
+      info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
       hardware: hw,
       capabilities: { features: { limiter } },
       getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
@@ -987,5 +978,96 @@ describe('Limiter meter cadence', () => {
     await settle();
     expect(device.getLimiterMeter).not.toHaveBeenCalled();
     stop();
+  });
+});
+
+describe('control-surface status cadences', () => {
+  afterEach(() => { teardown(); });
+
+  function csDevice() {
+    return {
+      info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
+      hardware: hw,
+      capabilities: { features: { controlSurfaces: true } },
+      getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
+      getBufferStats: vi.fn(async () => null),
+      getSystemInfo: vi.fn(async () => ({})),
+      getCsExtStatus: vi.fn(async () => ({ macroRunning: 0 })),
+      getCsDisplayStatus: vi.fn(async () => ({ initState: 2 })),
+    } as unknown as DspDevice;
+  }
+
+  async function tickOnce(session: ReadySession): Promise<void> {
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    stop();
+  }
+
+  const runningMacro = { macroRunning: 0, macroStep: 0, macroStatus: [] } as unknown as ReadySession['controlSurfaces']['extStatus'];
+
+  it('reads ext status only while the panel is mounted and a macro is running', async () => {
+    const device = csDevice();
+    const session = connect(device);
+    session.controlSurfaces.extStatus = runningMacro;
+
+    await tickOnce(session);                              // running, but nobody is looking
+    expect(device.getCsExtStatus).not.toHaveBeenCalled();
+
+    const release = wantCsExtPoll(session);
+    session.controlSurfaces.extStatus = { ...runningMacro!, macroRunning: null };
+    await tickOnce(session);                              // looking, but nothing running
+    expect(device.getCsExtStatus).not.toHaveBeenCalled();
+
+    session.controlSurfaces.extStatus = runningMacro;
+    await tickOnce(session);
+    expect(device.getCsExtStatus).toHaveBeenCalledTimes(1);
+
+    release();
+    await tickOnce(session);
+    expect(device.getCsExtStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads display status only while the panel is mounted and a display binding is active', async () => {
+    const device = csDevice();
+    const session = connect(device);
+    const release = wantCsDisplayPoll(session);
+
+    await tickOnce(session);                              // looking, but no display binding
+    expect(device.getCsDisplayStatus).not.toHaveBeenCalled();
+
+    session.controlSurfaces.bindings[0] = { type: Domain.CsType.Display } as unknown as CsBinding;
+    session.controlSurfaces.status = { activeMask: 0 } as unknown as CsStatus;
+    await tickOnce(session);                              // bound but not running
+    expect(device.getCsDisplayStatus).not.toHaveBeenCalled();
+
+    session.controlSurfaces.status = { activeMask: 1 } as unknown as CsStatus;
+    await tickOnce(session);
+    expect(device.getCsDisplayStatus).toHaveBeenCalledTimes(1);
+    release();
+  });
+
+  it('never polls a device without control surfaces', async () => {
+    const device = csDevice();
+    (device as unknown as { capabilities: { features: { controlSurfaces: boolean } } }).capabilities.features.controlSurfaces = false;
+    const session = connect(device);
+    session.controlSurfaces.extStatus = runningMacro;
+    wantCsExtPoll(session);
+    await tickOnce(session);
+    expect(device.getCsExtStatus).not.toHaveBeenCalled();
+  });
+
+  it('drops a failed read silently without touching link health', async () => {
+    const device = csDevice();
+    (device.getCsExtStatus as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('stall'));
+    const session = connect(device);
+    session.controlSurfaces.extStatus = runningMacro;
+    wantCsExtPoll(session);
+    await tickOnce(session);
+    expect(device.getCsExtStatus).toHaveBeenCalledTimes(1);
+    // The csDevice stub fails other polls on its own; only the ext read's error matters here.
+    expect(session.health.lastErrorMsg).not.toBe('stall');
+    expect(session.controlSurfaces.extStatus).toEqual(runningMacro);
   });
 });

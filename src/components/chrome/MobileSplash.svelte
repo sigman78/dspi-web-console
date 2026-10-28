@@ -74,7 +74,7 @@
     font-size: 10px;
     letter-spacing: 2px;
     color: var(--warn);
-    background: color-mix(in oklab, var(--warn) 10%, transparent);
+    background: color-mix(in oklab, var(--warn) var(--tint), transparent);
     border-bottom: 1px solid color-mix(in oklab, var(--warn) 35%, var(--border));
   }
   .panel__body {
@@ -96,9 +96,9 @@
     font-family: var(--font-mono);
     font-size: 14px;
     color: var(--accent);
-    background: color-mix(in oklab, var(--accent) 6%, transparent);
+    background: color-mix(in oklab, var(--accent) var(--tint-weak), transparent);
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     overflow-wrap: anywhere;
     user-select: all;
   }

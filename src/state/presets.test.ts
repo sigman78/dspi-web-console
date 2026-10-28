@@ -216,11 +216,11 @@ describe('boundary modal', () => {
     expect(r).toBe('save');
   });
 
-  it('only one pending modal at a time (second call rejects)', async () => {
+  it('a second ask while one is pending cancels itself and leaves the first intact', async () => {
     const p1 = askBoundary({ title: 't1', message: 'm', saveLabel: 's' });
     const p2 = askBoundary({ title: 't2', message: 'm', saveLabel: 's' });
-    resolveBoundary('cancel');
-    expect(await p1).toBe('cancel');
-    await expect(p2).rejects.toThrow();
+    expect(await p2).toBe('cancel');
+    resolveBoundary('save');
+    expect(await p1).toBe('save');
   });
 });

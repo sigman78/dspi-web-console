@@ -2,34 +2,42 @@
   const {
     checked,
     disabled = false,
-    size = 'md',
     label,
     ariaLabel,
+    disabledReason,
     onChange,
   }: {
     checked: boolean;
     disabled?: boolean;
-    size?: 'sm' | 'md';
     label?: string;
     ariaLabel: string;
+    /** Why the switch is disabled; keeps it focusable and describes it. */
+    disabledReason?: string;
     onChange: (v: boolean) => void;
   } = $props();
+
+  const uid = $props.id();
+  const reasonId = `${uid}-reason`;
+  const explained = $derived(disabled && !!disabledReason);
 </script>
 
 <button
   type="button"
   class="sw"
-  class:sm={size === 'sm'}
   class:on={checked}
   role="switch"
   aria-checked={checked}
   aria-label={ariaLabel}
-  {disabled}
+  disabled={disabled && !explained}
+  aria-disabled={explained ? true : undefined}
+  aria-describedby={explained ? reasonId : undefined}
+  title={explained ? disabledReason : undefined}
   onclick={() => { if (!disabled) onChange(!checked); }}
 >
   <span class="track"><span class="knob"></span></span>
   {#if label}<span class="label">{label}</span>{/if}
 </button>
+{#if explained}<span id={reasonId} class="sr-only">{disabledReason}</span>{/if}
 
 <style>
   .sw {
@@ -41,16 +49,16 @@
     padding: 3px 0;
     margin: 0;
     cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 10px;
+    font-family: var(--font-sans);
+    font-size: var(--fs-m);
     line-height: 1.4;
     color: var(--text-dim);
   }
-  .sw:hover:not(:disabled) { color: var(--text); }
-  .sw:disabled { cursor: default; opacity: var(--dim-disabled); }
+  .sw:hover:not(:disabled):not([aria-disabled='true']) { color: var(--text); }
+  .sw:disabled, .sw[aria-disabled='true'] { cursor: default; opacity: var(--dim-disabled); }
 
   .track {
-    --w: 34px; --h: 20px; --pad: 2.5px;
+    --w: 26px; --h: 15px; --pad: 2px;
     position: relative;
     flex: 0 0 auto;
     width: var(--w);
@@ -60,7 +68,6 @@
     border: 1px solid var(--border);
     transition: background-color 120ms ease, border-color 120ms ease;
   }
-  .sm .track { --w: 26px; --h: 15px; --pad: 2px; }
 
   .knob {
     position: absolute;
@@ -74,14 +81,14 @@
     transition: transform 150ms cubic-bezier(0.34, 1.2, 0.64, 1);
   }
   .sw.on .track {
-    background: color-mix(in oklab, var(--ok) 28%, transparent);
-    border-color: color-mix(in oklab, var(--ok) 50%, transparent);
+    background: color-mix(in oklab, var(--ok) var(--tint-strong), transparent);
+    border-color: color-mix(in oklab, var(--ok) var(--tint-edge), transparent);
   }
   .sw.on .knob {
     transform: translateX(calc(var(--w) - var(--h)));
   }
-  .sw:active:not(:disabled) .knob { transform: scale(0.92); }
-  .sw.on:active:not(:disabled) .knob {
+  .sw:active:not(:disabled):not([aria-disabled='true']) .knob { transform: scale(0.92); }
+  .sw.on:active:not(:disabled):not([aria-disabled='true']) .knob {
     transform: translateX(calc(var(--w) - var(--h))) scale(0.92);
   }
 

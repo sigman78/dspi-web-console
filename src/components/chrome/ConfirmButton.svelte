@@ -1,6 +1,7 @@
 <script lang="ts">
   // Two-step arm/confirm mechanics shared by every "dangerous or persisting
-  // action" button (DevicePanel factory-reset/firmware, preset/volume save).
+  // action" button (firmware update, staged apply, output-config save,
+  // band reset, AutoEQ delete).
   // The primitive owns only the state machine and a11y wiring; tone/size and
   // the confirm action itself stay with the caller.
   const {
@@ -12,7 +13,7 @@
     toneAlways = false,
     extraClass = '',
     title,
-    disabledReason,
+    ariaLabel,
   }: {
     label: string;
     confirmLabel: string;
@@ -25,20 +26,14 @@
     toneAlways?: boolean;
     extraClass?: string;
     title?: string;
-    // Reason surfaced only via aria-describedby (below), for readers/keyboard
-    // users when `title`-only was the previous, unreliable channel (A4).
-    disabledReason?: string;
+    ariaLabel?: string;
   } = $props();
-
-  const uid = $props.id();
-  const reasonId = uid + '-reason';
 
   let armed = $state(false);
 
-  // Native `disabled` removes the button from the a11y/keyboard tree, which
-  // is exactly what made the disabled reason unreachable before (A4). Use
+  // Native `disabled` removes the button from the a11y/keyboard tree. Use
   // aria-disabled instead and gate the handlers by hand, so the button stays
-  // focusable and its description reads.
+  // focusable.
   function onClick(): void {
     if (disabled) return;
     if (!armed) { armed = true; return; }
@@ -50,6 +45,7 @@
   }
   function onKeydown(e: KeyboardEvent): void {
     if (e.key === 'Escape') {
+      if (armed) e.preventDefault();
       armed = false;
       (e.currentTarget as HTMLElement).blur();
     }
@@ -66,28 +62,18 @@
   onblur={disarm}
   onkeydown={onKeydown}
   aria-disabled={disabled}
-  aria-describedby={disabled && disabledReason ? reasonId : undefined}
   {title}
->{armed ? confirmLabel : label}</button>
-{#if disabled && disabledReason}
-  <span id={reasonId} class="sr-only">{disabledReason}</span>
-{/if}
+  aria-label={ariaLabel}
+><span class="faces"><span class="face" class:hide={armed} aria-hidden={armed}>{label}</span><span class="face" class:hide={!armed} aria-hidden={!armed}>{confirmLabel}</span></span></button>
 
 <style>
+  /* Both labels occupy the same cell so arming never changes the width. */
+  .faces { display: inline-grid; }
+  .face { grid-area: 1 / 1; white-space: nowrap; }
+  .face.hide { visibility: hidden; }
   .chip[aria-disabled="true"] {
     opacity: var(--dim-disabled);
     cursor: default;
     pointer-events: none;
-  }
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
 </style>

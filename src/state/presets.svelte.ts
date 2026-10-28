@@ -1,13 +1,8 @@
 // Reactive store for the preset UI. The dirty flag is not stored --
 // `presetsDirty(s)` computes the diff on read.
 
-import {
-  type PresetSlot, PRESET_SLOT_COUNT,
-  type PresetDirectoryInfo,
-  MasterVolumeMode, OutputConfigMode,
-  diffSnapshots,
-  CHANGE_CLASS,
-} from '@/domain';
+import * as Domain from '@/domain';
+import type { PresetSlot, PresetDirectoryInfo } from '@/domain';
 import type { ReadySession } from './appState.svelte';
 
 export interface PresetsState {
@@ -29,7 +24,7 @@ export interface PresetsState {
 export function createPresetsState(): PresetsState {
   const s = $state<PresetsState>({
     directory:       null,
-    names:           Array.from({ length: PRESET_SLOT_COUNT }, () => null),
+    names:           Array.from({ length: Domain.PRESET_SLOT_COUNT }, () => null),
     active:          null,
     busy:            false,
     lastFetchError:  null,
@@ -44,12 +39,12 @@ export function createPresetsState(): PresetsState {
 export function presetsDirty(s: ReadySession): boolean {
   const m = s.mirror;
   if (!m.current || !m.baseline) return false;
-  const ignoreVol = (s.presets.directory?.masterVolumeMode ?? MasterVolumeMode.Independent) === MasterVolumeMode.Independent;
+  const ignoreVol = (s.presets.directory?.masterVolumeMode ?? Domain.MasterVolumeMode.Independent) === Domain.MasterVolumeMode.Independent;
   // The physical-IO block rides the preset only in WithPreset mode; unknown
   // directory => excluded (mode unknown until the directory is fetched).
-  const withPresetIo = s.presets.directory?.outputConfigMode === OutputConfigMode.WithPreset;
-  return diffSnapshots(m.baseline, m.current).some((c): boolean => {
-    switch (CHANGE_CLASS[c.kind]) {
+  const withPresetIo = s.presets.directory?.outputConfigMode === Domain.OutputConfigMode.WithPreset;
+  return Domain.diffSnapshots(m.baseline, m.current).some((c): boolean => {
+    switch (Domain.CHANGE_CLASS[c.kind]) {
       case 'runtime-status': return false;
       case 'volume':         return !ignoreVol;
       case 'output-config':  return withPresetIo;
@@ -66,6 +61,7 @@ export function resetBoundary(): void {
 
 // Boundary modal, one-promise-at-a-time: a component awaits askBoundary(); the
 // modal renders while pending != null; the user's choice resolves the promise.
+// An ask while one is pending resolves 'cancel' without disturbing it.
 export type BoundaryChoice = 'save' | 'discard' | 'cancel';
 
 export interface BoundaryPrompt {
@@ -84,9 +80,7 @@ export const boundary = $state<BoundaryState>({ pending: null });
 let pendingResolve: ((choice: BoundaryChoice) => void) | null = null;
 
 export function askBoundary(prompt: BoundaryPrompt): Promise<BoundaryChoice> {
-  if (boundary.pending !== null) {
-    return Promise.reject(new Error('a boundary modal is already pending'));
-  }
+  if (boundary.pending !== null) return Promise.resolve('cancel');
   boundary.pending = prompt;
   return new Promise<BoundaryChoice>((resolve) => {
     pendingResolve = resolve;

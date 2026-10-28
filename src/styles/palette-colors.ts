@@ -72,8 +72,6 @@ export function paletteCSS(): string {
       const c = COLORS[key];
       return `.ch-${key} {
   --ch-base:   ${shadeFor(c, 'base')};
-  --ch-bright: ${shadeFor(c, 'bright')};
-  --ch-dim:    ${shadeFor(c, 'dim')};
   --ch-glow:   ${shadeFor(c, 'glow')};
 }`;
     })
@@ -84,9 +82,6 @@ export function paletteCSS(): string {
       const c = ROLE_COLORS[key];
       return `.pinrole-${key} {
   --role-base:   ${shadeFor(c, 'base')};
-  --role-bright: ${shadeFor(c, 'bright')};
-  --role-dim:    ${shadeFor(c, 'dim')};
-  --role-glow:   ${shadeFor(c, 'glow')};
 }`;
     })
     .join('\n');

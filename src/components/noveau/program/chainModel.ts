@@ -1,0 +1,133 @@
+import { formatSignedDb } from '@/components/chrome/format';
+import { FilterType, Proc, upmixParkingStatus, type DspSnapshot } from '@/domain';
+import type { DeviceFeatures } from '@/protocol/capabilities';
+import type { ChainAnchorKey, ProgramModuleKey } from './programModel';
+
+interface ChainBlockBase {
+  title: string;
+  /** null: the block has no enable switch. */
+  enabled: boolean | null;
+  values: string[];
+}
+
+/** Modules are selectable; the outputs anchor jumps to TUNE instead. */
+export type ChainModuleBlock = ChainBlockBase & { kind: 'module'; key: ProgramModuleKey };
+export type ChainAnchorBlock = ChainBlockBase & { kind: 'anchor'; key: ChainAnchorKey };
+export type ChainBlock = ChainModuleBlock | ChainAnchorBlock;
+
+export interface ChainTelemetry {
+  activeInputChannels: number | null;
+  sampleRateHz: number | null;
+}
+
+type ChainFeatures = Pick<DeviceFeatures, 'psybass' | 'subharm' | 'upmix' | 'limiter'>;
+
+/** Routes that reach sound: enabled, and their output is enabled. */
+export function liveRouteCount(snap: DspSnapshot): number {
+  const live = new Set(snap.outputs.filter((o) => o.enabled).map((o) => o.wireIndex));
+  return snap.routes.filter((r) => r.enabled && live.has(r.outputWireIndex)).length;
+}
+
+const SPEED = ['slow', 'medium', 'fast'];
+const PRESET = ['P1', 'P2', 'P3', 'Custom'];
+
+const fmtBand = (db: number) => (db <= Proc.SUBHARM_LEVEL_MIN_DB ? 'Off' : formatSignedDb(db));
+const pct = (n: number) => `${Math.round(n)} %`;
+
+export function chainBlocks(
+  snap: DspSnapshot | null,
+  features: ChainFeatures,
+  telemetry?: ChainTelemetry,
+): ChainBlock[] {
+  if (!snap) return [];
+  const off = (on: boolean, vals: string[]) => (on ? vals : ['off']);
+  const preamps = snap.inputPreampDb;
+  const inputs = snap.channels.filter((c) => !c.isOutput);
+  const withBands = inputs.filter((c) => c.filters.some((f) => f.type !== FilterType.Flat)).length;
+  const routes = liveRouteCount(snap);
+  const outs = snap.outputs;
+  const limOn = snap.limiter.filter((l, i) => l.enabled && outs.some((o) => o.wireIndex === i)).length;
+  const { leveller: lv, crossfeed: cf, loudness: ld, psybass: pb, subharm: sh, upmix: up } = snap;
+  const upStatus = upmixParkingStatus(up.enabled, telemetry?.activeInputChannels ?? null, telemetry?.sampleRateHz ?? null);
+
+  const mod = (b: Omit<ChainModuleBlock, 'kind'>): ChainBlock => ({ ...b, kind: 'module' });
+  const blocks: ChainBlock[] = [
+    mod({
+      key: 'preamp',
+      title: 'Preamp',
+      enabled: null,
+      values: [
+        `${formatSignedDb(snap.masterPreampDb)} dB`,
+        ...(preamps.length && Math.min(...preamps) !== Math.max(...preamps)
+          ? [`${formatSignedDb(Math.min(...preamps))}/${formatSignedDb(Math.max(...preamps))}`]
+          : []),
+      ],
+    }),
+    mod({ key: 'inputEq', title: 'Input EQ', enabled: null, values: [`${withBands} of ${inputs.length} inputs`] }),
+    mod({
+      key: 'leveller',
+      title: 'Leveller',
+      enabled: lv.enabled,
+      values: off(lv.enabled, [SPEED[lv.speed] ?? String(lv.speed), pct(lv.amount)]),
+    }),
+  ];
+  if (features.upmix) {
+    blocks.push(
+      mod({
+        key: 'upmix',
+        title: 'Upmix',
+        enabled: up.enabled,
+        values: up.enabled ? [upStatus === 'active' ? 'active' : 'parked', pct(up.strengthPct)] : ['off'],
+      }),
+    );
+  }
+  blocks.push(
+    mod({ key: 'matrix', title: 'Matrix', enabled: null, values: [`${routes} ${routes === 1 ? 'route' : 'routes'}`] }),
+    mod({
+      key: 'crossfeed',
+      title: 'Crossfeed',
+      enabled: cf.enabled,
+      values: off(cf.enabled, [PRESET[cf.preset] ?? String(cf.preset), `${Math.round(cf.freq)} Hz`]),
+    }),
+  );
+  if (features.subharm) {
+    blocks.push(
+      mod({
+        key: 'subharm',
+        title: 'Subharm',
+        enabled: sh.enabled,
+        values: off(sh.enabled, [fmtBand(sh.lowDb), fmtBand(sh.highDb)]),
+      }),
+    );
+  }
+  if (features.psybass) {
+    blocks.push(
+      mod({
+        key: 'psybass',
+        title: 'Psybass',
+        enabled: pb.enabled,
+        values: off(pb.enabled, [`${Math.round(pb.cutoffHz)} Hz`, `${formatSignedDb(pb.harmonicsDb)} dB`]),
+      }),
+    );
+  }
+  blocks.push(
+    mod({
+      key: 'loudness',
+      title: 'Loudness',
+      enabled: ld.enabled,
+      values: off(ld.enabled, [`${Math.round(ld.refSpl)} dB`, pct(ld.intensityPct)]),
+    }),
+  );
+  blocks.push({
+    key: 'outputs',
+    kind: 'anchor',
+    title: 'Outputs',
+    enabled: null,
+    values: [
+      `${outs.filter((o) => o.enabled).length} on`,
+      ...(outs.some((o) => o.muted) ? [`${outs.filter((o) => o.muted).length} muted`] : []),
+      ...(features.limiter ? [`lim ${limOn}`] : []),
+    ],
+  });
+  return blocks;
+}

@@ -2,7 +2,7 @@ import * as Domain from '@/domain';
 import * as Clamp from '@/domain/clamp';
 import { type ReadySession, pushNotice } from '@/state';
 import { errMessage } from '@/utils';
-import { write, command } from './writes.svelte';
+import { write, command, refuseWhileDegraded } from './writes.svelte';
 
 // Clears firmware-side latched clip flags (0x83) and the host-side OR-latch.
 // Not routed through write/scrub: clip state lives in telemetry, not the DSP
@@ -34,26 +34,40 @@ export function setLgSoundSyncEnabled(s: ReadySession, enabled: boolean): void {
 // as device truth, and warns when an enable didn't stick.
 const DAC_HW_MUTE_APPLY_MS = 200;
 
-export function setDacHwMute(s: ReadySession, patch: Partial<Domain.DacHwMute>): void {
+export async function setDacHwMute(s: ReadySession, patch: Partial<Domain.DacHwMute>): Promise<boolean> {
+  if (refuseWhileDegraded(s)) return false;
   const merged = { ...s.mirror.snapshot.dacHwMute, ...patch };
   const next: Domain.DacHwMute = merged.enabled
     ? { ...merged, holdMs: Clamp.dacHwMuteHoldMs(merged.holdMs), releaseMs: Clamp.dacHwMuteReleaseMs(merged.releaseMs) }
     : merged;
+  const prev = s.mirror.snapshot.dacHwMute;
   s.mirror.snapshot.dacHwMute = next;
+  let ok = false;
+  let echoed = false;
   // queued: false -- the apply wait must not hold the session queue (it would
   // stall the status poll); each wire call queues itself and the wait sits
   // between them.
-  void command(s, 'set DAC HW mute', async () => {
+  await command(s, 'set DAC HW mute', async () => {
     await s.queue.run(() => s.device.setDacHwMute(next));
     await new Promise((r) => setTimeout(r, DAC_HW_MUTE_APPLY_MS));
     return s.queue.run(() => s.device.getDacHwMute());
   }, (echo, s) => {
+    echoed = true;
     s.mirror.snapshot.dacHwMute = echo;
     if (next.enabled && (echo.enabled !== next.enabled || echo.pin !== next.pin)) {
       pushNotice('warn', 'DAC HW mute config rejected by the device (pin in use or invalid).');
+    } else {
+      ok = true;
     }
     s.mirror.requestReconcile(false);
   }, { queued: false });
+  // The send or read-back threw: the optimistic value never reached the
+  // device, so put the previous one back unless a newer edit has built on it.
+  if (!echoed && s.alive) {
+    if (JSON.stringify(s.mirror.snapshot.dacHwMute) === JSON.stringify(next)) s.mirror.snapshot.dacHwMute = prev;
+    s.mirror.requestReconcile(true);
+  }
+  return ok;
 }
 
 // Selectable system clock (fw overclock branch). SET is a deferred apply --
@@ -67,7 +81,7 @@ export function setDacHwMute(s: ReadySession, patch: Partial<Domain.DacHwMute>):
 const SYS_CLOCK_APPLY_MS = 500;
 const SYS_CLOCK_CONFIRM_ATTEMPTS = 3;
 
-export async function applySysClock(s: ReadySession, mode: Domain.SysClockMode, vregSel: number): Promise<void> {
+export async function applySysClock(s: ReadySession, mode: Domain.SysClockMode, vregSel: number): Promise<boolean> {
   s.sysClock.busy = true;
   try {
     await command(s, 'set system clock', async () => {
@@ -77,7 +91,7 @@ export async function applySysClock(s: ReadySession, mode: Domain.SysClockMode, 
       for (let i = 0; i < SYS_CLOCK_CONFIRM_ATTEMPTS; i++) {
         await new Promise((r) => setTimeout(r, SYS_CLOCK_APPLY_MS));
         status = await s.queue.run(() => d.getSysClock());
-        if (s.alive) s.sysClock.status = status;
+        if (s.alive) { s.sysClock.status = status; s.sysClock.supported = true; }
         // A fresh SET clears the fallback latch, so a readback that still
         // carries it predates the apply -- keep polling.
         if (status.activeMode === mode && !status.fallbackActive) break;
@@ -91,6 +105,8 @@ export async function applySysClock(s: ReadySession, mode: Domain.SysClockMode, 
   } finally {
     s.sysClock.busy = false;
   }
+  const now = s.sysClock.status;
+  return now != null && now.storedMode === mode && now.storedVregSel === vregSel;
 }
 
 // Manual re-read for the panel's REFRESH affordance -- the escape hatch when
@@ -99,8 +115,9 @@ export async function applySysClock(s: ReadySession, mode: Domain.SysClockMode, 
 export async function refreshSysClock(s: ReadySession): Promise<void> {
   try {
     const status = await s.queue.run(() => s.device.getSysClock());
-    if (s.alive) s.sysClock.status = status;
+    if (s.alive) { s.sysClock.status = status; s.sysClock.supported = true; }
   } catch (e) {
+    if (s.sysClock.supported === false) return;
     pushNotice('error', `System clock read failed: ${errMessage(e)}`);
   }
 }
@@ -119,6 +136,7 @@ export function resetBufferStats(s: ReadySession): void {
 // in firmware before reset_usb_boot). The transfer may throw as the device
 // drops mid-response; that is expected and is treated as a normal disconnect.
 export async function enterBootloader(s: ReadySession): Promise<void> {
+  if (refuseWhileDegraded(s)) { pushNotice('warn', 'Link degraded — bootloader request not sent'); return; }
   try {
     await s.queue.run(() => s.device.enterBootloader());
   } catch {

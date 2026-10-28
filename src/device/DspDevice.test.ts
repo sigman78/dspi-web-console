@@ -8,19 +8,10 @@ import { describe, it, test, expect, beforeEach, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice, UnsupportedFirmware, UnsupportedDevicePacket } from './DspDevice';
 import { createDevice } from '@test/fixtures/deviceHarness';
-import { PresetResult, PinConfigResult, WireCmd, SystemStatusValue, Wire, NotifyEventId } from '@/protocol';
+import * as Protocol from '@/protocol';
 import { Codec } from '@/utils';
-import {
-  PlatformType,
-  CrossfeedPreset, LevellerSpeed, MasterVolumeMode, OutputConfigMode,
-  FilterType,
-  ChannelId,
-  AudioInputSource,
-  SpdifInputState,
-  SysClockMode,
-  AdatInputLockState,
-  type PresetSlot,
-} from '@/domain';
+import * as Domain from '@/domain';
+import type { PresetSlot } from '@/domain';
 import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
 
 describe('DspDevice facade', () => {
@@ -31,7 +22,7 @@ describe('DspDevice facade', () => {
   });
 
   it('reads device info (platform type + firmware string)', async () => {
-    expect(d.info.platformType).toBe(PlatformType.RP2350);
+    expect(d.info.platformType).toBe(Domain.PlatformType.RP2350);
     expect(d.info.capabilities.fwLabel.length).toBeGreaterThan(0);
   });
 
@@ -57,7 +48,7 @@ describe('DspDevice facade', () => {
       isOpen:  () => inner.isOpen(),
       on:      (e: TransportEvent, l: () => void) => inner.on(e, l),
       ctrlIn:  (request, value, length) => {
-        if (request === WireCmd.GetStatus.code && value === SystemStatusValue.SpdifStarvationsTotal) {
+        if (request === Protocol.WireCmd.GetStatus.code && value === Protocol.SystemStatusValue.SpdifStarvationsTotal) {
           return Promise.reject(new Error('STALL'));
         }
         return inner.ctrlIn(request, value, length);
@@ -82,7 +73,7 @@ describe('DspDevice facade', () => {
 
 describe('DspDevice — GetPlatform response length', () => {
   it('takes full-width minor/patch from the 6-byte response (fw 1.1.6+)', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 16 } });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: Protocol.Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 16 } });
     const d = await DspDevice.create(t);
     expect(d.info.capabilities.fwLabel).toBe('1.1.16');
   });
@@ -94,7 +85,7 @@ describe('DspDevice — GetPlatform response length', () => {
       open: () => t.open(), close: () => t.close(), isOpen: () => t.isOpen(), on: (e, l) => t.on(e, l),
       ctrlIn: async (req, val, len) => {
         const r = await t.ctrlIn(req, val, len);
-        if (req === WireCmd.GetPlatform.code) seen.push(r.length);
+        if (req === Protocol.WireCmd.GetPlatform.code) seen.push(r.length);
         return r;
       },
       ctrlOut: (req, val, data) => t.ctrlOut(req, val, data),
@@ -107,7 +98,7 @@ describe('DspDevice — GetPlatform response length', () => {
 
 describe('DspDevice — build stamp (GetBuildInfo 0x80, gated on features.buildStamp)', () => {
   it('info.build is the mock default on a V29 / fw 1.1.6 device', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: Protocol.Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 6 } });
     const d = await DspDevice.create(t);
     expect(d.info.build).toEqual({ describe: 'v1.1.6-mock', date: '2026-09-02' });
   });
@@ -122,15 +113,15 @@ describe('DspDevice — build stamp (GetBuildInfo 0x80, gated on features.buildS
     };
     const d = await DspDevice.create(spy);
     expect(d.info.build).toBeNull();
-    expect(seen).not.toContain(WireCmd.GetBuildInfo.code);
+    expect(seen).not.toContain(Protocol.WireCmd.GetBuildInfo.code);
   });
 
   it('info.build is null and create still resolves when the 0x80 read throws', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: Protocol.Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 6 } });
     const spy: DspTransport = {
       open: () => t.open(), close: () => t.close(), isOpen: () => t.isOpen(), on: (e, l) => t.on(e, l),
       ctrlIn: (req, val, len) => {
-        if (req === WireCmd.GetBuildInfo.code) return Promise.reject(new Error('STALL'));
+        if (req === Protocol.WireCmd.GetBuildInfo.code) return Promise.reject(new Error('STALL'));
         return t.ctrlIn(req, val, len);
       },
       ctrlOut: (req, val, data) => t.ctrlOut(req, val, data),
@@ -140,11 +131,11 @@ describe('DspDevice — build stamp (GetBuildInfo 0x80, gated on features.buildS
   });
 
   it('info.build is null when the 0x80 reply is too short to carry a describe', async () => {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 6 } });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: Protocol.Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 6 } });
     const spy: DspTransport = {
       open: () => t.open(), close: () => t.close(), isOpen: () => t.isOpen(), on: (e, l) => t.on(e, l),
       ctrlIn: async (req, val, len) => {
-        if (req === WireCmd.GetBuildInfo.code) return new Uint8Array(0);
+        if (req === Protocol.WireCmd.GetBuildInfo.code) return new Uint8Array(0);
         return t.ctrlIn(req, val, len);
       },
       ctrlOut: (req, val, data) => t.ctrlOut(req, val, data),
@@ -172,13 +163,13 @@ describe('DspDevice — getSystemStatus hardware profile contract', () => {
       isOpen: () => inner.isOpen(),
       on: (event, listener) => inner.on(event, listener),
       ctrlIn: (request, value, length) => {
-        if (request === WireCmd.GetStatus.code) statusLength = length;
+        if (request === Protocol.WireCmd.GetStatus.code) statusLength = length;
         return inner.ctrlIn(request, value, length);
       },
       ctrlOut: (request, value, data) => inner.ctrlOut(request, value, data),
     };
     const d = await createDevice(t, 'rp2040');
-    expect(d.info.platformType).toBe(PlatformType.RP2040);
+    expect(d.info.platformType).toBe(Domain.PlatformType.RP2040);
     expect(d.hardware.totalChannelCount).toBe(7);
     const s = await d.getSystemStatus();
     expect(statusLength).toBe(7 * 2 + 4);
@@ -205,7 +196,7 @@ describe('DspDevice — bypass + master volume mode', () => {
       ctrlIn: async (req) => { lastReq = req; return new Uint8Array([1]); },
       ctrlOut: async () => {},
     };
-    expect(await (await createDevice(t)).getMasterVolumeMode()).toBe(MasterVolumeMode.WithPreset);
+    expect(await (await createDevice(t)).getMasterVolumeMode()).toBe(Domain.MasterVolumeMode.WithPreset);
     expect(lastReq).toBe(0xD5);
   });
 });
@@ -270,19 +261,19 @@ describe('DspDevice — processing module setters', () => {
   }> = [
     { name: 'setBypass(true) -> 0x46',                invoke: (d) => d.setBypass(true), opcode: 0x46, payload: bool8(true) },
     { name: 'setBypass(false) -> 0x46',               invoke: (d) => d.setBypass(false), opcode: 0x46, payload: bool8(false) },
-    { name: 'setMasterVolumeMode(WithPreset) -> 0xD4', invoke: (d) => d.setMasterVolumeMode(MasterVolumeMode.WithPreset), opcode: 0xD4, payload: u8(1) },
-    { name: 'setMasterVolumeMode(Independent) -> 0xD4', invoke: (d) => d.setMasterVolumeMode(MasterVolumeMode.Independent), opcode: 0xD4, payload: u8(0) },
+    { name: 'setMasterVolumeMode(WithPreset) -> 0xD4', invoke: (d) => d.setMasterVolumeMode(Domain.MasterVolumeMode.WithPreset), opcode: 0xD4, payload: u8(1) },
+    { name: 'setMasterVolumeMode(Independent) -> 0xD4', invoke: (d) => d.setMasterVolumeMode(Domain.MasterVolumeMode.Independent), opcode: 0xD4, payload: u8(0) },
     { name: 'setLoudnessEnabled(true) -> 0x58',       invoke: (d) => d.setLoudnessEnabled(true), opcode: 0x58, payload: bool8(true) },
     { name: 'setLoudnessRefSpl(85) -> 0x5A',          invoke: (d) => d.setLoudnessRefSpl(85), opcode: 0x5A, payload: f32(85) },
     { name: 'setLoudnessIntensity(0.6) -> 0x5C',      invoke: (d) => d.setLoudnessIntensity(0.6), opcode: 0x5C, payload: f32(0.6) },
     { name: 'setCrossfeedEnabled(true) -> 0x5E',      invoke: (d) => d.setCrossfeedEnabled(true), opcode: 0x5E, payload: bool8(true) },
-    { name: 'setCrossfeedPreset(Preset3) -> 0x60',    invoke: (d) => d.setCrossfeedPreset(CrossfeedPreset.Preset3), opcode: 0x60, payload: u8(2) },
+    { name: 'setCrossfeedPreset(Preset3) -> 0x60',    invoke: (d) => d.setCrossfeedPreset(Domain.CrossfeedPreset.Preset3), opcode: 0x60, payload: u8(2) },
     { name: 'setCrossfeedFreq(700) -> 0x62',          invoke: (d) => d.setCrossfeedFreq(700), opcode: 0x62, payload: f32(700) },
     { name: 'setCrossfeedFeedDb(4.5) -> 0x64',        invoke: (d) => d.setCrossfeedFeedDb(4.5), opcode: 0x64, payload: f32(4.5) },
     { name: 'setCrossfeedItd(false) -> 0x66',         invoke: (d) => d.setCrossfeedItd(false), opcode: 0x66, payload: bool8(false) },
     { name: 'setLevellerEnabled(true) -> 0xB4',       invoke: (d) => d.setLevellerEnabled(true), opcode: 0xB4, payload: bool8(true) },
     { name: 'setLevellerAmount(30) -> 0xB6',          invoke: (d) => d.setLevellerAmount(30), opcode: 0xB6, payload: f32(30) },
-    { name: 'setLevellerSpeed(Fast) -> 0xB8',         invoke: (d) => d.setLevellerSpeed(LevellerSpeed.Fast), opcode: 0xB8, payload: u8(2) },
+    { name: 'setLevellerSpeed(Fast) -> 0xB8',         invoke: (d) => d.setLevellerSpeed(Domain.LevellerSpeed.Fast), opcode: 0xB8, payload: u8(2) },
     { name: 'setLevellerMaxGain(6) -> 0xBA',          invoke: (d) => d.setLevellerMaxGain(6), opcode: 0xBA, payload: f32(6) },
     { name: 'setLevellerLookahead(true) -> 0xBC',     invoke: (d) => d.setLevellerLookahead(true), opcode: 0xBC, payload: bool8(true) },
     { name: 'setLevellerGate(-40) -> 0xBE',           invoke: (d) => d.setLevellerGate(-40), opcode: 0xBE, payload: f32(-40) },
@@ -343,7 +334,7 @@ describe('DspDevice — getUpmixStatus decode', () => {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, val) => {
         lastReq = req; lastVal = val;
-        return Codec.encode(Wire.UpmixStatus, {
+        return Codec.encode(Protocol.Wire.UpmixStatus, {
           active: true, parkedReason: 0, corrQ14: -4096, balanceQ14: 2048,
           centerGainQ15: 23170, lsGainQ15: 20000, rsGainQ15: 20000,
         });
@@ -362,7 +353,7 @@ describe('DspDevice — getUpmixStatus decode', () => {
   test('narrows an out-of-range parkedReason byte to Disabled', async () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
-      ctrlIn: async () => Codec.encode(Wire.UpmixStatus, {
+      ctrlIn: async () => Codec.encode(Protocol.Wire.UpmixStatus, {
         active: false, parkedReason: 99, corrQ14: 0, balanceQ14: 0,
         centerGainQ15: 0, lsGainQ15: 0, rsGainQ15: 0,
       }),
@@ -406,7 +397,7 @@ describe('DspDevice — output limiter reads (fw V32+)', () => {
       open: () => inner.open(), close: () => inner.close(), isOpen: () => inner.isOpen(),
       on: (e: TransportEvent, l: () => void) => inner.on(e, l),
       ctrlIn: (request, value, length) => {
-        if (request !== WireCmd.Limiter.code) return inner.ctrlIn(request, value, length);
+        if (request !== Protocol.WireCmd.Limiter.code) return inner.ctrlIn(request, value, length);
         seen.push({ value, length });
         return Promise.resolve(reply);
       },
@@ -444,7 +435,7 @@ describe('DspDevice — output limiter reads (fw V32+)', () => {
     const f = new Uint8Array(4);
     new DataView(f.buffer).setFloat32(0, -12.5, true);
     const { d, seen } = await withReply(f);
-    expect(await d.getLimiterParam(4, Wire.LimiterParam.ThresholdDb)).toBeCloseTo(-12.5, 4);
+    expect(await d.getLimiterParam(4, Protocol.Wire.LimiterParam.ThresholdDb)).toBeCloseTo(-12.5, 4);
     expect(seen[0].value).toBe(0x0401);
   });
 });
@@ -470,7 +461,7 @@ describe('DspDevice — saveMasterVolume action-IN', () => {
     };
     const r = await (await createDevice(t)).saveMasterVolume();
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe(PresetResult.CrcFailure);
+    if (!r.ok) expect(r.code).toBe(Protocol.PresetResult.CrcFailure);
   });
 
   test('fails when response is empty', async () => {
@@ -565,7 +556,7 @@ describe('DspDevice — preset directory and active slot', () => {
     const dir = await d.getPresetDirectory();
     expect(dir.occupiedSlotsSet.size).toBe(0);
     expect(dir.startupMode).toBe(0);
-    expect(dir.outputConfigMode).toBe(OutputConfigMode.WithPreset);
+    expect(dir.outputConfigMode).toBe(Domain.OutputConfigMode.WithPreset);
     expect(dir.masterVolumeMode).toBe(0);
     expect(dir.lastActiveSlot).toBe(0); // mock default; real firmware returns 0xFF → null until first save
   });
@@ -595,7 +586,7 @@ describe('DspDevice — preset directory and active slot', () => {
       isOpen:  () => true,
       on:      () => () => {},
       ctrlIn:  async (request) =>
-        request === WireCmd.PresetGetActive.code
+        request === Protocol.WireCmd.PresetGetActive.code
           ? new Uint8Array([0xFF])
           : new Uint8Array(0),
       ctrlOut: async () => {},
@@ -677,7 +668,7 @@ describe('DspDevice — preset save/load/delete', () => {
   it('savePreset returns InvalidSlot for slot ≥ 10 (wire-level guard)', async () => {
     const r = await d.savePreset(10 as PresetSlot);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe(PresetResult.InvalidSlot);
+    if (!r.ok) expect(r.code).toBe(Protocol.PresetResult.InvalidSlot);
   });
 
   it('deletePreset preserves the slot name (matches firmware: directory-level)', async () => {
@@ -720,16 +711,16 @@ describe('DspDevice — preset startup + include-pins', () => {
   });
 
   it('roundtrips output-config mode', async () => {
-    await d.setOutputConfigMode(OutputConfigMode.Independent);
-    expect(await d.getOutputConfigMode()).toBe(OutputConfigMode.Independent);
-    await d.setOutputConfigMode(OutputConfigMode.WithPreset);
-    expect(await d.getOutputConfigMode()).toBe(OutputConfigMode.WithPreset);
+    await d.setOutputConfigMode(Domain.OutputConfigMode.Independent);
+    expect(await d.getOutputConfigMode()).toBe(Domain.OutputConfigMode.Independent);
+    await d.setOutputConfigMode(Domain.OutputConfigMode.WithPreset);
+    expect(await d.getOutputConfigMode()).toBe(Domain.OutputConfigMode.WithPreset);
   });
 
   it('reflects output-config mode in directory packet', async () => {
-    await d.setOutputConfigMode(OutputConfigMode.Independent);
+    await d.setOutputConfigMode(Domain.OutputConfigMode.Independent);
     const dir = await d.getPresetDirectory();
-    expect(dir.outputConfigMode).toBe(OutputConfigMode.Independent);
+    expect(dir.outputConfigMode).toBe(Domain.OutputConfigMode.Independent);
   });
 });
 
@@ -779,13 +770,13 @@ describe('DspDevice — clearAllPresets', () => {
     // Stub the transport to return FlashWriteError (0x04) on PresetDelete.
     const orig = t.ctrlIn.bind(t);
     t.ctrlIn = async (req, val, len) =>
-      req === WireCmd.PresetDelete.code
-        ? new Uint8Array([PresetResult.FlashWriteError])
+      req === Protocol.WireCmd.PresetDelete.code
+        ? new Uint8Array([Protocol.PresetResult.FlashWriteError])
         : orig(req, val, len);
 
     const r = await d.clearAllPresets({ pacingMs: 0 });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe(PresetResult.FlashWriteError);
+    if (!r.ok) expect(r.code).toBe(Protocol.PresetResult.FlashWriteError);
   });
 });
 
@@ -823,7 +814,7 @@ describe('DspDevice — getFilter multi-read', () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, val, len) => {
-        if (req === WireCmd.GetPlatform.code) {
+        if (req === Protocol.WireCmd.GetPlatform.code) {
           return new Uint8Array([1, 1, 2, 0]);
         }
         seen.push({ req, val, len });
@@ -845,7 +836,7 @@ describe('DspDevice — getFilter multi-read', () => {
     const base = (2 << 8) | (5 << 4);
     expect(seen.map(s => s.val)).toEqual([base | 0, base | 1, base | 2, base | 3]);
 
-    expect(f.type).toBe(FilterType.Peaking);
+    expect(f.type).toBe(Domain.FilterType.Peaking);
     expect(f.frequency).toBeCloseTo(1234, 1);
     expect(f.q).toBeCloseTo(0.7, 4);
     expect(f.gain).toBeCloseTo(-3.5, 4);
@@ -856,7 +847,7 @@ describe('DspDevice — getFilter multi-read', () => {
     const d = await createDevice(t);
 
     await expect(d.setFilter(2, 0, {
-      type: FilterType.Peaking,
+      type: Domain.FilterType.Peaking,
       bypass: false,
       frequency: 1000,
       q: 1,
@@ -874,7 +865,7 @@ describe('DspDevice — getFilter multi-read', () => {
       on: () => () => {},
       ctrlIn: async (req, val, len) => {
         seenIn.push({ req, val, len });
-        if (req === WireCmd.GetPlatform.code) {
+        if (req === Protocol.WireCmd.GetPlatform.code) {
           return new Uint8Array([0, 1, 2, 0]);
         }
         return new Uint8Array(len);
@@ -884,17 +875,17 @@ describe('DspDevice — getFilter multi-read', () => {
       },
     };
     const d = await createDevice(t, 'rp2040');
-    await d.setFilter(ChannelId.Pdm, 0, { type: FilterType.Peaking, bypass: false, frequency: 80, q: 1, gain: -3 });
-    await d.getFilter(ChannelId.Pdm, 1);
-    await d.setChannelName(ChannelId.Pdm, 'Sub');
-    await d.getChannelName(ChannelId.Pdm);
+    await d.setFilter(Domain.ChannelId.Pdm, 0, { type: Domain.FilterType.Peaking, bypass: false, frequency: 80, q: 1, gain: -3 });
+    await d.getFilter(Domain.ChannelId.Pdm, 1);
+    await d.setChannelName(Domain.ChannelId.Pdm, 'Sub');
+    await d.getChannelName(Domain.ChannelId.Pdm);
 
-    const filterPacket = seenOut.find((call) => call.req === WireCmd.SetEqParam.code)?.data;
+    const filterPacket = seenOut.find((call) => call.req === Protocol.WireCmd.SetEqParam.code)?.data;
     expect(filterPacket?.[0]).toBe(6);
-    expect(seenIn.filter((call) => call.req === WireCmd.GetEqParam.code).map((call) => call.val & ~0xF))
+    expect(seenIn.filter((call) => call.req === Protocol.WireCmd.GetEqParam.code).map((call) => call.val & ~0xF))
       .toEqual(Array(4).fill((6 << 8) | (1 << 4)));
-    expect(seenOut.find((call) => call.req === WireCmd.SetChannelName.code)?.val).toBe(6);
-    expect(seenIn.find((call) => call.req === WireCmd.GetChannelName.code)?.val).toBe(6);
+    expect(seenOut.find((call) => call.req === Protocol.WireCmd.SetChannelName.code)?.val).toBe(6);
+    expect(seenIn.find((call) => call.req === Protocol.WireCmd.GetChannelName.code)?.val).toBe(6);
   });
 });
 
@@ -916,7 +907,7 @@ describe('output type & pin commands', () => {
     const d = await dev();
     const r = await d.setOutputPin(0, 7); // 7 belongs to slot 2
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe(PinConfigResult.PinInUse);
+    if (!r.ok) expect(r.code).toBe(Protocol.PinConfigResult.PinInUse);
   });
 
   test('setOutputType switches a slot and getOutputType confirms', async () => {
@@ -931,7 +922,7 @@ describe('output type & pin commands', () => {
     const d = await dev();
     const r = await d.setOutputPin(99, 16);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe(PinConfigResult.InvalidOutput);
+    if (!r.ok) expect(r.code).toBe(Protocol.PinConfigResult.InvalidOutput);
   });
 });
 
@@ -955,7 +946,7 @@ describe('I2S clock commands', () => {
     expect(await d.getMckEnable()).toBe(1);
     const r = await d.setMckPin(20);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe(PinConfigResult.OutputActive);
+    if (!r.ok) expect(r.code).toBe(Protocol.PinConfigResult.OutputActive);
   });
 
   test('MCK multiplier round-trips as 0/1 enum', async () => {
@@ -969,7 +960,7 @@ describe('I2S clock commands', () => {
     await d.setOutputType(0, 1);
     const r = await d.setI2sBckPin(16);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe(PinConfigResult.OutputActive);
+    if (!r.ok) expect(r.code).toBe(Protocol.PinConfigResult.OutputActive);
   });
 
   test('role 0 (default) BCK pin SET/GET packs wValue identically to the pre-V21 encoding', async () => {
@@ -978,11 +969,11 @@ describe('I2S clock commands', () => {
     const ctrlInSpy = vi.spyOn(t, 'ctrlIn');
 
     expect((await d.setI2sBckPin(16)).ok).toBe(true);
-    const setCall = ctrlInSpy.mock.calls.find((c) => c[0] === WireCmd.SetI2sBckPin.code);
+    const setCall = ctrlInSpy.mock.calls.find((c) => c[0] === Protocol.WireCmd.SetI2sBckPin.code);
     expect(setCall?.[1]).toBe(16);   // role 0 -> wValue === pin, unchanged from legacy
 
     await d.getI2sBckPin();
-    const getCall = ctrlInSpy.mock.calls.find((c) => c[0] === WireCmd.GetI2sBckPin.code);
+    const getCall = ctrlInSpy.mock.calls.find((c) => c[0] === Protocol.WireCmd.GetI2sBckPin.code);
     expect(getCall?.[1]).toBe(0);    // role 0 -> wValue === 0, unchanged from legacy
   });
 
@@ -1014,7 +1005,7 @@ describe('I2S slave-clock commands (fw V21)', () => {
     expect(idle.state).toBe(0);   // INACTIVE: master mode, not I2S input yet
 
     await d.setI2sClockMode(1);
-    await d.setInputSource(AudioInputSource.I2s);
+    await d.setInputSource(Domain.AudioInputSource.I2s);
     const locked = await d.getI2sSlaveStatus();
     expect(locked.state).toBe(3); // LOCKED
     expect(locked.detectedRateHz).toBe(48000);
@@ -1059,7 +1050,7 @@ describe('ADAT lightpipe output commands (fw V17+, RP2350)', () => {
     const d = await DspDevice.create(new MockTransport({ platform: 'rp2040', wireVersion: 17, fwVersion: { major: 1, minor: 1, patch: 5 } }));
     const r = await d.setAdatPin(20);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe(PinConfigResult.InvalidOutput);
+    if (!r.ok) expect(r.code).toBe(Protocol.PinConfigResult.InvalidOutput);
   });
 });
 
@@ -1085,7 +1076,7 @@ describe('ADAT lightpipe input commands (fw V24+, RP2350)', () => {
     const d = await dev();
     const r = await d.setAdatInputEnable(true);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe(PinConfigResult.InvalidPin);
+    if (!r.ok) expect(r.code).toBe(Protocol.PinConfigResult.InvalidPin);
   });
 
   test('0xFF clear is refused while enabled, allowed while disabled', async () => {
@@ -1094,7 +1085,7 @@ describe('ADAT lightpipe input commands (fw V24+, RP2350)', () => {
     await d.setAdatInputEnable(true);
     const clearWhileEnabled = await d.setAdatInputPin(0xFF);
     expect(clearWhileEnabled.ok).toBe(false);
-    if (!clearWhileEnabled.ok) expect(clearWhileEnabled.code).toBe(PinConfigResult.PinInUse);
+    if (!clearWhileEnabled.ok) expect(clearWhileEnabled.code).toBe(Protocol.PinConfigResult.PinInUse);
 
     await d.setAdatInputEnable(false);
     const clearWhileDisabled = await d.setAdatInputPin(0xFF);
@@ -1106,10 +1097,10 @@ describe('ADAT lightpipe input commands (fw V24+, RP2350)', () => {
     const d = await dev();
     await d.setAdatInputPin(20);
     await d.setAdatInputEnable(true);
-    await d.setInputSource(AudioInputSource.Adat);
+    await d.setInputSource(Domain.AudioInputSource.Adat);
     const r = await d.setAdatInputEnable(false);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe(PinConfigResult.PinInUse);
+    if (!r.ok) expect(r.code).toBe(Protocol.PinConfigResult.PinInUse);
   });
 
   test('loopback: sharing the live ADAT output pin is allowed, another used pin is not', async () => {
@@ -1120,17 +1111,17 @@ describe('ADAT lightpipe input commands (fw V24+, RP2350)', () => {
     expect((await d.setAdatInputPin(12)).ok).toBe(true);
     const r = await d.setAdatInputPin(5);                  // S/PDIF RX's always-claimed default pin
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe(PinConfigResult.PinInUse);
+    if (!r.ok) expect(r.code).toBe(Protocol.PinConfigResult.PinInUse);
   });
 
   test('RP2040: enable/pin SETs are rejected, GETs and clock mode still round-trip', async () => {
     const d = await DspDevice.create(new MockTransport({ platform: 'rp2040', wireVersion: 24, fwVersion: { major: 1, minor: 1, patch: 5 } }));
     const enableResult = await d.setAdatInputEnable(true);
     expect(enableResult.ok).toBe(false);
-    if (!enableResult.ok) expect(enableResult.code).toBe(PinConfigResult.InvalidOutput);
+    if (!enableResult.ok) expect(enableResult.code).toBe(Protocol.PinConfigResult.InvalidOutput);
     const pinResult = await d.setAdatInputPin(20);
     expect(pinResult.ok).toBe(false);
-    if (!pinResult.ok) expect(pinResult.code).toBe(PinConfigResult.InvalidOutput);
+    if (!pinResult.ok) expect(pinResult.code).toBe(Protocol.PinConfigResult.InvalidOutput);
 
     // Rejected SETs never stored anything, but the granular GETs still round
     // trip stored config on RP2040 (unlike GetAdatInputStatus, which zeroes).
@@ -1145,9 +1136,9 @@ describe('ADAT lightpipe input commands (fw V24+, RP2350)', () => {
     const d = await dev();
     await d.setAdatInputPin(20);
     await d.setAdatInputEnable(true);
-    await d.setInputSource(AudioInputSource.Adat);
+    await d.setInputSource(Domain.AudioInputSource.Adat);
     const status = await d.getAdatInputStatus();
-    expect(status.state).toBe(AdatInputLockState.Locked);
+    expect(status.state).toBe(Domain.AdatInputLockState.Locked);
     expect(status.enabled).toBe(true);
     expect(status.pin).toBe(20);
     expect(status.rateOk).toBe(true);
@@ -1157,7 +1148,7 @@ describe('ADAT lightpipe input commands (fw V24+, RP2350)', () => {
 
 describe('selectable system clock (fw overclock branch)', () => {
   async function dev() {
-    const t = new MockTransport({ platform: 'rp2350', wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 5 } });
+    const t = new MockTransport({ platform: 'rp2350', wireVersion: Protocol.Wire.MAX_WIRE_VERSION, fwVersion: { major: 1, minor: 1, patch: 5 } });
     return await DspDevice.create(t);
   }
 
@@ -1165,8 +1156,8 @@ describe('selectable system clock (fw overclock branch)', () => {
     const d = await dev();
     await d.setSysClock(2, 15);
     const status = await d.getSysClock();
-    expect(status.activeMode).toBe(SysClockMode.Mhz480);
-    expect(status.storedMode).toBe(SysClockMode.Mhz480);
+    expect(status.activeMode).toBe(Domain.SysClockMode.Mhz480);
+    expect(status.storedMode).toBe(Domain.SysClockMode.Mhz480);
     expect(status.fallbackActive).toBe(false);
   });
 
@@ -1191,7 +1182,7 @@ describe('setAllParams', () => {
     const calls = ctrlOutSpy.mock.calls.filter((c) => c[0] === 0xA1);
     expect(calls).toHaveLength(1);
     expect(calls[0][1]).toBe(0);              // wValue
-    expect(calls[0][2].byteLength).toBe(Wire.BulkSizes.V10); // V10 device round-trips its full tail
+    expect(calls[0][2].byteLength).toBe(Protocol.Wire.BulkSizes.V10); // V10 device round-trips its full tail
   });
 
   it('mock direct getters reflect values written through setAllParams', async () => {
@@ -1247,7 +1238,7 @@ describe('connect-time capabilities + version gating', () => {
   it('rejects a wire-supported device that reports a truncated payload', async () => {
     // V10 wire (supported) but a payload shorter than the V10 floor — malformed
     // firmware. Floor sections are treated as guaranteed, so connect rejects it.
-    const transport = new MockTransport({ platform: 'rp2350', wireVersion: 10, payloadLength: Wire.BulkSizes.V3 });
+    const transport = new MockTransport({ platform: 'rp2350', wireVersion: 10, payloadLength: Protocol.Wire.BulkSizes.V3 });
     await expect(DspDevice.create(transport)).rejects.toBeInstanceOf(UnsupportedDevicePacket);
   });
 
@@ -1281,10 +1272,10 @@ describe('getAllParams', () => {
 
     await dev.getAllParams();
 
-    const reads = ctrlInSpy.mock.calls.filter((c) => c[0] === WireCmd.GetAllParams.code);
+    const reads = ctrlInSpy.mock.calls.filter((c) => c[0] === Protocol.WireCmd.GetAllParams.code);
     expect(reads.length).toBeGreaterThan(0);
     for (const r of reads) {
-      expect(r[2]).toBe(Wire.BulkLimits.MaxReadSize);
+      expect(r[2]).toBe(Protocol.Wire.BulkLimits.MaxReadSize);
       expect(r[2]).toBeGreaterThanOrEqual(2960);
     }
   });
@@ -1296,7 +1287,7 @@ describe('readNotification', () => {
     const dev = await DspDevice.create(transport);
     transport.pushNotify(new Uint8Array([2, 3, 0, 5, 3, 0, 0, 0]));
     const bytes = await dev.readNotification();
-    expect(bytes?.[1]).toBe(NotifyEventId.BulkInvalidated);  // event_id = BULK_INVALIDATED
+    expect(bytes?.[1]).toBe(Protocol.NotifyEventId.BulkInvalidated);  // event_id = BULK_INVALIDATED
   });
 
   it('returns null when the transport has no notify endpoint', async () => {
@@ -1322,7 +1313,7 @@ describe('lastRawBulk', () => {
     const dev = await DspDevice.create(new MockTransport({ platform: 'rp2350' }));
     expect(dev.lastRawBulk).toBeNull();
     await dev.getAllParams();
-    expect(dev.lastRawBulk!.byteLength).toBe(Wire.BulkSizes.V10);
+    expect(dev.lastRawBulk!.byteLength).toBe(Protocol.Wire.BulkSizes.V10);
   });
 
   it('retains the full V10 image on a 1.1.4 device', async () => {
@@ -1346,8 +1337,8 @@ describe('DspDevice — v1.1.4 granular surface', () => {
 
   test('setBandBypass remaps the RP2040 PDM channel (set and get agree)', async () => {
     const d = await DspDevice.create(new MockTransport({ platform: 'rp2040', wireVersion: 10 }));
-    await d.setBandBypass(ChannelId.Pdm, 0, true);
-    expect(await d.getBandBypass(ChannelId.Pdm, 0)).toBe(true);
+    await d.setBandBypass(Domain.ChannelId.Pdm, 0, true);
+    expect(await d.getBandBypass(Domain.ChannelId.Pdm, 0)).toBe(true);
   });
 
   test('user volume + mute round-trip on V10', async () => {
@@ -1360,8 +1351,8 @@ describe('DspDevice — v1.1.4 granular surface', () => {
 
   test('input source round-trips on V10', async () => {
     const d = await v10();
-    await d.setInputSource(AudioInputSource.Spdif);
-    expect(await d.getInputSource()).toBe(AudioInputSource.Spdif);
+    await d.setInputSource(Domain.AudioInputSource.Spdif);
+    expect(await d.getInputSource()).toBe(Domain.AudioInputSource.Spdif);
   });
 
   test('leveller masks round-trip in detector-then-apply order', async () => {
@@ -1408,10 +1399,10 @@ describe('DspDevice — v1.1.4 granular surface', () => {
 
   test('getSpdifRxStatus narrows state + inputSource on V10', async () => {
     const d = await v10();
-    await d.setInputSource(AudioInputSource.Spdif);
+    await d.setInputSource(Domain.AudioInputSource.Spdif);
     const s = await d.getSpdifRxStatus();
-    expect(s.state).toBe(SpdifInputState.Locked);
-    expect(s.inputSource).toBe(AudioInputSource.Spdif);
+    expect(s.state).toBe(Domain.SpdifInputState.Locked);
+    expect(s.inputSource).toBe(Domain.AudioInputSource.Spdif);
     expect(s.sampleRate).toBe(48000);
   });
 
@@ -1431,7 +1422,7 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, val) => {
-        if (req === WireCmd.SetSpdifRxPin.code) seen.push(val);
+        if (req === Protocol.WireCmd.SetSpdifRxPin.code) seen.push(val);
         return new Uint8Array([0x00]);
       },
       ctrlOut: async () => {},
@@ -1449,7 +1440,7 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, val) => {
-        if (req === WireCmd.GetSpdifRxPin.code) { seen.push(val); return new Uint8Array([7]); }
+        if (req === Protocol.WireCmd.GetSpdifRxPin.code) { seen.push(val); return new Uint8Array([7]); }
         return new Uint8Array([0]);
       },
       ctrlOut: async () => {},
@@ -1466,7 +1457,7 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, val) => {
-        if (req === WireCmd.SetSpdifInputEnable.code) seen.push(val);
+        if (req === Protocol.WireCmd.SetSpdifInputEnable.code) seen.push(val);
         return new Uint8Array([0x00]);
       },
       ctrlOut: async () => {},
@@ -1485,7 +1476,7 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, _val, len) => {
-        if (req === WireCmd.GetSpdifInputConfig.code) return Uint8Array.from([4, 0b1101, 5, 16, 17, 22]);
+        if (req === Protocol.WireCmd.GetSpdifInputConfig.code) return Uint8Array.from([4, 0b1101, 5, 16, 17, 22]);
         return new Uint8Array(len);
       },
       ctrlOut: async () => {},
@@ -1499,7 +1490,7 @@ describe('DspDevice — v1.1.4 granular surface', () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, _val, len) => {
-        if (req === WireCmd.GetSpdifInputConfig.code) return Uint8Array.from([3, 0b101, 5, 16, 17]);
+        if (req === Protocol.WireCmd.GetSpdifInputConfig.code) return Uint8Array.from([3, 0b101, 5, 16, 17]);
         return new Uint8Array(len);
       },
       ctrlOut: async () => {},
@@ -1538,7 +1529,7 @@ describe('DspDevice — V18 bulk integration', () => {
     const d = await v18();
     const bulk = await d.getAllParams();
     expect(bulk.formatVersion).toBe(18);
-    expect(bulk.payloadLength).toBe(Wire.BULK_SIZE_V18);   // 5876
+    expect(bulk.payloadLength).toBe(Protocol.Wire.BULK_SIZE_V18);   // 5876
     expect(bulk.leveller.detectorMask).toBe(0xFF);
     expect(bulk.leveller.applyMask).toBe(0xFF);
     expect(bulk.adat).toEqual({ enabled: false, pin: 0 });
@@ -1561,7 +1552,7 @@ describe('DspDevice — V19/V20 bulk integration', () => {
     const d = await v19();
     const bulk = await d.getAllParams();
     expect(bulk.formatVersion).toBe(19);
-    expect(bulk.payloadLength).toBe(Wire.BULK_SIZE_V19);
+    expect(bulk.payloadLength).toBe(Protocol.Wire.BULK_SIZE_V19);
     expect(bulk.loudness.outputMask).toBe(0xFFFF);
     expect(bulk.crossfeed.outputPairMask).toBe(0x01);
   });
@@ -1577,7 +1568,7 @@ describe('DspDevice — V19/V20 bulk integration', () => {
     const d = await v20();
     const bulk = await d.getAllParams();
     expect(bulk.formatVersion).toBe(20);
-    expect(bulk.payloadLength).toBe(Wire.BULK_SIZE_V20);
+    expect(bulk.payloadLength).toBe(Protocol.Wire.BULK_SIZE_V20);
   });
 
   test('setCrossfeedOutputPairs flows through the synthesized bulk into the snapshot', async () => {

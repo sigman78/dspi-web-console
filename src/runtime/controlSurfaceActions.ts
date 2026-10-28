@@ -8,26 +8,32 @@ import { readCsDisplayBlock, readCsAll } from './deviceService';
 // so this can't be a plain writeChecked: the status must land in ctrlIfaces
 // on BOTH branches (a rejected pin/baud is still useful to show as
 // last-status text), whereas writeChecked's patch only runs on ok.
-export function setUartControlConfig(s: ReadySession, cfg: Domain.UartControlConfig): void {
-  void command(s, 'set UART control config',
+export async function setUartControlConfig(s: ReadySession, cfg: Domain.UartControlConfig): Promise<boolean> {
+  let ok = false;
+  await command(s, 'set UART control config',
     () => s.device.setUartControlConfig(cfg),
     (r, s) => {
       s.ctrlIfaces.status = r.status;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
       s.ctrlIfaces.uart = cfg;
+      ok = true;
     },
   );
+  return ok;
 }
 
-export function setI2cControlConfig(s: ReadySession, cfg: Domain.I2cControlConfig): void {
-  void command(s, 'set I2C control config',
+export async function setI2cControlConfig(s: ReadySession, cfg: Domain.I2cControlConfig): Promise<boolean> {
+  let ok = false;
+  await command(s, 'set I2C control config',
     () => s.device.setI2cControlConfig(cfg),
     (r, s) => {
       s.ctrlIfaces.status = r.status;
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
       s.ctrlIfaces.i2c = cfg;
+      ok = true;
     },
   );
+  return ok;
 }
 
 // V16 — Control Surfaces binding apply (0x84 + status poll). Immediate lane
@@ -163,7 +169,28 @@ export async function cancelCsMacro(s: ReadySession): Promise<void> {
   );
 }
 
-// Ext-status refresh for the MACROS panel's running-macro poll. A plain
+// Panel-mount interest for the CS status cadences in poll.ts: the MACROS panel
+// holds the ext-status interest while mounted, the DISPLAY panel the display
+// one. The cadence still waits for a running macro / active display.
+export function wantCsExtPoll(s: ReadySession): () => void {
+  return holdInterest(() => s.controlSurfaces.extPollWanted++, () => s.controlSurfaces.extPollWanted--);
+}
+
+export function wantCsDisplayPoll(s: ReadySession): () => void {
+  return holdInterest(() => s.controlSurfaces.displayPollWanted++, () => s.controlSurfaces.displayPollWanted--);
+}
+
+function holdInterest(acquire: () => void, release: () => void): () => void {
+  acquire();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    release();
+  };
+}
+
+// Ext-status refresh for the running-macro cadence (poll.ts). A plain
 // queued read, deliberately outside `command`: a failed tick is dropped
 // without a toast or a link-health mark, the next tick simply reads again.
 export async function refreshCsExtStatus(s: ReadySession): Promise<void> {
@@ -227,7 +254,7 @@ export function clearCsDisplayPage(s: ReadySession, idx: number): Promise<boolea
   return applyCsDisplayPage(s, idx, Domain.EMPTY_CS_DISPLAY_PAGE);
 }
 
-// Status refresh for the DISPLAY panel's live poll. A plain queued read,
+// Status refresh for the display-status cadence (poll.ts). A plain queued read,
 // deliberately outside `command`, mirroring refreshCsExtStatus.
 export async function refreshCsDisplayStatus(s: ReadySession): Promise<void> {
   try {
@@ -311,6 +338,7 @@ export async function csRevertConfig(s: ReadySession): Promise<boolean> {
       }
       if (!r.result.ok) { pushNotice('warn', r.result.message); return; }
       s.controlSurfaces.revertEpoch++;
+      s.drafts.clearAll();
       s.controlSurfaces.changed = { bindings: false, groups: false, macros: false, display: false };
       ok = true;
     },

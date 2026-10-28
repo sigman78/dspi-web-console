@@ -26,8 +26,8 @@
   .bar {
     width: 5px;
     background: var(--accent);
-    box-shadow: 0 0 6px color-mix(in oklab, var(--accent) 40%, transparent);
-    border-radius: 1px 1px 0 0;
+    box-shadow: 0 0 6px color-mix(in oklab, var(--accent) var(--tint-edge), transparent);
+    border-radius: var(--radius-xs) var(--radius-xs) 0 0;
     transform-origin: bottom;
     display: block;
     animation: eq-bar 1.4s ease-in-out infinite;

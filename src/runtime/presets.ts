@@ -1,15 +1,13 @@
 // Action surface for preset operations.
 
-import {
-  presetsDirty, askBoundary,
-  settings, pushNotice,
-  type ReadySession, type PresetsState,
-} from '@/state';
+import * as State from '@/state';
+import type { ReadySession, PresetsState } from '@/state';
 import { reconcileAfterSync } from './deviceService';
 import { fetchAndApplyAsBaseline } from './resync';
-import { flushAllWrites as flushWrites } from './writes.svelte';
-import { type PresetSlot, PRESET_SLOT_COUNT, OutputConfigMode } from '@/domain';
-import { type PresetResult, PresetStartupMode } from '@/protocol';
+import { flushAllWrites as flushWrites, refuseWhileDegraded } from './writes.svelte';
+import * as Domain from '@/domain';
+import { type PresetResult, PresetStartupMode, buildBulkParams, parseBulkParams } from '@/protocol';
+import type { FirmwareVersion } from '@/protocol/capabilities';
 import type { DeviceState } from '@/protocol/snapshotCodec';
 import { Log, Result, errMessage } from '@/utils';
 
@@ -36,7 +34,7 @@ const PRESET_LOADED_TIMEOUT_MS = 1000;
 // firmware's own presetLoaded(slot) -- it is delivered strictly after the copy
 // completes (the notify drain shares the firmware main thread with the load).
 // Register the waiter BEFORE sending so the event can't be missed.
-async function loadAndSettle(s: ReadySession, slot: PresetSlot): Promise<Result<void, PresetResult>> {
+async function loadAndSettle(s: ReadySession, slot: Domain.PresetSlot): Promise<Result<void, PresetResult>> {
   const loaded = s.notifyWaiters.waitFor(
     (e) => e.kind === 'presetLoaded' && e.slot === slot,
     PRESET_LOADED_TIMEOUT_MS,
@@ -55,6 +53,10 @@ export type PresetActionError =
   | { ok: false; code: 'active'; message?: string }
   | { ok: false; code: 'error'; message?: string };
 
+function degradedError(): PresetActionError {
+  return { ok: false, code: 'error', message: 'Link degraded — changes are not being sent.' };
+}
+
 function activeSlotError(message: string): { ok: false; code: 'active'; message: string } {
   return { ok: false, code: 'active', message };
 }
@@ -70,7 +72,7 @@ async function withBusy<T>(ps: PresetsState, fn: () => Promise<T>): Promise<T> {
 //
 // Contract split: Result-returning actions (load/save/paste/delete) report
 // failures through their typed Result. The void actions (rename, startup
-// default/mode, include-pins) surface failures solely via lastActionError and do
+// default/mode, include-pins) surface failures via lastActionError plus an error notice and do
 // NOT rethrow -- their callers await without a catch, so a rethrow would leak an
 // unhandled rejection.
 
@@ -78,6 +80,7 @@ function recordActionError(ps: PresetsState, label: string, e: unknown): string 
   const msg = errMessage(e);
   const formatted = `${label}: ${msg}`;
   ps.lastActionError = formatted;
+  State.pushNotice('error', formatted);
   Log.warn('presets', `${label} failed`, e);
   return formatted;
 }
@@ -134,10 +137,10 @@ export async function fetchPresetInfo(s: ReadySession): Promise<void> {
 
     // Step 2: names. Each is independent -- a single bad slot shouldn't hide the
     // whole grid. Failing names land as '' (renders as [unnamed] in the UI).
-    const names: string[] = Array.from({ length: PRESET_SLOT_COUNT }, () => '');
-    for (let i = 0; i < PRESET_SLOT_COUNT; i++) {
+    const names: string[] = Array.from({ length: Domain.PRESET_SLOT_COUNT }, () => '');
+    for (let i = 0; i < Domain.PRESET_SLOT_COUNT; i++) {
       try {
-        names[i] = await s.queue.run(() => d.getPresetName(i as PresetSlot));
+        names[i] = await s.queue.run(() => d.getPresetName(i as Domain.PresetSlot));
       } catch (e) {
         Log.warn('presets', `getPresetName(${i}) failed`, e);
       }
@@ -151,7 +154,7 @@ export async function fetchPresetInfo(s: ReadySession): Promise<void> {
 // Clears the cache + error and refetches from scratch.
 export async function retryFetchPresetInfo(s: ReadySession): Promise<void> {
   s.presets.directory           = null;
-  s.presets.names               = Array.from({ length: PRESET_SLOT_COUNT }, () => null);
+  s.presets.names               = Array.from({ length: Domain.PRESET_SLOT_COUNT }, () => null);
   s.presets.active              = null;
   s.presets.lastFetchError      = null;
   s.presets.savedMasterVolumeDb = null;
@@ -160,7 +163,7 @@ export async function retryFetchPresetInfo(s: ReadySession): Promise<void> {
 
 export function invalidatePresetCache(s: ReadySession): void {
   s.presets.directory           = null;
-  s.presets.names               = Array.from({ length: PRESET_SLOT_COUNT }, () => null);
+  s.presets.names               = Array.from({ length: Domain.PRESET_SLOT_COUNT }, () => null);
   s.presets.active              = null;
   s.presets.lastFetchError      = null;
   s.presets.lastActionError     = null;
@@ -170,6 +173,7 @@ export function invalidatePresetCache(s: ReadySession): void {
 // PresetSave(active). RAM didn't change -- just advance the baseline so
 // the dirty diff origin moves.
 export async function saveActivePreset(s: ReadySession): Promise<Result<void, PresetResult> | PresetActionError> {
+  if (refuseWhileDegraded(s)) return degradedError();
   const d = s.device;
   const active = s.presets.active;
   if (active == null) return activeSlotError('no active slot');
@@ -199,7 +203,8 @@ export async function saveActivePreset(s: ReadySession): Promise<Result<void, Pr
 // PresetSave(N) for an arbitrary slot. Firmware sets lastActive = slot, so the
 // just-saved slot becomes active; the host mirrors that into presets.active and
 // advances the baseline.
-export async function savePresetSlot(s: ReadySession, slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
+export async function savePresetSlot(s: ReadySession, slot: Domain.PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
+  if (refuseWhileDegraded(s)) return degradedError();
   const d = s.device;
   clearActionError(s.presets);
   try {
@@ -231,8 +236,9 @@ export async function savePresetSlot(s: ReadySession, slot: PresetSlot): Promise
 // main view and flash the splash mid-load.
 async function executeLoad(
   s: ReadySession,
-  slot: PresetSlot,
+  slot: Domain.PresetSlot,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
+  if (refuseWhileDegraded(s)) return degradedError();
   clearActionError(s.presets);
   // Suppress the NotifyChannel's redundant reconciles for this self-induced op;
   // our own fetchAndApplyAsBaseline below is the authoritative resync.
@@ -277,11 +283,12 @@ async function executeLoad(
   }
 }
 
-export async function loadPresetSlot(s: ReadySession, slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
+export async function loadPresetSlot(s: ReadySession, slot: Domain.PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
+  if (refuseWhileDegraded(s)) return degradedError();
   // Dirty-RAM gating. Modal fires only when RAM is dirty, warnOnPresetSwitchDirty
   // is on, and an active slot exists (else there's nowhere to save into).
-  if (settings.warnOnPresetSwitchDirty && presetsDirty(s) && s.presets.active != null) {
-    const choice = await askBoundary({
+  if (State.settings.warnOnPresetSwitchDirty && State.presetsDirty(s) && s.presets.active != null) {
+    const choice = await State.askBoundary({
       title: 'Unsaved changes',
       message: 'You have unsaved changes in the active preset. Switching to another preset will discard them.',
       saveLabel: 'Save & switch',
@@ -337,11 +344,12 @@ export async function copyActivePreset(s: ReadySession): Promise<Result<void, Pr
 // boundary-modal gate. No save option — saving first would flash the tweaks
 // into the very slot the paste is about to overwrite.
 export async function pastePresetTo(s: ReadySession, blob: DeviceState): Promise<Result<void, PresetResult> | PresetActionError> {
+  if (refuseWhileDegraded(s)) return degradedError();
   const d = s.device;
   const active = s.presets.active;
   if (active == null) return activeSlotError('no active slot');
-  if (presetsDirty(s)) {
-    const choice = await askBoundary({
+  if (State.presetsDirty(s)) {
+    const choice = await State.askBoundary({
       title: 'Unsaved changes',
       message: 'Pasting will overwrite the unsaved changes in the active preset.',
       discardLabel: 'Paste anyway',
@@ -376,11 +384,11 @@ export async function pastePresetTo(s: ReadySession, blob: DeviceState): Promise
       await reconcileAfterSync(s);
       // Bulk SET skips the physical-IO sections in Independent mode (and the
       // limiter section from V32) -- the pasted values were kept, not applied.
-      if (s.presets.directory?.outputConfigMode === OutputConfigMode.Independent) {
+      if (s.presets.directory?.outputConfigMode === Domain.OutputConfigMode.Independent) {
         const kept = s.device.capabilities.features.limiter
           ? 'pins, output types, I2S clock, S/PDIF RX pin and output limiter'
           : 'pins, output types, I2S clock and S/PDIF RX pin';
-        pushNotice('info', `IO config not applied (independent mode): ${kept} kept their device values.`);
+        State.pushNotice('info', `IO config not applied (independent mode): ${kept} kept their device values.`);
       }
       return r5;
     });
@@ -393,7 +401,8 @@ export async function pastePresetTo(s: ReadySession, blob: DeviceState): Promise
 }
 
 // PresetDelete(N). Host-side guard: refuses to delete the active slot.
-export async function deletePresetSlot(s: ReadySession, slot: PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
+export async function deletePresetSlot(s: ReadySession, slot: Domain.PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
+  if (refuseWhileDegraded(s)) return degradedError();
   const d = s.device;
   if (s.presets.active === slot) {
     return activeSlotError('cannot delete active slot');
@@ -422,8 +431,9 @@ export async function deletePresetSlot(s: ReadySession, slot: PresetSlot): Promi
 // names (which DO live in the payload) flow through mixerActions.ts; this
 // function is only for the slot-level name.
 export async function renamePresetSlot(
-  s: ReadySession, slot: PresetSlot, name: string,
+  s: ReadySession, slot: Domain.PresetSlot, name: string,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
+  if (refuseWhileDegraded(s)) return degradedError();
   const d = s.device;
   clearActionError(s.presets);
   try {
@@ -440,8 +450,9 @@ export async function renamePresetSlot(
 }
 
 export async function setStartupDefault(
-  s: ReadySession, slot: PresetSlot,
+  s: ReadySession, slot: Domain.PresetSlot,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
+  if (refuseWhileDegraded(s)) return degradedError();
   const d = s.device;
   clearActionError(s.presets);
   try {
@@ -464,8 +475,9 @@ export async function setStartupDefault(
 export async function setStartupMode(
   s: ReadySession, mode: PresetStartupMode,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
+  if (refuseWhileDegraded(s)) return degradedError();
   const d = s.device;
-  const slot = s.presets.directory?.defaultSlot ?? (0 as PresetSlot);
+  const slot = s.presets.directory?.defaultSlot ?? (0 as Domain.PresetSlot);
   clearActionError(s.presets);
   try {
     return await withBusy(s.presets, async () => {
@@ -481,8 +493,9 @@ export async function setStartupMode(
 }
 
 export async function setOutputConfigMode(
-  s: ReadySession, mode: OutputConfigMode,
+  s: ReadySession, mode: Domain.OutputConfigMode,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
+  if (refuseWhileDegraded(s)) return degradedError();
   const d = s.device;
   clearActionError(s.presets);
   try {
@@ -496,4 +509,54 @@ export async function setOutputConfigMode(
   } catch (e) {
     return recordToResult(s.presets, 'Set output config mode', e);
   }
+}
+
+function fwTag(fw: FirmwareVersion): string {
+  const release = `${fw.major}.${fw.minor}.${fw.patch}`;
+  return fw.beta ? `${release}-beta${fw.beta}` : release;
+}
+
+export function presetExportFile(
+  s: ReadySession,
+  name: string,
+  slot: Domain.PresetSlot,
+  blob: DeviceState,
+): { filename: string; text: string } {
+  const caps = s.info.capabilities;
+  const text = Domain.serializePresetTransfer({
+    name,
+    fwVersion: fwTag(caps.fw),
+    wire: caps.wire,
+    blob: buildBulkParams(blob),
+  });
+  const base = (name.trim() || `preset-${slot}`).replace(/[\\/:*?"<>|]/g, '_');
+  return { filename: `${base}.dspi-preset.json`, text };
+}
+
+export function exportHeldPreset(s: ReadySession): { filename: string; text: string } | null {
+  const held = s.copySource.held;
+  return held == null ? null : presetExportFile(s, held.name, held.slot, held.blob);
+}
+
+export type DecodedPreset =
+  | { ok: true; name: string; state: DeviceState }
+  | { ok: false; reason: string };
+
+export function decodeImportedPreset(s: ReadySession, text: string): DecodedPreset {
+  const caps = s.info.capabilities;
+  const parsed = Domain.parsePresetTransfer(text, { fwVersion: fwTag(caps.fw), wire: caps.wire });
+  if (!parsed.ok) return parsed;
+  let state: DeviceState;
+  try {
+    state = parseBulkParams(parsed.blob) as DeviceState;
+  } catch {
+    return { ok: false, reason: 'Preset data is corrupt.' };
+  }
+  if (state.formatVersion !== caps.wire) {
+    return { ok: false, reason: `Preset data is wire ${state.formatVersion}; this device runs wire ${caps.wire}.` };
+  }
+  if (state.platformId !== caps.platformId) {
+    return { ok: false, reason: 'Preset was exported from a different hardware platform.' };
+  }
+  return { ok: true, name: parsed.name, state };
 }

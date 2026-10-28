@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { resolveMockProfile, resolveMockProfiles, activeMockProfiles } from './mockProfiles';
-import * as Wire from './protocol/wireTypes';
+import * as Wire from '@/protocol/wireTypes';
 
 describe('resolveMockProfile', () => {
   it('falls back to latest for an unrecognized token (e.g. an old spelling)', () => {

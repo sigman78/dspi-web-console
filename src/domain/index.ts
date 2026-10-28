@@ -13,15 +13,19 @@ export * from './presetLimits';
 
 export * from './mixer';
 export * from './mixerView';
+export * from './masterVolumeTaper';
+export * from './upmix';
 export * from './snapshot';
 export * from './eqLink';
 export * from './snapshotDiff';
 export * from './changeClass';
 export * from './applyChange';
 export * from './presetDirectory';
+export * from './presetTransfer';
 export * from './pins';
 export * from './controlInterfaces';
 export * from './controlSurfaces';
+export * from './response';
 
 // clamp.ts is intentionally NOT re-exported here; import it directly at the
 // action boundary that owns the clamp gate.

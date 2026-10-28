@@ -136,11 +136,3 @@ export class BinWriter {
   // The underlying buffer, not a copy.
   toUint8Array(): Uint8Array { return this.buf; }
 }
-
-// Hex preview of the first `n` bytes for diagnostic logs.
-export function bytesPreview(buf: Uint8Array, n = 16): string {
-  const head = Array.from(buf.subarray(0, n))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join(' ');
-  return `len=${buf.length} head=${head}${buf.length > n ? ' …' : ''}`;
-}

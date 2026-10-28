@@ -1,41 +1,12 @@
 import type { DspTransport, TransportEvent } from './DspTransport';
 import { Wire, WireCmd, SystemStatusValue } from '@/protocol';
-import {
-  synthesizeSystemStatus, synthesizeU32, synthesizeI32,
-  synthesizeBufferStats,
-} from '@/protocol/syn';
-import {
-  buildBulkParams, defaultBulkParams, parseBulkParams, peekBulkHeader,
-  encodePresenceQ1, decodePresenceQ1,
-  type BulkParams, type WireFilter,
-} from '@/protocol/bulkParser';
+import * as Syn from '@/protocol/syn';
+import * as BulkParser from '@/protocol/bulkParser';
+import type { BulkParams, WireFilter } from '@/protocol/bulkParser';
 import { Codec } from '@/utils';
 import * as Clamp from '@/domain/clamp';
-import {
-  PlatformType, OutputSlotType, AudioInputSource,
-  CrossfeedPreset, LevellerSpeed, MasterVolumeMode, OutputConfigMode,
-  XOVER_BAND_BASE, MAX_XOVER_BANDS,
-  DEFAULT_UART_CONTROL_CONFIG, DEFAULT_I2C_CONTROL_CONFIG,
-  isValidUartPinPair, isValidI2cPinPair, isValidUartBaud, isValidI2cAddress, i2cInstance,
-  CsType, CsNoun, CsKind, CsAction, CsIrProto, CsDisplayMode,
-  CS_GPIO_UNUSED, CS_MAX_BINDINGS, CS_MAX_IR_COMMANDS, CS_MAX_GROUPS, CS_FLAG_INVERT, CS_FLAG_GROUP, CS_NDF_DEFERRED,
-  CS_MAX_MACROS, CS_MAX_MACRO_STEPS, CS_MAX_DISPLAY_PAGES,
-  CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q, CS_UNIT_PERCENT, CS_UNIT_MS,
-  CS_TARGET_NONE, CS_TARGET_INPUT_CH, CS_TARGET_OUTPUT_CH, CS_TARGET_DSP_CH, CS_TARGET_DSP_BAND,
-  CS_IR_LEARN_IDLE, CS_IR_LEARN_ARMED, CS_IR_LEARN_DONE, CS_IR_LEARN_TIMEOUT,
-  CS_DPAGE_ACTIVE, CS_DPAGE_LARGE, CS_DCFG_EDIT_GATED, CS_DISPLAY_MODEL_COUNT,
-  dbToQ8, percentToQ8, qToQ8, msToQ8, validateCsBinding, validateCsIrCommand, validateCsGroup,
-  validateCsMacroStep, validateCsMacro, validateCsDisplayCfg, validateCsDisplayPage,
-  PRESET_SLOT_COUNT, FilterType,
-  SPDIF_RX_MAX_INSTANCES, I2S_RX_MAX_PAIRS,
-  defaultInputName, Proc, settleLimiterGroups, joinLimiterGroup,
-  SYS_CLOCK_MODE_DEFAULT_VREG, SYS_CLOCK_VREG_CEILING_RP2040, SYS_CLOCK_VREG_CEILING_RP2350,
-  type FilterParams,
-  type CrossPoint, type OutputState, type LimiterOutput,
-  type UartControlConfig, type I2cControlConfig,
-  type CsCaps, type CsNounCaps, type CsGroup, type CsMacroStep, type CsDisplayCfg, type CsDisplayPage,
-  type SubharmSelect,
-} from '@/domain';
+import * as Domain from '@/domain';
+import type { FilterParams, CrossPoint, OutputState, LimiterOutput, UartControlConfig, I2cControlConfig, CsCaps, CsNounCaps, CsGroup, CsMacroStep, CsDisplayCfg, CsDisplayPage, SubharmSelect } from '@/domain';
 
 export interface MockOptions {
   platform: 'rp2040' | 'rp2350';
@@ -79,6 +50,11 @@ export interface MockOptions {
   sysClockBoot?: { storedMode: number; storedVregSel?: number; fallback?: boolean };
   // Build stamp answered by GetBuildInfo on fw 1.1.6+ profiles; default below.
   buildInfo?: { describe: string; date: string };
+  // Fill every control-surface table to its capacity (all binding slots incl.
+  // one IR receiver and one display, all macros with full steps, all groups,
+  // all IR commands, all display pages) so the CONTROL pages can be measured
+  // at their worst case. Needs wire V16+ and caps v10+.
+  csFull?: boolean;
 }
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
@@ -113,8 +89,8 @@ const MIN_LIMITER_WIRE = 32;
 // v14 catalog down to what an older simulated capsVersion would report.
 const MOCK_CS_CAPS: CsCaps = {
   capsVersion: 14,
-  maxBindings: CS_MAX_BINDINGS,
-  maxIrCommands: CS_MAX_IR_COMMANDS,
+  maxBindings: Domain.CS_MAX_BINDINGS,
+  maxIrCommands: Domain.CS_MAX_IR_COMMANDS,
   maxGroups: 8,
   maxMacros: 8,
   maxMacroSteps: 8,
@@ -132,40 +108,40 @@ const MOCK_CS_CAPS: CsCaps = {
 };
 
 // Action-mask groups, mirroring control_surfaces_nouns.c's CS_CONT_RW etc.
-const CS_CONT_RW = (1 << CsAction.Adjust) | (1 << CsAction.Step) | (1 << CsAction.Inc) |
-                   (1 << CsAction.Dec) | (1 << CsAction.Set) | (1 << CsAction.IndAbove) | (1 << CsAction.IndLevel);
-const CS_BOOL_RW = (1 << CsAction.Toggle) | (1 << CsAction.Set) | (1 << CsAction.Follow) |
-                   (1 << CsAction.Momentary) | (1 << CsAction.IndEquals);
-const CS_ENUM_RW = (1 << CsAction.Step) | (1 << CsAction.Inc) | (1 << CsAction.Dec) |
-                   (1 << CsAction.Set) | (1 << CsAction.IndEquals);
-const CS_BOOL_RO = 1 << CsAction.IndEquals;
-const CS_ENUM_RO = 1 << CsAction.IndEquals;
-const CS_CONT_RO = (1 << CsAction.IndAbove) | (1 << CsAction.IndLevel);
-const CS_CLIP_ACTIONS = (1 << CsAction.Trigger) | (1 << CsAction.IndEquals);
-const CS_TRIGGER_ONLY = 1 << CsAction.Trigger;
+const CS_CONT_RW = (1 << Domain.CsAction.Adjust) | (1 << Domain.CsAction.Step) | (1 << Domain.CsAction.Inc) |
+                   (1 << Domain.CsAction.Dec) | (1 << Domain.CsAction.Set) | (1 << Domain.CsAction.IndAbove) | (1 << Domain.CsAction.IndLevel);
+const CS_BOOL_RW = (1 << Domain.CsAction.Toggle) | (1 << Domain.CsAction.Set) | (1 << Domain.CsAction.Follow) |
+                   (1 << Domain.CsAction.Momentary) | (1 << Domain.CsAction.IndEquals);
+const CS_ENUM_RW = (1 << Domain.CsAction.Step) | (1 << Domain.CsAction.Inc) | (1 << Domain.CsAction.Dec) |
+                   (1 << Domain.CsAction.Set) | (1 << Domain.CsAction.IndEquals);
+const CS_BOOL_RO = 1 << Domain.CsAction.IndEquals;
+const CS_ENUM_RO = 1 << Domain.CsAction.IndEquals;
+const CS_CONT_RO = (1 << Domain.CsAction.IndAbove) | (1 << Domain.CsAction.IndLevel);
+const CS_CLIP_ACTIONS = (1 << Domain.CsAction.Trigger) | (1 << Domain.CsAction.IndEquals);
+const CS_TRIGGER_ONLY = 1 << Domain.CsAction.Trigger;
 // caps v9+ MACRO noun: fires a macro by index, no continuous/enum semantics.
-const CS_MACRO_ACTIONS = (1 << CsAction.Set) | (1 << CsAction.IndEquals);
+const CS_MACRO_ACTIONS = (1 << Domain.CsAction.Set) | (1 << Domain.CsAction.IndEquals);
 // caps v10+ PAGE_VALUE noun: steps/toggles the display's currently-focused
 // field; no direct SET (the display owns the edit cursor).
-const CS_PAGE_VALUE_ACTIONS = (1 << CsAction.Step) | (1 << CsAction.Inc) | (1 << CsAction.Dec) | (1 << CsAction.Toggle);
+const CS_PAGE_VALUE_ACTIONS = (1 << Domain.CsAction.Step) | (1 << Domain.CsAction.Inc) | (1 << Domain.CsAction.Dec) | (1 << Domain.CsAction.Toggle);
 
 // PEQ FilterType values run 0..HighShelf1 contiguously (crossover types start
 // at 32 and are not front-panel material); mirrors CS_PEQ_TYPE_COUNT.
-const CS_PEQ_TYPE_COUNT = FilterType.HighShelf1 + 1;
+const CS_PEQ_TYPE_COUNT = Domain.FilterType.HighShelf1 + 1;
 
 function contNoun(
   minQ8: number, maxQ8: number, unit: number,
-  targetKind = CS_TARGET_NONE, targetCount = 0, dflags = 0, actions = CS_CONT_RW,
+  targetKind = Domain.CS_TARGET_NONE, targetCount = 0, dflags = 0, actions = CS_CONT_RW,
 ): CsNounCaps {
-  return { kind: CsKind.Continuous, enumCount: 0, actions, minQ8, maxQ8, unit, targetKind, targetCount, dflags };
+  return { kind: Domain.CsKind.Continuous, enumCount: 0, actions, minQ8, maxQ8, unit, targetKind, targetCount, dflags };
 }
 
-function boolNoun(actions = CS_BOOL_RW, targetKind = CS_TARGET_NONE, targetCount = 0, dflags = 0): CsNounCaps {
-  return { kind: CsKind.Bool, enumCount: 0, actions, minQ8: 0, maxQ8: 0, unit: CS_UNIT_NONE, targetKind, targetCount, dflags };
+function boolNoun(actions = CS_BOOL_RW, targetKind = Domain.CS_TARGET_NONE, targetCount = 0, dflags = 0): CsNounCaps {
+  return { kind: Domain.CsKind.Bool, enumCount: 0, actions, minQ8: 0, maxQ8: 0, unit: Domain.CS_UNIT_NONE, targetKind, targetCount, dflags };
 }
 
-function enumNoun(enumCount: number, actions = CS_ENUM_RW, targetKind = CS_TARGET_NONE, targetCount = 0, dflags = 0): CsNounCaps {
-  return { kind: CsKind.Enum, enumCount, actions, minQ8: 0, maxQ8: 0, unit: CS_UNIT_NONE, targetKind, targetCount, dflags };
+function enumNoun(enumCount: number, actions = CS_ENUM_RW, targetKind = Domain.CS_TARGET_NONE, targetCount = 0, dflags = 0): CsNounCaps {
+  return { kind: Domain.CsKind.Enum, enumCount, actions, minQ8: 0, maxQ8: 0, unit: Domain.CS_UNIT_NONE, targetKind, targetCount, dflags };
 }
 
 // The 49-entry caps-v4 noun catalog (control_surfaces_nouns.c cs_noun_table),
@@ -173,39 +149,39 @@ function enumNoun(enumCount: number, actions = CS_ENUM_RW, targetKind = CS_TARGE
 // channel layout (numIn/numOut/numCh already vary by platform); the
 // ADAT_ACTIVE and upmix action masks are RP2350-only, exactly like the
 // firmware's #if PICO_RP2350 gates.
-function buildMockCsNouns(platform: PlatformType, numIn: number, numOut: number, numCh: number): CsNounCaps[] {
-  const rp2350 = platform === PlatformType.RP2350;
+function buildMockCsNouns(platform: Domain.PlatformType, numIn: number, numOut: number, numCh: number): CsNounCaps[] {
+  const rp2350 = platform === Domain.PlatformType.RP2350;
   const adatActions = rp2350 ? CS_BOOL_RO : 0;
   return [
-    contNoun(-15360, 0, CS_UNIT_DB),                                                           // 0  USER_VOLUME
-    contNoun(-32512, 0, CS_UNIT_DB),                                                            // 1  MASTER_VOLUME
+    contNoun(-15360, 0, Domain.CS_UNIT_DB),                                                           // 0  USER_VOLUME
+    contNoun(-32512, 0, Domain.CS_UNIT_DB),                                                            // 1  MASTER_VOLUME
     boolNoun(),                                                                                  // 2  USER_MUTE
     boolNoun(),                                                                                  // 3  LOUDNESS
     boolNoun(),                                                                                  // 4  CROSSFEED
     boolNoun(),                                                                                  // 5  LEVELLER
-    enumNoun(PRESET_SLOT_COUNT, CS_ENUM_RW, CS_TARGET_NONE, 0, CS_NDF_DEFERRED),                // 6  PRESET
-    enumNoun(3, CS_ENUM_RW, CS_TARGET_NONE, 0, CS_NDF_DEFERRED),                                // 7  INPUT_SOURCE
+    enumNoun(Domain.PRESET_SLOT_COUNT, CS_ENUM_RW, Domain.CS_TARGET_NONE, 0, Domain.CS_NDF_DEFERRED),                // 6  PRESET
+    enumNoun(3, CS_ENUM_RW, Domain.CS_TARGET_NONE, 0, Domain.CS_NDF_DEFERRED),                                // 7  INPUT_SOURCE
     boolNoun(CS_CLIP_ACTIONS),                                                                  // 8  CLIP
     boolNoun(),                                                                                  // 9  EQ_BYPASS
     boolNoun(),                                                                                  // 10 LG_SYNC
-    enumNoun(CrossfeedPreset.Custom + 1),                                                       // 11 CROSSFEED_PRESET
+    enumNoun(Domain.CrossfeedPreset.Custom + 1),                                                       // 11 CROSSFEED_PRESET
     boolNoun(),                                                                                  // 12 CROSSFEED_ITD
-    contNoun(0, percentToQ8(100), CS_UNIT_PERCENT),                                             // 13 LEVELLER_AMOUNT
-    enumNoun(Object.keys(LevellerSpeed).length),                                                // 14 LEVELLER_SPEED
+    contNoun(0, Domain.percentToQ8(100), Domain.CS_UNIT_PERCENT),                                             // 13 LEVELLER_AMOUNT
+    enumNoun(Object.keys(Domain.LevellerSpeed).length),                                                // 14 LEVELLER_SPEED
     boolNoun(),                                                                                  // 15 LEVELLER_LOOKAHEAD
-    contNoun(dbToQ8(-24), dbToQ8(24), CS_UNIT_DB, CS_TARGET_INPUT_CH, numIn),                   // 16 PREAMP
-    contNoun(dbToQ8(-60), dbToQ8(12), CS_UNIT_DB, CS_TARGET_OUTPUT_CH, numOut),                 // 17 OUTPUT_GAIN
-    boolNoun(CS_BOOL_RW, CS_TARGET_OUTPUT_CH, numOut),                                          // 18 OUTPUT_MUTE
-    boolNoun(CS_BOOL_RW, CS_TARGET_OUTPUT_CH, numOut),                                          // 19 OUTPUT_ENABLE
-    contNoun(20, 20000, CS_UNIT_HZ, CS_TARGET_DSP_BAND, numCh, CS_NDF_DEFERRED),                // 20 FILTER_FREQ
-    contNoun(dbToQ8(-24), dbToQ8(24), CS_UNIT_DB, CS_TARGET_DSP_BAND, numCh, CS_NDF_DEFERRED),  // 21 FILTER_GAIN
-    contNoun(qToQ8(0.1), qToQ8(10), CS_UNIT_Q, CS_TARGET_DSP_BAND, numCh, CS_NDF_DEFERRED),     // 22 FILTER_Q
-    enumNoun(CS_PEQ_TYPE_COUNT, CS_ENUM_RW, CS_TARGET_DSP_BAND, numCh, CS_NDF_DEFERRED),        // 23 FILTER_TYPE
-    boolNoun(CS_BOOL_RW, CS_TARGET_DSP_BAND, numCh, CS_NDF_DEFERRED),                           // 24 FILTER_BYPASS
+    contNoun(Domain.dbToQ8(-24), Domain.dbToQ8(24), Domain.CS_UNIT_DB, Domain.CS_TARGET_INPUT_CH, numIn),                   // 16 PREAMP
+    contNoun(Domain.dbToQ8(-60), Domain.dbToQ8(12), Domain.CS_UNIT_DB, Domain.CS_TARGET_OUTPUT_CH, numOut),                 // 17 OUTPUT_GAIN
+    boolNoun(CS_BOOL_RW, Domain.CS_TARGET_OUTPUT_CH, numOut),                                          // 18 OUTPUT_MUTE
+    boolNoun(CS_BOOL_RW, Domain.CS_TARGET_OUTPUT_CH, numOut),                                          // 19 OUTPUT_ENABLE
+    contNoun(20, 20000, Domain.CS_UNIT_HZ, Domain.CS_TARGET_DSP_BAND, numCh, Domain.CS_NDF_DEFERRED),                // 20 FILTER_FREQ
+    contNoun(Domain.dbToQ8(-24), Domain.dbToQ8(24), Domain.CS_UNIT_DB, Domain.CS_TARGET_DSP_BAND, numCh, Domain.CS_NDF_DEFERRED),  // 21 FILTER_GAIN
+    contNoun(Domain.qToQ8(0.1), Domain.qToQ8(10), Domain.CS_UNIT_Q, Domain.CS_TARGET_DSP_BAND, numCh, Domain.CS_NDF_DEFERRED),     // 22 FILTER_Q
+    enumNoun(CS_PEQ_TYPE_COUNT, CS_ENUM_RW, Domain.CS_TARGET_DSP_BAND, numCh, Domain.CS_NDF_DEFERRED),        // 23 FILTER_TYPE
+    boolNoun(CS_BOOL_RW, Domain.CS_TARGET_DSP_BAND, numCh, Domain.CS_NDF_DEFERRED),                           // 24 FILTER_BYPASS
     boolNoun(),                                                                                  // 25 SIGGEN
     boolNoun(CS_TRIGGER_ONLY),                                                                  // 26 DAC_MUTE_TEST
-    boolNoun(CS_BOOL_RO, CS_TARGET_DSP_CH, numCh),                                              // 27 CLIP_CH
-    contNoun(dbToQ8(-60), 0, CS_UNIT_DB, CS_TARGET_DSP_CH, numCh, 0, CS_CONT_RO),               // 28 LEVEL (read-only)
+    boolNoun(CS_BOOL_RO, Domain.CS_TARGET_DSP_CH, numCh),                                              // 27 CLIP_CH
+    contNoun(Domain.dbToQ8(-60), 0, Domain.CS_UNIT_DB, Domain.CS_TARGET_DSP_CH, numCh, 0, CS_CONT_RO),               // 28 LEVEL (read-only)
     boolNoun(CS_BOOL_RO),                                                                        // 29 SPDIF_LOCK
     enumNoun(3, CS_ENUM_RO),                                                                     // 30 SAMPLE_RATE
     boolNoun(CS_BOOL_RO),                                                                        // 31 USB_STREAMING
@@ -217,35 +193,35 @@ function buildMockCsNouns(platform: PlatformType, numIn: number, numOut: number,
     boolNoun(rp2350 ? CS_BOOL_RW : 0),                                                           // 35 UPMIX (RP2350 only)
     enumNoun(2, rp2350 ? CS_ENUM_RW : 0),                                                        // 36 UPMIX_CENTER_MODE
     enumNoun(3, rp2350 ? CS_ENUM_RW : 0),                                                        // 37 UPMIX_SURROUND_MODE
-    contNoun(0, percentToQ8(100), CS_UNIT_PERCENT, CS_TARGET_NONE, 0, 0, rp2350 ? CS_CONT_RW : 0), // 38 UPMIX_STRENGTH
-    contNoun(0, percentToQ8(100), CS_UNIT_PERCENT, CS_TARGET_NONE, 0, 0, rp2350 ? CS_CONT_RW : 0), // 39 UPMIX_WIDTH
-    contNoun(dbToQ8(-12), dbToQ8(12), CS_UNIT_DB, CS_TARGET_NONE, 0, 0, rp2350 ? CS_CONT_RW : 0),  // 40 UPMIX_PRESENCE
+    contNoun(0, Domain.percentToQ8(100), Domain.CS_UNIT_PERCENT, Domain.CS_TARGET_NONE, 0, 0, rp2350 ? CS_CONT_RW : 0), // 38 UPMIX_STRENGTH
+    contNoun(0, Domain.percentToQ8(100), Domain.CS_UNIT_PERCENT, Domain.CS_TARGET_NONE, 0, 0, rp2350 ? CS_CONT_RW : 0), // 39 UPMIX_WIDTH
+    contNoun(Domain.dbToQ8(-12), Domain.dbToQ8(12), Domain.CS_UNIT_DB, Domain.CS_TARGET_NONE, 0, 0, rp2350 ? CS_CONT_RW : 0),  // 40 UPMIX_PRESENCE
     boolNoun(),                                                                                  // 41 PSYBASS
-    contNoun(30, 300, CS_UNIT_HZ),                                                               // 42 PSYBASS_CUTOFF
-    contNoun(dbToQ8(-24), dbToQ8(12), CS_UNIT_DB),                                               // 43 PSYBASS_HARMONICS
-    contNoun(0, dbToQ8(18), CS_UNIT_DB),                                                         // 44 PSYBASS_DRIVE
-    contNoun(0, percentToQ8(100), CS_UNIT_PERCENT),                                              // 45 PSYBASS_CHARACTER
-    contNoun(dbToQ8(-60), 0, CS_UNIT_DB),                                                        // 46 PSYBASS_ORIGINAL
-    contNoun(0, msToQ8(rp2350 ? 42 : 21), CS_UNIT_MS, CS_TARGET_OUTPUT_CH, numOut),              // 47 OUTPUT_DELAY
+    contNoun(30, 300, Domain.CS_UNIT_HZ),                                                               // 42 PSYBASS_CUTOFF
+    contNoun(Domain.dbToQ8(-24), Domain.dbToQ8(12), Domain.CS_UNIT_DB),                                               // 43 PSYBASS_HARMONICS
+    contNoun(0, Domain.dbToQ8(18), Domain.CS_UNIT_DB),                                                         // 44 PSYBASS_DRIVE
+    contNoun(0, Domain.percentToQ8(100), Domain.CS_UNIT_PERCENT),                                              // 45 PSYBASS_CHARACTER
+    contNoun(Domain.dbToQ8(-60), 0, Domain.CS_UNIT_DB),                                                        // 46 PSYBASS_ORIGINAL
+    contNoun(0, Domain.msToQ8(rp2350 ? 42 : 21), Domain.CS_UNIT_MS, Domain.CS_TARGET_OUTPUT_CH, numOut),              // 47 OUTPUT_DELAY
     boolNoun(CS_TRIGGER_ONLY),                                                                   // 48 PRESET_RELOAD
     // caps v7 additions.
-    contNoun(dbToQ8(40), dbToQ8(100), CS_UNIT_DB),                                               // 49 LOUDNESS_SPL
-    contNoun(0, percentToQ8(127), CS_UNIT_PERCENT),                                              // 50 LOUDNESS_INTENSITY
+    contNoun(Domain.dbToQ8(40), Domain.dbToQ8(100), Domain.CS_UNIT_DB),                                               // 49 LOUDNESS_SPL
+    contNoun(0, Domain.percentToQ8(127), Domain.CS_UNIT_PERCENT),                                              // 50 LOUDNESS_INTENSITY
     // caps v8 addition.
-    contNoun(dbToQ8(-60), 0, CS_UNIT_DB, CS_TARGET_NONE, 0, 0, CS_CONT_RO),                      // 51 INPUT_LEVEL_MAX (read-only)
+    contNoun(Domain.dbToQ8(-60), 0, Domain.CS_UNIT_DB, Domain.CS_TARGET_NONE, 0, 0, CS_CONT_RO),                      // 51 INPUT_LEVEL_MAX (read-only)
     // caps v9 addition.
     enumNoun(8, CS_MACRO_ACTIONS),                                                               // 52 MACRO (SET/IND_EQUALS only)
     // caps v10 additions.
-    contNoun(0, percentToQ8(100), CS_UNIT_PERCENT, CS_TARGET_NONE, 0, 0, CS_CONT_RO),            // 53 CPU_LOAD (read-only)
+    contNoun(0, Domain.percentToQ8(100), Domain.CS_UNIT_PERCENT, Domain.CS_TARGET_NONE, 0, 0, CS_CONT_RO),            // 53 CPU_LOAD (read-only)
     enumNoun(16),                                                                                // 54 DISPLAY_PAGE
     boolNoun(),                                                                                  // 55 DISPLAY_EDIT
     enumNoun(1, CS_PAGE_VALUE_ACTIONS),                                                          // 56 PAGE_VALUE (STEP/INC/DEC/TOGGLE only)
     // caps v14 additions. Both platforms -- unlike psybass/upmix there is no
     // RP2350 gate on the subharmonic synthesizer.
     boolNoun(),                                                                                   // 57 SUBHARM
-    contNoun(dbToQ8(-30), dbToQ8(6), CS_UNIT_DB),                                                 // 58 SUBHARM_LOW
-    contNoun(dbToQ8(-30), dbToQ8(6), CS_UNIT_DB),                                                 // 59 SUBHARM_HIGH
-    contNoun(0, dbToQ8(6), CS_UNIT_DB),                                                           // 60 SUBHARM_BOOST
+    contNoun(Domain.dbToQ8(-30), Domain.dbToQ8(6), Domain.CS_UNIT_DB),                                                 // 58 SUBHARM_LOW
+    contNoun(Domain.dbToQ8(-30), Domain.dbToQ8(6), Domain.CS_UNIT_DB),                                                 // 59 SUBHARM_HIGH
+    contNoun(0, Domain.dbToQ8(6), Domain.CS_UNIT_DB),                                                           // 60 SUBHARM_BOOST
   ];
 }
 
@@ -278,7 +254,7 @@ interface MockCsGroup {
   targetKind: number; memberMask: number; name: string;
 }
 
-const emptyCsGroup = (): MockCsGroup => ({ targetKind: CS_TARGET_NONE, memberMask: 0, name: '' });
+const emptyCsGroup = (): MockCsGroup => ({ targetKind: Domain.CS_TARGET_NONE, memberMask: 0, name: '' });
 
 // Wire-shaped stored macro step / macro (0x22-0x25, caps v9+).
 interface MockCsMacroStep {
@@ -295,7 +271,7 @@ interface MockCsMacro {
 }
 
 const emptyCsMacro = (): MockCsMacro => ({
-  name: '', stepCount: 0, steps: Array.from({ length: CS_MAX_MACRO_STEPS }, emptyCsMacroStep),
+  name: '', stepCount: 0, steps: Array.from({ length: Domain.CS_MAX_MACRO_STEPS }, emptyCsMacroStep),
 });
 
 function macroStepAsDomain(s: MockCsMacroStep): CsMacroStep {
@@ -323,13 +299,13 @@ const emptyCsDisplayPage = (): MockCsDisplayPage => ({ noun: 0, target: 0, index
 
 function displayCfgAsDomain(c: MockCsDisplayCfg): CsDisplayCfg {
   return {
-    mode: c.mode as CsDisplayMode, homePage: c.homePage, dwell: c.dwell, overlayHold: c.overlayHold,
+    mode: c.mode as Domain.CsDisplayMode, homePage: c.homePage, dwell: c.dwell, overlayHold: c.overlayHold,
     brightness: c.brightness, flags: c.flags, editTimeout: c.editTimeout,
   };
 }
 
 function displayPageAsDomain(p: MockCsDisplayPage): CsDisplayPage {
-  return { noun: p.noun as CsNoun, target: p.target, index: p.index, flags: p.flags };
+  return { noun: p.noun as Domain.CsNoun, target: p.target, index: p.index, flags: p.flags };
 }
 
 function concatChunks(chunks: Uint8Array[]): Uint8Array {
@@ -344,12 +320,12 @@ function concatChunks(chunks: Uint8Array[]): Uint8Array {
 // LoadPreset (firmware applies factory defaults rather than returning SlotEmpty).
 // V16 grows the RP2350 to the unified 17-channel space (8 inputs); RP2040
 // stays 7-wide on both generations.
-function defaultMockBulkState(platform: PlatformType, wireVersion: number): BulkParams {
+function defaultMockBulkState(platform: Domain.PlatformType, wireVersion: number): BulkParams {
   const v16 = wireVersion >= 16;
-  const numIn  = v16 && platform === PlatformType.RP2350 ? 8 : 2;
-  const numOut = platform === PlatformType.RP2350 ? 9 : 5;
+  const numIn  = v16 && platform === Domain.PlatformType.RP2350 ? 8 : 2;
+  const numOut = platform === Domain.PlatformType.RP2350 ? 9 : 5;
   const numCh  = numIn + numOut;
-  const state = defaultBulkParams({
+  const state = BulkParser.defaultBulkParams({
     platformId: platform, numCh, numOut, numIn,
     formatVersion: Math.max(wireVersion, 6),
   });
@@ -361,7 +337,7 @@ function defaultMockBulkState(platform: PlatformType, wireVersion: number): Bulk
   // default source's names, not empty. Input slots are wire-first (slot
   // index === wire index) on every profile this mock builds.
   for (let slot = 0; slot < numIn; slot++) {
-    state.channelNames[slot] = defaultInputName(state.inputConfig.source as AudioInputSource, slot);
+    state.channelNames[slot] = Domain.defaultInputName(state.inputConfig.source as Domain.AudioInputSource, slot);
   }
   return state;
 }
@@ -379,14 +355,14 @@ export class MockTransport implements DspTransport {
   #notifyQueue: Uint8Array[] = [];
   #notifySeq = 0;
   #serial: string;
-  #platform: PlatformType;
+  #platform: Domain.PlatformType;
   #wireVersion: number;
   #payloadLength: number | undefined;
   #fwMajor: number;
   #fwMinor: number;
   #fwPatch: number;
   #fwBeta: number;
-  #masterVolumeMode: MasterVolumeMode = MasterVolumeMode.Independent;
+  #masterVolumeMode: Domain.MasterVolumeMode = Domain.MasterVolumeMode.Independent;
   #savedMasterVolumeDb = 0;
   #mockState: BulkParams;
   // Runtime-only solo monitor (fw V30+, 0x2C/0x2D): never in the bulk state,
@@ -399,7 +375,7 @@ export class MockTransport implements DspTransport {
   #presetStartupMode = 0;       // PresetStartupMode.Specified (firmware default)
   #presetDefaultSlot = 0;
   #presetLastActiveSlot = 0;    // always-active default
-  #outputConfigMode: OutputConfigMode = OutputConfigMode.WithPreset;  // firmware default; factory reset resets to it
+  #outputConfigMode: Domain.OutputConfigMode = Domain.OutputConfigMode.WithPreset;  // firmware default; factory reset resets to it
   #presetActiveSlot = 0;
   // Per-slot names live in the directory sector, not the slot payload, so they
   // survive LoadPreset and are deliberately NOT in MockSnapshot.
@@ -420,8 +396,8 @@ export class MockTransport implements DspTransport {
 
   // External control interfaces (V16+, 0xF5-0xF9). Shipped-disabled defaults;
   // last_status/live start at "no attempt yet" / down.
-  #uartCtrl: UartControlConfig = { ...DEFAULT_UART_CONTROL_CONFIG };
-  #i2cCtrl: I2cControlConfig = { ...DEFAULT_I2C_CONTROL_CONFIG };
+  #uartCtrl: UartControlConfig = { ...Domain.DEFAULT_UART_CONTROL_CONFIG };
+  #i2cCtrl: I2cControlConfig = { ...Domain.DEFAULT_I2C_CONTROL_CONFIG };
   #uartLastStatus = 0x00;
   #i2cLastStatus = 0x00;
   #uartLive = false;
@@ -433,11 +409,11 @@ export class MockTransport implements DspTransport {
   // exercised. Bindings/names are a live preview: CsSave copies them into the
   // #csSaved* snapshot and clears dirty, CsRevert restores from it.
   #csNouns!: CsNounCaps[];
-  #csBindings: MockCsBinding[] = Array.from({ length: CS_MAX_BINDINGS }, emptyCsBinding);
-  #csSlotStatus: number[] = Array.from({ length: CS_MAX_BINDINGS }, () => 0);
-  #csNames: string[] = Array.from({ length: CS_MAX_BINDINGS }, () => '');
-  #csSavedBindings: MockCsBinding[] = Array.from({ length: CS_MAX_BINDINGS }, emptyCsBinding);
-  #csSavedNames: string[] = Array.from({ length: CS_MAX_BINDINGS }, () => '');
+  #csBindings: MockCsBinding[] = Array.from({ length: Domain.CS_MAX_BINDINGS }, emptyCsBinding);
+  #csSlotStatus: number[] = Array.from({ length: Domain.CS_MAX_BINDINGS }, () => 0);
+  #csNames: string[] = Array.from({ length: Domain.CS_MAX_BINDINGS }, () => '');
+  #csSavedBindings: MockCsBinding[] = Array.from({ length: Domain.CS_MAX_BINDINGS }, emptyCsBinding);
+  #csSavedNames: string[] = Array.from({ length: Domain.CS_MAX_BINDINGS }, () => '');
   #csDirty = false;
   #csLastStatus = 0x00;
   #csLastSlot = 0;
@@ -449,10 +425,10 @@ export class MockTransport implements DspTransport {
   // (armed by CsIrLearn wValue=1, completed by mockCompleteIrLearn/
   // mockTimeoutIrLearn -- the notify-stream analogue of a decoded remote
   // press -- or read back directly via CsIrLearn wValue=2).
-  #csIrCommands: MockCsIrCommand[] = Array.from({ length: CS_MAX_IR_COMMANDS }, emptyCsIrCommand);
-  #csIrCmdStatus: number[] = Array.from({ length: CS_MAX_IR_COMMANDS }, () => 0);
-  #csSavedIrCommands: MockCsIrCommand[] = Array.from({ length: CS_MAX_IR_COMMANDS }, emptyCsIrCommand);
-  #csIrLearnState: number = CS_IR_LEARN_IDLE;
+  #csIrCommands: MockCsIrCommand[] = Array.from({ length: Domain.CS_MAX_IR_COMMANDS }, emptyCsIrCommand);
+  #csIrCmdStatus: number[] = Array.from({ length: Domain.CS_MAX_IR_COMMANDS }, () => 0);
+  #csSavedIrCommands: MockCsIrCommand[] = Array.from({ length: Domain.CS_MAX_IR_COMMANDS }, emptyCsIrCommand);
+  #csIrLearnState: number = Domain.CS_IR_LEARN_IDLE;
   #csIrLearnResult: { protocol: number; code: number } = { protocol: 0, code: 0 };
   #irLearnAutoComplete = false;
   #irLearnTimer: ReturnType<typeof setTimeout> | null = null;
@@ -460,18 +436,18 @@ export class MockTransport implements DspTransport {
 
   // Target groups (0x20/0x21/0x26, caps v9+): same live-preview / deferred-SET
   // model as bindings above.
-  #csGroups: MockCsGroup[] = Array.from({ length: CS_MAX_GROUPS }, emptyCsGroup);
-  #csGroupStatus: number[] = Array.from({ length: CS_MAX_GROUPS }, () => 0);
-  #csSavedGroups: MockCsGroup[] = Array.from({ length: CS_MAX_GROUPS }, emptyCsGroup);
+  #csGroups: MockCsGroup[] = Array.from({ length: Domain.CS_MAX_GROUPS }, emptyCsGroup);
+  #csGroupStatus: number[] = Array.from({ length: Domain.CS_MAX_GROUPS }, () => 0);
+  #csSavedGroups: MockCsGroup[] = Array.from({ length: Domain.CS_MAX_GROUPS }, emptyCsGroup);
 
   // Macros (0x22-0x25, caps v9+): same live-preview / deferred-SET model as
   // groups above. Header (0x22) and step (0x24) SETs are separate opcodes but
   // report through the SAME cs_last_status/last_slot channel (0x60 | macro),
   // so a real host must serialise them -- DspDevice.setCsMacro does, by
   // running the whole sequence inside one transport.exclusive.
-  #csMacros: MockCsMacro[] = Array.from({ length: CS_MAX_MACROS }, emptyCsMacro);
-  #csMacroStatus: number[] = Array.from({ length: CS_MAX_MACROS }, () => 0);
-  #csSavedMacros: MockCsMacro[] = Array.from({ length: CS_MAX_MACROS }, emptyCsMacro);
+  #csMacros: MockCsMacro[] = Array.from({ length: Domain.CS_MAX_MACROS }, emptyCsMacro);
+  #csMacroStatus: number[] = Array.from({ length: Domain.CS_MAX_MACROS }, () => 0);
+  #csSavedMacros: MockCsMacro[] = Array.from({ length: Domain.CS_MAX_MACROS }, emptyCsMacro);
   // The mock never runs CS actions -- only the sequencer's observable state
   // (running index/current step, going idle on completion) is simulated,
   // computed lazily from Date.now() in GetCsExtStatus rather than a timer.
@@ -483,9 +459,9 @@ export class MockTransport implements DspTransport {
   // `init_state`/`current_page` are computed lazily from Date.now() in
   // GetCsDisplayStatus rather than a timer.
   #csDisplayCfg: MockCsDisplayCfg = emptyCsDisplayCfg();
-  #csDisplayPages: MockCsDisplayPage[] = Array.from({ length: CS_MAX_DISPLAY_PAGES }, emptyCsDisplayPage);
+  #csDisplayPages: MockCsDisplayPage[] = Array.from({ length: Domain.CS_MAX_DISPLAY_PAGES }, emptyCsDisplayPage);
   #csSavedDisplayCfg: MockCsDisplayCfg = emptyCsDisplayCfg();
-  #csSavedDisplayPages: MockCsDisplayPage[] = Array.from({ length: CS_MAX_DISPLAY_PAGES }, emptyCsDisplayPage);
+  #csSavedDisplayPages: MockCsDisplayPage[] = Array.from({ length: Domain.CS_MAX_DISPLAY_PAGES }, emptyCsDisplayPage);
   #csDisplay: { slot: number; model: number; attachedAt: number } | null = null;
   #csDisplayNak = 0;
 
@@ -500,7 +476,7 @@ export class MockTransport implements DspTransport {
 
   constructor(opts: MockOptions) {
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
-    this.#platform = opts.platform === 'rp2040' ? PlatformType.RP2040 : PlatformType.RP2350;
+    this.#platform = opts.platform === 'rp2040' ? Domain.PlatformType.RP2040 : Domain.PlatformType.RP2350;
     this.#wireVersion = opts.wireVersion ?? 10;
     this.#payloadLength = opts.payloadLength;
     const fw = opts.fwVersion ?? { major: 1, minor: 1, patch: 4 };
@@ -518,7 +494,7 @@ export class MockTransport implements DspTransport {
     // platform-default tables the 0xFF pin-reset sentinel resolves through
     // (see #defaultOutputPin etc. below), so boot state and a factory reset
     // agree.
-    const numPin = this.#platform === PlatformType.RP2350 ? 5 : 3;
+    const numPin = this.#platform === Domain.PlatformType.RP2350 ? 5 : 3;
     this.#mockState.numPinOutputs = numPin;
     this.#mockState.pins = Array.from({ length: 5 }, (_, i) => (i < numPin ? this.#defaultOutputPin(i) : 0));
     this.#mockState.i2s = {
@@ -540,10 +516,10 @@ export class MockTransport implements DspTransport {
       // pair to display.
       if (opts.i2sInputChannels && opts.i2sInputChannels > 2) {
         const n = Math.min(8, Math.max(2, opts.i2sInputChannels - (opts.i2sInputChannels % 2)));
-        this.#mockState.inputConfig.source = AudioInputSource.I2s;
+        this.#mockState.inputConfig.source = Domain.AudioInputSource.I2s;
         this.#mockState.inputConfig.i2sInputChannels = n;
         for (let slot = 0; slot < n; slot++) {
-          this.#mockState.channelNames[slot] = defaultInputName(AudioInputSource.I2s, slot);
+          this.#mockState.channelNames[slot] = Domain.defaultInputName(Domain.AudioInputSource.I2s, slot);
         }
       }
 
@@ -554,7 +530,7 @@ export class MockTransport implements DspTransport {
       // "absent" default from defaultBulkParams). Input 4 only actually
       // reaches the wire at V28+ -- #spdifInputCount()/buildBulkParams gate
       // it structurally, so seeding it unconditionally here is harmless.
-      if (this.#platform === PlatformType.RP2350) {
+      if (this.#platform === Domain.PlatformType.RP2350) {
         this.#mockState.inputConfig.spdifRxPinExt = [20, 21, 22];
         this.#mockState.inputConfig.spdifRxEnabledExtP1 = 1;   // mask 0: all disabled
         if (opts.spdifInputsEnabled && opts.spdifInputsEnabled > 1) {
@@ -576,6 +552,58 @@ export class MockTransport implements DspTransport {
         this.#sysClockActiveMode = opts.sysClockBoot.storedMode;
       }
     }
+    if (opts.csFull && this.#isV16 && this.#csCapsVersion >= 10) this.#seedCsFull();
+  }
+
+  #seedCsFull(): void {
+    const bind = (slot: number, b: Partial<MockCsBinding>, name: string): void => {
+      this.#csBindings[slot] = { ...emptyCsBinding(), gpio1: Domain.CS_GPIO_UNUSED, ...b };
+      this.#csNames[slot] = name;
+    };
+    bind(0, { type: Domain.CsType.Ir, gpio0: 11 }, 'Living room IR receiver');
+    bind(1, { type: Domain.CsType.Display, gpio0: 12, gpio1: 13, index: Domain.CsDisplayModel.Ssd1306_128x64 }, 'Front OLED display');
+    bind(2, { type: Domain.CsType.Pot, noun: Domain.CsNoun.UserVolume, action: Domain.CsAction.Adjust, gpio0: 26 }, 'Volume knob potentiometer');
+    bind(3, { type: Domain.CsType.Pot, noun: Domain.CsNoun.MasterVolume, action: Domain.CsAction.Adjust, gpio0: 27 }, 'Master trim potentiometer');
+    bind(4, { type: Domain.CsType.Encoder, noun: Domain.CsNoun.UserVolume, action: Domain.CsAction.Step, gpio0: 14, gpio1: 15, step: 128 }, 'Rotary encoder with push');
+    bind(5, { type: Domain.CsType.Led, noun: Domain.CsNoun.UserMute, action: Domain.CsAction.IndEquals, gpio0: 16, value: 1 }, 'Mute indicator LED');
+    bind(6, { type: Domain.CsType.LedPwm, noun: Domain.CsNoun.UserVolume, action: Domain.CsAction.IndLevel, gpio0: 17, baseBright: 32 }, 'Level indicator PWM LED');
+    bind(7, { type: Domain.CsType.Switch, noun: Domain.CsNoun.Loudness, action: Domain.CsAction.Follow, gpio0: 18 }, 'Loudness toggle switch');
+    const buttonNouns = [Domain.CsNoun.UserMute, Domain.CsNoun.Loudness, Domain.CsNoun.Crossfeed, Domain.CsNoun.EqBypass];
+    const buttonPins = [19, 23, 24, 25];
+    for (let i = 0; i < 8; i++) {
+      bind(8 + i, {
+        type: Domain.CsType.Button, noun: buttonNouns[i % 4], action: Domain.CsAction.Toggle,
+        gpio0: buttonPins[i % 4], event: i < 4 ? Domain.CsEvent.Press : Domain.CsEvent.Long,
+      }, `Front panel button ${String(i + 1).padStart(2, '0')}`);
+    }
+    for (let i = 0; i < Domain.CS_MAX_GROUPS; i++) {
+      this.#csGroups[i] = {
+        targetKind: Domain.CS_TARGET_OUTPUT_CH, memberMask: 0b11 << (i % 3), name: `Output group ${i + 1} (stereo pair)`,
+      };
+    }
+    for (let i = 0; i < Domain.CS_MAX_MACROS; i++) {
+      const steps = Array.from({ length: Domain.CS_MAX_MACRO_STEPS }, (_, k) => ({
+        ...emptyCsMacroStep(), noun: Domain.CsNoun.Loudness, action: Domain.CsAction.Set, value: k % 2, preDelay: 5,
+      }));
+      this.#csMacros[i] = { name: `Late night macro ${i + 1}`, stepCount: Domain.CS_MAX_MACRO_STEPS, steps };
+    }
+    for (let i = 0; i < Domain.CS_MAX_IR_COMMANDS; i++) {
+      this.#csIrCommands[i] = {
+        ...emptyCsIrCommand(), noun: Domain.CsNoun.UserMute, action: Domain.CsAction.Toggle, protocol: Domain.CsIrProto.Nec, code: 0x1000 + i,
+      };
+    }
+    this.#csDisplayCfg = { ...emptyCsDisplayCfg(), mode: Domain.CsDisplayMode.CycleSelected, dwell: 30, brightness: 128, editTimeout: 100 };
+    for (let i = 0; i < Domain.CS_MAX_DISPLAY_PAGES; i++) {
+      this.#csDisplayPages[i] = { noun: Domain.CsNoun.UserVolume, target: 0, index: 0, flags: Domain.CS_DPAGE_ACTIVE };
+    }
+    this.#csDisplay = { slot: 1, model: Domain.CsDisplayModel.Ssd1306_128x64, attachedAt: Date.now() };
+    this.#csSavedBindings = this.#csBindings.map((b) => ({ ...b }));
+    this.#csSavedNames = this.#csNames.slice();
+    this.#csSavedGroups = this.#csGroups.map((g) => ({ ...g }));
+    this.#csSavedMacros = this.#csMacros.map((m) => ({ ...m, steps: m.steps.map((st) => ({ ...st })) }));
+    this.#csSavedIrCommands = this.#csIrCommands.map((c) => ({ ...c }));
+    this.#csSavedDisplayCfg = { ...this.#csDisplayCfg };
+    this.#csSavedDisplayPages = this.#csDisplayPages.map((p) => ({ ...p }));
   }
 
   get #isV16(): boolean { return this.#wireVersion >= 16; }
@@ -648,19 +676,19 @@ export class MockTransport implements DspTransport {
   // pushes the 0x0A notify event -- the CS_IR_LEARN_DONE body is exactly the
   // CsIrLearnResult wire shape, reused verbatim here.
   mockCompleteIrLearn(protocol: number, code: number): void {
-    this.#csIrLearnState = CS_IR_LEARN_DONE;
+    this.#csIrLearnState = Domain.CS_IR_LEARN_DONE;
     this.#csIrLearnResult = { protocol, code };
     this.#notifySeq = (this.#notifySeq + 1) & 0xff;
-    const body = Codec.encode(Wire.CsIrLearnResult, { state: CS_IR_LEARN_DONE, protocol, code });
+    const body = Codec.encode(Wire.CsIrLearnResult, { state: Domain.CS_IR_LEARN_DONE, protocol, code });
     this.pushNotify(concatChunks([new Uint8Array([2, 0x0A, 0, this.#notifySeq]), body]));
   }
 
   // Test hook for the 10-second learn window expiring unanswered.
   mockTimeoutIrLearn(): void {
-    this.#csIrLearnState = CS_IR_LEARN_TIMEOUT;
+    this.#csIrLearnState = Domain.CS_IR_LEARN_TIMEOUT;
     this.#csIrLearnResult = { protocol: 0, code: 0 };
     this.#notifySeq = (this.#notifySeq + 1) & 0xff;
-    const body = Codec.encode(Wire.CsIrLearnResult, { state: CS_IR_LEARN_TIMEOUT, protocol: 0, code: 0 });
+    const body = Codec.encode(Wire.CsIrLearnResult, { state: Domain.CS_IR_LEARN_TIMEOUT, protocol: 0, code: 0 });
     this.pushNotify(concatChunks([new Uint8Array([2, 0x0A, 0, this.#notifySeq]), body]));
   }
 
@@ -888,7 +916,7 @@ export class MockTransport implements DspTransport {
         const u = this.#mockState.upmix!;
         return Codec.encode(WireCmd.UpmixGetConfig.codec, {
           enabled: u.enabled, centerMode: u.centerMode, surroundMode: u.surroundMode,
-          presenceQ1: encodePresenceQ1(u.presenceDb),
+          presenceQ1: BulkParser.encodePresenceQ1(u.presenceDb),
           strengthPct: u.strengthPct, centerWidthPct: u.centerWidthPct, corrThresholdPct: u.corrThresholdPct,
           attackMs: u.attackMs, releaseMs: u.releaseMs, detectorHpfHz: u.detectorHpfHz,
           surroundDelayMs: u.surroundDelayMs, surroundHpfHz: u.surroundHpfHz, surroundLpfHz: u.surroundLpfHz,
@@ -903,7 +931,7 @@ export class MockTransport implements DspTransport {
         return Codec.encode(Codec.u8, this.#mockState.inputConfig.i2sClockMode);
       case WireCmd.GetI2sSlaveStatus.code: {
         const locked = this.#mockState.inputConfig.i2sClockMode === 1
-          && this.#mockState.inputConfig.source === AudioInputSource.I2s;
+          && this.#mockState.inputConfig.source === Domain.AudioInputSource.I2s;
         return Codec.encode(Wire.I2sSlaveStatus, {
           state: locked ? 3 : 0,   // 3 = LOCKED, 0 = INACTIVE
           clockMode: this.#mockState.inputConfig.i2sClockMode,
@@ -1014,7 +1042,7 @@ export class MockTransport implements DspTransport {
       case WireCmd.SetI2sInputChannels.code: {
         const count = value & 0xFF;
         if (count !== 2 && count !== 4 && count !== 6 && count !== 8) return new Uint8Array([0x01]);
-        const maxPairs = this.#platform === PlatformType.RP2350 ? I2S_RX_MAX_PAIRS : 1;
+        const maxPairs = this.#platform === Domain.PlatformType.RP2350 ? Domain.I2S_RX_MAX_PAIRS : 1;
         if (count / 2 > maxPairs) return new Uint8Array([0x03]);
         const changed = this.#mockState.inputConfig.i2sInputChannels !== count;
         this.#mockState.inputConfig.i2sInputChannels = count;
@@ -1148,7 +1176,7 @@ export class MockTransport implements DspTransport {
           else this.#mockState.i2s.bckPinSlave = pin;
         } else {
           if (!this.#isValidGpio(pin) || !this.#isValidGpio(pin + 1)) status = 0x01;
-          else if (this.#mockState.i2s.outputSlotTypes.some((type) => type === OutputSlotType.I2s)) status = 0x04;
+          else if (this.#mockState.i2s.outputSlotTypes.some((type) => type === Domain.OutputSlotType.I2s)) status = 0x04;
           else if (this.#pinInUse(pin, 0xFF) || this.#pinInUse(pin + 1, 0xFF)) status = 0x02;
           else this.#mockState.i2s.bckPin = pin;
         }
@@ -1186,12 +1214,12 @@ export class MockTransport implements DspTransport {
       // platform gate on the lightpipe hardware.
       case WireCmd.GetAdatEnable.code: {
         if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: GetAdatEnable unsupported (STALL)');
-        if (this.#platform !== PlatformType.RP2350) return new Uint8Array(length);
+        if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array(length);
         return Codec.encode(Codec.bool8, this.#mockState.adat.enabled);
       }
       case WireCmd.SetAdatEnable.code: {
         if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: SetAdatEnable unsupported (STALL)');
-        if (this.#platform !== PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
+        if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
         const enable = (value & 0xFF) !== 0;
         if (enable === this.#mockState.adat.enabled) return new Uint8Array([0x00]);   // same-state no-op
         if (!enable) {
@@ -1207,12 +1235,12 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.GetAdatPin.code: {
         if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: GetAdatPin unsupported (STALL)');
-        if (this.#platform !== PlatformType.RP2350) return new Uint8Array(length);
+        if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array(length);
         return Codec.encode(Codec.u8, this.#mockState.adat.pin);
       }
       case WireCmd.SetAdatPin.code: {
         if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: SetAdatPin unsupported (STALL)');
-        if (this.#platform !== PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
+        if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
         let pin = value & 0xFF;
         if (pin === Wire.Const.PIN_RESET_TO_DEFAULT) pin = this.#defaultAdatPin();
         if (!this.#isValidGpio(pin)) return new Uint8Array([0x01]);        // InvalidPin
@@ -1223,7 +1251,7 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.GetAdatStatus.code: {
         if (this.#wireVersion < MIN_ADAT_WIRE) throw new Error('MockTransport: GetAdatStatus unsupported (STALL)');
-        if (this.#platform !== PlatformType.RP2350) return new Uint8Array(length);
+        if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array(length);
         const enabled = this.#mockState.adat.enabled;
         // Mock always runs at 48 kHz -- rateOk (and thus active) is always true while enabled.
         return Codec.encode(Wire.AdatStatus, {
@@ -1244,13 +1272,13 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.SetAdatInputEnable.code: {
         if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: SetAdatInputEnable unsupported (STALL)');
-        if (this.#platform !== PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
+        if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
         if (value > 1) return new Uint8Array([0x05]);                                // InvalidParam
         const enable = value !== 0;
         if (enable === this.#adatInputEnabled()) return new Uint8Array([0x00]);      // same-state no-op
         if (!enable) {
           // Refused while ADAT is the active input source.
-          if (this.#mockState.inputConfig.source === AudioInputSource.Adat) return new Uint8Array([0x02]); // PinInUse
+          if (this.#mockState.inputConfig.source === Domain.AudioInputSource.Adat) return new Uint8Array([0x02]); // PinInUse
           this.#mockState.inputConfig.adatInputEnabledP1 = 1;
           return new Uint8Array([0x00]);
         }
@@ -1269,7 +1297,7 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.SetAdatInputPin.code: {
         if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: SetAdatInputPin unsupported (STALL)');
-        if (this.#platform !== PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
+        if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
         const raw = value & 0xFF;
         if (raw === Wire.Const.PIN_RESET_TO_DEFAULT) {
           // No default GPIO for ADAT input -- 0xFF clears the stored pin, only while disabled.
@@ -1299,7 +1327,7 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.GetAdatInputStatus.code: {
         if (this.#wireVersion < MIN_ADAT_INPUT_WIRE) throw new Error('MockTransport: GetAdatInputStatus unsupported (STALL)');
-        if (this.#platform !== PlatformType.RP2350) return new Uint8Array(length);
+        if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array(length);
         return Codec.encode(Wire.AdatInputStatus, this.#adatInputStatus());
       }
       case WireCmd.GetUartConfig.code: {
@@ -1324,7 +1352,7 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.GetCsBinding.code: {
         if (!this.#isV16) return new Uint8Array(length);
-        if (value >= CS_MAX_BINDINGS) throw new Error('MockTransport: GetCsBinding slot out of range (STALL)');
+        if (value >= Domain.CS_MAX_BINDINGS) throw new Error('MockTransport: GetCsBinding slot out of range (STALL)');
         const b = this.#csBindings[value];
         return Codec.encode(Wire.CsBinding, b);
       }
@@ -1373,26 +1401,26 @@ export class MockTransport implements DspTransport {
         }
         let activeMask = 0;
         this.#csBindings.forEach((b, i) => {
-          if (b.type !== CsType.None && this.#csSlotStatus[i] === 0) activeMask |= 1 << i;
+          if (b.type !== Domain.CsType.None && this.#csSlotStatus[i] === 0) activeMask |= 1 << i;
         });
         let irActiveMask = 0;
         const irUp = this.#hasLiveIrBinding();
         this.#csIrCommands.forEach((c, i) => {
-          if (c.protocol !== CsIrProto.None && this.#csIrCmdStatus[i] === 0 && irUp) irActiveMask |= 1 << i;
+          if (c.protocol !== Domain.CsIrProto.None && this.#csIrCmdStatus[i] === 0 && irUp) irActiveMask |= 1 << i;
         });
         // caps v6+ widens ir_active_mask to u16 and ir_cmd_status to 16
         // entries; below that the wire layout is the 8-entry v3 shape.
         if (this.#csCapsVersion >= 6) {
           return Codec.encode(Wire.CsStatusPacketV6, {
             lastStatus, lastSlot: this.#csLastSlot,
-            maxBindings: CS_MAX_BINDINGS, dirty: this.#csDirty, activeMask,
+            maxBindings: Domain.CS_MAX_BINDINGS, dirty: this.#csDirty, activeMask,
             slotStatus: this.#csSlotStatus.slice(),
             irActiveMask, irLearnState: this.#csIrLearnState, irCmdStatus: this.#csIrCmdStatus.slice(),
           });
         }
         return Codec.encode(Wire.CsStatusPacketV3, {
           lastStatus, lastSlot: this.#csLastSlot,
-          maxBindings: CS_MAX_BINDINGS, dirty: this.#csDirty, activeMask,
+          maxBindings: Domain.CS_MAX_BINDINGS, dirty: this.#csDirty, activeMask,
           slotStatus: this.#csSlotStatus.slice(),
           irActiveMask: irActiveMask & 0xFF, irLearnState: this.#csIrLearnState,
           irCmdStatus: this.#csIrCmdStatus.slice(0, 8),
@@ -1400,17 +1428,17 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.GetCsName.code: {
         if (!this.#isV16) return new Uint8Array(length);
-        if (value >= CS_MAX_BINDINGS) throw new Error('MockTransport: GetCsName slot out of range (STALL)');
+        if (value >= Domain.CS_MAX_BINDINGS) throw new Error('MockTransport: GetCsName slot out of range (STALL)');
         return Codec.encode(Wire.CsName, this.#csNames[value] ?? '');
       }
       case WireCmd.GetCsGroup.code: {
-        if (this.#csCapsVersion < 9 || value >= CS_MAX_GROUPS) {
+        if (this.#csCapsVersion < 9 || value >= Domain.CS_MAX_GROUPS) {
           throw new Error('MockTransport: GetCsGroup unsupported or slot out of range (STALL)');
         }
         return Codec.encode(Wire.CsGroup, this.#csGroups[value]);
       }
       case WireCmd.GetCsMacro.code: {
-        if (this.#csCapsVersion < 9 || value >= CS_MAX_MACROS) {
+        if (this.#csCapsVersion < 9 || value >= Domain.CS_MAX_MACROS) {
           throw new Error('MockTransport: GetCsMacro unsupported or slot out of range (STALL)');
         }
         const m = this.#csMacros[value];
@@ -1422,7 +1450,7 @@ export class MockTransport implements DspTransport {
           this.#csMacroRun = null;
           return new Uint8Array([1]);
         }
-        if (value >= CS_MAX_MACROS) throw new Error('MockTransport: CsMacroFire slot out of range (STALL)');
+        if (value >= Domain.CS_MAX_MACROS) throw new Error('MockTransport: CsMacroFire slot out of range (STALL)');
         const m = this.#csMacros[value];
         const n = m.stepCount;
         if (n === 0) {
@@ -1453,7 +1481,7 @@ export class MockTransport implements DspTransport {
           }
         }
         return Codec.encode(Wire.CsExtStatusPacket, {
-          maxGroups: CS_MAX_GROUPS, maxMacros: CS_MAX_MACROS, maxMacroSteps: CS_MAX_MACRO_STEPS,
+          maxGroups: Domain.CS_MAX_GROUPS, maxMacros: Domain.CS_MAX_MACROS, maxMacroSteps: Domain.CS_MAX_MACRO_STEPS,
           macroRunning, macroStep,
           groupStatus: this.#csGroupStatus.slice(), macroStatus: this.#csMacroStatus.slice(),
         });
@@ -1461,11 +1489,11 @@ export class MockTransport implements DspTransport {
       case WireCmd.GetCsDisplayCfg.code: {
         if (this.#csCapsVersion < 10) throw new Error('MockTransport: GetCsDisplayCfg unsupported (STALL)');
         return Codec.encode(Wire.CsDisplayCfgResponse, {
-          maxPages: CS_MAX_DISPLAY_PAGES, modelCount: CS_DISPLAY_MODEL_COUNT, cfg: this.#csDisplayCfg,
+          maxPages: Domain.CS_MAX_DISPLAY_PAGES, modelCount: Domain.CS_DISPLAY_MODEL_COUNT, cfg: this.#csDisplayCfg,
         });
       }
       case WireCmd.GetCsDisplayPage.code: {
-        if (this.#csCapsVersion < 10 || value >= CS_MAX_DISPLAY_PAGES) {
+        if (this.#csCapsVersion < 10 || value >= Domain.CS_MAX_DISPLAY_PAGES) {
           throw new Error('MockTransport: GetCsDisplayPage unsupported or page out of range (STALL)');
         }
         return Codec.encode(Wire.CsDisplayPage, this.#csDisplayPages[value]);
@@ -1481,20 +1509,20 @@ export class MockTransport implements DspTransport {
             this.#csLastStatus = 0x1E;               // CS_STATUS_NO_IR
             throw new Error('MockTransport: CsIrLearn arm with no live IR receiver (STALL)');
           }
-          this.#csIrLearnState = CS_IR_LEARN_ARMED;
+          this.#csIrLearnState = Domain.CS_IR_LEARN_ARMED;
           if (this.#irLearnAutoComplete) {
             if (this.#irLearnTimer != null) clearTimeout(this.#irLearnTimer);
             this.#irLearnTimer = setTimeout(() => {
               this.#irLearnTimer = null;
-              if (this.#csIrLearnState !== CS_IR_LEARN_ARMED) return;
-              this.mockCompleteIrLearn(CsIrProto.Nec, 0x20DF0000 + (++this.#irLearnDemoCount));
+              if (this.#csIrLearnState !== Domain.CS_IR_LEARN_ARMED) return;
+              this.mockCompleteIrLearn(Domain.CsIrProto.Nec, 0x20DF0000 + (++this.#irLearnDemoCount));
             }, 1500);
           }
           return new Uint8Array([1]);
         }
         if (value === 0) {
           if (this.#irLearnTimer != null) { clearTimeout(this.#irLearnTimer); this.#irLearnTimer = null; }
-          this.#csIrLearnState = CS_IR_LEARN_IDLE;
+          this.#csIrLearnState = Domain.CS_IR_LEARN_IDLE;
           return new Uint8Array([1]);
         }
         return Codec.encode(Wire.CsIrLearnResult, {
@@ -1540,7 +1568,7 @@ export class MockTransport implements DspTransport {
         this.#csDisplayCfg = { ...this.#csSavedDisplayCfg };
         this.#csDisplayPages = this.#csSavedDisplayPages.map((p) => ({ ...p }));
         this.#csDisplay = null;
-        const displaySlot = this.#csBindings.findIndex((b) => b.type === CsType.Display);
+        const displaySlot = this.#csBindings.findIndex((b) => b.type === Domain.CsType.Display);
         if (displaySlot >= 0) {
           this.#csDisplay = { slot: displaySlot, model: this.#csBindings[displaySlot].index, attachedAt: Date.now() };
           this.#csDisplayNak = 0;
@@ -1553,7 +1581,7 @@ export class MockTransport implements DspTransport {
         return new Uint8Array([1]);
       }
       case WireCmd.GetBufferStats.code:
-        return synthesizeBufferStats({
+        return Syn.synthesizeBufferStats({
           numSpdif: this.#numSpdif(),
           pdmActive: true, streaming: true,
           sequence: 1,
@@ -1578,7 +1606,7 @@ export class MockTransport implements DspTransport {
           // A fallback boot runs safe mode 0 at its default voltage -- the
           // stored (failed) vreg selection is not what is live.
           liveVreg: this.#sysClockFallback || this.#sysClockStoredVreg === 0xFF
-            ? SYS_CLOCK_MODE_DEFAULT_VREG[this.#sysClockActiveMode]
+            ? Domain.SYS_CLOCK_MODE_DEFAULT_VREG[this.#sysClockActiveMode]
             : this.#sysClockStoredVreg,
           fallbackActive: this.#sysClockFallback,
         });
@@ -1595,9 +1623,13 @@ export class MockTransport implements DspTransport {
       case WireCmd.SetMasterVolume.code:
         this.#mockState.masterVolumeDb = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetPreamp.code:
-        this.#mockState.preampDb = Codec.decode(Codec.f32, data);
+      case WireCmd.SetPreamp.code: {
+        // Firmware applies the legacy preamp to every input channel.
+        const db = Codec.decode(Codec.f32, data);
+        this.#mockState.preampDb = db;
+        this.#mockState.inputPreampsDb.fill(db);
         return;
+      }
       case WireCmd.SetInputPreamp.code: {
         const idx = value & 0xFF;
         if (idx < this.#mockState.inputPreampsDb.length) {
@@ -1654,11 +1686,11 @@ export class MockTransport implements DspTransport {
           throw new Error('MockTransport: SetSysClock unsupported (STALL)');
         }
         const req = Codec.decode(Wire.SysClockRequest, data);
-        if (req.mode >= SYS_CLOCK_MODE_DEFAULT_VREG.length) {
+        if (req.mode >= Domain.SYS_CLOCK_MODE_DEFAULT_VREG.length) {
           throw new Error('MockTransport: SetSysClock invalid mode (STALL)');
         }
-        const ceiling = this.#platform === PlatformType.RP2350 ? SYS_CLOCK_VREG_CEILING_RP2350 : SYS_CLOCK_VREG_CEILING_RP2040;
-        const defaultVreg = SYS_CLOCK_MODE_DEFAULT_VREG[req.mode];
+        const ceiling = this.#platform === Domain.PlatformType.RP2350 ? Domain.SYS_CLOCK_VREG_CEILING_RP2350 : Domain.SYS_CLOCK_VREG_CEILING_RP2040;
+        const defaultVreg = Domain.SYS_CLOCK_MODE_DEFAULT_VREG[req.mode];
         if (req.vregSel !== 0xFF && (req.vregSel < defaultVreg || req.vregSel > ceiling)) {
           throw new Error('MockTransport: SetSysClock invalid vregSel (STALL)');
         }
@@ -1708,7 +1740,7 @@ export class MockTransport implements DspTransport {
         this.#mockState.bypass = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetMasterVolumeMode.code:
-        this.#masterVolumeMode = Codec.decode(Codec.u8, data) as MasterVolumeMode;
+        this.#masterVolumeMode = Codec.decode(Codec.u8, data) as Domain.MasterVolumeMode;
         return;
 
       // Loudness
@@ -1822,7 +1854,7 @@ export class MockTransport implements DspTransport {
           strengthPct: p.strengthPct, centerWidthPct: p.centerWidthPct, corrThresholdPct: p.corrThresholdPct,
           attackMs: p.attackMs, releaseMs: p.releaseMs, detectorHpfHz: p.detectorHpfHz,
           surroundDelayMs: p.surroundDelayMs, surroundHpfHz: p.surroundHpfHz, surroundLpfHz: p.surroundLpfHz,
-          decorrPct: p.decorrPct, presenceDb: decodePresenceQ1(p.presenceQ1),
+          decorrPct: p.decorrPct, presenceDb: BulkParser.decodePresenceQ1(p.presenceQ1),
         };
         return;
       }
@@ -1832,7 +1864,7 @@ export class MockTransport implements DspTransport {
         this.#mockState.crossfeed!.enabled = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetCrossfeedPreset.code:
-        this.#mockState.crossfeed!.preset = Codec.decode(Codec.u8, data) as CrossfeedPreset;
+        this.#mockState.crossfeed!.preset = Codec.decode(Codec.u8, data) as Domain.CrossfeedPreset;
         return;
       case WireCmd.SetCrossfeedItd.code:
         this.#mockState.crossfeed!.itd = Codec.decode(Codec.bool8, data);
@@ -1852,7 +1884,7 @@ export class MockTransport implements DspTransport {
         this.#mockState.leveller!.enabled = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetLevellerSpeed.code:
-        this.#mockState.leveller!.speed = Codec.decode(Codec.u8, data) as LevellerSpeed;
+        this.#mockState.leveller!.speed = Codec.decode(Codec.u8, data) as Domain.LevellerSpeed;
         return;
       case WireCmd.SetLevellerLookahead.code:
         this.#mockState.leveller!.lookahead = Codec.decode(Codec.bool8, data);
@@ -1896,7 +1928,7 @@ export class MockTransport implements DspTransport {
         return;
       }
       case WireCmd.SetOutputConfigMode.code:
-        this.#outputConfigMode = Codec.decode(Codec.u8, data) as OutputConfigMode;
+        this.#outputConfigMode = Codec.decode(Codec.u8, data) as Domain.OutputConfigMode;
         return;
 
       case WireCmd.ClearClips.code:
@@ -1926,7 +1958,7 @@ export class MockTransport implements DspTransport {
 
       case WireCmd.SetCsBinding.code: {
         if (!this.#isV16) return;
-        if (value >= CS_MAX_BINDINGS) {
+        if (value >= Domain.CS_MAX_BINDINGS) {
           // Bad slot is rejected by the handler itself -- immediate, no
           // PENDING window.
           this.#csLastStatus = 0x10;                  // CS_STATUS_INVALID_SLOT
@@ -1942,7 +1974,7 @@ export class MockTransport implements DspTransport {
 
       case WireCmd.SetCsName.code: {
         if (!this.#isV16) return;
-        if (value >= CS_MAX_BINDINGS) {
+        if (value >= Domain.CS_MAX_BINDINGS) {
           this.#csLastStatus = 0x10;                  // CS_STATUS_INVALID_SLOT
           this.#csLastSlot = value & 0xFF;
           return;
@@ -1971,7 +2003,7 @@ export class MockTransport implements DspTransport {
 
       case WireCmd.SetCsGroup.code: {
         if (this.#csCapsVersion < 9) throw new Error('MockTransport: SetCsGroup unsupported (STALL)');
-        if (value >= CS_MAX_GROUPS) {
+        if (value >= Domain.CS_MAX_GROUPS) {
           // Bad slot is rejected immediately, no PENDING window.
           this.#csLastStatus = 0x1F;                  // CS_STATUS_INVALID_GROUP
           this.#csLastSlot = 0x40 | (value & 0xFF);
@@ -1986,7 +2018,7 @@ export class MockTransport implements DspTransport {
 
       case WireCmd.SetCsMacro.code: {
         if (this.#csCapsVersion < 9) throw new Error('MockTransport: SetCsMacro unsupported (STALL)');
-        if (value >= CS_MAX_MACROS) {
+        if (value >= Domain.CS_MAX_MACROS) {
           // Bad slot is rejected immediately, no PENDING window.
           this.#csLastStatus = 0x20;                  // CS_STATUS_INVALID_MACRO
           this.#csLastSlot = 0x60 | (value & 0xFF);
@@ -2003,12 +2035,12 @@ export class MockTransport implements DspTransport {
         if (this.#csCapsVersion < 9) throw new Error('MockTransport: SetCsMacroStep unsupported (STALL)');
         const idx = value & 0xFF;
         const step = (value >> 8) & 0xFF;
-        if (idx >= CS_MAX_MACROS) {
+        if (idx >= Domain.CS_MAX_MACROS) {
           this.#csLastStatus = 0x20;                  // CS_STATUS_INVALID_MACRO
           this.#csLastSlot = 0x60 | idx;
           return;
         }
-        if (step >= CS_MAX_MACRO_STEPS) {
+        if (step >= Domain.CS_MAX_MACRO_STEPS) {
           this.#csLastStatus = 0x21;                  // CS_STATUS_INVALID_STEP
           this.#csLastSlot = 0x60 | idx;
           return;
@@ -2037,7 +2069,7 @@ export class MockTransport implements DspTransport {
       case WireCmd.SetCsDisplayPage.code: {
         if (this.#csCapsVersion < 10) throw new Error('MockTransport: SetCsDisplayPage unsupported (STALL)');
         const page = value & 0xFF;
-        if (page >= CS_MAX_DISPLAY_PAGES) {
+        if (page >= Domain.CS_MAX_DISPLAY_PAGES) {
           this.#csLastStatus = 0x25;                  // CS_STATUS_INVALID_PAGE
           this.#csLastSlot = 0x50 | page;
           return;
@@ -2065,7 +2097,7 @@ export class MockTransport implements DspTransport {
         if (value === 0) {
           // fw rejects a session whose declared packet is shorter than its
           // own wire size (WIRE_BULK_PARAMS_MIN_SIZE); STALL on the first chunk.
-          const declared = peekBulkHeader(data).payloadLength;
+          const declared = BulkParser.peekBulkHeader(data).payloadLength;
           if (declared < target) {
             this.#setChunkSession = null;
             throw new Error(`MockTransport: SetAllParamsChunk payload too short (${declared}, need ${target})`);
@@ -2102,7 +2134,7 @@ export class MockTransport implements DspTransport {
         throw new Error(`MockTransport: SetAllParams payload too short (${data.length}, need ${min})`);
       }
     }
-    const bulk = parseBulkParams(data);
+    const bulk = BulkParser.parseBulkParams(data);
     bulk.limiter = this.#settleLimiter(bulk.limiter, this.#mockState.limiter);
     this.#applyBulkState(bulk);
   }
@@ -2113,7 +2145,7 @@ export class MockTransport implements DspTransport {
   // count read back as zeros, NaN takes the default, values clamp, and every
   // member of a link group copies its lowest-numbered member.
   #settleLimiter(incoming: LimiterOutput[], live: LimiterOutput[]): LimiterOutput[] {
-    if (this.#outputConfigMode === OutputConfigMode.Independent) return live;
+    if (this.#outputConfigMode === Domain.OutputConfigMode.Independent) return live;
     const numOut = this.#mockState.numOut;
     const sane = (v: number, lo: number, hi: number, dflt: number) =>
       Number.isNaN(v) ? dflt : Math.min(hi, Math.max(lo, v));
@@ -2121,10 +2153,10 @@ export class MockTransport implements DspTransport {
       ? { enabled: false, linkGroup: 0, thresholdDb: 0, releaseMs: 0 }
       : {
           enabled: o.enabled, linkGroup: o.linkGroup,
-          thresholdDb: sane(o.thresholdDb, Proc.LIMITER_THRESHOLD_MIN_DB, Proc.LIMITER_THRESHOLD_MAX_DB, -1),
-          releaseMs: sane(o.releaseMs, Proc.LIMITER_RELEASE_MIN_MS, Proc.LIMITER_RELEASE_MAX_MS, 100),
+          thresholdDb: sane(o.thresholdDb, Domain.Proc.LIMITER_THRESHOLD_MIN_DB, Domain.Proc.LIMITER_THRESHOLD_MAX_DB, -1),
+          releaseMs: sane(o.releaseMs, Domain.Proc.LIMITER_RELEASE_MIN_MS, Domain.Proc.LIMITER_RELEASE_MAX_MS, 100),
         });
-    return settleLimiterGroups(out, numOut);
+    return Domain.settleLimiterGroups(out, numOut);
   }
 
   #captureSnapshot(): MockSnapshot {
@@ -2139,7 +2171,7 @@ export class MockTransport implements DspTransport {
   // version in the header so the connect-reject path is exercised.
   #synthBulkPacket(): Uint8Array {
     const buildVer = Math.min(Math.max(this.#wireVersion, 6), Wire.MAX_WIRE_VERSION);
-    const out = buildBulkParams(this.#mockState, buildVer);
+    const out = BulkParser.buildBulkParams(this.#mockState, buildVer);
     const dv = new DataView(out.buffer);
     dv.setUint8(0, this.#wireVersion);        // report true version (may be < 6)
     dv.setUint16(6, this.#payloadLength ?? out.byteLength, true);  // payloadLength (overridable)
@@ -2157,8 +2189,8 @@ export class MockTransport implements DspTransport {
   #regenerateInputDefaultNames(oldSource: number, newSource: number): void {
     const numIn = this.#mockState.numIn;
     for (let slot = 0; slot < numIn; slot++) {
-      const oldDefault = defaultInputName(oldSource as AudioInputSource, slot);
-      const newDefault = defaultInputName(newSource as AudioInputSource, slot);
+      const oldDefault = Domain.defaultInputName(oldSource as Domain.AudioInputSource, slot);
+      const newDefault = Domain.defaultInputName(newSource as Domain.AudioInputSource, slot);
       if (oldDefault === newDefault) continue;
       if ((this.#mockState.channelNames[slot] ?? '') !== oldDefault) continue;
       this.#mockState.channelNames[slot] = newDefault;
@@ -2181,7 +2213,7 @@ export class MockTransport implements DspTransport {
     // In Mode 0 (independent) LoadPreset leaves it alone (directory-owned). The
     // mock checks the live mode, matching firmware; mode itself is global and
     // not part of the payload.
-    if (this.#masterVolumeMode !== MasterVolumeMode.WithPreset) {
+    if (this.#masterVolumeMode !== Domain.MasterVolumeMode.WithPreset) {
       this.#mockState.masterVolumeDb = liveMv;            // Independent: directory-owned, keep live
     }
     this.#savedMasterVolumeDb = s.savedMasterVolumeDb;
@@ -2200,9 +2232,9 @@ export class MockTransport implements DspTransport {
       const row = this.#mockState.filters?.[ch];
       return row?.[band] ? { row, idx: band } : null;
     }
-    if (this.#isV16 && band >= XOVER_BAND_BASE && band < XOVER_BAND_BASE + MAX_XOVER_BANDS) {
+    if (this.#isV16 && band >= Domain.XOVER_BAND_BASE && band < Domain.XOVER_BAND_BASE + Domain.MAX_XOVER_BANDS) {
       const row = this.#mockState.crossover?.[ch];
-      const idx = band - XOVER_BAND_BASE;
+      const idx = band - Domain.XOVER_BAND_BASE;
       return row?.[idx] ? { row, idx } : null;
     }
     return null;
@@ -2214,15 +2246,15 @@ export class MockTransport implements DspTransport {
   }
 
   #numSpdif(): number {
-    return this.#platform === PlatformType.RP2350 ? 4 : 2;
+    return this.#platform === Domain.PlatformType.RP2350 ? 4 : 2;
   }
 
   // Selectable S/PDIF RX inputs sharing the one receiver (fw 1.1.5+ RP2350
   // only). Mirrors capabilities.ts's multiSpdifInputs gate; the fourth input
   // additionally needs wire V28 (InputConfig's relayout).
   #spdifInputCount(): number {
-    if (!this.#isV16 || this.#platform !== PlatformType.RP2350) return 1;
-    return this.#wireVersion >= 28 ? SPDIF_RX_MAX_INSTANCES : 3;
+    if (!this.#isV16 || this.#platform !== Domain.PlatformType.RP2350) return 1;
+    return this.#wireVersion >= 28 ? Domain.SPDIF_RX_MAX_INSTANCES : 3;
   }
 
   // Platform-default GPIOs for the 0xFF pin-reset sentinel
@@ -2232,20 +2264,20 @@ export class MockTransport implements DspTransport {
   #defaultOutputPin(idx: number): number {
     const rp2350 = [6, 7, 8, 9, 10];
     const rp2040 = [6, 7, 10];
-    return (this.#platform === PlatformType.RP2350 ? rp2350 : rp2040)[idx] ?? 0;
+    return (this.#platform === Domain.PlatformType.RP2350 ? rp2350 : rp2040)[idx] ?? 0;
   }
 
   // role 0 = master BCK (PICO_I2S_BCK_PIN, both platforms); role 1 = slave
   // BCK (PICO_I2S_BCK_PIN_SLAVE, platform-specific).
   #defaultBckPin(role: number): number {
-    if (role === 1) return this.#platform === PlatformType.RP2350 ? 26 : 12;
+    if (role === 1) return this.#platform === Domain.PlatformType.RP2350 ? 26 : 12;
     return 14;
   }
 
   // PICO_I2S_MCK_PIN: RP2350 keeps GPIO 13 (a CLK_GPOUTn pin); RP2040 falls
   // back to GPIO 21 (13 isn't CLK_GPOUTn-capable there).
   #defaultMckPin(): number {
-    return this.#platform === PlatformType.RP2350 ? 13 : 21;
+    return this.#platform === Domain.PlatformType.RP2350 ? 13 : 21;
   }
 
   // Mirrors fw's PICO_SPDIF_RX_PIN_DEFAULT / PIN2/3/4_DEFAULT table.
@@ -2288,7 +2320,7 @@ export class MockTransport implements DspTransport {
     const enabled = this.#adatInputEnabled();
     const clockMode = this.#adatInputClockMode();
     const rawPin = this.#mockState.inputConfig.adatInputPin;
-    const locked = enabled && this.#mockState.inputConfig.source === AudioInputSource.Adat;
+    const locked = enabled && this.#mockState.inputConfig.source === Domain.AudioInputSource.Adat;
     const rate = 48000;
     return {
       state: locked ? 3 : 0,   // 3 = LOCKED, 0 = INACTIVE
@@ -2310,7 +2342,7 @@ export class MockTransport implements DspTransport {
     // dedicated debug UART, freeing 16/17 for general use.
     if (!this.#isV16 && pin === 12) return false;
     if (pin >= 23 && pin <= 25) return false;
-    return pin >= 0 && pin <= (this.#platform === PlatformType.RP2350 ? 47 : 28);
+    return pin >= 0 && pin <= (this.#platform === Domain.PlatformType.RP2350 ? 47 : 28);
   }
 
   // Peripheral pins only (outputs/I2S/MCK/I2S-RX) -- excludes the ctrl
@@ -2323,7 +2355,7 @@ export class MockTransport implements DspTransport {
       if (pins[i] === pin) return true;
     }
     const i2s = this.#mockState.i2s;
-    if (i2s.outputSlotTypes.some((type) => type === OutputSlotType.I2s) && (pin === i2s.bckPin || pin === i2s.bckPin + 1)) return true;
+    if (i2s.outputSlotTypes.some((type) => type === Domain.OutputSlotType.I2s) && (pin === i2s.bckPin || pin === i2s.bckPin + 1)) return true;
     if (i2s.mckEnabled && pin === i2s.mckPin) return true;
     // fw V21+: the slave BCK/LRCLK pair is only reserved in split clock-pin
     // mode (unified mode shares the master pair above).
@@ -2360,43 +2392,43 @@ export class MockTransport implements DspTransport {
   // control_surfaces_owns_pin, wired into pin_used_by_fixed_peripheral).
   #csOwnsPin(pin: number, excludeSlot = -1): boolean {
     return this.#csBindings.some((b, i) =>
-      i !== excludeSlot && b.type !== CsType.None && this.#csSlotStatus[i] === 0 &&
-      (b.gpio0 === pin || (b.gpio1 !== CS_GPIO_UNUSED && b.gpio1 === pin)));
+      i !== excludeSlot && b.type !== Domain.CsType.None && this.#csSlotStatus[i] === 0 &&
+      (b.gpio0 === pin || (b.gpio1 !== Domain.CS_GPIO_UNUSED && b.gpio1 === pin)));
   }
 
   // Whether a live CS_TYPE_IR binding exists (the receiver): gates both IR
   // command activity (ir_active_mask) and learn arm (CS_STATUS_NO_IR).
   #hasLiveIrBinding(excludeSlot = -1): boolean {
     return this.#csBindings.some((b, i) =>
-      i !== excludeSlot && b.type === CsType.Ir && this.#csSlotStatus[i] === 0);
+      i !== excludeSlot && b.type === Domain.CsType.Ir && this.#csSlotStatus[i] === 0);
   }
 
   // Same one-per-device rule as the IR receiver, for the display (fw
   // CS_STATUS_DISPLAY_IN_USE).
   #hasLiveDisplayBinding(excludeSlot = -1): boolean {
     return this.#csBindings.some((b, i) =>
-      i !== excludeSlot && b.type === CsType.Display && this.#csSlotStatus[i] === 0);
+      i !== excludeSlot && b.type === Domain.CsType.Display && this.#csSlotStatus[i] === 0);
   }
 
   // The I2C hardware instance the control interface is actually driving, or
   // null while it's disabled/down -- both instances are free for a display
   // then (fw i2c_ctrl_live_instance()).
   #liveI2cInstance(): number | null {
-    return this.#i2cCtrl.enabled ? i2cInstance(this.#i2cCtrl.sdaPin) : null;
+    return this.#i2cCtrl.enabled ? Domain.i2cInstance(this.#i2cCtrl.sdaPin) : null;
   }
 
   // Sharing probe for button pins (fw cs_check_button_share): every other
   // active binding on `pin` must be a button with the same INVERT sense and
   // a different event; anything else is a conflict.
   #checkButtonShare(w: MockCsBinding, pin: number, exceptSlot: number): number {
-    for (let i = 0; i < CS_MAX_BINDINGS; i++) {
+    for (let i = 0; i < Domain.CS_MAX_BINDINGS; i++) {
       if (i === exceptSlot || this.#csSlotStatus[i] !== 0) continue;
       const other = this.#csBindings[i];
-      if (other.type === CsType.None) continue;
-      const usesPin = other.gpio0 === pin || (other.gpio1 !== CS_GPIO_UNUSED && other.gpio1 === pin);
+      if (other.type === Domain.CsType.None) continue;
+      const usesPin = other.gpio0 === pin || (other.gpio1 !== Domain.CS_GPIO_UNUSED && other.gpio1 === pin);
       if (!usesPin) continue;
-      if (other.type !== CsType.Button) return 0x02;                            // PinInUse
-      if ((other.flags ^ w.flags) & CS_FLAG_INVERT) return 0x14;               // InvalidValue
+      if (other.type !== Domain.CsType.Button) return 0x02;                            // PinInUse
+      if ((other.flags ^ w.flags) & Domain.CS_FLAG_INVERT) return 0x14;               // InvalidValue
       if (other.event === w.event) return 0x1A;                                 // EventInUse
     }
     return 0x00;
@@ -2408,17 +2440,17 @@ export class MockTransport implements DspTransport {
   // a GPIO on distinct events). Applies immediately on success; the PENDING
   // window is simulated by the status read, not here.
   #applyCsBinding(slot: number, w: MockCsBinding): number {
-    if (w.type === CsType.None) {
+    if (w.type === Domain.CsType.None) {
       this.#csBindings[slot] = emptyCsBinding();
       this.#csSlotStatus[slot] = 0;
       this.#csDirty = true;
       if (this.#csDisplay?.slot === slot) this.#csDisplay = null;
       return 0x00;
     }
-    const tableStatus = validateCsBinding(
+    const tableStatus = Domain.validateCsBinding(
       {
-        type: w.type as CsType, noun: w.noun as never, action: w.action as never, flags: w.flags,
-        gpio0: w.gpio0, gpio1: w.gpio1 === CS_GPIO_UNUSED ? null : w.gpio1,
+        type: w.type as Domain.CsType, noun: w.noun as never, action: w.action as never, flags: w.flags,
+        gpio0: w.gpio0, gpio1: w.gpio1 === Domain.CS_GPIO_UNUSED ? null : w.gpio1,
         event: w.event as never, target: w.target, index: w.index,
         value: w.value, step: w.step, rangeMin: w.rangeMin, rangeMax: w.rangeMax,
         baseBright: w.baseBright, onDelay: w.onDelay, offDelay: w.offDelay, reserved2: w.reserved2,
@@ -2431,13 +2463,13 @@ export class MockTransport implements DspTransport {
     if (tableStatus !== 0x00) return tableStatus;
     // One IR receiver / display per device: a second live claim is rejected
     // outright, before any pin check.
-    if (w.type === CsType.Ir && this.#hasLiveIrBinding(slot)) return 0x1D;         // IrInUse
-    if (w.type === CsType.Display && this.#hasLiveDisplayBinding(slot)) return 0x22; // DisplayInUse
+    if (w.type === Domain.CsType.Ir && this.#hasLiveIrBinding(slot)) return 0x1D;         // IrInUse
+    if (w.type === Domain.CsType.Display && this.#hasLiveDisplayBinding(slot)) return 0x22; // DisplayInUse
     const pins = MOCK_CS_CAPS.types[w.type].pinCount === 2 ? [w.gpio0, w.gpio1] : [w.gpio0];
     for (const pin of pins) {
       if (!this.#isValidGpio(pin)) return 0x01;                                  // InvalidPin
       if (this.#csOwnsPin(pin, slot)) {
-        if (w.type !== CsType.Button) return 0x02;                              // PinInUse
+        if (w.type !== Domain.CsType.Button) return 0x02;                              // PinInUse
         const shareStatus = this.#checkButtonShare(w, pin, slot);
         if (shareStatus !== 0x00) return shareStatus;
         continue;
@@ -2454,7 +2486,7 @@ export class MockTransport implements DspTransport {
     // Releases the slot first (a re-bind of the same slot to new display
     // pins detaches then reattaches), then attaches + seeds on success.
     if (this.#csDisplay?.slot === slot) this.#csDisplay = null;
-    if (w.type === CsType.Display) {
+    if (w.type === Domain.CsType.Display) {
       this.#csDisplay = { slot, model: w.index, attachedAt: Date.now() };
       this.#csDisplayNak = 0;
       this.#csDisplaySeed();
@@ -2466,25 +2498,25 @@ export class MockTransport implements DspTransport {
   // anything when no stored page carries ACTIVE (a first-ever attach, or one
   // whose pages were never configured). Does not mark dirty.
   #csDisplaySeed(): void {
-    const hasActive = this.#csDisplayPages.some((p) => (p.flags & CS_DPAGE_ACTIVE) !== 0);
+    const hasActive = this.#csDisplayPages.some((p) => (p.flags & Domain.CS_DPAGE_ACTIVE) !== 0);
     if (!hasActive) {
-      this.#csDisplayPages[0] = { noun: CsNoun.UserVolume, target: 0, index: 0, flags: CS_DPAGE_ACTIVE | CS_DPAGE_LARGE };
-      this.#csDisplayPages[1] = { noun: CsNoun.Preset, target: 0, index: 0, flags: CS_DPAGE_ACTIVE };
-      this.#csDisplayPages[2] = { noun: CsNoun.InputSource, target: 0, index: 0, flags: CS_DPAGE_ACTIVE };
-      this.#csDisplayPages[3] = { noun: CsNoun.SampleRate, target: 0, index: 0, flags: CS_DPAGE_ACTIVE };
+      this.#csDisplayPages[0] = { noun: Domain.CsNoun.UserVolume, target: 0, index: 0, flags: Domain.CS_DPAGE_ACTIVE | Domain.CS_DPAGE_LARGE };
+      this.#csDisplayPages[1] = { noun: Domain.CsNoun.Preset, target: 0, index: 0, flags: Domain.CS_DPAGE_ACTIVE };
+      this.#csDisplayPages[2] = { noun: Domain.CsNoun.InputSource, target: 0, index: 0, flags: Domain.CS_DPAGE_ACTIVE };
+      this.#csDisplayPages[3] = { noun: Domain.CsNoun.SampleRate, target: 0, index: 0, flags: Domain.CS_DPAGE_ACTIVE };
     }
     const c = this.#csDisplayCfg;
     if (c.overlayHold === 0) c.overlayHold = 20;
     if (c.dwell < 10) c.dwell = 30;
     if (c.editTimeout === 0) c.editTimeout = 100;
-    c.flags |= CS_DCFG_EDIT_GATED;
+    c.flags |= Domain.CS_DCFG_EDIT_GATED;
   }
 
   // Validate + apply the display cfg blob, mirroring
   // control_surfaces_apply_display_cfg. No display binding required -- the
   // blob is live whether or not a display is attached.
   #applyCsDisplayCfg(w: MockCsDisplayCfg): number {
-    const status = validateCsDisplayCfg(displayCfgAsDomain(w));
+    const status = Domain.validateCsDisplayCfg(displayCfgAsDomain(w));
     if (status !== 0x00) return status;
     this.#csDisplayCfg = { ...w };
     this.#csDirty = true;
@@ -2495,7 +2527,7 @@ export class MockTransport implements DspTransport {
   // control_surfaces_apply_display_page: a rejected page leaves the
   // previously stored one intact.
   #applyCsDisplayPage(idx: number, w: MockCsDisplayPage): number {
-    const status = validateCsDisplayPage(displayPageAsDomain(w), this.#csNouns, this.#csGroupsAsDomain());
+    const status = Domain.validateCsDisplayPage(displayPageAsDomain(w), this.#csNouns, this.#csGroupsAsDomain());
     if (status !== 0x00) return status;
     this.#csDisplayPages[idx] = { ...w };
     this.#csDirty = true;
@@ -2510,16 +2542,16 @@ export class MockTransport implements DspTransport {
     const initState = Date.now() - live.attachedAt < 200 ? 1 : 2;
     const cfg = this.#csDisplayCfg;
     let currentPage = 0xFF;
-    if (cfg.mode === CsDisplayMode.CycleSelected) {
+    if (cfg.mode === Domain.CsDisplayMode.CycleSelected) {
       const activeIdx: number[] = [];
-      this.#csDisplayPages.forEach((p, i) => { if (p.flags & CS_DPAGE_ACTIVE) activeIdx.push(i); });
+      this.#csDisplayPages.forEach((p, i) => { if (p.flags & Domain.CS_DPAGE_ACTIVE) activeIdx.push(i); });
       if (activeIdx.length > 0 && cfg.dwell > 0) {
         const elapsed = Date.now() - live.attachedAt;
         currentPage = activeIdx[Math.floor(elapsed / (cfg.dwell * 100)) % activeIdx.length];
       }
     } else {
       const home = this.#csDisplayPages[cfg.homePage];
-      currentPage = home && (home.flags & CS_DPAGE_ACTIVE) ? cfg.homePage : 0xFF;
+      currentPage = home && (home.flags & Domain.CS_DPAGE_ACTIVE) ? cfg.homePage : 0xFF;
     }
     return { initState, currentPage, flags: 0, model: live.model, nakCount: this.#csDisplayNak };
   }
@@ -2528,7 +2560,7 @@ export class MockTransport implements DspTransport {
   // shape: table validation (shared with the console via
   // validateCsIrCommand), applied immediately on success.
   #applyCsIrCommand(sub: number, w: MockCsIrCommand): number {
-    const status = validateCsIrCommand(
+    const status = Domain.validateCsIrCommand(
       {
         noun: w.noun as never, action: w.action as never, flags: w.flags,
         target: w.target, index: w.index, protocol: w.protocol as never,
@@ -2545,7 +2577,7 @@ export class MockTransport implements DspTransport {
 
   // (CsGroup | null)[] view of the stored groups for the shared validators.
   #csGroupsAsDomain(): (CsGroup | null)[] {
-    return this.#csGroups.map((g) => (g.targetKind === CS_TARGET_NONE ? null : { ...g }));
+    return this.#csGroups.map((g) => (g.targetKind === Domain.CS_TARGET_NONE ? null : { ...g }));
   }
 
   // Validate + apply one target group, mirroring cs_validate_group. Applying
@@ -2553,7 +2585,7 @@ export class MockTransport implements DspTransport {
   // & GROUP && target === idx): a down slot that now validates comes back up,
   // a live one that no longer does goes down with the failure code.
   #applyCsGroup(idx: number, w: MockCsGroup): number {
-    const status = validateCsGroup(w, {
+    const status = Domain.validateCsGroup(w, {
       inputs: this.#mockState.numIn, outputs: this.#mockState.numOut, dsp: this.#mockState.numCh,
     });
     if (status !== 0x00) return status;
@@ -2564,11 +2596,11 @@ export class MockTransport implements DspTransport {
     const caps = { ...MOCK_CS_CAPS, capsVersion: this.#csCapsVersion };
     const groups = this.#csGroupsAsDomain();
     this.#csBindings.forEach((b, slot) => {
-      if (b.type === CsType.None || !(b.flags & CS_FLAG_GROUP) || b.target !== idx) return;
-      this.#csSlotStatus[slot] = validateCsBinding(
+      if (b.type === Domain.CsType.None || !(b.flags & Domain.CS_FLAG_GROUP) || b.target !== idx) return;
+      this.#csSlotStatus[slot] = Domain.validateCsBinding(
         {
-          type: b.type as CsType, noun: b.noun as never, action: b.action as never, flags: b.flags,
-          gpio0: b.gpio0, gpio1: b.gpio1 === CS_GPIO_UNUSED ? null : b.gpio1,
+          type: b.type as Domain.CsType, noun: b.noun as never, action: b.action as never, flags: b.flags,
+          gpio0: b.gpio0, gpio1: b.gpio1 === Domain.CS_GPIO_UNUSED ? null : b.gpio1,
           event: b.event as never, target: b.target, index: b.index,
           value: b.value, step: b.step, rangeMin: b.rangeMin, rangeMax: b.rangeMax,
           baseBright: b.baseBright, onDelay: b.onDelay, offDelay: b.offDelay, reserved2: b.reserved2,
@@ -2577,8 +2609,8 @@ export class MockTransport implements DspTransport {
       );
     });
     this.#csIrCommands.forEach((c, sub) => {
-      if (c.protocol === CsIrProto.None || !(c.flags & CS_FLAG_GROUP) || c.target !== idx) return;
-      this.#csIrCmdStatus[sub] = validateCsIrCommand(
+      if (c.protocol === Domain.CsIrProto.None || !(c.flags & Domain.CS_FLAG_GROUP) || c.target !== idx) return;
+      this.#csIrCmdStatus[sub] = Domain.validateCsIrCommand(
         {
           noun: c.noun as never, action: c.action as never, flags: c.flags,
           target: c.target, index: c.index, protocol: c.protocol as never,
@@ -2595,7 +2627,7 @@ export class MockTransport implements DspTransport {
   // control_surfaces_apply_macro_header. Existing stored steps are untouched
   // -- a running macro whose tail is cut off finishes at the new boundary.
   #applyCsMacroHeader(idx: number, h: { name: string; stepCount: number }): number {
-    if (h.stepCount > CS_MAX_MACRO_STEPS) return 0x20;            // InvalidMacro
+    if (h.stepCount > Domain.CS_MAX_MACRO_STEPS) return 0x20;            // InvalidMacro
     this.#csMacros[idx] = { ...this.#csMacros[idx], name: h.name, stepCount: h.stepCount };
     this.#csDirty = true;
     this.#csMacroRecount();
@@ -2606,7 +2638,7 @@ export class MockTransport implements DspTransport {
   // control_surfaces_apply_macro_step: a rejected step leaves the previously
   // stored one intact.
   #applyCsMacroStep(idx: number, step: number, w: MockCsMacroStep): number {
-    const status = validateCsMacroStep(macroStepAsDomain(w), this.#csNouns, this.#csGroupsAsDomain());
+    const status = Domain.validateCsMacroStep(macroStepAsDomain(w), this.#csNouns, this.#csGroupsAsDomain());
     if (status !== 0x00) return status;
     this.#csMacros[idx].steps[step] = { ...w };
     this.#csDirty = true;
@@ -2620,16 +2652,16 @@ export class MockTransport implements DspTransport {
   // can invalidate a dependent macro step), and after load/revert.
   #csMacroRecount(): void {
     const groups = this.#csGroupsAsDomain();
-    this.#csMacroStatus = this.#csMacros.map((m) => validateCsMacro(
+    this.#csMacroStatus = this.#csMacros.map((m) => Domain.validateCsMacro(
       { name: m.name, stepCount: m.stepCount, steps: m.steps.map(macroStepAsDomain) },
       this.#csNouns, groups,
     ));
   }
 
   #validateUartConfig(cfg: { txPin: number; rxPin: number; baud: number }): number {
-    if (!isValidUartBaud(cfg.baud)) return 0x05;                                  // InvalidParam
+    if (!Domain.isValidUartBaud(cfg.baud)) return 0x05;                                  // InvalidParam
     if (!this.#isValidGpio(cfg.txPin) || !this.#isValidGpio(cfg.rxPin)) return 0x01;  // InvalidPin
-    if (!isValidUartPinPair(cfg.txPin, cfg.rxPin)) return 0x01;
+    if (!Domain.isValidUartPinPair(cfg.txPin, cfg.rxPin)) return 0x01;
     if (this.#peripheralPinInUse(cfg.txPin, 0xFF) || this.#peripheralPinInUse(cfg.rxPin, 0xFF)) return 0x02; // PinInUse
     if (this.#csOwnsPin(cfg.txPin) || this.#csOwnsPin(cfg.rxPin)) return 0x02;
     const i2c = this.#i2cCtrl;
@@ -2639,15 +2671,15 @@ export class MockTransport implements DspTransport {
   }
 
   #validateI2cConfig(cfg: { sdaPin: number; sclPin: number; address: number }): number {
-    if (!isValidI2cAddress(cfg.address)) return 0x05;                             // InvalidParam
+    if (!Domain.isValidI2cAddress(cfg.address)) return 0x05;                             // InvalidParam
     if (!this.#isValidGpio(cfg.sdaPin) || !this.#isValidGpio(cfg.sclPin)) return 0x01; // InvalidPin
-    if (!isValidI2cPinPair(cfg.sdaPin, cfg.sclPin)) return 0x01;
+    if (!Domain.isValidI2cPinPair(cfg.sdaPin, cfg.sclPin)) return 0x01;
     if (this.#peripheralPinInUse(cfg.sdaPin, 0xFF) || this.#peripheralPinInUse(cfg.sclPin, 0xFF)) return 0x02; // PinInUse
     if (this.#csOwnsPin(cfg.sdaPin) || this.#csOwnsPin(cfg.sclPin)) return 0x02;
     // Symmetric with the display's own I2C_IN_USE rule: enabling the control
     // interface on the display's hardware instance is rejected too, even
     // when the two never share a literal pin.
-    if (this.#csDisplay && i2cInstance(cfg.sdaPin) === i2cInstance(this.#csBindings[this.#csDisplay.slot].gpio0)) {
+    if (this.#csDisplay && Domain.i2cInstance(cfg.sdaPin) === Domain.i2cInstance(this.#csBindings[this.#csDisplay.slot].gpio0)) {
       return 0x02;
     }
     const uart = this.#uartCtrl;
@@ -2741,7 +2773,7 @@ export class MockTransport implements DspTransport {
   #subharmHeadroom(): number {
     const s = this.#mockState.subharm!;
     if (!s.enabled) return 0;
-    const bandGain = (db: number) => (db <= Proc.SUBHARM_LEVEL_MIN_DB ? 0 : 10 ** (db / 20));
+    const bandGain = (db: number) => (db <= Domain.Proc.SUBHARM_LEVEL_MIN_DB ? 0 : 10 ** (db / 20));
     const gLow = bandGain(s.lowDb);
     const gHigh = bandGain(s.highDb);
     const gTop = bandGain(s.topDb);
@@ -2761,9 +2793,9 @@ export class MockTransport implements DspTransport {
       const group = Clamp.limiterLinkGroup(v);
       if (all) {
         for (const k of targets) this.#mockState.limiter[k].linkGroup = group;
-        this.#mockState.limiter = settleLimiterGroups(this.#mockState.limiter, numOut);
+        this.#mockState.limiter = Domain.settleLimiterGroups(this.#mockState.limiter, numOut);
       } else if (targets.length) {
-        this.#mockState.limiter = joinLimiterGroup(this.#mockState.limiter, output, group, numOut);
+        this.#mockState.limiter = Domain.joinLimiterGroup(this.#mockState.limiter, output, group, numOut);
       }
       return;
     }
@@ -2811,7 +2843,7 @@ export class MockTransport implements DspTransport {
     const s = this.#mockState.subharm!;
     const out = Array(numOut).fill(0);
     if (!s.enabled) return out;
-    const bandGain = (db: number) => (db <= Proc.SUBHARM_LEVEL_MIN_DB ? 0 : 10 ** (db / 20));
+    const bandGain = (db: number) => (db <= Domain.Proc.SUBHARM_LEVEL_MIN_DB ? 0 : 10 ** (db / 20));
     const bandSum = Math.min(1, (bandGain(s.lowDb) + bandGain(s.highDb) + bandGain(s.topDb)) / 3);
     const animated = this.#animatedPeaks(numOut);
     for (let k = 0; k < numOut; k++) {
@@ -2853,18 +2885,18 @@ export class MockTransport implements DspTransport {
         const tail = this.#isV16 ? 7 : 4;
         const numCh = Math.max(0, (length - tail) >> 1);
         const peaks = this.#animatedPeaks(numCh);
-        return synthesizeSystemStatus({
+        return Syn.synthesizeSystemStatus({
           numCh, peaks, cpu0: 25, cpu1: 12, clipFlags: this.#clipFlags,
           ...(this.#isV16 ? { activeInputChannels: this.#activeInputChannels() } : {}),
         });
       }
       case SystemStatusValue.ActiveInputChannels:
-        return synthesizeU32(this.#isV16 ? this.#activeInputChannels() : 0);
+        return Syn.synthesizeU32(this.#isV16 ? this.#activeInputChannels() : 0);
       // Environment scalars
-      case SystemStatusValue.ClockHz:        return synthesizeU32(125_000_000);
-      case SystemStatusValue.CoreVoltageMv:  return synthesizeU32(3300);
-      case SystemStatusValue.SampleRateHz:   return synthesizeU32(48_000);
-      case SystemStatusValue.TempCDegC:      return synthesizeI32(4210);  // 42.10 degC
+      case SystemStatusValue.ClockHz:        return Syn.synthesizeU32(125_000_000);
+      case SystemStatusValue.CoreVoltageMv:  return Syn.synthesizeU32(3300);
+      case SystemStatusValue.SampleRateHz:   return Syn.synthesizeU32(48_000);
+      case SystemStatusValue.TempCDegC:      return Syn.synthesizeI32(4210);  // 42.10 degC
 
       // Counters: stay zero in the mock -- real firmware reports cumulative
       // since boot, so the drift behavior is uninteresting offline.
@@ -2875,7 +2907,7 @@ export class MockTransport implements DspTransport {
       case SystemStatusValue.SpdifOverruns:
       case SystemStatusValue.SpdifUnderruns:
       case SystemStatusValue.SpdifStarvationsTotal:
-        return synthesizeU32(0);
+        return Syn.synthesizeU32(0);
 
       // Unknown / unwired wValue: return a zeroed buffer of requested size.
       default:

@@ -5,16 +5,11 @@
 
 import type { DspTransport } from '@/transport/DspTransport';
 import type { DspDevice } from '@/device/DspDevice';
-import {
-  settings, reconcileSelectedChannel, selectionVisibilityOf,
-  pushNotice,
-  dispatch, makeReadySession, activeSession, activeRecord, recordOf, mintConnId,
-  clearAdoptFailure,
-  type ReadySession, type ConnId, type DeviceRecord,
-} from '@/state';
+import * as State from '@/state';
+import type { ReadySession, ConnId, DeviceRecord } from '@/state';
 import { Log, errMessage } from '@/utils';
 import * as Domain from '@/domain';
-import { flushAllWrites } from './writes.svelte';
+import { flushAllWrites, refuseWhileDegraded } from './writes.svelte';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
 import { startLinkProbe } from './linkProbe';
@@ -54,13 +49,14 @@ export async function fetchCtrlIfaceInfo(s: ReadySession): Promise<void> {
 // Best-effort probe for the selectable system clock (fw overclock branch).
 // There is no capability flag for this feature -- support is discovered by
 // attempting GetSysClock itself, so an unsupported device (STALL/error) is
-// expected and left quiet: status stays null, which IS the unsupported
-// signal the panel gates on.
+// expected and left quiet: it records supported=false and the panel hides.
 export async function fetchSysClock(s: ReadySession): Promise<void> {
   try {
     s.sysClock.status = await s.queue.run(() => s.device.getSysClock());
+    s.sysClock.supported = true;
   } catch (err) {
     s.sysClock.status = null;
+    s.sysClock.supported = false;
     Log.info('sysClock', 'probe failed (unsupported firmware)', err);
   }
 }
@@ -261,7 +257,7 @@ function activateRecord(rec: DeviceRecord): void {
 // start its loops and force a full resync (a dormant session can have drifted
 // via IR remote / control surfaces / other UART-I2C peers).
 function ensurePromotedActive(): void {
-  const next = activeRecord();
+  const next = State.activeRecord();
   if (next && !next.loops) {
     activateRecord(next);
     next.session.mirror.requestReconcile(true);
@@ -282,27 +278,48 @@ async function deactivateRecord(rec: DeviceRecord): Promise<void> {
 // resync via the normal param cadence (dormant sessions can drift via IR
 // remote / control surfaces / other UART-I2C peers).
 export async function activateSession(id: ConnId): Promise<void> {
-  const rec = recordOf(id);
+  const rec = State.recordOf(id);
   if (!rec) return;
-  const prev = activeRecord();
+  const prev = State.activeRecord();
   if (prev?.id === id) return;
   if (prev) await deactivateRecord(prev);
-  dispatch({ t: 'activated', id });
+  State.dispatch({ t: 'activated', id });
   activateRecord(rec);
   rec.session.mirror.requestReconcile(true);
   // lastSerial now means "which adopted device to activate at boot", so every
   // successful switch -- not just a fresh adoption -- updates it.
-  settings.lastSerial = rec.session.info.serial;
+  State.settings.lastSerial = rec.session.info.serial;
+}
+
+// Anything on this session that a switch-away or unload would strand: edits
+// not yet applied (staged), console-local drafts, or RAM that differs from flash.
+export function hasPendingWork(s: ReadySession): boolean {
+  return State.presetsDirty(s) || s.staging.entries.length > 0 || s.drafts.dirtyCount() > 0 || s.controlSurfaces.status?.dirty === true;
+}
+
+// User-initiated switch: asks first when the active device holds pending work.
+// Resolves false when the user cancels.
+export async function switchSession(id: ConnId): Promise<boolean> {
+  const prev = State.activeSession();
+  if (prev && State.activeRecord()?.id !== id && hasPendingWork(prev)) {
+    const choice = await State.askBoundary({
+      title: 'Pending changes',
+      message: 'This device has changes that are not applied or not saved. They stay with it, but nothing is sent while another device is active.',
+    });
+    if (choice === 'cancel') return false;
+  }
+  await activateSession(id);
+  return true;
 }
 
 export async function wireUpConnection(
   device: DspDevice,
   scope?: ConnectionScope,
-  id: ConnId = mintConnId(),
+  id: ConnId = State.mintConnId(),
   opts?: { activate?: false },
 ): Promise<void> {
   if (scope?.aborted) return;   // superseded before this attempt started
-  dispatch({ t: 'requested', id });
+  State.dispatch({ t: 'requested', id });
   try {
     const snap = await device.getSnapshot();
     // A newer connection may have begun (and aborted this scope) while
@@ -313,11 +330,11 @@ export async function wireUpConnection(
       Log.warn('sync', 'wireUpConnection: superseded connection finished snapshotting; discarding');
       return;
     }
-    const session = makeReadySession(device, scope);
+    const session = State.makeReadySession(device, scope);
     session.mirror.init(snap);
     // Seed the live input-channel count from one status read BEFORE the UI first
-    // renders as `ready`. Channel-dependent views (the channel rail, mixer matrix,
-    // overview response) treat a null count as "show every possible input", so
+    // renders as `ready`. Channel-dependent views (the channel rail, the TUNE
+    // sources list) treat a null count as "show every possible input", so
     // without this they'd paint full-width and then snap to the real width when
     // the first status poll lands a frame later -- the visible "all channels ->
     // actual config" flash. V10 reports null here, which is correctly "show all"
@@ -335,14 +352,14 @@ export async function wireUpConnection(
     if (scope?.aborted) return;
     // Captured before the dispatch: adoption makes id active immediately, so
     // this is the only chance to see who was active a moment ago.
-    const prev = activeRecord();
-    dispatch({ t: 'synced', id, session, activate: opts?.activate });
+    const prev = State.activeRecord();
+    State.dispatch({ t: 'synced', id, session, activate: opts?.activate });
     // A later successful adoption of the same physical device retires its
     // stale badge. Badges are keyed by the USB descriptor serial; firmware
     // GetSerial (info.serial) reads back the same value -- the equivalence
     // recordBySerial and the reconnect dedup already rely on.
-    clearAdoptFailure(session.info.serial);
-    const rec = recordOf(id);
+    State.clearAdoptFailure(session.info.serial);
+    const rec = State.recordOf(id);
     // The loop-stop teardown covers this record's whole life, not just this
     // activation: a record that starts dormant can be activated later via
     // activateSession and die after that, and the scope must still be able to
@@ -353,9 +370,9 @@ export async function wireUpConnection(
     // The reducer may have activated this record regardless of the caller's
     // intent (nothing else was active) -- gate the active-only side effects
     // on the outcome, not the flag.
-    if (activeRecord()?.id === id) {
+    if (State.activeRecord()?.id === id) {
       if (prev) await deactivateRecord(prev);
-      settings.lastSerial = device.info.serial;
+      State.settings.lastSerial = device.info.serial;
       await reconcileAfterSync(session);
       // Re-check after the await: onTeardown self-heals against an
       // already-aborted scope (it fires immediately instead of stranding the
@@ -365,7 +382,7 @@ export async function wireUpConnection(
       // Re-gate on the outcome too: a concurrent activation can move focus
       // while the deactivate/reconcile awaits are parked, and starting loops
       // here regardless would leave two records live.
-      if (rec && activeRecord()?.id === id) activateRecord(rec);
+      if (rec && State.activeRecord()?.id === id) activateRecord(rec);
     }
     // Adoption-cycle traffic is allowed even for a record that stays dormant
     // afterward -- it goes quiet once these settle.
@@ -382,7 +399,7 @@ export async function wireUpConnection(
     Log.error('sync', 'wireUpConnection failed', err);
     // A stale failure from a superseded attempt must not clobber whatever the
     // newer connection has already put in app state.
-    if (!scope?.aborted) dispatch({ t: 'failed', id, message: errMessage(err) });
+    if (!scope?.aborted) State.dispatch({ t: 'failed', id, message: errMessage(err) });
     throw err;
   }
 }
@@ -392,7 +409,7 @@ export async function wireUpConnection(
 // visibility (disabled outputs, live input count).
 export async function reconcileAfterSync(s: ReadySession): Promise<void> {
   const snap = s.mirror.current;
-  reconcileSelectedChannel(snap?.channels, selectionVisibilityOf(snap?.outputs ?? [], s.telemetry.activeInputChannels));
+  State.reconcileSelectedChannel(snap?.channels, State.selectionVisibilityOf(snap?.outputs ?? [], s.telemetry.activeInputChannels));
 }
 
 export function attachTransportListeners(transport: DspTransport, id: ConnId, scope: ConnectionScope): () => void {
@@ -404,7 +421,7 @@ export function attachTransportListeners(transport: DspTransport, id: ConnId, sc
     // forEach is safe, it won't be revisited and won't throw. Removal is
     // scoped to THIS connection id: an unrelated dormant connection's device
     // is untouched.
-    dispatch({ t: 'removed', id });
+    State.dispatch({ t: 'removed', id });
     scope.abort();
     ensurePromotedActive();
   });
@@ -412,21 +429,22 @@ export function attachTransportListeners(transport: DspTransport, id: ConnId, sc
 }
 
 export async function factoryResetDevice(): Promise<void> {
-  const s = activeSession();
+  const s = State.activeSession();
   if (!s) return;
+  if (refuseWhileDegraded(s)) { State.pushNotice('warn', 'Link degraded — factory reset not sent'); return; }
   const d = s.device;
   try {
     // Drain any parked optimistic write so a pre-reset bulk send can't settle
     // mid-reset and re-push stale params (mirrors the preset load/paste flows).
     await flushAllWrites(s);
     const r = await s.queue.run(() => d.factoryReset());
-    if (!r.ok) { pushNotice('warn', r.message); return; }  // non-ok flash status
+    if (!r.ok) { State.pushNotice('warn', r.message); return; }  // non-ok flash status
     invalidatePresetCache(s);
     s.copySource.held = null;
     await syncDeviceSnapshot(s);
-    pushNotice('info', 'Factory reset complete.');
+    State.pushNotice('info', 'Factory reset complete.');
   } catch (e) {
     Log.error('action', 'factory reset failed', e);
-    pushNotice('error', 'Factory reset failed');
+    State.pushNotice('error', 'Factory reset failed');
   }
 }

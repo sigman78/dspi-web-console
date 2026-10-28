@@ -1,10 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { PlatformType, ChannelFamily } from './platform';
 import type { DspSnapshot } from './snapshot';
-import {
-  isAssignablePin, pinsInUse, pinUses, availablePinsFor, validBckPins, validBckPinsSlave,
-  validUartTxPins, validI2cSdaPins, csDisplayI2cInstance, validDisplaySdaPins, validDisplaySclPins, pickerCells, pickerCellsFrom,
-} from './pins';
+import * as Pins from './pins';
 import { DEFAULT_UART_CONTROL_CONFIG } from './controlInterfaces';
 
 function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
@@ -31,43 +28,43 @@ function snapV16(over: Partial<DspSnapshot> = {}): DspSnapshot {
 
 describe('pins', () => {
   test('reserved/range pins are not assignable; normal pins are', () => {
-    expect(isAssignablePin(PlatformType.RP2350, 12)).toBe(false);
-    expect(isAssignablePin(PlatformType.RP2350, 24)).toBe(false);
-    expect(isAssignablePin(PlatformType.RP2040, 29)).toBe(false);
-    expect(isAssignablePin(PlatformType.RP2350, 29)).toBe(true);
-    expect(isAssignablePin(PlatformType.RP2350, 16)).toBe(true);
+    expect(Pins.isAssignablePin(PlatformType.RP2350, 12)).toBe(false);
+    expect(Pins.isAssignablePin(PlatformType.RP2350, 24)).toBe(false);
+    expect(Pins.isAssignablePin(PlatformType.RP2040, 29)).toBe(false);
+    expect(Pins.isAssignablePin(PlatformType.RP2350, 29)).toBe(true);
+    expect(Pins.isAssignablePin(PlatformType.RP2350, 16)).toBe(true);
   });
 
   test('switching a slot to I2S puts BCK and LRCLK into the in-use set', () => {
-    const before = pinsInUse(snap());
+    const before = Pins.pinsInUse(snap());
     expect(before.has(14)).toBe(false);
-    const after = pinsInUse(snap({ i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 0 } }));
+    const after = Pins.pinsInUse(snap({ i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 0 } }));
     expect(after.get(14)).toMatch(/BCK/);
     expect(after.get(15)).toMatch(/LRCLK/);
   });
 
   test('availablePinsFor marks other outputs in-use but treats the selected pin as free', () => {
-    const list = availablePinsFor(PlatformType.RP2350, snap(), 6);
+    const list = Pins.availablePinsFor(PlatformType.RP2350, snap(), 6);
     expect(list.find((c) => c.pin === 6)?.usedBy).toBeNull();
     expect(list.find((c) => c.pin === 7)?.usedBy).not.toBeNull();
     expect(list.some((c) => c.pin === 12)).toBe(false);
   });
 
   test('validBckPins excludes a pin whose N+1 is reserved and includes a clear pair', () => {
-    const valid = validBckPins(PlatformType.RP2350, snap());
+    const valid = Pins.validBckPins(PlatformType.RP2350, snap());
     expect(valid).not.toContain(11);
     expect(valid).toContain(16);
     expect(valid).not.toContain(6);
   });
 
   test('a split-mode slave BCK/LRCLK pair is reserved only when clockPinMode is split', () => {
-    const unified = pinsInUse(snap({
+    const unified = Pins.pinsInUse(snap({
       i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 26 },
     }));
     expect(unified.has(26)).toBe(false);
     expect(unified.has(27)).toBe(false);
 
-    const split = pinsInUse(snap({
+    const split = Pins.pinsInUse(snap({
       i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 1, bckPinSlave: 26 },
     }));
     expect(split.get(26)).toMatch(/BCK/);
@@ -78,13 +75,13 @@ describe('pins', () => {
     const split = snap({
       i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 1, bckPinSlave: 26 },
     });
-    const valid = validBckPinsSlave(PlatformType.RP2350, split);
+    const valid = Pins.validBckPinsSlave(PlatformType.RP2350, split);
     expect(valid).toContain(26);   // self pair stays selectable
     expect(valid).not.toContain(14);   // master BCK/LRCLK pair stays reserved
   });
 
   test('with no output pins registered, an active I2S slot yields BCK/LRCLK plus the RX pin', () => {
-    const m = pinsInUse(snap({
+    const m = Pins.pinsInUse(snap({
       outputPins: [],
       i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 0 },
     }));
@@ -95,15 +92,15 @@ describe('pins', () => {
   });
 
   test('the S/PDIF RX pin is always in use; the DAC mute pin only when enabled', () => {
-    const off = pinsInUse(snap());
+    const off = Pins.pinsInUse(snap());
     expect(off.get(5)).toBe('SPDIF RX');
     expect(off.has(11)).toBe(false);
-    const on = pinsInUse(snap({ dacHwMute: { enabled: true, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 } }));
+    const on = Pins.pinsInUse(snap({ dacHwMute: { enabled: true, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 } }));
     expect(on.get(11)).toBe('DAC MUTE');
   });
 
   test('a third optional S/PDIF input (input 4, V28+) reserves its pin only while enabled', () => {
-    const on = pinsInUse(snap({
+    const on = Pins.pinsInUse(snap({
       inputConfig: {
         source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0, 25], spdifExtEnabled: [false, false, true],
         i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, i2sClockMode: 0,
@@ -112,7 +109,7 @@ describe('pins', () => {
     }));
     expect(on.get(25)).toBe('S/PDIF 4 RX');
 
-    const off = pinsInUse(snap({
+    const off = Pins.pinsInUse(snap({
       inputConfig: {
         source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0, 25], spdifExtEnabled: [false, false, false],
         i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, i2sClockMode: 0,
@@ -123,11 +120,11 @@ describe('pins', () => {
   });
 
   test('ADAT reserves its pin only while enabled, falling back to GPIO 12 when unset (pin 0)', () => {
-    const off = pinsInUse(snap());
+    const off = Pins.pinsInUse(snap());
     expect(off.has(12)).toBe(false);
-    const onDefault = pinsInUse(snap({ adat: { enabled: true, pin: 0 } }));
+    const onDefault = Pins.pinsInUse(snap({ adat: { enabled: true, pin: 0 } }));
     expect(onDefault.get(12)).toBe('ADAT');
-    const onExplicit = pinsInUse(snap({ adat: { enabled: true, pin: 20 } }));
+    const onExplicit = Pins.pinsInUse(snap({ adat: { enabled: true, pin: 20 } }));
     expect(onExplicit.get(20)).toBe('ADAT');
     expect(onExplicit.has(12)).toBe(false);
   });
@@ -138,18 +135,18 @@ describe('pins', () => {
       i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, i2sClockMode: 0,
       adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0, ...over,
     } as DspSnapshot['inputConfig']);
-    const disabled = pinsInUse(snap({ inputConfig: inCfg({ adatInputPin: 20, adatInputEnabled: false }) }));
+    const disabled = Pins.pinsInUse(snap({ inputConfig: inCfg({ adatInputPin: 20, adatInputEnabled: false }) }));
     expect(disabled.has(20)).toBe(false);
 
-    const unsetPin = pinsInUse(snap({ inputConfig: inCfg({ adatInputPin: 0, adatInputEnabled: true }) }));
+    const unsetPin = Pins.pinsInUse(snap({ inputConfig: inCfg({ adatInputPin: 0, adatInputEnabled: true }) }));
     expect(unsetPin.has(0)).toBe(false);
 
-    const enabled = pinsInUse(snap({ inputConfig: inCfg({ adatInputPin: 20, adatInputEnabled: true }) }));
+    const enabled = Pins.pinsInUse(snap({ inputConfig: inCfg({ adatInputPin: 20, adatInputEnabled: true }) }));
     expect(enabled.get(20)).toBe('ADAT IN');
 
     // Loopback exception: input shares the output's own pin -- the output's
     // claim, set first, keeps its label.
-    const loopback = pinsInUse(snap({
+    const loopback = Pins.pinsInUse(snap({
       adat: { enabled: true, pin: 20 },
       inputConfig: inCfg({ adatInputPin: 20, adatInputEnabled: true }),
     }));
@@ -158,18 +155,18 @@ describe('pins', () => {
 
   test('availablePinsFor treats the ADAT panel\'s own current pin as free', () => {
     const s = snap({ adat: { enabled: true, pin: 20 } });
-    const list = availablePinsFor(PlatformType.RP2350, s, 20);
+    const list = Pins.availablePinsFor(PlatformType.RP2350, s, 20);
     expect(list.find((c) => c.pin === 20)?.usedBy).toBeNull();
     expect(list.find((c) => c.pin === 8)?.usedBy).not.toBeNull();   // still a real output pin
   });
 
   test('a V10 snapshot still reserves GPIO 12', () => {
-    const list = availablePinsFor(PlatformType.RP2350, snap(), 6);   // default fixture channelModel = Legacy
+    const list = Pins.availablePinsFor(PlatformType.RP2350, snap(), 6);   // default fixture channelModel = Legacy
     expect(list.some((c) => c.pin === 12)).toBe(false);
   });
 
   test('on a V16 snapshot GPIO 16/17 are assignable when no control interface is enabled', () => {
-    const list = availablePinsFor(PlatformType.RP2350, snapV16(), 6);
+    const list = Pins.availablePinsFor(PlatformType.RP2350, snapV16(), 6);
     expect(list.find((c) => c.pin === 16)?.usedBy).toBeNull();
     expect(list.find((c) => c.pin === 17)?.usedBy).toBeNull();
   });
@@ -178,85 +175,85 @@ describe('pins', () => {
     const s = snapV16();
     const ctrl = { uart: { ...DEFAULT_UART_CONTROL_CONFIG, enabled: true } };   // tx 16 / rx 17
 
-    const withoutUart = availablePinsFor(PlatformType.RP2350, s, 6);
+    const withoutUart = Pins.availablePinsFor(PlatformType.RP2350, s, 6);
     expect(withoutUart.find((c) => c.pin === 16)?.usedBy).toBeNull();
 
-    const withUart = availablePinsFor(PlatformType.RP2350, s, 6, ctrl);
+    const withUart = Pins.availablePinsFor(PlatformType.RP2350, s, 6, ctrl);
     expect(withUart.find((c) => c.pin === 16)?.usedBy).toBe('UART TX');
     expect(withUart.find((c) => c.pin === 17)?.usedBy).toBe('UART RX');
 
-    expect(validBckPins(PlatformType.RP2350, s)).toContain(16);
-    expect(validBckPins(PlatformType.RP2350, s, ctrl)).not.toContain(16);
+    expect(Pins.validBckPins(PlatformType.RP2350, s)).toContain(16);
+    expect(Pins.validBckPins(PlatformType.RP2350, s, ctrl)).not.toContain(16);
   });
 
   test('live control-surface bindings reserve their pins as CS slot N; empty slots reserve nothing', () => {
     const s = snapV16();
     const ctrl = { cs: [null, { gpio0: 21, gpio1: 22 }, null, { gpio0: 26, gpio1: null }] };
 
-    const m = pinsInUse(s, ctrl);
+    const m = Pins.pinsInUse(s, ctrl);
     expect(m.get(21)).toBe('CS slot 2');
     expect(m.get(22)).toBe('CS slot 2');
     expect(m.get(26)).toBe('CS slot 4');
 
-    const list = availablePinsFor(PlatformType.RP2350, s, 6, ctrl);
+    const list = Pins.availablePinsFor(PlatformType.RP2350, s, 6, ctrl);
     expect(list.find((c) => c.pin === 21)?.usedBy).toBe('CS slot 2');
     expect(list.find((c) => c.pin === 20)?.usedBy).toBeNull();
   });
 
   test('validUartTxPins only offers parity/instance-valid TX pins, and excludes the I2C pins when enabled', () => {
     const s = snapV16();
-    expect(validUartTxPins(PlatformType.RP2350, s)).toContain(16);
-    expect(validUartTxPins(PlatformType.RP2350, s)).not.toContain(17);   // fails tx%4==0
+    expect(Pins.validUartTxPins(PlatformType.RP2350, s)).toContain(16);
+    expect(Pins.validUartTxPins(PlatformType.RP2350, s)).not.toContain(17);   // fails tx%4==0
 
     const i2cEnabled = { i2c: { enabled: true, sdaPin: 16, sclPin: 17, address: 0x42 } };
-    expect(validUartTxPins(PlatformType.RP2350, s, i2cEnabled)).not.toContain(16);
+    expect(Pins.validUartTxPins(PlatformType.RP2350, s, i2cEnabled)).not.toContain(16);
   });
 
   test('validI2cSdaPins only offers parity/instance-valid SDA pins, and excludes the UART pins when enabled', () => {
     const s = snapV16();
-    expect(validI2cSdaPins(PlatformType.RP2350, s)).toContain(18);
-    expect(validI2cSdaPins(PlatformType.RP2350, s)).not.toContain(19);   // fails sda%2==0
+    expect(Pins.validI2cSdaPins(PlatformType.RP2350, s)).toContain(18);
+    expect(Pins.validI2cSdaPins(PlatformType.RP2350, s)).not.toContain(19);   // fails sda%2==0
 
     const uartEnabled = { uart: { enabled: true, txPin: 18, rxPin: 19, notifyEnabled: false, baud: 115200 } };
-    expect(validI2cSdaPins(PlatformType.RP2350, s, uartEnabled)).not.toContain(18);
+    expect(Pins.validI2cSdaPins(PlatformType.RP2350, s, uartEnabled)).not.toContain(18);
   });
 
   test('validI2cSdaPins drops the whole I2C instance a live display holds, not just its pins', () => {
     const s = snapV16();
     const ctrl = { cs: [{ gpio0: 12, gpio1: 13, display: true }] };
-    const without = validI2cSdaPins(PlatformType.RP2350, s, ctrl);
+    const without = Pins.validI2cSdaPins(PlatformType.RP2350, s, ctrl);
     expect(without).toContain(16);                                       // i2c0, pins free
-    const withDisplay = validI2cSdaPins(PlatformType.RP2350, s, ctrl, csDisplayI2cInstance(ctrl.cs));
+    const withDisplay = Pins.validI2cSdaPins(PlatformType.RP2350, s, ctrl, Pins.csDisplayI2cInstance(ctrl.cs));
     expect(withDisplay).not.toContain(16);
     expect(withDisplay).toContain(18);                                   // i2c1 stays open
-    expect(csDisplayI2cInstance([{ gpio0: 4, gpio1: 5 }])).toBeNull();  // non-display slot
+    expect(Pins.csDisplayI2cInstance([{ gpio0: 4, gpio1: 5 }])).toBeNull();  // non-display slot
   });
 
   test('pinUses labels a display slot Display SDA/Display SCL, not CS slot N', () => {
     const s = snapV16();
     const ctrl = { cs: [{ gpio0: 4, gpio1: 5, display: true }] };
-    const uses = pinUses(s, ctrl);
+    const uses = Pins.pinUses(s, ctrl);
     expect(uses.get(4)).toEqual({ label: 'Display SDA', role: 'surface' });
     expect(uses.get(5)).toEqual({ label: 'Display SCL', role: 'surface' });
   });
 
   test('validDisplaySdaPins excludes the live I2C instance and pins already in use', () => {
     const s = snapV16();
-    const sdaNoLive = validDisplaySdaPins(PlatformType.RP2350, s, {}, null);
+    const sdaNoLive = Pins.validDisplaySdaPins(PlatformType.RP2350, s, {}, null);
     expect(sdaNoLive).toContain(0);    // instance 0
     expect(sdaNoLive).toContain(2);    // instance 1
 
-    const sdaLive0 = validDisplaySdaPins(PlatformType.RP2350, s, {}, 0);
+    const sdaLive0 = Pins.validDisplaySdaPins(PlatformType.RP2350, s, {}, 0);
     expect(sdaLive0).not.toContain(0); // instance 0 is live -- excluded
     expect(sdaLive0).toContain(2);     // instance 1 still free
 
     const ctrl = { cs: [{ gpio0: 2, gpio1: 3, display: true }] };
-    expect(validDisplaySdaPins(PlatformType.RP2350, s, ctrl, null)).not.toContain(2);      // claimed elsewhere
+    expect(Pins.validDisplaySdaPins(PlatformType.RP2350, s, ctrl, null)).not.toContain(2);      // claimed elsewhere
   });
 
   test('validDisplaySclPins only offers odd pins on the same I2C instance as SDA', () => {
     const s = snapV16();
-    const scl = validDisplaySclPins(PlatformType.RP2350, s, {}, 0);   // sda=0, instance 0
+    const scl = Pins.validDisplaySclPins(PlatformType.RP2350, s, {}, 0);   // sda=0, instance 0
     expect(scl).toContain(1);      // odd, instance 0
     expect(scl).not.toContain(3);  // odd, instance 1
     expect(scl).not.toContain(0);  // even, never a valid SCL
@@ -280,8 +277,8 @@ describe('pins', () => {
       cs: [{ gpio0: 40, gpio1: 41 }, null, { gpio0: 42, gpio1: null }],
     };
 
-    const uses = pinUses(s, ctrl);
-    const labels = pinsInUse(s, ctrl);
+    const uses = Pins.pinUses(s, ctrl);
+    const labels = Pins.pinsInUse(s, ctrl);
     expect(uses.size).toBe(labels.size);
     expect(uses.size).toBeGreaterThan(15);   // sanity: the fixture actually claims a broad pin set
     uses.forEach((use, pin) => expect(labels.get(pin)).toBe(use.label));
@@ -289,7 +286,7 @@ describe('pins', () => {
 
   test('availablePinsFor candidates carry role when taken, null when free, and the self-pin exception clears both', () => {
     const s = snap({ dacHwMute: { enabled: true, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 } });
-    const list = availablePinsFor(PlatformType.RP2350, s, 11);
+    const list = Pins.availablePinsFor(PlatformType.RP2350, s, 11);
 
     const selfCell = list.find((c) => c.pin === 11)!;
     expect(selfCell.usedBy).toBeNull();
@@ -313,21 +310,21 @@ describe('pins', () => {
         adatInputPin: 20, adatInputEnabled: true, adatInputClockMode: 0,
       } as DspSnapshot['inputConfig'],
     });
-    expect(pinUses(s).get(20)).toEqual({ label: 'ADAT', role: 'audio-out' });
+    expect(Pins.pinUses(s).get(20)).toEqual({ label: 'ADAT', role: 'audio-out' });
   });
 
   test('pickerCells covers the full GPIO range for the platform', () => {
     const rp2040 = snap({ platform: { type: PlatformType.RP2040, name: 'RP2040', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8, channelModel: ChannelFamily.Legacy } });
-    expect(pickerCells(PlatformType.RP2040, rp2040)).toHaveLength(29);
-    expect(pickerCells(PlatformType.RP2350, snap())).toHaveLength(48);
+    expect(Pins.pickerCells(PlatformType.RP2040, rp2040)).toHaveLength(29);
+    expect(Pins.pickerCells(PlatformType.RP2350, snap())).toHaveLength(48);
   });
 
   test('pickerCells marks 23-25 reserved always, and 12 only under the Legacy channel model', () => {
-    const legacy = pickerCells(PlatformType.RP2350, snap());
+    const legacy = Pins.pickerCells(PlatformType.RP2350, snap());
     expect(legacy.filter((c) => c.pin >= 23 && c.pin <= 25).every((c) => c.reserved && !c.selectable)).toBe(true);
     expect(legacy.find((c) => c.pin === 12)?.reserved).toBe(true);
 
-    const unified = pickerCells(PlatformType.RP2350, snapV16());
+    const unified = Pins.pickerCells(PlatformType.RP2350, snapV16());
     expect(unified.find((c) => c.pin === 12)?.reserved).toBe(false);
     expect(unified.filter((c) => c.pin >= 23 && c.pin <= 25).every((c) => c.reserved)).toBe(true);
   });
@@ -345,16 +342,16 @@ describe('pins', () => {
     };
     const selfPin = 6;
 
-    const avail = availablePinsFor(PlatformType.RP2350, s, selfPin, ctrl)
+    const avail = Pins.availablePinsFor(PlatformType.RP2350, s, selfPin, ctrl)
       .filter((c) => c.usedBy === null).map((c) => c.pin).sort((a, b) => a - b);
-    const picker = pickerCells(PlatformType.RP2350, s, ctrl, selfPin)
+    const picker = Pins.pickerCells(PlatformType.RP2350, s, ctrl, selfPin)
       .filter((c) => c.selectable).map((c) => c.pin).sort((a, b) => a - b);
     expect(picker).toEqual(avail);
   });
 
   test('pickerCells masks the self pin as free and carries use+reason on a taken pin', () => {
     const s = snap({ dacHwMute: { enabled: true, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 } });
-    const cells = pickerCells(PlatformType.RP2350, s, undefined, 11);
+    const cells = Pins.pickerCells(PlatformType.RP2350, s, undefined, 11);
 
     const selfCell = cells.find((c) => c.pin === 11)!;
     expect(selfCell.selectable).toBe(true);
@@ -368,10 +365,10 @@ describe('pins', () => {
 
   test('pickerCellsFrom over validBckPins: blocked-by-adjacency, candidate, and taken pins', () => {
     const s = snap();
-    const valid = validBckPins(PlatformType.RP2350, s);
+    const valid = Pins.validBckPins(PlatformType.RP2350, s);
     const blockedReason = (pin: number) => `needs GP${pin + 1} free`;
 
-    const cells = pickerCellsFrom(PlatformType.RP2350, s, undefined, valid, undefined, blockedReason);
+    const cells = Pins.pickerCellsFrom(PlatformType.RP2350, s, undefined, valid, undefined, blockedReason);
 
     // GP22 is free on its own but excluded from validBckPins because GP23 is reserved.
     const blocked = cells.find((c) => c.pin === 22)!;
@@ -392,8 +389,8 @@ describe('pins', () => {
     const split = snap({
       i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 1, bckPinSlave: 26 },
     });
-    const valid = validBckPinsSlave(PlatformType.RP2350, split);
-    const cells = pickerCellsFrom(PlatformType.RP2350, split, undefined, valid, 26);
+    const valid = Pins.validBckPinsSlave(PlatformType.RP2350, split);
+    const cells = Pins.pickerCellsFrom(PlatformType.RP2350, split, undefined, valid, 26);
 
     const ownCell = cells.find((c) => c.pin === 26)!;   // the slave BCK pin itself: self-masked free
     expect(ownCell.selectable).toBe(true);
@@ -412,7 +409,7 @@ describe('pins', () => {
 
   test('pickerCellsFrom clears use for an explicit self pin even if it currently holds a label', () => {
     const s = snap();
-    const cells = pickerCellsFrom(PlatformType.RP2350, s, undefined, [], 7);
+    const cells = Pins.pickerCellsFrom(PlatformType.RP2350, s, undefined, [], 7);
     const selfCell = cells.find((c) => c.pin === 7)!;   // normally 'Slot 2', masked by the explicit selfPin
     expect(selfCell.selectable).toBe(true);
     expect(selfCell.use).toBeNull();

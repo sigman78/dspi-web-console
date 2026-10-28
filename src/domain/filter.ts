@@ -74,12 +74,29 @@ export function isFirstOrderType(t: FilterType): boolean {
   return t === FilterType.Allpass1 || t === FilterType.LowShelf1 || t === FilterType.HighShelf1;
 }
 
-// First-order low/high pass types require the firstOrderLpHp capability
-// (V28+ proxy) -- kept distinct from isFirstOrderType so V16-era call sites
-// gating on firstOrderEq don't silently pick these up too.
-export function isFirstOrderLpHp(t: FilterType): boolean {
-  return t === FilterType.LowPass1 || t === FilterType.HighPass1;
-}
+const NO_GAIN_TYPES: ReadonlySet<FilterType> = new Set([
+  FilterType.LowPass,
+  FilterType.HighPass,
+  FilterType.Notch,
+  FilterType.Allpass,
+  FilterType.Allpass1,
+  FilterType.LowPass1,
+  FilterType.HighPass1,
+  FilterType.LinkwitzTransform,
+]);
+
+const NO_Q_TYPES: ReadonlySet<FilterType> = new Set([
+  FilterType.Allpass1,
+  FilterType.LowShelf1,
+  FilterType.HighShelf1,
+  FilterType.LowPass1,
+  FilterType.HighPass1,
+  FilterType.LinkwitzTransform,
+]);
+
+export const bandHasGain = (type: FilterType): boolean => !NO_GAIN_TYPES.has(type);
+
+export const bandHasQ = (type: FilterType): boolean => !NO_Q_TYPES.has(type);
 
 export interface FilterParams {
   type: FilterType;
@@ -128,4 +145,77 @@ export function seedTypeChange(prev: FilterParams, nextType: FilterType): Partia
     return { gain: 0, qp: undefined };
   }
   return {};
+}
+
+// UI label per FilterType. "Off" is the user-facing name for Flat.
+// Crossover labels are consumed by the crossover editor, not this select.
+export const TYPE_LABELS: Record<FilterType, string> = {
+  [FilterType.Flat]: 'Off',
+  [FilterType.Peaking]: 'Peaking',
+  [FilterType.LowShelf]: 'Low Shelf',
+  [FilterType.HighShelf]: 'High Shelf',
+  [FilterType.LowPass]: 'Low Pass',
+  [FilterType.HighPass]: 'High Pass',
+  [FilterType.Notch]: 'Notch',
+  [FilterType.Allpass]: 'Allpass',
+  [FilterType.Allpass1]: 'Allpass 1st',
+  [FilterType.LowShelf1]: 'Low Shelf 1st',
+  [FilterType.HighShelf1]: 'High Shelf 1st',
+  [FilterType.LowPass1]: 'Low Pass 1st',
+  [FilterType.HighPass1]: 'High Pass 1st',
+  [FilterType.LinkwitzTransform]: 'Linkwitz',
+  [FilterType.Lr2Lp]: 'LR2 LP',   [FilterType.Lr2Hp]: 'LR2 HP',
+  [FilterType.Lr4Lp]: 'LR4 LP',   [FilterType.Lr4Hp]: 'LR4 HP',
+  [FilterType.Lr6Lp]: 'LR6 LP',   [FilterType.Lr6Hp]: 'LR6 HP',
+  [FilterType.Lr8Lp]: 'LR8 LP',   [FilterType.Lr8Hp]: 'LR8 HP',
+  [FilterType.Bw1Lp]: 'BW1 LP',   [FilterType.Bw1Hp]: 'BW1 HP',
+  [FilterType.Bw2Lp]: 'BW2 LP',   [FilterType.Bw2Hp]: 'BW2 HP',
+  [FilterType.Bw3Lp]: 'BW3 LP',   [FilterType.Bw3Hp]: 'BW3 HP',
+  [FilterType.Bw4Lp]: 'BW4 LP',   [FilterType.Bw4Hp]: 'BW4 HP',
+  [FilterType.Bw5Lp]: 'BW5 LP',   [FilterType.Bw5Hp]: 'BW5 HP',
+  [FilterType.Bw6Lp]: 'BW6 LP',   [FilterType.Bw6Hp]: 'BW6 HP',
+  [FilterType.Bw7Lp]: 'BW7 LP',   [FilterType.Bw7Hp]: 'BW7 HP',
+  [FilterType.Bw8Lp]: 'BW8 LP',   [FilterType.Bw8Hp]: 'BW8 HP',
+  [FilterType.Bes2Lp]: 'BES2 LP', [FilterType.Bes2Hp]: 'BES2 HP',
+  [FilterType.Bes4Lp]: 'BES4 LP', [FilterType.Bes4Hp]: 'BES4 HP',
+  [FilterType.Bes6Lp]: 'BES6 LP', [FilterType.Bes6Hp]: 'BES6 HP',
+  [FilterType.Bes8Lp]: 'BES8 LP', [FilterType.Bes8Hp]: 'BES8 HP',
+};
+
+// PEQ types this select offers. First-order types (V16+) are appended by
+// the EQ editor when the device reports the firstOrderEq capability;
+// crossover types never appear here (they live in the crossover editor).
+export const TYPE_ORDER: FilterType[] = [
+  FilterType.Flat,
+  FilterType.Peaking,
+  FilterType.LowShelf,
+  FilterType.HighShelf,
+  FilterType.HighPass,
+  FilterType.LowPass,
+  FilterType.Notch,
+  FilterType.Allpass,
+];
+
+export const FIRST_ORDER_TYPES: FilterType[] = [
+  FilterType.LowShelf1,
+  FilterType.HighShelf1,
+  FilterType.Allpass1,
+];
+
+// First-order low/high pass (V28+ proxy capability); offered separately
+// from FIRST_ORDER_TYPES since it needs firstOrderLpHp, not firstOrderEq.
+export const FIRST_ORDER_LP_HP_TYPES: FilterType[] = [
+  FilterType.LowPass1,
+  FilterType.HighPass1,
+];
+
+// Single source of truth for which PEQ types the EQ editor offers, given the
+// device's feature flags. Linkwitz Transform is display-only (see the
+// component below): it's never offered here, even on a capable device --
+// a band already set to it still renders correctly, just not selectable.
+export function offeredTypes(features: { firstOrderEq: boolean; firstOrderLpHp?: boolean }): FilterType[] {
+  let types = TYPE_ORDER;
+  if (features.firstOrderEq) types = [...types, ...FIRST_ORDER_TYPES];
+  if (features.firstOrderLpHp) types = [...types, ...FIRST_ORDER_LP_HP_TYPES];
+  return types;
 }

@@ -1,9 +1,12 @@
+import { formatSignedDb } from './format';
+
 export type ValueKind =
   | 'dB'
   | 'dB-signed'
   | 'ms'
   | 'hz'
   | 'q'
+  | 's'
   | 'pct'
   | 'int';
 
@@ -11,14 +14,6 @@ interface FormatterEntry {
   defaultPrecision: number;
   defaultUnit: string;
   format: (v: number, precision: number) => string;
-}
-
-// Uses U+2212 (true minus) so the glyph aligns visually with `+` and the
-// leading space placeholder.
-function signOf(v: number): string {
-  if (v > 0) return '+';
-  if (v < 0) return '−';
-  return ' ';
 }
 
 export const formatters: Record<ValueKind, FormatterEntry> = {
@@ -30,7 +25,7 @@ export const formatters: Record<ValueKind, FormatterEntry> = {
   'dB-signed': {
     defaultPrecision: 2,
     defaultUnit: 'dB',
-    format: (v, p) => signOf(v) + Math.abs(v).toFixed(p),
+    format: (v, p) => formatSignedDb(v, p),
   },
   'ms': {
     defaultPrecision: 1,
@@ -50,6 +45,11 @@ export const formatters: Record<ValueKind, FormatterEntry> = {
   'q': {
     defaultPrecision: 2,
     defaultUnit: '',
+    format: (v, p) => v.toFixed(p),
+  },
+  's': {
+    defaultPrecision: 1,
+    defaultUnit: 's',
     format: (v, p) => v.toFixed(p),
   },
   'pct': {
@@ -109,8 +109,13 @@ export function parseAndClamp(
     return null;
   }
   if (step > 0) {
-    v = Math.round(v / step) * step;
-    v = +v.toFixed(stepDecimals(step));
+    const decimals = stepDecimals(step);
+    // Bounds off the step grid snap inward so a snapped value stays in range.
+    let lo = +(Math.ceil(min / step - 1e-9) * step).toFixed(decimals);
+    let hi = +(Math.floor(max / step + 1e-9) * step).toFixed(decimals);
+    if (lo > hi) { lo = min; hi = max; }
+    v = +(Math.round(v / step) * step).toFixed(decimals);
+    v = Math.min(hi, Math.max(lo, v));
   }
   return v;
 }

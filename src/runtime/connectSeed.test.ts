@@ -5,7 +5,7 @@ import { activeSession, resetAppState } from '@/state';
 // Locks the connect ordering that kills the "all channels possible -> actual
 // configuration" flash: the mirror is initialised and the live input-channel
 // count is seeded from an initial status read BEFORE `synced` is dispatched, so
-// channel-dependent views (rail, mixer, overview) paint the real width on their
+// channel-dependent views (rail, sources list) paint the real width on their
 // first frame. The poll's status cadence is on a timer that never fires within a
 // test, so any non-null count here must have come from the pre-`synced` seed.
 

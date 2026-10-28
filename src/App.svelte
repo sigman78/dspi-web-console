@@ -1,13 +1,11 @@
 <script lang="ts">
-  import TopBar from '@/components/chrome/TopBar.svelte';
-  import ChannelRail from '@/components/chrome/ChannelRail.svelte';
   import ConnectingHero from '@/components/chrome/ConnectingHero.svelte';
-  import ConnectedApp from '@/components/chrome/ConnectedApp.svelte';
+  import NoveauShell from '@/components/noveau/NoveauShell.svelte';
   import EqSpectrum from '@/components/chrome/EqSpectrum.svelte';
-  import PresetBoundaryModal from '@/components/presets/PresetBoundaryModal.svelte';
+  import PresetBoundaryModal from '@/components/noveau/presets/PresetBoundaryModal.svelte';
   import Toaster from '@/components/chrome/Toaster.svelte';
+  import ConfirmHost from '@/components/chrome/ConfirmHost.svelte';
   import { app, settings, initialBoot } from '@/state';
-  import { handleTabShortcut } from '@/input/tabShortcuts';
   import { heroOverride } from '@/devOptions';
 
   // Visual-test override: ?hero forces the connecting hero to render even
@@ -29,34 +27,21 @@
     settings.lastSerial != null &&
     appState.kind !== 'errored'
   );
-
-  $effect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (app.current.kind === 'ready' && handleTabShortcut(e)) e.preventDefault();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
 </script>
 
 <div class="shell">
-  <TopBar />
   <PresetBoundaryModal />
-  <main>
+  <ConfirmHost />
+  <main data-budget>
     {#if showSplash}
       <div class="boot-splash" role="status" aria-label="Connecting to device">
         <EqSpectrum />
         <div class="boot-status">CONNECTING…</div>
       </div>
     {:else if !hero && appState.kind === 'ready'}
-      <div class="work">
-        <ChannelRail />
-        <div class="content">
-          {#key appState.session}
-            <ConnectedApp session={appState.session} />
-          {/key}
-        </div>
-      </div>
+      {#key appState.session}
+        <NoveauShell session={appState.session} />
+      {/key}
     {:else}
       <div class="hero-wrap">
         <ConnectingHero />
@@ -68,26 +53,13 @@
 
 <style>
   .shell {
-    display: grid;
-    grid-template-rows: auto 1fr;
     height: 100%;
     overflow: hidden;
   }
   main {
+    height: 100%;
     overflow: hidden;
     min-height: 0;
-  }
-  .work {
-    display: flex;
-    height: 100%;
-    min-height: 0;
-  }
-  .content {
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
-    overflow: auto;
-    padding: var(--pad);
   }
   .hero-wrap {
     display: grid;

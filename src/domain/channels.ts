@@ -66,6 +66,11 @@ export type OutputMode = 'SPDIF' | 'I2S' | 'PDM';
 export const OutputSlotType = { Spdif: 0, I2s: 1 } as const;
 export type OutputSlotType = (typeof OutputSlotType)[keyof typeof OutputSlotType];
 
+/** Display label for a pair's output type; unknown wire values read as S/PDIF. */
+export function outputSlotTypeLabel(type: number): 'I2S' | 'SPDIF' {
+  return type === OutputSlotType.I2s ? 'I2S' : 'SPDIF';
+}
+
 // Stereo-pair index into i2s.outputSlotTypes (and SetOutputType's wValue).
 // NOT an OutputSlot: pairs 0-3 cover output channels in L/R pairs.
 export type I2sPairSlot = 0 | 1 | 2 | 3;
@@ -165,14 +170,6 @@ export function defaultInputShortName(source: AudioInputSource, slot: InputSlot)
 export interface ChannelGroup<T> {
   accentId: ChannelId;
   members: T[];
-}
-
-// Splits a display name like "Out 2 Left" into its L/R-stripped base and the
-// side letter, for headers that show the side as a small separate glyph.
-// Shared by the mixer's row/column headers (MixerTab, MatrixHeader).
-export function splitLR(name: string): { base: string; side: string | null } {
-  const m = name.match(/^(.+?)\s+([LR])$/);
-  return m ? { base: m[1], side: m[2] } : { base: name, side: null };
 }
 
 export function groupIntoPairs<T extends { id: ChannelId; shortName: string }>(

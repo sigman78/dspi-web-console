@@ -1,0 +1,371 @@
+<script lang="ts">
+  import Panel from '@/components/chrome/Panel.svelte';
+  import KV from '@/components/chrome/KV.svelte';
+  import PinPicker from '@/components/chrome/PinPicker.svelte';
+  import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import * as Runtime from '@/runtime';
+  import * as Domain from '@/domain';
+  import type { PinPickerCell } from '@/domain';
+  import { Wire } from '@/protocol';
+  import { formatRateKHz } from '@/utils';
+  import { getSession } from '@/components/sessionContext';
+
+  const s = getSession();
+  const snap = $derived(s.mirror.current);
+  const inputConfig = $derived(snap?.inputConfig);
+  const spdifStatus = $derived(s.telemetry.spdifRxStatus);
+  const liveSource = $derived(inputConfig?.source ?? Domain.AudioInputSource.Usb);
+  const source = $derived(s.staging.valueOf('inputSource', liveSource));
+  const sourcePending = $derived(source !== liveSource);
+  const isSpdif = $derived(Domain.isSpdifSource(source));
+  const isI2s = $derived(source === Domain.AudioInputSource.I2s);
+  const features = $derived(s.device.capabilities.features);
+  const ctrlPins = $derived({ uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: Domain.liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) });
+  const overlaySnap = $derived(snap ? s.staging.overlaySnapshot(snap) : null);
+  const effSpdifRxPin = $derived(inputConfig ? s.staging.valueOf('spdifRxPin', inputConfig.spdifRxPin) : 0);
+  // Selectable S/PDIF inputs (1 unless the platform has the multi-SPDIF receiver, then 3).
+  const spdifInputCount = $derived(s.device.capabilities.spdifInputCount);
+  const effRate = $derived(inputConfig ? s.staging.valueOf('inputRate', inputConfig.i2sInputRateHz) : 0);
+  // fw V21+: while the clock role is SLAVE, the external master owns the
+  // rate -- the RATE row goes read-only (auto-detected) instead of the
+  // firmware-applied selector below.
+  const clockMode = $derived(inputConfig ? s.staging.valueOf('i2sClockMode', inputConfig.i2sClockMode) : 0);
+  const slaveStatus = $derived(s.telemetry.i2sSlaveStatus);
+  const showSlaveRate = $derived(Boolean(features.i2sSlaveClock) && clockMode === 1);
+  const slaveRateLocked = $derived(slaveStatus?.state === Domain.I2sSlaveClockState.Locked);
+  // ADAT input's clock mode/status are read live here (SY.15 owns the write
+  // path -- it applies immediately, so there's nothing to stage).
+  const adatClockMode = $derived(inputConfig?.adatInputClockMode ?? 0);
+  const adatStatus = $derived(s.telemetry.adatInputStatus);
+  // Configured count (0 = firmware default of 2); pairs 0..activePairs-1 show a pin select.
+  const liveChannels = $derived(inputConfig?.i2sInputChannels || 2);
+  const i2sChannels = $derived(s.staging.valueOf('i2sChannels', liveChannels));
+  const i2sActivePairs = $derived(Math.max(1, Math.floor(i2sChannels / 2)));
+
+  function effI2sRxPin(pair: number): number {
+    return s.staging.valueOf(`i2sRxPin:${pair}`, inputConfig?.i2sRxPins[pair] ?? 0);
+  }
+
+  function effSpdifExtEnabled(i: number): boolean {
+    return s.staging.valueOf(`spdifEnable:${i}`, inputConfig?.spdifExtEnabled[i] ?? false);
+  }
+
+  function effSpdifRxPinExt(i: number): number {
+    return s.staging.valueOf(`spdifRxPinExt:${i}`, inputConfig?.spdifRxPinExt[i] ?? 0);
+  }
+
+  // Unified per-input accessors over the S/PDIF rows: row 0 = input 1 (scalar,
+  // always on), rows 1..2 = optional inputs (extIndex = i - 1).
+  function spdifTitle(i: number): string {
+    return i === 0 ? (spdifInputCount > 1 ? 'S/PDIF 1' : 'S/PDIF') : `S/PDIF ${i + 1}`;
+  }
+  function effSpdifPin(i: number): number {
+    return i === 0 ? effSpdifRxPin : effSpdifRxPinExt(i - 1);
+  }
+  function devSpdifPin(i: number): number {
+    return i === 0 ? (inputConfig?.spdifRxPin ?? 0) : (inputConfig?.spdifRxPinExt[i - 1] ?? 0);
+  }
+  function spdifPinKey(i: number): string {
+    return i === 0 ? 'spdifRxPin' : `spdifRxPinExt:${i - 1}`;
+  }
+  function onSpdifPin(i: number, gpio: number): void {
+    if (i === 0) Runtime.stageSpdifRxPin(s, gpio);
+    else Runtime.stageSpdifRxPinExt(s, i - 1, gpio);
+  }
+
+  function spdifPinCells(i: number): PinPickerCell[] {
+    if (!snap || !overlaySnap) return [];
+    const cells = Domain.pickerCells(snap.platform.type, overlaySnap, ctrlPins, effSpdifPin(i));
+    if (i === 0) return cells;
+    // ext inputs: GP0 on the wire means "not configured" -- keep it visible but unpickable.
+    return cells.map((c) => (c.pin === 0 ? { ...c, selectable: false, reason: 'reserved as the UNSET sentinel' } : c));
+  }
+
+  // Only the section currently shown gets reset -- the hidden section's
+  // pickers aren't rendered, so their targets can't be staged from here.
+  function stageSectionPinsToDefault(): void {
+    if (isSpdif) {
+      for (let i = 0; i < spdifInputCount; i++) {
+        // An ext input still at the unset sentinel is skipped: resetting it
+        // would materialize a GPIO with no way back to UNSET.
+        if (i > 0 && effSpdifPin(i) === 0) continue;
+        onSpdifPin(i, Wire.Const.PIN_RESET_TO_DEFAULT);
+      }
+    } else if (isI2s) {
+      for (let pair = 0; pair < i2sActivePairs; pair++) Runtime.stageI2sRxPin(s, pair, Wire.Const.PIN_RESET_TO_DEFAULT);
+    }
+  }
+
+  const SOURCE_LABELS = $derived<Record<number, string>>({
+    [Domain.AudioInputSource.Usb]:    'USB',
+    [Domain.AudioInputSource.Spdif]:  spdifInputCount > 1 ? 'S/PDIF 1' : 'S/PDIF',
+    [Domain.AudioInputSource.Spdif2]: 'S/PDIF 2',
+    [Domain.AudioInputSource.Spdif3]: 'S/PDIF 3',
+    [Domain.AudioInputSource.Spdif4]: 'S/PDIF 4',
+    [Domain.AudioInputSource.I2s]:    'I2S',
+    [Domain.AudioInputSource.Adat]:   'ADAT',
+  });
+
+  const STATE_LABELS: Record<number, string> = {
+    [Domain.SpdifInputState.Inactive]:  'INACTIVE',
+    [Domain.SpdifInputState.Acquiring]: 'ACQUIRING',
+    [Domain.SpdifInputState.Locked]:    'LOCKED',
+    [Domain.SpdifInputState.Relocking]: 'RELOCKING',
+  };
+
+  function stateTone(state: number): 'ok' | 'off' | undefined {
+    if (state === Domain.SpdifInputState.Locked) return 'ok';
+    if (state === Domain.SpdifInputState.Acquiring || state === Domain.SpdifInputState.Relocking) return undefined;
+    return 'off';
+  }
+
+  // Host-selected USB width (alt setting), live from telemetry. Only
+  // meaningful while the device actually runs on USB, so a pending
+  // source switch hides it rather than showing the old source's count.
+  const usbDetected = $derived.by(() => {
+    const n = s.telemetry.activeInputChannels;
+    return n == null ? '—' : `${n} CH`;
+  });
+  const showUsbDetected = $derived(
+    features.activeInputCount && liveSource === Domain.AudioInputSource.Usb,
+  );
+</script>
+
+<Panel title="INPUT CONFIG">
+  {#snippet right()}
+    {#if features.pinResetDefault && (isSpdif || (isI2s && features.i2sInput))}
+      <button class="chip icon" title="Reset to defaults" aria-label="Reset input pins to defaults" onclick={stageSectionPinsToDefault}>↺</button>
+    {/if}
+  {/snippet}
+  {#if inputConfig && snap && overlaySnap}
+    <div class="cfgkvgrid">
+      <KV label="SOURCE" value={SOURCE_LABELS[liveSource] ?? 'USB'} />
+      <div class="src-btns">
+        <button
+          class="chip"
+          class:on={source === Domain.AudioInputSource.Usb}
+          class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Usb}
+          onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Usb)}
+          disabled={source === Domain.AudioInputSource.Usb}
+        >USB</button>
+        <button
+          class="chip"
+          class:on={source === Domain.AudioInputSource.Spdif}
+          class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif}
+          onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif)}
+          disabled={source === Domain.AudioInputSource.Spdif}
+        >{spdifInputCount > 1 ? 'S/P 1' : 'S/P'}</button>
+        {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[0]}
+          <button
+            class="chip"
+            class:on={source === Domain.AudioInputSource.Spdif2}
+            class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif2}
+            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif2)}
+            disabled={source === Domain.AudioInputSource.Spdif2}
+          >S/P 2</button>
+        {/if}
+        {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[1]}
+          <button
+            class="chip"
+            class:on={source === Domain.AudioInputSource.Spdif3}
+            class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif3}
+            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif3)}
+            disabled={source === Domain.AudioInputSource.Spdif3}
+          >S/P 3</button>
+        {/if}
+        {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[2]}
+          <button
+            class="chip"
+            class:on={source === Domain.AudioInputSource.Spdif4}
+            class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif4}
+            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif4)}
+            disabled={source === Domain.AudioInputSource.Spdif4}
+          >S/P 4</button>
+        {/if}
+        {#if features.i2sInput}
+          <button
+            class="chip"
+            class:on={isI2s}
+            class:staged={s.staging.has('inputSource') && isI2s}
+            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.I2s)}
+            disabled={isI2s}
+          >I2S</button>
+        {/if}
+        {#if features.adatInput && inputConfig.adatInputEnabled && inputConfig.adatInputPin !== 0}
+          <button
+            class="chip"
+            class:on={source === Domain.AudioInputSource.Adat}
+            class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Adat}
+            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Adat)}
+            disabled={source === Domain.AudioInputSource.Adat}
+          >ADAT</button>
+        {/if}
+      </div>
+    </div>
+    {#if sourcePending}
+      <p class="hint pending">Device is running on {SOURCE_LABELS[liveSource]} — configuring pending {SOURCE_LABELS[source]}.</p>
+    {/if}
+
+    {#if source === Domain.AudioInputSource.Usb}
+      {#if showUsbDetected}
+        <div class="cfgkvgrid">
+          <KV label="DETECTED" value={usbDetected} tone={s.telemetry.activeInputChannels == null ? 'off' : undefined} />
+        </div>
+      {/if}
+      <p class="hint idle">USB input needs no configuration{features.activeInputCount ? ' — channel count follows the host' : ''}.</p>
+    {/if}
+
+    {#if isSpdif}
+      <div class="subhdr">S/PDIF RX</div>
+      <div class="spdif-grid">
+        {#each Array.from({ length: spdifInputCount }, (_, i) => i) as i (i)}
+          <span class="spdif-title">{spdifTitle(i)}</span>
+          <span class="spdif-toggle">
+            {#if i === 0}
+              <span class="dash" title="always enabled">—</span>
+            {:else}
+              <span class="stage-wrap" class:staged={s.staging.has(`spdifEnable:${i - 1}`)} title={s.staging.has(`spdifEnable:${i - 1}`) ? `device: ${inputConfig.spdifExtEnabled[i - 1] ? 'ON' : 'OFF'}` : undefined}>
+                <ToggleSwitch
+                  checked={effSpdifExtEnabled(i - 1)}
+                  ariaLabel={effSpdifExtEnabled(i - 1) ? `Disable ${spdifTitle(i)} input` : `Enable ${spdifTitle(i)} input`}
+                  onChange={() => Runtime.stageSpdifInputEnabled(s, i - 1, !effSpdifExtEnabled(i - 1))}
+                />
+              </span>
+            {/if}
+          </span>
+          <span class="stage-wrap" class:staged={s.staging.has(spdifPinKey(i))} title={s.staging.has(spdifPinKey(i)) ? `device: GP${devSpdifPin(i)}` : undefined}>
+            <PinPicker
+              value={effSpdifPin(i)}
+              cells={spdifPinCells(i)}
+              placeholder={i === 0 ? undefined : 'UNSET'}
+              ariaLabel={`${spdifTitle(i)} RX GPIO pin`}
+              onChange={(p) => onSpdifPin(i, p)}
+            />
+          </span>
+        {/each}
+      </div>
+
+      <div class="subhdr">S/PDIF RX STATUS</div>
+      {#if spdifStatus}
+        <div class="cfgkvgrid">
+          <KV
+            label="STATE"
+            value={STATE_LABELS[spdifStatus.state] ?? 'UNKNOWN'}
+            tone={stateTone(spdifStatus.state)}
+          />
+          <KV label="SAMPLE RATE" value={formatRateKHz(spdifStatus.sampleRate)} />
+          <KV label="LOCK COUNT"  value={String(spdifStatus.lockCount)} />
+          <KV label="LOSS COUNT"  value={String(spdifStatus.lossCount)} tone={spdifStatus.lossCount > 0 ? undefined : 'off'} />
+          <KV label="PARITY ERR"  value={String(spdifStatus.parityErrors)} tone={spdifStatus.parityErrors > 0 ? undefined : 'off'} />
+          <KV label="FIFO FILL"   value={`${spdifStatus.fifoFillPct}%`} />
+        </div>
+      {:else}
+        <p class="hint idle">Waiting for S/PDIF status…</p>
+      {/if}
+    {/if}
+
+    {#if isI2s && features.i2sInput}
+      <div class="subhdr">I2S INPUT</div>
+      <div class="cfgkvgrid">
+        {#if showSlaveRate}
+          <KV
+            label="RATE"
+            value={slaveRateLocked ? formatRateKHz(slaveStatus?.detectedRateHz ?? 0) : '—'}
+            tone={slaveRateLocked ? 'ok' : 'off'}
+            title="Slave clock mode: rate follows the external I2S master"
+          />
+          <p class="hint">auto-detected — external master sets the rate</p>
+        {:else}
+          <KV label="RATE" value={formatRateKHz(effRate)} />
+          <div class="src-btns">
+            {#each Domain.I2S_INPUT_RATES_HZ as hz (hz)}
+              <button
+                class="chip"
+                class:on={effRate === hz}
+                class:staged={s.staging.has('inputRate') && effRate === hz}
+                onclick={() => Runtime.stageInputRate(s, hz)}
+                disabled={effRate === hz}
+              >{hz / 1000}k</button>
+            {/each}
+          </div>
+        {/if}
+        {#if features.multichannelInput}
+          <KV label="CHANNELS" value={String(i2sChannels)} />
+          <div class="src-btns">
+            {#each [2, 4, 6, 8] as n (n)}
+              <button
+                class="chip"
+                class:on={i2sChannels === n}
+                class:staged={s.staging.has('i2sChannels') && i2sChannels === n}
+                onclick={() => Runtime.stageI2sInputChannels(s, n)}
+                disabled={i2sChannels === n}
+              >{n}</button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+      {#each Array.from({ length: i2sActivePairs }, (_, p) => p) as pair (pair)}
+        <div class="subhdr">I2S RX PIN{i2sActivePairs > 1 ? ` · PAIR ${pair + 1}` : ''}</div>
+        <div class="pinrow">
+          <span class="stage-wrap" class:staged={s.staging.has(`i2sRxPin:${pair}`)} title={s.staging.has(`i2sRxPin:${pair}`) ? `device: GP${inputConfig.i2sRxPins[pair] ?? 0}` : undefined}>
+            <PinPicker
+              value={effI2sRxPin(pair)}
+              cells={Domain.pickerCells(snap.platform.type, overlaySnap, ctrlPins, effI2sRxPin(pair))}
+              ariaLabel={`I2S RX data pin, stereo pair ${pair + 1}`}
+              onChange={(p) => Runtime.stageI2sRxPin(s, pair, p)}
+            />
+          </span>
+        </div>
+      {/each}
+    {/if}
+
+    {#if source === Domain.AudioInputSource.Adat && features.adatInput}
+      <div class="subhdr">ADAT INPUT</div>
+      <div class="cfgkvgrid">
+        {#if adatClockMode === 1}
+          <KV
+            label="RATE"
+            value={adatStatus?.state === Domain.AdatInputLockState.Locked ? formatRateKHz(adatStatus.detectedRateHz) : '—'}
+            tone={adatStatus?.state === Domain.AdatInputLockState.Locked ? 'ok' : 'off'}
+            title="Slave clock mode: rate follows the external ADAT master"
+          />
+          <p class="hint">auto-detected — external master sets the rate</p>
+        {:else}
+          <KV label="RATE" value={formatRateKHz(effRate)} />
+          <div class="src-btns">
+            {#each Domain.I2S_INPUT_RATES_HZ as hz (hz)}
+              <button
+                class="chip"
+                class:on={effRate === hz}
+                class:staged={s.staging.has('inputRate') && effRate === hz}
+                onclick={() => Runtime.stageInputRate(s, hz)}
+                disabled={effRate === hz || hz > 48000}
+                title={hz > 48000 ? 'ADAT runs at 44.1/48 kHz only — higher rates park the input' : undefined}
+              >{hz / 1000}k</button>
+            {/each}
+          </div>
+          {#if adatStatus?.rateOk === false}
+            <p class="hint warn">PARKED — device rate above 48 kHz</p>
+          {/if}
+        {/if}
+      </div>
+      <p class="hint">Pin, clock mode, and live status live in the ADAT INPUT panel.</p>
+    {/if}
+  {/if}
+</Panel>
+
+<style>
+  .cfgkvgrid { padding: 10px 14px 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; }
+  .src-btns { display: flex; flex-wrap: wrap; gap: 4px; }
+  .src-btns button { white-space: nowrap; }
+  .pinrow { padding: 6px 14px 6px; }
+  .idle { padding: 10px 14px; }
+  .pending { padding: 0 14px 8px; color: var(--accent); }
+  .hint.warn { color: var(--warn); }
+  /* S/PDIF inputs: one row per selectable input -- title | toggle | pin --
+     spread across the panel width (title at left, pin at the right edge). */
+  .spdif-grid { padding: 8px 14px 4px; display: grid; grid-template-columns: auto auto auto; justify-content: space-between; row-gap: 12px; column-gap: 12px; align-items: center; }
+  .spdif-title { font-family: var(--font-sans); font-size: var(--fs-m); font-weight: 600; color: var(--text-dim); white-space: nowrap; }
+  .spdif-toggle { display: flex; align-items: center; justify-content: center; min-width: 34px; }
+  .dash { color: var(--text-faint); }
+</style>

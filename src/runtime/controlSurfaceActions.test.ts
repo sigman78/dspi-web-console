@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as actions from './controlSurfaceActions';
-import { notices, clearNotices, dispatch, mintConnId, makeReadySession, activeSession, resetAppState } from '@/state';
+import * as State from '@/state';
 import type { DspDevice } from '@/device/DspDevice';
 import { PinConfigResult } from '@/protocol';
 import { Result } from '@/utils';
@@ -8,8 +8,8 @@ import { PlatformType, createHardwareProfile, type UartControlConfig, type Contr
 import { deriveCapabilities } from '@/protocol/capabilities';
 import { flushAllWrites as flushAllWritesFor } from './writes.svelte';
 
-const cancelWrites = () => { const s = activeSession(); if (s) s.writes.cancel(); };
-const flushAllWrites = () => flushAllWritesFor(activeSession()!);
+const cancelWrites = () => { const s = State.activeSession(); if (s) s.writes.cancel(); };
+const flushAllWrites = () => flushAllWritesFor(State.activeSession()!);
 
 const testHardware = createHardwareProfile(PlatformType.RP2350);
 
@@ -30,7 +30,7 @@ function initializedDevice(methods: Partial<DspDevice>): DspDevice {
   return { ...base, ...methods } as DspDevice;
 }
 
-afterEach(() => { activeSession()?.dispose(); cancelWrites(); resetAppState(); });
+afterEach(() => { State.activeSession()?.dispose(); cancelWrites(); State.resetAppState(); });
 
 // ── V16 — external control interfaces ────────────────────────────────────────
 
@@ -41,8 +41,8 @@ describe('setUartControlConfig', () => {
     const device = initializedDevice({
       setUartControlConfig: vi.fn(async () => setResult),
     });
-    dispatch({ t: 'synced', id: mintConnId(), session: makeReadySession(device) });
-    return activeSession()!;
+    State.dispatch({ t: 'synced', id: State.mintConnId(), session: State.makeReadySession(device) });
+    return State.activeSession()!;
   }
 
   it('patches ctrlIfaces.uart and stores the fresh status on a successful set', async () => {
@@ -57,11 +57,11 @@ describe('setUartControlConfig', () => {
   it('on a rejected set, leaves ctrlIfaces.uart untouched but stores the status and warns with the decoded message', async () => {
     const status = { uartLastStatus: PinConfigResult.InvalidParam, uartLive: false, i2cLastStatus: 0, i2cLive: false, protoVersion: 1 };
     const s = harness({ result: Result.fail(PinConfigResult.InvalidParam, 'value out of range'), status });
-    clearNotices();
+    State.clearNotices();
     actions.setUartControlConfig(s, cfg);
     await flushAllWrites();
     expect(s.ctrlIfaces.uart).toBeNull();
     expect(s.ctrlIfaces.status).toEqual(status);
-    expect(notices.list.some((n) => n.kind === 'warn' && /out of range/.test(n.message))).toBe(true);
+    expect(State.notices.list.some((n) => n.kind === 'warn' && /out of range/.test(n.message))).toBe(true);
   });
 });

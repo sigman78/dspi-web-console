@@ -1,5 +1,6 @@
-// Transient user-facing notices (toasts), auto-expiring. Ephemeral per-action
-// messages, distinct from connection state which is a persistent mode.
+// Transient user-facing notices (toasts). Errors stay until dismissed; warn and
+// info auto-expire. Ephemeral per-action messages, distinct from connection
+// state, which is a persistent mode.
 
 export type NoticeKind = 'error' | 'warn' | 'info';
 export interface Notice {
@@ -18,9 +19,12 @@ export const notices = {
 };
 
 export function pushNotice(kind: NoticeKind, message: string): number {
+  // A flaky link repeats the same failure; one row per distinct message.
+  const dup = _notices.find((n) => n.kind === kind && n.message === message);
+  if (dup) return dup.id;
   const id = ++_seq;
   _notices.push({ id, kind, message });
-  setTimeout(() => dismissNotice(id), NOTICE_TTL_MS);
+  if (kind !== 'error') setTimeout(() => dismissNotice(id), NOTICE_TTL_MS);
   return id;
 }
 

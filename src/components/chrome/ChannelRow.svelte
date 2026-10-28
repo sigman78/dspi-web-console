@@ -62,6 +62,7 @@
   import { untrack } from 'svelte';
   import { chKey } from '@/styles/palette';
   import { CHANNEL_NAME_MAX_LEN } from '@/domain';
+  import NameField from '@/components/chrome/NameField.svelte';
 
   const {
     name,
@@ -69,7 +70,6 @@
     levelDb,
     defaultName,
     selected = false,
-    dim = false,
     pulsate = false,
     linked = false,
     disabled = false,
@@ -84,7 +84,6 @@
     levelDb: number;
     defaultName: string;
     selected?: boolean;
-    dim?: boolean;
     pulsate?: boolean;
     linked?: boolean;
     disabled?: boolean;
@@ -120,10 +119,6 @@
 
   let selectBtn = $state<HTMLButtonElement>();
 
-  // Each edit session ends with exactly one terminal callback. Enter/Escape and
-  // the blur that follows the input's unmount would otherwise both fire; this
-  // flag (re-armed in initInput on mount) makes the trailing event a no-op.
-  let committed = false;
   // Return focus to the select button only on a keyboard exit (Enter/Escape) —
   // a click-away blur should leave focus where the user clicked.
   let restoreFocus = false;
@@ -141,45 +136,22 @@
     if (!disabled) onclick?.();
   }
 
+  // F2 renames from the keyboard; Enter does too once the row is already
+  // selected (Enter on an unselected row stays "select").
+  function onKeydown(e: KeyboardEvent) {
+    if (disabled || editing || e.defaultPrevented) return;
+    if (e.key === 'F2' || (e.key === 'Enter' && selected)) {
+      e.preventDefault();
+      startEdit();
+    }
+  }
+
   function startEdit() {
     if (disabled) return;
     // Clear the native word-selection a double-click leaves on the label so it
     // doesn't collide with the input's select-all-on-mount.
     window.getSelection()?.removeAllRanges();
     onStartEdit?.();
-  }
-
-  // The editor input is uncontrolled: seeded once on mount, then read straight
-  // from the DOM on commit. With no reactive binding, the rail's telemetry-driven
-  // re-renders can't clobber in-progress typing.
-  function initInput(node: HTMLInputElement) {
-    committed = false;
-    node.value = name;
-    node.focus();
-    node.select();
-  }
-
-  function commitOnce(node: HTMLInputElement) {
-    if (committed) return;
-    committed = true;
-    onCommitName?.(node.value);
-  }
-
-  function onInputKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      restoreFocus = true;
-      commitOnce(e.currentTarget as HTMLInputElement);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      committed = true; // swallow the unmount blur that follows
-      restoreFocus = true;
-      onCancelEdit?.();
-    }
-  }
-
-  function onInputBlur(e: FocusEvent) {
-    commitOnce(e.currentTarget as HTMLInputElement);
   }
 </script>
 
@@ -197,29 +169,28 @@
 <div
   class="row ch-{chKey(channelId)}"
   class:selected
-  class:dim
   class:pulsate
   class:linked
   class:editing
   class:is-disabled={disabled}
 >
   {#if editing}
-    <input
+    <NameField
       class="nm-input"
-      type="text"
-      use:initInput
+      editing
+      allowEmpty
+      value={name}
       maxlength={CHANNEL_NAME_MAX_LEN}
       placeholder={defaultName}
-      spellcheck="false"
-      autocomplete="off"
-      aria-label={`Rename ${name}`}
-      onkeydown={onInputKeydown}
-      onblur={onInputBlur}
+      ariaLabel={`Rename ${name}`}
+      onCommit={(v) => onCommitName?.(v)}
+      onCancel={() => onCancelEdit?.()}
+      onKeyExit={() => { restoreFocus = true; }}
     />
     {@render meter()}
   {:else}
     <!-- The whole row body is the select target (click → select, double-click →
-         rename), so the meter area stays clickable. Only the .chip carries the
+         rename), so the meter area stays clickable. Only the .ch-face carries the
          button chrome; the meter sits below it, outside the visible face. The
          editor input can't live inside a <button>, so it replaces this body
          when editing. -->
@@ -231,8 +202,9 @@
       title={name}
       onclick={handleClick}
       ondblclick={startEdit}
+      onkeydown={onKeydown}
     >
-      <span class="chip">
+      <span class="ch-face">
         <span class="nm">{name}</span>
         {#if linked}
           <svg class="lock" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -252,7 +224,7 @@
     display: flex;
     flex-direction: column;
     /* Tight enough that the meter reads as this chip's, not the next row's. */
-    gap: 3px;
+    gap: 1px;
     width: 100%;
     padding: 0;
     color: var(--text);
@@ -260,11 +232,11 @@
     text-align: left;
   }
   /* The clickable row body: a button so the whole row (chip + meter) selects.
-     Bare of chrome -- the visible face is the .chip inside it. */
+     Bare of chrome -- the visible face is the .ch-face inside it. */
   .body {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 1px;
     width: 100%;
     background: none;
     border: none;
@@ -275,18 +247,19 @@
     font-family: inherit;
     cursor: pointer;
   }
-  /* The visible button face: name only; the meter lives below it. Heights are
-     budgeted so chip (24) + gap (4) + track (8) matches the old one-piece row. */
-  .chip {
-    position: relative;
-    display: block;
-    padding: 5px 7px;
+  /* The visible button face: name only; the meter lives below it. 20px chip +
+     1px gap + 6px meter. */
+  .ch-face {
+    display: flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 7px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     /* Per-channel button fill: the channel's own hue tints a left-anchored
        gradient (base at the left edge, fading right so it reads off the coloured
        spine beside it) over the neutral wash, plus a soft inset glow bleeding in
-       from that same edge -- the TabBar active-tab treatment, per channel. */
+       from that same edge -- the active-item treatment, per channel. */
     background:
       linear-gradient(to right,
         color-mix(in oklab, var(--ch-base) 20%, transparent),
@@ -296,9 +269,7 @@
     box-shadow: inset 12px 0 20px -14px color-mix(in oklab, var(--ch-glow) 45%, transparent);
     transition: background 100ms, border-color 100ms, box-shadow 100ms;
   }
-  /* Keep the name above the hatch overlay (::before, see below). */
-  .chip > * { position: relative; z-index: 1; }
-  .row:not(.selected) .body:hover:not(:disabled) .chip {
+  .row:not(.selected) .body:hover:not(:disabled) .ch-face {
     border-color: var(--border-hi);
     background:
       linear-gradient(to right,
@@ -308,33 +279,36 @@
       var(--wash-strong);
   }
   /* U-P3 policy B: the rail around this stays full-contrast when disconnected
-     (see ChannelRail's .rail-body.is-disabled); this is the single dim layer
+     (see ChannelList's .rail-body.is-disabled); this is the single dim layer
      on the control itself. */
   .body:disabled { opacity: var(--dim-disabled); cursor: default; }
-  .chip:has(.lock) { display: flex; align-items: center; gap: 4px; }
+  .ch-face:has(.lock) { gap: 4px; }
   .lock { flex: none; margin-left: auto; color: var(--text-dim); }
   .nm {
     min-width: 0;
-    font-size: 10px;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  /* Inline editor: replaces the .chip, so it takes the chip's height (24px)
-     via matching padding. A solid --bg backdrop keeps the text legible on a
-     selected row (accent fill) or a dim row, instead of inheriting either. */
-  .nm-input {
+  /* Inline editor: replaces the .ch-face, so it takes the chip's height. A solid
+     --bg backdrop keeps the text legible on a selected row (accent fill)
+     instead of inheriting it. */
+  .row :global(.nm-input) {
     display: block;
     width: 100%;
     box-sizing: border-box;
     color: var(--text);
     background: var(--bg);
     border: none;
-    border-radius: 4px;
-    padding: 6px 8px;
+    border-radius: var(--radius-s);
+    height: 20px;
+    padding: 0 8px;
     margin: 0;
-    font-family: inherit;
-    font-size: 10px;
+    font-family: var(--font-sans);
+    font-size: 11px;
     outline: none;
     box-shadow: inset 0 0 0 1px var(--accent);
   }
@@ -346,7 +320,7 @@
     gap: 1px;
     height: 6px;
     padding: 1px;
-    border-radius: 2px;
+    border-radius: var(--radius-xs);
     background: oklch(0% 0 0 / 0.5);
   }
   /* Each LED is flat -- no bevel/outline. Lit/off and the peak glow are derived
@@ -363,9 +337,9 @@
     --show: max(var(--on), var(--is-peak));
     background-color: color-mix(in oklab,
       var(--seg-c) calc(var(--show) * 100%),
-      color-mix(in oklab, var(--text) 9%, transparent));
+      var(--wash-strong));
     /* Held peak LED lifts with an outer glow; zero-width/transparent otherwise. */
-    box-shadow: 0 0 calc(var(--is-peak) * 5px)
+    box-shadow: 0 0 calc(var(--is-peak) * 2px)
       color-mix(in oklab, var(--seg-c) calc(var(--is-peak) * 100%), transparent);
     transition: background-color 45ms linear;
   }
@@ -373,70 +347,31 @@
   /* Selected: the channel's hue fills the button face; text flips to bg
      contrast. Drop the idle inner glow -- the solid fill already carries the
      colour. */
-  .row.selected .chip {
+  .row.selected .ch-face {
     background: var(--ch-base);
     border-color: var(--ch-base);
     box-shadow: none;
   }
   /* Linked peer of the selected channel: the selected fill at reduced strength. */
-  .row.linked:not(.selected) .chip {
+  .row.linked:not(.selected) .ch-face {
     background: color-mix(in oklab, var(--ch-base) 28%, var(--wash));
     border-color: color-mix(in oklab, var(--ch-base) 55%, var(--border));
     box-shadow: none;
   }
   /* Hover on the selected row brightens the accent rather than letting the
      generic hover paint a dark bg under the (dark) selected text. */
-  .row.selected .body:hover:not(:disabled) .chip {
+  .row.selected .body:hover:not(:disabled) .ch-face {
     background: color-mix(in oklab, var(--ch-base) 85%, var(--text));
     border-color: color-mix(in oklab, var(--ch-base) 85%, var(--text));
   }
   .row.selected .nm { color: var(--bg); font-weight: 600; }
 
-  /* Disabled/unused channels get a diagonal hatch (carried over from the old
-     MiniPin look) on the button face. It lives on a ::before overlay so it can
-     fade in/out — a gradient painted on `background` can't be transitioned. On
-     the dark unselected face the stripes are light; on the light accent fill
-     of a selected channel they flip dark so the hatch still reads — a
-     selected-but-disabled channel stays visibly disabled. */
-  .chip::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    opacity: 0;
-    background: repeating-linear-gradient(
-      135deg,
-      color-mix(in oklab, var(--text) 16%, transparent) 0 2px,
-      transparent 2px 6px
-    );
-    transition: opacity 120ms ease;
-  }
-  .row.dim .chip::before { opacity: 1; }
-  /* Off/unused channels: flatten to a faint neutral wash and kill the glow --
-     the colour cue belongs to live channels. */
-  .row.dim .chip { box-shadow: none; }
-  .row.dim:not(.selected) .chip {
-    background: var(--wash-faint);
-  }
-  .row.dim.selected .chip::before {
-    background: repeating-linear-gradient(
-      135deg,
-      color-mix(in oklab, var(--bg) 45%, transparent) 0 2px,
-      transparent 2px 6px
-    );
-  }
-  /* U-P3 policy B: the row stays clickable/selectable even when it maps to
-     an off output, so this isn't a disabled region -- no opacity on the
-     name label. The hatch overlay above is the sole "off" signal. */
-  .row.pulsate .chip { animation: row-pulse 2s ease-in-out infinite; }
+  .row.pulsate .ch-face { animation: row-pulse 2s ease-in-out infinite; }
   @keyframes row-pulse {
     0%, 100% { background: var(--wash); }
     50%      { background: color-mix(in oklab, var(--ch-base) 45%, transparent); }
   }
   @media (prefers-reduced-motion: reduce) {
-    .row.pulsate .chip { animation: none; background: color-mix(in oklab, var(--ch-base) 35%, transparent); }
-    .chip::before { transition: none; }
+    .row.pulsate .ch-face { animation: none; background: color-mix(in oklab, var(--ch-base) 35%, transparent); }
   }
 </style>

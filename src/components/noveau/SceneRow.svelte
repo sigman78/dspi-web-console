@@ -1,0 +1,162 @@
+<script lang="ts">
+  import { boundary, presetsDirty } from '@/state';
+  import { getSession } from '@/components/sessionContext';
+  import { loadPresetSlot, revertActivePreset } from '@/runtime';
+  import { saveActivePresetNamed } from '@/components/noveau/presets/saveActivePresetNamed';
+  import PresetIcon from '@/components/noveau/presets/PresetIcon.svelte';
+  import { noveauUi } from './noveauUi.svelte';
+  import { PresetStartupMode } from '@/protocol';
+  import { PRESET_SLOT_COUNT, type PresetSlot } from '@/domain';
+
+  const s = getSession();
+
+  const active = $derived(s.presets.active);
+  const dir = $derived(s.presets.directory);
+  const dirty = $derived(presetsDirty(s));
+  const busy = $derived(s.presets.busy);
+  const activeOccupied = $derived(active != null && (dir?.occupiedSlotsSet.has(active) ?? false));
+  const canRevert = $derived(active != null && activeOccupied && dirty);
+  const canSave = $derived(active != null && (dirty || !activeOccupied));
+  const startup = $derived(
+    dir != null && dir.startupMode === PresetStartupMode.Specified ? dir.defaultSlot : null,
+  );
+  const rawName = $derived(active == null ? '' : (s.presets.names[active] ?? ''));
+  const name = $derived(active == null ? '—' : rawName.length ? rawName : '[unnamed]');
+
+  const slots = Array.from({ length: PRESET_SLOT_COUNT }, (_, i) => i as PresetSlot);
+
+  function onSlot(slot: PresetSlot): void {
+    if (busy || slot === active) return;
+    void loadPresetSlot(s, slot);
+  }
+  function onSave(): void {
+    if (busy) return;
+    void saveActivePresetNamed(s);
+  }
+  function onRevert(): void {
+    if (busy) return;
+    void revertActivePreset(s);
+  }
+</script>
+
+<div class="scenes" role="group" aria-label="Presets">
+  {#each slots as slot (slot)}
+    {@const occupied = dir?.occupiedSlotsSet.has(slot) ?? false}
+    <button
+      type="button"
+      class="sc"
+      class:act={slot === active}
+      class:empty={!occupied && slot !== active}
+      aria-pressed={slot === active}
+      class:startup={slot === startup}
+      class:unsaved={slot === active && dirty}
+      title={`${slot} ${s.presets.names[slot] || `Preset ${slot}`}${slot === startup ? ' (startup)' : ''}${slot === active && dirty ? ' · unsaved changes' : ''}`}
+      aria-label={`${slot}${s.presets.names[slot] ? ' ' + s.presets.names[slot] : ''}${slot === startup ? ' (startup)' : ''}${slot === active && dirty ? ' · unsaved changes' : ''}`}
+      disabled={boundary.pending != null}
+      onclick={() => onSlot(slot)}
+    >
+      {slot}
+    </button>
+  {/each}
+</div>
+<div class="sname">
+  <button
+    type="button"
+    class="field"
+    class:open={noveauUi.presetsOpen}
+    data-presets-toggle
+    aria-label="Manage presets"
+    aria-expanded={noveauUi.presetsOpen}
+    aria-haspopup="dialog"
+    onclick={() => { noveauUi.presetsOpen = !noveauUi.presetsOpen; }}
+  >
+    <span class="nm" class:unnamed={rawName.length === 0}>{name}</span>
+    <PresetIcon icon="edit" />
+  </button>
+  {#if canSave}<button type="button" class="icon-toggle accent" class:unsaved={dirty} aria-label="Save preset" title="Save preset" onclick={onSave}><PresetIcon icon="save" /></button>{/if}
+  {#if canRevert}<button type="button" class="icon-toggle" aria-label="Revert preset" title="Revert preset" onclick={onRevert}><PresetIcon icon="revert" /></button>{/if}
+</div>
+
+<style>
+  .scenes { display: grid; grid-template-columns: repeat(5, 1fr); grid-auto-rows: 22px; gap: 2px; }
+  .sc {
+    position: relative;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-s);
+    background: var(--wash-strong);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .sc:hover:not(.act) { color: var(--text); border-color: var(--border-hi); }
+  .sc.empty {
+    background: none;
+    border: 1px dashed var(--border-hi);
+    color: var(--text-faint);
+  }
+  .sc.act {
+    background: var(--accent);
+    color: var(--bg);
+    font-weight: 700;
+    cursor: default;
+  }
+  .sc.startup::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    border-style: solid;
+    border-width: 0 9px 9px 0;
+    border-color: transparent var(--text-dim) transparent transparent;
+    border-top-right-radius: var(--radius-s);
+  }
+  .sc.startup.empty::before { border-right-color: var(--text-faint); }
+  .sc.startup:hover:not(.act)::before { border-right-color: var(--text); }
+  .sc.startup.act::before { border-right-color: color-mix(in oklab, var(--bg) 70%, white); }
+  .sc.act.unsaved {
+    background: color-mix(in oklab, var(--accent) 70%, white);
+    animation: sc-pulse 2.4s ease-in-out infinite alternate;
+  }
+  @keyframes sc-pulse {
+    from { background: var(--accent); }
+    to { background: color-mix(in oklab, var(--accent) 70%, white); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sc.act.unsaved { animation: none; }
+  }
+  .icon-toggle.unsaved { color: var(--warn); }
+  .sname {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 22px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .field {
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 6px 0 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    background: var(--wash-faint);
+    color: var(--text-dim);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .field:hover { border-color: var(--border-hi); color: var(--text); }
+  .field.open { border-color: var(--accent); color: var(--text); }
+  .field :global(svg) { flex: none; margin-left: auto; }
+  .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nm.unnamed { color: var(--text-dim); }
+</style>

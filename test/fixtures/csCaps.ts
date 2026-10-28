@@ -2,12 +2,8 @@
 // the device at connect; see GetCsCaps). Shared across the Control Surfaces
 // test suites -- only the nouns exercised by at least one suite are filled
 // in with real values; the rest are inert placeholders (disabledNoun).
-import {
-  CsKind,
-  CS_UNIT_NONE, CS_UNIT_DB, CS_UNIT_HZ, CS_UNIT_Q,
-  CS_TARGET_NONE, CS_TARGET_INPUT_CH, CS_TARGET_OUTPUT_CH, CS_TARGET_DSP_BAND,
-  type CsCaps, type CsNounCaps,
-} from '@/domain';
+import * as Domain from '@/domain';
+import type { CsCaps, CsNounCaps } from '@/domain';
 
 export const csCapsV3: CsCaps = {
   capsVersion: 3,
@@ -29,8 +25,8 @@ export const csCapsV3: CsCaps = {
 };
 
 export const disabledNoun: CsNounCaps = {
-  kind: CsKind.Bool, enumCount: 0, actions: 0, minQ8: 0, maxQ8: 0,
-  unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0,
+  kind: Domain.CsKind.Bool, enumCount: 0, actions: 0, minQ8: 0, maxQ8: 0,
+  unit: Domain.CS_UNIT_NONE, targetKind: Domain.CS_TARGET_NONE, targetCount: 0, dflags: 0,
 };
 
 // Real wire-indexed noun caps (0..22), the fullest caps-v3 table exercised
@@ -38,34 +34,34 @@ export const disabledNoun: CsNounCaps = {
 // extend it (groups, macros, display nouns); other suites pick individual
 // entries out of this table by CsNoun index rather than retyping them.
 export const csNouns: CsNounCaps[] = [
-  { kind: CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: -15360, maxQ8: 0,
-    unit: CS_UNIT_DB, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0 },       // 0  USER_VOLUME
-  { kind: CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: -32512, maxQ8: 0,
-    unit: CS_UNIT_DB, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0 },       // 1  MASTER_VOLUME
-  { kind: CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
-    unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0 },     // 2  USER_MUTE
-  { kind: CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
-    unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0 },     // 3  LOUDNESS
-  { kind: CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
-    unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0 },     // 4  CROSSFEED
-  { kind: CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
-    unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0 },     // 5  LEVELLER
-  { kind: CsKind.Enum, enumCount: 10, actions: 0x012E, minQ8: 0, maxQ8: 0,
-    unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0 },     // 6  PRESET
-  { kind: CsKind.Enum, enumCount: 3, actions: 0x012E, minQ8: 0, maxQ8: 0,
-    unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0 },     // 7  INPUT_SOURCE
-  { kind: CsKind.Bool, enumCount: 0, actions: 0x0180, minQ8: 0, maxQ8: 0,
-    unit: CS_UNIT_NONE, targetKind: CS_TARGET_NONE, targetCount: 0, dflags: 0 },     // 8  CLIP
+  { kind: Domain.CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: -15360, maxQ8: 0,
+    unit: Domain.CS_UNIT_DB, targetKind: Domain.CS_TARGET_NONE, targetCount: 0, dflags: 0 },       // 0  USER_VOLUME
+  { kind: Domain.CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: -32512, maxQ8: 0,
+    unit: Domain.CS_UNIT_DB, targetKind: Domain.CS_TARGET_NONE, targetCount: 0, dflags: 0 },       // 1  MASTER_VOLUME
+  { kind: Domain.CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
+    unit: Domain.CS_UNIT_NONE, targetKind: Domain.CS_TARGET_NONE, targetCount: 0, dflags: 0 },     // 2  USER_MUTE
+  { kind: Domain.CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
+    unit: Domain.CS_UNIT_NONE, targetKind: Domain.CS_TARGET_NONE, targetCount: 0, dflags: 0 },     // 3  LOUDNESS
+  { kind: Domain.CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
+    unit: Domain.CS_UNIT_NONE, targetKind: Domain.CS_TARGET_NONE, targetCount: 0, dflags: 0 },     // 4  CROSSFEED
+  { kind: Domain.CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
+    unit: Domain.CS_UNIT_NONE, targetKind: Domain.CS_TARGET_NONE, targetCount: 0, dflags: 0 },     // 5  LEVELLER
+  { kind: Domain.CsKind.Enum, enumCount: 10, actions: 0x012E, minQ8: 0, maxQ8: 0,
+    unit: Domain.CS_UNIT_NONE, targetKind: Domain.CS_TARGET_NONE, targetCount: 0, dflags: 0 },     // 6  PRESET
+  { kind: Domain.CsKind.Enum, enumCount: 3, actions: 0x012E, minQ8: 0, maxQ8: 0,
+    unit: Domain.CS_UNIT_NONE, targetKind: Domain.CS_TARGET_NONE, targetCount: 0, dflags: 0 },     // 7  INPUT_SOURCE
+  { kind: Domain.CsKind.Bool, enumCount: 0, actions: 0x0180, minQ8: 0, maxQ8: 0,
+    unit: Domain.CS_UNIT_NONE, targetKind: Domain.CS_TARGET_NONE, targetCount: 0, dflags: 0 },     // 8  CLIP
   ...Array(7).fill(disabledNoun),                                                    // 9..15 (unused here)
-  { kind: CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: -6144, maxQ8: 6144,
-    unit: CS_UNIT_DB, targetKind: CS_TARGET_INPUT_CH, targetCount: 2, dflags: 0 },   // 16 PREAMP
+  { kind: Domain.CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: -6144, maxQ8: 6144,
+    unit: Domain.CS_UNIT_DB, targetKind: Domain.CS_TARGET_INPUT_CH, targetCount: 2, dflags: 0 },   // 16 PREAMP
   disabledNoun,                                                                      // 17 (unused here)
-  { kind: CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
-    unit: CS_UNIT_NONE, targetKind: CS_TARGET_OUTPUT_CH, targetCount: 3, dflags: 0 }, // 18 OUTPUT_MUTE
+  { kind: Domain.CsKind.Bool, enumCount: 0, actions: 0x0370, minQ8: 0, maxQ8: 0,
+    unit: Domain.CS_UNIT_NONE, targetKind: Domain.CS_TARGET_OUTPUT_CH, targetCount: 3, dflags: 0 }, // 18 OUTPUT_MUTE
   disabledNoun,                                                                      // 19 (unused here)
-  { kind: CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: 20, maxQ8: 20000,
-    unit: CS_UNIT_HZ, targetKind: CS_TARGET_DSP_BAND, targetCount: 7, dflags: 0 },   // 20 FILTER_FREQ
+  { kind: Domain.CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: 20, maxQ8: 20000,
+    unit: Domain.CS_UNIT_HZ, targetKind: Domain.CS_TARGET_DSP_BAND, targetCount: 7, dflags: 0 },   // 20 FILTER_FREQ
   disabledNoun,                                                                      // 21 (unused here)
-  { kind: CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: 26, maxQ8: 2560,
-    unit: CS_UNIT_Q, targetKind: CS_TARGET_DSP_BAND, targetCount: 7, dflags: 0 },    // 22 FILTER_Q
+  { kind: Domain.CsKind.Continuous, enumCount: 0, actions: 0x0C2F, minQ8: 26, maxQ8: 2560,
+    unit: Domain.CS_UNIT_Q, targetKind: Domain.CS_TARGET_DSP_BAND, targetCount: 7, dflags: 0 },    // 22 FILTER_Q
 ];

@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "test:layout": "playwright test",
     "lint": "eslint \"{src,test}/**/*.{ts,svelte}\" --max-warnings 0",
     "lint:fix": "eslint \"{src,test}/**/*.{ts,svelte}\" --fix",
     "lint:comments": "uvx unwaffle@0.15.0 check src test scripts --fail-on error",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/svelte": "^5.3.1",

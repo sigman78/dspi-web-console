@@ -45,6 +45,20 @@ describe('ChannelRow', () => {
     expect(onStartEdit).toHaveBeenCalledOnce();
   });
 
+  test('F2 starts editing; Enter does only on an already-selected row', async () => {
+    const onStartEdit = vi.fn();
+    const onclick = vi.fn();
+    const { rerender } = render(ChannelRow, { props: { ...base, onStartEdit, onclick } });
+    const btn = screen.getByRole('button', { name: 'Front L' });
+    await fireEvent.keyDown(btn, { key: 'F2' });
+    expect(onStartEdit).toHaveBeenCalledOnce();
+    await fireEvent.keyDown(btn, { key: 'Enter' });
+    expect(onStartEdit).toHaveBeenCalledOnce();
+    await rerender({ ...base, onStartEdit, onclick, selected: true });
+    await fireEvent.keyDown(btn, { key: 'Enter' });
+    expect(onStartEdit).toHaveBeenCalledTimes(2);
+  });
+
   test('double-click on a disabled row does not start editing', async () => {
     const onStartEdit = vi.fn();
     render(ChannelRow, { props: { ...base, disabled: true, onStartEdit } });
@@ -66,55 +80,6 @@ describe('ChannelRow', () => {
     await fireEvent.input(input, { target: { value: 'Kick' } });
     await fireEvent.keyDown(input, { key: 'Enter' });
     expect(onCommitName).toHaveBeenCalledExactlyOnceWith('Kick');
-  });
-
-  test('Escape cancels without committing', async () => {
-    const onCommitName = vi.fn();
-    const onCancelEdit = vi.fn();
-    render(ChannelRow, { props: { ...base, editing: true, onCommitName, onCancelEdit } });
-    const input = screen.getByRole('textbox');
-    await fireEvent.input(input, { target: { value: 'Kick' } });
-    await fireEvent.keyDown(input, { key: 'Escape' });
-    expect(onCancelEdit).toHaveBeenCalledOnce();
-    expect(onCommitName).not.toHaveBeenCalled();
-  });
-
-  test('blur commits the current value', async () => {
-    const onCommitName = vi.fn();
-    render(ChannelRow, { props: { ...base, editing: true, onCommitName } });
-    const input = screen.getByRole('textbox');
-    await fireEvent.input(input, { target: { value: 'Snare' } });
-    await fireEvent.blur(input);
-    expect(onCommitName).toHaveBeenCalledExactlyOnceWith('Snare');
-  });
-
-  test('Enter then a trailing blur commits only once', async () => {
-    const onCommitName = vi.fn();
-    render(ChannelRow, { props: { ...base, editing: true, onCommitName } });
-    const input = screen.getByRole('textbox');
-    await fireEvent.input(input, { target: { value: 'Hat' } });
-    await fireEvent.keyDown(input, { key: 'Enter' });
-    await fireEvent.blur(input);
-    expect(onCommitName).toHaveBeenCalledExactlyOnceWith('Hat');
-  });
-
-  test('Escape then a trailing blur does not commit', async () => {
-    const onCommitName = vi.fn();
-    const onCancelEdit = vi.fn();
-    render(ChannelRow, { props: { ...base, editing: true, onCommitName, onCancelEdit } });
-    const input = screen.getByRole('textbox');
-    await fireEvent.keyDown(input, { key: 'Escape' });
-    await fireEvent.blur(input);
-    expect(onCommitName).not.toHaveBeenCalled();
-  });
-
-  test('re-rendering while editing does not clobber the typed value', async () => {
-    const { rerender } = render(ChannelRow, { props: { ...base, editing: true } });
-    const input = screen.getByRole('textbox') as HTMLInputElement;
-    await fireEvent.input(input, { target: { value: 'Bass' } });
-    // A telemetry tick (new levelDb) or an optimistic name change re-renders the row.
-    await rerender({ ...base, editing: true, levelDb: -3, name: 'Front Left' });
-    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('Bass');
   });
 
   test('Enter returns focus to the row button on exit', async () => {

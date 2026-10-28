@@ -1,20 +1,39 @@
 <script lang="ts">
-  import {
-    sessionRecords, activeRecord, adoptFailures, adoptionInProgress, clearAdoptFailure,
-    type ConnId, type DeviceRecord, type AdoptFailure,
-  } from '@/state';
-  import { activateSession, connectRequested, webUsbUnsupportedReason } from '@/runtime';
+  import * as State from '@/state';
+  import type { ConnId, DeviceRecord, AdoptFailure } from '@/state';
+  import { switchSession, connectRequested, webUsbUnsupportedReason } from '@/runtime';
+  import { dismiss } from './dismiss';
+
+  type Entry =
+    | { kind: 'device'; id: ConnId; rec: DeviceRecord }
+    | { kind: 'badge'; id: string; failure: AdoptFailure };
+
+  // Three rows overflow the channel rail at the 1440x790 floor with every output enabled.
+  const MAX_VISIBLE = 2;
 
   // Guards a switch in flight so a second click can't re-enter activateSession
   // for a different target while the first switch's flush/reconcile is still
   // awaiting.
   let switching = $state(false);
 
-  const records = $derived(sessionRecords());
-  const failures = $derived(adoptFailures());
-  const activeId = $derived(activeRecord()?.id ?? null);
+  const records = $derived(State.sessionRecords());
+  const failures = $derived(State.adoptFailures());
+  const activeId = $derived(State.activeRecord()?.id ?? null);
   const unsupported = $derived(webUsbUnsupportedReason() !== null);
   const empty = $derived(records.size === 0 && failures.size === 0);
+  let moreOpen = $state(false);
+
+  // Active device first, then failure badges, then the rest, so neither the
+  // active row nor a failure is ever pushed behind the overflow.
+  const entries = $derived<Entry[]>([
+    ...[...records.values()].filter((rec) => rec.id === activeId).map((rec): Entry => ({ kind: 'device', id: rec.id, rec })),
+    ...[...failures.values()].map((failure): Entry => ({ kind: 'badge', id: failure.serial, failure })),
+    ...[...records.values()].filter((rec) => rec.id !== activeId).map((rec): Entry => ({ kind: 'device', id: rec.id, rec })),
+  ]);
+  const visible = $derived(entries.slice(0, MAX_VISIBLE));
+  const hidden = $derived(entries.slice(MAX_VISIBLE));
+  const hiddenFailed = $derived(hidden.some((e) => e.kind === 'badge'));
+  $effect(() => { if (hidden.length === 0) moreOpen = false; });
 
   function rowTitle(rec: DeviceRecord): string {
     return `${rec.session.info.serial} · ${rec.session.hardware.name}`;
@@ -28,17 +47,17 @@
   }
 
   async function onRowClick(id: ConnId, active: boolean): Promise<void> {
-    if (active || switching || adoptionInProgress()) return;
+    if (active || switching || State.adoptionInProgress()) return;
     switching = true;
     try {
-      await activateSession(id);
+      await switchSession(id);
     } finally {
       switching = false;
     }
   }
 
   async function onAdd(): Promise<void> {
-    if (switching || adoptionInProgress()) return;
+    if (switching || State.adoptionInProgress()) return;
     try {
       await connectRequested();
     } catch {
@@ -47,50 +66,75 @@
   }
 </script>
 
+{#snippet row(entry: Entry)}
+  {#if entry.kind === 'device'}
+    {@const active = entry.id === activeId}
+    <button
+      class="row device"
+      class:active
+      aria-pressed={active}
+      disabled={!active && (switching || State.adoptionInProgress())}
+      title={rowTitle(entry.rec)}
+      onclick={() => { moreOpen = false; void onRowClick(entry.id, active); }}
+    >
+      <span class="serial">{entry.rec.session.info.serial}</span>
+      <span class="hw">{entry.rec.session.hardware.name}</span>
+    </button>
+  {:else}
+    <button
+      class="row badge"
+      title={badgeTitle(entry.failure)}
+      aria-label={`Adoption failed: ${entry.failure.serial} — dismiss`}
+      onclick={() => State.clearAdoptFailure(entry.failure.serial)}
+    >
+      <span class="serial">{entry.failure.serial}</span>
+      <span class="hw">FAILED</span>
+    </button>
+  {/if}
+{/snippet}
+
 {#if !empty}
   <div class="devices" role="group" aria-label="Devices">
     <div class="head">
       <div class="microlbl">DEVICES</div>
-      {#if !unsupported}
-        <button
-          class="add"
-          title="Add device…"
-          aria-label="Add device"
-          disabled={switching || adoptionInProgress()}
-          onclick={onAdd}
-        >+</button>
-      {/if}
+      <div class="tools">
+        {#if hidden.length > 0}
+          <button
+            class="more"
+            class:warn={hiddenFailed}
+            title={`${hidden.length} more`}
+            aria-label={`${hidden.length} more devices${hiddenFailed ? ', including failed' : ''}`}
+            aria-expanded={moreOpen}
+            onclick={() => { moreOpen = !moreOpen; }}
+          >+{hidden.length}</button>
+        {/if}
+        {#if !unsupported}
+          <button
+            class="add"
+            title="Add device…"
+            aria-label="Add device"
+            disabled={switching || State.adoptionInProgress()}
+            onclick={onAdd}
+          >+</button>
+        {/if}
+      </div>
     </div>
-    {#each records.values() as rec (rec.id)}
-      {@const active = rec.id === activeId}
-      <button
-        class="row device"
-        class:active
-        aria-pressed={active}
-        disabled={!active && (switching || adoptionInProgress())}
-        title={rowTitle(rec)}
-        onclick={() => onRowClick(rec.id, active)}
-      >
-        <span class="serial">{rec.session.info.serial}</span>
-        <span class="hw">{rec.session.hardware.name}</span>
-      </button>
+    {#each visible as entry (`${entry.kind}:${entry.id}`)}
+      {@render row(entry)}
     {/each}
-    {#each failures.values() as failure (failure.serial)}
-      <button
-        class="row badge"
-        title={badgeTitle(failure)}
-        aria-label={`Adoption failed: ${failure.serial} — dismiss`}
-        onclick={() => clearAdoptFailure(failure.serial)}
-      >
-        <span class="serial">{failure.serial}</span>
-        <span class="hw">FAILED</span>
-      </button>
-    {/each}
+    {#if moreOpen && hidden.length > 0}
+      <div class="pop" role="dialog" aria-label="More devices" use:dismiss={{ onDismiss: () => { moreOpen = false; }, ignore: '.more' }}>
+        {#each hidden as entry (`${entry.kind}:${entry.id}`)}
+          {@render row(entry)}
+        {/each}
+      </div>
+    {/if}
   </div>
 {/if}
 
 <style>
   .devices {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -100,8 +144,9 @@
     align-items: center;
     justify-content: space-between;
   }
-  .add {
-    width: 16px;
+  .tools { display: flex; align-items: center; gap: 4px; }
+  .add, .more {
+    min-width: 16px;
     height: 16px;
     display: inline-flex;
     align-items: center;
@@ -116,8 +161,29 @@
     color: var(--text-dim);
     cursor: pointer;
   }
-  .add:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
+  .more { padding: 0 4px; font-size: 9px; font-weight: 700; }
+  .more.warn {
+    color: var(--warn);
+    border-color: color-mix(in oklab, var(--warn) var(--tint-edge), var(--border));
+    background: color-mix(in oklab, var(--warn) var(--tint), transparent);
+  }
+  .add:hover:not(:disabled), .more:hover { color: var(--text); border-color: var(--border-hi); }
   .add:disabled { opacity: var(--dim-disabled); cursor: default; }
+  .pop {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: var(--z-flyout);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    border-radius: var(--radius);
+    background: var(--panel-solid);
+    border: 1px solid var(--border-hi);
+    box-shadow: var(--shadow-flyout);
+  }
 
   .row {
     display: flex;
@@ -156,7 +222,7 @@
 
   .row.device.active {
     --tone: var(--accent);
-    background: color-mix(in oklab, var(--tone) 14%, transparent);
+    background: color-mix(in oklab, var(--tone) var(--tint), transparent);
     border-color: color-mix(in oklab, var(--tone) 50%, var(--border));
     color: var(--tone);
   }
@@ -164,14 +230,14 @@
 
   .row.badge {
     --tone: var(--err);
-    background: color-mix(in oklab, var(--tone) 10%, transparent);
+    background: color-mix(in oklab, var(--tone) var(--tint), transparent);
     border-color: color-mix(in oklab, var(--tone) 50%, var(--border));
     color: var(--tone);
   }
   .row.badge .hw { color: color-mix(in oklab, var(--tone) 70%, var(--text-faint)); }
   .row.badge:hover:not(:disabled) {
     color: var(--tone);
-    background: color-mix(in oklab, var(--tone) 18%, transparent);
+    background: color-mix(in oklab, var(--tone) var(--tint-strong), transparent);
     border-color: var(--tone);
   }
 </style>
