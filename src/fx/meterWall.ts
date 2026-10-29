@@ -47,12 +47,12 @@ const CAP_CHROMA = 0.04;
 /** The topmost lit block is lifted toward white by this much. */
 const TIP_FILL = 'rgba(255,255,255,0.16)';
 
-// Label blocks under the floor line, drawn above the reflection.
+// Labels under the floor line, drawn above the reflection.
 const BLOCK_TOP = 4;
 const BLOCK_H = 17;
 const BLOCK_GAP = 2;
-const BLOCK_FILL = 'rgba(0,0,0,0.6)';
-const BLOCK_RADIUS = 3;
+const TEXT_OUTLINE = 'rgba(0,0,0,0.9)';
+const TEXT_OUTLINE_W = 3;
 const BLOCK_PAD = 6;
 const BLOCK_SPACE = 3;
 const BLOCK_FONT = 11;
@@ -252,7 +252,7 @@ export class MeterWall implements Wall {
     return c;
   }
 
-  /** Name and group blocks as sprites; a name block grows past its slab, up to the neighbour spacing, to fit its text. */
+  /** Name and group labels as sprites; a name label grows past its slab, up to the neighbour spacing, to fit its text. */
   private buildLabels(p: FxPalette): void {
     const dpr = this.dpr;
     const n = this.channels.length;
@@ -268,38 +268,34 @@ export class MeterWall implements Wall {
       const next = i < n - 1 ? this.cx(i + 1) - this.cx(i) : Infinity;
       const most = Math.max(sw, Math.min(prev, next, sw * 3) - BLOCK_SPACE);
       const w = Math.round(Math.min(most, Math.max(sw, m.measureText(ch.label).width + BLOCK_PAD)) * dpr) / dpr;
-      this.nameBlocks.push(this.labelBlock(ch.label, w, col, p));
+      this.nameBlocks.push(this.labelSprite(ch.label, w, col, p));
       const first = i === 0 || this.channels[i - 1].group !== ch.group;
       const paired = i < n - 1 && this.channels[i + 1].group === ch.group;
       if (ch.groupLabel && first && paired) {
         const span = this.lefts[i + 1] + sw - this.lefts[i];
-        this.groupBlocks.push(this.labelBlock(ch.groupLabel, span, col, p));
+        this.groupBlocks.push(this.labelSprite(ch.groupLabel, span, col, p));
       } else {
         this.groupBlocks.push(null);
       }
     }
   }
 
-  /** A dark rounded block `w` css px wide holding `text` in `color`, shortened to fit. */
-  private labelBlock(text: string, w: number, color: string, p: FxPalette): HTMLCanvasElement {
+  /** `text` in `color` with a black outline for contrast, `w` css px wide, shortened to fit. */
+  private labelSprite(text: string, w: number, color: string, p: FxPalette): HTMLCanvasElement {
     const dpr = this.dpr;
     const [c, x] = createCanvas(w * dpr, BLOCK_H * dpr, p.space);
     x.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const r = Math.min(BLOCK_RADIUS, w / 2);
-    x.fillStyle = BLOCK_FILL;
-    x.beginPath();
-    x.moveTo(r, 0);
-    x.arcTo(w, 0, w, BLOCK_H, r);
-    x.arcTo(w, BLOCK_H, 0, BLOCK_H, r);
-    x.arcTo(0, BLOCK_H, 0, 0, r);
-    x.arcTo(0, 0, w, 0, r);
-    x.closePath();
-    x.fill();
     x.font = `${BLOCK_FONT}px ${p.font}`;
     x.textAlign = 'center';
     x.textBaseline = 'middle';
+    const t = truncate(x, text, w - BLOCK_PAD);
+    const ty = BLOCK_H / 2 + 0.5;
+    x.lineJoin = 'round';
+    x.lineWidth = TEXT_OUTLINE_W;
+    x.strokeStyle = TEXT_OUTLINE;
+    x.strokeText(t, w / 2, ty);
     x.fillStyle = color;
-    x.fillText(truncate(x, text, w - BLOCK_PAD), w / 2, BLOCK_H / 2 + 0.5);
+    x.fillText(t, w / 2, ty);
     return c;
   }
 
@@ -329,7 +325,7 @@ export class MeterWall implements Wall {
     c.globalAlpha = 1;
   }
 
-  /** Name blocks under the floor line; drawn after the reflection so it cannot tint them. */
+  /** Name labels under the floor line; drawn after the reflection so it cannot tint them. */
   drawLabels(ctx: CanvasRenderingContext2D, alpha: number): void {
     const y = this.floorY + BLOCK_TOP;
     ctx.globalCompositeOperation = 'source-over';
