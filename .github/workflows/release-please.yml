@@ -3,13 +3,17 @@ name: Release Please
 # Opt-in releases: run this workflow manually when you want to cut a release.
 # release-please opens or refreshes a release PR against `master` that bumps the
 # version and updates CHANGELOG.md from Conventional Commit messages since the
-# last release.
+# last release. To force a version, push a commit with a `Release-As: X.Y.Z`
+# footer to master first.
 #
 # Merging that release PR back into `master` changes
-# .release-please-manifest.json, which triggers this workflow on push. That run
-# tags vX.Y.Z, publishes a GitHub Release, and advances `release` to the tagged
-# commit. The version bump in package.json flows into the UI stamp automatically
-# (vite injects pkg.version as __APP_VERSION__).
+# .release-please-manifest.json, which triggers this workflow on push. Only that
+# run tags: it verifies the merge commit, tags vX.Y.Z, publishes a GitHub
+# Release, and advances `release` to the tagged commit. If verify fails, nothing
+# is tagged: re-run the job for a flake; otherwise fix master, drop the
+# `autorelease: pending` label from the merged release PR and dispatch again.
+# The version bump in package.json flows into the UI stamp automatically (vite
+# injects pkg.version as __APP_VERSION__).
 #
 # Cloudflare Workers Builds watches `release` and deploys it to dspi-ctrl.fyi.
 # GitHub Pages (deploy.yml, after CI passes on master) stays the rolling test
@@ -36,7 +40,19 @@ concurrency:
   group: release-please
 
 jobs:
+  verify:
+    # Dispatches picked from another branch in the UI would verify that branch
+    # while release-please acts on master.
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/verify
+
   release-please:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@v4
@@ -44,6 +60,9 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           target-branch: master
+          # Manual runs only open/refresh the PR. Tagging on a dispatch would
+          # tag the pending release commit, which may not be the SHA verified.
+          skip-github-release: ${{ github.event_name == 'workflow_dispatch' }}
 
       # Only when a release was actually cut this run: point `release` at the
       # tagged commit so Cloudflare deploys it. PATCH updates the branch; if it

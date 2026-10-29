@@ -9,39 +9,19 @@ on:
 permissions:
   contents: read
 
+# Superseded PR pushes are cancelled; a running master run is never cancelled
+# (only a still-queued one, when a newer push supersedes it).
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
-    # Squash-merged PRs (committed by GitHub, title carries "(#NN)") were
-    # already verified by the pull_request run; the push trigger only covers
-    # direct pushes. The committer check keeps locally-pushed commits that
-    # merely mention "(#123)" (e.g. reverts of squash merges) verified.
-    if: >-
-      github.event_name != 'push' ||
-      !(contains(github.event.head_commit.message, '(#') &&
-        github.event.head_commit.committer.email == 'noreply@github.com')
+    # Release PRs are opened with GITHUB_TOKEN, so their runs need approval and
+    # never report; skip them. The merge commit is verified on master and again
+    # by Release Please before tagging.
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-
-      - run: npm ci
-
-      - name: Typecheck (svelte-check + tsc)
-        run: npm run check
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Test (unit + integration, no hardware)
-        run: npm test
-
-      - name: Build
-        run: npm run build
+      - uses: ./.github/actions/verify
