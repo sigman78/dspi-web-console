@@ -52,6 +52,13 @@ describe('loadSettings', () => {
     expect(Settings.loadSettings().roomHue).toBeNull();
   });
 
+  test('falls back to the spectrum room mode for an unknown stored value', () => {
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, roomMode: 'vu-out' }));
+    expect(Settings.loadSettings().roomMode).toBe('vu-out');
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, roomMode: 'scope' }));
+    expect(Settings.loadSettings().roomMode).toBe('spectrum');
+  });
+
   test('falls back to the legacy eqTarget key when selectedChannel is absent', () => {
     localStorage.setItem(V1_KEY, JSON.stringify({
       version: 1,

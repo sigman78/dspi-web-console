@@ -28,6 +28,7 @@ export * from './controlInterfaces';
 export * from './controlSurfaces';
 export * from './response';
 export * from './rta';
+export * from './roomMeters';
 
 // clamp.ts is intentionally NOT re-exported here; import it directly at the
 // action boundary that owns the clamp gate.

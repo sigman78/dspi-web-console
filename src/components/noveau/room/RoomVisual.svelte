@@ -5,6 +5,7 @@
   import { getSession } from '@/components/sessionContext';
   import * as Fx from '@/fx';
   import { settings } from '@/state/settings.svelte';
+  import RoomModeSwitch from './RoomModeSwitch.svelte';
 
   const s = getSession();
   const SYNC_MS = 250;
@@ -154,21 +155,24 @@
     <div class="preset" class:unnamed={!named}>{presetName}</div>
     <div class="meta">{source} · {rate}</div>
   </div>
-  <div class="hue" style:--hue={hue} style:--wheel={WHEEL}>
-    <input
-      type="range"
-      min="0"
-      max="360"
-      step="1"
-      value={hue}
-      aria-label="Scene hue"
-      title="Scene hue (double-click to reset)"
-      oninput={(e) => setHue(e.currentTarget.valueAsNumber)}
-      onchange={(e) => commitHue(e.currentTarget.valueAsNumber)}
-      ondblclick={resetHue}
-    />
+  <div class="side">
+    <div class="hue" style:--hue={hue} style:--wheel={WHEEL}>
+      <input
+        type="range"
+        min="0"
+        max="360"
+        step="1"
+        value={hue}
+        aria-label="Scene hue"
+        title="Scene hue (double-click to reset)"
+        oninput={(e) => setHue(e.currentTarget.valueAsNumber)}
+        onchange={(e) => commitHue(e.currentTarget.valueAsNumber)}
+        ondblclick={resetHue}
+      />
+    </div>
+    <RoomModeSwitch mode={settings.roomMode} onchange={(m) => (settings.roomMode = m)} />
   </div>
-  {#if !usingRta && (!settling || tele.rtaAvailability === 'unavailable')}
+  {#if settings.roomMode === 'spectrum' && !usingRta && (!settling || tele.rtaAvailability === 'unavailable')}
     <div class="tag">SIMULATED SPECTRUM</div>
   {/if}
 </div>
@@ -195,18 +199,23 @@
   }
   .preset.unnamed { color: var(--text-faint); font-weight: 500; }
   .meta { margin-top: 4px; font-family: var(--font-mono); font-size: var(--fs-m); color: var(--text-faint); }
-  .hue {
+  .side {
     position: absolute;
     right: 28px;
     top: 50%;
-    height: clamp(240px, 58%, calc(100% - 140px));
+    height: clamp(min(330px, 100% - 16px), 72%, calc(100% - 140px));
     transform: translateY(-50%);
-    opacity: 0.25;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+    opacity: 0.4;
     transition: opacity 0.15s ease;
   }
-  .hue:hover,
-  .hue:has(input:focus-visible),
-  .hue:has(input:active) { opacity: 1; }
+  .side:hover,
+  .side:has(:focus-visible),
+  .side:has(:active) { opacity: 1; }
+  .hue { flex: 1; min-height: 0; }
   .hue input {
     appearance: none;
     -webkit-appearance: none;

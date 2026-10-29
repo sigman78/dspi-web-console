@@ -4,6 +4,9 @@ import { inputIndexOf, type ChannelId, type ChannelModel, type OutputModel } fro
 // stages the channel-rail volume control currently drives (see VolumeBlock.svelte).
 export type VolumeAxis = 'user' | 'master';
 
+// ROOM scene content: onboard spectrum, or input / output level meters.
+export type RoomMode = 'spectrum' | 'vu-in' | 'vu-out';
+
 export interface Settings {
   version: 1;
   selectedChannel: ChannelId | null;
@@ -15,6 +18,7 @@ export interface Settings {
   seenVersion: string | null;
   // ROOM scene hue in degrees; null follows the accent's own hue.
   roomHue: number | null;
+  roomMode: RoomMode;
 }
 
 const STORAGE_KEY = 'dspi-console-web/settings/v1';
@@ -28,6 +32,7 @@ function defaults(): Settings {
     volumeAxis: 'user',
     seenVersion: null,
     roomHue: null,
+    roomMode: 'spectrum',
   };
 }
 
@@ -47,6 +52,10 @@ function hueOrNull(v: unknown): number | null {
 }
 function volumeAxis(v: unknown, fallback: VolumeAxis): VolumeAxis {
   return v === 'user' || v === 'master' ? v : fallback;
+}
+
+function roomMode(v: unknown, fallback: RoomMode): RoomMode {
+  return v === 'spectrum' || v === 'vu-in' || v === 'vu-out' ? v : fallback;
 }
 
 function safeJSON(raw: string | null): Record<string, unknown> | null {
@@ -72,6 +81,7 @@ function parseV1(raw: string, fallback: Settings): Settings {
     volumeAxis: volumeAxis(obj.volumeAxis, fallback.volumeAxis),
     seenVersion: stringOrNull(obj.seenVersion),
     roomHue: hueOrNull(obj.roomHue),
+    roomMode: roomMode(obj.roomMode, fallback.roomMode),
   };
 }
 
@@ -126,6 +136,7 @@ export function restoreSettings(): void {
   settings.volumeAxis = loaded.volumeAxis;
   settings.seenVersion = loaded.seenVersion;
   settings.roomHue = loaded.roomHue;
+  settings.roomMode = loaded.roomMode;
 }
 
 export function setVolumeAxis(axis: VolumeAxis): void {
@@ -201,6 +212,7 @@ export function startSettingsPersistence(): void {
         volumeAxis: settings.volumeAxis,
         seenVersion: settings.seenVersion,
         roomHue: settings.roomHue,
+        roomMode: settings.roomMode,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
     });
