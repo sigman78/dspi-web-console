@@ -133,9 +133,11 @@ export class WebUsbTransport implements DspTransport {
       { requestType: 'vendor', recipient: 'interface', request, value, index: this.#interfaceNumber },
       length,
     );
-    if (r.status !== 'ok' || !r.data) {
+    if (r.status !== 'ok') {
       throw new Error(`controlTransferIn(${request.toString(16)}) status=${r.status}`);
     }
+    // A zero-length data stage may arrive without a DataView.
+    if (!r.data) return new Uint8Array(0);
     return new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength);
   }
 

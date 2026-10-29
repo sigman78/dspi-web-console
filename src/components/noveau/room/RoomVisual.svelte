@@ -30,11 +30,28 @@
   let back: HTMLCanvasElement;
   let front: HTMLCanvasElement;
 
-  // The feed seam: swap for an RTA-backed feed once the console reads one.
+  // Replies older than this fall back to the simulated spectrum.
+  const RTA_FRESH_MS = 1000;
+  const SETTLE_MS = 1500;
+  const tele = s.telemetry;
+
   let outputLevel = 0;
-  const feed: Fx.SpectrumFeed = Fx.simulatedSpectrum(() => outputLevel);
+  const simulated = Fx.simulatedSpectrum(() => outputLevel);
+
+  const live = Fx.rtaSpectrum({
+    centresHz: () => tele.rtaCentres,
+    frames: () => tele.rtaFrames,
+  });
+
+  // Written from the frame loop only when it flips, so the tag follows the
+  // feed in use without per-frame reactivity.
+  let usingRta = $state(false);
+  // Keeps the tag off while the first reply is pending on RTA-capable firmware.
+  let settling = $state(s.device.capabilities?.features.rta === true);
 
   onMount(() => {
+    const releaseRta = tele.wantRta();
+    const settleTimer = setTimeout(() => { settling = false; }, SETTLE_MS);
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
     const scene = new Fx.RoomScene({ back, front }, {
       palette: Fx.resolvePalette(host),
@@ -77,12 +94,16 @@
       frame(now, dt) {
         if (now - lastSync > SYNC_MS) { lastSync = now; syncChannels(); }
         readLevel();
-        scene.draw(now, dt, feed.bands(now));
+        const rta = tele.rtaAvailability === 'available' && tele.lastRtaReplyMs > 0 && now - tele.lastRtaReplyMs < RTA_FRESH_MS;
+        if (rta !== usingRta) usingRta = rta;
+        scene.draw(now, dt, (rta ? live : simulated).bands(now));
       },
     });
     loop.start();
 
     return () => {
+      releaseRta();
+      clearTimeout(settleTimer);
       loop.dispose();
       ro.disconnect();
     };
@@ -96,7 +117,7 @@
     <div class="preset" class:unnamed={!named}>{presetName}</div>
     <div class="meta">{source} · {rate}</div>
   </div>
-  {#if feed.kind === 'simulated'}
+  {#if !usingRta && (!settling || tele.rtaAvailability === 'unavailable')}
     <div class="tag">SIMULATED SPECTRUM</div>
   {/if}
 </div>

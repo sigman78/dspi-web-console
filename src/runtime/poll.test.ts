@@ -1112,3 +1112,88 @@ describe('output latency cadence', () => {
     expect(session.telemetry.ringHealth).toEqual(ring);
   });
 });
+
+describe('RTA cadence', () => {
+  afterEach(() => { teardown(); });
+
+  async function tickOnce(session: ReadySession): Promise<void> {
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    for (let i = 0; i < 6; i++) await settle();
+    stop();
+  }
+
+  function rtaDevice(over: Record<string, unknown> = {}) {
+    const caps = { version: 3, levelZero: 243, maxBands: 37, fftOrderDefault: 10 };
+    return {
+      info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
+      hardware: hw,
+      capabilities: { features: { rta: true } },
+      getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
+      getBufferStats: vi.fn(async () => null),
+      getSystemInfo: vi.fn(async () => ({})),
+      getRtaCaps: vi.fn(async () => caps),
+      getRtaCentres: vi.fn(async () => [10, 13]),
+      getRtaConfig: vi.fn(async () => ({ tap: 1, channelMask: 0x1FF, fftOrder: 10, avgMs: 100, peakDecayDbS: 0, flags: 0 })),
+      setRtaConfig: vi.fn(async () => undefined),
+      getRtaBandsAll: vi.fn(async () => [{ channel: 0, seq: 1, ageMs: 5, avg: [243, 0] }]),
+      getRtaStatus: vi.fn(async () => ({ state: 2, busyUsPerS: 9000 })),
+      getSnapshot: vi.fn(async () => fromBulkParams(hw, parseBulkParams(makeBulk()))),
+      ...over,
+    } as unknown as DspDevice;
+  }
+
+  it('sets up once, then reads frames; status piggybacks only about once a second', async () => {
+    const device = rtaDevice();
+    const session = connect(device);
+    session.telemetry.wantRta();
+    await tickOnce(session);
+    expect(device.getRtaCaps).toHaveBeenCalledTimes(1);
+    expect(session.telemetry.rtaFrames[0]?.levelsDb).toEqual([0, -Infinity]);
+    session.telemetry.lastRtaPollMs = 0;
+    await tickOnce(session);
+    expect(device.getRtaCaps).toHaveBeenCalledTimes(1);
+    expect(device.getRtaBandsAll).toHaveBeenCalledTimes(2);
+    expect(device.getRtaStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays quiet without interest and for the rest of the session once unavailable', async () => {
+    const device = rtaDevice({ getRtaCaps: vi.fn(async () => { throw new Error('STALL'); }) });
+    const session = connect(device);
+    await tickOnce(session);
+    expect(device.getRtaCaps).not.toHaveBeenCalled();
+    session.telemetry.wantRta();
+    await tickOnce(session);
+    expect(session.telemetry.rtaAvailability).toBe('unavailable');
+    session.telemetry.lastRtaPollMs = 0;
+    await tickOnce(session);
+    expect(device.getRtaCaps).toHaveBeenCalledTimes(1);
+    expect(device.getRtaBandsAll).not.toHaveBeenCalled();
+    expect(session.health.degraded).toBe(false);
+  });
+
+  it('backs off about a second after a transient setup failure, then retries', async () => {
+    const getRtaConfig = vi.fn()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue({ tap: 1, channelMask: 0x1FF, fftOrder: 10, avgMs: 100, peakDecayDbS: 0, flags: 0 });
+    const device = rtaDevice({ getRtaConfig });
+    const session = connect(device);
+    session.telemetry.wantRta();
+    await tickOnce(session);
+    expect(session.telemetry.rtaAvailability).toBe('unknown');
+    expect(session.telemetry.lastRtaPollMs).toBeGreaterThan(performance.now() + 500);
+    session.telemetry.lastRtaPollMs = 0;
+    await tickOnce(session);
+    expect(session.telemetry.rtaAvailability).toBe('available');
+    expect(device.getRtaBandsAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('never polls a device without the RTA feature', async () => {
+    const device = rtaDevice({ capabilities: { features: { rta: false } } });
+    const session = connect(device);
+    session.telemetry.wantRta();
+    await tickOnce(session);
+    expect(device.getRtaCaps).not.toHaveBeenCalled();
+  });
+});

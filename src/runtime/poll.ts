@@ -5,6 +5,7 @@ import type { DeviceFeatures } from '@/protocol/capabilities';
 import * as Domain from '@/domain';
 import type { DspSnapshot } from '@/domain';
 import { refreshCsDisplayStatus, refreshCsExtStatus } from './controlSurfaceActions';
+import * as Rta from './rtaActions';
 
 const STATUS_INTERVAL_MS = 50;   // ~20 Hz -- peaks + cpu
 const BUFFER_INTERVAL_MS = 250;  // ~4 Hz  -- buffer stats
@@ -17,6 +18,9 @@ const SUBHARM_INTERVAL_MS = 1000;   // ~1 Hz  -- subharm headroom readout (enabl
 const SUBHARM_METER_INTERVAL_MS = 200;   // ~5 Hz  -- subharm sub meter (PR.06 panel mounted only)
 const LIMITER_METER_INTERVAL_MS = 100;   // 100 ms cadence, ~7 Hz effective -- limiter GR meter (PR.07 panel mounted only)
 const LIMITER_STATUS_INTERVAL_MS = 1000;   // ~1 Hz  -- limiter status block, piggybacks the meter tick
+const RTA_INTERVAL_MS = 100;   // 100 ms cadence -- onboard analyser bands (ROOM visual mounted only)
+const RTA_SETUP_BACKOFF_MS = 1000;   // pause between failed setup attempts
+const RTA_STATUS_INTERVAL_MS = 1000;   // ~1 Hz  -- analyser status block, piggybacks the bands tick
 const CS_EXT_INTERVAL_MS = 500;   // ~2 Hz  -- CS ext status while a macro runs (MACROS panel mounted only)
 const CS_DISPLAY_INTERVAL_MS = 1000;   // ~1 Hz  -- CS display status while a display runs (DISPLAY panel mounted only)
 const PARAM_INTERVAL_MS = 3000;  // ~0.3 Hz -- background param-mirror reconcile floor
@@ -45,7 +49,7 @@ interface Gates {
 }
 
 interface Cadence {
-  key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'i2sSlave' | 'adat' | 'adatInput' | 'subharm' | 'subharmMeter' | 'limiterMeter' | 'csExt' | 'csDisplay' | 'param';
+  key: 'status' | 'buffer' | 'info' | 'spdifRx' | 'i2sSlave' | 'adat' | 'adatInput' | 'subharm' | 'subharmMeter' | 'limiterMeter' | 'rta' | 'csExt' | 'csDisplay' | 'param';
   intervalMs: number;
   runWhileHidden: boolean;          // today all false (pause everything when hidden)
   gates: Gates;
@@ -202,6 +206,26 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     tele.lastLimiterMeterMs = performance.now();
   }
 
+  // First eligible tick of an interest period runs the setup (caps, config
+  // decision). A firmware refusal marks the analyser unavailable and the gate
+  // below stands the cadence down; a transient failure retries after a
+  // backoff, which pushes the poll clock into the future.
+  async function pollRta(d: DspDevice): Promise<void> {
+    let backoff = false;
+    if (!tele.rtaConfigured) {
+      backoff = true;
+      await guardedRead('rta', 'setupRta', async () => {
+        if (await Rta.setupRta(session, d)) backoff = false;
+      });
+    }
+    if (!backoff) await guardedRead('rta', 'getRtaBandsAll', async () => {
+      const now = performance.now();
+      const wantStatus = tele.lastRtaStatusMs === 0 || now - tele.lastRtaStatusMs >= RTA_STATUS_INTERVAL_MS;
+      await Rta.readRtaFrames(session, d, wantStatus);
+    });
+    tele.lastRtaPollMs = performance.now() + (backoff ? RTA_SETUP_BACKOFF_MS - RTA_INTERVAL_MS : 0);
+  }
+
   // Background param-mirror reconcile. shouldRunParam already decided this tick
   // is eligible; we fetch, then re-check before applying. The CommandQueue makes
   // the fetch atomic with respect to any write already registered when it was
@@ -306,6 +330,9 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     { key: 'limiterMeter', intervalMs: LIMITER_METER_INTERVAL_MS, runWhileHidden: false,
       gates: { feature: 'limiter', wanted: () => tele.limiterMeterWanted > 0, healthy: true },
       lastMs: () => tele.lastLimiterMeterMs, run: pollLimiterMeter },
+    { key: 'rta', intervalMs: RTA_INTERVAL_MS, runWhileHidden: false,
+      gates: { feature: 'rta', wanted: () => tele.rtaWanted > 0 && tele.rtaAvailability !== 'unavailable', healthy: true },
+      lastMs: () => tele.lastRtaPollMs, run: pollRta },
     { key: 'csExt', intervalMs: CS_EXT_INTERVAL_MS, runWhileHidden: false,
       gates: { wanted: () => cs.extPollWanted > 0 && cs.extStatus?.macroRunning != null },
       run: () => refreshCsExtStatus(session) },

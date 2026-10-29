@@ -45,6 +45,10 @@ type CsBindingPayload = {
   value: number; step: number; rangeMin: number; rangeMax: number;
   onDelay: number; offDelay: number; reserved2: number[];
 };
+type RtaConfigPayload = {
+  version: number; tap: number; channelMask: number; fftOrder: number;
+  avgMs: number; peakDecayDbS: number; flags: number;
+};
 type CsStatusPayload = {
   lastStatus: number; lastSlot: number; maxBindings: number; dirty: boolean;
   activeMask: number; slotStatus: number[];
@@ -396,6 +400,20 @@ export const WireCmd = {
   // (Wire.LIMITER_GET_METER / LIMITER_GET_STATUS). Direction-split helpers
   // live on DspDevice.
   Limiter:               { code: 0x81 } satisfies RawCmd,
+
+  // --- Onboard RTA (layout V3 = fw 1.1.6-beta4+; wire V30+ is only a try-gate). Raw plumbing on DspDevice:
+  // GET_CAPS wValue 0 = RtaCaps, 1.. = band-centre chunks; GET_BANDS wValue =
+  // channel; GET_BANDS_ALL answers every live channel's frame back to back
+  // (zero bytes when none is live). Every band read keeps the analyser alive
+  // for ~5 s; GET_STATUS does not.
+  RtaSetConfig:          { code: 0x08, codec: Wire.RtaConfig } satisfies WriteCmd<RtaConfigPayload>,
+  RtaGetConfig:          { code: 0x09, codec: Wire.RtaConfig } satisfies ReadCmd<RtaConfigPayload>,
+  RtaGetCaps:            { code: 0x0A } satisfies RawCmd,
+  RtaGetBands:           { code: 0x0B } satisfies RawCmd,
+  RtaGetBins:            { code: 0x0C } satisfies RawCmd,
+  RtaGetStatus:          { code: 0x0D } satisfies RawCmd,
+  RtaControl:            { code: 0x0E } satisfies RawCmd,
+  RtaGetBandsAll:        { code: 0x0F } satisfies RawCmd,
 
   // --- External control interfaces (UART + I2C) ---
   // SETs are plain control-OUT with the struct payload; the firmware refuses

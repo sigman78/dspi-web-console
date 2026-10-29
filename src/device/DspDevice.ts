@@ -125,6 +125,20 @@ async function readPlatform(
   };
 }
 
+// One 82-byte RtaBandFrame: only the first nBands entries are valid, and an
+// age of 0xFFFF means the device has never produced the frame.
+function decodeRtaFrame(raw: Uint8Array): Domain.RtaBandFrameRaw {
+  const f = Codec.decode(proto.Wire.RtaBandFrame, raw);
+  const n = Math.min(f.nBands, proto.Wire.RTA_MAX_BANDS);
+  return {
+    version: f.version,
+    channel: f.channel,
+    seq: f.seq,
+    ageMs: f.ageMs === 0xFFFF ? null : f.ageMs,
+    avg: f.avg.slice(0, n),
+  };
+}
+
 // GetBuildInfo (0x80) STALLs on pre-1.1.6 firmware (caller gates on
 // features.buildStamp); a short reply zero-pads to an empty describe, which
 // is as good as absent.
@@ -1126,6 +1140,80 @@ export class DspDevice {
     const raw = await this.transport.ctrlIn(proto.WireCmd.Limiter.code, proto.Wire.limiterWValue(0, proto.Wire.LIMITER_GET_STATUS), 4);
     const st = Codec.decode(proto.Wire.LimiterStatus, raw);
     return { engaged: st.engaged !== 0, lookaheadSamples: st.lookaheadSamples, blockSamples: st.blockSamples, numOutputs: st.numOutputs };
+  }
+
+  // Onboard RTA (fw V30+; features.rta only says it is worth trying). Every
+  // call below STALLs on firmware without the module. Reads use raw ctrlIn
+  // with explicit length checks: a short or empty reply is meaningful here.
+  async getRtaCaps(): Promise<Domain.RtaCaps> {
+    const size = Codec.sizeOf(proto.Wire.RtaCaps);
+    const raw = await this.transport.ctrlIn(proto.WireCmd.RtaGetCaps.code, 0, size);
+    if (raw.length < size) throw new Error(`RTA caps: short reply (${raw.length} B)`);
+    return Codec.decode(proto.Wire.RtaCaps, raw);
+  }
+
+  // Band-centre table in Hz, read in chunks of up to 32 u16 (wValue 1..). The
+  // end is a STALL or a chunk shorter than 32 values; reading stops at
+  // `maxBands` values regardless.
+  async getRtaCentres(maxBands: number): Promise<number[]> {
+    const CHUNK_VALUES = 32;
+    const centres: number[] = [];
+    for (let chunk = 1; centres.length < maxBands; chunk++) {
+      let raw: Uint8Array;
+      try {
+        raw = await this.transport.ctrlIn(proto.WireCmd.RtaGetCaps.code, chunk, CHUNK_VALUES * 2);
+      } catch (e) {
+        if (centres.length === 0) throw e;
+        break;
+      }
+      const n = raw.length >> 1;
+      centres.push(...Codec.decode(Codec.arr(Codec.u16, n), raw.subarray(0, n * 2)));
+      if (n < CHUNK_VALUES) break;
+    }
+    return centres.slice(0, maxBands);
+  }
+
+  async getRtaConfig(): Promise<Domain.RtaConfig> {
+    const c = await proto.readCmd(this.transport, proto.WireCmd.RtaGetConfig);
+    return { tap: c.tap, channelMask: c.channelMask, fftOrder: c.fftOrder, avgMs: c.avgMs, peakDecayDbS: c.peakDecayDbS, flags: c.flags };
+  }
+
+  // The USB data stage ACKs whatever the handler decides: an invalid config
+  // (wrong version, unknown tap, empty mask, order out of range) is dropped
+  // silently, so only a read-back shows whether it applied.
+  async setRtaConfig(cfg: Domain.RtaConfig): Promise<void> {
+    return proto.writeCmd(this.transport, proto.WireCmd.RtaSetConfig, { version: Domain.RTA_CONFIG_VERSION, ...cfg });
+  }
+
+  // Every live channel's band frame in one transfer (USB only), each carrying
+  // its own channel byte. Frames of another layout version and a trailing
+  // partial frame are dropped; an empty live mask answers zero bytes, which
+  // is an empty list.
+  async getRtaBandsAll(): Promise<Domain.RtaBandFrameRaw[]> {
+    const size = Codec.sizeOf(proto.Wire.RtaBandFrame);
+    const raw = await this.transport.ctrlIn(proto.WireCmd.RtaGetBandsAll.code, 0, this.hardware.outputCount * size);
+    const frames: Domain.RtaBandFrameRaw[] = [];
+    for (let off = 0; off + size <= raw.length; off += size) {
+      const frame = decodeRtaFrame(raw.subarray(off, off + size));
+      if (frame.version === Domain.RTA_CONFIG_VERSION) frames.push(frame);
+    }
+    return frames;
+  }
+
+  async getRtaBands(channel: number): Promise<Domain.RtaBandFrameRaw> {
+    const size = Codec.sizeOf(proto.Wire.RtaBandFrame);
+    const raw = await this.transport.ctrlIn(proto.WireCmd.RtaGetBands.code, channel, size);
+    if (raw.length < size) throw new Error(`RTA bands: short reply (${raw.length} B)`);
+    return decodeRtaFrame(raw);
+  }
+
+  // Does not keep the analyser alive.
+  async getRtaStatus(): Promise<Domain.RtaStatus> {
+    const size = Codec.sizeOf(proto.Wire.RtaStatus);
+    const raw = await this.transport.ctrlIn(proto.WireCmd.RtaGetStatus.code, 0, size);
+    if (raw.length < size) throw new Error(`RTA status: short reply (${raw.length} B)`);
+    const { version: _v, ...st } = Codec.decode(proto.Wire.RtaStatus, raw);
+    return st;
   }
 
   // Per-band EQ bypass. wValue = (wireChannel<<8)|band, mirroring getFilter's

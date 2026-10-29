@@ -378,6 +378,70 @@ export const LimiterStatus = struct({
   numOutputs:       u8,
 });
 
+// Onboard RTA (layout V3 = fw 1.1.6-beta4+, vendor requests 0x08-0x0F).
+export const RTA_MAX_BANDS = 37;
+
+// 12-byte RtaConfig (SET 0x08 / GET 0x09).
+export const RtaConfig = struct({
+  version:      u8,
+  tap:          u8,
+  channelMask:  u16,
+  fftOrder:     u8,
+  _reserved0:   reserved(1),
+  avgMs:        u16,
+  peakDecayDbS: u8,
+  flags:        u8,
+  _reserved1:   reserved(2),
+});
+
+// 16-byte RtaCaps (GET 0x0A wValue 0).
+export const RtaCaps = struct({
+  version:            u8,
+  inputChannels:      u8,
+  outputChannels:     u8,
+  fftOrderMin:        u8,
+  fftOrderMax:        u8,
+  fftOrderDefault:    u8,
+  bassBands:          u8,
+  maxBands:           u8,
+  levelZero:          u8,
+  dynamicRangeDb:     u8,
+  idleTimeoutMs:      u16,
+  maxBinFrame:        u16,
+  bassDynamicRangeDb: u16,
+});
+
+// 82-byte band frame (GET 0x0B / each element of 0x0F).
+export const RtaBandFrame = struct({
+  version:   u8,
+  channel:   u8,
+  seq:       u8,
+  nBands:    u8,
+  ageMs:     u16,
+  _reserved: reserved(2),
+  avg:       arr(u8, RTA_MAX_BANDS),
+  peak:      arr(u8, RTA_MAX_BANDS),
+});
+
+// 24-byte RtaStatus (GET 0x0D).
+export const RtaStatus = struct({
+  version:        u8,
+  state:          u8,
+  tap:            u8,
+  channel:        u8,
+  _reserved0:     reserved(1),
+  liveCount:      u8,
+  liveMask:       u16,
+  framesPerS:     u16,
+  busyUsPerS:     u16,
+  lastFrameUs:    u16,
+  idleMs:         u16,
+  sampleRateHz:   u32,
+  firstBand:      u8,
+  _reserved1:     reserved(1),
+  bassBusyUsPerS: u16,
+});
+
 // Standalone control-transfer payloads (not part of the bulk transfer).
 
 // 8-byte payload of `SetMatrixRoute` / response of `GetMatrixRoute`

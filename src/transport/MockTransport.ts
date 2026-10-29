@@ -95,6 +95,20 @@ const MOCK_OUTPUT_LATENCY_OPTIONS = [
 const MOCK_OUTPUT_LATENCY_PENDING_READS = 3;
 const MOCK_SAMPLE_RATE_HZ = 48_000;
 
+// Onboard RTA (0x08-0x0F) lands on the wire at V30 on both platforms; earlier
+// profiles STALL the whole range.
+const MIN_RTA_WIRE = 30;
+
+// IEC nominal third-octave centres from 10 Hz, as served in 32-value chunks.
+const MOCK_RTA_CENTRES = [
+  10, 13, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800,
+  1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000,
+  25000, 31500, 40000,
+];
+const MOCK_RTA_VALID_BANDS = 34;   // 48 kHz: bands up to 20 kHz
+const MOCK_RTA_LEVEL_ZERO = 243;
+const MOCK_RTA_IDLE_MS = 5000;
+
 // Control Surfaces caps tables. The type table and the noun catalog builder
 // follow firmware capability format version 21 (control_surfaces.c s_caps /
 // control_surfaces_nouns.c cs_noun_table). The per-version handlers (see #csTypeCount
@@ -410,6 +424,11 @@ export class MockTransport implements DspTransport {
   // Runtime-only solo monitor (fw V30+, 0x2C/0x2D): never in the bulk state,
   // never persisted.
   #subharmSolo = false;
+  // RTA state: config as the firmware holds it, band-frame sequence, and the
+  // time of the last band read (the analyser idles out 5 s later).
+  #rtaCfg: Domain.RtaConfig;
+  #rtaSeq = 0;
+  #rtaLastReadMs = -Infinity;
 
   // Preset directory + 10-slot snapshots. Directory metadata is its own wire
   // surface, not part of the bulk packet.
@@ -545,6 +564,10 @@ export class MockTransport implements DspTransport {
     this.#fwHead = opts.fwHead ?? false;
     this.#csCapsVersion = opts.csCapsVersion ?? (this.#fwHead ? MOCK_CS_CAPS_HEAD_VERSION : MOCK_CS_CAPS_DEFAULT_VERSION);
     this.#csNouns = buildMockCsNouns(this.#platform, this.#mockState.numIn, this.#mockState.numOut, this.#mockState.numCh, this.#csCapsVersion);
+    this.#rtaCfg = {
+      tap: Domain.RtaTap.Output, channelMask: (1 << this.#mockState.numOut) - 1,
+      fftOrder: this.#rtaFftOrder().def, avgMs: 250, peakDecayDbS: 20, flags: 0,
+    };
     this.#irLearnAutoComplete = opts.irLearnAutoComplete ?? false;
     // Override the all-zero defaults with realistic pin/I2S values so granular
     // pin/type tests start from a valid hardware state. Sourced from the same
@@ -940,6 +963,64 @@ export class MockTransport implements DspTransport {
       case WireCmd.GetSubharmCeiling.code:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmCeiling unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.ceilingDb);
+
+      // Onboard RTA (fw V30+).
+      case WireCmd.RtaGetConfig.code:
+        this.#requireRta();
+        return Codec.encode(WireCmd.RtaGetConfig.codec, { version: this.#rtaVersion(), ...this.#rtaCfg });
+      case WireCmd.RtaGetCaps.code: {
+        this.#requireRta();
+        if (value === 0) {
+          const ord = this.#rtaFftOrder();
+          const rp2350 = this.#platform === Domain.PlatformType.RP2350;
+          return Codec.encode(Wire.RtaCaps, {
+            version: this.#rtaVersion(), inputChannels: this.#mockState.numIn, outputChannels: this.#mockState.numOut,
+            fftOrderMin: ord.min, fftOrderMax: ord.max, fftOrderDefault: ord.def, bassBands: 14,
+            maxBands: Wire.RTA_MAX_BANDS, levelZero: MOCK_RTA_LEVEL_ZERO, dynamicRangeDb: rp2350 ? 120 : 78,
+            idleTimeoutMs: MOCK_RTA_IDLE_MS, maxBinFrame: 529, bassDynamicRangeDb: 70,
+          });
+        }
+        const start = (value - 1) * 32;
+        if (start >= MOCK_RTA_CENTRES.length) throw new Error('MockTransport: RtaGetCaps chunk past the end (STALL)');
+        const chunk = MOCK_RTA_CENTRES.slice(start, start + 32);
+        return Codec.encode(Codec.arr(Codec.u16, chunk.length), chunk).slice(0, length);
+      }
+      case WireCmd.RtaGetBands.code: {
+        this.#requireRta();
+        const width = this.#rtaCfg.tap === Domain.RtaTap.Output ? this.#mockState.numOut : this.#mockState.numIn;
+        if (value >= width) throw new Error('MockTransport: RtaGetBands bad channel (STALL)');
+        this.#rtaLastReadMs = performance.now();
+        return this.#rtaFrame(value);
+      }
+      case WireCmd.RtaGetBandsAll.code: {
+        this.#requireRta();
+        this.#rtaLastReadMs = performance.now();
+        const mask = this.#rtaLiveMask();
+        const frames: Uint8Array[] = [];
+        for (let ch = 0; ch < 16; ch++) if (mask & (1 << ch)) frames.push(this.#rtaFrame(ch));
+        return concatChunks(frames).slice(0, length);
+      }
+      case WireCmd.RtaGetStatus.code: {
+        this.#requireRta();
+        const now = performance.now();
+        const idleMs = Number.isFinite(this.#rtaLastReadMs) ? Math.min(0xFFFE, Math.round(now - this.#rtaLastReadMs)) : 0xFFFF;
+        const running = idleMs < MOCK_RTA_IDLE_MS;
+        const mask = running ? this.#rtaLiveMask() : 0;
+        let count = 0;
+        for (let m = mask; m; m &= m - 1) count++;
+        return Codec.encode(Wire.RtaStatus, {
+          version: this.#rtaVersion(), state: running ? Domain.RtaState.Transforming : Domain.RtaState.Idle, tap: this.#rtaCfg.tap,
+          channel: running ? 0 : 0xFF, liveCount: count, liveMask: mask, framesPerS: running ? 47 : 0,
+          busyUsPerS: running ? 9000 * count : 0, lastFrameUs: running ? 180 : 0, idleMs,
+          sampleRateHz: 48000, firstBand: 0, bassBusyUsPerS: running ? 1500 * count : 0,
+        });
+      }
+      case WireCmd.RtaGetBins.code:
+        this.#requireRta();
+        throw new Error('MockTransport: RtaGetBins not simulated (STALL)');
+      case WireCmd.RtaControl.code:
+        this.#requireRta();
+        return new Uint8Array([1]);
 
       // Per-output limiter (fw V32+): parameter float, GR meter or status block
       // by index byte. A bad output/index STALLs.
@@ -1870,6 +1951,26 @@ export class MockTransport implements DspTransport {
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmCeiling unsupported (STALL)');
         this.#mockState.subharm!.ceilingDb = Clamp.subharmCeilingDb(Codec.decode(Codec.f32, data));
         return;
+
+      // Onboard RTA (fw V30+): validates like rta_set_config; the USB data stage
+      // ACKs regardless, so a bad config is a silent no-op.
+      case WireCmd.RtaSetConfig.code: {
+        this.#requireRta();
+        if (data.length !== Codec.sizeOf(Wire.RtaConfig)) return;
+        const c = Codec.decode(Wire.RtaConfig, data);
+        const ord = this.#rtaFftOrder();
+        const width = c.tap === Domain.RtaTap.Output ? this.#mockState.numOut : this.#mockState.numIn;
+        const mask = c.channelMask & ((1 << width) - 1);
+        if (c.version !== this.#rtaVersion() || c.tap > Domain.RtaTap.Output || mask === 0 ||
+            c.fftOrder < ord.min || c.fftOrder > ord.max) {
+          return;
+        }
+        this.#rtaCfg = {
+          tap: c.tap, channelMask: mask, fftOrder: c.fftOrder, avgMs: Math.min(10000, c.avgMs),
+          peakDecayDbS: Math.min(100, c.peakDecayDbS), flags: c.flags,
+        };
+        return;
+      }
 
       // Per-output limiter (fw V32+). Firmware clamps; 0xFF fans out to every
       // output; a bad output/index or a short payload is a silent no-op.
@@ -2828,6 +2929,50 @@ export class MockTransport implements DspTransport {
           ? { ...o, enabled: src.enabled, thresholdDb: src.thresholdDb, releaseMs: src.releaseMs }
           : o);
     }
+  }
+
+  // fw 1.1.6-beta3 (V30) shipped layout v2; v3 starts with beta4 (V32). The
+  // untagged V31 is served as v3.
+  #rtaVersion(): number {
+    return this.#wireVersion >= 31 ? 3 : 2;
+  }
+
+  #requireRta(): void {
+    if (this.#wireVersion < MIN_RTA_WIRE) throw new Error('MockTransport: RTA unsupported (STALL)');
+  }
+
+  #rtaFftOrder(): { min: number; max: number; def: number } {
+    return { min: 8, max: 10, def: this.#platform === Domain.PlatformType.RP2350 ? 10 : 9 };
+  }
+
+  // Channels the analyser measures: configured mask, restricted to enabled
+  // outputs at the output tap.
+  #rtaLiveMask(): number {
+    const cfg = this.#rtaCfg;
+    if (cfg.tap === Domain.RtaTap.Input) return cfg.channelMask;
+    let enabled = 0;
+    this.#mockState.outputs!.forEach((o, k) => { if (o.enabled) enabled |= 1 << k; });
+    return cfg.channelMask & enabled;
+  }
+
+  // One 82-byte band frame: a music-like tilted spectrum with a beat on the
+  // low bands and per-band drift, around -20..-50 dBFS.
+  #rtaFrame(channel: number): Uint8Array {
+    const t = performance.now() / 1000;
+    const kick = Math.exp(-((t * 112 / 60) % 1) * 6);
+    const drive = 10 * Math.log10(Math.max(0.05, this.#animatedPeaks(channel + 1)[channel]));
+    const avg: number[] = Array(Wire.RTA_MAX_BANDS).fill(0);
+    const peak: number[] = Array(Wire.RTA_MAX_BANDS).fill(0);
+    for (let j = 0; j < MOCK_RTA_VALID_BANDS; j++) {
+      const f = MOCK_RTA_CENTRES[j];
+      let db = -24 - 14 * Math.log10(Math.max(f, 20) / 100) - 12 * Math.max(0, Math.log2(40 / f));
+      db += (f < 200 ? 8 * kick : 0) + 4 * Math.sin(t * 1.7 + j * 0.9 + channel * 1.3) + drive;
+      avg[j] = Math.min(255, Math.max(1, Math.round(db * 2) + MOCK_RTA_LEVEL_ZERO));
+      peak[j] = Math.min(255, avg[j] + 12);
+    }
+    return Codec.encode(Wire.RtaBandFrame, {
+      version: this.#rtaVersion(), channel, seq: this.#rtaSeq++ & 0xFF, nBands: MOCK_RTA_VALID_BANDS, ageMs: 20, avg, peak,
+    });
   }
 
   // GetLimiter GR meter (0x81 index 0x80) stand-in, 0.01 dB per output: the
