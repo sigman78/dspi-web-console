@@ -1,7 +1,9 @@
 import { Bloom } from './bloom';
 import { context2d, createCanvas, detectColorSpace, type ColorSpace } from './canvas';
 import { LightWall, barColor } from './lightWall';
+import { MeterWall, type MeterChannel } from './meterWall';
 import { css, oklchToRgb, rgbToOklch, type FxPalette, type Rgb } from './palette';
+import type { Wall } from './wall';
 
 const MARGIN = 76;
 const WALL_TOP = 84;
@@ -11,6 +13,9 @@ const REFL_SCALE = 0.5;
 const REFL_ALPHA = 0.5;
 const BLOOM_ALPHA = 0.42;
 const LIGHT_SPRITE = 128;
+const FADE_MS = 300;
+
+export type WallMode = 'spectrum' | 'meters';
 
 // Room tint, floor lines and the cool light share one lightness and chroma; only the hue is chosen.
 const TINT_L = 0.72;
@@ -41,6 +46,8 @@ export interface RoomSceneOptions {
   hue?: number | null;
   /** Forces a colour space; absent picks Display P3 when the display and canvas support it. */
   colorSpace?: ColorSpace;
+  /** Wall shown first; defaults to the spectrum. */
+  mode?: WallMode;
 }
 
 function lightSprite(c: Rgb, space: ColorSpace): HTMLCanvasElement {
@@ -67,6 +74,10 @@ export class RoomScene {
   private ready = false;
   private hue: number;
   private dirty = false;
+  /** Which wall's labels the back canvas currently shows. */
+  private labelMode: WallMode;
+  /** The spectrum was not rebuilt for the latest hue because it was off screen. */
+  private spectrumStale = false;
   /** Hue of the accent itself: what a null hue follows. */
   readonly defaultHue: number;
   private readonly space: ColorSpace;
@@ -82,7 +93,11 @@ export class RoomScene {
   private readonly refl: HTMLCanvasElement;
   private readonly reflCtx: CanvasRenderingContext2D;
   private readonly bloom: Bloom;
-  private readonly wall = new LightWall();
+  private mode: WallMode;
+  private fading: WallMode | null = null;
+  private fadeStart = 0;
+  readonly spectrum = new LightWall();
+  readonly meters = new MeterWall();
 
   constructor(private readonly canvases: RoomCanvases, private readonly opts: RoomSceneOptions) {
     const space = opts.colorSpace ?? detectColorSpace();
@@ -90,19 +105,71 @@ export class RoomScene {
     this.palette = { ...opts.palette, space };
     this.defaultHue = rgbToOklch(opts.palette.accentRgb)[2];
     this.hue = opts.hue ?? this.defaultHue;
+    this.mode = opts.mode ?? 'spectrum';
+    this.labelMode = this.mode;
     this.ctx = context2d(canvases.front, space);
     this.backCtx = context2d(canvases.back, space);
     [this.refl, this.reflCtx] = createCanvas(1, 1, space);
     this.bloom = new Bloom(0.25, space);
   }
 
-  /** Changes the scene hue; any number of calls before the next frame cost one rebuild. */
+  /** Changes the scene hue; any number of calls before the next frame cost one hue pass. */
   setHue(deg: number): void {
     if (!Number.isFinite(deg)) return;
     deg = ((deg % 360) + 360) % 360;
     if (deg === this.hue) return;
     this.hue = deg;
     this.dirty = true;
+  }
+
+  /** Switches the wall: a short crossfade, or a hard cut when decorative motion is off. */
+  setMode(mode: WallMode, nowMs: number): void {
+    if (mode === this.mode) return;
+    const out = this.mode;
+    if (!this.opts.decorative()) {
+      this.fading = null;
+    } else if (this.fading !== null) {
+      // Switching back mid-fade reverses it from where it stands.
+      const t = Math.min(1, Math.max(0, (nowMs - this.fadeStart) / FADE_MS));
+      this.fadeStart = nowMs - (1 - t) * FADE_MS;
+      this.fading = out;
+    } else {
+      this.fading = out;
+      this.fadeStart = nowMs;
+    }
+    this.mode = mode;
+    if (mode === 'meters') this.meters.reset();
+    if (mode === 'spectrum' && this.spectrumStale) this.layoutSpectrum();
+  }
+
+  /** Swaps the metered channels; lays the pillars out again and repaints their labels if shown. */
+  setMeterChannels(chs: readonly MeterChannel[]): void {
+    if (!this.meters.setChannels(chs) || !this.ready) return;
+    this.layoutMeters();
+    if (this.labelMode === 'meters') this.repaintBack();
+  }
+
+  private wallOf(mode: WallMode): Wall {
+    return mode === 'spectrum' ? this.spectrum : this.meters;
+  }
+
+  private layoutSpectrum(): void {
+    this.spectrumStale = false;
+    this.spectrum.hue = this.hue;
+    this.spectrum.layout(MARGIN, WALL_TOP, this.floorY, this.w - 2 * MARGIN, this.dpr, this.palette);
+  }
+
+  private layoutMeters(): void {
+    this.meters.layout(MARGIN, WALL_TOP, this.floorY, this.w - 2 * MARGIN, this.dpr, this.palette);
+  }
+
+  private repaintBack(): void {
+    if (!this.ready) return;
+    const c = this.backCtx;
+    c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    c.clearRect(0, 0, this.w, this.h);
+    this.paintRoom(c);
+    this.wallOf(this.labelMode).paintLabels(c, this.palette);
   }
 
   resize(w: number, h: number, dpr: number): void {
@@ -119,7 +186,6 @@ export class RoomScene {
   /** Recomputes layout and repaints the static back canvas. */
   private rebuild(): void {
     const { w, h, dpr } = this;
-    const p = this.palette;
     this.dirty = false;
     this.ready = false;
     if (w < 300 || h < 300) return;
@@ -127,13 +193,8 @@ export class RoomScene {
     this.floorY = floorY;
     this.reflH = h - floorY - 4;
 
-    this.wall.layout(MARGIN, WALL_TOP, floorY, w - 2 * MARGIN, dpr, p, this.hue);
-
-    const c = this.backCtx;
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.clearRect(0, 0, w, h);
-    this.paintRoom(c);
-    this.wall.paintLabels(c, p);
+    this.layoutSpectrum();
+    this.layoutMeters();
 
     this.bloom.resize(w, h);
     this.refl.width = Math.max(1, Math.round(w * dpr * REFL_SCALE));
@@ -144,9 +205,22 @@ export class RoomScene {
     this.reflFade.addColorStop(0.75, 'rgba(0,0,0,0)');
 
     this.radius = Math.max(w, h) * 0.6;
+    this.buildLights();
+    this.ready = true;
+    this.repaintBack();
+  }
+
+  private buildLights(): void {
     this.lightCool = lightSprite(oklchToRgb(TINT_L, TINT_C, this.hue, this.space), this.space);
     this.lightWarm = lightSprite(barColor(1, this.hue, this.space), this.space);
-    this.ready = true;
+  }
+
+  /** The hue changed: only what is built on it is redone; the pillars keep their channel colours. */
+  private applyHue(): void {
+    if (this.mode === 'spectrum' || this.fading === 'spectrum') this.layoutSpectrum();
+    else this.spectrumStale = true;
+    this.buildLights();
+    this.repaintBack();
   }
 
   /** Back wall, glossy floor, receding lines and the horizon sheen. */
@@ -169,7 +243,7 @@ export class RoomScene {
     c.fillRect(0, floorY, w, h - floorY);
 
     const cx = w / 2;
-    const vp = floorY - this.wall.height * 0.35;
+    const vp = floorY - this.spectrum.height * 0.35;
     c.save();
     c.beginPath();
     c.rect(0, floorY + 1, w, h - floorY);
@@ -181,7 +255,7 @@ export class RoomScene {
     c.strokeStyle = lines;
     c.beginPath();
     for (let i = -16; i <= 16; i++) {
-      const x0 = cx + i * (this.wall.width / 30);
+      const x0 = cx + i * (this.spectrum.width / 30);
       c.moveTo(x0, floorY);
       c.lineTo(cx + ((x0 - cx) * (h - vp)) / (floorY - vp), h);
     }
@@ -203,26 +277,49 @@ export class RoomScene {
     sheen.addColorStop(0.85, css(a, 0.55, sp));
     sheen.addColorStop(1, css(a, 0, sp));
     c.fillStyle = sheen;
-    c.fillRect(MARGIN - 40, floorY, this.wall.width + 80, 1);
+    c.fillRect(MARGIN - 40, floorY, this.spectrum.width + 80, 1);
     c.globalAlpha = 0.25;
-    c.fillRect(MARGIN - 40, floorY + 1, this.wall.width + 80, 2);
+    c.fillRect(MARGIN - 40, floorY + 1, this.spectrum.width + 80, 2);
     c.globalAlpha = 1;
   }
 
-  draw(nowMs: number, dtMs: number, bands: Float32Array): void {
-    if (this.dirty) this.rebuild();
+  /** Draws the active wall and, mid-crossfade, the one leaving. The caller steps the active wall. */
+  draw(nowMs: number): void {
+    if (this.dirty) {
+      this.dirty = false;
+      if (this.ready) this.applyHue();
+    }
     if (!this.ready) return;
     const { ctx, w, h, dpr } = this;
     const decorative = this.opts.decorative();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    this.wall.step(nowMs, dtMs, bands);
+    const wall = this.wallOf(this.mode);
+    let t = 1;
+    if (this.fading !== null) {
+      t = (nowMs - this.fadeStart) / FADE_MS;
+      if (t >= 1 || t < 0) {
+        t = 1;
+        this.fading = null;
+      }
+    }
+    const labels = this.fading !== null && t < 0.5 ? this.fading : this.mode;
+    if (labels !== this.labelMode) {
+      this.labelMode = labels;
+      this.repaintBack();
+    }
     this.bloom.clear();
-    this.wall.draw(ctx, this.bloom, decorative);
+    let energy = wall.energy();
+    if (this.fading !== null) {
+      const out = this.wallOf(this.fading);
+      out.draw(ctx, this.bloom, decorative, 1 - t);
+      energy = energy * t + out.energy() * (1 - t);
+    }
+    wall.draw(ctx, this.bloom, decorative, t);
     this.bloom.composite(ctx, BLOOM_ALPHA);
     this.drawReflection();
-    if (decorative) this.drawRoomLight(this.wall.bass());
+    if (decorative) this.drawRoomLight(energy);
   }
 
   /** An elliptical light sprite centred at (w/2, cy), cut to the rows between y0 and y1. */
@@ -237,12 +334,12 @@ export class RoomScene {
     this.ctx.drawImage(sprite, 0, (top - cy + ry) * k, LIGHT_SPRITE, (bot - top) * k, this.w / 2 - rx, top, 2 * rx, bot - top);
   }
 
-  /** Back-wall light that swells and warms with bass, and the share the floor catches. */
-  private drawRoomLight(bass: number): void {
+  /** Back-wall light that swells and warms with the wall's energy, and the share the floor catches. */
+  private drawRoomLight(energy: number): void {
     const { floorY, h, radius } = this;
-    const cy = floorY - this.wall.height * 0.35;
-    const warm = WARM_GAIN * Math.max(0, bass - 0.35);
-    const b2 = bass * bass;
+    const cy = floorY - this.spectrum.height * 0.35;
+    const warm = WARM_GAIN * Math.max(0, energy - 0.35);
+    const b2 = energy * energy;
     this.ctx.globalCompositeOperation = 'lighter';
     this.light(this.lightCool, cy, radius * 0.6, 0, floorY, WALL_COOL_BASE + WALL_COOL_GAIN * b2);
     this.light(this.lightWarm, cy, radius * 0.6, 0, floorY, warm);

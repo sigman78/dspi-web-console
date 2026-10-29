@@ -4,7 +4,9 @@
   import { formatRateKHz } from '@/utils';
   import { getSession } from '@/components/sessionContext';
   import * as Fx from '@/fx';
-  import { settings } from '@/state/settings.svelte';
+  import { settings, type RoomMode } from '@/state/settings.svelte';
+  import { COLORS } from '@/styles/palette-colors';
+  import { chKey } from '@/styles/palette';
   import RoomModeSwitch from './RoomModeSwitch.svelte';
 
   const s = getSession();
@@ -83,6 +85,7 @@
       palette: Fx.resolvePalette(host),
       decorative: () => !reduced.matches,
       hue: settings.roomHue,
+      mode: settings.roomMode === 'spectrum' ? 'spectrum' : 'meters',
     });
     defaultHue = scene.defaultHue;
     hue = settings.roomHue ?? defaultHue;
@@ -101,6 +104,29 @@
       }
     }
 
+    // Pillar descriptors follow the live slots; the colour comes from the channel palette.
+    const levels = new Float32Array(Fx.MAX_METERS);
+    const latched = new Uint8Array(Fx.MAX_METERS);
+    const slotIds = new Int32Array(Fx.MAX_METERS);
+    let slots: Domain.MeterSlot[] = [];
+    let slotMode: RoomMode | null = null;
+
+    function syncMeters(mode: RoomMode): void {
+      const snap = s.mirror.current;
+      if (!snap) return;
+      const next = mode === 'vu-in' ? Domain.meterInputs(snap, tele.activeInputChannels) : Domain.meterOutputs(snap);
+      if (mode === slotMode && Domain.sameMeterSlots(slots, next)) return;
+      slotMode = mode;
+      slots = next;
+      const chs: Fx.MeterChannel[] = [];
+      for (const slot of next.slice(0, Fx.MAX_METERS)) {
+        const col = COLORS[chKey(slot.id)];
+        slotIds[chs.length] = slot.id;
+        chs.push({ key: slot.id, label: slot.label, groupLabel: slot.groupLabel, group: slot.group, l: col.l / 100, c: col.c, h: col.h });
+      }
+      room.setMeterChannels(chs);
+    }
+
     function readLevel(): void {
       const peaks = s.telemetry.peaks;
       let loudest = 0;
@@ -115,6 +141,7 @@
 
     syncChannels();
     fit();
+    if (settings.roomMode !== 'spectrum') syncMeters(settings.roomMode);
     const ro = new ResizeObserver(fit);
     ro.observe(host);
 
@@ -122,18 +149,36 @@
     let greeted = false;
 
     let lastSync = 0;
+    let lastMode = settings.roomMode;
     const loop = Fx.createFxLoop({
       reducedMotion: () => reduced.matches,
       frame(now, dt) {
-        if (now - lastSync > SYNC_MS) { lastSync = now; syncChannels(); }
+        const mode = settings.roomMode;
+        if (now - lastSync > SYNC_MS || mode !== lastMode) {
+          lastSync = now;
+          lastMode = mode;
+          syncChannels();
+          if (mode !== 'spectrum') syncMeters(mode);
+        }
+        room.setMode(mode === 'spectrum' ? 'spectrum' : 'meters', now);
         readLevel();
-        if (!greeted) {
+        if (!greeted && mode === 'spectrum') {
           greeted = true;
           if (!reduced.matches && !(outputLevel > Fx.SILENT_LEVEL)) greeting.start(now + GREET_DELAY_MS);
         }
         const rta = tele.rtaAvailability === 'available' && tele.lastRtaReplyMs > 0 && now - tele.lastRtaReplyMs < RTA_FRESH_MS;
         if (rta !== usingRta) usingRta = rta;
-        room.draw(now, dt, greeting.apply(now, (rta ? live : simulated).bands(now)));
+        if (mode === 'spectrum') {
+          room.spectrum.step(now, dt, greeting.apply(now, (rta ? live : simulated).bands(now)));
+        } else {
+          const peaks = tele.peaks;
+          for (let k = 0; k < slots.length && k < Fx.MAX_METERS; k++) {
+            levels[k] = peaks[slotIds[k]] ?? 0;
+            latched[k] = tele.clipLatched[slotIds[k]] ? 1 : 0;
+          }
+          room.meters.step(now, dt, levels, latched);
+        }
+        room.draw(now);
       },
     });
     loop.start();

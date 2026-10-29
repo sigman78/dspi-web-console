@@ -1,5 +1,5 @@
 const SLAB_MIN = 14;
-const SLAB_MAX = 56;
+const SLAB_MAX = 112;
 const INTRA_GAP = 0.35;
 const INTER_GAP = 1.2;
 const STRIDE_FILL = 0.62;

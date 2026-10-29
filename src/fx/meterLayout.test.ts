@@ -4,14 +4,14 @@ import { layoutMeters } from './meterLayout';
 describe('layoutMeters', () => {
   it('centres a pair and caps the slab width', () => {
     const { slabW, x } = layoutMeters([0, 0], 1200);
-    expect(slabW).toBe(56);
+    expect(slabW).toBe(112);
     expect(x[0] + (x[1] + slabW)).toBeCloseTo(1200, 3);
   });
 
   it('spans the whole wall when nine channels are width-bound, with a tighter gap inside a pair', () => {
     const width = 600;
     const { slabW, x } = layoutMeters([0, 0, 1, 1, 2, 2, 3, 3, 4], width);
-    expect(slabW).toBeLessThan(56);
+    expect(slabW).toBeLessThan(112);
     expect(x[0]).toBeCloseTo(0, 3);
     expect(x[8] + slabW).toBeCloseTo(width, 3);
     const intraGap = x[1] - (x[0] + slabW);

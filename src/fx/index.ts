@@ -8,3 +8,5 @@ export * from './spectrumFeed';
 export * from './greetingWave';
 export * from './meterScale';
 export * from './meterLayout';
+export * from './meterWall';
+export * from './wall';

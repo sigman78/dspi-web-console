@@ -41,13 +41,9 @@
         {#if m.key === 'spectrum'}
           <path d="M4 19V13M9 19V6M14 19V10M19 19V4" /><path d="M2.5 20.5h19" />
         {:else if m.key === 'vu-in'}
-          <path d="M2 13h5" /><path d="M5 10.5 7 13 5 15.5" />
-          <rect x="10" y="5" width="4" height="15" rx="1" /><rect x="16" y="9" width="4" height="11" rx="1" />
-          <path d="M8 20.5h14" />
+          <rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0" /><path d="M12 17.5V21" />
         {:else}
-          <rect x="4" y="5" width="4" height="15" rx="1" /><rect x="10" y="9" width="4" height="11" rx="1" />
-          <path d="M2 20.5h14" />
-          <path d="M16 13h5" /><path d="M19 10.5 21 13 19 15.5" />
+          <path d="M3 9.5h3.5L11 6v12l-4.5-3.5H3z" /><path d="M15 9.5a3.5 3.5 0 0 1 0 5" /><path d="M18 7a7 7 0 0 1 0 10" />
         {/if}
       </svg>
     </button>
