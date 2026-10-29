@@ -1,14 +1,14 @@
+import { createCanvas, type ColorSpace } from './canvas';
+
 /** Low-resolution glow buffer: callers draw in full-size coordinates, compositing upscales it softly. */
 export class Bloom {
-  readonly canvas = document.createElement('canvas');
+  readonly canvas: HTMLCanvasElement;
   readonly ctx: CanvasRenderingContext2D;
   private w = 0;
   private h = 0;
 
-  constructor(private readonly scale = 0.25) {
-    const c = this.canvas.getContext('2d');
-    if (!c) throw new Error('2d canvas unavailable');
-    this.ctx = c;
+  constructor(private readonly scale: number, space: ColorSpace) {
+    [this.canvas, this.ctx] = createCanvas(1, 1, space);
   }
 
   resize(w: number, h: number): void {
@@ -23,7 +23,6 @@ export class Bloom {
   clear(): void {
     this.ctx.clearRect(0, 0, this.w, this.h);
   }
-
 
   /** Additively blends the buffer over `dst` (already scaled to full-size coordinates). */
   composite(dst: CanvasRenderingContext2D, alpha: number): void {

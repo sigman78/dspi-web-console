@@ -1,52 +1,64 @@
 import { BAND_COUNT, BAND_TICKS } from './bands';
 import { SPECTRUM_BALLISTICS, newMeter, stepMeter } from './ballistics';
-import { mixRgb, rgba, type FxPalette, type Rgb } from './palette';
+import { createCanvas, type ColorSpace } from './canvas';
+import { blob } from './sprites';
+import { css, oklchToRgb, type FxPalette, type Rgb } from './palette';
 import type { Bloom } from './bloom';
+import type { Wall } from './wall';
 
-const ROSE: Rgb = [255, 108, 150];
-const AMBER: Rgb = [255, 176, 104];
-const WHITE: Rgb = [255, 255, 255];
 const BAR_W = 0.56;
 const STEPS = 24;
 const TIP = 2;
 const HALO_W = 4;
 const HALO_SIGMA = 0.16;
-const HALO_ALPHA = 0.6;
+const HALO_ALPHA = 0.42;
+const HALO_BLOB_ALPHA = 0.5;
 /** The glow buffer is quarter scale, so its sprites are pre-rendered at that resolution. */
 const GLOW_RES = 0.25;
 
-/** Colour at a height fraction: the accent low, drifting through rose to amber at the top. */
-function colorAt(f: number, accent: Rgb): Rgb {
-  if (f < 0.25) return mixRgb(mixRgb(accent, WHITE, 0.05), accent, f / 0.25);
-  if (f < 0.6) return mixRgb(accent, mixRgb(accent, ROSE, 0.55), (f - 0.25) / 0.35);
-  if (f < 0.8) return mixRgb(mixRgb(accent, ROSE, 0.55), ROSE, (f - 0.6) / 0.2);
-  return mixRgb(ROSE, AMBER, (f - 0.8) / 0.2);
-}
+// The bar ramp in OKLCH: hue drifts up from the scene hue, lightness and chroma climb gently.
+const HUE_SPAN = 150;
+const L_BOTTOM = 0.7;
+const L_TOP = 0.84;
+const C_BOTTOM = 0.13;
+const C_TOP = 0.16;
+/** Extra lightness at the very bottom, fading out over the lowest quarter. */
+const FOOT_LIFT = 0.03;
+const FOOT_RANGE = 0.25;
+/** Lighter variants move toward L=1 by `lift` and shed this share of chroma at full lift. */
+const LIFT_DESAT = 0.8;
 
-function makeCanvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
-  const c = document.createElement('canvas');
-  c.width = Math.max(1, Math.round(w));
-  c.height = Math.max(1, Math.round(h));
-  const x = c.getContext('2d');
-  if (!x) throw new Error('2d canvas unavailable');
-  return [c, x];
+// Lifts toward white: how hot each part of a bar reads.
+const CORE_LIFT = 0.22;
+const HALO_RAMP_LIFT = 0.06;
+const TIP_LIFT = 0.3;
+const HALO_BLOB_LIFT = 0.12;
+const MARKER_LIFT = 0.4;
+
+/** Colour at a height fraction `f` for scene hue `hue`, optionally lifted toward white. */
+export function barColor(f: number, hue: number, space: ColorSpace, lift = 0): Rgb {
+  const t = Math.min(1, Math.max(0, f));
+  const foot = t < FOOT_RANGE ? FOOT_LIFT * (1 - t / FOOT_RANGE) : 0;
+  const l = L_BOTTOM + (L_TOP - L_BOTTOM) * t + foot;
+  const c = C_BOTTOM + (C_TOP - C_BOTTOM) * t;
+  return oklchToRgb(l + (1 - l) * lift, c * (1 - lift * LIFT_DESAT), hue + HUE_SPAN * t, space);
 }
 
 /** Vertical colour ramp over a full-height rect, lifted toward white by `lift`. */
-function ramp(x: CanvasRenderingContext2D, h: number, accent: Rgb, lift: number, aBottom: number, aTop: number): CanvasGradient {
+function ramp(x: CanvasRenderingContext2D, h: number, hue: number, space: ColorSpace, lift: number, aBottom: number, aTop: number): CanvasGradient {
   const v = x.createLinearGradient(0, h, 0, 0);
   for (let k = 0; k <= 8; k++) {
     const f = k / 8;
-    v.addColorStop(f, rgba(mixRgb(colorAt(f, accent), WHITE, lift), aBottom + (aTop - aBottom) * f));
+    v.addColorStop(f, css(barColor(f, hue, space, lift), aBottom + (aTop - aBottom) * f, space));
   }
   return v;
 }
 
 /** A ramp under a gaussian horizontal falloff: the soft halo a bar casts. */
-function haloStrip(w: number, h: number, res: number, accent: Rgb): HTMLCanvasElement {
-  const [c, x] = makeCanvas(w * res, h * res);
+function haloStrip(w: number, h: number, res: number, hue: number, space: ColorSpace): HTMLCanvasElement {
+  const [c, x] = createCanvas(w * res, h * res, space);
   x.setTransform(res, 0, 0, res, 0, 0);
-  x.fillStyle = ramp(x, h, accent, 0.1, 0.7, 1);
+  x.fillStyle = ramp(x, h, hue, space, HALO_RAMP_LIFT, 0.7, 1);
   x.fillRect(0, 0, w, h);
   const g = x.createLinearGradient(0, 0, w, 0);
   for (let k = 0; k <= 12; k++) {
@@ -59,24 +71,13 @@ function haloStrip(w: number, h: number, res: number, accent: Rgb): HTMLCanvasEl
   return c;
 }
 
-function blob(size: number, dpr: number, color: Rgb, alpha: number): HTMLCanvasElement {
-  const [c, x] = makeCanvas(size * dpr, size * dpr);
-  x.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const r = size / 2;
-  const g = x.createRadialGradient(r, r, 0, r, r, r);
-  g.addColorStop(0, rgba(color, alpha));
-  g.addColorStop(0.3, rgba(color, alpha * 0.4));
-  g.addColorStop(1, rgba(color, 0));
-  x.fillStyle = g;
-  x.fillRect(0, 0, size, size);
-  return c;
-}
-
 /**
  * Third-octave bars standing on a floor line: hard-edged on the canvas, soft only in the glow buffer.
  * Bars, tips and halos are pre-rendered at layout, so a frame only blits.
  */
-export class LightWall {
+export class LightWall implements Wall {
+  /** Scene hue the bars are built on; applied at the next layout. */
+  hue = 0;
   x = 0;
   floorY = 0;
   width = 0;
@@ -93,6 +94,7 @@ export class LightWall {
   private readonly state = Array.from({ length: BAND_COUNT }, newMeter);
 
   layout(x: number, top: number, floorY: number, width: number, dpr: number, p: FxPalette): void {
+    const hue = this.hue;
     this.x = x;
     this.floorY = floorY;
     this.width = width;
@@ -103,30 +105,30 @@ export class LightWall {
     this.haloSize = this.stride * 2.4;
     const H = this.height;
     const bw = this.barW;
-    const a = p.accentRgb;
+    const sp = p.space;
 
     // A solid bar with a brighter centre stripe: both edges stay hard.
-    const [body, bc] = makeCanvas(bw * dpr, H * dpr);
+    const [body, bc] = createCanvas(bw * dpr, H * dpr, sp);
     bc.setTransform(dpr, 0, 0, dpr, 0, 0);
-    bc.fillStyle = ramp(bc, H, a, 0, 0.62, 0.9);
+    bc.fillStyle = ramp(bc, H, hue, sp, 0, 0.62, 0.9);
     bc.fillRect(0, 0, bw, H);
     bc.globalCompositeOperation = 'lighter';
-    bc.fillStyle = ramp(bc, H, a, 0.35, 0.12, 0.28);
+    bc.fillStyle = ramp(bc, H, hue, sp, CORE_LIFT, 0.12, 0.28);
     const core = Math.max(1 / dpr, Math.round(bw * 0.34 * dpr) / dpr);
     bc.fillRect((bw - core) / 2, 0, core, H);
     this.body = body;
-    this.halo = haloStrip(bw * HALO_W, H, GLOW_RES, a);
+    this.halo = haloStrip(bw * HALO_W, H, GLOW_RES, hue, sp);
 
     this.tips = Array.from({ length: STEPS }, (_, k) => {
-      const [c, x] = makeCanvas(bw * dpr, TIP * dpr);
-      x.fillStyle = rgba(mixRgb(colorAt(k / (STEPS - 1), a), WHITE, 0.45), 1);
+      const [c, x] = createCanvas(bw * dpr, TIP * dpr, sp);
+      x.fillStyle = css(barColor(k / (STEPS - 1), hue, sp, TIP_LIFT), 1, sp);
       x.fillRect(0, 0, c.width, c.height);
       return c;
     });
     this.halos = Array.from({ length: STEPS }, (_, k) =>
-      blob(this.haloSize, GLOW_RES, mixRgb(colorAt(k / (STEPS - 1), a), WHITE, 0.2), 0.7));
-    const [m, mx] = makeCanvas(bw * dpr, TIP * dpr);
-    mx.fillStyle = rgba(mixRgb(AMBER, WHITE, 0.5), 1);
+      blob(this.haloSize, GLOW_RES, barColor(k / (STEPS - 1), hue, sp, HALO_BLOB_LIFT), HALO_BLOB_ALPHA, sp));
+    const [m, mx] = createCanvas(bw * dpr, TIP * dpr, sp);
+    mx.fillStyle = css(barColor(1, hue, sp, MARKER_LIFT), 1, sp);
     mx.fillRect(0, 0, m.width, m.height);
     this.marker = m;
   }
@@ -155,14 +157,14 @@ export class LightWall {
   }
 
   /** Smoothed low-band energy, 0..1. */
-  bass(): number {
+  energy(): number {
     let s = 0;
     for (let i = 0; i < 6; i++) s += this.state[i].level;
     return s / 6;
   }
 
   /** Crisp bars, tips and (optionally) peak markers on the canvas; their wide halos into the glow buffer. */
-  draw(ctx: CanvasRenderingContext2D, bloom: Bloom, markers: boolean): void {
+  draw(ctx: CanvasRenderingContext2D, bloom: Bloom, decorative: boolean, alpha: number): void {
     const { body, halo, marker, dpr } = this;
     if (!body || !halo || !marker) return;
     const b = bloom.ctx;
@@ -172,6 +174,7 @@ export class LightWall {
     const hs = this.haloSize;
     ctx.globalCompositeOperation = 'lighter';
     b.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = alpha;
     for (let i = 0; i < BAND_COUNT; i++) {
       const l = Math.min(1, this.state[i].level);
       const hh = Math.round(l * H * dpr) / dpr;
@@ -182,18 +185,18 @@ export class LightWall {
       const k = Math.round(l * (STEPS - 1));
       ctx.drawImage(body, 0, sy, body.width, body.height - sy, x0, top, bw, hh);
       ctx.drawImage(this.tips[k], x0, top, bw, TIP);
-      b.globalAlpha = HALO_ALPHA;
+      b.globalAlpha = HALO_ALPHA * alpha;
       const gy = (H - hh) * GLOW_RES;
       b.drawImage(halo, 0, gy, halo.width, halo.height - gy, this.cx(i) - hw / 2, top, hw, hh);
-      b.globalAlpha = 1;
+      b.globalAlpha = alpha;
       b.drawImage(this.halos[k], this.cx(i) - hs / 2, top - hs / 2, hs, hs);
     }
-    if (markers) {
+    if (decorative) {
       for (let i = 0; i < BAND_COUNT; i++) {
         const s = this.state[i];
         const gap = s.peak - s.level;
         if (gap < 0.03) continue;
-        ctx.globalAlpha = Math.min(1, gap * 8) * 0.45;
+        ctx.globalAlpha = Math.min(1, gap * 8) * 0.45 * alpha;
         ctx.drawImage(marker, this.left(i), Math.round((this.floorY - s.peak * H) * dpr) / dpr, bw, TIP);
       }
     }

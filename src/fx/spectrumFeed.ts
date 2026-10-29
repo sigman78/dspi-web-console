@@ -7,6 +7,9 @@ export interface SpectrumFeed {
   bands(nowMs: number): Float32Array;
 }
 
+/** Linear output level at or below which the output counts as silent. */
+export const SILENT_LEVEL = 1e-4;
+
 const BPM = 112;
 const STEP_MS = 60;
 
@@ -41,7 +44,7 @@ export function simulatedSpectrum(levelOf: () => number, seed = 7): SpectrumFeed
     kind: 'simulated',
     bands(nowMs: number): Float32Array {
       const lev = levelOf();
-      if (!(lev > 1e-4)) {
+      if (!(lev > SILENT_LEVEL)) {
         out.fill(0);
         lastStep = nowMs;
         return out;

@@ -43,6 +43,22 @@ describe('loadSettings', () => {
     expect(s.lastSerial).toBe('ABC123');
   });
 
+  test('keeps a stored room hue, clamped, and drops anything that is not a number', () => {
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, roomHue: 190 }));
+    expect(Settings.loadSettings().roomHue).toBe(190);
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, roomHue: 900 }));
+    expect(Settings.loadSettings().roomHue).toBe(360);
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, roomHue: 'red' }));
+    expect(Settings.loadSettings().roomHue).toBeNull();
+  });
+
+  test('falls back to the spectrum room mode for an unknown stored value', () => {
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, roomMode: 'vu-out' }));
+    expect(Settings.loadSettings().roomMode).toBe('vu-out');
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, roomMode: 'scope' }));
+    expect(Settings.loadSettings().roomMode).toBe('spectrum');
+  });
+
   test('falls back to the legacy eqTarget key when selectedChannel is absent', () => {
     localStorage.setItem(V1_KEY, JSON.stringify({
       version: 1,

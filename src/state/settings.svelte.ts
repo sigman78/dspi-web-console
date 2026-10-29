@@ -4,6 +4,9 @@ import { inputIndexOf, type ChannelId, type ChannelModel, type OutputModel } fro
 // stages the channel-rail volume control currently drives (see VolumeBlock.svelte).
 export type VolumeAxis = 'user' | 'master';
 
+// ROOM scene content: onboard spectrum, or input / output level meters.
+export type RoomMode = 'spectrum' | 'vu-in' | 'vu-out';
+
 export interface Settings {
   version: 1;
   selectedChannel: ChannelId | null;
@@ -13,6 +16,9 @@ export interface Settings {
   // Console version the user last opened; null on first run. Drives the
   // landing destination (ABOUT after an update).
   seenVersion: string | null;
+  // ROOM scene hue in degrees; null follows the accent's own hue.
+  roomHue: number | null;
+  roomMode: RoomMode;
 }
 
 const STORAGE_KEY = 'dspi-console-web/settings/v1';
@@ -25,6 +31,8 @@ function defaults(): Settings {
     warnOnPresetSwitchDirty: true,
     volumeAxis: 'user',
     seenVersion: null,
+    roomHue: null,
+    roomMode: 'spectrum',
   };
 }
 
@@ -39,8 +47,15 @@ function channelIdOrNull(v: unknown): ChannelId | null {
 function stringOrNull(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
 }
+function hueOrNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(360, Math.max(0, v)) : null;
+}
 function volumeAxis(v: unknown, fallback: VolumeAxis): VolumeAxis {
   return v === 'user' || v === 'master' ? v : fallback;
+}
+
+function roomMode(v: unknown, fallback: RoomMode): RoomMode {
+  return v === 'spectrum' || v === 'vu-in' || v === 'vu-out' ? v : fallback;
 }
 
 function safeJSON(raw: string | null): Record<string, unknown> | null {
@@ -65,6 +80,8 @@ function parseV1(raw: string, fallback: Settings): Settings {
     warnOnPresetSwitchDirty: bool(obj.warnOnPresetSwitchDirty, true),
     volumeAxis: volumeAxis(obj.volumeAxis, fallback.volumeAxis),
     seenVersion: stringOrNull(obj.seenVersion),
+    roomHue: hueOrNull(obj.roomHue),
+    roomMode: roomMode(obj.roomMode, fallback.roomMode),
   };
 }
 
@@ -118,6 +135,8 @@ export function restoreSettings(): void {
   settings.warnOnPresetSwitchDirty = loaded.warnOnPresetSwitchDirty;
   settings.volumeAxis = loaded.volumeAxis;
   settings.seenVersion = loaded.seenVersion;
+  settings.roomHue = loaded.roomHue;
+  settings.roomMode = loaded.roomMode;
 }
 
 export function setVolumeAxis(axis: VolumeAxis): void {
@@ -192,6 +211,8 @@ export function startSettingsPersistence(): void {
         warnOnPresetSwitchDirty: settings.warnOnPresetSwitchDirty,
         volumeAxis: settings.volumeAxis,
         seenVersion: settings.seenVersion,
+        roomHue: settings.roomHue,
+        roomMode: settings.roomMode,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
     });
