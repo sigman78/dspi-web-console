@@ -43,6 +43,15 @@ describe('loadSettings', () => {
     expect(s.lastSerial).toBe('ABC123');
   });
 
+  test('keeps a stored room hue, clamped, and drops anything that is not a number', () => {
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, roomHue: 190 }));
+    expect(Settings.loadSettings().roomHue).toBe(190);
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, roomHue: 900 }));
+    expect(Settings.loadSettings().roomHue).toBe(360);
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, roomHue: 'red' }));
+    expect(Settings.loadSettings().roomHue).toBeNull();
+  });
+
   test('falls back to the legacy eqTarget key when selectedChannel is absent', () => {
     localStorage.setItem(V1_KEY, JSON.stringify({
       version: 1,

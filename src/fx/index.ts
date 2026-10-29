@@ -1,3 +1,4 @@
+export * from './canvas';
 export * from './bands';
 export * from './ballistics';
 export * from './loop';

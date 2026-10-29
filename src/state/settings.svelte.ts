@@ -13,6 +13,8 @@ export interface Settings {
   // Console version the user last opened; null on first run. Drives the
   // landing destination (ABOUT after an update).
   seenVersion: string | null;
+  // ROOM scene hue in degrees; null follows the accent's own hue.
+  roomHue: number | null;
 }
 
 const STORAGE_KEY = 'dspi-console-web/settings/v1';
@@ -25,6 +27,7 @@ function defaults(): Settings {
     warnOnPresetSwitchDirty: true,
     volumeAxis: 'user',
     seenVersion: null,
+    roomHue: null,
   };
 }
 
@@ -38,6 +41,9 @@ function channelIdOrNull(v: unknown): ChannelId | null {
 }
 function stringOrNull(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
+}
+function hueOrNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(360, Math.max(0, v)) : null;
 }
 function volumeAxis(v: unknown, fallback: VolumeAxis): VolumeAxis {
   return v === 'user' || v === 'master' ? v : fallback;
@@ -65,6 +71,7 @@ function parseV1(raw: string, fallback: Settings): Settings {
     warnOnPresetSwitchDirty: bool(obj.warnOnPresetSwitchDirty, true),
     volumeAxis: volumeAxis(obj.volumeAxis, fallback.volumeAxis),
     seenVersion: stringOrNull(obj.seenVersion),
+    roomHue: hueOrNull(obj.roomHue),
   };
 }
 
@@ -118,6 +125,7 @@ export function restoreSettings(): void {
   settings.warnOnPresetSwitchDirty = loaded.warnOnPresetSwitchDirty;
   settings.volumeAxis = loaded.volumeAxis;
   settings.seenVersion = loaded.seenVersion;
+  settings.roomHue = loaded.roomHue;
 }
 
 export function setVolumeAxis(axis: VolumeAxis): void {
@@ -192,6 +200,7 @@ export function startSettingsPersistence(): void {
         warnOnPresetSwitchDirty: settings.warnOnPresetSwitchDirty,
         volumeAxis: settings.volumeAxis,
         seenVersion: settings.seenVersion,
+        roomHue: settings.roomHue,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
     });
