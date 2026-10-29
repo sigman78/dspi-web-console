@@ -22,33 +22,44 @@ export interface MeterChannel {
 }
 
 const CLIP_HOLD_MS = 400;
-const LID_H = 3;
-const LID_GAP = 2;
+/** The span is cut into this many equal blocks (3 dB each). */
+const SEGMENTS = 20;
+const GAP = 3;
+const LID_H = 2;
 const PLATE_H = 2;
-const TICK_DB = 6;
-const HALO_W = 2.4;
+const HALO_W = 2;
 const HALO_SIGMA = 0.2;
-const HALO_ALPHA = 0.4;
+const HALO_ALPHA = 0.58;
+const HALO_GAP_CUT = 0.5;
 const GLOW_RES = 0.25;
-const LABEL_Y = 15;
-const GROUP_LABEL_Y = 29;
-const LABEL_ALPHA = 0.85;
 const SCALE_DB = [0, -6, -12, -24, -48];
 
-// Body ramp: slightly darker at the foot, slightly lighter at the top, chroma constant.
-const L_FOOT = -0.04;
-const L_TOP = 0.06;
+// Body ramp: noticeably darker at the foot, lighter at the top, a little richer than the palette.
+const L_FOOT = -0.1;
+const L_TOP = 0.08;
+const CHROMA_GAIN = 1.18;
 const STRIPE_LIFT = 0.18;
+const STRIPE_ALPHA = 0.2;
 const LIFT_DESAT = 0.8;
 const LID_LIFT = 0.35;
 const CAP_LIFT = 0.8;
 const CAP_CHROMA = 0.04;
-const TICK_SHADE = 0.2;
-const CORNER = 2;
+/** The topmost lit block is lifted toward white by this much. */
+const TIP_FILL = 'rgba(255,255,255,0.16)';
+
+// Label blocks under the floor line, drawn above the reflection.
+const BLOCK_TOP = 4;
+const BLOCK_H = 17;
+const BLOCK_GAP = 2;
+const BLOCK_FILL = 'rgba(0,0,0,0.6)';
+const BLOCK_RADIUS = 3;
+const BLOCK_PAD = 6;
+const BLOCK_SPACE = 3;
+const BLOCK_FONT = 11;
 
 function tone(ch: MeterChannel, dl: number, lift: number, space: ColorSpace): Rgb {
   const l = Math.min(1, Math.max(0, ch.l + dl));
-  return oklchToRgb(l + (1 - l) * lift, ch.c * (1 - lift * LIFT_DESAT), ch.h, space);
+  return oklchToRgb(l + (1 - l) * lift, ch.c * CHROMA_GAIN * (1 - lift * LIFT_DESAT), ch.h, space);
 }
 
 function sameChannels(a: readonly MeterChannel[], b: readonly MeterChannel[]): boolean {
@@ -62,11 +73,14 @@ function sameChannels(a: readonly MeterChannel[], b: readonly MeterChannel[]): b
   return true;
 }
 
+/** `text` shortened with an ellipsis to fit `maxW`; empty when not even one letter and the ellipsis fit. */
 function truncate(c: CanvasRenderingContext2D, text: string, maxW: number): string {
   if (c.measureText(text).width <= maxW) return text;
-  let n = text.length;
-  while (n > 1 && c.measureText(`${text.slice(0, n)}…`).width > maxW) n--;
-  return `${text.slice(0, n)}…`;
+  for (let n = text.length - 1; n >= 1; n--) {
+    const cut = `${text.slice(0, n)}\u2026`;
+    if (c.measureText(cut).width <= maxW) return cut;
+  }
+  return '';
 }
 
 /**
@@ -89,6 +103,25 @@ export class MeterWall implements Wall {
   private dotColors: string[] = [];
   private cap: HTMLCanvasElement | null = null;
   private haloSize = 0;
+  private heightPx = 0;
+  private gapPx = 0;
+  private lidPx = 0;
+  private readonly bounds = new Int32Array(SEGMENTS + 1);
+  private nameBlocks: HTMLCanvasElement[] = [];
+  private groupBlocks: (HTMLCanvasElement | null)[] = [];
+  private pal: FxPalette | null = null;
+  private readonly onFonts = (): void => {
+    if (this.pal && this.channels.length > 0) this.buildLabels(this.pal);
+  };
+
+  constructor() {
+    // Label text is baked into sprites, so it is redrawn once the UI font has arrived.
+    if (typeof document !== 'undefined' && document.fonts) document.fonts.addEventListener('loadingdone', this.onFonts);
+  }
+
+  dispose(): void {
+    if (typeof document !== 'undefined' && document.fonts) document.fonts.removeEventListener('loadingdone', this.onFonts);
+  }
   private now = 0;
   private readonly body = Array.from({ length: MAX_METERS }, newMeter);
   private readonly lid = Array.from({ length: MAX_METERS }, newMeter);
@@ -138,64 +171,65 @@ export class MeterWall implements Wall {
     this.slabW = sw;
     for (let i = 0; i < n; i++) this.lefts[i] = Math.round((x + lay.x[i]) * dpr) / dpr;
 
-    const H = this.height;
+    // Block boundaries in device pixels from the floor; every sprite and crop uses these.
+    this.gapPx = Math.max(1, Math.round(GAP * dpr));
+    const hpx = Math.max(SEGMENTS * (this.gapPx + 1), Math.round(this.height * dpr));
+    this.heightPx = hpx;
+    this.lidPx = Math.max(1, Math.min(this.gapPx, Math.round(LID_H * dpr)));
+    for (let k = 0; k <= SEGMENTS; k++) this.bounds[k] = Math.round((k * hpx) / SEGMENTS);
+
     this.haloSize = sw * HALO_W;
     this.bodies = [];
     this.halos = [];
     this.blobs = [];
     this.lids = [];
     this.dotColors = [];
-    for (const ch of this.channels) {
-      this.bodies.push(this.bodySprite(ch, sw, H, dpr, sp));
-      this.halos.push(this.haloStrip(ch, sw * HALO_W, H, sp));
+    for (let i = 0; i < n; i++) {
+      const ch = this.channels[i];
+      this.bodies.push(this.bodySprite(ch, sw, sp));
+      this.halos.push(this.haloStrip(ch, sw * HALO_W, sp));
       this.blobs.push(blob(this.haloSize, GLOW_RES, tone(ch, 0, 0.12, sp), 0.5, sp));
-      this.lids.push(this.flat(sw, LID_H, dpr, tone(ch, 0, LID_LIFT, sp), sp));
+      this.lids.push(this.flat(sw, this.lidPx, tone(ch, 0, LID_LIFT, sp), sp));
       const dh = ((25 - ch.h + 540) % 360) - 180;
       this.dotColors.push(css(oklchToRgb(Math.max(ch.l, 0.7), Math.max(ch.c, 0.16), ch.h + dh * 0.6, sp), 1, sp));
+
     }
-    this.cap = this.flat(sw, LID_H, dpr, oklchToRgb(CAP_LIFT + (1 - CAP_LIFT) * 0.5, CAP_CHROMA, 0, sp), sp);
+    this.pal = p;
+    this.buildLabels(p);
+    this.cap = this.flat(sw, this.lidPx, oklchToRgb(CAP_LIFT + (1 - CAP_LIFT) * 0.5, CAP_CHROMA, 0, sp), sp);
   }
 
-  private flat(w: number, h: number, dpr: number, color: Rgb, sp: ColorSpace): HTMLCanvasElement {
-    const [c, x] = createCanvas(w * dpr, h * dpr, sp);
+  /** A flat sprite `w` css px wide and `hpx` device px tall. */
+  private flat(w: number, hpx: number, color: Rgb, sp: ColorSpace): HTMLCanvasElement {
+    const [c, x] = createCanvas(w * this.dpr, hpx, sp);
     x.fillStyle = css(color, 1, sp);
     x.fillRect(0, 0, c.width, c.height);
     return c;
   }
 
-  private bodySprite(ch: MeterChannel, w: number, H: number, dpr: number, sp: ColorSpace): HTMLCanvasElement {
-    const [c, x] = createCanvas(w * dpr, H * dpr, sp);
-    x.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const g = x.createLinearGradient(0, H, 0, 0);
+  /** Full-height pillar in device pixels, cut into blocks by transparent gaps above each block. */
+  private bodySprite(ch: MeterChannel, w: number, sp: ColorSpace): HTMLCanvasElement {
+    const hpx = this.heightPx;
+    const [c, x] = createCanvas(w * this.dpr, hpx, sp);
+    const g = x.createLinearGradient(0, hpx, 0, 0);
     for (let k = 0; k <= 8; k++) {
       const f = k / 8;
       g.addColorStop(f, css(tone(ch, L_FOOT + (L_TOP - L_FOOT) * f, 0, sp), 1, sp));
     }
-    const r = Math.min(CORNER, w / 4);
     x.fillStyle = g;
-    x.beginPath();
-    x.moveTo(0, H);
-    x.lineTo(0, r);
-    x.arcTo(0, 0, r, 0, r);
-    x.lineTo(w - r, 0);
-    x.arcTo(w, 0, w, r, r);
-    x.lineTo(w, H);
-    x.closePath();
-    x.fill();
-
-    x.globalCompositeOperation = 'source-atop';
-    const stripe = Math.max(1 / dpr, Math.round(w * 0.3 * dpr) / dpr);
-    x.fillStyle = css(tone(ch, 0, STRIPE_LIFT, sp), 0.35, sp);
-    x.fillRect((w - stripe) / 2, 0, stripe, H);
-    x.fillStyle = `rgba(0,0,0,${TICK_SHADE})`;
-    for (let db = TICK_DB; db < VU_SPAN_DB; db += TICK_DB) {
-      x.fillRect(0, Math.round((db / VU_SPAN_DB) * H * dpr) / dpr, w, 1 / dpr);
-    }
+    x.fillRect(0, 0, c.width, hpx);
+    const stripe = Math.max(1, Math.round(c.width * 0.3));
+    x.fillStyle = css(tone(ch, 0, STRIPE_LIFT, sp), STRIPE_ALPHA, sp);
+    x.fillRect(Math.floor((c.width - stripe) / 2), 0, stripe, hpx);
+    x.globalCompositeOperation = 'destination-out';
+    x.fillStyle = '#000';
+    for (let k = 0; k < SEGMENTS; k++) x.fillRect(0, hpx - this.bounds[k + 1], c.width, this.gapPx);
     return c;
   }
 
-  /** A column glow in the channel colour under a gaussian horizontal falloff, at glow-buffer resolution. */
-  private haloStrip(ch: MeterChannel, w: number, h: number, sp: ColorSpace): HTMLCanvasElement {
+  /** A column glow in the channel colour under a gaussian horizontal falloff, gaps softly cut, at glow-buffer resolution. */
+  private haloStrip(ch: MeterChannel, w: number, sp: ColorSpace): HTMLCanvasElement {
+    const h = this.heightPx / this.dpr;
     const [c, x] = createCanvas(w * GLOW_RES, h * GLOW_RES, sp);
     x.setTransform(GLOW_RES, 0, 0, GLOW_RES, 0, 0);
     const col = tone(ch, 0, 0.06, sp);
@@ -212,6 +246,60 @@ export class MeterWall implements Wall {
     x.globalCompositeOperation = 'destination-in';
     x.fillStyle = g;
     x.fillRect(0, 0, w, h);
+    x.globalCompositeOperation = 'destination-out';
+    x.fillStyle = `rgba(0,0,0,${HALO_GAP_CUT})`;
+    for (let k = 0; k < SEGMENTS; k++) x.fillRect(0, (this.heightPx - this.bounds[k + 1]) / this.dpr, w, this.gapPx / this.dpr);
+    return c;
+  }
+
+  /** Name and group blocks as sprites; a name block grows past its slab, up to the neighbour spacing, to fit its text. */
+  private buildLabels(p: FxPalette): void {
+    const dpr = this.dpr;
+    const n = this.channels.length;
+    const sw = this.slabW;
+    const [, m] = createCanvas(1, 1, p.space);
+    m.font = `${BLOCK_FONT}px ${p.font}`;
+    this.nameBlocks = [];
+    this.groupBlocks = [];
+    for (let i = 0; i < n; i++) {
+      const ch = this.channels[i];
+      const col = css(tone(ch, 0, 0, p.space), 1, p.space);
+      const prev = i > 0 ? this.cx(i) - this.cx(i - 1) : Infinity;
+      const next = i < n - 1 ? this.cx(i + 1) - this.cx(i) : Infinity;
+      const most = Math.max(sw, Math.min(prev, next, sw * 3) - BLOCK_SPACE);
+      const w = Math.round(Math.min(most, Math.max(sw, m.measureText(ch.label).width + BLOCK_PAD)) * dpr) / dpr;
+      this.nameBlocks.push(this.labelBlock(ch.label, w, col, p));
+      const first = i === 0 || this.channels[i - 1].group !== ch.group;
+      const paired = i < n - 1 && this.channels[i + 1].group === ch.group;
+      if (ch.groupLabel && first && paired) {
+        const span = this.lefts[i + 1] + sw - this.lefts[i];
+        this.groupBlocks.push(this.labelBlock(ch.groupLabel, span, col, p));
+      } else {
+        this.groupBlocks.push(null);
+      }
+    }
+  }
+
+  /** A dark rounded block `w` css px wide holding `text` in `color`, shortened to fit. */
+  private labelBlock(text: string, w: number, color: string, p: FxPalette): HTMLCanvasElement {
+    const dpr = this.dpr;
+    const [c, x] = createCanvas(w * dpr, BLOCK_H * dpr, p.space);
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const r = Math.min(BLOCK_RADIUS, w / 2);
+    x.fillStyle = BLOCK_FILL;
+    x.beginPath();
+    x.moveTo(r, 0);
+    x.arcTo(w, 0, w, BLOCK_H, r);
+    x.arcTo(w, BLOCK_H, 0, BLOCK_H, r);
+    x.arcTo(0, BLOCK_H, 0, 0, r);
+    x.arcTo(0, 0, w, 0, r);
+    x.closePath();
+    x.fill();
+    x.font = `${BLOCK_FONT}px ${p.font}`;
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.fillStyle = color;
+    x.fillText(truncate(x, text, w - BLOCK_PAD), w / 2, BLOCK_H / 2 + 0.5);
     return c;
   }
 
@@ -219,10 +307,9 @@ export class MeterWall implements Wall {
     return this.lefts[i] + this.slabW / 2;
   }
 
-  /** Scale at the left margin, then per pillar a base plate, its name and the pair's shared name. */
+  /** Scale ticks at block boundaries in the left margin, and a base plate under each pillar. */
   paintLabels(c: CanvasRenderingContext2D, p: FxPalette): void {
     const sp = p.space;
-    const H = this.height;
     const fy = this.floorY;
     c.font = `10px ${p.font}`;
     c.textBaseline = 'middle';
@@ -230,34 +317,31 @@ export class MeterWall implements Wall {
     c.fillStyle = p.faint;
     c.globalAlpha = 0.4;
     for (const db of SCALE_DB) {
-      const y = Math.round(fy - ((VU_SPAN_DB + db) / VU_SPAN_DB) * H);
+      const y = Math.round(fy - this.bounds[Math.round((VU_SPAN_DB + db) / (VU_SPAN_DB / SEGMENTS))] / this.dpr);
       c.fillRect(this.x - 9, y, 5, 1);
       c.fillText(String(db), this.x - 13, y + 0.5);
     }
-
-    c.textBaseline = 'alphabetic';
-    c.textAlign = 'center';
-    const n = this.channels.length;
-    const sw = this.slabW;
-    for (let i = 0; i < n; i++) {
-      const ch = this.channels[i];
-      c.fillStyle = css(tone(ch, 0, 0, sp), 1, sp);
+    for (let i = 0; i < this.channels.length; i++) {
+      c.fillStyle = css(tone(this.channels[i], 0, 0, sp), 1, sp);
       c.globalAlpha = 1;
-      c.fillRect(this.lefts[i], fy, sw, PLATE_H);
-
-      const prev = i > 0 ? this.cx(i) - this.cx(i - 1) : Infinity;
-      const next = i < n - 1 ? this.cx(i + 1) - this.cx(i) : Infinity;
-      c.globalAlpha = LABEL_ALPHA;
-      c.fillText(truncate(c, ch.label, Math.min(prev, next, sw * 3) - 4), this.cx(i), fy + LABEL_Y);
-
-      const first = i === 0 || this.channels[i - 1].group !== ch.group;
-      const paired = i < n - 1 && this.channels[i + 1].group === ch.group;
-      if (ch.groupLabel && first && paired) {
-        const span = this.lefts[i + 1] + sw - this.lefts[i];
-        c.fillText(truncate(c, ch.groupLabel, span + sw), this.lefts[i] + span / 2, fy + GROUP_LABEL_Y);
-      }
+      c.fillRect(this.lefts[i], fy, this.slabW, PLATE_H);
     }
     c.globalAlpha = 1;
+  }
+
+  /** Name blocks under the floor line; drawn after the reflection so it cannot tint them. */
+  drawLabels(ctx: CanvasRenderingContext2D, alpha: number): void {
+    const y = this.floorY + BLOCK_TOP;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = alpha;
+    for (let i = 0; i < this.channels.length; i++) {
+      const nb = this.nameBlocks[i];
+      const nw = nb.width / this.dpr;
+      ctx.drawImage(nb, Math.round((this.cx(i) - nw / 2) * this.dpr) / this.dpr, y, nw, BLOCK_H);
+      const g = this.groupBlocks[i];
+      if (g) ctx.drawImage(g, this.lefts[i], y + BLOCK_H + BLOCK_GAP, g.width / this.dpr, BLOCK_H);
+    }
+    ctx.globalAlpha = 1;
   }
 
   /** Advances every pillar. `levels` are linear peaks per slot; `latched` marks channels that clipped. */
@@ -283,45 +367,77 @@ export class MeterWall implements Wall {
     return Math.min(1, m);
   }
 
+  /** Lit blocks below the level, the block holding it fading in, the topmost two lifted; glow and lid on top. */
   draw(ctx: CanvasRenderingContext2D, bloom: Bloom, decorative: boolean, alpha: number): void {
     const cap = this.cap;
     if (!cap || alpha <= 0.002) return;
-    const { dpr, floorY, slabW: sw } = this;
-    const H = this.height;
+    const { dpr, floorY, slabW: sw, bounds, gapPx, heightPx: hpx } = this;
+    const count = this.channels.length;
     const b = bloom.ctx;
-    ctx.globalCompositeOperation = 'source-over';
     const hw = sw * HALO_W;
     const hs = this.haloSize;
+    ctx.globalCompositeOperation = 'source-over';
     b.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < this.channels.length; i++) {
+    ctx.fillStyle = TIP_FILL;
+    for (let i = 0; i < count; i++) {
       const body = this.bodies[i];
       const x0 = this.lefts[i];
-      const l = Math.min(1, this.body[i].level);
-      const hh = Math.round(l * H * dpr) / dpr;
+      const level = Math.min(1, this.body[i].level);
+      const f = level * SEGMENTS;
+      const n = Math.min(SEGMENTS, Math.floor(f));
+      const frac = n < SEGMENTS ? f - n : 0;
+      const partial = frac > 0.02;
 
-      ctx.globalAlpha = alpha;
-      if (hh >= 1 / dpr) {
-        const top = floorY - hh;
-        const sy = (H - hh) * dpr;
-        ctx.drawImage(body, 0, sy, body.width, body.height - sy, x0, top, sw, hh);
+      ctx.globalCompositeOperation = 'source-over';
+      if (n > 0) {
+        const top = bounds[n] - gapPx;
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(body, 0, hpx - top, body.width, top, x0, floorY - top / dpr, sw, top / dpr);
+      }
+      if (partial) {
+        const lo = bounds[n];
+        const top = bounds[n + 1] - gapPx;
+        ctx.globalAlpha = alpha * frac;
+        ctx.drawImage(body, 0, hpx - top, body.width, top - lo, x0, floorY - top / dpr, sw, (top - lo) / dpr);
+      }
+      // The lift follows the fade between the two top blocks, so it never jumps at a crossing.
+      ctx.globalCompositeOperation = 'lighter';
+      if (n > 0) {
+        ctx.globalAlpha = alpha * (partial ? 1 - frac : 1);
+        ctx.fillRect(x0, floorY - (bounds[n] - gapPx) / dpr, sw, (bounds[n] - gapPx - bounds[n - 1]) / dpr);
+      }
+      if (partial) {
+        ctx.globalAlpha = alpha * frac;
+        ctx.fillRect(x0, floorY - (bounds[n + 1] - gapPx) / dpr, sw, (bounds[n + 1] - gapPx - bounds[n]) / dpr);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Glow follows the continuous level, not the block edges.
+      const levelPx = n < SEGMENTS ? bounds[n] + frac * (bounds[n + 1] - bounds[n]) : hpx;
+      if (levelPx >= 1) {
         const halo = this.halos[i];
-        const gy = (H - hh) * GLOW_RES;
+        const gy = (1 - levelPx / hpx) * halo.height;
+        const top = floorY - levelPx / dpr;
         b.globalAlpha = HALO_ALPHA * alpha;
-        b.drawImage(halo, 0, gy, halo.width, halo.height - gy, this.cx(i) - hw / 2, top, hw, hh);
-        b.globalAlpha = Math.min(1, l * 1.5) * alpha;
+        b.drawImage(halo, 0, gy, halo.width, halo.height - gy, this.cx(i) - hw / 2, top, hw, levelPx / dpr);
+        b.globalAlpha = Math.min(1, level * 1.5) * alpha;
         b.drawImage(this.blobs[i], this.cx(i) - hs / 2, top - hs / 2, hs, hs);
       }
       if (decorative) {
         const peak = Math.min(1, this.lid[i].peak);
         if (peak > 0.01) {
-          const ly = Math.round((floorY - peak * H - LID_GAP - LID_H) * dpr) / dpr;
-          ctx.drawImage(this.clipping(i) ? cap : this.lids[i], x0, ly, sw, LID_H);
+          // Same threshold as the body: the lid never floats above an empty block.
+          const slot = Math.min(SEGMENTS - 1, Math.max(0, Math.ceil(peak * SEGMENTS - 0.02) - 1));
+          ctx.globalAlpha = alpha;
+          ctx.drawImage(this.clipping(i) ? cap : this.lids[i], x0, floorY - bounds[slot + 1] / dpr, sw, this.lidPx / dpr);
         }
       }
-      if (this.latch[i] === 1) {
-        ctx.fillStyle = this.dotColors[i];
-        ctx.fillRect(this.cx(i) - 1.5, floorY - 0.5, 3, 3);
-      }
+    }
+    for (let i = 0; i < count; i++) {
+      if (this.latch[i] !== 1) continue;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = this.dotColors[i];
+      ctx.fillRect(this.cx(i) - 1.5, floorY - 0.5, 3, 3);
     }
     ctx.globalAlpha = 1;
     b.globalAlpha = 1;

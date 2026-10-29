@@ -122,6 +122,10 @@ export class RoomScene {
     this.dirty = true;
   }
 
+  dispose(): void {
+    this.meters.dispose();
+  }
+
   /** Switches the wall: a short crossfade, or a hard cut when decorative motion is off. */
   setMode(mode: WallMode, nowMs: number): void {
     if (mode === this.mode) return;
@@ -189,7 +193,7 @@ export class RoomScene {
     this.dirty = false;
     this.ready = false;
     if (w < 300 || h < 300) return;
-    const floorY = Math.round(h * FLOOR_FRAC);
+    const floorY = Math.round(h * FLOOR_FRAC * dpr) / dpr;
     this.floorY = floorY;
     this.reflH = h - floorY - 4;
 
@@ -320,6 +324,8 @@ export class RoomScene {
     this.bloom.composite(ctx, BLOOM_ALPHA);
     this.drawReflection();
     if (decorative) this.drawRoomLight(energy);
+    const labelAlpha = this.mode === 'meters' ? t : this.fading === 'meters' ? 1 - t : 0;
+    if (labelAlpha > 0.002) this.meters.drawLabels(ctx, labelAlpha);
   }
 
   /** An elliptical light sprite centred at (w/2, cy), cut to the rows between y0 and y1. */

@@ -188,6 +188,7 @@
       clearTimeout(settleTimer);
       loop.dispose();
       ro.disconnect();
+      room.dispose();
       scene = undefined;
     };
   });
