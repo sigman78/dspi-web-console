@@ -60,6 +60,30 @@ export async function fetchSysClock(s: ReadySession): Promise<void> {
   }
 }
 
+// Probe for the selectable output latency (fw 1.1.6 branch). No capability
+// flag and the fw version can't be trusted, so support is discovered by
+// reading the status: older firmware STALLs and the row stays hidden. Only
+// the status read decides support; a failed options read leaves support
+// confirmed and the slow poll retries it.
+export async function fetchOutputLatency(s: ReadySession): Promise<void> {
+  try {
+    s.outputLatency.status = await s.queue.run(() => s.device.getOutputLatencyStatus());
+    s.outputLatency.supported = true;
+  } catch (err) {
+    s.outputLatency.status = null;
+    s.outputLatency.options = null;
+    s.outputLatency.supported = false;
+    Log.info('outputLatency', 'probe failed (unsupported firmware)', err);
+    return;
+  }
+  try {
+    s.outputLatency.options = await s.queue.run(() => s.device.getOutputLatencyOptions());
+  } catch (err) {
+    s.outputLatency.options = null;
+    Log.warn('outputLatency', 'options read failed; the slow poll retries it', err);
+  }
+}
+
 // Best-effort read of the solo monitor flag (fw V30+, PR.06): runtime-only,
 // never persisted or notified, so it isn't covered by the normal snapshot
 // sync -- read once on panel mount instead.
@@ -387,6 +411,7 @@ export async function wireUpConnection(
     await fetchCtrlIfaceInfo(session);
     await fetchControlSurfaces(session);
     await fetchSysClock(session);
+    await fetchOutputLatency(session);
     Log.info('sync', 'connected', {
       platform: session.mirror.current?.platform.name,
       wire: device.capabilities.wire,

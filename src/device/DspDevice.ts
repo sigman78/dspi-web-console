@@ -193,6 +193,13 @@ function csDisplayStatusFromWire(w: {
 // budget) for what is normally a few-ms directory-sector flash write.
 const CS_APPLY_POLL_MS = 20;
 const CS_APPLY_MAX_POLLS = 25;
+// A revert re-applies the stored config as a background job on current
+// firmware and reports PENDING until it is done: ~3 s. Older firmware
+// answers on the first poll, so the larger budget costs nothing there.
+const CS_REVERT_MAX_POLLS = 150;
+
+// Largest control-IN a request may ask for on the 64-byte EP0.
+const EP0_MAX_PACKET = 64;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -216,10 +223,10 @@ async function readCsStatus(t: DspTransport): Promise<Domain.CsStatus> {
 // or the budget runs out. Shared by setCsBinding, setCsName, csSave, and
 // csRevert -- all funnel through the same last_status/last_slot channel.
 async function pollCsStatus(
-  raw: DspTransport, matchSlot: number,
+  raw: DspTransport, matchSlot: number, maxPolls: number = CS_APPLY_MAX_POLLS,
 ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
   let status: Domain.CsStatus = await readCsStatus(raw);
-  for (let poll = 1; poll < CS_APPLY_MAX_POLLS; poll++) {
+  for (let poll = 1; poll < maxPolls; poll++) {
     if (status.lastSlot === matchSlot && status.lastStatus !== proto.CsStatusCode.Pending) {
       return { result: proto.csStatusFromByte(status.lastStatus), status };
     }
@@ -433,42 +440,43 @@ export class DspDevice {
     return proto.parseSystemStatus(bytes, numCh);
   }
 
-  // Slow-poll telemetry (env scalars + cumulative error counters). Each wValue
-  // is a separate vendor read; allSettled lets a single STALL on one wValue
-  // (older firmware missing a counter) leave the rest of the panel populated.
-  // Each promise is keyed to its SystemInfo field by name (not array position),
-  // so reordering the field list below can't silently cross-wire two values.
-  async getSystemInfo(): Promise<proto.PartialSystemInfo> {
-    const u32 = (wValue: number) =>
-      this.transport.ctrlIn(proto.WireCmd.GetStatus.code, wValue, 4)
-        .then((b) => Codec.decodePadded(Codec.u32, b));
-    const i32 = (wValue: number) =>
-      this.transport.ctrlIn(proto.WireCmd.GetStatus.code, wValue, 4)
-        .then((b) => Codec.decodePadded(Codec.i32, b));
-
-    const reads: { [K in keyof proto.SystemInfo]: Promise<number> } = {
-      clockHz:               u32(proto.SystemStatusValue.ClockHz),
-      coreVoltageMv:         u32(proto.SystemStatusValue.CoreVoltageMv),
-      sampleRateHz:          u32(proto.SystemStatusValue.SampleRateHz),
-      tempCDegC:             i32(proto.SystemStatusValue.TempCDegC),
-      pdmRingOverruns:       u32(proto.SystemStatusValue.PdmRingOverruns),
-      pdmRingUnderruns:      u32(proto.SystemStatusValue.PdmRingUnderruns),
-      pdmDmaOverruns:        u32(proto.SystemStatusValue.PdmDmaOverruns),
-      pdmDmaUnderruns:       u32(proto.SystemStatusValue.PdmDmaUnderruns),
-      spdifOverruns:         u32(proto.SystemStatusValue.SpdifOverruns),
-      spdifUnderruns:        u32(proto.SystemStatusValue.SpdifUnderruns),
-      spdifStarvationsTotal: u32(proto.SystemStatusValue.SpdifStarvationsTotal),
-    };
-
-    const entries = Object.entries(reads) as [keyof proto.SystemInfo, Promise<number>][];
-    const settled = await Promise.allSettled(entries.map(([, p]) => p));
-
-    const out = {} as proto.PartialSystemInfo;
+  // Reads each status index as a u32. Every read is a separate vendor
+  // transfer and allSettled lets one STALL (older firmware missing a counter)
+  // leave the rest populated; results are keyed by name, not array position.
+  async #readStatusU32s<K extends string>(idx: Record<K, number>): Promise<Record<K, number | null>> {
+    const entries = Object.entries(idx) as [K, number][];
+    const settled = await Promise.allSettled(entries.map(([, wValue]) =>
+      this.transport.ctrlIn(proto.WireCmd.GetStatus.code, wValue, 4).then((b) => Codec.decodePadded(Codec.u32, b))));
+    const out = {} as Record<K, number | null>;
     entries.forEach(([key], i) => {
       const r = settled[i];
       out[key] = r.status === 'fulfilled' ? r.value : null;
     });
     return out;
+  }
+
+  // Slow-poll telemetry: env scalars + cumulative error counters.
+  async getSystemInfo(): Promise<proto.PartialSystemInfo> {
+    const V = proto.SystemStatusValue;
+    const [counters, tempCDegC] = await Promise.all([
+      this.#readStatusU32s<Exclude<keyof proto.SystemInfo, 'tempCDegC'>>({
+        clockHz:               V.ClockHz,
+        coreVoltageMv:         V.CoreVoltageMv,
+        sampleRateHz:          V.SampleRateHz,
+        pdmRingOverruns:       V.PdmRingOverruns,
+        pdmRingUnderruns:      V.PdmRingUnderruns,
+        pdmDmaOverruns:        V.PdmDmaOverruns,
+        pdmDmaUnderruns:       V.PdmDmaUnderruns,
+        spdifOverruns:         V.SpdifOverruns,
+        spdifUnderruns:        V.SpdifUnderruns,
+        spdifStarvationsTotal: V.SpdifStarvationsTotal,
+      }),
+      // The one signed scalar (centi-C) decodes as i32.
+      this.transport.ctrlIn(proto.WireCmd.GetStatus.code, V.TempCDegC, 4)
+        .then((b) => Codec.decodePadded(Codec.i32, b))
+        .catch(() => null),
+    ]);
+    return { ...counters, tempCDegC };
   }
 
   async getBufferStats(): Promise<proto.BufferStats | null> {
@@ -1317,6 +1325,60 @@ export class DspDevice {
     };
   }
 
+  // Selectable output latency (REQ_OUTPUT_LATENCY). Older firmware STALLs
+  // the opcode, so a rejected getOutputLatencyStatus() is the feature probe.
+  async getOutputLatencyStatus(): Promise<Domain.OutputLatencyStatus> {
+    const size = Codec.sizeOf(proto.Wire.OutputLatencyStatus);
+    const raw = await this.transport.ctrlIn(proto.WireCmd.OutputLatency.code, proto.Wire.OUTPUT_LATENCY_GET_STATUS, size);
+    // A short reply is not a status block; reject so the probe reads as unsupported.
+    if (raw.length < size) throw new Error(`REQ_OUTPUT_LATENCY status reply too short (${raw.length} < ${size})`);
+    const w = Codec.decode(proto.Wire.OutputLatencyStatus, raw);
+    return {
+      requestedId: w.requestedId, effectiveId: w.effectiveId, effectiveUs: w.effectiveUs,
+      targetFrames: w.targetFrames, batchFrames: w.batchFrames,
+      pending: w.pending !== 0, optionCount: w.optionCount,
+    };
+  }
+
+  // Asks for the most a control transfer on EP0 carries and parses whole
+  // entries; the firmware answers with exactly optionCount of them.
+  async getOutputLatencyOptions(): Promise<Domain.OutputLatencyOption[]> {
+    const size = Codec.sizeOf(proto.Wire.OutputLatencyOption);
+    const raw = await this.transport.ctrlIn(
+      proto.WireCmd.OutputLatency.code, proto.Wire.OUTPUT_LATENCY_GET_OPTIONS, EP0_MAX_PACKET,
+    );
+    const out: Domain.OutputLatencyOption[] = [];
+    for (let off = 0; off + size <= raw.length; off += size) {
+      const w = Codec.decodePadded(proto.Wire.OutputLatencyOption, raw.subarray(off, off + size));
+      out.push({
+        id: w.id, latencyUs: w.latencyUs, batchUs: w.batchUs, effectiveUs: w.effectiveUs,
+        streamOnly: (w.flags & proto.Wire.OUTPUT_LATENCY_FLAG_STREAM_ONLY) !== 0,
+        available: (w.flags & proto.Wire.OUTPUT_LATENCY_FLAG_AVAILABLE) !== 0,
+      });
+    }
+    return out;
+  }
+
+  // Deferred apply (flash write + muted output restart). Over USB an unknown
+  // id is ACKed and ignored; re-sending the stored id is a no-op.
+  async setOutputLatency(id: number): Promise<void> {
+    return this.transport.ctrlOut(proto.WireCmd.OutputLatency.code, 0, Codec.encode(Codec.u8, id & 0xFF));
+  }
+
+  // Ring health counters 26-31. Firmware answers unknown indices with 0, so
+  // call this only after getOutputLatencyStatus() succeeded.
+  async getRingHealth(): Promise<Domain.RingHealth> {
+    const V = proto.SystemStatusValue;
+    return this.#readStatusU32s<keyof Domain.RingHealth>({
+      underrunEpisodes:     V.RingUnderrunEpisodes,
+      blocksRefused:        V.RingBlocksRefused,
+      lowestFillFrames:     V.RingLowestFill,
+      inputGapWorstUs:      V.InputGapWorstUs,
+      usbPacketGapWorstUs:  V.UsbPacketGapWorstUs,
+      backgroundOverBudget: V.BackgroundOverBudget,
+    });
+  }
+
   // BCK/LRCLK pin-sharing mode: 0 = unified (master+slave share one pair),
   // 1 = split (master + slave each get their own BCK/LRCLK pair).
   async setI2sClockPinMode(mode: number): Promise<Result<void, proto.PinConfigResult>> {
@@ -1581,7 +1643,7 @@ export class DspDevice {
         const status = await readCsStatus(raw);
         return { result: Result.fail<number>(proto.CsStatusCode.Busy, 'A save or revert is already in progress'), status };
       }
-      return pollCsStatus(raw, 0xFF);
+      return pollCsStatus(raw, 0xFF, CS_REVERT_MAX_POLLS);
     });
   }
 
@@ -1604,10 +1666,11 @@ export class DspDevice {
   }
 
   // IR learn (0x8F, caps v3): GET-type action command, wValue 1/0/2 =
-  // arm/cancel/read-result. Arm STALLs with no live CS_TYPE_IR binding,
-  // surfaced here as NO_IR (the firmware never gets to queue anything, so
-  // there is no status poll to fall back on -- unlike csSave/csRevert's BUSY,
-  // this is the whole answer). Completion normally arrives on the notify
+  // arm/cancel/read-result. Arm STALLs with no live CS_TYPE_IR binding
+  // (NO_IR) and while a save or revert runs (BUSY, told apart by the CS
+  // status the revert leaves at PENDING / slot 0xFF). The status read sits
+  // inside the catch, so a disconnect rejects here as it does in csSave.
+  // Completion normally arrives on the notify
   // stream (event 0x0A); csIrLearnResult is the poll-based fallback (I2C, or
   // a host that missed the notification).
   async csIrLearnArm(): Promise<Result<void, number>> {
@@ -1615,6 +1678,10 @@ export class DspDevice {
       await proto.actionCmd(this.transport, proto.WireCmd.CsIrLearn, 1);
       return Result.ok();
     } catch {
+      const status = await readCsStatus(this.transport);
+      if (status.lastStatus === proto.CsStatusCode.Pending && status.lastSlot === 0xFF) {
+        return Result.fail<number>(proto.CsStatusCode.Busy, 'A control-surface save or revert is in progress - retry in a moment');
+      }
       return Result.fail<number>(proto.CsStatusCode.NoIr, 'Set up the IR receiver first');
     }
   }
@@ -1706,11 +1773,18 @@ export class DspDevice {
   // if already running), 0xFFFF cancels the running macro at its next step
   // boundary. Only reachable failure is a STALL for an out-of-range index --
   // the firmware handler never touches cs_last_status/last_slot for it.
+  // While a revert runs the firmware also STALLs here without touching
+  // cs_last_status, which keeps reporting the revert's PENDING / slot 0xFF;
+  // that case is returned as BUSY.
   async csMacroFire(idx: number): Promise<Result<void, number>> {
     try {
       await proto.actionCmd(this.transport, proto.WireCmd.CsMacroFire, idx & 0xFF);
       return Result.ok();
     } catch {
+      const status = await readCsStatus(this.transport);
+      if (status.lastStatus === proto.CsStatusCode.Pending && status.lastSlot === 0xFF) {
+        return Result.fail<number>(proto.CsStatusCode.Busy, 'A control-surface save or revert is in progress - retry in a moment');
+      }
       return Result.fail<number>(proto.CsStatusCode.InvalidMacro, 'Macro slot is out of range');
     }
   }

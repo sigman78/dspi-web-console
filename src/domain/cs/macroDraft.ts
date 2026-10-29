@@ -31,10 +31,10 @@ const STEP_ACTION_PREF: readonly Domain.CsAction[] = [
   Domain.CsAction.Set, Domain.CsAction.Toggle, Domain.CsAction.Trigger, Domain.CsAction.Inc, Domain.CsAction.Dec,
 ];
 
-export function stepNounOptions(nouns: readonly Domain.CsNounCaps[]): number[] {
+export function stepNounOptions(nouns: readonly Domain.CsNounCaps[], current?: number): number[] {
   return nouns.map((_, i) => i).filter((i) =>
     (nouns[i].actions & Domain.CS_MACRO_STEP_ACTIONS) !== 0 &&
-    nouns[i].unit <= Domain.CS_MAX_KNOWN_UNIT &&
+    CsField.isOfferedNoun(i, nouns[i], current) &&
     i !== Domain.CsNoun.Macro && i !== Domain.CsNoun.PageValue);
 }
 

@@ -25,10 +25,8 @@
   const meter = $derived(s.telemetry.subharmMeter);
 
   const SELECT_MODE_OPTIONS = [
-    { value: Domain.SubharmSelect.All, label: 'ALL' },
-    { value: Domain.SubharmSelect.Percussive, label: 'PERCUSSIVE' },
-    { value: Domain.SubharmSelect.Sustained, label: 'SUSTAINED' },
-  ] as const satisfies ReadonlyArray<{ value: Domain.SubharmSelect; label: string }>;
+    Domain.SubharmSelect.All, Domain.SubharmSelect.Percussive, Domain.SubharmSelect.Sustained,
+  ].map((value) => ({ value, label: Domain.SUBHARM_SELECT_LABEL[value] }));
 
   const outputChannels = $derived(Domain.outputChannelsWithIndex(snapshot));
   const showMask = $derived(outputChannels.length > 1);

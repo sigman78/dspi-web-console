@@ -15,6 +15,11 @@
 
   const cpus = $derived([s.telemetry.cpu0, s.telemetry.cpu1]);
 
+  const ring = $derived(s.outputLatency.supported === true ? s.telemetry.ringHealth : null);
+  function gapMs(us: number | null | undefined): string {
+    return us == null ? '—' : `${(us / 1000).toFixed(1)}`;
+  }
+
   function count(v: number | null | undefined): string {
     return v == null ? '—' : String(v);
   }
@@ -41,8 +46,17 @@
     <KV inline label="POLL ERR" value={String(s.telemetry.errorCount)} tone={countTone(s.telemetry.errorCount)} />
     <KV inline label="PDM RING OVR / UNR" value={`${count(info?.pdmRingOverruns)} / ${count(info?.pdmRingUnderruns)}`} tone={countTone(info?.pdmRingOverruns, info?.pdmRingUnderruns)} />
     <KV inline label="PDM DMA OVR / UNR" value={`${count(info?.pdmDmaOverruns)} / ${count(info?.pdmDmaUnderruns)}`} tone={countTone(info?.pdmDmaOverruns, info?.pdmDmaUnderruns)} />
-    <KV inline label="SPDIF OVR / UNR" value={`${count(info?.spdifOverruns)} / ${count(info?.spdifUnderruns)}`} tone={countTone(info?.spdifOverruns, info?.spdifUnderruns)} />
+    {#if s.outputLatency.supported === true}
+      <KV inline label="SPDIF UNR" value={count(info?.spdifUnderruns)} tone={countTone(info?.spdifUnderruns)} />
+    {:else}
+      <KV inline label="SPDIF OVR / UNR" value={`${count(info?.spdifOverruns)} / ${count(info?.spdifUnderruns)}`} tone={countTone(info?.spdifOverruns, info?.spdifUnderruns)} />
+    {/if}
     <KV inline label="SPDIF STARV" value={count(info?.spdifStarvationsTotal)} tone={countTone(info?.spdifStarvationsTotal)} />
+    {#if ring}
+      <KV inline label="RING UNDERRUNS" value={count(ring.underrunEpisodes)} tone={countTone(ring.underrunEpisodes)} />
+      <KV inline label="RING DROPS" value={count(ring.blocksRefused)} tone={countTone(ring.blocksRefused)} />
+      <KV inline label="WORST GAP IN / USB" value={`${gapMs(ring.inputGapWorstUs)} / ${gapMs(ring.usbPacketGapWorstUs)} ms`} />
+    {/if}
   </div>
   <div class="subhdr">CLIP / CHANNEL</div>
   <div class="clipgrid">

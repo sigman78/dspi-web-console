@@ -5,6 +5,7 @@ import { createPresetsState } from './presets.svelte';
 import { createCtrlIfacesState } from './ctrlIfaces.svelte';
 import { createControlSurfacesState } from './controlSurfaces.svelte';
 import { createSysClockState } from './sysClock.svelte';
+import { createOutputLatencyState } from './outputLatency.svelte';
 import { createStagingState } from './staging.svelte';
 import { createEqLinkState } from './eqLink.svelte';
 import { defaultEqLinkGroups } from '@/domain';
@@ -32,6 +33,7 @@ export function makeReadySession(device: DspDevice, scope: ConnectionScope = new
   const ctrlIfaces = createCtrlIfacesState();
   const controlSurfaces = createControlSurfacesState();
   const sysClock = createSysClockState();
+  const outputLatency = createOutputLatencyState();
   const staging = createStagingState();
   const drafts = createDraftsState();
   const mirror = new MirrorState();
@@ -53,7 +55,7 @@ export function makeReadySession(device: DspDevice, scope: ConnectionScope = new
   });
   const session: ReadySession = {
     device, info: device.info, hardware: device.hardware, signal,
-    copySource, telemetry, presets, ctrlIfaces, controlSurfaces, sysClock, staging, eqLink, drafts, mirror, health, writes, notifyWaiters, queue, wireMirror,
+    copySource, telemetry, presets, ctrlIfaces, controlSurfaces, sysClock, outputLatency, staging, eqLink, drafts, mirror, health, writes, notifyWaiters, queue, wireMirror,
     get alive() { return !scope.aborted; },
     dispose() { scope.abort(); },
   };

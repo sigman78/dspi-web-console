@@ -357,7 +357,7 @@
                     const n = Number((e.currentTarget as HTMLSelectElement).value);
                     editPageDraft(i, (dr) => { dr.noun = n; dr.target = 0; dr.index = 0; dr.grouped = false; dr.bar = false; });
                   }}>
-                  {#each CsField.pageNounOptions(cs.nouns) as o (o.v)}
+                  {#each CsField.pageNounOptions(cs.nouns, d.noun) as o (o.v)}
                     <option value={String(o.v)}>{o.label}</option>
                   {/each}
                 </select>

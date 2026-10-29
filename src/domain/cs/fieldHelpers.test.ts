@@ -127,3 +127,35 @@ describe('groupBandOptionsFor', () => {
     expect(CsField.groupBandOptionsFor(nouns, 1, group, channels)).toEqual([]);
   });
 });
+
+describe('known-noun gating', () => {
+  const noun = (over: Partial<CsNounCaps>): CsNounCaps => ({
+    kind: Domain.CsKind.Bool, enumCount: 0, actions: 0xFFFF, minQ8: 0, maxQ8: 0,
+    unit: Domain.CS_UNIT_NONE, targetKind: Domain.CS_TARGET_NONE, targetCount: 0, dflags: 0, ...over,
+  });
+
+  it('skips nouns with a target kind beyond the known maximum', () => {
+    const list = [
+      noun({ targetKind: Domain.CS_TARGET_DSP_BAND, targetCount: 4 }),
+      noun({ targetKind: Domain.CS_MAX_KNOWN_TARGET_KIND + 1, targetCount: 16 }),
+    ];
+    expect(CsField.isKnownNoun(list[0])).toBe(true);
+    expect(CsField.isKnownNoun(list[1])).toBe(false);
+    expect(CsField.pageNounOptions(list).map((o) => o.v)).toEqual([0]);
+  });
+
+  it('holds tube nouns back unless the row already uses one', () => {
+    const list = Array.from({ length: Domain.CsNoun.TubeMix + 1 }, () => noun({}));
+    const offered = CsField.pageNounOptions(list).map((o) => o.v);
+    expect(offered).not.toContain(Domain.CsNoun.TubeDrive);
+    expect(offered).toContain(Domain.CsNoun.SubharmSolo);
+    const kept = CsField.pageNounOptions(list, Domain.CsNoun.TubeDrive).map((o) => o.v);
+    expect(kept).toContain(Domain.CsNoun.TubeDrive);
+    expect(kept).not.toContain(Domain.CsNoun.TubeMix);
+  });
+
+  it('offers a log-ms noun and skips a unit beyond the known maximum', () => {
+    expect(CsField.isKnownNoun(noun({ unit: Domain.CS_UNIT_MS_LOG }))).toBe(true);
+    expect(CsField.isKnownNoun(noun({ unit: Domain.CS_MAX_KNOWN_UNIT + 1 }))).toBe(false);
+  });
+});

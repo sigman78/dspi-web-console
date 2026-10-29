@@ -1,9 +1,13 @@
 // Dev/debug URL options -- the single home for every ?param the console honors.
 //
 //   ?mock[=<profile>]   boot a synthesized device instead of USB:
-//       latest (default)  newest wire / fw 1.1.6
+//       latest (default)  newest wire, models the fw 1.1.6 release-branch head
+//                         (reports beta 5: output latency, ring health, CS v21)
 //       multi             latest + 8ch I2S input + 3 S/PDIF inputs
-//       v<N>              exact bulk/wire format N (v28..vMAX)
+//       v<N>              exact bulk/wire format N (v28..vMAX) as the tagged
+//                         firmware ships it: CS caps v14 (v28/v29), v18 (v30),
+//                         v20 (v32); v31/v32 are plain beta 4 (no output
+//                         latency)
 //     a comma list (?mock=latest,v28) boots one device per token: the
 //     first is active, the rest adopt dormant -- the multi-device fleet
 //     harness, no hardware needed

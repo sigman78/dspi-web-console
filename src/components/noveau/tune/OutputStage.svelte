@@ -44,7 +44,7 @@
 
   const LINK_OPTIONS = Array.from({ length: Domain.Proc.LIMITER_LINK_GROUP_MAX + 1 }, (_, i) => ({
     value: i,
-    label: i === 0 ? '—' : String(i),
+    label: Domain.Proc.limiterLinkLabel(i),
   }));
   // GR bar full scale,.
   const GR_FULL_DB = 30;

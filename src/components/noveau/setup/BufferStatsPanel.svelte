@@ -1,11 +1,21 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
+  import KV from '@/components/chrome/KV.svelte';
   import { resetBufferStats } from '@/runtime';
   import { getSession } from '@/components/sessionContext';
 
   const s = getSession();
   const bs = $derived(s.telemetry.bufferStats);
+
+  const ring = $derived(s.outputLatency.supported === true ? s.telemetry.ringHealth : null);
+  const targetFrames = $derived(s.outputLatency.status?.targetFrames);
+
+  // The firmware parks the lowest-fill tracker at UINT32_MAX until it has a reading.
+  const NO_READING = 0xFFFFFFFF;
+  const lowestFill = $derived(
+    ring?.lowestFillFrames == null || ring.lowestFillFrames >= NO_READING ? null : ring.lowestFillFrames,
+  );
 
   $effect(() => untrack(() => s.telemetry.wantBufferStats()));
 
@@ -79,12 +89,29 @@
         </tbody>
       </table>
     </div>
+    {#if ring}
+      <div class="ringrows">
+        <KV
+          inline
+          label="LOWEST FILL"
+          value={lowestFill == null ? '—' : `${lowestFill}${targetFrames != null ? ` / ${targetFrames}` : ''} frames`}
+          tone={lowestFill === 0 ? 'warn' : 'off'}
+        />
+        <KV
+          inline
+          label="BG OVER BUDGET"
+          value={ring.backgroundOverBudget == null ? '—' : String(ring.backgroundOverBudget)}
+          tone={ring.backgroundOverBudget != null && ring.backgroundOverBudget > 0 ? 'warn' : 'off'}
+        />
+      </div>
+    {/if}
   {:else}
     <p class="hint idle">Waiting for buffer stats…</p>
   {/if}
 </Panel>
 
 <style>
+  .ringrows { padding: 0 0 8px; }
   .tblwrap { padding: 10px 14px 14px; }
   /* Typography mirrors KV: sans dim labels (header + SRC), mono 12px/600 values. */
   .tbl {

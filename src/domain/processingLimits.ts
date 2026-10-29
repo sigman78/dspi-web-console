@@ -159,3 +159,5 @@ export const LIMITER_RELEASE_MAX_MS = 1000;
 export const LIMITER_THRESHOLD_STEP_DB = 0.5;
 export const LIMITER_RELEASE_STEP_MS = 10;
 export const LIMITER_LINK_GROUP_MAX = 4;
+// Group 0 is unlinked.
+export const limiterLinkLabel = (g: number): string => (g === 0 ? '—' : String(g));

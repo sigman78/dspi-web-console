@@ -400,3 +400,21 @@ describe('wireTypes — V28 packet layout', () => {
   });
 
 });
+
+describe('wireTypes — REQ_OUTPUT_LATENCY replies', () => {
+  it('decodes the 12-byte status in firmware field order, little-endian', () => {
+    const raw = new Uint8Array([5, 3, 0xD0, 0x07, 0xC0, 0x00, 0x30, 0x00, 1, 7, 0, 0]);
+    expect(Codec.sizeOf(Wire.OutputLatencyStatus)).toBe(12);
+    expect(Codec.decode(Wire.OutputLatencyStatus, raw)).toMatchObject({
+      requestedId: 5, effectiveId: 3, effectiveUs: 2000, targetFrames: 192, batchFrames: 48, pending: 1, optionCount: 7,
+    });
+  });
+
+  it('decodes an 8-byte option entry with its flag bits', () => {
+    const raw = new Uint8Array([2, 0x81, 0xE8, 0x03, 0x4D, 0x01, 0xE8, 0x03]);
+    const o = Codec.decode(Wire.OutputLatencyOption, raw);
+    expect(o).toMatchObject({ id: 2, latencyUs: 1000, batchUs: 333, effectiveUs: 1000 });
+    expect(o.flags & Wire.OUTPUT_LATENCY_FLAG_STREAM_ONLY).not.toBe(0);
+    expect(o.flags & Wire.OUTPUT_LATENCY_FLAG_AVAILABLE).not.toBe(0);
+  });
+});

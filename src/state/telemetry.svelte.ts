@@ -1,5 +1,5 @@
 import type { BufferStats, PartialSystemInfo } from '@/protocol';
-import { ALL_CHANNELS, type SpdifRxStatus, type I2sSlaveStatus, type AdatOutputStatus, type AdatInputStatus, type LimiterStatus } from '@/domain';
+import { ALL_CHANNELS, type SpdifRxStatus, type I2sSlaveStatus, type AdatOutputStatus, type AdatInputStatus, type LimiterStatus, type RingHealth } from '@/domain';
 
 // Peaks/holds/clips are DOMAIN-ChannelId indexed (the poll loop remaps from
 // the device's wire index space); sized to the full domain id range.
@@ -25,6 +25,8 @@ export class StatusStore {
   // the first read.
   subharmHeadroomDb = $state<number | null>(null);
   info = $state<PartialSystemInfo | null>(null);
+  // Output ring health counters; stays null on firmware without them.
+  ringHealth = $state<RingHealth | null>(null);
   // Live active input channel count (null = not reported yet).
   activeInputChannels = $state<number | null>(null);
   lastStatusMs = $state(0);
@@ -117,6 +119,21 @@ export class StatusStore {
     for (let i = 0; i < NUM_CHANNELS; i++) {
       if ((flags & (1 << i)) !== 0) this.clipLatched[i] = true;
     }
+  }
+
+  // Same merge rule as applyPartialInfo: a counter that failed this cycle keeps
+  // its previous value.
+  applyRingHealth(p: RingHealth): void {
+    if (this.ringHealth === null) {
+      this.ringHealth = { ...p };
+      return;
+    }
+    const next = { ...this.ringHealth };
+    for (const k of Object.keys(p) as (keyof RingHealth)[]) {
+      const v = p[k];
+      if (v !== null) next[k] = v;
+    }
+    this.ringHealth = next;
   }
 
   // Fold a partial readout in: non-null fields update; null fields keep their
