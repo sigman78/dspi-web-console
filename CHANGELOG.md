@@ -6,6 +6,23 @@ from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
 this project follows [Semantic Versioning](https://semver.org/) (currently in the
 `0.x` pre-1.0 line — minor versions may include breaking changes).
 
+## [1.0.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.12.0...dspi-console-web-v1.0.0) (2026-10-29)
+
+
+### Features
+
+* **about:** project column with licence, links and DSPi references ([#151](https://github.com/sigman78/dspi-web-console/issues/151)) ([6139869](https://github.com/sigman78/dspi-web-console/commit/6139869ff5213162354c1c9acba90a35ff4e74ac))
+* **fw:** catch up with the 1.1.6 release branch past beta5 ([#146](https://github.com/sigman78/dspi-web-console/issues/146)) ([93383c0](https://github.com/sigman78/dspi-web-console/commit/93383c0d291c510cf3efc3b4056ce05754b6b255))
+* **fw:** drop pre-1.1.5 firmware support, floor moves to wire V28 ([#145](https://github.com/sigman78/dspi-web-console/issues/145)) ([47f39e6](https://github.com/sigman78/dspi-web-console/commit/47f39e63f2d5537faf3db4a79d99c1751554dc67))
+* **room:** VU meters for inputs and outputs, scene hue slider ([#150](https://github.com/sigman78/dspi-web-console/issues/150)) ([2fe324b](https://github.com/sigman78/dspi-web-console/commit/2fe324babad8ee99205eae8ec3c26ab79fb8b3e4))
+* **ui:** room visualizer with onboard RTA spectrum ([#147](https://github.com/sigman78/dspi-web-console/issues/147)) ([9746dba](https://github.com/sigman78/dspi-web-console/commit/9746dbaeda05d8bd40cec267217656625c63c814))
+* **ui:** UI refresh ([#144](https://github.com/sigman78/dspi-web-console/issues/144)) ([43c05bd](https://github.com/sigman78/dspi-web-console/commit/43c05bd024cfa68eba4a5f946ebb84d7a8c9956c))
+
+
+### Miscellaneous Chores
+
+* release 1.0.0 ([d68f7ac](https://github.com/sigman78/dspi-web-console/commit/d68f7ac4c93fc411e20459ee4c79cbfe4834c4c7))
+
 ## [0.12.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.11.0...dspi-console-web-v0.12.0) (2026-10-13)
 
 
