@@ -34,6 +34,7 @@
   // Replies older than this fall back to the simulated spectrum.
   const RTA_FRESH_MS = 1000;
   const SETTLE_MS = 1500;
+  const GREET_DELAY_MS = 200;
   const tele = s.telemetry;
 
   let outputLevel = 0;
@@ -116,15 +117,22 @@
     const ro = new ResizeObserver(fit);
     ro.observe(host);
 
+    const greeting = new Fx.GreetingWave();
+    let greeted = false;
+
     let lastSync = 0;
     const loop = Fx.createFxLoop({
       reducedMotion: () => reduced.matches,
       frame(now, dt) {
         if (now - lastSync > SYNC_MS) { lastSync = now; syncChannels(); }
         readLevel();
+        if (!greeted) {
+          greeted = true;
+          if (!reduced.matches && !(outputLevel > Fx.SILENT_LEVEL)) greeting.start(now + GREET_DELAY_MS);
+        }
         const rta = tele.rtaAvailability === 'available' && tele.lastRtaReplyMs > 0 && now - tele.lastRtaReplyMs < RTA_FRESH_MS;
         if (rta !== usingRta) usingRta = rta;
-        room.draw(now, dt, (rta ? live : simulated).bands(now));
+        room.draw(now, dt, greeting.apply(now, (rta ? live : simulated).bands(now)));
       },
     });
     loop.start();

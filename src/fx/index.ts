@@ -5,3 +5,4 @@ export * from './loop';
 export * from './palette';
 export * from './roomScene';
 export * from './spectrumFeed';
+export * from './greetingWave';
