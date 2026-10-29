@@ -23,6 +23,15 @@
     ...(mock ? [{ label: 'MOCK', value: mock.map((p) => p.name).join(', ') }] : []),
     { label: 'WEBUSB', value: usbReason ?? 'supported', tone: usbReason ? 'warn' : undefined },
   ]);
+  type LinkRow = { label: string; value: string; href?: string };
+  const projectRows: LinkRow[] = [
+    { label: 'LICENSE', value: 'MIT', href: BuildInfo.LICENSE_URL },
+    { label: 'COPYRIGHT', value: BuildInfo.COPYRIGHT },
+    { label: 'IDEAS', value: 'Suggest an idea', href: BuildInfo.IDEA_URL },
+    { label: 'FIRMWARE', value: 'DSPi by Weeb Labs', href: BuildInfo.FIRMWARE_URL },
+    { label: 'COMMUNITY', value: 'DSPi Discord', href: BuildInfo.DSPI_DISCORD_URL },
+    { label: 'MAKER', value: 'Weeb Labs', href: BuildInfo.WEEBLABS_URL },
+  ];
   const hints: Row[] = [
     { label: 'KEYS', value: DESTINATION_SHORTCUTS.map((sc) => `${sc.keys.join(' / ')} ${sc.action}`).join(' · ') },
     { label: 'URL', value: '?mock · ?mock=multi · ?mock=v<N> · &chip=rp2040 · &debug' },
@@ -52,14 +61,32 @@
     </div>
   </section>
 
-  <section class="band changes">
-    <header class="sec-h"><h3>LATEST CHANGES</h3><span class="t-meta ver">v{LATEST_CHANGES.version}</span></header>
-    <div class="fade">
-      <ul>
-        {#each LATEST_CHANGES.highlights as h (h)}<li>{h}</li>{/each}
-      </ul>
-    </div>
-  </section>
+  <div class="split">
+    <section class="band changes">
+      <header class="sec-h"><h3>LATEST CHANGES</h3><span class="t-meta ver">v{LATEST_CHANGES.version}</span></header>
+      <div class="fade">
+        <ul>
+          {#each LATEST_CHANGES.highlights as h (h)}<li>{h}</li>{/each}
+        </ul>
+      </div>
+    </section>
+
+    <section class="band">
+      <header class="sec-h"><h3>PROJECT</h3></header>
+      <div class="project">
+        {#each projectRows as r (r.label)}
+          <div class="kv">
+            <span class="t-cap">{r.label}</span>
+            {#if r.href}
+              <a class="t-value val lnk" href={r.href} target="_blank" rel="noopener">{r.value} ↗</a>
+            {:else}
+              <span class="t-value val">{r.value}</span>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    </section>
+  </div>
 
   <section class="band">
     <header class="sec-h"><h3>HINTS</h3></header>
@@ -108,7 +135,18 @@
   .val.warn { color: var(--warn); }
   .links { display: flex; gap: 6px; }
   .links .chip { text-decoration: none; }
+  .split {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    column-gap: 12px;
+  }
   .changes { min-height: 0; }
+  .project { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .project .kv { gap: 12px; }
+  .project .t-cap { min-width: 84px; }
+  .lnk { text-decoration: none; }
+  .lnk:hover, .lnk:focus-visible { color: var(--accent); }
   .fade { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 10px 12px; }
   .fade::after {
     content: "";
@@ -121,8 +159,6 @@
   ul {
     margin: 0;
     padding: 0 0 0 14px;
-    columns: 2;
-    column-gap: 32px;
     font-family: var(--font-sans);
     font-size: 12px;
     color: var(--text-dim);

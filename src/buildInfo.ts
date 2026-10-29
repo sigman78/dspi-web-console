@@ -8,6 +8,11 @@ export const REPO_URL = 'https://github.com/sigman78/dspi-web-console';
 export const FIRMWARE_URL = 'https://github.com/WeebLabs/DSPi';
 export const FIRMWARE_RELEASES_URL = `${FIRMWARE_URL}/releases`;
 export const CONTACT_EMAIL = 'admin@dspi-ctrl.fyi';
+export const LICENSE_URL = `${REPO_URL}/blob/master/LICENSE`;
+export const COPYRIGHT = '© 2026 SiGMan';
+export const WEEBLABS_URL = 'https://github.com/WeebLabs';
+export const DSPI_DISCORD_URL = 'https://discord.gg/RCyqxAQ5xS';
+export const IDEA_URL = `${REPO_URL}/issues/new?labels=enhancement&title=${encodeURIComponent('Idea: ')}`;
 
 export interface IssueContext {
   fwLabel?: string | null;
