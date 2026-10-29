@@ -5,7 +5,7 @@ import { layoutMeters } from './meterLayout';
 import { CLIP_DB_FRACTION, VU_BALLISTICS, VU_PEAK_BALLISTICS, VU_SPAN_DB, dbFraction } from './meterScale';
 import { css, oklchToRgb, type FxPalette, type Rgb } from './palette';
 import { blob } from './sprites';
-import type { Wall } from './wall';
+import { VANISH_FRAC, type Wall } from './wall';
 
 export const MAX_METERS = 9;
 
@@ -48,6 +48,8 @@ const CAP_CHROMA = 0.04;
 const TIP_FILL = 'rgba(255,255,255,0.16)';
 
 // Labels under the floor line, drawn above the reflection.
+/** How much of the floor's perspective spread the labels follow (0 none, 1 full). */
+const LABEL_SPREAD = 0.3;
 const BLOCK_TOP = 4;
 const BLOCK_H = 17;
 const BLOCK_GAP = 2;
@@ -325,20 +327,32 @@ export class MeterWall implements Wall {
     c.globalAlpha = 1;
   }
 
-  /** Name labels under the floor line; drawn after the reflection so it cannot tint them. */
+  /** Name labels under the floor line, spread a little from the centre with the floor's perspective; drawn after the reflection so it cannot tint them. */
   drawLabels(ctx: CanvasRenderingContext2D, alpha: number): void {
     const y = this.floorY + BLOCK_TOP;
+    const gy = y + BLOCK_H + BLOCK_GAP;
+    const mid = this.x + this.width / 2;
+    const depth = this.height * VANISH_FRAC;
+    const nameK = 1 + (LABEL_SPREAD * (y + BLOCK_H / 2 - this.floorY)) / depth;
+    const groupK = 1 + (LABEL_SPREAD * (gy + BLOCK_H / 2 - this.floorY)) / depth;
+    const dpr = this.dpr;
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = alpha;
     for (let i = 0; i < this.channels.length; i++) {
       const nb = this.nameBlocks[i];
-      const nw = nb.width / this.dpr;
-      ctx.drawImage(nb, Math.round((this.cx(i) - nw / 2) * this.dpr) / this.dpr, y, nw, BLOCK_H);
+      const nw = nb.width / dpr;
+      const nx = mid + (this.cx(i) - mid) * nameK;
+      ctx.drawImage(nb, Math.round((nx - nw / 2) * dpr) / dpr, y, nw, BLOCK_H);
       const g = this.groupBlocks[i];
-      if (g) ctx.drawImage(g, this.lefts[i], y + BLOCK_H + BLOCK_GAP, g.width / this.dpr, BLOCK_H);
+      if (g) {
+        const gw = g.width / dpr;
+        const gx = mid + (this.lefts[i] + gw / 2 - mid) * groupK;
+        ctx.drawImage(g, Math.round((gx - gw / 2) * dpr) / dpr, gy, gw, BLOCK_H);
+      }
     }
     ctx.globalAlpha = 1;
   }
+
 
   /** Advances every pillar. `levels` are linear peaks per slot; `latched` marks channels that clipped. */
   step(nowMs: number, dtMs: number, levels: Float32Array, latched: Uint8Array): void {

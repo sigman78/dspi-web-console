@@ -3,7 +3,7 @@ import { context2d, createCanvas, detectColorSpace, type ColorSpace } from './ca
 import { LightWall, barColor } from './lightWall';
 import { MeterWall, type MeterChannel } from './meterWall';
 import { css, oklchToRgb, rgbToOklch, type FxPalette, type Rgb } from './palette';
-import type { Wall } from './wall';
+import { VANISH_FRAC, type Wall } from './wall';
 
 const MARGIN = 76;
 const WALL_TOP = 84;
@@ -247,7 +247,7 @@ export class RoomScene {
     c.fillRect(0, floorY, w, h - floorY);
 
     const cx = w / 2;
-    const vp = floorY - this.spectrum.height * 0.35;
+    const vp = floorY - this.spectrum.height * VANISH_FRAC;
     c.save();
     c.beginPath();
     c.rect(0, floorY + 1, w, h - floorY);

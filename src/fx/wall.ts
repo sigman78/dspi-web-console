@@ -1,6 +1,9 @@
 import type { Bloom } from './bloom';
 import type { FxPalette } from './palette';
 
+/** Height of the floor's vanishing point above the floor line, as a fraction of the wall height. */
+export const VANISH_FRAC = 0.35;
+
 /** A band of light standing on the floor line: the scene lays it out, steps it, and draws it. */
 export interface Wall {
   readonly width: number;
