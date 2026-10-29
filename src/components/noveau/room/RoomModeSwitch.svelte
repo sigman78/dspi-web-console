@@ -9,7 +9,7 @@
     { key: 'vu-out', label: 'Output meters' },
   ];
 
-  const buttons: HTMLButtonElement[] = [];
+  const buttons: HTMLButtonElement[] = $state([]);
 
   function onkeydown(e: KeyboardEvent, i: number): void {
     let next: number;
