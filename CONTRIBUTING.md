@@ -5,10 +5,43 @@
 ```bash
 npm install          # also installs git hooks via `npm run prepare`
 npm run dev          # http://localhost:5173
+
+npm run build        # static build → dist/
+npm run preview      # serve the production build locally
+npm run test         # unit + integration (no hardware)
+npm run test:hil     # hardware-in-the-loop (needs a real device)
+npm run check        # TypeScript + svelte-check
+npm run lint
 ```
 
-See the [README](./README.md) for browser requirements, the mock device, and
-hardware notes.
+See the [README](./README.md) for browser requirements and hardware notes.
+HIL tests need exclusive USB access: close every browser tab holding the
+device before running them.
+
+### Mock device
+
+Append `?mock` to boot against a wire-faithful synthesized device. It echoes
+writes back to readers and produces deterministic telemetry, so almost every
+contract that holds on hardware also holds in mock (tests use it too). It takes
+comma-separated profile tokens plus an optional `&chip=` flavor; the full list
+is in `src/devOptions.ts`.
+
+```
+?mock                     # newest wire / fw 1.1.6 surface
+?mock=multi               # + 8ch I2S input and 3 S/PDIF inputs
+?mock=v29                 # an exact wire version, for per-version feature gates
+?mock&chip=rp2040         # rp2040 flavor (5 outputs)
+?mock=rp2040,rp2350       # two-device fleet, exercises the DEVICES switcher
+```
+
+### Diagnostics
+
+- Telemetry, error counters and buffer stats are on SETUP › DEVICE; buffer
+  stats are polled only while that page is open.
+- `?log=wire` logs every wire message to the browser console; high-volume
+  telemetry polls go to the **Verbose** level.
+- On fw 1.1.6+ SETUP › DEVICE shows the firmware's git build stamp, so a bench
+  build is identifiable. The **Report an issue** link includes it.
 
 ## Branching model
 

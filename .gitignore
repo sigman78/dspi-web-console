@@ -48,6 +48,7 @@ docs/*
 !docs/MULTIDEVICE.md
 !docs/web_to_uart.md
 !docs/UI.md
+!docs/media/
 /*.png
 /*.md
 !/README.md
