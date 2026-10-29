@@ -18,7 +18,9 @@
       }}
     >
       <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-        {#if it.key === 'tune'}
+        {#if it.key === 'room'}
+          <path d="M4 16V11M8 16V6M12 16V9M16 16V4" /><path d="M2.5 17.5h15" />
+        {:else if it.key === 'tune'}
           <path d="M3 5h14M3 10h14M3 15h14" /><circle cx="7" cy="5" r="1.8" /><circle cx="13" cy="10" r="1.8" /><circle cx="8" cy="15" r="1.8" />
         {:else if it.key === 'program'}
           <rect x="2" y="7" width="4" height="6" rx="1" /><rect x="8" y="7" width="4" height="6" rx="1" /><rect x="14" y="7" width="4" height="6" rx="1" /><path d="M6 10h2M12 10h2" />

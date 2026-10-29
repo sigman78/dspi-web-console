@@ -2,7 +2,7 @@ import type { ProgramModuleKey } from '@/components/noveau/program/programModel'
 import { SETUP_PAGE_KEYS, type SetupPageKey } from '@/components/noveau/setup/setupPages';
 import type { ControlPageKey } from '@/components/noveau/control/controlPages';
 
-export type NoveauDestination = 'tune' | 'program' | 'setup' | 'control' | 'about';
+export type NoveauDestination = 'room' | 'tune' | 'program' | 'setup' | 'control' | 'about';
 
 export const noveauUi = $state<{
   destination: NoveauDestination;
