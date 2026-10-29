@@ -4,6 +4,7 @@ export interface Destination { key: NoveauDestination; label: string }
 
 // Rail order.
 export const DESTINATIONS: readonly Destination[] = [
+  { key: 'room', label: 'ROOM' },
   { key: 'tune', label: 'TUNE' },
   { key: 'program', label: 'PROGRAM' },
   { key: 'setup', label: 'SETUP' },
@@ -12,7 +13,7 @@ export const DESTINATIONS: readonly Destination[] = [
 ];
 
 export const DESTINATION_SHORTCUTS: ReadonlyArray<{ keys: readonly string[]; action: string }> = [
-  { keys: ['Alt+1 … 5'], action: 'destination by rail position' },
+  { keys: ['Alt+1 … 6'], action: 'destination by rail position' },
   { keys: ['Alt+[', 'Alt+]'], action: 'previous / next destination' },
 ];
 

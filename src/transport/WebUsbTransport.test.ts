@@ -62,6 +62,15 @@ describe('WebUsbTransport — picker/target boundary', () => {
     expect(fakeUsb.getDevices).toHaveBeenCalledTimes(1);
   });
 
+  it('ctrlIn() resolves an ok transfer without a data view as an empty reply', async () => {
+    const dev = Object.assign(stubDevice('EMPTY'), {
+      controlTransferIn: vi.fn(async () => ({ status: 'ok', data: undefined })),
+    });
+    const transport = new WebUsbTransport(dev);
+    await transport.tryAutoConnect();
+    expect(await transport.ctrlIn(0x0F, 0, 738)).toEqual(new Uint8Array(0));
+  });
+
   it('requestDevice() resolves the picked device without opening or claiming it', async () => {
     const picked = stubDevice('PICKED');
     const claimInterface = vi.spyOn(picked, 'claimInterface');

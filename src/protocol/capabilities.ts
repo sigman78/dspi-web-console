@@ -71,6 +71,9 @@ export interface DeviceFeatures {
   // GetBuildInfo 0x80 answers (wire V29+). Provenance for humans only -- the
   // stamp itself never gates anything; this only says the read is worth trying.
   readonly buildStamp: boolean;
+  // Onboard RTA (0x08-0x0F, wire V30+). Worth trying only: the real probe is
+  // the caps read, which STALLs on firmware without the module.
+  readonly rta: boolean;
 }
 
 export interface DeviceCapabilities {
@@ -142,6 +145,7 @@ export function deriveCapabilities(input: {
       tube:              wireVersion >= 31,
       limiter:           wireVersion >= 32,
       buildStamp:        wireVersion >= 29,
+      rta:               wireVersion >= 30,
     },
     spdifInputCount: multiSpdifInputs ? SPDIF_RX_MAX_INSTANCES : 1,
   };

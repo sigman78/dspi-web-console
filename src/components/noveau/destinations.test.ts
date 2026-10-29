@@ -7,15 +7,16 @@ const alt = (code: string, mods: Partial<Record<'ctrlKey' | 'metaKey' | 'shiftKe
 
 describe('destinationShortcut', () => {
   test('Alt+digit picks by rail position', () => {
-    expect(destinationShortcut(alt('Digit2'), full, 'tune')).toBe('program');
-    expect(destinationShortcut(alt('Digit4'), full, 'tune')).toBe('control');
-    expect(destinationShortcut(alt('Digit5'), full, 'tune')).toBe('about');
-    expect(destinationShortcut(alt('Digit6'), full, 'tune')).toBeNull();
+    expect(destinationShortcut(alt('Digit1'), full, 'tune')).toBe('room');
+    expect(destinationShortcut(alt('Digit3'), full, 'tune')).toBe('program');
+    expect(destinationShortcut(alt('Digit5'), full, 'tune')).toBe('control');
+    expect(destinationShortcut(alt('Digit6'), full, 'tune')).toBe('about');
+    expect(destinationShortcut(alt('Digit7'), full, 'tune')).toBeNull();
   });
 
   test('brackets cycle and wrap', () => {
-    expect(destinationShortcut(alt('BracketRight'), full, 'about')).toBe('tune');
-    expect(destinationShortcut(alt('BracketLeft'), full, 'tune')).toBe('about');
+    expect(destinationShortcut(alt('BracketRight'), full, 'about')).toBe('room');
+    expect(destinationShortcut(alt('BracketLeft'), full, 'room')).toBe('about');
   });
 
   test('other modifiers and plain keys are left alone', () => {

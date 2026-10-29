@@ -55,6 +55,11 @@ describe('deriveCapabilities — feature flags', () => {
     expect(derive(29).features.buildStamp).toBe(true);
   });
 
+  it('gates the onboard RTA try on wire V30', () => {
+    expect(derive(29).features.rta).toBe(false);
+    expect(derive(30).features.rta).toBe(true);
+  });
+
   it('gates the subharm section tail (third band/selectivity/ceiling/pair link) on wire V30', () => {
     expect(derive(29).features.subharmExt).toBe(false);
     expect(derive(30).features.subharmExt).toBe(true);

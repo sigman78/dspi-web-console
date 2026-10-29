@@ -34,6 +34,7 @@ const BUDGET_SELECTORS = [
   '.graph',
   '.stage',
   '.dense',
+  '.room',
 ];
 
 interface LayoutReport {

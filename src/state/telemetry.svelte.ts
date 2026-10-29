@@ -1,9 +1,9 @@
 import type { BufferStats, PartialSystemInfo } from '@/protocol';
-import { ALL_CHANNELS, type SpdifRxStatus, type I2sSlaveStatus, type AdatOutputStatus, type AdatInputStatus, type LimiterStatus, type RingHealth } from '@/domain';
+import * as Domain from '@/domain';
 
 // Peaks/holds/clips are DOMAIN-ChannelId indexed (the poll loop remaps from
 // the device's wire index space); sized to the full domain id range.
-const NUM_CHANNELS = ALL_CHANNELS.length;
+const NUM_CHANNELS = Domain.ALL_CHANNELS.length;
 
 // Per-field $state (not $state(object)): each field gets its own signal source.
 // The object form was observed to miss subscribers when properties are mutated
@@ -17,16 +17,16 @@ export class StatusStore {
   pdmActive = $state(false);
   sequence = $state(0);
   bufferStats = $state<BufferStats | null>(null);
-  spdifRxStatus = $state<SpdifRxStatus | null>(null);
-  i2sSlaveStatus = $state<I2sSlaveStatus | null>(null);
-  adatStatus = $state<AdatOutputStatus | null>(null);
-  adatInputStatus = $state<AdatInputStatus | null>(null);
+  spdifRxStatus = $state<Domain.SpdifRxStatus | null>(null);
+  i2sSlaveStatus = $state<Domain.I2sSlaveStatus | null>(null);
+  adatStatus = $state<Domain.AdatOutputStatus | null>(null);
+  adatInputStatus = $state<Domain.AdatInputStatus | null>(null);
   // PR.06 headroom readout (fw V29+); 0 while subharm is disabled, null before
   // the first read.
   subharmHeadroomDb = $state<number | null>(null);
   info = $state<PartialSystemInfo | null>(null);
   // Output ring health counters; stays null on firmware without them.
-  ringHealth = $state<RingHealth | null>(null);
+  ringHealth = $state<Domain.RingHealth | null>(null);
   // Live active input channel count (null = not reported yet).
   activeInputChannels = $state<number | null>(null);
   lastStatusMs = $state(0);
@@ -69,7 +69,7 @@ export class StatusStore {
   // dB per wire output (0 = none) and the lookahead status block. Both null
   // when not polled.
   limiterMeterDb = $state<number[] | null>(null);
-  limiterStatus = $state<LimiterStatus | null>(null);
+  limiterStatus = $state<Domain.LimiterStatus | null>(null);
   limiterMeterWanted = $state(0);
   lastLimiterMeterMs = $state(0);
   lastLimiterStatusMs = $state(0);
@@ -86,6 +86,49 @@ export class StatusStore {
       if (this.limiterMeterWanted <= 0) {
         this.limiterMeterDb = null;
         this.limiterStatus = null;
+      }
+    };
+  }
+
+  // Onboard RTA (fw V30+). 'unknown' until the first setup attempt of a
+  // session; 'unavailable' (firmware lacks it or setup failed) stands the
+  // cadence down for the rest of the session. Caps and centres are cached
+  // for the session; frames and status are live data dropped when interest
+  // ends.
+  rtaAvailability = $state<'unknown' | 'available' | 'unavailable'>('unknown');
+  rtaCaps = $state.raw<Domain.RtaCaps | null>(null);
+  rtaCentres = $state.raw<readonly number[]>([]);
+  rtaConfig = $state.raw<Domain.RtaConfig | null>(null);
+  // Latest frames, one per live channel (`channel` is the wire index: an
+  // output slot at the output tap), replaced wholesale each poll.
+  rtaFrames = $state.raw<readonly Domain.RtaFrame[]>([]);
+  rtaStatus = $state.raw<Domain.RtaStatus | null>(null);
+  // performance.now() of the last successful bands read, even an all-silent
+  // or empty one: the signal that the analyser is answering.
+  lastRtaReplyMs = $state(0);
+  lastRtaPollMs = $state(0);
+  lastRtaStatusMs = $state(0);
+  rtaWanted = $state(0);
+  // Set while the analyser config is known good; cleared when interest
+  // restarts so another host's change is noticed.
+  rtaConfigured = false;
+  // Latched after the first transient setup failure, so it is logged once.
+  rtaSetupWarned = false;
+
+  // Interest in live spectrum data; the release drops the live readings once
+  // interest hits 0.
+  wantRta(): () => void {
+    if (this.rtaWanted === 0) this.rtaConfigured = false;
+    this.rtaWanted++;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.rtaWanted--;
+      if (this.rtaWanted <= 0) {
+        this.rtaFrames = [];
+        this.rtaStatus = null;
+        this.lastRtaReplyMs = 0;
       }
     };
   }
@@ -123,13 +166,13 @@ export class StatusStore {
 
   // Same merge rule as applyPartialInfo: a counter that failed this cycle keeps
   // its previous value.
-  applyRingHealth(p: RingHealth): void {
+  applyRingHealth(p: Domain.RingHealth): void {
     if (this.ringHealth === null) {
       this.ringHealth = { ...p };
       return;
     }
     const next = { ...this.ringHealth };
-    for (const k of Object.keys(p) as (keyof RingHealth)[]) {
+    for (const k of Object.keys(p) as (keyof Domain.RingHealth)[]) {
       const v = p[k];
       if (v !== null) next[k] = v;
     }

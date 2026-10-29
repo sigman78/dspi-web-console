@@ -8,6 +8,7 @@
   import RailHead from './RailHead.svelte';
   import RailFoot from './RailFoot.svelte';
   import StatusLine from './StatusLine.svelte';
+  import RoomView from '@/components/noveau/room/RoomView.svelte';
   import TuneView from '@/components/noveau/tune/TuneView.svelte';
   import ProgramView from '@/components/noveau/program/ProgramView.svelte';
   import SetupView from '@/components/noveau/setup/SetupView.svelte';
@@ -54,15 +55,19 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="noveau-shell">
+<div class="noveau-shell" class:room={noveauUi.destination === 'room'}>
   <IconRail />
-  <aside class="crail">
-    <RailHead />
-    <ChannelList linkPeers={noveauUi.destination === 'tune'} />
-    <RailFoot />
-  </aside>
-  <section class="ws" aria-label="Workspace">
-    {#if noveauUi.destination === 'tune'}
+  {#if noveauUi.destination !== 'room'}
+    <aside class="crail">
+      <RailHead />
+      <ChannelList linkPeers={noveauUi.destination === 'tune'} />
+      <RailFoot />
+    </aside>
+  {/if}
+  <section class="ws" class:room={noveauUi.destination === 'room'} aria-label="Workspace">
+    {#if noveauUi.destination === 'room'}
+      <RoomView />
+    {:else if noveauUi.destination === 'tune'}
       <TuneView />
     {:else if noveauUi.destination === 'program'}
       <ProgramView />
@@ -91,6 +96,7 @@
   .noveau-shell > :global(*) { min-width: 0; min-height: 0; overflow: hidden; }
   .noveau-shell > :global(.crail) { overflow: visible; }
   .noveau-shell > :global(.status) { overflow: visible; }
+  .noveau-shell.room { grid-template-columns: 56px 1fr; }
   .crail {
     display: flex;
     flex-direction: column;
@@ -98,4 +104,5 @@
     background: var(--surface-chrome);
   }
   .ws { grid-column: 3; grid-row: 1; display: flex; padding: 12px 16px; }
+  .ws.room { grid-column: 2; padding: 0; }
 </style>
