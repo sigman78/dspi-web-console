@@ -1,0 +1,29 @@
+name: Verify
+description: Install, typecheck, lint, test and build (no hardware)
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v5
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+
+    - run: npm ci
+      shell: bash
+
+    - name: Typecheck (svelte-check + tsc)
+      run: npm run check
+      shell: bash
+
+    - name: Lint
+      run: npm run lint
+      shell: bash
+
+    - name: Test (unit + integration, no hardware)
+      run: npm test
+      shell: bash
+
+    - name: Build
+      run: npm run build
+      shell: bash

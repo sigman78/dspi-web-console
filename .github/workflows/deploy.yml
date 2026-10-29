@@ -18,16 +18,12 @@ concurrency:
 
 jobs:
   build:
-    # "skipped" is an all-jobs-skipped CI run, which only happens for
-    # squash-merge pushes already verified (and forced green) on the PR; a red
-    # direct push concludes "failure" and blocks here. The event guard keeps
-    # fork-PR CI runs (whose head branch may be named "master") from deploying
-    # unmerged code.
+    # The event guard keeps fork-PR CI runs (whose head branch may be named
+    # "master") from deploying unmerged code.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.event == 'push' &&
-       (github.event.workflow_run.conclusion == 'success' ||
-        github.event.workflow_run.conclusion == 'skipped'))
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
