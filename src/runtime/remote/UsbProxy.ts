@@ -8,6 +8,9 @@ import * as Frames from '@/transport/remote/frames';
 import { errMessage } from '@/utils';
 import type { LeasePolicy } from './allowlist';
 
+// Queued plus in-flight control transfers a peer may have outstanding.
+const MAX_OUTSTANDING = 64;
+
 export interface UsbProxyOpts {
   consoleBuild: string;
   // Fires when the proxy ends for any reason other than stop(): 'device' when
@@ -29,6 +32,7 @@ export function startUsbProxy(
   let greeted = false;
   let notifyPending = false;
   let draining = false;
+  let outstanding = 0;
   const fifo: Array<() => Promise<void>> = [];
   const unsubscribe: Array<() => void> = [];
 
@@ -70,12 +74,20 @@ export function startUsbProxy(
     if (draining) return;
     draining = true;
     try {
-      while (fifo.length > 0) await fifo.shift()!();
+      while (fifo.length > 0) {
+        try {
+          await fifo.shift()!();
+        } finally {
+          outstanding--;
+        }
+      }
     } finally {
       draining = false;
     }
   };
   const enqueue = (task: () => Promise<void>): void => {
+    if (outstanding >= MAX_OUTSTANDING) { finish(null, 'peer'); return; }
+    outstanding++;
     fifo.push(task);
     void drain();
   };

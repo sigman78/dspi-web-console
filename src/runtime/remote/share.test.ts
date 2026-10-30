@@ -3,10 +3,15 @@ import * as State from '@/state';
 import { bootMock } from '@/runtime/boot';
 import { createFrameChannelPair } from '@test/fixtures/frameChannelPair';
 import { FakeWebSocket } from '@test/fixtures/fakeWebSocket';
+import * as Lease from './lease';
 import * as Manual from './manualSignaling';
 import * as Peer from './peer';
 import { startSharing, allow, deny, stopSharing, cancelLend } from './share';
 
+vi.mock('./lease', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./lease')>();
+  return { ...real, prepareLend: vi.fn(real.prepareLend) };
+});
 vi.mock('./manualSignaling', () => ({ createOffer: vi.fn(), acceptAnswer: vi.fn(async () => {}) }));
 vi.mock('./peer', () => ({ whenOpen: vi.fn(async () => {}), wrapDataChannel: vi.fn(), watchPeerLiveness: vi.fn(() => () => {}) }));
 
@@ -336,6 +341,42 @@ describe('declined lend', () => {
     State.resolveBoundary('cancel');
     await vi.waitFor(() => { expect(ws.messages()).toContainEqual({ t: 'deny', peerId: 'p1' }); });
     expect(Manual.createOffer).not.toHaveBeenCalled();
+    rec.session.staging.entries.length = 0;
+  });
+});
+
+describe('the pending-changes prompt', () => {
+  it('a room torn down during the prompt leaves sharing idle once the owner hands over', async () => {
+    const ws = await sharing();
+    const rec = State.activeRecord()!;
+    rec.session.staging.entries.push({} as never);
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', needsAllow: false, label: 'Win' });
+    await vi.waitFor(() => { expect(State.boundary.pending).not.toBeNull(); });
+    stopSharing();
+    State.resolveBoundary('discard');
+    // The abandoned prepare gives up without touching the device.
+    expect(await vi.mocked(Lease.prepareLend).mock.results[0]!.value).toBeNull();
+    expect(State.activeLease()).toBeNull();
+    expect(State.shareState()).toBe('idle');
+    expect(State.shareRoom()).toBeNull();
+    rec.session.staging.entries.length = 0;
+  });
+
+  it('a returning joiner replacing the waiting handshake is lent the device after Hand over', async () => {
+    const ws = await sharing();
+    const rec = State.activeRecord()!;
+    rec.session.staging.entries.push({} as never);
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', needsAllow: false, label: 'Win' });
+    await vi.waitFor(() => { expect(State.boundary.pending).not.toBeNull(); });
+    ws.receive({ t: 'peer', peerId: 'p2', via: 'resume', needsAllow: false, label: 'Mac' });
+    State.resolveBoundary('discard');
+    await offered(ws);
+    expect(ws.messages().filter((m) => m.t === 'sdp')[0]).toMatchObject({ peerId: 'p2' });
+    ws.receive({ t: 'sdp', peerId: 'p2', sdp: ANSWER });
+    await vi.waitFor(() => { expect(State.sharePeer()).toBeNull(); });
+    expect(State.shareState()).toBe('lent');
+    expect(State.activeLease()?.peerLabel).toBe('Mac');
+    expect(ws.messages().filter((m) => m.t === 'deny')).toEqual([]);
     rec.session.staging.entries.length = 0;
   });
 });

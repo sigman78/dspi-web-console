@@ -35,6 +35,7 @@
     'unreachable': 'Could not reach the relay.',
     'timeout': 'The other console did not respond.',
     'no-token': 'Nothing to reconnect to.',
+    'sharing': "Stop sharing this console's device first.",
     'failed': 'Could not connect.',
   };
 

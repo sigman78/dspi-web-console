@@ -253,6 +253,22 @@ describe('startUsbProxy', () => {
     expect(stub.calls).toEqual([]);
   });
 
+  it('accepts 64 outstanding control transfers and ends the peer at the 65th', async () => {
+    const stub = stubTransport({ hold: true });
+    const c = await connect(stub.transport);
+    for (let id = 1; id <= 64; id++) {
+      c.send({ type: 'ctrlIn', id, request: WireCmd.GetSerial.code, value: 0, length: 1 });
+    }
+    await flush();
+    expect(c.closed()).toBe(false);
+    for (let id = 65; id <= 65; id++) {
+      c.send({ type: 'ctrlIn', id, request: WireCmd.GetSerial.code, value: 0, length: 1 });
+    }
+    await flush();
+    expect(c.closed()).toBe(true);
+    expect(c.ended).toEqual(['peer']);
+  });
+
   it('ends as a lost peer when the channel cannot send, and stops serving', async () => {
     const stub = stubTransport();
     const [peer, local] = createFrameChannelPair();

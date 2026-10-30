@@ -25,6 +25,8 @@
   // ALLOWED_ORIGINS (comma-separated list of origins) is a dashboard variable
   // and is deliberately not declared here: a value in this file would replace
   // the dashboard one on every deploy. keep_vars preserves it. Without it the
-  // relay refuses every request.
+  // relay refuses every request. The site build needs the build-time variable
+  // VITE_REMOTE_RELAY=/room (Workers Builds build settings), otherwise the
+  // Share/Connect controls are hidden; see docs/REMOTE.md.
   "keep_vars": true
 }

@@ -92,8 +92,10 @@ async function answerOffer(a: Attempt, offer: Wire.Sdp): Promise<void> {
   if (a.offerTimer !== null) { clearTimeout(a.offerTimer); a.offerTimer = null; }
   const gen = generation;
   let channel: FrameChannel;
+  // Aborted when this attempt fails, so a half-built peer connection is closed.
+  const setup = new AbortController();
   try {
-    const join = await Manual.createAnswer(JSON.stringify(offer));
+    const join = await withTimeout(Manual.createAnswer(JSON.stringify(offer), setup.signal), CHANNEL_TIMEOUT_MS, 'the answer', a.abort.signal);
     a.pc = join.pc;
     if (attempt !== a) { join.pc.close(); return; }
     a.socket?.send({ t: 'sdp', sdp: JSON.parse(join.answer) as Wire.Sdp });
@@ -102,6 +104,7 @@ async function answerOffer(a: Attempt, offer: Wire.Sdp): Promise<void> {
     await withTimeout(Peer.whenOpen(dc), CHANNEL_TIMEOUT_MS, 'the data channel', a.abort.signal);
     if (attempt !== a) { channel.close(); return; }
   } catch (err) {
+    setup.abort();
     if (attempt === a) Log.error('remote', 'join handshake failed', err);
     fail(a, 'failed');
     return;
@@ -169,6 +172,11 @@ function closeFailure(reason: string): State.JoinFailure {
 
 function start(url: string, first: Wire.ClientMessage, resumed: boolean): void {
   leaveJoin();
+  // Joining switches to the remote device, which would strand this console's own room.
+  if (State.shareState() !== 'idle') {
+    State.setJoinState({ phase: 'failed', reason: 'sharing' });
+    return;
+  }
   generation++;
   const a: Attempt = { socket: null, resumed, pc: null, offerTimer: null, abort: new AbortController() };
   attempt = a;

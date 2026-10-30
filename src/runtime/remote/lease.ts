@@ -16,6 +16,8 @@ export interface PrepareOptions {
   peerLabel: string;
   // Called once when the lend ends, whatever the cause and whether or not it was attached.
   onEnd?: (reason: LendEnd) => void;
+  // Asked once the pending-changes prompt is answered; false drops the lend before anything is touched.
+  isWanted?: () => boolean;
 }
 
 export interface AttachOptions {
@@ -63,6 +65,7 @@ export async function prepareLend(opts: PrepareOptions): Promise<LendHandle | nu
       });
       if (choice === 'cancel') return null;
     }
+    if (opts.isWanted && !opts.isWanted()) return null;
     if (State.activeRecord()?.id !== rec.id || !rec.session.alive) return null;
 
     // The lease goes up before the flush so a promotion during it cannot
@@ -115,6 +118,13 @@ export function attachLend(channel: FrameChannel, opts: AttachOptions = {}): boo
   }
   lend.stopWatch = stopWatch;
   return true;
+}
+
+// Shows `label` as the lessee of a prepared or running lend.
+export function relabel(handle: LendHandle, label: string): void {
+  if (current !== handle) return;
+  const lease = State.leaseOf(handle.rec.id);
+  if (lease) State.setLease(handle.rec.id, { ...lease, peerLabel: label });
 }
 
 // Gives up a prepared lend whose channel never came. Does nothing once the
