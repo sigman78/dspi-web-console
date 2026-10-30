@@ -1,5 +1,4 @@
-const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
-const CODE_LENGTH = 6;
+import { CODE_ALPHABET, CODE_LENGTH } from '../src/runtime/remote/relayWire';
 
 /** Largest multiple of the alphabet size that fits a byte; higher bytes are rejected to avoid modulo bias. */
 const CODE_BYTE_LIMIT = 240;

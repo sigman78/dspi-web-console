@@ -17,7 +17,7 @@ afterEach(() => {
 // Prepares and attaches a lend; returns the lessee's end of the channel.
 async function lend(peerLabel = 'B', opts?: AttachOptions): Promise<FrameChannel> {
   const [bSide, aSide] = createFrameChannelPair();
-  expect(await prepareLend({ peerLabel })).toBe(true);
+  expect(await prepareLend({ peerLabel })).not.toBeNull();
   expect(attachLend(aSide, opts)).toBe(true);
   return bSide;
 }
@@ -67,7 +67,7 @@ describe('prepareLend', () => {
     const rec = State.activeRecord()!;
     await lend('B1');
 
-    expect(await prepareLend({ peerLabel: 'B2' })).toBe(false);
+    expect(await prepareLend({ peerLabel: 'B2' })).toBeNull();
     expect(State.leaseOf(rec.id)?.peerLabel).toBe('B1');
   });
 
@@ -78,7 +78,7 @@ describe('prepareLend', () => {
       t: 'synced', id: State.mintConnId(), session: rec.session, remote: { peerLabel: 'host' },
     });
 
-    expect(await prepareLend({ peerLabel: 'B' })).toBe(false);
+    expect(await prepareLend({ peerLabel: 'B' })).toBeNull();
   });
 
   it('declining the pending-changes prompt aborts the lend without touching loops', async () => {
@@ -92,7 +92,7 @@ describe('prepareLend', () => {
     expect(State.boundary.pending).not.toBeNull();
     State.resolveBoundary('cancel');
 
-    expect(await pending).toBe(false);
+    expect(await pending).toBeNull();
     expect(rec.loops).toBe(loops);
     expect(State.leaseOf(rec.id)).toBeNull();
     rec.session.staging.entries.length = 0;
@@ -108,13 +108,28 @@ describe('prepareLend', () => {
   it('abortLend before attach clears the lease and restarts the loops', async () => {
     await bootMock('rp2350');
     const rec = State.activeRecord()!;
-    expect(await prepareLend({ peerLabel: 'B' })).toBe(true);
+    const handle = await prepareLend({ peerLabel: 'B' });
+    expect(handle).not.toBeNull();
     expect(rec.loops).toBeNull();
 
-    abortLend();
+    abortLend(handle!);
 
     expect(State.leaseOf(rec.id)).toBeNull();
     expect(rec.loops).not.toBeNull();
+  });
+
+  it('abortLend with a stale handle leaves the newer lend alone', async () => {
+    await bootMock('rp2350');
+    const rec = State.activeRecord()!;
+    const stale = (await prepareLend({ peerLabel: 'old' }))!;
+    abortLend(stale);
+    const fresh = await prepareLend({ peerLabel: 'new' });
+    expect(fresh).not.toBeNull();
+
+    abortLend(stale);
+
+    expect(State.leaseOf(rec.id)?.peerLabel).toBe('new');
+    expect(attachLend(createFrameChannelPair()[1])).toBe(true);
   });
 
   it('a peer that sends HELLO while the prompt is open still gets WELCOME after attach', async () => {
@@ -127,7 +142,7 @@ describe('prepareLend', () => {
     const preparing = prepareLend({ peerLabel: 'B' });
     await Promise.resolve();
     State.resolveBoundary('discard');
-    expect(await preparing).toBe(true);
+    expect(await preparing).not.toBeNull();
     attachLend(aSide);
 
     const remote = await connecting;

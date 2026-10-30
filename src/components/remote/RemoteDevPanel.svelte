@@ -5,6 +5,9 @@
   import * as Peer from '@/runtime/remote/peer';
   import * as Lease from '@/runtime/remote/lease';
   import { joinRemote } from '@/runtime/remote/join';
+  import * as Relay from '@/runtime/remote/relay';
+  import * as Share from '@/runtime/remote/share';
+  import * as JoinRelay from '@/runtime/remote/joinRelay';
   import type { FrameChannel } from '@/transport/remote/FrameChannel';
 
   let offerText = $state('');
@@ -14,6 +17,21 @@
   let accepting = false;
 
   const share = $derived(State.shareState());
+  const relayOn = Relay.remoteRelayBase() !== null;
+  const room = $derived(State.shareRoom());
+  const peer = $derived(State.sharePeer());
+  const joining = $derived(State.joinState());
+  let codeText = $state('');
+  let relayError = $state('');
+
+  async function startRelayShare(): Promise<void> {
+    relayError = '';
+    try {
+      await Share.startSharing();
+    } catch (err) {
+      relayError = errMessage(err);
+    }
+  }
 
   function failed(what: string, err: unknown): void {
     Log.error('remote', `${what} failed`, err);
@@ -43,8 +61,10 @@
     if (accepting) return;
     accepting = true;
     const { session, channel } = host;
+    let lend: Lease.LendHandle | null = null;
     try {
-      if (!(await Lease.prepareLend({ peerLabel: 'Remote console' }))) {
+      lend = await Lease.prepareLend({ peerLabel: 'Remote console' });
+      if (!lend) {
         session.pc.close();
         host = null;
         if (State.shareState() !== 'lent') State.setShareState('idle');
@@ -58,7 +78,7 @@
       host = null;
       status = attached ? 'lent' : 'lend dropped before attach';
     } catch (err) {
-      Lease.abortLend();
+      if (lend) Lease.abortLend(lend);
       session.pc.close();
       host = null;
       failed('accept answer', err);
@@ -94,6 +114,24 @@
 
 <div class="dev">
   <div class="head">REMOTE DEV · {status} · share {share}</div>
+  {#if relayOn}
+    <div class="head">
+      RELAY · {room ? `code ${room.code}` : 'not sharing'}{peer ? ` · ${peer.stage} ${peer.label}` : ''}
+      · join {joining.phase}{joining.phase === 'failed' ? ` (${joining.reason})` : ''}{relayError ? ` · ${relayError}` : ''}
+    </div>
+    <div class="row">
+      <button type="button" class="chip" onclick={() => void startRelayShare()}>Share</button>
+      <button type="button" class="chip" disabled={peer?.stage !== 'pending'} onclick={Share.allow}>Allow</button>
+      <button type="button" class="chip" disabled={peer?.stage !== 'pending'} onclick={Share.deny}>Deny</button>
+      <button type="button" class="chip" onclick={Share.stopSharing}>Stop relay</button>
+    </div>
+    <div class="row">
+      <input placeholder="code" spellcheck="false" bind:value={codeText} />
+      <button type="button" class="chip" onclick={() => { JoinRelay.joinByCode(codeText); }}>Join</button>
+      <button type="button" class="chip" onclick={JoinRelay.joinWithResume}>Reconnect</button>
+      <button type="button" class="chip" onclick={JoinRelay.leaveJoin}>Leave</button>
+    </div>
+  {/if}
   <textarea rows="4" placeholder="offer" spellcheck="false" bind:value={offerText}></textarea>
   <textarea rows="4" placeholder="answer" spellcheck="false" bind:value={answerText}></textarea>
   <div class="row">
@@ -130,5 +168,6 @@
     color: var(--text);
     border: 1px solid var(--border);
   }
+  input { width: 80px; font-family: var(--font-mono); background: var(--bg); color: var(--text); border: 1px solid var(--border); }
   .row { display: flex; flex-wrap: wrap; gap: 6px; }
 </style>
