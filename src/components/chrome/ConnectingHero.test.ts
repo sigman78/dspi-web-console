@@ -1,7 +1,8 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import ConnectingHero from './ConnectingHero.svelte';
-import { dispatch, mintConnId, resetAppState } from '@/state';
+import { dispatch, mintConnId, resetAppState, setShareAway, resetRemoteState } from '@/state';
+import * as Share from '@/runtime/remote/share';
 
 vi.mock('@/runtime/boot', () => ({
   connectRequested: vi.fn().mockResolvedValue(undefined),
@@ -9,10 +10,13 @@ vi.mock('@/runtime/boot', () => ({
   webUsbUnsupportedReason: vi.fn(() => null),
 }));
 
+vi.mock('@/runtime/remote/share', () => ({ stopSharing: vi.fn() }));
+
 import { connectRequested, webUsbUnsupportedReason } from '@/runtime';
 
 beforeEach(() => {
   resetAppState();
+  resetRemoteState();
   vi.mocked(webUsbUnsupportedReason).mockReturnValue(null);
 });
 
@@ -77,6 +81,21 @@ describe('ConnectingHero — status text', () => {
     expect(screen.queryByLabelText('Connection error details')).not.toBeInTheDocument();
     // Retry stays available — the user can reconnect after updating.
     expect(screen.getByRole('button', { name: 'CONNECT' })).not.toBeDisabled();
+  });
+});
+
+describe('ConnectingHero — paused share', () => {
+  test('names the device being waited for and offers Stop sharing', async () => {
+    setShareAway({ serial: 'SN-42', until: Date.now() + 60_000 });
+    render(ConnectingHero);
+    expect(screen.getByText(/Sharing paused, waiting for SN-42/)).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole('button', { name: 'Stop sharing' }));
+    expect(Share.stopSharing).toHaveBeenCalledTimes(1);
+  });
+
+  test('shows nothing about sharing otherwise', () => {
+    render(ConnectingHero);
+    expect(screen.queryByText(/Sharing paused/)).not.toBeInTheDocument();
   });
 });
 

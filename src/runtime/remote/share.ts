@@ -9,10 +9,13 @@ import * as Peer from './peer';
 import * as Relay from './relay';
 import * as Signaling from './signaling';
 import { withTimeout } from './timeout';
+import * as WakeLock from './wakeLock';
 import type { Sdp, ServerMessage } from './relayWire';
 
 const READY_TIMEOUT_MS = 10_000;
 const HANDSHAKE_TIMEOUT_MS = 30_000;
+// How long the room waits for a shared device that went away to come back.
+const AWAY_WINDOW_MS = 10 * 60_000;
 
 // One joiner being served: waiting for an Allow, or taking the offer.
 interface Handshake {
@@ -46,8 +49,15 @@ interface Room {
   socket: Signaling.RoomSocket;
   // The device this room shares; a lend is only made while it is the active one.
   recId: State.ConnId;
+  serial: string;
   // Stops watching the shared device's session.
   unwatch: () => void;
+  // Stops listening for the device coming back.
+  offAdopt: () => void;
+  // The code as the relay last reported it; State.shareRoom mirrors it except while away.
+  info: State.ShareRoom | null;
+  // The device went away: the room stays open for it until the timer fires.
+  away: { timer: ReturnType<typeof setTimeout> } | null;
   hs: Handshake | null;
   preparing: Preparing | null;
   // Cancel since the last Allow: the relay wants an Allow again on the next resume.
@@ -76,12 +86,13 @@ function connectionFailed(pc: RTCPeerConnection): boolean {
   return pc.connectionState === 'failed' || pc.iceConnectionState === 'failed';
 }
 
-function cancelHandshake(r: Room): void {
+// `notify: false` skips the deny a joiner would get after an offer; the caller has told it already.
+function cancelHandshake(r: Room, opts: { notify: boolean } = { notify: true }): void {
   const hs = r.hs;
   if (!hs) return;
   r.hs = null;
   hs.cancelled = true;
-  if (hs.offered) r.socket.send({ t: 'deny', peerId: hs.peerId });
+  if (hs.offered && opts.notify) r.socket.send({ t: 'deny', peerId: hs.peerId });
   hs.abort.abort();
   hs.rejectAnswer(new Error('handshake cancelled'));
   hs.pc?.close();
@@ -95,10 +106,71 @@ function teardown(r: Room): void {
   cancelHandshake(r);
   room = null;
   r.unwatch();
+  r.offAdopt();
+  if (r.away) clearTimeout(r.away.timer);
+  r.away = null;
   Lease.reclaim('stop');
+  State.setShareState('idle');
+  State.setShareAway(null);
+  State.setShareRoom(null);
+  State.setShareNoPath(null);
+}
+
+function publishRoom(r: Room, info: State.ShareRoom): void {
+  r.info = info;
+  if (!r.away) State.setShareRoom(info);
+}
+
+// Watches the shared device's session. Without a lend nothing else notices the
+// device going away; a running lend reports it through onLendEnd.
+function watchDevice(r: Room, rec: State.DeviceRecord): void {
+  const onAbort = (): void => {
+    if (room === r && !r.away && State.shareState() === 'sharing') goAway(r);
+  };
+  rec.session.signal.addEventListener('abort', onAbort, { once: true });
+  r.unwatch = () => { rec.session.signal.removeEventListener('abort', onAbort); };
+}
+
+// The shared device is gone but may come back (unplug, re-enumeration): the
+// room stays open without offering anything, and sharing reads as idle. The
+// relay keeps the device marked lent so newcomers are turned away without
+// using up the code; a returning lessee's token still reaches us and is refused.
+function goAway(r: Room): void {
+  if (room !== r || r.away) return;
+  // Whoever is waiting, at any stage, is told the device is unavailable.
+  if (r.hs) r.socket.send({ t: 'busy', peerId: r.hs.peerId });
+  cancelHandshake(r, { notify: false });
+  r.socket.send({ t: 'lent', on: true });
+  r.preparing = null;
+  r.attached = false;
+  r.unwatch();
+  r.away = { timer: setTimeout(() => { expireAway(r); }, AWAY_WINDOW_MS) };
+  State.setShareAway({ serial: r.serial, until: Date.now() + AWAY_WINDOW_MS });
   State.setShareState('idle');
   State.setShareRoom(null);
   State.setShareNoPath(null);
+  State.pushNotice('info', `Sharing paused: ${r.serial} disconnected`);
+}
+
+function expireAway(r: Room): void {
+  if (room !== r || !r.away) return;
+  State.pushNotice('info', `Sharing stopped: ${r.serial} did not come back`);
+  closeRoom(r);
+}
+
+// The same device is back and active: the room serves the new record.
+function resumeAway(r: Room, rec: State.DeviceRecord): void {
+  if (room !== r || !r.away || rec.remote || rec.session.info.serial !== r.serial || !rec.session.alive) return;
+  if (State.activeRecord()?.id !== rec.id) return;
+  clearTimeout(r.away.timer);
+  r.away = null;
+  r.recId = rec.id;
+  watchDevice(r, rec);
+  State.setShareAway(null);
+  State.setShareRoom(r.info);
+  State.setShareState('sharing');
+  r.socket.send({ t: 'lent', on: false });
+  State.pushNotice('info', `Sharing resumed for ${r.serial}`);
 }
 
 // Prepares the lend first (its pending-changes prompt can take as long as the
@@ -186,9 +258,9 @@ async function lendTo(r: Room, hs: Handshake, sendAllow: boolean): Promise<void>
 function onLendEnd(r: Room, reason: Lease.LendEnd): void {
   r.attached = false;
   if (room === r) {
-    r.socket.send({ t: 'lent', on: false });
-    // The device itself is gone: there is nothing left to share.
-    if (reason === 'device-gone') closeRoom(r);
+    // The device itself is gone: the room waits for it to return, still marked lent.
+    if (reason === 'device-gone') goAway(r);
+    else r.socket.send({ t: 'lent', on: false });
   } else if (room === null) {
     // The room is gone (torn down or orphaned): nothing is left to share.
     State.setShareState('idle');
@@ -196,6 +268,10 @@ function onLendEnd(r: Room, reason: Lease.LendEnd): void {
 }
 
 function onPeer(r: Room, msg: Extract<ServerMessage, { t: 'peer' }>): void {
+  if (r.away) {
+    r.socket.send({ t: 'busy', peerId: msg.peerId });
+    return;
+  }
   // Only the returning lessee may replace a running lend; anyone else hears no now.
   if (State.shareState() === 'lent' && r.attached && msg.via !== 'resume') {
     r.socket.send({ t: 'deny', peerId: msg.peerId });
@@ -241,12 +317,11 @@ function onMessage(r: Room, msg: ServerMessage): void {
       }
       return;
     case 'rotated':
-      State.setShareRoom({ code: msg.code, scanKey: msg.scanKey, status: 'live' });
+      publishRoom(r, { code: msg.code, scanKey: msg.scanKey, status: 'live' });
       return;
     case 'code': {
       // A late report about a code that has since been replaced.
-      const shown = State.shareRoom();
-      if (shown && shown.code === msg.code) State.setShareRoom({ ...shown, status: msg.state });
+      if (r.info && r.info.code === msg.code) publishRoom(r, { ...r.info, status: msg.state });
       return;
     }
     default:
@@ -258,7 +333,11 @@ function onMessage(r: Room, msg: ServerMessage): void {
 export async function startSharing(): Promise<boolean> {
   const base = Relay.remoteRelayBase();
   const rec = State.activeRecord();
-  if (!base || starting || room || State.shareState() !== 'idle' || !rec || rec.remote) return false;
+  if (!base || starting || State.shareState() !== 'idle' || !rec || rec.remote) return false;
+  // Sharing another device gives up waiting for the one that went away.
+  if (room?.away) closeRoom(room);
+  if (room) return false;
+  WakeLock.ensureWakeLock();
   starting = true;
   State.setShareEnd(null);
   State.setShareNoPath(null);
@@ -276,11 +355,9 @@ export async function startSharing(): Promise<boolean> {
               room = r;
               // The device died between creating the room and its announcement.
               if (rec.session.signal.aborted) { closeRoom(r); resolve(); return; }
-              // Without a lend nothing else notices the device going away.
-              const onAbort = (): void => { if (State.shareState() === 'sharing') closeRoom(r); };
-              rec.session.signal.addEventListener('abort', onAbort, { once: true });
-              r.unwatch = () => { rec.session.signal.removeEventListener('abort', onAbort); };
-              State.setShareRoom({ code: msg.code, scanKey: msg.scanKey, status: 'live' });
+              watchDevice(r, rec);
+              r.offAdopt = State.onDeviceReady((added) => { resumeAway(r, added); });
+              publishRoom(r, { code: msg.code, scanKey: msg.scanKey, status: 'live' });
               State.setShareState('sharing');
               resolve();
             },
@@ -292,6 +369,7 @@ export async function startSharing(): Promise<boolean> {
                 cancelHandshake(r);
                 room = null;
                 r.unwatch();
+                r.offAdopt();
                 r.orphaned = true;
                 State.setShareRoom(null);
               } else {
@@ -301,7 +379,11 @@ export async function startSharing(): Promise<boolean> {
           },
         ),
         recId: rec.id,
+        serial: rec.session.info.serial,
         unwatch: () => {},
+        offAdopt: () => {},
+        info: null,
+        away: null,
         hs: null,
         preparing: null,
         reclaimed: false,

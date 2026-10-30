@@ -285,6 +285,7 @@ function ensurePromotedActive(): void {
   if (next && !next.loops) {
     activateRecord(next);
     next.session.mirror.requestReconcile(true);
+    State.notifyDeviceReady(next);
   }
 }
 
@@ -316,6 +317,7 @@ export async function activateSession(id: ConnId): Promise<void> {
   // successful switch -- not just a fresh adoption -- updates it. A remote
   // device is never a granted USB device.
   if (!rec.remote) State.settings.lastSerial = rec.session.info.serial;
+  State.notifyDeviceReady(rec);
 }
 
 // Anything on this session that a switch-away or unload would strand: edits
@@ -423,6 +425,7 @@ export async function wireUpConnection(
     await fetchControlSurfaces(session);
     await fetchSysClock(session);
     await fetchOutputLatency(session);
+    if (rec && !scope?.aborted) State.notifyDeviceReady(rec);
     Log.info('sync', 'connected', {
       platform: session.mirror.current?.platform.name,
       wire: device.capabilities.wire,

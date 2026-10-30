@@ -19,6 +19,8 @@ export type ClientMessage =
   | { t: 'ping' }
   | { t: 'allow'; peerId: string }
   | { t: 'deny'; peerId: string }
+  // Turns the guest away as busy, leaving its token, the Allow state and the code alone.
+  | { t: 'busy'; peerId: string }
   | { t: 'rotate' }
   | { t: 'reclaim' }
   | { t: 'lent'; on: boolean }

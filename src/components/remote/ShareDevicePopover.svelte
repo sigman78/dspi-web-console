@@ -10,6 +10,8 @@
 
   const room = $derived(State.shareRoom());
   const peer = $derived(State.sharePeer());
+  const away = $derived(State.shareAway());
+  const awayText = $derived(away === null ? '' : State.recordBySerial(away.serial) !== null ? `${away.serial} is back. Switch to it to resume sharing.` : `Waiting for ${away.serial} to come back · until ${new Date(away.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
   const noPath = $derived(State.shareNoPath());
   let startError = $state<string | null>(null);
   let copied = $state(false);
@@ -28,7 +30,7 @@
   });
 
   onMount(() => {
-    if (State.shareState() === 'idle') void open();
+    if (State.shareState() === 'idle' && State.shareAway() === null) void open();
     return () => { clearTimeout(copyTimer); };
   });
 
@@ -68,6 +70,7 @@
     <button type="button" class="x-btn close" aria-label="Close" onclick={onClose}>✕</button>
   </header>
   <div class="body">
+    {#if away === null}
     <div class="codeline">
       <span class="code" class:dead aria-label="Pairing code">{room ? formatCode(room.code) : '------'}</span>
       <button type="button" class="icon-toggle" disabled={!room || dead} aria-label="Copy invite link" title={copied ? 'Copied' : 'Copy invite link'} onclick={() => void copyLink()}>
@@ -77,8 +80,11 @@
         <RemoteIcon icon="rotate" />
       </button>
     </div>
+    {/if}
     <div class="statusline" role="status">
-      {#if peer?.stage === 'pending'}
+      {#if away !== null}
+        <span class="msg">{awayText}</span>
+      {:else if peer?.stage === 'pending'}
         <span class="msg"><b>{peer.label}</b> wants control</span>
         <button type="button" class="icon-toggle accent" aria-label="Allow" title="Allow" onclick={Share.allow}><RemoteIcon icon="check" /></button>
         <button type="button" class="icon-toggle deny" aria-label="Deny" title="Deny" onclick={Share.deny}><RemoteIcon icon="close" /></button>
@@ -90,7 +96,7 @@
       {/if}
     </div>
     <div class="foot">
-      <button type="button" class="chip danger" disabled={!room} onclick={stop}>STOP SHARING</button>
+      <button type="button" class="chip danger" disabled={!room && away === null} onclick={stop}>STOP SHARING</button>
     </div>
   </div>
 </div>
