@@ -10,6 +10,7 @@ import { startUsbProxy, type UsbProxy } from './UsbProxy';
 import { createLeasePolicy } from './allowlist';
 
 export type ReclaimReason = 'cancel' | 'peer-lost' | 'stop';
+export type LendEnd = ReclaimReason | 'device-gone';
 
 export interface PrepareOptions {
   peerLabel: string;
@@ -18,13 +19,19 @@ export interface PrepareOptions {
 export interface AttachOptions {
   // Subscribes to the peer's liveness; the returned function unsubscribes.
   watchLiveness?: (onLost: () => void) => () => void;
+  // Called once when the attached lend ends, whatever the cause.
+  onEnd?: (reason: LendEnd) => void;
 }
+
+// Identifies one prepared lend so a late abort cannot hit a newer one.
+export type LendHandle = Lend;
 
 interface Lend {
   rec: State.DeviceRecord;
   proxy: UsbProxy | null;
   offAbort: () => void;
   stopWatch: (() => void) | null;
+  onEnd: ((reason: LendEnd) => void) | null;
 }
 
 let current: Lend | null = null;
@@ -39,13 +46,13 @@ function refuse(channel: FrameChannel, reason: number): void {
 
 // First half of a lend: takes the active record off the wire (pending-changes
 // prompt, lease, loops stopped, writes flushed) so that nothing human-paced
-// sits between the peer connecting and the proxy attaching. Resolves false
+// sits between the peer connecting and the proxy attaching. Resolves null
 // when the lend is refused: another lessee holds the device, nothing lendable
 // is active, or the user declined the prompt. A prepared lend must end in
-// attachLend or abortLend.
-export async function prepareLend(opts: PrepareOptions): Promise<boolean> {
+// attachLend or abortLend(handle).
+export async function prepareLend(opts: PrepareOptions): Promise<LendHandle | null> {
   const rec = State.activeRecord();
-  if (preparing || current || !rec || rec.remote || State.leaseOf(rec.id)) return false;
+  if (preparing || current || !rec || rec.remote || State.leaseOf(rec.id)) return null;
   preparing = true;
   try {
     if (hasPendingWork(rec.session)) {
@@ -54,9 +61,9 @@ export async function prepareLend(opts: PrepareOptions): Promise<boolean> {
         message: 'This device has changes that are not applied or not saved. They stay with it, but nothing is sent from this console while another console is in control.',
         discardLabel: 'Hand over',
       });
-      if (choice === 'cancel') return false;
+      if (choice === 'cancel') return null;
     }
-    if (State.activeRecord()?.id !== rec.id || !rec.session.alive) return false;
+    if (State.activeRecord()?.id !== rec.id || !rec.session.alive) return null;
 
     // The lease goes up before the flush so a promotion during it cannot
     // restart this record's loops.
@@ -67,17 +74,18 @@ export async function prepareLend(opts: PrepareOptions): Promise<boolean> {
       proxy: null,
       offAbort: () => { rec.session.signal.removeEventListener('abort', onAbort); },
       stopWatch: null,
+      onEnd: null,
     };
     current = lend;
     State.setLease(rec.id, { peerLabel: opts.peerLabel, since: Date.now() });
     State.setShareState('lent');
     await deactivateRecord(rec);
-    if (current !== lend) return false;   // the device went away meanwhile
+    if (current !== lend) return null;   // the device went away meanwhile
     if (State.activeRecord()?.id !== rec.id) {
       reclaim('cancel');
-      return false;
+      return null;
     }
-    return true;
+    return lend;
   } finally {
     preparing = false;
   }
@@ -100,14 +108,20 @@ export function attachLend(channel: FrameChannel, opts: AttachOptions = {}): boo
     },
   });
   const stopWatch = opts.watchLiveness?.(() => reclaim('peer-lost')) ?? null;
-  if (current === lend) lend.stopWatch = stopWatch;
-  else stopWatch?.();
+  // The proxy may end synchronously while starting; then the lend is already gone.
+  if (current !== lend) {
+    stopWatch?.();
+    return false;
+  }
+  lend.stopWatch = stopWatch;
+  lend.onEnd = opts.onEnd ?? null;
   return true;
 }
 
-// Gives up a prepared lend whose channel never came.
-export function abortLend(): void {
-  if (current && !current.proxy) reclaim('cancel');
+// Gives up a prepared lend whose channel never came. Does nothing once the
+// lend is attached or has been replaced.
+export function abortLend(handle: LendHandle): void {
+  if (current === handle && !handle.proxy) reclaim('cancel');
 }
 
 // Takes the device back. `cancel` and `peer-lost` keep sharing so the peer can
@@ -121,6 +135,7 @@ export function reclaim(reason: ReclaimReason): void {
   lend.proxy?.stop(reason === 'peer-lost' ? 'disconnect' : 'release');
   State.clearLease(lend.rec.id);
   State.setShareState(reason === 'stop' ? 'idle' : 'sharing');
+  lend.onEnd?.(reason);
   const { rec } = lend;
   if (!rec.session.alive) return;
   // The lessee may have changed anything, so resync eagerly.
@@ -138,4 +153,5 @@ function endLend(rec: State.DeviceRecord): void {
   lend.proxy?.stop('disconnect');
   State.clearLease(rec.id);
   State.setShareState('idle');
+  lend.onEnd?.('device-gone');
 }

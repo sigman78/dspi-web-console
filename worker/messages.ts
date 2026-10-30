@@ -1,41 +1,11 @@
 import * as Secrets from './secrets';
+import type { ClientMessage, Sdp } from '../src/runtime/remote/relayWire';
+
+export type { ClientMessage, ErrorCode, Sdp, SdpType, ServerMessage } from '../src/runtime/remote/relayWire';
 
 export const MAX_MESSAGE_CHARS = 32 * 1024;
 const MAX_FIELD_CHARS = 128;
 const MAX_LABEL_CHARS = 64;
-
-export type SdpType = 'offer' | 'answer';
-
-export interface Sdp {
-  type: SdpType;
-  sdp: string;
-}
-
-export type ClientMessage =
-  | { t: 'host'; token: string }
-  | { t: 'join'; code?: string; scanKey?: string; resume?: string; label: string }
-  | { t: 'sdp'; sdp: Sdp; peerId?: string }
-  | { t: 'ping' }
-  | { t: 'allow'; peerId: string }
-  | { t: 'deny'; peerId: string }
-  | { t: 'rotate' }
-  | { t: 'reclaim' }
-  | { t: 'close' };
-
-export type ErrorCode = 'bad-code' | 'burnt' | 'expired' | 'rate-limited' | 'no-host' | 'busy';
-
-export type ServerMessage =
-  | { t: 'ready'; code: string; scanKey: string }
-  | { t: 'peer'; peerId: string; via: 'code' | 'scan' | 'resume'; label: string }
-  | { t: 'joined'; needsAllow: boolean; resumeToken?: string }
-  | { t: 'allowed'; resumeToken: string }
-  | { t: 'peer-gone'; peerId: string }
-  | { t: 'pong' }
-  | { t: 'denied' }
-  | { t: 'sdp'; sdp: Sdp; peerId?: string }
-  | { t: 'rotated'; code: string; scanKey: string }
-  | { t: 'host-gone' }
-  | { t: 'error'; code: ErrorCode };
 
 function field(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= MAX_FIELD_CHARS;

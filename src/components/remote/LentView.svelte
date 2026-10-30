@@ -2,7 +2,7 @@
   import EqSpectrum from '@/components/chrome/EqSpectrum.svelte';
   import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
   import * as State from '@/state';
-  import { reclaim } from '@/runtime/remote/lease';
+  import * as Share from '@/runtime/remote/share';
 
   const { lease, serial }: { lease: State.Lease; serial: string } = $props();
 
@@ -33,7 +33,7 @@
     extraClass="hi md"
     tone="warn"
     title="Take the device back; the remote console is disconnected"
-    onConfirm={() => { reclaim('cancel'); }}
+    onConfirm={() => { Share.cancelLend(); }}
   />
 </div>
 

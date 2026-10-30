@@ -115,7 +115,7 @@ describe('code lifecycle', () => {
 
     const { first } = await joinByCode(room.code, ip, { label: 'Windows · Chrome · amber-fox' });
     expect(first).toEqual({ t: 'joined', needsAllow: true });
-    expect(await host.next()).toMatchObject({ t: 'peer', via: 'code', label: 'Windows · Chrome · amber-fox' });
+    expect(await host.next()).toMatchObject({ t: 'peer', via: 'code', needsAllow: true, label: 'Windows · Chrome · amber-fox' });
   });
 
   it('burns the code on the first successful join', async () => {
@@ -362,6 +362,31 @@ describe('allow gate', () => {
 
     const next = await joinByCode(rotated.code, ip);
     expect(next.first).toMatchObject({ t: 'joined', needsAllow: true });
+  });
+
+  it('tells the host whether a resume needs an Allow', async () => {
+    const ip = newIp();
+    const { room, host, guest, resumeToken } = await lentRoom(ip);
+    guest.ws.close(1000);
+    await joinByResume(room, resumeToken, ip);
+    expect(await host.nextOf('peer')).toMatchObject({ via: 'resume', needsAllow: false });
+    host.send({ t: 'reclaim' });
+    await joinByResume(room, resumeToken, ip);
+    expect(await host.nextOf('peer')).toMatchObject({ via: 'resume', needsAllow: true });
+  });
+
+  it('refuses an already allowed guest on deny without revoking its token or rotating', async () => {
+    const ip = newIp();
+    const { room, host, peerId, resumeToken } = await lentRoom(ip);
+    const back = await joinByResume(room, resumeToken, ip);
+    expect(back.first).toMatchObject({ t: 'joined', needsAllow: false });
+    const peer = await host.nextOf('peer');
+    host.send({ t: 'deny', peerId: peer.peerId });
+    expect(await back.guest.next()).toEqual({ t: 'denied' });
+    expect(peerId).not.toBe(peer.peerId);
+
+    const again = await joinByResume(room, resumeToken, ip);
+    expect(again.first).toMatchObject({ t: 'joined', needsAllow: false });
   });
 
   it('takes Allow away from a connected guest when the host reclaims', async () => {

@@ -215,7 +215,7 @@ export class Room extends DurableObject<Env> {
     }
     // The token is withheld until the host allows: holding it must not skip the Allow.
     this.#send(ws, needsAllow ? { t: 'joined', needsAllow } : { t: 'joined', needsAllow, resumeToken: this.#resumeToken(s) });
-    this.#send(host, { t: 'peer', peerId, via, label: msg.label });
+    this.#send(host, { t: 'peer', peerId, via, needsAllow, label: msg.label });
   }
 
   async #onHost(ws: WebSocket, att: Extract<Attachment, { role: 'host' }>, msg: Messages.ClientMessage): Promise<void> {
@@ -244,7 +244,13 @@ export class Room extends DurableObject<Env> {
         this.#send(guest, { t: 'allowed', resumeToken: this.#resumeToken(s) });
         return;
       case 'deny':
-        if (!guest || !gatt || gatt.allowed || gatt.peerId !== msg.peerId) return;
+        if (!guest || !gatt || gatt.peerId !== msg.peerId) return;
+        if (gatt.allowed) {
+          // Plain refusal of a guest that needed no Allow: the room and its token stay.
+          this.#send(guest, { t: 'denied' });
+          guest.close(CLOSE_NORMAL, 'denied');
+          return;
+        }
         s.resumeSecret = null;
         s.allowPending = false;
         this.#send(guest, { t: 'denied' });
