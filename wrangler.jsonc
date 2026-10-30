@@ -1,13 +1,30 @@
 {
-  // Cloudflare Workers static-assets deploy for the official domain (dspi-ctrl.fyi).
-  // Assets-only: no server Worker, just the built SPA. Cloudflare Workers Builds
-  // (Git integration) clones the connected branch, runs `npm run build`, and
-  // uploads ./dist. The build uses the default base '/' (apex domain); GitHub
-  // Pages remains the rolling test channel off master via deploy.yml.
+  // Cloudflare Workers deploy for the official domain (dspi-ctrl.fyi): the built
+  // SPA as static assets plus a signaling relay Worker (worker/) that only
+  // answers /room/*. Cloudflare Workers Builds (Git integration) clones the
+  // connected branch, runs `npm run build`, and uploads ./dist and the Worker.
+  // The build uses the default base '/' (apex domain); GitHub Pages remains the
+  // rolling test channel off master via deploy.yml.
   "name": "dspi-console",
-  "compatibility_date": "2026-01-01",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-04-07",
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
-  }
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/room", "/room/*"]
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "ROOM", "class_name": "Room" },
+      { "name": "CODE_PTR", "class_name": "CodePtr" },
+      { "name": "IP_LIMITER", "class_name": "IpLimiter" }
+    ]
+  },
+  // Free plan: Durable Objects need the SQLite backend.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room", "CodePtr", "IpLimiter"] }],
+  // ALLOWED_ORIGINS (comma-separated list of origins) is a dashboard variable
+  // and is deliberately not declared here: a value in this file would replace
+  // the dashboard one on every deploy. keep_vars preserves it. Without it the
+  // relay refuses every request.
+  "keep_vars": true
 }
