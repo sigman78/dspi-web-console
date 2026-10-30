@@ -55,17 +55,29 @@ function inlineCssPlugin(): Plugin {
   }
 }
 
-export default defineConfig({
+// The dev server proxies /room to `npm run dev:worker`, so the relay is on by
+// default there. Production builds take VITE_REMOTE_RELAY from their build env.
+const DEV_RELAY = '/room'
+
+export default defineConfig(({ command }) => ({
   plugins: [svelte(), paletteCssPlugin(), inlineCssPlugin()],
   base: process.env.GITHUB_PAGES_BASE ?? '/',
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __GIT_SHA__: JSON.stringify(gitSha()),
     __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+    ...(command === 'serve' && process.env.VITE_REMOTE_RELAY === undefined
+      ? { 'import.meta.env.VITE_REMOTE_RELAY': JSON.stringify(DEV_RELAY) }
+      : {}),
   },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
-})
+  server: {
+    proxy: {
+      '/room': { target: 'http://localhost:8787', ws: true, changeOrigin: false },
+    },
+  },
+}))

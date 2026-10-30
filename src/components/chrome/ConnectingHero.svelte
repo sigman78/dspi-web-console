@@ -1,8 +1,23 @@
 <script lang="ts">
   import EqSpectrum from './EqSpectrum.svelte';
-  import { connection, activeSession } from '@/state';
+  import { connection, activeSession, pendingJoin, shareAway, type PendingJoin } from '@/state';
   import { connectRequested, webUsbUnsupportedReason } from '@/runtime';
   import { REPO_URL } from '@/buildInfo';
+  import * as Relay from '@/runtime/remote/relay';
+  import * as JoinRelay from '@/runtime/remote/joinRelay';
+  import * as Share from '@/runtime/remote/share';
+  import JoinRemotePopover from '@/components/remote/JoinRemotePopover.svelte';
+
+  const relayOn = Relay.remoteRelayBase() !== null;
+  let joinOpen = $state(false);
+  let joinSeed = $state<PendingJoin | null>(null);
+
+  // A `?join=` link opens the join panel with its code filled in.
+  $effect(() => {
+    if (pendingJoin() === null) return;
+    joinSeed = JoinRelay.takePendingJoin();
+    joinOpen = joinSeed !== null;
+  });
 
   let busy = $state(false);
   const unsupported = webUsbUnsupportedReason();
@@ -75,11 +90,31 @@
     Web console for the DSPi audio processor — connects over USB, nothing leaves your machine.
   </div>
   <div class="status" class:is-error={connection.phase === 'errored'}>{text}</div>
+  {#if shareAway() !== null}
+    <div class="paused" role="status">
+      <span>Sharing paused, waiting for {shareAway()?.serial}</span>
+      <button type="button" class="remote-link" onclick={Share.stopSharing}>Stop sharing</button>
+    </div>
+  {/if}
+  {#snippet remoteEntry()}
+    {#if relayOn}
+      <button
+        type="button"
+        class="remote-link"
+        aria-expanded={joinOpen}
+        onclick={() => { joinSeed = null; joinOpen = !joinOpen; }}
+      >Connect to a remote device</button>
+      {#if joinOpen}
+        <JoinRemotePopover seed={joinSeed} onClose={() => { joinOpen = false; }} ignore=".remote-link" />
+      {/if}
+    {/if}
+  {/snippet}
   {#if unsupported}
     <div class="unsupported-panel alert-panel warn" role="alert" aria-label="WebUSB unavailable">
       <div class="alert-panel__header">WEBUSB UNAVAILABLE</div>
       <pre class="alert-panel__body">{unsupported}</pre>
     </div>
+    {@render remoteEntry()}
   {:else}
     {#if showUnsupportedFirmware}
       <div class="alert-panel warn" role="alert" aria-label="Firmware update required">
@@ -109,6 +144,7 @@
     >
       CONNECT
     </button>
+    {@render remoteEntry()}
     {#if showErrorPanel}
       <div class="alert-panel" role="alert" aria-label="Connection error details">
         <div class="alert-panel__header">
@@ -345,6 +381,24 @@
     cursor: pointer;
   }
   .copy:hover { color: var(--text); border-color: var(--border-hi); }
+
+  .paused {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: var(--fs-m);
+    color: var(--text-dim);
+  }
+  .remote-link {
+    padding: 0;
+    font-family: inherit;
+    font-size: var(--fs-m);
+    color: var(--text-dim);
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+  .remote-link:hover { color: var(--text); text-decoration: underline; }
 
   .connect {
     padding: 10px 26px;

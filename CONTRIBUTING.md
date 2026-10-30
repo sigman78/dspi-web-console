@@ -12,7 +12,14 @@ npm run test         # unit + integration (no hardware)
 npm run test:hil     # hardware-in-the-loop (needs a real device)
 npm run check        # TypeScript + svelte-check
 npm run lint
+
+npm run dev:worker   # remote-control pairing relay on :8787 (dev server proxies /room)
+npm run test:worker  # relay Worker + Durable Object tests
+npm run check:worker # relay TypeScript check
 ```
+
+Remote control (driving a device from another computer) and how to enable it
+in production are described in [docs/REMOTE.md](docs/REMOTE.md).
 
 See the [README](./README.md) for browser requirements and hardware notes.
 HIL tests need exclusive USB access: close every browser tab holding the
@@ -83,6 +90,7 @@ CI runs on every PR and must be green before merge:
 npm run check        # svelte-check + tsc
 npm run lint
 npm test             # unit + integration (no hardware)
+npm run check:worker && npm run test:worker   # pairing relay
 ```
 
 The local `pre-push` hook runs `check + test + build`; `pre-commit` runs

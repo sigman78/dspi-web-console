@@ -3,6 +3,11 @@
   import type { ConnId, DeviceRecord, AdoptFailure } from '@/state';
   import { switchSession, connectRequested, webUsbUnsupportedReason } from '@/runtime';
   import { dismiss } from './dismiss';
+  import * as Relay from '@/runtime/remote/relay';
+  import * as JoinRelay from '@/runtime/remote/joinRelay';
+  import RemoteIcon from '@/components/remote/RemoteIcon.svelte';
+  import ShareDevicePopover from '@/components/remote/ShareDevicePopover.svelte';
+  import JoinRemotePopover from '@/components/remote/JoinRemotePopover.svelte';
 
   type Entry =
     | { kind: 'device'; id: ConnId; rec: DeviceRecord }
@@ -35,6 +40,50 @@
   const hiddenFailed = $derived(hidden.some((e) => e.kind === 'badge'));
   $effect(() => { if (hidden.length === 0) moreOpen = false; });
 
+  const relayOn = Relay.remoteRelayBase() !== null;
+  const sharing = $derived(State.shareState() !== 'idle');
+  let shareOpen = $state(false);
+  let joinOpen = $state(false);
+  let joinBtn = $state<HTMLButtonElement>();
+  let joinFly = $state<HTMLDivElement>();
+  let joinSeed = $state<State.PendingJoin | null>(null);
+
+  // A `?join=` link seen at boot opens the join popover with its code filled in.
+  $effect(() => {
+    if (State.pendingJoin() === null) return;
+    joinSeed = JoinRelay.takePendingJoin();
+    shareOpen = false;
+    joinOpen = joinSeed !== null;
+  });
+
+  // Why sharing stopped on its own, whether or not the share popover is open.
+  $effect(() => {
+    if (State.shareEnd() === null) return;
+    State.pushNotice('warn', 'Sharing stopped: the connection to the relay was lost');
+    State.setShareEnd(null);
+    shareOpen = false;
+  });
+
+  function toggleShare(): void {
+    moreOpen = false;
+    joinOpen = false;
+    shareOpen = !shareOpen;
+  }
+
+  // Focus goes back to the trigger when it was inside the popover.
+  function closeJoin(): void {
+    const hadFocus = joinFly?.contains(document.activeElement) ?? false;
+    joinOpen = false;
+    if (hadFocus) joinBtn?.focus();
+  }
+
+  function toggleJoin(): void {
+    moreOpen = false;
+    shareOpen = false;
+    joinSeed = null;
+    joinOpen = !joinOpen;
+  }
+
   function rowTitle(rec: DeviceRecord): string {
     return `${rec.session.info.serial} · ${rec.session.hardware.name}`;
   }
@@ -57,7 +106,7 @@
   }
 
   async function onAdd(): Promise<void> {
-    if (switching || State.adoptionInProgress()) return;
+    if (switching || State.adoptionInProgress() || sharing) return;
     try {
       await connectRequested();
     } catch {
@@ -69,17 +118,34 @@
 {#snippet row(entry: Entry)}
   {#if entry.kind === 'device'}
     {@const active = entry.id === activeId}
-    <button
-      class="row device"
-      class:active
-      aria-pressed={active}
-      disabled={!active && (switching || State.adoptionInProgress())}
-      title={rowTitle(entry.rec)}
-      onclick={() => { moreOpen = false; void onRowClick(entry.id, active); }}
-    >
-      <span class="serial">{entry.rec.session.info.serial}</span>
-      <span class="hw">{entry.rec.session.hardware.name}</span>
-    </button>
+    {@const remote = entry.rec.remote !== undefined}
+    {@const shareable = relayOn && active && !remote}
+    <div class="line">
+      <button
+        class="row device"
+        class:active
+        class:with-tool={shareable}
+        aria-pressed={active}
+        disabled={!active && (switching || State.adoptionInProgress() || sharing)}
+        title={!active && sharing ? 'Stop sharing to switch devices' : rowTitle(entry.rec)}
+        onclick={() => { moreOpen = false; void onRowClick(entry.id, active); }}
+      >
+        <span class="serial">{entry.rec.session.info.serial}</span>
+        {#if remote}<span class="remote"><RemoteIcon icon="link" size={11} />(remote)</span>{/if}
+        <span class="hw">{entry.rec.session.hardware.name}</span>
+      </button>
+      {#if shareable}
+        <button
+          type="button"
+          class="tool share-btn"
+          class:live={sharing}
+          title={sharing ? 'Sharing this device' : 'Share this device'}
+          aria-label="Share this device"
+          aria-expanded={shareOpen}
+          onclick={toggleShare}
+        ><RemoteIcon icon="share" size={12} /></button>
+      {/if}
+    </div>
   {:else}
     <button
       class="row badge"
@@ -108,12 +174,23 @@
             onclick={() => { moreOpen = !moreOpen; }}
           >+{hidden.length}</button>
         {/if}
+        {#if relayOn}
+          <button
+            class="add join-btn"
+            bind:this={joinBtn}
+            title={sharing ? 'Stop sharing to connect to a remote device' : 'Connect to a remote device…'}
+            disabled={sharing}
+            aria-label="Connect to a remote device"
+            aria-expanded={joinOpen}
+            onclick={toggleJoin}
+          ><RemoteIcon icon="link" size={11} /></button>
+        {/if}
         {#if !unsupported}
           <button
             class="add"
-            title="Add device…"
+            title={sharing ? 'Stop sharing to add a device' : 'Add device…'}
             aria-label="Add device"
-            disabled={switching || State.adoptionInProgress()}
+            disabled={switching || State.adoptionInProgress() || sharing}
             onclick={onAdd}
           >+</button>
         {/if}
@@ -122,6 +199,16 @@
     {#each visible as entry (`${entry.kind}:${entry.id}`)}
       {@render row(entry)}
     {/each}
+    {#if shareOpen}
+      <div class="fly">
+        <ShareDevicePopover onClose={() => { shareOpen = false; }} ignore=".share-btn" />
+      </div>
+    {/if}
+    {#if joinOpen}
+      <div class="fly" bind:this={joinFly}>
+        <JoinRemotePopover seed={joinSeed} onClose={closeJoin} ignore=".join-btn" />
+      </div>
+    {/if}
     {#if moreOpen && hidden.length > 0}
       <div class="pop" role="dialog" aria-label="More devices" use:dismiss={{ onDismiss: () => { moreOpen = false; }, ignore: '.more' }}>
         {#each hidden as entry (`${entry.kind}:${entry.id}`)}
@@ -185,6 +272,48 @@
     box-shadow: var(--shadow-flyout);
   }
 
+  /* Right of the rail, like the presets flyout (the rail head pads 10px). */
+  .fly {
+    position: absolute;
+    left: calc(100% + 16px);
+    top: 0;
+    z-index: var(--z-flyout);
+  }
+  .line { position: relative; display: flex; }
+  .row.with-tool { padding-right: 28px; }
+  .tool {
+    position: absolute;
+    top: 50%;
+    right: 4px;
+    width: 18px;
+    height: 18px;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: var(--radius-s);
+    border: 1px solid transparent;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+  .tool:hover { border-color: var(--border-hi); }
+  .tool.live {
+    color: var(--accent);
+    background: color-mix(in oklab, var(--accent) var(--tint-strong), transparent);
+    border-color: var(--accent);
+  }
+  .remote {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex: none;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+    color: var(--text-faint);
+  }
+
   .row {
     display: flex;
     align-items: center;
@@ -214,6 +343,7 @@
   }
   .hw {
     flex: none;
+    margin-left: auto;
     font-weight: 400;
     font-size: 8px;
     letter-spacing: 1px;

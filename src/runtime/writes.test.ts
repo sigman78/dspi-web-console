@@ -3,6 +3,7 @@ import * as Writes from './writes.svelte';
 import * as State from '@/state';
 import type { ReadySession } from '@/state';
 import { Result } from '@/utils';
+import { RemoteRefused } from '@/transport/remote/errors';
 
 // Install a ready session so writes resolve activeSession() and its
 // WriteCoordinator/alive guard. Disposing it (or resetting app state)
@@ -121,6 +122,32 @@ describe('write() failure policy', () => {
     expect(session.health.degraded).toBe(true);
     expect(State.notices.list.length).toBe(0);
     expect(session.mirror.peekReconcile().wanted).toBe(false);
+  });
+
+  it('refusals by the host console are toasted and reverted but never degrade the link', async () => {
+    for (let i = 0; i < 3; i++) {
+      session.mirror.consumeReconcile();
+      await Writes.write(session, async () => { throw new RemoteRefused('no'); }, () => {});
+      expect(session.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
+    }
+    await Writes.command(session, 'op', async () => { throw new RemoteRefused('no'); }, () => {});
+    await Writes.writeChecked(session, 'op', async () => { throw new RemoteRefused('no'); }, () => {});
+    expect(session.health.degraded).toBe(false);
+    expect(session.health.failTotal).toBe(0);
+    expect(State.notices.list.length).toBeGreaterThan(0);
+    expect(State.notices.list.every((n) => n.kind === 'warn')).toBe(true);
+  });
+
+  it('a refused scrub is toasted and reverted without touching link health', async () => {
+    for (let i = 0; i < 3; i++) {
+      session.mirror.consumeReconcile();
+      Writes.scrub(session, 'k', () => {}, async () => { throw new RemoteRefused('no'); });
+      await Writes.flushAllWrites(session);
+      expect(session.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
+    }
+    expect(session.health.degraded).toBe(false);
+    expect(session.health.failTotal).toBe(0);
+    expect(State.notices.list.some((n) => n.kind === 'warn')).toBe(true);
   });
 
   it('while degraded, writes are refused unsent and silently', async () => {
