@@ -390,6 +390,34 @@ describe('allow gate', () => {
     expect(again.first).toMatchObject({ t: 'joined', needsAllow: false });
   });
 
+  it('turns a guest away as busy without touching its token, Allow state or the code', async () => {
+    const ip = newIp();
+    const { room, host, guest, resumeToken } = await lentRoom(ip);
+    host.send({ t: 'reclaim' });
+    guest.ws.close(1000);
+
+    const back = await joinByResume(room, resumeToken, ip);
+    expect(back.first).toMatchObject({ t: 'joined', needsAllow: true });
+    const peer = await host.nextOf('peer');
+    host.send({ t: 'busy', peerId: peer.peerId });
+    expect(await back.guest.next()).toEqual({ t: 'error', code: 'busy' });
+
+    const again = await joinByResume(room, resumeToken, ip);
+    expect(again.first).toMatchObject({ t: 'joined', needsAllow: true });
+  });
+
+  it('keeps the code as it was when a waiting code guest is turned away as busy', async () => {
+    const ip = newIp();
+    const { room, host } = await openHost(ip);
+    const { guest } = await joinByCode(room.code, ip);
+    const peer = await host.nextOf('peer');
+    host.send({ t: 'busy', peerId: peer.peerId });
+    expect(await guest.next()).toEqual({ t: 'error', code: 'busy' });
+
+    const next = await joinByCode(room.code, ip);
+    expect(next.first).toEqual({ t: 'error', code: 'burnt' });
+  });
+
   it('takes Allow away from a connected guest when the host reclaims', async () => {
     const ip = newIp();
     const { host, guest } = await lentRoom(ip);

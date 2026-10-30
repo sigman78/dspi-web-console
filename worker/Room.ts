@@ -265,6 +265,10 @@ export class Room extends DurableObject<Env> {
         guest.close(CLOSE_NORMAL, 'denied');
         await this.#rotate(ws, s);
         return;
+      case 'busy':
+        if (!guest || !gatt || gatt.peerId !== msg.peerId) return;
+        this.#reject(guest, 'busy');
+        return;
       case 'rotate': {
         const rotate = charge(att.rotate, ROTATE_LIMIT, now);
         if (!rotate) return;

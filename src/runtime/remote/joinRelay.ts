@@ -9,6 +9,7 @@ import * as Identity from './identity';
 import * as Manual from './manualSignaling';
 import * as Peer from './peer';
 import * as Relay from './relay';
+import * as Share from './share';
 import * as Store from './relayStore';
 import * as Signaling from './signaling';
 import { JOIN_FAILURE_TEXT } from './joinFailureText';
@@ -244,6 +245,8 @@ function abandon(): void {
 
 function start(url: string, first: Wire.ClientMessage, resumed: boolean, boot = false, name = 'the last console'): void {
   abandon();
+  // Joining a remote device wins over a share that is only waiting for its device.
+  if (State.shareAway() !== null) Share.stopSharing();
   // Joining switches to the remote device, which would strand this console's own room.
   if (State.shareState() !== 'idle') {
     State.setJoinState({ phase: 'failed', reason: 'sharing' });

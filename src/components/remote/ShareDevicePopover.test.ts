@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import * as State from '@/state';
 import * as Share from '@/runtime/remote/share';
+import { bootMock } from '@/runtime/boot';
 import ShareDevicePopover from './ShareDevicePopover.svelte';
 
 vi.mock('@/runtime/remote/share', () => ({
@@ -91,6 +92,28 @@ describe('ShareDevicePopover', () => {
     State.setSharePeer({ peerId: 'p1', label: 'Win', stage: 'pending' });
     render(ShareDevicePopover, { onClose: vi.fn() });
     expect(screen.getByRole('button', { name: 'New code' })).toBeDisabled();
+  });
+
+  it('while paused for its device it says so, does not open a room, and Stop sharing works', async () => {
+    State.setShareAway({ serial: 'SN-42', until: Date.now() + 60_000 });
+    const onClose = vi.fn();
+    render(ShareDevicePopover, { onClose });
+    expect(Share.startSharing).not.toHaveBeenCalled();
+    expect(screen.getByRole('status')).toHaveTextContent(/Waiting for SN-42 to come back/);
+    expect(screen.queryByLabelText('Pairing code')).not.toBeInTheDocument();
+    const stop = screen.getByRole('button', { name: 'STOP SHARING' });
+    expect(stop).toBeEnabled();
+    await fireEvent.click(stop);
+    expect(Share.stopSharing).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the device is back when it is connected but not active', async () => {
+    State.setShareAway({ serial: 'MOCK-RP2350-2', until: Date.now() + 60_000 });
+    await bootMock('rp2350', { serial: 'MOCK-RP2350-2' });
+    render(ShareDevicePopover, { onClose: vi.fn() });
+    expect(screen.getByRole('status')).toHaveTextContent('MOCK-RP2350-2 is back. Switch to it to resume sharing.');
+    State.resetAppState();
   });
 
   it('Stop sharing ends the share and closes the popover', async () => {

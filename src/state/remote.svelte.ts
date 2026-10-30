@@ -1,6 +1,7 @@
 import { SvelteMap } from 'svelte/reactivity';
 import { activeRecord, recordOf } from './appState.svelte';
 import type { ConnId } from './appState.svelte';
+import { notifyShareActivity } from './hooks';
 
 // Device-owner side of remote control. The lease lives beside the registry,
 // not on DeviceRecord: records are plain objects in a SvelteMap, which tracks
@@ -28,6 +29,13 @@ export interface SharePeer {
   stage: 'pending' | 'connecting';
 }
 
+// A share paused because its device went away: the room stays open for the
+// same device (by serial) until `until`.
+export interface ShareAway {
+  serial: string;
+  until: number;
+}
+
 // Why a relay room is gone while the owner expected it open.
 export type ShareEnd = 'relay-lost';
 
@@ -49,6 +57,7 @@ export interface PendingJoin {
 const _leases = new SvelteMap<ConnId, Lease>();
 const _linkRtt = new SvelteMap<ConnId, number>();
 let _share = $state<ShareState>('idle');
+let _away = $state<ShareAway | null>(null);
 let _room = $state<ShareRoom | null>(null);
 let _peer = $state<SharePeer | null>(null);
 let _shareEnd = $state<ShareEnd | null>(null);
@@ -99,7 +108,18 @@ export function shareState(): ShareState {
 }
 
 export function setShareState(next: ShareState): void {
+  if (_share === next) return;
   _share = next;
+  notifyShareActivity();
+}
+
+export function shareAway(): ShareAway | null {
+  return _away;
+}
+
+export function setShareAway(next: ShareAway | null): void {
+  _away = next;
+  notifyShareActivity();
 }
 
 export function shareRoom(): ShareRoom | null {
@@ -156,6 +176,7 @@ export function resetRemoteState(): void {
   _leases.clear();
   _linkRtt.clear();
   _share = 'idle';
+  _away = null;
   _room = null;
   _peer = null;
   _shareEnd = null;

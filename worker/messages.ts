@@ -59,6 +59,7 @@ export function parseClient(raw: string): ClientMessage | null {
       return { t: 'ping' };
     case 'allow':
     case 'deny':
+    case 'busy':
       return field(m.peerId) ? { t: m.t, peerId: m.peerId } : null;
     case 'bye':
       return m.reason === 'no-path' ? { t: 'bye', reason: m.reason } : null;

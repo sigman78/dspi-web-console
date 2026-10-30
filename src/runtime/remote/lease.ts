@@ -39,6 +39,32 @@ interface Lend {
 let current: Lend | null = null;
 let preparing = false;
 
+// Asks the pending-changes question, but gives up (and takes the prompt down)
+// when the device goes away while it is open.
+async function askUnlessGone(signal: AbortSignal): Promise<State.BoundaryChoice | 'gone'> {
+  if (signal.aborted) return 'gone';
+  const ours = State.boundary.pending === null;
+  let onAbort = (): void => {};
+  const gone = new Promise<'gone'>((resolve) => {
+    onAbort = () => { resolve('gone'); };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    const choice = await Promise.race([
+      State.askBoundary({
+        title: 'Pending changes',
+        message: 'This device has changes that are not applied or not saved. They stay with it, but nothing is sent from this console while another console is in control.',
+        discardLabel: 'Hand over',
+      }),
+      gone,
+    ]);
+    if (choice === 'gone' && ours) State.resolveBoundary('cancel');
+    return choice;
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
+}
+
 function refuse(channel: FrameChannel, reason: number): void {
   try {
     channel.send(Frames.encodeFrame({ type: 'reject', reason }));
@@ -58,12 +84,8 @@ export async function prepareLend(opts: PrepareOptions): Promise<LendHandle | nu
   preparing = true;
   try {
     if (hasPendingWork(rec.session)) {
-      const choice = await State.askBoundary({
-        title: 'Pending changes',
-        message: 'This device has changes that are not applied or not saved. They stay with it, but nothing is sent from this console while another console is in control.',
-        discardLabel: 'Hand over',
-      });
-      if (choice === 'cancel') return null;
+      const choice = await askUnlessGone(rec.session.signal);
+      if (choice === 'cancel' || choice === 'gone') return null;
     }
     if (opts.isWanted && !opts.isWanted()) return null;
     if (State.activeRecord()?.id !== rec.id || !rec.session.alive) return null;

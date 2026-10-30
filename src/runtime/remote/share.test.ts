@@ -6,6 +6,8 @@ import { FakeWebSocket } from '@test/fixtures/fakeWebSocket';
 import * as Lease from './lease';
 import * as Manual from './manualSignaling';
 import * as Peer from './peer';
+import * as DeviceService from '@/runtime/deviceService';
+import * as JoinRelay from './joinRelay';
 import { startSharing, allow, deny, stopSharing, cancelLend } from './share';
 
 vi.mock('./lease', async (importOriginal) => {
@@ -330,13 +332,15 @@ describe('ending', () => {
     expect(State.shareEnd()).toBe('relay-lost');
   });
 
-  it('the local device going away closes the room', async () => {
+  it('the local device going away while lent keeps the room open, paused', async () => {
     const ws = await sharing();
     await lent(ws);
+    const serial = State.activeRecord()!.session.info.serial;
     State.activeRecord()!.session.dispose();
     expect(State.shareState()).toBe('idle');
-    expect(ws.messages()).toContainEqual({ t: 'close' });
-    expect(State.shareRoom()).toBeNull();
+    expect(ws.messages()).not.toContainEqual({ t: 'close' });
+    expect(ws.messages().at(-1)).toEqual({ t: 'lent', on: true });
+    expect(State.shareAway()?.serial).toBe(serial);
   });
 });
 
@@ -569,14 +573,7 @@ describe('the code and the shared device', () => {
     expect(State.shareRoom()).toBeNull();
   });
 
-  it('closes the room when the shared device goes away, with nobody connected', async () => {
-    await sharing();
-    await State.activeRecord()!.session.device.close();
-    expect(State.shareState()).toBe('idle');
-    expect(State.shareRoom()).toBeNull();
-  });
-
-  it('closes the room when the device goes away while a lend is being prepared', async () => {
+  it('pauses the share when the device goes away while a lend is being prepared', async () => {
     const ws = await sharing();
     const rec = State.activeRecord()!;
     rec.session.staging.entries.push({} as never);
@@ -584,8 +581,8 @@ describe('the code and the shared device', () => {
     await vi.waitFor(() => { expect(State.boundary.pending).not.toBeNull(); });
     await rec.session.device.close();
     expect(State.shareState()).toBe('idle');
-    expect(State.shareRoom()).toBeNull();
-    State.resolveBoundary('cancel');
+    expect(State.shareAway()).not.toBeNull();
+    expect(State.boundary.pending).toBeNull();
     rec.session.staging.entries.length = 0;
   });
 
@@ -595,5 +592,162 @@ describe('the code and the shared device', () => {
     ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', needsAllow: false, label: 'Win' });
     expect(ws.messages()).toContainEqual({ t: 'deny', peerId: 'p1' });
     expect(State.activeLease()).toBeNull();
+  });
+});
+
+describe('the shared device going away', () => {
+  async function goneAway(): Promise<{ ws: FakeWebSocket; serial: string }> {
+    const ws = await sharing();
+    const serial = State.activeRecord()!.session.info.serial;
+    await State.activeRecord()!.session.device.close();
+    return { ws, serial };
+  }
+
+  it('keeps the room open and reads as idle, remembering the serial', async () => {
+    const { ws, serial } = await goneAway();
+    expect(State.shareState()).toBe('idle');
+    expect(State.shareAway()?.serial).toBe(serial);
+    expect(State.shareRoom()).toBeNull();
+    expect(ws.messages()).not.toContainEqual({ t: 'close' });
+    expect(ws.readyState).not.toBe(FakeWebSocket.CLOSED);
+  });
+
+  it('turns arriving peers away as busy, resumed ones too, and keeps the relay marking the device lent', async () => {
+    const { ws } = await goneAway();
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'code', label: 'Win' });
+    ws.receive({ t: 'peer', peerId: 'p2', via: 'resume', label: 'Win' });
+    expect(ws.messages()).toContainEqual({ t: 'busy', peerId: 'p1' });
+    expect(ws.messages()).toContainEqual({ t: 'busy', peerId: 'p2' });
+    expect(ws.messages().some((m) => m.t === 'deny')).toBe(false);
+    expect(State.sharePeer()).toBeNull();
+    expect(ws.messages().filter((m) => m.t === 'lent').at(-1)).toEqual({ t: 'lent', on: true });
+  });
+
+  it('turns away a joiner still waiting for an Allow', async () => {
+    const ws = await sharing();
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'code', label: 'Win' });
+    await State.activeRecord()!.session.device.close();
+    expect(ws.messages()).toContainEqual({ t: 'busy', peerId: 'p1' });
+    expect(State.sharePeer()).toBeNull();
+  });
+
+  it('a lend that comes back after the pending-changes prompt was left open works', async () => {
+    const ws = await sharing();
+    const rec = State.activeRecord()!;
+    const serial = rec.session.info.serial;
+    rec.session.staging.entries.push({} as never);
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', needsAllow: false, label: 'Win' });
+    await vi.waitFor(() => { expect(State.boundary.pending).not.toBeNull(); });
+    await rec.session.device.close();
+    await bootMock('rp2350', { serial });
+    ws.receive({ t: 'peer', peerId: 'p2', via: 'scan', needsAllow: false, label: 'Win' });
+    await offered(ws);
+    ws.receive({ t: 'sdp', peerId: 'p2', sdp: ANSWER });
+    await vi.waitFor(() => { expect(State.shareState()).toBe('lent'); });
+  });
+
+  it('stays paused when the device returns in the background, and resumes once it is activated', async () => {
+    const ws = await sharing();
+    const serial = State.activeRecord()!.session.info.serial;
+    await bootMock('rp2350', { serial: 'OTHER' }, { activate: false });
+    await State.activeRecord()!.session.device.close();
+    expect(State.activeRecord()?.session.info.serial).toBe('OTHER');
+
+    await bootMock('rp2350', { serial }, { activate: false });
+    expect(State.shareAway()).not.toBeNull();
+    expect(State.shareState()).toBe('idle');
+
+    await DeviceService.activateSession(State.recordBySerial(serial)!.id);
+    expect(State.shareAway()).toBeNull();
+    expect(State.shareState()).toBe('sharing');
+    expect(ws.messages().filter((m) => m.t === 'lent').at(-1)).toEqual({ t: 'lent', on: false });
+  });
+
+  it('joining a remote device closes the paused room', async () => {
+    const { ws } = await goneAway();
+    JoinRelay.joinByCode('ABC234');
+    expect(ws.messages()).toContainEqual({ t: 'close' });
+    expect(State.shareAway()).toBeNull();
+    JoinRelay.leaveJoin();
+  });
+
+  it('shares again when the same device is adopted, and a returning joiner can be lent it', async () => {
+    const { ws, serial } = await goneAway();
+    ws.receive({ t: 'rotated', code: 'NEW234', scanKey: 'scan2' });
+    await bootMock('rp2350', { serial });
+    expect(State.shareAway()).toBeNull();
+    expect(State.shareState()).toBe('sharing');
+    expect(State.shareRoom()).toEqual({ code: 'NEW234', scanKey: 'scan2', status: 'live' });
+
+    ws.receive({ t: 'peer', peerId: 'p3', via: 'scan', needsAllow: false, label: 'Win' });
+    await offered(ws);
+    ws.receive({ t: 'sdp', peerId: 'p3', sdp: ANSWER });
+    await vi.waitFor(() => { expect(State.shareState()).toBe('lent'); });
+  });
+
+  it('watches the new device: losing it again pauses the share again', async () => {
+    const { serial } = await goneAway();
+    await bootMock('rp2350', { serial });
+    await State.activeRecord()!.session.device.close();
+    expect(State.shareAway()?.serial).toBe(serial);
+    expect(State.shareState()).toBe('idle');
+  });
+
+  it('does not resume for a different device', async () => {
+    await goneAway();
+    await bootMock('rp2350', { serial: 'OTHER' });
+    expect(State.shareAway()).not.toBeNull();
+    expect(State.shareState()).toBe('idle');
+  });
+
+  describe('with a clock', () => {
+    beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] }); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('closes the room when the device does not come back in time', async () => {
+      const { ws } = await goneAway();
+      vi.advanceTimersByTime(10 * 60_000 - 1);
+      expect(ws.readyState).not.toBe(FakeWebSocket.CLOSED);
+      vi.advanceTimersByTime(1);
+      expect(ws.messages()).toContainEqual({ t: 'close' });
+      expect(ws.readyState).toBe(FakeWebSocket.CLOSED);
+      expect(State.shareAway()).toBeNull();
+    });
+
+    it('a device that returns in time cancels the expiry', async () => {
+      const { ws, serial } = await goneAway();
+      await bootMock('rp2350', { serial });
+      vi.advanceTimersByTime(11 * 60_000);
+      expect(ws.readyState).not.toBe(FakeWebSocket.CLOSED);
+      expect(State.shareState()).toBe('sharing');
+    });
+  });
+
+  it('stop sharing closes the paused room', async () => {
+    const { ws } = await goneAway();
+    stopSharing();
+    expect(ws.messages()).toContainEqual({ t: 'close' });
+    expect(State.shareAway()).toBeNull();
+  });
+
+  it('sharing another device closes the paused room first', async () => {
+    const { ws } = await goneAway();
+    await bootMock('rp2350', { serial: 'OTHER' });
+    const started = startSharing();
+    await vi.waitFor(() => { expect(FakeWebSocket.instances).toHaveLength(2); });
+    expect(ws.messages()).toContainEqual({ t: 'close' });
+    expect(State.shareAway()).toBeNull();
+    const next = FakeWebSocket.last();
+    next.open();
+    next.receive({ t: 'ready', code: 'ZZZ234', scanKey: 's' });
+    expect(await started).toBe(true);
+    expect(State.shareState()).toBe('sharing');
+  });
+
+  it('losing the relay while paused forgets the share', async () => {
+    const { ws } = await goneAway();
+    ws.drop();
+    expect(State.shareAway()).toBeNull();
+    expect(State.shareState()).toBe('idle');
   });
 });

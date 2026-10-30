@@ -1,10 +1,11 @@
 <script lang="ts">
   import EqSpectrum from './EqSpectrum.svelte';
-  import { connection, activeSession, pendingJoin, type PendingJoin } from '@/state';
+  import { connection, activeSession, pendingJoin, shareAway, type PendingJoin } from '@/state';
   import { connectRequested, webUsbUnsupportedReason } from '@/runtime';
   import { REPO_URL } from '@/buildInfo';
   import * as Relay from '@/runtime/remote/relay';
   import * as JoinRelay from '@/runtime/remote/joinRelay';
+  import * as Share from '@/runtime/remote/share';
   import JoinRemotePopover from '@/components/remote/JoinRemotePopover.svelte';
 
   const relayOn = Relay.remoteRelayBase() !== null;
@@ -89,6 +90,12 @@
     Web console for the DSPi audio processor — connects over USB, nothing leaves your machine.
   </div>
   <div class="status" class:is-error={connection.phase === 'errored'}>{text}</div>
+  {#if shareAway() !== null}
+    <div class="paused" role="status">
+      <span>Sharing paused, waiting for {shareAway()?.serial}</span>
+      <button type="button" class="remote-link" onclick={Share.stopSharing}>Stop sharing</button>
+    </div>
+  {/if}
   {#snippet remoteEntry()}
     {#if relayOn}
       <button
@@ -375,6 +382,13 @@
   }
   .copy:hover { color: var(--text); border-color: var(--border-hi); }
 
+  .paused {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: var(--fs-m);
+    color: var(--text-dim);
+  }
   .remote-link {
     padding: 0;
     font-family: inherit;
