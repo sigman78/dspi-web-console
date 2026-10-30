@@ -44,11 +44,12 @@ export function reportConnectError(id: ConnId, err: unknown): void {
   State.dispatch({ t: 'failed', id, message, errorKind });
 }
 
-async function createBoundDevice(
+export async function createBoundDevice(
   transport: DspTransport,
   scope: ConnectionScope,
   id: ConnId,
   openTransport?: () => Promise<void>,
+  ctrlMs: number = CTRL_TIMEOUT_MS,
 ): Promise<DspDevice> {
   // Wrap with the timeout decorator before DspDevice so every ctrlIn/ctrlOut
   // inherits the deadline. The wire monitor (gated on ?log=wire) sits inside the
@@ -56,7 +57,7 @@ async function createBoundDevice(
   // attachTransportListeners + close target the raw transport, since
   // connect/disconnect events come from there, not the wrappers.
   const monitored = wireMonitorEnabled() ? withWireMonitor(transport) : transport;
-  const wrapped = withTimeout(monitored, { ctrlMs: CTRL_TIMEOUT_MS });
+  const wrapped = withTimeout(monitored, { ctrlMs });
   try {
     const device = await DspDevice.create(wrapped, openTransport);
     scope.onTeardown(attachTransportListeners(transport, id, scope));

@@ -17,6 +17,7 @@
 //                        bindings incl. IR receiver + display, 8 macros of 8
 //                        steps, 8 groups, 16 IR commands, 16 display pages)
 //   ?debug              show diagnostics panels (SETUP > DEVICE buffer stats)
+//   ?remote=manual      show the remote-control dev panel (copy/paste signaling)
 //   ?hero               force the connecting hero even while connected
 //   ?sysclock=fallback  boot the mock system clock crash-fallen-back (stored
 //                       mode 2, active safe mode 0) to demo the fallback banner
@@ -61,6 +62,10 @@ export function heroOverride(): boolean {
 
 export function debugPanels(): boolean {
   return params()?.has('debug') ?? false;
+}
+
+export function remoteManualSignaling(): boolean {
+  return params()?.get('remote') === 'manual';
 }
 
 export function mockSysClockOff(): boolean {
