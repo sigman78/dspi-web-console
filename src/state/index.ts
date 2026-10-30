@@ -18,3 +18,4 @@ export * from './staging.svelte';
 export * from './eqLink.svelte';
 export * from './drafts.svelte';
 export * from './autoEq.svelte';
+export * from './remote.svelte';

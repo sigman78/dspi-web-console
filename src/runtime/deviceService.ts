@@ -265,8 +265,10 @@ export async function syncDeviceSnapshot(s: ReadySession): Promise<void> {
 }
 
 // Starts this record's poll/notify/probe loops (no-op if already running).
-function activateRecord(rec: DeviceRecord): void {
+// A lent record stays silent: its device belongs to the remote lessee.
+export function activateRecord(rec: DeviceRecord): void {
   if (rec.loops) return;
+  if (State.leaseOf(rec.id)) return;
   const session = rec.session;
   const stopPolling = startPolling(session);
   const stopNotify = startNotifyChannel(session);
@@ -288,7 +290,7 @@ function ensurePromotedActive(): void {
 
 // Stops this record's loops (no new traffic), then drains whatever writes
 // were already in flight.
-async function deactivateRecord(rec: DeviceRecord): Promise<void> {
+export async function deactivateRecord(rec: DeviceRecord): Promise<void> {
   rec.loops?.();
   rec.loops = null;
   await flushAllWrites(rec.session);
@@ -309,8 +311,9 @@ export async function activateSession(id: ConnId): Promise<void> {
   activateRecord(rec);
   rec.session.mirror.requestReconcile(true);
   // lastSerial now means "which adopted device to activate at boot", so every
-  // successful switch -- not just a fresh adoption -- updates it.
-  State.settings.lastSerial = rec.session.info.serial;
+  // successful switch -- not just a fresh adoption -- updates it. A remote
+  // device is never a granted USB device.
+  if (!rec.remote) State.settings.lastSerial = rec.session.info.serial;
 }
 
 // Anything on this session that a switch-away or unload would strand: edits
@@ -322,6 +325,10 @@ export function hasPendingWork(s: ReadySession): boolean {
 // User-initiated switch: asks first when the active device holds pending work.
 // Resolves false when the user cancels.
 export async function switchSession(id: ConnId): Promise<boolean> {
+  if (State.leaseOf(id)) {
+    State.pushNotice('warn', 'Device is under remote control; cancel the lease first');
+    return false;
+  }
   const prev = State.activeSession();
   if (prev && State.activeRecord()?.id !== id && hasPendingWork(prev)) {
     const choice = await State.askBoundary({
@@ -338,7 +345,7 @@ export async function wireUpConnection(
   device: DspDevice,
   scope?: ConnectionScope,
   id: ConnId = State.mintConnId(),
-  opts?: { activate?: false },
+  opts?: { activate?: false; remote?: State.RemoteInfo },
 ): Promise<void> {
   if (scope?.aborted) return;   // superseded before this attempt started
   State.dispatch({ t: 'requested', id });
@@ -374,7 +381,7 @@ export async function wireUpConnection(
     // Captured before the dispatch: adoption makes id active immediately, so
     // this is the only chance to see who was active a moment ago.
     const prev = State.activeRecord();
-    State.dispatch({ t: 'synced', id, session, activate: opts?.activate });
+    State.dispatch({ t: 'synced', id, session, activate: opts?.activate, remote: opts?.remote });
     // A later successful adoption of the same physical device retires its
     // stale badge. Badges are keyed by the USB descriptor serial; firmware
     // GetSerial (info.serial) reads back the same value -- the equivalence
@@ -393,7 +400,7 @@ export async function wireUpConnection(
     // on the outcome, not the flag.
     if (State.activeRecord()?.id === id) {
       if (prev) await deactivateRecord(prev);
-      State.settings.lastSerial = device.info.serial;
+      if (!opts?.remote) State.settings.lastSerial = device.info.serial;
       await reconcileAfterSync(session);
       // Re-check after the await: onTeardown self-heals against an
       // already-aborted scope (it fires immediately instead of stranding the
