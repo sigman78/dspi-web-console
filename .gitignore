@@ -58,3 +58,6 @@ docs/*
 # Playwright
 /test-results/
 /playwright-report/
+
+# Wrangler local state
+.wrangler/
