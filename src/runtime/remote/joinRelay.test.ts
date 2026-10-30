@@ -128,7 +128,7 @@ describe('joining by code', () => {
 
     await vi.waitFor(() => { expect(State.joinState().phase).toBe('joined'); });
     expect(ws.messages()).toContainEqual({ t: 'sdp', sdp: { type: 'answer', sdp: 'ans' } });
-    expect(joinRemote).toHaveBeenCalledWith(channel, expect.any(String));
+    expect(joinRemote).toHaveBeenCalledWith(channel, expect.any(String), {});
     expect(ws.readyState).toBe(FakeWebSocket.CLOSED);
   });
 
@@ -218,11 +218,28 @@ describe('abandoning a handshake', () => {
       ws.receive({ t: 'joined', needsAllow: false, resumeToken: TOKEN });
       ws.receive({ t: 'sdp', sdp: { type: 'offer', sdp: 'off' } });
       await vi.advanceTimersByTimeAsync(31_000);
-      expect(State.joinState()).toEqual({ phase: 'failed', reason: 'failed' });
+      expect(State.joinState()).toEqual({ phase: 'failed', reason: 'no-path' });
+      expect(ws.messages()).toContainEqual({ t: 'bye', reason: 'no-path' });
       expect(pc.close).toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('reports no path when the peer connection fails before the channel opens', async () => {
+    offerAnswered({ channel: Promise.reject(new Error('peer connection failed before the tunnel opened')) });
+    const ws = connected();
+    ws.receive({ t: 'joined', needsAllow: false, resumeToken: TOKEN });
+    ws.receive({ t: 'sdp', sdp: { type: 'offer', sdp: 'off' } });
+    await vi.waitFor(() => { expect(State.joinState()).toEqual({ phase: 'failed', reason: 'no-path' }); });
+  });
+
+  it('a failure before the answer went out is a plain failure, not a network one', async () => {
+    vi.mocked(Manual.createAnswer).mockRejectedValue(new Error('bad offer'));
+    const ws = connected();
+    ws.receive({ t: 'joined', needsAllow: false, resumeToken: TOKEN });
+    ws.receive({ t: 'sdp', sdp: { type: 'offer', sdp: 'off' } });
+    await vi.waitFor(() => { expect(State.joinState()).toEqual({ phase: 'failed', reason: 'failed' }); });
   });
 });
 
@@ -324,6 +341,196 @@ describe('resuming', () => {
     FakeWebSocket.last().open();
     FakeWebSocket.last().receive({ t: 'error', code: 'busy' });
     expect(storedResume()).toBe(TOKEN);
+  });
+});
+
+describe('coming back after a reload', () => {
+  const REJOIN_KEY = 'dspi-console-web/remote/rejoin';
+  const storedRejoin = (): boolean => sessionStorage.getItem(REJOIN_KEY) !== null;
+  const setRejoin = (resume = TOKEN, name = 'SER'): void => { sessionStorage.setItem(REJOIN_KEY, JSON.stringify({ resume, name })); };
+  const storeResume = (): void => { localStorage.setItem(STORE_KEY, JSON.stringify({ resume: TOKEN })); };
+
+  // Joins a device whose record exists, so the session counts as live.
+  async function joined(): Promise<() => void> {
+    const id = State.mintConnId();
+    State.dispatch({ t: 'synced', id, session: State.makeReadySession({ info: { serial: 'S' }, hardware: {} } as unknown as DspDevice) });
+    vi.mocked(joinRemote).mockResolvedValueOnce(id);
+    offerAnswered();
+    let closed = (): void => {};
+    vi.mocked(Peer.wrapDataChannel).mockReturnValue({ onClose: (l: () => void) => { closed = l; } } as never);
+    const ws = connected();
+    ws.receive({ t: 'joined', needsAllow: false, resumeToken: TOKEN });
+    ws.receive({ t: 'sdp', sdp: { type: 'offer', sdp: 'off' } });
+    await vi.waitFor(() => { expect(State.joinState().phase).toBe('joined'); });
+    return () => { closed(); };
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    State.resetAppState();
+    State.clearNotices();
+  });
+  afterEach(() => {
+    window.dispatchEvent(new Event('pageshow'));
+    State.resetAppState();
+  });
+
+  it('is wanted once a device is joined, and not before', async () => {
+    const ws = connected();
+    ws.receive({ t: 'joined', needsAllow: false, resumeToken: TOKEN });
+    expect(storedRejoin()).toBe(false);
+    ws.close();
+    await joined();
+    expect(storedRejoin()).toBe(true);
+  });
+
+  it('ends when the host ends the session', async () => {
+    const hostEnds = await joined();
+    hostEnds();
+    expect(storedRejoin()).toBe(false);
+  });
+
+  it('does not end when the tunnel closes because the page is unloading', async () => {
+    const tunnelCloses = await joined();
+    window.dispatchEvent(new Event('pagehide'));
+    tunnelCloses();
+    expect(storedRejoin()).toBe(true);
+  });
+
+  it('ends when the user cancels a reconnect in progress', () => {
+    storeResume();
+    setRejoin();
+    expect(JoinRelay.rejoinOnBoot()).toBe(true);
+    JoinRelay.leaveJoin();
+    expect(storedRejoin()).toBe(false);
+  });
+
+  it('ends when the reconnect fails, but survives the reconnect starting', () => {
+    storeResume();
+    setRejoin();
+    JoinRelay.rejoinOnBoot();
+    expect(storedRejoin()).toBe(true);
+    FakeWebSocket.last().open();
+    FakeWebSocket.last().receive({ t: 'error', code: 'busy' });
+    expect(State.joinState()).toEqual({ phase: 'failed', reason: 'busy' });
+    expect(storedRejoin()).toBe(false);
+  });
+
+  it('the first device ending is noticed even after a later attempt began', async () => {
+    const hostEnds = await joined();
+    connected('XYZ234');
+    hostEnds();
+    expect(storedRejoin()).toBe(false);
+    expect(State.joinState().phase).toBe('connecting');
+  });
+
+  it('cancelling a later attempt keeps the wish to come back to the joined device', async () => {
+    await joined();
+    connected('XYZ234');
+    JoinRelay.leaveJoin();
+    expect(storedRejoin()).toBe(true);
+  });
+
+  describe('at boot', () => {
+    it('resumes when the flag and a token are both stored, without taking over the active device', async () => {
+      storeResume();
+      setRejoin();
+      offerAnswered();
+      vi.mocked(Peer.wrapDataChannel).mockReturnValue({ onClose: vi.fn() } as never);
+      expect(JoinRelay.rejoinOnBoot()).toBe(true);
+      const ws = FakeWebSocket.last();
+      ws.open();
+      expect(ws.messages()[0]).toMatchObject({ t: 'join', resume: TOKEN });
+      expect(State.notices.list.some((n) => n.kind === 'info')).toBe(true);
+
+      ws.receive({ t: 'joined', needsAllow: false, resumeToken: TOKEN });
+      ws.receive({ t: 'sdp', sdp: { type: 'offer', sdp: 'off' } });
+      await vi.waitFor(() => { expect(joinRemote).toHaveBeenCalledWith(expect.anything(), expect.any(String), { activate: false }); });
+    });
+
+    it('a user-started join does activate the device', async () => {
+      offerAnswered();
+      vi.mocked(Peer.wrapDataChannel).mockReturnValue({ onClose: vi.fn() } as never);
+      const ws = connected();
+      ws.receive({ t: 'joined', needsAllow: false, resumeToken: TOKEN });
+      ws.receive({ t: 'sdp', sdp: { type: 'offer', sdp: 'off' } });
+      await vi.waitFor(() => { expect(joinRemote).toHaveBeenCalledWith(expect.anything(), expect.any(String), {}); });
+    });
+
+    it('says so when the reconnect fails', () => {
+      storeResume();
+      setRejoin();
+      JoinRelay.rejoinOnBoot();
+      FakeWebSocket.last().open();
+      FakeWebSocket.last().receive({ t: 'error', code: 'no-host' });
+      expect(State.notices.list.some((n) => n.kind === 'warn')).toBe(true);
+    });
+
+    it('gives up when the host does not answer the Allow prompt', () => {
+      vi.useFakeTimers();
+      try {
+        storeResume();
+        setRejoin();
+        JoinRelay.rejoinOnBoot();
+        const ws = FakeWebSocket.last();
+        ws.open();
+        ws.receive({ t: 'joined', needsAllow: true });
+        vi.advanceTimersByTime(61_000);
+        expect(State.joinState()).toEqual({ phase: 'failed', reason: 'timeout' });
+        expect(storedRejoin()).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does nothing without a joined session to return to', () => {
+      storeResume();
+      expect(JoinRelay.rejoinOnBoot()).toBe(false);
+      expect(FakeWebSocket.instances).toHaveLength(0);
+    });
+
+    it('resumes with the token of the joined session, not whatever attempt wrote the shared store last', () => {
+      const first = 'a'.repeat(64) + '.first';
+      const second = 'b'.repeat(64) + '.second';
+      localStorage.setItem(STORE_KEY, JSON.stringify({ resume: second }));
+      setRejoin(first, 'SER1');
+      expect(JoinRelay.rejoinOnBoot()).toBe(true);
+      const ws = FakeWebSocket.last();
+      ws.open();
+      expect(ws.messages()[0]).toMatchObject({ t: 'join', resume: first });
+      expect(ws.url).toContain('a'.repeat(64));
+    });
+
+    it('a later attempt that never completes does not change what a reload resumes', async () => {
+      await joined();
+      const joinedToken = JSON.parse(sessionStorage.getItem(REJOIN_KEY)!).resume as string;
+      const ws = connected('XYZ234');
+      ws.receive({ t: 'joined', needsAllow: false, resumeToken: 'c'.repeat(64) + '.other' });
+      JoinRelay.leaveJoin();
+      expect(JSON.parse(sessionStorage.getItem(REJOIN_KEY)!).resume).toBe(joinedToken);
+    });
+
+    it('ignores a flag that only another tab set', () => {
+      storeResume();
+      localStorage.setItem(REJOIN_KEY, JSON.stringify({ resume: TOKEN }));
+      expect(JoinRelay.rejoinOnBoot()).toBe(false);
+    });
+
+    it('leaves a ?join= link to the join popover', () => {
+      storeResume();
+      setRejoin();
+      State.setPendingJoin({ code: 'ABC234', scanKey: null });
+      expect(JoinRelay.rejoinOnBoot()).toBe(false);
+      expect(FakeWebSocket.instances).toHaveLength(0);
+    });
+
+    it('does nothing when the build has no relay', () => {
+      vi.stubEnv('VITE_REMOTE_RELAY', '');
+      storeResume();
+      setRejoin();
+      expect(JoinRelay.rejoinOnBoot()).toBe(false);
+    });
   });
 });
 

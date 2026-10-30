@@ -1,7 +1,7 @@
 import * as Secrets from './secrets';
 import type { ClientMessage, Sdp } from '../src/runtime/remote/relayWire';
 
-export type { ClientMessage, ErrorCode, Sdp, SdpType, ServerMessage } from '../src/runtime/remote/relayWire';
+export type { ByeReason, ClientMessage, ErrorCode, Sdp, SdpType, ServerMessage } from '../src/runtime/remote/relayWire';
 
 export const MAX_MESSAGE_CHARS = 32 * 1024;
 const MAX_FIELD_CHARS = 128;
@@ -60,6 +60,8 @@ export function parseClient(raw: string): ClientMessage | null {
     case 'allow':
     case 'deny':
       return field(m.peerId) ? { t: m.t, peerId: m.peerId } : null;
+    case 'bye':
+      return m.reason === 'no-path' ? { t: 'bye', reason: m.reason } : null;
     case 'lent':
       return typeof m.on === 'boolean' ? { t: 'lent', on: m.on } : null;
     case 'rotate':

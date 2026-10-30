@@ -45,6 +45,26 @@ async function openRemote(hasNotify = true) {
 afterEach(() => { vi.useRealTimers(); });
 
 describe('RemoteTransport', () => {
+  it('reports the time from sending a control read to its answer, and only for reads', async () => {
+    vi.useFakeTimers();
+    const samples: number[] = [];
+    const fake = fakeChannel();
+    const connecting = RemoteTransport.connect(fake.channel, { ...OPTS, onRoundTrip: (ms) => { samples.push(ms); } });
+    fake.reply({ type: 'welcome', version: Frames.TUNNEL_VERSION, leaseKind: 0, hasNotify: true, consoleBuild: 'peer' });
+    const t = await connecting;
+
+    const read = t.ctrlIn(0x11, 0, 1);
+    await vi.advanceTimersByTimeAsync(7);
+    fake.reply({ type: 'ok', id: fake.idOf(1), data: Uint8Array.of(1) });
+    await read;
+    expect(samples).toEqual([7]);
+
+    const write = t.ctrlOut(0x40, 0, Uint8Array.of(1));
+    fake.reply({ type: 'ok', id: fake.idOf(2), data: new Uint8Array(0) });
+    await write;
+    expect(samples).toEqual([7]);
+  });
+
   it('matches responses to requests by id when they arrive out of order', async () => {
     const { fake, t } = await openRemote();
     const a = t.ctrlIn(0x11, 0, 1);

@@ -27,6 +27,38 @@ export function readStore(): RemoteStore {
   }
 }
 
+// The joined session this tab should come back to after a reload, with its own
+// resume token. Kept per tab (sessionStorage survives a reload but is not
+// shared), so another tab, a later browser start or a different attempt's token
+// never takes a device over on its own.
+const REJOIN_KEY = 'dspi-console-web/remote/rejoin';
+
+export interface Rejoin {
+  resume: string;
+  name?: string;
+}
+
+export function readAutoRejoin(): Rejoin | null {
+  try {
+    const raw = sessionStorage.getItem(REJOIN_KEY);
+    if (!raw) return null;
+    const data: unknown = JSON.parse(raw);
+    if (typeof data !== 'object' || data === null) return null;
+    const { resume, name } = data as Record<string, unknown>;
+    if (typeof resume !== 'string') return null;
+    return { resume, name: typeof name === 'string' ? name : undefined };
+  } catch {
+    return null;
+  }
+}
+
+export function writeAutoRejoin(next: Rejoin | null): void {
+  try {
+    if (next) sessionStorage.setItem(REJOIN_KEY, JSON.stringify(next));
+    else sessionStorage.removeItem(REJOIN_KEY);
+  } catch { /* storage unavailable: no automatic reconnect */ }
+}
+
 // Merges `patch` over the stored value; an undefined field is removed.
 export function writeStore(patch: RemoteStore): void {
   try {

@@ -22,7 +22,11 @@ export type ClientMessage =
   | { t: 'rotate' }
   | { t: 'reclaim' }
   | { t: 'lent'; on: boolean }
+  | { t: 'bye'; reason: ByeReason }
   | { t: 'close' };
+
+// Why a guest leaves on purpose; the host hears it with the peer-gone.
+export type ByeReason = 'no-path';
 
 export type ErrorCode = 'bad-code' | 'burnt' | 'expired' | 'rate-limited' | 'no-host' | 'busy';
 
@@ -31,7 +35,7 @@ export type ServerMessage =
   | { t: 'peer'; peerId: string; via: 'code' | 'scan' | 'resume'; needsAllow: boolean; label: string }
   | { t: 'joined'; needsAllow: boolean; resumeToken?: string }
   | { t: 'allowed'; resumeToken: string }
-  | { t: 'peer-gone'; peerId: string }
+  | { t: 'peer-gone'; peerId: string; reason?: ByeReason }
   | { t: 'pong' }
   | { t: 'denied' }
   | { t: 'sdp'; sdp: Sdp; peerId?: string }

@@ -9,13 +9,18 @@ import { errMessage } from '@/utils';
 import { ConnectionScope } from '@/runtime/connectionScope';
 import { createBoundDevice, reportConnectError } from '@/runtime/boot';
 import { wireUpConnection } from '@/runtime/deviceService';
+import { createRttMeter } from './linkRtt';
 
 // Above the owner's own 2 s transfer deadline, so an owner-side timeout
 // arrives as a typed error instead of racing this side's timer.
 export const REMOTE_CTRL_TIMEOUT_MS = 3000;
 
 /** Adopts the tunnel's device; resolves with its record id. */
-export async function joinRemote(channel: FrameChannel, peerLabel: string): Promise<State.ConnId> {
+export async function joinRemote(
+  channel: FrameChannel,
+  peerLabel: string,
+  opts: { activate?: false } = {},
+): Promise<State.ConnId> {
   if (State.shareState() !== 'idle') {
     channel.close();
     throw new Error("Stop sharing this console's device first");
@@ -25,10 +30,15 @@ export async function joinRemote(channel: FrameChannel, peerLabel: string): Prom
   let remote: RemoteTransport | undefined;
   try {
     // Connect before binding: the decorators copy notifyIn at wrap time.
-    const connected = await RemoteTransport.connect(channel, { consoleBuild: GIT_SHA, wantReadOnly: false });
+    const connected = await RemoteTransport.connect(channel, {
+      consoleBuild: GIT_SHA,
+      wantReadOnly: false,
+      onRoundTrip: createRttMeter((ms) => { State.setLinkRtt(id, ms); }),
+    });
     remote = connected;
+    connected.on('disconnect', () => { State.clearLinkRtt(id); });
     const device = await createBoundDevice(connected, scope, id, () => connected.open(), REMOTE_CTRL_TIMEOUT_MS);
-    await wireUpConnection(device, scope, id, { remote: { peerLabel } });
+    await wireUpConnection(device, scope, id, { remote: { peerLabel }, activate: opts.activate });
     return id;
   } catch (err) {
     if (!scope.aborted) scope.abort();

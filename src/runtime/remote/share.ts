@@ -21,8 +21,12 @@ interface Handshake {
   cancelled: boolean;
   // Stops this handshake's waits when it is cancelled.
   abort: AbortController;
+  // The offer went out: cancelling must tell the joiner, who is waiting on it.
+  offered: boolean;
   // The answer has arrived: the channel's own timeout decides from here.
   answered: boolean;
+  // The joiner left the relay after answering.
+  peerGone: boolean;
   lend: Lease.LendHandle | null;
   pc: RTCPeerConnection | null;
   answer: Promise<Sdp>;
@@ -65,7 +69,11 @@ function newHandshake(peerId: string, label: string): Handshake {
     rejectAnswer = reject;
   });
   answer.catch(() => { /* surfaced by whoever awaits it */ });
-  return { peerId, label, cancelled: false, abort: new AbortController(), answered: false, lend: null, pc: null, answer, resolveAnswer, rejectAnswer };
+  return { peerId, label, cancelled: false, abort: new AbortController(), offered: false, answered: false, peerGone: false, lend: null, pc: null, answer, resolveAnswer, rejectAnswer };
+}
+
+function connectionFailed(pc: RTCPeerConnection): boolean {
+  return pc.connectionState === 'failed' || pc.iceConnectionState === 'failed';
 }
 
 function cancelHandshake(r: Room): void {
@@ -73,6 +81,7 @@ function cancelHandshake(r: Room): void {
   if (!hs) return;
   r.hs = null;
   hs.cancelled = true;
+  if (hs.offered) r.socket.send({ t: 'deny', peerId: hs.peerId });
   hs.abort.abort();
   hs.rejectAnswer(new Error('handshake cancelled'));
   hs.pc?.close();
@@ -89,6 +98,7 @@ function teardown(r: Room): void {
   Lease.reclaim('stop');
   State.setShareState('idle');
   State.setShareRoom(null);
+  State.setShareNoPath(null);
 }
 
 // Prepares the lend first (its pending-changes prompt can take as long as the
@@ -103,6 +113,8 @@ async function lendTo(r: Room, hs: Handshake, sendAllow: boolean): Promise<void>
   State.setSharePeer({ peerId: hs.peerId, label: hs.label, stage: 'connecting' });
   // Aborted when this attempt fails, so a half-built peer connection is closed.
   const setup = new AbortController();
+  // Set while waiting for the channel to open; a failure then may be a network problem.
+  let opening = false;
   let preparing = r.preparing;
   try {
     if (preparing) {
@@ -142,10 +154,13 @@ async function lendTo(r: Room, hs: Handshake, sendAllow: boolean): Promise<void>
     hs.pc = host.pc;
     if (hs.cancelled) { host.pc.close(); Lease.abortLend(lend); return; }
     r.socket.send({ t: 'sdp', sdp: JSON.parse(host.offer) as Sdp, peerId: hs.peerId });
+    hs.offered = true;
 
     const answer = await withTimeout(hs.answer, HANDSHAKE_TIMEOUT_MS, 'the answer', hs.abort.signal);
     await Manual.acceptAnswer(host, JSON.stringify(answer));
+    opening = true;
     await withTimeout(Peer.whenOpen(host.dc), HANDSHAKE_TIMEOUT_MS, 'the data channel', hs.abort.signal);
+    opening = false;
     if (hs.cancelled) throw new Error('handshake cancelled');
 
     const channel = Peer.wrapDataChannel(host.pc, host.dc);
@@ -159,6 +174,7 @@ async function lendTo(r: Room, hs: Handshake, sendAllow: boolean): Promise<void>
     if (preparing && preparing.owner !== hs) return;
     if (preparing && r.preparing === preparing) r.preparing = null;
     if (!hs.cancelled) Log.error('remote', 'lend handshake failed', err);
+    if (opening && !hs.cancelled && !hs.peerGone && hs.pc !== null && connectionFailed(hs.pc)) State.setShareNoPath(hs.label);
     setup.abort();
     hs.abort.abort();
     if (hs.lend) Lease.abortLend(hs.lend);
@@ -186,6 +202,7 @@ function onPeer(r: Room, msg: Extract<ServerMessage, { t: 'peer' }>): void {
     return;
   }
   cancelHandshake(r);
+  State.setShareNoPath(null);
   // A returning joiner whose old channel the owner has not noticed dying yet.
   if (r.attached) Lease.reclaim('peer-lost');
   const hs = newHandshake(msg.peerId, msg.label);
@@ -211,7 +228,17 @@ function onMessage(r: Room, msg: ServerMessage): void {
     case 'peer-gone':
       // Once lent, the peer connection's own liveness decides; the joiner leaves the relay on purpose.
       // After the answer the channel's own timeout decides.
-      if (r.hs?.peerId === msg.peerId && !r.hs.answered) cancelHandshake(r);
+      if (r.hs?.peerId === msg.peerId) {
+        if (!r.hs.answered) {
+          cancelHandshake(r);
+        } else if (msg.reason === 'no-path') {
+          // The joiner gave up on the connection itself.
+          State.setShareNoPath(r.hs.label);
+          cancelHandshake(r);
+        } else {
+          r.hs.peerGone = true;
+        }
+      }
       return;
     case 'rotated':
       State.setShareRoom({ code: msg.code, scanKey: msg.scanKey, status: 'live' });
@@ -234,6 +261,7 @@ export async function startSharing(): Promise<boolean> {
   if (!base || starting || room || State.shareState() !== 'idle' || !rec || rec.remote) return false;
   starting = true;
   State.setShareEnd(null);
+  State.setShareNoPath(null);
   try {
     const created = await Relay.createRoom(base);
     let opened: Signaling.RoomSocket | null = null;

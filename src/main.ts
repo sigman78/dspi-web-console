@@ -24,6 +24,7 @@ if (isMobileDevice()) {
   applyLanding();
   State.startSettingsPersistence();
   State.setPendingJoin(JoinRelay.pendingJoinFromUrl(location.search));
+  JoinRelay.rejoinOnBoot();
 
   // See src/devOptions.ts for the full ?mock/?hero/?log convention.
   const mockProfiles = activeMockProfiles();
