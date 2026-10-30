@@ -32,6 +32,10 @@ interface Handshake {
 
 interface Room {
   socket: Signaling.RoomSocket;
+  // The device this room shares; a lend is only made while it is the active one.
+  recId: State.ConnId;
+  // Stops watching the shared device's session.
+  unwatch: () => void;
   hs: Handshake | null;
   // Cancel since the last Allow: the relay wants an Allow again on the next resume.
   reclaimed: boolean;
@@ -72,6 +76,7 @@ function teardown(r: Room): void {
   if (room !== r) return;
   cancelHandshake(r);
   room = null;
+  r.unwatch();
   Lease.reclaim('stop');
   State.setShareState('idle');
   State.setShareRoom(null);
@@ -81,9 +86,14 @@ function teardown(r: Room): void {
 // owner likes), only then offers, so the joiner never waits on a prompt inside
 // its handshake window.
 async function lendTo(r: Room, hs: Handshake, sendAllow: boolean): Promise<void> {
+  if (State.activeRecord()?.id !== r.recId) {
+    r.socket.send({ t: 'deny', peerId: hs.peerId });
+    if (r.hs === hs) { r.hs = null; State.setSharePeer(null); }
+    return;
+  }
   State.setSharePeer({ peerId: hs.peerId, label: hs.label, stage: 'connecting' });
   try {
-    const lend = await Lease.prepareLend({ peerLabel: hs.label });
+    const lend = await Lease.prepareLend({ peerLabel: hs.label, onEnd: (reason) => { onLendEnd(r, reason); } });
     if (!lend) {
       // The joiner learns now instead of timing out.
       if (!hs.cancelled) r.socket.send({ t: 'deny', peerId: hs.peerId });
@@ -92,6 +102,9 @@ async function lendTo(r: Room, hs: Handshake, sendAllow: boolean): Promise<void>
     }
     hs.lend = lend;
     if (hs.cancelled) { Lease.abortLend(lend); return; }
+    // Before the offer: the relay must turn newcomers away from here on. Every
+    // way the lend can end reports back through onLendEnd.
+    r.socket.send({ t: 'lent', on: true });
     if (sendAllow) {
       r.socket.send({ t: 'allow', peerId: hs.peerId });
       r.reclaimed = false;
@@ -110,7 +123,6 @@ async function lendTo(r: Room, hs: Handshake, sendAllow: boolean): Promise<void>
     const channel = Peer.wrapDataChannel(host.pc, host.dc);
     const attached = Lease.attachLend(channel, {
       watchLiveness: (onLost) => Peer.watchPeerLiveness(host.pc, onLost),
-      onEnd: (reason) => { onLendEnd(r, reason); },
     });
     if (!attached) throw new Error('lend dropped before attach');
     r.attached = true;
@@ -127,6 +139,7 @@ async function lendTo(r: Room, hs: Handshake, sendAllow: boolean): Promise<void>
 function onLendEnd(r: Room, reason: Lease.LendEnd): void {
   r.attached = false;
   if (room === r) {
+    r.socket.send({ t: 'lent', on: false });
     // The device itself is gone: there is nothing left to share.
     if (reason === 'device-gone') closeRoom(r);
   } else if (r.orphaned) {
@@ -135,8 +148,11 @@ function onLendEnd(r: Room, reason: Lease.LendEnd): void {
 }
 
 function onPeer(r: Room, msg: Extract<ServerMessage, { t: 'peer' }>): void {
-  // Only the returning lessee may replace a running lend.
-  if (State.shareState() === 'lent' && r.attached && msg.via !== 'resume') return;
+  // Only the returning lessee may replace a running lend; anyone else hears no now.
+  if (State.shareState() === 'lent' && r.attached && msg.via !== 'resume') {
+    r.socket.send({ t: 'deny', peerId: msg.peerId });
+    return;
+  }
   cancelHandshake(r);
   // A returning joiner whose old channel the owner has not noticed dying yet.
   if (r.attached) Lease.reclaim('peer-lost');
@@ -166,8 +182,14 @@ function onMessage(r: Room, msg: ServerMessage): void {
       if (r.hs?.peerId === msg.peerId && !r.hs.answered) cancelHandshake(r);
       return;
     case 'rotated':
-      State.setShareRoom({ code: msg.code, scanKey: msg.scanKey });
+      State.setShareRoom({ code: msg.code, scanKey: msg.scanKey, status: 'live' });
       return;
+    case 'code': {
+      // A late report about a code that has since been replaced.
+      const shown = State.shareRoom();
+      if (shown && shown.code === msg.code) State.setShareRoom({ ...shown, status: msg.state });
+      return;
+    }
     default:
       return;
   }
@@ -176,7 +198,8 @@ function onMessage(r: Room, msg: ServerMessage): void {
 /** Opens a room and starts offering the device. False when the relay is off or sharing is already under way. */
 export async function startSharing(): Promise<boolean> {
   const base = Relay.remoteRelayBase();
-  if (!base || starting || room || State.shareState() !== 'idle') return false;
+  const rec = State.activeRecord();
+  if (!base || starting || room || State.shareState() !== 'idle' || !rec || rec.remote) return false;
   starting = true;
   State.setShareEnd(null);
   try {
@@ -191,7 +214,13 @@ export async function startSharing(): Promise<boolean> {
             onMessage: (msg) => {
               if (msg.t !== 'ready') { onMessage(r, msg); return; }
               room = r;
-              State.setShareRoom({ code: msg.code, scanKey: msg.scanKey });
+              // The device died between creating the room and its announcement.
+              if (rec.session.signal.aborted) { closeRoom(r); resolve(); return; }
+              // Without a lend nothing else notices the device going away.
+              const onAbort = (): void => { if (State.shareState() === 'sharing') closeRoom(r); };
+              rec.session.signal.addEventListener('abort', onAbort, { once: true });
+              r.unwatch = () => { rec.session.signal.removeEventListener('abort', onAbort); };
+              State.setShareRoom({ code: msg.code, scanKey: msg.scanKey, status: 'live' });
               State.setShareState('sharing');
               resolve();
             },
@@ -210,6 +239,8 @@ export async function startSharing(): Promise<boolean> {
             },
           },
         ),
+        recId: rec.id,
+        unwatch: () => {},
         hs: null,
         reclaimed: false,
         attached: false,
@@ -227,6 +258,11 @@ export async function startSharing(): Promise<boolean> {
   } finally {
     starting = false;
   }
+}
+
+/** Replaces the room's code (the old one stops working). The new one arrives through State.shareRoom. */
+export function rotateCode(): void {
+  room?.socket.send({ t: 'rotate' });
 }
 
 /** Lets the pending joiner in. */
@@ -256,6 +292,8 @@ function closeRoom(r: Room): void {
 /** Ends sharing: the room closes and any lend is taken back. */
 export function stopSharing(): void {
   if (room) closeRoom(room);
+  // The relay is gone but the lend runs on peer to peer.
+  else Lease.reclaim('stop');
 }
 
 /** Takes the device back from the joiner; the room stays and the joiner needs an Allow to return. */

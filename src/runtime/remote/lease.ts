@@ -14,13 +14,13 @@ export type LendEnd = ReclaimReason | 'device-gone';
 
 export interface PrepareOptions {
   peerLabel: string;
+  // Called once when the lend ends, whatever the cause and whether or not it was attached.
+  onEnd?: (reason: LendEnd) => void;
 }
 
 export interface AttachOptions {
   // Subscribes to the peer's liveness; the returned function unsubscribes.
   watchLiveness?: (onLost: () => void) => () => void;
-  // Called once when the attached lend ends, whatever the cause.
-  onEnd?: (reason: LendEnd) => void;
 }
 
 // Identifies one prepared lend so a late abort cannot hit a newer one.
@@ -74,7 +74,7 @@ export async function prepareLend(opts: PrepareOptions): Promise<LendHandle | nu
       proxy: null,
       offAbort: () => { rec.session.signal.removeEventListener('abort', onAbort); },
       stopWatch: null,
-      onEnd: null,
+      onEnd: opts.onEnd ?? null,
     };
     current = lend;
     State.setLease(rec.id, { peerLabel: opts.peerLabel, since: Date.now() });
@@ -114,7 +114,6 @@ export function attachLend(channel: FrameChannel, opts: AttachOptions = {}): boo
     return false;
   }
   lend.stopWatch = stopWatch;
-  lend.onEnd = opts.onEnd ?? null;
   return true;
 }
 

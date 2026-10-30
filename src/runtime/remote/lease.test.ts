@@ -225,3 +225,31 @@ describe('reclaim', () => {
     expect(bClosed.closed).toBe(true);
   });
 });
+
+describe('device unplugged', () => {
+  it('while preparing, ends the lend, reports it and leaves nothing shared', async () => {
+    await bootMock('rp2350');
+    const rec = State.activeRecord()!;
+    const ended: string[] = [];
+
+    const preparing = prepareLend({ peerLabel: 'B', onEnd: (reason) => { ended.push(reason); } });
+    await rec.session.device.close();
+
+    expect(await preparing).toBeNull();
+    expect(ended).toEqual(['device-gone']);
+    expect(State.shareState()).toBe('idle');
+  });
+});
+
+describe('switching away from a lent device', () => {
+  it('is refused, so the lent view and its Cancel stay reachable', async () => {
+    await bootMock('rp2350');
+    const first = State.activeRecord()!;
+    await bootMock('rp2350');
+    const lentRec = State.activeRecord()!;
+    await lend();
+
+    expect(await switchSession(first.id)).toBe(false);
+    expect(State.activeRecord()?.id).toBe(lentRec.id);
+  });
+});

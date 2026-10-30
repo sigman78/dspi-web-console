@@ -87,6 +87,11 @@ export async function createBoundDevice(
 
 export async function connectRequested(): Promise<void> {
   if (State.adoptionInProgress() || inflightBoot) return;
+  // A new device would take over the active slot of a shared one.
+  if (State.shareState() !== 'idle') {
+    State.pushNotice('warn', 'This device is shared; stop sharing or take it back first');
+    return;
+  }
   const id = State.mintConnId();
   const scope = new ConnectionScope();
   // Set once the picker resolves: distinguishes a post-picker adoption

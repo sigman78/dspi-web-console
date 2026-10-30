@@ -21,6 +21,7 @@ export type ClientMessage =
   | { t: 'deny'; peerId: string }
   | { t: 'rotate' }
   | { t: 'reclaim' }
+  | { t: 'lent'; on: boolean }
   | { t: 'close' };
 
 export type ErrorCode = 'bad-code' | 'burnt' | 'expired' | 'rate-limited' | 'no-host' | 'busy';
@@ -35,6 +36,7 @@ export type ServerMessage =
   | { t: 'denied' }
   | { t: 'sdp'; sdp: Sdp; peerId?: string }
   | { t: 'rotated'; code: string; scanKey: string }
+  | { t: 'code'; code: string; state: 'burnt' | 'expired' }
   | { t: 'host-gone' }
   | { t: 'error'; code: ErrorCode };
 

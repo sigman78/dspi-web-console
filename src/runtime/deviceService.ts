@@ -306,6 +306,8 @@ export async function activateSession(id: ConnId): Promise<void> {
   if (!rec) return;
   const prev = State.activeRecord();
   if (prev?.id === id) return;
+  // A share is tied to the active device (see switchSession).
+  if (prev && State.shareState() !== 'idle') return;
   if (prev) await deactivateRecord(prev);
   State.dispatch({ t: 'activated', id });
   activateRecord(rec);
@@ -325,8 +327,10 @@ export function hasPendingWork(s: ReadySession): boolean {
 // User-initiated switch: asks first when the active device holds pending work.
 // Resolves false when the user cancels.
 export async function switchSession(id: ConnId): Promise<boolean> {
-  if (State.leaseOf(id)) {
-    State.pushNotice('warn', 'Device is under remote control; cancel the lease first');
+  // A share is tied to the active device: leaving it would strand the room and,
+  // when lent, bury the lent view and its Cancel.
+  if (State.shareState() !== 'idle' && State.activeRecord()?.id !== id) {
+    State.pushNotice('warn', 'This device is shared; stop sharing or take it back first');
     return false;
   }
   const prev = State.activeSession();

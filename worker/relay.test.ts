@@ -100,7 +100,8 @@ async function joinByResume(room: Created, token: string, ip: string): Promise<{
 async function lentRoom(ip: string) {
   const { room, host } = await openHost(ip);
   const { guest } = await joinByCode(room.code, ip);
-  const peer = await host.next();
+  const peer = await host.nextOf('peer');
+  await host.nextOf('code');
   host.send({ t: 'allow', peerId: peer.peerId });
   const allowed = await guest.next();
   expect(allowed.t).toBe('allowed');
@@ -538,5 +539,41 @@ describe('host decisions and caps', () => {
     expect(await guest.closed).toBe(1008);
     host.send({ t: 'ping' });
     expect(await host.nextOf('pong')).toEqual({ t: 'pong' });
+  });
+});
+
+describe('lent room', () => {
+  it('refuses a newcomer while lent without disturbing the lessee token, and admits one after', async () => {
+    const ip = newIp();
+    const { room, host, guest, resumeToken } = await lentRoom(ip);
+    host.send({ t: 'lent', on: true });
+    host.send({ t: 'rotate' });
+    const rotated = await host.nextOf('rotated');
+    guest.ws.close(1000);
+
+    const newcomer = await joinByCode(rotated.code, ip);
+    expect(newcomer.first).toEqual({ t: 'error', code: 'busy' });
+
+    const back = await joinByResume(room, resumeToken, ip);
+    expect(back.first).toMatchObject({ t: 'joined', needsAllow: false });
+
+    host.send({ t: 'lent', on: false });
+    back.guest.ws.close(1000);
+    const later = await joinByCode(rotated.code, ip);
+    expect(later.first).toMatchObject({ t: 'joined', needsAllow: true });
+  });
+});
+
+describe('code state reports', () => {
+  it('tells the host when its code is burnt by a join and when it expires', async () => {
+    const ip = newIp();
+    const { room, host } = await openHost(ip);
+    await joinByCode(room.code, ip);
+    expect(await host.nextOf('code')).toEqual({ t: 'code', code: room.code, state: 'burnt' });
+
+    const other = await openHost(newIp());
+    const stub = env.ROOM.get(env.ROOM.idFromString(other.room.roomId));
+    await runDurableObjectAlarm(stub);
+    expect(await other.host.nextOf('code')).toEqual({ t: 'code', code: other.room.code, state: 'expired' });
   });
 });

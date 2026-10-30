@@ -129,6 +129,17 @@ describe('registry: adoption, dormancy, and the switch protocol', () => {
     expect(State.activeRecord()?.id).toBe(a.id);
   });
 
+  it('activateSession leaves a shared active device in place', async () => {
+    await bootMock('rp2350');
+    const a = State.activeRecord()!;
+    await bootMock('rp2350');
+    const b = State.activeRecord()!;
+    State.setShareState('sharing');
+    await activateSession(a.id);
+    expect(State.activeRecord()?.id).toBe(b.id);
+    State.resetRemoteState();
+  });
+
   it('activateSession is a no-op when the id is already active', async () => {
     await bootMock('rp2350');
     const a = State.activeRecord()!;

@@ -4,11 +4,12 @@ import { FakeWebSocket } from '@test/fixtures/fakeWebSocket';
 import { joinRemote } from './join';
 import * as Manual from './manualSignaling';
 import * as Peer from './peer';
-import { normalizeCode, pendingJoinFromUrl, joinByCode, joinWithResume, leaveJoin } from './joinRelay';
+import { normalizeCode, pendingJoinFromUrl, joinByCode, joinWithResume, leaveJoin, takePendingJoin, resumeTarget } from './joinRelay';
+import type { DspDevice } from '@/device/DspDevice';
 
-vi.mock('./join', () => ({ joinRemote: vi.fn(async () => {}) }));
+vi.mock('./join', () => ({ joinRemote: vi.fn(async () => 1) }));
 vi.mock('./manualSignaling', () => ({ createAnswer: vi.fn() }));
-vi.mock('./peer', () => ({ wrapDataChannel: vi.fn(), whenOpen: vi.fn(async () => {}) }));
+vi.mock('./peer', () => ({ wrapDataChannel: vi.fn(), whenOpen: vi.fn(async () => 1) }));
 
 const STORE_KEY = 'dspi-console-web/remote/v1';
 const TOKEN = 'a'.repeat(64) + '.secret';
@@ -180,7 +181,7 @@ describe('after joining', () => {
   it('a superseded attempt cannot report joined', async () => {
     offerAnswered();
     let finish = (): void => {};
-    vi.mocked(joinRemote).mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
+    vi.mocked(joinRemote).mockImplementationOnce(() => new Promise<number>((resolve) => { finish = () => { resolve(1); }; }));
     vi.mocked(Peer.wrapDataChannel).mockReturnValue({ onClose: vi.fn() } as never);
     const ws = connected();
     ws.receive({ t: 'joined', needsAllow: false, resumeToken: TOKEN });
@@ -334,5 +335,50 @@ describe('without storage', () => {
     ws.receive({ t: 'joined', needsAllow: false, resumeToken: TOKEN });
     expect(State.joinState().phase).toBe('allowed');
     vi.restoreAllMocks();
+  });
+});
+
+describe('takePendingJoin', () => {
+  it('hands over the link once and removes join and k from the address bar', () => {
+    history.replaceState(null, '', '/app/?join=ABC234&k=KEY&mock#x');
+    State.setPendingJoin({ code: 'ABC234', scanKey: 'KEY' });
+
+    expect(takePendingJoin()).toEqual({ code: 'ABC234', scanKey: 'KEY' });
+    expect(takePendingJoin()).toBeNull();
+    expect(location.pathname + location.search + location.hash).toBe('/app/?mock#x');
+  });
+});
+
+describe('the stored resume target', () => {
+  function storedName(): string | undefined {
+    const raw = localStorage.getItem(STORE_KEY);
+    return raw ? (JSON.parse(raw) as { resumeName?: string }).resumeName : undefined;
+  }
+
+  it('remembers the joined device serial and forgets it when a new token is issued', async () => {
+    const device = { info: { serial: 'SER123' }, hardware: { name: 'RP2350' } } as unknown as DspDevice;
+    const id = State.mintConnId();
+    State.dispatch({ t: 'synced', id, session: State.makeReadySession(device) });
+    vi.mocked(joinRemote).mockResolvedValueOnce(id);
+    vi.mocked(Manual.createAnswer).mockResolvedValue({
+      pc: { close: vi.fn() } as unknown as RTCPeerConnection,
+      channel: Promise.resolve({} as RTCDataChannel),
+      answer: JSON.stringify({ type: 'answer', sdp: 'ans' }),
+    });
+    vi.mocked(Peer.wrapDataChannel).mockReturnValue({ onClose: vi.fn() } as never);
+
+    const ws = connected();
+    ws.receive({ t: 'joined', needsAllow: false, resumeToken: TOKEN });
+    ws.receive({ t: 'sdp', sdp: { type: 'offer', sdp: 'off' } });
+    await vi.waitFor(() => { expect(State.joinState().phase).toBe('joined'); });
+    expect(storedName()).toBe('SER123');
+    expect(resumeTarget()).toBe('SER123');
+
+    leaveJoin();
+    const next = connected('XYZ234');
+    next.receive({ t: 'joined', needsAllow: false, resumeToken: 'b'.repeat(64) + '.other' });
+    expect(storedName()).toBeUndefined();
+    expect(resumeTarget()).toBe('last console');
+    State.resetAppState();
   });
 });

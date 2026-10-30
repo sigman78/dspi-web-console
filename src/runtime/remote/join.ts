@@ -14,7 +14,8 @@ import { wireUpConnection } from '@/runtime/deviceService';
 // arrives as a typed error instead of racing this side's timer.
 export const REMOTE_CTRL_TIMEOUT_MS = 3000;
 
-export async function joinRemote(channel: FrameChannel, peerLabel: string): Promise<void> {
+/** Adopts the tunnel's device; resolves with its record id. */
+export async function joinRemote(channel: FrameChannel, peerLabel: string): Promise<State.ConnId> {
   const id = State.mintConnId();
   const scope = new ConnectionScope();
   let remote: RemoteTransport | undefined;
@@ -24,6 +25,7 @@ export async function joinRemote(channel: FrameChannel, peerLabel: string): Prom
     remote = connected;
     const device = await createBoundDevice(connected, scope, id, () => connected.open(), REMOTE_CTRL_TIMEOUT_MS);
     await wireUpConnection(device, scope, id, { activate: false, remote: { peerLabel } });
+    return id;
   } catch (err) {
     if (!scope.aborted) scope.abort();
     // Releases the owner's lease if the tunnel came up but adoption did not.
