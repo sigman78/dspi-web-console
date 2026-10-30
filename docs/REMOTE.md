@@ -36,6 +36,10 @@ platform, the browser and a random name kept by that browser. Nobody types it.
 - B can **Reconnect** without a new code for up to 24 hours while A keeps
   sharing. A does not ask Allow for a reconnect, unless A pressed Cancel since
   the last Allow.
+- Reloading B's tab while it is in control reconnects by itself. This applies
+  only to that tab: a new tab or a new browser session does not take the
+  device. If B has a local device too, that one stays active and the remote
+  device waits in the DEVICES list.
 
 ### What the codes do
 
@@ -48,17 +52,33 @@ platform, the browser and a random name kept by that browser. Nobody types it.
 ### What B cannot do
 
 A refuses two commands from B: **enter bootloader** (firmware update) and
-**factory reset**. Do those on A, with the device taken back.
+**factory reset**. Do those on A, with the device taken back. B shows a
+"refused by the host console" warning; a refusal is not a connection fault.
+
+### Link health
+
+On B, the health popover at the bottom of the side rail shows **LINK**: the
+round trip from B to A's device and back (network plus A's USB transfer),
+smoothed and updated once a second.
 
 ## Requirements and limits
 
 - Both computers run a Chromium browser and are on the **same local network**.
   The console connects them directly (WebRTC, host candidates only); there is
   no internet relay for the device traffic. Guest Wi-Fi with client isolation,
-  or two different networks, will not connect.
+  or two different networks, will not connect: B then says both computers
+  must be on the same local network, and A says the guest couldn't connect.
 - A must stay open. A hidden tab works; a closed tab, a sleeping computer, or
   Chrome discarding the tab (Memory Saver) ends the session. Keep A's console
-  in its own window.
+  in its own window. While sharing, A keeps its screen awake as long as the
+  console tab is visible.
+- If A's device disconnects (unplugged, or re-enumerated after the PC wakes),
+  sharing pauses for up to 10 minutes. The Share popover and the start screen
+  show what it is waiting for, with **Stop sharing**. When the same device is
+  back and is the active device again, sharing resumes with the same room, so B
+  can **Reconnect** without a new code. While paused, joiners are told the
+  device is busy. After 10 minutes, or when A joins a remote device itself, the
+  share closes.
 - One guest at a time per device. A cannot switch or add devices while it is
   sharing.
 
