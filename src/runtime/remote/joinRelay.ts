@@ -52,8 +52,21 @@ export function pendingJoinFromUrl(search: string): State.PendingJoin | null {
   return { code, scanKey: key && key.length <= 128 ? key : null };
 }
 
-export function hasResumeToken(): boolean {
-  return Store.readStore().resume !== undefined;
+/** What a stored resume token leads to (the console's serial once known); null without a token. */
+export function resumeTarget(): string | null {
+  const { resume, resumeName } = Store.readStore();
+  return resume === undefined ? null : (resumeName ?? 'last console');
+}
+
+/** Hands the `?join=` link seen at boot to the caller and removes it from the address bar. */
+export function takePendingJoin(): State.PendingJoin | null {
+  const pending = State.pendingJoin();
+  if (pending === null) return null;
+  State.setPendingJoin(null);
+  // Other flags (`?mock`) keep their exact spelling, which URLSearchParams would rewrite.
+  const rest = location.search.replace(/^\?/, '').split('&').filter((p) => p !== '' && !/^(join|k)(=|$)/.test(p));
+  history.replaceState(history.state, '', `${location.pathname}${rest.length ? `?${rest.join('&')}` : ''}${location.hash}`);
+  return pending;
 }
 
 function dispose(a: Attempt): void {
@@ -97,12 +110,14 @@ async function answerOffer(a: Attempt, offer: Wire.Sdp): Promise<void> {
   a.socket?.close();
   a.socket = null;
   attempt = null;
+  let id: State.ConnId;
   try {
-    await joinRemote(channel, HOST_LABEL);
+    id = await joinRemote(channel, HOST_LABEL);
   } catch {
     if (gen === generation) State.setJoinState({ phase: 'failed', reason: 'failed' });
     return;
   }
+  Store.writeStore({ resumeName: State.recordOf(id)?.session.info.serial });
   if (gen !== generation) return;
   State.setJoinState({ phase: 'joined' });
   // The joined device is gone once its tunnel closes.
@@ -115,12 +130,12 @@ function onMessage(a: Attempt, msg: Wire.ServerMessage): void {
   if (attempt !== a) return;
   switch (msg.t) {
     case 'joined':
-      if (msg.resumeToken) Store.writeStore({ resume: msg.resumeToken });
+      if (msg.resumeToken) Store.writeStore({ resume: msg.resumeToken, resumeName: undefined });
       if (msg.needsAllow) State.setJoinState({ phase: 'waiting-allow' });
       else awaitOffer(a);
       return;
     case 'allowed':
-      Store.writeStore({ resume: msg.resumeToken });
+      Store.writeStore({ resume: msg.resumeToken, resumeName: undefined });
       awaitOffer(a);
       return;
     case 'denied':

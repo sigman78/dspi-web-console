@@ -27,6 +27,8 @@ interface RoomState {
   reclaim: boolean;
   /** A typed-code guest has joined and the host has not decided yet. */
   allowPending: boolean;
+  /** The host reports the device is lent: only the lessee's resume token gets in. */
+  lent?: boolean;
 }
 
 /** Fixed-window message counter kept in a socket attachment so it survives hibernation. */
@@ -136,6 +138,8 @@ export class Room extends DurableObject<Env> {
     if (s.codeState === 'live') {
       s.codeState = 'expired';
       await this.#save();
+      const host = this.#hostSocket();
+      if (host) this.#send(host, { t: 'code', code: s.code, state: 'expired' });
       await this.env.CODE_PTR.getByName(s.code).end('expired');
     }
     await this.ctx.storage.setAlarm(Date.now() + RESUME_TTL_MS);
@@ -188,7 +192,8 @@ export class Room extends DurableObject<Env> {
       // Same lessee coming back: a stale socket must not lock them out.
       for (const old of this.#guestSockets()) old.close(CLOSE_NORMAL, 'replaced');
     } else {
-      if (this.#guestSockets().length > 0) return this.#reject(ws, 'busy');
+      // A newcomer must not re-mint the secret the current lessee holds.
+      if (s.lent || this.#guestSockets().length > 0) return this.#reject(ws, 'busy');
       if (s.codeState === 'burnt') return this.#reject(ws, 'burnt');
       if (s.codeState === 'expired' || now >= s.codeExpiresAt) return this.#reject(ws, 'expired');
       if (msg.code !== s.code) return this.#reject(ws, 'bad-code');
@@ -208,14 +213,17 @@ export class Room extends DurableObject<Env> {
     s.allowPending = needsAllow;
     s.resumeAt = now;
 
+    // A rotate can land while the awaits below run; the report names the code that burnt.
+    const burntCode = s.code;
     await this.#save();
     if (burn) {
       await this.ctx.storage.setAlarm(now + RESUME_TTL_MS);
-      await this.env.CODE_PTR.getByName(s.code).end('burnt');
+      await this.env.CODE_PTR.getByName(burntCode).end('burnt');
     }
     // The token is withheld until the host allows: holding it must not skip the Allow.
     this.#send(ws, needsAllow ? { t: 'joined', needsAllow } : { t: 'joined', needsAllow, resumeToken: this.#resumeToken(s) });
     this.#send(host, { t: 'peer', peerId, via, needsAllow, label: msg.label });
+    if (burn) this.#send(host, { t: 'code', code: burntCode, state: 'burnt' });
   }
 
   async #onHost(ws: WebSocket, att: Extract<Attachment, { role: 'host' }>, msg: Messages.ClientMessage): Promise<void> {
@@ -264,6 +272,11 @@ export class Room extends DurableObject<Env> {
         await this.#rotate(ws, s);
         return;
       }
+      case 'lent':
+        if (s.lent === msg.on) return;
+        s.lent = msg.on;
+        await this.#save();
+        return;
       case 'reclaim':
         s.reclaim = true;
         if (guest && gatt) guest.serializeAttachment({ ...gatt, allowed: false } satisfies Attachment);

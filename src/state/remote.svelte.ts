@@ -18,6 +18,8 @@ export type ShareState = 'idle' | 'sharing' | 'lent';
 export interface ShareRoom {
   code: string;
   scanKey: string;
+  // The relay stops honouring a code once it is used or has run out.
+  status: 'live' | 'burnt' | 'expired';
 }
 
 export interface SharePeer {

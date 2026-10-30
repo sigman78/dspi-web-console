@@ -4,7 +4,7 @@
   import * as State from '@/state';
   import * as Share from '@/runtime/remote/share';
 
-  const { lease, serial }: { lease: State.Lease; serial: string } = $props();
+  const { lease, serial, hardware }: { lease: State.Lease; serial: string; hardware: string } = $props();
 
   let now = $state(Date.now());
   $effect(() => {
@@ -24,17 +24,33 @@
 
 <div class="lent" role="status">
   <EqSpectrum />
-  <div class="serial">{serial}</div>
+  <div class="device">
+    <span class="serial">{serial}</span>
+    <span class="hw">{hardware}</span>
+  </div>
   <div class="by">Under remote control by {lease.peerLabel}</div>
   <div class="time">{elapsed}</div>
-  <ConfirmButton
-    label="CANCEL"
-    confirmLabel="TAKE BACK?"
-    extraClass="hi md"
-    tone="warn"
-    title="Take the device back; the remote console is disconnected"
-    onConfirm={() => { Share.cancelLend(); }}
-  />
+  {#if State.shareEnd() !== null}
+    <div class="warn">Lost the relay; sharing ends with this session.</div>
+  {/if}
+  <div class="actions">
+    <ConfirmButton
+      label="CANCEL"
+      confirmLabel="TAKE BACK?"
+      extraClass="hi md"
+      tone="warn"
+      title="Take the device back; the other console can ask to return"
+      onConfirm={() => { Share.cancelLend(); }}
+    />
+    <ConfirmButton
+      label="STOP SHARING"
+      confirmLabel="STOP?"
+      extraClass="hi md"
+      tone="danger"
+      title="Take the device back and close the share"
+      onConfirm={() => { Share.stopSharing(); }}
+    />
+  </div>
 </div>
 
 <style>
@@ -45,11 +61,18 @@
     justify-content: center;
     gap: 14px;
   }
+  .device { display: flex; align-items: baseline; gap: 10px; }
   .serial {
     font-family: var(--font-mono);
     font-size: 13px;
     letter-spacing: 2px;
     color: var(--text);
+  }
+  .hw {
+    font-family: var(--font-mono);
+    font-size: var(--fs-s);
+    letter-spacing: 1px;
+    color: var(--text-faint);
   }
   .by { font-size: 13px; color: var(--text-dim); }
   .time {
@@ -58,4 +81,6 @@
     letter-spacing: 2px;
     color: var(--text-faint);
   }
+  .warn { font-size: var(--fs-m); color: var(--warn); }
+  .actions { display: flex; align-items: center; gap: 10px; }
 </style>

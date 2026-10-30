@@ -6,6 +6,8 @@ const KEY = 'dspi-console-web/remote/v1';
 export interface RemoteStore {
   installId?: string;
   resume?: string;
+  // The serial of the console the resume token leads to, for the Reconnect row.
+  resumeName?: string;
 }
 
 export function readStore(): RemoteStore {
@@ -14,10 +16,11 @@ export function readStore(): RemoteStore {
     if (!raw) return {};
     const data: unknown = JSON.parse(raw);
     if (typeof data !== 'object' || data === null) return {};
-    const { installId, resume } = data as Record<string, unknown>;
+    const { installId, resume, resumeName } = data as Record<string, unknown>;
     return {
       installId: typeof installId === 'string' ? installId : undefined,
       resume: typeof resume === 'string' ? resume : undefined,
+      resumeName: typeof resumeName === 'string' ? resumeName : undefined,
     };
   } catch {
     return {};

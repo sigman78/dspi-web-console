@@ -18,7 +18,7 @@ export interface RoomSocketHandlers {
   onClose(opened: boolean, reason: string): void;
 }
 
-const SERVER_TYPES = new Set(['ready', 'peer', 'joined', 'allowed', 'peer-gone', 'pong', 'denied', 'sdp', 'rotated', 'host-gone', 'error']);
+const SERVER_TYPES = new Set(['ready', 'peer', 'joined', 'allowed', 'peer-gone', 'pong', 'denied', 'sdp', 'rotated', 'code', 'host-gone', 'error']);
 
 function parseServer(raw: unknown): ServerMessage | null {
   if (typeof raw !== 'string') return null;

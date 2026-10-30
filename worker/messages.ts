@@ -60,6 +60,8 @@ export function parseClient(raw: string): ClientMessage | null {
     case 'allow':
     case 'deny':
       return field(m.peerId) ? { t: m.t, peerId: m.peerId } : null;
+    case 'lent':
+      return typeof m.on === 'boolean' ? { t: 'lent', on: m.on } : null;
     case 'rotate':
     case 'reclaim':
     case 'close':

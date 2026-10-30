@@ -74,7 +74,7 @@ describe('starting', () => {
     expect(ws.url).toMatch(/\/room\/room1\/ws$/);
     expect(ws.messages()[0]).toEqual({ t: 'host', token: 'host-token' });
     expect(State.shareState()).toBe('sharing');
-    expect(State.shareRoom()).toEqual({ code: 'ABC234', scanKey: 'scan' });
+    expect(State.shareRoom()).toEqual({ code: 'ABC234', scanKey: 'scan', status: 'live' });
   });
 
   it('does nothing when the build has no relay', async () => {
@@ -85,6 +85,7 @@ describe('starting', () => {
   });
 
   it('fails and stays idle when the relay refuses the connection', async () => {
+    await bootMock('rp2350');
     const started = startSharing();
     await vi.waitFor(() => { expect(FakeWebSocket.instances).toHaveLength(1); });
     FakeWebSocket.last().drop();
@@ -122,7 +123,7 @@ describe('a typed-code joiner', () => {
     expect(ws.messages()).toContainEqual({ t: 'deny', peerId: 'p1' });
     expect(State.sharePeer()).toBeNull();
     ws.receive({ t: 'rotated', code: 'XYZ789', scanKey: 'scan2' });
-    expect(State.shareRoom()).toEqual({ code: 'XYZ789', scanKey: 'scan2' });
+    expect(State.shareRoom()).toEqual({ code: 'XYZ789', scanKey: 'scan2', status: 'live' });
     expect(State.shareState()).toBe('sharing');
   });
 
@@ -142,10 +143,9 @@ describe('a typed-code joiner', () => {
     expect(State.sharePeer()?.peerId).toBe('new');
   });
 
-  it('is turned away when the owner has no device to lend', async () => {
+  it('is turned away when the shared device is no longer the active one', async () => {
     const ws = await sharing();
-    for (const rec of State.sessionRecords().values()) rec.session.dispose();
-    State.resetAppState();
+    await bootMock('rp2350');
     ws.receive({ t: 'peer', peerId: 'p1', via: 'code', label: 'Win' });
     allow();
     await vi.waitFor(() => { expect(ws.messages()).toContainEqual({ t: 'deny', peerId: 'p1' }); });
@@ -367,11 +367,103 @@ describe('timeouts', () => {
   });
 
   it('closes the socket and fails when the relay never says ready', async () => {
+    await bootMock('rp2350');
     const started = startSharing();
     const failure = expect(started).rejects.toThrow();
     await vi.advanceTimersByTimeAsync(10_001);
     await failure;
     expect(FakeWebSocket.last().readyState).toBe(FakeWebSocket.CLOSED);
     expect(State.shareState()).toBe('idle');
+  });
+});
+
+describe('a second joiner while lent', () => {
+  it('is turned away at once and the lessee keeps the device', async () => {
+    const ws = await sharing();
+    await lent(ws);
+    ws.receive({ t: 'peer', peerId: 'p2', via: 'code', needsAllow: true, label: 'Other' });
+    expect(ws.messages()).toContainEqual({ t: 'deny', peerId: 'p2' });
+    expect(State.sharePeer()).toBeNull();
+    expect(State.shareState()).toBe('lent');
+  });
+
+  it('tells the relay when the device is lent and when it is back', async () => {
+    const ws = await sharing();
+    await lent(ws);
+    expect(ws.messages()).toContainEqual({ t: 'lent', on: true });
+    cancelLend();
+    expect(ws.messages().filter((m) => m.t === 'lent').at(-1)).toEqual({ t: 'lent', on: false });
+  });
+});
+
+describe('the code and the shared device', () => {
+  it('shows a used or expired code as such, and a fresh one as live again', async () => {
+    const ws = await sharing();
+    ws.receive({ t: 'code', code: 'ABC234', state: 'burnt' });
+    expect(State.shareRoom()?.status).toBe('burnt');
+    ws.receive({ t: 'rotated', code: 'XYZ234', scanKey: 'k2' });
+    // A late report about the replaced code must not mark the new one.
+    ws.receive({ t: 'code', code: 'ABC234', state: 'burnt' });
+    expect(State.shareRoom()?.status).toBe('live');
+    expect(State.shareRoom()).toEqual({ code: 'XYZ234', scanKey: 'k2', status: 'live' });
+    ws.receive({ t: 'code', code: 'XYZ234', state: 'expired' });
+    expect(State.shareRoom()?.status).toBe('expired');
+  });
+
+  it('tells the relay the device is lent before the offer goes out', async () => {
+    const ws = await sharing();
+    await lent(ws);
+    const sent = ws.messages().map((m) => m.t);
+    expect(sent.indexOf('lent')).toBeGreaterThan(-1);
+    expect(sent.indexOf('lent')).toBeLessThan(sent.indexOf('sdp'));
+  });
+
+  it('takes the lent flag back when the lend is dropped before it attached', async () => {
+    const ws = await sharing();
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', needsAllow: false, label: 'Win' });
+    await vi.waitFor(() => { expect(ws.messages()).toContainEqual({ t: 'lent', on: true }); });
+    cancelLend();
+    expect(ws.messages().filter((m) => m.t === 'lent').at(-1)).toEqual({ t: 'lent', on: false });
+  });
+
+  it('closes the room at once when the device died before the relay announced it', async () => {
+    await bootMock('rp2350');
+    const started = startSharing();
+    await vi.waitFor(() => { expect(FakeWebSocket.instances).toHaveLength(1); });
+    const ws = FakeWebSocket.last();
+    ws.open();
+    await State.activeRecord()!.session.device.close();
+    ws.receive({ t: 'ready', code: 'ABC234', scanKey: 'scan' });
+    await started;
+    expect(State.shareState()).toBe('idle');
+    expect(State.shareRoom()).toBeNull();
+  });
+
+  it('closes the room when the shared device goes away, with nobody connected', async () => {
+    await sharing();
+    await State.activeRecord()!.session.device.close();
+    expect(State.shareState()).toBe('idle');
+    expect(State.shareRoom()).toBeNull();
+  });
+
+  it('closes the room when the device goes away while a lend is being prepared', async () => {
+    const ws = await sharing();
+    const rec = State.activeRecord()!;
+    rec.session.staging.entries.push({} as never);
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', needsAllow: false, label: 'Win' });
+    await vi.waitFor(() => { expect(State.boundary.pending).not.toBeNull(); });
+    await rec.session.device.close();
+    expect(State.shareState()).toBe('idle');
+    expect(State.shareRoom()).toBeNull();
+    State.resolveBoundary('cancel');
+    rec.session.staging.entries.length = 0;
+  });
+
+  it('turns a joiner away when another device has become the active one', async () => {
+    const ws = await sharing();
+    await bootMock('rp2350');
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', needsAllow: false, label: 'Win' });
+    expect(ws.messages()).toContainEqual({ t: 'deny', peerId: 'p1' });
+    expect(State.activeLease()).toBeNull();
   });
 });

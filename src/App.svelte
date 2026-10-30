@@ -45,7 +45,7 @@
       </div>
     {:else if !hero && appState.kind === 'ready' && lease}
       <div class="hero-wrap">
-        <LentView {lease} serial={appState.session.info.serial} />
+        <LentView {lease} serial={appState.session.info.serial} hardware={appState.session.hardware.name} />
       </div>
     {:else if !hero && appState.kind === 'ready'}
       {#key appState.session}
