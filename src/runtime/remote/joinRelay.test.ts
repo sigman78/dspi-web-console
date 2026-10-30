@@ -4,7 +4,7 @@ import { FakeWebSocket } from '@test/fixtures/fakeWebSocket';
 import { joinRemote } from './join';
 import * as Manual from './manualSignaling';
 import * as Peer from './peer';
-import { normalizeCode, pendingJoinFromUrl, joinByCode, joinWithResume, leaveJoin, takePendingJoin, resumeTarget } from './joinRelay';
+import * as JoinRelay from './joinRelay';
 import type { DspDevice } from '@/device/DspDevice';
 
 vi.mock('./join', () => ({ joinRemote: vi.fn(async () => 1) }));
@@ -26,14 +26,14 @@ beforeEach(() => {
   vi.stubEnv('VITE_REMOTE_RELAY', '/room');
 });
 afterEach(() => {
-  leaveJoin();
+  JoinRelay.leaveJoin();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.clearAllMocks();
 });
 
 function connected(code = 'ABC234'): FakeWebSocket {
-  joinByCode(code);
+  JoinRelay.joinByCode(code);
   const ws = FakeWebSocket.last();
   ws.open();
   return ws;
@@ -41,13 +41,13 @@ function connected(code = 'ABC234'): FakeWebSocket {
 
 describe('normalizeCode', () => {
   it('uppercases and ignores spaces and dashes', () => {
-    expect(normalizeCode(' abc-234 ')).toBe('ABC234');
+    expect(JoinRelay.normalizeCode(' abc-234 ')).toBe('ABC234');
   });
 
   it('rejects symbols outside the alphabet and wrong lengths', () => {
-    expect(normalizeCode('ABC0O1')).toBeNull();
-    expect(normalizeCode('ABC23')).toBeNull();
-    expect(normalizeCode('ABC2345')).toBeNull();
+    expect(JoinRelay.normalizeCode('ABC0O1')).toBeNull();
+    expect(JoinRelay.normalizeCode('ABC23')).toBeNull();
+    expect(JoinRelay.normalizeCode('ABC2345')).toBeNull();
   });
 });
 
@@ -55,32 +55,32 @@ describe('with the relay off', () => {
   beforeEach(() => { vi.stubEnv('VITE_REMOTE_RELAY', ''); });
 
   it('joins nothing and ignores ?join=', () => {
-    joinByCode('ABC234');
-    joinWithResume();
+    JoinRelay.joinByCode('ABC234');
+    JoinRelay.joinWithResume();
     expect(FakeWebSocket.instances).toHaveLength(0);
     expect(State.joinState().phase).toBe('idle');
-    expect(pendingJoinFromUrl('?join=ABC234')).toBeNull();
+    expect(JoinRelay.pendingJoinFromUrl('?join=ABC234')).toBeNull();
   });
 });
 
 describe('pendingJoinFromUrl', () => {
   it('reads the code and the scan key', () => {
-    expect(pendingJoinFromUrl('?join=abc-234&k=KEY')).toEqual({ code: 'ABC234', scanKey: 'KEY' });
-    expect(pendingJoinFromUrl('?join=ABC234')).toEqual({ code: 'ABC234', scanKey: null });
-    expect(pendingJoinFromUrl('?join=nope')).toBeNull();
+    expect(JoinRelay.pendingJoinFromUrl('?join=abc-234&k=KEY')).toEqual({ code: 'ABC234', scanKey: 'KEY' });
+    expect(JoinRelay.pendingJoinFromUrl('?join=ABC234')).toEqual({ code: 'ABC234', scanKey: null });
+    expect(JoinRelay.pendingJoinFromUrl('?join=nope')).toBeNull();
   });
 });
 
 describe('joining by code', () => {
   it('passes the scan key along', () => {
-    joinByCode('ABC234', 'KEY');
+    JoinRelay.joinByCode('ABC234', 'KEY');
     const ws = FakeWebSocket.last();
     ws.open();
     expect(ws.messages()[0]).toMatchObject({ t: 'join', code: 'ABC234', scanKey: 'KEY' });
   });
 
   it('refuses a malformed code without touching the relay', () => {
-    joinByCode('ABC0O1');
+    JoinRelay.joinByCode('ABC0O1');
     expect(FakeWebSocket.instances).toHaveLength(0);
     expect(State.joinState()).toEqual({ phase: 'failed', reason: 'bad-code' });
   });
@@ -188,7 +188,7 @@ describe('after joining', () => {
     ws.receive({ t: 'sdp', sdp: { type: 'offer', sdp: 'off' } });
     await vi.waitFor(() => { expect(joinRemote).toHaveBeenCalled(); });
 
-    leaveJoin();
+    JoinRelay.leaveJoin();
     finish();
     await Promise.resolve();
     await Promise.resolve();
@@ -205,7 +205,7 @@ describe('abandoning a handshake', () => {
     await vi.waitFor(() => { expect(Manual.createAnswer).toHaveBeenCalled(); });
     await Promise.resolve();
 
-    leaveJoin();
+    JoinRelay.leaveJoin();
     expect(pc.close).toHaveBeenCalled();
     expect(State.joinState().phase).toBe('idle');
   });
@@ -275,7 +275,7 @@ describe('failures', () => {
   });
 
   it('an unreachable relay is reported as such', () => {
-    joinByCode('ABC234');
+    JoinRelay.joinByCode('ABC234');
     FakeWebSocket.last().drop();
     expect(State.joinState()).toEqual({ phase: 'failed', reason: 'unreachable' });
   });
@@ -295,14 +295,14 @@ describe('failures', () => {
 
 describe('resuming', () => {
   it('has nothing to resume without a token', () => {
-    joinWithResume();
+    JoinRelay.joinWithResume();
     expect(State.joinState()).toEqual({ phase: 'failed', reason: 'no-token' });
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 
   it('goes straight to the stored room with the token', () => {
     localStorage.setItem(STORE_KEY, JSON.stringify({ resume: TOKEN }));
-    joinWithResume();
+    JoinRelay.joinWithResume();
     const ws = FakeWebSocket.last();
     ws.open();
     expect(ws.url).toMatch(new RegExp(`/room/${'a'.repeat(64)}/ws$`));
@@ -311,7 +311,7 @@ describe('resuming', () => {
 
   it.each(['bad-code', 'no-host'] as const)('forgets a token the relay refuses (%s)', (code) => {
     localStorage.setItem(STORE_KEY, JSON.stringify({ resume: TOKEN }));
-    joinWithResume();
+    JoinRelay.joinWithResume();
     FakeWebSocket.last().open();
     FakeWebSocket.last().receive({ t: 'error', code });
     expect(State.joinState()).toEqual({ phase: 'failed', reason: code });
@@ -320,7 +320,7 @@ describe('resuming', () => {
 
   it('keeps the token when the owner is merely busy', () => {
     localStorage.setItem(STORE_KEY, JSON.stringify({ resume: TOKEN }));
-    joinWithResume();
+    JoinRelay.joinWithResume();
     FakeWebSocket.last().open();
     FakeWebSocket.last().receive({ t: 'error', code: 'busy' });
     expect(storedResume()).toBe(TOKEN);
@@ -343,8 +343,8 @@ describe('takePendingJoin', () => {
     history.replaceState(null, '', '/app/?join=ABC234&k=KEY&mock#x');
     State.setPendingJoin({ code: 'ABC234', scanKey: 'KEY' });
 
-    expect(takePendingJoin()).toEqual({ code: 'ABC234', scanKey: 'KEY' });
-    expect(takePendingJoin()).toBeNull();
+    expect(JoinRelay.takePendingJoin()).toEqual({ code: 'ABC234', scanKey: 'KEY' });
+    expect(JoinRelay.takePendingJoin()).toBeNull();
     expect(location.pathname + location.search + location.hash).toBe('/app/?mock#x');
   });
 });
@@ -372,13 +372,13 @@ describe('the stored resume target', () => {
     ws.receive({ t: 'sdp', sdp: { type: 'offer', sdp: 'off' } });
     await vi.waitFor(() => { expect(State.joinState().phase).toBe('joined'); });
     expect(storedName()).toBe('SER123');
-    expect(resumeTarget()).toBe('SER123');
+    expect(JoinRelay.resumeTarget()).toBe('SER123');
 
-    leaveJoin();
+    JoinRelay.leaveJoin();
     const next = connected('XYZ234');
     next.receive({ t: 'joined', needsAllow: false, resumeToken: 'b'.repeat(64) + '.other' });
     expect(storedName()).toBeUndefined();
-    expect(resumeTarget()).toBe('last console');
+    expect(JoinRelay.resumeTarget()).toBe('last console');
     State.resetAppState();
   });
 });

@@ -16,6 +16,10 @@ export const REMOTE_CTRL_TIMEOUT_MS = 3000;
 
 /** Adopts the tunnel's device; resolves with its record id. */
 export async function joinRemote(channel: FrameChannel, peerLabel: string): Promise<State.ConnId> {
+  if (State.shareState() !== 'idle') {
+    channel.close();
+    throw new Error("Stop sharing this console's device first");
+  }
   const id = State.mintConnId();
   const scope = new ConnectionScope();
   let remote: RemoteTransport | undefined;
@@ -24,7 +28,7 @@ export async function joinRemote(channel: FrameChannel, peerLabel: string): Prom
     const connected = await RemoteTransport.connect(channel, { consoleBuild: GIT_SHA, wantReadOnly: false });
     remote = connected;
     const device = await createBoundDevice(connected, scope, id, () => connected.open(), REMOTE_CTRL_TIMEOUT_MS);
-    await wireUpConnection(device, scope, id, { activate: false, remote: { peerLabel } });
+    await wireUpConnection(device, scope, id, { remote: { peerLabel } });
     return id;
   } catch (err) {
     if (!scope.aborted) scope.abort();

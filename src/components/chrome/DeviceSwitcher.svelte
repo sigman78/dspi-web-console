@@ -178,7 +178,8 @@
           <button
             class="add join-btn"
             bind:this={joinBtn}
-            title="Connect to a remote device…"
+            title={sharing ? 'Stop sharing to connect to a remote device' : 'Connect to a remote device…'}
+            disabled={sharing}
             aria-label="Connect to a remote device"
             aria-expanded={joinOpen}
             onclick={toggleJoin}

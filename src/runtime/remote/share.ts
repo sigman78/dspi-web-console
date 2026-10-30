@@ -30,6 +30,14 @@ interface Handshake {
   rejectAnswer: (err: Error) => void;
 }
 
+// A lend being prepared (it may sit in the pending-changes prompt). When the
+// handshake that started it is replaced, the next one takes it over instead of
+// preparing again; only the current owner acts on the result.
+interface Preparing {
+  promise: Promise<Lease.LendHandle | null>;
+  owner: Handshake;
+}
+
 interface Room {
   socket: Signaling.RoomSocket;
   // The device this room shares; a lend is only made while it is the active one.
@@ -37,6 +45,7 @@ interface Room {
   // Stops watching the shared device's session.
   unwatch: () => void;
   hs: Handshake | null;
+  preparing: Preparing | null;
   // Cancel since the last Allow: the relay wants an Allow again on the next resume.
   reclaimed: boolean;
   // A lend is attached and running.
@@ -92,8 +101,26 @@ async function lendTo(r: Room, hs: Handshake, sendAllow: boolean): Promise<void>
     return;
   }
   State.setSharePeer({ peerId: hs.peerId, label: hs.label, stage: 'connecting' });
+  // Aborted when this attempt fails, so a half-built peer connection is closed.
+  const setup = new AbortController();
+  let preparing = r.preparing;
   try {
-    const lend = await Lease.prepareLend({ peerLabel: hs.label, onEnd: (reason) => { onLendEnd(r, reason); } });
+    if (preparing) {
+      preparing.owner = hs;
+    } else {
+      const prep: Preparing = { promise: Promise.resolve(null), owner: hs };
+      prep.promise = Lease.prepareLend({
+        peerLabel: hs.label,
+        onEnd: (reason) => { onLendEnd(r, reason); },
+        isWanted: () => room === r && !prep.owner.cancelled,
+      });
+      preparing = prep;
+      r.preparing = prep;
+    }
+    const lend = await preparing.promise;
+    // A newer handshake took the prepare over and acts on its result.
+    if (preparing.owner !== hs) return;
+    if (r.preparing === preparing) r.preparing = null;
     if (!lend) {
       // The joiner learns now instead of timing out.
       if (!hs.cancelled) r.socket.send({ t: 'deny', peerId: hs.peerId });
@@ -101,6 +128,7 @@ async function lendTo(r: Room, hs: Handshake, sendAllow: boolean): Promise<void>
       return;
     }
     hs.lend = lend;
+    Lease.relabel(lend, hs.label);
     if (hs.cancelled) { Lease.abortLend(lend); return; }
     // Before the offer: the relay must turn newcomers away from here on. Every
     // way the lend can end reports back through onLendEnd.
@@ -110,7 +138,7 @@ async function lendTo(r: Room, hs: Handshake, sendAllow: boolean): Promise<void>
       r.reclaimed = false;
     }
 
-    const host = await Manual.createOffer();
+    const host = await withTimeout(Manual.createOffer(setup.signal), HANDSHAKE_TIMEOUT_MS, 'the offer', hs.abort.signal);
     hs.pc = host.pc;
     if (hs.cancelled) { host.pc.close(); Lease.abortLend(lend); return; }
     r.socket.send({ t: 'sdp', sdp: JSON.parse(host.offer) as Sdp, peerId: hs.peerId });
@@ -128,7 +156,10 @@ async function lendTo(r: Room, hs: Handshake, sendAllow: boolean): Promise<void>
     r.attached = true;
     if (r.hs === hs) { r.hs = null; State.setSharePeer(null); }
   } catch (err) {
+    if (preparing && preparing.owner !== hs) return;
+    if (preparing && r.preparing === preparing) r.preparing = null;
     if (!hs.cancelled) Log.error('remote', 'lend handshake failed', err);
+    setup.abort();
     hs.abort.abort();
     if (hs.lend) Lease.abortLend(hs.lend);
     hs.pc?.close();
@@ -142,7 +173,8 @@ function onLendEnd(r: Room, reason: Lease.LendEnd): void {
     r.socket.send({ t: 'lent', on: false });
     // The device itself is gone: there is nothing left to share.
     if (reason === 'device-gone') closeRoom(r);
-  } else if (r.orphaned) {
+  } else if (room === null) {
+    // The room is gone (torn down or orphaned): nothing is left to share.
     State.setShareState('idle');
   }
 }
@@ -231,6 +263,7 @@ export async function startSharing(): Promise<boolean> {
                 // The tunnel is peer to peer: the lend runs on, the room is gone.
                 cancelHandshake(r);
                 room = null;
+                r.unwatch();
                 r.orphaned = true;
                 State.setShareRoom(null);
               } else {
@@ -242,6 +275,7 @@ export async function startSharing(): Promise<boolean> {
         recId: rec.id,
         unwatch: () => {},
         hs: null,
+        preparing: null,
         reclaimed: false,
         attached: false,
         orphaned: false,

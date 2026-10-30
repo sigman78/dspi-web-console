@@ -267,7 +267,7 @@ export class Room extends DurableObject<Env> {
         return;
       case 'rotate': {
         const rotate = charge(att.rotate, ROTATE_LIMIT, now);
-        if (!rotate) return this.#violation(ws);
+        if (!rotate) return;
         ws.serializeAttachment({ ...att, rotate } satisfies Attachment);
         await this.#rotate(ws, s);
         return;

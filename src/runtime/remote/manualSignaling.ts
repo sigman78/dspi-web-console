@@ -19,15 +19,22 @@ export interface JoinSession {
   answer: string;
 }
 
-function gatheringComplete(pc: RTCPeerConnection): Promise<void> {
+function gatheringComplete(pc: RTCPeerConnection, signal?: AbortSignal): Promise<void> {
   if (pc.iceGatheringState === 'complete') return Promise.resolve();
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    const settle = (): void => {
+      pc.removeEventListener('icegatheringstatechange', onChange);
+      signal?.removeEventListener('abort', onAbort);
+    };
     const onChange = (): void => {
       if (pc.iceGatheringState !== 'complete') return;
-      pc.removeEventListener('icegatheringstatechange', onChange);
+      settle();
       resolve();
     };
+    const onAbort = (): void => { settle(); reject(new Error('stopped gathering candidates')); };
+    if (signal?.aborted) { onAbort(); return; }
     pc.addEventListener('icegatheringstatechange', onChange);
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 
@@ -44,23 +51,36 @@ function decode(text: string, type: RTCSdpType): RTCSessionDescriptionInit {
   return { type, sdp };
 }
 
-export async function createOffer(): Promise<HostSession> {
+// A failed or aborted setup closes its peer connection.
+export async function createOffer(signal?: AbortSignal): Promise<HostSession> {
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-  const dc = Peer.createTunnelChannel(pc);
-  await pc.setLocalDescription(await pc.createOffer());
-  await gatheringComplete(pc);
-  return { pc, dc, offer: encode(pc.localDescription) };
+  try {
+    const dc = Peer.createTunnelChannel(pc);
+    await pc.setLocalDescription(await pc.createOffer());
+    await gatheringComplete(pc, signal);
+    if (signal?.aborted) throw new Error('stopped gathering candidates');
+    return { pc, dc, offer: encode(pc.localDescription) };
+  } catch (err) {
+    pc.close();
+    throw err;
+  }
 }
 
 export async function acceptAnswer(host: HostSession, answer: string): Promise<void> {
   await host.pc.setRemoteDescription(decode(answer, 'answer'));
 }
 
-export async function createAnswer(offer: string): Promise<JoinSession> {
+export async function createAnswer(offer: string, signal?: AbortSignal): Promise<JoinSession> {
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-  const channel = Peer.awaitTunnelChannel(pc);
-  await pc.setRemoteDescription(decode(offer, 'offer'));
-  await pc.setLocalDescription(await pc.createAnswer());
-  await gatheringComplete(pc);
-  return { pc, channel, answer: encode(pc.localDescription) };
+  try {
+    const channel = Peer.awaitTunnelChannel(pc);
+    await pc.setRemoteDescription(decode(offer, 'offer'));
+    await pc.setLocalDescription(await pc.createAnswer());
+    await gatheringComplete(pc, signal);
+    if (signal?.aborted) throw new Error('stopped gathering candidates');
+    return { pc, channel, answer: encode(pc.localDescription) };
+  } catch (err) {
+    pc.close();
+    throw err;
+  }
 }

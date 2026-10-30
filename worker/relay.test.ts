@@ -468,14 +468,18 @@ describe('roles and liveness', () => {
 });
 
 describe('abuse caps', () => {
-  it('closes the room when the host rotates more than 10 times a minute', async () => {
+  it('drops host rotates beyond 10 a minute and keeps the room', async () => {
     const ip = newIp();
-    const { room, host } = await openHost(ip);
-    const { guest } = await joinByCode(room.code, ip);
-    await host.nextOf('peer');
-    for (let i = 0; i < 11; i++) host.send({ t: 'rotate' });
-    expect(await guest.nextOf('host-gone')).toEqual({ t: 'host-gone' });
-    expect(await host.closed).toBe(1008);
+    const { host } = await openHost(ip);
+    for (let i = 0; i < 10; i++) {
+      host.send({ t: 'rotate' });
+      await host.nextOf('rotated');
+    }
+    host.send({ t: 'rotate' });
+    host.send({ t: 'ping' });
+    expect(await host.nextOf('pong')).toEqual({ t: 'pong' });
+    const extra = await Promise.race([host.next(), new Promise<null>((resolve) => setTimeout(() => { resolve(null); }, 200))]);
+    expect(extra).toBeNull();
   });
 
   it('shares one limiter bucket across an IPv6 /64 but not across prefixes', async () => {
