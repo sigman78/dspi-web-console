@@ -37,7 +37,7 @@ interface Budget {
   count: number;
 }
 
-type GuestAttachment = { role: 'guest'; peerId: string; allowed: boolean; sdp?: Budget };
+type GuestAttachment = { role: 'guest'; peerId: string; allowed: boolean; sdp?: Budget; bye?: Messages.ByeReason };
 
 type Attachment =
   | { role: 'new'; at: number }
@@ -150,7 +150,7 @@ export class Room extends DurableObject<Env> {
     if (att?.role === 'host') return this.#closeRoom();
     if (att?.role === 'guest') {
       const host = this.#hostSocket();
-      if (host) this.#send(host, { t: 'peer-gone', peerId: att.peerId });
+      if (host) this.#send(host, att.bye ? { t: 'peer-gone', peerId: att.peerId, reason: att.bye } : { t: 'peer-gone', peerId: att.peerId });
     }
   }
 
@@ -290,6 +290,11 @@ export class Room extends DurableObject<Env> {
   }
 
   async #onGuest(ws: WebSocket, att: GuestAttachment, msg: Messages.ClientMessage): Promise<void> {
+    if (msg.t === 'bye') {
+      if (att.bye) return this.#violation(ws);
+      ws.serializeAttachment({ ...att, bye: msg.reason } satisfies Attachment);
+      return;
+    }
     if (msg.t !== 'sdp' || !att.allowed) return this.#violation(ws);
     const sdp = charge(att.sdp, SDP_LIMIT, Date.now());
     if (!sdp) return this.#violation(ws);

@@ -10,11 +10,15 @@ const HANDSHAKE_MS = 5000;
 interface Pending {
   resolve(data: Uint8Array): void;
   reject(err: Error): void;
+  // Set for requests whose answer time is reported as a round trip.
+  sentAt?: number;
 }
 
 export interface RemoteTransportOpts {
   consoleBuild: string;
   wantReadOnly: boolean;
+  // Milliseconds from sending a control read to its answer arriving.
+  onRoundTrip?: (ms: number) => void;
 }
 
 // DspTransport that forwards every transfer over a tunnel to the console that
@@ -25,6 +29,7 @@ export class RemoteTransport implements DspTransport {
   notifyIn?: (length: number) => Promise<Uint8Array>;
 
   #channel: FrameChannel;
+  #onRoundTrip: ((ms: number) => void) | undefined;
   #listeners = new Map<TransportEvent, Set<() => void>>();
   #pending = new Map<number, Pending>();
   #nextId = 1;
@@ -33,8 +38,9 @@ export class RemoteTransport implements DspTransport {
   #handshake: { resolve(): void; reject(err: Error): void } | null = null;
   #unsubscribe: Array<() => void>;
 
-  private constructor(channel: FrameChannel) {
+  private constructor(channel: FrameChannel, onRoundTrip?: (ms: number) => void) {
     this.#channel = channel;
+    this.#onRoundTrip = onRoundTrip;
     this.#unsubscribe = [
       channel.onMessage((f) => this.#onFrame(f)),
       channel.onClose(() => this.#teardown(new RemoteClosed())),
@@ -44,7 +50,7 @@ export class RemoteTransport implements DspTransport {
   // Sends HELLO and resolves after WELCOME; rejects on REJECT, version
   // mismatch, channel close, or when the peer stays silent for 5 s.
   static async connect(channel: FrameChannel, opts: RemoteTransportOpts): Promise<RemoteTransport> {
-    const t = new RemoteTransport(channel);
+    const t = new RemoteTransport(channel, opts.onRoundTrip);
     await t.#hello(opts);
     return t;
   }
@@ -85,7 +91,7 @@ export class RemoteTransport implements DspTransport {
   }
 
   ctrlIn(request: number, value: number, length: number): Promise<Uint8Array> {
-    return this.#request((id) => ({ type: 'ctrlIn', id, request, value, length }));
+    return this.#request((id) => ({ type: 'ctrlIn', id, request, value, length }), true);
   }
 
   async ctrlOut(request: number, value: number, data: Uint8Array): Promise<void> {
@@ -106,13 +112,13 @@ export class RemoteTransport implements DspTransport {
     this.#listeners.get(event)?.forEach((l) => l());
   }
 
-  #request(build: (id: number) => Frames.Frame): Promise<Uint8Array> {
+  #request(build: (id: number) => Frames.Frame, timed = false): Promise<Uint8Array> {
     if (this.#closed) return Promise.reject(new RemoteClosed());
     if (!this.#welcomed) return Promise.reject(new Error('RemoteTransport: not open'));
     const id = this.#nextId;
     this.#nextId = this.#nextId === 0xFFFFFFFF ? 1 : this.#nextId + 1;
     return new Promise<Uint8Array>((resolve, reject) => {
-      this.#pending.set(id, { resolve, reject });
+      this.#pending.set(id, { resolve, reject, sentAt: timed ? performance.now() : undefined });
       try {
         this.#channel.send(Frames.encodeFrame(build(id)));
       } catch (e) {
@@ -147,9 +153,12 @@ export class RemoteTransport implements DspTransport {
       case 'reject':
         this.#teardown(new Error(`remote refused the connection (reason ${frame.reason})`));
         return;
-      case 'ok':
-        this.#settle(frame.id)?.resolve(frame.data);
+      case 'ok': {
+        const p = this.#settle(frame.id);
+        if (p?.sentAt !== undefined) this.#onRoundTrip?.(performance.now() - p.sentAt);
+        p?.resolve(frame.data);
         return;
+      }
       case 'err':
         this.#settle(frame.id)?.reject(errorFor(frame.kind, frame.message));
         return;

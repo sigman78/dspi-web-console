@@ -22,6 +22,7 @@ export function awaitTunnelChannel(pc: RTCPeerConnection): Promise<RTCDataChanne
     const settle = (): void => {
       pc.removeEventListener('datachannel', onChannel);
       pc.removeEventListener('connectionstatechange', onState);
+      pc.removeEventListener('iceconnectionstatechange', onState);
     };
     const onChannel = (e: RTCDataChannelEvent): void => {
       if (e.channel.label !== TUNNEL_LABEL) return;
@@ -29,12 +30,14 @@ export function awaitTunnelChannel(pc: RTCPeerConnection): Promise<RTCDataChanne
       resolve(e.channel);
     };
     const onState = (): void => {
-      if (pc.connectionState !== 'failed' && pc.connectionState !== 'closed') return;
+      const state = pc.iceConnectionState === 'failed' ? 'failed' : pc.connectionState;
+      if (state !== 'failed' && state !== 'closed') return;
       settle();
-      reject(new Error(`peer connection ${pc.connectionState} before the tunnel opened`));
+      reject(new Error(`peer connection ${state} before the tunnel opened`));
     };
     pc.addEventListener('datachannel', onChannel);
     pc.addEventListener('connectionstatechange', onState);
+    pc.addEventListener('iceconnectionstatechange', onState);
   });
 }
 

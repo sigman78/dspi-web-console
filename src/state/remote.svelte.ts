@@ -32,7 +32,7 @@ export interface SharePeer {
 export type ShareEnd = 'relay-lost';
 
 export type JoinFailure =
-  | 'bad-code' | 'burnt' | 'expired' | 'rate-limited' | 'no-host' | 'busy'
+  | 'no-path' | 'bad-code' | 'burnt' | 'expired' | 'rate-limited' | 'no-host' | 'busy'
   | 'denied' | 'host-gone' | 'replaced' | 'violation' | 'unreachable' | 'timeout' | 'no-token' | 'sharing' | 'failed';
 
 // The joining console's progress through the relay handshake.
@@ -47,10 +47,12 @@ export interface PendingJoin {
 }
 
 const _leases = new SvelteMap<ConnId, Lease>();
+const _linkRtt = new SvelteMap<ConnId, number>();
 let _share = $state<ShareState>('idle');
 let _room = $state<ShareRoom | null>(null);
 let _peer = $state<SharePeer | null>(null);
 let _shareEnd = $state<ShareEnd | null>(null);
+let _shareNoPath = $state<string | null>(null);
 let _join = $state<JoinState>({ phase: 'idle' });
 let _pendingJoin = $state<PendingJoin | null>(null);
 
@@ -71,6 +73,25 @@ export function setLease(id: ConnId, lease: Lease): void {
 
 export function clearLease(id: ConnId): void {
   _leases.delete(id);
+}
+
+// Smoothed round trip to the host console, in ms; null once the record is gone.
+export function linkRttOf(id: ConnId): number | null {
+  if (recordOf(id) === null) return null;
+  return _linkRtt.get(id) ?? null;
+}
+
+export function activeLinkRtt(): number | null {
+  const rec = activeRecord();
+  return rec ? linkRttOf(rec.id) : null;
+}
+
+export function setLinkRtt(id: ConnId, ms: number): void {
+  _linkRtt.set(id, ms);
+}
+
+export function clearLinkRtt(id: ConnId): void {
+  _linkRtt.delete(id);
 }
 
 export function shareState(): ShareState {
@@ -105,6 +126,15 @@ export function setShareEnd(next: ShareEnd | null): void {
   _shareEnd = next;
 }
 
+// Label of the last console whose connection could not be established, until the next one arrives.
+export function shareNoPath(): string | null {
+  return _shareNoPath;
+}
+
+export function setShareNoPath(next: string | null): void {
+  _shareNoPath = next;
+}
+
 export function joinState(): JoinState {
   return _join;
 }
@@ -124,10 +154,12 @@ export function setPendingJoin(next: PendingJoin | null): void {
 // Test-only.
 export function resetRemoteState(): void {
   _leases.clear();
+  _linkRtt.clear();
   _share = 'idle';
   _room = null;
   _peer = null;
   _shareEnd = null;
+  _shareNoPath = null;
   _join = { phase: 'idle' };
   _pendingJoin = null;
 }

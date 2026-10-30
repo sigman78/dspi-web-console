@@ -10,7 +10,7 @@ import { startSharing, allow, deny, stopSharing, cancelLend } from './share';
 
 vi.mock('./lease', async (importOriginal) => {
   const real = await importOriginal<typeof import('./lease')>();
-  return { ...real, prepareLend: vi.fn(real.prepareLend) };
+  return { ...real, prepareLend: vi.fn(real.prepareLend), attachLend: vi.fn(real.attachLend) };
 });
 vi.mock('./manualSignaling', () => ({ createOffer: vi.fn(), acceptAnswer: vi.fn(async () => {}) }));
 vi.mock('./peer', () => ({ whenOpen: vi.fn(async () => {}), wrapDataChannel: vi.fn(), watchPeerLiveness: vi.fn(() => () => {}) }));
@@ -202,6 +202,87 @@ describe('handshake failures', () => {
     expect(State.activeLease()).toBeNull();
   });
 
+  function offerWithPc(pc: object): void {
+    vi.mocked(Manual.createOffer).mockResolvedValueOnce({
+      pc: { close: vi.fn(), ...pc } as unknown as RTCPeerConnection,
+      dc: {} as RTCDataChannel,
+      offer: JSON.stringify({ type: 'offer', sdp: 'off' }),
+    });
+  }
+
+  it('names the other console when our connection failed, until the next one arrives', async () => {
+    offerWithPc({ iceConnectionState: 'failed' });
+    vi.mocked(Peer.whenOpen).mockRejectedValueOnce(new Error('ice failed'));
+    const ws = await sharing();
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', label: 'Win' });
+    await vi.waitFor(() => { expect(ws.messages().some((m) => m.t === 'sdp')).toBe(true); });
+    ws.receive({ t: 'sdp', peerId: 'p1', sdp: ANSWER });
+    await vi.waitFor(() => { expect(State.shareNoPath()).toBe('Win'); });
+    expect(State.shareState()).toBe('sharing');
+
+    ws.receive({ t: 'peer', peerId: 'p2', via: 'code', label: 'Mac' });
+    expect(State.shareNoPath()).toBeNull();
+  });
+
+  it('a channel that fails to open without the connection failing is not blamed on the network', async () => {
+    offerWithPc({ iceConnectionState: 'checking' });
+    vi.mocked(Peer.whenOpen).mockRejectedValueOnce(new Error('closed'));
+    const ws = await sharing();
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', label: 'Win' });
+    await vi.waitFor(() => { expect(ws.messages().some((m) => m.t === 'sdp')).toBe(true); });
+    ws.receive({ t: 'sdp', peerId: 'p1', sdp: ANSWER });
+    await vi.waitFor(() => { expect(State.sharePeer()).toBeNull(); });
+    expect(State.shareNoPath()).toBeNull();
+  });
+
+  it('a joiner that left after answering is not blamed on the network, even if the channel then fails', async () => {
+    offerWithPc({ iceConnectionState: 'failed' });
+    let fail!: (e: Error) => void;
+    vi.mocked(Peer.whenOpen).mockReturnValueOnce(new Promise<void>((_resolve, reject) => { fail = reject; }));
+    const ws = await sharing();
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', label: 'Win' });
+    await vi.waitFor(() => { expect(ws.messages().some((m) => m.t === 'sdp')).toBe(true); });
+    ws.receive({ t: 'sdp', peerId: 'p1', sdp: ANSWER });
+    await vi.waitFor(() => { expect(Peer.whenOpen).toHaveBeenCalled(); });
+    ws.receive({ t: 'peer-gone', peerId: 'p1' });
+    fail(new Error('closed'));
+    await vi.waitFor(() => { expect(State.sharePeer()).toBeNull(); });
+    expect(State.shareNoPath()).toBeNull();
+  });
+
+  it('a joiner that says it found no path is named at once', async () => {
+    vi.mocked(Peer.whenOpen).mockReturnValueOnce(new Promise<void>(() => {}));
+    const ws = await sharing();
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', label: 'Win' });
+    await vi.waitFor(() => { expect(ws.messages().some((m) => m.t === 'sdp')).toBe(true); });
+    ws.receive({ t: 'sdp', peerId: 'p1', sdp: ANSWER });
+    await vi.waitFor(() => { expect(Peer.whenOpen).toHaveBeenCalled(); });
+    ws.receive({ t: 'peer-gone', peerId: 'p1', reason: 'no-path' });
+    expect(State.shareNoPath()).toBe('Win');
+    expect(State.sharePeer()).toBeNull();
+    expect(State.activeLease()).toBeNull();
+  });
+
+  it('a failure after the channel opened is not blamed on the network', async () => {
+    offerWithPc({ iceConnectionState: 'failed' });
+    vi.mocked(Lease.attachLend).mockReturnValueOnce(false);
+    const ws = await sharing();
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', label: 'Win' });
+    await vi.waitFor(() => { expect(ws.messages().some((m) => m.t === 'sdp')).toBe(true); });
+    ws.receive({ t: 'sdp', peerId: 'p1', sdp: ANSWER });
+    await vi.waitFor(() => { expect(State.sharePeer()).toBeNull(); });
+    expect(State.shareNoPath()).toBeNull();
+  });
+
+  it('a joiner that left before the channel opened is not blamed on the network', async () => {
+    const ws = await sharing();
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', label: 'Win' });
+    await vi.waitFor(() => { expect(ws.messages().some((m) => m.t === 'sdp')).toBe(true); });
+    ws.receive({ t: 'peer-gone', peerId: 'p1' });
+    await Promise.resolve();
+    expect(State.shareNoPath()).toBeNull();
+  });
+
   it('the joiner leaving mid-handshake releases the device', async () => {
     const ws = await sharing();
     ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', label: 'Win' });
@@ -303,6 +384,14 @@ describe('overlapping joiners', () => {
 });
 
 describe('cancelling mid-handshake', () => {
+  it('tells the joiner at once so it does not report a network problem', async () => {
+    const ws = await sharing();
+    ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', needsAllow: false, label: 'Win' });
+    await offered(ws);
+    cancelLend();
+    expect(ws.messages()).toContainEqual({ t: 'deny', peerId: 'p1' });
+  });
+
   it('drops the offer and releases the device', async () => {
     const ws = await sharing();
     ws.receive({ t: 'peer', peerId: 'p1', via: 'scan', needsAllow: false, label: 'Win' });

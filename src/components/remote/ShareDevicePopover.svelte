@@ -10,6 +10,7 @@
 
   const room = $derived(State.shareRoom());
   const peer = $derived(State.sharePeer());
+  const noPath = $derived(State.shareNoPath());
   let startError = $state<string | null>(null);
   let copied = $state(false);
   let copyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -20,6 +21,7 @@
     if (startError) return startError;
     if (!room) return 'Opening a room…';
     if (peer?.stage === 'connecting') return `Connecting to ${peer.label}…`;
+    if (noPath !== null) return `${noPath} couldn't connect: not on the same network?`;
     if (room.status === 'burnt') return 'Code already used. Make a new one for the next console.';
     if (room.status === 'expired') return 'Code expired. Make a new one.';
     return 'Waiting for the other console…';
@@ -81,7 +83,7 @@
         <button type="button" class="icon-toggle accent" aria-label="Allow" title="Allow" onclick={Share.allow}><RemoteIcon icon="check" /></button>
         <button type="button" class="icon-toggle deny" aria-label="Deny" title="Deny" onclick={Share.deny}><RemoteIcon icon="close" /></button>
       {:else}
-        <span class="msg" class:bad={startError !== null}>{status}</span>
+        <span class="msg" class:bad={startError !== null || noPath !== null}>{status}</span>
         {#if startError}
           <button type="button" class="icon-toggle" aria-label="Try again" title="Try again" onclick={() => void open()}><RemoteIcon icon="rotate" /></button>
         {/if}

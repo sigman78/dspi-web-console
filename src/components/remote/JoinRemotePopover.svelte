@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as State from '@/state';
   import * as JoinRelay from '@/runtime/remote/joinRelay';
+  import { JOIN_FAILURE_TEXT } from '@/runtime/remote/joinFailureText';
   import { dismiss } from '@/components/chrome/dismiss';
   import CodeField from './CodeField.svelte';
   import RemoteIcon from './RemoteIcon.svelte';
@@ -21,31 +22,13 @@
     return JoinRelay.resumeTarget();
   });
 
-  const FAILURE_TEXT: Record<State.JoinFailure, string> = {
-    'bad-code': 'That code is not valid.',
-    'burnt': 'That code was already used. Ask for a new one.',
-    'expired': 'That code has expired. Ask for a new one.',
-    'rate-limited': 'Too many attempts. Try again in a minute.',
-    'no-host': 'The other console is no longer sharing.',
-    'busy': 'The device is in use by another console.',
-    'denied': 'The other console declined.',
-    'host-gone': 'The other console stopped sharing.',
-    'replaced': 'Connected from another tab.',
-    'violation': 'The relay rejected the request.',
-    'unreachable': 'Could not reach the relay.',
-    'timeout': 'The other console did not respond.',
-    'no-token': 'Nothing to reconnect to.',
-    'sharing': "Stop sharing this console's device first.",
-    'failed': 'Could not connect.',
-  };
-
   const status = $derived.by(() => {
     if (!attempted) return null;
     switch (join.phase) {
       case 'connecting': return { text: 'Connecting…', bad: false };
       case 'waiting-allow': return { text: 'Waiting for Allow on the other console…', bad: false };
       case 'allowed': return { text: 'Allowed. Connecting…', bad: false };
-      case 'failed': return { text: FAILURE_TEXT[join.reason], bad: true };
+      case 'failed': return { text: JOIN_FAILURE_TEXT[join.reason], bad: true };
       default: return null;
     }
   });

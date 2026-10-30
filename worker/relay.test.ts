@@ -441,6 +441,29 @@ describe('roles and liveness', () => {
     expect(await host.nextOf('peer-gone')).toEqual({ t: 'peer-gone', peerId });
   });
 
+  it('passes the guest reason for leaving on to the host', async () => {
+    const ip = newIp();
+    const { host, guest, peerId } = await lentRoom(ip);
+    guest.send({ t: 'bye', reason: 'no-path' });
+    guest.ws.close(1000);
+    expect(await host.nextOf('peer-gone')).toEqual({ t: 'peer-gone', peerId, reason: 'no-path' });
+  });
+
+  it('treats a second bye from the same guest as a violation', async () => {
+    const ip = newIp();
+    const { guest } = await lentRoom(ip);
+    guest.send({ t: 'bye', reason: 'no-path' });
+    guest.send({ t: 'bye', reason: 'no-path' });
+    expect(await guest.closed).toBe(1008);
+  });
+
+  it('drops a bye with an unknown reason as a violation', async () => {
+    const ip = newIp();
+    const { guest } = await lentRoom(ip);
+    guest.send({ t: 'bye', reason: 'whatever' });
+    expect(await guest.closed).toBe(1008);
+  });
+
   it('answers ping with pong on both roles', async () => {
     const ip = newIp();
     const { host, guest } = await lentRoom(ip);

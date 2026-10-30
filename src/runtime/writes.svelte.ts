@@ -20,6 +20,13 @@ import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 import { pushNotice, type ReadySession } from '@/state';
 import type { MirrorState } from '@/state/mirror.svelte';
 import { Log, errMessage, type Result } from '@/utils';
+import { RemoteRefused } from '@/transport/remote/errors';
+
+// The host console's policy said no to one command; the link itself is fine,
+// so health is not told. The eager reconcile reverts an optimistic value.
+function noteRefused(label: string): void {
+  pushNotice('warn', `${label}: refused by the host console`);
+}
 
 // While the link is degraded the probe owns recovery: new writes are refused
 // (nothing sent, nothing mutated); the status line carries the message.
@@ -52,6 +59,11 @@ export async function write(
     } catch (err) {
       if (!s.alive) return false;
       Log.error('writes', 'write send failed', err);
+      if (err instanceof RemoteRefused) {
+        noteRefused('Write');
+        s.mirror.requestReconcile(true);
+        return false;
+      }
       s.health.noteFail('write', err);
       // Degraded: the probe owns recovery; per-failure toasts and reconcile
       // requests would only pile up behind a dead link.
@@ -95,6 +107,7 @@ export function command<T>(
     } catch (err) {
       if (!s.alive) return;
       Log.error('writes', `${op} failed`, err);
+      if (err instanceof RemoteRefused) { noteRefused(op); return; }
       s.health.noteFail(op, err);
       if (!s.health.degraded) pushNotice('error', `${op} failed`);
     } finally {
@@ -164,10 +177,15 @@ function makeLane(key: string, coordinator: WriteCoordinator): Lane {
       } catch (err) {
         if (s.alive) {
           Log.error('writes', `scrub ${key} send failed`, err);
-          s.health.noteFail(`scrub ${key}`, err);
-          if (!s.health.degraded) {
-            pushNotice('error', `Write failed: ${errMessage(err)}`);
+          if (err instanceof RemoteRefused) {
+            noteRefused('Write');
             s.mirror.requestReconcile(true);
+          } else {
+            s.health.noteFail(`scrub ${key}`, err);
+            if (!s.health.degraded) {
+              pushNotice('error', `Write failed: ${errMessage(err)}`);
+              s.mirror.requestReconcile(true);
+            }
           }
         }
       } finally {
