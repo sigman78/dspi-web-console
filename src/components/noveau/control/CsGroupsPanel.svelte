@@ -80,10 +80,10 @@
     return !groupsEqual(buildGroup(d), live);
   }
 
-  function pill(i: number): { text: string; cls: string } {
+  function pill(i: number): { text: string; cls: string; tip?: string } {
     const live = cs.groups[i];
     if (!live) return { text: 'NEW', cls: 'new' };
-    return (cs.extStatus?.groupStatus[i] ?? 0) === 0 ? { text: 'OK', cls: 'ok' } : { text: 'INVALID', cls: 'warn' };
+    return (cs.extStatus?.groupStatus[i] ?? 0) === 0 ? { text: 'OK', cls: 'ok', tip: 'Valid on the device' } : { text: 'INVALID', cls: 'warn' };
   }
 
   function invalidHint(i: number): string {

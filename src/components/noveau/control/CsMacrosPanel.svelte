@@ -78,11 +78,11 @@
     return !CsMacroDraft.macrosEqual(CsMacroDraft.buildMacro(d, cs.nouns), live);
   }
 
-  function pill(i: number): { text: string; cls: string } {
+  function pill(i: number): { text: string; cls: string; tip?: string } {
     const live = cs.macros[i];
     if (!live) return { text: 'NEW', cls: 'new' };
     if (isRunning(i)) return { text: 'RUNNING', cls: 'run' };
-    return (cs.extStatus?.macroStatus[i] ?? 0) === 0 ? { text: 'OK', cls: 'ok' } : { text: 'INVALID', cls: 'warn' };
+    return (cs.extStatus?.macroStatus[i] ?? 0) === 0 ? { text: 'OK', cls: 'ok', tip: 'Valid on the device' } : { text: 'INVALID', cls: 'warn' };
   }
 
   function invalidHint(i: number): string {

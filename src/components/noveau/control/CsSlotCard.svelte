@@ -4,6 +4,7 @@
   // Body renders only while open; the parent owns open/expanded state.
   import type { Snippet } from 'svelte';
   import { portal } from '@/components/chrome/portal';
+  import CsStatusMark from './CsStatusMark.svelte';
   const {
     title, name, nameLabel, removeLabel, pill, dirty, live, open, disabled,
     onToggle, onRenameRequest, onRemove, summary, rename, note, actions, children, detailTarget = null,
@@ -12,7 +13,7 @@
     name: string;
     nameLabel: string;
     removeLabel: string;
-    pill: { text: string; cls: string };
+    pill: { text: string; cls: string; tip?: string };
     dirty: boolean;
     live: boolean;       // applied on the device; the dirty dot only marks edits to live slots
     open: boolean;
@@ -41,9 +42,9 @@
     {#if open}
       <button type="button" class="x-btn" aria-label={nameLabel} {disabled} onclick={onRenameRequest}>✎</button>
     {/if}
-    <span class="cs-pill {pill.cls}">{pill.text}</span>
     <span class="cs-spacer"></span>
     {#if actions}{@render actions()}{/if}
+    <CsStatusMark {pill} />
     <button type="button" class="x-btn" aria-label={removeLabel} {disabled} onclick={onRemove}>✕</button>
   </div>
   {#if rename}<div class="renamehost">{@render rename()}</div>{/if}

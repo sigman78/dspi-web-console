@@ -62,7 +62,7 @@
     onClose(true);
   }
 
-  function unroute() {
+  function clearRoute() {
     Runtime.setCrosspointEnabled(s, input, output, false);
     onClose(true);
   }
@@ -109,7 +109,7 @@
       <button type="button" class="chip accent act" onclick={commitRoute}>ROUTE</button>
       <button type="button" class="chip act" onclick={() => onClose(true)}>CANCEL</button>
     {:else}
-      <button type="button" class="chip act danger" title="Remove this route" onclick={unroute}>UNROUTE</button>
+      <button type="button" class="chip act danger" title="Clear this route" onclick={clearRoute}>CLEAR</button>
     {/if}
   </div>
 </div>

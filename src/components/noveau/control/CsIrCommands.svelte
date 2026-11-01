@@ -5,6 +5,7 @@
   // prop -- it renders once, under whichever slot's card holds the live
   // CS_TYPE_IR binding (see ControlSurfacesPanel).
   import { untrack } from 'svelte';
+  import CsStatusMark from './CsStatusMark.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { pushNotice } from '@/state';
   import { applyCsIrCommand, clearCsIrCommand, csIrLearnArm, csIrLearnCancel } from '@/runtime';
@@ -137,12 +138,12 @@
 
   // Row lifecycle: NOT LEARNED -> LEARNED (code captured, awaiting APPLY) ->
   // ACTIVE/INACTIVE (applied; device truth from irActiveMask).
-  function pill(sub: number, d: IrDraft | null): { text: string; cls: string } {
+  function pill(sub: number, d: IrDraft | null): { text: string; cls: string; tip?: string } {
     if (!cs.irCommands[sub]) {
       return { text: d && d.protocol !== Domain.CsIrProto.None ? 'LEARNED' : 'NOT LEARNED', cls: 'new' };
     }
-    if (cs.status && (cs.status.irActiveMask & (1 << sub))) return { text: 'ACTIVE', cls: 'ok' };
-    return { text: 'INACTIVE', cls: 'warn' };
+    if (cs.status && (cs.status.irActiveMask & (1 << sub))) return { text: 'ACTIVE', cls: 'ok', tip: 'Active on the device' };
+    return { text: 'INACTIVE', cls: 'idle', tip: inactiveHint(sub) };
   }
 
   function inactiveHint(sub: number): string {
@@ -224,7 +225,7 @@
 
 {#snippet editor(sub: number, d: IrDraft)}
           {@const actions = actionOptions(d.noun)}
-          {#if pill(sub, d).cls === 'warn'}
+          {#if pill(sub, d).cls === 'idle'}
             <div class="hint err">{inactiveHint(sub)}</div>
           {/if}
 
@@ -313,7 +314,7 @@
               onclick={() => { pickedSub = isOpen ? -1 : sub; }}>
               <span class="arrow">{isOpen ? '▾' : '▸'}</span>
               <span class="idx">{sub + 1}</span>
-              <span class="cs-pill {p.cls}">{p.text}</span>
+              <CsStatusMark pill={p} />
               <span class="sumtxt" class:dim={!learned}>
                 {#if listening}
                   Press a button on the remote… <span class="count">{Math.max(0, learnRemaining)}s</span>
@@ -348,7 +349,7 @@
           {#if d}
             <span class="code" class:learned={d.protocol !== Domain.CsIrProto.None}>{codeText(d)}</span>
             {@const p = pill(sub, d)}
-            <span class="cs-pill {p.cls}">{p.text}</span>
+            <CsStatusMark pill={p} />
           {:else}
             <span class="code">Not learned</span>
           {/if}

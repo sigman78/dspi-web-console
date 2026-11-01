@@ -183,11 +183,11 @@
     return nameChanged(slot, d) || !CsDraft.bindingsEqual(buildBinding(d), live);
   }
 
-  function pill(slot: number): { text: string; cls: string } {
+  function pill(slot: number): { text: string; cls: string; tip?: string } {
     const live = cs.bindings[slot];
     if (!live) return { text: 'NEW', cls: 'new' };
-    if (cs.status && (cs.status.activeMask & (1 << slot))) return { text: 'ACTIVE', cls: 'ok' };
-    return { text: 'INACTIVE', cls: 'warn' };
+    if (cs.status && (cs.status.activeMask & (1 << slot))) return { text: 'ACTIVE', cls: 'ok', tip: 'Active on the device' };
+    return { text: 'INACTIVE', cls: 'idle' };
   }
 
   let pendingAdd = $state<number | null>(null);
