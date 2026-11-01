@@ -227,10 +227,6 @@
         onCommit={onRenameCommit} onCancel={onRenameCancel} />
     {/if}
   {/snippet}
-  {#if st.cls === 'idle'}
-    <div class="hint err cs-srow">{inactiveHint()}</div>
-  {/if}
-
   {#if d.type > Domain.CS_MAX_KNOWN_TYPE}
     <div class="hint cs-pad">
       Configured by a newer host (component type {d.type}) — this console
@@ -486,6 +482,10 @@
         disabled={applying || !cs.bindings[slot] || !dirty}>REVERT</button>
     </div>
   </div>
+  {/if}
+
+  {#if st.cls === 'idle'}
+    <div class="cs-fault" role="note">{inactiveHint()}</div>
   {/if}
 
   {#if cs.bindings[slot]?.type === Domain.CsType.Ir}

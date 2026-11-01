@@ -1,7 +1,7 @@
 <script lang="ts">
   // Collapsible slot card shared by the CS binding/group/macro editors:
   // chevron (inline mode only) + name (or title when unnamed) + title tag
-  // (pencil when open requests a rename) + actions + ✕. The name is amber
+  // (pencil when open requests a rename) + actions + ✕. The name is red
   // when inactive/invalid and carries the draft dot when unapplied.
   // Body renders only while open; the parent owns open/expanded state.
   import type { Snippet } from 'svelte';
@@ -120,7 +120,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .primtxt.faulty { color: var(--warn); }
+  .primtxt.faulty { color: var(--err); }
   .primtxt.titled { text-transform: uppercase; letter-spacing: 0.3px; }
   .tag {
     font-family: var(--font-mono);

@@ -233,10 +233,6 @@
 
 {#snippet editor(sub: number, d: IrDraft)}
           {@const actions = actionOptions(d.noun)}
-          {#if status(sub, d).cls === 'idle'}
-            <div class="hint err">{inactiveHint(sub)}</div>
-          {/if}
-
           <div class="cs-row">
             <span class="microlbl edlbl">CONTROLS</span>
             <select class="sel" value={String(d.noun)} aria-label="Controlled function" disabled={applyingSub != null}
@@ -310,6 +306,9 @@
             <button type="button" class="chip hi" onclick={() => drafts.revert(sub)}
               disabled={applyingSub != null || !cs.irCommands[sub] || !isDirty(sub)}>REVERT</button>
           </div>
+          {#if status(sub, d).cls === 'idle'}
+            <div class="cs-fault ir" role="note">{inactiveHint(sub)}</div>
+          {/if}
 {/snippet}
 
 {#snippet commandsBody()}
@@ -480,16 +479,17 @@
   }
   .sumtxt.dim { color: var(--text-faint); }
   .sumprim { display: flex; min-width: 0; }
-  .sumtxt.faulty { color: var(--warn); }
+  .sumtxt.faulty { color: var(--err); }
   .detached { display: flex; flex-direction: column; }
   .irrow:not(:last-child) { border-bottom: 1px solid var(--wash); }
+  .cs-fault.ir { margin: 6px 0 0; }
   .code {
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-faint);
   }
   .code.learned { color: var(--text-dim); }
-  .code.faulty { color: var(--warn); }
+  .code.faulty { color: var(--err); }
   .hint.listen { color: var(--text-dim); }
   .count {
     font-family: var(--font-mono);

@@ -221,10 +221,6 @@
           <div class="hint cs-srow">Running step {(cs.extStatus?.macroStep ?? 0) + 1} of {live.stepCount}</div>
         {/if}
       {/snippet}
-      {#if st.cls === 'warn'}
-        <div class="hint err cs-srow">{invalidHint(i)}</div>
-      {/if}
-
       <div class="cs-rows" class:detached>
         {#each d.steps as step, k (k)}
           {@const isOpen = !detached || openStepOf(i, d.steps.length) === k}
@@ -335,6 +331,9 @@
             disabled={applying || !live || !dirty}>REVERT</button>
         </div>
       </div>
+      {#if st.cls === 'warn'}
+        <div class="cs-fault" role="note">{invalidHint(i)}</div>
+      {/if}
     </CsSlotCard>
   {/each}
 

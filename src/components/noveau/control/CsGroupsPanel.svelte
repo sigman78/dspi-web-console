@@ -195,10 +195,6 @@
       {#snippet summary()}
         <span class="meta">{Domain.csGroupKindLabel(d.kind)} · {n} member{n === 1 ? '' : 's'}</span>
       {/snippet}
-      {#if st.cls === 'warn'}
-        <div class="hint err cs-srow">{invalidHint(i)}</div>
-      {/if}
-
       <div class="cs-rows">
         <div class="cs-row">
           <span class="microlbl">KIND</span>
@@ -235,6 +231,9 @@
             disabled={applying || !cs.groups[i] || !dirty}>REVERT</button>
         </div>
       </div>
+      {#if st.cls === 'warn'}
+        <div class="cs-fault" role="note">{invalidHint(i)}</div>
+      {/if}
     </CsSlotCard>
   {/each}
 

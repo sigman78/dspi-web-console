@@ -24,7 +24,7 @@
      save); .accent tints the glyph, .on is the active (err) state.
    .cs-pill — text status pill (CsDisplayPanel header); tone via .new / .ok /
      .warn / .run / .off. Slot and IR rows show no status chip: the name is
-     amber when inactive/invalid and carries .draft when unapplied.
+     red when inactive/invalid and carries .draft when unapplied.
 
    Text roles (.t-*) and row/section recipes (.prow, .sec-h) live in
    noveau.css; labels are sans, mono is for values, ids and tags. */
