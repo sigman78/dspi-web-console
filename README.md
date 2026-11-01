@@ -19,7 +19,7 @@ A browser-based configurator for the [Weeb Labs DSPi](https://github.com/WeebLab
 - **Setup**: inputs, output types, clocks and a pin map showing which feature holds each GPIO.
 - **Control**: bind knobs, buttons, LEDs, IR remotes and small displays on spare GPIOs to device functions.
 
-Several units can be connected at once; switch between them from the **DEVICES** list.
+Several units can be connected at once; switch between them from the **DEVICES** list. A unit plugged into one computer can be driven from another on the same network: see [Remote control](docs/REMOTE.md).
 
 [See every page →](docs/media/promo.jpg)
 

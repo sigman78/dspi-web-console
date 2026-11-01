@@ -1,0 +1,452 @@
+// Device-owner side of relay pairing: opens a room, decides who may join, and
+// drives the lease (lease.ts) and the WebRTC handshake for the joiner.
+
+import * as State from '@/state';
+import { Log } from '@/utils';
+import * as Lease from './lease';
+import * as Manual from './manualSignaling';
+import * as Peer from './peer';
+import * as Relay from './relay';
+import * as Signaling from './signaling';
+import { withTimeout } from './timeout';
+import * as WakeLock from './wakeLock';
+import type { Sdp, ServerMessage } from './relayWire';
+
+const READY_TIMEOUT_MS = 10_000;
+const HANDSHAKE_TIMEOUT_MS = 30_000;
+// How long the room waits for a shared device that went away to come back.
+const AWAY_WINDOW_MS = 10 * 60_000;
+
+// One joiner being served: waiting for an Allow, or taking the offer.
+interface Handshake {
+  peerId: string;
+  label: string;
+  cancelled: boolean;
+  // Stops this handshake's waits when it is cancelled.
+  abort: AbortController;
+  // The offer went out: cancelling must tell the joiner, who is waiting on it.
+  offered: boolean;
+  // The answer has arrived: the channel's own timeout decides from here.
+  answered: boolean;
+  // The joiner left the relay after answering.
+  peerGone: boolean;
+  lend: Lease.LendHandle | null;
+  pc: RTCPeerConnection | null;
+  answer: Promise<Sdp>;
+  resolveAnswer: (sdp: Sdp) => void;
+  rejectAnswer: (err: Error) => void;
+}
+
+// A lend being prepared (it may sit in the pending-changes prompt). When the
+// handshake that started it is replaced, the next one takes it over instead of
+// preparing again; only the current owner acts on the result.
+interface Preparing {
+  promise: Promise<Lease.LendHandle | null>;
+  owner: Handshake;
+}
+
+interface Room {
+  socket: Signaling.RoomSocket;
+  // The device this room shares; a lend is only made while it is the active one.
+  recId: State.ConnId;
+  serial: string;
+  // Stops watching the shared device's session.
+  unwatch: () => void;
+  // Stops listening for the device coming back.
+  offAdopt: () => void;
+  // The code as the relay last reported it; State.shareRoom mirrors it except while away.
+  info: State.ShareRoom | null;
+  // The device went away: the room stays open for it until the timer fires.
+  away: { timer: ReturnType<typeof setTimeout> } | null;
+  hs: Handshake | null;
+  preparing: Preparing | null;
+  // Cancel since the last Allow: the relay wants an Allow again on the next resume.
+  reclaimed: boolean;
+  // A lend is attached and running.
+  attached: boolean;
+  // The relay socket is gone but the lend carries on peer to peer.
+  orphaned: boolean;
+}
+
+let room: Room | null = null;
+let starting = false;
+
+function newHandshake(peerId: string, label: string): Handshake {
+  let resolveAnswer!: (sdp: Sdp) => void;
+  let rejectAnswer!: (err: Error) => void;
+  const answer = new Promise<Sdp>((resolve, reject) => {
+    resolveAnswer = resolve;
+    rejectAnswer = reject;
+  });
+  answer.catch(() => { /* surfaced by whoever awaits it */ });
+  return { peerId, label, cancelled: false, abort: new AbortController(), offered: false, answered: false, peerGone: false, lend: null, pc: null, answer, resolveAnswer, rejectAnswer };
+}
+
+function connectionFailed(pc: RTCPeerConnection): boolean {
+  return pc.connectionState === 'failed' || pc.iceConnectionState === 'failed';
+}
+
+// `notify: false` skips the deny a joiner would get after an offer; the caller has told it already.
+function cancelHandshake(r: Room, opts: { notify: boolean } = { notify: true }): void {
+  const hs = r.hs;
+  if (!hs) return;
+  r.hs = null;
+  hs.cancelled = true;
+  if (hs.offered && opts.notify) r.socket.send({ t: 'deny', peerId: hs.peerId });
+  hs.abort.abort();
+  hs.rejectAnswer(new Error('handshake cancelled'));
+  hs.pc?.close();
+  if (hs.lend) Lease.abortLend(hs.lend);
+  State.setSharePeer(null);
+}
+
+// Ends the room on this side. The relay side is closed by the caller.
+function teardown(r: Room): void {
+  if (room !== r) return;
+  cancelHandshake(r);
+  room = null;
+  r.unwatch();
+  r.offAdopt();
+  if (r.away) clearTimeout(r.away.timer);
+  r.away = null;
+  Lease.reclaim('stop');
+  State.setShareState('idle');
+  State.setShareAway(null);
+  State.setShareRoom(null);
+  State.setShareNoPath(null);
+}
+
+function publishRoom(r: Room, info: State.ShareRoom): void {
+  r.info = info;
+  if (!r.away) State.setShareRoom(info);
+}
+
+// Watches the shared device's session. Without a lend nothing else notices the
+// device going away; a running lend reports it through onLendEnd.
+function watchDevice(r: Room, rec: State.DeviceRecord): void {
+  const onAbort = (): void => {
+    if (room === r && !r.away && State.shareState() === 'sharing') goAway(r);
+  };
+  rec.session.signal.addEventListener('abort', onAbort, { once: true });
+  r.unwatch = () => { rec.session.signal.removeEventListener('abort', onAbort); };
+}
+
+// The shared device is gone but may come back (unplug, re-enumeration): the
+// room stays open without offering anything, and sharing reads as idle. The
+// relay keeps the device marked lent so newcomers are turned away without
+// using up the code; a returning lessee's token still reaches us and is refused.
+function goAway(r: Room): void {
+  if (room !== r || r.away) return;
+  // Whoever is waiting, at any stage, is told the device is unavailable.
+  if (r.hs) r.socket.send({ t: 'busy', peerId: r.hs.peerId });
+  cancelHandshake(r, { notify: false });
+  r.socket.send({ t: 'lent', on: true });
+  r.preparing = null;
+  r.attached = false;
+  r.unwatch();
+  r.away = { timer: setTimeout(() => { expireAway(r); }, AWAY_WINDOW_MS) };
+  State.setShareAway({ serial: r.serial, until: Date.now() + AWAY_WINDOW_MS });
+  State.setShareState('idle');
+  State.setShareRoom(null);
+  State.setShareNoPath(null);
+  State.pushNotice('info', `Sharing paused: ${r.serial} disconnected`);
+}
+
+function expireAway(r: Room): void {
+  if (room !== r || !r.away) return;
+  State.pushNotice('info', `Sharing stopped: ${r.serial} did not come back`);
+  closeRoom(r);
+}
+
+// The same device is back and active: the room serves the new record.
+function resumeAway(r: Room, rec: State.DeviceRecord): void {
+  if (room !== r || !r.away || rec.remote || rec.session.info.serial !== r.serial || !rec.session.alive) return;
+  if (State.activeRecord()?.id !== rec.id) return;
+  clearTimeout(r.away.timer);
+  r.away = null;
+  r.recId = rec.id;
+  watchDevice(r, rec);
+  State.setShareAway(null);
+  State.setShareRoom(r.info);
+  State.setShareState('sharing');
+  r.socket.send({ t: 'lent', on: false });
+  State.pushNotice('info', `Sharing resumed for ${r.serial}`);
+}
+
+// Prepares the lend first (its pending-changes prompt can take as long as the
+// owner likes), only then offers, so the joiner never waits on a prompt inside
+// its handshake window.
+async function lendTo(r: Room, hs: Handshake, sendAllow: boolean): Promise<void> {
+  if (State.activeRecord()?.id !== r.recId) {
+    r.socket.send({ t: 'deny', peerId: hs.peerId });
+    if (r.hs === hs) { r.hs = null; State.setSharePeer(null); }
+    return;
+  }
+  State.setSharePeer({ peerId: hs.peerId, label: hs.label, stage: 'connecting' });
+  // Aborted when this attempt fails, so a half-built peer connection is closed.
+  const setup = new AbortController();
+  // Set while waiting for the channel to open; a failure then may be a network problem.
+  let opening = false;
+  let preparing = r.preparing;
+  try {
+    if (preparing) {
+      preparing.owner = hs;
+    } else {
+      const prep: Preparing = { promise: Promise.resolve(null), owner: hs };
+      prep.promise = Lease.prepareLend({
+        peerLabel: hs.label,
+        onEnd: (reason) => { onLendEnd(r, reason); },
+        isWanted: () => room === r && !prep.owner.cancelled,
+      });
+      preparing = prep;
+      r.preparing = prep;
+    }
+    const lend = await preparing.promise;
+    // A newer handshake took the prepare over and acts on its result.
+    if (preparing.owner !== hs) return;
+    if (r.preparing === preparing) r.preparing = null;
+    if (!lend) {
+      // The joiner learns now instead of timing out.
+      if (!hs.cancelled) r.socket.send({ t: 'deny', peerId: hs.peerId });
+      if (r.hs === hs) { r.hs = null; State.setSharePeer(null); }
+      return;
+    }
+    hs.lend = lend;
+    Lease.relabel(lend, hs.label);
+    if (hs.cancelled) { Lease.abortLend(lend); return; }
+    // Before the offer: the relay must turn newcomers away from here on. Every
+    // way the lend can end reports back through onLendEnd.
+    r.socket.send({ t: 'lent', on: true });
+    if (sendAllow) {
+      r.socket.send({ t: 'allow', peerId: hs.peerId });
+      r.reclaimed = false;
+    }
+
+    const host = await withTimeout(Manual.createOffer(setup.signal), HANDSHAKE_TIMEOUT_MS, 'the offer', hs.abort.signal);
+    hs.pc = host.pc;
+    if (hs.cancelled) { host.pc.close(); Lease.abortLend(lend); return; }
+    r.socket.send({ t: 'sdp', sdp: JSON.parse(host.offer) as Sdp, peerId: hs.peerId });
+    hs.offered = true;
+
+    const answer = await withTimeout(hs.answer, HANDSHAKE_TIMEOUT_MS, 'the answer', hs.abort.signal);
+    await Manual.acceptAnswer(host, JSON.stringify(answer));
+    opening = true;
+    await withTimeout(Peer.whenOpen(host.dc), HANDSHAKE_TIMEOUT_MS, 'the data channel', hs.abort.signal);
+    opening = false;
+    if (hs.cancelled) throw new Error('handshake cancelled');
+
+    const channel = Peer.wrapDataChannel(host.pc, host.dc);
+    const attached = Lease.attachLend(channel, {
+      watchLiveness: (onLost) => Peer.watchPeerLiveness(host.pc, onLost),
+    });
+    if (!attached) throw new Error('lend dropped before attach');
+    r.attached = true;
+    if (r.hs === hs) { r.hs = null; State.setSharePeer(null); }
+  } catch (err) {
+    if (preparing && preparing.owner !== hs) return;
+    if (preparing && r.preparing === preparing) r.preparing = null;
+    if (!hs.cancelled) Log.error('remote', 'lend handshake failed', err);
+    if (opening && !hs.cancelled && !hs.peerGone && hs.pc !== null && connectionFailed(hs.pc)) State.setShareNoPath(hs.label);
+    setup.abort();
+    hs.abort.abort();
+    if (hs.lend) Lease.abortLend(hs.lend);
+    hs.pc?.close();
+    if (r.hs === hs) { r.hs = null; State.setSharePeer(null); }
+  }
+}
+
+function onLendEnd(r: Room, reason: Lease.LendEnd): void {
+  r.attached = false;
+  if (room === r) {
+    // The device itself is gone: the room waits for it to return, still marked lent.
+    if (reason === 'device-gone') goAway(r);
+    else r.socket.send({ t: 'lent', on: false });
+  } else if (room === null) {
+    // The room is gone (torn down or orphaned): nothing is left to share.
+    State.setShareState('idle');
+  }
+}
+
+function onPeer(r: Room, msg: Extract<ServerMessage, { t: 'peer' }>): void {
+  if (r.away) {
+    r.socket.send({ t: 'busy', peerId: msg.peerId });
+    return;
+  }
+  // Only the returning lessee may replace a running lend; anyone else hears no now.
+  if (State.shareState() === 'lent' && r.attached && msg.via !== 'resume') {
+    r.socket.send({ t: 'deny', peerId: msg.peerId });
+    return;
+  }
+  cancelHandshake(r);
+  State.setShareNoPath(null);
+  // A returning joiner whose old channel the owner has not noticed dying yet.
+  if (r.attached) Lease.reclaim('peer-lost');
+  const hs = newHandshake(msg.peerId, msg.label);
+  r.hs = hs;
+  // The relay decides; the owner's own rules can only make it stricter.
+  const needsAllow = msg.needsAllow || msg.via === 'code' || (msg.via === 'resume' && r.reclaimed);
+  if (needsAllow) State.setSharePeer({ peerId: hs.peerId, label: hs.label, stage: 'pending' });
+  else void lendTo(r, hs, false);
+}
+
+function onMessage(r: Room, msg: ServerMessage): void {
+  if (room !== r) return;
+  switch (msg.t) {
+    case 'peer':
+      onPeer(r, msg);
+      return;
+    case 'sdp':
+      if (r.hs && r.hs.peerId === msg.peerId && msg.sdp.type === 'answer') {
+        r.hs.answered = true;
+        r.hs.resolveAnswer(msg.sdp);
+      }
+      return;
+    case 'peer-gone':
+      // Once lent, the peer connection's own liveness decides; the joiner leaves the relay on purpose.
+      // After the answer the channel's own timeout decides.
+      if (r.hs?.peerId === msg.peerId) {
+        if (!r.hs.answered) {
+          cancelHandshake(r);
+        } else if (msg.reason === 'no-path') {
+          // The joiner gave up on the connection itself.
+          State.setShareNoPath(r.hs.label);
+          cancelHandshake(r);
+        } else {
+          r.hs.peerGone = true;
+        }
+      }
+      return;
+    case 'rotated':
+      publishRoom(r, { code: msg.code, scanKey: msg.scanKey, status: 'live' });
+      return;
+    case 'code': {
+      // A late report about a code that has since been replaced.
+      if (r.info && r.info.code === msg.code) publishRoom(r, { ...r.info, status: msg.state });
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+/** Opens a room and starts offering the device. False when the relay is off or sharing is already under way. */
+export async function startSharing(): Promise<boolean> {
+  const base = Relay.remoteRelayBase();
+  const rec = State.activeRecord();
+  if (!base || starting || State.shareState() !== 'idle' || !rec || rec.remote) return false;
+  // Sharing another device gives up waiting for the one that went away.
+  if (room?.away) closeRoom(room);
+  if (room) return false;
+  WakeLock.ensureWakeLock();
+  starting = true;
+  State.setShareEnd(null);
+  State.setShareNoPath(null);
+  try {
+    const created = await Relay.createRoom(base);
+    let opened: Signaling.RoomSocket | null = null;
+    const ready = new Promise<void>((resolve, reject) => {
+      const r: Room = {
+        socket: Signaling.openRoomSocket(
+          Relay.hostSocketUrl(base, created.roomId),
+          { t: 'host', token: created.hostToken },
+          {
+            onMessage: (msg) => {
+              if (msg.t !== 'ready') { onMessage(r, msg); return; }
+              room = r;
+              // The device died between creating the room and its announcement.
+              if (rec.session.signal.aborted) { closeRoom(r); resolve(); return; }
+              watchDevice(r, rec);
+              r.offAdopt = State.onDeviceReady((added) => { resumeAway(r, added); });
+              publishRoom(r, { code: msg.code, scanKey: msg.scanKey, status: 'live' });
+              State.setShareState('sharing');
+              resolve();
+            },
+            onClose: () => {
+              if (room !== r) { reject(new Error('the relay closed the connection')); return; }
+              State.setShareEnd('relay-lost');
+              if (r.attached) {
+                // The tunnel is peer to peer: the lend runs on, the room is gone.
+                cancelHandshake(r);
+                room = null;
+                r.unwatch();
+                r.offAdopt();
+                r.orphaned = true;
+                State.setShareRoom(null);
+              } else {
+                teardown(r);
+              }
+            },
+          },
+        ),
+        recId: rec.id,
+        serial: rec.session.info.serial,
+        unwatch: () => {},
+        offAdopt: () => {},
+        info: null,
+        away: null,
+        hs: null,
+        preparing: null,
+        reclaimed: false,
+        attached: false,
+        orphaned: false,
+      };
+      opened = r.socket;
+    });
+    try {
+      await withTimeout(ready, READY_TIMEOUT_MS, 'the relay');
+    } catch (err) {
+      (opened as Signaling.RoomSocket | null)?.close();
+      throw err;
+    }
+    return true;
+  } finally {
+    starting = false;
+  }
+}
+
+/** Replaces the room's code (the old one stops working). The new one arrives through State.shareRoom. */
+export function rotateCode(): void {
+  room?.socket.send({ t: 'rotate' });
+}
+
+/** Lets the pending joiner in. */
+export function allow(): void {
+  const hs = room?.hs;
+  const peer = State.sharePeer();
+  if (!room || !hs || peer?.stage !== 'pending' || peer.peerId !== hs.peerId) return;
+  void lendTo(room, hs, true);
+}
+
+/** Refuses the pending joiner; the relay rotates the code. */
+export function deny(): void {
+  const hs = room?.hs;
+  const peer = State.sharePeer();
+  if (!room || !hs || peer?.stage !== 'pending' || peer.peerId !== hs.peerId) return;
+  room.socket.send({ t: 'deny', peerId: hs.peerId });
+  cancelHandshake(room);
+}
+
+function closeRoom(r: Room): void {
+  if (room !== r) return;
+  r.socket.send({ t: 'close' });
+  r.socket.close();
+  teardown(r);
+}
+
+/** Ends sharing: the room closes and any lend is taken back. */
+export function stopSharing(): void {
+  if (room) closeRoom(room);
+  // The relay is gone but the lend runs on peer to peer.
+  else Lease.reclaim('stop');
+}
+
+/** Takes the device back from the joiner; the room stays and the joiner needs an Allow to return. */
+export function cancelLend(): void {
+  const wasLent = State.shareState() === 'lent';
+  if (room) cancelHandshake(room);
+  Lease.reclaim('cancel');
+  if (wasLent && room) {
+    room.reclaimed = true;
+    room.socket.send({ t: 'reclaim' });
+  }
+}

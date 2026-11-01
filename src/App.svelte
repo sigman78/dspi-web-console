@@ -5,8 +5,10 @@
   import PresetBoundaryModal from '@/components/noveau/presets/PresetBoundaryModal.svelte';
   import Toaster from '@/components/chrome/Toaster.svelte';
   import ConfirmHost from '@/components/chrome/ConfirmHost.svelte';
-  import { app, settings, initialBoot } from '@/state';
-  import { heroOverride } from '@/devOptions';
+  import LentView from '@/components/remote/LentView.svelte';
+  import RemoteDevPanel from '@/components/remote/RemoteDevPanel.svelte';
+  import { app, settings, initialBoot, activeLease } from '@/state';
+  import { heroOverride, remoteManualSignaling } from '@/devOptions';
 
   // Visual-test override: ?hero forces the connecting hero to render even
   // when a (real or mock) device would otherwise be connected. Read once at
@@ -14,7 +16,10 @@
   // still hides the hero unless ?hero is also present.
   const hero = heroOverride();
 
+  const remoteDev = remoteManualSignaling();
+
   const appState = $derived(app.current);
+  const lease = $derived(activeLease());
 
   // On page load, a returning user's device (settings.lastSerial set) auto-
   // connects and loads its snapshot. Hold a quiet splash over that window rather
@@ -38,6 +43,10 @@
         <EqSpectrum />
         <div class="boot-status">CONNECTING…</div>
       </div>
+    {:else if !hero && appState.kind === 'ready' && lease}
+      <div class="hero-wrap">
+        <LentView {lease} serial={appState.session.info.serial} hardware={appState.session.hardware.name} />
+      </div>
     {:else if !hero && appState.kind === 'ready'}
       {#key appState.session}
         <NoveauShell session={appState.session} />
@@ -48,6 +57,7 @@
       </div>
     {/if}
   </main>
+  {#if remoteDev}<RemoteDevPanel />{/if}
   <Toaster />
 </div>
 

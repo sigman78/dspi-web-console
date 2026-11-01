@@ -75,12 +75,18 @@ export type SessionErrorKind = null | 'unsupported-firmware' | 'device-in-use';
 
 export type ConnId = number;
 
+export interface RemoteInfo {
+  peerLabel: string;
+}
+
 // Ready sessions only. `loops` is the running-loop stop handle: non-null iff
 // this record's poll/notify/probe loops are running. Mutated by runtime
 // activation code (deviceService), never by the reducer.
 export interface DeviceRecord {
   readonly id: ConnId;
   readonly session: ReadySession;
+  // Set when the device lives on another console and is driven over a tunnel.
+  readonly remote?: RemoteInfo;
   loops: (() => void) | null;
 }
 
@@ -102,7 +108,7 @@ export type AppEvent =
   // `activate: false` marks a background adoption: it registers dormant
   // unless nothing else is active (the app never ends up with a registry and
   // no active session).
-  | { t: 'synced'; id: ConnId; session: ReadySession; activate?: false }
+  | { t: 'synced'; id: ConnId; session: ReadySession; activate?: false; remote?: RemoteInfo }
   | { t: 'failed'; id: ConnId; message: string; errorKind?: SessionErrorKind }
   | { t: 'activated'; id: ConnId }
   | { t: 'removed'; id: ConnId };
@@ -132,7 +138,7 @@ export function dispatch(event: AppEvent): void {
       _attempt = { kind: 'connecting', id: event.id };
       break;
     case 'synced':
-      _sessions.set(event.id, { id: event.id, session: event.session, loops: null });
+      _sessions.set(event.id, { id: event.id, session: event.session, remote: event.remote, loops: null });
       if (event.activate !== false || _activeId === null) _activeId = event.id;
       if (_attempt.kind !== 'idle' && _attempt.id === event.id) _attempt = { kind: 'idle' };
       break;

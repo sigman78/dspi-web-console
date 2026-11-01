@@ -225,6 +225,19 @@ describe('connectRequested — picker-first duplicate-serial guard', () => {
     expect(State.sessionRecords().size).toBe(0);
   });
 
+  it('does not open the picker while the active device is shared', async () => {
+    await Boot.bootMock('rp2350', { serial: 'AAA' });
+    const shared = State.activeRecord()!;
+    State.setShareState('sharing');
+    const requestDevice = vi.spyOn(fakeUsb, 'requestDevice');
+
+    await Boot.connectRequested();
+
+    expect(requestDevice).not.toHaveBeenCalled();
+    expect(State.activeRecord()?.id).toBe(shared.id);
+    State.resetRemoteState();
+  });
+
   it('does nothing while an adoption attempt is already in flight', async () => {
     State.dispatch({ t: 'requested', id: State.mintConnId() });
     const requestDevice = vi.spyOn(fakeUsb, 'requestDevice');

@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeEach } from 'vitest';
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import type { DspDevice } from '@/device/DspDevice';
 import DeviceSwitcher from './DeviceSwitcher.svelte';
@@ -156,5 +156,70 @@ describe('DeviceSwitcher — row cap', () => {
     render(DeviceSwitcher);
     expect(screen.getByRole('button', { name: /^CCC/ })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('button', { name: /^BBB/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('DeviceSwitcher — remote control', () => {
+  const shareButton = (): HTMLElement | null => screen.queryByRole('button', { name: 'Share this device' });
+  const joinButton = (): HTMLElement | null => screen.queryByRole('button', { name: 'Connect to a remote device' });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    State.resetRemoteState();
+  });
+
+  test('offers neither Share nor Connect when the build has no relay', () => {
+    vi.stubEnv('VITE_REMOTE_RELAY', '');
+    synced('AAA');
+    render(DeviceSwitcher);
+    expect(shareButton()).toBeNull();
+    expect(joinButton()).toBeNull();
+  });
+
+  test('offers Share on the active local device and Connect beside the add button', () => {
+    vi.stubEnv('VITE_REMOTE_RELAY', '/room');
+    synced('AAA');
+    render(DeviceSwitcher);
+    expect(shareButton()).not.toBeNull();
+    expect(joinButton()).not.toBeNull();
+  });
+
+  test('a remote device is marked and cannot be shared onward', () => {
+    vi.stubEnv('VITE_REMOTE_RELAY', '/room');
+    const id = State.mintConnId();
+    const device = { info: { serial: 'RRR' }, hardware: { name: 'RP2350' } } as unknown as DspDevice;
+    State.dispatch({ t: 'synced', id, session: State.makeReadySession(device), remote: { peerLabel: 'Host console' } });
+    render(DeviceSwitcher);
+    expect(screen.getByRole('button', { name: /^RRR/ })).toHaveTextContent('(remote)');
+    expect(shareButton()).toBeNull();
+  });
+
+  test('a ?join= link opens the join popover with its code and clears the address bar', () => {
+    vi.stubEnv('VITE_REMOTE_RELAY', '/room');
+    history.replaceState(null, '', '/?join=ABCD3F&k=KEY&mock');
+    State.setPendingJoin({ code: 'ABCD3F', scanKey: 'KEY' });
+    synced('AAA');
+    render(DeviceSwitcher);
+
+    expect(screen.getByRole('dialog', { name: 'Connect to a remote device' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Code character 1')).toHaveValue('A');
+    expect(State.pendingJoin()).toBeNull();
+    expect(location.search).toBe('?mock');
+  });
+});
+
+describe('DeviceSwitcher — add device while shared', () => {
+  test('is disabled and leaves the active record alone', async () => {
+    const id = synced('AAA');
+    State.setShareState('sharing');
+    render(DeviceSwitcher);
+
+    const add = screen.getByRole('button', { name: 'Add device' });
+    expect(add).toBeDisabled();
+    await fireEvent.click(add);
+
+    expect(connectRequested).not.toHaveBeenCalled();
+    expect(State.activeRecord()?.id).toBe(id);
+    State.resetRemoteState();
   });
 });

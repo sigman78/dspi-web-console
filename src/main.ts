@@ -7,6 +7,7 @@ import * as State from './state';
 import { bootMockFleet, bootReal, registerNavigatorReconnect, hasPendingWork } from './runtime';
 import { Log, isMobileDevice } from './utils';
 import { activeMockProfiles } from './mockProfiles';
+import * as JoinRelay from '@/runtime/remote/joinRelay';
 import { applyLanding } from '@/components/noveau/landing';
 
 const target = document.getElementById('app')!;
@@ -22,6 +23,8 @@ if (isMobileDevice()) {
   State.restoreSettings();
   applyLanding();
   State.startSettingsPersistence();
+  State.setPendingJoin(JoinRelay.pendingJoinFromUrl(location.search));
+  JoinRelay.rejoinOnBoot();
 
   // See src/devOptions.ts for the full ?mock/?hero/?log convention.
   const mockProfiles = activeMockProfiles();
