@@ -5,7 +5,6 @@
   // prop -- it renders once, under whichever slot's card holds the live
   // CS_TYPE_IR binding (see ControlSurfacesPanel).
   import { untrack } from 'svelte';
-  import CsStatusMark from './CsStatusMark.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { pushNotice } from '@/state';
   import { applyCsIrCommand, clearCsIrCommand, csIrLearnArm, csIrLearnCancel } from '@/runtime';
@@ -140,7 +139,7 @@
 
   // Row lifecycle: NOT LEARNED -> LEARNED (code captured, awaiting APPLY) ->
   // ACTIVE/INACTIVE (applied; device truth from irActiveMask).
-  function pill(sub: number, d: IrDraft | null): { text: string; cls: string; tip?: string } {
+  function status(sub: number, d: IrDraft | null): { text: string; cls: string; tip?: string } {
     if (!cs.irCommands[sub]) {
       return d && d.protocol !== Domain.CsIrProto.None
         ? { text: 'LEARNED', cls: 'new', tip: 'Learned — APPLY to store it' }
@@ -148,6 +147,11 @@
     }
     if (cs.status && (cs.status.irActiveMask & (1 << sub))) return { text: 'ACTIVE', cls: 'ok', tip: 'Active on the device' };
     return { text: 'INACTIVE', cls: 'idle', tip: inactiveHint(sub) };
+  }
+
+  // Accessible-name suffix for the rows that look different from a plain one.
+  function irFlag(st: { cls: string; tip?: string }): string {
+    return st.cls === 'idle' || st.cls === 'new' ? `, ${st.tip}` : '';
   }
 
   function inactiveHint(sub: number): string {
@@ -218,7 +222,7 @@
     untrack(() => {   // consume the result; draft writes must not re-trigger
       if (learn.state === Domain.CS_IR_LEARN_DONE) {
         editDraft(sub, (d) => { d.protocol = learn.protocol; d.code = learn.code; });
-        armedSub = null;   // the pill flips to LEARNED; APPLY is the next step
+        armedSub = null;   // the row flips to LEARNED; APPLY is the next step
       } else if (learn.state === Domain.CS_IR_LEARN_TIMEOUT) {
         pushNotice('warn', 'IR learn: no remote button was detected — try again.');
         stopLearn();
@@ -229,7 +233,7 @@
 
 {#snippet editor(sub: number, d: IrDraft)}
           {@const actions = actionOptions(d.noun)}
-          {#if pill(sub, d).cls === 'idle'}
+          {#if status(sub, d).cls === 'idle'}
             <div class="hint err">{inactiveHint(sub)}</div>
           {/if}
 
@@ -316,19 +320,20 @@
       {#if irDetailTarget}
         {@const isOpen = openSub === sub}
         {@const learned = d != null && d.protocol !== Domain.CsIrProto.None}
-        {@const p = pill(sub, d)}
+        {@const st = status(sub, d)}
         <div class="irrow compact" class:openrow={isOpen}>
           <div class="sumrow">
-            <CsStatusMark pill={p} />
-            <button type="button" class="cs-sumbtn" aria-expanded={isOpen} aria-label={`IR command ${sub + 1}`}
+            <button type="button" class="cs-sumbtn" aria-expanded={isOpen} aria-label={`IR command ${sub + 1}${irFlag(st)}`}
               onclick={() => { pickedSub = isOpen ? -1 : sub; }}>
               <span class="idx">{sub + 1}</span>
-              <span class="sumtxt" class:dim={!learned}>
-                {#if learned && d}
-                  {Domain.csNounLabel(d.noun)} · {Domain.csActionLabel(d.action as Domain.CsAction, CsField.enumOf(cs.nouns, d.noun))}
-                {:else}
-                  —
-                {/if}
+              <span class="sumprim" class:draft={st.cls === 'new'} title={irFlag(st) ? st.tip : undefined}>
+                <span class="sumtxt" class:dim={!learned} class:faulty={st.cls === 'idle'}>
+                  {#if learned && d}
+                    {Domain.csNounLabel(d.noun)} · {Domain.csActionLabel(d.action as Domain.CsAction, CsField.enumOf(cs.nouns, d.noun))}
+                  {:else}
+                    —
+                  {/if}
+                </span>
               </span>
             </button>
           </div>
@@ -354,10 +359,12 @@
       <div class="irrow">
         <div class="cs-row">
           {#if d}
-            <CsStatusMark pill={pill(sub, d)} />
-            <span class="code" class:learned={d.protocol !== Domain.CsIrProto.None}>{codeText(d)}</span>
+            {@const st = status(sub, d)}
+            <span class="code" class:learned={d.protocol !== Domain.CsIrProto.None}
+              class:faulty={st.cls === 'idle'} class:draft={st.cls === 'new'}
+              title={irFlag(st) ? st.tip : undefined}>{codeText(d)}</span>
+            {#if irFlag(st)}<span class="sr-only">{st.tip}</span>{/if}
           {:else}
-            <CsStatusMark pill={pill(sub, null)} />
             <span class="code">Not learned</span>
           {/if}
           <span class="cs-spacer"></span>
@@ -472,6 +479,8 @@
     text-overflow: ellipsis;
   }
   .sumtxt.dim { color: var(--text-faint); }
+  .sumprim { display: flex; min-width: 0; }
+  .sumtxt.faulty { color: var(--warn); }
   .detached { display: flex; flex-direction: column; }
   .irrow:not(:last-child) { border-bottom: 1px solid var(--wash); }
   .code {
@@ -480,6 +489,7 @@
     color: var(--text-faint);
   }
   .code.learned { color: var(--text-dim); }
+  .code.faulty { color: var(--warn); }
   .hint.listen { color: var(--text-dim); }
   .count {
     font-family: var(--font-mono);

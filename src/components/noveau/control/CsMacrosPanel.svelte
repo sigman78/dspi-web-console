@@ -50,7 +50,7 @@
     openSlot = expanded === i ? -1 : i;
   }
 
-  // While a macro runs, the ext-status cadence (poll.ts) keeps the pill and
+  // While a macro runs, the ext-status cadence (poll.ts) keeps the status and
   // step hint tracking the sequencer; this panel holds its interest.
   $effect(() => (visible ? untrack(() => Runtime.wantCsExtPoll(s)) : undefined));
 
@@ -78,7 +78,7 @@
     return !CsMacroDraft.macrosEqual(CsMacroDraft.buildMacro(d, cs.nouns), live);
   }
 
-  function pill(i: number): { text: string; cls: string; tip?: string } {
+  function status(i: number): { text: string; cls: string; tip?: string } {
     const live = cs.macros[i];
     if (!live) return { text: 'NEW', cls: 'new', tip: 'New — not applied yet' };
     if (isRunning(i)) return { text: 'RUNNING', cls: 'run', tip: 'Running' };
@@ -188,14 +188,14 @@
 
   {#each visibleSlots as i (i)}
     {@const d = draftOf(i)}
-    {@const p = pill(i)}
+    {@const st = status(i)}
     {@const dirty = isDirty(i)}
     {@const live = cs.macros[i]}
     {@const running = isRunning(i)}
     {@const open = expanded === i}
     <CsSlotCard title={`MACRO ${i + 1}`} name={d.name}
       nameLabel={`Rename macro ${i + 1}`} removeLabel={`Remove macro ${i + 1}`}
-      pill={p} {dirty} live={live != null} {open} {detailTarget} disabled={applying}
+      status={st} {dirty} live={live != null} {open} {detailTarget} disabled={applying}
       onToggle={() => toggleSlot(i)}
       onRenameRequest={() => { renamingRaw = i; }}
       onRemove={() => remove(i)}>
@@ -221,7 +221,7 @@
           <div class="hint cs-srow">Running step {(cs.extStatus?.macroStep ?? 0) + 1} of {live.stepCount}</div>
         {/if}
       {/snippet}
-      {#if p.cls === 'warn'}
+      {#if st.cls === 'warn'}
         <div class="hint err cs-srow">{invalidHint(i)}</div>
       {/if}
 

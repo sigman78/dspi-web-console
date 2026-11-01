@@ -187,7 +187,7 @@
     return nameChanged(slot, d) || !CsDraft.bindingsEqual(buildBinding(d), live);
   }
 
-  function pill(slot: number): { text: string; cls: string; tip?: string } {
+  function status(slot: number): { text: string; cls: string; tip?: string } {
     const live = cs.bindings[slot];
     if (!live) return { text: 'NEW', cls: 'new', tip: 'New — not applied yet' };
     if (cs.status && (cs.status.activeMask & (1 << slot))) return { text: 'ACTIVE', cls: 'ok', tip: 'Active on the device' };
@@ -217,7 +217,7 @@
   }
 
   // Rejections surface via the runtime actions' warn toasts; the panel's only
-  // success feedback is the pill/staged-dot state flip.
+  // success feedback is the status/staged-dot state flip.
   async function apply(slot: number): Promise<void> {
     const live = cs.bindings[slot];
     const d = drafts.draftOf(slot) ?? (live ? draftFromLive(live) : null);
@@ -278,14 +278,14 @@
 
     {#each visibleSlots as slot (slot)}
       {@const d = draftOf(slot)}
-      {@const p = pill(slot)}
+      {@const st = status(slot)}
       {@const slotDirty = isDirty(slot) || (d.type === Domain.CsType.Ir && irDirty)}
       <CsBindingRow
         {slot}
         draft={d}
         dirty={slotDirty}
         live={cs.bindings[slot] != null}
-        pill={p}
+        status={st}
         {applying}
         {detailTarget}
         {irDetailTarget}

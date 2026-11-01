@@ -44,14 +44,14 @@ describe('ControlSurfacesPanel naming', () => {
     expect(screen.queryByRole('button', { name: 'APPLY' })).toBeNull();
   });
 
-  test('a never-applied slot shows NEW without the draft dot; an applied slot with an edit shows it', async () => {
+  test('a never-applied slot is announced as new and carries the draft dot; an applied slot is plain until edited', async () => {
     const s = await mount();
     await addNamed('Vol knob');
     expect(screen.getByText('Vol knob')).toBeTruthy();
-    expect(screen.getByRole('img', { name: 'New — not applied yet' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /new — not applied yet/i })).toBeTruthy();
     expect((screen.getByRole('button', { name: 'APPLY' }) as HTMLButtonElement).disabled).toBe(false);
     const title = () => document.querySelector('.slothead .prim')!;
-    expect(title().classList.contains('draft')).toBe(false);
+    expect(title().classList.contains('draft')).toBe(true);
 
     await clickApply();
     await waitFor(() => expect(s.controlSurfaces.bindings.some((b) => b != null)).toBe(true));

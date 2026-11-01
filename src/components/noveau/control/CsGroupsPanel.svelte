@@ -80,7 +80,7 @@
     return !groupsEqual(buildGroup(d), live);
   }
 
-  function pill(i: number): { text: string; cls: string; tip?: string } {
+  function status(i: number): { text: string; cls: string; tip?: string } {
     const live = cs.groups[i];
     if (!live) return { text: 'NEW', cls: 'new', tip: 'New — not applied yet' };
     return (cs.extStatus?.groupStatus[i] ?? 0) === 0 ? { text: 'OK', cls: 'ok', tip: 'Valid on the device' } : { text: 'INVALID', cls: 'warn', tip: 'Invalid on the device — fix and re-apply' };
@@ -174,14 +174,14 @@
 
   {#each visibleSlots as i (i)}
     {@const d = draftOf(i)}
-    {@const p = pill(i)}
+    {@const st = status(i)}
     {@const dirty = isDirty(i)}
     {@const u = usage(i)}
     {@const open = expanded === i}
     {@const n = memberCount(d.mask)}
     <CsSlotCard title={`GROUP ${i + 1}`} name={d.name}
       nameLabel={`Rename group ${i + 1}`} removeLabel={`Remove group ${i + 1}`}
-      pill={p} {dirty} live={cs.groups[i] != null} {open} {detailTarget} disabled={applying}
+      status={st} {dirty} live={cs.groups[i] != null} {open} {detailTarget} disabled={applying}
       onToggle={() => toggleSlot(i)}
       onRenameRequest={() => { renamingRaw = i; }}
       onRemove={() => remove(i)}>
@@ -195,7 +195,7 @@
       {#snippet summary()}
         <span class="meta">{Domain.csGroupKindLabel(d.kind)} · {n} member{n === 1 ? '' : 's'}</span>
       {/snippet}
-      {#if p.cls === 'warn'}
+      {#if st.cls === 'warn'}
         <div class="hint err cs-srow">{invalidHint(i)}</div>
       {/if}
 

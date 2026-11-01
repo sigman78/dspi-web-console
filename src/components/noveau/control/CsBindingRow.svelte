@@ -28,7 +28,7 @@
   import type { Draft } from '@/domain/cs/draft';
 
   const {
-    slot, draft: d, dirty, live, pill: p, applying,
+    slot, draft: d, dirty, live, status: st, applying,
     onEdit, onApply, onRevert, onRemove, onRenameRequest,
     renaming, onRenameCommit, onRenameCancel,
     open, onToggle, detailTarget = null, irDetailTarget = null,
@@ -37,7 +37,7 @@
     draft: Draft;
     dirty: boolean;
     live: boolean;
-    pill: { text: string; cls: string; tip?: string };
+    status: { text: string; cls: string; tip?: string };
     applying: boolean;
     onEdit: (fn: (d: Draft) => void) => void;
     onApply: () => void;
@@ -219,7 +219,7 @@
 
 <CsSlotCard title={Domain.csTypeLabel(d.type).toUpperCase()} name={d.name ?? cs.names[slot] ?? ''}
   nameLabel={`Rename control ${slot + 1}`} removeLabel={`Remove control ${slot + 1}`}
-  pill={p.cls === 'idle' ? { ...p, tip: inactiveHint() } : p} {dirty} {live} {open} disabled={applying}
+  status={st.cls === 'idle' ? { ...st, tip: inactiveHint() } : st} {dirty} {live} {open} disabled={applying}
   {onToggle} {onRenameRequest} {onRemove} {detailTarget}>
   {#snippet rename()}
     {#if renaming}
@@ -227,7 +227,7 @@
         onCommit={onRenameCommit} onCancel={onRenameCancel} />
     {/if}
   {/snippet}
-  {#if p.cls === 'idle'}
+  {#if st.cls === 'idle'}
     <div class="hint err cs-srow">{inactiveHint()}</div>
   {/if}
 
