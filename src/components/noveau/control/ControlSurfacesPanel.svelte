@@ -11,9 +11,10 @@
   import * as CsField from '@/domain/cs/fieldHelpers';
   import * as SlotOps from './csSlotOps';
 
-  const { detailTarget = null, irDetailTarget = null }: {
+  const { detailTarget = null, irDetailTarget = null, onIrSelected }: {
     detailTarget?: HTMLElement | null;
     irDetailTarget?: HTMLElement | null;
+    onIrSelected?: (selected: boolean) => void;   // the open slot is the live IR receiver
   } = $props();
 
   const s = getSession();
@@ -39,6 +40,9 @@
   const expanded = $derived(
     openSlot === -1 ? null : (openSlot != null && visibleSlots.includes(openSlot) ? openSlot : (visibleSlots[0] ?? null)),
   );
+  $effect(() => {
+    onIrSelected?.(caps != null && expanded != null && cs.bindings[expanded]?.type === Domain.CsType.Ir);
+  });
   function toggleSlot(slot: number): void {
     openSlot = expanded === slot ? -1 : slot;
   }

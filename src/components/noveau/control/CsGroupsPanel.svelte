@@ -256,6 +256,8 @@
     font-family: var(--font-mono);
     font-size: 9px;
     color: var(--text-faint);
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   .cs-row :global(.prow) { border-top: none; height: auto; }
 </style>

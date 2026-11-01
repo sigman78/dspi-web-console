@@ -87,8 +87,10 @@
   // Detached mode: the one expanded command. null = no pick yet (default
   // below), -1 = user collapsed all.
   let pickedSub = $state<number | null>(null);
+  // An armed row stays open so its countdown and CANCEL stay reachable.
   const openSub = $derived(
-    pickedSub === -1 ? null
+    armedSub != null ? armedSub
+    : pickedSub === -1 ? null
       : pickedSub != null ? pickedSub
         : (listedSubs.find((i) => (draftOf(i)?.protocol ?? Domain.CsIrProto.None) !== Domain.CsIrProto.None) ?? listedSubs[0] ?? null),
   );
@@ -232,7 +234,7 @@
           {/if}
 
           <div class="cs-row">
-            <span class="microlbl">CONTROLS</span>
+            <span class="microlbl edlbl">CONTROLS</span>
             <select class="sel" value={String(d.noun)} aria-label="Controlled function" disabled={applyingSub != null}
               onchange={(e) => {
                 const n = Number((e.currentTarget as HTMLSelectElement).value);
@@ -247,8 +249,11 @@
                 <option value={String(n)}>{Domain.csNounLabel(n)}</option>
               {/each}
             </select>
-            {#if actions.length > 1}
-              <span class="microlbl">ACTION</span>
+          </div>
+
+          {#if actions.length > 1}
+            <div class="cs-row">
+              <span class="microlbl edlbl">ACTION</span>
               <select class="sel" value={String(d.action)} aria-label="Action" disabled={applyingSub != null}
                 onchange={(e) => {
                   const a = Number((e.currentTarget as HTMLSelectElement).value);
@@ -258,8 +263,8 @@
                   <option value={String(a)}>{Domain.csActionLabel(a, CsField.enumOf(cs.nouns, d.noun))}</option>
                 {/each}
               </select>
-            {/if}
-          </div>
+            </div>
+          {/if}
 
           {#if CsField.showTargetOf(cs.nouns, d.noun)}
             <div class="cs-row">
@@ -298,6 +303,8 @@
           <div class="cs-row">
             <button type="button" class="chip accent" onclick={() => apply(sub)}
               disabled={applyingSub != null || !canApply(sub)}>APPLY</button>
+            <button type="button" class="chip hi" onclick={() => drafts.revert(sub)}
+              disabled={applyingSub != null || !cs.irCommands[sub] || !isDirty(sub)}>REVERT</button>
           </div>
 {/snippet}
 
@@ -317,29 +324,28 @@
               onclick={() => { pickedSub = isOpen ? -1 : sub; }}>
               <span class="idx">{sub + 1}</span>
               <span class="sumtxt" class:dim={!learned}>
-                {#if listening}
-                  Press a button on the remote… <span class="count">{Math.max(0, learnRemaining)}s</span>
-                {:else if learned && d}
+                {#if learned && d}
                   {Domain.csNounLabel(d.noun)} · {Domain.csActionLabel(d.action as Domain.CsAction, CsField.enumOf(cs.nouns, d.noun))}
                 {:else}
                   —
                 {/if}
               </span>
             </button>
-            {#if listening}
-              <button type="button" class="chip hi" onclick={cancelLearn}>CANCEL</button>
-            {:else}
-              <button type="button" class="chip"
-                disabled={applyingSub != null || (armedSub != null && armedSub !== sub)}
-                onclick={() => learn(sub)}>{learned ? 'RE-LEARN' : 'LEARN'}</button>
-            {/if}
           </div>
           {#if isOpen && d}
             <div class="cs-row">
-              <span class="code" class:learned>{codeText(d)}</span>
-              <span class="cs-spacer"></span>
-              <button type="button" class="chip hi" disabled={applyingSub != null || listening}
-                onclick={() => clear(sub)}>CLEAR</button>
+              {#if listening}
+                <span class="hint listen">Press a button on the remote… <span class="count">{Math.max(0, learnRemaining)}s</span></span>
+                <span class="cs-spacer"></span>
+                <button type="button" class="chip hi" onclick={cancelLearn}>CANCEL</button>
+              {:else}
+                <span class="code" class:learned>{codeText(d)}</span>
+                <span class="cs-spacer"></span>
+                <button type="button" class="chip" disabled={applyingSub != null || armedSub != null}
+                  onclick={() => learn(sub)}>{learned ? 'RE-LEARN' : 'LEARN'}</button>
+                <button type="button" class="chip hi" disabled={applyingSub != null}
+                  onclick={() => clear(sub)}>CLEAR</button>
+              {/if}
             </div>
             {@render editor(sub, d)}
           {/if}
@@ -381,7 +387,12 @@
     <div class="cs-addrow learnrow">
       <button type="button" class="chip"
         disabled={freeSub == null || armedSub != null || applyingSub != null}
-        onclick={() => { if (freeSub != null) void learn(freeSub); }}>LEARN</button>
+        onclick={() => { if (freeSub != null) void learn(freeSub); }}>+ LEARN</button>
+      {#if freeSub == null}
+        <span class="hint">All {maxSubs} command slots are in use.</span>
+      {:else if listedSubs.length > 0}
+        <span class="hint">{listedSubs.length} of {maxSubs} used</span>
+      {/if}
     </div>
   </div>
 {/snippet}
@@ -446,6 +457,7 @@
   .irrow.compact:not(.openrow):hover { background: var(--wash-faint); }
   .detached .irbody { padding: 0; gap: 0; }
   .detached .irbody > .hint { padding: 8px 14px 0; }
+  .edlbl { min-width: 64px; }
   .learnrow { padding: 6px 0 0; }
   .detached .learnrow { padding: 8px 14px 10px; }
   .sumrow { display: flex; align-items: center; gap: 8px; height: var(--h-row); }

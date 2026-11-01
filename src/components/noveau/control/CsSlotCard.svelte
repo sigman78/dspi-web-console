@@ -1,7 +1,7 @@
 <script lang="ts">
   // Collapsible slot card shared by the CS binding/group/macro editors: status
-  // mark + chevron (inline mode only) + title + name text (pencil when open
-  // requests a rename) + actions + ✕.
+  // mark + chevron (inline mode only) + name (or title when unnamed) + title
+  // tag (pencil when open requests a rename) + actions + ✕.
   // Body renders only while open; the parent owns open/expanded state.
   import type { Snippet } from 'svelte';
   import { portal } from '@/components/chrome/portal';
@@ -36,9 +36,11 @@
     <CsStatusMark {pill} />
     <button type="button" class="hdrbtn" aria-expanded={open} onclick={onToggle}>
       {#if !detailTarget}<span class="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>{/if}
-      <span class="cs-stitle" class:draft={dirty && live}
-        title={dirty && live ? 'Unapplied changes — APPLY to preview them live' : undefined}>{title}</span>
-      <span class="nametext" class:faint={!name}>{name || 'Unnamed'}</span>
+      <span class="prim" class:draft={dirty && live}
+        title={dirty && live ? 'Unapplied changes — APPLY to preview them live' : undefined}>
+        <span class="primtxt" class:titled={!name}>{name || title}</span>
+      </span>
+      {#if name}<span class="tag">{title}</span>{/if}
       {#if !open && summary}{@render summary()}{/if}
     </button>
     {#if open}
@@ -97,18 +99,27 @@
     text-align: left;
     min-width: 0;
   }
-  .hdrbtn:hover .cs-stitle { color: var(--text); }
   .chev { font-size: 9px; color: var(--text-faint); width: 8px; }
   .slot.open .chev { color: var(--accent); }
-  .slot.open .cs-stitle { color: var(--text); }
-  .nametext {
-    font-family: var(--font-mono);
-    font-size: 10px;
+  /* The wrapper carries the draft dot, so the ellipsis clip sits on the inner text. */
+  .prim { display: flex; min-width: 0; max-width: 200px; }
+  .primtxt {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
     color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 160px;
   }
-  .nametext.faint { color: var(--text-faint); }
+  .primtxt.titled { text-transform: uppercase; letter-spacing: 0.3px; }
+  .tag {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    white-space: nowrap;
+    flex: none;
+  }
+  .slot.open .tag { color: var(--text-dim); }
 </style>
