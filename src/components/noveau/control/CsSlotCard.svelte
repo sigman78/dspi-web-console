@@ -1,18 +1,20 @@
 <script lang="ts">
-  // Collapsible slot card shared by the CS binding/group/macro editors: chevron
-  // + title + name text (pencil when open requests a rename) + status pill + ✕.
+  // Collapsible slot card shared by the CS binding/group/macro editors:
+  // chevron (inline mode only) + name (or title when unnamed) + title tag
+  // (pencil when open requests a rename) + actions + ✕. The name is red
+  // when inactive/invalid and carries the draft dot when unapplied.
   // Body renders only while open; the parent owns open/expanded state.
   import type { Snippet } from 'svelte';
   import { portal } from '@/components/chrome/portal';
   const {
-    title, name, nameLabel, removeLabel, pill, dirty, live, open, disabled,
+    title, name, nameLabel, removeLabel, status, dirty, live, open, disabled,
     onToggle, onRenameRequest, onRemove, summary, rename, note, actions, children, detailTarget = null,
   }: {
     title: string;
     name: string;
     nameLabel: string;
     removeLabel: string;
-    pill: { text: string; cls: string };
+    status: { text: string; cls: string; tip?: string };   // only idle/warn/new look different from a plain row
     dirty: boolean;
     live: boolean;       // applied on the device; the dirty dot only marks edits to live slots
     open: boolean;
@@ -27,21 +29,31 @@
     children: Snippet;
     detailTarget?: HTMLElement | null; // split layout: the open body renders here instead of inline
   } = $props();
+
+  const faulty = $derived(status.cls === 'idle' || status.cls === 'warn');
+  const fresh = $derived(status.cls === 'new');
+  const edited = $derived(dirty && live);
+  const hint = $derived(status.tip ?? '');
+  const primTitle = $derived(
+    [edited ? 'Unapplied changes — APPLY to preview them live' : '', faulty || fresh ? hint : '']
+      .filter(Boolean).join(' — ') || undefined,
+  );
 </script>
 
 <div class="slot" class:open>
   <div class="slothead">
-    <button type="button" class="hdrbtn" aria-expanded={open} onclick={onToggle}>
-      <span class="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
-      <span class="cs-stitle" class:draft={dirty && live}
-        title={dirty && live ? 'Unapplied changes — APPLY to preview them live' : undefined}>{title}</span>
-      <span class="nametext" class:faint={!name}>{name || 'Unnamed'}</span>
+    <button type="button" class="hdrbtn" aria-expanded={open} title={primTitle} onclick={onToggle}>
+      {#if !detailTarget}<span class="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>{/if}
+      <span class="prim" class:draft={edited || fresh}>
+        <span class="primtxt" class:titled={!name} class:faulty>{name || title}</span>
+      </span>
+      {#if name}<span class="tag">{title}</span>{/if}
+      {#if faulty || fresh}<span class="sr-only">{hint}</span>{/if}
       {#if !open && summary}{@render summary()}{/if}
     </button>
     {#if open}
       <button type="button" class="x-btn" aria-label={nameLabel} {disabled} onclick={onRenameRequest}>✎</button>
     {/if}
-    <span class="cs-pill {pill.cls}">{pill.text}</span>
     <span class="cs-spacer"></span>
     {#if actions}{@render actions()}{/if}
     <button type="button" class="x-btn" aria-label={removeLabel} {disabled} onclick={onRemove}>✕</button>
@@ -76,10 +88,10 @@
     font-family: var(--font-mono);
   }
   /* Collapsed: the button's overlay makes the whole padded row the toggle
-     target; siblings (pill, actions, ✕) stack above it. */
+     target; siblings (actions, ✕) stack above it. */
   .slot:not(.open) .slothead { position: relative; }
   .slot:not(.open) .hdrbtn::after { content: ''; position: absolute; inset: 0; }
-  .slot:not(.open) .slothead > :global(:not(.hdrbtn)) { position: relative; }
+  .slot:not(.open) .slothead > :global(:not(.hdrbtn)) { position: relative; z-index: 1; }
   .slot:not(.open):hover { background: var(--wash-faint); }
   .slot.open .slothead { margin-bottom: 4px; }
   .hdrbtn {
@@ -95,18 +107,28 @@
     text-align: left;
     min-width: 0;
   }
-  .hdrbtn:hover .cs-stitle { color: var(--text); }
   .chev { font-size: 9px; color: var(--text-faint); width: 8px; }
   .slot.open .chev { color: var(--accent); }
-  .slot.open .cs-stitle { color: var(--text); }
-  .nametext {
-    font-family: var(--font-mono);
-    font-size: 10px;
+  /* The wrapper carries the draft dot, so the ellipsis clip sits on the inner text. */
+  .prim { display: flex; min-width: 0; max-width: 200px; }
+  .primtxt {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
     color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 160px;
   }
-  .nametext.faint { color: var(--text-faint); }
+  .primtxt.faulty { color: var(--err); }
+  .primtxt.titled { text-transform: uppercase; letter-spacing: 0.3px; }
+  .tag {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    white-space: nowrap;
+    flex: none;
+  }
+  .slot.open .tag { color: var(--text-dim); }
 </style>

@@ -86,8 +86,10 @@
   // Detached mode: the one expanded command. null = no pick yet (default
   // below), -1 = user collapsed all.
   let pickedSub = $state<number | null>(null);
+  // An armed row stays open so its countdown and CANCEL stay reachable.
   const openSub = $derived(
-    pickedSub === -1 ? null
+    armedSub != null ? armedSub
+    : pickedSub === -1 ? null
       : pickedSub != null ? pickedSub
         : (listedSubs.find((i) => (draftOf(i)?.protocol ?? Domain.CsIrProto.None) !== Domain.CsIrProto.None) ?? listedSubs[0] ?? null),
   );
@@ -137,12 +139,19 @@
 
   // Row lifecycle: NOT LEARNED -> LEARNED (code captured, awaiting APPLY) ->
   // ACTIVE/INACTIVE (applied; device truth from irActiveMask).
-  function pill(sub: number, d: IrDraft | null): { text: string; cls: string } {
+  function status(sub: number, d: IrDraft | null): { text: string; cls: string; tip?: string } {
     if (!cs.irCommands[sub]) {
-      return { text: d && d.protocol !== Domain.CsIrProto.None ? 'LEARNED' : 'NOT LEARNED', cls: 'new' };
+      return d && d.protocol !== Domain.CsIrProto.None
+        ? { text: 'LEARNED', cls: 'new', tip: 'Learned — APPLY to store it' }
+        : { text: 'NOT LEARNED', cls: 'off', tip: 'Not learned yet' };
     }
-    if (cs.status && (cs.status.irActiveMask & (1 << sub))) return { text: 'ACTIVE', cls: 'ok' };
-    return { text: 'INACTIVE', cls: 'warn' };
+    if (cs.status && (cs.status.irActiveMask & (1 << sub))) return { text: 'ACTIVE', cls: 'ok', tip: 'Active on the device' };
+    return { text: 'INACTIVE', cls: 'idle', tip: inactiveHint(sub) };
+  }
+
+  // Accessible-name suffix for the rows that look different from a plain one.
+  function irFlag(st: { cls: string; tip?: string }): string {
+    return st.cls === 'idle' || st.cls === 'new' ? `, ${st.tip}` : '';
   }
 
   function inactiveHint(sub: number): string {
@@ -213,7 +222,7 @@
     untrack(() => {   // consume the result; draft writes must not re-trigger
       if (learn.state === Domain.CS_IR_LEARN_DONE) {
         editDraft(sub, (d) => { d.protocol = learn.protocol; d.code = learn.code; });
-        armedSub = null;   // the pill flips to LEARNED; APPLY is the next step
+        armedSub = null;   // the row flips to LEARNED; APPLY is the next step
       } else if (learn.state === Domain.CS_IR_LEARN_TIMEOUT) {
         pushNotice('warn', 'IR learn: no remote button was detected — try again.');
         stopLearn();
@@ -224,12 +233,8 @@
 
 {#snippet editor(sub: number, d: IrDraft)}
           {@const actions = actionOptions(d.noun)}
-          {#if pill(sub, d).cls === 'warn'}
-            <div class="hint err">{inactiveHint(sub)}</div>
-          {/if}
-
           <div class="cs-row">
-            <span class="microlbl">CONTROLS</span>
+            <span class="microlbl edlbl">CONTROLS</span>
             <select class="sel" value={String(d.noun)} aria-label="Controlled function" disabled={applyingSub != null}
               onchange={(e) => {
                 const n = Number((e.currentTarget as HTMLSelectElement).value);
@@ -244,8 +249,11 @@
                 <option value={String(n)}>{Domain.csNounLabel(n)}</option>
               {/each}
             </select>
-            {#if actions.length > 1}
-              <span class="microlbl">ACTION</span>
+          </div>
+
+          {#if actions.length > 1}
+            <div class="cs-row">
+              <span class="microlbl edlbl">ACTION</span>
               <select class="sel" value={String(d.action)} aria-label="Action" disabled={applyingSub != null}
                 onchange={(e) => {
                   const a = Number((e.currentTarget as HTMLSelectElement).value);
@@ -255,8 +263,8 @@
                   <option value={String(a)}>{Domain.csActionLabel(a, CsField.enumOf(cs.nouns, d.noun))}</option>
                 {/each}
               </select>
-            {/if}
-          </div>
+            </div>
+          {/if}
 
           {#if CsField.showTargetOf(cs.nouns, d.noun)}
             <div class="cs-row">
@@ -295,7 +303,12 @@
           <div class="cs-row">
             <button type="button" class="chip accent" onclick={() => apply(sub)}
               disabled={applyingSub != null || !canApply(sub)}>APPLY</button>
+            <button type="button" class="chip hi" onclick={() => drafts.revert(sub)}
+              disabled={applyingSub != null || !cs.irCommands[sub] || !isDirty(sub)}>REVERT</button>
           </div>
+          {#if status(sub, d).cls === 'idle'}
+            <div class="cs-fault ir" role="note">{inactiveHint(sub)}</div>
+          {/if}
 {/snippet}
 
 {#snippet commandsBody()}
@@ -306,38 +319,37 @@
       {#if irDetailTarget}
         {@const isOpen = openSub === sub}
         {@const learned = d != null && d.protocol !== Domain.CsIrProto.None}
-        {@const p = pill(sub, d)}
+        {@const st = status(sub, d)}
         <div class="irrow compact" class:openrow={isOpen}>
           <div class="sumrow">
-            <button type="button" class="cs-sumbtn" aria-expanded={isOpen} aria-label={`IR command ${sub + 1}`}
+            <button type="button" class="cs-sumbtn" aria-expanded={isOpen} aria-label={`IR command ${sub + 1}${irFlag(st)}`}
               onclick={() => { pickedSub = isOpen ? -1 : sub; }}>
-              <span class="arrow">{isOpen ? '▾' : '▸'}</span>
               <span class="idx">{sub + 1}</span>
-              <span class="cs-pill {p.cls}">{p.text}</span>
-              <span class="sumtxt" class:dim={!learned}>
-                {#if listening}
-                  Press a button on the remote… <span class="count">{Math.max(0, learnRemaining)}s</span>
-                {:else if learned && d}
-                  {Domain.csNounLabel(d.noun)} · {Domain.csActionLabel(d.action as Domain.CsAction, CsField.enumOf(cs.nouns, d.noun))}
-                {:else}
-                  —
-                {/if}
+              <span class="sumprim" class:draft={st.cls === 'new'} title={irFlag(st) ? st.tip : undefined}>
+                <span class="sumtxt" class:dim={!learned} class:faulty={st.cls === 'idle'}>
+                  {#if learned && d}
+                    {Domain.csNounLabel(d.noun)} · {Domain.csActionLabel(d.action as Domain.CsAction, CsField.enumOf(cs.nouns, d.noun))}
+                  {:else}
+                    —
+                  {/if}
+                </span>
               </span>
             </button>
-            {#if listening}
-              <button type="button" class="chip hi" onclick={cancelLearn}>CANCEL</button>
-            {:else}
-              <button type="button" class="chip"
-                disabled={applyingSub != null || (armedSub != null && armedSub !== sub)}
-                onclick={() => learn(sub)}>{learned ? 'RE-LEARN' : 'LEARN'}</button>
-            {/if}
           </div>
           {#if isOpen && d}
             <div class="cs-row">
-              <span class="code" class:learned>{codeText(d)}</span>
-              <span class="cs-spacer"></span>
-              <button type="button" class="chip hi" disabled={applyingSub != null || listening}
-                onclick={() => clear(sub)}>CLEAR</button>
+              {#if listening}
+                <span class="hint listen">Press a button on the remote… <span class="count">{Math.max(0, learnRemaining)}s</span></span>
+                <span class="cs-spacer"></span>
+                <button type="button" class="chip hi" onclick={cancelLearn}>CANCEL</button>
+              {:else}
+                <span class="code" class:learned>{codeText(d)}</span>
+                <span class="cs-spacer"></span>
+                <button type="button" class="chip" disabled={applyingSub != null || armedSub != null}
+                  onclick={() => learn(sub)}>{learned ? 'RE-LEARN' : 'LEARN'}</button>
+                <button type="button" class="chip hi" disabled={applyingSub != null}
+                  onclick={() => clear(sub)}>CLEAR</button>
+              {/if}
             </div>
             {@render editor(sub, d)}
           {/if}
@@ -346,9 +358,11 @@
       <div class="irrow">
         <div class="cs-row">
           {#if d}
-            <span class="code" class:learned={d.protocol !== Domain.CsIrProto.None}>{codeText(d)}</span>
-            {@const p = pill(sub, d)}
-            <span class="cs-pill {p.cls}">{p.text}</span>
+            {@const st = status(sub, d)}
+            <span class="code" class:learned={d.protocol !== Domain.CsIrProto.None}
+              class:faulty={st.cls === 'idle'} class:draft={st.cls === 'new'}
+              title={irFlag(st) ? st.tip : undefined}>{codeText(d)}</span>
+            {#if irFlag(st)}<span class="sr-only">{st.tip}</span>{/if}
           {:else}
             <span class="code">Not learned</span>
           {/if}
@@ -379,19 +393,17 @@
     <div class="cs-addrow learnrow">
       <button type="button" class="chip"
         disabled={freeSub == null || armedSub != null || applyingSub != null}
-        onclick={() => { if (freeSub != null) void learn(freeSub); }}>LEARN</button>
+        onclick={() => { if (freeSub != null) void learn(freeSub); }}>+ LEARN</button>
+      {#if freeSub == null}
+        <span class="hint">All {maxSubs} command slots are in use.</span>
+      {:else if listedSubs.length > 0}
+        <span class="hint">{listedSubs.length} of {maxSubs} used</span>
+      {/if}
     </div>
   </div>
 {/snippet}
 
-<div class="ircommands">
-  {#if irDetailTarget}
-    <div class="irtoggle static">
-      <span class="irtitle">IR COMMANDS</span>
-      <span class="ircnt">{configured} / {maxSubs}</span>
-      <span class="ircap">{maxSubs} command slots · edited in the IR COMMANDS column</span>
-    </div>
-  {/if}
+<div class="ircommands" class:inline={!irDetailTarget}>
   {#if irDetailTarget}
     <div class="detached" use:portal={irDetailTarget}>
       {@render commandsBody()}
@@ -409,7 +421,7 @@
 </div>
 
 <style>
-  .ircommands { border-top: 1px solid var(--wash); }
+  .ircommands.inline { border-top: 1px solid var(--wash); }
   .irtoggle {
     width: 100%;
     display: flex;
@@ -422,9 +434,7 @@
     font-family: var(--font-mono);
     text-align: left;
   }
-  .irtoggle.static { cursor: default; flex-wrap: wrap; }
-  .ircap { font-size: 11px; color: var(--text-faint); }
-  .irtoggle:not(.static):hover .irtitle { color: var(--text); }
+  .irtoggle:hover .irtitle { color: var(--text); }
   .arrow { font-size: 9px; color: var(--text-faint); }
   .irtitle {
     font-family: var(--font-sans);
@@ -444,12 +454,19 @@
     flex-direction: column;
     gap: 8px;
   }
-  .irrow.compact { padding: 0 4px; gap: 4px; }
-  .irrow.compact.openrow { padding-bottom: 6px; }
-  .detached .irbody { gap: 0; }
+  .irrow.compact { padding: 0 14px; gap: 4px; border-radius: 0; }
+  .irrow.compact.openrow {
+    padding-bottom: 6px;
+    background: color-mix(in oklab, var(--accent) var(--tint-weak), transparent);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .irrow.compact:not(.openrow):hover { background: var(--wash-faint); }
+  .detached .irbody { padding: 0; gap: 0; }
+  .detached .irbody > .hint { padding: 8px 14px 0; }
+  .edlbl { min-width: 64px; }
   .learnrow { padding: 6px 0 0; }
-  .irrow.compact:not(.openrow) { border-bottom: none; }
-  .sumrow { display: flex; align-items: center; gap: 6px; height: var(--h-row); }
+  .detached .learnrow { padding: 8px 14px 10px; }
+  .sumrow { display: flex; align-items: center; gap: 8px; height: var(--h-row); }
   .cs-sumbtn { padding: 0; font-family: var(--font-mono); }
   .idx { font-size: 11px; color: var(--text-faint); min-width: 14px; }
   .sumtxt {
@@ -461,14 +478,18 @@
     text-overflow: ellipsis;
   }
   .sumtxt.dim { color: var(--text-faint); }
+  .sumprim { display: flex; min-width: 0; }
+  .sumtxt.faulty { color: var(--err); }
   .detached { display: flex; flex-direction: column; }
   .irrow:not(:last-child) { border-bottom: 1px solid var(--wash); }
+  .cs-fault.ir { margin: 6px 0 0; }
   .code {
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-faint);
   }
   .code.learned { color: var(--text-dim); }
+  .code.faulty { color: var(--err); }
   .hint.listen { color: var(--text-dim); }
   .count {
     font-family: var(--font-mono);

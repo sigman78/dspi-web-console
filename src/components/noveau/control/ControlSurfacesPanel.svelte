@@ -11,9 +11,10 @@
   import * as CsField from '@/domain/cs/fieldHelpers';
   import * as SlotOps from './csSlotOps';
 
-  const { detailTarget = null, irDetailTarget = null }: {
+  const { detailTarget = null, irDetailTarget = null, onIrSelected }: {
     detailTarget?: HTMLElement | null;
     irDetailTarget?: HTMLElement | null;
+    onIrSelected?: (selected: boolean) => void;   // the open slot is the live IR receiver
   } = $props();
 
   const s = getSession();
@@ -39,6 +40,9 @@
   const expanded = $derived(
     openSlot === -1 ? null : (openSlot != null && visibleSlots.includes(openSlot) ? openSlot : (visibleSlots[0] ?? null)),
   );
+  $effect(() => {
+    onIrSelected?.(caps != null && expanded != null && cs.bindings[expanded]?.type === Domain.CsType.Ir);
+  });
   function toggleSlot(slot: number): void {
     openSlot = expanded === slot ? -1 : slot;
   }
@@ -183,11 +187,11 @@
     return nameChanged(slot, d) || !CsDraft.bindingsEqual(buildBinding(d), live);
   }
 
-  function pill(slot: number): { text: string; cls: string } {
+  function status(slot: number): { text: string; cls: string; tip?: string } {
     const live = cs.bindings[slot];
-    if (!live) return { text: 'NEW', cls: 'new' };
-    if (cs.status && (cs.status.activeMask & (1 << slot))) return { text: 'ACTIVE', cls: 'ok' };
-    return { text: 'INACTIVE', cls: 'warn' };
+    if (!live) return { text: 'NEW', cls: 'new', tip: 'New — not applied yet' };
+    if (cs.status && (cs.status.activeMask & (1 << slot))) return { text: 'ACTIVE', cls: 'ok', tip: 'Active on the device' };
+    return { text: 'INACTIVE', cls: 'idle' };
   }
 
   let pendingAdd = $state<number | null>(null);
@@ -213,7 +217,7 @@
   }
 
   // Rejections surface via the runtime actions' warn toasts; the panel's only
-  // success feedback is the pill/staged-dot state flip.
+  // success feedback is the status/staged-dot state flip.
   async function apply(slot: number): Promise<void> {
     const live = cs.bindings[slot];
     const d = drafts.draftOf(slot) ?? (live ? draftFromLive(live) : null);
@@ -274,14 +278,14 @@
 
     {#each visibleSlots as slot (slot)}
       {@const d = draftOf(slot)}
-      {@const p = pill(slot)}
+      {@const st = status(slot)}
       {@const slotDirty = isDirty(slot) || (d.type === Domain.CsType.Ir && irDirty)}
       <CsBindingRow
         {slot}
         draft={d}
         dirty={slotDirty}
         live={cs.bindings[slot] != null}
-        pill={p}
+        status={st}
         {applying}
         {detailTarget}
         {irDetailTarget}

@@ -21,6 +21,7 @@
   let displayDetail = $state<HTMLElement | null>(null);
   let groupsDetail = $state<HTMLElement | null>(null);
   let irDetail = $state<HTMLElement | null>(null);
+  let irSelected = $state(false);
   // NoveauShell only mounts this view while pages is non-empty.
   const page = $derived(pages.some((p) => p.key === noveauUi.controlPage) ? noveauUi.controlPage : pages[0].key);
   const macrosOn = $derived(CsField.macrosAvailable(caps));
@@ -57,10 +58,13 @@
       <div class="pw-cols" hidden={page !== k}>
         {#if k === 'surfaces'}
           <div class="pw-col" data-budget>
-            <ControlSurfacesPanel detailTarget={surfacesDetail} irDetailTarget={irDetail} />
+            <ControlSurfacesPanel detailTarget={surfacesDetail} irDetailTarget={irDetail} onIrSelected={(v) => { irSelected = v; }} />
           </div>
           <div class="pw-col" data-budget>{@render host('BINDING', 'Select a control on the left', (el) => (surfacesDetail = el))}</div>
-          <div class="pw-col" data-budget>{@render host('IR COMMANDS', 'Commands appear here for an IR receiver', (el) => (irDetail = el))}</div>
+          <div class="pw-col" data-budget>
+            <div hidden={!irSelected}>{@render host('IR COMMANDS', 'Loading IR commands…', (el) => (irDetail = el))}</div>
+            <div hidden={irSelected}><PinMapPanel /></div>
+          </div>
         {:else if k === 'macros'}
           {#if macrosOn}
             <div class="pw-col" data-budget><CsMacrosPanel detailTarget={macrosDetail} visible={page === 'macros'} /></div>
