@@ -22,9 +22,8 @@
      other SETUP panels; panels with a different padding/gap keep a local variant.
    .icon-toggle — 22px square icon button (rail mute / bypass / preset
      save); .accent tints the glyph, .on is the active (err) state.
-   .cs-pill — text status pill in the control-surface slot headers (NEW /
-     RUNNING / INVALID ...); tone via .new / .ok / .warn / .run / .off. Settled
-     ok/idle states render as a tick (CsStatusMark) instead.
+   .cs-pill — text status pill (CsDisplayPanel header); tone via .new / .ok /
+     .warn / .run / .off. Slot and IR rows use the glyph CsStatusMark instead.
 
    Text roles (.t-*) and row/section recipes (.prow, .sec-h) live in
    noveau.css; labels are sans, mono is for values, ids and tags. */

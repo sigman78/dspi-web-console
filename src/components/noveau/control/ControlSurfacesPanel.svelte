@@ -185,7 +185,7 @@
 
   function pill(slot: number): { text: string; cls: string; tip?: string } {
     const live = cs.bindings[slot];
-    if (!live) return { text: 'NEW', cls: 'new' };
+    if (!live) return { text: 'NEW', cls: 'new', tip: 'New — not applied yet' };
     if (cs.status && (cs.status.activeMask & (1 << slot))) return { text: 'ACTIVE', cls: 'ok', tip: 'Active on the device' };
     return { text: 'INACTIVE', cls: 'idle' };
   }

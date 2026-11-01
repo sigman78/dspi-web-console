@@ -140,7 +140,9 @@
   // ACTIVE/INACTIVE (applied; device truth from irActiveMask).
   function pill(sub: number, d: IrDraft | null): { text: string; cls: string; tip?: string } {
     if (!cs.irCommands[sub]) {
-      return { text: d && d.protocol !== Domain.CsIrProto.None ? 'LEARNED' : 'NOT LEARNED', cls: 'new' };
+      return d && d.protocol !== Domain.CsIrProto.None
+        ? { text: 'LEARNED', cls: 'new', tip: 'Learned — APPLY to store it' }
+        : { text: 'NOT LEARNED', cls: 'off', tip: 'Not learned yet' };
     }
     if (cs.status && (cs.status.irActiveMask & (1 << sub))) return { text: 'ACTIVE', cls: 'ok', tip: 'Active on the device' };
     return { text: 'INACTIVE', cls: 'idle', tip: inactiveHint(sub) };
@@ -310,11 +312,10 @@
         {@const p = pill(sub, d)}
         <div class="irrow compact" class:openrow={isOpen}>
           <div class="sumrow">
+            <CsStatusMark pill={p} />
             <button type="button" class="cs-sumbtn" aria-expanded={isOpen} aria-label={`IR command ${sub + 1}`}
               onclick={() => { pickedSub = isOpen ? -1 : sub; }}>
-              <span class="arrow">{isOpen ? '▾' : '▸'}</span>
               <span class="idx">{sub + 1}</span>
-              <CsStatusMark pill={p} />
               <span class="sumtxt" class:dim={!learned}>
                 {#if listening}
                   Press a button on the remote… <span class="count">{Math.max(0, learnRemaining)}s</span>
@@ -347,10 +348,10 @@
       <div class="irrow">
         <div class="cs-row">
           {#if d}
+            <CsStatusMark pill={pill(sub, d)} />
             <span class="code" class:learned={d.protocol !== Domain.CsIrProto.None}>{codeText(d)}</span>
-            {@const p = pill(sub, d)}
-            <CsStatusMark pill={p} />
           {:else}
+            <CsStatusMark pill={pill(sub, null)} />
             <span class="code">Not learned</span>
           {/if}
           <span class="cs-spacer"></span>
@@ -385,14 +386,7 @@
   </div>
 {/snippet}
 
-<div class="ircommands">
-  {#if irDetailTarget}
-    <div class="irtoggle static">
-      <span class="irtitle">IR COMMANDS</span>
-      <span class="ircnt">{configured} / {maxSubs}</span>
-      <span class="ircap">{maxSubs} command slots · edited in the IR COMMANDS column</span>
-    </div>
-  {/if}
+<div class="ircommands" class:inline={!irDetailTarget}>
   {#if irDetailTarget}
     <div class="detached" use:portal={irDetailTarget}>
       {@render commandsBody()}
@@ -410,7 +404,7 @@
 </div>
 
 <style>
-  .ircommands { border-top: 1px solid var(--wash); }
+  .ircommands.inline { border-top: 1px solid var(--wash); }
   .irtoggle {
     width: 100%;
     display: flex;
@@ -423,9 +417,7 @@
     font-family: var(--font-mono);
     text-align: left;
   }
-  .irtoggle.static { cursor: default; flex-wrap: wrap; }
-  .ircap { font-size: 11px; color: var(--text-faint); }
-  .irtoggle:not(.static):hover .irtitle { color: var(--text); }
+  .irtoggle:hover .irtitle { color: var(--text); }
   .arrow { font-size: 9px; color: var(--text-faint); }
   .irtitle {
     font-family: var(--font-sans);
@@ -445,12 +437,18 @@
     flex-direction: column;
     gap: 8px;
   }
-  .irrow.compact { padding: 0 4px; gap: 4px; }
-  .irrow.compact.openrow { padding-bottom: 6px; }
-  .detached .irbody { gap: 0; }
+  .irrow.compact { padding: 0 14px; gap: 4px; border-radius: 0; }
+  .irrow.compact.openrow {
+    padding-bottom: 6px;
+    background: color-mix(in oklab, var(--accent) var(--tint-weak), transparent);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .irrow.compact:not(.openrow):hover { background: var(--wash-faint); }
+  .detached .irbody { padding: 0; gap: 0; }
+  .detached .irbody > .hint { padding: 8px 14px 0; }
   .learnrow { padding: 6px 0 0; }
-  .irrow.compact:not(.openrow) { border-bottom: none; }
-  .sumrow { display: flex; align-items: center; gap: 6px; height: var(--h-row); }
+  .detached .learnrow { padding: 8px 14px 10px; }
+  .sumrow { display: flex; align-items: center; gap: 8px; height: var(--h-row); }
   .cs-sumbtn { padding: 0; font-family: var(--font-mono); }
   .idx { font-size: 11px; color: var(--text-faint); min-width: 14px; }
   .sumtxt {

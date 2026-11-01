@@ -1,6 +1,7 @@
 <script lang="ts">
-  // Collapsible slot card shared by the CS binding/group/macro editors: chevron
-  // + title + name text (pencil when open requests a rename) + status pill + ✕.
+  // Collapsible slot card shared by the CS binding/group/macro editors: status
+  // mark + chevron (inline mode only) + title + name text (pencil when open
+  // requests a rename) + actions + ✕.
   // Body renders only while open; the parent owns open/expanded state.
   import type { Snippet } from 'svelte';
   import { portal } from '@/components/chrome/portal';
@@ -32,8 +33,9 @@
 
 <div class="slot" class:open>
   <div class="slothead">
+    <CsStatusMark {pill} />
     <button type="button" class="hdrbtn" aria-expanded={open} onclick={onToggle}>
-      <span class="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
+      {#if !detailTarget}<span class="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>{/if}
       <span class="cs-stitle" class:draft={dirty && live}
         title={dirty && live ? 'Unapplied changes — APPLY to preview them live' : undefined}>{title}</span>
       <span class="nametext" class:faint={!name}>{name || 'Unnamed'}</span>
@@ -44,7 +46,6 @@
     {/if}
     <span class="cs-spacer"></span>
     {#if actions}{@render actions()}{/if}
-    <CsStatusMark {pill} />
     <button type="button" class="x-btn" aria-label={removeLabel} {disabled} onclick={onRemove}>✕</button>
   </div>
   {#if rename}<div class="renamehost">{@render rename()}</div>{/if}
@@ -77,10 +78,10 @@
     font-family: var(--font-mono);
   }
   /* Collapsed: the button's overlay makes the whole padded row the toggle
-     target; siblings (pill, actions, ✕) stack above it. */
+     target; siblings (status, actions, ✕) stack above it. */
   .slot:not(.open) .slothead { position: relative; }
   .slot:not(.open) .hdrbtn::after { content: ''; position: absolute; inset: 0; }
-  .slot:not(.open) .slothead > :global(:not(.hdrbtn)) { position: relative; }
+  .slot:not(.open) .slothead > :global(:not(.hdrbtn)) { position: relative; z-index: 1; }
   .slot:not(.open):hover { background: var(--wash-faint); }
   .slot.open .slothead { margin-bottom: 4px; }
   .hdrbtn {

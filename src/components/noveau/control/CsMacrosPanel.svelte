@@ -80,9 +80,9 @@
 
   function pill(i: number): { text: string; cls: string; tip?: string } {
     const live = cs.macros[i];
-    if (!live) return { text: 'NEW', cls: 'new' };
-    if (isRunning(i)) return { text: 'RUNNING', cls: 'run' };
-    return (cs.extStatus?.macroStatus[i] ?? 0) === 0 ? { text: 'OK', cls: 'ok', tip: 'Valid on the device' } : { text: 'INVALID', cls: 'warn' };
+    if (!live) return { text: 'NEW', cls: 'new', tip: 'New — not applied yet' };
+    if (isRunning(i)) return { text: 'RUNNING', cls: 'run', tip: 'Running' };
+    return (cs.extStatus?.macroStatus[i] ?? 0) === 0 ? { text: 'OK', cls: 'ok', tip: 'Valid on the device' } : { text: 'INVALID', cls: 'warn', tip: 'Invalid on the device — fix and re-apply' };
   }
 
   function invalidHint(i: number): string {

@@ -48,7 +48,7 @@ describe('ControlSurfacesPanel naming', () => {
     const s = await mount();
     await addNamed('Vol knob');
     expect(screen.getByText('Vol knob')).toBeTruthy();
-    expect(screen.getByText('NEW')).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'New — not applied yet' })).toBeTruthy();
     expect((screen.getByRole('button', { name: 'APPLY' }) as HTMLButtonElement).disabled).toBe(false);
     const title = () => document.querySelector('.cs-stitle')!;
     expect(title().classList.contains('draft')).toBe(false);
