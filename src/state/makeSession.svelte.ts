@@ -8,6 +8,7 @@ import { createSysClockState } from './sysClock.svelte';
 import { createOutputLatencyState } from './outputLatency.svelte';
 import { createStagingState } from './staging.svelte';
 import { createEqLinkState } from './eqLink.svelte';
+import { createRoomHuePins } from './roomHuePins.svelte';
 import { defaultEqLinkGroups } from '@/domain';
 import { createDraftsState } from './drafts.svelte';
 import { MirrorState } from './mirror.svelte';
@@ -41,6 +42,7 @@ export function makeReadySession(device: DspDevice, scope: ConnectionScope = new
     const snap = mirror.current;
     return snap ? defaultEqLinkGroups(snap.channels, snap.inputConfig.source, telemetry.activeInputChannels) : [];
   });
+  const roomHuePins = createRoomHuePins(device.info.serial);
   const health = new LinkHealth();
   const writes = new WriteCoordinator(mirror);
   const notifyWaiters = new NotifyWaiters();
@@ -55,7 +57,7 @@ export function makeReadySession(device: DspDevice, scope: ConnectionScope = new
   });
   const session: ReadySession = {
     device, info: device.info, hardware: device.hardware, signal,
-    copySource, telemetry, presets, ctrlIfaces, controlSurfaces, sysClock, outputLatency, staging, eqLink, drafts, mirror, health, writes, notifyWaiters, queue, wireMirror,
+    copySource, telemetry, presets, ctrlIfaces, controlSurfaces, sysClock, outputLatency, staging, eqLink, roomHuePins, drafts, mirror, health, writes, notifyWaiters, queue, wireMirror,
     get alive() { return !scope.aborted; },
     dispose() { scope.abort(); },
   };
