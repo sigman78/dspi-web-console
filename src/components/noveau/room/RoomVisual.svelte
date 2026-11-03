@@ -5,6 +5,7 @@
   import { getSession } from '@/components/sessionContext';
   import * as Fx from '@/fx';
   import { settings, type RoomMode } from '@/state/settings.svelte';
+  import * as HuePins from '@/state/roomHuePins.svelte';
   import { COLORS } from '@/styles/palette-colors';
   import { chKey } from '@/styles/palette';
   import RoomModeSwitch from './RoomModeSwitch.svelte';
@@ -56,24 +57,35 @@
   const WHEEL = `linear-gradient(to top in oklch, ${Array.from({ length: 13 }, (_, i) => `oklch(0.72 0.13 ${i * 30})`).join(', ')})`;
   let scene: Fx.RoomScene | undefined;
   let defaultHue = $state(265);
-  let hue = $state(265);
 
-  // Live preview while dragging; the setting is saved on release (commitHue).
-  function setHue(deg: number): void {
-    hue = deg;
-    scene?.setHue(deg);
-  }
+  // A preset with a pinned hue shows it; the rest share settings.roomHue.
+  const pin = $derived(active == null ? null : s.roomHuePins.get(active));
+  // Dragging overrides it for a live preview; the release saves it (commitHue).
+  let hue = $derived(pin ?? settings.roomHue ?? defaultHue);
+
+  $effect(() => {
+    scene?.setHue(hue);
+  });
 
   function commitHue(deg: number): void {
-    setHue(deg);
-    settings.roomHue = deg;
+    hue = deg;
+    HuePins.commitRoomHue(s.roomHuePins, settings, active, deg);
   }
 
   function resetHue(): void {
     hue = defaultHue;
-    scene?.setHue(defaultHue);
-    settings.roomHue = null;
+    HuePins.resetRoomHue(s.roomHuePins, settings, active, defaultHue);
   }
+
+  function togglePin(): void {
+    if (active != null) HuePins.toggleRoomHuePin(s.roomHuePins, settings, active, hue, defaultHue);
+  }
+
+  const pinTitle = $derived(
+    active == null ? 'Select a preset to pin a hue to it'
+      : pin !== null ? 'Hue pinned to this preset (click to unpin)'
+        : 'Pin this hue to the preset',
+  );
   // Keeps the tag off while the first reply is pending on RTA-capable firmware.
   let settling = $state(s.device.capabilities?.features.rta === true);
 
@@ -84,11 +96,10 @@
     scene = new Fx.RoomScene({ back, front }, {
       palette: Fx.resolvePalette(host),
       decorative: () => !reduced.matches,
-      hue: settings.roomHue,
+      hue: pin ?? settings.roomHue,
       mode: settings.roomMode === 'spectrum' ? 'spectrum' : 'meters',
     });
     defaultHue = scene.defaultHue;
-    hue = settings.roomHue ?? defaultHue;
     const room = scene;
     const outIds = new Int32Array(MAX_OUTPUTS);
     let outCount = 0;
@@ -201,20 +212,42 @@
     <div class="preset" class:unnamed={!named}>{presetName}</div>
     <div class="meta">{source} · {rate}</div>
   </div>
-  <div class="side">
-    <div class="hue" style:--hue={hue} style:--wheel={WHEEL}>
-      <input
-        type="range"
-        min="0"
-        max="360"
-        step="1"
-        value={hue}
-        aria-label="Scene hue"
-        title="Scene hue (double-click to reset)"
-        oninput={(e) => setHue(e.currentTarget.valueAsNumber)}
-        onchange={(e) => commitHue(e.currentTarget.valueAsNumber)}
-        ondblclick={resetHue}
-      />
+  <div class="side" style:--hue={hue}>
+    <div class="hue-col">
+      <button
+        type="button"
+        class="pin"
+        aria-pressed={pin !== null}
+        aria-label="Pin hue to preset"
+        title={pinTitle}
+        disabled={active == null}
+        onclick={togglePin}
+      >
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          {#if pin !== null}
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+          {:else}
+            <path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M5.17 11.75l-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            <path d="M8 2v3M2 8h3M16 19v3M19 16h3" />
+          {/if}
+        </svg>
+      </button>
+      <div class="hue" style:--wheel={WHEEL}>
+        <input
+          type="range"
+          min="0"
+          max="360"
+          step="1"
+          value={hue}
+          aria-label="Scene hue"
+          title="Scene hue (double-click to reset)"
+          oninput={(e) => (hue = e.currentTarget.valueAsNumber)}
+          onchange={(e) => commitHue(e.currentTarget.valueAsNumber)}
+          ondblclick={resetHue}
+        />
+      </div>
     </div>
     <RoomModeSwitch mode={settings.roomMode} onchange={(m) => (settings.roomMode = m)} />
   </div>
@@ -261,7 +294,42 @@
   .side:hover,
   .side:has(:focus-visible),
   .side:has(:active) { opacity: 1; }
+  .hue-col {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
   .hue { flex: 1; min-height: 0; }
+  .pin {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 10px;
+    background: var(--wash);
+    box-shadow: inset 0 0 0 1px var(--border-hi);
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .pin[aria-pressed='true'] {
+    background: color-mix(in oklab, oklch(0.72 0.13 var(--hue)) 24%, transparent);
+    color: oklch(0.72 0.13 var(--hue));
+  }
+  .pin:disabled { opacity: 0.4; cursor: default; }
+  .pin:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .pin svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
   .hue input {
     appearance: none;
     -webkit-appearance: none;
