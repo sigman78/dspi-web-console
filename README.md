@@ -1,15 +1,15 @@
 # DSPi Web Console
 
+[![CI](https://github.com/sigman78/dspi-web-console/actions/workflows/ci.yml/badge.svg)](https://github.com/sigman78/dspi-web-console/actions/workflows/ci.yml)
+[![Deploy to GitHub Pages](https://github.com/sigman78/dspi-web-console/actions/workflows/deploy.yml/badge.svg)](https://github.com/sigman78/dspi-web-console/actions/workflows/deploy.yml)
+
 [![DSPi Web Console](docs/media/banner.jpg)](docs/media/promo.jpg)
 
-A browser-based configurator for the [Weeb Labs DSPi](https://github.com/WeebLabs/DSPi). Runs entirely in the browser over WebUSB: no installer, no drivers.
+A browser-based configurator for the [Weeb Labs DSPi](https://github.com/WeebLabs/DSPi). 
 
 [> Launch App <](https://dspi-ctrl.fyi) | [> Demo (w/o device) <](https://dspi-ctrl.fyi/?mock)
 
-> **[dspi-ctrl.fyi](https://dspi-ctrl.fyi)** is the stable release. The rolling test build (latest `master`) is on [GitHub Pages](https://sigman78.github.io/dspi-web-console/).
-
-[![CI](https://github.com/sigman78/dspi-web-console/actions/workflows/ci.yml/badge.svg)](https://github.com/sigman78/dspi-web-console/actions/workflows/ci.yml)
-[![Deploy to GitHub Pages](https://github.com/sigman78/dspi-web-console/actions/workflows/deploy.yml/badge.svg)](https://github.com/sigman78/dspi-web-console/actions/workflows/deploy.yml)
+**[dspi-ctrl.fyi](https://dspi-ctrl.fyi)** is the stable release. The rolling test build (latest `master`) is on [GitHub Pages](https://sigman78.github.io/dspi-web-console/).
 
 ## What it does
 
@@ -18,10 +18,6 @@ A browser-based configurator for the [Weeb Labs DSPi](https://github.com/WeebLab
 - **Program**: the routing matrix and the processing chain in firmware order (leveller, upmixer, crossfeed, subharmonic synth, bass enhancement, loudness).
 - **Setup**: inputs, output types, clocks and a pin map showing which feature holds each GPIO.
 - **Control**: bind knobs, buttons, LEDs, IR remotes and small displays on spare GPIOs to device functions.
-
-Several units can be connected at once; switch between them from the **DEVICES** list.
-
-[See every page →](docs/media/promo.jpg)
 
 ## Firmware
 
