@@ -34,6 +34,10 @@ const HALO_RAMP_LIFT = 0.06;
 const TIP_LIFT = 0.3;
 const HALO_BLOB_LIFT = 0.12;
 const MARKER_LIFT = 0.4;
+const FLASH_TIP_LIFT = 0.85;
+const LOW_BANDS = 6;
+/** Below this the tip flash is not drawn at all. */
+const FLASH_MIN = 0.01;
 
 /** Colour at a height fraction `f` for scene hue `hue`, optionally lifted toward white. */
 export function barColor(f: number, hue: number, space: ColorSpace, lift = 0): Rgb {
@@ -78,6 +82,8 @@ function haloStrip(w: number, h: number, res: number, hue: number, space: ColorS
 export class LightWall implements Wall {
   /** Scene hue the bars are built on; applied at the next layout. */
   hue = 0;
+  /** Strike flare 0..1, set by the scene each frame: whitens the tips and brightens the halos. */
+  flash = 0;
   x = 0;
   floorY = 0;
   width = 0;
@@ -89,6 +95,7 @@ export class LightWall implements Wall {
   private body: HTMLCanvasElement | null = null;
   private halo: HTMLCanvasElement | null = null;
   private tips: HTMLCanvasElement[] = [];
+  private hotTips: HTMLCanvasElement[] = [];
   private halos: HTMLCanvasElement[] = [];
   private marker: HTMLCanvasElement | null = null;
   private readonly state = Array.from({ length: BAND_COUNT }, newMeter);
@@ -119,12 +126,14 @@ export class LightWall implements Wall {
     this.body = body;
     this.halo = haloStrip(bw * HALO_W, H, GLOW_RES, hue, sp);
 
-    this.tips = Array.from({ length: STEPS }, (_, k) => {
+    const tipSprites = (lift: number): HTMLCanvasElement[] => Array.from({ length: STEPS }, (_, k) => {
       const [c, x] = createCanvas(bw * dpr, TIP * dpr, sp);
-      x.fillStyle = css(barColor(k / (STEPS - 1), hue, sp, TIP_LIFT), 1, sp);
+      x.fillStyle = css(barColor(k / (STEPS - 1), hue, sp, lift), 1, sp);
       x.fillRect(0, 0, c.width, c.height);
       return c;
     });
+    this.tips = tipSprites(TIP_LIFT);
+    this.hotTips = tipSprites(FLASH_TIP_LIFT);
     this.halos = Array.from({ length: STEPS }, (_, k) =>
       blob(this.haloSize, GLOW_RES, barColor(k / (STEPS - 1), hue, sp, HALO_BLOB_LIFT), HALO_BLOB_ALPHA, sp));
     const [m, mx] = createCanvas(bw * dpr, TIP * dpr, sp);
@@ -159,8 +168,19 @@ export class LightWall implements Wall {
   /** Smoothed low-band energy, 0..1. */
   energy(): number {
     let s = 0;
-    for (let i = 0; i < 6; i++) s += this.state[i].level;
-    return s / 6;
+    for (let i = 0; i < LOW_BANDS; i++) s += this.state[i].level;
+    return s / LOW_BANDS;
+  }
+
+  /** How far the six lowest bands' share of the total level exceeds an even spread, 0..1; 0 when silent. */
+  lowShare(): number {
+    let all = 0;
+    for (let i = 0; i < BAND_COUNT; i++) all += this.state[i].level;
+    if (all < 1e-3) return 0;
+    let low = 0;
+    for (let i = 0; i < LOW_BANDS; i++) low += this.state[i].level;
+    const even = LOW_BANDS / BAND_COUNT;
+    return Math.min(1, Math.max(0, (low / all - even) / (1 - even)));
   }
 
   /** Crisp bars, tips and (optionally) peak markers on the canvas; their wide halos into the glow buffer. */
@@ -175,6 +195,7 @@ export class LightWall implements Wall {
     ctx.globalCompositeOperation = 'lighter';
     b.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = alpha;
+    const flash = this.flash > FLASH_MIN ? Math.min(1, this.flash) : 0;
     for (let i = 0; i < BAND_COUNT; i++) {
       const l = Math.min(1, this.state[i].level);
       const hh = Math.round(l * H * dpr) / dpr;
@@ -185,11 +206,20 @@ export class LightWall implements Wall {
       const k = Math.round(l * (STEPS - 1));
       ctx.drawImage(body, 0, sy, body.width, body.height - sy, x0, top, bw, hh);
       ctx.drawImage(this.tips[k], x0, top, bw, TIP);
+      if (flash > 0) {
+        ctx.globalAlpha = flash * alpha;
+        ctx.drawImage(this.hotTips[k], x0, top, bw, TIP);
+        ctx.globalAlpha = alpha;
+      }
       b.globalAlpha = HALO_ALPHA * alpha;
       const gy = (H - hh) * GLOW_RES;
       b.drawImage(halo, 0, gy, halo.width, halo.height - gy, this.cx(i) - hw / 2, top, hw, hh);
       b.globalAlpha = alpha;
       b.drawImage(this.halos[k], this.cx(i) - hs / 2, top - hs / 2, hs, hs);
+      if (flash > 0) {
+        b.globalAlpha = flash * alpha;
+        b.drawImage(this.halos[k], this.cx(i) - hs / 2, top - hs / 2, hs, hs);
+      }
     }
     if (decorative) {
       for (let i = 0; i < BAND_COUNT; i++) {
