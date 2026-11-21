@@ -2,9 +2,11 @@
 // local transport, subject to the lease policy. The remote peer is untrusted.
 
 import type { SerializedDspTransport } from '@/transport/withSerializedCtrl';
+import { TransportStall } from '@/transport/DspTransport';
 import { TimeoutError } from '@/transport/withTimeout';
 import type { FrameChannel } from '@/transport/remote/FrameChannel';
 import * as Frames from '@/transport/remote/frames';
+import { fmtCmdId } from '@/protocol/wireMonitor';
 import { errMessage } from '@/utils';
 import type { LeasePolicy } from './allowlist';
 
@@ -50,7 +52,9 @@ export function startUsbProxy(
 
   const fail = (id: number, e: unknown): void => {
     if (e instanceof TimeoutError) err(id, Frames.ErrKind.Timeout, e.message);
+    else if (e instanceof TransportStall) err(id, Frames.ErrKind.Stall, e.message);
     else if (!transport.isOpen()) err(id, Frames.ErrKind.NotOpen, errMessage(e));
+    else if (e instanceof Error && e.name === 'NetworkError') err(id, Frames.ErrKind.NetworkError, e.message);
     else err(id, Frames.ErrKind.Transport, errMessage(e));
   };
 
@@ -131,12 +135,12 @@ export function startUsbProxy(
     switch (frame.type) {
       case 'ctrlIn':
         enqueue(async () => {
-          if (frame.length > Frames.MAX_PAYLOAD || !policy.allows(frame.request, 'in')) {
-            err(frame.id, Frames.ErrKind.Refused, `ctrlIn(0x${frame.request.toString(16)}) refused`);
+          if (frame.length > Frames.MAX_PAYLOAD || !policy.allows(frame.cmd, 'in')) {
+            err(frame.id, Frames.ErrKind.Refused, `ctrlIn(${fmtCmdId(frame.cmd)}) refused`);
             return;
           }
           try {
-            ok(frame.id, await transport.ctrlIn(frame.request, frame.value, frame.length));
+            ok(frame.id, await transport.ctrlIn(frame.cmd, frame.value, frame.length));
           } catch (e) {
             fail(frame.id, e);
           }
@@ -144,12 +148,12 @@ export function startUsbProxy(
         return;
       case 'ctrlOut':
         enqueue(async () => {
-          if (frame.data.length > Frames.MAX_PAYLOAD || !policy.allows(frame.request, 'out')) {
-            err(frame.id, Frames.ErrKind.Refused, `ctrlOut(0x${frame.request.toString(16)}) refused`);
+          if (frame.data.length > Frames.MAX_PAYLOAD || !policy.allows(frame.cmd, 'out')) {
+            err(frame.id, Frames.ErrKind.Refused, `ctrlOut(${fmtCmdId(frame.cmd)}) refused`);
             return;
           }
           try {
-            await transport.ctrlOut(frame.request, frame.value, frame.data);
+            await transport.ctrlOut(frame.cmd, frame.value, frame.data);
             ok(frame.id, new Uint8Array(0));
           } catch (e) {
             fail(frame.id, e);

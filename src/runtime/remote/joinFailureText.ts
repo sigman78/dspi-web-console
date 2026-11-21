@@ -16,5 +16,6 @@ export const JOIN_FAILURE_TEXT: Record<JoinFailure, string> = {
   'timeout': 'The other console did not respond.',
   'no-token': 'Nothing to reconnect to.',
   'sharing': "Stop sharing this console's device first.",
+  'version': 'The other console runs a different version. Reload both pages.',
   'failed': 'Could not connect.',
 };

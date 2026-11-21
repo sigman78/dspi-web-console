@@ -11,13 +11,13 @@ describe('decodeFrame', () => {
   });
 
   it('rejects a CTRL_OUT whose len exceeds the frame', () => {
-    const buf = Frames.encodeFrame({ type: 'ctrlOut', id: 1, request: 0x40, value: 0, data: new Uint8Array(4) });
-    new DataView(buf.buffer).setUint16(8, 100, true);
+    const buf = Frames.encodeFrame({ type: 'ctrlOut', id: 1, cmd: 0x40, value: 0, data: new Uint8Array(4) });
+    new DataView(buf.buffer).setUint16(9, 100, true);
     expect(() => Frames.decodeFrame(buf)).toThrow();
   });
 
   it('rejects trailing bytes on a fixed-size frame', () => {
-    const buf = Frames.encodeFrame({ type: 'ctrlIn', id: 1, request: 0x40, value: 0, length: 4 });
+    const buf = Frames.encodeFrame({ type: 'ctrlIn', id: 1, cmd: 0x40, value: 0, length: 4 });
     const padded = new Uint8Array(buf.length + 1);
     padded.set(buf);
     expect(() => Frames.decodeFrame(padded)).toThrow();
@@ -33,8 +33,8 @@ describe('decodeFrame', () => {
 describe('frame round trips', () => {
   it('carries a full-size CTRL_OUT payload', () => {
     const data = Uint8Array.from({ length: Frames.MAX_PAYLOAD }, (_, i) => i & 0xff);
-    const back = Frames.decodeFrame(Frames.encodeFrame({ type: 'ctrlOut', id: 0xdeadbeef, request: 0xa1, value: 0x1234, data }));
-    expect(back).toEqual({ type: 'ctrlOut', id: 0xdeadbeef, request: 0xa1, value: 0x1234, data });
+    const back = Frames.decodeFrame(Frames.encodeFrame({ type: 'ctrlOut', id: 0xdeadbeef, cmd: 0x05a1, value: 0x1234, data }));
+    expect(back).toEqual({ type: 'ctrlOut', id: 0xdeadbeef, cmd: 0x05a1, value: 0x1234, data });
   });
 
   it('carries an empty OK', () => {

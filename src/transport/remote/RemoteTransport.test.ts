@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { RemoteTransport } from './RemoteTransport';
-import { RemoteClosed, RemoteRefused } from './errors';
+import { RemoteClosed, RemoteRefused, RemoteVersionMismatch } from './errors';
 import type { FrameChannel } from './FrameChannel';
 import * as Frames from './frames';
 import { TimeoutError } from '../withTimeout';
+import { TransportStall } from '../DspTransport';
+import { isLegacyProbeRefusal } from '@/protocol/protocolInfo';
 
 function fakeChannel() {
   const sent: Frames.Frame[] = [];
@@ -45,6 +47,19 @@ async function openRemote(hasNotify = true) {
 afterEach(() => { vi.useRealTimers(); });
 
 describe('RemoteTransport', () => {
+  it('rebuilds a forwarded STALL and NetworkError so the legacy probe check recognises them', async () => {
+    const { fake, t } = await openRemote();
+    const stalled = t.ctrlIn(0x0110, 0, 16);
+    fake.reply({ type: 'err', id: fake.idOf(1), kind: Frames.ErrKind.Stall, message: 's' });
+    const stallErr = await stalled.catch((e: unknown) => e);
+    expect(stallErr).toBeInstanceOf(TransportStall);
+    expect(isLegacyProbeRefusal(stallErr)).toBe(true);
+
+    const net = t.ctrlIn(0x0110, 0, 16);
+    fake.reply({ type: 'err', id: fake.idOf(2), kind: Frames.ErrKind.NetworkError, message: 'n' });
+    expect(isLegacyProbeRefusal(await net.catch((e: unknown) => e))).toBe(true);
+  });
+
   it('reports the time from sending a control read to its answer, and only for reads', async () => {
     vi.useFakeTimers();
     const samples: number[] = [];
@@ -148,7 +163,9 @@ describe('RemoteTransport', () => {
     const fake = fakeChannel();
     const connecting = RemoteTransport.connect(fake.channel, OPTS);
     fake.reply({ type: 'reject', reason: Frames.RejectReason.Busy });
-    await expect(connecting).rejects.toThrow();
+    const err = await connecting.catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(RemoteVersionMismatch);
   });
 
   it('rejects connect() when the channel closes before WELCOME', async () => {
@@ -171,7 +188,14 @@ describe('RemoteTransport', () => {
     const fake = fakeChannel();
     const connecting = RemoteTransport.connect(fake.channel, OPTS);
     fake.reply({ type: 'welcome', version: Frames.TUNNEL_VERSION + 1, leaseKind: 0, hasNotify: true, consoleBuild: 'peer' });
-    await expect(connecting).rejects.toThrow();
+    await expect(connecting).rejects.toBeInstanceOf(RemoteVersionMismatch);
+  });
+
+  it('rejects connect() as a version mismatch when the peer rejects our version', async () => {
+    const fake = fakeChannel();
+    const connecting = RemoteTransport.connect(fake.channel, OPTS);
+    fake.reply({ type: 'reject', reason: Frames.RejectReason.Version });
+    await expect(connecting).rejects.toBeInstanceOf(RemoteVersionMismatch);
   });
 
   it('rejects connect() when HELLO cannot be sent', async () => {

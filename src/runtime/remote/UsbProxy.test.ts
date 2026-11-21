@@ -4,7 +4,8 @@ import { createLeasePolicy } from './allowlist';
 import { WireCmd } from '@/protocol/wireCmd';
 import type { SerializedDspTransport } from '@/transport/withSerializedCtrl';
 import { TimeoutError } from '@/transport/withTimeout';
-import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
+import { PAGED_PROTOCOL_INFO } from '@/protocol/protocolInfo';
+import { type DspTransport, type TransportEvent, TransportStall } from '@/transport/DspTransport';
 import type { FrameChannel } from '@/transport/remote/FrameChannel';
 import * as Frames from '@/transport/remote/frames';
 import { createFrameChannelPair } from '@test/fixtures/frameChannelPair';
@@ -21,7 +22,7 @@ const flush = () => new Promise<void>((r) => setTimeout(r, 0));
 // unless `hold` is set, in which case ctrlIn waits for release().
 function stubTransport(opts: { hold?: boolean } = {}) {
   const listeners = new Set<() => void>();
-  const calls: Array<{ request: number; value: number }> = [];
+  const calls: Array<{ cmd: number; value: number }> = [];
   const held: Array<() => void> = [];
   let inFlight = 0;
   let maxInFlight = 0;
@@ -38,12 +39,12 @@ function stubTransport(opts: { hold?: boolean } = {}) {
     close: async () => {},
     isOpen: () => true,
     on: (_e: TransportEvent, l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; },
-    ctrlIn: (request, value) => {
-      calls.push({ request, value });
+    ctrlIn: (cmd, value) => {
+      calls.push({ cmd, value });
       return run(Uint8Array.of(value & 0xff), opts.hold ?? false);
     },
-    ctrlOut: (request, value) => {
-      calls.push({ request, value });
+    ctrlOut: (cmd, value) => {
+      calls.push({ cmd, value });
       return run(undefined, false);
     },
     notifyIn: async () => Uint8Array.of(0xee),
@@ -109,7 +110,7 @@ describe('startUsbProxy', () => {
     const stub = stubTransport();
     const c = await connect(stub.transport);
     for (let id = 1; id <= 10; id++) {
-      c.send({ type: 'ctrlIn', id, request: WireCmd.GetSerial.code, value: id, length: 1 });
+      c.send({ type: 'ctrlIn', id, cmd: WireCmd.GetSerial.code, value: id, length: 1 });
     }
     await flush();
     const got = answers(c.received);
@@ -121,7 +122,7 @@ describe('startUsbProxy', () => {
   it('answers a NOTIFY_IN while a CTRL_IN is still pending', async () => {
     const stub = stubTransport({ hold: true });
     const c = await connect(stub.transport);
-    c.send({ type: 'ctrlIn', id: 1, request: WireCmd.GetSerial.code, value: 0, length: 1 });
+    c.send({ type: 'ctrlIn', id: 1, cmd: WireCmd.GetSerial.code, value: 0, length: 1 });
     c.send({ type: 'notifyIn', id: 2, length: 8 });
     await flush();
     expect(answers(c.received).map((f) => f.id)).toEqual([2]);
@@ -148,18 +149,59 @@ describe('startUsbProxy', () => {
     const known = new Set(Object.values(WireCmd).map((e) => e.code));
     let unknown = 0;
     while (known.has(unknown)) unknown++;
-    c.send({ type: 'ctrlIn', id: 1, request: WireCmd.EnterBootloader.code, value: 0, length: 0 });
-    c.send({ type: 'ctrlOut', id: 2, request: WireCmd.FactoryReset.code, value: 0, data: new Uint8Array(0) });
-    c.send({ type: 'ctrlIn', id: 3, request: unknown, value: 0, length: 1 });
+    c.send({ type: 'ctrlIn', id: 1, cmd: WireCmd.EnterBootloader.code, value: 0, length: 0 });
+    c.send({ type: 'ctrlOut', id: 2, cmd: WireCmd.FactoryReset.code, value: 0, data: new Uint8Array(0) });
+    c.send({ type: 'ctrlIn', id: 3, cmd: unknown, value: 0, length: 1 });
     await flush();
     expect(answers(c.received).map((f) => f.type === 'err' && f.kind)).toEqual([4, 4, 4]);
     expect(stub.calls).toEqual([]);
   });
 
+  it('allows the protocol probe on IN in both leases and refuses it on OUT', async () => {
+    for (const readOnly of [false, true]) {
+      const stub = stubTransport();
+      const c = await connect(stub.transport, readOnly);
+      c.send({ type: 'ctrlIn', id: 1, cmd: PAGED_PROTOCOL_INFO, value: 0, length: 16 });
+      c.send({ type: 'ctrlOut', id: 2, cmd: PAGED_PROTOCOL_INFO, value: 0, data: new Uint8Array(0) });
+      await flush();
+      expect(answers(c.received).map((f) => [f.id, f.type === 'ok' ? 'ok' : f.kind])).toEqual([
+        [1, 'ok'], [2, Frames.ErrKind.Refused],
+      ]);
+      expect(stub.calls).toEqual([{ cmd: PAGED_PROTOCOL_INFO, value: 0 }]);
+    }
+  });
+
+  it('refuses a paged command ID that is not in the table, never masking it to a legacy opcode', async () => {
+    const stub = stubTransport();
+    const c = await connect(stub.transport);
+    c.send({ type: 'ctrlIn', id: 1, cmd: 0x0520, value: 0, length: 4 });
+    c.send({ type: 'ctrlOut', id: 2, cmd: 0x0100 | WireCmd.SetMasterVolume.code, value: 0, data: new Uint8Array(4) });
+    await flush();
+    expect(answers(c.received).map((f) => f.type === 'err' && f.kind)).toEqual([Frames.ErrKind.Refused, Frames.ErrKind.Refused]);
+    expect(stub.calls).toEqual([]);
+  });
+
+  it('forwards a device STALL and a NetworkError as distinct error kinds', async () => {
+    const stub = stubTransport();
+    let n = 0;
+    stub.inner.ctrlIn = async () => {
+      if (n++ === 0) throw new TransportStall('stalled');
+      throw Object.assign(new Error('stall via winusb'), { name: 'NetworkError' });
+    };
+    const c = await connect(asSerialized(stub.inner));
+    c.send({ type: 'ctrlIn', id: 1, cmd: PAGED_PROTOCOL_INFO, value: 0, length: 16 });
+    c.send({ type: 'ctrlIn', id: 2, cmd: PAGED_PROTOCOL_INFO, value: 0, length: 16 });
+    await flush();
+    expect(answers(c.received)).toMatchObject([
+      { id: 1, type: 'err', kind: Frames.ErrKind.Stall },
+      { id: 2, type: 'err', kind: Frames.ErrKind.NetworkError },
+    ]);
+  });
+
   it('refuses an oversize request length', async () => {
     const stub = stubTransport();
     const c = await connect(stub.transport);
-    c.send({ type: 'ctrlIn', id: 1, request: WireCmd.GetSerial.code, value: 0, length: Frames.MAX_PAYLOAD + 1 });
+    c.send({ type: 'ctrlIn', id: 1, cmd: WireCmd.GetSerial.code, value: 0, length: Frames.MAX_PAYLOAD + 1 });
     await flush();
     expect(answers(c.received)).toMatchObject([{ type: 'err', kind: Frames.ErrKind.Refused }]);
     expect(stub.calls).toEqual([]);
@@ -168,11 +210,11 @@ describe('startUsbProxy', () => {
   it('under read-only lets reads through and refuses every CTRL_OUT and non-read IN', async () => {
     const stub = stubTransport();
     const c = await connect(stub.transport, true);
-    c.send({ type: 'ctrlIn', id: 1, request: WireCmd.GetMasterVolume.code, value: 0, length: 4 });
-    c.send({ type: 'ctrlIn', id: 2, request: WireCmd.PresetGetName.code, value: 0, length: 32 });
-    c.send({ type: 'ctrlIn', id: 3, request: WireCmd.Limiter.code, value: 0, length: 4 });
-    c.send({ type: 'ctrlIn', id: 4, request: WireCmd.PresetSave.code, value: 0, length: 1 });
-    c.send({ type: 'ctrlOut', id: 5, request: WireCmd.SetMasterVolume.code, value: 0, data: new Uint8Array(4) });
+    c.send({ type: 'ctrlIn', id: 1, cmd: WireCmd.GetMasterVolume.code, value: 0, length: 4 });
+    c.send({ type: 'ctrlIn', id: 2, cmd: WireCmd.PresetGetName.code, value: 0, length: 32 });
+    c.send({ type: 'ctrlIn', id: 3, cmd: WireCmd.Limiter.code, value: 0, length: 4 });
+    c.send({ type: 'ctrlIn', id: 4, cmd: WireCmd.PresetSave.code, value: 0, length: 1 });
+    c.send({ type: 'ctrlOut', id: 5, cmd: WireCmd.SetMasterVolume.code, value: 0, data: new Uint8Array(4) });
     await flush();
     expect(answers(c.received).map((f) => [f.id, f.type === 'ok' ? 'ok' : f.kind])).toEqual([
       [1, 'ok'], [2, 'ok'], [3, 'ok'], [4, Frames.ErrKind.Refused], [5, Frames.ErrKind.Refused],
@@ -188,8 +230,8 @@ describe('startUsbProxy', () => {
       throw new Error('status=stall');
     };
     const c = await connect(asSerialized(stub.inner));
-    c.send({ type: 'ctrlIn', id: 1, request: WireCmd.GetSerial.code, value: 0, length: 1 });
-    c.send({ type: 'ctrlIn', id: 2, request: WireCmd.GetSerial.code, value: 0, length: 1 });
+    c.send({ type: 'ctrlIn', id: 1, cmd: WireCmd.GetSerial.code, value: 0, length: 1 });
+    c.send({ type: 'ctrlIn', id: 2, cmd: WireCmd.GetSerial.code, value: 0, length: 1 });
     await flush();
     expect(answers(c.received)).toMatchObject([
       { id: 1, type: 'err', kind: Frames.ErrKind.Timeout },
@@ -197,12 +239,12 @@ describe('startUsbProxy', () => {
     ]);
   });
 
-  it('reports a closed device as ERR kind 5', async () => {
+  it('reports a closed device as NotOpen even when the transfer threw a NetworkError', async () => {
     const stub = stubTransport();
     stub.inner.isOpen = () => false;
-    stub.inner.ctrlIn = async () => { throw new Error('device not open'); };
+    stub.inner.ctrlIn = async () => { throw Object.assign(new Error('device unplugged'), { name: 'NetworkError' }); };
     const c = await connect(asSerialized(stub.inner));
-    c.send({ type: 'ctrlIn', id: 1, request: WireCmd.GetSerial.code, value: 0, length: 1 });
+    c.send({ type: 'ctrlIn', id: 1, cmd: WireCmd.GetSerial.code, value: 0, length: 1 });
     await flush();
     expect(answers(c.received)).toMatchObject([{ type: 'err', kind: Frames.ErrKind.NotOpen }]);
   });
@@ -247,7 +289,7 @@ describe('startUsbProxy', () => {
     let closed = false;
     peer.onClose(() => { closed = true; });
     startUsbProxy(stub.transport, local, createLeasePolicy(false), { consoleBuild: 't', onClosed: () => {} });
-    peer.send(Frames.encodeFrame({ type: 'ctrlIn', id: 1, request: WireCmd.GetSerial.code, value: 0, length: 1 }));
+    peer.send(Frames.encodeFrame({ type: 'ctrlIn', id: 1, cmd: WireCmd.GetSerial.code, value: 0, length: 1 }));
     await flush();
     expect(closed).toBe(true);
     expect(stub.calls).toEqual([]);
@@ -257,12 +299,12 @@ describe('startUsbProxy', () => {
     const stub = stubTransport({ hold: true });
     const c = await connect(stub.transport);
     for (let id = 1; id <= 64; id++) {
-      c.send({ type: 'ctrlIn', id, request: WireCmd.GetSerial.code, value: 0, length: 1 });
+      c.send({ type: 'ctrlIn', id, cmd: WireCmd.GetSerial.code, value: 0, length: 1 });
     }
     await flush();
     expect(c.closed()).toBe(false);
     for (let id = 65; id <= 65; id++) {
-      c.send({ type: 'ctrlIn', id, request: WireCmd.GetSerial.code, value: 0, length: 1 });
+      c.send({ type: 'ctrlIn', id, cmd: WireCmd.GetSerial.code, value: 0, length: 1 });
     }
     await flush();
     expect(c.closed()).toBe(true);
@@ -282,8 +324,8 @@ describe('startUsbProxy', () => {
     peer.send(Frames.encodeFrame({ type: 'hello', version: Frames.TUNNEL_VERSION, wantReadOnly: false, consoleBuild: 'b' }));
     await flush();
     failSends = true;
-    peer.send(Frames.encodeFrame({ type: 'ctrlIn', id: 1, request: WireCmd.GetSerial.code, value: 0, length: 1 }));
-    peer.send(Frames.encodeFrame({ type: 'ctrlIn', id: 2, request: WireCmd.GetSerial.code, value: 0, length: 1 }));
+    peer.send(Frames.encodeFrame({ type: 'ctrlIn', id: 1, cmd: WireCmd.GetSerial.code, value: 0, length: 1 }));
+    peer.send(Frames.encodeFrame({ type: 'ctrlIn', id: 2, cmd: WireCmd.GetSerial.code, value: 0, length: 1 }));
     await flush();
     expect(ended).toEqual(['peer']);
     expect(stub.calls).toHaveLength(1);

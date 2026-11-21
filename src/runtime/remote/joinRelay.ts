@@ -14,6 +14,7 @@ import * as Store from './relayStore';
 import * as Signaling from './signaling';
 import { JOIN_FAILURE_TEXT } from './joinFailureText';
 import type { FrameChannel } from '@/transport/remote/FrameChannel';
+import { RemoteVersionMismatch } from '@/transport/remote/errors';
 import * as Wire from './relayWire';
 import { withTimeout } from './timeout';
 
@@ -164,11 +165,12 @@ async function answerOffer(a: Attempt, offer: Wire.Sdp): Promise<void> {
   let id: State.ConnId;
   try {
     id = await joinRemote(channel, HOST_LABEL, a.boot ? { activate: false } : {});
-  } catch {
+  } catch (err) {
     if (gen === generation) {
+      const reason = err instanceof RemoteVersionMismatch ? 'version' : 'failed';
       if (a.resumed) endAutoRejoin();
-      if (a.boot) announceBootFailure(a.name, 'failed');
-      State.setJoinState({ phase: 'failed', reason: 'failed' });
+      if (a.boot) announceBootFailure(a.name, reason);
+      State.setJoinState({ phase: 'failed', reason });
     }
     return;
   }

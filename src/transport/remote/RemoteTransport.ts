@@ -1,7 +1,7 @@
-import type { DspTransport, TransportEvent } from '../DspTransport';
+import { type DspTransport, type TransportEvent, TransportStall } from '../DspTransport';
 import { TimeoutError } from '../withTimeout';
 import type { FrameChannel } from './FrameChannel';
-import { RemoteClosed, RemoteRefused } from './errors';
+import { RemoteClosed, RemoteRefused, RemoteVersionMismatch } from './errors';
 import * as Frames from './frames';
 import { errMessage } from '@/utils';
 
@@ -90,12 +90,12 @@ export class RemoteTransport implements DspTransport {
     return this.#welcomed && !this.#closed;
   }
 
-  ctrlIn(request: number, value: number, length: number): Promise<Uint8Array> {
-    return this.#request((id) => ({ type: 'ctrlIn', id, request, value, length }), true);
+  ctrlIn(cmd: number, value: number, length: number): Promise<Uint8Array> {
+    return this.#request((id) => ({ type: 'ctrlIn', id, cmd, value, length }), true);
   }
 
-  async ctrlOut(request: number, value: number, data: Uint8Array): Promise<void> {
-    await this.#request((id) => ({ type: 'ctrlOut', id, request, value, data }));
+  async ctrlOut(cmd: number, value: number, data: Uint8Array): Promise<void> {
+    await this.#request((id) => ({ type: 'ctrlOut', id, cmd, value, data }));
   }
 
   on(event: TransportEvent, listener: () => void): () => void {
@@ -141,7 +141,7 @@ export class RemoteTransport implements DspTransport {
       case 'welcome':
         if (!this.#handshake) { this.#teardown(new Error('remote protocol error: unexpected welcome')); return; }
         if (frame.version !== Frames.TUNNEL_VERSION) {
-          this.#teardown(new Error(`remote speaks tunnel version ${frame.version}, expected ${Frames.TUNNEL_VERSION}`));
+          this.#teardown(new RemoteVersionMismatch(`remote speaks tunnel version ${frame.version}, expected ${Frames.TUNNEL_VERSION}`));
           return;
         }
         this.#welcomed = true;
@@ -151,7 +151,9 @@ export class RemoteTransport implements DspTransport {
         this.#emit('connect');
         return;
       case 'reject':
-        this.#teardown(new Error(`remote refused the connection (reason ${frame.reason})`));
+        this.#teardown(frame.reason === Frames.RejectReason.Version
+          ? new RemoteVersionMismatch(`remote speaks another tunnel version than ${Frames.TUNNEL_VERSION}`)
+          : new Error(`remote refused the connection (reason ${frame.reason})`));
         return;
       case 'ok': {
         const p = this.#settle(frame.id);
@@ -204,5 +206,11 @@ function errorFor(kind: number, message: string): Error {
     return err;
   }
   if (kind === Frames.ErrKind.Refused) return new RemoteRefused(message);
+  if (kind === Frames.ErrKind.Stall) return new TransportStall(message);
+  if (kind === Frames.ErrKind.NetworkError) {
+    const err = new Error(message);
+    err.name = 'NetworkError';
+    return err;
+  }
   return new Error(message);
 }

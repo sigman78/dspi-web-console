@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WireCmd } from '@/protocol/wireCmd';
-import { DspDevice } from '@/device/DspDevice';
+import { DspDevice, PagedFirmware } from '@/device/DspDevice';
+import { PAGED_PROTOCOL_INFO } from '@/protocol/protocolInfo';
 import { MockTransport } from '@/transport/MockTransport';
 import { withSerializedCtrl } from '@/transport/withSerializedCtrl';
 import { RemoteTransport } from './RemoteTransport';
@@ -48,5 +49,33 @@ describe('tunnel over MockTransport', () => {
     const packet = new Uint8Array([2, 0x05, 0, 1, 3, 0, 0, 0]);
     mock.pushNotify(packet);
     expect(await remote.readNotification()).toEqual(packet);
+  });
+});
+
+async function tunnel(mock: MockTransport) {
+  await mock.open();
+  const [bSide, aSide] = createFrameChannelPair();
+  const sent: number[] = [];
+  const serialized = withSerializedCtrl(mock);
+  const ctrlIn = serialized.ctrlIn;
+  serialized.ctrlIn = (cmd, value, length) => { sent.push(cmd); return ctrlIn(cmd, value, length); };
+  startUsbProxy(serialized, aSide, createLeasePolicy(false), { consoleBuild: 'test', onClosed: () => {} });
+  const transport = await RemoteTransport.connect(bSide, { consoleBuild: 'test', wantReadOnly: false });
+  return { transport, sent };
+}
+
+describe('tunnel connect probe', () => {
+  it('forwards the legacy STALL so a remote client connects through the legacy flow', async () => {
+    const { transport, sent } = await tunnel(new MockTransport({ platform: 'rp2350' }));
+    const remote = await DspDevice.create(transport, async () => {});
+    expect(sent[0]).toBe(PAGED_PROTOCOL_INFO);
+    expect(remote.info.serial).not.toBe('');
+  });
+
+  it('rejects a paged device with only the probe having crossed the tunnel', async () => {
+    const { transport, sent } = await tunnel(new MockTransport({ platform: 'rp2350', paged: true }));
+    const err = await DspDevice.create(transport, async () => {}).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PagedFirmware);
+    expect(sent).toEqual([PAGED_PROTOCOL_INFO]);
   });
 });

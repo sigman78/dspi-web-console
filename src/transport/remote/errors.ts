@@ -10,3 +10,8 @@ export class RemoteClosed extends Error {
     super(message);
   }
 }
+
+// The two consoles speak different tunnel versions.
+export class RemoteVersionMismatch extends Error {
+  override readonly name = 'RemoteVersionMismatch';
+}

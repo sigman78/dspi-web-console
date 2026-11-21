@@ -41,7 +41,7 @@ export type ShareEnd = 'relay-lost';
 
 export type JoinFailure =
   | 'no-path' | 'bad-code' | 'burnt' | 'expired' | 'rate-limited' | 'no-host' | 'busy'
-  | 'denied' | 'host-gone' | 'replaced' | 'violation' | 'unreachable' | 'timeout' | 'no-token' | 'sharing' | 'failed';
+  | 'denied' | 'host-gone' | 'replaced' | 'violation' | 'unreachable' | 'timeout' | 'no-token' | 'sharing' | 'version' | 'failed';
 
 // The joining console's progress through the relay handshake.
 export type JoinState =

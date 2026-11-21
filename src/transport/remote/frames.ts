@@ -1,9 +1,10 @@
 // Tunnel frame codec: 5-byte header (u8 type, u32 correlation id) then a
-// type-specific little-endian body.
+// type-specific little-endian body. CtrlIn/CtrlOut carry the 16-bit command
+// ID (page << 8 | bRequest) exactly as DspTransport does.
 
 import { BinReader, BinWriter, utf8Truncate } from '@/utils';
 
-export const TUNNEL_VERSION = 1;
+export const TUNNEL_VERSION = 2;
 // Control-transfer payload cap (WinUSB limit).
 export const MAX_PAYLOAD = 4096;
 // Anything larger than this on the wire is a protocol violation.
@@ -27,19 +28,24 @@ export const FrameType = {
 export const RejectReason = { Version: 1, Busy: 2, Denied: 3 } as const;
 export const LeaseKind = { Full: 0, ReadOnly: 1 } as const;
 export const DeviceEvent = { Connect: 1, Disconnect: 2, Release: 3 } as const;
+// Err kinds. Stall is a device STALL; NetworkError is a transfer that threw an
+// Error named 'NetworkError'. The client rebuilds them as TransportStall and an
+// Error named 'NetworkError'.
 export const ErrKind = {
   Transport: 1,
   Timeout: 2,
+  Stall: 3,
   Refused: 4,
   NotOpen: 5,
+  NetworkError: 6,
 } as const;
 
 export type Frame =
   | { type: 'hello'; version: number; wantReadOnly: boolean; consoleBuild: string }
   | { type: 'welcome'; version: number; leaseKind: number; hasNotify: boolean; consoleBuild: string }
   | { type: 'reject'; reason: number }
-  | { type: 'ctrlIn'; id: number; request: number; value: number; length: number }
-  | { type: 'ctrlOut'; id: number; request: number; value: number; data: Uint8Array }
+  | { type: 'ctrlIn'; id: number; cmd: number; value: number; length: number }
+  | { type: 'ctrlOut'; id: number; cmd: number; value: number; data: Uint8Array }
   | { type: 'notifyIn'; id: number; length: number }
   | { type: 'ok'; id: number; data: Uint8Array }
   | { type: 'err'; id: number; kind: number; message: string }
@@ -70,10 +76,10 @@ export function encodeFrame(f: Frame): Uint8Array {
     case 'reject':
       return begin(FrameType.Reject, 0, 1).u8(f.reason).toUint8Array();
     case 'ctrlIn':
-      return begin(FrameType.CtrlIn, f.id, 5).u8(f.request).u16(f.value).u16(f.length).toUint8Array();
+      return begin(FrameType.CtrlIn, f.id, 6).u16(f.cmd).u16(f.value).u16(f.length).toUint8Array();
     case 'ctrlOut':
-      return begin(FrameType.CtrlOut, f.id, 5 + f.data.length)
-        .u8(f.request).u16(f.value).u16(f.data.length).bytes(f.data).toUint8Array();
+      return begin(FrameType.CtrlOut, f.id, 6 + f.data.length)
+        .u16(f.cmd).u16(f.value).u16(f.data.length).bytes(f.data).toUint8Array();
     case 'notifyIn':
       return begin(FrameType.NotifyIn, f.id, 2).u16(f.length).toUint8Array();
     case 'ok':
@@ -118,13 +124,13 @@ export function decodeFrame(buf: Uint8Array): Frame {
     case FrameType.Reject:
       return exact(r, { type: 'reject', reason: r.u8() });
     case FrameType.CtrlIn:
-      return exact(r, { type: 'ctrlIn', id, request: r.u8(), value: r.u16(), length: r.u16() });
+      return exact(r, { type: 'ctrlIn', id, cmd: r.u16(), value: r.u16(), length: r.u16() });
     case FrameType.CtrlOut: {
-      const request = r.u8();
+      const cmd = r.u16();
       const value = r.u16();
       const len = r.u16();
       if (len !== r.remaining) throw new RangeError(`ctrlOut length ${len} != body ${r.remaining}`);
-      return { type: 'ctrlOut', id, request, value, data: r.bytes(len).slice() };
+      return { type: 'ctrlOut', id, cmd, value, data: r.bytes(len).slice() };
     }
     case FrameType.NotifyIn:
       return exact(r, { type: 'notifyIn', id, length: r.u16() });
