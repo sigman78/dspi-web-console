@@ -19,6 +19,7 @@
   import type { IrDraft } from '@/domain/cs/irDraft';
   import * as SlotOps from './csSlotOps';
   import { portal } from '@/components/chrome/portal';
+  import { enumLabelContext } from './csFieldFormat';
 
   // irDetailTarget: when set, the commands section portals into that host and
   // shows one command at a time instead of all sub-slots inline.
@@ -278,7 +279,7 @@
 
           {#if d.noun !== Domain.CsNoun.PageValue && (CsField.showValueOf(d.action) || CsField.showStepOf(d.action, CsIr.IR_STEPPY))}
             <div class="cs-row">
-              <CsValueStepRow nouns={cs.nouns} noun={d.noun} action={d.action} steppy={CsIr.IR_STEPPY} presetNames={s.presets.names} macros={cs.macros} displayPages={cs.displayPages}
+              <CsValueStepRow nouns={cs.nouns} noun={d.noun} action={d.action} steppy={CsIr.IR_STEPPY} presetNames={s.presets.names} macros={cs.macros} displayPages={cs.displayPages} labels={enumLabelContext(s)}
                 value={d.value} step={d.step} disabled={applyingSub != null}
                 onValue={(v) => editDraft(sub, (dr) => { dr.value = v; })}
                 onStep={(v) => editDraft(sub, (dr) => { dr.step = v; })} />

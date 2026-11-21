@@ -105,7 +105,7 @@ export const CsNoun = {
   SubharmLow:         58,
   SubharmHigh:        59,
   SubharmBoost:       60,
-  // caps v15-v21 additions.
+  // caps v15-v22 additions.
   SubharmTop:         61,
   SubharmSelect:      62,
   SubharmDepth:       63,
@@ -127,6 +127,8 @@ export const CsNoun = {
   LimiterLink:        77,
   LimiterGr:          78,
   PresetSave:         79,
+  // caps v22: deferred enum, value = option id - 1 (the requested option).
+  OutputLatency:      80,
 } as const;
 export type CsNoun = (typeof CsNoun)[keyof typeof CsNoun];
 
@@ -753,6 +755,7 @@ export const CS_NOUN_LABEL: Record<CsNoun, string> = {
   [CsNoun.LimiterLink]:       'Limiter Link Group',
   [CsNoun.LimiterGr]:         'Limiter GR',
   [CsNoun.PresetSave]:        'Save Preset',
+  [CsNoun.OutputLatency]:     'Output Latency',
 };
 
 // A device with a newer caps format may publish nouns this console has no

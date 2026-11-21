@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { DspDevice } from '@/device/DspDevice';
-import { wireUpConnection, activateSession, switchSession, hasPendingWork, fetchOutputLatency } from './deviceService';
+import { wireUpConnection, activateSession, switchSession, hasPendingWork, fetchOutputLatency, refreshNames } from './deviceService';
 import { bootMock } from './boot';
 import { ConnectionScope } from './connectionScope';
 import { write } from './writes.svelte';
@@ -329,7 +329,7 @@ describe('fetchSysClock', () => {
 
 describe('fetchOutputLatency', () => {
   it('reads status and options when the firmware answers the latency request', async () => {
-    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION, fwHead: true });
+    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION, fw116Release: true });
     const { outputLatency } = State.activeSession()!;
     expect(outputLatency.supported).toBe(true);
     expect(outputLatency.status?.requestedId).toBeGreaterThan(0);
@@ -337,7 +337,7 @@ describe('fetchOutputLatency', () => {
   });
 
   it('keeps support confirmed when only the options read fails', async () => {
-    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION, fwHead: true });
+    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION, fw116Release: true });
     const s = State.activeSession()!;
     vi.spyOn(s.device, 'getOutputLatencyOptions').mockRejectedValueOnce(new Error('transfer failed'));
     await fetchOutputLatency(s);
@@ -352,5 +352,39 @@ describe('fetchOutputLatency', () => {
     expect(outputLatency.supported).toBe(false);
     expect(outputLatency.status).toBeNull();
     expect(outputLatency.options).toBeNull();
+  });
+});
+
+describe('fetchNames', () => {
+  it('reads every selectable source name and the board name on release firmware', async () => {
+    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION, fw116Release: true, initialInputSourceNames: { 1: 'TV', 4: 'Tape' }, initialDeviceName: 'Den' });
+    const { names } = State.activeSession()!;
+    expect(names.inputSourcesSupported).toBe(true);
+    expect(names.deviceSupported).toBe(true);
+    expect(names.inputSources[1]).toBe('TV');
+    expect(names.inputSources[4]).toBe('Tape');
+    expect(names.inputSources[0]).toBe('');
+    expect(names.device).toBe('Den');
+  });
+
+  it('refreshNames re-reads without probing again, picking up renames made while dormant', async () => {
+    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION, fw116Release: true, initialInputSourceNames: { 1: 'TV' }, initialDeviceName: 'Den' });
+    const s = State.activeSession()!;
+    const probe = vi.spyOn(s.device, 'probeDeviceName');
+    await s.device.setDeviceName('Rack');
+    await s.device.setInputSourceName(1, '');
+    await refreshNames(s);
+    expect(s.names.device).toBe('Rack');
+    expect(s.names.inputSources[1]).toBe('');
+    expect(probe).not.toHaveBeenCalled();
+  });
+
+  it('leaves older firmware unprobed-as-unsupported with nothing read', async () => {
+    await bootMock('rp2350', { wireVersion: 32 });
+    const { names } = State.activeSession()!;
+    expect(names.inputSourcesSupported).toBe(false);
+    expect(names.deviceSupported).toBe(false);
+    expect(names.inputSources).toEqual({});
+    expect(names.device).toBe('');
   });
 });

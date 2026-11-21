@@ -18,6 +18,7 @@
   import * as CsMacroDraft from '@/domain/cs/macroDraft';
   import * as SlotOps from './csSlotOps';
   import type { MacroDraft, StepDraft } from '@/domain/cs/macroDraft';
+  import { enumLabelContext } from './csFieldFormat';
 
   // `visible`: only the page on screen holds the poll interest.
   const { detailTarget = null, visible }: { detailTarget?: HTMLElement | null; visible: boolean } = $props();
@@ -297,7 +298,7 @@
 
             {#if CsField.showValueOf(step.action) || CsField.showStepOf(step.action, CsMacroDraft.MACRO_STEPPY)}
               <div class="cs-row">
-                <CsValueStepRow nouns={cs.nouns} noun={step.noun} action={step.action} steppy={CsMacroDraft.MACRO_STEPPY} presetNames={s.presets.names} macros={cs.macros} displayPages={cs.displayPages}
+                <CsValueStepRow nouns={cs.nouns} noun={step.noun} action={step.action} steppy={CsMacroDraft.MACRO_STEPPY} presetNames={s.presets.names} macros={cs.macros} displayPages={cs.displayPages} labels={enumLabelContext(s)}
                   value={step.value} step={step.step} disabled={applying} ariaSuffix={` for step ${k + 1}`}
                   onValue={(v) => editStep(i, k, (dr) => { dr.value = v; })}
                   onStep={(v) => editStep(i, k, (dr) => { dr.step = v; })} />

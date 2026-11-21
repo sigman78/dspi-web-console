@@ -1,6 +1,7 @@
 import type { DspTransport } from '@/transport/DspTransport';
 import { withSerializedCtrl, type SerializedDspTransport } from '@/transport/withSerializedCtrl';
 import * as proto from '@/protocol';
+import { TimeoutError } from '@/transport/withTimeout';
 import { Codec, utf8Truncate, Result } from '@/utils';
 import * as Domain from '@/domain';
 import { fromBulkParams, narrowInputSource, type DeviceState } from '@/protocol/snapshotCodec';
@@ -269,6 +270,10 @@ function ctrlIfaceStatusFromWire(w: {
 
 export class DspDevice {
   #lastRawBulk: Uint8Array | null = null;
+  // Set by the name probes; the SET opcodes (0x54/0x56) are legacy gain/mute
+  // on older firmware, so the write methods refuse until the probe passed.
+  #inputSourceNamesSupported = false;
+  #deviceNameSupported = false;
 
   protected constructor(
     protected readonly transport: SerializedDspTransport,
@@ -1451,6 +1456,65 @@ export class DspDevice {
   // id is ACKed and ignored; re-sending the stored id is a no-op.
   async setOutputLatency(id: number): Promise<void> {
     return this.transport.ctrlOut(proto.WireCmd.OutputLatency.code, 0, Codec.encode(Codec.u8, id & 0xFF));
+  }
+
+  // Input source names (0x54/0x55). Firmware without the feature answers the
+  // 32-byte GET with the 4-byte legacy gain (or STALLs), so only a full
+  // 32-byte reply counts as support.
+  async probeInputSourceNames(): Promise<boolean> {
+    this.#inputSourceNamesSupported = false;
+    this.#inputSourceNamesSupported = await this.#probeName(proto.WireCmd.GetInputSourceName.code, Domain.AudioInputSource.Usb);
+    return this.#inputSourceNamesSupported;
+  }
+
+  get inputSourceNamesSupported(): boolean { return this.#inputSourceNamesSupported; }
+
+  async getInputSourceName(source: number): Promise<string> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetInputSourceName, source);
+  }
+
+  // Resolves to the name as stored (sanitized, at most 31 characters).
+  async setInputSourceName(source: number, name: string): Promise<string> {
+    if (!this.#inputSourceNamesSupported) throw new Error('input source names unsupported');
+    const clean = Domain.sanitizeDeviceName(name);
+    await proto.writeCmd(this.transport, proto.WireCmd.SetInputSourceName, clean, source);
+    return clean;
+  }
+
+  // Board name (0x56/0x57): probed on its own, since firmware with source
+  // names can still STALL it and older firmware answers 1 byte.
+  async probeDeviceName(): Promise<boolean> {
+    this.#deviceNameSupported = false;
+    this.#deviceNameSupported = await this.#probeName(proto.WireCmd.GetDeviceName.code, 0);
+    return this.#deviceNameSupported;
+  }
+
+  get deviceNameSupported(): boolean { return this.#deviceNameSupported; }
+
+  async getDeviceName(): Promise<string> {
+    return proto.readCmd(this.transport, proto.WireCmd.GetDeviceName, 0);
+  }
+
+  async setDeviceName(name: string): Promise<string> {
+    if (!this.#deviceNameSupported) throw new Error('device name unsupported');
+    const clean = Domain.sanitizeDeviceName(name);
+    await proto.writeCmd(this.transport, proto.WireCmd.SetDeviceName, clean, 0);
+    return clean;
+  }
+
+  // A STALL or short reply is a definite "unsupported". A timeout is retried
+  // once; a second one propagates so the caller can report it to link health.
+  async #probeName(code: number, wValue: number): Promise<boolean> {
+    const size = Codec.sizeOf(proto.Wire.ChannelName);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const raw = await this.transport.ctrlIn(code, wValue, size);
+        return raw.length >= size;
+      } catch (e) {
+        if (!(e instanceof TimeoutError)) return false;
+        if (attempt > 0) throw e;
+      }
+    }
   }
 
   // Ring health counters 26-31. Firmware answers unknown indices with 0, so

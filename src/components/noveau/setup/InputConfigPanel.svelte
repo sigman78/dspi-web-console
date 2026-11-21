@@ -96,15 +96,7 @@
     }
   }
 
-  const SOURCE_LABELS = $derived<Record<number, string>>({
-    [Domain.AudioInputSource.Usb]:    'USB',
-    [Domain.AudioInputSource.Spdif]:  spdifInputCount > 1 ? 'S/PDIF 1' : 'S/PDIF',
-    [Domain.AudioInputSource.Spdif2]: 'S/PDIF 2',
-    [Domain.AudioInputSource.Spdif3]: 'S/PDIF 3',
-    [Domain.AudioInputSource.Spdif4]: 'S/PDIF 4',
-    [Domain.AudioInputSource.I2s]:    'I2S',
-    [Domain.AudioInputSource.Adat]:   'ADAT',
-  });
+  const sourceTitle = (src: number): string => Domain.inputSourceTitle(src, s.names.inputSources, Domain.spdifNumbered(inputConfig?.spdifExtEnabled));
 
   const STATE_LABELS: Record<number, string> = {
     [Domain.SpdifInputState.Inactive]:  'INACTIVE',
@@ -137,7 +129,7 @@
   {/snippet}
   {#if inputConfig && snap && overlaySnap}
     <div class="cfgkvgrid">
-      <KV label="SOURCE" value={SOURCE_LABELS[liveSource] ?? 'USB'} />
+      <KV label="SOURCE" value={sourceTitle(liveSource)} />
       <div class="src-btns">
         <button
           class="chip"
@@ -199,7 +191,7 @@
       </div>
     </div>
     {#if sourcePending}
-      <p class="hint pending">Device is running on {SOURCE_LABELS[liveSource]} — configuring pending {SOURCE_LABELS[source]}.</p>
+      <p class="hint pending">Device is running on {sourceTitle(liveSource)} — configuring pending {sourceTitle(source)}.</p>
     {/if}
 
     {#if source === Domain.AudioInputSource.Usb}

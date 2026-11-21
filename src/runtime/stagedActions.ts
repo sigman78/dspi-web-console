@@ -70,19 +70,11 @@ async function applyPin(s: ReadySession, pin: number, send: () => Promise<boolea
   if (ok && pin === PIN_RESET_TO_DEFAULT) s.mirror.requestReconcile(true);
   return ok;
 }
+function sourceTitle(s: ReadySession, source: Domain.AudioInputSource): string {
+  return Domain.inputSourceTitle(source, s.names.inputSources, Domain.spdifNumbered(s.mirror.snapshot.inputConfig.spdifExtEnabled));
+}
 function fmtOnOff(v: boolean): string { return v ? 'on' : 'off'; }
 function fmtMultiplier(encoded: number): string { return encoded === 1 ? '256×' : '128×'; }
-function fmtSource(source: Domain.AudioInputSource): string {
-  switch (source) {
-    case Domain.AudioInputSource.Spdif:  return 'S/PDIF';
-    case Domain.AudioInputSource.Spdif2: return 'S/PDIF 2';
-    case Domain.AudioInputSource.Spdif3: return 'S/PDIF 3';
-    case Domain.AudioInputSource.Spdif4: return 'S/PDIF 4';
-    case Domain.AudioInputSource.I2s:    return 'I2S';
-    case Domain.AudioInputSource.Adat:   return 'ADAT';
-    default:                             return 'USB';
-  }
-}
 function fmtClockMode(mode: number): string { return mode === 1 ? 'slave' : 'master'; }
 function fmtClockPinMode(mode: number): string { return mode === 1 ? 'split' : 'unified'; }
 
@@ -96,8 +88,8 @@ export function stageInputSource(s: ReadySession, source: Domain.AudioInputSourc
   stageOrDiscard(s, 'inputSource', live, source, () => ({
     key: 'inputSource',
     label: 'Input source',
-    from: fmtSource(live),
-    to: fmtSource(source),
+    from: sourceTitle(s, live),
+    to: sourceTitle(s, source),
     value: source,
     order: ORDER.inputSource,
     page: 'inputs',

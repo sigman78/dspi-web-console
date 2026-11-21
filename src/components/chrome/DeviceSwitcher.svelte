@@ -35,8 +35,15 @@
   const hiddenFailed = $derived(hidden.some((e) => e.kind === 'badge'));
   $effect(() => { if (hidden.length === 0) moreOpen = false; });
 
+  // The board's own name when it has one; the serial identifies it otherwise.
+  function rowLabel(rec: DeviceRecord): string {
+    return rec.session.names.device || rec.session.info.serial;
+  }
+
   function rowTitle(rec: DeviceRecord): string {
-    return `${rec.session.info.serial} · ${rec.session.hardware.name}`;
+    const { serial } = rec.session.info;
+    const label = rowLabel(rec);
+    return `${label === serial ? serial : `${label} · ${serial}`} · ${rec.session.hardware.name}`;
   }
 
   function badgeTitle(failure: AdoptFailure): string {
@@ -77,7 +84,7 @@
       title={rowTitle(entry.rec)}
       onclick={() => { moreOpen = false; void onRowClick(entry.id, active); }}
     >
-      <span class="serial">{entry.rec.session.info.serial}</span>
+      <span class="serial">{rowLabel(entry.rec)}</span>
       <span class="hw">{entry.rec.session.hardware.name}</span>
     </button>
   {:else}
