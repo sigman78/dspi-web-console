@@ -26,8 +26,8 @@ export function withSerializedCtrl(inner: DspTransport): SerializedDspTransport 
     close: () => inner.close(),
     isOpen: () => inner.isOpen(),
     on: (event: TransportEvent, listener: () => void) => inner.on(event, listener),
-    ctrlIn: (request, value, length) => enqueue(() => inner.ctrlIn(request, value, length)),
-    ctrlOut: (request, value, data) => enqueue(() => inner.ctrlOut(request, value, data)),
+    ctrlIn: (cmd, value, length) => enqueue(() => inner.ctrlIn(cmd, value, length)),
+    ctrlOut: (cmd, value, data) => enqueue(() => inner.ctrlOut(cmd, value, data)),
     exclusive: <T>(fn: (raw: DspTransport) => Promise<T>) => enqueue(() => fn(inner)),
     ...(inner.notifyIn
       ? { notifyIn: (length: number) => inner.notifyIn!(length) }

@@ -1,4 +1,4 @@
-import type { DspTransport } from '@/transport/DspTransport';
+import { type DspTransport, TransportStall } from '@/transport/DspTransport';
 import { withSerializedCtrl, type SerializedDspTransport } from '@/transport/withSerializedCtrl';
 import * as proto from '@/protocol';
 import { Codec, utf8Truncate, Result } from '@/utils';
@@ -22,6 +22,27 @@ export class UnsupportedFirmware extends Error {
   ) {
     super(`DSPi firmware ${firmwareVersion} (wire ${wireLabel}) is older than the minimum supported ${minimum} (wire V${proto.Wire.MIN_WIRE_VERSION}). Flash the released ${minimum} firmware or newer.`);
     this.name = 'UnsupportedFirmware';
+  }
+}
+
+// Thrown at connect when the device answers the paged-protocol probe (fw
+// 1.1.7+), which this console cannot drive yet. Nothing but the probe was sent.
+export class PagedFirmware extends Error {
+  constructor(readonly protocolMajor: number) {
+    super(protocolMajor === proto.SUPPORTED_PROTOCOL_MAJOR
+      ? 'This device runs DSPi firmware 1.1.7 or newer, which this console version does not support yet. Use the 1.1.6 firmware, or update the console when 1.1.7 support ships.'
+      : `This device speaks DSPi protocol ${protocolMajor}, which is newer than this console understands. Update the console.`);
+    this.name = 'PagedFirmware';
+  }
+}
+
+// Thrown when the first request is answered but not with a PROTOCOL_INFO
+// reply. Legacy firmware STALLs the probe, so this means something unexpected
+// is on the other end; the console refuses to guess a protocol.
+export class UnrecognizedProbeReply extends Error {
+  constructor(length: number) {
+    super(`The device answered the protocol probe with ${length} unrecognized bytes; refusing to connect.`);
+    this.name = 'UnrecognizedProbeReply';
   }
 }
 
@@ -267,6 +288,26 @@ function ctrlIfaceStatusFromWire(w: {
 }
 
 
+// First and only request until the protocol generation is known: paged
+// firmware answers it, legacy firmware STALLs it. Legacy firmware ignores the
+// page byte, so any other paged request could run an unrelated opcode there.
+async function probeProtocol(transport: DspTransport): Promise<void> {
+  let reply: Uint8Array;
+  try {
+    reply = await transport.ctrlIn(proto.PAGED_PROTOCOL_INFO, 0, proto.PROTOCOL_INFO_LENGTH);
+  } catch (err) {
+    // Chromium's WinUSB backend can surface a control STALL as a thrown
+    // NetworkError rather than status 'stall'. Falling back to legacy is the
+    // safe direction (paged firmware refuses page-0 requests and changes
+    // nothing); a timeout or disconnect still rethrows.
+    if (err instanceof TransportStall || (err instanceof Error && err.name === 'NetworkError')) return;
+    throw err;
+  }
+  const info = proto.parseProtocolInfo(reply);
+  if (!info) throw new UnrecognizedProbeReply(reply.length);
+  throw new PagedFirmware(info.major);
+}
+
 export class DspDevice {
   #lastRawBulk: Uint8Array | null = null;
 
@@ -280,6 +321,7 @@ export class DspDevice {
     openTransport: () => Promise<void> = () => transport.open(),
   ): Promise<DspDeviceInfo> {
     await openTransport();
+    await probeProtocol(transport);
     const [serial, platform] = await Promise.all([
       proto.readCmd(transport, proto.WireCmd.GetSerial),
       readPlatform(transport),

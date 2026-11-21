@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MockTransport } from './MockTransport';
+import { TransportStall } from './DspTransport';
 import { DspDevice } from '@/device/DspDevice';
 import * as Protocol from '@/protocol';
 import { Codec } from '@/utils';
@@ -1199,5 +1200,31 @@ describe('MockTransport — output limiter (REQ_LIMITER 0x81, fw V32+)', () => {
     now.mockRestore();
     expect(meter[3]).toBeGreaterThan(0);
     expect(meter.filter((_, k) => k !== 3).every((v) => v === 0)).toBe(true);
+  });
+});
+
+describe('MockTransport — unknown opcodes and paged IDs', () => {
+  it('STALLs an unknown IN or OUT opcode instead of answering zeros', async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    await t.open();
+    await expect(t.ctrlIn(0x10, 0, 4)).rejects.toBeInstanceOf(TransportStall);
+    await expect(t.ctrlOut(0x10, 0, new Uint8Array(1))).rejects.toBeInstanceOf(TransportStall);
+  });
+
+  it('a legacy mock ignores the page byte, so the paged probe lands on the unhandled 0x10', async () => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    await t.open();
+    await expect(t.ctrlIn(Protocol.PAGED_PROTOCOL_INFO, 0, 16)).rejects.toBeInstanceOf(TransportStall);
+    const viaPage = await t.ctrlIn(0x0300 | Protocol.WireCmd.GetSerial.code, 0, 16);
+    expect(viaPage).toEqual(await t.ctrlIn(Protocol.WireCmd.GetSerial.code, 0, 16));
+  });
+
+  it('a paged mock answers only the probe and STALLs every page-0 request', async () => {
+    const t = new MockTransport({ platform: 'rp2350', paged: true });
+    await t.open();
+    const info = Protocol.parseProtocolInfo(await t.ctrlIn(Protocol.PAGED_PROTOCOL_INFO, 0, 16));
+    expect(info).toEqual({ major: 1 });
+    await expect(t.ctrlIn(Protocol.WireCmd.GetSerial.code, 0, 16)).rejects.toBeInstanceOf(TransportStall);
+    await expect(t.ctrlOut(Protocol.WireCmd.SetMasterVolume.code, 0, new Uint8Array(4))).rejects.toBeInstanceOf(TransportStall);
   });
 });

@@ -5,6 +5,7 @@
 
 import { Codec, type BinCodec } from '@/utils';
 import { WireCmd } from './wireCmd';
+import { PAGED_PROTOCOL_INFO } from './protocolInfo';
 import * as Wire from './wireTypes';
 import type { BulkLayout } from './wireTypes';
 import { parseNotifyPacket, ParamSource, type ParamChangedEvent } from './notify';
@@ -27,10 +28,10 @@ const BULK_WRITE_CHUNK = WireCmd.SetAllParamsChunk.code;  // 0xA3
 // header's first byte (formatVersion): a full bulk transfer always does, and
 // a chunked transfer only at chunk offset 0. Lets withWireMonitor track the
 // device's wire version so it can enrich later PARAM_CHANGED notifications.
-export function bulkVersionFromTraffic(request: number, value: number, payload: Uint8Array): number | null {
+export function bulkVersionFromTraffic(cmd: number, value: number, payload: Uint8Array): number | null {
   if (payload.length === 0) return null;
-  if (request === BULK_READ || request === BULK_WRITE) return payload[0];
-  if ((request === BULK_READ_CHUNK || request === BULK_WRITE_CHUNK) && value === 0) return payload[0];
+  if (cmd === BULK_READ || cmd === BULK_WRITE) return payload[0];
+  if ((cmd === BULK_READ_CHUNK || cmd === BULK_WRITE_CHUNK) && value === 0) return payload[0];
   return null;
 }
 
@@ -45,6 +46,7 @@ for (const [name, entry] of Object.entries(WireCmd)) {
   const codec = 'codec' in entry ? (entry.codec as BinCodec<unknown>) : undefined;
   CMD_BY_CODE.set(entry.code, { name, codec });
 }
+CMD_BY_CODE.set(PAGED_PROTOCOL_INFO, { name: 'PROTOCOL_INFO probe' });
 
 // ParamSource value -> lowercase name (host, gpio, ...) for notification lines.
 const SOURCE_NAME = new Map<number, string>(
@@ -66,6 +68,11 @@ function fmtValue(v: unknown): string {
   return fmtScalar(v);
 }
 
+// Command IDs are 16-bit (page << 8 | command); page-0 IDs keep the short form.
+export function fmtCmdId(cmd: number): string {
+  return cmd > 0xFF ? `0x${cmd.toString(16).padStart(4, '0')}` : `0x${cmd.toString(16)}`;
+}
+
 function fmtWValue(value: number): string {
   return value !== 0 ? ` w=0x${value.toString(16)}` : '';
 }
@@ -83,27 +90,27 @@ function decodeOrSize(info: CmdInfo | undefined, bytes: Uint8Array): string {
   return `${bytes.length} B`;
 }
 
-export function formatCtrlOut(request: number, value: number, data: Uint8Array): string {
-  if (request === BULK_WRITE) {
+export function formatCtrlOut(cmd: number, value: number, data: Uint8Array): string {
+  if (cmd === BULK_WRITE) {
     return `<> SetAllParams (bulk) v${data[0] ?? 0} ${data.length} B`;
   }
-  if (request === BULK_WRITE_CHUNK) {
+  if (cmd === BULK_WRITE_CHUNK) {
     return `<> SetAllParamsChunk @${value} ${data.length} B`;
   }
-  const info = CMD_BY_CODE.get(request);
-  const name = info ? info.name : `0x${request.toString(16)}`;
+  const info = CMD_BY_CODE.get(cmd);
+  const name = info ? info.name : fmtCmdId(cmd);
   return `-> ${name}${fmtWValue(value)} ${decodeOrSize(info, data)}`;
 }
 
-export function formatCtrlIn(request: number, value: number, bytes: Uint8Array): string {
-  if (request === BULK_READ) {
+export function formatCtrlIn(cmd: number, value: number, bytes: Uint8Array): string {
+  if (cmd === BULK_READ) {
     return `<> GetAllParams (bulk) v${bytes[0] ?? 0} ${bytes.length} B`;
   }
-  if (request === BULK_READ_CHUNK) {
+  if (cmd === BULK_READ_CHUNK) {
     return `<> GetAllParamsChunk @${value} ${bytes.length} B`;
   }
-  const info = CMD_BY_CODE.get(request);
-  const name = info ? info.name : `0x${request.toString(16)}`;
+  const info = CMD_BY_CODE.get(cmd);
+  const name = info ? info.name : fmtCmdId(cmd);
   return `<- ${name}${fmtWValue(value)} ${decodeOrSize(info, bytes)}`;
 }
 
@@ -200,8 +207,8 @@ export function formatDeviceInfo(info: DeviceInfoLike): string[] {
 // bury the interesting traffic (everything else stays at info).
 const POLL_CODES = new Set<number>([WireCmd.GetStatus.code, WireCmd.GetBufferStats.code]);
 
-export function isPollCommand(request: number): boolean {
-  return POLL_CODES.has(request);
+export function isPollCommand(cmd: number): boolean {
+  return POLL_CODES.has(cmd);
 }
 
 // Rolling capture of every logged wire line, for a tester to pull out of a

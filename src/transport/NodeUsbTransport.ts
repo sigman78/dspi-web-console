@@ -1,5 +1,5 @@
 import type { Device } from 'usb';
-import { type DspTransport, type TransportEvent, VENDOR_INTERFACE_INDEX } from './DspTransport';
+import { type DspTransport, type TransportEvent, TransportStall, VENDOR_INTERFACE_INDEX, ctrlSetup } from './DspTransport';
 
 const USB_CLASS_VENDOR = 0xFF;
 
@@ -13,6 +13,16 @@ const USB_CLASS_VENDOR = 0xFF;
 // oversized foreign reads rather than a known-broken path; WebUSB (Chrome's
 // own WinUSB path) is not subject to this libusb limit at all.
 const LIBUSB_MAX_CTRL_LENGTH = 4096;
+
+// node-usb builds a transfer callback error from the libusb transfer status;
+// a stalled control transfer is LIBUSB_TRANSFER_STALL.
+const LIBUSB_TRANSFER_STALL = 4;
+
+function mapTransferError(err: Error): Error {
+  return (err as { errno?: number }).errno === LIBUSB_TRANSFER_STALL
+    ? new TransportStall(err.message, { cause: err })
+    : err;
+}
 
 // libusb-backed DspTransport used by HIL tests. 'connect' fires on open(),
 // 'disconnect' on close(); full hotplug is not yet wired.
@@ -54,15 +64,16 @@ export class NodeUsbTransport implements DspTransport {
 
   isOpen(): boolean { return this.#open; }
 
-  ctrlIn(request: number, value: number, length: number): Promise<Uint8Array> {
+  ctrlIn(cmd: number, value: number, length: number): Promise<Uint8Array> {
     this.#requireOpen();
     const VENDOR_IN = 0xC1;
     const capped = Math.min(length, LIBUSB_MAX_CTRL_LENGTH);
+    const { request, index } = ctrlSetup(cmd, this.#interfaceNumber);
     return new Promise((resolve, reject) => {
       this.#device.controlTransfer(
-        VENDOR_IN, request, value, this.#interfaceNumber, capped,
+        VENDOR_IN, request, value, index, capped,
         (err, data) => {
-          if (err) return reject(err);
+          if (err) return reject(mapTransferError(err));
           if (!data || typeof data === 'number') {
             return reject(new Error('controlTransfer returned no data'));
           }
@@ -72,16 +83,17 @@ export class NodeUsbTransport implements DspTransport {
     });
   }
 
-  ctrlOut(request: number, value: number, data: Uint8Array): Promise<void> {
+  ctrlOut(cmd: number, value: number, data: Uint8Array): Promise<void> {
     this.#requireOpen();
     const VENDOR_OUT = 0x41;
     // Pass the Uint8Array directly. The `usb` library validates OUT with
     // `instanceof Uint8Array`; under vitest jsdom, Buffer.from(data) extends
     // Node's Uint8Array and fails the global (jsdom) check, but `data` passes.
+    const { request, index } = ctrlSetup(cmd, this.#interfaceNumber);
     return new Promise((resolve, reject) => {
       this.#device.controlTransfer(
-        VENDOR_OUT, request, value, this.#interfaceNumber, data,
-        (err) => err ? reject(err) : resolve(),
+        VENDOR_OUT, request, value, index, data,
+        (err) => err ? reject(mapTransferError(err)) : resolve(),
       );
     });
   }

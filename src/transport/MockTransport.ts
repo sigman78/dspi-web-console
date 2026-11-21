@@ -1,4 +1,10 @@
-import type { DspTransport, TransportEvent } from './DspTransport';
+import { type DspTransport, type TransportEvent, TransportStall } from './DspTransport';
+import { PAGED_PROTOCOL_INFO } from '@/protocol/protocolInfo';
+
+// A minimal paged device's PROTOCOL_INFO reply, as the firmware documents it.
+const MOCK_PROTOCOL_INFO = new Uint8Array([
+  0x44, 0x53, 0x50, 0x69, 0x01, 0x00, 0x0C, 0x00, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+]);
 import { Wire, WireCmd, SystemStatusValue } from '@/protocol';
 import * as Syn from '@/protocol/syn';
 import * as BulkParser from '@/protocol/bulkParser';
@@ -43,6 +49,9 @@ export interface MockOptions {
   // ~1.5 s with a distinct NEC code, standing in for a press on an imaginary
   // remote. Off by default so tests drive learns explicitly.
   irLearnAutoComplete?: boolean;
+  // Model a paged-protocol device (fw 1.1.7+) minimally: it answers the
+  // PROTOCOL_INFO probe and STALLs every page-0 request, as paged firmware does.
+  paged?: boolean;
   // Boot the selectable system clock pre-seeded instead of the fw power-on
   // default (mode 0, no crash history). `fallback: true` simulates a device
   // that crash-rebooted into safe mode 0 after storedMode failed to boot --
@@ -545,7 +554,11 @@ export class MockTransport implements DspTransport {
   // Firmware git build stamp (0x80, fw 1.1.6+); only ever served when #isFw116.
   #buildInfo: { describe: string; date: string };
 
+  // Models a paged (fw 1.1.7+) device: answers only the protocol probe.
+  #paged = false;
+
   constructor(opts: MockOptions) {
+    this.#paged = opts.paged ?? false;
     this.#sysClockSupported = opts.sysClock ?? true;
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
     this.#platform = opts.platform === 'rp2040' ? Domain.PlatformType.RP2040 : Domain.PlatformType.RP2350;
@@ -777,8 +790,14 @@ export class MockTransport implements DspTransport {
     return new Uint8Array([0x00]);   // idle keep-alive
   }
 
-  async ctrlIn(request: number, value: number, length: number): Promise<Uint8Array> {
+  async ctrlIn(cmd: number, value: number, length: number): Promise<Uint8Array> {
     this.#requireOpen();
+    if (this.#paged) {
+      if (cmd !== PAGED_PROTOCOL_INFO) throw new TransportStall(`MockTransport: paged device has no page-0 command 0x${cmd.toString(16)} (STALL)`);
+      return MOCK_PROTOCOL_INFO.slice(0, length);
+    }
+    // Legacy firmware ignores the page byte and dispatches on bRequest alone.
+    const request = cmd & 0xFF;
     if (request !== WireCmd.GetAllParamsChunk.code) this.#getChunkSession = null;
     if (request !== WireCmd.SetAllParamsChunk.code) this.#setChunkSession = null;
     switch (request) {
@@ -803,7 +822,7 @@ export class MockTransport implements DspTransport {
         return out;
       }
       case WireCmd.GetBuildInfo.code: {
-        if (!this.#isFw116) throw new Error('MockTransport: GetBuildInfo unsupported (STALL)');
+        if (!this.#isFw116) throw new TransportStall('MockTransport: GetBuildInfo unsupported (STALL)');
         const out = Codec.encode(Wire.BuildInfo, this.#buildInfo);
         return out.slice(0, Math.min(length, out.byteLength));
       }
@@ -916,52 +935,52 @@ export class MockTransport implements DspTransport {
       // Subharmonic synthesizer (fw V29+, both platforms). Below V29 the
       // whole opcode range STALLs, like the ADAT commands.
       case WireCmd.GetSubharmEnabled.code:
-        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: GetSubharmEnabled unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: GetSubharmEnabled unsupported (STALL)');
         return Codec.encode(Codec.bool8, this.#mockState.subharm!.enabled);
       case WireCmd.GetSubharmLow.code:
-        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: GetSubharmLow unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: GetSubharmLow unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.lowDb);
       case WireCmd.GetSubharmHigh.code:
-        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: GetSubharmHigh unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: GetSubharmHigh unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.highDb);
       case WireCmd.GetSubharmBoost.code:
-        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: GetSubharmBoost unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: GetSubharmBoost unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.boostDb);
       case WireCmd.GetSubharmMask.code:
-        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: GetSubharmMask unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: GetSubharmMask unsupported (STALL)');
         return Codec.encode(Codec.u16, this.#mockState.subharm!.outputMask);
       case WireCmd.GetSubharmHeadroom.code:
-        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: GetSubharmHeadroom unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: GetSubharmHeadroom unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#subharmHeadroom());
 
       // V30 tail: third band, selectivity, ceiling, pair link, solo, meter.
       // Below V30 the whole extension opcode range STALLs.
       case WireCmd.GetSubharmTop.code:
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmTop unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmTop unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.topDb);
       case WireCmd.GetSubharmSelect.code:
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmSelect unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmSelect unsupported (STALL)');
         return Codec.encode(Codec.u8, this.#mockState.subharm!.selectMode);
       case WireCmd.GetSubharmMeter.code: {
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmMeter unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmMeter unsupported (STALL)');
         const numOut = this.#mockState.numOut;
         const out = Codec.encode(Codec.arr(Codec.u16, numOut), this.#subharmMeterLevels(numOut));
         return out.slice(0, Math.min(length, out.byteLength));
       }
       case WireCmd.GetSubharmSolo.code:
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmSolo unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmSolo unsupported (STALL)');
         return Codec.encode(Codec.bool8, this.#subharmSolo);
       case WireCmd.GetSubharmLink.code:
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmLink unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmLink unsupported (STALL)');
         return Codec.encode(Codec.bool8, this.#mockState.subharm!.linkPairs);
       case WireCmd.GetSubharmDepth.code:
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmDepth unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmDepth unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.selectDepth);
       case WireCmd.GetSubharmHold.code:
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmHold unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmHold unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.selectHoldMs);
       case WireCmd.GetSubharmCeiling.code:
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: GetSubharmCeiling unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmCeiling unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.ceilingDb);
 
       // Onboard RTA (fw V30+).
@@ -981,14 +1000,14 @@ export class MockTransport implements DspTransport {
           });
         }
         const start = (value - 1) * 32;
-        if (start >= MOCK_RTA_CENTRES.length) throw new Error('MockTransport: RtaGetCaps chunk past the end (STALL)');
+        if (start >= MOCK_RTA_CENTRES.length) throw new TransportStall('MockTransport: RtaGetCaps chunk past the end (STALL)');
         const chunk = MOCK_RTA_CENTRES.slice(start, start + 32);
         return Codec.encode(Codec.arr(Codec.u16, chunk.length), chunk).slice(0, length);
       }
       case WireCmd.RtaGetBands.code: {
         this.#requireRta();
         const width = this.#rtaCfg.tap === Domain.RtaTap.Output ? this.#mockState.numOut : this.#mockState.numIn;
-        if (value >= width) throw new Error('MockTransport: RtaGetBands bad channel (STALL)');
+        if (value >= width) throw new TransportStall('MockTransport: RtaGetBands bad channel (STALL)');
         this.#rtaLastReadMs = performance.now();
         return this.#rtaFrame(value);
       }
@@ -1017,7 +1036,7 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.RtaGetBins.code:
         this.#requireRta();
-        throw new Error('MockTransport: RtaGetBins not simulated (STALL)');
+        throw new TransportStall('MockTransport: RtaGetBins not simulated (STALL)');
       case WireCmd.RtaControl.code:
         this.#requireRta();
         return new Uint8Array([1]);
@@ -1025,7 +1044,7 @@ export class MockTransport implements DspTransport {
       // Per-output limiter (fw V32+): parameter float, GR meter or status block
       // by index byte. A bad output/index STALLs.
       case WireCmd.Limiter.code: {
-        if (this.#wireVersion < MIN_LIMITER_WIRE) throw new Error('MockTransport: Limiter unsupported (STALL)');
+        if (this.#wireVersion < MIN_LIMITER_WIRE) throw new TransportStall('MockTransport: Limiter unsupported (STALL)');
         const output = value >> 8;
         const index = value & 0xFF;
         const numOut = this.#mockState.numOut;
@@ -1037,7 +1056,7 @@ export class MockTransport implements DspTransport {
           const engaged = this.#mockState.limiter.slice(0, numOut).some((o) => o.enabled);
           return Codec.encode(Wire.LimiterStatus, { engaged: engaged ? 1 : 0, lookaheadSamples: 32, blockSamples: 16, numOutputs: numOut });
         }
-        if (output >= numOut || index > Wire.LimiterParam.LinkGroup) throw new Error('MockTransport: Limiter bad output/index (STALL)');
+        if (output >= numOut || index > Wire.LimiterParam.LinkGroup) throw new TransportStall('MockTransport: Limiter bad output/index (STALL)');
         const o = this.#mockState.limiter[output];
         const v = [Number(o.enabled), o.thresholdDb, o.releaseMs, o.linkGroup][index];
         return Codec.encode(Codec.f32, v);
@@ -1461,12 +1480,12 @@ export class MockTransport implements DspTransport {
         });
       }
       case WireCmd.GetCsBinding.code: {
-        if (value >= Domain.CS_MAX_BINDINGS) throw new Error('MockTransport: GetCsBinding slot out of range (STALL)');
+        if (value >= Domain.CS_MAX_BINDINGS) throw new TransportStall('MockTransport: GetCsBinding slot out of range (STALL)');
         const b = this.#csBindings[value];
         return Codec.encode(Wire.CsBinding, b);
       }
       case WireCmd.GetCsIrCmd.code: {
-        if (value >= this.#csMaxIr()) throw new Error('MockTransport: GetCsIrCmd sub-slot out of range (STALL)');
+        if (value >= this.#csMaxIr()) throw new TransportStall('MockTransport: GetCsIrCmd sub-slot out of range (STALL)');
         return Codec.encode(Wire.CsIrCommand, this.#csIrCommands[value]);
       }
       case WireCmd.GetCsCaps.code: {
@@ -1497,7 +1516,7 @@ export class MockTransport implements DspTransport {
             unit: n.unit, targetKind: n.targetKind, targetCount: n.targetCount, dflags: n.dflags,
           });
         }
-        throw new Error('MockTransport: GetCsCaps noun index out of range (STALL)');
+        throw new TransportStall('MockTransport: GetCsCaps noun index out of range (STALL)');
       }
       case WireCmd.GetCsStatus.code: {
         let lastStatus = this.#csLastStatus;
@@ -1534,30 +1553,30 @@ export class MockTransport implements DspTransport {
         });
       }
       case WireCmd.GetCsName.code: {
-        if (value >= Domain.CS_MAX_BINDINGS) throw new Error('MockTransport: GetCsName slot out of range (STALL)');
+        if (value >= Domain.CS_MAX_BINDINGS) throw new TransportStall('MockTransport: GetCsName slot out of range (STALL)');
         return Codec.encode(Wire.CsName, this.#csNames[value] ?? '');
       }
       case WireCmd.GetCsGroup.code: {
         if (this.#csCapsVersion < 9 || value >= Domain.CS_MAX_GROUPS) {
-          throw new Error('MockTransport: GetCsGroup unsupported or slot out of range (STALL)');
+          throw new TransportStall('MockTransport: GetCsGroup unsupported or slot out of range (STALL)');
         }
         return Codec.encode(Wire.CsGroup, this.#csGroups[value]);
       }
       case WireCmd.GetCsMacro.code: {
         if (this.#csCapsVersion < 9 || value >= Domain.CS_MAX_MACROS) {
-          throw new Error('MockTransport: GetCsMacro unsupported or slot out of range (STALL)');
+          throw new TransportStall('MockTransport: GetCsMacro unsupported or slot out of range (STALL)');
         }
         const m = this.#csMacros[value];
         return Codec.encode(Wire.CsMacro, { name: m.name, stepCount: m.stepCount, steps: m.steps });
       }
       case WireCmd.CsMacroFire.code: {
-        if (this.#csCapsVersion < 9) throw new Error('MockTransport: CsMacroFire unsupported (STALL)');
-        if (this.#csRevertBusy) throw new Error('MockTransport: CsMacroFire during revert (STALL)');
+        if (this.#csCapsVersion < 9) throw new TransportStall('MockTransport: CsMacroFire unsupported (STALL)');
+        if (this.#csRevertBusy) throw new TransportStall('MockTransport: CsMacroFire during revert (STALL)');
         if (value === 0xFFFF) {
           this.#csMacroRun = null;
           return new Uint8Array([1]);
         }
-        if (value >= Domain.CS_MAX_MACROS) throw new Error('MockTransport: CsMacroFire slot out of range (STALL)');
+        if (value >= Domain.CS_MAX_MACROS) throw new TransportStall('MockTransport: CsMacroFire slot out of range (STALL)');
         const m = this.#csMacros[value];
         const n = m.stepCount;
         if (n === 0) {
@@ -1574,7 +1593,7 @@ export class MockTransport implements DspTransport {
         return new Uint8Array([1]);
       }
       case WireCmd.GetCsExtStatus.code: {
-        if (this.#csCapsVersion < 9) throw new Error('MockTransport: GetCsExtStatus unsupported (STALL)');
+        if (this.#csCapsVersion < 9) throw new TransportStall('MockTransport: GetCsExtStatus unsupported (STALL)');
         let macroRunning = 0xFF;
         let macroStep = 0;
         const run = this.#csMacroRun;
@@ -1594,27 +1613,27 @@ export class MockTransport implements DspTransport {
         });
       }
       case WireCmd.GetCsDisplayCfg.code: {
-        if (this.#csCapsVersion < 10) throw new Error('MockTransport: GetCsDisplayCfg unsupported (STALL)');
+        if (this.#csCapsVersion < 10) throw new TransportStall('MockTransport: GetCsDisplayCfg unsupported (STALL)');
         return Codec.encode(Wire.CsDisplayCfgResponse, {
           maxPages: Domain.CS_MAX_DISPLAY_PAGES, modelCount: Domain.CS_DISPLAY_MODEL_COUNT, cfg: this.#csDisplayCfg,
         });
       }
       case WireCmd.GetCsDisplayPage.code: {
         if (this.#csCapsVersion < 10 || value >= Domain.CS_MAX_DISPLAY_PAGES) {
-          throw new Error('MockTransport: GetCsDisplayPage unsupported or page out of range (STALL)');
+          throw new TransportStall('MockTransport: GetCsDisplayPage unsupported or page out of range (STALL)');
         }
         return Codec.encode(Wire.CsDisplayPage, this.#csDisplayPages[value]);
       }
       case WireCmd.GetCsDisplayStatus.code: {
-        if (this.#csCapsVersion < 10) throw new Error('MockTransport: GetCsDisplayStatus unsupported (STALL)');
+        if (this.#csCapsVersion < 10) throw new TransportStall('MockTransport: GetCsDisplayStatus unsupported (STALL)');
         return Codec.encode(Wire.CsDisplayStatus, this.#csDisplayStatus());
       }
       case WireCmd.CsIrLearn.code: {
-        if (this.#csRevertBusy && value <= 1) throw new Error('MockTransport: CsIrLearn during revert (STALL)');
+        if (this.#csRevertBusy && value <= 1) throw new TransportStall('MockTransport: CsIrLearn during revert (STALL)');
         if (value === 1) {
           if (!this.#hasLiveIrBinding()) {
             this.#csLastStatus = 0x1E;               // CS_STATUS_NO_IR
-            throw new Error('MockTransport: CsIrLearn arm with no live IR receiver (STALL)');
+            throw new TransportStall('MockTransport: CsIrLearn arm with no live IR receiver (STALL)');
           }
           this.#csIrLearnState = Domain.CS_IR_LEARN_ARMED;
           if (this.#irLearnAutoComplete) {
@@ -1641,7 +1660,7 @@ export class MockTransport implements DspTransport {
       case WireCmd.CsSave.code: {
         // Firmware STALLs a save/revert whose predecessor is still pending;
         // it never answers the busy case with a byte.
-        if (this.#csPendingPolls > 0) throw new Error('MockTransport: CsSave while pending (STALL)');
+        if (this.#csPendingPolls > 0) throw new TransportStall('MockTransport: CsSave while pending (STALL)');
         this.#csSavedBindings = this.#csBindings.map((b) => ({ ...b }));
         this.#csSavedNames = this.#csNames.slice();
         this.#csSavedIrCommands = this.#csIrCommands.map((c) => ({ ...c }));
@@ -1656,7 +1675,7 @@ export class MockTransport implements DspTransport {
         return new Uint8Array([1]);
       }
       case WireCmd.CsRevert.code: {
-        if (this.#csPendingPolls > 0) throw new Error('MockTransport: CsRevert while pending (STALL)');
+        if (this.#csPendingPolls > 0) throw new TransportStall('MockTransport: CsRevert while pending (STALL)');
         this.#csBindings = this.#csSavedBindings.map((b) => ({ ...b }));
         this.#csNames = this.#csSavedNames.slice();
         this.#csIrCommands = this.#csSavedIrCommands.map((c) => ({ ...c }));
@@ -1704,7 +1723,7 @@ export class MockTransport implements DspTransport {
           },
         });
       case WireCmd.GetSysClock.code:
-        if (!this.#sysClockSupported) throw new Error('MockTransport: GetSysClock unsupported (STALL)');
+        if (!this.#sysClockSupported) throw new TransportStall('MockTransport: GetSysClock unsupported (STALL)');
         return Codec.encode(Wire.SysClockStatus, {
           activeMode: this.#sysClockActiveMode,
           storedMode: this.#sysClockStoredMode,
@@ -1717,12 +1736,14 @@ export class MockTransport implements DspTransport {
           fallbackActive: this.#sysClockFallback,
         });
       default:
-        return new Uint8Array(length);
+        throw new TransportStall(`MockTransport: unknown IN opcode 0x${request.toString(16)} (STALL)`);
     }
   }
 
-  async ctrlOut(request: number, value: number, data: Uint8Array): Promise<void> {
+  async ctrlOut(cmd: number, value: number, data: Uint8Array): Promise<void> {
     this.#requireOpen();
+    if (this.#paged) throw new TransportStall(`MockTransport: paged device has no page-0 command 0x${cmd.toString(16)} (STALL)`);
+    const request = cmd & 0xFF;
     if (request !== WireCmd.GetAllParamsChunk.code) this.#getChunkSession = null;
     if (request !== WireCmd.SetAllParamsChunk.code) this.#setChunkSession = null;
     switch (request) {
@@ -1788,7 +1809,7 @@ export class MockTransport implements DspTransport {
         this.#mockState.inputConfig.i2sClockMode = Codec.decode(Codec.u8, data);
         return;
       case WireCmd.OutputLatency.code: {
-        if (!this.#fwHead) throw new Error('MockTransport: REQ_OUTPUT_LATENCY unsupported (STALL)');
+        if (!this.#fwHead) throw new TransportStall('MockTransport: REQ_OUTPUT_LATENCY unsupported (STALL)');
         const id = data[0];
         // USB ACKs and ignores an unknown id (the data stage discards the
         // handler result). A valid SET only stages the id; the main loop
@@ -1800,15 +1821,15 @@ export class MockTransport implements DspTransport {
         return;
       }
       case WireCmd.SetSysClock.code: {
-        if (!this.#sysClockSupported) throw new Error('MockTransport: SetSysClock unsupported (STALL)');
+        if (!this.#sysClockSupported) throw new TransportStall('MockTransport: SetSysClock unsupported (STALL)');
         const req = Codec.decode(Wire.SysClockRequest, data);
         if (req.mode >= Domain.SYS_CLOCK_MODE_DEFAULT_VREG.length) {
-          throw new Error('MockTransport: SetSysClock invalid mode (STALL)');
+          throw new TransportStall('MockTransport: SetSysClock invalid mode (STALL)');
         }
         const ceiling = this.#platform === Domain.PlatformType.RP2350 ? Domain.SYS_CLOCK_VREG_CEILING_RP2350 : Domain.SYS_CLOCK_VREG_CEILING_RP2040;
         const defaultVreg = Domain.SYS_CLOCK_MODE_DEFAULT_VREG[req.mode];
         if (req.vregSel !== 0xFF && (req.vregSel < defaultVreg || req.vregSel > ceiling)) {
-          throw new Error('MockTransport: SetSysClock invalid vregSel (STALL)');
+          throw new TransportStall('MockTransport: SetSysClock invalid vregSel (STALL)');
         }
         // Mock applies immediately (no deferred main-loop apply to emulate).
         this.#sysClockStoredMode = req.mode;
@@ -1900,55 +1921,55 @@ export class MockTransport implements DspTransport {
       // every SET to its documented range -- a GET afterwards reads the
       // clamped value back.
       case WireCmd.SetSubharmEnabled.code:
-        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmEnabled unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: SetSubharmEnabled unsupported (STALL)');
         this.#mockState.subharm!.enabled = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetSubharmLow.code:
-        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmLow unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: SetSubharmLow unsupported (STALL)');
         this.#mockState.subharm!.lowDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data), this.#wireVersion >= MIN_SUBHARM_EXT_WIRE);
         return;
       case WireCmd.SetSubharmHigh.code:
-        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmHigh unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: SetSubharmHigh unsupported (STALL)');
         this.#mockState.subharm!.highDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data), this.#wireVersion >= MIN_SUBHARM_EXT_WIRE);
         return;
       case WireCmd.SetSubharmBoost.code:
-        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmBoost unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: SetSubharmBoost unsupported (STALL)');
         this.#mockState.subharm!.boostDb = Clamp.subharmBoostDb(Codec.decode(Codec.f32, data));
         return;
       case WireCmd.SetSubharmMask.code:
-        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new Error('MockTransport: SetSubharmMask unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: SetSubharmMask unsupported (STALL)');
         this.#mockState.subharm!.outputMask = Codec.decode(Codec.u16, data);
         return;
 
       // V30 tail: third band, selectivity, ceiling, pair link, solo. Below
       // V30 the whole extension opcode range STALLs.
       case WireCmd.SetSubharmTop.code:
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmTop unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: SetSubharmTop unsupported (STALL)');
         this.#mockState.subharm!.topDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data), this.#wireVersion >= MIN_SUBHARM_EXT_WIRE);
         return;
       case WireCmd.SetSubharmSelect.code:
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmSelect unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: SetSubharmSelect unsupported (STALL)');
         this.#mockState.subharm!.selectMode =
           Math.max(0, Math.min(2, Math.round(Codec.decode(Codec.u8, data)))) as SubharmSelect;
         return;
       case WireCmd.SetSubharmSolo.code:
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmSolo unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: SetSubharmSolo unsupported (STALL)');
         this.#subharmSolo = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetSubharmLink.code:
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmLink unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: SetSubharmLink unsupported (STALL)');
         this.#mockState.subharm!.linkPairs = Codec.decode(Codec.bool8, data);
         return;
       case WireCmd.SetSubharmDepth.code:
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmDepth unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: SetSubharmDepth unsupported (STALL)');
         this.#mockState.subharm!.selectDepth = Clamp.subharmDepthPct(Codec.decode(Codec.f32, data));
         return;
       case WireCmd.SetSubharmHold.code:
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmHold unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: SetSubharmHold unsupported (STALL)');
         this.#mockState.subharm!.selectHoldMs = Clamp.subharmHoldMs(Codec.decode(Codec.f32, data));
         return;
       case WireCmd.SetSubharmCeiling.code:
-        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new Error('MockTransport: SetSubharmCeiling unsupported (STALL)');
+        if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: SetSubharmCeiling unsupported (STALL)');
         this.#mockState.subharm!.ceilingDb = Clamp.subharmCeilingDb(Codec.decode(Codec.f32, data));
         return;
 
@@ -1975,7 +1996,7 @@ export class MockTransport implements DspTransport {
       // Per-output limiter (fw V32+). Firmware clamps; 0xFF fans out to every
       // output; a bad output/index or a short payload is a silent no-op.
       case WireCmd.Limiter.code:
-        if (this.#wireVersion < MIN_LIMITER_WIRE) throw new Error('MockTransport: Limiter unsupported (STALL)');
+        if (this.#wireVersion < MIN_LIMITER_WIRE) throw new TransportStall('MockTransport: Limiter unsupported (STALL)');
         if (data.length >= 4) this.#setLimiterParam(value >> 8, value & 0xFF, Codec.decode(Codec.f32, data));
         return;
 
@@ -2133,7 +2154,7 @@ export class MockTransport implements DspTransport {
       }
 
       case WireCmd.SetCsGroup.code: {
-        if (this.#csCapsVersion < 9) throw new Error('MockTransport: SetCsGroup unsupported (STALL)');
+        if (this.#csCapsVersion < 9) throw new TransportStall('MockTransport: SetCsGroup unsupported (STALL)');
         if (value >= Domain.CS_MAX_GROUPS) {
           // Bad slot is rejected immediately, no PENDING window.
           this.#csLastStatus = 0x1F;                  // CS_STATUS_INVALID_GROUP
@@ -2148,7 +2169,7 @@ export class MockTransport implements DspTransport {
       }
 
       case WireCmd.SetCsMacro.code: {
-        if (this.#csCapsVersion < 9) throw new Error('MockTransport: SetCsMacro unsupported (STALL)');
+        if (this.#csCapsVersion < 9) throw new TransportStall('MockTransport: SetCsMacro unsupported (STALL)');
         if (value >= Domain.CS_MAX_MACROS) {
           // Bad slot is rejected immediately, no PENDING window.
           this.#csLastStatus = 0x20;                  // CS_STATUS_INVALID_MACRO
@@ -2163,7 +2184,7 @@ export class MockTransport implements DspTransport {
       }
 
       case WireCmd.SetCsMacroStep.code: {
-        if (this.#csCapsVersion < 9) throw new Error('MockTransport: SetCsMacroStep unsupported (STALL)');
+        if (this.#csCapsVersion < 9) throw new TransportStall('MockTransport: SetCsMacroStep unsupported (STALL)');
         const idx = value & 0xFF;
         const step = (value >> 8) & 0xFF;
         if (idx >= Domain.CS_MAX_MACROS) {
@@ -2184,7 +2205,7 @@ export class MockTransport implements DspTransport {
       }
 
       case WireCmd.SetCsDisplayCfg.code: {
-        if (this.#csCapsVersion < 10) throw new Error('MockTransport: SetCsDisplayCfg unsupported (STALL)');
+        if (this.#csCapsVersion < 10) throw new TransportStall('MockTransport: SetCsDisplayCfg unsupported (STALL)');
         if (data.length < Codec.sizeOf(Wire.CsDisplayCfg)) {
           this.#csLastStatus = 0x14;                  // CS_STATUS_INVALID_VALUE
           this.#csLastSlot = 0x50;
@@ -2198,7 +2219,7 @@ export class MockTransport implements DspTransport {
       }
 
       case WireCmd.SetCsDisplayPage.code: {
-        if (this.#csCapsVersion < 10) throw new Error('MockTransport: SetCsDisplayPage unsupported (STALL)');
+        if (this.#csCapsVersion < 10) throw new TransportStall('MockTransport: SetCsDisplayPage unsupported (STALL)');
         const page = value & 0xFF;
         if (page >= Domain.CS_MAX_DISPLAY_PAGES) {
           this.#csLastStatus = 0x25;                  // CS_STATUS_INVALID_PAGE
@@ -2249,7 +2270,7 @@ export class MockTransport implements DspTransport {
       }
 
       default:
-        return;
+        throw new TransportStall(`MockTransport: unknown OUT opcode 0x${request.toString(16)} (STALL)`);
     }
   }
 
@@ -2938,7 +2959,7 @@ export class MockTransport implements DspTransport {
   }
 
   #requireRta(): void {
-    if (this.#wireVersion < MIN_RTA_WIRE) throw new Error('MockTransport: RTA unsupported (STALL)');
+    if (this.#wireVersion < MIN_RTA_WIRE) throw new TransportStall('MockTransport: RTA unsupported (STALL)');
   }
 
   #rtaFftOrder(): { min: number; max: number; def: number } {
@@ -3045,7 +3066,7 @@ export class MockTransport implements DspTransport {
   }
 
   #outputLatencyIn(wValue: number): Uint8Array {
-    if (!this.#fwHead) throw new Error('MockTransport: REQ_OUTPUT_LATENCY unsupported (STALL)');
+    if (!this.#fwHead) throw new TransportStall('MockTransport: REQ_OUTPUT_LATENCY unsupported (STALL)');
     const toUs = (frames: number) => Math.round(frames * 1e6 / MOCK_SAMPLE_RATE_HZ);
     if (wValue === Wire.OUTPUT_LATENCY_GET_STATUS) {
       const run = this.#outputLatencyResolve(this.#outputLatencyId);
@@ -3072,7 +3093,7 @@ export class MockTransport implements DspTransport {
       });
       return out;
     }
-    throw new Error('MockTransport: REQ_OUTPUT_LATENCY bad wValue (STALL)');
+    throw new TransportStall('MockTransport: REQ_OUTPUT_LATENCY bad wValue (STALL)');
   }
 
   // Dispatch GetStatus by wValue, returning a fresh buffer sized to the request.

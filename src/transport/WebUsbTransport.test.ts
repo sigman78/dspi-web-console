@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { matchesDspi, WebUsbTransport } from './WebUsbTransport';
+import { TransportStall } from './DspTransport';
 
 describe('DSPi USB identity', () => {
   it('matches a device on either vendor id with the shared product id', () => {
@@ -92,5 +93,49 @@ describe('WebUsbTransport — picker/target boundary', () => {
     await transport.requestAndOpen();
 
     expect(claimInterface).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('WebUsbTransport — 16-bit command IDs', () => {
+  afterEach(() => {
+    Reflect.deleteProperty(navigator as unknown as Record<string, unknown>, 'usb');
+  });
+
+  async function open(extra: Partial<USBDevice>): Promise<WebUsbTransport> {
+    Object.defineProperty(navigator, 'usb', {
+      value: { getDevices: async () => [], addEventListener() {}, removeEventListener() {} },
+      configurable: true,
+    });
+    const transport = new WebUsbTransport(Object.assign(stubDevice('IDS'), extra));
+    await transport.tryAutoConnect();
+    return transport;
+  }
+
+  it('sends a page-0 command with its byte as bRequest and only the interface in wIndex', async () => {
+    const controlTransferIn = vi.fn(async () => ({ status: 'ok', data: new DataView(new ArrayBuffer(1)) }));
+    const transport = await open({ controlTransferIn } as Partial<USBDevice>);
+    await transport.ctrlIn(0x74, 3, 1);
+    expect(controlTransferIn).toHaveBeenCalledWith(
+      { requestType: 'vendor', recipient: 'interface', request: 0x74, value: 3, index: 0 }, 1);
+  });
+
+  it('splits a paged ID into bRequest and the wIndex high byte, for IN and OUT', async () => {
+    const controlTransferIn = vi.fn(async () => ({ status: 'ok', data: new DataView(new ArrayBuffer(1)) }));
+    const controlTransferOut = vi.fn(async () => ({ status: 'ok', bytesWritten: 0 }));
+    const transport = await open({ controlTransferIn, controlTransferOut } as Partial<USBDevice>);
+    await transport.ctrlIn(0x0110, 0, 16);
+    await transport.ctrlOut(0x0521, 1, new Uint8Array(4));
+    expect(controlTransferIn).toHaveBeenCalledWith(expect.objectContaining({ request: 0x10, index: 0x0100 }), 16);
+    expect(controlTransferOut).toHaveBeenCalledWith(expect.objectContaining({ request: 0x21, index: 0x0500 }), expect.anything());
+  });
+
+  it('maps a stalled transfer to TransportStall and other failures to a plain error', async () => {
+    const stalled = await open({ controlTransferIn: vi.fn(async () => ({ status: 'stall' })) } as Partial<USBDevice>);
+    await expect(stalled.ctrlIn(0x0110, 0, 16)).rejects.toBeInstanceOf(TransportStall);
+
+    const babble = await open({ controlTransferOut: vi.fn(async () => ({ status: 'babble', bytesWritten: 0 })) } as Partial<USBDevice>);
+    const err = await babble.ctrlOut(0x10, 0, new Uint8Array(1)).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(TransportStall);
   });
 });

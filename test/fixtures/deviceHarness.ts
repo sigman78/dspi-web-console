@@ -1,13 +1,14 @@
 // Shared test harness for constructing a DspDevice over an identity-aware
 // transport wrapper. `withIdentity` answers GetSerial/GetPlatform locally so
 // tests can plug in custom ctrlIn/ctrlOut stubs without also having to fake
-// the connect-time identity reads.
+// the connect-time identity reads. It models a legacy (pre-paged) device:
+// the connect-time protocol probe (a paged ID) STALLs.
 
 import { DspDevice } from '@/device/DspDevice';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
-import { WireCmd } from '@/protocol';
+import { WireCmd, PAGED_PROTOCOL_INFO } from '@/protocol';
 import { PlatformType } from '@/domain';
-import type { DspTransport } from '@/transport/DspTransport';
+import { type DspTransport, TransportStall } from '@/transport/DspTransport';
 
 export type TestPlatform = 'rp2040' | 'rp2350';
 
@@ -40,6 +41,8 @@ export function withIdentity(base: DspTransport, platform: TestPlatform = 'rp235
     isOpen: () => base.isOpen(),
     on: (event, listener) => base.on(event, listener),
     ctrlIn: (request, value, length) => {
+      if (request === PAGED_PROTOCOL_INFO) return Promise.reject(new TransportStall('legacy device: probe stalls'));
+      if (request > 0xFF) return Promise.reject(new Error(`unexpected paged request 0x${request.toString(16)} reached a legacy stub`));
       const identity = identityBytes(request, length, platform);
       if (identity) return Promise.resolve(identity);
       if (request === WireCmd.GetAllParams.code && !bulkInjected) {
