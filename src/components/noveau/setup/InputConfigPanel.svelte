@@ -3,6 +3,7 @@
   import KV from '@/components/chrome/KV.svelte';
   import PinPicker from '@/components/chrome/PinPicker.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
+  import SourceNamesPopover from './SourceNamesPopover.svelte';
   import * as Runtime from '@/runtime';
   import * as Domain from '@/domain';
   import type { PinPickerCell } from '@/domain';
@@ -96,6 +97,13 @@
     }
   }
 
+  const uid = $props.id();
+  const namesBtnId = `names-btn-${uid}`;
+  const namesPopId = `names-pop-${uid}`;
+  let namesOpen = $state(false);
+  const namesAvailable = $derived(!!(inputConfig && snap && overlaySnap) && s.names.inputSourcesSupported === true);
+  $effect(() => { if (!namesAvailable) namesOpen = false; });
+
   const sourceTitle = (src: number): string => Domain.inputSourceTitle(src, s.names.inputSources, Domain.spdifNumbered(inputConfig?.spdifExtEnabled));
 
   const STATE_LABELS: Record<number, string> = {
@@ -123,71 +131,86 @@
 
 <Panel title="INPUT CONFIG">
   {#snippet right()}
+    {#if s.names.inputSourcesSupported === true}
+      <button id={namesBtnId} class="chip icon" aria-haspopup="dialog" aria-controls={namesPopId} title="Rename input sources" aria-label="Rename input sources" aria-expanded={namesOpen} onclick={() => { namesOpen = !namesOpen; }}>✎</button>
+    {/if}
     {#if isSpdif || isI2s}
       <button class="chip icon" title="Reset to defaults" aria-label="Reset input pins to defaults" onclick={stageSectionPinsToDefault}>↺</button>
     {/if}
   {/snippet}
   {#if inputConfig && snap && overlaySnap}
-    <div class="cfgkvgrid">
-      <KV label="SOURCE" value={sourceTitle(liveSource)} />
-      <div class="src-btns">
-        <button
-          class="chip"
-          class:on={source === Domain.AudioInputSource.Usb}
-          class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Usb}
-          onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Usb)}
-          disabled={source === Domain.AudioInputSource.Usb}
-        >USB</button>
-        <button
-          class="chip"
-          class:on={source === Domain.AudioInputSource.Spdif}
-          class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif}
-          onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif)}
-          disabled={source === Domain.AudioInputSource.Spdif}
-        >{spdifInputCount > 1 ? 'S/P 1' : 'S/P'}</button>
-        {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[0]}
+    <div class="srcrow">
+      {#if namesOpen && s.names.inputSourcesSupported === true}
+        <SourceNamesPopover id={namesPopId} ignore={`#${namesBtnId}`} onClose={() => { namesOpen = false; }} />
+      {/if}
+      <div class="cfgkvgrid">
+        <KV label="SOURCE" value={sourceTitle(liveSource)} />
+        <div class="src-btns">
           <button
             class="chip"
-            class:on={source === Domain.AudioInputSource.Spdif2}
-            class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif2}
-            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif2)}
-            disabled={source === Domain.AudioInputSource.Spdif2}
-          >S/P 2</button>
-        {/if}
-        {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[1]}
+            title={sourceTitle(Domain.AudioInputSource.Usb)}
+            class:on={source === Domain.AudioInputSource.Usb}
+            class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Usb}
+            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Usb)}
+            disabled={source === Domain.AudioInputSource.Usb}
+          >USB</button>
           <button
             class="chip"
-            class:on={source === Domain.AudioInputSource.Spdif3}
-            class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif3}
-            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif3)}
-            disabled={source === Domain.AudioInputSource.Spdif3}
-          >S/P 3</button>
-        {/if}
-        {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[2]}
+            title={sourceTitle(Domain.AudioInputSource.Spdif)}
+            class:on={source === Domain.AudioInputSource.Spdif}
+            class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif}
+            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif)}
+            disabled={source === Domain.AudioInputSource.Spdif}
+          >{spdifInputCount > 1 ? 'S/P 1' : 'S/P'}</button>
+          {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[0]}
+            <button
+              class="chip"
+              title={sourceTitle(Domain.AudioInputSource.Spdif2)}
+              class:on={source === Domain.AudioInputSource.Spdif2}
+              class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif2}
+              onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif2)}
+              disabled={source === Domain.AudioInputSource.Spdif2}
+            >S/P 2</button>
+          {/if}
+          {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[1]}
+            <button
+              class="chip"
+              title={sourceTitle(Domain.AudioInputSource.Spdif3)}
+              class:on={source === Domain.AudioInputSource.Spdif3}
+              class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif3}
+              onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif3)}
+              disabled={source === Domain.AudioInputSource.Spdif3}
+            >S/P 3</button>
+          {/if}
+          {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[2]}
+            <button
+              class="chip"
+              title={sourceTitle(Domain.AudioInputSource.Spdif4)}
+              class:on={source === Domain.AudioInputSource.Spdif4}
+              class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif4}
+              onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif4)}
+              disabled={source === Domain.AudioInputSource.Spdif4}
+            >S/P 4</button>
+          {/if}
           <button
             class="chip"
-            class:on={source === Domain.AudioInputSource.Spdif4}
-            class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif4}
-            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif4)}
-            disabled={source === Domain.AudioInputSource.Spdif4}
-          >S/P 4</button>
-        {/if}
-        <button
-          class="chip"
-          class:on={isI2s}
-          class:staged={s.staging.has('inputSource') && isI2s}
-          onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.I2s)}
-          disabled={isI2s}
-        >I2S</button>
-        {#if features.adatInput && inputConfig.adatInputEnabled && inputConfig.adatInputPin !== 0}
-          <button
-            class="chip"
-            class:on={source === Domain.AudioInputSource.Adat}
-            class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Adat}
-            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Adat)}
-            disabled={source === Domain.AudioInputSource.Adat}
-          >ADAT</button>
-        {/if}
+            title={sourceTitle(Domain.AudioInputSource.I2s)}
+            class:on={isI2s}
+            class:staged={s.staging.has('inputSource') && isI2s}
+            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.I2s)}
+            disabled={isI2s}
+          >I2S</button>
+          {#if features.adatInput && inputConfig.adatInputEnabled && inputConfig.adatInputPin !== 0}
+            <button
+              class="chip"
+              title={sourceTitle(Domain.AudioInputSource.Adat)}
+              class:on={source === Domain.AudioInputSource.Adat}
+              class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Adat}
+              onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Adat)}
+              disabled={source === Domain.AudioInputSource.Adat}
+            >ADAT</button>
+          {/if}
+        </div>
       </div>
     </div>
     {#if sourcePending}

@@ -603,6 +603,23 @@ describe('startNotifyChannel — names and analyser config', () => {
     stop();
   });
 
+  it('a name notify matching the staged rename discards that entry, a different one keeps it', async () => {
+    const { mock, session, m, stop } = await releaseSetup();
+    const stage = (id: number, value: string) => session.staging.stage({
+      key: `inputSourceName:${id}`, label: 'Name', from: '', to: value, value, order: 80,
+      apply: async () => true, overlay: (snap) => snap,
+    });
+    stage(1, 'TV');
+    stage(2, 'Hi-Fi');
+    mock.pushNotify(new Uint8Array([2, 0x0F, 0, 1, 1, UART, 0, 0, ...pad32('TV')]));
+    mock.pushNotify(new Uint8Array([2, 0x0F, 0, 1, 2, UART, 0, 0, ...pad32('Other')]));
+    await m.tick();
+    await m.tick();
+    expect(session.staging.has('inputSourceName:1')).toBe(false);
+    expect(session.staging.has('inputSourceName:2')).toBe(true);
+    stop();
+  });
+
   it('a cleared name arrives as an empty string', async () => {
     const { dev, session, m, stop } = await releaseSetup();
     session.names.inputSources[1] = 'TV';

@@ -67,7 +67,10 @@ export function createStagingState(): StagingState {
     get entries() { return state.entries; },
     get applying() { return state.applying; },
 
-    get disruptive() { return state.entries.find((e) => e.disruptive)?.disruptive; },
+    get disruptive() {
+      const all = state.entries.flatMap((e) => (e.disruptive ? [e.disruptive] : []));
+      return all.find((d) => d.tone === 'danger') ?? all[0];
+    },
     countOn(page) { return state.entries.filter((e) => e.page === page).length; },
     has(key) { return get(key) !== undefined; },
     get,
