@@ -153,6 +153,8 @@
     const greeting = new Fx.GreetingWave();
     let greeted = false;
 
+    const onset = new Fx.OnsetDetector();
+    let lastStatus = tele.lastStatusMs;
     let lastSync = 0;
     let lastMode = settings.roomMode;
     const loop = Fx.createFxLoop({
@@ -167,6 +169,13 @@
         }
         room.setMode(mode === 'spectrum' ? 'spectrum' : 'meters', now);
         readLevel();
+        if (tele.lastStatusMs !== lastStatus) {
+          lastStatus = tele.lastStatusMs;
+          if (!reduced.matches) {
+            const strength = onset.sample(outputLevel, now);
+            if (strength > 0) room.strike(strength, now);
+          }
+        }
         if (!greeted && mode === 'spectrum') {
           greeted = true;
           if (!reduced.matches && !(outputLevel > Fx.SILENT_LEVEL)) greeting.start(now + GREET_DELAY_MS);
