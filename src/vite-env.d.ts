@@ -9,3 +9,8 @@ declare module 'virtual:palette.css';
 declare const __APP_VERSION__: string;
 declare const __GIT_SHA__: string;
 declare const __BUILD_DATE__: string;
+
+interface ImportMetaEnv {
+  // Pairing relay base, e.g. '/room'. Unset: remote-control relay features are off.
+  readonly VITE_REMOTE_RELAY?: string;
+}

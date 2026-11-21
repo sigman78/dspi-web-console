@@ -24,6 +24,14 @@ runs:
       run: npm test
       shell: bash
 
+    - name: Typecheck relay worker
+      run: npm run check:worker
+      shell: bash
+
+    - name: Test relay worker (Workers runtime, no network)
+      run: npm run test:worker
+      shell: bash
+
     - name: Build
       run: npm run build
       shell: bash

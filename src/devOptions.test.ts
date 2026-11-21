@@ -54,6 +54,19 @@ describe('heroOverride', () => {
   });
 });
 
+describe('remoteManualSignaling', () => {
+  it('is true only on ?remote=manual', () => {
+    window.history.replaceState({}, '', '/?remote=manual');
+    expect(DevOptions.remoteManualSignaling()).toBe(true);
+    window.history.replaceState({}, '', '/?remote');
+    expect(DevOptions.remoteManualSignaling()).toBe(false);
+    window.history.replaceState({}, '', '/?remote=other');
+    expect(DevOptions.remoteManualSignaling()).toBe(false);
+    window.history.replaceState({}, '', '/');
+    expect(DevOptions.remoteManualSignaling()).toBe(false);
+  });
+});
+
 describe('mockSysClockFallback', () => {
   it('is true on ?sysclock=fallback', () => {
     window.history.replaceState({}, '', '/?mock&sysclock=fallback');

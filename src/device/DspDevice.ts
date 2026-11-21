@@ -314,7 +314,8 @@ export class DspDevice {
   #deviceNameSupported = false;
 
   protected constructor(
-    protected readonly transport: SerializedDspTransport,
+    // Public only for the remote-control usb proxy, its sole runtime consumer.
+    readonly transport: SerializedDspTransport,
     private readonly _info: DspDeviceInfo,
   ) {}
 
