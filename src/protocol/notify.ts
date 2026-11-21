@@ -12,6 +12,7 @@
 // seq-less, same as before.
 
 import { Codec } from '@/utils';
+import * as Wire from './wireTypes';
 
 export const NOTIFY_PACKET_SIZE = 64;   // EP 0x83 wMaxPacketSize
 export const NOTIFY_V2_VERSION = 2;
@@ -28,6 +29,10 @@ export const NotifyEventId = {
   CsIrLearn:       0x0A,   // (CS caps v3): IR learn armed -> done/timeout
   I2sSlaveState:   0x09,   // I2S slave-clock lock state changed
   AdatInputState:  0x0B,   // ADAT input lock state changed
+  // 0x0C (CS aux) and 0x0E are not consumed.
+  RtaConfig:       0x0D,   // analyser config applied
+  InputSourceName: 0x0F,   // input source name stored
+  DeviceName:      0x10,   // board name stored
 } as const;
 
 export const ParamSource = {
@@ -72,7 +77,16 @@ export type NotifyEvent =
   // ADAT input lock state changed. rateHz is the detected input rate,
   // 0 unless locked. Silent no-op for now -- telemetry wiring lands with the
   // ADAT input UI branch.
-  | { kind: 'adatInputState';  seq: number; state: number; rateHz: number; clockMode: number };
+  | { kind: 'adatInputState';  seq: number; state: number; rateHz: number; clockMode: number }
+  // Analyser config as applied by the device after a staged SET (changed or
+  // not); `source` is the ParamSource of the SET that staged it.
+  | { kind: 'rtaConfig';       seq: number; source: number; config: RtaConfigEvent }
+  // Name as stored (empty when cleared). `sourceId` is the input source ID;
+  // `source` is the ParamSource of the SET.
+  | { kind: 'inputSourceName'; seq: number; source: number; sourceId: number; name: string }
+  | { kind: 'deviceName';      seq: number; source: number; name: string };
+
+export type RtaConfigEvent = ReturnType<typeof decodeRtaConfig>;
 
 export type ParamChangedEvent = Extract<NotifyEvent, { kind: 'paramChanged' }>;
 
@@ -103,6 +117,23 @@ const I2sSlaveStateSuffix = struct({ state: u8, rateHz: u32 });
 
 // ADAT_INPUT_STATE fixed suffix (6 B) after the header: {state, rateHz, clockMode}.
 const AdatInputStateSuffix = struct({ state: u8, rateHz: u32, clockMode: u8 });
+
+// NOTIFY_EVT_RTA_CONFIG body: the 12-byte RtaConfig, then the SET's source byte.
+const RTA_CONFIG_END = 4 + Codec.sizeOf(Wire.RtaConfig);
+
+function decodeRtaConfig(bytes: Uint8Array) {
+  const { version, tap, channelMask, fftOrder, avgMs, peakDecayDbS, flags } = Codec.decode(Wire.RtaConfig, bytes.subarray(4, RTA_CONFIG_END));
+  return { version, tap, channelMask, fftOrder, avgMs, peakDecayDbS, flags };
+}
+
+// Name events are 40 B: header, source id (0 for the board), ParamSource, 2
+// reserved, then the 32-byte name.
+const NAME_EVENT_SIZE = 40;
+const NAME_OFFSET = 8;
+
+function decodeEventName(bytes: Uint8Array): string {
+  return Codec.decode(Wire.ChannelName, bytes.subarray(NAME_OFFSET, NAME_EVENT_SIZE));
+}
 
 // Value-less events: NotifyEvents are only ever read, so a shared singleton is safe.
 const IDLE: NotifyEvent = { kind: 'idle' };
@@ -156,6 +187,16 @@ export function parseNotifyPacket(bytes: Uint8Array): NotifyEvent {
       const p = Codec.decode(AdatInputStateSuffix, bytes.subarray(4));
       return { kind: 'adatInputState', seq: h.seq, state: p.state, rateHz: p.rateHz, clockMode: p.clockMode };
     }
+    case NotifyEventId.RtaConfig: {
+      if (bytes.length < RTA_CONFIG_END + 1) return { kind: 'ignored', seq: h.seq };
+      return { kind: 'rtaConfig', seq: h.seq, source: bytes[RTA_CONFIG_END], config: decodeRtaConfig(bytes) };
+    }
+    case NotifyEventId.InputSourceName:
+      if (bytes.length < NAME_EVENT_SIZE) return { kind: 'ignored', seq: h.seq };
+      return { kind: 'inputSourceName', seq: h.seq, source: bytes[5], sourceId: bytes[4], name: decodeEventName(bytes) };
+    case NotifyEventId.DeviceName:
+      if (bytes.length < NAME_EVENT_SIZE) return { kind: 'ignored', seq: h.seq };
+      return { kind: 'deviceName', seq: h.seq, source: bytes[5], name: decodeEventName(bytes) };
     default:
       return { kind: 'ignored', seq: h.seq };
   }

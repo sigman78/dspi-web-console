@@ -114,11 +114,22 @@ export class StatusStore {
   rtaConfigured = false;
   // Latched after the first transient setup failure, so it is logged once.
   rtaSetupWarned = false;
+  // Config conflicts with another client (a non-Host source, or the analyser
+  // moved off the output tap) re-run setup once per interest period. Setup is
+  // spent once `rtaSetupRetried` is set; the next conflict marks the analyser
+  // as in use by that ParamSource (0 = unknown) and we stop pushing until
+  // interest is re-established.
+  rtaSetupRetried = false;
+  rtaInUseBy = $state<number | null>(null);
 
   // Interest in live spectrum data; the release drops the live readings once
   // interest hits 0.
   wantRta(): () => void {
-    if (this.rtaWanted === 0) this.rtaConfigured = false;
+    if (this.rtaWanted === 0) {
+      this.rtaConfigured = false;
+      this.rtaSetupRetried = false;
+      this.rtaInUseBy = null;
+    }
     this.rtaWanted++;
     let released = false;
     return () => {

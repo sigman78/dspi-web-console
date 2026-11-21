@@ -94,9 +94,17 @@ const LEVELLER_SPEED_LABEL: Record<number, string> = {
 };
 const SAMPLE_RATE_LABEL: Record<number, string> = { 0: '44.1 kHz', 1: '48 kHz', 2: '96 kHz' };
 
+// Device state the enum labels draw on beyond the CS tables themselves.
+export interface EnumLabelContext {
+  inputSourceNames?: Readonly<Record<number, string>>;
+  spdifNumbered?: boolean;
+  outputLatencyOptions?: readonly Domain.OutputLatencyOption[] | null;
+}
+
 export function enumValueOptions(
   nouns: readonly Domain.CsNounCaps[], noun: number, presetNames: readonly (string | null)[],
   macros: readonly (Domain.CsMacro | null)[] = [], displayPages: readonly (Domain.CsDisplayPage | null)[] = [],
+  labels: EnumLabelContext = {},
 ): { v: number; label: string }[] {
   const count = nouns[noun]?.enumCount ?? 0;
   const idx = Array.from({ length: count }, (_, i) => i);
@@ -119,8 +127,10 @@ export function enumValueOptions(
     });
   }
   if (noun === Domain.CsNoun.InputSource) {
-    const names = ['USB', 'S/PDIF', 'I2S'];
-    return idx.map((i) => ({ v: i, label: names[i] ?? String(i) }));
+    return idx.map((i) => ({ v: i, label: Domain.inputSourceTitle(i, labels.inputSourceNames, labels.spdifNumbered) }));
+  }
+  if (noun === Domain.CsNoun.OutputLatency) {
+    return idx.map((i) => ({ v: i, label: Domain.outputLatencyOptionLabel(i, labels.outputLatencyOptions) }));
   }
   if (noun === Domain.CsNoun.CrossfeedPreset) return idx.map((i) => ({ v: i, label: CROSSFEED_PRESET_LABEL[i] ?? String(i) }));
   if (noun === Domain.CsNoun.LevellerSpeed) return idx.map((i) => ({ v: i, label: LEVELLER_SPEED_LABEL[i] ?? String(i) }));
