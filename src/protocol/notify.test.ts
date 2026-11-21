@@ -146,3 +146,33 @@ describe('parseNotifyPacket — PARAM_CHANGED payload', () => {
     expect(Notify.parseNotifyPacket(pkt)).toEqual({ kind: 'ignored', seq: 1 });
   });
 });
+
+describe('parseNotifyPacket — RTA config and name events', () => {
+  const pad32 = (s: string) => { const b = new Uint8Array(32); b.set(new TextEncoder().encode(s)); return [...b]; };
+
+  it('decodes RTA_CONFIG: the applied config, then the staging source', () => {
+    // version 3, tap 1, mask 0x001F, fft order 11, avg 250 ms, decay 20, flags 0
+    const cfg = [3, 1, 0x1F, 0, 11, 0, 250, 0, 20, 0, 0, 0];
+    const ev = Notify.parseNotifyPacket(v2(Notify.NotifyEventId.RtaConfig, 5, [...cfg, Notify.ParamSource.Uart]));
+    expect(ev).toEqual({
+      kind: 'rtaConfig', seq: 5, source: Notify.ParamSource.Uart,
+      config: { version: 3, tap: 1, channelMask: 0x1F, fftOrder: 11, avgMs: 250, peakDecayDbS: 20, flags: 0 },
+    });
+  });
+
+  it('decodes INPUT_SOURCE_NAME with the source id and a NUL-terminated name', () => {
+    const ev = Notify.parseNotifyPacket(v2(Notify.NotifyEventId.InputSourceName, 6, [4, Notify.ParamSource.Host, 0, 0, ...pad32('Turntable')]));
+    expect(ev).toEqual({ kind: 'inputSourceName', seq: 6, source: Notify.ParamSource.Host, sourceId: 4, name: 'Turntable' });
+  });
+
+  it('decodes a cleared (all-zero) DEVICE_NAME as an empty string', () => {
+    const ev = Notify.parseNotifyPacket(v2(Notify.NotifyEventId.DeviceName, 8, [0, Notify.ParamSource.Gpio, 0, 0, ...pad32('')]));
+    expect(ev).toEqual({ kind: 'deviceName', seq: 8, source: Notify.ParamSource.Gpio, name: '' });
+  });
+
+  it('ignores truncated frames but keeps their seq', () => {
+    expect(Notify.parseNotifyPacket(v2(Notify.NotifyEventId.RtaConfig, 1, [3, 1, 0x1F]))).toEqual({ kind: 'ignored', seq: 1 });
+    expect(Notify.parseNotifyPacket(v2(Notify.NotifyEventId.DeviceName, 2, [0, 1, 0, 0, 65, 66]))).toEqual({ kind: 'ignored', seq: 2 });
+    expect(Notify.parseNotifyPacket(v2(Notify.NotifyEventId.InputSourceName, 3, [0, 1]))).toEqual({ kind: 'ignored', seq: 3 });
+  });
+});

@@ -84,6 +84,51 @@ export async function fetchOutputLatency(s: ReadySession): Promise<void> {
   }
 }
 
+// Probe and read the names stored on the device (fw 1.1.6). Support is
+// decided by a 32-byte GET per feature (see DspDevice.probeInputSourceNames);
+// a device that fails a probe is never sent the matching SET. A probe that
+// timed out twice counts as unsupported for this connection but is reported to
+// link health.
+export async function fetchNames(s: ReadySession): Promise<void> {
+  const d = s.device;
+  s.names.inputSourcesSupported = await probeOrFail(s, () => d.probeInputSourceNames());
+  s.names.deviceSupported = await probeOrFail(s, () => d.probeDeviceName());
+  await refreshNames(s);
+}
+
+async function probeOrFail(s: ReadySession, probe: () => Promise<boolean>): Promise<boolean> {
+  try {
+    return await s.queue.run(probe);
+  } catch (err) {
+    s.health.noteFail('names', err);
+    Log.warn('names', 'support probe timed out; names stay off for this connection', err);
+    return false;
+  }
+}
+
+// Re-reads the stored names of a session whose probes already passed. A
+// device that was dormant may have been renamed by another host meanwhile.
+export async function refreshNames(s: ReadySession): Promise<void> {
+  const d = s.device;
+  if (s.names.inputSourcesSupported) {
+    const f = d.capabilities.features;
+    for (const src of Domain.selectableInputSources(d.capabilities.spdifInputCount, f.adatInput)) {
+      try {
+        s.names.inputSources[src] = await s.queue.run(() => d.getInputSourceName(src));
+      } catch (err) {
+        Log.warn('names', `input source ${src} name read failed`, err);
+      }
+    }
+  }
+  if (s.names.deviceSupported) {
+    try {
+      s.names.device = await s.queue.run(() => d.getDeviceName());
+    } catch (err) {
+      Log.warn('names', 'device name read failed', err);
+    }
+  }
+}
+
 // Best-effort read of the solo monitor flag (fw V30+, PR.06): runtime-only,
 // never persisted or notified, so it isn't covered by the normal snapshot
 // sync -- read once on panel mount instead.
@@ -283,6 +328,7 @@ function ensurePromotedActive(): void {
   if (next && !next.loops) {
     activateRecord(next);
     next.session.mirror.requestReconcile(true);
+    void refreshNames(next.session);
   }
 }
 
@@ -308,6 +354,9 @@ export async function activateSession(id: ConnId): Promise<void> {
   State.dispatch({ t: 'activated', id });
   activateRecord(rec);
   rec.session.mirror.requestReconcile(true);
+  // The notify backlog is dropped on restart, so renames made while dormant
+  // are only picked up by reading the names again.
+  await refreshNames(rec.session);
   // lastSerial now means "which adopted device to activate at boot", so every
   // successful switch -- not just a fresh adoption -- updates it.
   State.settings.lastSerial = rec.session.info.serial;
@@ -412,6 +461,7 @@ export async function wireUpConnection(
     await fetchControlSurfaces(session);
     await fetchSysClock(session);
     await fetchOutputLatency(session);
+    await fetchNames(session);
     Log.info('sync', 'connected', {
       platform: session.mirror.current?.platform.name,
       wire: device.capabilities.wire,

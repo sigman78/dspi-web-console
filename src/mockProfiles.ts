@@ -19,9 +19,9 @@ const FW_1_1_6 = { major: 1, minor: 1, patch: 6 } as const;
 const FW_1_1_6_BETA3 = { major: 1, minor: 1, patch: 6, beta: 3 } as const;
 // V31/V32 ship in 1.1.6-beta4.
 const FW_1_1_6_BETA4 = { major: 1, minor: 1, patch: 6, beta: 4 } as const;
-// The release/v1.1.6 branch head still stamps beta 5 but carries far more than
-// the beta5 tag; `latest` models the head (MockOptions.fwHead).
-const FW_1_1_6_BETA5 = { major: 1, minor: 1, patch: 6, beta: 5 } as const;
+// Names the released-1.1.6 mock (`latest`, MockOptions.fw116Release) boots with,
+// so the labels show up in ?mock.
+const LATEST_NAMES = { initialInputSourceNames: { 1: 'TV' }, initialDeviceName: 'Living Room' } as const;
 
 // Every profile sets irLearnAutoComplete: an armed IR learn self-completes
 // with a fresh NEC code, so the remote-pairing flow is demoable without an IR
@@ -31,7 +31,7 @@ function latest(platform: MockOptions['platform']): MockProfile {
   return {
     name: 'latest',
     platform,
-    opts: { wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: FW_1_1_6_BETA5, irLearnAutoComplete: true, fwHead: true },
+    opts: { wireVersion: Wire.MAX_WIRE_VERSION, fwVersion: FW_1_1_6, irLearnAutoComplete: true, fw116Release: true, ...LATEST_NAMES },
   };
 }
 
@@ -71,8 +71,9 @@ export function resolveMockProfile(token: string, chip?: 'rp2040' | 'rp2350' | n
         platform,
         opts: {
           wireVersion: Wire.MAX_WIRE_VERSION,
-          fwVersion: FW_1_1_6_BETA5,
-          fwHead: true,
+          fwVersion: FW_1_1_6,
+          fw116Release: true,
+          ...LATEST_NAMES,
           i2sInputChannels: 8,
           spdifInputsEnabled: 3,
           irLearnAutoComplete: true,

@@ -41,9 +41,9 @@ describe('resolveMockProfile', () => {
     }
   });
 
-  it('only latest models the release-branch head', () => {
-    expect(resolveMockProfile('latest').opts.fwHead).toBe(true);
-    expect(resolveMockProfile('v32').opts.fwHead).toBeUndefined();
+  it('only latest models the 1.1.6 release', () => {
+    expect(resolveMockProfile('latest').opts.fw116Release).toBe(true);
+    expect(resolveMockProfile('v32').opts.fw116Release).toBeUndefined();
   });
 
   it('falls back to latest below the wire floor, including the retired legacy token', () => {

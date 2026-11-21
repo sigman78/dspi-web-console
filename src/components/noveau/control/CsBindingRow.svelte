@@ -23,7 +23,7 @@
   import { getSession } from '@/components/sessionContext';
   import * as CsUnit from '@/domain/cs/unitDisplay';
   import * as CsField from '@/domain/cs/fieldHelpers';
-  import { unitField } from './csFieldFormat';
+  import { unitField, enumLabelContext } from './csFieldFormat';
   import * as CsDraft from '@/domain/cs/draft';
   import type { Draft } from '@/domain/cs/draft';
 
@@ -372,7 +372,7 @@
 
     {#if !CsDraft.isDisplay(d) && d.type !== Domain.CsType.Ir && d.noun !== Domain.CsNoun.PageValue && (showValueOf(d) || showStepOf(d))}
       <div class="cs-row">
-        <CsValueStepRow nouns={cs.nouns} noun={d.noun} action={d.action} steppy={STEPPY} presetNames={s.presets.names} macros={cs.macros} displayPages={cs.displayPages}
+        <CsValueStepRow nouns={cs.nouns} noun={d.noun} action={d.action} steppy={STEPPY} presetNames={s.presets.names} macros={cs.macros} displayPages={cs.displayPages} labels={enumLabelContext(s)}
           value={d.value} step={d.step} disabled={applying}
           onValue={(v) => onEdit((dr) => { dr.value = v; })}
           onStep={(v) => onEdit((dr) => { dr.step = v; })} />

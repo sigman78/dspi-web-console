@@ -14,6 +14,7 @@ export * from './ctrlIfaces.svelte';
 export * from './controlSurfaces.svelte';
 export * from './sysClock.svelte';
 export * from './outputLatency.svelte';
+export * from './names.svelte';
 export * from './staging.svelte';
 export * from './eqLink.svelte';
 export * from './drafts.svelte';

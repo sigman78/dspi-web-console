@@ -1,5 +1,16 @@
 import * as Domain from '@/domain';
 import type { ValueKind } from '@/components/chrome/valueFieldFormat';
+import type { ReadySession } from '@/state';
+import type { EnumLabelContext } from '@/domain/cs/fieldHelpers';
+
+/** Device state that labels enum values (source names, latency options). */
+export function enumLabelContext(s: ReadySession): EnumLabelContext {
+  return {
+    inputSourceNames: s.names.inputSources,
+    spdifNumbered: Domain.spdifNumbered(s.mirror.current?.inputConfig.spdifExtEnabled),
+    outputLatencyOptions: s.outputLatency.options,
+  };
+}
 
 /** Numeric-field presentation for a noun unit: formatter kind, edit step, decimals. */
 export function unitField(unit: number): { kind: ValueKind; step: number; precision: number } {

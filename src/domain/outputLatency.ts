@@ -39,3 +39,11 @@ export interface RingHealth {
 export function formatLatencyMs(us: number): string {
   return `${Number((us / 1000).toFixed(2))} ms`;
 }
+
+// Control Surfaces output-latency enum: value v selects option id v + 1.
+export function outputLatencyOptionLabel(
+  value: number, options: readonly OutputLatencyOption[] | null | undefined,
+): string {
+  const o = options?.find((x) => x.id === value + 1);
+  return o ? formatLatencyMs(o.latencyUs) : `Option ${value + 1}`;
+}
