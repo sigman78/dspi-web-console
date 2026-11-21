@@ -1,6 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { startNotifyChannel } from './notifyChannel';
+import { setupRta, noteRtaConflict } from './rtaActions';
 import * as State from '@/state';
+import * as Domain from '@/domain';
 import type { ReadySession } from '@/state';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice } from '@/device/DspDevice';
@@ -571,3 +573,129 @@ describe('startNotifyChannel backlog drain', () => {
 function paramChangedFrame(offset: number, value: number[], source = 5, seq = 1): Uint8Array {
   return new Uint8Array([2, 0x02, 0, seq, offset & 0xff, (offset >> 8) & 0xff, value.length & 0xff, (value.length >> 8) & 0xff, source, 0, 0, 0, ...value]);
 }
+
+describe('startNotifyChannel — names and analyser config', () => {
+  async function releaseSetup() {
+    const mock = new MockTransport({ platform: 'rp2350', wireVersion: 32, fw116Release: true });
+    const dev = await DspDevice.create(mock);
+    await dev.probeInputSourceNames();
+    await dev.probeDeviceName();
+    const session = connect(dev);
+    primeLive(mock);
+    const m = manualClock();
+    const stop = startNotifyChannel(session, m.clock);
+    await m.tick();   // idle: crosses the backlog boundary
+    return { mock, dev, session, m, stop };
+  }
+
+  const pad32 = (s: string) => { const b = new Uint8Array(32); b.set(new TextEncoder().encode(s)); return [...b]; };
+  const UART = 8;
+
+  it('a rename from another surface updates the cached source and board names, no reconcile', async () => {
+    const { mock, session, m, stop } = await releaseSetup();
+    mock.pushNotify(new Uint8Array([2, 0x0F, 0, 1, 1, UART, 0, 0, ...pad32('TV')]));
+    mock.pushNotify(new Uint8Array([2, 0x10, 0, 2, 0, UART, 0, 0, ...pad32('Den')]));
+    await m.tick();
+    await m.tick();
+    expect(session.names.inputSources[1]).toBe('TV');
+    expect(session.names.device).toBe('Den');
+    expect(session.mirror.peekReconcile().wanted).toBe(false);
+    stop();
+  });
+
+  it('a cleared name arrives as an empty string', async () => {
+    const { dev, session, m, stop } = await releaseSetup();
+    session.names.inputSources[1] = 'TV';
+    await dev.setInputSourceName(1, '');
+    await m.tick();
+    expect(session.names.inputSources[1]).toBe('');
+    stop();
+  });
+
+  it('an RTA_CONFIG event refreshes the held analyser config', async () => {
+    const { dev, session, m, stop } = await releaseSetup();
+    const cfg = { ...(await dev.getRtaConfig()), avgMs: 500 };
+    await dev.setRtaConfig(cfg);
+    await m.tick();
+    expect(session.telemetry.rtaConfig?.avgMs).toBe(500);
+    stop();
+  });
+
+  describe('analyser contention', () => {
+    // RtaConfig (version 3, order 11, 250 ms, decay 20) on the given tap/mask, then the SET's source.
+    const rtaFrame = (seq: number, source: number, tap: number, mask: number) =>
+      new Uint8Array([2, 0x0D, 0, seq, 3, tap, mask & 0xff, mask >> 8, 11, 0, 250, 0, 20, 0, 0, 0, source]);
+
+    async function contested() {
+      const rig = await releaseSetup();
+      const tele = rig.session.telemetry;
+      const sets = vi.spyOn(rig.mock, 'ctrlOut');
+      const rtaSets = () => sets.mock.calls.filter(([req]) => req === 0x08).length;
+      tele.wantRta();
+      await setupRta(rig.session, rig.dev);
+      const baseline = rtaSets();
+      let seq = 10;
+      const conflict = async (source: number) => {
+        rig.mock.pushNotify(rtaFrame(seq++, source, 0, 0b11));   // input tap: never covers our outputs
+        for (let i = 0; i < 4; i++) await rig.m.tick();   // drains queued echoes of our own SETs first
+      };
+      return { ...rig, tele, rtaSets, baseline, conflict };
+    }
+
+    it('a Host-sourced config that does not cover our outputs never re-runs setup (our own echo)', async () => {
+      const { tele, conflict, rtaSets, baseline, stop } = await contested();
+      await conflict(1);
+      expect(tele.rtaConfigured).toBe(true);
+      expect(tele.rtaInUseBy).toBeNull();
+      expect(rtaSets()).toBe(baseline);
+      stop();
+    });
+
+    it('a conflicting client re-runs setup once, then the analyser is marked in use and no more SETs go out', async () => {
+      const { session, dev, tele, conflict, rtaSets, stop } = await contested();
+      await conflict(UART);
+      expect(tele.rtaConfigured).toBe(false);
+      expect(tele.rtaInUseBy).toBeNull();
+      // The other client really did move the analyser to the input tap.
+      await dev.setRtaConfig({ ...(await dev.getRtaConfig()), tap: Domain.RtaTap.Input, channelMask: 0b11 });
+      const beforeRetry = rtaSets();
+      await setupRta(session, dev);
+      expect(rtaSets()).toBeGreaterThan(beforeRetry);
+      const afterRetry = rtaSets();
+
+      await conflict(UART);
+      expect(tele.rtaInUseBy).toBe(UART);
+      expect(tele.rtaConfigured).toBe(true);
+      await conflict(UART);
+      tele.rtaConfigured = false;
+      await setupRta(session, dev);
+      expect(rtaSets()).toBe(afterRetry);
+      stop();
+    });
+
+    it('the 1 Hz tap check shares the same once-per-period budget', async () => {
+      const { tele, conflict, stop } = await contested();
+      noteRtaConflict(tele, 0);
+      expect(tele.rtaConfigured).toBe(false);
+      tele.rtaConfigured = true;
+      await conflict(UART);
+      expect(tele.rtaInUseBy).toBe(UART);
+      stop();
+    });
+
+    it('re-establishing interest allows one new attempt', async () => {
+      const { tele, conflict, stop } = await contested();
+      await conflict(UART);
+      await conflict(UART);
+      expect(tele.rtaInUseBy).toBe(UART);
+
+      tele.rtaWanted = 0;   // every holder released
+      tele.wantRta();
+      expect(tele.rtaInUseBy).toBeNull();
+      tele.rtaConfigured = true;
+      await conflict(UART);
+      expect(tele.rtaConfigured).toBe(false);
+      stop();
+    });
+  });
+});

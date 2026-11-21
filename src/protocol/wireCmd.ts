@@ -102,6 +102,17 @@ export const WireCmd = {
   // STALLs the opcode, which is the feature probe.
   OutputLatency:        { code: 0x03 } satisfies RawCmd,
 
+  // --- Input source and board names (fw 1.1.6 release). ---
+  // 0x54-0x57 carried a legacy per-channel gain/mute on older firmware (0x55
+  // answers 4 B, 0x57 answers 1 B, and a 0x54/0x56 write stores the bytes as a
+  // gain/mute). Never send a SET before the matching 32-byte GET probe
+  // succeeded; DspDevice enforces that. SET: 1-32 B, a leading NUL clears.
+  // GET: 32 B NUL-terminated, zeros = unnamed. wValue = source ID (board name: 0).
+  SetInputSourceName:   { code: 0x54, codec: Wire.ChannelName } satisfies WriteCmd<string>,
+  GetInputSourceName:   { code: 0x55, codec: Wire.ChannelName } satisfies ReadCmd<string>,
+  SetDeviceName:        { code: 0x56, codec: Wire.ChannelName } satisfies WriteCmd<string>,
+  GetDeviceName:        { code: 0x57, codec: Wire.ChannelName } satisfies ReadCmd<string>,
+
   // --- V29/V30 subharmonic synthesizer (fw 1.1.6, both platforms). ---
   SetSubharmEnabled:    { code: 0x10, codec: Codec.bool8 } satisfies WriteCmd<boolean>,
   GetSubharmEnabled:    { code: 0x11, codec: Codec.bool8 } satisfies ReadCmd<boolean>,

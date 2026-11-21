@@ -8,7 +8,7 @@
   import * as CsField from '@/domain/cs/fieldHelpers';
   import { unitField } from './csFieldFormat';
 
-  const { nouns, noun, action, steppy, presetNames, macros, displayPages, value, step, disabled = false, ariaSuffix = '', onValue, onStep }: {
+  const { nouns, noun, action, steppy, presetNames, macros, displayPages, labels = {}, value, step, disabled = false, ariaSuffix = '', onValue, onStep }: {
     nouns: readonly Domain.CsNounCaps[];
     noun: number;
     action: number;
@@ -16,6 +16,7 @@
     presetNames: readonly (string | null)[];
     macros: readonly (Domain.CsMacro | null)[];
     displayPages: readonly (Domain.CsDisplayPage | null)[];
+    labels?: CsField.EnumLabelContext;
     value: number;
     step: number;
     disabled?: boolean;
@@ -34,7 +35,7 @@
   const valueSuffix = $derived(CsUnit.unitSuffix(unit));
   const valueOptions = $derived(
     isEnum
-      ? CsField.enumValueOptions(nouns, noun, presetNames, macros, displayPages)
+      ? CsField.enumValueOptions(nouns, noun, presetNames, macros, displayPages, labels)
       : CsField.boolValueOptions(noun),
   );
 

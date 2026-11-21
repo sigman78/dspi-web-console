@@ -11,6 +11,7 @@ export * from './upmixActions';
 export * from './ioActions';
 export * from './controlSurfaceActions';
 export * from './systemActions';
+export * from './nameActions';
 export * from './stagedActions';
 export * from './deviceService';
 export * from './presets';

@@ -1,5 +1,6 @@
 import { parseNotifyPacket, isReconcileTrigger, isPresetOpEcho, ParamSource, type NotifyEvent } from '@/protocol';
 import { applyParamChange } from './notifyApply';
+import { noteRtaConflict } from './rtaActions';
 import { pushNotice, type ReadySession } from '@/state';
 import { Log, timerClock, subscribeVisibility, type LoopClock, type Disposer } from '@/utils';
 import * as Domain from '@/domain';
@@ -139,6 +140,30 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
         resyncCount: prev?.resyncCount ?? 0,
         slipCount: prev?.slipCount ?? 0,
       };
+      return;
+    }
+    // Names are device-global and not bulk-borne: the event carries the stored
+    // value, so patch the cache directly.
+    if (event.kind === 'inputSourceName') {
+      session.names.inputSources[event.sourceId] = event.name;
+      return;
+    }
+    if (event.kind === 'deviceName') {
+      session.names.device = event.name;
+      return;
+    }
+    // Another host or surface changed the analyser config. Mirror it; a
+    // non-Host config that no longer covers our outputs is a conflict. Host
+    // events are our own echo (firmware trims the mask), never a conflict.
+    if (event.kind === 'rtaConfig') {
+      if (event.config.version !== Domain.RTA_CONFIG_VERSION) return;
+      const { version: _version, ...cfg } = event.config;
+      const tele = session.telemetry;
+      tele.rtaConfig = cfg;
+      if (event.source !== ParamSource.Host && tele.rtaWanted > 0 && tele.rtaCaps
+          && Domain.rtaPlanConfig(cfg, Domain.rtaWantedConfig(tele.rtaCaps, device.hardware.outputCount))) {
+        noteRtaConflict(tele, event.source);
+      }
       return;
     }
     // The device notification is the authority that the slot actually loaded.
