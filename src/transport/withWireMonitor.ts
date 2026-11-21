@@ -1,7 +1,7 @@
 import { Log } from '@/utils';
 import * as WireMon from '@/protocol/wireMonitor';
-import { PAGED_PROTOCOL_INFO } from '@/protocol/protocolInfo';
-import { type DspTransport, type TransportEvent, TransportStall } from './DspTransport';
+import { PAGED_PROTOCOL_INFO, isLegacyProbeRefusal } from '@/protocol/protocolInfo';
+import { type DspTransport, type TransportEvent } from './DspTransport';
 
 // Decorator: log every settled ctrlIn/ctrlOut/notifyIn. Sits INSIDE the timeout
 // decorator so it sees the real bytes and its formatting cost is off the
@@ -51,7 +51,7 @@ export function withWireMonitor(inner: DspTransport): DspTransport {
         return bytes;
       } catch (err) {
         // A legacy device STALLs the connect probe by design.
-        if (cmd === PAGED_PROTOCOL_INFO && err instanceof TransportStall) {
+        if (cmd === PAGED_PROTOCOL_INFO && isLegacyProbeRefusal(err)) {
           emit('info', () => `<- ${WireMon.fmtCmdId(cmd)} PROTOCOL_INFO probe stalled (legacy firmware)`);
         } else {
           warn(`x ctrlIn ${WireMon.fmtCmdId(cmd)}`, err);

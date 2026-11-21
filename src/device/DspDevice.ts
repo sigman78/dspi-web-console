@@ -1,4 +1,4 @@
-import { type DspTransport, TransportStall } from '@/transport/DspTransport';
+import { type DspTransport } from '@/transport/DspTransport';
 import { withSerializedCtrl, type SerializedDspTransport } from '@/transport/withSerializedCtrl';
 import * as proto from '@/protocol';
 import { Codec, utf8Truncate, Result } from '@/utils';
@@ -296,11 +296,8 @@ async function probeProtocol(transport: DspTransport): Promise<void> {
   try {
     reply = await transport.ctrlIn(proto.PAGED_PROTOCOL_INFO, 0, proto.PROTOCOL_INFO_LENGTH);
   } catch (err) {
-    // Chromium's WinUSB backend can surface a control STALL as a thrown
-    // NetworkError rather than status 'stall'. Falling back to legacy is the
-    // safe direction (paged firmware refuses page-0 requests and changes
-    // nothing); a timeout or disconnect still rethrows.
-    if (err instanceof TransportStall || (err instanceof Error && err.name === 'NetworkError')) return;
+    // A timeout or disconnect still rethrows.
+    if (proto.isLegacyProbeRefusal(err)) return;
     throw err;
   }
   const info = proto.parseProtocolInfo(reply);
