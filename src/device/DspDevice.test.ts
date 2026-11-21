@@ -12,7 +12,7 @@ import * as Protocol from '@/protocol';
 import { Codec } from '@/utils';
 import * as Domain from '@/domain';
 import type { PresetSlot } from '@/domain';
-import type { DspTransport, TransportEvent } from '@/transport/DspTransport';
+import { type DspTransport, type TransportEvent, TransportStall } from '@/transport/DspTransport';
 
 describe('DspDevice facade', () => {
   let d: DspDevice;
@@ -1218,6 +1218,8 @@ function identityStub(opts: { wire: number; fwMinor: number; fwPatch: number; pa
   return {
     open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
     ctrlIn: async (request, _value, length) => {
+      if (request === Protocol.PAGED_PROTOCOL_INFO) throw new TransportStall('legacy firmware: probe stalls');
+      if (request > 0xFF) throw new Error(`unexpected paged request 0x${request.toString(16)} reached a legacy stub`);
       if (request === Protocol.WireCmd.GetSerial.code) return new Uint8Array(length);
       if (request === Protocol.WireCmd.GetPlatform.code) {
         return new Uint8Array([Domain.PlatformType.RP2350, 1, (opts.fwMinor << 4) | opts.fwPatch, 0]);

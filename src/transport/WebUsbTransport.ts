@@ -1,4 +1,5 @@
-import { type DspTransport, type TransportEvent, VENDOR_INTERFACE_INDEX } from './DspTransport';
+import { fmtCmdId } from '@/protocol/wireMonitor';
+import { type DspTransport, type TransportEvent, TransportStall, VENDOR_INTERFACE_INDEX, ctrlSetup } from './DspTransport';
 
 // Firmware changed its USB Vendor ID at 1.1.4 (0x2E8A -> 0x2E8B); PID unchanged.
 // Both pairs listed so either firmware shows in the picker. VID is a
@@ -127,30 +128,32 @@ export class WebUsbTransport implements DspTransport {
 
   isOpen(): boolean { return !!this.#device?.opened; }
 
-  async ctrlIn(request: number, value: number, length: number): Promise<Uint8Array> {
+  async ctrlIn(cmd: number, value: number, length: number): Promise<Uint8Array> {
     const d = this.#requireDevice();
     const r = await d.controlTransferIn(
-      { requestType: 'vendor', recipient: 'interface', request, value, index: this.#interfaceNumber },
+      { requestType: 'vendor', recipient: 'interface', value, ...ctrlSetup(cmd, this.#interfaceNumber) },
       length,
     );
+    if (r.status === 'stall') throw new TransportStall(`controlTransferIn(${fmtCmdId(cmd)}) stalled`);
     if (r.status !== 'ok') {
-      throw new Error(`controlTransferIn(${request.toString(16)}) status=${r.status}`);
+      throw new Error(`controlTransferIn(${fmtCmdId(cmd)}) status=${r.status}`);
     }
     // A zero-length data stage may arrive without a DataView.
     if (!r.data) return new Uint8Array(0);
     return new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength);
   }
 
-  async ctrlOut(request: number, value: number, data: Uint8Array): Promise<void> {
+  async ctrlOut(cmd: number, value: number, data: Uint8Array): Promise<void> {
     const d = this.#requireDevice();
     const payload = new ArrayBuffer(data.byteLength);
     new Uint8Array(payload).set(data);
     const r = await d.controlTransferOut(
-      { requestType: 'vendor', recipient: 'interface', request, value, index: this.#interfaceNumber },
+      { requestType: 'vendor', recipient: 'interface', value, ...ctrlSetup(cmd, this.#interfaceNumber) },
       payload,
     );
+    if (r.status === 'stall') throw new TransportStall(`controlTransferOut(${fmtCmdId(cmd)}) stalled`);
     if (r.status !== 'ok') {
-      throw new Error(`controlTransferOut(${request.toString(16)}) status=${r.status}`);
+      throw new Error(`controlTransferOut(${fmtCmdId(cmd)}) status=${r.status}`);
     }
   }
 

@@ -63,6 +63,8 @@ export function resolveMockProfile(token: string, chip?: 'rp2040' | 'rp2350' | n
     case 'rp2040':
     case 'rp2350':
       return latest(platform);
+    case 'paged':
+      return { name: 'paged', platform, opts: { paged: true } };
     case 'multi':
       return {
         name: 'multi',

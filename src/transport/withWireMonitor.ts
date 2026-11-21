@@ -1,6 +1,7 @@
 import { Log } from '@/utils';
 import * as WireMon from '@/protocol/wireMonitor';
-import type { DspTransport, TransportEvent } from './DspTransport';
+import { PAGED_PROTOCOL_INFO, isLegacyProbeRefusal } from '@/protocol/protocolInfo';
+import { type DspTransport, type TransportEvent } from './DspTransport';
 
 // Decorator: log every settled ctrlIn/ctrlOut/notifyIn. Sits INSIDE the timeout
 // decorator so it sees the real bytes and its formatting cost is off the
@@ -40,28 +41,33 @@ export function withWireMonitor(inner: DspTransport): DspTransport {
     isOpen: () => inner.isOpen(),
     on: (event: TransportEvent, listener: () => void) => inner.on(event, listener),
 
-    async ctrlIn(request, value, length) {
+    async ctrlIn(cmd, value, length) {
       try {
-        const bytes = await inner.ctrlIn(request, value, length);
-        const version = WireMon.bulkVersionFromTraffic(request, value, bytes);
+        const bytes = await inner.ctrlIn(cmd, value, length);
+        const version = WireMon.bulkVersionFromTraffic(cmd, value, bytes);
         if (version !== null) lastBulkVersion = version;
-        const level = WireMon.isPollCommand(request) ? 'debug' : 'info';
-        emit(level, () => WireMon.formatCtrlIn(request, value, bytes));
+        const level = WireMon.isPollCommand(cmd) ? 'debug' : 'info';
+        emit(level, () => WireMon.formatCtrlIn(cmd, value, bytes));
         return bytes;
       } catch (err) {
-        warn(`x ctrlIn 0x${request.toString(16)}`, err);
+        // A legacy device STALLs the connect probe by design.
+        if (cmd === PAGED_PROTOCOL_INFO && isLegacyProbeRefusal(err)) {
+          emit('info', () => `<- ${WireMon.fmtCmdId(cmd)} PROTOCOL_INFO probe stalled (legacy firmware)`);
+        } else {
+          warn(`x ctrlIn ${WireMon.fmtCmdId(cmd)}`, err);
+        }
         throw err;
       }
     },
 
-    async ctrlOut(request, value, data) {
+    async ctrlOut(cmd, value, data) {
       try {
-        await inner.ctrlOut(request, value, data);
-        const version = WireMon.bulkVersionFromTraffic(request, value, data);
+        await inner.ctrlOut(cmd, value, data);
+        const version = WireMon.bulkVersionFromTraffic(cmd, value, data);
         if (version !== null) lastBulkVersion = version;
-        emit('info', () => WireMon.formatCtrlOut(request, value, data));
+        emit('info', () => WireMon.formatCtrlOut(cmd, value, data));
       } catch (err) {
-        warn(`x ctrlOut 0x${request.toString(16)}`, err);
+        warn(`x ctrlOut ${WireMon.fmtCmdId(cmd)}`, err);
         throw err;
       }
     },

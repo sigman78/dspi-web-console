@@ -16,3 +16,4 @@ export * from './systemInfo';
 export * from './wireCmd';
 export * from './results';
 export * from './notify';
+export * from './protocolInfo';
