@@ -47,7 +47,7 @@ function channelIdOrNull(v: unknown): ChannelId | null {
 function stringOrNull(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
 }
-function hueOrNull(v: unknown): number | null {
+export function hueOrNull(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(360, Math.max(0, v)) : null;
 }
 function volumeAxis(v: unknown, fallback: VolumeAxis): VolumeAxis {

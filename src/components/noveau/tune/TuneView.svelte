@@ -1,7 +1,7 @@
 <script lang="ts">
   import { settings } from '@/state';
   import { FilterType, inputIndexOf } from '@/domain';
-  import { chShade } from '@/styles/palette';
+  import ChannelMark from '@/components/chrome/ChannelMark.svelte';
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import EqGraph from './EqGraph.svelte';
@@ -48,7 +48,7 @@
     <div class="left" data-budget>
       <div class="graphArea" data-budget>
         <header>
-          <span class="dot" style:background={chShade(channel.id, 'bright')}></span>
+          <ChannelMark id={channel.id} />
           <h2>{channel.name}</h2>
           <span class="chain">{chain}</span>
           <span class="view">Combined</span>
@@ -98,7 +98,6 @@
     align-items: center;
     gap: 10px;
   }
-  .dot { width: 8px; height: 8px; border-radius: var(--radius-xs); }
   h2 { margin: 0; font-family: var(--font-sans); font-size: 14px; font-weight: 600; color: var(--text); }
   .chain { font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }
   .view { margin-left: auto; font-family: var(--font-sans); font-size: 11px; color: var(--text-dim); }

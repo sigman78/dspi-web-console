@@ -72,6 +72,18 @@
 .cs-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cs-srow { padding: 4px 14px 0; }
 .cs-pad { padding: 10px 14px; }
+/* Why a control/group/macro is not running: a tinted block under its editor. */
+.cs-fault {
+  margin: 2px 14px 10px;
+  padding: 6px 10px;
+  border-left: 2px solid var(--err);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklab, var(--err) var(--tint), transparent);
+  color: var(--err);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.4;
+}
 .cs-addhost { position: relative; }
 .cs-addrow { display: flex; align-items: center; gap: 10px; padding: 10px 14px 12px; }
 .cs-empty { text-align: center; padding-top: 14px; }

@@ -91,6 +91,7 @@
   function badgeTitle(failure: AdoptFailure): string {
     const hint = failure.errorKind === 'device-in-use' ? ' (device in use)'
       : failure.errorKind === 'unsupported-firmware' ? ' (firmware update required)'
+      : failure.errorKind === 'paged-firmware' ? ' (firmware not supported yet)'
       : '';
     return `${failure.message}${hint}`;
   }

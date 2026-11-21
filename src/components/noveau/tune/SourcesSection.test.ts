@@ -66,11 +66,11 @@ describe('SourcesSection', () => {
     expect(document.activeElement).toBe(btn);
   });
 
-  test('a routed row opens live editing with UNROUTE', async () => {
+  test('a routed row opens live editing with CLEAR', async () => {
     const { container, getByText, live } = mount();
     const btn = [...container.querySelectorAll<HTMLButtonElement>('.edit')].find((b) => b.title === 'Edit route')!;
     await fireEvent.click(btn);
-    await fireEvent.click(getByText('UNROUTE'));
+    await fireEvent.click(getByText('CLEAR'));
     expect(setCrosspointEnabled.mock.calls[0].slice(2)).toEqual([live.outputWireIndex, false]);
   });
 });

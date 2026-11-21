@@ -103,13 +103,13 @@ describe('RoutingMap', () => {
     expect(setCrosspointGain).not.toHaveBeenCalled();
   });
 
-  test('UNROUTE disables the route and closes the popover', async () => {
+  test('CLEAR disables the route and closes the popover', async () => {
     const { container, getByText, queryByRole, off } = mount();
     const dot = [...container.querySelectorAll<HTMLButtonElement>('.cell.off .dotbtn')].find((b) => !b.getAttribute('aria-label')!.endsWith('unrouted'))!;
     await fireEvent.click(dot);
     expect(container.querySelector('.dotbtn.proposed')).toBeNull();
     expect(setCrosspointEnabled).not.toHaveBeenCalled();
-    await fireEvent.click(getByText('UNROUTE'));
+    await fireEvent.click(getByText('CLEAR'));
     expect(setCrosspointEnabled.mock.calls[0].slice(2)).toEqual([off.wireIndex, false]);
     expect(queryByRole('dialog')).toBeNull();
   });

@@ -5,6 +5,7 @@
   import { getSession } from '@/components/sessionContext';
   import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import { formatSignedDb } from '@/components/chrome/format';
+  import ChannelMark from '@/components/chrome/ChannelMark.svelte';
   import CrosspointPopover from './CrosspointPopover.svelte';
 
   const s = getSession();
@@ -41,9 +42,9 @@
     snap?.routes.find((r) => r.inputIndex === input && r.outputWireIndex === output);
 
   const caption = $derived.by(() => {
-    if (!upmixOn) return 'outputs as rows · inputs as columns · click a dot to edit';
+    if (!upmixOn) return 'outputs as rows · inputs as columns · click a cell to edit';
     const st = upmixParkingStatus(upmixOn.enabled, s.telemetry.activeInputChannels, s.telemetry.info?.sampleRateHz ?? null);
-    return `upmix ${st === 'active' ? 'active' : `parked — ${st}`} · click a dot to edit`;
+    return `upmix ${st === 'active' ? 'active' : `parked — ${st}`} · click a cell to edit`;
   });
 
   let host = $state<HTMLElement | null>(null);
@@ -86,7 +87,7 @@
   <div class="map" style:--n={cols.length}>
     <span style:grid-column="1"></span>
     {#each cols as c (c.input)}
-      <span class="ch" title={c.label}><i style:background={chShade(c.id, 'bright')}></i>{c.short}</span>
+      <span class="ch" title={c.label}><ChannelMark id={c.id} />{c.short}</span>
     {/each}
     {#each rows as r, ri (r.slot)}
       {#if !r.enabled}<span class="band" style:grid-row={ri + 2} aria-hidden="true"></span>{/if}
@@ -98,7 +99,7 @@
         class:sel={settings.selectedChannel === r.id}
         title={r.enabled ? `Open ${r.name} in TUNE` : `${r.name} (disabled) — open in TUNE`}
         onclick={() => openOutput(r.id)}
-      ><i style:background={chShade(r.id, 'bright')}></i><span>{r.name}</span></button>
+      ><ChannelMark id={r.id} /><span>{r.name}</span></button>
       {#each cols as c, ci (c.input)}
         {@const rt = routeAt(c.input, r.slot)}
         {@const on = rt?.enabled === true}
@@ -112,9 +113,9 @@
             onclick={(e) => open(e, c.input, r.slot)}
           >
             {#if on}
-              <i class="pill" class:anchor={anchored} style:background={chShade(c.id, 'bright')}>{rt!.invert ? '⌽' : ''}{formatSignedDb(rt!.gainDb)}</i>
+              <span class="pill" class:inv={rt!.invert} class:anchor={anchored} style:--c={chShade(c.id, 'bright')}>{formatSignedDb(rt!.gainDb)}</span>
             {:else}
-              <i class="ring" class:anchor={anchored}></i>
+              <span class="slot" class:anchor={anchored}></span>
             {/if}
           </button>
         </span>
@@ -123,9 +124,9 @@
     {/each}
   </div>
   <footer class="legend">
-    <span><i class="pill sample">0.0</i>routed · gain</span>
-    <span><i class="pill sample">⌽−3.0</i>inverted</span>
-    <span><i class="ring"></i>unrouted</span>
+    <span><span class="pill sample">0.0</span>gain, dB</span>
+    <span><span class="pill sample inv">−3.0</span>inverted</span>
+    <span><span class="slot"></span>unrouted</span>
     <span><i class="swatch"></i>disabled output</span>
   </footer>
 
@@ -170,7 +171,6 @@
   }
   .map > * { display: flex; align-items: center; justify-content: center; min-width: 0; }
   .ch { gap: 4px; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
-  .ch i { width: 6px; height: 6px; border-radius: 50%; flex: none; }
   .rh {
     justify-content: flex-start;
     gap: 8px;
@@ -185,7 +185,6 @@
     text-align: left;
     grid-column: 1;
   }
-  .rh i { width: 8px; height: 8px; border-radius: var(--radius-xs); flex: none; }
   .rh span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rh:hover, .rh.sel { color: var(--text); }
   .rh.off { color: var(--text-faint); }
@@ -207,26 +206,29 @@
     justify-content: center;
     cursor: pointer;
   }
-  .dotbtn:hover .ring { opacity: 1; border-color: var(--accent); }
-  .ring { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--border-hi); opacity: 0.8; box-sizing: border-box; }
+  .dotbtn:hover .slot { border-color: var(--accent); }
+  /* Routed and unrouted share one fixed 32×16 box so the grid reads as slots. */
+  .slot, .pill { width: 32px; height: 16px; border-radius: 4px; box-sizing: border-box; flex: none; }
+  .slot { display: inline-block; border: 1px solid var(--border); }
   .pill {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 30px;
-    height: 18px;
-    padding: 0 3px;
-    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid var(--c);
+    background: var(--c);
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.06em;
     color: var(--bg);
     white-space: nowrap;
   }
-  .pill.sample { background: var(--text-dim); min-width: 30px; }
-  .dotbtn.proposed .ring { border-style: dashed; border-color: var(--accent); opacity: 1; box-shadow: none; }
-  .pill.anchor, .ring.anchor { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--accent); }
+  /* Phase inverted: a dimmed fill of the same colour. */
+  .pill.inv { background: color-mix(in oklab, var(--c) 55%, var(--bg)); color: var(--text); }
+  .pill.sample { --c: var(--text-dim); }
+  .dotbtn.proposed .slot { border-style: dashed; border-color: var(--accent); }
+  .pill.anchor, .slot.anchor { box-shadow: 0 0 0 1px var(--bg), 0 0 0 2px var(--accent); }
   .legend {
     flex: none;
     margin-top: auto;
@@ -239,6 +241,6 @@
     font-size: 11px;
     color: var(--text-faint);
   }
-  .legend span { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .legend > span { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
   .swatch { display: inline-block; width: 12px; height: 10px; background: repeating-linear-gradient(135deg, var(--wash-strong) 0 3px, transparent 3px 7px); }
 </style>

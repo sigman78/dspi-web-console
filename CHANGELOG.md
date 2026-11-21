@@ -6,6 +6,13 @@ from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
 this project follows [Semantic Versioning](https://semver.org/) (currently in the
 `0.x` pre-1.0 line — minor versions may include breaking changes).
 
+## [1.0.1](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v1.0.0...dspi-console-web-v1.0.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **ui:** clearer routing chips, channel marks and control-surface lists ([#155](https://github.com/sigman78/dspi-web-console/issues/155)) ([5929010](https://github.com/sigman78/dspi-web-console/commit/5929010e84d4b81aa2164373ccdd85a1717c512e))
+
 ## [1.0.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v0.12.0...dspi-console-web-v1.0.0) (2026-10-29)
 
 

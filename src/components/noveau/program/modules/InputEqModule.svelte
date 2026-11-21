@@ -3,7 +3,7 @@
   import { selectChannel } from '@/state';
   import { getSession } from '@/components/sessionContext';
   import BodePlot, { type BodeCurve } from '@/components/noveau/tune/BodePlot.svelte';
-  import { chShade } from '@/styles/palette';
+  import ChannelMark from '@/components/chrome/ChannelMark.svelte';
   import { noveauUi } from '@/components/noveau/noveauUi.svelte';
   import { formatSignedDb } from '@/components/chrome/format';
   import ModuleFrame from './ModuleFrame.svelte';
@@ -41,7 +41,7 @@
   <BodePlot {curves} height={180} />
   {#each inputs as inp (inp.id)}
     <div class="prow">
-      <span class="dot" style:background={chShade(inp.id, 'bright')}></span>
+      <ChannelMark id={inp.id} class="lead" />
       <span class="prow-lbl" title={inp.name}>{inp.name}</span>
       <span class="prow-note">{inp.bands} {inp.bands === 1 ? 'band' : 'bands'}</span>
       <span class="t-value pre">{formatSignedDb(inp.preampDb)} dB</span>
@@ -51,6 +51,6 @@
 </ModuleFrame>
 
 <style>
-  .dot { flex: 0 0 8px; height: 8px; border-radius: 50%; margin-left: 4px; }
+  .prow :global(.lead) { margin-left: 4px; }
   .pre { margin-left: auto; }
 </style>

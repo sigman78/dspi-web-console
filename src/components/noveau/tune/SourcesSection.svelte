@@ -1,9 +1,9 @@
 <script lang="ts">
+  import ChannelMark from '@/components/chrome/ChannelMark.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { formatSignedDb } from '@/components/chrome/format';
   import { inputIndexOf, matrixColumns, matrixRows, type ChannelId, type ChannelModel, type InputSlot, type OutputModel, type OutputSlot, type RouteModel } from '@/domain';
   import * as Runtime from '@/runtime';
-  import { chShade } from '@/styles/palette';
   import { getSession } from '@/components/sessionContext';
   import CrosspointPopover from '@/components/noveau/program/CrosspointPopover.svelte';
   import InspectorSection from './InspectorSection.svelte';
@@ -93,7 +93,7 @@
     {@const on = e.cell?.enabled ?? false}
     {@const anchored = pick?.key === e.key}
     <div class="row" class:anchored>
-      <span class="dot" style:background={chShade(e.id, 'bright')}></span>
+      <ChannelMark id={e.id} />
       <span class="name">{e.name}</span>
       <span class="gain" class:off={!on}>{on && e.cell ? formatSignedDb(e.cell.gainDb) : '—'}</span>
       <span class="inv" title={on && e.cell?.invert ? 'Phase inverted' : undefined}>{on && e.cell?.invert ? '⌽' : ''}</span>
@@ -143,7 +143,6 @@
     font-family: var(--font-sans);
     font-size: 11px;
   }
-  .dot { width: 6px; height: 6px; border-radius: 50%; }
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
   .gain { text-align: right; font-family: var(--font-mono); color: var(--text-dim); font-variant-numeric: tabular-nums; }
   .gain.off { color: var(--text-faint); }

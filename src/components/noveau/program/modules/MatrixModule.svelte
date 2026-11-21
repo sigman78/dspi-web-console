@@ -22,7 +22,7 @@
 <ModuleFrame
   title="Matrix"
   pass="routing · inputs → outputs"
-  blurb="Routes every input to any output, with gain and phase per crosspoint. Click a dot on the routing map to route it; the popover sets gain and phase, UNROUTE removes it."
+  blurb="Routes every input to any output, with gain and phase per crosspoint. Click a cell on the routing map to route it; the popover sets gain and phase, CLEAR removes it."
 >
   <div class="prow">
     <span class="prow-lbl">ROUTES</span>

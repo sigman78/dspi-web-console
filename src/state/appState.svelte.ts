@@ -9,6 +9,7 @@ import type { SysClockState } from './sysClock.svelte';
 import type { OutputLatencyState } from './outputLatency.svelte';
 import type { StagingState } from './staging.svelte';
 import type { EqLinkState } from './eqLink.svelte';
+import type { RoomHuePins } from './roomHuePins.svelte';
 import type { DraftsState } from './drafts.svelte';
 import type { MirrorState } from './mirror.svelte';
 import type { LinkHealth } from './linkHealth.svelte';
@@ -52,6 +53,8 @@ export interface ReadySession {
   readonly staging: StagingState;
   // Console-only EQ link groups and their lock flags.
   readonly eqLink: EqLinkState;
+  // Console-only ROOM hues pinned to preset slots.
+  readonly roomHuePins: RoomHuePins;
   // Console-local control-surface edits not yet sent to the device.
   readonly drafts: DraftsState;
   readonly mirror: MirrorState;
@@ -71,7 +74,7 @@ export interface ReadySession {
 // Discriminates an 'error' status so the UI can give certain failures a tailored
 // treatment (a firmware-upgrade prompt, a device-in-use advisory). null =
 // ordinary/unclassified error.
-export type SessionErrorKind = null | 'unsupported-firmware' | 'device-in-use';
+export type SessionErrorKind = null | 'unsupported-firmware' | 'paged-firmware' | 'device-in-use';
 
 export type ConnId = number;
 

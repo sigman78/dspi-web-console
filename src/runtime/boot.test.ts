@@ -29,14 +29,14 @@ function usbDeviceFromMock(mock: MockTransport, opts: { serial: string; vendorId
     async releaseInterface() {},
     async clearHalt() {},
     async controlTransferIn(setup: USBControlTransferParameters, length: number) {
-      const data = await mock.ctrlIn(setup.request, setup.value, length);
+      const data = await mock.ctrlIn((setup.index & 0xFF00) | setup.request, setup.value, length);
       return { status: 'ok', data: new DataView(data.buffer, data.byteOffset, data.byteLength) };
     },
     async controlTransferOut(setup: USBControlTransferParameters, data?: BufferSource) {
       const view = data instanceof ArrayBuffer
         ? new Uint8Array(data)
         : new Uint8Array((data as ArrayBufferView).buffer, (data as ArrayBufferView).byteOffset, (data as ArrayBufferView).byteLength);
-      await mock.ctrlOut(setup.request, setup.value, view);
+      await mock.ctrlOut((setup.index & 0xFF00) | setup.request, setup.value, view);
       return { status: 'ok', bytesWritten: view.byteLength };
     },
     async transferIn(_endpoint: number, length: number) {

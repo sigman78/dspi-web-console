@@ -1,3 +1,4 @@
+import { fmtCmdId } from '@/protocol/wireMonitor';
 import type { DspTransport, TransportEvent } from './DspTransport';
 
 export class TimeoutError extends Error {
@@ -32,10 +33,10 @@ export function withTimeout(inner: DspTransport, opts: TimeoutOpts): DspTranspor
     close: () => inner.close(),
     isOpen: () => inner.isOpen(),
     on: (event: TransportEvent, listener: () => void) => inner.on(event, listener),
-    ctrlIn: (request, value, length) =>
-      race(`ctrlIn(0x${request.toString(16)}, w=${value})`, inner.ctrlIn(request, value, length)),
-    ctrlOut: (request, value, data) =>
-      race(`ctrlOut(0x${request.toString(16)}, w=${value})`, inner.ctrlOut(request, value, data)),
+    ctrlIn: (cmd, value, length) =>
+      race(`ctrlIn(${fmtCmdId(cmd)}, w=${value})`, inner.ctrlIn(cmd, value, length)),
+    ctrlOut: (cmd, value, data) =>
+      race(`ctrlOut(${fmtCmdId(cmd)}, w=${value})`, inner.ctrlOut(cmd, value, data)),
     // Notify reads are open-ended (the device may withhold until an event);
     // they are not control transfers, so they are not subject to ctrlMs.
     ...(inner.notifyIn

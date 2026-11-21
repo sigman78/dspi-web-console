@@ -241,7 +241,7 @@ test('no scroll 1440x790 CONTROL surfaces add control and IR receiver', async ({
     await apply.first().click();
     const commands = page.locator('.detail', { hasText: 'IR COMMANDS' });
     // A fresh receiver lists no commands; arming LEARN adds the listening row.
-    const learn = commands.getByRole('button', { name: 'LEARN', exact: true });
+    const learn = commands.getByRole('button', { name: '+ LEARN', exact: true });
     await expect(learn).toBeEnabled();
     await learn.click();
     await expect(commands.locator('.irrow').first()).toBeVisible();
@@ -292,6 +292,11 @@ for (const size of [SMALL, LARGE]) {
     await docked('DISPLAY');
     await page.getByRole('tab', { name: 'SURFACES' }).click();
     await expect(ref).toHaveCount(0);
+    // SURFACES shows the pin map in its contextual column once a non-IR control is open.
+    const surfaces = page.locator('.pw-cols:not([hidden]) section.panel').first();
+    await surfaces.getByRole('button', { name: /POTENTIOMETER/ }).first().click();
+    await expect(page.locator('.pw-cols:not([hidden]) section.panel', { hasText: 'PIN MAP' })).toBeVisible();
+    await assertNoScroll(page, 'SURFACES pin map');
   });
 }
 
@@ -304,7 +309,7 @@ for (const size of [SMALL, LARGE]) {
     await destination(page, 'CONTROL').click();
     await page.getByRole('tab', { name: 'SURFACES' }).click();
     const slot = page.locator('.pw-cols:not([hidden]) section.panel').first();
-    await slot.getByRole('button', { name: /^POTENTIOMETER/ }).first().click();
+    await slot.getByRole('button', { name: /POTENTIOMETER/ }).first().click();
     const editor = page.getByRole('combobox', { name: 'Controlled function' }).first();
     await editor.selectOption({ index: (await editor.evaluate((el: HTMLSelectElement) => el.selectedIndex)) === 0 ? 1 : 0 });
     const staged = page.getByRole('group', { name: 'Staged changes' });
