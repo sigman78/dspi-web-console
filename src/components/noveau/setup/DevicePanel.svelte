@@ -13,6 +13,7 @@
 <Panel title="DEVICE">
   <div class="kvrows">
     <KV inline label="STATUS"   value={connection.label} tone={connection.connected ? 'ok' : 'off'} />
+    <KV inline label="NAME"     value={s.names.device || '—'} />
     <KV inline label="SERIAL"   value={s.info.serial} />
     <KV inline label="PLATFORM" value={snap?.platform.name ?? '—'} />
     <KV inline label="OUTPUTS"  value={`${snap?.platform.outputCount ?? 0} / ${snap?.platform.totalChannelCount ?? 0}`} />

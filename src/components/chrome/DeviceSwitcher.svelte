@@ -84,8 +84,15 @@
     joinOpen = !joinOpen;
   }
 
+  // The board's own name when it has one; the serial identifies it otherwise.
+  function rowLabel(rec: DeviceRecord): string {
+    return rec.session.names.device || rec.session.info.serial;
+  }
+
   function rowTitle(rec: DeviceRecord): string {
-    return `${rec.session.info.serial} · ${rec.session.hardware.name}`;
+    const { serial } = rec.session.info;
+    const label = rowLabel(rec);
+    return `${label === serial ? serial : `${label} · ${serial}`} · ${rec.session.hardware.name}`;
   }
 
   function badgeTitle(failure: AdoptFailure): string {
@@ -131,7 +138,7 @@
         title={!active && sharing ? 'Stop sharing to switch devices' : rowTitle(entry.rec)}
         onclick={() => { moreOpen = false; void onRowClick(entry.id, active); }}
       >
-        <span class="serial">{entry.rec.session.info.serial}</span>
+        <span class="serial">{rowLabel(entry.rec)}</span>
         {#if remote}<span class="remote"><RemoteIcon icon="link" size={11} />(remote)</span>{/if}
         <span class="hw">{entry.rec.session.hardware.name}</span>
       </button>

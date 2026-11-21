@@ -13,21 +13,15 @@
   const s = getSession();
   const SYNC_MS = 250;
   const MAX_OUTPUTS = 9;
-  const SOURCE_LABELS: Record<number, string> = {
-    [Domain.AudioInputSource.Usb]: 'USB',
-    [Domain.AudioInputSource.Spdif]: 'S/PDIF',
-    [Domain.AudioInputSource.Spdif2]: 'S/PDIF 2',
-    [Domain.AudioInputSource.Spdif3]: 'S/PDIF 3',
-    [Domain.AudioInputSource.Spdif4]: 'S/PDIF 4',
-    [Domain.AudioInputSource.I2s]: 'I2S',
-    [Domain.AudioInputSource.Adat]: 'ADAT',
-  };
 
   const active = $derived(s.presets.active);
   const rawName = $derived(active == null ? '' : (s.presets.names[active] ?? ''));
   const named = $derived(rawName.length > 0);
   const presetName = $derived(active == null ? 'No preset' : named ? rawName : `Preset ${active}`);
-  const source = $derived(SOURCE_LABELS[s.mirror.current?.inputConfig.source ?? Domain.AudioInputSource.Usb] ?? 'USB');
+  const source = $derived(Domain.inputSourceTitle(
+    s.mirror.current?.inputConfig.source ?? Domain.AudioInputSource.Usb, s.names.inputSources,
+    Domain.spdifNumbered(s.mirror.current?.inputConfig.spdifExtEnabled),
+  ));
   const rateHz = $derived(s.telemetry.info?.sampleRateHz);
   const rate = $derived(rateHz != null ? formatRateKHz(rateHz) : '—');
 
@@ -159,6 +153,8 @@
     const greeting = new Fx.GreetingWave();
     let greeted = false;
 
+    const onset = new Fx.OnsetDetector();
+    let lastStatus = tele.lastStatusMs;
     let lastSync = 0;
     let lastMode = settings.roomMode;
     const loop = Fx.createFxLoop({
@@ -173,6 +169,13 @@
         }
         room.setMode(mode === 'spectrum' ? 'spectrum' : 'meters', now);
         readLevel();
+        if (tele.lastStatusMs !== lastStatus) {
+          lastStatus = tele.lastStatusMs;
+          if (!reduced.matches) {
+            const strength = onset.sample(outputLevel, now);
+            if (strength > 0) room.strike(strength, now);
+          }
+        }
         if (!greeted && mode === 'spectrum') {
           greeted = true;
           if (!reduced.matches && !(outputLevel > Fx.SILENT_LEVEL)) greeting.start(now + GREET_DELAY_MS);

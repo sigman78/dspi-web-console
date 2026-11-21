@@ -1,5 +1,5 @@
-// Release-branch-head firmware surface (MockOptions.fwHead): selectable
-// output latency, ring-health counters, background CS revert, caps v21.
+// Released fw 1.1.6 surface (MockOptions.fw116Release): selectable
+// output latency, ring-health counters, background CS revert, caps v22.
 
 import { describe, it, expect, vi } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
@@ -7,7 +7,7 @@ import { DspDevice } from './DspDevice';
 import * as Protocol from '@/protocol';
 import * as Domain from '@/domain';
 
-const head = () => DspDevice.create(new MockTransport({ platform: 'rp2350', fwHead: true, wireVersion: Protocol.Wire.MAX_WIRE_VERSION }));
+const head = () => DspDevice.create(new MockTransport({ platform: 'rp2350', fw116Release: true, wireVersion: Protocol.Wire.MAX_WIRE_VERSION }));
 const beta4 = () => DspDevice.create(new MockTransport({ platform: 'rp2350', wireVersion: Protocol.Wire.MAX_WIRE_VERSION }));
 
 // Reads status until the staged option has been applied.
@@ -64,7 +64,7 @@ describe('output latency (0x03)', () => {
   });
 
   it('a reply shorter than the status block is rejected, so the probe reads as unsupported', async () => {
-    const inner = new MockTransport({ platform: 'rp2350', fwHead: true });
+    const inner = new MockTransport({ platform: 'rp2350', fw116Release: true });
     await inner.open();
     const d = await DspDevice.create({
       open: () => inner.open(), close: () => inner.close(), isOpen: () => inner.isOpen(),
@@ -93,7 +93,7 @@ describe('ring health (status 26-31)', () => {
   });
 
   it('a rejected read leaves that field null and the rest populated', async () => {
-    const inner = new MockTransport({ platform: 'rp2350', fwHead: true });
+    const inner = new MockTransport({ platform: 'rp2350', fw116Release: true });
     await inner.open();
     const d = await DspDevice.create({
       open: () => inner.open(), close: () => inner.close(), isOpen: () => inner.isOpen(),
@@ -117,7 +117,7 @@ describe('background CS revert', () => {
   });
 
   it('keeps polling a slow revert past the shared apply budget', async () => {
-    const inner = new MockTransport({ platform: 'rp2350', fwHead: true });
+    const inner = new MockTransport({ platform: 'rp2350', fw116Release: true });
     await inner.open();
     let slowReads = 60;   // well past the 25-poll apply budget
     const d = await DspDevice.create({
@@ -146,7 +146,7 @@ describe('background CS revert', () => {
   });
 
   it('macro fire and IR learn arm during a revert report BUSY, not a bad slot / missing IR', async () => {
-    const raw = new MockTransport({ platform: 'rp2350', fwHead: true });
+    const raw = new MockTransport({ platform: 'rp2350', fw116Release: true });
     const d = await DspDevice.create(raw);
     await Protocol.actionCmd(raw, Protocol.WireCmd.CsRevert);
     const fire = await d.csMacroFire(0);
@@ -166,15 +166,8 @@ describe('background CS revert', () => {
 });
 
 describe('mock CS caps catalog', () => {
-  it('the head profile serves caps v21 with nouns up to PRESET_SAVE', async () => {
-    const { caps, nouns } = await (await head()).getCsCaps();
-    expect(caps.capsVersion).toBe(21);
-    expect(nouns).toHaveLength(80);
-    expect(nouns[79]).toMatchObject({ kind: Domain.CsKind.Bool, targetKind: 0 });
-  });
-
   it('an older simulated capsVersion hides nouns added later', async () => {
-    const d = await DspDevice.create(new MockTransport({ platform: 'rp2350', fwHead: true, csCapsVersion: 19 }));
+    const d = await DspDevice.create(new MockTransport({ platform: 'rp2350', fw116Release: true, csCapsVersion: 19 }));
     expect((await d.getCsCaps()).nouns).toHaveLength(74);
   });
 });

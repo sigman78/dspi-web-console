@@ -447,7 +447,7 @@ describe('runtime/stagedActions', () => {
 
 describe('runtime/stagedActions: output latency', () => {
   beforeEach(async () => {
-    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION, fwHead: true });
+    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION, fw116Release: true });
     clearNotices();
   });
 

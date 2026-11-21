@@ -7,6 +7,7 @@ import type { CtrlIfacesState } from './ctrlIfaces.svelte';
 import type { ControlSurfacesState } from './controlSurfaces.svelte';
 import type { SysClockState } from './sysClock.svelte';
 import type { OutputLatencyState } from './outputLatency.svelte';
+import type { NamesState } from './names.svelte';
 import type { StagingState } from './staging.svelte';
 import type { EqLinkState } from './eqLink.svelte';
 import type { RoomHuePins } from './roomHuePins.svelte';
@@ -48,6 +49,8 @@ export interface ReadySession {
   // `supported` stays null until the connect-time probe lands.
   readonly sysClock: SysClockState;
   readonly outputLatency: OutputLatencyState;
+  // Input source and board names stored on the device (fw 1.1.6).
+  readonly names: NamesState;
   // Pending heavy device-config edits (input source, I2S/S/PDIF pins, MCK/BCK,
   // output type), staged here until StagedStrip (SETUP and CONTROL page bar) applies them.
   readonly staging: StagingState;

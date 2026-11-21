@@ -31,6 +31,15 @@ const FLOOR_COOL_BASE = 0.04;
 const FLOOR_COOL_GAIN = 0.21;
 const WARM_GAIN = 0.25;
 
+// Strike flare: decays in FLARE_DECAY_MS; the light peaks at 1 + FLARE_GAIN times its resting level.
+const FLARE_DECAY_MS = 180;
+const FLARE_MIN = 0.01;
+const FLARE_GAIN = 0.6;
+const FLARE_WARM = 0.2;
+const HORIZON_FLARE_ALPHA = 0.8;
+const HORIZON_BAND_ALPHA = 0.3;
+const HORIZON_BAND_PX = 3;
+
 export interface RoomCanvases {
   /** Static room, painted on resize only. */
   back: HTMLCanvasElement;
@@ -87,6 +96,9 @@ export class RoomScene {
   private radius = 0;
   private lightCool: HTMLCanvasElement | null = null;
   private lightWarm: HTMLCanvasElement | null = null;
+  private horizon: HTMLCanvasElement | null = null;
+  private strikeFlare = 0;
+  private strikeMs = 0;
   private reflFade: CanvasGradient | null = null;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly backCtx: CanvasRenderingContext2D;
@@ -217,6 +229,41 @@ export class RoomScene {
   private buildLights(): void {
     this.lightCool = lightSprite(oklchToRgb(TINT_L, TINT_C, this.hue, this.space), this.space);
     this.lightWarm = lightSprite(barColor(1, this.hue, this.space), this.space);
+    this.horizon = this.horizonSprite();
+  }
+
+  /** The horizon sheen as a one-row strip, blitted additively when a strike flares. */
+  private horizonSprite(): HTMLCanvasElement {
+    const sp = this.space;
+    const a = oklchToRgb(TINT_L, TINT_C, this.hue, sp);
+    const sheenC = oklchToRgb(SHEEN_L, SHEEN_C, this.hue, sp);
+    const [s, x] = createCanvas(Math.max(1, Math.round((this.spectrum.width + 80) * this.dpr)), 1, sp);
+    const g = x.createLinearGradient(0, 0, s.width, 0);
+    this.sheenStops(g, a, sheenC);
+    x.fillStyle = g;
+    x.fillRect(0, 0, s.width, 1);
+    return s;
+  }
+
+  private sheenStops(g: CanvasGradient, a: Rgb, sheenC: Rgb): void {
+    const sp = this.space;
+    g.addColorStop(0, css(a, 0, sp));
+    g.addColorStop(0.15, css(a, 0.55, sp));
+    g.addColorStop(0.5, css(sheenC, SHEEN_ALPHA, sp));
+    g.addColorStop(0.85, css(a, 0.55, sp));
+    g.addColorStop(1, css(a, 0, sp));
+  }
+
+  /** A hit: the scene flares from `strength` and dies away; overlapping hits take the larger. */
+  strike(strength: number, nowMs: number): void {
+    if (!this.opts.decorative()) return;
+    this.strikeFlare = Math.max(this.flareAt(nowMs), Math.min(1, strength));
+    this.strikeMs = nowMs;
+  }
+
+  private flareAt(nowMs: number): number {
+    const f = this.strikeFlare * Math.exp(-(nowMs - this.strikeMs) / FLARE_DECAY_MS);
+    return f < FLARE_MIN ? 0 : f;
   }
 
   /** The hue changed: only what is built on it is redone; the pillars keep their channel colours. */
@@ -275,11 +322,7 @@ export class RoomScene {
     c.restore();
 
     const sheen = c.createLinearGradient(MARGIN - 40, 0, w - MARGIN + 40, 0);
-    sheen.addColorStop(0, css(a, 0, sp));
-    sheen.addColorStop(0.15, css(a, 0.55, sp));
-    sheen.addColorStop(0.5, css(sheenC, SHEEN_ALPHA, sp));
-    sheen.addColorStop(0.85, css(a, 0.55, sp));
-    sheen.addColorStop(1, css(a, 0, sp));
+    this.sheenStops(sheen, a, sheenC);
     c.fillStyle = sheen;
     c.fillRect(MARGIN - 40, floorY, this.spectrum.width + 80, 1);
     c.globalAlpha = 0.25;
@@ -313,6 +356,8 @@ export class RoomScene {
       this.labelMode = labels;
       this.repaintBack();
     }
+    const flare = decorative ? this.flareAt(nowMs) : 0;
+    this.spectrum.flash = this.mode === 'spectrum' || this.fading === 'spectrum' ? flare : 0;
     this.bloom.clear();
     let energy = wall.energy();
     if (this.fading !== null) {
@@ -323,7 +368,12 @@ export class RoomScene {
     wall.draw(ctx, this.bloom, decorative, t);
     this.bloom.composite(ctx, BLOOM_ALPHA);
     this.drawReflection();
-    if (decorative) this.drawRoomLight(energy);
+    if (decorative) {
+      const seen = this.mode === 'spectrum' ? (this.fading === null ? 1 : t) : this.fading === 'spectrum' ? 1 - t : 0;
+      const low = seen > 0 ? this.spectrum.lowShare() * seen : 0;
+      this.drawRoomLight(energy, flare, low);
+      if (flare > 0) this.drawHorizonFlare(flare);
+    }
     const labelAlpha = this.mode === 'meters' ? t : this.fading === 'meters' ? 1 - t : 0;
     if (labelAlpha > 0.002) this.meters.drawLabels(ctx, labelAlpha);
   }
@@ -341,18 +391,35 @@ export class RoomScene {
   }
 
   /** Back-wall light that swells and warms with the wall's energy, and the share the floor catches. */
-  private drawRoomLight(energy: number): void {
+  private drawRoomLight(energy: number, flare: number, lowShare: number): void {
     const { floorY, h, radius } = this;
     const cy = floorY - this.spectrum.height * 0.35;
-    const warm = WARM_GAIN * Math.max(0, energy - 0.35);
+    const warm = WARM_GAIN * Math.max(0, energy - 0.35) + FLARE_WARM * flare * lowShare;
     const b2 = energy * energy;
+    const boost = 1 + FLARE_GAIN * flare;
     this.ctx.globalCompositeOperation = 'lighter';
-    this.light(this.lightCool, cy, radius * 0.6, 0, floorY, WALL_COOL_BASE + WALL_COOL_GAIN * b2);
+    this.light(this.lightCool, cy, radius * 0.6, 0, floorY, (WALL_COOL_BASE + WALL_COOL_GAIN * b2) * boost);
     this.light(this.lightWarm, cy, radius * 0.6, 0, floorY, warm);
-    this.light(this.lightCool, floorY, radius * 0.3, floorY, h, FLOOR_COOL_BASE + FLOOR_COOL_GAIN * b2);
+    this.light(this.lightCool, floorY, radius * 0.3, floorY, h, (FLOOR_COOL_BASE + FLOOR_COOL_GAIN * b2) * boost);
     this.light(this.lightWarm, floorY, radius * 0.3, floorY, h, warm * 0.5);
     this.ctx.globalAlpha = 1;
     this.ctx.globalCompositeOperation = 'source-over';
+  }
+
+  /** The horizon sheen flares along the floor line, with a soft band under it. */
+  private drawHorizonFlare(flare: number): void {
+    const s = this.horizon;
+    if (!s) return;
+    const { ctx, floorY } = this;
+    const x = MARGIN - 40;
+    const w = this.spectrum.width + 80;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = Math.min(1, flare * HORIZON_FLARE_ALPHA);
+    ctx.drawImage(s, x, floorY, w, 1);
+    ctx.globalAlpha = flare * HORIZON_BAND_ALPHA;
+    ctx.drawImage(s, x, floorY + 1, w, HORIZON_BAND_PX);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   /** Mirrors the wall (columns plus glow) under the floor line at half resolution, fading with depth. */

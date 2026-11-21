@@ -1,7 +1,7 @@
 import * as Domain from '@/domain';
 import { Log } from '@/utils';
 import { TimeoutError } from '@/transport/withTimeout';
-import type { ReadySession } from '@/state';
+import type { ReadySession, StatusStore } from '@/state';
 import type { DspDevice } from '@/device/DspDevice';
 
 // Brings the analyser to a usable state: caps and centres once per session,
@@ -37,7 +37,8 @@ export async function setupRta(session: ReadySession, d: DspDevice): Promise<boo
     }
     const applied = await session.queue.run(() => d.getRtaConfig());
     const wanted = Domain.rtaWantedConfig(caps, d.hardware.outputCount);
-    const push = Domain.rtaPlanConfig(applied, wanted);
+    // Yielded to another client: adopt whatever it runs, push nothing.
+    const push = tele.rtaInUseBy === null ? Domain.rtaPlanConfig(applied, wanted) : null;
     if (push) await session.queue.run(() => d.setRtaConfig(push));
     tele.rtaConfig = push ?? applied;
     tele.rtaAvailability = 'available';
@@ -53,6 +54,22 @@ export async function setupRta(session: ReadySession, d: DspDevice): Promise<boo
   }
 }
 
+// Another client's config no longer covers what we measure. The first conflict
+// of an interest period re-runs setup (which may push our config back); a
+// second one means the analyser is contested, so it is marked in use by that
+// ParamSource (0 = unknown) and we stop pushing until interest restarts. Every
+// push restarts the analyser, so trading SETs with a UART/I2C/CS client would
+// otherwise glitch it for both.
+export function noteRtaConflict(tele: StatusStore, source: number): void {
+  if (tele.rtaInUseBy !== null) return;
+  if (tele.rtaSetupRetried) {
+    tele.rtaInUseBy = source;
+    return;
+  }
+  tele.rtaSetupRetried = true;
+  tele.rtaConfigured = false;
+}
+
 // One bands-all read, folded into telemetry. Skips the write if interest was
 // released mid-read.
 export async function readRtaFrames(session: ReadySession, d: DspDevice, withStatus: boolean): Promise<void> {
@@ -65,8 +82,8 @@ export async function readRtaFrames(session: ReadySession, d: DspDevice, withSta
   tele.rtaFrames = raw.map((f) => Domain.rtaDecodeFrame(f, caps));
   tele.lastRtaReplyMs = performance.now();
   if (status) {
-    // Another host moved the analyser off the output tap: redo setup.
-    if (status.tap !== Domain.RtaTap.Output) tele.rtaConfigured = false;
+    // Another client moved the analyser off the output tap.
+    if (status.tap !== Domain.RtaTap.Output) noteRtaConflict(tele, 0);
     tele.rtaStatus = status;
     tele.lastRtaStatusMs = performance.now();
   }

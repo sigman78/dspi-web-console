@@ -67,12 +67,22 @@ export interface MockOptions {
   // all IR commands, all display pages) so the CONTROL pages can be measured
   // at their worst case. Needs caps v10+.
   csFull?: boolean;
-  // Model the firmware release-branch head (still reporting 1.1.6 beta 5):
-  // REQ_OUTPUT_LATENCY (0x03), live ring-health counters 26-31, Control
-  // Surfaces caps v21 by default, and a revert that runs as a background job
+  // Model the released firmware 1.1.6: REQ_OUTPUT_LATENCY (0x03), live
+  // ring-health counters 26-31, the RTA config notify, Control Surfaces caps
+  // v22 by default, and a revert that runs as a background job
   // (PENDING for a few status reads, macro fire / IR learn STALL meanwhile).
   // Off, 0x03 STALLs like older firmware and counters 26-31 read 0.
-  fwHead?: boolean;
+  fw116Release?: boolean;
+  // Input source names (0x54/0x55) and board name (0x56/0x57), each served
+  // only when true; default fw116Release. Off, the opcodes answer like older
+  // firmware: 0x55 returns the 4-byte legacy gain, 0x57 the 1-byte legacy mute
+  // (STALL past channel 2), and a 0x54/0x56 SET throws -- real firmware would
+  // store it as a gain/mute, so a write that slips through must fail the test.
+  inputSourceNames?: boolean;
+  deviceName?: boolean;
+  // Names the device boots with (source ID -> name; board name).
+  initialInputSourceNames?: Record<number, string>;
+  initialDeviceName?: string;
 }
 
 const defaultCrosspoint = (): CrossPoint => ({ enabled: false, invert: false, gainDb: 0 });
@@ -88,6 +98,13 @@ const MIN_SUBHARM_EXT_WIRE = 30;
 // Per-output limiter (REQ_LIMITER 0x81) lands on the wire at V32 on both
 // platforms; earlier profiles STALL it in both directions.
 const MIN_LIMITER_WIRE = 32;
+
+// Valid input source IDs are 0..INPUT_SOURCE_MAX (the firmware name table has 8 slots).
+const MOCK_INPUT_SOURCE_MAX = 6;
+const MOCK_INPUT_SOURCE_SLOTS = 8;
+const MOCK_NAME_LEN = 32;
+// Legacy per-channel gain/mute (0x54-0x57 before names) covers channels 0..2.
+const MOCK_LEGACY_GAIN_CHANNELS = 3;
 
 // Output latency option table (output_latency.c): wire id, nominal latency,
 // input batch, and whether it needs a stream input.
@@ -116,14 +133,15 @@ const MOCK_RTA_CENTRES = [
 ];
 const MOCK_RTA_VALID_BANDS = 34;   // 48 kHz: bands up to 20 kHz
 const MOCK_RTA_LEVEL_ZERO = 243;
+const MOCK_BPM = 112;
 const MOCK_RTA_IDLE_MS = 5000;
 
 // Control Surfaces caps tables. The type table and the noun catalog builder
-// follow firmware capability format version 21 (control_surfaces.c s_caps /
+// follow firmware capability format version 22 (control_surfaces.c s_caps /
 // control_surfaces_nouns.c cs_noun_table). The per-version handlers (see #csTypeCount
 // etc.) slice/zero this down to what an older simulated capsVersion reports.
 const MOCK_CS_CAPS_DEFAULT_VERSION = 14;
-const MOCK_CS_CAPS_HEAD_VERSION = 21;
+const MOCK_CS_CAPS_HEAD_VERSION = 22;
 const MOCK_CS_CAPS: CsCaps = {
   capsVersion: MOCK_CS_CAPS_DEFAULT_VERSION,
   maxBindings: Domain.CS_MAX_BINDINGS,
@@ -183,7 +201,8 @@ function enumNoun(enumCount: number, actions = CS_ENUM_RW, targetKind = Domain.C
   return { kind: Domain.CsKind.Enum, enumCount, actions, minQ8: 0, maxQ8: 0, unit: Domain.CS_UNIT_NONE, targetKind, targetCount, dflags };
 }
 
-// The caps-v21 noun catalog (control_surfaces_nouns.c cs_noun_table),
+// The caps-v22 noun catalog (control_surfaces_nouns.c cs_noun_table; v22 added
+// OUTPUT_LATENCY, noun 80),
 // keyed on CsNoun's index order. Target counts follow the mock's own
 // channel layout (numIn/numOut/numCh already vary by platform); the
 // ADAT_ACTIVE and upmix action masks are RP2350-only, exactly like the
@@ -203,7 +222,7 @@ function buildMockCsNouns(
     boolNoun(),                                                                                  // 4  CROSSFEED
     boolNoun(),                                                                                  // 5  LEVELLER
     enumNoun(Domain.PRESET_SLOT_COUNT, CS_ENUM_RW, Domain.CS_TARGET_NONE, 0, Domain.CS_NDF_DEFERRED),                // 6  PRESET
-    enumNoun(3, CS_ENUM_RW, Domain.CS_TARGET_NONE, 0, Domain.CS_NDF_DEFERRED),                                // 7  INPUT_SOURCE
+    enumNoun(MOCK_INPUT_SOURCE_MAX + 1, CS_ENUM_RW, Domain.CS_TARGET_NONE, 0, Domain.CS_NDF_DEFERRED),       // 7  INPUT_SOURCE
     boolNoun(CS_CLIP_ACTIONS),                                                                  // 8  CLIP
     boolNoun(),                                                                                  // 9  EQ_BYPASS
     boolNoun(),                                                                                  // 10 LG_SYNC
@@ -289,6 +308,8 @@ function buildMockCsNouns(
     contNoun(0, Domain.dbToQ8(30), Domain.CS_UNIT_DB, Domain.CS_TARGET_OUTPUT_CH, numOut, 0, CS_CONT_RO),            // 78 LIMITER_GR
     // caps v21 addition.
     boolNoun(CS_TRIGGER_ONLY),                                                                    // 79 PRESET_SAVE
+    // caps v22 addition: requested option (id - 1), applied on the main loop.
+    enumNoun(MOCK_OUTPUT_LATENCY_OPTIONS.length, CS_ENUM_RW, Domain.CS_TARGET_NONE, 0, Domain.CS_NDF_DEFERRED), // 80 OUTPUT_LATENCY
   ];
 }
 
@@ -488,16 +509,23 @@ export class MockTransport implements DspTransport {
   #csLastStatus = 0x00;
   #csLastSlot = 0;
   #csPendingPolls = 0;
-  // fwHead revert in flight: status reads PENDING / slot 0xFF and macro fire
+  // fw116Release revert in flight: status reads PENDING / slot 0xFF and macro fire
   // and IR learn STALL without touching status.
   #csRevertBusy = false;
   #csCapsVersion: number;
-  #fwHead = false;
+  #fw116Release = false;
 
-  // Output latency (0x03, fwHead only).
+  // Output latency (0x03, fw116Release only).
   #outputLatencyId = Domain.OUTPUT_LATENCY_DEFAULT_ID;
   #outputLatencyStagedId = Domain.OUTPUT_LATENCY_DEFAULT_ID;
   #outputLatencyPendingReads = 0;
+
+  // Names (0x54-0x57); empty = unnamed. Device-global: preset and factory
+  // operations leave them alone, like the firmware.
+  #inputSourceNamesSupported: boolean;
+  #deviceNameSupported: boolean;
+  #inputSourceNames: string[] = Array.from({ length: MOCK_INPUT_SOURCE_SLOTS }, () => '');
+  #deviceName = '';
 
   // IR command sub-slots (0x8D/0x8E/0x8F, caps v3): same live-preview /
   // deferred-SET model as the bindings above, plus the learn state machine
@@ -574,8 +602,12 @@ export class MockTransport implements DspTransport {
     this.#fwBeta = fw.beta ?? 0;
     this.#buildInfo = opts.buildInfo ?? { describe: 'v1.1.6-mock', date: '2026-09-02' };
     this.#mockState = defaultMockBulkState(this.#platform, this.#wireVersion);
-    this.#fwHead = opts.fwHead ?? false;
-    this.#csCapsVersion = opts.csCapsVersion ?? (this.#fwHead ? MOCK_CS_CAPS_HEAD_VERSION : MOCK_CS_CAPS_DEFAULT_VERSION);
+    this.#fw116Release = opts.fw116Release ?? false;
+    this.#inputSourceNamesSupported = opts.inputSourceNames ?? this.#fw116Release;
+    this.#deviceNameSupported = opts.deviceName ?? this.#fw116Release;
+    for (const [id, name] of Object.entries(opts.initialInputSourceNames ?? {})) this.#inputSourceNames[Number(id)] = name;
+    this.#deviceName = opts.initialDeviceName ?? '';
+    this.#csCapsVersion = opts.csCapsVersion ?? (this.#fw116Release ? MOCK_CS_CAPS_HEAD_VERSION : MOCK_CS_CAPS_DEFAULT_VERSION);
     this.#csNouns = buildMockCsNouns(this.#platform, this.#mockState.numIn, this.#mockState.numOut, this.#mockState.numCh, this.#csCapsVersion);
     this.#rtaCfg = {
       tap: Domain.RtaTap.Output, channelMask: (1 << this.#mockState.numOut) - 1,
@@ -701,12 +733,13 @@ export class MockTransport implements DspTransport {
 
   // Per-version GetCsCaps/GetCsStatus shape, mirroring firmware's caps table
   // growth (control_surfaces.h): noun_count grows in steps (v<=6 49, v7 51,
-  // v8 52, v9 53, v10-13 57, v14 61, v15-16 68, v17-18 70, v19 74, v20 79, v21 80); the DISPLAY type row lands at v10; the
+  // v8 52, v9 53, v10-13 57, v14 61, v15-16 68, v17-18 70, v19 74, v20 79, v21 80, v22 81); the DISPLAY type row lands at v10; the
   // IR-command ceiling doubles at v6; the max_groups/max_macros/max_macro_steps
   // tail is carved from reserved bytes at v9 (zero before that).
   #csNounCount(): number {
     const v = this.#csCapsVersion;
-    if (v >= 21) return 80;
+    if (v >= 22) return 81;
+    if (v === 21) return 80;
     if (v === 20) return 79;
     if (v === 19) return 74;
     if (v >= 17) return 70;
@@ -760,6 +793,36 @@ export class MockTransport implements DspTransport {
     this.pushNotify(new Uint8Array([2, 0x04, 0, this.#notifySeq, slot, 0, 0, 0]));
     this.#notifySeq = (this.#notifySeq + 1) & 0xff;
     this.pushNotify(new Uint8Array([2, 0x03, 0, this.#notifySeq, 3, 0, 0, 0]));
+  }
+
+  // NOTIFY_EVT_RTA_CONFIG: the config as applied, then the SET's source (host).
+  #pushRtaConfigNotify(): void {
+    this.#notifySeq = (this.#notifySeq + 1) & 0xff;
+    const body = Codec.encode(Wire.RtaConfig, { version: this.#rtaVersion(), ...this.#rtaCfg });
+    this.pushNotify(concatChunks([new Uint8Array([2, 0x0D, 0, this.#notifySeq]), body, new Uint8Array([1])]));
+  }
+
+  // NOTIFY_EVT_INPUT_SOURCE_NAME (0x0F) / NOTIFY_EVT_DEVICE_NAME (0x10): 40 B,
+  // [ver, evt, flags, seq, source id, ParamSource (host), 0, 0, name[32]].
+  #pushNameNotify(evt: number, sourceId: number, name: string): void {
+    this.#notifySeq = (this.#notifySeq + 1) & 0xff;
+    this.pushNotify(concatChunks([
+      new Uint8Array([2, evt, 0, this.#notifySeq, sourceId, 1, 0, 0]),
+      this.#encodeName(name, MOCK_NAME_LEN),
+    ]));
+  }
+
+  #encodeName(name: string, length: number): Uint8Array {
+    const out = new Uint8Array(MOCK_NAME_LEN);
+    out.set(new TextEncoder().encode(name).subarray(0, MOCK_NAME_LEN - 1));
+    return out.subarray(0, Math.min(length, MOCK_NAME_LEN));
+  }
+
+  // Up to the first NUL, at most 31 bytes (bytes past 31 are dropped).
+  #decodeName(data: Uint8Array): string {
+    const bytes = data.subarray(0, MOCK_NAME_LEN - 1);
+    const nul = bytes.indexOf(0);
+    return new TextDecoder().decode(nul < 0 ? bytes : bytes.subarray(0, nul));
   }
 
   // Test hook standing in for a decoded remote press while a learn is armed:
@@ -1701,12 +1764,26 @@ export class MockTransport implements DspTransport {
         this.#csDirty = false;
         this.#csLastSlot = 0xFF;
         this.#csLastStatus = 0x00;
-        this.#csPendingPolls = this.#fwHead ? 4 : 1;
-        this.#csRevertBusy = this.#fwHead;
+        this.#csPendingPolls = this.#fw116Release ? 4 : 1;
+        this.#csRevertBusy = this.#fw116Release;
         return new Uint8Array([1]);
       }
       case WireCmd.OutputLatency.code:
         return this.#outputLatencyIn(value);
+      case WireCmd.GetInputSourceName.code:
+        if (!this.#inputSourceNamesSupported) {   // legacy gain float
+          if (value >= MOCK_LEGACY_GAIN_CHANNELS) throw new TransportStall('MockTransport: invalid legacy channel (STALL)');
+          return new Uint8Array(4).subarray(0, Math.min(length, 4));
+        }
+        if (value > MOCK_INPUT_SOURCE_MAX) throw new TransportStall('MockTransport: invalid input source (STALL)');
+        return this.#encodeName(this.#inputSourceNames[value], length);
+      case WireCmd.GetDeviceName.code:
+        if (!this.#deviceNameSupported) {   // legacy channel mute
+          if (value >= MOCK_LEGACY_GAIN_CHANNELS) throw new TransportStall('MockTransport: invalid legacy channel (STALL)');
+          return new Uint8Array(Math.min(length, 1));
+        }
+        if (value !== 0) throw new TransportStall('MockTransport: invalid device name request (STALL)');
+        return this.#encodeName(this.#deviceName, length);
       case WireCmd.GetBufferStats.code:
         return Syn.synthesizeBufferStats({
           numSpdif: this.#numSpdif(),
@@ -1809,7 +1886,7 @@ export class MockTransport implements DspTransport {
         this.#mockState.inputConfig.i2sClockMode = Codec.decode(Codec.u8, data);
         return;
       case WireCmd.OutputLatency.code: {
-        if (!this.#fwHead) throw new TransportStall('MockTransport: REQ_OUTPUT_LATENCY unsupported (STALL)');
+        if (!this.#fw116Release) throw new TransportStall('MockTransport: REQ_OUTPUT_LATENCY unsupported (STALL)');
         const id = data[0];
         // USB ACKs and ignores an unknown id (the data stage discards the
         // handler result). A valid SET only stages the id; the main loop
@@ -1818,6 +1895,21 @@ export class MockTransport implements DspTransport {
         if (id === this.#outputLatencyId && this.#outputLatencyPendingReads === 0) return;
         this.#outputLatencyStagedId = id;
         this.#outputLatencyPendingReads = MOCK_OUTPUT_LATENCY_PENDING_READS;
+        return;
+      }
+      case WireCmd.SetInputSourceName.code: {
+        if (!this.#inputSourceNamesSupported) throw new Error('MockTransport: a name write reached legacy firmware, which would store it as a channel gain');
+        if (value > MOCK_INPUT_SOURCE_MAX) return;
+        const name = this.#decodeName(data);
+        this.#inputSourceNames[value] = name;
+        this.#pushNameNotify(0x0F, value, name);
+        return;
+      }
+      case WireCmd.SetDeviceName.code: {
+        if (!this.#deviceNameSupported) throw new Error('MockTransport: a name write reached legacy firmware, which would store it as a channel mute');
+        if (value !== 0) return;
+        this.#deviceName = this.#decodeName(data);
+        this.#pushNameNotify(0x10, 0, this.#deviceName);
         return;
       }
       case WireCmd.SetSysClock.code: {
@@ -1990,6 +2082,7 @@ export class MockTransport implements DspTransport {
           tap: c.tap, channelMask: mask, fftOrder: c.fftOrder, avgMs: Math.min(10000, c.avgMs),
           peakDecayDbS: Math.min(100, c.peakDecayDbS), flags: c.flags,
         };
+        if (this.#fw116Release) this.#pushRtaConfigNotify();
         return;
       }
 
@@ -2980,14 +3073,14 @@ export class MockTransport implements DspTransport {
   // low bands and per-band drift, around -20..-50 dBFS.
   #rtaFrame(channel: number): Uint8Array {
     const t = performance.now() / 1000;
-    const kick = Math.exp(-((t * 112 / 60) % 1) * 6);
-    const drive = 10 * Math.log10(Math.max(0.05, this.#animatedPeaks(channel + 1)[channel]));
+    const { kick, snare } = this.#beat(t);
+    const drive = 10 * Math.log10(Math.max(0.05, this.#animatedPeaks(channel + 1, false)[channel]));
     const avg: number[] = Array(Wire.RTA_MAX_BANDS).fill(0);
     const peak: number[] = Array(Wire.RTA_MAX_BANDS).fill(0);
     for (let j = 0; j < MOCK_RTA_VALID_BANDS; j++) {
       const f = MOCK_RTA_CENTRES[j];
       let db = -24 - 14 * Math.log10(Math.max(f, 20) / 100) - 12 * Math.max(0, Math.log2(40 / f));
-      db += (f < 200 ? 8 * kick : 0) + 4 * Math.sin(t * 1.7 + j * 0.9 + channel * 1.3) + drive;
+      db += (f <= 150 ? 12 * kick : 0) + (f >= 200 && f <= 5000 ? 6 * snare : 0) + 4 * Math.sin(t * 1.7 + j * 0.9 + channel * 1.3) + drive;
       avg[j] = Math.min(255, Math.max(1, Math.round(db * 2) + MOCK_RTA_LEVEL_ZERO));
       peak[j] = Math.min(255, avg[j] + 12);
     }
@@ -3030,21 +3123,34 @@ export class MockTransport implements DspTransport {
     return out;
   }
 
+  // 112 BPM drum envelopes, 0..1: a kick on each beat, a snare half a beat later.
+  // The ~70 ms decay outlasts a 50 ms status poll, as a peak meter holding between reads would.
+  #beat(t: number): { kick: number; snare: number } {
+    const beats = t * MOCK_BPM / 60;
+    return {
+      kick: Math.exp(-(beats % 1) * 7),
+      snare: Math.exp(-((beats + 0.5) % 1) * 7),
+    };
+  }
+
   // Time-driven fake meter levels so the sidebar VU meters animate in mock/demo
   // mode as if the device were streaming. Each channel rides a slow swell and a
   // faster tremor at a decorrelated phase, with sparse Math.pow-sharpened
   // transients that punch into the amber/red zones. Pure function of the clock
   // (no RNG), so it stays smooth across the 20 Hz poll cadence.
-  #animatedPeaks(numCh: number): number[] {
+  #animatedPeaks(numCh: number, withBeat = true): number[] {
     const t = performance.now() / 1000;
+    const { kick, snare } = this.#beat(t);
     return Array.from({ length: numCh }, (_, i) => {
       const phase = i * 1.9;
       const slow = 0.5 + 0.5 * Math.sin(t * 0.6 + phase);
       const fast = 0.5 + 0.5 * Math.sin(t * 4.7 + phase * 2.3);
       const spike = Math.pow(0.5 + 0.5 * Math.sin(t * 1.3 + phase * 3.1), 14);
       // Target reading in the meter's own 0..1 domain: a low floor, a slow swell
-      // shaped by a faster tremor, plus sparse transients that reach the red.
-      const level = Math.min(1, 0.1 + 0.75 * slow * (0.5 + 0.5 * fast) + 0.35 * spike);
+      // shaped by a faster tremor, sparse transients that reach the red, and a
+      // kick on every beat with a lighter snare on the off-beat.
+      const hit = withBeat ? (0.25 * kick + 0.12 * snare) * (0.85 + 0.15 * Math.cos(phase)) : 0;
+      const level = Math.min(1, 0.1 + 0.75 * slow * (0.5 + 0.5 * fast) + 0.35 * spike + hit);
       // The wire carries LINEAR amplitude, but the meter reads 20·log10 mapped
       // onto -60..0 dB. Inverting that here (level -> 10^(3·(level-1))) makes the
       // animation sweep the whole meter instead of bunching up near clip, where
@@ -3066,7 +3172,7 @@ export class MockTransport implements DspTransport {
   }
 
   #outputLatencyIn(wValue: number): Uint8Array {
-    if (!this.#fwHead) throw new TransportStall('MockTransport: REQ_OUTPUT_LATENCY unsupported (STALL)');
+    if (!this.#fw116Release) throw new TransportStall('MockTransport: REQ_OUTPUT_LATENCY unsupported (STALL)');
     const toUs = (frames: number) => Math.round(frames * 1e6 / MOCK_SAMPLE_RATE_HZ);
     if (wValue === Wire.OUTPUT_LATENCY_GET_STATUS) {
       const run = this.#outputLatencyResolve(this.#outputLatencyId);
@@ -3134,9 +3240,9 @@ export class MockTransport implements DspTransport {
       case SystemStatusValue.RingBlocksRefused:
       case SystemStatusValue.BackgroundOverBudget:
         return Syn.synthesizeU32(0);
-      case SystemStatusValue.RingLowestFill:        return Syn.synthesizeU32(this.#fwHead ? this.#outputLatencyTargetFrames() - 6 : 0);
-      case SystemStatusValue.InputGapWorstUs:       return Syn.synthesizeU32(this.#fwHead ? 1180 : 0);
-      case SystemStatusValue.UsbPacketGapWorstUs:   return Syn.synthesizeU32(this.#fwHead ? 1040 : 0);
+      case SystemStatusValue.RingLowestFill:        return Syn.synthesizeU32(this.#fw116Release ? this.#outputLatencyTargetFrames() - 6 : 0);
+      case SystemStatusValue.InputGapWorstUs:       return Syn.synthesizeU32(this.#fw116Release ? 1180 : 0);
+      case SystemStatusValue.UsbPacketGapWorstUs:   return Syn.synthesizeU32(this.#fw116Release ? 1040 : 0);
 
       // Unknown / unwired wValue: return a zeroed buffer of requested size.
       default:

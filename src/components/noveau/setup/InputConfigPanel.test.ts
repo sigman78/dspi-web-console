@@ -70,6 +70,7 @@ function makeSession(o: {
     device: { capabilities: { features: { adatInput: true }, spdifInputCount: o.spdifInputCount ?? 1 } },
     telemetry: { spdifRxStatus: null, i2sSlaveStatus: o.i2sSlaveStatus ?? null, activeInputChannels: null, adatInputStatus: o.adatInputStatus ?? null },
     mirror: { current: o.snap ?? makeSnap() },
+    names: { inputSources: {} },
     ctrlIfaces: { uart: null, i2c: null, status: null },
     controlSurfaces: { caps: null, nouns: [], bindings: [], status: null },
     staging,
