@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { connection } from '@/state';
+  import { connection, activeRecord, activeLinkRtt } from '@/state';
   import { getSession } from '@/components/sessionContext';
   import { clearClips, webUsbUnsupportedReason } from '@/runtime';
   import { formatRateKHz } from '@/utils';
@@ -27,6 +27,11 @@
   const rate = $derived(info?.sampleRateHz != null ? formatRateKHz(info.sampleRateHz) : '—');
   const clock = $derived(info?.clockHz != null ? `${Math.round(info.clockHz / 1_000_000)} MHz` : '—');
   const voltage = $derived(info?.coreVoltageMv != null ? `${(info.coreVoltageMv / 1000).toFixed(2)} V` : '—');
+  const remote = $derived(activeRecord()?.remote !== undefined);
+  const linkRtt = $derived(activeLinkRtt());
+  const link = $derived(
+    linkRtt === null || s.health.degraded ? '—' : linkRtt < 1 ? '<1 ms' : `${Math.round(linkRtt)} ms`,
+  );
   const temp = $derived(info?.tempCDegC != null ? `${(info.tempCDegC / 100).toFixed(1)} °C` : '—');
 </script>
 
@@ -40,6 +45,11 @@
         <Telem label="CLOCK" value={clock} />
         <Telem label="VOLTAGE" value={voltage} />
         <Telem label="TEMP" value={temp} />
+        {#if remote}
+          <div class="wide" title="Round trip to the host console's device">
+            <Telem label="LINK" value={link} />
+          </div>
+        {/if}
       </div>
       {#if anyClip}
         <button type="button" class="chip warn" onclick={() => clearClips(s)}>CLEAR CLIPS</button>
@@ -95,4 +105,5 @@
     box-shadow: var(--shadow-flyout);
   }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+  .wide { grid-column: 1 / -1; }
 </style>
