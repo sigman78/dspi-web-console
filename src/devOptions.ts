@@ -8,6 +8,9 @@
 //                         firmware ships it: CS caps v14 (v28/v29), v18 (v30),
 //                         v20 (v32); v31/v32 are plain beta 4 (no output
 //                         latency)
+//       paged             a paged-protocol device (fw 1.1.7+): answers only the
+//                         protocol probe, so connect shows the "firmware not
+//                         supported yet" advice
 //     a comma list (?mock=latest,v28) boots one device per token: the
 //     first is active, the rest adopt dormant -- the multi-device fleet
 //     harness, no hardware needed
