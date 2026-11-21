@@ -116,6 +116,7 @@ const MOCK_RTA_CENTRES = [
 ];
 const MOCK_RTA_VALID_BANDS = 34;   // 48 kHz: bands up to 20 kHz
 const MOCK_RTA_LEVEL_ZERO = 243;
+const MOCK_BPM = 112;
 const MOCK_RTA_IDLE_MS = 5000;
 
 // Control Surfaces caps tables. The type table and the noun catalog builder
@@ -2980,14 +2981,14 @@ export class MockTransport implements DspTransport {
   // low bands and per-band drift, around -20..-50 dBFS.
   #rtaFrame(channel: number): Uint8Array {
     const t = performance.now() / 1000;
-    const kick = Math.exp(-((t * 112 / 60) % 1) * 6);
-    const drive = 10 * Math.log10(Math.max(0.05, this.#animatedPeaks(channel + 1)[channel]));
+    const { kick, snare } = this.#beat(t);
+    const drive = 10 * Math.log10(Math.max(0.05, this.#animatedPeaks(channel + 1, false)[channel]));
     const avg: number[] = Array(Wire.RTA_MAX_BANDS).fill(0);
     const peak: number[] = Array(Wire.RTA_MAX_BANDS).fill(0);
     for (let j = 0; j < MOCK_RTA_VALID_BANDS; j++) {
       const f = MOCK_RTA_CENTRES[j];
       let db = -24 - 14 * Math.log10(Math.max(f, 20) / 100) - 12 * Math.max(0, Math.log2(40 / f));
-      db += (f < 200 ? 8 * kick : 0) + 4 * Math.sin(t * 1.7 + j * 0.9 + channel * 1.3) + drive;
+      db += (f <= 150 ? 12 * kick : 0) + (f >= 200 && f <= 5000 ? 6 * snare : 0) + 4 * Math.sin(t * 1.7 + j * 0.9 + channel * 1.3) + drive;
       avg[j] = Math.min(255, Math.max(1, Math.round(db * 2) + MOCK_RTA_LEVEL_ZERO));
       peak[j] = Math.min(255, avg[j] + 12);
     }
@@ -3030,21 +3031,34 @@ export class MockTransport implements DspTransport {
     return out;
   }
 
+  // 112 BPM drum envelopes, 0..1: a kick on each beat, a snare half a beat later.
+  // The ~70 ms decay outlasts a 50 ms status poll, as a peak meter holding between reads would.
+  #beat(t: number): { kick: number; snare: number } {
+    const beats = t * MOCK_BPM / 60;
+    return {
+      kick: Math.exp(-(beats % 1) * 7),
+      snare: Math.exp(-((beats + 0.5) % 1) * 7),
+    };
+  }
+
   // Time-driven fake meter levels so the sidebar VU meters animate in mock/demo
   // mode as if the device were streaming. Each channel rides a slow swell and a
   // faster tremor at a decorrelated phase, with sparse Math.pow-sharpened
   // transients that punch into the amber/red zones. Pure function of the clock
   // (no RNG), so it stays smooth across the 20 Hz poll cadence.
-  #animatedPeaks(numCh: number): number[] {
+  #animatedPeaks(numCh: number, withBeat = true): number[] {
     const t = performance.now() / 1000;
+    const { kick, snare } = this.#beat(t);
     return Array.from({ length: numCh }, (_, i) => {
       const phase = i * 1.9;
       const slow = 0.5 + 0.5 * Math.sin(t * 0.6 + phase);
       const fast = 0.5 + 0.5 * Math.sin(t * 4.7 + phase * 2.3);
       const spike = Math.pow(0.5 + 0.5 * Math.sin(t * 1.3 + phase * 3.1), 14);
       // Target reading in the meter's own 0..1 domain: a low floor, a slow swell
-      // shaped by a faster tremor, plus sparse transients that reach the red.
-      const level = Math.min(1, 0.1 + 0.75 * slow * (0.5 + 0.5 * fast) + 0.35 * spike);
+      // shaped by a faster tremor, sparse transients that reach the red, and a
+      // kick on every beat with a lighter snare on the off-beat.
+      const hit = withBeat ? (0.25 * kick + 0.12 * snare) * (0.85 + 0.15 * Math.cos(phase)) : 0;
+      const level = Math.min(1, 0.1 + 0.75 * slow * (0.5 + 0.5 * fast) + 0.35 * spike + hit);
       // The wire carries LINEAR amplitude, but the meter reads 20·log10 mapped
       // onto -60..0 dB. Inverting that here (level -> 10^(3·(level-1))) makes the
       // animation sweep the whole meter instead of bunching up near clip, where

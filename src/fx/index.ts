@@ -4,6 +4,7 @@ export * from './ballistics';
 export * from './loop';
 export * from './palette';
 export * from './roomScene';
+export * from './onset';
 export * from './spectrumFeed';
 export * from './greetingWave';
 export * from './meterScale';
