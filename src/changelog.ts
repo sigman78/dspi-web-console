@@ -6,6 +6,10 @@ import { APP_VERSION } from './buildInfo';
 export const LATEST_CHANGES = {
   version: APP_VERSION,
   highlights: [
+    'Name your DSPi and its input sources (fw 1.1.6): rename the board in SETUP › DEVICE and the inputs with ✎ in SETUP › INPUTS; the names show in the device switcher, ROOM and Control Surfaces',
+    'ROOM flares on musical hits: the back wall, floor and horizon flash on kicks and snares, in spectrum and VU modes alike',
+    'ROOM hue can follow the preset: the link button above the hue slider pins the current colour to the active preset',
+    'Control Surfaces can bind output latency, and input-source values cover all seven sources (fw 1.1.6)',
     'ROOM: a live spectrum of what the system is playing, read from the board’s own analyser, with the preset slots one click away (fw 1.1.6-beta4 and newer; older firmware shows a simulated spectrum)',
     'ROOM also shows VU meters: switch between spectrum, input meters and output meters on the right edge; each channel gets a segmented light pillar in its own colour with a peak marker, and a hue slider tints the scene',
     'New console layout: an icon rail with ROOM / TUNE / PROGRAM / SETUP / CONTROL / ABOUT, a channel rail with presets and volume, an editable EQ graph, the processing chain in firmware order, and a routing map',
