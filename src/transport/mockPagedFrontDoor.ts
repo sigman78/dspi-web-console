@@ -1,8 +1,10 @@
 // Mock of a paged-protocol (fw 1.1.7+) device's USB front door: validates and
 // records each request the way vc_usb does, then runs it on the mock's 1.1.6
-// handlers through the inverse of the legacy adapter map.
+// handlers through the inverse of the legacy adapter map. Commands the map
+// cannot invert (the reshaped ones) are served by mockPagedNative.ts.
 
 import { TransportStall } from './DspTransport';
+import { mockNativeCommands, nativeVc, type NativeCommand } from './mockPagedNative';
 import { allPagedCommands, pagedCommand } from '@/protocol/paged';
 import { PagedCmd, PagedPage, VcResult } from '@/protocol/paged.gen';
 import { LEGACY_ADAPTERS, StatusFamily, type LegacyAdapter, type LegacyAddr, type LegacyField, type VcByte } from '@/protocol/legacyMap.gen';
@@ -107,12 +109,15 @@ function vcForStatus(route: Route, status: number): number | null {
 export class MockPagedFrontDoor {
   #last = new Uint8Array(8);
   #injected = new Map<number, { vc: number; times: number }>();
+  readonly #native: Map<number, NativeCommand>;
 
   constructor(
     private readonly legacy: LegacyHandlers,
     private readonly protocolInfo: Uint8Array,
     private readonly rp2350: boolean,
-  ) {}
+  ) {
+    this.#native = mockNativeCommands(legacy, rp2350);
+  }
 
   // The next `times` requests to `id` STALL with result code `vc`.
   injectRefusal(id: number, vc: number, times = 1): void {
@@ -163,6 +168,16 @@ export class MockPagedFrontDoor {
       if (!mockPageList().some((p) => p.page === wValue)) return this.#refuse(id, 'get', VcResult.VC_ERR_ADDRESS, wValue);
       return this.#ok(id, 'get', wValue, mockCommandBitmap(wValue, this.rp2350).slice(0, length));
     }
+    const native = this.#native.get(id);
+    if (native?.get) {
+      let reply: Uint8Array;
+      try {
+        reply = await native.get(wValue, length);
+      } catch (err) {
+        return this.#refuse(id, 'get', nativeVc(err), wValue);
+      }
+      return this.#ok(id, 'get', wValue, reply.slice(0, length));
+    }
     const route = ROUTES.get(`${id}:get`);
     if (!route) return this.#refuse(id, 'get', VcResult.VC_ERR_UNSUPPORTED, wValue);
     const want = typeof cmd.getLen === 'number' ? cmd.getLen : length;
@@ -177,6 +192,15 @@ export class MockPagedFrontDoor {
 
   async ctrlOut(id: number, wValue: number, data: Uint8Array): Promise<void> {
     this.#validate(id, 'set', wValue, data.length);
+    const native = this.#native.get(id);
+    if (native?.set) {
+      try {
+        await native.set(wValue, data);
+      } catch (err) {
+        return this.#refuse(id, 'set', nativeVc(err), wValue);
+      }
+      return this.#ok(id, 'set', wValue, undefined);
+    }
     const route = ROUTES.get(`${id}:set`);
     if (!route) return this.#refuse(id, 'set', VcResult.VC_ERR_UNSUPPORTED, wValue);
     let vc: number = VcResult.VC_OK;
@@ -213,6 +237,7 @@ export class MockPagedFrontDoor {
     if (!cmd) this.#refuse(id, dir, VcResult.VC_ERR_UNKNOWN, wValue);
     if (!(dir === 'get' ? cmd.get : cmd.set)) this.#refuse(id, dir, VcResult.VC_ERR_DIRECTION, wValue);
     if (cmd.addr === 'NONE' && wValue !== 0) this.#refuse(id, dir, VcResult.VC_ERR_ADDRESS, wValue);
+    if (this.#native.get(id)?.address?.(wValue) === false) this.#refuse(id, dir, VcResult.VC_ERR_ADDRESS, wValue);
     if (dir === 'set') {
       const bulk = cmd.setMin === null;
       if (bulk ? length === 0 : length < cmd.setMin! || length > cmd.setMax!) this.#refuse(id, dir, VcResult.VC_ERR_LENGTH, wValue);

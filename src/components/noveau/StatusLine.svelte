@@ -25,8 +25,8 @@
   {#if s.health.degraded}
     <span class="degraded" role="alert">changes not sent</span>
   {/if}
-  {#if caps.readOnly}
-    <span class="degraded" title="Support for firmware {caps.fwLabel} is in progress. This console version shows the device's settings but does not change them.">beta firmware · read-only</span>
+  {#if caps.generation === 'paged' && (caps.fw.beta ?? 0) > 0}
+    <span class="degraded" title="Support for firmware {caps.fwLabel} is new in this console. Please report any issues.">beta firmware</span>
   {/if}
   <span class="links" aria-label="Project links">
     <a href={REPO_URL} target="_blank" rel="noopener" title="Console source on GitHub" aria-label="Console source on GitHub">

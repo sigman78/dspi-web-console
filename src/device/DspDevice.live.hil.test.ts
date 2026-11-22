@@ -59,7 +59,8 @@ describe('DspDevice — liveness & smoke (HIL)', () => {
   // disagreement means one of the two reads is wrong.
   it('pre-release ordinal agrees with the git build stamp', async () => {
     const { build, capabilities } = device.info;
-    if (!build) return;
+    // A local build without a git tag stamps "unknown"; there is nothing to compare.
+    if (!build || !/^v\d/.test(build.describe)) return;
     const tagged = /-beta(\d+)/.exec(build.describe);
     if (tagged) {
       expect(capabilities.fw.beta).toBe(Number(tagged[1]));

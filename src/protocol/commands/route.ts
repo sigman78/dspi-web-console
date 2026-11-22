@@ -1,6 +1,7 @@
 import { Codec } from '@/utils';
 import type { InputSlot, OutputSlot, MasterVolumeMode } from '@/domain';
 import * as Wire from '../wireTypes';
+import { PagedCmd } from '../paged.gen';
 import { tighten } from './tighten';
 import type { ActionCommand, Command } from './types';
 
@@ -9,9 +10,13 @@ type MatrixRoutePayload = {
   enabled: boolean; phaseInvert: boolean; gainDb: number;
 };
 
+type CrosspointPayload = { enabled: boolean; phaseInvert: boolean; gainDb: number };
+
 export const RouteCmd = {
   // Global preamp (legacy)
-  Preamp: { codec: Codec.f32, legacy: { get: 0x45, set: 0x44 } } satisfies Command<number>,
+  // Paged firmware has one preamp per input channel (wValue = input channel); the
+  // 1.1.6 master preamp wrote them all and read input 0.
+  Preamp: { codec: Codec.f32, legacy: { get: 0x45, set: 0x44 }, paged: { get: PagedCmd.ROUTE.PREAMP.id, set: PagedCmd.ROUTE.PREAMP.id } } satisfies Command<number>,
 
   // Channel names (round-trip; bulk read covers the same field too).
   ChannelName: { codec: Wire.ChannelName, legacy: { get: 0x9C, set: 0x9B } } satisfies Command<string>,
@@ -28,6 +33,8 @@ export const RouteCmd = {
   // Matrix-route ops carry input/output in the payload (Set) or pack them
   // into wValue as `(input << 8) | output` (Get).
   MatrixRoute: { codec: tighten<MatrixRoutePayload>(Wire.MatrixRoutePacket), legacy: { get: 0x71, set: 0x70 } } satisfies Command<MatrixRoutePayload>,
+  // Paged crosspoint: address in wValue as (input << 8) | output.
+  Crosspoint: { codec: Wire.MatrixCrosspoint, legacy: {}, paged: { get: PagedCmd.ROUTE.MATRIX_ROUTE.id, set: PagedCmd.ROUTE.MATRIX_ROUTE.id } } satisfies Command<CrosspointPayload>,
   OutputEnable: { codec: Codec.bool8, legacy: { get: 0x73, set: 0x72 } } satisfies Command<boolean>,
   OutputGain: { codec: Codec.f32, legacy: { get: 0x75, set: 0x74 } } satisfies Command<number>,
   OutputMute: { codec: Codec.bool8, legacy: { get: 0x77, set: 0x76 } } satisfies Command<boolean>,

@@ -12,11 +12,11 @@ function entry(key: string, over: Partial<StagedEntry> = {}): StagedEntry {
   };
 }
 
-function renderLine(entries: StagedEntry[], degraded = false, readOnly = false) {
+function renderLine(entries: StagedEntry[], degraded = false, caps: object = {}) {
   const staging = createStagingState();
   entries.forEach((e) => staging.stage(e));
   const session = {
-    info: { serial: 'S', capabilities: { fwLabel: 'fw', wireLabel: 'wire', readOnly } },
+    info: { serial: 'S', capabilities: { fwLabel: 'fw', wireLabel: 'wire', generation: 'legacy', fw: {}, ...caps } },
     telemetry: { info: null },
     health: { degraded },
     writes: { busy: false },
@@ -49,13 +49,16 @@ describe('StatusLine', () => {
     expect(screen.getByRole('alert').textContent).toContain('changes not sent');
   });
 
-  test('a read-only device shows the beta badge with an explanatory tooltip', () => {
-    renderLine([], false, true);
-    expect(screen.getByText('beta firmware · read-only').getAttribute('title')).toContain('does not change');
+  test('a paged device on pre-release firmware shows the beta badge with an explanatory tooltip', () => {
+    renderLine([], false, { generation: 'paged', fw: { beta: 1 } });
+    expect(screen.getByText('beta firmware').getAttribute('title')).toContain('report');
   });
 
-  test('a writable device shows no read-only badge', () => {
-    renderLine([]);
-    expect(screen.queryByText(/read-only/)).toBeNull();
+  test.each([
+    ['paged release firmware', { generation: 'paged', fw: {} }],
+    ['legacy pre-release firmware', { generation: 'legacy', fw: { beta: 3 } }],
+  ])('%s shows no beta badge', (_name, caps) => {
+    renderLine([], false, caps);
+    expect(screen.queryByText('beta firmware')).toBeNull();
   });
 });

@@ -4,7 +4,6 @@ import { startPolling } from './poll';
 import * as State from '@/state';
 import * as Domain from '@/domain';
 import { DspDevice } from '@/device/DspDevice';
-import { MockTransport } from '@/transport/MockTransport';
 import { UntranslatedCommand } from '@/protocol/legacyTranslate';
 import { GenerationRefusal } from '@/transport/withGenerationGuard';
 import { resolveMockProfile } from '@/mockProfiles';
@@ -48,15 +47,13 @@ beforeEach(() => { State.resetAppState(); State.clearNotices(); });
 afterEach(() => { State.activeSession()?.dispose(); State.resetAppState(); vi.restoreAllMocks(); });
 
 describe.each<'rp2350' | 'rp2040'>(['rp2350', 'rp2040'])('paged session on %s', (chip) => {
-  it('runs its connect fetches and enabled polls without an untranslatable request or a write', async () => {
-    const outs: number[] = [];
-    vi.spyOn(MockTransport.prototype, 'ctrlOut').mockImplementation(async (cmd) => { outs.push(cmd); });
+  it('runs its connect fetches and enabled polls without an untranslatable or refused request', async () => {
     const { failures, called } = watchDevice();
 
     const profile = resolveMockProfile('v34', chip);
     await bootMock(profile.platform, profile.opts);
     const s = State.activeSession()!;
-    // Connect fetched what it can translate.
+    // Connect fetched everything but the system clock.
     expect(s.presets.directory).not.toBeNull();
     expect(s.presets.lastFetchError).toBeNull();
     expect(s.ctrlIfaces.uart).not.toBeNull();
@@ -91,10 +88,9 @@ describe.each<'rp2350' | 'rp2040'>(['rp2350', 'rp2040'])('paged session on %s', 
     releases.forEach((r) => r());
 
     const adat = chip === 'rp2350' ? ['getAdatStatus', 'getAdatInputStatus'] : [];
-    for (const name of ['getBufferStats', 'getSpdifRxStatus', 'getI2sSlaveStatus', 'getSubharmHeadroom', 'getSubharmMeter', 'getLimiterMeter', 'getLimiterStatus', 'getCsExtStatus', 'getCsDisplayStatus', ...adat]) {
+    for (const name of ['getSystemStatus', 'getSystemInfo', 'getBufferStats', 'getSpdifRxStatus', 'getI2sSlaveStatus', 'getSubharmHeadroom', 'getSubharmMeter', 'getLimiterMeter', 'getLimiterStatus', 'getCsExtStatus', 'getCsDisplayStatus', ...adat]) {
       expect(called.has(name), name).toBe(true);
     }
     expect(failures).toEqual([]);
-    expect(outs).toEqual([]);
   });
 });

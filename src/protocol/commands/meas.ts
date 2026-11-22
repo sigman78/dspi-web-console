@@ -1,4 +1,5 @@
 import * as Wire from '../wireTypes';
+import { PagedCmd } from '../paged.gen';
 import type { ActionCommand, Command, RawCommand } from './types';
 
 type RtaConfigPayload = {
@@ -9,6 +10,9 @@ type RtaConfigPayload = {
 export const MeasCmd = {
   Status: { legacy: { get: 0x50 } } satisfies RawCommand,
   ClearClips: { legacy: { get: 0x83 } } satisfies RawCommand,
+  // Paged meter packet (the 1.1.6 selector 9 bytes) and the clip-flag clear.
+  Levels: { legacy: {}, paged: { get: PagedCmd.MEAS.LEVELS.id } } satisfies RawCommand,
+  ClipClear: { legacy: {}, paged: { set: PagedCmd.MEAS.CLIP_CLEAR.id } } satisfies RawCommand,
 
   // --- Onboard RTA (layout V3 = fw 1.1.6-beta4+; wire V30+ is only a try-gate).
   // Raw plumbing on DspDevice:

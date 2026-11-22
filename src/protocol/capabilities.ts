@@ -90,8 +90,6 @@ export interface DeviceCapabilities {
   readonly wireLabel: string;     // "V28"   -- formatted once, here
   readonly platformId: number;
   readonly generation: ProtocolGeneration;
-  // The paged connection cannot write yet.
-  readonly readOnly: boolean;
   // What the device implements, from discovery; null on legacy firmware.
   readonly catalog: PagedCatalog | null;
 
@@ -169,7 +167,6 @@ export function deriveCapabilities(input: {
     wireLabel: `V${wireVersion}`,
     platformId,
     generation,
-    readOnly: paged,
     catalog,
     support,
     sections: Wire.bulkLayout({ formatVersion: wireVersion, payloadLength }),

@@ -2,7 +2,7 @@ import * as Domain from '@/domain';
 import * as Clamp from '@/domain/clamp';
 import { type ReadySession, pushNotice } from '@/state';
 import { errMessage } from '@/utils';
-import { write, command, writeRefusal, refusalText } from './writes.svelte';
+import { write, command, refuseWhileDegraded } from './writes.svelte';
 
 // Clears firmware-side latched clip flags (0x83) and the host-side OR-latch.
 // Not routed through write/scrub: clip state lives in telemetry, not the DSP
@@ -35,7 +35,7 @@ export function setLgSoundSyncEnabled(s: ReadySession, enabled: boolean): void {
 const DAC_HW_MUTE_APPLY_MS = 200;
 
 export async function setDacHwMute(s: ReadySession, patch: Partial<Domain.DacHwMute>): Promise<boolean> {
-  if (writeRefusal(s)) return false;
+  if (refuseWhileDegraded(s)) return false;
   const merged = { ...s.mirror.snapshot.dacHwMute, ...patch };
   const next: Domain.DacHwMute = merged.enabled
     ? { ...merged, holdMs: Clamp.dacHwMuteHoldMs(merged.holdMs), releaseMs: Clamp.dacHwMuteReleaseMs(merged.releaseMs) }
@@ -175,8 +175,7 @@ export function resetBufferStats(s: ReadySession): void {
 // in firmware before reset_usb_boot). The transfer may throw as the device
 // drops mid-response; that is expected and is treated as a normal disconnect.
 export async function enterBootloader(s: ReadySession): Promise<void> {
-  const refusal = writeRefusal(s);
-  if (refusal) { pushNotice('warn', refusalText(refusal, 'bootloader request')); return; }
+  if (refuseWhileDegraded(s)) { pushNotice('warn', 'Link degraded — bootloader request not sent'); return; }
   try {
     await s.queue.run(() => s.device.enterBootloader());
   } catch {

@@ -88,7 +88,7 @@ describe('withLegacyTranslation', () => {
     expect(calls).toEqual([]);
   });
 
-  it('keeps the SET refusal of a read-only guard', async () => {
+  it('keeps the refusal of a command the device does not implement', async () => {
     const { transport, calls } = device();
     const guard = withGenerationGuard(transport);
     guard.setGeneration('paged');

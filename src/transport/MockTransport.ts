@@ -50,13 +50,13 @@ export interface MockOptions {
   // ~1.5 s with a distinct NEC code, standing in for a press on an imaginary
   // remote. Off by default so tests drive learns explicitly.
   irLearnAutoComplete?: boolean;
-  // Model a paged-protocol device (fw 1.1.7+): page-0 requests STALL and
-  // one-to-one paged commands run on the legacy handlers through the inverse
-  // adapter map. Coverage is partial: custom-adapter commands (FILTER.BAND,
-  // ROUTE.MATRIX_ROUTE, SYS.SYSTEM_STATUS, MEAS.LEVELS, INPUT.STATUS,
-  // STORE.ALL_PARAMS SET, ...) answer VC_ERR_UNSUPPORTED and the 1.1.6
-  // on_stall/out_stall quirks are not reversed. Enough for the console to
-  // connect and read a snapshot, not to drive.
+  // Model a paged-protocol device (fw 1.1.7+): page-0 requests STALL, one-to-one
+  // paged commands run on the legacy handlers through the inverse adapter map,
+  // and the reshaped commands the console uses (FILTER.BAND, ROUTE.MATRIX_ROUTE,
+  // the SYS status structs, MEAS.LEVELS, INPUT.STATUS, STORE.STARTUP, the S/PDIF
+  // block, ...) are served natively. Not modelled: the FILTER.BAND busy rule,
+  // switching the S/PDIF block off, STORE.ALL_PARAMS SET (answers
+  // VC_ERR_UNSUPPORTED), and the 1.1.6 on_stall/out_stall quirks.
   paged?: boolean;
   // Boot the selectable system clock pre-seeded instead of the fw power-on
   // default (mode 0, no crash history). `fallback: true` simulates a device
@@ -1248,7 +1248,7 @@ export class MockTransport implements DspTransport {
         const mask = cfg.spdifRxEnabledExtP1 === 0 ? 0 : cfg.spdifRxEnabledExtP1 - 1;
         const enableMask = 1 | (mask << 1);
         return Codec.encode(Wire.SpdifInputConfig, {
-          count: this.#spdifInputCount(),
+          count: Domain.SPDIF_RX_MAX_INSTANCES,   // fw answers SPDIF_RX_NUM_INPUTS on both chips
           enableMask,
           pins: [cfg.spdifRxPin, cfg.spdifRxPinExt[0] ?? 0, cfg.spdifRxPinExt[1] ?? 0, cfg.spdifRxPinExt[2] ?? 0],
         });

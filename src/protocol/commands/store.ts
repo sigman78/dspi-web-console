@@ -18,7 +18,7 @@ export const StoreCmd = {
   // are codec-driven or action-IN (see StoreAct).
   PresetName: { codec: Wire.ChannelName, legacy: { get: 0x93, set: 0x94 } } satisfies Command<string>,
   PresetDirectory: { legacy: { get: 0x95 } } satisfies RawCommand,
-  PresetStartup: { codec: Wire.PresetStartupConfig, legacy: { get: 0x97, set: 0x96 } } satisfies Command<{ mode: number; slot: number }>,
+  PresetStartup: { codec: Wire.PresetStartupConfig, legacy: { get: 0x97, set: 0x96 }, paged: { get: PagedCmd.STORE.STARTUP.id, set: PagedCmd.STORE.STARTUP.id } } satisfies Command<{ mode: number; slot: number }>,
   // Output-config persistence mode (1.1.4 semantics). Deliberately
   // ungated: the opcode exists across the whole support window.
   OutputConfigMode: { codec: tighten<OutputConfigMode>(Codec.u8), legacy: { get: 0x99, set: 0x98 } } satisfies Command<OutputConfigMode>,

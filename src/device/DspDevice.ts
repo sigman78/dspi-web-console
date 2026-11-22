@@ -9,6 +9,7 @@ import { TimeoutError } from '@/transport/withTimeout';
 import { Codec, Log, utf8Truncate, Result } from '@/utils';
 import * as Domain from '@/domain';
 import { fromBulkParams, narrowInputSource, type DeviceState } from '@/protocol/snapshotCodec';
+import * as Reshaped from './pagedReshaped';
 import { deriveCapabilities, type DeviceCapabilities, type FirmwareVersion } from '@/protocol/capabilities';
 
 // Semver face of the wire-version floor that lives in capabilities.ts; shown in
@@ -351,9 +352,9 @@ async function pagedHandshake(
   if (drift.unknownToConsole.length || drift.missingOnDevice.length || drift.revisionMismatch.length) {
     Log.warn('paged', 'device and console disagree on the paged command set', drift);
   }
-  // Paged writes are not enabled yet: only GETs pass, plus what the device lists.
-  // The executor reads LAST_RESULT to explain a refusal; it stays reachable.
-  narrow((id, dir) => dir === 'in' && (id === sys.LAST_RESULT.id || catalog.has(id, 'get')));
+  // Only commands the device lists pass, GETs and SETs alike. The executor reads
+  // LAST_RESULT to explain a refusal; it stays reachable.
+  narrow((id, dir) => (dir === 'in' && id === sys.LAST_RESULT.id) || catalog.has(id, dir === 'in' ? 'get' : 'set'));
   const serial = Codec.decodePadded(proto.Wire.Serial, await proto.pagedGet(transport, proto.Cmd.Serial.paged.get, 0, sys.SERIAL.getLen));
   const build = catalog.has(proto.Cmd.BuildInfo.paged.get, 'get') ? await readPagedBuildInfo(transport) : null;
   // A short STORE.ALL_PARAMS GET answers min(wLength, packet) and opens no chunk session.
@@ -582,6 +583,7 @@ export class DspDevice {
 
   async getSystemStatus(): Promise<proto.SystemStatus> {
     const numCh = this.hardware.totalChannelCount;
+    if (this.generation === 'paged') return Reshaped.getLevels(this.transport, numCh);
     const bytes = await this.transport.ctrlIn(
       proto.Cmd.Status.legacy.get, 9, proto.systemStatusSize(numCh),
     );
@@ -605,6 +607,7 @@ export class DspDevice {
 
   // Slow-poll telemetry: env scalars + cumulative error counters.
   async getSystemInfo(): Promise<proto.PartialSystemInfo> {
+    if (this.generation === 'paged') return Reshaped.getSystemInfo(this.transport);
     const V = proto.SystemStatusValue;
     const [counters, tempCDegC] = await Promise.all([
       this.#readStatusU32s<Exclude<keyof proto.SystemInfo, 'tempCDegC'>>({
@@ -642,10 +645,12 @@ export class DspDevice {
   // 0x83 is IN-only: the firmware answers the latched clip flags (u32) and
   // clears them so they can re-arm. An OUT is ACKed and ignored.
   async clearClips(): Promise<void> {
+    if (this.generation === 'paged') return Reshaped.clearClips(this.transport);
     await this.transport.ctrlIn(proto.Cmd.ClearClips.legacy.get, 0, 4);
   }
 
   async setMasterPreamp(db: number): Promise<void> {
+    if (this.generation === 'paged') return Reshaped.setMasterPreamp(this.transport, this.hardware.inputChannels.length, db);
     return proto.writeCmd(this.transport, proto.Cmd.Preamp, db);
   }
 
@@ -674,6 +679,7 @@ export class DspDevice {
     output: Domain.OutputSlot,
     p: { enabled: boolean; invert: boolean; gainDb: number },
   ): Promise<void> {
+    if (this.generation === 'paged') return Reshaped.setMatrixRoute(this.transport, input, output, p);
     return proto.writeCmd(this.transport, proto.Cmd.MatrixRoute, {
       input, output,
       enabled: p.enabled,
@@ -737,6 +743,7 @@ export class DspDevice {
   }
 
   async setPresetStartup(config: { mode: number; slot: number }): Promise<void> {
+    if (this.generation === 'paged') return Reshaped.setPresetStartup(this.transport, config);
     return proto.writeCmd(this.transport, proto.Cmd.PresetStartup, config);
   }
 
@@ -753,6 +760,7 @@ export class DspDevice {
   // band's bypass byte, which the device stores.
   async setFilter(channel: Domain.ChannelId, band: number, p: Domain.FilterParams): Promise<void> {
     const wireChannel = this.deviceChannel(channel);
+    if (this.generation === 'paged') return Reshaped.setFilter(this.transport, wireChannel, band, p);
     if (p.type === Domain.FilterType.LinkwitzTransform) {
       const bytes = Codec.encode(proto.Wire.SetFilterPacketQp, {
         channel: wireChannel, band, type: p.type, bypass: p.bypass ? 1 : 0,
@@ -782,6 +790,7 @@ export class DspDevice {
   // 20..23 stay addressable.
   async getFilter(channel: Domain.ChannelId, band: number): Promise<Domain.FilterParams> {
     const wireChannel = this.deviceChannel(channel);
+    if (this.generation === 'paged') return Reshaped.getFilter(this.transport, wireChannel, band);
     const code = proto.Cmd.EqParamValue.legacy.get;
     const wValue = (param: number) => ((wireChannel & 0xFF) << 8) | ((band & 0x1F) << 3) | (param & 0x7);
     const t = this.transport;
@@ -841,6 +850,7 @@ export class DspDevice {
     input: Domain.InputSlot,
     output: Domain.OutputSlot,
   ): Promise<{ enabled: boolean; invert: boolean; gainDb: number }> {
+    if (this.generation === 'paged') return Reshaped.getMatrixRoute(this.transport, input, output);
     const wValue = ((input & 0xFF) << 8) | (output & 0xFF);
     const r = await proto.readCmd(this.transport, proto.Cmd.MatrixRoute, wValue);
     return { enabled: r.enabled, invert: r.phaseInvert, gainDb: r.gainDb };
@@ -919,6 +929,7 @@ export class DspDevice {
   }
 
   async getPresetStartup(): Promise<{ mode: number; slot: number }> {
+    if (this.generation === 'paged') return Reshaped.getPresetStartup(this.transport);
     return proto.readCmd(this.transport, proto.Cmd.PresetStartup);
   }
 
@@ -1354,6 +1365,7 @@ export class DspDevice {
   // Per-band EQ bypass. wValue = (wireChannel<<8)|band, mirroring getFilter's
   // channel remap (e.g. RP2040 PDM -> wire channel 6).
   async setBandBypass(channel: Domain.ChannelId, band: number, bypassed: boolean): Promise<void> {
+    if (this.generation === 'paged') return Reshaped.setBandBypass(this.transport, this.deviceChannel(channel), band, bypassed);
     const wValue = (this.deviceChannel(channel) << 8) | (band & 0xFF);
     return proto.writeCmd(this.transport, proto.Cmd.BandBypass, bypassed, wValue);
   }
@@ -1425,12 +1437,16 @@ export class DspDevice {
 
   // Enable/disable a selectable S/PDIF input (instance 1..3; instance 0 is always on). wValue = (instance<<8)|enable.
   async setSpdifInputEnabled(instance: number, on: boolean): Promise<Result<void, proto.PinConfigResult>> {
+    if (this.generation === 'paged') {
+      return proto.pinConfigResultFromByte(await Reshaped.setSpdifInputEnabled(this.transport, instance & 0xFF, on));
+    }
     const wValue = ((instance & 0xFF) << 8) | (on ? 1 : 0);
     return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.SpdifInputEnable, wValue));
   }
 
   // { count, enableMask, pins } for every selectable S/PDIF input slot.
   async getSpdifInputConfig(): Promise<{ count: number; enableMask: number; pins: number[] }> {
+    if (this.generation === 'paged') return Reshaped.getSpdifInputConfig(this.transport);
     return proto.readCmd(this.transport, proto.Cmd.SpdifInputConfig);
   }
 
@@ -1470,11 +1486,13 @@ export class DspDevice {
   // The device is the rate authority while I2S input is active; the rate is
   // commanded, not detected. Accepted: 44100 / 48000 / 96000.
   async setInputRate(hz: number): Promise<void> {
+    if (this.generation === 'paged') return Reshaped.setInputRate(this.transport, hz);
     return proto.writeCmd(this.transport, proto.Cmd.InputRate, hz);
   }
 
   // {current pipeline rate, host-selected I2S input rate}, both Hz.
   async getInputRate(): Promise<{ currentHz: number; selectedHz: number }> {
+    if (this.generation === 'paged') return Reshaped.getInputRate(this.transport);
     const bytes = await this.transport.ctrlIn(proto.Cmd.InputRateStatus.legacy.get, 0, 8);
     return {
       currentHz:  Codec.decodePadded(Codec.u32, bytes.subarray(0, 4)),
@@ -1650,6 +1668,7 @@ export class DspDevice {
   // Ring health counters 26-31. Firmware answers unknown indices with 0, so
   // call this only after getOutputLatencyStatus() succeeded.
   async getRingHealth(): Promise<Domain.RingHealth> {
+    if (this.generation === 'paged') return Reshaped.getRingHealth(this.transport);
     const V = proto.SystemStatusValue;
     return this.#readStatusU32s<keyof Domain.RingHealth>({
       underrunEpisodes:     V.RingUnderrunEpisodes,
@@ -2079,7 +2098,9 @@ export class DspDevice {
   // CsField.displaysAvailable). Cfg/page SETs share the deferred-apply model
   // above, reported in last_slot as 0x50 (cfg) / 0x50 | page.
   async getCsDisplayCfg(): Promise<{ limits: Domain.CsDisplayLimits; cfg: Domain.CsDisplayCfg }> {
-    const w = await proto.readCmd(this.transport, proto.Cmd.CsDisplayCfgResponse);
+    const w = this.generation === 'paged'
+      ? await Reshaped.getCsDisplayCfg(this.transport)
+      : await proto.readCmd(this.transport, proto.Cmd.CsDisplayCfgResponse);
     return {
       limits: { maxPages: w.maxPages, modelCount: w.modelCount },
       cfg: {

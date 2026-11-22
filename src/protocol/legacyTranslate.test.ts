@@ -8,6 +8,7 @@ import { RefusedError, TransportStall, type DspTransport } from '@/transport/Dsp
 import { MockPagedFrontDoor } from '@/transport/mockPagedFrontDoor';
 import { withGenerationGuard, GenerationRefusal } from '@/transport/withGenerationGuard';
 import { CommandRefused } from './pagedExec';
+import { Codec } from '@/utils';
 
 interface Sent { dir: 'get' | 'set'; id: number; wValue: number; data?: Uint8Array; length?: number }
 
@@ -254,7 +255,9 @@ async function inverse(req: Sent): Promise<{ code: number; dir: LegacyDir; wValu
     else {
       const cmd = pagedCommand(req.id)!;
       const fits = req.data !== undefined && req.data.length >= (cmd.setMin ?? 1) && req.data.length <= (cmd.setMax ?? 64);
-      await door.ctrlOut(req.id, req.wValue, fits ? req.data! : new Uint8Array(cmd.setMin ?? 64));
+      // The I2S rate takes only a known rate; the door refuses zeros before running a handler.
+      const zeros = req.id === PagedCmd.INPUT.I2S_RX_RATE.id ? Codec.encode(Codec.u32, 48000) : new Uint8Array(cmd.setMin ?? 64);
+      await door.ctrlOut(req.id, req.wValue, fits ? req.data! : zeros);
     }
   } catch { /* a refused reply still records the legacy call it made */ }
   return call;
