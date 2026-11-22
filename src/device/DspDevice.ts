@@ -549,9 +549,10 @@ export class DspDevice {
     return proto.flashResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.FactoryReset));
   }
 
-  // 0x83 OUT, no payload. Clears latched clip flags so they can re-arm.
+  // 0x83 is IN-only: the firmware answers the latched clip flags (u32) and
+  // clears them so they can re-arm. An OUT is ACKed and ignored.
   async clearClips(): Promise<void> {
-    await this.transport.ctrlOut(proto.WireCmd.ClearClips.code, 0, new Uint8Array(0));
+    await this.transport.ctrlIn(proto.WireCmd.ClearClips.code, 0, 4);
   }
 
   async setMasterPreamp(db: number): Promise<void> {
