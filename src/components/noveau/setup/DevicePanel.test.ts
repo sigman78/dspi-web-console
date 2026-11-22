@@ -18,7 +18,7 @@ function renderPanel(deviceSupported: boolean | null) {
 }
 
 async function openRename() {
-  const btn = screen.getByRole('button', { name: 'RENAME' });
+  const btn = screen.getByRole('button', { name: 'Rename this device' });
   btn.focus();
   await fireEvent.click(btn);
   return screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement;
@@ -27,9 +27,9 @@ async function openRename() {
 beforeEach(() => { vi.clearAllMocks(); });
 
 describe('DevicePanel rename', () => {
-  test('no RENAME button when the device cannot store a name', () => {
+  test('no rename button when the device cannot store a name', () => {
     renderPanel(false);
-    expect(screen.queryByRole('button', { name: 'RENAME' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Rename this device' })).toBeNull();
     expect(screen.getByText('Bench')).toBeTruthy();
   });
 
@@ -71,11 +71,11 @@ describe('DevicePanel rename', () => {
     expect(setDeviceName).not.toHaveBeenCalled();
   });
 
-  test('focus returns to RENAME after Enter, and RENAME toggles the popover', async () => {
+  test('focus returns to the rename button after Enter, and the button toggles the popover', async () => {
     renderPanel(true);
     const field = await openRename();
     await fireEvent.keyDown(field, { key: 'Enter' });
-    const btn = screen.getByRole('button', { name: 'RENAME' });
+    const btn = screen.getByRole('button', { name: 'Rename this device' });
     await waitFor(() => expect(document.activeElement).toBe(btn));
 
     await openRename();

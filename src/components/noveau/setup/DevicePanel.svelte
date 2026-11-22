@@ -26,7 +26,7 @@
 <Panel title="DEVICE">
   {#snippet right()}
     {#if s.names.deviceSupported === true}
-      <button id={renameBtnId} class="chip" aria-haspopup="dialog" aria-expanded={renameOpen} title="Rename this device" onclick={() => { renameOpen = !renameOpen; }}>RENAME</button>
+      <button id={renameBtnId} class="chip icon" aria-haspopup="dialog" aria-expanded={renameOpen} title="Rename this device" aria-label="Rename this device" onclick={() => { renameOpen = !renameOpen; }}>✎</button>
     {/if}
   {/snippet}
   <div class="kvrows">
