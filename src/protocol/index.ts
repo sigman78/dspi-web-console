@@ -13,7 +13,7 @@ export * from './bulkParser';
 export * from './bufferStats';
 export * from './systemStatus';
 export * from './systemInfo';
-export * from './wireCmd';
+export * from './commands';
 export * from './results';
 export * from './notify';
 export * from './protocolInfo';

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { WireCmd } from '@/protocol';
+import { Cmd } from '@/protocol';
 import { ParamSource } from './notify';
 import { isPollCommand, wireMonitorEnabled, formatNotify } from './wireMonitor';
 
@@ -28,10 +28,10 @@ describe('wireMonitorEnabled', () => {
 
 describe('isPollCommand', () => {
   it('flags only the high-volume telemetry polls', () => {
-    expect(isPollCommand(WireCmd.GetStatus.code)).toBe(true);
-    expect(isPollCommand(WireCmd.GetBufferStats.code)).toBe(true);
-    expect(isPollCommand(WireCmd.SetBypass.code)).toBe(false);
-    expect(isPollCommand(WireCmd.GetAllParams.code)).toBe(false);
+    expect(isPollCommand(Cmd.Status.legacy.get)).toBe(true);
+    expect(isPollCommand(Cmd.BufferStats.legacy.get)).toBe(true);
+    expect(isPollCommand(Cmd.Bypass.legacy.set)).toBe(false);
+    expect(isPollCommand(Cmd.AllParams.legacy.get)).toBe(false);
   });
 });
 

@@ -5,7 +5,7 @@ import { PAGED_PROTOCOL_INFO } from '@/protocol/protocolInfo';
 const MOCK_PROTOCOL_INFO = new Uint8Array([
   0x44, 0x53, 0x50, 0x69, 0x01, 0x00, 0x0C, 0x00, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
 ]);
-import { Wire, WireCmd, SystemStatusValue } from '@/protocol';
+import { Wire, Cmd, Act, SystemStatusValue } from '@/protocol';
 import * as Syn from '@/protocol/syn';
 import * as BulkParser from '@/protocol/bulkParser';
 import type { BulkParams, WireFilter } from '@/protocol/bulkParser';
@@ -861,16 +861,16 @@ export class MockTransport implements DspTransport {
     }
     // Legacy firmware ignores the page byte and dispatches on bRequest alone.
     const request = cmd & 0xFF;
-    if (request !== WireCmd.GetAllParamsChunk.code) this.#getChunkSession = null;
-    if (request !== WireCmd.SetAllParamsChunk.code) this.#setChunkSession = null;
+    if (request !== Cmd.AllParamsChunk.legacy.get) this.#getChunkSession = null;
+    if (request !== Cmd.AllParamsChunk.legacy.set) this.#setChunkSession = null;
     switch (request) {
-      case WireCmd.GetSerial.code: {
+      case Cmd.Serial.legacy.get: {
         const enc = new TextEncoder();
         const out = new Uint8Array(length);
         out.set(enc.encode(this.#serial).slice(0, length));
         return out;
       }
-      case WireCmd.GetPlatform.code: {
+      case Cmd.Platform.legacy.get: {
         // Wire shape: [platformId, fwMajor, (minor<<4)|patch, reserved] plus
         // full-width [minor, patch] from fw 1.1.6 on, then the pre-release
         // ordinal at byte 6 on a beta build; older fw clamps to 4 B.
@@ -884,22 +884,22 @@ export class MockTransport implements DspTransport {
         if (length > 6) out[6] = this.#fwBeta;
         return out;
       }
-      case WireCmd.GetBuildInfo.code: {
+      case Cmd.BuildInfo.legacy.get: {
         if (!this.#isFw116) throw new TransportStall('MockTransport: GetBuildInfo unsupported (STALL)');
         const out = Codec.encode(Wire.BuildInfo, this.#buildInfo);
         return out.slice(0, Math.min(length, out.byteLength));
       }
       // Read-then-clear, IN only (as firmware).
-      case WireCmd.ClearClips.code: {
+      case Cmd.ClearClips.legacy.get: {
         const flags = Syn.synthesizeU32(this.#clipFlags);
         this.#clipFlags = 0;
         return flags.slice(0, Math.min(length, flags.byteLength));
       }
-      case WireCmd.GetAllParams.code: {
+      case Cmd.AllParams.legacy.get: {
         const bulk = this.#synthBulkPacket();
         return bulk.slice(0, Math.min(length, bulk.byteLength));
       }
-      case WireCmd.GetAllParamsChunk.code: {
+      case Cmd.AllParamsChunk.legacy.get: {
         if (value === 0) {
           this.#getChunkSession = { buf: this.#synthBulkPacket(), offset: 0 };
         }
@@ -914,56 +914,56 @@ export class MockTransport implements DspTransport {
         if (session.offset >= session.buf.length) this.#getChunkSession = null;
         return chunk;
       }
-      case WireCmd.EnterBootloader.code: {
+      case Act.EnterBootloader.legacy.code: {
         // Firmware acks one byte, then reboots to UF2 ~100 ms later; mirror
         // that with a deferred close so the normal disconnect flow runs.
         setTimeout(() => { void this.close(); }, 100);
         return new Uint8Array([1]);
       }
-      case WireCmd.GetMasterVolume.code:
+      case Cmd.MasterVolume.legacy.get:
         return Codec.encode(Codec.f32, this.#mockState.masterVolumeDb);
-      case WireCmd.GetPreamp.code:
+      case Cmd.Preamp.legacy.get:
         return Codec.encode(Codec.f32, this.#mockState.preampDb);
-      case WireCmd.GetInputPreamp.code: {
+      case Cmd.InputPreamp.legacy.get: {
         const idx = value & 0xFF;
         return Codec.encode(Codec.f32, this.#mockState.inputPreampsDb[idx] ?? 0);
       }
-      case WireCmd.GetMatrixRoute.code: {
+      case Cmd.MatrixRoute.legacy.get: {
         const input = (value >> 8) & 0xFF;
         const output = value & 0xFF;
         const cp = this.#mockState.crosspoints?.[input]?.[output] ?? defaultCrosspoint();
-        return Codec.encode(WireCmd.GetMatrixRoute.codec, {
+        return Codec.encode(Cmd.MatrixRoute.codec, {
           input, output,
           enabled: cp.enabled,
           phaseInvert: cp.invert,
           gainDb: cp.gainDb,
         });
       }
-      case WireCmd.GetOutputEnable.code:
+      case Cmd.OutputEnable.legacy.get:
         return Codec.encode(Codec.bool8, this.#output(value).enabled);
-      case WireCmd.GetOutputGain.code:
+      case Cmd.OutputGain.legacy.get:
         return Codec.encode(Codec.f32, this.#output(value).gainDb);
-      case WireCmd.GetOutputMute.code:
+      case Cmd.OutputMute.legacy.get:
         return Codec.encode(Codec.bool8, this.#output(value).muted);
-      case WireCmd.GetOutputDelay.code:
+      case Cmd.OutputDelay.legacy.get:
         return Codec.encode(Codec.f32, this.#output(value).delayMs);
-      case WireCmd.GetBypass.code:
+      case Cmd.Bypass.legacy.get:
         return Codec.encode(Codec.bool8, this.#mockState.bypass);
-      case WireCmd.GetMasterVolumeMode.code:
+      case Cmd.MasterVolumeMode.legacy.get:
         return Codec.encode(Codec.u8, this.#masterVolumeMode);
-      case WireCmd.GetSavedMasterVolume.code:
+      case Cmd.SavedMasterVolume.legacy.get:
         return Codec.encode(Codec.f32, this.#savedMasterVolumeDb);
-      case WireCmd.SaveMasterVolume.code:
+      case Act.SaveMasterVolume.legacy.code:
         this.#savedMasterVolumeDb = this.#mockState.masterVolumeDb;
         return new Uint8Array([0]); // PresetResult.Ok
       // Acknowledge with FlashResult.Ok; preset round-trips go through
       // PresetSave/Load directly rather than flash side effects.
-      case WireCmd.SaveParams.code:
-      case WireCmd.FactoryReset.code:
+      case Act.SaveParams.legacy.code:
+      case Act.FactoryReset.legacy.code:
         return new Uint8Array([0]); // FlashResult.Ok
-      case WireCmd.SaveOutputConfig.code:
+      case Act.SaveOutputConfig.legacy.code:
         return new Uint8Array([0]); // PresetResult.Ok
-      case WireCmd.GetEqParam.code: {
+      case Cmd.EqParamValue.legacy.get: {
         // Bit-packed wValue: (channel << 8) | (band << 3) | param.
         const channel = (value >> 8) & 0xFF;
         const band  = (value >> 3) & 0x1F;
@@ -982,81 +982,81 @@ export class MockTransport implements DspTransport {
           default: return new Uint8Array(length);
         }
       }
-      case WireCmd.GetBandBypass.code: {
+      case Cmd.BandBypass.legacy.get: {
         const ch = (value >> 8) & 0xFF;
         const band = value & 0xFF;
         return Codec.encode(Codec.bool8, this.#bandAt(ch, band)?.bypass ?? false);
       }
-      case WireCmd.GetUserVolume.code:
+      case Cmd.UserVolume.legacy.get:
         return Codec.encode(Codec.f32, this.#mockState.userVolume.volumeDb);
-      case WireCmd.GetUserMute.code:
+      case Cmd.UserMute.legacy.get:
         return Codec.encode(Codec.bool8, this.#mockState.userVolume.mute);
-      case WireCmd.GetLevellerMasks.code:
+      case Cmd.LevellerMasks.legacy.get:
         return Codec.encode(Wire.LevellerMasks, {
           detector: this.#mockState.leveller!.detectorMask,
           apply: this.#mockState.leveller!.applyMask,
         });
-      case WireCmd.GetLoudnessMask.code:
+      case Cmd.LoudnessMask.legacy.get:
         return Codec.encode(Codec.u16, this.#mockState.loudness!.outputMask);
-      case WireCmd.GetPsybassMask.code:
+      case Cmd.PsybassMask.legacy.get:
         return Codec.encode(Codec.u16, this.#mockState.psybass!.outputMask);
 
       // Subharmonic synthesizer (fw V29+, both platforms). Below V29 the
       // whole opcode range STALLs, like the ADAT commands.
-      case WireCmd.GetSubharmEnabled.code:
+      case Cmd.SubharmEnabled.legacy.get:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: GetSubharmEnabled unsupported (STALL)');
         return Codec.encode(Codec.bool8, this.#mockState.subharm!.enabled);
-      case WireCmd.GetSubharmLow.code:
+      case Cmd.SubharmLow.legacy.get:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: GetSubharmLow unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.lowDb);
-      case WireCmd.GetSubharmHigh.code:
+      case Cmd.SubharmHigh.legacy.get:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: GetSubharmHigh unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.highDb);
-      case WireCmd.GetSubharmBoost.code:
+      case Cmd.SubharmBoost.legacy.get:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: GetSubharmBoost unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.boostDb);
-      case WireCmd.GetSubharmMask.code:
+      case Cmd.SubharmMask.legacy.get:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: GetSubharmMask unsupported (STALL)');
         return Codec.encode(Codec.u16, this.#mockState.subharm!.outputMask);
-      case WireCmd.GetSubharmHeadroom.code:
+      case Cmd.SubharmHeadroom.legacy.get:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: GetSubharmHeadroom unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#subharmHeadroom());
 
       // V30 tail: third band, selectivity, ceiling, pair link, solo, meter.
       // Below V30 the whole extension opcode range STALLs.
-      case WireCmd.GetSubharmTop.code:
+      case Cmd.SubharmTop.legacy.get:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmTop unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.topDb);
-      case WireCmd.GetSubharmSelect.code:
+      case Cmd.SubharmSelect.legacy.get:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmSelect unsupported (STALL)');
         return Codec.encode(Codec.u8, this.#mockState.subharm!.selectMode);
-      case WireCmd.GetSubharmMeter.code: {
+      case Cmd.SubharmMeter.legacy.get: {
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmMeter unsupported (STALL)');
         const numOut = this.#mockState.numOut;
         const out = Codec.encode(Codec.arr(Codec.u16, numOut), this.#subharmMeterLevels(numOut));
         return out.slice(0, Math.min(length, out.byteLength));
       }
-      case WireCmd.GetSubharmSolo.code:
+      case Cmd.SubharmSolo.legacy.get:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmSolo unsupported (STALL)');
         return Codec.encode(Codec.bool8, this.#subharmSolo);
-      case WireCmd.GetSubharmLink.code:
+      case Cmd.SubharmLink.legacy.get:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmLink unsupported (STALL)');
         return Codec.encode(Codec.bool8, this.#mockState.subharm!.linkPairs);
-      case WireCmd.GetSubharmDepth.code:
+      case Cmd.SubharmDepth.legacy.get:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmDepth unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.selectDepth);
-      case WireCmd.GetSubharmHold.code:
+      case Cmd.SubharmHold.legacy.get:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmHold unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.selectHoldMs);
-      case WireCmd.GetSubharmCeiling.code:
+      case Cmd.SubharmCeiling.legacy.get:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: GetSubharmCeiling unsupported (STALL)');
         return Codec.encode(Codec.f32, this.#mockState.subharm!.ceilingDb);
 
       // Onboard RTA (fw V30+).
-      case WireCmd.RtaGetConfig.code:
+      case Cmd.RtaConfig.legacy.get:
         this.#requireRta();
-        return Codec.encode(WireCmd.RtaGetConfig.codec, { version: this.#rtaVersion(), ...this.#rtaCfg });
-      case WireCmd.RtaGetCaps.code: {
+        return Codec.encode(Cmd.RtaConfig.codec, { version: this.#rtaVersion(), ...this.#rtaCfg });
+      case Cmd.RtaCaps.legacy.get: {
         this.#requireRta();
         if (value === 0) {
           const ord = this.#rtaFftOrder();
@@ -1073,14 +1073,14 @@ export class MockTransport implements DspTransport {
         const chunk = MOCK_RTA_CENTRES.slice(start, start + 32);
         return Codec.encode(Codec.arr(Codec.u16, chunk.length), chunk).slice(0, length);
       }
-      case WireCmd.RtaGetBands.code: {
+      case Cmd.RtaBands.legacy.get: {
         this.#requireRta();
         const width = this.#rtaCfg.tap === Domain.RtaTap.Output ? this.#mockState.numOut : this.#mockState.numIn;
         if (value >= width) throw new TransportStall('MockTransport: RtaGetBands bad channel (STALL)');
         this.#rtaLastReadMs = performance.now();
         return this.#rtaFrame(value);
       }
-      case WireCmd.RtaGetBandsAll.code: {
+      case Cmd.RtaBandsAll.legacy.get: {
         this.#requireRta();
         this.#rtaLastReadMs = performance.now();
         const mask = this.#rtaLiveMask();
@@ -1088,7 +1088,7 @@ export class MockTransport implements DspTransport {
         for (let ch = 0; ch < 16; ch++) if (mask & (1 << ch)) frames.push(this.#rtaFrame(ch));
         return concatChunks(frames).slice(0, length);
       }
-      case WireCmd.RtaGetStatus.code: {
+      case Cmd.RtaStatus.legacy.get: {
         this.#requireRta();
         const now = performance.now();
         const idleMs = Number.isFinite(this.#rtaLastReadMs) ? Math.min(0xFFFE, Math.round(now - this.#rtaLastReadMs)) : 0xFFFF;
@@ -1103,16 +1103,16 @@ export class MockTransport implements DspTransport {
           sampleRateHz: 48000, firstBand: 0, bassBusyUsPerS: running ? 1500 * count : 0,
         });
       }
-      case WireCmd.RtaGetBins.code:
+      case Cmd.RtaBins.legacy.get:
         this.#requireRta();
         throw new TransportStall('MockTransport: RtaGetBins not simulated (STALL)');
-      case WireCmd.RtaControl.code:
+      case Act.RtaControl.legacy.code:
         this.#requireRta();
         return new Uint8Array([1]);
 
       // Per-output limiter (fw V32+): parameter float, GR meter or status block
       // by index byte. A bad output/index STALLs.
-      case WireCmd.Limiter.code: {
+      case Cmd.Limiter.legacy.get: {
         if (this.#wireVersion < MIN_LIMITER_WIRE) throw new TransportStall('MockTransport: Limiter unsupported (STALL)');
         const output = value >> 8;
         const index = value & 0xFF;
@@ -1132,11 +1132,11 @@ export class MockTransport implements DspTransport {
       }
 
       // Upmixer
-      case WireCmd.UpmixGetParam.code:
+      case Cmd.UpmixParam.legacy.get:
         return Codec.encode(Codec.f32, this.#getUpmixParam(value));
-      case WireCmd.UpmixGetConfig.code: {
+      case Cmd.UpmixConfig.legacy.get: {
         const u = this.#mockState.upmix!;
-        return Codec.encode(WireCmd.UpmixGetConfig.codec, {
+        return Codec.encode(Cmd.UpmixConfig.codec, {
           enabled: u.enabled, centerMode: u.centerMode, surroundMode: u.surroundMode,
           presenceQ1: BulkParser.encodePresenceQ1(u.presenceDb),
           strengthPct: u.strengthPct, centerWidthPct: u.centerWidthPct, corrThresholdPct: u.corrThresholdPct,
@@ -1145,13 +1145,13 @@ export class MockTransport implements DspTransport {
           decorrPct: u.decorrPct,
         });
       }
-      case WireCmd.UpmixGetStatus.code:
+      case Cmd.UpmixStatus.legacy.get:
         return Codec.encode(Wire.UpmixStatus, this.#upmixStatus());
-      case WireCmd.GetCrossfeedOutputs.code:
+      case Cmd.CrossfeedOutputs.legacy.get:
         return Codec.encode(Codec.u8, this.#mockState.crossfeed!.outputPairMask);
-      case WireCmd.GetI2sClockMode.code:
+      case Cmd.I2sClockMode.legacy.get:
         return Codec.encode(Codec.u8, this.#mockState.inputConfig.i2sClockMode);
-      case WireCmd.GetI2sSlaveStatus.code: {
+      case Cmd.I2sSlaveStatus.legacy.get: {
         const locked = this.#mockState.inputConfig.i2sClockMode === 1
           && this.#mockState.inputConfig.source === Domain.AudioInputSource.I2s;
         return Codec.encode(Wire.I2sSlaveStatus, {
@@ -1164,31 +1164,31 @@ export class MockTransport implements DspTransport {
           slipCount: 0,
         });
       }
-      case WireCmd.GetI2sClockPinMode.code:
+      case Cmd.I2sClockPinMode.legacy.get:
         return new Uint8Array([this.#mockState.i2s.clockPinModeP1 === 2 ? 1 : 0]);
-      case WireCmd.SetI2sClockPinMode.code: {
+      case Act.I2sClockPinMode.legacy.code: {
         const raw = value & 0xFF;
         if (raw > 1) return new Uint8Array([0x05]);   // PinConfigResult.InvalidParam
         this.#mockState.i2s.clockPinModeP1 = raw === 1 ? 2 : 1;
         return new Uint8Array([0x00]);
       }
-      case WireCmd.GetInputSource.code:
+      case Cmd.InputSource.legacy.get:
         return Codec.encode(Codec.u8, this.#mockState.inputConfig.source);
-      case WireCmd.GetSpdifRxStatus.code:
+      case Cmd.SpdifRxStatus.legacy.get:
         return Codec.encode(Wire.SpdifRxStatus, {
           state: 2, inputSource: this.#mockState.inputConfig.source,
           lockCount: 1, lossCount: 0, sampleRate: 48000, parityErrors: 0, fifoFillPct: 50,
         });
-      case WireCmd.GetSpdifRxChStatus.code:
+      case Cmd.SpdifRxChStatus.legacy.get:
         return new Uint8Array(Wire.SPDIF_RX_CH_STATUS_LEN);
-      case WireCmd.GetSpdifRxPin.code: {
+      case Cmd.SpdifRxPin.legacy.get: {
         const index = value & 0xFF;
         const gpio = index === 0
           ? this.#mockState.inputConfig.spdifRxPin
           : (this.#mockState.inputConfig.spdifRxPinExt[index - 1] ?? 0);
         return Codec.encode(Codec.u8, gpio);
       }
-      case WireCmd.SetSpdifRxPin.code: {
+      case Act.SpdifRxPin.legacy.code: {
         const index = (value >> 8) & 0xFF;
         let gpio = value & 0xFF;
         if (index < this.#spdifInputCount() && gpio === Wire.Const.PIN_RESET_TO_DEFAULT) gpio = this.#defaultSpdifRxPin(index);
@@ -1202,7 +1202,7 @@ export class MockTransport implements DspTransport {
       // Enable/disable a selectable S/PDIF input (index 1..2; index 0 -- always
       // on -- accepts enable as a no-op and refuses disable). Updates the
       // mask+1-encoded spdifRxEnabledExtP1 field so it rides the bulk packet.
-      case WireCmd.SetSpdifInputEnable.code: {
+      case Act.SpdifInputEnable.legacy.code: {
         const index = (value >> 8) & 0xFF;
         const enable = (value & 0xFF) !== 0;
         if (index === 0) return new Uint8Array([enable ? 0x00 : 0x03]);
@@ -1221,7 +1221,7 @@ export class MockTransport implements DspTransport {
         cfg.spdifRxEnabledExtP1 = mask + 1;
         return new Uint8Array([0x00]);
       }
-      case WireCmd.GetSpdifInputConfig.code: {
+      case Cmd.SpdifInputConfig.legacy.get: {
         const cfg = this.#mockState.inputConfig;
         const mask = cfg.spdifRxEnabledExtP1 === 0 ? 0 : cfg.spdifRxEnabledExtP1 - 1;
         const enableMask = 1 | (mask << 1);
@@ -1231,7 +1231,7 @@ export class MockTransport implements DspTransport {
           pins: [cfg.spdifRxPin, cfg.spdifRxPinExt[0] ?? 0, cfg.spdifRxPinExt[1] ?? 0, cfg.spdifRxPinExt[2] ?? 0],
         });
       }
-      case WireCmd.GetInputRate.code: {
+      case Cmd.InputRateStatus.legacy.get: {
         // {current pipeline Hz, selected I2S input Hz}
         const out = new Uint8Array(8);
         const dv = new DataView(out.buffer);
@@ -1239,7 +1239,7 @@ export class MockTransport implements DspTransport {
         dv.setUint32(4, this.#i2sRateHz(), true);
         return out;
       }
-      case WireCmd.SetI2sRxPin.code: {
+      case Act.I2sRxPin.legacy.code: {
         const pair = (value >> 8) & 0xFF;
         let pin = value & 0xFF;
         if (pair < 4 && pin === Wire.Const.PIN_RESET_TO_DEFAULT) pin = this.#defaultI2sRxPin(pair);
@@ -1249,11 +1249,11 @@ export class MockTransport implements DspTransport {
         this.#mockState.inputConfig.i2sRxPins[pair] = pin;
         return new Uint8Array([0x00]);
       }
-      case WireCmd.GetI2sRxPin.code: {
+      case Cmd.I2sRxPin.legacy.get: {
         const pair = value & 0xFF;
         return Codec.encode(Codec.u8, this.#mockState.inputConfig.i2sRxPins[pair] ?? 0);
       }
-      case WireCmd.SetI2sInputChannels.code: {
+      case Act.I2sInputChannels.legacy.code: {
         const count = value & 0xFF;
         if (count !== 2 && count !== 4 && count !== 6 && count !== 8) return new Uint8Array([0x01]);
         const maxPairs = this.#platform === Domain.PlatformType.RP2350 ? Domain.I2S_RX_MAX_PAIRS : 1;
@@ -1268,22 +1268,22 @@ export class MockTransport implements DspTransport {
         }
         return new Uint8Array([0x00]);
       }
-      case WireCmd.GetI2sInputChannels.code:
+      case Cmd.I2sInputChannels.legacy.get:
         return Codec.encode(Codec.u8, this.#mockState.inputConfig.i2sInputChannels || 2);
-      case WireCmd.TestDacHwMute.code:
+      case Act.TestDacHwMute.legacy.code:
         return new Uint8Array([0x00]); // status: pulse scheduled
-      case WireCmd.GetLgSoundSyncEnabled.code:
+      case Cmd.LgSoundSyncEnabled.legacy.get:
         return Codec.encode(Codec.bool8, this.#mockState.lgSoundSync.enabled);
-      case WireCmd.GetLgSoundSyncStatus.code:
+      case Cmd.LgSoundSyncStatus.legacy.get:
         return Codec.encode(Wire.LgSoundSync, this.#mockState.lgSoundSync);
-      case WireCmd.GetDacHwMute.code:
+      case Cmd.DacHwMute.legacy.get:
         return Codec.encode(Wire.DacHwMute, this.#mockState.dacHwMute);
-      case WireCmd.GetChannelName.code: {
+      case Cmd.ChannelName.legacy.get: {
         const ch = value & 0xFF;
         const name = this.#mockState.channelNames[ch] ?? '';
-        return Codec.encode(WireCmd.GetChannelName.codec, name);
+        return Codec.encode(Cmd.ChannelName.codec, name);
       }
-      case WireCmd.PresetGetDir.code: {
+      case Cmd.PresetDirectory.legacy.get: {
         const out = new Uint8Array(7);
         const view = new DataView(out.buffer);
         view.setUint16(0, this.#presetOccupiedMask, true);
@@ -1296,21 +1296,21 @@ export class MockTransport implements DspTransport {
         out[6] = this.#masterVolumeMode;
         return out.slice(0, Math.min(length, out.byteLength));
       }
-      case WireCmd.PresetGetStartup.code:
-        return Codec.encode(WireCmd.PresetGetStartup.codec, {
+      case Cmd.PresetStartup.legacy.get:
+        return Codec.encode(Cmd.PresetStartup.codec, {
           mode: this.#presetStartupMode,
           slot: this.#presetDefaultSlot,
         });
-      case WireCmd.GetOutputConfigMode.code:
+      case Cmd.OutputConfigMode.legacy.get:
         return Codec.encode(Codec.u8, this.#outputConfigMode);
-      case WireCmd.PresetGetActive.code:
+      case Cmd.PresetActive.legacy.get:
         return new Uint8Array([this.#presetActiveSlot]);
-      case WireCmd.PresetGetName.code: {
+      case Cmd.PresetName.legacy.get: {
         const slot = value & 0xFF;
         const name = (slot < this.#presetNames.length ? this.#presetNames[slot] : '') ?? '';
-        return Codec.encode(WireCmd.PresetGetName.codec, name);
+        return Codec.encode(Cmd.PresetName.codec, name);
       }
-      case WireCmd.PresetSave.code: {
+      case Act.PresetSave.legacy.code: {
         const slot = value & 0xFF;
         if (slot >= 10) return new Uint8Array([0x01]); // InvalidSlot
         this.#presetSlots[slot] = this.#captureSnapshot();
@@ -1319,7 +1319,7 @@ export class MockTransport implements DspTransport {
         this.#presetLastActiveSlot = slot;
         return new Uint8Array([0]); // Ok
       }
-      case WireCmd.PresetLoad.code: {
+      case Act.PresetLoad.legacy.code: {
         const slot = value & 0xFF;
         if (slot >= 10) return new Uint8Array([0x01]); // InvalidSlot
         const snap = this.#presetSlots[slot];
@@ -1335,7 +1335,7 @@ export class MockTransport implements DspTransport {
         this.#pushPresetLoadEvents(slot);
         return new Uint8Array([0]); // Ok
       }
-      case WireCmd.PresetDelete.code: {
+      case Act.PresetDelete.legacy.code: {
         const slot = value & 0xFF;
         if (slot >= 10) return new Uint8Array([0x01]); // InvalidSlot
         this.#presetSlots[slot] = null;
@@ -1344,14 +1344,14 @@ export class MockTransport implements DspTransport {
         // mirroring firmware.
         return new Uint8Array([0]); // Ok
       }
-      case WireCmd.GetStatus.code: {
+      case Cmd.Status.legacy.get: {
         return this.#synthStatus(value, length);
       }
-      case WireCmd.ResetBufferStats.code:
+      case Act.ResetBufferStats.legacy.code:
         return new Uint8Array([0x01]); // success sentinel
-      case WireCmd.GetOutputPin.code:
+      case Cmd.OutputPin.legacy.get:
         return new Uint8Array([this.#mockState.pins[value & 0xFF] ?? 0]);
-      case WireCmd.SetOutputPin.code: {
+      case Act.OutputPin.legacy.code: {
         const idx = value & 0xFF;
         let pin = (value >> 8) & 0xFF;
         if (idx < this.#mockState.numPinOutputs && pin === Wire.Const.PIN_RESET_TO_DEFAULT) pin = this.#defaultOutputPin(idx);
@@ -1362,9 +1362,9 @@ export class MockTransport implements DspTransport {
         else this.#mockState.pins[idx] = pin;
         return new Uint8Array([status]);
       }
-      case WireCmd.GetOutputType.code:
+      case Cmd.OutputType.legacy.get:
         return new Uint8Array([this.#mockState.i2s.outputSlotTypes[value & 0xFF] ?? 0]);
-      case WireCmd.SetOutputType.code: {
+      case Act.OutputType.legacy.code: {
         const slot = value & 0xFF;
         const type = (value >> 8) & 0xFF;
         let status = 0x00;
@@ -1373,11 +1373,11 @@ export class MockTransport implements DspTransport {
         else this.#mockState.i2s.outputSlotTypes[slot] = type;
         return new Uint8Array([status]);
       }
-      case WireCmd.GetI2sBckPin.code: {
+      case Cmd.I2sBckPin.legacy.get: {
         const role = value & 0xFF;
         return new Uint8Array([role === 1 ? this.#mockState.i2s.bckPinSlave : this.#mockState.i2s.bckPin]);
       }
-      case WireCmd.SetI2sBckPin.code: {
+      case Act.I2sBckPin.legacy.code: {
         const role = (value >> 8) & 0xFF;
         let pin = value & 0xFF;
         if ((role === 0 || role === 1) && pin === Wire.Const.PIN_RESET_TO_DEFAULT) pin = this.#defaultBckPin(role);
@@ -1396,14 +1396,14 @@ export class MockTransport implements DspTransport {
         }
         return new Uint8Array([status]);
       }
-      case WireCmd.GetMckEnable.code:
+      case Cmd.MckEnable.legacy.get:
         return new Uint8Array([this.#mockState.i2s.mckEnabled ? 1 : 0]);
-      case WireCmd.SetMckEnable.code:
+      case Act.MckEnable.legacy.code:
         this.#mockState.i2s.mckEnabled = (value & 0xFF) !== 0;
         return new Uint8Array([0x00]);
-      case WireCmd.GetMckPin.code:
+      case Cmd.MckPin.legacy.get:
         return new Uint8Array([this.#mockState.i2s.mckPin]);
-      case WireCmd.SetMckPin.code: {
+      case Act.MckPin.legacy.code: {
         let pin = value & 0xFF;
         if (pin === Wire.Const.PIN_RESET_TO_DEFAULT) pin = this.#defaultMckPin();
         let status = 0x00;
@@ -1413,9 +1413,9 @@ export class MockTransport implements DspTransport {
         else this.#mockState.i2s.mckPin = pin;
         return new Uint8Array([status]);
       }
-      case WireCmd.GetMckMultiplier.code:
+      case Cmd.MckMultiplier.legacy.get:
         return new Uint8Array([this.#mockState.i2s.mckMultiplierEncoded]);
-      case WireCmd.SetMckMultiplier.code: {
+      case Act.MckMultiplier.legacy.code: {
         const raw = value & 0xFF;
         if (raw > 1) return new Uint8Array([0x01]);
         this.#mockState.i2s.mckMultiplierEncoded = raw;
@@ -1425,11 +1425,11 @@ export class MockTransport implements DspTransport {
       // opcodes on a deleted fw branch; they are ADAT here. On RP2040 SETs
       // return INVALID_OUTPUT and GETs read as zeros, matching firmware's
       // platform gate on the lightpipe hardware.
-      case WireCmd.GetAdatEnable.code: {
+      case Cmd.AdatEnable.legacy.get: {
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array(length);
         return Codec.encode(Codec.bool8, this.#mockState.adat.enabled);
       }
-      case WireCmd.SetAdatEnable.code: {
+      case Act.AdatEnable.legacy.code: {
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
         const enable = (value & 0xFF) !== 0;
         if (enable === this.#mockState.adat.enabled) return new Uint8Array([0x00]);   // same-state no-op
@@ -1444,11 +1444,11 @@ export class MockTransport implements DspTransport {
         this.#mockState.adat.enabled = true;
         return new Uint8Array([0x00]);
       }
-      case WireCmd.GetAdatPin.code: {
+      case Cmd.AdatPin.legacy.get: {
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array(length);
         return Codec.encode(Codec.u8, this.#mockState.adat.pin);
       }
-      case WireCmd.SetAdatPin.code: {
+      case Act.AdatPin.legacy.code: {
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
         let pin = value & 0xFF;
         if (pin === Wire.Const.PIN_RESET_TO_DEFAULT) pin = this.#defaultAdatPin();
@@ -1458,7 +1458,7 @@ export class MockTransport implements DspTransport {
         this.#mockState.adat.pin = pin;
         return new Uint8Array([0x00]);
       }
-      case WireCmd.GetAdatStatus.code: {
+      case Cmd.AdatStatus.legacy.get: {
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array(length);
         const enabled = this.#mockState.adat.enabled;
         // Mock always runs at 48 kHz -- rateOk (and thus active) is always true while enabled.
@@ -1474,10 +1474,10 @@ export class MockTransport implements DspTransport {
       // packets round-trip automatically. Unlike GetAdatInputStatus, the
       // granular enable/pin/clock-mode GETs round-trip stored config on both
       // platforms -- only the SETs and the live status are RP2350-gated.
-      case WireCmd.GetAdatInputEnable.code: {
+      case Cmd.AdatInputEnable.legacy.get: {
         return Codec.encode(Codec.bool8, this.#adatInputEnabled());
       }
-      case WireCmd.SetAdatInputEnable.code: {
+      case Act.AdatInputEnable.legacy.code: {
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
         if (value > 1) return new Uint8Array([0x05]);                                // InvalidParam
         const enable = value !== 0;
@@ -1496,11 +1496,11 @@ export class MockTransport implements DspTransport {
         this.#mockState.inputConfig.adatInputEnabledP1 = 2;
         return new Uint8Array([0x00]);
       }
-      case WireCmd.GetAdatInputPin.code: {
+      case Cmd.AdatInputPin.legacy.get: {
         const pin = this.#mockState.inputConfig.adatInputPin;
         return Codec.encode(Codec.u8, pin === 0 ? 0xFF : pin);
       }
-      case WireCmd.SetAdatInputPin.code: {
+      case Act.AdatInputPin.legacy.code: {
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array([0x03]);   // InvalidOutput
         const raw = value & 0xFF;
         if (raw === Wire.Const.PIN_RESET_TO_DEFAULT) {
@@ -1518,46 +1518,46 @@ export class MockTransport implements DspTransport {
       }
       // Clock mode is accepted on both platforms (unlike enable/pin, which are
       // RP2350-only) so presets round-trip.
-      case WireCmd.GetAdatInputClockMode.code: {
+      case Cmd.AdatInputClockMode.legacy.get: {
         return Codec.encode(Codec.u8, this.#adatInputClockMode());
       }
-      case WireCmd.SetAdatInputClockMode.code: {
+      case Act.AdatInputClockMode.legacy.code: {
         // Deferred apply device-side (mock applies immediately).
         if (value > 1) return new Uint8Array([0x05]);                                // InvalidParam
         this.#mockState.inputConfig.adatInputClockModeP1 = value === 1 ? 2 : 1;
         return new Uint8Array([0x00]);
       }
-      case WireCmd.GetAdatInputStatus.code: {
+      case Cmd.AdatInputStatus.legacy.get: {
         if (this.#platform !== Domain.PlatformType.RP2350) return new Uint8Array(length);
         return Codec.encode(Wire.AdatInputStatus, this.#adatInputStatus());
       }
-      case WireCmd.GetUartConfig.code: {
+      case Cmd.UartConfig.legacy.get: {
         const c = this.#uartCtrl;
         return Codec.encode(Wire.UartCtrlConfig, {
           enabled: c.enabled, txPin: c.txPin, rxPin: c.rxPin, notifyEnable: c.notifyEnabled, baud: c.baud,
         });
       }
-      case WireCmd.GetI2cConfig.code: {
+      case Cmd.I2cConfig.legacy.get: {
         const c = this.#i2cCtrl;
         return Codec.encode(Wire.I2cCtrlConfig, { enabled: c.enabled, sdaPin: c.sdaPin, sclPin: c.sclPin, address: c.address });
       }
-      case WireCmd.GetCtrlIfaceStatus.code: {
+      case Cmd.CtrlIfaceStatus.legacy.get: {
         return Codec.encode(Wire.CtrlIfaceStatus, {
           uartLastStatus: this.#uartLastStatus, uartLive: this.#uartLive,
           i2cLastStatus: this.#i2cLastStatus, i2cLive: this.#i2cLive,
           protoVersion: 1,
         });
       }
-      case WireCmd.GetCsBinding.code: {
+      case Cmd.CsBinding.legacy.get: {
         if (value >= Domain.CS_MAX_BINDINGS) throw new TransportStall('MockTransport: GetCsBinding slot out of range (STALL)');
         const b = this.#csBindings[value];
         return Codec.encode(Wire.CsBinding, b);
       }
-      case WireCmd.GetCsIrCmd.code: {
+      case Cmd.CsIrCmd.legacy.get: {
         if (value >= this.#csMaxIr()) throw new TransportStall('MockTransport: GetCsIrCmd sub-slot out of range (STALL)');
         return Codec.encode(Wire.CsIrCommand, this.#csIrCommands[value]);
       }
-      case WireCmd.GetCsCaps.code: {
+      case Cmd.CsCaps.legacy.get: {
         if (value === 0xFFFF) {
           const typeCount = this.#csTypeCount();
           const types = MOCK_CS_CAPS.types.slice(0, typeCount)
@@ -1587,7 +1587,7 @@ export class MockTransport implements DspTransport {
         }
         throw new TransportStall('MockTransport: GetCsCaps noun index out of range (STALL)');
       }
-      case WireCmd.GetCsStatus.code: {
+      case Cmd.CsStatus.legacy.get: {
         let lastStatus = this.#csLastStatus;
         if (this.#csPendingPolls > 0) {
           this.#csPendingPolls -= 1;
@@ -1621,24 +1621,24 @@ export class MockTransport implements DspTransport {
           irCmdStatus: this.#csIrCmdStatus.slice(0, 8),
         });
       }
-      case WireCmd.GetCsName.code: {
+      case Cmd.CsName.legacy.get: {
         if (value >= Domain.CS_MAX_BINDINGS) throw new TransportStall('MockTransport: GetCsName slot out of range (STALL)');
         return Codec.encode(Wire.CsName, this.#csNames[value] ?? '');
       }
-      case WireCmd.GetCsGroup.code: {
+      case Cmd.CsGroup.legacy.get: {
         if (this.#csCapsVersion < 9 || value >= Domain.CS_MAX_GROUPS) {
           throw new TransportStall('MockTransport: GetCsGroup unsupported or slot out of range (STALL)');
         }
         return Codec.encode(Wire.CsGroup, this.#csGroups[value]);
       }
-      case WireCmd.GetCsMacro.code: {
+      case Cmd.CsMacro.legacy.get: {
         if (this.#csCapsVersion < 9 || value >= Domain.CS_MAX_MACROS) {
           throw new TransportStall('MockTransport: GetCsMacro unsupported or slot out of range (STALL)');
         }
         const m = this.#csMacros[value];
         return Codec.encode(Wire.CsMacro, { name: m.name, stepCount: m.stepCount, steps: m.steps });
       }
-      case WireCmd.CsMacroFire.code: {
+      case Act.CsMacroFire.legacy.code: {
         if (this.#csCapsVersion < 9) throw new TransportStall('MockTransport: CsMacroFire unsupported (STALL)');
         if (this.#csRevertBusy) throw new TransportStall('MockTransport: CsMacroFire during revert (STALL)');
         if (value === 0xFFFF) {
@@ -1661,7 +1661,7 @@ export class MockTransport implements DspTransport {
         this.#csMacroRun = { idx: value, startedAt: Date.now(), stepStart, endAt: acc };
         return new Uint8Array([1]);
       }
-      case WireCmd.GetCsExtStatus.code: {
+      case Cmd.CsExtStatus.legacy.get: {
         if (this.#csCapsVersion < 9) throw new TransportStall('MockTransport: GetCsExtStatus unsupported (STALL)');
         let macroRunning = 0xFF;
         let macroStep = 0;
@@ -1681,23 +1681,23 @@ export class MockTransport implements DspTransport {
           groupStatus: this.#csGroupStatus.slice(), macroStatus: this.#csMacroStatus.slice(),
         });
       }
-      case WireCmd.GetCsDisplayCfg.code: {
+      case Cmd.CsDisplayCfgResponse.legacy.get: {
         if (this.#csCapsVersion < 10) throw new TransportStall('MockTransport: GetCsDisplayCfg unsupported (STALL)');
         return Codec.encode(Wire.CsDisplayCfgResponse, {
           maxPages: Domain.CS_MAX_DISPLAY_PAGES, modelCount: Domain.CS_DISPLAY_MODEL_COUNT, cfg: this.#csDisplayCfg,
         });
       }
-      case WireCmd.GetCsDisplayPage.code: {
+      case Cmd.CsDisplayPage.legacy.get: {
         if (this.#csCapsVersion < 10 || value >= Domain.CS_MAX_DISPLAY_PAGES) {
           throw new TransportStall('MockTransport: GetCsDisplayPage unsupported or page out of range (STALL)');
         }
         return Codec.encode(Wire.CsDisplayPage, this.#csDisplayPages[value]);
       }
-      case WireCmd.GetCsDisplayStatus.code: {
+      case Cmd.CsDisplayStatus.legacy.get: {
         if (this.#csCapsVersion < 10) throw new TransportStall('MockTransport: GetCsDisplayStatus unsupported (STALL)');
         return Codec.encode(Wire.CsDisplayStatus, this.#csDisplayStatus());
       }
-      case WireCmd.CsIrLearn.code: {
+      case Act.CsIrLearn.legacy.code: {
         if (this.#csRevertBusy && value <= 1) throw new TransportStall('MockTransport: CsIrLearn during revert (STALL)');
         if (value === 1) {
           if (!this.#hasLiveIrBinding()) {
@@ -1726,7 +1726,7 @@ export class MockTransport implements DspTransport {
           code: this.#csIrLearnResult.code,
         });
       }
-      case WireCmd.CsSave.code: {
+      case Act.CsSave.legacy.code: {
         // Firmware STALLs a save/revert whose predecessor is still pending;
         // it never answers the busy case with a byte.
         if (this.#csPendingPolls > 0) throw new TransportStall('MockTransport: CsSave while pending (STALL)');
@@ -1743,7 +1743,7 @@ export class MockTransport implements DspTransport {
         this.#csPendingPolls = 1;
         return new Uint8Array([1]);
       }
-      case WireCmd.CsRevert.code: {
+      case Act.CsRevert.legacy.code: {
         if (this.#csPendingPolls > 0) throw new TransportStall('MockTransport: CsRevert while pending (STALL)');
         this.#csBindings = this.#csSavedBindings.map((b) => ({ ...b }));
         this.#csNames = this.#csSavedNames.slice();
@@ -1774,23 +1774,23 @@ export class MockTransport implements DspTransport {
         this.#csRevertBusy = this.#fw116Release;
         return new Uint8Array([1]);
       }
-      case WireCmd.OutputLatency.code:
+      case Cmd.OutputLatency.legacy.get:
         return this.#outputLatencyIn(value);
-      case WireCmd.GetInputSourceName.code:
+      case Cmd.InputSourceName.legacy.get:
         if (!this.#inputSourceNamesSupported) {   // legacy gain float
           if (value >= MOCK_LEGACY_GAIN_CHANNELS) throw new TransportStall('MockTransport: invalid legacy channel (STALL)');
           return new Uint8Array(4).subarray(0, Math.min(length, 4));
         }
         if (value > MOCK_INPUT_SOURCE_MAX) throw new TransportStall('MockTransport: invalid input source (STALL)');
         return this.#encodeName(this.#inputSourceNames[value], length);
-      case WireCmd.GetDeviceName.code:
+      case Cmd.DeviceName.legacy.get:
         if (!this.#deviceNameSupported) {   // legacy channel mute
           if (value >= MOCK_LEGACY_GAIN_CHANNELS) throw new TransportStall('MockTransport: invalid legacy channel (STALL)');
           return new Uint8Array(Math.min(length, 1));
         }
         if (value !== 0) throw new TransportStall('MockTransport: invalid device name request (STALL)');
         return this.#encodeName(this.#deviceName, length);
-      case WireCmd.GetBufferStats.code:
+      case Cmd.BufferStats.legacy.get:
         return Syn.synthesizeBufferStats({
           numSpdif: this.#numSpdif(),
           pdmActive: true, streaming: true,
@@ -1805,7 +1805,7 @@ export class MockTransport implements DspTransport {
             ringFillPct: 70, ringMinFillPct: 40, ringMaxFillPct: 90,
           },
         });
-      case WireCmd.GetSysClock.code:
+      case Cmd.SysClockStatus.legacy.get:
         if (!this.#sysClockSupported) throw new TransportStall('MockTransport: GetSysClock unsupported (STALL)');
         return Codec.encode(Wire.SysClockStatus, {
           activeMode: this.#sysClockActiveMode,
@@ -1827,27 +1827,27 @@ export class MockTransport implements DspTransport {
     this.#requireOpen();
     if (this.#paged) throw new TransportStall(`MockTransport: paged device has no page-0 command 0x${cmd.toString(16)} (STALL)`);
     const request = cmd & 0xFF;
-    if (request !== WireCmd.GetAllParamsChunk.code) this.#getChunkSession = null;
-    if (request !== WireCmd.SetAllParamsChunk.code) this.#setChunkSession = null;
+    if (request !== Cmd.AllParamsChunk.legacy.get) this.#getChunkSession = null;
+    if (request !== Cmd.AllParamsChunk.legacy.set) this.#setChunkSession = null;
     switch (request) {
-      case WireCmd.SetMasterVolume.code:
+      case Cmd.MasterVolume.legacy.set:
         this.#mockState.masterVolumeDb = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetPreamp.code: {
+      case Cmd.Preamp.legacy.set: {
         // Firmware applies the legacy preamp to every input channel.
         const db = Codec.decode(Codec.f32, data);
         this.#mockState.preampDb = db;
         this.#mockState.inputPreampsDb.fill(db);
         return;
       }
-      case WireCmd.SetInputPreamp.code: {
+      case Cmd.InputPreamp.legacy.set: {
         const idx = value & 0xFF;
         if (idx < this.#mockState.inputPreampsDb.length) {
           this.#mockState.inputPreampsDb[idx] = Codec.decode(Codec.f32, data);
         }
         return;
       }
-      case WireCmd.SetEqParam.code: {
+      case Cmd.EqParam.legacy.set: {
         const p = Codec.decode(Wire.SetFilterPacket, data);
         const slot = this.#bandSlot(p.channel, p.band);
         if (slot) {
@@ -1867,31 +1867,31 @@ export class MockTransport implements DspTransport {
         }
         return;
       }
-      case WireCmd.SetBandBypass.code: {
+      case Cmd.BandBypass.legacy.set: {
         const ch = (value >> 8) & 0xFF;
         const band = value & 0xFF;
         const slot = this.#bandSlot(ch, band);
         if (slot) slot.row[slot.idx] = { ...slot.row[slot.idx], bypass: Codec.decode(Codec.bool8, data) };
         return;
       }
-      case WireCmd.SetUserVolume.code:
+      case Cmd.UserVolume.legacy.set:
         this.#mockState.userVolume.volumeDb = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetUserMute.code:
+      case Cmd.UserMute.legacy.set:
         this.#mockState.userVolume.mute = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetInputSource.code: {
+      case Cmd.InputSource.legacy.set: {
         const newSource = Codec.decode(Codec.u8, data);
         const oldSource = this.#mockState.inputConfig.source;
         this.#mockState.inputConfig.source = newSource;
         if (newSource !== oldSource) this.#regenerateInputDefaultNames(oldSource, newSource);
         return;
       }
-      case WireCmd.SetI2sClockMode.code:
+      case Cmd.I2sClockMode.legacy.set:
         // Mock applies immediately (no deferred main-loop apply to emulate).
         this.#mockState.inputConfig.i2sClockMode = Codec.decode(Codec.u8, data);
         return;
-      case WireCmd.OutputLatency.code: {
+      case Cmd.OutputLatency.legacy.set: {
         if (!this.#fw116Release) throw new TransportStall('MockTransport: REQ_OUTPUT_LATENCY unsupported (STALL)');
         const id = data[0];
         // USB ACKs and ignores an unknown id (the data stage discards the
@@ -1903,7 +1903,7 @@ export class MockTransport implements DspTransport {
         this.#outputLatencyPendingReads = MOCK_OUTPUT_LATENCY_PENDING_READS;
         return;
       }
-      case WireCmd.SetInputSourceName.code: {
+      case Cmd.InputSourceName.legacy.set: {
         if (!this.#inputSourceNamesSupported) throw new Error('MockTransport: a name write reached legacy firmware, which would store it as a channel gain');
         if (value > MOCK_INPUT_SOURCE_MAX) return;
         const name = this.#decodeName(data);
@@ -1911,14 +1911,14 @@ export class MockTransport implements DspTransport {
         this.#pushNameNotify(0x0F, value, name);
         return;
       }
-      case WireCmd.SetDeviceName.code: {
+      case Cmd.DeviceName.legacy.set: {
         if (!this.#deviceNameSupported) throw new Error('MockTransport: a name write reached legacy firmware, which would store it as a channel mute');
         if (value !== 0) return;
         this.#deviceName = this.#decodeName(data);
         this.#pushNameNotify(0x10, 0, this.#deviceName);
         return;
       }
-      case WireCmd.SetSysClock.code: {
+      case Cmd.SysClock.legacy.set: {
         if (!this.#sysClockSupported) throw new TransportStall('MockTransport: SetSysClock unsupported (STALL)');
         const req = Codec.decode(Wire.SysClockRequest, data);
         if (req.mode >= Domain.SYS_CLOCK_MODE_DEFAULT_VREG.length) {
@@ -1936,144 +1936,144 @@ export class MockTransport implements DspTransport {
         this.#sysClockFallback = false;
         return;
       }
-      case WireCmd.SetInputRate.code: {
+      case Cmd.InputRate.legacy.set: {
         const hz = Codec.decode(Codec.u32, data);
         if (hz === 44100 || hz === 48000 || hz === 96000) {
           this.#mockState.inputConfig.i2sInputRateEnc = hz === 44100 ? 0 : hz === 96000 ? 2 : 1;
         }
         return;
       }
-      case WireCmd.SetLgSoundSyncEnabled.code:
+      case Cmd.LgSoundSyncEnabled.legacy.set:
         this.#mockState.lgSoundSync.enabled = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetDacHwMute.code: {
+      case Cmd.DacHwMute.legacy.set: {
         const w = Codec.decode(Wire.DacHwMute, data);
         this.#mockState.dacHwMute = {
           enabled: w.enabled, activeLow: w.activeLow, pin: w.pin, holdMs: w.holdMs, releaseMs: w.releaseMs,
         };
         return;
       }
-      case WireCmd.SetMatrixRoute.code: {
-        const p = Codec.decode(WireCmd.SetMatrixRoute.codec, data);
+      case Cmd.MatrixRoute.legacy.set: {
+        const p = Codec.decode(Cmd.MatrixRoute.codec, data);
         const row = this.#mockState.crosspoints![p.input];
         if (row) row[p.output] = { enabled: p.enabled, invert: p.phaseInvert, gainDb: p.gainDb };
         return;
       }
-      case WireCmd.SetOutputEnable.code:
+      case Cmd.OutputEnable.legacy.set:
         this.#output(value).enabled = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetOutputGain.code:
+      case Cmd.OutputGain.legacy.set:
         this.#output(value).gainDb = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetOutputMute.code:
+      case Cmd.OutputMute.legacy.set:
         this.#output(value).muted = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetOutputDelay.code:
+      case Cmd.OutputDelay.legacy.set:
         this.#output(value).delayMs = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetBypass.code:
+      case Cmd.Bypass.legacy.set:
         this.#mockState.bypass = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetMasterVolumeMode.code:
+      case Cmd.MasterVolumeMode.legacy.set:
         this.#masterVolumeMode = Codec.decode(Codec.u8, data) as Domain.MasterVolumeMode;
         return;
 
       // Loudness
-      case WireCmd.SetLoudnessEnabled.code:
+      case Cmd.LoudnessEnabled.legacy.set:
         this.#mockState.loudness!.enabled = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetLoudnessRefSpl.code:
+      case Cmd.LoudnessRefSpl.legacy.set:
         this.#mockState.loudness!.refSpl = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetLoudnessIntensity.code:
+      case Cmd.LoudnessIntensity.legacy.set:
         this.#mockState.loudness!.intensityPct = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetLoudnessMask.code:
+      case Cmd.LoudnessMask.legacy.set:
         this.#mockState.loudness!.outputMask = Codec.decode(Codec.u16, data);
         return;
 
       // Psybass
-      case WireCmd.SetPsybassEnabled.code:
+      case Cmd.PsybassEnabled.legacy.set:
         this.#mockState.psybass!.enabled = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetPsybassCutoff.code:
+      case Cmd.PsybassCutoff.legacy.set:
         this.#mockState.psybass!.cutoffHz = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetPsybassHarmonics.code:
+      case Cmd.PsybassHarmonics.legacy.set:
         this.#mockState.psybass!.harmonicsDb = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetPsybassDrive.code:
+      case Cmd.PsybassDrive.legacy.set:
         this.#mockState.psybass!.driveDb = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetPsybassCharacter.code:
+      case Cmd.PsybassCharacter.legacy.set:
         this.#mockState.psybass!.characterPct = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetPsybassOriginal.code:
+      case Cmd.PsybassOriginal.legacy.set:
         this.#mockState.psybass!.originalDb = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetPsybassMask.code:
+      case Cmd.PsybassMask.legacy.set:
         this.#mockState.psybass!.outputMask = Codec.decode(Codec.u16, data);
         return;
 
       // Subharmonic synthesizer (fw V29+, both platforms). Firmware clamps
       // every SET to its documented range -- a GET afterwards reads the
       // clamped value back.
-      case WireCmd.SetSubharmEnabled.code:
+      case Cmd.SubharmEnabled.legacy.set:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: SetSubharmEnabled unsupported (STALL)');
         this.#mockState.subharm!.enabled = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetSubharmLow.code:
+      case Cmd.SubharmLow.legacy.set:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: SetSubharmLow unsupported (STALL)');
         this.#mockState.subharm!.lowDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data), this.#wireVersion >= MIN_SUBHARM_EXT_WIRE);
         return;
-      case WireCmd.SetSubharmHigh.code:
+      case Cmd.SubharmHigh.legacy.set:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: SetSubharmHigh unsupported (STALL)');
         this.#mockState.subharm!.highDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data), this.#wireVersion >= MIN_SUBHARM_EXT_WIRE);
         return;
-      case WireCmd.SetSubharmBoost.code:
+      case Cmd.SubharmBoost.legacy.set:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: SetSubharmBoost unsupported (STALL)');
         this.#mockState.subharm!.boostDb = Clamp.subharmBoostDb(Codec.decode(Codec.f32, data));
         return;
-      case WireCmd.SetSubharmMask.code:
+      case Cmd.SubharmMask.legacy.set:
         if (this.#wireVersion < MIN_SUBHARM_WIRE) throw new TransportStall('MockTransport: SetSubharmMask unsupported (STALL)');
         this.#mockState.subharm!.outputMask = Codec.decode(Codec.u16, data);
         return;
 
       // V30 tail: third band, selectivity, ceiling, pair link, solo. Below
       // V30 the whole extension opcode range STALLs.
-      case WireCmd.SetSubharmTop.code:
+      case Cmd.SubharmTop.legacy.set:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: SetSubharmTop unsupported (STALL)');
         this.#mockState.subharm!.topDb = Clamp.subharmLevelDb(Codec.decode(Codec.f32, data), this.#wireVersion >= MIN_SUBHARM_EXT_WIRE);
         return;
-      case WireCmd.SetSubharmSelect.code:
+      case Cmd.SubharmSelect.legacy.set:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: SetSubharmSelect unsupported (STALL)');
         this.#mockState.subharm!.selectMode =
           Math.max(0, Math.min(2, Math.round(Codec.decode(Codec.u8, data)))) as SubharmSelect;
         return;
-      case WireCmd.SetSubharmSolo.code:
+      case Cmd.SubharmSolo.legacy.set:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: SetSubharmSolo unsupported (STALL)');
         this.#subharmSolo = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetSubharmLink.code:
+      case Cmd.SubharmLink.legacy.set:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: SetSubharmLink unsupported (STALL)');
         this.#mockState.subharm!.linkPairs = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetSubharmDepth.code:
+      case Cmd.SubharmDepth.legacy.set:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: SetSubharmDepth unsupported (STALL)');
         this.#mockState.subharm!.selectDepth = Clamp.subharmDepthPct(Codec.decode(Codec.f32, data));
         return;
-      case WireCmd.SetSubharmHold.code:
+      case Cmd.SubharmHold.legacy.set:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: SetSubharmHold unsupported (STALL)');
         this.#mockState.subharm!.selectHoldMs = Clamp.subharmHoldMs(Codec.decode(Codec.f32, data));
         return;
-      case WireCmd.SetSubharmCeiling.code:
+      case Cmd.SubharmCeiling.legacy.set:
         if (this.#wireVersion < MIN_SUBHARM_EXT_WIRE) throw new TransportStall('MockTransport: SetSubharmCeiling unsupported (STALL)');
         this.#mockState.subharm!.ceilingDb = Clamp.subharmCeilingDb(Codec.decode(Codec.f32, data));
         return;
 
       // Onboard RTA (fw V30+): validates like rta_set_config; the USB data stage
       // ACKs regardless, so a bad config is a silent no-op.
-      case WireCmd.RtaSetConfig.code: {
+      case Cmd.RtaConfig.legacy.set: {
         this.#requireRta();
         if (data.length !== Codec.sizeOf(Wire.RtaConfig)) return;
         const c = Codec.decode(Wire.RtaConfig, data);
@@ -2094,17 +2094,17 @@ export class MockTransport implements DspTransport {
 
       // Per-output limiter (fw V32+). Firmware clamps; 0xFF fans out to every
       // output; a bad output/index or a short payload is a silent no-op.
-      case WireCmd.Limiter.code:
+      case Cmd.Limiter.legacy.set:
         if (this.#wireVersion < MIN_LIMITER_WIRE) throw new TransportStall('MockTransport: Limiter unsupported (STALL)');
         if (data.length >= 4) this.#setLimiterParam(value >> 8, value & 0xFF, Codec.decode(Codec.f32, data));
         return;
 
       // Upmixer
-      case WireCmd.UpmixSetParam.code:
+      case Cmd.UpmixParam.legacy.set:
         this.#setUpmixParam(value, Codec.decode(Codec.f32, data));
         return;
-      case WireCmd.UpmixSetConfig.code: {
-        const p = Codec.decode(WireCmd.UpmixSetConfig.codec, data);
+      case Cmd.UpmixConfig.legacy.set: {
+        const p = Codec.decode(Cmd.UpmixConfig.codec, data);
         this.#mockState.upmix = {
           enabled: p.enabled, centerMode: p.centerMode, surroundMode: p.surroundMode,
           strengthPct: p.strengthPct, centerWidthPct: p.centerWidthPct, corrThresholdPct: p.corrThresholdPct,
@@ -2116,78 +2116,78 @@ export class MockTransport implements DspTransport {
       }
 
       // Crossfeed
-      case WireCmd.SetCrossfeedEnabled.code:
+      case Cmd.CrossfeedEnabled.legacy.set:
         this.#mockState.crossfeed!.enabled = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetCrossfeedPreset.code:
+      case Cmd.CrossfeedPreset.legacy.set:
         this.#mockState.crossfeed!.preset = Codec.decode(Codec.u8, data) as Domain.CrossfeedPreset;
         return;
-      case WireCmd.SetCrossfeedItd.code:
+      case Cmd.CrossfeedItd.legacy.set:
         this.#mockState.crossfeed!.itd = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetCrossfeedFreq.code:
+      case Cmd.CrossfeedFreq.legacy.set:
         this.#mockState.crossfeed!.freq = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetCrossfeedFeedDb.code:
+      case Cmd.CrossfeedFeedDb.legacy.set:
         this.#mockState.crossfeed!.feedDb = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetCrossfeedOutputs.code:
+      case Cmd.CrossfeedOutputs.legacy.set:
         this.#mockState.crossfeed!.outputPairMask = Codec.decode(Codec.u8, data);
         return;
 
       // Leveller
-      case WireCmd.SetLevellerEnabled.code:
+      case Cmd.LevellerEnabled.legacy.set:
         this.#mockState.leveller!.enabled = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetLevellerSpeed.code:
+      case Cmd.LevellerSpeed.legacy.set:
         this.#mockState.leveller!.speed = Codec.decode(Codec.u8, data) as Domain.LevellerSpeed;
         return;
-      case WireCmd.SetLevellerLookahead.code:
+      case Cmd.LevellerLookahead.legacy.set:
         this.#mockState.leveller!.lookahead = Codec.decode(Codec.bool8, data);
         return;
-      case WireCmd.SetLevellerAmount.code:
+      case Cmd.LevellerAmount.legacy.set:
         this.#mockState.leveller!.amount = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetLevellerMaxGain.code:
+      case Cmd.LevellerMaxGain.legacy.set:
         this.#mockState.leveller!.maxGainDb = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetLevellerGate.code:
+      case Cmd.LevellerGate.legacy.set:
         this.#mockState.leveller!.gateDb = Codec.decode(Codec.f32, data);
         return;
-      case WireCmd.SetLevellerMasks.code: {
+      case Cmd.LevellerMasks.legacy.set: {
         const m = Codec.decode(Wire.LevellerMasks, data);
         this.#mockState.leveller!.detectorMask = m.detector;
         this.#mockState.leveller!.applyMask = m.apply;
         return;
       }
 
-      case WireCmd.SetChannelName.code: {
+      case Cmd.ChannelName.legacy.set: {
         const ch = value & 0xFF;
         if (ch < this.#numChannels()) {
-          this.#mockState.channelNames[ch] = Codec.decode(WireCmd.SetChannelName.codec, data);
+          this.#mockState.channelNames[ch] = Codec.decode(Cmd.ChannelName.codec, data);
         }
         return;
       }
 
-      case WireCmd.PresetSetName.code: {
+      case Cmd.PresetName.legacy.set: {
         const slot = value & 0xFF;
         if (slot < this.#presetNames.length) {
-          this.#presetNames[slot] = Codec.decode(WireCmd.PresetSetName.codec, data);
+          this.#presetNames[slot] = Codec.decode(Cmd.PresetName.codec, data);
         }
         return;
       }
 
-      case WireCmd.PresetSetStartup.code: {
-        const cfg = Codec.decode(WireCmd.PresetSetStartup.codec, data);
+      case Cmd.PresetStartup.legacy.set: {
+        const cfg = Codec.decode(Cmd.PresetStartup.codec, data);
         this.#presetStartupMode = cfg.mode;
         this.#presetDefaultSlot = cfg.slot;
         return;
       }
-      case WireCmd.SetOutputConfigMode.code:
+      case Cmd.OutputConfigMode.legacy.set:
         this.#outputConfigMode = Codec.decode(Codec.u8, data) as Domain.OutputConfigMode;
         return;
 
-      case WireCmd.SetUartConfig.code: {
+      case Cmd.UartConfig.legacy.set: {
         const cfg = Codec.decode(Wire.UartCtrlConfig, data);
         this.#uartLastStatus = this.#validateUartConfig(cfg);
         if (this.#uartLastStatus === 0x00) {
@@ -2196,7 +2196,7 @@ export class MockTransport implements DspTransport {
         }
         return;
       }
-      case WireCmd.SetI2cConfig.code: {
+      case Cmd.I2cConfig.legacy.set: {
         const cfg = Codec.decode(Wire.I2cCtrlConfig, data);
         this.#i2cLastStatus = this.#validateI2cConfig(cfg);
         if (this.#i2cLastStatus === 0x00) {
@@ -2206,7 +2206,7 @@ export class MockTransport implements DspTransport {
         return;
       }
 
-      case WireCmd.SetCsBinding.code: {
+      case Cmd.CsBinding.legacy.set: {
         if (value >= Domain.CS_MAX_BINDINGS) {
           // Bad slot is rejected by the handler itself -- immediate, no
           // PENDING window.
@@ -2221,7 +2221,7 @@ export class MockTransport implements DspTransport {
         return;
       }
 
-      case WireCmd.SetCsName.code: {
+      case Cmd.CsName.legacy.set: {
         if (value >= Domain.CS_MAX_BINDINGS) {
           this.#csLastStatus = 0x10;                  // CS_STATUS_INVALID_SLOT
           this.#csLastSlot = value & 0xFF;
@@ -2235,7 +2235,7 @@ export class MockTransport implements DspTransport {
         return;
       }
 
-      case WireCmd.SetCsIrCmd.code: {
+      case Cmd.CsIrCmd.legacy.set: {
         if (value >= this.#csMaxIr()) {
           this.#csLastStatus = 0x10;                  // CS_STATUS_INVALID_SLOT
           this.#csLastSlot = 0x80 | (value & 0xFF);
@@ -2248,7 +2248,7 @@ export class MockTransport implements DspTransport {
         return;
       }
 
-      case WireCmd.SetCsGroup.code: {
+      case Cmd.CsGroup.legacy.set: {
         if (this.#csCapsVersion < 9) throw new TransportStall('MockTransport: SetCsGroup unsupported (STALL)');
         if (value >= Domain.CS_MAX_GROUPS) {
           // Bad slot is rejected immediately, no PENDING window.
@@ -2263,7 +2263,7 @@ export class MockTransport implements DspTransport {
         return;
       }
 
-      case WireCmd.SetCsMacro.code: {
+      case Cmd.CsMacroHeader.legacy.set: {
         if (this.#csCapsVersion < 9) throw new TransportStall('MockTransport: SetCsMacro unsupported (STALL)');
         if (value >= Domain.CS_MAX_MACROS) {
           // Bad slot is rejected immediately, no PENDING window.
@@ -2278,7 +2278,7 @@ export class MockTransport implements DspTransport {
         return;
       }
 
-      case WireCmd.SetCsMacroStep.code: {
+      case Cmd.CsMacroStep.legacy.set: {
         if (this.#csCapsVersion < 9) throw new TransportStall('MockTransport: SetCsMacroStep unsupported (STALL)');
         const idx = value & 0xFF;
         const step = (value >> 8) & 0xFF;
@@ -2299,7 +2299,7 @@ export class MockTransport implements DspTransport {
         return;
       }
 
-      case WireCmd.SetCsDisplayCfg.code: {
+      case Cmd.CsDisplayCfg.legacy.set: {
         if (this.#csCapsVersion < 10) throw new TransportStall('MockTransport: SetCsDisplayCfg unsupported (STALL)');
         if (data.length < Codec.sizeOf(Wire.CsDisplayCfg)) {
           this.#csLastStatus = 0x14;                  // CS_STATUS_INVALID_VALUE
@@ -2313,7 +2313,7 @@ export class MockTransport implements DspTransport {
         return;
       }
 
-      case WireCmd.SetCsDisplayPage.code: {
+      case Cmd.CsDisplayPage.legacy.set: {
         if (this.#csCapsVersion < 10) throw new TransportStall('MockTransport: SetCsDisplayPage unsupported (STALL)');
         const page = value & 0xFF;
         if (page >= Domain.CS_MAX_DISPLAY_PAGES) {
@@ -2333,12 +2333,12 @@ export class MockTransport implements DspTransport {
         return;
       }
 
-      case WireCmd.SetAllParams.code: {
+      case Cmd.AllParams.legacy.set: {
         this.#applySetAllParams(data);
         return;
       }
 
-      case WireCmd.SetAllParamsChunk.code: {
+      case Cmd.AllParamsChunk.legacy.set: {
         const target = Wire.bulkSizeForVersion(this.#wireVersion);
         if (value === 0) {
           // fw rejects a session whose declared packet is shorter than its

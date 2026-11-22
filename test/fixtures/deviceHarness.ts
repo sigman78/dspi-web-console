@@ -6,19 +6,19 @@
 
 import { DspDevice } from '@/device/DspDevice';
 import { makeBulk } from '@test/fixtures/bulkFixtures';
-import { WireCmd, PAGED_PROTOCOL_INFO } from '@/protocol';
+import { Cmd, PAGED_PROTOCOL_INFO } from '@/protocol';
 import { PlatformType } from '@/domain';
 import { type DspTransport, TransportStall } from '@/transport/DspTransport';
 
 export type TestPlatform = 'rp2040' | 'rp2350';
 
 export function identityBytes(request: number, length: number, platform: TestPlatform): Uint8Array | null {
-  if (request === WireCmd.GetSerial.code) {
+  if (request === Cmd.Serial.legacy.get) {
     const out = new Uint8Array(length);
     out.set(new TextEncoder().encode(`TEST-${platform.toUpperCase()}`).slice(0, length));
     return out;
   }
-  if (request === WireCmd.GetPlatform.code) {
+  if (request === Cmd.Platform.legacy.get) {
     const out = new Uint8Array(length);
     out[0] = platform === 'rp2350' ? PlatformType.RP2350 : PlatformType.RP2040;
     if (length > 1) out[1] = 1;
@@ -45,7 +45,7 @@ export function withIdentity(base: DspTransport, platform: TestPlatform = 'rp235
       if (request > 0xFF) return Promise.reject(new Error(`unexpected paged request 0x${request.toString(16)} reached a legacy stub`));
       const identity = identityBytes(request, length, platform);
       if (identity) return Promise.resolve(identity);
-      if (request === WireCmd.GetAllParams.code && !bulkInjected) {
+      if (request === Cmd.AllParams.legacy.get && !bulkInjected) {
         bulkInjected = true;
         return Promise.resolve(makeBulk({}, platform === 'rp2350'
           ? { platformId: 1 }

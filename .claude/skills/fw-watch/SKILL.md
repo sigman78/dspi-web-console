@@ -96,7 +96,7 @@ only at Procedure step 10. Do NOT dump all of `main`'s history.
 
    | Firmware signal (where) | App-side action |
    |---|---|
-   | New `REQ_*` opcode `#define` in `config.h` + handler in `vendor_commands.c` | add `WireCmd` entry, `DspDevice` method, UI gate |
+   | New `REQ_*` opcode `#define` in `config.h` + handler in `vendor_commands.c` | add a `Cmd`/`Act` entry in `src/protocol/commands/<page>.ts`, `DspDevice` method, UI gate |
    | `WIRE_FORMAT_VERSION` bumped in `bulk_params.h` | bump `BulkSizes`, extend `bulkLayout()`, parse/build new section |
    | New field in `WireBulkParams` struct | add codec field + conditional read/write in `bulkParser.ts` |
    | Existing struct byte re-meaning (reserved→named) | capability flag; reader/writer unchanged in shape |
@@ -168,7 +168,8 @@ Each branch section:
 _Last reviewed commit: `8100fdb` · updated 2026-06-16_
 
 - [ ] **New opcode `REQ_SET_INPUT_RATE` (0xED)** — `config.h@8100fdb`,
-      handler `vendor_commands.c`. App: add `WireCmd.SetInputRate`,
+      handler `vendor_commands.c`. App: add the `InputRate` entry to `Cmd` in
+      `src/protocol/commands/input.ts`,
       `DspDevice.setInputRate()`, UI gate behind an input-rate capability.
 - [ ] **New module `crossover.c`** — `crossover.c@a8f7605`. App: new crossover
       domain model + UI; read `Documentation/Features/crossover_filters_spec.md`.

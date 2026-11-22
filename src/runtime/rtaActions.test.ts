@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import * as Domain from '@/domain';
 import { MockTransport } from '@/transport/MockTransport';
 import type { DspTransport } from '@/transport/DspTransport';
-import { WireCmd } from '@/protocol';
+import { Cmd } from '@/protocol';
 import { DspDevice } from '@/device/DspDevice';
 import { dispatch, mintConnId, makeReadySession, resetAppState } from '@/state';
 import { TimeoutError } from '@/transport/withTimeout';
@@ -20,7 +20,7 @@ async function rig(
     open: () => mock.open(), close: () => mock.close(), isOpen: () => mock.isOpen(), on: (e, l) => mock.on(e, l),
     ctrlIn: async (req, val, len) => tweak(req, await mock.ctrlIn(req, val, len)),
     ctrlOut: (req, val, data) => {
-      if (req === WireCmd.RtaSetConfig.code) sets.push(data);
+      if (req === Cmd.RtaConfig.legacy.set) sets.push(data);
       return mock.ctrlOut(req, val, data);
     },
   };
@@ -81,7 +81,7 @@ describe('setupRta failures', () => {
   it('retries after a config read failure once caps proved the module', async () => {
     let fail = true;
     const { device, session } = await rig(undefined, (req, real) => {
-      if (fail && req === WireCmd.RtaGetConfig.code) throw new Error('boom');
+      if (fail && req === Cmd.RtaConfig.legacy.get) throw new Error('boom');
       return real;
     });
     expect(await setupRta(session, device)).toBe(false);
@@ -94,7 +94,7 @@ describe('setupRta failures', () => {
 
   it('lets a timeout propagate and leaves availability undecided', async () => {
     const { device, session } = await rig(undefined, (req, real) => {
-      if (req === WireCmd.RtaGetCaps.code) throw new TimeoutError('ctrlIn', 2000);
+      if (req === Cmd.RtaCaps.legacy.get) throw new TimeoutError('ctrlIn', 2000);
       return real;
     });
     await expect(setupRta(session, device)).rejects.toBeInstanceOf(TimeoutError);
@@ -120,7 +120,7 @@ describe('readRtaFrames', () => {
 
   it('stamps a reply for an all-silent answer, with the frames decoded as floor', async () => {
     const { device, session } = await rig(undefined, (req, real) => {
-      if (req === WireCmd.RtaGetBandsAll.code) for (let off = 0; off + 82 <= real.length; off += 82) { real[off + 4] = 0xFF; real[off + 5] = 0xFF; }
+      if (req === Cmd.RtaBandsAll.legacy.get) for (let off = 0; off + 82 <= real.length; off += 82) { real[off + 4] = 0xFF; real[off + 5] = 0xFF; }
       return real;
     });
     session.telemetry.wantRta();
@@ -133,7 +133,7 @@ describe('readRtaFrames', () => {
 
   it('redoes setup when the status shows the analyser left the output tap', async () => {
     const { device, session } = await rig(undefined, (req, real) => {
-      if (req === WireCmd.RtaGetStatus.code) real[2] = Domain.RtaTap.Input;
+      if (req === Cmd.RtaStatus.legacy.get) real[2] = Domain.RtaTap.Input;
       return real;
     });
     session.telemetry.wantRta();
