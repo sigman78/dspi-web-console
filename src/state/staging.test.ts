@@ -62,6 +62,12 @@ describe('createStagingState', () => {
     expect(staging.disruptive).toBeUndefined();
   });
 
+  it('a danger entry takes precedence over an earlier warn one in disruptive', () => {
+    staging.stage(entry({ key: 'a', disruptive: { reason: 'restarts outputs', tone: 'warn' } }));
+    staging.stage(entry({ key: 'b', disruptive: { reason: 'overclock', tone: 'danger' } }));
+    expect(staging.disruptive?.tone).toBe('danger');
+  });
+
   it('discarding an entry also drops the entries it auto-staged, but applying keeps them until their turn', async () => {
     staging.stage(entry({ key: 'parent', order: 2 }));
     staging.stage(entry({ key: 'dep', order: 1, autoFor: 'parent' }));

@@ -146,6 +146,9 @@ export function startNotifyChannel(session: ReadySession, clock: LoopClock = tim
     // value, so patch the cache directly.
     if (event.kind === 'inputSourceName') {
       session.names.inputSources[event.sourceId] = event.name;
+      // A pending rename the device now already holds has nothing left to apply.
+      const key = `inputSourceName:${event.sourceId}`;
+      if (session.staging.get(key)?.value === event.name) session.staging.discard(key);
       return;
     }
     if (event.kind === 'deviceName') {

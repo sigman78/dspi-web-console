@@ -485,3 +485,31 @@ describe('runtime/stagedActions: output latency', () => {
     expect(s.staging.has('outputLatency')).toBe(false);
   });
 });
+
+describe('runtime/stagedActions: stageInputSourceName', () => {
+  beforeEach(async () => {
+    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION, fw116Release: true });
+  });
+
+  it('re-staging the live name discards the entry, even with surrounding spaces', () => {
+    const s = sess();
+    s.names.inputSources[AudioInputSource.Usb] = 'Desk';
+    Staged.stageInputSourceName(s, AudioInputSource.Usb, 'Studio');
+    expect(s.staging.has(`inputSourceName:${AudioInputSource.Usb}`)).toBe(true);
+    Staged.stageInputSourceName(s, AudioInputSource.Usb, '  Desk ');
+    expect(s.staging.has(`inputSourceName:${AudioInputSource.Usb}`)).toBe(false);
+  });
+
+  it('applies several staged names in one batch, writing each to the device', async () => {
+    const s = sess();
+    const spy = vi.spyOn(s.device, 'setInputSourceName');
+    Staged.stageInputSourceName(s, AudioInputSource.Usb, 'Desk');
+    Staged.stageInputSourceName(s, AudioInputSource.I2s, 'Turntable');
+    expect(spy).not.toHaveBeenCalled();
+    await s.staging.applyAll();
+    expect(spy).toHaveBeenCalledWith(AudioInputSource.Usb, 'Desk');
+    expect(spy).toHaveBeenCalledWith(AudioInputSource.I2s, 'Turntable');
+    expect(s.names.inputSources[AudioInputSource.I2s]).toBe('Turntable');
+    expect(s.staging.entries.length).toBe(0);
+  });
+});

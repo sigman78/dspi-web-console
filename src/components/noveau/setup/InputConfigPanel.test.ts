@@ -9,6 +9,7 @@ const stageSpdifRxPin = vi.fn();
 const stageSpdifRxPinExt = vi.fn();
 const stageInputRate = vi.fn();
 const stageI2sRxPin = vi.fn();
+const stageInputSourceName = vi.fn();
 
 vi.mock('@/runtime', () => ({
   stageInputSource: (...a: unknown[]) => stageInputSource(...a),
@@ -18,6 +19,7 @@ vi.mock('@/runtime', () => ({
   stageInputRate: (...a: unknown[]) => stageInputRate(...a),
   stageI2sRxPin: (...a: unknown[]) => stageI2sRxPin(...a),
   stageI2sInputChannels: vi.fn(),
+  stageInputSourceName: (...a: unknown[]) => stageInputSourceName(...a),
 }));
 
 import InputConfigPanel from './InputConfigPanel.svelte';
@@ -65,15 +67,17 @@ function makeSession(o: {
   i2sSlaveStatus?: object | null;
   adatInputStatus?: object | null;
   spdifInputCount?: number;
+  staged?: Record<string, unknown>;
+  names?: object;
 } = {}) {
   return {
     device: { capabilities: { features: { adatInput: true }, spdifInputCount: o.spdifInputCount ?? 1 } },
     telemetry: { spdifRxStatus: null, i2sSlaveStatus: o.i2sSlaveStatus ?? null, activeInputChannels: null, adatInputStatus: o.adatInputStatus ?? null },
     mirror: { current: o.snap ?? makeSnap() },
-    names: { inputSources: {} },
+    names: { inputSources: {}, ...o.names },
     ctrlIfaces: { uart: null, i2c: null, status: null },
     controlSurfaces: { caps: null, nouns: [], bindings: [], status: null },
-    staging,
+    staging: o.staged ? { ...staging, has: (k: string) => k in o.staged!, valueOf: (k: string, live: unknown) => o.staged![k] ?? live } : staging,
   } as any;
 }
 
@@ -197,5 +201,67 @@ describe('InputConfigPanel — DEFAULTS chip', () => {
     expect(stageI2sRxPin).toHaveBeenCalledWith(expect.anything(), 0, Wire.Const.PIN_RESET_TO_DEFAULT);
     expect(stageSpdifRxPin).not.toHaveBeenCalled();
     expect(stageSpdifRxPinExt).not.toHaveBeenCalled();
+  });
+});
+
+describe('InputConfigPanel — source names', () => {
+  const pencil = () => screen.getByRole('button', { name: 'Rename input sources' });
+  const usbField = () => screen.getByRole('textbox', { name: 'Name for USB' }) as HTMLInputElement;
+  const supported = { inputSourcesSupported: true, inputSources: { [AudioInputSource.Usb]: 'Desk' } };
+
+  test('the pencil is hidden unless the device stores source names', () => {
+    renderPanel(makeSession({ names: { inputSourcesSupported: false } }));
+    expect(screen.queryByRole('button', { name: 'Rename input sources' })).toBeNull();
+  });
+
+  test('fields start with the stored name', async () => {
+    renderPanel(makeSession({ names: supported }));
+    await fireEvent.click(pencil());
+    expect(usbField().value).toBe('Desk');
+  });
+
+  test('a staged name shows in its field with the staged marker and the device name as title', async () => {
+    renderPanel(makeSession({ names: supported, staged: { [`inputSourceName:${AudioInputSource.Usb}`]: 'Studio' } }));
+    await fireEvent.click(pencil());
+    expect(usbField().value).toBe('Studio');
+    const wrap = usbField().closest('.stage-wrap')!;
+    expect(wrap.classList.contains('staged')).toBe(true);
+    expect(wrap.getAttribute('title')).toBe('device: Desk');
+  });
+
+  test('committing a field stages that source only', async () => {
+    renderPanel(makeSession({ names: supported }));
+    await fireEvent.click(pencil());
+    const field = screen.getByRole('textbox', { name: 'Name for I2S' });
+    field.focus();
+    await fireEvent.input(field, { target: { value: ' Turntable ' } });
+    await fireEvent.keyDown(field, { key: 'Enter' });
+    expect(stageInputSourceName).toHaveBeenCalledExactlyOnceWith(expect.anything(), AudioInputSource.I2s, 'Turntable');
+  });
+
+  test('clicking away stages a typed name exactly once', async () => {
+    renderPanel(makeSession({ names: supported }));
+    await fireEvent.click(pencil());
+    usbField().focus();
+    await fireEvent.input(usbField(), { target: { value: 'Studio' } });
+    await fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(stageInputSourceName).toHaveBeenCalledExactlyOnceWith(expect.anything(), AudioInputSource.Usb, 'Studio');
+  });
+
+  test('Escape reverts a dirty field first, then closes; the pencil toggles', async () => {
+    renderPanel(makeSession({ names: supported }));
+    await fireEvent.click(pencil());
+    usbField().focus();
+    await fireEvent.input(usbField(), { target: { value: 'Oops' } });
+    await fireEvent.keyDown(usbField(), { key: 'Escape' });
+    expect(usbField().value).toBe('Desk');
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    await fireEvent.keyDown(usbField(), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(stageInputSourceName).not.toHaveBeenCalled();
+    await fireEvent.click(pencil());
+    await fireEvent.click(pencil());
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

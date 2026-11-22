@@ -15,6 +15,7 @@ import * as Io from './ioActions';
 import * as Mixer from './mixerActions';
 import * as System from './systemActions';
 import * as ControlSurface from './controlSurfaceActions';
+import * as Names from './nameActions';
 
 const { PIN_RESET_TO_DEFAULT } = Wire.Const;
 
@@ -48,6 +49,7 @@ const ORDER = {
   adatInputEnable: 26,
   dacMute: 60,
   controlIface: 70,
+  inputSourceName: 80, // the apply flash-writes the name directory, briefly restarting the outputs
   outputLatency: 85,  // after the output pins and enables; the apply restarts output
   sysClock: 90,       // last: the apply reboots the clock
 } as const;
@@ -743,6 +745,25 @@ export function stageOutputLatency(s: ReadySession, id: number): void {
     page: 'outputs',
     disruptive: { reason: 'briefly mutes the output', tone: 'warn' },
     apply: () => System.applyOutputLatency(s, id),
+    overlay: (snap) => snap,
+  }));
+}
+
+// --- Input source names ----------------------------------------------------
+
+export function stageInputSourceName(s: ReadySession, source: number, name: string): void {
+  const next = Domain.sanitizeDeviceName(name.trim());
+  const live = s.names.inputSources[source] ?? '';
+  const fmt = (n: string) => (n ? `"${n}"` : 'built-in');
+  stageOrDiscard(s, `inputSourceName:${source}`, live, next, () => ({
+    key: `inputSourceName:${source}`,
+    label: `Name · ${Domain.inputSourceLabel(source, s.device.capabilities.spdifInputCount > 1)}`,
+    from: fmt(live),
+    to: fmt(next),
+    value: next,
+    order: ORDER.inputSourceName,
+    page: 'inputs',
+    apply: () => Names.setInputSourceName(s, source, next),
     overlay: (snap) => snap,
   }));
 }
