@@ -454,12 +454,12 @@ export const MatrixRoutePacket = struct({
   gainDb:      f32,
 });
 
-// 16-byte payload of `SetEqParam` (vendor request 0x43).
+// 16-byte payload of `SetEqParam` (vendor request 0x42).
 export const SetFilterPacket = struct({
   channel:   u8,
   band:      u8,
   type:      u8,
-  _pad:      reserved(1),
+  bypass:    u8,   // exactly 1 bypasses; the device stores it
   frequency: f32,
   q:         f32,
   gain:      f32,
@@ -473,7 +473,7 @@ export const SetFilterPacketQp = struct({
   channel:   u8,
   band:      u8,
   type:      u8,
-  _pad:      reserved(1),
+  bypass:    u8,   // exactly 1 bypasses; the device stores it
   frequency: f32,
   q:         f32,
   gain:      f32,

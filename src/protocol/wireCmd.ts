@@ -28,7 +28,7 @@ function tighten<T>(codec: BinCodec<unknown>): BinCodec<T> {
 
 // Payload shapes for codec-carrying commands.
 type SetEqParamPayload = {
-  channel: ChannelId; band: number; type: FilterType;
+  channel: ChannelId; band: number; type: FilterType; bypass: number;
   frequency: number; q: number; gain: number;
 };
 type MatrixRoutePayload = {

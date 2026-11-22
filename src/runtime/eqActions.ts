@@ -29,10 +29,9 @@ export function setEqFilter(s: ReadySession, channel: Domain.ChannelId, band: nu
   const focus = focusBand(s, channel, band, 'peq');
   focus.read();   // throws on a missing channel or an out-of-range band, before scheduling the write
   const clamped = clampFilter(filter);
+  // Band writes carry a bypass byte the device stores; send the band's live value.
   void write(s,
-    () => s.device.setFilter(channel, band, clamped),
-    // setFilter's wire command carries no bypass byte; keep the mirror's
-    // live value so a concurrent setBandBypass ack is never clobbered.
+    () => s.device.setFilter(channel, band, { ...clamped, bypass: focus.read().bypass }),
     () => focus.modify((cur) => ({ ...clamped, bypass: cur.bypass })),
   );
 }
@@ -48,11 +47,12 @@ export function copyEqBands(s: ReadySession, sourceId: Domain.ChannelId, targetI
   for (let i = 0; i < len; i++) {
     const band = i;
     const filter = copied[i];
+    // The target keeps its own bypass (see setEqFilter).
+    const targetBypass = () => s.mirror.snapshot.channels.find((c) => c.id === targetId)?.filters[band].bypass ?? false;
     void write(s,
-      () => s.device.setFilter(targetId, band, filter),
+      () => s.device.setFilter(targetId, band, { ...filter, bypass: targetBypass() }),
       () => {
         const t = s.mirror.snapshot.channels.find((c) => c.id === targetId);
-        // Bypass doesn't travel on setFilter; the target keeps its own.
         if (t) t.filters[band] = { ...filter, bypass: t.filters[band].bypass };
       },
     );
@@ -60,8 +60,7 @@ export function copyEqBands(s: ReadySession, sourceId: Domain.ChannelId, targetI
 }
 
 // M3 — Per-band EQ bypass. Band edits flow through write() (await-then-patch),
-// matching setEqFilter's lane. setFilter does not carry bypass, so bypass is
-// a separate granular command.
+// matching setEqFilter's lane.
 
 export function setBandBypass(s: ReadySession, channel: Domain.ChannelId, band: number, bypassed: boolean): void {
   const focus = focusBand(s, channel, band, 'peq');
@@ -80,7 +79,7 @@ export function setXoverBand(s: ReadySession, channel: Domain.ChannelId, band: n
   focus.read();   // throws on a missing channel or an out-of-range band, before scheduling the write
   const clamped: Domain.FilterParams = { ...filter, frequency: Clamp.bandFrequencyHz(filter.frequency) };
   void write(s,
-    () => s.device.setCrossoverBand(channel, band, clamped),
+    () => s.device.setCrossoverBand(channel, band, { ...clamped, bypass: focus.read().bypass }),
     () => focus.modify((cur) => ({ ...clamped, bypass: cur.bypass })),
   );
 }

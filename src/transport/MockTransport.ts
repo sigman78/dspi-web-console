@@ -1858,7 +1858,7 @@ export class MockTransport implements DspTransport {
           const prevQpRaw = slot.row[slot.idx].qpRaw;
           slot.row[slot.idx] = {
             type: p.type as FilterParams['type'],
-            bypass: slot.row[slot.idx].bypass,
+            bypass: p.bypass === 1,
             frequency: p.frequency,
             q: p.q,
             gain: p.gain,
