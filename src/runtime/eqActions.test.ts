@@ -204,6 +204,36 @@ describe('setBandBypass', () => {
   });
 });
 
+describe('band edits keep the band bypassed', () => {
+  // Byte 3 of the band write is stored by the device, so an edit that sent 0
+  // would silently un-bypass the band.
+  it('a PEQ edit of a bypassed band leaves it bypassed on the device', async () => {
+    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION });
+    const s = State.activeSession()!;
+    const ch = s.mirror.current!.channels[0].id;
+    actions.setBandBypass(s, ch, 3, true);
+    await flushAllWrites(s);
+    actions.setEqFilter(s, ch, 3, { type: Domain.FilterType.Peaking, bypass: false, frequency: 900, q: 1, gain: 4 });
+    await flushAllWrites(s);
+    const band = (await s.device.getSnapshot()).channels.find((c) => c.id === ch)!.filters[3];
+    expect(band.frequency).toBeCloseTo(900, 3);
+    expect(band.bypass).toBe(true);
+  });
+
+  it('a crossover edit of a bypassed band leaves it bypassed on the device', async () => {
+    await bootMock('rp2350', { wireVersion: Wire.MAX_WIRE_VERSION });
+    const s = State.activeSession()!;
+    const out = s.mirror.current!.channels.find((c) => c.isOutput && c.xoverBands.length > 1)!;
+    actions.setXoverBypass(s, out.id, 1, true);
+    await flushAllWrites(s);
+    actions.setXoverBand(s, out.id, 1, { type: Domain.FilterType.Lr4Hp, bypass: false, frequency: 2500, q: 0.707, gain: 0 });
+    await flushAllWrites(s);
+    const band = (await s.device.getSnapshot()).channels.find((c) => c.id === out.id)!.xoverBands[1];
+    expect(band.frequency).toBeCloseTo(2500, 3);
+    expect(band.bypass).toBe(true);
+  });
+});
+
 describe('setXoverBypass', () => {
 
   it('sends the crossover bypass and flips only that band in the mirror', async () => {

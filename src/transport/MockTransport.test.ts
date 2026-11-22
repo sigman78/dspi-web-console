@@ -318,7 +318,7 @@ describe('MockTransport — Linkwitz Transform qp sidecar (raw wire level)', () 
     const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
     const payload = Codec.encode(Protocol.Wire.SetFilterPacketQp, {
-      channel: 2, band: 1, type: Domain.FilterType.LinkwitzTransform, frequency: 45, q: 0.6, gain: 90, qp: 768,
+      channel: 2, band: 1, type: Domain.FilterType.LinkwitzTransform, bypass: 0, frequency: 45, q: 0.6, gain: 90, qp: 768,
     });
     await t.ctrlOut(Protocol.WireCmd.SetEqParam.code, 0, payload);
 
@@ -331,11 +331,11 @@ describe('MockTransport — Linkwitz Transform qp sidecar (raw wire level)', () 
     const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
     await t.ctrlOut(Protocol.WireCmd.SetEqParam.code, 0, Codec.encode(Protocol.Wire.SetFilterPacketQp, {
-      channel: 2, band: 1, type: Domain.FilterType.LinkwitzTransform, frequency: 45, q: 0.6, gain: 90, qp: 768,
+      channel: 2, band: 1, type: Domain.FilterType.LinkwitzTransform, bypass: 0, frequency: 45, q: 0.6, gain: 90, qp: 768,
     }));
     // Re-send with the plain 16-byte form (frequency changes; qp omitted).
     await t.ctrlOut(Protocol.WireCmd.SetEqParam.code, 0, Codec.encode(Protocol.Wire.SetFilterPacket, {
-      channel: 2, band: 1, type: Domain.FilterType.LinkwitzTransform, frequency: 50, q: 0.6, gain: 90,
+      channel: 2, band: 1, type: Domain.FilterType.LinkwitzTransform, bypass: 0, frequency: 50, q: 0.6, gain: 90,
     }));
 
     const wValue = (2 << 8) | (1 << 3) | 5;
@@ -347,7 +347,7 @@ describe('MockTransport — Linkwitz Transform qp sidecar (raw wire level)', () 
     const t = new MockTransport({ platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 } });
     await t.open();
     await t.ctrlOut(Protocol.WireCmd.SetEqParam.code, 0, Codec.encode(Protocol.Wire.SetFilterPacketQp, {
-      channel: 2, band: 1, type: Domain.FilterType.Peaking, frequency: 1000, q: 1, gain: 3, qp: 999,
+      channel: 2, band: 1, type: Domain.FilterType.Peaking, bypass: 0, frequency: 1000, q: 1, gain: 3, qp: 999,
     }));
 
     const wValue = (2 << 8) | (1 << 3) | 5;

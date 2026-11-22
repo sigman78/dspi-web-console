@@ -58,6 +58,24 @@ describe('DspDevice — wire index shift (RP2350 outputs at 8..16)', () => {
   });
 });
 
+describe('DspDevice — EQ band bypass byte', () => {
+  // SET_EQ_PARAM byte 3 is the band's bypass flag (exactly 1 bypasses) and the
+  // device stores it, so every band write must carry the live value.
+  it.each([
+    ['plain band', Domain.FilterType.Peaking, 16],
+    ['Linkwitz Transform band', Domain.FilterType.LinkwitzTransform, 18],
+  ])('sends bypass in byte 3 of a %s', async (_name, type, length) => {
+    const t = new MockTransport({ platform: 'rp2350' });
+    const d = await DspDevice.create(t);
+    const out = vi.spyOn(t, 'ctrlOut');
+    await d.setFilter(Domain.ChannelId.Out1L, 2, { type, bypass: true, frequency: 120, q: 0.7, gain: 60 });
+    await d.setFilter(Domain.ChannelId.Out1L, 2, { type, bypass: false, frequency: 120, q: 0.7, gain: 60 });
+    const sent = out.mock.calls.map(([, , data]) => data);
+    expect(sent.map((b) => b.byteLength)).toEqual([length, length]);
+    expect(sent.map((b) => b[3])).toEqual([1, 0]);
+  });
+});
+
 describe('DspDevice — crossover bands', () => {
   it('round-trips a crossover band through the 20..23 band window', async () => {
     const d = await makeDevice();

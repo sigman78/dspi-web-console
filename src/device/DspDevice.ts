@@ -658,12 +658,13 @@ export class DspDevice {
   // restoreState write; the edit path is entirely per-field.
 
   // Linkwitz Transform bands send the 18-byte form (qp sidecar appended);
-  // every other type sends the plain 16-byte SetFilterPacket.
+  // every other type sends the plain 16-byte SetFilterPacket. Both carry the
+  // band's bypass byte, which the device stores.
   async setFilter(channel: Domain.ChannelId, band: number, p: Domain.FilterParams): Promise<void> {
     const wireChannel = this.deviceChannel(channel);
     if (p.type === Domain.FilterType.LinkwitzTransform) {
       const bytes = Codec.encode(proto.Wire.SetFilterPacketQp, {
-        channel: wireChannel, band, type: p.type,
+        channel: wireChannel, band, type: p.type, bypass: p.bypass ? 1 : 0,
         frequency: p.frequency, q: p.q, gain: p.gain,
         qp: Domain.encodeQp(p.qp ?? Domain.QP_DEFAULT),
       });
@@ -672,7 +673,7 @@ export class DspDevice {
     }
     return proto.writeCmd(this.transport, proto.WireCmd.SetEqParam, {
       channel: wireChannel, band,
-      type: p.type, frequency: p.frequency, q: p.q, gain: p.gain,
+      type: p.type, bypass: p.bypass ? 1 : 0, frequency: p.frequency, q: p.q, gain: p.gain,
     });
   }
 
