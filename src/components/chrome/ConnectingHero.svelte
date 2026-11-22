@@ -40,8 +40,8 @@
   const showUnsupportedFirmware = $derived(
     connection.errorKind === 'unsupported-firmware'
   );
-  const showPagedFirmware = $derived(
-    connection.errorKind === 'paged-firmware'
+  const showConsoleUpdate = $derived(
+    connection.errorKind === 'console-update'
   );
   // Shown only after a real claim failure (errorKind === 'device-in-use'), so it
   // never appears when the device is simply unplugged (that path has no error).
@@ -49,7 +49,7 @@
     connection.errorKind === 'device-in-use'
   );
   const showErrorPanel = $derived(
-    connection.error !== null && !showUnsupportedFirmware && !showPagedFirmware && !showDeviceInUse
+    connection.error !== null && !showUnsupportedFirmware && !showConsoleUpdate && !showDeviceInUse
   );
 
   const disabled = $derived(
@@ -89,9 +89,9 @@
         <div class="alert-panel__header">FIRMWARE UPDATE REQUIRED</div>
         <pre class="alert-panel__body">{connection.error}</pre>
       </div>
-    {:else if showPagedFirmware}
-      <div class="alert-panel warn" role="alert" aria-label="Firmware not supported yet">
-        <div class="alert-panel__header">FIRMWARE NOT SUPPORTED YET</div>
+    {:else if showConsoleUpdate}
+      <div class="alert-panel warn" role="alert" aria-label="Console update needed">
+        <div class="alert-panel__header">CONSOLE UPDATE NEEDED</div>
         <pre class="alert-panel__body">{connection.error}</pre>
       </div>
     {:else if showDeviceInUse}

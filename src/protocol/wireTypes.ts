@@ -189,6 +189,11 @@ export const MasterVolume = struct({
 // S/PDIF input: spdifRxPinExt holds the SPDIF 2/3/4 GPIOs (0 = absent/
 // keep-live), spdifRxEnabledExtP1 is mask+1 (0 = absent, else bit0=SPDIF2,
 // bit1=SPDIF3, bit2=SPDIF4), and no reserved byte remains.
+//
+// From V34 the spdifRxEnabledExtP1 byte is spdif_rx_count (S/PDIF inputs in the
+// block, 1..4, 0 = absent) and adatInputEnabledP1 is input_enable_p1 (block
+// switches + 1, 0 = absent; bit0 S/PDIF, bit1 I2S, bit2 ADAT). The bulk parser
+// maps both into the V32 meanings and keeps the raw bytes.
 export const InputConfig = struct({
   inputSource:          u8,
   spdifRxPin:           u8,
@@ -1070,8 +1075,14 @@ export const BULK_SIZE_V31 = BULK_SIZE_V30 + sizeOf(TubeParams);
 // V32 appends the 108-byte per-output limiter section (9 x 12 B).
 export const BULK_SIZE_V32 = BULK_SIZE_V31 + sizeOf(LimiterParams);
 
-// Newest wire version the console knows how to decode and write.
+// Newest wire version of the legacy-opcode firmware line the console knows how
+// to decode and write.
 export const MAX_WIRE_VERSION = 32;
+
+// Wire version of paged-protocol firmware (1.1.7). Same sizes and offsets as
+// V32; two WireInputConfig bytes change meaning (see InputConfig). V33 belongs
+// to a different firmware line and is not understood.
+export const PAGED_WIRE_VERSION = 34;
 
 // Packet size to allocate/write for a given target wire version (versions
 // above the ceiling use the newest known size).

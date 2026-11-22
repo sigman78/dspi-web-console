@@ -69,6 +69,62 @@ export interface WireInputConfig {
   adatInputPin: number;
   adatInputEnabledP1: number;
   adatInputClockModeP1: number;
+  // The raw V34 bytes behind spdifRxEnabledExtP1/adatInputEnabledP1. Written
+  // back as read; derived from the V32-meaning fields when absent.
+  blocks?: WireInputBlocks;
+}
+export interface WireInputBlocks {
+  // S/PDIF inputs in the block, 1..4 (0 = absent).
+  spdifRxCount: number;
+  // Block switches + 1 (0 = absent): bit0 S/PDIF, bit1 I2S, bit2 ADAT.
+  inputEnableP1: number;
+}
+
+const INPUT_ENABLE_SPDIF = 1;
+const INPUT_ENABLE_I2S = 2;
+const INPUT_ENABLE_ADAT = 4;
+
+// V34 bytes to the V32 meanings: ext S/PDIF enable mask + 1, ADAT 0/1/2.
+// The block's inputs 2..count are on while the S/PDIF block is.
+function blocksToLegacyFields(b: WireInputBlocks): { spdifRxEnabledExtP1: number; adatInputEnabledP1: number } {
+  const count = Math.min(b.spdifRxCount, 4);
+  const spdifOn = b.inputEnableP1 === 0 || ((b.inputEnableP1 - 1) & INPUT_ENABLE_SPDIF) !== 0;
+  const extMask = spdifOn && count > 1 ? (1 << (count - 1)) - 1 : 0;
+  return {
+    spdifRxEnabledExtP1: count === 0 ? 0 : extMask + 1,
+    adatInputEnabledP1: b.inputEnableP1 === 0 ? 0 : ((b.inputEnableP1 - 1) & INPUT_ENABLE_ADAT) !== 0 ? 2 : 1,
+  };
+}
+
+// Raw wire value of the I2S input source (domain AudioInputSource.I2s; this
+// file stays domain-free).
+const WIRE_INPUT_SOURCE_I2S = 2;
+
+// Derives the V34 bytes from the V32 fields, after firmware's
+// input_blocks_from_legacy(): the S/PDIF block holds input 1 plus every ext
+// input up to the highest enabled one, and I2S starts off. A restore keeps the
+// selected source's block on, so I2S is on only while it is the source. A field
+// that is absent (0) stays absent, which tells the firmware to keep the live value.
+function legacyFieldsToBlocks(ic: Pick<WireInputConfig, 'source' | 'spdifRxEnabledExtP1' | 'adatInputEnabledP1'>): WireInputBlocks {
+  const extMask = ic.spdifRxEnabledExtP1 === 0 ? 0 : ic.spdifRxEnabledExtP1 - 1;
+  const highest = extMask === 0 ? 0 : 32 - Math.clz32(extMask);   // 1-based ext index
+  const mask = INPUT_ENABLE_SPDIF
+    | (ic.source === WIRE_INPUT_SOURCE_I2S ? INPUT_ENABLE_I2S : 0)
+    | (ic.adatInputEnabledP1 === 2 ? INPUT_ENABLE_ADAT : 0);
+  return {
+    spdifRxCount: ic.spdifRxEnabledExtP1 === 0 ? 0 : 1 + highest,
+    inputEnableP1: ic.adatInputEnabledP1 === 0 ? 0 : mask + 1,
+  };
+}
+
+// The raw bytes when they still say what the V32-meaning fields say; otherwise
+// those fields were edited after the read, so derive from them.
+function blocksForWrite(ic: WireInputConfig): WireInputBlocks {
+  if (ic.blocks) {
+    const l = blocksToLegacyFields(ic.blocks);
+    if (l.spdifRxEnabledExtP1 === ic.spdifRxEnabledExtP1 && l.adatInputEnabledP1 === ic.adatInputEnabledP1) return ic.blocks;
+  }
+  return legacyFieldsToBlocks(ic);
 }
 export interface WireLgSoundSync { enabled: boolean; present: boolean; volume: number; muted: boolean; }
 export interface WireUserVolume  { volumeDb: number; mute: boolean; }
@@ -314,18 +370,25 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
   const masterVol = Wire.MasterVolume.read(r);
 
   const icW = Wire.InputConfig.read(r);
-  const inputConfig = {
+  const blocks: WireInputBlocks | undefined = h.formatVersion >= Wire.PAGED_WIRE_VERSION
+    ? { spdifRxCount: icW.spdifRxEnabledExtP1, inputEnableP1: icW.adatInputEnabledP1 }
+    : undefined;
+  const legacyFields = blocks
+    ? blocksToLegacyFields(blocks)
+    : { spdifRxEnabledExtP1: icW.spdifRxEnabledExtP1, adatInputEnabledP1: icW.adatInputEnabledP1 };
+  const inputConfig: WireInputConfig = {
     source: icW.inputSource,
     spdifRxPin: icW.spdifRxPin,
     i2sRxPins: [icW.i2sRxPin, ...icW.i2sRxPinExt],
     i2sInputRateEnc: icW.i2sInputRate,
     i2sInputChannels: icW.i2sInputChannels,
     spdifRxPinExt: [...icW.spdifRxPinExt],
-    spdifRxEnabledExtP1: icW.spdifRxEnabledExtP1,
+    spdifRxEnabledExtP1: legacyFields.spdifRxEnabledExtP1,
     i2sClockMode: icW.i2sClockMode,
     adatInputPin: icW.adatInputPin,
-    adatInputEnabledP1: icW.adatInputEnabledP1,
+    adatInputEnabledP1: legacyFields.adatInputEnabledP1,
     adatInputClockModeP1: icW.adatInputClockModeP1,
+    ...(blocks ? { blocks } : {}),
   };
   const lgW = Wire.LgSoundSync.read(r);
   const lgSoundSync = { enabled: lgW.enabled, present: lgW.present, volume: lgW.volume, muted: lgW.muted };
@@ -539,7 +602,7 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
   if (requested < Wire.MIN_WIRE_VERSION) {
     throw new Error(`buildBulkParams: wire version ${requested} is below the V${Wire.MIN_WIRE_VERSION} floor`);
   }
-  const writeVersion = Math.min(requested, Wire.MAX_WIRE_VERSION);
+  const writeVersion = requested >= Wire.PAGED_WIRE_VERSION ? Wire.PAGED_WIRE_VERSION : Math.min(requested, Wire.MAX_WIRE_VERSION);
   const size = Wire.bulkSizeForVersion(writeVersion);
   const w = new BinWriter(size);
 
@@ -601,6 +664,9 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
   Wire.PreampConfig.write(w, { preampDb: bulk.inputPreampsDb.slice(0, Wire.Const.NUM_INPUTS) });
   Wire.MasterVolume.write(w, { masterVolumeDb: bulk.masterVolumeDb });
 
+  const ic = bulk.inputConfig;
+  const paged = writeVersion >= Wire.PAGED_WIRE_VERSION;
+  const blocks = paged ? blocksForWrite(ic) : null;
   Wire.InputConfig.write(w, {
     inputSource:          bulk.inputConfig.source,
     spdifRxPin:           bulk.inputConfig.spdifRxPin,
@@ -609,10 +675,10 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
     i2sInputChannels:     bulk.inputConfig.i2sInputChannels,
     i2sRxPinExt:          bulk.inputConfig.i2sRxPins.slice(1, 4),
     spdifRxPinExt:        bulk.inputConfig.spdifRxPinExt.slice(0, 3),
-    spdifRxEnabledExtP1:  bulk.inputConfig.spdifRxEnabledExtP1,
+    spdifRxEnabledExtP1:  blocks ? blocks.spdifRxCount : bulk.inputConfig.spdifRxEnabledExtP1,
     i2sClockMode:         bulk.inputConfig.i2sClockMode,
     adatInputPin:         bulk.inputConfig.adatInputPin,
-    adatInputEnabledP1:   bulk.inputConfig.adatInputEnabledP1,
+    adatInputEnabledP1:   blocks ? blocks.inputEnableP1 : bulk.inputConfig.adatInputEnabledP1,
     adatInputClockModeP1: bulk.inputConfig.adatInputClockModeP1,
   });
   Wire.LgSoundSync.write(w, {

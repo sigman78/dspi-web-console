@@ -21,10 +21,23 @@ import { pushNotice, type ReadySession } from '@/state';
 import type { MirrorState } from '@/state/mirror.svelte';
 import { Log, errMessage, type Result } from '@/utils';
 
-// While the link is degraded the probe owns recovery: new writes are refused
-// (nothing sent, nothing mutated); the status line carries the message.
-export function refuseWhileDegraded(s: ReadySession): boolean {
-  return s.health.degraded;
+// Why a new write is refused, or null when it may go out. Degraded: the probe
+// owns recovery. Read-only: the device's protocol is viewed but not yet
+// written. Either way nothing is sent or mutated; the status line carries the
+// message, so the lanes stay silent.
+export type WriteRefusal = 'degraded' | 'readOnly';
+
+export function writeRefusal(s: ReadySession): WriteRefusal | null {
+  if (s.health.degraded) return 'degraded';
+  if (s.device.capabilities?.readOnly) return 'readOnly';   // stub devices in tests carry no capabilities
+  return null;
+}
+
+// User-facing text for an action that reports its own refusal.
+export function refusalText(reason: WriteRefusal, action: string): string {
+  return reason === 'readOnly'
+    ? `Read-only: this console views this firmware but does not change it yet — ${action} not sent`
+    : `Link degraded — ${action} not sent`;
 }
 
 // Click-paced write. Awaits the wire ack, mutates the mirror on success. On
@@ -40,7 +53,7 @@ export async function write(
   send: () => Promise<unknown>,
   mutate: () => void,
 ): Promise<boolean> {
-  if (refuseWhileDegraded(s)) return Promise.resolve(false);
+  if (writeRefusal(s)) return Promise.resolve(false);
   s.writes.claim();
   const settled = (async (): Promise<boolean> => {
     try {
@@ -82,7 +95,7 @@ export function command<T>(
   onSettled: (result: T, s: ReadySession) => void,
   opts: { queued?: boolean } = {},
 ): Promise<void> {
-  if (refuseWhileDegraded(s)) return Promise.resolve();
+  if (writeRefusal(s)) return Promise.resolve();
   s.writes.claim();
   const settled = (async () => {
     try {
@@ -249,7 +262,7 @@ export function scrub(
   mutate: () => void,
   send: () => Promise<void>,
 ): void {
-  if (refuseWhileDegraded(s)) return;
+  if (writeRefusal(s)) return;
   mutate();
   s.writes.laneFor(key).schedule(s, send);
 }

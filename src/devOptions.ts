@@ -4,13 +4,12 @@
 //       latest (default)  newest wire, models the released fw 1.1.6 (output
 //                         latency, ring health, CS v22, source/board names)
 //       multi             latest + 8ch I2S input + 3 S/PDIF inputs
-//       v<N>              exact bulk/wire format N (v28..vMAX) as the tagged
+//       v<N>              exact bulk/wire format N (v28..v32) as the tagged
 //                         firmware ships it: CS caps v14 (v28/v29), v18 (v30),
 //                         v20 (v32); v31/v32 are plain beta 4 (no output
 //                         latency)
-//       paged             a paged-protocol device (fw 1.1.7+): answers only the
-//                         protocol probe, so connect shows the "firmware not
-//                         supported yet" advice
+//       v34 (paged)       a paged-protocol device (fw 1.1.7 beta 1, wire V34):
+//                         connects read-only; v33 is not a profile
 //     a comma list (?mock=latest,v28) boots one device per token: the
 //     first is active, the rest adopt dormant -- the multi-device fleet
 //     harness, no hardware needed

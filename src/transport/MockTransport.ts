@@ -1,9 +1,10 @@
 import { type DspTransport, type TransportEvent, TransportStall } from './DspTransport';
-import { MockPagedFrontDoor } from './mockPagedFrontDoor';
+import { MockPagedFrontDoor, mockPageList } from './mockPagedFrontDoor';
 
-// A minimal paged device's PROTOCOL_INFO reply, as the firmware documents it.
+// A paged device's PROTOCOL_INFO reply, as the firmware documents it; the page
+// count matches the mock's page list.
 const MOCK_PROTOCOL_INFO = new Uint8Array([
-  0x44, 0x53, 0x50, 0x69, 0x01, 0x00, 0x0C, 0x00, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+  0x44, 0x53, 0x50, 0x69, 0x01, 0x00, mockPageList().length, 0x00, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
 ]);
 import { Wire, Cmd, Act, SystemStatusValue } from '@/protocol';
 import * as Syn from '@/protocol/syn';
@@ -54,7 +55,8 @@ export interface MockOptions {
   // adapter map. Coverage is partial: custom-adapter commands (FILTER.BAND,
   // ROUTE.MATRIX_ROUTE, SYS.SYSTEM_STATUS, MEAS.LEVELS, INPUT.STATUS,
   // STORE.ALL_PARAMS SET, ...) answer VC_ERR_UNSUPPORTED and the 1.1.6
-  // on_stall/out_stall quirks are not reversed, so the app cannot run on it yet.
+  // on_stall/out_stall quirks are not reversed. Enough for the console to
+  // connect and read a snapshot, not to drive.
   paged?: boolean;
   // Boot the selectable system clock pre-seeded instead of the fw power-on
   // default (mode 0, no crash history). `fallback: true` simulates a device
@@ -598,6 +600,7 @@ export class MockTransport implements DspTransport {
           closeChunkSessions: () => { this.#getChunkSession = null; this.#setChunkSession = null; },
         },
         MOCK_PROTOCOL_INFO,
+        opts.platform === 'rp2350',
       );
     }
     this.#sysClockSupported = opts.sysClock ?? true;
@@ -2433,7 +2436,7 @@ export class MockTransport implements DspTransport {
 
   // Build the bulk packet at the configured wire version from #mockState.
   #synthBulkPacket(): Uint8Array {
-    const buildVer = Math.min(this.#wireVersion, Wire.MAX_WIRE_VERSION);
+    const buildVer = this.#wireVersion >= Wire.PAGED_WIRE_VERSION ? Wire.PAGED_WIRE_VERSION : Math.min(this.#wireVersion, Wire.MAX_WIRE_VERSION);
     const out = BulkParser.buildBulkParams(this.#mockState, buildVer);
     const dv = new DataView(out.buffer);
     dv.setUint8(0, this.#wireVersion);        // report the configured version

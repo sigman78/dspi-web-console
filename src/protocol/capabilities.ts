@@ -7,6 +7,9 @@
 // misreport their semver.
 
 import * as Wire from './wireTypes';
+import * as G from './paged.gen';
+import type { PagedCatalog } from './pagedDiscovery';
+import type { ProtocolGeneration } from '@/transport/withGenerationGuard';
 import { SPDIF_RX_MAX_INSTANCES } from '@/domain';
 
 // Support window: V28 (released fw 1.1.5) through V32 (fw 1.1.6). Anything
@@ -15,6 +18,8 @@ import { SPDIF_RX_MAX_INSTANCES } from '@/domain';
 // subharm section (third band, selectivity, ceiling, pair link), V31 adds the
 // tube preamp, V32 adds the per-output limiter.
 export const MAX_KNOWN_WIRE = 32;
+// Paged firmware (1.1.7) speaks wire V34; older paged wires do not exist.
+const PAGED_WIRE = Wire.PAGED_WIRE_VERSION;
 const SUPPORTED_WIRE_VERSIONS: readonly number[] = [28, 29, 30, 31, 32];
 
 // UI-facing description of the support window (device-panel tooltips). Keep
@@ -84,10 +89,16 @@ export interface DeviceCapabilities {
   readonly wire: number;
   readonly wireLabel: string;     // "V28"   -- formatted once, here
   readonly platformId: number;
+  readonly generation: ProtocolGeneration;
+  // The paged connection cannot write yet.
+  readonly readOnly: boolean;
+  // What the device implements, from discovery; null on legacy firmware.
+  readonly catalog: PagedCatalog | null;
 
   // Support classification, keyed on the observed wire version:
   //   unsupported -- below the V28 floor (older than fw 1.1.5).
-  //   supported   -- V28-V32 (1.1.5/1.1.6).
+  //   supported   -- V28-V32 (1.1.5/1.1.6) on legacy firmware, V34 (1.1.7)
+  //                  on paged firmware.
   //   future      -- newer than the console knows; read known sections only.
   readonly support: 'unsupported' | 'supported' | 'future';
 
@@ -115,15 +126,41 @@ export function deriveCapabilities(input: {
   wireVersion: number;
   payloadLength: number;
   platformId: number;
+  // Defaults to legacy.
+  generation?: ProtocolGeneration;
+  catalog?: PagedCatalog | null;
 }): DeviceCapabilities {
   const { fw, wireVersion, payloadLength, platformId } = input;
+  const generation = input.generation ?? 'legacy';
+  const catalog = generation === 'paged' ? input.catalog ?? null : null;
 
-  const support: DeviceCapabilities['support'] =
-    SUPPORTED_WIRE_VERSIONS.includes(wireVersion) ? 'supported'
+  const support: DeviceCapabilities['support'] = generation === 'paged'
+    ? (wireVersion === PAGED_WIRE ? 'supported' : wireVersion > PAGED_WIRE ? 'future' : 'unsupported')
+    : SUPPORTED_WIRE_VERSIONS.includes(wireVersion) ? 'supported'
     : wireVersion > MAX_KNOWN_WIRE                ? 'future'
     : 'unsupported';
 
+  // Paged devices tell what they implement; the platform and wire rules stay
+  // as the first gate.
+  const listed = (cmd: { id: number }, dir: 'get' | 'set' = 'get'): boolean =>
+    generation !== 'paged' || (catalog?.has(cmd.id, dir) ?? false);
+  const paged = generation === 'paged';
+
   const multiSpdifInputs = platformId === 1;
+  const features: DeviceFeatures = {
+    multichannelInput: platformId === 1,
+    multiSpdifInputs,
+    adatOutput:        platformId === 1 && listed(G.PagedCmd.OUTPUT.ADAT_TX_ENABLE),
+    psybass:           platformId === 1 && listed(G.PagedCmd.FX.PSYBASS_ENABLE),
+    adatInput:         platformId === 1 && listed(G.PagedCmd.INPUT.ADAT_RX_ENABLE),
+    upmix:             platformId === 1 && listed(G.PagedCmd.FX.UPMIX_CONFIG),
+    subharm:           (paged || wireVersion >= 29) && listed(G.PagedCmd.FX.SUBHARM_ENABLE),
+    subharmExt:        (paged || wireVersion >= 30) && listed(G.PagedCmd.FX.SUBHARM_CEILING),
+    tube:              (paged || wireVersion >= 31) && listed(G.PagedCmd.FX.TUBE_ENABLE),
+    limiter:           (paged || wireVersion >= 32) && listed(G.PagedCmd.DYN.LIMITER_ENABLE),
+    buildStamp:        (paged || wireVersion >= 29) && listed(G.PagedCmd.SYS.BUILD_INFO, 'get'),
+    rta:               (paged || wireVersion >= 30) && listed(G.PagedCmd.MEAS.RTA_CAPS, 'get'),
+  };
 
   return {
     fw,
@@ -131,22 +168,12 @@ export function deriveCapabilities(input: {
     wire: wireVersion,
     wireLabel: `V${wireVersion}`,
     platformId,
+    generation,
+    readOnly: paged,
+    catalog,
     support,
     sections: Wire.bulkLayout({ formatVersion: wireVersion, payloadLength }),
-    features: {
-      multichannelInput: platformId === 1,
-      multiSpdifInputs,
-      adatOutput:        platformId === 1,
-      psybass:           platformId === 1,
-      adatInput:         platformId === 1,
-      upmix:             platformId === 1,
-      subharm:           wireVersion >= 29,
-      subharmExt:        wireVersion >= 30,
-      tube:              wireVersion >= 31,
-      limiter:           wireVersion >= 32,
-      buildStamp:        wireVersion >= 29,
-      rta:               wireVersion >= 30,
-    },
+    features,
     spdifInputCount: multiSpdifInputs ? SPDIF_RX_MAX_INSTANCES : 1,
   };
 }

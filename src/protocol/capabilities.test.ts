@@ -103,3 +103,25 @@ describe('deriveCapabilities — metadata + sections', () => {
     expect(c.sections.limiter).toBe(false);
   });
 });
+
+describe('deriveCapabilities — paged generation', () => {
+  const paged = (wireVersion: number) =>
+    deriveCapabilities({ fw: fw(1, 1, 7), wireVersion, payloadLength: 6136, platformId: 1, generation: 'paged' });
+
+  it('supports only V34, with newer wires future and older unsupported', () => {
+    expect(paged(34).support).toBe('supported');
+    expect(paged(35).support).toBe('future');
+    expect([paged(33).support, paged(32).support]).toEqual(['unsupported', 'unsupported']);
+  });
+
+  it('is read-only, and a feature needs its command in the catalog', () => {
+    const caps = paged(34);
+    expect(caps.readOnly).toBe(true);
+    expect(caps.features.tube).toBe(false);
+  });
+
+  it('keeps the V32 window for the same wire on legacy firmware', () => {
+    expect(derive(32).support).toBe('supported');
+    expect(deriveCapabilities({ fw: fw(1, 1, 6), wireVersion: 34, payloadLength: 6136, platformId: 1 }).support).toBe('future');
+  });
+});

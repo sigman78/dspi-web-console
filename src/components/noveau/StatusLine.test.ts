@@ -12,11 +12,11 @@ function entry(key: string, over: Partial<StagedEntry> = {}): StagedEntry {
   };
 }
 
-function renderLine(entries: StagedEntry[], degraded = false) {
+function renderLine(entries: StagedEntry[], degraded = false, readOnly = false) {
   const staging = createStagingState();
   entries.forEach((e) => staging.stage(e));
   const session = {
-    info: { serial: 'S', capabilities: { fwLabel: 'fw', wireLabel: 'wire' } },
+    info: { serial: 'S', capabilities: { fwLabel: 'fw', wireLabel: 'wire', readOnly } },
     telemetry: { info: null },
     health: { degraded },
     writes: { busy: false },
@@ -47,5 +47,15 @@ describe('StatusLine', () => {
   test('a degraded link shows the not-sent banner', () => {
     renderLine([], true);
     expect(screen.getByRole('alert').textContent).toContain('changes not sent');
+  });
+
+  test('a read-only device shows the beta badge with an explanatory tooltip', () => {
+    renderLine([], false, true);
+    expect(screen.getByText('beta firmware · read-only').getAttribute('title')).toContain('does not change');
+  });
+
+  test('a writable device shows no read-only badge', () => {
+    renderLine([]);
+    expect(screen.queryByText(/read-only/)).toBeNull();
   });
 });

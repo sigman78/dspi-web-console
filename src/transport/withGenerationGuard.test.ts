@@ -59,4 +59,25 @@ describe('withGenerationGuard', () => {
     expect(inner.ctrlIn).toHaveBeenCalledTimes(1);
     expect(inner.ctrlOut).toHaveBeenCalledTimes(1);
   });
+
+  it('after narrowing, refuses a registry command the device does not implement', async () => {
+    const { inner, guard } = spy();
+    guard.setGeneration('paged');
+    guard.narrow((id) => id === PAGED_GET);
+    await guard.ctrlIn(PAGED_GET, 0, 16);
+    await expect(guard.ctrlOut(PAGED_SET, 0, new Uint8Array(0))).rejects.toBeInstanceOf(GenerationRefusal);
+    expect(inner.ctrlIn).toHaveBeenCalledTimes(1);
+    expect(inner.ctrlOut).not.toHaveBeenCalled();
+  });
+
+  it('narrows once, and only a paged connection', () => {
+    const legacy = spy().guard;
+    legacy.setGeneration('legacy');
+    expect(() => legacy.narrow(() => true)).toThrow();
+
+    const paged = spy().guard;
+    paged.setGeneration('paged');
+    paged.narrow(() => true);
+    expect(() => paged.narrow(() => true)).toThrow();
+  });
 });

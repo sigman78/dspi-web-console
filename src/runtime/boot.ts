@@ -1,4 +1,4 @@
-import { DspDevice, UnsupportedFirmware, UnsupportedDevicePacket, PagedFirmware } from '@/device/DspDevice';
+import { DspDevice, UnsupportedFirmware, UnsupportedDevicePacket, ProtocolTooNew } from '@/device/DspDevice';
 import type { DspTransport } from '@/transport/DspTransport';
 import { MockTransport, type MockOptions } from '@/transport/MockTransport';
 import type { MockProfile } from '@/mockProfiles';
@@ -26,7 +26,7 @@ export function webUsbUnsupportedReason(): string | null {
 
 // Maps a connect failure onto a message + kind. Certain failures get a distinct
 // kind so the hero (or a badge) can tailor its advice: UnsupportedFirmware ->
-// upgrade prompt, PagedFirmware (fw 1.1.7+) -> "not supported yet" advice,
+// upgrade prompt, ProtocolTooNew -> "update the console" advice,
 // DeviceInUse (interface claim failed) -> "device in use" causes. Everything
 // else falls through to the generic diagnostics panel.
 export function classifyConnectError(err: unknown): { message: string; errorKind: SessionErrorKind } {
@@ -34,8 +34,8 @@ export function classifyConnectError(err: unknown): { message: string; errorKind
   let errorKind: SessionErrorKind = null;
   if (err instanceof UnsupportedFirmware || err instanceof UnsupportedDevicePacket) {
     errorKind = 'unsupported-firmware';
-  } else if (err instanceof PagedFirmware) {
-    errorKind = 'paged-firmware';
+  } else if (err instanceof ProtocolTooNew) {
+    errorKind = 'console-update';
   } else if (err instanceof DeviceInUse) {
     errorKind = 'device-in-use';
   }

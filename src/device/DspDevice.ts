@@ -1,9 +1,11 @@
 import { type DspTransport } from '@/transport/DspTransport';
 import { withSerializedCtrl, type SerializedDspTransport } from '@/transport/withSerializedCtrl';
 import { withGenerationGuard, type ProtocolGeneration } from '@/transport/withGenerationGuard';
+import * as Paged from '@/protocol/paged.gen';
+import * as PagedDiscovery from '@/protocol/pagedDiscovery';
 import * as proto from '@/protocol';
 import { TimeoutError } from '@/transport/withTimeout';
-import { Codec, utf8Truncate, Result } from '@/utils';
+import { Codec, Log, utf8Truncate, Result } from '@/utils';
 import * as Domain from '@/domain';
 import { fromBulkParams, narrowInputSource, type DeviceState } from '@/protocol/snapshotCodec';
 import { deriveCapabilities, type DeviceCapabilities, type FirmwareVersion } from '@/protocol/capabilities';
@@ -27,14 +29,12 @@ export class UnsupportedFirmware extends Error {
   }
 }
 
-// Thrown at connect when the device answers the paged-protocol probe (fw
-// 1.1.7+), which this console cannot drive yet. Nothing but the probe was sent.
-export class PagedFirmware extends Error {
+// Thrown at connect when the device answers the paged-protocol probe with a
+// major newer than this console understands. Nothing but the probe was sent.
+export class ProtocolTooNew extends Error {
   constructor(readonly protocolMajor: number) {
-    super(protocolMajor === proto.SUPPORTED_PROTOCOL_MAJOR
-      ? 'This device runs DSPi firmware 1.1.7 or newer, which this console version does not support yet. Use the 1.1.6 firmware, or update the console when 1.1.7 support ships.'
-      : `This device speaks DSPi protocol ${protocolMajor}, which is newer than this console understands. Update the console.`);
-    this.name = 'PagedFirmware';
+    super(`This device speaks DSPi protocol ${protocolMajor}, which is newer than this console understands. Update the console.`);
+    this.name = 'ProtocolTooNew';
   }
 }
 
@@ -62,6 +62,9 @@ export class UnsupportedDevicePacket extends Error {
 // Safety bound on the chunked bulk-read loop: guards against a runaway
 // transfer if a device misreports its header payloadLength.
 const MAX_BULK_CHUNKS = 32;
+
+// A UART or I2C transfer can hold the bulk buffer for about half a second.
+const BULK_BUSY = { busyRetries: 10, busyDelayMs: 50 } as const;
 
 function concatChunks(chunks: Uint8Array[]): Uint8Array {
   const total = chunks.reduce((n, c) => n + c.length, 0);
@@ -124,7 +127,12 @@ async function readPlatform(
   t: DspTransport,
 ): Promise<{ platformId: number; fw: FirmwareVersion }> {
   const size = Codec.sizeOf(proto.Wire.DeviceInfoExt);
-  const raw = await t.ctrlIn(proto.Cmd.Platform.legacy.get, 0, size + 1);
+  return decodePlatform(await t.ctrlIn(proto.Cmd.Platform.legacy.get, 0, size + 1));
+}
+
+// SYS.PLATFORM answers the same 7-byte layout as the longest GetPlatform form.
+function decodePlatform(raw: Uint8Array): { platformId: number; fw: FirmwareVersion } {
+  const size = Codec.sizeOf(proto.Wire.DeviceInfoExt);
   if (raw.length >= size) {
     const info = Codec.decode(proto.Wire.DeviceInfoExt, raw);
     return {
@@ -168,6 +176,16 @@ function decodeRtaFrame(raw: Uint8Array): Domain.RtaBandFrameRaw {
 async function readBuildInfo(t: DspTransport): Promise<BuildInfo | null> {
   try {
     const b = await proto.readCmd(t, proto.Cmd.BuildInfo);
+    return b.describe ? b : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readPagedBuildInfo(t: proto.ExclusiveTransport): Promise<BuildInfo | null> {
+  try {
+    const raw = await proto.pagedGet(t, proto.Cmd.BuildInfo.paged.get, 0, Paged.PagedCmd.SYS.BUILD_INFO.getLen);
+    const b = Codec.decodePadded(proto.Wire.BuildInfo, raw);
     return b.describe ? b : null;
   } catch {
     return null;
@@ -293,18 +311,71 @@ function ctrlIfaceStatusFromWire(w: {
 // First and only request until the protocol generation is known: paged
 // firmware answers it, legacy firmware STALLs it. Legacy firmware ignores the
 // page byte, so any other paged request could run an unrelated opcode there.
-async function probeProtocol(transport: DspTransport): Promise<ProtocolGeneration> {
+async function probeProtocol(transport: DspTransport): Promise<{ generation: 'legacy' } | { generation: 'paged'; info: proto.ProtocolInfo }> {
   let reply: Uint8Array;
   try {
     reply = await transport.ctrlIn(proto.PAGED_PROTOCOL_INFO, 0, proto.PROTOCOL_INFO_LENGTH);
   } catch (err) {
     // A timeout or disconnect still rethrows.
-    if (proto.isLegacyProbeRefusal(err)) return 'legacy';
+    if (proto.isLegacyProbeRefusal(err)) return { generation: 'legacy' };
     throw err;
   }
   const info = proto.parseProtocolInfo(reply);
   if (!info) throw new UnrecognizedProbeReply(reply.length);
-  throw new PagedFirmware(info.major);
+  if (info.major !== proto.SUPPORTED_PROTOCOL_MAJOR) throw new ProtocolTooNew(info.major);
+  return { generation: 'paged', info };
+}
+
+// What the connect handshake reads, before capabilities are derived.
+interface Handshake {
+  serial: string;
+  platform: { platformId: number; fw: FirmwareVersion };
+  header: ReturnType<typeof proto.peekBulkHeader>;
+  catalog: PagedDiscovery.PagedCatalog | null;
+  // Paged only: read once the catalog said it exists.
+  build: BuildInfo | null;
+}
+
+// Paged connect: platform first (discovery needs it), then the catalog, then
+// the guard narrows to what the device implements before anything else reads.
+async function pagedHandshake(
+  transport: SerializedDspTransport,
+  info: proto.ProtocolInfo,
+  narrow: (has: (id: number, dir: 'in' | 'out') => boolean) => void,
+): Promise<Handshake> {
+  const sys = Paged.PagedCmd.SYS;
+  const platform = decodePlatform(await proto.pagedGet(transport, proto.Cmd.Platform.paged.get, 0, sys.PLATFORM.getLen));
+  const catalog = await PagedDiscovery.discoverPaged(transport, info, platform.platformId);
+  const { drift } = catalog;
+  if (drift.unknownToConsole.length || drift.missingOnDevice.length || drift.revisionMismatch.length) {
+    Log.warn('paged', 'device and console disagree on the paged command set', drift);
+  }
+  // Paged writes are not enabled yet: only GETs pass, plus what the device lists.
+  // The executor reads LAST_RESULT to explain a refusal; it stays reachable.
+  narrow((id, dir) => dir === 'in' && (id === sys.LAST_RESULT.id || catalog.has(id, 'get')));
+  const serial = Codec.decodePadded(proto.Wire.Serial, await proto.pagedGet(transport, proto.Cmd.Serial.paged.get, 0, sys.SERIAL.getLen));
+  const build = catalog.has(proto.Cmd.BuildInfo.paged.get, 'get') ? await readPagedBuildInfo(transport) : null;
+  // A short STORE.ALL_PARAMS GET answers min(wLength, packet) and opens no chunk session.
+  const header = proto.peekBulkHeader(
+    await proto.pagedGet(transport, proto.Cmd.AllParams.paged.get, 0, Codec.sizeOf(proto.Wire.Header), BULK_BUSY),
+  );
+  return { serial, platform, header, catalog, build };
+}
+
+async function legacyHandshake(transport: DspTransport): Promise<Handshake> {
+  const [serial, platform] = await Promise.all([
+    proto.readCmd(transport, proto.Cmd.Serial),
+    readPlatform(transport),
+  ]);
+
+  // Peek just the 16-byte header so capabilities reflect the observed wire
+  // structure, not just the (potentially misreported) semver -- a full
+  // packet is too large for a single control transfer on some hosts
+  // (WinUSB's 4 KB cap), but the header alone always fits.
+  const headerBytes = await transport.ctrlIn(
+    proto.Cmd.AllParams.legacy.get, 0, Codec.sizeOf(proto.Wire.Header),
+  );
+  return { serial, platform, header: proto.peekBulkHeader(headerBytes), catalog: null, build: null };
 }
 
 export class DspDevice {
@@ -320,31 +391,25 @@ export class DspDevice {
   ) {}
 
   protected static async resolveInfo(
-    transport: DspTransport,
-    setGeneration: (gen: ProtocolGeneration) => void,
+    transport: SerializedDspTransport,
+    guard: { setGeneration(gen: ProtocolGeneration): void; narrow(has: (id: number, dir: 'in' | 'out') => boolean): void },
     openTransport: () => Promise<void> = () => transport.open(),
   ): Promise<DspDeviceInfo> {
     await openTransport();
-    setGeneration(await probeProtocol(transport));
-    const [serial, platform] = await Promise.all([
-      proto.readCmd(transport, proto.Cmd.Serial),
-      readPlatform(transport),
-    ]);
-
-    // Peek just the 16-byte header so capabilities reflect the observed wire
-    // structure, not just the (potentially misreported) semver -- a full
-    // packet is too large for a single control transfer on some hosts
-    // (WinUSB's 4 KB cap), but the header alone always fits.
-    const headerBytes = await transport.ctrlIn(
-      proto.Cmd.AllParams.legacy.get, 0, Codec.sizeOf(proto.Wire.Header),
-    );
-    const header = proto.peekBulkHeader(headerBytes);
+    const probe = await probeProtocol(transport);
+    guard.setGeneration(probe.generation);
+    const hs = probe.generation === 'paged'
+      ? await pagedHandshake(transport, probe.info, (has) => guard.narrow(has))
+      : await legacyHandshake(transport);
+    const { serial, platform, header, catalog } = hs;
 
     const capabilities = deriveCapabilities({
       fw:            platform.fw,
       wireVersion:   header.formatVersion,
       payloadLength: header.payloadLength,
       platformId:    platform.platformId,
+      generation:    probe.generation,
+      catalog,
     });
     if (capabilities.support === 'unsupported') {
       throw new UnsupportedFirmware(capabilities.fwLabel, capabilities.wireLabel);
@@ -359,7 +424,9 @@ export class DspDevice {
 
     const platformType = platformTypeFromId(platform.platformId);
     const hardware = Domain.createHardwareProfile(platformType);
-    const build = capabilities.features.buildStamp ? await readBuildInfo(transport) : null;
+    const build = probe.generation === 'paged'
+      ? hs.build
+      : capabilities.features.buildStamp ? await readBuildInfo(transport) : null;
     return {
       serial: serial.trim(),
       platformType,
@@ -375,7 +442,7 @@ export class DspDevice {
   ): Promise<DspDevice> {
     const guarded = withGenerationGuard(transport);
     const serialized = withSerializedCtrl(guarded);
-    const info = await DspDevice.resolveInfo(serialized, (gen) => guarded.setGeneration(gen), openTransport);
+    const info = await DspDevice.resolveInfo(serialized, guarded, openTransport);
     return new DspDevice(serialized, info);
   }
 
@@ -391,6 +458,19 @@ export class DspDevice {
 
   get capabilities(): DeviceCapabilities {
     return this._info.capabilities;
+  }
+
+  get generation(): ProtocolGeneration {
+    return this._info.capabilities.generation;
+  }
+
+  // Cheapest read that proves the link answers.
+  async ping(): Promise<void> {
+    if (this.generation === 'paged') {
+      await proto.pagedGet(this.transport, proto.Cmd.Platform.paged.get, 0, Paged.PagedCmd.SYS.PLATFORM.getLen);
+    } else {
+      await this.getBypass();
+    }
   }
 
   // Raw bytes of the last bulk packet read. Substrate for the deferred per-field
@@ -429,9 +509,15 @@ export class DspDevice {
   // firmware's session down; a STALL anywhere retries the whole transfer
   // from offset 0 exactly once, matching the firmware's session-loss contract.
   async #readAllParamsChunked(): Promise<Uint8Array> {
+    const paged = this.generation === 'paged';
     const attempt = () => this.transport.exclusive(async (raw) => {
       const chunkSize = proto.Wire.BulkLimits.ChunkSize;
-      const first = await raw.ctrlIn(proto.Cmd.AllParamsChunk.legacy.get, 0, chunkSize);
+      // Inside this unit the paged executor reuses `raw`; exclusive() is not re-entrant.
+      const inUnit: proto.ExclusiveTransport = { exclusive: (fn) => fn(raw) };
+      const read = (offset: number, length: number): Promise<Uint8Array> => paged
+        ? proto.pagedGet(inUnit, proto.Cmd.AllParamsChunk.paged.get, offset, length, BULK_BUSY)
+        : raw.ctrlIn(proto.Cmd.AllParamsChunk.legacy.get, offset, length);
+      const first = await read(0, chunkSize);
       const header = proto.peekBulkHeader(first);
       const total = header.payloadLength > 0 && header.payloadLength <= proto.Wire.BulkLimits.MaxReadSize
         ? header.payloadLength
@@ -441,7 +527,7 @@ export class DspDevice {
       let received = first.length;
       for (let i = 1; received < total && i < MAX_BULK_CHUNKS; i++) {
         const want = Math.min(chunkSize, total - received);
-        const next = await raw.ctrlIn(proto.Cmd.AllParamsChunk.legacy.get, received, want);
+        const next = await read(received, want);
         chunks.push(next);
         received += next.length;
         if (next.length < want) break;   // short chunk: device says this is the end

@@ -3,12 +3,35 @@
 // handlers through the inverse of the legacy adapter map.
 
 import { TransportStall } from './DspTransport';
-import { pagedCommand } from '@/protocol/paged';
-import { PagedCmd, VcResult } from '@/protocol/paged.gen';
+import { allPagedCommands, pagedCommand } from '@/protocol/paged';
+import { PagedCmd, PagedPage, VcResult } from '@/protocol/paged.gen';
 import { LEGACY_ADAPTERS, StatusFamily, type LegacyAdapter, type LegacyAddr, type LegacyField, type VcByte } from '@/protocol/legacyMap.gen';
 
 const LAST_RESULT = PagedCmd.SYS.LAST_RESULT.id;
 const PROTOCOL_INFO = PagedCmd.SYS.PROTOCOL_INFO.id;
+const PAGE_LIST = PagedCmd.SYS.PAGE_LIST.id;
+const PAGE_COMMANDS = PagedCmd.SYS.PAGE_COMMANDS.id;
+
+// Release firmware omits the bench page.
+const DIAG_PAGE = PagedPage.DIAG.page;
+
+// Pages a release build implements, ascending.
+export function mockPageList(): { page: number; revision: number }[] {
+  return Object.values(PagedPage).filter((p) => p.page !== DIAG_PAGE).sort((a, b) => a.page - b.page);
+}
+
+// The 64-byte GET/SET bitmap of one page on a release build of `platform`.
+function mockCommandBitmap(page: number, rp2350: boolean): Uint8Array {
+  const out = new Uint8Array(64);
+  for (const cmd of allPagedCommands()) {
+    if (cmd.id >> 8 !== page) continue;
+    if (cmd.build === 'PICO_RP2350' && !rp2350) continue;
+    const n = cmd.id & 0xFF;
+    if (cmd.get) out[n >> 3] |= 1 << (n & 7);
+    if (cmd.set) out[32 + (n >> 3)] |= 1 << (n & 7);
+  }
+  return out;
+}
 
 export interface LegacyHandlers {
   legacyIn(code: number, wValue: number, length: number): Promise<Uint8Array>;
@@ -84,7 +107,11 @@ export class MockPagedFrontDoor {
   #last = new Uint8Array(8);
   #injected = new Map<number, { vc: number; times: number }>();
 
-  constructor(private readonly legacy: LegacyHandlers, private readonly protocolInfo: Uint8Array) {}
+  constructor(
+    private readonly legacy: LegacyHandlers,
+    private readonly protocolInfo: Uint8Array,
+    private readonly rp2350: boolean,
+  ) {}
 
   // The next `times` requests to `id` STALL with result code `vc`.
   injectRefusal(id: number, vc: number, times = 1): void {
@@ -122,6 +149,18 @@ export class MockPagedFrontDoor {
     if (id === PROTOCOL_INFO) {
       this.legacy.closeChunkSessions();
       return this.#ok(id, 'get', wValue, this.protocolInfo.slice(0, length));
+    }
+    if (id === PAGE_LIST) {
+      this.legacy.closeChunkSessions();
+      const pages = mockPageList();
+      const out = new Uint8Array(pages.length * 2);
+      pages.forEach((p, i) => { out[2 * i] = p.page; out[2 * i + 1] = p.revision; });
+      return this.#ok(id, 'get', wValue, out.slice(0, length));
+    }
+    if (id === PAGE_COMMANDS) {
+      this.legacy.closeChunkSessions();
+      if (!mockPageList().some((p) => p.page === wValue)) return this.#refuse(id, 'get', VcResult.VC_ERR_ADDRESS, wValue);
+      return this.#ok(id, 'get', wValue, mockCommandBitmap(wValue, this.rp2350).slice(0, length));
     }
     const route = ROUTES.get(`${id}:get`);
     if (!route) return this.#refuse(id, 'get', VcResult.VC_ERR_UNSUPPORTED, wValue);

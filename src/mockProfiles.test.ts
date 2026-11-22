@@ -3,6 +3,17 @@ import { resolveMockProfile, resolveMockProfiles, activeMockProfiles } from './m
 import * as Wire from '@/protocol/wireTypes';
 
 describe('resolveMockProfile', () => {
+  it('boots v34 (and its alias paged) as a paged fw 1.1.7 beta 1 device', () => {
+    for (const token of ['v34', 'paged']) {
+      const p = resolveMockProfile(token);
+      expect(p.opts).toMatchObject({ paged: true, wireVersion: 34, fwVersion: { major: 1, minor: 1, patch: 7, beta: 1 } });
+    }
+  });
+
+  it('does not take v33: it is no profile of either firmware line', () => {
+    expect(resolveMockProfile('v33').name).toBe('latest');
+  });
+
   it('falls back to latest for an unrecognized token (e.g. an old spelling)', () => {
     const p = resolveMockProfile('hero');
     expect(p.name).toBe('latest');

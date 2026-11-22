@@ -2,7 +2,7 @@ import * as Domain from '@/domain';
 import * as Clamp from '@/domain/clamp';
 import { type ReadySession, pushNotice } from '@/state';
 import { errMessage } from '@/utils';
-import { write, command, refuseWhileDegraded } from './writes.svelte';
+import { write, command, writeRefusal, refusalText } from './writes.svelte';
 
 // Clears firmware-side latched clip flags (0x83) and the host-side OR-latch.
 // Not routed through write/scrub: clip state lives in telemetry, not the DSP
@@ -35,7 +35,7 @@ export function setLgSoundSyncEnabled(s: ReadySession, enabled: boolean): void {
 const DAC_HW_MUTE_APPLY_MS = 200;
 
 export async function setDacHwMute(s: ReadySession, patch: Partial<Domain.DacHwMute>): Promise<boolean> {
-  if (refuseWhileDegraded(s)) return false;
+  if (writeRefusal(s)) return false;
   const merged = { ...s.mirror.snapshot.dacHwMute, ...patch };
   const next: Domain.DacHwMute = merged.enabled
     ? { ...merged, holdMs: Clamp.dacHwMuteHoldMs(merged.holdMs), releaseMs: Clamp.dacHwMuteReleaseMs(merged.releaseMs) }
@@ -150,6 +150,7 @@ export async function applyOutputLatency(s: ReadySession, id: number): Promise<b
 // a deferred apply outlasted the confirm loop and the stored status went
 // stale (there is no notify event or poll cadence for the system clock).
 export async function refreshSysClock(s: ReadySession): Promise<void> {
+  if (s.device.generation === 'paged') return;
   try {
     const status = await s.queue.run(() => s.device.getSysClock());
     if (s.alive) { s.sysClock.status = status; s.sysClock.supported = true; }
@@ -173,7 +174,8 @@ export function resetBufferStats(s: ReadySession): void {
 // in firmware before reset_usb_boot). The transfer may throw as the device
 // drops mid-response; that is expected and is treated as a normal disconnect.
 export async function enterBootloader(s: ReadySession): Promise<void> {
-  if (refuseWhileDegraded(s)) { pushNotice('warn', 'Link degraded — bootloader request not sent'); return; }
+  const refusal = writeRefusal(s);
+  if (refusal) { pushNotice('warn', refusalText(refusal, 'bootloader request')); return; }
   try {
     await s.queue.run(() => s.device.enterBootloader());
   } catch {
