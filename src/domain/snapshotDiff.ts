@@ -50,7 +50,7 @@ export type SnapshotChange =
   | { kind: 'limiter';       value: LimiterOutput[] }
   | { kind: 'inputConfig';   value: InputConfig }
   | { kind: 'spdifRxPin';    value: number }
-  | { kind: 'spdifExt';      value: { spdifRxPinExt: number[]; spdifExtEnabled: boolean[] } }
+  | { kind: 'spdifExt';      value: { spdifRxPinExt: number[]; spdifEnabled: boolean; spdifCount: number } }
   | { kind: 'userVolume';    value: UserVolume }
   | { kind: 'dacHwMute';     value: DacHwMute }
   | { kind: 'adat';          value: AdatOutputConfig }
@@ -202,6 +202,7 @@ function diffInputConfig(a: InputConfig, b: InputConfig, out: SnapshotChange[]):
     a.i2sInputRateHz !== b.i2sInputRateHz ||
     a.i2sInputChannels !== b.i2sInputChannels ||
     a.i2sClockMode !== b.i2sClockMode ||
+    a.i2sEnabled !== b.i2sEnabled ||
     a.adatInputPin !== b.adatInputPin ||
     a.adatInputEnabled !== b.adatInputEnabled ||
     a.adatInputClockMode !== b.adatInputClockMode ||
@@ -211,8 +212,8 @@ function diffInputConfig(a: InputConfig, b: InputConfig, out: SnapshotChange[]):
     return;
   }
   if (a.spdifRxPin !== b.spdifRxPin) out.push({ kind: 'spdifRxPin', value: b.spdifRxPin });
-  if (arrayDiffers(a.spdifRxPinExt, b.spdifRxPinExt) || arrayDiffers(a.spdifExtEnabled, b.spdifExtEnabled)) {
-    out.push({ kind: 'spdifExt', value: { spdifRxPinExt: b.spdifRxPinExt, spdifExtEnabled: b.spdifExtEnabled } });
+  if (arrayDiffers(a.spdifRxPinExt, b.spdifRxPinExt) || a.spdifEnabled !== b.spdifEnabled || a.spdifCount !== b.spdifCount) {
+    out.push({ kind: 'spdifExt', value: { spdifRxPinExt: b.spdifRxPinExt, spdifEnabled: b.spdifEnabled, spdifCount: b.spdifCount } });
   }
 }
 

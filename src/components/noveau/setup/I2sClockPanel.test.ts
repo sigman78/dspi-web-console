@@ -32,7 +32,7 @@ function makeSnap(over: {
     platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
     outputPins: [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 0, ...over.i2s },
-    inputConfig: { source: AudioInputSource.Usb, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0, ...over.inputConfig },
+    inputConfig: { source: AudioInputSource.Usb, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifEnabled: true, spdifCount: 1, i2sEnabled: true, i2sClockMode: 0, ...over.inputConfig },
     dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
     adat: { enabled: false, pin: 0 },
   };

@@ -28,12 +28,15 @@ const ORDER = {
   spdifRxPin: 20,
   i2sRxPin: 20,
   spdifEnable: 21,   // after spdifRxPin: enable validates against the configured pin
+  spdifBlockOn: 22,  // after a count grow
   i2sChannels: 30,
+  i2sEnable: 31,     // after i2sChannels, before the clock mode and the source switch
   inputRate: 40,
   i2sClockMode: 45,   // after pin config, before the source switch below
   inputSource: 50,
   // Every disable or pin release sorts below every pin claim, so a pin freed
   // by one peripheral is free by the time another peripheral takes it.
+  i2sDisable: 2,
   ifaceDisable: 3,
   dacMuteDisable: 4,
   adatInputDisable: 5,
@@ -73,7 +76,7 @@ async function applyPin(s: ReadySession, pin: number, send: () => Promise<boolea
   return ok;
 }
 function sourceTitle(s: ReadySession, source: Domain.AudioInputSource): string {
-  return Domain.inputSourceTitle(source, s.names.inputSources, Domain.spdifNumbered(s.mirror.snapshot.inputConfig.spdifExtEnabled));
+  return Domain.inputSourceTitle(source, s.names.inputSources, Domain.spdifNumbered(s.mirror.snapshot.inputConfig));
 }
 function fmtOnOff(v: boolean): string { return v ? 'on' : 'off'; }
 function fmtMultiplier(encoded: number): string { return encoded === 1 ? '256×' : '128×'; }
@@ -87,6 +90,10 @@ function stageOrDiscard(s: ReadySession, key: string, live: unknown, next: unkno
 
 export function stageInputSource(s: ReadySession, source: Domain.AudioInputSource): void {
   const live = s.mirror.snapshot.inputConfig.source;
+  for (const entry of s.staging.entries.slice()) {
+    if (entry.autoFor === 'inputSource') s.staging.discard(entry.key);
+  }
+  discardOrphanedSpdifPins(s, s.staging.valueOf('spdifCount', s.mirror.snapshot.inputConfig.spdifCount));
   stageOrDiscard(s, 'inputSource', live, source, () => ({
     key: 'inputSource',
     label: 'Input source',
@@ -107,6 +114,23 @@ export function stageInputSource(s: ReadySession, source: Domain.AudioInputSourc
     },
     overlay: (snap) => ({ ...snap, inputConfig: { ...snap.inputConfig, source } }),
   }));
+  if (!s.staging.has('inputSource')) return;
+  // Both generations refuse ADAT as the source while its input is disabled.
+  if (source === Domain.AudioInputSource.Adat) {
+    if (!s.staging.valueOf('adatInputEnable', s.mirror.snapshot.inputConfig.adatInputEnabled)) stageAdatInputEnabled(s, true, 'inputSource');
+    return;
+  }
+  if (!s.device.capabilities.features.inputBlocks) return;
+  // The firmware refuses a source whose block is off, or an S/PDIF input
+  // beyond the count. Check the effective values: a staged cut is undone.
+  const cfg = s.mirror.snapshot.inputConfig;
+  const idx = Domain.spdifIndexOf(source);
+  if (idx >= 0) {
+    if (!s.staging.valueOf('spdifBlock', cfg.spdifEnabled)) stageSpdifBlockEnabled(s, true, 'inputSource');
+    if (s.staging.valueOf('spdifCount', cfg.spdifCount) <= idx) stageSpdifInputCount(s, idx + 1, 'inputSource');
+  } else if (source === Domain.AudioInputSource.I2s) {
+    if (!s.staging.valueOf('i2sBlock', cfg.i2sEnabled)) stageI2sInputEnabled(s, true, 'inputSource');
+  }
 }
 
 export function stageInputRate(s: ReadySession, hz: number): void {
@@ -159,23 +183,63 @@ export function stageSpdifRxPinExt(s: ReadySession, extIndex: number, gpio: numb
   }));
 }
 
-export function stageSpdifInputEnabled(s: ReadySession, extIndex: number, on: boolean): void {
-  const key = `spdifEnable:${extIndex}`;
-  const live = s.mirror.snapshot.inputConfig.spdifExtEnabled[extIndex] ?? false;
-  stageOrDiscard(s, key, live, on, () => ({
-    key,
-    label: `S/PDIF ${extIndex + 2} input`,
+const SPDIF_EXT_PIN_KEY = /^spdifRxPinExt:(\d+)$/;
+
+// Drop staged ext pins of S/PDIF inputs beyond `count` (ext index k is input
+// k + 2), so a shrunk count can't leave an orphaned pin staged.
+function discardOrphanedSpdifPins(s: ReadySession, count: number): void {
+  for (const entry of s.staging.entries.slice()) {
+    const m = SPDIF_EXT_PIN_KEY.exec(entry.key);
+    if (m && Number(m[1]) + 2 > count) s.staging.discard(entry.key);
+  }
+}
+
+export function stageSpdifInputCount(s: ReadySession, count: number, autoFor?: string): void {
+  const live = s.mirror.snapshot.inputConfig.spdifCount;
+  discardOrphanedSpdifPins(s, count);
+  stageOrDiscard(s, 'spdifCount', live, count, () => ({
+    key: 'spdifCount',
+    label: 'S/PDIF input count',
+    from: String(live),
+    to: String(count),
+    value: count,
+    order: count > live ? ORDER.spdifEnable : ORDER.spdifDisable,
+    autoFor,
+    page: 'inputs',
+    apply: () => Io.setSpdifInputCount(s, count),
+    overlay: (snap) => ({ ...snap, inputConfig: { ...snap.inputConfig, spdifCount: count } }),
+  }));
+}
+
+export function stageSpdifBlockEnabled(s: ReadySession, on: boolean, autoFor?: string): void {
+  const live = s.mirror.snapshot.inputConfig.spdifEnabled;
+  stageOrDiscard(s, 'spdifBlock', live, on, () => ({
+    key: 'spdifBlock',
+    label: 'S/PDIF block',
     from: fmtOnOff(live),
     to: fmtOnOff(on),
     value: on,
-    order: on ? ORDER.spdifEnable : ORDER.spdifDisable,
+    order: on ? ORDER.spdifBlockOn : ORDER.spdifDisable,
+    autoFor,
     page: 'inputs',
-    apply: () => Io.setSpdifInputEnabled(s, extIndex, on),
-    overlay: (snap) => {
-      const enabled = snap.inputConfig.spdifExtEnabled.slice();
-      enabled[extIndex] = on;
-      return { ...snap, inputConfig: { ...snap.inputConfig, spdifExtEnabled: enabled } };
-    },
+    apply: () => Io.setSpdifBlockEnabled(s, on),
+    overlay: (snap) => ({ ...snap, inputConfig: { ...snap.inputConfig, spdifEnabled: on } }),
+  }));
+}
+
+export function stageI2sInputEnabled(s: ReadySession, on: boolean, autoFor?: string): void {
+  const live = s.mirror.snapshot.inputConfig.i2sEnabled;
+  stageOrDiscard(s, 'i2sBlock', live, on, () => ({
+    key: 'i2sBlock',
+    label: 'I2S input',
+    from: fmtOnOff(live),
+    to: fmtOnOff(on),
+    value: on,
+    order: on ? ORDER.i2sEnable : ORDER.i2sDisable,
+    autoFor,
+    page: 'inputs',
+    apply: () => Io.setI2sInputEnabled(s, on),
+    overlay: (snap) => ({ ...snap, inputConfig: { ...snap.inputConfig, i2sEnabled: on } }),
   }));
 }
 
@@ -490,7 +554,7 @@ export function stageAdatInputPin(s: ReadySession, pin: number): void {
   }));
 }
 
-export function stageAdatInputEnabled(s: ReadySession, on: boolean): void {
+export function stageAdatInputEnabled(s: ReadySession, on: boolean, autoFor?: string): void {
   const live = s.mirror.snapshot.inputConfig.adatInputEnabled;
   stageOrDiscard(s, 'adatInputEnable', live, on, () => ({
     key: 'adatInputEnable',
@@ -499,6 +563,7 @@ export function stageAdatInputEnabled(s: ReadySession, on: boolean): void {
     to: fmtOnOff(on),
     value: on,
     order: on ? ORDER.adatInputEnable : ORDER.adatInputDisable,
+    autoFor,
     page: 'inputs',
     apply: () => Io.setAdatInputEnable(s, on),
     overlay: (snap) => ({ ...snap, inputConfig: { ...snap.inputConfig, adatInputEnabled: on } }),

@@ -1440,7 +1440,7 @@ describe('DspDevice — granular surface', () => {
     expect(seen).toEqual([0, 2]);
   });
 
-  test('setSpdifInputEnabled packs (instance<<8)|enableBit', async () => {
+  test('setSpdifInputCount disables from the highest instance down, then enables from the lowest up', async () => {
     const seen: number[] = [];
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
@@ -1452,12 +1452,28 @@ describe('DspDevice — granular surface', () => {
     };
     const d = await createDevice(t);
 
-    const r1 = await d.setSpdifInputEnabled(1, true);
-    const r2 = await d.setSpdifInputEnabled(2, false);
+    expect((await d.setSpdifInputCount(2)).ok).toBe(true);
 
-    expect(seen).toEqual([(1 << 8) | 1, (2 << 8) | 0]);
-    expect(r1.ok).toBe(true);
-    expect(r2.ok).toBe(true);
+    expect(seen).toEqual([(3 << 8) | 0, (2 << 8) | 0, (1 << 8) | 1]);
+  });
+
+  test('setSpdifInputCount stops at the first non-success status and returns it', async () => {
+    const seen: number[] = [];
+    const t: DspTransport = {
+      open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
+      ctrlIn: async (req, val) => {
+        if (req !== Protocol.Act.SpdifInputEnable.legacy.code) return new Uint8Array([0x00]);
+        seen.push(val);
+        return new Uint8Array([seen.length === 2 ? 0x02 : 0x00]);
+      },
+      ctrlOut: async () => {},
+    };
+    const d = await createDevice(t);
+
+    const r = await d.setSpdifInputCount(3);
+
+    expect(seen).toEqual([(3 << 8) | 0, (1 << 8) | 1]);
+    expect(r.ok ? null : r.code).toBe(Protocol.PinConfigResult.PinInUse);
   });
 
   test('getSpdifInputConfig decodes a full 6-byte [count, enableMask, pin0..pin3] response', async () => {

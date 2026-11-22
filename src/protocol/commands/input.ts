@@ -32,6 +32,9 @@ export const InputCmd = {
   SpdifRxConfig: { codec: Wire.SpdifRxConfig, legacy: {}, paged: { get: PagedCmd.INPUT.SPDIF_RX_CONFIG.id } } satisfies Command<{ limit: number; enabled: number; count: number; pins: number[] }>,
   SpdifRxCount: { codec: Codec.u8, legacy: {}, paged: { get: PagedCmd.INPUT.SPDIF_RX_COUNT.id, set: PagedCmd.INPUT.SPDIF_RX_COUNT.id } } satisfies Command<number>,
   SpdifRxEnable: { codec: Codec.u8, legacy: {}, paged: { get: PagedCmd.INPUT.SPDIF_RX_ENABLE.id, set: PagedCmd.INPUT.SPDIF_RX_ENABLE.id } } satisfies Command<number>,
+  // Paged I2S input block switch (0/1). Off by default; the source can only
+  // be I2S while it is on.
+  I2sRxEnable: { codec: Codec.u8, legacy: {}, paged: { get: PagedCmd.INPUT.I2S_RX_ENABLE.id, set: PagedCmd.INPUT.I2S_RX_ENABLE.id } } satisfies Command<number>,
 
   // --- LG Sound Sync ---
   LgSoundSyncEnabled: { codec: Codec.bool8, legacy: { get: 0xE7, set: 0xE6 } } satisfies Command<boolean>,

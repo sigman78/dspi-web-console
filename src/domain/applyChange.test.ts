@@ -32,9 +32,9 @@ describe('applyChange', () => {
     const t = makeSnapshot();
     const source = t.inputConfig.source;
     const spdifRxPin = t.inputConfig.spdifRxPin;
-    applyChange({ kind: 'spdifExt', value: { spdifRxPinExt: [16, 17], spdifExtEnabled: [true, true] } }, t);
+    applyChange({ kind: 'spdifExt', value: { spdifRxPinExt: [16, 17], spdifEnabled: true, spdifCount: 3 } }, t);
     expect(t.inputConfig.spdifRxPinExt).toEqual([16, 17]);
-    expect(t.inputConfig.spdifExtEnabled).toEqual([true, true]);
+    expect(t.inputConfig.spdifCount).toBe(3);
     expect(t.inputConfig.spdifRxPin).toBe(spdifRxPin);
     expect(t.inputConfig.source).toBe(source);
   });

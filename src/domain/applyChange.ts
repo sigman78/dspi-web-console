@@ -41,7 +41,7 @@ export function applyChange(c: SnapshotChange, t: DspSnapshot): void {
     case 'limiter':           t.limiter = c.value; break;
     case 'inputConfig':       t.inputConfig = c.value; refreshInputDefaults(t, c.value.source); break;
     case 'spdifRxPin':        t.inputConfig = { ...t.inputConfig, spdifRxPin: c.value }; break;
-    case 'spdifExt':          t.inputConfig = { ...t.inputConfig, spdifRxPinExt: c.value.spdifRxPinExt, spdifExtEnabled: c.value.spdifExtEnabled }; break;
+    case 'spdifExt':          t.inputConfig = { ...t.inputConfig, spdifRxPinExt: c.value.spdifRxPinExt, spdifEnabled: c.value.spdifEnabled, spdifCount: c.value.spdifCount }; break;
     case 'userVolume':        t.userVolume = c.value; break;
     case 'dacHwMute':         t.dacHwMute = c.value; break;
     case 'adat':              t.adat = c.value; break;

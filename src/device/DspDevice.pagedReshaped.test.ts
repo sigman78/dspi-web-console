@@ -208,42 +208,49 @@ describe.each(CHIPS)('reshaped writes on a paged device leave the state a 1.1.6 
   });
 });
 
-describe('the S/PDIF inputs are one block on a paged device', () => {
-  // The block count read straight from the wire, not the legacy mask.
-  const countOf = async (d: Exposed) => (await proto.pagedGet(d.wire, PagedCmd.INPUT.SPDIF_RX_COUNT.id, 0, 1))[0];
+describe('the input blocks on a paged device', () => {
+  const wireByte = async (d: Exposed, id: number) => (await proto.pagedGet(d.wire, id, 0, 1))[0];
 
-  it('matches a 1.1.6 device while inputs are enabled in order and disabled from the top', async () => {
-    const { legacy, paged } = await pair('rp2350');
-    for (const [index, on] of [[1, true], [2, true], [3, true], [3, false], [2, false]] as const) {
-      const [l, p] = await Promise.all([legacy, paged].map((d) => d.setSpdifInputEnabled(index, on)));
-      expect(p.ok).toBe(l.ok);
-      expect(await paged.getSpdifInputConfig()).toEqual(await legacy.getSpdifInputConfig());
-    }
+  it('setSpdifInputCount is one SPDIF_RX_COUNT SET, and the bulk read carries the V34 count', async () => {
+    const { transport, outs } = recording(mockFor('v34', 'rp2350'));
+    const d = await DspDevice.create(transport);
+    outs.length = 0;
+    expect((await d.setSpdifInputCount(3)).ok).toBe(true);
+    expect(outs.map((o) => [o.cmd, o.data[0]])).toEqual([[PagedCmd.INPUT.SPDIF_RX_COUNT.id, 3]]);
+    expect((await d.getAllParams()).inputConfig.blocks?.spdifRxCount).toBe(3);
   });
 
-  it('enabling input 2 alone also turns on input 1, and disabling input 1 drops input 2', async () => {
-    const paged = await Exposed.connect(mockFor('v34', 'rp2350'));
-    expect((await paged.setSpdifInputEnabled(2, true)).ok).toBe(true);
-    expect(await countOf(paged)).toBe(3);
-    expect((await paged.getSpdifInputConfig()).enableMask).toBe(0b0111);
-    expect((await paged.setSpdifInputEnabled(1, false)).ok).toBe(true);
-    expect(await countOf(paged)).toBe(1);
-    expect((await paged.getSpdifInputConfig()).enableMask).toBe(0b0001);
+  it('a fresh device refuses I2S as the source until its block is on', async () => {
+    const d = await Exposed.connect(mockFor('v34', 'rp2350'));
+    expect((await refusal(d.setInputSource(Domain.AudioInputSource.I2s))).reason).toBe('state');
+    expect((await d.setI2sInputEnabled(true)).ok).toBe(true);
+    expect(await wireByte(d, PagedCmd.INPUT.I2S_RX_ENABLE.id)).toBe(1);
+    await d.setInputSource(Domain.AudioInputSource.I2s);
+    expect(await d.getInputSource()).toBe(Domain.AudioInputSource.I2s);
   });
 
-  it('answers the 1.1.6 results for input 0, an input past the block limit and a refused pin', async () => {
-    const paged = await connect('v34', 'rp2350');
-    const legacy = await connect('latest', 'rp2350');
-    for (const [index, on] of [[0, true], [0, false], [4, true]] as const) {
-      const [l, p] = await Promise.all([legacy, paged].map((d) => d.setSpdifInputEnabled(index, on)));
-      expect(p).toEqual(l);
-    }
+  it('switching a block off under its live source is refused', async () => {
+    const d = await Exposed.connect(mockFor('v34', 'rp2350'));
+    await d.setI2sInputEnabled(true);
+    await d.setInputSource(Domain.AudioInputSource.I2s);
+    await expect(d.setI2sInputEnabled(false)).resolves.toMatchObject({ ok: false });
+  });
+
+  it('a count below the live S/PDIF input is refused, and a pin refusal maps to its status', async () => {
     const mock = mockFor('v34', 'rp2350');
     const d = await DspDevice.create(mock);
+    await d.setSpdifInputCount(3);
+    await d.setInputSource(Domain.AudioInputSource.Spdif3);
+    expect((await d.setSpdifInputCount(2)).ok).toBe(false);
     mock.injectRefusal(PagedCmd.INPUT.SPDIF_RX_COUNT.id, VcResult.VC_ERR_PIN_IN_USE);
-    const r = await d.setSpdifInputEnabled(1, true);
-    expect(r.ok).toBe(false);
+    const r = await d.setSpdifInputCount(4);
     expect(r.ok ? null : r.code).toBe(proto.PinConfigResult.PinInUse);
+  });
+
+  it('a 1.1.6 device has no block switches', async () => {
+    const legacy = await connect('latest', 'rp2350');
+    await expect(legacy.setSpdifBlockEnabled(true)).rejects.toThrow('needs paged firmware');
+    await expect(legacy.setI2sInputEnabled(true)).rejects.toThrow('needs paged firmware');
   });
 });
 
@@ -351,7 +358,9 @@ describe('no console call reaches an untranslated command on a paged device', ()
     ['getInputRate', (d) => d.getInputRate()],
     ['setInputRate', (d) => d.setInputRate(48000)],
     ['getCsDisplayCfg', (d) => d.getCsDisplayCfg()],
-    ['setSpdifInputEnabled', (d) => d.setSpdifInputEnabled(1, true)],
+    ['setSpdifInputCount', (d) => d.setSpdifInputCount(2)],
+    ['setSpdifBlockEnabled', (d) => d.setSpdifBlockEnabled(true)],
+    ['setI2sInputEnabled', (d) => d.setI2sInputEnabled(true)],
     ['getSpdifInputConfig', (d) => d.getSpdifInputConfig()],
   ];
 
@@ -461,17 +470,6 @@ describe('a 1.1.6 band write carries the band bypass in byte 3', () => {
     expect(outs[0].data).toHaveLength(18);
     const wireCh = d.hardware.wireChannelByUiChannel[Domain.ChannelId.Out1L]!;
     expect([...outs[0].data.slice(0, 4)]).toEqual([wireCh, 1, Domain.FilterType.LinkwitzTransform, byte]);
-  });
-});
-
-describe('a half-applied S/PDIF enable', () => {
-  it('puts the previous block count back when the switch SET is refused', async () => {
-    const mock = mockFor('v34', 'rp2350');
-    const d = await Exposed.connect(mock);
-    mock.injectRefusal(PagedCmd.INPUT.SPDIF_RX_ENABLE.id, VcResult.VC_ERR_PIN_IN_USE);
-    const r = await d.setSpdifInputEnabled(2, true);
-    expect(r.ok ? null : r.code).toBe(proto.PinConfigResult.PinInUse);
-    expect((await proto.pagedGet(d.wire, PagedCmd.INPUT.SPDIF_RX_COUNT.id, 0, 1))[0]).toBe(1);
   });
 });
 

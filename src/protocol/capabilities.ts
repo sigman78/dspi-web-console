@@ -79,6 +79,8 @@ export interface DeviceFeatures {
   // Onboard RTA (0x08-0x0F, wire V30+). Worth trying only: the real probe is
   // the caps read, which STALLs on firmware without the module.
   readonly rta: boolean;
+  // Input block switches (S/PDIF, I2S on/off). Paged firmware only.
+  readonly inputBlocks: boolean;
 }
 
 export interface DeviceCapabilities {
@@ -158,6 +160,7 @@ export function deriveCapabilities(input: {
     limiter:           (paged || wireVersion >= 32) && listed(G.PagedCmd.DYN.LIMITER_ENABLE),
     buildStamp:        (paged || wireVersion >= 29) && listed(G.PagedCmd.SYS.BUILD_INFO, 'get'),
     rta:               (paged || wireVersion >= 30) && listed(G.PagedCmd.MEAS.RTA_CAPS, 'get'),
+    inputBlocks:       paged && listed(G.PagedCmd.INPUT.SPDIF_RX_ENABLE, 'set') && listed(G.PagedCmd.INPUT.I2S_RX_ENABLE, 'set'),
   };
 
   return {

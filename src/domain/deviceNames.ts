@@ -1,7 +1,7 @@
 // Board and input-source names held on the device (REQ_*_INPUT_SOURCE_NAME,
 // REQ_*_DEVICE_NAME). Empty means "unnamed": each host supplies its own label.
 
-import { AudioInputSource } from './deviceSections';
+import { AudioInputSource, type InputConfig } from './deviceSections';
 
 export const DEVICE_NAME_MAX_LEN = 31;
 
@@ -26,10 +26,10 @@ export function selectableInputSources(spdifInputCount: number, adat: boolean): 
   return out;
 }
 
-// True once an optional S/PDIF input is enabled; only then is the first input
-// numbered ("S/PDIF 1") to tell them apart.
-export function spdifNumbered(spdifExtEnabled: readonly boolean[] | undefined): boolean {
-  return spdifExtEnabled?.some(Boolean) ?? false;
+// True once the S/PDIF block holds more than one input; only then is the first
+// input numbered ("S/PDIF 1") to tell them apart.
+export function spdifNumbered(cfg: Pick<InputConfig, 'spdifCount'> | undefined): boolean {
+  return (cfg?.spdifCount ?? 1) > 1;
 }
 
 // Built-in label.

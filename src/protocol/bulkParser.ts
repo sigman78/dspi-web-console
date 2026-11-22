@@ -86,7 +86,7 @@ const INPUT_ENABLE_ADAT = 4;
 
 // V34 bytes to the V32 meanings: ext S/PDIF enable mask + 1, ADAT 0/1/2.
 // The block's inputs 2..count are on while the S/PDIF block is.
-function blocksToLegacyFields(b: WireInputBlocks): { spdifRxEnabledExtP1: number; adatInputEnabledP1: number } {
+export function blocksToLegacyFields(b: WireInputBlocks): { spdifRxEnabledExtP1: number; adatInputEnabledP1: number } {
   const count = Math.min(b.spdifRxCount, 4);
   const spdifOn = b.inputEnableP1 === 0 || ((b.inputEnableP1 - 1) & INPUT_ENABLE_SPDIF) !== 0;
   const extMask = spdifOn && count > 1 ? (1 << (count - 1)) - 1 : 0;
@@ -105,7 +105,7 @@ const WIRE_INPUT_SOURCE_I2S = 2;
 // input up to the highest enabled one, and I2S starts off. A restore keeps the
 // selected source's block on, so I2S is on only while it is the source. A field
 // that is absent (0) stays absent, which tells the firmware to keep the live value.
-function legacyFieldsToBlocks(ic: Pick<WireInputConfig, 'source' | 'spdifRxEnabledExtP1' | 'adatInputEnabledP1'>): WireInputBlocks {
+export function legacyFieldsToBlocks(ic: Pick<WireInputConfig, 'source' | 'spdifRxEnabledExtP1' | 'adatInputEnabledP1'>): WireInputBlocks {
   const extMask = ic.spdifRxEnabledExtP1 === 0 ? 0 : ic.spdifRxEnabledExtP1 - 1;
   const highest = extMask === 0 ? 0 : 32 - Math.clz32(extMask);   // 1-based ext index
   const mask = INPUT_ENABLE_SPDIF
@@ -114,6 +114,34 @@ function legacyFieldsToBlocks(ic: Pick<WireInputConfig, 'source' | 'spdifRxEnabl
   return {
     spdifRxCount: ic.spdifRxEnabledExtP1 === 0 ? 0 : 1 + highest,
     inputEnableP1: ic.adatInputEnabledP1 === 0 ? 0 : mask + 1,
+  };
+}
+
+export interface WireInputBlockState {
+  spdifEnabled: boolean;
+  // S/PDIF inputs in the block, 1..4.
+  spdifCount: number;
+  i2sEnabled: boolean;
+}
+
+// The block switches and S/PDIF count of an input config. Legacy firmware has
+// no switches: S/PDIF and I2S are always on, and the count is one past the
+// highest enabled ext input.
+export function inputBlockState(ic: WireInputConfig): WireInputBlockState {
+  if (ic.blocks) {
+    const { spdifRxCount, inputEnableP1 } = ic.blocks;
+    const mask = inputEnableP1 === 0 ? INPUT_ENABLE_SPDIF : inputEnableP1 - 1;
+    return {
+      spdifEnabled: (mask & INPUT_ENABLE_SPDIF) !== 0,
+      spdifCount: spdifRxCount === 0 ? 1 : Math.min(spdifRxCount, 4),
+      i2sEnabled: (mask & INPUT_ENABLE_I2S) !== 0,
+    };
+  }
+  const extMask = ic.spdifRxEnabledExtP1 === 0 ? 0 : ic.spdifRxEnabledExtP1 - 1;
+  return {
+    spdifEnabled: true,
+    spdifCount: 1 + (extMask === 0 ? 0 : 32 - Math.clz32(extMask)),
+    i2sEnabled: true,
   };
 }
 

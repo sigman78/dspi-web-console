@@ -1435,13 +1435,38 @@ export class DspDevice {
     return proto.readCmd(this.transport, proto.Cmd.SpdifRxPin, instance & 0xFF);
   }
 
-  // Enable/disable a selectable S/PDIF input (instance 1..3; instance 0 is always on). wValue = (instance<<8)|enable.
-  async setSpdifInputEnabled(instance: number, on: boolean): Promise<Result<void, proto.PinConfigResult>> {
+  // Number of S/PDIF inputs (1..4). Paged firmware sets the block count; 1.1.6
+  // enables ext inputs 2..count and disables the rest (wValue = (instance<<8)|enable).
+  // Disables go first, highest down, so a pin is freed before another claim;
+  // the first non-success status stops the sequence.
+  async setSpdifInputCount(count: number): Promise<Result<void, proto.PinConfigResult>> {
     if (this.generation === 'paged') {
-      return proto.pinConfigResultFromByte(await Reshaped.setSpdifInputEnabled(this.transport, instance & 0xFF, on));
+      return proto.pinConfigResultFromByte(await Reshaped.setSpdifInputCount(this.transport, count));
     }
-    const wValue = ((instance & 0xFF) << 8) | (on ? 1 : 0);
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.SpdifInputEnable, wValue));
+    const instances = Array.from({ length: Domain.SPDIF_RX_MAX_INSTANCES - 1 }, (_, i) => i + 1);
+    const writes = [
+      ...instances.filter((i) => i >= count).reverse().map((i) => ({ i, on: false })),
+      ...instances.filter((i) => i < count).map((i) => ({ i, on: true })),
+    ];
+    let last: Result<void, proto.PinConfigResult> = { ok: true, value: undefined };
+    for (const { i, on } of writes) {
+      const wValue = (i << 8) | (on ? 1 : 0);
+      last = proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.SpdifInputEnable, wValue));
+      if (!last.ok) return last;
+    }
+    return last;
+  }
+
+  // S/PDIF block switch (paged firmware only).
+  async setSpdifBlockEnabled(on: boolean): Promise<Result<void, proto.PinConfigResult>> {
+    if (this.generation !== 'paged') throw new Error('setSpdifBlockEnabled needs paged firmware');
+    return proto.pinConfigResultFromByte(await Reshaped.setSpdifBlockEnabled(this.transport, on));
+  }
+
+  // I2S block switch (paged firmware only).
+  async setI2sInputEnabled(on: boolean): Promise<Result<void, proto.PinConfigResult>> {
+    if (this.generation !== 'paged') throw new Error('setI2sInputEnabled needs paged firmware');
+    return proto.pinConfigResultFromByte(await Reshaped.setI2sInputEnabled(this.transport, on));
   }
 
   // { count, enableMask, pins } for every selectable S/PDIF input slot.

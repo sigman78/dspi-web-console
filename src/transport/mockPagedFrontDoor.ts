@@ -4,7 +4,7 @@
 // cannot invert (the reshaped ones) are served by mockPagedNative.ts.
 
 import { TransportStall } from './DspTransport';
-import { mockNativeCommands, nativeVc, type NativeCommand } from './mockPagedNative';
+import { mockNativeCommands, nativeVc, type LegacyAccess, type NativeCommand } from './mockPagedNative';
 import { allPagedCommands, pagedCommand } from '@/protocol/paged';
 import { PagedCmd, PagedPage, VcResult } from '@/protocol/paged.gen';
 import { LEGACY_ADAPTERS, StatusFamily, type LegacyAdapter, type LegacyAddr, type LegacyField, type VcByte } from '@/protocol/legacyMap.gen';
@@ -35,9 +35,7 @@ function mockCommandBitmap(page: number, rp2350: boolean): Uint8Array {
   return out;
 }
 
-export interface LegacyHandlers {
-  legacyIn(code: number, wValue: number, length: number): Promise<Uint8Array>;
-  legacyOut(code: number, wValue: number, data: Uint8Array): Promise<void>;
+export interface LegacyHandlers extends LegacyAccess {
   // Closes any open chunk session, as a new SETUP does on the firmware.
   closeChunkSessions(): void;
 }

@@ -234,10 +234,11 @@ describe('diffSnapshots — 1.1.4 sections', () => {
     b.inputConfig = {
       ...b.inputConfig!,
       spdifRxPinExt: [16, 0],
-      spdifExtEnabled: [true, false],
+      spdifEnabled: true,
+      spdifCount: 2,
     };
     expect(diffSnapshots(a, b)).toEqual([
-      { kind: 'spdifExt', value: { spdifRxPinExt: [16, 0], spdifExtEnabled: [true, false] } },
+      { kind: 'spdifExt', value: { spdifRxPinExt: [16, 0], spdifEnabled: true, spdifCount: 2 } },
     ]);
   });
 

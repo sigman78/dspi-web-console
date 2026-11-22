@@ -6,7 +6,6 @@
   import SourceNamesPopover from './SourceNamesPopover.svelte';
   import * as Runtime from '@/runtime';
   import * as Domain from '@/domain';
-  import type { PinPickerCell } from '@/domain';
   import { Wire } from '@/protocol';
   import { formatRateKHz } from '@/utils';
   import { getSession } from '@/components/sessionContext';
@@ -34,8 +33,8 @@
   const slaveStatus = $derived(s.telemetry.i2sSlaveStatus);
   const showSlaveRate = $derived(clockMode === 1);
   const slaveRateLocked = $derived(slaveStatus?.state === Domain.I2sSlaveClockState.Locked);
-  // ADAT input's clock mode/status are read live here (SY.15 owns the write
-  // path -- it applies immediately, so there's nothing to stage).
+  // ADAT input's clock mode/status are read live here (its panel owns the
+  // write path).
   const adatClockMode = $derived(inputConfig?.adatInputClockMode ?? 0);
   const adatStatus = $derived(s.telemetry.adatInputStatus);
   // Configured count (0 = firmware default of 2); pairs 0..activePairs-1 show a pin select.
@@ -47,8 +46,65 @@
     return s.staging.valueOf(`i2sRxPin:${pair}`, inputConfig?.i2sRxPins[pair] ?? 0);
   }
 
-  function effSpdifExtEnabled(i: number): boolean {
-    return s.staging.valueOf(`spdifEnable:${i}`, inputConfig?.spdifExtEnabled[i] ?? false);
+  // Block switches and the S/PDIF count, with staged values applied.
+  const effSpdifBlock = $derived(inputConfig ? s.staging.valueOf('spdifBlock', inputConfig.spdifEnabled) : false);
+  const effI2sBlock = $derived(inputConfig ? s.staging.valueOf('i2sBlock', inputConfig.i2sEnabled) : false);
+  const effAdatEnabled = $derived(inputConfig ? s.staging.valueOf('adatInputEnable', inputConfig.adatInputEnabled) : false);
+  const effAdatPin = $derived(inputConfig ? s.staging.valueOf('adatInputPin', inputConfig.adatInputPin) : 0);
+  const liveSpdifCount = $derived(inputConfig?.spdifCount ?? 1);
+  const effSpdifCount = $derived(inputConfig ? s.staging.valueOf('spdifCount', inputConfig.spdifCount) : 1);
+  const multiSpdif = $derived(spdifInputCount > 1);
+  // S/PDIF input rows shown: the single-receiver platform has no count.
+  const spdifRows = $derived(multiSpdif ? effSpdifCount : 1);
+  // Radios cover every input in the live or the staged count; cut ones show as ghosts.
+  // The staged source always keeps its radio, even beyond the count.
+  const spdifRadios = $derived(multiSpdif ? Math.max(effSpdifCount, liveSpdifCount, Domain.spdifIndexOf(source) + 1) : 1);
+
+  const SPDIF_SOURCES = [
+    Domain.AudioInputSource.Spdif, Domain.AudioInputSource.Spdif2,
+    Domain.AudioInputSource.Spdif3, Domain.AudioInputSource.Spdif4,
+  ] as const;
+
+  type RadioLook = 'idle' | 'live' | 'leaving' | 'target' | 'added' | 'removed';
+  // The look of one source radio; `k` is the S/PDIF input index, else -1.
+  function radioLook(src: Domain.AudioInputSource, k: number): RadioLook {
+    if (sourcePending && src === source) return 'target';
+    if (k >= liveSpdifCount && k < effSpdifCount) return 'added';
+    if (k >= effSpdifCount && k < liveSpdifCount) return 'removed';
+    if (src === liveSource) return sourcePending ? 'leaving' : 'live';
+    return 'idle';
+  }
+  function onRadio(src: Domain.AudioInputSource, k: number): void {
+    if (k >= effSpdifCount) Runtime.stageSpdifInputCount(s, k + 1);
+    else Runtime.stageInputSource(s, src);
+  }
+
+  // The block a source lives in, for the pins cell.
+  type Block = 'usb' | 'spdif' | 'i2s' | 'adat';
+  function blockOf(src: number): Block {
+    if (src === Domain.AudioInputSource.Usb) return 'usb';
+    if (src === Domain.AudioInputSource.I2s) return 'i2s';
+    if (src === Domain.AudioInputSource.Adat) return 'adat';
+    return 'spdif';
+  }
+  const blockLive = $derived(blockOf(liveSource));
+  const blockStaged = $derived(sourcePending ? blockOf(source) : null);
+  const blockStagedOn = $derived({
+    usb: false,
+    spdif: s.staging.has('spdifBlock') && effSpdifBlock,
+    i2s: s.staging.has('i2sBlock') && effI2sBlock,
+    adat: s.staging.has('adatInputEnable') && effAdatEnabled,
+  });
+
+  // The highest S/PDIF input is the live or the staged source: it cannot be removed.
+  const highestHeld = $derived(
+    Domain.spdifIndexOf(liveSource) === effSpdifCount - 1 || Domain.spdifIndexOf(source) === effSpdifCount - 1,
+  );
+
+  // A custom name rides the sub-header of its section.
+  function subTitle(base: string, src: number): string {
+    const custom = s.names.inputSources?.[src];
+    return custom ? `${base} · "${custom}"` : base;
   }
 
   function effSpdifRxPinExt(i: number): number {
@@ -74,7 +130,7 @@
     else Runtime.stageSpdifRxPinExt(s, i - 1, gpio);
   }
 
-  function spdifPinCells(i: number): PinPickerCell[] {
+  function spdifPinCells(i: number): Domain.PinPickerCell[] {
     if (!snap || !overlaySnap) return [];
     const cells = Domain.pickerCells(snap.platform.type, overlaySnap, ctrlPins, effSpdifPin(i));
     if (i === 0) return cells;
@@ -86,7 +142,7 @@
   // pickers aren't rendered, so their targets can't be staged from here.
   function stageSectionPinsToDefault(): void {
     if (isSpdif) {
-      for (let i = 0; i < spdifInputCount; i++) {
+      for (let i = 0; i < spdifRows; i++) {
         // An ext input still at the unset sentinel is skipped: resetting it
         // would materialize a GPIO with no way back to UNSET.
         if (i > 0 && effSpdifPin(i) === 0) continue;
@@ -104,7 +160,9 @@
   const namesAvailable = $derived(!!(inputConfig && snap && overlaySnap) && s.names.inputSourcesSupported === true);
   $effect(() => { if (!namesAvailable) namesOpen = false; });
 
-  const sourceTitle = (src: number): string => Domain.inputSourceTitle(src, s.names.inputSources, Domain.spdifNumbered(inputConfig?.spdifExtEnabled));
+  // Radio names number S/PDIF inputs whenever the platform has several, as the pin rows do.
+  const radioTitle = (src: number): string => Domain.inputSourceTitle(src, s.names.inputSources, multiSpdif);
+  const sourceTitle = (src: number): string => Domain.inputSourceTitle(src, s.names.inputSources, Domain.spdifNumbered(inputConfig));
 
   const STATE_LABELS: Record<number, string> = {
     [Domain.SpdifInputState.Inactive]:  'INACTIVE',
@@ -143,79 +201,99 @@
       {#if namesOpen && s.names.inputSourcesSupported === true}
         <SourceNamesPopover id={namesPopId} ignore={`#${namesBtnId}`} onClose={() => { namesOpen = false; }} />
       {/if}
-      <div class="cfgkvgrid">
-        <KV label="SOURCE" value={sourceTitle(liveSource)} />
-        <div class="src-btns">
+      <div class="list" role="radiogroup" aria-label="Input source">
+        <div class="lhdr"><span class="microlbl">SOURCE</span><span class="microlbl">PINS</span></div>
+
+        {#snippet radio(src: Domain.AudioInputSource, k: number, digit: string)}
+          {@const look = radioLook(src, k)}
           <button
-            class="chip"
-            title={sourceTitle(Domain.AudioInputSource.Usb)}
-            class:on={source === Domain.AudioInputSource.Usb}
-            class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Usb}
-            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Usb)}
-            disabled={source === Domain.AudioInputSource.Usb}
-          >USB</button>
-          <button
-            class="chip"
-            title={sourceTitle(Domain.AudioInputSource.Spdif)}
-            class:on={source === Domain.AudioInputSource.Spdif}
-            class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif}
-            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif)}
-            disabled={source === Domain.AudioInputSource.Spdif}
-          >{spdifInputCount > 1 ? 'S/P 1' : 'S/P'}</button>
-          {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[0]}
-            <button
-              class="chip"
-              title={sourceTitle(Domain.AudioInputSource.Spdif2)}
-              class:on={source === Domain.AudioInputSource.Spdif2}
-              class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif2}
-              onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif2)}
-              disabled={source === Domain.AudioInputSource.Spdif2}
-            >S/P 2</button>
+            type="button"
+            role="radio"
+            class="radio {look}"
+            class:dot={digit === ''}
+            class:staged={look === 'target' || look === 'added' || look === 'removed'}
+            aria-checked={source === src && look !== 'removed'}
+            aria-label={look === 'removed' ? `Restore ${radioTitle(src)}` : radioTitle(src)}
+            title={look === 'removed' ? `Restore ${radioTitle(src)}` : radioTitle(src)}
+            onclick={() => onRadio(src, k)}
+          >{digit}</button>
+        {/snippet}
+
+        {#snippet pinsCell(block: Block)}
+          {#if block === 'usb'}
+            <span class="tag faint">—</span>
+          {:else if blockLive === block}
+            <span class="tag ok">IN USE</span>
+          {:else if blockStaged === block}
+            <span class="tag warn" title={blockStagedOn[block] ? 'device: OFF, switches on with apply' : undefined}>PENDING</span>
+          {:else if block === 'adat' && effAdatPin === 0 && !s.staging.has('adatInputEnable')}
+            <span class="tag faint" title="Assign a pin in ADAT INPUT">NO PIN</span>
+          {:else if block !== 'adat' && !features.inputBlocks}
+            <span class="tag faint">ALWAYS</span>
+          {:else if block === 'spdif'}
+            <span class="stage-wrap" class:staged={s.staging.has('spdifBlock')} title={s.staging.has('spdifBlock') ? `device: ${inputConfig!.spdifEnabled ? 'ON' : 'OFF'}` : undefined}>
+              <ToggleSwitch checked={effSpdifBlock} ariaLabel={effSpdifBlock ? 'Switch S/PDIF inputs off' : 'Switch S/PDIF inputs on'} onChange={(v) => Runtime.stageSpdifBlockEnabled(s, v)} />
+            </span>
+          {:else if block === 'i2s'}
+            <span class="stage-wrap" class:staged={s.staging.has('i2sBlock')} title={s.staging.has('i2sBlock') ? `device: ${inputConfig!.i2sEnabled ? 'ON' : 'OFF'}` : undefined}>
+              <ToggleSwitch checked={effI2sBlock} ariaLabel={effI2sBlock ? 'Switch I2S input off' : 'Switch I2S input on'} onChange={(v) => Runtime.stageI2sInputEnabled(s, v)} />
+            </span>
+          {:else}
+            <span class="stage-wrap" class:staged={s.staging.has('adatInputEnable')} title={s.staging.has('adatInputEnable') ? `device: ${inputConfig!.adatInputEnabled ? 'ON' : 'OFF'}` : undefined}>
+              <ToggleSwitch checked={effAdatEnabled} ariaLabel={effAdatEnabled ? 'Switch ADAT input off' : 'Switch ADAT input on'} onChange={(v) => Runtime.stageAdatInputEnabled(s, v)} />
+            </span>
           {/if}
-          {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[1]}
-            <button
-              class="chip"
-              title={sourceTitle(Domain.AudioInputSource.Spdif3)}
-              class:on={source === Domain.AudioInputSource.Spdif3}
-              class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif3}
-              onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif3)}
-              disabled={source === Domain.AudioInputSource.Spdif3}
-            >S/P 3</button>
+        {/snippet}
+
+        {#snippet simpleRow(src: Domain.AudioInputSource, block: Block, hasRadio: boolean)}
+          <div class="lrow" class:hot={src === liveSource}>
+            <span class="c1">{#if hasRadio}{@render radio(src, -1, '')}{/if}</span>
+            {#if hasRadio}
+              <button type="button" class="name" tabindex="-1" onclick={() => onRadio(src, -1)}>{sourceTitle(src)}</button>
+            {:else}
+              <span class="name">{sourceTitle(src)}</span>
+            {/if}
+            <span></span><span></span>
+            <span class="pins">{@render pinsCell(block)}</span>
+          </div>
+        {/snippet}
+
+        {@render simpleRow(Domain.AudioInputSource.Usb, 'usb', true)}
+
+        <div class="lrow" class:hot={blockLive === 'spdif'}>
+          <span class="c1"></span>
+          {#if multiSpdif}
+            <span class="name">S/PDIF</span>
+          {:else}
+            <button type="button" class="name" tabindex="-1" onclick={() => onRadio(Domain.AudioInputSource.Spdif, -1)}>{sourceTitle(Domain.AudioInputSource.Spdif)}</button>
           {/if}
-          {#if features.multiSpdifInputs && inputConfig.spdifExtEnabled[2]}
-            <button
-              class="chip"
-              title={sourceTitle(Domain.AudioInputSource.Spdif4)}
-              class:on={source === Domain.AudioInputSource.Spdif4}
-              class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Spdif4}
-              onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Spdif4)}
-              disabled={source === Domain.AudioInputSource.Spdif4}
-            >S/P 4</button>
-          {/if}
-          <button
-            class="chip"
-            title={sourceTitle(Domain.AudioInputSource.I2s)}
-            class:on={isI2s}
-            class:staged={s.staging.has('inputSource') && isI2s}
-            onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.I2s)}
-            disabled={isI2s}
-          >I2S</button>
-          {#if features.adatInput && inputConfig.adatInputEnabled && inputConfig.adatInputPin !== 0}
-            <button
-              class="chip"
-              title={sourceTitle(Domain.AudioInputSource.Adat)}
-              class:on={source === Domain.AudioInputSource.Adat}
-              class:staged={s.staging.has('inputSource') && source === Domain.AudioInputSource.Adat}
-              onclick={() => Runtime.stageInputSource(s, Domain.AudioInputSource.Adat)}
-              disabled={source === Domain.AudioInputSource.Adat}
-            >ADAT</button>
-          {/if}
+          <span class="c3">
+            {#each Array.from({ length: spdifRadios }, (_, k) => k) as k (k)}
+              {@render radio(SPDIF_SOURCES[k], multiSpdif ? k : -1, multiSpdif ? String(k + 1) : '')}
+            {/each}
+            {#if multiSpdif}
+              <span class="step">
+                {#if effSpdifCount > 1 && !highestHeld}
+                  <button type="button" class="chip icon" title={`Remove S/PDIF input ${effSpdifCount}`} aria-label={`Remove S/PDIF input ${effSpdifCount}`} onclick={() => Runtime.stageSpdifInputCount(s, effSpdifCount - 1)}>−</button>
+                {/if}
+              </span>
+              <span class="step">
+                {#if effSpdifCount < spdifInputCount}
+                  <button type="button" class="chip icon" title={`Add S/PDIF input ${effSpdifCount + 1}`} aria-label={`Add S/PDIF input ${effSpdifCount + 1}`} onclick={() => Runtime.stageSpdifInputCount(s, effSpdifCount + 1)}>+</button>
+                {/if}
+              </span>
+            {/if}
+          </span>
+          <span></span>
+          <span class="pins">{@render pinsCell('spdif')}</span>
         </div>
+
+        {@render simpleRow(Domain.AudioInputSource.I2s, 'i2s', true)}
+        {#if features.adatInput}
+          {@render simpleRow(Domain.AudioInputSource.Adat, 'adat', effAdatPin !== 0 || liveSource === Domain.AudioInputSource.Adat)}
+        {/if}
       </div>
     </div>
-    {#if sourcePending}
-      <p class="hint pending">Device is running on {sourceTitle(liveSource)} — configuring pending {sourceTitle(source)}.</p>
-    {/if}
 
     {#if source === Domain.AudioInputSource.Usb}
       {#if showUsbDetected}
@@ -227,23 +305,10 @@
     {/if}
 
     {#if isSpdif}
-      <div class="subhdr">S/PDIF RX</div>
+      <div class="subhdr">{subTitle('S/PDIF RX', source)}</div>
       <div class="spdif-grid">
-        {#each Array.from({ length: spdifInputCount }, (_, i) => i) as i (i)}
+        {#each Array.from({ length: spdifRows }, (_, i) => i) as i (i)}
           <span class="spdif-title">{spdifTitle(i)}</span>
-          <span class="spdif-toggle">
-            {#if i === 0}
-              <span class="dash" title="always enabled">—</span>
-            {:else}
-              <span class="stage-wrap" class:staged={s.staging.has(`spdifEnable:${i - 1}`)} title={s.staging.has(`spdifEnable:${i - 1}`) ? `device: ${inputConfig.spdifExtEnabled[i - 1] ? 'ON' : 'OFF'}` : undefined}>
-                <ToggleSwitch
-                  checked={effSpdifExtEnabled(i - 1)}
-                  ariaLabel={effSpdifExtEnabled(i - 1) ? `Disable ${spdifTitle(i)} input` : `Enable ${spdifTitle(i)} input`}
-                  onChange={() => Runtime.stageSpdifInputEnabled(s, i - 1, !effSpdifExtEnabled(i - 1))}
-                />
-              </span>
-            {/if}
-          </span>
           <span class="stage-wrap" class:staged={s.staging.has(spdifPinKey(i))} title={s.staging.has(spdifPinKey(i)) ? `device: GP${devSpdifPin(i)}` : undefined}>
             <PinPicker
               value={effSpdifPin(i)}
@@ -276,7 +341,7 @@
     {/if}
 
     {#if isI2s}
-      <div class="subhdr">I2S INPUT</div>
+      <div class="subhdr">{subTitle('I2S INPUT', source)}</div>
       <div class="cfgkvgrid">
         {#if showSlaveRate}
           <KV
@@ -331,7 +396,7 @@
     {/if}
 
     {#if source === Domain.AudioInputSource.Adat && features.adatInput}
-      <div class="subhdr">ADAT INPUT</div>
+      <div class="subhdr">{subTitle('ADAT INPUT', source)}</div>
       <div class="cfgkvgrid">
         {#if adatClockMode === 1}
           <KV
@@ -360,7 +425,6 @@
           {/if}
         {/if}
       </div>
-      <p class="hint">Pin, clock mode, and live status live in the ADAT INPUT panel.</p>
     {/if}
   {/if}
 </Panel>
@@ -371,12 +435,35 @@
   .src-btns button { white-space: nowrap; }
   .pinrow { padding: 6px 14px 6px; }
   .idle { padding: 10px 14px; }
-  .pending { padding: 0 14px 8px; color: var(--accent); }
   .hint.warn { color: var(--warn); }
-  /* S/PDIF inputs: one row per selectable input -- title | toggle | pin --
-     spread across the panel width (title at left, pin at the right edge). */
-  .spdif-grid { padding: 8px 14px 4px; display: grid; grid-template-columns: auto auto auto; justify-content: space-between; row-gap: 12px; column-gap: 12px; align-items: center; }
+  .list { display: flex; flex-direction: column; min-width: 300px; }
+  .lhdr, .lrow { display: grid; align-items: center; column-gap: 8px; padding: 0 14px; white-space: nowrap; }
+  .lhdr { height: 16px; grid-template-columns: 1fr auto; }
+  .lhdr .microlbl { color: var(--text-faint); }
+  .lrow { height: 26px; grid-template-columns: auto 64px auto 1fr auto; border-top: 1px solid var(--wash); }
+  .lrow.hot { background: var(--wash); }
+  .c1 { display: inline-flex; width: 16px; }
+  .c3 { display: inline-flex; align-items: center; gap: 4px; }
+  .name { font-family: var(--font-sans); font-size: var(--fs-m); color: var(--text-dim); background: none; border: none; padding: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+  button.name { cursor: pointer; }
+  .lrow.hot .name { color: var(--text); }
+  .pins { min-width: 56px; display: inline-flex; justify-content: flex-end; align-items: center; }
+  .tag { font-family: var(--font-mono); font-size: var(--fs-s); text-transform: uppercase; }
+  .tag.ok { color: var(--ok); }
+  .tag.warn { color: var(--warn); }
+  .tag.faint { color: var(--text-faint); }
+  .step { display: inline-flex; width: 20px; justify-content: center; }
+  .radio { width: 16px; height: 16px; box-sizing: border-box; padding: 0; border-radius: 50%; border: 1px solid var(--border-hi); background: none; color: var(--text-dim); font-family: var(--font-mono); font-size: var(--fs-s); line-height: 1; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+  .radio:hover { border-color: var(--text-dim); }
+  .radio.live { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  .radio.leaving { border-color: var(--accent); color: var(--accent); }
+  .radio.target { background: color-mix(in oklab, var(--accent) var(--tint-strong), transparent); border-color: var(--accent); color: var(--text); }
+  .radio.removed { border-style: dashed; border-color: var(--border); color: var(--text-faint); }
+  /* An unnumbered radio shows a dot while it is the source. */
+  .radio.dot::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0; }
+  .radio.live.dot::before, .radio.target.dot::before, .radio.leaving.dot::before { opacity: 1; }
+  /* S/PDIF inputs: one row per input -- title | pin -- spread across the
+     panel width (title at left, pin at the right edge). */
+  .spdif-grid { padding: 8px 14px 4px; display: grid; grid-template-columns: auto auto; justify-content: space-between; row-gap: 12px; column-gap: 12px; align-items: center; }
   .spdif-title { font-family: var(--font-sans); font-size: var(--fs-m); font-weight: 600; color: var(--text-dim); white-space: nowrap; }
-  .spdif-toggle { display: flex; align-items: center; justify-content: center; min-width: 34px; }
-  .dash { color: var(--text-faint); }
 </style>

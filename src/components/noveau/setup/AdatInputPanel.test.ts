@@ -3,12 +3,10 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import { SESSION_KEY } from '@/components/sessionContext';
 import { AudioInputSource, AdatInputLockState } from '@/domain';
 
-const stageAdatInputEnabled = vi.fn();
 const stageAdatInputPin = vi.fn();
 const stageAdatInputClockMode = vi.fn();
 
 vi.mock('@/runtime', () => ({
-  stageAdatInputEnabled: (...a: unknown[]) => stageAdatInputEnabled(...a),
   stageAdatInputPin: (...a: unknown[]) => stageAdatInputPin(...a),
   stageAdatInputClockMode: (...a: unknown[]) => stageAdatInputClockMode(...a),
   stagedCtrlPins: () => ({ uart: null, i2c: null, cs: [] }),
@@ -23,7 +21,7 @@ function makeSnap(over: { inputConfig?: object; adat?: object; dacHwMute?: objec
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 0 },
     inputConfig: {
       source: AudioInputSource.Usb,
-      spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false],
+      spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifEnabled: true, spdifCount: 1, i2sEnabled: true,
       i2sRxPins: [15], i2sInputRateHz: 48000, i2sInputChannels: 2, i2sClockMode: 0,
       adatInputEnabled: false, adatInputPin: 0, adatInputClockMode: 0,
       ...over.inputConfig,
@@ -36,7 +34,6 @@ function makeSnap(over: { inputConfig?: object; adat?: object; dacHwMute?: objec
 function makeSession(o: {
   snap?: ReturnType<typeof makeSnap>;
   adatInputStatus?: object | null;
-  stagedSource?: number;
 } = {}) {
   return {
     device: { capabilities: { features: { adatInput: true } } },
@@ -46,7 +43,7 @@ function makeSession(o: {
     controlSurfaces: { caps: null, nouns: [], bindings: [], status: null },
     staging: {
       has: () => false,
-      overlaySnapshot: (snap: any) => (o.stagedSource == null ? snap : { ...snap, inputConfig: { ...snap.inputConfig, source: o.stagedSource } }),
+      overlaySnapshot: (snap: any) => snap,
     },
   } as any;
 }
@@ -60,29 +57,10 @@ beforeEach(() => {
 });
 
 describe('AdatInputPanel', () => {
-  test('enabling is blocked without an assigned pin, and stages once one is set', async () => {
-    const { unmount } = renderPanel(makeSession({ snap: makeSnap() }));
-    const blocked = screen.getByRole('switch', { name: 'Enable ADAT input' });
-    expect(blocked.hasAttribute('disabled')).toBe(true);
-    expect(screen.getByTitle('Assign a GPIO pin first')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'ADAT input GPIO pin' }).textContent).toBe('UNSET');
-    unmount();
-
+  test('has no enable switch: the inputs list owns it', () => {
     renderPanel(makeSession({ snap: makeSnap({ inputConfig: { adatInputPin: 20 } }) }));
-    const toggle = screen.getByRole('switch', { name: 'Enable ADAT input' });
-    expect(toggle.hasAttribute('disabled')).toBe(false);
-    await fireEvent.click(toggle);
-    expect(stageAdatInputEnabled).toHaveBeenCalledWith(expect.anything(), true);
-  });
-
-  test('disabling is blocked while ADAT is the (staged) input source', () => {
-    renderPanel(makeSession({
-      snap: makeSnap({ inputConfig: { adatInputEnabled: true, adatInputPin: 20 } }),
-      stagedSource: AudioInputSource.Adat,
-    }));
-    const toggle = screen.getByRole('switch', { name: 'Disable ADAT input' });
-    expect(toggle.hasAttribute('disabled')).toBe(true);
-    expect(screen.getByTitle('Switch the input source away first')).toBeTruthy();
+    expect(screen.queryByRole('switch')).toBeNull();
+    expect(screen.getByRole('button', { name: 'ADAT input GPIO pin' })).toBeTruthy();
   });
 
   test('the clear-pin reset only appears while disabled with an assigned pin, and stages the 0xFF sentinel', async () => {

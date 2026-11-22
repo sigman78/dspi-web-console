@@ -21,7 +21,7 @@ function makeSnap(enabledSlots: number[] = []) {
     outputs: Array.from({ length: 9 }, (_, wireIndex) => ({ wireIndex, enabled: enabledSlots.includes(wireIndex) })),
     outputPins: [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
-    inputConfig: { source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false] },
+    inputConfig: { source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifEnabled: true, spdifCount: 1, i2sEnabled: true },
     dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
     adat: { enabled: false, pin: 0 },
   };

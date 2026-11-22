@@ -1,4 +1,4 @@
-import { type BulkParams } from './bulkParser';
+import { type BulkParams, inputBlockState } from './bulkParser';
 import * as Domain from '@/domain';
 
 // Opaque handle for the preset-paste device-to-device copy. Runtime holds it
@@ -47,14 +47,6 @@ function narrowLevellerSpeed(s: number): Domain.LevellerSpeed {
   );
 }
 
-// p1 = enable mask + 1 (0 = absent -> all off; else bit0 = input2, bit1 =
-// input3, bit2 = input4).
-function decodeSpdifExtEnabled(p1: number): boolean[] {
-  if (p1 === 0) return [false, false, false];
-  const mask = p1 - 1;
-  return [(mask & 1) !== 0, (mask & 2) !== 0, (mask & 4) !== 0];
-}
-
 // p1 = clock_pin_mode + 1 (0 = absent -> unified; else value - 1: 0 = unified, 1 = split).
 function decodeClockPinMode(p1: number): number {
   return p1 === 0 ? 0 : p1 - 1;
@@ -85,6 +77,7 @@ function narrowFilter(filter: { type: number; bypass: boolean; frequency: number
 export function fromBulkParams(hardware: Domain.HardwareProfile, bulk: BulkParams): Domain.DspSnapshot {
   const channelNames = bulk.channelNames;
   const inputSource = narrowInputSource(bulk.inputConfig.source);
+  const blockState = inputBlockState(bulk.inputConfig);
 
   const channels = hardware.channels.map((channel) => {
     const wireChannel = Domain.wireChannelFor(hardware, channel.id);
@@ -184,7 +177,9 @@ export function fromBulkParams(hardware: Domain.HardwareProfile, bulk: BulkParam
       i2sInputRateHz: Domain.i2sRateDecode(bulk.inputConfig.i2sInputRateEnc),
       i2sInputChannels: bulk.inputConfig.i2sInputChannels,
       spdifRxPinExt: [...bulk.inputConfig.spdifRxPinExt],
-      spdifExtEnabled: decodeSpdifExtEnabled(bulk.inputConfig.spdifRxEnabledExtP1),
+      spdifEnabled: blockState.spdifEnabled,
+      spdifCount: blockState.spdifCount,
+      i2sEnabled: blockState.i2sEnabled,
       i2sClockMode: bulk.inputConfig.i2sClockMode,
       // p1-encoded fields (0 = absent) are decoded below.
       adatInputPin: bulk.inputConfig.adatInputPin,

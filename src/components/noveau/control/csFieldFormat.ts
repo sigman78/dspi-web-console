@@ -7,7 +7,7 @@ import type { EnumLabelContext } from '@/domain/cs/fieldHelpers';
 export function enumLabelContext(s: ReadySession): EnumLabelContext {
   return {
     inputSourceNames: s.names.inputSources,
-    spdifNumbered: Domain.spdifNumbered(s.mirror.current?.inputConfig.spdifExtEnabled),
+    spdifNumbered: Domain.spdifNumbered(s.mirror.current?.inputConfig),
     outputLatencyOptions: s.outputLatency.options,
   };
 }

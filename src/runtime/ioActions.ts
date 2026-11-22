@@ -187,25 +187,38 @@ export function setSpdifRxPinExt(s: ReadySession, extIndex: number, gpio: number
   );
 }
 
-// fw 1.1.5+ — enable/disable optional S/PDIF input 2/3 (extIndex as above).
-// On paged firmware the mirror follows the block's contiguity rule.
-export function setSpdifInputEnabled(s: ReadySession, extIndex: number, on: boolean): Promise<boolean> {
+// Number of S/PDIF inputs in the block (1..4). Legacy firmware maps the count
+// onto the ext inputs' enables.
+export function setSpdifInputCount(s: ReadySession, count: number): Promise<boolean> {
   return writeChecked(s,
-    'set S/PDIF input enable',
-    () => s.device.setSpdifInputEnabled(extIndex + 1, on),
+    'set S/PDIF input count',
+    () => s.device.setSpdifInputCount(count),
+    () => { s.mirror.snapshot.inputConfig = { ...s.mirror.snapshot.inputConfig, spdifCount: count }; },
+  ).then((ok) => {
+    // The 1.1.6 sequence can stop partway with some inputs already changed.
+    if (!ok && s.device.generation !== 'paged') s.mirror.requestReconcile(true);
+    return ok;
+  });
+}
+
+// S/PDIF block switch (paged firmware).
+export function setSpdifBlockEnabled(s: ReadySession, on: boolean): Promise<boolean> {
+  return writeChecked(s,
+    'set S/PDIF input block',
+    () => s.device.setSpdifBlockEnabled(on),
     () => {
-      const flags = s.mirror.snapshot.inputConfig.spdifExtEnabled;
-      if (s.device.generation !== 'paged') {
-        flags[extIndex] = on;
-        return;
-      }
-      // Paged inputs are one contiguous block: enabling one turns on those
-      // below it, disabling one drops those above it.
-      for (let i = 0; i < flags.length; i++) {
-        if (on ? i <= extIndex : i >= extIndex) flags[i] = on;
-      }
-      s.mirror.requestReconcile(true);
+      s.mirror.snapshot.inputConfig = { ...s.mirror.snapshot.inputConfig, spdifEnabled: on };
+      if (!on) s.telemetry.spdifRxStatus = null;
     },
+  );
+}
+
+// I2S block switch (paged firmware).
+export function setI2sInputEnabled(s: ReadySession, on: boolean): Promise<boolean> {
+  return writeChecked(s,
+    'set I2S input block',
+    () => s.device.setI2sInputEnabled(on),
+    () => { s.mirror.snapshot.inputConfig = { ...s.mirror.snapshot.inputConfig, i2sEnabled: on }; },
   );
 }
 

@@ -3,7 +3,9 @@ import { bootMock } from './boot';
 import { activeSession, clearNotices, resetAppState } from '@/state';
 import { AudioInputSource, SysClockMode, SYS_CLOCK_VREG_DEFAULT, type SysClockStatus } from '@/domain';
 import { Wire } from '@/protocol';
+import { resolveMockProfile } from '@/mockProfiles';
 import * as Staged from './stagedActions';
+import * as IoActions from './ioActions';
 import * as SystemActions from './systemActions';
 
 const { PIN_RESET_TO_DEFAULT } = Wire.Const;
@@ -60,6 +62,123 @@ describe('runtime/stagedActions', () => {
 
       await s.staging.applyAll();
       expect(s.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
+    });
+  });
+
+  describe('input blocks', () => {
+    async function bootPaged() {
+      const profile = resolveMockProfile('v34', 'rp2350');
+      await bootMock(profile.platform, profile.opts);
+      clearNotices();
+      return sess();
+    }
+
+    it('picking I2S while its block is off stages the block on with the source; picking USB drops it', async () => {
+      const s = await bootPaged();
+      expect(s.mirror.snapshot.inputConfig.i2sEnabled).toBe(false);
+
+      Staged.stageInputSource(s, AudioInputSource.I2s);
+      expect(s.staging.get('i2sBlock')?.autoFor).toBe('inputSource');
+      expect(s.staging.get('i2sBlock')?.order).toBeLessThan(s.staging.get('inputSource')!.order);
+
+      Staged.stageInputSource(s, AudioInputSource.Usb);
+      expect(s.staging.has('i2sBlock')).toBe(false);
+      expect(s.staging.has('inputSource')).toBe(false);
+    });
+
+    it('applying the auto-staged block and source switches to I2S', async () => {
+      const s = await bootPaged();
+      Staged.stageInputSource(s, AudioInputSource.I2s);
+      await s.staging.applyAll();
+      expect(s.mirror.snapshot.inputConfig.source).toBe(AudioInputSource.I2s);
+      expect(s.mirror.snapshot.inputConfig.i2sEnabled).toBe(true);
+    });
+
+    it('a block the user staged is not claimed by the source', async () => {
+      const s = await bootPaged();
+      Staged.stageI2sInputEnabled(s, true);
+      Staged.stageInputSource(s, AudioInputSource.I2s);
+      Staged.stageInputSource(s, AudioInputSource.Usb);
+      expect(s.staging.get('i2sBlock')?.autoFor).toBeUndefined();
+    });
+
+    it('dropping an auto-staged count also drops the pins staged beyond the live count', async () => {
+      const s = await bootPaged();
+      s.mirror.snapshot.inputConfig.spdifCount = 2;
+      Staged.stageInputSource(s, AudioInputSource.Spdif3);
+      Staged.stageSpdifRxPinExt(s, 1, 25);
+      Staged.stageInputSource(s, AudioInputSource.Usb);
+      expect(s.staging.has('spdifCount')).toBe(false);
+      expect(s.staging.has('spdifRxPinExt:1')).toBe(false);
+    });
+
+    it('picking ADAT stages its input enable on either firmware generation, and picking USB drops it', async () => {
+      const s = await bootPaged();
+      Staged.stageInputSource(s, AudioInputSource.Adat);
+      expect(s.staging.get('adatInputEnable')?.autoFor).toBe('inputSource');
+      Staged.stageInputSource(s, AudioInputSource.Usb);
+      expect(s.staging.has('adatInputEnable')).toBe(false);
+
+      s.dispose();
+      resetAppState();
+      await bootMock('rp2350');
+      Staged.stageInputSource(sess(), AudioInputSource.Adat);
+      expect(sess().staging.get('adatInputEnable')?.autoFor).toBe('inputSource');
+    });
+
+    it('stages nothing extra on a 1.1.6 device', async () => {
+      await bootMock('rp2350');
+      const s = sess();
+      Staged.stageInputSource(s, AudioInputSource.I2s);
+      expect(s.staging.entries.map((e) => e.key)).toEqual(['inputSource']);
+    });
+
+    it('a staged I2S block-off is undone by picking the I2S source', async () => {
+      const s = await bootPaged();
+      await IoActions.setI2sInputEnabled(s, true);
+      Staged.stageI2sInputEnabled(s, false);
+      expect(s.staging.has('i2sBlock')).toBe(true);
+      Staged.stageInputSource(s, AudioInputSource.I2s);
+      expect(s.staging.has('i2sBlock')).toBe(false);
+      expect(s.staging.has('inputSource')).toBe(true);
+    });
+
+    it('picking an S/PDIF input beyond a staged count cut raises the count back', async () => {
+      const s = await bootPaged();
+      s.mirror.snapshot.inputConfig.spdifCount = 4;
+      Staged.stageSpdifInputCount(s, 2);
+      Staged.stageInputSource(s, AudioInputSource.Spdif3);
+      expect(s.staging.get('spdifCount')?.value).toBe(3);
+      expect(s.staging.get('spdifCount')?.autoFor).toBe('inputSource');
+
+      Staged.stageInputSource(s, AudioInputSource.Spdif4);
+      expect(s.staging.has('spdifCount')).toBe(false);
+    });
+
+    it('picking S/PDIF while its block is off stages the block on', async () => {
+      const s = await bootPaged();
+      s.mirror.snapshot.inputConfig.spdifEnabled = false;
+      Staged.stageInputSource(s, AudioInputSource.Spdif);
+      expect(s.staging.get('spdifBlock')?.autoFor).toBe('inputSource');
+    });
+
+    it('applying a block-on with a count grow leaves the device with both', async () => {
+      const s = await bootPaged();
+      await IoActions.setSpdifBlockEnabled(s, false);
+      Staged.stageSpdifInputCount(s, 3);
+      Staged.stageSpdifBlockEnabled(s, true);
+      await s.staging.applyAll();
+      expect(await s.device.getSpdifInputConfig()).toMatchObject({ enableMask: 0b0111 });
+    });
+
+    it('shrinking the count drops staged pins of the inputs that go', async () => {
+      const s = await bootPaged();
+      s.mirror.snapshot.inputConfig.spdifCount = 4;
+      Staged.stageSpdifRxPinExt(s, 0, 23);
+      Staged.stageSpdifRxPinExt(s, 2, 26);
+      Staged.stageSpdifInputCount(s, 2);
+      expect(s.staging.has('spdifRxPinExt:0')).toBe(true);
+      expect(s.staging.has('spdifRxPinExt:2')).toBe(false);
     });
   });
 
