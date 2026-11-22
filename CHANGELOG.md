@@ -6,6 +6,14 @@ from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
 this project follows [Semantic Versioning](https://semver.org/) (currently in the
 `0.x` pre-1.0 line — minor versions may include breaking changes).
 
+## [1.1.1](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v1.1.0...dspi-console-web-v1.1.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* **about:** list the 1.1 changes under LATEST CHANGES ([#173](https://github.com/sigman78/dspi-web-console/issues/173)) ([5019142](https://github.com/sigman78/dspi-web-console/commit/5019142f0142e9851b1704400dc77b3388f30c0a))
+* **setup:** rename the device from an edit button in the DEVICE panel ([#174](https://github.com/sigman78/dspi-web-console/issues/174)) ([f536e63](https://github.com/sigman78/dspi-web-console/commit/f536e633c800603663cdb230991a31e26acb3400))
+
 ## [1.1.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v1.0.1...dspi-console-web-v1.1.0) (2026-11-22)
 
 
