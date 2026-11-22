@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { GenerationRefusal } from '@/transport/withGenerationGuard';
 import { LinkHealth } from './linkHealth.svelte';
 
 describe('LinkHealth', () => {
@@ -22,6 +23,13 @@ describe('LinkHealth', () => {
   it('three consecutive failures degrade', () => {
     fail(); fail(); fail();
     expect(h.degraded).toBe(true);
+  });
+
+  it('generation refusals never reach the wire, so they do not count', () => {
+    fail(); fail();
+    h.noteFail('write', new GenerationRefusal(0x0110, 'legacy'));
+    expect(h.degraded).toBe(false);
+    expect(h.failTotal).toBe(2);
   });
 
   it('an ok in between resets the streak, so a later failure run needs 3 fresh', () => {

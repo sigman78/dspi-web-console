@@ -1,5 +1,6 @@
 import { type DspTransport } from '@/transport/DspTransport';
 import { withSerializedCtrl, type SerializedDspTransport } from '@/transport/withSerializedCtrl';
+import { withGenerationGuard, type ProtocolGeneration } from '@/transport/withGenerationGuard';
 import * as proto from '@/protocol';
 import { TimeoutError } from '@/transport/withTimeout';
 import { Codec, utf8Truncate, Result } from '@/utils';
@@ -292,13 +293,13 @@ function ctrlIfaceStatusFromWire(w: {
 // First and only request until the protocol generation is known: paged
 // firmware answers it, legacy firmware STALLs it. Legacy firmware ignores the
 // page byte, so any other paged request could run an unrelated opcode there.
-async function probeProtocol(transport: DspTransport): Promise<void> {
+async function probeProtocol(transport: DspTransport): Promise<ProtocolGeneration> {
   let reply: Uint8Array;
   try {
     reply = await transport.ctrlIn(proto.PAGED_PROTOCOL_INFO, 0, proto.PROTOCOL_INFO_LENGTH);
   } catch (err) {
     // A timeout or disconnect still rethrows.
-    if (proto.isLegacyProbeRefusal(err)) return;
+    if (proto.isLegacyProbeRefusal(err)) return 'legacy';
     throw err;
   }
   const info = proto.parseProtocolInfo(reply);
@@ -320,10 +321,11 @@ export class DspDevice {
 
   protected static async resolveInfo(
     transport: DspTransport,
+    setGeneration: (gen: ProtocolGeneration) => void,
     openTransport: () => Promise<void> = () => transport.open(),
   ): Promise<DspDeviceInfo> {
     await openTransport();
-    await probeProtocol(transport);
+    setGeneration(await probeProtocol(transport));
     const [serial, platform] = await Promise.all([
       proto.readCmd(transport, proto.WireCmd.GetSerial),
       readPlatform(transport),
@@ -371,8 +373,9 @@ export class DspDevice {
     transport: DspTransport,
     openTransport: () => Promise<void> = () => transport.open(),
   ): Promise<DspDevice> {
-    const serialized = withSerializedCtrl(transport);
-    const info = await DspDevice.resolveInfo(serialized, openTransport);
+    const guarded = withGenerationGuard(transport);
+    const serialized = withSerializedCtrl(guarded);
+    const info = await DspDevice.resolveInfo(serialized, (gen) => guarded.setGeneration(gen), openTransport);
     return new DspDevice(serialized, info);
   }
 
