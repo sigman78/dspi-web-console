@@ -889,6 +889,12 @@ export class MockTransport implements DspTransport {
         const out = Codec.encode(Wire.BuildInfo, this.#buildInfo);
         return out.slice(0, Math.min(length, out.byteLength));
       }
+      // Read-then-clear, IN only (as firmware).
+      case WireCmd.ClearClips.code: {
+        const flags = Syn.synthesizeU32(this.#clipFlags);
+        this.#clipFlags = 0;
+        return flags.slice(0, Math.min(length, flags.byteLength));
+      }
       case WireCmd.GetAllParams.code: {
         const bulk = this.#synthBulkPacket();
         return bulk.slice(0, Math.min(length, bulk.byteLength));
@@ -2179,10 +2185,6 @@ export class MockTransport implements DspTransport {
       }
       case WireCmd.SetOutputConfigMode.code:
         this.#outputConfigMode = Codec.decode(Codec.u8, data) as Domain.OutputConfigMode;
-        return;
-
-      case WireCmd.ClearClips.code:
-        this.#clipFlags = 0;
         return;
 
       case WireCmd.SetUartConfig.code: {
