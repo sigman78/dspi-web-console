@@ -12,7 +12,7 @@
   import PinPicker from '@/components/chrome/PinPicker.svelte';
   import CsIrCommands from './CsIrCommands.svelte';
   import CsSlotCard from './CsSlotCard.svelte';
-  import CsNamePopover from './CsNamePopover.svelte';
+  import NamePopover from '@/components/chrome/NamePopover.svelte';
   import { defaultUnitFor } from '@/components/chrome/valueFieldFormat';
   import NumField from '@/components/chrome/NumField.svelte';
   import CsTargetRow from './CsTargetRow.svelte';
@@ -223,7 +223,7 @@
   {onToggle} {onRenameRequest} {onRemove} {detailTarget}>
   {#snippet rename()}
     {#if renaming}
-      <CsNamePopover title="RENAME" value={d.name ?? cs.names[slot] ?? ''}
+      <NamePopover maxlength={Domain.CS_NAME_MAX_LEN} title="RENAME" value={d.name ?? cs.names[slot] ?? ''}
         onCommit={onRenameCommit} onCancel={onRenameCancel} />
     {/if}
   {/snippet}

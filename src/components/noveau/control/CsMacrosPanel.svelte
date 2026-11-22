@@ -6,7 +6,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import CsSlotCard from './CsSlotCard.svelte';
-  import CsNamePopover from './CsNamePopover.svelte';
+  import NamePopover from '@/components/chrome/NamePopover.svelte';
   import NumField from '@/components/chrome/NumField.svelte';
   import CsTargetRow from './CsTargetRow.svelte';
   import CsValueStepRow from './CsValueStepRow.svelte';
@@ -202,7 +202,7 @@
       onRemove={() => remove(i)}>
       {#snippet rename()}
         {#if renaming === i}
-          <CsNamePopover title="RENAME" value={d.name}
+          <NamePopover maxlength={Domain.CS_NAME_MAX_LEN} title="RENAME" value={d.name}
             onCommit={(v) => { editDraft(i, (dr) => { dr.name = v; }); renamingRaw = null; }}
             onCancel={() => { renamingRaw = null; }} />
         {/if}
@@ -346,7 +346,7 @@
       {/if}
     </div>
     {#if adding}
-      <CsNamePopover title="NEW MACRO" value="" onCommit={addMacro} onCancel={() => { adding = false; }} />
+      <NamePopover maxlength={Domain.CS_NAME_MAX_LEN} title="NEW MACRO" value="" onCommit={addMacro} onCancel={() => { adding = false; }} />
     {/if}
   </div>
 </Panel>

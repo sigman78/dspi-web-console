@@ -6,7 +6,7 @@
   import Panel from '@/components/chrome/Panel.svelte';
   import MaskChips from '@/components/chrome/MaskChips.svelte';
   import CsSlotCard from './CsSlotCard.svelte';
-  import CsNamePopover from './CsNamePopover.svelte';
+  import NamePopover from '@/components/chrome/NamePopover.svelte';
   import { applyCsGroup, clearCsGroup } from '@/runtime';
   import * as Domain from '@/domain';
   import { csStatusFromByte } from '@/protocol';
@@ -187,7 +187,7 @@
       onRemove={() => remove(i)}>
       {#snippet rename()}
         {#if renaming === i}
-          <CsNamePopover title="RENAME" value={d.name}
+          <NamePopover maxlength={Domain.CS_NAME_MAX_LEN} title="RENAME" value={d.name}
             onCommit={(v) => { editDraft(i, (dr) => { dr.name = v; }); renamingRaw = null; }}
             onCancel={() => { renamingRaw = null; }} />
         {/if}
@@ -245,7 +245,7 @@
       {/if}
     </div>
     {#if adding}
-      <CsNamePopover title="NEW GROUP" value="" onCommit={addGroup} onCancel={() => { adding = false; }} />
+      <NamePopover maxlength={Domain.CS_NAME_MAX_LEN} title="NEW GROUP" value="" onCommit={addGroup} onCancel={() => { adding = false; }} />
     {/if}
   </div>
 </Panel>

@@ -2,7 +2,7 @@
   import { untrack } from 'svelte';
   import Panel from '@/components/chrome/Panel.svelte';
   import CsBindingRow from './CsBindingRow.svelte';
-  import CsNamePopover from './CsNamePopover.svelte';
+  import NamePopover from '@/components/chrome/NamePopover.svelte';
   import { applyCsBinding, clearCsBinding, applyCsName } from '@/runtime';
   import * as Domain from '@/domain';
   import { getSession } from '@/components/sessionContext';
@@ -316,7 +316,7 @@
       </div>
       {#if pendingAdd != null}
         {@const typeIdx = pendingAdd}
-        <CsNamePopover title={`NEW ${Domain.csTypeLabel(typeIdx).toUpperCase()}`} value=""
+        <NamePopover maxlength={Domain.CS_NAME_MAX_LEN} title={`NEW ${Domain.csTypeLabel(typeIdx).toUpperCase()}`} value=""
           onCommit={(name) => commitAdd(typeIdx, name)} onCancel={() => { pendingAdd = null; }} />
       {/if}
     </div>

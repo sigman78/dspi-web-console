@@ -1,27 +1,22 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
-
   const {
     label,
     value,
     tone,
     title,
     inline = false,
-    children,
   }: {
     label: string;
     value: string;
     tone?: 'ok' | 'off' | 'warn';
     title?: string;
     inline?: boolean;
-    /** Replaces the plain value, e.g. with an inline editor. */
-    children?: Snippet;
   } = $props();
 </script>
 
 <div class="kv" {title} class:help={title != null} class:inline>
   <div class="lbl">{label}</div>
-  <div class="val" class:ok={tone === 'ok'} class:off={tone === 'off'} class:warn={tone === 'warn'}>{#if children}{@render children()}{:else}{value}{/if}</div>
+  <div class="val" class:ok={tone === 'ok'} class:off={tone === 'off'} class:warn={tone === 'warn'}>{value}</div>
 </div>
 
 <style>
