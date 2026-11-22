@@ -17,3 +17,4 @@ export * from './commands';
 export * from './results';
 export * from './notify';
 export * from './protocolInfo';
+export * from './pagedExec';

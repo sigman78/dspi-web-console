@@ -26,10 +26,13 @@ export function parseProtocolInfo(bytes: Uint8Array): ProtocolInfo | null {
   return { major: bytes[4] };
 }
 
-// A probe failure that identifies legacy firmware. Chromium's WinUSB backend
-// reports a control STALL as a thrown NetworkError rather than status 'stall'.
-// Falling back to legacy is the safe direction: paged firmware refuses page-0
-// requests and changes nothing.
-export function isLegacyProbeRefusal(err: unknown): boolean {
+// A control STALL. Chromium's WinUSB backend reports it as a thrown
+// NetworkError rather than status 'stall'.
+export function isStall(err: unknown): boolean {
   return err instanceof TransportStall || (err instanceof Error && err.name === 'NetworkError');
 }
+
+// A probe failure that identifies legacy firmware. Falling back to legacy is
+// the safe direction: paged firmware refuses page-0 requests and changes
+// nothing.
+export const isLegacyProbeRefusal = isStall;
