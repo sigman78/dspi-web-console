@@ -507,21 +507,6 @@ describe('DspDevice — persistence (legacy save/load/reset)', () => {
 });
 
 describe('DspDevice — telemetry actions', () => {
-  function makeCapturingTransport() {
-    const captured: { request: number; value: number; data: Uint8Array }[] = [];
-    const t: DspTransport = {
-      open: async () => {},
-      close: async () => {},
-      isOpen: () => true,
-      on: () => () => {},
-      ctrlIn: async () => new Uint8Array(),
-      ctrlOut: async (request, value, data) => {
-        captured.push({ request, value, data: new Uint8Array(data) });
-      },
-    };
-    return { t, captured };
-  }
-
   let mockT: MockTransport;
   let d: DspDevice;
   beforeEach(async () => {
@@ -529,13 +514,14 @@ describe('DspDevice — telemetry actions', () => {
     d = await createDevice(mockT);
   });
 
-  it('clearClips dispatches a 0x83 OUT with wValue=0 and empty payload', async () => {
-    const { t, captured } = makeCapturingTransport();
-    await (await createDevice(t)).clearClips();
-    expect(captured).toHaveLength(1);
-    expect(captured[0].request).toBe(0x83);
-    expect(captured[0].value).toBe(0);
-    expect(captured[0].data.byteLength).toBe(0);
+  it('clearClips reads 0x83 (firmware handles it as IN only) and the latch clears', async () => {
+    expect((await d.getSystemStatus()).clipFlags).not.toBe(0);
+    const inSpy = vi.spyOn(mockT, 'ctrlIn');
+    const outSpy = vi.spyOn(mockT, 'ctrlOut');
+    await d.clearClips();
+    expect(inSpy).toHaveBeenCalledWith(0x83, 0, 4);
+    expect(outSpy).not.toHaveBeenCalled();
+    expect((await d.getSystemStatus()).clipFlags).toBe(0);
   });
 
   it('resetBufferStats returns true on success', async () => {
