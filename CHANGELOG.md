@@ -6,6 +6,23 @@ from [Conventional Commit](https://www.conventionalcommits.org/) messages, and
 this project follows [Semantic Versioning](https://semver.org/) (currently in the
 `0.x` pre-1.0 line — minor versions may include breaking changes).
 
+## [1.1.0](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v1.0.1...dspi-console-web-v1.1.0) (2026-11-22)
+
+
+### Features
+
+* **fw:** 1.1.6 release parity - device and input source names, CS caps v22, RTA config notify ([#160](https://github.com/sigman78/dspi-web-console/issues/160)) ([ca21316](https://github.com/sigman78/dspi-web-console/commit/ca2131668bca39b3534820efd8b25c0f3c67c225))
+* **names:** rename the device and input sources ([#161](https://github.com/sigman78/dspi-web-console/issues/161)) ([5bae9c2](https://github.com/sigman78/dspi-web-console/commit/5bae9c2f9e396d97ecaaf7aefc022f39b7b607fa))
+* **room:** flare the scene on musical hits ([#158](https://github.com/sigman78/dspi-web-console/issues/158)) ([e04e202](https://github.com/sigman78/dspi-web-console/commit/e04e202d4e8c27e44d946530c6590ecf4e2f47ba))
+* **room:** pin the scene hue to a preset ([#157](https://github.com/sigman78/dspi-web-console/issues/157)) ([359c81a](https://github.com/sigman78/dspi-web-console/commit/359c81a3d2ec04e33df3fa3a198371c419814edc))
+
+
+### Bug Fixes
+
+* **connect:** probe the paged protocol before any other request ([#159](https://github.com/sigman78/dspi-web-console/issues/159)) ([dca5725](https://github.com/sigman78/dspi-web-console/commit/dca57258c16dcac918551ee081d38d24ef395fe1))
+* **eq:** keep a bypassed band bypassed when it is edited ([#171](https://github.com/sigman78/dspi-web-console/issues/171)) ([f71df49](https://github.com/sigman78/dspi-web-console/commit/f71df4982c9cb1bae9f068de0d295375c526cd5b))
+* **meters:** clear clips with the IN request the firmware handles ([#165](https://github.com/sigman78/dspi-web-console/issues/165)) ([eec31d6](https://github.com/sigman78/dspi-web-console/commit/eec31d6151f1fca178b9d4074840db9c3190eefd))
+
 ## [1.0.1](https://github.com/sigman78/dspi-web-console/compare/dspi-console-web-v1.0.0...dspi-console-web-v1.0.1) (2026-11-02)
 
 
