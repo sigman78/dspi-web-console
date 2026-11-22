@@ -5,9 +5,12 @@
 
   // Rendered inside an anchor host, then floated to <body> at the host's
   // bottom-left so panel overflow clipping cannot cut it off.
-  const { title, value, onCommit, onCancel }: {
+  const { title, value, maxlength, ignore, onCommit, onCancel }: {
     title: string;
     value: string;
+    maxlength: number;
+    /** Selector of an opener that toggles this popover itself. */
+    ignore?: string;
     onCommit: (name: string) => void;
     onCancel: () => void;
   } = $props();
@@ -47,9 +50,9 @@
 </script>
 
 <div class="pop" role="dialog" aria-label={title} tabindex="-1"
-  onkeydown={onKey} use:float use:dismiss={{ onDismiss: onCancel }}>
+  onkeydown={onKey} use:float use:dismiss={{ onDismiss: onCancel, ignore }}>
   <span class="microlbl">{title}</span>
-  <NameField bind:this={field} class="namein" allowEmpty maxlength={31} placeholder="Unnamed"
+  <NameField bind:this={field} class="namein" allowEmpty {maxlength} placeholder="Unnamed"
     value={text} ariaLabel="Name" onCommit={(n) => { text = n; }} />
   <div class="actions">
     <button type="button" class="chip" onclick={onCancel}>CANCEL</button>
