@@ -133,7 +133,7 @@ export async function refreshNames(s: ReadySession): Promise<void> {
 // never persisted or notified, so it isn't covered by the normal snapshot
 // sync -- read once on panel mount instead.
 export async function fetchSubharmSolo(s: ReadySession): Promise<void> {
-  if (s.device.generation === 'paged' || !s.device.capabilities.features.subharmExt) return;
+  if (!s.device.capabilities.features.subharmExt) return;
   try {
     s.telemetry.subharmSolo = await s.queue.run(() => s.device.getSubharmSolo());
   } catch (err) {
@@ -241,7 +241,8 @@ export async function readCsAll(
   if (groupCount > 0 || macroCount > 0) {
     extStatus = await run(() => d.getCsExtStatus());
   }
-  const display = Domain.csDisplaysAvailable(caps) ? await run(() => readCsDisplayBlock(d)) : null;
+  // CsDisplayCfgResponse (0x28 IN) is a custom opcode with no paged translation.
+  const display = Domain.csDisplaysAvailable(caps) && d.generation === 'legacy' ? await run(() => readCsDisplayBlock(d)) : null;
   return { bindings, names, irCommands, groups, macros, extStatus, display };
 }
 
@@ -410,6 +411,8 @@ export async function wireUpConnection(
     // the first status poll lands a frame later -- the visible "all channels ->
     // actual config" flash. Best-effort: on failure the first poll fills it in
     // shortly, i.e. the prior behaviour, so a failed seed never blocks connect.
+    // Paged sessions skip the seed: STATUS 0x50 is a custom opcode with no
+    // one-to-one paged read, so the first activeInputChannels stays null.
     if (device.generation === 'legacy') {
       try {
         const status = await session.queue.run(() => device.getSystemStatus());
@@ -458,15 +461,16 @@ export async function wireUpConnection(
     }
     // Adoption-cycle traffic is allowed even for a record that stays dormant
     // afterward -- it goes quiet once these settle.
-    // A paged device has no legacy reads yet; its snapshot is all there is.
-    if (device.generation === 'legacy') {
-      await fetchPresetInfo(session);
-      await fetchCtrlIfaceInfo(session);
-      await fetchControlSurfaces(session);
-      await fetchSysClock(session);
-      await fetchOutputLatency(session);
-      await fetchNames(session);
-    }
+    await fetchPresetInfo(session);
+    await fetchCtrlIfaceInfo(session);
+    await fetchControlSurfaces(session);
+    // The system clock opcodes (SysClockStatus 0x41, SysClock 0x40) belong to the
+    // overclock branch and are absent from the legacy map, so a paged device is
+    // marked unsupported and the panel hides.
+    if (device.generation === 'legacy') await fetchSysClock(session);
+    else session.sysClock.supported = false;
+    await fetchOutputLatency(session);
+    await fetchNames(session);
     Log.info('sync', 'connected', {
       platform: session.mirror.current?.platform.name,
       wire: device.capabilities.wire,

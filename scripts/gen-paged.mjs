@@ -162,21 +162,36 @@ function renderLegacy(registry, legacy, source) {
   // Ordered [result code, byte] pairs, in legacy_map order: inversion takes the first match.
   const byVc = (m, where) => Object.entries(m).map(([k, v]) => [vc(k, where), v]);
 
+  // Keys a custom adapter carries as its own data; none reaches the output.
+  const CUSTOM_KEYS = new Set(['kind', 'fn', 'uses', 'fields', 'peaks', 'peak_cpu', 'levels_raw', 'zero', 'zero_if_absent', 'note', 'bulk', 'len', 'retired']);
+  const SPLIT_KEYS = new Set(['kind', 'selector', 'cases', 'default', 'out_stall']);
+  const LEAF_KEYS = new Set(['kind', 'target', 'addr', 'value', 'encode', 'status', 'status_overrides', 'trunc', 'bulk', 'retired', 'on_stall', 'out_stall']);
+  const known = (a, keys, where) => {
+    for (const k of Object.keys(a)) if (!keys.has(k)) fail(`${where}: unknown adapter key ${JSON.stringify(k)}`);
+  };
+
   const adapter = (a, where) => {
     if (a === null || a === undefined) return null;
-    if (a.kind === 'custom') return { kind: 'custom' };
+    if (a.kind === 'custom') {
+      known(a, CUSTOM_KEYS, where);
+      return a.retired ? { kind: 'custom', retired: true } : { kind: 'custom' };
+    }
     const o = { kind: a.kind };
     if (a.kind === 'split') {
+      known(a, SPLIT_KEYS, where);
       o.selector = a.selector;
       o.cases = Object.fromEntries(Object.entries(a.cases).map(([k, c]) => [k, adapter(c, `${where}[${k}]`)]));
       o.default = adapter(a.default, `${where}[default]`);
+      if (a.out_stall !== undefined) o.out_stall = a.out_stall;
       return o;
     }
+    known(a, LEAF_KEYS, where);
     o.target = target(a.target, where);
     if (a.addr) o.addr = 'const' in a.addr ? a.addr : { shift: a.addr.shift, mask: a.addr.mask, add: a.addr.add ?? 0 };
     if (a.value) o.value = a.value;
-    for (const k of ['status', 'trunc']) if (a[k] !== undefined) o[k] = a[k];
+    for (const k of ['status', 'trunc', 'encode', 'out_stall', 'bulk', 'retired']) if (a[k] !== undefined) o[k] = a[k];
     if (a.status_overrides) o.status_overrides = byVc(a.status_overrides, where);
+    if (a.on_stall) o.on_stall = { fill: a.on_stall.fill, len: a.on_stall.len, codes: a.on_stall.codes.map((c) => vc(c, where)) };
     return o;
   };
 
@@ -197,15 +212,19 @@ function renderLegacy(registry, legacy, source) {
   out += `// at ${source.sha}. Do not edit; run \`npm run gen:paged\`.\n\n`;
   out += `export type LegacyAddr = { const: number } | { shift: number; mask: number; add: number };\n`;
   out += `export interface LegacyField { shift: number; mask: number }\n`;
+  out += `// How an act value becomes the one-byte SET payload: low byte, saturated to 255, or 0/1.\n`;
+  out += `export type LegacyEncode = 'u8' | 'u8_sat' | 'bool';\n`;
   out += `export type LegacyStatusFamily = ${Object.keys(families).map(str).join(' | ')};\n`;
   out += `export type VcByte = [vc: number, byte: number];\n\n`;
+  out += `// A GET refused with one of \`codes\` is answered with \`len\` bytes of \`fill\`, as 1.1.6 did.\n`;
+  out += `export interface LegacyOnStall { fill: number; len: number; codes: number[] }\n`;
   out += `export type LegacyAdapter =\n`;
-  out += `  | { kind: 'direct'; target: number; addr?: LegacyAddr; trunc?: number }\n`;
-  out += `  | { kind: 'act_value'; target: number; addr?: LegacyAddr; value: LegacyField; status: LegacyStatusFamily; status_overrides?: VcByte[] }\n`;
+  out += `  | { kind: 'direct'; target: number; addr?: LegacyAddr; trunc?: number; on_stall?: LegacyOnStall; out_stall?: 'raise'; bulk?: true; retired?: true }\n`;
+  out += `  | { kind: 'act_value'; target: number; addr?: LegacyAddr; value: LegacyField; encode: LegacyEncode; status: LegacyStatusFamily; status_overrides?: VcByte[] }\n`;
   out += `  | { kind: 'act_addr'; target: number; addr?: LegacyAddr; status: LegacyStatusFamily; status_overrides?: VcByte[] }\n`;
-  out += `  | { kind: 'act_packed'; target: number; addr: LegacyAddr; value: LegacyField; status: LegacyStatusFamily; status_overrides?: VcByte[] }\n`;
-  out += `  | { kind: 'split'; selector: LegacyField; cases: Record<number, LegacyAdapter | null>; default: LegacyAdapter | null }\n`;
-  out += `  | { kind: 'custom' };\n\n`;
+  out += `  | { kind: 'act_packed'; target: number; addr: LegacyAddr; value: LegacyField; encode: LegacyEncode; status: LegacyStatusFamily; status_overrides?: VcByte[] }\n`;
+  out += `  | { kind: 'split'; selector: LegacyField; cases: Record<number, LegacyAdapter | null>; default: LegacyAdapter | null; out_stall?: 'raise' }\n`;
+  out += `  | { kind: 'custom'; retired?: true };\n\n`;
   out += `export interface LegacyOpcode {\n  code: number;\n  in?: LegacyAdapter | null;\n  out?: LegacyAdapter | null;\n}\n\n`;
   out += `// 1.1.6 write-as-read status bytes: the success byte and the byte each refusal result maps to, first match wins.\n`;
   out += `export const StatusFamily: Record<LegacyStatusFamily, { success: number; fromVc: VcByte[] }> = {\n`;
