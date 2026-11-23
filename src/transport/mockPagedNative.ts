@@ -35,6 +35,8 @@ export interface LegacyAccess {
   inputBlocks: {
     read(): proto.WireInputBlockState;
     write(patch: Partial<proto.WireInputBlockState>): void;
+    // A switch to (enabled, count) would newly claim a pin another function holds.
+    claimBlocked(enabled: boolean, count: number): boolean;
   };
 }
 
@@ -261,6 +263,7 @@ export function mockNativeCommands(legacy: LegacyAccess, rp2350: boolean): Map<n
       const blocks = legacy.inputBlocks.read();
       const idx = spdifIndex(await sourceNow());
       if (blocks.spdifEnabled && idx >= want) throw new NativeRefusal(VcResult.VC_ERR_STATE);
+      if (legacy.inputBlocks.claimBlocked(blocks.spdifEnabled, want)) throw new NativeRefusal(VcResult.VC_ERR_PIN_IN_USE);
       legacy.inputBlocks.write({ spdifCount: want });
     },
   });
@@ -269,6 +272,7 @@ export function mockNativeCommands(legacy: LegacyAccess, rp2350: boolean): Map<n
     async set(_wValue, data) {
       const on = flag(data);
       if (!on && spdifIndex(await sourceNow()) >= 0) throw new NativeRefusal(VcResult.VC_ERR_STATE);
+      if (legacy.inputBlocks.claimBlocked(on, legacy.inputBlocks.read().spdifCount)) throw new NativeRefusal(VcResult.VC_ERR_PIN_IN_USE);
       legacy.inputBlocks.write({ spdifEnabled: on });
     },
   });

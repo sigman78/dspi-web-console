@@ -171,6 +171,16 @@ describe('runtime/stagedActions', () => {
       expect(await s.device.getSpdifInputConfig()).toMatchObject({ enableMask: 0b0111 });
     });
 
+    it('a count raise onto a pin another function holds is refused and leaves the count', async () => {
+      const profile = resolveMockProfile('v34', 'rp2040');
+      await bootMock(profile.platform, profile.opts);
+      const s = sess();
+      expect(await s.device.setMckEnable(true)).toMatchObject({ ok: true });   // GP21, free while input 3 is off
+
+      expect(await s.device.setSpdifInputCount(3)).toMatchObject({ ok: false });
+      expect(await s.device.getSpdifInputConfig()).toMatchObject({ enableMask: 0b0001 });
+    });
+
     it('shrinking the count drops staged pins of the inputs that go', async () => {
       const s = await bootPaged();
       s.mirror.snapshot.inputConfig.spdifCount = 4;
@@ -324,6 +334,20 @@ describe('runtime/stagedActions', () => {
       expect(spy).toHaveBeenCalledWith(!live);
       expect(s.staging.has('mckEnabled')).toBe(false);
       expect(s.mirror.snapshot.i2s.mckEnabled).toBe(!live);
+    });
+
+    it('applies an S/PDIF 3 repin before enabling MCK on the pin it frees', async () => {
+      await bootMock('rp2040', { spdifInputsEnabled: 3 });
+      const s = sess();
+      expect(s.mirror.snapshot.i2s.mckPin).toBe(21);
+      expect(s.mirror.snapshot.inputConfig.spdifRxPinExt[1]).toBe(21);
+
+      Staged.stageMckEnabled(s, true);
+      Staged.stageSpdifRxPinExt(s, 1, 26);
+      await s.staging.applyAll();
+
+      expect(s.mirror.snapshot.inputConfig.spdifRxPinExt[1]).toBe(26);
+      expect(s.mirror.snapshot.i2s.mckEnabled).toBe(true);
     });
 
     it('staging the live value discards the pending entry', () => {

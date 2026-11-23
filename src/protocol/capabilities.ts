@@ -47,9 +47,6 @@ export interface DeviceFeatures {
   // More than one input stereo pair: 4/6/8-channel USB alts and multichannel
   // I2S (SetI2sInputChannels / pair-addressed RX pins). RP2350 only.
   readonly multichannelInput: boolean;
-  // Multiple selectable S/PDIF inputs sharing one receiver (RP2350 only,
-  // same platform gate as multichannelInput).
-  readonly multiSpdifInputs: boolean;
   // ADAT lightpipe bulk output, streaming the 8 post-gain output channels
   // (0xCA-0xCE + WireBulkParams.adat). RP2350 only -- same platform gate as
   // adatInput below.
@@ -108,9 +105,8 @@ export interface DeviceCapabilities {
 
   readonly features: DeviceFeatures;
 
-  // Number of selectable S/PDIF inputs (1 unless multiSpdifInputs is set,
-  // then SPDIF_RX_MAX_INSTANCES). Numeric sibling of features.multiSpdifInputs
-  // -- DeviceFeatures stays boolean-only.
+  // Number of selectable S/PDIF inputs: SPDIF_RX_MAX_INSTANCES on every
+  // supported device (fw 1.1.5+), identical on RP2040 and RP2350.
   readonly spdifInputCount: number;
 }
 
@@ -146,10 +142,8 @@ export function deriveCapabilities(input: {
     generation !== 'paged' || (catalog?.has(cmd.id, dir) ?? false);
   const paged = generation === 'paged';
 
-  const multiSpdifInputs = platformId === 1;
   const features: DeviceFeatures = {
     multichannelInput: platformId === 1,
-    multiSpdifInputs,
     adatOutput:        platformId === 1 && listed(G.PagedCmd.OUTPUT.ADAT_TX_ENABLE),
     psybass:           platformId === 1 && listed(G.PagedCmd.FX.PSYBASS_ENABLE),
     adatInput:         platformId === 1 && listed(G.PagedCmd.INPUT.ADAT_RX_ENABLE),
@@ -174,6 +168,6 @@ export function deriveCapabilities(input: {
     support,
     sections: Wire.bulkLayout({ formatVersion: wireVersion, payloadLength }),
     features,
-    spdifInputCount: multiSpdifInputs ? SPDIF_RX_MAX_INSTANCES : 1,
+    spdifInputCount: SPDIF_RX_MAX_INSTANCES,
   };
 }

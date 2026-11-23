@@ -29,19 +29,18 @@ describe('deriveCapabilities — feature flags', () => {
   it('RP2350 exposes the platform-gated hardware features', () => {
     const f = derive(28).features;
     expect(f).toMatchObject({
-      multichannelInput: true, multiSpdifInputs: true, adatOutput: true,
+      multichannelInput: true, adatOutput: true,
       adatInput: true, psybass: true, upmix: true,
     });
-    expect(derive(28).spdifInputCount).toBe(4);
   });
 
-  it('RP2040 stays stereo-only with a single S/PDIF input', () => {
+  it('RP2040 stays stereo-only but still reports four S/PDIF inputs', () => {
     const c = derive(28, 0);
     expect(c.features).toMatchObject({
-      multichannelInput: false, multiSpdifInputs: false, adatOutput: false,
+      multichannelInput: false, adatOutput: false,
       adatInput: false, psybass: false, upmix: false,
     });
-    expect(c.spdifInputCount).toBe(1);
+    expect(c.spdifInputCount).toBe(4);
   });
 
   it('gates the subharmonic synthesizer on wire V29, ungated on platform', () => {

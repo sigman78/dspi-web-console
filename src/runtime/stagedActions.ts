@@ -24,11 +24,12 @@ const ORDER = {
   bckPin: 12,
   clockPinMode: 13,   // before bckPinSlave: split mode must exist before its pin is set
   bckPinSlave: 14,
-  mck: 16,
+  mck: 16,           // pin and multiplier
   spdifRxPin: 20,
   i2sRxPin: 20,
   spdifEnable: 21,   // after spdifRxPin: enable validates against the configured pin
   spdifBlockOn: 22,  // after a count grow
+  mckEnable: 27,     // after every S/PDIF, ADAT and block claim or release that can free or take its pin
   i2sChannels: 30,
   i2sEnable: 31,     // after i2sChannels, before the clock mode and the source switch
   inputRate: 40,
@@ -361,7 +362,7 @@ export function stageMckEnabled(s: ReadySession, on: boolean): void {
     from: fmtOnOff(live),
     to: fmtOnOff(on),
     value: on,
-    order: on ? ORDER.mck : ORDER.mckDisable,
+    order: on ? ORDER.mckEnable : ORDER.mckDisable,
     page: 'outputs',
     apply: () => Io.setMckEnabled(s, on),
     overlay: (snap) => ({ ...snap, i2s: { ...snap.i2s, mckEnabled: on } }),

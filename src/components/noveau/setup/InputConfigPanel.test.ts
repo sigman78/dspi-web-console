@@ -194,7 +194,7 @@ describe('InputConfigPanel — S/PDIF pin pickers', () => {
 });
 
 describe('InputConfigPanel — inputs list', () => {
-  const PAGED = { inputBlocks: true, multiSpdifInputs: true };
+  const PAGED = { inputBlocks: true };
   const sw = (name: string) => screen.getByRole('switch', { name });
 
   test('a 1.1.6 device tags S/PDIF and I2S as always on and has no block switches', () => {
@@ -259,7 +259,7 @@ describe('InputConfigPanel — inputs list', () => {
 });
 
 describe('InputConfigPanel — S/PDIF count', () => {
-  const PAGED = { inputBlocks: true, multiSpdifInputs: true };
+  const PAGED = { inputBlocks: true };
   const base = (over: Parameters<typeof makeSnap>[0]) => makeSnap({ source: AudioInputSource.Usb, ...over });
 
   test('the highest input cannot be removed while it is the live source, and Add is absent at the maximum', () => {

@@ -134,6 +134,30 @@ describe('I2sClockPanel', () => {
     expect(screen.getByText('LRCLK —')).toBeTruthy();
   });
 
+  describe('MCK pin held by S/PDIF 3', () => {
+    const held = (mckEnabled: boolean) => makeSnap({
+      i2s: { mckPin: 21, mckEnabled },
+      inputConfig: { spdifRxPinExt: [20, 21, 22], spdifCount: 3 },
+    });
+
+    test('enabling MCK is disabled and names the holder', async () => {
+      renderPanel(makeSession({ snap: held(false) }));
+      const sw = screen.getByRole('switch', { name: 'Enable MCK' });
+      expect(sw.getAttribute('aria-disabled')).toBe('true');
+      expect(sw.getAttribute('title')).toBe('GP21 is used by S/PDIF 3 RX');
+      await fireEvent.click(sw);
+      expect(stageMckEnabled).not.toHaveBeenCalled();
+    });
+
+    test('turning MCK off stays possible', async () => {
+      renderPanel(makeSession({ snap: held(true) }));
+      const sw = screen.getByRole('switch', { name: 'Disable MCK' });
+      expect(sw.getAttribute('aria-disabled')).toBeNull();
+      await fireEvent.click(sw);
+      expect(stageMckEnabled).toHaveBeenCalledWith(expect.anything(), false);
+    });
+  });
+
   test('DEFAULTS chip stages a BCK and MCK pin reset when both are free to change', async () => {
     renderPanel(makeSession());
     await fireEvent.click(screen.getByRole('button', { name: 'Reset clock pins to defaults' }));
