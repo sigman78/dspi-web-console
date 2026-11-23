@@ -19,6 +19,17 @@ export function isSpdifSource(s: AudioInputSource): boolean {
       || s === AudioInputSource.Spdif3 || s === AudioInputSource.Spdif4;
 }
 
+// 0-based S/PDIF input of a source, or -1 for a non-S/PDIF source.
+export function spdifIndexOf(s: number): number {
+  switch (s) {
+    case AudioInputSource.Spdif:  return 0;
+    case AudioInputSource.Spdif2: return 1;
+    case AudioInputSource.Spdif3: return 2;
+    case AudioInputSource.Spdif4: return 3;
+    default: return -1;
+  }
+}
+
 // One S/PDIF receiver, up to 4 selectable input GPIOs (input 1 + three
 // optional). Platform max.
 export const SPDIF_RX_MAX_INSTANCES = 4;
@@ -47,14 +58,32 @@ export interface InputConfig {
   // Optional S/PDIF inputs 2/3/4 (index 0 = input 2, index 1 = input 3,
   // index 2 = input 4). Always length 3. GPIO per input; 0 = unset.
   spdifRxPinExt: number[];
-  // Whether inputs 2/3/4 are enabled. Always length 3.
-  spdifExtEnabled: boolean[];
+  // S/PDIF block switch: inputs hold their pins only while it is on.
+  spdifEnabled: boolean;
+  // S/PDIF inputs in the block, 1..4.
+  spdifCount: number;
+  // Bit i = input i below `spdifCount` is off. Only 1.1.6 firmware, which
+  // enables inputs one by one, can report a gappy set; always 0 elsewhere.
+  spdifHoles: number;
+  // I2S block switch: the source can only be I2S while it is on.
+  i2sEnabled: boolean;
   // I2S clock role: 0 = master, 1 = slave.
   i2sClockMode: number;
   // ADAT input (RP2350). pin: GPIO, 0 = absent/keep-live.
   adatInputPin: number;
   adatInputEnabled: boolean;
   adatInputClockMode: number;  // 0 = master, 1 = slave
+}
+
+// Whether S/PDIF input `index` (0-based) exists.
+export function spdifInputOn(cfg: Pick<InputConfig, 'spdifEnabled' | 'spdifCount' | 'spdifHoles'>, index: number): boolean {
+  return cfg.spdifEnabled && index < cfg.spdifCount && ((cfg.spdifHoles >> index) & 1) === 0;
+}
+
+// Whether the ADAT input is in play: switched on, the source, or set up with a
+// pin, so switching it off keeps the way back. The UI hides it otherwise.
+export function adatInputInUse(cfg: Pick<InputConfig, 'adatInputEnabled' | 'adatInputPin' | 'source'>): boolean {
+  return cfg.adatInputEnabled || cfg.adatInputPin !== 0 || cfg.source === AudioInputSource.Adat;
 }
 
 // ADAT lightpipe bulk output config (RP2350 only). Persisted intent;

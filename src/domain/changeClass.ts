@@ -30,6 +30,7 @@ export const CHANGE_CLASS: Record<SnapshotChange['kind'], ChangeClass> = {
   inputConfig:        'preset-content',
   spdifRxPin:         'output-config',
   spdifExt:           'output-config',
+  i2sBlock:           'output-config',
   // Host-volume axis (mirrors the UAC1 OS slider, vendor mute bit). Firmware
   // presets DO store and re-apply volumeDb (whole-dB quantized; mute is
   // session-only) -- but the console still must not dirty the preset on a

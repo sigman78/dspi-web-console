@@ -7,6 +7,14 @@ function band(o: Partial<FilterParams> = {}): FilterParams {
   return { type: 0, bypass: false, frequency: 1000, q: 1.0, gain: 0, ...o };
 }
 
+describe('applyChange — S/PDIF holes', () => {
+  it('carries the holes of a gappy config along with the count', () => {
+    const t = makeSnapshot();
+    applyChange({ kind: 'spdifExt', value: { spdifRxPinExt: [20, 0, 22], spdifEnabled: true, spdifCount: 4, spdifHoles: 0b0100 } }, t);
+    expect(t.inputConfig).toMatchObject({ spdifCount: 4, spdifHoles: 0b0100, spdifRxPinExt: [20, 0, 22] });
+  });
+});
+
 describe('applyChange', () => {
   it('applies a single kind in place', () => {
     const t = makeSnapshot((b) => { b.numPinOutputs = 2; b.pins[0] = 6; b.pins[1] = 7; });
@@ -32,9 +40,9 @@ describe('applyChange', () => {
     const t = makeSnapshot();
     const source = t.inputConfig.source;
     const spdifRxPin = t.inputConfig.spdifRxPin;
-    applyChange({ kind: 'spdifExt', value: { spdifRxPinExt: [16, 17], spdifExtEnabled: [true, true] } }, t);
+    applyChange({ kind: 'spdifExt', value: { spdifRxPinExt: [16, 17], spdifEnabled: true, spdifCount: 3, spdifHoles: 0 } }, t);
     expect(t.inputConfig.spdifRxPinExt).toEqual([16, 17]);
-    expect(t.inputConfig.spdifExtEnabled).toEqual([true, true]);
+    expect(t.inputConfig.spdifCount).toBe(3);
     expect(t.inputConfig.spdifRxPin).toBe(spdifRxPin);
     expect(t.inputConfig.source).toBe(source);
   });

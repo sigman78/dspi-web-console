@@ -50,7 +50,8 @@ export type SnapshotChange =
   | { kind: 'limiter';       value: LimiterOutput[] }
   | { kind: 'inputConfig';   value: InputConfig }
   | { kind: 'spdifRxPin';    value: number }
-  | { kind: 'spdifExt';      value: { spdifRxPinExt: number[]; spdifExtEnabled: boolean[] } }
+  | { kind: 'spdifExt';      value: { spdifRxPinExt: number[]; spdifEnabled: boolean; spdifCount: number; spdifHoles: number } }
+  | { kind: 'i2sBlock';      value: boolean }
   | { kind: 'userVolume';    value: UserVolume }
   | { kind: 'dacHwMute';     value: DacHwMute }
   | { kind: 'adat';          value: AdatOutputConfig }
@@ -211,9 +212,10 @@ function diffInputConfig(a: InputConfig, b: InputConfig, out: SnapshotChange[]):
     return;
   }
   if (a.spdifRxPin !== b.spdifRxPin) out.push({ kind: 'spdifRxPin', value: b.spdifRxPin });
-  if (arrayDiffers(a.spdifRxPinExt, b.spdifRxPinExt) || arrayDiffers(a.spdifExtEnabled, b.spdifExtEnabled)) {
-    out.push({ kind: 'spdifExt', value: { spdifRxPinExt: b.spdifRxPinExt, spdifExtEnabled: b.spdifExtEnabled } });
+  if (arrayDiffers(a.spdifRxPinExt, b.spdifRxPinExt) || a.spdifEnabled !== b.spdifEnabled || a.spdifCount !== b.spdifCount || a.spdifHoles !== b.spdifHoles) {
+    out.push({ kind: 'spdifExt', value: { spdifRxPinExt: b.spdifRxPinExt, spdifEnabled: b.spdifEnabled, spdifCount: b.spdifCount, spdifHoles: b.spdifHoles } });
   }
+  if (a.i2sEnabled !== b.i2sEnabled) out.push({ kind: 'i2sBlock', value: b.i2sEnabled });
 }
 
 function userVolumeDiffers(a: UserVolume, b: UserVolume): boolean {

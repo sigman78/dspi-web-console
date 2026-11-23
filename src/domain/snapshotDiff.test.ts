@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { diffSnapshots, DIFF_TOLERANCE } from './snapshotDiff';
+import { applyChange } from './applyChange';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
 import type { FilterParams } from './filter';
 
@@ -228,16 +229,38 @@ describe('diffSnapshots — 1.1.4 sections', () => {
     expect(diffSnapshots(a, b)).toEqual([{ kind: 'inputConfig', value: b.inputConfig }]);
   });
 
+  it('carries the I2S block switch on its own, leaving the source and the rest of the section alone', () => {
+    const a = makeV10();
+    const b = makeV10();
+    b.inputConfig = { ...b.inputConfig, i2sEnabled: !a.inputConfig.i2sEnabled };
+    const changes = diffSnapshots(a, b);
+    expect(changes.map((c) => c.kind)).toEqual(['i2sBlock']);
+    applyChange(changes[0], a);
+    expect(a.inputConfig).toEqual(b.inputConfig);
+  });
+
   it('emits spdifExt (not inputConfig) when an optional S/PDIF input pin or enable flag changes', () => {
     const a = makeV10();
     const b = structuredClone(a);
     b.inputConfig = {
       ...b.inputConfig!,
       spdifRxPinExt: [16, 0],
-      spdifExtEnabled: [true, false],
+      spdifEnabled: true,
+      spdifCount: 2,
+      spdifHoles: 0,
     };
     expect(diffSnapshots(a, b)).toEqual([
-      { kind: 'spdifExt', value: { spdifRxPinExt: [16, 0], spdifExtEnabled: [true, false] } },
+      { kind: 'spdifExt', value: { spdifRxPinExt: [16, 0], spdifEnabled: true, spdifCount: 2, spdifHoles: 0 } },
+    ]);
+  });
+
+  it('emits spdifExt when only the holes change', () => {
+    const a = makeV10();
+    const b = structuredClone(a);
+    b.inputConfig = { ...b.inputConfig!, spdifCount: 3, spdifHoles: 0b010 };
+    a.inputConfig = { ...a.inputConfig!, spdifCount: 3, spdifHoles: 0 };
+    expect(diffSnapshots(a, b)).toEqual([
+      { kind: 'spdifExt', value: expect.objectContaining({ spdifCount: 3, spdifHoles: 0b010 }) },
     ]);
   });
 

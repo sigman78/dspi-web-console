@@ -20,7 +20,7 @@
   const presetName = $derived(active == null ? 'No preset' : named ? rawName : `Preset ${active}`);
   const source = $derived(Domain.inputSourceTitle(
     s.mirror.current?.inputConfig.source ?? Domain.AudioInputSource.Usb, s.names.inputSources,
-    Domain.spdifNumbered(s.mirror.current?.inputConfig.spdifExtEnabled),
+    Domain.spdifNumbered(s.mirror.current?.inputConfig),
   ));
   const rateHz = $derived(s.telemetry.info?.sampleRateHz);
   const rate = $derived(rateHz != null ? formatRateKHz(rateHz) : '—');

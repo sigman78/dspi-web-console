@@ -17,8 +17,8 @@ describe('inputSourceTitle', () => {
   it('prefers the custom name and falls back to the built-in label when it is empty or absent', () => {
     expect(inputSourceTitle(AudioInputSource.Spdif, { [AudioInputSource.Spdif]: 'TV' })).toBe('TV');
     expect(inputSourceTitle(AudioInputSource.Spdif, { [AudioInputSource.Spdif]: '' })).toBe('S/PDIF');
-    expect(inputSourceTitle(AudioInputSource.Spdif, undefined, spdifNumbered([false, true, false]))).toBe('S/PDIF 1');
-    expect(inputSourceTitle(AudioInputSource.Spdif, undefined, spdifNumbered([false, false, false]))).toBe('S/PDIF');
+    expect(inputSourceTitle(AudioInputSource.Spdif, undefined, spdifNumbered({ spdifCount: 2 }))).toBe('S/PDIF 1');
+    expect(inputSourceTitle(AudioInputSource.Spdif, undefined, spdifNumbered({ spdifCount: 1 }))).toBe('S/PDIF');
     expect(inputSourceTitle(AudioInputSource.I2s, {})).toBe('I2S');
   });
 });

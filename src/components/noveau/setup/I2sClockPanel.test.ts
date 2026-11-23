@@ -32,7 +32,7 @@ function makeSnap(over: {
     platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
     outputPins: [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 0, ...over.i2s },
-    inputConfig: { source: AudioInputSource.Usb, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false], i2sClockMode: 0, ...over.inputConfig },
+    inputConfig: { source: AudioInputSource.Usb, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifEnabled: true, spdifCount: 1, i2sEnabled: true, i2sClockMode: 0, ...over.inputConfig },
     dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
     adat: { enabled: false, pin: 0 },
   };
@@ -132,6 +132,30 @@ describe('I2sClockPanel', () => {
     renderPanel(session);
     expect(screen.getByRole('button', { name: 'I2S BCK pin' }).textContent).toBe('DEFAULT');
     expect(screen.getByText('LRCLK —')).toBeTruthy();
+  });
+
+  describe('MCK pin held by S/PDIF 3', () => {
+    const held = (mckEnabled: boolean) => makeSnap({
+      i2s: { mckPin: 21, mckEnabled },
+      inputConfig: { spdifRxPinExt: [20, 21, 22], spdifCount: 3 },
+    });
+
+    test('enabling MCK is disabled and names the holder', async () => {
+      renderPanel(makeSession({ snap: held(false) }));
+      const sw = screen.getByRole('switch', { name: 'Enable MCK' });
+      expect(sw.getAttribute('aria-disabled')).toBe('true');
+      expect(sw.getAttribute('title')).toBe('GP21 is used by S/PDIF 3 RX');
+      await fireEvent.click(sw);
+      expect(stageMckEnabled).not.toHaveBeenCalled();
+    });
+
+    test('turning MCK off stays possible', async () => {
+      renderPanel(makeSession({ snap: held(true) }));
+      const sw = screen.getByRole('switch', { name: 'Disable MCK' });
+      expect(sw.getAttribute('aria-disabled')).toBeNull();
+      await fireEvent.click(sw);
+      expect(stageMckEnabled).toHaveBeenCalledWith(expect.anything(), false);
+    });
   });
 
   test('DEFAULTS chip stages a BCK and MCK pin reset when both are free to change', async () => {

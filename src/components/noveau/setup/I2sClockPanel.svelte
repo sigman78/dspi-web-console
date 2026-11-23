@@ -25,6 +25,13 @@
   const effMckEnabled = $derived(snap ? s.staging.valueOf('mckEnabled', snap.i2s.mckEnabled) : false);
   const effMckPin = $derived(snap ? s.staging.valueOf('mckPin', snap.i2s.mckPin) : 0);
   const effMckMultiplier = $derived(snap ? s.staging.valueOf('mckMultiplier', snap.i2s.mckMultiplierEncoded) : 0);
+  // Enabling MCK on a pin another function holds is refused by the firmware;
+  // turning it off is always possible.
+  const mckHolder = $derived(
+    overlaySnap && !effMckEnabled && effMckPin !== Wire.Const.PIN_RESET_TO_DEFAULT
+      ? Domain.pinUses(overlaySnap, ctrlPins).get(effMckPin)?.label
+      : undefined,
+  );
   const effClockMode = $derived(snap ? s.staging.valueOf('i2sClockMode', snap.inputConfig.i2sClockMode) : 0);
   const effClockPinMode = $derived(snap ? s.staging.valueOf('i2sClockPinMode', snap.i2s.clockPinMode) : 0);
   const effBckPinSlave = $derived(snap ? s.staging.valueOf('bckPinSlave', snap.i2s.bckPinSlave) : 0);
@@ -105,6 +112,8 @@
           <ToggleSwitch
             checked={effMckEnabled}
             ariaLabel={effMckEnabled ? 'Disable MCK' : 'Enable MCK'}
+            disabled={mckHolder !== undefined}
+            disabledReason={mckHolder !== undefined ? `GP${effMckPin} is used by ${mckHolder}` : undefined}
             onChange={(v) => Runtime.stageMckEnabled(s, v)}
           />
         </span>

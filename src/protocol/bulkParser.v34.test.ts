@@ -3,11 +3,11 @@
 // block switches.
 
 import { describe, it, expect } from 'vitest';
-import { buildBulkParams, defaultBulkParams, parseBulkParams } from './bulkParser';
+import * as BulkParser from './bulkParser';
 import * as Wire from './wireTypes';
 
 function base(extP1: number, adatP1: number) {
-  const bulk = defaultBulkParams({ platformId: 1, numCh: 17, numOut: 9, numIn: 8, formatVersion: 34 });
+  const bulk = BulkParser.defaultBulkParams({ platformId: 1, numCh: 17, numOut: 9, numIn: 8, formatVersion: 34 });
   bulk.inputConfig.spdifRxEnabledExtP1 = extP1;
   bulk.inputConfig.adatInputEnabledP1 = adatP1;
   return bulk;
@@ -25,7 +25,7 @@ function changedBytes(a: Uint8Array, b: Uint8Array): { at: number; a: number; b:
 describe('bulkParser V34', () => {
   it('has the V32 size and sections', () => {
     expect(Wire.bulkSizeForVersion(34)).toBe(6136);
-    expect(buildBulkParams(base(1, 1)).byteLength).toBe(6136);
+    expect(BulkParser.buildBulkParams(base(1, 1)).byteLength).toBe(6136);
     expect(Wire.bulkLayout({ formatVersion: 34, payloadLength: 6136 }).limiter).toBe(true);
   });
 
@@ -33,7 +33,7 @@ describe('bulkParser V34', () => {
     // Three S/PDIF inputs, S/PDIF + ADAT on (mask 5, +1).
     const bulk = base(0b11 + 1, 2);
     bulk.inputConfig.blocks = { spdifRxCount: 3, inputEnableP1: 6 };
-    const parsed = parseBulkParams(buildBulkParams(bulk));
+    const parsed = BulkParser.parseBulkParams(BulkParser.buildBulkParams(bulk));
     expect(parsed.inputConfig.blocks).toEqual({ spdifRxCount: 3, inputEnableP1: 6 });
     expect(parsed.inputConfig.spdifRxEnabledExtP1).toBe(0b11 + 1);
     expect(parsed.inputConfig.adatInputEnabledP1).toBe(2);
@@ -42,21 +42,21 @@ describe('bulkParser V34', () => {
   it('treats a switched-off S/PDIF block as no extra inputs enabled, and absent bytes as absent', () => {
     const off = base(1, 1);
     off.inputConfig.blocks = { spdifRxCount: 4, inputEnableP1: 3 };   // I2S only
-    const p = parseBulkParams(buildBulkParams(off)).inputConfig;
+    const p = BulkParser.parseBulkParams(BulkParser.buildBulkParams(off)).inputConfig;
     expect([p.spdifRxEnabledExtP1, p.adatInputEnabledP1]).toEqual([1, 1]);
     expect(p.blocks).toEqual({ spdifRxCount: 4, inputEnableP1: 3 });
 
     const none = base(0, 0);
     none.inputConfig.blocks = { spdifRxCount: 0, inputEnableP1: 0 };
-    const q = parseBulkParams(buildBulkParams(none)).inputConfig;
+    const q = BulkParser.parseBulkParams(BulkParser.buildBulkParams(none)).inputConfig;
     expect([q.spdifRxEnabledExtP1, q.adatInputEnabledP1]).toEqual([0, 0]);
   });
 
   it('writes the raw bytes back as read', () => {
     const bulk = base(2, 2);
     bulk.inputConfig.blocks = { spdifRxCount: 2, inputEnableP1: 8 };
-    const bytes = buildBulkParams(bulk);
-    expect(buildBulkParams(parseBulkParams(bytes))).toEqual(bytes);
+    const bytes = BulkParser.buildBulkParams(bulk);
+    expect(BulkParser.buildBulkParams(BulkParser.parseBulkParams(bytes))).toEqual(bytes);
   });
 
   // Mirrors firmware input_blocks_from_legacy(): input 1 plus every ext input up
@@ -67,7 +67,7 @@ describe('bulkParser V34', () => {
     const derive = (extP1: number, adatP1: number, source = 0) => {
       const bulk = base(extP1, adatP1);
       bulk.inputConfig.source = source;
-      return parseBulkParams(buildBulkParams(bulk)).inputConfig.blocks;
+      return BulkParser.parseBulkParams(BulkParser.buildBulkParams(bulk)).inputConfig.blocks;
     };
     // Ext inputs 2 and 4 enabled (mask 0b101): the block spans four inputs. ADAT on, I2S off.
     expect(derive(0b101 + 1, 2)).toEqual({ spdifRxCount: 4, inputEnableP1: 1 + (1 | 4) });
@@ -85,19 +85,19 @@ describe('bulkParser V34', () => {
   it('derives instead of echoing raw bytes once the V32 fields were edited after the read', () => {
     const bulk = base(1, 2);
     bulk.inputConfig.blocks = { spdifRxCount: 3, inputEnableP1: 7 };   // S/PDIF block off in the raw bytes
-    const read = parseBulkParams(buildBulkParams(bulk)).inputConfig;
+    const read = BulkParser.parseBulkParams(BulkParser.buildBulkParams(bulk)).inputConfig;
     expect(read.spdifRxEnabledExtP1).toBe(1);
 
-    const untouched = parseBulkParams(buildBulkParams({ ...bulkOf(read) })).inputConfig.blocks;
+    const untouched = BulkParser.parseBulkParams(BulkParser.buildBulkParams({ ...bulkOf(read) })).inputConfig.blocks;
     expect(untouched).toEqual({ spdifRxCount: 3, inputEnableP1: 7 });
 
     const edited = bulkOf({ ...read, spdifRxEnabledExtP1: 0b1 + 1 });
-    expect(parseBulkParams(buildBulkParams(edited)).inputConfig.blocks).toEqual({ spdifRxCount: 2, inputEnableP1: 1 + (1 | 4) });
+    expect(BulkParser.parseBulkParams(BulkParser.buildBulkParams(edited)).inputConfig.blocks).toEqual({ spdifRxCount: 2, inputEnableP1: 1 + (1 | 4) });
   });
 
   it('changes only the version byte and the two input-block bytes relative to V32', () => {
     const state = base(0b11 + 1, 2);
-    const diff = changedBytes(buildBulkParams(state, 32), buildBulkParams(state, 34));
+    const diff = changedBytes(BulkParser.buildBulkParams(state, 32), BulkParser.buildBulkParams(state, 34));
     expect(diff).toHaveLength(3);
     expect(diff.find((d) => d.at === 0)?.b).toBe(34);
     // Count: input 1 plus two ext inputs; switches: S/PDIF and ADAT (USB source), plus one.
@@ -105,6 +105,47 @@ describe('bulkParser V34', () => {
   });
 
   it('never writes V33: it clamps to the legacy ceiling', () => {
-    expect(parseBulkParams(buildBulkParams(base(1, 1), 33)).formatVersion).toBe(32);
+    expect(BulkParser.parseBulkParams(BulkParser.buildBulkParams(base(1, 1), 33)).formatVersion).toBe(32);
+  });
+});
+
+describe('inputBlockState', () => {
+  const stateOf = (blocks: { spdifRxCount: number; inputEnableP1: number }) => {
+    const bulk = base(1, 1);
+    bulk.inputConfig.blocks = blocks;
+    Object.assign(bulk.inputConfig, BulkParser.blocksToLegacyFields(blocks));
+    return BulkParser.inputBlockState(BulkParser.parseBulkParams(BulkParser.buildBulkParams(bulk)).inputConfig);
+  };
+
+  it('reads the switches from the V34 bytes', () => {
+    expect(stateOf({ spdifRxCount: 3, inputEnableP1: 1 + (1 | 2) })).toEqual({ spdifEnabled: true, spdifCount: 3, spdifHoles: 0, i2sEnabled: true });
+    expect(stateOf({ spdifRxCount: 4, inputEnableP1: 1 + 2 })).toEqual({ spdifEnabled: false, spdifCount: 4, spdifHoles: 0, i2sEnabled: true });
+    expect(stateOf({ spdifRxCount: 2, inputEnableP1: 1 + 4 })).toEqual({ spdifEnabled: false, spdifCount: 2, spdifHoles: 0, i2sEnabled: false });
+  });
+
+  it('reads absent bytes as one S/PDIF input on and I2S off', () => {
+    expect(stateOf({ spdifRxCount: 0, inputEnableP1: 0 })).toEqual({ spdifEnabled: true, spdifCount: 1, spdifHoles: 0, i2sEnabled: false });
+  });
+
+  it('keeps a gappy legacy mask through a parse and rebuild', () => {
+    const bulk = BulkParser.defaultBulkParams({ platformId: 1, numCh: 17, numOut: 9, numIn: 8 });
+    bulk.inputConfig.spdifRxEnabledExtP1 = 0b101 + 1;
+    const parsed = BulkParser.parseBulkParams(BulkParser.buildBulkParams(bulk));
+    const again = BulkParser.parseBulkParams(BulkParser.buildBulkParams(parsed));
+    expect(again.inputConfig.spdifRxEnabledExtP1).toBe(0b101 + 1);
+    expect(BulkParser.inputBlockState(again.inputConfig)).toMatchObject({ spdifCount: 4, spdifHoles: 0b0100 });
+  });
+
+  it('reads a gappy legacy mask as the highest enabled input plus the inputs left off, with both blocks always on', () => {
+    const legacy = (extP1: number) => {
+      const bulk = BulkParser.defaultBulkParams({ platformId: 1, numCh: 17, numOut: 9, numIn: 8 });
+      bulk.inputConfig.spdifRxEnabledExtP1 = extP1;
+      return BulkParser.inputBlockState(BulkParser.parseBulkParams(BulkParser.buildBulkParams(bulk)).inputConfig);
+    };
+    expect(legacy(0b100 + 1)).toEqual({ spdifEnabled: true, spdifCount: 4, spdifHoles: 0b0110, i2sEnabled: true });
+    expect(legacy(0b101 + 1)).toEqual({ spdifEnabled: true, spdifCount: 4, spdifHoles: 0b0100, i2sEnabled: true });
+    expect(legacy(0b011 + 1)).toEqual({ spdifEnabled: true, spdifCount: 3, spdifHoles: 0, i2sEnabled: true });
+    expect(legacy(1)).toEqual({ spdifEnabled: true, spdifCount: 1, spdifHoles: 0, i2sEnabled: true });
+    expect(legacy(0).spdifCount).toBe(1);
   });
 });

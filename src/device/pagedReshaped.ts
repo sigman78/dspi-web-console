@@ -10,7 +10,7 @@ import { StatusFamily } from '@/protocol/legacyMap.gen';
 
 type Wire = proto.ExclusiveTransport;
 
-const { Cmd } = proto;
+const Cmd = proto.Cmd;
 
 // A band write waits behind the one device-wide pending slot. The resend and
 // the LAST_RESULT read already span the main loop's 1-2 ms apply, so no timer
@@ -193,39 +193,22 @@ const pinStatusFor = (err: unknown): number => {
   throw err;
 };
 
-// Selectable S/PDIF inputs 1..3 are one block: input k is on while the block
-// switch is on and k < count, so the inputs are contiguous. Enabling k turns
-// on every input below it too, and disabling k also drops every input above
-// it. Input 0 is always on. Returns the 1.1.6 PinConfigResult byte.
-export async function setSpdifInputEnabled(t: Wire, index: number, on: boolean): Promise<number> {
-  const ok = StatusFamily.pin.success;
-  const invalidOutput = 3;
-  if (index === 0) return on ? ok : invalidOutput;
-  if (index >= Domain.SPDIF_RX_MAX_INSTANCES) return invalidOutput;
+// One u8 SET on a block command. A refusal with a pin mapping returns the
+// 1.1.6 PinConfigResult byte; any other refusal rethrows.
+async function setBlockByte(
+  t: Wire, c: { readonly codec: BinCodec<number>; readonly paged: { readonly set: number } }, value: number,
+): Promise<number> {
   try {
-    const count = Codec.decodePadded(Cmd.SpdifRxCount.codec, await proto.pagedGet(
-      t, Cmd.SpdifRxCount.paged.get, 0, Codec.sizeOf(Cmd.SpdifRxCount.codec),
-    ));
-    const wanted = on ? Math.max(count, index + 1) : Math.min(count, index);
-    if (wanted !== count) {
-      await proto.pagedSet(t, Cmd.SpdifRxCount.paged.set, 0, Codec.encode(Cmd.SpdifRxCount.codec, wanted));
-    }
-    if (on) {
-      try {
-        await proto.pagedSet(t, Cmd.SpdifRxEnable.paged.set, 0, Codec.encode(Cmd.SpdifRxEnable.codec, 1));
-      } catch (err) {
-        // Put the previous count back; a failed restore keeps the original error.
-        if (wanted !== count) {
-          await proto.pagedSet(t, Cmd.SpdifRxCount.paged.set, 0, Codec.encode(Cmd.SpdifRxCount.codec, count)).catch(() => {});
-        }
-        throw err;
-      }
-    }
-    return ok;
+    await proto.pagedSet(t, c.paged.set, 0, Codec.encode(c.codec, value));
+    return StatusFamily.pin.success;
   } catch (err) {
     return pinStatusFor(err);
   }
 }
+
+export const setSpdifInputCount = (t: Wire, count: number): Promise<number> => setBlockByte(t, Cmd.SpdifRxCount, count);
+export const setSpdifBlockEnabled = (t: Wire, on: boolean): Promise<number> => setBlockByte(t, Cmd.SpdifRxEnable, on ? 1 : 0);
+export const setI2sInputEnabled = (t: Wire, on: boolean): Promise<number> => setBlockByte(t, Cmd.I2sRxEnable, on ? 1 : 0);
 
 // The 1.1.6 shape: the input limit, a mask with bit k set for each enabled
 // input (none while the block switch is off), and the GPIO of each input.

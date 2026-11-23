@@ -764,7 +764,7 @@ describe('MockTransport — selectable system clock (fw overclock branch)', () =
   });
 });
 
-describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
+describe('MockTransport — multi-SPDIF input (fw 1.1.5+)', () => {
   async function spdifMock(platform: 'rp2040' | 'rp2350' = 'rp2350', spdifInputsEnabled?: number): Promise<MockTransport> {
     const t = new MockTransport({
       platform, wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 5 },
@@ -774,14 +774,14 @@ describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
     return t;
   }
 
-  it('seeds inputs 2/3 present-but-disabled on RP2350; stays absent on RP2040', async () => {
+  it('seeds inputs 2/3/4 present-but-disabled on both chips', async () => {
     const rp2350 = Protocol.parseBulkParams(await (await spdifMock('rp2350')).ctrlIn(Protocol.Cmd.AllParams.legacy.get, 0, Protocol.Wire.BulkLimits.MaxReadSize));
     expect(rp2350.inputConfig.spdifRxPinExt).toEqual([20, 21, 22]);
     expect(rp2350.inputConfig.spdifRxEnabledExtP1).toBe(1);  // mask 0: both disabled but present
 
     const rp2040 = Protocol.parseBulkParams(await (await spdifMock('rp2040')).ctrlIn(Protocol.Cmd.AllParams.legacy.get, 0, Protocol.Wire.BulkLimits.MaxReadSize));
-    expect(rp2040.inputConfig.spdifRxPinExt).toEqual([0, 0, 0]);
-    expect(rp2040.inputConfig.spdifRxEnabledExtP1).toBe(0);
+    expect(rp2040.inputConfig.spdifRxPinExt).toEqual([20, 21, 22]);
+    expect(rp2040.inputConfig.spdifRxEnabledExtP1).toBe(1);
   });
 
   it('spdifInputsEnabled pre-enables inputs 2 and 3', async () => {
@@ -800,10 +800,31 @@ describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
     }
   });
 
-  it('rejects the extended instances on a single-input platform (RP2040)', async () => {
+  it('RP2040 accepts pin and enable commands for inputs 2..4', async () => {
     const t = await spdifMock('rp2040');
-    const status = await t.ctrlIn(Protocol.Act.SpdifRxPin.legacy.code, (1 << 8) | 15, 1);
-    expect(status[0]).toBe(Protocol.PinConfigResult.InvalidOutput);
+    for (const [index, gpio] of [[1, 15], [2, 26], [3, 27]] as const) {
+      expect((await t.ctrlIn(Protocol.Act.SpdifRxPin.legacy.code, (index << 8) | gpio, 1))[0]).toBe(Protocol.PinConfigResult.Success);
+      expect((await t.ctrlIn(Protocol.Cmd.SpdifRxPin.legacy.get, index, 1))[0]).toBe(gpio);
+      expect((await t.ctrlIn(Protocol.Act.SpdifInputEnable.legacy.code, (index << 8) | 1, 1))[0]).toBe(Protocol.PinConfigResult.Success);
+    }
+    const cfg = Codec.decode(Protocol.Wire.SpdifInputConfig, await t.ctrlIn(Protocol.Cmd.SpdifInputConfig.legacy.get, 0, 6));
+    expect(cfg.enableMask).toBe(0b1111);
+  });
+
+  it('enabling MCK on the GPIO an enabled S/PDIF input holds is PinInUse, and a repin frees it', async () => {
+    const t = await spdifMock('rp2040', 3);   // inputs 2 and 3 on, MCK default pin GP21 = input 3
+    const mck = (on: number) => t.ctrlIn(Protocol.Act.MckEnable.legacy.code, on, 1);
+    expect((await mck(1))[0]).toBe(Protocol.PinConfigResult.PinInUse);
+    expect((await t.ctrlIn(Protocol.Act.SpdifRxPin.legacy.code, (2 << 8) | 26, 1))[0]).toBe(Protocol.PinConfigResult.Success);
+    expect((await mck(1))[0]).toBe(Protocol.PinConfigResult.Success);
+  });
+
+  it('setting an input to its current pin is a no-op, and a disabled input may store a held pin', async () => {
+    const t = await spdifMock('rp2040', 2);   // input 2 on at GP20, input 3 off at GP21
+    const pin = (index: number, gpio: number) => t.ctrlIn(Protocol.Act.SpdifRxPin.legacy.code, (index << 8) | gpio, 1);
+    expect((await pin(1, 20))[0]).toBe(Protocol.PinConfigResult.Success);
+    expect((await pin(2, 20))[0]).toBe(Protocol.PinConfigResult.Success);
+    expect((await t.ctrlIn(Protocol.Cmd.SpdifRxPin.legacy.get, 2, 1))[0]).toBe(20);
   });
 
   it('SetSpdifInputEnable flips the enable bit; GetSpdifInputConfig reflects count/mask/pins', async () => {
@@ -832,7 +853,7 @@ describe('MockTransport — multi-SPDIF input (fw 1.1.5+ RP2350)', () => {
   });
 });
 
-describe('MockTransport — fourth S/PDIF input (RP2350)', () => {
+describe('MockTransport — fourth S/PDIF input', () => {
   async function v28Mock(spdifInputsEnabled?: number): Promise<MockTransport> {
     const t = new MockTransport({
       platform: 'rp2350', wireVersion: 28, fwVersion: { major: 1, minor: 1, patch: 6 },

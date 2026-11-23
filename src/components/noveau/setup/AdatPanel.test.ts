@@ -18,7 +18,7 @@ function makeSnap(over: { adat?: object; dacHwMute?: object; outputPins?: number
     platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
     outputPins: over.outputPins ?? [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0, clockPinMode: 0, bckPinSlave: 0 },
-    inputConfig: { source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifExtEnabled: [false, false] },
+    inputConfig: { source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifEnabled: true, spdifCount: 1, i2sEnabled: true },
     dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0, ...over.dacHwMute },
     adat: { enabled: false, pin: 0, ...over.adat },
   };

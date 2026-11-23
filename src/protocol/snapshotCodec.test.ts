@@ -120,7 +120,7 @@ describe('snapshotCodec — floor sections', () => {
     const snap = fromBulkParams(hw, bulk);
     expect(snap.inputConfig).toEqual({
       source: Domain.AudioInputSource.Spdif, spdifRxPin: 5, i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0,
-      spdifRxPinExt: [0, 0, 0], spdifExtEnabled: [false, false, false], i2sClockMode: 0,
+      spdifRxPinExt: [0, 0, 0], spdifEnabled: true, spdifCount: 1, spdifHoles: 0, i2sEnabled: true, i2sClockMode: 0,
       adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0,
     });
     expect(snap.lgSoundSync).toEqual({ enabled: true, present: false, volume: 30, muted: false });

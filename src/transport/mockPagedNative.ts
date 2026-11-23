@@ -9,7 +9,8 @@ import { Codec } from '@/utils';
 import * as Domain from '@/domain';
 import { TransportStall } from './DspTransport';
 
-const { Cmd, Act, Wire } = proto;
+const Cmd = proto.Cmd;
+const Wire = proto.Wire;
 
 // A paged request the firmware would STALL, with its VC_ERR_* result code.
 export class NativeRefusal extends Error {
@@ -30,6 +31,13 @@ export interface NativeCommand {
 export interface LegacyAccess {
   legacyIn(code: number, wValue: number, length: number): Promise<Uint8Array>;
   legacyOut(code: number, wValue: number, data: Uint8Array): Promise<void>;
+  // The input block switches and S/PDIF count, which 1.1.6 has no handlers for.
+  inputBlocks: {
+    read(): proto.WireInputBlockState;
+    write(patch: Partial<proto.WireInputBlockState>): void;
+    // A switch to (enabled, count) would newly claim a pin another function holds.
+    claimBlocked(enabled: boolean, count: number): boolean;
+  };
 }
 
 const SPDIF_RX_LIMIT = Domain.SPDIF_RX_MAX_INSTANCES;
@@ -208,51 +216,72 @@ export function mockNativeCommands(legacy: LegacyAccess, rp2350: boolean): Map<n
     set: (_wValue, data) => legacy.legacyOut(Cmd.CsDisplayCfg.legacy.set, 0, data),
   });
 
-  // ---- S/PDIF input block ----
+  // ---- Input blocks ----
 
-  // The mock keeps one enable flag per selectable input; the block view is the
-  // contiguous run from input 0 that ends at the highest enabled one. A block
-  // switched off is not modelled.
+  const Source = Domain.AudioInputSource;
+  const sourceNow = async (): Promise<number> => (await legacy.legacyIn(Cmd.InputSource.legacy.get, 0, 1))[0];
+  // 0-based S/PDIF input of a source, or -1.
+  const spdifIndex = (src: number): number => {
+    switch (src) {
+      case Source.Spdif:  return 0;
+      case Source.Spdif2: return 1;
+      case Source.Spdif3: return 2;
+      case Source.Spdif4: return 3;
+      default: return -1;
+    }
+  };
   const spdifCfg = async () => Codec.decode(Wire.SpdifInputConfig, await legacy.legacyIn(Cmd.SpdifInputConfig.legacy.get, 0, 6));
-  const blockCount = (mask: number): number => 32 - Math.clz32(mask | 1);
-  const pinVc: Record<number, number> = {
-    1: VcResult.VC_ERR_PIN_INVALID, 2: VcResult.VC_ERR_PIN_IN_USE, 3: VcResult.VC_ERR_ADDRESS,
-  };
-  const setInput = async (index: number, on: boolean): Promise<void> => {
-    const r = (await legacy.legacyIn(Act.SpdifInputEnable.legacy.code, (index << 8) | (on ? 1 : 0), 1))[0];
-    if (r !== 0) throw new NativeRefusal(pinVc[r] ?? VcResult.VC_ERR_UNSUPPORTED);
+  const flag = (data: Uint8Array): boolean => {
+    if (data[0] > 1) throw new NativeRefusal(VcResult.VC_ERR_VALUE);
+    return data[0] === 1;
   };
 
+  add(PagedCmd.INPUT.SOURCE.id, {
+    async set(_wValue, data) {
+      const src = data[0];
+      const blocks = legacy.inputBlocks.read();
+      const idx = spdifIndex(src);
+      // The source's block must be on (and the input inside the S/PDIF count).
+      if (idx >= 0 && !(blocks.spdifEnabled && idx < blocks.spdifCount)) throw new NativeRefusal(VcResult.VC_ERR_STATE);
+      if (src === Source.I2s && !blocks.i2sEnabled) throw new NativeRefusal(VcResult.VC_ERR_STATE);
+      await legacy.legacyOut(Cmd.InputSource.legacy.set, 0, data);
+    },
+  });
   add(PagedCmd.INPUT.SPDIF_RX_CONFIG.id, {
     async get() {
-      const cfg = await spdifCfg();
+      const blocks = legacy.inputBlocks.read();
       return Codec.encode(Cmd.SpdifRxConfig.codec, {
-        limit: SPDIF_RX_LIMIT, enabled: 1, count: blockCount(cfg.enableMask), pins: cfg.pins,
+        limit: SPDIF_RX_LIMIT, enabled: blocks.spdifEnabled ? 1 : 0, count: blocks.spdifCount, pins: (await spdifCfg()).pins,
       });
     },
   });
   add(Cmd.SpdifRxCount.paged.get, {
-    async get() { return Uint8Array.of(blockCount((await spdifCfg()).enableMask)); },
+    async get() { return Uint8Array.of(legacy.inputBlocks.read().spdifCount); },
     async set(_wValue, data) {
       const want = data[0];
       if (want < 1 || want > SPDIF_RX_LIMIT) throw new NativeRefusal(VcResult.VC_ERR_VALUE);
-      const had = blockCount((await spdifCfg()).enableMask);
-      const done: [number, boolean][] = [];
-      try {
-        // Cuts first, then additions from the lowest input up.
-        for (let i = had - 1; i >= want; i--) { await setInput(i, false); done.push([i, true]); }
-        for (let i = had; i < want; i++) { await setInput(i, true); done.push([i, false]); }
-      } catch (err) {
-        for (const [i, was] of done.reverse()) await setInput(i, was);
-        throw err;
-      }
+      const blocks = legacy.inputBlocks.read();
+      const idx = spdifIndex(await sourceNow());
+      if (blocks.spdifEnabled && idx >= want) throw new NativeRefusal(VcResult.VC_ERR_STATE);
+      if (legacy.inputBlocks.claimBlocked(blocks.spdifEnabled, want)) throw new NativeRefusal(VcResult.VC_ERR_PIN_IN_USE);
+      legacy.inputBlocks.write({ spdifCount: want });
     },
   });
   add(Cmd.SpdifRxEnable.paged.get, {
-    get: async () => Uint8Array.of(1),
+    get: async () => Uint8Array.of(legacy.inputBlocks.read().spdifEnabled ? 1 : 0),
     async set(_wValue, data) {
-      if (data[0] > 1) throw new NativeRefusal(VcResult.VC_ERR_VALUE);
-      if (data[0] === 0) throw new NativeRefusal(VcResult.VC_ERR_STATE);
+      const on = flag(data);
+      if (!on && spdifIndex(await sourceNow()) >= 0) throw new NativeRefusal(VcResult.VC_ERR_STATE);
+      if (legacy.inputBlocks.claimBlocked(on, legacy.inputBlocks.read().spdifCount)) throw new NativeRefusal(VcResult.VC_ERR_PIN_IN_USE);
+      legacy.inputBlocks.write({ spdifEnabled: on });
+    },
+  });
+  add(Cmd.I2sRxEnable.paged.get, {
+    get: async () => Uint8Array.of(legacy.inputBlocks.read().i2sEnabled ? 1 : 0),
+    async set(_wValue, data) {
+      const on = flag(data);
+      if (!on && (await sourceNow()) === Source.I2s) throw new NativeRefusal(VcResult.VC_ERR_STATE);
+      legacy.inputBlocks.write({ i2sEnabled: on });
     },
   });
 

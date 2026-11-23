@@ -68,6 +68,31 @@ export function setMckEnabled(s: ReadySession, on: boolean): Promise<boolean> {
   return writeChecked(s,'set MCK enable', () => s.device.setMckEnable(on), () => patchI2s(s, (i) => ({ ...i, mckEnabled: on })));
 }
 
+// Firmware before 1.1.6 beta 5 enables MCK without checking its pin. The check
+// reads the device because earlier entries in the batch, pin resets included,
+// may have changed who holds it. `draining` lists the pins the running input
+// held before the batch: a moved input still releases them after its ack.
+export async function enableMckOnFreePin(s: ReadySession, draining: readonly number[]): Promise<boolean> {
+  const seen: { pin?: number; holder?: string; draining?: boolean } = {};
+  await command(s, 'check MCK pin', () => s.device.getSnapshot(), (snap) => {
+    if (snap.i2s.mckEnabled) { seen.pin = snap.i2s.mckPin; return; }
+    const ctrl = { uart: s.ctrlIfaces.uart, i2c: s.ctrlIfaces.i2c, cs: Domain.liveCsPinConfigs(s.controlSurfaces.bindings, s.controlSurfaces.status) };
+    seen.pin = snap.i2s.mckPin;
+    seen.holder = Domain.pinUses(snap, ctrl).get(snap.i2s.mckPin)?.label;
+    seen.draining = draining.includes(snap.i2s.mckPin);
+  });
+  if (seen.pin === undefined) return false;
+  if (seen.holder) {
+    pushNotice('warn', `MCK needs GP${seen.pin}, which ${seen.holder} is using.`);
+    return false;
+  }
+  if (seen.draining) {
+    pushNotice('warn', `The input is still releasing GP${seen.pin}. Press APPLY again to enable MCK.`);
+    return false;
+  }
+  return setMckEnabled(s, true);
+}
+
 export function setMckPin(s: ReadySession, pin: number): Promise<boolean> {
   return writeChecked(s,'set MCK pin', () => s.device.setMckPin(pin), unlessPinReset(pin, () => patchI2s(s, (i) => ({ ...i, mckPin: pin }))));
 }
@@ -187,25 +212,38 @@ export function setSpdifRxPinExt(s: ReadySession, extIndex: number, gpio: number
   );
 }
 
-// fw 1.1.5+ — enable/disable optional S/PDIF input 2/3 (extIndex as above).
-// On paged firmware the mirror follows the block's contiguity rule.
-export function setSpdifInputEnabled(s: ReadySession, extIndex: number, on: boolean): Promise<boolean> {
+// Number of S/PDIF inputs in the block (1..4). Legacy firmware maps the count
+// onto the ext inputs' enables.
+export function setSpdifInputCount(s: ReadySession, count: number): Promise<boolean> {
   return writeChecked(s,
-    'set S/PDIF input enable',
-    () => s.device.setSpdifInputEnabled(extIndex + 1, on),
+    'set S/PDIF input count',
+    () => s.device.setSpdifInputCount(count),
+    () => { s.mirror.snapshot.inputConfig = { ...s.mirror.snapshot.inputConfig, spdifCount: count, spdifHoles: 0 }; },
+  ).then((ok) => {
+    // The 1.1.6 sequence can stop partway with some inputs already changed.
+    if (!ok && s.device.generation !== 'paged') s.mirror.requestReconcile(true);
+    return ok;
+  });
+}
+
+// S/PDIF block switch (paged firmware).
+export function setSpdifBlockEnabled(s: ReadySession, on: boolean): Promise<boolean> {
+  return writeChecked(s,
+    'set S/PDIF input block',
+    () => s.device.setSpdifBlockEnabled(on),
     () => {
-      const flags = s.mirror.snapshot.inputConfig.spdifExtEnabled;
-      if (s.device.generation !== 'paged') {
-        flags[extIndex] = on;
-        return;
-      }
-      // Paged inputs are one contiguous block: enabling one turns on those
-      // below it, disabling one drops those above it.
-      for (let i = 0; i < flags.length; i++) {
-        if (on ? i <= extIndex : i >= extIndex) flags[i] = on;
-      }
-      s.mirror.requestReconcile(true);
+      s.mirror.snapshot.inputConfig = { ...s.mirror.snapshot.inputConfig, spdifEnabled: on };
+      if (!on) s.telemetry.spdifRxStatus = null;
     },
+  );
+}
+
+// I2S block switch (paged firmware).
+export function setI2sInputEnabled(s: ReadySession, on: boolean): Promise<boolean> {
+  return writeChecked(s,
+    'set I2S input block',
+    () => s.device.setI2sInputEnabled(on),
+    () => { s.mirror.snapshot.inputConfig = { ...s.mirror.snapshot.inputConfig, i2sEnabled: on }; },
   );
 }
 

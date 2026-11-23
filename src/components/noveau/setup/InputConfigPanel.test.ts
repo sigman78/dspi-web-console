@@ -8,17 +8,23 @@ const stageInputSource = vi.fn();
 const stageSpdifRxPin = vi.fn();
 const stageSpdifRxPinExt = vi.fn();
 const stageInputRate = vi.fn();
+const stageSpdifInputOn = vi.fn();
+const stageAdatInputEnabled = vi.fn();
+const stageI2sInputEnabled = vi.fn();
 const stageI2sRxPin = vi.fn();
+const stageI2sInputChannels = vi.fn();
 const stageInputSourceName = vi.fn();
 
 vi.mock('@/runtime', () => ({
   stageInputSource: (...a: unknown[]) => stageInputSource(...a),
   stageSpdifRxPin: (...a: unknown[]) => stageSpdifRxPin(...a),
   stageSpdifRxPinExt: (...a: unknown[]) => stageSpdifRxPinExt(...a),
-  stageSpdifInputEnabled: vi.fn(),
+  stageSpdifInputOn: (...a: unknown[]) => stageSpdifInputOn(...a),
+  stageAdatInputEnabled: (...a: unknown[]) => stageAdatInputEnabled(...a),
+  stageI2sInputEnabled: (...a: unknown[]) => stageI2sInputEnabled(...a),
   stageInputRate: (...a: unknown[]) => stageInputRate(...a),
   stageI2sRxPin: (...a: unknown[]) => stageI2sRxPin(...a),
-  stageI2sInputChannels: vi.fn(),
+  stageI2sInputChannels: (...a: unknown[]) => stageI2sInputChannels(...a),
   stageInputSourceName: (...a: unknown[]) => stageInputSourceName(...a),
 }));
 
@@ -40,7 +46,7 @@ const staging = {
 function makeSnap(over: {
   source?: number; i2sClockMode?: number; i2sInputRateHz?: number;
   adatInputEnabled?: boolean; adatInputPin?: number; adatInputClockMode?: number;
-  spdifRxPinExt?: number[]; spdifExtEnabled?: boolean[];
+  spdifRxPinExt?: number[]; spdifEnabled?: boolean; spdifCount?: number; spdifHoles?: number; i2sEnabled?: boolean;
 } = {}) {
   return {
     platform: { type: 1 /* PlatformType.RP2350 */, name: 'RP2350', outputCount: 9, totalChannelCount: 11, pdmOutputIndex: 8 },
@@ -50,7 +56,10 @@ function makeSnap(over: {
       source: over.source ?? AudioInputSource.I2s,
       spdifRxPin: 5,
       spdifRxPinExt: over.spdifRxPinExt ?? [0, 0, 0],
-      spdifExtEnabled: over.spdifExtEnabled ?? [false, false, false],
+      spdifEnabled: over.spdifEnabled ?? true,
+      spdifCount: over.spdifCount ?? 1,
+      spdifHoles: over.spdifHoles ?? 0,
+      i2sEnabled: over.i2sEnabled ?? true,
       i2sRxPins: [15], i2sInputRateHz: over.i2sInputRateHz ?? 48000, i2sInputChannels: 2,
       i2sClockMode: over.i2sClockMode ?? 0,
       adatInputEnabled: over.adatInputEnabled ?? false,
@@ -65,14 +74,16 @@ function makeSnap(over: {
 function makeSession(o: {
   snap?: ReturnType<typeof makeSnap>;
   i2sSlaveStatus?: object | null;
+  spdifStatus?: object | null;
   adatInputStatus?: object | null;
   spdifInputCount?: number;
+  features?: object;
   staged?: Record<string, unknown>;
   names?: object;
 } = {}) {
   return {
-    device: { capabilities: { features: { adatInput: true }, spdifInputCount: o.spdifInputCount ?? 1 } },
-    telemetry: { spdifRxStatus: null, i2sSlaveStatus: o.i2sSlaveStatus ?? null, activeInputChannels: null, adatInputStatus: o.adatInputStatus ?? null },
+    device: { capabilities: { features: { adatInput: true, ...o.features }, spdifInputCount: o.spdifInputCount ?? 4 } },
+    telemetry: { spdifRxStatus: o.spdifStatus ?? null, i2sSlaveStatus: o.i2sSlaveStatus ?? null, activeInputChannels: null, adatInputStatus: o.adatInputStatus ?? null },
     mirror: { current: o.snap ?? makeSnap() },
     names: { inputSources: {}, ...o.names },
     ctrlIfaces: { uart: null, i2c: null, status: null },
@@ -80,6 +91,8 @@ function makeSession(o: {
     staging: o.staged ? { ...staging, has: (k: string) => k in o.staged!, valueOf: (k: string, live: unknown) => o.staged![k] ?? live } : staging,
   } as any;
 }
+
+const PAGED = { inputBlocks: true };
 
 function renderPanel(session: unknown) {
   return render(InputConfigPanel, { context: new Map([[SESSION_KEY, session]]) });
@@ -113,20 +126,51 @@ describe('InputConfigPanel — I2S rate row', () => {
       snap: makeSnap({ i2sClockMode: 1 }),
       i2sSlaveStatus: { state: I2sSlaveClockState.Acquiring, detectedRateHz: 0, clockMode: 1, lockCount: 0, lossCount: 0, measuredHz: 0, slipCount: 0 },
     }));
-    expect(screen.getByText('—')).toBeTruthy();
+    expect(screen.getAllByText('—').some((el) => el.classList.contains('val'))).toBe(true);
   });
 });
 
-describe('InputConfigPanel — ADAT source', () => {
-  test('the ADAT chip is hidden until an input pin is assigned, then becomes stageable', async () => {
-    const { unmount } = renderPanel(makeSession({ snap: makeSnap({ adatInputEnabled: false, adatInputPin: 0 }) }));
-    expect(screen.queryByRole('button', { name: 'ADAT' })).toBeNull();
+describe('InputConfigPanel — ADAT', () => {
+  const ADAT = { adatInput: true };
+
+  test('no ADAT row appears while the input is off and not the source', () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }), features: ADAT }));
+    expect(screen.queryByRole('radio', { name: 'ADAT' })).toBeNull();
+    expect(screen.queryByRole('switch', { name: /ADAT/ })).toBeNull();
+  });
+
+  test('an enabled ADAT input with a pin has a radio that picks it and no pin picker', async () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb, adatInputEnabled: true, adatInputPin: 20 }), features: ADAT }));
+    expect(screen.queryByRole('button', { name: /ADAT.*pin/ })).toBeNull();
+    await fireEvent.click(screen.getByRole('radio', { name: 'ADAT' }));
+    expect(stageInputSource).toHaveBeenCalledWith(expect.anything(), AudioInputSource.Adat);
+  });
+
+  test('the ADAT switch releases an enabled input, and is locked while ADAT is the source', async () => {
+    const { unmount } = renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb, adatInputEnabled: true, adatInputPin: 20 }), features: ADAT }));
+    await fireEvent.click(screen.getByRole('switch', { name: 'Switch ADAT off' }));
+    expect(stageAdatInputEnabled).toHaveBeenCalledWith(expect.anything(), false);
     unmount();
 
-    renderPanel(makeSession({ snap: makeSnap({ adatInputEnabled: true, adatInputPin: 20 }) }));
-    const chip = screen.getByRole('button', { name: 'ADAT' });
-    await fireEvent.click(chip);
-    expect(stageInputSource).toHaveBeenCalledWith(expect.anything(), AudioInputSource.Adat);
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Adat, adatInputEnabled: true, adatInputPin: 20 }), features: ADAT }));
+    expect(screen.getByRole('switch', { name: 'Switch ADAT off' }).getAttribute('aria-disabled')).toBe('true');
+  });
+
+  test('an enabled ADAT input without a pin keeps its row but offers no radio', () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb, adatInputEnabled: true, adatInputPin: 0 }), features: ADAT }));
+    expect(screen.getByText('ADAT')).toBeTruthy();
+    expect(screen.queryByRole('radio', { name: 'ADAT' })).toBeNull();
+  });
+
+  test('a preset-selected ADAT source shows a checked radio even without a pin, and the ADAT detail', () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Adat }) }));
+    expect(screen.getByRole('radio', { name: 'ADAT' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByText('ADAT INPUT')).toBeTruthy();
+  });
+
+  test('a staged ADAT source shows its row too', () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }), staged: { inputSource: AudioInputSource.Adat } }));
+    expect(screen.getByRole('radio', { name: 'ADAT' }).getAttribute('aria-checked')).toBe('true');
   });
 
   test('SLAVE clock mode renders the read-only auto-detected RATE row', () => {
@@ -148,59 +192,311 @@ describe('InputConfigPanel — ADAT source', () => {
     expect(chip96.title).toMatch(/44\.1\/48 kHz only/);
     expect(screen.getByRole('button', { name: '48k' }).hasAttribute('disabled')).toBe(false);
   });
+
+  test('a device rate above 48 kHz shows the parked warning', () => {
+    renderPanel(makeSession({
+      snap: makeSnap({ source: AudioInputSource.Adat, adatInputEnabled: true, adatInputPin: 20, i2sInputRateHz: 96000 }),
+      adatInputStatus: { state: AdatInputLockState.Acquiring, clockMode: 0, enabled: true, pin: 20, rateOk: false, lockCount: 0, lossCount: 0, slipCount: 0, headerErr: 0, detectedRateHz: 0, measuredHz: 0 },
+    }));
+    expect(screen.getByText(/PARKED/)).toBeTruthy();
+  });
+
+  test('the rename popover lists ADAT only while it is in play', async () => {
+    const names = { inputSourcesSupported: true, inputSources: {} };
+    const { unmount } = renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }), features: ADAT, names }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Rename input sources' }));
+    expect(screen.queryByRole('textbox', { name: 'Name for ADAT' })).toBeNull();
+    unmount();
+
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb, adatInputEnabled: true, adatInputPin: 20 }), features: ADAT, names }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Rename input sources' }));
+    expect(screen.getByRole('textbox', { name: 'Name for ADAT' })).toBeTruthy();
+  });
 });
 
 describe('InputConfigPanel — S/PDIF pin pickers', () => {
   test('an unconfigured ext S/PDIF input shows UNSET, unlike the always-configured primary', () => {
-    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Spdif }), spdifInputCount: 2 }));
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Spdif, spdifCount: 2 }) }));
     expect(screen.getByRole('button', { name: 'S/PDIF 1 RX GPIO pin' }).textContent).toBe('GP5');
     expect(screen.getByRole('button', { name: 'S/PDIF 2 RX GPIO pin' }).textContent).toBe('UNSET');
   });
 
   test('ext S/PDIF pickers block re-selecting GP0 (the wire UNSET sentinel) once a real pin is assigned', () => {
-    const snap = makeSnap({ source: AudioInputSource.Spdif });
-    snap.inputConfig.spdifRxPinExt = [20, 0, 0];
-    renderPanel(makeSession({ snap, spdifInputCount: 2 }));
-
-    // Only the ext row's GP0 cell carries the sentinel reason; the primary
+    const snap = makeSnap({ source: AudioInputSource.Spdif, spdifRxPinExt: [20, 0, 0], spdifCount: 2 });
+    renderPanel(makeSession({ snap }));
+    // Only the ext rows' GP0 cell carries the sentinel reason; the primary
     // row's GP0 stays a normal free cell.
-    expect((screen.getByTitle('GP0 · reserved as the UNSET sentinel') as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByTitle('GP0 · free') as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getAllByTitle('GP0 · reserved as the UNSET sentinel')[0] as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getAllByTitle('GP0 · free')[0] as HTMLButtonElement).disabled).toBe(false);
   });
 
-  test('a V28+ device with spdifInputCount 4 renders all four S/PDIF RX pin rows, including input 4', () => {
-    const snap = makeSnap({ source: AudioInputSource.Spdif, spdifRxPinExt: [20, 21, 22] });
-    renderPanel(makeSession({ snap, spdifInputCount: 4 }));
+  test('all four S/PDIF inputs show a pin while on, even when the source is USB', () => {
+    const snap = makeSnap({ source: AudioInputSource.Usb, spdifRxPinExt: [20, 21, 22], spdifCount: 4 });
+    renderPanel(makeSession({ snap, features: PAGED }));
     expect(screen.getByRole('button', { name: 'S/PDIF 1 RX GPIO pin' }).textContent).toBe('GP5');
-    expect(screen.getByRole('button', { name: 'S/PDIF 2 RX GPIO pin' }).textContent).toBe('GP20');
-    expect(screen.getByRole('button', { name: 'S/PDIF 3 RX GPIO pin' }).textContent).toBe('GP21');
     expect(screen.getByRole('button', { name: 'S/PDIF 4 RX GPIO pin' }).textContent).toBe('GP22');
+  });
+
+  test('the pin picker is hidden while its input is off', () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb, spdifCount: 2 }), features: PAGED }));
+    expect(screen.queryByRole('button', { name: 'S/PDIF 2 RX GPIO pin' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'S/PDIF 3 RX GPIO pin' })).toBeNull();
+  });
+
+  test('a switched-off S/PDIF block hides every S/PDIF pin', () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb, spdifEnabled: false }), features: PAGED }));
+    expect(screen.queryByRole('button', { name: /S\/PDIF \d RX GPIO pin/ })).toBeNull();
+  });
+
+  test('the I2S pin hides while the I2S block is off', () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb, i2sEnabled: false }), features: PAGED }));
+    expect(screen.queryByRole('button', { name: /I2S RX data pin/ })).toBeNull();
   });
 });
 
-describe('InputConfigPanel — DEFAULTS chip', () => {
-  test('is hidden on the USB source, which has no pin pickers', () => {
+describe('InputConfigPanel — inputs list', () => {
+  const sw = (name: string) => screen.getByRole('switch', { name }) as HTMLButtonElement;
+  const radio = (name: string) => screen.getByRole('radio', { name });
+
+  test('1.1.6 has no switch on S/PDIF 1 or I2S, while S/PDIF 2..4 keep theirs', () => {
     renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }) }));
-    expect(screen.queryByRole('button', { name: 'Reset input pins to defaults' })).toBeNull();
+    expect(screen.queryByRole('switch', { name: /S\/PDIF 1|I2S/ })).toBeNull();
+    expect(screen.getAllByRole('switch')).toHaveLength(3);
   });
 
-  test('SPDIF view stages a reset for configured pins but skips ext inputs still at the UNSET sentinel', async () => {
-    const snap = makeSnap({ source: AudioInputSource.Spdif });
-    snap.inputConfig.spdifRxPinExt = [20, 0];
-    renderPanel(makeSession({ snap, spdifInputCount: 3 }));
-    await fireEvent.click(screen.getByRole('button', { name: 'Reset input pins to defaults' }));
+  test('the radio of the effective source is on; only a pending source carries the staged dot', () => {
+    const { unmount } = renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }) }));
+    expect(radio('USB').getAttribute('aria-checked')).toBe('true');
+    expect(radio('USB').classList.contains('staged')).toBe(false);
+    unmount();
+
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }), staged: { inputSource: AudioInputSource.Spdif2 } }));
+    expect(radio('USB').getAttribute('aria-checked')).toBe('false');
+    expect(radio('S/PDIF 2').getAttribute('aria-checked')).toBe('true');
+    expect(radio('S/PDIF 2').classList.contains('staged')).toBe(true);
+    expect(radio('USB').classList.contains('staged')).toBe(false);
+  });
+
+  test('a radio and its name both pick the source', async () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }) }));
+    await fireEvent.click(radio('S/PDIF 3'));
+    expect(stageInputSource).toHaveBeenLastCalledWith(expect.anything(), AudioInputSource.Spdif3);
+    await fireEvent.click(screen.getByRole('button', { name: 'I2S' }));
+    expect(stageInputSource).toHaveBeenLastCalledWith(expect.anything(), AudioInputSource.I2s);
+  });
+
+  test('a switch stages through stageSpdifInputOn with its input index', async () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb, spdifCount: 3 }), features: PAGED }));
+    await fireEvent.click(sw('Switch S/PDIF 3 off'));
+    expect(stageSpdifInputOn).toHaveBeenLastCalledWith(expect.anything(), 2, false);
+    await fireEvent.click(sw('Switch S/PDIF 4 on'));
+    expect(stageSpdifInputOn).toHaveBeenLastCalledWith(expect.anything(), 3, true);
+  });
+
+  test('the I2S switch stages the I2S block', async () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }), features: PAGED }));
+    await fireEvent.click(sw('Switch I2S off'));
+    expect(stageI2sInputEnabled).toHaveBeenCalledWith(expect.anything(), false);
+  });
+
+  test('inputs at or below the live source are locked; those above stay switchable', async () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Spdif2, spdifCount: 3 }), features: PAGED }));
+    expect(sw('Switch S/PDIF 1 off').getAttribute('aria-disabled')).toBe('true');
+    expect(sw('Switch S/PDIF 2 off').getAttribute('aria-disabled')).toBe('true');
+    expect(sw('Switch S/PDIF 2 off').title).toBe('In use as the source');
+    expect(sw('Switch S/PDIF 3 off').getAttribute('aria-disabled')).toBeNull();
+    await fireEvent.click(sw('Switch S/PDIF 2 off'));
+    expect(stageSpdifInputOn).not.toHaveBeenCalled();
+  });
+
+  test('a staged S/PDIF source locks the inputs up to it as well', () => {
+    renderPanel(makeSession({
+      snap: makeSnap({ source: AudioInputSource.Usb, spdifCount: 1 }), features: PAGED,
+      staged: { inputSource: AudioInputSource.Spdif3, spdifCount: 3 },
+    }));
+    expect(sw('Switch S/PDIF 3 off').getAttribute('aria-disabled')).toBe('true');
+    expect(sw('Switch S/PDIF 4 on').getAttribute('aria-disabled')).toBeNull();
+  });
+
+  test('the I2S switch is locked while I2S is the source', () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.I2s }), features: PAGED }));
+    expect(sw('Switch I2S off').getAttribute('aria-disabled')).toBe('true');
+  });
+
+  test('a switch shows the staged dot and the device state only where it differs from the device', () => {
+    renderPanel(makeSession({
+      snap: makeSnap({ source: AudioInputSource.Usb, spdifCount: 1 }), features: PAGED,
+      staged: { spdifCount: 3 },
+    }));
+    const wrap = (name: string) => sw(name).closest('.stage-wrap')!;
+    expect(wrap('Switch S/PDIF 2 off').classList.contains('staged')).toBe(true);
+    expect(wrap('Switch S/PDIF 2 off').getAttribute('title')).toBe('device: OFF');
+    expect(wrap('Switch S/PDIF 3 off').classList.contains('staged')).toBe(true);
+    expect(wrap('Switch S/PDIF 4 on').classList.contains('staged')).toBe(false);
+    expect(wrap('Switch S/PDIF 1 off').classList.contains('staged')).toBe(false);
+    expect(wrap('Switch I2S off').classList.contains('staged')).toBe(false);
+  });
+
+  test('a staged cut of the S/PDIF block reads as on-device, off-staged', () => {
+    renderPanel(makeSession({
+      snap: makeSnap({ source: AudioInputSource.Usb, spdifCount: 2 }), features: PAGED,
+      staged: { spdifBlock: false },
+    }));
+    const wrap = sw('Switch S/PDIF 1 on').closest('.stage-wrap')!;
+    expect(wrap.getAttribute('title')).toBe('device: ON');
+    expect(sw('Switch S/PDIF 2 on').closest('.stage-wrap')!.getAttribute('title')).toBe('device: ON');
+  });
+
+  test('extra I2S pairs get a pin-only row each, while I2S is on', () => {
+    const snap = makeSnap({ source: AudioInputSource.Usb });
+    snap.inputConfig.i2sInputChannels = 6;
+    snap.inputConfig.i2sRxPins = [15, 16, 17];
+    const { unmount } = renderPanel(makeSession({ snap, features: { multichannelInput: true } }));
+    expect(screen.getByText('Pair 2')).toBeTruthy();
+    expect(screen.getByText('Pair 3')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'I2S RX data pin, stereo pair 3' }).textContent).toBe('GP17');
+    expect(screen.queryByRole('radio', { name: /Pair/ })).toBeNull();
+    unmount();
+
+    renderPanel(makeSession({ snap: { ...snap, inputConfig: { ...snap.inputConfig, i2sEnabled: false } }, features: PAGED }));
+    expect(screen.queryByText('Pair 2')).toBeNull();
+  });
+
+  test('no pair rows with a stereo configuration', () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }) }));
+    expect(screen.queryByText('Pair 2')).toBeNull();
+  });
+});
+
+describe('InputConfigPanel — detail area', () => {
+  test('USB shows the detected width, and a pending USB source defers to APPLY', () => {
+    const { unmount } = renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }) }));
+    expect(screen.getByText('DETECTED')).toBeTruthy();
+    unmount();
+
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.I2s }), staged: { inputSource: AudioInputSource.Usb } }));
+    expect(screen.queryByText('DETECTED')).toBeNull();
+    expect(screen.getByText('Status appears after APPLY.')).toBeTruthy();
+  });
+
+  test('S/PDIF status shows the six rows for a live source, and the hint while pending', () => {
+    const status = { state: 2, sampleRate: 48000, lockCount: 1, lossCount: 0, parityErrors: 0, fifoFillPct: 50 };
+    const { unmount } = renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Spdif2, spdifCount: 2 }), spdifStatus: status }));
+    expect(screen.getByText('S/PDIF 2 STATUS')).toBeTruthy();
+    expect(screen.getByText('FIFO FILL')).toBeTruthy();
+    expect(screen.getByText('LOCKED')).toBeTruthy();
+    unmount();
+
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }), spdifStatus: status, staged: { inputSource: AudioInputSource.Spdif } }));
+    expect(screen.queryByText('FIFO FILL')).toBeNull();
+    expect(screen.getByText('Status appears after APPLY.')).toBeTruthy();
+  });
+
+  test('a configured ADAT input stays listed while off, so it can be switched back on', () => {
+    const { unmount } = renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb, adatInputEnabled: false, adatInputPin: 20 }) }));
+    expect(screen.getByLabelText(/^Switch ADAT.* on$/)).toBeTruthy();
+    unmount();
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb, adatInputEnabled: false, adatInputPin: 0 }) }));
+    expect(screen.queryByLabelText(/^Switch ADAT/)).toBeNull();
+  });
+
+  test('the I2S channels selector needs multichannel firmware and I2S switched on, selected or not', async () => {
+    const chip = () => screen.queryByRole('button', { name: 'I2S 4 channels' });
+    const multi = { multichannelInput: true, inputBlocks: true };
+
+    const noFw = renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.I2s }) }));
+    expect(chip()).toBeNull();
+    noFw.unmount();
+
+    const off = renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb, i2sEnabled: false }), features: multi }));
+    expect(chip()).toBeNull();
+    off.unmount();
+
+    const selected = renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.I2s }), features: multi }));
+    expect(chip()).not.toBeNull();
+    selected.unmount();
+
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }), features: multi }));
+    await fireEvent.click(chip()!);
+    expect(stageI2sInputChannels).toHaveBeenCalledWith(expect.anything(), 4);
+  });
+});
+
+describe('InputConfigPanel — pin reset', () => {
+  const reset = () => screen.getByRole('button', { name: 'Reset input pins to defaults' });
+
+  test('on an S/PDIF source it resets the visible S/PDIF pins only, skipping an ext input still UNSET', async () => {
+    const snap = makeSnap({ source: AudioInputSource.Spdif, spdifRxPinExt: [20, 0, 0], spdifCount: 3 });
+    renderPanel(makeSession({ snap, features: PAGED }));
+    expect(reset().title).toBe('Reset S/PDIF pins to defaults');
+    await fireEvent.click(reset());
     expect(stageSpdifRxPin).toHaveBeenCalledWith(expect.anything(), Wire.Const.PIN_RESET_TO_DEFAULT);
+    expect(stageSpdifRxPinExt).toHaveBeenCalledTimes(1);
     expect(stageSpdifRxPinExt).toHaveBeenCalledWith(expect.anything(), 0, Wire.Const.PIN_RESET_TO_DEFAULT);
-    // S/PDIF 3 is unset -- a reset would assign a GPIO with no way back to UNSET.
-    expect(stageSpdifRxPinExt).not.toHaveBeenCalledWith(expect.anything(), 1, expect.anything());
+    expect(stageI2sRxPin).not.toHaveBeenCalled();
   });
 
-  test('I2S view stages a reset for every active RX pair, and never touches S/PDIF', async () => {
-    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.I2s }) }));
-    await fireEvent.click(screen.getByRole('button', { name: 'Reset input pins to defaults' }));
-    expect(stageI2sRxPin).toHaveBeenCalledWith(expect.anything(), 0, Wire.Const.PIN_RESET_TO_DEFAULT);
+  test('on I2S it resets every pair pin and never touches S/PDIF', async () => {
+    const snap = makeSnap({ source: AudioInputSource.I2s });
+    snap.inputConfig.i2sInputChannels = 4;
+    snap.inputConfig.i2sRxPins = [15, 16];
+    renderPanel(makeSession({ snap, features: { multichannelInput: true } }));
+    expect(reset().title).toBe('Reset I2S pins to defaults');
+    await fireEvent.click(reset());
+    expect(stageI2sRxPin).toHaveBeenCalledTimes(2);
     expect(stageSpdifRxPin).not.toHaveBeenCalled();
     expect(stageSpdifRxPinExt).not.toHaveBeenCalled();
+  });
+
+  test('is hidden on USB, which has no pin pickers of its own', () => {
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }), features: PAGED }));
+    expect(screen.queryByRole('button', { name: 'Reset input pins to defaults' })).toBeNull();
+  });
+});
+
+describe('InputConfigPanel — gappy 1.1.6 mask', () => {
+  const gappy = () => makeSnap({ source: AudioInputSource.Usb, spdifCount: 3, spdifHoles: 0b010, spdifRxPinExt: [20, 21, 0] });
+
+  test('an input left off inside the count shows off, without a pin', () => {
+    renderPanel(makeSession({ snap: gappy() }));
+    expect(screen.getByRole('switch', { name: 'Switch S/PDIF 2 on' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'S/PDIF 2 RX GPIO pin' })).toBeNull();
+    expect(screen.getByRole('switch', { name: 'Switch S/PDIF 3 off' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'S/PDIF 3 RX GPIO pin' })).toBeTruthy();
+  });
+
+  test('a staged count closes the hole', () => {
+    renderPanel(makeSession({ snap: gappy(), staged: { spdifCount: 3 } }));
+    expect(screen.getByRole('switch', { name: 'Switch S/PDIF 2 off' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'S/PDIF 2 RX GPIO pin' })).toBeTruthy();
+  });
+
+  test('a hole below the live source can be switched on, while the on inputs up to it stay locked', async () => {
+    const snap = makeSnap({ source: AudioInputSource.Spdif3, spdifCount: 3, spdifHoles: 0b010, spdifRxPinExt: [20, 21, 0] });
+    renderPanel(makeSession({ snap, features: PAGED }));
+    expect(screen.getByRole('switch', { name: 'Switch S/PDIF 1 off' }).getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByRole('switch', { name: 'Switch S/PDIF 3 off' }).getAttribute('aria-disabled')).toBe('true');
+    const hole = screen.getByRole('switch', { name: 'Switch S/PDIF 2 on' });
+    expect(hole.getAttribute('aria-disabled')).toBeNull();
+    await fireEvent.click(hole);
+    expect(stageSpdifInputOn).toHaveBeenCalledWith(expect.anything(), 1, true);
+  });
+
+  test('the switch of the hole stages through stageSpdifInputOn', async () => {
+    renderPanel(makeSession({ snap: gappy() }));
+    await fireEvent.click(screen.getByRole('switch', { name: 'Switch S/PDIF 2 on' }));
+    expect(stageSpdifInputOn).toHaveBeenCalledWith(expect.anything(), 1, true);
+  });
+});
+
+describe('InputConfigPanel — custom names', () => {
+  test('a renamed input keeps its name on its switch and pin labels', () => {
+    renderPanel(makeSession({
+      snap: makeSnap({ source: AudioInputSource.Usb, spdifCount: 2 }), features: PAGED,
+      names: { inputSources: { [AudioInputSource.Spdif2]: 'Coax' } },
+    }));
+    expect(screen.getByRole('switch', { name: 'Switch Coax off' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Coax RX GPIO pin' })).toBeTruthy();
   });
 });
 

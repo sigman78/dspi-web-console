@@ -9,6 +9,7 @@ import { PlatformType } from './platform';
 import type { DspSnapshot } from './snapshot';
 import { isValidUartPinPair, isValidI2cPinPair, i2cInstance, type UartControlConfig, type I2cControlConfig } from './controlInterfaces';
 import { CS_ADC_PINS } from './controlSurfaces';
+import { AudioInputSource, spdifIndexOf, spdifInputOn } from './deviceSections';
 
 const PIN_LABEL = { bck: 'BCK', lrclk: 'LRCLK', mck: 'MCK', bckSlave: 'BCK (slave)', lrclkSlave: 'LRCLK (slave)' } as const;
 
@@ -52,6 +53,22 @@ export function assignablePins(platform: PlatformType): number[] {
   return out;
 }
 
+// GPIOs the selected input is driving. After a pin move it lets go of the old
+// pin only at its deferred restart, which disconnects anything that took it.
+export function runningInputPins(snapshot: DspSnapshot): number[] {
+  const cfg = snapshot.inputConfig;
+  const spdif = spdifIndexOf(cfg.source);
+  if (spdif === 0) return [cfg.spdifRxPin];
+  if (spdif > 0) return [cfg.spdifRxPinExt[spdif - 1]];
+  if (cfg.source === AudioInputSource.I2s) {
+    const { bckPin, bckPinSlave, clockPinMode } = snapshot.i2s;
+    const clocks = clockPinMode === 1 && bckPinSlave > 0 ? [bckPin, bckPin + 1, bckPinSlave, bckPinSlave + 1] : [bckPin, bckPin + 1];
+    return [...cfg.i2sRxPins.slice(0, Math.floor((cfg.i2sInputChannels || 2) / 2)), ...clocks];
+  }
+  if (cfg.source === AudioInputSource.Adat) return [cfg.adatInputPin];
+  return [];
+}
+
 export function pinUses(snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES): Map<number, PinUse> {
   const m = new Map<number, PinUse>();
   const lastIdx = snapshot.outputPins.length - 1;
@@ -72,11 +89,10 @@ export function pinUses(snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_
       m.set(i2s.bckPinSlave + 1, { label: PIN_LABEL.lrclkSlave, role: 'clock' });
     }
   }
-  m.set(snapshot.inputConfig.spdifRxPin, { label: 'SPDIF RX', role: 'audio-in' });
-  // fw 1.1.5+ optional S/PDIF inputs 2/3/4: reserve a pin only while enabled
-  // (matching firmware behavior -- a disabled optional input holds no GPIO).
+  // A block holds its pins only while it is on (matching firmware behavior).
+  if (snapshot.inputConfig.spdifEnabled) m.set(snapshot.inputConfig.spdifRxPin, { label: 'SPDIF RX', role: 'audio-in' });
   for (let i = 0; i < snapshot.inputConfig.spdifRxPinExt.length; i++) {
-    if (snapshot.inputConfig.spdifExtEnabled[i] && snapshot.inputConfig.spdifRxPinExt[i] > 0) {
+    if (spdifInputOn(snapshot.inputConfig, i + 1) && snapshot.inputConfig.spdifRxPinExt[i] > 0) {
       m.set(snapshot.inputConfig.spdifRxPinExt[i], { label: `S/PDIF ${i + 2} RX`, role: 'audio-in' });
     }
   }
@@ -91,7 +107,7 @@ export function pinUses(snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_
   }
   // The active I2S RX stereo pairs reserve their data pins.
   const cfg = snapshot.inputConfig;
-  const activePairs = Math.floor((cfg.i2sInputChannels || 0) / 2);
+  const activePairs = cfg.i2sEnabled ? Math.floor((cfg.i2sInputChannels || 0) / 2) : 0;
   for (let p = 0; p < activePairs && p < cfg.i2sRxPins.length; p++) {
     if (cfg.i2sRxPins[p] > 0) m.set(cfg.i2sRxPins[p], { label: `I2S RX ${p + 1}`, role: 'audio-in' });
   }

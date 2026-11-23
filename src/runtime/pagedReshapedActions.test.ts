@@ -51,15 +51,26 @@ describe('band writes carry the target band bypass', () => {
   });
 });
 
-describe('S/PDIF input toggles on a paged device', () => {
-  it('follow the block: enabling input 3 turns on input 2, disabling input 2 drops input 3', async () => {
+describe('input blocks on a paged device', () => {
+  it('the count and the S/PDIF switch land in the mirror and the device', async () => {
     const s = await boot();
-    const reconcile = vi.spyOn(s.mirror, 'requestReconcile');
-    expect(await IoActions.setSpdifInputEnabled(s, 1, true)).toBe(true);
-    expect(s.mirror.snapshot.inputConfig.spdifExtEnabled.slice(0, 2)).toEqual([true, true]);
-    expect(reconcile).toHaveBeenCalledWith(true);
-    expect(await IoActions.setSpdifInputEnabled(s, 0, false)).toBe(true);
-    expect(s.mirror.snapshot.inputConfig.spdifExtEnabled.slice(0, 2)).toEqual([false, false]);
-    expect((await s.device.getSpdifInputConfig()).enableMask).toBe(1);
+    expect(await IoActions.setSpdifInputCount(s, 3)).toBe(true);
+    expect(s.mirror.snapshot.inputConfig.spdifCount).toBe(3);
+    expect((await s.device.getSpdifInputConfig()).enableMask).toBe(0b0111);
+
+    s.telemetry.spdifRxStatus = { state: 2 } as never;
+    expect(await IoActions.setSpdifBlockEnabled(s, false)).toBe(true);
+    expect(s.mirror.snapshot.inputConfig.spdifEnabled).toBe(false);
+    expect(s.telemetry.spdifRxStatus).toBeNull();
+    expect((await s.device.getSpdifInputConfig()).enableMask).toBe(0);
+  });
+
+  it('a refused switch leaves the mirror alone', async () => {
+    const s = await boot();
+    expect(await IoActions.setI2sInputEnabled(s, true)).toBe(true);
+    expect(s.mirror.snapshot.inputConfig.i2sEnabled).toBe(true);
+    expect(await IoActions.setInputSource(s, Domain.AudioInputSource.I2s)).toBe(true);
+    expect(await IoActions.setI2sInputEnabled(s, false)).toBe(false);
+    expect(s.mirror.snapshot.inputConfig.i2sEnabled).toBe(true);
   });
 });

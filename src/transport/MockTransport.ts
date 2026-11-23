@@ -35,7 +35,7 @@ export interface MockOptions {
   // source set to I2S and this many active input channels (2/4/6/8) instead of
   // the default USB stereo, so the multichannel UI has more than a pair to show.
   i2sInputChannels?: number;
-  // Imaginary multi-SPDIF demo (fw 1.1.5+, RP2350 only): boot with this many
+  // Imaginary multi-SPDIF demo (fw 1.1.5+, both chips): boot with this many
   // selectable S/PDIF inputs enabled (1 = just the always-on input 1; 2/3
   // additionally enable input 2/3 on their default GPIOs) so the source
   // picker has more than one SPDIF input to show.
@@ -598,6 +598,11 @@ export class MockTransport implements DspTransport {
           legacyIn: (c, v, l) => this.#legacyIn(c, v, l),
           legacyOut: (c, v, d) => this.#legacyOut(c, v, d),
           closeChunkSessions: () => { this.#getChunkSession = null; this.#setChunkSession = null; },
+          inputBlocks: {
+            read: () => this.#inputBlockState(),
+            write: (patch) => this.#writeInputBlocks(patch),
+            claimBlocked: (enabled, count) => this.#spdifClaimBlocked(enabled, count),
+          },
         },
         MOCK_PROTOCOL_INFO,
         opts.platform === 'rp2350',
@@ -663,21 +668,19 @@ export class MockTransport implements DspTransport {
       }
     }
 
-    // Multi-SPDIF (fw 1.1.5+) is RP2350-only, mirroring capabilities'
-    // multiSpdifInputs gate. Seed inputs 2/3/4 on collision-free GPIOs,
-    // "present but disabled" by default so the picker has real pins to
-    // offer; RP2040 stays single-input (fields stay at the all-zero
-    // "absent" default from defaultBulkParams).
-    if (this.#platform === Domain.PlatformType.RP2350) {
-      this.#mockState.inputConfig.spdifRxPinExt = [20, 21, 22];
-      this.#mockState.inputConfig.spdifRxEnabledExtP1 = 1;   // mask 0: all disabled
-      if (opts.spdifInputsEnabled && opts.spdifInputsEnabled > 1) {
-        const n = Math.min(4, Math.max(1, opts.spdifInputsEnabled | 0));
-        let mask = 0;
-        for (let i = 2; i <= n; i++) mask |= 1 << (i - 2);
-        this.#mockState.inputConfig.spdifRxEnabledExtP1 = mask + 1;
-      }
+    // Multi-SPDIF (fw 1.1.5+) is identical on both chips. Seed inputs 2/3/4 on
+    // their firmware default GPIOs, "present but disabled" by default so the
+    // picker has real pins to offer. Input 3's GP21 is also RP2040's only MCK
+    // pin, so enabling both there is refused like on firmware.
+    this.#mockState.inputConfig.spdifRxPinExt = [20, 21, 22];
+    this.#mockState.inputConfig.spdifRxEnabledExtP1 = 1;   // mask 0: all disabled
+    if (opts.spdifInputsEnabled && opts.spdifInputsEnabled > 1) {
+      const n = Math.min(4, Math.max(1, opts.spdifInputsEnabled | 0));
+      let mask = 0;
+      for (let i = 2; i <= n; i++) mask |= 1 << (i - 2);
+      this.#mockState.inputConfig.spdifRxEnabledExtP1 = mask + 1;
     }
+    if (opts.paged) this.#inputBlocks();
     if (opts.sysClockBoot) {
       this.#sysClockStoredMode = opts.sysClockBoot.storedMode;
       this.#sysClockStoredVreg = opts.sysClockBoot.storedVregSel ?? 0xFF;
@@ -1216,7 +1219,13 @@ export class MockTransport implements DspTransport {
         if (index < this.#spdifInputCount() && gpio === Wire.Const.PIN_RESET_TO_DEFAULT) gpio = this.#defaultSpdifRxPin(index);
         if (index >= this.#spdifInputCount()) return new Uint8Array([0x03]);   // InvalidOutput: no such input
         if (!this.#isValidGpio(gpio)) return new Uint8Array([0x01]);           // InvalidPin
-        if (this.#pinInUse(gpio, 0xFF)) return new Uint8Array([0x02]);         // PinInUse
+        const current = index === 0 ? this.#mockState.inputConfig.spdifRxPin : this.#mockState.inputConfig.spdifRxPinExt[index - 1];
+        if (gpio === current) return new Uint8Array([0x00]);                   // no-op
+        // Enabled inputs reserve their pin; a disabled one stores it as a
+        // preference and is validated when it is enabled.
+        const extMask = this.#mockState.inputConfig.spdifRxEnabledExtP1 === 0 ? 0 : this.#mockState.inputConfig.spdifRxEnabledExtP1 - 1;
+        const enabled = index === 0 || (extMask & (1 << (index - 1))) !== 0;
+        if (enabled && this.#pinInUse(gpio, 0xFF)) return new Uint8Array([0x02]);   // PinInUse
         if (index === 0) this.#mockState.inputConfig.spdifRxPin = gpio;
         else this.#mockState.inputConfig.spdifRxPinExt[index - 1] = gpio;
         return new Uint8Array([0x00]);
@@ -1232,6 +1241,8 @@ export class MockTransport implements DspTransport {
         const cfg = this.#mockState.inputConfig;
         const bit = 1 << (index - 1);
         let mask = cfg.spdifRxEnabledExtP1 === 0 ? 0 : cfg.spdifRxEnabledExtP1 - 1;
+        // Firmware: already in the requested state is a success, before any pin check.
+        if (((mask & bit) !== 0) === enable) return new Uint8Array([0x00]);
         if (enable) {
           const pin = cfg.spdifRxPinExt[index - 1];
           if (!this.#isValidGpio(pin)) return new Uint8Array([0x01]);
@@ -1420,9 +1431,12 @@ export class MockTransport implements DspTransport {
       }
       case Cmd.MckEnable.legacy.get:
         return new Uint8Array([this.#mockState.i2s.mckEnabled ? 1 : 0]);
-      case Act.MckEnable.legacy.code:
-        this.#mockState.i2s.mckEnabled = (value & 0xFF) !== 0;
+      case Act.MckEnable.legacy.code: {
+        const on = (value & 0xFF) !== 0;
+        if (on && !this.#mockState.i2s.mckEnabled && this.#pinInUse(this.#mockState.i2s.mckPin, 0xFF)) return new Uint8Array([0x02]);
+        this.#mockState.i2s.mckEnabled = on;
         return new Uint8Array([0x00]);
+      }
       case Cmd.MckPin.legacy.get:
         return new Uint8Array([this.#mockState.i2s.mckPin]);
       case Act.MckPin.legacy.code: {
@@ -1507,7 +1521,7 @@ export class MockTransport implements DspTransport {
         if (!enable) {
           // Refused while ADAT is the active input source.
           if (this.#mockState.inputConfig.source === Domain.AudioInputSource.Adat) return new Uint8Array([0x02]); // PinInUse
-          this.#mockState.inputConfig.adatInputEnabledP1 = 1;
+          this.#setAdatInputEnabledP1(1);
           return new Uint8Array([0x00]);
         }
         const pin = this.#mockState.inputConfig.adatInputPin;
@@ -1515,7 +1529,7 @@ export class MockTransport implements DspTransport {
         const adatOutPin = this.#mockState.adat.pin || this.#defaultAdatPin();
         // Sharing the ADAT output's own pin is the supported loopback exception.
         if (this.#pinInUse(pin, 0xFF) && pin !== adatOutPin) return new Uint8Array([0x02]); // PinInUse
-        this.#mockState.inputConfig.adatInputEnabledP1 = 2;
+        this.#setAdatInputEnabledP1(2);
         return new Uint8Array([0x00]);
       }
       case Cmd.AdatInputPin.legacy.get: {
@@ -2511,14 +2525,73 @@ export class MockTransport implements DspTransport {
     return slot ? slot.row[slot.idx] : null;
   }
 
+  // Paged input blocks: the raw V34 bytes are the truth, kept in step with the
+  // V32-meaning fields. Created on first use from those fields, with firmware's
+  // rule that I2S starts on only while it is the source.
+  #inputBlocks(): BulkParser.WireInputBlocks {
+    const ic = this.#mockState.inputConfig;
+    if (ic.blocks) return ic.blocks;
+    const derived = BulkParser.legacyFieldsToBlocks(ic);
+    const mask = derived.inputEnableP1 === 0
+      ? 1 | (ic.source === Domain.AudioInputSource.I2s ? 2 : 0)
+      : derived.inputEnableP1 - 1;
+    return this.#storeInputBlocks({ spdifRxCount: Math.max(1, derived.spdifRxCount), inputEnableP1: mask + 1 });
+  }
+
+  #storeInputBlocks(b: BulkParser.WireInputBlocks): BulkParser.WireInputBlocks {
+    const ic = this.#mockState.inputConfig;
+    ic.blocks = b;
+    Object.assign(ic, BulkParser.blocksToLegacyFields(b));
+    return b;
+  }
+
+  #inputBlockState(): BulkParser.WireInputBlockState {
+    this.#inputBlocks();
+    return BulkParser.inputBlockState(this.#mockState.inputConfig);
+  }
+
+  #writeInputBlocks(patch: Partial<BulkParser.WireInputBlockState>): void {
+    const cur = this.#inputBlocks();
+    const st = BulkParser.inputBlockState(this.#mockState.inputConfig);
+    const spdif = patch.spdifEnabled ?? st.spdifEnabled;
+    const i2s = patch.i2sEnabled ?? st.i2sEnabled;
+    const adat = ((cur.inputEnableP1 === 0 ? 0 : cur.inputEnableP1 - 1) & 4) !== 0;
+    this.#storeInputBlocks({
+      spdifRxCount: patch.spdifCount ?? st.spdifCount,
+      inputEnableP1: ((spdif ? 1 : 0) | (i2s ? 2 : 0) | (adat ? 4 : 0)) + 1,
+    });
+  }
+
+  // ADAT input enable (0x68) shares the block switches' byte on paged firmware.
+  #setAdatInputEnabledP1(p1: number): void {
+    const ic = this.#mockState.inputConfig;
+    ic.adatInputEnabledP1 = p1;
+    if (!ic.blocks) return;
+    const mask = ((ic.blocks.inputEnableP1 === 0 ? 1 : ic.blocks.inputEnableP1 - 1) & ~4) | (p1 === 2 ? 4 : 0);
+    ic.blocks = { ...ic.blocks, inputEnableP1: mask + 1 };
+  }
+
+  // Whether switching the paged S/PDIF block to (enabled, count) would newly
+  // claim an input pin another function holds (fw pin_start_check_spdif_rx).
+  #spdifClaimBlocked(enabled: boolean, count: number): boolean {
+    const cur = this.#inputBlockState();
+    const ic = this.#mockState.inputConfig;
+    for (let i = 0; i < count; i++) {
+      if (cur.spdifEnabled && i < cur.spdifCount) continue;
+      if (!enabled) break;
+      const pin = i === 0 ? ic.spdifRxPin : ic.spdifRxPinExt[i - 1];
+      if (this.#pinInUse(pin, 0xFF, true)) return true;
+    }
+    return false;
+  }
+
   #numSpdif(): number {
     return this.#platform === Domain.PlatformType.RP2350 ? 4 : 2;
   }
 
-  // Selectable S/PDIF RX inputs sharing the one receiver (fw 1.1.5+ RP2350
-  // only). Mirrors capabilities.ts's multiSpdifInputs gate.
+  // Selectable S/PDIF RX inputs sharing the one receiver (fw 1.1.5+, both chips).
   #spdifInputCount(): number {
-    return this.#platform === Domain.PlatformType.RP2350 ? Domain.SPDIF_RX_MAX_INSTANCES : 1;
+    return Domain.SPDIF_RX_MAX_INSTANCES;
   }
 
   // Platform-default GPIOs for the 0xFF pin-reset sentinel
@@ -2609,7 +2682,7 @@ export class MockTransport implements DspTransport {
   // Peripheral pins only (outputs/I2S/MCK/I2S-RX) -- excludes the ctrl
   // interfaces themselves, so a ctrl-iface SET can validate against every
   // OTHER peripheral without self-conflicting on its own current pins.
-  #peripheralPinInUse(pin: number, excludeIdx: number): boolean {
+  #peripheralPinInUse(pin: number, excludeIdx: number, skipSpdif = false): boolean {
     const pins = this.#mockState.pins;
     for (let i = 0; i < this.#mockState.numPinOutputs; i++) {
       if (i === excludeIdx) continue;
@@ -2622,20 +2695,23 @@ export class MockTransport implements DspTransport {
     // mode (unified mode shares the master pair above).
     if (i2s.clockPinModeP1 === 2 && (pin === i2s.bckPinSlave || pin === i2s.bckPinSlave + 1)) return true;
     // Active I2S RX pairs reserve their data pins (fw is_pin_in_use).
+    // A paged block holds its pins only while it is on.
+    const blocks = this.#pagedDoor ? this.#inputBlockState() : null;
     const activePairs = (this.#mockState.inputConfig.i2sInputChannels || 2) / 2;
     const rxPins = this.#mockState.inputConfig.i2sRxPins;
-    for (let p = 0; p < activePairs; p++) if (rxPins[p] === pin) return true;
-    // S/PDIF RX: input 1 is always claimed; inputs 2/3/4 only while enabled
-    // (mirrors the I2S RX loop above).
+    if (blocks?.i2sEnabled !== false) for (let p = 0; p < activePairs; p++) if (rxPins[p] === pin) return true;
+    // S/PDIF RX: input 1 is claimed while the block is on; inputs 2/3/4 only
+    // while enabled (mirrors the I2S RX loop above).
+    if (skipSpdif) return false;
     const spdif = this.#mockState.inputConfig;
-    if (pin === spdif.spdifRxPin) return true;
+    if (blocks?.spdifEnabled !== false && pin === spdif.spdifRxPin) return true;
     const spdifExtMask = spdif.spdifRxEnabledExtP1 === 0 ? 0 : spdif.spdifRxEnabledExtP1 - 1;
     for (let i = 0; i < 3; i++) if ((spdifExtMask & (1 << i)) !== 0 && spdif.spdifRxPinExt[i] === pin) return true;
     return false;
   }
 
-  #pinInUse(pin: number, excludeIdx: number): boolean {
-    if (this.#peripheralPinInUse(pin, excludeIdx)) return true;
+  #pinInUse(pin: number, excludeIdx: number, skipSpdif = false): boolean {
+    if (this.#peripheralPinInUse(pin, excludeIdx, skipSpdif)) return true;
     if (this.#uartCtrl.enabled && (pin === this.#uartCtrl.txPin || pin === this.#uartCtrl.rxPin)) return true;
     if (this.#i2cCtrl.enabled && (pin === this.#i2cCtrl.sdaPin || pin === this.#i2cCtrl.sclPin)) return true;
     if (this.#csOwnsPin(pin)) return true;
