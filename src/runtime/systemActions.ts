@@ -150,6 +150,7 @@ export async function applyOutputLatency(s: ReadySession, id: number): Promise<b
 // a deferred apply outlasted the confirm loop and the stored status went
 // stale (there is no notify event or poll cadence for the system clock).
 export async function refreshSysClock(s: ReadySession): Promise<void> {
+  // SysClockStatus (0x41 IN) is absent from the legacy map.
   if (s.device.generation === 'paged') return;
   try {
     const status = await s.queue.run(() => s.device.getSysClock());

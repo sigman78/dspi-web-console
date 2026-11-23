@@ -72,7 +72,8 @@ function collect(a: LegacyAdapter | null | undefined, sel: number, kind: RouteKi
     collect(a.default, sel, kind, code, add);
     return;
   }
-  if (a.kind === 'custom') return;
+  // A retired adapter has no paged request that runs it.
+  if (a.kind === 'custom' || ('retired' in a && a.retired)) return;
   if (a.kind === 'direct') {
     add(a.target, kind, { code, direct: true, trunc: a.trunc, wValue: (addr) => sel | addrBits(a.addr, addr) });
     return;
@@ -203,14 +204,15 @@ export class MockPagedFrontDoor {
     return reply;
   }
 
-  // vc_check order: unknown, direction, length. The mock stops there: it has
-  // no address check. Page 0 is unknown.
+  // vc_check order: unknown, direction, address (an unaddressed command takes
+  // wValue 0 only), length. Page 0 is unknown.
   #validate(id: number, dir: 'get' | 'set', wValue: number, length = 0) {
     const injected = this.#injectedFor(id);
     if (injected !== null) this.#refuse(id, dir, injected, wValue);
     const cmd = id > 0xFF ? pagedCommand(id) : undefined;
     if (!cmd) this.#refuse(id, dir, VcResult.VC_ERR_UNKNOWN, wValue);
     if (!(dir === 'get' ? cmd.get : cmd.set)) this.#refuse(id, dir, VcResult.VC_ERR_DIRECTION, wValue);
+    if (cmd.addr === 'NONE' && wValue !== 0) this.#refuse(id, dir, VcResult.VC_ERR_ADDRESS, wValue);
     if (dir === 'set') {
       const bulk = cmd.setMin === null;
       if (bulk ? length === 0 : length < cmd.setMin! || length > cmd.setMax!) this.#refuse(id, dir, VcResult.VC_ERR_LENGTH, wValue);

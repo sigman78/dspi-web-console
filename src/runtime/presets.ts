@@ -108,7 +108,6 @@ export function dismissPresetActionError(s: ReadySession): void {
 // UI can surface them with a retry button.
 export async function fetchPresetInfo(s: ReadySession): Promise<void> {
   if (s.presets.directory != null) return;
-  if (s.device.generation === 'paged') return;   // no paged preset reads yet
   const d = s.device;
   s.presets.busy = true;
   try {

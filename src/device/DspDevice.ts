@@ -1,6 +1,7 @@
 import { type DspTransport } from '@/transport/DspTransport';
 import { withSerializedCtrl, type SerializedDspTransport } from '@/transport/withSerializedCtrl';
 import { withGenerationGuard, type ProtocolGeneration } from '@/transport/withGenerationGuard';
+import { withLegacyTranslation } from '@/transport/withLegacyTranslation';
 import * as Paged from '@/protocol/paged.gen';
 import * as PagedDiscovery from '@/protocol/pagedDiscovery';
 import * as proto from '@/protocol';
@@ -441,7 +442,7 @@ export class DspDevice {
     openTransport: () => Promise<void> = () => transport.open(),
   ): Promise<DspDevice> {
     const guarded = withGenerationGuard(transport);
-    const serialized = withSerializedCtrl(guarded);
+    const serialized = withSerializedCtrl(withLegacyTranslation(guarded));
     const info = await DspDevice.resolveInfo(serialized, guarded, openTransport);
     return new DspDevice(serialized, info);
   }
