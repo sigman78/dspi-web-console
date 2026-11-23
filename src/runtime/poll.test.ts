@@ -1197,3 +1197,33 @@ describe('RTA cadence', () => {
     expect(device.getRtaCaps).not.toHaveBeenCalled();
   });
 });
+
+describe('upmixer v2 status cadence', () => {
+  afterEach(() => { teardown(); });
+
+  function upmixDevice(upmixRoutes: boolean) {
+    return {
+      info: { serial: 'T', platformType: Domain.PlatformType.RP2350, hardware: hw },
+      hardware: hw,
+      capabilities: { features: { upmixRoutes } },
+      getSystemStatus: vi.fn(async () => ({ peaks: [0, 0], clipFlags: 0, cpu0: 0, cpu1: 0 })),
+      getBufferStats: vi.fn(async () => null),
+      getSystemInfo: vi.fn(async () => ({})),
+      getUpmixStatus: vi.fn(async () => ({ active: false, parkedReason: Domain.UpmixParkedReason.NothingRouted })),
+      getSnapshot: vi.fn(async () => fromBulkParams(hw, parseBulkParams(makeBulk()))),
+    } as unknown as DspDevice;
+  }
+
+  it.each([[true, 1], [false, 0]])('with upmixRoutes=%s reads the device status %i time(s)', async (upmixRoutes, reads) => {
+    const device = upmixDevice(upmixRoutes);
+    const session = connect(device);
+    session.mirror.init(fromBulkParams(hw, parseBulkParams(makeBulk())));
+    const clock = manualClock();
+    const stop = startPolling(session, clock);
+    clock.fire();
+    await settle();
+    expect(device.getUpmixStatus).toHaveBeenCalledTimes(reads);
+    expect(session.telemetry.upmixStatus?.parkedReason ?? null).toBe(upmixRoutes ? Domain.UpmixParkedReason.NothingRouted : null);
+    stop();
+  });
+});

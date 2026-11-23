@@ -19,18 +19,18 @@ const FW_1_1_6 = { major: 1, minor: 1, patch: 6 } as const;
 const FW_1_1_6_BETA3 = { major: 1, minor: 1, patch: 6, beta: 3 } as const;
 // V31/V32 ship in 1.1.6-beta4.
 const FW_1_1_6_BETA4 = { major: 1, minor: 1, patch: 6, beta: 4 } as const;
-// Paged firmware (wire V34).
+// Paged firmware (wire V34 to V36).
 const FW_1_1_7_BETA1 = { major: 1, minor: 1, patch: 7, beta: 1 } as const;
 // Names the released-1.1.6 mock (`latest`, MockOptions.fw116Release) boots with,
 // so the labels show up in ?mock.
 const LATEST_NAMES = { initialInputSourceNames: { 1: 'TV' }, initialDeviceName: 'Living Room' } as const;
 
-function paged(platform: MockOptions['platform']): MockProfile {
+function paged(platform: MockOptions['platform'], wireVersion: number): MockProfile {
   return {
-    name: 'v34',
+    name: `v${wireVersion}`,
     platform,
     opts: {
-      wireVersion: Wire.PAGED_WIRE_VERSION, fwVersion: FW_1_1_7_BETA1, paged: true,
+      wireVersion, fwVersion: FW_1_1_7_BETA1, paged: true,
       irLearnAutoComplete: true, fw116Release: true, ...LATEST_NAMES,
     },
   };
@@ -67,18 +67,18 @@ function csCapsForWire(n: number): number | undefined {
 // are purely functional; the chip axis is orthogonal and combinable with any
 // of them. The `rp2040`/`rp2350` tokens are chip shorthands for `latest`
 // (kept so historical ?mock=rp2040 links boot the right chip); an explicit
-// chip wins over the shorthand. Pure and exported for tests.
+// chip wins over the shorthand. A bare token is `latest`; `paged` is the newest
+// paged wire and `v34`..`v36` pin one. Pure and exported for tests.
 export function resolveMockProfile(token: string, chip?: 'rp2040' | 'rp2350' | null): MockProfile {
   const platform = chip ?? (token === 'rp2040' ? 'rp2040' : 'rp2350');
   switch (token) {
+    case 'paged':
+      return paged(platform, Wire.MAX_PAGED_WIRE_VERSION);
     case '':
     case 'latest':
     case 'rp2040':
     case 'rp2350':
       return latest(platform);
-    case 'paged':
-    case 'v34':
-      return paged(platform);
     case 'multi':
       return {
         name: 'multi',
@@ -97,6 +97,7 @@ export function resolveMockProfile(token: string, chip?: 'rp2040' | 'rp2350' | n
       const m = /^v(\d+)$/.exec(token);
       if (m) {
         const n = Number(m[1]);
+        if (n >= Wire.MIN_PAGED_WIRE_VERSION && n <= Wire.MAX_PAGED_WIRE_VERSION) return paged(platform, n);
         if (n >= Wire.MIN_WIRE_VERSION && n <= Wire.MAX_WIRE_VERSION) {
           return {
             name: `v${n}`,

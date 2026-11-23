@@ -12,6 +12,7 @@
     chainBlocks(s.mirror.current, s.device.capabilities.features, {
       activeInputChannels: s.telemetry.activeInputChannels,
       sampleRateHz: s.telemetry.info?.sampleRateHz ?? null,
+      upmixReason: s.telemetry.upmixStatus?.parkedReason ?? null,
     }),
   );
 

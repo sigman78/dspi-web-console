@@ -1,6 +1,6 @@
 {
   "repo": "WeebLabs/DSPi",
-  "sha": "3b78c5defba370e47d84a34ae749a9a0359d8873",
+  "sha": "7ce074039aeee1ef9c5c46719abd014e87eec5f3",
   "path": "Documentation/protocol",
   "files": [
     "dspi_commands.json",

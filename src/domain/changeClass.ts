@@ -27,6 +27,8 @@ export const CHANGE_CLASS: Record<SnapshotChange['kind'], ChangeClass> = {
   // Firmware persists/applies the limiter like the pin block (bulk SET honours
   // it only in WithPreset mode), so it takes the pins' class.
   limiter:            'output-config',
+  upmix2:             'preset-content',
+  spatial:            'preset-content',
   inputConfig:        'preset-content',
   spdifRxPin:         'output-config',
   spdifExt:           'output-config',

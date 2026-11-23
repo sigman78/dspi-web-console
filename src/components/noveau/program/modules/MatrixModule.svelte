@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getSession } from '@/components/sessionContext';
   import { liveRouteCount } from '@/components/noveau/program/chainModel';
-  import { upmixParkingStatus, upmixParkingText } from '@/domain';
+  import { upmixParkingFor, upmixParkingText } from '@/domain';
   import ModuleFrame from './ModuleFrame.svelte';
 
   const s = getSession();
@@ -14,9 +14,13 @@
   const routeCount = $derived(snap ? liveRouteCount(snap) : 0);
   const inverted = $derived(routed.filter((r) => r.invert).length);
 
-  const status = $derived(
-    upmixParkingStatus(snap?.upmix.enabled ?? false, s.telemetry.activeInputChannels, s.telemetry.info?.sampleRateHz ?? null),
-  );
+  const status = $derived(upmixParkingFor({
+    upmixRoutes: features.upmixRoutes,
+    reported: s.telemetry.upmixStatus?.parkedReason ?? null,
+    enabled: snap?.upmix.enabled ?? false,
+    activeInputChannels: s.telemetry.activeInputChannels,
+    sampleRateHz: s.telemetry.info?.sampleRateHz ?? null,
+  }));
 </script>
 
 <ModuleFrame

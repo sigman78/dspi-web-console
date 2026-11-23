@@ -6,7 +6,7 @@ import * as Wire from './wireTypes';
 describe('describeBulkOffset — total-size cross-check', () => {
   // Independently walks the same sections bulkSizeForVersion sums up; a drift
   // in either place shows up as a boundary mismatch here.
-  it.each([28, 29, 30, 31, 32])('resolves the last byte and rejects the next one (v%i)', (version) => {
+  it.each([28, 29, 30, 31, 32, 35, 36])('resolves the last byte and rejects the next one (v%i)', (version) => {
     const total = Wire.bulkSizeForVersion(version);
     expect(describeBulkOffset(total - 1, version)).not.toBeNull();
     expect(describeBulkOffset(total, version)).toBeNull();

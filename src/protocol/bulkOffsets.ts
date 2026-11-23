@@ -187,6 +187,18 @@ export function describeBulkOffset(offset: number, version: number): BulkOffsetH
       const idx = Math.floor((offset - cursor) / entrySize);
       return resolveField(`limiter[${idx}]`, Wire.LimiterEntry, cursor + idx * entrySize, offset);
     }
+    cursor += entrySize * Wire.Const.NUM_OUTPUTS;
+  }
+
+  if (version >= 35) {
+    const size = Codec.sizeOf(Wire.UpmixV2Params);
+    if (offset < cursor + size) return resolveField('upmix2', Wire.UpmixV2Params, cursor, offset);
+    cursor += size;
+  }
+
+  if (version >= 36) {
+    const size = Codec.sizeOf(Wire.SpatialParams);
+    if (offset < cursor + size) return resolveField('spatial', Wire.SpatialParams, cursor, offset);
   }
 
   return null;

@@ -7,7 +7,7 @@ import type { DspSnapshot } from './snapshot';
 import type { I2sConfig } from './platform';
 import type { OutputModel, RouteModel } from './mixer';
 import { FilterType, type FilterParams } from './filter';
-import type { Loudness, Crossfeed, Leveller, Psybass, Upmix, Subharm, Tube, LimiterOutput } from './processing';
+import type { Loudness, Crossfeed, Leveller, Psybass, Upmix, UpmixV2, UpmixExt, Spatial, Subharm, Tube, LimiterOutput } from './processing';
 import type { InputConfig, LgSoundSync, UserVolume, DacHwMute, AdatOutputConfig } from './deviceSections';
 import { BAND_GAIN_STEP_DB, FREQ_STEP_HZ, Q_STEP } from './eqLimits';
 
@@ -48,6 +48,8 @@ export type SnapshotChange =
   | { kind: 'subharm';       value: Subharm }
   | { kind: 'tube';          value: Tube }
   | { kind: 'limiter';       value: LimiterOutput[] }
+  | { kind: 'upmix2';        value: UpmixV2 }
+  | { kind: 'spatial';       value: Spatial }
   | { kind: 'inputConfig';   value: InputConfig }
   | { kind: 'spdifRxPin';    value: number }
   | { kind: 'spdifExt';      value: { spdifRxPinExt: number[]; spdifEnabled: boolean; spdifCount: number; spdifHoles: number } }
@@ -179,6 +181,35 @@ function limiterDiffers(a: LimiterOutput[], b: LimiterOutput[]): boolean {
       || neq(x.releaseMs,   b[i].releaseMs,   DIFF_TOLERANCE.ms));
 }
 
+function upmixExtDiffers(a: UpmixExt, b: UpmixExt): boolean {
+  return a.srcA !== b.srcA
+      || a.srcB !== b.srcB
+      || a.activeCounts !== b.activeCounts
+      || neq(a.backOffsetMs, b.backOffsetMs, DIFF_TOLERANCE.ms)
+      || a.routes.some((r, i) => r.outMask !== b.routes[i].outMask
+        || r.trimQ1 !== b.routes[i].trimQ1
+        || r.flags !== b.routes[i].flags);
+}
+
+function upmix2Differs(a: UpmixV2, b: UpmixV2): boolean {
+  return upmixExtDiffers(a.p0Ext, b.p0Ext)
+      || upmixDiffers(a.p1, b.p1)
+      || upmixExtDiffers(a.p1Ext, b.p1Ext);
+}
+
+function spatialDiffers(a: Spatial, b: Spatial): boolean {
+  return a.enabled  !== b.enabled
+      || a.mode     !== b.mode
+      || a.pairMask !== b.pairMask
+      || neq(a.widthPct,     b.widthPct,     DIFF_TOLERANCE.gain)
+      || neq(a.bassWidthPct, b.bassWidthPct, DIFF_TOLERANCE.gain)
+      || neq(a.shelfHz,      b.shelfHz,      DIFF_TOLERANCE.freq)
+      || neq(a.spanDeg,      b.spanDeg,      DIFF_TOLERANCE.gain)
+      || neq(a.attenDb,      b.attenDb,      DIFF_TOLERANCE.db)
+      || neq(a.midPct,       b.midPct,       DIFF_TOLERANCE.gain)
+      || neq(a.trimDb,       b.trimDb,       DIFF_TOLERANCE.db);
+}
+
 function levellerDiffers(a: Leveller, b: Leveller): boolean {
   return a.enabled   !== b.enabled
       || a.speed     !== b.speed
@@ -275,6 +306,8 @@ export function diffSnapshots(a: DspSnapshot, b: DspSnapshot): SnapshotChange[] 
   if (subharmDiffers(a.subharm, b.subharm)) out.push({ kind: 'subharm', value: b.subharm });
   if (tubeDiffers(a.tube, b.tube)) out.push({ kind: 'tube', value: b.tube });
   if (limiterDiffers(a.limiter, b.limiter)) out.push({ kind: 'limiter', value: b.limiter });
+  if (upmix2Differs(a.upmix2, b.upmix2)) out.push({ kind: 'upmix2', value: b.upmix2 });
+  if (spatialDiffers(a.spatial, b.spatial)) out.push({ kind: 'spatial', value: b.spatial });
 
   for (let i = 0; i < b.channels.length; i++) {
     const ca = a.channels[i], cb = b.channels[i];
@@ -334,6 +367,8 @@ type _Covered =
   | 'subharm'
   | 'tube'
   | 'limiter'
+  | 'upmix2'
+  | 'spatial'
   | 'inputConfig'
   | 'userVolume'
   | 'dacHwMute'

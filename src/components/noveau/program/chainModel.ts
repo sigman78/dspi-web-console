@@ -1,5 +1,5 @@
 import { formatSignedDb } from '@/components/chrome/format';
-import { FilterType, Proc, upmixParkingStatus, type DspSnapshot } from '@/domain';
+import { FilterType, Proc, upmixParkingFor, type DspSnapshot, type UpmixParkedReason } from '@/domain';
 import type { DeviceFeatures } from '@/protocol/capabilities';
 import type { ChainAnchorKey, ProgramModuleKey } from './programModel';
 
@@ -18,9 +18,10 @@ export type ChainBlock = ChainModuleBlock | ChainAnchorBlock;
 export interface ChainTelemetry {
   activeInputChannels: number | null;
   sampleRateHz: number | null;
+  upmixReason?: UpmixParkedReason | null;
 }
 
-type ChainFeatures = Pick<DeviceFeatures, 'psybass' | 'subharm' | 'upmix' | 'limiter'>;
+type ChainFeatures = Pick<DeviceFeatures, 'psybass' | 'subharm' | 'upmix' | 'limiter'> & { upmixRoutes?: boolean };
 
 /** Routes that reach sound: enabled, and their output is enabled. */
 export function liveRouteCount(snap: DspSnapshot): number {
@@ -48,7 +49,14 @@ export function chainBlocks(
   const outs = snap.outputs;
   const limOn = snap.limiter.filter((l, i) => l.enabled && outs.some((o) => o.wireIndex === i)).length;
   const { leveller: lv, crossfeed: cf, loudness: ld, psybass: pb, subharm: sh, upmix: up } = snap;
-  const upStatus = upmixParkingStatus(up.enabled, telemetry?.activeInputChannels ?? null, telemetry?.sampleRateHz ?? null);
+  const upOn = features.upmixRoutes ? up.enabled || snap.upmix2.p1.enabled : up.enabled;
+  const upStatus = upmixParkingFor({
+    upmixRoutes: features.upmixRoutes ?? false,
+    reported: telemetry?.upmixReason ?? null,
+    enabled: up.enabled,
+    activeInputChannels: telemetry?.activeInputChannels ?? null,
+    sampleRateHz: telemetry?.sampleRateHz ?? null,
+  });
 
   const mod = (b: Omit<ChainModuleBlock, 'kind'>): ChainBlock => ({ ...b, kind: 'module' });
   const blocks: ChainBlock[] = [
@@ -76,8 +84,8 @@ export function chainBlocks(
       mod({
         key: 'upmix',
         title: 'Upmix',
-        enabled: up.enabled,
-        values: up.enabled ? [upStatus === 'active' ? 'active' : 'parked', pct(up.strengthPct)] : ['off'],
+        enabled: upOn,
+        values: upOn ? [upStatus === 'active' ? 'active' : upStatus === 'unknown' ? 'on' : 'parked', pct(up.strengthPct)] : ['off'],
       }),
     );
   }

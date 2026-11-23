@@ -18,7 +18,17 @@
   const steeringReason = $derived(enabled && !steeringEditable ? 'Adaptive steering needs centre mode LOGIC.' : undefined);
   const surroundReason = $derived(enabled && !surroundEditable ? 'Surround mode is OFF.' : undefined);
 
-  const status = $derived(Domain.upmixParkingStatus(enabled, s.telemetry.activeInputChannels, s.telemetry.info?.sampleRateHz ?? null));
+  const routed = $derived(s.device.capabilities.features.upmixRoutes);
+  const status = $derived(Domain.upmixParkingFor({
+    upmixRoutes: routed,
+    reported: s.telemetry.upmixStatus?.parkedReason ?? null,
+    enabled,
+    activeInputChannels: s.telemetry.activeInputChannels,
+    sampleRateHz: s.telemetry.info?.sampleRateHz ?? null,
+  }));
+  const blurb = $derived(routed
+    ? 'Derives centre and surround feeds from a stereo input and delivers them to outputs through its routes.'
+    : 'Derives centre and surround feeds from a stereo input and offers them as extra matrix sources. Parks on multichannel input or above 48 kHz.');
 
   const CENTER_MODE_OPTIONS = [
     { value: Domain.UpmixCenterMode.Off, label: 'OFF' },
@@ -35,8 +45,8 @@
 
 <ModuleFrame
   title="Stereo upmixer"
-  pass="inputs · feeds the matrix"
-  blurb="Derives centre and surround feeds from a stereo input and offers them as extra matrix sources. Parks on multichannel input or above 48 kHz."
+  pass={routed ? 'inputs · routed to outputs' : 'inputs · feeds the matrix'}
+  {blurb}
   {enabled}
 >
   <div class="prow">

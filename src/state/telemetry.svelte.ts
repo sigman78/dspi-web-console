@@ -27,6 +27,10 @@ export class StatusStore {
   info = $state<PartialSystemInfo | null>(null);
   // Output ring health counters; stays null on firmware without them.
   ringHealth = $state<Domain.RingHealth | null>(null);
+  // Upmixer v2 live status (fw V35+); null until the first read. The store is
+  // per session, so it starts empty on every connection.
+  upmixStatus = $state<Domain.UpmixStatus | null>(null);
+  lastUpmixStatusMs = $state(0);
   // Live active input channel count (null = not reported yet).
   activeInputChannels = $state<number | null>(null);
   lastStatusMs = $state(0);

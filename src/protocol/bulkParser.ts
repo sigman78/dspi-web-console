@@ -3,13 +3,13 @@
 //
 // One channel generation: 8 inputs / 17 channels + crossover (wire V28+).
 // Sections added by later wire versions (subharm V29, subharmExt V30, tube
-// V31, limiter V32) are gated by bulkLayout() and fall back to
+// V31, limiter V32, upmixer v2 V35, spatializer V36) are gated by bulkLayout() and fall back to
 // defaultBulkParams() when the device predates them.
 
 import { BinReader, BinWriter, Codec } from '@/utils';
 import * as Wire from './wireTypes';
 import type {
-  Loudness, Psybass, Upmix, Subharm, SubharmSelect, Tube, TubeType, TubeRectifier, LimiterOutput,
+  Loudness, Psybass, Upmix, UpmixV2, UpmixExt, Spatial, Subharm, SubharmSelect, Tube, TubeType, TubeRectifier, LimiterOutput,
   CrossPoint, OutputState,
 } from '@/domain';
 
@@ -215,6 +215,13 @@ export type WireTube = Tube;
 // domain.LimiterOutput; the parsed shape always carries all 9 wire entries.
 export type WireLimiterOutput = LimiterOutput;
 
+// Section 26: upmixer v2 profile tails and profile 1 (V35+). Wire-1:1 with
+// domain.UpmixV2; the section is zeroed on RP2040.
+export type WireUpmixV2 = UpmixV2;
+
+// Section 27: stereo spatializer (V36+). Wire-1:1 with domain.Spatial.
+export type WireSpatial = Spatial;
+
 export interface BulkParams {
   formatVersion: number;
   payloadLength: number;
@@ -258,6 +265,8 @@ export interface BulkParams {
   subharm: WireSubharm;               // V29+
   tube: WireTube;                     // V31+
   limiter: WireLimiterOutput[];       // V32+, always NUM_OUTPUTS entries
+  upmix2: WireUpmixV2;                // V35+
+  spatial: WireSpatial;               // V36+
 }
 
 // V30 tail-of-section-23 defaults (fw factory values): third band off, full
@@ -283,6 +292,68 @@ const TUBE_DEFAULTS = {
 } as const;
 const LIMITER_OUTPUT_DEFAULTS = { enabled: false, linkGroup: 0, thresholdDb: -1, releaseMs: 100 } as const;
 const LIMITER_OUTPUT_UNUSED = { enabled: false, linkGroup: 0, thresholdDb: 0, releaseMs: 0 } as const;
+
+// V35/V36 section defaults (fw UM_PROFILE_DEFAULTS / SP_DEFAULTS): both upmixer
+// profiles carry the v1 defaults, sources are inputs 1/2 serving stereo input
+// with no routes; the spatializer is off in width mode on pair 1. A packet from
+// an older wire converts to these, not to zeros.
+const UPMIX_DEFAULTS: Upmix = {
+  enabled: false, centerMode: 1, surroundMode: 2,
+  strengthPct: 100, centerWidthPct: 25, corrThresholdPct: 30,
+  attackMs: 10, releaseMs: 100, detectorHpfHz: 200,
+  surroundDelayMs: 12, surroundHpfHz: 300, surroundLpfHz: 7000,
+  decorrPct: 90, presenceDb: 0,
+};
+const UPMIX_ROUTE_COUNT = 7;
+function defaultUpmixExt(): UpmixExt {
+  return {
+    srcA: 0, srcB: 1, activeCounts: 0x01, backOffsetMs: 2,
+    routes: Array.from({ length: UPMIX_ROUTE_COUNT }, () => ({ outMask: 0, trimQ1: 0, flags: 0 })),
+  };
+}
+const SPATIAL_DEFAULTS: Spatial = {
+  enabled: false, mode: 0, pairMask: 0x01,
+  widthPct: 125, bassWidthPct: 150, shelfHz: 700, spanDeg: 10, attenDb: 3, midPct: 100, trimDb: 0,
+};
+
+function upmixFromWire(w: ReturnType<typeof Wire.UpmixParams.read>): Upmix {
+  return {
+    enabled: w.enabled, centerMode: w.centerMode, surroundMode: w.surroundMode,
+    strengthPct: w.strengthPct, centerWidthPct: w.centerWidthPct, corrThresholdPct: w.corrThresholdPct,
+    attackMs: w.attackMs, releaseMs: w.releaseMs, detectorHpfHz: w.detectorHpfHz,
+    surroundDelayMs: w.surroundDelayMs, surroundHpfHz: w.surroundHpfHz, surroundLpfHz: w.surroundLpfHz,
+    decorrPct: w.decorrPct,
+    presenceDb: decodePresenceQ1(w.presenceQ1),
+  };
+}
+
+function upmixToWire(u: Upmix): ReturnType<typeof Wire.UpmixParams.read> {
+  return {
+    enabled: u.enabled, centerMode: u.centerMode, surroundMode: u.surroundMode,
+    presenceQ1: encodePresenceQ1(u.presenceDb),
+    strengthPct: u.strengthPct, centerWidthPct: u.centerWidthPct, corrThresholdPct: u.corrThresholdPct,
+    attackMs: u.attackMs, releaseMs: u.releaseMs, detectorHpfHz: u.detectorHpfHz,
+    surroundDelayMs: u.surroundDelayMs, surroundHpfHz: u.surroundHpfHz, surroundLpfHz: u.surroundLpfHz,
+    decorrPct: u.decorrPct,
+  };
+}
+
+function upmixExtFromWire(w: ReturnType<typeof Wire.UpmixExt.read>): UpmixExt {
+  return {
+    srcA: w.srcA, srcB: w.srcB, activeCounts: w.activeCounts, backOffsetMs: w.backOffsetMs,
+    routes: w.routes.map((r) => ({ outMask: r.outMask, trimQ1: r.trimQ1, flags: r.flags })),
+  };
+}
+
+function upmixExtToWire(e: UpmixExt): ReturnType<typeof Wire.UpmixExt.read> {
+  return {
+    srcA: e.srcA, srcB: e.srcB, activeCounts: e.activeCounts, backOffsetMs: e.backOffsetMs,
+    routes: Array.from({ length: UPMIX_ROUTE_COUNT }, (_, i) => {
+      const r = e.routes[i] ?? { outMask: 0, trimQ1: 0, flags: 0 };
+      return { outMask: r.outMask, trimQ1: r.trimQ1, flags: r.flags };
+    }),
+  };
+}
 
 // Enum bytes are clamped on read and write like fw's bulk_params_apply: tube
 // type 0..16, rectifier 0..3, and a limiter link group above 4 falls back to 0.
@@ -405,7 +476,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
   const masterVol = Wire.MasterVolume.read(r);
 
   const icW = Wire.InputConfig.read(r);
-  const blocks: WireInputBlocks | undefined = h.formatVersion >= Wire.PAGED_WIRE_VERSION
+  const blocks: WireInputBlocks | undefined = h.formatVersion >= Wire.MIN_PAGED_WIRE_VERSION
     ? { spdifRxCount: icW.spdifRxEnabledExtP1, inputEnableP1: icW.adatInputEnabledP1 }
     : undefined;
   const legacyFields = blocks
@@ -446,15 +517,7 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
     harmonicsDb: psyW.harmonicsDb, driveDb: psyW.driveDb, characterPct: psyW.characterPct, originalDb: psyW.originalDb,
   };
 
-  const upW = Wire.UpmixParams.read(r);
-  const upmix = {
-    enabled: upW.enabled, centerMode: upW.centerMode, surroundMode: upW.surroundMode,
-    strengthPct: upW.strengthPct, centerWidthPct: upW.centerWidthPct, corrThresholdPct: upW.corrThresholdPct,
-    attackMs: upW.attackMs, releaseMs: upW.releaseMs, detectorHpfHz: upW.detectorHpfHz,
-    surroundDelayMs: upW.surroundDelayMs, surroundHpfHz: upW.surroundHpfHz, surroundLpfHz: upW.surroundLpfHz,
-    decorrPct: upW.decorrPct,
-    presenceDb: decodePresenceQ1(upW.presenceQ1),
-  };
+  const upmix = upmixFromWire(Wire.UpmixParams.read(r));
 
   const subharm = layout.subharm
     ? (() => {
@@ -493,6 +556,24 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
         thresholdDb: o.thresholdDb, releaseMs: o.releaseMs,
       }))
     : def.limiter;
+
+  const upmix2 = layout.upmix2
+    ? (() => {
+        const w = Wire.UpmixV2Params.read(r);
+        return { p0Ext: upmixExtFromWire(w.p0Ext), p1: upmixFromWire(w.p1), p1Ext: upmixExtFromWire(w.p1Ext) };
+      })()
+    : def.upmix2;
+
+  const spatial = layout.spatial
+    ? (() => {
+        const w = Wire.SpatialParams.read(r);
+        return {
+          enabled: w.enabled, mode: w.mode, pairMask: w.pairMask,
+          widthPct: w.widthPct, bassWidthPct: w.bassWidthPct, shelfHz: w.shelfHz, spanDeg: w.spanDeg,
+          attenDb: w.attenDb, midPct: w.midPct, trimDb: w.trimDb,
+        };
+      })()
+    : def.spatial;
 
   return {
     formatVersion: h.formatVersion,
@@ -542,6 +623,8 @@ export function parseBulkParams(buffer: Uint8Array): BulkParams {
     subharm,
     tube,
     limiter,
+    upmix2,
+    spatial,
   };
 }
 
@@ -615,17 +698,13 @@ export function defaultBulkParams(opts: {
       Array.from({ length: Wire.Const.XOVER_BANDS }, defaultWireFilter)),
     adat: { enabled: false, pin: 0 },
     psybass: { enabled: false, outputMask: 0xFFFF, cutoffHz: 80, harmonicsDb: 0, driveDb: 6, characterPct: 50, originalDb: 0 },
-    upmix: {
-      enabled: false, centerMode: 1, surroundMode: 2,
-      strengthPct: 100, centerWidthPct: 25, corrThresholdPct: 30,
-      attackMs: 10, releaseMs: 100, detectorHpfHz: 200,
-      surroundDelayMs: 12, surroundHpfHz: 300, surroundLpfHz: 7000,
-      decorrPct: 90, presenceDb: 0,
-    },
+    upmix: { ...UPMIX_DEFAULTS },
     subharm: { enabled: false, outputMask: 0xFFFF, lowDb: 0, highDb: 0, boostDb: 0, ...SUBHARM_EXT_DEFAULTS },
     tube: { ...TUBE_DEFAULTS },
     limiter: Array.from({ length: Wire.Const.NUM_OUTPUTS }, (_, k) =>
       ({ ...(k < opts.numOut ? LIMITER_OUTPUT_DEFAULTS : LIMITER_OUTPUT_UNUSED) })),
+    upmix2: { p0Ext: defaultUpmixExt(), p1: { ...UPMIX_DEFAULTS }, p1Ext: defaultUpmixExt() },
+    spatial: { ...SPATIAL_DEFAULTS },
   };
 }
 
@@ -637,7 +716,9 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
   if (requested < Wire.MIN_WIRE_VERSION) {
     throw new Error(`buildBulkParams: wire version ${requested} is below the V${Wire.MIN_WIRE_VERSION} floor`);
   }
-  const writeVersion = requested >= Wire.PAGED_WIRE_VERSION ? Wire.PAGED_WIRE_VERSION : Math.min(requested, Wire.MAX_WIRE_VERSION);
+  const writeVersion = requested >= Wire.MIN_PAGED_WIRE_VERSION
+    ? Math.min(requested, Wire.MAX_PAGED_WIRE_VERSION)
+    : Math.min(requested, Wire.MAX_WIRE_VERSION);
   const size = Wire.bulkSizeForVersion(writeVersion);
   const w = new BinWriter(size);
 
@@ -700,7 +781,7 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
   Wire.MasterVolume.write(w, { masterVolumeDb: bulk.masterVolumeDb });
 
   const ic = bulk.inputConfig;
-  const paged = writeVersion >= Wire.PAGED_WIRE_VERSION;
+  const paged = writeVersion >= Wire.MIN_PAGED_WIRE_VERSION;
   const blocks = paged ? blocksForWrite(ic) : null;
   Wire.InputConfig.write(w, {
     inputSource:          bulk.inputConfig.source,
@@ -736,14 +817,7 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
     harmonicsDb: bulk.psybass.harmonicsDb, driveDb: bulk.psybass.driveDb,
     characterPct: bulk.psybass.characterPct, originalDb: bulk.psybass.originalDb,
   });
-  Wire.UpmixParams.write(w, {
-    enabled: bulk.upmix.enabled, centerMode: bulk.upmix.centerMode, surroundMode: bulk.upmix.surroundMode,
-    presenceQ1: encodePresenceQ1(bulk.upmix.presenceDb),
-    strengthPct: bulk.upmix.strengthPct, centerWidthPct: bulk.upmix.centerWidthPct, corrThresholdPct: bulk.upmix.corrThresholdPct,
-    attackMs: bulk.upmix.attackMs, releaseMs: bulk.upmix.releaseMs, detectorHpfHz: bulk.upmix.detectorHpfHz,
-    surroundDelayMs: bulk.upmix.surroundDelayMs, surroundHpfHz: bulk.upmix.surroundHpfHz, surroundLpfHz: bulk.upmix.surroundLpfHz,
-    decorrPct: bulk.upmix.decorrPct,
-  });
+  Wire.UpmixParams.write(w, upmixToWire(bulk.upmix));
   if (writeVersion >= 29) {
     Wire.SubharmParams.write(w, {
       enabled: bulk.subharm.enabled, outputMask: bulk.subharm.outputMask,
@@ -777,6 +851,21 @@ export function buildBulkParams(bulk: BulkParams, version?: number): Uint8Array 
       enabled: o.enabled, linkGroup: clampLimiterLinkGroup(o.linkGroup),
       thresholdDb: o.thresholdDb, releaseMs: o.releaseMs,
     })));
+  }
+  if (writeVersion >= 35) {
+    Wire.UpmixV2Params.write(w, {
+      p0Ext: upmixExtToWire(bulk.upmix2.p0Ext),
+      p1: upmixToWire(bulk.upmix2.p1),
+      p1Ext: upmixExtToWire(bulk.upmix2.p1Ext),
+    });
+  }
+  if (writeVersion >= 36) {
+    const s = bulk.spatial;
+    Wire.SpatialParams.write(w, {
+      enabled: s.enabled, mode: s.mode, pairMask: s.pairMask,
+      widthPct: s.widthPct, bassWidthPct: s.bassWidthPct, shelfHz: s.shelfHz, spanDeg: s.spanDeg,
+      attenDb: s.attenDb, midPct: s.midPct, trimDb: s.trimDb,
+    });
   }
 
   return w.toUint8Array();

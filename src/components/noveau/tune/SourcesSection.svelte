@@ -2,7 +2,7 @@
   import ChannelMark from '@/components/chrome/ChannelMark.svelte';
   import ToggleSwitch from '@/components/chrome/ToggleSwitch.svelte';
   import { formatSignedDb } from '@/components/chrome/format';
-  import { inputIndexOf, matrixColumns, matrixRows, type ChannelId, type ChannelModel, type InputSlot, type OutputModel, type OutputSlot, type RouteModel } from '@/domain';
+  import { inputIndexOf, matrixColumns, matrixRows, upmixRowContext, type ChannelId, type ChannelModel, type InputSlot, type OutputModel, type OutputSlot, type RouteModel } from '@/domain';
   import * as Runtime from '@/runtime';
   import { getSession } from '@/components/sessionContext';
   import CrosspointPopover from '@/components/noveau/program/CrosspointPopover.svelte';
@@ -12,11 +12,7 @@
 
   const s = getSession();
   const snap = $derived(s.mirror.current);
-  const upmixCtx = $derived(
-    s.device.capabilities.features.upmix && snap?.upmix
-      ? { enabled: snap.upmix.enabled, surroundMode: snap.upmix.surroundMode }
-      : null,
-  );
+  const upmixCtx = $derived(upmixRowContext(snap, s.device.capabilities.features));
 
   type Entry = { key: string; id: ChannelId; name: string; input: InputSlot; output: OutputSlot; cell: RouteModel | undefined };
 

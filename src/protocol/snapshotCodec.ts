@@ -74,6 +74,10 @@ function narrowFilter(filter: { type: number; bypass: boolean; frequency: number
   };
 }
 
+function cloneUpmixExt(e: Domain.UpmixExt): Domain.UpmixExt {
+  return { ...e, routes: e.routes.map((r) => ({ ...r })) };
+}
+
 export function fromBulkParams(hardware: Domain.HardwareProfile, bulk: BulkParams): Domain.DspSnapshot {
   const channelNames = bulk.channelNames;
   const inputSource = narrowInputSource(bulk.inputConfig.source);
@@ -189,12 +193,18 @@ export function fromBulkParams(hardware: Domain.HardwareProfile, bulk: BulkParam
     },
     psybass: { ...bulk.psybass },
     upmix: { ...bulk.upmix },
-    // Subharm (V29), tube (V31) and limiter (V32) come from their bulk
-    // sections; the parser defaults them on older packets, so they are always
-    // populated.
+    // Subharm (V29), tube (V31), limiter (V32), upmixer v2 (V35) and
+    // spatializer (V36) come from their bulk sections; the parser defaults them
+    // on older packets, so they are always populated.
     subharm: { ...bulk.subharm },
     tube: { ...bulk.tube },
     limiter: bulk.limiter.map((o) => ({ ...o })),
+    upmix2: {
+      p0Ext: cloneUpmixExt(bulk.upmix2.p0Ext),
+      p1: { ...bulk.upmix2.p1 },
+      p1Ext: cloneUpmixExt(bulk.upmix2.p1Ext),
+    },
+    spatial: { ...bulk.spatial },
     lgSoundSync: { enabled: bulk.lgSoundSync.enabled, present: bulk.lgSoundSync.present, volume: bulk.lgSoundSync.volume, muted: bulk.lgSoundSync.muted },
     userVolume:  { volumeDb: bulk.userVolume.volumeDb, mute: bulk.userVolume.mute },
     dacHwMute:   { enabled: bulk.dacHwMute.enabled, activeLow: bulk.dacHwMute.activeLow, pin: bulk.dacHwMute.pin, holdMs: bulk.dacHwMute.holdMs, releaseMs: bulk.dacHwMute.releaseMs },

@@ -5,6 +5,7 @@ import { withSerializedCtrl, type SerializedDspTransport } from '@/transport/wit
 import { MockTransport } from '@/transport/MockTransport';
 import { resolveMockProfile } from '@/mockProfiles';
 import { PagedCmd } from '@/protocol/paged.gen';
+import { buildBulkParams } from '@/protocol';
 import type { DspTransport } from '@/transport/DspTransport';
 
 function pagedMock(chip: 'rp2350' | 'rp2040'): MockTransport {
@@ -133,5 +134,66 @@ describe('paged connect', () => {
     const profile = resolveMockProfile('v34', 'rp2350');
     const t = new MockTransport({ platform: profile.platform, ...profile.opts, wireVersion });
     await expect(DspDevice.create(t)).rejects.toBeInstanceOf(UnsupportedFirmware);
+  });
+});
+
+describe('paged V36 bulk', () => {
+  const newest = (chip: 'rp2350' | 'rp2040') => {
+    const profile = resolveMockProfile('paged', chip);
+    return new MockTransport({ platform: profile.platform, ...profile.opts });
+  };
+
+  it('is the newest wire by default and round-trips the upmixer v2 and spatializer sections', async () => {
+    const dev = await DspDevice.create(newest('rp2350'));
+    expect(dev.capabilities).toMatchObject({ wire: 36, support: 'supported' });
+    expect(dev.capabilities.features.upmixRoutes).toBe(true);
+    const bulk = await dev.getAllParams();
+    bulk.spatial = { ...bulk.spatial, enabled: true, widthPct: 80 };
+    bulk.upmix2.p0Ext.routes[2] = { outMask: 6, trimQ1: -4, flags: 1 };
+    await dev.setAllParams(bulk);
+    const snap = await dev.getSnapshot();
+    expect(snap.spatial).toMatchObject({ enabled: true, widthPct: 80 });
+    expect(snap.upmix2.p0Ext.routes[2]).toEqual({ outMask: 6, trimQ1: -4, flags: 1 });
+  });
+
+  it('reports the upmixer v2 section zeroed on an RP2040 and keeps ignoring writes to it', async () => {
+    const dev = await DspDevice.create(newest('rp2040'));
+    expect(dev.capabilities.features.upmixRoutes).toBe(false);
+    const bulk = await dev.getAllParams();
+    expect(bulk.upmix2.p0Ext.activeCounts).toBe(0);
+    bulk.upmix2.p0Ext.activeCounts = 3;
+    await dev.setAllParams(bulk);
+    expect((await dev.getAllParams()).upmix2.p0Ext.activeCounts).toBe(0);
+  });
+
+  it('refuses a complete bulk carrying another version byte', async () => {
+    const dev = await Exposed.connect(newest('rp2350'));
+    const bulk = await dev.getAllParams();
+    const wrongVersion = buildBulkParams(bulk);
+    wrongVersion[0] = 35;
+    await expect(dev.wire.ctrlOut(PagedCmd.STORE.ALL_PARAMS_CHUNK.id, 0, wrongVersion)).rejects.toThrow();
+  });
+});
+
+describe('paged V36 upmixer status', () => {
+  it('follows the firmware selection: disabled, no profile for the input, nothing routed, active', async () => {
+    const profile = resolveMockProfile('paged', 'rp2350');
+    const dev = await DspDevice.create(new MockTransport({ platform: profile.platform, ...profile.opts }));
+    const reason = async () => (await dev.getUpmixStatus()).parkedReason;
+    expect(await reason()).toBe(1);
+
+    const bulk = await dev.getAllParams();
+    bulk.upmix2.p1.enabled = true;
+    bulk.upmix2.p1Ext.activeCounts = 0b10;          // serves 4 channels, input is stereo
+    await dev.setAllParams(bulk);
+    expect(await reason()).toBe(2);
+
+    bulk.upmix2.p1Ext.activeCounts = 0b01;
+    await dev.setAllParams(bulk);
+    expect(await reason()).toBe(6);
+
+    bulk.upmix2.p1Ext.routes[2].outMask = 0b1;
+    await dev.setAllParams(bulk);
+    expect(await reason()).toBe(0);
   });
 });
