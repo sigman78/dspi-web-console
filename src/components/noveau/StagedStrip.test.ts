@@ -17,6 +17,7 @@ function renderStrip(entries: StagedEntry[]) {
   const session = {
     writes: { busy: false },
     staging,
+    mirror: { snapshot: { inputConfig: { spdifEnabled: true, spdifCount: 1, spdifHoles: 0, i2sEnabled: true, i2sInputChannels: 2 } } },
   } as any;
   render(StagedStrip, { context: new Map([[SESSION_KEY, session]]) });
   return session;

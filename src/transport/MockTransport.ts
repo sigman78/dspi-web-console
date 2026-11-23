@@ -1241,6 +1241,8 @@ export class MockTransport implements DspTransport {
         const cfg = this.#mockState.inputConfig;
         const bit = 1 << (index - 1);
         let mask = cfg.spdifRxEnabledExtP1 === 0 ? 0 : cfg.spdifRxEnabledExtP1 - 1;
+        // Firmware: already in the requested state is a success, before any pin check.
+        if (((mask & bit) !== 0) === enable) return new Uint8Array([0x00]);
         if (enable) {
           const pin = cfg.spdifRxPinExt[index - 1];
           if (!this.#isValidGpio(pin)) return new Uint8Array([0x01]);

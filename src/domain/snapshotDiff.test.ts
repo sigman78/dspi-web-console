@@ -236,9 +236,20 @@ describe('diffSnapshots — 1.1.4 sections', () => {
       spdifRxPinExt: [16, 0],
       spdifEnabled: true,
       spdifCount: 2,
+      spdifHoles: 0,
     };
     expect(diffSnapshots(a, b)).toEqual([
-      { kind: 'spdifExt', value: { spdifRxPinExt: [16, 0], spdifEnabled: true, spdifCount: 2 } },
+      { kind: 'spdifExt', value: { spdifRxPinExt: [16, 0], spdifEnabled: true, spdifCount: 2, spdifHoles: 0 } },
+    ]);
+  });
+
+  it('emits spdifExt when only the holes change', () => {
+    const a = makeV10();
+    const b = structuredClone(a);
+    b.inputConfig = { ...b.inputConfig!, spdifCount: 3, spdifHoles: 0b010 };
+    a.inputConfig = { ...a.inputConfig!, spdifCount: 3, spdifHoles: 0 };
+    expect(diffSnapshots(a, b)).toEqual([
+      { kind: 'spdifExt', value: expect.objectContaining({ spdifCount: 3, spdifHoles: 0b010 }) },
     ]);
   });
 

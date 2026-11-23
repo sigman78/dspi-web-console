@@ -121,6 +121,8 @@ export interface WireInputBlockState {
   spdifEnabled: boolean;
   // S/PDIF inputs in the block, 1..4.
   spdifCount: number;
+  // Bit i = input i below the count is off (1.1.6 enables inputs one by one).
+  spdifHoles: number;
   i2sEnabled: boolean;
 }
 
@@ -134,13 +136,18 @@ export function inputBlockState(ic: WireInputConfig): WireInputBlockState {
     return {
       spdifEnabled: (mask & INPUT_ENABLE_SPDIF) !== 0,
       spdifCount: spdifRxCount === 0 ? 1 : Math.min(spdifRxCount, 4),
+      spdifHoles: 0,
       i2sEnabled: (mask & INPUT_ENABLE_I2S) !== 0,
     };
   }
   const extMask = ic.spdifRxEnabledExtP1 === 0 ? 0 : ic.spdifRxEnabledExtP1 - 1;
+  const spdifCount = 1 + (extMask === 0 ? 0 : 32 - Math.clz32(extMask));
+  let spdifHoles = 0;
+  for (let i = 1; i < spdifCount; i++) if ((extMask & (1 << (i - 1))) === 0) spdifHoles |= 1 << i;
   return {
     spdifEnabled: true,
-    spdifCount: 1 + (extMask === 0 ? 0 : 32 - Math.clz32(extMask)),
+    spdifCount,
+    spdifHoles,
     i2sEnabled: true,
   };
 }

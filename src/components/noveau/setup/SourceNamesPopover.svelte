@@ -18,7 +18,10 @@
   const s = getSession();
   const caps = $derived(s.device.capabilities);
   const numbered = $derived(caps.spdifInputCount > 1);
-  const sources = $derived(Domain.selectableInputSources(caps.spdifInputCount, caps.features.adatInput));
+  const sources = $derived(Domain.selectableInputSources(
+    caps.spdifInputCount,
+    caps.features.adatInput && !!s.mirror.current && Domain.adatInputInUse(s.mirror.current.inputConfig),
+  ));
 
   let pop: HTMLElement | undefined;
 

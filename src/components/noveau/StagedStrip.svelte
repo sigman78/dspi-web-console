@@ -3,6 +3,7 @@
   import ConfirmButton from '@/components/chrome/ConfirmButton.svelte';
   import { tick } from 'svelte';
   import { dismiss } from '@/components/chrome/dismiss';
+  import * as Runtime from '@/runtime';
 
   const { rule = false }: { rule?: boolean } = $props();
 
@@ -30,7 +31,7 @@
   // count, or the selected page tab once the strip itself is gone.
   async function discardOne(key: string): Promise<void> {
     const at = entries.findIndex((e) => e.key === key);
-    s.staging.discard(key);
+    Runtime.discardStagedEntry(s, key);
     await tick();
     const xs = pop ? [...pop.querySelectorAll<HTMLButtonElement>('.x-btn')] : [];
     const next = xs[Math.min(at, xs.length - 1)];

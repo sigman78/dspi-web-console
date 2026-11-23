@@ -247,7 +247,7 @@ async function inverse(req: Sent): Promise<{ code: number; dir: LegacyDir; wValu
       legacyIn: async (code, wValue, length) => { call = { code, dir: 'in', wValue }; return new Uint8Array(Math.max(length, 1)); },
       legacyOut: async (code, wValue) => { call = { code, dir: 'out', wValue }; },
       closeChunkSessions: () => {},
-      inputBlocks: { read: () => ({ spdifEnabled: true, spdifCount: 4, i2sEnabled: true }), write: () => {}, claimBlocked: () => false },
+      inputBlocks: { read: () => ({ spdifEnabled: true, spdifCount: 4, spdifHoles: 0, i2sEnabled: true }), write: () => {}, claimBlocked: () => false },
     },
     new Uint8Array(0), true,
   );

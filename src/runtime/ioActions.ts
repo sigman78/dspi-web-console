@@ -193,7 +193,7 @@ export function setSpdifInputCount(s: ReadySession, count: number): Promise<bool
   return writeChecked(s,
     'set S/PDIF input count',
     () => s.device.setSpdifInputCount(count),
-    () => { s.mirror.snapshot.inputConfig = { ...s.mirror.snapshot.inputConfig, spdifCount: count }; },
+    () => { s.mirror.snapshot.inputConfig = { ...s.mirror.snapshot.inputConfig, spdifCount: count, spdifHoles: 0 }; },
   ).then((ok) => {
     // The 1.1.6 sequence can stop partway with some inputs already changed.
     if (!ok && s.device.generation !== 'paged') s.mirror.requestReconcile(true);

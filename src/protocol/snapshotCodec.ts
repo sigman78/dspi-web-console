@@ -179,6 +179,7 @@ export function fromBulkParams(hardware: Domain.HardwareProfile, bulk: BulkParam
       spdifRxPinExt: [...bulk.inputConfig.spdifRxPinExt],
       spdifEnabled: blockState.spdifEnabled,
       spdifCount: blockState.spdifCount,
+      spdifHoles: blockState.spdifHoles,
       i2sEnabled: blockState.i2sEnabled,
       i2sClockMode: bulk.inputConfig.i2sClockMode,
       // p1-encoded fields (0 = absent) are decoded below.

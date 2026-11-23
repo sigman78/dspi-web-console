@@ -73,102 +73,251 @@ describe('runtime/stagedActions', () => {
       return sess();
     }
 
-    it('picking I2S while its block is off stages the block on with the source; picking USB drops it', async () => {
+    async function bootWith(cfg: { spdifEnabled: boolean; spdifCount: number }) {
       const s = await bootPaged();
-      expect(s.mirror.snapshot.inputConfig.i2sEnabled).toBe(false);
+      Object.assign(s.mirror.snapshot.inputConfig, cfg);
+      return s;
+    }
 
-      Staged.stageInputSource(s, AudioInputSource.I2s);
-      expect(s.staging.get('i2sBlock')?.autoFor).toBe('inputSource');
-      expect(s.staging.get('i2sBlock')?.order).toBeLessThan(s.staging.get('inputSource')!.order);
+    const keys = (s: ReturnType<typeof sess>) => s.staging.entries.map((e) => e.key).sort();
 
-      Staged.stageInputSource(s, AudioInputSource.Usb);
-      expect(s.staging.has('i2sBlock')).toBe(false);
-      expect(s.staging.has('inputSource')).toBe(false);
+    describe('picking a source', () => {
+      it('I2S with its block off stages the block ahead of the source, and both stay when the pick moves on', async () => {
+        const s = await bootPaged();
+        expect(s.mirror.snapshot.inputConfig.i2sEnabled).toBe(false);
+
+        Staged.stageInputSource(s, AudioInputSource.I2s);
+        expect(s.staging.get('i2sBlock')!.order).toBeLessThan(s.staging.get('inputSource')!.order);
+
+        Staged.stageInputSource(s, AudioInputSource.Usb);
+        expect(keys(s)).toEqual(['i2sBlock']);
+      });
+
+      it('applying the staged block and source switches to I2S', async () => {
+        const s = await bootPaged();
+        Staged.stageInputSource(s, AudioInputSource.I2s);
+        await s.staging.applyAll();
+        expect(s.mirror.snapshot.inputConfig.source).toBe(AudioInputSource.I2s);
+        expect(s.mirror.snapshot.inputConfig.i2sEnabled).toBe(true);
+      });
+
+      it('ADAT stages its input enable on either firmware generation, and ✕ on the enable drops the source', async () => {
+        const s = await bootPaged();
+        Staged.stageInputSource(s, AudioInputSource.Adat);
+        expect(s.staging.has('adatInputEnable')).toBe(true);
+        Staged.discardStagedEntry(s, 'adatInputEnable');
+        expect(s.staging.has('inputSource')).toBe(false);
+
+        s.dispose();
+        resetAppState();
+        await bootMock('rp2350');
+        Staged.stageInputSource(sess(), AudioInputSource.Adat);
+        expect(sess().staging.has('adatInputEnable')).toBe(true);
+      });
+
+      it('stages nothing extra on a 1.1.6 device for I2S', async () => {
+        await bootMock('rp2350');
+        const s = sess();
+        Staged.stageInputSource(s, AudioInputSource.I2s);
+        expect(keys(s)).toEqual(['inputSource']);
+      });
+
+      it('on 1.1.6, S/PDIF 3 raises the count and applies it before the source switch', async () => {
+        await bootMock('rp2350');
+        const s = sess();
+        expect(s.device.capabilities.features.inputBlocks).toBe(false);
+        expect(s.mirror.snapshot.inputConfig).toMatchObject({ spdifEnabled: true, i2sEnabled: true, spdifCount: 1 });
+        const count = vi.spyOn(s.device, 'setSpdifInputCount');
+        const src = vi.spyOn(s.device, 'setInputSource');
+
+        Staged.stageInputSource(s, AudioInputSource.Spdif3);
+        expect(keys(s)).toEqual(['inputSource', 'spdifCount']);
+        expect(s.staging.get('spdifCount')?.value).toBe(3);
+
+        await s.staging.applyAll();
+        expect(count).toHaveBeenCalledWith(3);
+        expect(src).toHaveBeenCalledWith(AudioInputSource.Spdif3);
+        expect(count.mock.invocationCallOrder[0]).toBeLessThan(src.mock.invocationCallOrder[0]);
+      });
+
+      it('an input the remembered count already covers stages the block alone', async () => {
+        const s = await bootWith({ spdifEnabled: false, spdifCount: 4 });
+        Staged.stageInputSource(s, AudioInputSource.Spdif2);
+        expect(keys(s)).toEqual(['inputSource', 'spdifBlock']);
+      });
+
+      it('an input beyond the count raises it to exactly the input', async () => {
+        const s = await bootWith({ spdifEnabled: true, spdifCount: 1 });
+        Staged.stageInputSource(s, AudioInputSource.Spdif3);
+        expect(s.staging.get('spdifCount')?.value).toBe(3);
+      });
+
+      it('re-clicking the selected radio changes nothing and keeps a staged pin, even from block off', async () => {
+        const s = await bootWith({ spdifEnabled: false, spdifCount: 1 });
+        Staged.stageInputSource(s, AudioInputSource.Spdif);
+        Staged.stageSpdifRxPin(s, 25);
+        const before = keys(s);
+        Staged.stageInputSource(s, AudioInputSource.Spdif);
+        expect(keys(s)).toEqual(before);
+        expect(s.staging.has('spdifRxPin')).toBe(true);
+      });
+
+      it('moving between S/PDIF sources keeps the pins of inputs that stay on', async () => {
+        const s = await bootWith({ spdifEnabled: true, spdifCount: 1 });
+        Staged.stageInputSource(s, AudioInputSource.Spdif3);
+        Staged.stageSpdifRxPinExt(s, 0, 23);
+        Staged.stageSpdifRxPinExt(s, 1, 26);
+        Staged.stageInputSource(s, AudioInputSource.Spdif4);
+        expect(s.staging.has('spdifRxPinExt:0')).toBe(true);
+        expect(s.staging.has('spdifRxPinExt:1')).toBe(true);
+        expect(s.staging.get('spdifCount')?.value).toBe(4);
+      });
+
+      it('a manual raise survives a later pick', async () => {
+        const s = await bootWith({ spdifEnabled: true, spdifCount: 1 });
+        Staged.stageSpdifInputOn(s, 3, true);
+        Staged.stageInputSource(s, AudioInputSource.Spdif2);
+        Staged.stageInputSource(s, AudioInputSource.Usb);
+        expect(s.staging.get('spdifCount')?.value).toBe(4);
+      });
     });
 
-    it('applying the auto-staged block and source switches to I2S', async () => {
-      const s = await bootPaged();
-      Staged.stageInputSource(s, AudioInputSource.I2s);
-      await s.staging.applyAll();
-      expect(s.mirror.snapshot.inputConfig.source).toBe(AudioInputSource.I2s);
-      expect(s.mirror.snapshot.inputConfig.i2sEnabled).toBe(true);
+    describe('discarding what a source needs', () => {
+      it('✕ on the count drops the source that needed it, with the pins it brought', async () => {
+        const s = await bootWith({ spdifEnabled: true, spdifCount: 1 });
+        Staged.stageInputSource(s, AudioInputSource.Spdif3);
+        Staged.stageSpdifRxPinExt(s, 1, 26);
+        Staged.discardStagedEntry(s, 'spdifCount');
+        expect(s.staging.entries).toEqual([]);
+      });
+
+      it('✕ on the block drops the source that needed it', async () => {
+        const s = await bootWith({ spdifEnabled: false, spdifCount: 2 });
+        Staged.stageInputSource(s, AudioInputSource.Spdif);
+        Staged.discardStagedEntry(s, 'spdifBlock');
+        expect(s.staging.entries).toEqual([]);
+      });
+
+      it('a block that ends up off drops a staged count, including via ✕ on a staged block-on', async () => {
+        const s = await bootWith({ spdifEnabled: true, spdifCount: 1 });
+        Staged.stageSpdifInputCount(s, 3);
+        Staged.stageSpdifInputOn(s, 0, false);
+        expect(s.staging.has('spdifCount')).toBe(false);
+        expect(s.staging.get('spdifBlock')?.value).toBe(false);
+
+        s.staging.discardAll();
+        Object.assign(s.mirror.snapshot.inputConfig, { spdifEnabled: false, spdifCount: 1 });
+        Staged.stageSpdifInputOn(s, 2, true);
+        expect(keys(s)).toEqual(['spdifBlock', 'spdifCount']);
+        Staged.discardStagedEntry(s, 'spdifBlock');
+        expect(s.staging.entries).toEqual([]);
+      });
+
+      it('shrinking the count drops staged pins of the inputs that go', async () => {
+        const s = await bootWith({ spdifEnabled: true, spdifCount: 4 });
+        Staged.stageSpdifRxPinExt(s, 0, 23);
+        Staged.stageSpdifRxPinExt(s, 2, 26);
+        Staged.stageSpdifInputCount(s, 2);
+        expect(s.staging.has('spdifRxPinExt:0')).toBe(true);
+        expect(s.staging.has('spdifRxPinExt:2')).toBe(false);
+      });
+
+      it('switching the S/PDIF block off drops every staged S/PDIF pin', async () => {
+        const s = await bootWith({ spdifEnabled: true, spdifCount: 3 });
+        Staged.stageSpdifRxPin(s, 25);
+        Staged.stageSpdifRxPinExt(s, 0, 23);
+        Staged.stageSpdifInputOn(s, 0, false);
+        expect(s.staging.has('spdifRxPin')).toBe(false);
+        expect(s.staging.has('spdifRxPinExt:0')).toBe(false);
+      });
+
+      it('I2S pins go with a shrunk channel count and with the block', async () => {
+        const s = await bootPaged();
+        Object.assign(s.mirror.snapshot.inputConfig, { i2sEnabled: true, i2sInputChannels: 2 });
+        s.mirror.snapshot.inputConfig.i2sRxPins = [15, 16, 17, 18];
+        Staged.stageI2sInputChannels(s, 4);
+        Staged.stageI2sRxPin(s, 1, 21);
+        Staged.stageI2sInputChannels(s, 2);
+        expect(s.staging.has('i2sRxPin:1')).toBe(false);
+
+        Staged.stageI2sRxPin(s, 0, 22);
+        Staged.stageI2sInputEnabled(s, false);
+        expect(s.staging.has('i2sRxPin:0')).toBe(false);
+      });
     });
 
-    it('a block the user staged is not claimed by the source', async () => {
-      const s = await bootPaged();
-      Staged.stageI2sInputEnabled(s, true);
-      Staged.stageInputSource(s, AudioInputSource.I2s);
-      Staged.stageInputSource(s, AudioInputSource.Usb);
-      expect(s.staging.get('i2sBlock')?.autoFor).toBeUndefined();
+    describe('stageSpdifInputOn', () => {
+      it('off on the first input switches the block off', async () => {
+        const s = await bootWith({ spdifEnabled: true, spdifCount: 3 });
+        Staged.stageSpdifInputOn(s, 0, false);
+        expect(s.staging.get('spdifBlock')?.value).toBe(false);
+        expect(s.staging.has('spdifCount')).toBe(false);
+      });
+
+      it('off on a later input cuts the count to it, taking the inputs above along', async () => {
+        const s = await bootWith({ spdifEnabled: true, spdifCount: 4 });
+        Staged.stageSpdifInputOn(s, 1, false);
+        expect(s.staging.get('spdifCount')?.value).toBe(1);
+        expect(s.staging.has('spdifBlock')).toBe(false);
+      });
+
+      it('on for the first input of an off block stages only the block, so the remembered count returns', async () => {
+        const s = await bootWith({ spdifEnabled: false, spdifCount: 3 });
+        Staged.stageSpdifInputOn(s, 0, true);
+        expect(keys(s)).toEqual(['spdifBlock']);
+      });
+
+      it('on for input 2 of an off block with a remembered count of 4 gives a count of exactly 2', async () => {
+        const s = await bootWith({ spdifEnabled: false, spdifCount: 4 });
+        Staged.stageSpdifInputOn(s, 1, true);
+        expect(s.staging.get('spdifBlock')?.value).toBe(true);
+        expect(s.staging.get('spdifCount')?.value).toBe(2);
+      });
+
+      it('on while the block is on raises the count past the input but never lowers it', async () => {
+        const s = await bootWith({ spdifEnabled: true, spdifCount: 1 });
+        Staged.stageSpdifInputOn(s, 2, true);
+        expect(s.staging.get('spdifCount')?.value).toBe(3);
+        Staged.stageSpdifInputOn(s, 1, true);
+        expect(s.staging.get('spdifCount')?.value).toBe(3);
+      });
+
+      it('a staged block-off counts as off, so a later input switched on brings the block back', async () => {
+        const s = await bootWith({ spdifEnabled: true, spdifCount: 1 });
+        Staged.stageSpdifInputOn(s, 0, false);
+        Staged.stageSpdifInputOn(s, 1, true);
+        expect(s.staging.has('spdifBlock')).toBe(false);
+        expect(s.staging.get('spdifCount')?.value).toBe(2);
+      });
     });
 
-    it('dropping an auto-staged count also drops the pins staged beyond the live count', async () => {
-      const s = await bootPaged();
-      s.mirror.snapshot.inputConfig.spdifCount = 2;
-      Staged.stageInputSource(s, AudioInputSource.Spdif3);
-      Staged.stageSpdifRxPinExt(s, 1, 25);
-      Staged.stageInputSource(s, AudioInputSource.Usb);
-      expect(s.staging.has('spdifCount')).toBe(false);
-      expect(s.staging.has('spdifRxPinExt:1')).toBe(false);
-    });
+    describe('apply order', () => {
+      it('a cut while the block is off lands before the block-on', async () => {
+        const s = await bootWith({ spdifEnabled: false, spdifCount: 4 });
+        Staged.stageSpdifInputOn(s, 1, true);
+        expect(s.staging.get('spdifCount')!.order).toBeLessThan(s.staging.get('spdifBlock')!.order);
+      });
 
-    it('picking ADAT stages its input enable on either firmware generation, and picking USB drops it', async () => {
-      const s = await bootPaged();
-      Staged.stageInputSource(s, AudioInputSource.Adat);
-      expect(s.staging.get('adatInputEnable')?.autoFor).toBe('inputSource');
-      Staged.stageInputSource(s, AudioInputSource.Usb);
-      expect(s.staging.has('adatInputEnable')).toBe(false);
+      it('a raise lands after the block-on', async () => {
+        const s = await bootWith({ spdifEnabled: false, spdifCount: 1 });
+        Staged.stageSpdifInputOn(s, 2, true);
+        expect(s.staging.get('spdifBlock')!.order).toBeLessThan(s.staging.get('spdifCount')!.order);
+      });
 
-      s.dispose();
-      resetAppState();
-      await bootMock('rp2350');
-      Staged.stageInputSource(sess(), AudioInputSource.Adat);
-      expect(sess().staging.get('adatInputEnable')?.autoFor).toBe('inputSource');
-    });
+      it('an ADAT pin move lands before the S/PDIF block-on', async () => {
+        const s = await bootWith({ spdifEnabled: false, spdifCount: 1 });
+        Staged.stageSpdifInputOn(s, 0, true);
+        Staged.stageAdatPin(s, 30);
+        expect(s.staging.get('adatPin')!.order).toBeLessThan(s.staging.get('spdifBlock')!.order);
+      });
 
-    it('stages nothing extra on a 1.1.6 device', async () => {
-      await bootMock('rp2350');
-      const s = sess();
-      Staged.stageInputSource(s, AudioInputSource.I2s);
-      expect(s.staging.entries.map((e) => e.key)).toEqual(['inputSource']);
-    });
-
-    it('a staged I2S block-off is undone by picking the I2S source', async () => {
-      const s = await bootPaged();
-      await IoActions.setI2sInputEnabled(s, true);
-      Staged.stageI2sInputEnabled(s, false);
-      expect(s.staging.has('i2sBlock')).toBe(true);
-      Staged.stageInputSource(s, AudioInputSource.I2s);
-      expect(s.staging.has('i2sBlock')).toBe(false);
-      expect(s.staging.has('inputSource')).toBe(true);
-    });
-
-    it('picking an S/PDIF input beyond a staged count cut raises the count back', async () => {
-      const s = await bootPaged();
-      s.mirror.snapshot.inputConfig.spdifCount = 4;
-      Staged.stageSpdifInputCount(s, 2);
-      Staged.stageInputSource(s, AudioInputSource.Spdif3);
-      expect(s.staging.get('spdifCount')?.value).toBe(3);
-      expect(s.staging.get('spdifCount')?.autoFor).toBe('inputSource');
-
-      Staged.stageInputSource(s, AudioInputSource.Spdif4);
-      expect(s.staging.has('spdifCount')).toBe(false);
-    });
-
-    it('picking S/PDIF while its block is off stages the block on', async () => {
-      const s = await bootPaged();
-      s.mirror.snapshot.inputConfig.spdifEnabled = false;
-      Staged.stageInputSource(s, AudioInputSource.Spdif);
-      expect(s.staging.get('spdifBlock')?.autoFor).toBe('inputSource');
-    });
-
-    it('applying a block-on with a count grow leaves the device with both', async () => {
-      const s = await bootPaged();
-      await IoActions.setSpdifBlockEnabled(s, false);
-      Staged.stageSpdifInputCount(s, 3);
-      Staged.stageSpdifBlockEnabled(s, true);
-      await s.staging.applyAll();
-      expect(await s.device.getSpdifInputConfig()).toMatchObject({ enableMask: 0b0111 });
+      it('applying a block-on with a count raise leaves the device with both', async () => {
+        const s = await bootWith({ spdifEnabled: true, spdifCount: 1 });
+        await IoActions.setSpdifBlockEnabled(s, false);
+        Staged.stageSpdifInputOn(s, 2, true);
+        await s.staging.applyAll();
+        expect(await s.device.getSpdifInputConfig()).toMatchObject({ enableMask: 0b0111 });
+      });
     });
 
     it('a count raise onto a pin another function holds is refused and leaves the count', async () => {
@@ -181,14 +330,79 @@ describe('runtime/stagedActions', () => {
       expect(await s.device.getSpdifInputConfig()).toMatchObject({ enableMask: 0b0001 });
     });
 
-    it('shrinking the count drops staged pins of the inputs that go', async () => {
-      const s = await bootPaged();
-      s.mirror.snapshot.inputConfig.spdifCount = 4;
-      Staged.stageSpdifRxPinExt(s, 0, 23);
-      Staged.stageSpdifRxPinExt(s, 2, 26);
-      Staged.stageSpdifInputCount(s, 2);
-      expect(s.staging.has('spdifRxPinExt:0')).toBe(true);
-      expect(s.staging.has('spdifRxPinExt:2')).toBe(false);
+    describe('gappy 1.1.6 inputs', () => {
+      // Inputs 1 and 3 on, input 2 off.
+      async function bootGappy() {
+        await bootMock('rp2350');
+        const s = sess();
+        Object.assign(s.mirror.snapshot.inputConfig, { spdifEnabled: true, spdifCount: 3, spdifHoles: 0b010, spdifRxPinExt: [20, 21, 0] });
+        return s;
+      }
+
+      it('switching input 3 off cuts to input 1 and never turns input 2 on', async () => {
+        const s = await bootGappy();
+        Staged.stageSpdifInputOn(s, 2, false);
+        expect(s.staging.get('spdifCount')?.value).toBe(1);
+      });
+
+      it('a cut sorts before a pin move onto the freed pin', async () => {
+        const s = await bootGappy();
+        Staged.stageSpdifInputOn(s, 2, false);
+        Staged.stageI2sRxPin(s, 0, 21);
+        expect(s.staging.get('spdifCount')!.order).toBeLessThan(s.staging.get('i2sRxPin:0')!.order);
+      });
+
+      it('a cut above a hole keeps only the unbroken run, so its pin is released before pin moves', async () => {
+        const s = await bootGappy();
+        Object.assign(s.mirror.snapshot.inputConfig, { spdifCount: 4, spdifRxPinExt: [20, 21, 22] });
+        Staged.stageSpdifInputOn(s, 3, false);
+        Staged.stageSpdifRxPin(s, 22);
+        expect(s.staging.get('spdifCount')?.value).toBe(1);
+        expect(s.staging.get('spdifCount')!.order).toBeLessThan(s.staging.get('spdifRxPin')!.order);
+      });
+
+      it('a cut above a hole still keeps the live source', async () => {
+        const s = await bootGappy();
+        Object.assign(s.mirror.snapshot.inputConfig, { spdifCount: 4, spdifRxPinExt: [20, 21, 22], source: AudioInputSource.Spdif3 });
+        Staged.stageSpdifInputOn(s, 3, false);
+        expect(s.staging.get('spdifCount')?.value).toBe(3);
+      });
+
+      it('switching the hole on closes it by staging the count even though the count is unchanged', async () => {
+        const s = await bootGappy();
+        Staged.stageSpdifInputOn(s, 1, true);
+        expect(s.staging.get('spdifCount')?.value).toBe(3);
+        expect(s.staging.overlaySnapshot(s.mirror.snapshot).inputConfig.spdifHoles).toBe(0);
+      });
+
+      it('picking the hole stages the count; picking a covered input stages nothing', async () => {
+        const s = await bootGappy();
+        Staged.stageInputSource(s, AudioInputSource.Spdif3);
+        expect(s.staging.has('spdifCount')).toBe(false);
+        Staged.stageInputSource(s, AudioInputSource.Spdif2);
+        expect(s.staging.get('spdifCount')?.value).toBe(3);
+      });
+
+      it('the optimistic patch of a count write closes the holes', async () => {
+        const s = await bootGappy();
+        await IoActions.setSpdifInputCount(s, 3);
+        expect(s.mirror.snapshot.inputConfig.spdifHoles).toBe(0);
+      });
+
+      it('input 1 has no off switch without block switches', async () => {
+        const s = await bootGappy();
+        Staged.stageSpdifInputOn(s, 0, false);
+        expect(s.staging.entries).toEqual([]);
+      });
+
+      it('the legacy mock treats re-enabling an enabled input as a success', async () => {
+        await bootMock('rp2350');
+        const s = sess();
+        expect(await s.device.setSpdifRxPin(21, 1)).toMatchObject({ ok: true });
+        expect(await s.device.setSpdifInputCount(2)).toMatchObject({ ok: true });
+        expect(await s.device.setSpdifInputCount(2)).toMatchObject({ ok: true });
+        expect(await s.device.getSpdifInputConfig()).toMatchObject({ enableMask: 0b0011 });
+      });
     });
   });
 

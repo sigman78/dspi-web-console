@@ -14,7 +14,7 @@ function snap(over: Partial<DspSnapshot> = {}): DspSnapshot {
     leveller: null,
     outputPins: [6, 7, 8, 9, 10],
     i2s: { outputSlotTypes: [0, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: false, mckMultiplierEncoded: 0 },
-    inputConfig: { source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifEnabled: true, spdifCount: 1, i2sEnabled: true, adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0 },
+    inputConfig: { source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifEnabled: true, spdifCount: 1, spdifHoles: 0, i2sEnabled: true, adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0 },
     dacHwMute: { enabled: false, activeLow: false, pin: 11, holdMs: 0, releaseMs: 0 },
     adat: { enabled: false, pin: 0 },
     ...over,
@@ -96,7 +96,7 @@ describe('pins', () => {
   test('a third optional S/PDIF input (input 4, V28+) reserves its pin only while enabled', () => {
     const on = Pins.pinsInUse(snap({
       inputConfig: {
-        source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0, 25], spdifEnabled: true, spdifCount: 4, i2sEnabled: true,
+        source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0, 25], spdifEnabled: true, spdifCount: 4, spdifHoles: 0, i2sEnabled: true,
         i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, i2sClockMode: 0,
         adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0,
       },
@@ -105,7 +105,7 @@ describe('pins', () => {
 
     const off = Pins.pinsInUse(snap({
       inputConfig: {
-        source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0, 25], spdifEnabled: true, spdifCount: 1, i2sEnabled: true,
+        source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0, 25], spdifEnabled: true, spdifCount: 1, spdifHoles: 0, i2sEnabled: true,
         i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, i2sClockMode: 0,
         adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0,
       },
@@ -116,7 +116,7 @@ describe('pins', () => {
   test('the S/PDIF and I2S blocks hold their pins only while switched on', () => {
     const cfg = (over: Partial<DspSnapshot['inputConfig']>) => snap({
       inputConfig: {
-        source: 0, spdifRxPin: 5, spdifRxPinExt: [24, 25, 26], spdifEnabled: true, spdifCount: 3, i2sEnabled: true,
+        source: 0, spdifRxPin: 5, spdifRxPinExt: [24, 25, 26], spdifEnabled: true, spdifCount: 3, spdifHoles: 0, i2sEnabled: true,
         i2sRxPins: [30, 31, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 4, i2sClockMode: 0,
         adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0, ...over,
       },
@@ -143,7 +143,7 @@ describe('pins', () => {
 
   test('ADAT input reserves its pin only while enabled, and defers to the output\'s label under loopback', () => {
     const inCfg = (over: Partial<{ adatInputPin: number; adatInputEnabled: boolean }>) => ({
-      source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifEnabled: true, spdifCount: 1, i2sEnabled: true,
+      source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifEnabled: true, spdifCount: 1, spdifHoles: 0, i2sEnabled: true,
       i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, i2sClockMode: 0,
       adatInputPin: 0, adatInputEnabled: false, adatInputClockMode: 0, ...over,
     } as DspSnapshot['inputConfig']);
@@ -271,7 +271,7 @@ describe('pins', () => {
       outputPins: [6, 7, 8, 9, 10],
       i2s: { outputSlotTypes: [1, 0, 0, 0], bckPin: 14, mckPin: 13, mckEnabled: true, mckMultiplierEncoded: 0, clockPinMode: 1, bckPinSlave: 26 },
       inputConfig: {
-        source: 0, spdifRxPin: 5, spdifRxPinExt: [30, 31], spdifEnabled: true, spdifCount: 3, i2sEnabled: true,
+        source: 0, spdifRxPin: 5, spdifRxPinExt: [30, 31], spdifEnabled: true, spdifCount: 3, spdifHoles: 0, i2sEnabled: true,
         i2sRxPins: [34, 36, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 4, i2sClockMode: 0,
         adatInputPin: 32, adatInputEnabled: true, adatInputClockMode: 0,
       },
@@ -312,7 +312,7 @@ describe('pins', () => {
     const s = snap({
       adat: { enabled: true, pin: 20 },
       inputConfig: {
-        source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifEnabled: true, spdifCount: 1, i2sEnabled: true,
+        source: 0, spdifRxPin: 5, spdifRxPinExt: [0, 0], spdifEnabled: true, spdifCount: 1, spdifHoles: 0, i2sEnabled: true,
         i2sRxPins: [0, 0, 0, 0], i2sInputRateHz: 48000, i2sInputChannels: 0, i2sClockMode: 0,
         adatInputPin: 20, adatInputEnabled: true, adatInputClockMode: 0,
       } as DspSnapshot['inputConfig'],

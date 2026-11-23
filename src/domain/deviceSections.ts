@@ -62,6 +62,9 @@ export interface InputConfig {
   spdifEnabled: boolean;
   // S/PDIF inputs in the block, 1..4.
   spdifCount: number;
+  // Bit i = input i below `spdifCount` is off. Only 1.1.6 firmware, which
+  // enables inputs one by one, can report a gappy set; always 0 elsewhere.
+  spdifHoles: number;
   // I2S block switch: the source can only be I2S while it is on.
   i2sEnabled: boolean;
   // I2S clock role: 0 = master, 1 = slave.
@@ -73,8 +76,14 @@ export interface InputConfig {
 }
 
 // Whether S/PDIF input `index` (0-based) exists.
-export function spdifInputOn(cfg: Pick<InputConfig, 'spdifEnabled' | 'spdifCount'>, index: number): boolean {
-  return cfg.spdifEnabled && index < cfg.spdifCount;
+export function spdifInputOn(cfg: Pick<InputConfig, 'spdifEnabled' | 'spdifCount' | 'spdifHoles'>, index: number): boolean {
+  return cfg.spdifEnabled && index < cfg.spdifCount && ((cfg.spdifHoles >> index) & 1) === 0;
+}
+
+// Whether the ADAT input is in play: switched on, or already the source. The
+// UI keeps it hidden otherwise.
+export function adatInputInUse(cfg: Pick<InputConfig, 'adatInputEnabled' | 'source'>): boolean {
+  return cfg.adatInputEnabled || cfg.source === AudioInputSource.Adat;
 }
 
 // ADAT lightpipe bulk output config (RP2350 only). Persisted intent;

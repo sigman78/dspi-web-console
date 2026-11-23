@@ -2,10 +2,10 @@
   import { getSession } from '@/components/sessionContext';
   import DevicePanel from '@/components/noveau/setup/DevicePanel.svelte';
   import ControlInterfacesPanel from '@/components/noveau/setup/ControlInterfacesPanel.svelte';
+  import AdatInputPanel from '@/components/noveau/setup/AdatInputPanel.svelte';
   import InputConfigPanel from '@/components/noveau/setup/InputConfigPanel.svelte';
   import OutputsPanel from '@/components/noveau/setup/OutputsPanel.svelte';
   import AdatPanel from '@/components/noveau/setup/AdatPanel.svelte';
-  import AdatInputPanel from '@/components/noveau/setup/AdatInputPanel.svelte';
   import I2sClockPanel from '@/components/noveau/setup/I2sClockPanel.svelte';
   import LgSoundSyncPanel from '@/components/noveau/setup/LgSoundSyncPanel.svelte';
   import DacHwMutePanel from '@/components/noveau/setup/DacHwMutePanel.svelte';
@@ -17,11 +17,14 @@
   import PinMapPanel from '@/components/chrome/PinMapPanel.svelte';
   import StagedStrip from '@/components/noveau/StagedStrip.svelte';
   import { noveauUi } from '@/components/noveau/noveauUi.svelte';
+  import * as Domain from '@/domain';
   import { debugPanels } from '@/devOptions';
   import { SETUP_PAGES } from './setupPages';
 
   const s = getSession();
   const features = $derived(s.device.capabilities.features);
+  const inputConfig = $derived(s.mirror.current?.inputConfig);
+  const showAdatInput = $derived(features.adatInput && !!inputConfig && Domain.adatInputInUse(inputConfig));
   const page = $derived(SETUP_PAGES.some((p) => p.key === noveauUi.setupPage) ? noveauUi.setupPage : SETUP_PAGES[0].key);
 </script>
 
@@ -54,7 +57,7 @@
     <div class="pw-cols">
       <div class="pw-col" data-budget><InputConfigPanel /></div>
       <div class="pw-col" data-budget>
-        {#if features.adatInput}<AdatInputPanel />{/if}
+        {#if showAdatInput}<AdatInputPanel />{/if}
         <LgSoundSyncPanel />
       </div>
       <div class="pw-col pw-ref" data-budget><PinMapPanel /></div>

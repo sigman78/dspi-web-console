@@ -254,7 +254,7 @@ test('no scroll 1440x790 SETUP with staged changes and the list open', async ({ 
   await destination(page, 'SETUP').click();
   await page.getByRole('tab', { name: 'INPUTS' }).click();
   await page.getByRole('button', { name: 'Reset input pins to defaults' }).click();
-  await page.locator('.src-btns .chip:not(:disabled)').first().click();
+  await page.locator('.ctl .chip:not(:disabled)').first().click();
   await page.getByRole('tab', { name: 'OUTPUTS' }).click();
   await page.getByRole('button', { name: 'Reset clock pins to defaults' }).click();
   const strip = page.getByRole('group', { name: 'Staged changes' });

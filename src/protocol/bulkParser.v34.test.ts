@@ -118,23 +118,34 @@ describe('inputBlockState', () => {
   };
 
   it('reads the switches from the V34 bytes', () => {
-    expect(stateOf({ spdifRxCount: 3, inputEnableP1: 1 + (1 | 2) })).toEqual({ spdifEnabled: true, spdifCount: 3, i2sEnabled: true });
-    expect(stateOf({ spdifRxCount: 4, inputEnableP1: 1 + 2 })).toEqual({ spdifEnabled: false, spdifCount: 4, i2sEnabled: true });
-    expect(stateOf({ spdifRxCount: 2, inputEnableP1: 1 + 4 })).toEqual({ spdifEnabled: false, spdifCount: 2, i2sEnabled: false });
+    expect(stateOf({ spdifRxCount: 3, inputEnableP1: 1 + (1 | 2) })).toEqual({ spdifEnabled: true, spdifCount: 3, spdifHoles: 0, i2sEnabled: true });
+    expect(stateOf({ spdifRxCount: 4, inputEnableP1: 1 + 2 })).toEqual({ spdifEnabled: false, spdifCount: 4, spdifHoles: 0, i2sEnabled: true });
+    expect(stateOf({ spdifRxCount: 2, inputEnableP1: 1 + 4 })).toEqual({ spdifEnabled: false, spdifCount: 2, spdifHoles: 0, i2sEnabled: false });
   });
 
   it('reads absent bytes as one S/PDIF input on and I2S off', () => {
-    expect(stateOf({ spdifRxCount: 0, inputEnableP1: 0 })).toEqual({ spdifEnabled: true, spdifCount: 1, i2sEnabled: false });
+    expect(stateOf({ spdifRxCount: 0, inputEnableP1: 0 })).toEqual({ spdifEnabled: true, spdifCount: 1, spdifHoles: 0, i2sEnabled: false });
   });
 
-  it('closes a gappy legacy mask up to the highest enabled input, with both blocks always on', () => {
+  it('keeps a gappy legacy mask through a parse and rebuild', () => {
+    const bulk = BulkParser.defaultBulkParams({ platformId: 1, numCh: 17, numOut: 9, numIn: 8 });
+    bulk.inputConfig.spdifRxEnabledExtP1 = 0b101 + 1;
+    const parsed = BulkParser.parseBulkParams(BulkParser.buildBulkParams(bulk));
+    const again = BulkParser.parseBulkParams(BulkParser.buildBulkParams(parsed));
+    expect(again.inputConfig.spdifRxEnabledExtP1).toBe(0b101 + 1);
+    expect(BulkParser.inputBlockState(again.inputConfig)).toMatchObject({ spdifCount: 4, spdifHoles: 0b0100 });
+  });
+
+  it('reads a gappy legacy mask as the highest enabled input plus the inputs left off, with both blocks always on', () => {
     const legacy = (extP1: number) => {
       const bulk = BulkParser.defaultBulkParams({ platformId: 1, numCh: 17, numOut: 9, numIn: 8 });
       bulk.inputConfig.spdifRxEnabledExtP1 = extP1;
       return BulkParser.inputBlockState(BulkParser.parseBulkParams(BulkParser.buildBulkParams(bulk)).inputConfig);
     };
-    expect(legacy(0b100 + 1)).toEqual({ spdifEnabled: true, spdifCount: 4, i2sEnabled: true });
-    expect(legacy(1)).toEqual({ spdifEnabled: true, spdifCount: 1, i2sEnabled: true });
+    expect(legacy(0b100 + 1)).toEqual({ spdifEnabled: true, spdifCount: 4, spdifHoles: 0b0110, i2sEnabled: true });
+    expect(legacy(0b101 + 1)).toEqual({ spdifEnabled: true, spdifCount: 4, spdifHoles: 0b0100, i2sEnabled: true });
+    expect(legacy(0b011 + 1)).toEqual({ spdifEnabled: true, spdifCount: 3, spdifHoles: 0, i2sEnabled: true });
+    expect(legacy(1)).toEqual({ spdifEnabled: true, spdifCount: 1, spdifHoles: 0, i2sEnabled: true });
     expect(legacy(0).spdifCount).toBe(1);
   });
 });
