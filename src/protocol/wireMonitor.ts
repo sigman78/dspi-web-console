@@ -7,6 +7,7 @@ import { Codec, type BinCodec } from '@/utils';
 import { Cmd, Act } from './commands';
 import { PAGED_PROTOCOL_INFO } from './protocolInfo';
 import { pagedCommand } from './paged';
+import { PagedCmd } from './paged.gen';
 import * as Wire from './wireTypes';
 import type { BulkLayout } from './wireTypes';
 import { parseNotifyPacket, ParamSource, type ParamChangedEvent } from './notify';
@@ -212,7 +213,12 @@ export function formatDeviceInfo(info: DeviceInfoLike): string[] {
 
 // Telemetry commands polled continuously; logged at debug level so they don't
 // bury the interesting traffic (everything else stays at info).
-const POLL_CODES = new Set<number>([Cmd.Status.legacy.get, Cmd.BufferStats.legacy.get]);
+// The paged ids are the reads the 1.1.6 status and buffer opcodes become.
+const POLL_CODES = new Set<number>([
+  Cmd.Status.legacy.get, Cmd.BufferStats.legacy.get,
+  Cmd.Levels.paged.get, Cmd.SystemStatus.paged.get, Cmd.UsbAudioStatus.paged.get, Cmd.PipelineStats.paged.get,
+  Cmd.PdmStats.paged.get, Cmd.SpdifTxStats.paged.get, PagedCmd.SYS.BUFFER_STATS.id,
+]);
 
 export function isPollCommand(cmd: number): boolean {
   return POLL_CODES.has(cmd);

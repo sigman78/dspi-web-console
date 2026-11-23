@@ -9,7 +9,7 @@
 //                         v20 (v32); v31/v32 are plain beta 4 (no output
 //                         latency)
 //       v34 (paged)       a paged-protocol device (fw 1.1.7 beta 1, wire V34):
-//                         connects read-only; v33 is not a profile
+//                         connects and drives like any other device; v33 is not a profile
 //     a comma list (?mock=latest,v28) boots one device per token: the
 //     first is active, the rest adopt dormant -- the multi-device fleet
 //     harness, no hardware needed

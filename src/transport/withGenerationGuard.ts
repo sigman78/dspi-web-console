@@ -10,10 +10,8 @@ export type ProtocolGeneration = 'legacy' | 'paged';
 // The console tried a command the connected generation does not speak. Thrown
 // before anything reaches the wire, so it is a console bug, not a link fault.
 export class GenerationRefusal extends RefusedError {
-  constructor(readonly cmd: number, readonly generation: ProtocolGeneration | null, readonly readOnly = false) {
-    super(readOnly
-      ? `${fmtCmdId(cmd)} refused: this connection is read-only`
-      : generation === null
+  constructor(readonly cmd: number, readonly generation: ProtocolGeneration | null) {
+    super(generation === null
       ? `${fmtCmdId(cmd)} refused: only the protocol probe may run before the protocol generation is known`
       : generation === 'legacy'
         ? `${fmtCmdId(cmd)} refused: legacy firmware speaks page 0 only`
@@ -52,8 +50,7 @@ export function withGenerationGuard(inner: DspTransport): GuardedDspTransport {
 
   const check = (cmd: number, dir: 'in' | 'out'): void => {
     if (allowed(generation, cmd, dir, implemented)) return;
-    // A SET the registry knows, refused only because the connection is narrowed to reads.
-    throw new GenerationRefusal(cmd, generation, generation === 'paged' && dir === 'out' && hasPaged(cmd, 'out'));
+    throw new GenerationRefusal(cmd, generation);
   };
 
   return {

@@ -1,6 +1,7 @@
 import { Codec } from '@/utils';
 import type { AudioInputSource, LgSoundSync } from '@/domain';
 import * as Wire from '../wireTypes';
+import { PagedCmd } from '../paged.gen';
 import { tighten } from './tighten';
 import type { ActionCommand, Command, RawCommand } from './types';
 
@@ -14,6 +15,9 @@ export const InputCmd = {
   InputSourceName: { codec: Wire.ChannelName, legacy: { get: 0x55, set: 0x54 } } satisfies Command<string>,
   InputSource: { codec: tighten<AudioInputSource>(Codec.u8), legacy: { get: 0xE1, set: 0xE0 } } satisfies Command<AudioInputSource>,
 
+  // Active source, input channel count, measured S/PDIF rate and clock trim (paged).
+  InputStatus: { codec: Wire.InputStatus, legacy: {}, paged: { get: PagedCmd.INPUT.STATUS.id } } satisfies Command<{ source: number; channels: number; spdifRateMhz: number; clockTrimPpm100: number }>,
+
   // --- S/PDIF input ---
   // Live status reads (no bulk equivalent).
   SpdifRxStatus: { codec: Wire.SpdifRxStatus, legacy: { get: 0xE2 } },
@@ -23,6 +27,11 @@ export const InputCmd = {
   // Multi-SPDIF input config (fw 1.1.5+): GET returns
   // [count, enableMask, pin0..pin3] (enableMask unshifted).
   SpdifInputConfig: { codec: Wire.SpdifInputConfig, legacy: { get: 0xEF } } satisfies Command<{ count: number; enableMask: number; pins: number[] }>,
+  // Paged S/PDIF block: SPDIF_RX_CONFIG is 7 bytes (limit, block switch, block
+  // count, one GPIO per input); the count and the switch are settable.
+  SpdifRxConfig: { codec: Wire.SpdifRxConfig, legacy: {}, paged: { get: PagedCmd.INPUT.SPDIF_RX_CONFIG.id } } satisfies Command<{ limit: number; enabled: number; count: number; pins: number[] }>,
+  SpdifRxCount: { codec: Codec.u8, legacy: {}, paged: { get: PagedCmd.INPUT.SPDIF_RX_COUNT.id, set: PagedCmd.INPUT.SPDIF_RX_COUNT.id } } satisfies Command<number>,
+  SpdifRxEnable: { codec: Codec.u8, legacy: {}, paged: { get: PagedCmd.INPUT.SPDIF_RX_ENABLE.id, set: PagedCmd.INPUT.SPDIF_RX_ENABLE.id } } satisfies Command<number>,
 
   // --- LG Sound Sync ---
   LgSoundSyncEnabled: { codec: Codec.bool8, legacy: { get: 0xE7, set: 0xE6 } } satisfies Command<boolean>,
@@ -32,7 +41,7 @@ export const InputCmd = {
   // The device is the rate authority while I2S input is active, so the rate
   // is a command, not a detection. Set: u32 Hz payload (44100/48000/96000).
   // Get: 8-byte response {current pipeline Hz, selected I2S Hz}.
-  InputRate: { codec: Codec.u32, legacy: { set: 0xED } } satisfies Command<number>,
+  InputRate: { codec: Codec.u32, legacy: { set: 0xED }, paged: { get: PagedCmd.INPUT.I2S_RX_RATE.id, set: PagedCmd.INPUT.I2S_RX_RATE.id } } satisfies Command<number>,
   InputRateStatus: { legacy: { get: 0xEE } } satisfies RawCommand,
   // I2S RX data pin per stereo pair: GET takes the pair in wValue and returns
   // that pair's GPIO.

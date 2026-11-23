@@ -32,7 +32,7 @@
 
 import { Codec, type BinCodec } from '@/utils';
 
-const { u8, i8, u16, u32, i16, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
+const { u8, i8, u16, u32, i16, i32, f32, bool8, arr, nulStr, reserved, sizeOf, struct } = Codec;
 
 // Wire-format dimensions, sized to the largest platform (RP2350).
 export const Const = {
@@ -992,6 +992,98 @@ export function SystemStatus(numCh: number) {
     activeInputChannels: u8,
   });
 }
+
+// Paged status structs (fw 1.1.7+), each read whole by one request. They hold
+// the values the 1.1.6 GetStatus (0x50) scalar selectors answered one at a time.
+
+// SYS.SYSTEM_STATUS (16 B).
+export const SysSystemStatus = struct({
+  clockHz:       u32,
+  sampleRateHz:  u32,
+  coreVoltageMv: u16,
+  tempCDegC:     i16,
+  cpu0:          u8,
+  cpu1:          u8,
+  _reserved:     reserved(2),
+});
+
+// SYS.USB_AUDIO_STATUS (16 B).
+export const SysUsbAudioStatus = struct({
+  packets:      u32,
+  ringOverruns: u32,
+  worstGapUs:   u32,
+  altSetting:   u8,
+  mounted:      u8,
+  _reserved:    reserved(2),
+});
+
+// SYS.PIPELINE_STATS (24 B).
+export const SysPipelineStats = struct({
+  underrunEpisodes:     u32,
+  blocksRefused:        u32,
+  lowestFillFrames:     u32,
+  inputGapWorstUs:      u32,
+  backgroundOverBudget: u32,
+  _reserved:            reserved(4),
+});
+
+// SYS.PDM_STATS (16 B).
+export const SysPdmStats = struct({
+  ringOverruns: u32,
+  ringUnderruns: u32,
+  dmaOverruns:  u32,
+  dmaUnderruns: u32,
+});
+
+// SYS.SPDIF_TX_STATS (24 B): spdifUnderruns counts USB audio packet gaps, not S/PDIF output faults.
+export const SysSpdifTxStats = struct({
+  spdifUnderruns:   u32,
+  starvationsTotal: u32,
+  slotStarvations:  arr(u32, 4),
+});
+
+// INPUT.STATUS (12 B).
+export const InputStatus = struct({
+  source:        u8,
+  channels:      u8,
+  _reserved:     reserved(2),
+  spdifRateMhz:  u32,
+  clockTrimPpm100: i32,
+});
+
+// FILTER.BAND (16 B, wValue = (channel << 8) | band), both directions. Bypass is
+// exactly 1 to bypass; qp is the Linkwitz Transform Qp x 512 (0 selects 0.707).
+export const FilterBand = struct({
+  type:      u8,
+  bypass:    u8,
+  qp:        u16,
+  frequency: f32,
+  q:         f32,
+  gain:      f32,
+});
+
+// ROUTE.MATRIX_ROUTE (8 B, wValue = (input << 8) | output), both directions.
+export const MatrixCrosspoint = struct({
+  enabled:     bool8,
+  phaseInvert: bool8,
+  _reserved:   reserved(2),
+  gainDb:      f32,
+});
+
+// INPUT.SPDIF_RX_CONFIG (7 B): input limit, block switch, block count, one GPIO per input.
+export const SpdifRxConfig = struct({
+  limit:     u8,
+  enabled:   u8,
+  count:     u8,
+  pins:      arr(u8, 4),
+});
+
+// CS.DISPLAY_CAPS (4 B).
+export const CsDisplayCaps = struct({
+  maxPages:   u8,
+  modelCount: u8,
+  _reserved:  reserved(2),
+});
 
 // `GetStatus` (0x50) wValue dispatch. Each code returns a small fixed
 // payload (u32 / i32 / 12-byte combined) -- see docs/system-status-req.md.

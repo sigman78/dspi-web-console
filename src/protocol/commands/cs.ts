@@ -1,4 +1,5 @@
 import * as Wire from '../wireTypes';
+import { PagedCmd } from '../paged.gen';
 import type { ActionCommand, Command, RawCommand } from './types';
 
 type CsBindingPayload = {
@@ -78,7 +79,9 @@ export const CsCmd = {
   // cfg tagged slot 0x50, page N tagged slot 0x50 | N. wValue on the page
   // GET is compared against all 16 bits (>= 16 STALLs); the SET's wValue is
   // masked to the low byte like every other CS slot index.
-  CsDisplayCfg: { codec: Wire.CsDisplayCfg, legacy: { set: 0x27 } } satisfies Command<CsDisplayCfgPayload>,
+  CsDisplayCfg: { codec: Wire.CsDisplayCfg, legacy: { set: 0x27 }, paged: { get: PagedCmd.CS.DISPLAY_CONFIG.id, set: PagedCmd.CS.DISPLAY_CONFIG.id } } satisfies Command<CsDisplayCfgPayload>,
+  // Paged: the 4 limit bytes of the 1.1.6 reply are their own command.
+  CsDisplayCaps: { codec: Wire.CsDisplayCaps, legacy: {}, paged: { get: PagedCmd.CS.DISPLAY_CAPS.id } } satisfies Command<{ maxPages: number; modelCount: number }>,
   CsDisplayCfgResponse: { codec: Wire.CsDisplayCfgResponse, legacy: { get: 0x28 } } satisfies Command<CsDisplayCfgResponsePayload>,
   CsDisplayPage: { codec: Wire.CsDisplayPage, legacy: { get: 0x2A, set: 0x29 } } satisfies Command<CsDisplayPagePayload>,
   CsDisplayStatus: { codec: Wire.CsDisplayStatus, legacy: { get: 0x2B } } satisfies Command<CsDisplayStatusPayload>,

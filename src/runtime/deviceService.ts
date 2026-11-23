@@ -9,7 +9,7 @@ import * as State from '@/state';
 import type { ReadySession, ConnId, DeviceRecord } from '@/state';
 import { Log, errMessage } from '@/utils';
 import * as Domain from '@/domain';
-import { flushAllWrites, writeRefusal, refusalText } from './writes.svelte';
+import { flushAllWrites, refuseWhileDegraded } from './writes.svelte';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
 import { startLinkProbe } from './linkProbe';
@@ -241,8 +241,7 @@ export async function readCsAll(
   if (groupCount > 0 || macroCount > 0) {
     extStatus = await run(() => d.getCsExtStatus());
   }
-  // CsDisplayCfgResponse (0x28 IN) is a custom opcode with no paged translation.
-  const display = Domain.csDisplaysAvailable(caps) && d.generation === 'legacy' ? await run(() => readCsDisplayBlock(d)) : null;
+  const display = Domain.csDisplaysAvailable(caps) ? await run(() => readCsDisplayBlock(d)) : null;
   return { bindings, names, irCommands, groups, macros, extStatus, display };
 }
 
@@ -411,15 +410,11 @@ export async function wireUpConnection(
     // the first status poll lands a frame later -- the visible "all channels ->
     // actual config" flash. Best-effort: on failure the first poll fills it in
     // shortly, i.e. the prior behaviour, so a failed seed never blocks connect.
-    // Paged sessions skip the seed: STATUS 0x50 is a custom opcode with no
-    // one-to-one paged read, so the first activeInputChannels stays null.
-    if (device.generation === 'legacy') {
-      try {
-        const status = await session.queue.run(() => device.getSystemStatus());
-        session.telemetry.activeInputChannels = status.activeInputChannels;
-      } catch (err) {
-        Log.warn('sync', 'initial status seed failed; first poll will fill it in', err);
-      }
+    try {
+      const status = await session.queue.run(() => device.getSystemStatus());
+      session.telemetry.activeInputChannels = status.activeInputChannels;
+    } catch (err) {
+      Log.warn('sync', 'initial status seed failed; first poll will fill it in', err);
     }
     // The status read is an await point: a newer connection may have superseded
     // this one meanwhile. Bail before dispatching `synced` (mirrors the
@@ -464,9 +459,8 @@ export async function wireUpConnection(
     await fetchPresetInfo(session);
     await fetchCtrlIfaceInfo(session);
     await fetchControlSurfaces(session);
-    // The system clock opcodes (SysClockStatus 0x41, SysClock 0x40) belong to the
-    // overclock branch and are absent from the legacy map, so a paged device is
-    // marked unsupported and the panel hides.
+    // The system clock opcodes (0x40/0x41) belong to the overclock branch and
+    // are absent from paged firmware: the panel stays hidden there.
     if (device.generation === 'legacy') await fetchSysClock(session);
     else session.sysClock.supported = false;
     await fetchOutputLatency(session);
@@ -512,8 +506,7 @@ export function attachTransportListeners(transport: DspTransport, id: ConnId, sc
 export async function factoryResetDevice(): Promise<void> {
   const s = State.activeSession();
   if (!s) return;
-  const refusal = writeRefusal(s);
-  if (refusal) { State.pushNotice('warn', refusalText(refusal, 'factory reset')); return; }
+  if (refuseWhileDegraded(s)) { State.pushNotice('warn', 'Link degraded — factory reset not sent'); return; }
   const d = s.device;
   try {
     // Drain any parked optimistic write so a pre-reset bulk send can't settle

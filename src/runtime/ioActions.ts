@@ -188,11 +188,24 @@ export function setSpdifRxPinExt(s: ReadySession, extIndex: number, gpio: number
 }
 
 // fw 1.1.5+ — enable/disable optional S/PDIF input 2/3 (extIndex as above).
+// On paged firmware the mirror follows the block's contiguity rule.
 export function setSpdifInputEnabled(s: ReadySession, extIndex: number, on: boolean): Promise<boolean> {
   return writeChecked(s,
     'set S/PDIF input enable',
     () => s.device.setSpdifInputEnabled(extIndex + 1, on),
-    () => { s.mirror.snapshot.inputConfig.spdifExtEnabled[extIndex] = on; },
+    () => {
+      const flags = s.mirror.snapshot.inputConfig.spdifExtEnabled;
+      if (s.device.generation !== 'paged') {
+        flags[extIndex] = on;
+        return;
+      }
+      // Paged inputs are one contiguous block: enabling one turns on those
+      // below it, disabling one drops those above it.
+      for (let i = 0; i < flags.length; i++) {
+        if (on ? i <= extIndex : i >= extIndex) flags[i] = on;
+      }
+      s.mirror.requestReconcile(true);
+    },
   );
 }
 

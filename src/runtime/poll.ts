@@ -53,11 +53,6 @@ interface Cadence {
   intervalMs: number;
   runWhileHidden: boolean;          // today all false (pause everything when hidden)
   gates: Gates;
-  // Runs on a paged-generation device: every read it makes translates to
-  // paged commands (protocol/legacyTranslate.ts). Left off: status and info
-  // (STATUS 0x50 is a custom opcode with no one-to-one paged read) and rta
-  // (its setup writes the analyser config, and paged sessions are read-only).
-  paged?: true;
   // Clock owned by the telemetry store, so actions can zero it to force a
   // re-read. Absent: a loop-local clock stamped after every run.
   lastMs?(): number;
@@ -308,44 +303,44 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       lastMs: () => tele.lastStatusMs, run: pollStatus },
     { key: 'buffer', intervalMs: BUFFER_INTERVAL_MS, runWhileHidden: false,
       gates: { wanted: () => tele.bufferStatsWanted > 0 },
-      lastMs: () => tele.lastBufferMs, run: pollBuffer, paged: true },
+      lastMs: () => tele.lastBufferMs, run: pollBuffer },
     { key: 'info', intervalMs: INFO_INTERVAL_MS, runWhileHidden: false, gates: {},
       lastMs: () => tele.lastInfoMs, run: pollInfo },
     { key: 'spdifRx', intervalMs: SPDIF_RX_INTERVAL_MS, runWhileHidden: false,
       gates: { enabled: (m) => Domain.isSpdifSource(m.inputConfig.source) },
-      run: pollSpdifRx, paged: true },
+      run: pollSpdifRx },
     { key: 'i2sSlave', intervalMs: I2S_SLAVE_INTERVAL_MS, runWhileHidden: false,
       gates: { enabled: (m) => m.inputConfig.i2sClockMode === 1 },
-      run: pollI2sSlave, paged: true },
+      run: pollI2sSlave },
     { key: 'adat', intervalMs: ADAT_INTERVAL_MS, runWhileHidden: false,
       gates: { feature: 'adatOutput', enabled: (m) => m.adat.enabled },
-      run: pollAdat, paged: true },
+      run: pollAdat },
     { key: 'adatInput', intervalMs: ADAT_INPUT_INTERVAL_MS, runWhileHidden: false,
       gates: { feature: 'adatInput', enabled: (m) => m.inputConfig.adatInputEnabled },
-      run: pollAdatInput, paged: true },
+      run: pollAdatInput },
     { key: 'subharm', intervalMs: SUBHARM_INTERVAL_MS, runWhileHidden: false,
       gates: { feature: 'subharm', enabled: (m) => m.subharm.enabled, healthy: true, idle: true },
-      lastMs: () => tele.lastSubharmMs, run: pollSubharm, paged: true },
+      lastMs: () => tele.lastSubharmMs, run: pollSubharm },
     { key: 'subharmMeter', intervalMs: SUBHARM_METER_INTERVAL_MS, runWhileHidden: false,
       gates: {
         feature: 'subharmExt', enabled: (m) => m.subharm.enabled,
         wanted: () => tele.subharmMeterWanted > 0, healthy: true,
       },
-      lastMs: () => tele.lastSubharmMeterMs, run: pollSubharmMeter, paged: true },
+      lastMs: () => tele.lastSubharmMeterMs, run: pollSubharmMeter },
     { key: 'limiterMeter', intervalMs: LIMITER_METER_INTERVAL_MS, runWhileHidden: false,
       gates: { feature: 'limiter', wanted: () => tele.limiterMeterWanted > 0, healthy: true },
-      lastMs: () => tele.lastLimiterMeterMs, run: pollLimiterMeter, paged: true },
+      lastMs: () => tele.lastLimiterMeterMs, run: pollLimiterMeter },
     { key: 'rta', intervalMs: RTA_INTERVAL_MS, runWhileHidden: false,
       gates: { feature: 'rta', wanted: () => tele.rtaWanted > 0 && tele.rtaAvailability !== 'unavailable', healthy: true },
       lastMs: () => tele.lastRtaPollMs, run: pollRta },
     { key: 'csExt', intervalMs: CS_EXT_INTERVAL_MS, runWhileHidden: false,
       gates: { wanted: () => cs.extPollWanted > 0 && cs.extStatus?.macroRunning != null },
-      run: () => refreshCsExtStatus(session), paged: true },
+      run: () => refreshCsExtStatus(session) },
     { key: 'csDisplay', intervalMs: CS_DISPLAY_INTERVAL_MS, runWhileHidden: false,
       gates: { wanted: () => cs.displayPollWanted > 0 && Domain.csDisplaySlotActive(cs.bindings, cs.status) },
-      run: () => refreshCsDisplayStatus(session), paged: true },
+      run: () => refreshCsDisplayStatus(session) },
     { key: 'param', intervalMs: PARAM_INTERVAL_MS, runWhileHidden: false, gates: {},
-      lastMs: () => tele.lastParamMs, run: pollParam, shouldRun: shouldRunParam, paged: true },
+      lastMs: () => tele.lastParamMs, run: pollParam, shouldRun: shouldRunParam },
   ];
   const anyRunWhileHidden = cadences.some((c) => c.runWhileHidden);
 
@@ -364,7 +359,6 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     const now = performance.now();
     for (const c of cadences) {
       if (isHidden() && !c.runWhileHidden) continue;
-      if (d.generation === 'paged' && !c.paged) continue;
       if (inFlight.has(c.key) || !due(c, now)) continue;
       inFlight.add(c.key);
       try {

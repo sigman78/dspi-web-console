@@ -41,7 +41,7 @@ describe('paged connect', () => {
     const dev = await DspDevice.create(pagedMock('rp2350'));
     const caps = dev.capabilities;
     expect(dev.generation).toBe('paged');
-    expect([caps.readOnly, caps.support, caps.wire, caps.fwLabel]).toEqual([true, 'supported', 34, '1.1.7 beta 1']);
+    expect([caps.support, caps.wire, caps.fwLabel]).toEqual(['supported', 34, '1.1.7 beta 1']);
     expect(caps.catalog?.drift).toEqual({ unknownToConsole: [], missingOnDevice: [], revisionMismatch: [] });
     expect(caps.features).toMatchObject({ adatInput: true, adatOutput: true, upmix: true, psybass: true, limiter: true, rta: true, buildStamp: true });
     expect(dev.info.serial).toBe('MOCK-RP2350-0001');
@@ -96,20 +96,35 @@ describe('paged connect', () => {
 
   it('a legacy device pings with its old read and reports the legacy generation', async () => {
     const dev = await DspDevice.create(new MockTransport({ platform: 'rp2350' }));
-    expect([dev.generation, dev.capabilities.readOnly, dev.capabilities.catalog]).toEqual(['legacy', false, null]);
+    expect([dev.generation, dev.capabilities.catalog]).toEqual(['legacy', null]);
     await expect(dev.ping()).resolves.toBeUndefined();
   });
 
-  it('refuses a paged SET the catalog lists before it reaches the transport', async () => {
-    const { transport, ins } = recording(pagedMock('rp2350'));
+  it('lets a paged SET the device lists through and refuses one it does not list', async () => {
+    const inner = pagedMock('rp2350');
+    const tube = PagedCmd.FX.TUBE_ENABLE;
+    // Hide only the tube command's SET bit in the FX page bitmap.
+    const bitmapReply = async (page: number, length: number): Promise<Uint8Array> => {
+      const bytes = await inner.ctrlIn(PagedCmd.SYS.PAGE_COMMANDS.id, page, length);
+      if (page === tube.id >> 8) bytes[32 + ((tube.id & 0xFF) >> 3)] &= ~(1 << (tube.id & 7));
+      return bytes;
+    };
+    const { transport, ins } = recording({
+      open: () => inner.open(), close: () => inner.close(), isOpen: () => inner.isOpen(), on: (e, l) => inner.on(e, l),
+      ctrlIn: (cmd, value, length) => cmd === PagedCmd.SYS.PAGE_COMMANDS.id ? bitmapReply(value, length) : inner.ctrlIn(cmd, value, length),
+      ctrlOut: (cmd, value, data) => inner.ctrlOut(cmd, value, data),
+    });
     let outs = 0;
     const counted: DspTransport = { ...transport, ctrlOut: (c, v, d) => { outs++; return transport.ctrlOut(c, v, d); } };
     const dev = await Exposed.connect(counted);
-    const tube = PagedCmd.FX.TUBE_ENABLE;
-    expect(dev.capabilities.catalog?.has(tube.id, 'set')).toBe(true);
+    expect(dev.capabilities.catalog?.has(tube.id, 'set')).toBe(false);
     await expect(dev.wire.ctrlOut(tube.id, 0, new Uint8Array(tube.setMin!))).rejects.toBeInstanceOf(GenerationRefusal);
     expect(outs).toBe(0);
-    // Reads of a listed command still pass.
+    // A SET the device lists reaches it, and so does a listed GET.
+    const gain = PagedCmd.ROUTE.OUTPUT_GAIN;
+    expect(dev.capabilities.catalog?.has(gain.id, 'set')).toBe(true);
+    await dev.wire.ctrlOut(gain.id, 0, new Uint8Array(gain.setMin!));
+    expect(outs).toBe(1);
     await dev.wire.ctrlIn(PagedCmd.SYS.PLATFORM.id, 0, PagedCmd.SYS.PLATFORM.getLen);
     expect(ins).toContain(PagedCmd.SYS.PLATFORM.id);
   });

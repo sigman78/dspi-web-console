@@ -114,10 +114,8 @@ describe('deriveCapabilities — paged generation', () => {
     expect([paged(33).support, paged(32).support]).toEqual(['unsupported', 'unsupported']);
   });
 
-  it('is read-only, and a feature needs its command in the catalog', () => {
-    const caps = paged(34);
-    expect(caps.readOnly).toBe(true);
-    expect(caps.features.tube).toBe(false);
+  it('needs a feature command in the catalog', () => {
+    expect(paged(34).features.tube).toBe(false);
   });
 
   it('keeps the V32 window for the same wire on legacy firmware', () => {
