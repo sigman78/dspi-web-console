@@ -4,12 +4,13 @@
 // with PROTOCOL_INFO, legacy firmware STALLs (no IN handler at 0x10).
 
 import { TransportStall } from '@/transport/DspTransport';
+import * as Gen from './paged.gen';
 
-// SYS.PROTOCOL_INFO: page 0x01, command 0x10.
-export const PAGED_PROTOCOL_INFO = 0x0110;
-export const PROTOCOL_INFO_LENGTH = 16;
+export const PAGED_PROTOCOL_INFO = Gen.PagedCmd.SYS.PROTOCOL_INFO.id;
+export const PROTOCOL_INFO_LENGTH = Gen.PagedCmd.SYS.PROTOCOL_INFO.getLen;
 
-// The paged protocol major this console understands.
+// The paged protocol major this console understands. Kept literal so a
+// re-vendored registry cannot change it silently (pagedRegistry.test.ts).
 export const SUPPORTED_PROTOCOL_MAJOR = 1;
 
 const MAGIC = [0x44, 0x53, 0x50, 0x69]; // "DSPi"

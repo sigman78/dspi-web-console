@@ -6,6 +6,7 @@
 import { Codec, type BinCodec } from '@/utils';
 import { WireCmd } from './wireCmd';
 import { PAGED_PROTOCOL_INFO } from './protocolInfo';
+import { pagedCommand } from './paged';
 import * as Wire from './wireTypes';
 import type { BulkLayout } from './wireTypes';
 import { parseNotifyPacket, ParamSource, type ParamChangedEvent } from './notify';
@@ -97,7 +98,7 @@ export function formatCtrlOut(cmd: number, value: number, data: Uint8Array): str
   if (cmd === BULK_WRITE_CHUNK) {
     return `<> SetAllParamsChunk @${value} ${data.length} B`;
   }
-  const info = CMD_BY_CODE.get(cmd);
+  const info = CMD_BY_CODE.get(cmd) ?? pagedCommand(cmd);
   const name = info ? info.name : fmtCmdId(cmd);
   return `-> ${name}${fmtWValue(value)} ${decodeOrSize(info, data)}`;
 }
@@ -109,7 +110,7 @@ export function formatCtrlIn(cmd: number, value: number, bytes: Uint8Array): str
   if (cmd === BULK_READ_CHUNK) {
     return `<> GetAllParamsChunk @${value} ${bytes.length} B`;
   }
-  const info = CMD_BY_CODE.get(cmd);
+  const info = CMD_BY_CODE.get(cmd) ?? pagedCommand(cmd);
   const name = info ? info.name : fmtCmdId(cmd);
   return `<- ${name}${fmtWValue(value)} ${decodeOrSize(info, bytes)}`;
 }

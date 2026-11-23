@@ -1,5 +1,6 @@
 import { fmtCmdId } from '@/protocol/wireMonitor';
 import { PAGED_PROTOCOL_INFO } from '@/protocol/protocolInfo';
+import { hasPaged } from '@/protocol/paged';
 import type { DspTransport, TransportEvent } from './DspTransport';
 
 // Legacy firmware (1.1.6 and older) speaks page 0 and ignores the page byte;
@@ -12,7 +13,9 @@ export class GenerationRefusal extends Error {
   constructor(readonly cmd: number, readonly generation: ProtocolGeneration | null) {
     super(generation === null
       ? `${fmtCmdId(cmd)} refused: only the protocol probe may run before the protocol generation is known`
-      : `${fmtCmdId(cmd)} refused: not a ${generation} command`);
+      : generation === 'legacy'
+        ? `${fmtCmdId(cmd)} refused: legacy firmware speaks page 0 only`
+        : `${fmtCmdId(cmd)} refused: not a paged command in this direction`);
     this.name = 'GenerationRefusal';
   }
 }
@@ -23,10 +26,11 @@ export interface GuardedDspTransport extends DspTransport {
 }
 
 // A page-0 ID sent to legacy firmware runs that opcode; any other page would
-// run its low byte as an unrelated legacy opcode. Paged firmware STALLs page 0.
+// run its low byte as an unrelated legacy opcode. Paged firmware STALLs page 0,
+// and every paged command has a fixed direction in the registry.
 function allowed(gen: ProtocolGeneration | null, cmd: number, dir: 'in' | 'out'): boolean {
   if (gen === null) return dir === 'in' && cmd === PAGED_PROTOCOL_INFO;
-  return gen === 'legacy' ? cmd <= 0xFF : cmd > 0xFF;
+  return gen === 'legacy' ? cmd <= 0xFF : hasPaged(cmd, dir);
 }
 
 // Decorator: refuses every control transfer the connected protocol generation
