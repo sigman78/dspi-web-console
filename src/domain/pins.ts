@@ -9,7 +9,7 @@ import { PlatformType } from './platform';
 import type { DspSnapshot } from './snapshot';
 import { isValidUartPinPair, isValidI2cPinPair, i2cInstance, type UartControlConfig, type I2cControlConfig } from './controlInterfaces';
 import { CS_ADC_PINS } from './controlSurfaces';
-import { spdifInputOn } from './deviceSections';
+import { AudioInputSource, spdifIndexOf, spdifInputOn } from './deviceSections';
 
 const PIN_LABEL = { bck: 'BCK', lrclk: 'LRCLK', mck: 'MCK', bckSlave: 'BCK (slave)', lrclkSlave: 'LRCLK (slave)' } as const;
 
@@ -51,6 +51,22 @@ export function assignablePins(platform: PlatformType): number[] {
   const out: number[] = [];
   for (let p = 0; p <= maxGpio(platform); p++) if (isAssignablePin(platform, p)) out.push(p);
   return out;
+}
+
+// GPIOs the selected input is driving. After a pin move it lets go of the old
+// pin only at its deferred restart, which disconnects anything that took it.
+export function runningInputPins(snapshot: DspSnapshot): number[] {
+  const cfg = snapshot.inputConfig;
+  const spdif = spdifIndexOf(cfg.source);
+  if (spdif === 0) return [cfg.spdifRxPin];
+  if (spdif > 0) return [cfg.spdifRxPinExt[spdif - 1]];
+  if (cfg.source === AudioInputSource.I2s) {
+    const { bckPin, bckPinSlave, clockPinMode } = snapshot.i2s;
+    const clocks = clockPinMode === 1 && bckPinSlave > 0 ? [bckPin, bckPin + 1, bckPinSlave, bckPinSlave + 1] : [bckPin, bckPin + 1];
+    return [...cfg.i2sRxPins.slice(0, Math.floor((cfg.i2sInputChannels || 2) / 2)), ...clocks];
+  }
+  if (cfg.source === AudioInputSource.Adat) return [cfg.adatInputPin];
+  return [];
 }
 
 export function pinUses(snapshot: DspSnapshot, ctrl: CtrlIfaceConfigs = NO_CTRL_IFACES): Map<number, PinUse> {

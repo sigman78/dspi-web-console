@@ -450,6 +450,12 @@ export function stageI2sBckPinSlave(s: ReadySession, pin: number): void {
 
 export function stageMckEnabled(s: ReadySession, on: boolean): void {
   const live = s.mirror.snapshot.i2s.mckEnabled;
+  let draining = Domain.runningInputPins(s.mirror.snapshot);
+  const enable = async (): Promise<boolean> => {
+    const ok = await Io.enableMckOnFreePin(s, draining);
+    draining = Domain.runningInputPins(s.mirror.snapshot);
+    return ok;
+  };
   stageOrDiscard(s, 'mckEnabled', live, on, () => ({
     key: 'mckEnabled',
     label: 'MCK enable',
@@ -458,7 +464,7 @@ export function stageMckEnabled(s: ReadySession, on: boolean): void {
     value: on,
     order: on ? ORDER.mckEnable : ORDER.mckDisable,
     page: 'outputs',
-    apply: () => Io.setMckEnabled(s, on),
+    apply: () => (on ? enable() : Io.setMckEnabled(s, false)),
     overlay: (snap) => ({ ...snap, i2s: { ...snap.i2s, mckEnabled: on } }),
   }));
 }

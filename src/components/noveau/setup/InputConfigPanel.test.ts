@@ -392,6 +392,14 @@ describe('InputConfigPanel — detail area', () => {
     expect(screen.getByText('Status appears after APPLY.')).toBeTruthy();
   });
 
+  test('a configured ADAT input stays listed while off, so it can be switched back on', () => {
+    const { unmount } = renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb, adatInputEnabled: false, adatInputPin: 20 }) }));
+    expect(screen.getByLabelText(/^Switch ADAT.* on$/)).toBeTruthy();
+    unmount();
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb, adatInputEnabled: false, adatInputPin: 0 }) }));
+    expect(screen.queryByLabelText(/^Switch ADAT/)).toBeNull();
+  });
+
   test('the I2S channels selector needs multichannel firmware and I2S switched on, selected or not', async () => {
     const chip = () => screen.queryByRole('button', { name: 'I2S 4 channels' });
     const multi = { multichannelInput: true, inputBlocks: true };

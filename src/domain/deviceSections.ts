@@ -80,10 +80,10 @@ export function spdifInputOn(cfg: Pick<InputConfig, 'spdifEnabled' | 'spdifCount
   return cfg.spdifEnabled && index < cfg.spdifCount && ((cfg.spdifHoles >> index) & 1) === 0;
 }
 
-// Whether the ADAT input is in play: switched on, or already the source. The
-// UI keeps it hidden otherwise.
-export function adatInputInUse(cfg: Pick<InputConfig, 'adatInputEnabled' | 'source'>): boolean {
-  return cfg.adatInputEnabled || cfg.source === AudioInputSource.Adat;
+// Whether the ADAT input is in play: switched on, the source, or set up with a
+// pin, so switching it off keeps the way back. The UI hides it otherwise.
+export function adatInputInUse(cfg: Pick<InputConfig, 'adatInputEnabled' | 'adatInputPin' | 'source'>): boolean {
+  return cfg.adatInputEnabled || cfg.adatInputPin !== 0 || cfg.source === AudioInputSource.Adat;
 }
 
 // ADAT lightpipe bulk output config (RP2350 only). Persisted intent;

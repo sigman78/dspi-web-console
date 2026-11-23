@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { diffSnapshots, DIFF_TOLERANCE } from './snapshotDiff';
+import { applyChange } from './applyChange';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
 import type { FilterParams } from './filter';
 
@@ -226,6 +227,16 @@ describe('diffSnapshots — 1.1.4 sections', () => {
     const b = structuredClone(a);
     b.inputConfig = { source: a.inputConfig!.source === 1 ? 0 : 1, spdifRxPin: a.inputConfig!.spdifRxPin + 1 } as typeof b.inputConfig;
     expect(diffSnapshots(a, b)).toEqual([{ kind: 'inputConfig', value: b.inputConfig }]);
+  });
+
+  it('carries the I2S block switch on its own, leaving the source and the rest of the section alone', () => {
+    const a = makeV10();
+    const b = makeV10();
+    b.inputConfig = { ...b.inputConfig, i2sEnabled: !a.inputConfig.i2sEnabled };
+    const changes = diffSnapshots(a, b);
+    expect(changes.map((c) => c.kind)).toEqual(['i2sBlock']);
+    applyChange(changes[0], a);
+    expect(a.inputConfig).toEqual(b.inputConfig);
   });
 
   it('emits spdifExt (not inputConfig) when an optional S/PDIF input pin or enable flag changes', () => {

@@ -603,6 +603,68 @@ describe('runtime/stagedActions', () => {
       expect(s.mirror.snapshot.i2s.mckEnabled).toBe(true);
     });
 
+    it('refuses MCK at apply when an input enabled earlier in the batch holds its pin', async () => {
+      await bootMock('rp2040');
+      const s = sess();
+      expect(s.mirror.snapshot.i2s.mckPin).toBe(21);
+      expect(s.mirror.snapshot.inputConfig.spdifRxPinExt[1]).toBe(21);
+      const spy = vi.spyOn(s.device, 'setMckEnable');
+
+      Staged.stageMckEnabled(s, true);
+      Staged.stageSpdifInputOn(s, 2, true);
+      await s.staging.applyAll();
+
+      expect(spy).not.toHaveBeenCalled();
+      expect(s.mirror.snapshot.i2s.mckEnabled).toBe(false);
+      expect(s.staging.has('mckEnabled')).toBe(true);
+    });
+
+    it('holds MCK back from a pin the running input is still releasing, then enables it on the next APPLY', async () => {
+      await bootMock('rp2040', { spdifInputsEnabled: 3 });
+      const s = sess();
+      Staged.stageInputSource(s, AudioInputSource.Spdif3);
+      await s.staging.applyAll();
+      expect(s.mirror.snapshot.inputConfig.source).toBe(AudioInputSource.Spdif3);
+      const spy = vi.spyOn(s.device, 'setMckEnable');
+
+      Staged.stageSpdifRxPinExt(s, 1, 26);
+      Staged.stageMckEnabled(s, true);
+      await s.staging.applyAll();
+      expect(s.mirror.snapshot.inputConfig.spdifRxPinExt[1]).toBe(26);
+      expect(spy).not.toHaveBeenCalled();
+      expect(s.staging.has('mckEnabled')).toBe(true);
+
+      await s.staging.applyAll();
+      expect(spy).toHaveBeenCalledWith(true);
+      expect(s.mirror.snapshot.i2s.mckEnabled).toBe(true);
+    });
+
+    it('holds MCK back from a clock pin a running I2S input is still releasing', async () => {
+      await bootMock('rp2350');
+      const s = sess();
+      Object.assign(s.mirror.snapshot.inputConfig, { source: AudioInputSource.I2s, i2sEnabled: true });
+      const lrclk = s.mirror.snapshot.i2s.bckPin + 1;
+      Staged.stageMckEnabled(s, true);
+      vi.spyOn(s.device, 'getSnapshot').mockResolvedValue({
+        ...s.mirror.snapshot,
+        i2s: { ...s.mirror.snapshot.i2s, bckPin: 30, mckPin: lrclk, mckEnabled: false },
+      });
+      const spy = vi.spyOn(s.device, 'setMckEnable');
+      await s.staging.applyAll();
+      expect(spy).not.toHaveBeenCalled();
+      expect(s.staging.has('mckEnabled')).toBe(true);
+    });
+
+    it('does not take MCK itself for the holder when the device already has it on', async () => {
+      await bootMock('rp2040');
+      const s = sess();
+      Staged.stageMckEnabled(s, true);
+      await s.device.setMckEnable(true);
+      await s.staging.applyAll();
+      expect(s.staging.has('mckEnabled')).toBe(false);
+      expect(s.mirror.snapshot.i2s.mckEnabled).toBe(true);
+    });
+
     it('staging the live value discards the pending entry', () => {
       const s = sess();
       const live = s.mirror.snapshot.i2s.mckEnabled;
