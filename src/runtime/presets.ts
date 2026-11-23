@@ -4,7 +4,7 @@ import * as State from '@/state';
 import type { ReadySession, PresetsState } from '@/state';
 import { reconcileAfterSync } from './deviceService';
 import { fetchAndApplyAsBaseline } from './resync';
-import { flushAllWrites as flushWrites, refuseWhileDegraded } from './writes.svelte';
+import { flushAllWrites as flushWrites, writeRefusal, refusalText, type WriteRefusal } from './writes.svelte';
 import * as Domain from '@/domain';
 import { type PresetResult, PresetStartupMode, buildBulkParams, parseBulkParams } from '@/protocol';
 import type { FirmwareVersion } from '@/protocol/capabilities';
@@ -53,8 +53,11 @@ export type PresetActionError =
   | { ok: false; code: 'active'; message?: string }
   | { ok: false; code: 'error'; message?: string };
 
-function degradedError(): PresetActionError {
-  return { ok: false, code: 'error', message: 'Link degraded — changes are not being sent.' };
+function refusedError(reason: WriteRefusal): PresetActionError {
+  const message = reason === 'readOnly'
+    ? refusalText(reason, 'preset change')
+    : 'Link degraded — changes are not being sent.';
+  return { ok: false, code: 'error', message };
 }
 
 function activeSlotError(message: string): { ok: false; code: 'active'; message: string } {
@@ -105,6 +108,7 @@ export function dismissPresetActionError(s: ReadySession): void {
 // UI can surface them with a retry button.
 export async function fetchPresetInfo(s: ReadySession): Promise<void> {
   if (s.presets.directory != null) return;
+  if (s.device.generation === 'paged') return;   // no paged preset reads yet
   const d = s.device;
   s.presets.busy = true;
   try {
@@ -173,7 +177,8 @@ export function invalidatePresetCache(s: ReadySession): void {
 // PresetSave(active). RAM didn't change -- just advance the baseline so
 // the dirty diff origin moves.
 export async function saveActivePreset(s: ReadySession): Promise<Result<void, PresetResult> | PresetActionError> {
-  if (refuseWhileDegraded(s)) return degradedError();
+  const refusal = writeRefusal(s);
+  if (refusal) return refusedError(refusal);
   const d = s.device;
   const active = s.presets.active;
   if (active == null) return activeSlotError('no active slot');
@@ -204,7 +209,8 @@ export async function saveActivePreset(s: ReadySession): Promise<Result<void, Pr
 // just-saved slot becomes active; the host mirrors that into presets.active and
 // advances the baseline.
 export async function savePresetSlot(s: ReadySession, slot: Domain.PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
-  if (refuseWhileDegraded(s)) return degradedError();
+  const refusal = writeRefusal(s);
+  if (refusal) return refusedError(refusal);
   const d = s.device;
   clearActionError(s.presets);
   try {
@@ -238,7 +244,8 @@ async function executeLoad(
   s: ReadySession,
   slot: Domain.PresetSlot,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  if (refuseWhileDegraded(s)) return degradedError();
+  const refusal = writeRefusal(s);
+  if (refusal) return refusedError(refusal);
   clearActionError(s.presets);
   // Suppress the NotifyChannel's redundant reconciles for this self-induced op;
   // our own fetchAndApplyAsBaseline below is the authoritative resync.
@@ -284,7 +291,8 @@ async function executeLoad(
 }
 
 export async function loadPresetSlot(s: ReadySession, slot: Domain.PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
-  if (refuseWhileDegraded(s)) return degradedError();
+  const refusal = writeRefusal(s);
+  if (refusal) return refusedError(refusal);
   // Dirty-RAM gating. Modal fires only when RAM is dirty, warnOnPresetSwitchDirty
   // is on, and an active slot exists (else there's nowhere to save into).
   if (State.settings.warnOnPresetSwitchDirty && State.presetsDirty(s) && s.presets.active != null) {
@@ -344,7 +352,8 @@ export async function copyActivePreset(s: ReadySession): Promise<Result<void, Pr
 // boundary-modal gate. No save option — saving first would flash the tweaks
 // into the very slot the paste is about to overwrite.
 export async function pastePresetTo(s: ReadySession, blob: DeviceState): Promise<Result<void, PresetResult> | PresetActionError> {
-  if (refuseWhileDegraded(s)) return degradedError();
+  const refusal = writeRefusal(s);
+  if (refusal) return refusedError(refusal);
   const d = s.device;
   const active = s.presets.active;
   if (active == null) return activeSlotError('no active slot');
@@ -402,7 +411,8 @@ export async function pastePresetTo(s: ReadySession, blob: DeviceState): Promise
 
 // PresetDelete(N). Host-side guard: refuses to delete the active slot.
 export async function deletePresetSlot(s: ReadySession, slot: Domain.PresetSlot): Promise<Result<void, PresetResult> | PresetActionError> {
-  if (refuseWhileDegraded(s)) return degradedError();
+  const refusal = writeRefusal(s);
+  if (refusal) return refusedError(refusal);
   const d = s.device;
   if (s.presets.active === slot) {
     return activeSlotError('cannot delete active slot');
@@ -433,7 +443,8 @@ export async function deletePresetSlot(s: ReadySession, slot: Domain.PresetSlot)
 export async function renamePresetSlot(
   s: ReadySession, slot: Domain.PresetSlot, name: string,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  if (refuseWhileDegraded(s)) return degradedError();
+  const refusal = writeRefusal(s);
+  if (refusal) return refusedError(refusal);
   const d = s.device;
   clearActionError(s.presets);
   try {
@@ -452,7 +463,8 @@ export async function renamePresetSlot(
 export async function setStartupDefault(
   s: ReadySession, slot: Domain.PresetSlot,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  if (refuseWhileDegraded(s)) return degradedError();
+  const refusal = writeRefusal(s);
+  if (refusal) return refusedError(refusal);
   const d = s.device;
   clearActionError(s.presets);
   try {
@@ -475,7 +487,8 @@ export async function setStartupDefault(
 export async function setStartupMode(
   s: ReadySession, mode: PresetStartupMode,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  if (refuseWhileDegraded(s)) return degradedError();
+  const refusal = writeRefusal(s);
+  if (refusal) return refusedError(refusal);
   const d = s.device;
   const slot = s.presets.directory?.defaultSlot ?? (0 as Domain.PresetSlot);
   clearActionError(s.presets);
@@ -495,7 +508,8 @@ export async function setStartupMode(
 export async function setOutputConfigMode(
   s: ReadySession, mode: Domain.OutputConfigMode,
 ): Promise<Result<void, PresetResult> | PresetActionError> {
-  if (refuseWhileDegraded(s)) return degradedError();
+  const refusal = writeRefusal(s);
+  if (refusal) return refusedError(refusal);
   const d = s.device;
   clearActionError(s.presets);
   try {

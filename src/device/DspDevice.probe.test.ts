@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DspDevice, PagedFirmware, UnrecognizedProbeReply } from './DspDevice';
+import { DspDevice, ProtocolTooNew, UnrecognizedProbeReply } from './DspDevice';
 import { MockTransport } from '@/transport/MockTransport';
 import { PAGED_PROTOCOL_INFO } from '@/protocol';
 import type { DspTransport } from '@/transport/DspTransport';
@@ -34,20 +34,13 @@ describe('connect probe', () => {
     expect(dev.info.serial).not.toBe('');
   });
 
-  it('refuses a paged device having sent nothing but the probe', async () => {
-    const { transport, calls } = recording(new MockTransport({ platform: 'rp2350', paged: true }));
-    const err = await DspDevice.create(transport).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(PagedFirmware);
-    expect((err as PagedFirmware).protocolMajor).toBe(1);
-    expect(calls).toEqual([{ dir: 'in', cmd: PAGED_PROTOCOL_INFO }]);
-  });
-
   it('flags a newer protocol major so the user is told to update the console', async () => {
     const reply = new Uint8Array([0x44, 0x53, 0x50, 0x69, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-    const err = await DspDevice.create(stub(async () => reply)).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(PagedFirmware);
-    expect((err as PagedFirmware).protocolMajor).toBe(2);
-    expect((err as PagedFirmware).message).not.toBe(new PagedFirmware(1).message);
+    const sent: number[] = [];
+    const err = await DspDevice.create(stub(async (cmd) => { sent.push(cmd); return reply; })).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ProtocolTooNew);
+    expect((err as ProtocolTooNew).protocolMajor).toBe(2);
+    expect(sent).toEqual([PAGED_PROTOCOL_INFO]);
   });
 
   it('never guesses: a non-stall reply without the DSPi magic fails the connect', async () => {

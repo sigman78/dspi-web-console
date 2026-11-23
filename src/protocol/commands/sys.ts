@@ -1,4 +1,5 @@
 import * as Wire from '../wireTypes';
+import { PagedCmd } from '../paged.gen';
 import type { ActionCommand, Command, RawCommand } from './types';
 
 type DeviceInfoPayload = {
@@ -9,11 +10,11 @@ type BuildInfoPayload = { describe: string; date: string };
 export const SysCmd = {
   // Board name (see InputSourceName) and device info.
   DeviceName: { codec: Wire.ChannelName, legacy: { get: 0x57, set: 0x56 } } satisfies Command<string>,
-  Serial: { codec: Wire.Serial, legacy: { get: 0x7E } } satisfies Command<string>,
-  Platform: { codec: Wire.DeviceInfo, legacy: { get: 0x7F } } satisfies Command<DeviceInfoPayload>,
+  Serial: { codec: Wire.Serial, legacy: { get: 0x7E }, paged: { get: PagedCmd.SYS.SERIAL.id } } satisfies Command<string>,
+  Platform: { codec: Wire.DeviceInfo, legacy: { get: 0x7F }, paged: { get: PagedCmd.SYS.PLATFORM.id } } satisfies Command<DeviceInfoPayload>,
 
   // Firmware git build stamp (fw 1.1.6+). Provenance for humans only.
-  BuildInfo: { codec: Wire.BuildInfo, legacy: { get: 0x80 } } satisfies Command<BuildInfoPayload>,
+  BuildInfo: { codec: Wire.BuildInfo, legacy: { get: 0x80 }, paged: { get: PagedCmd.SYS.BUILD_INFO.id } } satisfies Command<BuildInfoPayload>,
   BufferStats: { legacy: { get: 0xB0 } } satisfies RawCommand,
 } as const;
 

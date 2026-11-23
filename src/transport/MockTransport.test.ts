@@ -1223,7 +1223,7 @@ describe('MockTransport — unknown opcodes and paged IDs', () => {
     const t = new MockTransport({ platform: 'rp2350', paged: true });
     await t.open();
     const info = Protocol.parseProtocolInfo(await t.ctrlIn(Protocol.PAGED_PROTOCOL_INFO, 0, 16));
-    expect(info).toEqual({ major: 1 });
+    expect(info?.major).toBe(1);
     await expect(t.ctrlIn(Protocol.Cmd.Serial.legacy.get, 0, 16)).rejects.toBeInstanceOf(TransportStall);
     await expect(t.ctrlOut(Protocol.Cmd.MasterVolume.legacy.set, 0, new Uint8Array(4))).rejects.toBeInstanceOf(TransportStall);
   });

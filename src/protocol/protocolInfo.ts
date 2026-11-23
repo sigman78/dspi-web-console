@@ -17,13 +17,25 @@ const MAGIC = [0x44, 0x53, 0x50, 0x69]; // "DSPi"
 
 export interface ProtocolInfo {
   major: number;
+  minor: number;
+  pageCount: number;
+  // Largest non-bulk SET / GET payload the device accepts, in bytes.
+  maxSet: number;
+  maxGet: number;
 }
 
 // Null when the reply is not a PROTOCOL_INFO (wrong magic or too short).
 export function parseProtocolInfo(bytes: Uint8Array): ProtocolInfo | null {
   if (bytes.length < 5) return null;
   if (!MAGIC.every((b, i) => bytes[i] === b)) return null;
-  return { major: bytes[4] };
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return {
+    major: bytes[4],
+    minor: bytes.length > 5 ? bytes[5] : 0,
+    pageCount: bytes.length > 6 ? bytes[6] : 0,
+    maxSet: bytes.length >= 10 ? v.getUint16(8, true) : 0,
+    maxGet: bytes.length >= 12 ? v.getUint16(10, true) : 0,
+  };
 }
 
 // A control STALL. Chromium's WinUSB backend reports it as a thrown

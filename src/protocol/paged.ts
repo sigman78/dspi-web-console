@@ -16,6 +16,10 @@ export function pagedCommand(id: number): NamedPagedCommand | undefined {
   return BY_ID.get(id);
 }
 
+export function allPagedCommands(): IterableIterator<NamedPagedCommand> {
+  return BY_ID.values();
+}
+
 // Paged GETs are IN transfers and SETs (actions included) are OUT; there is
 // no write-as-read on the paged protocol.
 export function hasPaged(id: number, dir: 'in' | 'out'): boolean {

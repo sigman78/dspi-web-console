@@ -1,16 +1,17 @@
 import { Codec } from '@/utils';
 import type { OutputConfigMode } from '@/domain';
 import * as Wire from '../wireTypes';
+import { PagedCmd } from '../paged.gen';
 import { tighten } from './tighten';
 import type { ActionCommand, Command, RawCommand } from './types';
 
 export const StoreCmd = {
   // Bulk
-  AllParams: { legacy: { get: 0xA0, set: 0xA1 } } satisfies RawCommand,
+  AllParams: { legacy: { get: 0xA0, set: 0xA1 }, paged: { get: PagedCmd.STORE.ALL_PARAMS.id } } satisfies RawCommand,
   // Chunked bulk access (fw 1.1.5+): wValue = byte offset, chunks
   // <= 4096 B. A session is torn down by any interleaved non-chunk vendor
   // request; see DspDevice.getAllParams/setAllParams.
-  AllParamsChunk: { legacy: { get: 0xA2, set: 0xA3 } } satisfies RawCommand,
+  AllParamsChunk: { legacy: { get: 0xA2, set: 0xA3 }, paged: { get: PagedCmd.STORE.ALL_PARAMS_CHUNK.id } } satisfies RawCommand,
 
   // Presets (0x90..0x9A). See docs/HW-PROFILES.md sec 1b.
   // PresetDirectory / PresetActive carry hand-rolled payloads; the others

@@ -6,9 +6,8 @@ const PROBE_INTERVAL_MS = 1000;
 const PROBE_FAILS_TO_KILL = 5;
 
 // Recovery loop for a degraded link. Idle while healthy; once health flips
-// degraded, issues the cheapest read (GetBypass: 1 byte, no feature gate, every
-// supported firmware) each tick. One success verifies recovery and repaints
-// truth; persistent failure tears the session down through the same path a USB
+// degraded, issues the cheapest read (device.ping(), generation-neutral) each
+// tick. One success verifies recovery and repaints truth; persistent failure tears the session down through the same path a USB
 // unplug takes. Hidden tabs don't probe (and don't advance the kill counter).
 export function startLinkProbe(
   s: ReadySession,
@@ -26,7 +25,7 @@ export function startLinkProbe(
     if (s.health.degraded && !probing && !isHidden()) {
       probing = true;
       try {
-        await s.queue.run(() => s.device.getBypass(), { priority: true });
+        await s.queue.run(() => s.device.ping(), { priority: true });
         s.health.noteRecovered();
         probeFails = 0;
         // Repaint via the param cadence's eager path (next tick), not an

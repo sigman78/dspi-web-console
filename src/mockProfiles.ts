@@ -19,9 +19,22 @@ const FW_1_1_6 = { major: 1, minor: 1, patch: 6 } as const;
 const FW_1_1_6_BETA3 = { major: 1, minor: 1, patch: 6, beta: 3 } as const;
 // V31/V32 ship in 1.1.6-beta4.
 const FW_1_1_6_BETA4 = { major: 1, minor: 1, patch: 6, beta: 4 } as const;
+// Paged firmware (wire V34).
+const FW_1_1_7_BETA1 = { major: 1, minor: 1, patch: 7, beta: 1 } as const;
 // Names the released-1.1.6 mock (`latest`, MockOptions.fw116Release) boots with,
 // so the labels show up in ?mock.
 const LATEST_NAMES = { initialInputSourceNames: { 1: 'TV' }, initialDeviceName: 'Living Room' } as const;
+
+function paged(platform: MockOptions['platform']): MockProfile {
+  return {
+    name: 'v34',
+    platform,
+    opts: {
+      wireVersion: Wire.PAGED_WIRE_VERSION, fwVersion: FW_1_1_7_BETA1, paged: true,
+      irLearnAutoComplete: true, fw116Release: true, ...LATEST_NAMES,
+    },
+  };
+}
 
 // Every profile sets irLearnAutoComplete: an armed IR learn self-completes
 // with a fresh NEC code, so the remote-pairing flow is demoable without an IR
@@ -64,7 +77,8 @@ export function resolveMockProfile(token: string, chip?: 'rp2040' | 'rp2350' | n
     case 'rp2350':
       return latest(platform);
     case 'paged':
-      return { name: 'paged', platform, opts: { paged: true } };
+    case 'v34':
+      return paged(platform);
     case 'multi':
       return {
         name: 'multi',

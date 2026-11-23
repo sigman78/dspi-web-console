@@ -9,7 +9,7 @@ import * as State from '@/state';
 import type { ReadySession, ConnId, DeviceRecord } from '@/state';
 import { Log, errMessage } from '@/utils';
 import * as Domain from '@/domain';
-import { flushAllWrites, refuseWhileDegraded } from './writes.svelte';
+import { flushAllWrites, writeRefusal, refusalText } from './writes.svelte';
 import { startPolling } from './poll';
 import { startNotifyChannel } from './notifyChannel';
 import { startLinkProbe } from './linkProbe';
@@ -133,7 +133,7 @@ export async function refreshNames(s: ReadySession): Promise<void> {
 // never persisted or notified, so it isn't covered by the normal snapshot
 // sync -- read once on panel mount instead.
 export async function fetchSubharmSolo(s: ReadySession): Promise<void> {
-  if (!s.device.capabilities.features.subharmExt) return;
+  if (s.device.generation === 'paged' || !s.device.capabilities.features.subharmExt) return;
   try {
     s.telemetry.subharmSolo = await s.queue.run(() => s.device.getSubharmSolo());
   } catch (err) {
@@ -410,11 +410,13 @@ export async function wireUpConnection(
     // the first status poll lands a frame later -- the visible "all channels ->
     // actual config" flash. Best-effort: on failure the first poll fills it in
     // shortly, i.e. the prior behaviour, so a failed seed never blocks connect.
-    try {
-      const status = await session.queue.run(() => device.getSystemStatus());
-      session.telemetry.activeInputChannels = status.activeInputChannels;
-    } catch (err) {
-      Log.warn('sync', 'initial status seed failed; first poll will fill it in', err);
+    if (device.generation === 'legacy') {
+      try {
+        const status = await session.queue.run(() => device.getSystemStatus());
+        session.telemetry.activeInputChannels = status.activeInputChannels;
+      } catch (err) {
+        Log.warn('sync', 'initial status seed failed; first poll will fill it in', err);
+      }
     }
     // The status read is an await point: a newer connection may have superseded
     // this one meanwhile. Bail before dispatching `synced` (mirrors the
@@ -456,12 +458,15 @@ export async function wireUpConnection(
     }
     // Adoption-cycle traffic is allowed even for a record that stays dormant
     // afterward -- it goes quiet once these settle.
-    await fetchPresetInfo(session);
-    await fetchCtrlIfaceInfo(session);
-    await fetchControlSurfaces(session);
-    await fetchSysClock(session);
-    await fetchOutputLatency(session);
-    await fetchNames(session);
+    // A paged device has no legacy reads yet; its snapshot is all there is.
+    if (device.generation === 'legacy') {
+      await fetchPresetInfo(session);
+      await fetchCtrlIfaceInfo(session);
+      await fetchControlSurfaces(session);
+      await fetchSysClock(session);
+      await fetchOutputLatency(session);
+      await fetchNames(session);
+    }
     Log.info('sync', 'connected', {
       platform: session.mirror.current?.platform.name,
       wire: device.capabilities.wire,
@@ -503,7 +508,8 @@ export function attachTransportListeners(transport: DspTransport, id: ConnId, sc
 export async function factoryResetDevice(): Promise<void> {
   const s = State.activeSession();
   if (!s) return;
-  if (refuseWhileDegraded(s)) { State.pushNotice('warn', 'Link degraded — factory reset not sent'); return; }
+  const refusal = writeRefusal(s);
+  if (refusal) { State.pushNotice('warn', refusalText(refusal, 'factory reset')); return; }
   const d = s.device;
   try {
     // Drain any parked optimistic write so a pre-reset bulk send can't settle

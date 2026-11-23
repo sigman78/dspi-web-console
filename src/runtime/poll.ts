@@ -53,6 +53,9 @@ interface Cadence {
   intervalMs: number;
   runWhileHidden: boolean;          // today all false (pause everything when hidden)
   gates: Gates;
+  // Safe to run against a paged-generation device (everything else speaks
+  // legacy opcodes the device does not have).
+  paged?: true;
   // Clock owned by the telemetry store, so actions can zero it to force a
   // re-read. Absent: a loop-local clock stamped after every run.
   lastMs?(): number;
@@ -340,7 +343,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
       gates: { wanted: () => cs.displayPollWanted > 0 && Domain.csDisplaySlotActive(cs.bindings, cs.status) },
       run: () => refreshCsDisplayStatus(session) },
     { key: 'param', intervalMs: PARAM_INTERVAL_MS, runWhileHidden: false, gates: {},
-      lastMs: () => tele.lastParamMs, run: pollParam, shouldRun: shouldRunParam },
+      lastMs: () => tele.lastParamMs, run: pollParam, shouldRun: shouldRunParam, paged: true },
   ];
   const anyRunWhileHidden = cadences.some((c) => c.runWhileHidden);
 
@@ -359,6 +362,7 @@ export function startPolling(session: ReadySession, clock: LoopClock = timerCloc
     const now = performance.now();
     for (const c of cadences) {
       if (isHidden() && !c.runWhileHidden) continue;
+      if (d.generation === 'paged' && !c.paged) continue;
       if (inFlight.has(c.key) || !due(c, now)) continue;
       inFlight.add(c.key);
       try {

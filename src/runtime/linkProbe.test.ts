@@ -7,7 +7,7 @@ import type { LoopClock } from '@/utils';
 
 // Manual clock: collects the latest callback; step() fires it. armed() reports
 // whether a callback is currently registered -- since startLinkProbe only
-// re-arms AFTER its async probe body (including the queued getBypass send)
+// re-arms AFTER its async probe body (including the queued ping send)
 // fully settles, waiting on armed() (rather than a mock call count, which
 // updates mid-flight, before the tick's async body finishes) is what actually
 // serializes the test's steps with the loop's real completion.
@@ -40,19 +40,19 @@ describe('startLinkProbe', () => {
   });
 
   it('does nothing while healthy', async () => {
-    const getBypass = vi.fn(async () => false);
-    const { id, s } = installSession({ getBypass, close: vi.fn(), info: {}, hardware: {} });
+    const ping = vi.fn(async () => false);
+    const { id, s } = installSession({ ping, close: vi.fn(), info: {}, hardware: {} });
     const clock = manualClock();
     const stop = startLinkProbe(s, id, clock);
     clock.step();
     await Promise.resolve();
-    expect(getBypass).not.toHaveBeenCalled();
+    expect(ping).not.toHaveBeenCalled();
     stop();
   });
 
   it('probes while degraded, clears on success, and requests an eager reconcile', async () => {
-    const getBypass = vi.fn(async () => false);
-    const { id, s } = installSession({ getBypass, close: vi.fn(), info: {}, hardware: {} });
+    const ping = vi.fn(async () => false);
+    const { id, s } = installSession({ ping, close: vi.fn(), info: {}, hardware: {} });
     s.health.degraded = true;
     s.mirror.consumeReconcile();
     const clock = manualClock();
@@ -62,16 +62,16 @@ describe('startLinkProbe', () => {
     // synchronously at send time, well before the queued op settles and
     // noteRecovered() runs.
     await vi.waitFor(() => expect(s.health.degraded).toBe(false));
-    expect(getBypass).toHaveBeenCalledTimes(1);
+    expect(ping).toHaveBeenCalledTimes(1);
     // Recovery repaints via the param cadence's eager path, not an ad-hoc fetch.
     expect(s.mirror.peekReconcile()).toEqual({ wanted: true, eager: true });
     stop();
   });
 
   it('kills the session after persistent probe failure', async () => {
-    const getBypass = vi.fn(async () => { throw new Error('dead'); });
+    const ping = vi.fn(async () => { throw new Error('dead'); });
     const close = vi.fn(async () => {});
-    const { id, s } = installSession({ getBypass, close, info: {}, hardware: {} });
+    const { id, s } = installSession({ ping, close, info: {}, hardware: {} });
     s.health.degraded = true;
     const clock = manualClock();
     const stop = startLinkProbe(s, id, clock);
@@ -86,7 +86,7 @@ describe('startLinkProbe', () => {
     // instead of re-arming.
     clock.step();
     await vi.waitFor(() => expect(close).toHaveBeenCalled());
-    expect(getBypass).toHaveBeenCalledTimes(5);
+    expect(ping).toHaveBeenCalledTimes(5);
     expect(State.connection.phase).toBe('errored');
     expect(s.alive).toBe(false);
     // No survivor was left active, so this is today's plain errored-hero path
@@ -96,9 +96,9 @@ describe('startLinkProbe', () => {
   });
 
   it('invokes onKilled once the teardown (removed + dispose + failed) has fully landed', async () => {
-    const getBypass = vi.fn(async () => { throw new Error('dead'); });
+    const ping = vi.fn(async () => { throw new Error('dead'); });
     const close = vi.fn(async () => {});
-    const { id, s } = installSession({ getBypass, close, info: {}, hardware: {} });
+    const { id, s } = installSession({ ping, close, info: {}, hardware: {} });
     s.health.degraded = true;
     const clock = manualClock();
     const onKilled = vi.fn();
@@ -114,11 +114,11 @@ describe('startLinkProbe', () => {
   });
 
   it('surfaces the death as an error notice (not the hero) when another session stays active', async () => {
-    installSession({ getBypass: vi.fn(async () => false), close: vi.fn(), info: { serial: 'SURVIVOR' }, hardware: {} });
-    const getBypass = vi.fn(async () => { throw new Error('dead'); });
+    installSession({ ping: vi.fn(async () => false), close: vi.fn(), info: { serial: 'SURVIVOR' }, hardware: {} });
+    const ping = vi.fn(async () => { throw new Error('dead'); });
     const close = vi.fn(async () => {});
     const { id, s } = installSession(
-      { getBypass, close, info: { serial: 'DYING' }, hardware: {} },
+      { ping, close, info: { serial: 'DYING' }, hardware: {} },
       { activate: false },
     );
     s.health.degraded = true;
