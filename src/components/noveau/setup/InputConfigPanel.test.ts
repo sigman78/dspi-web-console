@@ -12,6 +12,7 @@ const stageSpdifInputOn = vi.fn();
 const stageAdatInputEnabled = vi.fn();
 const stageI2sInputEnabled = vi.fn();
 const stageI2sRxPin = vi.fn();
+const stageI2sInputChannels = vi.fn();
 const stageInputSourceName = vi.fn();
 
 vi.mock('@/runtime', () => ({
@@ -23,7 +24,7 @@ vi.mock('@/runtime', () => ({
   stageI2sInputEnabled: (...a: unknown[]) => stageI2sInputEnabled(...a),
   stageInputRate: (...a: unknown[]) => stageInputRate(...a),
   stageI2sRxPin: (...a: unknown[]) => stageI2sRxPin(...a),
-  stageI2sInputChannels: vi.fn(),
+  stageI2sInputChannels: (...a: unknown[]) => stageI2sInputChannels(...a),
   stageInputSourceName: (...a: unknown[]) => stageInputSourceName(...a),
 }));
 
@@ -391,12 +392,25 @@ describe('InputConfigPanel — detail area', () => {
     expect(screen.getByText('Status appears after APPLY.')).toBeTruthy();
   });
 
-  test('the I2S channels selector needs multichannel firmware', () => {
-    const { unmount } = renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.I2s }) }));
-    expect(screen.queryByText('CHANNELS')).toBeNull();
-    unmount();
-    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.I2s }), features: { multichannelInput: true } }));
-    expect(screen.getByText('CHANNELS')).toBeTruthy();
+  test('the I2S channels selector needs multichannel firmware and I2S switched on, selected or not', async () => {
+    const chip = () => screen.queryByRole('button', { name: 'I2S 4 channels' });
+    const multi = { multichannelInput: true, inputBlocks: true };
+
+    const noFw = renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.I2s }) }));
+    expect(chip()).toBeNull();
+    noFw.unmount();
+
+    const off = renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb, i2sEnabled: false }), features: multi }));
+    expect(chip()).toBeNull();
+    off.unmount();
+
+    const selected = renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.I2s }), features: multi }));
+    expect(chip()).not.toBeNull();
+    selected.unmount();
+
+    renderPanel(makeSession({ snap: makeSnap({ source: AudioInputSource.Usb }), features: multi }));
+    await fireEvent.click(chip()!);
+    expect(stageI2sInputChannels).toHaveBeenCalledWith(expect.anything(), 4);
   });
 });
 

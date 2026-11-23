@@ -31,14 +31,15 @@ const ORDER = {
   spdifBlockOn: 21,  // after every pin move, before a count raise: a refused block-on leaves the remembered count unchanged
   spdifEnable: 22,   // after spdifRxPin and the block-on: enable validates against the configured pin
   mckEnable: 27,     // after every S/PDIF, ADAT and block claim or release that can free or take its pin
-  i2sChannels: 30,
-  i2sEnable: 31,     // after i2sChannels, before the clock mode and the source switch
+  i2sEnable: 31,     // before the clock mode and the source switch
+  i2sChannels: 32,   // after the block-on: a refused block-on leaves the stored count unchanged
   inputRate: 40,
   i2sClockMode: 45,   // after pin config, before the source switch below
   inputSource: 50,
   // Every disable or pin release sorts below every pin claim, so a pin freed
   // by one peripheral is free by the time another peripheral takes it.
   i2sDisable: 2,
+  i2sChannelsCut: 2,
   ifaceDisable: 3,
   dacMuteDisable: 4,
   adatInputDisable: 5,
@@ -197,6 +198,7 @@ const I2S_RX_PIN_KEY = /^i2sRxPin:(\d+)$/;
 // ends up off keeps no staged pin.
 function reconcileInputStaging(s: ReadySession): void {
   if (!effectiveInputs(s).spdifEnabled) s.staging.discard('spdifCount');
+  if (!effectiveInputs(s).i2sEnabled) s.staging.discard('i2sChannels');
 
   const cfg = effectiveInputs(s);
   const staged = s.staging.get('inputSource');
@@ -374,7 +376,11 @@ export function stageI2sInputChannels(s: ReadySession, count: number): void {
     from: `${live} ch`,
     to: `${count} ch`,
     value: count,
-    order: ORDER.i2sChannels,
+    // A running input keeps driving a cut pair's pin until its deferred
+    // restart, so that pin only counts as released when I2S is not live.
+    order: count < live && s.mirror.snapshot.inputConfig.source !== Domain.AudioInputSource.I2s
+      ? ORDER.i2sChannelsCut
+      : ORDER.i2sChannels,
     page: 'inputs',
     apply: () => Io.setI2sInputChannels(s, count),
     overlay: (snap) => ({ ...snap, inputConfig: { ...snap.inputConfig, i2sInputChannels: count } }),

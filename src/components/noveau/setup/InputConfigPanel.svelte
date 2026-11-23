@@ -184,6 +184,7 @@
       <span class="microlbl src">SOURCE</span>
       <span class="microlbl">{#if showOnCol}ON{/if}</span>
       <span class="microlbl">PIN</span>
+      {#if effI2sBlock && features.multichannelInput}<span class="microlbl">CH</span>{/if}
     </div>
     <div class="list" role="radiogroup" aria-label="Input source">
       <div class="lrow" class:hot={source === Domain.AudioInputSource.Usb}>
@@ -235,6 +236,22 @@
                 ariaLabel="I2S RX data pin, stereo pair 1"
                 onChange={(p) => Runtime.stageI2sRxPin(s, 0, p)}
               />
+            </span>
+          {/if}
+        </span>
+        <span class="c">
+          {#if effI2sBlock && features.multichannelInput}
+            <span class="chips" role="group" aria-label="I2S input channels">
+              {#each [2, 4, 6, 8] as n (n)}
+                <button
+                  class="chip"
+                  class:on={i2sChannels === n}
+                  class:staged={s.staging.has('i2sChannels') && i2sChannels === n}
+                  aria-label={`I2S ${n} channels`}
+                  onclick={() => Runtime.stageI2sInputChannels(s, n)}
+                  disabled={i2sChannels === n}
+                >{n}</button>
+              {/each}
             </span>
           {/if}
         </span>
@@ -334,22 +351,6 @@
           </span>
         </div>
       {/if}
-      {#if features.multichannelInput}
-        <div class="ctl">
-          <span class="microlbl">CHANNELS</span>
-          <span class="chips">
-            {#each [2, 4, 6, 8] as n (n)}
-              <button
-                class="chip"
-                class:on={i2sChannels === n}
-                class:staged={s.staging.has('i2sChannels') && i2sChannels === n}
-                onclick={() => Runtime.stageI2sInputChannels(s, n)}
-                disabled={i2sChannels === n}
-              >{n}</button>
-            {/each}
-          </span>
-        </div>
-      {/if}
     {/if}
 
     {#if source === Domain.AudioInputSource.Adat}
@@ -394,7 +395,7 @@
   .idle { padding: 10px 14px; }
   .hint.warn { color: var(--warn); }
   .list { display: flex; flex-direction: column; }
-  .lhdr, .lrow { display: grid; grid-template-columns: 16px 76px 26px 70px; column-gap: 10px; align-items: center; padding: 0 14px; }
+  .lhdr, .lrow { display: grid; grid-template-columns: 16px 76px 26px 70px auto; column-gap: 10px; align-items: center; padding: 0 14px; }
   .lhdr { height: 22px; }
   .lhdr .microlbl { color: var(--text-faint); }
   .lhdr .src { grid-column: 1 / span 2; }

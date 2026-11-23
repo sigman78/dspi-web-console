@@ -244,6 +244,21 @@ describe('runtime/stagedActions', () => {
         Staged.stageI2sInputEnabled(s, false);
         expect(s.staging.has('i2sRxPin:0')).toBe(false);
       });
+
+      it('a staged I2S channel count goes when I2S ends up off, including via ✕ on a staged block-on', async () => {
+        const s = await bootPaged();
+        Object.assign(s.mirror.snapshot.inputConfig, { i2sEnabled: true, i2sInputChannels: 2 });
+        Staged.stageI2sInputChannels(s, 4);
+        Staged.stageI2sInputEnabled(s, false);
+        expect(s.staging.has('i2sChannels')).toBe(false);
+
+        s.staging.discardAll();
+        s.mirror.snapshot.inputConfig.i2sEnabled = false;
+        Staged.stageI2sInputEnabled(s, true);
+        Staged.stageI2sInputChannels(s, 4);
+        Staged.discardStagedEntry(s, 'i2sBlock');
+        expect(s.staging.has('i2sChannels')).toBe(false);
+      });
     });
 
     describe('stageSpdifInputOn', () => {
@@ -302,6 +317,30 @@ describe('runtime/stagedActions', () => {
         const s = await bootWith({ spdifEnabled: false, spdifCount: 1 });
         Staged.stageSpdifInputOn(s, 2, true);
         expect(s.staging.get('spdifBlock')!.order).toBeLessThan(s.staging.get('spdifCount')!.order);
+      });
+
+      it('an I2S channel cut lands before a pin move can take what it frees', async () => {
+        const s = await bootPaged();
+        Object.assign(s.mirror.snapshot.inputConfig, { i2sEnabled: true, i2sInputChannels: 4 });
+        Staged.stageI2sInputChannels(s, 2);
+        Staged.stageSpdifRxPin(s, 25);
+        expect(s.staging.get('i2sChannels')!.order).toBeLessThan(s.staging.get('spdifRxPin')!.order);
+      });
+
+      it('a channel cut on a running I2S input stays after pin moves, so the device refuses a taker', async () => {
+        const s = await bootPaged();
+        Object.assign(s.mirror.snapshot.inputConfig, { source: AudioInputSource.I2s, i2sEnabled: true, i2sInputChannels: 4 });
+        Staged.stageI2sInputChannels(s, 2);
+        Staged.stageSpdifRxPin(s, 25);
+        expect(s.staging.get('spdifRxPin')!.order).toBeLessThan(s.staging.get('i2sChannels')!.order);
+      });
+
+      it('an I2S channel raise lands after the block-on', async () => {
+        const s = await bootPaged();
+        Object.assign(s.mirror.snapshot.inputConfig, { i2sEnabled: false, i2sInputChannels: 2 });
+        Staged.stageI2sInputEnabled(s, true);
+        Staged.stageI2sInputChannels(s, 4);
+        expect(s.staging.get('i2sBlock')!.order).toBeLessThan(s.staging.get('i2sChannels')!.order);
       });
 
       it('an ADAT pin move lands before the S/PDIF block-on', async () => {
