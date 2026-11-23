@@ -1,5 +1,5 @@
 import { type DspTransport, type TransportEvent, TransportStall } from './DspTransport';
-import { PAGED_PROTOCOL_INFO } from '@/protocol/protocolInfo';
+import { MockPagedFrontDoor } from './mockPagedFrontDoor';
 
 // A minimal paged device's PROTOCOL_INFO reply, as the firmware documents it.
 const MOCK_PROTOCOL_INFO = new Uint8Array([
@@ -49,8 +49,12 @@ export interface MockOptions {
   // ~1.5 s with a distinct NEC code, standing in for a press on an imaginary
   // remote. Off by default so tests drive learns explicitly.
   irLearnAutoComplete?: boolean;
-  // Model a paged-protocol device (fw 1.1.7+) minimally: it answers the
-  // PROTOCOL_INFO probe and STALLs every page-0 request, as paged firmware does.
+  // Model a paged-protocol device (fw 1.1.7+): page-0 requests STALL and
+  // one-to-one paged commands run on the legacy handlers through the inverse
+  // adapter map. Coverage is partial: custom-adapter commands (FILTER.BAND,
+  // ROUTE.MATRIX_ROUTE, SYS.SYSTEM_STATUS, MEAS.LEVELS, INPUT.STATUS,
+  // STORE.ALL_PARAMS SET, ...) answer VC_ERR_UNSUPPORTED and the 1.1.6
+  // on_stall/out_stall quirks are not reversed, so the app cannot run on it yet.
   paged?: boolean;
   // Boot the selectable system clock pre-seeded instead of the fw power-on
   // default (mode 0, no crash history). `fallback: true` simulates a device
@@ -582,11 +586,20 @@ export class MockTransport implements DspTransport {
   // Firmware git build stamp (0x80, fw 1.1.6+); only ever served when #isFw116.
   #buildInfo: { describe: string; date: string };
 
-  // Models a paged (fw 1.1.7+) device: answers only the protocol probe.
-  #paged = false;
+  // Models a paged (fw 1.1.7+) device: requests enter through the paged front door.
+  #pagedDoor: MockPagedFrontDoor | null = null;
 
   constructor(opts: MockOptions) {
-    this.#paged = opts.paged ?? false;
+    if (opts.paged) {
+      this.#pagedDoor = new MockPagedFrontDoor(
+        {
+          legacyIn: (c, v, l) => this.#legacyIn(c, v, l),
+          legacyOut: (c, v, d) => this.#legacyOut(c, v, d),
+          closeChunkSessions: () => { this.#getChunkSession = null; this.#setChunkSession = null; },
+        },
+        MOCK_PROTOCOL_INFO,
+      );
+    }
     this.#sysClockSupported = opts.sysClock ?? true;
     this.#serial = opts.serial ?? `MOCK-${opts.platform.toUpperCase()}-0001`;
     this.#platform = opts.platform === 'rp2040' ? Domain.PlatformType.RP2040 : Domain.PlatformType.RP2350;
@@ -855,10 +868,16 @@ export class MockTransport implements DspTransport {
 
   async ctrlIn(cmd: number, value: number, length: number): Promise<Uint8Array> {
     this.#requireOpen();
-    if (this.#paged) {
-      if (cmd !== PAGED_PROTOCOL_INFO) throw new TransportStall(`MockTransport: paged device has no page-0 command 0x${cmd.toString(16)} (STALL)`);
-      return MOCK_PROTOCOL_INFO.slice(0, length);
-    }
+    return this.#pagedDoor ? this.#pagedDoor.ctrlIn(cmd, value, length) : this.#legacyIn(cmd, value, length);
+  }
+
+  // Test hook: the next `times` requests to paged command `id` STALL with result code `vc`.
+  injectRefusal(id: number, vc: number, times = 1): void {
+    if (!this.#pagedDoor) throw new Error('MockTransport: injectRefusal needs a paged device');
+    this.#pagedDoor.injectRefusal(id, vc, times);
+  }
+
+  async #legacyIn(cmd: number, value: number, length: number): Promise<Uint8Array> {
     // Legacy firmware ignores the page byte and dispatches on bRequest alone.
     const request = cmd & 0xFF;
     if (request !== Cmd.AllParamsChunk.legacy.get) this.#getChunkSession = null;
@@ -1825,7 +1844,11 @@ export class MockTransport implements DspTransport {
 
   async ctrlOut(cmd: number, value: number, data: Uint8Array): Promise<void> {
     this.#requireOpen();
-    if (this.#paged) throw new TransportStall(`MockTransport: paged device has no page-0 command 0x${cmd.toString(16)} (STALL)`);
+    if (this.#pagedDoor) return this.#pagedDoor.ctrlOut(cmd, value, data);
+    return this.#legacyOut(cmd, value, data);
+  }
+
+  async #legacyOut(cmd: number, value: number, data: Uint8Array): Promise<void> {
     const request = cmd & 0xFF;
     if (request !== Cmd.AllParamsChunk.legacy.get) this.#getChunkSession = null;
     if (request !== Cmd.AllParamsChunk.legacy.set) this.#setChunkSession = null;

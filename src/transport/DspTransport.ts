@@ -14,6 +14,10 @@ export class TransportStall extends Error {
   }
 }
 
+// A device or console refusal that is not a link fault: the request was
+// declined (or never sent) and the link itself is fine.
+export class RefusedError extends Error {}
+
 // A command ID is 16 bits: the page in the high byte, the command number in
 // the low byte. Page 0 is the original single-byte opcode space, so its wire
 // bytes are unchanged. `bRequest` carries the command number; the page rides

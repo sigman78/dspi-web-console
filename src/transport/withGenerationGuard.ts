@@ -1,7 +1,7 @@
 import { fmtCmdId } from '@/protocol/wireMonitor';
 import { PAGED_PROTOCOL_INFO } from '@/protocol/protocolInfo';
 import { hasPaged } from '@/protocol/paged';
-import type { DspTransport, TransportEvent } from './DspTransport';
+import { RefusedError, type DspTransport, type TransportEvent } from './DspTransport';
 
 // Legacy firmware (1.1.6 and older) speaks page 0 and ignores the page byte;
 // paged firmware (1.1.7+) refuses page 0.
@@ -9,7 +9,7 @@ export type ProtocolGeneration = 'legacy' | 'paged';
 
 // The console tried a command the connected generation does not speak. Thrown
 // before anything reaches the wire, so it is a console bug, not a link fault.
-export class GenerationRefusal extends Error {
+export class GenerationRefusal extends RefusedError {
   constructor(readonly cmd: number, readonly generation: ProtocolGeneration | null) {
     super(generation === null
       ? `${fmtCmdId(cmd)} refused: only the protocol probe may run before the protocol generation is known`

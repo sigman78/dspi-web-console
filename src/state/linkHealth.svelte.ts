@@ -4,7 +4,7 @@
 // the device working correctly. Pure counters + a reactive flag: no timers, no
 // runtime imports (the probe loop lives in runtime and reads this store).
 
-import { GenerationRefusal } from '@/transport/withGenerationGuard';
+import { RefusedError } from '@/transport/DspTransport';
 
 const K_CONSECUTIVE = 3;      // consecutive thrown transfers -> degraded
 
@@ -31,8 +31,8 @@ export class LinkHealth {
   }
 
   noteFail(op: string, err: unknown): void {
-    // Refused before the wire: a console bug, not a link fault.
-    if (err instanceof GenerationRefusal) return;
+    // A refusal (console or device) is not a link fault.
+    if (err instanceof RefusedError) return;
     this.#consecutive += 1;
     this.failTotal += 1;
     this.lastErrorOp = op;

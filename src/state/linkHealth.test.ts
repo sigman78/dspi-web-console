@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { GenerationRefusal } from '@/transport/withGenerationGuard';
+import { CommandRefused } from '@/protocol/pagedExec';
 import { LinkHealth } from './linkHealth.svelte';
 
 describe('LinkHealth', () => {
@@ -28,6 +29,13 @@ describe('LinkHealth', () => {
   it('generation refusals never reach the wire, so they do not count', () => {
     fail(); fail();
     h.noteFail('write', new GenerationRefusal(0x0110, 'legacy'));
+    expect(h.degraded).toBe(false);
+    expect(h.failTotal).toBe(2);
+  });
+
+  it('device command refusals answer on a healthy link, so they do not count', () => {
+    fail(); fail();
+    h.noteFail('write', new CommandRefused(0x0110, 'set', 18));
     expect(h.degraded).toBe(false);
     expect(h.failTotal).toBe(2);
   });
