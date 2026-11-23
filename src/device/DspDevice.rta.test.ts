@@ -6,7 +6,7 @@ import * as Protocol from '@/protocol';
 import * as Domain from '@/domain';
 
 const FRAME = 82;
-const RTA_BANDS_ALL = Protocol.WireCmd.RtaGetBandsAll.code;
+const RTA_BANDS_ALL = Protocol.Cmd.RtaBandsAll.legacy.get;
 
 async function mockDevice(opts: ConstructorParameters<typeof MockTransport>[0] = { platform: 'rp2350', wireVersion: 31 }) {
   const t = new MockTransport(opts);

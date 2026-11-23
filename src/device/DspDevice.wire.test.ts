@@ -178,8 +178,8 @@ describe('DspDevice — chunked bulk-params (WinUSB 4 KB control-transfer cap)',
 
     const calls = ctrlInSpy.mock.calls;
     for (const c of calls) expect(c[2]).toBeLessThanOrEqual(4096);
-    expect(calls.some((c) => c[0] === Protocol.WireCmd.GetAllParamsChunk.code)).toBe(true);
-    expect(calls.some((c) => c[0] === Protocol.WireCmd.GetAllParams.code)).toBe(false);
+    expect(calls.some((c) => c[0] === Protocol.Cmd.AllParamsChunk.legacy.get)).toBe(true);
+    expect(calls.some((c) => c[0] === Protocol.Cmd.AllParams.legacy.get)).toBe(false);
   });
 
   it('setAllParams emits sequential 0xA3 chunks that concatenate to the exact packet; the write round-trips', async () => {
@@ -191,7 +191,7 @@ describe('DspDevice — chunked bulk-params (WinUSB 4 KB control-transfer cap)',
     const ctrlOutSpy = vi.spyOn(mock, 'ctrlOut');
     await d.setAllParams(bulk);
 
-    const chunkCalls = ctrlOutSpy.mock.calls.filter((c) => c[0] === Protocol.WireCmd.SetAllParamsChunk.code);
+    const chunkCalls = ctrlOutSpy.mock.calls.filter((c) => c[0] === Protocol.Cmd.AllParamsChunk.legacy.set);
     expect(chunkCalls.length).toBeGreaterThan(1);
 
     let expectedOffset = 0;
@@ -462,7 +462,7 @@ describe('DspDevice — Control Surfaces (0x84-0x87, 0x8B-0x8C, 0x9D-0x9E)', () 
     const d = await DspDevice.create(raw);
     // Arm a pending save behind the device's back so the next csSave hits
     // the firmware's stall path instead of the poll-drained happy path.
-    const first = await raw.ctrlIn(Protocol.WireCmd.CsSave.code, 0, 1);
+    const first = await raw.ctrlIn(Protocol.Act.CsSave.legacy.code, 0, 1);
     expect(first[0]).toBe(1);
     const { result } = await d.csSave();
     expect(result.ok).toBe(false);

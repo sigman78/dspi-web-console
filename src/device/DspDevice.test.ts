@@ -48,7 +48,7 @@ describe('DspDevice facade', () => {
       isOpen:  () => inner.isOpen(),
       on:      (e: TransportEvent, l: () => void) => inner.on(e, l),
       ctrlIn:  (request, value, length) => {
-        if (request === Protocol.WireCmd.GetStatus.code && value === Protocol.SystemStatusValue.SpdifStarvationsTotal) {
+        if (request === Protocol.Cmd.Status.legacy.get && value === Protocol.SystemStatusValue.SpdifStarvationsTotal) {
           return Promise.reject(new Error('STALL'));
         }
         return inner.ctrlIn(request, value, length);
@@ -72,7 +72,7 @@ describe('DspDevice facade', () => {
       isOpen:  () => inner.isOpen(),
       on:      (e: TransportEvent, l: () => void) => inner.on(e, l),
       ctrlIn:  (request, value, length) =>
-        request === Protocol.WireCmd.GetStatus.code && value === Protocol.SystemStatusValue.SpdifOverruns
+        request === Protocol.Cmd.Status.legacy.get && value === Protocol.SystemStatusValue.SpdifOverruns
           ? Promise.resolve(new Uint8Array([5, 0, 0, 0]))
           : inner.ctrlIn(request, value, length),
       ctrlOut: (request, value, data) => inner.ctrlOut(request, value, data),
@@ -103,7 +103,7 @@ describe('DspDevice — GetPlatform response length', () => {
       open: () => t.open(), close: () => t.close(), isOpen: () => t.isOpen(), on: (e, l) => t.on(e, l),
       ctrlIn: async (req, val, len) => {
         const r = await t.ctrlIn(req, val, len);
-        if (req === Protocol.WireCmd.GetPlatform.code) seen.push(r.length);
+        if (req === Protocol.Cmd.Platform.legacy.get) seen.push(r.length);
         return r;
       },
       ctrlOut: (req, val, data) => t.ctrlOut(req, val, data),
@@ -131,7 +131,7 @@ describe('DspDevice — build stamp (GetBuildInfo 0x80, gated on features.buildS
     };
     const d = await DspDevice.create(spy);
     expect(d.info.build).toBeNull();
-    expect(seen).not.toContain(Protocol.WireCmd.GetBuildInfo.code);
+    expect(seen).not.toContain(Protocol.Cmd.BuildInfo.legacy.get);
   });
 
   it('info.build is null and create still resolves when the 0x80 read throws', async () => {
@@ -139,7 +139,7 @@ describe('DspDevice — build stamp (GetBuildInfo 0x80, gated on features.buildS
     const spy: DspTransport = {
       open: () => t.open(), close: () => t.close(), isOpen: () => t.isOpen(), on: (e, l) => t.on(e, l),
       ctrlIn: (req, val, len) => {
-        if (req === Protocol.WireCmd.GetBuildInfo.code) return Promise.reject(new Error('STALL'));
+        if (req === Protocol.Cmd.BuildInfo.legacy.get) return Promise.reject(new Error('STALL'));
         return t.ctrlIn(req, val, len);
       },
       ctrlOut: (req, val, data) => t.ctrlOut(req, val, data),
@@ -153,7 +153,7 @@ describe('DspDevice — build stamp (GetBuildInfo 0x80, gated on features.buildS
     const spy: DspTransport = {
       open: () => t.open(), close: () => t.close(), isOpen: () => t.isOpen(), on: (e, l) => t.on(e, l),
       ctrlIn: async (req, val, len) => {
-        if (req === Protocol.WireCmd.GetBuildInfo.code) return new Uint8Array(0);
+        if (req === Protocol.Cmd.BuildInfo.legacy.get) return new Uint8Array(0);
         return t.ctrlIn(req, val, len);
       },
       ctrlOut: (req, val, data) => t.ctrlOut(req, val, data),
@@ -181,7 +181,7 @@ describe('DspDevice — getSystemStatus hardware profile contract', () => {
       isOpen: () => inner.isOpen(),
       on: (event, listener) => inner.on(event, listener),
       ctrlIn: (request, value, length) => {
-        if (request === Protocol.WireCmd.GetStatus.code) statusLength = length;
+        if (request === Protocol.Cmd.Status.legacy.get) statusLength = length;
         return inner.ctrlIn(request, value, length);
       },
       ctrlOut: (request, value, data) => inner.ctrlOut(request, value, data),
@@ -415,7 +415,7 @@ describe('DspDevice — output limiter reads (fw V32+)', () => {
       open: () => inner.open(), close: () => inner.close(), isOpen: () => inner.isOpen(),
       on: (e: TransportEvent, l: () => void) => inner.on(e, l),
       ctrlIn: (request, value, length) => {
-        if (request !== Protocol.WireCmd.Limiter.code) return inner.ctrlIn(request, value, length);
+        if (request !== Protocol.Cmd.Limiter.legacy.get) return inner.ctrlIn(request, value, length);
         seen.push({ value, length });
         return Promise.resolve(reply);
       },
@@ -590,7 +590,7 @@ describe('DspDevice — preset directory and active slot', () => {
       isOpen:  () => true,
       on:      () => () => {},
       ctrlIn:  async (request) =>
-        request === Protocol.WireCmd.PresetGetActive.code
+        request === Protocol.Cmd.PresetActive.legacy.get
           ? new Uint8Array([0xFF])
           : new Uint8Array(0),
       ctrlOut: async () => {},
@@ -774,7 +774,7 @@ describe('DspDevice — clearAllPresets', () => {
     // Stub the transport to return FlashWriteError (0x04) on PresetDelete.
     const orig = t.ctrlIn.bind(t);
     t.ctrlIn = async (req, val, len) =>
-      req === Protocol.WireCmd.PresetDelete.code
+      req === Protocol.Act.PresetDelete.legacy.code
         ? new Uint8Array([Protocol.PresetResult.FlashWriteError])
         : orig(req, val, len);
 
@@ -818,7 +818,7 @@ describe('DspDevice — getFilter multi-read', () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, val, len) => {
-        if (req === Protocol.WireCmd.GetPlatform.code) {
+        if (req === Protocol.Cmd.Platform.legacy.get) {
           return new Uint8Array([1, 1, 2, 0]);
         }
         seen.push({ req, val, len });
@@ -869,7 +869,7 @@ describe('DspDevice — getFilter multi-read', () => {
       on: () => () => {},
       ctrlIn: async (req, val, len) => {
         seenIn.push({ req, val, len });
-        if (req === Protocol.WireCmd.GetPlatform.code) {
+        if (req === Protocol.Cmd.Platform.legacy.get) {
           return new Uint8Array([0, 1, 2, 0]);
         }
         return new Uint8Array(len);
@@ -884,12 +884,12 @@ describe('DspDevice — getFilter multi-read', () => {
     await d.setChannelName(Domain.ChannelId.Pdm, 'Sub');
     await d.getChannelName(Domain.ChannelId.Pdm);
 
-    const filterPacket = seenOut.find((call) => call.req === Protocol.WireCmd.SetEqParam.code)?.data;
+    const filterPacket = seenOut.find((call) => call.req === Protocol.Cmd.EqParam.legacy.set)?.data;
     expect(filterPacket?.[0]).toBe(6);
-    expect(seenIn.filter((call) => call.req === Protocol.WireCmd.GetEqParam.code).map((call) => call.val & ~0x7))
+    expect(seenIn.filter((call) => call.req === Protocol.Cmd.EqParamValue.legacy.get).map((call) => call.val & ~0x7))
       .toEqual(Array(4).fill((6 << 8) | (1 << 3)));
-    expect(seenOut.find((call) => call.req === Protocol.WireCmd.SetChannelName.code)?.val).toBe(6);
-    expect(seenIn.find((call) => call.req === Protocol.WireCmd.GetChannelName.code)?.val).toBe(6);
+    expect(seenOut.find((call) => call.req === Protocol.Cmd.ChannelName.legacy.set)?.val).toBe(6);
+    expect(seenIn.find((call) => call.req === Protocol.Cmd.ChannelName.legacy.get)?.val).toBe(6);
   });
 });
 
@@ -973,11 +973,11 @@ describe('I2S clock commands', () => {
     const ctrlInSpy = vi.spyOn(t, 'ctrlIn');
 
     expect((await d.setI2sBckPin(16)).ok).toBe(true);
-    const setCall = ctrlInSpy.mock.calls.find((c) => c[0] === Protocol.WireCmd.SetI2sBckPin.code);
+    const setCall = ctrlInSpy.mock.calls.find((c) => c[0] === Protocol.Act.I2sBckPin.legacy.code);
     expect(setCall?.[1]).toBe(16);   // role 0 -> wValue === pin
 
     await d.getI2sBckPin();
-    const getCall = ctrlInSpy.mock.calls.find((c) => c[0] === Protocol.WireCmd.GetI2sBckPin.code);
+    const getCall = ctrlInSpy.mock.calls.find((c) => c[0] === Protocol.Cmd.I2sBckPin.legacy.get);
     expect(getCall?.[1]).toBe(0);    // role 0 -> wValue === 0
   });
 
@@ -1206,11 +1206,11 @@ function identityStub(opts: { wire: number; fwMinor: number; fwPatch: number; pa
     ctrlIn: async (request, _value, length) => {
       if (request === Protocol.PAGED_PROTOCOL_INFO) throw new TransportStall('legacy firmware: probe stalls');
       if (request > 0xFF) throw new Error(`unexpected paged request 0x${request.toString(16)} reached a legacy stub`);
-      if (request === Protocol.WireCmd.GetSerial.code) return new Uint8Array(length);
-      if (request === Protocol.WireCmd.GetPlatform.code) {
+      if (request === Protocol.Cmd.Serial.legacy.get) return new Uint8Array(length);
+      if (request === Protocol.Cmd.Platform.legacy.get) {
         return new Uint8Array([Domain.PlatformType.RP2350, 1, (opts.fwMinor << 4) | opts.fwPatch, 0]);
       }
-      if (request === Protocol.WireCmd.GetAllParams.code) {
+      if (request === Protocol.Cmd.AllParams.legacy.get) {
         const h = new Uint8Array(16);
         h[0] = opts.wire;
         h[1] = Domain.PlatformType.RP2350;
@@ -1410,7 +1410,7 @@ describe('DspDevice — granular surface', () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, val) => {
-        if (req === Protocol.WireCmd.SetSpdifRxPin.code) seen.push(val);
+        if (req === Protocol.Act.SpdifRxPin.legacy.code) seen.push(val);
         return new Uint8Array([0x00]);
       },
       ctrlOut: async () => {},
@@ -1428,7 +1428,7 @@ describe('DspDevice — granular surface', () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, val) => {
-        if (req === Protocol.WireCmd.GetSpdifRxPin.code) { seen.push(val); return new Uint8Array([7]); }
+        if (req === Protocol.Cmd.SpdifRxPin.legacy.get) { seen.push(val); return new Uint8Array([7]); }
         return new Uint8Array([0]);
       },
       ctrlOut: async () => {},
@@ -1445,7 +1445,7 @@ describe('DspDevice — granular surface', () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, val) => {
-        if (req === Protocol.WireCmd.SetSpdifInputEnable.code) seen.push(val);
+        if (req === Protocol.Act.SpdifInputEnable.legacy.code) seen.push(val);
         return new Uint8Array([0x00]);
       },
       ctrlOut: async () => {},
@@ -1464,7 +1464,7 @@ describe('DspDevice — granular surface', () => {
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
       ctrlIn: async (req, _val, len) => {
-        if (req === Protocol.WireCmd.GetSpdifInputConfig.code) return Uint8Array.from([4, 0b1101, 5, 16, 17, 22]);
+        if (req === Protocol.Cmd.SpdifInputConfig.legacy.get) return Uint8Array.from([4, 0b1101, 5, 16, 17, 22]);
         return new Uint8Array(len);
       },
       ctrlOut: async () => {},

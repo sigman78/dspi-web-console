@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { MockTransport } from '@/transport/MockTransport';
 import { DspDevice } from './DspDevice';
 import { createDevice } from '@test/fixtures/deviceHarness';
-import { WireCmd } from '@/protocol';
+import { Cmd } from '@/protocol';
 import { ChannelId, FilterType } from '@/domain';
 import type { DspTransport } from '@/transport/DspTransport';
 
@@ -19,13 +19,13 @@ describe('DspDevice — setFilter LT write shape', () => {
     const seenOut: { req: number; data: Uint8Array }[] = [];
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
-      ctrlIn: async (req, _val, len) => (req === WireCmd.GetPlatform.code ? new Uint8Array([1, 1, 2, 0]) : new Uint8Array(len)),
+      ctrlIn: async (req, _val, len) => (req === Cmd.Platform.legacy.get ? new Uint8Array([1, 1, 2, 0]) : new Uint8Array(len)),
       ctrlOut: async (req, _val, data) => { seenOut.push({ req, data: new Uint8Array(data) }); },
     };
     const d = await createDevice(t);
     await d.setFilter(2, 3, { type: FilterType.LinkwitzTransform, bypass: false, frequency: 45, q: 0.6, gain: 90, qp: 1.5 });
 
-    const call = seenOut.find((c) => c.req === WireCmd.SetEqParam.code);
+    const call = seenOut.find((c) => c.req === Cmd.EqParam.legacy.set);
     expect(call?.data.byteLength).toBe(18);
     // qp = round(1.5*512) = 768, little-endian at bytes 16-17.
     const qpRaw = call!.data[16] | (call!.data[17] << 8);
@@ -36,13 +36,13 @@ describe('DspDevice — setFilter LT write shape', () => {
     const seenOut: { req: number; data: Uint8Array }[] = [];
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
-      ctrlIn: async (req, _val, len) => (req === WireCmd.GetPlatform.code ? new Uint8Array([1, 1, 2, 0]) : new Uint8Array(len)),
+      ctrlIn: async (req, _val, len) => (req === Cmd.Platform.legacy.get ? new Uint8Array([1, 1, 2, 0]) : new Uint8Array(len)),
       ctrlOut: async (req, _val, data) => { seenOut.push({ req, data: new Uint8Array(data) }); },
     };
     const d = await createDevice(t);
     await d.setFilter(2, 3, { type: FilterType.Peaking, bypass: false, frequency: 1000, q: 1, gain: 3 });
 
-    const call = seenOut.find((c) => c.req === WireCmd.SetEqParam.code);
+    const call = seenOut.find((c) => c.req === Cmd.EqParam.legacy.set);
     expect(call?.data.byteLength).toBe(16);
   });
 
@@ -50,13 +50,13 @@ describe('DspDevice — setFilter LT write shape', () => {
     const seenOut: { req: number; data: Uint8Array }[] = [];
     const t: DspTransport = {
       open: async () => {}, close: async () => {}, isOpen: () => true, on: () => () => {},
-      ctrlIn: async (req, _val, len) => (req === WireCmd.GetPlatform.code ? new Uint8Array([1, 1, 2, 0]) : new Uint8Array(len)),
+      ctrlIn: async (req, _val, len) => (req === Cmd.Platform.legacy.get ? new Uint8Array([1, 1, 2, 0]) : new Uint8Array(len)),
       ctrlOut: async (req, _val, data) => { seenOut.push({ req, data: new Uint8Array(data) }); },
     };
     const d = await createDevice(t);
     await d.setFilter(2, 3, { type: FilterType.LinkwitzTransform, bypass: false, frequency: 45, q: 0.6, gain: 90 });
 
-    const call = seenOut.find((c) => c.req === WireCmd.SetEqParam.code);
+    const call = seenOut.find((c) => c.req === Cmd.EqParam.legacy.set);
     const qpRaw = call!.data[16] | (call!.data[17] << 8);
     expect(qpRaw).toBe(Math.round(0.707 * 512));
   });

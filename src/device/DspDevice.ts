@@ -124,7 +124,7 @@ async function readPlatform(
   t: DspTransport,
 ): Promise<{ platformId: number; fw: FirmwareVersion }> {
   const size = Codec.sizeOf(proto.Wire.DeviceInfoExt);
-  const raw = await t.ctrlIn(proto.WireCmd.GetPlatform.code, 0, size + 1);
+  const raw = await t.ctrlIn(proto.Cmd.Platform.legacy.get, 0, size + 1);
   if (raw.length >= size) {
     const info = Codec.decode(proto.Wire.DeviceInfoExt, raw);
     return {
@@ -167,7 +167,7 @@ function decodeRtaFrame(raw: Uint8Array): Domain.RtaBandFrameRaw {
 // is as good as absent.
 async function readBuildInfo(t: DspTransport): Promise<BuildInfo | null> {
   try {
-    const b = await proto.readCmd(t, proto.WireCmd.GetBuildInfo);
+    const b = await proto.readCmd(t, proto.Cmd.BuildInfo);
     return b.describe ? b : null;
   } catch {
     return null;
@@ -250,7 +250,7 @@ function sleep(ms: number): Promise<void> {
 // site so the branch lives in one place.
 async function readCsStatus(t: DspTransport): Promise<Domain.CsStatus> {
   const size = Codec.sizeOf(proto.Wire.CsStatusPacketV6);
-  const raw = await t.ctrlIn(proto.WireCmd.GetCsStatus.code, 0, size);
+  const raw = await t.ctrlIn(proto.Cmd.CsStatus.legacy.get, 0, size);
   return raw.length >= size
     ? Codec.decodePadded(proto.Wire.CsStatusPacketV6, raw)
     : Codec.decodePadded(proto.Wire.CsStatusPacketV3, raw);
@@ -327,7 +327,7 @@ export class DspDevice {
     await openTransport();
     setGeneration(await probeProtocol(transport));
     const [serial, platform] = await Promise.all([
-      proto.readCmd(transport, proto.WireCmd.GetSerial),
+      proto.readCmd(transport, proto.Cmd.Serial),
       readPlatform(transport),
     ]);
 
@@ -336,7 +336,7 @@ export class DspDevice {
     // packet is too large for a single control transfer on some hosts
     // (WinUSB's 4 KB cap), but the header alone always fits.
     const headerBytes = await transport.ctrlIn(
-      proto.WireCmd.GetAllParams.code, 0, Codec.sizeOf(proto.Wire.Header),
+      proto.Cmd.AllParams.legacy.get, 0, Codec.sizeOf(proto.Wire.Header),
     );
     const header = proto.peekBulkHeader(headerBytes);
 
@@ -431,7 +431,7 @@ export class DspDevice {
   async #readAllParamsChunked(): Promise<Uint8Array> {
     const attempt = () => this.transport.exclusive(async (raw) => {
       const chunkSize = proto.Wire.BulkLimits.ChunkSize;
-      const first = await raw.ctrlIn(proto.WireCmd.GetAllParamsChunk.code, 0, chunkSize);
+      const first = await raw.ctrlIn(proto.Cmd.AllParamsChunk.legacy.get, 0, chunkSize);
       const header = proto.peekBulkHeader(first);
       const total = header.payloadLength > 0 && header.payloadLength <= proto.Wire.BulkLimits.MaxReadSize
         ? header.payloadLength
@@ -441,7 +441,7 @@ export class DspDevice {
       let received = first.length;
       for (let i = 1; received < total && i < MAX_BULK_CHUNKS; i++) {
         const want = Math.min(chunkSize, total - received);
-        const next = await raw.ctrlIn(proto.WireCmd.GetAllParamsChunk.code, received, want);
+        const next = await raw.ctrlIn(proto.Cmd.AllParamsChunk.legacy.get, received, want);
         chunks.push(next);
         received += next.length;
         if (next.length < want) break;   // short chunk: device says this is the end
@@ -482,7 +482,7 @@ export class DspDevice {
       const chunkSize = proto.Wire.BulkLimits.ChunkSize;
       for (let offset = 0; offset < bytes.length; offset += chunkSize) {
         const chunk = bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length));
-        await raw.ctrlOut(proto.WireCmd.SetAllParamsChunk.code, offset, chunk);
+        await raw.ctrlOut(proto.Cmd.AllParamsChunk.legacy.set, offset, chunk);
       }
     });
 
@@ -496,7 +496,7 @@ export class DspDevice {
   async getSystemStatus(): Promise<proto.SystemStatus> {
     const numCh = this.hardware.totalChannelCount;
     const bytes = await this.transport.ctrlIn(
-      proto.WireCmd.GetStatus.code, 9, proto.systemStatusSize(numCh),
+      proto.Cmd.Status.legacy.get, 9, proto.systemStatusSize(numCh),
     );
     return proto.parseSystemStatus(bytes, numCh);
   }
@@ -507,7 +507,7 @@ export class DspDevice {
   async #readStatusU32s<K extends string>(idx: Record<K, number>): Promise<Record<K, number | null>> {
     const entries = Object.entries(idx) as [K, number][];
     const settled = await Promise.allSettled(entries.map(([, wValue]) =>
-      this.transport.ctrlIn(proto.WireCmd.GetStatus.code, wValue, 4).then((b) => Codec.decodePadded(Codec.u32, b))));
+      this.transport.ctrlIn(proto.Cmd.Status.legacy.get, wValue, 4).then((b) => Codec.decodePadded(Codec.u32, b))));
     const out = {} as Record<K, number | null>;
     entries.forEach(([key], i) => {
       const r = settled[i];
@@ -533,7 +533,7 @@ export class DspDevice {
         spdifStarvationsTotal: V.SpdifStarvationsTotal,
       }),
       // The one signed scalar (centi-C) decodes as i32.
-      this.transport.ctrlIn(proto.WireCmd.GetStatus.code, V.TempCDegC, 4)
+      this.transport.ctrlIn(proto.Cmd.Status.legacy.get, V.TempCDegC, 4)
         .then((b) => Codec.decodePadded(Codec.i32, b))
         .catch(() => null),
     ]);
@@ -543,41 +543,41 @@ export class DspDevice {
   async getBufferStats(): Promise<proto.BufferStats | null> {
     // Stays manual: parseBufferStats returns null on short responses;
     // readCmd would throw, defeating that contract.
-    const bytes = await this.transport.ctrlIn(proto.WireCmd.GetBufferStats.code, 0, Codec.sizeOf(proto.Wire.BufferStats));
+    const bytes = await this.transport.ctrlIn(proto.Cmd.BufferStats.legacy.get, 0, Codec.sizeOf(proto.Wire.BufferStats));
     return proto.parseBufferStats(bytes);
   }
 
   // Persistence: 0x51/0x52/0x53 are action-style IN with a 1-byte FlashResult.
   async factoryReset(): Promise<Result<void, proto.FlashResult>> {
-    return proto.flashResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.FactoryReset));
+    return proto.flashResultFromByte(await proto.actionCmd(this.transport, proto.Act.FactoryReset));
   }
 
   // 0x83 is IN-only: the firmware answers the latched clip flags (u32) and
   // clears them so they can re-arm. An OUT is ACKed and ignored.
   async clearClips(): Promise<void> {
-    await this.transport.ctrlIn(proto.WireCmd.ClearClips.code, 0, 4);
+    await this.transport.ctrlIn(proto.Cmd.ClearClips.legacy.get, 0, 4);
   }
 
   async setMasterPreamp(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetPreamp, db);
+    return proto.writeCmd(this.transport, proto.Cmd.Preamp, db);
   }
 
   async setInputPreamp(channel: Domain.InputSlot, db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetInputPreamp, db, channel);
+    return proto.writeCmd(this.transport, proto.Cmd.InputPreamp, db, channel);
   }
 
   async setMasterVolume(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetMasterVolume, db);
+    return proto.writeCmd(this.transport, proto.Cmd.MasterVolume, db);
   }
 
   async setMasterVolumeMode(mode: Domain.MasterVolumeMode): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetMasterVolumeMode, mode);
+    return proto.writeCmd(this.transport, proto.Cmd.MasterVolumeMode, mode);
   }
 
   // Action-style IN: persists live master volume to flash. Shares the
   // PresetResult status byte with SaveOutputConfig/Preset* (see results.ts).
   async saveMasterVolume(): Promise<Result<void, proto.PresetResult>> {
-    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SaveMasterVolume));
+    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.Act.SaveMasterVolume));
   }
 
   // SetMatrixRoute always sends the full crosspoint state (enabled+invert+
@@ -587,7 +587,7 @@ export class DspDevice {
     output: Domain.OutputSlot,
     p: { enabled: boolean; invert: boolean; gainDb: number },
   ): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetMatrixRoute, {
+    return proto.writeCmd(this.transport, proto.Cmd.MatrixRoute, {
       input, output,
       enabled: p.enabled,
       phaseInvert: p.invert,
@@ -596,13 +596,13 @@ export class DspDevice {
   }
 
   async setOutputGain(output: Domain.OutputSlot, db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetOutputGain, db, output);
+    return proto.writeCmd(this.transport, proto.Cmd.OutputGain, db, output);
   }
 
   // Wire surface for the 11-command preset system (0x90-0x9A).
   async getPresetDirectory(): Promise<Domain.PresetDirectoryInfo> {
     const bytes = await this.transport.ctrlIn(
-      proto.WireCmd.PresetGetDir.code, 0, proto.PresetDirRequestSize,
+      proto.Cmd.PresetDirectory.legacy.get, 0, proto.PresetDirRequestSize,
     );
     const r = Codec.decode(proto.PresetDirectory, bytes);
     return {
@@ -620,7 +620,7 @@ export class DspDevice {
   // so the UI's single null->0 coercion handles all unusable responses
   // uniformly; persistence-aware code treats null as "no slot to write to".
   async getActivePreset(): Promise<Domain.PresetSlot | null> {
-    const r = await this.transport.ctrlIn(proto.WireCmd.PresetGetActive.code, 0, 1);
+    const r = await this.transport.ctrlIn(proto.Cmd.PresetActive.legacy.get, 0, 1);
     if (r.length < 1) return null;
     const b = r[0];
     if (b === 0xFF || b >= 10) return null;
@@ -630,31 +630,31 @@ export class DspDevice {
   // 0x93/0x94: 32-byte NUL-terminated UTF-8 name per slot; wValue carries the
   // slot. Names are cropped at a codepoint boundary to fit the 31-byte budget.
   async setPresetName(slot: Domain.PresetSlot, name: string): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.PresetSetName, utf8Truncate(name, Domain.PRESET_NAME_MAX_LEN), slot);
+    return proto.writeCmd(this.transport, proto.Cmd.PresetName, utf8Truncate(name, Domain.PRESET_NAME_MAX_LEN), slot);
   }
 
   async getPresetName(slot: Domain.PresetSlot): Promise<string> {
-    return proto.readCmd(this.transport, proto.WireCmd.PresetGetName, slot);
+    return proto.readCmd(this.transport, proto.Cmd.PresetName, slot);
   }
 
   async savePreset(slot: Domain.PresetSlot): Promise<Result<void, proto.PresetResult>> {
-    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.PresetSave, slot));
+    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.Act.PresetSave, slot));
   }
 
   async loadPreset(slot: Domain.PresetSlot): Promise<Result<void, proto.PresetResult>> {
-    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.PresetLoad, slot));
+    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.Act.PresetLoad, slot));
   }
 
   async deletePreset(slot: Domain.PresetSlot): Promise<Result<void, proto.PresetResult>> {
-    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.PresetDelete, slot));
+    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.Act.PresetDelete, slot));
   }
 
   async setPresetStartup(config: { mode: number; slot: number }): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.PresetSetStartup, config);
+    return proto.writeCmd(this.transport, proto.Cmd.PresetStartup, config);
   }
 
   async setOutputConfigMode(mode: Domain.OutputConfigMode): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetOutputConfigMode, mode);
+    return proto.writeCmd(this.transport, proto.Cmd.OutputConfigMode, mode);
   }
 
   // Per-parameter ("granular") lane: every write goes through a granular verb.
@@ -672,10 +672,10 @@ export class DspDevice {
         frequency: p.frequency, q: p.q, gain: p.gain,
         qp: Domain.encodeQp(p.qp ?? Domain.QP_DEFAULT),
       });
-      await this.transport.ctrlOut(proto.WireCmd.SetEqParam.code, 0, bytes);
+      await this.transport.ctrlOut(proto.Cmd.EqParam.legacy.set, 0, bytes);
       return;
     }
-    return proto.writeCmd(this.transport, proto.WireCmd.SetEqParam, {
+    return proto.writeCmd(this.transport, proto.Cmd.EqParam, {
       channel: wireChannel, band,
       type: p.type, bypass: p.bypass ? 1 : 0, frequency: p.frequency, q: p.q, gain: p.gain,
     });
@@ -695,7 +695,7 @@ export class DspDevice {
   // 20..23 stay addressable.
   async getFilter(channel: Domain.ChannelId, band: number): Promise<Domain.FilterParams> {
     const wireChannel = this.deviceChannel(channel);
-    const code = proto.WireCmd.GetEqParam.code;
+    const code = proto.Cmd.EqParamValue.legacy.get;
     const wValue = (param: number) => ((wireChannel & 0xFF) << 8) | ((band & 0x1F) << 3) | (param & 0x7);
     const t = this.transport;
     const [typeBytes, freqBytes, qBytes, gainBytes] = await Promise.all([
@@ -721,31 +721,31 @@ export class DspDevice {
   }
 
   async setBypass(enabled: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetBypass, enabled);
+    return proto.writeCmd(this.transport, proto.Cmd.Bypass, enabled);
   }
 
   async getBypass(): Promise<boolean> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetBypass);
+    return proto.readCmd(this.transport, proto.Cmd.Bypass);
   }
 
   async getMasterPreamp(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetPreamp);
+    return proto.readCmd(this.transport, proto.Cmd.Preamp);
   }
 
   async getInputPreamp(channel: Domain.InputSlot): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetInputPreamp, channel);
+    return proto.readCmd(this.transport, proto.Cmd.InputPreamp, channel);
   }
 
   async getMasterVolume(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetMasterVolume);
+    return proto.readCmd(this.transport, proto.Cmd.MasterVolume);
   }
 
   async getMasterVolumeMode(): Promise<Domain.MasterVolumeMode> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetMasterVolumeMode);
+    return proto.readCmd(this.transport, proto.Cmd.MasterVolumeMode);
   }
 
   async getSavedMasterVolume(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetSavedMasterVolume);
+    return proto.readCmd(this.transport, proto.Cmd.SavedMasterVolume);
   }
 
   // GetMatrixRoute packs input/output into wValue since the transport surface
@@ -755,94 +755,93 @@ export class DspDevice {
     output: Domain.OutputSlot,
   ): Promise<{ enabled: boolean; invert: boolean; gainDb: number }> {
     const wValue = ((input & 0xFF) << 8) | (output & 0xFF);
-    const r = await proto.readCmd(this.transport, proto.WireCmd.GetMatrixRoute, wValue);
+    const r = await proto.readCmd(this.transport, proto.Cmd.MatrixRoute, wValue);
     return { enabled: r.enabled, invert: r.phaseInvert, gainDb: r.gainDb };
   }
 
   async setOutputEnable(output: Domain.OutputSlot, on: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetOutputEnable, on, output);
+    return proto.writeCmd(this.transport, proto.Cmd.OutputEnable, on, output);
   }
 
   async setOutputMute(output: Domain.OutputSlot, mute: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetOutputMute, mute, output);
+    return proto.writeCmd(this.transport, proto.Cmd.OutputMute, mute, output);
   }
 
   async setOutputDelay(output: Domain.OutputSlot, ms: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetOutputDelay, ms, output);
+    return proto.writeCmd(this.transport, proto.Cmd.OutputDelay, ms, output);
   }
 
   async setOutputType(slot: Domain.I2sPairSlot, type: number): Promise<Result<void, proto.PinConfigResult>> {
     const wValue = ((type & 0xFF) << 8) | (slot & 0xFF);
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetOutputType, wValue));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.OutputType, wValue));
   }
 
   async getOutputType(slot: Domain.I2sPairSlot): Promise<number> {
-    return proto.actionCmd(this.transport, proto.WireCmd.GetOutputType, slot);
+    return proto.readByte(this.transport, proto.Cmd.OutputType, slot);
   }
 
   // pin-output index is 0..numPinOutputs-1 where the last entry is the PDM sub (distinct from the matrix OutputSlot).
   async setOutputPin(pinOutputIndex: number, pin: number): Promise<Result<void, proto.PinConfigResult>> {
     const wValue = ((pin & 0xFF) << 8) | (pinOutputIndex & 0xFF);
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetOutputPin, wValue));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.OutputPin, wValue));
   }
 
   async getOutputPin(pinOutputIndex: number): Promise<number> {
-    return proto.actionCmd(this.transport, proto.WireCmd.GetOutputPin, pinOutputIndex);
+    return proto.readByte(this.transport, proto.Cmd.OutputPin, pinOutputIndex);
   }
 
   // role 0 = master/unified pair (default), role 1 = slave pair.
   async setI2sBckPin(pin: number, role = 0): Promise<Result<void, proto.PinConfigResult>> {
     const wValue = ((role & 0xFF) << 8) | (pin & 0xFF);
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetI2sBckPin, wValue));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.I2sBckPin, wValue));
   }
 
   async getI2sBckPin(role = 0): Promise<number> {
-    return proto.actionCmd(this.transport, proto.WireCmd.GetI2sBckPin, role & 0xFF);
+    return proto.readByte(this.transport, proto.Cmd.I2sBckPin, role & 0xFF);
   }
 
   async setMckEnable(on: boolean): Promise<Result<void, proto.PinConfigResult>> {
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetMckEnable, on ? 1 : 0));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.MckEnable, on ? 1 : 0));
   }
 
   async getMckEnable(): Promise<number> {
-    return proto.actionCmd(this.transport, proto.WireCmd.GetMckEnable, 0);
+    return proto.readByte(this.transport, proto.Cmd.MckEnable, 0);
   }
 
   async setMckPin(pin: number): Promise<Result<void, proto.PinConfigResult>> {
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetMckPin, pin & 0xFF));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.MckPin, pin & 0xFF));
   }
 
   async setMckMultiplier(encoded: number): Promise<Result<void, proto.PinConfigResult>> {
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetMckMultiplier, encoded & 0x01));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.MckMultiplier, encoded & 0x01));
   }
 
   async getMckMultiplier(): Promise<number> {
-    return proto.actionCmd(this.transport, proto.WireCmd.GetMckMultiplier, 0);
+    return proto.readByte(this.transport, proto.Cmd.MckMultiplier, 0);
   }
 
   // Names are cropped to fit the 31-byte UTF-8 wire budget; validation and
   // user-facing errors belong at the state/UI layer above.
   async setChannelName(channel: Domain.ChannelId, name: string): Promise<void> {
     const wireChannel = this.deviceChannel(channel);
-    return proto.writeCmd(this.transport, proto.WireCmd.SetChannelName, utf8Truncate(name, Domain.CHANNEL_NAME_MAX_LEN), wireChannel);
+    return proto.writeCmd(this.transport, proto.Cmd.ChannelName, utf8Truncate(name, Domain.CHANNEL_NAME_MAX_LEN), wireChannel);
   }
 
   async getChannelName(channel: Domain.ChannelId): Promise<string> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetChannelName, this.deviceChannel(channel));
+    return proto.readCmd(this.transport, proto.Cmd.ChannelName, this.deviceChannel(channel));
   }
 
   async getPresetStartup(): Promise<{ mode: number; slot: number }> {
-    return proto.readCmd(this.transport, proto.WireCmd.PresetGetStartup);
+    return proto.readCmd(this.transport, proto.Cmd.PresetStartup);
   }
 
   async getOutputConfigMode(): Promise<Domain.OutputConfigMode> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetOutputConfigMode);
+    return proto.readCmd(this.transport, proto.Cmd.OutputConfigMode);
   }
 
   // Firmware echoes 0x01 on success; return a boolean so callers don't see the wire shape.
   async resetBufferStats(): Promise<boolean> {
-    const r = await this.transport.ctrlIn(proto.WireCmd.ResetBufferStats.code, 1, 1);
-    return r.length >= 1 && r[0] === 0x01;
+    return (await proto.actionCmd(this.transport, proto.Act.ResetBufferStats, 1)) === 0x01;
   }
 
   // Clear every preset slot in order, pacing between deletes so the firmware's
@@ -864,123 +863,123 @@ export class DspDevice {
   }
 
   async setLoudnessEnabled(enabled: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetLoudnessEnabled, enabled);
+    return proto.writeCmd(this.transport, proto.Cmd.LoudnessEnabled, enabled);
   }
 
   async setLoudnessRefSpl(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetLoudnessRefSpl, db);
+    return proto.writeCmd(this.transport, proto.Cmd.LoudnessRefSpl, db);
   }
 
   async setLoudnessIntensity(pct: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetLoudnessIntensity, pct);
+    return proto.writeCmd(this.transport, proto.Cmd.LoudnessIntensity, pct);
   }
 
   // Per-output loudness mask. Bit k = output channel k.
   async setLoudnessOutputMask(mask: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetLoudnessMask, mask & 0xFFFF);
+    return proto.writeCmd(this.transport, proto.Cmd.LoudnessMask, mask & 0xFFFF);
   }
 
   async getLoudnessOutputMask(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetLoudnessMask);
+    return proto.readCmd(this.transport, proto.Cmd.LoudnessMask);
   }
 
   async setCrossfeedEnabled(enabled: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedEnabled, enabled);
+    return proto.writeCmd(this.transport, proto.Cmd.CrossfeedEnabled, enabled);
   }
 
   async setCrossfeedPreset(preset: Domain.CrossfeedPreset): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedPreset, preset);
+    return proto.writeCmd(this.transport, proto.Cmd.CrossfeedPreset, preset);
   }
 
   async setCrossfeedItd(enabled: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedItd, enabled);
+    return proto.writeCmd(this.transport, proto.Cmd.CrossfeedItd, enabled);
   }
 
   async setCrossfeedFreq(hz: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedFreq, hz);
+    return proto.writeCmd(this.transport, proto.Cmd.CrossfeedFreq, hz);
   }
 
   async setCrossfeedFeedDb(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedFeedDb, db);
+    return proto.writeCmd(this.transport, proto.Cmd.CrossfeedFeedDb, db);
   }
 
   // Crossfeed output-pair mask. Bit p = output pair p (outputs
   // 2p/2p+1; the mono PDM sub is excluded).
   async setCrossfeedOutputPairs(mask: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetCrossfeedOutputs, mask & 0xFF);
+    return proto.writeCmd(this.transport, proto.Cmd.CrossfeedOutputs, mask & 0xFF);
   }
 
   async getCrossfeedOutputPairs(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetCrossfeedOutputs);
+    return proto.readCmd(this.transport, proto.Cmd.CrossfeedOutputs);
   }
 
   async setLevellerEnabled(enabled: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerEnabled, enabled);
+    return proto.writeCmd(this.transport, proto.Cmd.LevellerEnabled, enabled);
   }
 
   async setLevellerSpeed(speed: Domain.LevellerSpeed): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerSpeed, speed);
+    return proto.writeCmd(this.transport, proto.Cmd.LevellerSpeed, speed);
   }
 
   async setLevellerLookahead(enabled: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerLookahead, enabled);
+    return proto.writeCmd(this.transport, proto.Cmd.LevellerLookahead, enabled);
   }
 
   async setLevellerAmount(pct: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerAmount, pct);
+    return proto.writeCmd(this.transport, proto.Cmd.LevellerAmount, pct);
   }
 
   async setLevellerMaxGain(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerMaxGain, db);
+    return proto.writeCmd(this.transport, proto.Cmd.LevellerMaxGain, db);
   }
 
   async setLevellerGate(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerGate, db);
+    return proto.writeCmd(this.transport, proto.Cmd.LevellerGate, db);
   }
 
   // Multichannel leveller masks. detector = inputs feeding the shared
   // detector; apply = inputs receiving the gain. Bit k = input channel k.
   async setLevellerMasks(detector: number, apply: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetLevellerMasks,
+    return proto.writeCmd(this.transport, proto.Cmd.LevellerMasks,
       { detector: detector & 0xFF, apply: apply & 0xFF });
   }
 
   async getLevellerMasks(): Promise<{ detector: number; apply: number }> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetLevellerMasks);
+    return proto.readCmd(this.transport, proto.Cmd.LevellerMasks);
   }
 
   // Psychoacoustic bass enhancement (RP2350 only).
   async setPsybassEnabled(enabled: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassEnabled, enabled);
+    return proto.writeCmd(this.transport, proto.Cmd.PsybassEnabled, enabled);
   }
 
   async setPsybassCutoff(hz: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassCutoff, hz);
+    return proto.writeCmd(this.transport, proto.Cmd.PsybassCutoff, hz);
   }
 
   async setPsybassHarmonics(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassHarmonics, db);
+    return proto.writeCmd(this.transport, proto.Cmd.PsybassHarmonics, db);
   }
 
   async setPsybassDrive(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassDrive, db);
+    return proto.writeCmd(this.transport, proto.Cmd.PsybassDrive, db);
   }
 
   async setPsybassCharacter(pct: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassCharacter, pct);
+    return proto.writeCmd(this.transport, proto.Cmd.PsybassCharacter, pct);
   }
 
   async setPsybassOriginal(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassOriginal, db);
+    return proto.writeCmd(this.transport, proto.Cmd.PsybassOriginal, db);
   }
 
   // Per-output psybass mask. Bit k = output channel k.
   async setPsybassMask(mask: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetPsybassMask, mask & 0xFFFF);
+    return proto.writeCmd(this.transport, proto.Cmd.PsybassMask, mask & 0xFFFF);
   }
 
   async getPsybassMask(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetPsybassMask);
+    return proto.readCmd(this.transport, proto.Cmd.PsybassMask);
   }
 
   // Stereo upmixer (RP2350 only). Per-param SET (0x4C): wValue =
@@ -989,7 +988,7 @@ export class DspDevice {
   // the named setters below are the grep-able per-verb surface the runtime
   // actions call, mirroring the psybass setters above.
   #setUpmixParam(id: proto.Wire.UpmixParam, value: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.UpmixSetParam, value, id);
+    return proto.writeCmd(this.transport, proto.Cmd.UpmixParam, value, id);
   }
 
   async setUpmixEnabled(enabled: boolean): Promise<void> {
@@ -1051,7 +1050,7 @@ export class DspDevice {
   // Live status (0x4E, no bulk equivalent). Raw Q14/Q15 fixed-point fields
   // stay undecoded, matching getSpdifRxStatus/getI2sSlaveStatus.
   async getUpmixStatus(): Promise<Domain.UpmixStatus> {
-    const w = await proto.readCmd(this.transport, proto.WireCmd.UpmixGetStatus);
+    const w = await proto.readCmd(this.transport, proto.Cmd.UpmixStatus);
     return {
       active:        w.active,
       parkedReason:  Domain.narrowUpmixParkedReason(w.parkedReason),
@@ -1065,70 +1064,70 @@ export class DspDevice {
 
   // Subharmonic synthesizer (fw V29+, both platforms).
   async setSubharmEnabled(enabled: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmEnabled, enabled);
+    return proto.writeCmd(this.transport, proto.Cmd.SubharmEnabled, enabled);
   }
 
   async setSubharmLow(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmLow, db);
+    return proto.writeCmd(this.transport, proto.Cmd.SubharmLow, db);
   }
 
   async setSubharmHigh(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmHigh, db);
+    return proto.writeCmd(this.transport, proto.Cmd.SubharmHigh, db);
   }
 
   async setSubharmBoost(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmBoost, db);
+    return proto.writeCmd(this.transport, proto.Cmd.SubharmBoost, db);
   }
 
   // Per-output subharm mask (fw V29+). Bit k = output channel k.
   async setSubharmMask(mask: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmMask, mask & 0xFFFF);
+    return proto.writeCmd(this.transport, proto.Cmd.SubharmMask, mask & 0xFFFF);
   }
 
   async getSubharmMask(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetSubharmMask);
+    return proto.readCmd(this.transport, proto.Cmd.SubharmMask);
   }
 
   // Live worst-case gain (dB) of the current config, 0 while disabled. Read
   // after any SET -- firmware computes it fresh on every GET.
   async getSubharmHeadroom(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetSubharmHeadroom);
+    return proto.readCmd(this.transport, proto.Cmd.SubharmHeadroom);
   }
 
   // V30 tail: third band, selectivity, sub ceiling, pair link.
   async setSubharmTop(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmTop, db);
+    return proto.writeCmd(this.transport, proto.Cmd.SubharmTop, db);
   }
 
   async setSubharmSelect(mode: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmSelect, mode);
+    return proto.writeCmd(this.transport, proto.Cmd.SubharmSelect, mode);
   }
 
   async setSubharmDepth(pct: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmDepth, pct);
+    return proto.writeCmd(this.transport, proto.Cmd.SubharmDepth, pct);
   }
 
   async setSubharmHold(ms: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmHold, ms);
+    return proto.writeCmd(this.transport, proto.Cmd.SubharmHold, ms);
   }
 
   async setSubharmCeiling(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmCeiling, db);
+    return proto.writeCmd(this.transport, proto.Cmd.SubharmCeiling, db);
   }
 
   async setSubharmLink(on: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmLink, on);
+    return proto.writeCmd(this.transport, proto.Cmd.SubharmLink, on);
   }
 
   // Runtime-only monitor (fw V30+): solos the synthesized sub on masked
   // outputs. Never on the wire's bulk section, never persisted, no notify --
   // read back via getSubharmSolo, not the snapshot.
   async setSubharmSolo(on: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetSubharmSolo, on);
+    return proto.writeCmd(this.transport, proto.Cmd.SubharmSolo, on);
   }
 
   async getSubharmSolo(): Promise<boolean> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetSubharmSolo);
+    return proto.readCmd(this.transport, proto.Cmd.SubharmSolo);
   }
 
   // Live per-output sub meter (fw V30+, PR.06): NUM_OUTPUT_CHANNELS x u16 LE,
@@ -1136,7 +1135,7 @@ export class DspDevice {
   // yields a shorter array rather than throwing.
   async getSubharmMeter(): Promise<number[]> {
     const numOut = this.hardware.outputCount;
-    const raw = await this.transport.ctrlIn(proto.WireCmd.GetSubharmMeter.code, 0, numOut * 2);
+    const raw = await this.transport.ctrlIn(proto.Cmd.SubharmMeter.legacy.get, 0, numOut * 2);
     const n = Math.min(numOut, raw.length >> 1);
     return Codec.decode(Codec.arr(Codec.u16, n), raw.subarray(0, n * 2)).map((v) => v / 32767);
   }
@@ -1148,7 +1147,7 @@ export class DspDevice {
   // #setLimiterParam is shared plumbing; the typed setters are the per-verb
   // surface the runtime actions call.
   #setLimiterParam(output: number, index: proto.Wire.LimiterParam, value: number): Promise<void> {
-    return this.transport.ctrlOut(proto.WireCmd.Limiter.code, proto.Wire.limiterWValue(output, index), Codec.encode(Codec.f32, value));
+    return this.transport.ctrlOut(proto.Cmd.Limiter.legacy.set, proto.Wire.limiterWValue(output, index), Codec.encode(Codec.f32, value));
   }
 
   async setLimiterEnabled(output: number, on: boolean): Promise<void> {
@@ -1170,7 +1169,7 @@ export class DspDevice {
   // GET of one parameter as its raw float (enabled 0/1, link group 0..4); a
   // bad output/index STALLs.
   async getLimiterParam(output: number, index: proto.Wire.LimiterParam): Promise<number> {
-    const raw = await this.transport.ctrlIn(proto.WireCmd.Limiter.code, proto.Wire.limiterWValue(output, index), 4);
+    const raw = await this.transport.ctrlIn(proto.Cmd.Limiter.legacy.get, proto.Wire.limiterWValue(output, index), 4);
     return Codec.decode(Codec.f32, raw);
   }
 
@@ -1179,14 +1178,14 @@ export class DspDevice {
   // array rather than throwing.
   async getLimiterMeter(): Promise<number[]> {
     const numOut = this.hardware.outputCount;
-    const raw = await this.transport.ctrlIn(proto.WireCmd.Limiter.code, proto.Wire.limiterWValue(0, proto.Wire.LIMITER_GET_METER), numOut * 2);
+    const raw = await this.transport.ctrlIn(proto.Cmd.Limiter.legacy.get, proto.Wire.limiterWValue(0, proto.Wire.LIMITER_GET_METER), numOut * 2);
     const n = Math.min(numOut, raw.length >> 1);
     return Codec.decode(Codec.arr(Codec.u16, n), raw.subarray(0, n * 2)).map((v) => v / 100);
   }
 
   // Status block; also the feature probe (a bad index STALLs on older firmware).
   async getLimiterStatus(): Promise<Domain.LimiterStatus> {
-    const raw = await this.transport.ctrlIn(proto.WireCmd.Limiter.code, proto.Wire.limiterWValue(0, proto.Wire.LIMITER_GET_STATUS), 4);
+    const raw = await this.transport.ctrlIn(proto.Cmd.Limiter.legacy.get, proto.Wire.limiterWValue(0, proto.Wire.LIMITER_GET_STATUS), 4);
     const st = Codec.decode(proto.Wire.LimiterStatus, raw);
     return { engaged: st.engaged !== 0, lookaheadSamples: st.lookaheadSamples, blockSamples: st.blockSamples, numOutputs: st.numOutputs };
   }
@@ -1196,7 +1195,7 @@ export class DspDevice {
   // with explicit length checks: a short or empty reply is meaningful here.
   async getRtaCaps(): Promise<Domain.RtaCaps> {
     const size = Codec.sizeOf(proto.Wire.RtaCaps);
-    const raw = await this.transport.ctrlIn(proto.WireCmd.RtaGetCaps.code, 0, size);
+    const raw = await this.transport.ctrlIn(proto.Cmd.RtaCaps.legacy.get, 0, size);
     if (raw.length < size) throw new Error(`RTA caps: short reply (${raw.length} B)`);
     return Codec.decode(proto.Wire.RtaCaps, raw);
   }
@@ -1210,7 +1209,7 @@ export class DspDevice {
     for (let chunk = 1; centres.length < maxBands; chunk++) {
       let raw: Uint8Array;
       try {
-        raw = await this.transport.ctrlIn(proto.WireCmd.RtaGetCaps.code, chunk, CHUNK_VALUES * 2);
+        raw = await this.transport.ctrlIn(proto.Cmd.RtaCaps.legacy.get, chunk, CHUNK_VALUES * 2);
       } catch (e) {
         if (centres.length === 0) throw e;
         break;
@@ -1223,7 +1222,7 @@ export class DspDevice {
   }
 
   async getRtaConfig(): Promise<Domain.RtaConfig> {
-    const c = await proto.readCmd(this.transport, proto.WireCmd.RtaGetConfig);
+    const c = await proto.readCmd(this.transport, proto.Cmd.RtaConfig);
     return { tap: c.tap, channelMask: c.channelMask, fftOrder: c.fftOrder, avgMs: c.avgMs, peakDecayDbS: c.peakDecayDbS, flags: c.flags };
   }
 
@@ -1231,7 +1230,7 @@ export class DspDevice {
   // (wrong version, unknown tap, empty mask, order out of range) is dropped
   // silently, so only a read-back shows whether it applied.
   async setRtaConfig(cfg: Domain.RtaConfig): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.RtaSetConfig, { version: Domain.RTA_CONFIG_VERSION, ...cfg });
+    return proto.writeCmd(this.transport, proto.Cmd.RtaConfig, { version: Domain.RTA_CONFIG_VERSION, ...cfg });
   }
 
   // Every live channel's band frame in one transfer (USB only), each carrying
@@ -1240,7 +1239,7 @@ export class DspDevice {
   // is an empty list.
   async getRtaBandsAll(): Promise<Domain.RtaBandFrameRaw[]> {
     const size = Codec.sizeOf(proto.Wire.RtaBandFrame);
-    const raw = await this.transport.ctrlIn(proto.WireCmd.RtaGetBandsAll.code, 0, this.hardware.outputCount * size);
+    const raw = await this.transport.ctrlIn(proto.Cmd.RtaBandsAll.legacy.get, 0, this.hardware.outputCount * size);
     const frames: Domain.RtaBandFrameRaw[] = [];
     for (let off = 0; off + size <= raw.length; off += size) {
       const frame = decodeRtaFrame(raw.subarray(off, off + size));
@@ -1251,7 +1250,7 @@ export class DspDevice {
 
   async getRtaBands(channel: number): Promise<Domain.RtaBandFrameRaw> {
     const size = Codec.sizeOf(proto.Wire.RtaBandFrame);
-    const raw = await this.transport.ctrlIn(proto.WireCmd.RtaGetBands.code, channel, size);
+    const raw = await this.transport.ctrlIn(proto.Cmd.RtaBands.legacy.get, channel, size);
     if (raw.length < size) throw new Error(`RTA bands: short reply (${raw.length} B)`);
     return decodeRtaFrame(raw);
   }
@@ -1259,7 +1258,7 @@ export class DspDevice {
   // Does not keep the analyser alive.
   async getRtaStatus(): Promise<Domain.RtaStatus> {
     const size = Codec.sizeOf(proto.Wire.RtaStatus);
-    const raw = await this.transport.ctrlIn(proto.WireCmd.RtaGetStatus.code, 0, size);
+    const raw = await this.transport.ctrlIn(proto.Cmd.RtaStatus.legacy.get, 0, size);
     if (raw.length < size) throw new Error(`RTA status: short reply (${raw.length} B)`);
     const { version: _v, ...st } = Codec.decode(proto.Wire.RtaStatus, raw);
     return st;
@@ -1269,43 +1268,43 @@ export class DspDevice {
   // channel remap (e.g. RP2040 PDM -> wire channel 6).
   async setBandBypass(channel: Domain.ChannelId, band: number, bypassed: boolean): Promise<void> {
     const wValue = (this.deviceChannel(channel) << 8) | (band & 0xFF);
-    return proto.writeCmd(this.transport, proto.WireCmd.SetBandBypass, bypassed, wValue);
+    return proto.writeCmd(this.transport, proto.Cmd.BandBypass, bypassed, wValue);
   }
 
   async getBandBypass(channel: Domain.ChannelId, band: number): Promise<boolean> {
     const wValue = (this.deviceChannel(channel) << 8) | (band & 0xFF);
-    return proto.readCmd(this.transport, proto.WireCmd.GetBandBypass, wValue);
+    return proto.readCmd(this.transport, proto.Cmd.BandBypass, wValue);
   }
 
   // User volume axis (separate from the master-volume limit).
   async setUserVolume(db: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetUserVolume, db);
+    return proto.writeCmd(this.transport, proto.Cmd.UserVolume, db);
   }
 
   async getUserVolume(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetUserVolume);
+    return proto.readCmd(this.transport, proto.Cmd.UserVolume);
   }
 
   async setUserMute(mute: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetUserMute, mute);
+    return proto.writeCmd(this.transport, proto.Cmd.UserMute, mute);
   }
 
   async getUserMute(): Promise<boolean> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetUserMute);
+    return proto.readCmd(this.transport, proto.Cmd.UserMute);
   }
 
   // Input source select (USB / S/PDIF).
   async setInputSource(source: Domain.AudioInputSource): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetInputSource, source);
+    return proto.writeCmd(this.transport, proto.Cmd.InputSource, source);
   }
 
   async getInputSource(): Promise<Domain.AudioInputSource> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetInputSource);
+    return proto.readCmd(this.transport, proto.Cmd.InputSource);
   }
 
   // Live S/PDIF-RX lock telemetry (no bulk equivalent).
   async getSpdifRxStatus(): Promise<Domain.SpdifRxStatus> {
-    const w = await proto.readCmd(this.transport, proto.WireCmd.GetSpdifRxStatus);
+    const w = await proto.readCmd(this.transport, proto.Cmd.SpdifRxStatus);
     return {
       state:        narrowSpdifInputState(w.state),
       inputSource:  narrowInputSource(w.inputSource),
@@ -1320,7 +1319,7 @@ export class DspDevice {
   // Raw 24-byte IEC-60958 channel-status block (no domain shape yet).
   async getSpdifRxChStatus(): Promise<Uint8Array> {
     return this.transport.ctrlIn(
-      proto.WireCmd.GetSpdifRxChStatus.code, 0, proto.Wire.SPDIF_RX_CH_STATUS_LEN,
+      proto.Cmd.SpdifRxChStatus.legacy.get, 0, proto.Wire.SPDIF_RX_CH_STATUS_LEN,
     );
   }
 
@@ -1330,52 +1329,52 @@ export class DspDevice {
   // status byte (mirrors setI2sRxPin).
   async setSpdifRxPin(gpio: number, instance = 0): Promise<Result<void, proto.PinConfigResult>> {
     const wValue = ((instance & 0xFF) << 8) | (gpio & 0xFF);
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetSpdifRxPin, wValue));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.SpdifRxPin, wValue));
   }
 
   async getSpdifRxPin(instance = 0): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetSpdifRxPin, instance & 0xFF);
+    return proto.readCmd(this.transport, proto.Cmd.SpdifRxPin, instance & 0xFF);
   }
 
   // Enable/disable a selectable S/PDIF input (instance 1..3; instance 0 is always on). wValue = (instance<<8)|enable.
   async setSpdifInputEnabled(instance: number, on: boolean): Promise<Result<void, proto.PinConfigResult>> {
     const wValue = ((instance & 0xFF) << 8) | (on ? 1 : 0);
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetSpdifInputEnable, wValue));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.SpdifInputEnable, wValue));
   }
 
   // { count, enableMask, pins } for every selectable S/PDIF input slot.
   async getSpdifInputConfig(): Promise<{ count: number; enableMask: number; pins: number[] }> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetSpdifInputConfig);
+    return proto.readCmd(this.transport, proto.Cmd.SpdifInputConfig);
   }
 
   // LG Sound Sync. Only `enabled` is host-configurable; status read returns the
   // full domain shape (present/volume/muted are runtime state).
   async setLgSoundSyncEnabled(enabled: boolean): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetLgSoundSyncEnabled, enabled);
+    return proto.writeCmd(this.transport, proto.Cmd.LgSoundSyncEnabled, enabled);
   }
 
   async getLgSoundSyncEnabled(): Promise<boolean> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetLgSoundSyncEnabled);
+    return proto.readCmd(this.transport, proto.Cmd.LgSoundSyncEnabled);
   }
 
   async getLgSoundSyncStatus(): Promise<Domain.LgSoundSync> {
-    const w = await proto.readCmd(this.transport, proto.WireCmd.GetLgSoundSyncStatus);
+    const w = await proto.readCmd(this.transport, proto.Cmd.LgSoundSyncStatus);
     return { enabled: w.enabled, present: w.present, volume: w.volume, muted: w.muted };
   }
 
   // DAC hardware-mute pin configuration.
   async setDacHwMute(cfg: Domain.DacHwMute): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetDacHwMute, cfg);
+    return proto.writeCmd(this.transport, proto.Cmd.DacHwMute, cfg);
   }
 
   async getDacHwMute(): Promise<Domain.DacHwMute> {
-    const w = await proto.readCmd(this.transport, proto.WireCmd.GetDacHwMute);
+    const w = await proto.readCmd(this.transport, proto.Cmd.DacHwMute);
     return { enabled: w.enabled, activeLow: w.activeLow, pin: w.pin, holdMs: w.holdMs, releaseMs: w.releaseMs };
   }
 
   // Pulse the DAC mute pin (~1s) for wiring verification. No payload.
   async testDacHwMute(): Promise<void> {
-    await proto.actionCmd(this.transport, proto.WireCmd.TestDacHwMute);
+    await proto.actionCmd(this.transport, proto.Act.TestDacHwMute);
   }
 
   // I2S-input surface. Multichannel variants: gate on
@@ -1384,12 +1383,12 @@ export class DspDevice {
   // The device is the rate authority while I2S input is active; the rate is
   // commanded, not detected. Accepted: 44100 / 48000 / 96000.
   async setInputRate(hz: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetInputRate, hz);
+    return proto.writeCmd(this.transport, proto.Cmd.InputRate, hz);
   }
 
   // {current pipeline rate, host-selected I2S input rate}, both Hz.
   async getInputRate(): Promise<{ currentHz: number; selectedHz: number }> {
-    const bytes = await this.transport.ctrlIn(proto.WireCmd.GetInputRate.code, 0, 8);
+    const bytes = await this.transport.ctrlIn(proto.Cmd.InputRateStatus.legacy.get, 0, 8);
     return {
       currentHz:  Codec.decodePadded(Codec.u32, bytes.subarray(0, 4)),
       selectedHz: Codec.decodePadded(Codec.u32, bytes.subarray(4, 8)),
@@ -1400,36 +1399,36 @@ export class DspDevice {
   // stereo input, RP2040 has only pair 0).
   async setI2sRxPin(pair: number, gpio: number): Promise<Result<void, proto.PinConfigResult>> {
     const wValue = ((pair & 0xFF) << 8) | (gpio & 0xFF);
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetI2sRxPin, wValue));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.I2sRxPin, wValue));
   }
 
   async getI2sRxPin(pair: number): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetI2sRxPin, pair & 0xFF);
+    return proto.readCmd(this.transport, proto.Cmd.I2sRxPin, pair & 0xFF);
   }
 
   // Active I2S input channel count (2/4/6/8). Raising the count re-validates
   // the newly-activated pairs' pins on the device; a clash returns PinInUse.
   async setI2sInputChannels(count: number): Promise<Result<void, proto.PinConfigResult>> {
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetI2sInputChannels, count & 0xFF));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.I2sInputChannels, count & 0xFF));
   }
 
   async getI2sInputChannels(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetI2sInputChannels);
+    return proto.readCmd(this.transport, proto.Cmd.I2sInputChannels);
   }
 
   // I2S slave-clock mode.
   // SET is deferred apply (firmware applies from the main loop), so a GET
   // right after a SET may still report the old mode.
   async setI2sClockMode(mode: number): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetI2sClockMode, mode & 0xFF);
+    return proto.writeCmd(this.transport, proto.Cmd.I2sClockMode, mode & 0xFF);
   }
 
   async getI2sClockMode(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetI2sClockMode);
+    return proto.readCmd(this.transport, proto.Cmd.I2sClockMode);
   }
 
   async getI2sSlaveStatus(): Promise<Domain.I2sSlaveStatus> {
-    const w = await proto.readCmd(this.transport, proto.WireCmd.GetI2sSlaveStatus);
+    const w = await proto.readCmd(this.transport, proto.Cmd.I2sSlaveStatus);
     return {
       state: Domain.narrowI2sSlaveClockState(w.state),
       clockMode: w.clockMode,
@@ -1448,11 +1447,11 @@ export class DspDevice {
   // raw platform vreg enum; 0xFF requests the mode's default voltage. An
   // invalid mode or an out-of-range vregSel STALLs the transfer.
   async setSysClock(mode: number, vregSel: number = Domain.SYS_CLOCK_VREG_DEFAULT): Promise<void> {
-    return proto.writeCmd(this.transport, proto.WireCmd.SetSysClock, { mode: mode & 0xFF, vregSel: vregSel & 0xFF });
+    return proto.writeCmd(this.transport, proto.Cmd.SysClock, { mode: mode & 0xFF, vregSel: vregSel & 0xFF });
   }
 
   async getSysClock(): Promise<Domain.SysClockStatus> {
-    const w = await proto.readCmd(this.transport, proto.WireCmd.GetSysClock);
+    const w = await proto.readCmd(this.transport, proto.Cmd.SysClockStatus);
     return {
       activeMode: Domain.narrowSysClockMode(w.activeMode),
       storedMode: Domain.narrowSysClockMode(w.storedMode),
@@ -1466,7 +1465,7 @@ export class DspDevice {
   // the opcode, so a rejected getOutputLatencyStatus() is the feature probe.
   async getOutputLatencyStatus(): Promise<Domain.OutputLatencyStatus> {
     const size = Codec.sizeOf(proto.Wire.OutputLatencyStatus);
-    const raw = await this.transport.ctrlIn(proto.WireCmd.OutputLatency.code, proto.Wire.OUTPUT_LATENCY_GET_STATUS, size);
+    const raw = await this.transport.ctrlIn(proto.Cmd.OutputLatency.legacy.get, proto.Wire.OUTPUT_LATENCY_GET_STATUS, size);
     // A short reply is not a status block; reject so the probe reads as unsupported.
     if (raw.length < size) throw new Error(`REQ_OUTPUT_LATENCY status reply too short (${raw.length} < ${size})`);
     const w = Codec.decode(proto.Wire.OutputLatencyStatus, raw);
@@ -1482,7 +1481,7 @@ export class DspDevice {
   async getOutputLatencyOptions(): Promise<Domain.OutputLatencyOption[]> {
     const size = Codec.sizeOf(proto.Wire.OutputLatencyOption);
     const raw = await this.transport.ctrlIn(
-      proto.WireCmd.OutputLatency.code, proto.Wire.OUTPUT_LATENCY_GET_OPTIONS, EP0_MAX_PACKET,
+      proto.Cmd.OutputLatency.legacy.get, proto.Wire.OUTPUT_LATENCY_GET_OPTIONS, EP0_MAX_PACKET,
     );
     const out: Domain.OutputLatencyOption[] = [];
     for (let off = 0; off + size <= raw.length; off += size) {
@@ -1499,7 +1498,7 @@ export class DspDevice {
   // Deferred apply (flash write + muted output restart). Over USB an unknown
   // id is ACKed and ignored; re-sending the stored id is a no-op.
   async setOutputLatency(id: number): Promise<void> {
-    return this.transport.ctrlOut(proto.WireCmd.OutputLatency.code, 0, Codec.encode(Codec.u8, id & 0xFF));
+    return this.transport.ctrlOut(proto.Cmd.OutputLatency.legacy.set, 0, Codec.encode(Codec.u8, id & 0xFF));
   }
 
   // Input source names (0x54/0x55). Firmware without the feature answers the
@@ -1507,21 +1506,21 @@ export class DspDevice {
   // 32-byte reply counts as support.
   async probeInputSourceNames(): Promise<boolean> {
     this.#inputSourceNamesSupported = false;
-    this.#inputSourceNamesSupported = await this.#probeName(proto.WireCmd.GetInputSourceName.code, Domain.AudioInputSource.Usb);
+    this.#inputSourceNamesSupported = await this.#probeName(proto.Cmd.InputSourceName.legacy.get, Domain.AudioInputSource.Usb);
     return this.#inputSourceNamesSupported;
   }
 
   get inputSourceNamesSupported(): boolean { return this.#inputSourceNamesSupported; }
 
   async getInputSourceName(source: number): Promise<string> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetInputSourceName, source);
+    return proto.readCmd(this.transport, proto.Cmd.InputSourceName, source);
   }
 
   // Resolves to the name as stored (sanitized, at most 31 characters).
   async setInputSourceName(source: number, name: string): Promise<string> {
     if (!this.#inputSourceNamesSupported) throw new Error('input source names unsupported');
     const clean = Domain.sanitizeDeviceName(name);
-    await proto.writeCmd(this.transport, proto.WireCmd.SetInputSourceName, clean, source);
+    await proto.writeCmd(this.transport, proto.Cmd.InputSourceName, clean, source);
     return clean;
   }
 
@@ -1529,20 +1528,20 @@ export class DspDevice {
   // names can still STALL it and older firmware answers 1 byte.
   async probeDeviceName(): Promise<boolean> {
     this.#deviceNameSupported = false;
-    this.#deviceNameSupported = await this.#probeName(proto.WireCmd.GetDeviceName.code, 0);
+    this.#deviceNameSupported = await this.#probeName(proto.Cmd.DeviceName.legacy.get, 0);
     return this.#deviceNameSupported;
   }
 
   get deviceNameSupported(): boolean { return this.#deviceNameSupported; }
 
   async getDeviceName(): Promise<string> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetDeviceName, 0);
+    return proto.readCmd(this.transport, proto.Cmd.DeviceName, 0);
   }
 
   async setDeviceName(name: string): Promise<string> {
     if (!this.#deviceNameSupported) throw new Error('device name unsupported');
     const clean = Domain.sanitizeDeviceName(name);
-    await proto.writeCmd(this.transport, proto.WireCmd.SetDeviceName, clean, 0);
+    await proto.writeCmd(this.transport, proto.Cmd.DeviceName, clean, 0);
     return clean;
   }
 
@@ -1578,11 +1577,11 @@ export class DspDevice {
   // BCK/LRCLK pin-sharing mode: 0 = unified (master+slave share one pair),
   // 1 = split (master + slave each get their own BCK/LRCLK pair).
   async setI2sClockPinMode(mode: number): Promise<Result<void, proto.PinConfigResult>> {
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetI2sClockPinMode, mode & 0xFF));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.I2sClockPinMode, mode & 0xFF));
   }
 
   async getI2sClockPinMode(): Promise<number> {
-    return proto.actionCmd(this.transport, proto.WireCmd.GetI2sClockPinMode, 0);
+    return proto.readByte(this.transport, proto.Cmd.I2sClockPinMode, 0);
   }
 
   // ADAT lightpipe bulk output (RP2350 only; gate on
@@ -1590,24 +1589,24 @@ export class DspDevice {
   // value, response is a PinConfigResult status byte. Enabling requires a
   // valid pin.
   async setAdatEnable(enabled: boolean): Promise<Result<void, proto.PinConfigResult>> {
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetAdatEnable, enabled ? 1 : 0));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.AdatEnable, enabled ? 1 : 0));
   }
 
   async getAdatEnable(): Promise<boolean> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetAdatEnable);
+    return proto.readCmd(this.transport, proto.Cmd.AdatEnable);
   }
 
   // 0xFF (Wire.Const.PIN_RESET_TO_DEFAULT) resets to the platform default (GPIO 12).
   async setAdatPin(pin: number): Promise<Result<void, proto.PinConfigResult>> {
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetAdatPin, pin & 0xFF));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.AdatPin, pin & 0xFF));
   }
 
   async getAdatPin(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetAdatPin);
+    return proto.readCmd(this.transport, proto.Cmd.AdatPin);
   }
 
   async getAdatStatus(): Promise<Domain.AdatOutputStatus> {
-    const w = await proto.readCmd(this.transport, proto.WireCmd.GetAdatStatus);
+    const w = await proto.readCmd(this.transport, proto.Cmd.AdatStatus);
     return {
       enabled: w.enabled,
       active: w.active,
@@ -1625,33 +1624,33 @@ export class DspDevice {
   // ADAT is the active input source. Clock mode SET is accepted on both
   // platforms (presets round-trip) with a deferred device-side apply.
   async setAdatInputEnable(enabled: boolean): Promise<Result<void, proto.PinConfigResult>> {
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetAdatInputEnable, enabled ? 1 : 0));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.AdatInputEnable, enabled ? 1 : 0));
   }
 
   async getAdatInputEnable(): Promise<boolean> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetAdatInputEnable);
+    return proto.readCmd(this.transport, proto.Cmd.AdatInputEnable);
   }
 
   // 0xFF (Wire.Const.PIN_RESET_TO_DEFAULT) clears the stored pin instead of
   // resetting to a default -- there is no platform default GPIO for ADAT input.
   async setAdatInputPin(pin: number): Promise<Result<void, proto.PinConfigResult>> {
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetAdatInputPin, pin & 0xFF));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.AdatInputPin, pin & 0xFF));
   }
 
   async getAdatInputPin(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetAdatInputPin);
+    return proto.readCmd(this.transport, proto.Cmd.AdatInputPin);
   }
 
   async setAdatInputClockMode(mode: number): Promise<Result<void, proto.PinConfigResult>> {
-    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SetAdatInputClockMode, mode & 0xFF));
+    return proto.pinConfigResultFromByte(await proto.actionCmd(this.transport, proto.Act.AdatInputClockMode, mode & 0xFF));
   }
 
   async getAdatInputClockMode(): Promise<number> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetAdatInputClockMode);
+    return proto.readCmd(this.transport, proto.Cmd.AdatInputClockMode);
   }
 
   async getAdatInputStatus(): Promise<Domain.AdatInputStatus> {
-    const w = await proto.readCmd(this.transport, proto.WireCmd.GetAdatInputStatus);
+    const w = await proto.readCmd(this.transport, proto.Cmd.AdatInputStatus);
     return {
       state: Domain.narrowAdatInputLockState(w.state),
       clockMode: w.clockMode,
@@ -1670,7 +1669,7 @@ export class DspDevice {
   // External control interfaces: a UART control transport and an I2C target, configured over 0xF5-0xF9.
 
   async getUartControlConfig(): Promise<Domain.UartControlConfig> {
-    const w = await proto.readCmd(this.transport, proto.WireCmd.GetUartConfig);
+    const w = await proto.readCmd(this.transport, proto.Cmd.UartConfig);
     return { enabled: w.enabled, txPin: w.txPin, rxPin: w.rxPin, notifyEnabled: w.notifyEnable, baud: w.baud };
   }
 
@@ -1682,16 +1681,16 @@ export class DspDevice {
     cfg: Domain.UartControlConfig,
   ): Promise<{ result: Result<void, proto.PinConfigResult>; status: Domain.ControlIfaceStatus }> {
     return this.transport.exclusive(async (raw) => {
-      await proto.writeCmd(raw, proto.WireCmd.SetUartConfig, {
+      await proto.writeCmd(raw, proto.Cmd.UartConfig, {
         enabled: cfg.enabled, txPin: cfg.txPin, rxPin: cfg.rxPin, notifyEnable: cfg.notifyEnabled, baud: cfg.baud,
       });
-      const status = ctrlIfaceStatusFromWire(await proto.readCmd(raw, proto.WireCmd.GetCtrlIfaceStatus));
+      const status = ctrlIfaceStatusFromWire(await proto.readCmd(raw, proto.Cmd.CtrlIfaceStatus));
       return { result: proto.pinConfigResultFromByte(status.uartLastStatus), status };
     });
   }
 
   async getI2cControlConfig(): Promise<Domain.I2cControlConfig> {
-    const w = await proto.readCmd(this.transport, proto.WireCmd.GetI2cConfig);
+    const w = await proto.readCmd(this.transport, proto.Cmd.I2cConfig);
     return { enabled: w.enabled, sdaPin: w.sdaPin, sclPin: w.sclPin, address: w.address };
   }
 
@@ -1701,16 +1700,16 @@ export class DspDevice {
     cfg: Domain.I2cControlConfig,
   ): Promise<{ result: Result<void, proto.PinConfigResult>; status: Domain.ControlIfaceStatus }> {
     return this.transport.exclusive(async (raw) => {
-      await proto.writeCmd(raw, proto.WireCmd.SetI2cConfig, {
+      await proto.writeCmd(raw, proto.Cmd.I2cConfig, {
         enabled: cfg.enabled, sdaPin: cfg.sdaPin, sclPin: cfg.sclPin, address: cfg.address,
       });
-      const status = ctrlIfaceStatusFromWire(await proto.readCmd(raw, proto.WireCmd.GetCtrlIfaceStatus));
+      const status = ctrlIfaceStatusFromWire(await proto.readCmd(raw, proto.Cmd.CtrlIfaceStatus));
       return { result: proto.pinConfigResultFromByte(status.i2cLastStatus), status };
     });
   }
 
   async getControlIfaceStatus(): Promise<Domain.ControlIfaceStatus> {
-    return ctrlIfaceStatusFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCtrlIfaceStatus));
+    return ctrlIfaceStatusFromWire(await proto.readCmd(this.transport, proto.Cmd.CtrlIfaceStatus));
   }
 
   // Control Surfaces: physical controls/indicators on user GPIOs, configured over 0x84-0x87,
@@ -1726,7 +1725,7 @@ export class DspDevice {
     const CS_MAX_KNOWN_TYPES = 16;
     const prefixSize = Codec.sizeOf(proto.Wire.CsCapsPrefix);
     const maxBodySize = Codec.sizeOf(proto.Wire.CsTypeDesc) * CS_MAX_KNOWN_TYPES + 4; // + tail
-    const raw = await this.transport.ctrlIn(proto.WireCmd.GetCsCaps.code, 0xFFFF, prefixSize + maxBodySize);
+    const raw = await this.transport.ctrlIn(proto.Cmd.CsCaps.legacy.get, 0xFFFF, prefixSize + maxBodySize);
     const prefix = Codec.decodePadded(proto.Wire.CsCapsPrefix, raw);
     // Beyond the request window the tail offset (4 + 4*type_count) is
     // unreachable; refuse rather than misparse.
@@ -1744,7 +1743,7 @@ export class DspDevice {
     for (let n = 0; n < prefix.nounCount; n++) {
       const d = Codec.decodePadded(
         proto.Wire.CsNounDesc,
-        await this.transport.ctrlIn(proto.WireCmd.GetCsCaps.code, n, Codec.sizeOf(proto.Wire.CsNounDesc)),
+        await this.transport.ctrlIn(proto.Cmd.CsCaps.legacy.get, n, Codec.sizeOf(proto.Wire.CsNounDesc)),
       );
       nouns.push({
         kind: d.kind as Domain.CsKind, enumCount: d.enumCount, actions: d.actions,
@@ -1763,7 +1762,7 @@ export class DspDevice {
   }
 
   async getCsBinding(slot: number): Promise<Domain.CsBinding> {
-    return csBindingFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCsBinding, slot & 0xFF));
+    return csBindingFromWire(await proto.readCmd(this.transport, proto.Cmd.CsBinding, slot & 0xFF));
   }
 
   async getCsStatus(): Promise<Domain.CsStatus> {
@@ -1779,7 +1778,7 @@ export class DspDevice {
     slot: number, b: Domain.CsBinding,
   ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
     return this.transport.exclusive(async (raw) => {
-      await proto.writeCmd(raw, proto.WireCmd.SetCsBinding, {
+      await proto.writeCmd(raw, proto.Cmd.CsBinding, {
         type: b.type, noun: b.noun, action: b.action, flags: b.flags,
         gpio0: b.gpio0, gpio1: b.gpio1 ?? Domain.CS_GPIO_UNUSED,
         event: b.event, target: b.target, index: b.index,
@@ -1797,7 +1796,7 @@ export class DspDevice {
   }
 
   async getCsName(slot: number): Promise<string> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetCsName, slot & 0xFF);
+    return proto.readCmd(this.transport, proto.Cmd.CsName, slot & 0xFF);
   }
 
   // Slot names are metadata independent of the binding; the SET is a
@@ -1806,7 +1805,7 @@ export class DspDevice {
     slot: number, name: string,
   ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
     return this.transport.exclusive(async (raw) => {
-      await proto.writeCmd(raw, proto.WireCmd.SetCsName, utf8Truncate(name, Domain.CS_NAME_MAX_LEN), slot & 0xFF);
+      await proto.writeCmd(raw, proto.Cmd.CsName, utf8Truncate(name, Domain.CS_NAME_MAX_LEN), slot & 0xFF);
       return pollCsStatus(raw, slot);
     });
   }
@@ -1821,7 +1820,7 @@ export class DspDevice {
   async csSave(): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
     return this.transport.exclusive(async (raw) => {
       try {
-        await proto.actionCmd(raw, proto.WireCmd.CsSave);
+        await proto.actionCmd(raw, proto.Act.CsSave);
       } catch {
         const status = await readCsStatus(raw);
         return { result: Result.fail<number>(proto.CsStatusCode.Busy, 'A save or revert is already in progress'), status };
@@ -1834,7 +1833,7 @@ export class DspDevice {
   async csRevert(): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
     return this.transport.exclusive(async (raw) => {
       try {
-        await proto.actionCmd(raw, proto.WireCmd.CsRevert);
+        await proto.actionCmd(raw, proto.Act.CsRevert);
       } catch {
         const status = await readCsStatus(raw);
         return { result: Result.fail<number>(proto.CsStatusCode.Busy, 'A save or revert is already in progress'), status };
@@ -1846,14 +1845,14 @@ export class DspDevice {
   // IR command sub-slots (0x8D/0x8E, caps v3): same deferred-SET model as
   // setCsBinding, reported in last_slot as 0x80 | sub-slot.
   async getCsIrCmd(sub: number): Promise<Domain.CsIrCommand> {
-    return csIrCommandFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCsIrCmd, sub & 0xFF));
+    return csIrCommandFromWire(await proto.readCmd(this.transport, proto.Cmd.CsIrCmd, sub & 0xFF));
   }
 
   async setCsIrCmd(
     sub: number, cmd: Domain.CsIrCommand,
   ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
     return this.transport.exclusive(async (raw) => {
-      await proto.writeCmd(raw, proto.WireCmd.SetCsIrCmd, {
+      await proto.writeCmd(raw, proto.Cmd.CsIrCmd, {
         noun: cmd.noun, action: cmd.action, flags: cmd.flags, target: cmd.target, index: cmd.index,
         protocol: cmd.protocol, value: cmd.value, step: cmd.step, code: cmd.code,
       }, sub & 0xFF);
@@ -1871,7 +1870,7 @@ export class DspDevice {
   // a host that missed the notification).
   async csIrLearnArm(): Promise<Result<void, number>> {
     try {
-      await proto.actionCmd(this.transport, proto.WireCmd.CsIrLearn, 1);
+      await proto.actionCmd(this.transport, proto.Act.CsIrLearn, 1);
       return Result.ok();
     } catch {
       const status = await readCsStatus(this.transport);
@@ -1883,12 +1882,12 @@ export class DspDevice {
   }
 
   async csIrLearnCancel(): Promise<void> {
-    await proto.actionCmd(this.transport, proto.WireCmd.CsIrLearn, 0);
+    await proto.actionCmd(this.transport, proto.Act.CsIrLearn, 0);
   }
 
   async csIrLearnResult(): Promise<Domain.CsIrLearnResult> {
     const size = Codec.sizeOf(proto.Wire.CsIrLearnResult);
-    const w = Codec.decodePadded(proto.Wire.CsIrLearnResult, await this.transport.ctrlIn(proto.WireCmd.CsIrLearn.code, 2, size));
+    const w = Codec.decodePadded(proto.Wire.CsIrLearnResult, await this.transport.ctrlIn(proto.Act.CsIrLearn.legacy.code, 2, size));
     return { state: w.state, protocol: w.protocol as Domain.CsIrProto, code: w.code };
   }
 
@@ -1896,14 +1895,14 @@ export class DspDevice {
   // firmware; callers gate on caps.maxGroups > 0). Same deferred-SET model as
   // setCsBinding, reported in last_slot as 0x40 | group.
   async getCsGroup(idx: number): Promise<Domain.CsGroup> {
-    return proto.readCmd(this.transport, proto.WireCmd.GetCsGroup, idx & 0xFF);
+    return proto.readCmd(this.transport, proto.Cmd.CsGroup, idx & 0xFF);
   }
 
   async setCsGroup(
     idx: number, g: Domain.CsGroup,
   ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
     return this.transport.exclusive(async (raw) => {
-      await proto.writeCmd(raw, proto.WireCmd.SetCsGroup, {
+      await proto.writeCmd(raw, proto.Cmd.CsGroup, {
         targetKind: g.targetKind, memberMask: g.memberMask,
         name: utf8Truncate(g.name, Domain.CS_NAME_MAX_LEN),
       }, idx & 0xFF);
@@ -1917,7 +1916,7 @@ export class DspDevice {
   }
 
   async getCsExtStatus(): Promise<Domain.CsExtStatus> {
-    const w = await proto.readCmd(this.transport, proto.WireCmd.GetCsExtStatus);
+    const w = await proto.readCmd(this.transport, proto.Cmd.CsExtStatus);
     return {
       maxGroups: w.maxGroups, maxMacros: w.maxMacros, maxMacroSteps: w.maxMacroSteps,
       macroRunning: w.macroRunning === 0xFF ? null : w.macroRunning,
@@ -1930,7 +1929,7 @@ export class DspDevice {
   // model, reported in last_slot as 0x60 | macro; the step's wValue packs
   // (step << 8) | macro.
   async getCsMacro(idx: number): Promise<Domain.CsMacro> {
-    return csMacroFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCsMacro, idx & 0xFF));
+    return csMacroFromWire(await proto.readCmd(this.transport, proto.Cmd.CsMacro, idx & 0xFF));
   }
 
   // Writes steps 0..7 first, then the header last, as ONE exclusive unit: a
@@ -1945,14 +1944,14 @@ export class DspDevice {
     return this.transport.exclusive(async (raw) => {
       for (let step = 0; step < Domain.CS_MAX_MACRO_STEPS; step++) {
         const s = m.steps[step] ?? Domain.EMPTY_CS_MACRO_STEP;
-        await proto.writeCmd(raw, proto.WireCmd.SetCsMacroStep, {
+        await proto.writeCmd(raw, proto.Cmd.CsMacroStep, {
           noun: s.noun, action: s.action, flags: s.flags, target: s.target, index: s.index,
           value: s.value, step: s.step, preDelay: s.preDelay,
         }, ((step & 0xFF) << 8) | (idx & 0xFF));
         const stepResult = await pollCsStatus(raw, 0x60 | (idx & 0xFF));
         if (!stepResult.result.ok) return stepResult;
       }
-      await proto.writeCmd(raw, proto.WireCmd.SetCsMacro, {
+      await proto.writeCmd(raw, proto.Cmd.CsMacroHeader, {
         name: utf8Truncate(m.name, Domain.CS_NAME_MAX_LEN), stepCount: m.stepCount,
       }, idx & 0xFF);
       return pollCsStatus(raw, 0x60 | (idx & 0xFF));
@@ -1974,7 +1973,7 @@ export class DspDevice {
   // that case is returned as BUSY.
   async csMacroFire(idx: number): Promise<Result<void, number>> {
     try {
-      await proto.actionCmd(this.transport, proto.WireCmd.CsMacroFire, idx & 0xFF);
+      await proto.actionCmd(this.transport, proto.Act.CsMacroFire, idx & 0xFF);
       return Result.ok();
     } catch {
       const status = await readCsStatus(this.transport);
@@ -1986,14 +1985,14 @@ export class DspDevice {
   }
 
   async csMacroCancel(): Promise<void> {
-    await proto.actionCmd(this.transport, proto.WireCmd.CsMacroFire, 0xFFFF);
+    await proto.actionCmd(this.transport, proto.Act.CsMacroFire, 0xFFFF);
   }
 
   // I2C displays (0x27-0x2B, caps v10+ only -- callers gate on
   // CsField.displaysAvailable). Cfg/page SETs share the deferred-apply model
   // above, reported in last_slot as 0x50 (cfg) / 0x50 | page.
   async getCsDisplayCfg(): Promise<{ limits: Domain.CsDisplayLimits; cfg: Domain.CsDisplayCfg }> {
-    const w = await proto.readCmd(this.transport, proto.WireCmd.GetCsDisplayCfg);
+    const w = await proto.readCmd(this.transport, proto.Cmd.CsDisplayCfgResponse);
     return {
       limits: { maxPages: w.maxPages, modelCount: w.modelCount },
       cfg: {
@@ -2008,7 +2007,7 @@ export class DspDevice {
     cfg: Domain.CsDisplayCfg,
   ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
     return this.transport.exclusive(async (raw) => {
-      await proto.writeCmd(raw, proto.WireCmd.SetCsDisplayCfg, {
+      await proto.writeCmd(raw, proto.Cmd.CsDisplayCfg, {
         mode: cfg.mode, homePage: cfg.homePage, dwell: cfg.dwell, overlayHold: cfg.overlayHold,
         brightness: cfg.brightness, flags: cfg.flags, editTimeout: cfg.editTimeout,
       });
@@ -2017,7 +2016,7 @@ export class DspDevice {
   }
 
   async getCsDisplayPage(idx: number): Promise<Domain.CsDisplayPage> {
-    const w = await proto.readCmd(this.transport, proto.WireCmd.GetCsDisplayPage, idx & 0xFF);
+    const w = await proto.readCmd(this.transport, proto.Cmd.CsDisplayPage, idx & 0xFF);
     return { noun: w.noun as Domain.CsNoun, target: w.target, index: w.index, flags: w.flags };
   }
 
@@ -2025,7 +2024,7 @@ export class DspDevice {
     idx: number, p: Domain.CsDisplayPage,
   ): Promise<{ result: Result<void, number>; status: Domain.CsStatus }> {
     return this.transport.exclusive(async (raw) => {
-      await proto.writeCmd(raw, proto.WireCmd.SetCsDisplayPage, {
+      await proto.writeCmd(raw, proto.Cmd.CsDisplayPage, {
         noun: p.noun, target: p.target, index: p.index, flags: p.flags,
       }, idx & 0xFF);
       return pollCsStatus(raw, 0x50 | (idx & 0xFF));
@@ -2038,7 +2037,7 @@ export class DspDevice {
   }
 
   async getCsDisplayStatus(): Promise<Domain.CsDisplayStatus> {
-    return csDisplayStatusFromWire(await proto.readCmd(this.transport, proto.WireCmd.GetCsDisplayStatus));
+    return csDisplayStatusFromWire(await proto.readCmd(this.transport, proto.Cmd.CsDisplayStatus));
   }
 
   // Crossover bands (output channels only) ride the EQ verbs at wire
@@ -2059,7 +2058,7 @@ export class DspDevice {
   // BCK/MCK, S/PDIF RX pin) to the directory's device-global block. Accepted
   // in both output-config modes, dormant in WITH_PRESET.
   async saveOutputConfig(): Promise<Result<void, proto.PresetResult>> {
-    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.WireCmd.SaveOutputConfig));
+    return proto.presetResultFromByte(await proto.actionCmd(this.transport, proto.Act.SaveOutputConfig));
   }
 
   // Reboot into the UF2 bootloader (BOOTSEL mode) for firmware update.
@@ -2067,6 +2066,6 @@ export class DspDevice {
   // reset_usb_boot(). The device disconnects mid-flight; the transfer may
   // throw. The caller is expected to treat both outcomes as normal.
   async enterBootloader(): Promise<void> {
-    await proto.actionCmd(this.transport, proto.WireCmd.EnterBootloader);
+    await proto.actionCmd(this.transport, proto.Act.EnterBootloader);
   }
 }

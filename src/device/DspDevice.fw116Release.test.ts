@@ -71,7 +71,7 @@ describe('output latency (0x03)', () => {
       on: (e, l) => inner.on(e, l),
       ctrlIn: async (req, value, length) => {
         const r = await inner.ctrlIn(req, value, length);
-        return req === Protocol.WireCmd.OutputLatency.code && value === Protocol.Wire.OUTPUT_LATENCY_GET_STATUS ? r.slice(0, 4) : r;
+        return req === Protocol.Cmd.OutputLatency.legacy.get && value === Protocol.Wire.OUTPUT_LATENCY_GET_STATUS ? r.slice(0, 4) : r;
       },
       ctrlOut: (req, value, data) => inner.ctrlOut(req, value, data),
     });
@@ -125,7 +125,7 @@ describe('background CS revert', () => {
       on: (e, l) => inner.on(e, l),
       ctrlIn: async (req, value, length) => {
         const r = await inner.ctrlIn(req, value, length);
-        if (req === Protocol.WireCmd.GetCsStatus.code && slowReads-- > 0) {
+        if (req === Protocol.Cmd.CsStatus.legacy.get && slowReads-- > 0) {
           const out = r.slice();
           out[0] = Protocol.CsStatusCode.Pending;
           out[1] = 0xFF;
@@ -148,7 +148,7 @@ describe('background CS revert', () => {
   it('macro fire and IR learn arm during a revert report BUSY, not a bad slot / missing IR', async () => {
     const raw = new MockTransport({ platform: 'rp2350', fw116Release: true });
     const d = await DspDevice.create(raw);
-    await Protocol.actionCmd(raw, Protocol.WireCmd.CsRevert);
+    await Protocol.actionCmd(raw, Protocol.Act.CsRevert);
     const fire = await d.csMacroFire(0);
     expect(fire.ok).toBe(false);
     if (!fire.ok) expect(fire.code).toBe(Protocol.CsStatusCode.Busy);

@@ -4,7 +4,7 @@
 // failure degrades to a name + byte-count line.
 
 import { Codec, type BinCodec } from '@/utils';
-import { WireCmd } from './wireCmd';
+import { Cmd, Act } from './commands';
 import { PAGED_PROTOCOL_INFO } from './protocolInfo';
 import { pagedCommand } from './paged';
 import * as Wire from './wireTypes';
@@ -19,11 +19,11 @@ export function wireMonitorEnabled(): boolean {
 }
 
 // Bulk transfers carry the whole param block; we render version + size only.
-const BULK_READ = WireCmd.GetAllParams.code;   // 0xA0
-const BULK_WRITE = WireCmd.SetAllParams.code;  // 0xA1
+const BULK_READ = Cmd.AllParams.legacy.get;   // 0xA0
+const BULK_WRITE = Cmd.AllParams.legacy.set;  // 0xA1
 // Chunked bulk access (fw 1.1.5+): wValue is the byte offset, worth showing.
-const BULK_READ_CHUNK = WireCmd.GetAllParamsChunk.code;   // 0xA2
-const BULK_WRITE_CHUNK = WireCmd.SetAllParamsChunk.code;  // 0xA3
+const BULK_READ_CHUNK = Cmd.AllParamsChunk.legacy.get;   // 0xA2
+const BULK_WRITE_CHUNK = Cmd.AllParamsChunk.legacy.set;  // 0xA3
 
 // Derives the bulk wire version from control traffic that carries the
 // header's first byte (formatVersion): a full bulk transfer always does, and
@@ -41,11 +41,17 @@ interface CmdInfo {
   codec?: BinCodec<unknown>;
 }
 
-// code ->{name, codec?} reverse map derived from WireCmd.
+// code ->{name, codec?} reverse map derived from Cmd and Act. An Act that
+// shares its name with a Cmd is the SET side of that pin/config pair.
 const CMD_BY_CODE = new Map<number, CmdInfo>();
-for (const [name, entry] of Object.entries(WireCmd)) {
+for (const [name, entry] of Object.entries(Cmd)) {
   const codec = 'codec' in entry ? (entry.codec as BinCodec<unknown>) : undefined;
-  CMD_BY_CODE.set(entry.code, { name, codec });
+  const { get, set } = entry.legacy as { get?: number; set?: number };
+  if (get !== undefined) CMD_BY_CODE.set(get, { name, codec });
+  if (set !== undefined) CMD_BY_CODE.set(set, { name, codec });
+}
+for (const [name, entry] of Object.entries(Act)) {
+  CMD_BY_CODE.set(entry.legacy.code, { name: name in Cmd ? `Set${name}` : name });
 }
 CMD_BY_CODE.set(PAGED_PROTOCOL_INFO, { name: 'PROTOCOL_INFO probe' });
 
@@ -206,7 +212,7 @@ export function formatDeviceInfo(info: DeviceInfoLike): string[] {
 
 // Telemetry commands polled continuously; logged at debug level so they don't
 // bury the interesting traffic (everything else stays at info).
-const POLL_CODES = new Set<number>([WireCmd.GetStatus.code, WireCmd.GetBufferStats.code]);
+const POLL_CODES = new Set<number>([Cmd.Status.legacy.get, Cmd.BufferStats.legacy.get]);
 
 export function isPollCommand(cmd: number): boolean {
   return POLL_CODES.has(cmd);
