@@ -301,6 +301,31 @@ describe('diffSnapshots — tube + limiter', () => {
   });
 });
 
+describe('diffSnapshots — upmixer v2 + spatializer', () => {
+  it('detects a route edit in either profile and applies it', () => {
+    const a = makeSnapshot();
+    const b = structuredClone(a);
+    b.upmix2.p1Ext.routes[2] = { outMask: 0b100, trimQ1: -6, flags: 1 };
+    const changes = diffSnapshots(a, b);
+    expect(changes).toEqual([{ kind: 'upmix2', value: b.upmix2 }]);
+    changes.forEach((c) => applyChange(c, a));
+    expect(a.upmix2.p1Ext.routes[2]).toEqual({ outMask: 0b100, trimQ1: -6, flags: 1 });
+    expect(diffSnapshots(a, b)).toEqual([]);
+  });
+
+  it('detects a spatializer edit, ignores sub-tolerance drift, and applies it', () => {
+    const a = makeSnapshot();
+    const b = structuredClone(a);
+    b.spatial.widthPct += DIFF_TOLERANCE.gain / 2;
+    expect(diffSnapshots(a, b)).toEqual([]);
+    b.spatial = { ...b.spatial, enabled: true, mode: 1 };
+    const changes = diffSnapshots(a, b);
+    expect(changes).toEqual([{ kind: 'spatial', value: b.spatial }]);
+    changes.forEach((c) => applyChange(c, a));
+    expect(a.spatial).toMatchObject({ enabled: true, mode: 1 });
+  });
+});
+
 describe('diffSnapshots — i2s + output pins', () => {
   it('emits no i2s/pins change for identical snapshots', () => {
     const a = makeSnapshot((b) => { b.numPinOutputs = 2; b.pins[0] = 6; b.pins[1] = 7; });

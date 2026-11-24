@@ -3,10 +3,13 @@ import { presetsDirty, resetBoundary, askBoundary, resolveBoundary } from './pre
 import { activeSession, dispatch, mintConnId, resetAppState } from './appState.svelte';
 import { makeReadySession } from './makeSession.svelte';
 import { OutputConfigMode, type DspSnapshot } from '@/domain';
+import { defaultBulkParams } from '@/protocol';
 
 const liveMirror = () => activeSession()!.mirror;
 const ps = () => activeSession()!.presets;
 const dirty = () => presetsDirty(activeSession()!);
+
+const sections = defaultBulkParams({ platformId: 1, numCh: 17, numOut: 9 });
 
 function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
   return {
@@ -30,6 +33,8 @@ function mkSnap(overrides: Partial<DspSnapshot> = {}): DspSnapshot {
       xfmrDamping: 2, xfmrResHz: 95, mixPct: 100, trimDb: 0,
     },
     limiter: Array.from({ length: 9 }, () => ({ enabled: false, linkGroup: 0, thresholdDb: -1, releaseMs: 100 })),
+    upmix2: sections.upmix2,
+    spatial: sections.spatial,
     upmix: {
       enabled: false, centerMode: 1, surroundMode: 2,
       strengthPct: 100, centerWidthPct: 25, corrThresholdPct: 30,

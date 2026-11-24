@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { matrixRows, upmixParkingStatus, type InputSlot, type OutputSlot, type RouteModel } from '@/domain';
+  import { matrixRows, upmixParkingFor, upmixRowContext, type InputSlot, type OutputSlot, type RouteModel } from '@/domain';
   import { selectChannel, settings } from '@/state';
   import { chShade } from '@/styles/palette';
   import { getSession } from '@/components/sessionContext';
@@ -14,11 +14,7 @@
   const upmixOn = $derived(features.upmix && snap?.upmix ? snap.upmix : null);
 
   const cols = $derived(
-    matrixRows(
-      snap,
-      s.telemetry.activeInputChannels,
-      upmixOn ? { enabled: upmixOn.enabled, surroundMode: upmixOn.surroundMode } : null,
-    ).map((r) => ({
+    matrixRows(snap, s.telemetry.activeInputChannels, upmixRowContext(snap, features)).map((r) => ({
       input: r.inputIndex,
       id: r.inputId,
       label: r.label,
@@ -43,8 +39,15 @@
 
   const caption = $derived.by(() => {
     if (!upmixOn) return 'outputs as rows · inputs as columns · click a cell to edit';
-    const st = upmixParkingStatus(upmixOn.enabled, s.telemetry.activeInputChannels, s.telemetry.info?.sampleRateHz ?? null);
-    return `upmix ${st === 'active' ? 'active' : `parked — ${st}`} · click a cell to edit`;
+    const st = upmixParkingFor({
+      upmixRoutes: features.upmixRoutes,
+      reported: s.telemetry.upmixStatus?.parkedReason ?? null,
+      enabled: upmixOn.enabled,
+      activeInputChannels: s.telemetry.activeInputChannels,
+      sampleRateHz: s.telemetry.info?.sampleRateHz ?? null,
+    });
+    const label = st === 'active' ? 'active' : st === 'unknown' ? '—' : `parked — ${st}`;
+    return `upmix ${label} · click a cell to edit`;
   });
 
   let host = $state<HTMLElement | null>(null);

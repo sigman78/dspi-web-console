@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matrixColumns, matrixRows, outputChannelsWithIndex, subharmReservePlan } from './mixerView';
+import { matrixColumns, matrixRows, outputChannelsWithIndex, subharmReservePlan, upmixRowContext } from './mixerView';
 import { createHardwareProfile, PlatformType } from './platform';
 import { UpmixSurroundMode } from './processing';
 import { makeSnapshot } from '@test/fixtures/snapshotFixtures';
@@ -89,6 +89,25 @@ describe('matrixRows — upmix contextual row labels', () => {
     // row 2's real channel name must survive, not the derived-channel label.
     expect(rows[2].label).toBe(snap.channels.find((c) => c.id === rows[2].inputId)!.name);
     expect(rows[2].label).not.toBe('Upmix C');
+  });
+});
+
+describe('upmixRowContext — upmixer v2 never borrows matrix rows', () => {
+  const surround = { enabled: true, surroundMode: UpmixSurroundMode.Adaptive };
+
+  it('keeps real labels and the live row count when the device routes the upmixer', () => {
+    const snap = makeSnapshot((b) => { b.upmix = { ...b.upmix, ...surround }; }, RP2350_UNIFIED);
+    const ctx = upmixRowContext(snap, { upmix: true, upmixRoutes: true });
+    const rows = matrixRows(snap, 2, ctx);
+    expect(rows).toHaveLength(2);
+    expect(matrixRows(snap, 8, ctx).slice(2, 5).map((r) => r.label))
+      .toEqual(matrixRows(snap, 8).slice(2, 5).map((r) => r.label));
+  });
+
+  it('still relabels rows 2 to 4 on older upmixer firmware', () => {
+    const snap = makeSnapshot((b) => { b.upmix = { ...b.upmix, ...surround }; }, RP2350_UNIFIED);
+    const rows = matrixRows(snap, 2, upmixRowContext(snap, { upmix: true, upmixRoutes: false }));
+    expect(rows.slice(2, 5).map((r) => r.label)).toEqual(['Upmix C', 'Upmix Ls', 'Upmix Rs']);
   });
 });
 

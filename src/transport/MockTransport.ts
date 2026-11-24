@@ -434,6 +434,18 @@ function defaultMockBulkState(platform: Domain.PlatformType, wireVersion: number
   return state;
 }
 
+function zeroedUpmix2(u: Domain.UpmixV2): Domain.UpmixV2 {
+  const ext = (e: Domain.UpmixExt): Domain.UpmixExt => ({
+    srcA: 0, srcB: 0, activeCounts: 0, backOffsetMs: 0, routes: e.routes.map(() => ({ outMask: 0, trimQ1: 0, flags: 0 })),
+  });
+  const p1: Domain.Upmix = {
+    enabled: false, centerMode: 0, surroundMode: 0, strengthPct: 0, centerWidthPct: 0, corrThresholdPct: 0,
+    attackMs: 0, releaseMs: 0, detectorHpfHz: 0, surroundDelayMs: 0, surroundHpfHz: 0, surroundLpfHz: 0,
+    decorrPct: 0, presenceDb: 0,
+  };
+  return { p0Ext: ext(u.p0Ext), p1, p1Ext: ext(u.p1Ext) };
+}
+
 // Full snapshot of mutable mock state so PresetSave/Load round-trips every
 // field, not just the bulk-packet contents.
 interface MockSnapshot {
@@ -2381,10 +2393,12 @@ export class MockTransport implements DspTransport {
       case Cmd.AllParamsChunk.legacy.set: {
         const target = Wire.bulkSizeForVersion(this.#wireVersion);
         if (value === 0) {
-          // fw rejects a session whose declared packet is shorter than its
-          // own wire size (WIRE_BULK_PARAMS_MIN_SIZE); STALL on the first chunk.
+          // Legacy fw rejects a session whose declared packet is shorter than
+          // its own wire size (WIRE_BULK_PARAMS_MIN_SIZE); STALL on the first
+          // chunk. Paged fw opens the session regardless and checks the header
+          // once the last byte lands.
           const declared = BulkParser.peekBulkHeader(data).payloadLength;
-          if (declared < target) {
+          if (!this.#pagedDoor && declared < target) {
             this.#setChunkSession = null;
             throw new Error(`MockTransport: SetAllParamsChunk payload too short (${declared}, need ${target})`);
           }
@@ -2416,8 +2430,15 @@ export class MockTransport implements DspTransport {
     if (data.length < min) {
       throw new Error(`MockTransport: SetAllParams payload too short (${data.length}, need ${min})`);
     }
+    // Paged firmware refuses a packet whose version or length is not its own.
+    if (this.#pagedDoor && (data.length !== min || data[0] !== this.#wireVersion
+      || BulkParser.peekBulkHeader(data).payloadLength !== min)) {
+      throw new Error(`MockTransport: SetAllParams needs V${this.#wireVersion} at ${min} bytes (got V${data[0]}, ${data.length} bytes)`);
+    }
     const bulk = BulkParser.parseBulkParams(data);
     bulk.limiter = this.#settleLimiter(bulk.limiter, this.#mockState.limiter);
+    // RP2040 ignores the upmixer v2 section on apply.
+    if (this.#platform !== Domain.PlatformType.RP2350) bulk.upmix2 = this.#mockState.upmix2;
     this.#applyBulkState(bulk);
   }
 
@@ -2450,8 +2471,14 @@ export class MockTransport implements DspTransport {
 
   // Build the bulk packet at the configured wire version from #mockState.
   #synthBulkPacket(): Uint8Array {
-    const buildVer = this.#wireVersion >= Wire.PAGED_WIRE_VERSION ? Wire.PAGED_WIRE_VERSION : Math.min(this.#wireVersion, Wire.MAX_WIRE_VERSION);
-    const out = BulkParser.buildBulkParams(this.#mockState, buildVer);
+    const buildVer = this.#wireVersion >= Wire.MIN_PAGED_WIRE_VERSION
+      ? Math.min(this.#wireVersion, Wire.MAX_PAGED_WIRE_VERSION)
+      : Math.min(this.#wireVersion, Wire.MAX_WIRE_VERSION);
+    // RP2040 reports the upmixer v2 section zeroed.
+    const state = this.#platform === Domain.PlatformType.RP2350
+      ? this.#mockState
+      : { ...this.#mockState, upmix2: zeroedUpmix2(this.#mockState.upmix2) };
+    const out = BulkParser.buildBulkParams(state, buildVer);
     const dv = new DataView(out.buffer);
     dv.setUint8(0, this.#wireVersion);        // report the configured version
     dv.setUint16(6, this.#payloadLength ?? out.byteLength, true);  // payloadLength (overridable)
@@ -3085,12 +3112,34 @@ export class MockTransport implements DspTransport {
   // that gated it. Gains/correlation are plausible constants, not a real
   // upmix computation -- zeroed while parked.
   #upmixStatus(): { active: boolean; parkedReason: number; corrQ14: number; balanceQ14: number; centerGainQ15: number; lsGainQ15: number; rsGainQ15: number } {
+    if (this.#wireVersion >= 35 && this.#platform === Domain.PlatformType.RP2350) return this.#upmixV2Status();
     const u = this.#mockState.upmix!;
     const stereoInput = this.#activeInputChannels() === 2;
     const active = u.enabled && stereoInput;
     if (!active) {
       return { active: false, parkedReason: !u.enabled ? 1 : 2, corrQ14: 0, balanceQ14: 0, centerGainQ15: 0, lsGainQ15: 0, rsGainQ15: 0 };
     }
+    return { active: true, parkedReason: 0, corrQ14: 8192, balanceQ14: 0, centerGainQ15: 23170, lsGainQ15: 23170, rsGainQ15: 23170 };
+  }
+
+  // Upmixer v2 status as firmware selects it: the lowest enabled profile whose
+  // active counts hold the input count, then its sources, then its routes
+  // against the enabled outputs.
+  #upmixV2Status(): { active: boolean; parkedReason: number; corrQ14: number; balanceQ14: number; centerGainQ15: number; lsGainQ15: number; rsGainQ15: number } {
+    const { upmix, upmix2 } = this.#mockState;
+    const profiles = [
+      { enabled: upmix.enabled, ext: upmix2.p0Ext },
+      { enabled: upmix2.p1.enabled, ext: upmix2.p1Ext },
+    ];
+    const n = this.#activeInputChannels();
+    const sel = profiles.find((p) => p.enabled && (p.ext.activeCounts & (1 << (Math.floor(n / 2) - 1))) !== 0);
+    const quiet = { active: false, corrQ14: 0, balanceQ14: 0, centerGainQ15: 0, lsGainQ15: 0, rsGainQ15: 0 };
+    if (!profiles.some((p) => p.enabled)) return { ...quiet, parkedReason: 1 };
+    if (!sel) return { ...quiet, parkedReason: 2 };
+    if (sel.ext.srcA >= n || sel.ext.srcB >= n) return { ...quiet, parkedReason: 4 };
+    const outEnabled = this.#mockState.outputs.reduce((m, o, i) => (o.enabled ? m | (1 << i) : m), 0);
+    const claim = sel.ext.routes.reduce((m, r) => m | r.outMask, 0);
+    if ((claim & outEnabled) === 0) return { ...quiet, parkedReason: 6 };
     return { active: true, parkedReason: 0, corrQ14: 8192, balanceQ14: 0, centerGainQ15: 23170, lsGainQ15: 23170, rsGainQ15: 23170 };
   }
 

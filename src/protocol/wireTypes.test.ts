@@ -6,24 +6,35 @@ describe('wireTypes — V28 packet layout', () => {
   it('the section codecs sum to the 5944-byte V28 packet; later versions append sections', () => {
     expect(Wire.BULK_SIZE_V28).toBe(5944);
     expect(Wire.bulkSizeForVersion(28)).toBe(5944);
-    // V29 subharm (+16), V30 subharm tail (+20), V31 tube (+48), V32 limiter (+108).
+    // V29 subharm (+16), V30 subharm tail (+20), V31 tube (+48), V32 limiter (+108),
+    // V35 upmixer v2 (+116), V36 spatializer (+32).
     expect(Wire.bulkSizeForVersion(29)).toBe(5960);
     expect(Wire.bulkSizeForVersion(30)).toBe(5980);
     expect(Wire.bulkSizeForVersion(31)).toBe(6028);
     expect(Wire.bulkSizeForVersion(32)).toBe(6136);
-    expect(Wire.bulkSizeForVersion(99)).toBe(6136);
+    expect(Wire.bulkSizeForVersion(34)).toBe(6136);
+    expect(Wire.bulkSizeForVersion(35)).toBe(6252);
+    expect(Wire.bulkSizeForVersion(36)).toBe(6284);
+    expect(Wire.bulkSizeForVersion(99)).toBe(6284);
   });
 
   it('bulkLayout gates each trailing section on version AND payloadLength', () => {
     const v28 = Wire.bulkLayout({ formatVersion: 28, payloadLength: Wire.BULK_SIZE_V28 });
-    expect(v28).toEqual({ subharm: false, subharmExt: false, tube: false, limiter: false });
+    expect(v28).toEqual({ subharm: false, subharmExt: false, tube: false, limiter: false, upmix2: false, spatial: false });
 
     const v30 = Wire.bulkLayout({ formatVersion: 30, payloadLength: Wire.BULK_SIZE_V30 });
-    expect(v30).toEqual({ subharm: true, subharmExt: true, tube: false, limiter: false });
+    expect(v30).toEqual({ subharm: true, subharmExt: true, tube: false, limiter: false, upmix2: false, spatial: false });
 
     // Header claims V32 but the buffer is cut short: the limiter is not read.
     const truncated = Wire.bulkLayout({ formatVersion: 32, payloadLength: Wire.BULK_SIZE_V31 });
-    expect(truncated).toEqual({ subharm: true, subharmExt: true, tube: true, limiter: false });
+    expect(truncated).toEqual({ subharm: true, subharmExt: true, tube: true, limiter: false, upmix2: false, spatial: false });
+
+    const v35 = Wire.bulkLayout({ formatVersion: 35, payloadLength: Wire.BULK_SIZE_V35 });
+    expect(v35).toMatchObject({ limiter: true, upmix2: true, spatial: false });
+    const v36 = Wire.bulkLayout({ formatVersion: 36, payloadLength: Wire.BULK_SIZE_V36 });
+    expect(v36).toMatchObject({ upmix2: true, spatial: true });
+    const cut = Wire.bulkLayout({ formatVersion: 36, payloadLength: Wire.BULK_SIZE_V35 });
+    expect(cut).toMatchObject({ upmix2: true, spatial: false });
   });
 
   it('BandParams carries bypass at byte 1 and the Linkwitz qp sidecar at bytes 2-3', () => {

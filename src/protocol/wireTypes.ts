@@ -28,7 +28,8 @@
 //  5900      44   WireUpmixParams
 //  5944                                       end of V28
 // V29 SubharmParams (16), V30 SubharmParamsExt (20), V31 TubeParams (48) and
-// V32 LimiterParams (108) follow, in that order.
+// V32 LimiterParams (108), V35 UpmixV2Params (116) and V36 SpatialParams (32)
+// follow, in that order.
 
 import { Codec, type BinCodec } from '@/utils';
 
@@ -353,6 +354,49 @@ export const LimiterEntry = struct({
 });
 export const LimiterParams = arr(LimiterEntry, Const.NUM_OUTPUTS);
 
+// Section 26: upmixer v2 (116 B, V35+; RP2350 only, zeroed on GET and ignored on
+// SET on RP2040). Holds profile 0's v2 tail and the whole of profile 1.
+// One generated channel's delivery: output bitmask, trim in dB x 2 (-80..+12),
+// flags bit 0 = polarity invert.
+export const UpmixRoute = struct({
+  outMask: u16,
+  trimQ1:  i8,
+  flags:   u8,
+});
+
+// Sources, served input counts (bit k = 2(k+1) channels), back-pair offset, and
+// the seven routes: A', B', C, SA, SB, BA, BB.
+export const UpmixExt = struct({
+  srcA:         u8,
+  srcB:         u8,
+  activeCounts: u8,
+  _reserved:    reserved(1),
+  backOffsetMs: f32,
+  routes:       arr(UpmixRoute, 7),
+});
+
+export const UpmixV2Params = struct({
+  p0Ext: UpmixExt,
+  p1:    UpmixParams,
+  p1Ext: UpmixExt,
+});
+
+// Section 27: stereo spatializer (32 B, V36+; both platforms). mode 0 = width,
+// 1 = crosstalk cancellation; pairMask bit p = output pair p.
+export const SpatialParams = struct({
+  enabled:      bool8,
+  mode:         u8,
+  pairMask:     u8,
+  _reserved:    reserved(1),
+  widthPct:     f32,
+  bassWidthPct: f32,
+  shelfHz:      f32,
+  spanDeg:      f32,
+  attenDb:      f32,
+  midPct:       f32,
+  trimDb:       f32,
+});
+
 // REQ_LIMITER (0x81) wValue = (output << 8) | index. Index ids for the
 // per-parameter SET/GET; ids 0x80+ are read-only GET blocks.
 export const LimiterParam = {
@@ -599,10 +643,12 @@ export const OutputLatencyOption = struct({
   effectiveUs: u16,
 });
 
-// 16-byte live stereo-upmixer status (GetUpmixStatus 0x4E, RP2350
-// only). parkedReason: 0 active / 1 disabled / 2 input not stereo / 3 rate
-// > 48 kHz -- narrowed to a domain enum in DspDevice. corr/balance are Q14
-// signed fixed point; gains are Q15 unsigned.
+// Leading 16 bytes of the live stereo-upmixer status (GetUpmixStatus 0x4E,
+// RP2350 only); firmware 1.1.7 grows the reply to 32 and answers a 16-byte
+// read with this prefix. parkedReason: 0 active / 1 disabled / 2 no profile
+// serves the input count / 3 rate > 48 kHz / 4 a source is absent / 5 fading
+// out / 6 nothing routed -- narrowed to a domain enum in DspDevice.
+// corr/balance are Q14 signed fixed point; gains are Q15 unsigned.
 export const UpmixStatus = struct({
   active:        bool8,
   parkedReason:  u8,
@@ -1167,18 +1213,27 @@ export const BULK_SIZE_V31 = BULK_SIZE_V30 + sizeOf(TubeParams);
 // V32 appends the 108-byte per-output limiter section (9 x 12 B).
 export const BULK_SIZE_V32 = BULK_SIZE_V31 + sizeOf(LimiterParams);
 
+// V35 appends the 116-byte upmixer v2 section (RP2350; zeroed on RP2040).
+export const BULK_SIZE_V35 = BULK_SIZE_V32 + sizeOf(UpmixV2Params);
+// V36 appends the 32-byte stereo spatializer section.
+export const BULK_SIZE_V36 = BULK_SIZE_V35 + sizeOf(SpatialParams);
+
 // Newest wire version of the legacy-opcode firmware line the console knows how
 // to decode and write.
 export const MAX_WIRE_VERSION = 32;
 
-// Wire version of paged-protocol firmware (1.1.7). Same sizes and offsets as
-// V32; two WireInputConfig bytes change meaning (see InputConfig). V33 belongs
-// to a different firmware line and is not understood.
-export const PAGED_WIRE_VERSION = 34;
+// Wire versions of paged-protocol firmware (1.1.7). V34 keeps the V32 sizes and
+// offsets (two WireInputConfig bytes change meaning, see InputConfig); V35 and
+// V36 append sections. V33 belongs to a different firmware line and is not
+// understood.
+export const MIN_PAGED_WIRE_VERSION = 34;
+export const MAX_PAGED_WIRE_VERSION = 36;
 
 // Packet size to allocate/write for a given target wire version (versions
 // above the ceiling use the newest known size).
 export function bulkSizeForVersion(v: number): number {
+  if (v >= 36) return BULK_SIZE_V36;
+  if (v >= 35) return BULK_SIZE_V35;
   if (v >= 32) return BULK_SIZE_V32;
   if (v >= 31) return BULK_SIZE_V31;
   if (v >= 30) return BULK_SIZE_V30;
@@ -1189,10 +1244,10 @@ export function bulkSizeForVersion(v: number): number {
 export const BulkLimits = {
   MinPacketSize:  BULK_SIZE_V28,
   // Size we WRITE: version-aware buildBulkParams emits at the device's own wire
-  // version, up to MAX_WIRE_VERSION. This is the largest buffer it may allocate.
-  MaxRequestSize: BULK_SIZE_V32,
-  // Size we READ: the largest packet we tolerate receiving (V32).
-  MaxReadSize:    BULK_SIZE_V32,
+  // version, up to MAX_PAGED_WIRE_VERSION. This is the largest buffer it may allocate.
+  MaxRequestSize: BULK_SIZE_V36,
+  // Size we READ: the largest packet we tolerate receiving (V36).
+  MaxReadSize:    BULK_SIZE_V36,
   // Firmware-recommended chunk size for the chunked bulk-params commands.
   ChunkSize: 2048,
 } as const;
@@ -1208,6 +1263,10 @@ export interface BulkLayout {
   tube: boolean;
   // V32: per-output limiter section, appended after the tube section.
   limiter: boolean;
+  // V35: upmixer v2 section (profile 0 tail, profile 1), after the limiter.
+  upmix2: boolean;
+  // V36: stereo spatializer section, after the upmixer v2 section.
+  spatial: boolean;
 }
 
 // Determine which trailing sections are present based on the header.
@@ -1221,6 +1280,8 @@ export function bulkLayout(h: { formatVersion: number; payloadLength: number }):
     subharmExt: v >= 30 && len >= BULK_SIZE_V30,
     tube:       v >= 31 && len >= BULK_SIZE_V31,
     limiter:    v >= 32 && len >= BULK_SIZE_V32,
+    upmix2:     v >= 35 && len >= BULK_SIZE_V35,
+    spatial:    v >= 36 && len >= BULK_SIZE_V36,
   };
 }
 

@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { deriveCapabilities, MAX_KNOWN_WIRE } from './capabilities';
 import { Wire } from '@/protocol';
+import { catalogFrom } from './pagedDiscovery';
+import { PagedCmd } from './paged.gen';
 
 const fw = (major: number, minor: number, patch: number) => ({ major, minor, patch });
 
@@ -107,10 +109,20 @@ describe('deriveCapabilities — paged generation', () => {
   const paged = (wireVersion: number) =>
     deriveCapabilities({ fw: fw(1, 1, 7), wireVersion, payloadLength: 6136, platformId: 1, generation: 'paged' });
 
-  it('supports only V34, with newer wires future and older unsupported', () => {
-    expect(paged(34).support).toBe('supported');
-    expect(paged(35).support).toBe('future');
+  it('supports V34 to V36, with newer wires future and older unsupported', () => {
+    expect([34, 35, 36].map((v) => paged(v).support)).toEqual(['supported', 'supported', 'supported']);
+    expect(paged(37).support).toBe('future');
     expect([paged(33).support, paged(32).support]).toEqual(['unsupported', 'unsupported']);
+  });
+
+  it('routes the upmixer only from V35, and only where the device lists it', () => {
+    const routes = (wire: number, platformId: number, withCatalog = true) => deriveCapabilities({
+      fw: fw(1, 1, 7), wireVersion: wire, payloadLength: Wire.bulkSizeForVersion(wire), platformId, generation: 'paged',
+      catalog: withCatalog ? catalogFrom(new Map(), [PagedCmd.FX.UPMIX_ROUTE.id, PagedCmd.FX.UPMIX_STATUS.id], [], platformId) : null,
+    }).features.upmixRoutes;
+    expect([routes(34, 1), routes(35, 1), routes(36, 1)]).toEqual([false, true, true]);
+    expect(routes(36, 0)).toBe(false);
+    expect(routes(36, 1, false)).toBe(false);
   });
 
   it('needs a feature command in the catalog', () => {

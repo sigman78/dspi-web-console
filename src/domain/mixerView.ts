@@ -102,13 +102,23 @@ export function matrixColumns(snapshot: DspSnapshot | null): MatrixColumn[] {
   }));
 }
 
-// Upmix context for matrixRows' label override: when the upmixer is enabled
+// Upmix context for matrixRows' label override (upmixer v1 only): when the upmixer is enabled
 // and the live input is a plain stereo pair, it repurposes the otherwise-idle
 // input slots 2-4 (In2L/In2R/In3L) as derived-channel busses so their audio
 // can be routed through the same crosspoint matrix as a real input would be.
 export interface UpmixRowContext {
   enabled: boolean;
   surroundMode: number;
+}
+
+// Upmixer v2 (`upmixRoutes`) never borrows matrix rows 2 to 4: they are real
+// inputs there, so no override applies.
+export function upmixRowContext(
+  snapshot: DspSnapshot | null,
+  features: { upmix: boolean; upmixRoutes: boolean },
+): UpmixRowContext | null {
+  if (!snapshot || !features.upmix || features.upmixRoutes) return null;
+  return { enabled: snapshot.upmix.enabled, surroundMode: snapshot.upmix.surroundMode };
 }
 
 // One row per hardware input channel (2 on RP2040, up to 8 on RP2350).

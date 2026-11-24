@@ -3,26 +3,26 @@ import { resolveMockProfile, resolveMockProfiles, activeMockProfiles } from './m
 import * as Wire from '@/protocol/wireTypes';
 
 describe('resolveMockProfile', () => {
-  it('boots v34 (and its alias paged) as a paged fw 1.1.7 beta 1 device', () => {
-    for (const token of ['v34', 'paged']) {
-      const p = resolveMockProfile(token);
-      expect(p.opts).toMatchObject({ paged: true, wireVersion: 34, fwVersion: { major: 1, minor: 1, patch: 7, beta: 1 } });
-    }
+  it('boots paged on the newest paged wire, v34 to v36 pin one', () => {
+    expect(resolveMockProfile('paged').opts).toMatchObject({ paged: true, wireVersion: 36, fwVersion: { major: 1, minor: 1, patch: 7, beta: 1 } });
+    expect([34, 35, 36].map((n) => resolveMockProfile(`v${n}`).opts)).toMatchObject([
+      { paged: true, wireVersion: 34 }, { paged: true, wireVersion: 35 }, { paged: true, wireVersion: 36 },
+    ]);
   });
 
   it('does not take v33: it is no profile of either firmware line', () => {
     expect(resolveMockProfile('v33').name).toBe('latest');
   });
 
+  it('resolves a bare token to latest', () => {
+    const p = resolveMockProfile('');
+    expect(p.name).toBe('latest');
+  });
+
   it('falls back to latest for an unrecognized token (e.g. an old spelling)', () => {
     const p = resolveMockProfile('hero');
     expect(p.name).toBe('latest');
     expect(p.opts.wireVersion).toBe(Wire.MAX_WIRE_VERSION);
-  });
-
-  it('resolves a bare token to latest', () => {
-    const p = resolveMockProfile('');
-    expect(p.name).toBe('latest');
   });
 
   it('parses v28 as the released fw 1.1.5', () => {

@@ -109,12 +109,58 @@ export interface Upmix {
   presenceDb: number;
 }
 
+// One generated channel's delivery in upmixer v2 (fw V35+): output bitmask,
+// trim in dB x 2 (-80..+12), flags bit 0 = polarity invert. Raw wire values.
+export interface UpmixRoute {
+  outMask: number;
+  trimQ1: number;
+  flags: number;
+}
+
+// Upmixer v2 profile tail: source pair, served input counts (bit k = 2(k+1)
+// channels), back-pair offset and the seven routes (A', B', C, SA, SB, BA, BB).
+export interface UpmixExt {
+  srcA: number;
+  srcB: number;
+  activeCounts: number;
+  backOffsetMs: number;
+  routes: UpmixRoute[];
+}
+
+// The upmixer v2 bulk section (fw V35+, RP2350; RP2040 reports it zeroed and
+// ignores it): profile 0's tail, and profile 1 whole. Profile 0's first part is
+// `Upmix`.
+export interface UpmixV2 {
+  p0Ext: UpmixExt;
+  p1: Upmix;
+  p1Ext: UpmixExt;
+}
+
+// Stereo spatializer (fw V36+, both platforms). Wire-1:1: mode 0 = width,
+// 1 = crosstalk cancellation; pairMask bit p = output pair p.
+export interface Spatial {
+  enabled: boolean;
+  mode: number;
+  pairMask: number;
+  widthPct: number;
+  bassWidthPct: number;
+  shelfHz: number;
+  spanDeg: number;
+  attenDb: number;
+  midPct: number;
+  trimDb: number;
+}
+
 // Why the upmixer isn't actively processing right now (GetUpmixStatus 0x4E).
+// Reasons 4 to 6 exist from fw V35.
 export const UpmixParkedReason = {
   Active:         0,
   Disabled:       1,
   NotStereoInput: 2,
   RateAbove48k:   3,
+  SourceAbsent:   4,
+  FadingOut:      5,
+  NothingRouted:  6,
 } as const;
 export type UpmixParkedReason = (typeof UpmixParkedReason)[keyof typeof UpmixParkedReason];
 
@@ -125,6 +171,9 @@ export function narrowUpmixParkedReason(n: number): UpmixParkedReason {
     case UpmixParkedReason.Disabled:
     case UpmixParkedReason.NotStereoInput:
     case UpmixParkedReason.RateAbove48k:
+    case UpmixParkedReason.SourceAbsent:
+    case UpmixParkedReason.FadingOut:
+    case UpmixParkedReason.NothingRouted:
       return n;
     default:
       return UpmixParkedReason.Disabled;

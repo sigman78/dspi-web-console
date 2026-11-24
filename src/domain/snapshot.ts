@@ -5,7 +5,7 @@
 import type { ChannelId } from './channels';
 import type { HardwareProfile, I2sConfig, PlatformType } from './platform';
 import type { FilterParams } from './filter';
-import type { Loudness, Crossfeed, Leveller, Psybass, Upmix, Subharm, Tube, LimiterOutput } from './processing';
+import type { Loudness, Crossfeed, Leveller, Psybass, Upmix, UpmixV2, Spatial, Subharm, Tube, LimiterOutput } from './processing';
 import type { OutputModel, RouteModel } from './mixer';
 import type { InputConfig, LgSoundSync, UserVolume, DacHwMute, AdatOutputConfig } from './deviceSections';
 
@@ -71,6 +71,10 @@ export interface DspSnapshot {
   // always populated.
   tube: Tube;
   limiter: LimiterOutput[];
+  // Upmixer v2 profiles (fw V35+) and stereo spatializer (fw V36+); bulkParser
+  // defaults both on older packets, so these are always populated.
+  upmix2: UpmixV2;
+  spatial: Spatial;
   i2s: I2sConfig;
   // GPIO pin per pin-output index, in hardware output order; the last entry is the PDM sub.
   outputPins: number[];

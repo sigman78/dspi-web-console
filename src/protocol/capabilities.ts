@@ -18,8 +18,9 @@ import { SPDIF_RX_MAX_INSTANCES } from '@/domain';
 // subharm section (third band, selectivity, ceiling, pair link), V31 adds the
 // tube preamp, V32 adds the per-output limiter.
 export const MAX_KNOWN_WIRE = 32;
-// Paged firmware (1.1.7) speaks wire V34; older paged wires do not exist.
-const PAGED_WIRE = Wire.PAGED_WIRE_VERSION;
+// Paged firmware (1.1.7) speaks wire V34 to V36; older paged wires do not exist.
+const MIN_PAGED_WIRE = Wire.MIN_PAGED_WIRE_VERSION;
+const MAX_PAGED_WIRE = Wire.MAX_PAGED_WIRE_VERSION;
 const SUPPORTED_WIRE_VERSIONS: readonly number[] = [28, 29, 30, 31, 32];
 
 // UI-facing description of the support window (device-panel tooltips). Keep
@@ -70,6 +71,9 @@ export interface DeviceFeatures {
   readonly tube: boolean;
   // Per-output limiter (wire V32+, both platforms).
   readonly limiter: boolean;
+  // Upmixer v2 (paged wire V35+, RP2350): profiles with routed delivery. The
+  // matrix rows 2 to 4 are then real inputs rather than upmixer busses.
+  readonly upmixRoutes: boolean;
   // GetBuildInfo 0x80 answers (wire V29+). Provenance for humans only -- the
   // stamp itself never gates anything; this only says the read is worth trying.
   readonly buildStamp: boolean;
@@ -94,7 +98,7 @@ export interface DeviceCapabilities {
 
   // Support classification, keyed on the observed wire version:
   //   unsupported -- below the V28 floor (older than fw 1.1.5).
-  //   supported   -- V28-V32 (1.1.5/1.1.6) on legacy firmware, V34 (1.1.7)
+  //   supported   -- V28-V32 (1.1.5/1.1.6) on legacy firmware, V34-V36 (1.1.7)
   //                  on paged firmware.
   //   future      -- newer than the console knows; read known sections only.
   readonly support: 'unsupported' | 'supported' | 'future';
@@ -131,7 +135,7 @@ export function deriveCapabilities(input: {
   const catalog = generation === 'paged' ? input.catalog ?? null : null;
 
   const support: DeviceCapabilities['support'] = generation === 'paged'
-    ? (wireVersion === PAGED_WIRE ? 'supported' : wireVersion > PAGED_WIRE ? 'future' : 'unsupported')
+    ? (wireVersion > MAX_PAGED_WIRE ? 'future' : wireVersion >= MIN_PAGED_WIRE ? 'supported' : 'unsupported')
     : SUPPORTED_WIRE_VERSIONS.includes(wireVersion) ? 'supported'
     : wireVersion > MAX_KNOWN_WIRE                ? 'future'
     : 'unsupported';
@@ -152,6 +156,7 @@ export function deriveCapabilities(input: {
     subharmExt:        (paged || wireVersion >= 30) && listed(G.PagedCmd.FX.SUBHARM_CEILING),
     tube:              (paged || wireVersion >= 31) && listed(G.PagedCmd.FX.TUBE_ENABLE),
     limiter:           (paged || wireVersion >= 32) && listed(G.PagedCmd.DYN.LIMITER_ENABLE),
+    upmixRoutes:       paged && wireVersion >= 35 && platformId === 1 && listed(G.PagedCmd.FX.UPMIX_ROUTE) && listed(G.PagedCmd.FX.UPMIX_STATUS),
     buildStamp:        (paged || wireVersion >= 29) && listed(G.PagedCmd.SYS.BUILD_INFO, 'get'),
     rta:               (paged || wireVersion >= 30) && listed(G.PagedCmd.MEAS.RTA_CAPS, 'get'),
     inputBlocks:       paged && listed(G.PagedCmd.INPUT.SPDIF_RX_ENABLE, 'set') && listed(G.PagedCmd.INPUT.I2S_RX_ENABLE, 'set'),
